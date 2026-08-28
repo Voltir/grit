@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: grit
+      POSTGRES_PASSWORD: grit
+      POSTGRES_DB: grit
+    ports:
+      - "5432:5432"   # free; app connects on 5432
+    volumes:
+      - postgres-data:/var/lib/postgresql
+
+volumes:
+  postgres-data:

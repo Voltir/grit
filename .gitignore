@@ -1,0 +1,17 @@
+# Build outputs
+out/
+.mill/
+
+# Vendored reference (keep out of git on purpose)
+.local/
+
+# Planning artifacts — local working documents, not part of the repo
+roadmap/
+CLAUDE.local.md
+
+# Metals / BSP / Bloop
+.metals/
+.bloop/
+.bsp/
+
+.idea/

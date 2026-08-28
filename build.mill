@@ -1,0 +1,27 @@
+import mill._
+import mill.scalalib._
+
+object grit extends ScalaModule {
+  def scalaVersion = "3.8.4"
+
+  /* Braces are enforced by the compiler, not by convention: -no-indent makes
+   * significant indentation an error. Capture checking is on project-wide so
+   * effects show up in signatures -- see STYLE.md for why that is load-bearing. */
+  def scalacOptions = Seq(
+    "-no-indent",
+    "-language:experimental.captureChecking",
+    "-deprecation",
+    "-feature"
+  )
+
+  def ivyDeps = Agg(
+    mvn"dev.dbos:transact:1.0.0",
+    mvn"org.slf4j:slf4j-simple:2.0.18",
+    mvn"org.postgresql:postgresql:42.7.4",
+    mvn"com.lihaoyi::upickle:4.0.2"
+  )
+
+  object test extends ScalaTests with TestModule.Utest {
+    def ivyDeps = Agg(mvn"com.lihaoyi::utest::0.8.4")
+  }
+}
