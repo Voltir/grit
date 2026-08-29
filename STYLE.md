@@ -63,6 +63,12 @@ def parseModel(s: String): Model = throw new IllegalArgumentException(s)
 def parseModel(s: String): Either[BadModel, Model]
 ```
 
+The replay half of the same story: **a step's return value is persisted and replayed
+from a row**, so it has to be a value Jackson can reconstruct. `Unit` is not one. A step
+that has nothing to say should say what it did — `"inserted:e1"`, an enum, a count —
+rather than returning `Unit` and forcing the boundary to invent `null`. `grit.interop`
+enforces this with `StepResult` evidence; a `Unit` step body is a compile error.
+
 ## 4. Total over partial
 
 No `.get`, no `.head`, no `Map.apply`, no inexhaustive matches. Return `Option`.
@@ -81,11 +87,16 @@ Sealed ADTs over stringly-typed data. Opaque types for identifiers so they canno
 transposed at a call site.
 
 ```scala
-opaque type SessionId <: String = String
-opaque type EntryId   <: String = String
+opaque type SessionId = String
+opaque type EntryId   = String
 
 // append(entryId, sessionId) now fails to compile instead of corrupting a row
 ```
+
+Prefer no upper bound. `opaque type EntryId <: String` also stops transposition, but it
+lets an id widen back into a bare `String` implicitly — which is how ids leak into string
+concatenation and back out as the wrong type. Make the crossing explicit
+(`EntryId.value(id)`) so it is greppable.
 
 ## 6. No `null` in Scala
 
@@ -93,10 +104,21 @@ opaque type EntryId   <: String = String
 boundary. DBOS's Jackson layer wants `null` for `Unit`; that dance happens in one place
 and is never visible outside it.
 
+This includes nulls returned by Java methods that look total. `Throwable.getMessage` is
+the one that has already bitten here: `StoreError.DatabaseError(e.getMessage)` types as
+`String` and carries `null` into a pure ADT. Wrap at the call site —
+`Option(e.getMessage).getOrElse(e.toString)`. Anywhere a value crosses out of
+`grit.interop`, assume the Java signature is lying about nullability.
+
 ## 7. Immutable data
 
 `case class` and `val`. Mutation only inside an explicitly scoped local, never on a field
 that outlives a method.
+
+One carve-out: a **test double standing in for a mutable resource** may hold mutable
+state, because that state is the thing it exists to emulate. `FakeEntryStore` has to
+behave like a table for the trait's contract to be under test at all. The carve-out is
+for fakes of stateful seams — not for convenience elsewhere in tests.
 
 ## 8. Interop is quarantined
 
@@ -104,6 +126,9 @@ Everything ugly — DBOS reflection over `Function0.apply`, `JdbcStepFactory` wi
 Jackson boxing, `Unit → null`, raw `java.sql.Connection` — lives in `grit.interop`.
 
 **Nothing outside `grit.interop` imports `dev.dbos.*` or `java.sql.*`.**
+(Opaque type definitions that *alias* a quarantine type — e.g. `opaque type Tx =
+java.sql.Connection` — may name it fully-qualified without an `import`; that is a type
+definition, not an I/O call site.)
 
 This is the rule most likely to be inconvenient, and the one most worth holding. It is
 also where capture checking will fight hardest; a per-file escape inside `grit.interop`

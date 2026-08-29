@@ -50,6 +50,13 @@ capability is a promise of purity.**
 Braces. Never significant indentation — `-no-indent` makes it a compile error. Run
 `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources` before committing.
 
+**Capture syntax needs `runner.dialectOverride.allowCaptureChecking = true`.** The stock
+`scala3` dialect rejects `(using Tx^)`, `(Tx^) ?=> A`, and `Connection^{tx}` with
+*"`identifier` expected but `)` found"*, which silently skips every seam file. The
+override is already in `.scalafmt.conf`; it needs scalameta >= 4.13, so scalafmt must
+stay >= 3.9 (3.8.3 fails with `NoSuchMethodException`). If a parse error reappears after
+a version change, check that setting before assuming the syntax is unsupported.
+
 ## Working agreements
 
 - **Verify against the source, not the summary.** Three claims in this project's original
