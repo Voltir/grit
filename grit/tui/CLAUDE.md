@@ -29,9 +29,11 @@ Four groups, and the groups are the layer table:
 surface grit's screens are written against separate from the terminal underneath.
 **`grit.core` may be imported from `components` and `runtime` only** — never `model` or
 `wire`, so the cell model and the terminal seam stay testable with no domain fixtures.
-Content rules (no function in `Effect`, escape bytes in three files, the terminal touched in
-one package) are held by `test/src/QuarantineTests.scala`; import direction by the same
-test and, as it lands, by enola (`enola-intent.yaml`).
+Import direction is enforced twice, deliberately: by enola's three `tui-*` rules in
+`enola-intent.yaml` (gated by `scripts/enola-law.sh`), and by `test/src/QuarantineTests.scala`'s
+source scan, which also catches the fully-qualified reference with no import that enola
+cannot see. Content rules — no function in `Effect`, escape bytes in three files, the
+terminal touched in one package — are the test's alone.
 
 ## Commands
 

@@ -1,10 +1,10 @@
 # The law, in enola's intent vocabulary. enola discovers this file beside the walk config
 # in mcp-arch.yaml.
 #
-# CLAUDE.md and STYLE.md are the authority; this file is enforcement. Right now it carries
-# exactly ONE rule -- the half of STYLE rule 8 that can be checked -- deliberately. The
-# full set of layers and rules is a separate planning session. A minimal file that is
-# verified to bite beats a large one nobody has watched fail.
+# CLAUDE.md, STYLE.md and grit/tui/CLAUDE.md are the authority; this file is enforcement.
+# It carries two things: STYLE rule 8's dev.dbos.* half, and grit.tui's internal import
+# direction. Every rule here was watched to fail on a planted breach before it was adopted.
+# A minimal file that is verified to bite beats a large one nobody has watched fail.
 #
 # Selectors are finalized AGAINST THE SNAPSHOT, not guessed. enola names a dependency fact
 # by its SOURCE DIRECTORY and its exact imported symbol:
@@ -39,12 +39,18 @@ service:
 # its moduleDeps, so it is a compile error -- and these layers are documentation. Inside a
 # module Mill sees nothing, which is where layers and forbid rules start to carry weight.
 #
-# Test modules (*/test/**) are deliberately unclassified. Layers are a ratchet graded
+# `components` and `wire` share the tui-surface layer because they are siblings, the same
+# shape actualbest uses for content/products: a linear order cannot say "neither names the
+# other", so the layer groups them and the tui-* rules below forbid the sideways edge.
+#
+# Test and example modules (*/test/**, tui/examples/**) are deliberately unclassified. Layers are a ratchet graded
 # against a baseline, so they are NOT in the gate script yet; see scripts/enola-law.sh.
 layers:
-  - {name: tui,     paths: ["tui/src", "tui/src/**"]}
-  - {name: interop, paths: ["interop/src", "interop/src/**"]}
-  - {name: core,    paths: ["core/src", "core/src/**"]}
+  - {name: tui-runtime, paths: ["tui/src/runtime", "tui/src/runtime/**"]}
+  - {name: tui-surface, paths: ["tui/src/components", "tui/src/components/**", "tui/src/wire", "tui/src/wire/**"]}
+  - {name: tui-model,   paths: ["tui/src/model", "tui/src/model/**"]}
+  - {name: interop,     paths: ["interop/src", "interop/src/**"]}
+  - {name: core,        paths: ["core/src", "core/src/**"]}
 
 # Every module outside the quarantine. For core and tui this DUPLICATES a compile error --
 # neither has transact on its classpath -- and is kept for the module that it does not
@@ -59,6 +65,15 @@ components:
   - name: outside-interop
     kind: dependency
     match: ["grit/core/**", "grit/tui/**"]
+
+
+  # grit.tui's groups, as module components for the allow/only rules below. Mill cannot see
+  # inside one module, so these are the only enforcement of direction within tui besides
+  # QuarantineTests' source scan. `runtime` needs no component: it may name every group.
+  - {name: core-code,      kind: module, match: ["grit/core/src", "grit/core/src/**"]}
+  - {name: tui-model,      kind: module, match: ["grit/tui/src/model", "grit/tui/src/model/**"]}
+  - {name: tui-components, kind: module, match: ["grit/tui/src/components", "grit/tui/src/components/**"]}
+  - {name: tui-wire,       kind: module, match: ["grit/tui/src/wire", "grit/tui/src/wire/**"]}
 
 rules:
   - id: only-interop-imports-dbos-core
@@ -84,3 +99,37 @@ rules:
     pattern: "* -> dev.dbos.transact.txstep.JdbcStepFactory"
     mode: strict
     because: "STYLE rule 8: dev.dbos.* is quarantined to grit.interop"
+
+# grit.tui's internal direction, one whitelist per group. Probed 2026-09-23 before adoption:
+#
+#   - `via: imports` is the edge that exists for Scala here; `via: depends_on` (the form
+#     enola's own recipes use) lints clean and then never fires -- vacuous. Do not copy a
+#     recipe's `via` without a planted breach.
+#   - `allow/only` counts only edges that resolve to a measured module. Stdlib and external
+#     imports surface as a 0.40 "reached no verdict" advisory, not a breach, so a clean tree
+#     passes.
+#   - Wildcard imports are edges. A FULLY-QUALIFIED reference with no import is NOT --
+#     `grit.tui.wire.paint.Ansi` written inline passed the gate. QuarantineTests' text scan
+#     is what catches that, and it stays.
+#   - Planted, each fails with its own rule id, exit 1: model -> grit.core, wire ->
+#     grit.core, components -> runtime, components -> wire. components -> grit.core passes.
+  - id: tui-model-names-no-other-group
+    allow: tui-model
+    only: [tui-model]
+    via: imports
+    mode: strict
+    because: "grit.tui.model is the pure cell model; it names no other group and no grit domain type, so it is testable with no fixtures"
+
+  - id: tui-wire-names-only-model
+    allow: tui-wire
+    only: [tui-model, tui-wire]
+    via: imports
+    mode: strict
+    because: "wire turns surfaces into bytes and back; naming components or the domain would couple the terminal seam to what is drawn"
+
+  - id: tui-components-name-model-and-core
+    allow: tui-components
+    only: [tui-model, tui-components, core-code]
+    via: imports
+    mode: strict
+    because: "components are the surface grit's screens are written against: they may render grit.core types, but never reach the terminal (wire) or the loop (runtime)"
