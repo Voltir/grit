@@ -21,6 +21,19 @@ implementations, so that signature is the real design work; everything else swap
 it. The database transaction is a scoped, non-escaping capability (`Tx`) — capture
 checking rejects any attempt to let it outlive its block.
 
+Mill modules, and what each may name:
+
+| Module | Package | Depends on | Holds |
+|---|---|---|---|
+| `grit.core` | `grit.core` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath |
+| `grit.interop` | `grit.interop` | core | the quarantine: DBOS, JDBC, Postgres, `schema.sql` |
+| `grit.tui` | `grit.tui.{model,components,wire,runtime}` | core | the terminal UI; core only from `components`/`runtime` |
+| `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo2` is `scripts/tui-gate`'s target |
+
+`grit.app`, the composition root, arrives with its first file. Mill `moduleDeps` are
+transitive, so it will see `dev.dbos.*` through interop — enola's rule, not the compiler,
+guards it.
+
 ## Style rules
 
 Full rationale in [`STYLE.md`](STYLE.md).
@@ -103,13 +116,14 @@ global wrapper (`~/.local/bin/mill-bsp-wrapper`, activated via `MILL_EXECUTABLE_
 `~/.profile`) injects `--bspNoKillOther` to defuse it. Full diagnosis, symptom signatures,
 and undo instructions in [`mill-bsp-nokill-workaround.md`](mill-bsp-nokill-workaround.md).
 
-**When the TUI lands from the spike**, long-lived evaluations need
-`./mill --no-daemon --no-build-lock` so a CLI compile can still run while the app is up.
-Two cautions carried over from `~/Projects/Spikes/tui-spike-jline`: a compile that lands
-mid-run rewrites `out/.../compile.dest/classes` underneath the live JVM, so restart the app
-after recompiling; and a JLine app in raw mode **ignores SIGTERM**, so `timeout N ./mill ...`
-does not bound a run -- it leaves a headless JVM alive indefinitely. Use `timeout -k`, or
-`pkill -9 -f` by main class afterwards.
+**Running a tui app** (`grit.tui.examples`, later `grit.app`): long-lived evaluations need
+`./mill --no-daemon --no-build-lock` so a CLI compile can still run while the app is up. A
+compile that lands mid-run rewrites `out/.../compile.dest/classes` underneath the live JVM,
+so restart the app after recompiling; and the app in raw mode **ignores SIGTERM**, so
+`timeout N ./mill ...` does not bound a run -- it leaves a headless JVM alive indefinitely.
+Use `timeout -k`, or `pkill -9 -f` by main class afterwards. The tui's own working rules
+(the terminal rules, verify-by-painting, the pty gate) are in
+[`grit/tui/CLAUDE.md`](grit/tui/CLAUDE.md).
 
 ## The architecture gate (enola)
 

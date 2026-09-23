@@ -61,17 +61,31 @@ object grit extends Module {
     }
   }
 
+  /* The terminal UI -- ported from ../Spikes/tui-spike-slate. No external dependencies:
+   * the terminal seam is hand-rolled over FFM (grit/tui/src/wire/term), not JLine. It may
+   * render core's types, but only from `components` and `runtime`; see grit/tui/CLAUDE.md. */
   object tui extends GritModule {
+    def moduleDeps = Seq(core)
 
-    def mvnDeps = Seq(
-      mvn"org.jline:jline:4.4.1"
-    )
+    /* The terminal seam binds tcgetattr/tcsetattr/ioctl/isatty with FFM. Unflagged, each
+     * downcall prints a restricted-method WARNING to stderr -- which for an app holding the
+     * alternate screen lands in the middle of the frame -- and JEP 472 will block them
+     * outright in a later release. */
+    def forkArgs = Task { super.forkArgs() ++ Seq("--enable-native-access=ALL-UNNAMED") }
 
     object test extends ScalaTests {
       def forkArgs = Task { tui.forkArgs() }
       def testFramework = "utest.runner.Framework"
 
       def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.4")
+    }
+
+    /* Everything runnable, so the library carries no demo baggage. Demo2 is the pty gate's
+     * target (scripts/tui-gate) until grit.app's own screen replaces it. */
+    object examples extends GritModule {
+      def moduleDeps = Seq(tui)
+      def forkArgs = Task { tui.forkArgs() }
+      def mainClass = Some("grit.tui.examples.Hello")
     }
   }
 }

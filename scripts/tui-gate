@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# The tui gate: grit.tui.examples.Demo2 driven through a real pty with scripted mouse bytes, and
+# the painted result checked against the selection model.
+#
+# Six scenarios, because no one of them can fail the way the others can:
+#
+#   span   a drag that autoscrolls past the top of the pane, so the selection is larger
+#          than the screen. What is highlighted must be a prefix of what was copied --
+#          the visible part of a selection that continues off-screen.
+#   one    a drag that stays on one screen, so the whole selection is visible and the
+#          highlighted cells must equal the clipboard exactly.
+#   modal  a drag begun in the modal and finished over the transcript -- the clipboard
+#          must be a slice of the modal's own document (rule 6) -- and then a second
+#          drag made entirely outside the modal, which must copy nothing at all. The
+#          first alone does not pin the modal's routing: a press that is inside both the
+#          modal and the transcript behind it takes the same path either way. Only a
+#          press the modal has to swallow says which rect it was routed against.
+#   resize the pty is resized under the running app (a real SIGWINCH, via TIOCSWINSZ on
+#          its own pts). The frames after it must be painted to the new size.
+#   popup  the keyboard path, which every other scenario leaves untouched: Tab opens the
+#          completion list, Down moves the selection, Enter takes it into the prompt, and
+#          a second Enter submits it. The chosen command must *run* -- that is what makes
+#          this an oracle for the slash table rather than for the popup's painting, and
+#          both halves used to be uncovered: the popup's routing moved into the Std layer
+#          and `/help` had silently drifted from alt-m with nothing to notice.
+#   thumb  the scrollbar thumb is pressed and dragged upward: the thumb must move, the
+#          transcript must scroll with it, and neither a selection nor a clipboard write
+#          may result -- the widget drag is not a text drag (widget identity).
+#
+# Byte-level checks ride along on every run: modes balanced, no bare LF, nothing written
+# into the last column, the frame never scrolls.
+#
+# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize]   (no scenario runs all six)
+#
+# The oracles are geometry, not implementation: the chrome is header 1 + prompt 3 +
+# status 1, the scrollbar is the body's last column, and the modal's document is HELP.
+#
+# Ported from ../Spikes/tui-spike-slate (`./gate` there). Demo2 is the target until
+# grit.app's own screen exists; retarget it then, and retire Demo2.
+set -u
+cd "$(dirname "$0")/.."
+
+MAIN=grit.tui.examples.Demo2
+
+ROWS=30
+COLS=100
+WORK=${TMPDIR:-/tmp}/grit-tui-gate
+mkdir -p "$WORK"
+
+JAVA_OPTS= ./mill grit.tui.examples.compile > "$WORK/compile.log" 2>&1 || { cat "$WORK/compile.log"; exit 1; }
+CP=$(JAVA_OPTS= ./mill show grit.tui.examples.runClasspath 2>/dev/null |
+  grep -oP '"q?ref:v[01]:[0-9a-f]+:\K[^"]+' | tr '\n' ':' | sed 's/:$//')
+J=${GRIT_JDK_HOME:-/home/nickchilders/.jdks/jdk-26.0.2}
+# Every JVM this script forks carries a stamp on its command line, and teardown kills
+# only processes carrying *this* stamp. A blanket `pkill -f Demo2` also kills the
+# copy the developer is playing with in another window -- which is exactly what it did
+# the first time this script existed.
+STAMP="gate-$$-$(date +%s)"
+RUNNER="$J/bin/java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -cp $CP $MAIN --$STAMP"
+
+E=$'\033'
+
+# A no-daemon JVM still has to start; scripting input before the app is listening loses it.
+STARTUP=3
+
+script_span() {
+  sleep $STARTUP
+  printf "%s" "${E}[<0;11;21M"
+  for r in 18 15 12 9 6 4 2; do sleep 0.15; printf "%s" "${E}[<32;30;${r}M"; done
+  # Parked above the pane, at its *left* edge: autoscroll pulls screens in, and the
+  # head lands at column 0 of whatever row arrives at the top. Parking further right
+  # made "the highlight fills the pane" quietly depend on the top row being that wide --
+  # a short line there clamps the head to its end and highlights nothing, which is
+  # correct behaviour failing an oracle that meant to ask something else.
+  printf "%s" "${E}[<32;1;1M"
+  sleep 2.5
+  printf "%s" "${E}[<0;1;1m"
+  sleep 0.6; printf '\021'; sleep 1
+}
+
+script_one() {
+  sleep $STARTUP
+  printf "%s" "${E}[<0;11;6M"
+  for c in 20 40 60 80; do sleep 0.1; printf "%s" "${E}[<32;${c};9M"; done
+  sleep 0.1; printf "%s" "${E}[<32;35;12M"
+  sleep 0.3; printf "%s" "${E}[<0;35;12m"
+  sleep 0.6; printf '\021'; sleep 1
+}
+
+script_modal() {
+  sleep $STARTUP
+  printf "%s" "${E}m"; sleep 0.4
+  printf "%s" "${E}[<0;31;12M"
+  sleep 0.2; printf "%s" "${E}[<32;60;15M"
+  sleep 0.2; printf "%s" "${E}[<32;91;26M"   # out of the modal, over the transcript
+  sleep 0.4; printf "%s" "${E}[<0;91;26m"
+  # A whole drag behind the open modal: pressed, dragged and released on the transcript
+  # with the dialog still up. The modal swallows it, so nothing is selected and nothing
+  # is copied -- there must still be exactly one clipboard write from the drag above.
+  sleep 0.4; printf "%s" "${E}[<0;20;24M"
+  sleep 0.2; printf "%s" "${E}[<32;70;26M"
+  sleep 0.3; printf "%s" "${E}[<0;70;26m"
+  sleep 0.6; printf '\021'; sleep 1
+}
+
+# The keyboard: Tab, Down, Enter, Enter. Nothing here is a mouse report, which is why
+# it fails differently from every scenario above it.
+script_popup() {
+  sleep $STARTUP
+  printf '\t'; sleep 0.5            # Tab: the completion list, selection on /help
+  printf "%s" "${E}[B"; sleep 0.5   # Down: /stream
+  printf '\r'; sleep 0.5            # Enter: chosen, and the list closes
+  printf '\r'; sleep 0.8            # Enter: submitted -- /stream pauses the streamer
+  printf '\021'; sleep 1
+}
+
+script_thumb() {
+  sleep $STARTUP
+  printf "%s" "${E}[<0;99;25M"   # press on the thumb, near the bottom of the track
+  sleep 0.4
+  printf "%s" "${E}[<32;99;6M"   # drag it up
+  sleep 0.5
+  printf "%s" "${E}[<0;99;6m"    # release: no copy, no selection
+  sleep 0.6; printf '\021'; sleep 1
+}
+
+# A real SIGWINCH: set the window size on the app's own pty and let the kernel signal it.
+script_resize() {
+  (
+    sleep $((STARTUP + 2))
+    # Match the JVM itself, not every shell whose command line mentions the demo -- the
+    # same trap as the pkill in CLAUDE.md, and here it picks a pid whose stdin is
+    # /dev/null and the resize silently does nothing.
+    pid=$(pgrep -f -- "--$STAMP" | tail -1)
+    pts=$(readlink "/proc/$pid/fd/0" 2>/dev/null)
+    case "$pts" in
+      /dev/pts/*) ;;
+      *) echo "gate: could not find the app's pty (pid=$pid pts=$pts)" >&2 ;;
+    esac
+    python3 -c "import fcntl,struct,sys,termios
+f=open(sys.argv[1],'wb')
+fcntl.ioctl(f, termios.TIOCSWINSZ, struct.pack('HHHH', 20, 60, 0, 0))" "$pts"
+  ) &
+  sleep $((STARTUP + 4))
+  printf '\021'
+  sleep 1
+}
+
+run_one() {
+  local name=$1 out="$WORK/$1.txt"
+  "script_$name" | setsid script -qc "stty rows $ROWS cols $COLS; $RUNNER" /dev/null > "$out" 2>&1
+  python3 scripts/tui-gate.py "$out" "$ROWS" "$COLS" "$name"
+}
+
+status=0
+for s in ${1:-span one modal thumb popup resize}; do
+  echo "== $s"
+  run_one "$s" || status=1
+done
+
+# A run that ended badly can leave a headless JVM holding ~400MB. -9 because the app
+# clears ISIG and ignores SIGTERM in raw mode. Scoped to this run's stamp: never touch a
+# demo someone else is using.
+pkill -9 -f -- "--$STAMP" 2>/dev/null
+exit $status
