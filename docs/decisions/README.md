@@ -11,9 +11,12 @@ A decision gets a record only if it passes **all four** tests:
 1. **Someone could reasonably propose the alternative.** There was a real choice. A
    consequence of an earlier decision is not a new one.
 2. **It is expensive to reverse.** It shapes a seam, the data model, or module boundaries.
+   Judge by the code and data that exist now, not what will exist later.
 3. **It binds code not yet written**, and the reason is not obvious from the code itself.
 4. **It is about grit's design, not a tool's behaviour.** Version pins, tool quirks and
    probe results go in a comment beside the config or code they affect.
+
+A decision whose binding part is still open waits until that part is decided.
 
 Everything else goes in a code comment next to what it explains, or in the commit
 message. If it is only an idea, it goes in `.local/backlog/`.

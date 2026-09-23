@@ -55,5 +55,8 @@ here:
 
 ```sh
 docker compose up -d postgres
-./mill grit.run
+./mill grit.dbos.run
 ```
+
+`GRIT_DATABASE_URL` (a `jdbc:postgresql:` URL), `GRIT_DATABASE_USER` and
+`GRIT_DATABASE_PASSWORD` override the compose database; each defaults to it when unset.

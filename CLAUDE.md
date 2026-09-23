@@ -1,9 +1,11 @@
 # grit
 
-A from-scratch LLM coding harness. Thesis: **no manual context-window management** — a
-local groomer LLM continuously compacts conversation and code-awareness data into
-DBOS/Postgres tables, and the prompt sent to frontier models is assembled dynamically from
-those tables.
+A from-scratch LLM agent harness. Thesis: **no manual context-window management**. Every
+turn is a durable DBOS workflow, and every turn's context window is assembled fresh from
+long-term memory in Postgres: messages, end-of-turn summaries, and code context from the
+LSP. Nothing is carried forward as a transcript. The same engine runs in three modes: a
+local TUI harness, a cloud agent driven from Slack, and triggered tasks. Edges reach it
+only through Postgres ([ADR 0002](docs/decisions/0002-edges-reach-the-engine-through-postgres.md)).
 
 Scala 3 · Mill · `dev.dbos:transact` · Postgres 18 · capture checking on. Versions live in
 `build.mill` and `.mill-version`.
@@ -17,9 +19,9 @@ a **computed projection** of that store. Three seams carry the whole design:
 - `ContextAssembler` — the projection; *the* seam the thesis hangs on
 - `Provider` — the model call
 
-Grooming, compaction, retrieval, and LSP symbol linkage are all future `ContextAssembler`
-implementations, so that signature is the real design work; everything else swaps behind
-it. The database transaction is a scoped, non-escaping capability (`Tx`) — capture
+Retrieval, summaries, relevance checks and LSP code context are all future
+`ContextAssembler` implementations, so that signature is the real design work; everything
+else swaps behind it. The database transaction is a scoped, non-escaping capability (`Tx`) — capture
 checking rejects any attempt to let it outlive its block.
 
 Mill modules, and what each may name:
@@ -60,7 +62,7 @@ capability is a promise of purity.**
    needs it, translated into grit's conventions there; such modules depend only on core and
    meet only in `grit.app`. Nothing outside `grit.dbos` imports `dev.dbos.*` or `java.sql.*`.
 9. Explicit capability parameters over clever inference.
-10. **The elision test** — if the groomer dropped the body and kept only the signature and
+10. **The elision test** — if assembly dropped the body and kept only the signature and
     its doc, could a competent agent still call it correctly? If not, fix the signature.
     Scaladoc says *what*, never *how*.
 

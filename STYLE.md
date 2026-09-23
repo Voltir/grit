@@ -2,7 +2,7 @@
 
 > This is not hygiene. It is load-bearing architecture.
 
-grit's premise is that context can be **elided without loss** — that a groomer can drop
+grit's premise is that context can be **elided without loss** — that assembly can drop
 detail and the model still gets it right. Elision is only sound if the signature is the
 whole truth about a function. The moment effects hide inside bodies, you can no longer
 safely show a caller anything less than full source, and the context bloat grit exists to
@@ -151,7 +151,7 @@ capability out.
 
 The rule the other nine serve. For any public function, ask:
 
-> *If the groomer dropped the body and kept only the signature and its doc, could a
+> *If assembly dropped the body and kept only the signature and its doc, could a
 > competent agent still call it correctly?*
 
 If not, the signature is wrong — fix the signature, not the doc.
