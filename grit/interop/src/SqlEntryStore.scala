@@ -1,4 +1,4 @@
-package grit.core.interop
+package grit.interop
 
 import grit.core.{Entry, EntryId, EntryStore, StoreError, Tx}
 import java.sql.{ResultSet, SQLException}

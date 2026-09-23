@@ -8,9 +8,13 @@
 #
 # Selectors are finalized AGAINST THE SNAPSHOT, not guessed. enola names a dependency fact
 # by its SOURCE DIRECTORY and its exact imported symbol:
-#   "grit/core/src/interop -> dev.dbos.transact.DBOS"   (file: .../interop/Main.scala)
-# so the four DBOS imports in this repo are four distinct target names, and a component
-# admits facts by file.
+#   "grit/interop/src -> dev.dbos.transact.DBOS"   (file: grit/interop/src/Main.scala)
+# so the four DBOS imports in this repo are four distinct target names.
+#
+# There is NO prefix form for a target. Probed 2026-09-23 on 0.4.15: `forbid_name`
+# accepts only an exact name, `prefix*` or `*suffix` ("* -> dev.dbos.*" is rejected by
+# lint), and a component's `where: {import: "dev.dbos*"}` compares exactly -- a planted
+# DBOS import in core left it at 0 members and the gate at exit 0. One rule per symbol.
 
 service:
   name: grit
@@ -30,67 +34,53 @@ service:
 # TRAP: enola's module model is DIRECTORY-grained -- a layer naming individual FILES also
 # resolves to zero modules. Only directories classify.
 #
-# Test modules (core/test/**) are deliberately unclassified. Layers are a ratchet graded
+# The order is linear but the graph is not: `tui` and `interop` both sit on `core` and must
+# not name each other. At this grain that is Mill's job -- neither module has the other in
+# its moduleDeps, so it is a compile error -- and these layers are documentation. Inside a
+# module Mill sees nothing, which is where layers and forbid rules start to carry weight.
+#
+# Test modules (*/test/**) are deliberately unclassified. Layers are a ratchet graded
 # against a baseline, so they are NOT in the gate script yet; see scripts/enola-law.sh.
 layers:
-  - {name: tui,     paths: ["tui/**"]}
-  - {name: interop, paths: ["core/src/interop"]}
-  - {name: core,    paths: ["core/src"]}
+  - {name: tui,     paths: ["tui/src", "tui/src/**"]}
+  - {name: interop, paths: ["interop/src", "interop/src/**"]}
+  - {name: core,    paths: ["core/src", "core/src/**"]}
 
-components:
-  # Every file that STYLE rule 8 forbids from importing dev.dbos.* -- that is, all of
-  # grit.core and grit.tui, but NOT grit.core.interop, which is the quarantine.
-  #
-  # TRAP: the component selector has NO exclusion form. A subtree like "grit/core/**"
-  # would admit the interop files and the rule below would then flag the very imports it
-  # exists to quarantine. Exact paths are the only way to express "all of X except Y".
-  #
-  # The five grit.core files import almost nothing (four have no imports at all), so the
-  # tui files are what give this component enough dependency facts to be non-vacuous.
-  - name: checked-imports
-    kind: dependency
-    match:
-      - grit/core/src/Entry.scala
-      - grit/core/src/EntryId.scala
-      - grit/core/src/EntryStore.scala
-      - grit/core/src/StoreError.scala
-      - grit/core/src/Tx.scala
-      - grit/tui/src/App.scala
-      - grit/tui/src/Background.scala
-      - grit/tui/src/key/Key.scala
-      - grit/tui/src/model/Msg.scala
-      - grit/tui/src/term/KeyReader.scala
-      - grit/tui/src/view/BufferPainter.scala
-
-# `strict`: fails whether or not a baseline already carried the breach. The alternative,
-# `ratchet`, fails only NEW breaches -- wrong here, because there are zero breaches today
-# and the rule's whole job is to keep it that way.
+# Every module outside the quarantine. For core and tui this DUPLICATES a compile error --
+# neither has transact on its classpath -- and is kept for the module that it does not
+# duplicate: `app` depends on interop, Mill's moduleDeps are transitive, so app WILL have
+# dev.dbos.* on its classpath and this rule is the only thing stopping it. Add
+# "grit/app/**" here when that directory exists (a glob matching no file is noise today).
 #
-# One rule per imported symbol: enola matches an exact dependency name, and this repo's
-# four DBOS imports resolve to four targets. Adding a fifth DBOS import to interop means
-# adding a fifth rule here -- annoying, and the reason the configuration session should
-# look at whether a prefix form exists.
+# A subtree glob, not an exact file list: the list existed only because interop was a
+# package inside core and the selector has no exclusion form. Verified: 24 members, and a
+# planted `import dev.dbos.transact.DBOS` in core/src/Entry.scala fails the gate, exit 1.
+components:
+  - name: outside-interop
+    kind: dependency
+    match: ["grit/core/**", "grit/tui/**"]
+
 rules:
   - id: only-interop-imports-dbos-core
-    forbid_name: checked-imports
+    forbid_name: outside-interop
     pattern: "* -> dev.dbos.transact.DBOS"
     mode: strict
-    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.core.interop"
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.interop"
 
   - id: only-interop-imports-dbos-options
-    forbid_name: checked-imports
+    forbid_name: outside-interop
     pattern: "* -> dev.dbos.transact.StartWorkflowOptions"
     mode: strict
-    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.core.interop"
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.interop"
 
   - id: only-interop-imports-dbos-config
-    forbid_name: checked-imports
+    forbid_name: outside-interop
     pattern: "* -> dev.dbos.transact.config.DBOSConfig"
     mode: strict
-    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.core.interop"
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.interop"
 
   - id: only-interop-imports-dbos-txstep
-    forbid_name: checked-imports
+    forbid_name: outside-interop
     pattern: "* -> dev.dbos.transact.txstep.JdbcStepFactory"
     mode: strict
-    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.core.interop"
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.interop"

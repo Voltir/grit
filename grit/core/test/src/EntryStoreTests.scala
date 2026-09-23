@@ -1,6 +1,6 @@
 package grit.core
 
-import grit.core.interop.TestTx
+import grit.interop.TestTx
 import utest.*
 import java.time.Instant
 

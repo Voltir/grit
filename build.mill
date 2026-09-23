@@ -27,17 +27,34 @@ trait GritModule extends ScalaModule {
 }
 
 object grit extends Module {
+  /* The domain and its seams. Names no other module, and has neither DBOS nor a JDBC
+   * driver on its classpath -- STYLE rule 8's dev.dbos.* half is a compile error here. */
   object core extends GritModule {
 
     def mvnDeps = Seq(
-      mvn"dev.dbos:transact:1.0.0",
-      mvn"org.slf4j:slf4j-simple:2.0.18",
-      mvn"org.postgresql:postgresql:42.7.4",
       mvn"com.lihaoyi::upickle:4.0.2"
     )
 
     object test extends ScalaTests {
       def forkArgs = Task { core.forkArgs() }
+      def testFramework = "utest.runner.Framework"
+
+      def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.4")
+    }
+  }
+
+  /* The quarantine: everything that touches DBOS, JDBC or Postgres. */
+  object interop extends GritModule {
+    def moduleDeps = Seq(core)
+
+    def mvnDeps = Seq(
+      mvn"dev.dbos:transact:1.0.0",
+      mvn"org.slf4j:slf4j-simple:2.0.18",
+      mvn"org.postgresql:postgresql:42.7.4"
+    )
+
+    object test extends ScalaTests {
+      def forkArgs = Task { interop.forkArgs() }
       def testFramework = "utest.runner.Framework"
 
       def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.4")
