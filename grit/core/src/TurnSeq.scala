@@ -1,0 +1,16 @@
+package grit.core
+
+/** A turn's position within its conversation, from 0. Opaque so it cannot be
+  * transposed with an entry's `seq`.
+  */
+opaque type TurnSeq = Long
+
+object TurnSeq {
+  val First: TurnSeq = 0L
+  def apply(value: Long): TurnSeq = value
+  def value(seq: TurnSeq): Long = seq
+
+  extension (seq: TurnSeq) {
+    def next: TurnSeq = seq + 1
+  }
+}

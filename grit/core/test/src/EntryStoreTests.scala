@@ -21,11 +21,24 @@ object EntryStoreTests extends TestSuite {
     def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] =
       Right(entries.find(_.id == id))
 
-    def listAll()(using Tx^): Either[StoreError, Vector[Entry]] =
-      Right(entries)
+    def list(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] =
+      Right(entries.filter(_.conversationId == conversation))
   }
 
   private def fakeTx: Tx = TestTx.fake
+
+  private val c1 = ConversationId("c1")
+
+  private def entry(id: String, seq: Long, conversation: ConversationId = c1): Entry =
+    Entry(
+      EntryId(id),
+      conversation,
+      TurnSeq.First,
+      None,
+      seq,
+      Payload.Message(Message.User(id)),
+      Instant.EPOCH
+    )
 
   val tests = Tests {
     test("EntryId round-trip") {
@@ -35,30 +48,31 @@ object EntryStoreTests extends TestSuite {
 
     test("insert and get") {
       val store = new FakeEntryStore
-      val entry =
-        Entry(EntryId("e1"), None, 0L, ujson.Obj(), Instant.EPOCH)
-      store.insert(entry)(using fakeTx) ==> Right(())
-      store.get(EntryId("e1"))(using fakeTx) ==> Right(Some(entry))
+      val e =
+        entry("e1", 0L)
+      store.insert(e)(using fakeTx) ==> Right(())
+      store.get(EntryId("e1"))(using fakeTx) ==> Right(Some(e))
     }
 
     test("insert duplicate returns DuplicateId") {
       val store = new FakeEntryStore
-      val entry =
-        Entry(EntryId("e1"), None, 0L, ujson.Obj(), Instant.EPOCH)
-      store.insert(entry)(using fakeTx) ==> Right(())
-      store.insert(entry)(using fakeTx) ==>
+      val e =
+        entry("e1", 0L)
+      store.insert(e)(using fakeTx) ==> Right(())
+      store.insert(e)(using fakeTx) ==>
         Left(StoreError.DuplicateId(EntryId("e1")))
     }
 
-    test("listAll returns entries in insertion order") {
+    test("list returns one conversation's entries in insertion order") {
       val store = new FakeEntryStore
       val e1 =
-        Entry(EntryId("e1"), None, 0L, ujson.Obj(), Instant.EPOCH)
+        entry("e1", 0L)
       val e2 =
-        Entry(EntryId("e2"), None, 1L, ujson.Obj(), Instant.EPOCH)
+        entry("e2", 1L)
       store.insert(e1)(using fakeTx)
       store.insert(e2)(using fakeTx)
-      store.listAll()(using fakeTx) ==> Right(Vector(e1, e2))
+      store.insert(entry("other", 2L, ConversationId("c2")))(using fakeTx)
+      store.list(c1)(using fakeTx) ==> Right(Vector(e1, e2))
     }
 
     test("get non-existent returns None") {
@@ -78,10 +92,10 @@ object EntryStoreTests extends TestSuite {
       // Instead we pin the positive surface: a Tx obtained inside a
       // transaction scope stays usable there.
       val store = new FakeEntryStore
-      val entry =
-        Entry(EntryId("e1"), None, 0L, ujson.Obj(), Instant.EPOCH)
-      store.insert(entry)(using fakeTx) ==> Right(())
-      store.get(EntryId("e1"))(using fakeTx) ==> Right(Some(entry))
+      val e =
+        entry("e1", 0L)
+      store.insert(e)(using fakeTx) ==> Right(())
+      store.get(EntryId("e1"))(using fakeTx) ==> Right(Some(e))
     }
 
     test("StoreError ADT is total") {

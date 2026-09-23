@@ -80,6 +80,10 @@ Braces, never significant indentation — `-no-indent` makes it a compile error.
 every file using `^` fails with *"`identifier` expected but `)` found"* and is silently
 skipped. If that error appears after a version change, check the setting first.
 
+**upickle's `derives ReadWriter` crashes under capture checking** (a `MatchError` on
+`caps.internal.inferred` in its macro; upickle 4.4.3, Scala 3.9). Write codecs by hand
+over `ujson`, as `grit.core.PayloadJson` does.
+
 Tests share `GritTests` in `build.mill`, which silences Scala 3.9's false
 `unused pattern variable` warnings for variables read only inside utest's `assert`. Every
 other warning is real.

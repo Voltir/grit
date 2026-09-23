@@ -1,6 +1,6 @@
 package grit.dbos
 
-import grit.core.{Entry, EntryId, EntryStore, StoreError, Tx}
+import grit.core.{ConversationId, Entry, EntryId, EntryStore, PayloadJson, StoreError, Tx, TurnSeq}
 import java.sql.{ResultSet, SQLException}
 import java.time.{OffsetDateTime, ZoneOffset}
 import scala.util.Using
@@ -14,14 +14,16 @@ final class SqlEntryStore extends EntryStore {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val sql =
       s"""INSERT INTO grit.entries ($columns)
-         |VALUES (?, ?, ?, ?::jsonb, ?)""".stripMargin
+         |VALUES (?, ?::uuid, ?, ?, ?, ?::jsonb, ?)""".stripMargin
     try {
       Using.resource(conn.prepareStatement(sql)) { ps =>
         ps.setString(1, EntryId.value(entry.id))
-        ps.setString(2, entry.parentId.map(EntryId.value).orNull)
-        ps.setLong(3, entry.seq)
-        ps.setString(4, entry.payload.render())
-        ps.setObject(5, entry.createdAt.atOffset(ZoneOffset.UTC))
+        ps.setString(2, ConversationId.value(entry.conversationId))
+        ps.setLong(3, TurnSeq.value(entry.turnSeq))
+        ps.setString(4, entry.parentId.map(EntryId.value).orNull)
+        ps.setLong(5, entry.seq)
+        ps.setString(6, PayloadJson.write(entry.payload).render())
+        ps.setObject(7, entry.createdAt.atOffset(ZoneOffset.UTC))
         ps.executeUpdate()
       }
       Right(())
@@ -45,12 +47,16 @@ final class SqlEntryStore extends EntryStore {
     }
   }
 
-  def listAll()(using tx: Tx^): Either[StoreError, Vector[Entry]] = {
+  def list(
+      conversation: ConversationId
+  )(using tx: Tx^): Either[StoreError, Vector[Entry]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    val sql = s"SELECT $columns FROM grit.entries ORDER BY seq, id"
+    val sql =
+      s"SELECT $columns FROM grit.entries WHERE conversation_id = ?::uuid ORDER BY seq, id"
     attempt {
-      Using.resource(conn.createStatement()) { stmt =>
-        Using.resource(stmt.executeQuery(sql)) { rs =>
+      Using.resource(conn.prepareStatement(sql)) { ps =>
+        ps.setString(1, ConversationId.value(conversation))
+        Using.resource(ps.executeQuery()) { rs =>
           val rows = Vector.newBuilder[Entry]
           while (rs.next()) {
             rows += readEntry(rs)
@@ -62,28 +68,36 @@ final class SqlEntryStore extends EntryStore {
   }
 }
 
-private object SqlEntryStore {
+private[dbos] object SqlEntryStore {
 
   /** Column order shared by every statement and by `readEntry`. */
-  private val columns = "id, parent_id, seq, payload, created_at"
+  private val columns =
+    "id, conversation_id, turn_seq, parent_id, seq, payload, created_at"
 
   /** Postgres SQLSTATE for a primary key or unique index violation. */
   private val UniqueViolation = "23505"
 
-  private def attempt[A](body: => A): Either[StoreError, A] =
+  private[dbos] def attempt[A](body: => A): Either[StoreError, A] =
     try Right(body)
     catch { case NonFatal(e) => Left(databaseError(e)) }
 
   /** `getMessage` is `null` for some driver exceptions; rule 6 stops here. */
-  private def databaseError(e: Throwable): StoreError.DatabaseError =
+  private[dbos] def databaseError(e: Throwable): StoreError.DatabaseError =
     StoreError.DatabaseError(Option(e.getMessage).getOrElse(e.toString))
 
   private def readEntry(rs: ResultSet): Entry =
     Entry(
       id = EntryId(rs.getString("id")),
+      conversationId = ConversationId(rs.getString("conversation_id")),
+      turnSeq = TurnSeq(rs.getLong("turn_seq")),
       parentId = Option(rs.getString("parent_id")).map(EntryId(_)),
       seq = rs.getLong("seq"),
-      payload = ujson.read(rs.getString("payload")),
+      // A payload that does not decode is grit's own bug, not a caller's
+      // expected failure; `attempt` reports the throw as a DatabaseError.
+      payload = PayloadJson.read(ujson.read(rs.getString("payload"))) match {
+        case Right(p) => p
+        case Left(why) => throw new IllegalStateException(s"undecodable payload: $why")
+      },
       createdAt = rs.getObject("created_at", classOf[OffsetDateTime]).toInstant
     )
 }

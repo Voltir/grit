@@ -66,6 +66,7 @@ object Main {
     val workflow =
       new ProofWorkflow(
         new Store(new JdbcStepFactory(dbos, dataSource(config))),
+        new SqlConversationStore(),
         new SqlEntryStore()
       )
 

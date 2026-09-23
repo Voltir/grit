@@ -1,6 +1,6 @@
 package grit.core
 
-/** A failure an [[EntryStore]] caller is expected to handle.
+/** A failure a store caller is expected to handle.
   *
   * Absence is not an error — a missing entry comes back as `Right(None)`.
   */
