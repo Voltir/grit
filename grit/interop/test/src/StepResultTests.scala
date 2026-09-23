@@ -13,7 +13,7 @@ object StepResultTests extends TestSuite {
     test("Unit cannot be a step result") {
       // Unit has no Jackson representation, so a step returning it would
       // replay as something DBOS cannot reconstruct.
-      val err = compileError("summon[StepResult[Unit]]")
+      val err = assertCompileError("summon[StepResult[Unit]]")
       assert(err.msg.contains("cannot be a step output"))
     }
   }

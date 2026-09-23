@@ -119,3 +119,5 @@ bash -lc 'echo $MILL_EXECUTABLE_PATH'
   `--bspNoKillOther` CLI flag is documented as "If the BSP lock is hold by
   another process, wait for it to release the lock".
 - Mill daemons trap SIGTERM; `kill -9` is required for cleanup.
+- Re-checked 2026-09-23 after moving to Mill 1.1.10: `--bspNoKillOther` is still accepted
+  (an unknown flag is rejected with "Cannot resolve"), so the wrapper still applies.

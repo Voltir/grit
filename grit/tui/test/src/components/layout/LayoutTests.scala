@@ -182,7 +182,7 @@ object LayoutTests extends TestSuite {
       // The alternative is a resolve that guesses and disagrees with what `render`
       // paints -- silently, and only for the app that laid out a fit region.
       val stack = Stack.of(Prompt -> Fit(3, 0.5), Body -> Flex(0))
-      val thrown = intercept[IllegalArgumentException](stack.resolve(Size(10, 10)))
+      val thrown = assertThrows[IllegalArgumentException](stack.resolve(Size(10, 10)))
       assert(thrown.getMessage.contains("Regions.placed"))
       // and the childless path is untouched for every layout that does not hold one.
       assert(screen.resolve(Size(10, 10)).rects.size == 4)

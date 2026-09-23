@@ -2,7 +2,7 @@ package build
 import mill.*, scalalib.*
 
 trait GritModule extends ScalaModule {
-  def scalaVersion = "3.8.4"
+  def scalaVersion = "3.9.0"
 
   // See STYLE.md
   def scalacOptions = Seq(
@@ -13,7 +13,7 @@ trait GritModule extends ScalaModule {
     "-Wunused:all"
   )
 
-  /* JDK 24 warns on every sun.misc.Unsafe call; Scala 3.8.4's LazyVals$ still
+  /* JDK 24 warns on every sun.misc.Unsafe call; Scala 3's LazyVals$ still
    * uses objectFieldOffset, so the warning is spurious and not ours to fix. */
   def forkArgs = Seq("--sun-misc-unsafe-memory-access=allow")
 
@@ -24,6 +24,18 @@ trait GritModule extends ScalaModule {
       .filter(p => os.exists(os.Path(p)))
       .map(p => PathRef(os.Path(p)))
   }
+
+  /* Every module's tests: utest, forked with the module's own JVM flags.
+   *
+   * Scala 3.9's -Wunused reports every pattern variable read only inside utest's `assert`
+   * macro as unused -- ~85 false positives across the tui suite, checked by hand. Silenced
+   * for tests only; main sources keep the full check. */
+  trait GritTests extends ScalaTests {
+    def forkArgs = Task { GritModule.this.forkArgs() }
+    def testFramework = "utest.runner.Framework"
+    def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.9.5")
+    def scalacOptions = Task { super.scalacOptions() ++ Seq("-Wconf:msg=unused pattern variable:s") }
+  }
 }
 
 object grit extends Module {
@@ -32,15 +44,10 @@ object grit extends Module {
   object core extends GritModule {
 
     def mvnDeps = Seq(
-      mvn"com.lihaoyi::upickle:4.0.2"
+      mvn"com.lihaoyi::upickle:4.4.3"
     )
 
-    object test extends ScalaTests {
-      def forkArgs = Task { core.forkArgs() }
-      def testFramework = "utest.runner.Framework"
-
-      def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.4")
-    }
+    object test extends GritTests
   }
 
   /* The quarantine: everything that touches DBOS, JDBC or Postgres. */
@@ -49,16 +56,11 @@ object grit extends Module {
 
     def mvnDeps = Seq(
       mvn"dev.dbos:transact:1.0.0",
-      mvn"org.slf4j:slf4j-simple:2.0.18",
-      mvn"org.postgresql:postgresql:42.7.4"
+      mvn"org.slf4j:slf4j-simple:2.0.20",
+      mvn"org.postgresql:postgresql:42.7.13"
     )
 
-    object test extends ScalaTests {
-      def forkArgs = Task { interop.forkArgs() }
-      def testFramework = "utest.runner.Framework"
-
-      def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.4")
-    }
+    object test extends GritTests
   }
 
   /* The terminal UI -- ported from ../Spikes/tui-spike-slate. No external dependencies:
@@ -73,12 +75,7 @@ object grit extends Module {
      * outright in a later release. */
     def forkArgs = Task { super.forkArgs() ++ Seq("--enable-native-access=ALL-UNNAMED") }
 
-    object test extends ScalaTests {
-      def forkArgs = Task { tui.forkArgs() }
-      def testFramework = "utest.runner.Framework"
-
-      def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.4")
-    }
+    object test extends GritTests
 
     /* Everything runnable, so the library carries no demo baggage. Demo2 is the pty gate's
      * target (scripts/tui-gate) until grit.app's own screen replaces it. */
@@ -91,7 +88,7 @@ object grit extends Module {
 }
 
 // object grit extends ScalaModule {
-//   def scalaVersion = "3.8.4"
+//   def scalaVersion = "3.9.0"
 
 //   // See STYLE.md
 //   def scalacOptions = Seq(
@@ -102,7 +99,7 @@ object grit extends Module {
 //     "-Wunused:all"
 //   )
 
-//   /* JDK 24 warns on every sun.misc.Unsafe call; Scala 3.8.4's LazyVals$ still
+//   /* JDK 24 warns on every sun.misc.Unsafe call; Scala the Scala 3 runtime's LazyVals$ still
 //    * uses objectFieldOffset, so the warning is spurious and not ours to fix. */
 //   def forkArgs = Seq("--sun-misc-unsafe-memory-access=allow")
 
@@ -116,15 +113,15 @@ object grit extends Module {
 
 //   def mvnDeps = Seq(
 //     mvn"dev.dbos:transact:1.0.0",
-//     mvn"org.slf4j:slf4j-simple:2.0.18",
-//     mvn"org.postgresql:postgresql:42.7.4",
-//     mvn"com.lihaoyi::upickle:4.0.2"
+//     mvn"org.slf4j:slf4j-simple:2.0.20",
+//     mvn"org.postgresql:postgresql:42.7.13",
+//     mvn"com.lihaoyi::upickle:4.4.3"
 //   )
 
 //   object test extends ScalaTests {
 //     def forkArgs = Task { grit.forkArgs() }
 //     def testFramework = "utest.runner.Framework"
 
-//     def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.4")
+//     def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.9.5")
 //   }
 // }

@@ -11,7 +11,7 @@
 # the survivors while still reporting `parse_errors: 0`. Measured on the controlled
 # fixture in ../Spikes/capture-spike-enola: 40 symbols extracted from capture-annotated
 # sources vs 46 from structurally identical plain ones, IDENTICAL on enola 0.4.8
-# (extractor v257) and 0.4.15 (v264) -- the grammar has not moved. What DOES extract
+# (extractor v257), 0.4.15 (v264) and 0.4.22 (v271) -- the grammar has not moved. What DOES extract
 # correctly is import edges, modules, and using-clear defs.
 # Therefore: import-edge and module facts may gate. Symbol counts, exported-surface and
 # complexity outliers are degraded here and must never be a gate. See the 2026-09-07

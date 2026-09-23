@@ -190,7 +190,7 @@ object StdTests extends TestSuite {
       Mods.none
     )
 
-  private def mInput(kind: MouseKind, pos: Pos, shift: Boolean = false): Input =
+  private def mInput(kind: MouseKind, pos: Pos, shift: Boolean): Input =
     Input.Mouse(mouse(kind, pos, shift))
 
   val tests = Tests {

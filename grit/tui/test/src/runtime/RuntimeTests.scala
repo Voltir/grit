@@ -57,7 +57,7 @@ object RuntimeTests extends TestSuite {
     def update: (Msg, St) -> (St, Effect[Msg]) = (msg, state) => on((msg, state))
     def view: St -> (Size -> Frame) = state =>
       size => Frame(Surface.blank(size).write(0, 0, state.typed))
-    def onInput: (Input, St, Placements) -> Option[Msg] = (input, state, at) => bind((input, state))
+    def onInput: (Input, St, Placements) -> Option[Msg] = (input, state, _) => bind((input, state))
   }
 
   private val Widget = PaneId.of("widget")

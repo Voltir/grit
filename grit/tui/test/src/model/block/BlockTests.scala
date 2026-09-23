@@ -23,7 +23,7 @@ object BlockTests extends TestSuite {
 
   private val id = PaneId.of("transcript")
 
-  private def pane(doc: Doc, width: Int = 40): TextPane =
+  private def pane(doc: Doc, width: Int): TextPane =
     TextPane(id, doc, cache = WrapCache.empty(width))
 
   val tests = Tests {

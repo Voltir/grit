@@ -25,7 +25,7 @@ persisting to Postgres through a durable DBOS workflow, where invoking the same 
 id twice calls the provider *exactly once*. That proves durable execution earns its
 complexity on turn one.
 
-Done so far: Mill project on Scala 3.8.4 with `dev.dbos:transact:1.0.0`, local Postgres 18
+Done so far: Mill project on Scala 3.9.0 with `dev.dbos:transact:1.0.0`, local Postgres 18
 via docker-compose, and a durable no-arg workflow landing a `SUCCESS` row in
 `dbos.workflow_status`.
 

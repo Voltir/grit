@@ -70,7 +70,7 @@ object Terminal {
     * undoes the modes in reverse, [[close]] releases whatever the implementation holds.
     * Both are idempotent, so this is safe however the caller already tore down.
     */
-  given releasable: scala.util.Using.Releasable[Terminal] = (t: Terminal) => {
+  given releasable[C^]: scala.util.Using.Releasable[Terminal^{C}] = (t: Terminal^{C}) => {
     t.exitRaw()
     t.close()
   }

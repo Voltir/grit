@@ -6,7 +6,7 @@ import grit.tui.runtime.std.{Ambient, Selecting, Std, StdBase}
 import grit.tui.components.layout.{Region, Split}
 import grit.tui.components.pane.{Panes, TextPane}
 import grit.tui.components.widget.ScrollPane
-import grit.tui.model.input.{Button, Input, Mods, MouseEvent, MouseKind}
+import grit.tui.model.input.{Button, Mods, MouseEvent, MouseKind}
 import grit.tui.model.select.Doc
 import grit.tui.model.surface.{Frame, PaneId, Placement, Placements, Pos, Rect, Size, Surface}
 import grit.tui.model.text.WrapCache
@@ -26,7 +26,6 @@ import grit.tui.model.text.WrapCache
   */
 object MultiScrollTests extends TestSuite {
 
-  private val Body = PaneId.of("body")
   private val LeftCol = PaneId.of("left-col")
   private val RightCol = PaneId.of("right-col")
   private val Left = PaneId.of("left")

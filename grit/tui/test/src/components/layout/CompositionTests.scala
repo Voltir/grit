@@ -1,6 +1,6 @@
 package grit.tui.components.layout
 
-import grit.tui.components.{Passive, View}
+import grit.tui.components.Passive
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.{Cell, PaneId, Placements, Pos, Rect, Size, Surface}
 import utest.*

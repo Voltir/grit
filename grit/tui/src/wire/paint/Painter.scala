@@ -88,7 +88,7 @@ object Painter {
       sb ++= Ansi.syncStart
       sb ++= body
       sb ++= Ansi.syncEnd
-      sb.result
+      sb.result()
     }
   }
 }

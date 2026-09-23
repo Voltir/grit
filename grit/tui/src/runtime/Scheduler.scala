@@ -107,5 +107,5 @@ object Scheduler {
   }
 
   /** Releases the scheduler, so `Using` gives it back in reverse acquisition order. */
-  given releasable: scala.util.Using.Releasable[Scheduler] = (s: Scheduler) => s.close()
+  given releasable[C^]: scala.util.Using.Releasable[Scheduler^{C}] = (s: Scheduler^{C}) => s.close()
 }

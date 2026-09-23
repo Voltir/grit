@@ -74,7 +74,7 @@ final class Vt(val rows: Int, val cols: Int) {
       i += 1
     }
     if (i >= s.length) return s.length
-    val params = body.result
+    val params = body.result()
     s.charAt(i) match {
       case 'H' => cup(params)
       case 'm' => sgr(params)

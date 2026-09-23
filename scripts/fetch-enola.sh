@@ -17,7 +17,7 @@
 # roadmap/decisions.md.
 set -euo pipefail
 
-ENOLA_VERSION=0.4.15
+ENOLA_VERSION=0.4.22
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dest="$repo_root/tools"
 
