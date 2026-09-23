@@ -1,9 +1,9 @@
-package grit.interop
+package grit.core.interop
 
 import dev.dbos.transact.{DBOS, StartWorkflowOptions}
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory
-import grit.{Entry, EntryId, StoreError}
+import grit.core.{Entry, EntryId, StoreError}
 import java.sql.DriverManager
 import org.postgresql.ds.PGSimpleDataSource
 import scala.io.Source

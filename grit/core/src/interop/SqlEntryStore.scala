@@ -1,6 +1,6 @@
-package grit.interop
+package grit.core.interop
 
-import grit.{Entry, EntryId, EntryStore, StoreError, Tx}
+import grit.core.{Entry, EntryId, EntryStore, StoreError, Tx}
 import java.sql.{ResultSet, SQLException}
 import java.time.{OffsetDateTime, ZoneOffset}
 import scala.util.Using

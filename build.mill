@@ -1,12 +1,10 @@
 package build
 import mill.*, scalalib.*
 
-object grit extends ScalaModule {
+trait GritModule extends ScalaModule {
   def scalaVersion = "3.8.4"
 
-  /* Braces are enforced by the compiler, not by convention: -no-indent makes
-   * significant indentation an error. Capture checking is on project-wide so
-   * effects show up in signatures -- see STYLE.md for why that is load-bearing. */
+  // See STYLE.md
   def scalacOptions = Seq(
     "-no-indent",
     "-language:experimental.captureChecking",
@@ -19,26 +17,83 @@ object grit extends ScalaModule {
    * uses objectFieldOffset, so the warning is spurious and not ours to fix. */
   def forkArgs = Seq("--sun-misc-unsafe-memory-access=allow")
 
-  /* Mill 1.x bundles its own JDK (21), but this project targets JDK 24.
-   * Override with GRIT_JDK_HOME if the hardcoded path doesn't exist. */
   def javaHome = Task {
-    sys.env.get("GRIT_JDK_HOME")
-      .orElse(Some("/usr/lib/jvm/jdk-24.0.1-oracle-x64"))
+    sys.env
+      .get("GRIT_JDK_HOME")
+      .orElse(Some("/home/nickchilders/.jdks/jdk-26.0.2"))
       .filter(p => os.exists(os.Path(p)))
       .map(p => PathRef(os.Path(p)))
   }
+}
 
-  def mvnDeps = Seq(
-    mvn"dev.dbos:transact:1.0.0",
-    mvn"org.slf4j:slf4j-simple:2.0.18",
-    mvn"org.postgresql:postgresql:42.7.4",
-    mvn"com.lihaoyi::upickle:4.0.2"
-  )
+object grit extends Module {
+  object core extends GritModule {
 
-  object test extends ScalaTests {
-    def forkArgs = Task { grit.forkArgs() }
-    def testFramework = "utest.runner.Framework"
+    def mvnDeps = Seq(
+      mvn"dev.dbos:transact:1.0.0",
+      mvn"org.slf4j:slf4j-simple:2.0.18",
+      mvn"org.postgresql:postgresql:42.7.4",
+      mvn"com.lihaoyi::upickle:4.0.2"
+    )
 
-    def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.4")
+    object test extends ScalaTests {
+      def forkArgs = Task { core.forkArgs() }
+      def testFramework = "utest.runner.Framework"
+
+      def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.4")
+    }
+  }
+
+  object tui extends GritModule {
+
+    def mvnDeps = Seq(
+      mvn"org.jline:jline:4.4.1"
+    )
+
+    object test extends ScalaTests {
+      def forkArgs = Task { tui.forkArgs() }
+      def testFramework = "utest.runner.Framework"
+
+      def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.4")
+    }
   }
 }
+
+// object grit extends ScalaModule {
+//   def scalaVersion = "3.8.4"
+
+//   // See STYLE.md
+//   def scalacOptions = Seq(
+//     "-no-indent",
+//     "-language:experimental.captureChecking",
+//     "-deprecation",
+//     "-feature",
+//     "-Wunused:all"
+//   )
+
+//   /* JDK 24 warns on every sun.misc.Unsafe call; Scala 3.8.4's LazyVals$ still
+//    * uses objectFieldOffset, so the warning is spurious and not ours to fix. */
+//   def forkArgs = Seq("--sun-misc-unsafe-memory-access=allow")
+
+//   def javaHome = Task {
+//     sys.env
+//       .get("GRIT_JDK_HOME")
+//       .orElse(Some("/home/nickchilders/.jdks/jdk-26.0.2"))
+//       .filter(p => os.exists(os.Path(p)))
+//       .map(p => PathRef(os.Path(p)))
+//   }
+
+//   def mvnDeps = Seq(
+//     mvn"dev.dbos:transact:1.0.0",
+//     mvn"org.slf4j:slf4j-simple:2.0.18",
+//     mvn"org.postgresql:postgresql:42.7.4",
+//     mvn"com.lihaoyi::upickle:4.0.2"
+//   )
+
+//   object test extends ScalaTests {
+//     def forkArgs = Task { grit.forkArgs() }
+//     def testFramework = "utest.runner.Framework"
+
+//     def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.4")
+//   }
+// }

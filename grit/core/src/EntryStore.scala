@@ -1,4 +1,4 @@
-package grit
+package grit.core
 
 /** Append-only entry store. Entries are never rewritten or deleted. */
 trait EntryStore {

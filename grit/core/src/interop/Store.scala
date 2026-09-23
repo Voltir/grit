@@ -1,7 +1,7 @@
-package grit.interop
+package grit.core.interop
 
 import dev.dbos.transact.txstep.JdbcStepFactory
-import grit.Tx
+import grit.core.Tx
 
 /** Runs callbacks in DBOS `txStep` transactions. */
 final class Store(factory: JdbcStepFactory) {

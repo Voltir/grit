@@ -1,4 +1,4 @@
-package grit
+package grit.core
 
 /** Identifier for an [[Entry]]. Opaque so it cannot be transposed with another
   * identifier, or with a bare `String`, at a call site.

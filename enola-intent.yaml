@@ -1,0 +1,96 @@
+# The law, in enola's intent vocabulary. enola discovers this file beside the walk config
+# in mcp-arch.yaml.
+#
+# CLAUDE.md and STYLE.md are the authority; this file is enforcement. Right now it carries
+# exactly ONE rule -- the half of STYLE rule 8 that can be checked -- deliberately. The
+# full set of layers and rules is a separate planning session. A minimal file that is
+# verified to bite beats a large one nobody has watched fail.
+#
+# Selectors are finalized AGAINST THE SNAPSHOT, not guessed. enola names a dependency fact
+# by its SOURCE DIRECTORY and its exact imported symbol:
+#   "grit/core/src/interop -> dev.dbos.transact.DBOS"   (file: .../interop/Main.scala)
+# so the four DBOS imports in this repo are four distinct target names, and a component
+# admits facts by file.
+
+service:
+  name: grit
+  description: LLM coding harness whose prompt is a computed projection over Postgres
+
+# Declared layer order, outermost first.
+#
+# TRAP: layer paths are SERVICE-relative; component `match` paths below are REPO-relative.
+# Two different bases in one file. The service root here is the `grit/` directory, so the
+# module enola records as `grit/core/src` is named `core/src` to a layer -- and every
+# repo-rooted form (`grit/**`, `grit/core/src`, `grit/tui/**`) resolves to ZERO modules.
+# Discovered by probing, because a layer matching nothing is not an error: `constraints
+# lint` prints "matches nothing; no import can violate this layer" and still exits 0, so
+# the layer silently takes part in no verdict. This is why scripts/enola-law.sh greps for
+# that string instead of trusting the exit code.
+#
+# TRAP: enola's module model is DIRECTORY-grained -- a layer naming individual FILES also
+# resolves to zero modules. Only directories classify.
+#
+# Test modules (core/test/**) are deliberately unclassified. Layers are a ratchet graded
+# against a baseline, so they are NOT in the gate script yet; see scripts/enola-law.sh.
+layers:
+  - {name: tui,     paths: ["tui/**"]}
+  - {name: interop, paths: ["core/src/interop"]}
+  - {name: core,    paths: ["core/src"]}
+
+components:
+  # Every file that STYLE rule 8 forbids from importing dev.dbos.* -- that is, all of
+  # grit.core and grit.tui, but NOT grit.core.interop, which is the quarantine.
+  #
+  # TRAP: the component selector has NO exclusion form. A subtree like "grit/core/**"
+  # would admit the interop files and the rule below would then flag the very imports it
+  # exists to quarantine. Exact paths are the only way to express "all of X except Y".
+  #
+  # The five grit.core files import almost nothing (four have no imports at all), so the
+  # tui files are what give this component enough dependency facts to be non-vacuous.
+  - name: checked-imports
+    kind: dependency
+    match:
+      - grit/core/src/Entry.scala
+      - grit/core/src/EntryId.scala
+      - grit/core/src/EntryStore.scala
+      - grit/core/src/StoreError.scala
+      - grit/core/src/Tx.scala
+      - grit/tui/src/App.scala
+      - grit/tui/src/Background.scala
+      - grit/tui/src/key/Key.scala
+      - grit/tui/src/model/Msg.scala
+      - grit/tui/src/term/KeyReader.scala
+      - grit/tui/src/view/BufferPainter.scala
+
+# `strict`: fails whether or not a baseline already carried the breach. The alternative,
+# `ratchet`, fails only NEW breaches -- wrong here, because there are zero breaches today
+# and the rule's whole job is to keep it that way.
+#
+# One rule per imported symbol: enola matches an exact dependency name, and this repo's
+# four DBOS imports resolve to four targets. Adding a fifth DBOS import to interop means
+# adding a fifth rule here -- annoying, and the reason the configuration session should
+# look at whether a prefix form exists.
+rules:
+  - id: only-interop-imports-dbos-core
+    forbid_name: checked-imports
+    pattern: "* -> dev.dbos.transact.DBOS"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.core.interop"
+
+  - id: only-interop-imports-dbos-options
+    forbid_name: checked-imports
+    pattern: "* -> dev.dbos.transact.StartWorkflowOptions"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.core.interop"
+
+  - id: only-interop-imports-dbos-config
+    forbid_name: checked-imports
+    pattern: "* -> dev.dbos.transact.config.DBOSConfig"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.core.interop"
+
+  - id: only-interop-imports-dbos-txstep
+    forbid_name: checked-imports
+    pattern: "* -> dev.dbos.transact.txstep.JdbcStepFactory"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.core.interop"

@@ -1,4 +1,4 @@
-package grit
+package grit.core
 
 /** A failure an [[EntryStore]] caller is expected to handle.
   *

@@ -1,4 +1,4 @@
-package grit
+package grit.core
 
 /** Capability to read and write inside the current database transaction.
   * Obtained from [[grit.interop.Store.transact]]; a `Tx` is valid only for

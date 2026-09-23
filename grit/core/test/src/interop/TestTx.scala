@@ -1,6 +1,6 @@
-package grit.interop
+package grit.core.interop
 
-import grit.Tx
+import grit.core.Tx
 
 /** Test fixture: a fake [[Tx]] whose backing Connection is never touched.
   * The `null` lives here so that STYLE rule 6 holds everywhere else.

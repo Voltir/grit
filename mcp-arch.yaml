@@ -1,0 +1,65 @@
+# enola's walk config: which paths it reads when it maps this repository.
+# Trimmed from the upstream default (github.com/enola-labs/enola/mcp-arch.yaml), which
+# carries rules for a dozen ecosystems this repo does not use.
+#
+# TRAP: `ignore` REPLACES enola's built-in list rather than extending it. Anything left
+# out of this file is indexed, so a deletion here is a decision, not a tidy-up.
+#
+# TRUST BOUNDARY -- read before writing any rule against this snapshot.
+# grit compiles with -language:experimental.captureChecking project-wide, and enola's
+# Scala extractor silently degrades on capture syntax: it drops symbols and mis-nests
+# the survivors while still reporting `parse_errors: 0`. Measured on the controlled
+# fixture in ../Spikes/capture-spike-enola: 40 symbols extracted from capture-annotated
+# sources vs 46 from structurally identical plain ones, IDENTICAL on enola 0.4.8
+# (extractor v257) and 0.4.15 (v264) -- the grammar has not moved. What DOES extract
+# correctly is import edges, modules, and using-clear defs.
+# Therefore: import-edge and module facts may gate. Symbol counts, exported-surface and
+# complexity outliers are degraded here and must never be a gate. See the 2026-09-07
+# rows in roadmap/decisions.md.
+repo: "."
+
+ignore:
+  # Version control and enola's own output.
+  - "**/.git/**"
+  - ".git/**"
+  - "**/.enola/**"
+  - ".enola/**"
+
+  # Build output and editor/BSP state. `out/` alone is ~150MB of mill output; indexing
+  # it would count every compiled source a second time. Mill uses out/, NOT target/ --
+  # an sbt-style **/target/** glob matches nothing here.
+  - "**/out/**"
+  - "out/**"
+  - "**/.bsp/**"
+  - ".bsp/**"
+  - "**/.metals/**"
+  - ".metals/**"
+  - "**/.bloop/**"
+  - ".bloop/**"
+  - "**/.mill*/**"
+  - ".mill*/**"
+
+  # Vendored prior art, read for reference and never shipped: pi, dbos4s, the papers.
+  # Indexed, it would dominate every count with code that is not ours.
+  - ".local/**"
+
+  # The enola binary itself (51MB, extensionless). Excluded by kind anyway; named here
+  # so the census stays legible.
+  - "tools/**"
+
+# Deliberately NOT ignored, against the upstream default:
+#   *.md   -- the mdintent extractor reads each directory's CLAUDE.md and STYLE.md as
+#             the intent governing the code beside it, which is how this repo is
+#             written. Ignoring markdown silently disables that extractor. Note this
+#             pulls in roadmap/ and CLAUDE.local.md, which are GIT-ignored but not
+#             enola-ignored -- deliberate: the roadmap and decisions log are exactly
+#             the stated intent, and enola only reads them.
+#   mill, docker-compose.yml -- excluded by kind regardless; leaving them in the walk
+#             shows the census really covered the whole tree.
+#
+# extractors: / explainers: / renderers: are deliberately ABSENT. Each key REPLACES the
+# built-in list, so a file that mirrors today's default can only fall behind it as new
+# ones ship. The scala and mdintent extractors must stay enabled.
+
+output:
+  dir: ".enola"

@@ -1,4 +1,4 @@
-package grit.interop
+package grit.core.interop
 
 import scala.annotation.implicitNotFound
 import scala.util.NotGiven

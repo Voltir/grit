@@ -1,4 +1,4 @@
-package grit
+package grit.core
 
 import java.time.Instant
 

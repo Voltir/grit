@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "enola": {
+      "command": "tools/enola",
+      "args": ["--no-dashboard", "mcp-arch.yaml"]
+    }
+  }
+}
