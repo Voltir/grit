@@ -1,17 +1,13 @@
 # grit.tui
 
-The terminal UI. Ported 2026-09-23 from `../Spikes/tui-spike-slate`, where it was the
-library `slate`; the name is retired and so is the generality — grit is its only consumer,
-and it is tailored to the harness. **[`README.md`](README.md) is the design**; every rule
-below exists because something in it was paid for. Comments citing "ROADMAP" decisions
-dated before 2026-09-23 refer to the spike's table, archived unedited at
-`.local/history/slate/ROADMAP.md`. New decisions go in grit's `roadmap/decisions.md`.
+The terminal UI, ported from `../Spikes/tui-spike-slate` (library name `slate`, retired)
+and tailored to grit. **[`README.md`](README.md) is the design.** Code comments citing
+"ROADMAP" decisions dated before 2026-09-23 mean the spike's table, archived at
+`.local/history/slate/ROADMAP.md`; new design decisions follow `docs/decisions/README.md`.
 
 ## Where it sits
 
-Mill module `grit.tui`, depending on `grit.core` and nothing else — no external
-dependencies; the terminal seam is hand-rolled over FFM, not JLine. `grit.tui.examples`
-holds everything runnable (`Demo2` is the gate's target until `grit.app`'s screen exists).
+No external dependencies; the terminal seam is hand-rolled over FFM, not JLine.
 
 Four groups, and the groups are the layer table:
 
@@ -29,11 +25,10 @@ Four groups, and the groups are the layer table:
 surface grit's screens are written against separate from the terminal underneath.
 **`grit.core` may be imported from `components` and `runtime` only** — never `model` or
 `wire`, so the cell model and the terminal seam stay testable with no domain fixtures.
-Import direction is enforced twice, deliberately: by enola's three `tui-*` rules in
-`enola-intent.yaml` (gated by `scripts/enola-law.sh`), and by `test/src/QuarantineTests.scala`'s
-source scan, which also catches the fully-qualified reference with no import that enola
-cannot see. Content rules — no function in `Effect`, escape bytes in three files, the
-terminal touched in one package — are the test's alone.
+Import direction is enforced by enola's `tui-*` rules *and* `test/src/QuarantineTests.scala`
+— keep both: the test's source scan also catches a fully-qualified reference with no
+import, which enola cannot see, and holds the content rules (no function in `Effect`,
+escape bytes in three files, the terminal touched in one package).
 
 ## Commands
 
@@ -45,12 +40,15 @@ scripts/tui-gate modal                    # one scenario
 ./mill grit.tui.examples.runMain grit.tui.examples.Snapshot 30 100   # one frame, no tty
 ```
 
-A compile landing while an example is up rewrites `out/grit/tui/.../classes` underneath the
-live JVM; restart after recompiling.
+A long-lived run needs `--no-daemon --no-build-lock` so a CLI compile can still happen, but
+a compile landing mid-run rewrites the classes underneath the live JVM: restart after
+recompiling. In raw mode the app **ignores SIGTERM**, so `timeout N ./mill …` does not bound
+a run — use `timeout -k`, and see *Clean up* below.
 
 ## Design rules that are not negotiable
 
-Each was paid for in `../Spikes/tui-spike-layoutz`. Do not relax one without reading its FINDINGS.
+Each was paid for in `../Spikes/tui-spike-layoutz`. Do not relax one without reading its
+FINDINGS.
 
 1. **Address every line absolutely** (`ESC[<row>;1H`). `stty raw` clears `ONLCR`, so a bare
    LF is a line feed with no carriage return and the frame paints as a diagonal staircase.
@@ -90,41 +88,17 @@ wider than `cols - 1`, and **the reverse-video cells equal what the selection mo
 A prototype lived at `../Spikes/tui-spike-layoutz` scratch (`emu.py`); the Scala port is
 `grit/tui/test/src/wire/paint/Vt.scala`.
 
-Prefer `./mill grit.tui.examples.runMain grit.tui.examples.Snapshot 30 100` over a real run — it renders the same pure view with no
-terminal. When the real thing is needed, give it a pty *with a size* (an unsized pty reports
-0x0) and script mouse bytes on stdin. SGR reports are `ESC [ < b ; col ; row M` (`m` for
-release), 1-based:
+Prefer `Snapshot` (above) over a real run — it renders the same pure view with no
+terminal. When the real thing is needed it takes a pty *with a size* (an unsized pty
+reports 0x0) and SGR mouse bytes on stdin (`ESC [ < b ; col ; row M`, `m` for release,
+1-based).
 
-```bash
-E=$'\033'
-{ sleep 8
-  printf "%s" "${E}[<0;21;21M${E}[<32;21;15M${E}[<32;20;2M"   # press, drag, park at top
-  sleep 2; printf "%s" "${E}[<0;20;2m"                         # release -> copy
-  sleep 1; printf '\021'                                       # ctrl-q
-} | setsid script -qc "stty rows 30 cols 100; $RUNNER" /dev/null > /tmp/run.txt 2>&1
-```
+`scripts/tui-gate [span|one|modal|thumb|popup|resize]` is exactly that, checked in and
+repeatable — **read its header before rebuilding one by hand**; it also shows the direct
+`java -cp` runner that takes mill out of the loop. Two things it will not tell you:
 
-`scripts/tui-gate [span|one|modal|thumb|popup|resize]` is this recipe, checked in and repeatable — read it
-before rebuilding one by hand. What follows is what it does and why.
-
-**Pass `--ticker false` when capturing.** Mill forwards stdin fine and the app quits
-normally through it, but the ticker draws progress onto the same pty and lands in the
-capture. Call mill directly for a capture:
-
-```bash
-./mill --no-daemon --no-build-lock --ticker false grit.tui.examples.runMain grit.tui.examples.Smoke
-```
-
-Allow generous startup: a no-daemon run compiles first, so sleep ~12s before scripting
-input or the keystrokes arrive before the app is listening. To take mill out of the
-picture entirely (fastest iteration, cleanest capture), build a direct runner and re-make
-it after each recompile:
-
-```bash
-CP=$(./mill show grit.tui.examples.runClasspath 2>/dev/null | grep -oP '"q?ref:v[01]:[0-9a-f]+:\K[^"]+' | tr '\n' ':' | sed 's/:$//')
-"$GRIT_JDK_HOME/bin/java" --sun-misc-unsafe-memory-access=allow \
-  --enable-native-access=ALL-UNNAMED -cp "$CP" grit.tui.examples.Smoke
-```
+- **Pass `--ticker false`** when capturing through mill — the ticker draws onto the same pty.
+- A no-daemon mill run compiles first; sleep ~12s before scripting input.
 
 Frames are delimited by `ESC[?2026h` … `ESC[?2026l`, one per frame. Check the OSC 52 payload
 (`ESC ] 52;c;<base64>`) for what was copied, and count `?1049h`/`l`, `?1002h`/`l`,
@@ -138,13 +112,13 @@ P=examples.De; pgrep -af "${P}mo2"    # any with no tty are leaked
 P=examples.De; pkill -9 -f "${P}mo2"  # -9: the app ignores SIGTERM in raw mode
 ```
 
-The split is not superstition: a plain `pkill -f 'examples.Demo2'` matches the shell running the
-pkill and kills the rest of your own command line with it.
+The split is not superstition: a plain `pkill -f 'examples.Demo2'` matches the shell
+running the pkill and kills the rest of your own command line with it.
 
 **And it matches the developer's own demo.** A script that cleans up after itself must
-kill only what *it* started — `scripts/tui-gate` stamps each JVM it forks with `--gate-<pid>-<epoch>`
-and matches that. The interactive form above is for a human who knows what is running;
-never put it at the end of a script.
+kill only what *it* started — `scripts/tui-gate` stamps each JVM it forks with
+`--gate-<pid>-<epoch>` and matches that. The interactive form above is for a human who
+knows what is running; never put it at the end of a script.
 
 ## Scala specifics
 
@@ -153,7 +127,6 @@ never put it at the end of a script.
   `Vector` code is the way out.
 - `caps.Capability` is **sealed** — `caps.SharedCapability` is the extension point for making
   the terminal a tracked capability.
-- `-no-indent` makes significant indentation a compile error. Braces everywhere.
 - Virtual threads are load-bearing (blocked timers and the input reader). JDK 26 means
   `synchronized` no longer pins a carrier (JEP 491), so runtime locks can stay simple — but
   do not assume that on an older JDK.

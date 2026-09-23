@@ -1,81 +1,49 @@
-# The law, in enola's intent vocabulary. enola discovers this file beside the walk config
-# in mcp-arch.yaml.
+# grit's architecture law, checked by `bash scripts/enola-law.sh`.
 #
-# CLAUDE.md, STYLE.md and grit/tui/CLAUDE.md are the authority; this file is enforcement.
-# It carries two things: STYLE rule 8's dev.dbos.* half, and grit.tui's internal import
-# direction. Every rule here was watched to fail on a planted breach before it was adopted.
-# A minimal file that is verified to bite beats a large one nobody has watched fail.
+# It enforces two things:
+#   1. Only grit.interop may import dev.dbos.*        (STYLE.md rule 8)
+#   2. grit.tui's four groups import in one direction (grit/tui/CLAUDE.md)
 #
-# Selectors are finalized AGAINST THE SNAPSHOT, not guessed. enola names a dependency fact
-# by its SOURCE DIRECTORY and its exact imported symbol:
-#   "grit/interop/src -> dev.dbos.transact.DBOS"   (file: grit/interop/src/Main.scala)
-# so the four DBOS imports in this repo are four distinct target names.
-#
-# There is NO prefix form for a target. Probed 2026-09-23 on 0.4.15: `forbid_name`
-# accepts only an exact name, `prefix*` or `*suffix` ("* -> dev.dbos.*" is rejected by
-# lint), and a component's `where: {import: "dev.dbos*"}` compares exactly -- a planted
-# DBOS import in core left it at 0 members and the gate at exit 0. One rule per symbol.
+# Every rule was watched failing on a deliberately planted bad import before it was
+# adopted. Do the same for any new rule: a rule that can't fail passes silently.
+# The evidence for each choice below is in roadmap/decisions.md (2026-09-23 rows).
 
 service:
   name: grit
   description: LLM coding harness whose prompt is a computed projection over Postgres
 
-# Declared layer order, outermost first.
-#
-# TRAP: layer paths are SERVICE-relative; component `match` paths below are REPO-relative.
-# Two different bases in one file. The service root here is the `grit/` directory, so the
-# module enola records as `grit/core/src` is named `core/src` to a layer -- and every
-# repo-rooted form (`grit/**`, `grit/core/src`, `grit/tui/**`) resolves to ZERO modules.
-# Discovered by probing, because a layer matching nothing is not an error: `constraints
-# lint` prints "matches nothing; no import can violate this layer" and still exits 0, so
-# the layer silently takes part in no verdict. This is why scripts/enola-law.sh greps for
-# that string instead of trusting the exit code.
-#
-# TRAP: enola's module model is DIRECTORY-grained -- a layer naming individual FILES also
-# resolves to zero modules. Only directories classify.
-#
-# The order is linear but the graph is not: `tui` and `interop` both sit on `core` and must
-# not name each other. At this grain that is Mill's job -- neither module has the other in
-# its moduleDeps, so it is a compile error -- and these layers are documentation. Inside a
-# module Mill sees nothing, which is where layers and forbid rules start to carry weight.
-#
-# `components` and `wire` share the tui-surface layer because they are siblings, the same
-# shape actualbest uses for content/products: a linear order cannot say "neither names the
-# other", so the layer groups them and the tui-* rules below forbid the sideways edge.
-#
-# Test and example modules (*/test/**, tui/examples/**) are deliberately unclassified. Layers are a ratchet graded
-# against a baseline, so they are NOT in the gate script yet; see scripts/enola-law.sh.
-layers:
-  - {name: tui-runtime, paths: ["tui/src/runtime", "tui/src/runtime/**"]}
-  - {name: tui-surface, paths: ["tui/src/components", "tui/src/components/**", "tui/src/wire", "tui/src/wire/**"]}
-  - {name: tui-model,   paths: ["tui/src/model", "tui/src/model/**"]}
-  - {name: interop,     paths: ["interop/src", "interop/src/**"]}
-  - {name: core,        paths: ["core/src", "core/src/**"]}
+# No `layers:` block, on purpose. Between Mill modules, Mill already rejects both cycles and
+# undeclared imports. Inside tui, the strict rules below are stricter than a layer order
+# can be. A layer violation is only ever an advisory, so it would repeat a failure that is
+# already reported.
 
-# Every module outside the quarantine. For core and tui this DUPLICATES a compile error --
-# neither has transact on its classpath -- and is kept for the module that it does not
-# duplicate: `app` depends on interop, Mill's moduleDeps are transitive, so app WILL have
-# dev.dbos.* on its classpath and this rule is the only thing stopping it. Add
-# "grit/app/**" here when that directory exists (a glob matching no file is noise today).
-#
-# A subtree glob, not an exact file list: the list existed only because interop was a
-# package inside core and the selector has no exclusion form. Verified: 24 members, and a
-# planted `import dev.dbos.transact.DBOS` in core/src/Entry.scala fails the gate, exit 1.
+# ---------------------------------------------------------------------------------------
+# Components: named sets of code that the rules refer to. Paths start at the repo root.
+# ---------------------------------------------------------------------------------------
 components:
+  # Everything that must not import DBOS. Add "grit/app/**" when grit.app exists: app
+  # depends on interop, so DBOS is on its classpath and these rules are its only guard.
+  # (For core and tui they duplicate a compile error.)
   - name: outside-interop
     kind: dependency
     match: ["grit/core/**", "grit/tui/**"]
 
-
-  # grit.tui's groups, as module components for the allow/only rules below. Mill cannot see
-  # inside one module, so these are the only enforcement of direction within tui besides
-  # QuarantineTests' source scan. `runtime` needs no component: it may name every group.
+  # The tui groups, for the direction rules. `runtime` needs no entry: it may import
+  # every group.
   - {name: core-code,      kind: module, match: ["grit/core/src", "grit/core/src/**"]}
   - {name: tui-model,      kind: module, match: ["grit/tui/src/model", "grit/tui/src/model/**"]}
   - {name: tui-components, kind: module, match: ["grit/tui/src/components", "grit/tui/src/components/**"]}
   - {name: tui-wire,       kind: module, match: ["grit/tui/src/wire", "grit/tui/src/wire/**"]}
 
 rules:
+  # -------------------------------------------------------------------------------------
+  # 1. Only grit.interop imports DBOS.
+  #
+  # One rule per imported class, because enola cannot match a whole package: a pattern
+  # may only be an exact name, `prefix*`, or `*suffix`, and "* -> dev.dbos.*" is rejected.
+  # Importing a new DBOS class in interop is fine; importing one outside interop that is
+  # not listed here is NOT caught -- add a rule for it.
+  # -------------------------------------------------------------------------------------
   - id: only-interop-imports-dbos-core
     forbid_name: outside-interop
     pattern: "* -> dev.dbos.transact.DBOS"
@@ -100,19 +68,21 @@ rules:
     mode: strict
     because: "STYLE rule 8: dev.dbos.* is quarantined to grit.interop"
 
-# grit.tui's internal direction, one whitelist per group. Probed 2026-09-23 before adoption:
-#
-#   - `via: imports` is the edge that exists for Scala here; `via: depends_on` (the form
-#     enola's own recipes use) lints clean and then never fires -- vacuous. Do not copy a
-#     recipe's `via` without a planted breach.
-#   - `allow/only` counts only edges that resolve to a measured module. Stdlib and external
-#     imports surface as a 0.40 "reached no verdict" advisory, not a breach, so a clean tree
-#     passes.
-#   - Wildcard imports are edges. A FULLY-QUALIFIED reference with no import is NOT --
-#     `grit.tui.wire.paint.Ansi` written inline passed the gate. QuarantineTests' text scan
-#     is what catches that, and it stays.
-#   - Planted, each fails with its own rule id, exit 1: model -> grit.core, wire ->
-#     grit.core, components -> runtime, components -> wire. components -> grit.core passes.
+  # -------------------------------------------------------------------------------------
+  # 2. grit.tui's import direction: each group lists what it may import.
+  #
+  #      model       -> nothing else
+  #      wire        -> model
+  #      components  -> model, grit.core
+  #      runtime     -> anything (no rule)
+  #
+  # Watch out:
+  #   - Use `via: imports`. `via: depends_on` (what enola's recipes use) never fires on
+  #     Scala, so a rule using it always passes.
+  #   - Only imports are seen. A fully-qualified name written inline without an import
+  #     slips through; tui's QuarantineTests catches that case.
+  #   - Imports of the standard library or other libraries are not counted as breaches.
+  # -------------------------------------------------------------------------------------
   - id: tui-model-names-no-other-group
     allow: tui-model
     only: [tui-model]
