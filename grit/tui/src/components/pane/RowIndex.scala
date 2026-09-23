@@ -2,7 +2,6 @@ package grit.tui.components.pane
 
 import grit.tui.model.block.Block
 import grit.tui.model.select.{Doc, DocPos}
-import grit.tui.model.surface.PaneId
 import grit.tui.model.text.{Row, WrapCache}
 
 /** One `DocPos` per wrapped row of a pane's document, in document order -- the row
@@ -79,7 +78,6 @@ object RowIndex {
     */
   def reconciled(
       prev: RowIndex,
-      paneId: PaneId,
       doc: Doc,
       width: Int,
       cache: WrapCache,
@@ -88,7 +86,7 @@ object RowIndex {
     val w = math.max(1, width)
     if (prev.width == w && sameRevs(prev, doc)) { (prev, cache) }
     else if (prev.width != w || doc.length < prev.entries.length) {
-      build(paneId, doc, w, cache, rowsOf)
+      build(doc, w, cache, rowsOf)
     } else {
       // Some blocks changed or were appended; splice their records, reuse the rest.
       var c = cache
@@ -132,7 +130,6 @@ object RowIndex {
 
   /** Everything wrapped from scratch -- a width change or a shrunken document. */
   private def build(
-      paneId: PaneId,
       doc: Doc,
       w: Int,
       cache: WrapCache,

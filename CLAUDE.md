@@ -27,13 +27,17 @@ Mill modules, and what each may name:
 | Module | Package | Depends on | Holds |
 |---|---|---|---|
 | `grit.core` | `grit.core` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath |
-| `grit.interop` | `grit.interop` | core | the quarantine: DBOS, JDBC, Postgres, `schema.sql` |
+| `grit.dbos` | `grit.dbos` | core | DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`, the phase-0 proof run |
 | `grit.tui` | `grit.tui.{model,components,wire,runtime}` | core | the terminal UI; core only from `components`/`runtime` |
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo2` is `scripts/tui-gate`'s target |
+| `grit.turn` | — | core | *placeholder*: the durable turn's orchestration |
+| `grit.models` | — | core | *placeholder*: the frontier provider, later the relevance judge |
+| `grit.assembly` | — | core | *placeholder*: builds each turn's context window |
+| `grit.app` | — | everything | *placeholder*: the composition root |
 
-`grit.app`, the composition root, arrives with its first file. Mill `moduleDeps` are
-transitive, so it will see `dev.dbos.*` through interop — enola's rule, not the compiler,
-guards it. Working in `grit/tui/`? Read [`grit/tui/CLAUDE.md`](grit/tui/CLAUDE.md) first.
+Placeholders have a `README.md` and no code. Mill `moduleDeps` are transitive, so
+`grit.app` sees `dev.dbos.*` through `grit.dbos` — enola's rule, not the compiler, guards
+it. Working in `grit/tui/`? Read [`grit/tui/CLAUDE.md`](grit/tui/CLAUDE.md) first.
 
 ## Style rules
 
@@ -50,10 +54,11 @@ capability is a promise of purity.**
    undesigned retry behaviour.
 4. Total over partial — no `.get`, `.head`, `Map.apply`, inexhaustive matches.
 5. Illegal states unrepresentable — sealed ADTs, opaque id types.
-6. No `null` outside `grit.interop`.
+6. No `null` outside a quarantine module (rule 8).
 7. Immutable data; mutation only in scoped locals.
-8. **Interop is quarantined.** Nothing outside `grit.interop` imports `dev.dbos.*` or
-   `java.sql.*`.
+8. **Java libraries are quarantined by role.** Each lives only in the module whose job
+   needs it, translated into grit's conventions there; such modules depend only on core and
+   meet only in `grit.app`. Nothing outside `grit.dbos` imports `dev.dbos.*` or `java.sql.*`.
 9. Explicit capability parameters over clever inference.
 10. **The elision test** — if the groomer dropped the body and kept only the signature and
     its doc, could a competent agent still call it correctly? If not, fix the signature.

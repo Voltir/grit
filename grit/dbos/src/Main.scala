@@ -1,4 +1,4 @@
-package grit.interop
+package grit.dbos
 
 import dev.dbos.transact.{DBOS, StartWorkflowOptions}
 import dev.dbos.transact.config.DBOSConfig
@@ -48,13 +48,13 @@ object Main {
     }
   }
 
-  /** Applies `grit/interop/resources/schema.sql` idempotently before DBOS starts. */
+  /** Applies `grit/dbos/resources/schema.sql` idempotently before DBOS starts. */
   private def schemaSetup(): Unit = {
     val sql = Option(getClass.getResourceAsStream("/schema.sql")) match {
       case Some(is) => Using.resource(is)(Source.fromInputStream(_).mkString)
       case None =>
         sys.error(
-          "schema.sql not found on classpath — is grit/interop/resources/ on the resource path?"
+          "schema.sql not found on classpath — is grit/dbos/resources/ on the resource path?"
         )
     }
     Using.resource(DriverManager.getConnection(JdbcUrl, DbUser, DbPassword)) { conn =>

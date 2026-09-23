@@ -50,8 +50,9 @@ object grit extends Module {
     object test extends GritTests
   }
 
-  /* The quarantine: everything that touches DBOS, JDBC or Postgres. */
-  object interop extends GritModule {
+  /* The DBOS quarantine module (STYLE rule 8): everything that touches DBOS, JDBC or
+   * Postgres, translated into grit-style capabilities before it leaves. */
+  object dbos extends GritModule {
     def moduleDeps = Seq(core)
 
     def mvnDeps = Seq(
@@ -61,6 +62,24 @@ object grit extends Module {
     )
 
     object test extends GritTests
+  }
+
+  /* Durable turn: the per-turn workflow, written against core's seams, not DBOS.
+   * Placeholder -- roadmap/mechanisms/durable-turn.md. */
+  object turn extends GritModule {
+    def moduleDeps = Seq(core)
+  }
+
+  /* Models: the frontier provider, and later the relevance judge. A quarantine module
+   * once it has an HTTP client. Placeholder -- roadmap/mechanisms/models.md. */
+  object models extends GritModule {
+    def moduleDeps = Seq(core)
+  }
+
+  /* Assembly: builds each turn's context window from memory. Placeholder --
+   * roadmap/mechanisms/assembly.md. */
+  object assembly extends GritModule {
+    def moduleDeps = Seq(core)
   }
 
   /* The terminal UI -- ported from ../Spikes/tui-spike-slate. No external dependencies:
@@ -84,6 +103,14 @@ object grit extends Module {
       def forkArgs = Task { tui.forkArgs() }
       def mainClass = Some("grit.tui.examples.Hello")
     }
+  }
+
+  /* The composition root: the only module that sees every implementation, and the only
+   * place quarantine modules meet. Placeholder until the phase-0 proof run (dbos's Main)
+   * moves here behind a grit-style durability API. */
+  object app extends GritModule {
+    def moduleDeps = Seq(grit.core, grit.dbos, grit.turn, grit.models, grit.assembly, grit.tui)
+    def forkArgs = Task { tui.forkArgs() }
   }
 }
 

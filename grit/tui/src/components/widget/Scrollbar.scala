@@ -49,7 +49,7 @@ final case class Scrollbar(
     * past the travel clamp to the end of the document.
     */
   def offsetAtRow(track: Int, row: Int): Int = {
-    val (start, len) = thumb(track)
+    val (_, len) = thumb(track)
     val travel = track - len
     if (travel <= 0) 0
     else {

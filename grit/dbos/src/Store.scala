@@ -1,4 +1,4 @@
-package grit.interop
+package grit.dbos
 
 import dev.dbos.transact.txstep.JdbcStepFactory
 import grit.core.Tx

@@ -1,6 +1,7 @@
 package grit.tui.model.block
 
 import grit.tui.model.surface.Style
+import scala.annotation.unused
 import grit.tui.model.text.{Span, StyledText}
 
 /** How a block's overlong lines meet the pane width.
@@ -67,7 +68,7 @@ sealed trait Block {
     * not know the width it will be wrapped at, and the offset is the coordinate it
     * already indexes by.
     */
-  def groundAt(offset: Int): Style = ground
+  def groundAt(@unused offset: Int): Style = ground
 
   /** Bumps on every mutation that changes the glass; keys the wrap cache. */
   def rev: Long

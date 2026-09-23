@@ -76,7 +76,7 @@ final case class Panes(
   def layout(id: PaneId, size: Size): Panes =
     get(id)
       .map { p =>
-        val (idx, p1) = p.reindexedAt(math.max(1, size.cols))
+        val (_, p1) = p.reindexedAt(math.max(1, size.cols))
         val (vp, np) = p1.viewport(size)
         stored(np, vp)
       }

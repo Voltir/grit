@@ -1,7 +1,7 @@
 # grit's architecture law, checked by `bash scripts/enola-law.sh`.
 #
 # It enforces two things:
-#   1. Only grit.interop may import dev.dbos.*        (STYLE.md rule 8)
+#   1. Only grit.dbos may import dev.dbos.*           (STYLE.md rule 8)
 #   2. grit.tui's four groups import in one direction (grit/tui/CLAUDE.md)
 #
 # Every rule was watched failing on a deliberately planted bad import before it was
@@ -21,12 +21,12 @@ service:
 # Components: named sets of code that the rules refer to. Paths start at the repo root.
 # ---------------------------------------------------------------------------------------
 components:
-  # Everything that must not import DBOS. Add "grit/app/**" when grit.app exists: app
-  # depends on interop, so DBOS is on its classpath and these rules are its only guard.
-  # (For core and tui they duplicate a compile error.)
-  - name: outside-interop
+  # Every module except grit.dbos. For most of them these rules duplicate a compile error
+  # (no DBOS on their classpath). grit.app is the exception: it depends on grit.dbos, and
+  # Mill's moduleDeps are transitive, so these rules are the only guard there.
+  - name: outside-dbos
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**"]
 
   # The tui groups, for the direction rules. `runtime` needs no entry: it may import
   # every group.
@@ -37,36 +37,36 @@ components:
 
 rules:
   # -------------------------------------------------------------------------------------
-  # 1. Only grit.interop imports DBOS.
+  # 1. Only grit.dbos imports DBOS.
   #
   # One rule per imported class, because enola cannot match a whole package: a pattern
   # may only be an exact name, `prefix*`, or `*suffix`, and "* -> dev.dbos.*" is rejected.
-  # Importing a new DBOS class in interop is fine; importing one outside interop that is
+  # Importing a new DBOS class in grit.dbos is fine; importing one outside it that is
   # not listed here is NOT caught -- add a rule for it.
   # -------------------------------------------------------------------------------------
-  - id: only-interop-imports-dbos-core
-    forbid_name: outside-interop
+  - id: only-dbos-imports-dbos-core
+    forbid_name: outside-dbos
     pattern: "* -> dev.dbos.transact.DBOS"
     mode: strict
-    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.interop"
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
 
-  - id: only-interop-imports-dbos-options
-    forbid_name: outside-interop
+  - id: only-dbos-imports-dbos-options
+    forbid_name: outside-dbos
     pattern: "* -> dev.dbos.transact.StartWorkflowOptions"
     mode: strict
-    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.interop"
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
 
-  - id: only-interop-imports-dbos-config
-    forbid_name: outside-interop
+  - id: only-dbos-imports-dbos-config
+    forbid_name: outside-dbos
     pattern: "* -> dev.dbos.transact.config.DBOSConfig"
     mode: strict
-    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.interop"
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
 
-  - id: only-interop-imports-dbos-txstep
-    forbid_name: outside-interop
+  - id: only-dbos-imports-dbos-txstep
+    forbid_name: outside-dbos
     pattern: "* -> dev.dbos.transact.txstep.JdbcStepFactory"
     mode: strict
-    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.interop"
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
 
   # -------------------------------------------------------------------------------------
   # 2. grit.tui's import direction: each group lists what it may import.

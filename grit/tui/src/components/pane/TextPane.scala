@@ -212,7 +212,7 @@ final case class TextPane(
     */
   def reindexedAt(w: Int): (RowIndex, TextPane) = {
     val c0 = cache.atWidth(w)
-    val (idx, c1) = RowIndex.reconciled(index, id, doc, w, c0, rowsOf)
+    val (idx, c1) = RowIndex.reconciled(index, doc, w, c0, rowsOf)
     (idx, copy(cache = c1, index = idx))
   }
 

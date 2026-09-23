@@ -33,7 +33,7 @@ def entryId(seed: UUID): EntryId = EntryId(seed.toString)
 ## 2. Effects are capabilities in the signature
 
 `(using Tx)`, an explicit `Provider`, an explicit `Clock`. No ambient singletons, no
-hidden I/O, no thread-local reads outside `grit.interop`.
+hidden I/O, no thread-local reads outside a quarantine module (rule 8).
 
 ```scala
 // no — reaches into a global, does I/O, signature says none of it
@@ -66,7 +66,7 @@ def parseModel(s: String): Either[BadModel, Model]
 The replay half of the same story: **a step's return value is persisted and replayed
 from a row**, so it has to be a value Jackson can reconstruct. `Unit` is not one. A step
 that has nothing to say should say what it did — `"inserted:e1"`, an enum, a count —
-rather than returning `Unit` and forcing the boundary to invent `null`. `grit.interop`
+rather than returning `Unit` and forcing the boundary to invent `null`. `grit.dbos`
 enforces this with `StepResult` evidence; a `Unit` step body is a compile error.
 
 ## 4. Total over partial
@@ -100,15 +100,15 @@ concatenation and back out as the wrong type. Make the crossing explicit
 
 ## 6. No `null` in Scala
 
-`null` is confined to `grit.interop` and converted to `Option` the moment it crosses the
-boundary. DBOS's Jackson layer wants `null` for `Unit`; that dance happens in one place
-and is never visible outside it.
+`null` is confined to the quarantine modules (rule 8 — `grit.dbos` today) and converted
+to `Option` the moment it crosses the boundary. DBOS's Jackson layer wants `null` for
+`Unit`; that dance happens in one place and is never visible outside it.
 
 This includes nulls returned by Java methods that look total. `Throwable.getMessage` is
 the one that has already bitten here: `StoreError.DatabaseError(e.getMessage)` types as
 `String` and carries `null` into a pure ADT. Wrap at the call site —
-`Option(e.getMessage).getOrElse(e.toString)`. Anywhere a value crosses out of
-`grit.interop`, assume the Java signature is lying about nullability.
+`Option(e.getMessage).getOrElse(e.toString)`. Anywhere a value crosses out of a
+quarantine module, assume the Java signature is lying about nullability.
 
 ## 7. Immutable data
 
@@ -120,19 +120,27 @@ state, because that state is the thing it exists to emulate. `FakeEntryStore` ha
 behave like a table for the trait's contract to be under test at all. The carve-out is
 for fakes of stateful seams — not for convenience elsewhere in tests.
 
-## 8. Interop is quarantined
+## 8. Java libraries are quarantined by role
 
-Everything ugly — DBOS reflection over `Function0.apply`, `JdbcStepFactory` wiring,
-Jackson boxing, `Unit → null`, raw `java.sql.Connection` — lives in `grit.interop`.
+Each Java-facing library lives in the one module whose job needs it — a *quarantine
+module* — and that module translates Java's conventions (`null`, thrown exceptions,
+mutable handles, reflection) into grit's before anything leaves it. Quarantine modules
+depend only on `grit.core` and meet only in `grit.app`, so no Java library can leak into
+another mechanism through a module dependency.
+[ADR 0001](docs/decisions/0001-quarantine-by-role.md).
 
-**Nothing outside `grit.interop` imports `dev.dbos.*` or `java.sql.*`.**
+For DBOS the module is `grit.dbos`. Everything ugly — DBOS reflection over
+`Function0.apply`, `JdbcStepFactory` wiring, Jackson boxing, `Unit → null`, raw
+`java.sql.Connection` — lives there.
+
+**Nothing outside `grit.dbos` imports `dev.dbos.*` or `java.sql.*`.**
 (Opaque type definitions that *alias* a quarantine type — e.g. `opaque type Tx =
 java.sql.Connection` — may name it fully-qualified without an `import`; that is a type
 definition, not an I/O call site.)
 
 This is the rule most likely to be inconvenient, and the one most worth holding. It is
-also where capture checking will fight hardest; a per-file escape inside `grit.interop`
-is acceptable, everywhere else is not.
+also where capture checking will fight hardest; a per-file escape inside a quarantine
+module is acceptable, everywhere else is not.
 
 ## 9. Prefer explicit capability parameters over clever inference
 
