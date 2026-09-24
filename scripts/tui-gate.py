@@ -142,7 +142,9 @@ def main():
         check(h == 1 and l == 1, "?%s taken once and given back once" % mode, "%d/%d" % (h, l))
 
     frames = re.findall(r"\x1b\[\?2026h(.*?)\x1b\[\?2026l", raw, re.S)
-    check(len(frames) > 3, "frames are synchronised output", "%d frames" % len(frames))
+    # A reload with no input paints twice: the empty screen, then the loaded transcript.
+    least = 2 if scenario == "reload" else 4
+    check(len(frames) >= least, "frames are synchronised output", "%d frames" % len(frames))
 
     vt = Vt(rows, cols)
     snapshots = []
@@ -188,6 +190,42 @@ def main():
               "%d frames at 20x60" % len(small))
         check(all(r <= 20 for r, _ in per_frame[small[0]:]) if small else False,
               "no frame after the resize addresses a row that no longer exists")
+        width = max(len(label) for _, label, _ in checks)
+        failed = 0
+        for ok, label, detail in checks:
+            failed += 0 if ok else 1
+            print("  %s  %-*s %s" % ("ok  " if ok else "FAIL", width, label, detail))
+        return 1 if failed else 0
+
+    if scenario in ("chat", "reload"):
+        # grit.app with the stub model, whose reply to a message is "stub reply to: " and
+        # the message. The oracle is what the transcript *says*, read off the accumulated
+        # screen: the store's contents, painted.
+        final = screens[-1] if screens else []
+        text = "\n".join(row.rstrip() for row in final)
+        asked = [i for i, row in enumerate(final) if "you> gate says hi" in row]
+        answered = [i for i, row in enumerate(final) if "grit> stub reply to: gate says hi" in row]
+        check(bool(asked), "the message is painted in the transcript")
+        check(bool(answered), "its reply is painted in the transcript")
+        check(bool(asked) and bool(answered) and answered[0] > asked[0],
+              "the reply is below the message it answers")
+        check("thinking" not in text, "no turn is left in progress on the final screen")
+        check(bool(final) and final[rows - 1].rstrip().endswith("idle"),
+              "the status bar settles on idle")
+        payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
+        check(len(payloads) == 0, "no drag, so no clipboard write", "%d" % len(payloads))
+        if scenario == "chat":
+            # The prompt's text row is the middle of its box: rows - 3.
+            typed = [i for i, g in enumerate(screens) if "gate says hi" in g[rows - 3]]
+            check(bool(typed), "the prompt showed the message as it was typed")
+            check(bool(final) and "gate says hi" not in final[rows - 3],
+                  "and was cleared by the submission")
+        else:
+            # Nothing was typed in this run, so anything in the transcript came from the
+            # store -- and it must be there on the first frame that paints the body.
+            first = next((g for g in screens if any("you>" in row for row in g)), None)
+            check(first is not None and len(screens) <= 4,
+                  "the exchange was loaded, not typed", "%d frames" % len(screens))
         width = max(len(label) for _, label, _ in checks)
         failed = 0
         for ok, label, detail in checks:

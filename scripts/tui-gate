@@ -30,13 +30,21 @@
 # Byte-level checks ride along on every run: modes balanced, no bare LF, nothing written
 # into the last column, the frame never scrolls.
 #
-# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize]   (no scenario runs all six)
+#   chat   grit.app itself, with the stub model: a message typed and submitted is painted
+#          with its reply, and the prompt clears. Needs the compose Postgres running.
+#   reload a second grit.app run in the same conversation paints that exchange with no
+#          input: the transcript is loaded from the store. Runs after `chat`.
+#
+# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|chat|reload]
+#        (no scenario runs all eight; `reload` needs `chat` before it in the same run)
 #
 # The oracles are geometry, not implementation: the chrome is header 1 + prompt 3 +
 # status 1, the scrollbar is the body's last column, and the modal's document is HELP.
 #
-# Ported from ../Spikes/tui-spike-slate (`./gate` there). Demo2 is the target until
-# grit.app's own screen exists; retarget it then, and retire Demo2.
+# Ported from ../Spikes/tui-spike-slate (`./gate` there). The first six scenarios drive
+# Demo2, which exercises library features grit.app does not use yet (the modal, the popup,
+# the scrollbar thumb); `chat` and `reload` drive grit.app. Whether Demo2 retires is the
+# tui design review's question (.local/backlog/tui-design-review.md).
 set -u
 cd "$(dirname "$0")/.."
 
@@ -47,9 +55,13 @@ COLS=100
 WORK=${TMPDIR:-/tmp}/grit-tui-gate
 mkdir -p "$WORK"
 
-JAVA_OPTS= ./mill grit.tui.examples.compile > "$WORK/compile.log" 2>&1 || { cat "$WORK/compile.log"; exit 1; }
-CP=$(JAVA_OPTS= ./mill show grit.tui.examples.runClasspath 2>/dev/null |
-  grep -oP '"q?ref:v[01]:[0-9a-f]+:\K[^"]+' | tr '\n' ':' | sed 's/:$//')
+JAVA_OPTS= ./mill grit.tui.examples.compile grit.app.compile > "$WORK/compile.log" 2>&1 || { cat "$WORK/compile.log"; exit 1; }
+classpath() {
+  JAVA_OPTS= ./mill show "$1" 2>/dev/null |
+    grep -oP '"q?ref:v[01]:[0-9a-f]+:\K[^"]+' | tr '\n' ':' | sed 's/:$//'
+}
+CP=$(classpath grit.tui.examples.runClasspath)
+APP_CP=$(classpath grit.app.runClasspath)
 J=${GRIT_JDK_HOME:-/home/nickchilders/.jdks/jdk-26.0.2}
 # Every JVM this script forks carries a stamp on its command line, and teardown kills
 # only processes carrying *this* stamp. A blanket `pkill -f Demo2` also kills the
@@ -58,10 +70,19 @@ J=${GRIT_JDK_HOME:-/home/nickchilders/.jdks/jdk-26.0.2}
 STAMP="gate-$$-$(date +%s)"
 RUNNER="$J/bin/java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -cp $CP $MAIN --$STAMP"
 
+# grit.app takes no stamp argument (any argument puts Main in one-shot mode), so the stamp
+# rides in a system property whose value carries it. The stub model: no .env, no key. A
+# conversation of the gate's own, so `reload` sees exactly what `chat` wrote.
+APP_RUNNER="env -u OPENROUTER_API_KEY GRIT_ENV_FILE=/dev/null GRIT_SESSION=$STAMP GRIT_LOG=$WORK/grit.log \
+  $J/bin/java -Dgate.stamp=--$STAMP --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
+  -cp $APP_CP grit.app.Main"
+
 E=$'\033'
 
 # A no-daemon JVM still has to start; scripting input before the app is listening loses it.
 STARTUP=3
+# grit.app launches DBOS before its first paint.
+APP_STARTUP=12
 
 script_span() {
   sleep $STARTUP
@@ -146,14 +167,33 @@ fcntl.ioctl(f, termios.TIOCSWINSZ, struct.pack('HHHH', 20, 60, 0, 0))" "$pts"
   sleep 1
 }
 
+script_chat() {
+  sleep $APP_STARTUP
+  printf 'gate says hi'; sleep 0.4
+  printf '\r'; sleep 4
+  printf '\021'; sleep 2
+}
+
+script_reload() {
+  sleep $((APP_STARTUP + 2))
+  printf '\021'; sleep 2
+}
+
 run_one() {
-  local name=$1 out="$WORK/$1.txt"
-  "script_$name" | setsid script -qc "stty rows $ROWS cols $COLS; $RUNNER" /dev/null > "$out" 2>&1
+  local name=$1 out="$WORK/$1.txt" runner=$RUNNER
+  case "$name" in chat|reload) runner=$APP_RUNNER ;; esac
+  "script_$name" | setsid script -qc "stty rows $ROWS cols $COLS; $runner" /dev/null > "$out" 2>&1
   python3 scripts/tui-gate.py "$out" "$ROWS" "$COLS" "$name"
 }
 
+case " ${1:-} " in
+  *" reload "*) case " $* " in *" chat "*) ;; *)
+    echo "gate: reload needs chat before it in the same run: scripts/tui-gate chat reload" >&2
+    exit 2 ;; esac ;;
+esac
+
 status=0
-for s in ${1:-span one modal thumb popup resize}; do
+for s in ${*:-span one modal thumb popup resize chat reload}; do
   echo "== $s"
   run_one "$s" || status=1
 done
