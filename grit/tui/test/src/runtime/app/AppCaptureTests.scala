@@ -1,8 +1,9 @@
 package grit.tui.runtime.app
 
+import java.nio.file.Files
+
 import dotty.tools.dotc.Driver
 import dotty.tools.dotc.reporting.StoreReporter
-import java.nio.file.Files
 import utest.*
 
 /** What capture checking rejects in a view tree's handlers and apps, pinned by compiling

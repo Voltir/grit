@@ -1,8 +1,10 @@
 package grit.core
 
-import grit.dbos.TestTx
-import utest.*
 import java.time.Instant
+
+import grit.dbos.TestTx
+
+import utest.*
 
 object EntryStoreTests extends TestSuite {
 

@@ -1,15 +1,15 @@
 package grit.tui.runtime.render
 
-import grit.tui.components.tree.{Node, OnInput, PaneKey}
 import grit.tui.components.layout.Stacking
-import grit.tui.components.pane.Viewport
-import grit.tui.components.widget.Scrollbar
 import grit.tui.components.overlay.Popup
+import grit.tui.components.pane.Anchor
+import grit.tui.components.pane.Viewport
+import grit.tui.components.tree.{Node, OnInput, PaneKey}
+import grit.tui.components.widget.Scrollbar
 import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
 import grit.tui.model.select.Doc
-import grit.tui.model.surface.{Frame, Pos, Rect, Size, Surface}
-import grit.tui.components.pane.Anchor
 import grit.tui.model.select.Selection
+import grit.tui.model.surface.{Frame, Pos, Rect, Size, Surface}
 
 /** One stop on the focus path, root first. `first` runs on the way down (capture: hotkeys,
   * a popup's arrows), `last` on the way back up (bubble: the leaf's own editing, then

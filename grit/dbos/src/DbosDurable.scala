@@ -1,9 +1,10 @@
 package grit.dbos
 
+import grit.core.{Durable, Journaled, Tx, UnreadableJournal, WorkflowId}
+
 import dev.dbos.transact.DBOS
 import dev.dbos.transact.execution.ThrowingSupplier
 import dev.dbos.transact.txstep.JdbcStepFactory
-import grit.core.{Durable, Journaled, Tx, UnreadableJournal, WorkflowId}
 
 /** [[Durable]] over DBOS, for the workflow `workflowId`: `step` is a DBOS step, `transact`
   * a `txStep`. Outputs cross DBOS as the `String` their [[Journaled]] encodes to, so its

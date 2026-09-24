@@ -4,6 +4,7 @@ import grit.core.EntryId
 import grit.dbos.{Engine, LiveDb, TestPostgres}
 import grit.models.StubProvider
 import grit.turn.Turn
+
 import utest.*
 
 /** M0's exit criterion against Postgres and DBOS: a turn's provider call happens once,

@@ -1,8 +1,10 @@
 package grit.tui.runtime.loop
 
-import grit.tui.runtime.app.TimerId
-import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.{CountDownLatch, TimeUnit}
+
+import grit.tui.runtime.app.TimerId
+
 import utest.*
 
 /** The scheduler is a capability with real threads, so these tests use real time. Delays

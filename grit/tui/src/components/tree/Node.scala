@@ -1,10 +1,10 @@
 package grit.tui.components.tree
 
-import grit.tui.components.view.View
-import grit.tui.components.layout.Region
 import grit.tui.components.editor.Editor
+import grit.tui.components.layout.Region
 import grit.tui.components.overlay.{Modal, Popup}
 import grit.tui.components.pane.Anchor
+import grit.tui.components.view.View
 import grit.tui.model.input.Input
 import grit.tui.model.select.{Doc, Selection}
 import grit.tui.model.surface.{Pos, Rect, Size, Style}

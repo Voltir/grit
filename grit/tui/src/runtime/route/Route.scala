@@ -1,10 +1,10 @@
 package grit.tui.runtime.route
 
 import grit.tui.components.tree.PaneKey
-import grit.tui.runtime.render.{Painted, PanePaint, Target}
 import grit.tui.model.input.{Button, Input, MouseEvent, MouseKind}
 import grit.tui.model.select.{DocPos, Selection}
 import grit.tui.model.surface.Pos
+import grit.tui.runtime.render.{Painted, PanePaint, Target}
 
 /** The pointer, as the runtime holds it between events. Mechanism, not app state: which
   * pane owns a drag is decided by where the press landed and nothing the app says.

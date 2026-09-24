@@ -1,18 +1,19 @@
 package grit.tui.runtime.loop
 
+import grit.tui.components.editor.Editor
+import grit.tui.components.overlay.Modal
+import grit.tui.components.pane.Anchor
+import grit.tui.components.tree.Node.*
 import grit.tui.components.tree.{Node, PaneKey, Scroller}
+import grit.tui.model.block.Block
+import grit.tui.model.input.{Button, Input, Mods, MouseEvent, MouseKind}
+import grit.tui.model.select.{Doc, Selection}
+import grit.tui.model.surface.{Pos, Rect, Size}
 import grit.tui.runtime.app.{App, Effect}
 import grit.tui.runtime.render.Memo
 import grit.tui.runtime.route.{Grab, Route}
-import grit.tui.components.editor.Editor
-import grit.tui.components.overlay.Modal
-import grit.tui.model.block.Block
-import grit.tui.model.input.{Button, Input, Mods, MouseEvent, MouseKind}
-import grit.tui.components.pane.Anchor
-import grit.tui.model.select.{Doc, Selection}
-import grit.tui.model.surface.{Pos, Rect, Size}
 import grit.tui.wire.paint.{Painter, Vt}
-import grit.tui.components.tree.Node.*
+
 import utest.*
 
 /** The view tree against the painted grid: rules 5 and 6 read off a [[Vt]], and

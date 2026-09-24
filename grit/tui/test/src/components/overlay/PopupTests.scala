@@ -3,6 +3,7 @@ package grit.tui.components.overlay
 import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
 import grit.tui.model.surface.{Pos, Rect, Size}
 import grit.tui.model.text.Width
+
 import utest.*
 
 object PopupTests extends TestSuite {

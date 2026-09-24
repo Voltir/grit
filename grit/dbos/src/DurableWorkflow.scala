@@ -1,9 +1,10 @@
 package grit.dbos
 
-import dev.dbos.transact.DBOS
-import dev.dbos.transact.txstep.JdbcStepFactory
-import dev.dbos.transact.execution.RegisteredWorkflow
 import grit.core.{Durable, WorkflowId}
+
+import dev.dbos.transact.DBOS
+import dev.dbos.transact.execution.RegisteredWorkflow
+import dev.dbos.transact.txstep.JdbcStepFactory
 
 /** The one class every grit workflow is registered under. DBOS records a workflow by its
   * name and class name, and refuses to resume an id under a different pair. Every workflow

@@ -5,6 +5,7 @@ import grit.tui.model.block.Block
 import grit.tui.model.select.{Doc, DocPos, Selection}
 import grit.tui.model.surface.{Pos, Size}
 import grit.tui.model.text.Width
+
 import utest.*
 
 /** The scroll model, checked against the properties the design rests on: the reading

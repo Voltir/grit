@@ -1,10 +1,12 @@
 package grit.dbos
 
 import java.sql.DriverManager
-import org.testcontainers.postgresql.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
+
 import scala.util.Using
 import scala.util.control.NonFatal
+
+import org.testcontainers.postgresql.PostgreSQLContainer
+import org.testcontainers.utility.DockerImageName
 
 /** One throwaway Postgres per test JVM, started by the first suite that asks, with a fresh
   * database per call so suites never see each other's rows. Nothing stops the container:

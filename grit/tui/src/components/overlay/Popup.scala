@@ -1,7 +1,7 @@
 package grit.tui.components.overlay
 
-import grit.tui.components.view.View
 import grit.tui.components.layout.Border
+import grit.tui.components.view.View
 import grit.tui.model.input.{Button, Input, Key, MouseKind}
 import grit.tui.model.surface.{Pos, Rect, Size, Style, Surface}
 import grit.tui.model.text.Width

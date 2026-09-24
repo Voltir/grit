@@ -1,7 +1,8 @@
 package grit.tui.model.block
 
-import grit.tui.model.surface.Style
 import scala.annotation.unused
+
+import grit.tui.model.surface.Style
 import grit.tui.model.text.{Span, StyledText}
 
 /** How a block's overlong lines meet the pane width.

@@ -1,6 +1,7 @@
 package grit.dbos
 
 import grit.core.Origin
+
 import utest.*
 
 object OriginJsonTests extends TestSuite {

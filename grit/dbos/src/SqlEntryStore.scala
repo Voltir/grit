@@ -1,11 +1,14 @@
 package grit.dbos
 
-import grit.core.{ConversationId, Entry, EntryId, EntryStore, PayloadJson, StoreError, Tx, TurnSeq}
 import java.sql.ResultSet
-import org.postgresql.util.PSQLException
 import java.time.{OffsetDateTime, ZoneOffset}
+
 import scala.util.Using
 import scala.util.control.NonFatal
+
+import grit.core.{ConversationId, Entry, EntryId, EntryStore, PayloadJson, StoreError, TurnSeq, Tx}
+
+import org.postgresql.util.PSQLException
 
 /** [[EntryStore]] over the `grit.entries` table. */
 final class SqlEntryStore extends EntryStore {

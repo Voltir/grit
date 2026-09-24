@@ -2,10 +2,10 @@ package grit.tui.examples
 
 import grit.tui.components.tree.{Node, OnInput}
 import grit.tui.components.view.View
-import grit.tui.runtime.app.{App, Effect, Host}
-import grit.tui.runtime.loop.Runtime
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.*
+import grit.tui.runtime.app.{App, Effect, Host}
+import grit.tui.runtime.loop.Runtime
 
 /** The smallest thing that proves the terminal seam works: take the screen, paint, read
   * real input, resize, and give the terminal back.

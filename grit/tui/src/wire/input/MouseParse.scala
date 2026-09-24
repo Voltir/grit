@@ -1,6 +1,6 @@
 package grit.tui.wire.input
 
-import grit.tui.model.input.{Button, MouseEvent, MouseKind, Mods}
+import grit.tui.model.input.{Button, Mods, MouseEvent, MouseKind}
 import grit.tui.model.surface.Pos
 
 /** Decoding of SGR (mode 1006) mouse reports.

@@ -1,9 +1,11 @@
 package grit.assembly
 
+import java.time.Instant
+
 import grit.core.*
 import grit.dbos.TestTx
+
 import utest.*
-import java.time.Instant
 
 object LinearAssemblerTests extends TestSuite {
 

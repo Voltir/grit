@@ -1,9 +1,10 @@
 package grit.app
 
-import grit.tui.runtime.app.Effect
-import grit.tui.runtime.loop.Headless
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.Size
+import grit.tui.runtime.app.Effect
+import grit.tui.runtime.loop.Headless
+
 import utest.*
 
 /** The chat screen with no terminal and no engine, read off the painted screen: what a

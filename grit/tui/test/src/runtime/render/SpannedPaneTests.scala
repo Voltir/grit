@@ -5,6 +5,7 @@ import grit.tui.model.block.Block
 import grit.tui.model.select.{Doc, DocPos, Selection}
 import grit.tui.model.surface.{Color, Size, Style}
 import grit.tui.model.text.{StyledText, Width}
+
 import utest.*
 
 /** Rule 5, restated for colour.

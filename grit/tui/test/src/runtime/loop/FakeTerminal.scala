@@ -1,6 +1,7 @@
 package grit.tui.runtime.loop
 
 import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
+
 import grit.tui.model.surface.Size
 import grit.tui.wire.term.Terminal
 

@@ -1,9 +1,10 @@
 package grit.tui.model.block
 
-import grit.tui.runtime.render.DocMemo
 import grit.tui.components.pane.{Anchor, Viewport}
 import grit.tui.model.select.{Doc, DocPos, Selection}
 import grit.tui.model.surface.{Pos, Size}
+import grit.tui.runtime.render.DocMemo
+
 import utest.*
 
 /** Transcript blocks that are not one string of text.

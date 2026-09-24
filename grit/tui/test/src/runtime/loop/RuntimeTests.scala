@@ -1,13 +1,15 @@
 package grit.tui.runtime.loop
 
+import java.util.concurrent.{CountDownLatch, TimeUnit}
+
+import grit.tui.components.tree.Node.*
 import grit.tui.components.tree.{Node, OnInput}
 import grit.tui.components.view.View
-import grit.tui.runtime.app.{App, Effect, Host, Mailbox, TimerId}
-import java.util.concurrent.{CountDownLatch, TimeUnit}
-import grit.tui.components.tree.Node.*
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.{Cell, Pos, Size, Surface}
+import grit.tui.runtime.app.{App, Effect, Host, Mailbox, TimerId}
 import grit.tui.wire.paint.Vt
+
 import utest.*
 
 /** The loop, driven headlessly against a [[FakeTerminal]].

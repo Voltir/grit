@@ -1,8 +1,10 @@
 package grit.dbos
 
-import grit.core.{Conversation, ConversationId, ConversationStore, Origin, StoreError, Tx}
 import java.time.OffsetDateTime
+
 import scala.util.Using
+
+import grit.core.{Conversation, ConversationId, ConversationStore, Origin, StoreError, Tx}
 
 /** [[ConversationStore]] over the `grit.conversations` table. */
 final class SqlConversationStore extends ConversationStore {

@@ -1,5 +1,7 @@
 package grit.turn
 
+import java.time.Instant
+
 import grit.core.{
   AssemblyError,
   AssemblyRequest,
@@ -15,13 +17,12 @@ import grit.core.{
   Provider,
   ProviderError,
   StoreError,
-  Tx,
   TurnRef,
+  Tx,
   UsageLedger,
-  WorkflowId,
-  Window
+  Window,
+  WorkflowId
 }
-import java.time.Instant
 
 /** The durable turn: one workflow per turn, in three steps. Each step's output is
   * recorded, so a turn resumed after a crash never calls the model twice.

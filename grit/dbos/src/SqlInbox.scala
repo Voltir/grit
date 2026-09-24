@@ -1,6 +1,11 @@
 package grit.dbos
 
-import dev.dbos.transact.DBOSClient
+import java.time.Instant
+import javax.sql.DataSource
+
+import scala.util.Using
+import scala.util.control.NonFatal
+
 import grit.core.{
   ConversationId,
   ConversationStore,
@@ -14,13 +19,11 @@ import grit.core.{
   Payload,
   SourceId,
   StoreError,
-  Tx,
-  TurnRef
+  TurnRef,
+  Tx
 }
-import java.time.Instant
-import javax.sql.DataSource
-import scala.util.Using
-import scala.util.control.NonFatal
+
+import dev.dbos.transact.DBOSClient
 
 /** [[Inbox]] over Postgres alone, so an edge in another process can use it: ingest is one
   * short transaction, and a turn is started by enqueueing it through `client`.

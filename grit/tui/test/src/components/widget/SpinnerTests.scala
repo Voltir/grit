@@ -1,7 +1,8 @@
 package grit.tui.components.widget
 
-import grit.tui.wire.paint.Painter
 import grit.tui.model.surface.{Frame, Size}
+import grit.tui.wire.paint.Painter
+
 import utest.*
 
 object SpinnerTests extends TestSuite {

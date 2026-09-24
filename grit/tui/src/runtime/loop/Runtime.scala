@@ -1,15 +1,17 @@
 package grit.tui.runtime.loop
 
-import grit.tui.runtime.app.{App, Effect, Host, Mailbox, TimerId}
-import grit.tui.runtime.route.{Tick, Timer}
 import java.util.concurrent.LinkedBlockingQueue
+
 import scala.util.{Failure, Success, Using}
+
 import grit.tui.model.input.Input
 import grit.tui.model.surface.{Frame, Size}
+import grit.tui.runtime.app.{App, Effect, Host, Mailbox, TimerId}
+import grit.tui.runtime.route.{Tick, Timer}
 import grit.tui.wire.input.Decoder
 import grit.tui.wire.paint.{Ansi, Painter}
-import grit.tui.wire.term.{Stdout, SystemTerminal, Terminal}
 import grit.tui.wire.term.Terminal.given
+import grit.tui.wire.term.{Stdout, SystemTerminal, Terminal}
 
 /** The loop.
   *

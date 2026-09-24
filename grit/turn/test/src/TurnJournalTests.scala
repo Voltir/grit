@@ -2,6 +2,7 @@ package grit.turn
 
 import grit.core.*
 import grit.models.StubProvider
+
 import utest.*
 
 object TurnJournalTests extends TestSuite {

@@ -1,9 +1,10 @@
 package grit.dbos
 
-import dev.dbos.transact.{DBOS, DBOSClient}
+import grit.core.{ConversationId, Durable, TurnRef, WorkflowId}
+
 import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.workflow.Queue
-import grit.core.{ConversationId, Durable, TurnRef, WorkflowId}
+import dev.dbos.transact.{DBOS, DBOSClient}
 
 /** How a turn is known to DBOS: the workflow it runs as, and the queue that runs one turn
   * per conversation at a time, oldest first. DBOS counts running workflows and dequeues

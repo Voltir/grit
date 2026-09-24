@@ -1,6 +1,7 @@
 package grit.tui.components.layout
 
 import grit.tui.model.surface.{Rect, Size}
+
 import utest.*
 
 /** The stack arithmetic every box of the view tree resolves through. */

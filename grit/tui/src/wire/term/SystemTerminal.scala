@@ -6,6 +6,7 @@ import java.nio.charset.{CharsetDecoder, CodingErrorAction, StandardCharsets}
 import java.nio.file.{Files, Path}
 import java.util.Base64
 import java.util.concurrent.atomic.AtomicBoolean
+
 import grit.tui.model.surface.Size
 
 /** The real terminal.

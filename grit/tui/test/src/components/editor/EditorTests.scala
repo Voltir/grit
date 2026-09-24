@@ -2,6 +2,7 @@ package grit.tui.components.editor
 
 import grit.tui.model.input.{Input, Key, Mods}
 import grit.tui.model.surface.{Size, Surface}
+
 import utest.*
 
 object EditorTests extends TestSuite {

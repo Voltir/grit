@@ -1,14 +1,14 @@
 package grit.app
 
-import grit.tui.components.tree.{Node, OnInput, PaneKey, Scroller}
 import grit.tui.components.editor.Editor
+import grit.tui.components.tree.Node.*
+import grit.tui.components.tree.{Node, OnInput, PaneKey, Scroller}
 import grit.tui.components.widget.StatusBar
 import grit.tui.model.block.Block
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.select.Doc
 import grit.tui.model.surface.*
 import grit.tui.model.text.StyledText
-import grit.tui.components.tree.Node.*
 import grit.tui.runtime.app.Effect
 
 /** grit's chat screen: a transcript, a prompt and a status line. Pure, like every

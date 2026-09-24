@@ -2,6 +2,7 @@ package grit.tui.model.select
 
 import grit.tui.model.surface.*
 import grit.tui.model.text.{Width, Wrap}
+
 import utest.*
 
 object SelectionTests extends TestSuite {

@@ -1,10 +1,12 @@
 package grit.app
 
-import grit.tui.runtime.app.{Host, Mailbox}
+import java.util.UUID
+
+import scala.util.control.NonFatal
+
 import grit.core.{Message, Origin, SourceId}
 import grit.dbos.Engine
-import java.util.UUID
-import scala.util.control.NonFatal
+import grit.tui.runtime.app.{Host, Mailbox}
 
 /** The chat screen's engine side, for the conversation `origin` names. The screen reaches
   * the engine only through its inbox and store, as any edge does (ADR 0002).

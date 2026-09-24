@@ -1,9 +1,11 @@
 package grit.dbos
 
-import grit.core.{Db, StoreError, Tx}
 import javax.sql.DataSource
+
 import scala.util.Using
 import scala.util.control.NonFatal
+
+import grit.core.{Db, StoreError, Tx}
 
 /** [[Db]] over `dataSource`: each read is its own read-only transaction, always rolled
   * back, so nothing a body attempts to write survives.

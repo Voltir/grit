@@ -1,9 +1,11 @@
 package grit.dbos
 
-import grit.core.{EntryId, StoreError, Tokens, Tx, Usage, UsageLedger, WorkflowId}
-import org.postgresql.util.PSQLException
 import scala.util.Using
 import scala.util.control.NonFatal
+
+import grit.core.{EntryId, StoreError, Tokens, Tx, Usage, UsageLedger, WorkflowId}
+
+import org.postgresql.util.PSQLException
 
 /** [[UsageLedger]] over the `grit.usage_ledger` table. */
 final class SqlUsageLedger extends UsageLedger {

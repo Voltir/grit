@@ -7,6 +7,7 @@ import grit.tui.components.widget.{Scrollbar, Spinner, StatusBar}
 import grit.tui.model.surface.{Frame, Size, Surface}
 import grit.tui.model.text.Width
 import grit.tui.wire.paint.Painter
+
 import utest.*
 
 object ViewTests extends TestSuite {

@@ -1,6 +1,7 @@
 package grit.tui.model.text
 
 import grit.tui.model.surface.{Color, Style}
+
 import utest.*
 
 /** Spans index the logical, unwrapped text, and [[Span.rebase]] is the one operation

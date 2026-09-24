@@ -1,6 +1,7 @@
 package grit.tui.components.widget
 
 import grit.tui.model.surface.Size
+
 import utest.*
 
 object StatusBarTests extends TestSuite {

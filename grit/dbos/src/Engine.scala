@@ -1,9 +1,11 @@
 package grit.dbos
 
-import dev.dbos.transact.{DBOS, DBOSClient}
-import dev.dbos.transact.config.DBOSConfig
-import dev.dbos.transact.txstep.JdbcStepFactory
-import dev.dbos.transact.workflow.WorkflowState
+import java.sql.DriverManager
+
+import scala.io.Source
+import scala.util.Using
+import scala.util.control.NonFatal
+
 import grit.core.{
   ConversationId,
   ConversationStore,
@@ -18,11 +20,12 @@ import grit.core.{
   UsageLedger,
   WorkflowId
 }
-import java.sql.DriverManager
+
+import dev.dbos.transact.config.DBOSConfig
+import dev.dbos.transact.txstep.JdbcStepFactory
+import dev.dbos.transact.workflow.WorkflowState
+import dev.dbos.transact.{DBOS, DBOSClient}
 import org.postgresql.ds.PGSimpleDataSource
-import scala.io.Source
-import scala.util.Using
-import scala.util.control.NonFatal
 
 /** grit over one Postgres: the stores, the turn workflow, and an edge's [[Inbox]], all in
   * this process. Open it, [[launch]] it with the turn's body, and close it when done; its

@@ -2,6 +2,7 @@ package grit.tui.components.overlay
 
 import grit.tui.model.surface.{Color, Pos, Rect, Size, Style, Surface}
 import grit.tui.model.text.Width
+
 import utest.*
 
 object ModalTests extends TestSuite {

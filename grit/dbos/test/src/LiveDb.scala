@@ -1,8 +1,10 @@
 package grit.dbos
 
-import grit.core.{Conversation, Origin, StoreError, Tx}
 import java.sql.DriverManager
+
 import scala.util.Using
+
+import grit.core.{Conversation, Origin, StoreError, Tx}
 
 /** Direct transactions on a live test database, for arranging rows and reading them back
   * outside the code under test.

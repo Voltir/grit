@@ -1,7 +1,9 @@
 package grit.dbos
 
-import grit.core.*
 import java.time.Instant
+
+import grit.core.*
+
 import utest.*
 
 /** grit.dbos's stores and inbox against a real Postgres. */

@@ -1,16 +1,17 @@
 package grit.tui.runtime.route
 
-import grit.tui.components.tree.{Node, OnInput, PaneKey, Scroller}
-import grit.tui.runtime.app.{App, Effect}
-import grit.tui.runtime.loop.{Headless, Loop}
-import grit.tui.components.tree.Node.*
 import grit.tui.components.editor.Editor
 import grit.tui.components.overlay.{Modal, Popup}
 import grit.tui.components.pane.Anchor
+import grit.tui.components.tree.Node.*
+import grit.tui.components.tree.{Node, OnInput, PaneKey, Scroller}
 import grit.tui.model.block.Block
 import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
 import grit.tui.model.select.{Doc, DocPos}
 import grit.tui.model.surface.{Pos, Size, Style}
+import grit.tui.runtime.app.{App, Effect}
+import grit.tui.runtime.loop.{Headless, Loop}
+
 import utest.*
 
 /** Input routed against the painted tree, through [[Headless]]: two scrolling columns

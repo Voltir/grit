@@ -1,8 +1,9 @@
 package grit.core
 
+import java.nio.file.Files
+
 import dotty.tools.dotc.Driver
 import dotty.tools.dotc.reporting.StoreReporter
-import java.nio.file.Files
 import utest.*
 
 /** What separation checking rejects about [[Durable]] (ADR 0003), pinned by compiling

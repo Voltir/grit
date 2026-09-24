@@ -1,8 +1,10 @@
 package grit.app
 
+import java.time.Instant
+
 import grit.core.*
 import grit.dbos.TurnStatus
-import java.time.Instant
+
 import utest.*
 
 /** Following a conversation, with no database: what the screen is told as entries appear

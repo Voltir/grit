@@ -1,6 +1,5 @@
 package grit.tui.runtime.loop
 
-import grit.tui.runtime.app.TimerId
 import java.util.concurrent.{
   ConcurrentHashMap,
   ExecutorService,
@@ -9,6 +8,8 @@ import java.util.concurrent.{
   ScheduledFuture,
   TimeUnit
 }
+
+import grit.tui.runtime.app.TimerId
 
 /** Cancellable timers on virtual threads.
   *

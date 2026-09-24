@@ -1,6 +1,7 @@
 package grit.assembly
 
 import grit.core.*
+
 import utest.*
 
 object TokenEstimateTests extends TestSuite {
