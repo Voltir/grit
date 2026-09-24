@@ -2,10 +2,11 @@ package grit.assembly
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.provider.ModelRequest
 
 import utest.*
 
-object TokenEstimateTests extends TestSuite {
+object CharEstimateTests extends TestSuite {
 
   private def assistant(blocks: AssistantBlock*): Message =
     Message.Assistant(
@@ -15,9 +16,16 @@ object TokenEstimateTests extends TestSuite {
       "test"
     )
 
-  private def estimate(m: Message): Long = Tokens.value(TokenEstimate.of(m))
+  private def estimate(m: Message): Long = Tokens.value(CharEstimate.message(m))
 
   val tests = Tests {
+    test("a request costs its system prompt, framed like a message, and every message") {
+      Tokens.value(CharEstimate.system("abcde")) ==> 6
+      Tokens.value(
+        CharEstimate.request(ModelRequest("abcde", Vector(Message.User("abcd"), Message.User(""))))
+      ) ==> 6 + 5 + 4
+    }
+
     test("a message costs its framing plus a token per four characters, rounded up") {
       estimate(Message.User("")) ==> 4
       estimate(Message.User("abcd")) ==> 5

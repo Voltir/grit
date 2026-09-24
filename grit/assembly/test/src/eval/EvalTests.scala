@@ -54,7 +54,7 @@ object EvalTests extends TestSuite {
 
     test("the score counts labelled entries held, the window's tokens, and what was missed") {
       val loaded = Eval.load(parsed(sample))
-      // "two" is 4 + 1 tokens, "one" 4 + 1 (TokenEstimate).
+      // "two" is 4 + 1 tokens, "one" 4 + 1 (CharEstimate).
       Eval.score(loaded, Vector(EntryId("t0:0"), EntryId("t0:1"))) ==>
         Eval.Score(1, 2, Tokens(10), Vector(EntryId("t1:2")))
       Eval.run(loaded, Eval.Strategy.Oracle).map(_.got) ==> Right(2)

@@ -33,21 +33,23 @@ object LiveDb {
     }
 
   /** Every usage ledger row, as (entry id, model, cost). */
-  def ledger(config: DbConfig): Vector[(String, String, Option[BigDecimal])] =
+  /** Every ledger row: entry, model, cost, and the estimate of the request's input. */
+  def ledger(config: DbConfig): Vector[(String, String, Option[BigDecimal], Long)] =
     transaction(config) { (tx: Tx^) ?=>
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       Using.resource(
         conn.prepareStatement(
-          "SELECT entry_id, model, cost_usd FROM grit.usage_ledger ORDER BY entry_id"
+          "SELECT entry_id, model, cost_usd, estimated_input_tokens FROM grit.usage_ledger ORDER BY entry_id"
         )
       ) { ps =>
         Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[(String, String, Option[BigDecimal])]
+          val rows = Vector.newBuilder[(String, String, Option[BigDecimal], Long)]
           while (rs.next())
             rows += ((
               rs.getString(1),
               rs.getString(2),
-              Option(rs.getBigDecimal(3)).map(BigDecimal(_))
+              Option(rs.getBigDecimal(3)).map(BigDecimal(_)),
+              rs.getLong(4)
             ))
           rows.result()
         }

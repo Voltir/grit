@@ -2,7 +2,7 @@ package grit.turn
 
 import java.time.Instant
 
-import grit.assembly.LinearAssembler
+import grit.assembly.{CharEstimate, LinearAssembler}
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
@@ -98,7 +98,8 @@ object TurnFixtures {
       system,
       entries,
       ledger,
-      new LinearAssembler(entries, LinearAssembler.DefaultBudget),
+      new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
+      CharEstimate,
       provider,
       FakeDb
     )(id)

@@ -1,6 +1,6 @@
 package grit.app
 
-import grit.assembly.LinearAssembler
+import grit.assembly.{CharEstimate, LinearAssembler}
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
@@ -76,7 +76,8 @@ object Main {
             SystemPrompt,
             engine.entries,
             engine.ledger,
-            new LinearAssembler(engine.entries, budget),
+            new LinearAssembler(engine.entries, CharEstimate, budget),
+            CharEstimate,
             provider,
             engine.db
           )

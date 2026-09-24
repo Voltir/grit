@@ -6,7 +6,7 @@ import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Wind
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
-import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.provider.{ModelRequest, Provider, ProviderError, TokenEstimator}
 import grit.core.store.{Db, Entry, EntryStore, Payload, StoreError, Tx, UsageLedger}
 
 /** The durable turn: one workflow per turn, in three steps. Each step's output is
@@ -15,7 +15,7 @@ import grit.core.store.{Db, Entry, EntryStore, Payload, StoreError, Tx, UsageLed
   *   1. `assemble` — a fresh window over what came before the turn.
   *   2. `call-model` — the window, then the turn's own messages, sent to the provider.
   *   3. `append` — the reply recorded as the turn's entry, with its cost in the usage
-  *      ledger, atomically with the step.
+  *      ledger beside `estimator`'s estimate of the request, atomically with the step.
   *
   * A step that fails returns a [[TurnFailure]], which ends the turn and is recorded like
   * any other output: a rerun ends the same way without calling anything.
@@ -38,13 +38,14 @@ object Turn {
       entries: EntryStore,
       ledger: UsageLedger,
       assembler: ContextAssembler,
+      estimator: TokenEstimator,
       provider: Provider^,
       db: Db^
   )(workflowId: WorkflowId)(using d: Durable^): String =
     TurnRef.fromWorkflowId(workflowId) match {
       case None => s"not a turn: ${WorkflowId.value(workflowId)}"
       case Some(turn) =>
-        run(system, entries, ledger, assembler, provider, db, turn) match {
+        run(system, entries, ledger, assembler, estimator, provider, db, turn) match {
           case Right(reply) => s"replied: ${EntryId.value(reply)}"
           case Left(failure) => s"failed: $failure"
         }
@@ -59,6 +60,7 @@ object Turn {
       entries: EntryStore,
       ledger: UsageLedger,
       assembler: ContextAssembler,
+      estimator: TokenEstimator,
       provider: Provider^,
       db: Db^,
       turn: TurnRef
@@ -78,7 +80,9 @@ object Turn {
           }
         }
       }
-      appended <- d.transact("append")(append(entries, ledger, turn, reply, message))
+      appended <- d.transact("append")(
+        append(system, entries, ledger, estimator, turn, window, reply, message)
+      )
     } yield appended
   }
 
@@ -90,48 +94,72 @@ object Turn {
       turn: TurnRef,
       window: Window
   ): Either[TurnFailure, ModelRequest] =
-    db.read(entries.list(turn.conversationId)).left.map(storeFailure).flatMap { all =>
-      val byId = all.map(e => e.id -> e).toMap
-      window.entries.filterNot(byId.contains) match {
-        case missing if missing.nonEmpty =>
-          Left(
-            TurnFailure.Assembly(
-              s"window names unknown entries: ${missing.map(EntryId.value).mkString(", ")}"
-            )
+    db.read(entries.list(turn.conversationId))
+      .left
+      .map(storeFailure)
+      .flatMap(requestOf(system, _, turn, window))
+
+  /** The request [[request]] builds, from `all` of the conversation's entries. */
+  private def requestOf(
+      system: String,
+      all: Vector[Entry],
+      turn: TurnRef,
+      window: Window
+  ): Either[TurnFailure, ModelRequest] = {
+    val byId = all.map(e => e.id -> e).toMap
+    window.entries.filterNot(byId.contains) match {
+      case missing if missing.nonEmpty =>
+        Left(
+          TurnFailure.Assembly(
+            s"window names unknown entries: ${missing.map(EntryId.value).mkString(", ")}"
           )
-        case _ =>
-          val seen = window.entries.flatMap(byId.get) ++ all.filter(_.turnSeq == turn.turnSeq)
-          Right(
-            ModelRequest(system, seen.map(e => e.payload match { case Payload.Message(m) => m }))
-          )
-      }
+        )
+      case _ =>
+        val seen = window.entries.flatMap(byId.get) ++ all.filter(_.turnSeq == turn.turnSeq)
+        Right(
+          ModelRequest(system, seen.map(e => e.payload match { case Payload.Message(m) => m }))
+        )
     }
+  }
 
   /** Records `message` as `turn`'s entry `id`, after everything already in the
-    * conversation, and what it cost in the ledger.
+    * conversation, and what it cost in the ledger beside the estimate of the request that
+    * produced it. The request is rebuilt from the same window and the same entries: the
+    * turn's own were all recorded before its call, and the reply is not yet among them.
     */
   private def append(
+      system: String,
       entries: EntryStore,
       ledger: UsageLedger,
+      estimator: TokenEstimator,
       turn: TurnRef,
+      window: Window,
       id: EntryId,
       message: Message.Assistant
   )(using Tx^): Either[TurnFailure, EntryId] =
-    (for {
-      next <- entries.lockNext(turn.conversationId)
-      _ <- entries.insert(
-        Entry(
-          id,
-          turn.conversationId,
-          turn.turnSeq,
-          None,
-          next.seq,
-          Payload.Message(message),
-          Instant.now()
+    for {
+      next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
+      all <- entries.list(turn.conversationId).left.map(storeFailure)
+      sent <- requestOf(system, all, turn, window)
+      _ <- entries
+        .insert(
+          Entry(
+            id,
+            turn.conversationId,
+            turn.turnSeq,
+            None,
+            next.seq,
+            Payload.Message(message),
+            Instant.now()
+          )
         )
-      )
-      _ <- ledger.record(id, turn.workflowId, message.model, message.usage)
-    } yield id).left.map(storeFailure)
+        .left
+        .map(storeFailure)
+      _ <- ledger
+        .record(id, turn.workflowId, message.model, message.usage, estimator.request(sent))
+        .left
+        .map(storeFailure)
+    } yield id
 
   private def storeFailure(error: StoreError): TurnFailure = TurnFailure.Store(describe(error))
 

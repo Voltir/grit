@@ -58,7 +58,7 @@ object LinearAssemblerTests extends TestSuite {
   private def small(n: Int): Vector[Message] = Vector(user(f"q$n%03d"), reply(f"answer$n%02d"))
 
   private def window(entries: EntryStore, turn: Long, budget: Long): Vector[String] =
-    new LinearAssembler(entries, Tokens(budget))
+    new LinearAssembler(entries, CharEstimate, Tokens(budget))
       .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn))))(using FakeDb)
       .fold(e => sys.error(s"assembly failed: $e"), _.entries.map(EntryId.value))
 
@@ -109,7 +109,7 @@ object LinearAssemblerTests extends TestSuite {
         def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] = Left(down)
         def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = Left(down)
       }
-      new LinearAssembler(Down, Tokens(1000))
+      new LinearAssembler(Down, CharEstimate, Tokens(1000))
         .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(1))))(using FakeDb) ==>
         Left(AssemblyError.Store(StoreError.DatabaseError("down")))
     }

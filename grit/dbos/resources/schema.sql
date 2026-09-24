@@ -40,5 +40,8 @@ CREATE TABLE IF NOT EXISTS grit.usage_ledger (
     cached_input_tokens BIGINT NOT NULL,
     -- The provider's own figure; NULL when it reports none.
     cost_usd            NUMERIC,
+    -- grit's estimate of input_tokens for the same request (TokenEstimator): the two
+    -- side by side are how an estimator is checked.
+    estimated_input_tokens BIGINT NOT NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );

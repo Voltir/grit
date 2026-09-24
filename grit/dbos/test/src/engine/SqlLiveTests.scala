@@ -68,18 +68,18 @@ object SqlLiveTests extends TestSuite {
       after ==> (Left(StoreError.DuplicateId(EntryId("dup"))), Right(()))
     }
 
-    test("the ledger records a response once, with its exact cost") {
+    test("the ledger records a response once, with its exact cost and the estimate") {
       val c = LiveDb.conversation(config, Origin.Task("sql", "ledger")).id
       val ledger = new SqlUsageLedger()
       val usage = Usage(Tokens(10), Tokens(5), Tokens(2), Some(BigDecimal("0.0000123")))
       val outcome = LiveDb.transaction(config) {
         entries.insert(entry(c, "costly", 0))
-        val first = ledger.record(EntryId("costly"), WorkflowId("w"), "m", usage)
-        (first, ledger.record(EntryId("costly"), WorkflowId("w"), "m", usage))
+        val first = ledger.record(EntryId("costly"), WorkflowId("w"), "m", usage, Tokens(12))
+        (first, ledger.record(EntryId("costly"), WorkflowId("w"), "m", usage, Tokens(12)))
       }
       outcome ==> (Right(()), Left(StoreError.DuplicateId(EntryId("costly"))))
       LiveDb.ledger(config).filter(_._1 == "costly") ==>
-        Vector(("costly", "m", Some(BigDecimal("0.0000123"))))
+        Vector(("costly", "m", Some(BigDecimal("0.0000123")), 12L))
     }
 
     test("ingest: the same source is the same turn, a new one the next turn") {

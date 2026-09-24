@@ -1,5 +1,6 @@
 package grit.turn
 
+import grit.assembly.CharEstimate
 import grit.core.durable.InMemoryDurable
 import grit.core.id.WorkflowId
 import grit.core.message.Message
@@ -27,10 +28,13 @@ object TurnTests extends TestSuite {
       val ledger = new InMemoryUsageLedger
       val durable = new InMemoryDurable
       val turn = say(entries, "hello")
-      runTurn(durable, entries, new RecordingProvider, turn, ledger)
+      val provider = new RecordingProvider
+      runTurn(durable, entries, provider, turn, ledger)
       runTurn(durable, entries, new RecordingProvider, turn, ledger)
       ledger.rows.map(r => (r._1, r._2, r._3)) ==>
         Vector((Turn.replyId(turn), turn.workflowId, StubProvider.Model))
+      // Beside it, the estimate of exactly the request the provider was sent.
+      ledger.rows.map(_._5) ==> provider.requests.map(CharEstimate.request)
     }
 
     test("M0 gate: the same workflow id twice calls the provider once") {

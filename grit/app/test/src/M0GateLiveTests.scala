@@ -42,7 +42,7 @@ object M0GateLiveTests extends TestSuite {
       rerun ==> output
       second.calls ==> 0
       text ==> Some("stub reply to: message a")
-      LiveDb.ledger(config) ==>
+      LiveDb.ledger(config).map(r => (r._1, r._2, r._3)) ==>
         Vector((EntryId.value(Turn.replyId(turn)), StubProvider.Model, Some(BigDecimal(0))))
     }
 

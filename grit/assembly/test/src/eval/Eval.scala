@@ -2,7 +2,7 @@ package grit.assembly.eval
 
 import java.time.Instant
 
-import grit.assembly.{LinearAssembler, TokenEstimate}
+import grit.assembly.{CharEstimate, LinearAssembler}
 import grit.core.context.AssemblyRequest
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -97,7 +97,7 @@ object Eval {
   def run(loaded: Loaded, strategy: Strategy): Either[String, Score] = {
     val window = strategy match {
       case Strategy.Linear(budget) =>
-        new LinearAssembler(loaded.store, budget)
+        new LinearAssembler(loaded.store, CharEstimate, budget)
           .assemble(AssemblyRequest(loaded.turn))(using FakeDb)
           .map(_.entries)
           .left
@@ -112,7 +112,7 @@ object Eval {
     Score(
       loaded.must.count(held),
       loaded.must.size,
-      window.flatMap(loaded.messages.get).map(TokenEstimate.of).foldLeft(Tokens.Zero)(_ + _),
+      window.flatMap(loaded.messages.get).map(CharEstimate.message).foldLeft(Tokens.Zero)(_ + _),
       loaded.must.filterNot(held)
     )
   }

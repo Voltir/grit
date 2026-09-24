@@ -1,6 +1,6 @@
 package grit.app
 
-import grit.assembly.LinearAssembler
+import grit.assembly.{CharEstimate, LinearAssembler}
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
@@ -32,7 +32,8 @@ object LiveTurn {
         "You are grit.",
         entries,
         engine.ledger,
-        new LinearAssembler(entries, LinearAssembler.DefaultBudget),
+        new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
+        CharEstimate,
         provider,
         engine.db
       )
