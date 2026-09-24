@@ -101,7 +101,7 @@ object RuntimeTests extends TestSuite {
     val done = started(runtime, "runtime-under-test")
     try { body(term, runtime) }
     finally {
-      runtime.offer(Msg.Done)
+      runtime.mailbox.offer(Msg.Done)
       val _ = done.await(5L, TimeUnit.SECONDS)
       scheduler.close()
     }
@@ -217,7 +217,7 @@ object RuntimeTests extends TestSuite {
         v.feed(term.painted)
         assert(v.cells(3)(term.size.cols - 2).ch == '#', v.cells(3)(term.size.cols - 1).ch == ' ')
       } finally {
-        runtime.offer(Msg.Done)
+        runtime.mailbox.offer(Msg.Done)
         val _ = done.await(5L, TimeUnit.SECONDS)
         scheduler.close()
       }
@@ -242,7 +242,7 @@ object RuntimeTests extends TestSuite {
       val runtime = new Runtime(app, term, scheduler, escapeTimeoutMs = 20L)
       val burst = 50
       var i = 0
-      while (i < burst) { runtime.offer(Msg.Typed('x')); i += 1 }
+      while (i < burst) { runtime.mailbox.offer(Msg.Typed('x')); i += 1 }
 
       val done = new CountDownLatch(1)
       val t = new Thread(() => { runtime.run(); done.countDown() }, "bursting-runtime")
@@ -258,7 +258,7 @@ object RuntimeTests extends TestSuite {
       val frames = term.calls.count(_ == "flush")
       assert(frames < burst / 5)
 
-      runtime.offer(Msg.Done)
+      runtime.mailbox.offer(Msg.Done)
       val _ = done.await(5L, TimeUnit.SECONDS)
       scheduler.close()
     }
@@ -281,14 +281,14 @@ object RuntimeTests extends TestSuite {
         }
       }
       val runtime = new Runtime(app, term, scheduler, host, escapeTimeoutMs = 20L)
-      runtime.offer(Msg.Tick)
+      runtime.mailbox.offer(Msg.Tick)
       val done = new CountDownLatch(1)
       val t = new Thread(() => { runtime.run(); done.countDown() }, "hosted-runtime")
       t.setDaemon(true)
       t.start()
       // The request itself is never handled as the app's own message: only the answer is.
       assert(waitUntil(() => runtime.state.exists(_.typed == "H")))
-      runtime.offer(Msg.Done)
+      runtime.mailbox.offer(Msg.Done)
       val _ = done.await(5L, TimeUnit.SECONDS)
       scheduler.close()
     }
@@ -304,7 +304,7 @@ object RuntimeTests extends TestSuite {
       val t = new Thread(() => { runtime.run(); done.countDown() }, "quitting-runtime")
       t.setDaemon(true)
       t.start()
-      runtime.offer(Msg.Done)
+      runtime.mailbox.offer(Msg.Done)
       assert(done.await(5L, TimeUnit.SECONDS))
       val lifecycle = term.calls.filter(c => c == "enterRaw" || c == "exitRaw" || c == "close")
       assert(lifecycle == Vector("enterRaw", "exitRaw", "close"))
@@ -332,7 +332,7 @@ object RuntimeTests extends TestSuite {
       t.start()
       term.send("x")
       Thread.sleep(150L)
-      runtime.offer(Msg.Done)
+      runtime.mailbox.offer(Msg.Done)
       assert(done.await(5L, TimeUnit.SECONDS))
       Thread.sleep(600L)
       assert(runtime.state.exists(_.ticks == 0))
@@ -362,7 +362,7 @@ object RuntimeTests extends TestSuite {
         assert(waitUntil(() => runtime.state.exists(_.typed.isEmpty)))
         assert(runtime.state.exists(_.located.contains(Pos(5, 3))))
       } finally {
-        runtime.offer(Msg.Done)
+        runtime.mailbox.offer(Msg.Done)
         val _ = done.await(5L, TimeUnit.SECONDS)
         scheduler.close()
       }
@@ -383,7 +383,7 @@ object RuntimeTests extends TestSuite {
         term.send(pressAt(Pos(4, 2)))
         assert(waitUntil(() => runtime.state.exists(_.located.contains(Pos(4, 2)))))
       } finally {
-        runtime.offer(Msg.Done)
+        runtime.mailbox.offer(Msg.Done)
         val _ = done.await(5L, TimeUnit.SECONDS)
         scheduler.close()
       }
@@ -405,7 +405,7 @@ object RuntimeTests extends TestSuite {
         term.send(pressAt(Pos(4, 1)))
         assert(waitUntil(() => runtime.state.exists(_.located.isDefined)))
       } finally {
-        runtime.offer(Msg.Done)
+        runtime.mailbox.offer(Msg.Done)
         assert(done.await(5L, TimeUnit.SECONDS)) // run() returned, so teardown finished
         scheduler.close()
       }

@@ -45,13 +45,11 @@ final class Runtime[S, M <: caps.Pure](
     */
   def state: Option[S] = current
 
-  /** Deliver a message from outside the loop. */
-  def offer(msg: M): Unit = { val _ = queue.offer(Event.FromApp(msg)) }
-
-  /** What a [[Host]] answers through: the queue alone, not the runtime, which holds the
-    * terminal.
+  /** The one way a message reaches the loop from outside it -- a [[Host]]'s answers, and
+    * an embedding program's or a test's own. Safe from any thread. It holds the queue
+    * alone, not the runtime, which holds the terminal.
     */
-  private val mailbox: Mailbox[M] = msg => { val _ = queue.offer(Event.FromApp(msg)) }
+  val mailbox: Mailbox[M] = msg => { val _ = queue.offer(Event.FromApp(msg)) }
 
   /** Run until the app quits, then give everything back in reverse. Blocks the calling
     * thread.
