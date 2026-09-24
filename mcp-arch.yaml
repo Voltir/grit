@@ -43,6 +43,10 @@ ignore:
   # Indexed, it would dominate every count with code that is not ours.
   - ".local/**"
 
+  # Agents' git worktrees (Claude Code's `isolation: worktree`): whole copies of grit on
+  # other branches. Indexed, every import in them resolves to the copy and breaks the law.
+  - ".claude/worktrees/**"
+
   # The enola binary itself (51MB, extensionless). Excluded by kind anyway; named here
   # so the census stays legible.
   - "tools/**"
