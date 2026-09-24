@@ -48,8 +48,10 @@ only a nested `step`.
 
 **A `var` field in a plain class.**
 
-- *Symptom:* a separation error on the field.
+- *Symptom:* `Mutable variable n is defined in a class that does not extend Stateful or
+  Mutable. The variable needs to be annotated with untrackedCaptures to allow this.`
 - *Cause:* separation checking treats it as mutable state aliased through the object.
+  Visibility does not matter: `private var` and `private[this] var` fail the same way.
 - *Fix:* `@caps.unsafe.untrackedCaptures` when the field only ever holds immutable values
   (the fakes, `InMemoryDurable`). Otherwise make the class `caps.Stateful`, which then needs
   `update` modifiers on the methods that mutate it. A mutable *local* is fine.
