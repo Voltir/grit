@@ -11,7 +11,8 @@ In dependency order:
 - **`config`** — `DotEnv`: settings from a `.env` file under the real environment.
   Imports nothing in app.
 - **`look`** — `Theme`, a palette by role (Frost the default; `GRIT_THEME` picks
-  another), and `Look`, the chat screen's styles from a theme. Every theme is held to
+  another), and `Look`, the chat screen's styles from a theme: who speaks is a rune as
+  well as a colour (`Look.Runes`: ᛗ the user, ᚨ grit, ᚺ a failure, ᛁ idle, ᛭ between turns). Every theme is held to
   the same APCA contrast targets (`ThemeContrastTests`). Imports nothing in app.
 - **`chat`** — the chat TUI. `ChatScreen` is a pure `grit.tui` app whose transcript is a
   projection of the store: a submission leaves as `Effect.ToHost(Send)` and is shown when

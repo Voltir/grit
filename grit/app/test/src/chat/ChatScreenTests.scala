@@ -30,7 +30,7 @@ object ChatScreenTests extends TestSuite {
     h.screen
       .drop(1)
       .map(_.dropRight(1).trim)
-      .filter(r => r.startsWith("you>") || r.startsWith("grit") || r.startsWith("!"))
+      .filter(r => r.startsWith("▌") || r.startsWith("grit") || r.startsWith("ᚺ"))
 
   val tests = Tests {
     test("every cell has a background from the theme, none left to the terminal") {
@@ -51,9 +51,9 @@ object ChatScreenTests extends TestSuite {
 
     test("arrivals are painted in order, with the thinking line last while a turn runs") {
       val asked = started.message(Msg.Arrived(Vector(Said(true, "hi")), thinking = true))
-      said(asked) ==> Vector("you> hi", "grit is thinking…")
+      said(asked) ==> Vector("▌ᛗ hi", "grit is thinking…")
       val answered = asked.message(Msg.Arrived(Vector(Said(false, "hello")), thinking = false))
-      said(answered) ==> Vector("you> hi", "grit> hello")
+      said(answered) ==> Vector("▌ᛗ hi", "▌ᚨ hello")
     }
 
     test("a typed submission is sent to the host, and painted only once the store has it") {
@@ -70,7 +70,7 @@ object ChatScreenTests extends TestSuite {
     test("a failure is painted before the thinking line, which stays") {
       val failed =
         started.message(Msg.Arrived(Vector(), thinking = true)).message(Msg.Failed("down"))
-      said(failed) ==> Vector("! down", "grit is thinking…")
+      said(failed) ==> Vector("ᚺ down", "grit is thinking…")
     }
   }
 }

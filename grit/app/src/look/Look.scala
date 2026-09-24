@@ -1,14 +1,19 @@
 package grit.app.look
 
 import grit.tui.components.editor.Editor
+import grit.tui.components.layout.Border
+import grit.tui.components.view.View
 import grit.tui.model.block.Block
-import grit.tui.model.surface.Style
-import grit.tui.model.text.StyledText
+import grit.tui.model.surface.{Size, Style, Surface}
+import grit.tui.model.text.{StyledText, Width}
 
-/** The chat screen's styles, from `theme`. Colour only, never the terminal's dim or
-  * italic: terminals draw those as they like, and a meaning carried by them can vanish.
+/** The chat screen's styles, from `theme`. Colour and weight only, never the terminal's
+  * dim or italic: terminals draw those as they like, and a meaning carried by them can
+  * vanish. Who is speaking is a rune as well as a colour ([[Look.Runes]]), so it reads
+  * without the colour.
   */
 final case class Look(theme: Theme) {
+  import Look.Runes
 
   /** Under the whole screen, so no cell is left to the terminal's own colours. */
   def ground: Style = Style.bg(theme.ground) + Style.fg(theme.ink)
@@ -16,27 +21,34 @@ final case class Look(theme: Theme) {
   def user(text: String): Block.Text =
     Block
       .styled(
-        StyledText.styled("you> ", Style.fg(theme.user) + Style.Bold) ++ StyledText
-          .styled(text, Style.fg(theme.ink))
+        StyledText.styled("▌", Style.fg(theme.user)) ++
+          StyledText.styled(s"${Runes.User} ", Style.fg(theme.user) + Style.Bold) ++
+          StyledText.styled(text, Style.fg(theme.ink) + Style.Bold)
       )
       .copy(ground = Style.bg(theme.slab))
 
   def assistant(text: String): Block.Text =
     Block.styled(
-      StyledText.styled("grit> ", Style.fg(theme.grit) + Style.Bold) ++ StyledText
-        .styled(text, Style.fg(theme.ink))
+      StyledText.styled("▌", Style.fg(theme.grit)) ++
+        StyledText.styled(s"${Runes.Grit} ", Style.fg(theme.grit) + Style.Bold) ++
+        StyledText.styled(text, Style.fg(theme.ink))
     )
 
   def thinking: Block.Text =
-    Block.styled(StyledText.styled("grit is thinking…", Style.fg(theme.faint)))
+    Block.styled(StyledText.styled("  grit is thinking…", Style.fg(theme.faint)))
 
   def failure(reason: String): Block.Text =
-    Block.styled(StyledText.styled(s"! $reason", Style.fg(theme.failure)))
+    Block.styled(
+      StyledText.styled(s"${Runes.Failure} ", Style.fg(theme.failure) + Style.Bold) ++
+        StyledText.styled(reason, Style.fg(theme.failure))
+    )
 
-  def separator: Block.Separator = Block.Separator(Style.fg(theme.rail))
+  def separator: Block.Separator = Block.Separator(Style.fg(theme.rail), '━', Runes.Turn)
 
-  def header: Style = Style.fg(theme.headerFg) + Style.Bold + Style.bg(theme.headerBg)
-  def status: Style = Style.fg(theme.statusFg) + Style.bg(theme.statusBg)
+  /** The top bar: grit's name in runes on the accent, then `title`. */
+  def header(title: String): View = Look.Header(title, theme)
+
+  def status: Style = Style.fg(theme.statusFg) + Style.bg(theme.statusBg) + Style.Bold
   def scrollRail: Style = Style.fg(theme.rail)
   def scrollThumb: Style = Style.fg(theme.thumb)
 
@@ -47,7 +59,55 @@ final case class Look(theme: Theme) {
       focused = true,
       title = "message",
       body = Style.fg(theme.ink),
-      chrome = Style.fg(theme.chrome),
+      chrome = Style.fg(theme.chrome) + Style.Bold,
+      border = Border.Thick,
       titleStyle = Style.fg(theme.ink) + Style.Bold
     )
+}
+
+object Look {
+
+  /** The Elder Futhark runes grit draws with, each chosen for its old meaning. */
+  object Runes {
+
+    /** grit, written in Elder Futhark. */
+    val Name = "ᚷᚱᛁᛏ"
+
+    /** Mannaz: humankind. The user's marker. */
+    val User = "ᛗ"
+
+    /** Ansuz: the god's voice. grit's marker. */
+    val Grit = "ᚨ"
+
+    /** Hagalaz: hail, disruption. A failure. */
+    val Failure = "ᚺ"
+
+    /** Isa: ice, stillness. Nothing in flight. */
+    val Idle = "ᛁ"
+
+    /** The runic cross: the mark between turns. */
+    val Turn = "᛭"
+  }
+
+  /** The top bar: the name on the accent, fading into the title on the slab. */
+  final case class Header(title: String, theme: Theme) extends View {
+
+    def measure(avail: Size): Size = Size(math.min(1, avail.rows), avail.cols)
+
+    def render(size: Size): Surface =
+      if (size.rows < 1) Surface.blank(size)
+      else {
+        val parts = Vector(
+          s" ${Runes.Name} " -> (Style.fg(theme.headerFg) + Style.bg(theme.headerBg) + Style.Bold),
+          "▓▒░" -> (Style.fg(theme.headerBg) + Style.bg(theme.slab)),
+          s" $title " -> (Style.fg(theme.ink) + Style.bg(theme.slab) + Style.Bold),
+          "▓▒░" -> (Style.fg(theme.slab) + Style.bg(theme.ground))
+        )
+        parts
+          .foldLeft((Surface.blank(size), 0)) { case ((s, col), (text, style)) =>
+            (s.write(0, col, text, style), col + Width.of(text))
+          }
+          ._1
+      }
+  }
 }

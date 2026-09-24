@@ -40,6 +40,7 @@ final case class Editor(
     saved: String = "",
     body: Style = Style.plain,
     chrome: Style = Style.plain,
+    border: Border = Border.Plain,
     titleStyle: Style = Style.plain
 ) extends View {
 
@@ -230,7 +231,7 @@ final case class Editor(
     val framed = Border.draw(
       Surface.blank(Size(h, w)),
       Rect(0, 0, h, w),
-      Border.Plain,
+      border,
       if (focused) title else "",
       chrome,
       Border.TitledFrom,

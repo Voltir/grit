@@ -112,7 +112,7 @@ object BlockTests extends TestSuite {
         .append(Block.Text("next prompt"))
       val vp = viewport(doc, Size(4, 12))
       assert(vp.rows.map(_.text) == Vector("answer", "", "next prompt"))
-      assert(vp.rows(1).rule)
+      assert(vp.rows(1).rule.nonEmpty)
 
       val painted = vp.render(None)
       val rule = (0 until 12).map(c => painted.at(1, c).ch).mkString
@@ -124,6 +124,12 @@ object BlockTests extends TestSuite {
       assert(vp.docPosAt(Pos(1, 4)) == Some(DocPos(1, 0)))
       val all = Selection.between(DocPos(0, 0), DocPos(2, 11))
       assert(doc.textOf(all) == "answer\n\nnext prompt")
+    }
+
+    test("a separator draws its own line, with a mark centred on it when there is room") {
+      Block.Separator(line = '━', mark = "᛭").drawn(11) ==> "━━━━ ᛭ ━━━━"
+      Block.Separator(line = '━', mark = "᛭").drawn(6) ==> "━━━━━━"
+      Block.Separator().drawn(3) ==> "───"
     }
 
     test("a mixed transcript lays out as rows with provenance") {

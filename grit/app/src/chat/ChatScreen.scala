@@ -120,7 +120,7 @@ object ChatScreen {
 
     def view(s: State): Node[Msg] =
       column(
-        fixed(1) -> paint(StatusBar(Vector(s" grit -- ${s.title}"), Vector(), look.header)),
+        fixed(1) -> paint(look.header(s.title)),
         flex(5) -> Scroller
           .view(
             Transcript,
@@ -133,7 +133,7 @@ object ChatScreen {
         fixed(1) -> paint(
           StatusBar(
             Vector(" ctrl-q quit ", " enter sends ", s.status),
-            Vector(if (s.thinking) "thinking" else "idle"),
+            Vector(if (s.thinking) s"${Look.Runes.Grit} thinking " else s"${Look.Runes.Idle} idle"),
             look.status
           )
         )

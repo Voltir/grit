@@ -127,8 +127,8 @@ final case class DocMemo(
       val b = blocks(e)
       val row = rows(e)(r - starts(e))
       val rule = b match {
-        case _: Block.Separator => true
-        case _ => false
+        case s: Block.Separator => Some(s)
+        case _ => None
       }
       out += ViewRow(
         e,

@@ -221,8 +221,8 @@ def main():
         # screen: the store's contents, painted.
         final = screens[-1] if screens else []
         text = "\n".join(row.rstrip() for row in final)
-        asked = [i for i, row in enumerate(final) if "you> gate says hi" in row]
-        answered = [i for i, row in enumerate(final) if "grit> stub reply to: gate says hi" in row]
+        asked = [i for i, row in enumerate(final) if "ᛗ gate says hi" in row]
+        answered = [i for i, row in enumerate(final) if "ᚨ stub reply to: gate says hi" in row]
         check(bool(asked), "the message is painted in the transcript")
         check(bool(answered), "its reply is painted in the transcript")
         check(bool(asked) and bool(answered) and answered[0] > asked[0],
@@ -241,7 +241,7 @@ def main():
         else:
             # Nothing was typed in this run, so anything in the transcript came from the
             # store -- and it must be there on the first frame that paints the body.
-            first = next((g for g in screens if any("you>" in row for row in g)), None)
+            first = next((g for g in screens if any("ᛗ " in row for row in g)), None)
             check(first is not None and len(screens) <= 4,
                   "the exchange was loaded, not typed", "%d frames" % len(screens))
         width = max(len(label) for _, label, _ in checks)

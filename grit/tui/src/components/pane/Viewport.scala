@@ -1,5 +1,6 @@
 package grit.tui.components.pane
 
+import grit.tui.model.block.Block
 import grit.tui.model.select.{DocPos, Selection}
 import grit.tui.model.surface.{Pos, Rect, Size, Style, Surface}
 import grit.tui.model.text.{Span, Width}
@@ -22,7 +23,7 @@ enum Anchor {
   * The offset is the provenance the whole selection model runs on -- without it a screen
   * position can only be mapped back to what a particular width happened to break.
   *
-  * `rule` marks a separator row: painted as a rule across the pane's width, but logically
+  * `rule` marks a separator row: painted as its rule across the pane's width, but logically
   * empty, so a click on it lands at the row's start and a selection over it copies an
   * empty line. It is a rule, not content.
   *
@@ -35,7 +36,7 @@ final case class ViewRow(
     entry: Int,
     start: Int,
     text: String,
-    rule: Boolean = false,
+    rule: Option[Block.Separator] = None,
     ground: Style = Style.plain,
     spans: Vector[Span] = Vector.empty
 )
@@ -85,8 +86,10 @@ final case class Viewport(size: Size, rows: Vector[ViewRow]) {
         if (row.ground == Style.plain) s
         else s.restyle(Rect(r, 0, 1, size.cols), row.ground.over)
       val body =
-        if (row.rule) { ground.write(r, 0, "─" * size.cols, row.ground) }
-        else { ground.write(r, 0, row.text, row.ground) }
+        row.rule match {
+          case Some(sep) => ground.write(r, 0, sep.drawn(size.cols), row.ground)
+          case None => ground.write(r, 0, row.text, row.ground)
+        }
       paint(body, r, row)
     }
     selection match {

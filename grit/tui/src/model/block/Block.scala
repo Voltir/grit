@@ -3,7 +3,7 @@ package grit.tui.model.block
 import scala.annotation.unused
 
 import grit.tui.model.surface.Style
-import grit.tui.model.text.{Span, StyledText}
+import grit.tui.model.text.{Span, StyledText, Width}
 
 /** How a block's overlong lines meet the pane width.
   *
@@ -110,10 +110,27 @@ object Block {
 
   /** The rule painted before every submitted prompt. Logically empty: it is a rule,
     * not content, so it copies as an empty line and is painted to the pane's width at
-    * projection time.
+    * projection time: `line` across, with `mark`, when there is one, centred on it.
     */
-  final case class Separator(override val ground: Style = Style.plain) extends Block {
+  final case class Separator(
+      override val ground: Style = Style.plain,
+      line: Char = '─',
+      mark: String = ""
+  ) extends Block {
     override val text: String = ""
+
+    /** The rule at `cols` wide. A mark that leaves no room for the line either side is
+      * left out.
+      */
+    def drawn(cols: Int): String = {
+      val m = s" $mark "
+      val w = Width.of(m)
+      if (mark.isEmpty || cols < w + 4) line.toString * math.max(0, cols)
+      else {
+        val left = (cols - w) / 2
+        line.toString * left + m + line.toString * (cols - w - left)
+      }
+    }
   }
 
   /** A diff. Lines arrive with their own `+`/`-`/space prefixes -- that is content, and
