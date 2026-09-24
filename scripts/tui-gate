@@ -73,7 +73,11 @@ RUNNER="$J/bin/java --sun-misc-unsafe-memory-access=allow --enable-native-access
 # grit.app takes no stamp argument (any argument puts Main in one-shot mode), so the stamp
 # rides in a system property whose value carries it. The stub model: no .env, no key. A
 # conversation of the gate's own, so `reload` sees exactly what `chat` wrote.
+# And a database that is not Nick's: an engine launched on `grit` would recover his
+# in-flight turns (CLAUDE.local.md). Created on first use.
+AGENT_DB=grit_agent
 APP_RUNNER="env -u OPENROUTER_API_KEY GRIT_ENV_FILE=/dev/null GRIT_SESSION=$STAMP GRIT_LOG=$WORK/grit.log \
+  GRIT_DATABASE_URL=jdbc:postgresql://localhost:5432/$AGENT_DB \
   $J/bin/java -Dgate.stamp=--$STAMP --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
   -cp $APP_CP grit.app.Main"
 
@@ -185,6 +189,16 @@ run_one() {
   "script_$name" | setsid script -qc "stty rows $ROWS cols $COLS; $runner" /dev/null > "$out" 2>&1
   python3 scripts/tui-gate.py "$out" "$ROWS" "$COLS" "$name"
 }
+
+ensure_agent_db() {
+  docker compose exec -T postgres psql -U grit -d grit -tAc \
+    "SELECT 1 FROM pg_database WHERE datname = '$AGENT_DB'" | grep -q 1 ||
+    docker compose exec -T postgres createdb -U grit "$AGENT_DB"
+}
+
+case " ${*:-chat} " in
+  *" chat "*|*" reload "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
+esac
 
 case " ${1:-} " in
   *" reload "*) case " $* " in *" chat "*) ;; *)

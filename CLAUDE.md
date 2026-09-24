@@ -142,4 +142,21 @@ commented in `enola-intent.yaml`. New rules are a planned session:
 - **A design decision that clears the ADR threshold gets a record** in
   [`docs/decisions/`](docs/decisions/README.md), the same turn it is made. Most don't clear
   it: their rationale belongs in a comment beside the code or in the commit message.
-- Do not commit or push unless asked.
+- **Plan before implementing.** A roadmap item, or any change to a seam, a library API
+  or behaviour a person sees, starts with a short plan and waits for Nick's go. The plan
+  says what changes, the alternatives turned down, how it will be verified (including the
+  real-use run below), and what is parked. Mechanical edits, doc corrections and small
+  fixes inside an agreed plan need none.
+- **Done includes a real-use run** for anything a person interacts with, such as the TUI,
+  a CLI or an edge. Use the real model, restart mid-turn, and wait as long as a person
+  would. Tests that read the model rather than the painted screen, or that run against the
+  stub, have passed paint and latency bugs.
+- **Commit points.** Commit when a planned item, or a self-contained step inside one, has
+  its tests passing with no warnings and the law green. Don't ask first; report the hash.
+  One item per commit, never two mixed. Never push, amend or rewrite history unless asked.
+- **One home per fact.** State a fact in one place and link to it from the others. No
+  counts in docs: test totals, check counts and rule counts go in commit messages, where
+  they are true as of that commit.
+- **LLM spend stays under a few cents per run** of anything that calls a real model, such
+  as a live test, a probe or a real-use run. Use a cheap model and a small `max_tokens`,
+  and say what a run cost. `./mill __.test` makes no model calls.
