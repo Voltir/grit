@@ -1,4 +1,4 @@
-"""Read a scripted pty capture of grit.tui.examples.Demo2 and check what it painted.
+"""Read a scripted pty capture of grit.tui.examples.Demo (or grit.app) and check what it painted.
 
 Byte-level assertions can only see the wire's own rules -- balanced modes, no bare LF.
 Three of the four bugs in the layoutz spike were invisible to those and to 64 passing
@@ -13,7 +13,7 @@ import base64
 import re
 import sys
 
-# Mirrors Demo2.help. If that document changes, change this: the modal scenario asserts
+# Mirrors Demo.help. If that document changes, change this: the modal scenario asserts
 # the clipboard is a contiguous slice of it and of nothing else.
 HELP = """This is a second TextPane, composited over the
 transcript with its own scroll position and its

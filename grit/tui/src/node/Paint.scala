@@ -169,6 +169,13 @@ object Paint {
     var cursor: Option[Pos] = None
     val targets = Vector.newBuilder[Target[M]]
     var focus: Vector[Stop[M]] = Vector.empty
+
+    /** How many times something has claimed the focus path: a focused leaf, a dialog,
+      * or an `On` whose subtree claimed nothing.
+      */
+    private var claims = 0
+
+    private def claim(p: Vector[Stop[M]]): Unit = { focus = p; claims += 1 }
     var memos: Map[PaneKey, DocMemo] = Map.empty
     private var deferred: Vector[Float[M]] = Vector.empty
 
@@ -227,7 +234,7 @@ object Paint {
                   edit.flatMap(f => editor.apply(input, cols).map(e => lift(f(e))))
                 case _ => None
               }
-            focus = path :+ Stop(None, Some(keys), barrier = false)
+            claim(path :+ Stop(None, Some(keys), barrier = false))
           }
         }
 
@@ -238,7 +245,11 @@ object Paint {
           barrier = false
         )
         press.foreach(h => targets += Target.Press(rect, (p: Pos) => h(p).map(lift)))
+        // A screen with nothing focusable inside still has its keys: the handlers end
+        // the path when nothing below them claimed it.
+        val before = claims
         walk(child, rect, lift, path :+ stop)
+        if (claims == before) claim(path :+ stop)
 
       case Node.Dialog(base, modal, body, close) =>
         walk(base, rect, lift, path)
@@ -250,7 +261,7 @@ object Paint {
         val stop = Stop[M](None, Some(closeKey), barrier = true)
         targets += Target.Wall(rect)
         cursor = None
-        focus = path :+ stop
+        claim(path :+ stop)
         modal.place(rect.size).foreach { local =>
           val at = local.translate(Pos(rect.top, rect.left))
           if (cells) surface = modal.render(surface, at)
@@ -317,7 +328,7 @@ object Paint {
           d.copy.map(f => (t: String, x: Boolean) => lift(f(t, x)))
         )
         targets += Target.Pane(painted)
-        if (d.focused) { focus = path :+ Stop(None, Some(docKeys(painted)), barrier = false) }
+        if (d.focused) { claim(path :+ Stop(None, Some(docKeys(painted)), barrier = false)) }
       }
   }
 }

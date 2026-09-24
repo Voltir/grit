@@ -12,12 +12,13 @@ import grit.tui.node.*
 import grit.tui.node.Node.*
 import grit.tui.runtime.{Effect, TimerId}
 
-/** Demo2 on the view tree (`grit.tui.node`): the same screen -- a streaming transcript
-  * with a scrollbar, a modal over it, a completion popup, a growing prompt -- written as
-  * `view: State -> Node[Msg]`. `scripts/tui-gate` runs against it with
-  * `MAIN=grit.tui.examples.DemoNext`.
+/** Every library feature on one screen: a streaming transcript with a scrollbar, a modal
+  * over it, a completion popup, a growing prompt. What `scripts/tui-gate` drives, except
+  * `chat` and `reload`, which drive grit.app.
+  *
+  * ```./mill --no-daemon --no-build-lock grit.tui.examples.runMain grit.tui.examples.Demo```
   */
-object DemoNext extends NodeApp[DemoNext.State, DemoNext.Msg] {
+object Demo extends NodeApp[Demo.State, Demo.Msg] {
 
   private val HelpModal = Modal(
     "help -- try dragging out of me",

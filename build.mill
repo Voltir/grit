@@ -172,8 +172,8 @@ object grit extends Module {
       }
     }
 
-    /* Everything runnable, so the library carries no demo baggage. Demo2 is the pty gate's
-     * target (scripts/tui-gate) until grit.app's own screen replaces it. */
+    /* Everything runnable, so the library carries no demo baggage. Demo is the pty gate's
+     * target (scripts/tui-gate) for the features grit.app's screen does not use. */
     object examples extends GritModule {
       def moduleDeps = Seq(tui)
       def forkArgs = Task { tui.forkArgs() }

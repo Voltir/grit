@@ -68,7 +68,8 @@ object Node {
   /** `child` with handlers of its own: `first` runs before anything below it on the focus
     * path (capture phase: hotkeys), `last` after everything below it declined (bubble
     * phase: Enter submits), `press` for a press that lands in it and that nothing inside
-    * it claimed.
+    * it claimed. When nothing inside `child` is focused, this ends the focus path itself,
+    * so a screen with no editor or focused pane still has its keys.
     */
   final case class On[+M](
       child: Node[M],

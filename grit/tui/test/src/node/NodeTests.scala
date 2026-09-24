@@ -196,6 +196,24 @@ object NodeTests extends TestSuite {
       assert(top0.zip(top1).exists((a, b) => a - b == 2 * Route.WheelRows))
     }
 
+    test("a screen with nothing focusable still routes keys to its handlers") {
+      val keyed: Input -> Option[M] = {
+        case Input.Keyboard(grit.tui.model.input.Key.Printable(c)) =>
+          Some(M.E(Editor(c.toString, 1)))
+        case _ => None
+      }
+      val bare: Node[M] = paint(
+        grit.tui.components.widget
+          .StatusBar(Vector("x"), Vector(), grit.tui.model.surface.Style.plain)
+      ).onKey(keyed)
+      val inDialog: Node[M] = bare.dialog(modal, bare, None)
+      val k = Input.Keyboard(grit.tui.model.input.Key.Printable('k'))
+      for (tree <- Vector(bare, inDialog)) {
+        val (painted, _) = grit.tui.node.Paint.layout(tree, Size(20, 40), Memo.empty)
+        assert(Route.keys(k, painted) == Some(M.E(Editor("k", 1))))
+      }
+    }
+
     test("a second pane under a key already painted shows an error and routes nothing") {
       val k = PaneKey.of("same")
       val twice: Node[M] = column(

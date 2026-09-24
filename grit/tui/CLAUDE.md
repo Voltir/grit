@@ -34,9 +34,9 @@ escape bytes in three files, the terminal touched in one package).
 
 ```bash
 ./mill grit.tui.test
-scripts/tui-gate                          # pty scenarios: Demo2's, then chat/reload on grit.app (needs Postgres)
+scripts/tui-gate                          # pty scenarios: Demo's, then chat/reload on grit.app (needs Postgres)
 scripts/tui-gate modal                    # one scenario
-./mill --no-daemon --no-build-lock grit.tui.examples.runMain grit.tui.examples.Demo2
+./mill --no-daemon --no-build-lock grit.tui.examples.runMain grit.tui.examples.Demo
 ./mill grit.tui.examples.runMain grit.tui.examples.Snapshot 30 100   # one frame, no tty
 ```
 
@@ -108,11 +108,11 @@ Frames are delimited by `ESC[?2026h` … `ESC[?2026l`, one per frame. Check the 
 launcher leaves a headless demo alive holding ~400 MB:
 
 ```bash
-P=examples.De; pgrep -af "${P}mo2"    # any with no tty are leaked
-P=examples.De; pkill -9 -f "${P}mo2"  # -9: the app ignores SIGTERM in raw mode
+P=examples.De; pgrep -af "${P}mo( |$)"    # any with no tty are leaked
+P=examples.De; pkill -9 -f "${P}mo( |$)"  # -9: the app ignores SIGTERM in raw mode
 ```
 
-The split is not superstition: a plain `pkill -f 'examples.Demo2'` matches the shell
+The split is not superstition: a plain `pkill -f 'examples.Demo'` matches the shell
 running the pkill and kills the rest of your own command line with it.
 
 **And it matches the developer's own demo.** A script that cleans up after itself must
