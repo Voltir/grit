@@ -59,6 +59,9 @@ docker compose up -d postgres
 ./mill grit.app.run hello "what is 2+2?" hello              # one-shot: each argument a message
 ```
 
+Settings, the OpenRouter key included, can live in a gitignored `.env`: copy
+`.env.example`. The real environment wins over it.
+
 The TUI talks to the conversation `GRIT_SESSION` names (default `default`) and logs to
 `GRIT_LOG` (default `grit-tui.log` in the temp directory). In the one-shot run each argument
 is a message, answered by one durable turn. A repeated message is the same

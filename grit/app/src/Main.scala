@@ -9,7 +9,7 @@ import grit.turn.Turn
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set ([[OpenRouterConfig]]), the stub
-  * otherwise.
+  * otherwise. Every variable may come from a `.env` file instead ([[DotEnv]]).
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
   *     (default `default`). Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
@@ -27,7 +27,11 @@ object Main {
 
   def main(args: Array[String]): Unit = {
     val tui = args.isEmpty
-    val log = sys.env.getOrElse(
+    // `.env` in the working directory (GRIT_ENV_FILE to name another), under the real
+    // environment: a variable set in both takes the environment's value.
+    val envFile = java.nio.file.Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env"))
+    val env = exitOnLeft(DotEnv.load(envFile, sys.env))
+    val log = env.getOrElse(
       "GRIT_LOG",
       java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "grit-tui.log").toString
     )
@@ -35,11 +39,11 @@ object Main {
     // screen.
     if (tui) { val _ = System.setProperty("org.slf4j.simpleLogger.logFile", log) }
 
-    val config = exitOnLeft(DbConfig.fromEnv(sys.env).left.map(_.message))
+    val config = exitOnLeft(DbConfig.fromEnv(env).left.map(_.message))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend.
     val openRouter: Option[OpenRouterConfig] =
-      if (!sys.env.contains(OpenRouterConfig.KeyVar)) None
-      else Some(exitOnLeft(OpenRouterConfig.fromEnv(sys.env).left.map(_.message)))
+      if (!env.contains(OpenRouterConfig.KeyVar)) None
+      else Some(exitOnLeft(OpenRouterConfig.fromEnv(env).left.map(_.message)))
     val modelName = openRouter.fold(StubProvider.Model)(_.model)
     val model: Provider = openRouter match {
       case Some(c) => new OpenRouterProvider(c)
@@ -71,7 +75,7 @@ object Main {
           )
         )
         if (tui) {
-          val session = sys.env.getOrElse("GRIT_SESSION", "default")
+          val session = env.getOrElse("GRIT_SESSION", "default")
           TuiApp.run(new ChatScreen.App(modelName), new ChatHost(engine, Origin.Tui(session)))
           None
         } else say(engine, args.toList)
