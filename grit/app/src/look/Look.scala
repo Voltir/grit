@@ -75,7 +75,7 @@ final case class Look(theme: Theme) {
   def scrollRail: Style = Style.fg(theme.rail)
   def scrollThumb: Style = Style.fg(theme.thumb)
 
-  /** The prompt: two thin rules, the draft between them after the user's rune. */
+  /** The prompt: two thin rules, the draft between them after the thorn. */
   def prompt: Editor =
     Editor(
       "",
@@ -84,7 +84,7 @@ final case class Look(theme: Theme) {
       body = Style.fg(theme.ink),
       chrome = Style.fg(theme.faint),
       border = Look.Rules,
-      gutter = s"${Runes.User} ",
+      gutter = s"${Runes.Prompt} ",
       gutterStyle = Style.fg(theme.user) + Style.Bold
     )
 }
@@ -102,6 +102,9 @@ object Look {
 
     /** Mannaz: humankind. The user's marker. */
     val User = "ᛗ"
+
+    /** Thurisaz: the thorn, pointed like `>`. The prompt's marker. */
+    val Prompt = "ᚦ"
 
     /** Ansuz: the god's voice. grit's marker. */
     val Grit = "ᚨ"
