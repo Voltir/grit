@@ -132,6 +132,11 @@ object grit extends Module {
    * roadmap/mechanisms/assembly.md. */
   object assembly extends GritModule {
     def moduleDeps = Seq(core)
+
+    /* The assemblers over core's in-memory store. */
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
   }
 
   /* The terminal UI -- ported from ../Spikes/tui-spike-slate. No external dependencies:

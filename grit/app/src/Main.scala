@@ -1,7 +1,7 @@
 package grit.app
 
 import grit.assembly.LinearAssembler
-import grit.core.{Message, ModelRequest, Origin, Provider, ProviderError, SourceId, TurnRef}
+import grit.core.{Message, ModelRequest, Origin, Provider, ProviderError, SourceId, Tokens, TurnRef}
 import grit.dbos.{DbConfig, Engine}
 import grit.models.{OpenRouterConfig, OpenRouterProvider, StubProvider}
 import grit.tui.runtime.TuiApp
@@ -9,7 +9,9 @@ import grit.turn.Turn
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set ([[OpenRouterConfig]]), the stub
-  * otherwise. Every variable may come from a `.env` file instead ([[DotEnv]]).
+  * otherwise. Each turn's window holds the recent turns that fit in `GRIT_WINDOW_TOKENS`
+  * estimated tokens (default [[LinearAssembler.DefaultBudget]]). Every variable may come
+  * from a `.env` file instead ([[DotEnv]]).
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
   *     (default `default`). Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
@@ -40,6 +42,7 @@ object Main {
     if (tui) { val _ = System.setProperty("org.slf4j.simpleLogger.logFile", log) }
 
     val config = exitOnLeft(DbConfig.fromEnv(env).left.map(_.message))
+    val budget = exitOnLeft(windowBudget(env))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend.
     val openRouter: Option[OpenRouterConfig] =
       if (!env.contains(OpenRouterConfig.KeyVar)) None
@@ -69,7 +72,7 @@ object Main {
             SystemPrompt,
             engine.entries,
             engine.ledger,
-            new LinearAssembler(engine.entries),
+            new LinearAssembler(engine.entries, budget),
             provider,
             engine.db
           )
@@ -115,6 +118,19 @@ object Main {
         None
     }
   }
+
+  private val BudgetVar = "GRIT_WINDOW_TOKENS"
+
+  /** The window's budget from `GRIT_WINDOW_TOKENS`, or the default when it is unset. */
+  private def windowBudget(env: Map[String, String]): Either[String, Tokens] =
+    env.get(BudgetVar) match {
+      case None => Right(LinearAssembler.DefaultBudget)
+      case Some(raw) =>
+        raw.trim.toLongOption
+          .filter(_ >= 0)
+          .map(Tokens(_))
+          .toRight(s"$BudgetVar is not a non-negative whole number")
+    }
 
   private def describe(turn: TurnRef): String =
     grit.core.WorkflowId.value(turn.workflowId)

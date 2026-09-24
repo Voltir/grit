@@ -29,7 +29,7 @@ object LiveTurn {
         "You are grit.",
         entries,
         engine.ledger,
-        new LinearAssembler(entries),
+        new LinearAssembler(entries, LinearAssembler.DefaultBudget),
         provider,
         engine.db
       )

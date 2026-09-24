@@ -80,7 +80,14 @@ object TurnFixtures {
       provider: Provider^,
       ledger: UsageLedger = new InMemoryUsageLedger
   )(id: WorkflowId)(using Durable^): String =
-    Turn.body(system, entries, ledger, new LinearAssembler(entries), provider, FakeDb)(id)
+    Turn.body(
+      system,
+      entries,
+      ledger,
+      new LinearAssembler(entries, LinearAssembler.DefaultBudget),
+      provider,
+      FakeDb
+    )(id)
 
   def runTurn(
       durable: InMemoryDurable,
