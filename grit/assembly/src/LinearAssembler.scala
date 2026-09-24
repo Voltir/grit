@@ -6,8 +6,8 @@ import grit.core.message.Tokens
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Db, Entry, EntryStore, Payload}
 
-/** The window with no choosing: the most recent whole turns before the turn whose
-  * messages fit in `budget` tokens by `estimator`, oldest first. The
+/** The window with no choosing: the messages of the most recent whole turns before the
+  * turn that fit in `budget` tokens by `estimator`, oldest first; never their summaries. The
   * baseline every smarter assembler is measured against.
   *
   * Turns are kept or dropped whole, so a window never opens on a reply without its
@@ -21,8 +21,9 @@ final class LinearAssembler(entries: EntryStore, estimator: TokenEstimator, budg
   def assemble(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] =
     db.read(entries.list(request.turn.conversationId))
       .map { all =>
-        val before =
-          all.filter(e => TurnSeq.value(e.turnSeq) < TurnSeq.value(request.turn.turnSeq))
+        val before = all.filter { e =>
+          TurnSeq.value(e.turnSeq) < TurnSeq.value(request.turn.turnSeq) && isMessage(e)
+        }
         val turns = before.groupBy(e => TurnSeq.value(e.turnSeq)).toVector.sortBy(_._1).map(_._2)
         val kept = turns.reverseIterator
           .scanLeft((Tokens.Zero, Vector.empty[Entry])) { case ((spent, _), turn) =>
@@ -38,9 +39,15 @@ final class LinearAssembler(entries: EntryStore, estimator: TokenEstimator, budg
       .left
       .map(AssemblyError.Store(_))
 
+  private def isMessage(e: Entry): Boolean = e.payload match {
+    case Payload.Message(_) => true
+    case Payload.Summary(_) => false
+  }
+
   private def cost(turn: Vector[Entry]): Tokens =
     turn
-      .map(_.payload match { case Payload.Message(m) => estimator.message(m) })
+      .map(_.payload)
+      .collect { case Payload.Message(m) => estimator.message(m) }
       .foldLeft(Tokens.Zero)(_ + _)
 }
 

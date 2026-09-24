@@ -46,13 +46,16 @@ object TurnFixtures {
       body(using TestTx.fake)
   }
 
-  /** An entry store that dies, once, when a reply is appended. */
-  final class CrashOnInsert(underlying: EntryStore) extends EntryStore {
+  /** An entry store that dies, once, on the first insert of an entry `when` picks: by
+    * default the reply, the first entry a turn inserts.
+    */
+  final class CrashOnInsert(underlying: EntryStore, when: Entry -> Boolean = _ => true)
+      extends EntryStore {
     @caps.unsafe.untrackedCaptures
     var armed = true
 
     def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] =
-      if (armed) { armed = false; throw new InMemoryDurable.Crash }
+      if (armed && when(entry)) { armed = false; throw new InMemoryDurable.Crash }
       else underlying.insert(entry)
     def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] = underlying.get(id)
     def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] = underlying.list(c)
@@ -85,14 +88,16 @@ object TurnFixtures {
         case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
           blocks.collect { case AssistantBlock.Text(t) => s"assistant: $t" }.mkString
         case Payload.Message(other) => other.toString
+        case Payload.Summary(text) => s"summary: $text"
       }
     }
 
-  /** The turn's workflow body over `entries` and `provider`. */
+  /** The turn's workflow body over `entries` and `provider`, summarised by `summarizer`. */
   def turnBody(
       entries: EntryStore,
       provider: Provider^,
-      ledger: UsageLedger = new InMemoryUsageLedger
+      ledger: UsageLedger = new InMemoryUsageLedger,
+      summarizer: Provider^ = new StubProvider()
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       system,
@@ -101,6 +106,7 @@ object TurnFixtures {
       new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
       CharEstimate,
       provider,
+      summarizer,
       FakeDb
     )(id)
 
@@ -109,7 +115,8 @@ object TurnFixtures {
       entries: EntryStore,
       provider: Provider^,
       turn: TurnRef,
-      ledger: UsageLedger = new InMemoryUsageLedger
+      ledger: UsageLedger = new InMemoryUsageLedger,
+      summarizer: Provider^ = new StubProvider()
   ): String =
-    durable.run(turn.workflowId)(turnBody(entries, provider, ledger))
+    durable.run(turn.workflowId)(turnBody(entries, provider, ledger, summarizer))
 }

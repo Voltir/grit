@@ -31,7 +31,7 @@ private[turn] object TurnJournal {
       v =>
         PayloadJson.read(v).flatMap {
           case Payload.Message(m: Message.Assistant) => Right(m)
-          case Payload.Message(_) => Left("reply: expected an assistant message")
+          case _ => Left("reply: expected an assistant message")
         }
     )
 

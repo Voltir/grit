@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.durable.{History, InMemoryDurable}
 import grit.core.id.TurnRef
-import grit.core.store.InMemoryEntryStore
+import grit.core.store.{InMemoryEntryStore, Payload}
 
 /** Writes this epoch's recorded turn histories, one per shape a turn can leave behind,
   * into `GRIT_HISTORIES/{Turn.Epoch}`. Never overwrites: a history, once written, is what
@@ -30,7 +30,9 @@ object RecordTurnHistories {
   private def recorded(durable: InMemoryDurable, turn: TurnRef): History =
     History("turn", turn.workflowId, Turn.Epoch, "recorded", durable.history(turn.workflowId))
 
-  /** Each shape, by name. */
+  /** Each shape, by name. A name whose file was written before a later step existed keeps
+    * that shorter history, so a new step that changes a shape gets a new name.
+    */
   private def shapes: Vector[(String, History)] = {
     val replied = {
       val entries = new InMemoryEntryStore
@@ -62,7 +64,35 @@ object RecordTurnHistories {
       catch { case _: InMemoryDurable.Crash => "" }
       recorded(durable, turn)
     }
+    val summarised = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(turnBody(entries, new RecordingProvider))
+      recorded(durable, turn)
+    }
+    val summaryFailed = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(
+        turnBody(entries, new RecordingProvider, summarizer = new RecordingProvider(fail = true))
+      )
+      recorded(durable, turn)
+    }
+    val crashedBeforeSummaryAppend = {
+      val store = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(store, "hello")
+      val entries = new CrashOnInsert(store, _.payload.isInstanceOf[Payload.Summary])
+      try durable.run(turn.workflowId)(turnBody(entries, new RecordingProvider))
+      catch { case _: InMemoryDurable.Crash => "" }
+      recorded(durable, turn)
+    }
     Vector(
+      "summarised" -> summarised,
+      "summary-failed" -> summaryFailed,
+      "crashed-before-summary-append" -> crashedBeforeSummaryAppend,
       "replied" -> replied,
       "later-turn" -> laterTurn,
       "model-failed" -> modelFailed,

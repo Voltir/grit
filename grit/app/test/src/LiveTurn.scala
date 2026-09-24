@@ -25,7 +25,9 @@ object LiveTurn {
     }
   }
 
-  /** Launches `engine` with the turn over `entries` and `provider`. */
+  /** Launches `engine` with the turn over `entries` and `provider`, summarised by the
+    * stub, which `provider` does not count.
+    */
   def launch(engine: Engine^, entries: EntryStore, provider: Provider^): Unit =
     engine.launch(
       Turn.body(
@@ -35,6 +37,7 @@ object LiveTurn {
         new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
         CharEstimate,
         provider,
+        new StubProvider(),
         engine.db
       )
     )
@@ -54,7 +57,7 @@ object LiveTurn {
       _.payload match {
         case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
           blocks.collect { case AssistantBlock.Text(t) => t }.mkString
-        case Payload.Message(other) => s"not a reply: $other"
+        case other => s"not a reply: $other"
       }
     }
 }

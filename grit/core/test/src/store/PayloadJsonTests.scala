@@ -51,9 +51,13 @@ object PayloadJsonTests extends TestSuite {
         """"content":"no matches","isError":true}}"""
     }
 
+    test("summary") {
+      PayloadJson.write(Payload.Summary("Asked X; decided Y.")).render() ==>
+        """{"kind":"summary","text":"Asked X; decided Y."}"""
+    }
+
     test("every sample round-trips, through text too") {
-      samples.foreach { m =>
-        val p = Payload.Message(m)
+      (samples.map(Payload.Message(_)) :+ Payload.Summary("s")).foreach { p =>
         PayloadJson.read(ujson.read(PayloadJson.write(p).render())) ==> Right(p)
       }
     }
@@ -62,6 +66,7 @@ object PayloadJsonTests extends TestSuite {
       val bad = Seq(
         ujson.Arr(),
         ujson.Obj("kind" -> "summary"),
+        ujson.Obj("kind" -> "summary", "text" -> 3),
         ujson.Obj("kind" -> "message", "message" -> ujson.Obj("role" -> "user")),
         ujson.Obj(
           "kind" -> "message",

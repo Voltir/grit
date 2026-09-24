@@ -12,6 +12,7 @@ object PayloadJson {
 
   def write(p: Payload): ujson.Value = p match {
     case Payload.Message(m) => ujson.Obj("kind" -> "message", "message" -> message(m))
+    case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
   }
 
   /** The payload `v` encodes, or why it encodes none. */
@@ -21,6 +22,7 @@ object PayloadJson {
       kind <- str(o, "kind")
       p <- kind match {
         case "message" => field(o, "message").flatMap(readMessage).map(Payload.Message(_))
+        case "summary" => str(o, "text").map(Payload.Summary(_))
         case other => Left(s"unknown payload kind: $other")
       }
     } yield p

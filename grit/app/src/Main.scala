@@ -52,21 +52,12 @@ object Main {
       if (!env.contains(OpenRouterConfig.KeyVar)) None
       else Some(exitOnLeft(OpenRouterConfig.fromEnv(env, ModelRole.Turn).left.map(_.message)))
     val modelName = openRouter.fold(StubProvider.Model)(_.model)
-    val model: Provider = openRouter match {
-      case Some(c) => new OpenRouterProvider(c)
-      case None => new StubProvider()
-    }
-    // Prints each call in the argument run, so a replayed turn is visibly one that did
-    // not call.
-    val provider: Provider =
-      if (tui) model
-      else
-        new Provider {
-          def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
-            println(s"[provider] $modelName called with ${request.messages.size} message(s)")
-            model.complete(request)
-          }
-        }
+    val summaryConfig: Option[OpenRouterConfig] =
+      openRouter.map(_ =>
+        exitOnLeft(OpenRouterConfig.fromEnv(env, ModelRole.Summary).left.map(_.message))
+      )
+    val provider = announced(tui, "turn", openRouter)
+    val summarizer = announced(tui, "summary", summaryConfig)
 
     val engine = Engine.open(config, Turn.Epoch)
     val failure: Option[String] =
@@ -79,6 +70,7 @@ object Main {
             new LinearAssembler(engine.entries, CharEstimate, budget),
             CharEstimate,
             provider,
+            summarizer,
             engine.db
           )
         )
@@ -122,6 +114,25 @@ object Main {
         }
         None
     }
+  }
+
+  /** OpenRouter under `config`, or the stub without one. In the argument run each call is
+    * printed with its `role`, so a replayed turn is visibly one that did not call.
+    */
+  private def announced(tui: Boolean, role: String, config: Option[OpenRouterConfig]): Provider = {
+    val model: Provider = config match {
+      case Some(c) => new OpenRouterProvider(c)
+      case None => new StubProvider()
+    }
+    val name = config.fold(StubProvider.Model)(_.model)
+    if (tui) model
+    else
+      new Provider {
+        def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+          println(s"[provider] $role: $name called with ${request.messages.size} message(s)")
+          model.complete(request)
+        }
+      }
   }
 
   private val BudgetVar = "GRIT_WINDOW_TOKENS"

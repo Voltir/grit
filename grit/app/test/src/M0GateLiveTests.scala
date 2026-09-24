@@ -4,7 +4,7 @@ import grit.core.id.EntryId
 import grit.dbos.engine.Engine
 import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.models.StubProvider
-import grit.turn.Turn
+import grit.turn.{Turn, TurnSummary}
 
 import utest.*
 
@@ -43,7 +43,8 @@ object M0GateLiveTests extends TestSuite {
       second.calls ==> 0
       text ==> Some("stub reply to: message a")
       LiveDb.ledger(config).map(r => (r._1, r._2, r._3)) ==>
-        Vector((EntryId.value(Turn.replyId(turn)), StubProvider.Model, Some(BigDecimal(0))))
+        Vector(Turn.replyId(turn), TurnSummary.id(turn))
+          .map(id => (EntryId.value(id), StubProvider.Model, Some(BigDecimal(0))))
     }
 
     test("a crash after the model call resumes without calling the model again") {

@@ -9,16 +9,20 @@ import grit.core.message.Message
 import grit.core.provider.{ModelRequest, Provider, ProviderError, TokenEstimator}
 import grit.core.store.{Db, Entry, EntryStore, Payload, StoreError, Tx, UsageLedger}
 
-/** The durable turn: one workflow per turn, in three steps. Each step's output is
-  * recorded, so a turn resumed after a crash never calls the model twice.
+/** The durable turn: one workflow per turn, in five steps. Each step's output is
+  * recorded, so a turn resumed after a crash never calls a model twice.
   *
   *   1. `assemble` — a fresh window over what came before the turn.
   *   2. `call-model` — the window, then the turn's own messages, sent to the provider.
   *   3. `append` — the reply recorded as the turn's entry, with its cost in the usage
   *      ledger beside `estimator`'s estimate of the request, atomically with the step.
+  *   4. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]).
+  *   5. `append-summary` — the summary recorded as the turn's entry after the reply, with
+  *      its cost in the ledger as in `append`.
   *
-  * A step that fails returns a [[TurnFailure]], which ends the turn and is recorded like
-  * any other output: a rerun ends the same way without calling anything.
+  * A step that fails returns a [[TurnFailure]], recorded like any other output, so a rerun
+  * ends the same way without calling anything. A failure before the reply ends the turn;
+  * a failed summary leaves the reply standing, and the turn without a summary.
   */
 object Turn {
 
@@ -30,8 +34,9 @@ object Turn {
     */
   val Epoch = "2026-09-23"
 
-  /** The turn workflow's body, for the turn whose workflow id is `workflowId`. Returns
-    * what the turn did, for logs: its reply is in the store, never in this string.
+  /** The turn workflow's body, for the turn whose workflow id is `workflowId`: `provider`
+    * answers, `summarizer` summarises. Returns what the turn did, for logs: its reply and
+    * summary are in the store, never in this string.
     */
   def body(
       system: String,
@@ -40,14 +45,20 @@ object Turn {
       assembler: ContextAssembler,
       estimator: TokenEstimator,
       provider: Provider^,
+      summarizer: Provider^,
       db: Db^
   )(workflowId: WorkflowId)(using d: Durable^): String =
     TurnRef.fromWorkflowId(workflowId) match {
       case None => s"not a turn: ${WorkflowId.value(workflowId)}"
       case Some(turn) =>
         run(system, entries, ledger, assembler, estimator, provider, db, turn) match {
-          case Right(reply) => s"replied: ${EntryId.value(reply)}"
           case Left(failure) => s"failed: $failure"
+          case Right(reply) =>
+            val summary = summarise(entries, ledger, estimator, summarizer, db, turn, reply) match {
+              case Right(id) => s"summarised: ${EntryId.value(id)}"
+              case Left(failure) => s"no summary: $failure"
+            }
+            s"replied: ${EntryId.value(reply)}; $summary"
         }
     }
 
@@ -86,6 +97,84 @@ object Turn {
     } yield appended
   }
 
+  /** Steps 4 and 5: the summary of `turn`, whose reply is `answered`. */
+  private def summarise(
+      entries: EntryStore,
+      ledger: UsageLedger,
+      estimator: TokenEstimator,
+      summarizer: Provider^,
+      db: Db^,
+      turn: TurnRef,
+      answered: EntryId
+  )(using d: Durable^): Either[TurnFailure, EntryId] = {
+    import TurnJournal.given
+    for {
+      message <- d.step("summarise") { () =>
+        db.read(entries.list(turn.conversationId))
+          .left
+          .map(storeFailure)
+          .flatMap { all =>
+            summarizer.complete(TurnSummary.request(own(all, turn))).left.map {
+              case ProviderError.Unavailable(cause) => TurnFailure.Model(cause)
+            }
+          }
+      }
+      appended <- d.transact("append-summary")(
+        appendSummary(entries, ledger, estimator, turn, answered, message)
+      )
+    } yield appended
+  }
+
+  /** Records the text of `message` as `turn`'s summary, a child of its reply `answered`,
+    * after everything already in the conversation; and what it cost in the ledger beside
+    * the estimate of the request that produced it, rebuilt as [[append]] rebuilds its own.
+    */
+  private def appendSummary(
+      entries: EntryStore,
+      ledger: UsageLedger,
+      estimator: TokenEstimator,
+      turn: TurnRef,
+      answered: EntryId,
+      message: Message.Assistant
+  )(using Tx^): Either[TurnFailure, EntryId] = {
+    val id = TurnSummary.id(turn)
+    for {
+      text <- TurnSummary
+        .text(message)
+        .toRight(TurnFailure.Model(s"the summary has no text (stop: ${message.stop})"))
+      next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
+      all <- entries.list(turn.conversationId).left.map(storeFailure)
+      _ <- entries
+        .insert(
+          Entry(
+            id,
+            turn.conversationId,
+            turn.turnSeq,
+            Some(answered),
+            next.seq,
+            Payload.Summary(text),
+            Instant.now()
+          )
+        )
+        .left
+        .map(storeFailure)
+      _ <- ledger
+        .record(
+          id,
+          turn.workflowId,
+          message.model,
+          message.usage,
+          estimator.request(TurnSummary.request(own(all, turn)))
+        )
+        .left
+        .map(storeFailure)
+    } yield id
+  }
+
+  /** `turn`'s own entries, from `all` of its conversation's. */
+  private def own(all: Vector[Entry], turn: TurnRef): Vector[Entry] =
+    all.filter(_.turnSeq == turn.turnSeq)
+
   /** The window's entries, then the turn's own, as one model request. */
   private def request(
       system: String,
@@ -99,7 +188,9 @@ object Turn {
       .map(storeFailure)
       .flatMap(requestOf(system, _, turn, window))
 
-  /** The request [[request]] builds, from `all` of the conversation's entries. */
+  /** The request [[request]] builds, from `all` of the conversation's entries. Only
+    * messages are sent: a summary is not shown to the model yet.
+    */
   private def requestOf(
       system: String,
       all: Vector[Entry],
@@ -115,10 +206,8 @@ object Turn {
           )
         )
       case _ =>
-        val seen = window.entries.flatMap(byId.get) ++ all.filter(_.turnSeq == turn.turnSeq)
-        Right(
-          ModelRequest(system, seen.map(e => e.payload match { case Payload.Message(m) => m }))
-        )
+        val seen = window.entries.flatMap(byId.get) ++ own(all, turn)
+        Right(ModelRequest(system, seen.map(_.payload).collect { case Payload.Message(m) => m }))
     }
   }
 
