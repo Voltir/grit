@@ -100,6 +100,14 @@ object Node {
     */
   final case class Ground[+M](inner: Node[M], ground: Style) extends Node[M]
 
+  /** `wide` when its box is at least `cols` wide, `narrow` otherwise. Chosen where the
+    * screen is laid out, the one place its width is known: an app never sees the
+    * terminal's size, so a layout that depends on it says so here.
+    */
+  final case class Wide[+M](cols: Int, wide: Node[M], narrow: Node[M]) extends Node[M] {
+    def at(width: Int): Node[M] = if (width >= cols) wide else narrow
+  }
+
   /* ---- constructors ------------------------------------------------------------ */
 
   def column[M](parts: (Region, Node[M])*): Node[M] = Box(vertical = true, parts.toVector)
@@ -108,6 +116,8 @@ object Node {
 
   def doc(key: PaneKey, doc: Doc, anchor: Anchor): DocPane[Nothing] = DocPane(key, doc, anchor)
   def editor(e: Editor): Edit[Nothing] = Edit(e, None)
+
+  def wide[M](cols: Int)(wide: Node[M], narrow: Node[M]): Node[M] = Wide(cols, wide, narrow)
 
   def fixed(n: Int): Region = Region.Fixed(n)
   def flex(min: Int = 0): Region = Region.Flex(min)

@@ -218,6 +218,23 @@ object TreeTests extends TestSuite {
       }
     }
 
+    test("a wide node paints, and routes, the side its box's width chooses") {
+      def says(text: String): Node[M] = paint(
+        grit.tui.components.widget
+          .StatusBar(Vector(text), Vector(), grit.tui.model.surface.Style.plain)
+      ).onPress(_ => Some(M.E(Editor(text, 0))))
+      val tree: Node[M] = wide(30)(says("wide"), says("narrow"))
+      for ((cols, side) <- Vector(30 -> "wide", 29 -> "narrow")) {
+        val (frame, painted, _) =
+          grit.tui.runtime.render.Paint.frame(tree, Size(2, cols), Memo.empty)
+        val v = new Vt(2, cols + 1)
+        v.feed(Painter.paint(frame, None))
+        assert(v.text(0).trim == side)
+        val press = Input.Mouse(MouseEvent(MouseKind.Press, Button.Left, Pos(0, 1), Mods.none))
+        assert(Route.input(press, painted, Grab.Idle).msgs == Vector(M.E(Editor(side, 0))))
+      }
+    }
+
     test("a second pane under a key already painted shows an error and routes nothing") {
       val k = PaneKey.of("same")
       val twice: Node[M] = column(

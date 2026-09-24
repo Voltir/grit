@@ -73,3 +73,6 @@ CREATE TABLE IF NOT EXISTS grit.usage_ledger (
     estimated_input_tokens BIGINT NOT NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- A turn's costs, read by edges (UsageLedger.of).
+CREATE INDEX IF NOT EXISTS idx_usage_ledger_workflow ON grit.usage_ledger (workflow_id);

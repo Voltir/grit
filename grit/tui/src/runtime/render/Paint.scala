@@ -145,6 +145,7 @@ object Paint {
     case Node.Floating(h, _, _) => measure(h, avail)
     case Node.Mapped(inner, _) => measure(inner, avail)
     case Node.Ground(inner, _) => measure(inner, avail)
+    case w: Node.Wide[A] => measure(w.at(avail.cols), avail)
     case _ => avail
   }
 
@@ -288,6 +289,8 @@ object Paint {
         deferred = deferred :+ Float(rect, popup, (r: Popup.Route) => route(r).map(lift))
 
       case m: Node.Mapped[x, A] => mapped(m, rect, lift, path)
+
+      case w: Node.Wide[A] => walk(w.at(rect.cols), rect, lift, path)
     }
 
     private def mapped[X, A](

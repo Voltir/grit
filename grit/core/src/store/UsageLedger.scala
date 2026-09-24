@@ -20,4 +20,15 @@ trait UsageLedger {
       usage: Usage,
       estimatedInput: Tokens
   )(using Tx^): Either[StoreError, Unit]
+
+  /** The rows workflow `workflow` recorded, in the order it recorded them. */
+  def of(workflow: WorkflowId)(using Tx^): Either[StoreError, Vector[UsageLedger.Row]]
+}
+
+object UsageLedger {
+
+  /** One response's cost: the entry that holds it, the model that gave it, its `usage`,
+    * and grit's estimate of its request's input.
+    */
+  final case class Row(entry: EntryId, model: String, usage: Usage, estimatedInput: Tokens)
 }

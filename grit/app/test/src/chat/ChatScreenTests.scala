@@ -1,6 +1,8 @@
 package grit.app.chat
 
 import grit.app.look.{Look, Theme}
+import grit.core.id.TurnSeq
+import grit.core.message.Tokens
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.Size
 import grit.tui.runtime.app.Effect
@@ -18,7 +20,7 @@ object ChatScreenTests extends TestSuite {
   private val size = Size(20, 60)
 
   private def started: Headless[ChatScreen.State, Msg] =
-    Headless.start(new ChatScreen.App("test-model", Look(Theme.Default)), size)
+    Headless.start(new ChatScreen.App("test-model", Look(Theme.Default), Tokens(16000)), size)
 
   /** Started, and told the engine is open. */
   private def ready: Headless[ChatScreen.State, Msg] = started.message(Msg.Opened)
@@ -41,7 +43,7 @@ object ChatScreenTests extends TestSuite {
     test("every cell has a background from the theme, none left to the terminal") {
       for (theme <- Theme.all) {
         val h = Headless
-          .start(new ChatScreen.App("test-model", Look(theme)), size)
+          .start(new ChatScreen.App("test-model", Look(theme), Tokens(16000)), size)
           .message(
             Msg.Arrived(Vector(Said(true, "hi"), Said(false, "hello")), step = Some("call-model"))
           )
@@ -62,7 +64,7 @@ object ChatScreenTests extends TestSuite {
         )
       )
       said(started) ==> Vector("ᛉᛟᛁᛞᚨ opening the engine…")
-      assert(started.screen.last.trim.endsWith("opening"))
+      assert(started.screen.last.contains("opening"))
     }
 
     test("the ward turns with each tick, and stops once the engine is open") {
@@ -81,19 +83,55 @@ object ChatScreenTests extends TestSuite {
       said(asked.message(Msg.Tick).message(Msg.Tick)) ==> Vector("▌ᛗ hi", "ᚦ grit is thinking…")
       val done = asked.message(Msg.Arrived(Vector(), step = None))
       done.effects.last ==> Effect.Cancel(ChatScreen.Runes)
-      assert(done.screen.last.trim.endsWith("idle"))
+      assert(done.screen.last.contains("ᛁ idle"))
     }
 
     test("the status line names the step and times it, from the step's first tick") {
       def status(h: Headless[ChatScreen.State, Msg]) = h.screen.last.trim
       val assembling = ready.message(Msg.Arrived(Vector(Said(true, "hi")), Some("assemble")))
-      assert(status(assembling).endsWith("ᛟ assembling · 0.0s"))
+      assert(status(assembling).contains("ᛟ assembling · 0.0s"))
       val later = (1 to 10).foldLeft(assembling)((h, _) => h.message(Msg.Tick))
-      assert(status(later).endsWith("ᛟ assembling · 1.2s"))
-      assert(status(later.message(Msg.Arrived(Vector(), Some("assemble")))).endsWith("1.2s"))
+      assert(status(later).contains("ᛟ assembling · 1.2s"))
+      assert(
+        status(later.message(Msg.Arrived(Vector(), Some("assemble")))).contains("assembling · 1.2s")
+      )
       val answering = later.message(Msg.Arrived(Vector(), Some("call-model")))
-      assert(status(answering).endsWith("ᚨ answering · 0.0s"))
-      assert(status(answering.message(Msg.Tick)).endsWith("ᚨ answering · 0.1s"))
+      assert(status(answering).contains("ᚨ answering · 0.0s"))
+      assert(status(answering.message(Msg.Tick)).contains("ᚨ answering · 0.1s"))
+    }
+
+    test("from 100 columns the turn panel stands beside the transcript; ctrl-b hides it") {
+      val view = TurnView(
+        TurnSeq(2),
+        None,
+        grit.turn.Turn.Step.all.map(TurnView.Step(_, Some(400))),
+        Some("ward engine"),
+        Some(
+          TurnView.Window(Tokens(12), Tokens(3200), Tokens(1700), Tokens(40), Vector(TurnSeq(0)))
+        ),
+        Some(BigDecimal("0.00031")),
+        Some(Tokens(5000))
+      )
+      def at(cols: Int) =
+        Headless
+          .start(
+            new ChatScreen.App("test-model", Look(Theme.Default), Tokens(16000)),
+            Size(30, cols)
+          )
+          .message(Msg.Opened)
+          .message(Msg.Turn(view))
+      val shown = at(110).screen.mkString("\n")
+      assert(
+        shown.contains("TURN 3  · done"),
+        shown.contains("ᛟ assemble"),
+        shown.contains("query    ward engine"),
+        shown.contains("recalled turn 1"),
+        shown.contains("4.9k of 16k budget"),
+        shown.contains("billed   5k in · $0.00031")
+      )
+      assert(at(110).screen.exists(r => r.contains("█") && r.contains("░")))
+      assert(!at(99).screen.mkString.contains("TURN 3"))
+      assert(!at(110).inputs(Input.Keyboard(Key.Ctrl('b'))).screen.mkString.contains("TURN 3"))
     }
 
     test("an engine that will not open ends the ward and says so") {

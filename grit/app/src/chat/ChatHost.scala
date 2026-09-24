@@ -5,10 +5,11 @@ import java.util.concurrent.CountDownLatch
 
 import scala.util.control.NonFatal
 
-import grit.core.id.SourceId
+import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.Message
-import grit.core.store.Origin
-import grit.dbos.engine.Engine
+import grit.core.provider.TokenEstimator
+import grit.core.store.{Entry, Origin}
+import grit.dbos.engine.{Engine, TurnStatus}
 import grit.tui.runtime.app.{Host, Mailbox}
 
 /** The chat screen's engine side, for the conversation `origin` names. The screen reaches
@@ -16,7 +17,10 @@ import grit.tui.runtime.app.{Host, Mailbox}
   *
   *   - `Load` opens the engine with `opener`, says `Opened`, then follows the
   *     conversation: its entries are polled and every new one is shown, whichever turn
-  *     wrote it, so replies to turns recovered after a restart appear too ([[Follow]]).
+  *     wrote it, so replies to turns recovered after a restart appear too ([[Follow]]);
+  *     and its latest turn is described for the turn panel whenever that changes
+  *     ([[TurnView]], its window estimated with `estimator` under the system prompt
+  *     `system`).
   *   - `Send` ingests a message and starts its turn, once the engine is open; the reply
   *     arrives by following.
   *
@@ -24,8 +28,12 @@ import grit.tui.runtime.app.{Host, Mailbox}
   * at once and never waits on the database or the model. [[close]] stops following and
   * closes the engine, including one that finishes opening after it.
   */
-final class ChatHost(origin: Origin, opener: ChatHost.Opener^)
-    extends Host[ChatScreen.Msg],
+final class ChatHost(
+    origin: Origin,
+    opener: ChatHost.Opener^,
+    system: String,
+    estimator: TokenEstimator
+) extends Host[ChatScreen.Msg],
       AutoCloseable,
       caps.SharedCapability {
 
@@ -108,18 +116,42 @@ final class ChatHost(origin: Origin, opener: ChatHost.Opener^)
       case Left(e) => mailbox.offer(ChatScreen.Msg.Failed(s"could not open the conversation: $e"))
       case Right(conversation) =>
         var state = Follow.start
+        var shown: Option[TurnView] = None
         while (open) {
           engine.db.read(engine.entries.list(conversation)) match {
             case Right(entries) =>
               val (next, msgs) = Follow.step(state, entries, turn => engine.status(turn))
               state = next
               msgs.foreach(mailbox.offer)
+              TurnView.latest(entries).foreach { turn =>
+                // A settled turn changes no more: its view is not read again.
+                if (!shown.exists(v => v.turn == turn.turnSeq && v.settled)) {
+                  val view = described(engine, turn, entries)
+                  if (!shown.contains(view)) {
+                    shown = Some(view)
+                    mailbox.offer(ChatScreen.Msg.Turn(view))
+                  }
+                }
+              }
             // The engine closes before this notices it should stop; nothing to report.
             case Left(_) => ()
           }
           Thread.sleep(PollMs)
         }
     }
+
+  /** `turn` as the panel shows it, from `entries` and what DBOS and the ledger hold. A
+    * turn not yet enqueued counts as running: its first step is next.
+    */
+  private def described(engine: Engine^, turn: TurnRef, entries: Vector[Entry]): TurnView = {
+    val (running, steps) = engine.status(turn) match {
+      case TurnStatus.Running(recorded) => (true, recorded)
+      case TurnStatus.Unknown => (true, Vector.empty)
+      case TurnStatus.Finished(_) => (false, engine.steps(turn))
+    }
+    val costs = engine.db.read(engine.ledger.of(turn.workflowId)).getOrElse(Vector.empty)
+    TurnView.of(turn, entries, steps, running, costs, system, estimator)
+  }
 
   private def send(engine: Engine^, text: String, mailbox: Mailbox[ChatScreen.Msg]): Unit = {
     // The TUI never redelivers, so each message is its own source.

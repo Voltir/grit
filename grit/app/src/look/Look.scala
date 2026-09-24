@@ -72,6 +72,10 @@ final case class Look(theme: Theme) {
   def header(title: String): View = Look.Header(title, theme)
 
   def status: Style = Style.fg(theme.statusFg) + Style.bg(theme.statusBg) + Style.Bold
+
+  /** Between the transcript and the turn panel. */
+  def divider: View = Look.Divider(Style.fg(theme.rail))
+
   def scrollRail: Style = Style.fg(theme.rail)
   def scrollThumb: Style = Style.fg(theme.thumb)
 
@@ -137,12 +141,22 @@ object Look {
       case other => s"$Idle $other"
     }
 
+    /** The rune alone, as [[step]] chooses it. */
+    def stepRune(name: String): String = step(name).takeWhile(_ != ' ')
+
     /** Algiz, Othala, Dagaz and Ansuz: the ward's ring. */
     val Ward: Vector[Char] = "ᛉᛟᛞᚨ".toVector
 
     /** The ring turned `tick` steps. */
     def ward(tick: Long): Vector[Char] =
       Ward.indices.toVector.map(i => Ward(math.floorMod(i + tick, Ward.length).toInt))
+  }
+
+  /** A vertical rule the height of its box, in `style`: between the columns. */
+  final case class Divider(style: Style) extends View {
+    def measure(avail: Size): Size = Size(avail.rows, math.min(1, avail.cols))
+    def render(size: Size): Surface =
+      (0 until size.rows).foldLeft(Surface.blank(size))((s, r) => s.write(r, 0, "│", style))
   }
 
   /** The top bar: the name on the accent, fading into the title on the slab. */

@@ -21,4 +21,10 @@ final class InMemoryUsageLedger extends UsageLedger {
       rows = rows :+ (entry, workflow, model, usage, estimatedInput)
       Right(())
     }
+
+  def of(workflow: WorkflowId)(using Tx^): Either[StoreError, Vector[UsageLedger.Row]] =
+    Right(rows.collect {
+      case (entry, w, model, usage, estimate) if w == workflow =>
+        UsageLedger.Row(entry, model, usage, estimate)
+    })
 }

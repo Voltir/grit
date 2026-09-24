@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, SourceId, TurnSeq, WorkflowId}
 import grit.core.message.{Message, Tokens, Usage}
-import grit.core.store.{Entry, EntryStore, Origin, Payload, StoreError}
+import grit.core.store.{Entry, EntryStore, Origin, Payload, StoreError, UsageLedger}
 import grit.dbos.sql.{LiveDb, SqlEntryStore, SqlUsageLedger, TestPostgres}
 
 import utest.*
@@ -80,6 +80,9 @@ object SqlLiveTests extends TestSuite {
       outcome ==> (Right(()), Left(StoreError.DuplicateId(EntryId("costly"))))
       LiveDb.ledger(config).filter(_._1 == "costly") ==>
         Vector(("costly", "m", Some(BigDecimal("0.0000123")), 12L))
+      LiveDb.transaction(config)(ledger.of(WorkflowId("w"))) ==>
+        Right(Vector(UsageLedger.Row(EntryId("costly"), "m", usage, Tokens(12))))
+      LiveDb.transaction(config)(ledger.of(WorkflowId("none"))) ==> Right(Vector.empty)
     }
 
     test("ingest: the same source is the same turn, a new one the next turn") {

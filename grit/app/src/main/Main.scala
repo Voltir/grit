@@ -113,9 +113,9 @@ object Main {
           }
         }
         val session = env.getOrElse("GRIT_SESSION", "default")
-        val host = new ChatHost(Origin.Tui(session), opener)
+        val host = new ChatHost(Origin.Tui(session), opener, SystemPrompt, CharEstimate)
         // Closing the host stops following and closes the engine, however far it got.
-        try Runtime.run(new ChatScreen.App(modelName, look), host)
+        try Runtime.run(new ChatScreen.App(modelName, look, budget), host)
         finally host.close()
         None
       } else {

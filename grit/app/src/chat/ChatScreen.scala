@@ -1,22 +1,27 @@
 package grit.app.chat
 
 import grit.app.look.Look
+import grit.core.message.Tokens
 import grit.tui.components.editor.Editor
+import grit.tui.components.pane.Anchor
 import grit.tui.components.tree.Node.*
 import grit.tui.components.tree.{Node, OnInput, PaneKey, Scroller}
 import grit.tui.components.widget.StatusBar
 import grit.tui.model.block.Block
 import grit.tui.model.input.{Input, Key}
-import grit.tui.model.select.Doc
+import grit.tui.model.select.{Doc, DocPos}
 import grit.tui.runtime.app.{Effect, TimerId}
 
-/** grit's chat screen: a transcript, a prompt and a status line. Pure, like every
-  * grit.tui app: a submission leaves as [[ChatScreen.Msg.Send]] through `Effect.ToHost`,
-  * and what the engine did comes back as messages ([[ChatHost]] sends them).
+/** grit's chat screen: a transcript beside the turn panel, a prompt and a status line.
+  * Pure, like every grit.tui app: a submission leaves as [[ChatScreen.Msg.Send]] through
+  * `Effect.ToHost`, and what the engine did comes back as messages ([[ChatHost]] sends
+  * them).
   */
 object ChatScreen {
 
   private val Transcript = PaneKey.of("transcript")
+
+  private val Panel = PaneKey.of("turn-panel")
 
   /** One message of the conversation: the user's, or a reply. */
   final case class Said(user: Boolean, text: String)
@@ -24,7 +29,8 @@ object ChatScreen {
   /** `said` is the transcript as the store has it. Below it, while the engine is
     * `opening`, is the ward; while a turn is in progress, the spinner, and the status line
     * names the turn's `step`, which began at tick `stepSince`. `tick` turns the runes and
-    * times the step.
+    * times the step. Beside it, while `panel` is on and the screen is wide enough, the
+    * turn panel shows `turn`, scrolled by `panelReader`.
     */
   final case class State(
       said: Vector[Block],
@@ -35,7 +41,10 @@ object ChatScreen {
       stepSince: Long,
       tick: Long,
       status: String,
-      title: String
+      title: String,
+      turn: Option[TurnView] = None,
+      panel: Boolean = true,
+      panelReader: Scroller.State = Scroller.State(Anchor.At(DocPos.zero))
   ) {
 
     /** Whether a turn is in progress. */
@@ -81,6 +90,15 @@ object ChatScreen {
     /** The runes turn one step. */
     case Tick
 
+    /** From the host: the turn the panel shows, as it now stands. */
+    case Turn(view: TurnView)
+
+    /** Ctrl-B: the turn panel shown, or hidden. */
+    case TogglePanel
+
+    /** The turn panel, scrolled, selected or copied from. */
+    case PanelReader(m: Scroller.Msg)
+
     /** The prompt, edited. */
     case Edited(editor: Editor)
 
@@ -90,8 +108,13 @@ object ChatScreen {
     case Quit
   }
 
-  /** The screen, titled `title` (the model it talks to). */
-  final class App(title: String, look: Look) extends grit.tui.runtime.app.App[State, Msg] {
+  /** The screen, titled `title` (the model it talks to); `budget` is what the assembler
+    * may spend on earlier turns, which the panel measures windows against.
+    */
+  final class App(title: String, look: Look, budget: Tokens)
+      extends grit.tui.runtime.app.App[State, Msg] {
+
+    private val panel = TurnPanel(look, budget)
 
     def init: (State, Effect[Msg]) =
       (
@@ -138,6 +161,13 @@ object ChatScreen {
           if (text.isEmpty) (s.copy(status = "nothing selected"), Effect.NoOp)
           else (s.copy(status = s"copied ${text.length} chars"), Effect.CopyOut(text))
         case Msg.Reader(m) => (s.copy(reader = Scroller.update(m, s.reader)), Effect.NoOp)
+        case Msg.Turn(view) => (s.copy(turn = Some(view)), Effect.NoOp)
+        case Msg.TogglePanel => (s.copy(panel = !s.panel), Effect.NoOp)
+        case Msg.PanelReader(Scroller.Msg.Copied(text, _)) =>
+          if (text.isEmpty) (s.copy(status = "nothing selected"), Effect.NoOp)
+          else (s.copy(status = s"copied ${text.length} chars"), Effect.CopyOut(text))
+        case Msg.PanelReader(m) =>
+          (s.copy(panelReader = Scroller.update(m, s.panelReader)), Effect.NoOp)
         case Msg.Quit => (s, Effect.Quit)
       }
 
@@ -161,11 +191,9 @@ object ChatScreen {
           Option.when(s.thinking && !s.opening)(look.thinking(s.tick))
       )
 
-    /** `ms` as seconds to a tenth, whatever the locale: `3.2s`. */
-    private def seconds(ms: Long): String = s"${ms / 1000}.${ms % 1000 / 100}s"
-
     private def hotkeys: OnInput[Msg] = {
       case Input.Keyboard(Key.Ctrl('q')) => Some(Msg.Quit)
+      case Input.Keyboard(Key.Ctrl('b')) => Some(Msg.TogglePanel)
       case _ => None
     }
 
@@ -174,28 +202,40 @@ object ChatScreen {
       case _ => None
     }
 
+    /** The transcript, with the turn panel beside it when it is on and there is room. */
+    private def body(s: State): Node[Msg] = {
+      val bar = Some((look.scrollRail, look.scrollThumb))
+      val reading = Scroller.view(Transcript, transcript(s), s.reader, bar = bar).map(Msg.Reader(_))
+      if (!s.panel) reading
+      else {
+        val shown = s.turn.filter(_.running.nonEmpty).fold(0L)(_ => s.stepMs)
+        val turn = Scroller
+          .view(Panel, Doc(panel.blocks(s.turn, shown)), s.panelReader, bar = bar)
+          .map(Msg.PanelReader(_))
+        wide(TurnPanel.ShownFrom)(
+          row(flex(20) -> reading, fixed(1) -> paint(look.divider), fixed(TurnPanel.Cols) -> turn),
+          reading
+        )
+      }
+    }
+
     def view(s: State): Node[Msg] =
       column(
         fixed(1) -> paint(look.header(s.title)),
-        flex(5) -> Scroller
-          .view(
-            Transcript,
-            transcript(s),
-            s.reader,
-            bar = Some((look.scrollRail, look.scrollThumb))
-          )
-          .map(Msg.Reader(_)),
+        flex(5) -> body(s),
         fit(3, 0.5) -> Node.editor(s.editor).onEdit(Msg.Edited(_)),
         fixed(1) -> paint(
+          // Where grit is goes left, where the bar keeps it; the hints give way first.
           StatusBar(
-            Vector(" ctrl-q quit ", " enter sends ", s.status),
             Vector(
               s.step match {
-                case _ if s.opening => s"${Look.Runes.Ward(0)} opening "
-                case Some(step) => s"${Look.Runes.step(step)} · ${seconds(s.stepMs)} "
-                case None => s"${Look.Runes.Idle} idle"
-              }
+                case _ if s.opening => s" ${Look.Runes.Ward(0)} opening"
+                case Some(step) => s" ${Look.Runes.step(step)} · ${TurnPanel.seconds(s.stepMs)}"
+                case None => s" ${Look.Runes.Idle} idle"
+              },
+              s.status
             ),
+            Vector("enter sends", "ctrl-b panel", "ctrl-q quit "),
             look.status
           )
         )

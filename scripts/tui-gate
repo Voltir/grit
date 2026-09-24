@@ -37,8 +37,12 @@
 #          with its reply, and the prompt clears. Needs the compose Postgres running.
 #   reload a second grit.app run in the same conversation paints that exchange with no
 #          input: the transcript is loaded from the store. Runs after `chat`.
+#   columns grit.app wide enough for the turn panel, in a conversation of its own: the
+#          wheel over each column scrolls only that column, a drag begun in the
+#          transcript stays in it however far into the panel it runs, and the prompt
+#          still takes keys.
 #
-# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload]
+# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload|columns]
 #        (no argument runs them all; `reload` needs `chat` before it in the same run)
 #
 # The oracles are geometry, not implementation: the chrome is header 1 + prompt 3 +
@@ -187,16 +191,42 @@ script_chat() {
   printf '\021'; sleep 2
 }
 
+# Short and wide: the panel shows (the app gets COLS - 1 >= 100 columns) and five
+# exchanges overflow both panes. The panel is the last 38 columns before the screen's
+# own unwritten last one; x=100 is inside it, x=20 inside the transcript.
+COLUMNS_ROWS=16
+COLUMNS_COLS=120
+script_columns() {
+  sleep $APP_STARTUP
+  for n in one two three four five; do
+    printf 'message %s' "$n"; sleep 0.3; printf '\r'; sleep 2.5
+  done
+  sleep 1
+  for _ in 1 2; do printf "%s" "${E}[<65;100;6M"; sleep 0.3; done   # wheel down, panel
+  sleep 0.8
+  for _ in 1 2; do printf "%s" "${E}[<64;20;6M"; sleep 0.3; done    # wheel up, transcript
+  sleep 0.8
+  printf "%s" "${E}[<0;5;3M"                                         # press in the transcript
+  for c in 30 60 90 105; do sleep 0.1; printf "%s" "${E}[<32;${c};8M"; done  # into the panel
+  sleep 0.3; printf "%s" "${E}[<0;105;8m"
+  sleep 0.8; printf 'still here'; sleep 0.8
+  printf '\021'; sleep 2
+}
+
 script_reload() {
   sleep $((APP_STARTUP + 2))
   printf '\021'; sleep 2
 }
 
 run_one() {
-  local name=$1 out="$WORK/$1.txt" runner=$RUNNER
+  local name=$1 out="$WORK/$1.txt" runner=$RUNNER rows=$ROWS cols=$COLS
   case "$name" in chat|reload) runner=$APP_RUNNER ;; esac
-  "script_$name" | setsid script -qc "stty rows $ROWS cols $COLS; $runner" /dev/null > "$out" 2>&1
-  python3 scripts/tui-gate.py "$out" "$ROWS" "$COLS" "$name"
+  if [ "$name" = columns ]; then
+    runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_SESSION=$STAMP-columns}
+    rows=$COLUMNS_ROWS cols=$COLUMNS_COLS
+  fi
+  "script_$name" | setsid script -qc "stty rows $rows cols $cols; $runner" /dev/null > "$out" 2>&1
+  python3 scripts/tui-gate.py "$out" "$rows" "$cols" "$name"
 }
 
 ensure_agent_db() {
@@ -206,7 +236,7 @@ ensure_agent_db() {
 }
 
 case " ${*:-chat} " in
-  *" chat "*|*" reload "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
+  *" chat "*|*" reload "*|*" columns "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
 esac
 
 case " ${1:-} " in
@@ -216,7 +246,7 @@ case " ${1:-} " in
 esac
 
 status=0
-for s in ${*:-span one modal thumb popup resize burst chat reload}; do
+for s in ${*:-span one modal thumb popup resize burst chat reload columns}; do
   echo "== $s"
   run_one "$s" || status=1
 done

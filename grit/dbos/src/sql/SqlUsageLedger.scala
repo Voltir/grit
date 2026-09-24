@@ -50,4 +50,37 @@ final class SqlUsageLedger extends UsageLedger {
       case NonFatal(e) => Left(SqlEntryStore.databaseError(e))
     }
   }
+
+  def of(workflow: WorkflowId)(using tx: Tx^): Either[StoreError, Vector[UsageLedger.Row]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    try {
+      Using.resource(
+        conn.prepareStatement(
+          """SELECT entry_id, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
+            |       estimated_input_tokens
+            |FROM grit.usage_ledger WHERE workflow_id = ? ORDER BY created_at, entry_id""".stripMargin
+        )
+      ) { ps =>
+        ps.setString(1, WorkflowId.value(workflow))
+        Using.resource(ps.executeQuery()) { rs =>
+          val rows = Vector.newBuilder[UsageLedger.Row]
+          while (rs.next()) {
+            val usage = Usage(
+              Tokens(rs.getLong(3)),
+              Tokens(rs.getLong(4)),
+              Tokens(rs.getLong(5)),
+              Option(rs.getBigDecimal(6)).map(BigDecimal(_))
+            )
+            rows += UsageLedger.Row(
+              EntryId(rs.getString(1)),
+              rs.getString(2),
+              usage,
+              Tokens(rs.getLong(7))
+            )
+          }
+          Right(rows.result())
+        }
+      }
+    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
+  }
 }

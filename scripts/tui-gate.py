@@ -6,7 +6,7 @@ tests, so this replays the capture through a small VT model (CUP / EL / ED / SGR
 asserts against the resulting *grid*: which cells carry reverse video, and whether they
 say the same thing the clipboard does.
 
-Usage: gate.py <capture> <rows> <cols> <span|one|modal>
+Usage: gate.py <capture> <rows> <cols> <scenario>
 """
 
 import base64
@@ -228,7 +228,7 @@ def main():
         check(bool(asked) and bool(answered) and answered[0] > asked[0],
               "the reply is below the message it answers")
         check("thinking" not in text, "no turn is left in progress on the final screen")
-        check(bool(final) and final[rows - 1].rstrip().endswith("idle"),
+        check(bool(final) and "ᛁ idle" in final[rows - 1],
               "the status bar settles on idle")
         payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
         check(len(payloads) == 0, "no drag, so no clipboard write", "%d" % len(payloads))
@@ -256,6 +256,9 @@ def main():
             failed += 0 if ok else 1
             print("  %s  %-*s %s" % ("ok  " if ok else "FAIL", width, label, detail))
         return 1 if failed else 0
+
+    if scenario == "columns":
+        return columns(checks, check, raw, rows, cols, screens, snapshots, ones)
 
     payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
     if scenario in ("thumb", "popup"):
@@ -346,6 +349,71 @@ def main():
         check(all(not snap for snap in snapshots),
               "a thumb drag paints no selection")
 
+    width = max(len(label) for _, label, _ in checks)
+    failed = 0
+    for ok, label, detail in checks:
+        failed += 0 if ok else 1
+        print("  %s  %-*s %s" % ("ok  " if ok else "FAIL", width, label, detail))
+    return 1 if failed else 0
+
+
+def columns(checks, check, raw, rows, cols, screens, snapshots, ones):
+    """grit.app beside its turn panel. The body is rows 1 .. rows - 5 (header 1; prompt 3
+    and status 1 below). The divider is the column of `│` down every body row; the
+    transcript is left of it, the panel right of it.
+    """
+    body = range(1, rows - 4)
+    final = screens[-1] if screens else []
+    divider = None
+    for c in range(cols - 2, 0, -1):
+        if final and all(final[r][c] == "\u2502" for r in body):
+            divider = c
+            break
+    check(divider is not None and cols - 1 - divider > 30,
+          "the turn panel stands beside the transcript", "divider at column %s" % divider)
+    if divider is None:
+        return report(checks)
+    left = lambda g: [g[r][:divider] for r in body]
+    right = lambda g: [g[r][divider + 1:] for r in body]
+    check(any(any("TURN" in row for row in right(g)) for g in screens),
+          "the panel shows the turn")
+
+    # The wheel over the panel: the frame where its title scrolls away, and the
+    # transcript in that frame as it was in the frame before.
+    panel_moved = next((i for i in range(1, len(screens))
+                        if "TURN" in right(screens[i - 1])[0] and "TURN" not in right(screens[i])[0]),
+                       None)
+    check(panel_moved is not None, "the wheel over the panel scrolled the panel")
+    check(panel_moved is not None and left(screens[panel_moved]) == left(screens[panel_moved - 1]),
+          "and left the transcript where it was")
+    # The wheel over the transcript, afterwards: its rows move, the panel's do not.
+    later = range((panel_moved or 0) + 1, len(screens))
+    text_moved = next((i for i in later
+                       if left(screens[i]) != left(screens[i - 1])
+                       and not any(snapshots[i])), None)
+    check(text_moved is not None, "the wheel over the transcript scrolled the transcript")
+    check(text_moved is not None and right(screens[text_moved]) == right(screens[text_moved - 1]),
+          "and left the panel where it was")
+
+    # The drag, begun in the transcript and released over the panel: rule 6 across columns.
+    payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
+    check(len(payloads) == 1, "exactly one clipboard write", "%d" % len(payloads))
+    copied = base64.b64decode(payloads[-1]).decode("utf-8", "replace") if payloads else ""
+    check("message" in copied or "stub reply" in copied,
+          "the clipboard holds transcript text", repr(copied[:40]))
+    check(not any(w in copied for w in ("TURN", "assemble", "window", "recalled")),
+          "and nothing of the panel's")
+    masked = [i for i, snap in enumerate(snapshots) if snap]
+    lit = [(r, c) for r in body for c in range(cols)
+           if masked and ones[masked[-1]].grid[r][c][1]]
+    check(bool(lit) and all(c < divider for _, c in lit),
+          "the highlight never crossed the divider", "%d cells" % len(lit))
+
+    check(bool(final) and "still here" in final[rows - 3], "the prompt still takes keys")
+    return report(checks)
+
+
+def report(checks):
     width = max(len(label) for _, label, _ in checks)
     failed = 0
     for ok, label, detail in checks:

@@ -1,0 +1,134 @@
+package grit.app.chat
+
+import java.time.Instant
+
+import grit.assembly.estimate.CharEstimate
+import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.store.{Entry, Payload, UsageLedger}
+import grit.dbos.engine.RecordedStep
+
+import utest.*
+
+/** A turn as the panel describes it, from recorded entries, steps and costs alone. */
+object TurnViewTests extends TestSuite {
+
+  private val c = ConversationId("c")
+
+  private def entry(seq: Long, turn: Long, payload: Payload): Entry =
+    Entry(EntryId(s"e$seq"), c, TurnSeq(turn), None, seq, payload, Instant.EPOCH)
+
+  private def user(seq: Long, turn: Long, text: String) =
+    entry(seq, turn, Payload.Message(Message.User(text)))
+
+  private def reply(seq: Long, turn: Long, text: String, input: Long) = entry(
+    seq,
+    turn,
+    Payload.Message(
+      Message.Assistant(
+        Vector(AssistantBlock.Text(text)),
+        StopReason.EndTurn,
+        Usage(Tokens(input), Tokens(3), Tokens.Zero, Some(BigDecimal("0.0002"))),
+        "m"
+      )
+    )
+  )
+
+  private def step(name: String, from: Long, to: Long) =
+    RecordedStep(name, Some(Instant.ofEpochMilli(from)), Some(Instant.ofEpochMilli(to)))
+
+  /** Turn 0 and turn 1 answered, then turn 2 asked with a window of turn 1 (recent) and
+    * turn 0 (recalled).
+    */
+  private val entries: Vector[Entry] = Vector(
+    user(0, 0, "first question"),
+    reply(1, 0, "first answer", 10),
+    user(2, 1, "second"),
+    reply(3, 1, "second answer", 20),
+    user(4, 2, "third, about the first"),
+    entry(5, 2, Payload.Query("first question")),
+    entry(
+      6,
+      2,
+      Payload.Window(
+        Vector(EntryId("e0"), EntryId("e1"), EntryId("e2"), EntryId("e3")),
+        Vector(TurnSeq(0))
+      )
+    ),
+    reply(7, 2, "the answer", 99)
+  )
+
+  private val turn2 = TurnRef(c, TurnSeq(2))
+
+  val tests = Tests {
+    test("the latest turn is the one the last user message started") {
+      TurnView.latest(entries) ==> Some(turn2)
+      TurnView.latest(Vector.empty) ==> None
+    }
+
+    test("a finished turn: its steps timed, its query, its window split, its cost") {
+      val steps = Vector(step("assemble", 0, 400), step("call-model", 400, 3500))
+      val costs = Vector(
+        UsageLedger.Row(
+          EntryId("q"),
+          "w",
+          Usage(Tokens(5), Tokens(1), Tokens.Zero, Some(BigDecimal("0.0001"))),
+          Tokens(4)
+        ),
+        UsageLedger.Row(
+          EntryId("e7"),
+          "m",
+          Usage(Tokens(99), Tokens(3), Tokens.Zero, Some(BigDecimal("0.0002"))),
+          Tokens(90)
+        )
+      )
+      val v =
+        TurnView.of(turn2, entries, steps, running = false, costs, "You are grit.", CharEstimate)
+      v.turn ==> TurnSeq(2)
+      v.running ==> None
+      v.steps ==> Vector(
+        TurnView.Step("assemble", Some(400)),
+        TurnView.Step("call-model", Some(3100))
+      )
+      v.query ==> Some("first question")
+      v.spent ==> Some(BigDecimal("0.0003"))
+      v.billed ==> Some(Tokens(99))
+      val w = v.window.getOrElse(sys.error("no window"))
+      w.recalledTurns ==> Vector(TurnSeq(0))
+      w.system ==> CharEstimate.system("You are grit.")
+      w.recalled ==> Seq("first question", "first answer").map(msg).reduce(_ + _)
+      w.recent ==> Seq("second", "second answer").map(msg).reduce(_ + _)
+      w.message ==> CharEstimate.message(Message.User("third, about the first"))
+      assert(!v.settled)
+    }
+
+    test("a running turn is in the step after its last recorded one, before any window") {
+      val asked = entries.take(5)
+      val v = TurnView.of(
+        turn2,
+        asked,
+        Vector(step("assemble", 0, 10)),
+        running = true,
+        Vector.empty,
+        "s",
+        CharEstimate
+      )
+      v.running ==> Some("call-model")
+      v.window ==> None
+      v.spent ==> None
+      v.billed ==> None
+    }
+  }
+
+  /** The estimate of a message whose text is `text`, as the fixtures above write it. */
+  private def msg(text: String): Tokens =
+    entries
+      .collectFirst {
+        case Entry(_, _, _, _, _, Payload.Message(m @ Message.User(`text`)), _) => m: Message
+        case Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _)
+            if m.blocks == Vector(AssistantBlock.Text(text)) =>
+          m: Message
+      }
+      .map(CharEstimate.message)
+      .getOrElse(sys.error(s"no message $text"))
+}
