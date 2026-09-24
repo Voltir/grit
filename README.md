@@ -55,11 +55,13 @@ here:
 
 ```sh
 docker compose up -d postgres
-./mill grit.app.run a b a
+./mill grit.app.run hello "what is 2+2?" hello
 ```
 
-Each argument is a message id, answered by one durable turn with a stub model. A repeated
-id is the same turn; run it again and finished turns replay without calling the model.
+Each argument is a message, answered by one durable turn. A repeated message is the same
+turn; run it again and finished turns replay without calling the model. The model is the
+stub unless `OPENROUTER_API_KEY` is set; then it is OpenRouter's `openai/gpt-oss-20b`, or
+`GRIT_MODEL`.
 
 `GRIT_DATABASE_URL` (a `jdbc:postgresql:` URL), `GRIT_DATABASE_USER` and
 `GRIT_DATABASE_PASSWORD` override the compose database; each defaults to it when unset.

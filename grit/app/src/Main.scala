@@ -13,13 +13,14 @@ import grit.core.{
   TurnRef
 }
 import grit.dbos.{DbConfig, Engine}
-import grit.models.StubProvider
+import grit.models.{OpenRouterConfig, OpenRouterProvider, StubProvider}
 import grit.turn.Turn
 
-/** The M0 run: each argument is a source message id, ingested and answered by the real
-  * turn with the stub provider, against the Postgres named by `GRIT_DATABASE_*` (see
-  * [[DbConfig]]). Repeat an id to watch a redelivery come back as the same turn; run again
-  * with the same ids to watch finished turns replay without calling the provider.
+/** The M0 run: each argument is a message, ingested and answered by the real turn,
+  * against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
+  * OpenRouter's when `OPENROUTER_API_KEY` is set ([[OpenRouterConfig]]), the stub
+  * otherwise. Repeat a message to watch a redelivery come back as the same turn; run again
+  * with the same messages to watch finished turns replay without calling the model.
   */
 object Main {
 
@@ -35,36 +36,48 @@ object Main {
         System.err.println(s"[main] ${invalid.message}")
         sys.exit(2)
     }
-    val sources =
-      if (args.isEmpty) List("m0-" + System.currentTimeMillis()) else args.toList
+    // OpenRouter when a key is set, otherwise the stub: no key, no spend.
+    val openRouter: Option[OpenRouterConfig] =
+      if (!sys.env.contains(OpenRouterConfig.KeyVar)) None
+      else
+        OpenRouterConfig.fromEnv(sys.env) match {
+          case Right(c) => Some(c)
+          case Left(invalid) =>
+            System.err.println(s"[main] ${invalid.message}")
+            sys.exit(2)
+        }
+    val modelName = openRouter.fold(StubProvider.Model)(_.model)
+    val model: Provider = openRouter match {
+      case Some(c) => new OpenRouterProvider(c)
+      case None => new StubProvider()
+    }
+    val messages =
+      if (args.isEmpty) List("hello " + System.currentTimeMillis()) else args.toList
 
     val engine = Engine.open(config, Turn.Epoch)
     val failure: Option[String] =
       try {
         // Prints each call, so a replayed turn is visibly one that did not call.
         val provider = new Provider {
-          private val stub = new StubProvider()
           def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
-            println(s"[provider] called with ${request.messages.size} message(s)")
-            stub.complete(request)
+            println(s"[provider] $modelName called with ${request.messages.size} message(s)")
+            model.complete(request)
           }
         }
         engine.launch(
           Turn.body(
             SystemPrompt,
             engine.entries,
+            engine.ledger,
             new LinearAssembler(engine.entries),
             provider,
             engine.db
           )
         )
-        val started = sources.map { source =>
+        val started = messages.map { text =>
           for {
-            turn <- engine.inbox.ingest(
-              RunOrigin,
-              SourceId(source),
-              Message.User(s"message $source")
-            )
+            // The text is its own source id, so repeating a message redelivers it.
+            turn <- engine.inbox.ingest(RunOrigin, SourceId(text), Message.User(text))
             _ <- engine.inbox.startTurn(turn)
           } yield turn
         }

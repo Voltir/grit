@@ -22,17 +22,22 @@ CREATE TABLE IF NOT EXISTS grit.entries (
     payload         JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- One entry per position. Writers allocate seq under the conversation's row lock
-    -- (SqlInbox.lockNext); this makes a writer that skipped the lock fail, not interleave.
+    -- (EntryStore.lockNext); this makes a writer that skipped the lock fail, not interleave.
     CONSTRAINT entries_conversation_seq UNIQUE (conversation_id, seq)
 );
 
 CREATE INDEX IF NOT EXISTS idx_entries_parent       ON grit.entries(parent_id);
 
+-- One row per model response: what it cost. Keyed by the entry that holds the response,
+-- so the turn's append writes both in one transaction and a replay cannot count twice.
 CREATE TABLE IF NOT EXISTS grit.usage_ledger (
-    id            BIGSERIAL PRIMARY KEY,
-    workflow_id   TEXT NOT NULL,
-    model         TEXT NOT NULL,
-    input_tokens  INTEGER NOT NULL,
-    output_tokens INTEGER NOT NULL,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    entry_id            TEXT PRIMARY KEY REFERENCES grit.entries(id) ON DELETE CASCADE,
+    workflow_id         TEXT NOT NULL,
+    model               TEXT NOT NULL,
+    input_tokens        BIGINT NOT NULL,
+    output_tokens       BIGINT NOT NULL,
+    cached_input_tokens BIGINT NOT NULL,
+    -- The provider's own figure; NULL when it reports none.
+    cost_usd            NUMERIC,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );

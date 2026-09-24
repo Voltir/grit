@@ -124,6 +124,8 @@ object grit extends Module {
    * once it has an HTTP client. roadmap/mechanisms/models.md. */
   object models extends GritModule {
     def moduleDeps = Seq(core)
+
+    object test extends GritTests
   }
 
   /* Assembly: builds each turn's context window from memory.

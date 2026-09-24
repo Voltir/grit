@@ -17,6 +17,7 @@ import grit.core.{
   StoreError,
   Tx,
   TurnRef,
+  UsageLedger,
   WorkflowId,
   Window
 }
@@ -27,7 +28,8 @@ import java.time.Instant
   *
   *   1. `assemble` — a fresh window over what came before the turn.
   *   2. `call-model` — the window, then the turn's own messages, sent to the provider.
-  *   3. `append` — the reply recorded as the turn's entry, atomically with the step.
+  *   3. `append` — the reply recorded as the turn's entry, with its cost in the usage
+  *      ledger, atomically with the step.
   *
   * A step that fails returns a [[TurnFailure]], which ends the turn and is recorded like
   * any other output: a rerun ends the same way without calling anything.
@@ -48,6 +50,7 @@ object Turn {
   def body(
       system: String,
       entries: EntryStore,
+      ledger: UsageLedger,
       assembler: ContextAssembler,
       provider: Provider^,
       db: Db^
@@ -55,7 +58,7 @@ object Turn {
     TurnRef.fromWorkflowId(workflowId) match {
       case None => s"not a turn: ${WorkflowId.value(workflowId)}"
       case Some(turn) =>
-        run(system, entries, assembler, provider, db, turn) match {
+        run(system, entries, ledger, assembler, provider, db, turn) match {
           case Right(reply) => s"replied: ${EntryId.value(reply)}"
           case Left(failure) => s"failed: $failure"
         }
@@ -68,6 +71,7 @@ object Turn {
   private def run(
       system: String,
       entries: EntryStore,
+      ledger: UsageLedger,
       assembler: ContextAssembler,
       provider: Provider^,
       db: Db^,
@@ -88,7 +92,7 @@ object Turn {
           }
         }
       }
-      appended <- d.transact("append")(append(entries, turn, reply, message))
+      appended <- d.transact("append")(append(entries, ledger, turn, reply, message))
     } yield appended
   }
 
@@ -118,11 +122,15 @@ object Turn {
     }
 
   /** Records `message` as `turn`'s entry `id`, after everything already in the
-    * conversation.
+    * conversation, and what it cost in the ledger.
     */
-  private def append(entries: EntryStore, turn: TurnRef, id: EntryId, message: Message)(using
-      Tx^
-  ): Either[TurnFailure, EntryId] =
+  private def append(
+      entries: EntryStore,
+      ledger: UsageLedger,
+      turn: TurnRef,
+      id: EntryId,
+      message: Message.Assistant
+  )(using Tx^): Either[TurnFailure, EntryId] =
     (for {
       next <- entries.lockNext(turn.conversationId)
       _ <- entries.insert(
@@ -136,6 +144,7 @@ object Turn {
           Instant.now()
         )
       )
+      _ <- ledger.record(id, turn.workflowId, message.model, message.usage)
     } yield id).left.map(storeFailure)
 
   private def storeFailure(error: StoreError): TurnFailure = TurnFailure.Store(describe(error))

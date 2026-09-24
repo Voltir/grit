@@ -25,7 +25,14 @@ object LiveTurn {
   /** Launches `engine` with the turn over `entries` and `provider`. */
   def launch(engine: Engine^, entries: EntryStore, provider: Provider^): Unit =
     engine.launch(
-      Turn.body("You are grit.", entries, new LinearAssembler(entries), provider, engine.db)
+      Turn.body(
+        "You are grit.",
+        entries,
+        engine.ledger,
+        new LinearAssembler(entries),
+        provider,
+        engine.db
+      )
     )
 
   /** Ingests `source` and starts its turn. */

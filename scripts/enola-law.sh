@@ -31,15 +31,17 @@ if printf '%s\n' "$lint" | grep -q "matches nothing"; then
   exit 1
 fi
 
-# TRAP: enola has no package pattern, so rule 8 is one rule per class. A class grit.dbos
-# starts importing without a matching rule may then be imported anywhere, and nothing
-# says so. Every quarantined class grit.dbos imports must be named by a rule.
-unruled=$(grep -oE '"name":"grit/dbos/src -\\u003e (dev\.dbos|java\.sql|javax\.sql|org\.postgresql)\.[^"]*"' .enola/facts.jsonl |
+# TRAP: enola has no package pattern, so rule 8 is one rule per class. A class a
+# quarantine module starts importing without a matching rule may then be imported
+# anywhere, and nothing says so. Every quarantined class grit.dbos (DBOS, JDBC, the
+# driver) or grit.models (java.net.http) imports must be named by a rule.
+unruled=$( { grep -oE '"name":"grit/dbos/src -\\u003e (dev\.dbos|java\.sql|javax\.sql|org\.postgresql)\.[^"]*"' .enola/facts.jsonl
+    grep -oE '"name":"grit/models/src -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl; } |
   sed -E 's/.*u003e ([^"]*)"/\1/' | sort -u | while read -r class; do
     grep -qF "\"* -> $class\"" enola-intent.yaml || echo "$class"
   done)
 if [ -n "$unruled" ]; then
-  echo "grit.dbos imports quarantined classes that no rule in enola-intent.yaml names:" >&2
+  echo "A quarantine module imports classes that no rule in enola-intent.yaml names:" >&2
   printf '  %s\n' $unruled >&2
   exit 1
 fi

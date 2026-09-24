@@ -1,7 +1,7 @@
 package grit.turn
 
-import grit.assembly.LinearAssembler
 import grit.core.*
+import grit.models.StubProvider
 import utest.*
 
 object TurnTests extends TestSuite {
@@ -16,6 +16,17 @@ object TurnTests extends TestSuite {
       runTurn(new InMemoryDurable, entries, provider, turn) ==> "replied: reply:c1:0"
       texts(entries) ==> Vector("user: hello", "assistant: stub reply to: hello")
       provider.requests.map(_.system) ==> Vector(system)
+    }
+
+    test("the reply's usage is recorded once, under the reply's entry") {
+      val entries = new InMemoryEntryStore
+      val ledger = new InMemoryUsageLedger
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello")
+      runTurn(durable, entries, new RecordingProvider, turn, ledger)
+      runTurn(durable, entries, new RecordingProvider, turn, ledger)
+      ledger.rows.map(r => (r._1, r._2, r._3)) ==>
+        Vector((Turn.replyId(turn), turn.workflowId, StubProvider.Model))
     }
 
     test("M0 gate: the same workflow id twice calls the provider once") {
@@ -66,7 +77,7 @@ object TurnTests extends TestSuite {
     test("not a turn id") {
       val entries = new InMemoryEntryStore
       new InMemoryDurable().run(WorkflowId("proof"))(
-        Turn.body(system, entries, new LinearAssembler(entries), new RecordingProvider, FakeDb)
+        turnBody(entries, new RecordingProvider)
       ) ==> "not a turn: proof"
     }
   }

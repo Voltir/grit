@@ -3,7 +3,16 @@ package grit.dbos
 import dev.dbos.transact.{DBOS, DBOSClient}
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory
-import grit.core.{ConversationStore, Db, Durable, EntryStore, Inbox, TurnRef, WorkflowId}
+import grit.core.{
+  ConversationStore,
+  Db,
+  Durable,
+  EntryStore,
+  Inbox,
+  TurnRef,
+  UsageLedger,
+  WorkflowId
+}
 import java.sql.DriverManager
 import org.postgresql.ds.PGSimpleDataSource
 import scala.io.Source
@@ -20,6 +29,8 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   val conversations: ConversationStore = new SqlConversationStore()
 
   val entries: EntryStore = new SqlEntryStore()
+
+  val ledger: UsageLedger = new SqlUsageLedger()
 
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource)

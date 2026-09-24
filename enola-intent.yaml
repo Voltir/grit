@@ -1,7 +1,8 @@
 # grit's architecture law, checked by `bash scripts/enola-law.sh`.
 #
 # It enforces two things:
-#   1. Only grit.dbos may import dev.dbos.*, JDBC or the Postgres driver (STYLE rule 8)
+#   1. Only grit.dbos may import dev.dbos.*, JDBC or the Postgres driver, and only
+#      grit.models the JDK HTTP client (STYLE rule 8)
 #   2. grit.tui's four groups import in one direction (grit/tui/CLAUDE.md)
 #
 # Every rule was watched failing on a deliberately planted bad import before it was
@@ -27,6 +28,11 @@ components:
   - name: outside-dbos
     kind: dependency
     match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**"]
+
+  # Every module except grit.models, for the HTTP quarantine (STYLE rule 8).
+  - name: outside-models
+    kind: dependency
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**"]
 
   # The tui groups, for the direction rules. `runtime` needs no entry: it may import
   # every group.
@@ -146,6 +152,28 @@ rules:
     pattern: "* -> org.postgresql.util.PSQLException"
     mode: strict
     because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
+
+  # -------------------------------------------------------------------------------------
+  # 1c. Only grit.models imports the JDK HTTP client: every model that is not local is an
+  # egress, and egress is grit.models' job (roadmap/mechanisms/models.md).
+  # -------------------------------------------------------------------------------------
+  - id: only-models-imports-http-client
+    forbid_name: outside-models
+    pattern: "* -> java.net.http.HttpClient"
+    mode: strict
+    because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models, where model calls leave the machine"
+
+  - id: only-models-imports-http-request
+    forbid_name: outside-models
+    pattern: "* -> java.net.http.HttpRequest"
+    mode: strict
+    because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models, where model calls leave the machine"
+
+  - id: only-models-imports-http-response
+    forbid_name: outside-models
+    pattern: "* -> java.net.http.HttpResponse"
+    mode: strict
+    because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models, where model calls leave the machine"
 
   # -------------------------------------------------------------------------------------
   # 2. grit.tui's import direction: each group lists what it may import.

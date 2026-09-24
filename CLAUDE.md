@@ -34,7 +34,7 @@ Mill modules, and what each may name:
 | `grit.tui` | `grit.tui.{model,components,wire,runtime}` | core | the terminal UI; core only from `components`/`runtime` |
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo2` is `scripts/tui-gate`'s target |
 | `grit.turn` | `grit.turn` | core | the durable turn's body, written against `Durable` |
-| `grit.models` | `grit.models` | core | `Provider`s: the stub now, the frontier provider next, later the relevance judge |
+| `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); later the relevance judge |
 | `grit.assembly` | `grit.assembly` | core | `ContextAssembler`s: builds each turn's context window |
 | `grit.app` | `grit.app` | everything | the composition root; its `Main` is the M0 run |
 
@@ -66,7 +66,8 @@ capability is a promise of purity.**
 7. Immutable data; mutation only in scoped locals.
 8. **Java libraries are quarantined by role.** Each lives only in the module whose job
    needs it, translated into grit's conventions there; such modules depend only on core and
-   meet only in `grit.app`. Nothing outside `grit.dbos` imports `dev.dbos.*` or `java.sql.*`.
+   meet only in `grit.app`. Nothing outside `grit.dbos` imports `dev.dbos.*` or `java.sql.*`,
+   and nothing outside `grit.models` imports `java.net.http.*`.
 9. Explicit capability parameters over clever inference.
 10. **The elision test** — if assembly dropped the body and kept only the signature and
     its doc, could a competent agent still call it correctly? If not, fix the signature.

@@ -75,16 +75,19 @@ object TurnFixtures {
     }
 
   /** The turn's workflow body over `entries` and `provider`. */
-  def turnBody(entries: EntryStore, provider: Provider^)(id: WorkflowId)(using Durable^): String =
-    Turn.body(system, entries, new LinearAssembler(entries), provider, FakeDb)(id)
+  def turnBody(
+      entries: EntryStore,
+      provider: Provider^,
+      ledger: UsageLedger = new InMemoryUsageLedger
+  )(id: WorkflowId)(using Durable^): String =
+    Turn.body(system, entries, ledger, new LinearAssembler(entries), provider, FakeDb)(id)
 
   def runTurn(
       durable: InMemoryDurable,
       entries: EntryStore,
       provider: Provider^,
-      turn: TurnRef
+      turn: TurnRef,
+      ledger: UsageLedger = new InMemoryUsageLedger
   ): String =
-    durable.run(turn.workflowId)(
-      Turn.body(system, entries, new LinearAssembler(entries), provider, FakeDb)
-    )
+    durable.run(turn.workflowId)(turnBody(entries, provider, ledger))
 }

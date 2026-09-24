@@ -30,4 +30,25 @@ object LiveDb {
       case Left(e: StoreError) => sys.error(s"arranging a conversation: $e")
     }
 
+  /** Every usage ledger row, as (entry id, model, cost). */
+  def ledger(config: DbConfig): Vector[(String, String, Option[BigDecimal])] =
+    transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement(
+          "SELECT entry_id, model, cost_usd FROM grit.usage_ledger ORDER BY entry_id"
+        )
+      ) { ps =>
+        Using.resource(ps.executeQuery()) { rs =>
+          val rows = Vector.newBuilder[(String, String, Option[BigDecimal])]
+          while (rs.next())
+            rows += ((
+              rs.getString(1),
+              rs.getString(2),
+              Option(rs.getBigDecimal(3)).map(BigDecimal(_))
+            ))
+          rows.result()
+        }
+      }
+    }
 }
