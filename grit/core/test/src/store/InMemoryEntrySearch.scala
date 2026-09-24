@@ -32,5 +32,6 @@ final class InMemoryEntrySearch(entries: EntryStore) extends EntrySearch {
       Some(blocks.collect { case AssistantBlock.Text(t) => t }.mkString(" "))
     case Payload.Message(Message.ToolResult(_, content, _)) => Some(content)
     case Payload.Summary(t) => Some(t)
+    case Payload.Query(_) => None
   }
 }

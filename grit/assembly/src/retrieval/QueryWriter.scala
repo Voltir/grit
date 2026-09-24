@@ -47,6 +47,6 @@ object QueryWriter {
       Option.when(said.nonEmpty)(s"Assistant: ${said.mkString("\n")}")
     case Payload.Message(Message.ToolResult(_, content, _)) =>
       Some(s"Tool result: ${content.take(ToolResultChars)}")
-    case Payload.Summary(_) => None
+    case Payload.Summary(_) | Payload.Query(_) => None
   }
 }

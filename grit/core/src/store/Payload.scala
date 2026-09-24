@@ -14,4 +14,9 @@ enum Payload {
     * message: the model sees it only if an assembler chooses to show it.
     */
   case Summary(text: String)
+
+  /** The search query assembly wrote for the turn the entry belongs to. A record of what
+    * was searched for: never shown to the model, never itself searched.
+    */
+  case Query(text: String)
 }

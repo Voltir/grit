@@ -145,6 +145,22 @@ object TurnTests extends TestSuite {
       durable.recordedSteps(turn.workflowId) ==> AllSteps
     }
 
+    test("a query assembly wrote is recorded before the reply, with its cost, and never sent") {
+      val entries = new InMemoryEntryStore
+      val ledger = new InMemoryUsageLedger
+      val durable = new InMemoryDurable
+      val provider = new RecordingProvider
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(
+        turnBodyWith(entries, provider, new Noting(entries, queried), ledger)
+      ) ==> Done
+      texts(entries).take(3) ==>
+        Vector("user: hello", "query: hello greeting", "assistant: stub reply to: hello")
+      ledger.rows.map(r => (r._1, r._4, r._5)).headOption ==>
+        Some((Turn.queryId(turn, 0), queried.usage, queried.estimate))
+      provider.requests.map(_.messages) ==> Vector(Vector(Message.User("hello")))
+    }
+
     test("a later turn sees earlier turns, then its own message") {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable

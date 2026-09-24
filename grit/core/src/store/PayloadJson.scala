@@ -13,6 +13,7 @@ object PayloadJson {
   def write(p: Payload): ujson.Value = p match {
     case Payload.Message(m) => ujson.Obj("kind" -> "message", "message" -> message(m))
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
+    case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
   }
 
   /** The payload `v` encodes, or why it encodes none. */
@@ -23,6 +24,7 @@ object PayloadJson {
       p <- kind match {
         case "message" => field(o, "message").flatMap(readMessage).map(Payload.Message(_))
         case "summary" => str(o, "text").map(Payload.Summary(_))
+        case "query" => str(o, "text").map(Payload.Query(_))
         case other => Left(s"unknown payload kind: $other")
       }
     } yield p
@@ -33,7 +35,7 @@ object PayloadJson {
       val base = ujson.Obj(
         "role" -> "assistant",
         "blocks" -> ujson.Arr.from(blocks.map(block)),
-        "usage" -> usageJson(usage),
+        "usage" -> writeUsage(usage),
         "model" -> model
       )
       stop match {
@@ -68,8 +70,10 @@ object PayloadJson {
       )
   }
 
-  // Cost is a string so the provider's decimal survives exactly.
-  private def usageJson(u: Usage): ujson.Value = {
+  /** A [[Usage]] in the stored form; the cost is a string so the provider's decimal
+    * survives exactly.
+    */
+  def writeUsage(u: Usage): ujson.Value = {
     val o = ujson.Obj(
       "input" -> Tokens.value(u.input).toDouble,
       "output" -> Tokens.value(u.output).toDouble,
@@ -130,7 +134,8 @@ object PayloadJson {
       case other => Left(s"unknown stop reason: $other")
     }
 
-  private def readUsage(v: ujson.Value): Either[String, Usage] =
+  /** The [[Usage]] `v` encodes in [[writeUsage]]'s form, or why it encodes none. */
+  def readUsage(v: ujson.Value): Either[String, Usage] =
     for {
       o <- obj(v)
       input <- long(o, "input")

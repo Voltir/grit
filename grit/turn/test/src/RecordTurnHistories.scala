@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.durable.{History, InMemoryDurable}
 import grit.core.id.TurnRef
-import grit.core.store.{InMemoryEntryStore, Payload}
+import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
 
 /** Writes this epoch's recorded turn histories, one per shape a turn can leave behind,
   * into `GRIT_HISTORIES/{Turn.Epoch}`. Never overwrites: a history, once written, is what
@@ -89,7 +89,22 @@ object RecordTurnHistories {
       catch { case _: InMemoryDurable.Crash => "" }
       recorded(durable, turn)
     }
+    val queried = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new RecordingProvider,
+          new Noting(entries, TurnFixtures.queried),
+          new InMemoryUsageLedger
+        )
+      )
+      recorded(durable, turn)
+    }
     Vector(
+      "queried" -> queried,
       "summarised" -> summarised,
       "summary-failed" -> summaryFailed,
       "crashed-before-summary-append" -> crashedBeforeSummaryAppend,

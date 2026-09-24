@@ -2,7 +2,7 @@ package grit.turn
 
 import java.time.Instant
 
-import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Window}
+import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
@@ -15,7 +15,8 @@ import grit.core.store.{Db, Entry, EntryStore, Payload, StoreError, Tx, UsageLed
   *   1. `assemble` — a fresh window over what came before the turn.
   *   2. `call-model` — the window, then the turn's own messages, sent to the provider.
   *   3. `append` — the reply recorded as the turn's entry, with its cost in the usage
-  *      ledger beside `estimator`'s estimate of the request, atomically with the step.
+  *      ledger beside `estimator`'s estimate of the request, atomically with the step;
+  *      before it, any search query assembly wrote, as its own entry with its own cost.
   *   4. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]).
   *   5. `append-summary` — the summary recorded as the turn's entry after the reply, with
   *      its cost in the ledger as in `append`.
@@ -42,7 +43,7 @@ object Turn {
       system: String,
       entries: EntryStore,
       ledger: UsageLedger,
-      assembler: ContextAssembler,
+      assembler: ContextAssembler^,
       estimator: TokenEstimator,
       provider: Provider^,
       summarizer: Provider^,
@@ -62,6 +63,12 @@ object Turn {
         }
     }
 
+  /** The id of the `i`-th search query assembly wrote for `turn`, from 0. */
+  def queryId(turn: TurnRef, i: Int): EntryId = {
+    val base = s"query:${WorkflowId.value(turn.workflowId)}"
+    EntryId(if (i == 0) base else s"$base:$i")
+  }
+
   /** The id of `turn`'s reply entry. */
   def replyId(turn: TurnRef): EntryId =
     EntryId(s"reply:${WorkflowId.value(turn.workflowId)}")
@@ -70,7 +77,7 @@ object Turn {
       system: String,
       entries: EntryStore,
       ledger: UsageLedger,
-      assembler: ContextAssembler,
+      assembler: ContextAssembler^,
       estimator: TokenEstimator,
       provider: Provider^,
       db: Db^,
@@ -215,6 +222,8 @@ object Turn {
     * conversation, and what it cost in the ledger beside the estimate of the request that
     * produced it. The request is rebuilt from the same window and the same entries: the
     * turn's own were all recorded before its call, and the reply is not yet among them.
+    * Each query `window`'s notes say assembly wrote goes in first, as [[queryId]], with
+    * its own cost.
     */
   private def append(
       system: String,
@@ -230,6 +239,27 @@ object Turn {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
       sent <- requestOf(system, all, turn, window)
+      queries = window.notes.collect { case q: AssemblyNote.Queried => q }
+      _ <- queries.zipWithIndex.foldLeft[Either[TurnFailure, Unit]](Right(())) {
+        case (done, (q, i)) =>
+          done.flatMap { _ =>
+            val qid = queryId(turn, i)
+            val entry = Entry(
+              qid,
+              turn.conversationId,
+              turn.turnSeq,
+              None,
+              next.seq + i,
+              Payload.Query(q.query),
+              Instant.now()
+            )
+            entries
+              .insert(entry)
+              .flatMap(_ => ledger.record(qid, turn.workflowId, q.model, q.usage, q.estimate))
+              .left
+              .map(storeFailure)
+          }
+      }
       _ <- entries
         .insert(
           Entry(
@@ -237,7 +267,7 @@ object Turn {
             turn.conversationId,
             turn.turnSeq,
             None,
-            next.seq,
+            next.seq + queries.size,
             Payload.Message(message),
             Instant.now()
           )

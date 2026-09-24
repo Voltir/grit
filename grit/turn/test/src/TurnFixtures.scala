@@ -4,9 +4,10 @@ import java.time.Instant
 
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
+import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, TurnRef, WorkflowId}
-import grit.core.message.{AssistantBlock, Message}
+import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{
   Db,
@@ -90,8 +91,46 @@ object TurnFixtures {
           blocks.collect { case AssistantBlock.Text(t) => s"assistant: $t" }.mkString
         case Payload.Message(other) => other.toString
         case Payload.Summary(text) => s"summary: $text"
+        case Payload.Query(text) => s"query: $text"
       }
     }
+
+  /** The linear window, with `note` added: an assembler that says it wrote a query. */
+  final class Noting(entries: EntryStore, note: AssemblyNote) extends ContextAssembler {
+    def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget)
+        .assemble(request)
+        .map(_.copy(notes = Vector(note)))
+  }
+
+  /** A query note, as retrieval would write it. */
+  val queried: AssemblyNote.Queried =
+    AssemblyNote.Queried(
+      "hello greeting",
+      "writer",
+      Usage(Tokens(30), Tokens(4), Tokens.Zero, Some(BigDecimal("0.00001"))),
+      Tokens(28)
+    )
+
+  /** The turn's workflow body over `entries` and `provider`, windowed by `assembler`. */
+  def turnBodyWith(
+      entries: EntryStore,
+      provider: Provider^,
+      assembler: ContextAssembler^,
+      ledger: UsageLedger
+  )(
+      id: WorkflowId
+  )(using Durable^): String =
+    Turn.body(
+      system,
+      entries,
+      ledger,
+      assembler,
+      CharEstimate,
+      provider,
+      new StubProvider(),
+      FakeDb
+    )(id)
 
   /** The turn's workflow body over `entries` and `provider`, summarised by `summarizer`. */
   def turnBody(

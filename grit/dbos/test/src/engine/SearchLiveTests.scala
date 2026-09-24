@@ -98,7 +98,7 @@ object SearchLiveTests extends TestSuite {
     }
 
     test(
-      "summaries, reply text and tool results are searched; reasoning and tool arguments are not"
+      "summaries, reply text and tool results are searched; reasoning, tool arguments and queries are not"
     ) {
       val c = conversation(
         "kinds",
@@ -119,6 +119,8 @@ object SearchLiveTests extends TestSuite {
       find(c, "platypus").map(ids) ==> Right(Vector("e2"))
       find(c, "echidnas") ==> Right(Vector.empty)
       find(c, "numbat") ==> Right(Vector.empty)
+      val queried = conversation("query", Payload.Query("bilby"), said("a bilby burrow"))
+      find(queried, "bilby").map(ids) ==> Right(Vector("e1"))
     }
   }
 }

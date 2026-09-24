@@ -72,6 +72,8 @@ is a message, answered by one durable turn. A repeated message is the same
 turn; run it again and finished turns replay without calling the model. The model is the
 stub unless `OPENROUTER_API_KEY` is set; then each role (`ModelRole`: the turn, the
 summary, the retrieval query) has its own model and `max_tokens` variables, listed in `.env.example`.
+Each turn's window is the recent turns, or with `GRIT_ASSEMBLER=retrieval` the recent turns
+plus the earlier ones a written query finds.
 
 The local databases are disposable: `scripts/reset-db` wipes them, and grit rebuilds
 its tables on the next start.

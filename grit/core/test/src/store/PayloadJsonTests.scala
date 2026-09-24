@@ -56,8 +56,13 @@ object PayloadJsonTests extends TestSuite {
         """{"kind":"summary","text":"Asked X; decided Y."}"""
     }
 
+    test("query") {
+      PayloadJson.write(Payload.Query("postgres sqlite decision")).render() ==>
+        """{"kind":"query","text":"postgres sqlite decision"}"""
+    }
+
     test("every sample round-trips, through text too") {
-      (samples.map(Payload.Message(_)) :+ Payload.Summary("s")).foreach { p =>
+      (samples.map(Payload.Message(_)) :+ Payload.Summary("s") :+ Payload.Query("q")).foreach { p =>
         PayloadJson.read(ujson.read(PayloadJson.write(p).render())) ==> Right(p)
       }
     }

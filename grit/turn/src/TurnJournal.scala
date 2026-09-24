@@ -1,9 +1,9 @@
 package grit.turn
 
-import grit.core.context.Window
+import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
 import grit.core.id.EntryId
-import grit.core.message.Message
+import grit.core.message.{Message, Tokens}
 import grit.core.store.{Payload, PayloadJson}
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
@@ -12,18 +12,72 @@ import grit.core.store.{Payload, PayloadJson}
   */
 private[turn] object TurnJournal {
 
+  /** A window with no notes is the bare array of its ids, as every build has written it; one
+    * with notes is `{"entries": [...], "notes": [...]}`.
+    */
   given window: Journaled[Either[TurnFailure, Window]] =
     outcome(
-      w => ujson.Arr.from(w.entries.map(id => ujson.Str(EntryId.value(id)))),
+      w => {
+        val ids = ujson.Arr.from(w.entries.map(id => ujson.Str(EntryId.value(id))))
+        if (w.notes.isEmpty) ids
+        else ujson.Obj("entries" -> ids, "notes" -> ujson.Arr.from(w.notes.map(writeNote)))
+      },
       v =>
-        v.arrOpt match {
-          case Some(ids) =>
-            val strs = ids.flatMap(_.strOpt).toVector
-            if (strs.size == ids.size) Right(Window(strs.map(EntryId(_))))
-            else Left("window: expected an array of strings")
-          case None => Left("window: expected an array")
+        v match {
+          case ujson.Arr(_) => readIds(v).map(Window(_))
+          case o: ujson.Obj =>
+            for {
+              ids <- o.value.get("entries").toRight("window: missing entries").flatMap(readIds)
+              raw <- o.value.get("notes").flatMap(_.arrOpt).toRight("window: missing notes")
+              notes <- raw.toVector
+                .foldLeft[Either[String, Vector[AssemblyNote]]](Right(Vector.empty)) { (acc, n) =>
+                  acc.flatMap(ns => readNote(n).map(ns :+ _))
+                }
+            } yield Window(ids, notes)
+          case _ => Left("window: expected an array or an object")
         }
     )
+
+  private def readIds(v: ujson.Value): Either[String, Vector[EntryId]] =
+    v.arrOpt match {
+      case Some(ids) =>
+        val strs = ids.flatMap(_.strOpt).toVector
+        if (strs.size == ids.size) Right(strs.map(EntryId(_)))
+        else Left("window: expected an array of strings")
+      case None => Left("window: expected an array")
+    }
+
+  private def writeNote(n: AssemblyNote): ujson.Value = n match {
+    case AssemblyNote.Queried(query, model, usage, estimate) =>
+      ujson.Obj(
+        "queried" -> query,
+        "model" -> model,
+        "usage" -> PayloadJson.writeUsage(usage),
+        "estimate" -> Tokens.value(estimate).toDouble
+      )
+    case AssemblyNote.FellBack(reason) => ujson.Obj("fellBack" -> reason)
+  }
+
+  private def readNote(v: ujson.Value): Either[String, AssemblyNote] = v match {
+    case o: ujson.Obj =>
+      (o.value.get("queried"), o.value.get("fellBack")) match {
+        case (Some(ujson.Str(query)), None) =>
+          for {
+            model <- o.value.get("model").flatMap(_.strOpt).toRight("note: missing model")
+            usage <- o.value
+              .get("usage")
+              .toRight("note: missing usage")
+              .flatMap(PayloadJson.readUsage)
+            estimate <- o.value
+              .get("estimate")
+              .collect { case ujson.Num(n) if n.isWhole && n >= 0 => Tokens(n.toLong) }
+              .toRight("note: bad estimate")
+          } yield AssemblyNote.Queried(query, model, usage, estimate)
+        case (None, Some(ujson.Str(reason))) => Right(AssemblyNote.FellBack(reason))
+        case _ => Left("note: expected queried or fellBack")
+      }
+    case _ => Left("note: expected an object")
+  }
 
   given reply: Journaled[Either[TurnFailure, Message.Assistant]] =
     outcome(

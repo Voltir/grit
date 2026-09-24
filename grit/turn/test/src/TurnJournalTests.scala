@@ -1,9 +1,9 @@
 package grit.turn
 
-import grit.core.context.Window
+import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
 import grit.core.id.EntryId
-import grit.core.message.Message
+import grit.core.message.{Message, Tokens, Usage}
 import grit.core.provider.ModelRequest
 import grit.models.StubProvider
 
@@ -32,6 +32,29 @@ object TurnJournalTests extends TestSuite {
         val id: Either[TurnFailure, EntryId] = Left(failure)
         roundTrip(id) ==> Right(id)
       }
+    }
+
+    test("a window's notes read back, and one without notes keeps the bare array") {
+      val noted: Either[TurnFailure, Window] = Right(
+        Window(
+          Vector(EntryId("a")),
+          Vector(
+            AssemblyNote.Queried(
+              "postgres sqlite",
+              "m",
+              Usage(Tokens(3), Tokens(2), Tokens.Zero, Some(BigDecimal("0.00001"))),
+              Tokens(4)
+            ),
+            AssemblyNote.FellBack("why")
+          )
+        )
+      )
+      roundTrip(noted) ==> Right(noted)
+      val j = summon[Journaled[Either[TurnFailure, Window]]]
+      j.encode(Right(Window(Vector(EntryId("a"))))) ==> """{"ok":["a"]}"""
+      j.encode(Right(Window(Vector(EntryId("a")), Vector(AssemblyNote.FellBack("why"))))) ==>
+        """{"ok":{"entries":["a"],"notes":[{"fellBack":"why"}]}}"""
+      assert(j.decode("""{"ok":{"entries":["a"],"notes":[{"lunch":1}]}}""").isLeft)
     }
 
     test("the recorded form is pinned") {

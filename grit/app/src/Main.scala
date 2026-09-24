@@ -2,6 +2,8 @@ package grit.app
 
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
+import grit.assembly.retrieval.RetrievalAssembler
+import grit.core.context.ContextAssembler
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
@@ -14,9 +16,12 @@ import grit.turn.Turn
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set (per [[ModelRole]], see
-  * [[OpenRouterConfig]]), the stub otherwise. Each turn's window holds the recent turns that fit in `GRIT_WINDOW_TOKENS`
-  * estimated tokens (default [[LinearAssembler.DefaultBudget]]). Every variable may come
-  * from a `.env` file instead ([[DotEnv]]).
+  * [[OpenRouterConfig]]), the stub otherwise. Each turn's window fits in `GRIT_WINDOW_TOKENS`
+  * estimated tokens (default [[LinearAssembler.DefaultBudget]]) and is chosen by
+  * `GRIT_ASSEMBLER`: `linear` (the default), the recent turns that fit; or `retrieval`, the
+  * recent turns that fit in `GRIT_TAIL_TOKENS` (default [[RetrievalAssembler.DefaultTail]])
+  * plus the earlier turns a written query finds ([[RetrievalAssembler]]). Every variable
+  * may come from a `.env` file instead ([[DotEnv]]).
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
   *     (default `default`). Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
@@ -47,7 +52,9 @@ object Main {
     if (tui) { val _ = System.setProperty("org.slf4j.simpleLogger.logFile", log) }
 
     val config = exitOnLeft(DbConfig.fromEnv(env).left.map(_.message))
-    val budget = exitOnLeft(windowBudget(env))
+    val budget = exitOnLeft(tokens(env, BudgetVar, LinearAssembler.DefaultBudget))
+    val tail = exitOnLeft(tokens(env, TailVar, RetrievalAssembler.DefaultTail))
+    val retrieving = exitOnLeft(assemblerChoice(env))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend.
     val openRouter: Option[OpenRouterConfig] =
       if (!env.contains(OpenRouterConfig.KeyVar)) None
@@ -57,10 +64,19 @@ object Main {
       openRouter.map(_ =>
         exitOnLeft(OpenRouterConfig.fromEnv(env, ModelRole.Summary).left.map(_.message))
       )
+    val queryConfig: Option[OpenRouterConfig] =
+      openRouter.map(_ =>
+        exitOnLeft(OpenRouterConfig.fromEnv(env, ModelRole.Query).left.map(_.message))
+      )
     val provider = announced(tui, "turn", openRouter)
     val summarizer = announced(tui, "summary", summaryConfig)
+    val writer = announced(tui, "query", queryConfig)
 
     val engine = Engine.open(config, Turn.Epoch)
+    val assembler: ContextAssembler^ =
+      if (retrieving)
+        new RetrievalAssembler(engine.entries, engine.search, writer, CharEstimate, budget, tail)
+      else new LinearAssembler(engine.entries, CharEstimate, budget)
     val failure: Option[String] =
       try {
         engine.launch(
@@ -68,7 +84,7 @@ object Main {
             SystemPrompt,
             engine.entries,
             engine.ledger,
-            new LinearAssembler(engine.entries, CharEstimate, budget),
+            assembler,
             CharEstimate,
             provider,
             summarizer,
@@ -138,15 +154,31 @@ object Main {
 
   private val BudgetVar = "GRIT_WINDOW_TOKENS"
 
-  /** The window's budget from `GRIT_WINDOW_TOKENS`, or the default when it is unset. */
-  private def windowBudget(env: Map[String, String]): Either[String, Tokens] =
-    env.get(BudgetVar) match {
-      case None => Right(LinearAssembler.DefaultBudget)
+  private val TailVar = "GRIT_TAIL_TOKENS"
+
+  private val AssemblerVar = "GRIT_ASSEMBLER"
+
+  /** The token count in `variable`, or `default` when it is unset. */
+  private def tokens(
+      env: Map[String, String],
+      variable: String,
+      default: Tokens
+  ): Either[String, Tokens] =
+    env.get(variable) match {
+      case None => Right(default)
       case Some(raw) =>
         raw.trim.toLongOption
           .filter(_ >= 0)
           .map(Tokens(_))
-          .toRight(s"$BudgetVar is not a non-negative whole number")
+          .toRight(s"$variable is not a non-negative whole number")
+    }
+
+  /** Whether `GRIT_ASSEMBLER` asks for retrieval; unset is linear. */
+  private def assemblerChoice(env: Map[String, String]): Either[String, Boolean] =
+    env.get(AssemblerVar).map(_.trim) match {
+      case None | Some("linear") => Right(false)
+      case Some("retrieval") => Right(true)
+      case Some(_) => Left(s"$AssemblerVar is neither linear nor retrieval")
     }
 
   private def describe(turn: TurnRef): String =
