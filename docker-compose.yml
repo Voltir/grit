@@ -1,6 +1,10 @@
 services:
   postgres:
-    image: postgres:18
+    # postgres:18 plus pg_textsearch, built from docker/postgres/Dockerfile. The tag names
+    # what is in it; bump it with the Dockerfile's versions. The live tests build the same
+    # Dockerfile (build.mill's LivePostgres), so the two run one image.
+    image: grit-postgres:18-pg_textsearch-1.4.0
+    build: docker/postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: grit

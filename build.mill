@@ -42,19 +42,27 @@ trait GritModule extends ScalaModule {
   }
 }
 
-/* A test module that starts Postgres with Testcontainers. The image is read from
- * docker-compose.yml, so the tests and the dev database run the same Postgres. */
+/* A test module that starts Postgres with Testcontainers. The tag is read from
+ * docker-compose.yml and the image is built from the Dockerfile compose builds, so the tests
+ * and the dev database run the same Postgres (TestPostgres). */
 trait LivePostgres extends TestModule {
   def composeFile = Task.Source(mill.api.BuildCtx.workspaceRoot / "docker-compose.yml")
+  def postgresDockerfile =
+    Task.Source(mill.api.BuildCtx.workspaceRoot / "docker" / "postgres" / "Dockerfile")
 
   def postgresImage = Task {
-    "(?m)^\\s*image:\\s*(postgres:\\S+)".r
+    "(?m)^\\s*image:\\s*(grit-postgres:\\S+)".r
       .findFirstMatchIn(os.read(composeFile().path))
       .map(_.group(1))
-      .getOrElse(sys.error("docker-compose.yml names no postgres image"))
+      .getOrElse(sys.error("docker-compose.yml names no grit-postgres image"))
   }
 
-  def forkEnv = Task { super.forkEnv() ++ Map("GRIT_POSTGRES_IMAGE" -> postgresImage()) }
+  def forkEnv = Task {
+    super.forkEnv() ++ Map(
+      "GRIT_POSTGRES_IMAGE" -> postgresImage(),
+      "GRIT_POSTGRES_DOCKERFILE" -> postgresDockerfile().path.toString
+    )
+  }
 }
 
 object grit extends Module {

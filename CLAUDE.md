@@ -7,7 +7,7 @@ LSP. Nothing is carried forward as a transcript. The same engine runs in three m
 local TUI harness, a cloud agent driven from Slack, and triggered tasks. Edges reach it
 only through Postgres ([ADR 0002](docs/decisions/0002-edges-reach-the-engine-through-postgres.md)).
 
-Scala 3 · Mill · `dev.dbos:transact` · Postgres 18 · capture checking on, and separation
+Scala 3 · Mill · `dev.dbos:transact` · Postgres 18 with `pg_textsearch` · capture checking on, and separation
 checking everywhere but `grit.tui` ([ADR 0003](docs/decisions/0003-durable-is-exclusive-under-separation-checking.md)). Versions live in
 `build.mill` and `.mill-version`.
 
@@ -83,8 +83,10 @@ capability is a promise of purity.**
 Braces, never significant indentation — `-no-indent` makes it a compile error.
 
 `./mill __.test` needs Docker: the live suites (`grit.dbos.test`, `grit.app.test`) start
-a throwaway Postgres with Testcontainers (`TestPostgres`), running the image
-`docker-compose.yml` names. There is no skip.
+a throwaway Postgres with Testcontainers (`TestPostgres`), built from the same
+`docker/postgres/Dockerfile` compose builds: `postgres:18` plus `pg_textsearch`
+([ADR 0005](docs/decisions/0005-entries-are-ranked-with-bm25-inside-postgres-through-pg-textsearch.md)).
+There is no skip.
 
 **Capture and separation checking: [`docs/capture-checking.md`](docs/capture-checking.md)**
 has every trap met so far (symptom, cause, fix), how to test that something does not

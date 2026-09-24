@@ -1,10 +1,12 @@
 package grit.dbos.sql
 
+import java.nio.file.Paths
 import java.sql.DriverManager
 
 import scala.util.Using
 import scala.util.control.NonFatal
 
+import org.testcontainers.images.builder.ImageFromDockerfile
 import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 
@@ -17,12 +19,28 @@ import org.testcontainers.utility.DockerImageName
 object TestPostgres {
 
   private lazy val server: PostgreSQLContainer = {
-    // Set by build.mill's LivePostgres from docker-compose.yml, so both run one image.
-    val image = sys.env.getOrElse(
-      "GRIT_POSTGRES_IMAGE",
-      sys.error("GRIT_POSTGRES_IMAGE is unset: run tests through ./mill")
-    )
-    val container = new PostgreSQLContainer(DockerImageName.parse(image))
+    // Set by build.mill's LivePostgres: compose's tag, and the Dockerfile compose builds it
+    // from, so both run one image.
+    def env(name: String): String =
+      sys.env.getOrElse(name, sys.error(s"$name is unset: run tests through ./mill"))
+    val image = env("GRIT_POSTGRES_IMAGE")
+    // Built on every test JVM, under compose's tag and kept afterwards. Docker's layer cache
+    // makes a rebuild a no-op until the Dockerfile changes, and building (rather than
+    // using the tag if present) means a stale local tag can never stand in for the file.
+    val built =
+      try {
+        new ImageFromDockerfile(image, false)
+          .withDockerfile(Paths.get(env("GRIT_POSTGRES_DOCKERFILE")))
+          .get()
+      } catch {
+        case NonFatal(e) =>
+          throw new IllegalStateException(
+            s"Could not build $image in Docker. Live tests need a running Docker daemon.",
+            e
+          )
+      }
+    val container =
+      new PostgreSQLContainer(DockerImageName.parse(built).asCompatibleSubstituteFor("postgres"))
     // Test data is thrown away, so durability only slows the start and every write.
     container.withTmpFs(java.util.Map.of("/var/lib/postgresql", "rw"))
     // The one-String overload: the varargs one crashes Scala 3.9's capture checker
