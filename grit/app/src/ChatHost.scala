@@ -7,7 +7,7 @@ import scala.util.control.NonFatal
 import grit.core.id.SourceId
 import grit.core.message.Message
 import grit.core.store.Origin
-import grit.dbos.Engine
+import grit.dbos.engine.Engine
 import grit.tui.runtime.app.{Host, Mailbox}
 
 /** The chat screen's engine side, for the conversation `origin` names. The screen reaches

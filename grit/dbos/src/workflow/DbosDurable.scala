@@ -1,4 +1,4 @@
-package grit.dbos
+package grit.dbos.workflow
 
 import grit.core.durable.{Durable, Journaled, UnreadableJournal}
 import grit.core.id.WorkflowId

@@ -4,7 +4,7 @@ import scala.caps.unsafe.untrackedCaptures
 
 import grit.core.id.WorkflowId
 import grit.core.store.Tx
-import grit.dbos.TestTx
+import grit.dbos.sql.TestTx
 
 /** An in-memory stand-in for DBOS's workflow semantics, for tests of code written against
   * [[Durable]]: one journal per workflow id, kept across runs of the same id.

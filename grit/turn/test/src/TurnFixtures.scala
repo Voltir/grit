@@ -17,7 +17,7 @@ import grit.core.store.{
   Tx,
   UsageLedger
 }
-import grit.dbos.TestTx
+import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
 /** The turn's test world: the stub provider, the linear assembler, and core's in-memory

@@ -1,4 +1,4 @@
-package grit.dbos
+package grit.dbos.sql
 
 /** Where grit's Postgres is and how to log in. `toString` never shows the
   * password.

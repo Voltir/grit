@@ -3,7 +3,7 @@
 The composition root: wires implementations into the seams. The only module that depends
 on every other one, and so the only place quarantine modules meet. Because Mill's
 `moduleDeps` are transitive, DBOS is on its classpath — enola's `only-dbos-imports-*`
-rules are what keep it out; it reaches Postgres only through `grit.dbos.Engine`.
+rules are what keep it out; it reaches Postgres only through `grit.dbos.engine.Engine`.
 Run it with `scripts/grit`.
 
 - `Main` — reads `.env` (`DotEnv`), opens the engine and launches the turn (OpenRouter

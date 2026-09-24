@@ -1,7 +1,8 @@
 package grit.app
 
 import grit.core.id.EntryId
-import grit.dbos.{Engine, LiveDb, TestPostgres}
+import grit.dbos.engine.Engine
+import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.models.StubProvider
 import grit.turn.Turn
 

@@ -1,4 +1,4 @@
-package grit.dbos
+package grit.dbos.workflow
 
 import grit.core.durable.Durable
 import grit.core.id.{ConversationId, TurnRef, WorkflowId}

@@ -5,7 +5,7 @@ import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{EntryStore, Origin, Payload}
-import grit.dbos.Engine
+import grit.dbos.engine.Engine
 import grit.models.StubProvider
 import grit.turn.Turn
 

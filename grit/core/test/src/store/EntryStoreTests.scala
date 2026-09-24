@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, TurnSeq}
 import grit.core.message.Message
-import grit.dbos.TestTx
+import grit.dbos.sql.TestTx
 
 import utest.*
 

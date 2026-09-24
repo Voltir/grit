@@ -22,5 +22,5 @@ No source file sits at core's root, and no two packages import each other in a c
 
 The test tree mirrors it: the in-memory fakes other modules' tests use are
 `store.InMemoryEntryStore`, `store.InMemoryUsageLedger` and `durable.InMemoryDurable`.
-`TestTx` stays in package `grit.dbos`, because the `null` it holds is legal only there
-(rule 6).
+`TestTx` lives in package `grit.dbos.sql`, because the `null` it holds is legal only inside
+the DBOS quarantine (rule 6).

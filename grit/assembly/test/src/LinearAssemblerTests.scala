@@ -6,7 +6,7 @@ import grit.core.context.{AssemblyError, AssemblyRequest}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Db, Entry, EntryStore, InMemoryEntryStore, Payload, StoreError, Tx}
-import grit.dbos.TestTx
+import grit.dbos.sql.TestTx
 
 import utest.*
 

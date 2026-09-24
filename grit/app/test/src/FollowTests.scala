@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, Payload}
-import grit.dbos.TurnStatus
+import grit.dbos.engine.TurnStatus
 
 import utest.*
 

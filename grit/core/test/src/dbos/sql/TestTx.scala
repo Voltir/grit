@@ -1,4 +1,4 @@
-package grit.dbos
+package grit.dbos.sql
 
 import grit.core.store.Tx
 

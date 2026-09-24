@@ -1,4 +1,4 @@
-package grit.dbos
+package grit.dbos.sql
 
 import scala.util.Using
 import scala.util.control.NonFatal

@@ -3,7 +3,7 @@ package grit.app
 import grit.core.id.{TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.store.{Entry, Payload}
-import grit.dbos.TurnStatus
+import grit.dbos.engine.TurnStatus
 
 /** What following a conversation has seen so far: the last entry shown, whether a turn
   * was in progress, and the turns whose failure has been reported.

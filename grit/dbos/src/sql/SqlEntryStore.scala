@@ -1,4 +1,4 @@
-package grit.dbos
+package grit.dbos.sql
 
 import java.sql.ResultSet
 import java.time.{OffsetDateTime, ZoneOffset}

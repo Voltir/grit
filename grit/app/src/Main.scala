@@ -5,7 +5,8 @@ import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.Origin
-import grit.dbos.{DbConfig, Engine}
+import grit.dbos.engine.Engine
+import grit.dbos.sql.DbConfig
 import grit.models.{OpenRouterConfig, OpenRouterProvider, StubProvider}
 import grit.tui.runtime.loop.Runtime
 import grit.turn.Turn

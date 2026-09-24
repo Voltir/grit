@@ -3,7 +3,7 @@ package grit.app
 import grit.core.id.TurnRef
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.store.{Entry, Payload}
-import grit.dbos.Engine
+import grit.dbos.engine.Engine
 import grit.turn.Turn
 
 /** Reading replies back out of the store, the way an edge does (ADR 0002). */

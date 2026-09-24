@@ -2,7 +2,8 @@ package grit.app
 
 import grit.core.id.{ConversationId, EntryId}
 import grit.core.store.{Entry, EntryStore, StoreError, Tx}
-import grit.dbos.{DbConfig, Engine}
+import grit.dbos.engine.Engine
+import grit.dbos.sql.DbConfig
 import grit.turn.Turn
 
 /** One phase of `M0GateLiveTests`' crash test, run in a JVM of its own: starts a turn on
