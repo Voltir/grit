@@ -1,6 +1,7 @@
 package grit.app
 
-import grit.assembly.{CharEstimate, LinearAssembler}
+import grit.assembly.estimate.CharEstimate
+import grit.assembly.linear.LinearAssembler
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}

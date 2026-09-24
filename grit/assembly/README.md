@@ -1,8 +1,12 @@
 # grit.assembly
 
-Assembly: builds every turn's context window from scratch. `LinearAssembler` (the newest
-whole turns that fit a token budget, oldest first) is the baseline; retrieval, relevance
-checks and LSP context are later `ContextAssembler`s. Read-only: it sees seams, never an
-implementation.
+The `ContextAssembler`s: what builds each turn's window.
 
-Design: `roadmap/mechanisms/assembly.md`.
+In dependency order:
+
+- **`estimate`**: `CharEstimate`, the fallback `TokenEstimator`. Imports nothing in assembly.
+- **`linear`**: `LinearAssembler`, the most recent whole turns that fit. The baseline
+  every other assembler is measured against. ← `estimate`
+
+No source file sits at the module's root. The test tree mirrors it; the assembly eval
+(`eval`) is test-only.

@@ -1,7 +1,8 @@
-package grit.assembly
+package grit.assembly.linear
 
 import java.time.Instant
 
+import grit.assembly.estimate.CharEstimate
 import grit.core.context.{AssemblyError, AssemblyRequest}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}

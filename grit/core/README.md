@@ -10,7 +10,7 @@ In dependency order:
 - **`message`** — the model's vocabulary: `Message`, `AssistantBlock`, `StopReason`,
   `Tokens`, `Usage`. ← `id`
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db`, `Entry`,
-  its `Payload` and their codec `PayloadJson`, `EntryStore`, `Conversation`, `Origin`,
+  its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
   `ConversationStore`, `UsageLedger`, `StoreError`. ← `id`, `message`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash. ← `id`, `store`
 - **`context`**, **`provider`**, **`inbox`** — the seams the engine plugs into:

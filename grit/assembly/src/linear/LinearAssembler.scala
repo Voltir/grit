@@ -1,4 +1,4 @@
-package grit.assembly
+package grit.assembly.linear
 
 import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Window}
 import grit.core.id.TurnSeq

@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.assembly.CharEstimate
+import grit.assembly.estimate.CharEstimate
 import grit.core.durable.InMemoryDurable
 import grit.core.id.WorkflowId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}

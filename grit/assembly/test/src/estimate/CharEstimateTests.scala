@@ -1,4 +1,4 @@
-package grit.assembly
+package grit.assembly.estimate
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}

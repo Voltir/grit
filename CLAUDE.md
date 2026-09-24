@@ -35,7 +35,7 @@ Mill modules, and what each may name:
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo` is the target of every `scripts/tui-gate` scenario but `chat` and `reload`, which drive `grit.app` |
 | `grit.turn` | `grit.turn` | core | the durable turn's body, written against `Durable` |
 | `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); later the relevance judge |
-| `grit.assembly` | `grit.assembly` | core | `ContextAssembler`s: builds each turn's context window |
+| `grit.assembly` | `grit.assembly.{estimate,linear}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`grit/assembly/README.md`](grit/assembly/README.md) |
 | `grit.app` | `grit.app` | everything | the composition root; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), or a one-shot run with arguments |
 
 Mill `moduleDeps` are transitive, so

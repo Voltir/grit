@@ -2,7 +2,8 @@ package grit.turn
 
 import java.time.Instant
 
-import grit.assembly.{CharEstimate, LinearAssembler}
+import grit.assembly.estimate.CharEstimate
+import grit.assembly.linear.LinearAssembler
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
