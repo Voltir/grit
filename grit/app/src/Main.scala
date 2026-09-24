@@ -18,9 +18,9 @@ import grit.turn.Turn
   * OpenRouter's when `OPENROUTER_API_KEY` is set (per [[ModelRole]], see
   * [[OpenRouterConfig]]), the stub otherwise. Each turn's window fits in `GRIT_WINDOW_TOKENS`
   * estimated tokens (default [[LinearAssembler.DefaultBudget]]) and is chosen by
-  * `GRIT_ASSEMBLER`: `linear` (the default), the recent turns that fit; or `retrieval`, the
-  * recent turns that fit in `GRIT_TAIL_TOKENS` (default [[RetrievalAssembler.DefaultTail]])
-  * plus the earlier turns a written query finds ([[RetrievalAssembler]]). Every variable
+  * `GRIT_ASSEMBLER`: `retrieval` (the default), the recent turns that fit in
+  * `GRIT_TAIL_TOKENS` (default [[RetrievalAssembler.DefaultTail]]) plus the earlier turns a
+  * written query finds ([[RetrievalAssembler]]); or `linear`, the recent turns that fit. Every variable
   * may come from a `.env` file instead ([[DotEnv]]).
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
@@ -173,11 +173,11 @@ object Main {
           .toRight(s"$variable is not a non-negative whole number")
     }
 
-  /** Whether `GRIT_ASSEMBLER` asks for retrieval; unset is linear. */
+  /** Whether `GRIT_ASSEMBLER` asks for retrieval; unset is retrieval. */
   private def assemblerChoice(env: Map[String, String]): Either[String, Boolean] =
     env.get(AssemblerVar).map(_.trim) match {
-      case None | Some("linear") => Right(false)
-      case Some("retrieval") => Right(true)
+      case None | Some("retrieval") => Right(true)
+      case Some("linear") => Right(false)
       case Some(_) => Left(s"$AssemblerVar is neither linear nor retrieval")
     }
 
