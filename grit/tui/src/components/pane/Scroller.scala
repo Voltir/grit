@@ -6,8 +6,9 @@ import grit.tui.model.select.{Doc, Selection}
 import grit.tui.model.surface.Style
 
 /** A scrollable, selectable document as a component: its state, its messages, its
-  * update and its view. What the std layer spent a mixin, a lens, a routing layer, a
-  * `Std` message and a step on is this one value an app nests with `Node.map`.
+  * update and its view, as one value an app nests with `Node.map`. The runtime routes the
+  * pane's input (the wheel, the thumb, a drag, the page keys); this turns what it routed
+  * into state.
   *
   * The state is only what the user decided: where they are reading from, and what they
   * are selecting, both in document coordinates. Nothing laid out is kept.

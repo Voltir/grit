@@ -38,8 +38,9 @@ escape bytes in three files, the terminal touched in one package).
 ./mill grit.tui.test
 scripts/tui-gate                          # pty scenarios: Demo's, then chat/reload on grit.app (needs Postgres)
 scripts/tui-gate modal                    # one scenario
-./mill --no-daemon --no-build-lock grit.tui.examples.runMain grit.tui.examples.Demo
-./mill grit.tui.examples.runMain grit.tui.examples.Snapshot 30 100   # one frame, no tty
+./mill --no-daemon --no-build-lock grit.tui.examples.runMain grit.tui.examples.Demo    # every feature
+./mill --no-daemon --no-build-lock grit.tui.examples.runMain grit.tui.examples.Smoke   # the terminal seam alone
+./mill grit.tui.examples.runMain grit.tui.examples.Snapshot 30 100   # Demo's first frame, no tty
 ```
 
 A long-lived run needs `--no-daemon --no-build-lock` so a CLI compile can still happen, but
@@ -68,11 +69,12 @@ FINDINGS.
    anything that inspects the model or the clipboard.
 6. **A drag belongs to the pane it began in, and that pane clamps it.** No selection may
    escape a modal into what is behind it.
-7. **`view` never wraps and never allocates per cell in the hot path.** Wrapping happens in
-   `update`, threading a cache keyed by `(contentId, revision, width)`. The one wrap that
-   now happens during layout is `Editor.measure`, which a `Region.Fit` asks for: it is over
-   the *draft*, not a document, and bounded by the prompt's own height. Rule 7 is about
-   documents; do not read this as a licence to measure one.
+7. **A document is wrapped once, not per frame, and never by `view`.** The runtime's wrap
+   memo keeps each document's rows keyed by the blocks themselves and re-wraps only a block
+   that changed (every block, when the width does), so a frame costs the rows it shows. The
+   one wrap outside the memo is `Editor.measure`, which a `Region.Fit` asks for: it is over
+   the *draft*, not a document, and bounded by the prompt's own height. Do not read it as a
+   licence to measure a document.
 8. **Restore terminal state in reverse, idempotently.** It is called from cleanup, from a
    `finally`, and from a shutdown hook.
 9. **Never fight the user's escape hatches.** Shift-drag stays unbound.

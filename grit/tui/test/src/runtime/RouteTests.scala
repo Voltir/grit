@@ -13,7 +13,7 @@ import utest.*
 
 /** Input routed against the painted tree, through [[Headless]]: two scrolling columns
   * over a growing prompt, with a completion list and a modal when asked for. Each case
-  * is a behavior the std layer's tests pinned, restated against the tree.
+  * is a behavior an app relies on without binding it.
   */
 object RouteTests extends TestSuite {
 

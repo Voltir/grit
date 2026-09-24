@@ -109,6 +109,54 @@ only a nested `step`.
 **A thunk in a data type launders capabilities.** This is why `grit.tui`'s `Effect` is
 plain data with no function cases (`grit/tui/CLAUDE.md`, rule 3).
 
+**`this` in a trait is `^{any}`.**
+
+- *Symptom:* passing `this` from a trait's method to something that takes a pure value
+  fails with `Found: (T.this : …^{any})`.
+- *Cause:* an unannotated trait's self may capture anything, and a method body's references
+  fold into it.
+- *Fix:* a pure self type, `trait T { self: T^{} => … }`. It also rejects a capturing
+  implementation where it is defined, which is what `grit.tui.runtime.App` relies on.
+
+**A global capability is checked where it is used.**
+
+- *Symptom:* `[E223] … not included in the allowed capture set {} … declare … with a uses
+  clause`, on an object or class under a pure self type.
+- *Cause:* referring to a top-level capability captures it.
+- *Fix:* pass it in instead. A `uses` clause goes in the template header; written in the
+  body it parses as an identifier.
+
+**An enum nested in a class captures `this`.**
+
+- *Symptom:* a lambda that names one of its cases is typed `…^{C.this}` (it was
+  `Mailbox[M]^{NodeRuntime.this}` in the view-tree spike).
+- *Cause:* a nested enum is a path-dependent type.
+- *Fix:* move the enum to the companion object.
+
+**A `=>` field makes its holder a capability.**
+
+- *Symptom:* a long cascade ending in *"needs to extend Capability"* that does not point at
+  the field.
+- *Cause:* `A => B` is `(A -> B)^{any}`, so a case class holding one captures anything.
+- *Fix:* declare handler and callback fields `->`.
+
+**A message can carry a capability past a pure app.**
+
+- *Symptom:* none; it compiles. A `Msg` case holding a `T^`, delivered by a host, hands
+  the capability to a pure `update`.
+- *Fix:* declare the message type pure (`enum Msg extends caps.Pure`), and bound it where
+  it is consumed (`App[S, M <: caps.Pure]`). A capability-typed case is then an error where
+  it is declared.
+
+**`^` in a `def` result is fresh per call.** An abstract `def cap: Cap^` cannot be
+implemented by a `val cap: Cap^`.
+
+**Mutable collections are pure types.** A typed `ArrayBuffer` field passes, even under
+separation checking. Nothing catches it; keep mutation in scoped locals (STYLE rule 7).
+
+**`-Wunused` on a default method.** A parameter a default `def` ignores warns where the
+`_` of a lambda never did. Mark it `@unused`.
+
 ## Testing that something does not compile
 
 utest's `assertCompileError` (`scala.compiletime.testing`) never reports capture- or
@@ -126,6 +174,10 @@ passes in as `GRIT_PROBE_CLASSPATH` and `GRIT_PROBE_OPTIONS`. It asserts on
 
 A negative test is not adopted until it has been watched failing on a planted breach. For
 `SeparationTests`, that breach was `Durable` made a `SharedCapability`.
+
+Put one breach in each probe: a typer error in the same source stops compilation before
+capture checking runs, and masks it. `grit.tui`'s `AppCaptureTests` is the second suite on
+this pattern.
 
 ## Tooling that trips on capture syntax
 
