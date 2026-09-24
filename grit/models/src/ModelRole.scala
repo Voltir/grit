@@ -12,4 +12,9 @@ enum ModelRole(val modelVar: String, val maxTokensVar: String, val defaultMaxTok
     * room for a reasoning model to think before it writes.
     */
   case Summary extends ModelRole("GRIT_SUMMARY_MODEL", "GRIT_SUMMARY_MAX_TOKENS", 1024)
+
+  /** Writes the search query retrieval ranks a turn's earlier entries by. Defaults to the
+    * turn's model, with the summary's budget.
+    */
+  case Query extends ModelRole("GRIT_QUERY_MODEL", "GRIT_QUERY_MAX_TOKENS", 1024)
 }

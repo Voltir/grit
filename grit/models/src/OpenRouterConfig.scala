@@ -39,8 +39,8 @@ object OpenRouterConfig {
   }
 
   /** `role`'s configuration. The key is `OPENROUTER_API_KEY` (required) for every role.
-    * The model is the role's variable; unset or blank, a summary uses the turn's model and
-    * the turn uses [[DefaultModel]]. The output budget is the role's `max_tokens` variable,
+    * The model is the role's variable; unset or blank, the turn uses [[DefaultModel]] and
+    * every other role the turn's model. The output budget is the role's `max_tokens` variable,
     * or its default.
     */
   def fromEnv(env: Map[String, String], role: ModelRole): Either[Invalid, OpenRouterConfig] =
@@ -58,7 +58,7 @@ object OpenRouterConfig {
     env.get(role.modelVar).filter(_.trim.nonEmpty).getOrElse {
       role match {
         case ModelRole.Turn => DefaultModel
-        case ModelRole.Summary => model(env, ModelRole.Turn)
+        case ModelRole.Summary | ModelRole.Query => model(env, ModelRole.Turn)
       }
     }
 }

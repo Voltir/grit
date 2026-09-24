@@ -71,7 +71,7 @@ The TUI talks to the conversation `GRIT_SESSION` names (default `default`) and l
 is a message, answered by one durable turn. A repeated message is the same
 turn; run it again and finished turns replay without calling the model. The model is the
 stub unless `OPENROUTER_API_KEY` is set; then each role (`ModelRole`: the turn, the
-summary) has its own model and `max_tokens` variables, listed in `.env.example`.
+summary, the retrieval query) has its own model and `max_tokens` variables, listed in `.env.example`.
 
 The local databases are disposable: `scripts/reset-db` wipes them, and grit rebuilds
 its tables on the next start.
