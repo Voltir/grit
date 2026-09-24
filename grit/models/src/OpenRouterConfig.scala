@@ -17,35 +17,48 @@ final case class OpenRouterConfig(
 object OpenRouterConfig {
 
   val KeyVar = "OPENROUTER_API_KEY"
-  val ModelVar = "GRIT_MODEL"
 
   /** The cheapest tool-capable model on OpenRouter as of 2026-09-23, and it reasons, so the
     * `reasoning_details` round trip is exercised.
     */
   val DefaultModel = "openai/gpt-oss-20b"
 
-  val DefaultMaxTokens = 4096
-
   val Endpoint: URI = URI.create("https://openrouter.ai/api/v1/chat/completions")
 
   enum Invalid {
     case Missing(variable: String)
     case Empty(variable: String)
+    case NotPositive(variable: String)
 
     /** Names the variable, never its value. */
     def message: String = this match {
       case Missing(v) => s"$v is not set"
       case Empty(v) => s"$v is empty"
+      case NotPositive(v) => s"$v is not a positive whole number"
     }
   }
 
-  /** The key from `OPENROUTER_API_KEY` (required), the model from `GRIT_MODEL` (default
-    * [[DefaultModel]]).
+  /** `role`'s configuration. The key is `OPENROUTER_API_KEY` (required) for every role.
+    * The model is the role's variable; unset or blank, a summary uses the turn's model and
+    * the turn uses [[DefaultModel]]. The output budget is the role's `max_tokens` variable,
+    * or its default.
     */
-  def fromEnv(env: Map[String, String]): Either[Invalid, OpenRouterConfig] =
+  def fromEnv(env: Map[String, String], role: ModelRole): Either[Invalid, OpenRouterConfig] =
     for {
       key <- env.get(KeyVar).toRight(Invalid.Missing(KeyVar))
       _ <- Either.cond(key.trim.nonEmpty, (), Invalid.Empty(KeyVar))
-      model = env.get(ModelVar).filter(_.trim.nonEmpty).getOrElse(DefaultModel)
-    } yield OpenRouterConfig(key, model, DefaultMaxTokens, Endpoint, Duration.ofMinutes(5))
+      maxTokens <- env.get(role.maxTokensVar) match {
+        case None => Right(role.defaultMaxTokens)
+        case Some(raw) =>
+          raw.trim.toIntOption.filter(_ > 0).toRight(Invalid.NotPositive(role.maxTokensVar))
+      }
+    } yield OpenRouterConfig(key, model(env, role), maxTokens, Endpoint, Duration.ofMinutes(5))
+
+  private def model(env: Map[String, String], role: ModelRole): String =
+    env.get(role.modelVar).filter(_.trim.nonEmpty).getOrElse {
+      role match {
+        case ModelRole.Turn => DefaultModel
+        case ModelRole.Summary => model(env, ModelRole.Turn)
+      }
+    }
 }

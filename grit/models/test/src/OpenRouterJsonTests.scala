@@ -146,17 +146,46 @@ object OpenRouterJsonTests extends TestSuite {
     }
 
     test("config: the key is required, the model defaults, and toString hides the key") {
-      OpenRouterConfig.fromEnv(Map.empty) ==>
+      OpenRouterConfig.fromEnv(Map.empty, ModelRole.Turn) ==>
         Left(OpenRouterConfig.Invalid.Missing("OPENROUTER_API_KEY"))
-      OpenRouterConfig.fromEnv(Map("OPENROUTER_API_KEY" -> " ")) ==>
+      OpenRouterConfig.fromEnv(Map("OPENROUTER_API_KEY" -> " "), ModelRole.Turn) ==>
         Left(OpenRouterConfig.Invalid.Empty("OPENROUTER_API_KEY"))
-      val config = OpenRouterConfig.fromEnv(Map("OPENROUTER_API_KEY" -> "sk-or-secret"))
+      val config =
+        OpenRouterConfig.fromEnv(Map("OPENROUTER_API_KEY" -> "sk-or-secret"), ModelRole.Turn)
       config.map(_.model) ==> Right(OpenRouterConfig.DefaultModel)
+      config.map(_.maxTokens) ==> Right(ModelRole.Turn.defaultMaxTokens)
       assert(!config.toString.contains("sk-or-secret"))
       OpenRouterConfig
-        .fromEnv(Map("OPENROUTER_API_KEY" -> "k", "GRIT_MODEL" -> "x/y"))
+        .fromEnv(Map("OPENROUTER_API_KEY" -> "k", "GRIT_MODEL" -> "x/y"), ModelRole.Turn)
         .map(_.model) ==>
         Right("x/y")
+    }
+
+    test(
+      "config: each role has its own model and budget; a summary falls back to the turn's model"
+    ) {
+      val env = Map("OPENROUTER_API_KEY" -> "k", "GRIT_MODEL" -> "big/one")
+      def of(role: ModelRole, extra: (String, String)*) =
+        OpenRouterConfig.fromEnv(env ++ extra, role).map(c => (c.model, c.maxTokens))
+      of(ModelRole.Summary) ==> Right(("big/one", ModelRole.Summary.defaultMaxTokens))
+      of(
+        ModelRole.Summary,
+        "GRIT_SUMMARY_MODEL" -> "small/one",
+        "GRIT_SUMMARY_MAX_TOKENS" -> "300"
+      ) ==>
+        Right(("small/one", 300))
+      of(ModelRole.Turn, "GRIT_SUMMARY_MODEL" -> "small/one", "GRIT_MAX_TOKENS" -> "2000") ==>
+        Right(("big/one", 2000))
+      of(ModelRole.Summary, "GRIT_SUMMARY_MODEL" -> " ") ==>
+        Right(("big/one", ModelRole.Summary.defaultMaxTokens))
+      of(ModelRole.Turn, "GRIT_SUMMARY_MAX_TOKENS" -> "junk") ==>
+        Right(("big/one", ModelRole.Turn.defaultMaxTokens))
+      for (bad <- Seq("0", "-5", "lots", "", "99999999999"))
+        of(ModelRole.Summary, "GRIT_SUMMARY_MAX_TOKENS" -> bad) ==>
+          Left(OpenRouterConfig.Invalid.NotPositive("GRIT_SUMMARY_MAX_TOKENS"))
+      assert(
+        !OpenRouterConfig.Invalid.NotPositive("GRIT_MAX_TOKENS").message.contains("lots")
+      )
     }
   }
 }

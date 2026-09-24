@@ -7,13 +7,13 @@ import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.Origin
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
-import grit.models.{OpenRouterConfig, OpenRouterProvider, StubProvider}
+import grit.models.{ModelRole, OpenRouterConfig, OpenRouterProvider, StubProvider}
 import grit.tui.runtime.loop.Runtime
 import grit.turn.Turn
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
-  * OpenRouter's when `OPENROUTER_API_KEY` is set ([[OpenRouterConfig]]), the stub
-  * otherwise. Each turn's window holds the recent turns that fit in `GRIT_WINDOW_TOKENS`
+  * OpenRouter's when `OPENROUTER_API_KEY` is set (per [[ModelRole]], see
+  * [[OpenRouterConfig]]), the stub otherwise. Each turn's window holds the recent turns that fit in `GRIT_WINDOW_TOKENS`
   * estimated tokens (default [[LinearAssembler.DefaultBudget]]). Every variable may come
   * from a `.env` file instead ([[DotEnv]]).
   *
@@ -50,7 +50,7 @@ object Main {
     // OpenRouter when a key is set, otherwise the stub: no key, no spend.
     val openRouter: Option[OpenRouterConfig] =
       if (!env.contains(OpenRouterConfig.KeyVar)) None
-      else Some(exitOnLeft(OpenRouterConfig.fromEnv(env).left.map(_.message)))
+      else Some(exitOnLeft(OpenRouterConfig.fromEnv(env, ModelRole.Turn).left.map(_.message)))
     val modelName = openRouter.fold(StubProvider.Model)(_.model)
     val model: Provider = openRouter match {
       case Some(c) => new OpenRouterProvider(c)

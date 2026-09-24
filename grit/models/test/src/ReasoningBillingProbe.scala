@@ -23,7 +23,7 @@ object ReasoningBillingProbe {
 
   def main(args: Array[String]): Unit = {
     val _ = args
-    OpenRouterConfig.fromEnv(sys.env) match {
+    OpenRouterConfig.fromEnv(sys.env, ModelRole.Turn) match {
       case Left(invalid) => println(invalid.message)
       case Right(config) => run(config.copy(maxTokens = 600))
     }
