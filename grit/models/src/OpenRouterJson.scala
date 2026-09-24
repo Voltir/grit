@@ -1,15 +1,8 @@
 package grit.models
 
-import grit.core.{
-  AssistantBlock,
-  Message,
-  ModelRequest,
-  ProviderError,
-  StopReason,
-  Tokens,
-  ToolCallId,
-  Usage
-}
+import grit.core.id.ToolCallId
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.provider.{ModelRequest, ProviderError}
 
 /** OpenRouter's chat-completions wire format (OpenAI's shape), both ways. Pure. Checked
   * against openrouter.ai/docs (API reference, reasoning tokens, errors) on 2026-09-23.

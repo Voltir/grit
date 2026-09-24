@@ -1,6 +1,10 @@
 package grit.turn
 
-import grit.core.{EntryId, Journaled, Message, Payload, PayloadJson, Window}
+import grit.core.context.Window
+import grit.core.durable.Journaled
+import grit.core.id.EntryId
+import grit.core.message.Message
+import grit.core.store.{Payload, PayloadJson}
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
   * `{"failed": kind, "reason": text}`. In-flight turns must read back what an earlier

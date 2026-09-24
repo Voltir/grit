@@ -1,6 +1,8 @@
 package grit.app
 
-import grit.core.{AssistantBlock, Entry, Message, Payload, TurnRef}
+import grit.core.id.TurnRef
+import grit.core.message.{AssistantBlock, Message}
+import grit.core.store.{Entry, Payload}
 import grit.dbos.Engine
 import grit.turn.Turn
 

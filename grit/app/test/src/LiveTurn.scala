@@ -1,7 +1,10 @@
 package grit.app
 
 import grit.assembly.LinearAssembler
-import grit.core.*
+import grit.core.id.{SourceId, TurnRef}
+import grit.core.message.{AssistantBlock, Message}
+import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.store.{EntryStore, Origin, Payload}
 import grit.dbos.Engine
 import grit.models.StubProvider
 import grit.turn.Turn
@@ -9,7 +12,7 @@ import grit.turn.Turn
 /** The real turn over a live engine, with the stub provider, for the end-to-end tests. */
 object LiveTurn {
 
-  val Origin: grit.core.Origin = grit.core.Origin.Task("live", "gate")
+  val Origin: grit.core.store.Origin = grit.core.store.Origin.Task("live", "gate")
 
   /** The stub provider, counting its calls. */
   final class CountingProvider extends Provider {

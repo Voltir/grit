@@ -166,7 +166,7 @@ separation-checking errors. Capture checking runs after the typer, and a probe t
 fail compiles "cleanly" there. `EntryStoreTests` records the same limit for the `Tx`
 escape.
 
-The way that works is `grit.core.SeparationTests`. It runs `dotty.tools.dotc.Driver` in the
+The way that works is `grit.core.durable.SeparationTests`. It runs `dotty.tools.dotc.Driver` in the
 test, against core's run classpath with core's own `scalacOptions`, which `build.mill`
 passes in as `GRIT_PROBE_CLASSPATH` and `GRIT_PROBE_OPTIONS`. It asserts on
 `reporter.allErrors`. Every probe suite needs:

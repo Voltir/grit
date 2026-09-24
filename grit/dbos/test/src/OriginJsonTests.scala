@@ -1,6 +1,6 @@
 package grit.dbos
 
-import grit.core.Origin
+import grit.core.store.Origin
 
 import utest.*
 

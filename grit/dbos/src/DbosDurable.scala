@@ -1,6 +1,8 @@
 package grit.dbos
 
-import grit.core.{Durable, Journaled, Tx, UnreadableJournal, WorkflowId}
+import grit.core.durable.{Durable, Journaled, UnreadableJournal}
+import grit.core.id.WorkflowId
+import grit.core.store.Tx
 
 import dev.dbos.transact.DBOS
 import dev.dbos.transact.execution.ThrowingSupplier

@@ -1,7 +1,10 @@
 package grit.app
 
 import grit.assembly.LinearAssembler
-import grit.core.{Message, ModelRequest, Origin, Provider, ProviderError, SourceId, Tokens, TurnRef}
+import grit.core.id.{SourceId, TurnRef}
+import grit.core.message.{Message, Tokens}
+import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.store.Origin
 import grit.dbos.{DbConfig, Engine}
 import grit.models.{OpenRouterConfig, OpenRouterProvider, StubProvider}
 import grit.tui.runtime.loop.Runtime
@@ -133,7 +136,7 @@ object Main {
     }
 
   private def describe(turn: TurnRef): String =
-    grit.core.WorkflowId.value(turn.workflowId)
+    grit.core.id.WorkflowId.value(turn.workflowId)
 
   private def exitOnLeft[A](result: Either[String, A]): A = result match {
     case Right(a) => a

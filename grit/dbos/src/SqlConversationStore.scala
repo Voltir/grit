@@ -4,7 +4,8 @@ import java.time.OffsetDateTime
 
 import scala.util.Using
 
-import grit.core.{Conversation, ConversationId, ConversationStore, Origin, StoreError, Tx}
+import grit.core.id.ConversationId
+import grit.core.store.{Conversation, ConversationStore, Origin, StoreError, Tx}
 
 /** [[ConversationStore]] over the `grit.conversations` table. */
 final class SqlConversationStore extends ConversationStore {

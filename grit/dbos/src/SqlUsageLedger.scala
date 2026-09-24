@@ -3,7 +3,9 @@ package grit.dbos
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.{EntryId, StoreError, Tokens, Tx, Usage, UsageLedger, WorkflowId}
+import grit.core.id.{EntryId, WorkflowId}
+import grit.core.message.{Tokens, Usage}
+import grit.core.store.{StoreError, Tx, UsageLedger}
 
 import org.postgresql.util.PSQLException
 

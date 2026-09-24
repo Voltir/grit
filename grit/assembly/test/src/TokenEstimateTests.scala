@@ -1,6 +1,7 @@
 package grit.assembly
 
-import grit.core.*
+import grit.core.id.ToolCallId
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 
 import utest.*
 

@@ -1,15 +1,7 @@
 package grit.models
 
-import grit.core.{
-  AssistantBlock,
-  Message,
-  ModelRequest,
-  Provider,
-  ProviderError,
-  StopReason,
-  Tokens,
-  Usage
-}
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.provider.{ModelRequest, Provider, ProviderError}
 
 /** A [[Provider]] that calls no model: it answers every request by quoting its last
   * message, at no cost. For running a turn end to end without spending anything.

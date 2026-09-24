@@ -6,20 +6,10 @@ import scala.io.Source
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.{
-  ConversationId,
-  ConversationStore,
-  Db,
-  Durable,
-  EntryStore,
-  Inbox,
-  Origin,
-  StoreError,
-  TurnRef,
-  Tx,
-  UsageLedger,
-  WorkflowId
-}
+import grit.core.durable.Durable
+import grit.core.id.{ConversationId, TurnRef, WorkflowId}
+import grit.core.inbox.Inbox
+import grit.core.store.{ConversationStore, Db, EntryStore, Origin, StoreError, Tx, UsageLedger}
 
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory

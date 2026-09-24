@@ -4,7 +4,9 @@ import java.util.UUID
 
 import scala.util.control.NonFatal
 
-import grit.core.{Message, Origin, SourceId}
+import grit.core.id.SourceId
+import grit.core.message.Message
+import grit.core.store.Origin
 import grit.dbos.Engine
 import grit.tui.runtime.app.{Host, Mailbox}
 

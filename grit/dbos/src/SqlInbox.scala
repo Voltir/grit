@@ -6,22 +6,10 @@ import javax.sql.DataSource
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.{
-  ConversationId,
-  ConversationStore,
-  Entry,
-  EntryId,
-  EntryStore,
-  Inbox,
-  InboxError,
-  Message,
-  Origin,
-  Payload,
-  SourceId,
-  StoreError,
-  TurnRef,
-  Tx
-}
+import grit.core.id.{ConversationId, EntryId, SourceId, TurnRef}
+import grit.core.inbox.{Inbox, InboxError}
+import grit.core.message.Message
+import grit.core.store.{ConversationStore, Entry, EntryStore, Origin, Payload, StoreError, Tx}
 
 import dev.dbos.transact.DBOSClient
 

@@ -1,6 +1,8 @@
 package grit.turn
 
-import grit.core.*
+import grit.core.durable.{History, InMemoryDurable}
+import grit.core.id.TurnRef
+import grit.core.store.InMemoryEntryStore
 
 /** Writes this epoch's recorded turn histories, one per shape a turn can leave behind,
   * into `GRIT_HISTORIES/{Turn.Epoch}`. Never overwrites: a history, once written, is what

@@ -1,6 +1,7 @@
 package grit.dbos
 
-import grit.core.{Durable, WorkflowId}
+import grit.core.durable.Durable
+import grit.core.id.WorkflowId
 
 import dev.dbos.transact.DBOS
 import dev.dbos.transact.execution.RegisteredWorkflow

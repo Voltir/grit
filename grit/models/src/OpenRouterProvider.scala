@@ -4,7 +4,8 @@ import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 
 import scala.util.control.NonFatal
 
-import grit.core.{Message, ModelRequest, Provider, ProviderError}
+import grit.core.message.Message
+import grit.core.provider.{ModelRequest, Provider, ProviderError}
 
 /** [[Provider]] over OpenRouter's chat completions, one blocking request per call, no
   * retries (the durable turn records the outcome either way).

@@ -1,6 +1,7 @@
 package grit.assembly
 
-import grit.core.{AssistantBlock, Message, Tokens, ToolCallId}
+import grit.core.id.ToolCallId
+import grit.core.message.{AssistantBlock, Message, Tokens}
 
 /** A rough, provider-independent count of the tokens a message costs in a request: a
   * token per [[CharsPerToken]] characters of what is sent, rounded up, plus

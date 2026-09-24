@@ -1,17 +1,9 @@
 package grit.assembly
 
-import grit.core.{
-  AssemblyError,
-  AssemblyRequest,
-  ContextAssembler,
-  Db,
-  Entry,
-  EntryStore,
-  Payload,
-  Tokens,
-  TurnSeq,
-  Window
-}
+import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Window}
+import grit.core.id.TurnSeq
+import grit.core.message.Tokens
+import grit.core.store.{Db, Entry, EntryStore, Payload}
 
 /** The window with no choosing: the most recent whole turns before the turn whose
   * messages fit in `budget` estimated tokens ([[TokenEstimate]]), oldest first. The

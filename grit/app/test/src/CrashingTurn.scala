@@ -1,6 +1,7 @@
 package grit.app
 
-import grit.core.*
+import grit.core.id.{ConversationId, EntryId}
+import grit.core.store.{Entry, EntryStore, StoreError, Tx}
 import grit.dbos.{DbConfig, Engine}
 import grit.turn.Turn
 

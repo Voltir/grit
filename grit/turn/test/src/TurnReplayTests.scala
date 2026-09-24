@@ -1,6 +1,7 @@
 package grit.turn
 
-import grit.core.*
+import grit.core.durable.{History, InMemoryDurable}
+import grit.core.store.InMemoryEntryStore
 
 import utest.*
 

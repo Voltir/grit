@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Captures one workflow's recorded steps from Postgres as a history fixture, in the shape
-# grit.core.History reads, under the epoch it was started in (ADR 0004):
+# grit.core.durable.History reads, under the epoch it was started in (ADR 0004):
 #
 #   bash scripts/capture-history.sh <workflow-id>
 #

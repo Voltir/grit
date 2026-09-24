@@ -8,7 +8,7 @@ import utest.*
 
 /** What capture checking rejects in a view tree's handlers and apps, pinned by compiling
   * probe sources against tui with tui's own flags -- `assertCompileError` cannot see
-  * capture errors (docs/capture-checking.md). The pattern is `grit.core.SeparationTests`.
+  * capture errors (docs/capture-checking.md). The pattern is `grit.core.durable.SeparationTests`.
   */
 object AppCaptureTests extends TestSuite {
 

@@ -4,7 +4,7 @@ import mill.*, scalalib.*
 trait GritModule extends ScalaModule {
   def scalaVersion = "3.9.0"
 
-  /* Separation checking makes `grit.core.Durable` exclusive: a step body that captures the
+  /* Separation checking makes `grit.core.durable.Durable` exclusive: a step body that captures the
    * `Durable` it runs on (a nested step) is a compile error. See ADR 0003. */
   def separationChecking: Boolean = true
 
@@ -159,7 +159,7 @@ object grit extends Module {
 
     object test extends GritTests {
       /* NodeCaptureTests compiles probe sources against tui with tui's own flags, as
-       * grit.core.SeparationTests does, to pin what capture checking rejects in a view
+       * grit.core.durable.SeparationTests does, to pin what capture checking rejects in a view
        * tree's handlers and apps. */
       def mvnDeps = Task {
         super.mvnDeps() ++ Seq(mvn"org.scala-lang::scala3-compiler:${scalaVersion()}")

@@ -1,6 +1,8 @@
 package grit.app
 
-import grit.core.{Entry, Message, Payload, TurnRef, TurnSeq}
+import grit.core.id.{TurnRef, TurnSeq}
+import grit.core.message.Message
+import grit.core.store.{Entry, Payload}
 import grit.dbos.TurnStatus
 
 /** What following a conversation has seen so far: the last entry shown, whether a turn

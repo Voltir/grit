@@ -6,7 +6,8 @@ import java.time.{OffsetDateTime, ZoneOffset}
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.{ConversationId, Entry, EntryId, EntryStore, PayloadJson, StoreError, TurnSeq, Tx}
+import grit.core.id.{ConversationId, EntryId, TurnSeq}
+import grit.core.store.{Entry, EntryStore, PayloadJson, StoreError, Tx}
 
 import org.postgresql.util.PSQLException
 

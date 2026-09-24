@@ -1,6 +1,7 @@
 package grit.dbos
 
-import grit.core.{ConversationId, Durable, TurnRef, WorkflowId}
+import grit.core.durable.Durable
+import grit.core.id.{ConversationId, TurnRef, WorkflowId}
 
 import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.workflow.Queue
