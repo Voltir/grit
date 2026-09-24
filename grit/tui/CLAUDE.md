@@ -34,7 +34,7 @@ escape bytes in three files, the terminal touched in one package).
 
 ```bash
 ./mill grit.tui.test
-scripts/tui-gate                          # pty scenarios: six on Demo2, chat/reload on grit.app (needs Postgres)
+scripts/tui-gate                          # pty scenarios: Demo2's, then chat/reload on grit.app (needs Postgres)
 scripts/tui-gate modal                    # one scenario
 ./mill --no-daemon --no-build-lock grit.tui.examples.runMain grit.tui.examples.Demo2
 ./mill grit.tui.examples.runMain grit.tui.examples.Snapshot 30 100   # one frame, no tty

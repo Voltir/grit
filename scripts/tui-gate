@@ -2,7 +2,7 @@
 # The tui gate: grit.tui.examples.Demo2 driven through a real pty with scripted mouse bytes, and
 # the painted result checked against the selection model.
 #
-# Six scenarios, because no one of them can fail the way the others can:
+# One scenario per failure, because no one of them can fail the way the others can:
 #
 #   span   a drag that autoscrolls past the top of the pane, so the selection is larger
 #          than the screen. What is highlighted must be a prefix of what was copied --
@@ -26,6 +26,9 @@
 #   thumb  the scrollbar thumb is pressed and dragged upward: the thumb must move, the
 #          transcript must scroll with it, and neither a selection nor a clipboard write
 #          may result -- the widget drag is not a text drag (widget identity).
+#   burst  a line typed in one write, so the loop routes a batch of keys before it
+#          repaints. The prompt must hold all of it: each key builds on the previous
+#          key's result, not on the last paint (the view tree's stale-handler bug).
 #
 # Byte-level checks ride along on every run: modes balanced, no bare LF, nothing written
 # into the last column, the frame never scrolls.
@@ -35,16 +38,16 @@
 #   reload a second grit.app run in the same conversation paints that exchange with no
 #          input: the transcript is loaded from the store. Runs after `chat`.
 #
-# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|chat|reload]
-#        (no scenario runs all eight; `reload` needs `chat` before it in the same run)
+# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload]
+#        (no argument runs them all; `reload` needs `chat` before it in the same run)
 #
 # The oracles are geometry, not implementation: the chrome is header 1 + prompt 3 +
 # status 1, the scrollbar is the body's last column, and the modal's document is HELP.
 #
-# Ported from ../Spikes/tui-spike-slate (`./gate` there). The first six scenarios drive
+# Ported from ../Spikes/tui-spike-slate (`./gate` there). The scenarios before `chat` drive
 # Demo2, which exercises library features grit.app does not use yet (the modal, the popup,
 # the scrollbar thumb); `chat` and `reload` drive grit.app. `MAIN=grit.tui.examples.DemoNext`
-# runs the six against the same screen on the view tree (grit.tui.node), which replaces
+# runs them against the same screen on the view tree (grit.tui.node), which replaces
 # Demo2 once grit.app has moved onto it.
 set -u
 cd "$(dirname "$0")/.."
@@ -172,6 +175,12 @@ fcntl.ioctl(f, termios.TIOCSWINSZ, struct.pack('HHHH', 20, 60, 0, 0))" "$pts"
   sleep 1
 }
 
+script_burst() {
+  sleep $STARTUP
+  printf 'gate says hi'; sleep 0.8
+  printf '\021'; sleep 1
+}
+
 script_chat() {
   sleep $APP_STARTUP
   printf 'gate says hi'; sleep 0.4
@@ -208,7 +217,7 @@ case " ${1:-} " in
 esac
 
 status=0
-for s in ${*:-span one modal thumb popup resize chat reload}; do
+for s in ${*:-span one modal thumb popup resize burst chat reload}; do
   echo "== $s"
   run_one "$s" || status=1
 done

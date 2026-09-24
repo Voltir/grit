@@ -32,7 +32,7 @@ Mill modules, and what each may name:
 | `grit.core` | `grit.core` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath |
 | `grit.dbos` | `grit.dbos` | core | DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `Engine` is what `grit.app` opens |
 | `grit.tui` | `grit.tui.{model,components,wire,runtime}` | core | the terminal UI; core only from `components`/`runtime` |
-| `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo2` is the target of six of `scripts/tui-gate`'s eight scenarios (the other two drive `grit.app`) |
+| `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo2` is the target of every `scripts/tui-gate` scenario but `chat` and `reload`, which drive `grit.app` (`MAIN=…DemoNext` runs them on the view tree) |
 | `grit.turn` | `grit.turn` | core | the durable turn's body, written against `Durable` |
 | `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); later the relevance judge |
 | `grit.assembly` | `grit.assembly` | core | `ContextAssembler`s: builds each turn's context window |

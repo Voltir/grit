@@ -197,6 +197,24 @@ def main():
             print("  %s  %-*s %s" % ("ok  " if ok else "FAIL", width, label, detail))
         return 1 if failed else 0
 
+    if scenario == "burst":
+        # Twelve characters in one write reach the loop as one batch of keys, routed before
+        # anything is repainted. Each must build on the one before it: a handler captured
+        # by the last paint edits the draft *that paint* saw, so without a fresh layout per
+        # input the prompt keeps only the last key ("i").
+        final = screens[-1] if screens else []
+        prompt = final[rows - 3].strip(" \u2502") if final else ""
+        check("gate says hi" in prompt, "a burst typed in one write lands whole in the prompt",
+              repr(prompt[:40]))
+        payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
+        check(len(payloads) == 0, "no drag, so no clipboard write", "%d" % len(payloads))
+        width = max(len(label) for _, label, _ in checks)
+        failed = 0
+        for ok, label, detail in checks:
+            failed += 0 if ok else 1
+            print("  %s  %-*s %s" % ("ok  " if ok else "FAIL", width, label, detail))
+        return 1 if failed else 0
+
     if scenario in ("chat", "reload"):
         # grit.app with the stub model, whose reply to a message is "stub reply to: " and
         # the message. The oracle is what the transcript *says*, read off the accumulated
