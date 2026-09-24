@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Wipes grit's local databases back to empty: drops the `grit` and `dbos` schemas, which
+# grit recreates on its next start (schema.sql, then DBOS's own migrations). Nothing in
+# them is kept, and nothing will be until the first real deployment
+# (.local/backlog/schema-migrations.md), so reach for this rather than working around old rows.
+#
+#   scripts/reset-db                # grit and grit_agent
+#   scripts/reset-db grit_agent     # just one
+#
+# Refuses while grit is running: an engine whose tables vanish underneath it fails in
+# ways that look like bugs.
+set -euo pipefail
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Bracketed so the pattern cannot match the command line of whatever runs this script.
+if pgrep -f "bin/java .*grit[.]app[.]Main" >/dev/null; then
+  echo "reset-db: grit is running; quit it first" >&2
+  pgrep -af "bin/java .*grit[.]app[.]Main" | cut -c1-120 >&2
+  exit 1
+fi
+
+for db in "${@:-grit grit_agent}"; do
+  for name in $db; do
+    exists=$(docker compose exec -T postgres psql -U grit -d grit -tAc \
+      "SELECT 1 FROM pg_database WHERE datname = '$name'")
+    if [ "$exists" != "1" ]; then
+      echo "reset-db: $name does not exist, skipped"
+      continue
+    fi
+    docker compose exec -T postgres psql -U grit -d "$name" -q \
+      -c "DROP SCHEMA IF EXISTS grit CASCADE" -c "DROP SCHEMA IF EXISTS dbos CASCADE" 2>&1 |
+      grep -v "^NOTICE\|^DETAIL\|^drop cascades" || true
+    echo "reset-db: $name is empty"
+  done
+done

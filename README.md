@@ -73,5 +73,8 @@ turn; run it again and finished turns replay without calling the model. The mode
 stub unless `OPENROUTER_API_KEY` is set; then it is OpenRouter's `openai/gpt-oss-20b`, or
 `GRIT_MODEL`.
 
+The local databases are disposable: `scripts/reset-db` wipes them, and grit rebuilds
+its tables on the next start.
+
 `GRIT_DATABASE_URL` (a `jdbc:postgresql:` URL), `GRIT_DATABASE_USER` and
 `GRIT_DATABASE_PASSWORD` override the compose database; each defaults to it when unset.

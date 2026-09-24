@@ -1,7 +1,8 @@
 -- grit app schema, applied idempotently at startup.
 -- DBOS system tables (dbos.*) are managed separately by DBOS's own migrations.
--- No migrations yet: until a database holds real data, change this file and drop the local
--- schemas (.local/backlog/schema-migrations.md). IF NOT EXISTS never reshapes a table.
+-- No migrations yet: until a database holds real data, change this file and run
+-- scripts/reset-db (.local/backlog/schema-migrations.md). IF NOT EXISTS never reshapes a
+-- table, so a changed table needs the reset.
 
 CREATE SCHEMA IF NOT EXISTS grit;
 
