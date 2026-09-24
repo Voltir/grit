@@ -76,18 +76,17 @@ capability is a promise of purity.**
 
 Braces, never significant indentation — `-no-indent` makes it a compile error.
 
-**scalafmt only parses capture syntax because of
-`runner.dialectOverride.allowCaptureChecking = true`** in `.scalafmt.conf`. Without it,
-every file using `^` fails with *"`identifier` expected but `)` found"* and is silently
-skipped. If that error appears after a version change, check the setting first.
+**Capture and separation checking: [`docs/capture-checking.md`](docs/capture-checking.md)**
+has every trap met so far (symptom, cause, fix), how to test that something does not
+compile, and the Scala-upgrade checklist. The ones that bite most:
 
-**upickle's `derives ReadWriter` crashes under capture checking** (a `MatchError` on
-`caps.internal.inferred` in its macro; upickle 4.4.3, Scala 3.9). Write codecs by hand
-over `ujson`, as `grit.core.PayloadJson` does.
-
-Under separation checking a `var` field in a plain class needs `@caps.unsafe.untrackedCaptures`
-(when it holds immutable values) or a `Stateful` class, and an array passed to a Java
-method needs `caps.unsafe.unsafeAssumePure`, in quarantine modules only.
+- A step body may not mention the `Durable` at all, not even `d.workflowId`-style reads.
+  Compute what it needs before the step.
+- scalafmt parses `^` only because of `runner.dialectOverride.allowCaptureChecking = true`;
+  without it a file fails with *"`identifier` expected but `)` found"* and is silently skipped.
+- upickle's `derives ReadWriter` crashes; write codecs by hand over `ujson`.
+- `assertCompileError` never sees capture-checking errors; use the `Driver` probe in
+  `SeparationTests`.
 
 Tests share `GritTests` in `build.mill`, which silences Scala 3.9's false
 `unused pattern variable` warnings for variables read only inside utest's `assert`. Every

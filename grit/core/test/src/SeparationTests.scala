@@ -6,8 +6,8 @@ import java.nio.file.Files
 import utest.*
 
 /** What separation checking rejects about [[Durable]] (ADR 0003), pinned by compiling
-  * probe sources against core with core's own flags. `compileError` cannot do this: it
-  * stops before the capture-checking phases.
+  * probe sources against core with core's own flags. `assertCompileError` cannot do this: it
+  * never reports capture- or separation-checking errors (docs/capture-checking.md).
   *
   * Expires: delete once separation checking is no longer experimental. Until then an
   * upgrade can change what it rejects silently; this suite is re-read at each Scala bump.
