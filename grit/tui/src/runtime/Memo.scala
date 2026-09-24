@@ -1,4 +1,6 @@
-package grit.tui.node
+package grit.tui.runtime
+
+import grit.tui.components.PaneKey
 
 import grit.tui.components.pane.{Anchor, ViewRow, Viewport}
 import grit.tui.model.block.{Block, Overflow}

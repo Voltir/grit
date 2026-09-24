@@ -13,13 +13,15 @@ Four groups, and the groups are the layer table:
 
 - **`model`** — `surface`, `text`, `input`, `select`, `block`: the pure cell model and the
   event vocabulary. Imports no other group.
-- **`components`** — `View` (`render(size)` paints exactly the box it is given;
-  `measure(avail)` only *reports*), `layout`, `widget`, `overlay`, `pane`, `editor`.
-  The API surface. Imports only `model`.
+- **`components`** — `Node` (the screen as one tree that carries its handlers), `View`
+  (`render(size)` paints exactly the box it is given; `measure(avail)` only *reports*),
+  `layout`, `widget`, `overlay`, `pane` (`Scroller`), `editor`. The API surface. Imports
+  only `model`.
 - **`wire`** — `paint`, `term`, and input's `Decoder`: bytes out and bytes in. Imports only
   `model`.
-- **`runtime`** — the loop, `Effect`, `Scheduler`, and the `std` layer. The only group
-  allowed to name all three.
+- **`runtime`** — `App`, the loop (`Runtime`, `Loop`, `Headless`), layout and painting
+  (`Paint`, the wrap `Memo`), input routing (`Route`), `Effect`, `Scheduler`. The only
+  group allowed to name all three.
 
 `components` and `wire` are siblings and must not name each other: that is what keeps the
 surface grit's screens are written against separate from the terminal underneath.

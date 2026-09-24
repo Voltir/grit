@@ -34,8 +34,8 @@ components:
     kind: dependency
     match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**"]
 
-  # The tui groups, for the direction rules. `runtime` and `node` need no entry: each may
-  # import every group.
+  # The tui groups, for the direction rules. `runtime` needs no entry: it may import
+  # every group.
   - {name: core-code,      kind: module, match: ["grit/core/src", "grit/core/src/**"]}
   - {name: tui-model,      kind: module, match: ["grit/tui/src/model", "grit/tui/src/model/**"]}
   - {name: tui-components, kind: module, match: ["grit/tui/src/components", "grit/tui/src/components/**"]}
@@ -188,8 +188,6 @@ rules:
   #      wire        -> model
   #      components  -> model, grit.core
   #      runtime     -> anything (no rule)
-  #      node        -> anything (no rule): the view tree, beside runtime until it replaces
-  #                     it. runtime may not name node; QuarantineTests holds that one.
   #
   # Watch out:
   #   - Use `via: imports`. `via: depends_on` (what enola's recipes use) never fires on

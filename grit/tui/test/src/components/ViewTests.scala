@@ -5,7 +5,7 @@ import grit.tui.components.layout.{Border, Box}
 import grit.tui.components.overlay.Popup
 import grit.tui.components.widget.{Scrollbar, Spinner, StatusBar}
 import grit.tui.model.input.{Input, Key}
-import grit.tui.model.surface.{Frame, PaneId, Pos, Rect, Size, Surface}
+import grit.tui.model.surface.{Frame, Pos, Rect, Size, Surface}
 import grit.tui.model.text.Width
 import grit.tui.wire.paint.Painter
 import utest.*
@@ -149,19 +149,6 @@ object ViewTests extends TestSuite {
         assert(Spinner(0).route(i, at) == i)
         assert(StatusBar(Vector.empty, Vector.empty).route(i, at) == i)
       }
-    }
-
-    test("identity survives composition: a named child reports where it landed") {
-      // This is what a String-rendering algebra structurally cannot do, and it is the
-      // whole reason hit-testing -- which is what selection is -- stays possible.
-      val inner = PaneId.of("inner")
-      val v = Box(Fill('x', Size(3, 6)).id(inner))
-      val s = v.render(Size(5, 8))
-      val found = s.panes.find(_.pane == inner)
-      assert(found.isDefined)
-      // Translated through the frame it was nested inside, not reported box-local.
-      assert(found.get.rect == Rect(1, 1, 3, 6))
-      assert(grit.tui.model.surface.Hit.paneAt(s.panes, Pos(2, 3)).map(_._1).contains(inner))
     }
 
     test("a box routes to its child against the rect the child was painted into") {

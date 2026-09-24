@@ -65,8 +65,8 @@ object QuarantineTests extends TestSuite {
       case (path, body) if rule(body) && !allowed.exists(a => path.endsWith(a)) => path
     }
 
-  /** The groups, in dependency order. A library source lives under exactly one. */
-  private val Groups = Vector("model", "components", "wire", "runtime", "node")
+  /** The four groups, in dependency order. A library source lives under exactly one. */
+  private val Groups = Vector("model", "components", "wire", "runtime")
 
   /** What each group is allowed to reach for. `components` and `wire` are siblings:
     * neither may name the other, and only `app` may name both.
@@ -75,10 +75,7 @@ object QuarantineTests extends TestSuite {
     "model" -> Set.empty,
     "components" -> Set("model"),
     "wire" -> Set("model"),
-    "runtime" -> Set("model", "components", "wire"),
-    // The view tree, beside `runtime` until it replaces it: it may name every group, and
-    // no group may name it.
-    "node" -> Set("model", "components", "wire", "runtime")
+    "runtime" -> Set("model", "components", "wire")
   ).withDefaultValue(Set.empty)
 
   private val Root = "grit/tui/src/"

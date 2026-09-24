@@ -78,7 +78,7 @@ object Transcript {
         Palette.separator,
         Palette.user("and the wrap cache?"),
         Palette.assistant(
-          "keyed per entry on (contentId, revision, width). a streaming tail bumps one revision and re-wraps one entry; the layoutz spike measured 58 misses across 1316 lookups on a 200-entry transcript, which a document-level revision would have turned into all of them."
+          "keyed by the blocks themselves: a block's rows are reused while the block is unchanged, so a streaming tail re-wraps one entry and a reply that replaces the thinking line wraps afresh, with no revision to keep in step."
         ),
         Palette.separator,
         Palette.user("what happens when i select across a wrapped row?"),
@@ -151,8 +151,8 @@ object Transcript {
       // `copy`, not a fresh `Block.Text`: the tail's spans and ground are its own and a
       // rebuilt block would drop them, un-dressing the line mid-stream.
       case (Some(t), r) if r != 0 =>
-        doc.updated(doc.length - 1, t.copy(text = t.text + " " + word(rev), rev = rev))
-      case _ => doc.append(Palette.assistant(s"$rev: " + wordsFor(rev, 6), rev))
+        doc.updated(doc.length - 1, t.copy(text = t.text + " " + word(rev)))
+      case _ => doc.append(Palette.assistant(s"$rev: " + wordsFor(rev, 6)))
     }
   }
 

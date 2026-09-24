@@ -1,18 +1,17 @@
-package grit.tui.components.pane
+package grit.tui.runtime
 
+import grit.tui.components.pane.{Anchor, Viewport}
 import grit.tui.model.block.Block
 import grit.tui.model.select.{Doc, DocPos, Selection}
-import grit.tui.model.surface.{PaneId, Pos, Size}
-import grit.tui.model.text.{Width, WrapCache}
+import grit.tui.model.surface.{Pos, Size}
+import grit.tui.model.text.Width
 import utest.*
 
-/** The scroll model, checked against the three properties the design rests on: the
-  * reading position survives a re-wrap, wrapping costs a viewport rather than a
-  * document, and `docPosAt` really is the inverse of what was painted.
+/** The scroll model, checked against the properties the design rests on: the reading
+  * position survives a re-wrap, only a changed block re-wraps, and `docPosAt` really is
+  * the inverse of what was painted.
   */
-object TextPaneTests extends TestSuite {
-
-  private val id = PaneId.of("transcript")
+object DocMemoTests extends TestSuite {
 
   /** A document of `n` entries, each long enough to wrap several times at 40 columns. */
   private def long(n: Int): Doc =
@@ -20,27 +19,35 @@ object TextPaneTests extends TestSuite {
       Block.Text(s"entry $i " + (0 until 30).map(w => s"word$w").mkString(" "))
     })
 
-  private def pane(doc: Doc, width: Int = 40): TextPane =
-    TextPane(id, doc, cache = WrapCache.empty(width))
+  /** `doc` at `size`, read from `anchor`: the viewport, its top row, and the memo. */
+  private def view(
+      doc: Doc,
+      size: Size,
+      anchor: Anchor = Anchor.Bottom,
+      memo: DocMemo = DocMemo.empty
+  ): (Viewport, Int, DocMemo) = {
+    val m = memo.synced(doc, size.cols)
+    val top = m.topFor(anchor, size.rows)
+    (m.viewport(top, size), top, m)
+  }
 
   val tests = Tests {
 
     test("a bottom-anchored pane shows the tail of the document") {
-      val (vp, _) = pane(Doc.of("a", "b", "c", "d", "e")).viewport(Size(3, 20))
+      val (vp, _, _) = view(Doc.of("a", "b", "c", "d", "e"), Size(3, 20))
       assert(vp.rows.map(_.text) == Vector("c", "d", "e"))
     }
 
     test("a document shorter than the screen paints from the top row down") {
       // No blank rows above it: a transcript that has only just started reads from the
       // top, and only pins to the bottom once it overflows.
-      val (vp, _) = pane(Doc.of("a", "b")).viewport(Size(6, 20))
+      val (vp, _, _) = view(Doc.of("a", "b"), Size(6, 20))
       assert(vp.rows.map(_.text) == Vector("a", "b"))
     }
 
     test("an anchored pane starts at the row holding the anchor") {
-      val doc = Doc.of("aaa", "bbb", "ccc", "ddd")
-      val p = pane(doc).withAnchor(Anchor.At(DocPos(1, 0)))
-      val (vp, _) = p.viewport(Size(2, 20))
+      val (vp, _, _) =
+        view(Doc.of("aaa", "bbb", "ccc", "ddd"), Size(2, 20), Anchor.At(DocPos(1, 0)))
       assert(vp.rows.map(_.text) == Vector("bbb", "ccc"))
     }
 
@@ -50,72 +57,51 @@ object TextPaneTests extends TestSuite {
       // reader. An anchor stored as a wrapped row index cannot do this.
       val doc = long(20)
       val at = DocPos(9, 200)
-      val p = pane(doc, 80).withAnchor(Anchor.At(at))
-      val (wide, p1) = p.viewport(Size(10, 80))
-      val (narrow, _) = p1.viewport(Size(10, 34))
+      val (wide, _, m) = view(doc, Size(10, 80), Anchor.At(at))
+      val (narrow, _, _) = view(doc, Size(10, 34), Anchor.At(at), m)
       def holds(vp: Viewport): Boolean = vp.rows.headOption.exists { r =>
         r.entry == at.entry && r.start <= at.offset && at.offset <= r.start + r.text.length
       }
       // The anchored row is not the entry's first row at either width, so an anchor kept
       // as a row index would have to land somewhere else.
-      assert(wide.rows.head.start > 0)
-      assert(narrow.rows.head.start > 0)
+      assert(wide.rows.head.start > 0, narrow.rows.head.start > 0)
       assert(wide.rows.head.start != narrow.rows.head.start)
-      assert(holds(wide))
-      assert(holds(narrow))
+      assert(holds(wide), holds(narrow))
     }
 
-    test("wrapping costs a viewport, not a document") {
-      // 400 entries, ten rows on screen: the walk stops as soon as it has filled the
-      // viewport, so misses are bounded by the rows shown and not by the entries held.
-      val (vp, p) = pane(long(400)).viewport(Size(10, 40))
-      assert(vp.rows.length == 10)
-      assert(p.cache.misses <= 12)
-    }
-
-    test("appending to a document re-wraps only the entry that changed") {
+    test("changing one block re-wraps that block alone") {
       val doc = long(30)
-      val (_, p) = pane(doc).viewport(Size(10, 40))
-      val before = p.cache.misses
-      val grown =
-        doc.copy(blocks = doc.blocks.updated(29, Block.Text(doc.textAt(29) + " more", 1L)))
-      val (_, p2) = p.withDoc(grown).viewport(Size(10, 40))
-      assert(p2.cache.misses == before + 1)
-      assert(p2.cache.hits > p.cache.hits)
+      val (_, _, m) = view(doc, Size(10, 40))
+      val grown = doc.updated(29, Block.Text(doc.textAt(29) + " more"))
+      val (_, _, m2) = view(grown, Size(10, 40), memo = m)
+      assert(m2.misses == m.misses + 1, m2.hits == m.hits + 29)
     }
 
     test("a width change discards the wrapped rows, because every one of them is wrong") {
-      val (_, p) = pane(long(30)).viewport(Size(10, 40))
-      val (_, p2) = p.viewport(Size(10, 20))
-      assert(p2.cache.width == 20)
-      assert(p2.cache.misses > p.cache.misses)
+      val (_, _, m) = view(long(30), Size(10, 40))
+      val (_, _, m2) = view(long(30), Size(10, 20), memo = m)
+      assert(m2.width == 20, m2.misses == m.misses + 30)
     }
 
     test("scrolling back a screen and forward again lands on the same rows") {
       val size = Size(8, 40)
-      val (start, p) = pane(long(20)).viewport(size)
-      val (back, p1) = p.scrolledBy(-8, size)
-      val (there, _) = p1.scrolledBy(8, size)
-      assert(back.rows != start.rows)
-      assert(there.rows == start.rows)
+      val (start, top, m) = view(long(20), size)
+      val (back, backTop, _) = view(long(20), size, m.scrolled(top, -8, size.rows), m)
+      val (there, _, _) = view(long(20), size, m.scrolled(backTop, 8, size.rows), m)
+      assert(back.rows != start.rows, there.rows == start.rows)
     }
 
     test("scrolling past the end pins back to the bottom") {
       val size = Size(8, 40)
-      val (bottom, p0) = pane(long(20)).viewport(size)
-      val (_, p1) = p0.scrolledBy(-20, size)
-      val (vp, p2) = p1.scrolledBy(500, size)
-      assert(p2.anchor == Anchor.Bottom)
-      assert(vp.rows == bottom.rows)
+      val (_, top, m) = view(long(20), size)
+      assert(m.scrolled(top - 20, 500, size.rows) == Anchor.Bottom)
     }
 
     test("scrolling up stops at the first row of the document") {
       val size = Size(8, 40)
-      val (_, p) = pane(long(20)).viewport(size)
-      val (vp, _) = p.scrolledBy(-9999, size)
-      val head = vp.rows.head
-      assert(head.entry == 0)
-      assert(head.start == 0)
+      val (_, top, m) = view(long(20), size)
+      val (vp, _, _) = view(long(20), size, m.scrolled(top, -9999, size.rows), m)
+      assert(vp.rows.head.entry == 0, vp.rows.head.start == 0)
     }
 
     test("docPosAt inverts render for every painted cell") {
@@ -123,8 +109,7 @@ object TextPaneTests extends TestSuite {
       // at the document position that cell maps back to. Hit-testing and copying are the
       // same function read in opposite directions.
       val doc = long(12)
-      val size = Size(10, 40)
-      val (vp, _) = pane(doc).viewport(size)
+      val (vp, _, _) = view(doc, Size(10, 40))
       val painted = vp.render(None)
       var checked = 0
       vp.rows.zipWithIndex.foreach { (row, r) =>
@@ -144,14 +129,13 @@ object TextPaneTests extends TestSuite {
 
     test("a click below the last row selects to the end of the document") {
       val doc = Doc.of("aa", "bb")
-      val (vp, _) = pane(doc).viewport(Size(8, 20))
+      val (vp, _, _) = view(doc, Size(8, 20))
       assert(vp.docPosAt(Pos(6, 0)) == Some(doc.end))
     }
 
     test("a click outside the viewport maps nowhere") {
-      val (vp, _) = pane(Doc.of("aa")).viewport(Size(4, 20))
-      assert(vp.docPosAt(Pos(-1, 0)).isEmpty)
-      assert(vp.docPosAt(Pos(4, 0)).isEmpty)
+      val (vp, _, _) = view(Doc.of("aa"), Size(4, 20))
+      assert(vp.docPosAt(Pos(-1, 0)).isEmpty, vp.docPosAt(Pos(4, 0)).isEmpty)
       assert(vp.docPosAt(Pos(0, 20)).isEmpty)
     }
 
@@ -159,9 +143,8 @@ object TextPaneTests extends TestSuite {
       // Rule 5, made visible: the painted mask is read back off the surface and compared
       // with the model row by row. An asymmetric projection paints rows after the
       // selection and leaves the copied text correct -- only this catches it.
-      val doc = long(6)
       val size = Size(10, 40)
-      val (vp, _) = pane(doc).withAnchor(Anchor.At(DocPos(0, 0))).viewport(size)
+      val (vp, _, _) = view(long(6), size, Anchor.At(DocPos(0, 0)))
       val sel = Selection(DocPos(1, 4), DocPos(3, 9))
       val painted = vp.render(Some(sel))
       vp.rows.zipWithIndex.foreach { (row, r) =>
@@ -172,9 +155,8 @@ object TextPaneTests extends TestSuite {
     }
 
     test("an empty document renders nothing and maps nowhere useful") {
-      val (vp, _) = pane(Doc.empty).viewport(Size(5, 20))
-      assert(vp.rows.isEmpty)
-      assert(vp.docPosAt(Pos(0, 0)) == Some(DocPos.zero))
+      val (vp, _, _) = view(Doc.empty, Size(5, 20))
+      assert(vp.rows.isEmpty, vp.docPosAt(Pos(0, 0)) == Some(DocPos.zero))
       assert(vp.render(None).lines.forall(_.trim.isEmpty))
     }
   }

@@ -5,10 +5,10 @@ package grit.tui
   * A widget is a pure function from its state to a [[grit.tui.model.surface.Surface]] sized
   * exactly to the region it will be blitted into. That is the whole contract:
   *
-  *   - **Identity is the placement map.** The app picks a [[grit.tui.model.surface.PaneId]] and
-  *     blits the surface under it; [[grit.tui.model.surface.Hit$.paneAt` inverts the placement,
-  *     and widget-local hit-testing is a geometry method on the widget's own state
-  *     (see [[grit.tui.components.widget.Scrollbar]].offsetAtRow). No class hierarchy, no widget tree.
+  *   - **Identity is its place in the tree.** An app paints a widget into a box of its
+  *     screen's [[grit.tui.components.Node]] tree, and widget-local hit-testing is a
+  *     geometry method on the widget's own state (see
+  *     [[grit.tui.components.widget.Scrollbar]].offsetAtRow). No class hierarchy.
   *   - **Same state, same surface.** A widget that re-renders unchanged state must hand
   *     the diff painter two identical frames, so a tick that changed nothing writes
   *     zero bytes. Every widget's suite pins this with a real [[grit.tui.wire.paint.Painter]]

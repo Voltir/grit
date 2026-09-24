@@ -1,8 +1,9 @@
-package grit.tui.components.pane
+package grit.tui.runtime
 
+import grit.tui.components.pane.{Anchor, Viewport}
 import grit.tui.model.block.Block
 import grit.tui.model.select.{Doc, DocPos, Selection}
-import grit.tui.model.surface.{Color, PaneId, Size, Style}
+import grit.tui.model.surface.{Color, Size, Style}
 import grit.tui.model.text.{StyledText, Width}
 import utest.*
 
@@ -20,11 +21,9 @@ object SpannedPaneTests extends TestSuite {
   private val Iris = Color.hex("#bb9af7")
   private val Slab = Color.hex("#292e42")
 
-  private val id = PaneId.of("t")
-
   private def paneOf(doc: Doc, size: Size): Viewport = {
-    val (vp, _) = TextPane(id, doc).viewport(size)
-    vp
+    val m = DocMemo.empty.synced(doc, size.cols)
+    m.viewport(m.topFor(Anchor.Bottom, size.rows), size)
   }
 
   /** One block: a five-character marker in iris, the rest in ink, on a tinted ground. */

@@ -2,7 +2,7 @@ package grit.app
 
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.Size
-import grit.tui.node.Headless
+import grit.tui.runtime.Headless
 import grit.tui.runtime.Effect
 import utest.*
 

@@ -1,9 +1,9 @@
 package grit.tui.model.block
 
-import grit.tui.components.pane.TextPane
+import grit.tui.components.pane.{Anchor, Viewport}
+import grit.tui.runtime.DocMemo
 import grit.tui.model.select.{Doc, DocPos, Selection}
-import grit.tui.model.surface.{PaneId, Pos, Size}
-import grit.tui.model.text.WrapCache
+import grit.tui.model.surface.{Pos, Size}
 import utest.*
 
 /** Transcript blocks that are not one string of text.
@@ -21,10 +21,11 @@ import utest.*
   */
 object BlockTests extends TestSuite {
 
-  private val id = PaneId.of("transcript")
-
-  private def pane(doc: Doc, width: Int): TextPane =
-    TextPane(id, doc, cache = WrapCache.empty(width))
+  /** `doc` laid out at `size`, from its top. */
+  private def viewport(doc: Doc, size: Size): Viewport = {
+    val m = DocMemo.empty.synced(doc, size.cols)
+    m.viewport(m.topFor(Anchor.At(DocPos.zero), size.rows), size)
+  }
 
   val tests = Tests {
 
@@ -39,11 +40,11 @@ object BlockTests extends TestSuite {
       val failed = Block.tool("Bash", "make", 0).finish(ok = false, "exit 1")
       assert(failed.text == "✗ Bash(make) · exit 1")
 
-      // A tick is a mutation of the glass: it changes the glyph and bumps the
-      // revision, so the wrap cache re-wraps exactly this block.
+      // A tick is a mutation of the glass: it changes the glyph, so the block is no
+      // longer equal to itself and the wrap memo re-wraps exactly this block.
       val t1 = Block.tool("Read", "f", 0)
       val t2 = t1.tick
-      assert(t1.text != t2.text && t2.rev == t1.rev + 1)
+      assert(t1.text != t2.text && t1 != t2)
     }
 
     test("expansion is rows of the same block: sibling positions and keys do not move") {
@@ -58,14 +59,13 @@ object BlockTests extends TestSuite {
 
       // The property the whole design rests on: the block count is constant, so a
       // DocPos into any *other* block is bit-identical before and after, and the
-      // siblings' revisions -- the wrap cache keys -- are untouched.
+      // siblings -- what the wrap memo compares -- are untouched.
       assert(doc.textAt(0) == "before" && doc.textAt(2) == "after")
       val docOpen = Doc.of("before").append(open).append(Block.Text("after"))
       assert(docOpen.length == doc.length)
       assert(docOpen.textAt(2) == doc.textAt(2))
-      assert(docOpen.entry(0).map(_.rev) == doc.entry(0).map(_.rev))
-      assert(docOpen.entry(2).map(_.rev) == doc.entry(2).map(_.rev))
-      assert(open.rev == tool.rev + 1)
+      assert(docOpen.entry(0) == doc.entry(0), docOpen.entry(2) == doc.entry(2))
+      assert(open != tool)
 
       // A selection spanning all three blocks copies the same text either way.
       val whole = Selection.between(DocPos(0, 0), DocPos(2, 5))
@@ -74,8 +74,8 @@ object BlockTests extends TestSuite {
 
       // And the viewport: the expanded block simply paints more rows under entry 1,
       // while the rows of entry 2 keep their provenance.
-      val (vp1, _) = pane(doc, 60).viewport(Size(10, 60))
-      val (vp2, _) = pane(docOpen, 60).viewport(Size(10, 60))
+      val vp1 = viewport(doc, Size(10, 60))
+      val vp2 = viewport(docOpen, Size(10, 60))
       assert(vp1.rows.map(_.entry) == Vector(0, 1, 2))
       assert(vp2.rows.map(_.entry) == Vector(0, 1, 1, 1, 2))
       assert(vp2.rows(3).text == "  line two")
@@ -86,7 +86,7 @@ object BlockTests extends TestSuite {
       // "+" plus four wide glyphs is 9 display columns; at 7 the line truncates to
       // the last glyph boundary, never mid-glyph.
       val doc = Doc.empty.append(Block.Diff(Vector("+世世世世"), Overflow.Truncate))
-      val (vp, _) = pane(doc, 7).viewport(Size(4, 7))
+      val vp = viewport(doc, Size(4, 7))
       assert(vp.rows.map(_.text) == Vector("+世世世"))
       // Display truncation is exactly that: the logical text, and so the copy, is whole.
       val whole = Selection.between(DocPos(0, 0), DocPos(0, 100))
@@ -97,8 +97,8 @@ object BlockTests extends TestSuite {
       val long = Vector("aaa bbb ccc ddd")
       val trunc = Doc.empty.append(Block.Diff(long, Overflow.Truncate))
       val wrapped = Doc.empty.append(Block.Diff(long, Overflow.Wrap))
-      val (vpT, _) = pane(trunc, 7).viewport(Size(4, 7))
-      val (vpW, _) = pane(wrapped, 7).viewport(Size(4, 7))
+      val vpT = viewport(trunc, Size(4, 7))
+      val vpW = viewport(wrapped, Size(4, 7))
       assert(vpT.rows.map(_.text) == Vector("aaa bbb"))
       assert(vpW.rows.map(_.text) == Vector("aaa bbb", "ccc ddd"))
       assert(vpW.rows(1).start == 8)
@@ -109,7 +109,7 @@ object BlockTests extends TestSuite {
         .of("answer")
         .append(Block.Separator())
         .append(Block.Text("next prompt"))
-      val (vp, p) = pane(doc, 12).viewport(Size(4, 12))
+      val vp = viewport(doc, Size(4, 12))
       assert(vp.rows.map(_.text) == Vector("answer", "", "next prompt"))
       assert(vp.rows(1).rule)
 
@@ -130,7 +130,7 @@ object BlockTests extends TestSuite {
         .of("hello world")
         .append(Block.tool("Read", "f", 0))
         .append(Block.Diff(Vector("+import x", "-import y")))
-      val (vp, _) = pane(doc, 40).viewport(Size(6, 40))
+      val vp = viewport(doc, Size(6, 40))
       assert(
         vp.rows.map(r => (r.entry, r.start, r.text)) == Vector(
           (0, 0, "hello world"),

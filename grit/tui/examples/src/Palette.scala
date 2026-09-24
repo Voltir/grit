@@ -71,11 +71,10 @@ object Palette {
   /** The assistant's turn: no slab at all. Bare prose between the tinted blocks is what
     * makes the tinted blocks read as punctuation.
     */
-  def assistant(text: String, rev: Long = 0L): Block.Text =
+  def assistant(text: String): Block.Text =
     Block.styled(
       StyledText.styled("grit> ", Style.fg(Sky) + Style.Bold) ++
-        StyledText.styled(text, Style.fg(Ink)),
-      rev
+        StyledText.styled(text, Style.fg(Ink))
     )
 
   /** Reasoning: recessive, and italic so it is distinguishable from prose without a

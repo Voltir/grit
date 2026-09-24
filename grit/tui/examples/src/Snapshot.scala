@@ -1,7 +1,7 @@
 package grit.tui.examples
 
 import grit.tui.model.surface.Size
-import grit.tui.node.Headless
+import grit.tui.runtime.Headless
 import grit.tui.wire.paint.{Ansi, Painter}
 
 /** [[Demo]]'s first frame, painted and printed raw -- no terminal setup, no runtime. The

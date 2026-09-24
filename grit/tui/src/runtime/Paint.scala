@@ -1,4 +1,6 @@
-package grit.tui.node
+package grit.tui.runtime
+
+import grit.tui.components.{Node, OnInput, PaneKey}
 
 import grit.tui.components.layout.Stacking
 import grit.tui.components.pane.Viewport
@@ -206,9 +208,8 @@ object Paint {
 
     def walk[A](n: Node[A], rect: Rect, lift: A -> M, path: Vector[Stop[M]]): Unit = n match {
       case Node.Box(vertical, parts) =>
-        val rects = Stacking
-          .shares(parts.map(_(0)), rect, vertical, (j, avail) => measure(parts(j)(1), avail))
-          .map(_.rect)
+        val rects =
+          Stacking.rects(parts.map(_(0)), rect, vertical, (j, avail) => measure(parts(j)(1), avail))
         var i = 0
         while (i < parts.length) {
           walk(parts(i)(1), rects(i), lift, path)

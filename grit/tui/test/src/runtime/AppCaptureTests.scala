@@ -1,4 +1,4 @@
-package grit.tui.node
+package grit.tui.runtime
 
 import dotty.tools.dotc.Driver
 import dotty.tools.dotc.reporting.StoreReporter
@@ -9,14 +9,15 @@ import utest.*
   * probe sources against tui with tui's own flags -- `assertCompileError` cannot see
   * capture errors (docs/capture-checking.md). The pattern is `grit.core.SeparationTests`.
   */
-object NodeCaptureTests extends TestSuite {
+object AppCaptureTests extends TestSuite {
 
   private val classpath = sys.env.getOrElse("GRIT_PROBE_CLASSPATH", "")
   private val options = sys.env.getOrElse("GRIT_PROBE_OPTIONS", "").split(" ").toList
 
   private val prelude =
     """package probe
-      |import grit.tui.node.*
+      |import grit.tui.components.{Node, PaneKey}
+      |import grit.tui.runtime.App
       |import grit.tui.components.pane.Anchor
       |import grit.tui.model.select.Doc
       |import grit.tui.model.input.Input
@@ -108,7 +109,7 @@ object NodeCaptureTests extends TestSuite {
 
     test("an app's handlers built in its own methods are pure with no ceremony") {
       val errs = errors(
-        """object Counter extends NodeApp[Int, N] {
+        """object Counter extends App[Int, N] {
           |  def init: (Int, Effect[N]) = (0, Effect.NoOp)
           |  def update(m: N, s: Int): (Int, Effect[N]) = (s + m.n, Effect.NoOp)
           |  private def bump(s: Int): Int -> N = n => N(n + s)
@@ -122,7 +123,7 @@ object NodeCaptureTests extends TestSuite {
 
     test("an app that holds the terminal is rejected where it is defined") {
       val errs = errors(
-        """final class Leaky(term: Terminal) extends NodeApp[Int, N] {
+        """final class Leaky(term: Terminal) extends App[Int, N] {
           |  def init: (Int, Effect[N]) = (0, Effect.NoOp)
           |  def update(m: N, s: Int): (Int, Effect[N]) = { term.flush(); (s + m.n, Effect.NoOp) }
           |  def view(s: Int): Node[N] = Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom)
@@ -157,7 +158,7 @@ object NodeCaptureTests extends TestSuite {
     test("an app whose message type is not declared pure is refused") {
       val errs = errors(
         """enum Open { case Plain }
-          |object Opened extends NodeApp[Int, Open] {
+          |object Opened extends App[Int, Open] {
           |  def init: (Int, Effect[Open]) = (0, Effect.NoOp)
           |  def update(m: Open, s: Int): (Int, Effect[Open]) = (s, Effect.NoOp)
           |  def view(s: Int): Node[Open] = Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom)

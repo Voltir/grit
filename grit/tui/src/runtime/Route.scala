@@ -1,4 +1,6 @@
-package grit.tui.node
+package grit.tui.runtime
+
+import grit.tui.components.PaneKey
 
 import grit.tui.model.input.{Button, Input, MouseEvent, MouseKind}
 import grit.tui.model.select.{DocPos, Selection}

@@ -15,7 +15,7 @@ import sys
 
 # Mirrors Demo.help. If that document changes, change this: the modal scenario asserts
 # the clipboard is a contiguous slice of it and of nothing else.
-HELP = """This is a second TextPane, composited over the
+HELP = """This is a second document pane, drawn over the
 transcript with its own scroll position and its
 own document.
 

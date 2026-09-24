@@ -8,9 +8,10 @@ import grit.tui.model.block.Block
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.select.Doc
 import grit.tui.model.text.StyledText
-import grit.tui.node.*
-import grit.tui.node.Node.*
-import grit.tui.runtime.{Effect, TimerId}
+import grit.tui.components.{Node, OnInput, PaneKey}
+import grit.tui.components.pane.Scroller
+import grit.tui.components.Node.*
+import grit.tui.runtime.{App, Effect, TimerId}
 
 /** Every library feature on one screen: a streaming transcript with a scrollbar, a modal
   * over it, a completion popup, a growing prompt. What `scripts/tui-gate` drives, except
@@ -18,7 +19,7 @@ import grit.tui.runtime.{Effect, TimerId}
   *
   * ```./mill --no-daemon --no-build-lock grit.tui.examples.runMain grit.tui.examples.Demo```
   */
-object Demo extends NodeApp[Demo.State, Demo.Msg] {
+object Demo extends App[Demo.State, Demo.Msg] {
 
   private val HelpModal = Modal(
     "help -- try dragging out of me",
@@ -247,7 +248,7 @@ object Demo extends NodeApp[Demo.State, Demo.Msg] {
   private val help: Doc =
     Doc(
       Vector(
-        "This is a second TextPane, composited over the",
+        "This is a second document pane, drawn over the",
         "transcript with its own scroll position and its",
         "own document.",
         "",

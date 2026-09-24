@@ -70,9 +70,6 @@ sealed trait Block {
     */
   def groundAt(@unused offset: Int): Style = ground
 
-  /** Bumps on every mutation that changes the glass; keys the wrap cache. */
-  def rev: Long
-
   /** The horizontal-overflow strategy for this block's lines. */
   def overflow: Overflow = Overflow.Wrap
 }
@@ -88,12 +85,11 @@ object Block {
   /** The glyph for `tick` -- safe for any value, including negative. */
   def glyph(tick: Long): Char = frames(math.floorMod(tick, frames.length).toInt)
 
-  /** Plain text. The streaming case: [[Text.append]] grows the trailing entry and bumps
-    * one revision, so exactly one entry's wrapped rows are re-paid.
+  /** Plain text. The streaming case: [[Text.append]] grows the trailing entry, so exactly
+    * one entry's wrapped rows are re-paid.
     */
   final case class Text(
       override val text: String,
-      override val rev: Long = 0L,
       override val spans: Vector[Span] = Vector.empty,
       override val ground: Style = Style.plain
   ) extends Block {
@@ -102,12 +98,12 @@ object Block {
       * appending never disturbs what came before it, which is what makes the streaming
       * tail safe to re-wrap alone.
       */
-    def append(more: String): Text = copy(text = text + more, rev = rev + 1)
+    def append(more: String): Text = copy(text = text + more)
 
     /** This block with `more` appended, its spans shifted past the existing text. */
     def append(more: StyledText): Text = {
       val joined = StyledText(text, spans) ++ more
-      copy(text = joined.text, rev = rev + 1, spans = joined.spans)
+      copy(text = joined.text, spans = joined.spans)
     }
   }
 
@@ -117,7 +113,6 @@ object Block {
     */
   final case class Separator(override val ground: Style = Style.plain) extends Block {
     override val text: String = ""
-    override val rev: Long = 0L
   }
 
   /** A diff. Lines arrive with their own `+`/`-`/space prefixes -- that is content, and
@@ -126,7 +121,6 @@ object Block {
   final case class Diff(
       lines: Vector[String],
       override val overflow: Overflow = Overflow.Wrap,
-      override val rev: Long = 0L,
       style: DiffStyle = DiffStyle.plain
   ) extends Block {
 
@@ -203,7 +197,7 @@ object Block {
   /** A tool call: the affordance that separates a coding-agent transcript from a chat
     * log. Collapsed it is one summary line -- spinner while running, status glyph and
     * counts when done -- and expanded it is the summary plus its result, indented under
-    * it. Expansion rewrites rows of *this* block and bumps this block's revision only.
+    * it. Expansion re-wraps *this* block only.
     */
   final case class Tool(
       name: String,
@@ -211,7 +205,6 @@ object Block {
       state: ToolState,
       expanded: Boolean = false,
       result: Vector[String] = Vector.empty,
-      override val rev: Long = 0L,
       style: ToolStyle = ToolStyle.plain
   ) extends Block {
 
@@ -260,7 +253,7 @@ object Block {
 
     /** The next spinner frame. A finished tool has nothing to tick; this is that tool. */
     def tick: Tool = state match {
-      case ToolState.Running(t) => copy(state = ToolState.Running(t + 1), rev = rev + 1)
+      case ToolState.Running(t) => copy(state = ToolState.Running(t + 1))
       case _ => this
     }
 
@@ -268,11 +261,11 @@ object Block {
       * which is what expansion shows.
       */
     def finish(ok: Boolean, note: String, result: Vector[String] = Vector.empty): Tool =
-      copy(state = ToolState.Done(ok, note), result = result, rev = rev + 1)
+      copy(state = ToolState.Done(ok, note), result = result)
 
-    /** Expansion is a mutation of the glass: rows change, so the revision moves. */
+    /** This tool, expanded or collapsed. */
     def withExpanded(e: Boolean): Tool =
-      if (e == expanded) this else copy(expanded = e, rev = rev + 1)
+      if (e == expanded) this else copy(expanded = e)
 
     /** This tool dressed by `s`. */
     def styled(s: ToolStyle): Tool = copy(style = s)
@@ -305,6 +298,6 @@ object Block {
     * when it has a vocabulary grit.tui does not share. Everything a transcript wants that
     * is not a diff or a tool call is built from this.
     */
-  def styled(content: StyledText, rev: Long = 0L): Text =
-    Text(content.text, rev, content.spans)
+  def styled(content: StyledText): Text =
+    Text(content.text, content.spans)
 }

@@ -1,8 +1,7 @@
 package grit.tui.components.widget
 
 import grit.tui.components.Passive
-import grit.tui.components.pane.Panes
-import grit.tui.model.surface.{Cell, PaneId, Size, Style, Surface}
+import grit.tui.model.surface.{Cell, Size, Style, Surface}
 
 /** A one-column scrollbar with a proportional thumb.
   *
@@ -74,25 +73,5 @@ final case class Scrollbar(
     (start until math.min(rows, start + len)).foldLeft(rail) { (s, row) =>
       s.put(row, 0, Cell('█', thumbStyle))
     }
-  }
-}
-
-object Scrollbar {
-
-  /** The scrollbar for pane `id` of `panes`: its `content` is the pane's whole wrapped
-    * document ([[grit.tui.components.pane.Panes.rowIndex]]), its `offset` the row the
-    * pane's viewport reads from. The scrollbar reads the pane's own funnel-maintained
-    * state and computes nothing about wrapping itself.
-    */
-  def of(
-      panes: Panes,
-      id: PaneId,
-      window: Int,
-      railStyle: Style = Style.plain,
-      thumbStyle: Style = Style.plain
-  ): Scrollbar = {
-    val index = panes.rowIndex(id)
-    val offset = panes.rendered(id).top.flatMap(index.indexOf).getOrElse(0)
-    Scrollbar(index.length, window, offset, railStyle, thumbStyle)
   }
 }

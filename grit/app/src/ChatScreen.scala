@@ -7,8 +7,9 @@ import grit.tui.model.input.{Input, Key}
 import grit.tui.model.select.Doc
 import grit.tui.model.surface.*
 import grit.tui.model.text.StyledText
-import grit.tui.node.*
-import grit.tui.node.Node.*
+import grit.tui.components.{Node, OnInput, PaneKey}
+import grit.tui.components.pane.Scroller
+import grit.tui.components.Node.*
 import grit.tui.runtime.Effect
 
 /** grit's chat screen: a transcript, a prompt and a status line. Pure, like every
@@ -63,7 +64,7 @@ object ChatScreen {
   }
 
   /** The screen, titled `title` (the model it talks to). */
-  final class App(title: String) extends NodeApp[State, Msg] {
+  final class App(title: String) extends grit.tui.runtime.App[State, Msg] {
 
     def init: (State, Effect[Msg]) =
       (

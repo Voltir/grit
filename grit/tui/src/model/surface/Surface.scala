@@ -5,11 +5,10 @@ package grit.tui.model.surface
   * Writes off the edge are clipped, never wrapped: wrapping is a layout decision that
   * belongs to whoever produced the text, not to the grid.
   *
-  * `cells` holds exactly `size.rows * size.cols` entries, row-major, and `panes` records
-  * where named panes landed -- blit appends, innermost last. `blank` and `filled` are
-  * the constructors.
+  * `cells` holds exactly `size.rows * size.cols` entries, row-major. `blank` and `filled`
+  * are the constructors.
   */
-final case class Surface(size: Size, cells: Vector[Cell], panes: Vector[Placement] = Vector.empty) {
+final case class Surface(size: Size, cells: Vector[Cell]) {
 
   private def index(row: Int, col: Int): Int = row * size.cols + col
 
@@ -64,48 +63,21 @@ final case class Surface(size: Size, cells: Vector[Cell], panes: Vector[Placemen
     }
   }
 
-  /** `other` composited over this surface with its top-left at `origin`; clipped
-    * to the grid.
-    *
-    * With a `PaneId`, the painted area is recorded as a placement -- innermost last --
-    * and any placements `other` itself carries come over translated, after this pane's
-    * own rect, so hit-testing finds the innermost pane first.
+  /** `other` composited over this surface with its top-left at `origin`; clipped to the
+    * grid.
     */
-  def blit(other: Surface, origin: Pos): Surface = blit(other, origin, None)
-
-  /** See [[blit]]. */
-  def blit(other: Surface, origin: Pos, pane: PaneId): Surface = blit(other, origin, Some(pane))
-
-  private def blit(other: Surface, origin: Pos, pane: Option[PaneId]): Surface = {
-    val painted = (0 until other.size.rows).foldLeft(this) { (s, row) =>
+  def blit(other: Surface, origin: Pos): Surface =
+    (0 until other.size.rows).foldLeft(this) { (s, row) =>
       (0 until other.size.cols).foldLeft(s) { (s2, col) =>
         s2.put(origin.row + row, origin.col + col, other.at(row, col))
       }
     }
-    val visible = Rect(origin.row, origin.col, other.size.rows, other.size.cols).clip(size)
-    val outer = pane match {
-      case Some(id) if visible.rows > 0 && visible.cols > 0 =>
-        Vector(Placement(id, visible))
-      case _ => Vector.empty
-    }
-    val carried = other.panes
-      .collect { case Placement(id, r) =>
-        Placement(id, r.translate(origin).clip(size))
-      }
-      .filter(p => p.rect.rows > 0 && p.rect.cols > 0)
-    painted.copy(panes = painted.panes ++ outer ++ carried)
-  }
 
   /** This surface as plain text, one string per row -- what the tests assert on. */
   def lines: Vector[String] =
     (0 until size.rows).toVector.map { row =>
       (0 until size.cols).map(col => at(row, col).ch).mkString
     }
-
-  /** Where this surface's named panes landed -- the inverse of rendering, read back off
-    * what was painted. Lookups are innermost-first, matching [[Hit.paneAt]].
-    */
-  def placements: Placements = Placements(panes)
 }
 
 object Surface {
@@ -121,8 +93,4 @@ object Surface {
 /** A complete statement of what the screen should look like: every cell, plus
   * where the hardware cursor belongs (`None` hides it).
   */
-final case class Frame(surface: Surface, cursor: Option[Pos] = None) {
-
-  /** Where the frame's named panes landed. */
-  def placements: Placements = surface.placements
-}
+final case class Frame(surface: Surface, cursor: Option[Pos] = None)

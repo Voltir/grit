@@ -1,7 +1,7 @@
 package grit.tui.components
 
 import grit.tui.model.input.Input
-import grit.tui.model.surface.{PaneId, Pos, Rect, Size, Surface}
+import grit.tui.model.surface.{Rect, Size, Surface}
 
 /** What every component is: something that can say how big it wants to be, paint itself
   * at the size it was given, and say what an input means to it.
@@ -59,26 +59,4 @@ trait View {
 trait Passive extends View {
   type Route = Input
   final def route(input: Input, at: Rect): Input = input
-}
-
-object View {
-
-  extension (v: View) {
-
-    /** This view painted under `pane`, so the surface it produces records where it
-      * landed and [[grit.tui.model.surface.Hit.paneAt]] can find it again.
-      *
-      * Identity is still the placement map rather than a field on the component; what
-      * changes is that composition carries it, because `blit` translates a patch's own
-      * placements as it goes.
-      */
-    def id(pane: PaneId): View { type Route = v.Route } =
-      new View {
-        type Route = v.Route
-        def measure(avail: Size): Size = v.measure(avail)
-        def render(size: Size): Surface =
-          Surface.blank(size).blit(v.render(size), Pos(0, 0), pane)
-        def route(input: Input, at: Rect): Route = v.route(input, at)
-      }
-  }
 }

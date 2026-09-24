@@ -3,8 +3,8 @@ package grit.tui.examples
 import grit.tui.components.Passive
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.*
-import grit.tui.node.*
-import grit.tui.runtime.Effect
+import grit.tui.components.{Node, OnInput}
+import grit.tui.runtime.{App, Effect}
 
 /** The smallest thing that proves the terminal seam works: take the screen, paint, read
   * real input, resize, and give the terminal back.
@@ -16,7 +16,7 @@ import grit.tui.runtime.Effect
   * ```./mill --no-daemon --no-build-lock grit.tui.examples.runMain grit.tui.examples.Smoke```
   * (Ctrl-Q to quit)
   */
-object Smoke extends NodeApp[Smoke.State, Smoke.Msg] {
+object Smoke extends App[Smoke.State, Smoke.Msg] {
 
   final case class State(typed: String, mouse: Option[Pos])
 

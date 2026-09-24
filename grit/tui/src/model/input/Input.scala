@@ -59,8 +59,8 @@ object Mods {
   val none: Mods = Mods(false, false, false)
 }
 
-/** One decoded mouse report, in 0-based screen coordinates -- the same space
-  * [[grit.tui.model.surface.Hit.paneAt]] takes.
+/** One decoded mouse report, in 0-based screen coordinates -- the space everything is
+  * painted in.
   *
   * `button` is `Button.None` exactly when `kind` is `Move`; a `Wheel` event always
   * carries `WheelUp` or `WheelDown`.

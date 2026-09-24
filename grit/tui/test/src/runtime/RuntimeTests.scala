@@ -1,11 +1,14 @@
 package grit.tui.runtime
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
+import grit.tui.components.{Node, OnInput, Passive}
+import grit.tui.components.Node.*
 import grit.tui.model.input.{Input, Key}
-import grit.tui.model.surface.{Frame, PaneId, Placements, Pos, Rect, Size, Surface}
+import grit.tui.model.surface.{Cell, Pos, Size, Surface}
+import grit.tui.wire.paint.Vt
 import utest.*
 
-/** The loop, driven headlessly.
+/** The loop, driven headlessly against a [[FakeTerminal]].
   *
   * Every scripted app here is a **pure** function -- capture checking rejects one that
   * closes over a counter, which is the discipline working rather than getting in the
@@ -14,13 +17,12 @@ import utest.*
   */
 object RuntimeTests extends TestSuite {
 
-  private enum Msg {
+  private enum Msg extends caps.Pure {
     case Typed(ch: Char)
     case Tick
     case Deadline
     case Escaped
-    case Sized(size: Size)
-    case Located(rect: Option[Rect], empty: Boolean)
+    case Located(pos: Pos)
     case Refresh
     case Done
   }
@@ -31,75 +33,76 @@ object RuntimeTests extends TestSuite {
       deadlines: Int = 0,
       escapes: Int = 0,
       dragging: Boolean = false,
-      sized: Option[Size] = None,
-      located: Option[(Option[Rect], Boolean)] = None
+      located: Option[Pos] = None
   )
 
   private val ticker = TimerId.of("ticker")
   private val deadline = TimerId.of("deadline")
   private val Esc = "\u001b"
 
-  /** The binding most tests want: a printable character is a keystroke, Ctrl-Q quits. */
-  private val defaultBind: ((Input, St)) -> Option[Msg] = { case (input, _) =>
-    input match {
-      case Input.Keyboard(Key.Printable(c)) => Some(Msg.Typed(c))
-      case Input.Keyboard(Key.Ctrl('q')) => Some(Msg.Done)
-      case Input.Keyboard(Key.Escape) => Some(Msg.Escaped)
-      case _ => None
-    }
+  /** The binding every scripted app has: a printable character is a keystroke, Escape is
+    * Escaped, Ctrl-Q quits.
+    */
+  private val bind: OnInput[Msg] = {
+    case Input.Keyboard(Key.Printable(c)) => Some(Msg.Typed(c))
+    case Input.Keyboard(Key.Ctrl('q')) => Some(Msg.Done)
+    case Input.Keyboard(Key.Escape) => Some(Msg.Escaped)
+    case _ => None
   }
 
-  private final class Scripted(
-      on: ((Msg, St)) -> (St, Effect[Msg]),
-      bind: ((Input, St)) -> Option[Msg] = defaultBind
-  ) extends App[St, Msg] {
+  /** Paints `text` on its first row, and `fill` across every cell it is given. */
+  private final case class Card(text: String, fill: Char = ' ') extends Passive {
+    def measure(avail: Size): Size = avail
+    def render(size: Size): Surface = Surface.filled(size, Cell(fill)).write(0, 0, text)
+  }
+
+  private final class Scripted(on: ((Msg, St)) -> (St, Effect[Msg]), fill: Char = ' ')
+      extends App[St, Msg] {
     def init: (St, Effect[Msg]) = (St(), Effect.NoOp)
-    def update: (Msg, St) -> (St, Effect[Msg]) = (msg, state) => on((msg, state))
-    def view: St -> (Size -> Frame) = state =>
-      size => Frame(Surface.blank(size).write(0, 0, state.typed))
-    def onInput: (Input, St, Placements) -> Option[Msg] = (input, state, _) => bind((input, state))
+    def update(msg: Msg, state: St): (St, Effect[Msg]) = on((msg, state))
+    def view(state: St): Node[Msg] = paint(Card(state.typed, fill)).onKey(bind)
   }
 
-  private val Widget = PaneId.of("widget")
-
-  /** An app that paints one named widget and reports, on every keystroke, where the
-    * runtime says it landed. The oracle for `onInput` being told what was painted.
+  /** An app with one press target, four rows down and two tall, that records where each
+    * press landed. The oracle for input being routed against what was painted.
     */
   private final class Located extends App[St, Msg] {
     def init: (St, Effect[Msg]) = (St(), Effect.NoOp)
-    def update: (Msg, St) -> (St, Effect[Msg]) = (msg, state) =>
-      msg match {
-        case Msg.Located(r, e) => (state.copy(located = Some((r, e))), Effect.NoOp)
-        case Msg.Refresh => (state.copy(located = None), Effect.Invalidate)
-        case Msg.Done => (state, Effect.Quit)
-        case _ => (state, Effect.NoOp)
-      }
-    def view: St -> (Size -> Frame) = _ =>
-      size => Frame(Surface.blank(size).blit(Surface.blank(Size(2, 3)), Pos(4, 5), Widget))
-    def onInput: (Input, St, Placements) -> Option[Msg] = (input, _, at) =>
-      input match {
-        case Input.Keyboard(Key.Ctrl('q')) => Some(Msg.Done)
-        case Input.Keyboard(Key.Printable('r')) => Some(Msg.Refresh)
-        case Input.Keyboard(Key.Printable(_)) => Some(Msg.Located(at(Widget), at.isEmpty))
-        case Input.Resize(_) => Some(Msg.Located(at(Widget), at.isEmpty))
-        case _ => None
-      }
+    def update(msg: Msg, state: St): (St, Effect[Msg]) = msg match {
+      case Msg.Located(p) => (state.copy(located = Some(p)), Effect.NoOp)
+      case Msg.Typed('r') => (state.copy(located = None), Effect.Invalidate)
+      case Msg.Done => (state, Effect.Quit)
+      case _ => (state, Effect.NoOp)
+    }
+    def view(state: St): Node[Msg] =
+      column(
+        fixed(4) -> paint(Card("")),
+        fixed(2) -> paint(Card("")).onPress(p => Some(Msg.Located(p))),
+        flex() -> paint(Card(""))
+      ).onKey(bind)
+  }
+
+  /** A mouse press at 0-based `pos`, as the terminal reports it (SGR, 1-based). */
+  private def pressAt(pos: Pos): String = s"$Esc[<0;${pos.col + 1};${pos.row + 1}M"
+
+  private def started[S, M <: caps.Pure](runtime: Runtime[S, M]^, name: String): CountDownLatch = {
+    val done = new CountDownLatch(1)
+    val t = new Thread(() => { runtime.run(); done.countDown() }, name)
+    t.setDaemon(true)
+    t.start()
+    done
   }
 
   /** Run a scripted app on its own thread, hand the test its terminal and runtime, and
     * always quit and tear down afterwards.
     */
-  private def runWith(
-      on: ((Msg, St)) -> (St, Effect[Msg]),
-      bind: ((Input, St)) -> Option[Msg] = defaultBind
-  )(body: (FakeTerminal^, Runtime[St, Msg]^) => Unit): Unit = {
+  private def runWith(on: ((Msg, St)) -> (St, Effect[Msg]))(
+      body: (FakeTerminal^, Runtime[St, Msg]^) => Unit
+  ): Unit = {
     val term = new FakeTerminal()
     val scheduler = Scheduler.create()
-    val runtime = new Runtime(new Scripted(on, bind), term, scheduler, escapeTimeoutMs = 20L)
-    val done = new CountDownLatch(1)
-    val t = new Thread(() => { runtime.run(); done.countDown() }, "runtime-under-test")
-    t.setDaemon(true)
-    t.start()
+    val runtime = new Runtime(new Scripted(on), term, scheduler, escapeTimeoutMs = 20L)
+    val done = started(runtime, "runtime-under-test")
     try { body(term, runtime) }
     finally {
       runtime.offer(Msg.Done)
@@ -226,26 +229,27 @@ object RuntimeTests extends TestSuite {
       }
     }
 
-    test("an app is told the paintable screen's size before it is asked to lay anything out") {
-      // `init` takes no size, so a synthetic Resize at startup is the only way an app can
-      // lay out in `update` -- and laying out in `view` is what rule 7 forbids. The same
-      // path serves startup and every SIGWINCH, so there is one code path to get wrong.
-      // Rule 2 is translated here, at the boundary: the size an app sees is one column
-      // narrower than the terminal's, and it is the only size an app is ever handed.
-      runWith(
-        {
-          case (Msg.Sized(sz), s) => (s.copy(sized = Some(sz)), Effect.NoOp)
-          case (_, s) => quit(s)
-        },
-        { case (input, _) =>
-          input match {
-            case Input.Resize(size) => Some(Msg.Sized(size))
-            case _ => None
-          }
-        }
-      ) { (term, runtime) =>
-        assert(waitUntil(() => runtime.state.exists(_.sized.contains(Size.screen(term.size)))))
-        assert(runtime.state.exists(_.sized.exists(_.cols == term.size.cols - 1)))
+    test("the frame is painted at the paintable screen's size, one column short") {
+      // Rule 2, translated at the boundary: the last column is owed back, so a view that
+      // fills everything it is given fills all but the terminal's last column.
+      val term = new FakeTerminal()
+      val scheduler = Scheduler.create()
+      val runtime = new Runtime(
+        new Scripted({ case (_, s) => quit(s) }, fill = '#'),
+        term,
+        scheduler,
+        escapeTimeoutMs = 20L
+      )
+      val done = started(runtime, "sized-runtime")
+      try {
+        assert(waitUntil(() => term.painted.nonEmpty))
+        val v = new Vt(term.size.rows, term.size.cols)
+        v.feed(term.painted)
+        assert(v.cells(3)(term.size.cols - 2).ch == '#', v.cells(3)(term.size.cols - 1).ch == ' ')
+      } finally {
+        runtime.offer(Msg.Done)
+        val _ = done.await(5L, TimeUnit.SECONDS)
+        scheduler.close()
       }
     }
 
@@ -375,23 +379,18 @@ object RuntimeTests extends TestSuite {
       }
     }
 
-    test("onInput is told where the last painted frame put things") {
-      // The generalisation of "a pane maps input back through the last Viewport it
-      // produced": the runtime just painted the frame, so it already knows, and an app
-      // that had to keep its own map of rects would have derived state to keep fresh.
+    test("a press is routed to what was painted under it") {
       val term = new FakeTerminal()
       val scheduler = Scheduler.create()
       val runtime = new Runtime(new Located, term, scheduler, escapeTimeoutMs = 20L)
-      val done = new CountDownLatch(1)
-      val t = new Thread(() => { runtime.run(); done.countDown() }, "located-under-test")
-      t.setDaemon(true)
-      t.start()
+      val done = started(runtime, "located-under-test")
       try {
+        term.send(pressAt(Pos(5, 3)))
+        assert(waitUntil(() => runtime.state.exists(_.located.contains(Pos(5, 3)))))
+        term.send(pressAt(Pos(1, 3))) // above the target: nothing there claims it
         term.send("x")
-        assert(waitUntil(() => runtime.state.exists(_.located.exists(_._1.isDefined))))
-        val seen = runtime.state.get.located.get
-        assert(seen._1.contains(Rect(4, 5, 2, 3)))
-        assert(!seen._2) // and the map was not empty, so this is a real answer
+        assert(waitUntil(() => runtime.state.exists(_.typed.isEmpty)))
+        assert(runtime.state.exists(_.located.contains(Pos(5, 3))))
       } finally {
         runtime.offer(Msg.Done)
         val _ = done.await(5L, TimeUnit.SECONDS)
@@ -401,24 +400,18 @@ object RuntimeTests extends TestSuite {
 
     test("a full repaint does not mean forgetting where everything is") {
       // Effect.Invalidate drops the diff baseline so the next paint is complete. If it
-      // also dropped the placements, a routing decision would depend on whether the
-      // last frame happened to be a full one -- which is exactly the kind of coupling
-      // that shows up as input working until the window is resized.
+      // also dropped what routing reads, input would work until the window was resized.
       val term = new FakeTerminal()
       val scheduler = Scheduler.create()
       val runtime = new Runtime(new Located, term, scheduler, escapeTimeoutMs = 20L)
-      val done = new CountDownLatch(1)
-      val t = new Thread(() => { runtime.run(); done.countDown() }, "invalidate-under-test")
-      t.setDaemon(true)
-      t.start()
+      val done = started(runtime, "invalidate-under-test")
       try {
-        term.send("x")
-        assert(waitUntil(() => runtime.state.exists(_.located.exists(_._1.isDefined))))
+        term.send(pressAt(Pos(4, 1)))
+        assert(waitUntil(() => runtime.state.exists(_.located.isDefined)))
         term.send("r") // Effect.Invalidate: the next paint is a full one
         assert(waitUntil(() => runtime.state.exists(_.located.isEmpty)))
-        term.send("y")
-        assert(waitUntil(() => runtime.state.exists(_.located.exists(_._1.isDefined))))
-        assert(runtime.state.get.located.get._1.contains(Rect(4, 5, 2, 3)))
+        term.send(pressAt(Pos(4, 2)))
+        assert(waitUntil(() => runtime.state.exists(_.located.contains(Pos(4, 2)))))
       } finally {
         runtime.offer(Msg.Done)
         val _ = done.await(5L, TimeUnit.SECONDS)
@@ -439,7 +432,7 @@ object RuntimeTests extends TestSuite {
       t.setDaemon(true)
       t.start()
       try {
-        term.send("x")
+        term.send(pressAt(Pos(4, 1)))
         assert(waitUntil(() => runtime.state.exists(_.located.isDefined)))
       } finally {
         runtime.offer(Msg.Done)
@@ -458,9 +451,8 @@ object RuntimeTests extends TestSuite {
       val scheduler = Scheduler.create()
       val boom = new App[St, Msg] {
         def init: (St, Effect[Msg]) = (St(), Effect.NoOp)
-        def update: (Msg, St) -> (St, Effect[Msg]) = (_, _) => throw new RuntimeException("boom")
-        def view: St -> (Size -> Frame) = _ => size => Frame(Surface.blank(size))
-        def onInput: (Input, St, Placements) -> Option[Msg] = (_, _, _) => Some(Msg.Typed('x'))
+        def update(msg: Msg, state: St): (St, Effect[Msg]) = throw new RuntimeException("boom")
+        def view(state: St): Node[Msg] = paint(Card("")).onKey(bind)
       }
       val runtime = new Runtime(boom, term, scheduler, escapeTimeoutMs = 20L)
       val threw =

@@ -1,7 +1,6 @@
 package grit.tui.model.select
 
 import grit.tui.model.block.Block
-import grit.tui.model.surface.PaneId
 import grit.tui.model.text.Width
 
 /** A position in a pane's logical, *unwrapped* document: which block, and the char
@@ -154,32 +153,4 @@ object Selection {
 
   /** Nothing selected. */
   val empty: Selection = Selection(DocPos.zero, DocPos.zero)
-}
-
-/** A drag in progress, bound for its whole life to the pane the button went down in.
-  *
-  * `anchor` is where the press landed and never moves; `head` follows the pointer. That
-  * split is what lets autoscroll pull in screen after screen -- the tick moves the head
-  * to the new edge row while the anchor stays wherever it was, however many screens ago.
-  *
-  * The pane clamps: [[extend]] takes the pane's own [[Doc]], so no motion outside the
-  * pane can drag the selection past the end of that pane's document or into whatever is
-  * painted behind it.
-  */
-final case class Drag(pane: PaneId, anchor: DocPos, head: DocPos) {
-
-  /** This drag with its head moved to `to`, clamped into `doc`. The anchor is untouched. */
-  def extend(to: DocPos, doc: Doc): Drag = copy(head = doc.clamp(to))
-
-  /** What is selected right now, in document order. */
-  def selection: Selection = Selection.between(anchor, head)
-}
-
-object Drag {
-
-  /** A drag that has just begun: anchor and head both at the press. */
-  def start(pane: PaneId, at: DocPos, doc: Doc): Drag = {
-    val p = doc.clamp(at)
-    Drag(pane, p, p)
-  }
 }

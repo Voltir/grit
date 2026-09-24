@@ -135,22 +135,5 @@ object SelectionTests extends TestSuite {
           .mkString("\n")
       )
     }
-
-    test("a drag keeps its anchor and clamps every extension into its own pane") {
-      // Rule 6: a drag belongs to the pane it began in. Dragging out of a modal must not
-      // reach past the end of the modal's document, let alone into what is behind it.
-      val pane = PaneId.of("modal")
-      val d = Drag(pane, DocPos(0, 4), DocPos(0, 4)).extend(DocPos(99, 99), doc)
-      assert(d.pane == pane)
-      assert(d.anchor == DocPos(0, 4))
-      assert(d.head == DocPos(2, doc.textAt(2).length))
-      assert(d.selection == Selection(DocPos(0, 4), DocPos(2, doc.textAt(2).length)))
-    }
-
-    test("dragging backwards past the start keeps the anchor and moves only the head") {
-      val d = Drag(PaneId.of("t"), DocPos(1, 3), DocPos(1, 3)).extend(DocPos(-9, -9), doc)
-      assert(d.anchor == DocPos(1, 3))
-      assert(d.selection == Selection(DocPos(0, 0), DocPos(1, 3)))
-    }
   }
 }

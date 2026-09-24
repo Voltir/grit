@@ -1,21 +1,21 @@
-package grit.tui.node
+package grit.tui.runtime
 
 import grit.tui.components.editor.Editor
 import grit.tui.components.overlay.Modal
 import grit.tui.model.block.Block
 import grit.tui.model.input.{Button, Input, Mods, MouseEvent, MouseKind}
-import grit.tui.components.pane.Anchor
+import grit.tui.components.{Node, PaneKey}
+import grit.tui.components.pane.{Anchor, Scroller}
 import grit.tui.model.select.{Doc, Selection}
 import grit.tui.model.surface.{Pos, Rect, Size}
-import grit.tui.runtime.Effect
 import grit.tui.wire.paint.{Painter, Vt}
-import grit.tui.node.Node.*
+import grit.tui.components.Node.*
 import utest.*
 
-/** The one-tree runtime against the painted grid: rules 5 and 6 read off a [[Vt]], and
+/** The view tree against the painted grid: rules 5 and 6 read off a [[Vt]], and
   * the wrap memo's hit/miss counts (rule 7's aim) read off the loop.
   */
-object NodeTests extends TestSuite {
+object TreeTests extends TestSuite {
 
   /** Two scrollable documents, the second in a modal when `modal`; each has its own
     * scroll and selection state, nested by `Node.map`.
@@ -41,7 +41,7 @@ object NodeTests extends TestSuite {
   /** The screen under test: a status line, document `a` over an editor, and document `b`
     * in a modal while `modal`. Each test starts it from its own state, not `init`.
     */
-  object Two extends NodeApp[S, M] {
+  object Two extends App[S, M] {
     def init: (S, Effect[M]) =
       (S(Doc.empty, Scroller.init, Doc.empty, Scroller.init, false, Vector.empty), Effect.NoOp)
 
@@ -209,7 +209,7 @@ object NodeTests extends TestSuite {
       val inDialog: Node[M] = bare.dialog(modal, bare, None)
       val k = Input.Keyboard(grit.tui.model.input.Key.Printable('k'))
       for (tree <- Vector(bare, inDialog)) {
-        val (painted, _) = grit.tui.node.Paint.layout(tree, Size(20, 40), Memo.empty)
+        val (painted, _) = grit.tui.runtime.Paint.layout(tree, Size(20, 40), Memo.empty)
         assert(Route.keys(k, painted) == Some(M.E(Editor("k", 1))))
       }
     }
@@ -220,7 +220,7 @@ object NodeTests extends TestSuite {
         flex() -> Node.doc(k, helpDoc, Anchor.At(grit.tui.model.select.DocPos.zero)),
         flex() -> Node.doc(k, prose, Anchor.At(grit.tui.model.select.DocPos.zero))
       )
-      val (frame, painted, _) = grit.tui.node.Paint.frame(twice, Size(10, 40), Memo.empty)
+      val (frame, painted, _) = grit.tui.runtime.Paint.frame(twice, Size(10, 40), Memo.empty)
       val v = new Vt(10, 41)
       v.feed(Painter.paint(frame, None))
       assert(

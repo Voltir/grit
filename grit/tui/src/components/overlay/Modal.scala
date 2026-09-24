@@ -7,8 +7,8 @@ import grit.tui.model.surface.{Cell, Pos, Rect, Size, Style, Surface}
 /** A centred dialog over a frozen app: geometry, chrome, and a routing rule.
   *
   * The modal owns no document. Its body is whatever the app blits into the rect
-  * [[place]] returns -- a `TextPane`, usually -- so scrolling and selection stay in the
-  * pane layer where rule 6 already lives, and a drag begun in the modal still clamps to
+  * [[place]] returns -- a document pane, usually -- so scrolling and selection stay in the
+  * pane, where rule 6 already lives, and a drag begun in the modal still clamps to
   * the modal's own document.
   *
   * Two things it does own:
@@ -45,9 +45,9 @@ final case class Modal(
   /** Where the body goes: centred, shrunk to what the screen can hold around the
     * chrome, or None when the screen is too small for a modal worth painting.
     *
-    * This is the *content* rect -- the border is drawn outside it -- so the placement
-    * map the app builds from it and the pane's own viewport describe the same cells,
-    * which is what makes hit-testing invert painting.
+    * This is the *content* rect -- the border is drawn outside it -- so the rect the body
+    * is painted into and the pane's own viewport describe the same cells, which is what
+    * makes hit-testing invert painting.
     */
   def place(screen: Size): Option[Rect] = {
     if (screen.rows < MinRows || screen.cols < MinCols) None
@@ -152,7 +152,7 @@ object Modal {
     case ToBottom
 
     /** A mouse event the modal's body should see, at screen coordinates -- the app
-      * hit-tests it against the placement map as usual.
+      * routes it as usual.
       */
     case Pointer(pos: Pos)
 

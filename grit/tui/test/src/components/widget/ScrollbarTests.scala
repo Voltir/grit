@@ -1,10 +1,7 @@
 package grit.tui.components.widget
 
-import grit.tui.components.pane.{Panes, TextPane}
-import grit.tui.model.select.Doc
-import grit.tui.model.text.WrapCache
 import grit.tui.wire.paint.Painter
-import grit.tui.model.surface.{Frame, Hit, PaneId, Pos, Size, Surface}
+import grit.tui.model.surface.{Frame, Size, Surface}
 import utest.*
 
 object ScrollbarTests extends TestSuite {
@@ -69,39 +66,6 @@ object ScrollbarTests extends TestSuite {
         prev = back
         o += 7
       }
-    }
-
-    test("the draggable thumb is the placement map, end to end") {
-      // The §8 answer, demonstrated: blit under a PaneId, hit-test the frame, map the
-      // local position through the widget's geometry. No widget framework appears.
-      val root = Surface
-        .blank(Size(24, 80))
-        .blit(sb.copy(offset = 45).render(Size(19, 1)), Pos(1, 79), PaneId.of("scrollbar"))
-      val hit = Hit.paneAt(root.panes, Pos(5, 79))
-      assert(hit.isDefined)
-      val (id, local) = hit.get
-      assert(id == PaneId.of("scrollbar"))
-      assert(local == Pos(4, 0))
-      // Track 19, thumb 1, travel 18, span 90: row 4 of the track is offset 20.
-      assert(sb.copy(offset = 45).offsetAtRow(19, local.row) == 20)
-    }
-
-    test("of reads the pane's own funnel-maintained index") {
-      // The wiring the demo used to hand-maintain: content is the pane's whole wrapped
-      // document, offset the row its viewport reads from -- both read back off the pane,
-      // none computed here.
-      val id = PaneId.of("transcript")
-      val panes = Panes
-        .of(TextPane(id, Doc.of("alpha", "bravo", "charlie", "delta"), cache = WrapCache.empty(20)))
-        .layout(id, Size(2, 20))
-      val index = panes.rowIndex(id)
-      val scrolled = panes.scrollBy(id, -1)
-      val sb = Scrollbar.of(scrolled, id, window = 2)
-      assert(sb.content == index.length)
-      assert(sb.offset == scrolled.rendered(id).top.flatMap(index.indexOf).get)
-      // A pane never laid out reads the honest zero geometry.
-      val bare = Panes.of(TextPane(id, Doc.empty))
-      assert(Scrollbar.of(bare, id, 5) == Scrollbar(0, 5, 0))
     }
 
     test("a scrollbar whose geometry did not change writes zero bytes") {
