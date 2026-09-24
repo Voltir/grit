@@ -32,7 +32,6 @@ object LiveDb {
       case Left(e: StoreError) => sys.error(s"arranging a conversation: $e")
     }
 
-  /** Every usage ledger row, as (entry id, model, cost). */
   /** Every ledger row: entry, model, cost, and the estimate of the request's input. */
   def ledger(config: DbConfig): Vector[(String, String, Option[BigDecimal], Long)] =
     transaction(config) { (tx: Tx^) ?=>

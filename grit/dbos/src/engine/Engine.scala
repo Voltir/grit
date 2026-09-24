@@ -9,8 +9,24 @@ import scala.util.control.NonFatal
 import grit.core.durable.Durable
 import grit.core.id.{ConversationId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
-import grit.core.store.{ConversationStore, Db, EntryStore, Origin, StoreError, Tx, UsageLedger}
-import grit.dbos.sql.{DbConfig, SqlConversationStore, SqlDb, SqlEntryStore, SqlUsageLedger}
+import grit.core.store.{
+  ConversationStore,
+  Db,
+  EntrySearch,
+  EntryStore,
+  Origin,
+  StoreError,
+  Tx,
+  UsageLedger
+}
+import grit.dbos.sql.{
+  DbConfig,
+  SqlConversationStore,
+  SqlDb,
+  SqlEntrySearch,
+  SqlEntryStore,
+  SqlUsageLedger
+}
 import grit.dbos.workflow.Turns
 
 import dev.dbos.transact.config.DBOSConfig
@@ -30,6 +46,8 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   val conversations: ConversationStore = new SqlConversationStore()
 
   val entries: EntryStore = new SqlEntryStore()
+
+  val search: EntrySearch = new SqlEntrySearch()
 
   val ledger: UsageLedger = new SqlUsageLedger()
 
