@@ -129,7 +129,7 @@ object ChatScreenTests extends TestSuite {
         shown.contains("4.9k of 16k budget"),
         shown.contains("billed   5k in · $0.00031")
       )
-      assert(at(110).screen.exists(r => r.contains("█") && r.contains("░")))
+      assert(at(110).screen.exists(r => r.contains("████") && r.contains("░")))
       assert(!at(99).screen.mkString.contains("TURN 3"))
       assert(!at(110).inputs(Input.Keyboard(Key.Ctrl('b'))).screen.mkString.contains("TURN 3"))
     }

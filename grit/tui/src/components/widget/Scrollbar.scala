@@ -3,7 +3,9 @@ package grit.tui.components.widget
 import grit.tui.components.view.View
 import grit.tui.model.surface.{Cell, Size, Style, Surface}
 
-/** A one-column scrollbar with a proportional thumb.
+/** A one-column scrollbar with a proportional thumb: a heavy line on a light rail, and
+  * nothing at all while the whole document fits, so a pane with nothing to scroll shows
+  * no bar (its column stays, so the text never shifts when one appears).
   *
   * The state is the geometry -- `content` rows of document, a `window` of them on
   * screen, `offset` rows from the top -- clamped into the document, so a stale offset
@@ -57,12 +59,14 @@ final case class Scrollbar(
     }
   }
 
-  /** The scrollbar painted down `size`: a rail with a thumb block, in column 0. */
+  /** The scrollbar painted down `size`: a rail with a thumb, in column 0; blank while the
+    * document fits.
+    */
   def render(size: Size): Surface = {
     val rows = math.max(0, size.rows)
     val (start, len) = thumb(rows)
     val rail =
-      if (size.cols <= 0) Surface.blank(size)
+      if (size.cols <= 0 || span <= 0) Surface.blank(size)
       else
         Surface
           .blank(size)
@@ -70,8 +74,10 @@ final case class Scrollbar(
             grit.tui.model.surface.Rect(0, 0, rows, 1),
             Cell('│', railStyle)
           )
-    (start until math.min(rows, start + len)).foldLeft(rail) { (s, row) =>
-      s.put(row, 0, Cell('█', thumbStyle))
-    }
+    if (span <= 0) rail
+    else
+      (start until math.min(rows, start + len)).foldLeft(rail) { (s, row) =>
+        s.put(row, 0, Cell('┃', thumbStyle))
+      }
   }
 }

@@ -26,10 +26,10 @@ object ScrollbarTests extends TestSuite {
       assert(Scrollbar(5, 1, 0).thumb(3) == (0, 1))
     }
 
-    test("a document that fits is all thumb") {
+    test("a document that fits is all thumb, and draws nothing") {
       val s = Scrollbar(10, 20, 3).render(Size(6, 1))
       assert(Scrollbar(10, 20, 3).thumb(6) == (0, 6))
-      assert(s.lines.forall(_ == "█"))
+      assert(s.lines.forall(_.trim.isEmpty))
     }
 
     test("the offset is clamped into the document") {
@@ -41,9 +41,9 @@ object ScrollbarTests extends TestSuite {
       val s = sb.copy(offset = 45).render(Size(20, 1))
       assert(s.size == Size(20, 1))
       val rows = s.lines
-      assert(rows.count(_ == "█") == 2)
+      assert(rows.count(_ == "┃") == 2)
       assert(rows.count(_ == "│") == 18)
-      assert(rows(9) == "█" && rows(10) == "█")
+      assert(rows(9) == "┃" && rows(10) == "┃")
     }
 
     test("dragging maps a track row to an offset: endpoints exact, monotone, within one notch") {

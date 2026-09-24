@@ -124,7 +124,7 @@ def thumb_top(v, cols):
     """
     col = cols - 2
     for r in range(len(v.grid)):
-        if v.grid[r][col][0] == "\u2588":
+        if v.grid[r][col][0] == "\u2503":
             return r
     return None
 
