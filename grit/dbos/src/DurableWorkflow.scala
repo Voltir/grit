@@ -6,9 +6,10 @@ import dev.dbos.transact.execution.RegisteredWorkflow
 import grit.core.{Durable, WorkflowId}
 
 /** The one class every grit workflow is registered under. DBOS records a workflow by its
-  * name and class name, and refuses to resume an id under a different pair. This class's
-  * name never changes, so a workflow's identity is its name alone, and its body can be any
-  * function of its workflow id written against [[Durable]].
+  * name and class name, and refuses to resume an id under a different pair. Every workflow
+  * is recorded under the class name [[DurableWorkflow.ClassName]], so a workflow's identity
+  * is its name alone, and its body can be any function of its workflow id written against
+  * [[Durable]].
   */
 final class DurableWorkflow private (
     dbos: DBOS,
@@ -30,6 +31,12 @@ final class DurableWorkflow private (
 
 object DurableWorkflow {
 
+  /** The class name DBOS records for every grit workflow. It is persisted in every
+    * workflow row, so it is a fixed string rather than this class's JVM name, which a
+    * rename would change. DBOS uses it only as a lookup key, never to load a class.
+    */
+  val ClassName = "grit.workflow"
+
   /** Registers `body` as the workflow `name`. Must run before `dbos.launch()`. */
   def register(
       dbos: DBOS,
@@ -41,7 +48,7 @@ object DurableWorkflow {
       .integration()
       .registerWorkflow(
         name,
-        classOf[DurableWorkflow].getName,
+        ClassName,
         null,
         new DurableWorkflow(dbos, steps, body),
         classOf[DurableWorkflow].getMethod("run"),

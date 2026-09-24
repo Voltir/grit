@@ -55,8 +55,11 @@ here:
 
 ```sh
 docker compose up -d postgres
-./mill grit.dbos.run
+./mill grit.app.run a b a
 ```
+
+Each argument is a message id, answered by one durable turn with a stub model. A repeated
+id is the same turn; run it again and finished turns replay without calling the model.
 
 `GRIT_DATABASE_URL` (a `jdbc:postgresql:` URL), `GRIT_DATABASE_USER` and
 `GRIT_DATABASE_PASSWORD` override the compose database; each defaults to it when unset.

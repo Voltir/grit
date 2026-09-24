@@ -15,8 +15,7 @@ import grit.core.{
   SourceId,
   StoreError,
   Tx,
-  TurnRef,
-  TurnSeq
+  TurnRef
 }
 import java.time.Instant
 import javax.sql.DataSource
@@ -44,43 +43,34 @@ final class SqlInbox(
         id = SqlInbox.entryId(conversation.id, source)
         // Serialises ingest per conversation: a concurrent ingest waits here, then sees
         // this one's entry and its sequence numbers.
-        next <- SqlInbox.lockNext(conversation.id)
+        next <- entries.lockNext(conversation.id)
         existing <- entries.get(id)
         turn <- existing match {
           case Some(entry) => Right(TurnRef(entry.conversationId, entry.turnSeq))
           case None =>
-            val (turnSeq, seq) = next
             entries
               .insert(
                 Entry(
                   id,
                   conversation.id,
-                  turnSeq,
+                  next.turnSeq,
                   None,
-                  seq,
+                  next.seq,
                   Payload.Message(message),
                   Instant.now()
                 )
               )
-              .map(_ => TurnRef(conversation.id, turnSeq))
+              .map(_ => TurnRef(conversation.id, next.turnSeq))
         }
       } yield turn
     }
 
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
     try {
-      val options =
-        new DBOSClient.EnqueueOptions(
-          Turns.WorkflowName,
-          classOf[DurableWorkflow].getName,
-          Turns.QueueName
-        )
-          .withWorkflowId(grit.core.WorkflowId.value(turn.workflowId))
-          .withQueuePartitionKey(ConversationId.value(turn.conversationId))
       // A repeated enqueue of the same id is a no-op (`ON CONFLICT (workflow_uuid)`). The
       // array is empty and DBOS only reads it; separation checking treats arrays as mutable.
       client.enqueueWorkflow[String, Exception](
-        options,
+        Turns.enqueueOptions(turn),
         caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
       )
       Right(())
@@ -116,33 +106,6 @@ private[dbos] object SqlInbox {
   /** An ingested message's entry id: deterministic, so a redelivery finds it. */
   def entryId(conversation: ConversationId, source: SourceId): EntryId =
     EntryId(s"in:${ConversationId.value(conversation)}:${SourceId.value(source)}")
-
-  /** Locks `conversation`'s row until the transaction ends, and returns the next turn
-    * seq and entry seq after everything already recorded in it.
-    */
-  def lockNext(conversation: ConversationId)(using tx: Tx^): Either[StoreError, (TurnSeq, Long)] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlEntryStore.attempt {
-      Using.resource(
-        conn.prepareStatement("SELECT 1 FROM grit.conversations WHERE id = ?::uuid FOR UPDATE")
-      ) { ps =>
-        ps.setString(1, ConversationId.value(conversation))
-        Using.resource(ps.executeQuery())(_ => ())
-      }
-      Using.resource(
-        conn.prepareStatement(
-          """SELECT coalesce(max(turn_seq) + 1, 0) AS turn, coalesce(max(seq) + 1, 0) AS seq
-            |FROM grit.entries WHERE conversation_id = ?::uuid""".stripMargin
-        )
-      ) { ps =>
-        ps.setString(1, ConversationId.value(conversation))
-        Using.resource(ps.executeQuery()) { rs =>
-          rs.next()
-          (TurnSeq(rs.getLong("turn")), rs.getLong("seq"))
-        }
-      }
-    }
-  }
 
   def unavailable(e: Throwable): InboxError.Unavailable =
     InboxError.Unavailable(Option(e.getMessage).getOrElse(e.toString))

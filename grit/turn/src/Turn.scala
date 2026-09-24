@@ -1,0 +1,139 @@
+package grit.turn
+
+import grit.core.{
+  AssemblyError,
+  AssemblyRequest,
+  ContextAssembler,
+  Db,
+  Durable,
+  Entry,
+  EntryId,
+  EntryStore,
+  Message,
+  ModelRequest,
+  Payload,
+  Provider,
+  ProviderError,
+  StoreError,
+  Tx,
+  TurnRef,
+  WorkflowId,
+  Window
+}
+import java.time.Instant
+
+/** The durable turn: one workflow per turn, in three steps. Each step's output is
+  * recorded, so a turn resumed after a crash never calls the model twice.
+  *
+  *   1. `assemble` — a fresh window over what came before the turn.
+  *   2. `call-model` — the window, then the turn's own messages, sent to the provider.
+  *   3. `append` — the reply recorded as the turn's entry, atomically with the step.
+  *
+  * A step that fails returns a [[TurnFailure]], which ends the turn and is recorded like
+  * any other output: a rerun ends the same way without calling anything.
+  */
+object Turn {
+
+  /** The turn workflow's body, for the turn whose workflow id is `workflowId`. Returns
+    * what the turn did, for logs: its reply is in the store, never in this string.
+    */
+  def body(
+      system: String,
+      entries: EntryStore,
+      assembler: ContextAssembler,
+      provider: Provider^,
+      db: Db^
+  )(workflowId: WorkflowId)(using d: Durable^): String =
+    TurnRef.fromWorkflowId(workflowId) match {
+      case None => s"not a turn: ${WorkflowId.value(workflowId)}"
+      case Some(turn) =>
+        run(system, entries, assembler, provider, db, turn) match {
+          case Right(reply) => s"replied: ${EntryId.value(reply)}"
+          case Left(failure) => s"failed: $failure"
+        }
+    }
+
+  /** The id of `turn`'s reply entry. */
+  def replyId(turn: TurnRef): EntryId =
+    EntryId(s"reply:${WorkflowId.value(turn.workflowId)}")
+
+  private def run(
+      system: String,
+      entries: EntryStore,
+      assembler: ContextAssembler,
+      provider: Provider^,
+      db: Db^,
+      turn: TurnRef
+  )(using d: Durable^): Either[TurnFailure, EntryId] = {
+    import TurnJournal.given
+    val reply = replyId(turn)
+    for {
+      window <- d.step("assemble") { () =>
+        assembler.assemble(AssemblyRequest(turn))(using db).left.map {
+          case AssemblyError.Store(error) => TurnFailure.Assembly(describe(error))
+        }
+      }
+      message <- d.step("call-model") { () =>
+        request(system, entries, db, turn, window).flatMap { req =>
+          provider.complete(req).left.map { case ProviderError.Unavailable(cause) =>
+            TurnFailure.Model(cause)
+          }
+        }
+      }
+      appended <- d.transact("append")(append(entries, turn, reply, message))
+    } yield appended
+  }
+
+  /** The window's entries, then the turn's own, as one model request. */
+  private def request(
+      system: String,
+      entries: EntryStore,
+      db: Db^,
+      turn: TurnRef,
+      window: Window
+  ): Either[TurnFailure, ModelRequest] =
+    db.read(entries.list(turn.conversationId)).left.map(storeFailure).flatMap { all =>
+      val byId = all.map(e => e.id -> e).toMap
+      window.entries.filterNot(byId.contains) match {
+        case missing if missing.nonEmpty =>
+          Left(
+            TurnFailure.Assembly(
+              s"window names unknown entries: ${missing.map(EntryId.value).mkString(", ")}"
+            )
+          )
+        case _ =>
+          val seen = window.entries.flatMap(byId.get) ++ all.filter(_.turnSeq == turn.turnSeq)
+          Right(
+            ModelRequest(system, seen.map(e => e.payload match { case Payload.Message(m) => m }))
+          )
+      }
+    }
+
+  /** Records `message` as `turn`'s entry `id`, after everything already in the
+    * conversation.
+    */
+  private def append(entries: EntryStore, turn: TurnRef, id: EntryId, message: Message)(using
+      Tx^
+  ): Either[TurnFailure, EntryId] =
+    (for {
+      next <- entries.lockNext(turn.conversationId)
+      _ <- entries.insert(
+        Entry(
+          id,
+          turn.conversationId,
+          turn.turnSeq,
+          None,
+          next.seq,
+          Payload.Message(message),
+          Instant.now()
+        )
+      )
+    } yield id).left.map(storeFailure)
+
+  private def storeFailure(error: StoreError): TurnFailure = TurnFailure.Store(describe(error))
+
+  private def describe(error: StoreError): String = error match {
+    case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
+    case StoreError.DatabaseError(cause) => cause
+  }
+}

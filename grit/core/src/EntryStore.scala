@@ -13,4 +13,16 @@ trait EntryStore {
 
   /** Every entry in `conversation`, ascending by `seq`. Empty for an unknown conversation. */
   def list(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]]
+
+  /** Locks `conversation` against other writers until the transaction ends, and returns
+    * the positions after everything already recorded in it. Every writer of a
+    * conversation's entries takes this lock first, then writes at the positions returned.
+    */
+  def lockNext(conversation: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next]
+}
+
+object EntryStore {
+
+  /** The next unused turn seq and entry seq of a conversation. */
+  final case class Next(turnSeq: TurnSeq, seq: Long)
 }

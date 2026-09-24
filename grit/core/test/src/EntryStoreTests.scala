@@ -6,26 +6,6 @@ import java.time.Instant
 
 object EntryStoreTests extends TestSuite {
 
-  class FakeEntryStore extends EntryStore {
-    @caps.unsafe.untrackedCaptures
-    private var entries = Vector.empty[Entry]
-
-    def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] = {
-      if (entries.exists(_.id == entry.id)) {
-        Left(StoreError.DuplicateId(entry.id))
-      } else {
-        entries = entries :+ entry
-        Right(())
-      }
-    }
-
-    def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] =
-      Right(entries.find(_.id == id))
-
-    def list(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] =
-      Right(entries.filter(_.conversationId == conversation))
-  }
-
   private def fakeTx: Tx = TestTx.fake
 
   private val c1 = ConversationId("c1")
@@ -48,7 +28,7 @@ object EntryStoreTests extends TestSuite {
     }
 
     test("insert and get") {
-      val store = new FakeEntryStore
+      val store = new InMemoryEntryStore
       val e =
         entry("e1", 0L)
       store.insert(e)(using fakeTx) ==> Right(())
@@ -56,7 +36,7 @@ object EntryStoreTests extends TestSuite {
     }
 
     test("insert duplicate returns DuplicateId") {
-      val store = new FakeEntryStore
+      val store = new InMemoryEntryStore
       val e =
         entry("e1", 0L)
       store.insert(e)(using fakeTx) ==> Right(())
@@ -65,7 +45,7 @@ object EntryStoreTests extends TestSuite {
     }
 
     test("list returns one conversation's entries in insertion order") {
-      val store = new FakeEntryStore
+      val store = new InMemoryEntryStore
       val e1 =
         entry("e1", 0L)
       val e2 =
@@ -76,8 +56,16 @@ object EntryStoreTests extends TestSuite {
       store.list(c1)(using fakeTx) ==> Right(Vector(e1, e2))
     }
 
+    test("lockNext is past everything recorded in the conversation") {
+      val store = new InMemoryEntryStore
+      store.lockNext(c1)(using fakeTx) ==> Right(EntryStore.Next(TurnSeq.First, 0L))
+      store.insert(entry("e1", 4L))(using fakeTx)
+      store.insert(entry("other", 9L, ConversationId("c2")))(using fakeTx)
+      store.lockNext(c1)(using fakeTx) ==> Right(EntryStore.Next(TurnSeq(1), 5L))
+    }
+
     test("get non-existent returns None") {
-      val store = new FakeEntryStore
+      val store = new InMemoryEntryStore
       store.get(EntryId("missing"))(using fakeTx) ==> Right(None)
     }
 
@@ -92,7 +80,7 @@ object EntryStoreTests extends TestSuite {
       // only legal at toplevel, so the nested context can never enable it.
       // Instead we pin the positive surface: a Tx obtained inside a
       // transaction scope stays usable there.
-      val store = new FakeEntryStore
+      val store = new InMemoryEntryStore
       val e =
         entry("e1", 0L)
       store.insert(e)(using fakeTx) ==> Right(())

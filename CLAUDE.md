@@ -30,15 +30,15 @@ Mill modules, and what each may name:
 | Module | Package | Depends on | Holds |
 |---|---|---|---|
 | `grit.core` | `grit.core` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath |
-| `grit.dbos` | `grit.dbos` | core | DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`, the phase-0 proof run |
+| `grit.dbos` | `grit.dbos` | core | DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `Engine` is what `grit.app` opens |
 | `grit.tui` | `grit.tui.{model,components,wire,runtime}` | core | the terminal UI; core only from `components`/`runtime` |
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo2` is `scripts/tui-gate`'s target |
-| `grit.turn` | — | core | *placeholder*: the durable turn's orchestration |
-| `grit.models` | — | core | *placeholder*: the frontier provider, later the relevance judge |
-| `grit.assembly` | — | core | *placeholder*: builds each turn's context window |
-| `grit.app` | — | everything | *placeholder*: the composition root |
+| `grit.turn` | `grit.turn` | core | the durable turn's body, written against `Durable` |
+| `grit.models` | `grit.models` | core | `Provider`s: the stub now, the frontier provider next, later the relevance judge |
+| `grit.assembly` | `grit.assembly` | core | `ContextAssembler`s: builds each turn's context window |
+| `grit.app` | `grit.app` | everything | the composition root; its `Main` is the M0 run |
 
-Placeholders have a `README.md` and no code. Mill `moduleDeps` are transitive, so
+Mill `moduleDeps` are transitive, so
 `grit.app` sees `dev.dbos.*` through `grit.dbos` — enola's rule, not the compiler, guards
 it. Working in `grit/tui/`? Read [`grit/tui/CLAUDE.md`](grit/tui/CLAUDE.md) first.
 

@@ -16,6 +16,10 @@ final class SqlEntryStore extends EntryStore {
     val sql =
       s"""INSERT INTO grit.entries ($columns)
          |VALUES (?, ?::uuid, ?, ?, ?, ?::jsonb, ?)""".stripMargin
+    // A failed statement aborts the whole transaction, and a `transact` step records its
+    // output on the same connection afterwards. Rolling back to the savepoint keeps the
+    // transaction usable, so `DuplicateId` can be recorded as the step's value.
+    val savepoint = conn.setSavepoint()
     try {
       Using.resource(conn.prepareStatement(sql)) { ps =>
         ps.setString(1, EntryId.value(entry.id))
@@ -27,10 +31,12 @@ final class SqlEntryStore extends EntryStore {
         ps.setObject(7, entry.createdAt.atOffset(ZoneOffset.UTC))
         ps.executeUpdate()
       }
+      conn.releaseSavepoint(savepoint)
       Right(())
     } catch {
       case e: PSQLException
           if e.getSQLState == UniqueViolation && violated(e).contains(PrimaryKey) =>
+        conn.rollback(savepoint)
         Left(StoreError.DuplicateId(entry.id))
       case NonFatal(e) => Left(databaseError(e))
     }
@@ -64,6 +70,32 @@ final class SqlEntryStore extends EntryStore {
             rows += readEntry(rs)
           }
           rows.result()
+        }
+      }
+    }
+  }
+
+  def lockNext(
+      conversation: ConversationId
+  )(using tx: Tx^): Either[StoreError, EntryStore.Next] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement("SELECT 1 FROM grit.conversations WHERE id = ?::uuid FOR UPDATE")
+      ) { ps =>
+        ps.setString(1, ConversationId.value(conversation))
+        Using.resource(ps.executeQuery())(_ => ())
+      }
+      Using.resource(
+        conn.prepareStatement(
+          """SELECT coalesce(max(turn_seq) + 1, 0) AS turn, coalesce(max(seq) + 1, 0) AS seq
+            |FROM grit.entries WHERE conversation_id = ?::uuid""".stripMargin
+        )
+      ) { ps =>
+        ps.setString(1, ConversationId.value(conversation))
+        Using.resource(ps.executeQuery()) { rs =>
+          rs.next()
+          EntryStore.Next(TurnSeq(rs.getLong("turn")), rs.getLong("seq"))
         }
       }
     }

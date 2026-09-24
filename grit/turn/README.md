@@ -1,8 +1,7 @@
-# grit.turn — placeholder
+# grit.turn
 
-The durable turn: one workflow per user-visible turn — retrieve and assemble, call the
-model, append, summarise. Written against `grit.core`'s seams and a grit-style durability
-API, never DBOS directly, so it is testable with fakes.
+The durable turn: one workflow per user-visible turn — assemble, call the model, append.
+Written against `grit.core`'s seams and `Durable`, never DBOS, so its tests run it over
+core's in-memory fakes (`InMemoryDurable`, `InMemoryEntryStore`).
 
-No code yet; the module exists so the layout is visible. Design:
-`roadmap/mechanisms/durable-turn.md`.
+Design: `roadmap/mechanisms/durable-turn.md`.
