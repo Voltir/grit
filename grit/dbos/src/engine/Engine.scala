@@ -1,6 +1,7 @@
 package grit.dbos.engine
 
 import java.sql.DriverManager
+import java.time.Instant
 
 import scala.io.Source
 import scala.jdk.CollectionConverters.*
@@ -79,23 +80,28 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
       val handle = client.retrieveWorkflow[String, Exception](id)
       Option(handle.getStatus()).map(_.status()) match {
         case None => TurnStatus.Unknown
-        case Some(state) if state.isActive() => TurnStatus.Running(recorded(id))
+        case Some(state) if state.isActive() => TurnStatus.Running(steps(turn))
         case Some(WorkflowState.SUCCESS) => TurnStatus.Finished(handle.getResult())
         case Some(state) => TurnStatus.Finished(s"workflow ${state.name.toLowerCase}")
       }
     } catch { case NonFatal(e) => TurnStatus.Finished(s"unreadable: ${e.getMessage}") }
 
-  /** The names of the steps workflow `id` has recorded, in order; none when they cannot be
-    * read, which only dims what a watcher is shown.
+  /** The steps `turn`'s workflow has recorded so far, in the order it ran them; none when
+    * they cannot be read, which only dims what a watcher is shown. A step is recorded when
+    * it completes, so a running step is not among them.
     */
-  private def recorded(id: String): Vector[String] =
+  def steps(turn: TurnRef): Vector[RecordedStep] =
     try
       client
-        .listWorkflowSteps(id)
+        .listWorkflowSteps(WorkflowId.value(turn.workflowId))
         .asScala
         .toVector
         .sortBy(_.functionId())
-        .flatMap(step => Option(step.functionName()))
+        .flatMap { step =>
+          Option(step.functionName()).map(
+            RecordedStep(_, Option(step.startedAt()), Option(step.completedAt()))
+          )
+        }
     catch { case NonFatal(_) => Vector.empty }
 
   /** Runs `body` in a transaction of its own: committed on `Right`, rolled back otherwise. */
@@ -167,8 +173,8 @@ object Engine {
 /** Where a turn's workflow is, as an edge sees it. */
 enum TurnStatus {
 
-  /** Queued or running, having `recorded` these steps so far, by name, in order. */
-  case Running(recorded: Vector[String])
+  /** Queued or running, having recorded these `steps` so far. */
+  case Running(steps: Vector[RecordedStep])
 
   /** Done: the workflow's output, or why it has none. */
   case Finished(output: String)
@@ -176,3 +182,8 @@ enum TurnStatus {
   /** Not (yet) known to DBOS: ingested but not enqueued. */
   case Unknown
 }
+
+/** A step a turn's workflow recorded: its `name`, and when it started and completed, as
+  * far as DBOS kept them.
+  */
+final case class RecordedStep(name: String, started: Option[Instant], completed: Option[Instant])

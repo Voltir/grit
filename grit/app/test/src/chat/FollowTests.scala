@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, Payload}
-import grit.dbos.engine.TurnStatus
+import grit.dbos.engine.{RecordedStep, TurnStatus}
 
 import utest.*
 
@@ -32,7 +32,8 @@ object FollowTests extends TestSuite {
     )
   )
 
-  private def running(recorded: String*): TurnStatus = TurnStatus.Running(recorded.toVector)
+  private def running(recorded: String*): TurnStatus =
+    TurnStatus.Running(recorded.toVector.map(RecordedStep(_, None, None)))
 
   private def all(status: TurnStatus): TurnRef => TurnStatus = _ => status
 

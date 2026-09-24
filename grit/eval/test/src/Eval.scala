@@ -290,6 +290,7 @@ object Eval {
       case AssemblyNote.Queried(q, "handwritten", _, _) => ""
       case AssemblyNote.Queried(q, _, _, _) => s"  query: \"${q.take(70)}\""
       case AssemblyNote.FellBack(why) => s"  fell back: $why"
+      case AssemblyNote.Recalled(turns) => s"  recalled ${turns.size} turn(s)"
     }.mkString
 
   private def totals(

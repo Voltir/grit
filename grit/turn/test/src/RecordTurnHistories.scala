@@ -1,5 +1,6 @@
 package grit.turn
 
+import grit.core.context.AssemblyNote
 import grit.core.durable.{History, InMemoryDurable}
 import grit.core.id.TurnRef
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
@@ -103,7 +104,24 @@ object RecordTurnHistories {
       )
       recorded(durable, turn)
     }
+    val recalled = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val one = say(entries, "one")
+      durable.run(one.workflowId)(turnBody(entries, new RecordingProvider))
+      val turn = say(entries, "two")
+      durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new RecordingProvider,
+          new Noting(entries, AssemblyNote.Recalled(Vector(one.turnSeq))),
+          new InMemoryUsageLedger
+        )
+      )
+      recorded(durable, turn)
+    }
     Vector(
+      "recalled" -> recalled,
       "queried" -> queried,
       "summarised" -> summarised,
       "summary-failed" -> summaryFailed,

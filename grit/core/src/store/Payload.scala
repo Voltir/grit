@@ -1,5 +1,6 @@
 package grit.core.store
 
+import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.Message
 
 /** What an [[Entry]] holds. Each case is one kind of entry; context fetched during
@@ -19,4 +20,11 @@ enum Payload {
     * was searched for: never shown to the model, never itself searched.
     */
   case Query(text: String)
+
+  /** The window the reply of the turn the entry belongs to was written from: the entries
+    * the model saw before the turn's own, in the order it saw them, and which earlier
+    * turns among them search `recalled` rather than recency. A record of what the model
+    * saw: never shown to the model, never searched.
+    */
+  case Window(entries: Vector[EntryId], recalled: Vector[TurnSeq])
 }

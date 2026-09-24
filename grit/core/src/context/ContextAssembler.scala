@@ -1,6 +1,6 @@
 package grit.core.context
 
-import grit.core.id.{EntryId, TurnRef}
+import grit.core.id.{EntryId, TurnRef, TurnSeq}
 import grit.core.message.{Tokens, Usage}
 import grit.core.store.{Db, StoreError}
 
@@ -30,6 +30,11 @@ enum AssemblyNote {
     * estimated input of that request.
     */
   case Queried(query: String, model: String, usage: Usage, estimate: Tokens)
+
+  /** It added these earlier `turns`, found by search, to the recent ones; none when
+    * nothing it found fitted.
+    */
+  case Recalled(turns: Vector[TurnSeq])
 
   /** It built a simpler window than it set out to, for `reason`. */
   case FellBack(reason: String)

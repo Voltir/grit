@@ -77,6 +77,6 @@ object LinearAssembler {
 
   private def isMessage(e: Entry): Boolean = e.payload match {
     case Payload.Message(_) => true
-    case Payload.Summary(_) | Payload.Query(_) => false
+    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _) => false
   }
 }

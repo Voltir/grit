@@ -83,17 +83,26 @@ object TurnFixtures {
     TurnRef(conversation, next.turnSeq)
   }
 
+  /** The conversation as a transcript: every entry but the windows' records. */
   def texts(entries: EntryStore): Vector[String] =
-    entries.list(conversation)(using TestTx.fake).getOrElse(Vector.empty).map {
+    all(entries).flatMap {
       _.payload match {
-        case Payload.Message(Message.User(text)) => s"user: $text"
+        case Payload.Message(Message.User(text)) => Some(s"user: $text")
         case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
-          blocks.collect { case AssistantBlock.Text(t) => s"assistant: $t" }.mkString
-        case Payload.Message(other) => other.toString
-        case Payload.Summary(text) => s"summary: $text"
-        case Payload.Query(text) => s"query: $text"
+          Some(blocks.collect { case AssistantBlock.Text(t) => s"assistant: $t" }.mkString)
+        case Payload.Message(other) => Some(other.toString)
+        case Payload.Summary(text) => Some(s"summary: $text")
+        case Payload.Query(text) => Some(s"query: $text")
+        case Payload.Window(_, _) => None
       }
     }
+
+  /** The records of the turns' windows, with their ids. */
+  def windows(entries: EntryStore): Vector[(EntryId, Payload.Window)] =
+    all(entries).collect { case Entry(id, _, _, _, _, w: Payload.Window, _) => id -> w }
+
+  private def all(entries: EntryStore): Vector[Entry] =
+    entries.list(conversation)(using TestTx.fake).getOrElse(Vector.empty)
 
   /** The linear window, with `note` added: an assembler that says it wrote a query. */
   final class Noting(entries: EntryStore, note: AssemblyNote) extends ContextAssembler {

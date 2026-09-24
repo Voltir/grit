@@ -53,7 +53,9 @@ final class RetrievalAssembler(
                 .map(AssemblyError.Store(_))
                 .map { found =>
                   val older = turns.filter(t => t.headOption.exists(e => before(e.turnSeq, from)))
-                  window(recent ++ pack(found, older, spent(recent)), Vector(queried))
+                  val recalled = pack(found, older, spent(recent))
+                  val seqs = recalled.flatMap(_.headOption.map(_.turnSeq)).sortBy(TurnSeq.value)
+                  window(recent ++ recalled, Vector(queried, AssemblyNote.Recalled(seqs)))
                 }
             }
         }

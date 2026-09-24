@@ -1,8 +1,9 @@
 package grit.turn
 
 import grit.assembly.estimate.CharEstimate
+import grit.core.context.AssemblyNote
 import grit.core.durable.InMemoryDurable
-import grit.core.id.WorkflowId
+import grit.core.id.{EntryId, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
@@ -178,6 +179,25 @@ object TurnTests extends TestSuite {
       provider.requests.map(_.messages.size) ==> Vector(1, 3)
       provider.requests.lastOption.flatMap(_.messages.headOption) ==> Some(Message.User("one"))
       provider.requests.lastOption.flatMap(_.messages.lastOption) ==> Some(Message.User("two"))
+    }
+
+    test("each reply's window is recorded beside it, with the turns search recalled") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val provider = new RecordingProvider
+      val one = say(entries, "one")
+      runTurn(durable, entries, provider, one)
+      val two = say(entries, "two")
+      val recalling = new Noting(entries, AssemblyNote.Recalled(Vector(one.turnSeq)))
+      val _ = durable.run(two.workflowId)(
+        turnBodyWith(entries, provider, recalling, new InMemoryUsageLedger)
+      )
+      windows(entries) ==> Vector(
+        Turn.windowId(one) -> Payload.Window(Vector.empty, Vector.empty),
+        Turn.windowId(two) ->
+          Payload.Window(Vector(EntryId("in:one"), Turn.replyId(one)), Vector(one.turnSeq))
+      )
+      texts(entries).drop(3).take(2) ==> Vector("user: two", "assistant: stub reply to: two")
     }
 
     test("a failed model call ends the turn with no reply") {

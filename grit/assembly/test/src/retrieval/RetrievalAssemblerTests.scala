@@ -120,7 +120,9 @@ object RetrievalAssemblerTests extends TestSuite {
       writer.requests ==> Vector.empty
     }
 
-    test("an older turn that matches the query joins the recent tail, in conversation order") {
+    test(
+      "an older turn that matches the query joins the recent tail, in conversation order, noted as recalled"
+    ) {
       val entries = store(buried*)
       val writer = new Writer(Some("database for probes: grit_agent"))
       val w = assemble(entries, writer, budget = 60)
@@ -139,7 +141,8 @@ object RetrievalAssemblerTests extends TestSuite {
           "writer",
           Usage(Tokens(40), Tokens(6), Tokens.Zero, None),
           asked.map(CharEstimate.request).getOrElse(Tokens.Zero)
-        )
+        ),
+        AssemblyNote.Recalled(Vector(TurnSeq(0)))
       )
     }
 

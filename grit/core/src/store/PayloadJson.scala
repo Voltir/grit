@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.ToolCallId
+import grit.core.id.{EntryId, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 
 /** The stored JSON form of a [[Payload]]. Written by hand, not derived: it is
@@ -14,6 +14,12 @@ object PayloadJson {
     case Payload.Message(m) => ujson.Obj("kind" -> "message", "message" -> message(m))
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
     case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
+    case Payload.Window(entries, recalled) =>
+      ujson.Obj(
+        "kind" -> "window",
+        "entries" -> ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e)))),
+        "recalled" -> ujson.Arr.from(recalled.map(t => ujson.Num(TurnSeq.value(t).toDouble)))
+      )
   }
 
   /** The payload `v` encodes, or why it encodes none. */
@@ -25,6 +31,17 @@ object PayloadJson {
         case "message" => field(o, "message").flatMap(readMessage).map(Payload.Message(_))
         case "summary" => str(o, "text").map(Payload.Summary(_))
         case "query" => str(o, "text").map(Payload.Query(_))
+        case "window" =>
+          for {
+            entries <- arr(o, "entries").flatMap(traverse(_) {
+              case ujson.Str(id) => Right(EntryId(id))
+              case _ => Left("an entry id is not a string")
+            })
+            recalled <- arr(o, "recalled").flatMap(traverse(_) {
+              case ujson.Num(n) if n.isWhole && n >= 0 => Right(TurnSeq(n.toLong))
+              case _ => Left("a recalled turn is not a non-negative whole number")
+            })
+          } yield Payload.Window(entries, recalled)
         case other => Left(s"unknown payload kind: $other")
       }
     } yield p

@@ -89,6 +89,9 @@ object Turn {
     EntryId(if (i == 0) base else s"$base:$i")
   }
 
+  /** The id of the record of `turn`'s window. */
+  def windowId(turn: TurnRef): EntryId = EntryId(s"window:${WorkflowId.value(turn.workflowId)}")
+
   /** The id of `turn`'s reply entry. */
   def replyId(turn: TurnRef): EntryId =
     EntryId(s"reply:${WorkflowId.value(turn.workflowId)}")
@@ -243,7 +246,7 @@ object Turn {
     * produced it. The request is rebuilt from the same window and the same entries: the
     * turn's own were all recorded before its call, and the reply is not yet among them.
     * Each query `window`'s notes say assembly wrote goes in first, as [[queryId]], with
-    * its own cost.
+    * its own cost; then the window itself, as [[windowId]].
     */
   private def append(
       system: String,
@@ -280,6 +283,24 @@ object Turn {
               .map(storeFailure)
           }
       }
+      recalled = window.notes.flatMap {
+        case AssemblyNote.Recalled(turns) => turns
+        case _ => Vector.empty
+      }
+      _ <- entries
+        .insert(
+          Entry(
+            windowId(turn),
+            turn.conversationId,
+            turn.turnSeq,
+            None,
+            next.seq + queries.size,
+            Payload.Window(window.entries, recalled),
+            Instant.now()
+          )
+        )
+        .left
+        .map(storeFailure)
       _ <- entries
         .insert(
           Entry(
@@ -287,7 +308,7 @@ object Turn {
             turn.conversationId,
             turn.turnSeq,
             None,
-            next.seq + queries.size,
+            next.seq + queries.size + 1,
             Payload.Message(message),
             Instant.now()
           )

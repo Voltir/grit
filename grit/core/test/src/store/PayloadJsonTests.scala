@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.ToolCallId
+import grit.core.id.{EntryId, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 
 import utest.*
@@ -61,10 +61,19 @@ object PayloadJsonTests extends TestSuite {
         """{"kind":"query","text":"postgres sqlite decision"}"""
     }
 
+    test("window") {
+      PayloadJson
+        .write(Payload.Window(Vector(EntryId("a"), EntryId("b")), Vector(TurnSeq(3))))
+        .render() ==>
+        """{"kind":"window","entries":["a","b"],"recalled":[3]}"""
+    }
+
     test("every sample round-trips, through text too") {
-      (samples.map(Payload.Message(_)) :+ Payload.Summary("s") :+ Payload.Query("q")).foreach { p =>
-        PayloadJson.read(ujson.read(PayloadJson.write(p).render())) ==> Right(p)
-      }
+      val window = Payload.Window(Vector(EntryId("a")), Vector(TurnSeq(0), TurnSeq(7)))
+      (samples.map(Payload.Message(_)) :+ Payload.Summary("s") :+ Payload.Query("q") :+ window)
+        .foreach { p =>
+          PayloadJson.read(ujson.read(PayloadJson.write(p).render())) ==> Right(p)
+        }
     }
 
     test("a malformed payload is a Left, not a throw") {

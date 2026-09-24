@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
-import grit.core.id.EntryId
+import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens}
 import grit.core.store.{Payload, PayloadJson}
 
@@ -56,12 +56,14 @@ private[turn] object TurnJournal {
         "estimate" -> Tokens.value(estimate).toDouble
       )
     case AssemblyNote.FellBack(reason) => ujson.Obj("fellBack" -> reason)
+    case AssemblyNote.Recalled(turns) =>
+      ujson.Obj("recalled" -> ujson.Arr.from(turns.map(t => ujson.Num(TurnSeq.value(t).toDouble))))
   }
 
   private def readNote(v: ujson.Value): Either[String, AssemblyNote] = v match {
     case o: ujson.Obj =>
-      (o.value.get("queried"), o.value.get("fellBack")) match {
-        case (Some(ujson.Str(query)), None) =>
+      (o.value.get("queried"), o.value.get("fellBack"), o.value.get("recalled")) match {
+        case (Some(ujson.Str(query)), None, None) =>
           for {
             model <- o.value.get("model").flatMap(_.strOpt).toRight("note: missing model")
             usage <- o.value
@@ -73,8 +75,14 @@ private[turn] object TurnJournal {
               .collect { case ujson.Num(n) if n.isWhole && n >= 0 => Tokens(n.toLong) }
               .toRight("note: bad estimate")
           } yield AssemblyNote.Queried(query, model, usage, estimate)
-        case (None, Some(ujson.Str(reason))) => Right(AssemblyNote.FellBack(reason))
-        case _ => Left("note: expected queried or fellBack")
+        case (None, Some(ujson.Str(reason)), None) => Right(AssemblyNote.FellBack(reason))
+        case (None, None, Some(ujson.Arr(turns))) =>
+          val seqs = turns.toVector.collect {
+            case ujson.Num(n) if n.isWhole && n >= 0 => TurnSeq(n.toLong)
+          }
+          if (seqs.size == turns.size) Right(AssemblyNote.Recalled(seqs))
+          else Left("note: a recalled turn is not a non-negative whole number")
+        case _ => Left("note: expected queried, fellBack or recalled")
       }
     case _ => Left("note: expected an object")
   }

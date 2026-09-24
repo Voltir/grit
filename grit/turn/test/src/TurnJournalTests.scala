@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
-import grit.core.id.EntryId
+import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.provider.ModelRequest
 import grit.models.StubProvider
@@ -45,7 +45,8 @@ object TurnJournalTests extends TestSuite {
               Usage(Tokens(3), Tokens(2), Tokens.Zero, Some(BigDecimal("0.00001"))),
               Tokens(4)
             ),
-            AssemblyNote.FellBack("why")
+            AssemblyNote.FellBack("why"),
+            AssemblyNote.Recalled(Vector(TurnSeq(0), TurnSeq(4)))
           )
         )
       )
@@ -54,7 +55,12 @@ object TurnJournalTests extends TestSuite {
       j.encode(Right(Window(Vector(EntryId("a"))))) ==> """{"ok":["a"]}"""
       j.encode(Right(Window(Vector(EntryId("a")), Vector(AssemblyNote.FellBack("why"))))) ==>
         """{"ok":{"entries":["a"],"notes":[{"fellBack":"why"}]}}"""
+      j.encode(
+        Right(Window(Vector(EntryId("a")), Vector(AssemblyNote.Recalled(Vector(TurnSeq(2))))))
+      ) ==>
+        """{"ok":{"entries":["a"],"notes":[{"recalled":[2]}]}}"""
       assert(j.decode("""{"ok":{"entries":["a"],"notes":[{"lunch":1}]}}""").isLeft)
+      assert(j.decode("""{"ok":{"entries":["a"],"notes":[{"recalled":[-1]}]}}""").isLeft)
     }
 
     test("the recorded form is pinned") {
