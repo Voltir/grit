@@ -108,6 +108,12 @@ only a nested `step`.
 **Iterator-producing combinators.** `args.sliding(2).collectFirst { … }` is rejected with
 `Illegal capture reference`. Indexed `Vector` code is the way out.
 
+**A tupled lambda over a nested `Vector`.** Under separation checking,
+`turns.zipWithIndex.flatMap((turn, t) => …)` over a `Vector[Vector[A]]` is rejected:
+*"capability `any` cannot flow into capture set {} of value turn"*, with the inferred
+parameter type showing `Vector`'s internal `prefix1: Array[Object^…]`. Writing the parameter
+types out fixes it: `(turn: Vector[A], t: Int) => …` (`grit.assembly.eval.Eval.load`).
+
 **A thunk in a data type launders capabilities.** This is why `grit.tui`'s `Effect` is
 plain data with no function cases (`grit/tui/CLAUDE.md`, rule 3).
 
