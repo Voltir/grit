@@ -1,79 +1,62 @@
 package grit.app
 
+import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.Size
+import grit.tui.node.Headless
 import grit.tui.runtime.Effect
-import grit.tui.runtime.std.Std
 import utest.*
 
-/** The chat screen's transitions, with no terminal and no engine: what a submission asks
-  * the host for, and what the host's answers do to the transcript.
+/** The chat screen with no terminal and no engine, read off the painted screen: what a
+  * submission asks the host for, and what the host's answers put on screen.
   */
 object ChatScreenTests extends TestSuite {
 
-  private val app = new ChatScreen.App("test-model")
+  import ChatScreen.{Msg, Said}
 
-  private def started: ChatScreen.State =
-    app.update(Std.Resized(Size(20, 60)), app.init._1)._1
+  private val size = Size(20, 60)
 
-  private def transcript(state: ChatScreen.State): Vector[String] =
-    state.panes
-      .get(grit.tui.model.surface.PaneId.of("transcript"))
-      .map(_.doc.blocks.map(_.text).filter(_.nonEmpty))
-      .getOrElse(Vector.empty)
+  private def started: Headless[ChatScreen.State, Msg] =
+    Headless.start(new ChatScreen.App("test-model"), size)
+
+  private def typed(h: Headless[ChatScreen.State, Msg], text: String) =
+    h.inputs(text.map(c => Input.Keyboard(Key.Printable(c)))*)
+
+  /** The transcript's painted rows that say something, in screen order: below the header
+    * (row 0), and left of the scrollbar (the last column).
+    */
+  private def said(h: Headless[ChatScreen.State, Msg]): Vector[String] =
+    h.screen
+      .drop(1)
+      .map(_.dropRight(1).trim)
+      .filter(r => r.startsWith("you>") || r.startsWith("grit") || r.startsWith("!"))
 
   val tests = Tests {
     test("the screen asks the host for the conversation at start") {
-      app.init._2 ==> Effect.ToHost(ChatScreen.Msg.Load)
+      started.effects ==> Vector(Effect.ToHost(Msg.Load))
     }
 
-    test("arrivals are shown in order, with the thinking line last while a turn runs") {
-      val asked = app
-        .update(
-          ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(true, "hi")), thinking = true),
-          started
-        )
-        ._1
-      transcript(asked) ==> Vector("you> hi", "grit is thinking…")
-      val answered =
-        app
-          .update(
-            ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(false, "hello")), thinking = false),
-            asked
-          )
-          ._1
-      transcript(answered) ==> Vector("you> hi", "grit> hello")
+    test("arrivals are painted in order, with the thinking line last while a turn runs") {
+      val asked = started.message(Msg.Arrived(Vector(Said(true, "hi")), thinking = true))
+      said(asked) ==> Vector("you> hi", "grit is thinking…")
+      val answered = asked.message(Msg.Arrived(Vector(Said(false, "hello")), thinking = false))
+      said(answered) ==> Vector("you> hi", "grit> hello")
     }
 
-    test("the reply that replaces the thinking line is painted") {
-      // Painted, not read off the document: the wrap cache keys a block by position and
-      // revision, so a reply given the thinking line's revision kept its old rows.
-      val size = Size(20, 60)
-      def painted(s: ChatScreen.State) = app.view(s)(size).surface.lines.mkString("\n")
-      val asked =
-        app.update(ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(true, "hi")), true), started)._1
-      assert(painted(asked).contains("grit is thinking"))
-      val answered =
-        app.update(ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(false, "hello")), false), asked)._1
-      val screen = painted(answered)
-      assert(screen.contains("grit> hello"), !screen.contains("thinking"))
-    }
-
-    test("a submission is sent to the host, and shown only once the store has it") {
-      val (sent, effect) =
-        app.update(ChatScreen.Msg.Submit, started.copy(editor = started.editor.copy(text = "hi")))
-      effect ==> Effect.ToHost(ChatScreen.Msg.Send("hi"))
-      transcript(sent) ==> Vector()
-      sent.editor.text ==> ""
+    test("a typed submission is sent to the host, and painted only once the store has it") {
+      val sent = typed(started, "hi").input(Input.Keyboard(Key.Enter))
+      sent.effects.last ==> Effect.ToHost(Msg.Send("hi"))
+      said(sent) ==> Vector()
+      sent.state.editor.text ==> ""
     }
 
     test("an empty submission sends nothing") {
-      app.update(ChatScreen.Msg.Submit, started)._2 ==> Effect.NoOp
+      started.input(Input.Keyboard(Key.Enter)).effects.last ==> Effect.NoOp
     }
 
-    test("a failure is shown before the thinking line, which stays") {
-      val thinking = app.update(ChatScreen.Msg.Arrived(Vector(), thinking = true), started)._1
-      transcript(app.update(ChatScreen.Msg.Failed("down"), thinking)._1) ==>
-        Vector("! down", "grit is thinking…")
+    test("a failure is painted before the thinking line, which stays") {
+      val failed =
+        started.message(Msg.Arrived(Vector(), thinking = true)).message(Msg.Failed("down"))
+      said(failed) ==> Vector("! down", "grit is thinking…")
     }
   }
 }

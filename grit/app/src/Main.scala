@@ -4,7 +4,7 @@ import grit.assembly.LinearAssembler
 import grit.core.{Message, ModelRequest, Origin, Provider, ProviderError, SourceId, Tokens, TurnRef}
 import grit.dbos.{DbConfig, Engine}
 import grit.models.{OpenRouterConfig, OpenRouterProvider, StubProvider}
-import grit.tui.runtime.TuiApp
+import grit.tui.node.NodeRuntime
 import grit.turn.Turn
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
@@ -81,7 +81,7 @@ object Main {
           val session = env.getOrElse("GRIT_SESSION", "default")
           val host = new ChatHost(engine, Origin.Tui(session))
           // Following stops before the engine it reads from closes.
-          try TuiApp.run(new ChatScreen.App(modelName), host)
+          try NodeRuntime.run(new ChatScreen.App(modelName), host)
           finally host.close()
           None
         } else say(engine, args.toList)

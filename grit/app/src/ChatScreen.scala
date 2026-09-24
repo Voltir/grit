@@ -1,17 +1,15 @@
 package grit.app
 
 import grit.tui.components.editor.Editor
-import grit.tui.components.layout.*
-import grit.tui.components.overlay.*
-import grit.tui.components.pane.*
-import grit.tui.components.widget.{ScrollPane, StatusBar}
+import grit.tui.components.widget.StatusBar
 import grit.tui.model.block.Block
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.select.Doc
 import grit.tui.model.surface.*
-import grit.tui.model.text.{StyledText, WrapCache}
+import grit.tui.model.text.StyledText
+import grit.tui.node.*
+import grit.tui.node.Node.*
 import grit.tui.runtime.Effect
-import grit.tui.runtime.std.*
 
 /** grit's chat screen: a transcript, a prompt and a status line. Pure, like every
   * grit.tui app: a submission leaves as [[ChatScreen.Msg.Send]] through `Effect.ToHost`,
@@ -19,49 +17,24 @@ import grit.tui.runtime.std.*
   */
 object ChatScreen {
 
-  private val HeaderPane = PaneId.of("header")
-  private val BodyPane = PaneId.of("body")
-  private val TranscriptPane = PaneId.of("transcript")
-  private val Bar = PaneId.of("scrollbar")
-  private val PromptPane = PaneId.of("prompt")
-  private val StatusPane = PaneId.of("status")
-
-  private val chrome = Stack.of(
-    HeaderPane -> Region.Fixed(1),
-    BodyPane -> Region.Flex(5),
-    PromptPane -> Region.Fit(min = 3, upTo = 0.5),
-    StatusPane -> Region.Fixed(1)
-  )
-
-  private val transcript =
-    ScrollPane(TranscriptPane, Bar, ChatPalette.scrollRail, ChatPalette.scrollThumb)
+  private val Transcript = PaneKey.of("transcript")
 
   /** One message of the conversation: the user's, or a reply. */
   final case class Said(user: Boolean, text: String)
 
   /** `thinking` is whether the conversation has a turn in progress: its line is the
-    * transcript's last block while it is. `rev` is the revision the next block is given.
+    * transcript's last block while it is.
     */
   final case class State(
-      panes: Panes,
+      transcript: Doc,
+      reader: Scroller.State,
       editor: Editor,
       thinking: Boolean,
-      rev: Long,
       status: String,
-      title: String,
-      std: Std.State
+      title: String
   )
 
-  /** What the transcript is made of, before each piece is given its revision. */
-  private enum Piece {
-    case Separator
-    case User(text: String)
-    case Reply(text: String)
-    case Failure(reason: String)
-    case Thinking
-  }
-
-  enum Msg {
+  enum Msg extends caps.Pure {
 
     /** Enter in the prompt. */
     case Submit
@@ -79,143 +52,99 @@ object ChatScreen {
 
     /** From the host: sending failed, or a turn ended with no reply. */
     case Failed(reason: String)
+
+    /** The prompt, edited. */
+    case Edited(editor: Editor)
+
+    /** The transcript, scrolled, selected or copied from. */
+    case Reader(m: Scroller.Msg)
+
+    case Quit
   }
 
   /** The screen, titled `title` (the model it talks to). */
-  final class App(title: String)
-      extends StdBase[State, Msg]
-      with Hotkeys[State, Msg]
-      with Ambient[State, Msg]
-      with Selecting[State, Msg]
-      with Prompting[State, Msg]
-      with FreeKeys[State, Msg] {
+  final class App(title: String) extends NodeApp[State, Msg] {
 
-    val layers: Vector[Layer] =
-      Vector(hotkeyLayer, ambientLayer, promptLayer, freeLayer, pageLayer, pointerLayer)
-
-    val steps: Vector[Step] = Vector(ambientStep, scrollStep, editStep, pointerStep)
-
-    def init: (State, Effect[Std | Msg]) = {
-      val panes = Panes
-        .of(TextPane(TranscriptPane, Doc.empty, cache = WrapCache.empty(80)))
-        .focusOn(TranscriptPane)
+    def init: (State, Effect[Msg]) =
       (
-        State(panes, ChatPalette.prompt, thinking = false, 1L, "loading", title, Std.State()),
+        State(Doc.empty, Scroller.init, ChatPalette.prompt, thinking = false, "loading", title),
         Effect.ToHost(Msg.Load)
       )
-    }
 
-    val panes: State -> Panes = s => s.panes
-    val withPanes: (State, Panes) -> State = (s, p) => s.copy(panes = p)
-    val std: State -> Std.State = s => s.std
-    val withStd: (State, Std.State) -> State = (s, c) => s.copy(std = c)
-    val withEditor: (State, Editor) -> State = (s, e) => s.copy(editor = e)
-
-    protected val ownUpdate: (Msg, State) -> (State, Effect[Std | Msg]) = (msg, state) =>
+    def update(msg: Msg, s: State): (State, Effect[Msg]) =
       msg match {
         case Msg.Submit =>
-          val draft = state.editor.text.trim
-          if (draft.isEmpty) (state, Effect.NoOp)
-          else if (draft == "/quit") (state, Effect.Quit)
+          val draft = s.editor.text.trim
+          if (draft.isEmpty) (s, Effect.NoOp)
+          else if (draft == "/quit") (s, Effect.Quit)
           // Shown when the store has it, like everything else in the transcript.
           else
-            (
-              state.copy(editor = state.editor.submitted, status = "sent"),
-              Effect.ToHost(Msg.Send(draft))
-            )
-        case Msg.Send(_) | Msg.Load => (state, Effect.NoOp)
+            (s.copy(editor = s.editor.submitted, status = "sent"), Effect.ToHost(Msg.Send(draft)))
+        case Msg.Send(_) | Msg.Load => (s, Effect.NoOp)
         case Msg.Arrived(said, thinking) =>
-          val pieces = said.flatMap {
-            case Said(true, text) => Vector(Piece.Separator, Piece.User(text))
-            case Said(false, text) => Vector(Piece.Reply(text))
+          val blocks = said.flatMap {
+            case Said(true, text) => Vector(ChatPalette.separator, ChatPalette.user(text))
+            case Said(false, text) => Vector(ChatPalette.assistant(text))
           }
-          (withTail(state.copy(status = ""), pieces, thinking), Effect.NoOp)
+          (withTail(s.copy(status = ""), blocks, thinking), Effect.NoOp)
         case Msg.Failed(reason) =>
-          (withTail(state, Vector(Piece.Failure(reason)), state.thinking), Effect.NoOp)
+          (withTail(s, Vector(ChatPalette.failure(reason)), s.thinking), Effect.NoOp)
+        case Msg.Edited(e) => (s.copy(editor = e), Effect.NoOp)
+        case Msg.Reader(Scroller.Msg.Copied(text, _)) =>
+          if (text.isEmpty) (s.copy(status = "nothing selected"), Effect.NoOp)
+          else (s.copy(status = s"copied ${text.length} chars"), Effect.CopyOut(text))
+        case Msg.Reader(m) => (s.copy(reader = Scroller.update(m, s.reader)), Effect.NoOp)
+        case Msg.Quit => (s, Effect.Quit)
       }
 
-    override val hotkeys: (State, Input) -> Option[Std | Msg] = (_, input) =>
-      input match {
-        case Input.Keyboard(Key.Ctrl('q')) => Some(Std.Quit)
-        case _ => None
-      }
-
-    override val prompt: State -> Option[(PaneId, Editor)] = s => Some((PromptPane, s.editor))
-
-    override val onPrompt: State -> State = s => relaid(s, s.std.size)
-
-    override val free: (State, Input) -> Option[Msg] = (_, input) =>
-      input match {
-        case Input.Keyboard(Key.Enter) => Some(Msg.Submit)
-        case _ => None
-      }
-
-    override val scrolls: State -> Vector[ScrollPane] = _ => Vector(transcript)
-
-    val onResize: (State, Size) -> State = (state, size) => relaid(state, size)
-
-    override val onCopy: (State, Option[String], Boolean) -> State = (state, text, _) =>
-      state.copy(status = text.fold("nothing selected")(t => s"copied ${t.length} chars"))
-
-    val view: State -> (Size -> Frame) = state =>
-      size =>
-        Frame(Surface.blank(size).blit(screen(state).render(size), Pos(0, 0)))
-          .caretIn(PromptPane, box => state.editor.caretPos(box.cols, box.rows), when = true)
-
-    override def firstFrame(size: Size): Frame = {
-      val (state, _) = init
-      view(update(Std.Resized(size), state)._1)(size)
-    }
-
-    /** Appends `blocks` to the transcript, keeping the thinking line last while
-      * `thinking`. Re-wrapped at the size the transcript was painted at.
-      *
-      * Each block is built with a revision of its own. The pane's wrap cache keys a block
-      * by its position and revision and never compares text, so a block that takes the
-      * thinking line's position must not share its revision, or the old rows are painted.
+    /** `blocks` appended, the thinking line kept last while `thinking`. A reply that takes
+      * the thinking line's place is a different block, so the runtime's wrap memo wraps it
+      * afresh: nothing here has to be told apart by revision.
       */
-    private def withTail(state: State, pieces: Vector[Piece], thinking: Boolean): State = {
-      val all = pieces ++ Option.when(thinking)(Piece.Thinking)
-      val built = all.zipWithIndex.map { case (piece, i) => block(piece, state.rev + i) }
-      state.copy(
-        thinking = thinking,
-        rev = state.rev + all.size,
-        panes = state.panes.modify(TranscriptPane) { doc =>
-          val body = if (state.thinking) Doc(doc.blocks.dropRight(1)) else doc
-          built.foldLeft(body)(_.append(_))
-        }
+    private def withTail(s: State, blocks: Vector[Block], thinking: Boolean): State = {
+      val body = if (s.thinking) s.transcript.blocks.dropRight(1) else s.transcript.blocks
+      s.copy(
+        transcript = Doc(body ++ blocks ++ Option.when(thinking)(ChatPalette.thinking)),
+        thinking = thinking
       )
     }
 
-    private def block(piece: Piece, rev: Long): Block = piece match {
-      case Piece.Separator => ChatPalette.separator
-      case Piece.User(text) => ChatPalette.user(text, rev)
-      case Piece.Reply(text) => ChatPalette.assistant(text, rev)
-      case Piece.Failure(reason) => ChatPalette.failure(reason, rev)
-      case Piece.Thinking => ChatPalette.thinking(rev)
+    private def hotkeys: OnInput[Msg] = {
+      case Input.Keyboard(Key.Ctrl('q')) => Some(Msg.Quit)
+      case _ => None
     }
 
-    private def relaid(state: State, size: Size): State =
-      state.copy(panes =
-        state.panes.layoutIn(screen(state).placed(size).nest(BodyPane, transcript.split))
-      )
+    private def enter: OnInput[Msg] = {
+      case Input.Keyboard(Key.Enter) => Some(Msg.Submit)
+      case _ => None
+    }
 
-    private def screen(state: State): Regions =
-      chrome.views(
-        StatusBar(Vector(s" grit -- ${state.title}"), Vector(), ChatPalette.header),
-        transcript.views(state.panes),
-        state.editor,
-        StatusBar(
-          Vector(" ctrl-q quit ", " enter sends ", state.status),
-          Vector(if (state.thinking) "thinking" else "idle"),
-          ChatPalette.status
+    def view(s: State): Node[Msg] =
+      column(
+        fixed(1) -> paint(StatusBar(Vector(s" grit -- ${s.title}"), Vector(), ChatPalette.header)),
+        flex(5) -> Scroller
+          .view(
+            Transcript,
+            s.transcript,
+            s.reader,
+            bar = Some((ChatPalette.scrollRail, ChatPalette.scrollThumb))
+          )
+          .map(Msg.Reader(_)),
+        fit(3, 0.5) -> Node.editor(s.editor).onEdit(Msg.Edited(_)),
+        fixed(1) -> paint(
+          StatusBar(
+            Vector(" ctrl-q quit ", " enter sends ", s.status),
+            Vector(if (s.thinking) "thinking" else "idle"),
+            ChatPalette.status
+          )
         )
-      )
+      ).onKey(enter).onKeyFirst(hotkeys)
   }
 }
 
-/** The chat screen's styles. A trimmed copy of `grit.tui.examples.Palette`, which
-  * `grit.app` cannot depend on.
+/** The chat screen's styles. Its own, not the library's: a theme is an app's choice.
+  * The colours are the examples' (`grit.tui.examples.Palette`), which `grit.app` cannot
+  * depend on.
   */
 object ChatPalette {
 
@@ -228,30 +157,26 @@ object ChatPalette {
   private val Slab = Color.hex("#292e42")
   private val Rail = Color.hex("#3b4261")
 
-  /** Every block takes a revision: see `withTail` for why each must be new. */
-  def user(text: String, rev: Long): Block.Text =
+  def user(text: String): Block.Text =
     Block
       .styled(
         StyledText.styled("you> ", Style.fg(Iris) + Style.Bold) ++ StyledText
-          .styled(text, Style.fg(Ink)),
-        rev
+          .styled(text, Style.fg(Ink))
       )
       .copy(ground = Style.bg(Slab))
 
-  def assistant(text: String, rev: Long): Block.Text =
+  def assistant(text: String): Block.Text =
     Block.styled(
       StyledText.styled("grit> ", Style.fg(Sky) + Style.Bold) ++ StyledText
-        .styled(text, Style.fg(Ink)),
-      rev
+        .styled(text, Style.fg(Ink))
     )
 
-  def thinking(rev: Long): Block.Text =
-    Block.styled(StyledText.styled("grit is thinking…", Style.fg(Faint) + Style.Italic), rev)
+  val thinking: Block.Text =
+    Block.styled(StyledText.styled("grit is thinking…", Style.fg(Faint) + Style.Italic))
 
-  def failure(reason: String, rev: Long): Block.Text =
-    Block.styled(StyledText.styled(s"! $reason", Style.fg(Rose) + Style.Italic), rev)
+  def failure(reason: String): Block.Text =
+    Block.styled(StyledText.styled(s"! $reason", Style.fg(Rose) + Style.Italic))
 
-  /** Always revision 0; every other block's revision is at least 1. */
   def separator: Block.Separator = Block.Separator(Style.fg(Rail) + Style.Dim)
 
   val header: Style = Style.fg(Color.hex("#1a1b26")) + Style.Bold + Style.bg(Steel)

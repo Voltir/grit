@@ -3,7 +3,6 @@ package grit.app
 import grit.core.{Message, Origin, SourceId}
 import grit.dbos.Engine
 import grit.tui.runtime.{Host, Mailbox}
-import grit.tui.runtime.std.Std
 import java.util.UUID
 import scala.util.control.NonFatal
 
@@ -19,7 +18,7 @@ import scala.util.control.NonFatal
   * on the database or the model. [[close]] stops following.
   */
 final class ChatHost(engine: Engine^, origin: Origin)
-    extends Host[Std | ChatScreen.Msg],
+    extends Host[ChatScreen.Msg],
       AutoCloseable,
       caps.SharedCapability {
 
@@ -31,7 +30,7 @@ final class ChatHost(engine: Engine^, origin: Origin)
   @volatile @caps.unsafe.untrackedCaptures
   private var open = true
 
-  def receive(msg: Std | ChatScreen.Msg, mailbox: Mailbox[Std | ChatScreen.Msg]): Unit =
+  def receive(msg: ChatScreen.Msg, mailbox: Mailbox[ChatScreen.Msg]): Unit =
     msg match {
       case ChatScreen.Msg.Load => background(() => follow(mailbox))
       case ChatScreen.Msg.Send(text) => background(() => send(text, mailbox))
@@ -40,7 +39,7 @@ final class ChatHost(engine: Engine^, origin: Origin)
 
   def close(): Unit = open = false
 
-  private def follow(mailbox: Mailbox[Std | ChatScreen.Msg]): Unit =
+  private def follow(mailbox: Mailbox[ChatScreen.Msg]): Unit =
     engine.conversation(origin) match {
       case Left(e) => mailbox.offer(ChatScreen.Msg.Failed(s"could not open the conversation: $e"))
       case Right(conversation) =>
@@ -58,7 +57,7 @@ final class ChatHost(engine: Engine^, origin: Origin)
         }
     }
 
-  private def send(text: String, mailbox: Mailbox[Std | ChatScreen.Msg]): Unit = {
+  private def send(text: String, mailbox: Mailbox[ChatScreen.Msg]): Unit = {
     // The TUI never redelivers, so each message is its own source.
     val started = for {
       turn <- engine.inbox.ingest(origin, SourceId(UUID.randomUUID().toString), Message.User(text))
