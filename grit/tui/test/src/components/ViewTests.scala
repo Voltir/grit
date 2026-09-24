@@ -4,8 +4,7 @@ import grit.tui.components.editor.Editor
 import grit.tui.components.layout.{Border, Box}
 import grit.tui.components.overlay.Popup
 import grit.tui.components.widget.{Scrollbar, Spinner, StatusBar}
-import grit.tui.model.input.{Input, Key}
-import grit.tui.model.surface.{Frame, Pos, Rect, Size, Surface}
+import grit.tui.model.surface.{Frame, Size, Surface}
 import grit.tui.model.text.Width
 import grit.tui.wire.paint.Painter
 import utest.*
@@ -13,19 +12,9 @@ import utest.*
 object ViewTests extends TestSuite {
 
   /** A leaf view that fills its box, so composition can be checked by reading glyphs. */
-  private final case class Fill(ch: Char, want: Size = Size(1, 1)) extends Passive {
+  private final case class Fill(ch: Char, want: Size = Size(1, 1)) extends View {
     def measure(avail: Size): Size = want
     def render(size: Size): Surface = Surface.filled(size, grit.tui.model.surface.Cell(ch))
-  }
-
-  /** A child that reports the rect it was routed against, so delegation can be checked
-    * rather than assumed.
-    */
-  private final case class Probe(ch: Char) extends View {
-    type Route = Rect
-    def measure(avail: Size): Size = avail
-    def render(size: Size): Surface = Surface.filled(size, grit.tui.model.surface.Cell(ch))
-    def route(input: Input, at: Rect): Rect = at
   }
 
   /** Every concrete view in the library, so the size law is asserted over all of them
@@ -134,35 +123,6 @@ object ViewTests extends TestSuite {
       assert(round.head == "╭──╮" && round.last == "╰──╯")
       assert(plain.head == "┌──┐" && plain.last == "└──┘")
       assert(round(1) == "│xx│" && plain(1) == "│xx│")
-    }
-
-    test("a passive view hands every input straight back") {
-      // The absence of a decision, stated once. A widget with no routing of its own
-      // does not get to silently swallow a key the app was going to bind.
-      val at = Rect(0, 0, 1, 10)
-      val inputs = Vector(
-        Input.Keyboard(Key.Printable('a')),
-        Input.Keyboard(Key.Enter),
-        Input.Paste("text")
-      )
-      inputs.foreach { i =>
-        assert(Spinner(0).route(i, at) == i)
-        assert(StatusBar(Vector.empty, Vector.empty).route(i, at) == i)
-      }
-    }
-
-    test("a box routes to its child against the rect the child was painted into") {
-      // The child was blitted one cell in, so routing it the outer rect puts every
-      // position one cell out -- the kind of error that surfaces only as a selection
-      // that drifts, never as a crash.
-      val outer = Rect(4, 10, 6, 20)
-      val b = Box(Probe('x'), title = "t")
-      val key = Input.Keyboard(Key.Enter)
-      assert(b.route(key, outer) == Rect(5, 11, 4, 18))
-      // And the consequence, stated in the coordinates that matter: the frame's own
-      // top-left corner is not a cell of the child.
-      assert(!b.route(key, outer).contains(Pos(outer.top, outer.left)))
-      assert(b.route(key, outer).contains(Pos(outer.top + 1, outer.left + 1)))
     }
 
     test("no view writes a byte for a frame it already painted") {

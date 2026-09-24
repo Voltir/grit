@@ -58,14 +58,6 @@ final case class Editor(
   def measure(avail: Size): Size =
     Size(math.min(avail.rows, visualRows(avail.cols).length + 2), avail.cols)
 
-  /** Editing produces the next editor, or `None` for an input the app owns. */
-  type Route = Option[Editor]
-
-  /** Routing is editing: the rect is where the box was painted, and its width is what
-    * wrapping needs.
-    */
-  def route(input: Input, at: Rect): Option[Editor] = apply(input, at.cols)
-
   /** The caret, clamped into the text. */
   private def at: Int = math.max(0, math.min(caret, text.length))
 

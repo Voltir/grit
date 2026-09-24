@@ -1,6 +1,6 @@
 package grit.tui.components.widget
 
-import grit.tui.components.Passive
+import grit.tui.components.View
 import grit.tui.model.surface.{Cell, Size, Style, Surface}
 import grit.tui.model.text.Width
 
@@ -14,7 +14,7 @@ final case class StatusBar(
     left: Vector[String],
     right: Vector[String],
     style: Style = Style(reverse = true)
-) extends Passive {
+) extends View {
 
   /** One row, the full width offered. */
   def measure(avail: Size): Size = Size(math.min(1, avail.rows), avail.cols)

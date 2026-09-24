@@ -34,9 +34,6 @@ final case class Popup(
   def measure(avail: Size): Size =
     Size(math.min(avail.rows, boxSize.rows), math.min(avail.cols, boxSize.cols))
 
-  /** The app must decide what a routed input means; the vocabulary is [[Popup.Route]]. */
-  type Route = Popup.Route
-
   import Popup.*
 
   /** The candidates the query admits, in the order they were given. Prefix matching,
@@ -132,7 +129,7 @@ final case class Popup(
   }
 
   /** What the app must do with one input while the popup is open. */
-  def route(input: Input, box: Rect): Route = input match {
+  def route(input: Input, box: Rect): Popup.Route = input match {
     case Input.Keyboard(Key.Up(_)) => Route.Stay(move(-1))
     case Input.Keyboard(Key.Down(_)) => Route.Stay(move(1))
     case Input.Keyboard(Key.Enter) => accept
@@ -159,10 +156,9 @@ object Popup {
 
   def of(items: String*): Popup = Popup(items.toVector)
 
-  /** Where one input goes while the popup is open. Unlike [[Modal.Route]] this has a
-    * pass-through case, and that difference *is* the difference between the two: a
-    * modal freezes what is behind it, a popup floats over something still being typed
-    * into.
+  /** Where one input goes while the popup is open. It has a pass-through case, and that
+    * is the difference from a modal: a modal freezes what is behind it, a popup floats
+    * over something still being typed into.
     */
   enum Route {
 

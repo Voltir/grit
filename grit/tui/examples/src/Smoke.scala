@@ -1,6 +1,6 @@
 package grit.tui.examples
 
-import grit.tui.components.Passive
+import grit.tui.components.View
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.*
 import grit.tui.components.{Node, OnInput}
@@ -47,7 +47,7 @@ object Smoke extends App[Smoke.State, Smoke.Msg] {
   /** The whole screen. Painted at whatever size it is given, so a resize shows up as the
     * size in the title bar.
     */
-  private final case class Card(state: State) extends Passive {
+  private final case class Card(state: State) extends View {
     def measure(avail: Size): Size = avail
 
     def render(size: Size): Surface = {

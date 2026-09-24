@@ -1,35 +1,24 @@
 package grit.tui.components.overlay
 
 import grit.tui.components.layout.Border
-import grit.tui.model.input.{Button, Input, Key, MouseKind}
-import grit.tui.model.surface.{Cell, Pos, Rect, Size, Style, Surface}
+import grit.tui.model.surface.{Cell, Rect, Size, Style, Surface}
 
-/** A centred dialog over a frozen app: geometry, chrome, and a routing rule.
+/** A centred dialog over a frozen app: its geometry and its chrome.
   *
-  * The modal owns no document. Its body is whatever the app blits into the rect
-  * [[place]] returns -- a document pane, usually -- so scrolling and selection stay in the
-  * pane, where rule 6 already lives, and a drag begun in the modal still clamps to
-  * the modal's own document.
+  * The modal owns no document. Its body is whatever the tree puts in the rect [[place]]
+  * returns -- a document pane, usually -- so scrolling and selection stay in the pane,
+  * where rule 6 already lives, and a drag begun in the modal still clamps to the modal's
+  * own document.
   *
-  * Two things it does own:
+  * **The app beneath is dimmed, not cleared.** Everything outside the frame keeps its
+  * glyphs and gains whatever [[behind]] says -- `dim` alone by default, a darkened ground
+  * as well once an app names one: it is frozen, not gone. There is no drop shadow. A
+  * shadow drawn as a shade glyph had to `fill`, destroying the app's glyphs to fake depth
+  * that a lit [[panel]] over a receding backdrop gives honestly.
   *
-  *   - **The app beneath is dimmed, not cleared.** Everything outside the frame keeps its
-  *     glyphs and gains whatever [[behind]] says -- `dim` alone by default, a darkened
-  *     ground as well once an app names one: it is frozen, not gone. There is no drop
-  *     shadow. A shadow drawn as a shade glyph had to `fill`, destroying the app's glyphs
-  *     to fake depth that a lit [[panel]] over a receding backdrop gives honestly.
-  *   - **Capture is a routing rule, not a paint rule.** Painting something opaque over a
-  *     pane does not stop input reaching it; [[route]] does. Its result type has no
-  *     "pass it through" case, so an input the modal does not use is *swallowed* by
-  *     construction rather than by an app remembering to guard every binding. Two
-  *     deliberate exceptions, both named: [[Route.Ambient]] for the terminal's own facts
-  *     (a resize, a focus report), which are not interactions at all; and a mouse drag or
-  *     release, which belongs to a drag already in flight wherever the pointer has
-  *     wandered -- swallowing those would strand a selection that left the frame.
-  *
-  * The app's chassis keys -- quit, and the key that opened the modal -- are the app's,
-  * bound before [[route]] is consulted. Capture governs what reaches the content beneath,
-  * not what reaches the program.
+  * Capture is not here: it is the tree's. A `dialog` node walls off everything beneath it
+  * and ends the focus path, so nothing below sees a key, a press or the wheel, while a
+  * hotkey bound outside the dialog still runs.
   */
 final case class Modal(
     title: String,
@@ -92,26 +81,6 @@ final case class Modal(
     */
   private def frame(s: Surface, o: Rect): Surface =
     Border.draw(s.fill(o, Cell(' ', panel)), o, Border.Round, title, chrome.over(panel), TitledFrom)
-
-  /** What the app must do with one input while this modal is open. */
-  def route(input: Input, body: Rect): Route = input match {
-    case Input.Resize(_) => Route.Ambient(input)
-    case Input.Focus(_) => Route.Ambient(input)
-    case Input.Keyboard(Key.Escape) => Route.Close
-    case Input.Keyboard(Key.Up(_)) => Route.Scroll(-1)
-    case Input.Keyboard(Key.Down(_)) => Route.Scroll(1)
-    case Input.Keyboard(Key.PageUp(_)) => Route.Scroll(-math.max(1, body.rows))
-    case Input.Keyboard(Key.PageDown(_)) => Route.Scroll(math.max(1, body.rows))
-    case Input.Keyboard(Key.Home(_)) => Route.ToTop
-    case Input.Keyboard(Key.End(_)) => Route.ToBottom
-    case Input.Mouse(e) if e.kind == MouseKind.Wheel =>
-      Route.Scroll(if (e.button == Button.WheelUp) -WheelRows else WheelRows)
-    // A drag in flight began somewhere, and the pane it began in clamps it (rule 6).
-    case Input.Mouse(e) if e.kind == MouseKind.Drag || e.kind == MouseKind.Release =>
-      Route.Pointer(e.pos)
-    case Input.Mouse(e) if body.contains(e.pos) => Route.Pointer(e.pos)
-    case _ => Route.Swallowed
-  }
 }
 
 object Modal {
@@ -128,40 +97,4 @@ object Modal {
 
   /** Narrower than this and the title would be all frame and no title. */
   private val TitledFrom = 8
-
-  /** Rows one wheel detent scrolls the body. */
-  private val WheelRows = 3
-
-  /** Where one input goes while the modal is open.
-    *
-    * There is deliberately no case meaning "give it to the app beneath": that is the
-    * capture rule, stated once in a type instead of at every binding site.
-    */
-  enum Route {
-
-    /** Escape: the app should close the modal. */
-    case Close
-
-    /** The body scrolls by `delta` rows, negative up. */
-    case Scroll(delta: Int)
-
-    /** The body jumps to the start of its document. */
-    case ToTop
-
-    /** The body jumps to the end of its document. */
-    case ToBottom
-
-    /** A mouse event the modal's body should see, at screen coordinates -- the app
-      * routes it as usual.
-      */
-    case Pointer(pos: Pos)
-
-    /** Consumed and does nothing. The app beneath must not see it. */
-    case Swallowed
-
-    /** Not an interaction: a resize or a focus report. The modal freezes the user's
-      * input, not the terminal's facts.
-      */
-    case Ambient(input: Input)
-  }
 }

@@ -1,7 +1,7 @@
 package grit.tui.runtime
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
-import grit.tui.components.{Node, OnInput, Passive}
+import grit.tui.components.{Node, OnInput, View}
 import grit.tui.components.Node.*
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.{Cell, Pos, Size, Surface}
@@ -47,7 +47,7 @@ object RuntimeTests extends TestSuite {
   }
 
   /** Paints `text` on its first row, and `fill` across every cell it is given. */
-  private final case class Card(text: String, fill: Char = ' ') extends Passive {
+  private final case class Card(text: String, fill: Char = ' ') extends View {
     def measure(avail: Size): Size = avail
     def render(size: Size): Surface = Surface.filled(size, Cell(fill)).write(0, 0, text)
   }

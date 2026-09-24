@@ -1,6 +1,6 @@
 package grit.tui.components.widget
 
-import grit.tui.components.Passive
+import grit.tui.components.View
 import grit.tui.model.surface.{Cell, Size, Style, Surface}
 
 /** A one-column scrollbar with a proportional thumb.
@@ -18,7 +18,7 @@ final case class Scrollbar(
     offset: Int,
     railStyle: Style = Style.plain,
     thumbStyle: Style = Style.plain
-) extends Passive {
+) extends View {
 
   /** One column, as tall as it is offered. */
   def measure(avail: Size): Size = Size(avail.rows, math.min(1, avail.cols))
