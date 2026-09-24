@@ -14,6 +14,8 @@ object DotEnvTests extends TestSuite {
           |GRIT_SESSION='work'
           |EMPTY=
           |URL=jdbc:postgresql://h/db?a=b
+          |LONE="
+          |MIXED="a'
           |""".stripMargin
       ) ==> Right(
         Map(
@@ -21,7 +23,9 @@ object DotEnvTests extends TestSuite {
           "GRIT_MODEL" -> "x/y:free",
           "GRIT_SESSION" -> "work",
           "EMPTY" -> "",
-          "URL" -> "jdbc:postgresql://h/db?a=b"
+          "URL" -> "jdbc:postgresql://h/db?a=b",
+          "LONE" -> "\"",
+          "MIXED" -> "\"a'"
         )
       )
     }

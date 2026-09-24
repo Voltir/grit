@@ -41,7 +41,9 @@ object DotEnv {
     else parse(java.nio.file.Files.readString(path)).map(_ ++ env)
 
   private def unquote(value: String): String =
-    if (value.length >= 2 && (value.head == '"' || value.head == '\'') && value.last == value.head)
-      value.substring(1, value.length - 1)
-    else value
+    value.headOption match {
+      case Some(q @ ('"' | '\'')) if value.length >= 2 && value.endsWith(q.toString) =>
+        value.substring(1, value.length - 1)
+      case _ => value
+    }
 }
