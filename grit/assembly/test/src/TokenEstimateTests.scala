@@ -25,10 +25,9 @@ object TokenEstimateTests extends TestSuite {
       estimate(assistant(AssistantBlock.Text("abcd"), AssistantBlock.Text("efgh"))) ==> 6
     }
 
-    test("reasoning costs its replay form, not its readable text") {
+    test("an earlier reply's reasoning costs nothing: the model drops it") {
       estimate(assistant(AssistantBlock.Reasoning("x" * 400, None))) ==> 4
-      // {"a":"bcdefgh"} is 15 characters.
-      estimate(assistant(AssistantBlock.Reasoning("", Some(ujson.Obj("a" -> "bcdefgh"))))) ==> 8
+      estimate(assistant(AssistantBlock.Reasoning("", Some(ujson.Obj("a" -> "b" * 400))))) ==> 4
     }
 
     test("a tool call costs its id, name and arguments; a tool result its id and content") {
