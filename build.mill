@@ -157,7 +157,20 @@ object grit extends Module {
      * .local/backlog/tui-separation-checking.md */
     def separationChecking = false
 
-    object test extends GritTests
+    object test extends GritTests {
+      /* NodeCaptureTests compiles probe sources against tui with tui's own flags, as
+       * grit.core.SeparationTests does, to pin what capture checking rejects in a view
+       * tree's handlers and apps. */
+      def mvnDeps = Task {
+        super.mvnDeps() ++ Seq(mvn"org.scala-lang::scala3-compiler:${scalaVersion()}")
+      }
+      def forkEnv = Task {
+        super.forkEnv() ++ Map(
+          "GRIT_PROBE_CLASSPATH" -> tui.runClasspath().map(_.path.toString).mkString(":"),
+          "GRIT_PROBE_OPTIONS" -> tui.scalacOptions().mkString(" ")
+        )
+      }
+    }
 
     /* Everything runnable, so the library carries no demo baggage. Demo2 is the pty gate's
      * target (scripts/tui-gate) until grit.app's own screen replaces it. */

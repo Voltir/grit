@@ -43,12 +43,13 @@
 #
 # Ported from ../Spikes/tui-spike-slate (`./gate` there). The first six scenarios drive
 # Demo2, which exercises library features grit.app does not use yet (the modal, the popup,
-# the scrollbar thumb); `chat` and `reload` drive grit.app. Whether Demo2 retires is the
-# tui design review's question (.local/backlog/tui-design-review.md).
+# the scrollbar thumb); `chat` and `reload` drive grit.app. `MAIN=grit.tui.examples.DemoNext`
+# runs the six against the same screen on the view tree (grit.tui.node), which replaces
+# Demo2 once grit.app has moved onto it.
 set -u
 cd "$(dirname "$0")/.."
 
-MAIN=grit.tui.examples.Demo2
+MAIN=${MAIN:-grit.tui.examples.Demo2}
 
 ROWS=30
 COLS=100
