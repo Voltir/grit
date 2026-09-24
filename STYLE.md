@@ -51,9 +51,10 @@ working. Thread the parameter.
 `Either` or a sealed ADT for anything the domain anticipates. Exceptions only for the
 genuinely unrecoverable.
 
-This has teeth beyond style here: **DBOS retries a step when it throws.** An exception
-you did not design becomes retry behaviour you did not design — potentially a duplicated
-model call. Domain failures must not be exceptions.
+This has teeth beyond style here: **DBOS records a step that throws.** A step gets one
+attempt by default, and its exception becomes its recorded result: every later run of that
+workflow rethrows it without running the step, so a transient failure you did not design
+is permanent for that workflow id. Domain failures must not be exceptions.
 
 ```scala
 // no

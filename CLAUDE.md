@@ -7,7 +7,8 @@ LSP. Nothing is carried forward as a transcript. The same engine runs in three m
 local TUI harness, a cloud agent driven from Slack, and triggered tasks. Edges reach it
 only through Postgres ([ADR 0002](docs/decisions/0002-edges-reach-the-engine-through-postgres.md)).
 
-Scala 3 · Mill · `dev.dbos:transact` · Postgres 18 · capture checking on. Versions live in
+Scala 3 · Mill · `dev.dbos:transact` · Postgres 18 · capture checking on, and separation
+checking everywhere but `grit.tui` ([ADR 0003](docs/decisions/0003-durable-is-exclusive-under-separation-checking.md)). Versions live in
 `build.mill` and `.mill-version`.
 
 ## Architecture
@@ -52,8 +53,8 @@ capability is a promise of purity.**
 2. Effects are capabilities in the signature — `(using Tx)`, explicit `Provider`. No
    ambient singletons, no hidden I/O.
 3. Expected failure in the return type (`Either`/sealed ADT). Exceptions only for the
-   unrecoverable — **DBOS retries a step that throws**, so a stray exception becomes
-   undesigned retry behaviour.
+   unrecoverable — **DBOS records a step that throws** and rethrows it on every replay,
+   so a stray exception becomes that workflow's permanent result.
 4. Total over partial — no `.get`, `.head`, `Map.apply`, inexhaustive matches.
 5. Illegal states unrepresentable — sealed ADTs, opaque id types.
 6. No `null` outside a quarantine module (rule 8).
@@ -83,6 +84,10 @@ skipped. If that error appears after a version change, check the setting first.
 **upickle's `derives ReadWriter` crashes under capture checking** (a `MatchError` on
 `caps.internal.inferred` in its macro; upickle 4.4.3, Scala 3.9). Write codecs by hand
 over `ujson`, as `grit.core.PayloadJson` does.
+
+Under separation checking a `var` field in a plain class needs `@caps.unsafe.untrackedCaptures`
+(when it holds immutable values) or a `Stateful` class, and an array passed to a Java
+method needs `caps.unsafe.unsafeAssumePure`, in quarantine modules only.
 
 Tests share `GritTests` in `build.mill`, which silences Scala 3.9's false
 `unused pattern variable` warnings for variables read only inside utest's `assert`. Every

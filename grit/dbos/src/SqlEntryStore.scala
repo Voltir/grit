@@ -1,7 +1,8 @@
 package grit.dbos
 
 import grit.core.{ConversationId, Entry, EntryId, EntryStore, PayloadJson, StoreError, Tx, TurnSeq}
-import java.sql.{ResultSet, SQLException}
+import java.sql.ResultSet
+import org.postgresql.util.PSQLException
 import java.time.{OffsetDateTime, ZoneOffset}
 import scala.util.Using
 import scala.util.control.NonFatal
@@ -28,7 +29,8 @@ final class SqlEntryStore extends EntryStore {
       }
       Right(())
     } catch {
-      case e: SQLException if e.getSQLState == UniqueViolation =>
+      case e: PSQLException
+          if e.getSQLState == UniqueViolation && violated(e).contains(PrimaryKey) =>
         Left(StoreError.DuplicateId(entry.id))
       case NonFatal(e) => Left(databaseError(e))
     }
@@ -52,7 +54,7 @@ final class SqlEntryStore extends EntryStore {
   )(using tx: Tx^): Either[StoreError, Vector[Entry]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val sql =
-      s"SELECT $columns FROM grit.entries WHERE conversation_id = ?::uuid ORDER BY seq, id"
+      s"SELECT $columns FROM grit.entries WHERE conversation_id = ?::uuid ORDER BY seq"
     attempt {
       Using.resource(conn.prepareStatement(sql)) { ps =>
         ps.setString(1, ConversationId.value(conversation))
@@ -76,6 +78,14 @@ private[dbos] object SqlEntryStore {
 
   /** Postgres SQLSTATE for a primary key or unique index violation. */
   private val UniqueViolation = "23505"
+
+  /** The primary key's name. Any other unique violation, such as a seq taken by a writer
+    * that skipped the conversation lock, is a database error, not a duplicate id.
+    */
+  private val PrimaryKey = "entries_pkey"
+
+  private def violated(e: PSQLException): Option[String] =
+    Option(e.getServerErrorMessage).flatMap(m => Option(m.getConstraint))
 
   private[dbos] def attempt[A](body: => A): Either[StoreError, A] =
     try Right(body)

@@ -11,8 +11,6 @@ trait EntryStore {
   /** The entry with `id`, or `None` when no such entry exists. */
   def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]]
 
-  /** Every entry in `conversation`, ascending by `seq`, ties broken by `id`.
-    * Empty for an unknown conversation.
-    */
+  /** Every entry in `conversation`, ascending by `seq`. Empty for an unknown conversation. */
   def list(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]]
 }

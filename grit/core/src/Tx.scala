@@ -1,7 +1,7 @@
 package grit.core
 
 /** Capability to read and write inside the current database transaction.
-  * Obtained from [[grit.dbos.Store.transact]]; a `Tx` is valid only for
+  * Obtained from [[Durable.transact]]; a `Tx` is valid only for
   * the duration of that callback, and the type system rejects any attempt to
   * keep it beyond it.
   */

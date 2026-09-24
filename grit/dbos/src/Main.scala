@@ -1,16 +1,18 @@
 package grit.dbos
 
-import dev.dbos.transact.{DBOS, StartWorkflowOptions}
+import dev.dbos.transact.{DBOS, DBOSClient}
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory
+import grit.core.{Message, SourceId, WorkflowId}
 import java.sql.DriverManager
 import org.postgresql.ds.PGSimpleDataSource
 import scala.io.Source
 import scala.util.Using
 
-/** Minimal "get DBOS running" slice. Registers [[ProofWorkflow]] and runs it
-  * once, under a given or fresh workflow id, against the Postgres named by
-  * `GRIT_DATABASE_*` (see [[DbConfig]]), defaulting to the local one.
+/** The phase-0 proof run: an edge's whole path through Postgres. Ingests each argument
+  * as a source message, starts its turn on the `turns` queue, and prints what the
+  * stand-in [[ProofTurn]] saw, against the Postgres named by `GRIT_DATABASE_*` (see
+  * [[DbConfig]]), defaulting to the local one.
   */
 object Main {
 
@@ -56,58 +58,50 @@ object Main {
     }
     schemaSetup(config)
     val dbos = newDbos(config)
+    val ds = dataSource(config)
 
-    // Unique id per run unless one is given; pass the same id twice to watch
-    // the second run replay the first's recorded result.
-    val wfId =
-      args.headOption.getOrElse("hello-" + System.currentTimeMillis())
+    // Each argument is a source message id; repeat one to watch the redelivery come back
+    // as the same turn. With none, one fresh message.
+    val sources =
+      if (args.isEmpty) List("proof-" + System.currentTimeMillis()) else args.toList
 
-    // Construct the transaction seam — this is the composition root.
-    val workflow =
-      new ProofWorkflow(
-        new Store(new JdbcStepFactory(dbos, dataSource(config))),
-        new SqlConversationStore(),
-        new SqlEntryStore()
-      )
-
-    val registered = dbos
-      .integration()
-      .registerWorkflow(
-        ProofWorkflow.Name,
-        classOf[ProofWorkflow].getName,
-        null,
-        workflow,
-        classOf[ProofWorkflow].getMethod("run"),
-        null,
-        null
-      )
+    // The composition root: stores and the stand-in turn meet the DBOS adapter here.
+    val conversations = new SqlConversationStore()
+    val entries = new SqlEntryStore()
+    Turns.registerQueue(dbos)
+    DurableWorkflow.register(
+      dbos,
+      new JdbcStepFactory(dbos, ds),
+      Turns.WorkflowName,
+      ProofTurn.body(entries)
+    )
 
     val failure: Option[String] =
       try {
         dbos.launch()
-
-        if (dbos.getWorkflowStatus(wfId).isPresent) {
-          println(s"[main] $wfId already recorded — replaying its result")
-        }
-
-        val handle = dbos
-          .integration()
-          .startRegisteredWorkflow(
-            registered,
-            Array.empty[AnyRef],
-            new StartWorkflowOptions(wfId)
-          )
-
-        val result = handle.getResult()
-        Option(result).collect { case s: String => s }.flatMap(Outcome.parse) match {
-          case Some(Outcome.Inserted(id)) =>
-            println(s"[main] inserted $id"); None
-          case Some(Outcome.AlreadyPresent(id)) =>
-            println(s"[main] $id already present"); None
-          case Some(Outcome.Failed(detail)) =>
-            Some(s"insert failed: $detail")
-          case None =>
-            Some(s"unrecognized workflow result: $result")
+        // The edge's side: Postgres only, through the client.
+        Using.resource(new DBOSClient(ds)) { client =>
+          val inbox = new SqlInbox(ds, client, conversations, entries)
+          val started = sources.map { source =>
+            for {
+              turn <- inbox.ingest(
+                ProofTurn.ProofOrigin,
+                SourceId(source),
+                Message.User(s"proof message $source")
+              )
+              _ <- inbox.startTurn(turn)
+            } yield turn
+          }
+          started.collectFirst { case Left(error) => error } match {
+            case Some(error) => Some(s"inbox: $error")
+            case None =>
+              started.collect { case Right(turn) => turn }.distinct.foreach { turn =>
+                val id = WorkflowId.value(turn.workflowId)
+                val result = client.retrieveWorkflow[String, Exception](id).getResult()
+                println(s"[main] $id -> $result")
+              }
+              None
+          }
         }
       } finally {
         // DBOS's pool and executor threads are non-daemon: a throw that skips

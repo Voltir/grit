@@ -4,6 +4,10 @@ import mill.*, scalalib.*
 trait GritModule extends ScalaModule {
   def scalaVersion = "3.9.0"
 
+  /* Separation checking makes `grit.core.Durable` exclusive: a step body that captures the
+   * `Durable` it runs on (a nested step) is a compile error. See ADR 0003. */
+  def separationChecking: Boolean = true
+
   // See STYLE.md
   def scalacOptions = Seq(
     "-no-indent",
@@ -11,7 +15,7 @@ trait GritModule extends ScalaModule {
     "-deprecation",
     "-feature",
     "-Wunused:all"
-  )
+  ) ++ Option.when(separationChecking)("-language:experimental.separationChecking")
 
   /* JDK 24 warns on every sun.misc.Unsafe call; Scala 3's LazyVals$ still
    * uses objectFieldOffset, so the warning is spurious and not ours to fix. */
@@ -47,7 +51,20 @@ object grit extends Module {
       mvn"com.lihaoyi::upickle:4.4.3"
     )
 
-    object test extends GritTests
+    object test extends GritTests {
+      def mvnDeps = Task {
+        super.mvnDeps() ++ Seq(mvn"org.scala-lang::scala3-compiler:${scalaVersion()}")
+      }
+
+      /* SeparationTests compiles probe sources against core, with core's own flags, to pin
+       * what the compiler rejects (ADR 0003). */
+      def forkEnv = Task {
+        super.forkEnv() ++ Map(
+          "GRIT_PROBE_CLASSPATH" -> core.runClasspath().map(_.path.toString).mkString(":"),
+          "GRIT_PROBE_OPTIONS" -> core.scalacOptions().mkString(" ")
+        )
+      }
+    }
   }
 
   /* The DBOS quarantine module (STYLE rule 8): everything that touches DBOS, JDBC or
@@ -94,6 +111,12 @@ object grit extends Module {
      * outright in a later release. */
     def forkArgs = Task { super.forkArgs() ++ Seq("--enable-native-access=ALL-UNNAMED") }
 
+    /* Off here only: the FFM terminal seam is byte arrays handed to Java, which separation
+     * checking treats as Mutable and Java signatures demand pure. tui never holds a
+     * `Durable` (ADR 0002), so nothing ADR 0003 protects is compiled here.
+     * .local/backlog/tui-separation-checking.md */
+    def separationChecking = false
+
     object test extends GritTests
 
     /* Everything runnable, so the library carries no demo baggage. Demo2 is the pty gate's
@@ -101,6 +124,7 @@ object grit extends Module {
     object examples extends GritModule {
       def moduleDeps = Seq(tui)
       def forkArgs = Task { tui.forkArgs() }
+      def separationChecking = false
       def mainClass = Some("grit.tui.examples.Hello")
     }
   }

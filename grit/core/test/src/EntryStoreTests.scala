@@ -7,6 +7,7 @@ import java.time.Instant
 object EntryStoreTests extends TestSuite {
 
   class FakeEntryStore extends EntryStore {
+    @caps.unsafe.untrackedCaptures
     private var entries = Vector.empty[Entry]
 
     def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] = {
