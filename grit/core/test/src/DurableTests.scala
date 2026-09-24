@@ -123,6 +123,69 @@ object DurableTests extends TestSuite {
       }
     }
 
+    test("patch: a fresh workflow records the marker and takes the new branch") {
+      val durable = new InMemoryDurable
+      def wf(using d: Durable^): String =
+        (if (d.patch("p1")) d.step("new") { () => "new" } else d.step("a") { () => "a" }) +
+          d.step("b") { () => "b" }
+      durable.run(id)(_ => wf) ==> "newb"
+      durable.recordedSteps(id) ==> Vector("DBOS.patch-p1", "new", "b")
+    }
+
+    test("patch: a workflow that passed the change replays its old branch") {
+      val durable = new InMemoryDurable
+      val counts = new Counts
+      counts.crashInB = true
+      assertThrows[InMemoryDurable.Crash](durable.run(id)(_ => twoSteps(counts)))
+      def patched(using d: Durable^): String =
+        (if (d.patch("p1")) d.step("new") { () => "new" }
+         else d.step("a") { () => counts.a += 1; "a" }) +
+          d.step("b") { () => "b" }
+      durable.run(id)(_ => patched) ==> "ab"
+      counts.a ==> 1
+      durable.recordedSteps(id) ==> Vector("a", "b")
+    }
+
+    test("deprecatePatch replays a marked history and marks nothing new") {
+      val durable = new InMemoryDurable
+      def patched(using d: Durable^): String = {
+        val branch = if (d.patch("p1")) "new" else "old"
+        d.step(branch) { () => branch } + d.step("b") { () => throw new InMemoryDurable.Crash }
+      }
+      def deprecated(using d: Durable^): String = {
+        d.deprecatePatch("p1")
+        d.step("new") { () => "new" } + d.step("b") { () => "b" }
+      }
+      assertThrows[InMemoryDurable.Crash](durable.run(id)(_ => patched))
+      durable.run(id)(_ => deprecated) ==> "newb"
+      durable.recordedSteps(id) ==> Vector("DBOS.patch-p1", "new", "b")
+      val fresh = WorkflowId("c1:2")
+      durable.run(fresh)(_ => deprecated) ==> "newb"
+      durable.recordedSteps(fresh) ==> Vector("new", "b")
+    }
+
+    test("replay: a body that follows the history passes") {
+      val history = Vector(InMemoryDurable.Step("a", Some("a"), None))
+      new InMemoryDurable().replay(id, history)(_ => twoSteps(new Counts)) ==> Right("ab")
+    }
+
+    test("replay: a renamed step, an unreadable output, or an early end fails") {
+      val counts = new Counts
+      val renamed = Vector(InMemoryDurable.Step("x", Some("x"), None))
+      assert(new InMemoryDurable().replay(id, renamed)(_ => twoSteps(counts)).isLeft)
+      def picked(using d: Durable^): String =
+        d.step("pick") { () => Picked(Vector("e1")) }(using pickedJournal).ids.mkString
+      val garbage = Vector(InMemoryDurable.Step("pick", Some("not json"), None))
+      assert(new InMemoryDurable().replay(id, garbage)(_ => picked).isLeft)
+      val longer = Vector(
+        InMemoryDurable.Step("a", Some("a"), None),
+        InMemoryDurable.Step("b", Some("b"), None),
+        InMemoryDurable.Step("c", Some("c"), None)
+      )
+      new InMemoryDurable().replay(id, longer)(_ => twoSteps(counts)) ==>
+        Left("ended after 2 of 3 recorded steps; next was 'c'")
+    }
+
     test("Unit is not a step output") {
       val err = assertCompileError("summon[Journaled[Unit]]")
       assert(err.msg.contains("return a value describing what it did"))

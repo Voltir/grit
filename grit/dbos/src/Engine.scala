@@ -48,8 +48,10 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
 
 object Engine {
 
-  /** Applies `schema.sql` to the database `config` names, and connects to it. */
-  def open(config: DbConfig): Engine^ = {
+  /** Applies `schema.sql` to the database `config` names, and connects to it. The engine
+    * recovers and dequeues only workflows of compatibility epoch `epoch` (ADR 0004).
+    */
+  def open(config: DbConfig, epoch: String): Engine^ = {
     schemaSetup(config)
     val dbos = new DBOS(
       DBOSConfig
@@ -57,6 +59,10 @@ object Engine {
         .withDatabaseUrl(config.jdbcUrl)
         .withDbUser(config.user)
         .withDbPassword(config.password)
+        // Last in DBOS's precedence, so it beats both DBOS__APPVERSION and the constant
+        // that enabling patching sets (DBOSExecutor's constructor).
+        .withEnablePatching()
+        .withAppVersion(epoch)
     )
     val ds = new PGSimpleDataSource()
     ds.setURL(config.jdbcUrl)

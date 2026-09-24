@@ -24,4 +24,17 @@ trait Durable extends caps.ExclusiveCapability {
     * of its output. The `Tx` is valid only within `body`.
     */
   def transact[A: Journaled](name: String)(body: (Tx^) ?=> A): A
+
+  /** Whether this run takes the new branch of the change `name`: true for a workflow that
+    * reaches this point after the change shipped, false for one that had already passed
+    * it. Guard the changed steps with it, keeping the old ones on the false branch, so a
+    * workflow in flight across the change replays the steps it recorded.
+    */
+  def patch(name: String): Boolean
+
+  /** Retires the patch `name` once no workflow in flight took its false branch: replaces
+    * `if (patch(name)) new else old` with `deprecatePatch(name); new`. Workflows that
+    * recorded the patch still replay; new ones no longer record it.
+    */
+  def deprecatePatch(name: String): Unit
 }

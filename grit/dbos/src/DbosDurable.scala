@@ -7,7 +7,8 @@ import grit.core.{Durable, Journaled, Tx, UnreadableJournal, WorkflowId}
 
 /** [[Durable]] over DBOS, for the workflow `workflowId`: `step` is a DBOS step, `transact`
   * a `txStep`. Outputs cross DBOS as the `String` their [[Journaled]] encodes to, so its
-  * serializer never sees a grit type. Steps run once, with no retries.
+  * serializer never sees a grit type. Steps run once, with no retries. `patch` needs
+  * patching enabled in DBOS's config ([[Engine]] does).
   */
 private[dbos] final class DbosDurable(
     dbos: DBOS,
@@ -37,6 +38,13 @@ private[dbos] final class DbosDurable(
         name
       )
     )
+
+  def patch(name: String): Boolean = dbos.patch(name)
+
+  def deprecatePatch(name: String): Unit = {
+    dbos.deprecatePatch(name)
+    ()
+  }
 
   // A fresh output is decoded too, so a first run returns exactly what a replay would.
   private def decode[A](name: String, recorded: String)(using j: Journaled[A]): A =

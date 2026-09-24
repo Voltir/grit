@@ -38,7 +38,7 @@ object Main {
     val sources =
       if (args.isEmpty) List("m0-" + System.currentTimeMillis()) else args.toList
 
-    val engine = Engine.open(config)
+    val engine = Engine.open(config, Turn.Epoch)
     val failure: Option[String] =
       try {
         // Prints each call, so a replayed turn is visibly one that did not call.

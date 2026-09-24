@@ -42,6 +42,11 @@ Mill `moduleDeps` are transitive, so
 `grit.app` sees `dev.dbos.*` through `grit.dbos` — enola's rule, not the compiler, guards
 it. Working in `grit/tui/`? Read [`grit/tui/CLAUDE.md`](grit/tui/CLAUDE.md) first.
 
+**Changing a workflow's steps** (names, order, output encodings) must replay every
+history of the current epoch: guard the change with `Durable.patch`, or start a new
+`Turn.Epoch` ([ADR 0004](docs/decisions/0004-workflows-evolve-by-patch-within-a-compatibility-epoch.md)).
+`TurnReplayTests` is the gate.
+
 ## Style rules
 
 Full rationale in [`STYLE.md`](STYLE.md).

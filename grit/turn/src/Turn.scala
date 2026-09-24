@@ -34,6 +34,14 @@ import java.time.Instant
   */
 object Turn {
 
+  /** The turn's compatibility epoch (ADR 0004). Every turn in flight was started under an
+    * epoch, and only an engine of the same epoch resumes it. Change the steps compatibly
+    * with `Durable.patch` and keep the epoch; change the epoch only for a break a patch
+    * cannot carry, which strands the turns in flight under the old one. `TurnReplayTests`
+    * replays the histories recorded under this epoch.
+    */
+  val Epoch = "2026-09-23"
+
   /** The turn workflow's body, for the turn whose workflow id is `workflowId`. Returns
     * what the turn did, for logs: its reply is in the store, never in this string.
     */

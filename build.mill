@@ -90,6 +90,13 @@ object grit extends Module {
      * and the linear assembler: the M0 gate without Postgres. */
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test, grit.assembly, grit.models)
+      def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
+
+      /* Recorded turn histories, one directory per epoch (ADR 0004): TurnReplayTests
+       * replays them, RecordTurnHistories and scripts/capture-history.sh write them. */
+      def forkEnv = Task {
+        super.forkEnv() ++ Map("GRIT_HISTORIES" -> (moduleDir / "histories").toString)
+      }
     }
   }
 
