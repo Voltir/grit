@@ -1,4 +1,4 @@
-package grit.app
+package grit.app.chat
 
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.Size

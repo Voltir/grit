@@ -1,4 +1,4 @@
-package grit.app
+package grit.app.main
 
 import grit.core.id.EntryId
 import grit.dbos.engine.Engine
@@ -55,7 +55,7 @@ object M0GateLiveTests extends TestSuite {
           "--sun-misc-unsafe-memory-access=allow",
           "-cp",
           sys.env("GRIT_TEST_CLASSPATH"),
-          "grit.app.CrashingTurn",
+          "grit.app.main.CrashingTurn",
           "crash"
         )
         .call(

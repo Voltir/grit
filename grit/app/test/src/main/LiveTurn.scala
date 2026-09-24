@@ -1,4 +1,4 @@
-package grit.app
+package grit.app.main
 
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler

@@ -1,4 +1,4 @@
-package grit.app
+package grit.app.chat
 
 import grit.tui.components.editor.Editor
 import grit.tui.components.tree.Node.*

@@ -37,7 +37,7 @@ Mill modules, and what each may name:
 | `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); later the relevance judge |
 | `grit.assembly` | `grit.assembly.{estimate,linear,retrieval}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`grit/assembly/README.md`](grit/assembly/README.md) |
 | `grit.eval` | `grit.eval` | core, dbos, assembly, models | the assembly eval, test sources only: every assembler over labelled cases in a throwaway Postgres; a report, not a gate |
-| `grit.app` | `grit.app` | everything | the composition root; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), or a one-shot run with arguments |
+| `grit.app` | `grit.app.{config,chat,main}` | everything | the composition root; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), or a one-shot run with arguments; package order in [`grit/app/README.md`](grit/app/README.md) |
 
 Mill `moduleDeps` are transitive, so
 `grit.app` sees `dev.dbos.*` through `grit.dbos` — enola's rule, not the compiler, guards

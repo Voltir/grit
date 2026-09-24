@@ -1,5 +1,7 @@
-package grit.app
+package grit.app.main
 
+import grit.app.chat.{ChatHost, ChatScreen, Replies}
+import grit.app.config.DotEnv
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler

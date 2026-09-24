@@ -82,7 +82,7 @@ AGENT_DB=grit_agent
 APP_RUNNER="env -u OPENROUTER_API_KEY GRIT_ENV_FILE=/dev/null GRIT_SESSION=$STAMP GRIT_LOG=$WORK/grit.log \
   GRIT_DATABASE_URL=jdbc:postgresql://localhost:5432/$AGENT_DB \
   $J/bin/java -Dgate.stamp=--$STAMP --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
-  -cp $APP_CP grit.app.Main"
+  -cp $APP_CP grit.app.main.Main"
 
 E=$'\033'
 

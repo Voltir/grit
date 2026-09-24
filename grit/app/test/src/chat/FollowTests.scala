@@ -1,4 +1,4 @@
-package grit.app
+package grit.app.chat
 
 import java.time.Instant
 

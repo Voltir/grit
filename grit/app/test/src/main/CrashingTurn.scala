@@ -1,4 +1,4 @@
-package grit.app
+package grit.app.main
 
 import grit.core.id.{ConversationId, EntryId}
 import grit.core.store.{Entry, EntryStore, StoreError, Tx}

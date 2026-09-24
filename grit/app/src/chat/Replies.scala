@@ -1,4 +1,4 @@
-package grit.app
+package grit.app.chat
 
 import grit.core.id.TurnRef
 import grit.core.message.{AssistantBlock, Message}

@@ -163,7 +163,7 @@ Work outside the terminal follows the same rule. `Effect.ToHost(msg)` is plain d
 runtime hands `msg` to the `Host` the embedding program supplied (`Runtime.run(app, host)`),
 which holds whatever capabilities the work needs and answers, on a thread of its own, by
 offering a message back through its `Mailbox`. grit's chat screen sends turns this way
-(`grit.app.ChatHost`).
+(`grit.app.chat.ChatHost`).
 
 ### Timers are cancellable, and the scheduler is virtual-thread native.
 
@@ -183,7 +183,7 @@ returned by routing and armed by the loop.
 `Headless` is the loop with no terminal, as a value: an app stepped through exactly the
 steps the runtime takes at a fixed size, its effects kept rather than performed, the screen
 painted on demand. A test types keys and delivers host messages, then reads the painted rows
--- `grit.app.ChatScreenTests` is the pattern. The runtime's own timers are only recorded;
+-- `grit.app.chat.ChatScreenTests` is the pattern. The runtime's own timers are only recorded;
 `tick` fires one.
 
 ## Rules the terminal taught us

@@ -206,7 +206,7 @@ object grit extends Module {
   object app extends GritModule {
     def moduleDeps = Seq(grit.core, grit.dbos, grit.turn, grit.models, grit.assembly, grit.tui)
     def forkArgs = Task { tui.forkArgs() }
-    def mainClass = Some("grit.app.Main")
+    def mainClass = Some("grit.app.main.Main")
 
     /* The M0 gate end to end, live. The crash test runs one phase in a child JVM on this
      * classpath, which it halts mid-turn. */
