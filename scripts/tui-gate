@@ -88,7 +88,7 @@ E=$'\033'
 
 # A no-daemon JVM still has to start; scripting input before the app is listening loses it.
 STARTUP=3
-# grit.app launches DBOS before its first paint.
+# grit.app paints at once and opens DBOS behind a ward; typing waits for the engine.
 APP_STARTUP=12
 
 script_span() {

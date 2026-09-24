@@ -34,8 +34,30 @@ final case class Look(theme: Theme) {
         StyledText.styled(text, Style.fg(theme.ink))
     )
 
-  def thinking: Block.Text =
-    Block.styled(StyledText.styled("  grit is thinking…", Style.fg(theme.faint)))
+  /** The line under the transcript while a turn runs: a rune of the Futhark for each
+    * `tick`, in turn.
+    */
+  def thinking(tick: Long): Block.Text =
+    Block.styled(
+      StyledText.styled(s"  ${Runes.futhark(tick)} ", Style.fg(theme.user) + Style.Bold) ++
+        StyledText.styled("grit is thinking…", Style.fg(theme.faint))
+    )
+
+  /** The line while something slow is under way, `what`: four runes turning about a
+    * still centre, one step per `tick`.
+    */
+  def ward(tick: Long, what: String): Block.Text = {
+    val ring = Runes.ward(tick)
+    Block.styled(
+      StyledText("  ") ++
+        StyledText.styled(ring(0).toString, Style.fg(theme.faint)) ++
+        StyledText.styled(ring(1).toString, Style.fg(theme.user)) ++
+        StyledText.styled(Runes.Idle, Style.fg(theme.grit) + Style.Bold) ++
+        StyledText.styled(ring(2).toString, Style.fg(theme.user)) ++
+        StyledText.styled(ring(3).toString, Style.fg(theme.faint)) ++
+        StyledText.styled(s" $what", Style.fg(theme.faint))
+    )
+  }
 
   def failure(reason: String): Block.Text =
     Block.styled(
@@ -87,6 +109,19 @@ object Look {
 
     /** The runic cross: the mark between turns. */
     val Turn = "᛭"
+
+    /** The Elder Futhark in its order: the thinking spinner's frames. */
+    val Futhark: Vector[Char] = "ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ".toVector
+
+    /** The frame for `tick`, safe for any value. */
+    def futhark(tick: Long): Char = Futhark(math.floorMod(tick, Futhark.length).toInt)
+
+    /** Algiz, Othala, Dagaz and Ansuz: the ward's ring. */
+    val Ward: Vector[Char] = "ᛉᛟᛞᚨ".toVector
+
+    /** The ring turned `tick` steps. */
+    def ward(tick: Long): Vector[Char] =
+      Ward.indices.toVector.map(i => Ward(math.floorMod(i + tick, Ward.length).toInt))
   }
 
   /** The top bar: the name on the accent, fading into the title on the slab. */

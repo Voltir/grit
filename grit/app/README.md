@@ -16,9 +16,12 @@ In dependency order:
   the same APCA contrast targets (`ThemeContrastTests`). Imports nothing in app.
 - **`chat`** — the chat TUI. `ChatScreen` is a pure `grit.tui` app whose transcript is a
   projection of the store: a submission leaves as `Effect.ToHost(Send)` and is shown when
-  the store has it. `ChatHost` is its engine side: `Send` ingests and starts a turn;
-  `Load` follows the conversation, polling its entries and each open turn's status
-  (`Follow`, pure), so replies to any turn appear, recovered ones included (ADR 0002).
+  the store has it. It paints at once: a ward turns while the engine opens, the Futhark
+  spins while a turn runs, both on one cancellable timer. `ChatHost` is its engine side:
+  `Load` opens the engine (`ChatHost.Opener`, off the screen's thread), then follows the
+  conversation, polling its entries and each open turn's status
+  (`Follow`, pure), so replies to any turn appear, recovered ones included (ADR 0002);
+  `Send` ingests and starts a turn once the engine is open.
   `Replies` reads replies back out of the store. ← `look`
 - **`main`** — `Main`: reads the settings, opens the engine and launches the turn
   (OpenRouter with a key, the stub without), then runs the chat TUI, or with arguments

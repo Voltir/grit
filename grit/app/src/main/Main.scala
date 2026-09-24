@@ -76,37 +76,56 @@ object Main {
     val summarizer = announced(tui, "summary", summaryConfig)
     val writer = announced(tui, "query", queryConfig)
 
-    val engine = Engine.open(config, Turn.Epoch)
-    val assembler: ContextAssembler^ =
-      if (retrieving)
-        new RetrievalAssembler(engine.entries, engine.search, writer, CharEstimate, budget, tail)
-      else new LinearAssembler(engine.entries, CharEstimate, budget)
-    val failure: Option[String] =
-      try {
-        engine.launch(
-          Turn.body(
-            SystemPrompt,
-            engine.entries,
-            engine.ledger,
-            assembler,
-            CharEstimate,
-            provider,
-            summarizer,
-            engine.db
-          )
+    /** `engine` with the turn launched on it: the assembler reads its stores. */
+    def launched(engine: Engine^): Engine^{engine} = {
+      val assembler: ContextAssembler^ =
+        if (retrieving)
+          new RetrievalAssembler(engine.entries, engine.search, writer, CharEstimate, budget, tail)
+        else new LinearAssembler(engine.entries, CharEstimate, budget)
+      engine.launch(
+        Turn.body(
+          SystemPrompt,
+          engine.entries,
+          engine.ledger,
+          assembler,
+          CharEstimate,
+          provider,
+          summarizer,
+          engine.db
         )
-        if (tui) {
-          val session = env.getOrElse("GRIT_SESSION", "default")
-          val host = new ChatHost(engine, Origin.Tui(session))
-          // Following stops before the engine it reads from closes.
-          try Runtime.run(new ChatScreen.App(modelName, look), host)
-          finally host.close()
-          None
-        } else say(engine, args.toList)
-      } finally {
-        // DBOS's threads are non-daemon: a throw that skips this leaves the JVM, and mill,
-        // waiting forever.
-        engine.close()
+      )
+      engine
+    }
+
+    val failure: Option[String] =
+      if (tui) {
+        // The screen paints first; the engine opens behind it, on the host's thread.
+        val opener = new ChatHost.Opener {
+          def open(): Engine^ = {
+            val engine = Engine.open(config, Turn.Epoch)
+            try launched(engine)
+            catch {
+              case e: Throwable =>
+                // DBOS's threads are non-daemon: an engine that is not handed on is closed.
+                engine.close()
+                throw e
+            }
+          }
+        }
+        val session = env.getOrElse("GRIT_SESSION", "default")
+        val host = new ChatHost(Origin.Tui(session), opener)
+        // Closing the host stops following and closes the engine, however far it got.
+        try Runtime.run(new ChatScreen.App(modelName, look), host)
+        finally host.close()
+        None
+      } else {
+        val engine = Engine.open(config, Turn.Epoch)
+        try say(launched(engine), args.toList)
+        finally {
+          // DBOS's threads are non-daemon: a throw that skips this leaves the JVM, and mill,
+          // waiting forever.
+          engine.close()
+        }
       }
 
     if (tui) println(s"[main] log: $log")

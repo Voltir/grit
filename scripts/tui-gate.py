@@ -240,10 +240,16 @@ def main():
                   "and was cleared by the submission")
         else:
             # Nothing was typed in this run, so anything in the transcript came from the
-            # store -- and it must be there on the first frame that paints the body.
-            first = next((g for g in screens if any("ᛗ " in row for row in g)), None)
-            check(first is not None and len(screens) <= 4,
-                  "the exchange was loaded, not typed", "%d frames" % len(screens))
+            # store. The screen paints a ward while the engine opens; the exchange must be
+            # there within a few frames of the ward leaving, and never in the prompt.
+            opened = [i for i, g in enumerate(screens)
+                      if not any("opening the engine" in row for row in g)]
+            after = screens[opened[0]:] if opened else []
+            first = next((i for i, g in enumerate(after) if any("ᛗ " in row for row in g)), None)
+            typed = any("gate says hi" in g[rows - 3] for g in screens)
+            check(first is not None and first <= 3 and not typed,
+                  "the exchange was loaded, not typed",
+                  "frame %s after the ward" % first)
         width = max(len(label) for _, label, _ in checks)
         failed = 0
         for ok, label, detail in checks:

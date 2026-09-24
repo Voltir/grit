@@ -8,7 +8,7 @@ import grit.tui.components.widget.StatusBar
 import grit.tui.model.block.Block
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.select.Doc
-import grit.tui.runtime.app.Effect
+import grit.tui.runtime.app.{Effect, TimerId}
 
 /** grit's chat screen: a transcript, a prompt and a status line. Pure, like every
   * grit.tui app: a submission leaves as [[ChatScreen.Msg.Send]] through `Effect.ToHost`,
@@ -21,17 +21,30 @@ object ChatScreen {
   /** One message of the conversation: the user's, or a reply. */
   final case class Said(user: Boolean, text: String)
 
-  /** `thinking` is whether the conversation has a turn in progress: its line is the
-    * transcript's last block while it is.
+  /** `said` is the transcript as the store has it. Below it, while the engine is
+    * `opening`, is the ward; while `thinking` (a turn in progress), the spinner. `tick`
+    * turns both.
     */
   final case class State(
-      transcript: Doc,
+      said: Vector[Block],
       reader: Scroller.State,
       editor: Editor,
+      opening: Boolean,
       thinking: Boolean,
+      tick: Long,
       status: String,
       title: String
-  )
+  ) {
+
+    /** Whether anything on screen is animated, so the tick must keep coming. */
+    def animated: Boolean = opening || thinking
+  }
+
+  /** The one timer that turns the runes. */
+  val Runes: TimerId = TimerId.of("runes")
+
+  /** How often the runes turn. */
+  val TickMs = 120L
 
   enum Msg extends caps.Pure {
 
@@ -49,8 +62,16 @@ object ChatScreen {
       */
     case Arrived(said: Vector[Said], thinking: Boolean)
 
-    /** From the host: sending failed, or a turn ended with no reply. */
+    /** From the host: sending failed, a turn ended with no reply, or the engine would not
+      * open.
+      */
     case Failed(reason: String)
+
+    /** From the host: the engine is open. */
+    case Opened
+
+    /** The runes turn one step. */
+    case Tick
 
     /** The prompt, edited. */
     case Edited(editor: Editor)
@@ -66,8 +87,17 @@ object ChatScreen {
 
     def init: (State, Effect[Msg]) =
       (
-        State(Doc.empty, Scroller.init, look.prompt, thinking = false, "loading", title),
-        Effect.ToHost(Msg.Load)
+        State(
+          Vector.empty,
+          Scroller.init,
+          look.prompt,
+          opening = true,
+          thinking = false,
+          tick = 0,
+          "",
+          title
+        ),
+        Effect.Batch(Vector(Effect.ToHost(Msg.Load), Effect.After(Runes, TickMs, Msg.Tick)))
       )
 
     def update(msg: Msg, s: State): (State, Effect[Msg]) =
@@ -85,9 +115,14 @@ object ChatScreen {
             case Said(true, text) => Vector(look.separator, look.user(text))
             case Said(false, text) => Vector(look.assistant(text))
           }
-          (withTail(s.copy(status = ""), blocks, thinking), Effect.NoOp)
+          animate(s, s.copy(said = s.said ++ blocks, thinking = thinking, status = ""))
         case Msg.Failed(reason) =>
-          (withTail(s, Vector(look.failure(reason)), s.thinking), Effect.NoOp)
+          animate(s, s.copy(said = s.said :+ look.failure(reason), opening = false))
+        case Msg.Opened => animate(s, s.copy(opening = false))
+        case Msg.Tick =>
+          // A tick that lands after the animation stopped ends the chain there.
+          if (s.animated) (s.copy(tick = s.tick + 1), Effect.After(Runes, TickMs, Msg.Tick))
+          else (s, Effect.NoOp)
         case Msg.Edited(e) => (s.copy(editor = e), Effect.NoOp)
         case Msg.Reader(Scroller.Msg.Copied(text, _)) =>
           if (text.isEmpty) (s.copy(status = "nothing selected"), Effect.NoOp)
@@ -96,17 +131,25 @@ object ChatScreen {
         case Msg.Quit => (s, Effect.Quit)
       }
 
-    /** `blocks` appended, the thinking line kept last while `thinking`. A reply that takes
-      * the thinking line's place is a different block, so the runtime's wrap memo wraps it
-      * afresh: nothing here has to be told apart by revision.
+    /** `after`, with the rune timer started if it now has something to turn, or
+      * cancelled if it no longer has. The runtime replaces a timer re-armed under the same
+      * id, so the chain never forks.
       */
-    private def withTail(s: State, blocks: Vector[Block], thinking: Boolean): State = {
-      val body = if (s.thinking) s.transcript.blocks.dropRight(1) else s.transcript.blocks
-      s.copy(
-        transcript = Doc(body ++ blocks ++ Option.when(thinking)(look.thinking)),
-        thinking = thinking
+    private def animate(before: State, after: State): (State, Effect[Msg]) =
+      if (after.animated && !before.animated) (after, Effect.After(Runes, TickMs, Msg.Tick))
+      else if (!after.animated && before.animated) (after, Effect.Cancel(Runes))
+      else (after, Effect.NoOp)
+
+    /** The transcript: what was said, then the ward or the spinner. A tail that changes
+      * each tick is a different block each tick, so the runtime's wrap memo re-wraps that
+      * one row and nothing above it.
+      */
+    private def transcript(s: State): Doc =
+      Doc(
+        s.said ++
+          Option.when(s.opening)(look.ward(s.tick, "opening the engine…")) ++
+          Option.when(s.thinking && !s.opening)(look.thinking(s.tick))
       )
-    }
 
     private def hotkeys: OnInput[Msg] = {
       case Input.Keyboard(Key.Ctrl('q')) => Some(Msg.Quit)
@@ -124,7 +167,7 @@ object ChatScreen {
         flex(5) -> Scroller
           .view(
             Transcript,
-            s.transcript,
+            transcript(s),
             s.reader,
             bar = Some((look.scrollRail, look.scrollThumb))
           )
@@ -133,7 +176,11 @@ object ChatScreen {
         fixed(1) -> paint(
           StatusBar(
             Vector(" ctrl-q quit ", " enter sends ", s.status),
-            Vector(if (s.thinking) s"${Look.Runes.Grit} thinking " else s"${Look.Runes.Idle} idle"),
+            Vector(
+              if (s.opening) s"${Look.Runes.Ward(0)} opening "
+              else if (s.thinking) s"${Look.Runes.futhark(s.tick)} thinking "
+              else s"${Look.Runes.Idle} idle"
+            ),
             look.status
           )
         )
