@@ -1,69 +1,65 @@
 package grit.app
 
 import grit.assembly.LinearAssembler
-import grit.core.{
-  AssistantBlock,
-  Message,
-  ModelRequest,
-  Origin,
-  Payload,
-  Provider,
-  ProviderError,
-  SourceId,
-  TurnRef
-}
+import grit.core.{Message, ModelRequest, Origin, Provider, ProviderError, SourceId, TurnRef}
 import grit.dbos.{DbConfig, Engine}
 import grit.models.{OpenRouterConfig, OpenRouterProvider, StubProvider}
+import grit.tui.runtime.TuiApp
 import grit.turn.Turn
 
-/** The M0 run: each argument is a message, ingested and answered by the real turn,
-  * against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
+/** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set ([[OpenRouterConfig]]), the stub
-  * otherwise. Repeat a message to watch a redelivery come back as the same turn; run again
-  * with the same messages to watch finished turns replay without calling the model.
+  * otherwise.
+  *
+  *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
+  *     (default `default`). Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
+  *     directory), never to the screen.
+  *   - **Arguments: each is a message**, answered by one turn and printed. Repeat a
+  *     message to watch a redelivery come back as the same turn; run again to watch
+  *     finished turns replay without calling the model.
   */
 object Main {
 
-  /** Every run shares one conversation. */
+  /** The argument runs share one conversation, apart from any TUI session. */
   private val RunOrigin: Origin = Origin.Task("m0", "main")
 
   private val SystemPrompt = "You are grit."
 
   def main(args: Array[String]): Unit = {
-    val config = DbConfig.fromEnv(sys.env) match {
-      case Right(c) => c
-      case Left(invalid) =>
-        System.err.println(s"[main] ${invalid.message}")
-        sys.exit(2)
-    }
+    val tui = args.isEmpty
+    val log = sys.env.getOrElse(
+      "GRIT_LOG",
+      java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "grit-tui.log").toString
+    )
+    // Before anything loads slf4j (DBOS does): a log line on stderr would paint over the
+    // screen.
+    if (tui) { val _ = System.setProperty("org.slf4j.simpleLogger.logFile", log) }
+
+    val config = exitOnLeft(DbConfig.fromEnv(sys.env).left.map(_.message))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend.
     val openRouter: Option[OpenRouterConfig] =
       if (!sys.env.contains(OpenRouterConfig.KeyVar)) None
-      else
-        OpenRouterConfig.fromEnv(sys.env) match {
-          case Right(c) => Some(c)
-          case Left(invalid) =>
-            System.err.println(s"[main] ${invalid.message}")
-            sys.exit(2)
-        }
+      else Some(exitOnLeft(OpenRouterConfig.fromEnv(sys.env).left.map(_.message)))
     val modelName = openRouter.fold(StubProvider.Model)(_.model)
     val model: Provider = openRouter match {
       case Some(c) => new OpenRouterProvider(c)
       case None => new StubProvider()
     }
-    val messages =
-      if (args.isEmpty) List("hello " + System.currentTimeMillis()) else args.toList
-
-    val engine = Engine.open(config, Turn.Epoch)
-    val failure: Option[String] =
-      try {
-        // Prints each call, so a replayed turn is visibly one that did not call.
-        val provider = new Provider {
+    // Prints each call in the argument run, so a replayed turn is visibly one that did
+    // not call.
+    val provider: Provider =
+      if (tui) model
+      else
+        new Provider {
           def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
             println(s"[provider] $modelName called with ${request.messages.size} message(s)")
             model.complete(request)
           }
         }
+
+    val engine = Engine.open(config, Turn.Epoch)
+    val failure: Option[String] =
+      try {
         engine.launch(
           Turn.body(
             SystemPrompt,
@@ -74,48 +70,52 @@ object Main {
             engine.db
           )
         )
-        val started = messages.map { text =>
-          for {
-            // The text is its own source id, so repeating a message redelivers it.
-            turn <- engine.inbox.ingest(RunOrigin, SourceId(text), Message.User(text))
-            _ <- engine.inbox.startTurn(turn)
-          } yield turn
-        }
-        started.collectFirst { case Left(error) => error } match {
-          case Some(error) => Some(s"inbox: $error")
-          case None =>
-            started.collect { case Right(turn) => turn }.distinct.foreach { turn =>
-              println(
-                s"[main] ${describe(turn)} -> ${engine.awaitTurn(turn)}: ${reply(engine, turn)}"
-              )
-            }
-            None
-        }
+        if (tui) {
+          val session = sys.env.getOrElse("GRIT_SESSION", "default")
+          TuiApp.run(new ChatScreen.App(modelName), new ChatHost(engine, Origin.Tui(session)))
+          None
+        } else say(engine, args.toList)
       } finally {
         // DBOS's threads are non-daemon: a throw that skips this leaves the JVM, and mill,
         // waiting forever.
         engine.close()
       }
 
+    if (tui) println(s"[main] log: $log")
     failure.foreach { message =>
       System.err.println(s"[main] $message")
       sys.exit(1)
     }
   }
 
+  /** Each message answered by one turn, printed. */
+  private def say(engine: Engine^, messages: List[String]): Option[String] = {
+    val started = messages.map { text =>
+      for {
+        // The text is its own source id, so repeating a message redelivers it.
+        turn <- engine.inbox.ingest(RunOrigin, SourceId(text), Message.User(text))
+        _ <- engine.inbox.startTurn(turn)
+      } yield turn
+    }
+    started.collectFirst { case Left(error) => error } match {
+      case Some(error) => Some(s"inbox: $error")
+      case None =>
+        started.collect { case Right(turn) => turn }.distinct.foreach { turn =>
+          val outcome = engine.awaitTurn(turn)
+          val reply = Replies.of(engine, turn).fold(identity, _.getOrElse("(no reply)"))
+          println(s"[main] ${describe(turn)} -> $outcome: $reply")
+        }
+        None
+    }
+  }
+
   private def describe(turn: TurnRef): String =
     grit.core.WorkflowId.value(turn.workflowId)
 
-  /** The text of `turn`'s reply, as recorded. */
-  private def reply(engine: Engine^, turn: TurnRef): String =
-    engine.db.read(engine.entries.get(Turn.replyId(turn))) match {
-      case Right(Some(entry)) =>
-        entry.payload match {
-          case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
-            blocks.collect { case AssistantBlock.Text(t) => t }.mkString
-          case Payload.Message(other) => s"unexpected reply: $other"
-        }
-      case Right(None) => "(no reply recorded)"
-      case Left(error) => s"(unreadable: $error)"
-    }
+  private def exitOnLeft[A](result: Either[String, A]): A = result match {
+    case Right(a) => a
+    case Left(message) =>
+      System.err.println(s"[main] $message")
+      sys.exit(2)
+  }
 }

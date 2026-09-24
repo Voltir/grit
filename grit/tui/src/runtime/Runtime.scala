@@ -22,6 +22,7 @@ final class Runtime[State, Msg](
     app: App[State, Msg]^,
     term: Terminal,
     scheduler: Scheduler,
+    host: Host[Msg]^ = Host.none[Msg],
     escapeTimeoutMs: Long = Runtime.DefaultEscapeTimeoutMs
 ) {
 
@@ -57,6 +58,11 @@ final class Runtime[State, Msg](
 
   /** Deliver a message from outside the loop -- a timer, or a host embedding grit.tui. */
   def offer(msg: Msg): Unit = { val _ = queue.offer(Event.FromApp(msg)) }
+
+  /** What a [[Host]] answers through: the queue alone, not the runtime, which holds the
+    * terminal -- a host keeps its mailbox on threads of its own.
+    */
+  private val mailbox: Mailbox[Msg] = msg => { val _ = queue.offer(Event.FromApp(msg)) }
 
   /** Run until the app quits, then give everything back in reverse. Blocks the calling
     * thread.
@@ -171,6 +177,7 @@ final class Runtime[State, Msg](
     case Effect.Quit =>
       running = false
       val _ = queue.offer(Event.Wake) // unblock the taker; no message is delivered
+    case Effect.ToHost(msg) => host.receive(msg, mailbox)
     case Effect.After(timer, delayMs, msg) =>
       scheduler.after(timer, delayMs)(() => { val _ = queue.offer(Event.FromApp(msg)) })
   }

@@ -54,6 +54,13 @@ enum Effect[+Msg] {
 
   /** Leave the loop and restore the terminal. */
   case Quit
+
+  /** Hand `msg` to the [[Host]] that embeds this app: how a pure `update` asks for work
+    * outside the terminal (a model call, a database write). Still plain data -- the
+    * capability to do the work is the host's, never the app's -- and the host answers,
+    * if at all, by offering a message back through its [[Mailbox]].
+    */
+  case ToHost(msg: Msg)
 }
 
 object Effect {

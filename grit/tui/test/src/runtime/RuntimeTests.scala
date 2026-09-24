@@ -289,6 +289,36 @@ object RuntimeTests extends TestSuite {
       scheduler.close()
     }
 
+    test("ToHost hands the message to the host, which answers through its mailbox") {
+      // The host answers from a thread of its own, as a real one must: the mailbox is
+      // the loop's queue, safe from any thread.
+      val term = new FakeTerminal()
+      val scheduler = Scheduler.create()
+      val app = new Scripted({
+        case (Msg.Tick, s) => (s, Effect.ToHost(Msg.Typed('h')))
+        case (Msg.Typed(c), s) => (s.copy(typed = s.typed + c), Effect.NoOp)
+        case (_, s) => (s, Effect.Quit)
+      })
+      val host = new Host[Msg] {
+        def receive(msg: Msg, mailbox: Mailbox[Msg]): Unit = msg match {
+          case Msg.Typed(c) =>
+            val _ = Thread.ofVirtual().start(() => mailbox.offer(Msg.Typed(c.toUpper)))
+          case _ => ()
+        }
+      }
+      val runtime = new Runtime(app, term, scheduler, host, escapeTimeoutMs = 20L)
+      runtime.offer(Msg.Tick)
+      val done = new CountDownLatch(1)
+      val t = new Thread(() => { runtime.run(); done.countDown() }, "hosted-runtime")
+      t.setDaemon(true)
+      t.start()
+      // The request itself is never handled as the app's own message: only the answer is.
+      assert(waitUntil(() => runtime.state.exists(_.typed == "H")))
+      runtime.offer(Msg.Done)
+      val _ = done.await(5L, TimeUnit.SECONDS)
+      scheduler.close()
+    }
+
     test("quit restores the terminal, in reverse, exactly once") {
       // The ordering claim asserted rather than commented: the scheduler stops before
       // the terminal is restored, or a late timer paints into a cooked-mode shell.

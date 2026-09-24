@@ -36,7 +36,7 @@ Mill modules, and what each may name:
 | `grit.turn` | `grit.turn` | core | the durable turn's body, written against `Durable` |
 | `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); later the relevance judge |
 | `grit.assembly` | `grit.assembly` | core | `ContextAssembler`s: builds each turn's context window |
-| `grit.app` | `grit.app` | everything | the composition root; its `Main` is the M0 run |
+| `grit.app` | `grit.app` | everything | the composition root; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), or a one-shot run with arguments |
 
 Mill `moduleDeps` are transitive, so
 `grit.app` sees `dev.dbos.*` through `grit.dbos` — enola's rule, not the compiler, guards

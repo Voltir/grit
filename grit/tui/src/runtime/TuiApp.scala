@@ -45,7 +45,10 @@ object TuiApp {
     * same pure `view`, painted once, with no modes taken. Detection is `isatty(1)` and
     * not a heuristic, which is why it can be trusted to decide this.
     */
-  def run[State, Msg](app: TuiApp[State, Msg]^): Unit =
+  def run[State, Msg](app: TuiApp[State, Msg]^): Unit = run(app, Host.none[Msg])
+
+  /** As [[run]], with `host` receiving the app's [[Effect.ToHost]] messages. */
+  def run[State, Msg](app: TuiApp[State, Msg]^, host: Host[Msg]^): Unit =
     SystemTerminal.open() match {
       case None =>
         // The non-tty path answers to the same rule the runtime does: the frame is the
@@ -56,6 +59,6 @@ object TuiApp {
       case Some(term) =>
         // The scheduler is handed over, not held: `Runtime.run` registers it for
         // release, so there is exactly one owner and exactly one close.
-        new Runtime(app, term, Scheduler.create()).run()
+        new Runtime(app, term, Scheduler.create(), host).run()
     }
 }

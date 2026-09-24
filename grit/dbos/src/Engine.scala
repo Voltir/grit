@@ -7,9 +7,13 @@ import grit.core.{
   ConversationStore,
   Db,
   Durable,
+  Entry,
   EntryStore,
   Inbox,
+  Origin,
+  StoreError,
   TurnRef,
+  Tx,
   UsageLedger,
   WorkflowId
 }
@@ -17,6 +21,7 @@ import java.sql.DriverManager
 import org.postgresql.ds.PGSimpleDataSource
 import scala.io.Source
 import scala.util.Using
+import scala.util.control.NonFatal
 
 /** grit over one Postgres: the stores, the turn workflow, and an edge's [[Inbox]], all in
   * this process. Open it, [[launch]] it with the turn's body, and close it when done; its
@@ -45,6 +50,25 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
     Turns.register(dbos, new JdbcStepFactory(dbos, dataSource), turn)
     dbos.launch()
   }
+
+  /** Every entry of the conversation `origin` names, oldest first; the conversation is
+    * created if it is new, as an edge's first ingest would.
+    */
+  def history(origin: Origin): Either[StoreError, Vector[Entry]] =
+    transaction(conversations.findOrCreate(origin).flatMap(c => entries.list(c.id)))
+
+  /** Runs `body` in a transaction of its own: committed on `Right`, rolled back otherwise. */
+  private def transaction[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    try {
+      Using.resource(dataSource.getConnection()) { conn =>
+        conn.setAutoCommit(false)
+        val result =
+          try body(using Tx.fromConnection(conn))
+          catch { case NonFatal(e) => conn.rollback(); throw e }
+        if (result.isRight) conn.commit() else conn.rollback()
+        result
+      }
+    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
 
   /** Waits for `turn` to finish and returns its workflow's output. A turn that threw
     * rethrows here.

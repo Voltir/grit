@@ -109,6 +109,12 @@ cannot capture a capability, which makes "`update` is pure" a fact about the typ
 than a fact about a test. Only the interpreter — which holds the terminal capability — turns
 an `Effect` into an action, and its signature says so.
 
+Work outside the terminal follows the same rule. `Effect.ToHost(msg)` is plain data: the
+runtime hands `msg` to the `Host` the embedding program supplied (`TuiApp.run(app, host)`),
+which holds whatever capabilities the work needs and answers, on a thread of its own, by
+offering a message back through its `Mailbox`. grit's chat screen sends turns this way
+(`grit.app.ChatHost`).
+
 **5. Timers are cancellable, and the scheduler is virtual-thread native.**
 
 A `ScheduledExecutorService` on one platform thread dispatching onto

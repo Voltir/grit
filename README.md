@@ -55,10 +55,13 @@ here:
 
 ```sh
 docker compose up -d postgres
-./mill grit.app.run hello "what is 2+2?" hello
+./mill --no-daemon grit.app.run                             # the chat TUI; ctrl-q quits
+./mill grit.app.run hello "what is 2+2?" hello              # one-shot: each argument a message
 ```
 
-Each argument is a message, answered by one durable turn. A repeated message is the same
+The TUI talks to the conversation `GRIT_SESSION` names (default `default`) and logs to
+`GRIT_LOG` (default `grit-tui.log` in the temp directory). In the one-shot run each argument
+is a message, answered by one durable turn. A repeated message is the same
 turn; run it again and finished turns replay without calling the model. The model is the
 stub unless `OPENROUTER_API_KEY` is set; then it is OpenRouter's `openai/gpt-oss-20b`, or
 `GRIT_MODEL`.
