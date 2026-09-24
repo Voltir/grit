@@ -1,7 +1,7 @@
 # grit's architecture law, checked by `bash scripts/enola-law.sh`.
 #
 # It enforces two things:
-#   1. Only grit.dbos may import dev.dbos.*           (STYLE.md rule 8)
+#   1. Only grit.dbos may import dev.dbos.*, JDBC or the Postgres driver (STYLE rule 8)
 #   2. grit.tui's four groups import in one direction (grit/tui/CLAUDE.md)
 #
 # Every rule was watched failing on a deliberately planted bad import before it was
@@ -41,8 +41,9 @@ rules:
   #
   # One rule per imported class, because enola cannot match a whole package: a pattern
   # may only be an exact name, `prefix*`, or `*suffix`, and "* -> dev.dbos.*" is rejected.
-  # Importing a new DBOS class in grit.dbos is fine; importing one outside it that is
-  # not listed here is NOT caught -- add a rule for it.
+  # A class with no rule is not caught outside grit.dbos, so scripts/enola-law.sh fails
+  # when grit.dbos imports a quarantined class (DBOS, JDBC, the driver) no rule names.
+  # A class nothing in grit.dbos imports can still slip in elsewhere unruled.
   # -------------------------------------------------------------------------------------
   - id: only-dbos-imports-dbos-core
     forbid_name: outside-dbos
@@ -50,9 +51,9 @@ rules:
     mode: strict
     because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
 
-  - id: only-dbos-imports-dbos-options
+  - id: only-dbos-imports-dbos-client
     forbid_name: outside-dbos
-    pattern: "* -> dev.dbos.transact.StartWorkflowOptions"
+    pattern: "* -> dev.dbos.transact.DBOSClient"
     mode: strict
     because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
 
@@ -67,6 +68,84 @@ rules:
     pattern: "* -> dev.dbos.transact.txstep.JdbcStepFactory"
     mode: strict
     because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
+
+  - id: only-dbos-imports-dbos-registered-workflow
+    forbid_name: outside-dbos
+    pattern: "* -> dev.dbos.transact.execution.RegisteredWorkflow"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
+
+  - id: only-dbos-imports-dbos-throwing-supplier
+    forbid_name: outside-dbos
+    pattern: "* -> dev.dbos.transact.execution.ThrowingSupplier"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
+
+  - id: only-dbos-imports-dbos-queue
+    forbid_name: outside-dbos
+    pattern: "* -> dev.dbos.transact.workflow.Queue"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
+
+
+  # -------------------------------------------------------------------------------------
+  # 1b. Only grit.dbos imports JDBC or the Postgres driver (STYLE rule 8's other half).
+  #
+  # java.sql and javax.sql are in the JDK, so no module's classpath lacks them: these
+  # rules are the only guard anywhere, not just in grit.app. Same one-class-per-rule
+  # limit as above: the classes a JDBC caller cannot avoid, plus the driver's two that
+  # grit.dbos uses. Tx.scala's `opaque type Tx = java.sql.Connection` names the class
+  # inline, which makes no import edge, so the one legal use outside grit.dbos is not
+  # a breach.
+  # -------------------------------------------------------------------------------------
+
+  - id: only-dbos-imports-jdbc-connection
+    forbid_name: outside-dbos
+    pattern: "* -> java.sql.Connection"
+    mode: strict
+    because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
+
+  - id: only-dbos-imports-jdbc-driver-manager
+    forbid_name: outside-dbos
+    pattern: "* -> java.sql.DriverManager"
+    mode: strict
+    because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
+
+  - id: only-dbos-imports-jdbc-prepared-statement
+    forbid_name: outside-dbos
+    pattern: "* -> java.sql.PreparedStatement"
+    mode: strict
+    because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
+
+  - id: only-dbos-imports-jdbc-result-set
+    forbid_name: outside-dbos
+    pattern: "* -> java.sql.ResultSet"
+    mode: strict
+    because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
+
+  - id: only-dbos-imports-jdbc-sql-exception
+    forbid_name: outside-dbos
+    pattern: "* -> java.sql.SQLException"
+    mode: strict
+    because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
+
+  - id: only-dbos-imports-jdbc-data-source
+    forbid_name: outside-dbos
+    pattern: "* -> javax.sql.DataSource"
+    mode: strict
+    because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
+
+  - id: only-dbos-imports-jdbc-pg-data-source
+    forbid_name: outside-dbos
+    pattern: "* -> org.postgresql.ds.PGSimpleDataSource"
+    mode: strict
+    because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
+
+  - id: only-dbos-imports-jdbc-psql-exception
+    forbid_name: outside-dbos
+    pattern: "* -> org.postgresql.util.PSQLException"
+    mode: strict
+    because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
 
   # -------------------------------------------------------------------------------------
   # 2. grit.tui's import direction: each group lists what it may import.
