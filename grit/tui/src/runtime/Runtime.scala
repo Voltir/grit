@@ -1,7 +1,7 @@
 package grit.tui.runtime
 
 import java.util.concurrent.LinkedBlockingQueue
-import scala.util.Using
+import scala.util.{Failure, Success, Using}
 import grit.tui.model.input.Input
 import grit.tui.model.surface.{Frame, Size}
 import grit.tui.wire.input.Decoder
@@ -74,16 +74,21 @@ final class Runtime[S, M <: caps.Pure](
     val reader = Background.start("tui-input")(() => readLoop())
     try {
       while (running) {
-        var event = queue.take()
+        var event: Option[Event[M]] = Some(queue.take())
         var handled = 0
         var seen = 0
-        while (event != null && running && seen < BatchLimit) {
-          val (next, touched) = step(event, loop)
-          loop = next
-          current = Some(loop.state)
-          if (touched) handled += 1
+        while (running && seen < BatchLimit && event.isDefined) {
+          event match {
+            case Some(e) =>
+              val (next, touched) = step(e, loop)
+              loop = next
+              current = Some(loop.state)
+              if (touched) handled += 1
+            case None => ()
+          }
           seen += 1
-          event = if (seen < BatchLimit) queue.poll() else null
+          // `poll` answers null for an empty queue: the one null, turned into an Option here.
+          event = if (seen < BatchLimit) Option(queue.poll()) else None
         }
         if (running && handled > 0) { loop = repaint(loop, force = false) }
       }
@@ -91,7 +96,11 @@ final class Runtime[S, M <: caps.Pure](
       running = false
       reader.close()
     }
-  }.get
+  } match {
+    // Teardown has already run; an app that threw is unrecoverable, so rethrow it.
+    case Failure(e) => throw e
+    case Success(_) => ()
+  }
 
   private def step(event: Event[M], loop: Loop[S, M]): (Loop[S, M], Boolean) = event match {
     case Event.Wake => (loop, false)

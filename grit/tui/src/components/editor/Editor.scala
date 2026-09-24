@@ -155,12 +155,13 @@ final case class Editor(
   }
 
   /** To the visual row `k`, keeping the caret's display column. */
-  private def moveTo(rows: Vector[Row], k: Int): Editor = {
-    val cur = rows(rowOf(rows).get)
-    val col = Width.columnAtOffset(cur.text, at - cur.startOffset)
-    val r = rows(k)
-    copy(caret = r.startOffset + Width.offsetAtColumn(r.text, math.min(col, Width.of(r.text))))
-  }
+  private def moveTo(rows: Vector[Row], k: Int): Editor =
+    (rowOf(rows).flatMap(rows.lift), rows.lift(k)) match {
+      case (Some(cur), Some(r)) =>
+        val col = Width.columnAtOffset(cur.text, at - cur.startOffset)
+        copy(caret = r.startOffset + Width.offsetAtColumn(r.text, math.min(col, Width.of(r.text))))
+      case _ => this
+    }
 
   private def recallUp: Editor = {
     if (history.isEmpty) this

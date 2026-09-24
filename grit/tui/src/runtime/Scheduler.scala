@@ -50,8 +50,8 @@ final class Scheduler private (
         if (!closed) { val _ = workers.submit(work) }
       }
       val handle = clock.schedule(run, math.max(0L, delayMs), TimeUnit.MILLISECONDS)
-      val prior = pending.put(key, handle)
-      if (prior != null) { val _ = prior.cancel(false) }
+      // `put` and `remove` answer null when nothing was pending under the key.
+      Option(pending.put(key, handle)).foreach(prior => { val _ = prior.cancel(false) })
       // Lost a race with close(): make sure nothing outlives the shutdown.
       if (closed) { cancel(id) }
     }
@@ -64,8 +64,7 @@ final class Scheduler private (
     * also stops the work.
     */
   def cancel(id: TimerId): Unit = {
-    val prior = pending.remove(id.name)
-    if (prior != null) { val _ = prior.cancel(false) }
+    Option(pending.remove(id.name)).foreach(prior => { val _ = prior.cancel(false) })
   }
 
   /** True while a timer is pending under `id` -- for tests and for the status line. */

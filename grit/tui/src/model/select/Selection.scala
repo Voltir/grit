@@ -47,7 +47,7 @@ final case class Doc(blocks: Vector[Block]) {
     * are no entries.
     */
   def end: DocPos =
-    if (blocks.isEmpty) DocPos.zero else DocPos(blocks.length - 1, blocks.last.text.length)
+    blocks.lastOption.fold(DocPos.zero)(b => DocPos(blocks.length - 1, b.text.length))
 
   /** `p` moved to the nearest position that actually exists in this document. */
   def clamp(p: DocPos): DocPos =
