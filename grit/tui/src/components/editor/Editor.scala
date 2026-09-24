@@ -24,7 +24,8 @@ import grit.tui.model.text.{Row, Width, Wrap}
   * distinguishable newline key. [[measure]] reports the height the draft wants, which
   * a `Region.Fit` grows the box to and a `Region.Fixed` ignores; either way [[render]]
   * paints exactly the box it is handed. [[render]] draws that bordered box -- a title when
-  * focused, none otherwise -- and [[caretPos]] gives the box-local caret for the
+  * focused, none otherwise, and `gutter` (in `gutterStyle`) before the draft's first row,
+  * every row indented by its width -- and [[caretPos]] gives the box-local caret for the
   * app to place in its `Frame`.
   *
   * A caret is a UTF-16 char offset into `text`, the same per-Char world as the cell
@@ -41,7 +42,9 @@ final case class Editor(
     body: Style = Style.plain,
     chrome: Style = Style.plain,
     border: Border = Border.Plain,
-    titleStyle: Style = Style.plain
+    titleStyle: Style = Style.plain,
+    gutter: String = "",
+    gutterStyle: Style = Style.plain
 ) extends View {
 
   /** The border plus one row per wrapped row of draft, and never more than offered.
@@ -179,9 +182,14 @@ final case class Editor(
     case Some(_) => copy(text = saved, caret = saved.length, histPos = None, saved = "")
   }
 
-  /** Wrap the whole draft at the box's inner width; rows carry global offsets. */
+  /** The draft's first column inside the box: after the border and the gutter. */
+  private def indent: Int = 1 + Width.of(gutter)
+
+  /** Wrap the whole draft at the width left beside the border and the gutter; rows carry
+    * global offsets.
+    */
   private def visualRows(boxWidth: Int): Vector[Row] =
-    Wrap.wrap(text, math.max(1, boxWidth - 2))
+    Wrap.wrap(text, math.max(1, boxWidth - 1 - indent))
 
   /** The visual row containing the caret: the first whose span reaches it, so a caret
     * sitting on a line break or dropped space belongs to the row above.
@@ -237,20 +245,25 @@ final case class Editor(
       Border.TitledFrom,
       Some(titleStyle)
     )
-    val rows = visibleRows(w, h)
-    rows.indices.foldLeft(framed) { (s, i) => s.write(1 + i, 1, rows(i).text, body) }
+    val (first, rows) = visibleRows(w, h)
+    val marked =
+      if (first == 0 && h > 2 && gutter.nonEmpty) framed.write(1, 1, gutter, gutterStyle)
+      else framed
+    rows.indices.foldLeft(marked) { (s, i) => s.write(1 + i, indent, rows(i).text, body) }
   }
 
-  /** The content rows the window shows, caret kept in view with minimal scroll. */
-  private def visibleRows(boxWidth: Int, boxHeight: Int): Vector[Row] = {
+  /** The content rows the window shows, caret kept in view with minimal scroll, and the
+    * index of the first of them among all the draft's rows.
+    */
+  private def visibleRows(boxWidth: Int, boxHeight: Int): (Int, Vector[Row]) = {
     val innerH = math.max(0, boxHeight - 2)
     val all = visualRows(boxWidth)
-    if (innerH == 0) Vector.empty
+    if (innerH == 0) (0, Vector.empty)
     else {
       val caretRow = rowOf(all).getOrElse(0)
       val start = math.max(0, math.min(caretRow - innerH + 1, math.max(0, all.length - innerH)))
       val start2 = if (caretRow < start) caretRow else start
-      all.slice(start2, start2 + innerH)
+      (start2, all.slice(start2, start2 + innerH))
     }
   }
 
@@ -266,7 +279,7 @@ final case class Editor(
       val innerH = boxHeight - 2
       val start = math.max(0, math.min(k - innerH + 1, math.max(0, rows.length - innerH)))
       val start2 = if (k < start) k else start
-      Pos(1 + (k - start2), 1 + col)
+      Pos(1 + (k - start2), indent + col)
     }
   }
 }

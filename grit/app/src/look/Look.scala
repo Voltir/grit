@@ -75,20 +75,24 @@ final case class Look(theme: Theme) {
   def scrollRail: Style = Style.fg(theme.rail)
   def scrollThumb: Style = Style.fg(theme.thumb)
 
+  /** The prompt: two thin rules, the draft between them after the user's rune. */
   def prompt: Editor =
     Editor(
       "",
       0,
       focused = true,
-      title = "message",
       body = Style.fg(theme.ink),
-      chrome = Style.fg(theme.chrome) + Style.Bold,
-      border = Border.Thick,
-      titleStyle = Style.fg(theme.ink) + Style.Bold
+      chrome = Style.fg(theme.faint),
+      border = Look.Rules,
+      gutter = s"${Runes.User} ",
+      gutterStyle = Style.fg(theme.user) + Style.Bold
     )
 }
 
 object Look {
+
+  /** Rules above and below, edge to edge, and a blank cell for each side. */
+  val Rules: Border = Border('─', '─', '─', '─', '─', ' ')
 
   /** The Elder Futhark runes grit draws with, each chosen for its old meaning. */
   object Runes {

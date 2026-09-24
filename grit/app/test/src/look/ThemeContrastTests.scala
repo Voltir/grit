@@ -43,7 +43,6 @@ object ThemeContrastTests extends TestSuite {
     Target("grit marker", t => (t.grit, t.ground), 60, 106),
     Target("header", t => (t.headerFg, t.headerBg), 60, 106),
     Target("failure", t => (t.failure, t.ground), 60, 106),
-    Target("prompt border", t => (t.chrome, t.ground), 30, 106),
     Target("rails", t => (t.rail, t.ground), 15, 30.5),
     Target("scroll thumb", t => (t.thumb, t.ground), 30, 106)
   )

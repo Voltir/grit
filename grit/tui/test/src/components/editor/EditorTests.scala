@@ -147,6 +147,19 @@ object EditorTests extends TestSuite {
       assert(unfocused.lines(0) == "┌──────────┐")
     }
 
+    test("a gutter marks the draft's first row; every row wraps beside it") {
+      val e = Editor("hello world", 11, gutter = "> ")
+      val s = e.render(Size(4, Box))
+      assert(s.lines(1) == "│> hello   │")
+      assert(s.lines(2) == "│  world   │")
+      assert(e.caretPos(Box, 4) == Some(grit.tui.model.surface.Pos(2, 8)))
+      // Scrolled past the first row, the gutter scrolls away with it.
+      val scrolled = Editor("abcdefgh", 8, gutter = "> ")
+      assert(scrolled.render(Size(3, 8)).lines(1) == "│  efgh│")
+      assert(Editor("", 0, gutter = "> ").render(Size(3, 8)).lines(1) == "│>     │")
+      assert(Editor("", 0, gutter = "> ").caretPos(8, 3) == Some(grit.tui.model.surface.Pos(1, 3)))
+    }
+
     test("the box scrolls to keep the caret visible; caretPos is border-adjusted") {
       // Inner width 4 (box 6): "abcdefgh" is two rows, one content row shown.
       val e = Editor("abcdefgh", 8)

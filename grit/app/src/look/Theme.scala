@@ -10,10 +10,10 @@ import grit.tui.model.surface.Color
   * @param ground the screen, under everything
   * @param slab the ground of the user's messages and the status line's kin
   * @param ink body text
-  * @param faint text to read but not to dwell on: the thinking line, metadata
-  * @param user the user's marker
+  * @param faint text to read but not to dwell on: the thinking line, metadata, the
+  *   prompt's rules
+  * @param user the user's marker, in the transcript and the prompt
   * @param grit grit's marker
-  * @param chrome the prompt's border
   * @param rail separators and the scrollbar's rail
   * @param thumb the scrollbar's thumb
   */
@@ -26,7 +26,6 @@ final case class Theme(
     faint: Color,
     user: Color,
     grit: Color,
-    chrome: Color,
     headerBg: Color,
     headerFg: Color,
     statusBg: Color,
@@ -48,7 +47,6 @@ object Theme {
     faint = Color.hex("#8ca1b6"),
     user = Color.hex("#c1b0ff"),
     grit = Color.hex("#6fe3f2"),
-    chrome = Color.hex("#4fb8e8"),
     headerBg = Color.hex("#6fe3f2"),
     headerFg = Color.hex("#0d1319"),
     statusBg = Color.hex("#16202b"),
@@ -68,7 +66,6 @@ object Theme {
     faint = Color.hex("#8f99c4"),
     user = Color.hex("#cbb0ff"),
     grit = Color.hex("#7dcfff"),
-    chrome = Color.hex("#7dcfff"),
     headerBg = Color.hex("#8fb3ff"),
     headerFg = Color.hex("#1a1b26"),
     statusBg = Color.hex("#262b3f"),
@@ -88,7 +85,6 @@ object Theme {
     faint = Color.hex("#949cc3"),
     user = Color.hex("#d0b6ff"),
     grit = Color.hex("#86d6ff"),
-    chrome = Color.hex("#2ac3de"),
     headerBg = Color.hex("#d0b6ff"),
     headerFg = Color.hex("#1f2335"),
     statusBg = Color.hex("#1f2335"),
@@ -108,7 +104,6 @@ object Theme {
     faint = Color.hex("#8f98cc"),
     user = Color.hex("#d2b4ff"),
     grit = Color.hex("#86e1fc"),
-    chrome = Color.hex("#82aaff"),
     headerBg = Color.hex("#9cbcff"),
     headerFg = Color.hex("#1e2030"),
     statusBg = Color.hex("#1e2030"),
@@ -128,7 +123,6 @@ object Theme {
     faint = Color.hex("#8797c4"),
     user = Color.hex("#bba5ff"),
     grit = Color.hex("#5ce1e6"),
-    chrome = Color.hex("#5a8fff"),
     headerBg = Color.hex("#8db1ff"),
     headerFg = Color.hex("#0b1020"),
     statusBg = Color.hex("#101730"),
@@ -148,7 +142,6 @@ object Theme {
     faint = Color.hex("#a090c6"),
     user = Color.hex("#e2adff"),
     grit = Color.hex("#a2beff"),
-    chrome = Color.hex("#b57bff"),
     headerBg = Color.hex("#cda3ff"),
     headerFg = Color.hex("#150f1f"),
     statusBg = Color.hex("#1d1429"),
