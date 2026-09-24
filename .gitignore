@@ -31,3 +31,6 @@ tools/enola
 # Local settings and secrets for grit.app (grit/app/src/DotEnv.scala). .env.example is
 # the committed list of what grit reads.
 .env
+
+# Python bytecode (scripts/tui-gate.py is imported by ad-hoc renderers).
+__pycache__/

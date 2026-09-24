@@ -36,40 +36,48 @@ object ChatScreen {
   private val transcript =
     ScrollPane(TranscriptPane, Bar, ChatPalette.scrollRail, ChatPalette.scrollThumb)
 
-  /** One message of the conversation so far: the user's, or a reply. */
+  /** One message of the conversation: the user's, or a reply. */
   final case class Said(user: Boolean, text: String)
 
-  /** `waiting` counts turns sent and not yet answered. */
+  /** `thinking` is whether the conversation has a turn in progress: its line is the
+    * transcript's last block while it is. `rev` is the revision the next block is given.
+    */
   final case class State(
       panes: Panes,
       editor: Editor,
-      waiting: Int,
+      thinking: Boolean,
+      rev: Long,
       status: String,
       title: String,
       std: Std.State
   )
+
+  /** What the transcript is made of, before each piece is given its revision. */
+  private enum Piece {
+    case Separator
+    case User(text: String)
+    case Reply(text: String)
+    case Failure(reason: String)
+    case Thinking
+  }
 
   enum Msg {
 
     /** Enter in the prompt. */
     case Submit
 
-    /** For the host: send the conversation so far. */
+    /** For the host: follow the conversation, from its beginning. */
     case Load
-
-    /** From the host: the conversation so far, oldest first. */
-    case Loaded(said: Vector[Said])
 
     /** For the host: record `text` as the user's message and start its turn. */
     case Send(text: String)
 
-    /** From the host: the turn for the last message sent is queued. */
-    case Started(turn: String)
+    /** From the host: messages new to the conversation, oldest first, and whether a turn
+      * is in progress.
+      */
+    case Arrived(said: Vector[Said], thinking: Boolean)
 
-    /** From the host: a turn's reply. */
-    case Replied(text: String)
-
-    /** From the host: a turn, or sending one, failed. */
+    /** From the host: sending failed, or a turn ended with no reply. */
     case Failed(reason: String)
   }
 
@@ -91,7 +99,10 @@ object ChatScreen {
       val panes = Panes
         .of(TextPane(TranscriptPane, Doc.empty, cache = WrapCache.empty(80)))
         .focusOn(TranscriptPane)
-      (State(panes, ChatPalette.prompt, 0, "loading", title, Std.State()), Effect.ToHost(Msg.Load))
+      (
+        State(panes, ChatPalette.prompt, thinking = false, 1L, "loading", title, Std.State()),
+        Effect.ToHost(Msg.Load)
+      )
     }
 
     val panes: State -> Panes = s => s.panes
@@ -106,27 +117,21 @@ object ChatScreen {
           val draft = state.editor.text.trim
           if (draft.isEmpty) (state, Effect.NoOp)
           else if (draft == "/quit") (state, Effect.Quit)
-          else {
-            val sent = append(
-              state.copy(editor = state.editor.submitted, waiting = state.waiting + 1),
-              Vector(ChatPalette.separator, ChatPalette.user(draft))
+          // Shown when the store has it, like everything else in the transcript.
+          else
+            (
+              state.copy(editor = state.editor.submitted, status = "sent"),
+              Effect.ToHost(Msg.Send(draft))
             )
-            (sent.copy(status = "sending"), Effect.ToHost(Msg.Send(draft)))
-          }
         case Msg.Send(_) | Msg.Load => (state, Effect.NoOp)
-        case Msg.Loaded(said) =>
-          val blocks = said.flatMap {
-            case Said(true, text) => Vector(ChatPalette.separator, ChatPalette.user(text))
-            case Said(false, text) => Vector(ChatPalette.assistant(text))
+        case Msg.Arrived(said, thinking) =>
+          val pieces = said.flatMap {
+            case Said(true, text) => Vector(Piece.Separator, Piece.User(text))
+            case Said(false, text) => Vector(Piece.Reply(text))
           }
-          (append(state.copy(status = ""), blocks), Effect.NoOp)
-        case Msg.Started(turn) => (state.copy(status = s"turn $turn"), Effect.NoOp)
-        case Msg.Replied(text) =>
-          val done = state.copy(waiting = math.max(0, state.waiting - 1), status = "")
-          (append(done, Vector(ChatPalette.assistant(text))), Effect.NoOp)
+          (withTail(state.copy(status = ""), pieces, thinking), Effect.NoOp)
         case Msg.Failed(reason) =>
-          val done = state.copy(waiting = math.max(0, state.waiting - 1), status = "failed")
-          (append(done, Vector(ChatPalette.failure(reason))), Effect.NoOp)
+          (withTail(state, Vector(Piece.Failure(reason)), state.thinking), Effect.NoOp)
       }
 
     override val hotkeys: (State, Input) -> Option[Std | Msg] = (_, input) =>
@@ -162,11 +167,33 @@ object ChatScreen {
       view(update(Std.Resized(size), state)._1)(size)
     }
 
-    /** Appends `blocks` to the transcript, re-wrapped at the size it was painted at. */
-    private def append(state: State, blocks: Vector[Block]): State =
-      state.copy(panes =
-        state.panes.modify(TranscriptPane)(doc => blocks.foldLeft(doc)(_.append(_)))
+    /** Appends `blocks` to the transcript, keeping the thinking line last while
+      * `thinking`. Re-wrapped at the size the transcript was painted at.
+      *
+      * Each block is built with a revision of its own. The pane's wrap cache keys a block
+      * by its position and revision and never compares text, so a block that takes the
+      * thinking line's position must not share its revision, or the old rows are painted.
+      */
+    private def withTail(state: State, pieces: Vector[Piece], thinking: Boolean): State = {
+      val all = pieces ++ Option.when(thinking)(Piece.Thinking)
+      val built = all.zipWithIndex.map { case (piece, i) => block(piece, state.rev + i) }
+      state.copy(
+        thinking = thinking,
+        rev = state.rev + all.size,
+        panes = state.panes.modify(TranscriptPane) { doc =>
+          val body = if (state.thinking) Doc(doc.blocks.dropRight(1)) else doc
+          built.foldLeft(body)(_.append(_))
+        }
       )
+    }
+
+    private def block(piece: Piece, rev: Long): Block = piece match {
+      case Piece.Separator => ChatPalette.separator
+      case Piece.User(text) => ChatPalette.user(text, rev)
+      case Piece.Reply(text) => ChatPalette.assistant(text, rev)
+      case Piece.Failure(reason) => ChatPalette.failure(reason, rev)
+      case Piece.Thinking => ChatPalette.thinking(rev)
+    }
 
     private def relaid(state: State, size: Size): State =
       state.copy(panes =
@@ -180,7 +207,7 @@ object ChatScreen {
         state.editor,
         StatusBar(
           Vector(" ctrl-q quit ", " enter sends ", state.status),
-          Vector(if (state.waiting > 0) s"waiting on ${state.waiting}" else "idle"),
+          Vector(if (state.thinking) "thinking" else "idle"),
           ChatPalette.status
         )
       )
@@ -193,6 +220,7 @@ object ChatScreen {
 object ChatPalette {
 
   private val Ink = Color.hex("#c0caf5")
+  private val Faint = Color.hex("#565f89")
   private val Iris = Color.hex("#bb9af7")
   private val Sky = Color.hex("#7dcfff")
   private val Steel = Color.hex("#7aa2f7")
@@ -200,25 +228,30 @@ object ChatPalette {
   private val Slab = Color.hex("#292e42")
   private val Rail = Color.hex("#3b4261")
 
-  def user(text: String): Block.Text =
+  /** Every block takes a revision: see `withTail` for why each must be new. */
+  def user(text: String, rev: Long): Block.Text =
     Block
       .styled(
         StyledText.styled("you> ", Style.fg(Iris) + Style.Bold) ++ StyledText
-          .styled(text, Style.fg(Ink))
+          .styled(text, Style.fg(Ink)),
+        rev
       )
       .copy(ground = Style.bg(Slab))
 
-  def assistant(text: String): Block.Text =
+  def assistant(text: String, rev: Long): Block.Text =
     Block.styled(
-      StyledText.styled("grit> ", Style.fg(Sky) + Style.Bold) ++ StyledText.styled(
-        text,
-        Style.fg(Ink)
-      )
+      StyledText.styled("grit> ", Style.fg(Sky) + Style.Bold) ++ StyledText
+        .styled(text, Style.fg(Ink)),
+      rev
     )
 
-  def failure(reason: String): Block.Text =
-    Block.styled(StyledText.styled(s"! $reason", Style.fg(Rose) + Style.Italic))
+  def thinking(rev: Long): Block.Text =
+    Block.styled(StyledText.styled("grit is thinking…", Style.fg(Faint) + Style.Italic), rev)
 
+  def failure(reason: String, rev: Long): Block.Text =
+    Block.styled(StyledText.styled(s"! $reason", Style.fg(Rose) + Style.Italic), rev)
+
+  /** Always revision 0; every other block's revision is at least 1. */
   def separator: Block.Separator = Block.Separator(Style.fg(Rail) + Style.Dim)
 
   val header: Style = Style.fg(Color.hex("#1a1b26")) + Style.Bold + Style.bg(Steel)

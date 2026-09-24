@@ -26,23 +26,43 @@ object ChatScreenTests extends TestSuite {
       app.init._2 ==> Effect.ToHost(ChatScreen.Msg.Load)
     }
 
-    test("the conversation so far is shown in order") {
-      val loaded = app
+    test("arrivals are shown in order, with the thinking line last while a turn runs") {
+      val asked = app
         .update(
-          ChatScreen.Msg
-            .Loaded(Vector(ChatScreen.Said(true, "hi"), ChatScreen.Said(false, "hello"))),
+          ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(true, "hi")), thinking = true),
           started
         )
         ._1
-      transcript(loaded) ==> Vector("you> hi", "grit> hello")
+      transcript(asked) ==> Vector("you> hi", "grit is thinking…")
+      val answered =
+        app
+          .update(
+            ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(false, "hello")), thinking = false),
+            asked
+          )
+          ._1
+      transcript(answered) ==> Vector("you> hi", "grit> hello")
     }
 
-    test("a submission is shown, sent to the host, and waited on") {
+    test("the reply that replaces the thinking line is painted") {
+      // Painted, not read off the document: the wrap cache keys a block by position and
+      // revision, so a reply given the thinking line's revision kept its old rows.
+      val size = Size(20, 60)
+      def painted(s: ChatScreen.State) = app.view(s)(size).surface.lines.mkString("\n")
+      val asked =
+        app.update(ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(true, "hi")), true), started)._1
+      assert(painted(asked).contains("grit is thinking"))
+      val answered =
+        app.update(ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(false, "hello")), false), asked)._1
+      val screen = painted(answered)
+      assert(screen.contains("grit> hello"), !screen.contains("thinking"))
+    }
+
+    test("a submission is sent to the host, and shown only once the store has it") {
       val (sent, effect) =
         app.update(ChatScreen.Msg.Submit, started.copy(editor = started.editor.copy(text = "hi")))
       effect ==> Effect.ToHost(ChatScreen.Msg.Send("hi"))
-      transcript(sent) ==> Vector("you> hi")
-      sent.waiting ==> 1
+      transcript(sent) ==> Vector()
       sent.editor.text ==> ""
     }
 
@@ -50,12 +70,10 @@ object ChatScreenTests extends TestSuite {
       app.update(ChatScreen.Msg.Submit, started)._2 ==> Effect.NoOp
     }
 
-    test("a reply is shown and ends the wait; a failure is shown too") {
-      val waiting = started.copy(waiting = 1)
-      val replied = app.update(ChatScreen.Msg.Replied("hello"), waiting)._1
-      (transcript(replied), replied.waiting) ==> (Vector("grit> hello"), 0)
-      val failed = app.update(ChatScreen.Msg.Failed("down"), waiting)._1
-      (transcript(failed), failed.waiting) ==> (Vector("! down"), 0)
+    test("a failure is shown before the thinking line, which stays") {
+      val thinking = app.update(ChatScreen.Msg.Arrived(Vector(), thinking = true), started)._1
+      transcript(app.update(ChatScreen.Msg.Failed("down"), thinking)._1) ==>
+        Vector("! down", "grit is thinking…")
     }
   }
 }

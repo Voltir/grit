@@ -55,9 +55,13 @@ here:
 
 ```sh
 docker compose up -d postgres
-./mill --no-daemon grit.app.run                             # the chat TUI; ctrl-q quits
-./mill grit.app.run hello "what is 2+2?" hello              # one-shot: each argument a message
+scripts/grit                          # the chat TUI; ctrl-q quits
+scripts/grit hello "what is 2+2?"     # one-shot: each argument a message
 ```
+
+`scripts/grit` has mill build a launcher and exit, then runs grit with plain `java`, so no
+mill process sits behind the TUI holding the build lock. Restart grit after recompiling:
+a rebuild rewrites the classes it loaded.
 
 Settings, the OpenRouter key included, can live in a gitignored `.env`: copy
 `.env.example`. The real environment wins over it.

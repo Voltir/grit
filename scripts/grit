@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Runs grit.app with mill out of the loop: mill builds the launcher and exits, then java
+# runs grit directly. `./mill ... run` would instead hold mill's build lock for as long as
+# the TUI is open, so every other ./mill command waits on it.
+#
+#   scripts/grit                 # the chat TUI
+#   scripts/grit hello "hi"      # one-shot: each argument a message
+#
+# Settings come from .env (see .env.example). A rebuild rewrites the classes a running
+# grit loaded from, so restart after recompiling.
+set -euo pipefail
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# `show` prints a PathRef, "ref:v0:<hash>:<path>"; the path is everything after the third colon.
+path_of() { ./mill --ticker false show "$1" | tail -1 | tr -d '"' | cut -d: -f4-; }
+
+launcher=$(path_of grit.app.launcher)
+# The JDK build.mill runs everything with (GRIT_JDK_HOME, or its default), not whatever
+# java is first on PATH.
+JAVA_HOME=$(path_of grit.app.javaHome)
+export JAVA_HOME
+
+exec "$launcher" "$@"

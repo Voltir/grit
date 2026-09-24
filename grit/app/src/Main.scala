@@ -76,7 +76,10 @@ object Main {
         )
         if (tui) {
           val session = env.getOrElse("GRIT_SESSION", "default")
-          TuiApp.run(new ChatScreen.App(modelName), new ChatHost(engine, Origin.Tui(session)))
+          val host = new ChatHost(engine, Origin.Tui(session))
+          // Following stops before the engine it reads from closes.
+          try TuiApp.run(new ChatScreen.App(modelName), host)
+          finally host.close()
           None
         } else say(engine, args.toList)
       } finally {

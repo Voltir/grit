@@ -3,11 +3,12 @@ package grit.dbos
 import dev.dbos.transact.{DBOS, DBOSClient}
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory
+import dev.dbos.transact.workflow.WorkflowState
 import grit.core.{
+  ConversationId,
   ConversationStore,
   Db,
   Durable,
-  Entry,
   EntryStore,
   Inbox,
   Origin,
@@ -51,11 +52,23 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
     dbos.launch()
   }
 
-  /** Every entry of the conversation `origin` names, oldest first; the conversation is
-    * created if it is new, as an edge's first ingest would.
+  /** The conversation `origin` names, created if it is new, as an edge's first ingest
+    * would.
     */
-  def history(origin: Origin): Either[StoreError, Vector[Entry]] =
-    transaction(conversations.findOrCreate(origin).flatMap(c => entries.list(c.id)))
+  def conversation(origin: Origin): Either[StoreError, ConversationId] =
+    transaction(conversations.findOrCreate(origin).map(_.id))
+
+  /** Where `turn`'s workflow is, without waiting for it. */
+  def status(turn: TurnRef): TurnStatus =
+    try {
+      val handle = client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId))
+      Option(handle.getStatus()).map(_.status()) match {
+        case None => TurnStatus.Unknown
+        case Some(state) if state.isActive() => TurnStatus.Running
+        case Some(WorkflowState.SUCCESS) => TurnStatus.Finished(handle.getResult())
+        case Some(state) => TurnStatus.Finished(s"workflow ${state.name.toLowerCase}")
+      }
+    } catch { case NonFatal(e) => TurnStatus.Finished(s"unreadable: ${e.getMessage}") }
 
   /** Runs `body` in a transaction of its own: committed on `Right`, rolled back otherwise. */
   private def transaction[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
@@ -121,4 +134,17 @@ object Engine {
       Using.resource(conn.createStatement())(_.execute(sql))
     }
   }
+}
+
+/** Where a turn's workflow is, as an edge sees it. */
+enum TurnStatus {
+
+  /** Queued or running. */
+  case Running
+
+  /** Done: the workflow's output, or why it has none. */
+  case Finished(output: String)
+
+  /** Not (yet) known to DBOS: ingested but not enqueued. */
+  case Unknown
 }
