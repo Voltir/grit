@@ -1,5 +1,6 @@
-package grit.tui.components
+package grit.tui.components.tree
 
+import grit.tui.components.view.View
 import grit.tui.components.layout.Region
 import grit.tui.components.editor.Editor
 import grit.tui.components.overlay.{Modal, Popup}

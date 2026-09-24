@@ -1,7 +1,6 @@
-package grit.tui.runtime
+package grit.tui.runtime.render
 
-import grit.tui.components.{Node, OnInput, PaneKey}
-
+import grit.tui.components.tree.{Node, OnInput, PaneKey}
 import grit.tui.components.layout.Stacking
 import grit.tui.components.pane.Viewport
 import grit.tui.components.widget.Scrollbar

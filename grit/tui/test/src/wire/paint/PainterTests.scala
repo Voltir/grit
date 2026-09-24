@@ -1,7 +1,6 @@
 package grit.tui.wire.paint
 
 import grit.tui.model.surface.*
-
 import utest.*
 
 /** Painter tests assert against the painted grid -- what a terminal would show -- never

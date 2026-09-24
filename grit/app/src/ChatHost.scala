@@ -1,8 +1,8 @@
 package grit.app
 
+import grit.tui.runtime.app.{Host, Mailbox}
 import grit.core.{Message, Origin, SourceId}
 import grit.dbos.Engine
-import grit.tui.runtime.{Host, Mailbox}
 import java.util.UUID
 import scala.util.control.NonFatal
 

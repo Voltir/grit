@@ -31,7 +31,7 @@ Mill modules, and what each may name:
 |---|---|---|---|
 | `grit.core` | `grit.core` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath |
 | `grit.dbos` | `grit.dbos` | core | DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `Engine` is what `grit.app` opens |
-| `grit.tui` | `grit.tui.{model,components,wire,runtime}` | core | the terminal UI: an `App` is three pure functions and a view tree (`Node`) that the runtime lays out, paints and routes input through; core only from `components`/`runtime` |
+| `grit.tui` | `grit.tui.{model,components,wire,runtime}.*` | core | the terminal UI: an `App` is three pure functions and a view tree (`Node`) that the runtime lays out, paints and routes input through; core only from `components`/`runtime` |
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo` is the target of every `scripts/tui-gate` scenario but `chat` and `reload`, which drive `grit.app` |
 | `grit.turn` | `grit.turn` | core | the durable turn's body, written against `Durable` |
 | `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); later the relevance judge |
@@ -110,7 +110,7 @@ spinners, BSP crash loops and build-directory hygiene:
 
 ```bash
 bash scripts/fetch-enola.sh    # pinned, sha256-verified, into tools/ (gitignored)
-bash scripts/enola-law.sh      # regenerate, lint the declarations, check the law
+bash scripts/enola-law.sh      # regenerate, lint the declarations, check the law, fail on a new cycle
 ```
 
 `mcp-arch.yaml` is the walk config, `enola-intent.yaml` is the law. It is also an MCP
@@ -147,6 +147,11 @@ commented in `enola-intent.yaml`. New rules are a planned session:
   says what changes, the alternatives turned down, how it will be verified (including the
   real-use run below), and what is parked. Mechanical edits, doc corrections and small
   fixes inside an agreed plan need none.
+- **Package layout is designed, not accreted.** A new module, library or package starts
+  with its layout in the plan: each package one idea, named for it; no source file at a
+  group's root; the packages in a one-way dependency order, written down where the module
+  is documented (`grit/tui/CLAUDE.md` is the pattern). A layout that has drifted gets
+  redesigned, not patched. The law fails on a new import cycle; the rest is review.
 - **Done includes a real-use run** for anything a person interacts with, such as the TUI,
   a CLI or an edge. Use the real model, restart mid-turn, and wait as long as a person
   would. Tests that read the model rather than the painted screen, or that run against the

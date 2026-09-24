@@ -1,4 +1,4 @@
-package grit.tui.runtime
+package grit.tui.runtime.app
 
 import utest.*
 

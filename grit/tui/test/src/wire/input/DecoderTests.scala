@@ -1,7 +1,6 @@
 package grit.tui.wire.input
 
 import grit.tui.model.input.*
-
 import grit.tui.model.surface.Pos
 import utest.*
 

@@ -1,5 +1,8 @@
 package grit.tui.examples
 
+import grit.tui.components.tree.{Node, OnInput, PaneKey, Scroller}
+import grit.tui.runtime.app.{App, Effect, Host, TimerId}
+import grit.tui.runtime.loop.Runtime
 import grit.tui.components.editor.Editor
 import grit.tui.components.overlay.{Modal, Popup}
 import grit.tui.components.pane.Anchor
@@ -8,10 +11,7 @@ import grit.tui.model.block.Block
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.select.Doc
 import grit.tui.model.text.StyledText
-import grit.tui.components.{Node, OnInput, PaneKey}
-import grit.tui.components.pane.Scroller
-import grit.tui.components.Node.*
-import grit.tui.runtime.{App, Effect, TimerId}
+import grit.tui.components.tree.Node.*
 
 /** Every library feature on one screen: a streaming transcript with a scrollbar, a modal
   * over it, a completion popup, a growing prompt. What `scripts/tui-gate` drives, except
@@ -260,4 +260,9 @@ object Demo extends App[Demo.State, Demo.Msg] {
         "Esc or alt-m closes."
       ).map(l => Block.styled(StyledText.styled(l, Palette.helpText)))
     )
+
+  def main(args: Array[String]): Unit = {
+    val _ = args
+    Runtime.run(this, Host.none[Msg])
+  }
 }

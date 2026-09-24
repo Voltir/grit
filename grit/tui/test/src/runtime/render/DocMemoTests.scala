@@ -1,4 +1,4 @@
-package grit.tui.runtime
+package grit.tui.runtime.render
 
 import grit.tui.components.pane.{Anchor, Viewport}
 import grit.tui.model.block.Block

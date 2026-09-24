@@ -107,7 +107,7 @@ object QuarantineTests extends TestSuite {
       // the source, because a Scala 3 enum does not report its cases reflectively.
       val files = librarySources
       assertFound(files)
-      val effect = files.collectFirst { case (p, b) if p.endsWith("runtime/Effect.scala") => b }
+      val effect = files.collectFirst { case (p, b) if p.endsWith("runtime/app/Effect.scala") => b }
       assert(effect.isDefined)
       // Only the enum body: `case` also introduces match clauses further down the file.
       val body = effect.getOrElse("")

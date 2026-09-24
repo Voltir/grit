@@ -13,15 +13,20 @@ Four groups, and the groups are the layer table:
 
 - **`model`** — `surface`, `text`, `input`, `select`, `block`: the pure cell model and the
   event vocabulary. Imports no other group.
-- **`components`** — `Node` (the screen as one tree that carries its handlers), `View`
-  (`render(size)` paints exactly the box it is given; `measure(avail)` only *reports*),
-  `layout`, `widget`, `overlay`, `pane` (`Scroller`), `editor`. The API surface. Imports
-  only `model`.
+- **`components`** — the API surface. Imports only `model`. In dependency order:
+  `view` (`View`: `render(size)` paints exactly the box it is given; `measure(avail)` only
+  *reports*) ← `layout` (`Region`, `Stacking`, `Box`, `Border`) ← `widget`, `editor`,
+  `overlay`, `pane` (`Viewport`, `Anchor`) ← `tree` (`Node`, `PaneKey`, `Scroller`: the
+  screen as one tree that carries its handlers; it names the rest, and nothing names it).
 - **`wire`** — `paint`, `term`, and input's `Decoder`: bytes out and bytes in. Imports only
   `model`.
-- **`runtime`** — `App`, the loop (`Runtime`, `Loop`, `Headless`), layout and painting
-  (`Paint`, the wrap `Memo`), input routing (`Route`), `Effect`, `Scheduler`. The only
-  group allowed to name all three.
+- **`runtime`** — the only group allowed to name all three. In dependency order: `app`
+  (`App`, `Effect`, `Host`, `Mailbox`: what an app declares and emits) ← `render` (`Paint`,
+  the wrap `Memo`: layout and painting) ← `route` (input against what was painted) ←
+  `loop` (`Loop`, `Runtime`, `Headless`, `Scheduler`).
+
+No source file sits at a group's root, and a group's subpackages never import each other in
+a circle: `scripts/enola-law.sh` fails on a new import cycle.
 
 `components` and `wire` are siblings and must not name each other: that is what keeps the
 surface grit's screens are written against separate from the terminal underneath.

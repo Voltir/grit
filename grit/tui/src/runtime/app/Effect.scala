@@ -1,4 +1,4 @@
-package grit.tui.runtime
+package grit.tui.runtime.app
 
 /** Names a timer so it can be cancelled or replaced.
   *

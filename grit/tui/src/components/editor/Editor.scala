@@ -1,6 +1,6 @@
 package grit.tui.components.editor
 
-import grit.tui.components.View
+import grit.tui.components.view.View
 import grit.tui.components.layout.Border
 import grit.tui.model.input.{Input, Key, Mods}
 import grit.tui.model.surface.{Pos, Rect, Size, Style, Surface}

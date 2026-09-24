@@ -212,8 +212,9 @@ per frame, wrapped in `ESC[?2026h`/`l`, every line addressed absolutely.
 ## Layout
 
 One Mill module, `grit.tui`, in four groups — `model`, `components`, `wire`, `runtime` —
-plus `grit.tui.examples` for everything runnable. The group table, what each may import,
-and how it is enforced are in [`CLAUDE.md`](CLAUDE.md).
+plus `grit.tui.examples` for everything runnable. Each group is a set of subpackages in one
+dependency order (in `runtime`: `app` ← `render` ← `route` ← `loop`). The group table, the
+orders, what each may import, and how it is enforced are in [`CLAUDE.md`](CLAUDE.md).
 
 Escape bytes are spelled in exactly three places and nowhere else: `wire/paint/Ansi` (out),
 `wire/input/Decoder` (in), and `wire/term/` (mode setting). Binding — what an input

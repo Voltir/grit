@@ -1,7 +1,6 @@
-package grit.tui.components.pane
+package grit.tui.components.tree
 
-import grit.tui.components.{Node, PaneKey}
-
+import grit.tui.components.pane.Anchor
 import grit.tui.model.select.{Doc, Selection}
 import grit.tui.model.surface.Style
 

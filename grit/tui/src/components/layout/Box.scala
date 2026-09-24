@@ -1,6 +1,6 @@
 package grit.tui.components.layout
 
-import grit.tui.components.View
+import grit.tui.components.view.View
 import grit.tui.model.surface.{Pos, Rect, Size, Style, Surface}
 
 /** A view wrapped in a frame, with an optional title inset into the top rail.

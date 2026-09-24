@@ -1,4 +1,4 @@
-package grit.tui.components
+package grit.tui.components.view
 
 import grit.tui.components.editor.Editor
 import grit.tui.components.layout.{Border, Box}

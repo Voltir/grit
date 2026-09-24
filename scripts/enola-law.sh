@@ -2,9 +2,11 @@
 # The architecture gate. Run it by hand, or before a commit that moves code between
 # packages. Adapted from actualbest's scripts/enola-law.sh.
 #
-# Scope: --fail-on=constraints ONLY, i.e. the rules in enola-intent.yaml. grit declares no
-# layers (Mill and the rules already cover them; see that file), and cycles between Mill
-# modules are a Mill error.
+# Scope: --fail-on=constraints,cycles -- the rules in enola-intent.yaml, and any new import
+# cycle between packages. Mill rejects a cycle between modules but not one between the
+# packages inside a module (a directory importing a subdirectory that imports it back),
+# and cycles are read off import edges, which are sound here. grit declares no layers
+# (Mill and the rules already cover them; see that file).
 #
 # Scope, part two: enola's Scala symbol facts are DEGRADED on this repository -- capture
 # checking is on project-wide and the extractor drops symbols without reporting a parse
@@ -48,4 +50,4 @@ fi
 
 $enola baseline show mcp-arch.yaml >/dev/null 2>&1 || $enola baseline pin mcp-arch.yaml >/dev/null
 
-$enola check --fail-on=constraints mcp-arch.yaml
+$enola check --fail-on=constraints,cycles mcp-arch.yaml

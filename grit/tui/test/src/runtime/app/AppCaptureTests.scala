@@ -1,4 +1,4 @@
-package grit.tui.runtime
+package grit.tui.runtime.app
 
 import dotty.tools.dotc.Driver
 import dotty.tools.dotc.reporting.StoreReporter
@@ -16,13 +16,13 @@ object AppCaptureTests extends TestSuite {
 
   private val prelude =
     """package probe
-      |import grit.tui.components.{Node, PaneKey}
-      |import grit.tui.runtime.App
+      |import grit.tui.components.tree.{Node, PaneKey}
+      |import grit.tui.runtime.app.App
       |import grit.tui.components.pane.Anchor
       |import grit.tui.model.select.Doc
       |import grit.tui.model.input.Input
       |import grit.tui.wire.term.Terminal
-      |import grit.tui.runtime.Effect
+      |import grit.tui.runtime.app.Effect
       |final case class N(n: Int) extends caps.Pure
       |object Probe {
       |""".stripMargin

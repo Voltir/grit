@@ -116,7 +116,7 @@ plain data with no function cases (`grit/tui/CLAUDE.md`, rule 3).
 - *Cause:* an unannotated trait's self may capture anything, and a method body's references
   fold into it.
 - *Fix:* a pure self type, `trait T { self: T^{} => … }`. It also rejects a capturing
-  implementation where it is defined, which is what `grit.tui.runtime.App` relies on.
+  implementation where it is defined, which is what `grit.tui.runtime.app.App` relies on.
 
 **A global capability is checked where it is used.**
 

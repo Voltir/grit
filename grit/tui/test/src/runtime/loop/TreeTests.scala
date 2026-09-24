@@ -1,15 +1,18 @@
-package grit.tui.runtime
+package grit.tui.runtime.loop
 
+import grit.tui.components.tree.{Node, PaneKey, Scroller}
+import grit.tui.runtime.app.{App, Effect}
+import grit.tui.runtime.render.Memo
+import grit.tui.runtime.route.{Grab, Route}
 import grit.tui.components.editor.Editor
 import grit.tui.components.overlay.Modal
 import grit.tui.model.block.Block
 import grit.tui.model.input.{Button, Input, Mods, MouseEvent, MouseKind}
-import grit.tui.components.{Node, PaneKey}
-import grit.tui.components.pane.{Anchor, Scroller}
+import grit.tui.components.pane.Anchor
 import grit.tui.model.select.{Doc, Selection}
 import grit.tui.model.surface.{Pos, Rect, Size}
 import grit.tui.wire.paint.{Painter, Vt}
-import grit.tui.components.Node.*
+import grit.tui.components.tree.Node.*
 import utest.*
 
 /** The view tree against the painted grid: rules 5 and 6 read off a [[Vt]], and
@@ -209,7 +212,7 @@ object TreeTests extends TestSuite {
       val inDialog: Node[M] = bare.dialog(modal, bare, None)
       val k = Input.Keyboard(grit.tui.model.input.Key.Printable('k'))
       for (tree <- Vector(bare, inDialog)) {
-        val (painted, _) = grit.tui.runtime.Paint.layout(tree, Size(20, 40), Memo.empty)
+        val (painted, _) = grit.tui.runtime.render.Paint.layout(tree, Size(20, 40), Memo.empty)
         assert(Route.keys(k, painted) == Some(M.E(Editor("k", 1))))
       }
     }
@@ -220,7 +223,7 @@ object TreeTests extends TestSuite {
         flex() -> Node.doc(k, helpDoc, Anchor.At(grit.tui.model.select.DocPos.zero)),
         flex() -> Node.doc(k, prose, Anchor.At(grit.tui.model.select.DocPos.zero))
       )
-      val (frame, painted, _) = grit.tui.runtime.Paint.frame(twice, Size(10, 40), Memo.empty)
+      val (frame, painted, _) = grit.tui.runtime.render.Paint.frame(twice, Size(10, 40), Memo.empty)
       val v = new Vt(10, 41)
       v.feed(Painter.paint(frame, None))
       assert(

@@ -1,4 +1,4 @@
-package grit.tui.runtime
+package grit.tui.runtime.app
 
 /** Where a running app's messages can be delivered from outside the loop. */
 trait Mailbox[-Msg] {

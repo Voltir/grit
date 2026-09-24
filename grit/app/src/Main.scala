@@ -1,10 +1,10 @@
 package grit.app
 
+import grit.tui.runtime.loop.Runtime
 import grit.assembly.LinearAssembler
 import grit.core.{Message, ModelRequest, Origin, Provider, ProviderError, SourceId, Tokens, TurnRef}
 import grit.dbos.{DbConfig, Engine}
 import grit.models.{OpenRouterConfig, OpenRouterProvider, StubProvider}
-import grit.tui.runtime.Runtime
 import grit.turn.Turn
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is

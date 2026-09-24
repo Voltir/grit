@@ -1,7 +1,7 @@
-package grit.tui.runtime
+package grit.tui.runtime.route
 
-import grit.tui.components.PaneKey
-
+import grit.tui.components.tree.PaneKey
+import grit.tui.runtime.render.{Painted, PanePaint, Target}
 import grit.tui.model.input.{Button, Input, MouseEvent, MouseKind}
 import grit.tui.model.select.{DocPos, Selection}
 import grit.tui.model.surface.Pos

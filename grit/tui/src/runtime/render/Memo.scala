@@ -1,7 +1,6 @@
-package grit.tui.runtime
+package grit.tui.runtime.render
 
-import grit.tui.components.PaneKey
-
+import grit.tui.components.tree.PaneKey
 import grit.tui.components.pane.{Anchor, ViewRow, Viewport}
 import grit.tui.model.block.{Block, Overflow}
 import grit.tui.model.select.{Doc, DocPos}

@@ -1,7 +1,7 @@
 package grit.tui.model.block
 
+import grit.tui.runtime.render.DocMemo
 import grit.tui.components.pane.{Anchor, Viewport}
-import grit.tui.runtime.DocMemo
 import grit.tui.model.select.{Doc, DocPos, Selection}
 import grit.tui.model.surface.{Pos, Size}
 import utest.*

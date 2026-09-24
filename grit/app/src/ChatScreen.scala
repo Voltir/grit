@@ -1,5 +1,6 @@
 package grit.app
 
+import grit.tui.components.tree.{Node, OnInput, PaneKey, Scroller}
 import grit.tui.components.editor.Editor
 import grit.tui.components.widget.StatusBar
 import grit.tui.model.block.Block
@@ -7,10 +8,8 @@ import grit.tui.model.input.{Input, Key}
 import grit.tui.model.select.Doc
 import grit.tui.model.surface.*
 import grit.tui.model.text.StyledText
-import grit.tui.components.{Node, OnInput, PaneKey}
-import grit.tui.components.pane.Scroller
-import grit.tui.components.Node.*
-import grit.tui.runtime.Effect
+import grit.tui.components.tree.Node.*
+import grit.tui.runtime.app.Effect
 
 /** grit's chat screen: a transcript, a prompt and a status line. Pure, like every
   * grit.tui app: a submission leaves as [[ChatScreen.Msg.Send]] through `Effect.ToHost`,
@@ -64,7 +63,7 @@ object ChatScreen {
   }
 
   /** The screen, titled `title` (the model it talks to). */
-  final class App(title: String) extends grit.tui.runtime.App[State, Msg] {
+  final class App(title: String) extends grit.tui.runtime.app.App[State, Msg] {
 
     def init: (State, Effect[Msg]) =
       (

@@ -1,5 +1,6 @@
-package grit.tui.runtime
+package grit.tui.runtime.loop
 
+import grit.tui.runtime.app.TimerId
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
 import utest.*

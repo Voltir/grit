@@ -1,6 +1,6 @@
 package grit.tui.components.widget
 
-import grit.tui.components.View
+import grit.tui.components.view.View
 import grit.tui.model.surface.{Cell, Size, Style, Surface}
 
 /** A one-column scrollbar with a proportional thumb.

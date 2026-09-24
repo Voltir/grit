@@ -1,4 +1,4 @@
-package grit.tui
+package grit.tui.components.widget
 
 /** The widget convention — a function from state to cells, not a framework.
   *
@@ -6,7 +6,7 @@ package grit.tui
   * exactly to the region it will be blitted into. That is the whole contract:
   *
   *   - **Identity is its place in the tree.** An app paints a widget into a box of its
-  *     screen's [[grit.tui.components.Node]] tree, and widget-local hit-testing is a
+  *     screen's [[grit.tui.components.tree.Node]] tree, and widget-local hit-testing is a
   *     geometry method on the widget's own state (see
   *     [[grit.tui.components.widget.Scrollbar]].offsetAtRow). No class hierarchy.
   *   - **Same state, same surface.** A widget that re-renders unchanged state must hand
