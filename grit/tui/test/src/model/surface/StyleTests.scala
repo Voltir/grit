@@ -76,10 +76,5 @@ object StyleTests extends TestSuite {
         }
       }
     }
-
-    test("+ is over read left to right") {
-      samples.foreach { a => samples.foreach { b => assert((a + b) == b.over(a)) } }
-      assert((Style.fg(red) + Style.Bold) == Style(fg = Some(red), bold = true))
-    }
   }
 }

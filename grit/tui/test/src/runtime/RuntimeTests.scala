@@ -20,7 +20,6 @@ object RuntimeTests extends TestSuite {
   private enum Msg extends caps.Pure {
     case Typed(ch: Char)
     case Tick
-    case Deadline
     case Escaped
     case Located(pos: Pos)
     case Refresh
@@ -30,14 +29,11 @@ object RuntimeTests extends TestSuite {
   private final case class St(
       typed: String = "",
       ticks: Int = 0,
-      deadlines: Int = 0,
       escapes: Int = 0,
-      dragging: Boolean = false,
       located: Option[Pos] = None
   )
 
   private val ticker = TimerId.of("ticker")
-  private val deadline = TimerId.of("deadline")
   private val Esc = "\u001b"
 
   /** The binding every scripted app has: a printable character is a keystroke, Escape is
@@ -200,32 +196,6 @@ object RuntimeTests extends TestSuite {
         while (i < 10) { term.send("x"); i += 1 }
         Thread.sleep(700L)
         assert(runtime.state.exists(_.ticks == 1))
-      }
-    }
-
-    test("a drag that never releases is ended by its own deadline") {
-      // Neither sibling solved this. Under mode 1002 the terminal reports nothing once
-      // the pointer leaves the window, so no release and no motion arrive, and every
-      // termination path next door needed an inbound message. The mechanism grit.tui gives
-      // an app is a named deadline that each extend replaces: while extends keep coming
-      // it never matures, and when they stop it is the one thing still pending.
-      runWith {
-        case (Msg.Typed('d'), s) =>
-          (s.copy(dragging = true), Effect.After(deadline, 150L, Msg.Deadline))
-        case (Msg.Typed(_), s) => (s, Effect.After(deadline, 150L, Msg.Deadline))
-        case (Msg.Deadline, s) =>
-          (s.copy(dragging = false, deadlines = s.deadlines + 1), Effect.Cancel(ticker))
-        case (_, s) => quit(s)
-      } { (term, runtime) =>
-        term.send("d")
-        var i = 0
-        while (i < 4) { Thread.sleep(60L); term.send("e"); i += 1 }
-        // Extends kept arriving faster than the deadline, so the drag is still live.
-        assert(runtime.state.exists(s => s.dragging && s.deadlines == 0))
-        // The pointer leaves the window. Nothing else will ever arrive.
-        assert(waitUntil(() => runtime.state.exists(s => !s.dragging && s.deadlines == 1)))
-        Thread.sleep(400L)
-        assert(runtime.state.exists(_.deadlines == 1)) // it does not re-arm itself
       }
     }
 

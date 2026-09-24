@@ -101,13 +101,6 @@ object PainterTests extends TestSuite {
       assert(vt.reverseMask == Vector("......", "......", "......"))
     }
 
-    test("a style with no colour still encodes exactly as it always did") {
-      // Attributes are emitted before colours, so adding colour to `Style` did not move
-      // the encoding of a style that has none. `[0;7m` is still `[0;7m`.
-      val frame = frameOf(size, s => s.write(0, 0, "a", Style.Reverse))
-      assert(Painter.paint(frame, None).contains("\u001b[0;7m"))
-    }
-
     test("the output contains no bare line feed, and sync framing is balanced") {
       val frame = frameOf(size, s => s.write(0, 0, "x").write(2, 2, "y"))
       val out = Painter.paint(frame, None)

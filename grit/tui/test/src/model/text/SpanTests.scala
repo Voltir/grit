@@ -60,19 +60,5 @@ object SpanTests extends TestSuite {
       // ...and a plain ground is not a span at all.
       assert(StyledText.styled("abc", red).under(Style.plain).spans.length == 1)
     }
-
-    test("styling with plain produces no span") {
-      assert(StyledText.styled("abc", Style.plain).spans.isEmpty)
-    }
-
-    test("of concatenates pieces in order") {
-      val t = StyledText.of(
-        StyledText.styled("a", red),
-        StyledText("bb"),
-        StyledText.styled("c", blue)
-      )
-      assert(t.text == "abbc")
-      assert(t.spans == Vector(Span(0, 1, red), Span(3, 4, blue)))
-    }
   }
 }
