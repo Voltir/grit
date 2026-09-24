@@ -2,6 +2,7 @@ package grit.app.main
 
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
 import grit.app.config.DotEnv
+import grit.app.look.{Look, Theme}
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
@@ -57,6 +58,7 @@ object Main {
     val budget = exitOnLeft(tokens(env, BudgetVar, LinearAssembler.DefaultBudget))
     val tail = exitOnLeft(tokens(env, TailVar, RetrievalAssembler.DefaultTail))
     val retrieving = exitOnLeft(assemblerChoice(env))
+    val look = Look(exitOnLeft(theme(env)))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend.
     val openRouter: Option[OpenRouterConfig] =
       if (!env.contains(OpenRouterConfig.KeyVar)) None
@@ -97,7 +99,7 @@ object Main {
           val session = env.getOrElse("GRIT_SESSION", "default")
           val host = new ChatHost(engine, Origin.Tui(session))
           // Following stops before the engine it reads from closes.
-          try Runtime.run(new ChatScreen.App(modelName), host)
+          try Runtime.run(new ChatScreen.App(modelName, look), host)
           finally host.close()
           None
         } else say(engine, args.toList)
@@ -173,6 +175,16 @@ object Main {
           .filter(_ >= 0)
           .map(Tokens(_))
           .toRight(s"$variable is not a non-negative whole number")
+    }
+
+  private val ThemeVar = "GRIT_THEME"
+
+  /** The theme `GRIT_THEME` names; unset is [[Theme.Default]]. */
+  private def theme(env: Map[String, String]): Either[String, Theme] =
+    env.get(ThemeVar) match {
+      case None => Right(Theme.Default)
+      case Some(name) =>
+        Theme.named(name).toRight(s"$ThemeVar is none of ${Theme.all.map(_.key).mkString(", ")}")
     }
 
   /** Whether `GRIT_ASSEMBLER` asks for retrieval; unset is retrieval. */

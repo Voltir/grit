@@ -144,6 +144,7 @@ object Paint {
     case Node.On(c, _, _, _) => measure(c, avail)
     case Node.Floating(h, _, _) => measure(h, avail)
     case Node.Mapped(inner, _) => measure(inner, avail)
+    case Node.Ground(inner, _) => measure(inner, avail)
     case _ => avail
   }
 
@@ -217,6 +218,10 @@ object Paint {
 
       case Node.Paint(view) =>
         if (rect.rows > 0 && rect.cols > 0) blit(view.render(rect.size), rect)
+
+      case Node.Ground(inner, ground) =>
+        walk(inner, rect, lift, path)
+        if (cells) surface = surface.under(rect, ground)
 
       case d: Node.DocPane[A] => pane(d, rect, lift, path)
 

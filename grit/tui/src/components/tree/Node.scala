@@ -95,6 +95,11 @@ object Node {
   /** A component's tree, its messages lifted into its parent's. */
   final case class Mapped[A, +M](inner: Node[A], f: A -> M) extends Node[M]
 
+  /** `inner`, with `ground` under every cell of its box: a colour `inner` leaves unset,
+    * the screen's blank cells included, takes the ground's.
+    */
+  final case class Ground[+M](inner: Node[M], ground: Style) extends Node[M]
+
   /* ---- constructors ------------------------------------------------------------ */
 
   def column[M](parts: (Region, Node[M])*): Node[M] = Box(vertical = true, parts.toVector)
@@ -132,6 +137,7 @@ object Node {
     def onKey[N >: M](f: OnInput[N]): Node[N] = On(n, last = Some(f))
     def onPress[N >: M](f: Pos -> Option[N]): Node[N] = On(n, press = Some(f))
     def map[N](f: M -> N): Node[N] = Mapped(n, f)
+    def grounded(style: Style): Node[M] = Ground(n, style)
     def dialog[N >: M](modal: Modal, body: Node[N], close: Option[N]): Node[N] =
       Dialog(n, modal, body, close)
     def floating[N >: M](popup: Popup, route: Popup.Route -> Option[N]): Node[N] =

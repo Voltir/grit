@@ -1,5 +1,6 @@
 package grit.app.chat
 
+import grit.app.look.{Look, Theme}
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.Size
 import grit.tui.runtime.app.Effect
@@ -17,7 +18,7 @@ object ChatScreenTests extends TestSuite {
   private val size = Size(20, 60)
 
   private def started: Headless[ChatScreen.State, Msg] =
-    Headless.start(new ChatScreen.App("test-model"), size)
+    Headless.start(new ChatScreen.App("test-model", Look(Theme.Default)), size)
 
   private def typed(h: Headless[ChatScreen.State, Msg], text: String) =
     h.inputs(text.map(c => Input.Keyboard(Key.Printable(c)))*)
@@ -32,6 +33,18 @@ object ChatScreenTests extends TestSuite {
       .filter(r => r.startsWith("you>") || r.startsWith("grit") || r.startsWith("!"))
 
   val tests = Tests {
+    test("every cell has a background from the theme, none left to the terminal") {
+      for (theme <- Theme.all) {
+        val h = Headless
+          .start(new ChatScreen.App("test-model", Look(theme)), size)
+          .message(Msg.Arrived(Vector(Said(true, "hi"), Said(false, "hello")), thinking = true))
+        val surface = h.painted._1.surface
+        val unset = surface.cells.count(_.style.bg.isEmpty)
+        assert(unset == 0)
+        surface.at(size.rows / 2, size.cols / 2).style.bg ==> Some(theme.ground)
+      }
+    }
+
     test("the screen asks the host for the conversation at start") {
       started.effects ==> Vector(Effect.ToHost(Msg.Load))
     }

@@ -66,6 +66,17 @@ final case class Surface(size: Size, cells: Vector[Cell]) {
   /** `other` composited over this surface with its top-left at `origin`; clipped to the
     * grid.
     */
+  /** Every cell inside `r` with `ground` layered under its own style ([[Style.over]]): a
+    * colour the cell sets stays, one it leaves unset takes the ground's.
+    */
+  def under(r: Rect, ground: Style): Surface =
+    copy(cells = cells.zipWithIndex.map { (cell, i) =>
+      val row = i / size.cols
+      val col = i % size.cols
+      val inside = row >= r.top && row < r.bottom && col >= r.left && col < r.left + r.cols
+      if (inside) cell.copy(style = cell.style.over(ground)) else cell
+    })
+
   def blit(other: Surface, origin: Pos): Surface =
     (0 until other.size.rows).foldLeft(this) { (s, row) =>
       (0 until other.size.cols).foldLeft(s) { (s2, col) =>
