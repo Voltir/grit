@@ -150,8 +150,10 @@ commented in `enola-intent.yaml`. New rules are a planned session:
 - **Package layout is designed, not accreted.** A new module, library or package starts
   with its layout in the plan: each package one idea, named for it; no source file at a
   group's root; the packages in a one-way dependency order, written down where the module
-  is documented (`grit/tui/CLAUDE.md` is the pattern). A layout that has drifted gets
-  redesigned, not patched. The law fails on a new import cycle; the rest is review.
+  is documented (`grit/tui/CLAUDE.md` is the pattern). A module that is one idea is one
+  package; when it grows a second, it becomes subpackages, none of its files left at the
+  root. A layout that has drifted gets redesigned, not patched. The law fails on a new
+  import cycle; the rest is review.
 - **Done includes a real-use run** for anything a person interacts with, such as the TUI,
   a CLI or an edge. Use the real model, restart mid-turn, and wait as long as a person
   would. Tests that read the model rather than the painted screen, or that run against the
