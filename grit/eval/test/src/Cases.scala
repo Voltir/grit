@@ -1,8 +1,11 @@
-package grit.assembly.eval
+package grit.eval
 
 /** The eval's conversations, one text block each, in the format [[Case.parse]] reads:
   *
   *   - `# ...` says what the case is testing;
+  *   - `query:` is the search query a model might write for the ask, used by retrieval
+  *     when no model writes one (the spike's agent-style queries: they name what the
+  *     earlier messages contain, not the answer);
   *   - `turn` opens a turn, and `you:` / `grit:` lines are its messages;
   *   - a line ending in `[must]` is an entry the window has to contain;
   *   - `ask` is the turn being assembled for: its one `you:` line is recorded before
@@ -15,6 +18,7 @@ object Cases {
   val all: Vector[(String, String)] = Vector(
     "recent-fact" ->
       """# The answer is in the last turn: every budget should find it.
+        |query: which Postgres database should a probe or manual test run connect to: the local dev database or a separate database for Claude's agent runs, GRIT_DATABASE_URL, avoid clobbering the user's session
         |turn
         |you: What does scripts/reset-db do?
         |grit: Drops and recreates the local databases. Nothing in them is worth keeping yet.
@@ -29,6 +33,7 @@ object Cases {
         |""".stripMargin,
     "distant-decision" ->
       """# The answer is in the first turn and has scrolled away: small budgets lose it.
+        |query: why did we choose Postgres instead of SQLite for the entry store: database decision, trade-offs, DBOS durable workflows, concurrency, multiple writers, Postgres 18
         |turn
         |you: Postgres or SQLite for the entry store?
         |grit: Postgres 18. DBOS needs it anyway, and we want concurrent writers from every edge. [must]
@@ -46,6 +51,7 @@ object Cases {
         |""".stripMargin,
     "revised-decision" ->
       """# An early choice is reversed; only the reversal answers the question.
+        |query: how do the live test suites get their Postgres database now: docker-compose local database versus a throwaway Testcontainers container, test setup change after tests wiped local rows
         |turn
         |you: How should the live tests get a database?
         |grit: Point them at the docker-compose Postgres; it is already running.
@@ -60,6 +66,7 @@ object Cases {
         |""".stripMargin,
     "two-facts" ->
       """# Two facts far apart, both needed: linear keeps the recent one and drops the other.
+        |query: cost of a fifty-turn probe run on the current model: OpenRouter API key spending limit and budget, which model is configured for testing, price per turn in cents, tokens per turn
         |turn
         |you: Anything I should know about the OpenRouter key?
         |grit: It has a low spending limit, so every run should stay under a few cents. [must]

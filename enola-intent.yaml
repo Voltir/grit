@@ -23,16 +23,16 @@ service:
 # ---------------------------------------------------------------------------------------
 components:
   # Every module except grit.dbos. For most of them these rules duplicate a compile error
-  # (no DBOS on their classpath). grit.app is the exception: it depends on grit.dbos, and
-  # Mill's moduleDeps are transitive, so these rules are the only guard there.
+  # (no DBOS on their classpath). grit.app and grit.eval are the exceptions: they depend on
+  # grit.dbos, and Mill's moduleDeps are transitive, so these rules are the only guard there.
   - name: outside-dbos
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**"]
 
   # Every module except grit.models, for the HTTP quarantine (STYLE rule 8).
   - name: outside-models
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**", "grit/eval/**"]
 
   # The tui groups, for the direction rules. `runtime` needs no entry: it may import
   # every group.

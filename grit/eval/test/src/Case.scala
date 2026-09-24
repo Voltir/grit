@@ -1,9 +1,15 @@
-package grit.assembly.eval
+package grit.eval
 
-/** One eval conversation: its turns, the question asked after them, and which entries a
-  * window for that question must contain.
+/** One eval conversation: its turns, the question asked after them, which entries a window
+  * for that question must contain, and the search query a model might write for it.
   */
-final case class Case(name: String, about: String, turns: Vector[Vector[Case.Line]], ask: String)
+final case class Case(
+    name: String,
+    about: String,
+    turns: Vector[Vector[Case.Line]],
+    ask: String,
+    query: Option[String]
+)
 
 object Case {
 
@@ -17,23 +23,27 @@ object Case {
     final case class Acc(
         about: Vector[String],
         turns: Vector[Vector[Line]],
-        ask: Option[Vector[Line]]
+        ask: Option[Vector[Line]],
+        query: Option[String]
     )
     val lines = text.linesIterator.zipWithIndex.map((l, i) => (l.trim, i + 1)).filter(_._1.nonEmpty)
     lines
-      .foldLeft[Either[String, Acc]](Right(Acc(Vector(), Vector(), None))) {
+      .foldLeft[Either[String, Acc]](Right(Acc(Vector(), Vector(), None, None))) {
         case (Left(e), _) => Left(e)
         case (Right(acc), (line, n)) =>
           def fail(why: String) = Left(s"$name line $n: $why")
           line match {
             case l if l.startsWith("#") => Right(acc.copy(about = acc.about :+ l.drop(1).trim))
+            case l if l.startsWith("query:") && acc.query.isEmpty =>
+              Right(acc.copy(query = Some(l.drop("query:".length).trim)))
+            case l if l.startsWith("query:") => fail("a second query")
             case "turn" if acc.ask.isEmpty => Right(acc.copy(turns = acc.turns :+ Vector()))
             case "turn" => fail("a turn after the ask")
             case "ask" if acc.ask.isEmpty => Right(acc.copy(ask = Some(Vector())))
             case "ask" => fail("a second ask")
             case l =>
               message(l) match {
-                case None => fail("expected turn, ask, you: or grit:")
+                case None => fail("expected turn, ask, query:, you: or grit:")
                 case Some(m) =>
                   (acc.ask, acc.turns.lastOption) match {
                     case (Some(asked), _) => Right(acc.copy(ask = Some(asked :+ m)))
@@ -47,7 +57,7 @@ object Case {
       .flatMap { acc =>
         acc.ask match {
           case Some(Vector(Line(true, question, false))) =>
-            Right(Case(name, acc.about.mkString(" "), acc.turns, question))
+            Right(Case(name, acc.about.mkString(" "), acc.turns, question, acc.query))
           case _ => Left(s"$name: the ask must be one unlabelled you: line")
         }
       }

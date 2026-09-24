@@ -14,7 +14,7 @@ import grit.core.store.{Db, Entry, EntrySearch, EntryStore}
   * best first, each whole or not at all. The window holds them in conversation order.
   *
   * No query is written when the linear window of `budget` already holds every earlier
-  * turn. When the writer fails or answers NONE, the window is that linear one, with a
+  * turn. When the writer fails or writes nothing, the window is that linear one, with a
   * note saying why.
   */
 final class RetrievalAssembler(
@@ -36,7 +36,7 @@ final class RetrievalAssembler(
       else {
         val recent = LinearAssembler.recent(turns, estimator, tail)
         val own = all.filter(_.turnSeq == turn.turnSeq)
-        val asked = QueryWriter.request(recent.takeRight(2).flatten, own)
+        val asked = QueryWriter.request(own)
         writer.complete(asked) match {
           case Left(ProviderError.Unavailable(cause)) =>
             Right(window(linear, Vector(AssemblyNote.FellBack(s"no query: $cause"))))
@@ -44,8 +44,8 @@ final class RetrievalAssembler(
             val query = QueryWriter.text(reply)
             val queried =
               AssemblyNote.Queried(query, reply.model, reply.usage, estimator.request(asked))
-            if (!QueryWriter.searches(query))
-              Right(window(linear, Vector(queried, AssemblyNote.FellBack("the query was NONE"))))
+            if (query.isEmpty)
+              Right(window(linear, Vector(queried, AssemblyNote.FellBack("the query was blank"))))
             else {
               val from = recent.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq)
               db.read(search.search(turn.conversationId, from, query, hits))

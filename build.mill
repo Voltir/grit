@@ -147,6 +147,17 @@ object grit extends Module {
     }
   }
 
+  /* The assembly eval: every assembler over the same labelled cases, in a throwaway
+   * Postgres so retrieval ranks with the real pg_textsearch. Test sources only; a report,
+   * not a gate. roadmap/mechanisms/assembly-eval.md. */
+  object eval extends GritModule {
+    def moduleDeps = Seq(grit.core, grit.dbos, grit.assembly, grit.models)
+
+    object test extends GritTests with LivePostgres {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.test)
+    }
+  }
+
   /* The terminal UI -- ported from ../Spikes/tui-spike-slate. No external dependencies:
    * the terminal seam is hand-rolled over FFM (grit/tui/src/wire/term), not JLine. It may
    * render core's types, but only from `components` and `runtime`; see grit/tui/CLAUDE.md. */

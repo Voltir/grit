@@ -10,5 +10,5 @@ In dependency order:
 - **`retrieval`**: `RetrievalAssembler`, the recent tail plus the earlier turns that match
   a query `QueryWriter` has a model write, ranked by an `EntrySearch`. ← `linear`
 
-No source file sits at the module's root. The test tree mirrors it; the assembly eval
-(`eval`) is test-only.
+No source file sits at the module's root, and the test tree mirrors it. The assembly eval
+lives in its own module, `grit.eval`.

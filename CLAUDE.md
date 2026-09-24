@@ -36,6 +36,7 @@ Mill modules, and what each may name:
 | `grit.turn` | `grit.turn` | core | the durable turn's body, written against `Durable` |
 | `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); later the relevance judge |
 | `grit.assembly` | `grit.assembly.{estimate,linear,retrieval}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`grit/assembly/README.md`](grit/assembly/README.md) |
+| `grit.eval` | `grit.eval` | core, dbos, assembly, models | the assembly eval, test sources only: every assembler over labelled cases in a throwaway Postgres; a report, not a gate |
 | `grit.app` | `grit.app` | everything | the composition root; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), or a one-shot run with arguments |
 
 Mill `moduleDeps` are transitive, so

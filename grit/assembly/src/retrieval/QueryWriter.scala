@@ -12,29 +12,24 @@ object QueryWriter {
 
   val System: String =
     "You write search queries over the earlier part of a conversation between a user and " +
-      "an assistant. Given the latest exchange and the user's new message, write one query " +
-      "that would find the earlier messages needed to answer it: the names, files, commands, " +
+      "an assistant. Given the user's new message, write one query that would find the " +
+      "earlier messages needed to answer it: the names, files, commands, " +
       "decisions and technical terms those messages would contain, with likely synonyms. " +
-      "Reply with the query alone, on one line. If the latest exchange already holds " +
-      "everything needed, reply NONE."
-
-  /** The word a reply uses to say no search is needed. */
-  val NoSearch: String = "NONE"
+      "Write plain words: the search ranks by shared words, and ignores operators such as " +
+      "AND, OR and quotes. Reply with the query alone, on one line."
 
   /** How much of a tool result the query model sees. */
   val ToolResultChars = 500
 
-  /** The request for a query, from the latest earlier turns' entries, `latest`, and the
-    * turn's own, `own`.
+  /** The request for a query, from the turn's own entries, `own`. The earlier turns are
+    * left out: shown the latest exchange, the model searched for its topic instead of the
+    * new message's (the eval, 2026-09-24).
     */
-  def request(latest: Vector[Entry], own: Vector[Entry]): ModelRequest = {
-    val before = latest.flatMap(e => line(e.payload))
-    val now = own.flatMap(e => line(e.payload))
-    val text =
-      (if (before.isEmpty) "" else before.mkString("Latest exchange:\n", "\n", "\n\n")) +
-        now.mkString("New message:\n", "\n", "")
-    ModelRequest(System, Vector(Message.User(text)))
-  }
+  def request(own: Vector[Entry]): ModelRequest =
+    ModelRequest(
+      System,
+      Vector(Message.User(own.flatMap(e => line(e.payload)).mkString("New message:\n", "\n", "")))
+    )
 
   /** The query in `reply`: its text on one line, trimmed. Blank when it wrote nothing. */
   def text(reply: Message.Assistant): String =
@@ -44,10 +39,6 @@ object QueryWriter {
       .split("\\s+")
       .filter(_.nonEmpty)
       .mkString(" ")
-
-  /** Whether `query` asks for a search: not blank, and not [[NoSearch]]. */
-  def searches(query: String): Boolean =
-    query.nonEmpty && query.stripSuffix(".").toUpperCase != NoSearch
 
   private def line(payload: Payload): Option[String] = payload match {
     case Payload.Message(Message.User(text)) => Some(s"User: $text")

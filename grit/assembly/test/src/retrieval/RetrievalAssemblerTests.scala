@@ -132,8 +132,7 @@ object RetrievalAssemblerTests extends TestSuite {
           _.messages.toString.contains("New message:\nUser: Where should my probe point?")
         )
       )
-      assert(asked.exists(_.messages.toString.contains("User: q005")))
-      assert(asked.exists(!_.messages.toString.contains("q003")))
+      assert(asked.exists(!_.messages.toString.contains("q005")))
       w.notes ==> Vector(
         AssemblyNote.Queried(
           "database for probes: grit_agent",
@@ -168,13 +167,15 @@ object RetrievalAssemblerTests extends TestSuite {
       assert(!ids(w).contains("t0:2"))
     }
 
-    test("NONE, or a failed writer, falls back to the linear window and says why") {
+    test("a blank query, or a failed writer, falls back to the linear window and says why") {
       val entries = store(buried*)
-      val none = assemble(entries, new Writer(Some("NONE")), budget = 60)
+      val none = assemble(entries, new Writer(Some("  \n ")), budget = 60)
       none.entries ==> linear(entries, 60).entries
-      none.notes.collect { case AssemblyNote.FellBack(why) => why } ==> Vector("the query was NONE")
+      none.notes.collect { case AssemblyNote.FellBack(why) => why } ==> Vector(
+        "the query was blank"
+      )
       assert(none.notes.exists {
-        case AssemblyNote.Queried("NONE", "writer", _, _) => true
+        case AssemblyNote.Queried("", "writer", _, _) => true
         case _ => false
       })
 
@@ -185,12 +186,9 @@ object RetrievalAssemblerTests extends TestSuite {
       )
     }
 
-    test("the query is the reply's text on one line; blank and NONE ask for no search") {
+    test("the query is the reply's text on one line") {
       QueryWriter.text(reply("  postgres\n  sqlite   decision ")) ==> "postgres sqlite decision"
-      assert(QueryWriter.searches("postgres"))
-      assert(!QueryWriter.searches(""))
-      assert(!QueryWriter.searches("NONE"))
-      assert(!QueryWriter.searches("none."))
+      QueryWriter.text(reply(" \n ")) ==> ""
     }
   }
 }
