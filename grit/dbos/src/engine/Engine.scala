@@ -3,6 +3,7 @@ package grit.dbos.engine
 import java.sql.DriverManager
 
 import scala.io.Source
+import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
@@ -74,14 +75,28 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   /** Where `turn`'s workflow is, without waiting for it. */
   def status(turn: TurnRef): TurnStatus =
     try {
-      val handle = client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId))
+      val id = WorkflowId.value(turn.workflowId)
+      val handle = client.retrieveWorkflow[String, Exception](id)
       Option(handle.getStatus()).map(_.status()) match {
         case None => TurnStatus.Unknown
-        case Some(state) if state.isActive() => TurnStatus.Running
+        case Some(state) if state.isActive() => TurnStatus.Running(recorded(id))
         case Some(WorkflowState.SUCCESS) => TurnStatus.Finished(handle.getResult())
         case Some(state) => TurnStatus.Finished(s"workflow ${state.name.toLowerCase}")
       }
     } catch { case NonFatal(e) => TurnStatus.Finished(s"unreadable: ${e.getMessage}") }
+
+  /** The names of the steps workflow `id` has recorded, in order; none when they cannot be
+    * read, which only dims what a watcher is shown.
+    */
+  private def recorded(id: String): Vector[String] =
+    try
+      client
+        .listWorkflowSteps(id)
+        .asScala
+        .toVector
+        .sortBy(_.functionId())
+        .flatMap(step => Option(step.functionName()))
+    catch { case NonFatal(_) => Vector.empty }
 
   /** Runs `body` in a transaction of its own: committed on `Right`, rolled back otherwise. */
   private def transaction[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
@@ -152,8 +167,8 @@ object Engine {
 /** Where a turn's workflow is, as an edge sees it. */
 enum TurnStatus {
 
-  /** Queued or running. */
-  case Running
+  /** Queued or running, having `recorded` these steps so far, by name, in order. */
+  case Running(recorded: Vector[String])
 
   /** Done: the workflow's output, or why it has none. */
   case Finished(output: String)

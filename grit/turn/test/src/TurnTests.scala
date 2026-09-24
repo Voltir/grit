@@ -21,6 +21,14 @@ object TurnTests extends TestSuite {
     Vector("assemble", "call-model", "append", "summarise", "append-summary")
 
   val tests = Tests {
+    test("the step names are the recorded ones, and a running turn is in the next") {
+      Turn.Step.all ==> AllSteps
+      Turn.running(Vector.empty) ==> "assemble"
+      Turn.running(Vector("assemble")) ==> "call-model"
+      Turn.running(Vector("assemble", "DBOS.patch", "call-model", "append")) ==> "summarise"
+      Turn.running(AllSteps) ==> "append-summary"
+    }
+
     test("a turn records the model's reply as its entry") {
       val entries = new InMemoryEntryStore
       val provider = new RecordingProvider

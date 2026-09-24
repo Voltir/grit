@@ -32,6 +32,8 @@ object FollowTests extends TestSuite {
     )
   )
 
+  private def running(recorded: String*): TurnStatus = TurnStatus.Running(recorded.toVector)
+
   private def all(status: TurnStatus): TurnRef => TurnStatus = _ => status
 
   val tests = Tests {
@@ -40,20 +42,30 @@ object FollowTests extends TestSuite {
       val (next, msgs) = Follow.step(Follow.start, entries, all(TurnStatus.Unknown))
       msgs ==> Vector(
         ChatScreen.Msg
-          .Arrived(Vector(ChatScreen.Said(true, "hi"), ChatScreen.Said(false, "hello")), false)
+          .Arrived(Vector(ChatScreen.Said(true, "hi"), ChatScreen.Said(false, "hello")), None)
       )
       Follow.step(next, entries, all(TurnStatus.Unknown))._2 ==> Vector.empty
     }
 
     test("a message without a reply, whose turn runs, is thinking until the reply lands") {
       val asked = Vector(user(0, 0, "hi"))
-      val (thinking, first) = Follow.step(Follow.start, asked, all(TurnStatus.Running))
-      first ==> Vector(ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(true, "hi")), true))
-      Follow.step(thinking, asked, all(TurnStatus.Running))._2 ==> Vector.empty
+      val (thinking, first) = Follow.step(Follow.start, asked, all(running()))
+      first ==> Vector(
+        ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(true, "hi")), Some("assemble"))
+      )
+      Follow.step(thinking, asked, all(running()))._2 ==> Vector.empty
       Follow
         .step(thinking, asked :+ reply(1, 0, "hello"), all(TurnStatus.Finished("replied")))
         ._2 ==>
-        Vector(ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(false, "hello")), false))
+        Vector(ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(false, "hello")), None))
+    }
+
+    test("the screen is told each step the turn moves to, once") {
+      val asked = Vector(user(0, 0, "hi"))
+      val (assembling, _) = Follow.step(Follow.start, asked, all(running()))
+      val (answering, moved) = Follow.step(assembling, asked, all(running("assemble")))
+      moved ==> Vector(ChatScreen.Msg.Arrived(Vector(), Some("call-model")))
+      Follow.step(answering, asked, all(running("assemble")))._2 ==> Vector.empty
     }
 
     test("a turn that finished with no reply is reported once, as failed") {
@@ -61,7 +73,7 @@ object FollowTests extends TestSuite {
       val (after, msgs) =
         Follow.step(Follow.start, asked, all(TurnStatus.Finished("failed: Model(down)")))
       msgs ==> Vector(
-        ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(true, "hi")), false),
+        ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(true, "hi")), None),
         ChatScreen.Msg.Failed("failed: Model(down)")
       )
       Follow.step(after, asked, all(TurnStatus.Finished("failed: Model(down)")))._2 ==> Vector.empty
@@ -70,7 +82,7 @@ object FollowTests extends TestSuite {
     test("only the latest message's turn decides thinking") {
       val entries = Vector(user(0, 0, "old"), reply(1, 0, "answered"), user(2, 1, "new"))
       val asked: TurnRef => TurnStatus =
-        t => if (t.turnSeq == TurnSeq(1)) TurnStatus.Running else TurnStatus.Finished("x")
+        t => if (t.turnSeq == TurnSeq(1)) running() else TurnStatus.Finished("x")
       Follow.step(Follow.start, entries, asked)._1.thinking ==> true
     }
   }

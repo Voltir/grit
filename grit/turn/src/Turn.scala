@@ -35,6 +35,26 @@ object Turn {
     */
   val Epoch = "2026-09-23"
 
+  /** The turn's steps, as DBOS records their names, in the order they run. */
+  object Step {
+    val Assemble = "assemble"
+    val CallModel = "call-model"
+    val Append = "append"
+    val Summarise = "summarise"
+    val AppendSummary = "append-summary"
+
+    val all: Vector[String] = Vector(Assemble, CallModel, Append, Summarise, AppendSummary)
+  }
+
+  /** The step a running turn is in, given the names of the steps it has `recorded` (a step
+    * is recorded when it completes). Names that are not the turn's steps are skipped; once
+    * the last step is recorded the turn is finishing, and that step is named.
+    */
+  def running(recorded: Vector[String]): String = {
+    val done = recorded.map(Step.all.indexOf).filter(_ >= 0).maxOption.getOrElse(-1)
+    Step.all.lift(done + 1).orElse(Step.all.lastOption).getOrElse(Step.Assemble)
+  }
+
   /** The turn workflow's body, for the turn whose workflow id is `workflowId`: `provider`
     * answers, `summarizer` summarises. Returns what the turn did, for logs: its reply and
     * summary are in the store, never in this string.
@@ -86,19 +106,19 @@ object Turn {
     import TurnJournal.given
     val reply = replyId(turn)
     for {
-      window <- d.step("assemble") { () =>
+      window <- d.step(Step.Assemble) { () =>
         assembler.assemble(AssemblyRequest(turn))(using db).left.map {
           case AssemblyError.Store(error) => TurnFailure.Assembly(describe(error))
         }
       }
-      message <- d.step("call-model") { () =>
+      message <- d.step(Step.CallModel) { () =>
         request(system, entries, db, turn, window).flatMap { req =>
           provider.complete(req).left.map { case ProviderError.Unavailable(cause) =>
             TurnFailure.Model(cause)
           }
         }
       }
-      appended <- d.transact("append")(
+      appended <- d.transact(Step.Append)(
         append(system, entries, ledger, estimator, turn, window, reply, message)
       )
     } yield appended
@@ -116,7 +136,7 @@ object Turn {
   )(using d: Durable^): Either[TurnFailure, EntryId] = {
     import TurnJournal.given
     for {
-      message <- d.step("summarise") { () =>
+      message <- d.step(Step.Summarise) { () =>
         db.read(entries.list(turn.conversationId))
           .left
           .map(storeFailure)
@@ -126,7 +146,7 @@ object Turn {
             }
           }
       }
-      appended <- d.transact("append-summary")(
+      appended <- d.transact(Step.AppendSummary)(
         appendSummary(entries, ledger, estimator, turn, answered, message)
       )
     } yield appended

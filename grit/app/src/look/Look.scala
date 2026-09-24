@@ -6,6 +6,7 @@ import grit.tui.components.view.View
 import grit.tui.model.block.Block
 import grit.tui.model.surface.{Size, Style, Surface}
 import grit.tui.model.text.{StyledText, Width}
+import grit.turn.Turn.Step
 
 /** The chat screen's styles, from `theme`. Colour and weight only, never the terminal's
   * dim or italic: terminals draw those as they like, and a meaning carried by them can
@@ -115,6 +116,19 @@ object Look {
 
     /** The frame for `tick`, safe for any value. */
     def futhark(tick: Long): Char = Futhark(math.floorMod(tick, Futhark.length).toInt)
+
+    /** A turn step's rune and what it does, by the step's name ([[Step]]): Othala,
+      * the inheritance, while memory is assembled; Ansuz while the model answers; Jera,
+      * the harvest, while what came back is recorded; Laguz, the flow, while the turn is
+      * summarised. A name grit does not know shows as itself.
+      */
+    def step(name: String): String = name match {
+      case Step.Assemble => "ᛟ assembling"
+      case Step.CallModel => "ᚨ answering"
+      case Step.Append | Step.AppendSummary => "ᛃ recording"
+      case Step.Summarise => "ᛚ summarising"
+      case other => s"$Idle $other"
+    }
 
     /** Algiz, Othala, Dagaz and Ansuz: the ward's ring. */
     val Ward: Vector[Char] = "ᛉᛟᛞᚨ".toVector

@@ -22,19 +22,27 @@ object ChatScreen {
   final case class Said(user: Boolean, text: String)
 
   /** `said` is the transcript as the store has it. Below it, while the engine is
-    * `opening`, is the ward; while `thinking` (a turn in progress), the spinner. `tick`
-    * turns both.
+    * `opening`, is the ward; while a turn is in progress, the spinner, and the status line
+    * names the turn's `step`, which began at tick `stepSince`. `tick` turns the runes and
+    * times the step.
     */
   final case class State(
       said: Vector[Block],
       reader: Scroller.State,
       editor: Editor,
       opening: Boolean,
-      thinking: Boolean,
+      step: Option[String],
+      stepSince: Long,
       tick: Long,
       status: String,
       title: String
   ) {
+
+    /** Whether a turn is in progress. */
+    def thinking: Boolean = step.nonEmpty
+
+    /** How long the step has run, in milliseconds, as the ticks count it. */
+    def stepMs: Long = (tick - stepSince) * TickMs
 
     /** Whether anything on screen is animated, so the tick must keep coming. */
     def animated: Boolean = opening || thinking
@@ -57,10 +65,10 @@ object ChatScreen {
     /** For the host: record `text` as the user's message and start its turn. */
     case Send(text: String)
 
-    /** From the host: messages new to the conversation, oldest first, and whether a turn
-      * is in progress.
+    /** From the host: messages new to the conversation, oldest first, and the step of the
+      * turn in progress (`None` when none is).
       */
-    case Arrived(said: Vector[Said], thinking: Boolean)
+    case Arrived(said: Vector[Said], step: Option[String])
 
     /** From the host: sending failed, a turn ended with no reply, or the engine would not
       * open.
@@ -92,7 +100,8 @@ object ChatScreen {
           Scroller.init,
           look.prompt,
           opening = true,
-          thinking = false,
+          step = None,
+          stepSince = 0,
           tick = 0,
           "",
           title
@@ -110,12 +119,13 @@ object ChatScreen {
           else
             (s.copy(editor = s.editor.submitted, status = "sent"), Effect.ToHost(Msg.Send(draft)))
         case Msg.Send(_) | Msg.Load => (s, Effect.NoOp)
-        case Msg.Arrived(said, thinking) =>
+        case Msg.Arrived(said, step) =>
           val blocks = said.flatMap {
             case Said(true, text) => Vector(look.separator, look.user(text))
             case Said(false, text) => Vector(look.assistant(text))
           }
-          animate(s, s.copy(said = s.said ++ blocks, thinking = thinking, status = ""))
+          val since = if (step == s.step) s.stepSince else s.tick
+          animate(s, s.copy(said = s.said ++ blocks, step = step, stepSince = since, status = ""))
         case Msg.Failed(reason) =>
           animate(s, s.copy(said = s.said :+ look.failure(reason), opening = false))
         case Msg.Opened => animate(s, s.copy(opening = false))
@@ -151,6 +161,9 @@ object ChatScreen {
           Option.when(s.thinking && !s.opening)(look.thinking(s.tick))
       )
 
+    /** `ms` as seconds to a tenth, whatever the locale: `3.2s`. */
+    private def seconds(ms: Long): String = s"${ms / 1000}.${ms % 1000 / 100}s"
+
     private def hotkeys: OnInput[Msg] = {
       case Input.Keyboard(Key.Ctrl('q')) => Some(Msg.Quit)
       case _ => None
@@ -177,9 +190,11 @@ object ChatScreen {
           StatusBar(
             Vector(" ctrl-q quit ", " enter sends ", s.status),
             Vector(
-              if (s.opening) s"${Look.Runes.Ward(0)} opening "
-              else if (s.thinking) s"${Look.Runes.futhark(s.tick)} thinking "
-              else s"${Look.Runes.Idle} idle"
+              s.step match {
+                case _ if s.opening => s"${Look.Runes.Ward(0)} opening "
+                case Some(step) => s"${Look.Runes.step(step)} · ${seconds(s.stepMs)} "
+                case None => s"${Look.Runes.Idle} idle"
+              }
             ),
             look.status
           )

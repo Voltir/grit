@@ -42,7 +42,9 @@ object ChatScreenTests extends TestSuite {
       for (theme <- Theme.all) {
         val h = Headless
           .start(new ChatScreen.App("test-model", Look(theme)), size)
-          .message(Msg.Arrived(Vector(Said(true, "hi"), Said(false, "hello")), thinking = true))
+          .message(
+            Msg.Arrived(Vector(Said(true, "hi"), Said(false, "hello")), step = Some("call-model"))
+          )
         val surface = h.painted._1.surface
         val unset = surface.cells.count(_.style.bg.isEmpty)
         assert(unset == 0)
@@ -73,13 +75,25 @@ object ChatScreenTests extends TestSuite {
     }
 
     test("a turn in progress spins the Futhark, and the spinner stops with the turn") {
-      val asked = ready.message(Msg.Arrived(Vector(Said(true, "hi")), thinking = true))
+      val asked = ready.message(Msg.Arrived(Vector(Said(true, "hi")), step = Some("call-model")))
       asked.effects.last ==> Effect.After(ChatScreen.Runes, ChatScreen.TickMs, Msg.Tick)
       said(asked) ==> Vector("▌ᛗ hi", "ᚠ grit is thinking…")
       said(asked.message(Msg.Tick).message(Msg.Tick)) ==> Vector("▌ᛗ hi", "ᚦ grit is thinking…")
-      val done = asked.message(Msg.Arrived(Vector(), thinking = false))
+      val done = asked.message(Msg.Arrived(Vector(), step = None))
       done.effects.last ==> Effect.Cancel(ChatScreen.Runes)
       assert(done.screen.last.trim.endsWith("idle"))
+    }
+
+    test("the status line names the step and times it, from the step's first tick") {
+      def status(h: Headless[ChatScreen.State, Msg]) = h.screen.last.trim
+      val assembling = ready.message(Msg.Arrived(Vector(Said(true, "hi")), Some("assemble")))
+      assert(status(assembling).endsWith("ᛟ assembling · 0.0s"))
+      val later = (1 to 10).foldLeft(assembling)((h, _) => h.message(Msg.Tick))
+      assert(status(later).endsWith("ᛟ assembling · 1.2s"))
+      assert(status(later.message(Msg.Arrived(Vector(), Some("assemble")))).endsWith("1.2s"))
+      val answering = later.message(Msg.Arrived(Vector(), Some("call-model")))
+      assert(status(answering).endsWith("ᚨ answering · 0.0s"))
+      assert(status(answering.message(Msg.Tick)).endsWith("ᚨ answering · 0.1s"))
     }
 
     test("an engine that will not open ends the ward and says so") {
@@ -88,9 +102,9 @@ object ChatScreenTests extends TestSuite {
     }
 
     test("arrivals are painted in order, with the thinking line last while a turn runs") {
-      val asked = ready.message(Msg.Arrived(Vector(Said(true, "hi")), thinking = true))
+      val asked = ready.message(Msg.Arrived(Vector(Said(true, "hi")), step = Some("call-model")))
       said(asked) ==> Vector("▌ᛗ hi", "ᚠ grit is thinking…")
-      val answered = asked.message(Msg.Arrived(Vector(Said(false, "hello")), thinking = false))
+      val answered = asked.message(Msg.Arrived(Vector(Said(false, "hello")), step = None))
       said(answered) ==> Vector("▌ᛗ hi", "▌ᚨ hello")
     }
 
@@ -107,7 +121,7 @@ object ChatScreenTests extends TestSuite {
 
     test("a failure is painted before the thinking line, which stays") {
       val failed =
-        ready.message(Msg.Arrived(Vector(), thinking = true)).message(Msg.Failed("down"))
+        ready.message(Msg.Arrived(Vector(), step = Some("call-model"))).message(Msg.Failed("down"))
       said(failed) ==> Vector("ᚺ down", "ᚠ grit is thinking…")
     }
   }

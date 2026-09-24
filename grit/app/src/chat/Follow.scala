@@ -4,19 +4,23 @@ import grit.core.id.{TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.store.{Entry, Payload}
 import grit.dbos.engine.TurnStatus
+import grit.turn.Turn
 
-/** What following a conversation has seen so far: the last entry shown, whether a turn
-  * was in progress, and the turns whose failure has been reported.
+/** What following a conversation has seen so far: the last entry shown, the step of the
+  * turn in progress (`None` when none was), and the turns whose failure has been reported.
   */
-final case class Follow(lastSeq: Long, thinking: Boolean, reported: Set[TurnSeq])
+final case class Follow(lastSeq: Long, step: Option[String], reported: Set[TurnSeq]) {
+  def thinking: Boolean = step.nonEmpty
+}
 
 object Follow {
 
-  val start: Follow = Follow(-1L, thinking = false, Set.empty)
+  val start: Follow = Follow(-1L, None, Set.empty)
 
   /** One look at the conversation: what the screen should be told, given every entry in
     * it now and where a turn's workflow is. New entries are shown once, in order. A turn
-    * is in progress while its user message has no reply and its workflow is running. One
+    * is in progress while its user message has no reply and its workflow is running, and
+    * the screen is told each step it moves to ([[Turn.running]]). One
     * that finished with no reply failed, and is reported once, with its outcome.
     */
   def step(
@@ -32,21 +36,19 @@ object Follow {
       .lastOption
       .filterNot(e => replied.contains(e.turnSeq))
       .map(e => TurnRef(e.conversationId, e.turnSeq))
-    val (thinking, failure) = open.map(t => (t, status(t))) match {
-      case Some((_, TurnStatus.Running)) => (true, None)
+    val (step, failure) = open.map(t => (t, status(t))) match {
+      case Some((_, TurnStatus.Running(recorded))) => (Some(Turn.running(recorded)), None)
       case Some((t, TurnStatus.Finished(outcome))) if !state.reported.contains(t.turnSeq) =>
-        (false, Some(t.turnSeq -> outcome))
-      case _ => (false, None)
+        (None, Some(t.turnSeq -> outcome))
+      case _ => (None, None)
     }
     val next = Follow(
       fresh.lastOption.fold(state.lastSeq)(_.seq),
-      thinking,
+      step,
       state.reported ++ failure.map(_._1)
     )
     val arrived =
-      Option.when(said.nonEmpty || thinking != state.thinking)(
-        ChatScreen.Msg.Arrived(said, thinking)
-      )
+      Option.when(said.nonEmpty || step != state.step)(ChatScreen.Msg.Arrived(said, step))
     (next, arrived.toVector ++ failure.map(f => ChatScreen.Msg.Failed(f._2)))
   }
 
