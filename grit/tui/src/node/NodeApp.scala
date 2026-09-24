@@ -14,10 +14,15 @@ import grit.tui.runtime.{Effect, Host}
   * *object* captures nothing, so an app whose members reach a terminal, a scheduler or a
   * global capability -- through a field, a helper, a mixin or a `using` parameter -- is
   * rejected where it is defined. That is why the members can be plain methods, and why a
-  * handler built inside one is a pure `->` with no ceremony. What it does not catch: an
-  * untracked Java effect, and mutable state (separation checking is off in `grit.tui`).
+  * handler built inside one is a pure `->` with no ceremony.
+  *
+  * `M <: caps.Pure` closes the other way in: a message delivered by a [[Host]] that
+  * carried a capability would hand `update` one. Declaring the message type pure (`enum
+  * Msg extends caps.Pure`) makes a capability-typed case a compile error where it is
+  * declared. What neither catches: an untracked Java effect, and mutable state
+  * (separation checking is off in `grit.tui`).
   */
-trait NodeApp[S, M] { self: NodeApp[S, M]^{} =>
+trait NodeApp[S, M <: caps.Pure] { self: NodeApp[S, M]^{} =>
   def init: (S, Effect[M])
   def update(msg: M, state: S): (S, Effect[M])
   def view(state: S): Node[M]
@@ -48,7 +53,11 @@ object Loop {
   def start[S, M](state: S): Loop[S, M] = Loop(state, Painted.empty[M], Memo.empty, Grab.Idle)
 
   /** One frame: the tree for this state, laid out and painted at `size`. */
-  def paint[S, M](l: Loop[S, M], app: NodeApp[S, M], size: Size): (Frame, Loop[S, M]) = {
+  def paint[S, M <: caps.Pure](
+      l: Loop[S, M],
+      app: NodeApp[S, M],
+      size: Size
+  ): (Frame, Loop[S, M]) = {
     val (frame, painted, memo) = Paint.frame(app.view(l.state), size, l.memo)
     (frame, l.copy(painted = painted, memo = memo, stale = false))
   }
@@ -58,7 +67,7 @@ object Loop {
     * (the editor, the scroll position), so routing a second key against them would build
     * on the first key's *input* rather than its result.
     */
-  def fresh[S, M](l: Loop[S, M], app: NodeApp[S, M]): Loop[S, M] =
+  def fresh[S, M <: caps.Pure](l: Loop[S, M], app: NodeApp[S, M]): Loop[S, M] =
     if (!l.stale) l
     else {
       val (painted, memo) = Paint.layout(app.view(l.state), l.painted.size, l.memo)
@@ -66,7 +75,7 @@ object Loop {
     }
 
   /** `r`'s messages run through `update` in order, collecting their effects. */
-  def applied[S, M](
+  def applied[S, M <: caps.Pure](
       l: Loop[S, M],
       r: Routed[M],
       app: NodeApp[S, M]
@@ -87,7 +96,7 @@ object Loop {
     * under a grab is routed against what was *painted* -- the pane the user sees -- and
     * everything else against a layout of the current state ([[fresh]]).
     */
-  def input[S, M](
+  def input[S, M <: caps.Pure](
       l: Loop[S, M],
       in: Input,
       app: NodeApp[S, M]
@@ -102,7 +111,7 @@ object Loop {
   }
 
   /** One of the runtime's own ticks. */
-  def tick[S, M](
+  def tick[S, M <: caps.Pure](
       l: Loop[S, M],
       t: Tick,
       app: NodeApp[S, M]
@@ -112,7 +121,7 @@ object Loop {
   }
 
   /** One of the app's own messages. */
-  def message[S, M](
+  def message[S, M <: caps.Pure](
       l: Loop[S, M],
       m: M,
       app: NodeApp[S, M]

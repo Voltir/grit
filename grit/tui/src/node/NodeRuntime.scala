@@ -15,7 +15,7 @@ import grit.tui.wire.term.Terminal.given
   * difference that layout, the wrap memo and the pointer are the loop's own -- held in a
   * [[Loop]] value and stepped purely.
   */
-final class NodeRuntime[S, M](
+final class NodeRuntime[S, M <: caps.Pure](
     app: NodeApp[S, M],
     term: Terminal,
     scheduler: Scheduler,
@@ -142,7 +142,7 @@ object NodeRuntime {
   }
 
   /** Run `app` on the system terminal, or print one frame if there is none. */
-  def run[S, M](app: NodeApp[S, M], host: Host[M]^): Unit =
+  def run[S, M <: caps.Pure](app: NodeApp[S, M], host: Host[M]^): Unit =
     SystemTerminal.open() match {
       case None =>
         val size = Size.screen(app.fallbackSize)

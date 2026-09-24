@@ -22,6 +22,7 @@ object NodeCaptureTests extends TestSuite {
       |import grit.tui.model.input.Input
       |import grit.tui.wire.term.Terminal
       |import grit.tui.runtime.Effect
+      |final case class N(n: Int) extends caps.Pure
       |object Probe {
       |""".stripMargin
 
@@ -107,11 +108,11 @@ object NodeCaptureTests extends TestSuite {
 
     test("an app's handlers built in its own methods are pure with no ceremony") {
       val errs = errors(
-        """object Counter extends NodeApp[Int, Int] {
-          |  def init: (Int, Effect[Int]) = (0, Effect.NoOp)
-          |  def update(m: Int, s: Int): (Int, Effect[Int]) = (s + m, Effect.NoOp)
-          |  private def bump(s: Int): Int -> Int = n => n + s
-          |  def view(s: Int): Node[Int] =
+        """object Counter extends NodeApp[Int, N] {
+          |  def init: (Int, Effect[N]) = (0, Effect.NoOp)
+          |  def update(m: N, s: Int): (Int, Effect[N]) = (s + m.n, Effect.NoOp)
+          |  private def bump(s: Int): Int -> N = n => N(n + s)
+          |  def view(s: Int): Node[N] =
           |    Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onCopy((t, _) => bump(s)(t.length))
           |}
           |""".stripMargin
@@ -121,14 +122,49 @@ object NodeCaptureTests extends TestSuite {
 
     test("an app that holds the terminal is rejected where it is defined") {
       val errs = errors(
-        """final class Leaky(term: Terminal) extends NodeApp[Int, Int] {
-          |  def init: (Int, Effect[Int]) = (0, Effect.NoOp)
-          |  def update(m: Int, s: Int): (Int, Effect[Int]) = { term.flush(); (s + m, Effect.NoOp) }
-          |  def view(s: Int): Node[Int] = Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom)
+        """final class Leaky(term: Terminal) extends NodeApp[Int, N] {
+          |  def init: (Int, Effect[N]) = (0, Effect.NoOp)
+          |  def update(m: N, s: Int): (Int, Effect[N]) = { term.flush(); (s + m.n, Effect.NoOp) }
+          |  def view(s: Int): Node[N] = Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom)
           |}
           |""".stripMargin
       )
       assert(rejected(errs))
+    }
+
+    test("a message that carries the terminal is rejected where it is declared") {
+      val errs = errors(
+        """enum Carry extends caps.Pure {
+          |  case Term(t: Terminal^)
+          |  case Plain
+          |}
+          |""".stripMargin
+      )
+      assert(errs.exists(_.contains("Term.this.t")))
+    }
+
+    test("without caps.Pure, a message may carry the terminal") {
+      val errs = errors(
+        """enum Carry {
+          |  case Term(t: Terminal^)
+          |  case Plain
+          |}
+          |""".stripMargin
+      )
+      assert(errs.isEmpty)
+    }
+
+    test("an app whose message type is not declared pure is refused") {
+      val errs = errors(
+        """enum Open { case Plain }
+          |object Opened extends NodeApp[Int, Open] {
+          |  def init: (Int, Effect[Open]) = (0, Effect.NoOp)
+          |  def update(m: Open, s: Int): (Int, Effect[Open]) = (s, Effect.NoOp)
+          |  def view(s: Int): Node[Open] = Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom)
+          |}
+          |""".stripMargin
+      )
+      assert(errs.exists(_.contains("does not conform to upper bound scala.caps.Pure")))
     }
 
     test("capture checking is what rejects the capturing handler") {

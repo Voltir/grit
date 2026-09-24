@@ -30,7 +30,7 @@ object NodeTests extends TestSuite {
       ed: Editor = Editor("", 0)
   )
 
-  enum M {
+  enum M extends caps.Pure {
     case A(m: Scroller.Msg)
     case B(m: Scroller.Msg)
     case E(e: Editor)

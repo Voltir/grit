@@ -28,7 +28,7 @@ object ChatNext {
       title: String
   )
 
-  enum Msg {
+  enum Msg extends caps.Pure {
     case Submit
     case Load
     case Send(text: String)

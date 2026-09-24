@@ -47,7 +47,7 @@ object DemoNext extends NodeApp[DemoNext.State, DemoNext.Msg] {
       popup: Option[Popup]
   )
 
-  enum Msg {
+  enum Msg extends caps.Pure {
     case Transcript(m: Scroller.Msg)
     case Help(m: Scroller.Msg)
     case Edited(e: Editor)
