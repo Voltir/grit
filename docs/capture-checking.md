@@ -84,6 +84,25 @@ only a nested `step`.
 - *Example:* `val conn: java.sql.Connection^{tx} = Tx.connection(tx)`.
 - Inference will not widen it for you.
 
+**An overloaded Java varargs method crashes the compiler.**
+
+- *Symptom:* `java.lang.AssertionError: assertion failed: unexpected type of
+  container.withCommand: <overloaded container.withCommand>` from `Recheck.recheckApply`,
+  a compiler crash rather than an error.
+- *Cause:* capture checking's recheck cannot handle the overload set of a Java method
+  with a varargs alternative (Testcontainers' `withCommand(String...)`).
+- *Fix:* call a non-varargs overload (`withCommand(String)` in `TestPostgres`).
+
+**A capability cannot be a field of an object.**
+
+- *Symptom:* `lazy value engine needs an explicit type because it captures a root
+  capability`, then, once typed, `object SqlLiveTests needs to extend Capability since it
+  has a field engine with any in its type`.
+- *Cause:* an object holding an `Engine^` (a `SharedCapability`) would itself be a
+  capability.
+- *Fix:* open it where it is used and close it in a `finally`; keep plain values, such as
+  a `DbConfig`, in the fields.
+
 **Iterator-producing combinators.** `args.sliding(2).collectFirst { … }` is rejected with
 `Illegal capture reference`. Indexed `Vector` code is the way out.
 

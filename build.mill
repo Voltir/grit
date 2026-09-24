@@ -42,6 +42,21 @@ trait GritModule extends ScalaModule {
   }
 }
 
+/* A test module that starts Postgres with Testcontainers. The image is read from
+ * docker-compose.yml, so the tests and the dev database run the same Postgres. */
+trait LivePostgres extends TestModule {
+  def composeFile = Task.Source(mill.api.BuildCtx.workspaceRoot / "docker-compose.yml")
+
+  def postgresImage = Task {
+    "(?m)^\\s*image:\\s*(postgres:\\S+)".r
+      .findFirstMatchIn(os.read(composeFile().path))
+      .map(_.group(1))
+      .getOrElse(sys.error("docker-compose.yml names no postgres image"))
+  }
+
+  def forkEnv = Task { super.forkEnv() ++ Map("GRIT_POSTGRES_IMAGE" -> postgresImage()) }
+}
+
 object grit extends Module {
   /* The domain and its seams. Names no other module, and has neither DBOS nor a JDBC
    * driver on its classpath -- STYLE rule 8's dev.dbos.* half is a compile error here. */
@@ -78,7 +93,12 @@ object grit extends Module {
       mvn"org.postgresql:postgresql:42.7.13"
     )
 
-    object test extends GritTests
+    /* Live tests against a throwaway Postgres (Testcontainers; `TestPostgres`). */
+    object test extends GritTests with LivePostgres {
+      def mvnDeps = Task {
+        super.mvnDeps() ++ Seq(mvn"org.testcontainers:testcontainers-postgresql:2.0.5")
+      }
+    }
   }
 
   /* Durable turn: the per-turn workflow, written against core's seams, not DBOS.
@@ -148,6 +168,19 @@ object grit extends Module {
     def moduleDeps = Seq(grit.core, grit.dbos, grit.turn, grit.models, grit.assembly, grit.tui)
     def forkArgs = Task { tui.forkArgs() }
     def mainClass = Some("grit.app.Main")
+
+    /* The M0 gate end to end, live. The crash test runs one phase in a child JVM on this
+     * classpath, which it halts mid-turn. */
+    object test extends GritTests with LivePostgres {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.test)
+      def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
+      def forkEnv = Task {
+        super.forkEnv() ++ Map(
+          "GRIT_TEST_CLASSPATH" -> runClasspath().map(_.path.toString).mkString(":"),
+          "GRIT_TEST_JAVA" -> javaHome().map(_.path / "bin" / "java").fold("java")(_.toString)
+        )
+      }
+    }
   }
 }
 

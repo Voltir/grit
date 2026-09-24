@@ -81,6 +81,10 @@ capability is a promise of purity.**
 
 Braces, never significant indentation — `-no-indent` makes it a compile error.
 
+`./mill __.test` needs Docker: the live suites (`grit.dbos.test`, `grit.app.test`) start
+a throwaway Postgres with Testcontainers (`TestPostgres`), running the image
+`docker-compose.yml` names. There is no skip.
+
 **Capture and separation checking: [`docs/capture-checking.md`](docs/capture-checking.md)**
 has every trap met so far (symptom, cause, fix), how to test that something does not
 compile, and the Scala-upgrade checklist. The ones that bite most:
