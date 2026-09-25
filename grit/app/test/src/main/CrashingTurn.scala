@@ -1,6 +1,6 @@
 package grit.app.main
 
-import grit.core.id.{ConversationId, EntryId}
+import grit.core.id.{ConversationId, EntryId, TurnRef}
 import grit.core.message.Message
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
 import grit.core.store.{Entry, EntryStore, StoreError, Tx}
@@ -27,7 +27,8 @@ object CrashingTurn {
     val engine = Engine.open(config, Turn.Epoch)
     val entries = new EntryStore {
       def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] = {
-        if (EntryId.value(entry.id).startsWith("reply:")) Runtime.getRuntime.halt(Halted)
+        if (entry.id == Turn.replyId(TurnRef(entry.conversationId, entry.turnSeq)))
+          Runtime.getRuntime.halt(Halted)
         engine.entries.insert(entry)
       }
       def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] = engine.entries.get(id)
@@ -36,9 +37,20 @@ object CrashingTurn {
       def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
         engine.entries.lockNext(c)
     }
-    val midStream = args.lift(1).contains("mid-stream")
-    // A slow stub, so pieces are written before the halt: MidStreamPieces deltas in.
-    val provider = new Provider {
+    if (args.lift(1).contains("mid-stream")) LiveTurn.launch(engine, engine.entries, haltingStub)
+    else LiveTurn.launch(engine, entries, new StubProvider())
+    val turn = LiveTurn.say(engine, args(0))
+    engine.awaitTurn(turn)
+    // Reaching here means the halt never fired.
+    engine.close()
+    sys.exit(1)
+  }
+
+  /** A slow stub that halts the JVM [[MidStreamPieces]] deltas into its streamed reply, so
+    * pieces are written before the halt.
+    */
+  private def haltingStub: Provider =
+    new Provider {
       def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] =
         new StubProvider().complete(request)
       override def stream(
@@ -56,12 +68,4 @@ object CrashingTurn {
         )
       }
     }
-    if (midStream) LiveTurn.launch(engine, engine.entries, provider)
-    else LiveTurn.launch(engine, entries, new LiveTurn.CountingProvider)
-    val turn = LiveTurn.say(engine, args(0))
-    engine.awaitTurn(turn)
-    // Reaching here means the halt never fired.
-    engine.close()
-    sys.exit(1)
-  }
 }
