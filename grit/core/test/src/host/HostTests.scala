@@ -53,6 +53,23 @@ object HostTests extends TestSuite {
       }
     }
 
+    test("LineNumbers") {
+      test("cat -n style: right-aligned in six columns, wider when a number needs it") {
+        LineNumbers.show(9, Vector("x", "", "\ty")) ==> Vector(
+          "     9\tx",
+          "    10\t",
+          "    11\t\ty"
+        )
+        LineNumbers.show(999999, Vector("a", "b")) ==> Vector("999999\ta", "1000000\tb")
+        LineNumbers.show(1, Vector.empty) ==> Vector.empty
+      }
+      test("strip takes each line's prefix off, only when every line has one") {
+        LineNumbers.strip("     9\tx\n    10\t\ty\n") ==> Some("x\n\ty\n")
+        LineNumbers.strip("     9\tx\ny") ==> None
+        LineNumbers.strip("x9\ty") ==> None
+        LineNumbers.strip("") ==> None
+      }
+    }
     test("Clipped") {
       test("text that fits is whole, with the hint for nothing cut") {
         Clipped.head("a\nb\n", _ => Some("whole")) ==> Clipped.head("a\nb\n", _ => Some("whole"))
@@ -129,6 +146,20 @@ object HostTests extends TestSuite {
       test("no fuzzy matching: whitespace and quotes count") {
         onto("say “hi”  ", "say \"hi\"" -> "x") ==> Left(EditError.NotFound(p, 0))
         onto("a  b", "a b" -> "x") ==> Left(EditError.NotFound(p, 0))
+      }
+      test("an oldText carrying read's line numbers is refused as such, and only then") {
+        val file = "a\nb\nc\n"
+        val copied = LineNumbers.show(2, Vector("b", "c")).mkString("\n")
+        copied ==> "     2\tb\n     3\tc"
+        onto(file, copied -> "x") ==> Left(EditError.Numbered(p, 0))
+        onto(file, "2\tb\n  3\tc\n" -> "x") ==> Left(EditError.Numbered(p, 0))
+        onto("a\r\nb\r\n", "     1\ta\r\n     2\tb" -> "x") ==> Left(EditError.Numbered(p, 0))
+        // Not there with the prefix off either: plainly not found.
+        onto(file, "     2\tz" -> "x") ==> Left(EditError.NotFound(p, 0))
+        // A file whose lines really start with digits and a tab matches as sent.
+        onto("1\tone\n2\ttwo\n", "2\ttwo" -> "2\tzwei") ==>
+          Right(("1\tone\n2\tzwei\n", Edited(Vector(2))))
+        assert(EditError.Numbered(p, 0).message.contains("line number and tab `read` shows"))
       }
       test("messages name the edit and the path") {
         EditError.Repeated(p, 2, 3).message ==>

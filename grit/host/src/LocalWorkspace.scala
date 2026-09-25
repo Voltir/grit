@@ -3,7 +3,7 @@ package grit.host
 import java.nio.file.{Files, LinkOption, Path}
 import java.util.regex.{Pattern, PatternSyntaxException}
 
-import grit.core.host.{Clipped, HostError, Kept, Lines, RelPath, Workspace}
+import grit.core.host.{Clipped, HostError, Kept, LineNumbers, Lines, RelPath, Workspace}
 
 /** Reading the checkout whose root is `root`, on this machine's file system. Search walks
   * the files itself, with `java.util.regex`; it does not shell out to `rg`, so it needs
@@ -22,7 +22,7 @@ final class LocalWorkspace(root: Path) extends Workspace {
       if (first > total.max(1)) Left(HostError.PastEnd(path, first, total))
       else {
         val end = lines.limit.fold(total)(l => (first - 1 + l).min(total))
-        val selected = all.slice(first - 1, end).mkString("\n")
+        val selected = LineNumbers.show(first, all.slice(first - 1, end)).mkString("\n")
         Right(Clipped.head(selected, hint(path, first, end, total)))
       }
     }

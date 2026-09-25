@@ -15,9 +15,10 @@ object Replace {
     * one) and its byte order mark.
     *
     * Refused, naming the first failing edit by its index from 0 (all emptiness first, then
-    * each edit in order, then overlaps in file order): an empty `oldText`; one not found;
-    * one found more than once; two that overlap; and edits that leave the text as it was,
-    * which includes none at all.
+    * each edit in order, then overlaps in file order): an empty `oldText`; one not found
+    * ([[EditError.Numbered]] when it would be found with each line's [[LineNumbers]] prefix
+    * taken off); one found more than once; two that overlap; and edits that leave the text
+    * as it was, which includes none at all.
     */
   def onto(
       path: RelPath,
@@ -39,7 +40,9 @@ object Replace {
           .foldLeft[Either[EditError, Vector[Found]]](Right(Vector.empty)) { case (acc, (e, i)) =>
             acc.flatMap { found =>
               positions(base, e.oldText) match {
-                case Vector() => Left(EditError.NotFound(path, i))
+                case Vector() =>
+                  val numbered = LineNumbers.strip(e.oldText).exists(positions(base, _).nonEmpty)
+                  Left(if (numbered) EditError.Numbered(path, i) else EditError.NotFound(path, i))
                 case Vector(at) => Right(found :+ Found(i, at, e))
                 case many => Left(EditError.Repeated(path, i, many.size))
               }
@@ -97,6 +100,11 @@ enum EditError {
   case Host(error: HostError)
   case EmptyOld(path: RelPath, edit: Int)
   case NotFound(path: RelPath, edit: Int)
+
+  /** `oldText` was not found, but is, without the number and tab [[LineNumbers]] shows
+    * before each line: it was copied from `read`'s output with them.
+    */
+  case Numbered(path: RelPath, edit: Int)
   case Repeated(path: RelPath, edit: Int, times: Int)
   case Overlap(path: RelPath, edit: Int, other: Int)
   case NoChange(path: RelPath)
@@ -109,6 +117,10 @@ enum EditError {
     case NotFound(p, i) =>
       s"edits[$i].oldText was not found in ${RelPath.value(p)}. It must match the file " +
         "exactly, including whitespace and line breaks; read the file again to copy it."
+    case Numbered(p, i) =>
+      s"edits[$i].oldText was not found in ${RelPath.value(p)}: each of its lines starts " +
+        "with the line number and tab `read` shows, which are not part of the file. Send " +
+        "oldText, and newText, without them."
     case Repeated(p, i, n) =>
       s"edits[$i].oldText occurs $n times in ${RelPath.value(p)}; it must occur exactly " +
         "once. Include more of the surrounding lines to make it unique."

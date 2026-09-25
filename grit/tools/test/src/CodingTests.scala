@@ -133,6 +133,16 @@ object CodingTests extends TestSuite {
       )
     }
 
+    test("read says how it numbers lines; write and edit say the numbers are not the file") {
+      val schemas = all(new Scripted()).schemas(strict = false)
+      val described = schemas.map(s => s.name -> s.description).toMap
+      assert(
+        described.get("read").exists(_.contains("its number, right-aligned, a tab, then its text")),
+        described.get("write").exists(_.contains("never the line numbers and tabs `read` shows")),
+        described.get("edit").exists(_.contains("leave out the line number and tab `read` shows"))
+      )
+    }
+
     test("read runs free, passing offset and limit") {
       val host = new Scripted()
       settle(host, "read", ujson.Obj("path" -> "src/a.scala", "offset" -> 10, "limit" -> 5)) ==>

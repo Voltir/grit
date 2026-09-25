@@ -31,7 +31,8 @@ In dependency order:
 - **`host`** — what a tool may do to the machine, as capabilities: `Workspace` (read, list,
   search), `Edits` (write, edit) and `Shell` (run), implemented in `grit.host`; and the pure
   rules they share: `RelPath` (a path that stays inside the checkout and names no secrets
-  file), `Clipped` (output cut to what the model is shown), `Replace.onto` (an edit's
+  file), `Clipped` (output cut to what the model is shown), `LineNumbers` (how `read`
+  numbers a file's lines), `Replace.onto` (an edit's
   matching), and their errors. Imports nothing in core.
 - **`tool`** — tools as typed data: `Field`, `Args` (read into a named tuple), `ArgsError`,
   `ToolName` and `ToolSpec`, from which come the schema the model is shown (a

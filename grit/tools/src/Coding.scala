@@ -72,7 +72,9 @@ object Coding {
         ToolName("read"),
         "Read a UTF-8 text file in the checkout. Shows at most " + limits + ", from " +
           "`offset`; a note after the text says which lines were shown and the offset to " +
-          "continue from. Lines are not numbered. Fails when the file does not exist, is a " +
+          "continue from. Each line is shown as its number, right-aligned, a tab, then its " +
+          "text, numbered from 1 as `search` numbers them; the number and tab are not part " +
+          "of the file. Fails when the file does not exist, is a " +
           s"directory, is over ${mb(Workspace.MaxFileBytes)} or is not UTF-8, or when " +
           "`offset` is past its end." + pathRule,
         Args
@@ -147,8 +149,9 @@ object Coding {
       ToolSpec(
         ToolName("write"),
         "Make `content` the whole of a file in the checkout, creating it and any missing " +
-          "directory above it, or replacing what it held. To change part of a file, use " +
-          "`edit`. A person approves each call first; if they decline, nothing is written " +
+          "directory above it, or replacing what it held. `content` is the file's text " +
+          "only: never the line numbers and tabs `read` shows. To change part of a file, " +
+          "use `edit`. A person approves each call first; if they decline, nothing is written " +
           "and their reason, if any, is returned. Fails when the path is a directory or a " +
           "directory on the way is a file." + pathRule,
         Args
@@ -178,11 +181,14 @@ object Coding {
         ToolName("edit"),
         "Change a file in the checkout by replacing passages of it. Every `oldText` is " +
           "matched against the file as it was before this call, exactly, whitespace and " +
-          "line breaks included; each must occur exactly once, and no two may overlap. All " +
+          "line breaks included; each must occur exactly once, and no two may overlap. " +
+          "`oldText` and `newText` are the file's text only: leave out the line number and " +
+          "tab `read` shows before each line. All " +
           "the edits apply, or none does. Line endings (\\r\\n or \\n) and a byte order " +
           "mark are kept. A person approves each call first; if they decline, nothing " +
           "changes and their reason, if any, is returned. Fails, naming the edit by its " +
-          "index from 0, when an `oldText` is empty, not found, or found more than once, " +
+          "index from 0, when an `oldText` is empty, not found (saying so when it carries " +
+          "`read`'s line numbers), or found more than once, " +
           "when two edits overlap, or when the edits change nothing; also when the file " +
           s"does not exist, is a directory, is over ${mb(Workspace.MaxFileBytes)} or is not " +
           "UTF-8." + pathRule,
@@ -265,7 +271,9 @@ object Coding {
     */
   private val replacement = Args.of(
     (
-      oldText = Field.text("The exact text to replace, as it is in the file."),
+      oldText = Field.text(
+        "The exact text to replace, as it is in the file, without `read`'s line numbers."
+      ),
       newText = Field.text("What replaces it.")
     )
   )

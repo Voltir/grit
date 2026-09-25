@@ -39,10 +39,12 @@ object LocalHostTests extends TestSuite {
       test("a whole file, and a window of it") {
         inCheckout("a.txt" -> "one\ntwo\nthree\n") { dir =>
           val ws = new LocalWorkspace(dir)
-          shown(ws.read(path("a.txt"), Lines.All)) ==> Right("one\ntwo\nthree")
+          shown(ws.read(path("a.txt"), Lines.All)) ==> Right(
+            "     1\tone\n     2\ttwo\n     3\tthree"
+          )
           shown(ws.read(path("a.txt"), Lines.of(2, Some(1)))) ==>
-            Right("two\n\n[1 more lines in the file. Use offset=3 to continue.]")
-          shown(ws.read(path("a.txt"), Lines.of(3, None))) ==> Right("three")
+            Right("     2\ttwo\n\n[1 more lines in the file. Use offset=3 to continue.]")
+          shown(ws.read(path("a.txt"), Lines.of(3, None))) ==> Right("     3\tthree")
         }
       }
       test("a long file is clipped, with the offset to continue from") {
@@ -51,6 +53,15 @@ object LocalHostTests extends TestSuite {
           val clip = new LocalWorkspace(dir).read(path("big.txt"), Lines.All)
           clip.map(_.hint) ==>
             Right(Some("Showing lines 1-2000 of 2500. Use offset=2001 to continue."))
+          clip.map(_.text.linesIterator.toVector.lastOption) ==> Right(Some("  2000\tline 2000"))
+        }
+      }
+      test("a line's number is the one search gives it") {
+        inCheckout("s.txt" -> "a\nb\nneedle\nc\n") { dir =>
+          val ws = new LocalWorkspace(dir)
+          shown(ws.search("needle", path("s.txt"))) ==> Right("s.txt:3: needle")
+          shown(ws.read(path("s.txt"), Lines.of(3, Some(1)))) ==>
+            Right("     3\tneedle\n\n[1 more lines in the file. Use offset=4 to continue.]")
         }
       }
       test("failures") {
@@ -83,7 +94,7 @@ object LocalHostTests extends TestSuite {
             val ws = new LocalWorkspace(dir)
             ws.read(path("out"), Lines.All) ==> Left(HostError.Outside(path("out")))
             ws.read(path("config"), Lines.All) ==> Left(HostError.Outside(path("config")))
-            shown(ws.read(path("ok"), Lines.All)) ==> Right("x")
+            shown(ws.read(path("ok"), Lines.All)) ==> Right("     1\tx")
           }
         }
       }

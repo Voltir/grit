@@ -72,7 +72,7 @@ object TurnRecordLiveTests extends TestSuite {
           }
           .collect { case (grit.core.message.Message.ToolResult(_, content, isError), shown) =>
             (content, isError, shown)
-          } ==> Vector(("the answer is 42", false, Some("read notes.txt")))
+          } ==> Vector(("     1\tthe answer is 42", false, Some("read notes.txt")))
         reply(engine, turn) ==> Some("stub reply to: message look #call:{\"path\":\"notes.txt\"}")
       } finally {
         engine.close()

@@ -5,7 +5,8 @@ package grit.core.host
   */
 trait Workspace extends caps.SharedCapability {
 
-  /** The lines `lines` of the file `path`, clipped from the head ([[Clipped.head]]). When
+  /** The lines `lines` of the file `path`, each numbered ([[LineNumbers]]), clipped from
+    * the head ([[Clipped.head]]), the numbers counted in its bytes. When
     * lines are left out, by the clip or by `lines.limit`, the hint says which lines are
     * shown, of how many, and the offset to continue from ("Use offset=2001 to continue.").
     * Fails when there is no such file, it is a directory, it is over
