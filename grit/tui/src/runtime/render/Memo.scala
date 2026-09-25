@@ -5,7 +5,7 @@ import grit.tui.components.tree.PaneKey
 import grit.tui.model.block.{Block, Overflow}
 import grit.tui.model.select.{Doc, DocPos}
 import grit.tui.model.surface.Size
-import grit.tui.model.text.{Row, Span, Width, Wrap}
+import grit.tui.model.text.{Row, Span, Wrap}
 
 /** One document wrapped at one width, keyed by the **blocks themselves**.
   *
@@ -148,16 +148,10 @@ object DocMemo {
 
   val empty: DocMemo = DocMemo(0, Vector.empty, Vector.empty, Vector(0), 0L, 0L)
 
-  /** One block's rows at `w`: wrapped, or cut per line for a truncating diff. */
-  def wrap(b: Block, w: Int): Vector[Row] = b match {
-    case d: Block.Diff if d.overflow == Overflow.Truncate =>
-      var base = 0
-      d.lines.map { line =>
-        val r = Row(base, line.substring(0, Width.offsetAtColumn(line, w)))
-        base += line.length + 1
-        r
-      }
-    case _ => Wrap.wrap(b.text, w)
+  /** One block's rows at `w`: wrapped, or cut per line for a block that does not wrap. */
+  def wrap(b: Block, w: Int): Vector[Row] = b.overflow match {
+    case Overflow.Truncate => Wrap.truncate(b.text, w)
+    case Overflow.Wrap => Wrap.wrap(b.text, w)
   }
 }
 

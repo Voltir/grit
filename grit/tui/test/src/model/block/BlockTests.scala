@@ -2,7 +2,7 @@ package grit.tui.model.block
 
 import grit.tui.components.pane.{Anchor, Viewport}
 import grit.tui.model.select.{Doc, DocPos, Selection}
-import grit.tui.model.surface.{Pos, Size}
+import grit.tui.model.surface.{Color, Pos, Size, Style}
 import grit.tui.runtime.render.DocMemo
 
 import utest.*
@@ -103,6 +103,19 @@ object BlockTests extends TestSuite {
       assert(vpT.rows.map(_.text) == Vector("aaa bbb"))
       assert(vpW.rows.map(_.text) == Vector("aaa bbb", "ccc ddd"))
       assert(vpW.rows(1).start == 8)
+    }
+
+    test("text that says Truncate keeps one row per line, keeps its ground, and copies whole") {
+      val code = Block.Text("val x = 1 + 2 + 3\n\n  y", ground = Style.bg(Color.hex("#101010")))
+      val cut = code.copy(overflow = Overflow.Truncate)
+      val vpW = viewport(Doc.empty.append(code), Size(8, 8))
+      val vpT = viewport(Doc.empty.append(cut), Size(8, 8))
+      assert(vpW.rows.map(_.text) == Vector("val x =", "1 + 2 +", "3", "", "  y"))
+      assert(vpT.rows.map(_.text) == Vector("val x = ", "", "  y"))
+      assert(vpT.rows.map(_.start) == Vector(0, 18, 19))
+      assert(vpT.rows.forall(_.ground == cut.ground))
+      val whole = Selection.between(DocPos(0, 0), DocPos(0, 100))
+      assert(Doc.empty.append(cut).textOf(whole) == cut.text)
     }
 
     test("a separator paints a rule across the width and copies as an empty line") {

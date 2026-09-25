@@ -87,12 +87,14 @@ object Block {
   def glyph(tick: Long): Char = frames(math.floorMod(tick, frames.length).toInt)
 
   /** Plain text. The streaming case: [[Text.append]] grows the trailing entry, so exactly
-    * one entry's wrapped rows are re-paid.
+    * one entry's wrapped rows are re-paid. It wraps unless it says `Truncate`: a code
+    * listing, whose lines mean what they say only as they were written.
     */
   final case class Text(
       override val text: String,
       override val spans: Vector[Span] = Vector.empty,
-      override val ground: Style = Style.plain
+      override val ground: Style = Style.plain,
+      override val overflow: Overflow = Overflow.Wrap
   ) extends Block {
 
     /** This block with `more` appended, unstyled. Existing spans keep their offsets --

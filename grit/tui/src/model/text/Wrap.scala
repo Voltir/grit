@@ -46,4 +46,23 @@ object Wrap {
     }
     out.result()
   }
+
+  /** `text` cut to `width` display columns, one row per logical line: what a block that
+    * does not wrap shows. The cut never splits a glyph, and each row keeps its
+    * [[Row.startOffset]], so the logical text -- and so a copy -- stays whole.
+    */
+  def truncate(text: String, width: Int): Vector[Row] = {
+    val w = math.max(1, width)
+    val out = Vector.newBuilder[Row]
+    var base = 0
+    val logical = text.split("\n", -1)
+    var li = 0
+    while (li < logical.length) {
+      val line = logical(li)
+      out += Row(base, line.substring(0, Width.offsetAtColumn(line, w)))
+      base += line.length + 1
+      li += 1
+    }
+    out.result()
+  }
 }

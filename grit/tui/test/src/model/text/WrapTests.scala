@@ -44,6 +44,14 @@ object WrapTests extends TestSuite {
       assert(rows.map(_.text) == Vector("aa bb", "ccccdd", "dd"))
     }
 
+    test("truncation keeps one row per line, cut at a glyph boundary, with its provenance") {
+      val text = "abc def ghi\n\n世世世世"
+      val rows = Wrap.truncate(text, 5)
+      assertSlices(text)(rows)
+      assertFits(rows, 5)
+      assert(rows == Vector(Row(0, "abc d"), Row(12, ""), Row(13, "世世")))
+    }
+
     test("newlines are honoured, offsets continue across them, and an empty line is a row") {
       val rows = Wrap.wrap("ab\n\ncd", 10)
       assertSlices("ab\n\ncd")(rows)
