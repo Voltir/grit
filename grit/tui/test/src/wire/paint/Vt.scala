@@ -7,11 +7,18 @@ import grit.tui.model.surface.*
   * from ../tui-spike-layoutz (FINDINGS 5). It tracks glyph AND style per cell, so tests
   * can sweep the full painted grid, including the reverse-video mask that caught the
   * selection bug next door.
+  *
+  * Deferred wrap is xterm's, not pyte's: a glyph written into the last column leaves the
+  * cursor *on* that column with a wrap pending, so a following `ESC[K` erases the glyph
+  * just written (design rule 2's hazard) and a following glyph wraps first. pyte and tmux
+  * park the cursor one past the edge instead, where the erase reaches nothing, so neither
+  * is a reference for this.
   */
 final class Vt(val rows: Int, val cols: Int) {
   private var grid: Vector[Vector[Cell]] = Vector.fill(rows, cols)(Cell.blank)
   private var row: Int = 0
   private var col: Int = 0
+  private var wrapPending: Boolean = false
   private var style: Style = Style.plain
   private var modes: Map[String, Boolean] = Map.empty
 
@@ -50,16 +57,25 @@ final class Vt(val rows: Int, val cols: Int) {
       val c = s.charAt(i)
       if (c == 0x1b && i + 1 < s.length && s.charAt(i + 1) == '[')
         i = csi(s, i + 1)
-      else if (c == '\n') { row += 1; if (row >= rows) { scroll(); row = rows - 1 } }
-      else if (c == '\r') col = 0
-      else {
-        if (col >= cols) { col = 0; row += 1; if (row >= rows) { scroll(); row = rows - 1 } }
-        if (row >= 0 && row < rows && col >= 0 && col < cols)
-          grid = grid.updated(row, grid(row).updated(col, Cell(c, style)))
-        col += 1
-      }
+      else if (c == '\n') { wrapPending = false; lineFeed() }
+      else if (c == '\r') { wrapPending = false; col = 0 }
+      else put(c)
       i += 1
     }
+  }
+
+  /** A glyph at the cursor. In the last column the cursor stays put with a wrap pending,
+    * and the next glyph wraps before it is written.
+    */
+  private def put(c: Char): Unit = {
+    if (wrapPending) { wrapPending = false; col = 0; lineFeed() }
+    grid = grid.updated(row, grid(row).updated(col, Cell(c, style)))
+    if (col == cols - 1) wrapPending = true else col += 1
+  }
+
+  private def lineFeed(): Unit = {
+    row += 1
+    if (row >= rows) { scroll(); row = rows - 1 }
   }
 
   private def scroll(): Unit =
@@ -91,6 +107,7 @@ final class Vt(val rows: Int, val cols: Int) {
     val p = params.split(";").map(p => if (p.isEmpty) 1 else p.toInt)
     row = math.max(0, math.min(rows - 1, p(0) - 1))
     col = math.max(0, math.min(cols - 1, if (p.length > 1) p(1) - 1 else 0))
+    wrapPending = false
   }
 
   /** SGR, including the extended colour forms.
@@ -134,9 +151,11 @@ final class Vt(val rows: Int, val cols: Int) {
   }
 
   /** EL 0, with background colour erase: the erased cells take the current background
-    * and nothing else, as xterm and its descendants do.
+    * and nothing else, as xterm and its descendants do. With a wrap pending it erases
+    * from the last column, the glyph just written there, and the wrap is cancelled.
     */
   private def eraseLine(): Unit = {
+    wrapPending = false
     val erased = Cell(' ', Style(bg = style.bg))
     grid = grid.updated(row, grid(row).patch(col, Vector.fill(cols - col)(erased), cols - col))
   }
