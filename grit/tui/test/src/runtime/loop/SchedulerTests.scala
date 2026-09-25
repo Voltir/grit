@@ -66,10 +66,13 @@ object SchedulerTests extends TestSuite {
     }
 
     test("cancelling an id that is not pending is a no-op") {
+      // No-op for every other id too: the timer pending beside it survives and fires.
       withScheduler { s =>
+        val fired = new CountDownLatch(1)
+        s.after(other, 50L)(() => fired.countDown())
         s.cancel(tick)
-        assert(!s.isPending(tick))
-        assert(s.pendingCount == 0)
+        assert(s.isPending(other), s.pendingCount == 1)
+        assert(fired.await(5L, TimeUnit.SECONDS))
       }
     }
 
