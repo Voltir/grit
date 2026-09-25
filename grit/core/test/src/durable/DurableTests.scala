@@ -101,10 +101,17 @@ object DurableTests extends TestSuite {
       val durable = new InMemoryDurable
       @caps.unsafe.untrackedCaptures
       var runs = 0
+      @caps.unsafe.untrackedCaptures
+      var crash = true
       def wf(using d: Durable^): String =
-        d.transact("write") { runs += 1; "written" }
-      durable.run(id)(_ => wf)
-      durable.recordedSteps(id) ==> Vector("write")
+        d.transact("write") { runs += 1; "written" } + d.step("after") { () =>
+          if (crash) throw new InMemoryDurable.Crash
+          "!"
+        }
+      assertThrows[InMemoryDurable.Crash](durable.run(id)(_ => wf))
+      crash = false
+      durable.run(id)(_ => wf) ==> "written!"
+      durable.recordedSteps(id) ==> Vector("write", "after")
       runs ==> 1
     }
 
@@ -167,19 +174,23 @@ object DurableTests extends TestSuite {
       durable.recordedSteps(fresh) ==> Vector("new", "b")
     }
 
-    test("replay: a body that follows the history passes") {
-      val history = Vector(Step("a", Outcome.Output("a")))
-      new InMemoryDurable().replay(id, history)(_ => twoSteps(new Counts)) ==> Right("ab")
+    test("replay: a body that follows the history passes, returning what was recorded") {
+      val counts = new Counts
+      val history = Vector(Step("a", Outcome.Output("A")))
+      new InMemoryDurable().replay(id, history)(_ => twoSteps(counts)) ==> Right("Ab")
+      (counts.a, counts.b) ==> (0, 1)
     }
 
     test("replay: a renamed step, an unreadable output, or an early end fails") {
       val counts = new Counts
       val renamed = Vector(Step("x", Outcome.Output("x")))
-      assert(new InMemoryDurable().replay(id, renamed)(_ => twoSteps(counts)).isLeft)
+      new InMemoryDurable().replay(id, renamed)(_ => twoSteps(counts)) ==>
+        Left("workflow c1:1 step 0: ran 'a', recorded 'x'")
       def picked(using d: Durable^): String =
         d.step("pick") { () => Picked(Vector("e1")) }(using pickedJournal).ids.mkString
-      val garbage = Vector(Step("pick", Outcome.Output("not json")))
-      assert(new InMemoryDurable().replay(id, garbage)(_ => picked).isLeft)
+      val garbage = Vector(Step("pick", Outcome.Output("{}")))
+      new InMemoryDurable().replay(id, garbage)(_ => picked) ==>
+        Left("step 'pick' of workflow c1:1: recorded output unreadable: expected {ids: [...]}")
       val longer = Vector(
         Step("a", Outcome.Output("a")),
         Step("b", Outcome.Output("b")),
