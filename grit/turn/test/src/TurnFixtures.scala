@@ -8,7 +8,7 @@ import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextA
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
-import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
 import grit.core.store.{
   Db,
   Entry,
@@ -57,6 +57,43 @@ object TurnFixtures {
       sawWindow = sawWindow :+ windows(entries).nonEmpty
       new StubProvider().complete(request)
     }
+  }
+
+  /** The stub, streaming; its first call tells `before` pieces of its reply and then dies,
+    * as a crashed process would, mid-stream.
+    */
+  final class DiesMidStream(before: Int) extends Provider {
+    @caps.unsafe.untrackedCaptures
+    var calls = 0
+
+    def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] =
+      new StubProvider().complete(request)
+
+    override def stream(
+        request: ModelRequest,
+        onDelta: Delta => Unit
+    ): Either[ProviderError, Message.Assistant] = {
+      calls += 1
+      var told = 0
+      new StubProvider().stream(
+        request,
+        d => {
+          if (calls == 1 && told == before) throw new InMemoryDurable.Crash
+          told += 1
+          onDelta(d)
+        }
+      )
+    }
+  }
+
+  /** What a reader hears of `turn`'s reply stream in `durable`. */
+  def heard(
+      durable: InMemoryDurable,
+      turn: TurnRef
+  ): (Vector[TurnStream.Piece], TurnStream.Heard) = {
+    val pieces =
+      durable.streamed(turn.workflowId, TurnStream.Key).flatMap(TurnStream.decode(_).toOption)
+    (pieces, pieces.foldLeft(TurnStream.Heard.nothing)(_ + _))
   }
 
   /** Reads straight through to the in-memory store. */

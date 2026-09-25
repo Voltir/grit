@@ -1,6 +1,7 @@
 package grit.turn
 
 import java.time.Instant
+import java.util.UUID
 
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.Durable
@@ -17,7 +18,8 @@ import grit.core.store.{Db, Entry, EntryStore, Payload, StoreError, Tx, UsageLed
   *      assembly wrote (its own entry, with its own cost in the usage ledger), so an edge
   *      sees what the model will see while it answers. Turns that passed this point
   *      before the step existed record both in `append` instead ([[Patches]]).
-  *   3. `call-model` — the window, then the turn's own messages, sent to the provider.
+  *   3. `call-model` — the window, then the turn's own messages, sent to the provider,
+  *      whose reply is told to edges as it arrives ([[TurnStream]]).
   *   4. `append` — the reply recorded as the turn's entry, with its cost in the ledger
   *      beside `estimator`'s estimate of the request, atomically with the step.
   *   5. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]).
@@ -122,6 +124,7 @@ object Turn {
   )(using d: Durable^): Either[TurnFailure, EntryId] = {
     import TurnJournal.given
     val reply = replyId(turn)
+    val heard = d.stream(TurnStream.Key)
     for {
       window <- d.step(Step.Assemble) { () =>
         assembler.assemble(AssemblyRequest(turn))(using db).left.map {
@@ -134,11 +137,20 @@ object Turn {
         if (early) d.transact(Step.RecordWindow)(recordWindow(entries, ledger, turn, window))
         else Right(windowId(turn))
       message <- d.step(Step.CallModel) { () =>
-        request(system, entries, db, turn, window).flatMap { req =>
-          provider.complete(req).left.map { case ProviderError.Unavailable(cause) =>
+        // A fresh attempt each time the step runs: a rerun's pieces follow a crashed run's.
+        val told =
+          new TurnStream.Writer(
+            heard,
+            UUID.randomUUID().toString,
+            () => System.nanoTime() / 1000000
+          )
+        val result = request(system, entries, db, turn, window).flatMap { req =>
+          provider.stream(req, told.tell).left.map { case ProviderError.Unavailable(cause) =>
             TurnFailure.Model(cause)
           }
         }
+        told.flush()
+        result
       }
       appended <- d.transact(Step.Append)(
         append(system, entries, ledger, estimator, turn, window, reply, message, early)

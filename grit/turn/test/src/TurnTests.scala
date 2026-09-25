@@ -89,6 +89,32 @@ object TurnTests extends TestSuite {
       durable.recordedSteps(turn.workflowId) ==> Recorded
     }
 
+    test("the reply is told to edges as it streams, and the pieces join back to it") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello there")
+      runTurn(durable, entries, new RecordingProvider, turn)
+      val (pieces, h) = heard(durable, turn)
+      assert(pieces.nonEmpty)
+      h.text ==> "stub reply to: hello there"
+    }
+
+    test("a crash mid-stream: the rerun's pieces follow, and a reader hears only them") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      // Long enough that the crashed run fills and writes a piece before it dies.
+      val asked = Vector.tabulate(80)(i => s"word$i").mkString(" ")
+      val provider = new DiesMidStream(before = 60)
+      val turn = say(entries, asked)
+      assertThrows[InMemoryDurable.Crash](runTurn(durable, entries, provider, turn))
+      runTurn(durable, entries, provider, turn)
+      provider.calls ==> 2
+      val (pieces, h) = heard(durable, turn)
+      pieces.map(_.attempt).distinct.size ==> 2
+      h.text ==> s"stub reply to: $asked"
+      texts(entries).lastOption.exists(_.startsWith("summary")) ==> true
+    }
+
     test("the window is recorded before the model is called") {
       val entries = new InMemoryEntryStore
       val provider = new Peeking(entries)

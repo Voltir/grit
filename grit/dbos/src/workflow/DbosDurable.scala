@@ -1,6 +1,6 @@
 package grit.dbos.workflow
 
-import grit.core.durable.{Durable, Journaled, UnreadableJournal}
+import grit.core.durable.{Durable, Journaled, StreamWriter, UnreadableJournal}
 import grit.core.id.WorkflowId
 import grit.core.store.Tx
 
@@ -47,6 +47,16 @@ private[dbos] final class DbosDurable(
   def deprecatePatch(name: String): Unit = {
     dbos.deprecatePatch(name)
     ()
+  }
+
+  /** `DBOS.writeStream` under `key`: from inside a step, a row in `dbos.streams` under the
+    * step's own function id, so no operation is recorded (DBOSExecutor.writeStream).
+    */
+  def stream(key: String): StreamWriter = {
+    val on = dbos
+    new StreamWriter {
+      def write(piece: String): Unit = on.writeStream(key, piece)
+    }
   }
 
   // A fresh output is decoded too, so a first run returns exactly what a replay would.

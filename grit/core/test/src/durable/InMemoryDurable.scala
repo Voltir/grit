@@ -38,6 +38,17 @@ final class InMemoryDurable {
   @untrackedCaptures
   private var outputs = Map.empty[WorkflowId, String]
 
+  /** Each workflow's streams, by key: every piece written, in order, across its runs. */
+  @untrackedCaptures
+  private var streams = Map.empty[(WorkflowId, String), Vector[String]]
+
+  /** The pieces written to stream `key` of workflow `id`, by every run, in order. */
+  def streamed(id: WorkflowId, key: String): Vector[String] =
+    streams.getOrElse((id, key), Vector.empty)
+
+  private def append(id: WorkflowId, key: String, piece: String): Unit =
+    streams = streams.updated((id, key), streamed(id, key) :+ piece)
+
   /** How far the last run of each workflow got through its journal. */
   @untrackedCaptures
   private var reached = Map.empty[WorkflowId, Int]
@@ -101,6 +112,13 @@ final class InMemoryDurable {
 
     def step[A: Journaled](name: String)(body: () => A): A =
       record(name, () => body())
+
+    def stream(key: String): StreamWriter = {
+      val id = workflowId
+      new StreamWriter {
+        def write(piece: String): Unit = append(id, key, piece)
+      }
+    }
 
     def transact[A: Journaled](name: String)(body: (Tx^) ?=> A): A =
       record(name, () => body(using TestTx.fake))

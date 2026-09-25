@@ -39,4 +39,20 @@ trait Durable extends caps.ExclusiveCapability {
     * recorded the patch still replay; new ones no longer record it.
     */
   def deprecatePatch(name: String): Unit
+
+  /** The stream `key` of this workflow: pieces an edge reads through the database as they
+    * are written, beside the recorded outputs and never among them. Take it before a step
+    * and write it inside one: a write is not an operation, so it neither replays nor
+    * shifts the steps after it. At least once: a step cut short by a crash and run again
+    * writes its pieces again, after the first run's, so a piece should say which run
+    * wrote it.
+    */
+  def stream(key: String): StreamWriter
+}
+
+/** Where a step tells an edge what it is doing while it does it ([[Durable.stream]]). */
+trait StreamWriter extends caps.SharedCapability {
+
+  /** Appends `piece` to the stream. Only inside a step. */
+  def write(piece: String): Unit
 }

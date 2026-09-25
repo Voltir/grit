@@ -104,6 +104,17 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
         }
     catch { case NonFatal(_) => Vector.empty }
 
+  /** The pieces `turn`'s steps wrote to its stream `key`, in order, as they are written:
+    * each `next` waits for one, woken by DBOS's notification with polling behind it, and
+    * the pieces end when the turn's workflow does. An edge's read (ADR 0006); what the
+    * pieces mean is the writer's.
+    */
+  def stream(turn: TurnRef, key: String): Iterator[String] =
+    client
+      .readStream(WorkflowId.value(turn.workflowId), key)
+      .asScala
+      .collect { case piece: String => piece }
+
   /** Runs `body` in a transaction of its own: committed on `Right`, rolled back otherwise. */
   private def transaction[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
     try {
