@@ -7,7 +7,7 @@ import grit.tui.components.tree.{Node, OnInput}
 import grit.tui.components.view.View
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.surface.{Cell, Pos, Size, Surface}
-import grit.tui.runtime.app.{App, Effect, Host, Mailbox, TimerId}
+import grit.tui.runtime.app.{App, Effect, Fault, Host, Mailbox, TimerId}
 import grit.tui.wire.paint.Vt
 
 import utest.*
@@ -418,20 +418,59 @@ object RuntimeTests extends TestSuite {
       assert(term.calls.count(_ == "exitRaw") == 1)
     }
 
+    test("a view that throws freezes nothing: the host hears it, input goes on, ctrl-q quits") {
+      val term = new FakeTerminal()
+      val scheduler = Scheduler.create()
+      // Throws while the last key typed is 'x' -- a class that failed to load mid-render.
+      val app = new App[St, Msg] {
+        def init: (St, Effect[Msg]) = (St(), Effect.NoOp)
+        def update(msg: Msg, state: St): (St, Effect[Msg]) = msg match {
+          case Msg.Typed(c) => (state.copy(typed = state.typed + c), Effect.NoOp)
+          case Msg.Done => (state, Effect.Quit)
+          case _ => (state, Effect.NoOp)
+        }
+        def view(state: St): Node[Msg] =
+          if (state.typed.endsWith("x")) throw new NoClassDefFoundError("grit/Missing")
+          else paint(Card(state.typed)).onKey(bind)
+      }
+      val heard = new java.util.concurrent.ConcurrentLinkedQueue[Fault]()
+      val host = new Host[Msg] {
+        def receive(msg: Msg, mailbox: Mailbox[Msg]): Unit = ()
+        override def fault(f: Fault): Unit = { val _ = heard.add(f) }
+      }
+      val runtime = new Runtime(app, term, scheduler, host, escapeTimeoutMs = 20L)
+      val done = started(runtime, "faulting-runtime")
+      term.send("ax")
+      assert(waitUntil(() => !heard.isEmpty))
+      val f = heard.peek()
+      assert(f.stage == Fault.Stage.View, f.error.contains("NoClassDefFoundError"))
+      assert(waitUntil(() => term.painted.contains("view failed")))
+      // Still handling input: the state moves on, and the screen paints again.
+      term.send("b")
+      assert(waitUntil(() => runtime.state.exists(_.typed == "axb")))
+      val v = new Vt(term.size.rows, term.size.cols)
+      assert(waitUntil(() => { v.feed(term.painted); v.text.head.startsWith("axb") }))
+      term.send("\u0011")
+      assert(done.await(5L, TimeUnit.SECONDS))
+      assert(!term.isRaw)
+      scheduler.close()
+    }
+
     test("teardown runs even when the loop dies") {
       // `Using.Manager` releases on the way out however the body left, so an app that
-      // throws still gets its terminal back rather than leaving a raw-mode shell.
+      // throws what the loop cannot survive still gets its terminal back rather than
+      // leaving a raw-mode shell. (Everything survivable is a fault: the next test.)
       val term = new FakeTerminal(readDelayMs = 40L)
       val scheduler = Scheduler.create()
       val boom = new App[St, Msg] {
         def init: (St, Effect[Msg]) = (St(), Effect.NoOp)
-        def update(msg: Msg, state: St): (St, Effect[Msg]) = throw new RuntimeException("boom")
+        def update(msg: Msg, state: St): (St, Effect[Msg]) = throw new OutOfMemoryError("boom")
         def view(state: St): Node[Msg] = paint(Card("")).onKey(bind)
       }
       val runtime = new Runtime(boom, term, scheduler, escapeTimeoutMs = 20L)
       val threw =
         try { term.send("x"); runtime.run(); false }
-        catch { case _: RuntimeException => true }
+        catch { case _: OutOfMemoryError => true }
       assert(threw)
       assert(!term.isRaw) // the screen came back anyway
       assert(term.calls.contains("close"))

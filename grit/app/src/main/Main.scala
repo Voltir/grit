@@ -116,7 +116,13 @@ object Main {
           }
         }
         val session = env.getOrElse("GRIT_SESSION", "default")
-        val host = new ChatHost(Origin.Tui(session), opener, SystemPrompt, CharEstimate)
+        val host = new ChatHost(
+          Origin.Tui(session),
+          opener,
+          SystemPrompt,
+          CharEstimate,
+          Some(java.nio.file.Path.of(log))
+        )
         // Closing the host stops following and closes the engine, however far it got.
         try Runtime.run(new ChatScreen.App(modelName, startTheme, budget), host)
         finally host.close()

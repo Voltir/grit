@@ -83,6 +83,7 @@ final class Runtime[S, M <: caps.Pure](
           event match {
             case Some(e) =>
               val (next, touched) = step(e, loop)
+              report(loop, next)
               loop = next
               current = Some(loop.state)
               if (touched) handled += 1
@@ -135,12 +136,19 @@ final class Runtime[S, M <: caps.Pure](
     val size = Size.screen(term.size)
     val fresh = force || size != lastSize
     val (frame, next) = Loop.paint(loop, app, size)
+    report(loop, next)
     term.write(Painter.paint(frame, if (fresh) None else previous))
     term.flush()
     previous = Some(frame)
     lastSize = size
     next
   }
+
+  /** The host told of a fault the step from `before` to `after` caught, if it caught one:
+    * the app survives it, and the host logs it.
+    */
+  private def report(before: Loop[S, M], after: Loop[S, M]): Unit =
+    if (after.faults > before.faults) after.fault.foreach(host.fault)
 
   private def interpret(effect: Effect[M]): Unit = effect match {
     case Effect.NoOp => ()

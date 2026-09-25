@@ -181,6 +181,15 @@ belt-and-braces choice rather than the only defence. The runtime's own two timer
 drag autoscroll and the escaped-drag deadline -- are data too (`Timer.Arm`/`Disarm`),
 returned by routing and armed by the loop.
 
+### An app that throws does not freeze the screen
+
+A throwable from `update`, `view` or a handler in the tree -- a class that failed to load
+mid-render, say -- is caught by the loop and kept as data (`Fault`): the message or input
+is dropped, a view that threw leaves the last frame that painted on screen, the bottom row
+says what failed until the next key, and input goes on being handled, so the app's quit
+key still quits. The host is told (`Host.fault`) and logs it. Only an interrupt and running
+out of memory still end the loop.
+
 ## Testing an app
 
 `Headless` is the loop with no terminal, as a value: an app stepped through exactly the

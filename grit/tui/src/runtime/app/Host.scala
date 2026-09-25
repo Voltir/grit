@@ -15,6 +15,11 @@ trait Mailbox[-Msg] {
   */
 trait Host[Msg] {
   def receive(msg: Msg, mailbox: Mailbox[Msg]): Unit
+
+  /** A throwable the loop caught in the app ([[Fault]]), for the host to log where it
+    * logs. Runs on the loop's thread, like `receive`. Ignored by default.
+    */
+  def fault(@scala.annotation.unused f: Fault): Unit = ()
 }
 
 object Host {

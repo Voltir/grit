@@ -10,7 +10,7 @@ import grit.core.message.Message
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Origin}
 import grit.dbos.engine.{Engine, TurnStatus}
-import grit.tui.runtime.app.{Host, Mailbox}
+import grit.tui.runtime.app.{Fault, Host, Mailbox}
 import grit.turn.TurnStream
 
 /** The chat screen's engine side, for the conversation `origin` names. The screen reaches
@@ -28,13 +28,15 @@ import grit.turn.TurnStream
   *
   * All of it runs on virtual threads and answers through the mailbox, so the screen paints
   * at once and never waits on the database or the model. [[close]] stops following and
-  * closes the engine, including one that finishes opening after it.
+  * closes the engine, including one that finishes opening after it. A throwable the
+  * screen's loop survived is appended to `log`, when there is one.
   */
 final class ChatHost(
     origin: Origin,
     opener: ChatHost.Opener^,
     system: String,
-    estimator: TokenEstimator
+    estimator: TokenEstimator,
+    log: Option[java.nio.file.Path] = None
 ) extends Host[ChatScreen.Msg],
       AutoCloseable,
       caps.SharedCapability {
@@ -59,6 +61,20 @@ final class ChatHost(
 
   /** Released once the engine is open, or will never be. */
   private val settled = new CountDownLatch(1)
+
+  override def fault(f: Fault): Unit =
+    log.foreach { path =>
+      val entry = (s"[grit-tui] ${f.stage} failed: ${f.error}" +: f.trace.map("    at " + _))
+        .mkString("", "\n", "\n")
+      try {
+        val _ = java.nio.file.Files.writeString(
+          path,
+          entry,
+          java.nio.file.StandardOpenOption.CREATE,
+          java.nio.file.StandardOpenOption.APPEND
+        )
+      } catch { case NonFatal(_) => () } // a log that cannot be written is not the screen's to fix
+    }
 
   def receive(msg: ChatScreen.Msg, mailbox: Mailbox[ChatScreen.Msg]): Unit =
     msg match {
