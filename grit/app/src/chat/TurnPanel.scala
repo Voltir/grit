@@ -8,9 +8,10 @@ import grit.tui.model.surface.Style
 import grit.tui.model.text.StyledText
 import grit.turn.Turn
 
-/** The turn panel's rows, for a [[TurnView]]: the steps as a timeline, then the query,
-  * the recalled turns, the window as a stacked bar against `budget`, and the cost. Every
-  * row fits in [[TurnPanel.Cols]] columns, so none wraps.
+/** The turn panel's rows. Its turn tab, for a [[TurnView]]: the steps as a timeline, then
+  * the query, the recalled turns, the window as a stacked bar against `budget`, and the
+  * cost. Its session tab, for a [[SessionView]]: the conversation so far. Every row but a
+  * long model name fits in [[TurnPanel.Cols]] columns, so none wraps.
   */
 final case class TurnPanel(look: Look, budget: Tokens) {
   import TurnPanel.*
@@ -31,6 +32,51 @@ final case class TurnPanel(look: Look, budget: Tokens) {
         Vector(title(v, pinned), blank) ++ steps(v, runningMs) ++ Vector(blank) ++ query(v) ++
           window(v) ++ cost(v)
     }
+
+  /** The rows of the session tab for `view`, or a placeholder before the host has read
+    * the conversation: its length, what it was billed and cost, what search recalled,
+    * then each role that called a model, with the models that answered it.
+    */
+  def session(view: Option[SessionView]): Vector[Block] =
+    view match {
+      case None => Vector(row(" reading the conversation…" -> fg(t.faint)))
+      case Some(v) =>
+        val turns = if (v.turns == 1) "1 turn" else s"${v.turns} turns"
+        val messages = if (v.messages == 1) "1 message" else s"${v.messages} messages"
+        val recalled =
+          if (v.recalled.isEmpty) Vector(row(" recalled " -> fg(t.faint), "none" -> fg(t.faint)))
+          else
+            Vector(
+              row(
+                " recalled " -> fg(t.faint),
+                v.recalled.map(s => s"turn ${number(s)}").mkString(" · ") -> fg(t.user)
+              ),
+              row(s"          by ${v.recalls} of $turns" -> fg(t.faint))
+            )
+        val billed =
+          if (Tokens.value(v.input + v.output) == 0) "nothing yet"
+          else s"${count(v.input)} in · ${count(v.output)} out"
+        Vector(
+          row(" SESSION" -> (fg(t.ink) + Style.Bold), s"  · $turns" -> fg(t.faint)),
+          blank,
+          row(" said     " -> fg(t.faint), messages -> fg(t.ink)),
+          row(" billed   " -> fg(t.faint), billed -> fg(t.ink))
+        ) ++
+          v.spent.map(c => row(" spent    " -> fg(t.faint), dollars(c) -> fg(t.ink))) ++
+          Vector(blank) ++ recalled ++ Vector(blank) ++ roles(v.roles)
+    }
+
+  /** One row for each role that called a model: its calls and cost, then its models. */
+  private def roles(roles: Vector[SessionView.Role]): Vector[Block] =
+    if (roles.isEmpty) Vector(row(" models   " -> fg(t.faint), "none called yet" -> fg(t.faint)))
+    else
+      roles.flatMap { r =>
+        val calls = if (r.calls == 1) "1 call" else s"${r.calls} calls"
+        row(
+          Seq(s" ${r.name.padTo(9, ' ')}" -> fg(t.faint), calls -> fg(t.ink)) ++
+            r.spent.map(c => s" · ${dollars(c)}" -> fg(t.ink))*
+        ) +: r.models.map(m => row(s"   $m" -> fg(t.grit)))
+      }
 
   /** The rows of the opened turn: what was asked, what has been heard of the reply while
     * it streams (the reasoning, then the text), then all the panel shows.
@@ -157,7 +203,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
 
   private def cost(v: TurnView): Vector[Block] = {
     val billed = v.billed.map(b => s"${count(b)} in")
-    val spent = v.spent.map(c => s"$$${c.bigDecimal.stripTrailingZeros.toPlainString}")
+    val spent = v.spent.map(dollars)
     val said = (billed ++ spent).mkString(" · ")
     Option
       .when(said.nonEmpty)(Vector(blank, row(" billed   " -> fg(t.faint), said -> fg(t.ink))))
@@ -186,6 +232,9 @@ object TurnPanel {
 
   /** `ms` as seconds to a tenth, whatever the locale: `3.2s`. */
   def seconds(ms: Long): String = s"${ms / 1000}.${ms % 1000 / 100}s"
+
+  /** A cost in dollars, as the provider gave it: `$0.00031`. */
+  def dollars(usd: BigDecimal): String = s"$$${usd.bigDecimal.stripTrailingZeros.toPlainString}"
 
   /** A token count, short: `812`, `3.2k`. */
   def count(n: Tokens): String = {

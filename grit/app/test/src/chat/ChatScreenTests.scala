@@ -154,6 +154,80 @@ object ChatScreenTests extends TestSuite {
       assert(!at(110).inputs(Input.Keyboard(Key.Ctrl('b'))).screen.mkString.contains("TURN 3"))
     }
 
+    test("the panel's tabs are pills across its top; ctrl-t and a click switch them") {
+      val wide = Headless
+        .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(30, 110))
+        .message(Msg.Opened)
+      // The pills sit on the panel's first row, the one shown lit on the accent.
+      val pills = wide.screen(1)
+      assert(pills.contains(" turn "), pills.contains(" session "))
+      val lit = wide.painted._1.surface.at(1, pills.indexOf(" turn ") + 1).style
+      lit.bg ==> Some(Theme.Default.headerBg)
+      wide.painted._1.surface.at(1, pills.indexOf(" session ") + 1).style.bg ==>
+        Some(Theme.Default.slab)
+      assert(wide.screen.mkString.contains("no turn yet"))
+
+      // Ctrl-t: the session tab, waiting for the host until it describes the conversation.
+      val keyed = wide.input(Input.Keyboard(Key.Ctrl('t')))
+      keyed.state.tab ==> ChatScreen.Tab.Session
+      assert(keyed.screen.mkString.contains("reading the conversation"))
+      val view = SessionView(
+        turns = 2,
+        messages = 4,
+        input = Tokens(12300),
+        output = Tokens(900),
+        spent = Some(BigDecimal("0.0042")),
+        recalls = 1,
+        recalled = Vector(TurnSeq(0)),
+        roles = Vector(SessionView.Role("turn", Vector("vendor/big-model"), 2, None))
+      )
+      val shown = keyed.message(Msg.Session(view)).screen.mkString("\n")
+      assert(
+        shown.contains("SESSION  · 2 turns"),
+        shown.contains("said     4 messages"),
+        shown.contains("billed   12.3k in · 900 out"),
+        shown.contains("spent    $0.0042"),
+        shown.contains("recalled turn 1"),
+        shown.contains("by 1 of 2 turns"),
+        shown.contains("turn     2 calls"),
+        shown.contains("vendor/big-model")
+      )
+      // The lit pill moved with it.
+      keyed.painted._1.surface.at(1, pills.indexOf(" session ") + 1).style.bg ==>
+        Some(Theme.Default.headerBg)
+      // Ctrl-t again comes round to the turn.
+      keyed.input(Input.Keyboard(Key.Ctrl('t'))).state.tab ==> ChatScreen.Tab.Turn
+
+      // A click on a pill shows its tab; one on the tab already shown changes nothing.
+      val clicked = click(wide, " session ")
+      clicked.state.tab ==> ChatScreen.Tab.Session
+      clicked.effects.last ==> Effect.NoOp
+      click(clicked, " turn ").state.tab ==> ChatScreen.Tab.Turn
+      // A hidden panel is shown by a tab.
+      wide.input(Input.Keyboard(Key.Ctrl('b'))).input(Input.Keyboard(Key.Ctrl('t'))).state.panel ==>
+        true
+    }
+
+    test("a click on a message shows its turn, whichever tab the panel was on") {
+      val two = Headless
+        .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(30, 110))
+        .message(Msg.Opened)
+        .message(
+          Msg.Arrived(
+            Vector(
+              Said(true, "one", TurnSeq(0)),
+              Said(false, "first reply", TurnSeq(0)),
+              Said(true, "two", TurnSeq(1))
+            ),
+            None
+          )
+        )
+        .input(Input.Keyboard(Key.Ctrl('t')))
+      val pinned = click(two, "first reply")
+      pinned.state.pinned ==> Some(TurnSeq(0))
+      pinned.state.tab ==> ChatScreen.Tab.Turn
+    }
+
     test("a click on an earlier message pins its turn to the panel; esc lets it go") {
       val two = ready.message(
         Msg.Arrived(

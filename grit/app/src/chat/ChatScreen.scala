@@ -1,7 +1,7 @@
 package grit.app.chat
 
 import grit.app.chat.Commands.Picked
-import grit.app.look.{Look, Theme}
+import grit.app.look.{Look, Pill, Theme}
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.tui.components.editor.Editor
@@ -9,10 +9,12 @@ import grit.tui.components.overlay.Popup
 import grit.tui.components.pane.Anchor
 import grit.tui.components.tree.Node.*
 import grit.tui.components.tree.{Node, OnInput, PaneKey, Scroller}
+import grit.tui.components.view.View
 import grit.tui.components.widget.StatusBar
 import grit.tui.model.block.Block
 import grit.tui.model.input.{Input, Key}
 import grit.tui.model.select.{Doc, DocPos}
+import grit.tui.model.surface.{Size, Surface}
 import grit.tui.runtime.app.{Effect, TimerId}
 
 /** grit's chat screen: a transcript beside the turn panel, a prompt and a status line.
@@ -42,6 +44,15 @@ object ChatScreen {
   /** What has been heard of `turn`'s reply while it streams: its reasoning and text so far. */
   final case class Hearing(turn: TurnSeq, reasoning: String, text: String)
 
+  /** What the turn panel shows: a turn, or the conversation so far. */
+  enum Tab(val label: String) extends caps.Pure {
+    case Turn extends Tab("turn")
+    case Session extends Tab("session")
+
+    /** The tab after this one, round again after the last. */
+    def next: Tab = Tab.fromOrdinal((ordinal + 1) % Tab.values.length)
+  }
+
   /** The dialog over the screen: the running turn, opened, or the help. */
   enum Dialog extends caps.Pure {
     case Turn, Help
@@ -52,8 +63,8 @@ object ChatScreen {
     * `opening`, is the ward; while a turn is in progress, the spinner, and the status line
     * names the turn's `step`, which began at tick `stepSince`. `tick` turns the runes and
     * times the step. `owners` is the turn each block of `said` belongs to, if any. Beside
-    * it, while `panel` is on and the screen is wide enough, the turn panel shows `turn`:
-    * the latest, or the one `pinned` by a click. A `modal` dialog opens over the screen,
+    * it, while `panel` is on and the screen is wide enough, the turn panel shows its `tab`:
+    * `turn`, the latest or the one `pinned` by a click, or the `session` so far. A `modal` dialog opens over the screen,
     * scrolled by `modalReader`. While `palette` is open, the command list floats over the
     * prompt with that row selected; a draft put `aside` to open it comes back when it
     * closes.
@@ -79,7 +90,9 @@ object ChatScreen {
       modalReader: Scroller.State = Scroller.State(Anchor.At(DocPos.zero)),
       palette: Option[Int] = None,
       aside: Option[String] = None,
-      hearing: Option[Hearing] = None
+      hearing: Option[Hearing] = None,
+      tab: Tab = Tab.Turn,
+      session: Option[SessionView] = None
   ) {
 
     /** The running turn's reply as heard so far, while it has any text. */
@@ -153,6 +166,15 @@ object ChatScreen {
     /** Ctrl-B: the turn panel shown, or hidden. */
     case TogglePanel
 
+    /** A click on a tab's pill: the panel shows that tab. */
+    case ShowTab(tab: Tab)
+
+    /** Ctrl-T: the panel shows its next tab. */
+    case NextTab
+
+    /** From the host: the conversation so far, as it now stands. */
+    case Session(view: SessionView)
+
     /** The turn panel, scrolled, selected or copied from. */
     case PanelReader(m: Scroller.Msg)
 
@@ -182,9 +204,11 @@ object ChatScreen {
     "enter" -> "send, or run a /command",
     "ctrl-p" -> "the command palette",
     "ctrl-b" -> "show or hide the turn panel",
+    "ctrl-t" -> "the panel's next tab: turn, session",
     "ctrl-q" -> "quit",
     "esc" -> "close a list or dialog; unpin",
     "click a message" -> "its turn in the panel",
+    "click a tab" -> "that tab in the panel",
     "click the thinking line" -> "open the running turn"
   )
 
@@ -303,6 +327,9 @@ object ChatScreen {
         case Msg.CloseModal => (s.copy(modal = None), Effect.NoOp)
         case Msg.Turn(view) => (s.copy(turn = Some(view)), Effect.NoOp)
         case Msg.TogglePanel => (s.copy(panel = !s.panel), Effect.NoOp)
+        case Msg.NextTab => (tabbed(s, s.tab.next), Effect.NoOp)
+        case Msg.ShowTab(tab) => (tabbed(s, tab), Effect.NoOp)
+        case Msg.Session(view) => (s.copy(session = Some(view)), Effect.NoOp)
         case Msg.PanelReader(Scroller.Msg.Copied(text, _)) =>
           if (text.isEmpty) (s.copy(status = "nothing selected"), Effect.NoOp)
           else (s.copy(status = s"copied ${text.length} chars"), Effect.CopyOut(text))
@@ -319,7 +346,11 @@ object ChatScreen {
         case Some(turn) =>
           val pin = Option.when(!s.owners.flatten.lastOption.contains(turn))(turn)
           if (pin == s.pinned) (s, Effect.NoOp)
-          else (s.copy(pinned = pin, panelReader = top), Effect.ToHost(Msg.Show(pin)))
+          else
+            (
+              s.copy(pinned = pin, panelReader = top, tab = Tab.Turn),
+              Effect.ToHost(Msg.Show(pin))
+            )
         // The thinking line, or any block of the reply streaming in its place.
         case None if entry >= s.said.size && s.thinking && !s.opening =>
           (
@@ -330,6 +361,11 @@ object ChatScreen {
       }
 
     private val top = Scroller.State(Anchor.At(DocPos.zero))
+
+    /** The panel on `tab`, shown, from its top; as it is if it already shows it. */
+    private def tabbed(s: State, tab: Tab): State =
+      if (s.panel && s.tab == tab) s
+      else s.copy(panel = true, tab = tab, panelReader = if (s.tab == tab) s.panelReader else top)
 
     /** `entries` added to the transcript, styled in the state's theme. */
     private def recorded(s: State, entries: Vector[Entry]): State = {
@@ -411,6 +447,7 @@ object ChatScreen {
     private def hotkeys: OnInput[Msg] = {
       case Input.Keyboard(Key.Ctrl('q')) => Some(Msg.Quit)
       case Input.Keyboard(Key.Ctrl('b')) => Some(Msg.TogglePanel)
+      case Input.Keyboard(Key.Ctrl('t')) => Some(Msg.NextTab)
       case Input.Keyboard(Key.Ctrl('p')) => Some(Msg.OpenPalette)
       case _ => None
     }
@@ -444,19 +481,30 @@ object ChatScreen {
       if (!s.panel) reading
       else {
         val shown = s.turn.filter(_.running.nonEmpty).fold(0L)(_ => s.stepMs)
+        val rows = s.tab match {
+          case Tab.Turn => panel.blocks(s.turn, shown, s.pinned.nonEmpty)
+          case Tab.Session => panel.session(s.session)
+        }
         val turn = Scroller
-          .view(
-            Panel,
-            Doc(panel.blocks(s.turn, shown, s.pinned.nonEmpty)),
-            s.panelReader,
-            bar = bar
-          )
+          .view(Panel, Doc(rows), s.panelReader, bar = bar)
           .map(Msg.PanelReader(_))
+        val side = column(fixed(1) -> tabs(s, look), fixed(1) -> paint(Gap), flex(1) -> turn)
         wide(TurnPanel.ShownFrom)(
-          row(flex(20) -> reading, fixed(TurnPanel.Cols) -> turn.grounded(look.sidebar)),
+          row(flex(20) -> reading, fixed(TurnPanel.Cols) -> side.grounded(look.sidebar)),
           reading
         )
       }
+    }
+
+    /** The panel's tabs as pills across its top, the one it shows lit; a click on one
+      * shows it.
+      */
+    private def tabs(s: State, look: Look): Node[Msg] = {
+      val pills = Tab.values.toVector.map(tab =>
+        fixed(Pill.cols(tab.label)) ->
+          paint(Pill(tab.label, tab == s.tab, look.theme)).onPress(_ => Some(Msg.ShowTab(tab)))
+      )
+      row(((fixed(1) -> paint(Gap)) +: pills :+ (flex(0) -> paint(Gap)))*)
     }
 
     /** The running turn, opened: what was asked, then all the panel says of it. */
@@ -503,7 +551,7 @@ object ChatScreen {
               },
               s.status
             ),
-            Vector("enter sends", "ctrl-p commands", "ctrl-b panel", "ctrl-q quit "),
+            Vector("enter sends", "ctrl-p commands", "ctrl-b panel", "ctrl-t tab", "ctrl-q quit "),
             look.status
           )
         )
@@ -525,5 +573,11 @@ object ChatScreen {
         .onKeyFirst(hotkeys)
         .grounded(look.ground)
     }
+  }
+
+  /** Nothing, painted: a gap whose ground is whatever it sits on. */
+  private object Gap extends View {
+    def measure(avail: Size): Size = Size(math.min(1, avail.rows), 0)
+    def render(size: Size): Surface = Surface.blank(size)
   }
 }

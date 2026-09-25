@@ -296,6 +296,8 @@ def main():
         return stream(checks, check, rows, screens)
     if scenario == "palette":
         return palette(checks, check, raw, frames, screens)
+    if scenario == "tabs":
+        return tabs(checks, check, raw, rows, cols, screens)
 
     payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
     if scenario in ("thumb", "popup"):
@@ -396,6 +398,8 @@ def main():
 
 # Mirrors TurnPanel.Cols. If that changes, change this.
 PANEL_COLS = 38
+# Mirrors ChatScreen's panel: the row of tab pills, then a gap, then the document.
+PANEL_TOP = 2
 
 
 def columns(checks, check, raw, rows, cols, screens, snapshots, ones):
@@ -414,7 +418,8 @@ def columns(checks, check, raw, rows, cols, screens, snapshots, ones):
     # The wheel over the panel: the frame where its title scrolls away, and the
     # transcript in that frame as it was in the frame before.
     panel_moved = next((i for i in range(1, len(screens))
-                        if "TURN" in right(screens[i - 1])[0] and "TURN" not in right(screens[i])[0]),
+                        if "TURN" in right(screens[i - 1])[PANEL_TOP]
+                        and "TURN" not in right(screens[i])[PANEL_TOP]),
                        None)
     check(panel_moved is not None, "the wheel over the panel scrolled the panel")
     check(panel_moved is not None and left(screens[panel_moved]) == left(screens[panel_moved - 1]),
@@ -508,6 +513,41 @@ def palette(checks, check, raw, frames, screens):
     check(not any(has(g, "no command") for g in screens), "no draft failed as a command")
     payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
     check(len(payloads) == 0, "no drag, so no clipboard write", "%d" % len(payloads))
+    return report(checks)
+
+
+def tabs(checks, check, raw, rows, cols, screens):
+    """grit.app's panel tabs (script_tabs): ctrl-t, then a click on each pill."""
+    divider = cols - 1 - PANEL_COLS
+    panel = lambda g: "\n".join(g[r][divider:] for r in range(1, rows - 4))
+    on_turn = lambda g: "TURN 1" in panel(g) and "SESSION" not in panel(g)
+    on_session = lambda g: ("SESSION  · 1 turn" in panel(g) and "TURN 1" not in panel(g)
+                            and "said     2 messages" in panel(g))
+    after = lambda start, ok: next((i for i in range(start, len(screens)) if ok(screens[i])), None)
+    pills = screens[-1][1][divider:] if screens else ""
+    check("▐ turn ▌" in pills or "▐ session ▌" in pills,
+          "the pills stand across the top of the panel", repr(pills.strip()))
+    first = after(0, on_turn)
+    check(first is not None, "the panel opened on the turn tab")
+    keyed = after((first or 0) + 1, on_session)
+    check(first is not None and keyed is not None,
+          "ctrl-t showed the session: its turns and messages")
+    check(keyed is not None and "grit/stub" in panel(screens[keyed]),
+          "and the model that answered, by role")
+    back = after((keyed or len(screens)) + 1, on_turn)
+    check(keyed is not None and back is not None, "a click on the turn pill showed the turn")
+    again = after((back or len(screens)) + 1, on_session)
+    check(back is not None and again is not None, "a click on the session pill showed the session")
+    final = screens[-1] if screens else []
+    check(bool(final) and on_session(final), "and the panel stayed there")
+    check(bool(final) and "▐ session ▌" in final[1][divider:],
+          "its pill is the lit one")
+    check(bool(final) and final[rows - 3].strip(" │ᚦ") == "", "no key reached the prompt",
+          repr(final[rows - 3].strip() if final else ""))
+    check(bool(final) and any("ᚨ stub reply to: tabs one" in row for row in final),
+          "the transcript kept the exchange")
+    payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
+    check(len(payloads) == 0, "clicks copy nothing", "%d" % len(payloads))
     return report(checks)
 
 

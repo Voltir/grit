@@ -15,7 +15,8 @@ In dependency order:
   well as a colour (`Look.Runes`: ᛗ the user, ᚨ grit, ᚺ a failure, ᛁ idle, ᛭ between turns). Every theme is held to
   the same APCA contrast targets (`ThemeContrastTests`). `ProseLook` is the terminal's
   output mode for prose (`grit.prose`): a reply's markdown as transcript blocks, whole or
-  still streaming. Imports nothing in app.
+  still streaming. `Pill` is a tab's pill, lit on the accent while it is chosen. Imports
+  nothing in app.
 - **`chat`** — the chat TUI. `ChatScreen` is a pure `grit.tui` app whose transcript is a
   projection of the store: a submission leaves as `Effect.ToHost(Send)` and is shown when
   the store has it. It paints at once: a ward turns while the engine opens, the Futhark
@@ -23,7 +24,11 @@ In dependency order:
   `Load` opens the engine (`ChatHost.Opener`, off the screen's thread), then follows the
   conversation, polling its entries and each open turn's status
   (`Follow`, pure), so replies to any turn appear, recovered ones included (ADR 0002);
-  `Send` ingests and starts a turn once the engine is open.
+  `Send` ingests and starts a turn once the engine is open. The panel beside the
+  transcript has two tabs, switched by ctrl-t or a click on a pill: the turn
+  (`TurnView`), and the session so far (`SessionView`: its length, what it was billed,
+  what search recalled, the models in each role), each built purely from what the host
+  read.
   `Replies` reads replies back out of the store. `Commands` is the one table of slash
   commands: what the palette (`/` in an empty prompt, or ctrl-p) lists, what `/help`
   describes, and what a submitted `/` draft runs; such a draft never reaches the model.

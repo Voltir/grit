@@ -5,10 +5,10 @@ import java.util.concurrent.CountDownLatch
 
 import scala.util.control.NonFatal
 
-import grit.core.id.{SourceId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.provider.TokenEstimator
-import grit.core.store.{Entry, Origin}
+import grit.core.store.{Entry, Origin, StoreError, UsageLedger}
 import grit.dbos.engine.{Engine, TurnStatus}
 import grit.tui.runtime.app.{Fault, Host, Mailbox}
 import grit.turn.TurnStream
@@ -21,7 +21,8 @@ import grit.turn.TurnStream
   *     wrote it, so replies to turns recovered after a restart appear too ([[Follow]]);
   *     and its latest turn (or the one `Show` pinned) is described for the turn panel
   *     whenever that changes ([[TurnView]], its window estimated with `estimator` under
-  *     the system prompt `system`).
+  *     the system prompt `system`); and the conversation as a whole is described for the
+  *     panel's session tab whenever an entry is added ([[SessionView]]).
   *   - `Send` ingests a message and starts its turn, once the engine is open; the reply
   *     arrives by following.
   *   - `Show` pins the panel to a turn, or back to the latest.
@@ -141,12 +142,28 @@ final class ChatHost(
         var state = Follow.start
         var shown: Option[TurnView] = None
         var listened = Set.empty[TurnSeq]
+        var costs = Map.empty[TurnSeq, Vector[UsageLedger.Row]]
+        var settled = Set.empty[TurnSeq]
+        var sessionAt = Long.MinValue
         while (open) {
           engine.db.read(engine.entries.list(conversation)) match {
             case Right(entries) =>
               val (next, msgs) = Follow.step(state, entries, turn => engine.status(turn))
               state = next
               msgs.foreach(mailbox.offer)
+              // The ledger is written with the entries it prices, so it changes only when
+              // they do.
+              val last = entries.lastOption.fold(-1L)(_.seq)
+              if (last != sessionAt) {
+                val (unread, final1) = SessionView.unread(entries, settled)
+                ledgers(engine, conversation, unread).foreach { read =>
+                  costs = costs ++ read
+                  settled = final1
+                  sessionAt = last
+                  val view = SessionView.of(entries, costs.values.toVector.flatten)
+                  mailbox.offer(ChatScreen.Msg.Session(view))
+                }
+              }
               // A running turn's reply is followed as it streams, once per turn.
               TurnView.latest(entries).filter(_ => state.thinking).foreach { turn =>
                 if (!listened.contains(turn.turnSeq)) {
@@ -174,6 +191,23 @@ final class ChatHost(
           Thread.sleep(PollMs)
         }
     }
+
+  /** The ledger rows of each of `turns`, read in one transaction; `None` when the store
+    * could not be read.
+    */
+  private def ledgers(
+      engine: Engine^,
+      conversation: ConversationId,
+      turns: Vector[TurnSeq]
+  ): Option[Map[TurnSeq, Vector[UsageLedger.Row]]] =
+    engine.db.read {
+      turns.foldLeft[Either[StoreError, Map[TurnSeq, Vector[UsageLedger.Row]]]](Right(Map.empty)) {
+        (acc, t) =>
+          acc.flatMap(m =>
+            engine.ledger.of(TurnRef(conversation, t).workflowId).map(m.updated(t, _))
+          )
+      }
+    }.toOption
 
   /** `turn` as the panel shows it, from `entries` and what DBOS and the ledger hold. A
     * turn not yet enqueued counts as running: its first step is next.

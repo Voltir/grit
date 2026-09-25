@@ -53,8 +53,12 @@
 #          typing filters it, Enter on /theme offers the themes, Enter on one repaints the
 #          screen in it and closes the list, and a list opened again is dismissed by
 #          Escape. Nothing typed here may reach the transcript: a `/` draft is a command.
+#   tabs   grit.app's turn panel, in a conversation of its own: after one exchange, ctrl-t
+#          switches the panel to the session tab, which describes the conversation (its
+#          turns, messages and models), and a click on each pill switches back and forth.
+#          The keys and clicks reach neither the prompt nor the clipboard.
 #
-# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload|columns|turn-modal|palette|stream]
+# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload|columns|turn-modal|palette|stream|tabs]
 #        (no argument runs them all; `reload` needs `chat` before it in the same run)
 #
 # The oracles are geometry, not implementation: the chrome is header 1 + prompt 3 +
@@ -261,6 +265,22 @@ script_palette() {
   printf '\021'; sleep 2
 }
 
+# The panel is the last 38 columns before the screen's own unwritten last one, so from
+# (1-based) column 82: a gap, the turn pill (8 wide, 83-90) and the session pill (11 wide,
+# 91-101), on the body's first row, row 2.
+TABS_ROWS=24
+TABS_COLS=120
+script_tabs() {
+  sleep $APP_STARTUP
+  printf 'tabs one'; sleep 0.3; printf '\r'; sleep 3
+  printf '\024'; sleep 1.2                                              # ctrl-t: session
+  printf "%s" "${E}[<0;86;2M"; sleep 0.1; printf "%s" "${E}[<0;86;2m"   # click: turn
+  sleep 1.2
+  printf "%s" "${E}[<0;95;2M"; sleep 0.1; printf "%s" "${E}[<0;95;2m"   # click: session
+  sleep 1.2
+  printf '\021'; sleep 2
+}
+
 script_stream() {
   sleep $APP_STARTUP
   printf 'rune one two three four five six seven eight nine ten eleven twelve'
@@ -289,6 +309,10 @@ run_one() {
     runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_STUB_DELAY_MS=6000 GRIT_SESSION=$STAMP-modal}
     rows=$MODAL_ROWS cols=$MODAL_COLS
   fi
+  if [ "$name" = tabs ]; then
+    runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_SESSION=$STAMP-tabs}
+    rows=$TABS_ROWS cols=$TABS_COLS
+  fi
   if [ "$name" = palette ]; then
     runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_SESSION=$STAMP-palette}
     rows=$PALETTE_ROWS cols=$PALETTE_COLS
@@ -304,7 +328,7 @@ ensure_agent_db() {
 }
 
 case " ${*:-chat} " in
-  *" chat "*|*" reload "*|*" columns "*|*" turn-modal "*|*" palette "*|*" stream "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
+  *" chat "*|*" reload "*|*" columns "*|*" turn-modal "*|*" palette "*|*" stream "*|*" tabs "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
 esac
 
 case " ${1:-} " in
@@ -314,7 +338,7 @@ case " ${1:-} " in
 esac
 
 status=0
-for s in ${*:-span one modal thumb popup resize burst chat reload columns turn-modal palette stream}; do
+for s in ${*:-span one modal thumb popup resize burst chat reload columns turn-modal palette stream tabs}; do
   echo "== $s"
   run_one "$s" || status=1
 done
