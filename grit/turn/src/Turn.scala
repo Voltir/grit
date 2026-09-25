@@ -153,10 +153,11 @@ object Turn {
         run(system, entries, ledger, assembler, estimator, provider, db, turn, placed) match {
           case Left(failure) => s"failed: $failure$topics"
           case Right(reply) =>
-            val summary = summarise(entries, ledger, estimator, summarizer, db, turn, reply) match {
-              case Right(id) => s"summarised: ${EntryId.value(id)}"
-              case Left(failure) => s"no summary: $failure"
-            }
+            val summary =
+              summarise(entries, ledger, estimator, summarizer, db, turn, reply, topical) match {
+                case Right(id) => s"summarised: ${EntryId.value(id)}"
+                case Left(failure) => s"no summary: $failure"
+              }
             s"replied: ${EntryId.value(reply)}; $summary$topics"
         }
     }
@@ -348,7 +349,9 @@ object Turn {
       )
     } yield id
 
-  /** Steps 5 and 6: the summary of `turn`, whose reply is `answered`. */
+  /** The last two steps: the summary of `turn`, whose reply is `answered`; when `topical`,
+    * with the name and description of its message's topic.
+    */
   private def summarise(
       entries: EntryStore,
       ledger: UsageLedger,
@@ -356,7 +359,8 @@ object Turn {
       summarizer: Provider^,
       db: Db^,
       turn: TurnRef,
-      answered: EntryId
+      answered: EntryId,
+      topical: Boolean
   )(using d: Durable^): Either[TurnFailure, EntryId] = {
     import TurnJournal.given
     for {
@@ -365,20 +369,31 @@ object Turn {
           .left
           .map(storeFailure)
           .flatMap { all =>
-            summarizer.complete(TurnSummary.request(own(all, turn))).left.map {
+            summarizer.complete(summaryRequest(all, turn, topical)).left.map {
               case ProviderError.Unavailable(cause) => TurnFailure.Model(cause)
             }
           }
       }
       appended <- d.transact(Step.AppendSummary)(
-        appendSummary(entries, ledger, estimator, turn, answered, message)
+        appendSummary(entries, ledger, estimator, turn, answered, message, topical)
       )
     } yield appended
   }
 
-  /** Records the text of `message` as `turn`'s summary, a child of its reply `answered`,
+  /** The summary request for `turn`, from `all` of its conversation's entries: asking after
+    * its topic too when `topical` and its message has one.
+    */
+  private def summaryRequest(all: Vector[Entry], turn: TurnRef, topical: Boolean): ModelRequest =
+    TurnSummary.request(
+      own(all, turn),
+      if (topical) TurnTopics.topicOf(all, turn) else None
+    )
+
+  /** Records the summary in `message` as `turn`'s summary, a child of its reply `answered`,
     * after everything already in the conversation; and what it cost in the ledger beside
     * the estimate of the request that produced it, rebuilt as [[append]] rebuilds its own.
+    * When `topical`, what it says of the topic is recorded after it
+    * ([[TurnTopics.describedId]]).
     */
   private def appendSummary(
       entries: EntryStore,
@@ -386,13 +401,15 @@ object Turn {
       estimator: TokenEstimator,
       turn: TurnRef,
       answered: EntryId,
-      message: Message.Assistant
+      message: Message.Assistant,
+      topical: Boolean
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = TurnSummary.id(turn)
     for {
-      text <- TurnSummary
-        .text(message)
+      read <- (if (topical) TurnSummary.read(message)
+               else TurnSummary.text(message).map(TurnSummary.Read(_, None)))
         .toRight(TurnFailure.Model(s"the summary has no text (stop: ${message.stop})"))
+      text = read.summary
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
       _ <- entries
@@ -415,10 +432,23 @@ object Turn {
           turn.workflowId,
           message.model,
           message.usage,
-          estimator.request(TurnSummary.request(own(all, turn)))
+          estimator.request(summaryRequest(all, turn, topical))
         )
         .left
         .map(storeFailure)
+      described = TurnTopics
+        .topicOf(all, turn)
+        .filter(_ => topical)
+        .toVector
+        .flatMap(TurnTopics.described(_, read))
+      _ <- TurnTopics.writeEvents(
+        entries,
+        ledger,
+        turn,
+        TurnTopics.describedId(turn),
+        described,
+        None
+      )
     } yield id
   }
 

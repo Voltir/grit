@@ -2,6 +2,7 @@ package grit.turn
 
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{TurnRef, TurnSeq}
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
 import grit.core.topic.{Band, Placement, TopicEvent, TopicId, Topics}
 import grit.models.StubClassifier
@@ -155,6 +156,49 @@ object TurnTopicsTests extends TestSuite {
       classifier.calls ==> 0
       last(topics(entries), turns(0)).map(_.by) ==> Some(Placement.First)
       TurnSeq.value(turns(0).turnSeq) ==> 1L
+    }
+
+    test("the summary names a new topic and says what it covers; the name then stays") {
+      val summaries = Vector(
+        "Summary: Asked about knots.\nTopic: **Knots and hitches under load**\nAbout: which knot holds.",
+        "Summary: Asked about bowlines.\nTopic: Bowlines\nAbout: knots, the bowline most."
+      )
+      val summarizer = new TurnVerdictTests.Scripted((_, n) =>
+        Right(
+          Message.Assistant(
+            Vector(AssistantBlock.Text(summaries.lift(n).getOrElse("no labels here"))),
+            StopReason.EndTurn,
+            Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+            "s"
+          )
+        )
+      )
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turns = Vector("knots?", "and bowlines?", "and sheet bends?").map { text =>
+        val turn = say(entries, text)
+        runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer)
+        turn
+      }
+      texts(entries).filter(_.startsWith("summary:")) ==> Vector(
+        "summary: Asked about knots.",
+        "summary: Asked about bowlines.",
+        "summary: no labels here"
+      )
+      val topic = topics(entries).current.getOrElse(sys.error("no topic"))
+      (topic.name, topic.summary) ==> (
+        Some("Knots and hitches under"),
+        Some("knots, the bowline most.")
+      )
+      // The second summary was asked with the name the first gave.
+      summarizer.requests.lift(1).flatMap(_.messages.headOption) match {
+        case Some(Message.User(text)) =>
+          assert(
+            text.startsWith("Topic so far: Knots and hitches under (about: which knot holds.).")
+          )
+        case other => assert(other.toString == "a user message")
+      }
+      turns.size ==> 3
     }
   }
 }

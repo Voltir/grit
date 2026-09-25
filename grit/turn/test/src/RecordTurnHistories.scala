@@ -162,7 +162,8 @@ object RecordTurnHistories {
         said: Vector[String],
         provider: grit.core.provider.Provider^,
         down: Boolean = false,
-        crash: Option[grit.core.store.Entry -> Boolean] = None
+        crash: Option[grit.core.store.Entry -> Boolean] = None,
+        summary: String = ""
     ): History = {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -173,7 +174,27 @@ object RecordTurnHistories {
       }
       val turn = say(store, said.lastOption.getOrElse("hello"))
       val entries = crash.fold[grit.core.store.EntryStore](store)(new CrashOnInsert(store, _))
-      try durable.run(turn.workflowId)(turnBody(entries, provider, classifier = classifier))
+      val summarizer = new TurnVerdictTests.Scripted((r, _) =>
+        if (summary.isEmpty) new grit.models.StubProvider().complete(r)
+        else
+          Right(
+            grit.core.message.Message.Assistant(
+              Vector(grit.core.message.AssistantBlock.Text(summary)),
+              grit.core.message.StopReason.EndTurn,
+              grit.core.message.Usage(
+                grit.core.message.Tokens.Zero,
+                grit.core.message.Tokens.Zero,
+                grit.core.message.Tokens.Zero,
+                None
+              ),
+              "s"
+            )
+          )
+      )
+      try
+        durable.run(turn.workflowId)(
+          turnBody(entries, provider, summarizer = summarizer, classifier = classifier)
+        )
       catch { case _: InMemoryDurable.Crash => "" }
       recorded(durable, turn)
     }
@@ -214,6 +235,11 @@ object RecordTurnHistories {
           if (n == 1) throw new InMemoryDurable.Crash
           else new grit.models.StubProvider().complete(r)
         )
+      ),
+      "topical-described" -> answered(
+        Vector("knots?"),
+        new RecordingProvider,
+        summary = "Summary: Asked about knots.\nTopic: Knots\nAbout: which knot holds."
       ),
       "window-first" -> windowFirst,
       "crashed-recording-window" -> crashedRecordingWindow,

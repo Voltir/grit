@@ -67,7 +67,9 @@ object TurnTests extends TestSuite {
       texts(entries) ==> Vector(
         "user: hello",
         "assistant: stub reply to: hello",
-        "summary: stub reply to: User: hello\n\nAssistant: stub reply to: hello"
+        // The stub quotes its request; it gives no labelled lines, so all of it is the summary.
+        "summary: stub reply to: Topic so far: new, not yet named.\n\nUser: hello\n\n" +
+          "Assistant: stub reply to: hello"
       )
       provider.requests.map(_.system) ==> Vector(system)
     }
@@ -168,8 +170,12 @@ object TurnTests extends TestSuite {
       runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer)
       summarizer.requests.lastOption ==> Some(
         ModelRequest(
-          TurnSummary.System,
-          Vector(Message.User("User: two\n\nAssistant: stub reply to: two"))
+          TurnSummary.TopicalSystem,
+          Vector(
+            Message.User(
+              "Topic so far: new, not yet named.\n\nUser: two\n\nAssistant: stub reply to: two"
+            )
+          )
         )
       )
       val all = entries.list(conversation)(using TestTx.fake).getOrElse(Vector.empty)

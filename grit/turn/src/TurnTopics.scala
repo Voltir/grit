@@ -244,6 +244,29 @@ object TurnTopics {
         }
       } yield id).left.map(e => TurnFailure.Store(describe(e)))
 
+  /** The id of the entry recording the description `turn`'s summary gave its topic. */
+  def describedId(turn: TurnRef): EntryId =
+    EntryId(s"topic:${WorkflowId.value(turn.workflowId)}:described")
+
+  /** The topic `turn`'s message is in, as `all` of its conversation's entries leave it. */
+  def topicOf(all: Vector[Entry], turn: TurnRef): Option[Topic] = {
+    val topics = Topics.fold(all.flatMap(e => events(e.payload)))
+    topics.placed(turn.turnSeq).flatMap(topics.get)
+  }
+
+  /** What the summary's `read` says of `topic`: its name, kept once it has one, and what it
+    * covers now. Nothing when the summary said nothing of it, or nothing new.
+    */
+  def described(topic: Topic, read: TurnSummary.Read): Vector[TopicEvent] =
+    read.topic.toVector.flatMap { (name, about) =>
+      val kept = topic.name.getOrElse(name)
+      Option
+        .when(!(topic.name.contains(kept) && topic.summary.contains(about)))(
+          TopicEvent.Described(topic.id, kept, about)
+        )
+        .toVector
+    }
+
   /** The topic events `payload` holds, if it is a topic record. */
   def events(payload: Payload): Vector[TopicEvent] = payload match {
     case Payload.Topic(events) => events
