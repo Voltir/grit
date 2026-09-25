@@ -164,7 +164,8 @@ object ArgsTests extends TestSuite {
       }
       assert(nulled.forall(s => args.read(s).isRight))
       assert(nulled.forall(admits(args.schema(strict = true), _)))
-      // The check is not vacuous: what the read refuses, it refuses too.
+      // The check is not vacuous: what the read refuses, it refuses too. The two repairs
+      // (the test after next) are the one exception: a read takes them, the schema does not.
       assert(samples.filter(s => args.read(s).isLeft).forall(!admits(args.schema(false), _)))
     }
 
@@ -212,6 +213,34 @@ object ArgsTests extends TestSuite {
       assert(
         admits(edits.schema(strict = false), ujson.Obj("path" -> "f", "edits" -> ujson.Arr(one)))
       )
+    }
+
+    test("the two repairs: a quoted whole number, and a list sent as a JSON string") {
+      val edit = Args.of((oldText = Field.text("Old."), newText = Field.text("New.")))
+      val edits = Args.of((path = Field.text("P."), edits = Field.each("The edits.", edit)))
+      args.read(ujson.Obj("about" -> "new", "count" -> "3")).map(_.count) ==> Right(3)
+      args.read(ujson.Obj("about" -> "new", "count" -> "-3")) ==>
+        Left(ArgsError.Invalid("count", "a whole number from 1 to 5", "\"-3\""))
+      // Nothing else is coerced: not a number with a point, spaces or a sign, nor a list's
+      // string that holds no list, nor a number where text is asked for.
+      for (bad <- Vector("3.0", " 3", "+3", "3x", "", "three"))
+        args.read(ujson.Obj("about" -> "new", "count" -> bad)) ==>
+          Left(ArgsError.Invalid("count", "a whole number from 1 to 5", ujson.Str(bad).render()))
+      val one = ujson.Obj("oldText" -> "a", "newText" -> "b")
+      edits
+        .read(ujson.Obj("path" -> "f", "edits" -> ujson.Arr(one).render()))
+        .map(_.edits.map(e => (e.oldText, e.newText))) ==>
+        Right(List(("a", "b")))
+      // Read as the list, so a failure inside it is still at its item's path.
+      edits.read(
+        ujson.Obj("path" -> "f", "edits" -> ujson.Arr(ujson.Obj("oldText" -> "a")).render())
+      ) ==>
+        Left(ArgsError.Missing("edits[0].newText", "text"))
+      for (bad <- Vector(one.render(), "[not json", "\"[]\"", "x"))
+        edits.read(ujson.Obj("path" -> "f", "edits" -> bad)) ==>
+          Left(ArgsError.Invalid("edits", "a list of at least 1 objects", ujson.Str(bad).render()))
+      args.read(ujson.Obj("about" -> "new", "count" -> 1, "name" -> 7)) ==>
+        Left(ArgsError.Invalid("name", "text", "7"))
     }
 
     test("a name used twice does not compile") {

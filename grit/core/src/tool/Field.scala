@@ -60,7 +60,8 @@ object Field {
   }
 
   /** A whole number from `min` to `max` inclusive; a JSON number with a fractional part is
-    * refused. With `min > max` no value is accepted.
+    * refused, and a string of decimal digits reads as its number ([[Repair.quotedNumber]]).
+    * With `min > max` no value is accepted.
     */
   def count(meaning: String, min: Int, max: Int): Field[Int] =
     plain(
@@ -72,7 +73,8 @@ object Field {
           "description" -> meaning
         ),
       s"a whole number from $min to $max",
-      _.numOpt.filter(n => n.isWhole && n >= min && n <= max).map(_.toInt)
+      v =>
+        Repair.quotedNumber(v).numOpt.filter(n => n.isWhole && n >= min && n <= max).map(_.toInt)
     )
 
   /** `true` or `false`. */
@@ -85,7 +87,8 @@ object Field {
 
   /** A list of at least `min` objects (0 when `min` is negative), each read by `item`, in
     * order: `Field.each("The edits.", Args.of((oldText = Field.text(…), newText = …)))`. A
-    * failure inside an item is refused at its path, counting from 0: `edits[2].oldText`.
+    * string holding a JSON list reads as that list ([[Repair.quotedList]]). A failure inside
+    * an item is refused at its path, counting from 0: `edits[2].oldText`.
     */
   def each[T](meaning: String, item: Args[T], min: Int = 1): Field[List[T]] = {
     val least = min.max(0)
@@ -101,7 +104,7 @@ object Field {
         ),
       accepts,
       (path, v) =>
-        v.arrOpt.map(_.toVector).filter(_.size >= least) match {
+        Repair.quotedList(v).arrOpt.map(_.toVector).filter(_.size >= least) match {
           case None => Left(ArgsError.Invalid(path, accepts, ArgsError.shown(v)))
           case Some(items) =>
             items.zipWithIndex.foldRight[Either[ArgsError, List[T]]](Right(Nil)) {
@@ -111,6 +114,36 @@ object Field {
         },
       None
     )
+  }
+
+  /** The only repairs made to what a model sends before a field reads it, each for a
+    * slip models are known to make; any other value is read as sent. A refused value is
+    * quoted as sent, not as repaired.
+    */
+  private object Repair {
+
+    /** A whole number sent as a JSON string of its decimal digits (`"5"`, `"-3"`), read as
+      * that number: models quote numbers in tool arguments, which pi coerces for the same
+      * reason (its changelog: "string numbers in tool arguments not being coerced").
+      */
+    def quotedNumber(v: ujson.Value): ujson.Value = v match {
+      case ujson.Str(s) if Digits.matches(s) => s.toDoubleOption.fold(v)(ujson.Num(_))
+      case _ => v
+    }
+
+    /** A list sent as a JSON string that parses to a list (`"[{…}]"`), read as that list:
+      * pi's edit tool records Claude Opus 4.6 and GLM-5.1 sending its `edits` this way.
+      */
+    def quotedList(v: ujson.Value): ujson.Value = v match {
+      case ujson.Str(s) =>
+        scala.util.Try(ujson.read(s)).toOption match {
+          case Some(list: ujson.Arr) => list
+          case _ => v
+        }
+      case _ => v
+    }
+
+    private val Digits = "-?[0-9]+".r
   }
 
   /** A field whose value `decode` reads alone, refused as not what it `accepts`. */
