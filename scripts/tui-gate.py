@@ -298,6 +298,8 @@ def main():
         return palette(checks, check, raw, frames, screens)
     if scenario == "tabs":
         return tabs(checks, check, raw, rows, cols, screens)
+    if scenario == "topics":
+        return topics(checks, check, raw, rows, cols, screens)
 
     payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
     if scenario in ("thumb", "popup"):
@@ -548,6 +550,34 @@ def tabs(checks, check, raw, rows, cols, screens):
           "the transcript kept the exchange")
     payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
     check(len(payloads) == 0, "clicks copy nothing", "%d" % len(payloads))
+    return report(checks)
+
+
+def topics(checks, check, raw, rows, cols, screens):
+    """grit.app's topics tab (script_topics), the stub classifier driving every band."""
+    divider = cols - 1 - PANEL_COLS
+    panel = lambda g: "\n".join(g[r][divider:] for r in range(1, rows - 4))
+    body = lambda g: "\n".join(g[r][:divider] for r in range(1, rows - 4))
+    on_topics = lambda g: "TOPICS  · 2 topics" in panel(g)
+    final = screens[-1] if screens else []
+    shown = next((g for g in screens if on_topics(g)), None)
+    check(shown is not None, "ctrl-t twice showed the topics tab, with two topics")
+    p = panel(shown) if shown else ""
+    check("▐ topics ▌" in (shown[1][divider:] if shown else ""), "its pill is the lit one")
+    check(" ● new topic " in p and "   new topic " in p,
+          "both topics listed, the current one marked", "")
+    check("TURN 3" in p, "the latest turn's placing is shown")
+    check("p(same)  0.50 · unsure" in p, "the classifier's p(same), in the uncertain band")
+    check("model    earlier: new topic (2)" in p, "the model's verdict: back to the first")
+    check("⚑ jev and the model disagree" in p, "and the disagreement flagged")
+    check(bool(final) and "stub reply to: back to it" in body(final),
+          "the transcript shows round two's reply")
+    check(bool(final) and "stub calls topic" not in body(final),
+          "and never round one's text")
+    check(bool(final) and all("stub reply to: " + w in body(final) for w in ("knots one", "sailing")),
+          "every exchange kept")
+    payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
+    check(len(payloads) == 0, "no clipboard write", "%d" % len(payloads))
     return report(checks)
 
 

@@ -57,8 +57,13 @@
 #          switches the panel to the session tab, which describes the conversation (its
 #          turns, messages and models), and a click on each pill switches back and forth.
 #          The keys and clicks reach neither the prompt nor the clipboard.
+#   topics grit.app with the stub classifier (GRIT_STUB_TOPICS=1), in a conversation of its
+#          own: a first message opens a topic, a sure change (~0.1) opens a second, and an
+#          unsure one (~0.5) asks the stub model, which calls `topic` to go back to the
+#          first. The topics tab shows both topics, the band, the verdict and the flag for
+#          the disagreement; the transcript's reply is round two's, never round one's.
 #
-# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload|columns|turn-modal|palette|stream|tabs]
+# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload|columns|turn-modal|palette|stream|tabs|topics]
 #        (no argument runs them all; `reload` needs `chat` before it in the same run)
 #
 # The oracles are geometry, not implementation: the chrome is header 1 + prompt 3 +
@@ -285,6 +290,18 @@ script_tabs() {
   printf '\021'; sleep 2
 }
 
+TOPICS_ROWS=40
+TOPICS_COLS=120
+script_topics() {
+  sleep $APP_STARTUP
+  printf 'knots one'; sleep 0.3; printf '\r'; sleep 3
+  printf 'sailing ~0.1'; sleep 0.3; printf '\r'; sleep 3
+  printf '%s' 'back to it ~0.5 #call:{"about":"earlier","name":"new topic (2)"}'
+  sleep 0.3; printf '\r'; sleep 4
+  printf '\024'; sleep 0.6; printf '\024'; sleep 1.5                    # ctrl-t twice: topics
+  printf '\021'; sleep 2
+}
+
 script_stream() {
   sleep $APP_STARTUP
   printf 'rune one two three four five six seven eight nine ten eleven twelve'
@@ -317,6 +334,10 @@ run_one() {
     runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_SESSION=$STAMP-tabs}
     rows=$TABS_ROWS cols=$TABS_COLS
   fi
+  if [ "$name" = topics ]; then
+    runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_STUB_TOPICS=1 GRIT_SESSION=$STAMP-topics}
+    rows=$TOPICS_ROWS cols=$TOPICS_COLS
+  fi
   if [ "$name" = palette ]; then
     runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_SESSION=$STAMP-palette}
     rows=$PALETTE_ROWS cols=$PALETTE_COLS
@@ -340,7 +361,7 @@ ensure_agent_db() {
 }
 
 case " ${*:-chat} " in
-  *" chat "*|*" reload "*|*" columns "*|*" turn-modal "*|*" palette "*|*" stream "*|*" tabs "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
+  *" chat "*|*" reload "*|*" columns "*|*" turn-modal "*|*" palette "*|*" stream "*|*" tabs "*|*" topics "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
 esac
 
 case " ${1:-} " in
@@ -350,7 +371,7 @@ case " ${1:-} " in
 esac
 
 status=0
-for s in ${*:-span one modal thumb popup resize burst chat reload columns turn-modal palette stream tabs}; do
+for s in ${*:-span one modal thumb popup resize burst chat reload columns turn-modal palette stream tabs topics}; do
   echo "== $s"
   run_one "$s" || status=1
 done
