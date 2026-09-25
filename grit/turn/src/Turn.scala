@@ -142,8 +142,10 @@ object Turn {
               .toOption
           case Placing.Unplaced => None
         }
-        val topics = topicFailure.fold("")(f => s"; topics not recorded: $f")
-        run(turn, placing)(using env, d) match {
+        val ran = run(turn, placing)(using env, d)
+        val topics = topicFailure.fold("")(f => s"; topics not recorded: $f") +
+          ran.verdictUnrecorded.fold("")(f => s"; verdict not recorded: $f")
+        ran.result match {
           case Left(failure) => s"failed: $failure$topics"
           case Right(reply) =>
             val summary =
@@ -202,14 +204,22 @@ object Turn {
       case _ => None
     }
 
+  /** What steps came to, `result`, and the verdict's record when it failed without failing
+    * the turn.
+    */
+  private final case class Ran[A](
+      result: Either[TurnFailure, A],
+      verdictUnrecorded: Option[TurnFailure]
+  )
+
+  /** The steps from `assemble` to `append`: `turn`'s reply entry, or why it has none. */
   private def run(
       turn: TurnRef,
       placing: Placing
-  )(using env: TurnEnv^, d: Durable^): Either[TurnFailure, EntryId] = {
+  )(using env: TurnEnv^, d: Durable^): Ran[EntryId] = {
     import TurnJournal.given
-    val reply = replyId(turn)
     val heard = d.stream(TurnStream.Key)
-    for {
+    val called = for {
       window <- d.step(Step.Assemble) { () =>
         env.assembler.assemble(AssemblyRequest(turn))(using env.db).left.map {
           case AssemblyError.Store(error) => TurnFailure.Assembly(describe(error))
@@ -226,14 +236,21 @@ object Turn {
       message <- d.step(Step.CallModel) { () =>
         callModel(heard, turn, window, asked.fold(Shape.Plain)(Shape.Offered(_)))
       }
-      answered <- asked match {
-        case None => Right(TurnVerdict.Replied(message, Shape.Plain))
-        case Some(c) => verdictRound(heard, turn, window, c, message)
-      }
-      appended <- d.transact(Step.Append)(
-        append(env.system, env.records, turn, window, reply, answered, recorded)
-      )
-    } yield appended
+    } yield (window, recorded, asked, message)
+    called match {
+      case Left(failure) => Ran(Left(failure), None)
+      case Right((window, recorded, asked, message)) =>
+        val answered = asked match {
+          case None => Ran(Right(TurnVerdict.Replied(message, Shape.Plain)), None)
+          case Some(c) => verdictRound(heard, turn, window, c, message)
+        }
+        val appended = answered.result.flatMap { a =>
+          d.transact(Step.Append)(
+            append(env.system, env.records, turn, window, replyId(turn), a, recorded)
+          )
+        }
+        Ran(appended, answered.verdictUnrecorded)
+    }
   }
 
   /** The request built from `turn`'s `window` and shaped by `shape`, sent to the provider,
@@ -267,7 +284,7 @@ object Turn {
       seen: Window,
       c: TurnTopics.Classification,
       first: Message.Assistant
-  )(using env: TurnEnv^, d: Durable^): Either[TurnFailure, TurnVerdict.Replied] = {
+  )(using env: TurnEnv^, d: Durable^): Ran[TurnVerdict.Replied] = {
     import TurnJournal.given
     val further = new TurnVerdict.Calls {
       def again(shape: Shape.Again): Either[TurnFailure, Message.Assistant] =
@@ -276,10 +293,10 @@ object Turn {
         d.step(Step.CallModelPlain) { () => callModel(heard, turn, seen, Shape.Plain) }
     }
     val round = TurnVerdict.round(c, first, further)
-    val _ = d.transact(Step.RecordVerdict)(
+    val recorded = d.transact(Step.RecordVerdict)(
       recordVerdict(env.system, env.records, turn, seen, c, round)
     )
-    round.answer
+    Ran(round.answer, recorded.left.toOption)
   }
 
   /** The `record-verdict` step: where `round`'s verdict places `turn`'s message, recorded

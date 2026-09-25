@@ -1,10 +1,10 @@
 package grit.turn
 
 import grit.core.durable.InMemoryDurable
-import grit.core.id.TurnRef
+import grit.core.id.{ConversationId, EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError, ToolUse}
-import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger}
+import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, InMemoryUsageLedger, StoreError, Tx}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict}
 import grit.models.StubProvider
 
@@ -26,6 +26,17 @@ object TurnVerdictTests extends TestSuite {
       requests = requests :+ request
       script(request, n)
     }
+  }
+
+  /** `underlying`, refusing to insert the entry `id`. */
+  final class Refusing(underlying: EntryStore, id: EntryId) extends EntryStore {
+    def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] =
+      if (entry.id == id) Left(StoreError.DatabaseError("no room for a verdict"))
+      else underlying.insert(entry)
+    def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] = underlying.get(id)
+    def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] = underlying.list(c)
+    def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
+      underlying.lockNext(c)
   }
 
   private def said(text: String, calls: AssistantBlock*): Message.Assistant =
@@ -234,6 +245,28 @@ object TurnVerdictTests extends TestSuite {
       texts(entries).filter(_.startsWith("assistant:")).lastOption ==> Some("assistant: plainly")
       lastBy(entries, turn).collect { case Placement.Asked(_, a) => a } ==>
         Some(Some("the second call failed (Model(HTTP 529)); a plain call answered"))
+    }
+
+    test("the verdict not recorded: the turn replies, and its log says so") {
+      val entries = new InMemoryEntryStore
+      val classifier = new CountingClassifier
+      Vector("hello", "knots? ~0.1").foreach { text =>
+        val t = say(entries, text)
+        runTurn(new InMemoryDurable, entries, new RecordingProvider, t, classifier = classifier)
+      }
+      val turn = say(entries, """hm ~0.5 #call:{"about":"current"}""")
+      val refusing = new Refusing(entries, TurnVerdict.verdictId(turn))
+      val log = runTurn(
+        new InMemoryDurable,
+        refusing,
+        new RecordingProvider,
+        turn,
+        classifier = classifier
+      )
+      assert(
+        log.startsWith("replied: "),
+        log.endsWith("; verdict not recorded: Store(no room for a verdict)")
+      )
     }
 
     test("a crash in round two resumes there, without calling round one again") {
