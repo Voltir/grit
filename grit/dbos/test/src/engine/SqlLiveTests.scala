@@ -85,6 +85,21 @@ object SqlLiveTests extends TestSuite {
       LiveDb.transaction(config)(ledger.of(WorkflowId("none"))) ==> Right(Vector.empty)
     }
 
+    test("the ledger reads a workflow's rows in record order, even within one transaction") {
+      val c = LiveDb.conversation(config, Origin.Task("sql", "ledger-order")).id
+      val ledger = new SqlUsageLedger()
+      val usage = Usage(Tokens(1), Tokens(1), Tokens(0), None)
+      // Recorded in the reverse of their ids' sort order, so ordering by id cannot pass.
+      LiveDb.transaction(config) {
+        entries.insert(entry(c, "order-z", 0))
+        entries.insert(entry(c, "order-a", 1))
+        ledger.record(EntryId("order-z"), WorkflowId("ordered"), "m", usage, Tokens(1))
+        ledger.record(EntryId("order-a"), WorkflowId("ordered"), "m", usage, Tokens(1))
+      }
+      LiveDb.transaction(config)(ledger.of(WorkflowId("ordered"))).map(_.map(_.entry)) ==>
+        Right(Vector(EntryId("order-z"), EntryId("order-a")))
+    }
+
     test("ingest: the same source is the same turn, a new one the next turn") {
       val origin = Origin.Task("sql", "ingest")
       val engine = Engine.open(config, "test")
