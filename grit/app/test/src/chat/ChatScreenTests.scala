@@ -425,6 +425,14 @@ object ChatScreenTests extends TestSuite {
       assert(!chosen.screen.mkString.contains("nightshade"))
     }
 
+    test("/theme asks the host to keep the choice; what the host notes is shown") {
+      val chosen = typed(ready, "/theme nightshade").input(Input.Keyboard(Key.Enter))
+      chosen.effects.last ==> Effect.ToHost(Msg.KeepTheme("nightshade"))
+      assert(!sends(chosen))
+      val noted = chosen.message(Msg.Noted("theme nightshade, not kept: read-only"))
+      assert(noted.screen.last.contains("not kept: read-only"))
+    }
+
     test("a / draft never reaches the host: one that will not run says why") {
       val unknown = typed(ready, "/foo").input(Input.Keyboard(Key.Enter))
       assert(!sends(unknown), unknown.screen.last.contains("no command /foo"))

@@ -1,7 +1,7 @@
 package grit.app.main
 
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
-import grit.app.config.DotEnv
+import grit.app.config.{DotEnv, Prefs}
 import grit.app.look.Theme
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
@@ -14,6 +14,7 @@ import grit.core.store.Origin
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
 import grit.models.{ModelRole, OpenRouterConfig, OpenRouterProvider, StubProvider}
+import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
 import grit.turn.Turn
 
@@ -25,7 +26,8 @@ import grit.turn.Turn
   * `GRIT_ASSEMBLER`: `retrieval` (the default), the recent turns that fit in
   * `GRIT_TAIL_TOKENS` (default [[RetrievalAssembler.DefaultTail]]) plus the earlier turns a
   * written query finds ([[RetrievalAssembler]]); or `linear`, the recent turns that fit. Every variable
-  * may come from a `.env` file instead ([[DotEnv]]).
+  * may come from a `.env` file instead ([[DotEnv]]). The TUI starts in the theme
+  * `GRIT_THEME` names, or else the one last chosen with `/theme` ([[Prefs]]).
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
   *     (default `default`). Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
@@ -59,7 +61,8 @@ object Main {
     val budget = exitOnLeft(tokens(env, BudgetVar, LinearAssembler.DefaultBudget))
     val tail = exitOnLeft(tokens(env, TailVar, RetrievalAssembler.DefaultTail))
     val retrieving = exitOnLeft(assemblerChoice(env))
-    val startTheme = exitOnLeft(theme(env))
+    val prefsFile = Prefs.path(env)
+    val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend.
     val openRouter: Option[OpenRouterConfig] =
       if (!env.contains(OpenRouterConfig.KeyVar)) None
@@ -124,7 +127,7 @@ object Main {
           Some(java.nio.file.Path.of(log))
         )
         // Closing the host stops following and closes the engine, however far it got.
-        try Runtime.run(new ChatScreen.App(modelName, startTheme, budget), host)
+        try Runtime.run(new ChatScreen.App(modelName, startTheme, budget), keeping(host, prefsFile))
         finally host.close()
         None
       } else {
@@ -224,12 +227,36 @@ object Main {
 
   private val ThemeVar = "GRIT_THEME"
 
-  /** The theme `GRIT_THEME` names; unset is [[Theme.Default]]. */
-  private def theme(env: Map[String, String]): Either[String, Theme] =
+  /** The theme `GRIT_THEME` names; unset, the one `kept` names, if grit still has it;
+    * otherwise [[Theme.Default]].
+    */
+  private[main] def theme(env: Map[String, String], kept: Prefs): Either[String, Theme] =
     env.get(ThemeVar) match {
-      case None => Right(Theme.Default)
+      case None => Right(kept.theme.flatMap(Theme.named).getOrElse(Theme.Default))
       case Some(name) =>
         Theme.named(name).toRight(s"$ThemeVar is none of ${Theme.all.map(_.key).mkString(", ")}")
+    }
+
+  /** `host`, and the screen's [[ChatScreen.Msg.KeepTheme]] written to the preferences at
+    * `file` (nowhere without one), off the screen's thread; a write that fails says so in
+    * the status line.
+    */
+  private def keeping(
+      host: Host[ChatScreen.Msg]^,
+      file: Option[java.nio.file.Path]
+  ): Host[ChatScreen.Msg]^{host} =
+    new Host[ChatScreen.Msg] {
+      def receive(msg: ChatScreen.Msg, mailbox: Mailbox[ChatScreen.Msg]): Unit = msg match {
+        case ChatScreen.Msg.KeepTheme(key) =>
+          file.foreach { f =>
+            val _ = Thread.ofVirtual().name("grit-prefs").start { () =>
+              Prefs.save(f, Prefs.load(f).copy(theme = Some(key))).left.foreach { why =>
+                mailbox.offer(ChatScreen.Msg.Noted(s"theme $key, not kept: $why"))
+              }
+            }
+          }
+        case other => host.receive(other, mailbox)
+      }
     }
 
   /** Whether `GRIT_ASSEMBLER` asks for retrieval; unset is retrieval. */

@@ -98,9 +98,13 @@ RUNNER="$J/bin/java --sun-misc-unsafe-memory-access=allow --enable-native-access
 # conversation of the gate's own, so `reload` sees exactly what `chat` wrote.
 # And a database that is not Nick's: an engine launched on `grit` would recover his
 # in-flight turns (CLAUDE.local.md). Created on first use. GRIT_GATE_DB names another,
-# for a second agent whose engines must not recover this one's turns.
+# for a second agent whose engines must not recover this one's turns. And a config
+# directory of the run's own: `/theme` keeps its choice there (Prefs), so a gate never
+# changes the theme the developer's next launch starts in, and every run starts in the
+# default.
 AGENT_DB=${GRIT_GATE_DB:-grit_agent}
-APP_RUNNER="env -u OPENROUTER_API_KEY GRIT_ENV_FILE=/dev/null GRIT_SESSION=$STAMP GRIT_LOG=$WORK/grit.log \
+APP_RUNNER="env -u OPENROUTER_API_KEY -u GRIT_THEME GRIT_ENV_FILE=/dev/null GRIT_SESSION=$STAMP GRIT_LOG=$WORK/grit.log \
+  XDG_CONFIG_HOME=$WORK/config-$STAMP \
   GRIT_DATABASE_URL=jdbc:postgresql://localhost:5432/$AGENT_DB \
   $J/bin/java -Dgate.stamp=--$STAMP --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
   -cp $APP_CP grit.app.main.Main"
@@ -318,7 +322,15 @@ run_one() {
     rows=$PALETTE_ROWS cols=$PALETTE_COLS
   fi
   "script_$name" | setsid script -qc "stty rows $rows cols $cols; $runner" /dev/null > "$out" 2>&1
-  python3 scripts/tui-gate.py "$out" "$rows" "$cols" "$name"
+  python3 scripts/tui-gate.py "$out" "$rows" "$cols" "$name" || return 1
+  if [ "$name" = palette ]; then
+    # The choice outlives the run: the next launch starts in it.
+    if grep -qx 'theme=tokyo-night' "$WORK/config-$STAMP/grit/prefs" 2>/dev/null; then
+      echo "  ok    /theme kept the choice for the next run"
+    else
+      echo "  FAIL  /theme kept the choice for the next run"; return 1
+    fi
+  fi
 }
 
 ensure_agent_db() {

@@ -171,6 +171,12 @@ object ChatScreen {
       */
     case Failed(reason: String)
 
+    /** For the host: remember the theme `key` names, for the next run to start in. */
+    case KeepTheme(key: String)
+
+    /** From the host: something to say in the status line. */
+    case Noted(status: String)
+
     /** From the host: the engine is open. */
     case Opened
 
@@ -281,7 +287,8 @@ object ChatScreen {
               else
                 Effect.Batch(Vector(Effect.ToHost(Msg.Send(draft)), Effect.ToHost(Msg.Show(None))))
             )
-        case Msg.Send(_) | Msg.Load | Msg.Show(_) => (s, Effect.NoOp)
+        case Msg.Send(_) | Msg.Load | Msg.Show(_) | Msg.KeepTheme(_) => (s, Effect.NoOp)
+        case Msg.Noted(status) => (s.copy(status = status), Effect.NoOp)
         case Msg.Arrived(said, step, summaries) =>
           val since = if (step == s.step) s.stepSince else s.tick
           // A recorded reply takes the place of what was heard of it.
@@ -333,7 +340,8 @@ object ChatScreen {
             relaid(
               s.copy(theme = theme, editor = look.styled(s.editor), status = s"theme ${theme.key}")
             ),
-            Effect.NoOp
+            // Kept for the next run, by the host: the screen does no I/O.
+            Effect.ToHost(Msg.KeepTheme(theme.key))
           )
         case Msg.ToggleSummaries =>
           val on = !s.summaries

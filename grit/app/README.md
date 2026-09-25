@@ -9,7 +9,8 @@ Run it with `scripts/grit`.
 In dependency order:
 
 - **`config`** — `DotEnv`: settings from a `.env` file under the real environment.
-  Imports nothing in app.
+  `Prefs`: what grit remembers between runs (the theme last chosen), in
+  `$XDG_CONFIG_HOME/grit/prefs` or `~/.config/grit/prefs`. Imports nothing in app.
 - **`look`** — `Theme`, a palette by role (Frost the default; `GRIT_THEME` picks
   the one a run starts in), and `Look`, the chat screen's styles from a theme: who speaks is a rune as
   well as a colour (`Look.Runes`: ᛗ the user, ᚨ grit, ᚺ a failure, ᛁ idle, ᛭ between turns). Every theme is held to
@@ -34,7 +35,9 @@ In dependency order:
   once the host's first look has said so. `Replies` reads replies back out of the store. `Commands` is the one table of slash
   commands: what the palette (`/` in an empty prompt, or ctrl-p) lists, what `/help`
   describes, and what a submitted `/` draft runs; such a draft never reaches the model.
-  The theme is screen state, so `/theme` repaints everything live. `/summaries` shows
+  The theme is screen state, so `/theme` repaints everything live, and asks the host
+  to keep it (`KeepTheme`): `Main` writes it to `Prefs`, and the next run starts in it
+  unless `GRIT_THEME` says otherwise. `/summaries` shows
   each turn's summary, faint, under its reply (off by default: the transcript is the
   conversation, and a summary lands after its reply, so the rows below would move). ← `look`
 - **`main`** — `Main`: reads the settings, opens the engine and launches the turn
