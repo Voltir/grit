@@ -9,6 +9,7 @@ import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.provider.{ModelRequest, ProviderError}
 import grit.core.store.{Entry, Payload, StoreError, Tx}
+import grit.core.topic.Topic
 
 import TurnVerdict.Shape
 
@@ -127,26 +128,26 @@ object Turn {
       case Some(turn) =>
         import TurnJournal.given
         val records = env.records
-        // Turns that passed this point before topics existed go straight to assembly.
-        val topical = d.patch(Patches.Topics)
-        val placed: Option[TurnTopics.Classification] =
-          Option.when(topical)(
-            d.step(Step.Classify) { () =>
+        val placing =
+          if (d.patch(Patches.Topics))
+            Placing.Placed(d.step(Step.Classify) { () =>
               TurnTopics.classify(env.classifier, records.entries, env.db, records.estimator, turn)
-            }
-          )
-        val topicFailure = placed.flatMap { c =>
-          d.transact(Step.RecordTopic)(
-            TurnTopics.record(records.entries, records.ledger, turn, c)
-          ).left
-            .toOption
+            })
+          else Placing.Unplaced
+        val topicFailure = placing match {
+          case Placing.Placed(c) =>
+            d.transact(Step.RecordTopic)(
+              TurnTopics.record(records.entries, records.ledger, turn, c)
+            ).left
+              .toOption
+          case Placing.Unplaced => None
         }
         val topics = topicFailure.fold("")(f => s"; topics not recorded: $f")
-        run(turn, placed)(using env, d) match {
+        run(turn, placing)(using env, d) match {
           case Left(failure) => s"failed: $failure$topics"
           case Right(reply) =>
             val summary =
-              summarise(turn, reply, topical)(using env, d) match {
+              summarise(turn, reply, placing)(using env, d) match {
                 case Right(id) => s"summarised: ${EntryId.value(id)}"
                 case Left(failure) => s"no summary: $failure"
               }
@@ -167,9 +168,43 @@ object Turn {
   def replyId(turn: TurnRef): EntryId =
     EntryId(s"reply:${WorkflowId.value(turn.workflowId)}")
 
+  /** Whether `turn`'s message was placed among its conversation's topics
+    * ([[Patches.Topics]]).
+    */
+  private enum Placing {
+
+    /** Placed: `c` is what the `classify` step decided. */
+    case Placed(c: TurnTopics.Classification)
+
+    /** Not placed: the turn passed `classify` before topics existed. */
+    case Unplaced
+  }
+
+  /** Where a turn records its window and the queries that chose it
+    * ([[Patches.RecordWindow]]).
+    */
+  private enum WindowRecord {
+
+    /** In the `record-window` step, before the model is called. */
+    case OwnStep
+
+    /** With the reply, in `append`: the turn passed `record-window` before it existed. */
+    case WithReply
+  }
+
+  /** The classification the model is to be asked about: `placing`'s, when the classifier
+    * was unsure and the turn takes the verdict patch. The patch is consulted only for an
+    * unsure placement ([[Patches.Verdict]]).
+    */
+  private def asking(placing: Placing)(using d: Durable^): Option[TurnTopics.Classification] =
+    placing match {
+      case Placing.Placed(c) if c.uncertain => Option.when(d.patch(Patches.Verdict))(c)
+      case _ => None
+    }
+
   private def run(
       turn: TurnRef,
-      placed: Option[TurnTopics.Classification]
+      placing: Placing
   )(using env: TurnEnv^, d: Durable^): Either[TurnFailure, EntryId] = {
     import TurnJournal.given
     val reply = replyId(turn)
@@ -180,23 +215,23 @@ object Turn {
           case AssemblyError.Store(error) => TurnFailure.Assembly(describe(error))
         }
       }
-      // Turns that passed this point before the patch record their window with the reply.
-      early = d.patch(Patches.RecordWindow)
-      _ <-
-        if (early) d.transact(Step.RecordWindow)(recordWindow(env.records, turn, window))
-        else Right(windowId(turn))
-      // Turns unsure of their topic that passed this point before the verdict round offer
-      // no tool.
-      asking = placed.filter(_.uncertain).filter(_ => d.patch(Patches.Verdict))
-      message <- d.step(Step.CallModel) { () =>
-        callModel(heard, turn, window, asking.fold(Shape.Plain)(Shape.Offered(_)))
+      recorded =
+        if (d.patch(Patches.RecordWindow)) WindowRecord.OwnStep else WindowRecord.WithReply
+      _ <- recorded match {
+        case WindowRecord.OwnStep =>
+          d.transact(Step.RecordWindow)(recordWindow(env.records, turn, window))
+        case WindowRecord.WithReply => Right(windowId(turn))
       }
-      answered <- asking match {
+      asked = asking(placing)
+      message <- d.step(Step.CallModel) { () =>
+        callModel(heard, turn, window, asked.fold(Shape.Plain)(Shape.Offered(_)))
+      }
+      answered <- asked match {
         case None => Right(TurnVerdict.Replied(message, Shape.Plain))
         case Some(c) => verdictRound(heard, turn, window, c, message)
       }
       appended <- d.transact(Step.Append)(
-        append(env.system, env.records, turn, window, reply, answered, early)
+        append(env.system, env.records, turn, window, reply, answered, recorded)
       )
     } yield appended
   }
@@ -272,13 +307,13 @@ object Turn {
       )
     } yield id
 
-  /** The last two steps: the summary of `turn`, whose reply is `answered`; when `topical`,
-    * with the name and description of its message's topic.
+  /** The last two steps: the summary of `turn`, whose reply is `answered`, with the name
+    * and description of its message's topic when `placing` placed it.
     */
   private def summarise(
       turn: TurnRef,
       answered: EntryId,
-      topical: Boolean
+      placing: Placing
   )(using env: TurnEnv^, d: Durable^): Either[TurnFailure, EntryId] = {
     import TurnJournal.given
     for {
@@ -288,30 +323,36 @@ object Turn {
           .left
           .map(storeFailure)
           .flatMap { all =>
-            env.summarizer.complete(summaryRequest(all, turn, topical)).left.map {
+            env.summarizer.complete(summaryRequest(all, turn, placing)).left.map {
               case ProviderError.Unavailable(cause) => TurnFailure.Model(cause)
             }
           }
       }
       appended <- d.transact(Step.AppendSummary)(
-        appendSummary(env.records, turn, answered, message, topical)
+        appendSummary(env.records, turn, answered, message, placing)
       )
     } yield appended
   }
 
   /** The summary request for `turn`, from `all` of its conversation's entries: asking after
-    * its topic too when `topical` and its message has one.
+    * its topic too when `placing` placed it and it has one.
     */
-  private def summaryRequest(all: Vector[Entry], turn: TurnRef, topical: Boolean): ModelRequest =
-    TurnSummary.request(
-      own(all, turn),
-      if (topical) TurnTopics.topicOf(all, turn) else None
-    )
+  private def summaryRequest(all: Vector[Entry], turn: TurnRef, placing: Placing): ModelRequest =
+    TurnSummary.request(own(all, turn), topicOf(all, turn, placing))
+
+  /** The topic `turn`'s message is in, as `all` of its conversation's entries leave it, when
+    * `placing` placed it.
+    */
+  private def topicOf(all: Vector[Entry], turn: TurnRef, placing: Placing): Option[Topic] =
+    placing match {
+      case Placing.Placed(_) => TurnTopics.topicOf(all, turn)
+      case Placing.Unplaced => None
+    }
 
   /** Records the summary in `message` as `turn`'s summary, a child of its reply `answered`,
     * after everything already in the conversation; and what it cost in the ledger beside
     * the estimate of the request that produced it, rebuilt as [[append]] rebuilds its own.
-    * When `topical`, what it says of the topic is recorded after it
+    * What it says of the topic `placing` placed the message in is recorded after it
     * ([[TurnTopics.describedId]]).
     */
   private def appendSummary(
@@ -319,13 +360,15 @@ object Turn {
       turn: TurnRef,
       answered: EntryId,
       message: Message.Assistant,
-      topical: Boolean
+      placing: Placing
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = TurnSummary.id(turn)
     val TurnRecords(entries, ledger, estimator) = records
     for {
-      read <- (if (topical) TurnSummary.read(message)
-               else TurnSummary.text(message).map(TurnSummary.Read(_, None)))
+      read <- (placing match {
+        case Placing.Placed(_) => TurnSummary.read(message)
+        case Placing.Unplaced => TurnSummary.text(message).map(TurnSummary.Read(_, None))
+      })
         .toRight(TurnFailure.Model(s"the summary has no text (stop: ${message.stop})"))
       text = read.summary
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
@@ -350,15 +393,11 @@ object Turn {
           turn.workflowId,
           message.model,
           message.usage,
-          estimator.request(summaryRequest(all, turn, topical))
+          estimator.request(summaryRequest(all, turn, placing))
         )
         .left
         .map(storeFailure)
-      described = TurnTopics
-        .topicOf(all, turn)
-        .filter(_ => topical)
-        .toVector
-        .flatMap(TurnTopics.described(_, read))
+      described = topicOf(all, turn, placing).toVector.flatMap(TurnTopics.described(_, read))
       _ <- TurnTopics.writeEvents(
         entries,
         ledger,
@@ -416,8 +455,8 @@ object Turn {
     * produced it: rebuilt from the same window and the same entries (the turn's own were
     * all recorded before its call, and the reply is not yet among them), shaped as
     * `answered` says.
-    * Unless the `record-window` step already wrote them (`windowRecorded`), the window's
-    * queries and the window itself go in first ([[writeWindow]]).
+    * When the window is `recorded` with the reply, its queries and the window itself go in
+    * first ([[writeWindow]]).
     */
   private def append(
       system: String,
@@ -426,7 +465,7 @@ object Turn {
       window: Window,
       id: EntryId,
       answered: TurnVerdict.Replied,
-      windowRecorded: Boolean
+      recorded: WindowRecord
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val TurnVerdict.Replied(message, shape) = answered
     val TurnRecords(entries, ledger, estimator) = records
@@ -434,8 +473,10 @@ object Turn {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
       sent <- requestOf(system, all, turn, window).map(shape(_))
-      written <-
-        if (windowRecorded) Right(0) else writeWindow(records, turn, window, next.seq)
+      written <- recorded match {
+        case WindowRecord.OwnStep => Right(0)
+        case WindowRecord.WithReply => writeWindow(records, turn, window, next.seq)
+      }
       _ <- entries
         .insert(
           Entry(
