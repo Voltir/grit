@@ -109,6 +109,12 @@ rules:
     mode: strict
     because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
 
+  - id: only-dbos-imports-dbos-no-such-workflow
+    forbid_name: outside-dbos
+    pattern: "* -> dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
+
 
   # -------------------------------------------------------------------------------------
   # 1b. Only grit.dbos imports JDBC or the Postgres driver (STYLE rule 8's other half).
