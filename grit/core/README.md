@@ -23,6 +23,9 @@ In dependency order:
   into: `ContextAssembler` (and the `Window` it builds), `Provider`, `Inbox`, and
   `Classifier` (closed questions about a state, answered with a probability per option;
   Jev's shape). Each names only the packages above, never another of the four.
+- **`tool`** — a tool's arguments defined once, as typed data: `Field`, `Args` (read into a
+  named tuple), `ArgsError`, `ToolName`, and `ToolSpec`, from which come the schema the model
+  is shown (a `provider.ToolSchema`) and the reader of its calls. ← `provider`
 
 No source file sits at core's root, and no two packages import each other in a circle:
 `scripts/enola-law.sh` fails on a new import cycle.

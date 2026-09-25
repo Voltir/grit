@@ -2,7 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.provider.{ModelRequest, ProviderError, Tool, ToolUse}
+import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 
 /** OpenRouter's chat-completions wire format (OpenAI's shape), both ways. Pure. Checked
   * against openrouter.ai/docs (API reference, reasoning tokens, errors) on 2026-09-23.
@@ -33,15 +33,16 @@ object OpenRouterJson {
     body
   }
 
-  private def tool(t: Tool): ujson.Value =
-    ujson.Obj(
-      "type" -> "function",
-      "function" -> ujson.Obj(
-        "name" -> t.name,
-        "description" -> t.description,
-        "parameters" -> t.parameters
-      )
+  /** A tool; `strict` is sent only when set, so a provider that does not know it never sees it. */
+  private def tool(t: ToolSchema): ujson.Value = {
+    val function = ujson.Obj(
+      "name" -> t.name,
+      "description" -> t.description,
+      "parameters" -> t.parameters
     )
+    if (t.strict) function("strict") = true
+    ujson.Obj("type" -> "function", "function" -> function)
+  }
 
   private def message(m: Message): ujson.Value = m match {
     case Message.User(text) => ujson.Obj("role" -> "user", "content" -> text)

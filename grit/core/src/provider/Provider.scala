@@ -46,14 +46,21 @@ enum Delta {
 final case class ModelRequest(
     system: String,
     messages: Vector[Message],
-    tools: Vector[Tool] = Vector.empty,
+    tools: Vector[ToolSchema] = Vector.empty,
     use: ToolUse = ToolUse.Auto
 )
 
-/** A tool the model may call: its `name`, what it is for, and a JSON Schema of its
-  * arguments (`parameters`, an object schema).
+/** A tool the model may call, as a request shows it: its `name`, what it is for, and a JSON
+  * Schema of its arguments (`parameters`, an object schema). `strict` asks the provider to
+  * hold the model's arguments to that schema, which must then meet the provider's strict-mode
+  * rules. Built from a [[grit.core.tool.ToolSpec]].
   */
-final case class Tool(name: String, description: String, parameters: ujson.Value)
+final case class ToolSchema(
+    name: String,
+    description: String,
+    parameters: ujson.Value,
+    strict: Boolean = false
+)
 
 /** Whether the model may call a request's tools. */
 enum ToolUse {

@@ -147,7 +147,7 @@ object TurnVerdictTests extends TestSuite {
     test("the verdict names an earlier topic: placed back in it") {
       val (turn, entries, _) =
         third(
-          """back ~0.5 #call:{"about":"earlier","name":"new topic (2)"}""",
+          """back ~0.5 #call:{"about":"earlier","earlier":"new topic (2)"}""",
           new RecordingProvider
         )
       val t = topics(entries)
@@ -155,6 +155,37 @@ object TurnVerdictTests extends TestSuite {
         TopicId.openedBy(TurnRef(conversation, grit.core.id.TurnSeq(0)))
       )
       t.topics.size ==> 2
+    }
+
+    test("reading a call: the earlier key an enum, and each refusal's message") {
+      val none = TurnTopics.Classification(Vector.empty, None, Vector.empty, None, None)
+      val two = none.copy(
+        earlier = Vector(
+          TurnTopics.Shown(TopicId("a"), "Knots"),
+          TurnTopics.Shown(TopicId("b"), "Knots (2)")
+        )
+      )
+      TurnVerdict.read(two, ujson.Obj("about" -> "earlier", "earlier" -> "Knots (2)")) ==>
+        Right(Verdict.Earlier("Knots (2)"))
+      TurnVerdict.read(two, ujson.Obj("about" -> "new", "name" -> "  Sailing ")) ==>
+        Right(Verdict.New(Some("Sailing")))
+      TurnVerdict.read(two, ujson.Obj("about" -> "new", "name" -> " ")) ==> Right(Verdict.New(None))
+      TurnVerdict.read(two, ujson.Obj("about" -> "current", "earlier" -> "Knots")) ==>
+        Right(Verdict.Current)
+      TurnVerdict.read(two, ujson.Obj("about" -> "earlier")).left.map(_.message) ==>
+        Left("`earlier` is missing: it takes one of `Knots`, `Knots (2)`.")
+      TurnVerdict
+        .read(two, ujson.Obj("about" -> "earlier", "earlier" -> "knots"))
+        .left
+        .map(_.message) ==>
+        Left("`earlier` takes one of `Knots`, `Knots (2)`, not \"knots\".")
+      // No earlier topics: no `earlier` field to send, and no `earlier` to say.
+      TurnVerdict.topic(none).schema(strict = false).parameters("properties").obj.keys.toVector ==>
+        Vector("about", "name")
+      TurnVerdict.read(none, ujson.Obj("about" -> "earlier")).left.map(_.message) ==>
+        Left("`about` takes one of `current`, `new`, not \"earlier\".")
+      TurnVerdict.read(none, ujson.Obj("about" -> "new", "earlier" -> "x")).left.map(_.message) ==>
+        Left("There is no argument `earlier`; the arguments there are `about`, `name`.")
     }
 
     test("the verdict says current: it stays") {
@@ -168,14 +199,25 @@ object TurnVerdictTests extends TestSuite {
     test("unreadable arguments: an error result, the classifier's placement stands") {
       val provider = new RecordingProvider
       val (turn, entries, _) = third("""hm ~0.5 #call:{"about":"sideways"}""", provider)
+      val refused = "`about` takes one of `current`, `earlier`, `new`, not \"sideways\"."
       provider.requests.lastOption.toVector
         .flatMap(_.messages)
-        .collect { case r: Message.ToolResult => r.isError } ==> Vector(true)
+        .collect { case r: Message.ToolResult => (r.content, r.isError) } ==>
+        Vector((s"$refused Answer the message now.", true))
       val ps = placements(entries, turn)
       ps.map(_.weights).distinct.size ==> 1
       lastBy(entries, turn) ==> Some(
-        Placement.Asked(Verdict.Unreadable("""{"about":"sideways"}"""), None)
+        Placement.Asked(Verdict.Unreadable(s"""$refused Sent: {"about":"sideways"}"""), None)
       )
+    }
+
+    test("the earlier topics are an enum in the tool's schema, offered per call") {
+      val provider = new RecordingProvider
+      val (_, _, _) = third("hm ~0.5", provider)
+      val shown = provider.requests.lift(provider.requests.size - 2).flatMap(_.tools.headOption)
+      shown.map(_.parameters("properties")("earlier")("enum")) ==>
+        Some(ujson.Arr("new topic (2)"))
+      shown.map(_.parameters("required")) ==> Some(ujson.Arr("about"))
     }
 
     test("the model answers without calling: its answer is the reply, the verdict unreadable") {

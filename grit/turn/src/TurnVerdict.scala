@@ -2,7 +2,8 @@ package grit.turn
 
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
-import grit.core.provider.{ModelRequest, Tool, ToolUse}
+import grit.core.provider.{ModelRequest, ToolUse}
+import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
 
 /** The main model asked where a message went, when the classifier was unsure
@@ -17,32 +18,65 @@ import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
 object TurnVerdict {
 
   /** The tool's name. */
-  val Name = "topic"
+  val Name: ToolName = ToolName("topic")
 
-  /** The `topic` tool. */
-  val Topic: Tool = Tool(
-    Name,
-    "Say which topic the user's latest message is about. Call it once, before answering, " +
-      "when the message says the topic may have changed.",
-    ujson.Obj(
-      "type" -> "object",
-      "properties" -> ujson.Obj(
-        "about" -> ujson.Obj(
-          "type" -> "string",
-          "enum" -> ujson.Arr("current", "earlier", "new"),
-          "description" -> ("current: it carries on the current topic. earlier: it goes back " +
-            "to an earlier topic. new: a subject not discussed before.")
-        ),
-        "name" -> ujson.Obj(
-          "type" -> "string",
-          "description" -> ("For earlier: that topic's name, as the note gives it. For new: a " +
-            "short name for the subject, at most four words.")
-        )
-      ),
-      "required" -> ujson.Arr("about"),
-      "additionalProperties" -> false
+  /** The `topic` tool, as offered when the classification is `c`: `about` is `current`,
+    * `earlier` or `new`; `earlier` is one of `c`'s earlier topics by key, required when
+    * `about` is `earlier`; `name` is a new topic's name. With no earlier topics there is no
+    * `earlier` field, and `about` is `current` or `new`. A name read is trimmed; a blank one
+    * is none.
+    */
+  def topic(c: TurnTopics.Classification): ToolSpec[Verdict] = {
+    val name = Field.text("For new: a short name for the subject, at most four words.").optional
+    def named(n: Option[String]): Option[String] = n.map(_.trim).filter(_.nonEmpty)
+    val args = c.earlier.map(_.key) match {
+      case first +: rest =>
+        val earlier = Field.oneOf("For earlier: the earlier topic it goes back to.", first, rest*)
+        Args
+          .of(
+            (
+              about = Field.oneOf(
+                "current: it carries on the current topic. earlier: it goes back to an " +
+                  "earlier topic. new: a subject not discussed before.",
+                "current",
+                "earlier",
+                "new"
+              ),
+              earlier = earlier.optional,
+              name = name
+            )
+          )
+          .refine(a =>
+            a.about match {
+              case "current" => Right(Verdict.Current)
+              case "earlier" =>
+                a.earlier
+                  .map(Verdict.Earlier(_))
+                  .toRight(ArgsError.Missing("earlier", earlier.accepts))
+              case _ => Right(Verdict.New(named(a.name)))
+            }
+          )
+      case _ =>
+        Args
+          .of(
+            (
+              about = Field.oneOf(
+                "current: it carries on the current topic. new: a subject not discussed before.",
+                "current",
+                "new"
+              ),
+              name = name
+            )
+          )
+          .map(a => if (a.about == "current") Verdict.Current else Verdict.New(named(a.name)))
+    }
+    ToolSpec(
+      Name,
+      "Say which topic the user's latest message is about. Call it once, before answering, " +
+        "when the message says the topic may have changed.",
+      args
     )
-  )
+  }
 
   /** The id of the entry recording `turn`'s verdict. */
   def verdictId(turn: TurnRef): EntryId =
@@ -57,9 +91,11 @@ object TurnVerdict {
     // The whole instruction rides here, with the tool, and never in the system prompt: a
     // model told of a tool it was not offered writes the call out as text (seen live with
     // gpt-oss-20b, which answered a message with "topic(new,movie)").
+    val earlierCall =
+      if (c.earlier.isEmpty) "" else "`earlier` with that topic in `earlier`, "
     s"[grit: the topic may have changed. Current topic: $current. Earlier topics: $earlier. " +
-      s"First call the `$Name` tool once to say what this message is about: `current`, " +
-      "`earlier` with that topic's name, or `new` with a short name. Then answer the message " +
+      s"First call the `${ToolName.value(Name)}` tool once to say what this message is " +
+      s"about: `current`, $earlierCall`new` with a short name. Then answer the message " +
       "as usual, without mentioning topics, this note or the tool.]"
   }
 
@@ -73,7 +109,11 @@ object TurnVerdict {
       case (Message.User(text), i) if i == last => Message.User(s"$text\n\n${tag(c)}")
       case (m, _) => m
     }
-    base.copy(messages = tagged, tools = Vector(Topic), use = ToolUse.Auto)
+    base.copy(
+      messages = tagged,
+      tools = Vector(topic(c).schema(strict = false)),
+      use = ToolUse.Auto
+    )
   }
 
   /** How a request is built from the turn's plain one. */
@@ -92,7 +132,7 @@ object TurnVerdict {
     def apply(base: ModelRequest): ModelRequest = this match {
       case Plain => base
       case Offered(c) => offer(base, c)
-      case Again(c, first) => again(offer(base, c), first)
+      case Again(c, first) => again(offer(base, c), c, first)
     }
   }
 
@@ -125,7 +165,7 @@ object TurnVerdict {
     * fails only when the plain call does.
     */
   def round(c: TurnTopics.Classification, first: Message.Assistant, further: Calls^): Round = {
-    val verdict = of(first)
+    val verdict = of(c, first)
     val offered = Replied(first, Shape.Offered(c))
     if (calls(first).isEmpty) Round(Right(offered), verdict, None, Vector.empty)
     else {
@@ -156,57 +196,60 @@ object TurnVerdict {
   def calls(reply: Message.Assistant): Vector[AssistantBlock.ToolCall] =
     reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
 
-  /** The second round's request: `offered`, then the first round's `reply` and a result for
-    * each of its calls, the tool no longer callable.
+  /** The second round's request: `offered` (the offer for `c`), then the first round's
+    * `reply` and a result for each of its calls, the tool no longer callable.
     */
-  def again(offered: ModelRequest, reply: Message.Assistant): ModelRequest =
-    offered.copy(messages = offered.messages ++ (reply +: results(reply)), use = ToolUse.Off)
+  def again(
+      offered: ModelRequest,
+      c: TurnTopics.Classification,
+      reply: Message.Assistant
+  ): ModelRequest =
+    offered.copy(messages = offered.messages ++ (reply +: results(c, reply)), use = ToolUse.Off)
 
-  /** A result for each call in `reply`: the first `topic` call is noted (or refused, when
-    * its arguments cannot be read), a later one already noted, any other tool unknown.
+  /** A result for each call in `reply`, the tool offered for `c`: the first `topic` call is
+    * noted, or refused with [[ArgsError.message]] when its arguments cannot be read; a later
+    * one already noted; any other tool unknown.
     */
-  def results(reply: Message.Assistant): Vector[Message.ToolResult] = {
-    val first = calls(reply).find(_.name == Name).map(_.id)
-    calls(reply).map { c =>
-      if (c.name != Name) Message.ToolResult(c.id, s"There is no tool named ${c.name}.", true)
-      else if (!first.contains(c.id)) Message.ToolResult(c.id, "Already noted.", false)
+  def results(
+      c: TurnTopics.Classification,
+      reply: Message.Assistant
+  ): Vector[Message.ToolResult] = {
+    val first = calls(reply).find(_.name == ToolName.value(Name)).map(_.id)
+    calls(reply).map { call =>
+      if (call.name != ToolName.value(Name))
+        Message.ToolResult(call.id, s"There is no tool named ${call.name}.", true)
+      else if (!first.contains(call.id)) Message.ToolResult(call.id, "Already noted.", false)
       else
-        verdict(c.arguments) match {
-          case Verdict.Unreadable(_) =>
-            Message.ToolResult(
-              c.id,
-              "Could not read that: `about` is current, earlier or new. Answer the message now.",
-              true
-            )
-          case _ => Message.ToolResult(c.id, "Noted. Answer the message now.", false)
+        read(c, call.arguments) match {
+          case Left(error) =>
+            Message.ToolResult(call.id, s"${error.message} Answer the message now.", true)
+          case Right(_) => Message.ToolResult(call.id, "Noted. Answer the message now.", false)
         }
     }
   }
 
-  /** The verdict the model gave in `reply`: its first `topic` call's, or unreadable when
-    * it made none.
+  /** The verdict the model gave in `reply` to the tool offered for `c`: its first `topic`
+    * call's ([[verdict]]), or unreadable when it made none.
     */
-  def of(reply: Message.Assistant): Verdict =
+  def of(c: TurnTopics.Classification, reply: Message.Assistant): Verdict =
     calls(reply)
-      .find(_.name == Name)
-      .fold[Verdict](Verdict.Unreadable("answered without calling topic"))(c =>
-        verdict(c.arguments)
+      .find(_.name == ToolName.value(Name))
+      .fold[Verdict](Verdict.Unreadable("answered without calling topic"))(call =>
+        verdict(c, call.arguments)
       )
 
-  /** The verdict `arguments` give. */
-  def verdict(arguments: ujson.Value): Verdict = {
-    val o = arguments.objOpt
-    val name = o.flatMap(_.get("name")).flatMap(_.strOpt).map(_.trim).filter(_.nonEmpty)
-    o.flatMap(_.get("about")).flatMap(_.strOpt).map(_.trim.toLowerCase) match {
-      case Some("current") => Verdict.Current
-      case Some("earlier") =>
-        name.fold[Verdict](Verdict.Unreadable(s"earlier, with no name: ${arguments.render()}"))(
-          Verdict.Earlier(_)
-        )
-      case Some("new") => Verdict.New(name)
-      case _ => Verdict.Unreadable(arguments.render().take(200))
-    }
-  }
+  /** The verdict `arguments` give to the tool offered for `c`; unreadable when [[read]]
+    * refuses them, saying why and what was sent (cut to 200 characters).
+    */
+  def verdict(c: TurnTopics.Classification, arguments: ujson.Value): Verdict =
+    read(c, arguments).fold(
+      error => Verdict.Unreadable(s"${error.message} Sent: ${arguments.render().take(200)}"),
+      identity
+    )
+
+  /** `arguments`, read by [[topic]]`(c)`. */
+  def read(c: TurnTopics.Classification, arguments: ujson.Value): Either[ArgsError, Verdict] =
+    topic(c).args.read(arguments)
 
   /** `reply` with its tool calls dropped; `None` when no text is left. */
   def answer(reply: Message.Assistant): Option[Message.Assistant] = {
@@ -220,9 +263,10 @@ object TurnVerdict {
     })(reply.copy(blocks = kept))
   }
 
-  /** Where `verdict` places `turn`'s message: the current topic, the earlier one it names
-    * (by its key, or its name without a number), or a new topic, opened; an unreadable
-    * verdict leaves the classifier's placement standing. `anomaly` goes on the record.
+  /** Where `verdict` places `turn`'s message: the current topic, the earlier one whose key
+    * it names, or a new topic, opened (also for an earlier key that is none of `c`'s); an
+    * unreadable verdict leaves the classifier's placement standing. `anomaly` goes on the
+    * record.
     */
   def events(
       verdict: Verdict,
@@ -237,19 +281,12 @@ object TurnVerdict {
     def open: Vector[TopicEvent] = Vector(TopicEvent.Opened(opened), whole(opened))
     verdict match {
       case Verdict.Current => c.current.fold(open)(s => Vector(whole(s.id)))
-      case Verdict.Earlier(name) => matching(name, c).fold(open)(s => Vector(whole(s.id)))
+      case Verdict.Earlier(key) =>
+        c.earlier.find(_.key == key).fold(open)(s => Vector(whole(s.id)))
       case Verdict.New(_) => open
       case Verdict.Unreadable(_) =>
         c.placed.toVector.map(p => TopicEvent.Placed(turn.turnSeq, p.weights, by))
     }
-  }
-
-  private def matching(name: String, c: TurnTopics.Classification): Option[TurnTopics.Shown] = {
-    def plain(s: String): String = s.trim.toLowerCase.replaceAll("""\s*\(\d+\)$""", "")
-    c.earlier
-      .find(_.key == name)
-      .orElse(c.earlier.find(_.key.trim.equalsIgnoreCase(name.trim)))
-      .orElse(c.earlier.find(s => plain(s.key) == plain(name)))
   }
 
   /** What the calls made for the verdict cost, the reply's own call aside: their model,

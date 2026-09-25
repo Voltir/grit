@@ -132,7 +132,7 @@ object OpenRouterStreamTests extends TestSuite {
     }
 
     test("the stub calls the first tool it may, with the #call: arguments, beside a line of text") {
-      val topic = grit.core.provider.Tool("topic", "d", ujson.Obj())
+      val topic = grit.core.provider.ToolSchema("topic", "d", ujson.Obj())
       val said = """hi #call:{"about":"new","name":"Knots"}"""
       val asked = grit.core.message.Message.User(said)
       val called = new StubProvider().complete(ModelRequest("s", Vector(asked), Vector(topic)))

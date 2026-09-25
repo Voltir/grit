@@ -19,7 +19,11 @@ object TurnVerdictRoundTests extends TestSuite {
     Message.Assistant(
       Vector(AssistantBlock.Text(text)).filter(_ => text.nonEmpty) ++
         call.map(about =>
-          AssistantBlock.ToolCall(ToolCallId("t1"), TurnVerdict.Name, ujson.Obj("about" -> about))
+          AssistantBlock.ToolCall(
+            ToolCallId("t1"),
+            grit.core.tool.ToolName.value(TurnVerdict.Name),
+            ujson.Obj("about" -> about)
+          )
         ),
       StopReason.EndTurn,
       Usage(Tokens(10), Tokens(2), Tokens.Zero, None),

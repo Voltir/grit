@@ -2,7 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.provider.{ModelRequest, ProviderError, Tool, ToolUse}
+import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 
 import utest.*
 
@@ -79,7 +79,7 @@ object OpenRouterJsonTests extends TestSuite {
     }
 
     test("request: tools and tool_choice only when the request has tools") {
-      val topic = Tool(
+      val topic = ToolSchema(
         "topic",
         "Say which topic.",
         ujson.Obj("type" -> "object", "properties" -> ujson.Obj())
@@ -106,6 +106,12 @@ object OpenRouterJsonTests extends TestSuite {
       )
       off("tool_choice") ==> ujson.Str("none")
       off("tools") ==> auto("tools")
+      val strict = OpenRouterJson.request(
+        "m",
+        1,
+        ModelRequest("s", Vector(Message.User("hi")), Vector(topic.copy(strict = true)))
+      )
+      strict("tools")(0)("function")("strict") ==> ujson.True
     }
 
     test("response: reasoning, text and tool calls, in that order, with usage and cost") {

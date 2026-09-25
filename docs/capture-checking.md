@@ -162,6 +162,22 @@ implemented by a `val cap: Cap^`.
 **Mutable collections are pure types.** A typed `ArrayBuffer` field passes, even under
 separation checking. Nothing catches it; keep mutation in scoped locals (STYLE rule 7).
 
+**A tuple match type inside an `inline` def.**
+
+- *Symptom:* `a match type could not be fully reduced: trying to reduce Tuple.Fold[(("a" :
+  String), …)^'s1, …] failed since selector … does not match case h *: t`, from
+  `constValueTuple[N].toList` at the inline's call site.
+- *Cause:* the tuple is given a capture-set variable (`^'s1`), and the match type will not
+  reduce over it.
+- *Fix:* skip the match type: `constValueTuple[N].productIterator.toVector.map(_.toString)`
+  (`grit.core.tool.Args.of`).
+
+**A `Vector` inside a named tuple, read in a lambda.** The nested-`Vector` trap again, from
+the caller's side: `args.read(json).map(_.edits.size)`, where `edits: Vector[…]`, is rejected
+(*"capability `any²` cannot flow into capture set {any}"*, or a separation failure that
+*"hides non-local value x$proxy"*), and the lambda's parameter type is too long to write out.
+`Field.each` reads a `List`, which has no array inside, so the lambda compiles.
+
 **`-Wunused` on a default method.** A parameter a default `def` ignores warns where the
 `_` of a lambda never did. Mark it `@unused`.
 
