@@ -32,17 +32,30 @@ final case class TurnPanel(look: Look, budget: Tokens) {
           window(v) ++ cost(v)
     }
 
-  /** The rows of the opened turn: what was asked, then all the panel shows. */
-  def opened(view: Option[TurnView], runningMs: Long): Vector[Block] =
-    view.toVector.flatMap(v =>
+  /** The rows of the opened turn: what was asked, what has been heard of the reply while
+    * it streams (the reasoning, then the text), then all the panel shows.
+    */
+  def opened(
+      view: Option[TurnView],
+      runningMs: Long,
+      hearing: Option[ChatScreen.Hearing]
+  ): Vector[Block] =
+    view.toVector.flatMap { v =>
+      val heard =
+        hearing.filter(h => h.turn == v.turn && v.running.nonEmpty).toVector.flatMap { h =>
+          Vector(row(" ── heard so far " -> fg(t.faint))) ++
+            Option.when(h.reasoning.nonEmpty)(row(s" ${h.reasoning}" -> fg(t.faint))) ++
+            Option.when(h.text.nonEmpty)(row(s" ${h.text}" -> fg(t.ink), "▍" -> fg(t.grit))) ++
+            Vector(blank)
+        }
       Vector(
         Block.styled(
           StyledText.styled(s" ${Look.Runes.User} ", fg(t.user) + Style.Bold) ++
             StyledText.styled(v.asked, fg(t.ink) + Style.Bold)
         ),
         blank
-      )
-    ) ++ blocks(view, runningMs)
+      ) ++ heard
+    } ++ blocks(view, runningMs)
 
   private def title(v: TurnView, pinned: Boolean): Block = {
     val where = v.running.fold(if (v.settled) "done" else "finishing")(Look.Runes.step(_))

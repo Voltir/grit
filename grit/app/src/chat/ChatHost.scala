@@ -11,6 +11,7 @@ import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Origin}
 import grit.dbos.engine.{Engine, TurnStatus}
 import grit.tui.runtime.app.{Host, Mailbox}
+import grit.turn.TurnStream
 
 /** The chat screen's engine side, for the conversation `origin` names. The screen reaches
   * the engine only through its inbox and store, as any edge does (ADR 0002).
@@ -123,12 +124,20 @@ final class ChatHost(
       case Right(conversation) =>
         var state = Follow.start
         var shown: Option[TurnView] = None
+        var listened = Set.empty[TurnSeq]
         while (open) {
           engine.db.read(engine.entries.list(conversation)) match {
             case Right(entries) =>
               val (next, msgs) = Follow.step(state, entries, turn => engine.status(turn))
               state = next
               msgs.foreach(mailbox.offer)
+              // A running turn's reply is followed as it streams, once per turn.
+              TurnView.latest(entries).filter(_ => state.thinking).foreach { turn =>
+                if (!listened.contains(turn.turnSeq)) {
+                  listened = listened + turn.turnSeq
+                  listen(engine, turn, mailbox)
+                }
+              }
               val target = pinned
                 .filter(t => entries.exists(_.turnSeq == t))
                 .map(TurnRef(conversation, _))
@@ -162,6 +171,24 @@ final class ChatHost(
     val costs = engine.db.read(engine.ledger.of(turn.workflowId)).getOrElse(Vector.empty)
     TurnView.of(turn, entries, steps, running, costs, system, estimator)
   }
+
+  /** Follows `turn`'s reply stream on a thread of its own, telling the screen what it has
+    * heard so far after each piece, the latest attempt's ([[TurnStream.Heard]]). Ends with
+    * the turn's workflow, or with the host.
+    */
+  private def listen(engine: Engine^, turn: TurnRef, mailbox: Mailbox[ChatScreen.Msg]): Unit =
+    background { () =>
+      val pieces = engine.stream(turn, TurnStream.Key)
+      var heard = TurnStream.Heard.nothing
+      while (open && pieces.hasNext) {
+        TurnStream.decode(pieces.next()).foreach { piece =>
+          heard = heard + piece
+          mailbox.offer(
+            ChatScreen.Msg.Heard(ChatScreen.Hearing(turn.turnSeq, heard.reasoning, heard.text))
+          )
+        }
+      }
+    }
 
   private def send(engine: Engine^, text: String, mailbox: Mailbox[ChatScreen.Msg]): Unit = {
     // The TUI never redelivers, so each message is its own source.

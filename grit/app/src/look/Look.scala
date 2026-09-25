@@ -39,6 +39,17 @@ final case class Look(theme: Theme) {
   /** The line under the transcript while a turn runs: a rune of the Futhark for each
     * `tick`, in turn.
     */
+  /** A reply as it streams: grit's marker, the text so far, and a caret that blinks with
+    * `tick`.
+    */
+  def streaming(text: String, tick: Long): Block.Text =
+    Block.styled(
+      StyledText.styled("▌", Style.fg(theme.grit)) ++
+        StyledText.styled(s"${Runes.Grit} ", Style.fg(theme.grit) + Style.Bold) ++
+        StyledText.styled(text, Style.fg(theme.ink)) ++
+        StyledText.styled(if (tick % 8 < 5) "▍" else " ", Style.fg(theme.grit))
+    )
+
   def thinking(tick: Long): Block.Text =
     Block.styled(
       StyledText.styled(s"  ${Runes.futhark(tick)} ", Style.fg(theme.user) + Style.Bold) ++

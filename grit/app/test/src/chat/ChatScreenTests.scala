@@ -204,6 +204,38 @@ object ChatScreenTests extends TestSuite {
       open.input(Input.Keyboard(Key.Escape)).state.modal ==> None
     }
 
+    test("a streaming reply takes the thinking line's place; the recorded one takes its") {
+      val asked =
+        ready.message(Msg.Arrived(Vector(Said(true, "hi", TurnSeq(0))), Some("call-model")))
+      val streaming = asked.message(Msg.Heard(ChatScreen.Hearing(TurnSeq(0), "hmm", "Fehu is")))
+      said(streaming).map(_.stripSuffix("▍").trim) ==> Vector("▌ᛗ hi", "▌ᚨ Fehu is")
+      // What was heard of another turn is not this one's reply.
+      said(asked.message(Msg.Heard(ChatScreen.Hearing(TurnSeq(7), "", "other")))) ==>
+        Vector("▌ᛗ hi", "ᚠ grit is thinking…")
+      val recorded = streaming.message(
+        Msg.Arrived(Vector(Said(false, "Fehu is wealth.", TurnSeq(0))), None)
+      )
+      said(recorded) ==> Vector("▌ᛗ hi", "▌ᚨ Fehu is wealth.")
+      recorded.state.hearing ==> None
+    }
+
+    test("the opened turn shows what has been heard: the reasoning, then the text") {
+      val view =
+        TurnView(TurnSeq(0), "hi", Some("call-model"), Vector.empty, None, None, None, None)
+      val open = click(
+        ready
+          .message(Msg.Arrived(Vector(Said(true, "hi", TurnSeq(0))), Some("call-model")))
+          .message(Msg.Turn(view)),
+        "grit is thinking"
+      ).message(Msg.Heard(ChatScreen.Hearing(TurnSeq(0), "the user wants a rune", "Fehu")))
+      val shown = open.screen.mkString("\n")
+      assert(
+        shown.contains("heard so far"),
+        shown.contains("the user wants a rune"),
+        shown.contains("Fehu▍")
+      )
+    }
+
     test("an engine that will not open ends the ward and says so") {
       said(started.message(Msg.Failed("could not open the engine: refused"))) ==>
         Vector("ᚺ could not open the engine: refused")

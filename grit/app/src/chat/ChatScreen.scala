@@ -39,6 +39,9 @@ object ChatScreen {
     case Failure(reason: String)
   }
 
+  /** What has been heard of `turn`'s reply while it streams: its reasoning and text so far. */
+  final case class Hearing(turn: TurnSeq, reasoning: String, text: String)
+
   /** The dialog over the screen: the running turn, opened, or the help. */
   enum Dialog extends caps.Pure {
     case Turn, Help
@@ -75,8 +78,13 @@ object ChatScreen {
       modal: Option[Dialog] = None,
       modalReader: Scroller.State = Scroller.State(Anchor.At(DocPos.zero)),
       palette: Option[Int] = None,
-      aside: Option[String] = None
+      aside: Option[String] = None,
+      hearing: Option[Hearing] = None
   ) {
+
+    /** The running turn's reply as heard so far, while it has any text. */
+    def streaming: Option[Hearing] =
+      hearing.filter(h => thinking && h.text.nonEmpty && owners.flatten.lastOption.contains(h.turn))
 
     /** Whether a turn is in progress. */
     def thinking: Boolean = step.nonEmpty
@@ -138,6 +146,9 @@ object ChatScreen {
 
     /** From the host: the turn the panel shows, as it now stands. */
     case Turn(view: TurnView)
+
+    /** From the host: the running turn's reply, as heard so far. */
+    case Heard(hearing: Hearing)
 
     /** Ctrl-B: the turn panel shown, or hidden. */
     case TogglePanel
@@ -221,11 +232,14 @@ object ChatScreen {
         case Msg.Send(_) | Msg.Load | Msg.Show(_) => (s, Effect.NoOp)
         case Msg.Arrived(said, step) =>
           val since = if (step == s.step) s.stepSince else s.tick
+          // A recorded reply takes the place of what was heard of it.
+          val heard = s.hearing.filterNot(h => said.exists(r => !r.user && r.turn == h.turn))
           animate(
             s,
             recorded(s, said.map(Entry.Spoken(_)))
-              .copy(step = step, stepSince = since, status = "")
+              .copy(step = step, stepSince = since, status = "", hearing = heard)
           )
+        case Msg.Heard(h) => (s.copy(hearing = Some(h)), Effect.NoOp)
         case Msg.Failed(reason) =>
           animate(s, recorded(s, Vector(Entry.Failure(reason))).copy(opening = false))
         case Msg.Opened => animate(s, s.copy(opening = false))
@@ -380,15 +394,17 @@ object ChatScreen {
       else if (!after.animated && before.animated) (after, Effect.Cancel(Runes))
       else (after, Effect.NoOp)
 
-    /** The transcript: what was said, then the ward or the spinner. A tail that changes
-      * each tick is a different block each tick, so the runtime's wrap memo re-wraps that
-      * one row and nothing above it.
+    /** The transcript: what was said, then the ward, or the running turn's reply as it
+      * streams, or the spinner until it does. A tail that changes is a different block, so
+      * the runtime's wrap memo re-wraps that one and nothing above it.
       */
     private def transcript(s: State, look: Look): Doc =
       Doc(
         s.said ++
           Option.when(s.opening)(look.ward(s.tick, "opening the engine…")) ++
-          Option.when(s.thinking && !s.opening)(look.thinking(s.tick))
+          Option.when(s.thinking && !s.opening)(
+            s.streaming.fold(look.thinking(s.tick))(h => look.streaming(h.text, s.tick))
+          )
       )
 
     private def hotkeys: OnInput[Msg] = {
@@ -446,7 +462,7 @@ object ChatScreen {
     private def opened(s: State, look: Look, panel: TurnPanel): Node[Msg] = {
       val shown = s.turn.filter(_.running.nonEmpty).fold(0L)(_ => s.stepMs)
       Scroller
-        .view(Opened, Doc(panel.opened(s.turn, shown)), s.modalReader)
+        .view(Opened, Doc(panel.opened(s.turn, shown, s.hearing)), s.modalReader)
         .map(Msg.ModalReader(_))
         .grounded(look.modalGround)
     }

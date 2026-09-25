@@ -41,6 +41,9 @@
 #          wheel over each column scrolls only that column, a drag begun in the
 #          transcript stays in it however far into the panel it runs, and the prompt
 #          still takes keys.
+#   stream grit.app with a slow stub, in a conversation of its own: the reply is painted
+#          part-written while the model is still answering, and the recorded reply
+#          replaces it, once.
 #   turn-modal grit.app with a slow stub, in a conversation of its own: a click on the
 #          thinking line opens the running turn over the screen, which takes the keys
 #          until Escape closes it; a click on an earlier reply pins its turn to the panel,
@@ -50,7 +53,7 @@
 #          screen in it and closes the list, and a list opened again is dismissed by
 #          Escape. Nothing typed here may reach the transcript: a `/` draft is a command.
 #
-# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload|columns|turn-modal|palette]
+# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload|columns|turn-modal|palette|stream]
 #        (no argument runs them all; `reload` needs `chat` before it in the same run)
 #
 # The oracles are geometry, not implementation: the chrome is header 1 + prompt 3 +
@@ -253,17 +256,29 @@ script_palette() {
   printf '\021'; sleep 2
 }
 
+script_stream() {
+  sleep $APP_STARTUP
+  printf 'rune one two three four five six seven eight nine ten eleven twelve'
+  sleep 0.3; printf '\r'; sleep 9
+  printf '\021'; sleep 2
+}
+
 script_reload() {
   sleep $((APP_STARTUP + 2))
   printf '\021'; sleep 2
 }
 
 run_one() {
+  # A scenario with no script would run with no input and never quit.
+  declare -F "script_$1" > /dev/null || { echo "gate: no scenario $1" >&2; return 1; }
   local name=$1 out="$WORK/$1.txt" runner=$RUNNER rows=$ROWS cols=$COLS
   case "$name" in chat|reload) runner=$APP_RUNNER ;; esac
   if [ "$name" = columns ]; then
     runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_SESSION=$STAMP-columns}
     rows=$COLUMNS_ROWS cols=$COLUMNS_COLS
+  fi
+  if [ "$name" = stream ]; then
+    runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_STUB_DELAY_MS=5000 GRIT_SESSION=$STAMP-stream}
   fi
   if [ "$name" = turn-modal ]; then
     runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_STUB_DELAY_MS=6000 GRIT_SESSION=$STAMP-modal}
@@ -284,7 +299,7 @@ ensure_agent_db() {
 }
 
 case " ${*:-chat} " in
-  *" chat "*|*" reload "*|*" columns "*|*" turn-modal "*|*" palette "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
+  *" chat "*|*" reload "*|*" columns "*|*" turn-modal "*|*" palette "*|*" stream "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
 esac
 
 case " ${1:-} " in
@@ -294,7 +309,7 @@ case " ${1:-} " in
 esac
 
 status=0
-for s in ${*:-span one modal thumb popup resize burst chat reload columns turn-modal palette}; do
+for s in ${*:-span one modal thumb popup resize burst chat reload columns turn-modal palette stream}; do
   echo "== $s"
   run_one "$s" || status=1
 done

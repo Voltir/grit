@@ -261,6 +261,8 @@ def main():
         return columns(checks, check, raw, rows, cols, screens, snapshots, ones)
     if scenario == "turn-modal":
         return turn_modal(checks, check, raw, rows, screens)
+    if scenario == "stream":
+        return stream(checks, check, rows, screens)
     if scenario == "palette":
         return palette(checks, check, raw, frames, screens)
 
@@ -475,6 +477,24 @@ def palette(checks, check, raw, frames, screens):
     check(not any(has(g, "no command") for g in screens), "no draft failed as a command")
     payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
     check(len(payloads) == 0, "no drag, so no clipboard write", "%d" % len(payloads))
+    return report(checks)
+
+
+def stream(checks, check, rows, screens):
+    """grit.app with a slow stub that streams its reply word by word."""
+    asked = "rune one two three four five six seven eight nine ten eleven twelve"
+    whole = "stub reply to: " + asked
+    body = lambda g: "\n".join(g[1:rows - 4])
+    partial = [i for i, g in enumerate(screens)
+               if "\u16a8 stub reply to:" in body(g) and whole not in body(g)
+               and "answering" in g[rows - 1]]
+    check(bool(partial), "the reply was painted part-written while the model answered",
+          "%d frames" % len(partial))
+    final = screens[-1] if screens else []
+    check(bool(final) and body(final).count(whole) == 1,
+          "the recorded reply replaced it, once")
+    check(bool(final) and "thinking" not in body(final) and "\u258d" not in body(final),
+          "no spinner and no caret left behind")
     return report(checks)
 
 
