@@ -68,7 +68,7 @@ object TurnTests extends TestSuite {
         "user: hello",
         "assistant: stub reply to: hello",
         // The stub quotes its request; it gives no labelled lines, so all of it is the summary.
-        "summary: stub reply to: Topic so far: new, not yet named.\n\nUser: hello\n\n" +
+        "summary: stub reply to: This exchange starts a topic that has no name yet: give it one.\n\nUser: hello\n\n" +
           "Assistant: stub reply to: hello"
       )
       provider.requests.map(_.system) ==> Vector(system)
@@ -173,7 +173,7 @@ object TurnTests extends TestSuite {
           TurnSummary.TopicalSystem,
           Vector(
             Message.User(
-              "Topic so far: new, not yet named.\n\nUser: two\n\nAssistant: stub reply to: two"
+              "This exchange starts a topic that has no name yet: give it one.\n\nUser: two\n\nAssistant: stub reply to: two"
             )
           )
         )

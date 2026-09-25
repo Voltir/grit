@@ -27,6 +27,12 @@ object TurnSummary {
       "topic already has a name, repeat it.\n" +
       "About: one line saying what the topic covers so far, this exchange included."
 
+  /** What the request says of a topic with no name yet. Worded so it has nothing a model
+    * could repeat as a name: "Topic so far: new, not yet named." came back live as the
+    * name "new, not yet named".
+    */
+  val TopicUnnamed: String = "This exchange starts a topic that has no name yet: give it one."
+
   /** The most words a topic's name keeps. */
   val NameWords = 4
 
@@ -46,7 +52,7 @@ object TurnSummary {
     topic match {
       case None => ModelRequest(System, Vector(Message.User(transcript)))
       case Some(t) =>
-        val so = t.name.fold("Topic so far: new, not yet named.")(n =>
+        val so = t.name.fold(TopicUnnamed)(n =>
           s"Topic so far: $n${t.summary.fold("")(a => s" (about: $a)")}."
         )
         ModelRequest(TopicalSystem, Vector(Message.User(s"$so\n\n$transcript")))
