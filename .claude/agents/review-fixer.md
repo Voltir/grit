@@ -49,6 +49,11 @@ deleted because a type now says them.
   with 0 warnings, `bash scripts/enola-law.sh` (`bash scripts/fetch-enola.sh` first if
   `tools/` lacks enola).
 - A test that proves something cannot happen is watched failing on a planted breach first.
+- **When you extend a design another change built** (the brief names the plan or earlier
+  steps), list each of its standards and guarantees your change touches, and show in the
+  report how each still holds: a capability a type restricted, a fact defined in one place,
+  a value only one component may reach. On 2026-09-25 each M3 step held its own work to the
+  standards; the guarantees that slipped were the ones a later step widened or re-derived.
 - Commit in the repo's message style (see `git log`), one item per commit, ending with the
   attribution line the brief gives.
 
