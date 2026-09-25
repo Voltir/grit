@@ -41,9 +41,10 @@ object SpannedPaneTests extends TestSuite {
     test("a span paints on exactly the cells its offsets name") {
       val doc = Doc(Vector(marked("you> ", "hello")))
       val s = paneOf(doc, Size(1, 20)).render(None)
-      (0 until 5).foreach { c => assert(s.at(0, c).style.fg.contains(Iris)) }
-      (5 until 10).foreach { c => assert(s.at(0, c).style.fg.contains(Ink)) }
-      assert(s.at(0, 4).style.bold && !s.at(0, 5).style.bold)
+      val marker = Style.fg(Iris) + Style.Bold + Style.bg(Slab)
+      val body = Style.fg(Ink) + Style.bg(Slab)
+      val want = Vector.fill(5)(marker) ++ Vector.fill(5)(body) ++ Vector.fill(10)(Style.bg(Slab))
+      assert((0 until 20).map(c => s.at(0, c).style) == want)
     }
 
     test("a block's ground runs the full width of the row, past the end of its text") {
