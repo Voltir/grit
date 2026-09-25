@@ -134,6 +134,15 @@ only a nested `step`.
   sealed trait whose cases hold them, so `Main` builds a `TurnTooling.ReadOnly` inline and
   hands it on as a `TurnTooling^`.
 
+**An abstract capability member, implemented by a case-class field.**
+
+- *Symptom:* `error overriding method jot in trait TurnTooling of type -> Jot^{fresh}; value
+  jot of type Jot^ has incompatible type`.
+- *Cause:* a `def jot: Jot^` result is a fresh root capability, which no field's `^`
+  matches.
+- *Fix:* leave the member off the trait and read it from the case the code has matched
+  (`TurnTooling`'s `jot`, read by `Turn.loop` from `ReadOnly` or `Full`).
+
 **A tupled lambda over a nested `Vector`.** Under separation checking,
 `turns.zipWithIndex.flatMap((turn, t) => …)` over a `Vector[Vector[A]]` is rejected:
 *"capability `any` cannot flow into capture set {} of value turn"*, with the inferred
