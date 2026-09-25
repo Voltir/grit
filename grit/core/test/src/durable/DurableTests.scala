@@ -188,6 +188,30 @@ object DurableTests extends TestSuite {
         Left("ended after 2 of 3 recorded steps; next was 'c'")
     }
 
+    test("a stream write inside a step is kept, and is not a step") {
+      val durable = new InMemoryDurable
+      def wf(using d: Durable^): String = {
+        val out = d.stream("k")
+        d.step("a") { () => out.write("p1"); "a" } + d.step("b") { () => "b" }
+      }
+      durable.run(id)(_ => wf) ==> "ab"
+      durable.streamed(id, "k") ==> Vector("p1")
+      durable.recordedSteps(id) ==> Vector("a", "b")
+    }
+
+    test("a stream write outside a step fails, as DBOS would record it as an operation") {
+      val durable = new InMemoryDurable
+      def wf(using d: Durable^): String = {
+        val out = d.stream("k")
+        out.write("p1")
+        d.step("a") { () => "a" }
+      }
+      val e = assertThrows[InMemoryDurable.WriteOutsideStep](durable.run(id)(_ => wf))
+      e.key ==> "k"
+      durable.streamed(id, "k") ==> Vector.empty
+      durable.recordedSteps(id) ==> Vector.empty
+    }
+
     test("Unit is not a step output") {
       val err = assertCompileError("summon[Journaled[Unit]]")
       assert(err.msg.contains("return a value describing what it did"))

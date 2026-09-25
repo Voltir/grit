@@ -17,6 +17,8 @@ import grit.dbos.sql.TestTx
   *     [[InMemoryDurable.UnexpectedStep]].
   *   - A step body that throws [[InMemoryDurable.Crash]] is left unrecorded, as if the
   *     process died inside it.
+  *   - A stream write outside a step body throws [[InMemoryDurable.WriteOutsideStep]]:
+  *     DBOS would record it as an operation, shifting every later step's position.
   *   - `patch` and `deprecatePatch` record and read DBOS's own marker,
   *     `DBOS.patch-{name}`, so a history captured from Postgres replays here unchanged.
   *
@@ -47,7 +49,14 @@ final class InMemoryDurable {
     streams.getOrElse((id, key), Vector.empty)
 
   private def append(id: WorkflowId, key: String, piece: String): Unit =
-    streams = streams.updated((id, key), streamed(id, key) :+ piece)
+    if (!stepping(id)) throw WriteOutsideStep(id, key)
+    else streams = streams.updated((id, key), streamed(id, key) :+ piece)
+
+  /** The workflows whose step body is running now. Kept here, not on the run, so a
+    * [[StreamWriter]] need not capture the [[Durable]] it came from.
+    */
+  @untrackedCaptures
+  private var stepping = Set.empty[WorkflowId]
 
   /** How far the last run of each workflow got through its journal. */
   @untrackedCaptures
@@ -161,12 +170,13 @@ final class InMemoryDurable {
         case Some((_, Recorded.Marker)) =>
           throw UnexpectedStep(workflowId, position, name, "a patch marker")
         case None =>
+          stepping += workflowId
           val outcome =
             try Recorded.Output(j.encode(body()))
             catch {
               case crash: Crash => throw crash
               case e: Exception => Recorded.Threw(e)
-            }
+            } finally stepping -= workflowId
           journals = journals.updated(workflowId, journal :+ (name -> outcome))
           outcome match {
             case Recorded.Output(value) => decode(name, value)
@@ -200,6 +210,14 @@ object InMemoryDurable {
 
   /** A recorded step's error, rethrown on replay of a loaded history. */
   final class RecordedError(message: String) extends RuntimeException(message)
+
+  /** A stream write made outside a step body, which DBOS records as an operation of its
+    * own (`DBOSExecutor.writeStream`).
+    */
+  final case class WriteOutsideStep(workflowId: WorkflowId, key: String)
+      extends RuntimeException(
+        s"workflow ${WorkflowId.value(workflowId)} wrote stream '$key' outside a step"
+      )
 
   /** A run reached a step under a different name than the one recorded at its position. */
   final case class UnexpectedStep(
