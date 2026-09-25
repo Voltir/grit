@@ -8,6 +8,9 @@ import utest.*
 
 object OpenRouterJsonTests extends TestSuite {
 
+  private def resource(name: String): ujson.Value =
+    ujson.read(scala.io.Source.fromInputStream(getClass.getResourceAsStream(name)).mkString)
+
   private val replay = ujson.Arr(
     ujson.Obj("type" -> "reasoning.text", "text" -> "thinking", "format" -> "unknown", "index" -> 0)
   )
@@ -138,6 +141,35 @@ object OpenRouterJsonTests extends TestSuite {
       assert(!OpenRouterJson.request("m", 1, Routing.Open, asked).obj.contains("provider"))
     }
 
+    test("request: several calls and their results keep their ids, in order") {
+      val ids = Vector("a", "b", "c").map(ToolCallId(_))
+      val reply = Message.Assistant(
+        ids.map(id => AssistantBlock.ToolCall(id, "note", ujson.Obj("text" -> "x"))),
+        StopReason.ToolUse,
+        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+        "m"
+      )
+      val results = ids.reverse.map(id => Message.ToolResult(id, "ok", isError = false))
+      val sent = OpenRouterJson
+        .request("m", 1, Routing.Open, ModelRequest("s", reply +: results))("messages")
+        .arr
+        .toVector
+      sent(1)("tool_calls").arr.map(_("id").str).toVector ==> Vector("a", "b", "c")
+      sent.drop(2).map(_("tool_call_id").str) ==> Vector("c", "b", "a")
+    }
+
+    test("request: arguments that were not JSON go back as a JSON string of what was sent") {
+      val reply = Message.Assistant(
+        Vector(AssistantBlock.ToolCall(ToolCallId("c"), "f", ujson.Str("{oops"))),
+        StopReason.ToolUse,
+        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+        "m"
+      )
+      val sent = OpenRouterJson.request("m", 1, Routing.Open, ModelRequest("s", Vector(reply)))
+      val arguments = sent("messages")(1)("tool_calls")(0)("function")("arguments").str
+      ujson.read(arguments) ==> ujson.Str("{oops")
+    }
+
     test("response: reasoning, text and tool calls, in that order, with usage and cost") {
       OpenRouterJson.response(sampleResponse) ==> Right(
         Message.Assistant(
@@ -185,6 +217,56 @@ object OpenRouterJsonTests extends TestSuite {
       )
       OpenRouterJson.response(body).map(_.blocks) ==>
         Right(Vector(AssistantBlock.ToolCall(ToolCallId("c"), "f", ujson.Str("{oops"))))
+    }
+
+    test("response: a captured call whose arguments are not JSON is kept, beside the rest") {
+      // openai/gpt-oss-20b @ coreweave/fp4, 2026-09-25 (the tool-decoding probe).
+      val reply = OpenRouterJson.response(resource("/openrouter-nonjson-arguments.json"))
+      reply.map(_.blocks.collect { case c: AssistantBlock.ToolCall => c }) ==> Right(
+        Vector(
+          AssistantBlock.ToolCall(
+            ToolCallId("chatcmpl-tool-968bde89ce06140f"),
+            "read_file",
+            ujson.Str("""{"path":"src/billing/Rates.scala",""}""")
+          )
+        )
+      )
+      reply.map(_.blocks.collect { case r: AssistantBlock.Reasoning => r.text }) ==>
+        Right(Vector("Check Rates.scala."))
+    }
+
+    test("response: absent or blank arguments are {}; an object sent whole is kept") {
+      def argumentsOf(arguments: Option[ujson.Value]) = {
+        val function = ujson.Obj("name" -> "f")
+        arguments.foreach(a => function("arguments") = a)
+        OpenRouterJson
+          .response(
+            ujson.Obj(
+              "choices" -> ujson.Arr(
+                ujson.Obj(
+                  "message" -> ujson.Obj(
+                    "tool_calls" -> ujson.Arr(ujson.Obj("id" -> "c", "function" -> function))
+                  )
+                )
+              )
+            )
+          )
+          .map(_.blocks.collect { case c: AssistantBlock.ToolCall => c.arguments })
+      }
+      argumentsOf(None) ==> Right(Vector(ujson.Obj()))
+      argumentsOf(Some(ujson.Str(" "))) ==> Right(Vector(ujson.Obj()))
+      argumentsOf(Some(ujson.Obj("a" -> 1))) ==> Right(Vector(ujson.Obj("a" -> 1)))
+    }
+
+    test("response: a captured top-level error in a 200 body is the model's error") {
+      // Groq refusing gpt-oss-20b's leaked tool name, 2026-09-25: no choices, only the error.
+      OpenRouterJson.response(resource("/openrouter-groq-rejected.json")) ==> Left(
+        ProviderError.Unavailable(
+          "model error: Upstream error from Groq: Tool call validation failed: tool call " +
+            "validation failed: attempted to call tool 'read_file<|channel|>commentary' which " +
+            "was not in request.tools (provider_unavailable)"
+        )
+      )
     }
 
     test("response: an error on the choice, or no choice at all, is a ProviderError") {

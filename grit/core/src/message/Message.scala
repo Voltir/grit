@@ -36,6 +36,11 @@ enum AssistantBlock {
     */
   case Reasoning(text: String, replay: Option[ujson.Value])
 
+  /** A call of the tool `name`, as the model sent it: `name` may be no offered tool's.
+    * `arguments` is what the model sent, read as JSON; text that does not read as JSON is
+    * kept whole as a `ujson.Str`, so a reader refuses it like any other non-object and can
+    * echo it. Absent or blank arguments are `{}`.
+    */
   case ToolCall(id: ToolCallId, name: String, arguments: ujson.Value)
 }
 

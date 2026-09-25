@@ -166,5 +166,43 @@ object OpenRouterStreamTests extends TestSuite {
       after.map(_.blocks) ==> Right(Vector(AssistantBlock.Text(s"stub reply to: $said")))
       StubProvider.arguments("no marker") ==> ujson.Obj()
     }
+
+    test("a captured reply of three calls: each kept with its id") {
+      // mistralai/mistral-small-3.2-24b-instruct @ mistral/eu, 2026-09-25 (the probe).
+      val (reply, _) = folded(resource("/openrouter-toolcalls-3.sse"))
+      val calls = reply.map(_.blocks.collect { case c: AssistantBlock.ToolCall => c })
+      calls ==> Right(
+        Vector("RaqByzRpH" -> "eggs", "n4gL8tIpI" -> "flour", "eQ9HPLosw" -> "salt").map {
+          (id, text) =>
+            AssistantBlock.ToolCall(grit.core.id.ToolCallId(id), "note", ujson.Obj("text" -> text))
+        }
+      )
+      reply.map(_.stop) ==> Right(StopReason.ToolUse)
+    }
+
+    test("streamed arguments that are not JSON keep the call, as a string of what was sent") {
+      val (reply, _) = folded(
+        Vector(
+          chunk(
+            """{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"read_file","arguments":""}}]}"""
+          ),
+          chunk("""{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"src/b"}}]}"""),
+          chunk(
+            """{"tool_calls":[{"index":0,"function":{"arguments":"illing/Rates.scala\",\"\"}"}}]}"""
+          ),
+          chunk("""{}""", ""","finish_reason":"tool_calls""""),
+          "data: [DONE]"
+        )
+      )
+      reply.map(_.blocks) ==> Right(
+        Vector(
+          AssistantBlock.ToolCall(
+            grit.core.id.ToolCallId("a"),
+            "read_file",
+            ujson.Str("""{"path":"src/billing/Rates.scala",""}""")
+          )
+        )
+      )
+    }
   }
 }
