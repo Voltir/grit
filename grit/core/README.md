@@ -9,9 +9,13 @@ In dependency order:
   `SourceId`, `ToolCallId`) and `TurnRef`. Imports nothing in core.
 - **`message`** — the model's vocabulary: `Message`, `AssistantBlock`, `StopReason`,
   `Tokens`, `Usage`. ← `id`
+- **`topic`** — a conversation's topics as recorded events: `TopicId`, `TopicEvent` (a
+  topic opened, a message placed with its weights over topics, a topic described), the
+  `Placement` that says who placed it, `Band`, `Verdict`, and `Topics`, the pure fold over
+  the events; `TopicJson`, their stored form. ← `id`
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db`, `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
-  `ConversationStore`, `UsageLedger`, `StoreError`. ← `id`, `message`
+  `ConversationStore`, `UsageLedger`, `StoreError`. ← `id`, `message`, `topic`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash. ← `id`, `store`
 - **`context`**, **`provider`**, **`inbox`**, **`classify`** — the seams the engine plugs
   into: `ContextAssembler` (and the `Window` it builds), `Provider`, `Inbox`, and

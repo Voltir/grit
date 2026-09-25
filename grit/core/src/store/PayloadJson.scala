@@ -2,6 +2,7 @@ package grit.core.store
 
 import grit.core.id.{EntryId, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.topic.TopicJson
 
 /** The stored JSON form of a [[Payload]]. Written by hand, not derived: it is
   * persisted data, so a rename in Scala must not change it, and reading it is
@@ -20,6 +21,8 @@ object PayloadJson {
         "entries" -> ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e)))),
         "recalled" -> ujson.Arr.from(recalled.map(t => ujson.Num(TurnSeq.value(t).toDouble)))
       )
+    case Payload.Topic(events) =>
+      ujson.Obj("kind" -> "topic", "events" -> ujson.Arr.from(events.map(TopicJson.write)))
   }
 
   /** The payload `v` encodes, or why it encodes none. */
@@ -42,6 +45,7 @@ object PayloadJson {
               case _ => Left("a recalled turn is not a non-negative whole number")
             })
           } yield Payload.Window(entries, recalled)
+        case "topic" => arr(o, "events").flatMap(traverse(_)(TopicJson.read)).map(Payload.Topic(_))
         case other => Left(s"unknown payload kind: $other")
       }
     } yield p

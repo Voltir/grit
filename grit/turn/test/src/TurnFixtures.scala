@@ -147,7 +147,7 @@ object TurnFixtures {
         case Payload.Message(other) => Some(other.toString)
         case Payload.Summary(text) => Some(s"summary: $text")
         case Payload.Query(text) => Some(s"query: $text")
-        case Payload.Window(_, _) => None
+        case Payload.Window(_, _) | Payload.Topic(_) => None
       }
     }
 

@@ -2,6 +2,7 @@ package grit.core.store
 
 import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.Message
+import grit.core.topic.TopicEvent
 
 /** What an [[Entry]] holds. Each case is one kind of entry; context fetched during
   * assembly is a future case.
@@ -27,4 +28,10 @@ enum Payload {
     * saw: never shown to the model, never searched.
     */
   case Window(entries: Vector[EntryId], recalled: Vector[TurnSeq])
+
+  /** What happened to the conversation's topics during the turn the entry belongs to
+    * ([[grit.core.topic.Topics]] folds them). A record: never shown to the model, never
+    * searched.
+    */
+  case Topic(events: Vector[TopicEvent])
 }
