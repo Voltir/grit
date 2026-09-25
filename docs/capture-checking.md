@@ -178,6 +178,30 @@ the caller's side: `args.read(json).map(_.edits.size)`, where `edits: Vector[…
 *"hides non-local value x$proxy"*), and the lambda's parameter type is too long to write out.
 `Field.each` reads a `List`, which has no array inside, so the lambda compiles.
 
+**A class that holds a collection of capturing values.**
+
+- *Symptom:* `Local reach capability Toolbox.this.tools* leaks into capture scope of class
+  Toolbox. You could try to abstract the capabilities referred to by Toolbox.this.tools* in
+  a capset variable.`, on every method that reads the field.
+- *Cause:* `tools: Vector[Tool[?]^]` gives each element a capture set of its own, reachable
+  only through the field (`tools*`), and a method may not let it out.
+- *Fix:* a capture-set parameter on the class: `final class Toolbox[C^] private (tools:
+  Vector[Tool.Offered^{C}])`, built by `def of[C^](tools: Tool.Offered^{C}*)`. The type is
+  then written `Toolbox[{ws}]`, not `Toolbox^{ws}`.
+
+**A wildcard over a class with a `=>` field.**
+
+- *Symptom:* `Found: Tool[String]^{ws}  Required: Tool[?]{val run: (Tool[?]^'s1)#A^'s2 ->'s3
+  Outcome^'s4}^'s5`, passing a tool where a `Tool[?]` is wanted.
+- *Cause:* the wildcard is refined by the captured field, whose type mentions the unknown
+  `A`, and the concrete type does not conform to that refinement.
+- *Fix:* a non-generic sealed supertrait that says what the holder needs (`Tool.Offered`:
+  name, schema, `bind`), and hold that instead of `Tool[?]`.
+
+**A probe's flag-off control cannot parse capture syntax.** With capture checking off,
+`Workspace^` and `Toolbox[{ws}]` do not parse, so a control for a probe written in them
+compiles the same source with its capture sets erased (`ToolCaptureTests.erased`).
+
 **`-Wunused` on a default method.** A parameter a default `def` ignores warns where the
 `_` of a lambda never did. Mark it `@unused`.
 

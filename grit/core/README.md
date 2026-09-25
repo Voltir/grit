@@ -23,9 +23,17 @@ In dependency order:
   into: `ContextAssembler` (and the `Window` it builds), `Provider`, `Inbox`, and
   `Classifier` (closed questions about a state, answered with a probability per option;
   Jev's shape). Each names only the packages above, never another of the four.
-- **`tool`** — a tool's arguments defined once, as typed data: `Field`, `Args` (read into a
-  named tuple), `ArgsError`, `ToolName`, and `ToolSpec`, from which come the schema the model
-  is shown (a `provider.ToolSchema`) and the reader of its calls. ← `provider`
+- **`host`** — what a tool may do to the machine, as capabilities: `Workspace` (read, list,
+  search), `Edits` (write, edit) and `Shell` (run), implemented in `grit.host`; and the pure
+  rules they share: `RelPath` (a path that stays inside the checkout and names no secrets
+  file), `Clipped` (output cut to what the model is shown), `Replace.onto` (an edit's
+  matching), and their errors. Imports nothing in core.
+- **`tool`** — tools as typed data: `Field`, `Args` (read into a named tuple), `ArgsError`,
+  `ToolName` and `ToolSpec`, from which come the schema the model is shown (a
+  `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, and what a
+  call does, capture-tracked), `Toolbox` (the tools offered on one call, which `bind` a
+  call to a `Bound` or a `CallError`) and `Outcome` (what a call came to, as the model
+  reads it). ← `id`, `message`, `provider`
 
 No source file sits at core's root, and no two packages import each other in a circle:
 `scripts/enola-law.sh` fails on a new import cycle.
