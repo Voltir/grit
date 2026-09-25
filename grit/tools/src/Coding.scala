@@ -79,6 +79,7 @@ object Coding {
           .refine(a => located(a.path).map(p => (path = p, offset = a.offset, limit = a.limit)))
       ),
       Gate.Free,
+      a => RelPath.value(a.path) + a.offset.fold("")(o => s":$o"),
       a =>
         outcome(ws.read(a.path, Lines.of(a.offset.getOrElse(1), a.limit)))(c => c.show)
     )
@@ -104,6 +105,7 @@ object Coding {
           )
       ),
       Gate.Free,
+      a => RelPath.value(a.path),
       a => outcome(ws.list(a.path, a.depth))(_.show)
     )
 
@@ -129,6 +131,7 @@ object Coding {
           .refine(a => located(a.path.getOrElse(".")).map(p => (pattern = a.pattern, path = p)))
       ),
       Gate.Free,
+      a => s"\"${a.pattern}\" ${RelPath.value(a.path)}",
       a => outcome(ws.search(a.pattern, a.path))(_.show)
     )
 
@@ -155,6 +158,7 @@ object Coding {
         s"Write ${RelPath.value(a.path)} (${count(lines.size, "line")}):\n" +
           preview(lines, "+ ")
       }),
+      a => RelPath.value(a.path),
       a =>
         outcome(edits.write(a.path, a.content))(_ =>
           s"Wrote ${RelPath.value(a.path)}: ${count(Clipped.lines(a.content).size, "line")}."
@@ -199,6 +203,7 @@ object Coding {
         s"Edit ${RelPath.value(a.path)} (${count(a.edits.size, "replacement")}):\n" +
           shown.mkString("\n")
       }),
+      a => RelPath.value(a.path),
       a =>
         edits.edit(a.path, a.edits) match {
           case Left(error) => Outcome.Failed(error.message)
@@ -239,6 +244,7 @@ object Coding {
           )
       ),
       Gate.Ask(a => s"Run in the checkout (timeout ${a.timeout.toSeconds} s):\n${a.command}"),
+      a => a.command,
       a =>
         outcome(shell.run(a.command, a.timeout)) { ran =>
           val out = ran.output.show

@@ -24,9 +24,9 @@ object ToolCaptureTests extends TestSuite {
       |object Probe {
       |  val spec: ToolSpec[String] = ToolSpec(ToolName("probe"), "A probe.", Args.of((path = Field.text("A path."))).map(_.path))
       |  def reads(ws: Workspace^): Tool[String]^{ws} =
-      |    new Tool(spec, Gate.Free, p => RelPath.of(p).flatMap(ws.read(_, Lines.All)).fold(e => Outcome.Failed(e.toString), c => Outcome.Done(c.show)))
+      |    new Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(ws.read(_, Lines.All)).fold(e => Outcome.Failed(e.toString), c => Outcome.Done(c.show)))
       |  def writes(e: Edits^): Tool[String]^{e} =
-      |    new Tool(spec, Gate.Free, p => RelPath.of(p).flatMap(e.write(_, "x")).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok")))
+      |    new Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(e.write(_, "x")).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok")))
       |""".stripMargin
 
   /** The error messages from compiling `body` inside `object Probe`. */
@@ -84,7 +84,7 @@ object ToolCaptureTests extends TestSuite {
     test("a tool typed as reading that edits is rejected") {
       val errs = errors(
         """def sneaky(ws: Workspace^, e: Edits^): Tool[String]^{ws} =
-          |  new Tool(spec, Gate.Free, p => { writes(e); reads(ws); Outcome.Done(p) })
+          |  new Tool(spec, Gate.Free, p => p, p => { writes(e); reads(ws); Outcome.Done(p) })
           |""".stripMargin
       )
       assert(rejected(errs))

@@ -23,7 +23,10 @@ object PayloadJson {
       )
     case Payload.Topic(events) =>
       ujson.Obj("kind" -> "topic", "events" -> ujson.Arr.from(events.map(TopicJson.write)))
-    case Payload.Exchange(m) => ujson.Obj("kind" -> "exchange", "message" -> message(m))
+    case Payload.Exchange(m, shown) =>
+      val o = ujson.Obj("kind" -> "exchange", "message" -> message(m))
+      shown.foreach(s => o("shown") = s)
+      o
     case Payload.Attempt(call) => ujson.Obj("kind" -> "attempt", "call" -> ToolCallId.value(call))
     case Payload.Ask(call, shown) =>
       ujson.Obj("kind" -> "ask", "call" -> ToolCallId.value(call), "shown" -> shown)
@@ -50,7 +53,15 @@ object PayloadJson {
             })
           } yield Payload.Window(entries, recalled)
         case "topic" => arr(o, "events").flatMap(traverse(_)(TopicJson.read)).map(Payload.Topic(_))
-        case "exchange" => field(o, "message").flatMap(readMessage).map(Payload.Exchange(_))
+        case "exchange" =>
+          for {
+            m <- field(o, "message").flatMap(readMessage)
+            shown <- o.value.get("shown") match {
+              case None => Right(None)
+              case Some(ujson.Str(s)) => Right(Some(s))
+              case Some(_) => Left("shown is not a string")
+            }
+          } yield Payload.Exchange(m, shown)
         case "attempt" => str(o, "call").map(c => Payload.Attempt(ToolCallId(c)))
         case "ask" =>
           for {

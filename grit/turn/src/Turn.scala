@@ -452,7 +452,8 @@ object Turn {
             val settling = new TurnTools.Settling(jot, env.records.entries)
             val settled = TurnTools.read(tools, pending) match {
               case Left(outcome) =>
-                d.step(slot.step) { () => settling.answer(slot, call, outcome, clock.now()) }
+                val named = pending.call.name
+                d.step(slot.step) { () => settling.answer(slot, call, named, outcome, clock.now()) }
               case Right(free: Bound.Free) =>
                 d.step(slot.step) { () => settling.run(slot, call, free, clock.now()) }
               case Right(gated: Bound.Gated) =>
@@ -567,7 +568,7 @@ object Turn {
             turn.turnSeq,
             None,
             next.seq,
-            Payload.Exchange(reply),
+            Payload.Exchange(reply, None),
             at
           )
         )
@@ -831,7 +832,7 @@ object Turn {
         }
         val mine = own(all, turn).map(_.payload).collect {
           case Payload.Message(m) => m
-          case Payload.Exchange(m) => m
+          case Payload.Exchange(m, _) => m
         }
         Right(ModelRequest(system, shown ++ mine))
     }

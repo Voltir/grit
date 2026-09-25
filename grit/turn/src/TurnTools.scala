@@ -110,19 +110,23 @@ object TurnTools {
   /** Where a turn keeps what its tool calls came to: in `entries`, written through `jot` from
     * inside each call's step. Each method settles the call at a [[Slot]], whose id is `call`,
     * and keeps its result as a [[Payload.Exchange]] entry at [[Slot.resultId]], dated `at`,
-    * after everything in the conversation. A result already kept is returned as it is, and
-    * nothing runs. Each fails only when `jot` cannot read or write the store.
+    * after everything in the conversation, with the call as it is shown ([[Bound.shown]]). A
+    * result already kept is returned as it is, and nothing runs. Each fails only when `jot`
+    * cannot read or write the store.
     */
   final class Settling(jot: Jot^, entries: EntryStore) {
 
-    /** The call answered with `outcome`, unrun. */
+    /** The call answered with `outcome`, unrun, shown as `named`, the tool's name as the
+      * call sent it.
+      */
     def answer(
         slot: Slot,
         call: ToolCallId,
+        named: String,
         outcome: Outcome,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, at)(() => Right(outcome))
+      settle(slot, call, named, at)(() => Right(outcome))
 
     /** `free` run. */
     def run(
@@ -131,7 +135,7 @@ object TurnTools {
         free: Bound.Free^,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, at)(() => Right(free()))
+      settle(slot, call, free.shown, at)(() => Right(free()))
 
     /** `gated` answered by `approval`. Run when approved, at most once: its attempt is
       * recorded at [[Slot.attemptId]] before it starts, and a rerun that finds the attempt
@@ -144,7 +148,7 @@ object TurnTools {
         approval: Approval,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, at)(() =>
+      settle(slot, call, gated.shown, at)(() =>
         approval match {
           case Approval.Approved =>
             began(slot, Payload.Attempt(call), at).map {
@@ -155,14 +159,14 @@ object TurnTools {
         }
       )
 
-    private def settle(slot: Slot, call: ToolCallId, at: Instant)(
+    private def settle(slot: Slot, call: ToolCallId, shown: String, at: Instant)(
         outcome: () => Either[TurnFailure, Outcome]
     ): Either[TurnFailure, Settled] =
       jot.write(entries.get(slot.resultId)).left.map(storeFailure).flatMap {
         case Some(kept) => settledBy(kept)
         case None =>
           outcome().flatMap { o =>
-            keep(slot.turn, slot.resultId, Payload.Exchange(o.result(call)), at)
+            keep(slot.turn, slot.resultId, Payload.Exchange(o.result(call), Some(shown)), at)
               .flatMap(settledBy)
           }
       }
@@ -217,7 +221,7 @@ object TurnTools {
   }
 
   private def settledBy(kept: Entry): Either[TurnFailure, Settled] = kept.payload match {
-    case Payload.Exchange(Message.ToolResult(_, _, failed)) => Right(Settled(kept.id, failed))
+    case Payload.Exchange(Message.ToolResult(_, _, failed), _) => Right(Settled(kept.id, failed))
     case _ => Left(TurnFailure.Store(s"entry ${EntryId.value(kept.id)} is not a tool result"))
   }
 

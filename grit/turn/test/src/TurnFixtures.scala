@@ -205,11 +205,11 @@ object TurnFixtures {
 
   /** A free tool: `peek` reads a file of `ws`. */
   def peek(ws: Workspace^): Tool[String]^{ws} =
-    new Tool(ToolSpec(ToolName("peek"), "Reads a file.", path), Gate.Free, reading(ws, _))
+    new Tool(ToolSpec(ToolName("peek"), "Reads a file.", path), Gate.Free, p => p, reading(ws, _))
 
   /** A gated tool, for the tests alone: `poke` reads a file of `ws` once a person approves. */
   def poke(ws: Workspace^): Tool[String]^{ws} =
-    new Tool(ToolSpec(ToolName("poke"), "Reads a file, asking first.", path), Gate.Ask(p => s"poke $p"), reading(ws, _))
+    new Tool(ToolSpec(ToolName("poke"), "Reads a file, asking first.", path), Gate.Ask(p => s"poke $p"), p => p, reading(ws, _))
 
   /** `peek` and `poke` over `ws`. */
   def tools(ws: Workspace^): Toolbox[{ws}] =
@@ -264,14 +264,14 @@ object TurnFixtures {
         case Payload.Message(other) => Some(other.toString)
         case Payload.Summary(text) => Some(s"summary: $text")
         case Payload.Query(text) => Some(s"query: $text")
-        case Payload.Exchange(Message.Assistant(blocks, _, _, _)) =>
+        case Payload.Exchange(Message.Assistant(blocks, _, _, _), _) =>
           Some(blocks.collect {
             case AssistantBlock.Text(t) => s"called: $t"
             case AssistantBlock.ToolCall(_, name, args) => s"[$name ${args.render()}]"
           }.mkString)
-        case Payload.Exchange(Message.ToolResult(_, content, isError)) =>
+        case Payload.Exchange(Message.ToolResult(_, content, isError), _) =>
           Some(s"${if (isError) "error" else "result"}: $content")
-        case Payload.Exchange(other) => Some(other.toString)
+        case Payload.Exchange(other, _) => Some(other.toString)
         case Payload.Attempt(call) => Some(s"attempt: ${grit.core.id.ToolCallId.value(call)}")
         case Payload.Ask(call, shown) => Some(s"ask: ${grit.core.id.ToolCallId.value(call)}: $shown")
         case Payload.Window(_, _) | Payload.Topic(_) => None

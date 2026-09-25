@@ -64,7 +64,7 @@ object TurnLoopTurnTests extends TestSuite {
       .filter(_.turnSeq == turn.turnSeq)
 
   private def exchange(entries: InMemoryEntryStore, turn: TurnRef): Vector[Message] =
-    own(entries, turn).collect { case Entry(_, _, _, _, _, Payload.Exchange(m), _) => m }
+    own(entries, turn).collect { case Entry(_, _, _, _, _, Payload.Exchange(m, _), _) => m }
 
   /** Three rounds: `peek` a, then `peek` b and c, then the answer. */
   private def threeRounds: Scripted = new Scripted((_, n) =>

@@ -42,8 +42,7 @@ object Follow {
       status: TurnRef => TurnStatus
   ): (Follow, Vector[ChatScreen.Msg]) = {
     val fresh = entries.filter(_.seq > state.lastSeq)
-    val calls = Replies.calls(entries)
-    val said = fresh.flatMap(said1(_, calls))
+    val said = fresh.flatMap(said1)
     val summaries = fresh.collect { case Entry(_, _, t, _, _, Payload.Summary(text), _) =>
       ChatScreen.Summarised(t, text)
     }
@@ -80,7 +79,7 @@ object Follow {
     val own = entries.filter(_.turnSeq == turn.turnSeq)
     val moved = own.flatMap {
       _.payload match {
-        case Payload.Exchange(Message.ToolResult(call, _, _)) => Some(call)
+        case Payload.Exchange(Message.ToolResult(call, _, _), _) => Some(call)
         case Payload.Attempt(call) => Some(call)
         case _ => None
       }
@@ -101,14 +100,11 @@ object Follow {
     case _ => false
   }
 
-  private def said1(
-      e: Entry,
-      calls: Map[(TurnSeq, grit.core.id.ToolCallId), grit.core.message.AssistantBlock.ToolCall]
-  ): Option[ChatScreen.Said] = {
+  private def said1(e: Entry): Option[ChatScreen.Said] = {
     val voice = if (isUser(e)) ChatScreen.Voice.User else ChatScreen.Voice.Reply
     Replies
       .text(e)
       .map(ChatScreen.Said(voice, _, e.turnSeq))
-      .orElse(Replies.settled(e, calls).map(ChatScreen.Said(ChatScreen.Voice.Tool, _, e.turnSeq)))
+      .orElse(Replies.settled(e).map(ChatScreen.Said(ChatScreen.Voice.Tool, _, e.turnSeq)))
   }
 }

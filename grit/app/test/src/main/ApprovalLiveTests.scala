@@ -80,7 +80,7 @@ object ApprovalLiveTests extends TestSuite {
   /** What `turn`'s call came to, as the model read it. */
   private def results(engine: Engine^, turn: TurnRef): Vector[(String, Boolean)] =
     own(engine, turn).collect {
-      case Entry(_, _, _, _, _, Payload.Exchange(Message.ToolResult(_, content, failed)), _) =>
+      case Entry(_, _, _, _, _, Payload.Exchange(Message.ToolResult(_, content, failed), _), _) =>
         (content, failed)
     }
 

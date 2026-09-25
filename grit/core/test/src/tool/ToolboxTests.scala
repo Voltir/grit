@@ -18,6 +18,7 @@ object ToolboxTests extends TestSuite {
       Args.of((text = Field.text("What to say."))).map(_.text)
     ),
     Gate.Free,
+    t => t,
     t => Outcome.Done(t)
   )
 
@@ -28,6 +29,7 @@ object ToolboxTests extends TestSuite {
       Args.of((text = Field.text("What to shout."))).map(_.text)
     ),
     Gate.Ask(t => s"shout $t"),
+    t => s"\n  $t\nloudly ",
     t => Outcome.Done(t.toUpperCase)
   )
 
@@ -52,7 +54,8 @@ object ToolboxTests extends TestSuite {
 
     test("a free call binds with nothing to ask, and runs") {
       box.bind(call("echo", ujson.Obj("text" -> "hi"))) match {
-        case Right(b: Bound.Free) => (b.tool, b()) ==> (ToolName("echo"), Outcome.Done("hi"))
+        case Right(b: Bound.Free) =>
+          (b.tool, b.shown, b()) ==> (ToolName("echo"), "echo hi", Outcome.Done("hi"))
         case other => throw new java.lang.AssertionError(s"not free: $other")
       }
     }
@@ -61,6 +64,7 @@ object ToolboxTests extends TestSuite {
       box.bind(call("shout", ujson.Obj("text" -> "hi"))) match {
         case Right(b: Bound.Gated) =>
           b.ask ==> "shout hi"
+          b.shown ==> "shout hi loudly"
           b(Approval.Approved) ==> Outcome.Done("HI")
           b(Approval.Declined(Some("too loud"))) ==> Outcome.Denied(Some("too loud"))
           b(Approval.Declined(None)) ==> Outcome.Denied(None)
@@ -74,8 +78,15 @@ object ToolboxTests extends TestSuite {
       val loud = new Tool(
         ToolSpec(ToolName("loud"), "Loud.", Args.of((text = Field.text("What."))).map(_.text)),
         Gate.Free,
+        _ => " ",
         t => Outcome.Done(t)
       )
+      // Shown with nothing after its name when what it acts on is blank.
+      Toolbox
+        .of(loud)
+        .toOption
+        .flatMap(_.bind(call("loud", ujson.Obj("text" -> "x"))).toOption)
+        .map(_.shown) ==> Some("loud")
       box.including(loud).map(_.names) ==>
         Right(Vector(ToolName("loud"), ToolName("echo"), ToolName("shout")))
     }

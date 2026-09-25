@@ -58,19 +58,28 @@ object Toolbox {
   */
 sealed trait Bound {
   def tool: ToolName
+
+  /** The call in one line, as a transcript shows it: the tool's name, then what the call
+    * acts on (a path, a pattern, a command), its line breaks shown as spaces.
+    */
+  def shown: String
 }
 
 object Bound {
 
   /** A call of a tool that runs without asking. */
-  final class Free private[tool] (val tool: ToolName, run: () => Outcome) extends Bound {
+  final class Free private[tool] (val tool: ToolName, val shown: String, run: () => Outcome)
+      extends Bound {
 
     def apply(): Outcome = run()
   }
 
-  /** A call of a tool a person approves first; `ask` is what they are shown of it. */
+  /** A call of a tool a person approves first; `ask` is what they are shown of it, which
+    * may run to many lines ([[Gate.Ask]]).
+    */
   final class Gated private[tool] (
       val tool: ToolName,
+      val shown: String,
       val ask: String,
       run: () => Outcome
   ) extends Bound {
@@ -84,6 +93,12 @@ object Bound {
       case Approval.Declined(reason) => Outcome.Denied(reason)
       case Approval.TimedOut => Outcome.Denied(Some(Unanswered))
     }
+  }
+
+  /** [[Bound.shown]] for a call of `tool` that acts on `on`. */
+  private[tool] def line(tool: ToolName, on: String): String = {
+    val flat = on.trim.replaceAll("\\s*\\R\\s*", " ")
+    if (flat.isEmpty) ToolName.value(tool) else s"${ToolName.value(tool)} $flat"
   }
 
   /** The reason a call whose approval timed out is denied. */

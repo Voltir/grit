@@ -85,6 +85,29 @@ object CodingTests extends TestSuite {
         Vector("read", "list", "search", "write", "edit", "run")
     }
 
+    test("each call is shown in one line: the tool, then what it acts on") {
+      val box = Coding.all(new Scripted(), new Scripted(), new Scripted())
+      val calls = Vector(
+        "read" -> ujson.Obj("path" -> "src/a.scala", "offset" -> 10),
+        "list" -> ujson.Obj(),
+        "search" -> ujson.Obj("pattern" -> "def \\w+", "path" -> "src"),
+        "write" -> ujson.Obj("path" -> "a.txt", "content" -> "x\ny"),
+        "edit" -> ujson.Obj(
+          "path" -> "a.txt",
+          "edits" -> ujson.Arr(ujson.Obj("oldText" -> "x", "newText" -> "y"))
+        ),
+        "run" -> ujson.Obj("command" -> "git status\n  && ls")
+      )
+      calls.map((name, args) => box.bind(call(name, args)).map(_.shown)) ==> Vector(
+        Right("read src/a.scala:10"),
+        Right("list ."),
+        Right("search \"def \\w+\" src"),
+        Right("write a.txt"),
+        Right("edit a.txt"),
+        Right("run git status && ls")
+      )
+    }
+
     test("under a strict schema every field is required, an optional one nullable") {
       val host = new Scripted()
       val read = Coding.readOnly(host).schemas(strict = true).find(_.name == "read")

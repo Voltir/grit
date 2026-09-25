@@ -4,12 +4,17 @@ import grit.core.message.AssistantBlock
 import grit.core.provider.ToolSchema
 
 /** A tool the loop can offer and run: what the model is told of it, whether a person
-  * approves each call, and what a call does. `run` captures the capabilities it acts
-  * through, so a `Tool[A]^{ws}` can do only what `ws` allows. `run` never throws: every
-  * failure is an [[Outcome]].
+  * approves each call, how a call is shown, and what it does. `shown` is what a call acts
+  * on, as a transcript shows it after the tool's name ([[Bound.shown]]). `run` captures the
+  * capabilities it acts through, so a `Tool[A]^{ws}` can do only what `ws` allows. `run`
+  * never throws: every failure is an [[Outcome]].
   */
-final class Tool[A](val spec: ToolSpec[A], val gate: Gate[A], run: A => Outcome)
-    extends Tool.Offered {
+final class Tool[A](
+    val spec: ToolSpec[A],
+    val gate: Gate[A],
+    shown: A -> String,
+    run: A => Outcome
+) extends Tool.Offered {
 
   def name: ToolName = spec.name
 
@@ -24,9 +29,11 @@ final class Tool[A](val spec: ToolSpec[A], val gate: Gate[A], run: A => Outcome)
         }
         Left(CallError.BadArgs(spec.name, error, sent.take(CallError.Echoed)))
       case Right(args) =>
+        val line = Bound.line(spec.name, shown(args))
         Right(gate match {
-          case Gate.Free => new Bound.Free(spec.name, () => run(args))
-          case Gate.Ask(describe) => new Bound.Gated(spec.name, describe(args), () => run(args))
+          case Gate.Free => new Bound.Free(spec.name, line, () => run(args))
+          case Gate.Ask(describe) =>
+            new Bound.Gated(spec.name, line, describe(args), () => run(args))
         })
     }
 }

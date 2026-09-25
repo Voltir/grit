@@ -35,8 +35,8 @@ In dependency order:
   matching), and their errors. Imports nothing in core.
 - **`tool`** — tools as typed data: `Field`, `Args` (read into a named tuple), `ArgsError`,
   `ToolName` and `ToolSpec`, from which come the schema the model is shown (a
-  `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, and what a
-  call does, capture-tracked), `Toolbox` (the tools offered on one call, which `bind` a
+  `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, how a call is
+  shown in one line, and what it does, capture-tracked), `Toolbox` (the tools offered on one call, which `bind` a
   call to a `Bound` or a `CallError`: `Bound.Free` runs, `Bound.Gated` runs only given an
   `Approval`) and `Outcome` (what a call came to, as the model reads it). ← `id`,
   `message`, `provider`, `approval`

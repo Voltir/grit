@@ -85,9 +85,12 @@ object PayloadJsonTests extends TestSuite {
     }
 
     test("exchange, attempt and ask") {
-      PayloadJson.write(Payload.Exchange(samples(3))).render() ==>
+      PayloadJson.write(Payload.Exchange(samples(3), None)).render() ==>
         """{"kind":"exchange","message":{"role":"tool_result","callId":"c1",""" +
         """"content":"no matches","isError":true}}"""
+      PayloadJson.write(Payload.Exchange(samples(3), Some("search \"x\" ."))).render() ==>
+        """{"kind":"exchange","message":{"role":"tool_result","callId":"c1",""" +
+        """"content":"no matches","isError":true},"shown":"search \"x\" ."}"""
       PayloadJson.write(Payload.Attempt(ToolCallId("c1"))).render() ==>
         """{"kind":"attempt","call":"c1"}"""
       PayloadJson.write(Payload.Ask(ToolCallId("c1"), "Run ls")).render() ==>
@@ -139,9 +142,10 @@ object PayloadJsonTests extends TestSuite {
           TopicEvent.Described(t2, "Knots", "Which knot holds under load.")
         )
       )
-      (samples.map(Payload.Message(_)) ++ samples.map(Payload.Exchange(_)) :+ Payload.Summary(
-        "s"
-      ) :+
+      (samples.map(Payload.Message(_)) ++ samples.map(Payload.Exchange(_, None)) ++
+        samples.map(Payload.Exchange(_, Some("read a.txt"))) :+ Payload.Summary(
+          "s"
+        ) :+
         Payload.Query("q") :+ window :+ topic :+ Payload.Attempt(ToolCallId("c1")) :+
         Payload.Ask(ToolCallId("c1"), "Edit a.txt"))
         .foreach { p =>
