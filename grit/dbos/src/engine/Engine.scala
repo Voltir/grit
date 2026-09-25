@@ -16,6 +16,7 @@ import grit.core.store.{
   Db,
   EntrySearch,
   EntryStore,
+  Jot,
   Origin,
   StoreError,
   Tx,
@@ -27,6 +28,7 @@ import grit.dbos.sql.{
   SqlDb,
   SqlEntrySearch,
   SqlEntryStore,
+  SqlJot,
   SqlUsageLedger
 }
 import grit.dbos.workflow.Turns
@@ -55,6 +57,9 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
 
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource)
+
+  /** Short write transactions, for a step that records what it did as it goes. */
+  val jot: Jot = new SqlJot(dataSource)
 
   // An edge's side: it reaches the engine only through Postgres (ADR 0002).
   private val client = new DBOSClient(dataSource)

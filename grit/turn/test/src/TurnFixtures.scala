@@ -11,16 +11,19 @@ import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
+import grit.core.host.{Clipped, HostError, Lines, RelPath, Workspace}
 import grit.core.store.{
   Db,
   Entry,
   EntryStore,
   InMemoryUsageLedger,
+  Jot,
   Payload,
   StoreError,
   Tx,
   UsageLedger
 }
+import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -104,6 +107,62 @@ object TurnFixtures {
       body(using TestTx.fake)
   }
 
+  /** Writes straight through to the in-memory store, never rolled back. */
+  final class FakeJot extends Jot {
+    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using TestTx.fake)
+  }
+
+  /** A checkout with nothing in it: every read fails as not found. */
+  object NoCheckout extends Workspace {
+    def read(path: RelPath, lines: Lines): Either[HostError, Clipped] =
+      Left(HostError.NotFound(path))
+    def list(dir: RelPath, depth: Int): Either[HostError, Clipped] = Left(HostError.NotFound(dir))
+    def search(pattern: String, under: RelPath): Either[HostError, Clipped] =
+      Left(HostError.NotFound(under))
+  }
+
+  /** A checkout of `files`, by path, counting the reads made of it. It lists and searches
+    * nothing.
+    */
+  final class Files(files: Map[String, String]) extends Workspace {
+    @caps.unsafe.untrackedCaptures
+    var reads = 0
+
+    def read(path: RelPath, lines: Lines): Either[HostError, Clipped] = {
+      reads += 1
+      files.get(RelPath.value(path)).map(Clipped.head(_, _ => None)).toRight(HostError.NotFound(path))
+    }
+    def list(dir: RelPath, depth: Int): Either[HostError, Clipped] =
+      Left(HostError.Failed("no listing"))
+    def search(pattern: String, under: RelPath): Either[HostError, Clipped] =
+      Left(HostError.Failed("no search"))
+  }
+
+  private val path: Args[String] = Args.of((path = Field.text("The file."))).map(_.path)
+
+  private def reading(ws: Workspace^, p: String): Outcome =
+    RelPath.of(p) match {
+      case Left(error) => Outcome.Failed(error.message)
+      case Right(at) => ws.read(at, Lines.All).fold(e => Outcome.Failed(e.message), c => Outcome.Done(c.show))
+    }
+
+  /** A free tool: `peek` reads a file of `ws`. */
+  def peek(ws: Workspace^): Tool[String]^{ws} =
+    new Tool(ToolSpec(ToolName("peek"), "Reads a file.", path), Gate.Free, reading(ws, _))
+
+  /** A gated tool, for the tests alone: `poke` reads a file of `ws` once a person approves. */
+  def poke(ws: Workspace^): Tool[String]^{ws} =
+    new Tool(ToolSpec(ToolName("poke"), "Reads a file, asking first.", path), Gate.Ask(p => s"poke $p"), reading(ws, _))
+
+  /** `peek` and `poke` over `ws`. */
+  def tools(ws: Workspace^): Toolbox[{ws}] =
+    Toolbox.of[{ws}](peek(ws), poke(ws)).fold(d => throw new java.lang.AssertionError(d), identity)
+
+  /** `calls` model calls as a turn's budget. */
+  def budget(calls: Int): TurnLoop.Budget =
+    TurnLoop.Budget.of(calls).fold(why => throw new java.lang.AssertionError(why), identity)
+
   /** An entry store that dies, once, on the first insert of an entry `when` picks: by
     * default the reply, the first entry a turn inserts.
     */
@@ -149,6 +208,15 @@ object TurnFixtures {
         case Payload.Message(other) => Some(other.toString)
         case Payload.Summary(text) => Some(s"summary: $text")
         case Payload.Query(text) => Some(s"query: $text")
+        case Payload.Exchange(Message.Assistant(blocks, _, _, _)) =>
+          Some(blocks.collect {
+            case AssistantBlock.Text(t) => s"called: $t"
+            case AssistantBlock.ToolCall(_, name, args) => s"[$name ${args.render()}]"
+          }.mkString)
+        case Payload.Exchange(Message.ToolResult(_, content, isError)) =>
+          Some(s"${if (isError) "error" else "result"}: $content")
+        case Payload.Exchange(other) => Some(other.toString)
+        case Payload.Attempt(call) => Some(s"attempt: ${grit.core.id.ToolCallId.value(call)}")
         case Payload.Window(_, _) | Payload.Topic(_) => None
       }
     }
@@ -195,8 +263,10 @@ object TurnFixtures {
         provider,
         new StubProvider(),
         FakeDb,
+        new FakeJot,
         Clock.system(),
-        Fresh.random()
+        Fresh.random(),
+        TurnTooling(NoCheckout, noTools, budget(5), strict = false)
       )
     )(id)
 
@@ -237,6 +307,25 @@ object TurnFixtures {
       summarizer: Provider^ = new StubProvider(),
       classifier: Classifier^ = NoClassifier
   )(id: WorkflowId)(using Durable^): String =
+    tooledBody(entries, provider, ledger, summarizer, classifier, NoCheckout, noTools, 5)(id)
+
+  /** No tools offered: the loop's first call is the plain request, and answers. */
+  private def noTools: Toolbox[{NoCheckout}] =
+    Toolbox.of[{NoCheckout}]().fold(d => throw new java.lang.AssertionError(d), identity)
+
+  /** As [[turnBody]], the model offered `tools`, which read `ws`, for at most `calls` model
+    * calls.
+    */
+  def tooledBody(
+      entries: EntryStore,
+      provider: Provider^,
+      ledger: UsageLedger,
+      summarizer: Provider^,
+      classifier: Classifier^,
+      ws: Workspace^,
+      tools: Toolbox[{ws}],
+      calls: Int
+  )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
         system,
@@ -246,8 +335,10 @@ object TurnFixtures {
         provider,
         summarizer,
         FakeDb,
+        new FakeJot,
         Clock.system(),
-        Fresh.random()
+        Fresh.random(),
+        TurnTooling(ws, tools, budget(calls), strict = false)
       )
     )(id)
 

@@ -181,6 +181,20 @@ private[turn] object TurnJournal {
       v => v.strOpt.map(EntryId(_)).toRight("entry id: expected a string")
     )
 
+  /** A `tool:n:j` step's output: `{"result": entry id, "failed": boolean}`. */
+  given settled: Journaled[Either[TurnFailure, TurnTools.Settled]] =
+    outcome(
+      s => ujson.Obj("result" -> EntryId.value(s.result), "failed" -> s.failed),
+      v =>
+        (
+          v.objOpt.flatMap(_.get("result")).flatMap(_.strOpt),
+          v.objOpt.flatMap(_.get("failed")).flatMap(_.boolOpt)
+        ) match {
+          case (Some(id), Some(failed)) => Right(TurnTools.Settled(EntryId(id), failed))
+          case _ => Left("settled: expected {result, failed}")
+        }
+    )
+
   private def outcome[A](
       write: A -> ujson.Value,
       read: ujson.Value -> Either[String, A]

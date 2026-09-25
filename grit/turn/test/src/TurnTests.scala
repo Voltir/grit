@@ -38,7 +38,9 @@ object TurnTests extends TestSuite {
 
   /** What a turn records: its steps, each patch's marker before the steps it brought. */
   private val Recorded: Vector[String] =
-    ("DBOS.patch-topics" +: Always).patch(4, Vector("DBOS.patch-record-window"), 0)
+    ("DBOS.patch-topics" +: Always)
+      .patch(4, Vector("DBOS.patch-record-window"), 0)
+      .patch(6, Vector("DBOS.patch-tools"), 0)
 
   /** How many of [[Recorded]] come before `assemble`. */
   private val Placing = 3
@@ -57,6 +59,22 @@ object TurnTests extends TestSuite {
       // A step only some turns take is never named before it is recorded.
       Turn.running(Vector("assemble", "record-window", "call-model")) ==> "append"
       Turn.running(Vector("call-model", "call-model-again")) ==> "append"
+    }
+
+    test("a tool loop's steps are named from its rounds, and a running loop is in the next") {
+      val round1 = TurnLoop.Round.First.next
+      (round1.step, Turn.Step.recordCall(round1), Turn.Step.tool(round1, 2)) ==>
+        ("call-model:1", "record-call:1", "tool:1:2")
+      Vector("call-model:3", "record-call:0", "tool:1:2", "DBOS.patch-tools", "tool:x:1")
+        .map(Turn.Step.family) ==>
+        Vector(Some("call-model"), Some("record-call"), Some("tool"), None, None)
+      val loop = Vector("record-window", "DBOS.patch-tools", "call-model")
+      Turn.running(loop :+ "record-call:0") ==> "tool:0:0"
+      Turn.running(loop ++ Vector("record-call:0", "tool:0:0")) ==> "call-model:1"
+      Turn.running(loop ++ Vector("record-call:0", "tool:0:1", "call-model:1")) ==> "append"
+      Turn.running(loop ++ Vector("record-call:0", "tool:0:0", "call-model:1", "append")) ==>
+        "summarise"
+      Turn.running(loop ++ Vector("record-call:0", "tool:0:0", "record-verdict")) ==> "append"
     }
 
     test("a turn records the model's reply as its entry") {
@@ -109,7 +127,7 @@ object TurnTests extends TestSuite {
       val provider = new RecordingProvider
       val turn = say(store, "hello")
       assertThrows[InMemoryDurable.Crash](runTurn(durable, entries, provider, turn))
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 4)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 5)
       runTurn(durable, entries, provider, turn) ==> Done
       provider.requests.size ==> 1
       durable.recordedSteps(turn.workflowId) ==> Recorded
@@ -197,7 +215,7 @@ object TurnTests extends TestSuite {
         summarizer = new RecordingProvider(fail = true)
       )
       out ==> "replied: reply:c1:0; no summary: Model(down)"
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 6)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 7)
       texts(entries) ==> Vector("user: hello", "assistant: stub reply to: hello")
     }
 
@@ -229,7 +247,7 @@ object TurnTests extends TestSuite {
       assertThrows[InMemoryDurable.Crash](
         runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer)
       )
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 6)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 7)
       runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer) ==> Done
       summarizer.requests.size ==> 1
       durable.recordedSteps(turn.workflowId) ==> Recorded
@@ -287,7 +305,7 @@ object TurnTests extends TestSuite {
       val provider = new RecordingProvider(fail = true)
       val turn = say(entries, "hello")
       runTurn(durable, entries, provider, turn) ==> "failed: Model(down)"
-      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 4)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 5)
       texts(entries) ==> Vector("user: hello")
     }
 

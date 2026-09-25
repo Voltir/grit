@@ -47,6 +47,9 @@ object QueryWriter {
       Option.when(said.nonEmpty)(s"Assistant: ${said.mkString("\n")}")
     case Payload.Message(Message.ToolResult(_, content, _)) =>
       Some(s"Tool result: ${content.take(ToolResultChars)}")
-    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _) | Payload.Topic(_) => None
+    // Assembly runs before the turn's tool loop, so its own entries hold no exchange yet.
+    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _) | Payload.Topic(_) |
+        Payload.Exchange(_) | Payload.Attempt(_) =>
+      None
   }
 }

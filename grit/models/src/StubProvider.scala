@@ -8,10 +8,10 @@ import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError, ToolUse
   * message, at no cost, after `delayMs` (a slow model, for watching a turn run). For
   * running a turn end to end without spending anything.
   *
-  * Offered tools it may call ([[ToolUse.Auto]]) while the last message is the user's, it
-  * calls the first, as a model can, with a line of text beside the call: the arguments
-  * are the JSON after `#call:` in that message (to the end of its line), or `{}`. Its id is
-  * [[StubProvider.CallId]].
+  * Offered tools it may call ([[ToolUse.Auto]]) while the last message is the user's and
+  * holds [[StubProvider.CallMarker]], it calls the first, as a model can, with a line of
+  * text beside the call: the arguments are the JSON after the marker, to the end of its
+  * line. Its id is [[StubProvider.CallId]]. Without the marker it answers.
   */
 final class StubProvider(delayMs: Long = 0) extends Provider {
 
@@ -43,7 +43,8 @@ final class StubProvider(delayMs: Long = 0) extends Provider {
   private def reply(request: ModelRequest): Message.Assistant = {
     val asked = request.messages.reverseIterator.collectFirst { case Message.User(text) => text }
     val call = (request.use, request.tools.headOption, request.messages.lastOption) match {
-      case (ToolUse.Auto, Some(tool), Some(Message.User(text))) =>
+      case (ToolUse.Auto, Some(tool), Some(Message.User(text)))
+          if text.contains(StubProvider.CallMarker) =>
         Some(tool.name -> StubProvider.arguments(text))
       case _ => None
     }

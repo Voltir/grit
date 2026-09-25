@@ -10,8 +10,15 @@ import grit.models.StubProvider
 
 import utest.*
 
+/** The verdict round of a turn that passed the tool loop's patch before it shipped
+  * ([[Turn.Patches.Tools]]): each asked turn here runs on [[before]]. The verdict under
+  * the loop is in `TurnLoopTurnTests`.
+  */
 object TurnVerdictTests extends TestSuite {
   import TurnFixtures.*
+
+  /** A durability whose turns take the old branch of the tool loop's patch. */
+  private def before: InMemoryDurable = new InMemoryDurable(unpatched = Set(Turn.Patches.Tools))
 
   /** A provider answering each call with `script(request, call)`, calls counted from 0,
     * keeping every request.
@@ -56,7 +63,7 @@ object TurnVerdictTests extends TestSuite {
   private def third(
       asked: String,
       provider: Provider^,
-      durable: InMemoryDurable = new InMemoryDurable
+      durable: InMemoryDurable = before
   ): (TurnRef, InMemoryEntryStore, InMemoryUsageLedger) = {
     val entries = new InMemoryEntryStore
     val ledger = new InMemoryUsageLedger
@@ -94,7 +101,7 @@ object TurnVerdictTests extends TestSuite {
     test("unsure: the tool offered and the note on the message, in the request only") {
       val provider = new RecordingProvider
       val (turn, entries, _) = third("hm ~0.5", provider)
-      val first = provider.requests.lift(provider.requests.size - 2)
+      val first = provider.requests.lift(provider.requests.size - 1)
       first.map(_.tools.map(_.name)) ==> Some(Vector("topic"))
       first.map(_.use) ==> Some(ToolUse.Auto)
       val note = first.flatMap(_.messages.lastOption) match {
@@ -111,7 +118,7 @@ object TurnVerdictTests extends TestSuite {
 
     test("the verdict: noted, the model called again, and the second reply is the reply") {
       val provider = new RecordingProvider
-      val durable = new InMemoryDurable
+      val durable = before
       val (turn, entries, ledger) =
         third("""hm ~0.5 #call:{"about":"new","name":"Sailing"}""", provider, durable)
       provider.requests.size ==> 2 // both rounds of this turn
@@ -214,7 +221,7 @@ object TurnVerdictTests extends TestSuite {
     test("the earlier topics are an enum in the tool's schema, offered per call") {
       val provider = new RecordingProvider
       val (_, _, _) = third("hm ~0.5", provider)
-      val shown = provider.requests.lift(provider.requests.size - 2).flatMap(_.tools.headOption)
+      val shown = provider.requests.lift(provider.requests.size - 1).flatMap(_.tools.headOption)
       shown.map(_.parameters("properties")("earlier")("enum")) ==>
         Some(ujson.Arr("new topic (2)"))
       shown.map(_.parameters("required")) ==> Some(ujson.Arr("about"))
@@ -223,7 +230,7 @@ object TurnVerdictTests extends TestSuite {
     test("the model answers without calling: its answer is the reply, the verdict unreadable") {
       val provider =
         new Scripted((r, _) => new StubProvider().complete(r.copy(tools = Vector.empty)))
-      val durable = new InMemoryDurable
+      val durable = before
       val (turn, entries, _) = third("hm ~0.5", provider, durable)
       durable.recordedSteps(turn.workflowId).filter(Turn.Step.optional.contains) ==>
         Vector("record-verdict")
@@ -258,7 +265,7 @@ object TurnVerdictTests extends TestSuite {
         if (r.tools.isEmpty) Right(said("plainly"))
         else Right(said("", topicCall(ujson.Obj("about" -> "current"))))
       )
-      val durable = new InMemoryDurable
+      val durable = before
       val (turn, entries, ledger) = third("hm ~0.5", provider, durable)
       durable.recordedSteps(turn.workflowId).filter(Turn.Step.optional.contains) ==>
         Vector("call-model-again", "call-model-plain", "record-verdict")
@@ -283,7 +290,7 @@ object TurnVerdictTests extends TestSuite {
         else if (r.tools.isEmpty) Right(said("plainly"))
         else Left(ProviderError.Unavailable("HTTP 529"))
       )
-      val (turn, entries, _) = third("hm ~0.5", provider)
+      val (turn, entries, _) = third("""hm ~0.5 #call:{"about":"current"}""", provider)
       texts(entries).filter(_.startsWith("assistant:")).lastOption ==> Some("assistant: plainly")
       lastBy(entries, turn).collect { case Placement.Asked(_, a) => a } ==>
         Some(Some("the second call failed (Model(HTTP 529)); a plain call answered"))
@@ -299,7 +306,7 @@ object TurnVerdictTests extends TestSuite {
       val turn = say(entries, """hm ~0.5 #call:{"about":"current"}""")
       val refusing = new Refusing(entries, TurnVerdict.verdictId(turn))
       val log = runTurn(
-        new InMemoryDurable,
+        before,
         refusing,
         new RecordingProvider,
         turn,
@@ -316,7 +323,7 @@ object TurnVerdictTests extends TestSuite {
       val provider = new Scripted((r, n) =>
         if (n == 1) throw new InMemoryDurable.Crash else new StubProvider().complete(r)
       )
-      val durable = new InMemoryDurable
+      val durable = before
       val entries = new InMemoryEntryStore
       val classifier = new CountingClassifier
       Vector("hello", "knots? ~0.1").foreach { text =>

@@ -164,12 +164,17 @@ object OpenRouterStreamTests extends TestSuite {
         )
       )
       after.map(_.blocks) ==> Right(Vector(AssistantBlock.Text(s"stub reply to: $said")))
+      // Nor without the marker.
+      new StubProvider()
+        .complete(ModelRequest("s", Vector(grit.core.message.Message.User("hi")), Vector(topic)))
+        .map(_.blocks) ==> Right(Vector(AssistantBlock.Text("stub reply to: hi")))
       StubProvider.arguments("no marker") ==> ujson.Obj()
     }
 
     test("the stub tells its call after its text, as a provider that cannot stream does") {
       val topic = grit.core.provider.ToolSchema("topic", "d", ujson.Obj())
-      val asked = ModelRequest("s", Vector(grit.core.message.Message.User("hi")), Vector(topic))
+      val asked =
+        ModelRequest("s", Vector(grit.core.message.Message.User("hi #call:{}")), Vector(topic))
       def told(provider: grit.core.provider.Provider) = {
         val all = Vector.newBuilder[Delta]
         val _ = provider.stream(asked, d => all += d)

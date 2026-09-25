@@ -23,6 +23,8 @@ object PayloadJson {
       )
     case Payload.Topic(events) =>
       ujson.Obj("kind" -> "topic", "events" -> ujson.Arr.from(events.map(TopicJson.write)))
+    case Payload.Exchange(m) => ujson.Obj("kind" -> "exchange", "message" -> message(m))
+    case Payload.Attempt(call) => ujson.Obj("kind" -> "attempt", "call" -> ToolCallId.value(call))
   }
 
   /** The payload `v` encodes, or why it encodes none. */
@@ -46,6 +48,8 @@ object PayloadJson {
             })
           } yield Payload.Window(entries, recalled)
         case "topic" => arr(o, "events").flatMap(traverse(_)(TopicJson.read)).map(Payload.Topic(_))
+        case "exchange" => field(o, "message").flatMap(readMessage).map(Payload.Exchange(_))
+        case "attempt" => str(o, "call").map(c => Payload.Attempt(ToolCallId(c)))
         case other => Left(s"unknown payload kind: $other")
       }
     } yield p

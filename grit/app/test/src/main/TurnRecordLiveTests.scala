@@ -31,6 +31,7 @@ object TurnRecordLiveTests extends TestSuite {
             Turn.Step.optional.contains
           ))
             .patch(4, Vector(s"DBOS.patch-${Turn.Patches.RecordWindow}"), 0)
+            .patch(6, Vector(s"DBOS.patch-${Turn.Patches.Tools}"), 0)
         val own = steps.filter(s => Turn.Step.all.contains(s.name))
         assert(own.forall(s => s.started.zip(s.completed).exists((a, b) => !b.isBefore(a))))
         assert(!engine.status(turn).isInstanceOf[TurnStatus.Running])
@@ -47,6 +48,37 @@ object TurnRecordLiveTests extends TestSuite {
           case _ => 0
         }) ==> Vector(2, 1)
       } finally engine.close()
+    }
+
+    test("a loop turn against Postgres: read a file, then answer, the exchange kept") {
+      val config = TestPostgres.freshDatabase("turn_loop")
+      val engine = Engine.open(config, Turn.Epoch)
+      val root = java.nio.file.Files.createTempDirectory("grit-loop")
+      try {
+        val _ = java.nio.file.Files.writeString(root.resolve("notes.txt"), "the answer is 42\n")
+        launchIn(engine, engine.entries, new CountingProvider, root)
+        // The stub calls the first tool offered, `read`, with the arguments after #call:.
+        val turn = say(engine, """look #call:{"path":"notes.txt"}""")
+        val _ = engine.awaitTurn(turn)
+        engine.steps(turn).map(_.name).filter(n => n.contains(":") && !n.startsWith("DBOS")) ==>
+          Vector("record-call:0", "tool:0:0", "call-model:1")
+        val own = engine.db
+          .read(engine.entries.list(turn.conversationId))
+          .getOrElse(Vector.empty)
+          .filter(_.turnSeq == turn.turnSeq)
+        own
+          .collect { case grit.core.store.Entry(_, _, _, _, _, Payload.Exchange(m), _) => m }
+          .collect { case grit.core.message.Message.ToolResult(_, content, isError) =>
+            (content, isError)
+          } ==> Vector(("the answer is 42", false))
+        reply(engine, turn) ==> Some("stub reply to: message look #call:{\"path\":\"notes.txt\"}")
+      } finally {
+        engine.close()
+        java.nio.file.Files
+          .walk(root)
+          .sorted(java.util.Comparator.reverseOrder())
+          .forEach(p => java.nio.file.Files.delete(p))
+      }
     }
 
     test("the reply streams to an edge while the turn runs, and joins back to it") {

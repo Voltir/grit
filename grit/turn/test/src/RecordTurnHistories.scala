@@ -198,7 +198,96 @@ object RecordTurnHistories {
       catch { case _: InMemoryDurable.Crash => "" }
       recorded(durable, turn)
     }
+
+    /** `said` answered in turn in one conversation with the stub classifier, the last turn by
+      * `provider` with `peek` and `poke` offered over a checkout of `a.txt`, `b.txt` and
+      * `c.txt`, its entries crashing where `crash` says; the last turn's history.
+      */
+    def looping(
+        said: Vector[String],
+        provider: grit.core.provider.Provider^,
+        crash: Option[grit.core.store.Entry -> Boolean] = None
+    ): History = {
+      val store = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val classifier = new CountingClassifier
+      said.dropRight(1).foreach { text =>
+        val t = say(store, text)
+        durable.run(t.workflowId)(turnBody(store, new RecordingProvider, classifier = classifier))
+      }
+      val turn = say(store, said.lastOption.getOrElse("hello"))
+      val entries = crash.fold[grit.core.store.EntryStore](store)(new CrashOnInsert(store, _))
+      val ws = new Files(Map("a.txt" -> "alpha", "b.txt" -> "beta", "c.txt" -> "gamma"))
+      try
+        durable.run(turn.workflowId)(
+          tooledBody(
+            entries,
+            provider,
+            new InMemoryUsageLedger,
+            new grit.models.StubProvider(),
+            classifier,
+            ws,
+            tools(ws),
+            5
+          )
+        )
+      catch { case _: InMemoryDurable.Crash => "" }
+      recorded(durable, turn)
+    }
+
+    def calling(
+        text: String,
+        calls: (String, String, ujson.Value)*
+    ): grit.core.message.Message.Assistant =
+      grit.core.message.Message.Assistant(
+        Vector(grit.core.message.AssistantBlock.Text(text)).filter(_ => text.nonEmpty) ++
+          calls.map((id, name, args) =>
+            grit.core.message.AssistantBlock
+              .ToolCall(grit.core.id.ToolCallId(id), name, args)
+          ),
+        grit.core.message.StopReason.ToolUse,
+        grit.core.message.Usage(
+          grit.core.message.Tokens(10),
+          grit.core.message.Tokens(2),
+          grit.core.message.Tokens.Zero,
+          Some(BigDecimal("0.001"))
+        ),
+        "m"
+      )
+
+    def peeking(p: String): ujson.Value = ujson.Obj("path" -> p)
+
+    /** `peek` a, then `peek` b and c, then the answer. */
+    def threeRounds = new TurnVerdictTests.Scripted((r, n) =>
+      n match {
+        case 0 => Right(calling("looking", ("t1", "peek", peeking("a.txt"))))
+        case 1 =>
+          Right(calling("", ("t2", "peek", peeking("b.txt")), ("t3", "peek", peeking("c.txt"))))
+        case _ => new grit.models.StubProvider().complete(r.copy(tools = Vector.empty))
+      }
+    )
+
     Vector(
+      "loop-three-rounds" -> looping(Vector("read them"), threeRounds),
+      "loop-crashed-in-tool" -> looping(
+        Vector("read them"),
+        threeRounds,
+        crash = Some(e => grit.core.id.EntryId.value(e.id).startsWith("result:"))
+      ),
+      "loop-verdict" -> looping(
+        Vector("hello", "knots? ~0.1", "back ~0.5"),
+        new TurnVerdictTests.Scripted((r, n) =>
+          if (n == 0)
+            Right(
+              calling(
+                "",
+                ("v", "topic", ujson.Obj("about" -> "earlier", "earlier" -> "new topic (2)")),
+                ("t1", "peek", peeking("a.txt"))
+              )
+            )
+          else new grit.models.StubProvider().complete(r.copy(tools = Vector.empty))
+        )
+      ),
       "topical-first" -> topical(Vector("hello")),
       "topical-same" -> topical(Vector("hello", "more ~0.9")),
       "topical-uncertain" -> topical(Vector("hello", "hm ~0.5")),

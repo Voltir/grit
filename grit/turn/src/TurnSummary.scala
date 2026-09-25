@@ -121,6 +121,7 @@ object TurnSummary {
       .filter(_.nonEmpty)
 
   private def line(payload: Payload): Option[String] = payload match {
+    case Payload.Exchange(m) => line(Payload.Message(m))
     case Payload.Message(Message.User(text)) => Some(s"User: $text")
     case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
       val said = blocks.collect {
@@ -132,6 +133,8 @@ object TurnSummary {
     case Payload.Message(Message.ToolResult(id, content, isError)) =>
       val kind = if (isError) "Tool error" else "Tool result"
       Some(s"$kind (${ToolCallId.value(id)}): ${content.take(ToolResultChars)}")
-    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _) | Payload.Topic(_) => None
+    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _) | Payload.Topic(_) |
+        Payload.Attempt(_) =>
+      None
   }
 }

@@ -6,10 +6,12 @@ import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Window}
 import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
-import grit.core.provider.{ModelRequest, ProviderError}
+import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 import grit.core.store.{Entry, Payload, StoreError, Tx}
+import grit.core.tool.{DuplicateName, ToolName, Toolbox}
 import grit.core.topic.Topic
 
+import TurnLoop.{Pending, Round}
 import TurnVerdict.Shape
 
 /** The durable turn: one workflow per turn. Each step's output is recorded, so a turn
@@ -26,11 +28,18 @@ import TurnVerdict.Shape
   *      sees what the model will see while it answers. Turns that passed this point
   *      before the step existed record both in `append` instead ([[Patches]]).
   *   1. `call-model` — the window, then the turn's own messages, sent to the provider,
-  *      whose reply is told to edges as it arrives ([[TurnStream]]). When the classifier
-  *      was unsure, the request offers the `topic` tool ([[TurnVerdict]]).
-  *   1. `call-model-again`, `call-model-plain`, `record-verdict` — only when the tool was
-  *      offered: the model called again after its call to the tool, a plain call if that
-  *      does not answer, and its verdict recorded ([[Step.optional]]).
+  *      whose reply is told to edges as it arrives ([[TurnStream]]), offering the turn's
+  *      tools ([[TurnTooling]]), and `topic` too when the classifier was unsure
+  *      ([[TurnVerdict]]).
+  *   1. `record-call:n`, `tool:n:j`, `call-model:n` — the tool loop ([[TurnLoop]]): a reply
+  *      that called tools kept as an entry, each of its calls settled in its own step
+  *      ([[TurnTools]]), and the model called again, until a reply calls no tool or the
+  *      budget's last call.
+  *   1. `record-verdict` — when `topic` was offered: the verdict of the first reply.
+  *   1. Turns that passed the loop's patch before it shipped ([[Patches.Tools]]) took
+  *      `call-model-again` and `call-model-plain` instead, when `topic` was offered: the
+  *      model called again after its call to the tool, a plain call if that does not
+  *      answer, then `record-verdict` ([[Step.optional]]).
   *   1. `append` — the reply recorded as the turn's entry, with its cost in the ledger
   *      beside the estimate of its request, atomically with the step.
   *   1. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]).
@@ -83,6 +92,52 @@ object Turn {
         Summarise,
         AppendSummary
       )
+
+    /** The family of `record-call:n`, the tool loop's record of round n's reply that called
+      * tools.
+      */
+    val RecordCall = "record-call"
+
+    /** The family of `tool:n:j`, the tool loop's settling of call j of round n's reply. */
+    val Tool = "tool"
+
+    /** The name of `round`'s record of its reply that called tools. */
+    def recordCall(round: TurnLoop.Round): String = s"$RecordCall:${round.index}"
+
+    /** The name of the step settling call `index` (from 0) of `round`'s reply. */
+    def tool(round: TurnLoop.Round, index: Int): String = s"$Tool:${round.index}:$index"
+
+    /** The step `name` stands for among [[all]], [[RecordCall]] and [[Tool]]: its round and
+      * index dropped (`call-model:3` is [[CallModel]], `tool:1:0` is [[Tool]]). `None` for a
+      * name that is not the turn's, such as a patch's marker.
+      */
+    def family(name: String): Option[String] =
+      Loop.of(name) match {
+        case Some(Loop.Call(_)) => Some(CallModel)
+        case Some(Loop.Record(_)) => Some(RecordCall)
+        case Some(Loop.Tool(_, _)) => Some(Tool)
+        case None => Option.when(all.contains(name))(name)
+      }
+  }
+
+  /** A step of the tool loop, by what its name says. */
+  private enum Loop {
+    case Call(round: Int)
+    case Record(round: Int)
+    case Tool(round: Int, index: Int)
+  }
+
+  private object Loop {
+    private val CallName = """call-model:(\d+)""".r
+    private val RecordName = """record-call:(\d+)""".r
+    private val ToolName = """tool:(\d+):(\d+)""".r
+
+    def of(name: String): Option[Loop] = name match {
+      case CallName(n) => n.toIntOption.map(Call(_))
+      case RecordName(n) => n.toIntOption.map(Record(_))
+      case ToolName(n, j) => n.toIntOption.zip(j.toIntOption).map(Tool(_, _))
+      case _ => None
+    }
   }
 
   /** The patches the turn's steps have taken within this epoch (ADR 0004). */
@@ -102,20 +157,36 @@ object Turn {
       * its verdict (2026-09-24).
       */
     val Verdict = "verdict"
+
+    /** The model's reply is a tool loop ([[TurnLoop]]): each model call a step of its own,
+      * and each tool call too, the verdict read from the first call's reply
+      * (2026-09-25).
+      */
+    val Tools = "tools"
   }
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
-    * is recorded when it completes): the next step after the last recorded that every turn
-    * takes ([[Step.optional]] ones only once recorded). Names that are not the turn's steps
-    * are skipped; once the last step is recorded the turn is finishing, and that step is named.
+    * is recorded when it completes). After a loop's `record-call:n`, its first tool,
+    * `tool:n:0`; after `tool:n:j`, the next model call, `call-model:n+1`, which takes far
+    * longer than any further tool. Otherwise the next step after the last recorded that
+    * every turn takes ([[Step.optional]] ones only once recorded), `call-model:n` counting as
+    * `call-model`. Names that are not the turn's steps are skipped; once the last step is
+    * recorded the turn is finishing, and that step is named.
     */
   def running(recorded: Vector[String]): String = {
-    val done = recorded.map(Step.all.indexOf).filter(_ >= 0).maxOption.getOrElse(-1)
-    Step.all
-      .drop(done + 1)
-      .find(!Step.optional.contains(_))
-      .orElse(Step.all.lastOption)
-      .getOrElse(Step.Assemble)
+    val own = recorded.filter(Step.family(_).nonEmpty)
+    own.lastOption.flatMap(Loop.of) match {
+      case Some(Loop.Record(n)) => s"${Step.Tool}:$n:0"
+      case Some(Loop.Tool(n, _)) => s"${Step.CallModel}:${n + 1}"
+      case _ =>
+        val done =
+          own.flatMap(Step.family).map(Step.all.indexOf).filter(_ >= 0).maxOption.getOrElse(-1)
+        Step.all
+          .drop(done + 1)
+          .find(!Step.optional.contains(_))
+          .orElse(Step.all.lastOption)
+          .getOrElse(Step.Assemble)
+    }
   }
 
   /** The turn workflow's body, for the turn whose workflow id is `workflowId`. Returns what
@@ -218,7 +289,7 @@ object Turn {
   )(using env: TurnEnv^, d: Durable^): Ran[EntryId] = {
     import TurnJournal.given
     val heard = d.stream(TurnStream.Key)
-    val called = for {
+    val prepared = for {
       window <- d.step(Step.Assemble) { () =>
         env.assembler.assemble(AssemblyRequest(turn))(using env.db).left.map {
           case AssemblyError.Store(error) => TurnFailure.Assembly(describe(error))
@@ -231,34 +302,195 @@ object Turn {
           d.transact(Step.RecordWindow)(recordWindow(env.records, turn, window, env.clock.now()))
         case WindowRecord.WithReply => Right(windowId(turn))
       }
-      asked = asking(placing)
-      message <- d.step(Step.CallModel) { () =>
-        callModel(heard, turn, window, asked.fold(Shape.Plain)(Shape.Offered(_)))
-      }
-    } yield (window, recorded, asked, message)
-    called match {
+    } yield (window, recorded)
+    prepared match {
       case Left(failure) => Ran(Left(failure), None)
-      case Right((window, recorded, asked, message)) =>
-        val answered = asked match {
-          case None => Ran(Right(TurnVerdict.Replied(message, Shape.Plain)), None)
-          case Some(c) => verdictRound(heard, turn, window, c, message)
-        }
-        val appended = answered.result.flatMap { a =>
-          d.transact(Step.Append)(
-            append(
-              env.system,
-              env.records,
-              turn,
-              window,
-              replyId(turn),
-              a,
-              recorded,
-              env.clock.now()
+      case Right((window, recorded)) =>
+        val asked = asking(placing)
+        if (d.patch(Patches.Tools)) loop(heard, turn, window, recorded, asked)
+        else {
+          val answered = d.step(Step.CallModel) { () =>
+            callModel(heard, turn, window, asked.fold(Shape.Plain)(Shape.Offered(_)))
+          } match {
+            case Left(failure) => Ran(Left(failure), None)
+            case Right(message) =>
+              asked match {
+                case None => Ran(Right(TurnVerdict.Replied(message, Shape.Plain)), None)
+                case Some(c) => verdictRound(heard, turn, window, c, message)
+              }
+          }
+          val appended = answered.result.flatMap { a =>
+            val shape = a.shape
+            d.transact(Step.Append)(
+              append(
+                env.system,
+                env.records,
+                turn,
+                window,
+                a.reply,
+                shape(_),
+                recorded,
+                env.clock.now()
+              )
             )
-          )
+          }
+          Ran(appended, answered.verdictUnrecorded)
         }
-        Ran(appended, answered.verdictUnrecorded)
     }
+  }
+
+  /** The steps from the first model call to `append` under the tool loop
+    * ([[Patches.Tools]]): each call of the loop, `call-model` then `call-model:n`, offered
+    * the turn's tools, and `topic` too when `asked` holds the classification the model is
+    * asked about; each reply that called tools kept by `record-call:n`, and each of its
+    * calls settled by `tool:n:j` ([[TurnTools]]); then `record-verdict` when `asked`, and
+    * the answer appended as `turn`'s reply entry.
+    */
+  private def loop(
+      heard: StreamWriter^,
+      turn: TurnRef,
+      seen: Window,
+      recorded: WindowRecord,
+      asked: Option[TurnTopics.Classification]
+  )(using env: TurnEnv^, d: Durable^): Ran[EntryId] = {
+    import TurnJournal.given
+    val tooling: TurnTooling^{env} = env.tooling
+    val budget = tooling.budget
+    offered(tooling, asked) match {
+      case Left(failure) => Ran(Left(failure), None)
+      case Right(tools) =>
+        val schemas = tools.schemas(tooling.strict)
+        def shape(round: Round): ModelRequest -> ModelRequest =
+          loopShape(asked, round, TurnLoop.use(budget, round), schemas)
+        val moves = new TurnLoop.Moves {
+          def call(round: Round, use: ToolUse): Either[TurnFailure, Message.Assistant] = {
+            val shaped = loopShape(asked, round, use, schemas)
+            d.step(round.step) { () => callShaped(heard, turn, seen, shaped) }
+          }
+
+          def record(round: Round, reply: Message.Assistant): Either[TurnFailure, Unit] = {
+            val shaped = shape(round)
+            d.transact(Step.recordCall(round))(
+              recordCall(env.system, env.records, turn, seen, round, reply, shaped, env.clock.now())
+            ).map(_ => ())
+          }
+
+          def settle(round: Round, index: Int, pending: Pending): Either[TurnFailure, Unit] = {
+            val (jot, entries, clock) = (env.jot, env.records.entries, env.clock)
+            d.step(Step.tool(round, index)) { () =>
+              TurnTools.settle(jot, entries, tools, None, turn, round, index, pending, clock.now())
+            }.map(_ => ())
+          }
+        }
+        moves.call(Round.First, TurnLoop.use(budget, Round.First)) match {
+          case Left(failure) => Ran(Left(failure), None)
+          case Right(first) =>
+            val looped = TurnLoop.from(budget, first, moves)
+            val verdictUnrecorded = asked.flatMap { c =>
+              d.transact(Step.RecordVerdict)(
+                TurnTopics.writeEvents(
+                  env.records.entries,
+                  env.records.ledger,
+                  turn,
+                  TurnVerdict.verdictId(turn),
+                  TurnVerdict.events(TurnVerdict.of(c, first), None, c, turn),
+                  None,
+                  env.clock.now()
+                )
+              ).left
+                .toOption
+            }
+            val appended = looped.flatMap { l =>
+              val shaped = shape(l.round)
+              d.transact(Step.Append)(
+                append(
+                  env.system,
+                  env.records,
+                  turn,
+                  seen,
+                  l.answer,
+                  shaped,
+                  recorded,
+                  env.clock.now()
+                )
+              )
+            }
+            Ran(appended, verdictUnrecorded)
+        }
+    }
+  }
+
+  /** The tools each call of the loop offers: `tooling`'s, after `topic` for the
+    * classification `asked` holds. `topic` stays on after the first call, which alone asks
+    * for it ([[loopShape]]): a request whose messages hold a call names the tool it called.
+    * `TurnFailure.Model` when `tooling` already names one `topic`.
+    */
+  private def offered(
+      tooling: TurnTooling^,
+      asked: Option[TurnTopics.Classification]
+  ): Either[TurnFailure, Toolbox[{tooling.workspace}]] =
+    asked match {
+      case None => Right(tooling.tools)
+      case Some(c) =>
+        tooling.tools.including(TurnVerdict.tool(c)).left.map { case DuplicateName(name) =>
+          TurnFailure.Model(s"two tools are named ${ToolName.value(name)}")
+        }
+    }
+
+  /** How the loop's call `round` is built from the plain request: tagged for `asked` on the
+    * first call, offering `tools` as `use` says.
+    */
+  private def loopShape(
+      asked: Option[TurnTopics.Classification],
+      round: Round,
+      use: ToolUse,
+      tools: Vector[ToolSchema]
+  ): ModelRequest -> ModelRequest =
+    base => {
+      val tagged = asked.filter(_ => round == Round.First).fold(base)(TurnVerdict.tagged(base, _))
+      tagged.copy(tools = tools, use = use)
+    }
+
+  /** The `record-call:n` step: `reply`, the reply to `round` that called tools, kept as
+    * [[TurnTools.callId]] dated `at` after everything in the conversation, and what it cost
+    * in the ledger beside the estimate of its request, rebuilt by `shape` from the same
+    * window and entries.
+    */
+  private def recordCall(
+      system: String,
+      records: TurnRecords,
+      turn: TurnRef,
+      window: Window,
+      round: Round,
+      reply: Message.Assistant,
+      shape: ModelRequest -> ModelRequest,
+      at: Instant
+  )(using Tx^): Either[TurnFailure, EntryId] = {
+    val TurnRecords(entries, ledger, estimator) = records
+    val id = TurnTools.callId(turn, round)
+    for {
+      next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
+      all <- entries.list(turn.conversationId).left.map(storeFailure)
+      sent <- requestOf(system, all, turn, window).map(shape)
+      _ <- entries
+        .insert(
+          Entry(
+            id,
+            turn.conversationId,
+            turn.turnSeq,
+            None,
+            next.seq,
+            Payload.Exchange(reply),
+            at
+          )
+        )
+        .left
+        .map(storeFailure)
+      _ <- ledger
+        .record(id, turn.workflowId, reply.model, reply.usage, estimator.request(sent))
+        .left
+        .map(storeFailure)
+    } yield id
   }
 
   /** The request built from `turn`'s `window` and shaped by `shape`, sent to the provider,
@@ -270,6 +502,15 @@ object Turn {
       turn: TurnRef,
       window: Window,
       shape: Shape
+  )(using env: TurnEnv^): Either[TurnFailure, Message.Assistant] =
+    callShaped(heard, turn, window, shape(_))
+
+  /** As [[callModel]], the request shaped by `shape`. */
+  private def callShaped(
+      heard: StreamWriter^,
+      turn: TurnRef,
+      window: Window,
+      shape: ModelRequest -> ModelRequest
   )(using env: TurnEnv^): Either[TurnFailure, Message.Assistant] = {
     val told =
       new TurnStream.Writer(heard, env.fresh.nonce(), () => env.clock.millis())
@@ -457,7 +698,8 @@ object Turn {
       .map(storeFailure)
       .flatMap(requestOf(env.system, _, turn, window))
 
-  /** The request [[request]] builds, from `all` of the conversation's entries. Only
+  /** The request [[request]] builds, from `all` of the conversation's entries: the window's
+    * messages, then the turn's own, its tool loop's exchange among them in order. Only
     * messages are sent: a summary is not shown to the model yet.
     */
   private def requestOf(
@@ -475,34 +717,40 @@ object Turn {
           )
         )
       case _ =>
-        val seen = window.entries.flatMap(byId.get) ++ own(all, turn)
-        Right(ModelRequest(system, seen.map(_.payload).collect { case Payload.Message(m) => m }))
+        val shown = window.entries.flatMap(byId.get).map(_.payload).collect {
+          case Payload.Message(m) => m
+        }
+        val mine = own(all, turn).map(_.payload).collect {
+          case Payload.Message(m) => m
+          case Payload.Exchange(m) => m
+        }
+        Right(ModelRequest(system, shown ++ mine))
     }
   }
 
-  /** Records the `answered` message as `turn`'s entry `id`, dated `at`, after everything
+  /** Records `message` as `turn`'s reply entry [[replyId]], dated `at`, after everything
     * already in the conversation, and what it cost in the ledger beside the estimate of the
     * request that produced it: rebuilt from the same window and the same entries (the
     * turn's own were all recorded before its call, and the reply is not yet among them),
-    * shaped as `answered` says. When the window is `recorded` with the reply, its queries and the window itself go in
-    * first ([[writeWindow]]).
+    * shaped by `shape`. When the window is `recorded` with the reply, its queries and the
+    * window itself go in first ([[writeWindow]]).
     */
   private def append(
       system: String,
       records: TurnRecords,
       turn: TurnRef,
       window: Window,
-      id: EntryId,
-      answered: TurnVerdict.Replied,
+      message: Message.Assistant,
+      shape: ModelRequest -> ModelRequest,
       recorded: WindowRecord,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
-    val TurnVerdict.Replied(message, shape) = answered
+    val id = replyId(turn)
     val TurnRecords(entries, ledger, estimator) = records
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
-      sent <- requestOf(system, all, turn, window).map(shape(_))
+      sent <- requestOf(system, all, turn, window).map(shape)
       written <- recorded match {
         case WindowRecord.OwnStep => Right(0)
         case WindowRecord.WithReply => writeWindow(records, turn, window, next.seq, at)

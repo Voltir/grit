@@ -15,7 +15,8 @@ In dependency order:
   topic opened, a message placed with its `Weights` over topics, a topic described), the
   `Placement` that says who placed it, `Band`, `Verdict`, and `Topics`, the pure fold over
   the events; `TopicJson`, their stored form. ← `id`
-- **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db`, `Entry`,
+- **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),
+  `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
   `ConversationStore`, `UsageLedger`, `StoreError`. ← `id`, `message`, `topic`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash. ← `id`, `store`
@@ -28,12 +29,15 @@ In dependency order:
   rules they share: `RelPath` (a path that stays inside the checkout and names no secrets
   file), `Clipped` (output cut to what the model is shown), `Replace.onto` (an edit's
   matching), and their errors. Imports nothing in core.
+- **`approval`** — `Approval`, a person's answer to a gated tool call. Imports nothing in
+  core.
 - **`tool`** — tools as typed data: `Field`, `Args` (read into a named tuple), `ArgsError`,
   `ToolName` and `ToolSpec`, from which come the schema the model is shown (a
   `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, and what a
   call does, capture-tracked), `Toolbox` (the tools offered on one call, which `bind` a
-  call to a `Bound` or a `CallError`) and `Outcome` (what a call came to, as the model
-  reads it). ← `id`, `message`, `provider`
+  call to a `Bound` or a `CallError`: `Bound.Free` runs, `Bound.Gated` runs only given an
+  `Approval`) and `Outcome` (what a call came to, as the model reads it). ← `id`,
+  `message`, `provider`, `approval`
 
 No source file sits at core's root, and no two packages import each other in a circle:
 `scripts/enola-law.sh` fails on a new import cycle.

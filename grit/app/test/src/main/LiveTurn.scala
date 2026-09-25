@@ -8,8 +8,10 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{EntryStore, Origin, Payload}
 import grit.dbos.engine.Engine
+import grit.host.LocalWorkspace
 import grit.models.StubProvider
-import grit.turn.{Turn, TurnEnv, TurnRecords}
+import grit.tools.Coding
+import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
 
 /** The real turn over a live engine, with the stub provider, for the end-to-end tests. */
 object LiveTurn {
@@ -31,6 +33,18 @@ object LiveTurn {
     * stub, which `provider` does not count.
     */
   def launch(engine: Engine^, entries: EntryStore, provider: Provider^): Unit =
+    launchIn(engine, entries, provider, java.nio.file.Path.of("").toAbsolutePath)
+
+  /** As [[launch]], the model offered the read-only coding tools over the checkout at
+    * `root`.
+    */
+  def launchIn(
+      engine: Engine^,
+      entries: EntryStore,
+      provider: Provider^,
+      root: java.nio.file.Path
+  ): Unit = {
+    val checkout = new LocalWorkspace(root)
     engine.launch(
       Turn.body(
         TurnEnv(
@@ -41,11 +55,19 @@ object LiveTurn {
           provider,
           new StubProvider(),
           engine.db,
+          engine.jot,
           Clock.system(),
-          Fresh.random()
+          Fresh.random(),
+          TurnTooling(
+            checkout,
+            Coding.readOnly(checkout),
+            TurnLoop.Budget.of(5).fold(why => sys.error(why), identity),
+            strict = false
+          )
         )
       )
     )
+  }
 
   /** Ingests `source` and starts its turn. */
   def say(engine: Engine^, source: String): TurnRef = {

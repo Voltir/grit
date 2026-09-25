@@ -84,6 +84,14 @@ object PayloadJsonTests extends TestSuite {
         """{"event":"placed","turn":2,"weights":[["t1",0.5]],"elsewhere":0.5,"by":{"kind":"first"}}]}"""
     }
 
+    test("exchange and attempt") {
+      PayloadJson.write(Payload.Exchange(samples(3))).render() ==>
+        """{"kind":"exchange","message":{"role":"tool_result","callId":"c1",""" +
+        """"content":"no matches","isError":true}}"""
+      PayloadJson.write(Payload.Attempt(ToolCallId("c1"))).render() ==>
+        """{"kind":"attempt","call":"c1"}"""
+    }
+
     test("every sample round-trips, through text too") {
       val window = Payload.Window(Vector(EntryId("a")), Vector(TurnSeq(0), TurnSeq(7)))
       val (t1, t2) = (TopicId("topic:c:0"), TopicId("topic:c:3"))
@@ -129,8 +137,10 @@ object PayloadJsonTests extends TestSuite {
           TopicEvent.Described(t2, "Knots", "Which knot holds under load.")
         )
       )
-      (samples.map(Payload.Message(_)) :+ Payload.Summary("s") :+ Payload.Query("q") :+ window :+
-        topic)
+      (samples.map(Payload.Message(_)) ++ samples.map(Payload.Exchange(_)) :+ Payload.Summary(
+        "s"
+      ) :+
+        Payload.Query("q") :+ window :+ topic :+ Payload.Attempt(ToolCallId("c1")))
         .foreach { p =>
           PayloadJson.read(ujson.read(PayloadJson.write(p).render())) ==> Right(p)
         }

@@ -3,7 +3,7 @@ package grit.turn
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.{ModelRequest, ToolUse}
-import grit.core.tool.{Args, ArgsError, Field, ToolName, ToolSpec}
+import grit.core.tool.{Args, ArgsError, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
 
 /** The main model asked where a message went, when the classifier was unsure
@@ -14,6 +14,11 @@ import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
   * exchange answers instead. The exchange stays in the journal and the verdict's record,
   * never among the conversation's messages. Pure, but for [[round]], whose calls the turn
   * makes through [[Calls]].
+  *
+  * That round is for turns that passed the tool loop's patch before it shipped
+  * ([[Turn.Patches.Tools]]). Under the loop, `topic` is one of the loop's tools ([[tool]]),
+  * the tag asks for it on the first call only, and the verdict is that call's reply's
+  * ([[of]]).
   */
 object TurnVerdict {
 
@@ -100,21 +105,30 @@ object TurnVerdict {
   }
 
   /** `base` with the tool offered and [[tag]] after its last user message. */
-  def offer(base: ModelRequest, c: TurnTopics.Classification): ModelRequest = {
+  def offer(base: ModelRequest, c: TurnTopics.Classification): ModelRequest =
+    tagged(base, c).copy(tools = Vector(topic(c).schema(strict = false)), use = ToolUse.Auto)
+
+  /** `base` with [[tag]] after its last user message, and nothing else changed. */
+  def tagged(base: ModelRequest, c: TurnTopics.Classification): ModelRequest = {
     val last = base.messages.lastIndexWhere {
       case Message.User(_) => true
       case _ => false
     }
-    val tagged = base.messages.zipWithIndex.map {
+    base.copy(messages = base.messages.zipWithIndex.map {
       case (Message.User(text), i) if i == last => Message.User(s"$text\n\n${tag(c)}")
       case (m, _) => m
-    }
-    base.copy(
-      messages = tagged,
-      tools = Vector(topic(c).schema(strict = false)),
-      use = ToolUse.Auto
-    )
+    })
   }
+
+  /** What the `topic` tool answers when its call reads: the loop's model goes on. */
+  val Noted = "Noted. Answer the message now."
+
+  /** The `topic` tool for `c`, as the tool loop offers it: a call that reads is answered
+    * [[Noted]], one that does not with the reason, and nothing else happens. The verdict is
+    * read from the reply's call, not from running it ([[of]]).
+    */
+  def tool(c: TurnTopics.Classification): Tool[Verdict] =
+    new Tool(topic(c), Gate.Free, _ => Outcome.Done(Noted))
 
   /** How a request is built from the turn's plain one. */
   enum Shape {
@@ -223,7 +237,7 @@ object TurnVerdict {
         read(c, call.arguments) match {
           case Left(error) =>
             Message.ToolResult(call.id, s"${error.message} Answer the message now.", true)
-          case Right(_) => Message.ToolResult(call.id, "Noted. Answer the message now.", false)
+          case Right(_) => Message.ToolResult(call.id, Noted, false)
         }
     }
   }

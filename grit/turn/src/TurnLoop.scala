@@ -115,62 +115,61 @@ object TurnLoop {
     }
   }
 
+  /** Whether `round`'s call offers tools the model may call: [[ToolUse.Off]] for the
+    * budget's last call and any after it, [[ToolUse.Auto]] before.
+    */
+  def use(budget: Budget, round: Round): ToolUse =
+    if (round >= budget.calls - 1) ToolUse.Off else ToolUse.Auto
+
   /** The effects the loop needs. The turn makes each a durable step. */
   trait Moves {
 
-    /** The model's reply on `round`, offered the tools as `use` says, shown the turn's own
-      * `exchange` after its window: every earlier reply that called tools, each followed by
-      * its calls' results.
+    /** The model's reply on `round`, offered the tools as `use` says, shown its window and
+      * then the turn's own messages so far: every earlier reply that called tools, each
+      * followed by its calls' results, as [[record]] and [[settle]] kept them.
       */
-    def call(
-        round: Round,
-        use: ToolUse,
-        exchange: Vector[Message]
-    ): Either[TurnFailure, Message.Assistant]
+    def call(round: Round, use: ToolUse): Either[TurnFailure, Message.Assistant]
 
-    /** Records `reply`, the reply to `round` that called tools, before any is settled. */
+    /** Keeps `reply`, the reply to `round` that called tools, before any call is settled. */
     def record(round: Round, reply: Message.Assistant): Either[TurnFailure, Unit]
 
-    /** Settles `pending`, the call at `index` (from 0) of `round`'s reply, and records what
-      * it came to. Only a store that cannot be written fails: every failure of the tool is an
-      * outcome the model reads.
+    /** Settles `pending`, the call at `index` (from 0) of `round`'s reply, and keeps its
+      * result, paired with its call's id, after those of the calls before it. Only a store
+      * that cannot be written fails: every failure of the tool is an outcome the model reads.
       */
-    def settle(round: Round, index: Int, pending: Pending): Either[TurnFailure, Outcome]
+    def settle(round: Round, index: Int, pending: Pending): Either[TurnFailure, Unit]
   }
 
-  /** What a loop came to: its `answer`, the model `calls` it made, and its `exchange`, the
-    * replies that called tools and their results, in order.
-    */
-  final case class Looped(answer: Message.Assistant, calls: Int, exchange: Vector[Message])
+  /** What a loop came to: its `answer`, the reply to `round`, the loop's last call. */
+  final case class Looped(answer: Message.Assistant, round: Round)
 
-  /** Calls the model through `moves` from the first round, settling each reply's tool calls
-    * in order, each paired with its result, until [[next]] answers. Fails when a move does,
-    * making no move after it, and with [[TurnFailure.Model]] when a reply is silent.
+  /** Calls the model through `moves` from the first round, then goes on as [[from]] does. */
+  def run(budget: Budget, moves: Moves^): Either[TurnFailure, Looped] =
+    moves.call(Round.First, use(budget, Round.First)).flatMap(from(budget, _, moves))
+
+  /** Goes on after `first`, the reply to the first round's call: settles each reply's tool
+    * calls through `moves`, in order, and calls the model again, until [[next]] answers.
+    * Fails when a move does, making no move after it, and with [[TurnFailure.Model]] when a
+    * reply is silent.
     */
-  def run(budget: Budget, moves: Moves^): Either[TurnFailure, Looped] = {
+  def from(budget: Budget, first: Message.Assistant, moves: Moves^): Either[TurnFailure, Looped] = {
     @tailrec
-    def loop(round: Round, use: ToolUse, exchange: Vector[Message]): Either[TurnFailure, Looped] =
-      moves.call(round, use, exchange) match {
-        case Left(failure) => Left(failure)
-        case Right(reply) =>
-          next(budget, round, reply) match {
-            case Next.Answer(answer) => Right(Looped(answer, round + 1, exchange))
-            case Next.Silent(_) =>
-              Left(
-                TurnFailure.Model(
-                  s"the reply to ${Round.step(round)} said nothing and called no tool"
-                )
-              )
-            case Next.Settle(calls, after) =>
-              settled(round, reply, calls) match {
-                case Left(failure) => Left(failure)
-                case Right(results) => loop(after, ToolUse.Auto, exchange ++ (reply +: results))
-              }
-            case Next.Last(calls, after) =>
-              settled(round, reply, calls) match {
-                case Left(failure) => Left(failure)
-                case Right(results) => loop(after, ToolUse.Off, exchange ++ (reply +: results))
-              }
+    def loop(round: Round, reply: Message.Assistant): Either[TurnFailure, Looped] =
+      next(budget, round, reply) match {
+        case Next.Answer(answer) => Right(Looped(answer, round))
+        case Next.Silent(_) =>
+          Left(
+            TurnFailure.Model(s"the reply to ${Round.step(round)} said nothing and called no tool")
+          )
+        case Next.Settle(calls, after) =>
+          settled(round, reply, calls).flatMap(_ => moves.call(after, ToolUse.Auto)) match {
+            case Left(failure) => Left(failure)
+            case Right(again) => loop(after, again)
+          }
+        case Next.Last(calls, after) =>
+          settled(round, reply, calls).flatMap(_ => moves.call(after, ToolUse.Off)) match {
+            case Left(failure) => Left(failure)
+            case Right(again) => loop(after, again)
           }
       }
 
@@ -178,17 +177,13 @@ object TurnLoop {
         round: Round,
         reply: Message.Assistant,
         calls: Vector[Pending]
-    ): Either[TurnFailure, Vector[Message.ToolResult]] =
+    ): Either[TurnFailure, Unit] =
       moves.record(round, reply).flatMap { _ =>
-        calls.zipWithIndex.foldLeft[Either[TurnFailure, Vector[Message.ToolResult]]](
-          Right(Vector.empty)
-        ) { case (acc, (pending, i)) =>
-          acc.flatMap(so =>
-            moves.settle(round, i, pending).map(o => so :+ o.result(pending.call.id))
-          )
+        calls.zipWithIndex.foldLeft[Either[TurnFailure, Unit]](Right(())) {
+          case (acc, (pending, i)) => acc.flatMap(_ => moves.settle(round, i, pending))
         }
       }
 
-    loop(Round.First, ToolUse.Auto, Vector.empty)
+    loop(Round.First, first)
   }
 }

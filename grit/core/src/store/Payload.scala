@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.{EntryId, TurnSeq}
+import grit.core.id.{EntryId, ToolCallId, TurnSeq}
 import grit.core.message.Message
 import grit.core.topic.TopicEvent
 
@@ -34,4 +34,16 @@ enum Payload {
     * searched.
     */
   case Topic(events: Vector[TopicEvent])
+
+  /** A message inside the tool loop of the turn the entry belongs to: a reply that called
+    * tools, or a tool call's result. The turn's own later model calls and its summary read
+    * it; no window includes it, so a call is never shown without its result. Never
+    * searched.
+    */
+  case Exchange(message: grit.core.message.Message)
+
+  /** A tool call that asks a person first began to run, before its result was recorded: a
+    * record that a crash may have cut it short. Never shown to the model, never searched.
+    */
+  case Attempt(call: ToolCallId)
 }

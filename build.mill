@@ -121,12 +121,22 @@ object grit extends Module {
      * and the linear assembler: the M0 gate without Postgres. */
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test, grit.assembly, grit.models)
-      def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
+      def mvnDeps = Task {
+        super.mvnDeps() ++ Seq(
+          mvn"com.lihaoyi::os-lib:0.11.8",
+          mvn"org.scala-lang::scala3-compiler:${scalaVersion()}"
+        )
+      }
 
       /* Recorded turn histories, one directory per epoch (ADR 0004): TurnReplayTests
-       * replays them, RecordTurnHistories and scripts/capture-history.sh write them. */
+       * replays them, RecordTurnHistories and scripts/capture-history.sh write them.
+       * TurnCaptureTests compiles probe sources against turn, with turn's own flags. */
       def forkEnv = Task {
-        super.forkEnv() ++ Map("GRIT_HISTORIES" -> (moduleDir / "histories").toString)
+        super.forkEnv() ++ Map(
+          "GRIT_HISTORIES" -> (moduleDir / "histories").toString,
+          "GRIT_PROBE_CLASSPATH" -> turn.runClasspath().map(_.path.toString).mkString(":"),
+          "GRIT_PROBE_OPTIONS" -> turn.scalacOptions().mkString(" ")
+        )
       }
     }
   }
@@ -231,7 +241,17 @@ object grit extends Module {
    * place quarantine modules meet. Its Main is the M0 run until tui mode lands. */
   object app extends GritModule {
     def moduleDeps =
-      Seq(grit.core, grit.dbos, grit.turn, grit.models, grit.assembly, grit.prose, grit.tui)
+      Seq(
+        grit.core,
+        grit.dbos,
+        grit.turn,
+        grit.models,
+        grit.assembly,
+        grit.prose,
+        grit.tui,
+        grit.host,
+        grit.tools
+      )
     def forkArgs = Task { tui.forkArgs() }
     def mainClass = Some("grit.app.main.Main")
 

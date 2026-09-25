@@ -22,8 +22,12 @@ import grit.dbos.sql.TestTx
   *
   * `transact` hands its body a [[TestTx]], so pair it with in-memory stores. Their writes
   * are not rolled back when the body throws.
+  *
+  * A patch named in `unpatched` is never taken where the journal has nothing yet: its
+  * `patch` is false, as for a workflow that passed the change before it shipped. For
+  * testing the old branch of a patch.
   */
-final class InMemoryDurable {
+final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
   import InMemoryDurable.*
 
   private enum Recorded {
@@ -126,6 +130,7 @@ final class InMemoryDurable {
     def patch(name: String): Boolean = {
       val marker = patchMarker(name)
       journal.lift(next) match {
+        case None if unpatched.contains(name) => false
         case None =>
           journals = journals.updated(workflowId, journal :+ (marker -> Recorded.Marker))
           advance()

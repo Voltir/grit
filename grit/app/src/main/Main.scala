@@ -15,6 +15,7 @@ import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.Origin
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
+import grit.host.LocalWorkspace
 import grit.models.{
   JevClassifier,
   JevConfig,
@@ -24,9 +25,10 @@ import grit.models.{
   StubClassifier,
   StubProvider
 }
+import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
-import grit.turn.{Turn, TurnEnv, TurnRecords}
+import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set (per [[ModelRole]], see
@@ -40,7 +42,10 @@ import grit.turn.{Turn, TurnEnv, TurnRecords}
   * conversation's topics by Jev when `JEV_API_KEY` is set ([[JevConfig]]); without it, by
   * the stub classifier when `GRIT_STUB_TOPICS=1` (for the gate), and otherwise by none,
   * which leaves each message in the topic it is in. The TUI starts in the theme
-  * `GRIT_THEME` names, or else the one last chosen with `/theme` ([[Prefs]]).
+  * `GRIT_THEME` names, or else the one last chosen with `/theme` ([[Prefs]]). Each turn's
+  * model may read, list and search the checkout grit runs in (`Coding.readOnly`), in at most
+  * `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at least 2), the last with
+  * tools off.
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
   *     (default `default`). Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
@@ -54,7 +59,11 @@ object Main {
   /** The argument runs share one conversation, apart from any TUI session. */
   private val RunOrigin: Origin = Origin.Task("m0", "main")
 
-  private val SystemPrompt = "You are grit."
+  /** The system prompt, for a checkout whose root is `root`. What each tool does rides with
+    * the tool, never here: a model told of a tool it was not offered writes the call out.
+    */
+  private def systemPrompt(root: java.nio.file.Path): String =
+    s"You are grit. You work in the repository at $root, through the tools you are offered."
 
   def main(args: Array[String]): Unit = {
     val tui = args.isEmpty
@@ -74,6 +83,10 @@ object Main {
     val budget = exitOnLeft(tokens(env, BudgetVar, LinearAssembler.DefaultBudget))
     val tail = exitOnLeft(tokens(env, TailVar, RetrievalAssembler.DefaultTail))
     val retrieving = exitOnLeft(assemblerChoice(env))
+    val rounds = exitOnLeft(toolRounds(env))
+    // The checkout the turn's tools read is the one grit runs in.
+    val root = java.nio.file.Path.of("").toAbsolutePath
+    val system = systemPrompt(root)
     val prefsFile = Prefs.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend.
@@ -102,18 +115,26 @@ object Main {
         if (retrieving)
           new RetrievalAssembler(engine.entries, engine.search, writer, CharEstimate, budget, tail)
         else new LinearAssembler(engine.entries, CharEstimate, budget)
+      val checkout = new LocalWorkspace(root)
       engine.launch(
         Turn.body(
           TurnEnv(
-            SystemPrompt,
+            system,
             TurnRecords(engine.entries, engine.ledger, CharEstimate),
             assembler,
             classifier(topics),
             provider,
             summarizer,
             engine.db,
+            engine.jot,
             Clock.system(),
-            Fresh.random()
+            Fresh.random(),
+            TurnTooling(
+              checkout,
+              Coding.readOnly(checkout),
+              rounds,
+              strict = openRouter.exists(_.routing.strictTools)
+            )
           )
         )
       )
@@ -139,7 +160,7 @@ object Main {
         val host = new ChatHost(
           Origin.Tui(session),
           opener,
-          SystemPrompt,
+          system,
           CharEstimate,
           Some(java.nio.file.Path.of(log))
         )
@@ -304,6 +325,23 @@ object Main {
           }
         case other => host.receive(other, mailbox)
       }
+    }
+
+  private val ToolRoundsVar = "GRIT_TOOL_ROUNDS"
+
+  /** The most model calls a turn makes, the last with tools off. */
+  private[main] val DefaultToolRounds = 20
+
+  /** The turn's budget of model calls from `GRIT_TOOL_ROUNDS`, a whole number of at least 2;
+    * [[DefaultToolRounds]] when unset.
+    */
+  private[main] def toolRounds(env: Map[String, String]): Either[String, TurnLoop.Budget] =
+    env.get(ToolRoundsVar) match {
+      case None => TurnLoop.Budget.of(DefaultToolRounds)
+      case Some(raw) =>
+        raw.trim.toIntOption
+          .toRight(s"$ToolRoundsVar is not a whole number")
+          .flatMap(TurnLoop.Budget.of(_).left.map(why => s"$ToolRoundsVar: $why"))
     }
 
   /** Whether `GRIT_ASSEMBLER` asks for retrieval; unset is retrieval. */
