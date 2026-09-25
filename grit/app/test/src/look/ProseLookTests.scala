@@ -3,7 +3,7 @@ package grit.app.look
 import grit.tui.components.pane.Anchor
 import grit.tui.components.tree.{Node, PaneKey, Scroller}
 import grit.tui.model.block.Block
-import grit.tui.model.select.{Doc, DocPos}
+import grit.tui.model.select.{Doc, DocPos, Selection}
 import grit.tui.model.surface.{Size, Style, Surface}
 import grit.tui.model.text.StyledText
 import grit.tui.runtime.app.{App, Effect}
@@ -74,22 +74,22 @@ object ProseLookTests extends TestSuite {
       rows(s).take(21) ==> Vector(
         "▌ᚨ Here is the plan, with care and code.",
         "",
-        "Steps",
+        "   Steps",
         "",
-        "1. Read the docs (https://example.com/docs) first",
-        "2. Then write",
-        "   it out",
-        "   ◦ nested one",
-        "   ◦ nested two",
+        "   1. Read the docs (https://example.com/docs) first",
+        "   2. Then write",
+        "      it out",
+        "      ◦ nested one",
+        "      ◦ nested two",
         "",
-        "▎ A quote, with inline code.",
+        "   ▎ A quote, with inline code.",
         "",
-        " scala",
-        " def twice(x: Int): Int = x + x // long enough to be cut at",
+        "    scala",
+        "    def twice(x: Int): Int = x + x // long enough to be cut",
         "",
-        "────────────────────────────────────────────────────────────",
+        "   ─────────────────────────────────────────────────────────",
         "",
-        "Done.",
+        "   Done.",
         "",
         "",
         ""
@@ -126,10 +126,10 @@ object ProseLookTests extends TestSuite {
       )
       narrow.take(5) ==> Vector(
         "▌ᚨ a paragraph that",
-        "is long enough to",
-        "wrap",
+        "   is long enough to",
+        "   wrap",
         "",
-        " long code line that"
+        "    long code line t"
       )
     }
 
@@ -140,11 +140,41 @@ object ProseLookTests extends TestSuite {
       )
       rows(s).take(5) ==> Vector(
         "▌ᚨ",
-        " rune │ who",
-        " ─────┼─────────",
-        " ᚨ    │ grit",
-        " ᛗ    │ the user"
+        "    rune │ who",
+        "    ─────┼─────────",
+        "    ᚨ    │ grit",
+        "    ᛗ    │ the user"
       )
+    }
+
+    test(
+      "wrapped rows hang: the reply under its rune, items under their text, quotes on the rail"
+    ) {
+      val look = Look(Theme.Default)
+      val md = "a reply that wraps under its rune\n\n" +
+        "- an item long enough to wrap twice here\n\n" +
+        "> a quote long enough to wrap onto more rows"
+      val blocks = look.user("a message that wraps onto a second row") +: look.assistant(md)
+      rows(painted(blocks, Size(14, 24))).take(12) ==> Vector(
+        "▌ᛗ a message that wraps",
+        "▌  onto a second row",
+        "▌ᚨ a reply that wraps",
+        "   under its rune",
+        "",
+        "   • an item long enough",
+        "     to wrap twice here",
+        "",
+        "   ▎ a quote long enough",
+        "   ▎ to wrap onto more",
+        "   ▎ rows",
+        ""
+      )
+      // What stands beside the words is never in the text a selection copies.
+      val doc = Doc(blocks)
+      doc.textOf(Selection(DocPos.zero, doc.end)) ==>
+        "a message that wraps onto a second row\na reply that wraps under its rune\n\n" +
+        "• an item long enough to wrap twice here\n\n" +
+        "a quote long enough to wrap onto more rows"
     }
 
     test("an empty reply is grit's rune alone") {

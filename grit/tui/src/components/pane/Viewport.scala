@@ -3,7 +3,7 @@ package grit.tui.components.pane
 import grit.tui.model.block.Block
 import grit.tui.model.select.{DocPos, Selection}
 import grit.tui.model.surface.{Pos, Rect, Size, Style, Surface}
-import grit.tui.model.text.{Span, Width}
+import grit.tui.model.text.{Span, StyledText, Width}
 
 /** Where a pane is reading from.
   *
@@ -31,6 +31,10 @@ enum Anchor {
   * styles clipped and shifted into this row's own coordinates. Both are resolved when the
   * row is cut, because a span in document coordinates cannot be painted without knowing
   * which row it landed on.
+  *
+  * `margin` is what the block paints before this row -- its lead on its first row, its
+  * hang on the others. The text starts after it. It is not text: a position under it is
+  * the row's first, and a selection never covers it.
   */
 final case class ViewRow(
     entry: Int,
@@ -38,8 +42,13 @@ final case class ViewRow(
     text: String,
     rule: Option[Block.Separator] = None,
     ground: Style = Style.plain,
-    spans: Vector[Span] = Vector.empty
-)
+    spans: Vector[Span] = Vector.empty,
+    margin: StyledText = StyledText.empty
+) {
+
+  /** The column the row's text starts at. */
+  def indent: Int = Width.of(margin.text)
+}
 
 /** What a pane shows, at the size it was painted at.
   *
@@ -58,13 +67,14 @@ final case class Viewport(size: Size, rows: Vector[ViewRow]) {
     * document position, and answering one anyway is how a selection escapes a pane.
     * Inside the rect but past the last row is the end of the document, so a drag into
     * the empty space below a short transcript selects to the end rather than snapping
-    * back.
+    * back. A position in a row's margin is the row's first.
     */
   def docPosAt(pos: Pos): Option[DocPos] =
     if (pos.row < 0 || pos.row >= size.rows || pos.col < 0 || pos.col >= size.cols) { None }
     else if (pos.row < rows.length) {
       val r = rows(pos.row)
-      Some(DocPos(r.entry, r.start + Width.offsetAtColumn(r.text, pos.col)))
+      val col = math.max(0, pos.col - r.indent)
+      Some(DocPos(r.entry, r.start + Width.offsetAtColumn(r.text, col)))
     } else {
       rows.lastOption match {
         case Some(r) => Some(DocPos(r.entry, r.start + r.text.length))
@@ -78,32 +88,48 @@ final case class Viewport(size: Size, rows: Vector[ViewRow]) {
     * No wrapping and no measuring of anything not already measured: the rows arrived
     * wrapped, and this walks them once. The highlight is applied as a mask over painted
     * cells rather than as a style threaded through whoever produced the text -- which is
-    * why a pane needs to know nothing about selection to be selectable.
+    * why a pane needs to know nothing about selection to be selectable. It lies over the
+    * text alone, never a margin, since that is what a copy holds.
     */
   def render(selection: Option[Selection]): Surface = {
     val painted = rows.zipWithIndex.foldLeft(Surface.blank(size)) { case (s, (row, r)) =>
       val ground =
         if (row.ground == Style.plain) s
         else s.restyle(Rect(r, 0, 1, size.cols), row.ground.over)
-      val body =
-        row.rule match {
-          case Some(sep) => ground.write(r, 0, sep.drawn(size.cols), row.ground)
-          case None => ground.write(r, 0, row.text, row.ground)
-        }
-      paint(body, r, row)
+      val beside = paint(
+        ground.write(r, 0, row.margin.text, row.ground),
+        r,
+        0,
+        row.margin.text,
+        row.margin.spans
+      )
+      row.rule match {
+        case Some(sep) =>
+          beside.write(r, row.indent, sep.drawn(size.cols - row.indent), row.ground)
+        case None =>
+          paint(
+            beside.write(r, row.indent, row.text, row.ground),
+            r,
+            row.indent,
+            row.text,
+            row.spans
+          )
+      }
     }
     selection match {
       case None => painted
       case Some(sel) =>
         rows.zipWithIndex.foldLeft(painted) { case (s, (row, r)) =>
           val (from, to) = sel.columnsOn(row.entry, row.start, row.text)
-          if (to > from) { s.restyle(Rect(r, from, 1, to - from), _.copy(reverse = true)) }
-          else { s }
+          if (to > from) {
+            s.restyle(Rect(r, row.indent + from, 1, to - from), _.copy(reverse = true))
+          } else { s }
         }
     }
   }
 
-  /** Row `r`'s spans laid over what has already been painted there.
+  /** `spans` of `text`, which is painted from column `at` of row `r`, laid over what has
+    * already been painted there.
     *
     * A span is a mask, exactly as the selection below it is: `restyle` layers the span's
     * style over whatever the cell already carries, so a foreground named by a span keeps
@@ -112,14 +138,14 @@ final case class Viewport(size: Size, rows: Vector[ViewRow]) {
     * selection bounds go through, and the reason a span and the highlight over it cannot
     * disagree about where a wide glyph put them (rule 5).
     */
-  private def paint(s: Surface, r: Int, row: ViewRow): Surface = {
+  private def paint(s: Surface, r: Int, at: Int, text: String, spans: Vector[Span]): Surface = {
     var acc = s
     var i = 0
-    while (i < row.spans.length) {
-      val sp = row.spans(i)
-      val from = Width.columnAtOffset(row.text, sp.from)
-      val to = Width.columnAtOffset(row.text, sp.to)
-      if (to > from) { acc = acc.restyle(Rect(r, from, 1, to - from), sp.style.over) }
+    while (i < spans.length) {
+      val sp = spans(i)
+      val from = Width.columnAtOffset(text, sp.from)
+      val to = Width.columnAtOffset(text, sp.to)
+      if (to > from) { acc = acc.restyle(Rect(r, at + from, 1, to - from), sp.style.over) }
       i += 1
     }
     acc

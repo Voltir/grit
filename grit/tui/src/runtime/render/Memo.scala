@@ -5,7 +5,7 @@ import grit.tui.components.tree.PaneKey
 import grit.tui.model.block.{Block, Overflow}
 import grit.tui.model.select.{Doc, DocPos}
 import grit.tui.model.surface.Size
-import grit.tui.model.text.{Row, Span, Wrap}
+import grit.tui.model.text.{Row, Span, Width, Wrap}
 
 /** One document wrapped at one width, keyed by the **blocks themselves**.
   *
@@ -136,7 +136,8 @@ final case class DocMemo(
         row.text,
         rule,
         b.groundAt(row.startOffset),
-        Span.rebase(b.spans, row.startOffset, row.text.length)
+        Span.rebase(b.spans, row.startOffset, row.text.length),
+        if (r == starts(e)) b.lead else b.hang
       )
       r += 1
     }
@@ -148,10 +149,16 @@ object DocMemo {
 
   val empty: DocMemo = DocMemo(0, Vector.empty, Vector.empty, Vector(0), 0L, 0L)
 
-  /** One block's rows at `w`: wrapped, or cut per line for a block that does not wrap. */
-  def wrap(b: Block, w: Int): Vector[Row] = b.overflow match {
-    case Overflow.Truncate => Wrap.truncate(b.text, w)
-    case Overflow.Wrap => Wrap.wrap(b.text, w)
+  /** One block's rows at `w`: wrapped, or cut per line for a block that does not wrap, in
+    * the room its lead and hang leave.
+    */
+  def wrap(b: Block, w: Int): Vector[Row] = {
+    val first = w - Width.of(b.lead.text)
+    val rest = w - Width.of(b.hang.text)
+    b.overflow match {
+      case Overflow.Truncate => Wrap.truncate(b.text, first, rest)
+      case Overflow.Wrap => Wrap.wrap(b.text, first, rest)
+    }
   }
 }
 

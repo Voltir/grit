@@ -157,6 +157,43 @@ object TreeTests extends TestSuite {
       )
     }
 
+    test("a drag over hanging rows highlights and copies the text, never a lead or a hang") {
+      import grit.tui.model.text.StyledText
+      val rail = StyledText("▎ ")
+      val hung: Doc = Doc(Vector.tabulate(12) { i =>
+        Block
+          .Text(s"$i: words that wrap under a rail and a rune, well past the pane's width")
+          .beside(if (i % 2 == 0) StyledText("▌ᚨ ") else rail, rail)
+      })
+      val sim = new Sim(
+        S(
+          hung,
+          Scroller.State(anchor = Anchor.At(grit.tui.model.select.DocPos(2, 0))),
+          helpDoc,
+          Scroller.init,
+          false,
+          Vector.empty
+        ),
+        Size(20, 40)
+      )
+      // Pressed in the lead's columns: the row's first position.
+      sim.in(mouse(MouseKind.Press, 1, 1))
+      sim.in(mouse(MouseKind.Drag, 7, 20))
+      sim.in(mouse(MouseKind.Drag, 10, 1))
+      sim.paint()
+      val sel = sim.loop.state.sa.selection.getOrElse(Selection.empty)
+      val want = hung.textOf(sel)
+      val v = sim.vt
+      assert(want.startsWith("2: words"), highlighted(v) == want.replaceAll("\\s+", ""))
+      // No cell of a margin is ever reversed.
+      (1 until 11).foreach { r =>
+        assert(!v.cells(r)(0).style.reverse && !v.cells(r)(1).style.reverse)
+      }
+      sim.in(mouse(MouseKind.Release, 10, 1))
+      assert(sim.loop.state.copied == Vector(want))
+      assert(!want.contains("▎") && !want.contains("ᚨ"))
+    }
+
     test("rule 6: a drag begun in the modal stays in the modal's document and rect") {
       val sim =
         new Sim(S(prose, Scroller.init, helpDoc, Scroller.init, true, Vector.empty), Size(24, 60))

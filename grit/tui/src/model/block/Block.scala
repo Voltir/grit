@@ -30,9 +30,13 @@ enum ToolState {
   *
   * The rows a block contributes are its [[text]] joined by newlines, and a `DocPos`
   * offset indexes that string exactly as it indexed a plain entry -- which is why the
-  * whole selection model survives blocks without changing. A block that needs its
-  * continuation rows indented composes the indent into the text (a tool result under
-  * its `●` summary), so what is painted and what is selected never diverge.
+  * whole selection model survives blocks without changing.
+  *
+  * What stands beside the text -- a speaker's rune, a quote's rail, the indent a list
+  * item's wrapped rows hang at -- is the block's [[lead]] and [[hang]]: painted before
+  * its rows and never part of [[text]], so a selection neither covers nor copies them.
+  * Indent that *is* content, a tool result under its `●` summary, is composed into the
+  * text instead.
   *
   * A block is the unit `DocPos.entry` indexes, so a block that grows rows -- a tool call
   * expanding -- moves no sibling position and invalidates no sibling wrap-cache key.
@@ -73,6 +77,18 @@ sealed trait Block {
 
   /** The horizontal-overflow strategy for this block's lines. */
   def overflow: Overflow = Overflow.Wrap
+
+  /** Painted before this block's first row, in its own styles over the row's ground.
+    * Display only: the text wraps in what is left of the row, and a position under it
+    * is the row's first. Empty by default.
+    */
+  def lead: StyledText = StyledText.empty
+
+  /** Painted before every row but the first -- a wrapped continuation and a later
+    * logical line alike -- as [[lead]] is: a hanging indent, or a rail that runs down the
+    * block. Empty by default, so a block's continuation rows start at column 0.
+    */
+  def hang: StyledText = StyledText.empty
 }
 
 object Block {
@@ -88,14 +104,20 @@ object Block {
 
   /** Plain text. The streaming case: [[Text.append]] grows the trailing entry, so exactly
     * one entry's wrapped rows are re-paid. It wraps unless it says `Truncate`: a code
-    * listing, whose lines mean what they say only as they were written.
+    * listing, whose lines mean what they say only as they were written. Its `lead` and
+    * `hang` stand beside it ([[Block.lead]], [[Block.hang]]).
     */
   final case class Text(
       override val text: String,
       override val spans: Vector[Span] = Vector.empty,
       override val ground: Style = Style.plain,
-      override val overflow: Overflow = Overflow.Wrap
+      override val overflow: Overflow = Overflow.Wrap,
+      override val lead: StyledText = StyledText.empty,
+      override val hang: StyledText = StyledText.empty
   ) extends Block {
+
+    /** This block with `lead` before its first row and `hang` before every other. */
+    def beside(lead: StyledText, hang: StyledText): Text = copy(lead = lead, hang = hang)
 
     /** This block with `more` appended, unstyled. Existing spans keep their offsets --
       * appending never disturbs what came before it, which is what makes the streaming
@@ -112,12 +134,14 @@ object Block {
 
   /** The rule painted before every submitted prompt. Logically empty: it is a rule,
     * not content, so it copies as an empty line and is painted to the pane's width at
-    * projection time: `line` across, with `mark`, when there is one, centred on it.
+    * projection time, after its `lead`: `line` across, with `mark`, when there is one,
+    * centred on it.
     */
   final case class Separator(
       override val ground: Style = Style.plain,
       line: Char = '─',
-      mark: String = ""
+      mark: String = "",
+      override val lead: StyledText = StyledText.empty
   ) extends Block {
     override val text: String = ""
 

@@ -20,12 +20,17 @@ final case class Look(theme: Theme) {
   /** Under the whole screen, so no cell is left to the terminal's own colours. */
   def ground: Style = Style.bg(theme.ground) + Style.fg(theme.ink)
 
+  /** The user's message on the slab, after their rune, its rail running down every row
+    * the message takes. The rune and the rail stand beside the text: a copy is what was
+    * sent.
+    */
   def user(text: String): Block.Text =
     Block
-      .styled(
+      .styled(StyledText.styled(text, Style.fg(theme.ink) + Style.Bold))
+      .beside(
         StyledText.styled("▌", Style.fg(theme.user)) ++
-          StyledText.styled(s"${Runes.User} ", Style.fg(theme.user) + Style.Bold) ++
-          StyledText.styled(text, Style.fg(theme.ink) + Style.Bold)
+          StyledText.styled(s"${Runes.User} ", Style.fg(theme.user) + Style.Bold),
+        StyledText.styled("▌", Style.fg(theme.user)) ++ "  "
       )
       .copy(ground = Style.bg(theme.slab))
 
