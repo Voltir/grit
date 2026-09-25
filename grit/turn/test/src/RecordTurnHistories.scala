@@ -206,7 +206,8 @@ object RecordTurnHistories {
     def looping(
         said: Vector[String],
         provider: grit.core.provider.Provider^,
-        crash: Option[grit.core.store.Entry -> Boolean] = None
+        crash: Option[grit.core.store.Entry -> Boolean] = None,
+        answers: Vector[(String, grit.core.approval.Approval)] = Vector.empty
     ): History = {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -216,6 +217,10 @@ object RecordTurnHistories {
         durable.run(t.workflowId)(turnBody(store, new RecordingProvider, classifier = classifier))
       }
       val turn = say(store, said.lastOption.getOrElse("hello"))
+      answers.foreach { (call, approval) =>
+        val topic = grit.core.approval.Approval.topic(grit.core.id.ToolCallId(call))
+        durable.send(turn.workflowId, topic, grit.core.approval.Approval.encode(approval))
+      }
       val entries = crash.fold[grit.core.store.EntryStore](store)(new CrashOnInsert(store, _))
       val ws = new Files(Map("a.txt" -> "alpha", "b.txt" -> "beta", "c.txt" -> "gamma"))
       try
@@ -269,6 +274,14 @@ object RecordTurnHistories {
 
     Vector(
       "loop-three-rounds" -> looping(Vector("read them"), threeRounds),
+      "loop-approved" -> looping(
+        Vector("poke a"),
+        new TurnVerdictTests.Scripted((r, n) =>
+          if (n == 0) Right(calling("", ("t1", "poke", peeking("a.txt"))))
+          else new grit.models.StubProvider().complete(r.copy(tools = Vector.empty))
+        ),
+        answers = Vector("t1" -> grit.core.approval.Approval.Approved)
+      ),
       "loop-crashed-in-tool" -> looping(
         Vector("read them"),
         threeRounds,

@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
+import grit.core.approval.Approval
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Window}
 import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
@@ -36,7 +37,10 @@ import TurnVerdict.Shape
   *   1. `record-call:n`, `tool:n:j`, `call-model:n` — the tool loop ([[TurnLoop]]): a reply
   *      that called tools kept as an entry, each of its calls settled in its own step
   *      ([[TurnTools]]), and the model called again, until a reply calls no tool or the
-  *      budget's last call.
+  *      budget's last call. A call a person approves first is asked about in `ask:n:j`, an
+  *      entry an edge shows, then waits up to [[TurnTooling.answerWithin]] for the answer
+  *      [[grit.core.inbox.Inbox.answer]] sends ([[grit.core.durable.Durable.recv]]) before
+  *      its `tool:n:j`; unanswered, it is denied.
   *   1. `record-verdict` — when `topic` was offered: the verdict of the first reply.
   *   1. Turns that passed the loop's patch before it shipped ([[Patches.Tools]]) took
   *      `call-model-again` and `call-model-plain` instead, when `topic` was offered: the
@@ -103,20 +107,30 @@ object Turn {
     /** The family of `tool:n:j`, the tool loop's settling of call j of round n's reply. */
     val Tool = "tool"
 
+    /** The family of `ask:n:j`, the tool loop's asking a person about call j of round n's
+      * reply, a gated one, before it waits for their answer.
+      */
+    val Ask = "ask"
+
     /** The name of `round`'s record of its reply that called tools. */
     def recordCall(round: TurnLoop.Round): String = s"$RecordCall:${round.index}"
 
     /** The name of the step settling call `index` (from 0) of `round`'s reply. */
     def tool(round: TurnLoop.Round, index: Int): String = s"$Tool:${round.index}:$index"
 
-    /** The step `name` stands for among [[all]], [[RecordCall]] and [[Tool]]: its round and
-      * index dropped (`call-model:3` is [[CallModel]], `tool:1:0` is [[Tool]]). `None` for a
-      * name that is not the turn's, such as a patch's marker.
+    /** The name of the step asking about call `index` (from 0) of `round`'s reply. */
+    def ask(round: TurnLoop.Round, index: Int): String = s"$Ask:${round.index}:$index"
+
+    /** The step `name` stands for among [[all]], [[RecordCall]], [[Ask]] and [[Tool]]: its
+      * round and index dropped (`call-model:3` is [[CallModel]], `tool:1:0` is [[Tool]]).
+      * `None` for a name that is not the turn's, such as a patch's marker or DBOS's record of
+      * a wait.
       */
     def family(name: String): Option[String] =
       Loop.of(name) match {
         case Some(Loop.Call(_)) => Some(CallModel)
         case Some(Loop.Record(_)) => Some(RecordCall)
+        case Some(Loop.Ask(_, _)) => Some(Ask)
         case Some(Loop.Tool(_, _)) => Some(Tool)
         case None => Option.when(all.contains(name))(name)
       }
@@ -126,17 +140,20 @@ object Turn {
   private enum Loop {
     case Call(round: Int)
     case Record(round: Int)
+    case Ask(round: Int, index: Int)
     case Tool(round: Int, index: Int)
   }
 
   private object Loop {
     private val CallName = """call-model:(\d+)""".r
     private val RecordName = """record-call:(\d+)""".r
+    private val AskName = """ask:(\d+):(\d+)""".r
     private val ToolName = """tool:(\d+):(\d+)""".r
 
     def of(name: String): Option[Loop] = name match {
       case CallName(n) => n.toIntOption.map(Call(_))
       case RecordName(n) => n.toIntOption.map(Record(_))
+      case AskName(n, j) => n.toIntOption.zip(j.toIntOption).map(Ask(_, _))
       case ToolName(n, j) => n.toIntOption.zip(j.toIntOption).map(Tool(_, _))
       case _ => None
     }
@@ -169,8 +186,9 @@ object Turn {
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
     * is recorded when it completes). After a loop's `record-call:n`, its first tool,
-    * `tool:n:0`; after `tool:n:j`, the next model call, `call-model:n+1`, which takes far
-    * longer than any further tool. Otherwise the next step after the last recorded that
+    * `tool:n:0`; after `ask:n:j`, `tool:n:j`, which waits for a person's answer first; after
+    * `tool:n:j`, the next model call, `call-model:n+1`, which takes far longer than any
+    * further tool. Otherwise the next step after the last recorded that
     * every turn takes ([[Step.optional]] ones only once recorded), `call-model:n` counting as
     * `call-model`. Names that are not the turn's steps are skipped; once the last step is
     * recorded the turn is finishing, and that step is named.
@@ -179,6 +197,7 @@ object Turn {
     val own = recorded.filter(Step.family(_).nonEmpty)
     own.lastOption.flatMap(Loop.of) match {
       case Some(Loop.Record(n)) => s"${Step.Tool}:$n:0"
+      case Some(Loop.Ask(n, j)) => s"${Step.Tool}:$n:$j"
       case Some(Loop.Tool(n, _)) => s"${Step.CallModel}:${n + 1}"
       case _ =>
         val done =
@@ -388,8 +407,15 @@ object Turn {
               case Right(free: Bound.Free) =>
                 d.step(slot.step) { () => settling.run(slot, call, free, clock.now()) }
               case Right(gated: Bound.Gated) =>
-                val refused = TurnTools.notOffered(gated.tool)
-                d.step(slot.step) { () => settling.answer(slot, call, refused, clock.now()) }
+                val (entries, shown) = (env.records.entries, gated.ask)
+                d.transact(slot.askStep)(TurnTools.ask(entries, slot, call, shown, clock.now()))
+                  .flatMap { _ =>
+                    val received = d.recv(Approval.topic(call), tooling.answerWithin)
+                    val approval = TurnTools.approval(received)
+                    d.step(slot.step) { () =>
+                      settling.decide(slot, call, gated, approval, clock.now())
+                    }
+                  }
             }
             settled.map(_ => ())
           }

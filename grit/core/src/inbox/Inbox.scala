@@ -1,11 +1,12 @@
 package grit.core.inbox
 
-import grit.core.id.{SourceId, TurnRef}
+import grit.core.approval.Approval
+import grit.core.id.{SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.store.Origin
 
-/** How an edge hands the engine work (ADR 0002). Both operations are idempotent, so an
-  * edge that is unsure whether one happened repeats it.
+/** How an edge hands the engine work (ADR 0002). Every operation is idempotent, so an edge
+  * that is unsure whether one happened repeats it.
   */
 trait Inbox extends caps.SharedCapability {
 
@@ -19,11 +20,22 @@ trait Inbox extends caps.SharedCapability {
     * oldest first; this returns once the turn is queued, not when it has run.
     */
   def startTurn(turn: TurnRef): Either[InboxError, Unit]
+
+  /** Answers the gated call `call` of the turn whose workflow is `workflow`, which asked
+    * with a [[grit.core.store.Payload.Ask]] entry; the call runs only when `approval` is
+    * [[Approval.Approved]]. Only the first answer to a call counts: any later one is
+    * ignored, as is one sent after the turn stopped waiting. [[InboxError.NoSuchTurn]] when
+    * no turn has that workflow.
+    */
+  def answer(workflow: WorkflowId, call: ToolCallId, approval: Approval): Either[InboxError, Unit]
 }
 
-/** A failure an edge is expected to handle; retrying the same call is always safe. */
+/** A failure an edge is expected to handle. */
 enum InboxError {
 
-  /** The database rejected or could not complete the operation. */
+  /** The database rejected or could not complete the operation; retrying it is safe. */
   case Unavailable(cause: String)
+
+  /** No turn has the workflow `workflow`. */
+  case NoSuchTurn(workflow: WorkflowId)
 }

@@ -84,12 +84,14 @@ object PayloadJsonTests extends TestSuite {
         """{"event":"placed","turn":2,"weights":[["t1",0.5]],"elsewhere":0.5,"by":{"kind":"first"}}]}"""
     }
 
-    test("exchange and attempt") {
+    test("exchange, attempt and ask") {
       PayloadJson.write(Payload.Exchange(samples(3))).render() ==>
         """{"kind":"exchange","message":{"role":"tool_result","callId":"c1",""" +
         """"content":"no matches","isError":true}}"""
       PayloadJson.write(Payload.Attempt(ToolCallId("c1"))).render() ==>
         """{"kind":"attempt","call":"c1"}"""
+      PayloadJson.write(Payload.Ask(ToolCallId("c1"), "Run ls")).render() ==>
+        """{"kind":"ask","call":"c1","shown":"Run ls"}"""
     }
 
     test("every sample round-trips, through text too") {
@@ -140,7 +142,8 @@ object PayloadJsonTests extends TestSuite {
       (samples.map(Payload.Message(_)) ++ samples.map(Payload.Exchange(_)) :+ Payload.Summary(
         "s"
       ) :+
-        Payload.Query("q") :+ window :+ topic :+ Payload.Attempt(ToolCallId("c1")))
+        Payload.Query("q") :+ window :+ topic :+ Payload.Attempt(ToolCallId("c1")) :+
+        Payload.Ask(ToolCallId("c1"), "Edit a.txt"))
         .foreach { p =>
           PayloadJson.read(ujson.read(PayloadJson.write(p).render())) ==> Right(p)
         }

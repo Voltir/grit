@@ -19,18 +19,20 @@ In dependency order:
   `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
   `ConversationStore`, `UsageLedger`, `StoreError`. ← `id`, `message`, `topic`
-- **`durable`** — `Durable` and `Journaled`: steps that survive a crash. ← `id`, `store`
+- **`durable`** — `Durable` and `Journaled`: steps that survive a crash, and waits for a
+  message (`recv`). ← `id`, `store`
+- **`approval`** — `Approval`, a person's answer to a gated tool call, and the message
+  that carries it to the turn waiting on its topic. ← `id`
 - **`context`**, **`provider`**, **`inbox`**, **`classify`** — the seams the engine plugs
-  into: `ContextAssembler` (and the `Window` it builds), `Provider`, `Inbox`, and
-  `Classifier` (closed questions about a state, answered with a probability per option;
-  Jev's shape). Each names only the packages above, never another of the four.
+  into: `ContextAssembler` (and the `Window` it builds), `Provider`, `Inbox` (which also
+  answers a turn's gated call), and `Classifier` (closed questions about a state, answered
+  with a probability per option; Jev's shape). Each names only the packages above, never
+  another of the four.
 - **`host`** — what a tool may do to the machine, as capabilities: `Workspace` (read, list,
   search), `Edits` (write, edit) and `Shell` (run), implemented in `grit.host`; and the pure
   rules they share: `RelPath` (a path that stays inside the checkout and names no secrets
   file), `Clipped` (output cut to what the model is shown), `Replace.onto` (an edit's
   matching), and their errors. Imports nothing in core.
-- **`approval`** — `Approval`, a person's answer to a gated tool call. Imports nothing in
-  core.
 - **`tool`** — tools as typed data: `Field`, `Args` (read into a named tuple), `ArgsError`,
   `ToolName` and `ToolSpec`, from which come the schema the model is shown (a
   `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, and what a

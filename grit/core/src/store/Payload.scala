@@ -46,4 +46,11 @@ enum Payload {
     * record that a crash may have cut it short. Never shown to the model, never searched.
     */
   case Attempt(call: ToolCallId)
+
+  /** A tool call that asks a person first, waiting for their answer: `shown` is what they
+    * are asked to approve. Answered through [[grit.core.inbox.Inbox.answer]]; the call's
+    * result follows once they answer or the wait runs out. Never shown to the model, never
+    * searched.
+    */
+  case Ask(call: ToolCallId, shown: String)
 }

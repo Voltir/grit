@@ -2,11 +2,13 @@ package grit.turn
 
 import java.time.Instant
 
+import scala.concurrent.duration.*
+
 import grit.core.approval.Approval
 import grit.core.id.{EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.store.{Entry, EntryStore, Jot, Payload, StoreError, Tx}
-import grit.core.tool.{Bound, Outcome, ToolName, Toolbox}
+import grit.core.tool.{Bound, Outcome, Toolbox}
 
 import TurnLoop.{Pending, Round}
 
@@ -37,6 +39,12 @@ object TurnTools {
     /** The id of the entry recording that the call, a gated one, began. */
     def attemptId: EntryId = EntryId(s"attempt:$key")
 
+    /** The `ask:n:j` step that asks a person about the call, a gated one. */
+    def askStep: String = Turn.Step.ask(round, index)
+
+    /** The id of the entry asking a person about the call, a gated one. */
+    def askId: EntryId = EntryId(s"ask:$key")
+
     private def key: String = s"${WorkflowId.value(turn.workflowId)}:${round.index}:$index"
   }
 
@@ -44,12 +52,51 @@ object TurnTools {
   def callId(turn: TurnRef, round: Round): EntryId =
     EntryId(s"call:${WorkflowId.value(turn.workflowId)}:${round.index}")
 
-  /** What a gated call is answered when no approval can be asked for in this turn. */
-  def notOffered(tool: ToolName): Outcome =
-    Outcome.Failed(
-      s"`${ToolName.value(tool)}` needs a person's approval, which this turn cannot ask for; " +
-        "it was not run."
-    )
+  /** How long a gated call waits for a person's answer before it is denied as unanswered: a
+    * day, so a local turn left overnight is still waiting in the morning.
+    */
+  val AnswerWithin: FiniteDuration = 24.hours
+
+  /** The approval `received` holds, as [[grit.core.durable.Durable.recv]] returned it for a gated call: none is
+    * [[Approval.TimedOut]]; a message that does not decode is [[Approval.Declined]], saying
+    * why, so the call does not run.
+    */
+  def approval(received: Option[String]): Approval =
+    received match {
+      case None => Approval.TimedOut
+      case Some(message) =>
+        Approval
+          .decode(message)
+          .fold(
+            why =>
+              Approval.Declined(Some(s"The answer could not be read ($why), so it did not run.")),
+            identity
+          )
+    }
+
+  /** The `ask:n:j` step: an [[Payload.Ask]] entry at [[Slot.askId]], dated `at`, after
+    * everything in the conversation, asking a person about `call`, the gated call at `slot`,
+    * by showing them `shown`.
+    */
+  def ask(entries: EntryStore, slot: Slot, call: ToolCallId, shown: String, at: Instant)(using
+      Tx^
+  ): Either[TurnFailure, EntryId] = {
+    val turn = slot.turn
+    (for {
+      next <- entries.lockNext(turn.conversationId)
+      _ <- entries.insert(
+        Entry(
+          slot.askId,
+          turn.conversationId,
+          turn.turnSeq,
+          None,
+          next.seq,
+          Payload.Ask(call, shown),
+          at
+        )
+      )
+    } yield slot.askId).left.map(storeFailure)
+  }
 
   /** `pending` read against `tools`, ready to run; or the outcome it is answered with,
     * unrun: a refused call's, or the [[grit.core.tool.CallError]] of one that does not bind.

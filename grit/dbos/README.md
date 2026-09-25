@@ -10,7 +10,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   body under the fixed class name `grit.workflow`, so moving it strands no workflow row),
   `Turns` (how a turn is known to DBOS: its workflow name and queue). Imports nothing else in dbos.
 - **`engine`** — both, composed: `Engine` (what `grit.app` opens), `TurnStatus`, and
-  `SqlInbox`, which records a message and enqueues its turn in one transaction. ← `sql`,
+  `SqlInbox`, which records a message and enqueues its turn in one transaction, and sends
+  a turn the answer to its gated call (`DBOSClient.send`). ← `sql`,
   `workflow`
 
 `sql` and `workflow` are siblings and never name each other. No source file sits at the

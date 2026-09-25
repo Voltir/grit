@@ -25,14 +25,14 @@ object TurnToolsTests extends TestSuite {
     Pending.Run(AssistantBlock.ToolCall(ToolCallId("c"), name, ujson.Obj("path" -> "a.txt")))
 
   /** `pending` settled as the turn settles it, at the first call of the first round: a gated
-    * call decided by `approval`, or answered [[TurnTools.notOffered]] without one.
+    * call decided by `approval`.
     */
   private def settle(
       entries: EntryStore,
       ws: Files^,
       turn: TurnRef,
       pending: Pending,
-      approval: Option[Approval] = None
+      approval: Approval = Approval.TimedOut
   ): Either[TurnFailure, TurnTools.Settled] = {
     val slot = TurnTools.Slot(turn, Round.First, 0)
     val id = pending.call.id
@@ -41,10 +41,7 @@ object TurnToolsTests extends TestSuite {
       case Left(outcome) => settling.answer(slot, id, outcome, Instant.EPOCH)
       case Right(free: Bound.Free) => settling.run(slot, id, free, Instant.EPOCH)
       case Right(gated: Bound.Gated) =>
-        approval match {
-          case Some(a) => settling.decide(slot, id, gated, a, Instant.EPOCH)
-          case None => settling.answer(slot, id, TurnTools.notOffered(gated.tool), Instant.EPOCH)
-        }
+        settling.decide(slot, id, gated, approval, Instant.EPOCH)
     }
   }
 
@@ -70,7 +67,7 @@ object TurnToolsTests extends TestSuite {
       val turn = say(entries, "go")
       val first = settle(entries, ws, turn, call("peek"))
       settle(entries, ws, turn, call("peek")) ==> first
-      settle(entries, ws, turn, call("poke"), Some(Approval.Approved)) ==> first
+      settle(entries, ws, turn, call("poke"), Approval.Approved) ==> first
       ws.reads ==> 1
     }
 
@@ -89,7 +86,7 @@ object TurnToolsTests extends TestSuite {
       val entries = new CrashOnInsert(store, isResult)
       val ws = new Files(files)
       val turn = say(store, "go")
-      val approved = Some(Approval.Approved)
+      val approved = Approval.Approved
       assertThrows[InMemoryDurable.Crash](settle(entries, ws, turn, call("poke"), approved))
       ws.reads ==> 1
       kept(store, TurnTools.Slot(turn, Round.First, 0).attemptId) ==>
@@ -100,12 +97,11 @@ object TurnToolsTests extends TestSuite {
         Some(Payload.Exchange(Outcome.Interrupted.result(ToolCallId("c"))))
     }
 
-    test("a gated call declined, timed out or not asked for does not run") {
+    test("a gated call declined or timed out does not run") {
       val ws = new Files(files)
       val answers = Vector(
-        Some(Approval.Declined(Some("not now"))) -> Outcome.Denied(Some("not now")),
-        Some(Approval.TimedOut) -> Outcome.Denied(Some(grit.core.tool.Bound.Unanswered)),
-        None -> TurnTools.notOffered(grit.core.tool.ToolName("poke"))
+        Approval.Declined(Some("not now")) -> Outcome.Denied(Some("not now")),
+        Approval.TimedOut -> Outcome.Denied(Some(grit.core.tool.Bound.Unanswered))
       )
       answers.foreach { (approval, expected) =>
         val entries = new InMemoryEntryStore
@@ -116,6 +112,16 @@ object TurnToolsTests extends TestSuite {
         kept(entries, TurnTools.Slot(turn, Round.First, 0).attemptId) ==> None
       }
       ws.reads ==> 0
+    }
+
+    test("an answer is its approval; none is timed out; one unreadable declines, saying why") {
+      TurnTools.approval(Some(Approval.encode(Approval.Approved))) ==> Approval.Approved
+      TurnTools.approval(Some(Approval.encode(Approval.Declined(Some("no"))))) ==>
+        Approval.Declined(Some("no"))
+      TurnTools.approval(None) ==> Approval.TimedOut
+      TurnTools.approval(Some("yes please")) ==> Approval.Declined(
+        Some("The answer could not be read (not a JSON object), so it did not run.")
+      )
     }
 
     test("a refused call is answered with its outcome, and nothing runs") {

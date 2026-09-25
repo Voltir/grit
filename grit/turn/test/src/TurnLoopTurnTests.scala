@@ -1,15 +1,19 @@
 package grit.turn
 
 import grit.assembly.estimate.CharEstimate
+import grit.core.approval.Approval
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, ProviderError, ToolUse}
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
+import grit.core.tool.Outcome
 import grit.core.topic.{Placement, Verdict}
+import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
 import utest.*
+import TurnLoop.Round
 import TurnVerdictTests.Scripted
 
 /** The tool loop inside the durable turn ([[Turn.Patches.Tools]]), over core's in-memory
@@ -186,18 +190,61 @@ object TurnLoopTurnTests extends TestSuite {
       provider.requests.size ==> 2
     }
 
-    test("a gated tool is not offered in this turn: answered so, and not run") {
+    test("a gated call nobody answers in time is denied, and not run") {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)
       val provider = new Scripted((_, n) =>
         Right(if (n == 0) calling("", ("t1", "poke", "a.txt")) else calling("could not"))
       )
       val turn = say(entries, "poke a")
-      looped(new InMemoryDurable, entries, entries, turn, provider, ws)
+      val durable = new InMemoryDurable
+      looped(durable, entries, entries, turn, provider, ws)
       ws.reads ==> 0
       exchange(entries, turn).collect { case r: Message.ToolResult => r } ==> Vector(
-        TurnTools.notOffered(grit.core.tool.ToolName("poke")).result(ToolCallId("t1"))
+        Outcome.Denied(Some(grit.core.tool.Bound.Unanswered)).result(ToolCallId("t1"))
       )
+      durable.recordedSteps(turn.workflowId).filter(_.contains(":0:0")) ==>
+        Vector("ask:0:0", "tool:0:0")
+    }
+
+    test("a gated call is asked about, and runs once approved") {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      val provider = new Scripted((_, n) =>
+        Right(if (n == 0) calling("", ("t1", "poke", "a.txt")) else calling("poked"))
+      )
+      val turn = say(entries, "poke a")
+      val durable = new InMemoryDurable
+      durable.send(
+        turn.workflowId,
+        Approval.topic(ToolCallId("t1")),
+        Approval.encode(Approval.Approved)
+      )
+      looped(durable, entries, entries, turn, provider, ws) ==>
+        "replied: reply:c1:0; summarised: summary:c1:0"
+      ws.reads ==> 1
+      val slot = TurnTools.Slot(turn, Round.First, 0)
+      entries.get(slot.askId)(using TestTx.fake).toOption.flatten.map(_.payload) ==>
+        Some(Payload.Ask(ToolCallId("t1"), "poke a.txt"))
+      durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-call:0").take(5) ==>
+        Vector("record-call:0", "ask:0:0", "DBOS.recv", "DBOS.sleep", "tool:0:0")
+    }
+
+    test("a gated call declined is denied with the reason, and the model reads it") {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      val provider = new Scripted((_, n) =>
+        Right(if (n == 0) calling("", ("t1", "poke", "a.txt")) else calling("understood"))
+      )
+      val turn = say(entries, "poke a")
+      val durable = new InMemoryDurable
+      val no = Approval.Declined(Some("not that file"))
+      durable.send(turn.workflowId, Approval.topic(ToolCallId("t1")), Approval.encode(no))
+      looped(durable, entries, entries, turn, provider, ws)
+      ws.reads ==> 0
+      val denied = Outcome.Denied(Some("not that file")).result(ToolCallId("t1"))
+      exchange(entries, turn).collect { case r: Message.ToolResult => r } ==> Vector(denied)
+      provider.requests.lastOption.flatMap(_.messages.lastOption) ==> Some(denied)
     }
 
     test("an unknown tool and unreadable arguments are results the model reads") {

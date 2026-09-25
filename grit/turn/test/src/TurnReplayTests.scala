@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.durable.{History, InMemoryDurable}
-import grit.core.store.InMemoryEntryStore
+import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger}
 
 import utest.*
 
@@ -35,8 +35,19 @@ object TurnReplayTests extends TestSuite {
           if (history.epoch != Turn.Epoch) Left(s"recorded under epoch ${history.epoch}")
           else {
             val entries = new InMemoryEntryStore
+            // The tools the recorder offered: a gated call asks before its step, so the
+            // steps a history holds depend on which tools its calls bind to.
             new InMemoryDurable().replay(history.id, history.steps)(
-              turnBody(entries, new RecordingProvider)
+              tooledBody(
+                entries,
+                new RecordingProvider,
+                new InMemoryUsageLedger,
+                new grit.models.StubProvider(),
+                NoClassifier,
+                NoCheckout,
+                tools(NoCheckout),
+                5
+              )
             )
           }
         }

@@ -212,7 +212,7 @@ object Look {
     /** A turn step's rune and what it does, by the step's name ([[Step]]): Othala,
       * the inheritance, while memory is assembled; Ansuz while the model answers; Jera,
       * the harvest, while what came back is recorded; Laguz, the flow, while the turn is
-      * summarised; Tiwaz while a tool runs. A tool loop's step is known by its family
+      * summarised; Tiwaz while a tool runs, or asks you first. A tool loop's step is known by its family
       * (`call-model:2` answers). A name grit does not know shows as itself.
       */
     def step(name: String): String = Step.family(name).getOrElse(name) match {
@@ -223,6 +223,7 @@ object Look {
           Step.Append | Step.AppendSummary =>
         "ᛃ recording"
       case Step.Tool => s"$Tool using a tool"
+      case Step.Ask => s"$Tool asking you"
       case Step.Summarise => "ᛚ summarising"
       case other => s"$Idle $other"
     }

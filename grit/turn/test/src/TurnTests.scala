@@ -71,6 +71,9 @@ object TurnTests extends TestSuite {
       val loop = Vector("record-window", "DBOS.patch-tools", "call-model")
       Turn.running(loop :+ "record-call:0") ==> "tool:0:0"
       Turn.running(loop ++ Vector("record-call:0", "tool:0:0")) ==> "call-model:1"
+      // Waiting for a person: DBOS records the wait's end as it begins, which is no step.
+      Turn.running(loop ++ Vector("record-call:0", "ask:0:0", "DBOS.sleep")) ==> "tool:0:0"
+      Turn.Step.family("ask:0:1") ==> Some("ask")
       Turn.running(loop ++ Vector("record-call:0", "tool:0:1", "call-model:1")) ==> "append"
       Turn.running(loop ++ Vector("record-call:0", "tool:0:0", "call-model:1", "append")) ==>
         "summarise"
