@@ -42,7 +42,8 @@ In dependency order:
   each turn's summary, faint, under its reply (off by default: the transcript is the
   conversation, and a summary lands after its reply, so the rows below would move). ← `look`
 - **`main`** — `Main`: reads the settings, opens the engine and launches the turn
-  (OpenRouter with a key, the stub without), then runs the chat TUI, or with arguments
-  answers each as a message. ← `config`, `look`, `chat`
+  (OpenRouter with a key, the stub without; Jev placing messages among topics with
+  `JEV_API_KEY`, the stub classifier with `GRIT_STUB_TOPICS=1`, none otherwise), then runs
+  the chat TUI, or with arguments answers each as a message. ← `config`, `look`, `chat`
 
 No source file sits at the module's root, and the test tree mirrors it.

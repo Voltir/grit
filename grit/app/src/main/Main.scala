@@ -6,6 +6,7 @@ import grit.app.look.Theme
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
+import grit.core.classify.Classifier
 import grit.core.context.ContextAssembler
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
@@ -13,10 +14,18 @@ import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.Origin
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
-import grit.models.{ModelRole, OpenRouterConfig, OpenRouterProvider, StubProvider}
+import grit.models.{
+  JevClassifier,
+  JevConfig,
+  ModelRole,
+  OpenRouterConfig,
+  OpenRouterProvider,
+  StubClassifier,
+  StubProvider
+}
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
-import grit.turn.Turn
+import grit.turn.{Turn, TurnVerdict}
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set (per [[ModelRole]], see
@@ -26,7 +35,10 @@ import grit.turn.Turn
   * `GRIT_ASSEMBLER`: `retrieval` (the default), the recent turns that fit in
   * `GRIT_TAIL_TOKENS` (default [[RetrievalAssembler.DefaultTail]]) plus the earlier turns a
   * written query finds ([[RetrievalAssembler]]); or `linear`, the recent turns that fit. Every variable
-  * may come from a `.env` file instead ([[DotEnv]]). The TUI starts in the theme
+  * may come from a `.env` file instead ([[DotEnv]]). Each message is placed among the
+  * conversation's topics by Jev when `JEV_API_KEY` is set ([[JevConfig]]); without it, by
+  * the stub classifier when `GRIT_STUB_TOPICS=1` (for the gate), and otherwise by none,
+  * which leaves each message in the topic it is in. The TUI starts in the theme
   * `GRIT_THEME` names, or else the one last chosen with `/theme` ([[Prefs]]).
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
@@ -41,7 +53,7 @@ object Main {
   /** The argument runs share one conversation, apart from any TUI session. */
   private val RunOrigin: Origin = Origin.Task("m0", "main")
 
-  private val SystemPrompt = "You are grit."
+  private val SystemPrompt = s"You are grit.\n\n${TurnVerdict.SystemSection}"
 
   def main(args: Array[String]): Unit = {
     val tui = args.isEmpty
@@ -78,6 +90,7 @@ object Main {
       )
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
     val stubDelay = exitOnLeft(millis(env, StubDelayVar))
+    val topics = exitOnLeft(classifierChoice(env))
     val provider = announced(tui, "turn", openRouter, stubDelay)
     val summarizer = announced(tui, "summary", summaryConfig)
     val writer = announced(tui, "query", queryConfig)
@@ -95,7 +108,7 @@ object Main {
           engine.ledger,
           assembler,
           CharEstimate,
-          grit.core.classify.Classifier.none("no classifier"),
+          classifier(topics),
           provider,
           summarizer,
           engine.db
@@ -229,6 +242,32 @@ object Main {
           .map(Tokens(_))
           .toRight(s"$variable is not a non-negative whole number")
     }
+
+  private val StubTopicsVar = "GRIT_STUB_TOPICS"
+
+  /** Which classifier places each message among its conversation's topics. */
+  private[main] enum ClassifierChoice {
+    case Jev(config: JevConfig)
+    case Stub
+
+    /** None, for `reason`: every message after a conversation's first stays where it is. */
+    case Off(reason: String)
+  }
+
+  /** Jev when `JEV_API_KEY` is set (an empty one is an error, named, never shown); else the
+    * stub when `GRIT_STUB_TOPICS` is `1`; else none.
+    */
+  private[main] def classifierChoice(env: Map[String, String]): Either[String, ClassifierChoice] =
+    if (env.contains(JevConfig.KeyVar))
+      JevConfig.fromEnv(env).map(ClassifierChoice.Jev(_)).left.map(_.message)
+    else if (env.get(StubTopicsVar).map(_.trim).contains("1")) Right(ClassifierChoice.Stub)
+    else Right(ClassifierChoice.Off(s"${JevConfig.KeyVar} is not set"))
+
+  private def classifier(choice: ClassifierChoice): Classifier^ = choice match {
+    case ClassifierChoice.Jev(config) => new JevClassifier(config)
+    case ClassifierChoice.Stub => new StubClassifier
+    case ClassifierChoice.Off(reason) => Classifier.none(reason)
+  }
 
   private val ThemeVar = "GRIT_THEME"
 
