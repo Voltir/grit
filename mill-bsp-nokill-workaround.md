@@ -3,6 +3,14 @@
 *Written 2026-09-02 after a full morning of debugging. Read this before touching
 anything in `.bsp/` or the Metals extension settings.*
 
+> **Mill ≥ 1.2 (grit is on 1.3.0-M1 since 2026-09-25):** no BSP lock, no kill-other, and
+> `--bspNoKillOther` no longer exists. The wrapper applies only to Mill 1.0/1.1 and passes
+> newer versions through untouched. grit also sets `//| mill-separate-bsp-output-dir: true`
+> in `build.mill`: without it BSP shares the CLI's daemon, its launcher ignores stdin EOF,
+> and a Metals cancel restarts the daemon under every CLI run (an upstream bug:
+> `DaemonRpc.defaultPollStdin` reads only when `available() > 0`). With it, each connection
+> is its own JVM that exits within seconds of Metals closing stdin or cancelling it.
+
 ## Symptom
 
 VS Code (Scala/Metals) crash-loops when opening a Mill project: the build server

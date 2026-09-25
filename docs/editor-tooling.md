@@ -46,8 +46,12 @@ rm -rf .bsp/out/mill-no-daemon/*
 
 `.bloop/` is a leftover from the pre-Mill-BSP setup and is not used.
 
+**grit is on Mill 1.3, which has no BSP lock and no kill-other**, so neither failure below
+can happen here; the wrapper passes Mill ≥ 1.2 through untouched (1.2+ rejects
+`--bspNoKillOther`). The rest of this section is for projects still on Mill 1.0/1.1.
+
 **If the build server crash-loops (SIGTERM/SIGKILL cycles in `.metals/metals.log`)**, it is the
-Mill 1.x BSP kill-other behavior dueling with Metals reconnects — not a build error. A
+Mill 1.0/1.1 BSP kill-other behavior dueling with Metals reconnects — not a build error. A
 global wrapper (`~/.local/bin/mill-bsp-wrapper`, activated via `MILL_EXECUTABLE_PATH` in
 `~/.profile`) injects `--bspNoKillOther` to defuse it, and supervises each BSP server so it
 is killed when its client closes stdin or cancels it: Mill 1.1.x never exits on its own
