@@ -79,8 +79,10 @@ final case class Look(theme: Theme) {
 
   def separator: Block.Separator = Block.Separator(Style.fg(theme.rail), '━', Runes.Turn)
 
-  /** The top bar: grit's name in runes on the accent, then `title`. */
-  def header(title: String): View = Look.Header(title, theme)
+  /** The top bar: grit's name in runes on the accent, then `title`, then `session`,
+    * faint, when there is one.
+    */
+  def header(title: String, session: String = ""): View = Look.Header(title, theme, session)
 
   def status: Style = Style.fg(theme.statusFg) + Style.bg(theme.statusBg) + Style.Bold
 
@@ -220,18 +222,22 @@ object Look {
       Ward.indices.toVector.map(i => Ward(math.floorMod(i + tick, Ward.length).toInt))
   }
 
-  /** The top bar: the name on the accent, fading into the title on the slab. */
-  final case class Header(title: String, theme: Theme) extends View {
+  /** The top bar: the name on the accent, fading into the title on the slab, and the
+    * session after it, faint.
+    */
+  final case class Header(title: String, theme: Theme, session: String = "") extends View {
 
     def measure(avail: Size): Size = Size(math.min(1, avail.rows), avail.cols)
 
     def render(size: Size): Surface =
       if (size.rows < 1) Surface.blank(size)
       else {
+        val quiet = Style.fg(theme.faint) + Style.bg(theme.slab)
         val parts = Vector(
           s" ${Runes.Name} " -> (Style.fg(theme.headerFg) + Style.bg(theme.headerBg) + Style.Bold),
           "▓▒░" -> (Style.fg(theme.headerBg) + Style.bg(theme.slab)),
           s" $title " -> (Style.fg(theme.ink) + Style.bg(theme.slab) + Style.Bold),
+          (if (session.isEmpty) "" else s"· $session ") -> quiet,
           "▓▒░" -> (Style.fg(theme.slab) + Style.bg(theme.ground))
         )
         parts

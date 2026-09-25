@@ -127,7 +127,11 @@ object Main {
           Some(java.nio.file.Path.of(log))
         )
         // Closing the host stops following and closes the engine, however far it got.
-        try Runtime.run(new ChatScreen.App(modelName, startTheme, budget), keeping(host, prefsFile))
+        try
+          Runtime.run(
+            new ChatScreen.App(modelName, startTheme, budget, session),
+            keeping(host, prefsFile)
+          )
         finally host.close()
         None
       } else {

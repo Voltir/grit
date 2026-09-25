@@ -73,6 +73,20 @@ object ChatScreenTests extends TestSuite {
       }
     }
 
+    test("the header names the model, and the session beside it, faint") {
+      val h = Headless.start(
+        new ChatScreen.App("test-model", Theme.Default, Tokens(16000), "tuning"),
+        size
+      )
+      val top = h.screen(0)
+      assert(top.contains(" test-model · tuning "))
+      val at = h.painted._1.surface.at(0, top.indexOf("tuning")).style
+      at.fg ==> Some(Theme.Default.faint)
+      at.bg ==> Some(Theme.Default.slab)
+      h.painted._1.surface.at(0, top.indexOf("test-model")).style.fg ==> Some(Theme.Default.ink)
+      assert(!started.screen(0).contains("·"))
+    }
+
     test("the screen paints at once: it asks for the conversation and wards while opening") {
       started.effects ==> Vector(
         Effect.Batch(

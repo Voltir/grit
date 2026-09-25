@@ -247,11 +247,11 @@ object ChatScreen {
     "click the thinking line" -> "open the running turn"
   )
 
-  /** The screen, titled `title` (the model it talks to), first in `theme`; `budget` is
-    * what the assembler may spend on earlier turns, which the panel measures windows
-    * against.
+  /** The screen, titled `title` (the model it talks to) beside the `session` it is in,
+    * first in `theme`; `budget` is what the assembler may spend on earlier turns, which
+    * the panel measures windows against.
     */
-  final class App(title: String, theme: Theme, budget: Tokens)
+  final class App(title: String, theme: Theme, budget: Tokens, session: String = "")
       extends grit.tui.runtime.app.App[State, Msg] {
 
     def init: (State, Effect[Msg]) =
@@ -617,7 +617,7 @@ object ChatScreen {
       val panel = TurnPanel(look, budget)
       val prompt = Node.editor(s.editor).onEdit(Msg.Edited(_))
       val screen = column(
-        fixed(1) -> paint(look.header(s.title)),
+        fixed(1) -> paint(look.header(s.title, session)),
         flex(5) -> body(s, look, panel),
         fit(3, 0.5) -> palette(s, look).fold(prompt)(p => prompt.floating(p, paletteRoute)),
         fixed(1) -> paint(
