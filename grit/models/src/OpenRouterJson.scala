@@ -9,11 +9,18 @@ import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
   */
 object OpenRouterJson {
 
-  /** The request body for `request` on `model`. A request with tools names them in
-    * `tools`, with `tool_choice` `auto` or `none` (OpenRouter's tool-calling guide: every
-    * request of a tool exchange sends the tools again); one without has neither key.
+  /** The request body for `request` on `model`, served as `routing` says. A request with
+    * tools names them in `tools`, with `tool_choice` `auto` or `none` (OpenRouter's
+    * tool-calling guide: every request of a tool exchange sends the tools again); one
+    * without has neither key. Each tool is sent `strict` as its [[ToolSchema]] says,
+    * whatever `routing` is.
     */
-  def request(model: String, maxTokens: Int, request: ModelRequest): ujson.Value = {
+  def request(
+      model: String,
+      maxTokens: Int,
+      routing: Routing,
+      request: ModelRequest
+  ): ujson.Value = {
     val body = ujson.Obj(
       "model" -> model,
       "max_tokens" -> maxTokens,
@@ -23,6 +30,14 @@ object OpenRouterJson {
         )
       )
     )
+    routing match {
+      case Routing.Open => ()
+      case Routing.Pinned(first, rest, _) =>
+        body("provider") = ujson.Obj(
+          "order" -> ujson.Arr.from((first +: rest).map(Upstream.value)),
+          "allow_fallbacks" -> false
+        )
+    }
     if (request.tools.nonEmpty) {
       body("tools") = ujson.Arr.from(request.tools.map(tool))
       body("tool_choice") = request.use match {

@@ -37,7 +37,7 @@ object ReasoningBillingProbe {
         request: ModelRequest,
         host: Option[String]
     ): Either[String, (String, Message.Assistant)] = {
-      val body = OpenRouterJson.request(config.model, config.maxTokens, request)
+      val body = OpenRouterJson.request(config.model, config.maxTokens, config.routing, request)
       host.foreach(h =>
         body("provider") = ujson.Obj("order" -> ujson.Arr(h), "allow_fallbacks" -> false)
       )
