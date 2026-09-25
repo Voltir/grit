@@ -2,7 +2,7 @@ package grit.app.chat
 
 import grit.app.look.Theme
 import grit.core.id.TurnSeq
-import grit.core.message.Tokens
+import grit.core.message.{Cost, Tokens}
 import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
 import grit.tui.model.surface.{Pos, Size}
 import grit.tui.runtime.app.Effect
@@ -143,7 +143,7 @@ object ChatScreenTests extends TestSuite {
         Some(
           TurnView.Window(Tokens(12), Tokens(3200), Tokens(1700), Tokens(40), Vector(TurnSeq(0)))
         ),
-        Some(BigDecimal("0.00031")),
+        Some(Cost.AtLeast(BigDecimal("0.00031"))),
         Some(Tokens(5000))
       )
       def at(cols: Int) =
@@ -161,7 +161,7 @@ object ChatScreenTests extends TestSuite {
         shown.contains("query    ward engine"),
         shown.contains("recalled turn 1"),
         shown.contains("4.9k of 16k budget"),
-        shown.contains("billed   5k in · $0.00031")
+        shown.contains("billed   5k in · ≥ $0.00031")
       )
       assert(at(110).screen.exists(r => r.contains("████") && r.contains("░")))
       assert(!at(99).screen.mkString.contains("TURN 3"))
@@ -190,10 +190,17 @@ object ChatScreenTests extends TestSuite {
         messages = 4,
         input = Tokens(12300),
         output = Tokens(900),
-        spent = Some(BigDecimal("0.0042")),
+        spent = Some(Cost.Exact(BigDecimal("0.0042"))),
         recalls = 1,
         recalled = Vector(TurnSeq(0)),
-        roles = Vector(SessionView.Role("turn", Vector("vendor/big-model"), 2, None))
+        roles = Vector(
+          SessionView.Role(
+            "turn",
+            Vector("vendor/big-model"),
+            2,
+            Some(Cost.AtLeast(BigDecimal("0.001")))
+          )
+        )
       )
       val shown = keyed.message(Msg.Session(view)).screen.mkString("\n")
       assert(
@@ -203,7 +210,7 @@ object ChatScreenTests extends TestSuite {
         shown.contains("spent    $0.0042"),
         shown.contains("recalled turn 1"),
         shown.contains("by 1 of 2 turns"),
-        shown.contains("turn     2 calls"),
+        shown.contains("turn     2 calls · ≥ $0.001"),
         shown.contains("vendor/big-model")
       )
       // The lit pill moved with it.

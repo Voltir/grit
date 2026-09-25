@@ -2,7 +2,7 @@ package grit.app.chat
 
 import grit.app.look.{Look, ProseLook, Theme}
 import grit.core.id.TurnSeq
-import grit.core.message.Tokens
+import grit.core.message.{Cost, Tokens}
 import grit.core.topic.{Band, Verdict}
 import grit.tui.model.block.Block
 import grit.tui.model.surface.Style
@@ -315,8 +315,14 @@ object TurnPanel {
   /** `ms` as seconds to a tenth, whatever the locale: `3.2s`. */
   def seconds(ms: Long): String = s"${ms / 1000}.${ms % 1000 / 100}s"
 
-  /** A cost in dollars, as the provider gave it: `$0.00031`. */
-  def dollars(usd: BigDecimal): String = s"$$${usd.bigDecimal.stripTrailingZeros.toPlainString}"
+  /** A cost in dollars: `$0.00031`, or `≥ $0.00031` for a lower bound. */
+  def dollars(cost: Cost): String = cost match {
+    case Cost.Exact(usd) => plain(usd)
+    case Cost.AtLeast(usd) => s"≥ ${plain(usd)}"
+  }
+
+  private def plain(usd: BigDecimal): String =
+    s"$$${usd.bigDecimal.stripTrailingZeros.toPlainString}"
 
   /** A probability to two places, whatever the locale: `0.81`, `1.00`. */
   def share(p: Double): String = {

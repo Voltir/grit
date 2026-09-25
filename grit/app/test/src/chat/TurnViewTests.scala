@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, Payload, UsageLedger}
 import grit.dbos.engine.RecordedStep
 
@@ -91,7 +91,11 @@ object TurnViewTests extends TestSuite {
         TurnView.Step("call-model", Some(3100))
       )
       v.query ==> Some("first question")
-      v.spent ==> Some(BigDecimal("0.0003"))
+      v.spent ==> Some(Cost.Exact(BigDecimal("0.0003")))
+      val unpriced =
+        costs.map(r => r.copy(usage = r.usage.copy(costUsd = None))).take(1) ++ costs.drop(1)
+      TurnView.of(turn2, entries, steps, running = false, unpriced, "s", CharEstimate).spent ==>
+        Some(Cost.AtLeast(BigDecimal("0.0002")))
       v.billed ==> Some(Tokens(99))
       val w = v.window.getOrElse(sys.error("no window"))
       w.recalledTurns ==> Vector(TurnSeq(0))

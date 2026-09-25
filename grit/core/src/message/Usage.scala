@@ -23,9 +23,7 @@ final case class Usage(
 
 object Usage {
 
-  /** What no call consumed: nothing, at a known cost of nothing. */
   val Zero: Usage = Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0)))
 
-  /** What all of `usages` consumed together, by [[Usage.+]]. */
   def total(usages: Iterable[Usage]): Usage = usages.foldLeft(Zero)(_ + _)
 }

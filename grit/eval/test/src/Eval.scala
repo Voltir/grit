@@ -7,7 +7,7 @@ import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.context.{AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{Entry, Origin, Payload}
 import grit.dbos.engine.Engine
@@ -169,8 +169,7 @@ object Eval {
       )
 
     /** What the calls made so far cost, as their providers reported it. */
-    def spent: Option[BigDecimal] =
-      Usage.total(answered.values.collect { case Right(m) => m.usage }).costUsd
+    def spent: Cost = Cost.total(answered.values.collect { case Right(m) => m.usage })
   }
 
   /** Answers nothing: the query writer when the eval runs without `--live`. */
@@ -263,8 +262,11 @@ object Eval {
       }
       totals(results)
       live.foreach { c =>
-        println(s"Query model ${c.model}: ${writer.spent
-            .fold("unknown")(s => "$" + s.bigDecimal.toPlainString)} in all")
+        val spent = writer.spent match {
+          case Cost.Exact(usd) => s"$$${usd.bigDecimal.toPlainString}"
+          case Cost.AtLeast(usd) => s"at least $$${usd.bigDecimal.toPlainString}"
+        }
+        println(s"Query model ${c.model}: $spent in all")
       }
     } finally engine.close()
   }

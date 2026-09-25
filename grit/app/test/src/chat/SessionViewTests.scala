@@ -3,7 +3,7 @@ package grit.app.chat
 import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, TurnSeq}
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, Payload, UsageLedger}
 
 import utest.*
@@ -78,12 +78,12 @@ object SessionViewTests extends TestSuite {
       v.messages ==> 5
     }
 
-    test("what it was billed and cost: every row, the cost unknown if any row's is") {
+    test("what it was billed and cost: every row, at least the priced ones if any is not") {
       val v = SessionView.of(entries, costs)
       v.input ==> Tokens(460)
       v.output ==> Tokens(65)
-      // Row 7 is unpriced, so the total is not the priced rows' sum.
-      v.spent ==> None
+      // Row 7 is unpriced, so the priced rows' sum is a lower bound.
+      v.spent ==> Some(Cost.AtLeast(BigDecimal("0.00325")))
       SessionView
         .of(
           entries,
@@ -94,7 +94,8 @@ object SessionViewTests extends TestSuite {
           )
         )
         .spent ==>
-        Some(BigDecimal("0.00335"))
+        Some(Cost.Exact(BigDecimal("0.00335")))
+      SessionView.of(Vector.empty, Vector.empty).spent ==> None
     }
 
     test("what search recalled: which earlier turns, and in how many windows") {
@@ -117,9 +118,11 @@ object SessionViewTests extends TestSuite {
 
     test("each role that called a model, with its models, calls and cost, in turn order") {
       SessionView.of(entries, costs).roles ==> Vector(
-        SessionView.Role(SessionView.Turn, Vector("big"), 2, Some(BigDecimal("0.003"))),
-        SessionView.Role(SessionView.Query, Vector("writer"), 1, Some(BigDecimal("0.00005"))),
-        SessionView.Role(SessionView.Summary, Vector("small"), 2, None)
+        SessionView.Role(SessionView.Turn, Vector("big"), 2, Some(Cost.Exact(BigDecimal("0.003")))),
+        SessionView
+          .Role(SessionView.Query, Vector("writer"), 1, Some(Cost.Exact(BigDecimal("0.00005")))),
+        SessionView
+          .Role(SessionView.Summary, Vector("small"), 2, Some(Cost.AtLeast(BigDecimal("0.0001"))))
       )
       // A role no model answered is not listed.
       SessionView.of(entries, costs.filter(_.model != "writer")).roles.map(_.name) ==>
