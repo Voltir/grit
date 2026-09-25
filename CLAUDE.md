@@ -73,14 +73,25 @@ capability is a promise of purity.**
 9. Explicit capability parameters over clever inference.
 10. **The elision test** — if assembly dropped the body and kept only the signature and
     its doc, could a competent agent still call it correctly? If not, fix the signature.
-    Scaladoc says *what*, never *how*.
+    Scaladoc says *what*, never *how*. An invariant a doc states is a missing type; a doc
+    never restates what the type or visibility says; it does state every failure a caller
+    can see and every constant that changes behaviour.
+11. **Escape hatches carry their proof.** Every `caps.unsafe` use states beside it why the
+    untracked effect cannot be observed.
 
 ## Build and format
 
 ```bash
-./mill __.test
+./mill grit.core.test                                   # the module you touched
+./mill grit.core.test.testOnly grit.core.topic.TopicsTests   # one suite
+./mill __.test                                          # everything: once, last, before committing
 ./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources   # before committing
 ```
+
+**Test incrementally.** While iterating, compile and test only the module or suite the
+change touches (or Metals' `compile-module`/`test`, below). The full suite is the last
+gate at a commit point, run once, not after every edit: it compiles every module and
+starts Postgres.
 
 Braces, never significant indentation — `-no-indent` makes it a compile error.
 
@@ -135,6 +146,23 @@ adopted until it has been watched failing on a planted breach. The known traps a
 commented in `enola-intent.yaml`. New rules are a planned session:
 `.local/backlog/enola-law.md`.
 
+## Metals
+
+Metals' MCP server (`grit-metals` in `.mcp.json`; port from `.metals/mcp.json`) is for:
+
+- **who uses X** — `get-usages`, compiler-exact where grep and enola's symbol facts are not;
+- **what exactly X's type is** — `typed-glob-search`, `inspect`, `get-docs`;
+- **compiling or testing one module mid-edit** — `compile-module`, `test`; it builds into
+  `.bsp/out`, so it never blocks a CLI `./mill`.
+
+Not for understanding a package's behaviour: read the files. Measured 2026-09-25, file
+reads answered edge-case questions perfectly at a third fewer tokens and an eighth of the
+calls; Metals hands context out one symbol at a time. Quirk: `inspect` ignores `module` —
+**always pass `fileInFocus`** (a source file in the symbol's module); for a generic class it
+lists only the companion, so use `get-docs`. Details:
+`.local/backlog/metals-mcp-inspect-bug.md`; BSP set-up and failure modes:
+[`docs/editor-tooling.md`](docs/editor-tooling.md).
+
 ## Working agreements
 
 - **Verify against the source, not the summary.** Three claims in this project's original
@@ -149,7 +177,10 @@ commented in `enola-intent.yaml`. New rules are a planned session:
 - **Plan before implementing.** A roadmap item, or any change to a seam, a library API
   or behaviour a person sees, starts with a short plan and waits for Nick's go. The plan
   says what changes, the alternatives turned down, how it will be verified (including the
-  real-use run below), and what is parked. Mechanical edits, doc corrections and small
+  real-use run below), and what is parked. It has an **Elision section**: every new or
+  changed public signature with its Scaladoc as it will be written, whether a caller could
+  use it from those alone (rule 10), and what that check changed in the design. On
+  2026-09-25 this one question produced most of a refactor's design improvements. Mechanical edits, doc corrections and small
   fixes inside an agreed plan need none.
 - **Package layout is designed, not accreted.** A new module, library or package starts
   with its layout in the plan: each package one idea, named for it; no source file at a

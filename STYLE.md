@@ -170,6 +170,30 @@ contract survives.
   * Empty if the session has no entries. */
 ```
 
+What a doc must and must not say, so the test can pass (measured 2026-09-25: readers given
+only signatures and docs were misled by exactly one false doc line, and missed only what
+the docs left out — `.local/backlog/elision-experiment-2026-09-25/`):
+
+- **An invariant stated in a doc is a missing type.** "Non-negative", "sums to 1", "empty
+  unless…", "most recent first": make it a type, a private constructor, or an ADT shaped
+  by case, so no value can break it. Keep the doc line only for what a type cannot say
+  (arithmetic, ordering, units), and then it states a guarantee, not a hope.
+- **Never restate what the name, type or visibility already says.** `/** The band it fell
+  in. */` on `def band: Band`, or "only `fold` makes one" beside a private constructor, is
+  noise a reader pays for.
+- **State every failure a caller can observe, and every constant that changes behaviour.**
+  "`Unreadable` when its choice is no option's key"; "clamped to [0, 1], NaN as 0". Silence
+  about a failure mode is how a doc misleads without lying.
+- **A doc must be true of every value that can exist.** If a type can hold values the doc
+  rules out, fix the type or weaken the doc to what is true — never leave the claim.
+
+## 11. Escape hatches carry their proof
+
+`caps.unsafe` (`untrackedCaptures`, `unsafeAssumePure`) tells the checker to stop
+tracking something. Each use states, beside it, why the untracked effect cannot be
+observed — the proof obligation the compiler was told to skip. This is the one kind of
+comment a type can never replace.
+
 ---
 
 ## Why rule 10 is a feature, not an aspiration
@@ -180,3 +204,10 @@ retrieval strategy is only correct if the signatures are trustworthy.
 
 In other words: grit is a context harness, so grit's own source should be the most
 elidable code in the repository. We dogfood the thesis.
+
+It is also the standard grit will hold agent code to. tacit
+(`.local/papers/securing-agents-with-tracked-capabilities.md`) requires of a safe harness
+**capability safety** (capabilities cannot be forged or forgotten — rule 11),
+**capability completeness** (every effect goes through a capability — rule 2) and **local
+purity** (a type can say a computation is pure — rule 1, `->`). grit's own code meets the
+bar its code mode will set.
