@@ -32,7 +32,9 @@ In dependency order:
   `Replies` reads replies back out of the store. `Commands` is the one table of slash
   commands: what the palette (`/` in an empty prompt, or ctrl-p) lists, what `/help`
   describes, and what a submitted `/` draft runs; such a draft never reaches the model.
-  The theme is screen state, so `/theme` repaints everything live. ← `look`
+  The theme is screen state, so `/theme` repaints everything live. `/summaries` shows
+  each turn's summary, faint, under its reply (off by default: the transcript is the
+  conversation, and a summary lands after its reply, so the rows below would move). ← `look`
 - **`main`** — `Main`: reads the settings, opens the engine and launches the turn
   (OpenRouter with a key, the stub without), then runs the chat TUI, or with arguments
   answers each as a message. ← `config`, `look`, `chat`

@@ -13,13 +13,14 @@ object Commands {
   enum Command(val name: String, val about: String) {
     case SetTheme extends Command("/theme", "switch the colour theme")
     case Panel extends Command("/panel", "show or hide the turn panel")
+    case Summaries extends Command("/summaries", "show or hide turn summaries")
     case Help extends Command("/help", "commands and keys")
     case Quit extends Command("/quit", "leave grit")
 
     /** The arguments this command offers as a second list; empty when it takes none. */
     def choices: Vector[String] = this match {
       case SetTheme => Theme.all.map(_.key)
-      case Panel | Help | Quit => Vector.empty
+      case Panel | Summaries | Help | Quit => Vector.empty
     }
 
     /** What the command does with `argument` (empty for none): the screen's message, or
@@ -30,6 +31,7 @@ object Commands {
         if (argument.isEmpty) Left(s"$name takes one of ${choices.mkString(", ")}")
         else Theme.named(argument).map(Msg.SetTheme(_)).toRight(s"no theme $argument")
       case Panel => bare(Msg.TogglePanel, argument)
+      case Summaries => bare(Msg.ToggleSummaries, argument)
       case Help => bare(Msg.OpenHelp, argument)
       case Quit => bare(Msg.Quit, argument)
     }
@@ -87,7 +89,8 @@ object Commands {
   /** A command's row in the palette: its name, then what it does. */
   private def row(c: Command): String = s"${c.name.padTo(NameCols, ' ')}${c.about}"
 
-  private val NameCols = 8
+  /** The width of the names' column: the longest name and two spaces. */
+  private val NameCols = all.map(_.name.length).maxOption.getOrElse(0) + 2
 
   private def split(line: String): (String, String) = {
     val (name, rest) = line.trim.span(_ != ' ')

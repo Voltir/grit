@@ -358,15 +358,16 @@ object ChatScreenTests extends TestSuite {
       listed.state.palette ==> Some(0)
       val shown = listed.screen.mkString("\n")
       assert(
-        shown.contains("/theme  switch the colour theme"),
+        shown.contains("/theme      switch the colour theme"),
         shown.contains("/panel"),
+        shown.contains("/summaries  show or hide turn summaries"),
         shown.contains("/help"),
         shown.contains("/quit")
       )
       // The list, too, is painted in the theme's colours, every cell of it.
       assert(listed.painted._1.surface.cells.count(_.style.bg.isEmpty) == 0)
       val narrowed = typed(listed, "th").screen.mkString("\n")
-      assert(narrowed.contains("/theme  switch"), !narrowed.contains("/panel"))
+      assert(narrowed.contains("/theme      switch"), !narrowed.contains("/panel"))
       // A slash typed after other text is text, not a command.
       typed(ready, "a/").state.palette ==> None
     }
@@ -395,7 +396,7 @@ object ChatScreenTests extends TestSuite {
     test("ctrl-p over a draft puts it aside, and Escape gives it back") {
       val opened = typed(ready, "half a thought").input(Input.Keyboard(Key.Ctrl('p')))
       opened.state.editor.text ==> "/"
-      assert(opened.screen.mkString.contains("/theme  switch"))
+      assert(opened.screen.mkString.contains("/theme      switch"))
       opened.input(Input.Keyboard(Key.Escape)).state.editor.text ==> "half a thought"
       val ran = typed(opened, "panel").input(Input.Keyboard(Key.Enter))
       ran.state.panel ==> false
@@ -458,6 +459,59 @@ object ChatScreenTests extends TestSuite {
       val closed = open.input(Input.Keyboard(Key.Escape))
       closed.state.modal ==> None
       assert(!closed.screen.mkString.contains("click the thinking line"))
+    }
+
+    test("/summaries shows each turn's summary under its reply, faint; again hides them") {
+      val talked = ready.message(
+        Msg.Arrived(
+          Vector(
+            Said(true, "one", TurnSeq(0)),
+            Said(false, "first reply", TurnSeq(0)),
+            Said(true, "two", TurnSeq(1))
+          ),
+          Some("call-model")
+        )
+      )
+      // Turn 0's summary is written after turn 1 has begun: it belongs under turn 0's reply.
+      val summarised = talked.message(
+        Msg.Arrived(
+          Vector(),
+          Some("call-model"),
+          Vector(ChatScreen.Summarised(TurnSeq(0), "the user said\n one"))
+        )
+      )
+      def rows(h: Headless[ChatScreen.State, Msg]) =
+        h.screen
+          .drop(1)
+          .map(_.dropRight(1).trim)
+          .filter(r => r.nonEmpty && !r.startsWith("━"))
+          .take(4)
+      // Off by default: the summary is kept, not shown.
+      assert(!summarised.screen.mkString.contains("the user said"))
+      val shown = typed(summarised, "/summaries").input(Input.Keyboard(Key.Enter))
+      assert(!sends(shown), shown.screen.last.contains("summaries shown"))
+      rows(shown) ==> Vector("▌ᛗ one", "▌ᚨ first reply", "ᛚ the user said one", "▌ᛗ two")
+      val at = shown.screen.indexWhere(_.contains("ᛚ the user said"))
+      val col = shown.screen.lift(at).map(_.indexOf("the user")).getOrElse(0)
+      shown.painted._1.surface.at(at, col).style.fg ==> Some(Theme.Default.faint)
+      // A click on it is a click on its turn.
+      click(shown, "the user said").state.pinned ==> Some(TurnSeq(0))
+      // It survives a change of theme, and a summary arriving while shown is placed too.
+      val themed = typed(shown, "/theme abyss").input(Input.Keyboard(Key.Enter))
+      assert(themed.screen.mkString.contains("ᛚ the user said one"))
+      val later = themed.message(
+        Msg.Arrived(
+          Vector(Said(false, "second reply", TurnSeq(1))),
+          None,
+          Vector(ChatScreen.Summarised(TurnSeq(1), "then two"))
+        )
+      )
+      assert(
+        later.screen.indexWhere(_.contains("ᛚ then two")) ==
+          later.screen.indexWhere(_.contains("second reply")) + 1
+      )
+      val hidden = typed(later, "/summaries").input(Input.Keyboard(Key.Enter))
+      assert(!hidden.screen.mkString.contains("ᛚ"), hidden.screen.last.contains("summaries hidden"))
     }
 
     test("a failure is painted before the thinking line, which stays") {

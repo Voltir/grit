@@ -20,7 +20,8 @@ object Follow {
   /** One look at the conversation: what the screen should be told, given every entry in
     * it now and where a turn's workflow is. New entries are shown once, in order. A turn
     * is in progress while its user message has no reply and its workflow is running, and
-    * the screen is told each step it moves to ([[Turn.running]]). One
+    * the screen is told each step it moves to ([[Turn.running]]), and each summary as it
+    * is written. One
     * that finished with no reply failed, and is reported once, with its outcome.
     */
   def step(
@@ -30,6 +31,9 @@ object Follow {
   ): (Follow, Vector[ChatScreen.Msg]) = {
     val fresh = entries.filter(_.seq > state.lastSeq)
     val said = fresh.flatMap(said1)
+    val summaries = fresh.collect { case Entry(_, _, t, _, _, Payload.Summary(text), _) =>
+      ChatScreen.Summarised(t, text)
+    }
     val replied = entries.collect { case e if isReply(e) => e.turnSeq }.toSet
     val open = entries
       .filter(isUser)
@@ -48,7 +52,9 @@ object Follow {
       state.reported ++ failure.map(_._1)
     )
     val arrived =
-      Option.when(said.nonEmpty || step != state.step)(ChatScreen.Msg.Arrived(said, step))
+      Option.when(said.nonEmpty || summaries.nonEmpty || step != state.step)(
+        ChatScreen.Msg.Arrived(said, step, summaries)
+      )
     (next, arrived.toVector ++ failure.map(f => ChatScreen.Msg.Failed(f._2)))
   }
 

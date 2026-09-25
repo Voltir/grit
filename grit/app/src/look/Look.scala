@@ -147,6 +147,15 @@ final case class Look(theme: Theme) {
       StyledText.styled(s" ${key.padTo(Look.KeyCols, ' ')} ", Style.fg(theme.grit) + Style.Bold) ++
         StyledText.styled(what, Style.fg(theme.ink))
     )
+
+  /** A turn's summary, under its reply: faint, after Laguz (the summarising rune) set
+    * under grit's; its whitespace, line breaks included, run together.
+    */
+  def summary(text: String): Block.Text =
+    Block.styled(
+      StyledText.styled(" ᛚ ", Style.fg(theme.faint) + Style.Bold) ++
+        StyledText.styled(text.trim.split("\\s+").mkString(" "), Style.fg(theme.faint))
+    )
 }
 
 object Look {

@@ -35,9 +35,15 @@ object ChatScreen {
   /** One message of the conversation, the user's or a reply, and the turn it belongs to. */
   final case class Said(user: Boolean, text: String, turn: TurnSeq = TurnSeq(0))
 
-  /** One entry of the transcript, before it is styled: something said, or a failure. */
+  /** The summary of `turn`, written after its reply. */
+  final case class Summarised(turn: TurnSeq, text: String)
+
+  /** One entry of the transcript, before it is styled: something said, a turn's summary,
+    * or a failure.
+    */
   enum Entry extends caps.Pure {
     case Spoken(said: Said)
+    case Summary(summary: Summarised)
     case Failure(reason: String)
   }
 
@@ -65,7 +71,8 @@ object ChatScreen {
     * times the step. `owners` is the turn each block of `said` belongs to, if any. Beside
     * it, while `panel` is on and the screen is wide enough, the turn panel shows its `tab`:
     * `turn`, the latest or the one `pinned` by a click, or the `session` so far. A `modal` dialog opens over the screen,
-    * scrolled by `modalReader`. While `palette` is open, the command list floats over the
+    * scrolled by `modalReader`. Each turn's summary is shown under its reply while
+    * `summaries` is on. While `palette` is open, the command list floats over the
     * prompt with that row selected; a draft put `aside` to open it comes back when it
     * closes.
     */
@@ -92,7 +99,8 @@ object ChatScreen {
       aside: Option[String] = None,
       hearing: Option[Hearing] = None,
       tab: Tab = Tab.Turn,
-      session: Option[SessionView] = None
+      session: Option[SessionView] = None,
+      summaries: Boolean = false
   ) {
 
     /** The running turn's reply as heard so far, while it has any text. */
@@ -132,6 +140,9 @@ object ChatScreen {
     /** `/theme`: every colour from `theme` from now on. */
     case SetTheme(theme: Theme)
 
+    /** `/summaries`: each turn's summary shown under its reply, or hidden. */
+    case ToggleSummaries
+
     /** `/help`: the commands and keys, in a dialog. */
     case OpenHelp
 
@@ -141,10 +152,14 @@ object ChatScreen {
     /** For the host: record `text` as the user's message and start its turn. */
     case Send(text: String)
 
-    /** From the host: messages new to the conversation, oldest first, and the step of the
-      * turn in progress (`None` when none is).
+    /** From the host: messages new to the conversation, oldest first, the step of the
+      * turn in progress (`None` when none is), and the turns' summaries new to it.
       */
-    case Arrived(said: Vector[Said], step: Option[String])
+    case Arrived(
+        said: Vector[Said],
+        step: Option[String],
+        summaries: Vector[Summarised] = Vector.empty
+    )
 
     /** From the host: sending failed, a turn ended with no reply, or the engine would not
       * open.
@@ -254,13 +269,13 @@ object ChatScreen {
                 Effect.Batch(Vector(Effect.ToHost(Msg.Send(draft)), Effect.ToHost(Msg.Show(None))))
             )
         case Msg.Send(_) | Msg.Load | Msg.Show(_) => (s, Effect.NoOp)
-        case Msg.Arrived(said, step) =>
+        case Msg.Arrived(said, step, summaries) =>
           val since = if (step == s.step) s.stepSince else s.tick
           // A recorded reply takes the place of what was heard of it.
           val heard = s.hearing.filterNot(h => said.exists(r => !r.user && r.turn == h.turn))
           animate(
             s,
-            recorded(s, said.map(Entry.Spoken(_)))
+            recorded(s, said.map(Entry.Spoken(_)) ++ summaries.map(Entry.Summary(_)))
               .copy(step = step, stepSince = since, status = "", hearing = heard)
           )
         case Msg.Heard(h) => (s.copy(hearing = Some(h)), Effect.NoOp)
@@ -302,11 +317,16 @@ object ChatScreen {
         case Msg.SetTheme(theme) =>
           val look = Look(theme)
           (
-            s.copy(
-              theme = theme,
-              said = s.entries.flatMap(styled(look, _)).map(_(0)),
-              editor = look.styled(s.editor),
-              status = s"theme ${theme.key}"
+            relaid(
+              s.copy(theme = theme, editor = look.styled(s.editor), status = s"theme ${theme.key}")
+            ),
+            Effect.NoOp
+          )
+        case Msg.ToggleSummaries =>
+          val on = !s.summaries
+          (
+            relaid(
+              s.copy(summaries = on, status = if (on) "summaries shown" else "summaries hidden")
             ),
             Effect.NoOp
           )
@@ -369,20 +389,55 @@ object ChatScreen {
 
     /** `entries` added to the transcript, styled in the state's theme. */
     private def recorded(s: State, entries: Vector[Entry]): State = {
-      val blocks = entries.flatMap(styled(Look(s.theme), _))
-      s.copy(
-        said = s.said ++ blocks.map(_(0)),
-        entries = s.entries ++ entries,
-        owners = s.owners ++ blocks.map(_(1))
-      )
+      val look = Look(s.theme)
+      val (said, owners) =
+        entries.foldLeft((s.said, s.owners))((at, e) => placed(at, e, look, s.summaries))
+      s.copy(said = said, entries = s.entries ++ entries, owners = owners)
     }
 
-    /** An entry's blocks in `look`, each with the turn it belongs to. */
+    /** The whole transcript laid out again from its entries: in a new theme, or with the
+      * summaries shown or hidden.
+      */
+    private def relaid(s: State): State =
+      recorded(
+        s.copy(said = Vector.empty, entries = Vector.empty, owners = Vector.empty),
+        s.entries
+      )
+
+    /** The transcript's blocks and their turns `at`, with `entry`'s placed in `look`: after
+      * the rest, or a summary (when `summaries` shows them) after the last block of its
+      * turn, which it may arrive after another turn has begun.
+      */
+    private def placed(
+        at: (Vector[Block], Vector[Option[TurnSeq]]),
+        entry: Entry,
+        look: Look,
+        summaries: Boolean
+    ): (Vector[Block], Vector[Option[TurnSeq]]) = {
+      val (blocks, owners) = at
+      entry match {
+        case Entry.Summary(Summarised(t, text)) =>
+          if (!summaries) at
+          else {
+            val after = owners.lastIndexOf(Some(t)) + 1
+            val to = if (after == 0) blocks.length else after
+            (blocks.patch(to, Vector(look.summary(text)), 0), owners.patch(to, Vector(Some(t)), 0))
+          }
+        case other =>
+          val more = styled(look, other)
+          (blocks ++ more.map(_(0)), owners ++ more.map(_(1)))
+      }
+    }
+
+    /** An entry's blocks in `look`, each with the turn it belongs to; none for a summary,
+      * which [[placed]] places.
+      */
     private def styled(look: Look, entry: Entry): Vector[(Block, Option[TurnSeq])] =
       entry match {
         case Entry.Spoken(Said(true, text, t)) =>
           Vector(look.separator -> Some(t), look.user(text) -> Some(t))
         case Entry.Spoken(Said(false, text, t)) => look.assistant(text).map(_ -> Some(t))
+        case Entry.Summary(_) => Vector.empty
         case Entry.Failure(reason) => Vector(look.failure(reason) -> None)
       }
 

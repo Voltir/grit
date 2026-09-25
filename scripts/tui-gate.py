@@ -486,10 +486,10 @@ def palette(checks, check, raw, frames, screens):
     """grit.app's command palette, driven by keys alone (script_palette)."""
     has = lambda g, s: any(s in row for row in g)
     after = lambda start, ok: next((i for i in range(start, len(screens)) if ok(screens[i])), None)
-    listed = after(0, lambda g: has(g, "/theme  switch the colour theme")
-                   and has(g, "/quit   leave grit"))
+    listed = after(0, lambda g: has(g, "/theme      switch the colour theme")
+                   and has(g, "/quit       leave grit"))
     check(listed is not None, "/ opened the list of every command")
-    filtered = after((listed or 0) + 1, lambda g: has(g, "/theme  switch")
+    filtered = after((listed or 0) + 1, lambda g: has(g, "/theme      switch")
                      and not has(g, "leave grit"))
     check(listed is not None and filtered is not None, "typing filtered it to /theme")
     themes = after((filtered or 0) + 1, lambda g: has(g, "tokyo-storm") and has(g, "nightshade"))

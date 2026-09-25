@@ -80,6 +80,27 @@ object FollowTests extends TestSuite {
       Follow.step(after, asked, all(TurnStatus.Finished("failed: Model(down)")))._2 ==> Vector.empty
     }
 
+    test("a turn's summary is told once, when it is written") {
+      val answered = Vector(user(0, 0, "hi"), reply(1, 0, "hello"))
+      val (seen, _) = Follow.step(Follow.start, answered, all(TurnStatus.Finished("replied")))
+      val summary = Entry(
+        EntryId("e2"),
+        c,
+        TurnSeq(0),
+        None,
+        2,
+        Payload.Summary("greeted"),
+        Instant.EPOCH
+      )
+      val (after, msgs) =
+        Follow.step(seen, answered :+ summary, all(TurnStatus.Finished("replied")))
+      msgs ==> Vector(
+        ChatScreen.Msg.Arrived(Vector(), None, Vector(ChatScreen.Summarised(TurnSeq(0), "greeted")))
+      )
+      Follow.step(after, answered :+ summary, all(TurnStatus.Finished("replied")))._2 ==>
+        Vector.empty
+    }
+
     test("only the latest message's turn decides thinking") {
       val entries = Vector(user(0, 0, "old"), reply(1, 0, "answered"), user(2, 1, "new"))
       val asked: TurnRef => TurnStatus =
