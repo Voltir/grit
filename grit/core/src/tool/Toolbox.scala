@@ -1,5 +1,6 @@
 package grit.core.tool
 
+import grit.core.approval.Approval
 import grit.core.message.AssistantBlock
 import grit.core.provider.ToolSchema
 
@@ -13,6 +14,12 @@ final class Toolbox[C^] private (tools: Vector[Tool.Offered^{C}]) {
 
   /** The names offered, in order. */
   def names: Vector[ToolName] = tools.map(_.name)
+
+  /** This toolbox with `tool`, which acts through no capability, offered first; `Left` when
+    * one here has its name.
+    */
+  def including(tool: Tool.Offered): Either[DuplicateName, Toolbox[C]] =
+    Toolbox.of[C]((tool +: tools)*)
 
   /** `call` read against the tool it names ([[Toolbox.named]]), ready to run; or why it
     * cannot be: no tool has that name, or its arguments do not read.
@@ -46,15 +53,39 @@ object Toolbox {
   }
 }
 
-/** A call whose tool was found and whose arguments read. `ask` is what a person is shown
-  * to approve it when its tool is gated; `None` when it runs without asking.
+/** A call whose tool was found and whose arguments read, ready to run: [[Bound.Free]] as it
+  * is, [[Bound.Gated]] only with a person's [[Approval]] in hand.
   */
-final class Bound private[tool] (
-    val tool: ToolName,
-    val ask: Option[String],
-    run: () => Outcome
-) {
+sealed trait Bound {
+  def tool: ToolName
+}
 
-  /** Runs the call. */
-  def apply(): Outcome = run()
+object Bound {
+
+  /** A call of a tool that runs without asking. */
+  final class Free private[tool] (val tool: ToolName, run: () => Outcome) extends Bound {
+
+    def apply(): Outcome = run()
+  }
+
+  /** A call of a tool a person approves first; `ask` is what they are shown of it. */
+  final class Gated private[tool] (
+      val tool: ToolName,
+      val ask: String,
+      run: () => Outcome
+  ) extends Bound {
+
+    /** Runs the call when `approval` is [[Approval.Approved]]. Otherwise it does not run:
+      * [[Outcome.Denied]] with the person's reason when they declined, or [[Unanswered]]
+      * when the wait timed out.
+      */
+    def apply(approval: Approval): Outcome = approval match {
+      case Approval.Approved => run()
+      case Approval.Declined(reason) => Outcome.Denied(reason)
+      case Approval.TimedOut => Outcome.Denied(Some(Unanswered))
+    }
+  }
+
+  /** The reason a call whose approval timed out is denied. */
+  val Unanswered = "No answer came in time."
 }

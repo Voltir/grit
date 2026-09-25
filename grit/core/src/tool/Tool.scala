@@ -24,11 +24,10 @@ final class Tool[A](val spec: ToolSpec[A], val gate: Gate[A], run: A => Outcome)
         }
         Left(CallError.BadArgs(spec.name, error, sent.take(CallError.Echoed)))
       case Right(args) =>
-        val ask = gate match {
-          case Gate.Free => None
-          case Gate.Ask(describe) => Some(describe(args))
-        }
-        Right(new Bound(spec.name, ask, () => run(args)))
+        Right(gate match {
+          case Gate.Free => new Bound.Free(spec.name, () => run(args))
+          case Gate.Ask(describe) => new Bound.Gated(spec.name, describe(args), () => run(args))
+        })
     }
 }
 

@@ -1,5 +1,6 @@
 package grit.core.tool
 
+import grit.core.approval.Approval
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message}
 
@@ -50,14 +51,33 @@ object ToolboxTests extends TestSuite {
     }
 
     test("a free call binds with nothing to ask, and runs") {
-      val bound = box.bind(call("echo", ujson.Obj("text" -> "hi")))
-      bound.map(b => (b.tool, b.ask, b())) ==> Right((ToolName("echo"), None, Outcome.Done("hi")))
+      box.bind(call("echo", ujson.Obj("text" -> "hi"))) match {
+        case Right(b: Bound.Free) => (b.tool, b()) ==> (ToolName("echo"), Outcome.Done("hi"))
+        case other => throw new java.lang.AssertionError(s"not free: $other")
+      }
     }
 
-    test("a gated call carries what the person is shown, and runs only when asked to") {
-      val bound = box.bind(call("shout", ujson.Obj("text" -> "hi")))
-      bound.map(_.ask) ==> Right(Some("shout hi"))
-      bound.map(_()) ==> Right(Outcome.Done("HI"))
+    test("a gated call carries what the person is shown, and runs only when approved") {
+      box.bind(call("shout", ujson.Obj("text" -> "hi"))) match {
+        case Right(b: Bound.Gated) =>
+          b.ask ==> "shout hi"
+          b(Approval.Approved) ==> Outcome.Done("HI")
+          b(Approval.Declined(Some("too loud"))) ==> Outcome.Denied(Some("too loud"))
+          b(Approval.Declined(None)) ==> Outcome.Denied(None)
+          b(Approval.TimedOut) ==> Outcome.Denied(Some(Bound.Unanswered))
+        case other => throw new java.lang.AssertionError(s"not gated: $other")
+      }
+    }
+
+    test("a pure tool included comes first, and not under a name already offered") {
+      box.including(shout).map(_.names) ==> Left(DuplicateName(ToolName("shout")))
+      val loud = new Tool(
+        ToolSpec(ToolName("loud"), "Loud.", Args.of((text = Field.text("What."))).map(_.text)),
+        Gate.Free,
+        t => Outcome.Done(t)
+      )
+      box.including(loud).map(_.names) ==>
+        Right(Vector(ToolName("loud"), ToolName("echo"), ToolName("shout")))
     }
 
     test("an unknown tool is refused, naming the tools there are") {
@@ -76,7 +96,7 @@ object ToolboxTests extends TestSuite {
 
     test("a name with leaked harmony tokens binds to the tool it names") {
       val bound = box.bind(call("echo<|channel|>commentary", ujson.Obj("text" -> "hi")))
-      bound.map(b => (b.tool, b())) ==> Right((ToolName("echo"), Outcome.Done("hi")))
+      bound.map(_.tool) ==> Right(ToolName("echo"))
       Toolbox.named("grep<|channel|>json") ==> "grep"
       Toolbox.named("<|x") ==> ""
       box.bind(call("sing<|channel|>x", ujson.Obj())).left.map(_.message) ==>

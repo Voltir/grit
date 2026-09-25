@@ -2,10 +2,11 @@ package grit.tools
 
 import scala.concurrent.duration.*
 
+import grit.core.approval.Approval
 import grit.core.host.*
 import grit.core.id.ToolCallId
 import grit.core.message.AssistantBlock
-import grit.core.tool.{Outcome, ToolName}
+import grit.core.tool.{Bound, Outcome, ToolName}
 
 import utest.*
 
@@ -64,14 +65,17 @@ object CodingTests extends TestSuite {
     AssistantBlock.ToolCall(ToolCallId("c1"), name, args)
 
   /** `name` called with `args` against every tool over `host`: what it asks, and what it
-    * came to when run.
+    * came to when run, approved when it asks.
     */
   private def settle(
       host: Scripted,
       name: String,
       args: ujson.Value
   ): Either[String, (Option[String], Outcome)] =
-    Coding.all(host, host, host).bind(call(name, args)).left.map(_.message).map(b => (b.ask, b()))
+    Coding.all(host, host, host).bind(call(name, args)).left.map(_.message).map {
+      case free: Bound.Free => (None, free())
+      case gated: Bound.Gated => (Some(gated.ask), gated(Approval.Approved))
+    }
 
   val tests = Tests {
     test("the tool sets") {
