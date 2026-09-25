@@ -4,7 +4,7 @@ import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 
 import scala.util.control.NonFatal
 
-import grit.core.classify.{Answers, Classifier, ClassifierError, Question, QuestionId}
+import grit.core.classify.{Answers, Classifier, ClassifierError, Question}
 
 /** [[Classifier]] over Jev (`POST /v1/systemone`), one request per call, no retries: a 429
   * or 529 comes back as `Unavailable`, for the caller to back off.
@@ -13,9 +13,9 @@ final class JevClassifier(config: JevConfig) extends Classifier {
 
   private val http = HttpClient.newBuilder().connectTimeout(config.timeout).build()
 
-  def answer(
+  protected def answer(
       state: ujson.Value,
-      questions: Vector[(QuestionId, Question)]
+      questions: Vector[Question]
   ): Either[ClassifierError, Answers] =
     try {
       val response = http.send(

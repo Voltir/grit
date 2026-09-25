@@ -2,7 +2,15 @@ package grit.turn
 
 import java.time.Instant
 
-import grit.core.classify.{Answered, Ask, Classifier, ClassifierError, Criterion, QuestionId}
+import grit.core.classify.{
+  Answered,
+  Ask,
+  Classifier,
+  ClassifierError,
+  Criterion,
+  Decision,
+  StateJson
+}
 import grit.core.id.{EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.TokenEstimator
@@ -58,15 +66,50 @@ object TurnTopics {
   /** The key the classifier and the model are offered for a new topic. */
   val NewKey = "something new"
 
-  private val SameId = QuestionId("same_topic")
-  private val WhichId = QuestionId("which_topic")
+  /** The JSON field names of [[SameTopic]] and [[WhichTopic]], for their codecs and the
+    * instructions that refer to them.
+    */
+  private object Field {
+    val CurrentTopic = "current_topic"
+    val LeftTopic = "left_topic"
+    val Recent = "recent_messages"
+    val NewMessage = "new_message"
+  }
 
-  private val same: Ask[Double] = Ask.noul(
-    SameId,
-    "Is `new_message` about `current_topic`?",
+  /** One of the recent messages, as the classifier is shown it. */
+  private final case class Said(byUser: Boolean, text: String)
+
+  /** Whether `newMessage` stays on `current`, as the classifier is shown it: `{current_topic:
+    * {name, summary}, recent_messages: [{from, text}], new_message}`.
+    */
+  private final case class SameTopic(current: Topic, recent: Vector[Said], newMessage: String)
+
+  /** Where `newMessage`, having left `left`, went: `{left_topic: {name, summary},
+    * recent_messages: [{from, text}], new_message}`.
+    */
+  private final case class WhichTopic(left: Topic, recent: Vector[Said], newMessage: String)
+
+  private given StateJson[SameTopic] = StateJson.instance(s =>
+    ujson.Obj(
+      Field.CurrentTopic -> topicJson(s.current),
+      Field.Recent -> saidJson(s.recent),
+      Field.NewMessage -> s.newMessage
+    )
+  )
+
+  private given StateJson[WhichTopic] = StateJson.instance(s =>
+    ujson.Obj(
+      Field.LeftTopic -> topicJson(s.left),
+      Field.Recent -> saidJson(s.recent),
+      Field.NewMessage -> s.newMessage
+    )
+  )
+
+  private val same: Ask[SameTopic, Double] = Ask.yesNo(
+    s"Is `${Field.NewMessage}` about `${Field.CurrentTopic}`?",
     Some(
-      "Yes: it carries on `current_topic`, answers or follows up on the recent messages, or " +
-        "goes deeper into one part of it."
+      s"Yes: it carries on `${Field.CurrentTopic}`, answers or follows up on the recent " +
+        "messages, or goes deeper into one part of it."
     ),
     Some(
       "No: it is about something else: a quick unrelated question, an earlier subject, or a " +
@@ -127,19 +170,16 @@ object TurnTopics {
         )
       case Some((shown, topic)) =>
         val recent = recentMessages(before)
-        val first = ujson.Obj(
-          "current_topic" -> describeTopic(topic),
-          "recent_messages" -> recent,
-          "new_message" -> asked
-        )
-        classifier.ask(first, same) match {
+        val sameState = SameTopic(topic, recent, asked)
+        classifier.ask(sameState, same) match {
           case Left(error) =>
             classification(
               Vector(placed(Weights.whole(shown.id), Placement.Unclassified(why(error)))),
               None
             )
           case Right(Answered(p, u1, model)) =>
-            val cost1 = (model, u1, estimator.system(ujson.write(first)))
+            val cost1 =
+              (model, u1, estimator.system(ujson.write(StateJson[SameTopic].json(sameState))))
             Band.of(p) match {
               case band @ (Band.Same | Band.Uncertain) =>
                 classification(
@@ -148,51 +188,54 @@ object TurnTopics {
                   ),
                   Some(cost1)
                 )
-              case Band.Changed if earlier.isEmpty =>
-                // Nowhere to go back to: it can only be new, and nothing need be asked.
-                val choice = Vector(Option.empty[TopicId] -> 1.0)
-                classification(
-                  Vector(
-                    TopicEvent.Opened(opened),
-                    placed(
-                      Weights.changed(shown.id, p, choice, Some(opened)),
-                      Placement.Classified(p, Band.Changed, choice)
-                    )
-                  ),
-                  Some(cost1)
-                )
               case Band.Changed =>
-                val second = ujson.Obj(
-                  "left_topic" -> describeTopic(topic),
-                  "recent_messages" -> recent,
-                  "new_message" -> asked
-                )
-                classifier.ask(second, which(earlier)) match {
-                  case Left(error) =>
+                earlier match {
+                  case latest +: older =>
+                    val whichState = WhichTopic(topic, recent, asked)
+                    which(latest, older).left
+                      .map(d => s"two options share the key ${d.key}")
+                      .flatMap(classifier.ask(whichState, _).left.map(why)) match {
+                      case Left(reason) =>
+                        classification(
+                          Vector(
+                            placed(
+                              Weights.whole(shown.id),
+                              Placement.Unclassified(s"choosing where it went: $reason")
+                            )
+                          ),
+                          Some(cost1)
+                        )
+                      case Right(Answered(decision, u2, _)) =>
+                        val choice = decision.probabilities.map(w => (w.value, w.probability))
+                        val isNew = decision.choice.isEmpty
+                        val cost = (
+                          model,
+                          sum(u1, u2),
+                          cost1._3 + estimator.system(
+                            ujson.write(StateJson[WhichTopic].json(whichState))
+                          )
+                        )
+                        classification(
+                          Option.when(isNew)(TopicEvent.Opened(opened)).toVector :+
+                            placed(
+                              Weights.changed(shown.id, p, choice, Option.when(isNew)(opened)),
+                              Placement.Classified(p, Band.Changed, choice)
+                            ),
+                          Some(cost)
+                        )
+                    }
+                  case _ =>
+                    // Nowhere to go back to: it can only be new, and nothing need be asked.
+                    val choice = Vector(Option.empty[TopicId] -> 1.0)
                     classification(
                       Vector(
+                        TopicEvent.Opened(opened),
                         placed(
-                          Weights.whole(shown.id),
-                          Placement.Unclassified(s"choosing where it went: ${why(error)}")
+                          Weights.changed(shown.id, p, choice, Some(opened)),
+                          Placement.Classified(p, Band.Changed, choice)
                         )
                       ),
                       Some(cost1)
-                    )
-                  case Right(Answered(decision, u2, _)) =>
-                    val choice = decision.probabilities
-                    val isNew = decision.choice.isEmpty
-                    val cost = (
-                      model,
-                      sum(u1, u2),
-                      cost1._3 + estimator.system(ujson.write(second))
-                    )
-                    classification(
-                      Option.when(isNew)(TopicEvent.Opened(opened)).toVector :+
-                        placed(
-                          Weights.changed(shown.id, p, choice, Option.when(isNew)(opened)),
-                          Placement.Classified(p, Band.Changed, choice)
-                        ),
-                      Some(cost)
                     )
                 }
             }
@@ -273,40 +316,48 @@ object TurnTopics {
     case _ => Vector.empty
   }
 
-  /** The choice among `earlier` topics and a new one (`None`), most recent first. */
+  /** The choice among the earlier topics, `first` then `more`, and a new one (`None`). */
   private def which(
-      earlier: Vector[(Topic, Shown)]
-  ): Ask[grit.core.classify.Decision[Option[TopicId]]] =
-    Ask.choice(
-      WhichId,
-      "`new_message` has moved away from `left_topic`. Which of these topics is it about?",
-      earlier.map((t, s) => Criterion(Option(t.id), s.key, t.summary)) :+
-        Criterion(
-          Option.empty[TopicId],
-          NewKey,
-          Some("None of the others: a subject not discussed before in this conversation.")
-        )
+      first: (Topic, Shown),
+      more: Vector[(Topic, Shown)]
+  ): Either[Ask.DuplicateKey, Ask[WhichTopic, Decision[Option[TopicId]]]] = {
+    def criterion(ts: (Topic, Shown)) = Criterion(Option(ts._1.id), ts._2.key, ts._1.summary)
+    val fresh = Criterion(
+      Option.empty[TopicId],
+      NewKey,
+      Some("None of the others: a subject not discussed before in this conversation.")
     )
+    Ask.choice(
+      s"`${Field.NewMessage}` has moved away from `${Field.LeftTopic}`. Which of these topics " +
+        "is it about?",
+      criterion(first),
+      // The new topic comes last, as the second option or after the others.
+      more.headOption.map(criterion).getOrElse(fresh),
+      (more.drop(1).map(criterion) ++ Option.when(more.nonEmpty)(fresh))*
+    )
+  }
 
-  private def describeTopic(t: Topic): ujson.Value =
+  private def topicJson(t: Topic): ujson.Value =
     ujson.Obj("name" -> t.shown, "summary" -> t.summary.fold[ujson.Value](ujson.Null)(ujson.Str(_)))
 
-  /** The last two messages of `before`, the user's and the replies' text. */
-  private def recentMessages(before: Vector[Entry]): ujson.Value =
+  private def saidJson(said: Vector[Said]): ujson.Value =
     ujson.Arr.from(
-      before
-        .flatMap {
-          _.payload match {
-            case Payload.Message(Message.User(text)) => Some("user" -> text)
-            case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
-              val text = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
-              Option.when(text.nonEmpty)("assistant" -> text)
-            case _ => None
-          }
-        }
-        .takeRight(2)
-        .map((from, text) => ujson.Obj("from" -> from, "text" -> text))
+      said.map(s => ujson.Obj("from" -> (if (s.byUser) "user" else "assistant"), "text" -> s.text))
     )
+
+  /** The last two messages of `before`, the user's and the replies' text. */
+  private def recentMessages(before: Vector[Entry]): Vector[Said] =
+    before
+      .flatMap {
+        _.payload match {
+          case Payload.Message(Message.User(text)) => Some(Said(true, text))
+          case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
+            val text = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+            Option.when(text.nonEmpty)(Said(false, text))
+          case _ => None
+        }
+      }
+      .takeRight(2)
 
   private def sum(a: Usage, b: Usage): Usage =
     Usage(
@@ -319,7 +370,6 @@ object TurnTopics {
   private def why(error: ClassifierError): String = error match {
     case ClassifierError.Unavailable(cause) => s"unavailable: $cause"
     case ClassifierError.Unreadable(cause) => s"unreadable: $cause"
-    case ClassifierError.Invalid(cause) => s"invalid: $cause"
   }
 
   private def describe(error: StoreError): String = error match {

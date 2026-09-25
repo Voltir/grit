@@ -85,6 +85,20 @@ object TurnTopicsTests extends TestSuite {
       val (entries, turns) =
         converse(Vector("hello", "knots? ~0.1", "back ~0.1 ~back:new topic (2)"), classifier)
       classifier.calls ==> 3
+      // The states go as they always have: the questions' instructions name these fields.
+      def shape(v: ujson.Value): Vector[String] = v.obj.keys.toVector
+      classifier.states.map(shape) ==> Vector(
+        Vector("current_topic", "recent_messages", "new_message"),
+        Vector("current_topic", "recent_messages", "new_message"),
+        Vector("left_topic", "recent_messages", "new_message")
+      )
+      classifier.states.lastOption.map(s => shape(s("left_topic"))) ==> Some(
+        Vector("name", "summary")
+      )
+      classifier.states.lastOption.map(_("recent_messages").arr.map(shape).toVector) ==>
+        Some(Vector(Vector("from", "text"), Vector("from", "text")))
+      classifier.states.lastOption.map(_("new_message").str) ==>
+        Some("back ~0.1 ~back:new topic (2)")
       val t = topics(entries)
       val (first, second) = (TopicId.openedBy(turns(0)), TopicId.openedBy(turns(1)))
       t.placed(turns(2).turnSeq) ==> Some(first)

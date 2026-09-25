@@ -1,24 +1,27 @@
 package grit.models
 
-import grit.core.classify.{Answered, Ask, Criterion, QuestionId}
+import grit.core.classify.{Answered, Ask, Criterion, StateJson}
 
 import utest.*
 
 object StubClassifierTests extends TestSuite {
 
-  private def state(message: String) = ujson.Obj("new_message" -> message)
+  /** A message, sent as `{"new_message": text}`, the field the stub reads. */
+  private final case class State(text: String)
+  private given StateJson[State] = StateJson.instance(s => ujson.Obj("new_message" -> s.text))
 
-  private val same = Ask.noul(QuestionId("same"), "?", None, None)
+  private def state(message: String) = State(message)
 
-  private val which = Ask.choice(
-    QuestionId("which"),
-    "?",
-    Vector(
+  private val same = Ask.yesNo[State]("?", None, None)
+
+  private val which = Ask
+    .choice[State, Int](
+      "?",
       Criterion(1, "Knots", None),
       Criterion(2, "Redis eviction", None),
       Criterion(3, "new", None)
     )
-  )
+    .fold(d => throw new java.lang.AssertionError(s"keys repeat: $d"), identity)
 
   val tests = Tests {
     test("p(same) is the ~ marker's, or 0.9") {

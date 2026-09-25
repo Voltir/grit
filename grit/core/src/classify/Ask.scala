@@ -5,97 +5,115 @@ package grit.core.classify
   */
 final case class Criterion[C](value: C, key: String, description: Option[String])
 
-/** A typed choice's answer: the most probable value, a probability for every option in the
-  * question's order (summing to 1), and the classifier's confidence (see [[Answer.Choice]]).
+/** A choice's answer: the most probable criterion's value, every criterion's value with its
+  * probability in the question's order (summing to 1), and the classifier's confidence (see
+  * [[Answer.Choice]]).
   */
-final case class Decision[C](choice: C, probabilities: Vector[(C, Double)], confidence: Double) {
+final case class Decision[C](
+    choice: C,
+    probabilities: Vector[Decision.Weight[C]],
+    confidence: Double
+) {
 
-  /** The probability of `c`; 0 for a value that was not an option. */
-  def probability(c: C): Double =
-    probabilities.collectFirst { case (v, p) if v == c => p }.getOrElse(0.0)
+  /** Summed over the criteria that stand for `c`; 0 for none. */
+  def probability(c: C): Double = probabilities.filter(_.value == c).map(_.probability).sum
 
-  /** The probability of [[choice]]. */
   def top: Double = probability(choice)
 }
 
-/** Questions to ask together, and how to read their answers into a `T`. Built with
-  * [[Ask.choice]] and [[Ask.noul]], combined with `zip` and `map`; [[Classifier.ask]]
-  * rejects a combination that uses one id twice, or a choice with fewer than two distinct
-  * keys.
+object Decision {
+  final case class Weight[C](value: C, probability: Double)
+}
+
+/** Questions about a state of type `S`, asked together, and how their answers read into a
+  * `T`. Built with [[Ask.choice]] and [[Ask.yesNo]], combined with `zip` and `map`.
   */
-final case class Ask[T](
-    questions: Vector[(QuestionId, Question)],
-    read: Map[QuestionId, Answer] -> Either[ClassifierError, T]
+final class Ask[S, T] private (
+    val questions: Vector[Question],
+    reader: Vector[Answer] -> Either[ClassifierError, T]
 ) {
 
-  def map[U](f: T -> U): Ask[U] = Ask(questions, answers => read(answers).map(f))
+  /** `answers` holds exactly one answer per question, in order. */
+  private[classify] def read(answers: Vector[Answer]): Either[ClassifierError, T] =
+    reader(answers)
+
+  def map[U](f: T -> U): Ask[S, U] = new Ask(questions, answers => reader(answers).map(f))
 
   /** Both sets of questions, in one request. */
-  def zip[U](other: Ask[U]): Ask[(T, U)] =
-    Ask(
+  def zip[U](other: Ask[S, U]): Ask[S, (T, U)] = {
+    val n = questions.size
+    new Ask(
       questions ++ other.questions,
-      answers => read(answers).flatMap(t => other.read(answers).map(u => (t, u)))
+      answers => {
+        val (mine, theirs) = answers.splitAt(n)
+        read(mine).flatMap(t => other.read(theirs).map(u => (t, u)))
+      }
     )
+  }
 }
 
 object Ask {
 
-  /** Which of `criteria` fits: at least two, with distinct keys, or [[Classifier.ask]]
-    * rejects it as `Invalid`.
-    */
-  def choice[C](
-      id: QuestionId,
+  /** Two criteria of one choice given the same `key`. */
+  final case class DuplicateKey(key: String)
+
+  /** Which criterion fits the state, read back into its value. */
+  def choice[S, C](
       instructions: String,
-      criteria: Vector[Criterion[C]]
-  ): Ask[Decision[C]] = {
-    val question = Question.Choice(instructions, criteria.map(c => (c.key, c.description)))
-    Ask(
-      Vector(id -> question),
-      answers =>
-        for {
-          answer <- answers.get(id).toRight(unanswered(id))
-          decision <- answer match {
+      first: Criterion[C],
+      second: Criterion[C],
+      rest: Criterion[C]*
+  ): Either[DuplicateKey, Ask[S, Decision[C]]] = {
+    val criteria = first +: second +: rest.toVector
+    val keys = criteria.map(_.key)
+    keys.diff(keys.distinct).headOption.map(DuplicateKey(_)).toLeft {
+      def key(c: Criterion[C]) = Question.Key(c.key, c.description)
+      val question =
+        Question.Choice(instructions, key(first), key(second), rest.toVector.map(key))
+      new Ask[S, Decision[C]](
+        Vector(question),
+        answers =>
+          one(instructions, answers).flatMap {
             case Answer.Choice(choice, probabilities, confidence) =>
               for {
                 chosen <- criteria
                   .find(_.key == choice)
-                  .toRight(unreadable(id, s"chose $choice, not an option"))
-                ps = criteria.map(c =>
-                  c.value -> probabilities
-                    .collectFirst { case (k, p) if k == c.key => p }
-                    .getOrElse(0.0)
+                  .toRight(unreadable(instructions, s"chose $choice, not an option"))
+                weights = criteria.map(c =>
+                  Decision.Weight(
+                    c.value,
+                    probabilities.find(_.key == c.key).fold(0.0)(_.probability)
+                  )
                 )
                 _ <- Either.cond(
-                  ps.exists(_._2 > 0),
+                  weights.exists(_.probability > 0),
                   (),
-                  unreadable(id, "no option has probability")
+                  unreadable(instructions, "no option has probability")
                 )
-              } yield Decision(chosen.value, ps, confidence)
-            case Answer.Noul(_) => Left(unreadable(id, "answered yes/no to a choice"))
+              } yield Decision(chosen.value, weights, confidence)
+            case Answer.YesNo(_) => Left(unreadable(instructions, "answered yes/no to a choice"))
           }
-        } yield decision
-    )
+      )
+    }
   }
 
-  /** The probability that the answer to `instructions` is yes. */
-  def noul(
-      id: QuestionId,
-      instructions: String,
-      yes: Option[String],
-      no: Option[String]
-  ): Ask[Double] =
-    Ask(
-      Vector(id -> Question.Noul(instructions, yes, no)),
+  /** The probability that the answer to `instructions` is yes. `yes` and `no` say what each
+    * means, where the instructions alone do not.
+    */
+  def yesNo[S](instructions: String, yes: Option[String], no: Option[String]): Ask[S, Double] =
+    new Ask(
+      Vector(Question.YesNo(instructions, yes, no)),
       answers =>
-        answers.get(id).toRight(unanswered(id)).flatMap {
-          case Answer.Noul(p) => Right(p)
-          case Answer.Choice(_, _, _) => Left(unreadable(id, "answered a choice to a yes/no"))
+        one(instructions, answers).flatMap {
+          case Answer.YesNo(p) => Right(p)
+          case Answer.Choice(_, _, _) =>
+            Left(unreadable(instructions, "answered a choice to a yes/no"))
         }
     )
 
-  private def unanswered(id: QuestionId): ClassifierError =
-    ClassifierError.Unreadable(s"${QuestionId.value(id)}: no answer")
+  private def one(instructions: String, answers: Vector[Answer]): Either[ClassifierError, Answer] =
+    answers.headOption.toRight(unreadable(instructions, "no answer"))
 
-  private def unreadable(id: QuestionId, why: String): ClassifierError =
-    ClassifierError.Unreadable(s"${QuestionId.value(id)}: $why")
+  private def unreadable(instructions: String, why: String): ClassifierError =
+    ClassifierError.Unreadable(s"\"${instructions.take(60)}\": $why")
 }

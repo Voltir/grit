@@ -1,56 +1,49 @@
 package grit.models
 
-import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question, QuestionId}
+import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question}
 import grit.core.message.{Tokens, Usage}
 
-/** A [[Classifier]] that calls no model, for tests and the gate: it answers from markers in
-  * the state's `new_message` string, at no cost.
-  *
-  *   - A yes/no question: the probability after `~` (`~0.1`, `~0.5`), or 0.9 without one.
-  *   - A choice: the option whose key follows `~back:` (to the end of the message) at 0.9,
-  *     the rest sharing 0.1; without that marker, or naming no option, the last option.
+/** A [[Classifier]] that calls no model, for tests and the gate: [[StubClassifier.answers]],
+  * at no cost.
   */
 final class StubClassifier extends Classifier {
 
-  def answer(
+  protected def answer(
       state: ujson.Value,
-      questions: Vector[(QuestionId, Question)]
-  ): Either[ClassifierError, Answers] = {
-    val message = state.objOpt.flatMap(_.get("new_message")).flatMap(_.strOpt).getOrElse("")
-    val answers = questions.map { (id, q) =>
-      id -> (q match {
-        case Question.Noul(_, _, _) => Right(Answer.Noul(StubClassifier.probability(message)))
-        case Question.Choice(_, criteria) =>
-          val keys = criteria.map(_._1)
-          val back = StubClassifier.back(message).filter(keys.contains)
-          back.orElse(keys.lastOption) match {
-            case None => Left(ClassifierError.Invalid("a choice with no options"))
-            case Some(pick) =>
-              val rest = if (keys.size > 1) 0.1 / (keys.size - 1) else 0.0
-              val ps =
-                keys.map(k => k -> (if (k == pick) (if (keys.size > 1) 0.9 else 1.0) else rest))
-              Answer.choice(ps).toRight(ClassifierError.Invalid("no options"))
-          }
-      })
-    }
-    answers
-      .foldLeft[Either[ClassifierError, Map[QuestionId, Answer]]](Right(Map.empty)) {
-        case (acc, (id, a)) => acc.flatMap(m => a.map(m.updated(id, _)))
-      }
-      .map(
-        Answers(
-          _,
-          Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0))),
-          StubClassifier.Model
-        )
-      )
-  }
+      questions: Vector[Question]
+  ): Either[ClassifierError, Answers] = Right(StubClassifier.answers(state, questions))
 }
 
 object StubClassifier {
 
   /** The model id a stub answer records. */
   val Model = "grit/stub-classifier"
+
+  /** Answers from markers in the state's `new_message` string (the field `grit.turn`'s
+    * topic states send):
+    *
+    *   - A yes/no question: the probability after `~` (`~0.1`, `~0.5`), or 0.9 without one.
+    *   - A choice: the key that follows `~back:` (to the end of the message) at 0.9, the rest
+    *     sharing 0.1; without that marker, or naming no key, the last key.
+    */
+  def answers(state: ujson.Value, questions: Vector[Question]): Answers = {
+    val message = state.objOpt.flatMap(_.get("new_message")).flatMap(_.strOpt).getOrElse("")
+    Answers(
+      questions.map {
+        case Question.YesNo(_, _, _) => Answer.YesNo(probability(message))
+        case c: Question.Choice =>
+          val keys = c.keys.map(_.name)
+          val pick = back(message)
+            .filter(keys.contains)
+            .getOrElse(c.rest.lastOption.getOrElse(c.second).name)
+          val rest = 0.1 / (keys.size - 1)
+          val ps = keys.map(k => Answer.Weight(k, if (k == pick) 0.9 else rest))
+          Answer.Choice(pick, ps, Answer.confidence(ps.map(_.probability)))
+      },
+      Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0))),
+      Model
+    )
+  }
 
   private val Marked = """~(0(?:\.\d+)?|1(?:\.0+)?)(?![\d.])""".r
 

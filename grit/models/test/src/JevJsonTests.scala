@@ -1,39 +1,39 @@
 package grit.models
 
-import grit.core.classify.{Answer, ClassifierError, Question, QuestionId}
+import grit.core.classify.{Answer, Ask, ClassifierError, Criterion, Question}
 import grit.core.message.Tokens
 
 import utest.*
 
 object JevJsonTests extends TestSuite {
 
-  private val department = QuestionId("department") -> Question.Choice(
-    "Which team should handle this?",
-    Vector(
-      "billing" -> Some("Payments, invoicing, refunds"),
-      "technical" -> Some("Bugs, outages, integrations"),
-      "sales" -> None
+  private val department: Vector[Question] = Ask
+    .choice[Unit, String](
+      "Which team should handle this?",
+      Criterion("billing", "billing", Some("Payments, invoicing, refunds")),
+      Criterion("technical", "technical", Some("Bugs, outages, integrations")),
+      Criterion("sales", "sales", None)
     )
-  )
+    .fold(d => throw new java.lang.AssertionError(s"keys repeat: $d"), _.questions)
 
-  private val urgent = QuestionId("is_urgent") -> Question.Noul(
+  private val urgent = Question.YesNo(
     "Does this convey urgency?",
     Some("Explicitly time-sensitive"),
     Some("No urgency expressed")
   )
 
   val tests = Tests {
-    test("request: the docs' example body, a null criterion for an option with no description") {
+    test("request: the docs' example body, ids by position, a null criterion with no description") {
       val body = JevJson.request(
         "jev-latest",
         ujson.Str("Help! My payouts have been failing for 3 days."),
-        Vector(department, urgent)
+        department :+ urgent
       )
       body ==> ujson.read("""{
         "model": "jev-latest",
         "state": "Help! My payouts have been failing for 3 days.",
         "questions": {
-          "department": {
+          "q1": {
             "type": "choice",
             "instructions": "Which team should handle this?",
             "criteria": {
@@ -42,7 +42,7 @@ object JevJsonTests extends TestSuite {
               "sales": null
             }
           },
-          "is_urgent": {
+          "q2": {
             "type": "noul",
             "instructions": "Does this convey urgency?",
             "criteria": {"true": "Explicitly time-sensitive", "false": "No urgency expressed"}
@@ -51,40 +51,44 @@ object JevJsonTests extends TestSuite {
       }""")
     }
 
-    test("request: a noul with no criteria sends none") {
+    test("request: a yes/no with no criteria sends none") {
       val body = JevJson.request(
         "jev-latest",
         ujson.Obj("a" -> 1),
-        Vector(QuestionId("q") -> Question.Noul("Yes?", None, None))
+        Vector(Question.YesNo("Yes?", None, None))
       )
-      assert(!body("questions")("q").obj.contains("criteria"))
+      assert(!body("questions")("q1").obj.contains("criteria"))
     }
 
     test("response: the docs' choice and noul answers, in the question's option order, priced") {
       val body = ujson.read("""{
         "model": "jev-1.13.0",
         "answers": {
-          "department": {
+          "q1": {
             "type": "choice",
             "choice": "billing",
             "probabilities": { "sales": 0.0, "billing": 0.88, "technical": 0.12 },
             "confidence": 0.81
           },
-          "is_urgent": { "type": "noul", "noul": 0.95 }
+          "q2": { "type": "noul", "noul": 0.95 }
         },
         "usage": { "input_tokens": 318, "output_tokens": 34 }
       }""")
-      val answers = JevJson.response(Vector(department, urgent), body)
+      val answers = JevJson.response(department :+ urgent, body)
       assert(answers.map(_.model) == Right("jev-1.13.0"))
       assert(
         answers.map(_.answers) == Right(
-          Map(
-            QuestionId("department") -> Answer.Choice(
+          Vector(
+            Answer.Choice(
               "billing",
-              Vector("billing" -> 0.88, "technical" -> 0.12, "sales" -> 0.0),
+              Vector(
+                Answer.Weight("billing", 0.88),
+                Answer.Weight("technical", 0.12),
+                Answer.Weight("sales", 0.0)
+              ),
               0.81
             ),
-            QuestionId("is_urgent") -> Answer.Noul(0.95)
+            Answer.YesNo(0.95)
           )
         )
       )
@@ -96,10 +100,10 @@ object JevJsonTests extends TestSuite {
 
     test("response: a missing answer, or a choice outside the options, is Unreadable") {
       val missing = ujson.read("""{"model": "m", "answers": {}, "usage": {}}""")
-      val outside = ujson.read("""{"model": "m", "answers": {"department":
+      val outside = ujson.read("""{"model": "m", "answers": {"q1":
         {"type": "choice", "choice": "hr", "probabilities": {"hr": 1.0}, "confidence": 1.0}}}""")
       Vector(missing, outside, ujson.Arr()).foreach { body =>
-        assert(JevJson.response(Vector(department), body) match {
+        assert(JevJson.response(department, body) match {
           case Left(ClassifierError.Unreadable(_)) => true
           case _ => false
         })

@@ -202,13 +202,18 @@ object TurnFixtures {
     @caps.unsafe.untrackedCaptures
     var calls = 0
 
-    def answer(
+    /** Every state it was asked about, as sent. */
+    @caps.unsafe.untrackedCaptures
+    var states = Vector.empty[ujson.Value]
+
+    protected def answer(
         state: ujson.Value,
-        questions: Vector[(grit.core.classify.QuestionId, grit.core.classify.Question)]
+        questions: Vector[grit.core.classify.Question]
     ): Either[grit.core.classify.ClassifierError, grit.core.classify.Answers] = {
       calls += 1
+      states = states :+ state
       if (fail) Left(grit.core.classify.ClassifierError.Unavailable("HTTP 529: overloaded"))
-      else new grit.models.StubClassifier().answer(state, questions)
+      else Right(grit.models.StubClassifier.answers(state, questions))
     }
   }
 
