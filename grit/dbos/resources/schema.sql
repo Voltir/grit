@@ -1,7 +1,7 @@
 -- grit app schema, applied idempotently at startup.
 -- DBOS system tables (dbos.*) are managed separately by DBOS's own migrations.
 -- No migrations yet: until a database holds real data, change this file and run
--- scripts/reset-db (.local/backlog/schema-migrations.md). IF NOT EXISTS never reshapes a
+-- scripts/reset-db. IF NOT EXISTS never reshapes a
 -- table, so a changed table needs the reset.
 
 CREATE SCHEMA IF NOT EXISTS grit;
@@ -71,8 +71,11 @@ CREATE TABLE IF NOT EXISTS grit.usage_ledger (
     -- grit's estimate of input_tokens for the same request (TokenEstimator): the two
     -- side by side are how an estimator is checked.
     estimated_input_tokens BIGINT NOT NULL,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Record order, which UsageLedger.of reads in. created_at cannot say it: now() is the
+    -- transaction's start, the same for every row one transaction records.
+    ordinal             BIGINT GENERATED ALWAYS AS IDENTITY
 );
 
 -- A turn's costs, read by edges (UsageLedger.of).
-CREATE INDEX IF NOT EXISTS idx_usage_ledger_workflow ON grit.usage_ledger (workflow_id);
+CREATE INDEX IF NOT EXISTS idx_usage_ledger_workflow ON grit.usage_ledger (workflow_id, ordinal);

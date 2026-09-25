@@ -2,9 +2,10 @@ package grit.turn
 
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{TurnRef, TurnSeq}
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.Message
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Topics, Weights}
+import grit.dbos.sql.TestTx
 import grit.models.StubClassifier
 
 import utest.*
@@ -51,6 +52,22 @@ object TurnTopicsTests extends TestSuite {
       t.topics.map(_.id) ==> Vector(TopicId.openedBy(turns(0)))
       last(t, turns(0)).map(p => (p.weights, p.by)) ==>
         Some((Weights.whole(TopicId.openedBy(turns(0))), Placement.First))
+      // Recorded as its own entry; that no request carries it is TurnTests' (only messages).
+      entries.get(TurnTopics.placedId(turns(0)))(using TestTx.fake).map(_.map(_.payload)) ==>
+        Right(
+          Some(
+            Payload.Topic(
+              Vector(
+                TopicEvent.Opened(TopicId.openedBy(turns(0))),
+                TopicEvent.Placed(
+                  turns(0).turnSeq,
+                  Weights.whole(TopicId.openedBy(turns(0))),
+                  Placement.First
+                )
+              )
+            )
+          )
+        )
     }
 
     test("sure it is the same: it stays, weighed p(same), the rest elsewhere; its cost recorded") {
@@ -145,20 +162,6 @@ object TurnTopicsTests extends TestSuite {
       texts(entries).lastOption.exists(_.startsWith("summary")) ==> true
     }
 
-    test("the placement is recorded as an entry, never sent to the model") {
-      val entries = new InMemoryEntryStore
-      val provider = new RecordingProvider
-      val durable = new InMemoryDurable
-      val turn = say(entries, "hello")
-      runTurn(durable, entries, provider, turn, classifier = new CountingClassifier)
-      provider.requests.flatMap(_.messages).size ==> 1
-      entries
-        .get(TurnTopics.placedId(turn))(using grit.dbos.sql.TestTx.fake)
-        .toOption
-        .flatten
-        .map(_.payload.isInstanceOf[Payload.Topic]) ==> Some(true)
-    }
-
     test("a crash recording the placement resumes there, and asks nothing twice") {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -191,22 +194,18 @@ object TurnTopicsTests extends TestSuite {
         "Summary: Asked about knots.\nTopic: **Knots and hitches under load**\nAbout: which knot holds.",
         "Summary: Asked about bowlines.\nTopic: Bowlines\nAbout: knots, the bowline most."
       )
-      val summarizer = new TurnVerdictTests.Scripted((_, n) =>
-        Right(
-          Message.Assistant(
-            Vector(AssistantBlock.Text(summaries.lift(n).getOrElse("no labels here"))),
-            StopReason.EndTurn,
-            Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
-            "s"
-          )
-        )
-      )
+      val summarizer =
+        new Scripted((_, n) => Right(said(summaries.lift(n).getOrElse("no labels here"))))
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
-      val turns = Vector("knots?", "and bowlines?", "and sheet bends?").map { text =>
-        val turn = say(entries, text)
-        runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer)
-        turn
+      Vector("knots?", "and bowlines?", "and sheet bends?").foreach { text =>
+        runTurn(
+          durable,
+          entries,
+          new RecordingProvider,
+          say(entries, text),
+          summarizer = summarizer
+        )
       }
       texts(entries).filter(_.startsWith("summary:")) ==> Vector(
         "summary: Asked about knots.",
@@ -226,7 +225,6 @@ object TurnTopicsTests extends TestSuite {
           )
         case other => assert(other.toString == "a user message")
       }
-      turns.size ==> 3
     }
 
     test("keys are distinct: a repeated name is numbered") {

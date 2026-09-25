@@ -61,13 +61,15 @@ object TurnReplayTests extends TestSuite {
       val j = TurnJournal.classification
       val outputs = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
-          case s if s.name == "classify" => (path.last, s.output)
+          case s if s.name == "classify" => (path.last, s.outcome)
         })
       }
       assert(outputs.nonEmpty)
       val failures = outputs.collect {
-        case (file, Some(text)) if j.decode(text).map(j.encode) != Right(text) => file
-        case (file, None) => file
+        case (file, InMemoryDurable.Outcome.Output(text))
+            if j.decode(text).map(j.encode) != Right(text) =>
+          file
+        case (file, InMemoryDurable.Outcome.Threw(_) | InMemoryDurable.Outcome.Marker) => file
       }
       assert(failures.isEmpty)
     }

@@ -7,7 +7,7 @@ import grit.assembly.linear.LinearAssembler
 import grit.core.clock.{Clock, Fresh}
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
 import grit.core.store.{EntryStore, Origin, Payload}
 import grit.dbos.engine.Engine
 import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
@@ -20,7 +20,7 @@ object LiveTurn {
 
   val Origin: grit.core.store.Origin = grit.core.store.Origin.Task("live", "gate")
 
-  /** The stub provider, counting its calls. */
+  /** The stub provider, counting its calls through either entry point. */
   final class CountingProvider extends Provider {
     @caps.unsafe.untrackedCaptures
     var calls = 0
@@ -28,6 +28,14 @@ object LiveTurn {
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
       calls += 1
       new StubProvider().complete(request)
+    }
+
+    override def stream(
+        request: ModelRequest,
+        onDelta: Delta => Unit
+    ): Either[ProviderError, Message.Assistant] = {
+      calls += 1
+      new StubProvider().stream(request, onDelta)
     }
   }
 

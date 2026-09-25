@@ -250,8 +250,7 @@ gets a capture-set variable, the trap above. Bind the inner `Args` to a `val` fi
 
 utest's `assertCompileError` (`scala.compiletime.testing`) never reports capture- or
 separation-checking errors. Capture checking runs after the typer, and a probe that should
-fail compiles "cleanly" there. `EntryStoreTests` records the same limit for the `Tx`
-escape.
+fail compiles "cleanly" there.
 
 The way that works is `grit.core.durable.SeparationTests`. It runs `dotty.tools.dotc.Driver` in the
 test, against core's run classpath with core's own `scalacOptions`, which `build.mill`

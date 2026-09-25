@@ -5,7 +5,7 @@ import grit.tui.model.surface.{Pos, Size}
 /** A key, already decoded from whatever escape sequence carried it.
   *
   * `Printable` carries one UTF-16 char, so an astral code point arrives as two events --
-  * the same limit the cell grid has (ROADMAP open question 1), and it moves with it.
+  * the same limit the cell grid has, and it moves with it.
   * The navigation keys carry [[Mods]]: the terminal's `ESC[1;5D` is Ctrl-Left, and a
   * binding table that cannot see the difference cannot bind word-wise motion. The
   * default is no modifier, so a bare `Key.Up()` still matches only a plain arrow.

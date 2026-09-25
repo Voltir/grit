@@ -14,7 +14,7 @@ import grit.models.StubProvider
 
 import utest.*
 import TurnLoop.Round
-import TurnVerdictTests.Scripted
+import TurnFixtures.Scripted
 
 /** The tool loop inside the durable turn ([[Turn.Patches.Tools]]), over core's in-memory
   * durability and store: which steps it records, what each model call is shown, what the

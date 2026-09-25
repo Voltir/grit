@@ -33,6 +33,10 @@ object RecordTurnHistories {
 
   /** Each shape, by name. A name whose file was written before a later step existed keeps
     * that shorter history, so a new step that changes a shape gets a new name.
+    *
+    * Builders that now run the same turn (`replied`, `summarised` and `windowFirst`;
+    * `crashedBeforeAppend` and `crashedBeforeAppendWindowFirst`) are kept apart because each
+    * name's file was written by an earlier build, and is replayed as it was written.
     */
   private def shapes: Vector[(String, History)] = {
     val replied = {
@@ -61,7 +65,10 @@ object RecordTurnHistories {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val turn = say(store, "hello")
-      try durable.run(turn.workflowId)(turnBody(new CrashOnInsert(store), new RecordingProvider))
+      try
+        durable.run(turn.workflowId)(
+          turnBody(new CrashOnInsert(store, isReply), new RecordingProvider)
+        )
       catch { case _: InMemoryDurable.Crash => "" }
       recorded(durable, turn)
     }
@@ -174,7 +181,7 @@ object RecordTurnHistories {
       }
       val turn = say(store, said.lastOption.getOrElse("hello"))
       val entries = crash.fold[grit.core.store.EntryStore](store)(new CrashOnInsert(store, _))
-      val summarizer = new TurnVerdictTests.Scripted((r, _) =>
+      val summarizer = new Scripted((r, _) =>
         if (summary.isEmpty) new grit.models.StubProvider().complete(r)
         else
           Right(
@@ -263,7 +270,7 @@ object RecordTurnHistories {
     def peeking(p: String): ujson.Value = ujson.Obj("path" -> p)
 
     /** `peek` a, then `peek` b and c, then the answer. */
-    def threeRounds = new TurnVerdictTests.Scripted((r, n) =>
+    def threeRounds = new TurnFixtures.Scripted((r, n) =>
       n match {
         case 0 => Right(calling("looking", ("t1", "peek", peeking("a.txt"))))
         case 1 =>
@@ -276,7 +283,7 @@ object RecordTurnHistories {
       "loop-three-rounds" -> looping(Vector("read them"), threeRounds),
       "loop-approved" -> looping(
         Vector("poke a"),
-        new TurnVerdictTests.Scripted((r, n) =>
+        new TurnFixtures.Scripted((r, n) =>
           if (n == 0) Right(calling("", ("t1", "poke", peeking("a.txt"))))
           else new grit.models.StubProvider().complete(r.copy(tools = Vector.empty))
         ),
@@ -289,7 +296,7 @@ object RecordTurnHistories {
       ),
       "loop-verdict" -> looping(
         Vector("hello", "knots? ~0.1", "back ~0.5"),
-        new TurnVerdictTests.Scripted((r, n) =>
+        new TurnFixtures.Scripted((r, n) =>
           if (n == 0)
             Right(
               calling(
@@ -319,13 +326,13 @@ object RecordTurnHistories {
       ),
       "topical-verdict-no-call" -> answered(
         Vector("hello", "hm ~0.5"),
-        new TurnVerdictTests.Scripted((r, _) =>
+        new Scripted((r, _) =>
           new grit.models.StubProvider().complete(r.copy(tools = Vector.empty))
         )
       ),
       "topical-verdict-plain" -> answered(
         Vector("hello", "hm ~0.5"),
-        new TurnVerdictTests.Scripted((r, n) =>
+        new Scripted((r, n) =>
           if (n == 0) new grit.models.StubProvider().complete(r)
           else if (r.tools.isEmpty) new grit.models.StubProvider().complete(r)
           else Left(grit.core.provider.ProviderError.Unavailable("HTTP 529"))
@@ -333,7 +340,7 @@ object RecordTurnHistories {
       ),
       "topical-verdict-crashed-between-rounds" -> answered(
         Vector("hello", "hm ~0.5"),
-        new TurnVerdictTests.Scripted((r, n) =>
+        new Scripted((r, n) =>
           if (n == 1) throw new InMemoryDurable.Crash
           else new grit.models.StubProvider().complete(r)
         )

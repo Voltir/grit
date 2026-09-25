@@ -8,8 +8,8 @@ import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.{Durable, InMemoryDurable}
-import grit.core.id.{ConversationId, EntryId, TurnRef, WorkflowId}
-import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
+import grit.core.id.{ConversationId, EntryId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
 import grit.core.host.{
   Clipped,
@@ -88,6 +88,36 @@ object TurnFixtures {
       else { onDelta(Delta.Text("half a rep")); Left(error) }
     }
   }
+
+  /** A provider answering each call with `script(request, call)`, calls counted from 0,
+    * keeping every request.
+    */
+  final class Scripted(script: (ModelRequest, Int) -> Either[ProviderError, Message.Assistant])
+      extends Provider {
+    @caps.unsafe.untrackedCaptures
+    var requests = Vector.empty[ModelRequest]
+
+    def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+      val n = requests.size
+      requests = requests :+ request
+      script(request, n)
+    }
+  }
+
+  /** A reply that ends its turn: `text` (no text block when empty), then `calls`; 10 tokens
+    * in, 2 out, costing 0.001.
+    */
+  def said(text: String, calls: AssistantBlock*): Message.Assistant =
+    Message.Assistant(
+      Vector(AssistantBlock.Text(text)).filter(_ => text.nonEmpty) ++ calls,
+      StopReason.EndTurn,
+      Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
+      "m"
+    )
+
+  /** A call to the `topic` tool, saying the message is `about` that. */
+  def topicCall(about: String): AssistantBlock.ToolCall =
+    AssistantBlock.ToolCall(ToolCallId("t1"), grit.core.tool.ToolName.value(TurnVerdict.Name), ujson.Obj("about" -> about))
 
   /** Entries a crash is aimed at: the reply's insert. */
   val isReply: Entry -> Boolean = _.payload match {
@@ -219,11 +249,8 @@ object TurnFixtures {
   def budget(calls: Int): TurnLoop.Budget =
     TurnLoop.Budget.of(calls).fold(why => throw new java.lang.AssertionError(why), identity)
 
-  /** An entry store that dies, once, on the first insert of an entry `when` picks: by
-    * default the reply, the first entry a turn inserts.
-    */
-  final class CrashOnInsert(underlying: EntryStore, when: Entry -> Boolean = _ => true)
-      extends EntryStore {
+  /** An entry store that dies, once, on the first insert of an entry `when` picks. */
+  final class CrashOnInsert(underlying: EntryStore, when: Entry -> Boolean) extends EntryStore {
     @caps.unsafe.untrackedCaptures
     var armed = true
 

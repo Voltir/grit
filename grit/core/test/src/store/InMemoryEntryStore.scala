@@ -2,8 +2,9 @@ package grit.core.store
 
 import grit.core.id.{ConversationId, EntryId, TurnSeq}
 
-/** An in-memory [[EntryStore]] for tests. It ignores the `Tx`: writes are never rolled
-  * back, and `lockNext` locks nothing.
+/** An in-memory [[EntryStore]] for tests, keeping [[StoreContract]]. It ignores the `Tx`:
+  * writes are never rolled back, and `lockNext` locks nothing. Unlike Postgres it takes any
+  * conversation id, known or not.
   */
 final class InMemoryEntryStore extends EntryStore {
 
@@ -13,6 +14,10 @@ final class InMemoryEntryStore extends EntryStore {
   def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] =
     if (entries.exists(_.id == entry.id)) {
       Left(StoreError.DuplicateId(entry.id))
+    } else if (
+      entries.exists(e => e.conversationId == entry.conversationId && e.seq == entry.seq)
+    ) {
+      Left(StoreError.DatabaseError(s"seq ${entry.seq} is taken in its conversation"))
     } else {
       entries = entries :+ entry
       Right(())

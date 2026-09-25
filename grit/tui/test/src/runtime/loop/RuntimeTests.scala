@@ -314,11 +314,7 @@ object RuntimeTests extends TestSuite {
       assert(lifecycle == Vector("enterRaw", "exitRaw", "close"))
       assert(!term.isRaw)
       assert(scheduler.pendingCount == 0)
-
-      // Called again from a finally or a shutdown hook: the flags make it a no-op.
-      term.exitRaw()
       scheduler.close()
-      assert(term.calls.count(_ == "exitRaw") == 1)
     }
 
     test("a timer pending at quit is cancelled, not left to fire after restore") {

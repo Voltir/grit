@@ -8,15 +8,15 @@ import grit.turn.{Turn, TurnSummary}
 
 import utest.*
 
-/** M0's exit criterion against Postgres and DBOS: a turn's provider call happens once,
+/** Against Postgres and DBOS: a turn's provider call happens once,
   * however often the turn is started, restarted or recovered.
   */
-object M0GateLiveTests extends TestSuite {
+object ProviderOnceLiveTests extends TestSuite {
   import LiveTurn.*
 
   val tests = Tests {
     test("the same source twice is one turn; started twice and rerun, the provider runs once") {
-      val config = TestPostgres.freshDatabase("m0_gate")
+      val config = TestPostgres.freshDatabase("provider_once")
       val first = new CountingProvider
       val engine = Engine.open(config, Turn.Epoch)
       val (turn, again, output) =

@@ -19,7 +19,7 @@ A decision gets a record only if it passes **all four** tests:
 A decision whose binding part is still open waits until that part is decided.
 
 Everything else goes in a code comment next to what it explains, or in the commit
-message. If it is only an idea, it goes in `.local/backlog/`.
+message. An idea that is not yet a decision is not recorded here.
 
 ## Template
 

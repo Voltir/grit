@@ -3,7 +3,9 @@ package grit.core.store
 import grit.core.id.{EntryId, WorkflowId}
 import grit.core.message.{Tokens, Usage}
 
-/** An in-memory [[UsageLedger]] for tests. It ignores the `Tx`. */
+/** An in-memory [[UsageLedger]] for tests, keeping [[StoreContract]]. It ignores the `Tx`,
+  * and unlike Postgres it records against any entry id, stored or not.
+  */
 final class InMemoryUsageLedger extends UsageLedger {
 
   @caps.unsafe.untrackedCaptures

@@ -58,7 +58,7 @@ final class SqlUsageLedger extends UsageLedger {
         conn.prepareStatement(
           """SELECT entry_id, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
             |       estimated_input_tokens
-            |FROM grit.usage_ledger WHERE workflow_id = ? ORDER BY created_at, entry_id""".stripMargin
+            |FROM grit.usage_ledger WHERE workflow_id = ? ORDER BY ordinal""".stripMargin
         )
       ) { ps =>
         ps.setString(1, WorkflowId.value(workflow))

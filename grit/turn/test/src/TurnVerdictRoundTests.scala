@@ -1,10 +1,10 @@
 package grit.turn
 
-import grit.core.id.ToolCallId
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.Message
 import grit.core.topic.Verdict
 
 import utest.*
+import TurnFixtures.{said, topicCall}
 import TurnVerdict.{Replied, Round, Shape}
 
 /** [[TurnVerdict.round]] over a scripted [[TurnVerdict.Calls]]: which further calls a round
@@ -14,21 +14,6 @@ import TurnVerdict.{Replied, Round, Shape}
 object TurnVerdictRoundTests extends TestSuite {
 
   private val c = TurnTopics.Classification(Vector.empty, None, Vector.empty, None, None)
-
-  private def said(text: String, call: Option[String] = None): Message.Assistant =
-    Message.Assistant(
-      Vector(AssistantBlock.Text(text)).filter(_ => text.nonEmpty) ++
-        call.map(about =>
-          AssistantBlock.ToolCall(
-            ToolCallId("t1"),
-            grit.core.tool.ToolName.value(TurnVerdict.Name),
-            ujson.Obj("about" -> about)
-          )
-        ),
-      StopReason.EndTurn,
-      Usage(Tokens(10), Tokens(2), Tokens.Zero, None),
-      "m"
-    )
 
   /** Answers `again` and `plain` as scripted, noting each call it is asked to make. */
   final class Scripted(
@@ -49,7 +34,7 @@ object TurnVerdictRoundTests extends TestSuite {
     }
   }
 
-  private val calling = said("thinking", Some("current"))
+  private val calling = said("thinking", topicCall("current"))
   private val down = Left(TurnFailure.Model("HTTP 529"))
 
   /** The round after `first`, with the calls it made. */
@@ -91,14 +76,14 @@ object TurnVerdictRoundTests extends TestSuite {
     }
 
     test("the second call answers and calls again: its calls dropped, and noted") {
-      val (round, made) = run(calling, again = Right(said("the answer", Some("new"))))
+      val (round, made) = run(calling, again = Right(said("the answer", topicCall("new"))))
       made ==> Vector("again")
       round.answer ==> Right(Replied(said("the answer"), Shape.Again(c, calling)))
       round.anomaly ==> Some("the second call called a tool again; its calls were dropped")
     }
 
     test("the second call says nothing: a plain call answers, both earlier replies spent") {
-      val silent = said("", Some("current"))
+      val silent = said("", topicCall("current"))
       val plain = said("plainly")
       run(calling, again = Right(silent), plain = Right(plain)) ==> (
         Round(

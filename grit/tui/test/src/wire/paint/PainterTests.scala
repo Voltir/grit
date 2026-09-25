@@ -43,22 +43,74 @@ object PainterTests extends TestSuite {
       // (Size.screen translated it at the boundary), so the painter writes the full
       // width it is given. A frame that says something in its last column is answered:
       // clipping here as well would silently drop that column from every frame.
-      val frame = frameOf(size, s => s.write(1, 0, "abcde"))
-      val vt = new Vt(3, 6)
-      vt.feed(Painter.paint(frame, None))
+      val terminal = Size(3, 7)
+      val toTheEdge = frameOf(Size.screen(terminal), s => s.write(1, 0, "abcdef"))
+      val vt = new Vt(terminal.rows, terminal.cols)
+      vt.feed(Painter.paint(toTheEdge, None))
       assertPainted(vt)(
-        "......",
-        "abcde.",
-        "......"
+        ".......",
+        "abcdef.",
+        "......."
       )
-      val toTheEdge = frameOf(size, s => s.write(1, 0, "abcdef"))
-      val vt2 = new Vt(3, 6)
-      vt2.feed(Painter.paint(toTheEdge, None))
+      // What Size.screen is there for: a frame as wide as the terminal writes its last
+      // glyph into the terminal's last column, and the row's closing erase takes it back.
+      val tooWide = frameOf(terminal, s => s.write(1, 0, "abcdefg"))
+      val vt2 = new Vt(terminal.rows, terminal.cols)
+      vt2.feed(Painter.paint(tooWide, None))
       assertPainted(vt2)(
-        "......",
-        "abcdef",
-        "......"
+        ".......",
+        "abcdef.",
+        "......."
       )
+    }
+
+    test("the VT model defers wrap as xterm does, so it can see rule 2's hazard") {
+      // A glyph in the last column leaves the cursor on it with a wrap pending: an erase
+      // takes that glyph back, a further glyph wraps first, and a move cancels the wrap.
+      val vt = new Vt(3, 4)
+      vt.feed("\u001b[1;1Habcd\u001b[K")
+      vt.feed("\u001b[2;1Habcd\u001b[2;2Hx")
+      assertPainted(vt)(
+        "abc.",
+        "axcd",
+        "...."
+      )
+      assert(vt.cursor == Pos(1, 2))
+      val wrapped = new Vt(3, 4)
+      wrapped.feed("\u001b[1;1Habcdef")
+      assertPainted(wrapped)(
+        "abcd",
+        "ef..",
+        "...."
+      )
+    }
+
+    test("the VT model paints a stream cut anywhere as it paints it whole") {
+      // A terminal reads in chunks and a sequence can straddle two of them; the model
+      // must finish it, not print its tail as glyphs.
+      val frame = frameOf(
+        size,
+        s =>
+          s.write(0, 0, "title", Style.fg(Color.hex("#7aa2f7")) + Style.Bold)
+            .write(1, 1, "sel", Style(reverse = true))
+            .write(2, 0, "status", Style.bg(Color.hex("#24283b")))
+      )
+      val bytes = Painter.paint(frame, None) + "\u001b[?1049h"
+      val whole = new Vt(3, 7)
+      whole.feed(bytes)
+      var cut = 0
+      while (cut <= bytes.length) {
+        val split = new Vt(3, 7)
+        split.feed(bytes.take(cut))
+        split.feed(bytes.drop(cut))
+        assert(
+          split.cells == whole.cells,
+          split.cursor == whole.cursor,
+          split.flag("1049") == whole.flag("1049")
+        )
+        cut += 1
+      }
+      assert(whole.flag("1049"), whole.text(1) == " sel   ")
     }
 
     test("reverse video lands on exactly the styled cells") {

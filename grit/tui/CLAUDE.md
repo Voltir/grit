@@ -1,9 +1,8 @@
 # grit.tui
 
 The terminal UI, ported from `../Spikes/tui-spike-slate` (library name `slate`, retired)
-and tailored to grit. **[`README.md`](README.md) is the design.** Code comments citing
-"ROADMAP" decisions dated before 2026-09-23 mean the spike's table, archived at
-`.local/history/slate/ROADMAP.md`; new design decisions follow `docs/decisions/README.md`.
+and tailored to grit. **[`README.md`](README.md) is the design.** Design decisions follow
+`docs/decisions/README.md`.
 
 ## Where it sits
 

@@ -10,8 +10,7 @@ fullscreen transcript with drag-scroll-copy?* — yes, but only by injecting a c
 scheduler**. `../../../Spikes/tui-spike-fullscreen` built the cell-grid answer on JLine and produced the
 `Surface`/`Painter` model this starts from. grit.tui is the merge: layoutz's ergonomics on the
 fullscreen spike's foundations. Its app model -- one tree that carries its handlers -- came
-from two spikes on 2026-09-24 (the view tree, and a pure self type on the app); their
-findings are archived in `.local/history/tui-spikes/`.
+from two spikes (the view tree, and a pure self type on the app).
 
 ## Why not keep building on layoutz
 

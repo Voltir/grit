@@ -4,8 +4,7 @@ import grit.core.classify.{Answer, Answers, ClassifierError, Question}
 import grit.core.message.{Tokens, Usage}
 
 /** Jev's `POST /v1/systemone` wire format, both ways. Pure. Checked against the TypeSafe
-  * docs (API reference, Choice, Noul, Confidence) vendored in `.local/reference/jev` on
-  * 2026-09-24.
+  * docs (API reference, Choice, Noul, Confidence) as published on 2026-09-24.
   */
 object JevJson {
 

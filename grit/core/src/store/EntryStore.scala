@@ -5,8 +5,9 @@ import grit.core.id.{ConversationId, EntryId, TurnSeq}
 /** Append-only entry store. Entries are never rewritten or deleted. */
 trait EntryStore {
 
-  /** Appends `entry`, rejecting an existing id with `DuplicateId`.
-    * Never overwrites.
+  /** Appends `entry`. Never overwrites: an id already taken is `DuplicateId`, and a `seq`
+    * already taken in its conversation is a `DatabaseError` (positions come from
+    * [[lockNext]]).
     */
   def insert(entry: Entry)(using Tx^): Either[StoreError, Unit]
 

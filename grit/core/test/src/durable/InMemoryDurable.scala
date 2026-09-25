@@ -18,6 +18,8 @@ import grit.dbos.sql.TestTx
   *     [[InMemoryDurable.UnexpectedStep]].
   *   - A step body that throws [[InMemoryDurable.Crash]] is left unrecorded, as if the
   *     process died inside it.
+  *   - A stream write outside a step body throws [[InMemoryDurable.WriteOutsideStep]]:
+  *     DBOS would record it as an operation, shifting every later step's position.
   *   - `patch` and `deprecatePatch` record and read DBOS's own marker,
   *     `DBOS.patch-{name}`, so a history captured from Postgres replays here unchanged.
   *   - `recv` never waits: it takes the oldest message [[send]] left, or none, and records
@@ -54,7 +56,14 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
     streams.getOrElse((id, key), Vector.empty)
 
   private def append(id: WorkflowId, key: String, piece: String): Unit =
-    streams = streams.updated((id, key), streamed(id, key) :+ piece)
+    if (!stepping(id)) throw WriteOutsideStep(id, key)
+    else streams = streams.updated((id, key), streamed(id, key) :+ piece)
+
+  /** The workflows whose step body is running now. Kept here, not on the run, so a
+    * [[StreamWriter]] need not capture the [[Durable]] it came from.
+    */
+  @untrackedCaptures
+  private var stepping = Set.empty[WorkflowId]
 
   /** Each workflow's messages not yet received, by topic, oldest first. */
   @untrackedCaptures
@@ -99,9 +108,11 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
   /** The journal of `id`, in the form a history fixture keeps. */
   def history(id: WorkflowId): Vector[Step] =
     journals.getOrElse(id, Vector.empty).map {
-      case (name, Recorded.Output(value)) => Step(name, Some(value), None)
-      case (name, Recorded.Threw(error)) => Step(name, None, Some(String.valueOf(error.getMessage)))
-      case (name, Recorded.Marker) => Step(name, None, None)
+      case (name, Recorded.Output(value)) => Step(name, Outcome.Output(value))
+      case (name, Recorded.Threw(recorded: RecordedError)) =>
+        Step(name, Outcome.Threw(recorded.message))
+      case (name, Recorded.Threw(error)) => Step(name, Outcome.Threw(Option(error.getMessage)))
+      case (name, Recorded.Marker) => Step(name, Outcome.Marker)
     }
 
   /** Runs `body` as a resumption of a workflow that recorded `steps`, as the current build
@@ -113,9 +124,9 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
       body: WorkflowId => Durable^ ?=> String
   ): Either[String, String] = {
     val seeded = steps.map {
-      case Step(name, Some(output), _) => name -> Recorded.Output(output)
-      case Step(name, None, Some(error)) => name -> Recorded.Threw(new RecordedError(error))
-      case Step(name, None, None) => name -> Recorded.Marker
+      case Step(name, Outcome.Output(value)) => name -> Recorded.Output(value)
+      case Step(name, Outcome.Threw(message)) => name -> Recorded.Threw(new RecordedError(message))
+      case Step(name, Outcome.Marker) => name -> Recorded.Marker
     }
     journals = journals.updated(id, seeded)
     outputs = outputs.removed(id)
@@ -218,12 +229,13 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
         case Some((_, Recorded.Marker)) =>
           throw UnexpectedStep(workflowId, position, name, "a patch marker")
         case None =>
+          stepping += workflowId
           val outcome =
             try Recorded.Output(j.encode(body()))
             catch {
               case crash: Crash => throw crash
               case e: Exception => Recorded.Threw(e)
-            }
+            } finally stepping -= workflowId
           journals = journals.updated(workflowId, journal :+ (name -> outcome))
           outcome match {
             case Recorded.Output(value) => decode(name, value)
@@ -244,10 +256,23 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
 
 object InMemoryDurable {
 
-  /** One recorded step: its name, and its output, its error's message, or neither for a
-    * patch marker.
-    */
-  final case class Step(name: String, output: Option[String], error: Option[String])
+  /** One recorded step, by name. */
+  final case class Step(name: String, outcome: Outcome)
+
+  /** What a recorded step came to. */
+  enum Outcome {
+
+    /** It returned; its encoded output. */
+    case Output(value: String)
+
+    /** It threw an exception with this message, which DBOS records as absent when the
+      * exception had none.
+      */
+    case Threw(message: Option[String])
+
+    /** A patch marker (`patch`), which records neither. */
+    case Marker
+  }
 
   /** The operation DBOS records for what a `recv` received (`NotificationsDAO.recv`). */
   val Recv = "DBOS.recv"
@@ -262,7 +287,16 @@ object InMemoryDurable {
   final class Crash extends RuntimeException("simulated crash")
 
   /** A recorded step's error, rethrown on replay of a loaded history. */
-  final class RecordedError(message: String) extends RuntimeException(message)
+  final class RecordedError(val message: Option[String])
+      extends RuntimeException(message.getOrElse("(no message)"))
+
+  /** A stream write made outside a step body, which DBOS records as an operation of its
+    * own (`DBOSExecutor.writeStream`).
+    */
+  final case class WriteOutsideStep(workflowId: WorkflowId, key: String)
+      extends RuntimeException(
+        s"workflow ${WorkflowId.value(workflowId)} wrote stream '$key' outside a step"
+      )
 
   /** A run reached a step under a different name than the one recorded at its position. */
   final case class UnexpectedStep(
