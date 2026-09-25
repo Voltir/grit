@@ -514,6 +514,31 @@ object ChatScreenTests extends TestSuite {
       assert(!hidden.screen.mkString.contains("ᛚ"), hidden.screen.last.contains("summaries hidden"))
     }
 
+    test("a new conversation is welcomed: grit's name, the tagline, the keys; gone once said") {
+      val name = "ᚷ ᚱ ᛁ ᛏ"
+      // Not while the engine opens, nor before the host has read the conversation.
+      assert(!started.screen.mkString.contains(name), !ready.screen.mkString.contains(name))
+      val empty = ready.message(Msg.Arrived(Vector(), None))
+      val shown = empty.screen
+      val at = shown.indexWhere(_.contains(name))
+      assert(at > 1, shown.exists(_.contains("memory, not scrollback")))
+      assert(shown.exists(r => r.contains("ctrl-t") && r.contains("the panel's tabs")))
+      // Centred: as much room either side of the name, a cell or so apart.
+      val row = shown.lift(at).getOrElse("").dropRight(1)
+      val left = row.indexOf(name)
+      val right = row.length - left - name.length
+      assert(math.abs(left - right) <= 1)
+      empty.painted._1.surface.at(at, left).style.fg ==> Some(Theme.Default.grit)
+      // Anything said, or a failure, takes its place.
+      val said1 = empty.message(Msg.Arrived(Vector(Said(true, "hi")), Some("assemble")))
+      assert(!said1.screen.mkString.contains(name), said1.screen.mkString.contains("ᛗ hi"))
+      assert(!empty.message(Msg.Failed("down")).screen.mkString.contains(name))
+      // A conversation that already has something in it is never welcomed.
+      assert(
+        !ready.message(Msg.Arrived(Vector(Said(true, "hi")), None)).screen.mkString.contains(name)
+      )
+    }
+
     test("a failure is painted before the thinking line, which stays") {
       val failed =
         ready.message(Msg.Arrived(Vector(), step = Some("call-model"))).message(Msg.Failed("down"))

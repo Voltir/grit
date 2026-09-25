@@ -48,6 +48,12 @@ object FollowTests extends TestSuite {
       Follow.step(next, entries, all(TurnStatus.Unknown))._2 ==> Vector.empty
     }
 
+    test("the first look says what it saw, even an empty conversation, and only the first") {
+      val (looked, msgs) = Follow.step(Follow.start, Vector.empty, all(TurnStatus.Unknown))
+      msgs ==> Vector(ChatScreen.Msg.Arrived(Vector(), None))
+      Follow.step(looked, Vector.empty, all(TurnStatus.Unknown))._2 ==> Vector.empty
+    }
+
     test("a message without a reply, whose turn runs, is thinking until the reply lands") {
       val asked = Vector(user(0, 0, "hi"))
       val (thinking, first) = Follow.step(Follow.start, asked, all(running()))

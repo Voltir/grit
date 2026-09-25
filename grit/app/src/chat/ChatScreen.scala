@@ -1,7 +1,7 @@
 package grit.app.chat
 
 import grit.app.chat.Commands.Picked
-import grit.app.look.{Look, Pill, Theme}
+import grit.app.look.{Look, Pill, Splash, Theme}
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.tui.components.editor.Editor
@@ -72,7 +72,8 @@ object ChatScreen {
     * it, while `panel` is on and the screen is wide enough, the turn panel shows its `tab`:
     * `turn`, the latest or the one `pinned` by a click, or the `session` so far. A `modal` dialog opens over the screen,
     * scrolled by `modalReader`. Each turn's summary is shown under its reply while
-    * `summaries` is on. While `palette` is open, the command list floats over the
+    * `summaries` is on. Once the host has `loaded` the conversation, one with nothing in
+    * it shows the splash in the transcript's place. While `palette` is open, the command list floats over the
     * prompt with that row selected; a draft put `aside` to open it comes back when it
     * closes.
     */
@@ -100,8 +101,12 @@ object ChatScreen {
       hearing: Option[Hearing] = None,
       tab: Tab = Tab.Turn,
       session: Option[SessionView] = None,
-      summaries: Boolean = false
+      summaries: Boolean = false,
+      loaded: Boolean = false
   ) {
+
+    /** Whether the splash shows: the conversation is read, and nothing is in it yet. */
+    def welcoming: Boolean = loaded && entries.isEmpty && !thinking && !opening
 
     /** The running turn's reply as heard so far, while it has any text. */
     def streaming: Option[Hearing] =
@@ -214,6 +219,14 @@ object ChatScreen {
     case Quit
   }
 
+  /** The keys that matter most, as the splash lists them. */
+  val Welcome: Vector[(String, String)] = Vector(
+    "enter" -> "send",
+    "/" -> "commands",
+    "ctrl-t" -> "the panel's tabs",
+    "ctrl-q" -> "quit"
+  )
+
   /** The keys the screen binds, and what each does, as the help lists them. */
   val Keys: Vector[(String, String)] = Vector(
     "enter" -> "send, or run a /command",
@@ -276,7 +289,7 @@ object ChatScreen {
           animate(
             s,
             recorded(s, said.map(Entry.Spoken(_)) ++ summaries.map(Entry.Summary(_)))
-              .copy(step = step, stepSince = since, status = "", hearing = heard)
+              .copy(step = step, stepSince = since, status = "", hearing = heard, loaded = true)
           )
         case Msg.Heard(h) => (s.copy(hearing = Some(h)), Effect.NoOp)
         case Msg.Failed(reason) =>
@@ -532,7 +545,8 @@ object ChatScreen {
     private def body(s: State, look: Look, panel: TurnPanel): Node[Msg] = {
       val bar = Some((look.scrollRail, look.scrollThumb))
       val reading =
-        Scroller.view(Transcript, transcript(s, look), s.reader, bar = bar).map(Msg.Reader(_))
+        if (s.welcoming) paint(Splash(look.theme, Welcome))
+        else Scroller.view(Transcript, transcript(s, look), s.reader, bar = bar).map(Msg.Reader(_))
       if (!s.panel) reading
       else {
         val shown = s.turn.filter(_.running.nonEmpty).fold(0L)(_ => s.stepMs)

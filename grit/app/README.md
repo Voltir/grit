@@ -15,7 +15,8 @@ In dependency order:
   well as a colour (`Look.Runes`: ᛗ the user, ᚨ grit, ᚺ a failure, ᛁ idle, ᛭ between turns). Every theme is held to
   the same APCA contrast targets (`ThemeContrastTests`). `ProseLook` is the terminal's
   output mode for prose (`grit.prose`): a reply's markdown as transcript blocks, whole or
-  still streaming. `Pill` is a tab's pill, lit on the accent while it is chosen. Imports
+  still streaming. `Pill` is a tab's pill, lit on the accent while it is chosen; `Splash`, the
+  welcome to an empty conversation. Imports
   nothing in app.
 - **`chat`** — the chat TUI. `ChatScreen` is a pure `grit.tui` app whose transcript is a
   projection of the store: a submission leaves as `Effect.ToHost(Send)` and is shown when
@@ -29,7 +30,8 @@ In dependency order:
   (`TurnView`), and the session so far (`SessionView`: its length, what it was billed,
   what search recalled, the models in each role), each built purely from what the host
   read.
-  `Replies` reads replies back out of the store. `Commands` is the one table of slash
+  A conversation with nothing in it yet shows the splash in the transcript's place,
+  once the host's first look has said so. `Replies` reads replies back out of the store. `Commands` is the one table of slash
   commands: what the palette (`/` in an empty prompt, or ctrl-p) lists, what `/help`
   describes, and what a submitted `/` draft runs; such a draft never reaches the model.
   The theme is screen state, so `/theme` repaints everything live. `/summaries` shows

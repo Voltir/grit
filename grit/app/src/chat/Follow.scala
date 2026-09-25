@@ -7,9 +7,15 @@ import grit.dbos.engine.TurnStatus
 import grit.turn.Turn
 
 /** What following a conversation has seen so far: the last entry shown, the step of the
-  * turn in progress (`None` when none was), and the turns whose failure has been reported.
+  * turn in progress (`None` when none was), the turns whose failure has been reported, and
+  * whether it has `looked` at all.
   */
-final case class Follow(lastSeq: Long, step: Option[String], reported: Set[TurnSeq]) {
+final case class Follow(
+    lastSeq: Long,
+    step: Option[String],
+    reported: Set[TurnSeq],
+    looked: Boolean = false
+) {
   def thinking: Boolean = step.nonEmpty
 }
 
@@ -18,7 +24,9 @@ object Follow {
   val start: Follow = Follow(-1L, None, Set.empty)
 
   /** One look at the conversation: what the screen should be told, given every entry in
-    * it now and where a turn's workflow is. New entries are shown once, in order. A turn
+    * it now and where a turn's workflow is. The first look always says what it saw, even
+    * nothing, so the screen knows the conversation is read. New entries are shown once,
+    * in order. A turn
     * is in progress while its user message has no reply and its workflow is running, and
     * the screen is told each step it moves to ([[Turn.running]]), and each summary as it
     * is written. One
@@ -49,10 +57,11 @@ object Follow {
     val next = Follow(
       fresh.lastOption.fold(state.lastSeq)(_.seq),
       step,
-      state.reported ++ failure.map(_._1)
+      state.reported ++ failure.map(_._1),
+      looked = true
     )
     val arrived =
-      Option.when(said.nonEmpty || summaries.nonEmpty || step != state.step)(
+      Option.when(!state.looked || said.nonEmpty || summaries.nonEmpty || step != state.step)(
         ChatScreen.Msg.Arrived(said, step, summaries)
       )
     (next, arrived.toVector ++ failure.map(f => ChatScreen.Msg.Failed(f._2)))
