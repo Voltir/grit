@@ -1,0 +1,12 @@
+data: {"id":"gen-1790308814-DNpkd1bo5GxCtp1vRGqO","object":"chat.completion.chunk","created":1790308814,"model":"google/gemini-2.5-flash-lite","provider":"Google","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"id":"tool_topic_YiBmMEqd5RWZsX5vhec6","type":"function","function":{"name":"topic","arguments":""}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1790308814-DNpkd1bo5GxCtp1vRGqO","object":"chat.completion.chunk","created":1790308814,"model":"google/gemini-2.5-flash-lite","provider":"Google","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"function":{"arguments":"{\"about\":\"current\",\"name\":\"Redis eviction\"}"}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1790308814-DNpkd1bo5GxCtp1vRGqO","object":"chat.completion.chunk","created":1790308814,"model":"google/gemini-2.5-flash-lite","provider":"Google","choices":[{"index":0,"delta":{"content":"I can help with that. Can you clarify what you mean by \"that\"? Are","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1790308814-DNpkd1bo5GxCtp1vRGqO","object":"chat.completion.chunk","created":1790308814,"model":"google/gemini-2.5-flash-lite","provider":"Google","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop","native_finish_reason":"STOP"}]}
+
+data: {"id":"gen-1790308814-DNpkd1bo5GxCtp1vRGqO","object":"chat.completion.chunk","created":1790308814,"model":"google/gemini-2.5-flash-lite","provider":"Google","service_tier":"default","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop","native_finish_reason":"STOP"}],"usage":{"prompt_tokens":75,"completion_tokens":23,"total_tokens":98,"cost":0.0000167,"is_byok":false,"prompt_tokens_details":{"cached_tokens":0,"cache_write_tokens":0,"audio_tokens":0,"video_tokens":0},"cost_details":{"upstream_inference_cost":0.0000167,"upstream_inference_prompt_cost":0.0000075,"upstream_inference_completions_cost":0.0000092},"completion_tokens_details":{"reasoning_tokens":0,"image_tokens":0,"audio_tokens":0}}}
+
+data: [DONE]
+

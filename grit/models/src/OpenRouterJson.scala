@@ -2,22 +2,44 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.provider.{ModelRequest, ProviderError}
+import grit.core.provider.{ModelRequest, ProviderError, Tool, ToolUse}
 
 /** OpenRouter's chat-completions wire format (OpenAI's shape), both ways. Pure. Checked
   * against openrouter.ai/docs (API reference, reasoning tokens, errors) on 2026-09-23.
   */
 object OpenRouterJson {
 
-  /** The request body for `request` on `model`. */
-  def request(model: String, maxTokens: Int, request: ModelRequest): ujson.Value =
-    ujson.Obj(
+  /** The request body for `request` on `model`. A request with tools names them in
+    * `tools`, with `tool_choice` `auto` or `none` (OpenRouter's tool-calling guide: every
+    * request of a tool exchange sends the tools again); one without has neither key.
+    */
+  def request(model: String, maxTokens: Int, request: ModelRequest): ujson.Value = {
+    val body = ujson.Obj(
       "model" -> model,
       "max_tokens" -> maxTokens,
       "messages" -> ujson.Arr.from(
         ujson.Obj("role" -> "system", "content" -> request.system) +: request.messages.map(
           message
         )
+      )
+    )
+    if (request.tools.nonEmpty) {
+      body("tools") = ujson.Arr.from(request.tools.map(tool))
+      body("tool_choice") = request.use match {
+        case ToolUse.Auto => "auto"
+        case ToolUse.Off => "none"
+      }
+    }
+    body
+  }
+
+  private def tool(t: Tool): ujson.Value =
+    ujson.Obj(
+      "type" -> "function",
+      "function" -> ujson.Obj(
+        "name" -> t.name,
+        "description" -> t.description,
+        "parameters" -> t.parameters
       )
     )
 

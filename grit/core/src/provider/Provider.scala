@@ -40,8 +40,32 @@ enum Delta {
   case Reasoning(text: String)
 }
 
-/** A model call's input: the system prompt, then `messages` in order. */
-final case class ModelRequest(system: String, messages: Vector[Message])
+/** A model call's input: the system prompt, then `messages` in order, and the `tools` the
+  * model may call as `use` allows. With no tools the model can only answer in text.
+  */
+final case class ModelRequest(
+    system: String,
+    messages: Vector[Message],
+    tools: Vector[Tool] = Vector.empty,
+    use: ToolUse = ToolUse.Auto
+)
+
+/** A tool the model may call: its `name`, what it is for, and a JSON Schema of its
+  * arguments (`parameters`, an object schema).
+  */
+final case class Tool(name: String, description: String, parameters: ujson.Value)
+
+/** Whether the model may call a request's tools. */
+enum ToolUse {
+
+  /** It may call one or more of them, or answer in text. */
+  case Auto
+
+  /** It may not call any, and answers in text. The tools are still sent: a request whose
+    * messages hold tool calls names the tools they used.
+    */
+  case Off
+}
 
 /** A model call that produced no response. */
 enum ProviderError {

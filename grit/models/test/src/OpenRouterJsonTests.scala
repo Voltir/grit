@@ -2,7 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.provider.{ModelRequest, ProviderError}
+import grit.core.provider.{ModelRequest, ProviderError, Tool, ToolUse}
 
 import utest.*
 
@@ -76,6 +76,36 @@ object OpenRouterJsonTests extends TestSuite {
           ujson.Obj("role" -> "tool", "tool_call_id" -> "call_1", "content" -> "contents")
         )
       )
+    }
+
+    test("request: tools and tool_choice only when the request has tools") {
+      val topic = Tool(
+        "topic",
+        "Say which topic.",
+        ujson.Obj("type" -> "object", "properties" -> ujson.Obj())
+      )
+      val plain = OpenRouterJson.request("m", 1, ModelRequest("s", Vector(Message.User("hi"))))
+      assert(!plain.obj.contains("tools"), !plain.obj.contains("tool_choice"))
+      val auto =
+        OpenRouterJson.request("m", 1, ModelRequest("s", Vector(Message.User("hi")), Vector(topic)))
+      auto("tools") ==> ujson.Arr(
+        ujson.Obj(
+          "type" -> "function",
+          "function" -> ujson.Obj(
+            "name" -> "topic",
+            "description" -> "Say which topic.",
+            "parameters" -> ujson.Obj("type" -> "object", "properties" -> ujson.Obj())
+          )
+        )
+      )
+      auto("tool_choice") ==> ujson.Str("auto")
+      val off = OpenRouterJson.request(
+        "m",
+        1,
+        ModelRequest("s", Vector(Message.User("hi")), Vector(topic), ToolUse.Off)
+      )
+      off("tool_choice") ==> ujson.Str("none")
+      off("tools") ==> auto("tools")
     }
 
     test("response: reasoning, text and tool calls, in that order, with usage and cost") {

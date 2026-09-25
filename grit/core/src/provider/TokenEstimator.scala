@@ -15,7 +15,18 @@ trait TokenEstimator {
   /** The cost of a request's system prompt `prompt`. */
   def system(prompt: String): Tokens
 
-  /** The cost of `request` as a whole: its system prompt and every message. */
-  final def request(request: ModelRequest): Tokens =
-    request.messages.map(message).foldLeft(system(request.system))(_ + _)
+  /** The cost of `request` as a whole: its system prompt, its tools' definitions (costed as
+    * system text) and every message.
+    */
+  final def request(request: ModelRequest): Tokens = {
+    val tools =
+      if (request.tools.isEmpty) Tokens.Zero
+      else
+        system(
+          request.tools
+            .map(t => s"${t.name}\n${t.description}\n${ujson.write(t.parameters)}")
+            .mkString("\n")
+        )
+    request.messages.map(message).foldLeft(system(request.system) + tools)(_ + _)
+  }
 }
