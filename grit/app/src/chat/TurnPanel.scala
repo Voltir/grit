@@ -1,6 +1,6 @@
 package grit.app.chat
 
-import grit.app.look.{Look, Theme}
+import grit.app.look.{Look, ProseLook, Theme}
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.tui.model.block.Block
@@ -45,7 +45,8 @@ final case class TurnPanel(look: Look, budget: Tokens) {
         hearing.filter(h => h.turn == v.turn && v.running.nonEmpty).toVector.flatMap { h =>
           Vector(row(" ── heard so far " -> fg(t.faint))) ++
             Option.when(h.reasoning.nonEmpty)(row(s" ${h.reasoning}" -> fg(t.faint))) ++
-            Option.when(h.text.nonEmpty)(row(s" ${h.text}" -> fg(t.ink), "▍" -> fg(t.grit))) ++
+            (if (h.text.isEmpty) Vector.empty
+             else ProseLook(look).streaming(h.text, StyledText.styled("▍", fg(t.grit)))) ++
             Vector(blank)
         }
       Vector(

@@ -320,7 +320,8 @@ object ChatScreen {
           val pin = Option.when(!s.owners.flatten.lastOption.contains(turn))(turn)
           if (pin == s.pinned) (s, Effect.NoOp)
           else (s.copy(pinned = pin, panelReader = top), Effect.ToHost(Msg.Show(pin)))
-        case None if entry == s.said.size && s.thinking && !s.opening =>
+        // The thinking line, or any block of the reply streaming in its place.
+        case None if entry >= s.said.size && s.thinking && !s.opening =>
           (
             s.copy(modal = Some(Dialog.Turn), modalReader = top, pinned = None),
             if (s.pinned.isEmpty) Effect.NoOp else Effect.ToHost(Msg.Show(None))
@@ -402,9 +403,9 @@ object ChatScreen {
       Doc(
         s.said ++
           Option.when(s.opening)(look.ward(s.tick, "opening the engine…")) ++
-          Option.when(s.thinking && !s.opening)(
-            s.streaming.fold(look.thinking(s.tick))(h => look.streaming(h.text, s.tick))
-          )
+          (if (s.thinking && !s.opening)
+             s.streaming.fold(Vector(look.thinking(s.tick)))(h => look.streaming(h.text, s.tick))
+           else Vector.empty)
       )
 
     private def hotkeys: OnInput[Msg] = {

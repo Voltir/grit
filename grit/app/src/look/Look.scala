@@ -32,20 +32,18 @@ final case class Look(theme: Theme) {
   /** A reply, from its markdown: one block per paragraph, list item, listing and so on. */
   def assistant(text: String): Vector[Block] = ProseLook(this).reply(text)
 
+  /** A reply as it streams, from as much of its markdown as has come ([[ProseLook]]),
+    * with a caret that blinks with `tick`.
+    */
+  def streaming(text: String, tick: Long): Vector[Block] =
+    ProseLook(this).streaming(
+      text,
+      StyledText.styled(if (tick % 8 < 5) "▍" else " ", Style.fg(theme.grit))
+    )
+
   /** The line under the transcript while a turn runs: a rune of the Futhark for each
     * `tick`, in turn.
     */
-  /** A reply as it streams: grit's marker, the text so far, and a caret that blinks with
-    * `tick`.
-    */
-  def streaming(text: String, tick: Long): Block.Text =
-    Block.styled(
-      StyledText.styled("▌", Style.fg(theme.grit)) ++
-        StyledText.styled(s"${Runes.Grit} ", Style.fg(theme.grit) + Style.Bold) ++
-        StyledText.styled(text, Style.fg(theme.ink)) ++
-        StyledText.styled(if (tick % 8 < 5) "▍" else " ", Style.fg(theme.grit))
-    )
-
   def thinking(tick: Long): Block.Text =
     Block.styled(
       StyledText.styled(s"  ${Runes.futhark(tick)} ", Style.fg(theme.user) + Style.Bold) ++
