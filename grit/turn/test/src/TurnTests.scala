@@ -75,31 +75,24 @@ object TurnTests extends TestSuite {
     }
 
     test("each call's usage is recorded once, under the entry it produced") {
-      val entries = new InMemoryEntryStore
+      val store = new InMemoryEntryStore
       val ledger = new InMemoryUsageLedger
       val durable = new InMemoryDurable
-      val turn = say(entries, "hello")
+      val turn = say(store, "hello")
       val provider = new RecordingProvider
       val summarizer = new RecordingProvider
-      runTurn(durable, entries, provider, turn, ledger, summarizer)
-      runTurn(durable, entries, new RecordingProvider, turn, ledger, new RecordingProvider)
+      // Dies recording the summary, after the reply's row: the rerun must not record it again.
+      val entries = new CrashOnInsert(store, _.payload.isInstanceOf[Payload.Summary])
+      assertThrows[InMemoryDurable.Crash](
+        runTurn(durable, entries, provider, turn, ledger, summarizer)
+      )
+      runTurn(durable, entries, provider, turn, ledger, summarizer) ==> Done
       ledger.rows.map(r => (r._1, r._2, r._3)) ==>
         Vector(Turn.replyId(turn), TurnSummary.id(turn))
           .map(id => (id, turn.workflowId, StubProvider.Model))
       // Beside each, the estimate of exactly the request that was sent.
       ledger.rows.map(_._5) ==>
         (provider.requests ++ summarizer.requests).map(CharEstimate.request)
-    }
-
-    test("the same workflow id twice calls the provider once") {
-      val entries = new InMemoryEntryStore
-      val durable = new InMemoryDurable
-      val provider = new RecordingProvider
-      val turn = say(entries, "hello")
-      runTurn(durable, entries, provider, turn) ==> Done
-      runTurn(durable, entries, provider, turn) ==> Done
-      provider.requests.size ==> 1
-      texts(entries).size ==> 3
     }
 
     test("a crash after the model call resumes without calling it again") {
@@ -113,16 +106,6 @@ object TurnTests extends TestSuite {
       runTurn(durable, entries, provider, turn) ==> Done
       provider.requests.size ==> 1
       durable.recordedSteps(turn.workflowId) ==> Recorded
-    }
-
-    test("the reply is told to edges as it streams, and the pieces join back to it") {
-      val entries = new InMemoryEntryStore
-      val durable = new InMemoryDurable
-      val turn = say(entries, "hello there")
-      runTurn(durable, entries, new RecordingProvider, turn)
-      val (pieces, h) = heard(durable, turn)
-      assert(pieces.nonEmpty)
-      h.text ==> "stub reply to: hello there"
     }
 
     test("a crash mid-stream: the rerun's pieces follow, and a reader hears only them") {
@@ -262,7 +245,7 @@ object TurnTests extends TestSuite {
       provider.requests.lastOption.flatMap(_.messages.lastOption) ==> Some(Message.User("two"))
     }
 
-    test("each reply's window is recorded beside it, with the turns search recalled") {
+    test("each turn's window is recorded as its own entry, with the turns search recalled") {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val provider = new RecordingProvider
@@ -278,7 +261,6 @@ object TurnTests extends TestSuite {
         Turn.windowId(two) ->
           Payload.Window(Vector(EntryId("in:one"), Turn.replyId(one)), Vector(one.turnSeq))
       )
-      texts(entries).drop(3).take(2) ==> Vector("user: two", "assistant: stub reply to: two")
     }
 
     test("a failed model call ends the turn with no reply") {
