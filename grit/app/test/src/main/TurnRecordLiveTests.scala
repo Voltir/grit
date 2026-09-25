@@ -67,12 +67,18 @@ object TurnRecordLiveTests extends TestSuite {
           .getOrElse(Vector.empty)
           .filter(_.turnSeq == turn.turnSeq)
         own
-          .collect { case grit.core.store.Entry(_, _, _, _, _, Payload.Exchange(m, shown), _) =>
-            (m, shown)
-          }
-          .collect { case (grit.core.message.Message.ToolResult(_, content, isError), shown) =>
-            (content, isError, shown)
-          } ==> Vector(("     1\tthe answer is 42", false, Some("read notes.txt")))
+          .collect {
+            case grit.core.store.Entry(
+                  _,
+                  _,
+                  _,
+                  _,
+                  _,
+                  Payload.Result(grit.core.message.Message.ToolResult(_, content, isError), shown),
+                  _
+                ) =>
+              (content, isError, shown)
+          } ==> Vector(("     1\tthe answer is 42", false, "read notes.txt"))
         reply(engine, turn) ==> Some("stub reply to: message look #call:{\"path\":\"notes.txt\"}")
       } finally {
         engine.close()

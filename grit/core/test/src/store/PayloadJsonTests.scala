@@ -84,13 +84,27 @@ object PayloadJsonTests extends TestSuite {
         """{"event":"placed","turn":2,"weights":[["t1",0.5]],"elsewhere":0.5,"by":{"kind":"first"}}]}"""
     }
 
-    test("exchange, attempt and ask") {
-      PayloadJson.write(Payload.Exchange(samples(3), None)).render() ==>
-        """{"kind":"exchange","message":{"role":"tool_result","callId":"c1",""" +
-        """"content":"no matches","isError":true}}"""
-      PayloadJson.write(Payload.Exchange(samples(3), Some("search \"x\" ."))).render() ==>
+    test("exchange, result, attempt and ask") {
+      val result: Message.ToolResult =
+        Message.ToolResult(ToolCallId("c1"), "no matches", isError = true)
+      // The message inside, as a plain message's; only the kind differs.
+      PayloadJson.write(Payload.Exchange(assistant))("message") ==>
+        PayloadJson.write(Payload.Message(assistant))("message")
+      PayloadJson.write(Payload.Exchange(assistant))("kind") ==> ujson.Str("exchange")
+      PayloadJson.write(Payload.Exchange(assistant)).obj.keySet ==> Set("kind", "message")
+      PayloadJson.write(Payload.Result(result, "search \"x\" .")).render() ==>
         """{"kind":"exchange","message":{"role":"tool_result","callId":"c1",""" +
         """"content":"no matches","isError":true},"shown":"search \"x\" ."}"""
+      // A result kept before calls were shown reads, its call's id in the call's place.
+      PayloadJson.read(
+        ujson.read(
+          """{"kind":"exchange","message":{"role":"tool_result","callId":"c1",""" +
+            """"content":"no matches","isError":true}}"""
+        )
+      ) ==> Right(Payload.Result(result, "c1"))
+      PayloadJson.read(
+        ujson.Obj("kind" -> "exchange", "message" -> ujson.Obj("role" -> "user", "text" -> "hi"))
+      ) ==> Left("an exchange holds no user message")
       PayloadJson.write(Payload.Attempt(ToolCallId("c1"))).render() ==>
         """{"kind":"attempt","call":"c1"}"""
       PayloadJson.write(Payload.Ask(ToolCallId("c1"), "Run ls")).render() ==>
@@ -142,10 +156,10 @@ object PayloadJsonTests extends TestSuite {
           TopicEvent.Described(t2, "Knots", "Which knot holds under load.")
         )
       )
-      (samples.map(Payload.Message(_)) ++ samples.map(Payload.Exchange(_, None)) ++
-        samples.map(Payload.Exchange(_, Some("read a.txt"))) :+ Payload.Summary(
-          "s"
-        ) :+
+      (samples.map(Payload.Message(_)) ++ samples.collect { case a: Message.Assistant =>
+        Payload.Exchange(a)
+      } ++ samples.collect { case r: Message.ToolResult => Payload.Result(r, "read a.txt") } :+
+        Payload.Summary("s") :+
         Payload.Query("q") :+ window :+ topic :+ Payload.Attempt(ToolCallId("c1")) :+
         Payload.Ask(ToolCallId("c1"), "Edit a.txt"))
         .foreach { p =>

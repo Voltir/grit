@@ -55,19 +55,14 @@ object FollowTests extends TestSuite {
     }
 
     test("a turn's tool loop arrives as one line per call, with what it came to, in order") {
-      def exchange(seq: Long, m: Message, shown: Option[String] = None) =
-        Entry(
-          EntryId(s"x$seq"),
-          c,
-          TurnSeq(0),
-          None,
-          seq,
-          Payload.Exchange(m, shown),
-          Instant.EPOCH
-        )
+      def at(seq: Long, p: Payload) =
+        Entry(EntryId(s"x$seq"), c, TurnSeq(0), None, seq, p, Instant.EPOCH)
       def result(seq: Long, id: String, content: String, failed: Boolean, shown: String) =
-        exchange(seq, Message.ToolResult(grit.core.id.ToolCallId(id), content, failed), Some(shown))
-      val called = Message.Assistant(
+        at(
+          seq,
+          Payload.Result(Message.ToolResult(grit.core.id.ToolCallId(id), content, failed), shown)
+        )
+      val called: Message.Assistant = Message.Assistant(
         Vector(
           AssistantBlock.Text("let me look"),
           AssistantBlock
@@ -85,14 +80,12 @@ object FollowTests extends TestSuite {
       )
       val entries = Vector(
         user(0, 0, "hi"),
-        exchange(1, called),
+        at(1, Payload.Exchange(called)),
         result(2, "a", "one\ntwo\nthree", false, "read x.txt"),
         result(3, "b", "No such dir.\nat .", true, "list"),
         result(4, "s", "a:1: x", false, "search \"Round\\b\" grit/turn"),
         // A call that did not read is shown by the name it sent.
         result(5, "u", "There is no tool named `sing`.", true, "sing"),
-        // A result kept before calls were shown: the result alone.
-        exchange(6, Message.ToolResult(grit.core.id.ToolCallId("o"), "old", false)),
         reply(7, 0, "done")
       )
       val (_, msgs) = Follow.step(Follow.start, entries, all(TurnStatus.Unknown))
@@ -104,7 +97,6 @@ object FollowTests extends TestSuite {
             ChatScreen.Said(ChatScreen.Voice.Tool, "list ← No such dir."),
             ChatScreen.Said(ChatScreen.Voice.Tool, "search \"Round\\b\" grit/turn ← 1 line"),
             ChatScreen.Said(ChatScreen.Voice.Tool, "sing ← There is no tool named `sing`."),
-            ChatScreen.Said(ChatScreen.Voice.Tool, "← 1 line"),
             ChatScreen.Said(ChatScreen.Voice.Reply, "done")
           ),
           None
@@ -127,7 +119,7 @@ object FollowTests extends TestSuite {
         Some(ChatScreen.Msg.Asking(None))
       val done = asking :+ at(
         2,
-        Payload.Exchange(Message.ToolResult(call, "denied", true), Some("edit a.txt"))
+        Payload.Result(Message.ToolResult(call, "denied", true), "edit a.txt")
       )
       Follow.step(waiting, done, all(running("tool:0:0")))._2.lastOption ==>
         Some(ChatScreen.Msg.Asking(None))

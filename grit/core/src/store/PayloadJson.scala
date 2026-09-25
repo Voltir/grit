@@ -23,16 +23,19 @@ object PayloadJson {
       )
     case Payload.Topic(events) =>
       ujson.Obj("kind" -> "topic", "events" -> ujson.Arr.from(events.map(TopicJson.write)))
-    case Payload.Exchange(m, shown) =>
-      val o = ujson.Obj("kind" -> "exchange", "message" -> message(m))
-      shown.foreach(s => o("shown") = s)
-      o
+    case Payload.Exchange(reply) => ujson.Obj("kind" -> "exchange", "message" -> message(reply))
+    case Payload.Result(result, shown) =>
+      ujson.Obj("kind" -> "exchange", "message" -> message(result), "shown" -> shown)
     case Payload.Attempt(call) => ujson.Obj("kind" -> "attempt", "call" -> ToolCallId.value(call))
     case Payload.Ask(call, shown) =>
       ujson.Obj("kind" -> "ask", "call" -> ToolCallId.value(call), "shown" -> shown)
   }
 
-  /** The payload `v` encodes, or why it encodes none. */
+  /** The payload `v` encodes, or why it encodes none. An [[Payload.Exchange]] and a
+    * [[Payload.Result]] share the kind `exchange`, told apart by their message's role, so
+    * rows written before they were two cases read as before. A result kept before calls
+    * were shown has no `shown`, and reads with its call's id in its place.
+    */
   def read(v: ujson.Value): Either[String, Payload] =
     for {
       o <- obj(v)
@@ -54,14 +57,16 @@ object PayloadJson {
           } yield Payload.Window(entries, recalled)
         case "topic" => arr(o, "events").flatMap(traverse(_)(TopicJson.read)).map(Payload.Topic(_))
         case "exchange" =>
-          for {
-            m <- field(o, "message").flatMap(readMessage)
-            shown <- o.value.get("shown") match {
-              case None => Right(None)
-              case Some(ujson.Str(s)) => Right(Some(s))
-              case Some(_) => Left("shown is not a string")
-            }
-          } yield Payload.Exchange(m, shown)
+          field(o, "message").flatMap(readMessage).flatMap {
+            case reply: Message.Assistant => Right(Payload.Exchange(reply))
+            case result: Message.ToolResult =>
+              o.value.get("shown") match {
+                case None => Right(Payload.Result(result, ToolCallId.value(result.callId)))
+                case Some(ujson.Str(shown)) => Right(Payload.Result(result, shown))
+                case Some(_) => Left("shown is not a string")
+              }
+            case Message.User(_) => Left("an exchange holds no user message")
+          }
         case "attempt" => str(o, "call").map(c => Payload.Attempt(ToolCallId(c)))
         case "ask" =>
           for {

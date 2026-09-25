@@ -59,9 +59,9 @@ object TurnToolsTests extends TestSuite {
       settle(entries, ws, turn, call("peek")) ==> Right(TurnTools.Settled(id, failed = false))
       kept(entries, id) ==>
         Some(
-          Payload.Exchange(
+          Payload.Result(
             Message.ToolResult(ToolCallId("c"), "alpha", isError = false),
-            Some("peek a.txt")
+            "peek a.txt"
           )
         )
     }
@@ -99,7 +99,7 @@ object TurnToolsTests extends TestSuite {
       settle(entries, ws, turn, call("poke"), approved).map(_.failed) ==> Right(true)
       ws.reads ==> 1
       kept(store, TurnTools.Slot(turn, Round.First, 0).resultId) ==>
-        Some(Payload.Exchange(Outcome.Interrupted.result(ToolCallId("c")), Some("poke a.txt")))
+        Some(Payload.Result(Outcome.Interrupted.result(ToolCallId("c")), "poke a.txt"))
     }
 
     test("a gated call declined or timed out does not run") {
@@ -113,7 +113,7 @@ object TurnToolsTests extends TestSuite {
         val turn = say(entries, "go")
         settle(entries, ws, turn, call("poke"), approval)
         kept(entries, TurnTools.Slot(turn, Round.First, 0).resultId) ==>
-          Some(Payload.Exchange(expected.result(ToolCallId("c")), Some("poke a.txt")))
+          Some(Payload.Result(expected.result(ToolCallId("c")), "poke a.txt"))
         kept(entries, TurnTools.Slot(turn, Round.First, 0).attemptId) ==> None
       }
       ws.reads ==> 0
@@ -149,8 +149,8 @@ object TurnToolsTests extends TestSuite {
       val unknown: AssistantBlock.ToolCall =
         AssistantBlock.ToolCall(ToolCallId("c"), "peek<|channel|>x", ujson.Obj())
       settle(entries, ws, turn, Pending.Run(unknown)).map(_.failed) ==> Right(true)
-      kept(entries, id).collect { case Payload.Exchange(_, shown) => shown } ==>
-        Some(Some("peek<|channel|>x"))
+      kept(entries, id).collect { case Payload.Result(_, shown) => shown } ==>
+        Some("peek<|channel|>x")
     }
   }
 }

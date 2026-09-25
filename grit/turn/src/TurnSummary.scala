@@ -121,7 +121,8 @@ object TurnSummary {
       .filter(_.nonEmpty)
 
   private def line(payload: Payload): Option[String] = payload match {
-    case Payload.Exchange(m, _) => line(Payload.Message(m))
+    case Payload.Exchange(reply) => line(Payload.Message(reply))
+    case Payload.Result(result, _) => line(Payload.Message(result))
     case Payload.Message(Message.User(text)) => Some(s"User: $text")
     case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
       val said = blocks.collect {

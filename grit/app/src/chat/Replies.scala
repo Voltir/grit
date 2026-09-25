@@ -27,22 +27,21 @@ object Replies {
       Some(if (said.isEmpty) "(no text in the reply)" else said)
     case Payload.Message(Message.ToolResult(_, _, _)) => None
     case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _) | Payload.Topic(_) |
-        Payload.Exchange(_, _) | Payload.Attempt(_) | Payload.Ask(_, _) =>
+        Payload.Exchange(_) | Payload.Result(_, _) | Payload.Attempt(_) | Payload.Ask(_, _) =>
       None
   }
 
   /** What a call of a turn's tool loop came to, as one line of the transcript, when `entry`
-    * is its result: the call as the turn kept it ([[Payload.Exchange]]'s `shown`), then
-    * `← n lines`, or `← ` and an error's first line; the call left out for a result kept
-    * before calls were shown. `None` for any other entry.
+    * is its result: the call as the turn kept it ([[Payload.Result]]'s `shown`), then
+    * `← n lines`, or `← ` and an error's first line. `None` for any other entry.
     */
   def settled(entry: Entry): Option[String] = entry.payload match {
-    case Payload.Exchange(Message.ToolResult(_, content, isError), shown) =>
+    case Payload.Result(Message.ToolResult(_, content, isError), call) =>
       val lines = content.linesIterator.toVector
       val came =
         if (isError) s"← ${lines.headOption.getOrElse("failed")}"
         else s"← ${lines.size} ${if (lines.size == 1) "line" else "lines"}"
-      Some(shown.fold(came)(call => s"$call $came"))
+      Some(s"$call $came")
     case _ => None
   }
 }

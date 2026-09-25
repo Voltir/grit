@@ -109,7 +109,7 @@ object TurnTools {
 
   /** Where a turn keeps what its tool calls came to: in `entries`, written through `jot` from
     * inside each call's step. Each method settles the call at a [[Slot]], whose id is `call`,
-    * and keeps its result as a [[Payload.Exchange]] entry at [[Slot.resultId]], dated `at`,
+    * and keeps its result as a [[Payload.Result]] entry at [[Slot.resultId]], dated `at`,
     * after everything in the conversation, with the call as it is shown ([[Bound.shown]]). A
     * result already kept is returned as it is, and nothing runs. Each fails only when `jot`
     * cannot read or write the store.
@@ -166,7 +166,7 @@ object TurnTools {
         case Some(kept) => settledBy(kept)
         case None =>
           outcome().flatMap { o =>
-            keep(slot.turn, slot.resultId, Payload.Exchange(o.result(call), Some(shown)), at)
+            keep(slot.turn, slot.resultId, Payload.Result(o.result(call), shown), at)
               .flatMap(settledBy)
           }
       }
@@ -221,7 +221,7 @@ object TurnTools {
   }
 
   private def settledBy(kept: Entry): Either[TurnFailure, Settled] = kept.payload match {
-    case Payload.Exchange(Message.ToolResult(_, _, failed), _) => Right(Settled(kept.id, failed))
+    case Payload.Result(Message.ToolResult(_, _, failed), _) => Right(Settled(kept.id, failed))
     case _ => Left(TurnFailure.Store(s"entry ${EntryId.value(kept.id)} is not a tool result"))
   }
 

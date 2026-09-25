@@ -35,14 +35,17 @@ enum Payload {
     */
   case Topic(events: Vector[TopicEvent])
 
-  /** A message inside the tool loop of the turn the entry belongs to: a reply that called
-    * tools, or a tool call's result. The turn's own later model calls and its summary read
-    * it; no window includes it, so a call is never shown without its result. Never
-    * searched. `shown` is a result's call in one line, as a person is shown it: the tool's
-    * name and what the call acts on, or only the name as sent when the call did not read.
-    * `None` for a reply, and for a result kept before calls were shown.
+  /** A reply inside the tool loop of the turn the entry belongs to that called tools; each
+    * call's [[Result]] follows it. The turn's own later model calls and its summary read it;
+    * no window includes it, so a call is never shown without its result. Never searched.
     */
-  case Exchange(message: grit.core.message.Message, shown: Option[String])
+  case Exchange(reply: grit.core.message.Message.Assistant)
+
+  /** A tool call's result inside the tool loop of the turn the entry belongs to, read as
+    * [[Exchange]] is. `shown` is its call in one line, as a person is shown it: the tool's
+    * name and what the call acts on, or only the name as sent when the call did not read.
+    */
+  case Result(result: grit.core.message.Message.ToolResult, shown: String)
 
   /** A tool call that asks a person first began to run, before its result was recorded: a
     * record that a crash may have cut it short. Never shown to the model, never searched.

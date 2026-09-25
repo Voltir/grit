@@ -604,7 +604,7 @@ object Turn {
             turn.turnSeq,
             None,
             next.seq,
-            Payload.Exchange(reply, None),
+            Payload.Exchange(reply),
             at
           )
         )
@@ -868,7 +868,8 @@ object Turn {
         }
         val mine = own(all, turn).map(_.payload).collect {
           case Payload.Message(m) => m
-          case Payload.Exchange(m, _) => m
+          case Payload.Exchange(reply) => reply
+          case Payload.Result(result, _) => result
         }
         Right(ModelRequest(system, shown ++ mine))
     }

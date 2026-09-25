@@ -264,14 +264,13 @@ object TurnFixtures {
         case Payload.Message(other) => Some(other.toString)
         case Payload.Summary(text) => Some(s"summary: $text")
         case Payload.Query(text) => Some(s"query: $text")
-        case Payload.Exchange(Message.Assistant(blocks, _, _, _), _) =>
+        case Payload.Exchange(Message.Assistant(blocks, _, _, _)) =>
           Some(blocks.collect {
             case AssistantBlock.Text(t) => s"called: $t"
             case AssistantBlock.ToolCall(_, name, args) => s"[$name ${args.render()}]"
           }.mkString)
-        case Payload.Exchange(Message.ToolResult(_, content, isError), _) =>
+        case Payload.Result(Message.ToolResult(_, content, isError), _) =>
           Some(s"${if (isError) "error" else "result"}: $content")
-        case Payload.Exchange(other, _) => Some(other.toString)
         case Payload.Attempt(call) => Some(s"attempt: ${grit.core.id.ToolCallId.value(call)}")
         case Payload.Ask(call, shown) => Some(s"ask: ${grit.core.id.ToolCallId.value(call)}: $shown")
         case Payload.Window(_, _) | Payload.Topic(_) => None

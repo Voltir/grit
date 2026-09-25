@@ -79,7 +79,7 @@ object Follow {
     val own = entries.filter(_.turnSeq == turn.turnSeq)
     val moved = own.flatMap {
       _.payload match {
-        case Payload.Exchange(Message.ToolResult(call, _, _), _) => Some(call)
+        case Payload.Result(Message.ToolResult(call, _, _), _) => Some(call)
         case Payload.Attempt(call) => Some(call)
         case _ => None
       }
