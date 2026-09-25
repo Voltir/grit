@@ -192,5 +192,41 @@ object DurableTests extends TestSuite {
       val err = assertCompileError("summon[Journaled[Unit]]")
       assert(err.msg.contains("return a value describing what it did"))
     }
+
+    test("recv: the oldest message on its topic, once; none when none was sent") {
+      val durable = new InMemoryDurable
+      durable.send(id, "t", "first")
+      durable.send(id, "t", "second")
+      durable.send(id, "other", "elsewhere")
+      def body(using d: Durable^): String = {
+        val waits = scala.concurrent.duration.FiniteDuration(1, "s")
+        Vector(d.recv("t", waits), d.recv("t", waits), d.recv("t", waits)).mkString(",")
+      }
+      val got = durable.run(id)(_ => body)
+      got ==> "Some(first),Some(second),None"
+      durable.unreceived(id, "other") ==> Vector("elsewhere")
+      durable.recordedSteps(id) ==>
+        Vector.fill(3)(Vector(InMemoryDurable.Recv, InMemoryDurable.Sleep)).flatten
+    }
+
+    test("recv: a replay returns what was received, and receives nothing more") {
+      val durable = new InMemoryDurable
+      durable.send(id, "t", "yes")
+      def body(using d: Durable^): String =
+        d.recv("t", scala.concurrent.duration.FiniteDuration(1, "s")).getOrElse("none")
+      durable.run(id)(_ => body) ==> "yes"
+      val history = durable.history(id)
+      durable.send(id, "t", "later")
+      durable.replay(id, history)(_ => body) ==> Right("yes")
+      durable.unreceived(id, "t") ==> Vector("later")
+      durable.replay(id, history.map(s => s.copy(output = None)))(_ => body) ==> Right("none")
+    }
+
+    test("send: a second message under the same key is ignored") {
+      val durable = new InMemoryDurable
+      durable.send(id, "t", "approved", Some("k"))
+      durable.send(id, "t", "declined", Some("k"))
+      durable.unreceived(id, "t") ==> Vector("approved")
+    }
   }
 }

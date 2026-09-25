@@ -1,6 +1,7 @@
 package grit.core.durable
 
 import scala.caps.unsafe.untrackedCaptures
+import scala.concurrent.duration.FiniteDuration
 
 import grit.core.id.WorkflowId
 import grit.core.store.Tx
@@ -19,6 +20,8 @@ import grit.dbos.sql.TestTx
   *     process died inside it.
   *   - `patch` and `deprecatePatch` record and read DBOS's own marker,
   *     `DBOS.patch-{name}`, so a history captured from Postgres replays here unchanged.
+  *   - `recv` never waits: it takes the oldest message [[send]] left, or none, and records
+  *     it as DBOS does, `DBOS.recv` (its output the message, or none) then `DBOS.sleep`.
   *
   * `transact` hands its body a [[TestTx]], so pair it with in-memory stores. Their writes
   * are not rolled back when the body throws.
@@ -52,6 +55,28 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
 
   private def append(id: WorkflowId, key: String, piece: String): Unit =
     streams = streams.updated((id, key), streamed(id, key) :+ piece)
+
+  /** Each workflow's messages not yet received, by topic, oldest first. */
+  @untrackedCaptures
+  private var mail = Map.empty[(WorkflowId, String), Vector[String]]
+
+  /** The idempotency keys of every message sent. */
+  @untrackedCaptures
+  private var sent = Set.empty[String]
+
+  /** Sends `message` to workflow `id` on `topic`, for its [[Durable.recv]]; ignored when a
+    * message was already sent under `key`, as DBOS's `send` ignores a repeated idempotency
+    * key.
+    */
+  def send(id: WorkflowId, topic: String, message: String, key: Option[String] = None): Unit =
+    if (!key.exists(sent.contains)) {
+      key.foreach(k => sent = sent + k)
+      mail = mail.updated((id, topic), mail.getOrElse((id, topic), Vector.empty) :+ message)
+    }
+
+  /** The messages sent to workflow `id` on `topic` that it has not received, oldest first. */
+  def unreceived(id: WorkflowId, topic: String): Vector[String] =
+    mail.getOrElse((id, topic), Vector.empty)
 
   /** How far the last run of each workflow got through its journal. */
   @untrackedCaptures
@@ -148,6 +173,33 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
         case _ => ()
       }
 
+    def recv(topic: String, timeout: FiniteDuration): Option[String] = {
+      val position = next
+      val got = journal.lift(position) match {
+        case Some((Recv, Recorded.Output(message))) => Some(message)
+        case Some((Recv, Recorded.Marker)) => None
+        case Some((Recv, Recorded.Threw(error))) => throw error
+        case Some((recorded, _)) => throw UnexpectedStep(workflowId, position, Recv, recorded)
+        case None =>
+          val waiting = unreceived(workflowId, topic)
+          mail = mail.updated((workflowId, topic), waiting.drop(1))
+          val first = waiting.headOption
+          val recorded = first.fold(Recorded.Marker)(Recorded.Output(_))
+          journals = journals.updated(workflowId, journal :+ (Recv -> recorded))
+          first
+      }
+      advance()
+      journal.lift(next) match {
+        case Some((Sleep, _)) => ()
+        case Some((recorded, _)) => throw UnexpectedStep(workflowId, next, Sleep, recorded)
+        case None =>
+          val end = Recorded.Output(timeout.toMillis.toString)
+          journals = journals.updated(workflowId, journal :+ (Sleep -> end))
+      }
+      advance()
+      got
+    }
+
     private def journal: Vector[(String, Recorded)] = journals.getOrElse(workflowId, Vector.empty)
 
     private def advance(): Unit = {
@@ -196,6 +248,12 @@ object InMemoryDurable {
     * patch marker.
     */
   final case class Step(name: String, output: Option[String], error: Option[String])
+
+  /** The operation DBOS records for what a `recv` received (`NotificationsDAO.recv`). */
+  val Recv = "DBOS.recv"
+
+  /** The operation DBOS records for the end of a `recv`'s wait, after [[Recv]]. */
+  val Sleep = "DBOS.sleep"
 
   /** DBOS's step name for the patch `name` (`DBOSExecutor.patch`). */
   def patchMarker(name: String): String = s"DBOS.patch-$name"

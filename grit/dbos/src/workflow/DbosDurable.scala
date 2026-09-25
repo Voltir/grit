@@ -1,5 +1,8 @@
 package grit.dbos.workflow
 
+import scala.concurrent.duration.FiniteDuration
+import scala.jdk.OptionConverters.*
+
 import grit.core.durable.{Durable, Journaled, StreamWriter, UnreadableJournal}
 import grit.core.id.WorkflowId
 import grit.core.store.Tx
@@ -58,6 +61,20 @@ private[dbos] final class DbosDurable(
       def write(piece: String): Unit = on.writeStream(key, piece)
     }
   }
+
+  /** `DBOS.recv`: two operations, `DBOS.recv` recording the message (or null) and, under the
+    * next function id, `DBOS.sleep` recording the wait's end, written first
+    * (NotificationsDAO.recv, StepsDAO.durableSleepEndTime). A message is whatever its sender
+    * sent, deserialized; one that is not a string is its `toString`.
+    */
+  def recv(topic: String, timeout: FiniteDuration): Option[String] =
+    dbos
+      .recv[AnyRef](topic, java.time.Duration.ofMillis(timeout.toMillis))
+      .toScala
+      .map {
+        case s: String => s
+        case other => other.toString
+      }
 
   // A fresh output is decoded too, so a first run returns exactly what a replay would.
   private def decode[A](name: String, recorded: String)(using j: Journaled[A]): A =

@@ -1,5 +1,7 @@
 package grit.core.durable
 
+import scala.concurrent.duration.FiniteDuration
+
 import grit.core.store.Tx
 
 /** Capability to run the current workflow's durable operations. Each completes at most
@@ -48,6 +50,13 @@ trait Durable extends caps.ExclusiveCapability {
     * wrote it.
     */
   def stream(key: String): StreamWriter
+
+  /** The oldest message sent to this workflow on `topic` that it has not received, waiting
+    * up to `timeout` for one; `None` when none came in time. What came, or that nothing did,
+    * is recorded, so a replay returns it at once. The wait's end is recorded as it begins:
+    * a workflow resumed after a crash waits only for what was left of it.
+    */
+  def recv(topic: String, timeout: FiniteDuration): Option[String]
 }
 
 /** Where a step tells an edge what it is doing while it does it ([[Durable.stream]]). */
