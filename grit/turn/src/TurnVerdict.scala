@@ -18,14 +18,6 @@ object TurnVerdict {
   /** The tool's name. */
   val Name = "topic"
 
-  /** What the system prompt says about topics and the tool. */
-  val SystemSection: String =
-    "A conversation is divided into topics. When the user's message ends with a note that " +
-      "the topic may have changed, first call the `topic` tool once to say what the message " +
-      "is about: `current` if it carries on the current topic, `earlier` with the name of an " +
-      "earlier topic it goes back to, or `new` with a short name for a new subject. Then " +
-      "answer the message as usual. Never mention topics, the note or the tool in your answer."
-
   /** The `topic` tool. */
   val Topic: Tool = Tool(
     Name,
@@ -61,8 +53,13 @@ object TurnVerdict {
   def tag(c: TurnTopics.Classification): String = {
     val current = c.current.fold("none")(_.key)
     val earlier = if (c.earlier.isEmpty) "none" else c.earlier.map(_.key).mkString("; ")
+    // The whole instruction rides here, with the tool, and never in the system prompt: a
+    // model told of a tool it was not offered writes the call out as text (seen live with
+    // gpt-oss-20b, which answered a message with "topic(new,movie)").
     s"[grit: the topic may have changed. Current topic: $current. Earlier topics: $earlier. " +
-      s"Call `$Name` before you answer.]"
+      s"First call the `$Name` tool once to say what this message is about: `current`, " +
+      "`earlier` with that topic's name, or `new` with a short name. Then answer the message " +
+      "as usual, without mentioning topics, this note or the tool.]"
   }
 
   /** `base` with the tool offered and [[tag]] after its last user message. */

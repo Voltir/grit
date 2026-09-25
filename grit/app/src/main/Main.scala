@@ -25,7 +25,7 @@ import grit.models.{
 }
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
-import grit.turn.{Turn, TurnVerdict}
+import grit.turn.Turn
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set (per [[ModelRole]], see
@@ -53,7 +53,7 @@ object Main {
   /** The argument runs share one conversation, apart from any TUI session. */
   private val RunOrigin: Origin = Origin.Task("m0", "main")
 
-  private val SystemPrompt = s"You are grit.\n\n${TurnVerdict.SystemSection}"
+  private val SystemPrompt = "You are grit."
 
   def main(args: Array[String]): Unit = {
     val tui = args.isEmpty
