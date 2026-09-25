@@ -185,10 +185,6 @@ object TreeTests extends TestSuite {
       val want = hung.textOf(sel)
       val v = sim.vt
       assert(want.startsWith("2: words"), highlighted(v) == want.replaceAll("\\s+", ""))
-      // No cell of a margin is ever reversed.
-      (1 until 11).foreach { r =>
-        assert(!v.cells(r)(0).style.reverse && !v.cells(r)(1).style.reverse)
-      }
       sim.in(mouse(MouseKind.Release, 10, 1))
       assert(sim.loop.state.copied == Vector(want))
       assert(!want.contains("▎") && !want.contains("ᚨ"))

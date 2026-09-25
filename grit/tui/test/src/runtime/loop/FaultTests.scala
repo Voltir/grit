@@ -86,7 +86,7 @@ object FaultTests extends TestSuite {
       assert(h.loop.faults == 1L)
     }
 
-    test("what the loop cannot carry on past still escapes it") {
+    test("only an interrupt or running out of memory is not survivable") {
       assert(!Fault.survivable(new InterruptedException()))
       assert(!Fault.survivable(new OutOfMemoryError()))
       assert(Fault.survivable(new NoClassDefFoundError("x")))
