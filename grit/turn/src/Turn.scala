@@ -1,7 +1,6 @@
 package grit.turn
 
 import java.time.Instant
-import java.util.UUID
 
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Window}
 import grit.core.durable.{Durable, StreamWriter}
@@ -137,7 +136,7 @@ object Turn {
         val topicFailure = placing match {
           case Placing.Placed(c) =>
             d.transact(Step.RecordTopic)(
-              TurnTopics.record(records.entries, records.ledger, turn, c)
+              TurnTopics.record(records.entries, records.ledger, turn, c, env.clock.now())
             ).left
               .toOption
           case Placing.Unplaced => None
@@ -229,7 +228,7 @@ object Turn {
         if (d.patch(Patches.RecordWindow)) WindowRecord.OwnStep else WindowRecord.WithReply
       _ <- recorded match {
         case WindowRecord.OwnStep =>
-          d.transact(Step.RecordWindow)(recordWindow(env.records, turn, window))
+          d.transact(Step.RecordWindow)(recordWindow(env.records, turn, window, env.clock.now()))
         case WindowRecord.WithReply => Right(windowId(turn))
       }
       asked = asking(placing)
@@ -246,7 +245,16 @@ object Turn {
         }
         val appended = answered.result.flatMap { a =>
           d.transact(Step.Append)(
-            append(env.system, env.records, turn, window, replyId(turn), a, recorded)
+            append(
+              env.system,
+              env.records,
+              turn,
+              window,
+              replyId(turn),
+              a,
+              recorded,
+              env.clock.now()
+            )
           )
         }
         Ran(appended, answered.verdictUnrecorded)
@@ -264,7 +272,7 @@ object Turn {
       shape: Shape
   )(using env: TurnEnv^): Either[TurnFailure, Message.Assistant] = {
     val told =
-      new TurnStream.Writer(heard, UUID.randomUUID().toString, () => System.nanoTime() / 1000000)
+      new TurnStream.Writer(heard, env.fresh.nonce(), () => env.clock.millis())
     val result = request(env, turn, window).flatMap { req =>
       env.provider.stream(shape(req), told.tell).left.map { case ProviderError.Unavailable(cause) =>
         TurnFailure.Model(cause)
@@ -294,14 +302,14 @@ object Turn {
     }
     val round = TurnVerdict.round(c, first, further)
     val recorded = d.transact(Step.RecordVerdict)(
-      recordVerdict(env.system, env.records, turn, seen, c, round)
+      recordVerdict(env.system, env.records, turn, seen, c, round, env.clock.now())
     )
     Ran(round.answer, recorded.left.toOption)
   }
 
   /** The `record-verdict` step: where `round`'s verdict places `turn`'s message, recorded
-    * as its entry [[TurnVerdict.verdictId]] with the round's anomaly, and what the replies
-    * it spent cost in the ledger beside it.
+    * as its entry [[TurnVerdict.verdictId]], dated `at`, with the round's anomaly, and what
+    * the replies it spent cost in the ledger beside it.
     */
   private def recordVerdict(
       system: String,
@@ -309,7 +317,8 @@ object Turn {
       turn: TurnRef,
       window: Window,
       c: TurnTopics.Classification,
-      round: TurnVerdict.Round
+      round: TurnVerdict.Round,
+      at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
       all <- records.entries.list(turn.conversationId).left.map(storeFailure)
@@ -320,7 +329,8 @@ object Turn {
         turn,
         TurnVerdict.verdictId(turn),
         TurnVerdict.events(round.verdict, round.anomaly, c, turn),
-        TurnVerdict.cost(round.spent.map(r => r.reply -> records.estimator.request(r.shape(base))))
+        TurnVerdict.cost(round.spent.map(r => r.reply -> records.estimator.request(r.shape(base)))),
+        at
       )
     } yield id
 
@@ -346,7 +356,7 @@ object Turn {
           }
       }
       appended <- d.transact(Step.AppendSummary)(
-        appendSummary(env.records, turn, answered, message, placing)
+        appendSummary(env.records, turn, answered, message, placing, env.clock.now())
       )
     } yield appended
   }
@@ -366,9 +376,10 @@ object Turn {
       case Placing.Unplaced => None
     }
 
-  /** Records the summary in `message` as `turn`'s summary, a child of its reply `answered`,
-    * after everything already in the conversation; and what it cost in the ledger beside
-    * the estimate of the request that produced it, rebuilt as [[append]] rebuilds its own.
+  /** Records the summary in `message` as `turn`'s summary, dated `at`, a child of its reply
+    * `answered`, after everything already in the conversation; and what it cost in the
+    * ledger beside the estimate of the request that produced it, rebuilt as [[append]]
+    * rebuilds its own.
     * What it says of the topic `placing` placed the message in is recorded after it
     * ([[TurnTopics.describedId]]).
     */
@@ -377,7 +388,8 @@ object Turn {
       turn: TurnRef,
       answered: EntryId,
       message: Message.Assistant,
-      placing: Placing
+      placing: Placing,
+      at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = TurnSummary.id(turn)
     val TurnRecords(entries, ledger, estimator) = records
@@ -399,7 +411,7 @@ object Turn {
             Some(answered),
             next.seq,
             Payload.Summary(text),
-            Instant.now()
+            at
           )
         )
         .left
@@ -421,7 +433,8 @@ object Turn {
         turn,
         TurnTopics.describedId(turn),
         described,
-        None
+        None,
+        at
       )
     } yield id
   }
@@ -467,12 +480,11 @@ object Turn {
     }
   }
 
-  /** Records the `answered` message as `turn`'s entry `id`, after everything already in the
-    * conversation, and what it cost in the ledger beside the estimate of the request that
-    * produced it: rebuilt from the same window and the same entries (the turn's own were
-    * all recorded before its call, and the reply is not yet among them), shaped as
-    * `answered` says.
-    * When the window is `recorded` with the reply, its queries and the window itself go in
+  /** Records the `answered` message as `turn`'s entry `id`, dated `at`, after everything
+    * already in the conversation, and what it cost in the ledger beside the estimate of the
+    * request that produced it: rebuilt from the same window and the same entries (the
+    * turn's own were all recorded before its call, and the reply is not yet among them),
+    * shaped as `answered` says. When the window is `recorded` with the reply, its queries and the window itself go in
     * first ([[writeWindow]]).
     */
   private def append(
@@ -482,7 +494,8 @@ object Turn {
       window: Window,
       id: EntryId,
       answered: TurnVerdict.Replied,
-      recorded: WindowRecord
+      recorded: WindowRecord,
+      at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val TurnVerdict.Replied(message, shape) = answered
     val TurnRecords(entries, ledger, estimator) = records
@@ -492,7 +505,7 @@ object Turn {
       sent <- requestOf(system, all, turn, window).map(shape(_))
       written <- recorded match {
         case WindowRecord.OwnStep => Right(0)
-        case WindowRecord.WithReply => writeWindow(records, turn, window, next.seq)
+        case WindowRecord.WithReply => writeWindow(records, turn, window, next.seq, at)
       }
       _ <- entries
         .insert(
@@ -503,7 +516,7 @@ object Turn {
             None,
             next.seq + written,
             Payload.Message(message),
-            Instant.now()
+            at
           )
         )
         .left
@@ -516,27 +529,29 @@ object Turn {
   }
 
   /** The `record-window` step: `turn`'s window and the queries that chose it, recorded
-    * before the model is called, so an edge sees them while the turn runs.
+    * dated `at` before the model is called, so an edge sees them while the turn runs.
     */
   private def recordWindow(
       records: TurnRecords,
       turn: TurnRef,
-      window: Window
+      window: Window,
+      at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
       next <- records.entries.lockNext(turn.conversationId).left.map(storeFailure)
-      _ <- writeWindow(records, turn, window, next.seq)
+      _ <- writeWindow(records, turn, window, next.seq, at)
     } yield windowId(turn)
 
   /** Writes each query `window`'s notes say assembly wrote, as [[queryId]] with its own
-    * cost, then the window itself, as [[windowId]], from position `from`; how many
+    * cost, then the window itself, as [[windowId]], from position `from`, dated `at`; how many
     * entries that was.
     */
   private def writeWindow(
       records: TurnRecords,
       turn: TurnRef,
       window: Window,
-      from: Long
+      from: Long,
+      at: Instant
   )(using Tx^): Either[TurnFailure, Int] = {
     val TurnRecords(entries, ledger, _) = records
     val queries = window.notes.collect { case q: AssemblyNote.Queried => q }
@@ -556,7 +571,7 @@ object Turn {
               None,
               from + i,
               Payload.Query(q.query),
-              Instant.now()
+              at
             )
             entries
               .insert(entry)
@@ -574,7 +589,7 @@ object Turn {
             None,
             from + queries.size,
             Payload.Window(window.entries, recalled),
-            Instant.now()
+            at
           )
         )
         .left

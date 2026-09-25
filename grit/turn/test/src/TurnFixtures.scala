@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.classify.Classifier
+import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, TurnRef, WorkflowId}
@@ -193,7 +194,9 @@ object TurnFixtures {
         NoClassifier,
         provider,
         new StubProvider(),
-        FakeDb
+        FakeDb,
+        Clock.system(),
+        Fresh.random()
       )
     )(id)
 
@@ -242,7 +245,9 @@ object TurnFixtures {
         classifier,
         provider,
         summarizer,
-        FakeDb
+        FakeDb,
+        Clock.system(),
+        Fresh.random()
       )
     )(id)
 

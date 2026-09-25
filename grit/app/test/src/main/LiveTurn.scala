@@ -2,6 +2,7 @@ package grit.app.main
 
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
+import grit.core.clock.{Clock, Fresh}
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
@@ -39,7 +40,9 @@ object LiveTurn {
           grit.core.classify.Classifier.none("no classifier"),
           provider,
           new StubProvider(),
-          engine.db
+          engine.db,
+          Clock.system(),
+          Fresh.random()
         )
       )
     )

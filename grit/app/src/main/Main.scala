@@ -7,6 +7,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.classify.Classifier
+import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
@@ -110,7 +111,9 @@ object Main {
             classifier(topics),
             provider,
             summarizer,
-            engine.db
+            engine.db,
+            Clock.system(),
+            Fresh.random()
           )
         )
       )

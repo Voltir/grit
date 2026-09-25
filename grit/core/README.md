@@ -5,6 +5,8 @@ classpath; implementations live in the modules that need the libraries (CLAUDE.m
 
 In dependency order:
 
+- **`clock`** — what a function cannot compute: `Clock` (the time) and `Fresh` (values
+  no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `WorkflowId`,
   `SourceId`, `ToolCallId`) and `TurnRef`. Imports nothing in core.
 - **`message`** — the model's vocabulary: `Message`, `AssistantBlock`, `StopReason`,

@@ -243,20 +243,29 @@ object TurnTopics {
   }
 
   /** The `record-topic` step: `classification`'s events as `turn`'s entry
-    * [[placedId]], after everything in the conversation, and the classifier's cost beside
-    * it in the ledger. Nothing to record is recorded as nothing.
+    * [[placedId]], dated `at`, after everything in the conversation, and the classifier's
+    * cost beside it in the ledger. Nothing to record is recorded as nothing.
     */
   def record(
       entries: EntryStore,
       ledger: UsageLedger,
       turn: TurnRef,
-      classification: Classification
+      classification: Classification,
+      at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] =
-    writeEvents(entries, ledger, turn, placedId(turn), classification.events, classification.cost)
+    writeEvents(
+      entries,
+      ledger,
+      turn,
+      placedId(turn),
+      classification.events,
+      classification.cost,
+      at
+    )
 
-  /** Records `events` as `turn`'s entry `id`, after everything in the conversation, with
-    * `cost` (a model, its usage and the estimated input) in the ledger beside it. No
-    * events, no entry: `id` is returned all the same.
+  /** Records `events` as `turn`'s entry `id`, dated `at`, after everything in the
+    * conversation, with `cost` (a model, its usage and the estimated input) in the ledger
+    * beside it. No events, no entry: `id` is returned all the same.
     */
   private[turn] def writeEvents(
       entries: EntryStore,
@@ -264,7 +273,8 @@ object TurnTopics {
       turn: TurnRef,
       id: EntryId,
       events: Vector[TopicEvent],
-      cost: Option[(String, Usage, Tokens)]
+      cost: Option[(String, Usage, Tokens)],
+      at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] =
     if (events.isEmpty) Right(id)
     else
@@ -278,7 +288,7 @@ object TurnTopics {
             None,
             next.seq,
             Payload.Topic(events),
-            Instant.now()
+            at
           )
         )
         _ <- cost.fold[Either[StoreError, Unit]](Right(())) { (model, usage, estimate) =>
