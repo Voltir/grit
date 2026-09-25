@@ -3,13 +3,12 @@ package grit.turn
 import java.time.Instant
 import java.util.UUID
 
-import grit.core.classify.Classifier
-import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
+import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Window}
 import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
-import grit.core.provider.{ModelRequest, Provider, ProviderError, TokenEstimator}
-import grit.core.store.{Db, Entry, EntryStore, Payload, StoreError, Tx, UsageLedger}
+import grit.core.provider.{ModelRequest, ProviderError}
+import grit.core.store.{Entry, Payload, StoreError, Tx}
 import grit.core.topic.Verdict
 
 /** The durable turn: one workflow per turn. Each step's output is recorded, so a turn
@@ -32,7 +31,7 @@ import grit.core.topic.Verdict
   *      offered: the model called again after its call to the tool, a plain call if that
   *      does not answer, and its verdict recorded ([[Step.optional]]).
   *   1. `append` — the reply recorded as the turn's entry, with its cost in the ledger
-  *      beside `estimator`'s estimate of the request, atomically with the step.
+  *      beside the estimate of its request, atomically with the step.
   *   1. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]).
   *   1. `append-summary` — the summary recorded as the turn's entry after the reply, with
   *      its cost in the ledger as in `append`.
@@ -118,43 +117,35 @@ object Turn {
       .getOrElse(Step.Assemble)
   }
 
-  /** The turn workflow's body, for the turn whose workflow id is `workflowId`: `classifier`
-    * places its message among the topics, `provider` answers, `summarizer` summarises.
-    * Returns what the turn did, for logs: its reply and summary are in the store, never in
-    * this string.
+  /** The turn workflow's body, for the turn whose workflow id is `workflowId`. Returns what
+    * the turn did, for logs: its reply and summary are in the store, never in this string.
     */
-  def body(
-      system: String,
-      entries: EntryStore,
-      ledger: UsageLedger,
-      assembler: ContextAssembler^,
-      estimator: TokenEstimator,
-      classifier: Classifier^,
-      provider: Provider^,
-      summarizer: Provider^,
-      db: Db^
-  )(workflowId: WorkflowId)(using d: Durable^): String =
+  def body(env: TurnEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
     TurnRef.fromWorkflowId(workflowId) match {
       case None => s"not a turn: ${WorkflowId.value(workflowId)}"
       case Some(turn) =>
         import TurnJournal.given
+        val records = env.records
         // Turns that passed this point before topics existed go straight to assembly.
         val topical = d.patch(Patches.Topics)
         val placed: Option[TurnTopics.Classification] =
           Option.when(topical)(
             d.step(Step.Classify) { () =>
-              TurnTopics.classify(classifier, entries, db, estimator, turn)
+              TurnTopics.classify(env.classifier, records.entries, env.db, records.estimator, turn)
             }
           )
         val topicFailure = placed.flatMap { c =>
-          d.transact(Step.RecordTopic)(TurnTopics.record(entries, ledger, turn, c)).left.toOption
+          d.transact(Step.RecordTopic)(
+            TurnTopics.record(records.entries, records.ledger, turn, c)
+          ).left
+            .toOption
         }
         val topics = topicFailure.fold("")(f => s"; topics not recorded: $f")
-        run(system, entries, ledger, assembler, estimator, provider, db, turn, placed) match {
+        run(turn, placed)(using env, d) match {
           case Left(failure) => s"failed: $failure$topics"
           case Right(reply) =>
             val summary =
-              summarise(entries, ledger, estimator, summarizer, db, turn, reply, topical) match {
+              summarise(turn, reply, topical)(using env, d) match {
                 case Right(id) => s"summarised: ${EntryId.value(id)}"
                 case Left(failure) => s"no summary: $failure"
               }
@@ -176,56 +167,36 @@ object Turn {
     EntryId(s"reply:${WorkflowId.value(turn.workflowId)}")
 
   private def run(
-      system: String,
-      entries: EntryStore,
-      ledger: UsageLedger,
-      assembler: ContextAssembler^,
-      estimator: TokenEstimator,
-      provider: Provider^,
-      db: Db^,
       turn: TurnRef,
       placed: Option[TurnTopics.Classification]
-  )(using d: Durable^): Either[TurnFailure, EntryId] = {
+  )(using env: TurnEnv^, d: Durable^): Either[TurnFailure, EntryId] = {
     import TurnJournal.given
     val reply = replyId(turn)
     val heard = d.stream(TurnStream.Key)
     for {
       window <- d.step(Step.Assemble) { () =>
-        assembler.assemble(AssemblyRequest(turn))(using db).left.map {
+        env.assembler.assemble(AssemblyRequest(turn))(using env.db).left.map {
           case AssemblyError.Store(error) => TurnFailure.Assembly(describe(error))
         }
       }
       // Turns that passed this point before the patch record their window with the reply.
       early = d.patch(Patches.RecordWindow)
       _ <-
-        if (early) d.transact(Step.RecordWindow)(recordWindow(entries, ledger, turn, window))
+        if (early) d.transact(Step.RecordWindow)(recordWindow(env.records, turn, window))
         else Right(windowId(turn))
       // Turns unsure of their topic that passed this point before the verdict round offer
       // no tool.
       asking = placed.filter(_.uncertain).filter(_ => d.patch(Patches.Verdict))
       first: (ModelRequest -> ModelRequest) = base => asking.fold(base)(TurnVerdict.offer(base, _))
       message <- d.step(Step.CallModel) { () =>
-        callModel(system, entries, provider, heard, db, turn, window, first)
+        callModel(heard, turn, window, first)
       }
       answered <- asking match {
         case None => Right((message, first))
-        case Some(c) =>
-          verdictRound(
-            system,
-            entries,
-            ledger,
-            estimator,
-            provider,
-            heard,
-            db,
-            turn,
-            window,
-            c,
-            message
-          )
+        case Some(c) => verdictRound(heard, turn, window, c, message)
       }
       appended <- d.transact(Step.Append)(
-        append(system, entries, ledger, estimator, turn, window, reply, answered, early)
+        append(env.system, env.records, turn, window, reply, answered, early)
       )
     } yield appended
   }
@@ -235,19 +206,15 @@ object Turn {
     * a rerun's pieces follow a crashed run's.
     */
   private def callModel(
-      system: String,
-      entries: EntryStore,
-      provider: Provider^,
       heard: StreamWriter^,
-      db: Db^,
       turn: TurnRef,
       window: Window,
       shape: ModelRequest -> ModelRequest
-  ): Either[TurnFailure, Message.Assistant] = {
+  )(using env: TurnEnv^): Either[TurnFailure, Message.Assistant] = {
     val told =
       new TurnStream.Writer(heard, UUID.randomUUID().toString, () => System.nanoTime() / 1000000)
-    val result = request(system, entries, db, turn, window).flatMap { req =>
-      provider.stream(shape(req), told.tell).left.map { case ProviderError.Unavailable(cause) =>
+    val result = request(env, turn, window).flatMap { req =>
+      env.provider.stream(shape(req), told.tell).left.map { case ProviderError.Unavailable(cause) =>
         TurnFailure.Model(cause)
       }
     }
@@ -262,18 +229,15 @@ object Turn {
     * that plain call failing fails the turn.
     */
   private def verdictRound(
-      system: String,
-      entries: EntryStore,
-      ledger: UsageLedger,
-      estimator: TokenEstimator,
-      provider: Provider^,
       heard: StreamWriter^,
-      db: Db^,
       turn: TurnRef,
       seen: Window,
       c: TurnTopics.Classification,
       first: Message.Assistant
-  )(using d: Durable^): Either[TurnFailure, (Message.Assistant, ModelRequest -> ModelRequest)] = {
+  )(using
+      env: TurnEnv^,
+      d: Durable^
+  ): Either[TurnFailure, (Message.Assistant, ModelRequest -> ModelRequest)] = {
     import TurnJournal.given
     val offered: ModelRequest -> ModelRequest = base => TurnVerdict.offer(base, c)
     val verdict = TurnVerdict.of(first)
@@ -288,7 +252,7 @@ object Turn {
       else {
         val again: ModelRequest -> ModelRequest = base => TurnVerdict.again(offered(base), first)
         val second = d.step(Step.CallModelAgain) { () =>
-          callModel(system, entries, provider, heard, db, turn, seen, again)
+          callModel(heard, turn, seen, again)
         }
         second.toOption.flatMap(TurnVerdict.answer) match {
           case Some(answer) =>
@@ -300,7 +264,7 @@ object Turn {
           case None =>
             val plainShape: ModelRequest -> ModelRequest = base => base
             val plain = d.step(Step.CallModelPlain) { () =>
-              callModel(system, entries, provider, heard, db, turn, seen, plainShape)
+              callModel(heard, turn, seen, plainShape)
             }
             val why = second match {
               case Left(failure) => s"the second call failed ($failure)"
@@ -315,7 +279,7 @@ object Turn {
         }
       }
     val _ = d.transact(Step.RecordVerdict)(
-      recordVerdict(system, entries, ledger, estimator, turn, seen, c, verdict, anomaly, spent)
+      recordVerdict(env.system, env.records, turn, seen, c, verdict, anomaly, spent)
     )
     outcome.map(_ -> shape)
   }
@@ -326,9 +290,7 @@ object Turn {
     */
   private def recordVerdict(
       system: String,
-      entries: EntryStore,
-      ledger: UsageLedger,
-      estimator: TokenEstimator,
+      records: TurnRecords,
       turn: TurnRef,
       window: Window,
       c: TurnTopics.Classification,
@@ -337,15 +299,15 @@ object Turn {
       spent: Vector[(Message.Assistant, ModelRequest -> ModelRequest)]
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
-      all <- entries.list(turn.conversationId).left.map(storeFailure)
+      all <- records.entries.list(turn.conversationId).left.map(storeFailure)
       base <- requestOf(system, all, turn, window)
       id <- TurnTopics.writeEvents(
-        entries,
-        ledger,
+        records.entries,
+        records.ledger,
         turn,
         TurnVerdict.verdictId(turn),
         TurnVerdict.events(verdict, anomaly, c, turn),
-        TurnVerdict.cost(spent.map((m, shape) => m -> estimator.request(shape(base))))
+        TurnVerdict.cost(spent.map((m, shape) => m -> records.estimator.request(shape(base))))
       )
     } yield id
 
@@ -353,29 +315,25 @@ object Turn {
     * with the name and description of its message's topic.
     */
   private def summarise(
-      entries: EntryStore,
-      ledger: UsageLedger,
-      estimator: TokenEstimator,
-      summarizer: Provider^,
-      db: Db^,
       turn: TurnRef,
       answered: EntryId,
       topical: Boolean
-  )(using d: Durable^): Either[TurnFailure, EntryId] = {
+  )(using env: TurnEnv^, d: Durable^): Either[TurnFailure, EntryId] = {
     import TurnJournal.given
     for {
       message <- d.step(Step.Summarise) { () =>
-        db.read(entries.list(turn.conversationId))
+        env.db
+          .read(env.records.entries.list(turn.conversationId))
           .left
           .map(storeFailure)
           .flatMap { all =>
-            summarizer.complete(summaryRequest(all, turn, topical)).left.map {
+            env.summarizer.complete(summaryRequest(all, turn, topical)).left.map {
               case ProviderError.Unavailable(cause) => TurnFailure.Model(cause)
             }
           }
       }
       appended <- d.transact(Step.AppendSummary)(
-        appendSummary(entries, ledger, estimator, turn, answered, message, topical)
+        appendSummary(env.records, turn, answered, message, topical)
       )
     } yield appended
   }
@@ -396,15 +354,14 @@ object Turn {
     * ([[TurnTopics.describedId]]).
     */
   private def appendSummary(
-      entries: EntryStore,
-      ledger: UsageLedger,
-      estimator: TokenEstimator,
+      records: TurnRecords,
       turn: TurnRef,
       answered: EntryId,
       message: Message.Assistant,
       topical: Boolean
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = TurnSummary.id(turn)
+    val TurnRecords(entries, ledger, estimator) = records
     for {
       read <- (if (topical) TurnSummary.read(message)
                else TurnSummary.text(message).map(TurnSummary.Read(_, None)))
@@ -456,18 +413,19 @@ object Turn {
   private def own(all: Vector[Entry], turn: TurnRef): Vector[Entry] =
     all.filter(_.turnSeq == turn.turnSeq)
 
-  /** The window's entries, then the turn's own, as one model request. */
+  /** The window's entries, then the turn's own, as one model request, read through `env`'s
+    * `db`.
+    */
   private def request(
-      system: String,
-      entries: EntryStore,
-      db: Db^,
+      env: TurnEnv^,
       turn: TurnRef,
       window: Window
   ): Either[TurnFailure, ModelRequest] =
-    db.read(entries.list(turn.conversationId))
+    env.db
+      .read(env.records.entries.list(turn.conversationId))
       .left
       .map(storeFailure)
-      .flatMap(requestOf(system, _, turn, window))
+      .flatMap(requestOf(env.system, _, turn, window))
 
   /** The request [[request]] builds, from `all` of the conversation's entries. Only
     * messages are sent: a summary is not shown to the model yet.
@@ -502,9 +460,7 @@ object Turn {
     */
   private def append(
       system: String,
-      entries: EntryStore,
-      ledger: UsageLedger,
-      estimator: TokenEstimator,
+      records: TurnRecords,
       turn: TurnRef,
       window: Window,
       id: EntryId,
@@ -512,12 +468,13 @@ object Turn {
       windowRecorded: Boolean
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val (message, shape) = answered
+    val TurnRecords(entries, ledger, estimator) = records
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
       sent <- requestOf(system, all, turn, window).map(shape)
       written <-
-        if (windowRecorded) Right(0) else writeWindow(entries, ledger, turn, window, next.seq)
+        if (windowRecorded) Right(0) else writeWindow(records, turn, window, next.seq)
       _ <- entries
         .insert(
           Entry(
@@ -543,14 +500,13 @@ object Turn {
     * before the model is called, so an edge sees them while the turn runs.
     */
   private def recordWindow(
-      entries: EntryStore,
-      ledger: UsageLedger,
+      records: TurnRecords,
       turn: TurnRef,
       window: Window
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
-      next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
-      _ <- writeWindow(entries, ledger, turn, window, next.seq)
+      next <- records.entries.lockNext(turn.conversationId).left.map(storeFailure)
+      _ <- writeWindow(records, turn, window, next.seq)
     } yield windowId(turn)
 
   /** Writes each query `window`'s notes say assembly wrote, as [[queryId]] with its own
@@ -558,12 +514,12 @@ object Turn {
     * entries that was.
     */
   private def writeWindow(
-      entries: EntryStore,
-      ledger: UsageLedger,
+      records: TurnRecords,
       turn: TurnRef,
       window: Window,
       from: Long
   )(using Tx^): Either[TurnFailure, Int] = {
+    val TurnRecords(entries, ledger, _) = records
     val queries = window.notes.collect { case q: AssemblyNote.Queried => q }
     val recalled = window.notes.flatMap {
       case AssemblyNote.Recalled(turns) => turns

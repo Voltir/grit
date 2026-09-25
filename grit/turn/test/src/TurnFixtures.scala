@@ -186,15 +186,15 @@ object TurnFixtures {
       id: WorkflowId
   )(using Durable^): String =
     Turn.body(
-      system,
-      entries,
-      ledger,
-      assembler,
-      CharEstimate,
-      NoClassifier,
-      provider,
-      new StubProvider(),
-      FakeDb
+      TurnEnv(
+        system,
+        TurnRecords(entries, ledger, CharEstimate),
+        assembler,
+        NoClassifier,
+        provider,
+        new StubProvider(),
+        FakeDb
+      )
     )(id)
 
   /** The stub classifier, counting the questions it was asked, call by call. */
@@ -235,15 +235,15 @@ object TurnFixtures {
       classifier: Classifier^ = NoClassifier
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
-      system,
-      entries,
-      ledger,
-      new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
-      CharEstimate,
-      classifier,
-      provider,
-      summarizer,
-      FakeDb
+      TurnEnv(
+        system,
+        TurnRecords(entries, ledger, CharEstimate),
+        new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
+        classifier,
+        provider,
+        summarizer,
+        FakeDb
+      )
     )(id)
 
   def runTurn(

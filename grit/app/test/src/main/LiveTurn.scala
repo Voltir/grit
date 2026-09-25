@@ -8,7 +8,7 @@ import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{EntryStore, Origin, Payload}
 import grit.dbos.engine.Engine
 import grit.models.StubProvider
-import grit.turn.Turn
+import grit.turn.{Turn, TurnEnv, TurnRecords}
 
 /** The real turn over a live engine, with the stub provider, for the end-to-end tests. */
 object LiveTurn {
@@ -32,15 +32,15 @@ object LiveTurn {
   def launch(engine: Engine^, entries: EntryStore, provider: Provider^): Unit =
     engine.launch(
       Turn.body(
-        "You are grit.",
-        entries,
-        engine.ledger,
-        new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
-        CharEstimate,
-        grit.core.classify.Classifier.none("no classifier"),
-        provider,
-        new StubProvider(),
-        engine.db
+        TurnEnv(
+          "You are grit.",
+          TurnRecords(entries, engine.ledger, CharEstimate),
+          new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
+          grit.core.classify.Classifier.none("no classifier"),
+          provider,
+          new StubProvider(),
+          engine.db
+        )
       )
     )
 

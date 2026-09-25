@@ -25,7 +25,7 @@ import grit.models.{
 }
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
-import grit.turn.Turn
+import grit.turn.{Turn, TurnEnv, TurnRecords}
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set (per [[ModelRole]], see
@@ -103,15 +103,15 @@ object Main {
         else new LinearAssembler(engine.entries, CharEstimate, budget)
       engine.launch(
         Turn.body(
-          SystemPrompt,
-          engine.entries,
-          engine.ledger,
-          assembler,
-          CharEstimate,
-          classifier(topics),
-          provider,
-          summarizer,
-          engine.db
+          TurnEnv(
+            SystemPrompt,
+            TurnRecords(engine.entries, engine.ledger, CharEstimate),
+            assembler,
+            classifier(topics),
+            provider,
+            summarizer,
+            engine.db
+          )
         )
       )
       engine
