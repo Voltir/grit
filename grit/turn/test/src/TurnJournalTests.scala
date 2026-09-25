@@ -63,6 +63,37 @@ object TurnJournalTests extends TestSuite {
       assert(j.decode("""{"ok":{"entries":["a"],"notes":[{"recalled":[-1]}]}}""").isLeft)
     }
 
+    test("a classification reads back as written") {
+      import grit.core.topic.{Band, Placement, TopicEvent, TopicId}
+      val (a, b) = (TopicId("a"), TopicId("b"))
+      val full = TurnTopics.Classification(
+        Vector(
+          TopicEvent.Opened(b),
+          TopicEvent.Placed(
+            TurnSeq(3),
+            Vector(a -> 0.1, b -> 0.8),
+            0.1,
+            Placement.Classified(0.1, Band.Changed, Vector(None -> 0.9, Some(a) -> 0.1))
+          )
+        ),
+        Some(TurnTopics.Shown(a, "Knots")),
+        Vector(TurnTopics.Shown(b, "new topic")),
+        Some(
+          (
+            "jev-1",
+            Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.00001"))),
+            Tokens(35)
+          )
+        ),
+        None
+      )
+      val empty =
+        TurnTopics.Classification(Vector.empty, None, Vector.empty, None, Some("store: down"))
+      roundTrip(full) ==> Right(full)
+      roundTrip(empty) ==> Right(empty)
+      assert(summon[Journaled[TurnTopics.Classification]].decode("""{"events":[]}""").isLeft)
+    }
+
     test("the recorded form is pinned") {
       val j = summon[Journaled[Either[TurnFailure, EntryId]]]
       j.encode(Right(EntryId("reply:c1:0"))) ==> """{"ok":"reply:c1:0"}"""

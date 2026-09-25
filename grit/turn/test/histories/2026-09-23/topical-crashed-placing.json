@@ -1,0 +1,15 @@
+{
+  "workflow": "turn",
+  "id": "c1:1",
+  "epoch": "2026-09-23",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "DBOS.patch-topics"
+    },
+    {
+      "name": "classify",
+      "output": "{\"events\":[{\"event\":\"placed\",\"turn\":1,\"weights\":[[\"topic:c1:0\",0.9]],\"elsewhere\":0.09999999999999998,\"by\":{\"kind\":\"classified\",\"pSame\":0.9,\"band\":\"same\",\"choice\":[]}}],\"current\":{\"id\":\"topic:c1:0\",\"key\":\"new topic\"},\"earlier\":[],\"cost\":{\"model\":\"grit/stub-classifier\",\"usage\":{\"input\":0,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0\"},\"estimate\":48},\"note\":null}"
+    }
+  ]
+}

@@ -37,6 +37,7 @@ object LiveTurn {
         engine.ledger,
         new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
         CharEstimate,
+        grit.core.classify.Classifier.none("no classifier"),
         provider,
         new StubProvider(),
         engine.db

@@ -95,6 +95,7 @@ object Main {
           engine.ledger,
           assembler,
           CharEstimate,
+          grit.core.classify.Classifier.none("no classifier"),
           provider,
           summarizer,
           engine.db

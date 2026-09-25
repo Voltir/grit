@@ -5,6 +5,7 @@ import grit.core.durable.Journaled
 import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens}
 import grit.core.store.{Payload, PayloadJson}
+import grit.core.topic.{TopicId, TopicJson}
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
   * `{"failed": kind, "reason": text}`. In-flight turns must read back what an earlier
@@ -86,6 +87,83 @@ private[turn] object TurnJournal {
       }
     case _ => Left("note: expected an object")
   }
+
+  /** The `classify` step's output: `{"events": [...], "current": {id, key} | null,
+    * "earlier": [{id, key}], "cost": {model, usage, estimate} | null, "note": text | null}`.
+    */
+  given classification: Journaled[TurnTopics.Classification] =
+    Journaled.json[TurnTopics.Classification](
+      c =>
+        ujson.Obj(
+          "events" -> ujson.Arr.from(c.events.map(TopicJson.write)),
+          "current" -> c.current.fold[ujson.Value](ujson.Null)(writeShown),
+          "earlier" -> ujson.Arr.from(c.earlier.map(writeShown)),
+          "cost" -> c.cost.fold[ujson.Value](ujson.Null) { (model, usage, estimate) =>
+            ujson.Obj(
+              "model" -> model,
+              "usage" -> PayloadJson.writeUsage(usage),
+              "estimate" -> Tokens.value(estimate).toDouble
+            )
+          },
+          "note" -> c.note.fold[ujson.Value](ujson.Null)(ujson.Str(_))
+        ),
+      v =>
+        for {
+          o <- v.objOpt.toRight("classification: expected an object")
+          events <- o
+            .get("events")
+            .flatMap(_.arrOpt)
+            .toRight("classification: missing events")
+            .flatMap(es => sequence(es.toVector.map(TopicJson.read)))
+          current <- o.get("current") match {
+            case None | Some(ujson.Null) => Right(None)
+            case Some(s) => readShown(s).map(Some(_))
+          }
+          earlier <- o
+            .get("earlier")
+            .flatMap(_.arrOpt)
+            .toRight("classification: missing earlier")
+            .flatMap(es => sequence(es.toVector.map(readShown)))
+          cost <- o.get("cost") match {
+            case None | Some(ujson.Null) => Right(None)
+            case Some(c: ujson.Obj) =>
+              for {
+                model <- c.value.get("model").flatMap(_.strOpt).toRight("cost: missing model")
+                usage <- c.value
+                  .get("usage")
+                  .toRight("cost: missing usage")
+                  .flatMap(PayloadJson.readUsage)
+                estimate <- c.value
+                  .get("estimate")
+                  .collect { case ujson.Num(n) if n.isWhole && n >= 0 => Tokens(n.toLong) }
+                  .toRight("cost: bad estimate")
+              } yield Some((model, usage, estimate))
+            case Some(_) => Left("classification: cost is not an object")
+          }
+          note <- o.get("note") match {
+            case None | Some(ujson.Null) => Right(None)
+            case Some(ujson.Str(n)) => Right(Some(n))
+            case Some(_) => Left("classification: note is not a string")
+          }
+        } yield TurnTopics.Classification(events, current, earlier, cost, note)
+    )
+
+  private def writeShown(s: TurnTopics.Shown): ujson.Value =
+    ujson.Obj("id" -> TopicId.value(s.id), "key" -> s.key)
+
+  private def readShown(v: ujson.Value): Either[String, TurnTopics.Shown] =
+    (
+      v.objOpt.flatMap(_.get("id")).flatMap(_.strOpt),
+      v.objOpt.flatMap(_.get("key")).flatMap(_.strOpt)
+    ) match {
+      case (Some(id), Some(key)) => Right(TurnTopics.Shown(TopicId(id), key))
+      case _ => Left("a topic shown: expected {id, key}")
+    }
+
+  private def sequence[A](as: Vector[Either[String, A]]): Either[String, Vector[A]] =
+    as.foldLeft[Either[String, Vector[A]]](Right(Vector.empty))((acc, a) =>
+      acc.flatMap(done => a.map(done :+ _))
+    )
 
   given reply: Journaled[Either[TurnFailure, Message.Assistant]] =
     outcome(

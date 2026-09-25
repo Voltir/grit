@@ -147,7 +147,41 @@ object RecordTurnHistories {
       catch { case _: InMemoryDurable.Crash => "" }
       recorded(durable, turn)
     }
+
+    /** `said` answered in turn in one conversation, with the stub classifier (failing when
+      * `down`), the last turn's entries crashing where `crash` says; the last turn's history.
+      */
+    def topical(
+        said: Vector[String],
+        down: Boolean = false,
+        crash: Option[grit.core.store.Entry -> Boolean] = None
+    ): History = {
+      val store = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val classifier = new CountingClassifier(fail = down)
+      said.dropRight(1).foreach { text =>
+        val t = say(store, text)
+        durable.run(t.workflowId)(turnBody(store, new RecordingProvider, classifier = classifier))
+      }
+      val turn = say(store, said.lastOption.getOrElse("hello"))
+      val entries = crash.fold[grit.core.store.EntryStore](store)(new CrashOnInsert(store, _))
+      try
+        durable.run(turn.workflowId)(
+          turnBody(entries, new RecordingProvider, classifier = classifier)
+        )
+      catch { case _: InMemoryDurable.Crash => "" }
+      recorded(durable, turn)
+    }
     Vector(
+      "topical-first" -> topical(Vector("hello")),
+      "topical-same" -> topical(Vector("hello", "more ~0.9")),
+      "topical-uncertain" -> topical(Vector("hello", "hm ~0.5")),
+      "topical-changed-new" -> topical(Vector("hello", "knots? ~0.1")),
+      "topical-changed-back" ->
+        topical(Vector("hello", "knots? ~0.1", "back ~0.1 ~back:new topic (2)")),
+      "topical-unclassified" -> topical(Vector("hello", "more"), down = true),
+      "topical-crashed-placing" ->
+        topical(Vector("hello", "more"), crash = Some(_.payload.isInstanceOf[Payload.Topic])),
       "window-first" -> windowFirst,
       "crashed-recording-window" -> crashedRecordingWindow,
       "crashed-before-append-window-first" -> crashedBeforeAppendWindowFirst,

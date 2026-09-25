@@ -3,6 +3,7 @@ package grit.turn
 import java.time.Instant
 import java.util.UUID
 
+import grit.core.classify.Classifier
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
@@ -10,9 +11,14 @@ import grit.core.message.Message
 import grit.core.provider.{ModelRequest, Provider, ProviderError, TokenEstimator}
 import grit.core.store.{Db, Entry, EntryStore, Payload, StoreError, Tx, UsageLedger}
 
-/** The durable turn: one workflow per turn, in six steps. Each step's output is
+/** The durable turn: one workflow per turn, in eight steps. Each step's output is
   * recorded, so a turn resumed after a crash never calls a model twice.
   *
+  *   1. `classify` — where the turn's message goes among the conversation's topics, the
+  *      classifier asked as [[TurnTopics]] says. Never fails the turn.
+  *   1. `record-topic` — that placement recorded as an entry, with the classifier's cost.
+  *      Turns that passed this point before topics existed have neither step
+  *      ([[Patches.Topics]]).
   *   1. `assemble` — a fresh window over what came before the turn.
   *   2. `record-window` — the window recorded as an entry, after any search query
   *      assembly wrote (its own entry, with its own cost in the usage ledger), so an edge
@@ -42,6 +48,8 @@ object Turn {
 
   /** The turn's steps, as DBOS records their names, in the order they run. */
   object Step {
+    val Classify = "classify"
+    val RecordTopic = "record-topic"
     val Assemble = "assemble"
     val RecordWindow = "record-window"
     val CallModel = "call-model"
@@ -50,7 +58,16 @@ object Turn {
     val AppendSummary = "append-summary"
 
     val all: Vector[String] =
-      Vector(Assemble, RecordWindow, CallModel, Append, Summarise, AppendSummary)
+      Vector(
+        Classify,
+        RecordTopic,
+        Assemble,
+        RecordWindow,
+        CallModel,
+        Append,
+        Summarise,
+        AppendSummary
+      )
   }
 
   /** The patches the turn's steps have taken within this epoch (ADR 0004). */
@@ -60,6 +77,11 @@ object Turn {
       * not with the reply (2026-09-24).
       */
     val RecordWindow = "record-window"
+
+    /** The turn's message is placed among the conversation's topics before its window is
+      * assembled (2026-09-24).
+      */
+    val Topics = "topics"
   }
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
@@ -71,9 +93,10 @@ object Turn {
     Step.all.lift(done + 1).orElse(Step.all.lastOption).getOrElse(Step.Assemble)
   }
 
-  /** The turn workflow's body, for the turn whose workflow id is `workflowId`: `provider`
-    * answers, `summarizer` summarises. Returns what the turn did, for logs: its reply and
-    * summary are in the store, never in this string.
+  /** The turn workflow's body, for the turn whose workflow id is `workflowId`: `classifier`
+    * places its message among the topics, `provider` answers, `summarizer` summarises.
+    * Returns what the turn did, for logs: its reply and summary are in the store, never in
+    * this string.
     */
   def body(
       system: String,
@@ -81,6 +104,7 @@ object Turn {
       ledger: UsageLedger,
       assembler: ContextAssembler^,
       estimator: TokenEstimator,
+      classifier: Classifier^,
       provider: Provider^,
       summarizer: Provider^,
       db: Db^
@@ -88,14 +112,27 @@ object Turn {
     TurnRef.fromWorkflowId(workflowId) match {
       case None => s"not a turn: ${WorkflowId.value(workflowId)}"
       case Some(turn) =>
+        import TurnJournal.given
+        // Turns that passed this point before topics existed go straight to assembly.
+        val topical = d.patch(Patches.Topics)
+        val placed: Option[TurnTopics.Classification] =
+          Option.when(topical)(
+            d.step(Step.Classify) { () =>
+              TurnTopics.classify(classifier, entries, db, estimator, turn)
+            }
+          )
+        val topicFailure = placed.flatMap { c =>
+          d.transact(Step.RecordTopic)(TurnTopics.record(entries, ledger, turn, c)).left.toOption
+        }
+        val topics = topicFailure.fold("")(f => s"; topics not recorded: $f")
         run(system, entries, ledger, assembler, estimator, provider, db, turn) match {
-          case Left(failure) => s"failed: $failure"
+          case Left(failure) => s"failed: $failure$topics"
           case Right(reply) =>
             val summary = summarise(entries, ledger, estimator, summarizer, db, turn, reply) match {
               case Right(id) => s"summarised: ${EntryId.value(id)}"
               case Left(failure) => s"no summary: $failure"
             }
-            s"replied: ${EntryId.value(reply)}; $summary"
+            s"replied: ${EntryId.value(reply)}; $summary$topics"
         }
     }
 

@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
+import grit.core.classify.Classifier
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, TurnRef, WorkflowId}
@@ -190,17 +191,43 @@ object TurnFixtures {
       ledger,
       assembler,
       CharEstimate,
+      NoClassifier,
       provider,
       new StubProvider(),
       FakeDb
     )(id)
 
-  /** The turn's workflow body over `entries` and `provider`, summarised by `summarizer`. */
+  /** The stub classifier, counting the questions it was asked, call by call. */
+  final class CountingClassifier(fail: Boolean = false) extends Classifier {
+    @caps.unsafe.untrackedCaptures
+    var calls = 0
+
+    def answer(
+        state: ujson.Value,
+        questions: Vector[(grit.core.classify.QuestionId, grit.core.classify.Question)]
+    ): Either[grit.core.classify.ClassifierError, grit.core.classify.Answers] = {
+      calls += 1
+      if (fail) Left(grit.core.classify.ClassifierError.Unavailable("HTTP 529: overloaded"))
+      else new grit.models.StubClassifier().answer(state, questions)
+    }
+  }
+
+  /** The conversation's topics as its entries leave them. */
+  def topics(entries: EntryStore): grit.core.topic.Topics =
+    grit.core.topic.Topics.fold(all(entries).flatMap(e => TurnTopics.events(e.payload)))
+
+  /** No classifier: every message after a conversation's first is unclassified. */
+  def NoClassifier: Classifier^ = Classifier.none("no classifier")
+
+  /** The turn's workflow body over `entries` and `provider`, summarised by `summarizer`,
+    * its messages placed by `classifier`.
+    */
   def turnBody(
       entries: EntryStore,
       provider: Provider^,
       ledger: UsageLedger = new InMemoryUsageLedger,
-      summarizer: Provider^ = new StubProvider()
+      summarizer: Provider^ = new StubProvider(),
+      classifier: Classifier^ = NoClassifier
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       system,
@@ -208,6 +235,7 @@ object TurnFixtures {
       ledger,
       new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
       CharEstimate,
+      classifier,
       provider,
       summarizer,
       FakeDb
@@ -219,7 +247,8 @@ object TurnFixtures {
       provider: Provider^,
       turn: TurnRef,
       ledger: UsageLedger = new InMemoryUsageLedger,
-      summarizer: Provider^ = new StubProvider()
+      summarizer: Provider^ = new StubProvider(),
+      classifier: Classifier^ = NoClassifier
   ): String =
-    durable.run(turn.workflowId)(turnBody(entries, provider, ledger, summarizer))
+    durable.run(turn.workflowId)(turnBody(entries, provider, ledger, summarizer, classifier))
 }

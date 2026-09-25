@@ -25,9 +25,10 @@ object TurnRecordLiveTests extends TestSuite {
         val turn = say(engine, "two")
         val _ = engine.awaitTurn(turn)
         val steps = engine.steps(turn)
-        // DBOS records the patch's marker where the turn took it, as the replay histories do.
+        // DBOS records each patch's marker where the turn took it, as the replay histories do.
         steps.map(_.name) ==>
-          Turn.Step.all.patch(1, Vector(s"DBOS.patch-${Turn.Patches.RecordWindow}"), 0)
+          (s"DBOS.patch-${Turn.Patches.Topics}" +: Turn.Step.all)
+            .patch(4, Vector(s"DBOS.patch-${Turn.Patches.RecordWindow}"), 0)
         val own = steps.filter(s => Turn.Step.all.contains(s.name))
         assert(own.forall(s => s.started.zip(s.completed).exists((a, b) => !b.isBefore(a))))
         assert(!engine.status(turn).isInstanceOf[TurnStatus.Running])
@@ -35,6 +36,14 @@ object TurnRecordLiveTests extends TestSuite {
         val window = engine.db.read(engine.entries.get(Turn.windowId(turn))).toOption.flatten
         window.map(_.payload) ==>
           Some(Payload.Window(Vector(sayId(engine, first), Turn.replyId(first)), Vector.empty))
+        // Where each message went, written to Postgres and read back as topic events.
+        val placed = Vector(first, turn).flatMap { t =>
+          engine.db.read(engine.entries.get(grit.turn.TurnTopics.placedId(t))).toOption.flatten
+        }
+        placed.map(_.payload match {
+          case Payload.Topic(events) => events.size
+          case _ => 0
+        }) ==> Vector(2, 1)
       } finally engine.close()
     }
 
