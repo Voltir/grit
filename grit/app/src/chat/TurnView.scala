@@ -14,6 +14,7 @@ import grit.turn.Turn
   * what the store, DBOS and the ledger recorded.
   *
   * @param turn the turn's position in the conversation, from 0
+  * @param asked the user's message that started it
   * @param running the step it is in, while it runs
   * @param steps the steps it recorded, in order
   * @param query what assembly searched for, when it searched
@@ -23,6 +24,7 @@ import grit.turn.Turn
   */
 final case class TurnView(
     turn: TurnSeq,
+    asked: String,
     running: Option[String],
     steps: Vector[TurnView.Step],
     query: Option[String],
@@ -92,6 +94,9 @@ object TurnView {
     val priced = costs.flatMap(_.usage.costUsd)
     TurnView(
       turn.turnSeq,
+      own
+        .collectFirst { case Entry(_, _, _, _, _, Payload.Message(Message.User(t)), _) => t }
+        .getOrElse(""),
       Option.when(running)(Turn.running(steps.map(_.name))),
       steps.map(s => Step(s.name, s.started.zip(s.completed).map(Duration.between(_, _).toMillis))),
       own.collectFirst { case Entry(_, _, _, _, _, Payload.Query(q), _) => q },

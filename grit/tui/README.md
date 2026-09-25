@@ -64,9 +64,11 @@ trait App[S, M <: caps.Pure] { self: App[S, M]^{} =>
 `Node[M]` is Elm's `Html msg`: boxes (`column`/`row` of `fixed`/`flex`/`fit` children),
 leaves (`paint(view)`, a document pane, the editor), and the handlers, carried *in* the
 tree -- `grounded(style)` under any node, so the cells it leaves unset take a colour
-rather than the terminal's; `onKeyFirst`/`onKey`/`onPress` on any node, `onScroll`/`onSelect`/`onCopy` on a
-document pane, `onEdit` on the editor, a `dialog` over a node, a `floating` popup beside
-one. A component is a value: `Scroller` is its state, its messages, `update` and `view`,
+rather than the terminal's; `onKeyFirst`/`onKey`/`onPress` on any node, `onScroll`/`onSelect`/`onCopy`/`onClick` on a
+document pane (a click is a press released where it began, named by the document position
+under it), `onEdit` on the editor, a `dialog` over a node, a `floating` popup beside
+one, and `wide(cols)(wide, narrow)`, which picks between two by the width it is laid out
+at (the app never sees the terminal's size). A component is a value: `Scroller` is its state, its messages, `update` and `view`,
 nested into a parent with `Node.map`. There is no layout pass in the app, no placement map,
 no pane registry, and no hook to implement.
 

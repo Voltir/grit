@@ -7,8 +7,8 @@ import grit.tui.components.pane.Viewport
 import grit.tui.components.tree.{Node, OnInput, PaneKey}
 import grit.tui.components.widget.Scrollbar
 import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
-import grit.tui.model.select.Doc
 import grit.tui.model.select.Selection
+import grit.tui.model.select.{Doc, DocPos}
 import grit.tui.model.surface.{Frame, Pos, Rect, Size, Surface}
 
 /** One stop on the focus path, root first. `first` runs on the way down (capture: hotkeys,
@@ -32,7 +32,8 @@ final case class PanePaint[+M](
     viewport: Viewport,
     scroll: Option[Anchor -> M],
     select: Option[Option[Selection] -> M],
-    copy: Option[(String, Boolean) -> M]
+    copy: Option[(String, Boolean) -> M],
+    click: Option[DocPos -> M] = None
 ) {
 
   /** The anchor that `delta` rows of scrolling from what was painted reads from. */
@@ -333,7 +334,8 @@ object Paint {
           vp,
           d.scroll.map(f => (a: Anchor) => lift(f(a))),
           d.select.map(f => (s: Option[Selection]) => lift(f(s))),
-          d.copy.map(f => (t: String, x: Boolean) => lift(f(t, x)))
+          d.copy.map(f => (t: String, x: Boolean) => lift(f(t, x))),
+          d.click.map(f => (p: DocPos) => lift(f(p)))
         )
         targets += Target.Pane(painted)
         if (d.focused) { claim(path :+ Stop(None, Some(docKeys(painted)), barrier = false)) }

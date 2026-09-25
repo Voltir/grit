@@ -182,15 +182,19 @@ object Route {
 
   private def clamp(v: Int, extent: Int): Int = math.max(0, math.min(v, math.max(0, extent - 1)))
 
-  /** The button up (or the deadline): the selection is cleared and what it held offered. */
+  /** The button up (or the deadline): the selection is cleared and what it held offered;
+    * a release where the press began, with nothing selected, is a click on that position.
+    */
   def release[M](p: Painted[M], g: Grab, expired: Boolean): Routed[M] = {
     val off = Vector(Timer.Disarm(Tick.Autoscroll), Timer.Disarm(Tick.Deadline))
     g match {
       case s: Grab.Select =>
         val msgs = p.pane(s.key).toVector.flatMap { pp =>
           val text = pp.doc.textOf(Selection.between(s.anchor, s.head))
+          val clicked = !expired && s.anchor == s.head
           pp.select.map(f => f(None)).toVector ++
-            (if (text.isEmpty) Vector.empty else pp.copy.map(f => f(text, expired)).toVector)
+            (if (text.isEmpty) Vector.empty else pp.copy.map(f => f(text, expired)).toVector) ++
+            (if (clicked) pp.click.map(f => f(s.anchor)).toVector else Vector.empty)
         }
         Routed(msgs, Grab.Idle, off)
       case _ => Routed(Vector.empty, Grab.Idle, off)

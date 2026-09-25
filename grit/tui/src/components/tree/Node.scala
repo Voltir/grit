@@ -6,7 +6,7 @@ import grit.tui.components.overlay.{Modal, Popup}
 import grit.tui.components.pane.Anchor
 import grit.tui.components.view.View
 import grit.tui.model.input.Input
-import grit.tui.model.select.{Doc, Selection}
+import grit.tui.model.select.{Doc, DocPos, Selection}
 import grit.tui.model.surface.{Pos, Rect, Size, Style}
 
 /** A document pane's identity across frames: the wrap memo and a pointer grab are both
@@ -57,7 +57,8 @@ object Node {
       focused: Boolean = false,
       scroll: Option[Anchor -> M] = None,
       select: Option[Option[Selection] -> M] = None,
-      copy: Option[(String, Boolean) -> M] = None
+      copy: Option[(String, Boolean) -> M] = None,
+      click: Option[DocPos -> M] = None
   ) extends Node[M]
 
   /** The prompt editor. Its own keys edit it; an edit comes back through `edit`. Its
@@ -136,6 +137,12 @@ object Node {
       * it rather than a release.
       */
     def onCopy[N >: M](f: (String, Boolean) -> N): DocPane[N] = n.copy(copy = Some(f))
+
+    /** A click: a press released where it began, with no drag between. `f` gets the
+      * position in the document under it, read through the viewport that was painted --
+      * the projection selection uses, so what is clicked is what was seen.
+      */
+    def onClick[N >: M](f: DocPos -> N): DocPane[N] = n.copy(click = Some(f))
   }
 
   extension [M](n: Edit[M]) {

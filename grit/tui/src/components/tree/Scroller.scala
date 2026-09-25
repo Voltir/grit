@@ -1,7 +1,7 @@
 package grit.tui.components.tree
 
 import grit.tui.components.pane.Anchor
-import grit.tui.model.select.{Doc, Selection}
+import grit.tui.model.select.{Doc, DocPos, Selection}
 import grit.tui.model.surface.Style
 
 /** A scrollable, selectable document as a component: its state, its messages, its
@@ -22,6 +22,9 @@ object Scroller {
 
     /** A finished drag's text. The parent decides what copying means (an `Effect`). */
     case Copied(text: String, expired: Boolean)
+
+    /** A click at `at` in the document. The parent decides what it means. */
+    case Clicked(at: DocPos)
   }
 
   val init: State = State()
@@ -30,7 +33,7 @@ object Scroller {
     msg match {
       case Msg.Scrolled(a) => s.copy(anchor = a)
       case Msg.Selected(sel) => s.copy(selection = sel)
-      case Msg.Copied(_, _) => s
+      case Msg.Copied(_, _) | Msg.Clicked(_) => s
     }
 
   /** `doc` as a pane keyed `key`, reading from and selecting what `s` says. */
@@ -46,4 +49,5 @@ object Scroller {
       .onScroll(Msg.Scrolled(_))
       .onSelect(Msg.Selected(_))
       .onCopy(Msg.Copied(_, _))
+      .onClick(Msg.Clicked(_))
 }

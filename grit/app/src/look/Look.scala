@@ -2,6 +2,7 @@ package grit.app.look
 
 import grit.tui.components.editor.Editor
 import grit.tui.components.layout.Border
+import grit.tui.components.overlay.Modal
 import grit.tui.components.view.View
 import grit.tui.model.block.Block
 import grit.tui.model.surface.{Size, Style, Surface}
@@ -72,6 +73,22 @@ final case class Look(theme: Theme) {
   def header(title: String): View = Look.Header(title, theme)
 
   def status: Style = Style.fg(theme.statusFg) + Style.bg(theme.statusBg) + Style.Bold
+
+  /** A dialog titled `title` over the screen: lit on the slab, the screen behind it
+    * pushed back to the rail's colour (never the terminal's dim).
+    */
+  def modal(title: String): Modal =
+    Modal(
+      title,
+      rows = 24,
+      cols = 60,
+      panel = modalGround,
+      chrome = Style.fg(theme.grit) + Style.Bold,
+      behind = Style.fg(theme.rail)
+    )
+
+  /** Under a dialog's body. */
+  def modalGround: Style = Style.bg(theme.slab) + Style.fg(theme.ink)
 
   /** Between the transcript and the turn panel. */
   def divider: View = Look.Divider(Style.fg(theme.rail))

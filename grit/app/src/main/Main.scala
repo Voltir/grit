@@ -19,7 +19,8 @@ import grit.turn.Turn
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set (per [[ModelRole]], see
-  * [[OpenRouterConfig]]), the stub otherwise. Each turn's window fits in `GRIT_WINDOW_TOKENS`
+  * [[OpenRouterConfig]]), the stub otherwise, answering turns after `GRIT_STUB_DELAY_MS`
+  * (default 0). Each turn's window fits in `GRIT_WINDOW_TOKENS`
   * estimated tokens (default [[LinearAssembler.DefaultBudget]]) and is chosen by
   * `GRIT_ASSEMBLER`: `retrieval` (the default), the recent turns that fit in
   * `GRIT_TAIL_TOKENS` (default [[RetrievalAssembler.DefaultTail]]) plus the earlier turns a
@@ -72,7 +73,9 @@ object Main {
       openRouter.map(_ =>
         exitOnLeft(OpenRouterConfig.fromEnv(env, ModelRole.Query).left.map(_.message))
       )
-    val provider = announced(tui, "turn", openRouter)
+    // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
+    val stubDelay = exitOnLeft(millis(env, StubDelayVar))
+    val provider = announced(tui, "turn", openRouter, stubDelay)
     val summarizer = announced(tui, "summary", summaryConfig)
     val writer = announced(tui, "query", queryConfig)
 
@@ -159,10 +162,15 @@ object Main {
   /** OpenRouter under `config`, or the stub without one. In the argument run each call is
     * printed with its `role`, so a replayed turn is visibly one that did not call.
     */
-  private def announced(tui: Boolean, role: String, config: Option[OpenRouterConfig]): Provider = {
+  private def announced(
+      tui: Boolean,
+      role: String,
+      config: Option[OpenRouterConfig],
+      stubDelayMs: Long = 0
+  ): Provider = {
     val model: Provider = config match {
       case Some(c) => new OpenRouterProvider(c)
-      case None => new StubProvider()
+      case None => new StubProvider(stubDelayMs)
     }
     val name = config.fold(StubProvider.Model)(_.model)
     if (tui) model
@@ -177,11 +185,23 @@ object Main {
 
   private val BudgetVar = "GRIT_WINDOW_TOKENS"
 
+  private val StubDelayVar = "GRIT_STUB_DELAY_MS"
+
   private val TailVar = "GRIT_TAIL_TOKENS"
 
   private val AssemblerVar = "GRIT_ASSEMBLER"
 
   /** The token count in `variable`, or `default` when it is unset. */
+  /** The milliseconds in `variable`, or 0 when it is unset. */
+  private def millis(env: Map[String, String], variable: String): Either[String, Long] =
+    env.get(variable) match {
+      case None => Right(0L)
+      case Some(raw) =>
+        raw.trim.toLongOption
+          .filter(_ >= 0)
+          .toRight(s"$variable is not a non-negative whole number")
+    }
+
   private def tokens(
       env: Map[String, String],
       variable: String,

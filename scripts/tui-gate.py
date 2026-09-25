@@ -259,6 +259,8 @@ def main():
 
     if scenario == "columns":
         return columns(checks, check, raw, rows, cols, screens, snapshots, ones)
+    if scenario == "turn-modal":
+        return turn_modal(checks, check, raw, rows, screens)
 
     payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
     if scenario in ("thumb", "popup"):
@@ -410,6 +412,31 @@ def columns(checks, check, raw, rows, cols, screens, snapshots, ones):
           "the highlight never crossed the divider", "%d cells" % len(lit))
 
     check(bool(final) and "still here" in final[rows - 3], "the prompt still takes keys")
+    return report(checks)
+
+
+def turn_modal(checks, check, raw, rows, screens):
+    """grit.app with a slow stub: the running turn opened by a click, then a turn pinned."""
+    has = lambda g, s: any(s in row for row in g)
+    opened = [i for i, g in enumerate(screens) if has(g, "\u256d\u2500 turn 2")]
+    check(bool(opened), "a click on the thinking line opened the running turn",
+          "%d frames" % len(opened))
+    check(bool(opened) and has(screens[opened[0]], "\u16d7 second"),
+          "the opened turn says what was asked")
+    check(bool(opened) and not any("x" in screens[i][rows - 3] for i in opened),
+          "the dialog took the key: nothing reached the prompt")
+    closed = next((i for i in range(opened[-1] + 1, len(screens))
+                   if not has(screens[i], "\u256d\u2500 turn")), None) if opened else None
+    check(closed is not None, "Escape closed it")
+    after = range(closed or len(screens), len(screens))
+    pinned = next((i for i in after
+                   if has(screens[i], "TURN 1") and has(screens[i], "esc: latest")), None)
+    check(pinned is not None, "a click on the first reply pinned its turn to the panel")
+    back = next((i for i in range((pinned or len(screens)) + 1, len(screens))
+                 if has(screens[i], "TURN 2") and not has(screens[i], "esc: latest")), None)
+    check(back is not None, "Escape let it go: the panel follows the latest turn again")
+    payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
+    check(len(payloads) == 0, "clicks copy nothing", "%d" % len(payloads))
     return report(checks)
 
 

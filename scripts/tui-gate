@@ -41,8 +41,12 @@
 #          wheel over each column scrolls only that column, a drag begun in the
 #          transcript stays in it however far into the panel it runs, and the prompt
 #          still takes keys.
+#   turn-modal grit.app with a slow stub, in a conversation of its own: a click on the
+#          thinking line opens the running turn over the screen, which takes the keys
+#          until Escape closes it; a click on an earlier reply pins its turn to the panel,
+#          and Escape lets it go.
 #
-# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload|columns]
+# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload|columns|turn-modal]
 #        (no argument runs them all; `reload` needs `chat` before it in the same run)
 #
 # The oracles are geometry, not implementation: the chrome is header 1 + prompt 3 +
@@ -213,6 +217,23 @@ script_columns() {
   printf '\021'; sleep 2
 }
 
+# The transcript fills from the top: header row 1, then (1-based) the rule, "first",
+# its reply, the rule, "second", and the thinking line on row 7 while the slow stub
+# (6s) answers it.
+MODAL_ROWS=24
+MODAL_COLS=120
+script_turn-modal() {
+  sleep $APP_STARTUP
+  printf 'first'; sleep 0.3; printf '\r'; sleep 8
+  printf 'second'; sleep 0.3; printf '\r'; sleep 1.5
+  printf "%s" "${E}[<0;8;7M"; sleep 0.1; printf "%s" "${E}[<0;8;7m"   # click the thinking line
+  sleep 0.8; printf 'x'; sleep 0.5                                      # the dialog takes it
+  printf '\033'; sleep 0.8                                              # Escape closes
+  printf "%s" "${E}[<0;10;4M"; sleep 0.1; printf "%s" "${E}[<0;10;4m" # click first's reply
+  sleep 1.2; printf '\033'; sleep 1.2                                   # Escape: the latest
+  printf '\021'; sleep 2
+}
+
 script_reload() {
   sleep $((APP_STARTUP + 2))
   printf '\021'; sleep 2
@@ -225,6 +246,10 @@ run_one() {
     runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_SESSION=$STAMP-columns}
     rows=$COLUMNS_ROWS cols=$COLUMNS_COLS
   fi
+  if [ "$name" = turn-modal ]; then
+    runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_STUB_DELAY_MS=6000 GRIT_SESSION=$STAMP-modal}
+    rows=$MODAL_ROWS cols=$MODAL_COLS
+  fi
   "script_$name" | setsid script -qc "stty rows $rows cols $cols; $runner" /dev/null > "$out" 2>&1
   python3 scripts/tui-gate.py "$out" "$rows" "$cols" "$name"
 }
@@ -236,7 +261,7 @@ ensure_agent_db() {
 }
 
 case " ${*:-chat} " in
-  *" chat "*|*" reload "*|*" columns "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
+  *" chat "*|*" reload "*|*" columns "*|*" turn-modal "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
 esac
 
 case " ${1:-} " in
@@ -246,7 +271,7 @@ case " ${1:-} " in
 esac
 
 status=0
-for s in ${*:-span one modal thumb popup resize burst chat reload columns}; do
+for s in ${*:-span one modal thumb popup resize burst chat reload columns turn-modal}; do
   echo "== $s"
   run_one "$s" || status=1
 done

@@ -22,18 +22,34 @@ final case class TurnPanel(look: Look, budget: Tokens) {
   private val blank: Block = Block.styled(StyledText(""))
 
   /** The rows for `view`, or a placeholder before the conversation has a turn; `runningMs`
-    * is how long the running step has run.
+    * is how long the running step has run, and a `pinned` turn says how to let it go.
     */
-  def blocks(view: Option[TurnView], runningMs: Long): Vector[Block] = view match {
-    case None => Vector(row(" no turn yet" -> fg(t.faint)))
-    case Some(v) =>
-      Vector(title(v), blank) ++ steps(v, runningMs) ++ Vector(blank) ++ query(v) ++
-        window(v) ++ cost(v)
-  }
+  def blocks(view: Option[TurnView], runningMs: Long, pinned: Boolean = false): Vector[Block] =
+    view match {
+      case None => Vector(row(" no turn yet" -> fg(t.faint)))
+      case Some(v) =>
+        Vector(title(v, pinned), blank) ++ steps(v, runningMs) ++ Vector(blank) ++ query(v) ++
+          window(v) ++ cost(v)
+    }
 
-  private def title(v: TurnView): Block = {
+  /** The rows of the opened turn: what was asked, then all the panel shows. */
+  def opened(view: Option[TurnView], runningMs: Long): Vector[Block] =
+    view.toVector.flatMap(v =>
+      Vector(
+        Block.styled(
+          StyledText.styled(s" ${Look.Runes.User} ", fg(t.user) + Style.Bold) ++
+            StyledText.styled(v.asked, fg(t.ink) + Style.Bold)
+        ),
+        blank
+      )
+    ) ++ blocks(view, runningMs)
+
+  private def title(v: TurnView, pinned: Boolean): Block = {
     val where = v.running.fold(if (v.settled) "done" else "finishing")(Look.Runes.step(_))
-    row(s" TURN ${number(v.turn)}" -> (fg(t.ink) + Style.Bold), s"  · $where" -> fg(t.faint))
+    row(
+      Seq(s" TURN ${number(v.turn)}" -> (fg(t.ink) + Style.Bold), s"  · $where" -> fg(t.faint)) ++
+        Option.when(pinned)("  esc: latest" -> fg(t.rail))*
+    )
   }
 
   /** One row per step of the turn: recorded ones with their time and a bar to scale,

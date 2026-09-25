@@ -3,8 +3,8 @@ package grit.app.chat
 import grit.app.look.{Look, Theme}
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
-import grit.tui.model.input.{Input, Key}
-import grit.tui.model.surface.Size
+import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
+import grit.tui.model.surface.{Pos, Size}
 import grit.tui.runtime.app.Effect
 import grit.tui.runtime.loop.Headless
 
@@ -38,6 +38,15 @@ object ChatScreenTests extends TestSuite {
       .filter(r =>
         r.startsWith("▌") || r.startsWith("ᚺ") || r.endsWith("thinking…") || r.endsWith("engine…")
       )
+
+  /** A click (press and release in place) on the first painted row that says `text`. */
+  private def click(h: Headless[ChatScreen.State, Msg], text: String) = {
+    val row = h.screen.indexWhere(_.contains(text))
+    val col = h.screen.lift(row).map(_.indexOf(text)).getOrElse(0)
+    def at(kind: MouseKind, button: Button) =
+      Input.Mouse(MouseEvent(kind, button, Pos(row, col), Mods.none))
+    h.inputs(at(MouseKind.Press, Button.Left), at(MouseKind.Release, Button.None))
+  }
 
   val tests = Tests {
     test("every cell has a background from the theme, none left to the terminal") {
@@ -103,6 +112,7 @@ object ChatScreenTests extends TestSuite {
     test("from 100 columns the turn panel stands beside the transcript; ctrl-b hides it") {
       val view = TurnView(
         TurnSeq(2),
+        "what did we decide?",
         None,
         grit.turn.Turn.Step.all.map(TurnView.Step(_, Some(400))),
         Some("ward engine"),
@@ -132,6 +142,56 @@ object ChatScreenTests extends TestSuite {
       assert(at(110).screen.exists(r => r.contains("████") && r.contains("░")))
       assert(!at(99).screen.mkString.contains("TURN 3"))
       assert(!at(110).inputs(Input.Keyboard(Key.Ctrl('b'))).screen.mkString.contains("TURN 3"))
+    }
+
+    test("a click on an earlier message pins its turn to the panel; esc lets it go") {
+      val two = ready.message(
+        Msg.Arrived(
+          Vector(
+            Said(true, "one", TurnSeq(0)),
+            Said(false, "first reply", TurnSeq(0)),
+            Said(true, "two", TurnSeq(1)),
+            Said(false, "second reply", TurnSeq(1))
+          ),
+          None
+        )
+      )
+      val pinned = click(two, "first reply")
+      pinned.effects.last ==> Effect.ToHost(Msg.Show(Some(TurnSeq(0))))
+      pinned.state.pinned ==> Some(TurnSeq(0))
+      // The latest turn is what the panel follows anyway: nothing to pin.
+      click(two, "second reply").state.pinned ==> None
+      val let = pinned.input(Input.Keyboard(Key.Escape))
+      let.state.pinned ==> None
+      let.effects.last ==> Effect.ToHost(Msg.Show(None))
+      // A new message lets go too, and the draft is sent.
+      val sent = typed(pinned, "three").input(Input.Keyboard(Key.Enter))
+      sent.state.pinned ==> None
+      sent.effects.last ==>
+        Effect.Batch(Vector(Effect.ToHost(Msg.Send("three")), Effect.ToHost(Msg.Show(None))))
+    }
+
+    test("a click on the thinking line opens the running turn; esc closes it") {
+      val view = TurnView(
+        TurnSeq(0),
+        "hi",
+        Some("call-model"),
+        Vector(TurnView.Step("assemble", Some(400))),
+        None,
+        None,
+        None,
+        None
+      )
+      val asked = ready
+        .message(Msg.Arrived(Vector(Said(true, "hi", TurnSeq(0))), Some("call-model")))
+        .message(Msg.Turn(view))
+      val open = click(asked, "grit is thinking")
+      open.state.modal ==> true
+      val shown = open.screen.mkString("\n")
+      assert(shown.contains("turn 1"), shown.contains("TURN 1  · ᚨ answering"))
+      // The dialog takes the keys: typing does not reach the prompt beneath it.
+      typed(open, "x").state.editor.text ==> ""
+      open.input(Input.Keyboard(Key.Escape)).state.modal ==> false
     }
 
     test("an engine that will not open ends the ward and says so") {

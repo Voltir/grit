@@ -63,5 +63,5 @@ object Follow {
   }
 
   private def said1(e: Entry): Option[ChatScreen.Said] =
-    Replies.text(e).map(ChatScreen.Said(isUser(e), _))
+    Replies.text(e).map(ChatScreen.Said(isUser(e), _, e.turnSeq))
 }

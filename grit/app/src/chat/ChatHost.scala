@@ -5,7 +5,7 @@ import java.util.concurrent.CountDownLatch
 
 import scala.util.control.NonFatal
 
-import grit.core.id.{SourceId, TurnRef}
+import grit.core.id.{SourceId, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Origin}
@@ -18,11 +18,12 @@ import grit.tui.runtime.app.{Host, Mailbox}
   *   - `Load` opens the engine with `opener`, says `Opened`, then follows the
   *     conversation: its entries are polled and every new one is shown, whichever turn
   *     wrote it, so replies to turns recovered after a restart appear too ([[Follow]]);
-  *     and its latest turn is described for the turn panel whenever that changes
-  *     ([[TurnView]], its window estimated with `estimator` under the system prompt
-  *     `system`).
+  *     and its latest turn (or the one `Show` pinned) is described for the turn panel
+  *     whenever that changes ([[TurnView]], its window estimated with `estimator` under
+  *     the system prompt `system`).
   *   - `Send` ingests a message and starts its turn, once the engine is open; the reply
   *     arrives by following.
+  *   - `Show` pins the panel to a turn, or back to the latest.
   *
   * All of it runs on virtual threads and answers through the mailbox, so the screen paints
   * at once and never waits on the database or the model. [[close]] stops following and
@@ -45,6 +46,10 @@ final class ChatHost(
   @volatile @caps.unsafe.untrackedCaptures
   private var open = true
 
+  /** The turn the panel is pinned to; `None` follows the latest. */
+  @volatile @caps.unsafe.untrackedCaptures
+  private var pinned: Option[TurnSeq] = None
+
   /** The open engine; `None` until it opens, and again once closed. Guarded by `lock`. */
   @caps.unsafe.untrackedCaptures
   private var engine: Option[Engine^] = None
@@ -65,6 +70,7 @@ final class ChatHost(
             case None => ()
           }
         }
+      case ChatScreen.Msg.Show(turn) => pinned = turn
       case ChatScreen.Msg.Send(text) =>
         background { () =>
           settled.await()
@@ -123,7 +129,11 @@ final class ChatHost(
               val (next, msgs) = Follow.step(state, entries, turn => engine.status(turn))
               state = next
               msgs.foreach(mailbox.offer)
-              TurnView.latest(entries).foreach { turn =>
+              val target = pinned
+                .filter(t => entries.exists(_.turnSeq == t))
+                .map(TurnRef(conversation, _))
+                .orElse(TurnView.latest(entries))
+              target.foreach { turn =>
                 // A settled turn changes no more: its view is not read again.
                 if (!shown.exists(v => v.turn == turn.turnSeq && v.settled)) {
                   val view = described(engine, turn, entries)

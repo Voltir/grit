@@ -61,6 +61,7 @@ object RouteTests extends TestSuite {
         (s.copy(copied = s.copied :+ (t, x)), Effect.CopyOut(t))
       case M.B(Scroller.Msg.Copied(t, x)) =>
         (s.copy(copied = s.copied :+ (t, x)), Effect.CopyOut(t))
+      case M.A(Scroller.Msg.Clicked(at)) => (s.copy(said = s.said :+ s"clicked $at"), Effect.NoOp)
       case M.A(x) => (s.copy(a = Scroller.update(x, s.a)), Effect.NoOp)
       case M.B(x) => (s.copy(b = Scroller.update(x, s.b)), Effect.NoOp)
       case M.Help(x) => (s.copy(help = Scroller.update(x, s.help)), Effect.NoOp)
@@ -178,6 +179,19 @@ object RouteTests extends TestSuite {
         h.state.copied.isEmpty,
         !h.effects.exists { case Effect.CopyOut(_) => true; case _ => false }
       )
+    }
+
+    test("a click names the block under it, through the viewport that was painted") {
+      // Scrolled so block 20 is at the top; each block wraps to two rows in 29 columns.
+      val top = start(S(a = Scroller.State(Anchor.At(DocPos(20, 0)))))
+      val clicked = top.inputs(mouse(MouseKind.Press, 2, 3), mouse(MouseKind.Release, 2, 3))
+      assert(clicked.state.said.exists(_.startsWith("clicked DocPos(21,")))
+      val dragged = top.inputs(
+        mouse(MouseKind.Press, 2, 3),
+        mouse(MouseKind.Drag, 4, 9),
+        mouse(MouseKind.Release, 4, 9)
+      )
+      assert(dragged.state.said.isEmpty, dragged.state.copied.length == 1)
     }
 
     test("the deadline ends an escaped drag, copies it, and says it expired") {

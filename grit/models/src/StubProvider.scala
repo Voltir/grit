@@ -4,11 +4,13 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 
 /** A [[Provider]] that calls no model: it answers every request by quoting its last
-  * message, at no cost. For running a turn end to end without spending anything.
+  * message, at no cost, after `delayMs` (a slow model, for watching a turn run). For
+  * running a turn end to end without spending anything.
   */
-final class StubProvider extends Provider {
+final class StubProvider(delayMs: Long = 0) extends Provider {
 
   def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+    if (delayMs > 0) Thread.sleep(delayMs)
     val last = request.messages.lastOption match {
       case Some(Message.User(text)) => text
       case Some(Message.ToolResult(_, content, _)) => content

@@ -1,6 +1,7 @@
 package grit.app.chat
 
 import grit.app.look.Look
+import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.tui.components.editor.Editor
 import grit.tui.components.pane.Anchor
@@ -23,14 +24,18 @@ object ChatScreen {
 
   private val Panel = PaneKey.of("turn-panel")
 
-  /** One message of the conversation: the user's, or a reply. */
-  final case class Said(user: Boolean, text: String)
+  private val Opened = PaneKey.of("turn-modal")
+
+  /** One message of the conversation, the user's or a reply, and the turn it belongs to. */
+  final case class Said(user: Boolean, text: String, turn: TurnSeq = TurnSeq(0))
 
   /** `said` is the transcript as the store has it. Below it, while the engine is
     * `opening`, is the ward; while a turn is in progress, the spinner, and the status line
     * names the turn's `step`, which began at tick `stepSince`. `tick` turns the runes and
-    * times the step. Beside it, while `panel` is on and the screen is wide enough, the
-    * turn panel shows `turn`, scrolled by `panelReader`.
+    * times the step. `owners` is the turn each block of `said` belongs to, if any. Beside
+    * it, while `panel` is on and the screen is wide enough, the turn panel shows `turn`:
+    * the latest, or the one `pinned` by a click. While `modal`, the turn is opened over
+    * the screen, scrolled by `modalReader`.
     */
   final case class State(
       said: Vector[Block],
@@ -44,7 +49,11 @@ object ChatScreen {
       title: String,
       turn: Option[TurnView] = None,
       panel: Boolean = true,
-      panelReader: Scroller.State = Scroller.State(Anchor.At(DocPos.zero))
+      panelReader: Scroller.State = Scroller.State(Anchor.At(DocPos.zero)),
+      owners: Vector[Option[TurnSeq]] = Vector.empty,
+      pinned: Option[TurnSeq] = None,
+      modal: Boolean = false,
+      modalReader: Scroller.State = Scroller.State(Anchor.At(DocPos.zero))
   ) {
 
     /** Whether a turn is in progress. */
@@ -99,6 +108,18 @@ object ChatScreen {
     /** The turn panel, scrolled, selected or copied from. */
     case PanelReader(m: Scroller.Msg)
 
+    /** For the host: show `turn` in the panel, or the latest when `None`. */
+    case Show(turn: Option[TurnSeq])
+
+    /** Escape: the panel follows the latest turn again. */
+    case Unpin
+
+    /** The opened turn, scrolled, selected or copied from. */
+    case ModalReader(m: Scroller.Msg)
+
+    /** Escape over the opened turn. */
+    case CloseModal
+
     /** The prompt, edited. */
     case Edited(editor: Editor)
 
@@ -139,18 +160,40 @@ object ChatScreen {
           if (draft.isEmpty) (s, Effect.NoOp)
           else if (draft == "/quit") (s, Effect.Quit)
           // Shown when the store has it, like everything else in the transcript.
+          // A new turn is the one to watch: the panel lets go of any pinned one.
           else
-            (s.copy(editor = s.editor.submitted, status = "sent"), Effect.ToHost(Msg.Send(draft)))
-        case Msg.Send(_) | Msg.Load => (s, Effect.NoOp)
+            (
+              s.copy(editor = s.editor.submitted, status = "sent", pinned = None),
+              if (s.pinned.isEmpty) Effect.ToHost(Msg.Send(draft))
+              else
+                Effect.Batch(Vector(Effect.ToHost(Msg.Send(draft)), Effect.ToHost(Msg.Show(None))))
+            )
+        case Msg.Send(_) | Msg.Load | Msg.Show(_) => (s, Effect.NoOp)
         case Msg.Arrived(said, step) =>
           val blocks = said.flatMap {
-            case Said(true, text) => Vector(look.separator, look.user(text))
-            case Said(false, text) => Vector(look.assistant(text))
+            case Said(true, text, t) => Vector(look.separator -> t, look.user(text) -> t)
+            case Said(false, text, t) => Vector(look.assistant(text) -> t)
           }
           val since = if (step == s.step) s.stepSince else s.tick
-          animate(s, s.copy(said = s.said ++ blocks, step = step, stepSince = since, status = ""))
+          animate(
+            s,
+            s.copy(
+              said = s.said ++ blocks.map(_(0)),
+              owners = s.owners ++ blocks.map(b => Some(b(1))),
+              step = step,
+              stepSince = since,
+              status = ""
+            )
+          )
         case Msg.Failed(reason) =>
-          animate(s, s.copy(said = s.said :+ look.failure(reason), opening = false))
+          animate(
+            s,
+            s.copy(
+              said = s.said :+ look.failure(reason),
+              owners = s.owners :+ None,
+              opening = false
+            )
+          )
         case Msg.Opened => animate(s, s.copy(opening = false))
         case Msg.Tick =>
           // A tick that lands after the animation stopped ends the chain there.
@@ -160,7 +203,17 @@ object ChatScreen {
         case Msg.Reader(Scroller.Msg.Copied(text, _)) =>
           if (text.isEmpty) (s.copy(status = "nothing selected"), Effect.NoOp)
           else (s.copy(status = s"copied ${text.length} chars"), Effect.CopyOut(text))
+        case Msg.Reader(Scroller.Msg.Clicked(at)) => clicked(s, at.entry)
         case Msg.Reader(m) => (s.copy(reader = Scroller.update(m, s.reader)), Effect.NoOp)
+        case Msg.Unpin =>
+          if (s.pinned.isEmpty) (s, Effect.NoOp)
+          else (s.copy(pinned = None), Effect.ToHost(Msg.Show(None)))
+        case Msg.ModalReader(Scroller.Msg.Copied(text, _)) =>
+          if (text.isEmpty) (s.copy(status = "nothing selected"), Effect.NoOp)
+          else (s.copy(status = s"copied ${text.length} chars"), Effect.CopyOut(text))
+        case Msg.ModalReader(m) =>
+          (s.copy(modalReader = Scroller.update(m, s.modalReader)), Effect.NoOp)
+        case Msg.CloseModal => (s.copy(modal = false), Effect.NoOp)
         case Msg.Turn(view) => (s.copy(turn = Some(view)), Effect.NoOp)
         case Msg.TogglePanel => (s.copy(panel = !s.panel), Effect.NoOp)
         case Msg.PanelReader(Scroller.Msg.Copied(text, _)) =>
@@ -170,6 +223,25 @@ object ChatScreen {
           (s.copy(panelReader = Scroller.update(m, s.panelReader)), Effect.NoOp)
         case Msg.Quit => (s, Effect.Quit)
       }
+
+    /** A click on transcript block `entry`: on a message, its turn in the panel (the
+      * latest turn unpins); on the thinking line, the running turn opened.
+      */
+    private def clicked(s: State, entry: Int): (State, Effect[Msg]) =
+      s.owners.lift(entry).flatten match {
+        case Some(turn) =>
+          val pin = Option.when(!s.owners.flatten.lastOption.contains(turn))(turn)
+          if (pin == s.pinned) (s, Effect.NoOp)
+          else (s.copy(pinned = pin, panelReader = top), Effect.ToHost(Msg.Show(pin)))
+        case None if entry == s.said.size && s.thinking && !s.opening =>
+          (
+            s.copy(modal = true, modalReader = top, pinned = None),
+            if (s.pinned.isEmpty) Effect.NoOp else Effect.ToHost(Msg.Show(None))
+          )
+        case None => (s, Effect.NoOp)
+      }
+
+    private val top = Scroller.State(Anchor.At(DocPos.zero))
 
     /** `after`, with the rune timer started if it now has something to turn, or
       * cancelled if it no longer has. The runtime replaces a timer re-armed under the same
@@ -199,6 +271,7 @@ object ChatScreen {
 
     private def enter: OnInput[Msg] = {
       case Input.Keyboard(Key.Enter) => Some(Msg.Submit)
+      case Input.Keyboard(Key.Escape) => Some(Msg.Unpin)
       case _ => None
     }
 
@@ -210,7 +283,12 @@ object ChatScreen {
       else {
         val shown = s.turn.filter(_.running.nonEmpty).fold(0L)(_ => s.stepMs)
         val turn = Scroller
-          .view(Panel, Doc(panel.blocks(s.turn, shown)), s.panelReader, bar = bar)
+          .view(
+            Panel,
+            Doc(panel.blocks(s.turn, shown, s.pinned.nonEmpty)),
+            s.panelReader,
+            bar = bar
+          )
           .map(Msg.PanelReader(_))
         wide(TurnPanel.ShownFrom)(
           row(flex(20) -> reading, fixed(1) -> paint(look.divider), fixed(TurnPanel.Cols) -> turn),
@@ -219,8 +297,17 @@ object ChatScreen {
       }
     }
 
-    def view(s: State): Node[Msg] =
-      column(
+    /** The running turn, opened: what was asked, then all the panel says of it. */
+    private def opened(s: State): Node[Msg] = {
+      val shown = s.turn.filter(_.running.nonEmpty).fold(0L)(_ => s.stepMs)
+      Scroller
+        .view(Opened, Doc(panel.opened(s.turn, shown)), s.modalReader)
+        .map(Msg.ModalReader(_))
+        .grounded(look.modalGround)
+    }
+
+    def view(s: State): Node[Msg] = {
+      val screen = column(
         fixed(1) -> paint(look.header(s.title)),
         flex(5) -> body(s),
         fit(3, 0.5) -> Node.editor(s.editor).onEdit(Msg.Edited(_)),
@@ -239,6 +326,13 @@ object ChatScreen {
             look.status
           )
         )
-      ).onKey(enter).onKeyFirst(hotkeys).grounded(look.ground)
+      ).onKey(enter)
+      val title = s.turn.fold("turn")(v => s"turn ${TurnPanel.number(v.turn)}")
+      // The hotkeys wrap the dialog, so ctrl-q still quits over it.
+      screen
+        .when(s.modal)(_.dialog(look.modal(title), opened(s), Some(Msg.CloseModal)))
+        .onKeyFirst(hotkeys)
+        .grounded(look.ground)
+    }
   }
 }
