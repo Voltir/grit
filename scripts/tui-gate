@@ -85,8 +85,9 @@ RUNNER="$J/bin/java --sun-misc-unsafe-memory-access=allow --enable-native-access
 # rides in a system property whose value carries it. The stub model: no .env, no key. A
 # conversation of the gate's own, so `reload` sees exactly what `chat` wrote.
 # And a database that is not Nick's: an engine launched on `grit` would recover his
-# in-flight turns (CLAUDE.local.md). Created on first use.
-AGENT_DB=grit_agent
+# in-flight turns (CLAUDE.local.md). Created on first use. GRIT_GATE_DB names another,
+# for a second agent whose engines must not recover this one's turns.
+AGENT_DB=${GRIT_GATE_DB:-grit_agent}
 APP_RUNNER="env -u OPENROUTER_API_KEY GRIT_ENV_FILE=/dev/null GRIT_SESSION=$STAMP GRIT_LOG=$WORK/grit.log \
   GRIT_DATABASE_URL=jdbc:postgresql://localhost:5432/$AGENT_DB \
   $J/bin/java -Dgate.stamp=--$STAMP --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
