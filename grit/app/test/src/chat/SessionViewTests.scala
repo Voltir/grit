@@ -78,15 +78,23 @@ object SessionViewTests extends TestSuite {
       v.messages ==> 5
     }
 
-    test("what it was billed and cost: every row, whatever it priced") {
+    test("what it was billed and cost: every row, the cost unknown if any row's is") {
       val v = SessionView.of(entries, costs)
       v.input ==> Tokens(460)
       v.output ==> Tokens(65)
-      v.spent ==> Some(BigDecimal("0.00325"))
+      // Row 7 is unpriced, so the total is not the priced rows' sum.
+      v.spent ==> None
       SessionView
-        .of(entries, costs.map(r => r.copy(usage = r.usage.copy(costUsd = None))))
+        .of(
+          entries,
+          costs.map(r =>
+            r.copy(usage =
+              r.usage.copy(costUsd = r.usage.costUsd.orElse(Some(BigDecimal("0.0001"))))
+            )
+          )
+        )
         .spent ==>
-        None
+        Some(BigDecimal("0.00335"))
     }
 
     test("what search recalled: which earlier turns, and in how many windows") {
@@ -111,7 +119,7 @@ object SessionViewTests extends TestSuite {
       SessionView.of(entries, costs).roles ==> Vector(
         SessionView.Role(SessionView.Turn, Vector("big"), 2, Some(BigDecimal("0.003"))),
         SessionView.Role(SessionView.Query, Vector("writer"), 1, Some(BigDecimal("0.00005"))),
-        SessionView.Role(SessionView.Summary, Vector("small"), 2, Some(BigDecimal("0.0001")))
+        SessionView.Role(SessionView.Summary, Vector("small"), 2, None)
       )
       // A role no model answered is not listed.
       SessionView.of(entries, costs.filter(_.model != "writer")).roles.map(_.name) ==>

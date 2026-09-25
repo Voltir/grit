@@ -169,8 +169,8 @@ object Eval {
       )
 
     /** What the calls made so far cost, as their providers reported it. */
-    def spent: BigDecimal =
-      answered.values.collect { case Right(m) => m.usage.costUsd.getOrElse(BigDecimal(0)) }.sum
+    def spent: Option[BigDecimal] =
+      Usage.total(answered.values.collect { case Right(m) => m.usage }).costUsd
   }
 
   /** Answers nothing: the query writer when the eval runs without `--live`. */
@@ -263,7 +263,8 @@ object Eval {
       }
       totals(results)
       live.foreach { c =>
-        println(s"Query model ${c.model}: $$${writer.spent.bigDecimal.toPlainString} in all")
+        println(s"Query model ${c.model}: ${writer.spent
+            .fold("unknown")(s => "$" + s.bigDecimal.toPlainString)} in all")
       }
     } finally engine.close()
   }

@@ -4,7 +4,7 @@ import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 
 import scala.util.control.NonFatal
 
-import grit.core.message.{AssistantBlock, Message, Tokens}
+import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.ModelRequest
 
 /** Live probe: does the model bill an earlier reply's reasoning as input? One real first
@@ -96,7 +96,9 @@ object ReasoningBillingProbe {
         println(s"first reply's reasoning: $text chars of text, $replay chars of replay JSON")
         println(s"follow-up input, reasoning sent:    ${inputs(0).mkString(", ")}")
         println(s"follow-up input, reasoning dropped: ${inputs(1).mkString(", ")}")
-        println(s"probe cost: $$${(reply +: runs).flatMap(_.usage.costUsd).sum}")
+        println(
+          s"probe cost: ${Usage.total((reply +: runs).map(_.usage)).costUsd.fold("unknown")("$" + _)}"
+        )
     }
   }
 }

@@ -257,14 +257,10 @@ object TurnVerdict {
     */
   def cost(spent: Vector[(Message.Assistant, Tokens)]): Option[(String, Usage, Tokens)] =
     spent.headOption.map { (first, _) =>
-      val usage = spent.drop(1).map(_._1.usage).foldLeft(first.usage) { (a, b) =>
-        Usage(
-          a.input + b.input,
-          a.output + b.output,
-          a.cachedInput + b.cachedInput,
-          a.costUsd.zip(b.costUsd).map(_ + _).orElse(a.costUsd).orElse(b.costUsd)
-        )
-      }
-      (first.model, usage, spent.map(_._2).foldLeft(Tokens.Zero)(_ + _))
+      (
+        first.model,
+        Usage.total(spent.map(_._1.usage)),
+        spent.map(_._2).foldLeft(Tokens.Zero)(_ + _)
+      )
     }
 }

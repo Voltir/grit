@@ -3,7 +3,7 @@ package grit.app.chat
 import java.time.Duration
 
 import grit.core.id.{EntryId, TurnRef, TurnSeq}
-import grit.core.message.{Message, Tokens}
+import grit.core.message.{Message, Tokens, Usage}
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Payload, UsageLedger}
 import grit.dbos.engine.RecordedStep
@@ -19,7 +19,7 @@ import grit.turn.Turn
   * @param steps the steps it recorded, in order
   * @param query what assembly searched for, when it searched
   * @param window what the model saw, once the reply is recorded
-  * @param spent what its model calls cost, when the provider said
+  * @param spent what its model calls cost, when every one of them was priced
   * @param billed the input tokens the provider counted for the reply
   */
 final case class TurnView(
@@ -93,7 +93,7 @@ object TurnView {
     val reply = own.collectFirst {
       case Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _) => m
     }
-    val priced = costs.flatMap(_.usage.costUsd)
+    val spent = Option.when(costs.nonEmpty)(Usage.total(costs.map(_.usage))).flatMap(_.costUsd)
     TurnView(
       turn.turnSeq,
       own
@@ -103,7 +103,7 @@ object TurnView {
       steps.map(s => Step(s.name, s.started.zip(s.completed).map(Duration.between(_, _).toMillis))),
       own.collectFirst { case Entry(_, _, _, _, _, Payload.Query(q), _) => q },
       window,
-      Option.when(priced.nonEmpty)(priced.sum),
+      spent,
       reply.map(_.usage.input)
     )
   }

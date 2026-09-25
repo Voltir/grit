@@ -1,7 +1,7 @@
 package grit.app.chat
 
 import grit.core.id.{EntryId, TurnSeq}
-import grit.core.message.{Message, Tokens}
+import grit.core.message.{Message, Tokens, Usage}
 import grit.core.store.{Entry, Payload, UsageLedger}
 import grit.core.topic.{Placement, TopicEvent}
 
@@ -13,7 +13,7 @@ import grit.core.topic.{Placement, TopicEvent}
   * @param messages the user's messages and the replies
   * @param input the input tokens every model call was billed for
   * @param output the output tokens every model call was billed for
-  * @param spent what every model call cost, when any provider said
+  * @param spent what every model call cost, when every one of them was priced
   * @param recalls how many turns' windows recalled an earlier turn
   * @param recalled every earlier turn some window recalled, in conversation order
   * @param roles each role that called a model, in the order a turn calls them
@@ -36,7 +36,7 @@ object SessionView {
     SessionView(0, 0, Tokens.Zero, Tokens.Zero, None, 0, Vector.empty, Vector.empty)
 
   /** What one role's calls came to: the models that answered it, in the order they first
-    * did, how many calls it made, and what they cost when a provider said.
+    * did, how many calls it made, and what they cost when every one was priced.
     */
   final case class Role(
       name: String,
@@ -104,10 +104,8 @@ object SessionView {
     (entries.map(_.turnSeq).distinct.filterNot(settled), settled ++ summarised)
   }
 
-  private def spent(rows: Vector[UsageLedger.Row]): Option[BigDecimal] = {
-    val priced = rows.flatMap(_.usage.costUsd)
-    Option.when(priced.nonEmpty)(priced.sum)
-  }
+  private def spent(rows: Vector[UsageLedger.Row]): Option[BigDecimal] =
+    Option.when(rows.nonEmpty)(Usage.total(rows.map(_.usage))).flatMap(_.costUsd)
 
   private def isUser(e: Entry): Boolean = e.payload match {
     case Payload.Message(Message.User(_)) => true

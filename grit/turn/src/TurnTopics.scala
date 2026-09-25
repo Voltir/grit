@@ -377,13 +377,7 @@ object TurnTopics {
       }
       .takeRight(2)
 
-  private def sum(a: Usage, b: Usage): Usage =
-    Usage(
-      a.input + b.input,
-      a.output + b.output,
-      a.cachedInput + b.cachedInput,
-      a.costUsd.zip(b.costUsd).map(_ + _).orElse(a.costUsd).orElse(b.costUsd)
-    )
+  private def sum(a: Usage, b: Usage): Usage = a + b
 
   private def why(error: ClassifierError): String = error match {
     case ClassifierError.Unavailable(cause) => s"unavailable: $cause"
