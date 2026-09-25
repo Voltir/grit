@@ -250,6 +250,27 @@ object TurnVerdict {
     }
   }
 
+  /** What went wrong with the `topic` calls in `replies`, a loop's reply to each round, the
+    * first first, that the verdict survived: no call in the first reply, a call only in a
+    * later one (read nowhere: the verdict is the first reply's), or more than one call (only
+    * the first counts); each said, in that order, and `None` when there was one call, in the
+    * first reply.
+    */
+  def anomaly(replies: Vector[Message.Assistant]): Option[String] = {
+    val topical = replies.map(calls(_).count(_.name == ToolName.value(Name)))
+    val first = topical.headOption.getOrElse(0)
+    val later = topical.zipWithIndex.drop(1).collect { case (n, round) if n > 0 => round }
+    val total = topical.sum
+    val said = Vector(
+      Option.when(first == 0)("no topic call in the first reply"),
+      Option.when(first == 0 && later.nonEmpty)(
+        s"topic called only in a later round (${later.mkString(", ")}); not read"
+      ),
+      Option.when(total > 1)(s"topic called $total times; only the first counts")
+    ).flatten
+    Option.when(said.nonEmpty)(said.mkString("; "))
+  }
+
   /** The verdict the model gave in `reply` to the tool offered for `c`: its first `topic`
     * call's ([[verdict]]), or unreadable when it made none.
     */

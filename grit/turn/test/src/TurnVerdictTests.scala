@@ -195,6 +195,30 @@ object TurnVerdictTests extends TestSuite {
         Left("There is no argument `earlier`; the arguments there are `about`, `name`.")
     }
 
+    test("a loop's anomalies: none, one, then each said in order") {
+      val topic = topicCall(ujson.Obj("about" -> "current"))
+      val other = AssistantBlock.ToolCall(grit.core.id.ToolCallId("p"), "peek", ujson.Obj())
+      val table: Vector[(Vector[Message.Assistant], Option[String])] = Vector(
+        Vector(said("", topic, other), said("done")) -> None,
+        Vector(said("hi")) -> Some("no topic call in the first reply"),
+        Vector.empty -> Some("no topic call in the first reply"),
+        Vector(said("", topic, topic), said("done")) ->
+          Some("topic called 2 times; only the first counts"),
+        Vector(said("", topic), said("", topic), said("done")) ->
+          Some("topic called 2 times; only the first counts"),
+        Vector(said("", other), said("", other), said("", topic), said("done")) -> Some(
+          "no topic call in the first reply; topic called only in a later round (2); not read"
+        ),
+        Vector(said("", other), said("", topic), said("", topic)) -> Some(
+          "no topic call in the first reply; topic called only in a later round (1, 2); not " +
+            "read; topic called 2 times; only the first counts"
+        )
+      )
+      table.foreach { (replies: Vector[Message.Assistant], expected: Option[String]) =>
+        (replies.size, TurnVerdict.anomaly(replies)) ==> (replies.size, expected)
+      }
+    }
+
     test("the verdict says current: it stays") {
       val (turn, entries, _) =
         third("""hm ~0.5 #call:{"about":"current"}""", new RecordingProvider)

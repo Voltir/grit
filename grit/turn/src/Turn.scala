@@ -41,7 +41,8 @@ import TurnVerdict.Shape
   *      entry an edge shows, then waits up to [[TurnTooling.answerWithin]] for the answer
   *      [[grit.core.inbox.Inbox.answer]] sends ([[grit.core.durable.Durable.recv]]) before
   *      its `tool:n:j`; unanswered, it is denied.
-  *   1. `record-verdict` — when `topic` was offered: the verdict of the first reply.
+  *   1. `record-verdict` — when `topic` was offered: the verdict of the first reply, and
+  *      what went wrong with the loop's `topic` calls ([[TurnVerdict.anomaly]]).
   *   1. Turns that passed the loop's patch before it shipped ([[Patches.Tools]]) took
   *      `call-model-again` and `call-model-plain` instead, when `topic` was offered: the
   *      model called again after its call to the tool, a plain call if that does not
@@ -474,6 +475,7 @@ object Turn {
           case Left(failure) => Ran(Left(failure), None)
           case Right(first) =>
             val looped = TurnLoop.from(budget, first, moves)
+            val replies = looped.fold(_ => Vector(first), _.replies)
             val verdictUnrecorded = asked.flatMap { c =>
               d.transact(Step.RecordVerdict)(
                 TurnTopics.writeEvents(
@@ -481,7 +483,8 @@ object Turn {
                   env.records.ledger,
                   turn,
                   TurnVerdict.verdictId(turn),
-                  TurnVerdict.events(TurnVerdict.of(c, first), None, c, turn),
+                  TurnVerdict
+                    .events(TurnVerdict.of(c, first), TurnVerdict.anomaly(replies), c, turn),
                   None,
                   env.clock.now()
                 )

@@ -128,7 +128,7 @@ object TurnLoopTests extends TestSuite {
 
     test("a reply that calls no tool answers at once") {
       run(3, Right(reply("hi"))) ==> (
-        Right(Looped(reply("hi"), round(0))),
+        Right(Looped(reply("hi"), round(0), Vector(reply("hi")))),
         Vector("call-model Auto")
       )
     }
@@ -147,14 +147,14 @@ object TurnLoopTests extends TestSuite {
         "settle 1:0 run c",
         "call-model:2 Auto"
       )
-      looped ==> Right(Looped(reply("answer"), round(2)))
+      looped ==> Right(Looped(reply("answer"), round(2), Vector(first, second, reply("answer"))))
     }
 
     test("the budget's last call is made with tools off, and its calls are dropped") {
       val calling = reply("", Vector("a"))
       val (looped, made) = run(2, Right(calling), Right(reply("so", Vector("b"))))
       made ==> Vector("call-model Auto", "record 0", "settle 0:0 run a", "call-model:1 Off")
-      looped ==> Right(Looped(reply("so"), round(1)))
+      looped ==> Right(Looped(reply("so"), round(1), Vector(calling, reply("so", Vector("b")))))
     }
 
     test("a silent reply fails the turn") {
@@ -191,7 +191,7 @@ object TurnLoopTests extends TestSuite {
     test("from goes on after a first reply made elsewhere") {
       val moves = new Scripted(Vector(Left(TurnFailure.Model("not called")), Right(reply("done"))))
       TurnLoop.from(budget(3), reply("", Vector("a")), moves) ==>
-        Right(Looped(reply("done"), round(1)))
+        Right(Looped(reply("done"), round(1), Vector(reply("", Vector("a")), reply("done"))))
       moves.made ==> Vector("record 0", "settle 0:0 run a", "call-model:1 Auto")
     }
   }

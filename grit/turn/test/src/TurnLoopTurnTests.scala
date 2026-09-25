@@ -385,5 +385,54 @@ object TurnLoopTurnTests extends TestSuite {
       topics(entries).placements.getOrElse(turn.turnSeq, Vector.empty).map(_.by).lastOption ==>
         Some(Placement.Asked(Verdict.Current, None))
     }
+
+    test("unsure of the topic, and topic called only in a later round: that is on the record") {
+      val entries = new InMemoryEntryStore
+      val classifier = new CountingClassifier
+      Vector("hello", "knots? ~0.1").foreach { text =>
+        runTurn(
+          new InMemoryDurable,
+          entries,
+          new RecordingProvider,
+          say(entries, text),
+          classifier = classifier
+        )
+      }
+      val ws = new Files(files)
+      val provider = new Scripted((r, n) =>
+        if (n == 0) Right(calling("", ("t1", "peek", "a.txt")))
+        else if (n == 1)
+          Right(
+            calling("", ("t2", "peek", "a.txt")).copy(blocks =
+              Vector(
+                AssistantBlock.ToolCall(ToolCallId("v"), "topic", ujson.Obj("about" -> "new"))
+              )
+            )
+          )
+        else new StubProvider().complete(r)
+      )
+      val turn = say(entries, "hm ~0.5")
+      new InMemoryDurable().run(turn.workflowId)(
+        tooledBody(
+          entries,
+          provider,
+          new InMemoryUsageLedger,
+          new StubProvider(),
+          classifier,
+          ws,
+          tools(ws),
+          5
+        )
+      )
+      topics(entries).placements.getOrElse(turn.turnSeq, Vector.empty).map(_.by).lastOption ==>
+        Some(
+          Placement.Asked(
+            Verdict.Unreadable("answered without calling topic"),
+            Some(
+              "no topic call in the first reply; topic called only in a later round (1); not read"
+            )
+          )
+        )
+    }
   }
 }

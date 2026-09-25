@@ -140,8 +140,14 @@ object TurnLoop {
     def settle(round: Round, index: Int, pending: Pending): Either[TurnFailure, Unit]
   }
 
-  /** What a loop came to: its `answer`, the reply to `round`, the loop's last call. */
-  final case class Looped(answer: Message.Assistant, round: Round)
+  /** What a loop came to: its `answer`, the reply to `round`, the loop's last call; and
+    * `replies`, the reply to every round as the model sent it, the first first.
+    */
+  final case class Looped(
+      answer: Message.Assistant,
+      round: Round,
+      replies: Vector[Message.Assistant]
+  )
 
   /** Calls the model through `moves` from the first round, then goes on as [[from]] does. */
   def run(budget: Budget, moves: Moves^): Either[TurnFailure, Looped] =
@@ -154,9 +160,13 @@ object TurnLoop {
     */
   def from(budget: Budget, first: Message.Assistant, moves: Moves^): Either[TurnFailure, Looped] = {
     @tailrec
-    def loop(round: Round, reply: Message.Assistant): Either[TurnFailure, Looped] =
+    def loop(
+        round: Round,
+        reply: Message.Assistant,
+        before: Vector[Message.Assistant]
+    ): Either[TurnFailure, Looped] =
       next(budget, round, reply) match {
-        case Next.Answer(answer) => Right(Looped(answer, round))
+        case Next.Answer(answer) => Right(Looped(answer, round, before :+ reply))
         case Next.Silent(_) =>
           Left(
             TurnFailure.Model(s"the reply to ${Round.step(round)} said nothing and called no tool")
@@ -164,12 +174,12 @@ object TurnLoop {
         case Next.Settle(calls, after) =>
           settled(round, reply, calls).flatMap(_ => moves.call(after, ToolUse.Auto)) match {
             case Left(failure) => Left(failure)
-            case Right(again) => loop(after, again)
+            case Right(again) => loop(after, again, before :+ reply)
           }
         case Next.Last(calls, after) =>
           settled(round, reply, calls).flatMap(_ => moves.call(after, ToolUse.Off)) match {
             case Left(failure) => Left(failure)
-            case Right(again) => loop(after, again)
+            case Right(again) => loop(after, again, before :+ reply)
           }
       }
 
@@ -184,6 +194,6 @@ object TurnLoop {
         }
       }
 
-    loop(Round.First, first)
+    loop(Round.First, first, Vector.empty)
   }
 }
