@@ -79,9 +79,11 @@ final class LocalShell(root: Path, environment: Map[String, String]) extends She
 
   /** Kills `process` and its descendants, and waits for it to end. */
   private def kill(process: Process): Unit = {
+    // The shell first, then what it started (listed before, while the shell still holds
+    // them): a shell outliving its child reports the kill ("Killed") into the output.
     val descendants = process.descendants().toList
-    descendants.forEach(p => { val _ = p.destroyForcibly() })
     val _ = process.destroyForcibly()
+    descendants.forEach(p => { val _ = p.destroyForcibly() })
     val _ = process.waitFor()
   }
 
