@@ -148,6 +148,14 @@ object grit extends Module {
     object test extends GritTests
   }
 
+  /* The coding tool set: read, list, search, write, edit and run, as grit.core.tool Tools
+   * over grit.core.host's capabilities. Names no implementation of them. */
+  object tools extends GritModule {
+    def moduleDeps = Seq(core)
+
+    object test extends GritTests
+  }
+
   /* Assembly: builds each turn's context window from memory.
    * roadmap/mechanisms/assembly.md. */
   object assembly extends GritModule {

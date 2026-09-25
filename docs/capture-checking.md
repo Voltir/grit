@@ -202,6 +202,12 @@ the caller's side: `args.read(json).map(_.edits.size)`, where `edits: Vector[…
 `Workspace^` and `Toolbox[{ws}]` do not parse, so a control for a probe written in them
 compiles the same source with its capture sets erased (`ToolCaptureTests.erased`).
 
+**An `Args.of` written inside another.** `Field.each("…", Args.of((oldText = …, newText =
+…)))` inline in an outer `Args.of` fails with *"a match type could not be fully reduced:
+trying to reduce `Args.Values[(Field[String]^'s3, Field[String]^'s4)^'s5]`"*: the inner tuple
+gets a capture-set variable, the trap above. Bind the inner `Args` to a `val` first
+(`grit.tools.Coding.replacement`).
+
 **`-Wunused` on a default method.** A parameter a default `def` ignores warns where the
 `_` of a lambda never did. Mark it `@unused`.
 
