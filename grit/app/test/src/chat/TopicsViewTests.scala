@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, TurnSeq}
 import grit.core.store.{Entry, Payload}
-import grit.core.topic.{Band, Placement, TopicEvent, TopicId, Verdict}
+import grit.core.topic.{Band, Placement, TopicEvent, TopicId, Verdict, Weights}
 
 import utest.*
 
@@ -26,7 +26,12 @@ object TopicsViewTests extends TestSuite {
     )
 
   private def whole(turn: Long, t: TopicId, by: Placement) =
-    TopicEvent.Placed(TurnSeq(turn), Vector(t -> 1.0), 0.0, by)
+    TopicEvent.Placed(TurnSeq(turn), Weights.whole(t), by)
+
+  private def weights(elsewhere: Double, shares: (TopicId, Double)*): Weights =
+    Weights
+      .of(shares.toVector.map(Weights.Share(_, _)), elsewhere)
+      .fold(e => sys.error(s"not weights: $e"), identity)
 
   private val entries: Vector[Entry] = Vector(
     topic(0, 0, TopicEvent.Opened(a), whole(0, a, Placement.First)),
@@ -37,9 +42,13 @@ object TopicsViewTests extends TestSuite {
       TopicEvent.Opened(b),
       TopicEvent.Placed(
         TurnSeq(1),
-        Vector(a -> 0.1, b -> 0.72),
-        0.18,
-        Placement.Classified(0.1, Band.Changed, Vector(Some(a) -> 0.2, None -> 0.8))
+        weights(0.18, a -> 0.1, b -> 0.72),
+        Placement.Classified(
+          0.1,
+          Placement.Outcome.Changed(
+            Vector(Placement.Chance(Some(a), 0.2), Placement.Chance(None, 0.8))
+          )
+        )
       )
     ),
     topic(
@@ -47,9 +56,8 @@ object TopicsViewTests extends TestSuite {
       2,
       TopicEvent.Placed(
         TurnSeq(2),
-        Vector(b -> 0.6),
-        0.4,
-        Placement.Classified(0.6, Band.Uncertain, Vector.empty)
+        Weights.same(b, 0.6),
+        Placement.Classified(0.6, Placement.Outcome.Uncertain)
       )
     ),
     topic(4, 2, whole(2, a, Placement.Asked(Verdict.Earlier("Knots"), Some("dropped a call"))))

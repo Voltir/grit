@@ -4,7 +4,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.{TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
-import grit.core.topic.{Band, Placement, TopicEvent, TopicId, Topics}
+import grit.core.topic.{Placement, TopicEvent, TopicId, Topics, Weights}
 import grit.models.StubClassifier
 
 import utest.*
@@ -40,8 +40,8 @@ object TurnTopicsTests extends TestSuite {
       classifier.calls ==> 0
       val t = topics(entries)
       t.topics.map(_.id) ==> Vector(TopicId.openedBy(turns(0)))
-      last(t, turns(0)).map(p => (p.weights, p.elsewhere, p.by)) ==>
-        Some((Vector(TopicId.openedBy(turns(0)) -> 1.0), 0.0, Placement.First))
+      last(t, turns(0)).map(p => (p.weights, p.by)) ==>
+        Some((Weights.whole(TopicId.openedBy(turns(0))), Placement.First))
     }
 
     test("sure it is the same: it stays, weighed p(same), the rest elsewhere; its cost recorded") {
@@ -53,9 +53,10 @@ object TurnTopicsTests extends TestSuite {
       val t = topics(entries)
       t.topics.size ==> 1
       val placed = last(t, turns(1))
-      placed.map(_.by) ==> Some(Placement.Classified(0.85, Band.Same, Vector.empty))
-      placed.map(_.weights) ==> Some(Vector(TopicId.openedBy(turns(0)) -> 0.85))
-      assert(placed.exists(p => close(p.elsewhere, 0.15)))
+      placed.map(_.by) ==> Some(Placement.Classified(0.85, Placement.Outcome.Same))
+      placed.map(_.weights.byTopic) ==>
+        Some(Vector(Weights.Share(TopicId.openedBy(turns(0)), 0.85)))
+      assert(placed.exists(p => close(p.weights.elsewhere, 0.15)))
       ledger.rows.collect { case r if r._1 == TurnTopics.placedId(turns(1)) => r._3 } ==>
         Vector(StubClassifier.Model)
     }
@@ -66,7 +67,7 @@ object TurnTopicsTests extends TestSuite {
       t.placed(turns(1).turnSeq) ==> Some(TopicId.openedBy(turns(0)))
       // The classifier's placement; the model's verdict follows it (TurnVerdictTests).
       t.placements.get(turns(1).turnSeq).flatMap(_.headOption).map(_.by) ==>
-        Some(Placement.Classified(0.5, Band.Uncertain, Vector.empty))
+        Some(Placement.Classified(0.5, Placement.Outcome.Uncertain))
     }
 
     test("changed, with nowhere earlier to go: a new topic, and no second question") {
@@ -77,7 +78,12 @@ object TurnTopicsTests extends TestSuite {
       t.current.map(_.id) ==> Some(TopicId.openedBy(turns(1)))
       t.earlier.map(_.id) ==> Vector(TopicId.openedBy(turns(0)))
       last(t, turns(1)).map(_.by) ==>
-        Some(Placement.Classified(0.1, Band.Changed, Vector(None -> 1.0)))
+        Some(
+          Placement.Classified(
+            0.1,
+            Placement.Outcome.Changed(Vector(Placement.Chance(None, 1.0)))
+          )
+        )
     }
 
     test("changed, back to an earlier topic: the choice scaled by 1 - p(same)") {
@@ -104,11 +110,10 @@ object TurnTopicsTests extends TestSuite {
       t.placed(turns(2).turnSeq) ==> Some(first)
       t.current.map(_.id) ==> Some(first)
       val placed = last(t, turns(2)).getOrElse(sys.error("placed"))
-      placed.weights.map(_._1) ==> Vector(second, first)
+      placed.weights.byTopic.map(_.topic) ==> Vector(second, first)
       assert(
-        close(placed.weights(0)._2, 0.1),
-        close(placed.weights(1)._2, 0.81),
-        close(placed.elsewhere, 0.09)
+        placed.weights.byTopic.map(_.weight).zip(Vector(0.1, 0.81)).forall((x, y) => close(x, y)),
+        close(placed.weights.elsewhere, 0.09)
       )
       // No new topic was opened: only the two.
       t.topics.size ==> 2
@@ -213,6 +218,21 @@ object TurnTopicsTests extends TestSuite {
         case other => assert(other.toString == "a user message")
       }
       turns.size ==> 3
+    }
+
+    test("keys are distinct: a repeated name is numbered") {
+      val (a, b, c) = (TopicId("a"), TopicId("b"), TopicId("c"))
+      val ts = Topics
+        .fold(
+          Vector(
+            TopicEvent.Opened(a),
+            TopicEvent.Opened(b),
+            TopicEvent.Described(b, "X", "x"),
+            TopicEvent.Opened(c)
+          )
+        )
+        .topics
+      TurnTopics.keys(ts).map(_._2.key) ==> Vector("new topic", "X", "new topic (2)")
     }
   }
 }

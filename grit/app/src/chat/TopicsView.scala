@@ -95,16 +95,24 @@ object TopicsView {
         first = all.contains(Placement.First),
         unclassified = all.collectFirst { case Placement.Unclassified(r) => r },
         pSame = classified.map(_.pSame),
-        band = classified.map(_.band),
+        band = classified.map(_.outcome.band),
         choice = classified.toVector
-          .flatMap(_.choice)
-          .map((t, p) => (t.fold(NewOption)(name), p))
+          .flatMap {
+            _.outcome match {
+              case Placement.Outcome.Changed(choice) => choice
+              case Placement.Outcome.Same | Placement.Outcome.Uncertain => Vector.empty
+            }
+          }
+          .map(c => (c.topic.fold(NewOption)(name), c.probability))
           .sortBy(-_._2),
         verdict = asked.map(_.verdict),
         anomaly = asked.flatMap(_.anomaly),
-        weights = last.weights.sortBy(-_._2).take(Weights).map((t, w) => (name(t), w)),
-        elsewhere = last.elsewhere,
-        placed = Topics.top(last).map(name),
+        weights = last.weights.byTopic
+          .sortBy(-_.weight)
+          .take(Weights)
+          .map(s => (name(s.topic), s.weight)),
+        elsewhere = last.weights.elsewhere,
+        placed = Some(name(last.weights.heaviest)),
         disagree = disagree
       )
     }

@@ -52,7 +52,7 @@ object TurnTopics {
     /** Whether the classifier was unsure, so the main model is to be asked. */
     def uncertain: Boolean = placed.exists {
       _.by match {
-        case Placement.Classified(_, Band.Uncertain, _) => true
+        case Placement.Classified(_, Placement.Outcome.Uncertain) => true
         case _ => false
       }
     }
@@ -147,7 +147,7 @@ object TurnTopics {
       .filter(_.turnSeq == turn.turnSeq)
       .collectFirst { case Entry(_, _, _, _, _, Payload.Message(Message.User(t)), _) => t }
       .getOrElse("")
-    val keyed = Topics.keys(topics.topics).map((t, k) => (t, Shown(t.id, k)))
+    val keyed = keys(topics.topics)
     val current =
       topics.current.flatMap(c => keyed.collectFirst { case (t, s) if t.id == c.id => s })
     val earlier = keyed.collect { case (t, s) if !current.exists(_.id == t.id) => (t, s) }
@@ -156,8 +156,7 @@ object TurnTopics {
         events: Vector[TopicEvent],
         cost: Option[(String, Usage, Tokens)]
     ): Classification = Classification(events, current, earlier.map(_._2), cost, None)
-    def placed(weights: (Vector[(TopicId, Double)], Double), by: Placement) =
-      TopicEvent.Placed(turn.turnSeq, weights._1, weights._2, by)
+    def placed(weights: Weights, by: Placement) = TopicEvent.Placed(turn.turnSeq, weights, by)
 
     current.flatMap(c => topics.get(c.id).map(c -> _)) match {
       case None =>
@@ -180,14 +179,13 @@ object TurnTopics {
           case Right(Answered(p, u1, model)) =>
             val cost1 =
               (model, u1, estimator.system(ujson.write(StateJson[SameTopic].json(sameState))))
+            def stays(outcome: Placement.Outcome) = classification(
+              Vector(placed(Weights.same(shown.id, p), Placement.Classified(p, outcome))),
+              Some(cost1)
+            )
             Band.of(p) match {
-              case band @ (Band.Same | Band.Uncertain) =>
-                classification(
-                  Vector(
-                    placed(Weights.same(shown.id, p), Placement.Classified(p, band, Vector.empty))
-                  ),
-                  Some(cost1)
-                )
+              case Band.Same => stays(Placement.Outcome.Same)
+              case Band.Uncertain => stays(Placement.Outcome.Uncertain)
               case Band.Changed =>
                 earlier match {
                   case latest +: older =>
@@ -206,7 +204,8 @@ object TurnTopics {
                           Some(cost1)
                         )
                       case Right(Answered(decision, u2, _)) =>
-                        val choice = decision.probabilities.map(w => (w.value, w.probability))
+                        val choice =
+                          decision.probabilities.map(w => Placement.Chance(w.value, w.probability))
                         val isNew = decision.choice.isEmpty
                         val cost = (
                           model,
@@ -219,20 +218,20 @@ object TurnTopics {
                           Option.when(isNew)(TopicEvent.Opened(opened)).toVector :+
                             placed(
                               Weights.changed(shown.id, p, choice, Option.when(isNew)(opened)),
-                              Placement.Classified(p, Band.Changed, choice)
+                              Placement.Classified(p, Placement.Outcome.Changed(choice))
                             ),
                           Some(cost)
                         )
                     }
                   case _ =>
                     // Nowhere to go back to: it can only be new, and nothing need be asked.
-                    val choice = Vector(Option.empty[TopicId] -> 1.0)
+                    val choice = Vector(Placement.Chance(None, 1.0))
                     classification(
                       Vector(
                         TopicEvent.Opened(opened),
                         placed(
                           Weights.changed(shown.id, p, choice, Some(opened)),
-                          Placement.Classified(p, Band.Changed, choice)
+                          Placement.Classified(p, Placement.Outcome.Changed(choice))
                         )
                       ),
                       Some(cost1)
@@ -336,6 +335,15 @@ object TurnTopics {
       (more.drop(1).map(criterion) ++ Option.when(more.nonEmpty)(fresh))*
     )
   }
+
+  /** Each of `topics`, in order, with the key it goes by: its shown name, and a number after
+    * it when an earlier one in `topics` is shown the same. No two keys are equal.
+    */
+  private[turn] def keys(topics: Vector[Topic]): Vector[(Topic, Shown)] =
+    topics.zipWithIndex.map { (t, i) =>
+      val before = topics.take(i).count(_.shown == t.shown)
+      t -> Shown(t.id, if (before == 0) t.shown else s"${t.shown} (${before + 1})")
+    }
 
   private def topicJson(t: Topic): ujson.Value =
     ujson.Obj("name" -> t.shown, "summary" -> t.summary.fold[ujson.Value](ujson.Null)(ujson.Str(_)))

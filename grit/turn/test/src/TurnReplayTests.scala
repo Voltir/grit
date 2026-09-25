@@ -44,5 +44,21 @@ object TurnReplayTests extends TestSuite {
       }
       assert(failures.isEmpty)
     }
+
+    test("every recorded classification is written back byte for byte") {
+      // Topic events are recorded data: today's codec must read them and write the same text.
+      val j = TurnJournal.classification
+      val outputs = histories.flatMap { case (path, parsed) =>
+        parsed.toOption.toVector.flatMap(_.steps.collect {
+          case s if s.name == "classify" => (path.last, s.output)
+        })
+      }
+      assert(outputs.nonEmpty)
+      val failures = outputs.collect {
+        case (file, Some(text)) if j.decode(text).map(j.encode) != Right(text) => file
+        case (file, None) => file
+      }
+      assert(failures.isEmpty)
+    }
   }
 }

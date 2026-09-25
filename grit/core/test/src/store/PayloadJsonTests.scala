@@ -2,7 +2,7 @@ package grit.core.store
 
 import grit.core.id.{EntryId, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.topic.{Band, Placement, TopicEvent, TopicId, Verdict}
+import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
 
 import utest.*
 
@@ -75,7 +75,7 @@ object PayloadJsonTests extends TestSuite {
           Payload.Topic(
             Vector(
               TopicEvent.Opened(TopicId("t1")),
-              TopicEvent.Placed(TurnSeq(2), Vector(TopicId("t1") -> 0.5), 0.5, Placement.First)
+              TopicEvent.Placed(TurnSeq(2), Weights.same(TopicId("t1"), 0.5), Placement.First)
             )
           )
         )
@@ -90,34 +90,40 @@ object PayloadJsonTests extends TestSuite {
       val topic = Payload.Topic(
         Vector(
           TopicEvent.Opened(t1),
-          TopicEvent.Placed(TurnSeq(0), Vector(t1 -> 1.0), 0.0, Placement.First),
-          TopicEvent.Placed(TurnSeq(1), Vector(t1 -> 1.0), 0.0, Placement.Unclassified("no key")),
+          TopicEvent.Placed(TurnSeq(0), Weights.whole(t1), Placement.First),
+          TopicEvent.Placed(TurnSeq(1), Weights.whole(t1), Placement.Unclassified("no key")),
           TopicEvent.Placed(
             TurnSeq(3),
-            Vector(t1 -> 0.1, t2 -> 0.72),
-            0.18,
-            Placement.Classified(0.1, Band.Changed, Vector(Some(t1) -> 0.2, None -> 0.8))
+            Weights.changed(
+              t1,
+              0.1,
+              Vector(Placement.Chance(Some(t1), 0.2), Placement.Chance(None, 0.8)),
+              Some(t2)
+            ),
+            Placement.Classified(
+              0.1,
+              Placement.Outcome.Changed(
+                Vector(Placement.Chance(Some(t1), 0.2), Placement.Chance(None, 0.8))
+              )
+            )
           ),
           TopicEvent
-            .Placed(TurnSeq(4), Vector(t1 -> 0.5), 0.5, Placement.Asked(Verdict.Current, None)),
+            .Placed(TurnSeq(4), Weights.same(t1, 0.5), Placement.Asked(Verdict.Current, None)),
           TopicEvent.Placed(
             TurnSeq(4),
-            Vector(t2 -> 1.0),
-            0.0,
+            Weights.whole(t2),
             Placement.Asked(Verdict.Earlier("Knots"), Some("called a tool again"))
           ),
           TopicEvent
-            .Placed(TurnSeq(5), Vector(t2 -> 1.0), 0.0, Placement.Asked(Verdict.New(None), None)),
+            .Placed(TurnSeq(5), Weights.whole(t2), Placement.Asked(Verdict.New(None), None)),
           TopicEvent.Placed(
             TurnSeq(6),
-            Vector(t2 -> 1.0),
-            0.0,
+            Weights.whole(t2),
             Placement.Asked(Verdict.New(Some("Sailing")), None)
           ),
           TopicEvent.Placed(
             TurnSeq(7),
-            Vector(t2 -> 1.0),
-            0.0,
+            Weights.whole(t2),
             Placement.Asked(Verdict.Unreadable("{}"), None)
           ),
           TopicEvent.Described(t2, "Knots", "Which knot holds under load.")
@@ -131,6 +137,19 @@ object PayloadJsonTests extends TestSuite {
     }
 
     test("a malformed payload is a Left, not a throw") {
+      def placed(weights: ujson.Value, elsewhere: Double, by: ujson.Value): ujson.Value =
+        ujson.Obj(
+          "kind" -> "topic",
+          "events" -> ujson.Arr(
+            ujson.Obj(
+              "event" -> "placed",
+              "turn" -> 0,
+              "weights" -> weights,
+              "elsewhere" -> elsewhere,
+              "by" -> by
+            )
+          )
+        )
       val bad = Seq(
         ujson.Arr(),
         ujson.Obj("kind" -> "summary"),
@@ -146,6 +165,24 @@ object PayloadJsonTests extends TestSuite {
               "elsewhere" -> 1,
               "by" -> ujson.Obj("kind" -> "first")
             )
+          )
+        ),
+        placed(ujson.Arr(), 1, ujson.Obj("kind" -> "first")),
+        placed(ujson.Arr(ujson.Arr("t", 0.5)), 0.4, ujson.Obj("kind" -> "first")),
+        placed(
+          ujson.Arr(ujson.Arr("t", 0.5), ujson.Arr("t", 0.5)),
+          0,
+          ujson.Obj("kind" -> "first")
+        ),
+        placed(ujson.Arr(ujson.Arr("t", 1.5)), -0.5, ujson.Obj("kind" -> "first")),
+        placed(
+          ujson.Arr(ujson.Arr("t", 1)),
+          0,
+          ujson.Obj(
+            "kind" -> "classified",
+            "pSame" -> 0.9,
+            "band" -> "same",
+            "choice" -> ujson.Arr(ujson.Arr(ujson.Null, 1))
           )
         ),
         ujson.Obj("kind" -> "message", "message" -> ujson.Obj("role" -> "user")),

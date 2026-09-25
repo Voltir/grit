@@ -10,18 +10,10 @@ enum TopicEvent {
   /** A new topic, with no name until it is [[Described]]. */
   case Opened(topic: TopicId)
 
-  /** The user's message that started `turn` placed: how much it belongs to each topic
-    * (`weights`), and the part that is `elsewhere`, belonging to no topic it could name.
-    * Weights are non-negative and, with `elsewhere`, sum to 1. The message is in the topic
-    * of highest weight, whatever `elsewhere` holds. A turn placed again is where its
-    * latest placement puts it; the earlier ones stay on record.
+  /** The user's message that started `turn`, placed `by` someone. A turn placed again is
+    * where its latest placement puts it; the earlier ones stay on record.
     */
-  case Placed(
-      turn: TurnSeq,
-      weights: Vector[(TopicId, Double)],
-      elsewhere: Double,
-      by: Placement
-  )
+  case Placed(turn: TurnSeq, weights: Weights, by: Placement)
 
   /** `topic`'s name (a few words) and a one-line summary of it, as of now. */
   case Described(topic: TopicId, name: String, summary: String)
@@ -36,16 +28,41 @@ enum Placement {
   /** No classifier answered, for `reason`: the message stays in the current topic. */
   case Unclassified(reason: String)
 
-  /** The classifier's `pSame`, that the message is about the current topic, read as
-    * `band`; and when the band was [[Band.Changed]], its `choice` among the earlier topics
-    * and a new one (`None`), each option with its probability. Empty otherwise.
+  /** By the classifier: its `pSame`, that the message is about the current topic, and what
+    * that meant under the thresholds of the time. Later thresholds do not revise it.
     */
-  case Classified(pSame: Double, band: Band, choice: Vector[(Option[TopicId], Double)])
+  case Classified(pSame: Double, outcome: Placement.Outcome)
 
   /** The main model's `verdict`, asked because the classifier was unsure. `anomaly` says
     * what went wrong in asking, when something did; the verdict stands either way.
     */
   case Asked(verdict: Verdict, anomaly: Option[String])
+}
+
+object Placement {
+
+  /** What the classifier's p(same) meant when it was read. */
+  enum Outcome {
+
+    /** [[Band.Same]]: the message stays. */
+    case Same
+
+    /** [[Band.Uncertain]]: it stays for now, and the main model is asked. */
+    case Uncertain
+
+    /** [[Band.Changed]]: the classifier's `choice` among the earlier topics and a new one. */
+    case Changed(choice: Vector[Chance])
+
+    /** The band it fell in. */
+    def band: Band = this match {
+      case Same => Band.Same
+      case Uncertain => Band.Uncertain
+      case Changed(_) => Band.Changed
+    }
+  }
+
+  /** The `probability` the classifier gave `topic`: an earlier one, or a new one (`None`). */
+  final case class Chance(topic: Option[TopicId], probability: Double)
 }
 
 /** How sure the classifier is that a message is about the current topic. */

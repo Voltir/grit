@@ -125,7 +125,7 @@ object TurnVerdictTests extends TestSuite {
       heard(durable, turn)._2.text ==> replies.lastOption.getOrElse("").stripPrefix("assistant: ")
       // Placed by the classifier, then by the verdict: a new topic, which the last wins.
       placements(entries, turn).map(_.by) ==> Vector(
-        Placement.Classified(0.5, grit.core.topic.Band.Uncertain, Vector.empty),
+        Placement.Classified(0.5, Placement.Outcome.Uncertain),
         Placement.Asked(Verdict.New(Some("Sailing")), None)
       )
       topics(entries).placed(turn.turnSeq) ==> Some(TopicId.openedBy(turn))

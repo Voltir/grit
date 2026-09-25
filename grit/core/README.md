@@ -10,7 +10,7 @@ In dependency order:
 - **`message`** — the model's vocabulary: `Message`, `AssistantBlock`, `StopReason`,
   `Tokens`, `Usage`. ← `id`
 - **`topic`** — a conversation's topics as recorded events: `TopicId`, `TopicEvent` (a
-  topic opened, a message placed with its weights over topics, a topic described), the
+  topic opened, a message placed with its `Weights` over topics, a topic described), the
   `Placement` that says who placed it, `Band`, `Verdict`, and `Topics`, the pure fold over
   the events; `TopicJson`, their stored form. ← `id`
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db`, `Entry`,

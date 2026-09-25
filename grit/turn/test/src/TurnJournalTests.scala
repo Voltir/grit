@@ -64,16 +64,16 @@ object TurnJournalTests extends TestSuite {
     }
 
     test("a classification reads back as written") {
-      import grit.core.topic.{Band, Placement, TopicEvent, TopicId}
+      import grit.core.topic.{Placement, TopicEvent, TopicId, Weights}
       val (a, b) = (TopicId("a"), TopicId("b"))
+      val choice = Vector(Placement.Chance(None, 0.9), Placement.Chance(Some(a), 0.1))
       val full = TurnTopics.Classification(
         Vector(
           TopicEvent.Opened(b),
           TopicEvent.Placed(
             TurnSeq(3),
-            Vector(a -> 0.1, b -> 0.8),
-            0.1,
-            Placement.Classified(0.1, Band.Changed, Vector(None -> 0.9, Some(a) -> 0.1))
+            Weights.changed(a, 0.1, choice, Some(b)),
+            Placement.Classified(0.1, Placement.Outcome.Changed(choice))
           )
         ),
         Some(TurnTopics.Shown(a, "Knots")),

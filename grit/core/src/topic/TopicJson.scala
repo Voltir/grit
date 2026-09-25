@@ -9,12 +9,14 @@ object TopicJson {
 
   def write(e: TopicEvent): ujson.Value = e match {
     case TopicEvent.Opened(t) => ujson.Obj("event" -> "opened", "topic" -> TopicId.value(t))
-    case TopicEvent.Placed(turn, weights, elsewhere, by) =>
+    case TopicEvent.Placed(turn, weights, by) =>
       ujson.Obj(
         "event" -> "placed",
         "turn" -> TurnSeq.value(turn).toDouble,
-        "weights" -> ujson.Arr.from(weights.map((t, w) => ujson.Arr(TopicId.value(t), w))),
-        "elsewhere" -> elsewhere,
+        "weights" -> ujson.Arr.from(
+          weights.byTopic.map(s => ujson.Arr(TopicId.value(s.topic), s.weight))
+        ),
+        "elsewhere" -> weights.elsewhere,
         "by" -> placement(by)
       )
     case TopicEvent.Described(t, name, summary) =>
@@ -29,13 +31,20 @@ object TopicJson {
   private def placement(p: Placement): ujson.Value = p match {
     case Placement.First => ujson.Obj("kind" -> "first")
     case Placement.Unclassified(reason) => ujson.Obj("kind" -> "unclassified", "reason" -> reason)
-    case Placement.Classified(pSame, band, choice) =>
+    case Placement.Classified(pSame, outcome) =>
+      val choice = outcome match {
+        case Placement.Outcome.Changed(choice) => choice
+        case Placement.Outcome.Same | Placement.Outcome.Uncertain => Vector.empty
+      }
       ujson.Obj(
         "kind" -> "classified",
         "pSame" -> pSame,
-        "band" -> bandKey(band),
-        "choice" -> ujson.Arr.from(choice.map { (t, q) =>
-          ujson.Arr(t.fold[ujson.Value](ujson.Null)(id => ujson.Str(TopicId.value(id))), q)
+        "band" -> bandKey(outcome.band),
+        "choice" -> ujson.Arr.from(choice.map { c =>
+          ujson.Arr(
+            c.topic.fold[ujson.Value](ujson.Null)(id => ujson.Str(TopicId.value(id))),
+            c.probability
+          )
         })
       )
     case Placement.Asked(verdict, anomaly) =>
@@ -83,15 +92,16 @@ object TopicJson {
                 traverse(ws.toVector) {
                   case ujson.Arr(pair) =>
                     pair.toVector match {
-                      case Vector(ujson.Str(t), ujson.Num(w)) => Right(TopicId(t) -> w)
+                      case Vector(ujson.Str(t), ujson.Num(w)) => Right(Weights.Share(TopicId(t), w))
                       case _ => Left("placed: a weight is not [topic, number]")
                     }
                   case _ => Left("placed: a weight is not [topic, number]")
                 }
               )
             elsewhere <- num(o, "elsewhere")
+            valid <- Weights.of(weights, elsewhere).left.map(e => s"placed: ${whyNot(e)}")
             by <- o.get("by").toRight("placed: no by").flatMap(readPlacement)
-          } yield TopicEvent.Placed(turn, weights, elsewhere, by)
+          } yield TopicEvent.Placed(turn, valid, by)
         case "described" =>
           for {
             t <- str(o, "topic")
@@ -112,12 +122,7 @@ object TopicJson {
         case "classified" =>
           for {
             pSame <- num(o, "pSame")
-            band <- str(o, "band").flatMap {
-              case "same" => Right(Band.Same)
-              case "uncertain" => Right(Band.Uncertain)
-              case "changed" => Right(Band.Changed)
-              case other => Left(s"unknown band: $other")
-            }
+            band <- str(o, "band")
             choice <- o
               .get("choice")
               .flatMap(_.arrOpt)
@@ -126,14 +131,22 @@ object TopicJson {
                 traverse(cs.toVector) {
                   case ujson.Arr(pair) =>
                     pair.toVector match {
-                      case Vector(ujson.Str(t), ujson.Num(q)) => Right(Option(TopicId(t)) -> q)
-                      case Vector(ujson.Null, ujson.Num(q)) => Right(Option.empty[TopicId] -> q)
+                      case Vector(ujson.Str(t), ujson.Num(q)) =>
+                        Right(Placement.Chance(Some(TopicId(t)), q))
+                      case Vector(ujson.Null, ujson.Num(q)) => Right(Placement.Chance(None, q))
                       case _ => Left("classified: an option is not [topic or null, number]")
                     }
                   case _ => Left("classified: an option is not [topic or null, number]")
                 }
               )
-          } yield Placement.Classified(pSame, band, choice)
+            outcome <- (band, choice) match {
+              case ("same", Vector()) => Right(Placement.Outcome.Same)
+              case ("uncertain", Vector()) => Right(Placement.Outcome.Uncertain)
+              case ("changed", _) => Right(Placement.Outcome.Changed(choice))
+              case ("same" | "uncertain", _) => Left(s"classified: a choice in band $band")
+              case (other, _) => Left(s"unknown band: $other")
+            }
+          } yield Placement.Classified(pSame, outcome)
         case "asked" =>
           for {
             verdict <- o.get("verdict").toRight("asked: no verdict").flatMap(readVerdict)
@@ -159,6 +172,17 @@ object TopicJson {
         case other => Left(s"unknown verdict: $other")
       }
     } yield verdict
+
+  private def whyNot(e: WeightsError): String = e match {
+    case WeightsError.NoTopic => "no topic weighed"
+    case WeightsError.Repeated(t) => s"${TopicId.value(t)} weighed twice"
+    case WeightsError.Negative(t) => s"${share(t)} is negative"
+    case WeightsError.NotFinite(t) => s"${share(t)} is not finite"
+    case WeightsError.SumOff(sum) => s"the weights sum to $sum"
+  }
+
+  private def share(t: Option[TopicId]): String =
+    t.fold("elsewhere")(id => s"the weight of ${TopicId.value(id)}")
 
   private def str(o: collection.Map[String, ujson.Value], key: String): Either[String, String] =
     o.get(key).flatMap(_.strOpt).toRight(s"missing string $key")

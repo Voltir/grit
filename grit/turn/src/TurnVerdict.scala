@@ -155,7 +155,7 @@ object TurnVerdict {
   ): Vector[TopicEvent] = {
     val by = Placement.Asked(verdict, anomaly)
     def whole(t: TopicId): TopicEvent =
-      TopicEvent.Placed(turn.turnSeq, Weights.whole(t)._1, Weights.whole(t)._2, by)
+      TopicEvent.Placed(turn.turnSeq, Weights.whole(t), by)
     val opened = TopicId.openedBy(turn)
     def open: Vector[TopicEvent] = Vector(TopicEvent.Opened(opened), whole(opened))
     verdict match {
@@ -163,7 +163,7 @@ object TurnVerdict {
       case Verdict.Earlier(name) => matching(name, c).fold(open)(s => Vector(whole(s.id)))
       case Verdict.New(_) => open
       case Verdict.Unreadable(_) =>
-        c.placed.toVector.map(p => TopicEvent.Placed(turn.turnSeq, p.weights, p.elsewhere, by))
+        c.placed.toVector.map(p => TopicEvent.Placed(turn.turnSeq, p.weights, by))
     }
   }
 

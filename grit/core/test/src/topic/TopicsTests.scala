@@ -9,9 +9,17 @@ object TopicsTests extends TestSuite {
   private val (a, b, c) = (TopicId("a"), TopicId("b"), TopicId("c"))
 
   private def placed(turn: Long, topic: TopicId, by: Placement = Placement.First) =
-    TopicEvent.Placed(TurnSeq(turn), Vector(topic -> 1.0), 0.0, by)
+    TopicEvent.Placed(TurnSeq(turn), Weights.whole(topic), by)
+
+  private def weights(elsewhere: Double, shares: (TopicId, Double)*): Weights =
+    Weights
+      .of(shares.toVector.map(Weights.Share(_, _)), elsewhere)
+      .fold(e => sys.error(s"not weights: $e"), identity)
 
   private def close(x: Double, y: Double): Boolean = math.abs(x - y) < 1e-9
+
+  private def choice(chances: (Option[TopicId], Double)*): Vector[Placement.Chance] =
+    chances.toVector.map(Placement.Chance(_, _))
 
   val tests = Tests {
     test("nothing recorded: no topics, no current one") {
@@ -43,7 +51,7 @@ object TopicsTests extends TestSuite {
         Vector(
           TopicEvent.Opened(a),
           placed(0, a),
-          TopicEvent.Placed(TurnSeq(1), Vector(a -> 0.4), 0.6, Placement.First),
+          TopicEvent.Placed(TurnSeq(1), weights(0.6, a -> 0.4), Placement.First),
           TopicEvent.Opened(b),
           placed(1, b, Placement.Asked(Verdict.New(None), None))
         )
@@ -55,12 +63,39 @@ object TopicsTests extends TestSuite {
     }
 
     test("the placed topic is the heaviest, even when more of the weight is elsewhere") {
-      Topics.top(TopicEvent.Placed(TurnSeq(0), Vector(a -> 0.3), 0.7, Placement.First)) ==> Some(a)
-      Topics.top(
-        TopicEvent.Placed(TurnSeq(0), Vector(a -> 0.2, b -> 0.5), 0.3, Placement.First)
-      ) ==>
-        Some(b)
-      Topics.top(TopicEvent.Placed(TurnSeq(0), Vector.empty, 1.0, Placement.First)) ==> None
+      weights(0.7, a -> 0.3).heaviest ==> a
+      weights(0.3, a -> 0.2, b -> 0.5).heaviest ==> b
+      weights(0.0, a -> 0.5, b -> 0.5).heaviest ==> a
+    }
+
+    test("weights: only shares that sum to 1, each topic once, none negative, are weights") {
+      Weights.of(Vector.empty, 1.0) ==> Left(WeightsError.NoTopic)
+      Weights.of(Vector(Weights.Share(a, 0.5), Weights.Share(a, 0.5)), 0.0) ==>
+        Left(WeightsError.Repeated(a))
+      Weights.of(Vector(Weights.Share(a, -0.5)), 1.5) ==> Left(WeightsError.Negative(Some(a)))
+      Weights.of(Vector(Weights.Share(a, 1.5)), -0.5) ==> Left(WeightsError.Negative(None))
+      Weights.of(Vector(Weights.Share(a, Double.NaN)), 0.0) ==>
+        Left(WeightsError.NotFinite(Some(a)))
+      Weights.of(Vector(Weights.Share(a, 0.5)), Double.PositiveInfinity) ==>
+        Left(WeightsError.NotFinite(None))
+      Weights.of(Vector(Weights.Share(a, 0.5)), 0.4) match {
+        case Left(WeightsError.SumOff(sum)) => assert(close(sum, 0.9))
+        case other => sys.error(s"not SumOff: $other")
+      }
+      Weights
+        .of(Vector(Weights.Share(a, 0.1), Weights.Share(b, 0.81)), 0.09000000000000001)
+        .map(_.byTopic.map(_.topic)) ==> Right(Vector(a, b))
+    }
+
+    test("weights: made only by their constructors") {
+      import scala.compiletime.testing.typeChecks
+      assert(
+        typeChecks("Weights.whole(TopicId(\"a\")).elsewhere"),
+        !typeChecks("Weights(Weights.Share(TopicId(\"a\"), 2.0), Vector.empty, 0.0)"),
+        !typeChecks("Weights.whole(TopicId(\"a\")).copy(elsewhere = 5.0)"),
+        typeChecks("Topics.empty.topics"),
+        !typeChecks("Topics(Vector.empty, Map.empty)")
+      )
     }
 
     test("a description names a topic; the latest one stands; unnamed shows as new topic") {
@@ -78,52 +113,48 @@ object TopicsTests extends TestSuite {
       t.get(b).map(_.shown) ==> Some(Topic.Unnamed)
     }
 
-    test("keys are distinct: a repeated name is numbered") {
-      val ts = Vector(
-        Topic(a, None, None, Vector()),
-        Topic(b, Some("X"), None, Vector()),
-        Topic(c, None, None, Vector())
-      )
-      Topics.keys(ts).map(_._2) ==> Vector("new topic", "X", "new topic (2)")
-    }
-
     test("bands: 0.8 and up same, below 0.2 changed, between uncertain") {
       Vector(1.0, 0.8, 0.79, 0.2, 0.19, 0.0).map(Band.of) ==>
         Vector(Band.Same, Band.Same, Band.Uncertain, Band.Uncertain, Band.Changed, Band.Changed)
     }
 
     test("weights: level 1 keeps the remainder elsewhere") {
-      val (w, e) = Weights.same(a, 0.6)
-      w ==> Vector(a -> 0.6)
-      assert(close(e, 0.4))
+      val w = Weights.same(a, 0.6)
+      w.byTopic ==> Vector(Weights.Share(a, 0.6))
+      assert(close(w.elsewhere, 0.4))
     }
 
     test("weights: level 2 scales the choice by 1 - p(same); new goes to the opened topic") {
-      val (w, e) = Weights.changed(a, 0.1, Vector(Some(b) -> 0.25, None -> 0.75), Some(c))
-      w.map(_._1) ==> Vector(a, b, c)
+      val w = Weights.changed(a, 0.1, choice(Some(b) -> 0.25, None -> 0.75), Some(c))
+      w.byTopic.map(_.topic) ==> Vector(a, b, c)
       assert(
-        close(w(0)._2, 0.1),
-        close(w(1)._2, 0.225),
-        close(w(2)._2, 0.675),
-        close(e, 0.0),
-        close(w.map(_._2).sum + e, 1.0)
+        w.byTopic.map(_.weight).zip(Vector(0.1, 0.225, 0.675)).forall((x, y) => close(x, y)),
+        close(w.elsewhere, 0.0),
+        close(w.byTopic.map(_.weight).sum + w.elsewhere, 1.0)
       )
     }
 
     test("weights: level 2's share for new is elsewhere when no topic was opened") {
-      val (w, e) = Weights.changed(a, 0.1, Vector(Some(b) -> 0.75, None -> 0.25), None)
-      w.map(_._1) ==> Vector(a, b)
-      assert(close(w(1)._2, 0.675), close(e, 0.225))
+      val w = Weights.changed(a, 0.1, choice(Some(b) -> 0.75, None -> 0.25), None)
+      w.byTopic.map(_.topic) ==> Vector(a, b)
+      assert(w.byTopic.lastOption.exists(s => close(s.weight, 0.675)), close(w.elsewhere, 0.225))
     }
 
     test("weights: the current topic among level 2's options adds up, once") {
-      val (w, _) = Weights.changed(a, 0.1, Vector(Some(a) -> 0.5, None -> 0.5), None)
-      w.map(_._1) ==> Vector(a)
-      assert(close(w(0)._2, 0.55))
+      val w = Weights.changed(a, 0.1, choice(Some(a) -> 0.5, None -> 0.5), None)
+      w.byTopic.map(_.topic) ==> Vector(a)
+      assert(close(w.lead.weight, 0.55))
+    }
+
+    test("weights: a choice with no probability leaves the rest elsewhere") {
+      val w = Weights.changed(a, 0.3, choice(Some(b) -> Double.NaN, None -> -1.0), None)
+      w.byTopic.map(_.topic) ==> Vector(a, b)
+      assert(close(w.lead.weight, 0.3), close(w.elsewhere, 0.7))
     }
 
     test("weights: whole") {
-      Weights.whole(a) ==> (Vector(a -> 1.0), 0.0)
+      Weights.whole(a).byTopic ==> Vector(Weights.Share(a, 1.0))
+      Weights.whole(a).elsewhere ==> 0.0
     }
   }
 }

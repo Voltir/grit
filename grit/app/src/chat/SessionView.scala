@@ -67,7 +67,7 @@ object SessionView {
         case Payload.Summary(_) => Some(Summary)
         case Payload.Topic(events) =>
           val asked = events.exists {
-            case TopicEvent.Placed(_, _, _, Placement.Asked(_, _)) => true
+            case TopicEvent.Placed(_, _, Placement.Asked(_, _)) => true
             case _ => false
           }
           Some(if (asked) Verdict else Classify)
