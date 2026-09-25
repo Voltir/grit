@@ -50,33 +50,40 @@ object LiveTurn {
       answerWithin: FiniteDuration = TurnTools.AnswerWithin
   ): Unit = {
     val checkout = new LocalWorkspace(root)
-    val edits = new LocalEdits(root)
-    val shell = new LocalShell(root, sys.env)
-    engine.launch(
-      Turn.body(
-        TurnEnv(
-          "You are grit.",
-          TurnRecords(entries, engine.ledger, CharEstimate),
-          new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
-          grit.core.classify.Classifier.none("no classifier"),
-          provider,
-          new StubProvider(),
-          engine.db,
-          engine.jot,
-          Clock.system(),
-          Fresh.random(),
-          TurnTooling(
-            checkout,
-            edits,
-            shell,
-            if (all) Coding.all(checkout, edits, shell) else Coding.readOnly(checkout),
-            TurnLoop.Budget.of(5).fold(why => sys.error(why), identity),
-            strict = false,
-            answerWithin
+    def launch(tooling: TurnTooling^): Unit =
+      engine.launch(
+        Turn.body(
+          TurnEnv(
+            "You are grit.",
+            TurnRecords(entries, engine.ledger, CharEstimate),
+            new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
+            grit.core.classify.Classifier.none("no classifier"),
+            provider,
+            new StubProvider(),
+            engine.db,
+            engine.jot,
+            Clock.system(),
+            Fresh.random(),
+            tooling
           )
         )
       )
-    )
+    val budget = TurnLoop.Budget.of(5).fold(why => sys.error(why), identity)
+    if (all) {
+      val edits = new LocalEdits(root)
+      val shell = new LocalShell(root, sys.env)
+      launch(
+        TurnTooling.Full(
+          checkout,
+          edits,
+          shell,
+          Coding.all(checkout, edits, shell),
+          budget,
+          strict = false,
+          answerWithin
+        )
+      )
+    } else launch(TurnTooling.ReadOnly(checkout, Coding.readOnly(checkout), budget, strict = false))
   }
 
   /** Ingests `source` and starts its turn. */

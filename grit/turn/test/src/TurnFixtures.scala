@@ -323,7 +323,7 @@ object TurnFixtures {
         new FakeJot,
         new NoWait,
         Fresh.random(),
-        TurnTooling(NoCheckout, NoEdits, NoShell, noTools, budget(5), strict = false)
+        TurnTooling.ReadOnly(NoCheckout, noTools, budget(5), strict = false)
       )
     )(id)
 
@@ -399,7 +399,7 @@ object TurnFixtures {
         new FakeJot,
         clock,
         Fresh.random(),
-        TurnTooling(ws, NoEdits, NoShell, tools, budget(calls), strict = false)
+        TurnTooling.ReadOnly(ws, tools, budget(calls), strict = false)
       )
     )(id)
 

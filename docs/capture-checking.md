@@ -119,14 +119,17 @@ only a nested `step`.
 
 **A case class with a capability field, passed around as a value.**
 
-- *Symptom:* `Found: grit.turn.TurnTooling^{ws}  Required: grit.turn.TurnTooling{val
-  workspace: Workspace^'s1; val tools: Toolbox[CapSet^'s2]^'s3}^'s4`, *"capability `any`
-  cannot flow into capture set {any?}"*, where a value built elsewhere (a `def`'s result,
-  or a default argument, whose type drops the captures entirely) is passed on.
+- *Symptom:* `Found: TurnTooling^{ws}  Required: TurnTooling{val workspace:
+  Workspace^'s1; val tools: Toolbox[CapSet^'s2]^'s3}^'s4`, *"capability `any` cannot flow
+  into capture set {any?}"* (met when `TurnTooling` was one case class), where a value
+  built elsewhere (a `def`'s result, or a default argument, whose type drops the captures
+  entirely) is passed on.
 - *Cause:* a field typed `Workspace^` gets a capture set of its own in each value's
   refined type, and the declared type of the value that carries it has lost it.
-- *Fix:* construct the value inline where it is passed, as `TurnEnv(…, TurnTooling(ws,
-  tools, …))` is in `Main` and `TurnFixtures.tooledBody`; pass its parts, not the value.
+- *Fix:* construct the value inline where it is passed; pass its parts, not the value. Or
+  pass it as a supertype none of whose members holds a capability: `TurnTooling` is a
+  sealed trait whose cases hold them, so `Main` builds a `TurnTooling.ReadOnly` inline and
+  hands it on as a `TurnTooling^`.
 
 **A tupled lambda over a nested `Vector`.** Under separation checking,
 `turns.zipWithIndex.flatMap((turn, t) => …)` over a `Vector[Vector[A]]` is rejected:

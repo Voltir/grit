@@ -35,18 +35,38 @@ final case class TurnEnv(
 /** Where a turn's entries and their costs are written, and how a request is priced. */
 final case class TurnRecords(entries: EntryStore, ledger: UsageLedger, estimator: TokenEstimator)
 
-/** The tools a turn's model may call in its loop ([[TurnLoop]]): `tools`, which act only
-  * through `workspace`, `edits` and `shell`, and may be offered fewer than all three allow.
-  * `budget` bounds the loop's model calls, the last made with tools off; under `strict` each
-  * tool's schema asks the provider to hold the model's arguments to it. A call a person
-  * approves first waits `answerWithin` for their answer.
+/** The tools a turn's model may call in its loop ([[TurnLoop]]), and how the loop runs:
+  * `budget` bounds its model calls, the last made with tools off; under `strict` each tool's
+  * schema asks the provider to hold the model's arguments to it; a call a person approves
+  * first waits `answerWithin` for their answer. What the tools may act through is the case.
   */
-final case class TurnTooling(
-    workspace: Workspace^,
-    edits: Edits^,
-    shell: Shell^,
-    tools: Toolbox[{workspace, edits, shell}],
-    budget: TurnLoop.Budget,
-    strict: Boolean,
-    answerWithin: FiniteDuration = TurnTools.AnswerWithin
-)
+sealed trait TurnTooling {
+  def budget: TurnLoop.Budget
+  def strict: Boolean
+  def answerWithin: FiniteDuration
+}
+
+object TurnTooling {
+
+  /** Tools that act only through `workspace`: the turn cannot change the checkout. */
+  final case class ReadOnly(
+      workspace: Workspace^,
+      tools: Toolbox[{workspace}],
+      budget: TurnLoop.Budget,
+      strict: Boolean,
+      answerWithin: FiniteDuration = TurnTools.AnswerWithin
+  ) extends TurnTooling
+
+  /** Tools that act through `workspace`, `edits` and `shell`; they may be fewer than all
+    * three allow.
+    */
+  final case class Full(
+      workspace: Workspace^,
+      edits: Edits^,
+      shell: Shell^,
+      tools: Toolbox[{workspace, edits, shell}],
+      budget: TurnLoop.Budget,
+      strict: Boolean,
+      answerWithin: FiniteDuration = TurnTools.AnswerWithin
+  ) extends TurnTooling
+}

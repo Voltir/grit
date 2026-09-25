@@ -121,36 +121,43 @@ object Main {
           new RetrievalAssembler(engine.entries, engine.search, writer, CharEstimate, budget, tail)
         else new LinearAssembler(engine.entries, CharEstimate, budget)
       val checkout = new LocalWorkspace(root)
-      val edits = new LocalEdits(root)
-      // The process's own environment, not .env's: a command never needs grit's settings.
-      val shell = new LocalShell(root, sys.env)
-      engine.launch(
-        Turn.body(
-          TurnEnv(
-            system,
-            TurnRecords(engine.entries, engine.ledger, CharEstimate),
-            assembler,
-            classifier(topics),
-            provider,
-            summarizer,
-            engine.db,
-            engine.jot,
-            Clock.system(),
-            Fresh.random(),
-            TurnTooling(
-              checkout,
-              edits,
-              shell,
-              offered match {
-                case ToolChoice.Read => Coding.readOnly(checkout)
-                case ToolChoice.All => Coding.all(checkout, edits, shell)
-              },
-              rounds,
-              strict = openRouter.exists(_.routing.strictTools)
+      val strict = openRouter.exists(_.routing.strictTools)
+      def launch(tooling: TurnTooling^): Unit =
+        engine.launch(
+          Turn.body(
+            TurnEnv(
+              system,
+              TurnRecords(engine.entries, engine.ledger, CharEstimate),
+              assembler,
+              classifier(topics),
+              provider,
+              summarizer,
+              engine.db,
+              engine.jot,
+              Clock.system(),
+              Fresh.random(),
+              tooling
             )
           )
         )
-      )
+      offered match {
+        case ToolChoice.Read =>
+          launch(TurnTooling.ReadOnly(checkout, Coding.readOnly(checkout), rounds, strict))
+        case ToolChoice.All =>
+          val edits = new LocalEdits(root)
+          // The process's own environment, not .env's: a command never needs grit's settings.
+          val shell = new LocalShell(root, sys.env)
+          launch(
+            TurnTooling.Full(
+              checkout,
+              edits,
+              shell,
+              Coding.all(checkout, edits, shell),
+              rounds,
+              strict
+            )
+          )
+      }
       engine
     }
 

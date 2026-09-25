@@ -373,14 +373,33 @@ object Turn {
       seen: Window,
       recorded: WindowRecord,
       asked: Option[TurnTopics.Classification]
+  )(using env: TurnEnv^, d: Durable^): Ran[EntryId] =
+    env.tooling match {
+      case t: TurnTooling.ReadOnly =>
+        looping(heard, turn, seen, recorded, asked, t.tools, t.budget, t.strict, t.answerWithin)
+      case t: TurnTooling.Full =>
+        looping(heard, turn, seen, recorded, asked, t.tools, t.budget, t.strict, t.answerWithin)
+    }
+
+  /** [[loop]], offering `own`, the turn's tools, as `budget`, `strict` and `answerWithin`
+    * say ([[TurnTooling]]).
+    */
+  private def looping[C^](
+      heard: StreamWriter^,
+      turn: TurnRef,
+      seen: Window,
+      recorded: WindowRecord,
+      asked: Option[TurnTopics.Classification],
+      own: Toolbox[C],
+      budget: TurnLoop.Budget,
+      strict: Boolean,
+      answerWithin: FiniteDuration
   )(using env: TurnEnv^, d: Durable^): Ran[EntryId] = {
     import TurnJournal.given
-    val tooling: TurnTooling^{env} = env.tooling
-    val budget = tooling.budget
-    offered(tooling, asked) match {
+    offered(own, asked) match {
       case Left(failure) => Ran(Left(failure), None)
       case Right(tools) =>
-        val schemas = tools.schemas(tooling.strict)
+        val schemas = tools.schemas(strict)
         def shape(round: Round): ModelRequest -> ModelRequest =
           loopShape(asked, round, TurnLoop.use(budget, round), schemas)
         val moves = new TurnLoop.Moves {
@@ -410,7 +429,7 @@ object Turn {
                 val (entries, shown) = (env.records.entries, gated.ask)
                 d.transact(slot.askStep)(TurnTools.ask(entries, slot, call, shown, clock.now()))
                   .flatMap { _ =>
-                    val received = d.recv(Approval.topic(call), tooling.answerWithin)
+                    val received = d.recv(Approval.topic(call), answerWithin)
                     val approval = TurnTools.approval(received)
                     d.step(slot.step) { () =>
                       settling.decide(slot, call, gated, approval, clock.now())
@@ -458,19 +477,19 @@ object Turn {
     }
   }
 
-  /** The tools each call of the loop offers: `tooling`'s, after `topic` for the
-    * classification `asked` holds. `topic` stays on after the first call, which alone asks
-    * for it ([[loopShape]]): a request whose messages hold a call names the tool it called.
-    * `TurnFailure.Model` when `tooling` already names one `topic`.
+  /** The tools each call of the loop offers: `own`, after `topic` for the classification
+    * `asked` holds. `topic` stays on after the first call, which alone asks for it
+    * ([[loopShape]]): a request whose messages hold a call names the tool it called.
+    * `TurnFailure.Model` when `own` already names one `topic`.
     */
-  private def offered(
-      tooling: TurnTooling^,
+  private def offered[C^](
+      own: Toolbox[C],
       asked: Option[TurnTopics.Classification]
-  ): Either[TurnFailure, Toolbox[{tooling.workspace, tooling.edits, tooling.shell}]] =
+  ): Either[TurnFailure, Toolbox[C]] =
     asked match {
-      case None => Right(tooling.tools)
+      case None => Right(own)
       case Some(c) =>
-        tooling.tools.including(TurnVerdict.tool(c)).left.map { case DuplicateName(name) =>
+        own.including(TurnVerdict.tool(c)).left.map { case DuplicateName(name) =>
           TurnFailure.Model(s"two tools are named ${ToolName.value(name)}")
         }
     }
@@ -556,7 +575,10 @@ object Turn {
   )(using env: TurnEnv^): Either[TurnFailure, Message.Assistant] =
     request(env, turn, window).flatMap { req =>
       val sent = shape(req)
-      def attempt(waits: List[FiniteDuration], tries: Int): Either[TurnFailure, Message.Assistant] = {
+      def attempt(
+          waits: List[FiniteDuration],
+          tries: Int
+      ): Either[TurnFailure, Message.Assistant] = {
         val told = new TurnStream.Writer(heard, env.fresh.nonce(), () => env.clock.millis())
         val result = env.provider.stream(sent, told.tell)
         told.flush()
