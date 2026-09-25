@@ -19,6 +19,7 @@ final class Vt(val rows: Int, val cols: Int) {
   private var row: Int = 0
   private var col: Int = 0
   private var wrapPending: Boolean = false
+  private var held: String = ""
   private var style: Style = Style.plain
   private var modes: Map[String, Boolean] = Map.empty
 
@@ -51,16 +52,32 @@ final class Vt(val rows: Int, val cols: Int) {
 
   def flag(name: String): Boolean = modes.getOrElse(name, false)
 
-  def feed(s: String): Unit = {
+  /** Interprets `chunk` as the next bytes of the stream. A sequence it ends partway
+    * through is held and finished by the next feed, as a terminal reading in chunks does,
+    * so how a stream is cut never changes what is painted.
+    */
+  def feed(chunk: String): Unit = {
+    val s = held + chunk
+    held = ""
     var i = 0
     while (i < s.length) {
       val c = s.charAt(i)
-      if (c == 0x1b && i + 1 < s.length && s.charAt(i + 1) == '[')
-        i = csi(s, i + 1)
-      else if (c == '\n') { wrapPending = false; lineFeed() }
-      else if (c == '\r') { wrapPending = false; col = 0 }
-      else put(c)
-      i += 1
+      if (c == 0x1b && i + 1 == s.length) {
+        held = s.substring(i)
+        i = s.length
+      } else if (c == 0x1b && s.charAt(i + 1) == '[') {
+        csi(s, i + 1) match {
+          case Some(last) => i = last + 1
+          case None =>
+            held = s.substring(i)
+            i = s.length
+        }
+      } else {
+        if (c == '\n') { wrapPending = false; lineFeed() }
+        else if (c == '\r') { wrapPending = false; col = 0 }
+        else put(c)
+        i += 1
+      }
     }
   }
 
@@ -81,26 +98,26 @@ final class Vt(val rows: Int, val cols: Int) {
   private def scroll(): Unit =
     grid = grid.tail :+ Vector.fill(cols)(Cell.blank)
 
-  /** Parses a CSI sequence whose '[' is at `start`; returns the index after it. */
-  private def csi(s: String, start: Int): Int = {
+  /** Performs the CSI sequence whose '[' is at `start` and answers the index of its final
+    * byte, or performs nothing and answers None when `s` ends before that byte.
+    */
+  private def csi(s: String, start: Int): Option[Int] = {
     var i = start + 1
-    val body = new StringBuilder
-    while (i < s.length && !(s.charAt(i) >= 0x40 && s.charAt(i) <= 0x7e)) {
-      body += s.charAt(i)
-      i += 1
+    while (i < s.length && !(s.charAt(i) >= 0x40 && s.charAt(i) <= 0x7e)) i += 1
+    if (i >= s.length) None
+    else {
+      val params = s.substring(start + 1, i)
+      s.charAt(i) match {
+        case 'H' => cup(params)
+        case 'm' => sgr(params)
+        case 'K' => eraseLine()
+        case 'J' => if (params == "2") grid = Vector.fill(rows, cols)(Cell.blank)
+        case 'h' => setMode(params, true)
+        case 'l' => setMode(params, false)
+        case _ => ()
+      }
+      Some(i)
     }
-    if (i >= s.length) return s.length
-    val params = body.result()
-    s.charAt(i) match {
-      case 'H' => cup(params)
-      case 'm' => sgr(params)
-      case 'K' => eraseLine()
-      case 'J' => if (params == "2") grid = Vector.fill(rows, cols)(Cell.blank)
-      case 'h' => setMode(params, true)
-      case 'l' => setMode(params, false)
-      case _ => ()
-    }
-    i // feed's i += 1 steps past the final byte
   }
 
   private def cup(params: String): Unit = {

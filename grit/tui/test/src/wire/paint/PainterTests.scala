@@ -85,6 +85,34 @@ object PainterTests extends TestSuite {
       )
     }
 
+    test("the VT model paints a stream cut anywhere as it paints it whole") {
+      // A terminal reads in chunks and a sequence can straddle two of them; the model
+      // must finish it, not print its tail as glyphs.
+      val frame = frameOf(
+        size,
+        s =>
+          s.write(0, 0, "title", Style.fg(Color.hex("#7aa2f7")) + Style.Bold)
+            .write(1, 1, "sel", Style(reverse = true))
+            .write(2, 0, "status", Style.bg(Color.hex("#24283b")))
+      )
+      val bytes = Painter.paint(frame, None) + "\u001b[?1049h"
+      val whole = new Vt(3, 7)
+      whole.feed(bytes)
+      var cut = 0
+      while (cut <= bytes.length) {
+        val split = new Vt(3, 7)
+        split.feed(bytes.take(cut))
+        split.feed(bytes.drop(cut))
+        assert(
+          split.cells == whole.cells,
+          split.cursor == whole.cursor,
+          split.flag("1049") == whole.flag("1049")
+        )
+        cut += 1
+      }
+      assert(whole.flag("1049"), whole.text(1) == " sel   ")
+    }
+
     test("reverse video lands on exactly the styled cells") {
       val frame =
         frameOf(size, s => s.write(1, 1, "ab", Style(reverse = true)).write(1, 3, "cd"))
