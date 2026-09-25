@@ -9,16 +9,19 @@ import grit.core.message.Message
 import grit.core.provider.{ModelRequest, Provider, ProviderError, TokenEstimator}
 import grit.core.store.{Db, Entry, EntryStore, Payload, StoreError, Tx, UsageLedger}
 
-/** The durable turn: one workflow per turn, in five steps. Each step's output is
+/** The durable turn: one workflow per turn, in six steps. Each step's output is
   * recorded, so a turn resumed after a crash never calls a model twice.
   *
   *   1. `assemble` — a fresh window over what came before the turn.
-  *   2. `call-model` — the window, then the turn's own messages, sent to the provider.
-  *   3. `append` — the reply recorded as the turn's entry, with its cost in the usage
-  *      ledger beside `estimator`'s estimate of the request, atomically with the step;
-  *      before it, any search query assembly wrote, as its own entry with its own cost.
-  *   4. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]).
-  *   5. `append-summary` — the summary recorded as the turn's entry after the reply, with
+  *   2. `record-window` — the window recorded as an entry, after any search query
+  *      assembly wrote (its own entry, with its own cost in the usage ledger), so an edge
+  *      sees what the model will see while it answers. Turns that passed this point
+  *      before the step existed record both in `append` instead ([[Patches]]).
+  *   3. `call-model` — the window, then the turn's own messages, sent to the provider.
+  *   4. `append` — the reply recorded as the turn's entry, with its cost in the ledger
+  *      beside `estimator`'s estimate of the request, atomically with the step.
+  *   5. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]).
+  *   6. `append-summary` — the summary recorded as the turn's entry after the reply, with
   *      its cost in the ledger as in `append`.
   *
   * A step that fails returns a [[TurnFailure]], recorded like any other output, so a rerun
@@ -38,12 +41,23 @@ object Turn {
   /** The turn's steps, as DBOS records their names, in the order they run. */
   object Step {
     val Assemble = "assemble"
+    val RecordWindow = "record-window"
     val CallModel = "call-model"
     val Append = "append"
     val Summarise = "summarise"
     val AppendSummary = "append-summary"
 
-    val all: Vector[String] = Vector(Assemble, CallModel, Append, Summarise, AppendSummary)
+    val all: Vector[String] =
+      Vector(Assemble, RecordWindow, CallModel, Append, Summarise, AppendSummary)
+  }
+
+  /** The patches the turn's steps have taken within this epoch (ADR 0004). */
+  object Patches {
+
+    /** The window and its queries are recorded in their own step before the model call,
+      * not with the reply (2026-09-24).
+      */
+    val RecordWindow = "record-window"
   }
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
@@ -114,6 +128,11 @@ object Turn {
           case AssemblyError.Store(error) => TurnFailure.Assembly(describe(error))
         }
       }
+      // Turns that passed this point before the patch record their window with the reply.
+      early = d.patch(Patches.RecordWindow)
+      _ <-
+        if (early) d.transact(Step.RecordWindow)(recordWindow(entries, ledger, turn, window))
+        else Right(windowId(turn))
       message <- d.step(Step.CallModel) { () =>
         request(system, entries, db, turn, window).flatMap { req =>
           provider.complete(req).left.map { case ProviderError.Unavailable(cause) =>
@@ -122,12 +141,12 @@ object Turn {
         }
       }
       appended <- d.transact(Step.Append)(
-        append(system, entries, ledger, estimator, turn, window, reply, message)
+        append(system, entries, ledger, estimator, turn, window, reply, message, early)
       )
     } yield appended
   }
 
-  /** Steps 4 and 5: the summary of `turn`, whose reply is `answered`. */
+  /** Steps 5 and 6: the summary of `turn`, whose reply is `answered`. */
   private def summarise(
       entries: EntryStore,
       ledger: UsageLedger,
@@ -245,8 +264,8 @@ object Turn {
     * conversation, and what it cost in the ledger beside the estimate of the request that
     * produced it. The request is rebuilt from the same window and the same entries: the
     * turn's own were all recorded before its call, and the reply is not yet among them.
-    * Each query `window`'s notes say assembly wrote goes in first, as [[queryId]], with
-    * its own cost; then the window itself, as [[windowId]].
+    * Unless the `record-window` step already wrote them (`windowRecorded`), the window's
+    * queries and the window itself go in first ([[writeWindow]]).
     */
   private def append(
       system: String,
@@ -256,51 +275,15 @@ object Turn {
       turn: TurnRef,
       window: Window,
       id: EntryId,
-      message: Message.Assistant
+      message: Message.Assistant,
+      windowRecorded: Boolean
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
       sent <- requestOf(system, all, turn, window)
-      queries = window.notes.collect { case q: AssemblyNote.Queried => q }
-      _ <- queries.zipWithIndex.foldLeft[Either[TurnFailure, Unit]](Right(())) {
-        case (done, (q, i)) =>
-          done.flatMap { _ =>
-            val qid = queryId(turn, i)
-            val entry = Entry(
-              qid,
-              turn.conversationId,
-              turn.turnSeq,
-              None,
-              next.seq + i,
-              Payload.Query(q.query),
-              Instant.now()
-            )
-            entries
-              .insert(entry)
-              .flatMap(_ => ledger.record(qid, turn.workflowId, q.model, q.usage, q.estimate))
-              .left
-              .map(storeFailure)
-          }
-      }
-      recalled = window.notes.flatMap {
-        case AssemblyNote.Recalled(turns) => turns
-        case _ => Vector.empty
-      }
-      _ <- entries
-        .insert(
-          Entry(
-            windowId(turn),
-            turn.conversationId,
-            turn.turnSeq,
-            None,
-            next.seq + queries.size,
-            Payload.Window(window.entries, recalled),
-            Instant.now()
-          )
-        )
-        .left
-        .map(storeFailure)
+      written <-
+        if (windowRecorded) Right(0) else writeWindow(entries, ledger, turn, window, next.seq)
       _ <- entries
         .insert(
           Entry(
@@ -308,7 +291,7 @@ object Turn {
             turn.conversationId,
             turn.turnSeq,
             None,
-            next.seq + queries.size + 1,
+            next.seq + written,
             Payload.Message(message),
             Instant.now()
           )
@@ -320,6 +303,74 @@ object Turn {
         .left
         .map(storeFailure)
     } yield id
+
+  /** The `record-window` step: `turn`'s window and the queries that chose it, recorded
+    * before the model is called, so an edge sees them while the turn runs.
+    */
+  private def recordWindow(
+      entries: EntryStore,
+      ledger: UsageLedger,
+      turn: TurnRef,
+      window: Window
+  )(using Tx^): Either[TurnFailure, EntryId] =
+    for {
+      next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
+      _ <- writeWindow(entries, ledger, turn, window, next.seq)
+    } yield windowId(turn)
+
+  /** Writes each query `window`'s notes say assembly wrote, as [[queryId]] with its own
+    * cost, then the window itself, as [[windowId]], from position `from`; how many
+    * entries that was.
+    */
+  private def writeWindow(
+      entries: EntryStore,
+      ledger: UsageLedger,
+      turn: TurnRef,
+      window: Window,
+      from: Long
+  )(using Tx^): Either[TurnFailure, Int] = {
+    val queries = window.notes.collect { case q: AssemblyNote.Queried => q }
+    val recalled = window.notes.flatMap {
+      case AssemblyNote.Recalled(turns) => turns
+      case _ => Vector.empty
+    }
+    for {
+      _ <- queries.zipWithIndex.foldLeft[Either[TurnFailure, Unit]](Right(())) {
+        case (done, (q, i)) =>
+          done.flatMap { _ =>
+            val qid = queryId(turn, i)
+            val entry = Entry(
+              qid,
+              turn.conversationId,
+              turn.turnSeq,
+              None,
+              from + i,
+              Payload.Query(q.query),
+              Instant.now()
+            )
+            entries
+              .insert(entry)
+              .flatMap(_ => ledger.record(qid, turn.workflowId, q.model, q.usage, q.estimate))
+              .left
+              .map(storeFailure)
+          }
+      }
+      _ <- entries
+        .insert(
+          Entry(
+            windowId(turn),
+            turn.conversationId,
+            turn.turnSeq,
+            None,
+            from + queries.size,
+            Payload.Window(window.entries, recalled),
+            Instant.now()
+          )
+        )
+        .left
+        .map(storeFailure)
+    } yield queries.size + 1
+  }
 
   private def storeFailure(error: StoreError): TurnFailure = TurnFailure.Store(describe(error))
 

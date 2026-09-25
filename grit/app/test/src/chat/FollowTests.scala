@@ -65,7 +65,7 @@ object FollowTests extends TestSuite {
       val asked = Vector(user(0, 0, "hi"))
       val (assembling, _) = Follow.step(Follow.start, asked, all(running()))
       val (answering, moved) = Follow.step(assembling, asked, all(running("assemble")))
-      moved ==> Vector(ChatScreen.Msg.Arrived(Vector(), Some("call-model")))
+      moved ==> Vector(ChatScreen.Msg.Arrived(Vector(), Some("record-window")))
       Follow.step(answering, asked, all(running("assemble")))._2 ==> Vector.empty
     }
 

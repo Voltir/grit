@@ -33,8 +33,10 @@ final case class TurnView(
     billed: Option[Tokens]
 ) {
 
-  /** Whether nothing more will change: finished, every step recorded. */
-  def settled: Boolean = running.isEmpty && steps.size >= Turn.Step.all.size
+  /** Whether nothing more will change: finished, its last step recorded. A turn that
+    * failed short of it is read again, which costs a poll's queries and nothing more.
+    */
+  def settled: Boolean = running.isEmpty && steps.exists(_.name == Turn.Step.AppendSummary)
 }
 
 object TurnView {

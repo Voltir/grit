@@ -113,7 +113,7 @@ object TurnViewTests extends TestSuite {
         "s",
         CharEstimate
       )
-      v.running ==> Some("call-model")
+      v.running ==> Some("record-window")
       v.window ==> None
       v.spent ==> None
       v.billed ==> None

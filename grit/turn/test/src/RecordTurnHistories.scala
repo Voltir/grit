@@ -120,7 +120,37 @@ object RecordTurnHistories {
       )
       recorded(durable, turn)
     }
+    val windowFirst = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(turnBody(entries, new RecordingProvider))
+      recorded(durable, turn)
+    }
+    val crashedRecordingWindow = {
+      val store = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(store, "hello")
+      val entries = new CrashOnInsert(store, _.payload.isInstanceOf[Payload.Window])
+      try durable.run(turn.workflowId)(turnBody(entries, new RecordingProvider))
+      catch { case _: InMemoryDurable.Crash => "" }
+      recorded(durable, turn)
+    }
+    val crashedBeforeAppendWindowFirst = {
+      val store = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(store, "hello")
+      try
+        durable.run(turn.workflowId)(
+          turnBody(new CrashOnInsert(store, isReply), new RecordingProvider)
+        )
+      catch { case _: InMemoryDurable.Crash => "" }
+      recorded(durable, turn)
+    }
     Vector(
+      "window-first" -> windowFirst,
+      "crashed-recording-window" -> crashedRecordingWindow,
+      "crashed-before-append-window-first" -> crashedBeforeAppendWindowFirst,
       "recalled" -> recalled,
       "queried" -> queried,
       "summarised" -> summarised,

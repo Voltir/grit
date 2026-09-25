@@ -24,8 +24,11 @@ object TurnRecordLiveTests extends TestSuite {
         val turn = say(engine, "two")
         val _ = engine.awaitTurn(turn)
         val steps = engine.steps(turn)
-        steps.map(_.name) ==> Turn.Step.all
-        assert(steps.forall(s => s.started.zip(s.completed).exists((a, b) => !b.isBefore(a))))
+        // DBOS records the patch's marker where the turn took it, as the replay histories do.
+        steps.map(_.name) ==>
+          Turn.Step.all.patch(1, Vector(s"DBOS.patch-${Turn.Patches.RecordWindow}"), 0)
+        val own = steps.filter(s => Turn.Step.all.contains(s.name))
+        assert(own.forall(s => s.started.zip(s.completed).exists((a, b) => !b.isBefore(a))))
         assert(!engine.status(turn).isInstanceOf[TurnStatus.Running])
 
         val window = engine.db.read(engine.entries.get(Turn.windowId(turn))).toOption.flatten

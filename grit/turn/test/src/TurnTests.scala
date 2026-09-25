@@ -19,13 +19,18 @@ object TurnTests extends TestSuite {
   private val Done = "replied: reply:c1:0; summarised: summary:c1:0"
 
   private val AllSteps: Vector[String] =
-    Vector("assemble", "call-model", "append", "summarise", "append-summary")
+    Vector("assemble", "record-window", "call-model", "append", "summarise", "append-summary")
+
+  /** What a turn records: its steps, with the record-window patch's marker before it. */
+  private val Recorded: Vector[String] = AllSteps.patch(1, Vector("DBOS.patch-record-window"), 0)
 
   val tests = Tests {
     test("the step names are the recorded ones, and a running turn is in the next") {
       Turn.Step.all ==> AllSteps
       Turn.running(Vector.empty) ==> "assemble"
-      Turn.running(Vector("assemble")) ==> "call-model"
+      Turn.running(Vector("assemble")) ==> "record-window"
+      Turn.running(Vector("assemble", "DBOS.patch-record-window", "record-window")) ==>
+        "call-model"
       Turn.running(Vector("assemble", "DBOS.patch", "call-model", "append")) ==> "summarise"
       Turn.running(AllSteps) ==> "append-summary"
     }
@@ -73,15 +78,35 @@ object TurnTests extends TestSuite {
 
     test("a crash after the model call resumes without calling it again") {
       val store = new InMemoryEntryStore
-      val entries = new CrashOnInsert(store)
+      val entries = new CrashOnInsert(store, isReply)
       val durable = new InMemoryDurable
       val provider = new RecordingProvider
       val turn = say(store, "hello")
       assertThrows[InMemoryDurable.Crash](runTurn(durable, entries, provider, turn))
-      durable.recordedSteps(turn.workflowId) ==> Vector("assemble", "call-model")
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(4)
       runTurn(durable, entries, provider, turn) ==> Done
       provider.requests.size ==> 1
-      durable.recordedSteps(turn.workflowId) ==> AllSteps
+      durable.recordedSteps(turn.workflowId) ==> Recorded
+    }
+
+    test("the window is recorded before the model is called") {
+      val entries = new InMemoryEntryStore
+      val provider = new Peeking(entries)
+      runTurn(new InMemoryDurable, entries, provider, say(entries, "hello")) ==> Done
+      provider.sawWindow ==> Vector(true)
+    }
+
+    test("a crash recording the window resumes there, and the model is called once") {
+      val store = new InMemoryEntryStore
+      val entries = new CrashOnInsert(store, _.payload.isInstanceOf[Payload.Window])
+      val durable = new InMemoryDurable
+      val provider = new RecordingProvider
+      val turn = say(store, "hello")
+      assertThrows[InMemoryDurable.Crash](runTurn(durable, entries, provider, turn))
+      provider.requests.size ==> 0
+      runTurn(durable, entries, provider, turn) ==> Done
+      provider.requests.size ==> 1
+      windows(store).size ==> 1
     }
 
     test("the summary is written from the turn's own messages, after its reply") {
@@ -116,7 +141,7 @@ object TurnTests extends TestSuite {
         summarizer = new RecordingProvider(fail = true)
       )
       out ==> "replied: reply:c1:0; no summary: Model(down)"
-      durable.recordedSteps(turn.workflowId) ==> AllSteps.take(4)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(6)
       texts(entries) ==> Vector("user: hello", "assistant: stub reply to: hello")
     }
 
@@ -148,10 +173,10 @@ object TurnTests extends TestSuite {
       assertThrows[InMemoryDurable.Crash](
         runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer)
       )
-      durable.recordedSteps(turn.workflowId) ==> AllSteps.take(4)
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(6)
       runTurn(durable, entries, new RecordingProvider, turn, summarizer = summarizer) ==> Done
       summarizer.requests.size ==> 1
-      durable.recordedSteps(turn.workflowId) ==> AllSteps
+      durable.recordedSteps(turn.workflowId) ==> Recorded
     }
 
     test("a query assembly wrote is recorded before the reply, with its cost, and never sent") {
@@ -206,7 +231,7 @@ object TurnTests extends TestSuite {
       val provider = new RecordingProvider(fail = true)
       val turn = say(entries, "hello")
       runTurn(durable, entries, provider, turn) ==> "failed: Model(down)"
-      durable.recordedSteps(turn.workflowId) ==> Vector("assemble", "call-model")
+      durable.recordedSteps(turn.workflowId) ==> Recorded.take(4)
       texts(entries) ==> Vector("user: hello")
     }
 

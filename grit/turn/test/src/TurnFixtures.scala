@@ -42,6 +42,23 @@ object TurnFixtures {
     }
   }
 
+  /** Entries a crash is aimed at: the reply's insert. */
+  val isReply: Entry -> Boolean = _.payload match {
+    case Payload.Message(Message.Assistant(_, _, _, _)) => true
+    case _ => false
+  }
+
+  /** The stub, noting as it is called whether `entries` already hold a window record. */
+  final class Peeking(entries: EntryStore) extends Provider {
+    @caps.unsafe.untrackedCaptures
+    var sawWindow: Vector[Boolean] = Vector.empty
+
+    def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+      sawWindow = sawWindow :+ windows(entries).nonEmpty
+      new StubProvider().complete(request)
+    }
+  }
+
   /** Reads straight through to the in-memory store. */
   object FakeDb extends Db {
     def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =

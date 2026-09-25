@@ -155,7 +155,7 @@ object Look {
     def step(name: String): String = name match {
       case Step.Assemble => "ᛟ assembling"
       case Step.CallModel => "ᚨ answering"
-      case Step.Append | Step.AppendSummary => "ᛃ recording"
+      case Step.RecordWindow | Step.Append | Step.AppendSummary => "ᛃ recording"
       case Step.Summarise => "ᛚ summarising"
       case other => s"$Idle $other"
     }

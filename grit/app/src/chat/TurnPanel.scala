@@ -53,12 +53,16 @@ final case class TurnPanel(look: Look, budget: Tokens) {
   }
 
   /** One row per step of the turn: recorded ones with their time and a bar to scale,
-    * the running one lit, the rest dim.
+    * the running one lit, the rest dim. A finished turn shows only what it recorded: one
+    * that ran before a step existed never had it.
     */
   private def steps(v: TurnView, runningMs: Long): Vector[Block] = {
     val longest = math.max(1L, (v.steps.flatMap(_.ms) :+ runningMs).max)
     def bar(ms: Long): Int = math.max(1, math.round(ms.toDouble / longest * BarCells).toInt)
-    Turn.Step.all.map { name =>
+    val shown =
+      if (v.running.nonEmpty) Turn.Step.all
+      else Turn.Step.all.filter(n => v.steps.exists(_.name == n))
+    shown.map { name =>
       val rune = Look.Runes.stepRune(name)
       val label = s"$rune ${name.padTo(NameCols, ' ')}"
       v.steps.find(_.name == name) match {
