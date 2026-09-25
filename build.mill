@@ -158,6 +158,12 @@ object grit extends Module {
     }
   }
 
+  /* Prose: a reply's structure as edge-neutral blocks (the form), read from markdown.
+   * Names no other module; each edge renders the form its own way. grit/prose/README.md. */
+  object prose extends GritModule {
+    object test extends GritTests
+  }
+
   /* The terminal UI -- ported from ../Spikes/tui-spike-slate. No external dependencies:
    * the terminal seam is hand-rolled over FFM (grit/tui/src/wire/term), not JLine. It may
    * render core's types, but only from `components` and `runtime`; see grit/tui/CLAUDE.md. */
@@ -204,7 +210,8 @@ object grit extends Module {
   /* The composition root: the only module that sees every implementation, and the only
    * place quarantine modules meet. Its Main is the M0 run until tui mode lands. */
   object app extends GritModule {
-    def moduleDeps = Seq(grit.core, grit.dbos, grit.turn, grit.models, grit.assembly, grit.tui)
+    def moduleDeps =
+      Seq(grit.core, grit.dbos, grit.turn, grit.models, grit.assembly, grit.prose, grit.tui)
     def forkArgs = Task { tui.forkArgs() }
     def mainClass = Some("grit.app.main.Main")
 

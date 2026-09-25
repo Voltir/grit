@@ -181,6 +181,26 @@ object ChatScreenTests extends TestSuite {
         Effect.Batch(Vector(Effect.ToHost(Msg.Send("three")), Effect.ToHost(Msg.Show(None))))
     }
 
+    test("a reply in markdown is painted as prose, and each of its blocks belongs to its turn") {
+      val two = ready.message(
+        Msg.Arrived(
+          Vector(
+            Said(true, "one", TurnSeq(0)),
+            Said(false, "**first**\n\n- a point\n\n```\ncode\n```", TurnSeq(0)),
+            Said(true, "two", TurnSeq(1)),
+            Said(false, "second reply", TurnSeq(1))
+          ),
+          None
+        )
+      )
+      val shown = two.screen.map(_.dropRight(1).trim)
+      assert(shown.contains("▌ᚨ first"), shown.contains("• a point"), shown.contains("code"))
+      assert(!shown.exists(r => r.contains("**") || r.contains("```")))
+      // A click anywhere in the reply -- its list, its code -- pins the turn it answered.
+      click(two, "a point").state.pinned ==> Some(TurnSeq(0))
+      click(two, "code").state.pinned ==> Some(TurnSeq(0))
+    }
+
     test("a click on the thinking line opens the running turn; esc closes it") {
       val view = TurnView(
         TurnSeq(0),

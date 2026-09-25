@@ -16,6 +16,8 @@ import grit.tui.model.surface.Color
   * @param grit grit's marker
   * @param rail separators and the scrollbar's rail
   * @param thumb the scrollbar's thumb
+  * @param well the ground of code in a reply: between the screen's and the slab, so a
+  *   listing reads as set apart without reading as something the user said
   */
 final case class Theme(
     key: String,
@@ -32,7 +34,8 @@ final case class Theme(
     statusFg: Color,
     rail: Color,
     thumb: Color,
-    failure: Color
+    failure: Color,
+    well: Color
 )
 
 object Theme {
@@ -53,7 +56,8 @@ object Theme {
     statusFg = Color.hex("#b3c4d4"),
     rail = Color.hex("#465b72"),
     thumb = Color.hex("#6fe3f2"),
-    failure = Color.hex("#ff95a8")
+    failure = Color.hex("#ff95a8"),
+    well = Color.hex("#161e28")
   )
 
   /** After folke's tokyonight, Night, raised to the contrast targets. */
@@ -72,7 +76,8 @@ object Theme {
     statusFg = Color.hex("#c0c8ea"),
     rail = Color.hex("#4f5880"),
     thumb = Color.hex("#7aa2f7"),
-    failure = Color.hex("#ff9aae")
+    failure = Color.hex("#ff9aae"),
+    well = Color.hex("#202332")
   )
 
   /** After folke's tokyonight, Storm: a lifted slate ground. */
@@ -91,7 +96,8 @@ object Theme {
     statusFg = Color.hex("#c2c9ec"),
     rail = Color.hex("#58628c"),
     thumb = Color.hex("#bb9af7"),
-    failure = Color.hex("#ffa0b4")
+    failure = Color.hex("#ffa0b4"),
+    well = Color.hex("#282c42")
   )
 
   /** After folke's tokyonight, Moon: softer, pinker. */
@@ -110,7 +116,8 @@ object Theme {
     statusFg = Color.hex("#b8c5f0"),
     rail = Color.hex("#535c88"),
     thumb = Color.hex("#c099ff"),
-    failure = Color.hex("#ff9fa6")
+    failure = Color.hex("#ff9fa6"),
+    well = Color.hex("#26293e")
   )
 
   /** Deep navy with electric cyan. */
@@ -129,7 +136,8 @@ object Theme {
     statusFg = Color.hex("#b0bfe8"),
     rail = Color.hex("#43548a"),
     thumb = Color.hex("#5ce1e6"),
-    failure = Color.hex("#ff93b3")
+    failure = Color.hex("#ff93b3"),
+    well = Color.hex("#10172b")
   )
 
   /** Violet-heavy. */
@@ -148,7 +156,8 @@ object Theme {
     statusFg = Color.hex("#cdbff2"),
     rail = Color.hex("#604c84"),
     thumb = Color.hex("#d58cff"),
-    failure = Color.hex("#ff95b4")
+    failure = Color.hex("#ff95b4"),
+    well = Color.hex("#1c142a")
   )
 
   val all: Vector[Theme] = Vector(Frost, TokyoNight, TokyoStorm, TokyoMoon, Abyss, Nightshade)

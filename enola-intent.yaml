@@ -4,6 +4,7 @@
 #   1. Only grit.dbos may import dev.dbos.*, JDBC or the Postgres driver, and only
 #      grit.models the JDK HTTP client (STYLE rule 8)
 #   2. grit.tui's four groups import in one direction (grit/tui/CLAUDE.md)
+#   3. grit.prose names no other grit module (grit/prose/README.md)
 #
 # Every rule was watched failing on a deliberately planted bad import before it was
 # adopted. Do the same for any new rule: a rule that can't fail passes silently.
@@ -27,12 +28,12 @@ components:
   # grit.dbos, and Mill's moduleDeps are transitive, so these rules are the only guard there.
   - name: outside-dbos
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**"]
 
   # Every module except grit.models, for the HTTP quarantine (STYLE rule 8).
   - name: outside-models
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**", "grit/eval/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**"]
 
   # The tui groups, for the direction rules. `runtime` needs no entry: it may import
   # every group.
@@ -40,6 +41,10 @@ components:
   - {name: tui-model,      kind: module, match: ["grit/tui/src/model", "grit/tui/src/model/**"]}
   - {name: tui-components, kind: module, match: ["grit/tui/src/components", "grit/tui/src/components/**"]}
   - {name: tui-wire,       kind: module, match: ["grit/tui/src/wire", "grit/tui/src/wire/**"]}
+
+  # grit.prose, for its rule below: the source tree alone, so a test's imports are not
+  # counted against it.
+  - {name: prose-code,     kind: module, match: ["grit/prose/src", "grit/prose/src/**"]}
 
 rules:
   # -------------------------------------------------------------------------------------
@@ -216,3 +221,16 @@ rules:
     via: imports
     mode: strict
     because: "components are the surface grit's screens are written against: they may render grit.core types, but never reach the terminal (wire) or the loop (runtime)"
+
+  # -------------------------------------------------------------------------------------
+  # 3. grit.prose is edge-neutral: the form every edge renders names no other grit module,
+  # so a renderer (grit.tui's, a future Slack edge's) depends on it and never the reverse.
+  # Mill already keeps grit.prose off every other module's classpath; this rule is the
+  # record of the intent, and the one guard if a moduleDeps entry is ever added.
+  # -------------------------------------------------------------------------------------
+  - id: prose-names-no-other-module
+    allow: prose-code
+    only: [prose-code]
+    via: imports
+    mode: strict
+    because: "grit.prose is the edge-neutral form a reply is rendered from; naming grit.tui, grit.core or any edge would make it one edge's form"

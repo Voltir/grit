@@ -49,6 +49,9 @@ object ThemeContrastTests extends TestSuite {
     Target("header", t => (t.headerFg, t.headerBg), 60, 106),
     Target("failure", t => (t.failure, t.ground), 60, 106),
     Target("rails", t => (t.rail, t.ground), 15, 30.5),
+    // Code in a reply, and a listing's language tag above it, sit on the well.
+    Target("code on the well", t => (t.ink, t.well), 75, 106),
+    Target("faint on the well", t => (t.faint, t.well), 42, 60.5),
     Target("scroll thumb", t => (t.thumb, t.ground), 30, 106)
   )
 

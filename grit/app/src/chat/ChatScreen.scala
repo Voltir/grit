@@ -345,7 +345,7 @@ object ChatScreen {
       entry match {
         case Entry.Spoken(Said(true, text, t)) =>
           Vector(look.separator -> Some(t), look.user(text) -> Some(t))
-        case Entry.Spoken(Said(false, text, t)) => Vector(look.assistant(text) -> Some(t))
+        case Entry.Spoken(Said(false, text, t)) => look.assistant(text).map(_ -> Some(t))
         case Entry.Failure(reason) => Vector(look.failure(reason) -> None)
       }
 

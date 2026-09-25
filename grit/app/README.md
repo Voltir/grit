@@ -13,7 +13,9 @@ In dependency order:
 - **`look`** — `Theme`, a palette by role (Frost the default; `GRIT_THEME` picks
   the one a run starts in), and `Look`, the chat screen's styles from a theme: who speaks is a rune as
   well as a colour (`Look.Runes`: ᛗ the user, ᚨ grit, ᚺ a failure, ᛁ idle, ᛭ between turns). Every theme is held to
-  the same APCA contrast targets (`ThemeContrastTests`). Imports nothing in app.
+  the same APCA contrast targets (`ThemeContrastTests`). `ProseLook` is the terminal's
+  output mode for prose (`grit.prose`): a reply's markdown as transcript blocks, whole or
+  still streaming. Imports nothing in app.
 - **`chat`** — the chat TUI. `ChatScreen` is a pure `grit.tui` app whose transcript is a
   projection of the store: a submission leaves as `Effect.ToHost(Send)` and is shown when
   the store has it. It paints at once: a ward turns while the engine opens, the Futhark

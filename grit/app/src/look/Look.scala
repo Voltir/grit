@@ -29,12 +29,8 @@ final case class Look(theme: Theme) {
       )
       .copy(ground = Style.bg(theme.slab))
 
-  def assistant(text: String): Block.Text =
-    Block.styled(
-      StyledText.styled("▌", Style.fg(theme.grit)) ++
-        StyledText.styled(s"${Runes.Grit} ", Style.fg(theme.grit) + Style.Bold) ++
-        StyledText.styled(text, Style.fg(theme.ink))
-    )
+  /** A reply, from its markdown: one block per paragraph, list item, listing and so on. */
+  def assistant(text: String): Vector[Block] = ProseLook(this).reply(text)
 
   /** The line under the transcript while a turn runs: a rune of the Futhark for each
     * `tick`, in turn.
