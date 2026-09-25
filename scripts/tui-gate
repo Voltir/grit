@@ -45,8 +45,12 @@
 #          thinking line opens the running turn over the screen, which takes the keys
 #          until Escape closes it; a click on an earlier reply pins its turn to the panel,
 #          and Escape lets it go.
+#   palette grit.app's command palette, in a conversation of its own: `/` opens the list,
+#          typing filters it, Enter on /theme offers the themes, Enter on one repaints the
+#          screen in it and closes the list, and a list opened again is dismissed by
+#          Escape. Nothing typed here may reach the transcript: a `/` draft is a command.
 #
-# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload|columns|turn-modal]
+# Usage: scripts/tui-gate [span|one|modal|thumb|popup|resize|burst|chat|reload|columns|turn-modal|palette]
 #        (no argument runs them all; `reload` needs `chat` before it in the same run)
 #
 # The oracles are geometry, not implementation: the chrome is header 1 + prompt 3 +
@@ -235,6 +239,20 @@ script_turn-modal() {
   printf '\021'; sleep 2
 }
 
+PALETTE_ROWS=30
+PALETTE_COLS=110
+script_palette() {
+  sleep $APP_STARTUP
+  printf '/'; sleep 0.8                 # the list, every command
+  printf 'th'; sleep 0.8                # filtered to /theme
+  printf '\r'; sleep 0.8                # chosen: the themes, as a second list
+  printf 'tokyo-n'; sleep 0.8           # filtered to tokyo-night
+  printf '\r'; sleep 1.2                # chosen: the screen repaints, the list closes
+  printf '/'; sleep 0.8                 # open again
+  printf '\033'; sleep 1.2              # Escape dismisses it
+  printf '\021'; sleep 2
+}
+
 script_reload() {
   sleep $((APP_STARTUP + 2))
   printf '\021'; sleep 2
@@ -251,6 +269,10 @@ run_one() {
     runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_STUB_DELAY_MS=6000 GRIT_SESSION=$STAMP-modal}
     rows=$MODAL_ROWS cols=$MODAL_COLS
   fi
+  if [ "$name" = palette ]; then
+    runner=${APP_RUNNER/GRIT_SESSION=$STAMP/GRIT_SESSION=$STAMP-palette}
+    rows=$PALETTE_ROWS cols=$PALETTE_COLS
+  fi
   "script_$name" | setsid script -qc "stty rows $rows cols $cols; $runner" /dev/null > "$out" 2>&1
   python3 scripts/tui-gate.py "$out" "$rows" "$cols" "$name"
 }
@@ -262,7 +284,7 @@ ensure_agent_db() {
 }
 
 case " ${*:-chat} " in
-  *" chat "*|*" reload "*|*" columns "*|*" turn-modal "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
+  *" chat "*|*" reload "*|*" columns "*|*" turn-modal "*|*" palette "*) ensure_agent_db || { echo "gate: Postgres is not up (docker compose up -d postgres)" >&2; exit 1; } ;;
 esac
 
 case " ${1:-} " in
@@ -272,7 +294,7 @@ case " ${1:-} " in
 esac
 
 status=0
-for s in ${*:-span one modal thumb popup resize burst chat reload columns turn-modal}; do
+for s in ${*:-span one modal thumb popup resize burst chat reload columns turn-modal palette}; do
   echo "== $s"
   run_one "$s" || status=1
 done

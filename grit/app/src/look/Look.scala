@@ -2,7 +2,7 @@ package grit.app.look
 
 import grit.tui.components.editor.Editor
 import grit.tui.components.layout.Border
-import grit.tui.components.overlay.Modal
+import grit.tui.components.overlay.{Modal, Popup}
 import grit.tui.components.view.View
 import grit.tui.model.block.Block
 import grit.tui.model.surface.{Size, Style, Surface}
@@ -100,19 +100,47 @@ final case class Look(theme: Theme) {
 
   /** The prompt: two thin rules, the draft between them after the thorn. */
   def prompt: Editor =
-    Editor(
-      "",
-      0,
-      focused = true,
+    styled(Editor("", 0, focused = true, border = Look.Rules, gutter = s"${Runes.Prompt} "))
+
+  /** `editor`, draft and history kept, in this look's colours. */
+  def styled(editor: Editor): Editor =
+    editor.copy(
       body = Style.fg(theme.ink),
       chrome = Style.fg(theme.faint),
-      border = Look.Rules,
-      gutter = s"${Runes.Prompt} ",
       gutterStyle = Style.fg(theme.user) + Style.Bold
+    )
+
+  /** The command palette over the prompt: `items` on the slab, framed in grit's colour,
+    * the selection lit as the header is.
+    */
+  def palette(items: Vector[String], query: String, selected: Int): Popup =
+    Popup(
+      items,
+      query,
+      selected,
+      maxRows = 8,
+      maxCols = 44,
+      item = Style.bg(theme.slab) + Style.fg(theme.ink),
+      selectedStyle = Style.bg(theme.headerBg) + Style.fg(theme.headerFg) + Style.Bold,
+      chrome = Style.bg(theme.slab) + Style.fg(theme.grit)
+    )
+
+  /** A heading in a dialog. */
+  def heading(text: String): Block.Text =
+    Block.styled(StyledText.styled(s" $text", Style.fg(theme.faint) + Style.Bold))
+
+  /** A dialog's row: `key` (a command, or a key to press) and what it does. */
+  def binding(key: String, what: String): Block.Text =
+    Block.styled(
+      StyledText.styled(s" ${key.padTo(Look.KeyCols, ' ')} ", Style.fg(theme.grit) + Style.Bold) ++
+        StyledText.styled(what, Style.fg(theme.ink))
     )
 }
 
 object Look {
+
+  /** The width of a dialog's key column ([[Look.binding]]). */
+  val KeyCols = 23
 
   /** Rules above and below, edge to edge, and a blank cell for each side. */
   val Rules: Border = Border('─', '─', '─', '─', '─', ' ')

@@ -1,6 +1,6 @@
 package grit.app.chat
 
-import grit.app.look.{Look, Theme}
+import grit.app.look.Theme
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
@@ -20,7 +20,7 @@ object ChatScreenTests extends TestSuite {
   private val size = Size(20, 60)
 
   private def started: Headless[ChatScreen.State, Msg] =
-    Headless.start(new ChatScreen.App("test-model", Look(Theme.Default), Tokens(16000)), size)
+    Headless.start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), size)
 
   /** Started, and told the engine is open. */
   private def ready: Headless[ChatScreen.State, Msg] = started.message(Msg.Opened)
@@ -48,11 +48,21 @@ object ChatScreenTests extends TestSuite {
     h.inputs(at(MouseKind.Press, Button.Left), at(MouseKind.Release, Button.None))
   }
 
+  /** Whether the last step asked the host to send anything to the model. */
+  private def sends(h: Headless[ChatScreen.State, Msg]): Boolean = {
+    def one(e: Effect[Msg]): Boolean = e match {
+      case Effect.ToHost(Msg.Send(_)) => true
+      case Effect.Batch(es) => es.exists(one)
+      case _ => false
+    }
+    h.effects.exists(one)
+  }
+
   val tests = Tests {
     test("every cell has a background from the theme, none left to the terminal") {
       for (theme <- Theme.all) {
         val h = Headless
-          .start(new ChatScreen.App("test-model", Look(theme), Tokens(16000)), size)
+          .start(new ChatScreen.App("test-model", theme, Tokens(16000)), size)
           .message(
             Msg.Arrived(Vector(Said(true, "hi"), Said(false, "hello")), step = Some("call-model"))
           )
@@ -125,7 +135,7 @@ object ChatScreenTests extends TestSuite {
       def at(cols: Int) =
         Headless
           .start(
-            new ChatScreen.App("test-model", Look(Theme.Default), Tokens(16000)),
+            new ChatScreen.App("test-model", Theme.Default, Tokens(16000)),
             Size(30, cols)
           )
           .message(Msg.Opened)
@@ -186,12 +196,12 @@ object ChatScreenTests extends TestSuite {
         .message(Msg.Arrived(Vector(Said(true, "hi", TurnSeq(0))), Some("call-model")))
         .message(Msg.Turn(view))
       val open = click(asked, "grit is thinking")
-      open.state.modal ==> true
+      open.state.modal ==> Some(ChatScreen.Dialog.Turn)
       val shown = open.screen.mkString("\n")
       assert(shown.contains("turn 1"), shown.contains("TURN 1  · ᚨ answering"))
       // The dialog takes the keys: typing does not reach the prompt beneath it.
       typed(open, "x").state.editor.text ==> ""
-      open.input(Input.Keyboard(Key.Escape)).state.modal ==> false
+      open.input(Input.Keyboard(Key.Escape)).state.modal ==> None
     }
 
     test("an engine that will not open ends the ward and says so") {
@@ -215,6 +225,109 @@ object ChatScreenTests extends TestSuite {
 
     test("an empty submission sends nothing") {
       ready.input(Input.Keyboard(Key.Enter)).effects.last ==> Effect.NoOp
+    }
+
+    test("/ in an empty prompt opens the command list, and the draft filters it") {
+      val listed = typed(ready, "/")
+      listed.state.palette ==> Some(0)
+      val shown = listed.screen.mkString("\n")
+      assert(
+        shown.contains("/theme  switch the colour theme"),
+        shown.contains("/panel"),
+        shown.contains("/help"),
+        shown.contains("/quit")
+      )
+      // The list, too, is painted in the theme's colours, every cell of it.
+      assert(listed.painted._1.surface.cells.count(_.style.bg.isEmpty) == 0)
+      val narrowed = typed(listed, "th").screen.mkString("\n")
+      assert(narrowed.contains("/theme  switch"), !narrowed.contains("/panel"))
+      // A slash typed after other text is text, not a command.
+      typed(ready, "a/").state.palette ==> None
+    }
+
+    test("the arrows move the selection, and Enter or Tab chooses and runs it") {
+      val panel = typed(ready, "/").input(Input.Keyboard(Key.Down(Mods.none)))
+      panel.state.palette ==> Some(1)
+      val toggled = panel.input(Input.Keyboard(Key.Enter))
+      toggled.state.panel ==> false
+      toggled.state.palette ==> None
+      toggled.state.editor.text ==> ""
+      assert(!sends(toggled))
+      typed(ready, "/h").input(Input.Keyboard(Key.Tab)).state.modal ==>
+        Some(ChatScreen.Dialog.Help)
+    }
+
+    test("Escape dismisses the list and keeps the draft; ctrl-p brings it back") {
+      val listed = typed(ready, "/pa")
+      val dismissed = listed.input(Input.Keyboard(Key.Escape))
+      dismissed.state.palette ==> None
+      dismissed.state.editor.text ==> "/pa"
+      assert(!dismissed.screen.mkString.contains("show or hide"))
+      dismissed.input(Input.Keyboard(Key.Ctrl('p'))).state.palette ==> Some(0)
+    }
+
+    test("ctrl-p over a draft puts it aside, and Escape gives it back") {
+      val opened = typed(ready, "half a thought").input(Input.Keyboard(Key.Ctrl('p')))
+      opened.state.editor.text ==> "/"
+      assert(opened.screen.mkString.contains("/theme  switch"))
+      opened.input(Input.Keyboard(Key.Escape)).state.editor.text ==> "half a thought"
+      val ran = typed(opened, "panel").input(Input.Keyboard(Key.Enter))
+      ran.state.panel ==> false
+      ran.state.editor.text ==> "half a thought"
+    }
+
+    test("/theme repaints every colour, whether typed out or chosen from the lists") {
+      def ground(h: Headless[ChatScreen.State, Msg]) =
+        h.painted._1.surface.at(size.rows / 2, size.cols / 2).style.bg
+      val talked = ready.message(Msg.Arrived(Vector(Said(true, "hi"), Said(false, "hello")), None))
+      ground(talked) ==> Some(Theme.Default.ground)
+      val typedOut = typed(talked, "/theme tokyo-night").input(Input.Keyboard(Key.Enter))
+      typedOut.state.theme ==> Theme.TokyoNight
+      ground(typedOut) ==> Some(Theme.TokyoNight.ground)
+      said(typedOut) ==> said(talked)
+      assert(!sends(typedOut))
+      // Chosen: /theme from the commands, then a theme from the second list.
+      val themes = typed(talked, "/th").input(Input.Keyboard(Key.Enter))
+      themes.state.editor.text ==> "/theme "
+      val listed = themes.screen.mkString("\n")
+      assert(listed.contains("tokyo-storm"), listed.contains("nightshade"))
+      val chosen = typed(themes, "ab").input(Input.Keyboard(Key.Tab))
+      chosen.state.theme ==> Theme.Abyss
+      chosen.state.palette ==> None
+      ground(chosen) ==> Some(Theme.Abyss.ground)
+      assert(!chosen.screen.mkString.contains("nightshade"))
+    }
+
+    test("a / draft never reaches the host: one that will not run says why") {
+      val unknown = typed(ready, "/foo").input(Input.Keyboard(Key.Enter))
+      assert(!sends(unknown), unknown.screen.last.contains("no command /foo"))
+      unknown.state.editor.text ==> ""
+      val noTheme = typed(ready, "/theme sandstone").input(Input.Keyboard(Key.Enter))
+      assert(!sends(noTheme), noTheme.screen.last.contains("no theme sandstone"))
+      val dismissed = typed(ready, "/pa").input(Input.Keyboard(Key.Escape))
+      val half = dismissed.input(Input.Keyboard(Key.Enter))
+      assert(!sends(half), half.screen.last.contains("no command /pa"))
+      typed(ready, "/quit").input(Input.Keyboard(Key.Enter)).effects.last ==> Effect.Quit
+    }
+
+    test("/help opens a dialog of the commands and keys; Escape closes it") {
+      val helped = Headless
+        .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(30, 110))
+        .message(Msg.Opened)
+      val open = typed(helped, "/help").input(Input.Keyboard(Key.Enter))
+      open.state.modal ==> Some(ChatScreen.Dialog.Help)
+      val shown = open.screen.mkString("\n")
+      assert(
+        shown.contains("─ help"),
+        shown.contains("/theme"),
+        shown.contains("switch the colour theme"),
+        shown.contains("ctrl-p"),
+        shown.contains("click the thinking line")
+      )
+      assert(!sends(open))
+      val closed = open.input(Input.Keyboard(Key.Escape))
+      closed.state.modal ==> None
+      assert(!closed.screen.mkString.contains("click the thinking line"))
     }
 
     test("a failure is painted before the thinking line, which stays") {

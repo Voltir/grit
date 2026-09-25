@@ -2,7 +2,7 @@ package grit.app.main
 
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
 import grit.app.config.DotEnv
-import grit.app.look.{Look, Theme}
+import grit.app.look.Theme
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
@@ -59,7 +59,7 @@ object Main {
     val budget = exitOnLeft(tokens(env, BudgetVar, LinearAssembler.DefaultBudget))
     val tail = exitOnLeft(tokens(env, TailVar, RetrievalAssembler.DefaultTail))
     val retrieving = exitOnLeft(assemblerChoice(env))
-    val look = Look(exitOnLeft(theme(env)))
+    val startTheme = exitOnLeft(theme(env))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend.
     val openRouter: Option[OpenRouterConfig] =
       if (!env.contains(OpenRouterConfig.KeyVar)) None
@@ -118,7 +118,7 @@ object Main {
         val session = env.getOrElse("GRIT_SESSION", "default")
         val host = new ChatHost(Origin.Tui(session), opener, SystemPrompt, CharEstimate)
         // Closing the host stops following and closes the engine, however far it got.
-        try Runtime.run(new ChatScreen.App(modelName, look, budget), host)
+        try Runtime.run(new ChatScreen.App(modelName, startTheme, budget), host)
         finally host.close()
         None
       } else {

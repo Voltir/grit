@@ -41,6 +41,8 @@ object ThemeContrastTests extends TestSuite {
     // The turn panel and dialogs sit on the slab; their labels are secondary, a step
     // below faint on the ground.
     Target("faint on the slab", t => (t.faint, t.slab), 42, 60.5),
+    // The frames and keys of dialogs and the command palette, which sit on the slab.
+    Target("grit on the slab", t => (t.grit, t.slab), 60, 106),
     Target("status line", t => (t.statusFg, t.statusBg), 60, 106),
     Target("user marker", t => (t.user, t.ground), 60, 106),
     Target("grit marker", t => (t.grit, t.ground), 60, 106),

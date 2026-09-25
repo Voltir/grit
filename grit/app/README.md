@@ -11,7 +11,7 @@ In dependency order:
 - **`config`** — `DotEnv`: settings from a `.env` file under the real environment.
   Imports nothing in app.
 - **`look`** — `Theme`, a palette by role (Frost the default; `GRIT_THEME` picks
-  another), and `Look`, the chat screen's styles from a theme: who speaks is a rune as
+  the one a run starts in), and `Look`, the chat screen's styles from a theme: who speaks is a rune as
   well as a colour (`Look.Runes`: ᛗ the user, ᚨ grit, ᚺ a failure, ᛁ idle, ᛭ between turns). Every theme is held to
   the same APCA contrast targets (`ThemeContrastTests`). Imports nothing in app.
 - **`chat`** — the chat TUI. `ChatScreen` is a pure `grit.tui` app whose transcript is a
@@ -22,7 +22,10 @@ In dependency order:
   conversation, polling its entries and each open turn's status
   (`Follow`, pure), so replies to any turn appear, recovered ones included (ADR 0002);
   `Send` ingests and starts a turn once the engine is open.
-  `Replies` reads replies back out of the store. ← `look`
+  `Replies` reads replies back out of the store. `Commands` is the one table of slash
+  commands: what the palette (`/` in an empty prompt, or ctrl-p) lists, what `/help`
+  describes, and what a submitted `/` draft runs; such a draft never reaches the model.
+  The theme is screen state, so `/theme` repaints everything live. ← `look`
 - **`main`** — `Main`: reads the settings, opens the engine and launches the turn
   (OpenRouter with a key, the stub without), then runs the chat TUI, or with arguments
   answers each as a message. ← `config`, `look`, `chat`

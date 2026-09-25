@@ -261,6 +261,8 @@ def main():
         return columns(checks, check, raw, rows, cols, screens, snapshots, ones)
     if scenario == "turn-modal":
         return turn_modal(checks, check, raw, rows, screens)
+    if scenario == "palette":
+        return palette(checks, check, raw, frames, screens)
 
     payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
     if scenario in ("thumb", "popup"):
@@ -433,6 +435,46 @@ def turn_modal(checks, check, raw, rows, screens):
     check(back is not None, "Escape let it go: the panel follows the latest turn again")
     payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
     check(len(payloads) == 0, "clicks copy nothing", "%d" % len(payloads))
+    return report(checks)
+
+
+# Mirrors Theme.Frost.ground and Theme.TokyoNight.ground, as the painter writes a
+# background. If those change, change these.
+FROST_GROUND = "48;2;13;19;25"
+TOKYO_NIGHT_GROUND = "48;2;26;27;38"
+
+
+def palette(checks, check, raw, frames, screens):
+    """grit.app's command palette, driven by keys alone (script_palette)."""
+    has = lambda g, s: any(s in row for row in g)
+    after = lambda start, ok: next((i for i in range(start, len(screens)) if ok(screens[i])), None)
+    listed = after(0, lambda g: has(g, "/theme  switch the colour theme")
+                   and has(g, "/quit   leave grit"))
+    check(listed is not None, "/ opened the list of every command")
+    filtered = after((listed or 0) + 1, lambda g: has(g, "/theme  switch")
+                     and not has(g, "leave grit"))
+    check(listed is not None and filtered is not None, "typing filtered it to /theme")
+    themes = after((filtered or 0) + 1, lambda g: has(g, "tokyo-storm") and has(g, "nightshade"))
+    check(filtered is not None and themes is not None,
+          "Enter on /theme offered the themes as a second list")
+    # The prompt held "/theme tokyo-n" until the choice ran it and cleared it.
+    chose = after((themes or 0) + 1,
+                  lambda g: not has(g, "/theme ") and not has(g, "\u2502tokyo-night"))
+    check(themes is not None and chose is not None, "Enter on a theme closed the list")
+    before = "".join(frames[:themes or 0])
+    since = "".join(frames[chose:]) if chose is not None else ""
+    check(FROST_GROUND in before and TOKYO_NIGHT_GROUND not in before,
+          "the screen was painted in Frost before the choice")
+    check(TOKYO_NIGHT_GROUND in since, "and in Tokyo Night after it")
+    reopened = after((chose or len(screens)) + 1, lambda g: has(g, "leave grit"))
+    check(reopened is not None, "/ opened the list again")
+    final = screens[-1] if screens else []
+    check(reopened is not None and not has(final, "leave grit"), "Escape dismissed it")
+    check(not has(final, "\u16d7 ") and not any(has(g, "thinking") for g in screens),
+          "nothing typed reached the transcript, and no turn ran")
+    check(not any(has(g, "no command") for g in screens), "no draft failed as a command")
+    payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
+    check(len(payloads) == 0, "no drag, so no clipboard write", "%d" % len(payloads))
     return report(checks)
 
 
