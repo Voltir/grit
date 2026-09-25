@@ -11,11 +11,15 @@ import grit.tui.wire.term.Terminal
   * mutable state, because that state is the thing it exists to emulate. It records the
   * order of every lifecycle call, which is what makes "restore in reverse" and "the
   * scheduler stops before the terminal" assertable rather than hoped for.
+  *
+  * It enforces nothing the runtime owes: every `enterRaw` and `exitRaw` is logged, so a
+  * runtime that calls either twice is seen doing it.
   */
 final class FakeTerminal(val size: Size = Size(10, 20), readDelayMs: Long = 0L) extends Terminal {
 
   private val input = new LinkedBlockingQueue[String]()
   private val buffer = new StringBuilder
+  private val flushed = new StringBuilder
   private val log = scala.collection.mutable.ArrayBuffer.empty[String]
   private var raw = false
 
@@ -23,7 +27,7 @@ final class FakeTerminal(val size: Size = Size(10, 20), readDelayMs: Long = 0L) 
   def calls: Vector[String] = synchronized { log.toVector }
 
   /** Everything flushed so far. */
-  def painted: String = synchronized { buffer.result() }
+  def painted: String = synchronized { flushed.result() }
 
   /** Whatever was last offered to the clipboard. */
   def copied: Vector[String] = synchronized {
@@ -68,19 +72,23 @@ final class FakeTerminal(val size: Size = Size(10, 20), readDelayMs: Long = 0L) 
 
   def write(s: String): Unit = synchronized { val _ = buffer.append(s) }
 
-  def flush(): Unit = synchronized { log += "flush" }
+  /** Logged only when something was buffered: an empty flush writes nothing. */
+  def flush(): Unit = synchronized {
+    if (buffer.nonEmpty) {
+      val _ = flushed.append(buffer.result())
+      buffer.clear()
+      log += "flush"
+    }
+  }
 
   def copyOut(text: String): Unit = synchronized { log += s"copyOut:$text" }
 
-  def enterRaw(): Unit = synchronized {
-    if (!raw) { raw = true; log += "enterRaw" }
-  }
+  def enterRaw(): Unit = synchronized { raw = true; log += "enterRaw" }
 
-  def exitRaw(): Unit = synchronized {
-    if (raw) { raw = false; log += "exitRaw" }
-  }
+  def exitRaw(): Unit = synchronized { raw = false; log += "exitRaw" }
 
-  def close(): Unit = synchronized { inFlightAtClose = reading; exitRaw(); log += "close" }
+  /** Leaves the terminal as `exitRaw` does, logged as `close` alone. */
+  def close(): Unit = synchronized { inFlightAtClose = reading; raw = false; log += "close" }
 
   /** True while the terminal is in raw mode -- for asserting it was given back. */
   def isRaw: Boolean = synchronized { raw }
