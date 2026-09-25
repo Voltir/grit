@@ -66,8 +66,9 @@ object TurnSummary {
 
   /** The summary in `reply`, and the topic lines when it has them: `Summary:`, `Topic:` and
     * `About:` (any case, markdown emphasis ignored), a label's text running to the next
-    * label. Without a `Summary:` label the whole text is the summary. `None` when it has no
-    * text. A name is cut to [[NameWords]] words.
+    * label, text before the first label standing for a missing `Summary:`. Three unlabelled
+    * lines are read as those three lines in order. Otherwise, without a summary, the whole
+    * text is the summary. `None` when it has no text. A name is cut to [[NameWords]] words.
     */
   def read(reply: Message.Assistant): Option[Read] =
     text(reply).map { whole =>
@@ -85,12 +86,23 @@ object TurnSummary {
       }
       def field(label: String): Option[String] =
         labelled.collectFirst { case (l, t) if l == label => t.trim }.filter(_.nonEmpty)
-      field("summary") match {
-        case None => Read(whole, None)
-        case Some(summary) =>
-          val name = field("topic").map(cleanName).filter(_.nonEmpty)
-          Read(summary, name.zip(field("about").map(_.linesIterator.mkString(" "))))
-      }
+      val lines = whole.linesIterator.map(_.trim).filter(_.nonEmpty).toVector
+      if (
+        labelled.forall(_._1.isEmpty) && lines.size == 3 && lines.lift(1).exists(!_.contains(':'))
+      ) {
+        // Three bare lines: the asked-for lines without their labels (seen live with
+        // gemini-2.5-flash-lite). A name has no colon; a transcript's "User: ..." line does.
+        val name = lines.lift(1).map(cleanName).filter(_.nonEmpty)
+        Read(lines.headOption.getOrElse(whole), name.zip(lines.lift(2)))
+      } else
+        // Text before the first label is the summary when `Summary:` is missing (also
+        // seen live): the model wrote the summary and labelled only the other lines.
+        field("summary").orElse(field("").filter(_ => labelled.exists(_._1.nonEmpty))) match {
+          case None => Read(whole, None)
+          case Some(summary) =>
+            val name = field("topic").map(cleanName).filter(_.nonEmpty)
+            Read(summary, name.zip(field("about").map(_.linesIterator.mkString(" "))))
+        }
     }
 
   private def cleanName(raw: String): String =

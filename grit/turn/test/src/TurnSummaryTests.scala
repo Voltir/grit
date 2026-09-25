@@ -35,5 +35,18 @@ object TurnSummaryTests extends TestSuite {
       TurnSummary.read(reply("Summary: a.\nTopic: Knots")) ==> Some(TurnSummary.Read("a.", None))
       TurnSummary.read(reply("   ")) ==> None
     }
+
+    test("a reply that drops the labels is still read: all of them, or only Summary's") {
+      TurnSummary.read(reply("Asked about knots.\nKnots\nWhich knot holds.")) ==>
+        Some(TurnSummary.Read("Asked about knots.", Some("Knots" -> "Which knot holds.")))
+      TurnSummary.read(reply("Asked about knots.\nTopic: Knots\nAbout: which knot.")) ==>
+        Some(TurnSummary.Read("Asked about knots.", Some("Knots" -> "which knot.")))
+      // A middle line with a colon is a transcript, not a name.
+      TurnSummary.read(reply("Said so.\nUser: hello\nAssistant: hi")) ==>
+        Some(TurnSummary.Read("Said so.\nUser: hello\nAssistant: hi", None))
+      // Two bare lines are not the three asked for: the whole text is the summary.
+      TurnSummary.read(reply("Asked about knots.\nKnots")) ==>
+        Some(TurnSummary.Read("Asked about knots.\nKnots", None))
+    }
   }
 }
