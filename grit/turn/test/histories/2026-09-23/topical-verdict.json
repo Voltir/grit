@@ -1,0 +1,57 @@
+{
+  "workflow": "turn",
+  "id": "c1:2",
+  "epoch": "2026-09-23",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "DBOS.patch-topics"
+    },
+    {
+      "name": "classify",
+      "output": "{\"events\":[{\"event\":\"placed\",\"turn\":2,\"weights\":[[\"topic:c1:1\",0.5]],\"elsewhere\":0.5,\"by\":{\"kind\":\"classified\",\"pSame\":0.5,\"band\":\"uncertain\",\"choice\":[]}}],\"current\":{\"id\":\"topic:c1:1\",\"key\":\"new topic\"},\"earlier\":[{\"id\":\"topic:c1:0\",\"key\":\"new topic (2)\"}],\"cost\":{\"model\":\"grit/stub-classifier\",\"usage\":{\"input\":0,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0\"},\"estimate\":67},\"note\":null}"
+    },
+    {
+      "name": "record-topic",
+      "output": "{\"ok\":\"topic:c1:2:placed\"}"
+    },
+    {
+      "name": "assemble",
+      "output": "{\"ok\":[\"in:hello\",\"reply:c1:0\",\"in:knots? ~0.1\",\"reply:c1:1\"]}"
+    },
+    {
+      "name": "DBOS.patch-record-window"
+    },
+    {
+      "name": "record-window",
+      "output": "{\"ok\":\"window:c1:2\"}"
+    },
+    {
+      "name": "DBOS.patch-verdict"
+    },
+    {
+      "name": "call-model",
+      "output": "{\"ok\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"stub calls topic\"},{\"type\":\"tool_call\",\"id\":\"stub-call\",\"name\":\"topic\",\"arguments\":{\"about\":\"earlier\",\"name\":\"new topic (2)\"}}],\"usage\":{\"input\":0,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0\"},\"model\":\"grit/stub\",\"stop\":\"tool_use\"}}}"
+    },
+    {
+      "name": "call-model-again",
+      "output": "{\"ok\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"stub reply to: back ~0.5 #call:{\\\"about\\\":\\\"earlier\\\",\\\"name\\\":\\\"new topic (2)\\\"}\\n\\n[grit: the topic may have changed. Current topic: new topic. Earlier topics: new topic (2). Call `topic` before you answer.]\"}],\"usage\":{\"input\":0,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0\"},\"model\":\"grit/stub\",\"stop\":\"end_turn\"}}}"
+    },
+    {
+      "name": "record-verdict",
+      "output": "{\"ok\":\"topic:c1:2:verdict\"}"
+    },
+    {
+      "name": "append",
+      "output": "{\"ok\":\"reply:c1:2\"}"
+    },
+    {
+      "name": "summarise",
+      "output": "{\"ok\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"stub reply to: User: back ~0.5 #call:{\\\"about\\\":\\\"earlier\\\",\\\"name\\\":\\\"new topic (2)\\\"}\\n\\nAssistant: stub reply to: back ~0.5 #call:{\\\"about\\\":\\\"earlier\\\",\\\"name\\\":\\\"new topic (2)\\\"}\\n\\n[grit: the topic may have changed. Current topic: new topic. Earlier topics: new topic (2). Call `topic` before you answer.]\"}],\"usage\":{\"input\":0,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0\"},\"model\":\"grit/stub\",\"stop\":\"end_turn\"}}}"
+    },
+    {
+      "name": "append-summary",
+      "output": "{\"ok\":\"summary:c1:2\"}"
+    }
+  ]
+}

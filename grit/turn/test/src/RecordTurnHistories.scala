@@ -155,6 +155,14 @@ object RecordTurnHistories {
         said: Vector[String],
         down: Boolean = false,
         crash: Option[grit.core.store.Entry -> Boolean] = None
+    ): History = answered(said, new RecordingProvider, down, crash)
+
+    /** As [[topical]], the last turn answered by `provider`. */
+    def answered(
+        said: Vector[String],
+        provider: grit.core.provider.Provider^,
+        down: Boolean = false,
+        crash: Option[grit.core.store.Entry -> Boolean] = None
     ): History = {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -165,10 +173,7 @@ object RecordTurnHistories {
       }
       val turn = say(store, said.lastOption.getOrElse("hello"))
       val entries = crash.fold[grit.core.store.EntryStore](store)(new CrashOnInsert(store, _))
-      try
-        durable.run(turn.workflowId)(
-          turnBody(entries, new RecordingProvider, classifier = classifier)
-        )
+      try durable.run(turn.workflowId)(turnBody(entries, provider, classifier = classifier))
       catch { case _: InMemoryDurable.Crash => "" }
       recorded(durable, turn)
     }
@@ -182,6 +187,34 @@ object RecordTurnHistories {
       "topical-unclassified" -> topical(Vector("hello", "more"), down = true),
       "topical-crashed-placing" ->
         topical(Vector("hello", "more"), crash = Some(_.payload.isInstanceOf[Payload.Topic])),
+      "topical-verdict" -> topical(
+        Vector(
+          "hello",
+          "knots? ~0.1",
+          """back ~0.5 #call:{"about":"earlier","name":"new topic (2)"}"""
+        )
+      ),
+      "topical-verdict-no-call" -> answered(
+        Vector("hello", "hm ~0.5"),
+        new TurnVerdictTests.Scripted((r, _) =>
+          new grit.models.StubProvider().complete(r.copy(tools = Vector.empty))
+        )
+      ),
+      "topical-verdict-plain" -> answered(
+        Vector("hello", "hm ~0.5"),
+        new TurnVerdictTests.Scripted((r, n) =>
+          if (n == 0) new grit.models.StubProvider().complete(r)
+          else if (r.tools.isEmpty) new grit.models.StubProvider().complete(r)
+          else Left(grit.core.provider.ProviderError.Unavailable("HTTP 529"))
+        )
+      ),
+      "topical-verdict-crashed-between-rounds" -> answered(
+        Vector("hello", "hm ~0.5"),
+        new TurnVerdictTests.Scripted((r, n) =>
+          if (n == 1) throw new InMemoryDurable.Crash
+          else new grit.models.StubProvider().complete(r)
+        )
+      ),
       "window-first" -> windowFirst,
       "crashed-recording-window" -> crashedRecordingWindow,
       "crashed-before-append-window-first" -> crashedBeforeAppendWindowFirst,

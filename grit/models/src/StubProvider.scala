@@ -10,7 +10,7 @@ import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError, ToolUse
   *
   * Offered tools it may call ([[ToolUse.Auto]]) while the last message is the user's, it
   * calls the first, as a model can, with a line of text beside the call: the arguments
-  * are the JSON after `#call:` in that message (to the end of it), or `{}`. Its id is
+  * are the JSON after `#call:` in that message (to the end of its line), or `{}`. Its id is
   * [[StubProvider.CallId]].
   */
 final class StubProvider(delayMs: Long = 0) extends Provider {
@@ -80,14 +80,14 @@ object StubProvider {
   def words(text: String): Vector[String] =
     text.split("(?= )").toVector.filter(_.nonEmpty)
 
-  /** The JSON after [[CallMarker]] in `text`, to its end; `{}` without a marker, and the raw
-    * string when it is not JSON (as a model can send).
+  /** The JSON after [[CallMarker]] in `text`, to the end of its line; `{}` without a marker,
+    * and the raw string when it is not JSON (as a model can send).
     */
   def arguments(text: String): ujson.Value = {
     val at = text.indexOf(CallMarker)
     if (at < 0) ujson.Obj()
     else {
-      val raw = text.drop(at + CallMarker.length).trim
+      val raw = text.drop(at + CallMarker.length).takeWhile(_ != '\n').trim
       scala.util.Try(ujson.read(raw)).getOrElse(ujson.Str(raw))
     }
   }

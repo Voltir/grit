@@ -1,0 +1,37 @@
+{
+  "workflow": "turn",
+  "id": "c1:1",
+  "epoch": "2026-09-23",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "DBOS.patch-topics"
+    },
+    {
+      "name": "classify",
+      "output": "{\"events\":[{\"event\":\"placed\",\"turn\":1,\"weights\":[[\"topic:c1:0\",0.5]],\"elsewhere\":0.5,\"by\":{\"kind\":\"classified\",\"pSame\":0.5,\"band\":\"uncertain\",\"choice\":[]}}],\"current\":{\"id\":\"topic:c1:0\",\"key\":\"new topic\"},\"earlier\":[],\"cost\":{\"model\":\"grit/stub-classifier\",\"usage\":{\"input\":0,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0\"},\"estimate\":49},\"note\":null}"
+    },
+    {
+      "name": "record-topic",
+      "output": "{\"ok\":\"topic:c1:1:placed\"}"
+    },
+    {
+      "name": "assemble",
+      "output": "{\"ok\":[\"in:hello\",\"reply:c1:0\"]}"
+    },
+    {
+      "name": "DBOS.patch-record-window"
+    },
+    {
+      "name": "record-window",
+      "output": "{\"ok\":\"window:c1:1\"}"
+    },
+    {
+      "name": "DBOS.patch-verdict"
+    },
+    {
+      "name": "call-model",
+      "output": "{\"ok\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"stub calls topic\"},{\"type\":\"tool_call\",\"id\":\"stub-call\",\"name\":\"topic\",\"arguments\":{}}],\"usage\":{\"input\":0,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0\"},\"model\":\"grit/stub\",\"stop\":\"tool_use\"}}}"
+    }
+  ]
+}

@@ -25,14 +25,20 @@ object TurnTests extends TestSuite {
       "assemble",
       "record-window",
       "call-model",
+      "call-model-again",
+      "call-model-plain",
+      "record-verdict",
       "append",
       "summarise",
       "append-summary"
     )
 
+  /** The steps every turn takes. */
+  private val Always: Vector[String] = AllSteps.filterNot(Turn.Step.optional.contains)
+
   /** What a turn records: its steps, each patch's marker before the steps it brought. */
   private val Recorded: Vector[String] =
-    ("DBOS.patch-topics" +: AllSteps).patch(4, Vector("DBOS.patch-record-window"), 0)
+    ("DBOS.patch-topics" +: Always).patch(4, Vector("DBOS.patch-record-window"), 0)
 
   /** How many of [[Recorded]] come before `assemble`. */
   private val Placing = 3
@@ -48,6 +54,9 @@ object TurnTests extends TestSuite {
         "call-model"
       Turn.running(Vector("assemble", "DBOS.patch", "call-model", "append")) ==> "summarise"
       Turn.running(AllSteps) ==> "append-summary"
+      // A step only some turns take is never named before it is recorded.
+      Turn.running(Vector("assemble", "record-window", "call-model")) ==> "append"
+      Turn.running(Vector("call-model", "call-model-again")) ==> "append"
     }
 
     test("a turn records the model's reply as its entry") {

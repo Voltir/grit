@@ -63,7 +63,9 @@ object TurnTopicsTests extends TestSuite {
       val (entries, turns) = converse(Vector("hello", "hm ~0.5"))
       val t = topics(entries)
       t.placed(turns(1).turnSeq) ==> Some(TopicId.openedBy(turns(0)))
-      last(t, turns(1)).map(_.by) ==> Some(Placement.Classified(0.5, Band.Uncertain, Vector.empty))
+      // The classifier's placement; the model's verdict follows it (TurnVerdictTests).
+      t.placements.get(turns(1).turnSeq).flatMap(_.headOption).map(_.by) ==>
+        Some(Placement.Classified(0.5, Band.Uncertain, Vector.empty))
     }
 
     test("changed, with nowhere earlier to go: a new topic, and no second question") {
