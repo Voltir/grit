@@ -9,7 +9,9 @@ import grit.core.message.Usage
   */
 trait Classifier extends caps.SharedCapability {
 
-  /** `questions` about `state`, sent as one request. */
+  /** `questions` about `state`, sent as one request; `Unreadable` when the reply holds other
+    * than one answer per question, or an answer does not read (see [[Ask.choice]]).
+    */
   final def ask[S: StateJson, T](
       state: S,
       questions: Ask[S, T]

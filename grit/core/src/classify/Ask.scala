@@ -73,7 +73,10 @@ object Ask {
   /** Two criteria of one choice given the same `key`. */
   final case class DuplicateKey(key: String)
 
-  /** Which criterion fits the state, read back into its value. */
+  /** Which criterion fits the state, read back into its value. Reading is `Unreadable` when
+    * the answer is yes/no, its choice is no criterion's key, or no criterion's key has positive
+    * probability; weights on other keys are dropped.
+    */
   def choice[S, C](
       instructions: String,
       first: Criterion[C],
