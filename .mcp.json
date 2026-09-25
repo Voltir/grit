@@ -3,6 +3,10 @@
     "enola": {
       "command": "tools/enola",
       "args": ["--no-dashboard", "mcp-arch.yaml"]
+    },
+    "grit-metals": {
+      "type": "http",
+      "url": "http://localhost:34721/mcp"
     }
   }
 }

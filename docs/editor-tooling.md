@@ -45,5 +45,8 @@ rm -rf .bsp/out/mill-no-daemon/*
 **If the build server crash-loops (SIGTERM/SIGKILL cycles in `.metals/metals.log`)**, it is the
 Mill 1.x BSP kill-other behavior dueling with Metals reconnects — not a build error. A
 global wrapper (`~/.local/bin/mill-bsp-wrapper`, activated via `MILL_EXECUTABLE_PATH` in
-`~/.profile`) injects `--bspNoKillOther` to defuse it. Full diagnosis, symptom signatures,
-and undo instructions in [`mill-bsp-nokill-workaround.md`](../mill-bsp-nokill-workaround.md).
+`~/.profile`) injects `--bspNoKillOther` to defuse it, and supervises each BSP server so it
+is killed when its client closes stdin or cancels it: Mill 1.1.x never exits on its own
+then, and waiting servers used to pile up at one JVM per 60s Metals retry. Full
+diagnosis, symptom signatures, and undo instructions in
+[`mill-bsp-nokill-workaround.md`](../mill-bsp-nokill-workaround.md).
