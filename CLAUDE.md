@@ -79,6 +79,11 @@ capability is a promise of purity.**
 11. **Escape hatches carry their proof.** Every `caps.unsafe` use states beside it why the
     untracked effect cannot be observed.
 
+**Tests** ([`STYLE.md`](STYLE.md#tests)): every new test or strengthened assertion is
+watched failing on a planted break, and the commit says what was planted; a name states a
+contract and its assertion pins the value; a fake shares one spec with the implementation
+it stands in for. The `test-janitor` agent reviews test files against these rules.
+
 ## Build and format
 
 ```bash

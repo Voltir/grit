@@ -196,6 +196,41 @@ comment a type can never replace.
 
 ---
 
+## Tests
+
+The rules above make a signature the whole truth; a test is what keeps the body honest to
+it. A test earns its keep when **some plausible wrong implementation that compiles fails
+it, and no other test catches that one first**. A test that nothing could fail is not
+weak coverage, it is false coverage: it reads as a guarantee and holds none.
+
+- **Watched failing.** Every new test, and every strengthened assertion, is run once
+  against a planted break in the behaviour it claims, and the commit message says what
+  was planted. A test that still passes is testing something else: usually a fixture that
+  never reaches the branch the name promises, or a fake answering from a cache.
+- **The name states a contract; the assertion pins its value.** Names read as the spec, so
+  a body that checks less than its name overclaims. These shapes pin nothing:
+  - `isLeft` where which error is the contract — assert the error;
+  - `nonEmpty`, `!=`, `contains` where equality is meant;
+  - a size, field or shape the type already fixes (`render(Size(1, 1)).size`);
+  - an expected value computed by the code under test (its own table, its own helper);
+  - a fixture that makes the checked property hold anyway (input already sorted, every
+    candidate tied, one window standing in for "windows").
+- **Not redundant.** A second test of the same branch with the same kind of assertion is
+  weight, not safety. Merge it into the stronger one.
+- **Two kinds of test that look trivial and are not.** A pin of a stored or wire form (a
+  row's JSON key, a recorded step name, an escape sequence) is the point: pin it, and say
+  why beside it. A compile probe that the type system *rejects* something keeps a type's
+  guarantee from eroding.
+- **A fake is held to the real thing.** A test double that stands in for a production
+  implementation (a store, the durable runtime, a terminal) shares one spec with it, run
+  against both, and is only as strict as that spec demands. A fake nothing checks drifts,
+  and every test above it then passes against behaviour production does not have.
+- **Ranking is stated, not inherited.** A test that depends on an order its fake decides
+  (search scores, ties) either picks inputs with a strict order or scripts the order
+  outright.
+
+---
+
 ## Why rule 10 is a feature, not an aspiration
 
 Once LSP/BSP integration lands, signatures can be stored as symbols independently of

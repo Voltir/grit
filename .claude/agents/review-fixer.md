@@ -48,7 +48,10 @@ deleted because a type now says them.
   `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources`, `./mill __.test`
   with 0 warnings, `bash scripts/enola-law.sh` (`bash scripts/fetch-enola.sh` first if
   `tools/` lacks enola).
-- A test that proves something cannot happen is watched failing on a planted breach first.
+- **Tests follow `STYLE.md`'s Tests section.** Every test you add, and every assertion you
+  strengthen, is watched failing on a planted break in the behaviour it claims (revert the
+  plant before committing); the commit message and your report name each plant. A test
+  that passes with its bug planted is not done.
 - **When you extend a design another change built** (the brief names the plan or earlier
   steps), list each of its standards and guarantees your change touches, and show in the
   report how each still holds: a capability a type restricted, a fact defined in one place,
@@ -61,6 +64,6 @@ deleted because a type now says them.
 ## Report
 
 Under the length the brief sets (default ~25 lines): branch, worktree, head commit(s), test
-count, the elision table as built (anything that ended up needing a body read), the
+count, the planted break each new or strengthened test was watched failing on, the elision table as built (anything that ended up needing a body read), the
 standards and guarantees your change touched and how each holds, what the reviewer should
 check first, and Parked.
