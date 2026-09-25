@@ -133,11 +133,13 @@ final class Vt(val rows: Int, val cols: Int) {
     }
   }
 
-  private def eraseLine(): Unit =
-    grid = grid.updated(
-      row,
-      grid(row).updated(col, Cell.blank).patch(col, Vector.fill(cols - col)(Cell.blank), cols - col)
-    )
+  /** EL 0, with background colour erase: the erased cells take the current background
+    * and nothing else, as xterm and its descendants do.
+    */
+  private def eraseLine(): Unit = {
+    val erased = Cell(' ', Style(bg = style.bg))
+    grid = grid.updated(row, grid(row).patch(col, Vector.fill(cols - col)(erased), cols - col))
+  }
 
   private def setMode(params: String, on: Boolean): Unit =
     if (params.startsWith("?")) modes = modes.updated(params.tail, on)

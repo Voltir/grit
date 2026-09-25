@@ -199,6 +199,9 @@ Non-negotiable, each paid for in the layoutz spike:
    following `ESC[K` erases the character just written. The rule lives in exactly one
    place: the runtime hands apps the paintable screen (`Size.screen`), so a frame is
    already one column narrower than the terminal and nothing downstream compensates.
+   The owed column is still *coloured*: the painter ends a row whose last cell it
+   painted with that cell's background and an erase to the end of the line, which
+   writes no glyph there (`Painter`).
 3. **Restore in reverse**, and make it idempotent — it will be called from cleanup, from a
    `finally`, and from a shutdown hook.
 4. **Verify by painting, not by diffing bytes.** Mode sequences balanced and a frame of

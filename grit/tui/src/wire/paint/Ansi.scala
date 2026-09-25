@@ -39,6 +39,12 @@ object Ansi {
     }
   }
 
+  /** Erase from the cursor to the end of the line, in the current background: `ESC[K`.
+    * Moves nothing and writes no glyph, so it is how the column rule 2 never writes is
+    * still coloured.
+    */
+  val eraseLine: String = s"${Esc}K"
+
   val reset: String = s"${Esc}0m"
   val syncStart: String = s"$Esc?2026h"
   val syncEnd: String = s"$Esc?2026l"

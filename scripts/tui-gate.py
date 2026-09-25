@@ -33,8 +33,12 @@ class Vt:
     def __init__(self, rows, cols):
         self.rows, self.cols = rows, cols
         self.grid = [[(" ", False)] * cols for _ in range(rows)]
+        # Each cell's background, None for the terminal's own: kept beside the grid so
+        # the cells stay (glyph, reverse) pairs for every oracle that reads them.
+        self.bgs = [[None] * cols for _ in range(rows)]
         self.r = self.c = 0
         self.rev = False
+        self.bg = None
         self.max_row = 0
         self.max_col = 0
         self.scrolled = False
@@ -63,6 +67,7 @@ class Vt:
             else:
                 if 0 <= self.r < self.rows and 0 <= self.c < self.cols:
                     self.grid[self.r][self.c] = (ch, self.rev)
+                    self.bgs[self.r][self.c] = self.bg
                     self.max_col = max(self.max_col, self.c + 1)
                 else:
                     self.scrolled = True
@@ -91,16 +96,26 @@ class Vt:
                 if code in ("38", "48"):
                     kind = codes[i + 1] if i + 1 < len(codes) else ""
                     step = 5 if kind == "2" else 3 if kind == "5" else 2
-                elif code in ("", "0", "27"):
+                    if code == "48":
+                        self.bg = tuple(codes[i + 2:i + step]) if kind == "2" else "indexed"
+                elif code in ("", "0"):
                     self.rev = False
+                    self.bg = None
+                elif code == "27":
+                    self.rev = False
+                elif code == "49":
+                    self.bg = None
                 elif code == "7":
                     self.rev = True
                 i += step
         elif final == "K":
+            # Background colour erase: the erased cells take the current background.
             for c in range(self.c, self.cols):
                 self.grid[self.r][c] = (" ", False)
+                self.bgs[self.r][c] = self.bg
         elif final == "J":
             self.grid = [[(" ", False)] * self.cols for _ in range(self.rows)]
+            self.bgs = [[None] * self.cols for _ in range(self.rows)]
 
     def body_highlight(self, top, bottom):
         """The reverse-video text of rows [top, bottom), row by row.
@@ -232,6 +247,12 @@ def main():
               "the status bar settles on idle")
         payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
         check(len(payloads) == 0, "no drag, so no clipboard write", "%d" % len(payloads))
+        # The terminal's last column is never written (rule 2), but it must still be
+        # coloured: left alone it keeps the terminal's own background, a stripe down the
+        # right edge of a screen grounded in the theme's colour.
+        stripe = [r for r in range(rows) if vt.bgs[r][cols - 1] != vt.bgs[r][cols - 2]]
+        check(not stripe, "the last column takes the ground of the cell before it",
+              "rows %s" % stripe[:8])
         if scenario == "chat":
             # The prompt's text row is the middle of its box: rows - 3.
             typed = [i for i, g in enumerate(screens) if "gate says hi" in g[rows - 3]]

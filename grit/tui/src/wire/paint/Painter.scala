@@ -14,6 +14,13 @@ import grit.tui.model.surface.*
   * column is a column the terminal is owed back and the painter simply writes the frame
   * it is given. Clipping here as well would silently drop the last column of every
   * frame -- a guaranteed off-by-one, not a safety net.
+  *
+  * The column the frame leaves out still has to be *coloured*: left alone it keeps the
+  * terminal's own background, a stripe down the right edge of any app with a ground of
+  * its own, and whatever glyphs were there before a resize. So a row whose last cell is
+  * painted ends with that cell's background and an erase to the end of the line, which
+  * fills the owed column with no glyph, no cursor move and no deferred wrap (background
+  * colour erase, which every terminal grit.tui targets performs).
   */
 object Painter {
 
@@ -66,6 +73,14 @@ object Painter {
             body += surface.at(row, i).ch
             i += 1
           }
+          if (end == paintCols) {
+            val trailing = Painter.trailing(style)
+            Ansi.sgr(trailing, current).foreach { seq =>
+              body ++= seq
+              current = Some(trailing)
+            }
+            body ++= Ansi.eraseLine
+          }
           col = end
         } else col += 1
       }
@@ -91,4 +106,11 @@ object Painter {
       sb.result()
     }
   }
+
+  /** What the erase after a row's last cell fills the terminal's owed column with: the
+    * background that cell shows, and nothing else (an erase draws no glyph, so a
+    * foreground or a weight would mean nothing there).
+    */
+  private def trailing(last: Style): Style =
+    Style(bg = if (last.reverse) last.fg else last.bg)
 }

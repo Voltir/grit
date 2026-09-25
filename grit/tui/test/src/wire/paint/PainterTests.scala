@@ -194,5 +194,46 @@ object PainterTests extends TestSuite {
         "......"
       )
     }
+
+    test("the terminal's owed column takes the ground of the cell before it, with no glyph") {
+      // The frame is the paintable screen, one column narrower than the terminal (rule
+      // 2). The column it leaves out is never written, but it must not keep the
+      // terminal's own background: an app with a ground would show a stripe there.
+      val ground = Color.hex("#1e2030")
+      val slab = Color.hex("#2a2f45")
+      val frame = frameOf(
+        size,
+        s =>
+          s.fill(Rect(0, 0, 3, 6), Cell(' ', Style.bg(ground)))
+            .write(1, 0, "abcdef", Style.bg(slab) + Style.fg(Color.White))
+      )
+      val vt = new Vt(3, 7)
+      vt.feed(Painter.paint(frame, None))
+      assert(vt.text.map(_.last) == Vector(' ', ' ', ' '))
+      assert(
+        vt.cells.map(_.last.style) == Vector(Style.bg(ground), Style.bg(slab), Style.bg(ground))
+      )
+      assert(vt.text(1).take(6) == "abcdef")
+    }
+
+    test("a resize leaves no stale glyph or colour in the owed column") {
+      // A terminal keeps what the owed column held when it is resized under the app;
+      // the full repaint after a resize must clear it.
+      val vt = new Vt(3, 7)
+      vt.feed("\u001b[2;7Hz")
+      val ground = Color.hex("#1e2030")
+      val frame = frameOf(size, s => s.fill(Rect(0, 0, 3, 6), Cell(' ', Style.bg(ground))))
+      vt.feed(Painter.paint(frame, Some(frameOf(Size(3, 5), identity))))
+      assert(vt.text.map(_.last) == Vector(' ', ' ', ' '))
+      assert(vt.bgMask(ground) == Vector.fill(3)("xxxxxxx"))
+    }
+
+    test("a diff that leaves a row's last cell alone does not erase the owed column") {
+      val ground = Color.hex("#1e2030")
+      val before = frameOf(size, s => s.fill(Rect(0, 0, 3, 6), Cell(' ', Style.bg(ground))))
+      val after = Frame(before.surface.write(0, 0, "ab", Style.bg(ground)), None)
+      val out = Painter.paint(after, Some(before))
+      assert(out.nonEmpty && !out.contains("\u001b[K"))
+    }
   }
 }
