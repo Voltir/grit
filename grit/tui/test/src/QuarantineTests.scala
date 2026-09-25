@@ -70,7 +70,7 @@ object QuarantineTests extends TestSuite {
   private val Groups = Vector("model", "components", "wire", "runtime")
 
   /** What each group is allowed to reach for. `components` and `wire` are siblings:
-    * neither may name the other, and only `app` may name both.
+    * neither may name the other, and only `runtime` may name both.
     */
   private val MayImport: Map[String, Set[String]] = Map(
     "model" -> Set.empty,
@@ -111,30 +111,38 @@ object QuarantineTests extends TestSuite {
       val effect = files.collectFirst { case (p, b) if p.endsWith("runtime/app/Effect.scala") => b }
       assert(effect.isDefined)
       // Only the enum body: `case` also introduces match clauses further down the file.
+      // Each case runs from its `case` to the next, so a parameter list broken over
+      // lines is read whole; a pure arrow (`->`) is as much a function as `=>`.
       val body = effect.getOrElse("")
       val open = body.indexOf("enum Effect")
       val shut = body.indexOf("\n}", open)
       assert(open >= 0 && shut > open)
-      val cases = body
-        .substring(open, shut)
-        .linesIterator
+      val cases = uncommented(body.substring(open, shut))
+        .split("\\bcase\\s")
         .toVector
+        .drop(1)
         .map(_.trim)
-        .filter(_.startsWith("case "))
-      assert(cases.nonEmpty)
-      val functional = cases.filter(c => c.contains("=>") || c.contains("Function"))
+      assert(cases.nonEmpty, cases.forall(_.headOption.exists(_.isUpper)))
+      val functional =
+        cases.filter(c => c.contains("=>") || c.contains("->") || c.contains("Function"))
       assert(functional.isEmpty)
     }
 
     test("escape bytes are spelled in exactly three files") {
-      // Ansi writes them, Decoder reads them, term sets
-      // modes; anywhere else means terminal grammar has leaked into the model.
+      // Ansi writes them, Decoder reads them, the terminal seam sets modes; anywhere else
+      // means terminal grammar has leaked into the model. Every spelling of ESC counts,
+      // and the three must each still spell one, so the list cannot go stale.
       val files = librarySources
       assertFound(files)
-      val allowed = Vector("wire/paint/Ansi.scala", "wire/input/Decoder.scala")
-      val bad = offenders(files, allowed, b => b.contains("\\u001b") || b.indexOf(0x1b) >= 0)
-      val stillBad = bad.filterNot(_.startsWith(Term))
-      assert(stillBad.isEmpty)
+      val spelled = "(?i)\\\\u001b|\\\\x1b|\\\\033|0x1b|\u001b".r
+      val spelling = files.collect { case (p, b) if spelled.findFirstIn(b).isDefined => p }
+      assert(
+        spelling.sorted == Vector(
+          Root + "wire/input/Decoder.scala",
+          Root + "wire/paint/Ansi.scala",
+          Term + "SystemTerminal.scala"
+        )
+      )
     }
 
     test("every library source sits in a declared group") {
@@ -185,13 +193,21 @@ object QuarantineTests extends TestSuite {
 
     test("the library has no external dependencies") {
       // Zero deps is the build's claim; this is what makes it true of the source too.
+      // An allow-list, so a library nobody thought to forbid is caught as well: every
+      // import is of grit, the JDK or Scala, or relative to something in scope (a
+      // capitalised root, such as `import Runtime.Event`).
       val files = librarySources
       assertFound(files)
-      val bad = offenders(
-        files,
-        Vector.empty,
-        b => b.contains("import org.jline") || b.contains("import dev.dbos")
-      )
+      val importRoot = "(?m)^\\s*import\\s+([A-Za-z_][A-Za-z0-9_]*)".r
+      val allowed = Set("grit", "java", "scala")
+      val bad = files.flatMap { (path, body) =>
+        importRoot
+          .findAllMatchIn(uncommented(body))
+          .map(_.group(1))
+          .filterNot(r => allowed.contains(r) || r.headOption.exists(_.isUpper))
+          .map(r => s"$path imports $r")
+          .toVector
+      }
       assert(bad.isEmpty)
     }
     test("the example's transcript model imports nothing from the wire") {
