@@ -12,8 +12,10 @@ the end).
 - **Separation checking** (`-language:experimental.separationChecking`) in every module
   except `grit.tui` and `grit.tui.examples`. `def separationChecking = false` turns it off
   there. The reason is in
-  [ADR 0003](decisions/0003-durable-is-exclusive-under-separation-checking.md), and the
-  errors that turning it on would raise are in `.local/backlog/tui-separation-checking.md`.
+  [ADR 0003](decisions/0003-durable-is-exclusive-under-separation-checking.md). Turning it
+  on there raises the traps below that `grit.tui` has not been rewritten around: `var`
+  fields in plain classes, arrays handed to Java, and a reach capability leaking through a
+  `foreach`.
 
 ## The vocabulary grit uses
 
@@ -115,13 +117,14 @@ only a nested `step`.
 - *Cause:* the inferred type is `Vector`'s refinement, whose internal `prefix1` is an array,
   which capture checking treats as `Mutable`, so the field would hold a root capability.
 - *Fix:* write the type out: `val Pairs: Vector[(String, String)] = Vector(…)`
-  (`grit.models.ToolStreamProbe`; first met in the tool-decoding probe).
+  (`grit.models.ToolStreamProbe`). The same holds for any `Vector` value of an object,
+  such as `val Keys: Vector[String] = …`.
 
 **A case class with a capability field, passed around as a value.**
 
 - *Symptom:* `Found: TurnTooling^{ws}  Required: TurnTooling{val workspace:
   Workspace^'s1; val tools: Toolbox[CapSet^'s2]^'s3}^'s4`, *"capability `any` cannot flow
-  into capture set {any?}"* (met when `TurnTooling` was one case class), where a value
+  into capture set {any?}"* (`TurnTooling` a case class with those fields), where a value
   built elsewhere (a `def`'s result, or a default argument, whose type drops the captures
   entirely) is passed on.
 - *Cause:* a field typed `Workspace^` gets a capture set of its own in each value's
@@ -231,10 +234,6 @@ trying to reduce `Args.Values[(Field[String]^'s3, Field[String]^'s4)^'s5]`"*: th
 gets a capture-set variable, the trap above. Bind the inner `Args` to a `val` first
 (`grit.tools.Coding.replacement`).
 
-**An object's `Vector` field, its type inferred.** `val Keys = Vector("a", …)` in an
-`object` infers a type carrying `Vector`'s `prefix1: Array` as a root capability. Write the
-type out: `val Keys: Vector[String] = …` (met in the tool-decoding probe).
-
 **`-Wunused` on a default method.** A parameter a default `def` ignores warns where the
 `_` of a lambda never did. Mark it `@unused`.
 
@@ -286,5 +285,5 @@ this pattern.
 3. If separation checking is no longer experimental, delete `SeparationTests` and the
    `scala3-compiler` test dependency (ADR 0003).
 4. Try `derives ReadWriter` again, and the scalafmt override.
-5. Consider turning separation checking on in `grit.tui`
-   (`.local/backlog/tui-separation-checking.md`).
+5. Consider turning separation checking on in `grit.tui`, and run `scripts/tui-gate`
+   after, since the terminal seam is what would change.
