@@ -104,8 +104,10 @@ object grit extends Module {
       mvn"org.postgresql:postgresql:42.7.13"
     )
 
-    /* Live tests against a throwaway Postgres (Testcontainers; `TestPostgres`). */
+    /* Live tests against a throwaway Postgres (Testcontainers; `TestPostgres`), and core's
+     * store contract run against the SQL stores. */
     object test extends GritTests with LivePostgres {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
       def mvnDeps = Task {
         super.mvnDeps() ++ Seq(mvn"org.testcontainers:testcontainers-postgresql:2.0.5")
       }
