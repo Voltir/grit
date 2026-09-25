@@ -7,7 +7,8 @@ enum CallError {
   case Unknown(name: String, offered: Vector[ToolName])
 
   /** `tool`'s arguments did not read; `sent` is what the model sent, cut to
-    * [[CallError.Echoed]] characters.
+    * [[CallError.Echoed]] characters: the JSON, or, when a JSON string stands for arguments
+    * that were not JSON, that text.
     */
   case BadArgs(tool: ToolName, error: ArgsError, sent: String)
 

@@ -14,17 +14,26 @@ final class Toolbox[C^] private (tools: Vector[Tool.Offered^{C}]) {
   /** The names offered, in order. */
   def names: Vector[ToolName] = tools.map(_.name)
 
-  /** `call` read against the tool it names, ready to run; or why it cannot be: no tool
-    * has that name, or its arguments do not read.
+  /** `call` read against the tool it names ([[Toolbox.named]]), ready to run; or why it
+    * cannot be: no tool has that name, or its arguments do not read.
     */
   def bind(call: AssistantBlock.ToolCall): Either[CallError, Bound^{C}] =
-    tools.find(t => ToolName.value(t.name) == call.name) match {
+    tools.find(t => ToolName.value(t.name) == Toolbox.named(call.name)) match {
       case None => Left(CallError.Unknown(call.name, names))
       case Some(tool) => tool.bind(call)
     }
 }
 
 object Toolbox {
+
+  /** The tool name a call sent as `sent` means: `sent` up to its first `<|`, which no tool
+    * name holds. gpt-oss leaks its harmony tokens into the name it sends
+    * (`read<|channel|>commentary`); this is the one quirk of a name that is repaired.
+    */
+  def named(sent: String): String = sent.indexOf("<|") match {
+    case -1 => sent
+    case at => sent.take(at)
+  }
 
   /** A toolbox of `tools`, offered in this order; `Left` names the first name repeated. */
   def of[C^](tools: Tool.Offered^{C}*): Either[DuplicateName, Toolbox[C]] = {

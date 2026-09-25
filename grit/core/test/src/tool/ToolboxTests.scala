@@ -74,6 +74,23 @@ object ToolboxTests extends TestSuite {
       )
     }
 
+    test("a name with leaked harmony tokens binds to the tool it names") {
+      val bound = box.bind(call("echo<|channel|>commentary", ujson.Obj("text" -> "hi")))
+      bound.map(b => (b.tool, b())) ==> Right((ToolName("echo"), Outcome.Done("hi")))
+      Toolbox.named("grep<|channel|>json") ==> "grep"
+      Toolbox.named("<|x") ==> ""
+      box.bind(call("sing<|channel|>x", ujson.Obj())).left.map(_.message) ==>
+        Left("There is no tool named `sing<|channel|>x`; the tools are `echo`, `shout`.")
+    }
+
+    test("arguments that were not JSON are refused, echoing their text") {
+      // The wire keeps text that does not parse as a JSON string (OpenRouterJson).
+      box.bind(call("echo", ujson.Str("{text: hi"))).left.map(_.message) ==> Left(
+        "The call to `echo` was not run: The arguments must be a JSON object, not " +
+          "\"{text: hi\". You sent: {text: hi"
+      )
+    }
+
     test("the echo of what was sent is cut") {
       val long = "x" * 1000
       box.bind(call("echo", ujson.Obj("text" -> 1, "pad" -> long))).left.map {

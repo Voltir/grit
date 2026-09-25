@@ -208,6 +208,10 @@ trying to reduce `Args.Values[(Field[String]^'s3, Field[String]^'s4)^'s5]`"*: th
 gets a capture-set variable, the trap above. Bind the inner `Args` to a `val` first
 (`grit.tools.Coding.replacement`).
 
+**An object's `Vector` field, its type inferred.** `val Keys = Vector("a", …)` in an
+`object` infers a type carrying `Vector`'s `prefix1: Array` as a root capability. Write the
+type out: `val Keys: Vector[String] = …` (met in the tool-decoding probe).
+
 **`-Wunused` on a default method.** A parameter a default `def` ignores warns where the
 `_` of a lambda never did. Mark it `@unused`.
 

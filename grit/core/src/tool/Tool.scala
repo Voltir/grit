@@ -18,7 +18,11 @@ final class Tool[A](val spec: ToolSpec[A], val gate: Gate[A], run: A => Outcome)
   private[tool] def bind(call: AssistantBlock.ToolCall): Either[CallError, Bound^{this}] =
     spec.args.read(call.arguments) match {
       case Left(error) =>
-        Left(CallError.BadArgs(spec.name, error, call.arguments.render().take(CallError.Echoed)))
+        val sent = call.arguments match {
+          case ujson.Str(raw) => raw
+          case json => json.render()
+        }
+        Left(CallError.BadArgs(spec.name, error, sent.take(CallError.Echoed)))
       case Right(args) =>
         val ask = gate match {
           case Gate.Free => None
