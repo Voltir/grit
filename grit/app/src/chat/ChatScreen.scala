@@ -2,7 +2,8 @@ package grit.app.chat
 
 import grit.app.chat.Commands.Picked
 import grit.app.look.{Look, Pill, Splash, Theme}
-import grit.core.id.TurnSeq
+import grit.core.approval.Approval
+import grit.core.id.{ToolCallId, TurnSeq, WorkflowId}
 import grit.core.message.Tokens
 import grit.tui.components.editor.Editor
 import grit.tui.components.overlay.Popup
@@ -72,6 +73,25 @@ object ChatScreen {
       calling: Vector[String] = Vector.empty
   )
 
+  /** A call of the running turn, `workflow`'s, that waits for the person's answer before it
+    * runs: `call` is its id, `shown` what they are asked to approve.
+    */
+  final case class Asked(workflow: WorkflowId, call: ToolCallId, shown: String)
+
+  /** What `draft` answers a call that asks first: `y` or `yes` approves; `n` or `no`
+    * declines, any text after it the reason. `None` for any other draft. Case is ignored.
+    */
+  def answer(draft: String): Option[Approval] = {
+    val trimmed = draft.trim
+    val (word, rest) = trimmed.span(!_.isWhitespace)
+    val reason = Option(rest.trim).filter(_.nonEmpty)
+    word.toLowerCase match {
+      case "y" | "yes" if reason.isEmpty => Some(Approval.Approved)
+      case "n" | "no" => Some(Approval.Declined(reason))
+      case _ => None
+    }
+  }
+
   /** What the turn panel shows: a turn, the conversation so far, or its topics. */
   enum Tab(val label: String) extends caps.Pure {
     case Turn extends Tab("turn")
@@ -99,7 +119,8 @@ object ChatScreen {
     * `summaries` is on. Once the host has `loaded` the conversation, one with nothing in
     * it shows the splash in the transcript's place. While `palette` is open, the command list floats over the
     * prompt with that row selected; a draft put `aside` to open it comes back when it
-    * closes.
+    * closes. While the running turn is `asking` about a call that was not `answered` here,
+    * the call is shown under the transcript, and the prompt answers it.
     */
   final case class State(
       said: Vector[Block],
@@ -127,8 +148,13 @@ object ChatScreen {
       session: Option[SessionView] = None,
       topics: Option[TopicsView] = None,
       summaries: Boolean = false,
-      loaded: Boolean = false
+      loaded: Boolean = false,
+      asking: Option[Asked] = None,
+      answered: Option[Asked] = None
   ) {
+
+    /** The call waiting for an answer from this screen: `asking`, unless it was answered. */
+    def question: Option[Asked] = asking.filterNot(answered.contains)
 
     /** Whether the splash shows: the conversation is read, and nothing is in it yet. */
     def welcoming: Boolean = loaded && entries.isEmpty && !thinking && !opening
@@ -220,6 +246,12 @@ object ChatScreen {
     /** From the host: the running turn's reply, as heard so far. */
     case Heard(hearing: Hearing)
 
+    /** From the host: the call the running turn waits on an answer for, or none. */
+    case Asking(asked: Option[Asked])
+
+    /** For the host: answer the call `call` of the turn `workflow` with `approval`. */
+    case Answer(workflow: WorkflowId, call: ToolCallId, approval: Approval)
+
     /** Ctrl-B: the turn panel shown, or hidden. */
     case TogglePanel
 
@@ -270,6 +302,7 @@ object ChatScreen {
   /** The keys the screen binds, and what each does, as the help lists them. */
   val Keys: Vector[(String, String)] = Vector(
     "enter" -> "send, or run a /command",
+    "y / n reason" -> "approve or decline what a tool asks, then enter",
     "ctrl-p" -> "the command palette",
     "ctrl-b" -> "show or hide the turn panel",
     "ctrl-t" -> "the panel's next tab: turn, session, topics",
@@ -313,6 +346,8 @@ object ChatScreen {
           if (draft.isEmpty) (s, Effect.NoOp)
           // A command, never a message: one that will not run says why, and goes nowhere.
           else if (Commands.isCommand(draft)) command(ran(s, draft), draft)
+          // While a call waits, the prompt answers it, and nothing else is sent.
+          else if (s.question.nonEmpty) answering(s, draft)
           // Shown when the store has it, like everything else in the transcript.
           // A new turn is the one to watch: the panel lets go of any pinned one.
           else {
@@ -324,7 +359,9 @@ object ChatScreen {
                 Effect.Batch(Vector(Effect.ToHost(Msg.Send(text)), Effect.ToHost(Msg.Show(None))))
             )
           }
-        case Msg.Send(_) | Msg.Load | Msg.Show(_) | Msg.KeepTheme(_) => (s, Effect.NoOp)
+        case Msg.Send(_) | Msg.Load | Msg.Show(_) | Msg.KeepTheme(_) | Msg.Answer(_, _, _) =>
+          (s, Effect.NoOp)
+        case Msg.Asking(asked) => (s.copy(asking = asked), Effect.NoOp)
         case Msg.Noted(status) => (s.copy(status = status), Effect.NoOp)
         case Msg.Arrived(said, step, summaries) =>
           val since = if (step == s.step) s.stepSince else s.tick
@@ -417,6 +454,24 @@ object ChatScreen {
         case Msg.PanelReader(m) =>
           (s.copy(panelReader = Scroller.update(m, s.panelReader)), Effect.NoOp)
         case Msg.Quit => (s, Effect.Quit)
+      }
+
+    /** `draft` as the answer to the call waiting, sent to the host and the call put away; or,
+      * when it is no answer, what would be, in the status line, the draft kept.
+      */
+    private def answering(s: State, draft: String): (State, Effect[Msg]) =
+      (s.question, answer(draft)) match {
+        case (Some(q), Some(approval)) =>
+          val said = approval match {
+            case Approval.Approved => "approved"
+            case _ => "declined"
+          }
+          (
+            s.copy(editor = s.editor.submitted, answered = Some(q), status = said),
+            Effect.ToHost(Msg.Answer(q.workflow, q.call, approval))
+          )
+        case _ =>
+          (s.copy(status = "answer y to approve, or n and a reason to decline"), Effect.NoOp)
       }
 
     /** A click on transcript block `entry`: on a message, its turn in the panel (the
@@ -560,7 +615,8 @@ object ChatScreen {
           (if (s.thinking && !s.opening)
              s.streaming.fold(Vector(look.thinking(s.tick)))(h => look.streaming(h.text, s.tick)) ++
                s.calling.map(look.calling)
-           else Vector.empty)
+           else Vector.empty) ++
+          s.question.toVector.flatMap(q => look.asking(q.shown))
       )
 
     private def hotkeys: OnInput[Msg] = {
@@ -667,6 +723,7 @@ object ChatScreen {
             Vector(
               s.step match {
                 case _ if s.opening => s" ${Look.Runes.Ward(0)} opening"
+                case Some(_) if s.question.nonEmpty => s" ${Look.Runes.Tool} waiting for you"
                 case Some(step) => s" ${Look.Runes.step(step)} · ${TurnPanel.seconds(s.stepMs)}"
                 case None => s" ${Look.Runes.Idle} idle"
               },

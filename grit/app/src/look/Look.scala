@@ -78,6 +78,26 @@ final case class Look(theme: Theme) {
         StyledText.styled(text.linesIterator.nextOption().getOrElse(""), Style.fg(theme.faint))
     )
 
+  /** A call waiting for the person's answer: what it will do, `shown`, on the slab after
+    * Tiwaz, its rail down every row; then how to answer it.
+    */
+  def asking(shown: String): Vector[Block] = Vector(
+    Block
+      .styled(StyledText.styled(shown, Style.fg(theme.ink)))
+      .beside(
+        StyledText.styled("▌", Style.fg(theme.grit)) ++
+          StyledText.styled(s"${Runes.Tool} ", Style.fg(theme.grit) + Style.Bold),
+        StyledText.styled("▌", Style.fg(theme.grit)) ++ "  "
+      )
+      .copy(ground = Style.bg(theme.slab)),
+    Block.styled(
+      StyledText.styled(
+        "  y approves · n declines, a reason after it · then enter",
+        Style.fg(theme.grit) + Style.Bold
+      )
+    )
+  )
+
   /** The line while the model is writing a call to the tool `name`. */
   def calling(name: String): Block.Text = tool(s"calling $name…")
 

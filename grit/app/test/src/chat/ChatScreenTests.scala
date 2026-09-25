@@ -1,6 +1,7 @@
 package grit.app.chat
 
 import grit.app.look.{Look, Theme}
+import grit.core.approval.Approval
 import grit.core.id.TurnSeq
 import grit.core.message.{Cost, Tokens}
 import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
@@ -420,6 +421,46 @@ object ChatScreenTests extends TestSuite {
       )
       tools(answered) ==> Vector("ᛏ read notes.txt", "ᛏ ← 12 lines")
       said(answered).lastOption ==> Some("▌ᚨ Twelve lines.")
+    }
+
+    test("a call that asks is shown, and y, or n and a reason, answers it through the host") {
+      val q = ChatScreen.Asked(
+        grit.core.id.WorkflowId("c:0"),
+        grit.core.id.ToolCallId("t1"),
+        "Edit notes.txt (1 replacement):\n- draft\n+ final"
+      )
+      val asking = ready
+        .message(
+          Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "edit it", TurnSeq(0))), Some("tool:0:0"))
+        )
+        .message(Msg.Asking(Some(q)))
+      def shows(h: Headless[ChatScreen.State, Msg], text: String) =
+        h.screen.exists(_.contains(text))
+      assert(shows(asking, "Edit notes.txt"), shows(asking, "+ final"), shows(asking, "y approves"))
+      assert(shows(asking, "waiting for you"))
+      def answers(h: Headless[ChatScreen.State, Msg]) = h.effects.collect {
+        case Effect.ToHost(a: Msg.Answer) => a
+      }
+      val enter = Input.Keyboard(Key.Enter)
+      val unclear = typed(asking, "maybe").inputs(enter)
+      answers(unclear) ==> Vector.empty
+      assert(!sends(unclear), shows(unclear, "Edit notes.txt"), shows(unclear, "answer y"))
+      val declined = typed(asking, "n not that file").inputs(enter)
+      answers(declined) ==>
+        Vector(Msg.Answer(q.workflow, q.call, Approval.Declined(Some("not that file"))))
+      assert(!sends(declined), !shows(declined, "Edit notes.txt"))
+      // The host says it is asking until the call moves on; this screen does not ask again.
+      assert(!shows(declined.message(Msg.Asking(Some(q))), "y approves"))
+      answers(typed(asking, "y").inputs(enter)) ==>
+        Vector(Msg.Answer(q.workflow, q.call, Approval.Approved))
+    }
+
+    test("answer: y or yes approves; n or no declines, a reason after; anything else none") {
+      Vector("y", " Yes ", "YES").map(ChatScreen.answer) ==> Vector.fill(3)(Some(Approval.Approved))
+      ChatScreen.answer("n") ==> Some(Approval.Declined(None))
+      ChatScreen.answer("no  use git mv instead ") ==>
+        Some(Approval.Declined(Some("use git mv instead")))
+      Vector("", "yes please", "nope", "sure").map(ChatScreen.answer) ==> Vector.fill(4)(None)
     }
 
     test("the opened turn shows what has been heard: the reasoning, then the text") {

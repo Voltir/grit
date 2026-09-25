@@ -28,6 +28,7 @@ import grit.turn.TurnStream
   *   - `Send` ingests a message and starts its turn, once the engine is open; the reply
   *     arrives by following.
   *   - `Show` pins the panel to a turn, or back to the latest.
+  *   - `Answer` answers a turn's call that asks first, through the inbox; a failure says so.
   *
   * All of it runs on virtual threads and answers through the mailbox, so the screen paints
   * at once and never waits on the database or the model. [[close]] stops following and
@@ -91,6 +92,18 @@ final class ChatHost(
           }
         }
       case ChatScreen.Msg.Show(turn) => pinned = turn
+      case ChatScreen.Msg.Answer(workflow, call, approval) =>
+        background { () =>
+          settled.await()
+          current match {
+            case Some(e) =>
+              e.inbox.answer(workflow, call, approval).left.foreach { error =>
+                mailbox.offer(ChatScreen.Msg.Failed(s"not answered: $error"))
+              }
+            case None =>
+              mailbox.offer(ChatScreen.Msg.Failed("not answered: the engine is not open"))
+          }
+        }
       case ChatScreen.Msg.Send(text) =>
         background { () =>
           settled.await()

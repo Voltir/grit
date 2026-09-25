@@ -54,7 +54,7 @@ object FollowTests extends TestSuite {
       Follow.step(next, entries, all(TurnStatus.Unknown))._2 ==> Vector.empty
     }
 
-    test("a turn's tool loop arrives as one line per exchange, in order") {
+    test("a turn's tool loop arrives as one line per call, with what it came to, in order") {
       def exchange(seq: Long, m: Message) =
         Entry(EntryId(s"x$seq"), c, TurnSeq(0), None, seq, Payload.Exchange(m), Instant.EPOCH)
       val called = Message.Assistant(
@@ -62,7 +62,12 @@ object FollowTests extends TestSuite {
           AssistantBlock.Text("let me look"),
           AssistantBlock
             .ToolCall(grit.core.id.ToolCallId("a"), "read", ujson.Obj("path" -> "x.txt")),
-          AssistantBlock.ToolCall(grit.core.id.ToolCallId("b"), "list", ujson.Obj("depth" -> 2))
+          AssistantBlock.ToolCall(grit.core.id.ToolCallId("b"), "list", ujson.Obj("depth" -> 2)),
+          AssistantBlock.ToolCall(
+            grit.core.id.ToolCallId("s"),
+            "search",
+            ujson.Obj("path" -> "grit/turn", "pattern" -> "Round\\b")
+          )
         ),
         StopReason.ToolUse,
         Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
@@ -73,21 +78,40 @@ object FollowTests extends TestSuite {
         exchange(1, called),
         exchange(2, Message.ToolResult(grit.core.id.ToolCallId("a"), "one\ntwo\nthree", false)),
         exchange(3, Message.ToolResult(grit.core.id.ToolCallId("b"), "No such dir.\nat .", true)),
-        reply(4, 0, "done")
+        exchange(4, Message.ToolResult(grit.core.id.ToolCallId("s"), "a:1: x", false)),
+        reply(5, 0, "done")
       )
       val (_, msgs) = Follow.step(Follow.start, entries, all(TurnStatus.Unknown))
       msgs ==> Vector(
         ChatScreen.Msg.Arrived(
           Vector(
             ChatScreen.Said(ChatScreen.Voice.User, "hi"),
-            ChatScreen.Said(ChatScreen.Voice.Tool, "read x.txt · list"),
-            ChatScreen.Said(ChatScreen.Voice.Tool, "← 3 lines"),
-            ChatScreen.Said(ChatScreen.Voice.Tool, "← No such dir."),
+            ChatScreen.Said(ChatScreen.Voice.Tool, "read x.txt ← 3 lines"),
+            ChatScreen.Said(ChatScreen.Voice.Tool, "list ← No such dir."),
+            ChatScreen.Said(ChatScreen.Voice.Tool, "search \"Round\\b\" grit/turn ← 1 line"),
             ChatScreen.Said(ChatScreen.Voice.Reply, "done")
           ),
           None
         )
       )
+    }
+
+    test("a running turn's call that asks is told once, and put away once it moves on") {
+      val call = grit.core.id.ToolCallId("t1")
+      def at(seq: Long, p: Payload) =
+        Entry(EntryId(s"x$seq"), c, TurnSeq(0), None, seq, p, Instant.EPOCH)
+      val asking = Vector(user(0, 0, "edit it"), at(1, Payload.Ask(call, "Edit a.txt")))
+      val turn = TurnRef(c, TurnSeq(0))
+      val (waiting, first) = Follow.step(Follow.start, asking, all(running("ask:0:0")))
+      first.lastOption ==>
+        Some(ChatScreen.Msg.Asking(Some(ChatScreen.Asked(turn.workflowId, call, "Edit a.txt"))))
+      Follow.step(waiting, asking, all(running("ask:0:0")))._2 ==> Vector.empty
+      val begun = asking :+ at(2, Payload.Attempt(call))
+      Follow.step(waiting, begun, all(running("ask:0:0")))._2.lastOption ==>
+        Some(ChatScreen.Msg.Asking(None))
+      val done = asking :+ at(2, Payload.Exchange(Message.ToolResult(call, "denied", true)))
+      Follow.step(waiting, done, all(running("tool:0:0")))._2.lastOption ==>
+        Some(ChatScreen.Msg.Asking(None))
     }
 
     test("the first look says what it saw, even an empty conversation, and only the first") {

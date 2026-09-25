@@ -1,6 +1,6 @@
 package grit.app.chat
 
-import grit.core.id.TurnRef
+import grit.core.id.{ToolCallId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.store.{Entry, Payload}
 import grit.dbos.engine.Engine
@@ -31,24 +31,49 @@ object Replies {
       None
   }
 
-  /** What `entry` did in its turn's tool loop, as one line of the transcript: the calls a
-    * reply made, each as its tool's name and its first text argument (`read grit/x.scala`),
-    * joined by ` · `; or what a call came to: `← n lines`, or `← ` and an error's first
-    * line. `None` for an entry outside the loop, and for a reply that made no call.
-    */
-  def exchange(entry: Entry): Option[String] = entry.payload match {
-    case Payload.Exchange(Message.Assistant(blocks, _, _, _)) =>
-      val calls = blocks.collect { case AssistantBlock.ToolCall(_, name, arguments) =>
-        val shown = arguments.objOpt.toVector.flatMap(_.values).collectFirst { case ujson.Str(s) =>
-          s
-        }
-        (name +: shown.toVector).mkString(" ")
+  /** Every tool call the replies among `entries` made in their turns' loops, by turn and id. */
+  def calls(entries: Vector[Entry]): Map[(TurnSeq, ToolCallId), AssistantBlock.ToolCall] =
+    entries.flatMap { e =>
+      e.payload match {
+        case Payload.Exchange(Message.Assistant(blocks, _, _, _)) =>
+          blocks.collect { case c: AssistantBlock.ToolCall => (e.turnSeq, c.id) -> c }
+        case _ => Vector.empty
       }
-      Option.when(calls.nonEmpty)(calls.mkString(" · "))
-    case Payload.Exchange(Message.ToolResult(_, content, isError)) =>
+    }.toMap
+
+  /** What a call of a turn's tool loop came to, as one line of the transcript, when `entry`
+    * is its result: the call as [[called]] shows it, found among `calls` ([[Replies.calls]]),
+    * then `← n lines`, or `← ` and an error's first line; the call left out when it is not
+    * among them. `None` for any other entry.
+    */
+  def settled(
+      entry: Entry,
+      calls: Map[(TurnSeq, ToolCallId), AssistantBlock.ToolCall]
+  ): Option[String] = entry.payload match {
+    case Payload.Exchange(Message.ToolResult(id, content, isError)) =>
       val lines = content.linesIterator.toVector
-      if (isError) Some(s"← ${lines.headOption.getOrElse("failed")}")
-      else Some(s"← ${lines.size} ${if (lines.size == 1) "line" else "lines"}")
+      val came =
+        if (isError) s"← ${lines.headOption.getOrElse("failed")}"
+        else s"← ${lines.size} ${if (lines.size == 1) "line" else "lines"}"
+      Some(calls.get((entry.turnSeq, id)).fold(came)(c => s"${called(c)} $came"))
     case _ => None
+  }
+
+  /** `call` as the transcript shows it: its tool's name, then what it acts on. For `search`,
+    * its pattern, quoted, and where; for any other tool, its `path`, else its `command`, else
+    * its first text argument.
+    */
+  def called(call: AssistantBlock.ToolCall): String = {
+    val args = call.arguments.objOpt.map(_.toMap).getOrElse(Map.empty[String, ujson.Value])
+    def text(key: String): Option[String] = args.get(key).flatMap(_.strOpt)
+    val first = call.arguments.objOpt.toVector.flatMap(_.values).collectFirst { case ujson.Str(s) =>
+      s
+    }
+    val on = call.name match {
+      case "search" =>
+        text("pattern").map(p => s"\"$p\"").toVector ++ text("path").toVector
+      case _ => text("path").orElse(text("command")).orElse(first).toVector
+    }
+    (call.name +: on).mkString(" ")
   }
 }

@@ -7,14 +7,15 @@ import grit.dbos.engine.TurnStatus
 import grit.turn.Turn
 
 /** What following a conversation has seen so far: the last entry shown, the step of the
-  * turn in progress (`None` when none was), the turns whose failure has been reported, and
-  * whether it has `looked` at all.
+  * turn in progress (`None` when none was), the turns whose failure has been reported,
+  * whether it has `looked` at all, and the call the turn in progress was `asking` about.
   */
 final case class Follow(
     lastSeq: Long,
     step: Option[String],
     reported: Set[TurnSeq],
-    looked: Boolean = false
+    looked: Boolean = false,
+    asking: Option[ChatScreen.Asked] = None
 ) {
   def thinking: Boolean = step.nonEmpty
 }
@@ -30,7 +31,10 @@ object Follow {
     * is in progress while its user message has no reply and its workflow is running, and
     * the screen is told each step it moves to ([[Turn.running]]), and each summary as it
     * is written. One
-    * that finished with no reply failed, and is reported once, with its outcome.
+    * that finished with no reply failed, and is reported once, with its outcome. While the
+    * turn in progress has asked about a call ([[Payload.Ask]]) that has neither begun nor
+    * come to a result, the screen is told it is asking, and told again when that changes.
+    * A tool call shows once it has a result, on one line with it ([[Replies.settled]]).
     */
   def step(
       state: Follow,
@@ -38,7 +42,8 @@ object Follow {
       status: TurnRef => TurnStatus
   ): (Follow, Vector[ChatScreen.Msg]) = {
     val fresh = entries.filter(_.seq > state.lastSeq)
-    val said = fresh.flatMap(said1)
+    val calls = Replies.calls(entries)
+    val said = fresh.flatMap(said1(_, calls))
     val summaries = fresh.collect { case Entry(_, _, t, _, _, Payload.Summary(text), _) =>
       ChatScreen.Summarised(t, text)
     }
@@ -54,17 +59,36 @@ object Follow {
         (None, Some(t.turnSeq -> outcome))
       case _ => (None, None)
     }
+    val asking = open.filter(_ => step.nonEmpty).flatMap(asked(entries, _))
     val next = Follow(
       fresh.lastOption.fold(state.lastSeq)(_.seq),
       step,
       state.reported ++ failure.map(_._1),
-      looked = true
+      looked = true,
+      asking
     )
     val arrived =
       Option.when(!state.looked || said.nonEmpty || summaries.nonEmpty || step != state.step)(
         ChatScreen.Msg.Arrived(said, step, summaries)
       )
-    (next, arrived.toVector ++ failure.map(f => ChatScreen.Msg.Failed(f._2)))
+    val ask = Option.when(asking != state.asking)(ChatScreen.Msg.Asking(asking))
+    (next, arrived.toVector ++ ask.toVector ++ failure.map(f => ChatScreen.Msg.Failed(f._2)))
+  }
+
+  /** The first call `turn` asked about, among `entries`, that has neither begun nor a result. */
+  private def asked(entries: Vector[Entry], turn: TurnRef): Option[ChatScreen.Asked] = {
+    val own = entries.filter(_.turnSeq == turn.turnSeq)
+    val moved = own.flatMap {
+      _.payload match {
+        case Payload.Exchange(Message.ToolResult(call, _, _)) => Some(call)
+        case Payload.Attempt(call) => Some(call)
+        case _ => None
+      }
+    }.toSet
+    own.collectFirst {
+      case Entry(_, _, _, _, _, Payload.Ask(call, shown), _) if !moved.contains(call) =>
+        ChatScreen.Asked(turn.workflowId, call, shown)
+    }
   }
 
   private def isUser(e: Entry): Boolean = e.payload match {
@@ -77,11 +101,14 @@ object Follow {
     case _ => false
   }
 
-  private def said1(e: Entry): Option[ChatScreen.Said] = {
+  private def said1(
+      e: Entry,
+      calls: Map[(TurnSeq, grit.core.id.ToolCallId), grit.core.message.AssistantBlock.ToolCall]
+  ): Option[ChatScreen.Said] = {
     val voice = if (isUser(e)) ChatScreen.Voice.User else ChatScreen.Voice.Reply
     Replies
       .text(e)
       .map(ChatScreen.Said(voice, _, e.turnSeq))
-      .orElse(Replies.exchange(e).map(ChatScreen.Said(ChatScreen.Voice.Tool, _, e.turnSeq)))
+      .orElse(Replies.settled(e, calls).map(ChatScreen.Said(ChatScreen.Voice.Tool, _, e.turnSeq)))
   }
 }
