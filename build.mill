@@ -139,6 +139,15 @@ object grit extends Module {
     object test extends GritTests
   }
 
+  /* The local host: grit.core.host's Workspace, Edits and Shell over this machine's files
+   * and processes, in a checkout. The only module that starts a process (enola-intent.yaml). */
+  object host extends GritModule {
+    def moduleDeps = Seq(core)
+
+    /* Against a temporary directory, and `sh` for the shell. */
+    object test extends GritTests
+  }
+
   /* Assembly: builds each turn's context window from memory.
    * roadmap/mechanisms/assembly.md. */
   object assembly extends GritModule {

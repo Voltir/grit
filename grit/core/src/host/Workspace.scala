@@ -16,8 +16,8 @@ trait Workspace extends caps.SharedCapability {
 
   /** The entries under the directory `dir`, `depth` levels down (1: its own entries; below
     * 1 reads as 1), one per line as paths relative to `dir`, sorted, a directory's with a
-    * final `/`. A directory [[Workspace.skipped]] is listed but not entered. Clipped from
-    * the head, the hint saying how many entries were left out. Fails when `dir` is missing
+    * final `/`; `(empty)` when there are none. A directory [[Workspace.skipped]] is listed
+    * but not entered, and a link is not followed. Clipped from the head, the hint saying how many entries were left out. Fails when `dir` is missing
     * or a file.
     */
   def list(dir: RelPath, depth: Int): Either[HostError, Clipped]
@@ -25,8 +25,8 @@ trait Workspace extends caps.SharedCapability {
   /** Every line matching the regular expression `pattern` (`java.util.regex`, found
     * anywhere in the line) in the files under `under`, or in `under` when it is a file:
     * `path:line: text`, paths relative to the root in sorted order, lines counting from 1,
-    * a line's text cut at [[Workspace.MaxLineChars]] characters. Skips secrets files, the
-    * directories [[Workspace.skipped]], files over [[Workspace.MaxFileBytes]] and files
+    * a line's text cut at [[Workspace.MaxLineChars]] characters. Skips secrets files, links,
+    * the directories [[Workspace.skipped]], files over [[Workspace.MaxFileBytes]] and files
     * that are not UTF-8. "No matches." when nothing matches. Clipped from the head, the hint
     * saying how many matching lines were left out. Fails on a pattern that does not compile
     * or an `under` that is missing.

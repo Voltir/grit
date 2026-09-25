@@ -1,8 +1,8 @@
 # grit's architecture law, checked by `bash scripts/enola-law.sh`.
 #
 # It enforces two things:
-#   1. Only grit.dbos may import dev.dbos.*, JDBC or the Postgres driver, and only
-#      grit.models the JDK HTTP client (STYLE rule 8)
+#   1. Only grit.dbos may import dev.dbos.*, JDBC or the Postgres driver, only
+#      grit.models the JDK HTTP client, and only grit.host may start a process (STYLE rule 8)
 #   2. grit.tui's four groups import in one direction (grit/tui/CLAUDE.md)
 #   3. grit.prose names no other grit module (grit/prose/README.md)
 #
@@ -28,12 +28,17 @@ components:
   # grit.dbos, and Mill's moduleDeps are transitive, so these rules are the only guard there.
   - name: outside-dbos
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**"]
 
   # Every module except grit.models, for the HTTP quarantine (STYLE rule 8).
   - name: outside-models
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**"]
+
+  # Every module except grit.host, for the process quarantine (STYLE rule 8).
+  - name: outside-host
+    kind: dependency
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/tools/**"]
 
   # The tui groups, for the direction rules. `runtime` needs no entry: it may import
   # every group.
@@ -185,6 +190,33 @@ rules:
     pattern: "* -> java.net.http.HttpResponse"
     mode: strict
     because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models, where model calls leave the machine"
+
+  # -------------------------------------------------------------------------------------
+  # 1d. Only grit.host starts a process: a command runs on the machine, and running things
+  # on the machine is grit.host's job, behind grit.core.host.Shell.
+  #
+  # java.lang needs no import, so these rules see only an import written out: grit.host
+  # writes `import java.lang.ProcessBuilder` for that reason. scripts/enola-law.sh also
+  # greps the sources for a process started without one. A wildcard import of
+  # scala.sys.process is the edge `scala.sys.process`.
+  # -------------------------------------------------------------------------------------
+  - id: only-host-imports-process-builder
+    forbid_name: outside-host
+    pattern: "* -> java.lang.ProcessBuilder"
+    mode: strict
+    because: "STYLE rule 8: starting a process is quarantined to grit.host"
+
+  - id: only-host-imports-sys-process
+    forbid_name: outside-host
+    pattern: "* -> scala.sys.process"
+    mode: strict
+    because: "STYLE rule 8: starting a process is quarantined to grit.host"
+
+  - id: only-host-imports-sys-process-process
+    forbid_name: outside-host
+    pattern: "* -> scala.sys.process.Process"
+    mode: strict
+    because: "STYLE rule 8: starting a process is quarantined to grit.host"
 
   # -------------------------------------------------------------------------------------
   # 2. grit.tui's import direction: each group lists what it may import.

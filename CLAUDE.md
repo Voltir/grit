@@ -36,6 +36,7 @@ Mill modules, and what each may name:
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo` is the target of every `scripts/tui-gate` scenario but `chat` and `reload`, which drive `grit.app` |
 | `grit.turn` | `grit.turn` | core | the durable turn's body, written against `Durable` |
 | `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); `Classifier`s: `JevClassifier` |
+| `grit.host` | `grit.host` | core | the local host: `LocalWorkspace`, `LocalEdits`, `LocalShell` (`grit.core.host`'s capabilities over this machine's files and processes); the only module that starts a process |
 | `grit.assembly` | `grit.assembly.{estimate,linear,retrieval}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`grit/assembly/README.md`](grit/assembly/README.md) |
 | `grit.eval` | `grit.eval` | core, dbos, assembly, models | the assembly eval, test sources only: every assembler over labelled cases in a throwaway Postgres; a report, not a gate |
 | `grit.app` | `grit.app.{config,look,chat,main}` | everything | the composition root; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), or a one-shot run with arguments; package order in [`grit/app/README.md`](grit/app/README.md) |
@@ -69,7 +70,8 @@ capability is a promise of purity.**
 8. **Java libraries are quarantined by role.** Each lives only in the module whose job
    needs it, translated into grit's conventions there; such modules depend only on core and
    meet only in `grit.app`. Nothing outside `grit.dbos` imports `dev.dbos.*` or `java.sql.*`,
-   and nothing outside `grit.models` imports `java.net.http.*`.
+   nothing outside `grit.models` imports `java.net.http.*`, and nothing outside `grit.host`
+   starts a process.
 9. Explicit capability parameters over clever inference.
 10. **The elision test** — if assembly dropped the body and kept only the signature and
     its doc, could a competent agent still call it correctly? If not, fix the signature.

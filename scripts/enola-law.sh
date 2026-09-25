@@ -36,15 +36,28 @@ fi
 # TRAP: enola has no package pattern, so rule 8 is one rule per class. A class a
 # quarantine module starts importing without a matching rule may then be imported
 # anywhere, and nothing says so. Every quarantined class grit.dbos (DBOS, JDBC, the
-# driver) or grit.models (java.net.http) imports must be named by a rule.
+# driver), grit.models (java.net.http) or grit.host (processes) imports must be named by a
+# rule.
 unruled=$( { grep -oE '"name":"grit/dbos/src(/[a-z]+)* -\\u003e (dev\.dbos|java\.sql|javax\.sql|org\.postgresql)\.[^"]*"' .enola/facts.jsonl
-    grep -oE '"name":"grit/models/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl; } |
+    grep -oE '"name":"grit/models/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
+    grep -oE '"name":"grit/host/src(/[a-z]+)* -\\u003e (java\.lang\.Process|scala\.sys\.process)[^"]*"' .enola/facts.jsonl; } |
   sed -E 's/.*u003e ([^"]*)"/\1/' | sort -u | while read -r class; do
     grep -qF "\"* -> $class\"" enola-intent.yaml || echo "$class"
   done)
 if [ -n "$unruled" ]; then
   echo "A quarantine module imports classes that no rule in enola-intent.yaml names:" >&2
   printf '  %s\n' $unruled >&2
+  exit 1
+fi
+
+# TRAP: java.lang needs no import, so a process started with `new ProcessBuilder` or
+# `Runtime.getRuntime.exec` makes no import edge, and rule 1d cannot see it. Grep for it.
+# grit.tui's clipboard (clip.exe, in wire/term) predates grit.host and is the one exception.
+started=$(grep -rlE 'ProcessBuilder|sys\.process|getRuntime\.exec|ProcessHandle' --include='*.scala' grit/*/src |
+  grep -vE '^grit/host/src/|^grit/tui/src/wire/term/SystemTerminal\.scala$' || true)
+if [ -n "$started" ]; then
+  echo "Only grit.host may start a process; these sources name a process API:" >&2
+  printf '  %s\n' $started >&2
   exit 1
 fi
 
