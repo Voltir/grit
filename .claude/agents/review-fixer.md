@@ -60,5 +60,6 @@ deleted because a type now says them.
 ## Report
 
 Under the length the brief sets (default ~25 lines): branch, worktree, head commit(s), test
-count, the elision table as built (anything that ended up needing a body read), what the
-reviewer should check first, and Parked.
+count, the elision table as built (anything that ended up needing a body read), the
+standards and guarantees your change touched and how each holds, what the reviewer should
+check first, and Parked.
