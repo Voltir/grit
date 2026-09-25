@@ -23,7 +23,8 @@ import grit.core.provider.{Delta, ProviderError}
 object OpenRouterStream {
 
   /** The response body the SSE `lines` add up to, telling `onDelta` each piece of text and
-    * reasoning as it is read; or why they add up to none.
+    * reasoning as it is read, and each tool call once its name has arrived; or why they add
+    * up to none.
     */
   def fold(lines: Iterator[String], onDelta: Delta => Unit): Either[ProviderError, ujson.Value] = {
     val content = new StringBuilder
@@ -80,7 +81,7 @@ object OpenRouterStream {
                       .flatMap(_.arrOpt)
                       .getOrElse(Seq.empty)
                       .flatMap(_.objOpt)
-                      .foreach(c => mergeCall(calls, c))
+                      .foreach(c => mergeCall(calls, c).foreach(n => onDelta(Delta.Calling(n))))
                     delta.get("content").flatMap(_.strOpt).filter(_.nonEmpty).foreach { text =>
                       content ++= text
                       onDelta(Delta.Text(text))
@@ -128,11 +129,16 @@ object OpenRouterStream {
   }
 
   /** `piece` of a tool call merged into the call at its index: more of its
-    * `function.arguments` appended, any other field the first piece to name it sets.
+    * `function.arguments` appended, any other field the first piece to name it sets. The
+    * call's name, when this piece is the one that set it.
     */
-  private def mergeCall(calls: mutable.LinkedHashMap[Int, ujson.Obj], piece: ujson.Obj): Unit = {
+  private def mergeCall(
+      calls: mutable.LinkedHashMap[Int, ujson.Obj],
+      piece: ujson.Obj
+  ): Option[String] = {
     val index = piece.value.get("index").flatMap(_.numOpt).fold(calls.size)(_.toInt)
     val call = calls.getOrElseUpdate(index, ujson.Obj())
+    var named: Option[String] = None
     piece.value.foreach {
       case ("index", _) => ()
       case ("function", f: ujson.Obj) =>
@@ -145,10 +151,15 @@ object OpenRouterStream {
         f.value.foreach {
           case ("arguments", ujson.Str(more)) =>
             function("arguments") = function.get("arguments").flatMap(_.strOpt).getOrElse("") + more
-          case (key, value) => if (!function.contains(key)) function(key) = value
+          case (key, value) =>
+            if (!function.contains(key)) {
+              function(key) = value
+              if (key == "name") named = value.strOpt
+            }
         }
       case (key, value) => if (!call.value.contains(key)) call(key) = value
     }
+    named
   }
 
   private def describe(error: collection.Map[String, ujson.Value]): String =

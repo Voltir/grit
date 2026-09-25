@@ -12,7 +12,8 @@ trait Provider extends caps.SharedCapability {
 
   /** As [[complete]], telling `onDelta` each piece of the response as it is generated, in
     * order; the result is the whole response, as [[complete]] returns it. A provider that
-    * cannot stream tells `onDelta` the whole reasoning and text at once, when complete.
+    * cannot stream tells `onDelta` the whole reasoning, text and each call, in the
+    * response's order, when complete.
     */
   def stream(
       request: ModelRequest,
@@ -23,6 +24,7 @@ trait Provider extends caps.SharedCapability {
       m.blocks.foreach {
         case AssistantBlock.Reasoning(text, _) if text.nonEmpty => onDelta(Delta.Reasoning(text))
         case AssistantBlock.Text(text) if text.nonEmpty => onDelta(Delta.Text(text))
+        case AssistantBlock.ToolCall(_, name, _) => onDelta(Delta.Calling(name))
         case _ => ()
       }
     }
@@ -38,6 +40,11 @@ enum Delta {
 
   /** More of the model's reasoning, before or between its text. */
   case Reasoning(text: String)
+
+  /** The model has begun a call of the tool `name`, as it sent the name (possibly no
+    * offered tool's); the call's arguments may still be generating. Once per call.
+    */
+  case Calling(name: String)
 }
 
 /** A model call's input: the system prompt, then `messages` in order, and the `tools` the

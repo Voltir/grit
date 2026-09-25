@@ -38,9 +38,11 @@ object StreamingProbe {
     val start = System.nanoTime()
     val streamed = provider.stream(
       asked,
-      { case Delta.Text(_) | Delta.Reasoning(_) =>
-        if (first < 0) first = (System.nanoTime() - start) / 1000000
-        pieces += 1
+      {
+        case Delta.Text(_) | Delta.Reasoning(_) =>
+          if (first < 0) first = (System.nanoTime() - start) / 1000000
+          pieces += 1
+        case Delta.Calling(_) => ()
       }
     )
     val total = (System.nanoTime() - start) / 1000000

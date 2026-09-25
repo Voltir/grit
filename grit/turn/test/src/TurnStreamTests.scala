@@ -50,6 +50,25 @@ object TurnStreamTests extends TestSuite {
       out.pieces.map(decode).lastOption ==> Some(Right(Piece("a", Delta.Text("end"))))
     }
 
+    test("a call is written at once, after what was gathered before it, and read back") {
+      val out = new Kept
+      val w = new Writer(out, "a", () => 0L)
+      w.tell(Delta.Text("Let me look."))
+      w.tell(Delta.Calling("read"))
+      w.tell(Delta.Calling("list"))
+      out.pieces.map(decode) ==> Vector(
+        Right(Piece("a", Delta.Text("Let me look."))),
+        Right(Piece("a", Delta.Calling("read"))),
+        Right(Piece("a", Delta.Calling("list")))
+      )
+      val heard = Vector(
+        Piece("a", Delta.Calling("stale")),
+        Piece("b", Delta.Text("Let me look.")),
+        Piece("b", Delta.Calling("read"))
+      ).foldLeft(Heard.nothing)(_ + _)
+      heard ==> Heard(Some("b"), "", "Let me look.", Vector("read"))
+    }
+
     test("a reader keeps the latest attempt: a new one starts over") {
       val heard = Vector(
         Piece("a", Delta.Reasoning("hm")),
@@ -57,7 +76,7 @@ object TurnStreamTests extends TestSuite {
         Piece("b", Delta.Text("The Elder")),
         Piece("b", Delta.Text(" Futhark"))
       ).foldLeft(Heard.nothing)(_ + _)
-      heard ==> Heard(Some("b"), "", "The Elder Futhark")
+      heard ==> Heard(Some("b"), "", "The Elder Futhark", Vector())
     }
   }
 }
