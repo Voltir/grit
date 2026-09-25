@@ -1,10 +1,13 @@
 package grit.core.durable
 
+import grit.core.durable.InMemoryDurable.Outcome
 import grit.core.id.WorkflowId
 
 /** A recorded workflow history, as a fixture keeps it: which workflow, which run, under
   * which epoch, and its steps in order. Written by a recorder over [[InMemoryDurable]] or
-  * captured from Postgres (`scripts/capture-history.sh`); both write this one shape.
+  * captured from Postgres (`scripts/capture-history.sh`); both write this one shape. A
+  * step's JSON has its `output`, or its `error`: the message, `null` for an exception
+  * without one; a patch marker has neither.
   */
 final case class History(
     workflow: String,
@@ -23,10 +26,13 @@ object History {
       "epoch" -> h.epoch,
       "source" -> h.source,
       "steps" -> ujson.Arr.from(h.steps.map { s =>
-        val fields = Vector("name" -> ujson.Str(s.name)) ++
-          s.output.map(o => "output" -> ujson.Str(o)) ++
-          s.error.map(e => "error" -> ujson.Str(e))
-        ujson.Obj.from(fields)
+        val outcome = s.outcome match {
+          case Outcome.Output(value) => Vector("output" -> ujson.Str(value))
+          case Outcome.Threw(message) =>
+            Vector("error" -> message.fold[ujson.Value](ujson.Null)(ujson.Str(_)))
+          case Outcome.Marker => Vector.empty
+        }
+        ujson.Obj.from(("name" -> ujson.Str(s.name)) +: outcome)
       })
     )
 
@@ -46,11 +52,15 @@ object History {
             done <- acc
             so <- s.objOpt.toRight("expected a step object")
             name <- str(so, "name")
-          } yield done :+ InMemoryDurable.Step(
-            name,
-            so.get("output").flatMap(_.strOpt),
-            so.get("error").flatMap(_.strOpt)
-          )
+            outcome <- (so.get("output"), so.get("error")) match {
+              case (Some(ujson.Str(value)), None) => Right(Outcome.Output(value))
+              case (None, Some(ujson.Str(message))) => Right(Outcome.Threw(Some(message)))
+              case (None, Some(ujson.Null)) => Right(Outcome.Threw(None))
+              case (None, None) => Right(Outcome.Marker)
+              case _ =>
+                Left(s"step '$name': expected a string 'output', a string or null 'error', or neither")
+            }
+          } yield done :+ InMemoryDurable.Step(name, outcome)
         }
     } yield History(workflow, WorkflowId(id), epoch, source, steps)
   }

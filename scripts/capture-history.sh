@@ -18,7 +18,8 @@ psql=${PSQL:-docker compose exec -T postgres psql -U grit -d grit}
 
 # DBOS stores a step's output through its own serializer: a grit step's String output
 # arrives as a JSON string literal, which `#>> '{}'` unwraps. An error is a WireThrowable
-# JSON object; its message is what a replay rethrows. A patch marker has neither.
+# JSON object; its message is what a replay rethrows, kept as JSON null when the exception
+# had none, so the step still reads as an error. A patch marker has neither.
 query=$(cat <<SQL
 SELECT jsonb_pretty(jsonb_build_object(
   'workflow', w.name,
@@ -26,10 +27,11 @@ SELECT jsonb_pretty(jsonb_build_object(
   'epoch', w.application_version,
   'source', 'captured',
   'steps', coalesce((
-    SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
-             'name', o.function_name,
-             'output', o.output::jsonb #>> '{}',
-             'error', o.error::jsonb ->> 'message'))
+    SELECT jsonb_agg(jsonb_build_object('name', o.function_name)
+             || CASE WHEN o.output IS NULL THEN '{}'::jsonb
+                     ELSE jsonb_build_object('output', o.output::jsonb #>> '{}') END
+             || CASE WHEN o.error IS NULL THEN '{}'::jsonb
+                     ELSE jsonb_build_object('error', o.error::jsonb -> 'message') END
            ORDER BY o.function_id)
     FROM dbos.operation_outputs o WHERE o.workflow_uuid = w.workflow_uuid), '[]'::jsonb)))
 FROM dbos.workflow_status w WHERE w.workflow_uuid = :'id'

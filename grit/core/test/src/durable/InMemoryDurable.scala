@@ -79,9 +79,11 @@ final class InMemoryDurable {
   /** The journal of `id`, in the form a history fixture keeps. */
   def history(id: WorkflowId): Vector[Step] =
     journals.getOrElse(id, Vector.empty).map {
-      case (name, Recorded.Output(value)) => Step(name, Some(value), None)
-      case (name, Recorded.Threw(error)) => Step(name, None, Some(String.valueOf(error.getMessage)))
-      case (name, Recorded.Marker) => Step(name, None, None)
+      case (name, Recorded.Output(value)) => Step(name, Outcome.Output(value))
+      case (name, Recorded.Threw(recorded: RecordedError)) =>
+        Step(name, Outcome.Threw(recorded.message))
+      case (name, Recorded.Threw(error)) => Step(name, Outcome.Threw(Option(error.getMessage)))
+      case (name, Recorded.Marker) => Step(name, Outcome.Marker)
     }
 
   /** Runs `body` as a resumption of a workflow that recorded `steps`, as the current build
@@ -93,9 +95,9 @@ final class InMemoryDurable {
       body: WorkflowId => Durable^ ?=> String
   ): Either[String, String] = {
     val seeded = steps.map {
-      case Step(name, Some(output), _) => name -> Recorded.Output(output)
-      case Step(name, None, Some(error)) => name -> Recorded.Threw(new RecordedError(error))
-      case Step(name, None, None) => name -> Recorded.Marker
+      case Step(name, Outcome.Output(value)) => name -> Recorded.Output(value)
+      case Step(name, Outcome.Threw(message)) => name -> Recorded.Threw(new RecordedError(message))
+      case Step(name, Outcome.Marker) => name -> Recorded.Marker
     }
     journals = journals.updated(id, seeded)
     outputs = outputs.removed(id)
@@ -197,10 +199,23 @@ final class InMemoryDurable {
 
 object InMemoryDurable {
 
-  /** One recorded step: its name, and its output, its error's message, or neither for a
-    * patch marker.
-    */
-  final case class Step(name: String, output: Option[String], error: Option[String])
+  /** One recorded step, by name. */
+  final case class Step(name: String, outcome: Outcome)
+
+  /** What a recorded step came to. */
+  enum Outcome {
+
+    /** It returned; its encoded output. */
+    case Output(value: String)
+
+    /** It threw an exception with this message, which DBOS records as absent when the
+      * exception had none.
+      */
+    case Threw(message: Option[String])
+
+    /** A patch marker (`patch`), which records neither. */
+    case Marker
+  }
 
   /** DBOS's step name for the patch `name` (`DBOSExecutor.patch`). */
   def patchMarker(name: String): String = s"DBOS.patch-$name"
@@ -209,7 +224,8 @@ object InMemoryDurable {
   final class Crash extends RuntimeException("simulated crash")
 
   /** A recorded step's error, rethrown on replay of a loaded history. */
-  final class RecordedError(message: String) extends RuntimeException(message)
+  final class RecordedError(val message: Option[String])
+      extends RuntimeException(message.getOrElse("(no message)"))
 
   /** A stream write made outside a step body, which DBOS records as an operation of its
     * own (`DBOSExecutor.writeStream`).

@@ -1,5 +1,6 @@
 package grit.core.durable
 
+import grit.core.durable.InMemoryDurable.{Outcome, Step}
 import grit.core.id.WorkflowId
 
 import utest.*
@@ -167,22 +168,22 @@ object DurableTests extends TestSuite {
     }
 
     test("replay: a body that follows the history passes") {
-      val history = Vector(InMemoryDurable.Step("a", Some("a"), None))
+      val history = Vector(Step("a", Outcome.Output("a")))
       new InMemoryDurable().replay(id, history)(_ => twoSteps(new Counts)) ==> Right("ab")
     }
 
     test("replay: a renamed step, an unreadable output, or an early end fails") {
       val counts = new Counts
-      val renamed = Vector(InMemoryDurable.Step("x", Some("x"), None))
+      val renamed = Vector(Step("x", Outcome.Output("x")))
       assert(new InMemoryDurable().replay(id, renamed)(_ => twoSteps(counts)).isLeft)
       def picked(using d: Durable^): String =
         d.step("pick") { () => Picked(Vector("e1")) }(using pickedJournal).ids.mkString
-      val garbage = Vector(InMemoryDurable.Step("pick", Some("not json"), None))
+      val garbage = Vector(Step("pick", Outcome.Output("not json")))
       assert(new InMemoryDurable().replay(id, garbage)(_ => picked).isLeft)
       val longer = Vector(
-        InMemoryDurable.Step("a", Some("a"), None),
-        InMemoryDurable.Step("b", Some("b"), None),
-        InMemoryDurable.Step("c", Some("c"), None)
+        Step("a", Outcome.Output("a")),
+        Step("b", Outcome.Output("b")),
+        Step("c", Outcome.Output("c"))
       )
       new InMemoryDurable().replay(id, longer)(_ => twoSteps(counts)) ==>
         Left("ended after 2 of 3 recorded steps; next was 'c'")
@@ -210,6 +211,41 @@ object DurableTests extends TestSuite {
       e.key ==> "k"
       durable.streamed(id, "k") ==> Vector.empty
       durable.recordedSteps(id) ==> Vector.empty
+    }
+
+    test("replay: a recorded error rethrows without running, with a message or without") {
+      @caps.unsafe.untrackedCaptures
+      var runs = 0
+      def wf(using d: Durable^): String = d.step("boom") { () => runs += 1; "ran" }
+      val said = Vector(Step("boom", Outcome.Threw(Some("boom"))))
+      new InMemoryDurable().replay(id, said)(_ => wf) ==> Right("threw the recorded error: boom")
+      val silent = Vector(Step("boom", Outcome.Threw(None)))
+      assert(new InMemoryDurable().replay(id, silent)(_ => wf).isRight)
+      runs ==> 0
+    }
+
+    test("a step that threw without a message is kept as an error, not as a patch marker") {
+      val durable = new InMemoryDurable
+      def wf(using d: Durable^): String =
+        d.step("boom") { () => throw new IllegalStateException() }
+      assertThrows[IllegalStateException](durable.run(id)(_ => wf))
+      val steps = durable.history(id)
+      steps ==> Vector(Step("boom", Outcome.Threw(None)))
+      val kept = History(id = id, workflow = "wf", epoch = "e", source = "recorded", steps = steps)
+      val json = History.write(kept)
+      json("steps")(0) ==> ujson.Obj("name" -> "boom", "error" -> ujson.Null)
+      History.read(json) ==> Right(kept)
+    }
+
+    test("a history step with both an output and an error is refused") {
+      val both = ujson.Obj(
+        "workflow" -> "wf",
+        "id" -> "c1:1",
+        "epoch" -> "e",
+        "source" -> "captured",
+        "steps" -> ujson.Arr(ujson.Obj("name" -> "s", "output" -> "o", "error" -> "e"))
+      )
+      assert(History.read(both).isLeft)
     }
 
     test("Unit is not a step output") {
