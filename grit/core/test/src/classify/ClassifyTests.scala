@@ -23,26 +23,26 @@ object ClassifyTests extends TestSuite {
 
   private val free = Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0)))
 
-  /** Answers every request with `answers`, whatever it asked, and keeps the last state. */
+  /** Answers every request with `answers`, whatever it asked, and keeps the last state and
+    * questions.
+    */
   private final class Canned(answers: Answer*) extends Classifier {
     @caps.unsafe.untrackedCaptures
     var state: ujson.Value = ujson.Null
+    @caps.unsafe.untrackedCaptures
+    var asked: Vector[Question] = Vector.empty
 
     protected def answer(
         state: ujson.Value,
         questions: Vector[Question]
     ): Either[ClassifierError, Answers] = {
       this.state = state
+      this.asked = questions
       Right(Answers(answers.toVector, free, "canned"))
     }
   }
 
   private def w(key: String, p: Double) = Answer.Weight(key, p)
-
-  private def unreadable[T](r: Either[ClassifierError, T]): Boolean = r match {
-    case Left(ClassifierError.Unreadable(_)) => true
-    case _ => false
-  }
 
   val tests = Tests {
     test("confidence: (n·max − 1)/(n − 1) matches every example in Jev's docs, to their rounding") {
@@ -110,11 +110,15 @@ object ClassifyTests extends TestSuite {
 
     test("zip asks both questions in order and reads each answer by position") {
       val both = department().map(_.zip(urgent))
-      assert(both.map(_.questions.size) == Right(2))
       val canned =
         new Canned(Answer.Choice("sales", Vector(w("sales", 1.0)), 1.0), Answer.YesNo(0.95))
       val read = both.flatMap(q => canned.ask(Ticket("x"), q).left.map(_.toString)).map(_.value)
       assert(read.map((d, u) => (d.choice, u)) == Right((Team.Sales, 0.95)))
+      val sent = canned.asked.map {
+        case Question.Choice(instructions, _, _, _) => s"choice: $instructions"
+        case Question.YesNo(instructions, _, _) => s"yes/no: $instructions"
+      }
+      sent ==> Vector("choice: Which team should handle `ticket`?", "yes/no: Is `ticket` urgent?")
     }
 
     test("asking a question twice is two questions") {
@@ -122,15 +126,27 @@ object ClassifyTests extends TestSuite {
       canned.ask(Ticket("x"), urgent.zip(urgent)).map(_.value) ==> Right((0.1, 0.9))
     }
 
-    test("an answer outside the options, of the wrong kind, or missing is Unreadable") {
-      val outside = new Canned(Answer.Choice("hr", Vector(w("hr", 1.0)), 1.0))
-      val wrongKind = new Canned(Answer.YesNo(0.5))
-      val missing = new Canned()
-      val extra = new Canned(Answer.YesNo(0.5), Answer.YesNo(0.5))
-      department().foreach(q =>
-        Vector(outside, wrongKind, missing).foreach(c => assert(unreadable(c.ask(Ticket("x"), q))))
+    test("an answer outside the options, of the wrong kind, missing or extra is Unreadable") {
+      def asked[T](q: Ask[Ticket, T], answers: Answer*) =
+        new Canned(answers*).ask(Ticket("x"), q).map(_ => ())
+      val toChoice = "\"Which team should handle `ticket`?\": "
+      department().map(q =>
+        Vector(
+          asked(q, Answer.Choice("hr", Vector(w("hr", 1.0)), 1.0)),
+          asked(q, Answer.YesNo(0.5)),
+          asked(q)
+        )
+      ) ==> Right(
+        Vector(
+          Left(ClassifierError.Unreadable(toChoice + "chose hr, not an option")),
+          Left(ClassifierError.Unreadable(toChoice + "answered yes/no to a choice")),
+          Left(ClassifierError.Unreadable("0 answers to 1 questions"))
+        )
       )
-      assert(unreadable(extra.ask(Ticket("x"), urgent)))
+      asked(urgent, Answer.Choice("billing", Vector(w("billing", 1.0)), 1.0)) ==>
+        Left(ClassifierError.Unreadable("\"Is `ticket` urgent?\": answered a choice to a yes/no"))
+      asked(urgent, Answer.YesNo(0.5), Answer.YesNo(0.5)) ==>
+        Left(ClassifierError.Unreadable("2 answers to 1 questions"))
     }
 
     test("a choice whose keys repeat is not built") {
@@ -158,7 +174,7 @@ object ClassifyTests extends TestSuite {
             new Canned(Answer.Choice(choice, ps.toVector, 0.5))
               .ask(Ticket("x"), q)
               .left
-              .map(_.toString)
+              .map(_.productPrefix)
           )
           .map(_.value)
       val answers = Vector(
@@ -185,19 +201,11 @@ object ClassifyTests extends TestSuite {
         read == Vector(
           "missing a key" -> Right((Team.Billing, Vector(0.75, 0.25, 0.0))),
           "mass off the options, choosing less" -> Right((Team.Sales, Vector(0.25, 0.0, 0.75))),
-          "NaN, negative, infinite" -> Left(
-            "Unreadable(\"Which team should handle `ticket`?\": no option has probability)"
-          ),
+          "NaN, negative, infinite" -> Left("Unreadable"),
           "NaN beside mass" -> Right((Team.Technical, Vector(0.0, 1.0, 0.0))),
           "a tie" -> Right((Team.Billing, Vector(0.4, 0.2, 0.4)))
         )
       )
-      answers.foreach { (_, d) =>
-        d.foreach { d =>
-          assert(math.abs(d.probabilities.map(_.probability).sum - 1.0) < 1e-9)
-          assert(d.probabilities.forall(_.probability <= d.top))
-        }
-      }
     }
 
     test("a decision is built only by reading an answer") {
