@@ -249,8 +249,13 @@ object RouteTests extends TestSuite {
     }
 
     test("the caret is placed in the editor's painted box, and a modal hides it") {
+      // Right after the draft as the screen shows it, in the prompt's rows at the bottom.
       val (frame, _) = typed(start(), "hi").painted
-      assert(frame.cursor.exists(p => p.row >= size.rows - 3 && p.col > 0))
+      val lines = frame.surface.lines
+      assert(frame.cursor.exists { p =>
+        p.row >= size.rows - 3 && p.col >= 2 &&
+        lines.lift(p.row).exists(_.slice(p.col - 2, p.col) == "hi")
+      })
       assert(start(S(modal = true)).painted._1.cursor.isEmpty)
     }
 
