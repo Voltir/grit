@@ -6,7 +6,7 @@ import grit.core.approval.Approval
 import grit.core.host.*
 import grit.core.id.ToolCallId
 import grit.core.message.AssistantBlock
-import grit.core.tool.{Bound, Outcome, ToolName}
+import grit.core.tool.{Bound, Outcome, ToolName, Toolbox}
 
 import utest.*
 
@@ -61,6 +61,12 @@ object CodingTests extends TestSuite {
     }
   }
 
+  private def readOnly(host: Scripted^): Toolbox[{host}] =
+    Coding.readOnly(host).fold(d => throw new java.lang.AssertionError(d), identity)
+
+  private def all(host: Scripted^): Toolbox[{host}] =
+    Coding.all(host, host, host).fold(d => throw new java.lang.AssertionError(d), identity)
+
   private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =
     AssistantBlock.ToolCall(ToolCallId("c1"), name, args)
 
@@ -72,7 +78,7 @@ object CodingTests extends TestSuite {
       name: String,
       args: ujson.Value
   ): Either[String, (Option[String], Outcome)] =
-    Coding.all(host, host, host).bind(call(name, args)).left.map(_.message).map {
+    all(host).bind(call(name, args)).left.map(_.message).map {
       case free: Bound.Free => (None, free())
       case gated: Bound.Gated => (Some(gated.ask), gated(Approval.Approved))
     }
@@ -80,13 +86,13 @@ object CodingTests extends TestSuite {
   val tests = Tests {
     test("the tool sets") {
       val host = new Scripted()
-      Coding.readOnly(host).names.map(ToolName.value) ==> Vector("read", "list", "search")
-      Coding.all(host, host, host).names.map(ToolName.value) ==>
+      readOnly(host).names.map(ToolName.value) ==> Vector("read", "list", "search")
+      all(host).names.map(ToolName.value) ==>
         Vector("read", "list", "search", "write", "edit", "run")
     }
 
     test("each call is shown in one line: the tool, then what it acts on") {
-      val box = Coding.all(new Scripted(), new Scripted(), new Scripted())
+      val box = all(new Scripted())
       val calls = Vector(
         "read" -> ujson.Obj("path" -> "src/a.scala", "offset" -> 10),
         "list" -> ujson.Obj(),
@@ -110,15 +116,15 @@ object CodingTests extends TestSuite {
 
     test("under a strict schema every field is required, an optional one nullable") {
       val host = new Scripted()
-      val read = Coding.readOnly(host).schemas(strict = true).find(_.name == "read")
+      val read = readOnly(host).schemas(strict = true).find(_.name == "read")
       read.map(_.parameters("required")) ==> Some(ujson.Arr("path", "offset", "limit"))
       read.map(_.parameters("properties")("offset")("type")) ==>
         Some(ujson.Arr("integer", "null"))
     }
 
     test("descriptions state their limits") {
-      val all = Coding.all(new Scripted(), new Scripted(), new Scripted()).schemas(strict = false)
-      val described = all.map(s => s.name -> s.description).toMap
+      val schemas = all(new Scripted()).schemas(strict = false)
+      val described = schemas.map(s => s.name -> s.description).toMap
       assert(
         described.get("read").exists(_.contains("2000 lines or 50 KB")),
         described.get("run").exists(_.contains("60 seconds when not given")),

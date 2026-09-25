@@ -15,6 +15,7 @@ import grit.core.host.{
 import grit.core.tool.{
   Args,
   ArgsError,
+  DuplicateName,
   Field,
   Gate,
   Outcome,
@@ -51,13 +52,19 @@ object Coding {
     */
   val Preview = 12
 
-  /** `read`, `list` and `search`. */
-  def readOnly(ws: Workspace^): Toolbox[{ws}] =
-    distinct(Toolbox.of(read(ws), list(ws), search(ws)))
+  /** `read`, `list` and `search`; `Left` names a tool offered twice. */
+  def readOnly(ws: Workspace^): Either[DuplicateName, Toolbox[{ws}]] =
+    Toolbox.of(read(ws), list(ws), search(ws))
 
-  /** Every tool: `read`, `list`, `search`, `write`, `edit` and `run`. */
-  def all(ws: Workspace^, edits: Edits^, shell: Shell^): Toolbox[{ws, edits, shell}] =
-    distinct(Toolbox.of(read(ws), list(ws), search(ws), write(edits), edit(edits), run(shell)))
+  /** Every tool: `read`, `list`, `search`, `write`, `edit` and `run`; `Left` names a tool
+    * offered twice.
+    */
+  def all(
+      ws: Workspace^,
+      edits: Edits^,
+      shell: Shell^
+  ): Either[DuplicateName, Toolbox[{ws, edits, shell}]] =
+    Toolbox.of(read(ws), list(ws), search(ws), write(edits), edit(edits), run(shell))
 
   def read(ws: Workspace^): Tool[ReadArgs]^{ws} =
     new Tool(
@@ -292,13 +299,4 @@ object Coding {
     (if (left > 0) kept :+ s"  … ${count(left, "more line")}" else kept).mkString("\n")
   }
 
-  /** The toolbox `made` holds; its names are distinct string literals, checked by
-    * `CodingTests`, so a repeat is a bug in this file, not a failure a caller can meet.
-    */
-  private def distinct[C^](made: Either[grit.core.tool.DuplicateName, Toolbox[C]]): Toolbox[C] =
-    made match {
-      case Right(box) => box
-      case Left(d) =>
-        throw new IllegalStateException(s"Coding offers ${ToolName.value(d.name)} twice")
-    }
 }

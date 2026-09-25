@@ -70,13 +70,10 @@ object TurnLoop {
       */
     case Silent(reply: Message.Assistant)
 
-    /** Settle `calls`, in order, then make the call `round` with tools on. */
-    case Settle(calls: Vector[Pending], round: Round)
-
-    /** Settle `calls`, in order, then make the call `round`, the budget's last, with tools
-      * off.
+    /** Settle `calls`, in order, then make the call `round`, its tools on or off as [[use]]
+      * says.
       */
-    case Last(calls: Vector[Pending], round: Round)
+    case Settle(calls: Vector[Pending], round: Round)
   }
 
   /** What `CutOff` calls are answered: a reply cut off at max tokens may hold a call whose
@@ -91,7 +88,7 @@ object TurnLoop {
     * any reply to the budget's last call (or a later one), answers, or is silent when no
     * text that is not blank is left once its calls are dropped. Otherwise its calls are
     * settled, each run, or each refused with [[CutOff]] when the reply stopped at max
-    * tokens; then the next call is made, with tools off when it is the budget's last.
+    * tokens; then the next call is made.
     */
   def next(budget: Budget, round: Round, reply: Message.Assistant): Next = {
     val calls = reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
@@ -110,8 +107,7 @@ object TurnLoop {
       val pending =
         if (reply.stop == StopReason.MaxTokens) calls.map(Pending.Refused(_, CutOff))
         else calls.map(Pending.Run(_))
-      if (round + 1 == last) Next.Last(pending, round + 1)
-      else Next.Settle(pending, round + 1)
+      Next.Settle(pending, round + 1)
     }
   }
 
@@ -172,12 +168,7 @@ object TurnLoop {
             TurnFailure.Model(s"the reply to ${Round.step(round)} said nothing and called no tool")
           )
         case Next.Settle(calls, after) =>
-          settled(round, reply, calls).flatMap(_ => moves.call(after, ToolUse.Auto)) match {
-            case Left(failure) => Left(failure)
-            case Right(again) => loop(after, again, before :+ reply)
-          }
-        case Next.Last(calls, after) =>
-          settled(round, reply, calls).flatMap(_ => moves.call(after, ToolUse.Off)) match {
+          settled(round, reply, calls).flatMap(_ => moves.call(after, use(budget, after))) match {
             case Left(failure) => Left(failure)
             case Right(again) => loop(after, again, before :+ reply)
           }

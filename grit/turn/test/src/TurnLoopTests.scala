@@ -100,7 +100,7 @@ object TurnLoopTests extends TestSuite {
         (
           round(1),
           calling,
-          Next.Last(Vector(Pending.Run(call("a")), Pending.Run(call("b"))), round(2))
+          Next.Settle(Vector(Pending.Run(call("a")), Pending.Run(call("b"))), round(2))
         ),
         (round(2), reply("done", Vector("a")), Next.Answer(reply("done"))),
         (round(2), calling, Next.Silent(reply(""))),

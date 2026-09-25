@@ -76,7 +76,7 @@ object LiveTurn {
           checkout,
           edits,
           shell,
-          Coding.all(checkout, edits, shell),
+          Coding.all(checkout, edits, shell).fold(d => sys.error(d.toString), identity),
           engine.jot,
           budget,
           strict = false,
@@ -86,7 +86,13 @@ object LiveTurn {
     } else
       launch(
         TurnTooling
-          .ReadOnly(checkout, Coding.readOnly(checkout), engine.jot, budget, strict = false)
+          .ReadOnly(
+            checkout,
+            Coding.readOnly(checkout).fold(d => sys.error(d.toString), identity),
+            engine.jot,
+            budget,
+            strict = false
+          )
       )
   }
 

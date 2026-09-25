@@ -13,6 +13,7 @@ import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.Origin
+import grit.core.tool.{DuplicateName, ToolName}
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
 import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
@@ -114,7 +115,9 @@ object Main {
     val summarizer = announced(tui, "summary", summaryConfig)
     val writer = announced(tui, "query", queryConfig)
 
-    /** `engine` with the turn launched on it: the assembler reads its stores. */
+    /** `engine` with the turn launched on it: the assembler reads its stores. Throws when the
+      * coding tools repeat a name, a fault in `grit.tools` that no setting can cause.
+      */
     def launched(engine: Engine^): Engine^{engine} = {
       val assembler: ContextAssembler^ =
         if (retrieving)
@@ -139,26 +142,25 @@ object Main {
             tooling
           )
         )
-      offered match {
+      val launching = offered match {
         case ToolChoice.Read =>
-          launch(
-            TurnTooling.ReadOnly(checkout, Coding.readOnly(checkout), engine.jot, rounds, strict)
-          )
+          Coding
+            .readOnly(checkout)
+            .map(tools => launch(TurnTooling.ReadOnly(checkout, tools, engine.jot, rounds, strict)))
         case ToolChoice.All =>
           val edits = new LocalEdits(root)
           // The process's own environment, not .env's: a command never needs grit's settings.
           val shell = new LocalShell(root, sys.env)
-          launch(
-            TurnTooling.Full(
-              checkout,
-              edits,
-              shell,
-              Coding.all(checkout, edits, shell),
-              engine.jot,
-              rounds,
-              strict
+          Coding
+            .all(checkout, edits, shell)
+            .map(tools =>
+              launch(TurnTooling.Full(checkout, edits, shell, tools, engine.jot, rounds, strict))
             )
-          )
+      }
+      // Its caller closes the engine and reports the throw: in the chat, as the engine that
+      // could not open.
+      launching.left.foreach { case DuplicateName(name) =>
+        throw new IllegalStateException(s"the coding tools offer ${ToolName.value(name)} twice")
       }
       engine
     }
