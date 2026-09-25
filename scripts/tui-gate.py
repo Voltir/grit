@@ -246,7 +246,17 @@ def main():
         check(bool(final) and "ᛁ idle" in final[rows - 1],
               "the status bar settles on idle")
         payloads = re.findall(r"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\", raw)
-        check(len(payloads) == 0, "no drag, so no clipboard write", "%d" % len(payloads))
+        if scenario == "reload":
+            check(len(payloads) == 0, "no drag, so no clipboard write", "%d" % len(payloads))
+        else:
+            # A drag from the rune of the message to the end of its reply: the copy is
+            # what was written, never a rune or a rail painted beside it.
+            copied = base64.b64decode(payloads[-1]).decode("utf-8", "replace") if payloads else ""
+            check(len(payloads) == 1, "one drag, one clipboard write", "%d" % len(payloads))
+            check("gate says hi" in copied and "stub reply to: gate says hi" in copied,
+                  "the drag copied the message and its reply", repr(copied[:60]))
+            check(not any(ch in copied for ch in "▌ᛗᚨ"),
+                  "and no rune or rail beside them", repr(copied[:60]))
         # The terminal's last column is never written (rule 2), but it must still be
         # coloured: left alone it keeps the terminal's own background, a stripe down the
         # right edge of a screen grounded in the theme's colour.

@@ -34,7 +34,8 @@
 # into the last column, the frame never scrolls.
 #
 #   chat   grit.app itself, with the stub model: a message typed and submitted is painted
-#          with its reply, and the prompt clears. Needs the compose Postgres running.
+#          with its reply, and the prompt clears; a drag over both copies what was
+#          written, never the runes or rails beside it. Needs the compose Postgres running.
 #   reload a second grit.app run in the same conversation paints that exchange with no
 #          input: the transcript is loaded from the store. Runs after `chat`.
 #   columns grit.app wide enough for the turn panel, in a conversation of its own: the
@@ -200,6 +201,10 @@ script_chat() {
   sleep $APP_STARTUP
   printf 'gate says hi'; sleep 0.4
   printf '\r'; sleep 4
+  # Drag from the message's rune (row 3, col 1) to the end of its reply (row 4).
+  printf "%s" "${E}[<0;1;3M"; sleep 0.2
+  printf "%s" "${E}[<32;60;4M"; sleep 0.3
+  printf "%s" "${E}[<0;60;4m"; sleep 0.8
   printf '\021'; sleep 2
 }
 
