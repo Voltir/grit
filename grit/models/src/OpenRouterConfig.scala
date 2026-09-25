@@ -9,9 +9,11 @@ final case class OpenRouterConfig(
     model: String,
     maxTokens: Int,
     endpoint: URI,
-    timeout: Duration
+    timeout: Duration,
+    routing: Routing = Routing.Open
 ) {
-  override def toString: String = s"OpenRouterConfig($model, $maxTokens, $endpoint, <key redacted>)"
+  override def toString: String =
+    s"OpenRouterConfig($model, $maxTokens, $routing, $endpoint, <key redacted>)"
 }
 
 object OpenRouterConfig {
@@ -29,12 +31,22 @@ object OpenRouterConfig {
     case Missing(variable: String)
     case Empty(variable: String)
     case NotPositive(variable: String)
+    case NotUpstreams(variable: String)
+    case NotABoolean(variable: String)
+
+    /** `strict` is `true` but `upstreams` pins nothing. */
+    case StrictUnpinned(strict: String, upstreams: String)
 
     /** Names the variable, never its value. */
     def message: String = this match {
       case Missing(v) => s"$v is not set"
       case Empty(v) => s"$v is empty"
       case NotPositive(v) => s"$v is not a positive whole number"
+      case NotUpstreams(v) =>
+        s"$v is not a comma-separated list of OpenRouter upstream slugs, such as open-inference/fp8"
+      case NotABoolean(v) => s"$v is neither true nor false"
+      case StrictUnpinned(s, u) =>
+        s"$s is true but $u is unset: strict schemas are enforced per upstream, so pin one"
     }
   }
 
@@ -42,6 +54,12 @@ object OpenRouterConfig {
     * The model is the role's variable; unset or blank, the turn uses [[DefaultModel]] and
     * every other role the turn's model. The output budget is the role's `max_tokens` variable,
     * or its default.
+    *
+    * The routing is the role's upstreams variable, a comma-separated list of [[Upstream]]
+    * slugs ([[Routing.Pinned]], in that order), and its strict variable, `true` or `false`
+    * (unset: `false`; `true` needs upstreams). Unset or blank upstreams are
+    * [[Routing.Open]]. A role other than the turn that sets none of its model, upstreams
+    * and strict variables routes as the turn does.
     */
   def fromEnv(env: Map[String, String], role: ModelRole): Either[Invalid, OpenRouterConfig] =
     for {
@@ -52,7 +70,15 @@ object OpenRouterConfig {
         case Some(raw) =>
           raw.trim.toIntOption.filter(_ > 0).toRight(Invalid.NotPositive(role.maxTokensVar))
       }
-    } yield OpenRouterConfig(key, model(env, role), maxTokens, Endpoint, Duration.ofMinutes(5))
+      routing <- routing(env, role)
+    } yield OpenRouterConfig(
+      key,
+      model(env, role),
+      maxTokens,
+      Endpoint,
+      Duration.ofMinutes(5),
+      routing
+    )
 
   private def model(env: Map[String, String], role: ModelRole): String =
     env.get(role.modelVar).filter(_.trim.nonEmpty).getOrElse {
@@ -61,4 +87,30 @@ object OpenRouterConfig {
         case ModelRole.Summary | ModelRole.Query => model(env, ModelRole.Turn)
       }
     }
+
+  private def routing(env: Map[String, String], role: ModelRole): Either[Invalid, Routing] = {
+    def set(variable: String): Option[String] = env.get(variable).map(_.trim).filter(_.nonEmpty)
+    val own = Vector(role.modelVar, role.upstreamsVar, role.strictVar).exists(set(_).isDefined)
+    if (role != ModelRole.Turn && !own) routing(env, ModelRole.Turn)
+    else
+      for {
+        strict <- set(role.strictVar) match {
+          case None | Some("false") => Right(false)
+          case Some("true") => Right(true)
+          case Some(_) => Left(Invalid.NotABoolean(role.strictVar))
+        }
+        upstreams <- set(role.upstreamsVar) match {
+          case None => Right(Vector.empty[Upstream])
+          case Some(list) =>
+            val slugs = list.split(",", -1).toVector.map(s => Upstream.of(s.trim))
+            if (slugs.forall(_.isDefined)) Right(slugs.flatten)
+            else Left(Invalid.NotUpstreams(role.upstreamsVar))
+        }
+        routed <- upstreams match {
+          case first +: rest => Right(Routing.Pinned(first, rest, strict))
+          case _ if strict => Left(Invalid.StrictUnpinned(role.strictVar, role.upstreamsVar))
+          case _ => Right(Routing.Open)
+        }
+      } yield routed
+  }
 }

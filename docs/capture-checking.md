@@ -108,6 +108,15 @@ only a nested `step`.
 **Iterator-producing combinators.** `args.sliding(2).collectFirst { … }` is rejected with
 `Illegal capture reference`. Indexed `Vector` code is the way out.
 
+**A `Vector` field of an object, left to inference.**
+
+- *Symptom:* `value Pairs needs an explicit type because it captures a root capability in
+  its type Vector[(String, String)^{}]{val prefix1: Array[Object^{}]^}`.
+- *Cause:* the inferred type is `Vector`'s refinement, whose internal `prefix1` is an array,
+  which capture checking treats as `Mutable`, so the field would hold a root capability.
+- *Fix:* write the type out: `val Pairs: Vector[(String, String)] = Vector(…)`
+  (`grit.models.ToolStreamProbe`; first met in the tool-decoding probe).
+
 **A tupled lambda over a nested `Vector`.** Under separation checking,
 `turns.zipWithIndex.flatMap((turn, t) => …)` over a `Vector[Vector[A]]` is rejected:
 *"capability `any` cannot flow into capture set {} of value turn"*, with the inferred

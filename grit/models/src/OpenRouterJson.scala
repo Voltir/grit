@@ -9,11 +9,18 @@ import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
   */
 object OpenRouterJson {
 
-  /** The request body for `request` on `model`. A request with tools names them in
-    * `tools`, with `tool_choice` `auto` or `none` (OpenRouter's tool-calling guide: every
-    * request of a tool exchange sends the tools again); one without has neither key.
+  /** The request body for `request` on `model`, served as `routing` says. A request with
+    * tools names them in `tools`, with `tool_choice` `auto` or `none` (OpenRouter's
+    * tool-calling guide: every request of a tool exchange sends the tools again); one
+    * without has neither key. Each tool is sent `strict` as its [[ToolSchema]] says,
+    * whatever `routing` is.
     */
-  def request(model: String, maxTokens: Int, request: ModelRequest): ujson.Value = {
+  def request(
+      model: String,
+      maxTokens: Int,
+      routing: Routing,
+      request: ModelRequest
+  ): ujson.Value = {
     val body = ujson.Obj(
       "model" -> model,
       "max_tokens" -> maxTokens,
@@ -23,6 +30,14 @@ object OpenRouterJson {
         )
       )
     )
+    routing match {
+      case Routing.Open => ()
+      case Routing.Pinned(first, rest, _) =>
+        body("provider") = ujson.Obj(
+          "order" -> ujson.Arr.from((first +: rest).map(Upstream.value)),
+          "allow_fallbacks" -> false
+        )
+    }
     if (request.tools.nonEmpty) {
       body("tools") = ujson.Arr.from(request.tools.map(tool))
       body("tool_choice") = request.use match {
@@ -74,20 +89,20 @@ object OpenRouterJson {
       )
   }
 
-  /** The assistant message in a 200 response, or why there is none. */
+  /** The assistant message in a 200 response, or why there is none: a top-level or a
+    * choice's `error` (an upstream can refuse after the 200) is `model error: …`.
+    */
   def response(body: ujson.Value): Either[ProviderError, Message.Assistant] =
     for {
       root <- body.objOpt.toRight(unreadable("not an object"))
+      _ <- modelError(root)
       choice <- root
         .get("choices")
         .flatMap(_.arrOpt)
         .flatMap(_.headOption)
         .flatMap(_.objOpt)
         .toRight(unreadable("no choices"))
-      _ <- choice.get("error").flatMap(_.objOpt) match {
-        case Some(error) => Left(ProviderError.Unavailable(s"model error: ${describe(error)}"))
-        case None => Right(())
-      }
+      _ <- modelError(choice)
       message <- choice.get("message").flatMap(_.objOpt).toRight(unreadable("no message"))
       blocks <- blockList(message)
     } yield Message.Assistant(
@@ -109,6 +124,12 @@ object OpenRouterJson {
       .getOrElse(body.take(200))
     ProviderError.Unavailable(s"HTTP $status: $detail")
   }
+
+  private def modelError(at: collection.Map[String, ujson.Value]): Either[ProviderError, Unit] =
+    at.get("error").flatMap(_.objOpt) match {
+      case Some(error) => Left(ProviderError.Unavailable(s"model error: ${describe(error)}"))
+      case None => Right(())
+    }
 
   private def describe(error: collection.Map[String, ujson.Value]): String = {
     val message = error.get("message").flatMap(_.strOpt).getOrElse("no message")
@@ -140,19 +161,24 @@ object OpenRouterJson {
             .flatMap(_.objOpt)
             .toRight(unreadable("tool call without a function"))
           name <- f.get("name").flatMap(_.strOpt).toRight(unreadable("tool call without a name"))
-          raw = f.get("arguments").flatMap(_.strOpt).getOrElse("{}")
-        } yield AssistantBlock.ToolCall(
-          ToolCallId(id),
-          name,
-          // A model can send arguments that are not JSON; keep them for the tool to reject.
-          scala.util.Try(ujson.read(raw)).getOrElse(ujson.Str(raw))
-        )
+        } yield AssistantBlock.ToolCall(ToolCallId(id), name, arguments(f.get("arguments")))
       }
     calls
       .foldLeft[Either[ProviderError, Vector[AssistantBlock]]](Right(Vector.empty)) { (acc, c) =>
         acc.flatMap(done => c.map(done :+ _))
       }
       .map(toolCalls => reasoning.toVector ++ text.toVector ++ toolCalls)
+  }
+
+  /** A call's `arguments` as `AssistantBlock.ToolCall` holds them. The wire sends a JSON
+    * string; an upstream that sends the object itself is taken at its word.
+    */
+  private def arguments(sent: Option[ujson.Value]): ujson.Value = sent match {
+    case Some(ujson.Str(raw)) if raw.trim.nonEmpty =>
+      // Not JSON: kept whole, for the loop's reader to refuse and echo.
+      scala.util.Try(ujson.read(raw)).getOrElse(ujson.Str(raw))
+    case Some(o: ujson.Obj) => o
+    case _ => ujson.Obj()
   }
 
   private def stop(reason: Option[String]): StopReason = reason match {

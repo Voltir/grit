@@ -166,5 +166,73 @@ object OpenRouterStreamTests extends TestSuite {
       after.map(_.blocks) ==> Right(Vector(AssistantBlock.Text(s"stub reply to: $said")))
       StubProvider.arguments("no marker") ==> ujson.Obj()
     }
+
+    test("the stub tells its call after its text, as a provider that cannot stream does") {
+      val topic = grit.core.provider.ToolSchema("topic", "d", ujson.Obj())
+      val asked = ModelRequest("s", Vector(grit.core.message.Message.User("hi")), Vector(topic))
+      def told(provider: grit.core.provider.Provider) = {
+        val all = Vector.newBuilder[Delta]
+        val _ = provider.stream(asked, d => all += d)
+        all.result()
+      }
+      val stub = new StubProvider()
+      val plain = new grit.core.provider.Provider {
+        def complete(request: ModelRequest) = stub.complete(request)
+      }
+      told(stub).lastOption ==> Some(Delta.Calling("topic"))
+      told(plain) ==> Vector(Delta.Text("stub calls topic"), Delta.Calling("topic"))
+    }
+
+    test("a captured reply of three calls: each told as it begins, each kept with its id") {
+      // mistralai/mistral-small-3.2-24b-instruct @ mistral/eu, 2026-09-25 (the probe).
+      val (reply, told) = folded(resource("/openrouter-toolcalls-3.sse"))
+      told ==> Vector.fill(3)(Delta.Calling("note"))
+      val calls = reply.map(_.blocks.collect { case c: AssistantBlock.ToolCall => c })
+      calls ==> Right(
+        Vector("RaqByzRpH" -> "eggs", "n4gL8tIpI" -> "flour", "eQ9HPLosw" -> "salt").map {
+          (id, text) =>
+            AssistantBlock.ToolCall(grit.core.id.ToolCallId(id), "note", ujson.Obj("text" -> text))
+        }
+      )
+      reply.map(_.stop) ==> Right(StopReason.ToolUse)
+    }
+
+    test("a call is told once, when its name arrives, between the text around it") {
+      val (_, told) = folded(
+        Vector(
+          chunk("""{"content":"Let me look."}"""),
+          chunk("""{"tool_calls":[{"index":0,"id":"a","type":"function"}]}"""),
+          chunk("""{"tool_calls":[{"index":0,"function":{"name":"read","arguments":""}}]}"""),
+          chunk("""{"tool_calls":[{"index":0,"function":{"name":"read","arguments":"{}"}}]}"""),
+          "data: [DONE]"
+        )
+      )
+      told ==> Vector(Delta.Text("Let me look."), Delta.Calling("read"))
+    }
+
+    test("streamed arguments that are not JSON keep the call, as a string of what was sent") {
+      val (reply, _) = folded(
+        Vector(
+          chunk(
+            """{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"read_file","arguments":""}}]}"""
+          ),
+          chunk("""{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"src/b"}}]}"""),
+          chunk(
+            """{"tool_calls":[{"index":0,"function":{"arguments":"illing/Rates.scala\",\"\"}"}}]}"""
+          ),
+          chunk("""{}""", ""","finish_reason":"tool_calls""""),
+          "data: [DONE]"
+        )
+      )
+      reply.map(_.blocks) ==> Right(
+        Vector(
+          AssistantBlock.ToolCall(
+            grit.core.id.ToolCallId("a"),
+            "read_file",
+            ujson.Str("""{"path":"src/billing/Rates.scala",""}""")
+          )
+        )
+      )
+    }
   }
 }

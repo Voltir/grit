@@ -4,10 +4,11 @@ import grit.core.durable.StreamWriter
 import grit.core.provider.Delta
 
 /** What a turn tells edges while its model answers: the stream [[Key]] of its workflow,
-  * pieces of reasoning and text, each tagged with the attempt at the call-model step that
-  * wrote it. The stream is at least once (ADR 0006): a step cut short by a crash leaves its
-  * pieces, and the rerun writes its own after them, so a reader keeps only the latest
-  * attempt's ([[Heard]]). The recorded reply, not the stream, is the turn's answer.
+  * pieces of reasoning and text, and the name of each tool call as it begins, each tagged
+  * with the attempt at the call-model step that wrote it. The stream is at least once (ADR
+  * 0006): a step cut short by a crash leaves its pieces, and the rerun writes its own after
+  * them, so a reader keeps only the latest attempt's ([[Heard]]). The recorded reply, not
+  * the stream, is the turn's answer.
   */
 object TurnStream {
 
@@ -21,6 +22,7 @@ object TurnStream {
     val (kind, text) = piece.delta match {
       case Delta.Text(t) => ("text", t)
       case Delta.Reasoning(t) => ("reasoning", t)
+      case Delta.Calling(name) => ("calling", name)
     }
     ujson.write(ujson.Obj("attempt" -> piece.attempt, "kind" -> kind, "text" -> text))
   }
@@ -34,14 +36,16 @@ object TurnStream {
         (field("attempt"), field("kind"), field("text")) match {
           case (Some(a), Some("text"), Some(t)) => Right(Piece(a, Delta.Text(t)))
           case (Some(a), Some("reasoning"), Some(t)) => Right(Piece(a, Delta.Reasoning(t)))
+          case (Some(a), Some("calling"), Some(n)) => Right(Piece(a, Delta.Calling(n)))
           case _ => Left(s"not a piece: ${raw.take(80)}")
         }
     }
 
   /** Deltas written to `out` as pieces of `attempt`, gathered so a reply is tens of rows
-    * rather than one per token: a piece is written when the kind changes, when it reaches
-    * [[MaxChars]], or when [[MaxMs]] have passed since the last was written, as `now`
-    * (milliseconds) tells. [[flush]] writes what is left. For one run of one step.
+    * rather than one per token: a piece of text or reasoning is written when the kind
+    * changes, when it reaches [[MaxChars]], or when [[MaxMs]] have passed since the last was
+    * written, as `now` (milliseconds) tells; a call's name is written at once, after what
+    * was gathered before it. [[flush]] writes what is left. For one run of one step.
     */
   final class Writer(out: StreamWriter, attempt: String, now: () => Long) {
 
@@ -73,9 +77,11 @@ object TurnStream {
       since = now()
     }
 
+    /** How far `delta` is from being written: a call is never kept waiting. */
     private def length(delta: Delta): Int = delta match {
       case Delta.Text(t) => t.length
       case Delta.Reasoning(t) => t.length
+      case Delta.Calling(_) => MaxChars
     }
   }
 
@@ -85,20 +91,29 @@ object TurnStream {
   /** How long a piece may grow before it is written. */
   val MaxChars = 200
 
-  /** What an edge has heard of the reply so far: the latest attempt's reasoning and text. */
-  final case class Heard(attempt: Option[String], reasoning: String, text: String) {
+  /** What an edge has heard of the reply so far: the latest attempt's reasoning and text,
+    * and the names of the calls it has begun, in order.
+    */
+  final case class Heard(
+      attempt: Option[String],
+      reasoning: String,
+      text: String,
+      calling: Vector[String]
+  ) {
 
     /** `piece` heard: added to its attempt's, or, from a new attempt, starting over. */
     def +(piece: Piece): Heard = {
-      val base = if (attempt.contains(piece.attempt)) this else Heard(Some(piece.attempt), "", "")
+      val base =
+        if (attempt.contains(piece.attempt)) this else Heard(Some(piece.attempt), "", "", Vector())
       piece.delta match {
         case Delta.Text(t) => base.copy(text = base.text + t)
         case Delta.Reasoning(t) => base.copy(reasoning = base.reasoning + t)
+        case Delta.Calling(name) => base.copy(calling = base.calling :+ name)
       }
     }
   }
 
   object Heard {
-    val nothing: Heard = Heard(None, "", "")
+    val nothing: Heard = Heard(None, "", "", Vector())
   }
 }

@@ -1,0 +1,10 @@
+{
+ "id": "gen-1790363792-pWmkI2RMTttL6R8WSh2q",
+ "error": {
+  "message": "Upstream error from Groq: Tool call validation failed: tool call validation failed: attempted to call tool 'read_file<|channel|>commentary' which was not in request.tools",
+  "code": 502,
+  "metadata": {
+   "error_type": "provider_unavailable"
+  }
+ }
+}

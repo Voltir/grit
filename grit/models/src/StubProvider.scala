@@ -20,7 +20,7 @@ final class StubProvider(delayMs: Long = 0) extends Provider {
     Right(reply(request))
   }
 
-  /** The reply's text word by word, the delay spread across the words. */
+  /** The reply's text word by word, the delay spread across the words, then its call. */
   override def stream(
       request: ModelRequest,
       onDelta: Delta => Unit
@@ -32,6 +32,10 @@ final class StubProvider(delayMs: Long = 0) extends Provider {
     words.foreach { word =>
       if (delayMs > 0) Thread.sleep(delayMs / math.max(1, words.size))
       onDelta(Delta.Text(word))
+    }
+    answer.blocks.foreach {
+      case AssistantBlock.ToolCall(_, name, _) => onDelta(Delta.Calling(name))
+      case _ => ()
     }
     Right(answer)
   }

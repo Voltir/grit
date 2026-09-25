@@ -8,6 +8,9 @@ import utest.*
 
 object OpenRouterJsonTests extends TestSuite {
 
+  private def resource(name: String): ujson.Value =
+    ujson.read(scala.io.Source.fromInputStream(getClass.getResourceAsStream(name)).mkString)
+
   private val replay = ujson.Arr(
     ujson.Obj("type" -> "reasoning.text", "text" -> "thinking", "format" -> "unknown", "index" -> 0)
   )
@@ -46,6 +49,7 @@ object OpenRouterJsonTests extends TestSuite {
       val body = OpenRouterJson.request(
         "openai/gpt-oss-20b",
         512,
+        Routing.Open,
         ModelRequest(
           "be brief",
           Vector(
@@ -84,10 +88,16 @@ object OpenRouterJsonTests extends TestSuite {
         "Say which topic.",
         ujson.Obj("type" -> "object", "properties" -> ujson.Obj())
       )
-      val plain = OpenRouterJson.request("m", 1, ModelRequest("s", Vector(Message.User("hi"))))
+      val plain =
+        OpenRouterJson.request("m", 1, Routing.Open, ModelRequest("s", Vector(Message.User("hi"))))
       assert(!plain.obj.contains("tools"), !plain.obj.contains("tool_choice"))
       val auto =
-        OpenRouterJson.request("m", 1, ModelRequest("s", Vector(Message.User("hi")), Vector(topic)))
+        OpenRouterJson.request(
+          "m",
+          1,
+          Routing.Open,
+          ModelRequest("s", Vector(Message.User("hi")), Vector(topic))
+        )
       auto("tools") ==> ujson.Arr(
         ujson.Obj(
           "type" -> "function",
@@ -102,6 +112,7 @@ object OpenRouterJsonTests extends TestSuite {
       val off = OpenRouterJson.request(
         "m",
         1,
+        Routing.Open,
         ModelRequest("s", Vector(Message.User("hi")), Vector(topic), ToolUse.Off)
       )
       off("tool_choice") ==> ujson.Str("none")
@@ -109,9 +120,54 @@ object OpenRouterJsonTests extends TestSuite {
       val strict = OpenRouterJson.request(
         "m",
         1,
+        Routing.Open,
         ModelRequest("s", Vector(Message.User("hi")), Vector(topic.copy(strict = true)))
       )
       strict("tools")(0)("function")("strict") ==> ujson.True
+    }
+
+    test("request: pinned upstreams go in order, with no fallbacks; open routing sends none") {
+      val asked = ModelRequest("s", Vector(Message.User("hi")))
+      val pinned = for {
+        first <- Upstream.of("open-inference/fp8")
+        second <- Upstream.of("cerebras")
+      } yield Routing.Pinned(first, Vector(second), strict = true)
+      pinned.map(r => OpenRouterJson.request("m", 1, r, asked)("provider")) ==> Some(
+        ujson.Obj(
+          "order" -> ujson.Arr("open-inference/fp8", "cerebras"),
+          "allow_fallbacks" -> false
+        )
+      )
+      assert(!OpenRouterJson.request("m", 1, Routing.Open, asked).obj.contains("provider"))
+    }
+
+    test("request: several calls and their results keep their ids, in order") {
+      val ids = Vector("a", "b", "c").map(ToolCallId(_))
+      val reply = Message.Assistant(
+        ids.map(id => AssistantBlock.ToolCall(id, "note", ujson.Obj("text" -> "x"))),
+        StopReason.ToolUse,
+        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+        "m"
+      )
+      val results = ids.reverse.map(id => Message.ToolResult(id, "ok", isError = false))
+      val sent = OpenRouterJson
+        .request("m", 1, Routing.Open, ModelRequest("s", reply +: results))("messages")
+        .arr
+        .toVector
+      sent(1)("tool_calls").arr.map(_("id").str).toVector ==> Vector("a", "b", "c")
+      sent.drop(2).map(_("tool_call_id").str) ==> Vector("c", "b", "a")
+    }
+
+    test("request: arguments that were not JSON go back as a JSON string of what was sent") {
+      val reply = Message.Assistant(
+        Vector(AssistantBlock.ToolCall(ToolCallId("c"), "f", ujson.Str("{oops"))),
+        StopReason.ToolUse,
+        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+        "m"
+      )
+      val sent = OpenRouterJson.request("m", 1, Routing.Open, ModelRequest("s", Vector(reply)))
+      val arguments = sent("messages")(1)("tool_calls")(0)("function")("arguments").str
+      ujson.read(arguments) ==> ujson.Str("{oops")
     }
 
     test("response: reasoning, text and tool calls, in that order, with usage and cost") {
@@ -131,7 +187,9 @@ object OpenRouterJsonTests extends TestSuite {
 
     test("response: a reply read back and sent again is the same message") {
       val resent = OpenRouterJson.response(sampleResponse).map { reply =>
-        OpenRouterJson.request("m", 1, ModelRequest("s", Vector(reply)))("messages")(1)
+        OpenRouterJson.request("m", 1, Routing.Open, ModelRequest("s", Vector(reply)))("messages")(
+          1
+        )
       }
       resent.map(_("reasoning_details")) ==> Right(replay)
     }
@@ -159,6 +217,56 @@ object OpenRouterJsonTests extends TestSuite {
       )
       OpenRouterJson.response(body).map(_.blocks) ==>
         Right(Vector(AssistantBlock.ToolCall(ToolCallId("c"), "f", ujson.Str("{oops"))))
+    }
+
+    test("response: a captured call whose arguments are not JSON is kept, beside the rest") {
+      // openai/gpt-oss-20b @ coreweave/fp4, 2026-09-25 (the tool-decoding probe).
+      val reply = OpenRouterJson.response(resource("/openrouter-nonjson-arguments.json"))
+      reply.map(_.blocks.collect { case c: AssistantBlock.ToolCall => c }) ==> Right(
+        Vector(
+          AssistantBlock.ToolCall(
+            ToolCallId("chatcmpl-tool-968bde89ce06140f"),
+            "read_file",
+            ujson.Str("""{"path":"src/billing/Rates.scala",""}""")
+          )
+        )
+      )
+      reply.map(_.blocks.collect { case r: AssistantBlock.Reasoning => r.text }) ==>
+        Right(Vector("Check Rates.scala."))
+    }
+
+    test("response: absent or blank arguments are {}; an object sent whole is kept") {
+      def argumentsOf(arguments: Option[ujson.Value]) = {
+        val function = ujson.Obj("name" -> "f")
+        arguments.foreach(a => function("arguments") = a)
+        OpenRouterJson
+          .response(
+            ujson.Obj(
+              "choices" -> ujson.Arr(
+                ujson.Obj(
+                  "message" -> ujson.Obj(
+                    "tool_calls" -> ujson.Arr(ujson.Obj("id" -> "c", "function" -> function))
+                  )
+                )
+              )
+            )
+          )
+          .map(_.blocks.collect { case c: AssistantBlock.ToolCall => c.arguments })
+      }
+      argumentsOf(None) ==> Right(Vector(ujson.Obj()))
+      argumentsOf(Some(ujson.Str(" "))) ==> Right(Vector(ujson.Obj()))
+      argumentsOf(Some(ujson.Obj("a" -> 1))) ==> Right(Vector(ujson.Obj("a" -> 1)))
+    }
+
+    test("response: a captured top-level error in a 200 body is the model's error") {
+      // Groq refusing gpt-oss-20b's leaked tool name, 2026-09-25: no choices, only the error.
+      OpenRouterJson.response(resource("/openrouter-groq-rejected.json")) ==> Left(
+        ProviderError.Unavailable(
+          "model error: Upstream error from Groq: Tool call validation failed: tool call " +
+            "validation failed: attempted to call tool 'read_file<|channel|>commentary' which " +
+            "was not in request.tools (provider_unavailable)"
+        )
+      )
     }
 
     test("response: an error on the choice, or no choice at all, is a ProviderError") {
@@ -221,6 +329,55 @@ object OpenRouterJsonTests extends TestSuite {
           Left(OpenRouterConfig.Invalid.NotPositive("GRIT_SUMMARY_MAX_TOKENS"))
       assert(
         !OpenRouterConfig.Invalid.NotPositive("GRIT_MAX_TOKENS").message.contains("lots")
+      )
+    }
+
+    test("config: upstreams pin a role in order, strict needs them, and unset is open") {
+      val env = Map("OPENROUTER_API_KEY" -> "k")
+      def of(role: ModelRole, extra: (String, String)*) =
+        OpenRouterConfig.fromEnv(env ++ extra, role).map(_.routing)
+      def pinned(strict: Boolean, slugs: String*) =
+        slugs.flatMap(Upstream.of).toVector match {
+          case first +: rest => Routing.Pinned(first, rest, strict)
+          case _ => Routing.Open
+        }
+      of(ModelRole.Turn) ==> Right(Routing.Open)
+      of(ModelRole.Turn, "GRIT_PROVIDER" -> " ", "GRIT_STRICT_TOOLS" -> "false") ==>
+        Right(Routing.Open)
+      of(ModelRole.Turn, "GRIT_PROVIDER" -> "open-inference/fp8, cerebras") ==>
+        Right(pinned(false, "open-inference/fp8", "cerebras"))
+      of(ModelRole.Turn, "GRIT_PROVIDER" -> "coreweave", "GRIT_STRICT_TOOLS" -> "true") ==>
+        Right(pinned(true, "coreweave"))
+      of(ModelRole.Turn, "GRIT_PROVIDER" -> "coreweave", "GRIT_STRICT_TOOLS" -> "true")
+        .map(_.strictTools) ==> Right(true)
+      of(ModelRole.Turn, "GRIT_STRICT_TOOLS" -> "true") ==>
+        Left(OpenRouterConfig.Invalid.StrictUnpinned("GRIT_STRICT_TOOLS", "GRIT_PROVIDER"))
+      of(ModelRole.Turn, "GRIT_STRICT_TOOLS" -> "yes") ==>
+        Left(OpenRouterConfig.Invalid.NotABoolean("GRIT_STRICT_TOOLS"))
+      for (bad <- Seq("a,,b", "a,", "Open-Inference", "a b", "a/b/c", "/fp8"))
+        of(ModelRole.Turn, "GRIT_PROVIDER" -> bad) ==>
+          Left(OpenRouterConfig.Invalid.NotUpstreams("GRIT_PROVIDER"))
+    }
+
+    test("config: a role that names nothing of its own routes as the turn does") {
+      val env = Map(
+        "OPENROUTER_API_KEY" -> "k",
+        "GRIT_PROVIDER" -> "coreweave",
+        "GRIT_STRICT_TOOLS" -> "true"
+      )
+      def of(role: ModelRole, extra: (String, String)*) =
+        OpenRouterConfig.fromEnv(env ++ extra, role).map(_.routing)
+      val turns = of(ModelRole.Turn)
+      of(ModelRole.Summary) ==> turns
+      of(ModelRole.Query) ==> turns
+      of(ModelRole.Summary, "GRIT_SUMMARY_MODEL" -> "small/one") ==> Right(Routing.Open)
+      of(ModelRole.Query, "GRIT_QUERY_PROVIDER" -> "cerebras") ==>
+        Right(Upstream.of("cerebras").fold(Routing.Open)(Routing.Pinned(_, Vector(), false)))
+      of(ModelRole.Summary, "GRIT_SUMMARY_STRICT_TOOLS" -> "true") ==> Left(
+        OpenRouterConfig.Invalid.StrictUnpinned(
+          "GRIT_SUMMARY_STRICT_TOOLS",
+          "GRIT_SUMMARY_PROVIDER"
+        )
       )
     }
   }
