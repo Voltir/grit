@@ -27,10 +27,12 @@ In dependency order:
   conversation, polling its entries and each open turn's status
   (`Follow`, pure), so replies to any turn appear, recovered ones included (ADR 0002);
   `Send` ingests and starts a turn once the engine is open. The panel beside the
-  transcript has two tabs, switched by ctrl-t or a click on a pill: the turn
-  (`TurnView`), and the session so far (`SessionView`: its length, what it was billed,
-  what search recalled, the models in each role), each built purely from what the host
-  read.
+  transcript has three tabs, switched by ctrl-t or a click on a pill: the turn
+  (`TurnView`), the session so far (`SessionView`: its length, what it was billed,
+  what search recalled, the models in each role), and its topics (`TopicsView`: each
+  topic with its messages, the current one marked, and how the shown turn's message was
+  placed: p(same) and its band, the classifier's choice, the model's verdict, a flag when
+  the two disagreed, the heaviest weights), each built purely from what the host read.
   A conversation with nothing in it yet shows the splash in the transcript's place,
   once the host's first look has said so. `Replies` reads replies back out of the store. `Commands` is the one table of slash
   commands: what the palette (`/` in an empty prompt, or ctrl-p) lists, what `/help`

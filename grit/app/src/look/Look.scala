@@ -204,9 +204,12 @@ object Look {
       * summarised. A name grit does not know shows as itself.
       */
     def step(name: String): String = name match {
+      case Step.Classify => "ᛈ placing"
       case Step.Assemble => "ᛟ assembling"
-      case Step.CallModel => "ᚨ answering"
-      case Step.RecordWindow | Step.Append | Step.AppendSummary => "ᛃ recording"
+      case Step.CallModel | Step.CallModelAgain | Step.CallModelPlain => "ᚨ answering"
+      case Step.RecordTopic | Step.RecordWindow | Step.RecordVerdict | Step.Append |
+          Step.AppendSummary =>
+        "ᛃ recording"
       case Step.Summarise => "ᛚ summarising"
       case other => s"$Idle $other"
     }

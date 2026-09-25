@@ -3,6 +3,7 @@ package grit.app.chat
 import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens}
 import grit.core.store.{Entry, Payload, UsageLedger}
+import grit.core.topic.{Placement, TopicEvent}
 
 /** The conversation so far, as the panel's session tab shows it: how long it is, what it
   * cost, what search recalled, and which models answered in each role. Pure data, built by
@@ -44,12 +45,15 @@ object SessionView {
       spent: Option[BigDecimal]
   )
 
-  /** The roles, by what each writes: the query assembly searched with, the reply, and
-    * the turn's summary.
+  /** The roles, by what each writes: the query assembly searched with, the reply, the
+    * turn's summary, the classifier's placement of its message among the topics, and the
+    * main model's verdict on it.
     */
   val Query = "query"
   val Turn = "turn"
   val Summary = "summary"
+  val Classify = "classify"
+  val Verdict = "verdict"
 
   /** The conversation `entries` describe, with `costs`: the ledger rows of its turns, in
     * any order. A row is put to a role by the entry it holds; a row whose entry is not in
@@ -61,11 +65,17 @@ object SessionView {
         case Payload.Query(_) => Some(Query)
         case Payload.Message(Message.Assistant(_, _, _, _)) => Some(Turn)
         case Payload.Summary(_) => Some(Summary)
+        case Payload.Topic(events) =>
+          val asked = events.exists {
+            case TopicEvent.Placed(_, _, _, Placement.Asked(_, _)) => true
+            case _ => false
+          }
+          Some(if (asked) Verdict else Classify)
         case _ => None
       }).map(e.id -> _)
     }.toMap
     val windows = entries.collect { case Entry(_, _, _, _, _, w: Payload.Window, _) => w }
-    val roles = Vector(Turn, Query, Summary).flatMap { name =>
+    val roles = Vector(Turn, Query, Summary, Classify, Verdict).flatMap { name =>
       val rows = costs.filter(r => roleOf.get(r.entry).contains(name))
       Option.when(rows.nonEmpty)(Role(name, rows.map(_.model).distinct, rows.size, spent(rows)))
     }

@@ -209,8 +209,10 @@ object ChatScreenTests extends TestSuite {
       // The lit pill moved with it.
       keyed.painted._1.surface.at(1, pills.indexOf(" session ") + 1).style.bg ==>
         Some(Theme.Default.headerBg)
-      // Ctrl-t again comes round to the turn.
-      keyed.input(Input.Keyboard(Key.Ctrl('t'))).state.tab ==> ChatScreen.Tab.Turn
+      // Ctrl-t again: the topics; and once more comes round to the turn.
+      val topical = keyed.input(Input.Keyboard(Key.Ctrl('t')))
+      topical.state.tab ==> ChatScreen.Tab.Topics
+      topical.input(Input.Keyboard(Key.Ctrl('t'))).state.tab ==> ChatScreen.Tab.Turn
 
       // A click on a pill shows its tab; one on the tab already shown changes nothing.
       val clicked = click(wide, " session ")
@@ -220,6 +222,54 @@ object ChatScreenTests extends TestSuite {
       // A hidden panel is shown by a tab.
       wide.input(Input.Keyboard(Key.Ctrl('b'))).input(Input.Keyboard(Key.Ctrl('t'))).state.panel ==>
         true
+    }
+
+    test("the topics tab: the topics, the current marked, and how the shown turn was placed") {
+      val wide = Headless
+        .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(40, 110))
+        .message(Msg.Opened)
+      val on = click(wide, " topics ")
+      on.state.tab ==> ChatScreen.Tab.Topics
+      assert(on.screen.mkString.contains("reading the conversation"))
+      val view = TopicsView(
+        Vector(
+          TopicsView.Row("Knots", 3, current = true),
+          TopicsView.Row("Rust borrow checker", 1, current = false)
+        ),
+        Some(
+          TopicsView.Placing(
+            turn = TurnSeq(3),
+            first = false,
+            unclassified = None,
+            pSame = Some(0.62),
+            band = Some(grit.core.topic.Band.Uncertain),
+            choice = Vector.empty,
+            verdict = Some(grit.core.topic.Verdict.Earlier("Rust borrow checker")),
+            anomaly = None,
+            weights = Vector("Rust borrow checker" -> 1.0),
+            elsewhere = 0.0,
+            placed = Some("Rust borrow checker"),
+            disagree = true
+          )
+        )
+      )
+      val painted = on.message(Msg.Topics(view))
+      val shown = painted.screen.mkString("\n")
+      assert(
+        shown.contains("TOPICS  · 2 topics"),
+        shown.contains(" ● Knots"),
+        shown.contains("   Rust borrow checker"),
+        shown.contains("TURN 4"),
+        shown.contains("p(same)  0.62 · unsure"),
+        shown.contains("model    earlier: Rust borrow chec…"),
+        shown.contains("⚑ jev and the model disagree"),
+        shown.contains("placed   Rust borrow checker"),
+        shown.contains("1.00")
+      )
+      // The flag is painted in the failure colour.
+      val flagRow = painted.screen.indexWhere(_.contains("⚑"))
+      val flagCol = painted.screen.lift(flagRow).fold(0)(_.indexOf("jev and"))
+      painted.painted._1.surface.at(flagRow, flagCol).style.fg ==> Some(Theme.Default.failure)
     }
 
     test("a click on a message shows its turn, whichever tab the panel was on") {

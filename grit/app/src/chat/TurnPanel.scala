@@ -3,6 +3,7 @@ package grit.app.chat
 import grit.app.look.{Look, ProseLook, Theme}
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
+import grit.core.topic.{Band, Verdict}
 import grit.tui.model.block.Block
 import grit.tui.model.surface.Style
 import grit.tui.model.text.StyledText
@@ -10,7 +11,8 @@ import grit.turn.Turn
 
 /** The turn panel's rows. Its turn tab, for a [[TurnView]]: the steps as a timeline, then
   * the query, the recalled turns, the window as a stacked bar against `budget`, and the
-  * cost. Its session tab, for a [[SessionView]]: the conversation so far. Every row but a
+  * cost. Its session tab, for a [[SessionView]]: the conversation so far. Its topics tab,
+  * for a [[TopicsView]]: the topics, and how one turn's message was placed. Every row but a
   * long model name fits in [[TurnPanel.Cols]] columns, so none wraps.
   */
 final case class TurnPanel(look: Look, budget: Tokens) {
@@ -66,6 +68,82 @@ final case class TurnPanel(look: Look, budget: Tokens) {
           Vector(blank) ++ recalled ++ Vector(blank) ++ roles(v.roles)
     }
 
+  /** The rows of the topics tab for `view`, or a placeholder before the host has read the
+    * conversation: each topic (the current one marked) with its messages, then how the
+    * shown turn's message was placed: p(same) and its band, the classifier's choice, the
+    * model's verdict, a flag when the two disagreed, and the heaviest weights.
+    */
+  def topics(view: Option[TopicsView]): Vector[Block] =
+    view match {
+      case None => Vector(row(" reading the conversation…" -> fg(t.faint)))
+      case Some(v) =>
+        val count = if (v.topics.size == 1) "1 topic" else s"${v.topics.size} topics"
+        val rows =
+          if (v.topics.isEmpty) Vector(row(" none yet" -> fg(t.faint)))
+          else
+            v.topics.map { r =>
+              row(
+                (if (r.current) " ● " else "   ") -> fg(t.grit),
+                clip(r.name, TopicCols).padTo(TopicCols, ' ') -> fg(
+                  if (r.current) t.ink else t.faint
+                ),
+                r.messages.toString.reverse.padTo(4, ' ').reverse -> fg(t.faint)
+              )
+            }
+        Vector(row(" TOPICS" -> (fg(t.ink) + Style.Bold), s"  · $count" -> fg(t.faint)), blank) ++
+          rows ++ v.placing.toVector.flatMap(p => blank +: placing(p))
+    }
+
+  private def placing(p: TopicsView.Placing): Vector[Block] = {
+    def label(l: String): (String, Style) = s" ${l.padTo(9, ' ')}" -> fg(t.faint)
+    def shares(items: Vector[(String, Double)]): Vector[Block] =
+      items.map((n, w) =>
+        row(
+          "   " -> fg(t.faint),
+          clip(n, TopicCols).padTo(TopicCols, ' ') -> fg(t.ink),
+          share(w).reverse.padTo(5, ' ').reverse -> fg(t.ink)
+        )
+      )
+    val band = p.band.map {
+      case Band.Same => "same"
+      case Band.Uncertain => "unsure"
+      case Band.Changed => "changed"
+    }
+    val verdict = p.verdict.map {
+      case Verdict.Current => "current"
+      case Verdict.Earlier(n) => s"earlier: $n"
+      case Verdict.New(n) => n.fold("new")(x => s"new: $x")
+      case Verdict.Unreadable(_) => "unreadable"
+    }
+    Vector(row(s" TURN ${number(p.turn)}" -> (fg(t.ink) + Style.Bold))) ++
+      Option.when(p.first)(row(label("jev"), "first message" -> fg(t.faint))) ++
+      p.unclassified.toVector.flatMap(why =>
+        Vector(
+          row(label("jev"), "unclassified" -> fg(t.ink)),
+          row(s"   ${clip(why, Cols - 5)}" -> fg(t.faint))
+        )
+      ) ++
+      p.pSame.map(ps =>
+        row(label("p(same)"), share(ps) -> fg(t.ink), band.fold("")(b => s" · $b") -> fg(t.faint))
+      ) ++
+      (if (p.choice.isEmpty) Vector.empty
+       else row(label("jev chose")) +: shares(p.choice.take(TopicsView.Weights))) ++
+      verdict.map(v => row(label("model"), clip(v, Cols - 12) -> fg(t.ink))) ++
+      p.anomaly.map(a => row(s"   ${clip(a, Cols - 5)}" -> fg(t.faint))) ++
+      Option.when(p.disagree)(
+        row(" ⚑ jev and the model disagree" -> (fg(t.failure) + Style.Bold))
+      ) ++
+      p.placed.map(n => row(label("placed"), clip(n, Cols - 12) -> fg(t.grit))) ++
+      Vector(row(label("weights"))) ++ shares(p.weights) ++
+      Option.when(p.elsewhere > 0.005)(
+        row(
+          "   " -> fg(t.faint),
+          "elsewhere".padTo(TopicCols, ' ') -> fg(t.faint),
+          share(p.elsewhere).reverse.padTo(5, ' ').reverse -> fg(t.faint)
+        )
+      )
+  }
+
   /** One row for each role that called a model: its calls and cost, then its models. */
   private def roles(roles: Vector[SessionView.Role]): Vector[Block] =
     if (roles.isEmpty) Vector(row(" models   " -> fg(t.faint), "none called yet" -> fg(t.faint)))
@@ -114,13 +192,16 @@ final case class TurnPanel(look: Look, budget: Tokens) {
 
   /** One row per step of the turn: recorded ones with their time and a bar to scale,
     * the running one lit, the rest dim. A finished turn shows only what it recorded: one
-    * that ran before a step existed never had it.
+    * that ran before a step existed never had it, and one whose model was not asked about
+    * its topic never takes the verdict's steps.
     */
   private def steps(v: TurnView, runningMs: Long): Vector[Block] = {
     val longest = math.max(1L, (v.steps.flatMap(_.ms) :+ runningMs).max)
     def bar(ms: Long): Int = math.max(1, math.round(ms.toDouble / longest * BarCells).toInt)
+    // A step only some turns take shows once it is recorded.
     val shown =
-      if (v.running.nonEmpty) Turn.Step.all
+      if (v.running.nonEmpty)
+        Turn.Step.all.filter(n => !Turn.Step.optional.contains(n) || v.steps.exists(_.name == n))
       else Turn.Step.all.filter(n => v.steps.exists(_.name == n))
     shown.map { name =>
       val rune = Look.Runes.stepRune(name)
@@ -223,7 +304,8 @@ object TurnPanel {
   /** The screen width from which the panel is shown beside the transcript. */
   val ShownFrom = 100
 
-  private val NameCols = 15
+  private val NameCols = 16
+  private val TopicCols = 28
   private val BarCells = 8
   private val WindowCells = 24
 
@@ -235,6 +317,16 @@ object TurnPanel {
 
   /** A cost in dollars, as the provider gave it: `$0.00031`. */
   def dollars(usd: BigDecimal): String = s"$$${usd.bigDecimal.stripTrailingZeros.toPlainString}"
+
+  /** A probability to two places, whatever the locale: `0.81`, `1.00`. */
+  def share(p: Double): String = {
+    val hundredths = math.round(math.min(1.0, math.max(0.0, p)) * 100)
+    s"${hundredths / 100}.${(hundredths % 100).toString.reverse.padTo(2, '0').reverse}"
+  }
+
+  /** `text` cut to `cols` characters, the cut marked with `…`. */
+  def clip(text: String, cols: Int): String =
+    if (text.length <= cols) text else text.take(math.max(0, cols - 1)) + "…"
 
   /** A token count, short: `812`, `3.2k`. */
   def count(n: Tokens): String = {

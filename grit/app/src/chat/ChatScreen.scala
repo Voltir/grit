@@ -50,10 +50,11 @@ object ChatScreen {
   /** What has been heard of `turn`'s reply while it streams: its reasoning and text so far. */
   final case class Hearing(turn: TurnSeq, reasoning: String, text: String)
 
-  /** What the turn panel shows: a turn, or the conversation so far. */
+  /** What the turn panel shows: a turn, the conversation so far, or its topics. */
   enum Tab(val label: String) extends caps.Pure {
     case Turn extends Tab("turn")
     case Session extends Tab("session")
+    case Topics extends Tab("topics")
 
     /** The tab after this one, round again after the last. */
     def next: Tab = Tab.fromOrdinal((ordinal + 1) % Tab.values.length)
@@ -70,7 +71,8 @@ object ChatScreen {
     * names the turn's `step`, which began at tick `stepSince`. `tick` turns the runes and
     * times the step. `owners` is the turn each block of `said` belongs to, if any. Beside
     * it, while `panel` is on and the screen is wide enough, the turn panel shows its `tab`:
-    * `turn`, the latest or the one `pinned` by a click, or the `session` so far. A `modal` dialog opens over the screen,
+    * `turn`, the latest or the one `pinned` by a click, the `session` so far, or its
+    * `topics`. A `modal` dialog opens over the screen,
     * scrolled by `modalReader`. Each turn's summary is shown under its reply while
     * `summaries` is on. Once the host has `loaded` the conversation, one with nothing in
     * it shows the splash in the transcript's place. While `palette` is open, the command list floats over the
@@ -101,6 +103,7 @@ object ChatScreen {
       hearing: Option[Hearing] = None,
       tab: Tab = Tab.Turn,
       session: Option[SessionView] = None,
+      topics: Option[TopicsView] = None,
       summaries: Boolean = false,
       loaded: Boolean = false
   ) {
@@ -201,6 +204,9 @@ object ChatScreen {
     /** From the host: the conversation so far, as it now stands. */
     case Session(view: SessionView)
 
+    /** From the host: the conversation's topics, and the shown turn's placing. */
+    case Topics(view: TopicsView)
+
     /** The turn panel, scrolled, selected or copied from. */
     case PanelReader(m: Scroller.Msg)
 
@@ -238,7 +244,7 @@ object ChatScreen {
     "enter" -> "send, or run a /command",
     "ctrl-p" -> "the command palette",
     "ctrl-b" -> "show or hide the turn panel",
-    "ctrl-t" -> "the panel's next tab: turn, session",
+    "ctrl-t" -> "the panel's next tab: turn, session, topics",
     "ctrl-q" -> "quit",
     "// at the start" -> "a message that starts with /",
     "esc" -> "close a list or dialog; unpin",
@@ -375,6 +381,7 @@ object ChatScreen {
         case Msg.NextTab => (tabbed(s, s.tab.next), Effect.NoOp)
         case Msg.ShowTab(tab) => (tabbed(s, tab), Effect.NoOp)
         case Msg.Session(view) => (s.copy(session = Some(view)), Effect.NoOp)
+        case Msg.Topics(view) => (s.copy(topics = Some(view)), Effect.NoOp)
         case Msg.PanelReader(Scroller.Msg.Copied(text, _)) =>
           if (text.isEmpty) (s.copy(status = "nothing selected"), Effect.NoOp)
           else (s.copy(status = s"copied ${text.length} chars"), Effect.CopyOut(text))
@@ -565,6 +572,7 @@ object ChatScreen {
         val rows = s.tab match {
           case Tab.Turn => panel.blocks(s.turn, shown, s.pinned.nonEmpty)
           case Tab.Session => panel.session(s.session)
+          case Tab.Topics => panel.topics(s.topics)
         }
         val turn = Scroller
           .view(Panel, Doc(rows), s.panelReader, bar = bar)
