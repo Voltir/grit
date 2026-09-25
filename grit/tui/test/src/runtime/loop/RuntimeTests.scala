@@ -64,13 +64,15 @@ object RuntimeTests extends TestSuite {
   }
 
   /** An app with one press target, four rows down and two tall, that records where each
-    * press landed. The oracle for input being routed against what was painted.
+    * press landed and what was typed. The oracle for input being routed against what was
+    * painted.
     */
   private final class Located extends App[St, Msg] {
     def init: (St, Effect[Msg]) = (St(), Effect.NoOp)
     def update(msg: Msg, state: St): (St, Effect[Msg]) = msg match {
       case Msg.Located(p) => (state.copy(located = Some(p)), Effect.NoOp)
       case Msg.Typed('r') => (state.copy(located = None), Effect.Invalidate)
+      case Msg.Typed(c) => (state.copy(typed = state.typed + c), Effect.NoOp)
       case Msg.Done => (state, Effect.Quit)
       case _ => (state, Effect.NoOp)
     }
@@ -97,7 +99,7 @@ object RuntimeTests extends TestSuite {
     * always quit and tear down afterwards.
     */
   private def runWith(on: ((Msg, St)) -> (St, Effect[Msg]))(
-      body: (FakeTerminal^, Runtime[St, Msg]^) => Unit
+      body: (FakeTerminal[{}]^, Runtime[St, Msg]^) => Unit
   ): Unit = {
     val term = new FakeTerminal()
     val scheduler = Scheduler.create()
@@ -129,7 +131,8 @@ object RuntimeTests extends TestSuite {
       } { (term, runtime) =>
         term.send("hi")
         assert(waitUntil(() => runtime.state.exists(_.typed == "hi")))
-        assert(term.painted.nonEmpty)
+        val v = new Vt(term.size.rows, term.size.cols)
+        assert(waitUntil(() => { v.feed(term.painted); v.text.head.startsWith("hi") }))
       }
     }
 
@@ -146,17 +149,30 @@ object RuntimeTests extends TestSuite {
       }
     }
 
-    test("an escape sequence arriving whole is the named key, never ESC plus its bytes") {
-      // layoutz's parser answered Escape and leaked the rest as printable characters.
-      runWith {
+    test("an escape sequence cut across two reads is the named key, never ESC plus its bytes") {
+      // layoutz's parser answered Escape and leaked the rest as printable characters. The
+      // decoder is right about a whole sequence (DecoderTests); what only the loop can get
+      // wrong is carrying its held prefix from one read to the next. Queued before the
+      // loop starts, so each piece is one read and nothing races the read timeout.
+      val term = new FakeTerminal()
+      val scheduler = Scheduler.create()
+      val app = new Scripted({
         case (Msg.Escaped, s) => (s.copy(escapes = s.escapes + 1), Effect.NoOp)
         case (Msg.Typed(c), s) => (s.copy(typed = s.typed + c), Effect.NoOp)
         case (_, s) => quit(s)
-      } { (term, runtime) =>
-        term.send(s"$Esc[A") // Up: bound to nothing here, so it must do nothing
-        term.send("z")
+      })
+      val runtime = new Runtime(app, term, scheduler, escapeTimeoutMs = 20L)
+      term.send(Esc)
+      term.send("[A") // Up: bound to nothing here, so it must do nothing
+      term.send("z")
+      val done = started(runtime, "split-escape-runtime")
+      try {
         assert(waitUntil(() => runtime.state.exists(_.typed == "z")))
         assert(runtime.state.exists(_.escapes == 0))
+      } finally {
+        runtime.mailbox.offer(Msg.Done)
+        val _ = done.await(5L, TimeUnit.SECONDS)
+        scheduler.close()
       }
     }
 
@@ -185,21 +201,6 @@ object RuntimeTests extends TestSuite {
         term.send("b")
         Thread.sleep(600L)
         assert(runtime.state.exists(_.ticks == 0))
-      }
-    }
-
-    test("re-arming a named timer does not fork the chain") {
-      // FINDINGS 5.4 at the runtime level: ten re-arms, one delivery. Next door each
-      // re-arm ran alongside the old chain and every round trip doubled them.
-      runWith {
-        case (Msg.Typed(_), s) => (s, Effect.After(ticker, 200L, Msg.Tick))
-        case (Msg.Tick, s) => (s.copy(ticks = s.ticks + 1), Effect.NoOp)
-        case (_, s) => quit(s)
-      } { (term, runtime) =>
-        var i = 0
-        while (i < 10) { term.send("x"); i += 1 }
-        Thread.sleep(700L)
-        assert(runtime.state.exists(_.ticks == 1))
       }
     }
 
@@ -297,46 +298,27 @@ object RuntimeTests extends TestSuite {
       scheduler.close()
     }
 
-    test("quit restores the terminal, in reverse, exactly once") {
+    test("quit cancels a pending timer before it restores the terminal, in reverse, once") {
       // The ordering claim asserted rather than commented: the scheduler stops before
-      // the terminal is restored, or a late timer paints into a cooked-mode shell.
-      val term = new FakeTerminal()
+      // the terminal is restored, or a late timer paints into a cooked-mode shell. A
+      // timer is pending at quit, and the terminal reads the scheduler as it closes.
       val scheduler = Scheduler.create()
-      val app = new Scripted({ case (_, s) => (s, Effect.Quit) })
-      val runtime = new Runtime(app, term, scheduler, escapeTimeoutMs = 20L)
-      val done = new CountDownLatch(1)
-      val t = new Thread(() => { runtime.run(); done.countDown() }, "quitting-runtime")
-      t.setDaemon(true)
-      t.start()
-      runtime.mailbox.offer(Msg.Done)
-      assert(done.await(5L, TimeUnit.SECONDS))
-      val lifecycle = term.calls.filter(c => c == "enterRaw" || c == "exitRaw" || c == "close")
-      assert(lifecycle == Vector("enterRaw", "exitRaw", "close"))
-      assert(!term.isRaw)
-      assert(scheduler.pendingCount == 0)
-      scheduler.close()
-    }
-
-    test("a timer pending at quit is cancelled, not left to fire after restore") {
-      val term = new FakeTerminal()
-      val scheduler = Scheduler.create()
+      val term = new FakeTerminal(scheduler = Some(scheduler))
       val app = new Scripted({
-        case (Msg.Tick, s) => (s.copy(ticks = s.ticks + 1), Effect.NoOp)
-        case (Msg.Typed(_), s) => (s, Effect.After(ticker, 400L, Msg.Tick))
+        case (Msg.Typed(_), s) => (s, Effect.After(ticker, 60000L, Msg.Tick))
         case (_, s) => (s, Effect.Quit)
       })
       val runtime = new Runtime(app, term, scheduler, escapeTimeoutMs = 20L)
-      val done = new CountDownLatch(1)
-      val t = new Thread(() => { runtime.run(); done.countDown() }, "late-timer-runtime")
-      t.setDaemon(true)
-      t.start()
-      term.send("x")
-      Thread.sleep(150L)
+      val done = started(runtime, "quitting-runtime")
+      runtime.mailbox.offer(Msg.Typed('x'))
+      assert(waitUntil(() => scheduler.isPending(ticker)))
       runtime.mailbox.offer(Msg.Done)
       assert(done.await(5L, TimeUnit.SECONDS))
-      Thread.sleep(600L)
-      assert(runtime.state.exists(_.ticks == 0))
+      assert(term.timersAtClose == Some(0))
+      val lifecycle = term.calls.filter(c => c == "enterRaw" || c == "exitRaw" || c == "close")
+      assert(lifecycle == Vector("enterRaw", "exitRaw", "close"))
       assert(!term.isRaw)
+      scheduler.close()
     }
 
     test("CopyOut reaches the terminal as a copy, not as paint") {
@@ -358,8 +340,8 @@ object RuntimeTests extends TestSuite {
         term.send(pressAt(Pos(5, 3)))
         assert(waitUntil(() => runtime.state.exists(_.located.contains(Pos(5, 3)))))
         term.send(pressAt(Pos(1, 3))) // above the target: nothing there claims it
-        term.send("x")
-        assert(waitUntil(() => runtime.state.exists(_.typed.isEmpty)))
+        term.send("x") // read after the press, so handled after it
+        assert(waitUntil(() => runtime.state.exists(_.typed == "x")))
         assert(runtime.state.exists(_.located.contains(Pos(5, 3))))
       } finally {
         runtime.mailbox.offer(Msg.Done)

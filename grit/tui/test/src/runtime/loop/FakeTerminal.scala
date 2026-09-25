@@ -9,13 +9,20 @@ import grit.tui.wire.term.Terminal
   *
   * STYLE rule 7's carve-out: a test double standing in for a mutable resource may hold
   * mutable state, because that state is the thing it exists to emulate. It records the
-  * order of every lifecycle call, which is what makes "restore in reverse" and "the
-  * scheduler stops before the terminal" assertable rather than hoped for.
+  * order of every lifecycle call, which makes "restore in reverse" assertable rather than
+  * hoped for; given the runtime's `scheduler`, it counts that scheduler's pending timers
+  * as [[close]] begins, which does the same for "the scheduler stops before the terminal".
+  * `C` is what that scheduler captures (a capability in an `Option` field must be named
+  * by a capture variable); `FakeTerminal[{}]` watches none.
   *
   * It enforces nothing the runtime owes: every `enterRaw` and `exitRaw` is logged, so a
   * runtime that calls either twice is seen doing it.
   */
-final class FakeTerminal(val size: Size = Size(10, 20), readDelayMs: Long = 0L) extends Terminal {
+final class FakeTerminal[C^](
+    val size: Size = Size(10, 20),
+    readDelayMs: Long = 0L,
+    scheduler: Option[Scheduler^{C}] = None
+) extends Terminal {
 
   private val input = new LinkedBlockingQueue[String]()
   private val buffer = new StringBuilder
@@ -88,7 +95,19 @@ final class FakeTerminal(val size: Size = Size(10, 20), readDelayMs: Long = 0L) 
   def exitRaw(): Unit = synchronized { raw = false; log += "exitRaw" }
 
   /** Leaves the terminal as `exitRaw` does, logged as `close` alone. */
-  def close(): Unit = synchronized { inFlightAtClose = reading; raw = false; log += "close" }
+  def close(): Unit = synchronized {
+    pendingAtClose = scheduler.map(_.pendingCount)
+    inFlightAtClose = reading
+    raw = false
+    log += "close"
+  }
+
+  private var pendingAtClose: Option[Int] = None
+
+  /** How many timers the scheduler held pending when [[close]] ran; None before it ran,
+    * or with no scheduler given.
+    */
+  def timersAtClose: Option[Int] = synchronized { pendingAtClose }
 
   /** True while the terminal is in raw mode -- for asserting it was given back. */
   def isRaw: Boolean = synchronized { raw }
