@@ -359,26 +359,22 @@ def main():
     return 1 if failed else 0
 
 
+# Mirrors TurnPanel.Cols. If that changes, change this.
+PANEL_COLS = 38
+
+
 def columns(checks, check, raw, rows, cols, screens, snapshots, ones):
     """grit.app beside its turn panel. The body is rows 1 .. rows - 5 (header 1; prompt 3
-    and status 1 below). The divider is the column of `│` down every body row; the
-    transcript is left of it, the panel right of it.
+    and status 1 below). The panel is the last PANEL_COLS columns before the screen's own
+    unwritten last one (TurnPanel.Cols); the transcript is everything left of it.
     """
     body = range(1, rows - 4)
     final = screens[-1] if screens else []
-    divider = None
-    for c in range(cols - 2, 0, -1):
-        if final and all(final[r][c] == "\u2502" for r in body):
-            divider = c
-            break
-    check(divider is not None and cols - 1 - divider > 30,
-          "the turn panel stands beside the transcript", "divider at column %s" % divider)
-    if divider is None:
-        return report(checks)
+    divider = cols - 1 - PANEL_COLS
     left = lambda g: [g[r][:divider] for r in body]
-    right = lambda g: [g[r][divider + 1:] for r in body]
-    check(any(any("TURN" in row for row in right(g)) for g in screens),
-          "the panel shows the turn")
+    right = lambda g: [g[r][divider:] for r in body]
+    check(any(any(" TURN " in row for row in right(g)) for g in screens),
+          "the turn panel stands beside the transcript", "from column %d" % divider)
 
     # The wheel over the panel: the frame where its title scrolls away, and the
     # transcript in that frame as it was in the frame before.

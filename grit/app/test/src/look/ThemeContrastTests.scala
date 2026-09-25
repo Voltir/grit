@@ -38,6 +38,9 @@ object ThemeContrastTests extends TestSuite {
     Target("body text", t => (t.ink, t.ground), 75, 90.5),
     Target("the user's text", t => (t.ink, t.slab), 75, 106),
     Target("faint text", t => (t.faint, t.ground), 45, 60.5),
+    // The turn panel and dialogs sit on the slab; their labels are secondary, a step
+    // below faint on the ground.
+    Target("faint on the slab", t => (t.faint, t.slab), 42, 60.5),
     Target("status line", t => (t.statusFg, t.statusBg), 60, 106),
     Target("user marker", t => (t.user, t.ground), 60, 106),
     Target("grit marker", t => (t.grit, t.ground), 60, 106),

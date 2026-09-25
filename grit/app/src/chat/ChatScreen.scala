@@ -291,7 +291,7 @@ object ChatScreen {
           )
           .map(Msg.PanelReader(_))
         wide(TurnPanel.ShownFrom)(
-          row(flex(20) -> reading, fixed(1) -> paint(look.divider), fixed(TurnPanel.Cols) -> turn),
+          row(flex(20) -> reading, fixed(TurnPanel.Cols) -> turn.grounded(look.sidebar)),
           reading
         )
       }

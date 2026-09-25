@@ -48,7 +48,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
     val where = v.running.fold(if (v.settled) "done" else "finishing")(Look.Runes.step(_))
     row(
       Seq(s" TURN ${number(v.turn)}" -> (fg(t.ink) + Style.Bold), s"  · $where" -> fg(t.faint)) ++
-        Option.when(pinned)("  esc: latest" -> fg(t.rail))*
+        Option.when(pinned)("  esc: latest" -> fg(t.faint))*
     )
   }
 
@@ -76,7 +76,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
             f"${seconds(runningMs)}%6s " -> fg(t.ink),
             "█" * bar(runningMs) -> fg(t.user)
           )
-        case None => row(s" $label" -> fg(t.rail))
+        case None => row(s" $label" -> fg(t.faint))
       }
     }
   }
@@ -89,7 +89,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
     */
   private def window(v: TurnView): Vector[Block] = v.window match {
     case None =>
-      Vector(row(" window   " -> fg(t.faint), "recorded with the reply" -> fg(t.rail)))
+      Vector(row(" window   " -> fg(t.faint), "recorded with the reply" -> fg(t.faint)))
     case Some(w) =>
       val scale = math.max(Tokens.value(w.total), Tokens.value(budget + w.system + w.message))
       val parts = Vector(
@@ -102,7 +102,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       val bar = parts.filter(_(0) > 0).map((n, c) => "█" * n -> fg(c)) :+
         ("░" * math.max(0, WindowCells - used) -> fg(t.rail))
       val recalled =
-        if (w.recalledTurns.isEmpty) row(" recalled " -> fg(t.faint), "none" -> fg(t.rail))
+        if (w.recalledTurns.isEmpty) row(" recalled " -> fg(t.faint), "none" -> fg(t.faint))
         else
           row(
             " recalled " -> fg(t.faint),

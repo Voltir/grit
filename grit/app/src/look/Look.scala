@@ -90,8 +90,10 @@ final case class Look(theme: Theme) {
   /** Under a dialog's body. */
   def modalGround: Style = Style.bg(theme.slab) + Style.fg(theme.ink)
 
-  /** Between the transcript and the turn panel. */
-  def divider: View = Look.Divider(Style.fg(theme.rail))
+  /** Under the turn panel: the slab, so the panel reads as its own column without a
+    * rule beside the transcript's scrollbar.
+    */
+  def sidebar: Style = Style.bg(theme.slab) + Style.fg(theme.ink)
 
   def scrollRail: Style = Style.fg(theme.rail)
   def scrollThumb: Style = Style.fg(theme.thumb)
@@ -167,13 +169,6 @@ object Look {
     /** The ring turned `tick` steps. */
     def ward(tick: Long): Vector[Char] =
       Ward.indices.toVector.map(i => Ward(math.floorMod(i + tick, Ward.length).toInt))
-  }
-
-  /** A vertical rule the height of its box, in `style`: between the columns. */
-  final case class Divider(style: Style) extends View {
-    def measure(avail: Size): Size = Size(avail.rows, math.min(1, avail.cols))
-    def render(size: Size): Surface =
-      (0 until size.rows).foldLeft(Surface.blank(size))((s, r) => s.write(r, 0, "│", style))
   }
 
   /** The top bar: the name on the accent, fading into the title on the slab. */
