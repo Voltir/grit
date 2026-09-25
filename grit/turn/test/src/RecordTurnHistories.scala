@@ -33,6 +33,10 @@ object RecordTurnHistories {
 
   /** Each shape, by name. A name whose file was written before a later step existed keeps
     * that shorter history, so a new step that changes a shape gets a new name.
+    *
+    * Builders that now run the same turn (`replied`, `summarised` and `windowFirst`;
+    * `crashedBeforeAppend` and `crashedBeforeAppendWindowFirst`) are kept apart because each
+    * name's file was written by an earlier build, and is replayed as it was written.
     */
   private def shapes: Vector[(String, History)] = {
     val replied = {
@@ -61,7 +65,7 @@ object RecordTurnHistories {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val turn = say(store, "hello")
-      try durable.run(turn.workflowId)(turnBody(new CrashOnInsert(store), new RecordingProvider))
+      try durable.run(turn.workflowId)(turnBody(new CrashOnInsert(store, isReply), new RecordingProvider))
       catch { case _: InMemoryDurable.Crash => "" }
       recorded(durable, turn)
     }
