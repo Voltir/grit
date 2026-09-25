@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{TurnRef, TurnSeq}
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.message.Message
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Topics, Weights}
 import grit.dbos.sql.TestTx
@@ -194,20 +194,18 @@ object TurnTopicsTests extends TestSuite {
         "Summary: Asked about knots.\nTopic: **Knots and hitches under load**\nAbout: which knot holds.",
         "Summary: Asked about bowlines.\nTopic: Bowlines\nAbout: knots, the bowline most."
       )
-      val summarizer = new TurnVerdictTests.Scripted((_, n) =>
-        Right(
-          Message.Assistant(
-            Vector(AssistantBlock.Text(summaries.lift(n).getOrElse("no labels here"))),
-            StopReason.EndTurn,
-            Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
-            "s"
-          )
-        )
-      )
+      val summarizer =
+        new Scripted((_, n) => Right(said(summaries.lift(n).getOrElse("no labels here"))))
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
       Vector("knots?", "and bowlines?", "and sheet bends?").foreach { text =>
-        runTurn(durable, entries, new RecordingProvider, say(entries, text), summarizer = summarizer)
+        runTurn(
+          durable,
+          entries,
+          new RecordingProvider,
+          say(entries, text),
+          summarizer = summarizer
+        )
       }
       texts(entries).filter(_.startsWith("summary:")) ==> Vector(
         "summary: Asked about knots.",

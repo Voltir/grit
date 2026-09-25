@@ -181,7 +181,7 @@ object RecordTurnHistories {
       }
       val turn = say(store, said.lastOption.getOrElse("hello"))
       val entries = crash.fold[grit.core.store.EntryStore](store)(new CrashOnInsert(store, _))
-      val summarizer = new TurnVerdictTests.Scripted((r, _) =>
+      val summarizer = new Scripted((r, _) =>
         if (summary.isEmpty) new grit.models.StubProvider().complete(r)
         else
           Right(
@@ -224,13 +224,13 @@ object RecordTurnHistories {
       ),
       "topical-verdict-no-call" -> answered(
         Vector("hello", "hm ~0.5"),
-        new TurnVerdictTests.Scripted((r, _) =>
+        new Scripted((r, _) =>
           new grit.models.StubProvider().complete(r.copy(tools = Vector.empty))
         )
       ),
       "topical-verdict-plain" -> answered(
         Vector("hello", "hm ~0.5"),
-        new TurnVerdictTests.Scripted((r, n) =>
+        new Scripted((r, n) =>
           if (n == 0) new grit.models.StubProvider().complete(r)
           else if (r.tools.isEmpty) new grit.models.StubProvider().complete(r)
           else Left(grit.core.provider.ProviderError.Unavailable("HTTP 529"))
@@ -238,7 +238,7 @@ object RecordTurnHistories {
       ),
       "topical-verdict-crashed-between-rounds" -> answered(
         Vector("hello", "hm ~0.5"),
-        new TurnVerdictTests.Scripted((r, n) =>
+        new Scripted((r, n) =>
           if (n == 1) throw new InMemoryDurable.Crash
           else new grit.models.StubProvider().complete(r)
         )

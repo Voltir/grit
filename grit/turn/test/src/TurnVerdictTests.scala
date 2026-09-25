@@ -3,8 +3,8 @@ package grit.turn
 import grit.assembly.estimate.CharEstimate
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.provider.{ModelRequest, Provider, ProviderError, ToolUse}
+import grit.core.message.{Message, Tokens}
+import grit.core.provider.{Provider, ProviderError, ToolUse}
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, InMemoryUsageLedger, StoreError, Tx}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict}
 import grit.models.StubProvider
@@ -13,21 +13,6 @@ import utest.*
 
 object TurnVerdictTests extends TestSuite {
   import TurnFixtures.*
-
-  /** A provider answering each call with `script(request, call)`, calls counted from 0,
-    * keeping every request.
-    */
-  final class Scripted(script: (ModelRequest, Int) -> Either[ProviderError, Message.Assistant])
-      extends Provider {
-    @caps.unsafe.untrackedCaptures
-    var requests = Vector.empty[ModelRequest]
-
-    def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
-      val n = requests.size
-      requests = requests :+ request
-      script(request, n)
-    }
-  }
 
   /** `underlying`, refusing to insert the entry `id`. */
   final class Refusing(underlying: EntryStore, id: EntryId) extends EntryStore {
@@ -39,17 +24,6 @@ object TurnVerdictTests extends TestSuite {
     def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
       underlying.lockNext(c)
   }
-
-  private def said(text: String, calls: AssistantBlock*): Message.Assistant =
-    Message.Assistant(
-      Vector(AssistantBlock.Text(text)).filter(_ => text.nonEmpty) ++ calls,
-      StopReason.EndTurn,
-      Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
-      "m"
-    )
-
-  private def topicCall(args: ujson.Value) =
-    AssistantBlock.ToolCall(grit.core.id.ToolCallId("t1"), "topic", args)
 
   /** Two earlier turns, the second a new topic; then `asked` answered by `provider`, with
     * the stub classifier. The last turn, its conversation's entries and ledger.
@@ -208,7 +182,7 @@ object TurnVerdictTests extends TestSuite {
       // 10, and round two's 10 when it answered at all.
       val cases = Vector(
         (
-          Right(said("", topicCall(ujson.Obj("about" -> "current")))),
+          Right(said("", topicCall("current"))),
           "the second call called a tool again and said nothing; a plain call answered",
           Tokens(20)
         ),
@@ -221,7 +195,7 @@ object TurnVerdictTests extends TestSuite {
       for ((second, anomaly, billed) <- cases) {
         val provider = new Scripted((r, n) =>
           if (r.tools.isEmpty) Right(said("plainly"))
-          else if (n == 0) Right(said("", topicCall(ujson.Obj("about" -> "current"))))
+          else if (n == 0) Right(said("", topicCall("current")))
           else second
         )
         val durable = new InMemoryDurable
