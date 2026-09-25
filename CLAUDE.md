@@ -155,12 +155,11 @@ Metals' MCP server (`grit-metals` in `.mcp.json`; port from `.metals/mcp.json`) 
 - **compiling or testing one module mid-edit** — `compile-module`, `test`; it builds into
   `.bsp/out`, so it never blocks a CLI `./mill`.
 
-Not for understanding a package's behaviour: read the files. Measured 2026-09-25, file
-reads answered edge-case questions perfectly at a third fewer tokens and an eighth of the
-calls; Metals hands context out one symbol at a time. Quirk: `inspect` ignores `module` —
+Not for understanding a package's behaviour: read the files. Metals hands context out one
+symbol at a time; in a measured comparison, file reads answered edge-case questions
+perfectly at a third fewer tokens and an eighth of the calls. Quirk: `inspect` ignores `module` —
 **always pass `fileInFocus`** (a source file in the symbol's module); for a generic class it
-lists only the companion, so use `get-docs`. Details:
-`.local/backlog/metals-mcp-inspect-bug.md`; BSP set-up and failure modes:
+lists only the companion, so use `get-docs`. BSP set-up and failure modes:
 [`docs/editor-tooling.md`](docs/editor-tooling.md).
 
 ## Working agreements
@@ -179,8 +178,8 @@ lists only the companion, so use `get-docs`. Details:
   says what changes, the alternatives turned down, how it will be verified (including the
   real-use run below), and what is parked. It has an **Elision section**: every new or
   changed public signature with its Scaladoc as it will be written, whether a caller could
-  use it from those alone (rule 10), and what that check changed in the design. On
-  2026-09-25 this one question produced most of a refactor's design improvements. Mechanical edits, doc corrections and small
+  use it from those alone (rule 10), and what that check changed in the design. This one
+  question has produced most of a refactor's design improvements. Mechanical edits, doc corrections and small
   fixes inside an agreed plan need none.
 - **Package layout is designed, not accreted.** A new module, library or package starts
   with its layout in the plan: each package one idea, named for it; no source file at a

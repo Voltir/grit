@@ -170,9 +170,9 @@ contract survives.
   * Empty if the session has no entries. */
 ```
 
-What a doc must and must not say, so the test can pass (measured 2026-09-25: readers given
-only signatures and docs were misled by exactly one false doc line, and missed only what
-the docs left out — `.local/backlog/elision-experiment-2026-09-25/`):
+What a doc must and must not say, so the test can pass (measured: readers given only
+signatures and docs were misled by exactly one false doc line, and missed only what the
+docs left out):
 
 - **An invariant stated in a doc is a missing type.** "Non-negative", "sums to 1", "empty
   unless…", "most recent first": make it a type, a private constructor, or an ADT shaped
