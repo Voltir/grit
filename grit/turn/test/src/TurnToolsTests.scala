@@ -7,13 +7,13 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, Payload}
-import grit.core.tool.Outcome
+import grit.core.tool.{Bound, Outcome}
 import grit.dbos.sql.TestTx
 
 import utest.*
 import TurnLoop.{Pending, Round}
 
-/** [[TurnTools.settle]]: what a call's step runs, and what it runs again after a crash. Free
+/** [[TurnTools.Settling]]: what a call's step runs, and what it runs again after a crash. Free
   * tools may run twice; a gated one, approved, never does; a kept result is never run again.
   */
 object TurnToolsTests extends TestSuite {
@@ -24,24 +24,29 @@ object TurnToolsTests extends TestSuite {
   private def call(name: String): Pending =
     Pending.Run(AssistantBlock.ToolCall(ToolCallId("c"), name, ujson.Obj("path" -> "a.txt")))
 
+  /** `pending` settled as the turn settles it, at the first call of the first round: a gated
+    * call decided by `approval`, or answered [[TurnTools.notOffered]] without one.
+    */
   private def settle(
       entries: EntryStore,
       ws: Files^,
       turn: TurnRef,
       pending: Pending,
       approval: Option[Approval] = None
-  ): Either[TurnFailure, TurnTools.Settled] =
-    TurnTools.settle(
-      new FakeJot,
-      entries,
-      tools(ws),
-      approval,
-      turn,
-      Round.First,
-      0,
-      pending,
-      Instant.EPOCH
-    )
+  ): Either[TurnFailure, TurnTools.Settled] = {
+    val slot = TurnTools.Slot(turn, Round.First, 0)
+    val id = pending.call.id
+    val settling = new TurnTools.Settling(new FakeJot, entries)
+    TurnTools.read(tools(ws), pending) match {
+      case Left(outcome) => settling.answer(slot, id, outcome, Instant.EPOCH)
+      case Right(free: Bound.Free) => settling.run(slot, id, free, Instant.EPOCH)
+      case Right(gated: Bound.Gated) =>
+        approval match {
+          case Some(a) => settling.decide(slot, id, gated, a, Instant.EPOCH)
+          case None => settling.answer(slot, id, TurnTools.notOffered(gated.tool), Instant.EPOCH)
+        }
+    }
+  }
 
   private def kept(entries: InMemoryEntryStore, id: EntryId): Option[Payload] =
     entries.get(id)(using TestTx.fake).toOption.flatten.map(_.payload)
@@ -53,7 +58,7 @@ object TurnToolsTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)
       val turn = say(entries, "go")
-      val id = TurnTools.resultId(turn, Round.First, 0)
+      val id = TurnTools.Slot(turn, Round.First, 0).resultId
       settle(entries, ws, turn, call("peek")) ==> Right(TurnTools.Settled(id, failed = false))
       kept(entries, id) ==>
         Some(Payload.Exchange(Message.ToolResult(ToolCallId("c"), "alpha", isError = false)))
@@ -87,11 +92,11 @@ object TurnToolsTests extends TestSuite {
       val approved = Some(Approval.Approved)
       assertThrows[InMemoryDurable.Crash](settle(entries, ws, turn, call("poke"), approved))
       ws.reads ==> 1
-      kept(store, TurnTools.attemptId(turn, Round.First, 0)) ==>
+      kept(store, TurnTools.Slot(turn, Round.First, 0).attemptId) ==>
         Some(Payload.Attempt(ToolCallId("c")))
       settle(entries, ws, turn, call("poke"), approved).map(_.failed) ==> Right(true)
       ws.reads ==> 1
-      kept(store, TurnTools.resultId(turn, Round.First, 0)) ==>
+      kept(store, TurnTools.Slot(turn, Round.First, 0).resultId) ==>
         Some(Payload.Exchange(Outcome.Interrupted.result(ToolCallId("c"))))
     }
 
@@ -106,9 +111,9 @@ object TurnToolsTests extends TestSuite {
         val entries = new InMemoryEntryStore
         val turn = say(entries, "go")
         settle(entries, ws, turn, call("poke"), approval)
-        kept(entries, TurnTools.resultId(turn, Round.First, 0)) ==>
+        kept(entries, TurnTools.Slot(turn, Round.First, 0).resultId) ==>
           Some(Payload.Exchange(expected.result(ToolCallId("c"))))
-        kept(entries, TurnTools.attemptId(turn, Round.First, 0)) ==> None
+        kept(entries, TurnTools.Slot(turn, Round.First, 0).attemptId) ==> None
       }
       ws.reads ==> 0
     }

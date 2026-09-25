@@ -8,7 +8,7 @@ import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 import grit.core.store.{Entry, Payload, StoreError, Tx}
-import grit.core.tool.{DuplicateName, ToolName, Toolbox}
+import grit.core.tool.{Bound, DuplicateName, ToolName, Toolbox}
 import grit.core.topic.Topic
 
 import TurnLoop.{Pending, Round}
@@ -376,10 +376,20 @@ object Turn {
           }
 
           def settle(round: Round, index: Int, pending: Pending): Either[TurnFailure, Unit] = {
-            val (jot, entries, clock) = (env.jot, env.records.entries, env.clock)
-            d.step(Step.tool(round, index)) { () =>
-              TurnTools.settle(jot, entries, tools, None, turn, round, index, pending, clock.now())
-            }.map(_ => ())
+            val slot = TurnTools.Slot(turn, round, index)
+            val call = pending.call.id
+            val clock = env.clock
+            val settling = new TurnTools.Settling(env.jot, env.records.entries)
+            val settled = TurnTools.read(tools, pending) match {
+              case Left(outcome) =>
+                d.step(slot.step) { () => settling.answer(slot, call, outcome, clock.now()) }
+              case Right(free: Bound.Free) =>
+                d.step(slot.step) { () => settling.run(slot, call, free, clock.now()) }
+              case Right(gated: Bound.Gated) =>
+                val refused = TurnTools.notOffered(gated.tool)
+                d.step(slot.step) { () => settling.answer(slot, call, refused, clock.now()) }
+            }
+            settled.map(_ => ())
           }
         }
         moves.call(Round.First, TurnLoop.use(budget, Round.First)) match {

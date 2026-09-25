@@ -52,10 +52,15 @@ object TurnCaptureTests extends TestSuite {
     }
   }
 
-  /** A turn handed a toolbox that edits. */
-  private val smuggled =
-    """def offered(ws: Workspace^, e: Edits^, box: Toolbox[{ws, e}], b: TurnLoop.Budget) =
-      |  TurnTooling(ws, box, b, strict = false)
+  /** The planted breach: [[TurnTooling]]'s shape, its tools not tied to its workspace. */
+  private val breach =
+    """final case class Breached[C^](workspace: Workspace^, tools: Toolbox[C], budget: TurnLoop.Budget, strict: Boolean)
+      |""".stripMargin
+
+  /** A toolbox that edits, handed to `tooling` as a turn's tools, typed `result`. */
+  private def smuggled(tooling: String, result: String) =
+    s"""def offered(ws: Workspace^, e: Edits^, box: Toolbox[{ws, e}], b: TurnLoop.Budget): $result =
+      |  $tooling(ws, box, b, strict = false)
       |""".stripMargin
 
   private def rejected(errs: List[String]): Boolean =
@@ -76,12 +81,20 @@ object TurnCaptureTests extends TestSuite {
     }
 
     test("a turn offered a toolbox that edits is rejected") {
-      assert(rejected(errors(smuggled)))
+      assert(rejected(errors(smuggled("TurnTooling", "TurnTooling^{ws, e}"))))
+    }
+
+    test("a tooling whose tools are not tied to its workspace takes the toolbox that edits") {
+      // The breach the test above guards against, planted in a fixture: watched making that
+      // test fail (2026-09-25), kept so the rejection is known to come from the link alone.
+      val errs = errors(breach + smuggled("Breached", "Breached[{ws, e}]^{ws}"))
+      assert(errs.isEmpty)
     }
 
     test("capture checking is what rejects the toolbox that edits") {
       val flags = options.filterNot(_.startsWith("-language:experimental."))
-      val errs = compile(erased(prelude + smuggled + "\n}\n"), flags)
+      val errs =
+        compile(erased(prelude + smuggled("TurnTooling", "TurnTooling^{ws, e}") + "\n}\n"), flags)
       assert(errs.isEmpty)
     }
   }
