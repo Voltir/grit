@@ -296,8 +296,19 @@ object TurnLoopTurnTests extends TestSuite {
       val ws = new Files(files)
       val provider = new Scripted((_, _) => Right(calling("more", ("t", "peek", "a.txt"))))
       val turn = say(entries, "go")
-      looped(new InMemoryDurable, entries, entries, turn, provider, ws, calls = 2)
+      val ledger = new InMemoryUsageLedger
+      looped(new InMemoryDurable, entries, entries, turn, provider, ws, ledger, calls = 2)
       provider.requests.map(_.use) ==> Vector(ToolUse.Auto, ToolUse.Off)
+      // Only the last call is told it is the last, after all it is sent; nothing keeps it.
+      provider.requests.map(_.messages.lastOption) ==> Vector(
+        Some(Message.User("go")),
+        Some(Message.User(TurnLoop.LastCall))
+      )
+      provider.requests.lastOption.map(_.messages.dropRight(1)) ==>
+        provider.requests.headOption.map(_.messages ++ exchange(entries, turn))
+      assert(!texts(entries).exists(_.contains(TurnLoop.LastCall)))
+      // Each call billed beside the estimate of what it was sent, the note included.
+      ledger.rows.take(2).map(_._5) ==> provider.requests.map(CharEstimate.request)
       texts(entries).filter(_.startsWith("assistant:")) ==> Vector("assistant: more")
     }
 

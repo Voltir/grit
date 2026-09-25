@@ -3,7 +3,7 @@ package grit.turn
 import scala.annotation.tailrec
 
 import grit.core.message.{AssistantBlock, Message, StopReason}
-import grit.core.provider.ToolUse
+import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.tool.Outcome
 
 /** A turn's tool loop: the model is called, the tools its reply calls are settled, and it is
@@ -117,12 +117,28 @@ object TurnLoop {
   def use(budget: Budget, round: Round): ToolUse =
     if (round >= budget.calls - 1) ToolUse.Off else ToolUse.Auto
 
+  /** What the model is told on a call made with tools off, as a user message after
+    * everything else it is sent.
+    */
+  val LastCall: String =
+    "[grit: this is your last call in this turn, and it has no tools: call none. Answer " +
+      "now from what you have found so far, and say what is unfinished or unchecked.]"
+
+  /** `request` as `use` says to send it: with [[LastCall]] after its messages when `use` is
+    * [[ToolUse.Off]], unchanged otherwise.
+    */
+  def told(use: ToolUse, request: ModelRequest): ModelRequest = use match {
+    case ToolUse.Off => request.copy(messages = request.messages :+ Message.User(LastCall))
+    case ToolUse.Auto => request
+  }
+
   /** The effects the loop needs. The turn makes each a durable step. */
   trait Moves {
 
     /** The model's reply on `round`, offered the tools as `use` says, shown its window and
       * then the turn's own messages so far: every earlier reply that called tools, each
-      * followed by its calls' results, as [[record]] and [[settle]] kept them.
+      * followed by its calls' results, as [[record]] and [[settle]] kept them; then, as
+      * [[told]] says, [[LastCall]].
       */
     def call(round: Round, use: ToolUse): Either[TurnFailure, Message.Assistant]
 

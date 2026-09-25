@@ -37,7 +37,7 @@ import TurnVerdict.Shape
   *   1. `record-call:n`, `tool:n:j`, `call-model:n` — the tool loop ([[TurnLoop]]): a reply
   *      that called tools kept as an entry, each of its calls settled in its own step
   *      ([[TurnTools]]), and the model called again, until a reply calls no tool or the
-  *      budget's last call. A call a person approves first is asked about in `ask:n:j`, an
+  *      budget's last call, made with tools off and told so ([[TurnLoop.LastCall]]). A call a person approves first is asked about in `ask:n:j`, an
   *      entry an edge shows, then waits up to [[TurnTooling.answerWithin]] for the answer
   *      [[grit.core.inbox.Inbox.answer]] sends ([[grit.core.durable.Durable.recv]]) before
   *      its `tool:n:j`; unanswered, it is denied.
@@ -529,7 +529,7 @@ object Turn {
     }
 
   /** How the loop's call `round` is built from the plain request: tagged for `asked` on the
-    * first call, offering `tools` as `use` says.
+    * first call, offering `tools` as `use` says, and told as [[TurnLoop.told]] says.
     */
   private def loopShape(
       asked: Option[TurnTopics.Classification],
@@ -539,7 +539,7 @@ object Turn {
   ): ModelRequest -> ModelRequest =
     base => {
       val tagged = asked.filter(_ => round == Round.First).fold(base)(TurnVerdict.tagged(base, _))
-      tagged.copy(tools = tools, use = use)
+      TurnLoop.told(use, tagged.copy(tools = tools, use = use))
     }
 
   /** The `record-call:n` step: `reply`, the reply to `round` that called tools, kept as
