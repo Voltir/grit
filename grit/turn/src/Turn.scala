@@ -10,7 +10,7 @@ import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
-import grit.core.store.{Entry, Payload, StoreError, Tx}
+import grit.core.store.{Entry, Jot, Payload, StoreError, Tx}
 import grit.core.tool.{Bound, DuplicateName, ToolName, Toolbox}
 import grit.core.topic.Topic
 
@@ -210,10 +210,13 @@ object Turn {
     }
   }
 
-  /** The turn workflow's body, for the turn whose workflow id is `workflowId`. Returns what
-    * the turn did, for logs: its reply and summary are in the store, never in this string.
+  /** The turn workflow's body, for the turn whose workflow id is `workflowId`, its model
+    * offered `tooling`'s tools. Returns what the turn did, for logs: its reply and summary are
+    * in the store, never in this string.
     */
-  def body(env: TurnEnv^)(workflowId: WorkflowId)(using d: Durable^): String =
+  def body(env: TurnEnv^, tooling: TurnTooling^)(
+      workflowId: WorkflowId
+  )(using d: Durable^): String =
     TurnRef.fromWorkflowId(workflowId) match {
       case None => s"not a turn: ${WorkflowId.value(workflowId)}"
       case Some(turn) =>
@@ -233,7 +236,7 @@ object Turn {
               .toOption
           case Placing.Unplaced => None
         }
-        val ran = run(turn, placing)(using env, d)
+        val ran = run(turn, placing, tooling)(using env, d)
         val topics = topicFailure.fold("")(f => s"; topics not recorded: $f") +
           ran.verdictUnrecorded.fold("")(f => s"; verdict not recorded: $f")
         ran.result match {
@@ -303,10 +306,13 @@ object Turn {
       verdictUnrecorded: Option[TurnFailure]
   )
 
-  /** The steps from `assemble` to `append`: `turn`'s reply entry, or why it has none. */
+  /** The steps from `assemble` to `append`: `turn`'s reply entry, or why it has none, its
+    * model offered `tooling`'s tools.
+    */
   private def run(
       turn: TurnRef,
-      placing: Placing
+      placing: Placing,
+      tooling: TurnTooling^
   )(using env: TurnEnv^, d: Durable^): Ran[EntryId] = {
     import TurnJournal.given
     val heard = d.stream(TurnStream.Key)
@@ -328,7 +334,7 @@ object Turn {
       case Left(failure) => Ran(Left(failure), None)
       case Right((window, recorded)) =>
         val asked = asking(placing)
-        if (d.patch(Patches.Tools)) loop(heard, turn, window, recorded, asked)
+        if (d.patch(Patches.Tools)) loop(heard, turn, window, recorded, asked, tooling)
         else {
           val answered = d.step(Step.CallModel) { () =>
             callModel(heard, turn, window, asked.fold(Shape.Plain)(Shape.Offered(_)))
@@ -365,24 +371,47 @@ object Turn {
     * the turn's tools, and `topic` too when `asked` holds the classification the model is
     * asked about; each reply that called tools kept by `record-call:n`, and each of its
     * calls settled by `tool:n:j` ([[TurnTools]]); then `record-verdict` when `asked`, and
-    * the answer appended as `turn`'s reply entry.
+    * the answer appended as `turn`'s reply entry. The tools are `tooling`'s.
     */
   private def loop(
       heard: StreamWriter^,
       turn: TurnRef,
       seen: Window,
       recorded: WindowRecord,
-      asked: Option[TurnTopics.Classification]
+      asked: Option[TurnTopics.Classification],
+      tooling: TurnTooling^
   )(using env: TurnEnv^, d: Durable^): Ran[EntryId] =
-    env.tooling match {
+    tooling match {
       case t: TurnTooling.ReadOnly =>
-        looping(heard, turn, seen, recorded, asked, t.tools, t.budget, t.strict, t.answerWithin)
+        looping(
+          heard,
+          turn,
+          seen,
+          recorded,
+          asked,
+          t.tools,
+          t.jot,
+          t.budget,
+          t.strict,
+          t.answerWithin
+        )
       case t: TurnTooling.Full =>
-        looping(heard, turn, seen, recorded, asked, t.tools, t.budget, t.strict, t.answerWithin)
+        looping(
+          heard,
+          turn,
+          seen,
+          recorded,
+          asked,
+          t.tools,
+          t.jot,
+          t.budget,
+          t.strict,
+          t.answerWithin
+        )
     }
 
-  /** [[loop]], offering `own`, the turn's tools, as `budget`, `strict` and `answerWithin`
-    * say ([[TurnTooling]]).
+  /** [[loop]], offering `own`, the turn's tools, their results kept through `jot`, as
+    * `budget`, `strict` and `answerWithin` say ([[TurnTooling]]).
     */
   private def looping[C^](
       heard: StreamWriter^,
@@ -391,6 +420,7 @@ object Turn {
       recorded: WindowRecord,
       asked: Option[TurnTopics.Classification],
       own: Toolbox[C],
+      jot: Jot^,
       budget: TurnLoop.Budget,
       strict: Boolean,
       answerWithin: FiniteDuration
@@ -419,7 +449,7 @@ object Turn {
             val slot = TurnTools.Slot(turn, round, index)
             val call = pending.call.id
             val clock = env.clock
-            val settling = new TurnTools.Settling(env.jot, env.records.entries)
+            val settling = new TurnTools.Settling(jot, env.records.entries)
             val settled = TurnTools.read(tools, pending) match {
               case Left(outcome) =>
                 d.step(slot.step) { () => settling.answer(slot, call, outcome, clock.now()) }

@@ -320,11 +320,10 @@ object TurnFixtures {
         provider,
         new StubProvider(),
         FakeDb,
-        new FakeJot,
         new NoWait,
-        Fresh.random(),
-        TurnTooling.ReadOnly(NoCheckout, noTools, budget(5), strict = false)
-      )
+        Fresh.random()
+      ),
+      TurnTooling.ReadOnly(NoCheckout, noTools, new FakeJot, budget(5), strict = false)
     )(id)
 
   /** The stub classifier, counting the questions it was asked, call by call. */
@@ -396,11 +395,10 @@ object TurnFixtures {
         provider,
         summarizer,
         FakeDb,
-        new FakeJot,
         clock,
-        Fresh.random(),
-        TurnTooling.ReadOnly(ws, tools, budget(calls), strict = false)
-      )
+        Fresh.random()
+      ),
+      TurnTooling.ReadOnly(ws, tools, new FakeJot, budget(calls), strict = false)
     )(id)
 
   def runTurn(

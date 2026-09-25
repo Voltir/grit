@@ -133,16 +133,17 @@ object Main {
               provider,
               summarizer,
               engine.db,
-              engine.jot,
               Clock.system(),
-              Fresh.random(),
-              tooling
-            )
+              Fresh.random()
+            ),
+            tooling
           )
         )
       offered match {
         case ToolChoice.Read =>
-          launch(TurnTooling.ReadOnly(checkout, Coding.readOnly(checkout), rounds, strict))
+          launch(
+            TurnTooling.ReadOnly(checkout, Coding.readOnly(checkout), engine.jot, rounds, strict)
+          )
         case ToolChoice.All =>
           val edits = new LocalEdits(root)
           // The process's own environment, not .env's: a command never needs grit's settings.
@@ -153,6 +154,7 @@ object Main {
               edits,
               shell,
               Coding.all(checkout, edits, shell),
+              engine.jot,
               rounds,
               strict
             )

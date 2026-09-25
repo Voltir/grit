@@ -61,11 +61,10 @@ object LiveTurn {
             provider,
             new StubProvider(),
             engine.db,
-            engine.jot,
             Clock.system(),
-            Fresh.random(),
-            tooling
-          )
+            Fresh.random()
+          ),
+          tooling
         )
       )
     val budget = TurnLoop.Budget.of(5).fold(why => sys.error(why), identity)
@@ -78,12 +77,17 @@ object LiveTurn {
           edits,
           shell,
           Coding.all(checkout, edits, shell),
+          engine.jot,
           budget,
           strict = false,
           answerWithin
         )
       )
-    } else launch(TurnTooling.ReadOnly(checkout, Coding.readOnly(checkout), budget, strict = false))
+    } else
+      launch(
+        TurnTooling
+          .ReadOnly(checkout, Coding.readOnly(checkout), engine.jot, budget, strict = false)
+      )
   }
 
   /** Ingests `source` and starts its turn. */

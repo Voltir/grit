@@ -20,6 +20,7 @@ object TurnCaptureTests extends TestSuite {
   private val prelude =
     """package probe
       |import grit.core.host.*
+      |import grit.core.store.Jot
       |import grit.core.tool.*
       |import grit.turn.*
       |object Probe {
@@ -57,21 +58,21 @@ object TurnCaptureTests extends TestSuite {
     * workspace.
     */
   private val breach =
-    """final case class Breached[C^](workspace: Workspace^, tools: Toolbox[C], budget: TurnLoop.Budget, strict: Boolean)
+    """final case class Breached[C^](workspace: Workspace^, tools: Toolbox[C], jot: Jot^, budget: TurnLoop.Budget, strict: Boolean)
       |""".stripMargin
 
   /** A toolbox that edits through `e`, handed to `tooling` as a read-only turn's tools over
     * `ws`, typed `result`.
     */
   private def editing(tooling: String, result: String) =
-    s"""def offered(ws: Workspace^, e: Edits^, box: Toolbox[{ws, e}], b: TurnLoop.Budget): $result =
-      |  $tooling(ws, box, b, strict = false)
+    s"""def offered(ws: Workspace^, e: Edits^, box: Toolbox[{ws, e}], j: Jot^, b: TurnLoop.Budget): $result =
+      |  $tooling(ws, box, j, b, strict = false)
       |""".stripMargin
 
   /** A toolbox that edits through `other`, not the tooling's `e`, handed to a full turn. */
   private val smuggled =
-    """def offered(ws: Workspace^, e: Edits^, s: Shell^, other: Edits^, box: Toolbox[{ws, other}], b: TurnLoop.Budget): TurnTooling^{ws, e, s, other} =
-      |  TurnTooling.Full(ws, e, s, box, b, strict = false)
+    """def offered(ws: Workspace^, e: Edits^, s: Shell^, other: Edits^, box: Toolbox[{ws, other}], j: Jot^, b: TurnLoop.Budget): TurnTooling^{ws, e, s, other, j} =
+      |  TurnTooling.Full(ws, e, s, box, j, b, strict = false)
       |""".stripMargin
 
   private def rejected(errs: List[String]): Boolean =
@@ -84,23 +85,23 @@ object TurnCaptureTests extends TestSuite {
 
     test("a read-only turn offered reading tools, and a full one offered editing, compile") {
       val errs = errors(
-        """def reading(ws: Workspace^, b: TurnLoop.Budget): Option[TurnTooling^{ws}] =
-          |  Toolbox.of[{ws}](reads(ws)).toOption.map(box => TurnTooling.ReadOnly(ws, box, b, strict = false))
-          |def editing(ws: Workspace^, e: Edits^, s: Shell^, b: TurnLoop.Budget): Option[TurnTooling^{ws, e, s}] =
-          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling.Full(ws, e, s, box, b, strict = false))
+        """def reading(ws: Workspace^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling^{ws, j}] =
+          |  Toolbox.of[{ws}](reads(ws)).toOption.map(box => TurnTooling.ReadOnly(ws, box, j, b, strict = false))
+          |def editing(ws: Workspace^, e: Edits^, s: Shell^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling^{ws, e, s, j}] =
+          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling.Full(ws, e, s, box, j, b, strict = false))
           |""".stripMargin
       )
       assert(errs.isEmpty)
     }
 
     test("a read-only turn offered a tool that edits is rejected") {
-      assert(rejected(errors(editing("TurnTooling.ReadOnly", "TurnTooling^{ws, e}"))))
+      assert(rejected(errors(editing("TurnTooling.ReadOnly", "TurnTooling^{ws, e, j}"))))
     }
 
     test("a read-only tooling whose tools are not tied to its workspace takes that tool") {
       // The breach the test above guards against, planted in a fixture: watched making that
       // test fail, kept so the rejection is known to come from the link alone.
-      val errs = errors(breach + editing("Breached", "Breached[{ws, e}]^{ws}"))
+      val errs = errors(breach + editing("Breached", "Breached[{ws, e}]^{ws, j}"))
       assert(errs.isEmpty)
     }
 
@@ -110,7 +111,7 @@ object TurnCaptureTests extends TestSuite {
 
     test("capture checking is what rejects the tool that edits") {
       val flags = options.filterNot(_.startsWith("-language:experimental."))
-      val sources = Vector(editing("TurnTooling.ReadOnly", "TurnTooling^{ws, e}"), smuggled)
+      val sources = Vector(editing("TurnTooling.ReadOnly", "TurnTooling^{ws, e, j}"), smuggled)
       val errs = sources.flatMap(s => compile(erased(prelude + s + "\n}\n"), flags))
       assert(errs.isEmpty)
     }
