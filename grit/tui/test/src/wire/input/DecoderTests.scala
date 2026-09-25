@@ -181,9 +181,10 @@ object DecoderTests extends TestSuite {
 
     test("an unterminated parameter run is dropped rather than buffered forever") {
       // A stream that never sends a final byte must not grow the decoder without bound.
+      // The whole run is written off as one raw key, and none of it is held.
       val junk = s"$Esc[" + "1;" * 200
       val (out, d) = Decoder.empty.feed(junk)
-      assert(out.nonEmpty)
+      assert(out == Vector(key(Key.Unknown(junk))), d.pendingIsEmpty)
       val (after, _) = d.feed(s"$Esc[A")
       assert(after == Vector(key(Key.Up())))
     }
