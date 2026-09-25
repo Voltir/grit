@@ -33,6 +33,15 @@ object TurnTopicsTests extends TestSuite {
 
   private def close(x: Double, y: Double): Boolean = math.abs(x - y) < 1e-9
 
+  /** The keys of topics named `names`, in order (turnless topics fold newest first). */
+  private def named(names: String*): Vector[String] = {
+    val events = names.toVector.zipWithIndex.reverse.flatMap { (name, i) =>
+      val id = TopicId(s"t$i")
+      Vector(TopicEvent.Opened(id), TopicEvent.Described(id, name, "about"))
+    }
+    TurnTopics.keys(Topics.fold(events).topics).map(_._2.key)
+  }
+
   val tests = Tests {
     test("the first message opens a topic, and nothing is asked") {
       val classifier = new CountingClassifier
@@ -233,6 +242,31 @@ object TurnTopicsTests extends TestSuite {
         )
         .topics
       TurnTopics.keys(ts).map(_._2.key) ==> Vector("new topic", "X", "new topic (2)")
+    }
+
+    test("keys are distinct when a number would repeat a shown name") {
+      named("x", "x", "x (2)") ==> Vector("x", "x (3)", "x (2)")
+    }
+
+    test("a topic shown as the new-topic key is numbered") {
+      named(TurnTopics.NewKey, "y") ==> Vector(s"${TurnTopics.NewKey} (1)", "y")
+    }
+
+    test("keys are pairwise distinct and never the new-topic key") {
+      val n = TurnTopics.NewKey
+      val cases = Vector(
+        Vector("x", "x", "x (2)"),
+        Vector("x (2)", "x", "x"),
+        Vector("x", "x (2)", "x", "x (3)", "x"),
+        Vector("x (2)", "x (2)", "x", "x", "x (2) (2)"),
+        Vector(n, n, s"$n (1)", s"$n (2)"),
+        Vector("x (1)", "x", "x", "x (3)", "x (2)", "x"),
+        Vector.fill(5)("x") ++ Vector("x (2)", "x (4)")
+      )
+      cases.foreach { shown =>
+        val keys = named(shown*)
+        assert(keys.distinct.size == keys.size, !keys.contains(n))
+      }
     }
   }
 }

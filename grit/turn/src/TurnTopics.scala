@@ -347,13 +347,26 @@ object TurnTopics {
   }
 
   /** Each of `topics`, in order, with the key it goes by: its shown name, and a number after
-    * it when an earlier one in `topics` is shown the same. No two keys are equal.
+    * it when an earlier one in `topics` is shown the same or the name is [[NewKey]]. No two
+    * keys are equal, and none is [[NewKey]].
     */
-  private[turn] def keys(topics: Vector[Topic]): Vector[(Topic, Shown)] =
-    topics.zipWithIndex.map { (t, i) =>
-      val before = topics.take(i).count(_.shown == t.shown)
-      t -> Shown(t.id, if (before == 0) t.shown else s"${t.shown} (${before + 1})")
+  private[turn] def keys(topics: Vector[Topic]): Vector[(Topic, Shown)] = {
+    // A numbered key skips any number that would make it a shown name or an earlier key.
+    val names = topics.map(_.shown).toSet + NewKey
+    @annotation.tailrec
+    def numbered(name: String, n: Int, used: Set[String]): String = {
+      val key = s"$name ($n)"
+      if (names(key) || used(key)) numbered(name, n + 1, used) else key
     }
+    topics.zipWithIndex
+      .foldLeft((Vector.empty[(Topic, Shown)], Set.empty[String])) { case ((done, used), (t, i)) =>
+        val before = topics.take(i).count(_.shown == t.shown)
+        val key =
+          if (before == 0 && t.shown != NewKey) t.shown else numbered(t.shown, before + 1, used)
+        (done :+ (t -> Shown(t.id, key)), used + key)
+      }
+      ._1
+  }
 
   private def topicJson(t: Topic): ujson.Value =
     ujson.Obj("name" -> t.shown, "summary" -> t.summary.fold[ujson.Value](ujson.Null)(ujson.Str(_)))
