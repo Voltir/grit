@@ -194,6 +194,29 @@ object TreeTests extends TestSuite {
       assert(!want.contains("▎") && !want.contains("ᚨ"))
     }
 
+    test("a fitting dialog is as tall as its document, wrapped once for measure and paint") {
+      import grit.tui.runtime.render.Paint
+      val fits = Modal("m", rows = 12, cols = 30, fit = true)
+      val base: Node[M] = paint(
+        grit.tui.components.widget
+          .StatusBar(Vector("x"), Vector(), grit.tui.model.surface.Style.plain)
+      )
+      val tree =
+        base.dialog(fits, Scroller.view(PaneKey.of("b"), helpDoc, Scroller.init).map(M.B(_)), None)
+      val (frame, _, memo) = Paint.frame(tree, Size(24, 60), Memo.empty)
+      val lines = frame.surface.lines
+      val top = lines.indexWhere(_.contains("╭"))
+      val bottom = lines.indexWhere(_.contains("╰"))
+      assert(bottom - top - 1 == helpDoc.length, lines(bottom - 1).contains("seventh"))
+      assert(memo.misses == helpDoc.length.toLong)
+      // A document longer than the most it may take scrolls inside the most.
+      val long = Doc(Vector.tabulate(40)(i => Block.Text(s"line $i")))
+      val tall =
+        base.dialog(fits, Scroller.view(PaneKey.of("b"), long, Scroller.init).map(M.B(_)), None)
+      val tl = Paint.frame(tall, Size(24, 60), Memo.empty)._1.surface.lines
+      assert(tl.indexWhere(_.contains("╰")) - tl.indexWhere(_.contains("╭")) - 1 == 12)
+    }
+
     test("rule 6: a drag begun in the modal stays in the modal's document and rect") {
       val sim =
         new Sim(S(prose, Scroller.init, helpDoc, Scroller.init, true, Vector.empty), Size(24, 60))

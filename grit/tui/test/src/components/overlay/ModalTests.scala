@@ -46,6 +46,15 @@ object ModalTests extends TestSuite {
       assert(checked > 40)
     }
 
+    test("a fitting modal is as tall as its content, up to its rows; a fixed one ignores it") {
+      val fitting = modal.copy(fit = true)
+      fitting.place(screen, 4).map(_.rows) ==> Some(4)
+      fitting.place(screen, 40).map(_.rows) ==> Some(9)
+      fitting.place(screen, 0).map(_.rows) ==> Some(1)
+      fitting.place(Size(12, 100), 8).map(_.rows) ==> Some(6) // and still the screen's
+      modal.place(screen, 4).map(_.rows) ==> Some(9)
+    }
+
     test("a screen too small for a usable dialog gets none") {
       assert(modal.place(Size(8, 100)).isEmpty)
       assert(modal.place(Size(30, 23)).isEmpty)

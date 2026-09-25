@@ -85,16 +85,18 @@ final case class Look(theme: Theme) {
   def status: Style = Style.fg(theme.statusFg) + Style.bg(theme.statusBg) + Style.Bold
 
   /** A dialog titled `title` over the screen: lit on the slab, the screen behind it
-    * pushed back to the rail's colour (never the terminal's dim).
+    * pushed back to the rail's colour (never the terminal's dim). One that `fit`s is as
+    * tall as its body, up to the most any dialog takes.
     */
-  def modal(title: String): Modal =
+  def modal(title: String, fit: Boolean = false): Modal =
     Modal(
       title,
       rows = 24,
       cols = 60,
       panel = modalGround,
       chrome = Style.fg(theme.grit) + Style.Bold,
-      behind = Style.fg(theme.rail)
+      behind = Style.fg(theme.rail),
+      fit = fit
     )
 
   /** Under a dialog's body. */

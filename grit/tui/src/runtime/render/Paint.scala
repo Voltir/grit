@@ -1,7 +1,7 @@
 package grit.tui.runtime.render
 
 import grit.tui.components.layout.Stacking
-import grit.tui.components.overlay.Popup
+import grit.tui.components.overlay.{Modal, Popup}
 import grit.tui.components.pane.Anchor
 import grit.tui.components.pane.Viewport
 import grit.tui.components.tree.{Node, OnInput, PaneKey}
@@ -181,6 +181,37 @@ object Paint {
 
     private def claim(p: Vector[Stop[M]]): Unit = { focus = p; claims += 1 }
     var memos: Map[PaneKey, DocMemo] = Map.empty
+
+    /** Documents a fitting dialog measured before painting them: wrapped once, and the
+      * pane that paints them next starts from here rather than wrapping again.
+      */
+    private var measured: Map[PaneKey, DocMemo] = Map.empty
+
+    /** Where `modal`'s body goes on a screen of `screen`: at its full size, or, for a
+      * modal that fits, as tall as `body` measures at that size's width.
+      */
+    private def placed[A](modal: Modal, body: Node[A], screen: Size): Option[Rect] =
+      modal.place(screen).flatMap { most =>
+        if (!modal.fit) Some(most) else modal.place(screen, content(body, most.size))
+      }
+
+    /** How many rows `n` wants of `avail`: a document pane's wrapped height, read through
+      * the wrap memo; anything else as [[Paint.measure]] says.
+      */
+    private def content[A](n: Node[A], avail: Size): Int = n match {
+      case d: Node.DocPane[A] =>
+        val cols = if (d.bar.isDefined && avail.cols >= 2) avail.cols - 1 else avail.cols
+        val memo = measured
+          .getOrElse(d.key, old.docs.getOrElse(d.key, DocMemo.empty))
+          .synced(d.doc, cols)
+        measured = measured.updated(d.key, memo)
+        memo.total
+      case Node.On(c, _, _, _) => content(c, avail)
+      case m: Node.Mapped[?, A] => content(m.inner, avail)
+      case Node.Ground(inner, _) => content(inner, avail)
+      case w: Node.Wide[A] => content(w.at(avail.cols), avail)
+      case other => Paint.measure(other, avail).rows
+    }
     private var deferred: Vector[Float[M]] = Vector.empty
 
     /** The popups, painted last so they are on top of everything, with their press
@@ -269,7 +300,7 @@ object Paint {
         targets += Target.Wall(rect)
         cursor = None
         claim(path :+ stop)
-        modal.place(rect.size).foreach { local =>
+        placed(modal, body, rect.size).foreach { local =>
           val at = local.translate(Pos(rect.top, rect.left))
           if (cells) surface = modal.render(surface, at)
           walk(body, at, lift, path :+ stop)
@@ -314,7 +345,9 @@ object Paint {
         val withBar = d.bar.isDefined && rect.cols >= 2
         val text = if (withBar) Rect(rect.top, rect.left, rect.rows, rect.cols - 1) else rect
         val track = if (withBar) Some(Rect(rect.top, rect.right - 1, rect.rows, 1)) else None
-        val memo = old.docs.getOrElse(d.key, DocMemo.empty).synced(d.doc, text.cols)
+        val memo = measured
+          .getOrElse(d.key, old.docs.getOrElse(d.key, DocMemo.empty))
+          .synced(d.doc, text.cols)
         memos = memos.updated(d.key, memo)
         val top = memo.topFor(d.anchor, text.rows)
         val vp = memo.viewport(top, text.size)

@@ -26,22 +26,26 @@ final case class Modal(
     cols: Int,
     panel: Style = Style.plain,
     chrome: Style = Style.plain,
-    behind: Style = Style.Dim
+    behind: Style = Style.Dim,
+    fit: Boolean = false
 ) {
 
   import Modal.*
 
   /** Where the body goes: centred, shrunk to what the screen can hold around the
-    * chrome, or None when the screen is too small for a modal worth painting.
+    * chrome, or None when the screen is too small for a modal worth painting. A modal
+    * that `fit`s is as tall as `content` rows -- its body's measured height -- up to
+    * [[rows]], and at least one; one that does not is [[rows]] tall whatever `content` says.
     *
     * This is the *content* rect -- the border is drawn outside it -- so the rect the body
     * is painted into and the pane's own viewport describe the same cells, which is what
     * makes hit-testing invert painting.
     */
-  def place(screen: Size): Option[Rect] = {
+  def place(screen: Size, content: Int = Int.MaxValue): Option[Rect] = {
     if (screen.rows < MinRows || screen.cols < MinCols) None
     else {
-      val r = math.min(rows, screen.rows - ReservedRows)
+      val tall = if (fit) math.max(1, math.min(rows, content)) else rows
+      val r = math.min(tall, screen.rows - ReservedRows)
       val c = math.min(cols, screen.cols - ReservedCols)
       if (r <= 0 || c <= 0) None
       else Some(Rect((screen.rows - r) / 2, (screen.cols - c) / 2, r, c).clip(screen))

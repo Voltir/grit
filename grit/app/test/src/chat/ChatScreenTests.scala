@@ -376,6 +376,10 @@ object ChatScreenTests extends TestSuite {
         shown.contains("ctrl-p"),
         shown.contains("click the thinking line")
       )
+      // The dialog is as tall as what it lists: its frame closes under the last row.
+      val rows = open.screen
+      val last = rows.indexWhere(_.contains("click the thinking line"))
+      assert(last > 0, rows.lift(last + 1).exists(_.contains("╰")))
       assert(!sends(open))
       val closed = open.input(Input.Keyboard(Key.Escape))
       closed.state.modal ==> None

@@ -79,7 +79,8 @@ FINDINGS.
    that changed (every block, when the width does), so a frame costs the rows it shows. The
    one wrap outside the memo is `Editor.measure`, which a `Region.Fit` asks for: it is over
    the *draft*, not a document, and bounded by the prompt's own height. Do not read it as a
-   licence to measure a document.
+   licence to measure a document. (A `Modal` that fits reads its document's height off
+   the same memo the pane then paints from: one wrap, not two.)
 8. **Restore terminal state in reverse, idempotently.** It is called from cleanup, from a
    `finally`, and from a shutdown hook.
 9. **Never fight the user's escape hatches.** Shift-drag stays unbound.

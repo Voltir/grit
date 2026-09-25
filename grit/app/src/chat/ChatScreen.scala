@@ -514,7 +514,11 @@ object ChatScreen {
         case Some(Dialog.Turn) =>
           screen.dialog(look.modal(title), opened(s, look, panel), Some(Msg.CloseModal))
         case Some(Dialog.Help) =>
-          screen.dialog(look.modal("help"), help(look, s.modalReader), Some(Msg.CloseModal))
+          screen.dialog(
+            look.modal("help", fit = true),
+            help(look, s.modalReader),
+            Some(Msg.CloseModal)
+          )
       }
       // The hotkeys wrap the dialog, so ctrl-q still quits over it.
       over
