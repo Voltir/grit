@@ -5,11 +5,11 @@ package grit.core.classify
   */
 final case class Criterion[C](value: C, key: String, description: Option[String])
 
-/** A choice's answer: the most probable criterion's value, every criterion's value with its
-  * probability in the question's order (summing to 1), and the classifier's confidence (see
-  * [[Answer.Choice]]).
+/** A choice's answer: every criterion's value with its probability, in the question's order,
+  * summing to 1 (within rounding); `choice` is the value of the most probable criterion (the
+  * first, on a tie); and the classifier's `confidence` (see [[Answer.Choice]]).
   */
-final case class Decision[C](
+final case class Decision[C] private (
     choice: C,
     probabilities: Vector[Decision.Weight[C]],
     confidence: Double
@@ -23,6 +23,22 @@ final case class Decision[C](
 
 object Decision {
   final case class Weight[C](value: C, probability: Double)
+
+  /** `weights` normalised to sum to 1, a NaN, infinite or negative one counted as 0; `None`
+    * when none is left positive.
+    */
+  private[classify] def of[C](
+      weights: Vector[Weight[C]],
+      confidence: Double
+  ): Option[Decision[C]] = {
+    val clean = weights.map(w => w.copy(probability = Answer.mass(w.probability)))
+    val total = clean.map(_.probability).sum
+    val normal = clean.map(w => w.copy(probability = w.probability / total))
+    Option
+      .when(total > 0)(normal)
+      .flatMap(_.maxByOption(_.probability))
+      .map(top => new Decision(top.value, normal, confidence))
+  }
 }
 
 /** Questions about a state of type `S`, asked together, and how their answers read into a
@@ -76,21 +92,23 @@ object Ask {
           one(instructions, answers).flatMap {
             case Answer.Choice(choice, probabilities, confidence) =>
               for {
-                chosen <- criteria
-                  .find(_.key == choice)
-                  .toRight(unreadable(instructions, s"chose $choice, not an option"))
-                weights = criteria.map(c =>
-                  Decision.Weight(
-                    c.value,
-                    probabilities.find(_.key == c.key).fold(0.0)(_.probability)
-                  )
-                )
                 _ <- Either.cond(
-                  weights.exists(_.probability > 0),
+                  criteria.exists(_.key == choice),
                   (),
-                  unreadable(instructions, "no option has probability")
+                  unreadable(instructions, s"chose $choice, not an option")
                 )
-              } yield Decision(chosen.value, weights, confidence)
+                decision <- Decision
+                  .of(
+                    criteria.map(c =>
+                      Decision.Weight(
+                        c.value,
+                        probabilities.find(_.key == c.key).fold(0.0)(_.probability)
+                      )
+                    ),
+                    confidence
+                  )
+                  .toRight(unreadable(instructions, "no option has probability"))
+              } yield decision
             case Answer.YesNo(_) => Left(unreadable(instructions, "answered yes/no to a choice"))
           }
       )

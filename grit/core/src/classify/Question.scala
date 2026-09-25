@@ -30,10 +30,10 @@ object Question {
 /** A classifier's answer to one [[Question]], of the question's kind. */
 enum Answer {
 
-  /** `probabilities` has one weight per key of the question, in its order, summing to 1
-    * (within rounding). `choice` is the most probable key. `confidence` is how concentrated
-    * the weights are: 1 when all on one key, 0 when spread evenly; it is not the probability
-    * of `choice`.
+  /** As the classifier reported it, unchecked: `choice` should name a key and `probabilities`
+    * weigh the keys; [[Ask.choice]] reads it into a [[Decision]]. `confidence` is how
+    * concentrated the weights are: 1 when all on one key, 0 when spread evenly; it is not the
+    * probability of `choice`.
     */
   case Choice(choice: String, probabilities: Vector[Answer.Weight], confidence: Double)
 
@@ -56,14 +56,12 @@ object Answer {
     }
   }
 
-  /** A Choice over `probabilities` (keys in the question's order), normalised to sum to 1, its
-    * choice the most probable key (the first, on a tie). `None` when there is no probability
-    * mass.
+  /** A Choice over `probabilities` (keys in the question's order), normalised to sum to 1, a
+    * NaN, infinite or negative one counted as 0; its choice the most probable key (the first,
+    * on a tie). `None` when there is no probability mass.
     */
   def choice(probabilities: Vector[Weight]): Option[Answer.Choice] = {
-    val clean = probabilities.map { w =>
-      if (w.probability.isNaN || w.probability < 0) w.copy(probability = 0.0) else w
-    }
+    val clean = probabilities.map(w => w.copy(probability = mass(w.probability)))
     val total = clean.map(_.probability).sum
     val normal = clean.map(w => w.copy(probability = w.probability / total))
     Option
@@ -71,4 +69,7 @@ object Answer {
       .flatMap(_.maxByOption(_.probability))
       .map(top => Answer.Choice(top.key, normal, confidence(normal.map(_.probability))))
   }
+
+  /** `p` as probability mass: itself, or 0 when NaN, infinite or negative. */
+  private[classify] def mass(p: Double): Double = if (p >= 0 && !p.isInfinite) p else 0.0
 }

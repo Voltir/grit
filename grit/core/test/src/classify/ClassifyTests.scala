@@ -138,13 +138,76 @@ object ClassifyTests extends TestSuite {
     }
 
     test("a decision's probability of a value sums over the criteria that stand for it") {
-      val d = Decision(
-        1,
-        Vector(Decision.Weight(1, 0.25), Decision.Weight(2, 0.5), Decision.Weight(1, 0.25)),
-        0.0
+      val ones = Ask.choice[Ticket, Int](
+        "?",
+        Criterion(1, "a", None),
+        Criterion(2, "b", None),
+        Criterion(1, "c", None)
       )
-      d.probability(1) ==> 0.5
-      d.probability(3) ==> 0.0
+      val canned =
+        new Canned(Answer.Choice("b", Vector(w("a", 0.25), w("b", 0.5), w("c", 0.25)), 0.0))
+      val d = ones.flatMap(q => canned.ask(Ticket("x"), q).left.map(_.toString)).map(_.value)
+      assert(d.map(_.choice) == Right(2), d.map(_.probability(1)) == Right(0.5))
+      assert(d.map(_.probability(3)) == Right(0.0))
+    }
+
+    test("a decision's probabilities sum to 1 and its choice is the most probable, whatever came") {
+      def decide(choice: String, ps: Answer.Weight*) =
+        department()
+          .flatMap(q =>
+            new Canned(Answer.Choice(choice, ps.toVector, 0.5))
+              .ask(Ticket("x"), q)
+              .left
+              .map(_.toString)
+          )
+          .map(_.value)
+      val answers = Vector(
+        "missing a key" -> decide("billing", w("billing", 1.5), w("technical", 0.5)),
+        "mass off the options, choosing less" -> decide(
+          "billing",
+          w("sales", 1.5),
+          w("hr", 3.0),
+          w("billing", 0.5)
+        ),
+        "NaN, negative, infinite" ->
+          decide(
+            "billing",
+            w("billing", Double.NaN),
+            w("technical", -1.0),
+            w("sales", Double.PositiveInfinity)
+          ),
+        "NaN beside mass" -> decide("billing", w("billing", Double.NaN), w("technical", 0.4)),
+        "a tie" -> decide("sales", w("billing", 0.4), w("technical", 0.2), w("sales", 0.4))
+      )
+      val read =
+        answers.map((why, d) => why -> d.map(d => (d.choice, d.probabilities.map(_.probability))))
+      assert(
+        read == Vector(
+          "missing a key" -> Right((Team.Billing, Vector(0.75, 0.25, 0.0))),
+          "mass off the options, choosing less" -> Right((Team.Sales, Vector(0.25, 0.0, 0.75))),
+          "NaN, negative, infinite" -> Left(
+            "Unreadable(\"Which team should handle `ticket`?\": no option has probability)"
+          ),
+          "NaN beside mass" -> Right((Team.Technical, Vector(0.0, 1.0, 0.0))),
+          "a tie" -> Right((Team.Billing, Vector(0.4, 0.2, 0.4)))
+        )
+      )
+      answers.foreach { (_, d) =>
+        d.foreach { d =>
+          assert(math.abs(d.probabilities.map(_.probability).sum - 1.0) < 1e-9)
+          assert(d.probabilities.forall(_.probability <= d.top))
+        }
+      }
+    }
+
+    test("a decision is built only by reading an answer") {
+      import scala.compiletime.testing.typeChecks
+      assert(
+        typeChecks("Decision.Weight(1, 0.5)"),
+        !typeChecks("Decision(1, Vector(Decision.Weight(1, 5.0)), 0.0)"),
+        typeChecks("(d: Decision[Int]) => d.choice"),
+        !typeChecks("(d: Decision[Int]) => d.copy(choice = 2)")
+      )
     }
 
     test("Classifier.none answers nothing, Unavailable with its reason") {
