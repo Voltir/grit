@@ -105,8 +105,7 @@ object TurnFixtures {
   }
 
   /** An entry store that dies, once, on the first insert of an entry `when` picks. */
-  final class CrashOnInsert(underlying: EntryStore, when: Entry -> Boolean)
-      extends EntryStore {
+  final class CrashOnInsert(underlying: EntryStore, when: Entry -> Boolean) extends EntryStore {
     @caps.unsafe.untrackedCaptures
     var armed = true
 

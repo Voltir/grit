@@ -65,7 +65,10 @@ object RecordTurnHistories {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val turn = say(store, "hello")
-      try durable.run(turn.workflowId)(turnBody(new CrashOnInsert(store, isReply), new RecordingProvider))
+      try
+        durable.run(turn.workflowId)(
+          turnBody(new CrashOnInsert(store, isReply), new RecordingProvider)
+        )
       catch { case _: InMemoryDurable.Crash => "" }
       recorded(durable, turn)
     }

@@ -58,7 +58,9 @@ object History {
               case (None, Some(ujson.Null)) => Right(Outcome.Threw(None))
               case (None, None) => Right(Outcome.Marker)
               case _ =>
-                Left(s"step '$name': expected a string 'output', a string or null 'error', or neither")
+                Left(
+                  s"step '$name': expected a string 'output', a string or null 'error', or neither"
+                )
             }
           } yield done :+ InMemoryDurable.Step(name, outcome)
         }
