@@ -142,20 +142,25 @@ object DocMemoTests extends TestSuite {
 
     test("the highlighted cells are exactly what the selection model says") {
       // Rule 5, made visible: the painted mask is read back off the surface and compared
-      // with the model row by row. An asymmetric projection paints rows after the
-      // selection and leaves the copied text correct -- only this catches it.
-      val size = Size(10, 40)
+      // with the model cell by cell, through the viewport's inverse rather than the
+      // projection the paint itself uses. An asymmetric projection paints rows after the
+      // selection and leaves the copied text correct -- only this catches it, so rows of
+      // later entries must be on screen.
+      val size = Size(24, 40)
       val (vp, _, _) = view(long(6), size, Anchor.At(DocPos(0, 0)))
-      val sel = Selection(DocPos(1, 4), DocPos(3, 9))
+      val sel = Selection(DocPos(1, 4), DocPos(2, 9))
+      assert(vp.rows.exists(_.entry > sel.end.entry))
       val painted = vp.render(Some(sel))
       vp.rows.zipWithIndex.foreach { (row, r) =>
-        val (from, to) = sel.columnsOn(row.entry, row.start, row.text)
         val reversed = (0 until size.cols).filter(c => painted.at(r, c).style.reverse)
-        assert(reversed == (from until to))
+        val selected = (0 until Width.of(row.text)).filter { c =>
+          vp.docPosAt(Pos(r, c)).exists(sel.contains)
+        }
+        assert(reversed == selected)
       }
     }
 
-    test("an empty document renders nothing and maps nowhere useful") {
+    test("an empty document renders blank, and a click in it lands at the origin") {
       val (vp, _, _) = view(Doc.empty, Size(5, 20))
       assert(vp.rows.isEmpty, vp.docPosAt(Pos(0, 0)) == Some(DocPos.zero))
       assert(vp.render(None).lines.forall(_.trim.isEmpty))
