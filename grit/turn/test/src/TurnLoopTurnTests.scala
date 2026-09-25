@@ -228,6 +228,9 @@ object TurnLoopTurnTests extends TestSuite {
         Some(Payload.Ask(ToolCallId("t1"), "poke a.txt"))
       durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-call:0").take(5) ==>
         Vector("record-call:0", "ask:0:0", "DBOS.recv", "DBOS.sleep", "tool:0:0")
+      // A watcher is shown the answer's arrival as the wait for it.
+      Turn.Step.named(durable.recordedSteps(turn.workflowId)).filter(_.contains(":0:0")) ==>
+        Vector("ask:0:0", "wait:0:0", "tool:0:0")
     }
 
     test("a gated call declined is denied with the reason, and the model reads it") {

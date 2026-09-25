@@ -71,13 +71,27 @@ object TurnTests extends TestSuite {
       val loop = Vector("record-window", "DBOS.patch-tools", "call-model")
       Turn.running(loop :+ "record-call:0") ==> "tool:0:0"
       Turn.running(loop ++ Vector("record-call:0", "tool:0:0")) ==> "call-model:1"
-      // Waiting for a person: DBOS records the wait's end as it begins, which is no step.
-      Turn.running(loop ++ Vector("record-call:0", "ask:0:0", "DBOS.sleep")) ==> "tool:0:0"
+      // Waiting for a person: DBOS records the wait's end as it begins, which is no step, so
+      // the turn is waiting on them; once the wait ends, answered or not, the tool runs.
+      val asked = loop ++ Vector("record-call:0", "ask:0:0", "DBOS.sleep")
+      Turn.running(asked) ==> "wait:0:0"
+      Turn.running(asked :+ "DBOS.recv") ==> "tool:0:0"
+      Turn.running(asked ++ Vector("DBOS.recv", "tool:0:0")) ==> "call-model:1"
+      Turn.Step.family("wait:0:1") ==> Some("wait")
       Turn.Step.family("ask:0:1") ==> Some("ask")
       Turn.running(loop ++ Vector("record-call:0", "tool:0:1", "call-model:1")) ==> "append"
       Turn.running(loop ++ Vector("record-call:0", "tool:0:0", "call-model:1", "append")) ==>
         "summarise"
       Turn.running(loop ++ Vector("record-call:0", "tool:0:0", "record-verdict")) ==> "append"
+    }
+
+    test("a wait for a person is named for the call it waits on, once it has ended") {
+      Turn.Step.named(
+        Vector("ask:1:0", "DBOS.recv", "DBOS.sleep", "tool:1:0", "ask:1:1", "DBOS.sleep")
+      ) ==> Vector("ask:1:0", "wait:1:0", "DBOS.sleep", "tool:1:0", "ask:1:1", "DBOS.sleep")
+      // A recv that ends no ask's wait keeps DBOS's name.
+      Turn.Step.named(Vector("tool:0:0", "DBOS.recv", "ask:0:1", "tool:0:1", "DBOS.recv")) ==>
+        Vector("tool:0:0", "DBOS.recv", "ask:0:1", "tool:0:1", "DBOS.recv")
     }
 
     test("a turn records the model's reply as its entry") {

@@ -201,7 +201,8 @@ final case class TurnPanel(look: Look, budget: Tokens) {
     val recorded = v.steps.map(_.name).filter(Turn.Step.family(_).nonEmpty)
     // A loop's record and tools run where its model calls do.
     def at(name: String): Int = Turn.Step.family(name) match {
-      case Some(Turn.Step.RecordCall) | Some(Turn.Step.Ask) | Some(Turn.Step.Tool) =>
+      case Some(Turn.Step.RecordCall) | Some(Turn.Step.Ask) | Some(Turn.Step.Wait) |
+          Some(Turn.Step.Tool) =>
         Turn.Step.all.indexOf(Turn.Step.CallModel)
       case family => family.fold(-1)(Turn.Step.all.indexOf)
     }

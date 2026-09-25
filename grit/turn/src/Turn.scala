@@ -113,6 +113,17 @@ object Turn {
       */
     val Ask = "ask"
 
+    /** The family of `wait:n:j`, a person's time to answer about call j of round n's reply:
+      * not a step the turn records, but its wait between `ask:n:j` and the answer, which
+      * DBOS records as [[Answered]] ([[named]] and [[running]] give it this name).
+      */
+    val Wait = "wait"
+
+    /** The name DBOS records a wait for a message under once it ends, answered or run out
+      * ([[grit.core.durable.Durable.recv]]).
+      */
+    val Answered = "DBOS.recv"
+
     /** The name of `round`'s record of its reply that called tools. */
     def recordCall(round: TurnLoop.Round): String = s"$RecordCall:${round.index}"
 
@@ -122,19 +133,36 @@ object Turn {
     /** The name of the step asking about call `index` (from 0) of `round`'s reply. */
     def ask(round: TurnLoop.Round, index: Int): String = s"$Ask:${round.index}:$index"
 
-    /** The step `name` stands for among [[all]], [[RecordCall]], [[Ask]] and [[Tool]]: its
-      * round and index dropped (`call-model:3` is [[CallModel]], `tool:1:0` is [[Tool]]).
-      * `None` for a name that is not the turn's, such as a patch's marker or DBOS's record of
-      * a wait.
+    /** The step `name` stands for among [[all]], [[RecordCall]], [[Ask]], [[Wait]] and
+      * [[Tool]]: its round and index dropped (`call-model:3` is [[CallModel]], `tool:1:0` is
+      * [[Tool]]). `None` for a name that is not the turn's, such as a patch's marker or
+      * DBOS's own records of a wait ([[Answered]] before [[named]] renames it).
       */
     def family(name: String): Option[String] =
       Loop.of(name) match {
         case Some(Loop.Call(_)) => Some(CallModel)
         case Some(Loop.Record(_)) => Some(RecordCall)
         case Some(Loop.Ask(_, _)) => Some(Ask)
+        case Some(Loop.Wait(_, _)) => Some(Wait)
         case Some(Loop.Tool(_, _)) => Some(Tool)
         case None => Option.when(all.contains(name))(name)
       }
+
+    /** The names of `recorded`, the steps a turn recorded in order, as a watcher is shown
+      * them: an [[Answered]] that ends the wait after `ask:n:j` is `wait:n:j`; every other
+      * name is as recorded.
+      */
+    def named(recorded: Vector[String]): Vector[String] =
+      recorded
+        .foldLeft((Vector.empty[String], Option.empty[Loop.Ask])) { case ((out, asked), name) =>
+          (Loop.of(name), asked) match {
+            case (Some(ask: Loop.Ask), _) => (out :+ name, Some(ask))
+            case (_, Some(Loop.Ask(n, j))) if name == Answered => (out :+ s"$Wait:$n:$j", None)
+            case _ if family(name).nonEmpty => (out :+ name, None)
+            case _ => (out :+ name, asked)
+          }
+        }
+        ._1
   }
 
   /** A step of the tool loop, by what its name says. */
@@ -142,6 +170,7 @@ object Turn {
     case Call(round: Int)
     case Record(round: Int)
     case Ask(round: Int, index: Int)
+    case Wait(round: Int, index: Int)
     case Tool(round: Int, index: Int)
   }
 
@@ -149,12 +178,14 @@ object Turn {
     private val CallName = """call-model:(\d+)""".r
     private val RecordName = """record-call:(\d+)""".r
     private val AskName = """ask:(\d+):(\d+)""".r
+    private val WaitName = """wait:(\d+):(\d+)""".r
     private val ToolName = """tool:(\d+):(\d+)""".r
 
     def of(name: String): Option[Loop] = name match {
       case CallName(n) => n.toIntOption.map(Call(_))
       case RecordName(n) => n.toIntOption.map(Record(_))
       case AskName(n, j) => n.toIntOption.zip(j.toIntOption).map(Ask(_, _))
+      case WaitName(n, j) => n.toIntOption.zip(j.toIntOption).map(Wait(_, _))
       case ToolName(n, j) => n.toIntOption.zip(j.toIntOption).map(Tool(_, _))
       case _ => None
     }
@@ -187,18 +218,20 @@ object Turn {
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
     * is recorded when it completes). After a loop's `record-call:n`, its first tool,
-    * `tool:n:0`; after `ask:n:j`, `tool:n:j`, which waits for a person's answer first; after
-    * `tool:n:j`, the next model call, `call-model:n+1`, which takes far longer than any
-    * further tool. Otherwise the next step after the last recorded that
-    * every turn takes ([[Step.optional]] ones only once recorded), `call-model:n` counting as
-    * `call-model`. Names that are not the turn's steps are skipped; once the last step is
-    * recorded the turn is finishing, and that step is named.
+    * `tool:n:0`; after `ask:n:j`, `wait:n:j`, a person's time to answer ([[Step.Wait]]);
+    * once the wait has ended, `tool:n:j`; after `tool:n:j`, the next model call,
+    * `call-model:n+1`, which takes far longer than any further tool. Otherwise the next step
+    * after the last recorded that every turn takes ([[Step.optional]] ones only once
+    * recorded), `call-model:n` counting as `call-model`. Names that are not the turn's steps
+    * are skipped; once the last step is recorded the turn is finishing, and that step is
+    * named.
     */
   def running(recorded: Vector[String]): String = {
-    val own = recorded.filter(Step.family(_).nonEmpty)
+    val own = Step.named(recorded).filter(Step.family(_).nonEmpty)
     own.lastOption.flatMap(Loop.of) match {
       case Some(Loop.Record(n)) => s"${Step.Tool}:$n:0"
-      case Some(Loop.Ask(n, j)) => s"${Step.Tool}:$n:$j"
+      case Some(Loop.Ask(n, j)) => s"${Step.Wait}:$n:$j"
+      case Some(Loop.Wait(n, j)) => s"${Step.Tool}:$n:$j"
       case Some(Loop.Tool(n, _)) => s"${Step.CallModel}:${n + 1}"
       case _ =>
         val done =

@@ -16,7 +16,7 @@ import grit.turn.Turn
   * @param turn the turn's position in the conversation, from 0
   * @param asked the user's message that started it
   * @param running the step it is in, while it runs
-  * @param steps the steps it recorded, in order
+  * @param steps the steps it recorded, in order, named as [[Turn.Step.named]] shows them
   * @param query what assembly searched for, when it searched
   * @param window what the model saw, once the reply is recorded
   * @param spent what its model calls cost, once one was made
@@ -100,12 +100,31 @@ object TurnView {
         .collectFirst { case Entry(_, _, _, _, _, Payload.Message(Message.User(t)), _) => t }
         .getOrElse(""),
       Option.when(running)(Turn.running(steps.map(_.name))),
-      steps.map(s => Step(s.name, s.started.zip(s.completed).map(Duration.between(_, _).toMillis))),
+      timed(steps),
       own.collectFirst { case Entry(_, _, _, _, _, Payload.Query(q), _) => q },
       window,
       spent,
       reply.map(_.usage.input)
     )
+  }
+
+  /** `recorded` as the panel shows them ([[Turn.Step.named]]), each timed from its start to
+    * its end; a person's wait from the end of the ask before it, since DBOS keeps no start
+    * for it that the panel can trust.
+    */
+  private def timed(recorded: Vector[RecordedStep]): Vector[Step] = {
+    val names = Turn.Step.named(recorded.map(_.name))
+    recorded.zip(names).zipWithIndex.map { case ((step, name), i) =>
+      val from =
+        if (Turn.Step.family(name).contains(Turn.Step.Wait))
+          recorded
+            .take(i)
+            .zip(names)
+            .findLast((_, n) => Turn.Step.family(n).contains(Turn.Step.Ask))
+            .flatMap(_._1.completed)
+        else step.started
+      Step(name, from.zip(step.completed).map(Duration.between(_, _).toMillis))
+    }
   }
 
   private def isUser(e: Entry): Boolean = e.payload match {

@@ -106,6 +106,23 @@ object TurnViewTests extends TestSuite {
       assert(!v.settled)
     }
 
+    test("a person's wait is its own step, timed from the ask to the answer") {
+      val asked = Vector(step("record-call:0", 0, 10), step("ask:0:0", 10, 20))
+      def of(steps: Vector[RecordedStep]) =
+        TurnView.of(turn2, entries.take(5), steps, running = true, Vector.empty, "s", CharEstimate)
+      // DBOS records the wait's end as it begins; the wait itself only when it ends.
+      val waiting = of(asked :+ step("DBOS.sleep", 21, 21))
+      waiting.running ==> Some("wait:0:0")
+      val answered = of(asked ++ Vector(step("DBOS.recv", 21, 234020), step("DBOS.sleep", 21, 21)))
+      answered.running ==> Some("tool:0:0")
+      answered.steps.map(s => (s.name, s.ms)) ==> Vector(
+        ("record-call:0", Some(10L)),
+        ("ask:0:0", Some(10L)),
+        ("wait:0:0", Some(234000L)),
+        ("DBOS.sleep", Some(0L))
+      )
+    }
+
     test("a running turn is in the step after its last recorded one, before any window") {
       val asked = entries.take(5)
       val v = TurnView.of(

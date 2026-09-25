@@ -455,6 +455,41 @@ object ChatScreenTests extends TestSuite {
         Vector(Msg.Answer(q.workflow, q.call, Approval.Approved))
     }
 
+    test("a person's wait has its own row, and the tool is timed only once they answer") {
+      val before = Vector("call-model", "record-call:0", "ask:0:0").map(TurnView.Step(_, Some(300)))
+      def view(running: String, steps: Vector[TurnView.Step]) =
+        TurnView(TurnSeq(0), "edit it", Some(running), steps, None, None, None, None)
+      def ticks(h: Headless[ChatScreen.State, Msg], n: Int) =
+        (1 to n).foldLeft(h)((at, _) => at.message(Msg.Tick))
+      def row(h: Headless[ChatScreen.State, Msg], name: String) =
+        h.screen.find(_.contains(s" $name ")).fold("")(_.trim)
+      val waiting = ticks(
+        Headless
+          .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(30, 110))
+          .message(Msg.Opened)
+          .message(Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "edit it")), Some("wait:0:0")))
+          .message(Msg.Turn(view("wait:0:0", before))),
+        20
+      )
+      assert(
+        waiting.screen.exists(_.contains("TURN 1  · ᛗ waiting for you")),
+        row(waiting, "wait:0:0").contains("ᛗ wait:0:0"),
+        row(waiting, "wait:0:0").contains("2.4s"),
+        row(waiting, "tool:0:0").isEmpty
+      )
+      val running = ticks(
+        waiting
+          .message(Msg.Arrived(Vector(), Some("tool:0:0")))
+          .message(Msg.Turn(view("tool:0:0", before :+ TurnView.Step("wait:0:0", Some(2400))))),
+        1
+      )
+      assert(
+        row(running, "wait:0:0").contains("2.4s"),
+        row(running, "tool:0:0").contains("ᛏ tool:0:0"),
+        row(running, "tool:0:0").contains("0.1s")
+      )
+    }
+
     test("answer: y or yes approves; n or no declines, a reason after; anything else none") {
       Vector("y", " Yes ", "YES").map(ChatScreen.answer) ==> Vector.fill(3)(Some(Approval.Approved))
       ChatScreen.answer("n") ==> Some(Approval.Declined(None))
