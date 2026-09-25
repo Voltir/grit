@@ -77,7 +77,7 @@ object EntryStoreTests extends TestSuite {
       // The capture-checking guarantee is enforced in the ^ annotations of
       // the EntryStore signatures and Store.transact; a real-file probe was
       // verified to fail with "Capability ... outlives its scope ... leaks
-      // into outer capture set" (see ROADMAP.md Decision). This cannot be
+      // into outer capture set". This cannot be
       // pinned via utest compileError: scala.compiletime.testing typechecks
       // the snippet in a fresh compiler that does not inherit
       // -language:experimental.captureChecking, and language imports are

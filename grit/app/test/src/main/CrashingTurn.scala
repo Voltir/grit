@@ -11,7 +11,7 @@ import grit.turn.Turn
 
 /** One phase of a crash test, run in a JVM of its own: starts a turn on the database
   * named by `GRIT_DATABASE_*` and halts the JVM, as a crash would: when the turn appends
-  * its reply, after the model call is recorded (`M0GateLiveTests`); or, given
+  * its reply, after the model call is recorded (`ProviderOnceLiveTests`); or, given
   * `mid-stream`, part way through the model's streamed reply (`TurnRecordLiveTests`).
   */
 object CrashingTurn {

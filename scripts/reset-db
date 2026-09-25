@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Wipes grit's local databases back to empty: drops the `grit` and `dbos` schemas, which
 # grit recreates on its next start (schema.sql, then DBOS's own migrations). Nothing in
-# them is kept, and nothing will be until the first real deployment
-# (.local/backlog/schema-migrations.md), so reach for this rather than working around old rows.
+# them is kept, and nothing will be until the first real deployment, so reach for this
+# rather than working around old rows.
 #
 #   scripts/reset-db                # grit and grit_agent
 #   scripts/reset-db grit_agent     # just one

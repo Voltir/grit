@@ -143,8 +143,7 @@ on a controlled fixture, re-measured before every version bump (`scripts/fetch-e
 **A green gate is not automatically a checked gate.** A declaration that matches nothing
 passes vacuously and `lint` still exits 0; `enola-law.sh` greps for that. A rule is not
 adopted until it has been watched failing on a planted breach. The known traps are
-commented in `enola-intent.yaml`. New rules are a planned session:
-`.local/backlog/enola-law.md`.
+commented in `enola-intent.yaml`. New rules are a planned session, not an aside.
 
 ## Metals
 

@@ -118,7 +118,7 @@ object grit extends Module {
     def moduleDeps = Seq(core)
 
     /* The turn under core's in-memory durability and store fakes, with the stub provider
-     * and the linear assembler: the M0 gate without Postgres. */
+     * and the linear assembler: a provider called once, without Postgres. */
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test, grit.assembly, grit.models)
       def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
@@ -181,8 +181,7 @@ object grit extends Module {
 
     /* Off here only: the FFM terminal seam is byte arrays handed to Java, which separation
      * checking treats as Mutable and Java signatures demand pure. tui never holds a
-     * `Durable` (ADR 0002), so nothing ADR 0003 protects is compiled here.
-     * .local/backlog/tui-separation-checking.md */
+     * `Durable` (ADR 0002), so nothing ADR 0003 protects is compiled here. */
     def separationChecking = false
 
     object test extends GritTests {
@@ -218,7 +217,7 @@ object grit extends Module {
     def forkArgs = Task { tui.forkArgs() }
     def mainClass = Some("grit.app.main.Main")
 
-    /* The M0 gate end to end, live. The crash test runs one phase in a child JVM on this
+    /* A provider called once, end to end and live. The crash test runs one phase in a child JVM on this
      * classpath, which it halts mid-turn. */
     object test extends GritTests with LivePostgres {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.test)

@@ -12,8 +12,7 @@ the end).
 - **Separation checking** (`-language:experimental.separationChecking`) in every module
   except `grit.tui` and `grit.tui.examples`. `def separationChecking = false` turns it off
   there. The reason is in
-  [ADR 0003](decisions/0003-durable-is-exclusive-under-separation-checking.md), and the
-  errors that turning it on would raise are in `.local/backlog/tui-separation-checking.md`.
+  [ADR 0003](decisions/0003-durable-is-exclusive-under-separation-checking.md).
 
 ## The vocabulary grit uses
 
@@ -213,5 +212,4 @@ this pattern.
 3. If separation checking is no longer experimental, delete `SeparationTests` and the
    `scala3-compiler` test dependency (ADR 0003).
 4. Try `derives ReadWriter` again, and the scalafmt override.
-5. Consider turning separation checking on in `grit.tui`
-   (`.local/backlog/tui-separation-checking.md`).
+5. Consider turning separation checking on in `grit.tui`.

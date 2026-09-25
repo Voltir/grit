@@ -205,8 +205,8 @@ retrieval strategy is only correct if the signatures are trustworthy.
 In other words: grit is a context harness, so grit's own source should be the most
 elidable code in the repository. We dogfood the thesis.
 
-It is also the standard grit will hold agent code to. tacit
-(`.local/papers/securing-agents-with-tracked-capabilities.md`) requires of a safe harness
+It is also the standard grit will hold agent code to. tacit (Odersky et al., *Securing
+Agents with Tracked Capabilities*) requires of a safe harness
 **capability safety** (capabilities cannot be forged or forgotten — rule 11),
 **capability completeness** (every effect goes through a capability — rule 2) and **local
 purity** (a type can say a computation is pure — rule 1, `->`). grit's own code meets the

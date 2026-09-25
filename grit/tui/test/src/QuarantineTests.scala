@@ -127,7 +127,7 @@ object QuarantineTests extends TestSuite {
     }
 
     test("escape bytes are spelled in exactly three files") {
-      // ROADMAP decision, 2026-09-02. Ansi writes them, Decoder reads them, term sets
+      // Ansi writes them, Decoder reads them, term sets
       // modes; anywhere else means terminal grammar has leaked into the model.
       val files = librarySources
       assertFound(files)

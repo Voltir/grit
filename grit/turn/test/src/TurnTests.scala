@@ -91,7 +91,7 @@ object TurnTests extends TestSuite {
         (provider.requests ++ summarizer.requests).map(CharEstimate.request)
     }
 
-    test("M0 gate: the same workflow id twice calls the provider once") {
+    test("the same workflow id twice calls the provider once") {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
       val provider = new RecordingProvider
