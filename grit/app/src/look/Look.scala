@@ -151,13 +151,13 @@ final case class Look(theme: Theme) {
     )
 
   /** A turn's summary, under its reply: faint, after Laguz (the summarising rune) set
-    * under grit's; its whitespace, line breaks included, run together.
+    * under grit's, its wrapped rows hung under its text; its whitespace, line breaks
+    * included, run together.
     */
   def summary(text: String): Block.Text =
-    Block.styled(
-      StyledText.styled(" ᛚ ", Style.fg(theme.faint) + Style.Bold) ++
-        StyledText.styled(text.trim.split("\\s+").mkString(" "), Style.fg(theme.faint))
-    )
+    Block
+      .styled(StyledText.styled(text.trim.split("\\s+").mkString(" "), Style.fg(theme.faint)))
+      .beside(StyledText.styled(" ᛚ ", Style.fg(theme.faint) + Style.Bold), StyledText("   "))
 }
 
 object Look {
