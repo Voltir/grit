@@ -1,7 +1,7 @@
 # grit.models
 
-Models: `Provider`s behind `grit.core`'s seam. `StubProvider` calls nothing; the frontier
-provider (OpenRouter) and later the relevance judge (e.g. Jev) come next. A quarantine
+Models behind `grit.core`'s traits: `Provider`s (`StubProvider`, which calls nothing, and
+`OpenRouterProvider`) and `Classifier`s (`JevClassifier`, over typesafe.ai's Jev). A quarantine
 module (STYLE rule 8) once it holds an HTTP client, and subject to the classified
 boundary: nothing leaves the machine unless its destination is approved.
 

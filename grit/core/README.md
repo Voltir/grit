@@ -13,9 +13,10 @@ In dependency order:
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
   `ConversationStore`, `UsageLedger`, `StoreError`. ← `id`, `message`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash. ← `id`, `store`
-- **`context`**, **`provider`**, **`inbox`** — the seams the engine plugs into:
-  `ContextAssembler` (and the `Window` it builds), `Provider`, `Inbox`. Each names only
-  the packages above, never another of the three.
+- **`context`**, **`provider`**, **`inbox`**, **`classify`** — the seams the engine plugs
+  into: `ContextAssembler` (and the `Window` it builds), `Provider`, `Inbox`, and
+  `Classifier` (closed questions about a state, answered with a probability per option;
+  Jev's shape). Each names only the packages above, never another of the four.
 
 No source file sits at core's root, and no two packages import each other in a circle:
 `scripts/enola-law.sh` fails on a new import cycle.
