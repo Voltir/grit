@@ -36,4 +36,7 @@ object Upstream {
   def of(slug: String): Option[Upstream] = Option.when(Slug.matches(slug))(slug)
 
   def value(upstream: Upstream): String = upstream
+
+  /** Cerebras, serving at fp16: where [[OpenRouterConfig.DefaultModel]] is pinned by default. */
+  val CerebrasFp16: Upstream = "cerebras/fp16"
 }

@@ -18,11 +18,18 @@ object ToolRoundsTests extends TestSuite {
         Left("GRIT_TOOL_ROUNDS is not a whole number")
     }
 
-    test("GRIT_TOOLS: unset or read is the read-only tools; all is every tool; else an error") {
-      Main.toolChoice(Map.empty) ==> Right(Main.ToolChoice.Read)
-      Main.toolChoice(Map("GRIT_TOOLS" -> "read")) ==> Right(Main.ToolChoice.Read)
-      Main.toolChoice(Map("GRIT_TOOLS" -> " all ")) ==> Right(Main.ToolChoice.All)
-      Main.toolChoice(Map("GRIT_TOOLS" -> "write")) ==> Left("GRIT_TOOLS is neither read nor all")
+    test("GRIT_TOOLS: unset is every tool in the chat and the read-only ones in a run") {
+      Main.toolChoice(Map.empty, chat = true) ==> Right(Main.ToolChoice.All)
+      Main.toolChoice(Map.empty, chat = false) ==> Right(Main.ToolChoice.Read)
+      for (chat <- Seq(true, false)) {
+        Main.toolChoice(Map("GRIT_TOOLS" -> "read"), chat) ==> Right(Main.ToolChoice.Read)
+        Main.toolChoice(Map("GRIT_TOOLS" -> "write"), chat) ==>
+          Left("GRIT_TOOLS is neither read nor all")
+      }
+      Main.toolChoice(Map("GRIT_TOOLS" -> " all "), chat = true) ==> Right(Main.ToolChoice.All)
+      // A run has nobody to approve a call that changes something.
+      Main.toolChoice(Map("GRIT_TOOLS" -> "all"), chat = false) ==>
+        Left("GRIT_TOOLS=all needs the chat, which answers what a tool asks first")
     }
 
     test("a loop's steps show by their family") {

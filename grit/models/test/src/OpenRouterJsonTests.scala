@@ -365,7 +365,9 @@ object OpenRouterJsonTests extends TestSuite {
       )
     }
 
-    test("config: upstreams pin a role in order, strict needs them, and unset is open") {
+    test(
+      "config: upstreams pin a role in order, strict needs them; unset is open but for the default model"
+    ) {
       val env = Map("OPENROUTER_API_KEY" -> "k")
       def of(role: ModelRole, extra: (String, String)*) =
         OpenRouterConfig.fromEnv(env ++ extra, role).map(_.routing)
@@ -374,22 +376,40 @@ object OpenRouterJsonTests extends TestSuite {
           case first +: rest => Routing.Pinned(first, rest, strict)
           case _ => Routing.Open
         }
-      of(ModelRole.Turn) ==> Right(Routing.Open)
+      // The default model is pinned to its upstream; any model named is open.
+      of(ModelRole.Turn) ==> Right(pinned(false, "cerebras/fp16"))
       of(ModelRole.Turn, "GRIT_PROVIDER" -> " ", "GRIT_STRICT_TOOLS" -> "false") ==>
-        Right(Routing.Open)
+        Right(pinned(false, "cerebras/fp16"))
+      of(ModelRole.Turn, "GRIT_MODEL" -> "x/y") ==> Right(Routing.Open)
+      of(ModelRole.Turn, "GRIT_PROVIDER" -> "coreweave") ==> Right(pinned(false, "coreweave"))
       of(ModelRole.Turn, "GRIT_PROVIDER" -> "open-inference/fp8, cerebras") ==>
         Right(pinned(false, "open-inference/fp8", "cerebras"))
       of(ModelRole.Turn, "GRIT_PROVIDER" -> "coreweave", "GRIT_STRICT_TOOLS" -> "true") ==>
         Right(pinned(true, "coreweave"))
       of(ModelRole.Turn, "GRIT_PROVIDER" -> "coreweave", "GRIT_STRICT_TOOLS" -> "true")
         .map(_.strictTools) ==> Right(true)
-      of(ModelRole.Turn, "GRIT_STRICT_TOOLS" -> "true") ==>
+      of(ModelRole.Turn, "GRIT_MODEL" -> "x/y", "GRIT_STRICT_TOOLS" -> "true") ==>
         Left(OpenRouterConfig.Invalid.StrictUnpinned("GRIT_STRICT_TOOLS", "GRIT_PROVIDER"))
       of(ModelRole.Turn, "GRIT_STRICT_TOOLS" -> "yes") ==>
         Left(OpenRouterConfig.Invalid.NotABoolean("GRIT_STRICT_TOOLS"))
       for (bad <- Seq("a,,b", "a,", "Open-Inference", "a b", "a/b/c", "/fp8"))
         of(ModelRole.Turn, "GRIT_PROVIDER" -> bad) ==>
           Left(OpenRouterConfig.Invalid.NotUpstreams("GRIT_PROVIDER"))
+    }
+
+    test("config: by default every role is the default model at its upstream") {
+      val env = Map("OPENROUTER_API_KEY" -> "k")
+      for (role <- Seq(ModelRole.Turn, ModelRole.Summary, ModelRole.Query))
+        OpenRouterConfig.fromEnv(env, role).map(c => (c.model, c.routing)) ==> Right(
+          (
+            "openai/gpt-oss-120b",
+            Upstream.of("cerebras/fp16").fold(Routing.Open)(Routing.Pinned(_, Vector(), false))
+          )
+        )
+      // A role that names its own model is not pinned to the turn's default upstream.
+      OpenRouterConfig
+        .fromEnv(env.updated("GRIT_SUMMARY_MODEL", "small/one"), ModelRole.Summary)
+        .map(_.routing) ==> Right(Routing.Open)
     }
 
     test("config: a role that names nothing of its own routes as the turn does") {

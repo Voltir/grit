@@ -20,10 +20,16 @@ object OpenRouterConfig {
 
   val KeyVar = "OPENROUTER_API_KEY"
 
-  /** The cheapest tool-capable model on OpenRouter as of 2026-09-23, and it reasons, so the
-    * `reasoning_details` round trip is exercised.
+  /** The turn's model when none is named: it reasons, so the `reasoning_details` round trip
+    * is exercised, and at [[DefaultUpstream]] it worked a coding task's tool loop at 0.3 to
+    * 0.6 s a call (a real-use run, 2026-09-25).
     */
-  val DefaultModel = "openai/gpt-oss-20b"
+  val DefaultModel = "openai/gpt-oss-120b"
+
+  /** The one upstream [[DefaultModel]] is pinned to when the turn names no upstreams. It
+    * does not enforce strict schemas, so the default leaves strict off.
+    */
+  val DefaultUpstream: Upstream = Upstream.CerebrasFp16
 
   val Endpoint: URI = URI.create("https://openrouter.ai/api/v1/chat/completions")
 
@@ -58,8 +64,9 @@ object OpenRouterConfig {
     * The routing is the role's upstreams variable, a comma-separated list of [[Upstream]]
     * slugs ([[Routing.Pinned]], in that order), and its strict variable, `true` or `false`
     * (unset: `false`; `true` needs upstreams). Unset or blank upstreams are
-    * [[Routing.Open]]. A role other than the turn that sets none of its model, upstreams
-    * and strict variables routes as the turn does.
+    * [[Routing.Open]], except for the turn when its model is [[DefaultModel]] because none
+    * is named: then [[DefaultUpstream]] alone. A role other than the turn that sets none of
+    * its model, upstreams and strict variables routes as the turn does.
     */
   def fromEnv(env: Map[String, String], role: ModelRole): Either[Invalid, OpenRouterConfig] =
     for {
@@ -100,6 +107,8 @@ object OpenRouterConfig {
           case Some(_) => Left(Invalid.NotABoolean(role.strictVar))
         }
         upstreams <- set(role.upstreamsVar) match {
+          case None if role == ModelRole.Turn && set(role.modelVar).isEmpty =>
+            Right(Vector(DefaultUpstream))
           case None => Right(Vector.empty[Upstream])
           case Some(list) =>
             val slugs = list.split(",", -1).toVector.map(s => Upstream.of(s.trim))

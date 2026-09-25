@@ -87,9 +87,7 @@ object Main {
     val tail = exitOnLeft(tokens(env, TailVar, RetrievalAssembler.DefaultTail))
     val retrieving = exitOnLeft(assemblerChoice(env))
     val rounds = exitOnLeft(toolRounds(env))
-    val offered = exitOnLeft(toolChoice(env))
-    if (!tui && offered == ToolChoice.All)
-      exitOnLeft(Left(s"$ToolsVar=all needs the chat, which answers what a tool asks first"))
+    val offered = exitOnLeft(toolChoice(env, chat = tui))
     // The checkout the turn's tools read is the one grit runs in.
     val root = java.nio.file.Path.of("").toAbsolutePath
     val system = systemPrompt(root)
@@ -380,13 +378,21 @@ object Main {
     case All
   }
 
-  /** The tools `GRIT_TOOLS` names: `read` or `all`; unset is [[ToolChoice.Read]], so a turn
-    * changes nothing unless asked to be able to.
+  /** The tools `GRIT_TOOLS` names, `read` or `all`, for the chat when `chat`, else for a run
+    * with arguments. Unset is [[ToolChoice.All]] in the chat, where a person approves each
+    * call that changes something, and [[ToolChoice.Read]] in a run, where nobody can; `all`
+    * in a run is refused.
     */
-  private[main] def toolChoice(env: Map[String, String]): Either[String, ToolChoice] =
+  private[main] def toolChoice(
+      env: Map[String, String],
+      chat: Boolean
+  ): Either[String, ToolChoice] =
     env.get(ToolsVar).map(_.trim) match {
-      case None | Some("read") => Right(ToolChoice.Read)
-      case Some("all") => Right(ToolChoice.All)
+      case None => Right(if (chat) ToolChoice.All else ToolChoice.Read)
+      case Some("read") => Right(ToolChoice.Read)
+      case Some("all") if chat => Right(ToolChoice.All)
+      case Some("all") =>
+        Left(s"$ToolsVar=all needs the chat, which answers what a tool asks first")
       case Some(_) => Left(s"$ToolsVar is neither read nor all")
     }
 
