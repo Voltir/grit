@@ -1,7 +1,8 @@
 package grit.turn
 
+import grit.assembly.estimate.CharEstimate
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{ConversationId, EntryId, TurnRef}
+import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError, ToolUse}
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, InMemoryUsageLedger, StoreError, Tx}
@@ -140,8 +141,12 @@ object TurnVerdictTests extends TestSuite {
         Placement.Asked(Verdict.New(Some("Sailing")), None)
       )
       topics(entries).placed(turn.turnSeq) ==> Some(TopicId.openedBy(turn))
-      ledger.rows.map(_._1) ==> ledger.rows.map(_._1).distinct
-      assert(ledger.rows.exists(_._1 == TurnVerdict.verdictId(turn)))
+      // Round one, spent on the verdict alone, is billed to it beside its own request's estimate.
+      val first = provider.requests.headOption.getOrElse(sys.error("no request"))
+      ledger.rows.collect {
+        case (id, workflow, model, _, estimate) if id == TurnVerdict.verdictId(turn) =>
+          (workflow, model, estimate)
+      } ==> Vector((turn.workflowId, StubProvider.Model, CharEstimate.request(first)))
     }
 
     test("the verdict names an earlier topic: placed back in it") {
@@ -161,7 +166,9 @@ object TurnVerdictTests extends TestSuite {
       val (turn, entries, _) =
         third("""hm ~0.5 #call:{"about":"current"}""", new RecordingProvider)
       val t = topics(entries)
-      t.placed(turn.turnSeq) ==> t.current.map(_.id)
+      // The current topic is the one the second turn opened; none is opened for this one.
+      t.placed(turn.turnSeq) ==> Some(TopicId.openedBy(TurnRef(conversation, TurnSeq(1))))
+      t.topics.size ==> 2
       lastBy(entries, turn) ==> Some(Placement.Asked(Verdict.Current, None))
     }
 
@@ -196,55 +203,40 @@ object TurnVerdictTests extends TestSuite {
       )
     }
 
-    test("round two calls again beside text: the text is the reply, the call dropped, noted") {
-      val provider = new Scripted((_, n) =>
-        if (n == 0) Right(said("thinking", topicCall(ujson.Obj("about" -> "current"))))
-        else Right(said("the answer", topicCall(ujson.Obj("about" -> "new"))))
-      )
-      val (turn, entries, _) = third("hm ~0.5", provider)
-      texts(entries).filter(_.startsWith("assistant:")).lastOption ==> Some("assistant: the answer")
-      lastBy(entries, turn) ==> Some(
-        Placement.Asked(
-          Verdict.Current,
-          Some("the second call called a tool again; its calls were dropped")
+    test("round two calls again and says nothing, or fails: a plain call answers") {
+      // Round two's answer; the anomaly noted; the input billed to the verdict: round one's
+      // 10, and round two's 10 when it answered at all.
+      val cases = Vector(
+        (
+          Right(said("", topicCall(ujson.Obj("about" -> "current")))),
+          "the second call called a tool again and said nothing; a plain call answered",
+          Tokens(20)
+        ),
+        (
+          Left(ProviderError.Unavailable("HTTP 529")),
+          "the second call failed (Model(HTTP 529)); a plain call answered",
+          Tokens(10)
         )
       )
-    }
-
-    test("round two calls again and says nothing: a plain call answers; the turn never fails") {
-      val provider = new Scripted((r, _) =>
-        if (r.tools.isEmpty) Right(said("plainly"))
-        else Right(said("", topicCall(ujson.Obj("about" -> "current"))))
-      )
-      val durable = new InMemoryDurable
-      val (turn, entries, ledger) = third("hm ~0.5", provider, durable)
-      durable.recordedSteps(turn.workflowId).filter(Turn.Step.optional.contains) ==>
-        Vector("call-model-again", "call-model-plain", "record-verdict")
-      val plain = provider.requests.lastOption.getOrElse(sys.error("no request"))
-      plain.tools ==> Vector.empty
-      plain.messages.lastOption ==> Some(Message.User("hm ~0.5"))
-      texts(entries).filter(_.startsWith("assistant:")).lastOption ==> Some("assistant: plainly")
-      lastBy(entries, turn) ==> Some(
-        Placement.Asked(
-          Verdict.Current,
-          Some("the second call called a tool again and said nothing; a plain call answered")
+      for ((second, anomaly, billed) <- cases) {
+        val provider = new Scripted((r, n) =>
+          if (r.tools.isEmpty) Right(said("plainly"))
+          else if (n == 0) Right(said("", topicCall(ujson.Obj("about" -> "current"))))
+          else second
         )
-      )
-      // Both calls spent on the verdict are billed to it, once.
-      ledger.rows.collect { case r if r._1 == TurnVerdict.verdictId(turn) => r._4.input } ==>
-        Vector(Tokens(20))
-    }
-
-    test("round two fails: a plain call answers") {
-      val provider = new Scripted((r, n) =>
-        if (n == 0) new StubProvider().complete(r)
-        else if (r.tools.isEmpty) Right(said("plainly"))
-        else Left(ProviderError.Unavailable("HTTP 529"))
-      )
-      val (turn, entries, _) = third("hm ~0.5", provider)
-      texts(entries).filter(_.startsWith("assistant:")).lastOption ==> Some("assistant: plainly")
-      lastBy(entries, turn).collect { case Placement.Asked(_, a) => a } ==>
-        Some(Some("the second call failed (Model(HTTP 529)); a plain call answered"))
+        val durable = new InMemoryDurable
+        val (turn, entries, ledger) = third("hm ~0.5", provider, durable)
+        durable.recordedSteps(turn.workflowId).filter(Turn.Step.optional.contains) ==>
+          Vector("call-model-again", "call-model-plain", "record-verdict")
+        val plain = provider.requests.lastOption.getOrElse(sys.error("no request"))
+        plain.tools ==> Vector.empty
+        plain.messages.lastOption ==> Some(Message.User("hm ~0.5"))
+        texts(entries).filter(_.startsWith("assistant:")).lastOption ==> Some("assistant: plainly")
+        lastBy(entries, turn) ==> Some(Placement.Asked(Verdict.Current, Some(anomaly)))
+        // What the verdict spent is billed to it, once.
+        ledger.rows.collect { case r if r._1 == TurnVerdict.verdictId(turn) => r._4.input } ==>
+          Vector(billed)
+      }
     }
 
     test("the verdict not recorded: the turn replies, and its log says so") {
