@@ -186,7 +186,7 @@ object LocalHostTests extends TestSuite {
 
     test("run") {
       inCheckout("a.txt" -> "x") { dir =>
-        val shell = new LocalShell(dir)
+        val shell = new LocalShell(dir, sys.env)
         shell.run("echo hi; ls", 10.seconds).map(r => (r.exit, r.output.show)) ==>
           Right((0, "hi\na.txt\n"))
         shell
@@ -197,9 +197,33 @@ object LocalHostTests extends TestSuite {
       }
     }
 
+    test("a command sees no secret: only the allowed variables pass") {
+      inCheckout() { dir =>
+        val environment = sys.env ++ Map(
+          "OPENROUTER_API_KEY" -> "sk-or-planted",
+          "GRIT_DATABASE_URL" -> "jdbc:postgresql://planted",
+          "GRIT_DATABASE_PASSWORD" -> "planted-password",
+          "GITHUB_TOKEN" -> "planted-token",
+          "AWS_SECRET_ACCESS_KEY" -> "planted-secret",
+          "LANG" -> "C.UTF-8"
+        )
+        val shown = new LocalShell(dir, environment).run("env", 10.seconds).map(_.output.show)
+        val names = shown.map(_.linesIterator.map(_.takeWhile(_ != '=')).toSet)
+        // sh sets its own PWD, SHLVL and _.
+        val own = Set("PWD", "SHLVL", "_", "OLDPWD")
+        names.map(_.filterNot(n => LocalShell.Allowed.contains(n) || own.contains(n))) ==>
+          Right(Set.empty[String])
+        names.map(_.contains("LANG")) ==> Right(true)
+        assert(shown.exists(out => !out.contains("planted")))
+        // The second guard: an allowed name that looks like a secret still stays out.
+        LocalShell.passed(Map("PATH" -> "/bin", "TOKEN_PATH" -> "x")) ==> Map("PATH" -> "/bin")
+        LocalShell.Allowed.filter(LocalShell.secret) ==> Set.empty[String]
+      }
+    }
+
     test("run clips from the tail") {
       inCheckout() { dir =>
-        val ran = new LocalShell(dir).run("seq 1 3000", 10.seconds)
+        val ran = new LocalShell(dir, sys.env).run("seq 1 3000", 10.seconds)
         ran.map(_.output.text.split("\n").headOption) ==> Right(Some("1001"))
         ran.map(_.output.hint) ==> Right(
           Some(
@@ -214,7 +238,7 @@ object LocalHostTests extends TestSuite {
       inCheckout() { dir =>
         val marker = dir.resolve("late")
         val started = System.nanoTime()
-        val ran = new LocalShell(dir).run(
+        val ran = new LocalShell(dir, sys.env).run(
           "echo before; (sleep 2; touch late) & sleep 30",
           500.millis
         )

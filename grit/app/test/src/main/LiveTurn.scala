@@ -1,5 +1,7 @@
 package grit.app.main
 
+import scala.concurrent.duration.FiniteDuration
+
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.clock.{Clock, Fresh}
@@ -8,10 +10,10 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{EntryStore, Origin, Payload}
 import grit.dbos.engine.Engine
-import grit.host.LocalWorkspace
+import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
 import grit.models.StubProvider
 import grit.tools.Coding
-import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
+import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling, TurnTools}
 
 /** The real turn over a live engine, with the stub provider, for the end-to-end tests. */
 object LiveTurn {
@@ -35,16 +37,21 @@ object LiveTurn {
   def launch(engine: Engine^, entries: EntryStore, provider: Provider^): Unit =
     launchIn(engine, entries, provider, java.nio.file.Path.of("").toAbsolutePath)
 
-  /** As [[launch]], the model offered the read-only coding tools over the checkout at
-    * `root`.
+  /** As [[launch]], the model offered the coding tools over the checkout at `root`: all of
+    * them when `all`, each gated call waiting `answerWithin` for its answer; otherwise the
+    * read-only ones.
     */
   def launchIn(
       engine: Engine^,
       entries: EntryStore,
       provider: Provider^,
-      root: java.nio.file.Path
+      root: java.nio.file.Path,
+      all: Boolean = false,
+      answerWithin: FiniteDuration = TurnTools.AnswerWithin
   ): Unit = {
     val checkout = new LocalWorkspace(root)
+    val edits = new LocalEdits(root)
+    val shell = new LocalShell(root, sys.env)
     engine.launch(
       Turn.body(
         TurnEnv(
@@ -60,9 +67,12 @@ object LiveTurn {
           Fresh.random(),
           TurnTooling(
             checkout,
-            Coding.readOnly(checkout),
+            edits,
+            shell,
+            if (all) Coding.all(checkout, edits, shell) else Coding.readOnly(checkout),
             TurnLoop.Budget.of(5).fold(why => sys.error(why), identity),
-            strict = false
+            strict = false,
+            answerWithin
           )
         )
       )

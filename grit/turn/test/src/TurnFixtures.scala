@@ -11,7 +11,19 @@ import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
-import grit.core.host.{Clipped, HostError, Lines, RelPath, Workspace}
+import grit.core.host.{
+  Clipped,
+  EditError,
+  Edited,
+  Edits,
+  HostError,
+  Lines,
+  Ran,
+  RelPath,
+  Replace,
+  Shell,
+  Workspace
+}
 import grit.core.store.{
   Db,
   Entry,
@@ -150,6 +162,20 @@ object TurnFixtures {
     def list(dir: RelPath, depth: Int): Either[HostError, Clipped] = Left(HostError.NotFound(dir))
     def search(pattern: String, under: RelPath): Either[HostError, Clipped] =
       Left(HostError.NotFound(under))
+  }
+
+  /** Edits that change nothing: every write and edit fails. */
+  object NoEdits extends Edits {
+    def write(path: RelPath, text: String): Either[HostError, Unit] =
+      Left(HostError.Failed("no edits"))
+    def edit(path: RelPath, edits: Seq[Replace]): Either[EditError, Edited] =
+      Left(EditError.Host(HostError.Failed("no edits")))
+  }
+
+  /** A shell that runs nothing: every command fails to start. */
+  object NoShell extends Shell {
+    def run(command: String, timeout: scala.concurrent.duration.FiniteDuration): Either[HostError, Ran] =
+      Left(HostError.Failed("no shell"))
   }
 
   /** A checkout of `files`, by path, counting the reads made of it. It lists and searches
@@ -297,7 +323,7 @@ object TurnFixtures {
         new FakeJot,
         new NoWait,
         Fresh.random(),
-        TurnTooling(NoCheckout, noTools, budget(5), strict = false)
+        TurnTooling(NoCheckout, NoEdits, NoShell, noTools, budget(5), strict = false)
       )
     )(id)
 
@@ -373,7 +399,7 @@ object TurnFixtures {
         new FakeJot,
         clock,
         Fresh.random(),
-        TurnTooling(ws, tools, budget(calls), strict = false)
+        TurnTooling(ws, NoEdits, NoShell, tools, budget(calls), strict = false)
       )
     )(id)
 

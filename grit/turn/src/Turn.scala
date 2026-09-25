@@ -466,7 +466,7 @@ object Turn {
   private def offered(
       tooling: TurnTooling^,
       asked: Option[TurnTopics.Classification]
-  ): Either[TurnFailure, Toolbox[{tooling.workspace}]] =
+  ): Either[TurnFailure, Toolbox[{tooling.workspace, tooling.edits, tooling.shell}]] =
     asked match {
       case None => Right(tooling.tools)
       case Some(c) =>

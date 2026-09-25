@@ -8,7 +8,8 @@ import utest.*
 
 /** What capture checking rejects about the tools a turn is offered, pinned by compiling
   * probe sources against turn with turn's own flags: a [[TurnTooling]]'s tools act only
-  * through its workspace, so a turn cannot be handed one that edits. The pattern is
+  * through the workspace, edits and shell it names, so a turn cannot be handed a tool that
+  * acts through anything else. The pattern is
   * `grit.core.tool.ToolCaptureTests` (docs/capture-checking.md).
   */
 object TurnCaptureTests extends TestSuite {
@@ -52,15 +53,17 @@ object TurnCaptureTests extends TestSuite {
     }
   }
 
-  /** The planted breach: [[TurnTooling]]'s shape, its tools not tied to its workspace. */
+  /** The planted breach: [[TurnTooling]]'s shape, its tools not tied to its capabilities. */
   private val breach =
-    """final case class Breached[C^](workspace: Workspace^, tools: Toolbox[C], budget: TurnLoop.Budget, strict: Boolean)
+    """final case class Breached[C^](workspace: Workspace^, edits: Edits^, shell: Shell^, tools: Toolbox[C], budget: TurnLoop.Budget, strict: Boolean)
       |""".stripMargin
 
-  /** A toolbox that edits, handed to `tooling` as a turn's tools, typed `result`. */
+  /** A toolbox that edits through `other`, not the tooling's `e`, handed to `tooling` as a
+    * turn's tools, typed `result`.
+    */
   private def smuggled(tooling: String, result: String) =
-    s"""def offered(ws: Workspace^, e: Edits^, box: Toolbox[{ws, e}], b: TurnLoop.Budget): $result =
-      |  $tooling(ws, box, b, strict = false)
+    s"""def offered(ws: Workspace^, e: Edits^, s: Shell^, other: Edits^, box: Toolbox[{ws, other}], b: TurnLoop.Budget): $result =
+      |  $tooling(ws, e, s, box, b, strict = false)
       |""".stripMargin
 
   private def rejected(errs: List[String]): Boolean =
@@ -71,30 +74,32 @@ object TurnCaptureTests extends TestSuite {
       assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
     }
 
-    test("a turn offered tools that read its workspace compiles") {
+    test("a turn offered tools that read, or read and edit, through its own compiles") {
       val errs = errors(
-        """def offered(ws: Workspace^, b: TurnLoop.Budget): Option[TurnTooling^{ws}] =
-          |  Toolbox.of[{ws}](reads(ws)).toOption.map(box => TurnTooling(ws, box, b, strict = false))
+        """def reading(ws: Workspace^, e: Edits^, s: Shell^, b: TurnLoop.Budget): Option[TurnTooling^{ws, e, s}] =
+          |  Toolbox.of[{ws}](reads(ws)).toOption.map(box => TurnTooling(ws, e, s, box, b, strict = false))
+          |def editing(ws: Workspace^, e: Edits^, s: Shell^, b: TurnLoop.Budget): Option[TurnTooling^{ws, e, s}] =
+          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling(ws, e, s, box, b, strict = false))
           |""".stripMargin
       )
       assert(errs.isEmpty)
     }
 
-    test("a turn offered a toolbox that edits is rejected") {
-      assert(rejected(errors(smuggled("TurnTooling", "TurnTooling^{ws, e}"))))
+    test("a turn offered a tool that edits through another capability is rejected") {
+      assert(rejected(errors(smuggled("TurnTooling", "TurnTooling^{ws, e, s, other}"))))
     }
 
-    test("a tooling whose tools are not tied to its workspace takes the toolbox that edits") {
+    test("a tooling whose tools are not tied to its capabilities takes that tool") {
       // The breach the test above guards against, planted in a fixture: watched making that
       // test fail (2026-09-25), kept so the rejection is known to come from the link alone.
-      val errs = errors(breach + smuggled("Breached", "Breached[{ws, e}]^{ws}"))
+      val errs = errors(breach + smuggled("Breached", "Breached[{ws, other}]^{ws, e, s}"))
       assert(errs.isEmpty)
     }
 
-    test("capture checking is what rejects the toolbox that edits") {
+    test("capture checking is what rejects the tool that edits through another") {
       val flags = options.filterNot(_.startsWith("-language:experimental."))
-      val errs =
-        compile(erased(prelude + smuggled("TurnTooling", "TurnTooling^{ws, e}") + "\n}\n"), flags)
+      val source = smuggled("TurnTooling", "TurnTooling^{ws, e, s, other}")
+      val errs = compile(erased(prelude + source + "\n}\n"), flags)
       assert(errs.isEmpty)
     }
   }

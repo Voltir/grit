@@ -9,15 +9,19 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.host.{Clipped, HostError, Kept, Ran, Shell, Workspace}
 
-/** Running commands in the checkout whose root is `root`, as this JVM's user and with its
-  * environment. Output goes to a temporary file, not a pipe, so a command that writes more
-  * than a pipe holds never blocks on it. A timeout kills the command and every process it
-  * started that is still its descendant; one that detached itself survives.
+/** Running commands in the checkout whose root is `root`, as this JVM's user, with only the
+  * variables of `environment` that [[LocalShell.passed]] keeps: a command never sees an API
+  * key, a database password or anything else named like a secret. Output goes to a
+  * temporary file, not a pipe, so a command that writes more than a pipe holds never
+  * blocks on it. A timeout kills the command and every process it started that is still
+  * its descendant; one that detached itself survives.
   */
-final class LocalShell(root: Path) extends Shell {
+final class LocalShell(root: Path, environment: Map[String, String]) extends Shell {
   import Checkout.attempt
 
   private val checkout = new Checkout(root)
+
+  private val passed = LocalShell.passed(environment)
 
   def run(command: String, timeout: FiniteDuration): Either[HostError, Ran] =
     checkout.real.flatMap { top =>
@@ -27,13 +31,16 @@ final class LocalShell(root: Path) extends Shell {
           argv.add("sh")
           argv.add("-c")
           argv.add(command)
-          attempt(
-            new ProcessBuilder(argv)
+          attempt {
+            val builder = new ProcessBuilder(argv)
               .directory(top.toFile)
               .redirectErrorStream(true)
               .redirectOutput(out.toFile)
-              .start()
-          ).flatMap { process =>
+            val env = builder.environment()
+            env.clear()
+            passed.foreach((k, v) => { val _ = env.put(k, v) })
+            builder.start()
+          }.flatMap { process =>
             process.getOutputStream.close()
             val finished =
               try process.waitFor(timeout.toMillis, TimeUnit.MILLISECONDS)
@@ -91,4 +98,44 @@ final class LocalShell(root: Path) extends Shell {
       )
     case None => None
   }
+}
+
+object LocalShell {
+
+  /** The variables a command may see, when they are set: where programs are, who and where
+    * the user is, the locale and the terminal, and the toolchains a build in the checkout
+    * looks for.
+    */
+  val Allowed: Set[String] = Set(
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "LANG",
+    "LANGUAGE",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TERM",
+    "TZ",
+    "TMPDIR",
+    "JAVA_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "COURSIER_CACHE"
+  )
+
+  /** Whether `name` looks like it holds a secret: it contains KEY, TOKEN, SECRET or
+    * PASSWORD, in any case.
+    */
+  def secret(name: String): Boolean = {
+    val upper = name.toUpperCase
+    Vector("KEY", "TOKEN", "SECRET", "PASSWORD").exists(upper.contains)
+  }
+
+  /** The variables of `environment` a command sees: those [[Allowed]] names that are not
+    * [[secret]].
+    */
+  def passed(environment: Map[String, String]): Map[String, String] =
+    environment.filter((k, _) => Allowed.contains(k) && !secret(k))
 }

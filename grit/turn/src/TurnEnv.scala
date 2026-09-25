@@ -5,7 +5,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
-import grit.core.host.Workspace
+import grit.core.host.{Edits, Shell, Workspace}
 import grit.core.provider.{Provider, TokenEstimator}
 import grit.core.store.{Db, EntryStore, Jot, UsageLedger}
 import grit.core.tool.Toolbox
@@ -35,15 +35,17 @@ final case class TurnEnv(
 /** Where a turn's entries and their costs are written, and how a request is priced. */
 final case class TurnRecords(entries: EntryStore, ledger: UsageLedger, estimator: TokenEstimator)
 
-/** The tools a turn's model may call in its loop ([[TurnLoop]]): `tools`, which act through
-  * `workspace` alone, so a turn cannot change the checkout. `budget` bounds the loop's
-  * model calls, the last made with tools off; under `strict` each tool's schema asks the
-  * provider to hold the model's arguments to it. A call a person approves first waits
-  * `answerWithin` for their answer.
+/** The tools a turn's model may call in its loop ([[TurnLoop]]): `tools`, which act only
+  * through `workspace`, `edits` and `shell`, and may be offered fewer than all three allow.
+  * `budget` bounds the loop's model calls, the last made with tools off; under `strict` each
+  * tool's schema asks the provider to hold the model's arguments to it. A call a person
+  * approves first waits `answerWithin` for their answer.
   */
 final case class TurnTooling(
     workspace: Workspace^,
-    tools: Toolbox[{workspace}],
+    edits: Edits^,
+    shell: Shell^,
+    tools: Toolbox[{workspace, edits, shell}],
     budget: TurnLoop.Budget,
     strict: Boolean,
     answerWithin: FiniteDuration = TurnTools.AnswerWithin

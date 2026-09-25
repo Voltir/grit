@@ -7,7 +7,7 @@ import grit.core.provider.ToolSchema
 /** The tools offered on one model call, their names distinct, each acting only through the
   * capabilities `C`: a `Toolbox[{ws}]` cannot edit or run a command unless `ws` can.
   */
-final class Toolbox[C^] private (tools: Vector[Tool.Offered^{C}]) {
+final class Toolbox[+C^] private (tools: Vector[Tool.Offered^{C}]) {
 
   /** The tools as a request shows them, in the order given to [[Toolbox.of]]. */
   def schemas(strict: Boolean): Vector[ToolSchema] = tools.map(_.schema(strict))

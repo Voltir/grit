@@ -15,7 +15,7 @@ import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.Origin
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
-import grit.host.LocalWorkspace
+import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
 import grit.models.{
   JevClassifier,
   JevConfig,
@@ -43,16 +43,18 @@ import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
   * the stub classifier when `GRIT_STUB_TOPICS=1` (for the gate), and otherwise by none,
   * which leaves each message in the topic it is in. The TUI starts in the theme
   * `GRIT_THEME` names, or else the one last chosen with `/theme` ([[Prefs]]). Each turn's
-  * model may read, list and search the checkout grit runs in (`Coding.readOnly`), in at most
-  * `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at least 2), the last with
-  * tools off.
+  * model is offered the tools `GRIT_TOOLS` names ([[ToolChoice]]) over the checkout grit
+  * runs in, in at most `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at
+  * least 2), the last with tools off. A command it runs sees only the environment
+  * `LocalShell` passes.
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
   *     (default `default`). Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
   *     directory), never to the screen.
   *   - **Arguments: each is a message**, answered by one turn and printed. Repeat a
   *     message to watch a redelivery come back as the same turn; run again to watch
-  *     finished turns replay without calling the model.
+  *     finished turns replay without calling the model. Nothing here answers a gated call,
+  *     so `GRIT_TOOLS=all` is refused.
   */
 object Main {
 
@@ -84,6 +86,9 @@ object Main {
     val tail = exitOnLeft(tokens(env, TailVar, RetrievalAssembler.DefaultTail))
     val retrieving = exitOnLeft(assemblerChoice(env))
     val rounds = exitOnLeft(toolRounds(env))
+    val offered = exitOnLeft(toolChoice(env))
+    if (!tui && offered == ToolChoice.All)
+      exitOnLeft(Left(s"$ToolsVar=all needs the chat, which answers what a tool asks first"))
     // The checkout the turn's tools read is the one grit runs in.
     val root = java.nio.file.Path.of("").toAbsolutePath
     val system = systemPrompt(root)
@@ -116,6 +121,9 @@ object Main {
           new RetrievalAssembler(engine.entries, engine.search, writer, CharEstimate, budget, tail)
         else new LinearAssembler(engine.entries, CharEstimate, budget)
       val checkout = new LocalWorkspace(root)
+      val edits = new LocalEdits(root)
+      // The process's own environment, not .env's: a command never needs grit's settings.
+      val shell = new LocalShell(root, sys.env)
       engine.launch(
         Turn.body(
           TurnEnv(
@@ -131,7 +139,12 @@ object Main {
             Fresh.random(),
             TurnTooling(
               checkout,
-              Coding.readOnly(checkout),
+              edits,
+              shell,
+              offered match {
+                case ToolChoice.Read => Coding.readOnly(checkout)
+                case ToolChoice.All => Coding.all(checkout, edits, shell)
+              },
               rounds,
               strict = openRouter.exists(_.routing.strictTools)
             )
@@ -342,6 +355,28 @@ object Main {
         raw.trim.toIntOption
           .toRight(s"$ToolRoundsVar is not a whole number")
           .flatMap(TurnLoop.Budget.of(_).left.map(why => s"$ToolRoundsVar: $why"))
+    }
+
+  private val ToolsVar = "GRIT_TOOLS"
+
+  /** Which tools a turn's model is offered. */
+  private[main] enum ToolChoice {
+
+    /** `read`, `list` and `search` (`Coding.readOnly`): nothing asks first. */
+    case Read
+
+    /** Those and `write`, `edit` and `run` (`Coding.all`), each of which asks first. */
+    case All
+  }
+
+  /** The tools `GRIT_TOOLS` names: `read` or `all`; unset is [[ToolChoice.Read]], so a turn
+    * changes nothing unless asked to be able to.
+    */
+  private[main] def toolChoice(env: Map[String, String]): Either[String, ToolChoice] =
+    env.get(ToolsVar).map(_.trim) match {
+      case None | Some("read") => Right(ToolChoice.Read)
+      case Some("all") => Right(ToolChoice.All)
+      case Some(_) => Left(s"$ToolsVar is neither read nor all")
     }
 
   /** Whether `GRIT_ASSEMBLER` asks for retrieval; unset is retrieval. */
