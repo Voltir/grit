@@ -11,7 +11,8 @@ import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
   * "noted", and the model is called again for the reply. At most one more round: if that
   * round calls a tool again and says nothing, or fails, a plain call with neither tool nor
   * exchange answers instead. The exchange stays in the journal and the verdict's record,
-  * never among the conversation's messages. Pure: the turn runs the calls.
+  * never among the conversation's messages. Pure, but for [[round]], whose calls the turn
+  * makes through [[Calls]].
   */
 object TurnVerdict {
 
@@ -73,6 +74,82 @@ object TurnVerdict {
       case (m, _) => m
     }
     base.copy(messages = tagged, tools = Vector(Topic), use = ToolUse.Auto)
+  }
+
+  /** How a request is built from the turn's plain one. */
+  enum Shape {
+
+    /** The plain request, unchanged. */
+    case Plain
+
+    /** The plain request with the tool offered for `c` ([[offer]]). */
+    case Offered(c: TurnTopics.Classification)
+
+    /** The second round's: the offer for `c`, then `first`, its reply ([[again]]). */
+    case Again(c: TurnTopics.Classification, first: Message.Assistant)
+
+    /** `base`, shaped. */
+    def apply(base: ModelRequest): ModelRequest = this match {
+      case Plain => base
+      case Offered(c) => offer(base, c)
+      case Again(c, first) => again(offer(base, c), first)
+    }
+  }
+
+  /** A model's `reply` to the request `shape` built. */
+  final case class Replied(reply: Message.Assistant, shape: Shape)
+
+  /** What a round came to: the reply that answers the turn, or why none does; the verdict
+    * of its first reply; what went wrong that the turn survived; and the replies spent on
+    * the verdict alone, the answer aside.
+    */
+  final case class Round(
+      answer: Either[TurnFailure, Replied],
+      verdict: Verdict,
+      anomaly: Option[String],
+      spent: Vector[Replied]
+  )
+
+  /** The model calls a round may make after its first reply. */
+  trait Calls {
+
+    /** The model's reply to the request `shape` builds. */
+    def again(shape: Shape.Again): Either[TurnFailure, Message.Assistant]
+
+    /** The model's reply to the plain request. */
+    def plain(): Either[TurnFailure, Message.Assistant]
+  }
+
+  /** The round after `first`, the reply to the request offered for `c`: `further` makes
+    * each call the round needs, at most once each, `again` before `plain`. The answer
+    * fails only when the plain call does.
+    */
+  def round(c: TurnTopics.Classification, first: Message.Assistant, further: Calls^): Round = {
+    val verdict = of(first)
+    val offered = Replied(first, Shape.Offered(c))
+    if (calls(first).isEmpty) Round(Right(offered), verdict, None, Vector.empty)
+    else {
+      val shape = new Shape.Again(c, first)
+      val second = further.again(shape)
+      second.toOption.flatMap(answer) match {
+        case Some(answered) =>
+          val dropped = Option.when(second.exists(m => calls(m).nonEmpty))(
+            "the second call called a tool again; its calls were dropped"
+          )
+          Round(Right(Replied(answered, shape)), verdict, dropped, Vector(offered))
+        case None =>
+          val why = second match {
+            case Left(failure) => s"the second call failed ($failure)"
+            case Right(_) => "the second call called a tool again and said nothing"
+          }
+          Round(
+            further.plain().map(Replied(_, Shape.Plain)),
+            verdict,
+            Some(s"$why; a plain call answered"),
+            offered +: second.toOption.map(Replied(_, shape)).toVector
+          )
+      }
+    }
   }
 
   /** The tool calls in `reply`, in order. */

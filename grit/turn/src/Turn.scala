@@ -9,7 +9,8 @@ import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.provider.{ModelRequest, ProviderError}
 import grit.core.store.{Entry, Payload, StoreError, Tx}
-import grit.core.topic.Verdict
+
+import TurnVerdict.Shape
 
 /** The durable turn: one workflow per turn. Each step's output is recorded, so a turn
   * resumed after a crash never calls a model twice.
@@ -187,12 +188,11 @@ object Turn {
       // Turns unsure of their topic that passed this point before the verdict round offer
       // no tool.
       asking = placed.filter(_.uncertain).filter(_ => d.patch(Patches.Verdict))
-      first: (ModelRequest -> ModelRequest) = base => asking.fold(base)(TurnVerdict.offer(base, _))
       message <- d.step(Step.CallModel) { () =>
-        callModel(heard, turn, window, first)
+        callModel(heard, turn, window, asking.fold(Shape.Plain)(Shape.Offered(_)))
       }
       answered <- asking match {
-        case None => Right((message, first))
+        case None => Right(TurnVerdict.Replied(message, Shape.Plain))
         case Some(c) => verdictRound(heard, turn, window, c, message)
       }
       appended <- d.transact(Step.Append)(
@@ -201,7 +201,7 @@ object Turn {
     } yield appended
   }
 
-  /** The request built from `turn`'s `window` and shaped by `shape`, sent to `provider`,
+  /** The request built from `turn`'s `window` and shaped by `shape`, sent to the provider,
     * whose reply is told to edges as it arrives, as a fresh attempt each time this runs:
     * a rerun's pieces follow a crashed run's.
     */
@@ -209,7 +209,7 @@ object Turn {
       heard: StreamWriter^,
       turn: TurnRef,
       window: Window,
-      shape: ModelRequest -> ModelRequest
+      shape: Shape
   )(using env: TurnEnv^): Either[TurnFailure, Message.Assistant] = {
     val told =
       new TurnStream.Writer(heard, UUID.randomUUID().toString, () => System.nanoTime() / 1000000)
@@ -222,11 +222,9 @@ object Turn {
     result
   }
 
-  /** After a first call that offered the `topic` tool ([[TurnVerdict]]): its verdict
-    * recorded, and the reply with the shape of the request that produced it. A call to the
-    * tool is answered and the model called again (`call-model-again`); if that fails, or
-    * calls a tool again and says nothing, a plain call answers (`call-model-plain`). Only
-    * that plain call failing fails the turn.
+  /** After a first call that offered the `topic` tool for `c` ([[TurnVerdict.round]]): the
+    * reply that answers the turn, its further calls made as the `call-model-again` and
+    * `call-model-plain` steps and its verdict recorded as `record-verdict`.
     */
   private def verdictRound(
       heard: StreamWriter^,
@@ -234,59 +232,24 @@ object Turn {
       seen: Window,
       c: TurnTopics.Classification,
       first: Message.Assistant
-  )(using
-      env: TurnEnv^,
-      d: Durable^
-  ): Either[TurnFailure, (Message.Assistant, ModelRequest -> ModelRequest)] = {
+  )(using env: TurnEnv^, d: Durable^): Either[TurnFailure, TurnVerdict.Replied] = {
     import TurnJournal.given
-    val offered: ModelRequest -> ModelRequest = base => TurnVerdict.offer(base, c)
-    val verdict = TurnVerdict.of(first)
-    val (outcome, shape, anomaly, spent) =
-      if (TurnVerdict.calls(first).isEmpty)
-        (
-          Right(first),
-          offered,
-          None,
-          Vector.empty[(Message.Assistant, ModelRequest -> ModelRequest)]
-        )
-      else {
-        val again: ModelRequest -> ModelRequest = base => TurnVerdict.again(offered(base), first)
-        val second = d.step(Step.CallModelAgain) { () =>
-          callModel(heard, turn, seen, again)
-        }
-        second.toOption.flatMap(TurnVerdict.answer) match {
-          case Some(answer) =>
-            val dropped =
-              Option.when(second.exists(m => TurnVerdict.calls(m).nonEmpty))(
-                "the second call called a tool again; its calls were dropped"
-              )
-            (Right(answer), again, dropped, Vector(first -> offered))
-          case None =>
-            val plainShape: ModelRequest -> ModelRequest = base => base
-            val plain = d.step(Step.CallModelPlain) { () =>
-              callModel(heard, turn, seen, plainShape)
-            }
-            val why = second match {
-              case Left(failure) => s"the second call failed ($failure)"
-              case Right(_) => "the second call called a tool again and said nothing"
-            }
-            (
-              plain,
-              plainShape,
-              Some(s"$why; a plain call answered"),
-              Vector(first -> offered) ++ second.toOption.map(_ -> again)
-            )
-        }
-      }
+    val further = new TurnVerdict.Calls {
+      def again(shape: Shape.Again): Either[TurnFailure, Message.Assistant] =
+        d.step(Step.CallModelAgain) { () => callModel(heard, turn, seen, shape) }
+      def plain(): Either[TurnFailure, Message.Assistant] =
+        d.step(Step.CallModelPlain) { () => callModel(heard, turn, seen, Shape.Plain) }
+    }
+    val round = TurnVerdict.round(c, first, further)
     val _ = d.transact(Step.RecordVerdict)(
-      recordVerdict(env.system, env.records, turn, seen, c, verdict, anomaly, spent)
+      recordVerdict(env.system, env.records, turn, seen, c, round)
     )
-    outcome.map(_ -> shape)
+    round.answer
   }
 
-  /** The `record-verdict` step: where `verdict` places `turn`'s message, recorded as its
-    * entry [[TurnVerdict.verdictId]] with `anomaly`, and what the calls `spent` on it cost
-    * (each with the shape of its request) in the ledger beside it.
+  /** The `record-verdict` step: where `round`'s verdict places `turn`'s message, recorded
+    * as its entry [[TurnVerdict.verdictId]] with the round's anomaly, and what the replies
+    * it spent cost in the ledger beside it.
     */
   private def recordVerdict(
       system: String,
@@ -294,9 +257,7 @@ object Turn {
       turn: TurnRef,
       window: Window,
       c: TurnTopics.Classification,
-      verdict: Verdict,
-      anomaly: Option[String],
-      spent: Vector[(Message.Assistant, ModelRequest -> ModelRequest)]
+      round: TurnVerdict.Round
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
       all <- records.entries.list(turn.conversationId).left.map(storeFailure)
@@ -306,8 +267,8 @@ object Turn {
         records.ledger,
         turn,
         TurnVerdict.verdictId(turn),
-        TurnVerdict.events(verdict, anomaly, c, turn),
-        TurnVerdict.cost(spent.map((m, shape) => m -> records.estimator.request(shape(base))))
+        TurnVerdict.events(round.verdict, round.anomaly, c, turn),
+        TurnVerdict.cost(round.spent.map(r => r.reply -> records.estimator.request(r.shape(base))))
       )
     } yield id
 
@@ -453,8 +414,8 @@ object Turn {
   /** Records the `answered` message as `turn`'s entry `id`, after everything already in the
     * conversation, and what it cost in the ledger beside the estimate of the request that
     * produced it: rebuilt from the same window and the same entries (the turn's own were
-    * all recorded before its call, and the reply is not yet among them), in the shape
-    * `answered` gives it.
+    * all recorded before its call, and the reply is not yet among them), shaped as
+    * `answered` says.
     * Unless the `record-window` step already wrote them (`windowRecorded`), the window's
     * queries and the window itself go in first ([[writeWindow]]).
     */
@@ -464,15 +425,15 @@ object Turn {
       turn: TurnRef,
       window: Window,
       id: EntryId,
-      answered: (Message.Assistant, ModelRequest -> ModelRequest),
+      answered: TurnVerdict.Replied,
       windowRecorded: Boolean
   )(using Tx^): Either[TurnFailure, EntryId] = {
-    val (message, shape) = answered
+    val TurnVerdict.Replied(message, shape) = answered
     val TurnRecords(entries, ledger, estimator) = records
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
-      sent <- requestOf(system, all, turn, window).map(shape)
+      sent <- requestOf(system, all, turn, window).map(shape(_))
       written <-
         if (windowRecorded) Right(0) else writeWindow(records, turn, window, next.seq)
       _ <- entries
