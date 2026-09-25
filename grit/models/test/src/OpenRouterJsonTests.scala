@@ -283,10 +283,43 @@ object OpenRouterJsonTests extends TestSuite {
       OpenRouterJson.error(
         400,
         """{"error":{"code":400,"message":"too long","metadata":{"error_type":"context_length_exceeded"}}}"""
-      ) ==> ProviderError.Unavailable("HTTP 400: too long (context_length_exceeded)")
+      ) ==> ProviderError.Refused("HTTP 400: too long (context_length_exceeded)")
       OpenRouterJson.error(502, "Bad Gateway") ==> ProviderError.Unavailable(
         "HTTP 502: Bad Gateway"
       )
+    }
+
+    test("error: 408, 429 and 5xx may pass if sent again; every other status is refused") {
+      val unavailable = Vector(408, 429, 500, 502, 503, 504, 529).filter { status =>
+        OpenRouterJson.error(status, "{}") match {
+          case ProviderError.Unavailable(_) => true
+          case ProviderError.Refused(_) => false
+        }
+      }
+      unavailable ==> Vector(408, 429, 500, 502, 503, 504, 529)
+      val refused = Vector(400, 401, 402, 403, 404, 413, 422).filter { status =>
+        OpenRouterJson.error(status, "{}") match {
+          case ProviderError.Refused(_) => true
+          case ProviderError.Unavailable(_) => false
+        }
+      }
+      refused ==> Vector(400, 401, 402, 403, 404, 413, 422)
+    }
+
+    test("error: a body that is not JSON is its text, trimmed") {
+      // Cloudflare's 504 page, as a live run met it.
+      OpenRouterJson.error(504, "error code: 504\n") ==>
+        ProviderError.Unavailable("HTTP 504: error code: 504")
+    }
+
+    test("modelError: a transient code may pass if sent again; any other, or none, is refused") {
+      def error(fields: (String, ujson.Value)*) = ujson.Obj.from(fields).value
+      OpenRouterJson.modelError(error("code" -> ujson.Num(429), "message" -> ujson.Str("slow"))) ==>
+        ProviderError.Unavailable("model error: slow")
+      OpenRouterJson.modelError(error("code" -> ujson.Num(400), "message" -> ujson.Str("bad"))) ==>
+        ProviderError.Refused("model error: bad")
+      OpenRouterJson.modelError(error("message" -> ujson.Str("odd"))) ==>
+        ProviderError.Refused("model error: odd")
     }
 
     test("config: the key is required, the model defaults, and toString hides the key") {

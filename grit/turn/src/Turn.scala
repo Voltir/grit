@@ -2,6 +2,8 @@ package grit.turn
 
 import java.time.Instant
 
+import scala.concurrent.duration.*
+
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Window}
 import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
@@ -515,23 +517,41 @@ object Turn {
   )(using env: TurnEnv^): Either[TurnFailure, Message.Assistant] =
     callShaped(heard, turn, window, shape(_))
 
-  /** As [[callModel]], the request shaped by `shape`. */
+  /** As [[callModel]], the request shaped by `shape`. A provider that is
+    * [[ProviderError.Unavailable]] is asked again after each wait of [[Retries]], each try a
+    * fresh attempt on the stream; the last failure, or a [[ProviderError.Refused]], fails the
+    * call.
+    */
   private def callShaped(
       heard: StreamWriter^,
       turn: TurnRef,
       window: Window,
       shape: ModelRequest -> ModelRequest
-  )(using env: TurnEnv^): Either[TurnFailure, Message.Assistant] = {
-    val told =
-      new TurnStream.Writer(heard, env.fresh.nonce(), () => env.clock.millis())
-    val result = request(env, turn, window).flatMap { req =>
-      env.provider.stream(shape(req), told.tell).left.map { case ProviderError.Unavailable(cause) =>
-        TurnFailure.Model(cause)
+  )(using env: TurnEnv^): Either[TurnFailure, Message.Assistant] =
+    request(env, turn, window).flatMap { req =>
+      val sent = shape(req)
+      def attempt(waits: List[FiniteDuration], tries: Int): Either[TurnFailure, Message.Assistant] = {
+        val told = new TurnStream.Writer(heard, env.fresh.nonce(), () => env.clock.millis())
+        val result = env.provider.stream(sent, told.tell)
+        told.flush()
+        (result, waits) match {
+          case (Left(ProviderError.Unavailable(_)), wait :: rest) =>
+            env.clock.sleep(wait)
+            attempt(rest, tries + 1)
+          case (Left(error), _) =>
+            val after = if (tries == 1) "" else s" (after $tries tries)"
+            Left(TurnFailure.Model(error.cause + after))
+          case (Right(reply), _) => Right(reply)
+        }
       }
+      attempt(Retries, 1)
     }
-    told.flush()
-    result
-  }
+
+  /** How long a model call waits before each retry of a provider that was
+    * [[ProviderError.Unavailable]]: two retries, 2 s then 6 s, so three tries in all. A pinned
+    * upstream has no fallback, and one 5xx would otherwise end a turn that had gone well.
+    */
+  val Retries: List[FiniteDuration] = List(2.seconds, 6.seconds)
 
   /** After a first call that offered the `topic` tool for `c` ([[TurnVerdict.round]]): the
     * reply that answers the turn, its further calls made as the `call-model-again` and
@@ -601,9 +621,10 @@ object Turn {
           .left
           .map(storeFailure)
           .flatMap { all =>
-            env.summarizer.complete(summaryRequest(all, turn, placing)).left.map {
-              case ProviderError.Unavailable(cause) => TurnFailure.Model(cause)
-            }
+            env.summarizer
+              .complete(summaryRequest(all, turn, placing))
+              .left
+              .map(e => TurnFailure.Model(e.cause))
           }
       }
       appended <- d.transact(Step.AppendSummary)(

@@ -304,9 +304,48 @@ object TurnTests extends TestSuite {
       val durable = new InMemoryDurable
       val provider = new RecordingProvider(fail = true)
       val turn = say(entries, "hello")
-      runTurn(durable, entries, provider, turn) ==> "failed: Model(down)"
+      runTurn(durable, entries, provider, turn) ==> "failed: Model(down (after 3 tries))"
       durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 5)
       texts(entries) ==> Vector("user: hello")
+    }
+
+    test("a provider unavailable twice is asked again after each wait, as a fresh attempt") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val provider = new Flaky(2, ProviderError.Unavailable("HTTP 504: error code: 504"))
+      val clock = new NoWait
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(turnBody(entries, provider, clock = clock)) ==> Done
+      provider.calls ==> 3
+      clock.waited ==> Turn.Retries.toVector
+      val (pieces, told) = heard(durable, turn)
+      pieces.map(_.attempt).distinct.size ==> 3
+      told.text ==> "stub reply to: hello"
+      durable.recordedSteps(turn.workflowId) ==> Recorded
+    }
+
+    test("a provider unavailable on every try fails the call after the last wait") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val provider = new Flaky(3, ProviderError.Unavailable("HTTP 504"))
+      val clock = new NoWait
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(turnBody(entries, provider, clock = clock)) ==>
+        "failed: Model(HTTP 504 (after 3 tries))"
+      provider.calls ==> 3
+      clock.waited ==> Turn.Retries.toVector
+    }
+
+    test("a provider that refused is not asked again") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val provider = new Flaky(1, ProviderError.Refused("HTTP 400: too long"))
+      val clock = new NoWait
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(turnBody(entries, provider, clock = clock)) ==>
+        "failed: Model(HTTP 400: too long)"
+      provider.calls ==> 1
+      clock.waited ==> Vector.empty
     }
 
     test("not a turn id") {

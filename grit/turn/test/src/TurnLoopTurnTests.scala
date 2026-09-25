@@ -280,7 +280,7 @@ object TurnLoopTurnTests extends TestSuite {
         turn,
         provider,
         ws
-      ) ==> "failed: Model(HTTP 529)"
+      ) ==> "failed: Model(HTTP 529 (after 3 tries))"
       texts(entries).filter(_.startsWith("assistant:")) ==> Vector.empty
     }
 

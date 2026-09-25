@@ -47,6 +47,36 @@ object TurnFixtures {
     }
   }
 
+  /** The system's time, with waits that return at once, each kept in `waited`. */
+  final class NoWait extends Clock {
+    @caps.unsafe.untrackedCaptures
+    var waited = Vector.empty[scala.concurrent.duration.FiniteDuration]
+
+    def now(): Instant = Instant.now()
+    def millis(): Long = System.nanoTime() / 1000000
+    def sleep(duration: scala.concurrent.duration.FiniteDuration): Unit = waited = waited :+ duration
+  }
+
+  /** The stub, streaming; its first `failures` calls each tell a piece of text and then fail
+    * with `error`, as an upstream that drops the stream does.
+    */
+  final class Flaky(failures: Int, error: ProviderError) extends Provider {
+    @caps.unsafe.untrackedCaptures
+    var calls = 0
+
+    def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] =
+      new StubProvider().complete(request)
+
+    override def stream(
+        request: ModelRequest,
+        onDelta: Delta => Unit
+    ): Either[ProviderError, Message.Assistant] = {
+      calls += 1
+      if (calls > failures) new StubProvider().stream(request, onDelta)
+      else { onDelta(Delta.Text("half a rep")); Left(error) }
+    }
+  }
+
   /** Entries a crash is aimed at: the reply's insert. */
   val isReply: Entry -> Boolean = _.payload match {
     case Payload.Message(Message.Assistant(_, _, _, _)) => true
@@ -264,7 +294,7 @@ object TurnFixtures {
         new StubProvider(),
         FakeDb,
         new FakeJot,
-        Clock.system(),
+        new NoWait,
         Fresh.random(),
         TurnTooling(NoCheckout, noTools, budget(5), strict = false)
       )
@@ -305,9 +335,12 @@ object TurnFixtures {
       provider: Provider^,
       ledger: UsageLedger = new InMemoryUsageLedger,
       summarizer: Provider^ = new StubProvider(),
-      classifier: Classifier^ = NoClassifier
+      classifier: Classifier^ = NoClassifier,
+      clock: Clock^ = new NoWait
   )(id: WorkflowId)(using Durable^): String =
-    tooledBody(entries, provider, ledger, summarizer, classifier, NoCheckout, noTools, 5)(id)
+    tooledBody(entries, provider, ledger, summarizer, classifier, NoCheckout, noTools, 5, clock)(
+      id
+    )
 
   /** No tools offered: the loop's first call is the plain request, and answers. */
   private def noTools: Toolbox[{NoCheckout}] =
@@ -324,7 +357,8 @@ object TurnFixtures {
       classifier: Classifier^,
       ws: Workspace^,
       tools: Toolbox[{ws}],
-      calls: Int
+      calls: Int,
+      clock: Clock^ = new NoWait
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
@@ -336,7 +370,7 @@ object TurnFixtures {
         summarizer,
         FakeDb,
         new FakeJot,
-        Clock.system(),
+        clock,
         Fresh.random(),
         TurnTooling(ws, tools, budget(calls), strict = false)
       )

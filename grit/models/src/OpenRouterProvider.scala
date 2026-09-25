@@ -9,7 +9,9 @@ import grit.core.message.Message
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
 
 /** [[Provider]] over OpenRouter's chat completions, one request per call, streamed or
-  * not, no retries (the durable turn records the outcome either way).
+  * not, no retries. A failure to connect, a timeout or a connection lost is
+  * [[ProviderError.Unavailable]]; how an HTTP error or a model error is classed is
+  * [[OpenRouterJson.error]]'s and [[OpenRouterJson.modelError]]'s.
   */
 final class OpenRouterProvider(config: OpenRouterConfig) extends Provider {
 
@@ -61,7 +63,9 @@ final class OpenRouterProvider(config: OpenRouterConfig) extends Provider {
     try call
     catch {
       // The message never includes the request, so never the key.
-      case NonFatal(e) =>
+      case e: java.io.IOException =>
         Left(ProviderError.Unavailable(s"${e.getClass.getSimpleName}: ${e.getMessage}"))
+      case NonFatal(e) =>
+        Left(ProviderError.Refused(s"${e.getClass.getSimpleName}: ${e.getMessage}"))
     }
 }

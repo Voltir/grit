@@ -4,7 +4,7 @@ import grit.assembly.linear.LinearAssembler
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
-import grit.core.provider.{Provider, ProviderError, TokenEstimator}
+import grit.core.provider.{Provider, TokenEstimator}
 import grit.core.store.{Db, Entry, EntrySearch, EntryStore}
 
 /** A window of the recent turns plus the earlier turns that match a written query. The
@@ -38,8 +38,8 @@ final class RetrievalAssembler(
         val own = all.filter(_.turnSeq == turn.turnSeq)
         val asked = QueryWriter.request(own)
         writer.complete(asked) match {
-          case Left(ProviderError.Unavailable(cause)) =>
-            Right(window(linear, Vector(AssemblyNote.FellBack(s"no query: $cause"))))
+          case Left(error) =>
+            Right(window(linear, Vector(AssemblyNote.FellBack(s"no query: ${error.cause}"))))
           case Right(reply) =>
             val query = QueryWriter.text(reply)
             val queried =

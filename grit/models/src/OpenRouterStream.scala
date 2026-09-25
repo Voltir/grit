@@ -47,9 +47,7 @@ object OpenRouterStream {
             case Some(chunk) =>
               chunk.get("error").flatMap(_.objOpt) match {
                 case Some(error) =>
-                  outcome = Some(
-                    Left(ProviderError.Unavailable(s"model error: ${describe(error)}"))
-                  )
+                  outcome = Some(Left(OpenRouterJson.modelError(error)))
                 case None =>
                   chunk.get("model").flatMap(_.strOpt).foreach(m => model = Some(m))
                   chunk.get("usage").filter(_.objOpt.isDefined).foreach(u => usage = Some(u))
@@ -93,7 +91,9 @@ object OpenRouterStream {
       // Blank lines separate events; `:` lines are comments.
     }
 
-    outcome.getOrElse(Left(unreadable("the stream ended before [DONE]"))).map { _ =>
+    // A stream cut short is a connection lost, which another try may get past.
+    val cut = ProviderError.Unavailable("unreadable stream: the stream ended before [DONE]")
+    outcome.getOrElse(Left(cut)).map { _ =>
       val message = ujson.Obj("role" -> "assistant", "content" -> content.toString)
       if (reasoning.nonEmpty) message("reasoning") = reasoning.toString
       if (details.nonEmpty) message("reasoning_details") = ujson.Arr.from(details.values)
@@ -162,9 +162,6 @@ object OpenRouterStream {
     named
   }
 
-  private def describe(error: collection.Map[String, ujson.Value]): String =
-    error.get("message").flatMap(_.strOpt).getOrElse("no message")
-
   private def unreadable(why: String): ProviderError =
-    ProviderError.Unavailable(s"unreadable stream: $why")
+    ProviderError.Refused(s"unreadable stream: $why")
 }

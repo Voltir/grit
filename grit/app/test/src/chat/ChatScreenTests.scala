@@ -699,5 +699,10 @@ object ChatScreenTests extends TestSuite {
         ready.message(Msg.Arrived(Vector(), step = Some("call-model"))).message(Msg.Failed("down"))
       said(failed) ==> Vector("ᚺ down", "ᚠ grit is thinking…")
     }
+
+    test("a failure whose reason breaks a line is painted on one") {
+      val failed = ready.message(Msg.Failed("failed: Model(HTTP 504: error code: 504\n)"))
+      said(failed) ==> Vector("ᚺ failed: Model(HTTP 504: error code: 504 )")
+    }
   }
 }

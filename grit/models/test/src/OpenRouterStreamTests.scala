@@ -104,21 +104,21 @@ object OpenRouterStreamTests extends TestSuite {
       reply.map(_.blocks) ==> Right(Vector(AssistantBlock.Text("Fehu")))
     }
 
-    test("an error after the 200 is the call's error") {
+    test("an error after the 200 is the call's error, refused when it has no code") {
       val (reply, _) = folded(
         Vector(
           chunk("""{"content":"Fe"}"""),
           """data: {"error":{"message":"upstream gave up"},"choices":[{"delta":{},"finish_reason":"error"}]}"""
         )
       )
-      reply ==> Left(ProviderError.Unavailable("model error: upstream gave up"))
+      reply ==> Left(ProviderError.Refused("model error: upstream gave up"))
     }
 
-    test("a stream cut short, or not JSON, is unreadable, not a message") {
+    test("a stream cut short may pass if sent again; one not JSON is refused") {
       val (cut, _) = folded(Vector(chunk("""{"content":"Fe"}""")))
       cut ==> Left(ProviderError.Unavailable("unreadable stream: the stream ended before [DONE]"))
       val (garbled, _) = folded(Vector("data: {nope"))
-      assert(garbled.isLeft)
+      garbled ==> Left(ProviderError.Refused("unreadable stream: a chunk is not a JSON object"))
     }
 
     test("the stub streams its reply in pieces that join back to it") {

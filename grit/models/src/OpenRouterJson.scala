@@ -95,14 +95,14 @@ object OpenRouterJson {
   def response(body: ujson.Value): Either[ProviderError, Message.Assistant] =
     for {
       root <- body.objOpt.toRight(unreadable("not an object"))
-      _ <- modelError(root)
+      _ <- errorIn(root)
       choice <- root
         .get("choices")
         .flatMap(_.arrOpt)
         .flatMap(_.headOption)
         .flatMap(_.objOpt)
         .toRight(unreadable("no choices"))
-      _ <- modelError(choice)
+      _ <- errorIn(choice)
       message <- choice.get("message").flatMap(_.objOpt).toRight(unreadable("no message"))
       blocks <- blockList(message)
     } yield Message.Assistant(
@@ -112,7 +112,10 @@ object OpenRouterJson {
       root.get("model").flatMap(_.strOpt).getOrElse("unknown")
     )
 
-  /** The error in a non-200 response with status `status`. */
+  /** The error in a non-200 response with status `status`: [[ProviderError.Unavailable]]
+    * for a status another try may get past ([[transient]]), [[ProviderError.Refused]] for any
+    * other.
+    */
   def error(status: Int, body: String): ProviderError = {
     val detail = scala.util
       .Try(ujson.read(body))
@@ -121,13 +124,31 @@ object OpenRouterJson {
       .flatMap(_.get("error"))
       .flatMap(_.objOpt)
       .map(describe)
-      .getOrElse(body.take(200))
-    ProviderError.Unavailable(s"HTTP $status: $detail")
+      .getOrElse(body.trim.take(200))
+    val cause = s"HTTP $status: $detail"
+    if (transient(status)) ProviderError.Unavailable(cause) else ProviderError.Refused(cause)
   }
 
-  private def modelError(at: collection.Map[String, ujson.Value]): Either[ProviderError, Unit] =
+  /** Whether a request answered with HTTP `status` may succeed if sent again: 408, 429 and
+    * every 5xx.
+    */
+  def transient(status: Int): Boolean = status == 408 || status == 429 || status / 100 == 5
+
+  /** The model error `error`, an OpenRouter error object sent after the 200, as `model
+    * error: …`: [[ProviderError.Unavailable]] when its `code` is a [[transient]] status,
+    * [[ProviderError.Refused]] otherwise.
+    */
+  def modelError(error: collection.Map[String, ujson.Value]): ProviderError = {
+    val cause = s"model error: ${describe(error)}"
+    error.get("code").flatMap(_.numOpt).filter(_.isWhole).map(_.toInt) match {
+      case Some(code) if transient(code) => ProviderError.Unavailable(cause)
+      case _ => ProviderError.Refused(cause)
+    }
+  }
+
+  private def errorIn(at: collection.Map[String, ujson.Value]): Either[ProviderError, Unit] =
     at.get("error").flatMap(_.objOpt) match {
-      case Some(error) => Left(ProviderError.Unavailable(s"model error: ${describe(error)}"))
+      case Some(error) => Left(modelError(error))
       case None => Right(())
     }
 
@@ -205,5 +226,5 @@ object OpenRouterJson {
   }
 
   private def unreadable(why: String): ProviderError =
-    ProviderError.Unavailable(s"unreadable response: $why")
+    ProviderError.Refused(s"unreadable response: $why")
 }

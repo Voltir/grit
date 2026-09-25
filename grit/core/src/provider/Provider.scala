@@ -81,9 +81,20 @@ enum ToolUse {
   case Off
 }
 
-/** A model call that produced no response. */
+/** A model call that produced no response. `cause` says why, on one line or more. */
 enum ProviderError {
 
-  /** The provider could not be reached or refused the request. */
+  /** The same request may be answered if sent again: the provider could not be reached or
+    * timed out, was overloaded or limited the rate (HTTP 408, 429 or 5xx, or a model error
+    * with such a code), or cut the response off before its end.
+    */
   case Unavailable(cause: String)
+
+  /** Sending the same request again would fail the same way: the provider refused it (any
+    * other HTTP status), its response could not be read, or the model reported an error
+    * that is not one of [[Unavailable]]'s.
+    */
+  case Refused(cause: String)
+
+  def cause: String
 }

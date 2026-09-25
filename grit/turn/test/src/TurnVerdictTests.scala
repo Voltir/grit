@@ -293,7 +293,9 @@ object TurnVerdictTests extends TestSuite {
       val (turn, entries, _) = third("""hm ~0.5 #call:{"about":"current"}""", provider)
       texts(entries).filter(_.startsWith("assistant:")).lastOption ==> Some("assistant: plainly")
       lastBy(entries, turn).collect { case Placement.Asked(_, a) => a } ==>
-        Some(Some("the second call failed (Model(HTTP 529)); a plain call answered"))
+        Some(
+          Some("the second call failed (Model(HTTP 529 (after 3 tries))); a plain call answered")
+        )
     }
 
     test("the verdict not recorded: the turn replies, and its log says so") {

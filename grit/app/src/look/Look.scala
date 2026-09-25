@@ -81,10 +81,11 @@ final case class Look(theme: Theme) {
   /** The line while the model is writing a call to the tool `name`. */
   def calling(name: String): Block.Text = tool(s"calling $name…")
 
+  /** `reason` as one line: each line break in it, and the blanks around it, one space. */
   def failure(reason: String): Block.Text =
     Block.styled(
       StyledText.styled(s"${Runes.Failure} ", Style.fg(theme.failure) + Style.Bold) ++
-        StyledText.styled(reason, Style.fg(theme.failure))
+        StyledText.styled(reason.trim.replaceAll("\\s*\\R\\s*", " "), Style.fg(theme.failure))
     )
 
   def separator: Block.Separator = Block.Separator(Style.fg(theme.rail), '━', Runes.Turn)
