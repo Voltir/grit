@@ -72,5 +72,15 @@ object WrapTests extends TestSuite {
       assertSlices(text)(rows)
       assertFits(rows, 8)
     }
+
+    test("the first row gets the first width, every later row the rest") {
+      val text = "one two three four five six"
+      val rows = Wrap.wrap(text, 8, 5)
+      rows.map(_.text) ==> Vector("one two", "three", "four", "five", "six")
+      assertSlices(text)(rows)
+      // A later logical line is a later row too: it wraps at the rest.
+      Wrap.wrap("ab cd\nef gh", 5, 2).map(_.text) ==> Vector("ab cd", "ef", "gh")
+      Wrap.truncate("abcdef\nabcdef", 4, 2).map(_.text) ==> Vector("abcd", "ab")
+    }
   }
 }

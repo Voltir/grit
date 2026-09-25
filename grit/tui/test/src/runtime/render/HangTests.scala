@@ -4,7 +4,7 @@ import grit.tui.components.pane.{Anchor, Viewport}
 import grit.tui.model.block.{Block, Overflow}
 import grit.tui.model.select.{Doc, DocPos, Selection}
 import grit.tui.model.surface.{Color, Pos, Size, Style}
-import grit.tui.model.text.{StyledText, Width, Wrap}
+import grit.tui.model.text.{StyledText, Width}
 
 import utest.*
 
@@ -24,16 +24,6 @@ object HangTests extends TestSuite {
   private val rail = StyledText.styled("▎ ", Style.fg(Rail))
 
   val tests = Tests {
-
-    test("wrap: the first row gets the first width, every later row the rest") {
-      val text = "one two three four five six"
-      val rows = Wrap.wrap(text, 8, 5)
-      rows.map(_.text) ==> Vector("one two", "three", "four", "five", "six")
-      rows.foreach(r => assert(text.slice(r.startOffset, r.startOffset + r.text.length) == r.text))
-      // A later logical line is a later row too: it wraps at the rest.
-      Wrap.wrap("ab cd\nef gh", 5, 2).map(_.text) ==> Vector("ab cd", "ef", "gh")
-      Wrap.truncate("abcdef\nabcdef", 4, 2).map(_.text) ==> Vector("abcd", "ab")
-    }
 
     test("a lead and a hang are painted beside the rows, and the text wraps in what is left") {
       val b = Block

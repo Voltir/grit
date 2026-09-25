@@ -94,5 +94,18 @@ object SurfaceTests extends TestSuite {
       assert(s.at(-1, 0) == Cell.blank)
       assert(s.at(0, 0) == Cell('a'))
     }
+
+    test("under: unset colours take the ground's, set ones stay, and only inside the rect") {
+      val night = Color.hex("#0d1319")
+      val ink = Color.hex("#d3e0ec")
+      val slab = Color.hex("#1e2a37")
+      val s = Surface
+        .blank(Size(1, 4))
+        .write(0, 1, "ab", Style.bg(slab))
+        .under(Rect(0, 0, 1, 3), Style.bg(night) + Style.fg(ink))
+      s.at(0, 0).style ==> Style(fg = Some(ink), bg = Some(night))
+      s.at(0, 1).style ==> Style(fg = Some(ink), bg = Some(slab))
+      s.at(0, 3).style ==> Style.plain
+    }
   }
 }
