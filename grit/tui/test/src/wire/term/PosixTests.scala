@@ -41,13 +41,10 @@ object PosixTests extends TestSuite {
     test("raw mode clears exactly the canonical, echo, extended and signal bits") {
       // ISIG is the load-bearing one: without clearing it Ctrl-C is a signal, not the
       // byte 0x03, and an app can never bind it.
-      val raw = Posix.rawAttributes(withFlags(0, 0, 0xffff))
-      val lflag = flag(raw, OffLflag)
-      assert((lflag & 0x0002) == 0) // ICANON
-      assert((lflag & 0x0008) == 0) // ECHO
-      assert((lflag & 0x0001) == 0) // ISIG
-      assert((lflag & 0x8000) == 0) // IEXTEN
-      assert((lflag & 0x0100) != 0) // TOSTOP untouched
+      // Every bit set going in, so each one kept or cleared is seen.
+      val raw = Posix.rawAttributes(withFlags(0, 0, -1))
+      val cleared = 0x0002 | 0x0008 | 0x0001 | 0x8000 // ICANON, ECHO, ISIG, IEXTEN
+      assert(flag(raw, OffLflag) == ~cleared)
     }
 
     test("raw mode clears flow control and both CR/LF translations on input") {
