@@ -433,6 +433,19 @@ object ChatScreenTests extends TestSuite {
       assert(noted.screen.last.contains("not kept: read-only"))
     }
 
+    test("a // draft is a message starting with /: sent with one slash, no list opened") {
+      val typing = typed(ready, "//")
+      typing.state.palette ==> None
+      assert(!typing.screen.mkString.contains("switch the colour theme"))
+      val sent = typed(typing, "etc/hosts is odd").input(Input.Keyboard(Key.Enter))
+      sent.effects.last ==> Effect.ToHost(Msg.Send("/etc/hosts is odd"))
+      sent.state.editor.text ==> ""
+      // Ctrl-p over it puts it aside, as over any message.
+      val listed = typed(ready, "//x").input(Input.Keyboard(Key.Ctrl('p')))
+      listed.state.editor.text ==> "/"
+      listed.input(Input.Keyboard(Key.Escape)).state.editor.text ==> "//x"
+    }
+
     test("a / draft never reaches the host: one that will not run says why") {
       val unknown = typed(ready, "/foo").input(Input.Keyboard(Key.Enter))
       assert(!sends(unknown), unknown.screen.last.contains("no command /foo"))

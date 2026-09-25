@@ -240,6 +240,7 @@ object ChatScreen {
     "ctrl-b" -> "show or hide the turn panel",
     "ctrl-t" -> "the panel's next tab: turn, session",
     "ctrl-q" -> "quit",
+    "// at the start" -> "a message that starts with /",
     "esc" -> "close a list or dialog; unpin",
     "click a message" -> "its turn in the panel",
     "click a tab" -> "that tab in the panel",
@@ -277,16 +278,18 @@ object ChatScreen {
           val draft = s.editor.text.trim
           if (draft.isEmpty) (s, Effect.NoOp)
           // A command, never a message: one that will not run says why, and goes nowhere.
-          else if (draft.startsWith("/")) command(ran(s, draft), draft)
+          else if (Commands.isCommand(draft)) command(ran(s, draft), draft)
           // Shown when the store has it, like everything else in the transcript.
           // A new turn is the one to watch: the panel lets go of any pinned one.
-          else
+          else {
+            val text = Commands.escaped(draft).getOrElse(draft)
             (
               s.copy(editor = s.editor.submitted, status = "sent", pinned = None),
-              if (s.pinned.isEmpty) Effect.ToHost(Msg.Send(draft))
+              if (s.pinned.isEmpty) Effect.ToHost(Msg.Send(text))
               else
-                Effect.Batch(Vector(Effect.ToHost(Msg.Send(draft)), Effect.ToHost(Msg.Show(None))))
+                Effect.Batch(Vector(Effect.ToHost(Msg.Send(text)), Effect.ToHost(Msg.Show(None))))
             )
+          }
         case Msg.Send(_) | Msg.Load | Msg.Show(_) | Msg.KeepTheme(_) => (s, Effect.NoOp)
         case Msg.Noted(status) => (s.copy(status = status), Effect.NoOp)
         case Msg.Arrived(said, step, summaries) =>
@@ -309,7 +312,7 @@ object ChatScreen {
         case Msg.Edited(e) => (edited(s, e), Effect.NoOp)
         case Msg.OpenPalette =>
           if (s.modal.nonEmpty || s.palette.nonEmpty) (s, Effect.NoOp)
-          else if (s.editor.text.startsWith("/")) (s.copy(palette = Some(0)), Effect.NoOp)
+          else if (Commands.isCommand(s.editor.text)) (s.copy(palette = Some(0)), Effect.NoOp)
           else
             (
               s.copy(
@@ -468,7 +471,7 @@ object ChatScreen {
       */
     private def edited(s: State, e: Editor): State = {
       val opens = s.palette.isEmpty && s.editor.text.isEmpty && e.text == "/"
-      if (!e.text.startsWith("/")) {
+      if (!Commands.isCommand(e.text)) {
         if (s.palette.isEmpty) s.copy(editor = e)
         else {
           val back = if (e.text.isEmpty) restored(s.copy(editor = e)) else e

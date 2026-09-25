@@ -34,7 +34,8 @@ In dependency order:
   A conversation with nothing in it yet shows the splash in the transcript's place,
   once the host's first look has said so. `Replies` reads replies back out of the store. `Commands` is the one table of slash
   commands: what the palette (`/` in an empty prompt, or ctrl-p) lists, what `/help`
-  describes, and what a submitted `/` draft runs; such a draft never reaches the model.
+  describes, and what a submitted `/` draft runs; such a draft never reaches the model, but one starting `//` does, as a message starting
+  with `/` (one slash taken off; the palette stays shut).
   The theme is screen state, so `/theme` repaints everything live, and asks the host
   to keep it (`KeepTheme`): `Main` writes it to `Prefs`, and the next run starts in it
   unless `GRIT_THEME` says otherwise. `/summaries` shows

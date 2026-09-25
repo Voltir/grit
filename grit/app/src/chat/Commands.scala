@@ -5,7 +5,8 @@ import grit.app.look.Theme
 
 /** The chat screen's slash commands: the one table the palette lists, the help dialog
   * describes, and a submitted `/` draft runs. A draft that starts with `/` is a command,
-  * never a message to the model.
+  * never a message to the model, unless it starts with `//`: that is a message starting
+  * with `/` ([[escaped]]).
   */
 object Commands {
 
@@ -42,6 +43,12 @@ object Commands {
 
   val all: Vector[Command] = Command.values.toVector
 
+  /** Whether `draft` is a command: it starts with `/`, and not with `//`. */
+  def isCommand(draft: String): Boolean = draft.startsWith("/") && !draft.startsWith("//")
+
+  /** The message a `//` draft stands for, one slash taken off; `None` for any other. */
+  def escaped(draft: String): Option[String] = Option.when(draft.startsWith("//"))(draft.drop(1))
+
   /** The command `name` names, exactly. */
   def named(name: String): Option[Command] = all.find(_.name == name)
 
@@ -57,7 +64,7 @@ object Commands {
     * that takes no argument followed by one.
     */
   def listing(draft: String): Option[Listing] =
-    if (!draft.startsWith("/")) None
+    if (!isCommand(draft)) None
     else if (!draft.contains(' ')) Some(Listing(all.map(row), draft))
     else {
       val (name, argument) = split(draft)
