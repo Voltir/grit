@@ -417,6 +417,16 @@ object ChatScreenTests extends TestSuite {
       ran.state.editor.text ==> "half a thought"
     }
 
+    test("ctrl-p over an empty prompt, then Escape, leaves it empty: a command typed next runs") {
+      val closed = ready
+        .input(Input.Keyboard(Key.Ctrl('p')))
+        .input(Input.Keyboard(Key.Escape))
+      closed.state.editor.text ==> ""
+      val ran = typed(closed, "/panel").input(Input.Keyboard(Key.Enter))
+      ran.state.panel ==> false
+      assert(!sends(ran))
+    }
+
     test("/theme repaints every colour, whether typed out or chosen from the lists") {
       def ground(h: Headless[ChatScreen.State, Msg]) =
         h.painted._1.surface.at(size.rows / 2, size.cols / 2).style.bg

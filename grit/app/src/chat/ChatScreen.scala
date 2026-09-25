@@ -318,7 +318,8 @@ object ChatScreen {
               s.copy(
                 editor = s.editor.copy(text = "/", caret = 1, histPos = None),
                 palette = Some(0),
-                aside = Option.when(s.editor.text.nonEmpty)(s.editor.text)
+                // Even an empty draft is put aside, so Escape takes back the `/` it typed.
+                aside = Some(s.editor.text)
               ),
               Effect.NoOp
             )
