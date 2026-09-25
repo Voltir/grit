@@ -9,7 +9,11 @@ exclusive lock on a build directory for the duration of an evaluation, but the `
 server VSCode starts builds into `.bsp/out/`, with its own `.bsp/out/mill-out-lock`. Verify
 any time with `fuser -v out/mill-out-lock .bsp/out/mill-out-lock` -- different holders. So
 a CLI `./mill` run cannot block Metals, and Metals cannot block it. Only two CLI
-invocations contend with each other.
+invocations contend with each other. Since Mill 1.2 that takes the
+`mill-separate-bsp-output-dir: true` header at the top of `build.mill`: without it BSP
+shares `out/` and the CLI's daemon, its launcher never notices Metals closing stdin, and a
+Metals cancel mid-request restarts the daemon under every CLI run. With it, each BSP
+connection is its own JVM, which exits when Metals closes stdin or cancels it.
 
 **A "compiling" spinner that never resolves is almost never a lock.** It is usually a stale
 Metals progress item -- a failed or superseded compile can orphan the notification, and

@@ -1,3 +1,6 @@
+//| mill-separate-bsp-output-dir: true
+// Metals gets its own build directory (.bsp/out) and a foreground BSP JVM per connection,
+// which exits when Metals closes its stdin; docs/editor-tooling.md.
 package build
 import mill.*, scalalib.*
 
