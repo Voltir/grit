@@ -125,7 +125,11 @@ object PainterTests extends TestSuite {
       // The oracle for colour is the same as for everything else: paint it, replay the
       // bytes through the VT model, and compare the *grid*. A style that encodes but
       // decodes to something else is invisible to any check on the encoder alone.
-      val fg = Color.hex("#7aa2f7")
+      //
+      // The foreground's `38;2;7;2;1` carries a red channel of 7 and a green of 2 -- the
+      // codes for reverse and dim. A decoder that walks SGR params one at a time reads
+      // them as attributes and desyncs the rest of the sequence.
+      val fg = Color(7, 2, 1)
       val bg = Color.hex("#24283b")
       val lit = Style.fg(fg) + Style.bg(bg) + Style.Bold + Style.Italic
       val frame = frameOf(
@@ -138,19 +142,6 @@ object PainterTests extends TestSuite {
       assert(vt.fgMask(fg) == Vector("xx....", "..xx..", "......"))
       assert(vt.bgMask(bg) == Vector("xx....", "......", "....x."))
       assert(vt.text == Vector("ab    ", "  cd  ", "    e "))
-    }
-
-    test("a truecolor channel is never mistaken for an attribute") {
-      // `38;2;7;2;1` carries a red channel of 7 and a green of 2 -- the codes for reverse
-      // and dim. A decoder that walks SGR params one at a time reads them as attributes
-      // and desyncs the rest of the sequence; this is the case that says it does not.
-      val c = Color(7, 2, 1)
-      val frame = frameOf(size, s => s.write(0, 0, "x", Style.fg(c)))
-      val vt = new Vt(3, 6)
-      vt.feed(Painter.paint(frame, None))
-      assert(vt.cells(0)(0).style == Style.fg(c))
-      assert(!vt.cells(0)(0).style.reverse && !vt.cells(0)(0).style.dim)
-      assert(vt.reverseMask == Vector("......", "......", "......"))
     }
 
     test("the output contains no bare line feed, and sync framing is balanced") {
@@ -195,9 +186,10 @@ object PainterTests extends TestSuite {
       val vt = new Vt(3, 6)
       vt.feed(Painter.paint(before, None))
       val out = Painter.paint(after, Some(before))
-      // the only CUP is the changed row, at the changed column (1-based)
-      assert(out.split("\u001b\\[").count(_.startsWith("3;")) == 1)
-      assert(!out.contains("2;"))
+      // The only move is to the changed cell (1-based), and the only glyph written is it.
+      val moves = "\u001b\\[(\\d+);(\\d+)H".r.findAllMatchIn(out).map(_.matched).toVector
+      assert(moves == Vector("\u001b[3;2H"))
+      assert(out.replaceAll("\u001b\\[[0-9;?]*[A-Za-z]", "") == "X")
       vt.feed(out)
       assertPainted(vt)(
         "......",
@@ -280,12 +272,28 @@ object PainterTests extends TestSuite {
       assert(vt.bgMask(ground) == Vector.fill(3)("xxxxxxx"))
     }
 
-    test("a diff that leaves a row's last cell alone does not erase the owed column") {
+    test("a diff that leaves a row's last cell alone erases nothing after its run") {
+      // The row's closing erase belongs to a run that reaches the last cell. One after a
+      // run that stops short would take back the glyphs beyond it and the owed column.
       val ground = Color.hex("#1e2030")
-      val before = frameOf(size, s => s.fill(Rect(0, 0, 3, 6), Cell(' ', Style.bg(ground))))
+      val before = frameOf(
+        size,
+        s =>
+          s.fill(Rect(0, 0, 3, 6), Cell(' ', Style.bg(ground)))
+            .write(0, 2, "cdef", Style.bg(ground))
+      )
       val after = Frame(before.surface.write(0, 0, "ab", Style.bg(ground)), None)
+      val vt = new Vt(3, 7)
+      vt.feed(Painter.paint(before, None))
       val out = Painter.paint(after, Some(before))
-      assert(out.nonEmpty && !out.contains("\u001b[K"))
+      vt.feed(out)
+      assert(!out.contains("\u001b[K"))
+      assertPainted(vt)(
+        "abcdef.",
+        ".......",
+        "......."
+      )
+      assert(vt.bgMask(ground) == Vector.fill(3)("xxxxxxx"))
     }
   }
 }
