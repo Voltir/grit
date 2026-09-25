@@ -71,6 +71,16 @@ final case class Look(theme: Theme) {
     )
   }
 
+  /** One line of a turn's tool loop, faint after Tiwaz: its first line only. */
+  def tool(text: String): Block.Text =
+    Block.styled(
+      StyledText.styled(s"  ${Runes.Tool} ", Style.fg(theme.faint) + Style.Bold) ++
+        StyledText.styled(text.linesIterator.nextOption().getOrElse(""), Style.fg(theme.faint))
+    )
+
+  /** The line while the model is writing a call to the tool `name`. */
+  def calling(name: String): Block.Text = tool(s"calling $name…")
+
   def failure(reason: String): Block.Text =
     Block.styled(
       StyledText.styled(s"${Runes.Failure} ", Style.fg(theme.failure) + Style.Bold) ++
@@ -201,18 +211,23 @@ object Look {
     /** A turn step's rune and what it does, by the step's name ([[Step]]): Othala,
       * the inheritance, while memory is assembled; Ansuz while the model answers; Jera,
       * the harvest, while what came back is recorded; Laguz, the flow, while the turn is
-      * summarised. A name grit does not know shows as itself.
+      * summarised; Tiwaz while a tool runs. A tool loop's step is known by its family
+      * (`call-model:2` answers). A name grit does not know shows as itself.
       */
-    def step(name: String): String = name match {
+    def step(name: String): String = Step.family(name).getOrElse(name) match {
       case Step.Classify => "ᛈ placing"
       case Step.Assemble => "ᛟ assembling"
       case Step.CallModel | Step.CallModelAgain | Step.CallModelPlain => "ᚨ answering"
-      case Step.RecordTopic | Step.RecordWindow | Step.RecordVerdict | Step.Append |
-          Step.AppendSummary =>
+      case Step.RecordTopic | Step.RecordWindow | Step.RecordVerdict | Step.RecordCall |
+          Step.Append | Step.AppendSummary =>
         "ᛃ recording"
+      case Step.Tool => s"$Tool using a tool"
       case Step.Summarise => "ᛚ summarising"
       case other => s"$Idle $other"
     }
+
+    /** Tiwaz: the god who keeps his word. A turn's use of a tool. */
+    val Tool = "ᛏ"
 
     /** The rune alone, as [[step]] chooses it. */
     def stepRune(name: String): String = step(name).takeWhile(_ != ' ')

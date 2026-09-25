@@ -1,8 +1,12 @@
 package grit.app.main
 
+import grit.app.look.Look
+
 import utest.*
 
-/** How many model calls a turn may make (`GRIT_TOOL_ROUNDS`). */
+/** How many model calls a turn may make (`GRIT_TOOL_ROUNDS`), and how a loop's steps are
+  * named in the status line.
+  */
 object ToolRoundsTests extends TestSuite {
 
   val tests = Tests {
@@ -12,6 +16,11 @@ object ToolRoundsTests extends TestSuite {
       assert(Main.toolRounds(Map("GRIT_TOOL_ROUNDS" -> "1")).left.exists(_.contains("at least 2")))
       Main.toolRounds(Map("GRIT_TOOL_ROUNDS" -> "many")) ==>
         Left("GRIT_TOOL_ROUNDS is not a whole number")
+    }
+
+    test("a loop's steps show by their family") {
+      Vector("call-model:2", "record-call:0", "tool:1:3").map(Look.Runes.step) ==>
+        Vector("ᚨ answering", "ᛃ recording", "ᛏ using a tool")
     }
   }
 }

@@ -34,7 +34,9 @@ In dependency order:
   placed: p(same) and its band, the classifier's choice, the model's verdict, a flag when
   the two disagreed, the heaviest weights), each built purely from what the host read.
   A conversation with nothing in it yet shows the splash in the transcript's place,
-  once the host's first look has said so. `Replies` reads replies back out of the store. `Commands` is the one table of slash
+  once the host's first look has said so. `Replies` reads replies back out of the store, and a
+  turn's tool loop as one faint line per step (`Replies.exchange`); the call the model is
+  still writing shows as `calling read…`. `Commands` is the one table of slash
   commands: what the palette (`/` in an empty prompt, or ctrl-p) lists, what `/help`
   describes, and what a submitted `/` draft runs; such a draft never reaches the model, but one starting `//` does, as a message starting
   with `/` (one slash taken off; the palette stays shut).

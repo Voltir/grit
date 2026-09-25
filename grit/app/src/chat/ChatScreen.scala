@@ -32,8 +32,23 @@ object ChatScreen {
 
   private val HelpPane = PaneKey.of("help")
 
-  /** One message of the conversation, the user's or a reply, and the turn it belongs to. */
-  final case class Said(user: Boolean, text: String, turn: TurnSeq = TurnSeq(0))
+  /** Whose a line of the transcript is. */
+  enum Voice extends caps.Pure {
+
+    /** The user's message. */
+    case User
+
+    /** A turn's reply. */
+    case Reply
+
+    /** One step of a turn's tool loop, as one line: a call, or what it came to. */
+    case Tool
+  }
+
+  /** One message of the conversation, or a line of a turn's tool loop, and the turn it
+    * belongs to.
+    */
+  final case class Said(voice: Voice, text: String, turn: TurnSeq = TurnSeq(0))
 
   /** The summary of `turn`, written after its reply. */
   final case class Summarised(turn: TurnSeq, text: String)
@@ -47,8 +62,15 @@ object ChatScreen {
     case Failure(reason: String)
   }
 
-  /** What has been heard of `turn`'s reply while it streams: its reasoning and text so far. */
-  final case class Hearing(turn: TurnSeq, reasoning: String, text: String)
+  /** What has been heard of `turn`'s reply while it streams: its reasoning and text so far,
+    * and the tools it has begun to call, in order.
+    */
+  final case class Hearing(
+      turn: TurnSeq,
+      reasoning: String,
+      text: String,
+      calling: Vector[String] = Vector.empty
+  )
 
   /** What the turn panel shows: a turn, the conversation so far, or its topics. */
   enum Tab(val label: String) extends caps.Pure {
@@ -114,6 +136,12 @@ object ChatScreen {
     /** The running turn's reply as heard so far, while it has any text. */
     def streaming: Option[Hearing] =
       hearing.filter(h => thinking && h.text.nonEmpty && owners.flatten.lastOption.contains(h.turn))
+
+    /** The tool the running turn's model began to call last, while its reply streams. */
+    def calling: Option[String] =
+      hearing
+        .filter(h => thinking && owners.flatten.lastOption.contains(h.turn))
+        .flatMap(_.calling.lastOption)
 
     /** Whether a turn is in progress. */
     def thinking: Boolean = step.nonEmpty
@@ -301,7 +329,8 @@ object ChatScreen {
         case Msg.Arrived(said, step, summaries) =>
           val since = if (step == s.step) s.stepSince else s.tick
           // A recorded reply takes the place of what was heard of it.
-          val heard = s.hearing.filterNot(h => said.exists(r => !r.user && r.turn == h.turn))
+          val heard =
+            s.hearing.filterNot(h => said.exists(r => r.voice == Voice.Reply && r.turn == h.turn))
           animate(
             s,
             recorded(s, said.map(Entry.Spoken(_)) ++ summaries.map(Entry.Summary(_)))
@@ -466,9 +495,10 @@ object ChatScreen {
       */
     private def styled(look: Look, entry: Entry): Vector[(Block, Option[TurnSeq])] =
       entry match {
-        case Entry.Spoken(Said(true, text, t)) =>
+        case Entry.Spoken(Said(Voice.User, text, t)) =>
           Vector(look.separator -> Some(t), look.user(text) -> Some(t))
-        case Entry.Spoken(Said(false, text, t)) => look.assistant(text).map(_ -> Some(t))
+        case Entry.Spoken(Said(Voice.Reply, text, t)) => look.assistant(text).map(_ -> Some(t))
+        case Entry.Spoken(Said(Voice.Tool, text, t)) => Vector(look.tool(text) -> Some(t))
         case Entry.Summary(_) => Vector.empty
         case Entry.Failure(reason) => Vector(look.failure(reason) -> None)
       }
@@ -519,15 +549,17 @@ object ChatScreen {
       else (after, Effect.NoOp)
 
     /** The transcript: what was said, then the ward, or the running turn's reply as it
-      * streams, or the spinner until it does. A tail that changes is a different block, so
-      * the runtime's wrap memo re-wraps that one and nothing above it.
+      * streams, or the spinner until it does, and the tool it is calling once it begins a
+      * call. A tail that changes is a different block, so the runtime's wrap memo re-wraps
+      * that one and nothing above it.
       */
     private def transcript(s: State, look: Look): Doc =
       Doc(
         s.said ++
           Option.when(s.opening)(look.ward(s.tick, "opening the engine…")) ++
           (if (s.thinking && !s.opening)
-             s.streaming.fold(Vector(look.thinking(s.tick)))(h => look.streaming(h.text, s.tick))
+             s.streaming.fold(Vector(look.thinking(s.tick)))(h => look.streaming(h.text, s.tick)) ++
+               s.calling.map(look.calling)
            else Vector.empty)
       )
 

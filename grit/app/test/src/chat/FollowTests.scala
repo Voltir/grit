@@ -43,9 +43,51 @@ object FollowTests extends TestSuite {
       val (next, msgs) = Follow.step(Follow.start, entries, all(TurnStatus.Unknown))
       msgs ==> Vector(
         ChatScreen.Msg
-          .Arrived(Vector(ChatScreen.Said(true, "hi"), ChatScreen.Said(false, "hello")), None)
+          .Arrived(
+            Vector(
+              ChatScreen.Said(ChatScreen.Voice.User, "hi"),
+              ChatScreen.Said(ChatScreen.Voice.Reply, "hello")
+            ),
+            None
+          )
       )
       Follow.step(next, entries, all(TurnStatus.Unknown))._2 ==> Vector.empty
+    }
+
+    test("a turn's tool loop arrives as one line per exchange, in order") {
+      def exchange(seq: Long, m: Message) =
+        Entry(EntryId(s"x$seq"), c, TurnSeq(0), None, seq, Payload.Exchange(m), Instant.EPOCH)
+      val called = Message.Assistant(
+        Vector(
+          AssistantBlock.Text("let me look"),
+          AssistantBlock
+            .ToolCall(grit.core.id.ToolCallId("a"), "read", ujson.Obj("path" -> "x.txt")),
+          AssistantBlock.ToolCall(grit.core.id.ToolCallId("b"), "list", ujson.Obj("depth" -> 2))
+        ),
+        StopReason.ToolUse,
+        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+        "m"
+      )
+      val entries = Vector(
+        user(0, 0, "hi"),
+        exchange(1, called),
+        exchange(2, Message.ToolResult(grit.core.id.ToolCallId("a"), "one\ntwo\nthree", false)),
+        exchange(3, Message.ToolResult(grit.core.id.ToolCallId("b"), "No such dir.\nat .", true)),
+        reply(4, 0, "done")
+      )
+      val (_, msgs) = Follow.step(Follow.start, entries, all(TurnStatus.Unknown))
+      msgs ==> Vector(
+        ChatScreen.Msg.Arrived(
+          Vector(
+            ChatScreen.Said(ChatScreen.Voice.User, "hi"),
+            ChatScreen.Said(ChatScreen.Voice.Tool, "read x.txt · list"),
+            ChatScreen.Said(ChatScreen.Voice.Tool, "← 3 lines"),
+            ChatScreen.Said(ChatScreen.Voice.Tool, "← No such dir."),
+            ChatScreen.Said(ChatScreen.Voice.Reply, "done")
+          ),
+          None
+        )
+      )
     }
 
     test("the first look says what it saw, even an empty conversation, and only the first") {
@@ -58,13 +100,16 @@ object FollowTests extends TestSuite {
       val asked = Vector(user(0, 0, "hi"))
       val (thinking, first) = Follow.step(Follow.start, asked, all(running()))
       first ==> Vector(
-        ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(true, "hi")), Some("classify"))
+        ChatScreen.Msg
+          .Arrived(Vector(ChatScreen.Said(ChatScreen.Voice.User, "hi")), Some("classify"))
       )
       Follow.step(thinking, asked, all(running()))._2 ==> Vector.empty
       Follow
         .step(thinking, asked :+ reply(1, 0, "hello"), all(TurnStatus.Finished("replied")))
         ._2 ==>
-        Vector(ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(false, "hello")), None))
+        Vector(
+          ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(ChatScreen.Voice.Reply, "hello")), None)
+        )
     }
 
     test("the screen is told each step the turn moves to, once") {
@@ -80,7 +125,7 @@ object FollowTests extends TestSuite {
       val (after, msgs) =
         Follow.step(Follow.start, asked, all(TurnStatus.Finished("failed: Model(down)")))
       msgs ==> Vector(
-        ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(true, "hi")), None),
+        ChatScreen.Msg.Arrived(Vector(ChatScreen.Said(ChatScreen.Voice.User, "hi")), None),
         ChatScreen.Msg.Failed("failed: Model(down)")
       )
       Follow.step(after, asked, all(TurnStatus.Finished("failed: Model(down)")))._2 ==> Vector.empty

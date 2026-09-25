@@ -1,6 +1,6 @@
 package grit.app.chat
 
-import grit.app.look.Theme
+import grit.app.look.{Look, Theme}
 import grit.core.id.TurnSeq
 import grit.core.message.{Cost, Tokens}
 import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
@@ -64,7 +64,10 @@ object ChatScreenTests extends TestSuite {
         val h = Headless
           .start(new ChatScreen.App("test-model", theme, Tokens(16000)), size)
           .message(
-            Msg.Arrived(Vector(Said(true, "hi"), Said(false, "hello")), step = Some("call-model"))
+            Msg.Arrived(
+              Vector(Said(ChatScreen.Voice.User, "hi"), Said(ChatScreen.Voice.Reply, "hello")),
+              step = Some("call-model")
+            )
           )
         val surface = h.painted._1.surface
         val unset = surface.cells.count(_.style.bg.isEmpty)
@@ -110,7 +113,9 @@ object ChatScreenTests extends TestSuite {
     }
 
     test("a turn in progress spins the Futhark, and the spinner stops with the turn") {
-      val asked = ready.message(Msg.Arrived(Vector(Said(true, "hi")), step = Some("call-model")))
+      val asked = ready.message(
+        Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi")), step = Some("call-model"))
+      )
       asked.effects.last ==> Effect.After(ChatScreen.Runes, ChatScreen.TickMs, Msg.Tick)
       said(asked) ==> Vector("▌ᛗ hi", "ᚠ grit is thinking…")
       said(asked.message(Msg.Tick).message(Msg.Tick)) ==> Vector("▌ᛗ hi", "ᚦ grit is thinking…")
@@ -121,7 +126,8 @@ object ChatScreenTests extends TestSuite {
 
     test("the status line names the step and times it, from the step's first tick") {
       def status(h: Headless[ChatScreen.State, Msg]) = h.screen.last.trim
-      val assembling = ready.message(Msg.Arrived(Vector(Said(true, "hi")), Some("assemble")))
+      val assembling =
+        ready.message(Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi")), Some("assemble")))
       assert(status(assembling).contains("ᛟ assembling · 0.0s"))
       val later = (1 to 10).foldLeft(assembling)((h, _) => h.message(Msg.Tick))
       assert(status(later).contains("ᛟ assembling · 1.2s"))
@@ -286,9 +292,9 @@ object ChatScreenTests extends TestSuite {
         .message(
           Msg.Arrived(
             Vector(
-              Said(true, "one", TurnSeq(0)),
-              Said(false, "first reply", TurnSeq(0)),
-              Said(true, "two", TurnSeq(1))
+              Said(ChatScreen.Voice.User, "one", TurnSeq(0)),
+              Said(ChatScreen.Voice.Reply, "first reply", TurnSeq(0)),
+              Said(ChatScreen.Voice.User, "two", TurnSeq(1))
             ),
             None
           )
@@ -303,10 +309,10 @@ object ChatScreenTests extends TestSuite {
       val two = ready.message(
         Msg.Arrived(
           Vector(
-            Said(true, "one", TurnSeq(0)),
-            Said(false, "first reply", TurnSeq(0)),
-            Said(true, "two", TurnSeq(1)),
-            Said(false, "second reply", TurnSeq(1))
+            Said(ChatScreen.Voice.User, "one", TurnSeq(0)),
+            Said(ChatScreen.Voice.Reply, "first reply", TurnSeq(0)),
+            Said(ChatScreen.Voice.User, "two", TurnSeq(1)),
+            Said(ChatScreen.Voice.Reply, "second reply", TurnSeq(1))
           ),
           None
         )
@@ -330,10 +336,10 @@ object ChatScreenTests extends TestSuite {
       val two = ready.message(
         Msg.Arrived(
           Vector(
-            Said(true, "one", TurnSeq(0)),
-            Said(false, "**first**\n\n- a point\n\n```\ncode\n```", TurnSeq(0)),
-            Said(true, "two", TurnSeq(1)),
-            Said(false, "second reply", TurnSeq(1))
+            Said(ChatScreen.Voice.User, "one", TurnSeq(0)),
+            Said(ChatScreen.Voice.Reply, "**first**\n\n- a point\n\n```\ncode\n```", TurnSeq(0)),
+            Said(ChatScreen.Voice.User, "two", TurnSeq(1)),
+            Said(ChatScreen.Voice.Reply, "second reply", TurnSeq(1))
           ),
           None
         )
@@ -358,7 +364,9 @@ object ChatScreenTests extends TestSuite {
         None
       )
       val asked = ready
-        .message(Msg.Arrived(Vector(Said(true, "hi", TurnSeq(0))), Some("call-model")))
+        .message(
+          Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi", TurnSeq(0))), Some("call-model"))
+        )
         .message(Msg.Turn(view))
       val open = click(asked, "grit is thinking")
       open.state.modal ==> Some(ChatScreen.Dialog.Turn)
@@ -371,17 +379,47 @@ object ChatScreenTests extends TestSuite {
 
     test("a streaming reply takes the thinking line's place; the recorded one takes its") {
       val asked =
-        ready.message(Msg.Arrived(Vector(Said(true, "hi", TurnSeq(0))), Some("call-model")))
+        ready.message(
+          Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi", TurnSeq(0))), Some("call-model"))
+        )
       val streaming = asked.message(Msg.Heard(ChatScreen.Hearing(TurnSeq(0), "hmm", "Fehu is")))
       said(streaming).map(_.stripSuffix("▍").trim) ==> Vector("▌ᛗ hi", "▌ᚨ Fehu is")
       // What was heard of another turn is not this one's reply.
       said(asked.message(Msg.Heard(ChatScreen.Hearing(TurnSeq(7), "", "other")))) ==>
         Vector("▌ᛗ hi", "ᚠ grit is thinking…")
       val recorded = streaming.message(
-        Msg.Arrived(Vector(Said(false, "Fehu is wealth.", TurnSeq(0))), None)
+        Msg.Arrived(Vector(Said(ChatScreen.Voice.Reply, "Fehu is wealth.", TurnSeq(0))), None)
       )
       said(recorded) ==> Vector("▌ᛗ hi", "▌ᚨ Fehu is wealth.")
       recorded.state.hearing ==> None
+    }
+
+    test("a tool loop is one faint line per step, and the call being written is shown") {
+      def tools(h: Headless[ChatScreen.State, Msg]): Vector[String] =
+        h.screen.drop(1).map(_.dropRight(1).trim).filter(_.startsWith(Look.Runes.Tool))
+      val asked = ready.message(
+        Msg.Arrived(
+          Vector(
+            Said(ChatScreen.Voice.User, "what is in it?", TurnSeq(0)),
+            Said(ChatScreen.Voice.Tool, "read notes.txt", TurnSeq(0)),
+            Said(ChatScreen.Voice.Tool, "← 12 lines", TurnSeq(0))
+          ),
+          Some("call-model:1")
+        )
+      )
+      tools(asked) ==> Vector("ᛏ read notes.txt", "ᛏ ← 12 lines")
+      val calling = asked.message(
+        Msg.Heard(ChatScreen.Hearing(TurnSeq(0), "", "", Vector("list", "search")))
+      )
+      tools(calling).lastOption ==> Some("ᛏ calling search…")
+      // Another turn's call is not this one's.
+      tools(asked.message(Msg.Heard(ChatScreen.Hearing(TurnSeq(3), "", "", Vector("list"))))) ==>
+        tools(asked)
+      val answered = calling.message(
+        Msg.Arrived(Vector(Said(ChatScreen.Voice.Reply, "Twelve lines.", TurnSeq(0))), None)
+      )
+      tools(answered) ==> Vector("ᛏ read notes.txt", "ᛏ ← 12 lines")
+      said(answered).lastOption ==> Some("▌ᚨ Twelve lines.")
     }
 
     test("the opened turn shows what has been heard: the reasoning, then the text") {
@@ -389,7 +427,9 @@ object ChatScreenTests extends TestSuite {
         TurnView(TurnSeq(0), "hi", Some("call-model"), Vector.empty, None, None, None, None)
       val open = click(
         ready
-          .message(Msg.Arrived(Vector(Said(true, "hi", TurnSeq(0))), Some("call-model")))
+          .message(
+            Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi", TurnSeq(0))), Some("call-model"))
+          )
           .message(Msg.Turn(view)),
         "grit is thinking"
       ).message(Msg.Heard(ChatScreen.Hearing(TurnSeq(0), "the user wants a rune", "Fehu")))
@@ -407,9 +447,12 @@ object ChatScreenTests extends TestSuite {
     }
 
     test("arrivals are painted in order, with the thinking line last while a turn runs") {
-      val asked = ready.message(Msg.Arrived(Vector(Said(true, "hi")), step = Some("call-model")))
+      val asked = ready.message(
+        Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi")), step = Some("call-model"))
+      )
       said(asked) ==> Vector("▌ᛗ hi", "ᚠ grit is thinking…")
-      val answered = asked.message(Msg.Arrived(Vector(Said(false, "hello")), step = None))
+      val answered =
+        asked.message(Msg.Arrived(Vector(Said(ChatScreen.Voice.Reply, "hello")), step = None))
       said(answered) ==> Vector("▌ᛗ hi", "▌ᚨ hello")
     }
 
@@ -487,7 +530,12 @@ object ChatScreenTests extends TestSuite {
     test("/theme repaints every colour, whether typed out or chosen from the lists") {
       def ground(h: Headless[ChatScreen.State, Msg]) =
         h.painted._1.surface.at(size.rows / 2, size.cols / 2).style.bg
-      val talked = ready.message(Msg.Arrived(Vector(Said(true, "hi"), Said(false, "hello")), None))
+      val talked = ready.message(
+        Msg.Arrived(
+          Vector(Said(ChatScreen.Voice.User, "hi"), Said(ChatScreen.Voice.Reply, "hello")),
+          None
+        )
+      )
       ground(talked) ==> Some(Theme.Default.ground)
       val typedOut = typed(talked, "/theme tokyo-night").input(Input.Keyboard(Key.Enter))
       typedOut.state.theme ==> Theme.TokyoNight
@@ -567,9 +615,9 @@ object ChatScreenTests extends TestSuite {
       val talked = ready.message(
         Msg.Arrived(
           Vector(
-            Said(true, "one", TurnSeq(0)),
-            Said(false, "first reply", TurnSeq(0)),
-            Said(true, "two", TurnSeq(1))
+            Said(ChatScreen.Voice.User, "one", TurnSeq(0)),
+            Said(ChatScreen.Voice.Reply, "first reply", TurnSeq(0)),
+            Said(ChatScreen.Voice.User, "two", TurnSeq(1))
           ),
           Some("call-model")
         )
@@ -603,7 +651,7 @@ object ChatScreenTests extends TestSuite {
       assert(themed.screen.mkString.contains("ᛚ the user said one"))
       val later = themed.message(
         Msg.Arrived(
-          Vector(Said(false, "second reply", TurnSeq(1))),
+          Vector(Said(ChatScreen.Voice.Reply, "second reply", TurnSeq(1))),
           None,
           Vector(ChatScreen.Summarised(TurnSeq(1), "then two"))
         )
@@ -632,12 +680,17 @@ object ChatScreenTests extends TestSuite {
       assert(math.abs(left - right) <= 1)
       empty.painted._1.surface.at(at, left).style.fg ==> Some(Theme.Default.grit)
       // Anything said, or a failure, takes its place.
-      val said1 = empty.message(Msg.Arrived(Vector(Said(true, "hi")), Some("assemble")))
+      val said1 =
+        empty.message(Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi")), Some("assemble")))
       assert(!said1.screen.mkString.contains(name), said1.screen.mkString.contains("ᛗ hi"))
       assert(!empty.message(Msg.Failed("down")).screen.mkString.contains(name))
       // A conversation that already has something in it is never welcomed.
       assert(
-        !ready.message(Msg.Arrived(Vector(Said(true, "hi")), None)).screen.mkString.contains(name)
+        !ready
+          .message(Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi")), None))
+          .screen
+          .mkString
+          .contains(name)
       )
     }
 

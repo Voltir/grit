@@ -77,6 +77,11 @@ object Follow {
     case _ => false
   }
 
-  private def said1(e: Entry): Option[ChatScreen.Said] =
-    Replies.text(e).map(ChatScreen.Said(isUser(e), _, e.turnSeq))
+  private def said1(e: Entry): Option[ChatScreen.Said] = {
+    val voice = if (isUser(e)) ChatScreen.Voice.User else ChatScreen.Voice.Reply
+    Replies
+      .text(e)
+      .map(ChatScreen.Said(voice, _, e.turnSeq))
+      .orElse(Replies.exchange(e).map(ChatScreen.Said(ChatScreen.Voice.Tool, _, e.turnSeq)))
+  }
 }

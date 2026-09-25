@@ -242,7 +242,9 @@ final class ChatHost(
         TurnStream.decode(pieces.next()).foreach { piece =>
           heard = heard + piece
           mailbox.offer(
-            ChatScreen.Msg.Heard(ChatScreen.Hearing(turn.turnSeq, heard.reasoning, heard.text))
+            ChatScreen.Msg.Heard(
+              ChatScreen.Hearing(turn.turnSeq, heard.reasoning, heard.text, heard.calling)
+            )
           )
         }
       }
