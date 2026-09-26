@@ -1,6 +1,7 @@
 package grit.dbos.engine
 
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch, TimeUnit}
 
 import scala.annotation.unused
@@ -8,7 +9,16 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.durable.Durable
-import grit.core.id.{EntryId, PeriodRef, PeriodSeq, SourceId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{
+  CloseRef,
+  EntryId,
+  PeriodRef,
+  PeriodSeq,
+  SourceId,
+  TurnRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.message.Message
 import grit.core.period.{LifecycleSettings, Probability, Windows}
 import grit.core.place.Locality
@@ -47,6 +57,15 @@ object CloseLiveTests extends TestSuite {
       held = done
     }
     held
+  }
+
+  /** Whether DBOS has `id` and it has ended. */
+  private def ended(config: DbConfig, id: WorkflowId): Boolean = {
+    val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
+    try
+      Option(client.retrieveWorkflow[String, Exception](WorkflowId.value(id)).getStatus())
+        .exists(s => !s.status().isActive())
+    finally client.close()
   }
 
   val tests = Tests {
@@ -143,6 +162,7 @@ object CloseLiveTests extends TestSuite {
         val t0 = ingested(engine, Origin.Task("close", "moved"), "one")
         engine.inbox.startTurn(t0) ==> Right(())
         val first = engine.sweep(Instant.now().plusSeconds(120)).map(_.enqueued)
+        val replied = Instant.now().plusSeconds(60)
         assert(first.map(_.size) == Right(1))
         // The running turn writes its reply a minute on: the period's newest activity moves.
         engine.jot.write {
@@ -156,7 +176,7 @@ object CloseLiveTests extends TestSuite {
                 None,
                 next.seq,
                 Payload.Summary("replied"),
-                Instant.now().plusSeconds(60)
+                replied
               )
             )
           } yield ()
@@ -164,7 +184,16 @@ object CloseLiveTests extends TestSuite {
         release.countDown()
         assert(eventually(closes.size == 1))
         val second = engine.sweep(Instant.now().plusSeconds(240)).map(_.enqueued)
-        assert(second.map(_.size) == Right(1), second != first)
+        // The idle window after the reply, as Postgres keeps its time: to the microsecond.
+        second ==> Right(
+          Vector(
+            CloseRef(
+              PeriodRef(t0.conversationId, PeriodSeq.First),
+              t0.turnSeq,
+              replied.truncatedTo(ChronoUnit.MICROS).plusSeconds(60)
+            )
+          )
+        )
         assert(eventually(closes.size == 2))
         closes.asScala.toVector.distinct.size ==> 2
         val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
@@ -200,9 +229,10 @@ object CloseLiveTests extends TestSuite {
         minuteIdle(config)
         ingested(engine, Origin.Task("close", "failed"), "one")
         val later = Instant.now().plusSeconds(120)
-        engine.sweep(later).map(_.enqueued.size) ==> Right(1)
+        val failed = engine.sweep(later).map(_.enqueued)
+        failed.map(_.size) ==> Right(1)
         assert(eventually(runs.size == 1))
-        Thread.sleep(500)
+        assert(eventually(failed.exists(_.forall(a => ended(config, a.workflowId)))))
         val attempt = engine.sweep(later).map(_.stuck)
         (1 to 3).map(n =>
           engine.sweep(later.plusSeconds(n.toLong)).map(s => (s.enqueued, s.stuck))

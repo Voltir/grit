@@ -19,6 +19,9 @@ object SchemaRetentionTests extends TestSuite {
       Option(getClass.getResourceAsStream("/schema.sql")).getOrElse(sys.error("no schema.sql"))
     )(Source.fromInputStream(_).getLines().toVector)
 
+  /** Every line that creates a table, in whatever form. */
+  private val Creates = """(?i)\s*CREATE\b[^;]*\bTABLE\b.*""".r
+
   /** Each table, and the class its comment block declares, if any. */
   private def declared: Vector[(String, Option[String])] = {
     val lines = schema
@@ -35,7 +38,8 @@ object SchemaRetentionTests extends TestSuite {
   val tests = Tests {
     test("every table declares one of the retention classes") {
       val tables = declared
-      assert(tables.size >= 10)
+      // Every table is read: one created in another form (UNLOGGED, no schema) is not missed.
+      tables.size ==> schema.count(Creates.matches)
       tables.filterNot(_._2.exists(Classes)) ==> Vector()
     }
   }

@@ -77,13 +77,15 @@ object CollectorLiveTests extends TestSuite {
     d.step("say")(() => WorkflowId.value(id))
 
   /** A close that seals its period at once, in a step, with a fixed closing, marking its raw
-    * entries for deletion; one whose id ends `:hold` waits 15 seconds for a message that
-    * never comes.
+    * entries for deletion; one whose id ends `:hold` runs until the test sends it
+    * [[release]].
     */
   private def close(id: WorkflowId)(using d: Durable^): String =
     CloseRef.fromWorkflowId(id) match {
       case None if WorkflowId.value(id).endsWith(":hold") =>
-        d.recv("never", 15.seconds).getOrElse("held")
+        // Long past any test's run: a test that fails before releasing it leaves it to the
+        // engine's close.
+        d.recv(Release, 10.minutes).getOrElse("held")
       case None => "not a close"
       case Some(attempt) =>
         val closing = TestClosings.prose("kept")
@@ -109,6 +111,16 @@ object CollectorLiveTests extends TestSuite {
             .toString
         )
     }
+
+  private val Release = "release"
+
+  /** Ends the `:hold` stand-in `hold`, and waits until it has ended. */
+  private def release(config: DbConfig, hold: WorkflowId): Unit = {
+    val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
+    try client.send(WorkflowId.value(hold), "go", Release, s"release:${WorkflowId.value(hold)}")
+    finally client.close()
+    assert(eventually(ended(config, WorkflowId.value(hold))))
+  }
 
   /** How many of `ids` DBOS still has a workflow or a step of. */
   private def kept(config: DbConfig, ids: Vector[WorkflowId]): Vector[Int] =
@@ -360,12 +372,14 @@ object CollectorLiveTests extends TestSuite {
             )
           )
         finally watching.close()
+        // The turn's workflow and its one step.
+        kept(config, Vector(t0.workflowId)) ==> Vector(1, 1)
         kept(config, workflows).map(_ > 0) ==> Vector(true, true)
 
-        // As if a sweep deleted the workflows and died before the entries: the next one
-        // deletes them again, which DBOS takes as nothing to do.
+        // As if a sweep deleted the close's workflow and died before the rest: the next one
+        // deletes it again, which DBOS takes as nothing to do.
         val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
-        try client.deleteWorkflows(java.util.List.of(WorkflowId.value(t0.workflowId)), false)
+        try client.deleteWorkflows(java.util.List.of(WorkflowId.value(attempt.workflowId)), false)
         finally client.close()
 
         spent(config, "u0", t0, t0.workflowId)
@@ -373,6 +387,7 @@ object CollectorLiveTests extends TestSuite {
         engine.sweep(later).map(_.collected) ==> Right(Vector(Target.Raw(p1)))
         // Usage goes with the closing, not the raw entries.
         ledgered(config, Vector("u0"), Vector(t0.workflowId)) ==> (1, 1)
+        kept(config, Vector(t0.workflowId)) ==> Vector(0, 0)
         kept(config, workflows) ==> Vector(0, 0)
         LiveDb
           .transaction(config)(new SqlEntryStore().list(t0.conversationId))
@@ -490,13 +505,8 @@ object CollectorLiveTests extends TestSuite {
           engine.sweep(later).map(s => (s.collected, s.deferred)) ==>
             Right((Vector(), Vector(Target.Raw(p1))))
           kept(config, Vector(hold)).headOption ==> Some(1)
-          assert(
-            eventually(
-              Option(client.retrieveWorkflow[String, Exception](WorkflowId.value(hold)).getStatus())
-                .exists(s => !s.status().isActive())
-            )
-          )
         } finally client.close()
+        release(config, hold)
         engine.sweep(Instant.now().plusSeconds(180)).map(_.collected) ==>
           Right(Vector(Target.Raw(p1)))
         kept(config, Vector(hold)) ==> Vector(0, 0)
@@ -585,10 +595,14 @@ object CollectorLiveTests extends TestSuite {
         turnOn(engine, tui("busy"), "three")
         kept(config, quiet.conversationId) ==> (true, 1)
 
-        engine.sweep(Instant.now().plusSeconds(600)).map(s => (s.collected, s.spared)) ==>
+        // The two periods closed concurrently, so their raw tombstones come in either order.
+        engine
+          .sweep(Instant.now().plusSeconds(600))
+          .map(s => (s.collected.take(2).toSet, s.collected.drop(2), s.spared)) ==>
           Right(
             (
-              Vector(Target.Raw(p), Target.Raw(q1), Target.Quiet(p)),
+              Set(Target.Raw(p), Target.Raw(q1)),
+              Vector(Target.Quiet(p)),
               Vector(Target.Quiet(q1))
             )
           )
@@ -602,22 +616,6 @@ object CollectorLiveTests extends TestSuite {
         engine.sweep(Instant.now().plusSeconds(1500)).map(_.collected) ==>
           Right(Vector(Target.Raw(q2), Target.Superseded(q1), Target.Quiet(q2)))
         kept(config, busy.conversationId) ==> (false, 0)
-      } finally engine.close()
-    }
-
-    test("a quiet tombstone is spared when a later period has opened") {
-      val config = TestPostgres.freshDatabase("collect_spared")
-      val engine = launched(config, 2.minutes)
-      try {
-        val origin = Origin.Task("collect", "spared")
-        val t0 = turnOn(engine, origin, "one")
-        val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
-        closeOf(engine, config, p1, Instant.now().plusSeconds(120))
-        turnOn(engine, origin, "two")
-        engine.sweep(Instant.now().plusSeconds(600)).map(_.spared) ==> Right(
-          Vector(Target.Quiet(p1))
-        )
-        kept(config, t0.conversationId)._1 ==> true
       } finally engine.close()
     }
 
@@ -653,6 +651,7 @@ object CollectorLiveTests extends TestSuite {
               )
             )
           kept(config, t0.conversationId)._1 ==> true
+          release(config, hold)
           assert(eventually(ended(config, s"close:$c:")))
           engine.sweep(Instant.now().plusSeconds(600)).map(_.collected) ==>
             Right(Vector(Target.Raw(p1), Target.Superseded(p1), Target.Quiet(p2)))

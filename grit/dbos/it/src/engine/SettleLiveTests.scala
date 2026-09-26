@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 import scala.annotation.unused
 import scala.concurrent.duration.*
+import scala.jdk.CollectionConverters.*
 
 import grit.core.durable.Durable
 import grit.core.id.{PeriodRef, PeriodSeq, SettleRef, SourceId, TurnRef, TurnSeq, WorkflowId}
@@ -77,13 +78,12 @@ object SettleLiveTests extends TestSuite {
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
         engine.sweep(Instant.now()).map(_.asked) ==> Right(Vector())
         val later = Instant.now().plusSeconds(90)
-        val first = engine.sweep(later).map(_.asked.map(q => (q.period, q.last)))
-        first ==> Right(Vector((p1, TurnSeq(0))))
+        val first = engine.sweep(later).map(_.asked)
+        first.map(_.map(q => (q.period, q.last))) ==> Right(Vector((p1, TurnSeq(0))))
         assert(eventually(asked.size == 1))
-        Thread.sleep(500)
         (1 to 3).map(n => engine.sweep(later.plusSeconds(n.toLong)).map(_.asked)) ==>
           (1 to 3).map(_ => Right(Vector()))
-        asked.size ==> 1
+        Right(asked.asScala.toVector) ==> first.map(_.map(q => WorkflowId.value(q.workflowId)))
       } finally engine.close()
     }
 
@@ -91,16 +91,16 @@ object SettleLiveTests extends TestSuite {
       "a verdict of nobody waiting makes the next sweep close the period on the verdict's time, asking no more"
     ) {
       val config = TestPostgres.freshDatabase("settle_finished")
+      // The time each verdict was made at, as the stand-in made it.
+      val judgedAt = new ConcurrentLinkedQueue[Instant]()
       // Keeps a verdict of nobody waiting, as a settle whose classifier says so does.
       def settle(id: WorkflowId)(using d: Durable^): String =
         SettleRef.fromWorkflowId(id) match {
           case None => "not a settle"
           case Some(q) =>
-            val verdict = Verdict(
-              Instant.now(),
-              q.last,
-              Judgement.Weighed(p(0.9), p(0.05), p(0.05), "jev")
-            )
+            val now = Instant.now()
+            judgedAt.add(now)
+            val verdict = Verdict(now, q.last, Judgement.Weighed(p(0.9), p(0.05), p(0.05), "jev"))
             d.transact("record")(periods.judged(q.period, verdict).toString)
         }
       val engine = Engine.open(config, "test")
@@ -116,16 +116,13 @@ object SettleLiveTests extends TestSuite {
             LiveDb.transaction(config)(periods.activity(p1)).exists(_.exists(_.asked == 1))
           )
         )
-        val verdict =
-          LiveDb.transaction(config)(periods.activity(p1)).toOption.flatten.flatMap(_.verdict)
         engine
           .sweep(later.plusSeconds(1))
           .map(s => (s.enqueued.map(a => (a.last, a.due)), s.asked)) ==>
           Right(
             (
-              verdict
-                .map(v => (TurnSeq(0), v.at.truncatedTo(java.time.temporal.ChronoUnit.MILLIS)))
-                .toVector,
+              judgedAt.asScala.toVector
+                .map(at => (TurnSeq(0), at.truncatedTo(java.time.temporal.ChronoUnit.MILLIS))),
               Vector()
             )
           )

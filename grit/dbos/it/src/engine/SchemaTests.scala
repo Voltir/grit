@@ -34,18 +34,33 @@ object SchemaTests extends TestSuite {
     test("a period row closed in part is refused: closed means reason, last turn, entry, order") {
       val config = TestPostgres.freshDatabase("schema_periods")
       Engine.open(config, "test").close()
-      val c = LiveDb.conversation(config, Origin.Task("schema", "half-closed")).id
-      val refused =
-        try {
-          LiveDb.transaction(config)(
-            execute(
-              "INSERT INTO grit.periods (conversation_id, seq, first_turn, opened_at, closed_at, reason) " +
-                s"VALUES ('${grit.core.id.ConversationId.value(c)}', 1, 0, now(), now(), 'lapsed')"
+      val c = grit.core.id.ConversationId.value(
+        LiveDb.conversation(config, Origin.Task("schema", "half-closed")).id
+      )
+      val closed =
+        Vector(
+          "reason" -> "'lapsed'",
+          "last_turn" -> "0",
+          "closing_id" -> "'x'",
+          "close_ordinal" -> "1"
+        )
+      val Violated = """(?s).*violates check constraint "(\w+)".*""".r
+      // Each row closed but for one column. The constraint is the table's first unnamed CHECK;
+      // `periods_check1` and `periods_check2` are the others.
+      closed.map { (missing, _) =>
+        val set = closed.filterNot(_._1 == missing)
+        val refused =
+          try {
+            LiveDb.transaction(config)(
+              execute(
+                s"INSERT INTO grit.periods (conversation_id, seq, first_turn, opened_at, closed_at, ${set.map(_._1).mkString(", ")}) " +
+                  s"VALUES ('$c', 1, 0, now(), now(), ${set.map(_._2).mkString(", ")})"
+              )
             )
-          )
-          None
-        } catch { case NonFatal(e) => Option(e.getMessage) }
-      assert(refused.exists(_.contains("periods_check")))
+            None
+          } catch { case NonFatal(e) => Option(e.getMessage) }
+        missing -> refused.collect { case Violated(name) => name }
+      } ==> closed.map((missing, _) => missing -> Some("periods_check"))
     }
 
     test("the settings are kept as set, the ledger window with them") {
