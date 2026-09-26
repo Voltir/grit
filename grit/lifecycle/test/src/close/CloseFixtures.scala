@@ -110,8 +110,13 @@ object CloseFixtures {
     @caps.unsafe.untrackedCaptures
     var calls = 0
 
+    // Every state it was asked about, as sent; read only by the test that owns the gate.
+    @caps.unsafe.untrackedCaptures
+    var states = Vector.empty[ujson.Value]
+
     protected def answer(state: ujson.Value, questions: Vector[Question]): Either[ClassifierError, Answers] = {
       calls += 1
+      states = states :+ state
       yes match {
         case None => Left(ClassifierError.Unavailable("no classifier"))
         case Some(ps) =>

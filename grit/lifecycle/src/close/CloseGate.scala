@@ -12,10 +12,11 @@ import grit.core.period.{Balance, Section}
 object CloseGate {
 
   /** A period as the classifier is shown it: `{"already_known": {"open": [...],
-    * "standing": [...]}, "transcript": ...}`, `known`'s open and standing lines, then its
-    * turns in order.
+    * "standing": [...]}, "known_elsewhere": [...], "transcript": ...}`, `known`'s open and
+    * standing lines, the lines its windows showed from other conversations (`elsewhere`,
+    * [[grit.lifecycle.transcript.PeriodTranscript.elsewhere]]), then its turns in order.
     */
-  final case class Transcript(known: Balance, text: String)
+  final case class Transcript(known: Balance, elsewhere: Vector[String], text: String)
 
   given StateJson[Transcript] = StateJson.instance(t =>
     ujson.Obj(
@@ -23,6 +24,7 @@ object CloseGate {
         "open" -> ujson.Arr.from(t.known.in(Section.Open).map(l => ujson.Str(l.text))),
         "standing" -> ujson.Arr.from(t.known.in(Section.Standing).map(l => ujson.Str(l.text)))
       ),
+      "known_elsewhere" -> ujson.Arr.from(t.elsewhere.map(ujson.Str(_))),
       "transcript" -> t.text
     )
   )
@@ -41,7 +43,8 @@ object CloseGate {
         Ask.yesNo[Transcript](
           "Read transcript. Did it settle a decision or establish a fact worth keeping (a " +
             "name, a number, a path, how something works) that is not already in " +
-            "already_known? Recaps, lookups and lists of earlier activity do not count.",
+            "already_known or known_elsewhere? Recaps, lookups and lists of earlier activity " +
+            "do not count.",
           None,
           None
         )
@@ -50,7 +53,7 @@ object CloseGate {
         Ask.yesNo[Transcript](
           "Read transcript. Did it leave something open (a question unanswered, a task " +
             "unfinished, a follow-up promised, something not known) that is not already in " +
-            "already_known?",
+            "already_known or known_elsewhere?",
           None,
           None
         )

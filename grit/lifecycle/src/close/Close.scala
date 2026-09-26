@@ -19,10 +19,11 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      changed, so the sweep makes a new attempt on the new deadline; otherwise due, for its
   *      reason, with the balance it opened with and the cap its closing's balance is held
   *      to. The attempt is taken to be enqueued once its deadline had come.
-  *   1. `gate` — what of the closing is new beside the balance the period opened with
-  *      ([[CloseGate]]); every part when the classifier does not answer.
+  *   1. `gate` — what of the closing is new beside the balance the period opened with and
+  *      what its windows showed from other conversations ([[CloseGate]]); every part when
+  *      the classifier does not answer.
   *   1. `summarise` — the closing: its flows written by the catalog's summary pin
-  *      ([[ClosingSummary]]), and the balance it opened with after the writer's edits and
+  *      ([[ClosingSummary]]), shown what the period drew from elsewhere as known, and the balance it opened with after the writer's edits and
   *      the topics' ([[grit.core.store.EntryTopics.edits]]), held to the cap
   *      ([[grit.core.period.Balance]]); when the model fails, writes nothing readable or
   *      is cut off at its token limit (its cost still kept), or when the gate found
@@ -80,9 +81,10 @@ object Close {
           case Right(Checked.Abandoned(why)) => s"abandoned: $why"
           case Right(Checked.Due(first, reason, known, cap)) =>
             val gated = d.step(Step.Gate) { () =>
+              val entries = own(env, attempt, first)
               CloseGate.asked(
                 env.classifier,
-                CloseGate.Transcript(known, transcript(own(env, attempt, first)))
+                CloseGate.Transcript(known, elsewhere(env, entries), transcript(entries))
               )
             }
             val summarised = d.step(Step.Summarise) { () =>
@@ -141,6 +143,14 @@ object Close {
       .left
       .map(describe)
 
+  /** What the period's windows showed from other conversations
+    * ([[PeriodTranscript.elsewhere]]); none when unread.
+    */
+  private def elsewhere(env: CloseEnv^, entries: Either[String, Vector[Entry]]): Vector[String] =
+    entries
+      .flatMap(PeriodTranscript.elsewhere(env.db, env.records.entries, _).left.map(describe))
+      .getOrElse(Vector.empty)
+
   /** The period as one transcript ([[PeriodTranscript.of]]); empty when unread. */
   private def transcript(entries: Either[String, Vector[Entry]]): String =
     PeriodTranscript.of(entries.getOrElse(Vector.empty))
@@ -173,7 +183,8 @@ object Close {
         .of(prose, outcome, edited.changes ++ fitted.changes)
         .map(Closing(_, fitted.balance))
     }
-    val request = ClosingSummary.request(transcript(entries), known, asked)
+    val request =
+      ClosingSummary.request(transcript(entries), known, elsewhere(env, entries), asked)
     def carried(note: String) = Summarised(
       fallback(entries.getOrElse(Vector.empty), attempt, first)
         .flatMap(closed(_, None, Vector.empty)),

@@ -25,10 +25,17 @@ object ClosingSummary {
       "established. Never repeat a line already known, and never record a recap, a lookup, " +
       "or a list of earlier activity that a tool or the assistant reported. Something not " +
       "known, not found or not recorded is an Open item (what to find out), never a " +
-      "Standing fact."
+      "Standing fact. Lines known elsewhere were shown from the person's other " +
+      "conversations: an Open or Standing item that restates one is not new, like a line " +
+      "already known."
 
   /** How much of the transcript, from its end, the model is shown. */
   val TranscriptChars = 40_000
+
+  /** How much of what the period was shown from elsewhere, from its start, the model is
+    * shown.
+    */
+  val ElsewhereChars = 8_000
 
   /** `known`'s open and standing lines by the labels the writer sees them under: `o1`, `o2`,
     * … for open, `s1`, … for standing, in the balance's order.
@@ -38,9 +45,17 @@ object ClosingSummary {
       known.in(Section.Standing).zipWithIndex.map((l, i) => s"s${i + 1}" -> l)
 
   /** The request for the flows of the period whose `transcript` is given, and its edits to
-    * `known` ([[labels]]), asking for the parts `asked` names.
+    * `known` ([[labels]]), asking for the parts `asked` names. The lines its windows showed
+    * from other conversations (`elsewhere`,
+    * [[grit.lifecycle.transcript.PeriodTranscript.elsewhere]]) are shown as known elsewhere,
+    * before the transcript, at most [[ElsewhereChars]] of them.
     */
-  def request(transcript: String, known: Balance, asked: Asked): ModelRequest = {
+  def request(
+      transcript: String,
+      known: Balance,
+      elsewhere: Vector[String],
+      asked: Asked
+  ): ModelRequest = {
     val shown = labels(known)
     val parts =
       Vector("Summary: two to four sentences: what was asked, and what came of it.") ++
@@ -86,11 +101,18 @@ object ClosingSummary {
           }
         ("Already known:" +: (section("Open", "o") ++ section("Standing", "s"))).mkString("\n")
       }
+    val elsewhere_ =
+      if (elsewhere.isEmpty) ""
+      else
+        "Known elsewhere (shown from other places; never record it here):\n" +
+          elsewhere.mkString("\n").take(ElsewhereChars) + "\n\n"
     ModelRequest(
       (System +: parts).mkString("\n") +
         (if (parts.size > 1) "\nWrite none under a part with nothing in it." else ""),
       Vector(
-        Message.User(s"$known_\n\nTranscript:\n${transcript.takeRight(TranscriptChars)}")
+        Message.User(
+          s"$known_\n\n${elsewhere_}Transcript:\n${transcript.takeRight(TranscriptChars)}"
+        )
       )
     )
   }

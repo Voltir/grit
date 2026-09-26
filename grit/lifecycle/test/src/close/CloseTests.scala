@@ -65,6 +65,73 @@ object CloseTests extends TestSuite {
 
   val tests = Tests {
 
+    test(
+      "what the period's windows showed from elsewhere is known to the gate and the writer, once each"
+    ) {
+      val w = new World
+      val api = grit.core.id.ConversationId("api")
+      given grit.core.store.Tx = TestTx.fake
+      w.entries.insert(
+        grit.core.store.Entry(
+          EntryId("api:u"),
+          api,
+          grit.core.id.TurnSeq(0),
+          None,
+          0,
+          Payload.Message(grit.core.message.Message.User("the invoice test is flaky")),
+          at(0)
+        )
+      )
+      w.entries.insert(
+        grit.core.store.Entry(
+          EntryId("api:r"),
+          api,
+          grit.core.id.TurnSeq(0),
+          None,
+          1,
+          Payload.Message(replyOf("Pin TZ=UTC in the test JVM.")),
+          at(0)
+        )
+      )
+      val place = grit.core.place.Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
+      def shown(ids: String*) =
+        Payload.Window(
+          Vector.empty,
+          Vector.empty,
+          Vector(grit.core.store.Nearby(api, place, ids.toVector.map(EntryId(_))))
+        )
+      val t0 = w.turn(
+        "which fix for the flaky test?",
+        "TZ=UTC, as settled in api.",
+        "Recalled the fix.",
+        0
+      )
+      w.add(t0, shown("api:u", "api:r", "api:gone"), 0, "window:0")
+      val t1 = w.turn("and why?", "the CI runs in UTC", "Why UTC.", 1)
+      w.add(t1, shown("api:r"), 1, "window:1")
+      val summary = answering("Summary: Recalled the fix from api.")
+      val g = gate
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(g, summary, new SetClock(at(Lapsed)))
+      ) ==>
+        "closed: closing:c1:1"
+      val lines = Vector(
+        "[fs:/home/nick/api] User: the invoice test is flaky",
+        "[fs:/home/nick/api] Assistant: Pin TZ=UTC in the test JVM."
+      )
+      g.states.map(_.obj.get("known_elsewhere")) ==> Vector(Some(ujson.Arr.from(lines)))
+      summary.requests
+        .flatMap(_.messages)
+        .map(_.toString)
+        .exists(
+          _.contains(
+            "Known elsewhere (shown from other places; never record it here):\n" + lines
+              .mkString("\n") +
+              "\n\nTranscript:"
+          )
+        ) ==> true
+    }
+
     test("a due period is sealed once, with its closing entry and the summary's cost") {
       val w = new World
       w.turn("where do we deploy?", "staging", "Chose staging.", 0)
@@ -192,7 +259,9 @@ object CloseTests extends TestSuite {
         w.body(new Gate(Some(Vector(0.1, 0.2, 0.3, 0.6))), some, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1"
       some.requests.map(_.system) ==> Vector(
-        ClosingSummary.request("", Balance.empty, Asked(false, false, false, true)).system
+        ClosingSummary
+          .request("", Balance.empty, Vector.empty, Asked(false, false, false, true))
+          .system
       )
 
       val v = new World
@@ -202,7 +271,7 @@ object CloseTests extends TestSuite {
         v.body(new Gate(None), every, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1; gate unavailable: no classifier"
       every.requests.map(_.system) ==>
-        Vector(ClosingSummary.request("", Balance.empty, Asked.Every).system)
+        Vector(ClosingSummary.request("", Balance.empty, Vector.empty, Asked.Every).system)
     }
 
     test(

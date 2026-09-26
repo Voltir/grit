@@ -8,7 +8,8 @@ import utest.*
 object CloseGateTests extends TestSuite {
   import CloseFixtures.Gate
 
-  private val talk = CloseGate.Transcript(Balance.empty, "User: hi\n\nAssistant: hello")
+  private val talk =
+    CloseGate.Transcript(Balance.empty, Vector.empty, "User: hi\n\nAssistant: hello")
 
   val tests = Tests {
     test("each yes asks for its part: outcome, standing, open, settled, in that order") {
@@ -29,12 +30,26 @@ object CloseGateTests extends TestSuite {
         TestClosings.line(Section.Standing, "exiftool renames photos", 1, 1),
         TestClosings.line(Section.Topics, "Photo Rename", 1, 1)
       )
-      StateJson[CloseGate.Transcript].json(CloseGate.Transcript(known, "User: hi")) ==>
+      StateJson[CloseGate.Transcript].json(
+        CloseGate.Transcript(known, Vector.empty, "User: hi")
+      ) ==>
         ujson.Obj(
           "already_known" -> ujson.Obj(
             "open" -> ujson.Arr("backup frequency?"),
             "standing" -> ujson.Arr("exiftool renames photos")
           ),
+          "known_elsewhere" -> ujson.Arr(),
+          "transcript" -> "User: hi"
+        )
+    }
+
+    test("the classifier is shown what the period's windows showed from elsewhere") {
+      StateJson[CloseGate.Transcript].json(
+        CloseGate.Transcript(Balance.empty, Vector("[fs:/a] User: flaky"), "User: hi")
+      ) ==>
+        ujson.Obj(
+          "already_known" -> ujson.Obj("open" -> ujson.Arr(), "standing" -> ujson.Arr()),
+          "known_elsewhere" -> ujson.Arr("[fs:/a] User: flaky"),
           "transcript" -> "User: hi"
         )
     }
