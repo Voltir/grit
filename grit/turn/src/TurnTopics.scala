@@ -292,7 +292,7 @@ object TurnTopics {
           )
         )
         _ <- cost.fold[Either[StoreError, Unit]](Right(())) { (model, usage, estimate) =>
-          ledger.record(id, turn.workflowId, model, usage, estimate)
+          ledger.record(id, turn, turn.workflowId, model, usage, estimate)
         }
       } yield id).left.map(e => TurnFailure.Store(describe(e)))
 

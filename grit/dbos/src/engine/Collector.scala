@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters.*
 import grit.core.id.WorkflowId
 import grit.core.period.{LifecycleSettings, PeriodState, Purgeable}
 import grit.core.retention.{Target, Tombstone}
-import grit.core.store.{PeriodStore, StoreError, Tombstones, Tx}
+import grit.core.store.{ModelProfileStore, PeriodStore, StoreError, Tombstones, Tx, UsageLedger}
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.workflow.ListWorkflowsInput
@@ -23,6 +23,8 @@ private[engine] final class Collector(
     dataSource: DataSource,
     client: DBOSClient,
     periods: PeriodStore,
+    ledger: UsageLedger,
+    profiles: ModelProfileStore,
     tombstones: Tombstones
 ) {
   import Collector.*
@@ -116,6 +118,24 @@ private[engine] final class Collector(
           _ <- periods.purge(period, now)
           _ <- tombstones.collected(target, now)
         } yield Outcome.Collected
+      case Target.Superseded(period) =>
+        // Its turns read in the transaction that drops it.
+        periods.get(period).flatMap {
+          case None => tombstones.collected(target, now).map(_ => Outcome.Collected)
+          case Some(p) =>
+            p.state match {
+              case PeriodState.Closed(last, _, _, _, _, Some(_)) =>
+                val c = period.conversationId
+                for {
+                  _ <- periods.drop(period)
+                  _ <- ledger.forget(c, p.first, last)
+                  _ <- profiles.forget(Purgeable(period, p.first, last).turns)
+                  _ <- tombstones.collected(target, now)
+                } yield Outcome.Collected
+              // Its raw entries are still kept: they go first.
+              case _ => Right(Outcome.Waiting)
+            }
+        }
       case _ => Right(Outcome.Waiting)
     }
 }
@@ -126,7 +146,7 @@ private[engine] object Collector {
   val Batch = 100
 
   /** The kinds collected, in order. */
-  private val Kinds: Vector[Target.Kind] = Vector(Target.Kind.Raw)
+  private val Kinds: Vector[Target.Kind] = Vector(Target.Kind.Raw, Target.Kind.Superseded)
 
   /** Workflows by exact id, and by what their ids start with. */
   private final case class Named(ids: Vector[WorkflowId], prefixes: Vector[String])

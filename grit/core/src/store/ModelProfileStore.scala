@@ -18,4 +18,7 @@ trait ModelProfileStore {
 
   /** The profile kept under `id`, or `None` when there is none. */
   def get(id: TurnProfileId)(using Tx^): Either[StoreError, Option[TurnProfile]]
+
+  /** Forgets which profile each of `workflows` ran under; the profiles themselves are kept. */
+  def forget(workflows: Vector[WorkflowId])(using Tx^): Either[StoreError, Unit]
 }

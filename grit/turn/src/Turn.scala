@@ -646,7 +646,7 @@ object Turn {
         .left
         .map(storeFailure)
       _ <- ledger
-        .record(id, turn.workflowId, reply.model, reply.usage, estimator.request(sent))
+        .record(id, turn, turn.workflowId, reply.model, reply.usage, estimator.request(sent))
         .left
         .map(storeFailure)
     } yield id
@@ -843,6 +843,7 @@ object Turn {
       _ <- ledger
         .record(
           id,
+          turn,
           turn.workflowId,
           message.model,
           message.usage,
@@ -977,7 +978,7 @@ object Turn {
         .left
         .map(storeFailure)
       _ <- ledger
-        .record(id, turn.workflowId, message.model, message.usage, estimator.request(sent))
+        .record(id, turn, turn.workflowId, message.model, message.usage, estimator.request(sent))
         .left
         .map(storeFailure)
     } yield id
@@ -1030,7 +1031,7 @@ object Turn {
             )
             entries
               .insert(entry)
-              .flatMap(_ => ledger.record(qid, turn.workflowId, q.model, q.usage, q.estimate))
+              .flatMap(_ => ledger.record(qid, turn, turn.workflowId, q.model, q.usage, q.estimate))
               .left
               .map(storeFailure)
           }

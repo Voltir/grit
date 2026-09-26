@@ -233,6 +233,7 @@ object CloseFixtures {
     def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]] =
       underlying.closedAfter(after, n)
     def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit] = underlying.purge(period, at)
+    def drop(period: PeriodRef)(using Tx^): Either[StoreError, Boolean] = underlying.drop(period)
   }
 
   /** Turn numbers. */

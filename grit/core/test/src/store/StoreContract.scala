@@ -2,7 +2,7 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.model.{
   Assignment,
@@ -160,8 +160,22 @@ abstract class StoreContract extends TestSuite {
       transaction {
         entries.insert(entry(c, "costly", 0))
         entries.insert(entry(c, "free", 1))
-        ledger.record(EntryId("costly"), WorkflowId("w-exact"), "m", usage, Tokens(12))
-        ledger.record(EntryId("free"), WorkflowId("w-exact"), "n", free, Tokens(3))
+        ledger.record(
+          EntryId("costly"),
+          TurnRef(c, TurnSeq.First),
+          WorkflowId("w-exact"),
+          "m",
+          usage,
+          Tokens(12)
+        )
+        ledger.record(
+          EntryId("free"),
+          TurnRef(c, TurnSeq.First),
+          WorkflowId("w-exact"),
+          "n",
+          free,
+          Tokens(3)
+        )
       }
       transaction(ledger.of(WorkflowId("w-exact"))) ==>
         Right(
@@ -177,9 +191,34 @@ abstract class StoreContract extends TestSuite {
       val outcome = transaction {
         entries.insert(entry(c, "once", 0))
         entries.insert(entry(c, "next", 1))
-        val first = ledger.record(EntryId("once"), WorkflowId("w-dup"), "m", usage, Tokens(1))
-        val again = ledger.record(EntryId("once"), WorkflowId("w-dup"), "m", usage, Tokens(2))
-        (first, again, ledger.record(EntryId("next"), WorkflowId("w-dup"), "m", usage, Tokens(3)))
+        val first = ledger.record(
+          EntryId("once"),
+          TurnRef(c, TurnSeq.First),
+          WorkflowId("w-dup"),
+          "m",
+          usage,
+          Tokens(1)
+        )
+        val again = ledger.record(
+          EntryId("once"),
+          TurnRef(c, TurnSeq.First),
+          WorkflowId("w-dup"),
+          "m",
+          usage,
+          Tokens(2)
+        )
+        (
+          first,
+          again,
+          ledger.record(
+            EntryId("next"),
+            TurnRef(c, TurnSeq.First),
+            WorkflowId("w-dup"),
+            "m",
+            usage,
+            Tokens(3)
+          )
+        )
       }
       outcome ==> (Right(()), Left(StoreError.DuplicateId(EntryId("once"))), Right(()))
       transaction(ledger.of(WorkflowId("w-dup"))).map(_.map(_.estimatedInput)) ==>
@@ -194,17 +233,59 @@ abstract class StoreContract extends TestSuite {
           entries.insert(entry(c, id, seq.toLong))
         }
         // Recorded in the reverse of their ids' order, so ordering by id cannot pass.
-        ledger.record(EntryId("z"), w, "m", usage, Tokens(1))
-        ledger.record(EntryId("other"), WorkflowId("w-order-other"), "m", usage, Tokens(1))
-        ledger.record(EntryId("a"), w, "m", usage, Tokens(1))
+        ledger.record(EntryId("z"), TurnRef(c, TurnSeq.First), w, "m", usage, Tokens(1))
+        ledger.record(
+          EntryId("other"),
+          TurnRef(c, TurnSeq.First),
+          WorkflowId("w-order-other"),
+          "m",
+          usage,
+          Tokens(1)
+        )
+        ledger.record(EntryId("a"), TurnRef(c, TurnSeq.First), w, "m", usage, Tokens(1))
       }
-      transaction(ledger.record(EntryId("m"), w, "m", usage, Tokens(1)))
+      transaction(ledger.record(EntryId("m"), TurnRef(c, TurnSeq.First), w, "m", usage, Tokens(1)))
       transaction(ledger.of(w)).map(_.map(r => EntryId.value(r.entry))) ==>
         Right(Vector("z", "a", "m"))
     }
 
     test("of a workflow that recorded nothing is empty") {
       transaction(ledger.of(WorkflowId("w-none"))) ==> Right(Vector.empty)
+    }
+
+    test("forget deletes the rows of a conversation's turns in the range, and no other's") {
+      val c = conversation("ledger-forget")
+      val other = conversation("ledger-forget-other")
+      def at(conversation: ConversationId, turn: Long) = TurnRef(conversation, TurnSeq(turn))
+      val w = WorkflowId("w-forget")
+      transaction {
+        Vector("f0", "f1", "f2", "f3").zipWithIndex.foreach { (id, seq) =>
+          entries.insert(entry(c, id, seq.toLong))
+        }
+        entries.insert(entry(other, "f-other", 0))
+        ledger.record(EntryId("f0"), at(c, 0), w, "m", usage, Tokens(1))
+        ledger.record(EntryId("f1"), at(c, 1), w, "m", usage, Tokens(1))
+        ledger.record(EntryId("f2"), at(c, 2), w, "m", usage, Tokens(1))
+        ledger.record(EntryId("f3"), at(c, 3), w, "m", usage, Tokens(1))
+        ledger.record(EntryId("f-other"), at(other, 1), w, "m", usage, Tokens(1))
+      }
+      transaction(ledger.forget(c, TurnSeq(1), TurnSeq(2))) ==> Right(())
+      transaction(ledger.of(w)).map(_.map(r => EntryId.value(r.entry))) ==>
+        Right(Vector("f0", "f3", "f-other"))
+    }
+
+    test("forgetting turns' profiles keeps the other turns' and the profiles") {
+      val p = profile("a/forget", 100)
+      transaction {
+        for {
+          _ <- profiles.pin(WorkflowId("w-forget-1"), p)
+          _ <- profiles.pin(WorkflowId("w-forget-2"), p)
+          _ <- profiles.forget(Vector(WorkflowId("w-forget-1"), WorkflowId("w-unknown")))
+        } yield ()
+      } ==> Right(())
+      transaction(profiles.of(WorkflowId("w-forget-1"))) ==> Right(None)
+      transaction(profiles.of(WorkflowId("w-forget-2"))) ==> Right(Some(p))
+      transaction(profiles.get(p.id)) ==> Right(Some(p))
     }
 
     test("a pinned turn's profile is got back by the turn and by the profile's id") {

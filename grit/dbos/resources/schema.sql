@@ -89,9 +89,13 @@ CREATE INDEX IF NOT EXISTS idx_entries_bm25 ON grit.entries
     USING bm25 (search_text) WITH (text_config = 'english');
 
 -- One row per model response: what it cost. Keyed by the entry that holds the response,
--- so the turn's append writes both in one transaction and a replay cannot count twice.
+-- so the turn's append writes both in one transaction and a replay cannot count twice. Not a
+-- foreign key: the row outlives the entry's purge, and goes with its period's closing, by
+-- the turn it was made for (a close's, its period's last).
 CREATE TABLE IF NOT EXISTS grit.usage_ledger (
-    entry_id            TEXT PRIMARY KEY REFERENCES grit.entries(id) ON DELETE CASCADE,
+    entry_id            TEXT PRIMARY KEY,
+    conversation_id     UUID NOT NULL,
+    turn_seq            BIGINT NOT NULL,
     workflow_id         TEXT NOT NULL,
     model               TEXT NOT NULL,
     input_tokens        BIGINT NOT NULL,
@@ -110,6 +114,7 @@ CREATE TABLE IF NOT EXISTS grit.usage_ledger (
 
 -- A turn's costs, read by edges (UsageLedger.of).
 CREATE INDEX IF NOT EXISTS idx_usage_ledger_workflow ON grit.usage_ledger (workflow_id, ordinal);
+CREATE INDEX IF NOT EXISTS idx_usage_ledger_turn ON grit.usage_ledger (conversation_id, turn_seq);
 
 -- Every distinct profile a turn ran under (grit.core.model.TurnProfile): the model, budget,
 -- upstream and settings each role's calls were made under. Keyed by its content hash, so

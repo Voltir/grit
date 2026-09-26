@@ -168,6 +168,15 @@ final class InMemoryPeriodStore(
 
   def verdictsOn(period: PeriodRef): Int = verdicts.count(_._1 == period)
 
+  def drop(period: PeriodRef)(using Tx^): Either[StoreError, Boolean] =
+    Right(periods.find(_.ref == period).flatMap(p => closedOf(p).map(p -> _)) match {
+      case Some((p, c)) if c.purged.nonEmpty =>
+        entries.remove(_.id == c.closing)
+        periods = periods.filterNot(_.ref == period)
+        true
+      case _ => false
+    })
+
   def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit] = {
     periods.find(_.ref == period).foreach { p =>
       closedOf(p).filter(_.purged.isEmpty).foreach { c =>

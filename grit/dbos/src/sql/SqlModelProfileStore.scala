@@ -46,6 +46,23 @@ final class SqlModelProfileStore extends ModelProfileStore {
   def get(id: TurnProfileId)(using tx: Tx^): Either[StoreError, Option[TurnProfile]] =
     one("SELECT profile::text FROM grit.model_profiles WHERE id = ?", TurnProfileId.value(id))
 
+  def forget(workflows: Vector[WorkflowId])(using tx: Tx^): Either[StoreError, Unit] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    try {
+      Using.resource(
+        conn.prepareStatement(
+          """DELETE FROM grit.turn_model_profiles
+            | WHERE workflow_id IN (SELECT jsonb_array_elements_text(?::jsonb))""".stripMargin
+        )
+      ) { ps =>
+        // The ids as JSON, so no Java array crosses JDBC.
+        ps.setString(1, ujson.Arr.from(workflows.map(w => ujson.Str(WorkflowId.value(w)))).render())
+        ps.executeUpdate()
+      }
+      Right(())
+    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
+  }
+
   /** The profile the one-column `sql` finds for `key`, read back through its codec. */
   private def one(sql: String, key: String)(using
       tx: Tx^

@@ -349,6 +349,28 @@ abstract class PeriodContract extends TestSuite {
       transaction(entries.list(c)).map(ids) ==> Right(left)
     }
 
+    test("drop deletes a purged period's row and closing entry, and leaves one not purged") {
+      val c = conversation("drop")
+      val t0 = say(c, 0)
+      val p1 = PeriodRef(c, PeriodSeq.First)
+      seal(p1, t0, 30, "dropped")
+      val t1 = say(c, 40)
+      val p2 = PeriodRef(c, PeriodSeq.First.next)
+      transaction(periods.drop(p1)) ==> Right(false)
+      transaction(periods.drop(p2)) ==> Right(false)
+      transaction(periods.get(p1)).map(_.map(_.ref)) ==> Right(Some(p1))
+      transaction(periods.purge(p1, at(100))) ==> Right(())
+      val kept = transaction(entries.list(c)).map(ids)
+      kept.map(_.contains(EntryId.value(p1.closingId))) ==> Right(true)
+      transaction(periods.drop(p1)) ==> Right(true)
+      transaction(periods.get(p1)) ==> Right(None)
+      transaction(periods.get(p2)).map(_.map(_.ref)) ==> Right(Some(p2))
+      transaction(entries.list(c)).map(ids) ==>
+        kept.map(_.filterNot(_ == EntryId.value(p1.closingId)))
+      transaction(entries.list(c)).map(_.map(_.turnSeq)) ==> Right(Vector(t1.turnSeq))
+      transaction(periods.drop(p1)) ==> Right(false)
+    }
+
     test("a purge deletes its period's verdicts, and keeps another period's") {
       val c = conversation("purge-verdicts")
       val other = conversation("purge-verdicts-other")

@@ -25,4 +25,9 @@ final class InMemoryModelProfileStore extends ModelProfileStore {
 
   def get(id: TurnProfileId)(using Tx^): Either[StoreError, Option[TurnProfile]] =
     Right(profiles.find(_.id == id))
+
+  def forget(workflows: Vector[WorkflowId])(using Tx^): Either[StoreError, Unit] = {
+    turns = turns.filterNot(t => workflows.contains(t._1))
+    Right(())
+  }
 }

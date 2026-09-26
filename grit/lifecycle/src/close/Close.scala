@@ -253,7 +253,14 @@ object Close {
           outcome <- records.periods.seal(attempt, reason, closing, now)
           _ <- (outcome, summarised.cost) match {
             case (Sealed.Closed(entry), Some(c)) =>
-              records.ledger.record(entry, attempt.workflowId, c.model, c.usage, c.estimate)
+              records.ledger.record(
+                entry,
+                TurnRef(attempt.period.conversationId, attempt.last),
+                attempt.workflowId,
+                c.model,
+                c.usage,
+                c.estimate
+              )
             case _ => Right(())
           }
           _ <- outcome match {

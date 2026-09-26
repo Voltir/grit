@@ -130,7 +130,17 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   private val enabled = new AtomicReference(Vector.empty[(PluginName, Int)])
 
   private val sweeper =
-    new Sweeper(dataSource, client, periods, lifecycle, tombstones, cursors, () => enabled.get())
+    new Sweeper(
+      dataSource,
+      client,
+      periods,
+      ledger,
+      profiles,
+      lifecycle,
+      tombstones,
+      cursors,
+      () => enabled.get()
+    )
 
   /** One sweep of the lifecycle at `now`, under the settings in force: every open period
     * whose deadline has come has its attempt on that deadline enqueued

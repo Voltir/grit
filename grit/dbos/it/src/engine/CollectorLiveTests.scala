@@ -7,8 +7,18 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, SourceId, WorkflowId}
-import grit.core.message.Message
+import grit.core.id.{
+  CloseRef,
+  ConversationId,
+  EntryId,
+  PeriodRef,
+  PeriodSeq,
+  SourceId,
+  TurnRef,
+  WorkflowId
+}
+import grit.core.message.{Message, Tokens, Usage}
+import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.period.{
   CloseReason,
   LifecycleSettings,
@@ -25,8 +35,10 @@ import grit.dbos.sql.{
   LiveDb,
   SqlEntryStore,
   SqlLifecycleStore,
+  SqlModelProfileStore,
   SqlPeriodStore,
   SqlTombstones,
+  SqlUsageLedger,
   TestPostgres
 }
 import grit.dbos.workflow.DurableWorkflow
@@ -44,10 +56,10 @@ object CollectorLiveTests extends TestSuite {
 
   private val tombstones = new SqlTombstones
 
-  /** A minute idle, a minute's retention. */
-  private def minutes(config: DbConfig): Unit = {
+  /** A minute idle, a minute's retention, and a `ledger` window. */
+  private def minutes(config: DbConfig, ledger: FiniteDuration = 1.day): Unit = {
     val settings = Windows
-      .of(1.minute, 1.minute, 1.day)
+      .of(1.minute, 1.minute, ledger)
       .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1, Locality.Default))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
@@ -73,7 +85,21 @@ object CollectorLiveTests extends TestSuite {
         d.transact("seal")(
           periods
             .seal(attempt, CloseReason.Lapsed, closing, now)
-            .flatMap(s => tombstones.write(Target.Raw(attempt.period), now).map(_ => s))
+            .flatMap(s =>
+              for {
+                // As Close's seal writes them.
+                _ <- tombstones.write(Target.Raw(attempt.period), now)
+                _ <- PeriodSeq.of(PeriodSeq.value(attempt.period.seq) - 1) match {
+                  case Some(before) =>
+                    tombstones.write(
+                      Target.Superseded(PeriodRef(attempt.period.conversationId, before)),
+                      now
+                    )
+                  case None => Right(())
+                }
+                _ <- tombstones.write(Target.Quiet(attempt.period), now)
+              } yield s
+            )
             .toString
         )
     }
@@ -120,6 +146,77 @@ object CollectorLiveTests extends TestSuite {
       held = done
     }
     held
+  }
+
+  /** `text` ingested on `origin` and its turn run to its end. */
+  private def turnOn(engine: Engine^, origin: Origin, text: String): TurnRef = {
+    val t = engine.inbox
+      .ingest(origin, SourceId(text), Message.User(text))
+      .fold(e => sys.error(s"$e"), identity)
+    engine.inbox.startTurn(t) ==> Right(())
+    engine.awaitTurn(t)
+    t
+  }
+
+  /** `period` closed by a sweep at `at`, waited for until its close has ended. */
+  private def closeOf(
+      engine: Engine^,
+      config: DbConfig,
+      period: PeriodRef,
+      at: Instant
+  ): CloseRef = {
+    val swept = engine.sweep(at).map(_.enqueued)
+    val attempt = swept.toOption
+      .flatMap(_.find(_.period == period))
+      .getOrElse(sys.error(s"no attempt on $period: $swept"))
+    val c = ConversationId.value(period.conversationId)
+    assert(
+      eventually(
+        LiveDb
+          .transaction(config)(periods.get(period))
+          .exists(_.exists(_.state != PeriodState.Open)) && ended(config, s"close:$c:")
+      )
+    )
+    attempt
+  }
+
+  /** How many usage rows are kept for `entries`, and profiles for `turns`. */
+  private def ledgered(
+      config: DbConfig,
+      entries: Vector[String],
+      turns: Vector[WorkflowId]
+  ): (Int, Int) =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      def count(sql: String, keys: Vector[String]): Int =
+        Using.resource(conn.prepareStatement(sql)) { ps =>
+          ps.setString(1, ujson.Arr.from(keys.map(ujson.Str(_))).render())
+          Using.resource(ps.executeQuery())(rs => { rs.next(); rs.getInt(1) })
+        }
+      (
+        count(
+          "SELECT count(*) FROM grit.usage_ledger WHERE entry_id IN (SELECT jsonb_array_elements_text(?::jsonb))",
+          entries
+        ),
+        count(
+          "SELECT count(*) FROM grit.turn_model_profiles WHERE workflow_id IN (SELECT jsonb_array_elements_text(?::jsonb))",
+          turns.map(WorkflowId.value)
+        )
+      )
+    }
+
+  /** A usage row for `entry`, made for `turn` under `workflow`, and `turn`'s profile. */
+  private def spent(config: DbConfig, entry: String, turn: TurnRef, workflow: WorkflowId): Unit = {
+    val usage = Usage(Tokens(1), Tokens(1), Tokens(0), None)
+    val ref = ModelRef(ModelId.of("a/m").getOrElse(sys.error("model")), None)
+    val a = Assignment(ref, 100, None)
+    LiveDb.transaction(config) {
+      for {
+        _ <- new SqlUsageLedger().record(EntryId(entry), turn, workflow, "m", usage, Tokens(1))
+        _ <- new SqlModelProfileStore()
+          .pin(turn.workflowId, Catalog.of(Policy(a, a, a), Vector.empty).pin)
+      } yield ()
+    } ==> Right(())
   }
 
   val tests = Tests {
@@ -180,8 +277,11 @@ object CollectorLiveTests extends TestSuite {
         try client.deleteWorkflows(java.util.List.of(WorkflowId.value(t0.workflowId)), false)
         finally client.close()
 
+        spent(config, "u0", t0, t0.workflowId)
         val later = Instant.now().plusSeconds(180)
         engine.sweep(later).map(_.collected) ==> Right(Vector(Target.Raw(p1)))
+        // Usage goes with the closing, not the raw entries.
+        ledgered(config, Vector("u0"), Vector(t0.workflowId)) ==> (1, 1)
         kept(config, workflows) ==> Vector(0, 0)
         LiveDb
           .transaction(config)(new SqlEntryStore().list(t0.conversationId))
@@ -309,6 +409,52 @@ object CollectorLiveTests extends TestSuite {
         engine.sweep(Instant.now().plusSeconds(180)).map(_.collected) ==>
           Right(Vector(Target.Raw(p1)))
         kept(config, Vector(hold)) ==> Vector(0, 0)
+      } finally engine.close()
+    }
+
+    test(
+      "a superseded closing goes with its row, its turns' usage and profiles and its close's cost; the latest stays"
+    ) {
+      val config = TestPostgres.freshDatabase("collect_superseded")
+      val engine = Engine.open(config, "test")
+      try {
+        engine.launch(
+          turn,
+          close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          Vector.empty
+        )
+        minutes(config, ledger = 2.minutes)
+        val origin = Origin.Task("collect", "superseded")
+        val t0 = turnOn(engine, origin, "one")
+        val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
+        val a1 = closeOf(engine, config, p1, Instant.now().plusSeconds(120))
+        spent(config, "u0", t0, t0.workflowId)
+        spent(config, EntryId.value(p1.closingId), t0, a1.workflowId)
+        val t1 = turnOn(engine, origin, "two")
+        val p2 = PeriodRef(t0.conversationId, PeriodSeq.First.next)
+        // This sweep collects period 1's raw entries, past the raw window by now.
+        val a2 = closeOf(engine, config, p2, Instant.now().plusSeconds(240))
+        spent(config, "u1", t1, t1.workflowId)
+        spent(config, EntryId.value(p2.closingId), t1, a2.workflowId)
+
+        engine.sweep(Instant.now().plusSeconds(600)).map(_.collected) ==>
+          Right(Vector(Target.Raw(p2), Target.Superseded(p1)))
+        LiveDb.transaction(config)(periods.get(p1)) ==> Right(None)
+        LiveDb.transaction(config)(periods.get(p2)).map(_.map(_.ref)) ==> Right(Some(p2))
+        LiveDb
+          .transaction(config)(new SqlEntryStore().list(t0.conversationId))
+          .map(_.map(e => EntryId.value(e.id))) ==>
+          Right(Vector(EntryId.value(p2.closingId)))
+        ledgered(config, Vector("u0", EntryId.value(p1.closingId)), Vector(t0.workflowId)) ==> (
+          0,
+          0
+        )
+        ledgered(config, Vector("u1", EntryId.value(p2.closingId)), Vector(t1.workflowId)) ==> (
+          2,
+          1
+        )
       } finally engine.close()
     }
   }

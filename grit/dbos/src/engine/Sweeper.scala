@@ -8,7 +8,15 @@ import scala.jdk.CollectionConverters.*
 import grit.core.id.{CloseRef, PluginName, SettleRef, WorkflowId}
 import grit.core.plugin.{PluginCursors, PostRef}
 import grit.core.retention.Target
-import grit.core.store.{LifecycleStore, PeriodStore, StoreError, Tombstones, Tx}
+import grit.core.store.{
+  LifecycleStore,
+  ModelProfileStore,
+  PeriodStore,
+  StoreError,
+  Tombstones,
+  Tx,
+  UsageLedger
+}
 import grit.dbos.workflow.{Closes, Posts, Settles}
 
 import dev.dbos.transact.DBOSClient
@@ -22,13 +30,15 @@ private[engine] final class Sweeper(
     dataSource: DataSource,
     client: DBOSClient,
     periods: PeriodStore,
+    ledger: UsageLedger,
+    profiles: ModelProfileStore,
     lifecycle: LifecycleStore,
     tombstones: Tombstones,
     cursors: PluginCursors,
     plugins: () -> Vector[(PluginName, Int)]
 ) {
 
-  private val collector = new Collector(dataSource, client, periods, tombstones)
+  private val collector = new Collector(dataSource, client, periods, ledger, profiles, tombstones)
 
   private def attempted[A](body: => A): Either[StoreError, A] = Transact.attempted(body)
 

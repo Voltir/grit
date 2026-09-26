@@ -3,7 +3,7 @@ package grit.dbos.sql
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.id.{EntryId, WorkflowId}
+import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Tokens, Usage}
 import grit.core.store.{StoreError, Tx, UsageLedger}
 
@@ -14,6 +14,7 @@ final class SqlUsageLedger extends UsageLedger {
 
   def record(
       entry: EntryId,
+      turn: TurnRef,
       workflow: WorkflowId,
       model: String,
       usage: Usage,
@@ -27,8 +28,8 @@ final class SqlUsageLedger extends UsageLedger {
         conn.prepareStatement(
           """INSERT INTO grit.usage_ledger
             |  (entry_id, workflow_id, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
-            |   estimated_input_tokens)
-            |VALUES (?, ?, ?, ?, ?, ?, ?, ?)""".stripMargin
+            |   estimated_input_tokens, conversation_id, turn_seq)
+            |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::uuid, ?)""".stripMargin
         )
       ) { ps =>
         ps.setString(1, EntryId.value(entry))
@@ -39,6 +40,8 @@ final class SqlUsageLedger extends UsageLedger {
         ps.setLong(6, Tokens.value(usage.cachedInput))
         ps.setBigDecimal(7, usage.costUsd.map(_.bigDecimal).orNull)
         ps.setLong(8, Tokens.value(estimatedInput))
+        ps.setString(9, ConversationId.value(turn.conversationId))
+        ps.setLong(10, TurnSeq.value(turn.turnSeq))
         ps.executeUpdate()
       }
       conn.releaseSavepoint(savepoint)
@@ -81,6 +84,26 @@ final class SqlUsageLedger extends UsageLedger {
           Right(rows.result())
         }
       }
+    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
+  }
+
+  def forget(conversation: ConversationId, from: TurnSeq, to: TurnSeq)(using
+      tx: Tx^
+  ): Either[StoreError, Unit] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    try {
+      Using.resource(
+        conn.prepareStatement(
+          """DELETE FROM grit.usage_ledger
+            | WHERE conversation_id = ?::uuid AND turn_seq BETWEEN ? AND ?""".stripMargin
+        )
+      ) { ps =>
+        ps.setString(1, ConversationId.value(conversation))
+        ps.setLong(2, TurnSeq.value(from))
+        ps.setLong(3, TurnSeq.value(to))
+        ps.executeUpdate()
+      }
+      Right(())
     } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
   }
 }

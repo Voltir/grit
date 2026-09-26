@@ -125,7 +125,7 @@ object TurnVerdictTests extends TestSuite {
       // Round one, spent on the verdict alone, is billed to it beside its own request's estimate.
       val first = provider.requests.headOption.getOrElse(sys.error("no request"))
       ledger.rows.collect {
-        case (id, workflow, model, _, estimate) if id == TurnVerdict.verdictId(turn) =>
+        case (id, workflow, model, _, estimate, _) if id == TurnVerdict.verdictId(turn) =>
           (workflow, model, estimate)
       } ==> Vector((turn.workflowId, StubProvider.Model, CharEstimate.request(first)))
     }

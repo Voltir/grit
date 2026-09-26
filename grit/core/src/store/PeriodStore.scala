@@ -69,6 +69,12 @@ trait PeriodStore {
     */
   def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit]
 
+  /** Deletes `period`'s row and its closing entry, if it is closed and its raw entries are
+    * purged; `false`, deleting nothing, otherwise. Only the collector calls it, for a
+    * [[grit.core.retention.Target.Superseded]] tombstone.
+    */
+  def drop(period: PeriodRef)(using Tx^): Either[StoreError, Boolean]
+
   /** Where `turn`'s window opens: the first turn of its period ([[TurnSeq.First]] for a turn
     * in none), and the closing it opens from.
     */

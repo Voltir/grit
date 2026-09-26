@@ -274,6 +274,25 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       )
     }
 
+  def drop(period: PeriodRef)(using tx: Tx^): Either[StoreError, Boolean] =
+    for {
+      found <- get(period)
+      dropped <- found.map(_.state) match {
+        case Some(PeriodState.Closed(_, _, _, closing, _, Some(_))) =>
+          for {
+            _ <- update("DELETE FROM grit.periods WHERE conversation_id = ?::uuid AND seq = ?") {
+              ps =>
+                ps.setString(1, ConversationId.value(period.conversationId))
+                ps.setLong(2, PeriodSeq.value(period.seq))
+            }
+            _ <- update("DELETE FROM grit.entries WHERE id = ?")(
+              _.setString(1, EntryId.value(closing))
+            )
+          } yield true
+        case _ => Right(false)
+      }
+    } yield dropped
+
   def purge(period: PeriodRef, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
     for {
       found <- get(period)
