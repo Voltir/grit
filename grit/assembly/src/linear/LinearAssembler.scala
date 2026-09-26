@@ -104,7 +104,7 @@ object LinearAssembler {
   private def isMessage(e: Entry): Boolean = e.payload match {
     case Payload.Message(_) => true
     // A turn's tool exchange is its own: a window never holds a call apart from its turn.
-    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _) | Payload.Topic(_) |
+    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _) | Payload.Topic(_) |
         Payload.Exchange(_) | Payload.Result(_, _) | Payload.Attempt(_) | Payload.Ask(_, _) |
         Payload.Closed(_, _, _) =>
       false

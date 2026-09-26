@@ -23,12 +23,17 @@ enum Payload {
     */
   case Query(text: String)
 
-  /** The window the reply of the turn the entry belongs to was written from: the entries
-    * the model saw before the turn's own, in the order it saw them, and which earlier
-    * turns among them search `recalled` rather than recency. A record of what the model
-    * saw: never shown to the model, never searched.
+  /** The window the reply of the turn the entry belongs to was written from
+    * ([[grit.core.context.Window]]): the entries of its own conversation the model saw
+    * before the turn's own, in the order it saw them, which earlier turns among them search
+    * `recalled` rather than recency, and the `nearby` sections from other conversations. A
+    * record of what the model saw: never shown to the model, never searched.
     */
-  case Window(entries: Vector[EntryId], recalled: Vector[TurnSeq])
+  case Window(
+      entries: Vector[EntryId],
+      recalled: Vector[TurnSeq],
+      nearby: Vector[Nearby] = Vector.empty
+  )
 
   /** What happened to the conversation's topics during the turn the entry belongs to
     * ([[grit.core.topic.Topics]] folds them). A record: never shown to the model, never

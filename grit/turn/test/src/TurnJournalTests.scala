@@ -2,9 +2,11 @@ package grit.turn
 
 import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
-import grit.core.id.{EntryId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
+import grit.core.place.Place
 import grit.core.provider.ModelRequest
+import grit.core.store.Nearby
 import grit.models.StubProvider
 
 import utest.*
@@ -61,6 +63,22 @@ object TurnJournalTests extends TestSuite {
         """{"ok":{"entries":["a"],"notes":[{"recalled":[2]}]}}"""
       assert(j.decode("""{"ok":{"entries":["a"],"notes":[{"lunch":1}]}}""").isLeft)
       assert(j.decode("""{"ok":{"entries":["a"],"notes":[{"recalled":[-1]}]}}""").isLeft)
+    }
+
+    test("a window's nearby sections are recorded after its notes, and read back") {
+      val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
+      val near: Either[TurnFailure, Window] = Right(
+        Window(
+          Vector(EntryId("a")),
+          Vector.empty,
+          Vector(Nearby(ConversationId("c9"), api, Vector(EntryId("x"))))
+        )
+      )
+      val j = summon[Journaled[Either[TurnFailure, Window]]]
+      j.encode(near) ==>
+        """{"ok":{"entries":["a"],"notes":[],""" +
+        """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":["x"]}]}}"""
+      roundTrip(near) ==> Right(near)
     }
 
     test("a classification reads back as written") {

@@ -2,7 +2,7 @@ package grit.core.context
 
 import grit.core.id.{EntryId, TurnRef, TurnSeq}
 import grit.core.message.{Tokens, Usage}
-import grit.core.store.{Db, StoreError}
+import grit.core.store.{Db, Nearby, StoreError}
 
 /** Chooses what the model sees on a turn: a fresh window over the store, computed each
   * turn, never carried from the last one. Read-only: it holds no write capability.
@@ -16,10 +16,16 @@ trait ContextAssembler {
 /** What an assembler is asked to build a window for. */
 final case class AssemblyRequest(turn: TurnRef)
 
-/** The entries the model sees before the turn's own, in the order it sees them, and notes
-  * on how they were chosen.
+/** What the model sees before the turn's own messages: each of `nearby`'s sections, then
+  * `entries` of its own conversation in order; and notes on how they were chosen. A nearby
+  * entry gone by the time the model is called (its period closed and was purged) is left
+  * out, and a section left with no message is dropped; an own entry gone fails the turn.
   */
-final case class Window(entries: Vector[EntryId], notes: Vector[AssemblyNote] = Vector.empty)
+final case class Window(
+    entries: Vector[EntryId],
+    notes: Vector[AssemblyNote] = Vector.empty,
+    nearby: Vector[Nearby] = Vector.empty
+)
 
 /** Something an assembler did while choosing a window, kept for the record and never shown
   * to the model.

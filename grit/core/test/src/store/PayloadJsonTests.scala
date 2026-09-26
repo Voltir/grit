@@ -1,8 +1,9 @@
 package grit.core.store
 
-import grit.core.id.{EntryId, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Closing, Probability, TestClosings}
+import grit.core.place.Place
 import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
 
 import utest.*
@@ -81,6 +82,20 @@ object PayloadJsonTests extends TestSuite {
         .write(Payload.Window(Vector(EntryId("a"), EntryId("b")), Vector(TurnSeq(3))))
         .render() ==>
         """{"kind":"window","entries":["a","b"],"recalled":[3]}"""
+    }
+
+    test("a window with nearby sections keeps them under their place, as written") {
+      // Stored data: a window without sections keeps the form above, byte for byte.
+      val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
+      val window = Payload.Window(
+        Vector(EntryId("a")),
+        Vector.empty,
+        Vector(Nearby(ConversationId("c9"), api, Vector(EntryId("x"), EntryId("y"))))
+      )
+      PayloadJson.write(window).render() ==>
+        """{"kind":"window","entries":["a"],"recalled":[],""" +
+        """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":["x","y"]}]}"""
+      PayloadJson.read(ujson.read(PayloadJson.write(window).render())) ==> Right(window)
     }
 
     test("topic") {

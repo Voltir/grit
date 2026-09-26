@@ -5,11 +5,12 @@ import java.time.Instant
 import grit.assembly.estimate.CharEstimate
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{EntryId, PeriodSeq, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
+import grit.core.place.Place
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
-import grit.core.store.{Db, Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
+import grit.core.store.{Db, Entry, InMemoryEntryStore, InMemoryUsageLedger, Nearby, Payload}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -313,6 +314,73 @@ object TurnTests extends TestSuite {
       )
       provider.requests.headOption.map(_.messages) ==> Some(
         Vector(Message.User(closing.shown(Instant.EPOCH, CloseReason.Lapsed)), Message.User("two"))
+      )
+    }
+
+    test(
+      "nearby sections come first, one message each; a gone entry is left out, an empty section dropped"
+    ) {
+      val entries = new InMemoryEntryStore
+      val provider = new RecordingProvider
+      val closing = TestClosings.prose("We talked about one.", Some("one"))
+      val closed = EntryId("closing:c1:1")
+      say(entries, "one")
+      entries.insert(
+        Entry(
+          closed,
+          conversation,
+          TurnSeq(0),
+          None,
+          1,
+          Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing),
+          Instant.EPOCH
+        )
+      )(using TestTx.fake)
+      val api = ConversationId("api")
+      def elsewhere(id: String, seq: Long, message: Message) =
+        entries.insert(
+          Entry(EntryId(id), api, TurnSeq(0), None, seq, Payload.Message(message), Instant.EPOCH)
+        )(using TestTx.fake)
+      elsewhere("api:u", 0, Message.User("the invoice test is flaky"))
+      elsewhere(
+        "api:r",
+        1,
+        Message.Assistant(
+          Vector(AssistantBlock.Text("Pin TZ=UTC in the test JVM.")),
+          StopReason.EndTurn,
+          Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+          "m"
+        )
+      )
+      val turn = say(entries, "two")
+      val at = (p: String) => Place.read(p).fold(e => sys.error(e), identity)
+      val nearby = Vector(
+        Nearby(
+          api,
+          at("fs:/home/nick/api"),
+          Vector(EntryId("api:u"), EntryId("api:gone"), EntryId("api:r"))
+        ),
+        Nearby(ConversationId("web"), at("fs:/home/nick/web"), Vector(EntryId("web:gone")))
+      )
+      val opening = new ContextAssembler {
+        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+          Right(Window(Vector(closed), Vector.empty, nearby))
+      }
+      new InMemoryDurable().run(turn.workflowId)(
+        turnBodyWith(entries, provider, opening, new InMemoryUsageLedger)
+      )
+      provider.requests.headOption.map(_.messages) ==> Some(
+        Vector(
+          Message.User(
+            "From another conversation of yours, still open, at fs:/home/nick/api:\n" +
+              "User: the invoice test is flaky\nAssistant: Pin TZ=UTC in the test JVM."
+          ),
+          Message.User(closing.shown(Instant.EPOCH, CloseReason.Lapsed)),
+          Message.User("two")
+        )
+      )
+      windows(entries).lastOption.map(_._2) ==> Some(
+        Payload.Window(Vector(closed), Vector.empty, nearby)
       )
     }
 

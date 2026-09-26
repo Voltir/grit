@@ -5,7 +5,7 @@ import grit.core.durable.Journaled
 import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{CatalogJson, TurnProfile}
-import grit.core.store.{Payload, PayloadJson}
+import grit.core.store.{Nearby, Payload, PayloadJson}
 import grit.core.topic.{TopicId, TopicJson}
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
@@ -14,15 +14,20 @@ import grit.core.topic.{TopicId, TopicJson}
   */
 private[turn] object TurnJournal {
 
-  /** A window with no notes is the bare array of its ids, as every build has written it; one
-    * with notes is `{"entries": [...], "notes": [...]}`.
+  /** A window with no notes and no nearby sections is the bare array of its ids, as every
+    * build has written it; one with either is `{"entries": [...], "notes": [...]}`, with
+    * `"nearby": [...]` too when it has sections ([[PayloadJson.writeNearby]]).
     */
   given window: Journaled[Either[TurnFailure, Window]] =
     outcome(
       w => {
         val ids = ujson.Arr.from(w.entries.map(id => ujson.Str(EntryId.value(id))))
-        if (w.notes.isEmpty) ids
-        else ujson.Obj("entries" -> ids, "notes" -> ujson.Arr.from(w.notes.map(writeNote)))
+        if (w.notes.isEmpty && w.nearby.isEmpty) ids
+        else {
+          val o = ujson.Obj("entries" -> ids, "notes" -> ujson.Arr.from(w.notes.map(writeNote)))
+          if (w.nearby.nonEmpty) o("nearby") = ujson.Arr.from(w.nearby.map(PayloadJson.writeNearby))
+          o
+        }
       },
       v =>
         v match {
@@ -35,7 +40,15 @@ private[turn] object TurnJournal {
                 .foldLeft[Either[String, Vector[AssemblyNote]]](Right(Vector.empty)) { (acc, n) =>
                   acc.flatMap(ns => readNote(n).map(ns :+ _))
                 }
-            } yield Window(ids, notes)
+              nearby <- o.value.get("nearby") match {
+                case None => Right(Vector.empty)
+                case Some(ujson.Arr(items)) =>
+                  items.toVector.foldLeft[Either[String, Vector[Nearby]]](Right(Vector.empty)) {
+                    (acc, n) => acc.flatMap(ns => PayloadJson.readNearby(n).map(ns :+ _))
+                  }
+                case Some(_) => Left("window: nearby is not an array")
+              }
+            } yield Window(ids, notes, nearby)
           case _ => Left("window: expected an array or an object")
         }
     )

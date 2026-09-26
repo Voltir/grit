@@ -27,7 +27,7 @@ object Replies {
       val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
       Some(if (said.isEmpty) "(no text in the reply)" else said)
     case Payload.Message(Message.ToolResult(_, _, _)) => None
-    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _) | Payload.Topic(_) |
+    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _) | Payload.Topic(_) |
         Payload.Exchange(_) | Payload.Result(_, _) | Payload.Attempt(_) | Payload.Ask(_, _) |
         Payload.Closed(_, _, _) =>
       None

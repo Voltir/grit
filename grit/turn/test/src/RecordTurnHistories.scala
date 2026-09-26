@@ -127,6 +127,37 @@ object RecordTurnHistories {
       )
       recorded(durable, turn)
     }
+    val nearby = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val api = grit.core.id.ConversationId("api")
+      entries.insert(
+        grit.core.store.Entry(
+          grit.core.id.EntryId("api:u"),
+          api,
+          grit.core.id.TurnSeq(0),
+          None,
+          0,
+          Payload.Message(grit.core.message.Message.User("the invoice test is flaky")),
+          java.time.Instant.EPOCH
+        )
+      )(using grit.dbos.sql.TestTx.fake)
+      val turn = say(entries, "which fix did I settle on?")
+      val place = grit.core.place.Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
+      val section = grit.core.store.Nearby(api, place, Vector(grit.core.id.EntryId("api:u")))
+      val near = new grit.core.context.ContextAssembler {
+        def assemble(request: grit.core.context.AssemblyRequest)(using
+            grit.core.store.Db^
+        ): Either[grit.core.context.AssemblyError, grit.core.context.Window] =
+          Right(
+            grit.core.context.Window(Vector.empty, Vector(TurnFixtures.queried), Vector(section))
+          )
+      }
+      durable.run(turn.workflowId)(
+        turnBodyWith(entries, new RecordingProvider, near, new InMemoryUsageLedger)
+      )
+      recorded(durable, turn)
+    }
     val windowFirst = {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -360,6 +391,7 @@ object RecordTurnHistories {
       "window-first" -> windowFirst,
       "crashed-recording-window" -> crashedRecordingWindow,
       "crashed-before-append-window-first" -> crashedBeforeAppendWindowFirst,
+      "nearby" -> nearby,
       "recalled" -> recalled,
       "queried" -> queried,
       "summarised" -> summarised,

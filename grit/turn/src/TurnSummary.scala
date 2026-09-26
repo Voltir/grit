@@ -134,7 +134,7 @@ object TurnSummary {
     case Payload.Message(Message.ToolResult(id, content, isError)) =>
       val kind = if (isError) "Tool error" else "Tool result"
       Some(s"$kind (${ToolCallId.value(id)}): ${content.take(ToolResultChars)}")
-    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _) | Payload.Topic(_) |
+    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _) | Payload.Topic(_) |
         Payload.Attempt(_) | Payload.Ask(_, _) | Payload.Closed(_, _, _) =>
       None
   }

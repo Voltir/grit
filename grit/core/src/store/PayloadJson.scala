@@ -1,8 +1,9 @@
 package grit.core.store
 
-import grit.core.id.{EntryId, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, ClosingJson, Probability}
+import grit.core.place.Place
 import grit.core.topic.TopicJson
 
 /** The stored JSON form of a [[Payload]]. Written by hand, not derived: it is
@@ -16,12 +17,16 @@ object PayloadJson {
     case Payload.Message(m) => ujson.Obj("kind" -> "message", "message" -> message(m))
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
     case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
-    case Payload.Window(entries, recalled) =>
-      ujson.Obj(
+    case Payload.Window(entries, recalled, nearby) =>
+      val o = ujson.Obj(
         "kind" -> "window",
         "entries" -> ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e)))),
         "recalled" -> ujson.Arr.from(recalled.map(t => ujson.Num(TurnSeq.value(t).toDouble)))
       )
+      // Written only when there are sections, so a window without any keeps the form
+      // every earlier build wrote.
+      if (nearby.nonEmpty) o("nearby") = ujson.Arr.from(nearby.map(writeNearby))
+      o
     case Payload.Topic(events) =>
       ujson.Obj("kind" -> "topic", "events" -> ujson.Arr.from(events.map(TopicJson.write)))
     case Payload.Exchange(reply) => ujson.Obj("kind" -> "exchange", "message" -> message(reply))
@@ -94,7 +99,10 @@ object PayloadJson {
               case ujson.Num(n) if n.isWhole && n >= 0 => Right(TurnSeq(n.toLong))
               case _ => Left("a recalled turn is not a non-negative whole number")
             })
-          } yield Payload.Window(entries, recalled)
+            nearby <-
+              if (o.value.contains("nearby")) arr(o, "nearby").flatMap(traverse(_)(readNearby))
+              else Right(Vector.empty)
+          } yield Payload.Window(entries, recalled, nearby)
         case "topic" => arr(o, "events").flatMap(traverse(_)(TopicJson.read)).map(Payload.Topic(_))
         case "exchange" =>
           field(o, "message").flatMap(readMessage).flatMap {
@@ -254,6 +262,27 @@ object PayloadJson {
         case Some(_) => Left("costUsd is not a string")
       }
     } yield Usage(Tokens(input), Tokens(output), Tokens(cached), cost)
+
+  /** A nearby section's stored form: its conversation, its place as written, its entries. */
+  def writeNearby(n: Nearby): ujson.Value =
+    ujson.Obj(
+      "conversation" -> ConversationId.value(n.conversation),
+      "place" -> n.place.written,
+      "entries" -> ujson.Arr.from(n.entries.map(e => ujson.Str(EntryId.value(e))))
+    )
+
+  /** The nearby section `v` stores ([[writeNearby]]'s form), or why none. */
+  def readNearby(v: ujson.Value): Either[String, Nearby] =
+    for {
+      o <- obj(v)
+      c <- str(o, "conversation")
+      written <- str(o, "place")
+      place <- Place.read(written)
+      entries <- arr(o, "entries").flatMap(traverse(_) {
+        case ujson.Str(id) => Right(EntryId(id))
+        case _ => Left("an entry id is not a string")
+      })
+    } yield Nearby(ConversationId(c), place, entries)
 
   private def obj(v: ujson.Value): Either[String, ujson.Obj] = v match {
     case o: ujson.Obj => Right(o)

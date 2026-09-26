@@ -11,7 +11,7 @@ import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
-import grit.core.store.{Entry, Jot, Payload, StoreError, Tx}
+import grit.core.store.{Entry, EntryStore, Jot, Payload, StoreError, Tx}
 import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
 import grit.core.topic.Topic
 
@@ -629,7 +629,8 @@ object Turn {
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
-      sent <- requestOf(system, all, turn, window).map(shape)
+      near <- nearbyOf(entries, window).left.map(storeFailure)
+      sent <- requestOf(system, all, near, turn, window).map(shape)
       _ <- entries
         .insert(
           Entry(
@@ -742,7 +743,8 @@ object Turn {
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
       all <- records.entries.list(turn.conversationId).left.map(storeFailure)
-      base <- requestOf(system, all, turn, window)
+      near <- nearbyOf(records.entries, window).left.map(storeFailure)
+      base <- requestOf(system, all, near, turn, window)
       id <- TurnTopics.writeEvents(
         records.entries,
         records.ledger,
@@ -874,12 +876,31 @@ object Turn {
       window: Window
   ): Either[TurnFailure, ModelRequest] =
     env.db
-      .read(env.records.entries.list(turn.conversationId))
+      .read { (tx: Tx^) ?=>
+        for {
+          all <- env.records.entries.list(turn.conversationId)
+          near <- nearbyOf(env.records.entries, window)
+        } yield requestOf(env.system, all, near, turn, window)
+      }
       .left
       .map(storeFailure)
-      .flatMap(requestOf(env.system, _, turn, window))
+      .flatten
 
-  /** The request [[request]] builds, from `all` of the conversation's entries: what the
+  /** The entries of other conversations `window`'s nearby sections name that still exist.
+    * One gone (its period closed and purged since the window was built) is left out.
+    */
+  private def nearbyOf(entries: EntryStore, window: Window)(using
+      Tx^
+  ): Either[StoreError, Vector[Entry]] =
+    window.nearby
+      .flatMap(_.entries)
+      .foldLeft[Either[StoreError, Vector[Entry]]](Right(Vector.empty)) { (acc, id) =>
+        acc.flatMap(found => entries.get(id).map(found ++ _))
+      }
+
+  /** The request [[request]] builds, from `all` of the conversation's entries and `near`,
+    * the nearby entries that still exist: each nearby section as one user message
+    * ([[Shown.nearby]], a section with none of its entries left dropped), then what the
     * model is shown of the window's entries ([[Shown.of]]: its messages, and a closing entry
     * as one user message), then the turn's own, its tool loop's exchange among them in order.
     * A summary is not shown to the model yet.
@@ -887,10 +908,14 @@ object Turn {
   private def requestOf(
       system: String,
       all: Vector[Entry],
+      near: Vector[Entry],
       turn: TurnRef,
       window: Window
   ): Either[TurnFailure, ModelRequest] = {
     val byId = all.map(e => e.id -> e).toMap
+    val nearById = near.map(e => e.id -> e).toMap
+    val sections =
+      window.nearby.flatMap(n => Shown.nearby(n.place, n.entries.flatMap(nearById.get)))
     window.entries.filterNot(byId.contains) match {
       case missing if missing.nonEmpty =>
         Left(
@@ -905,7 +930,7 @@ object Turn {
           case Payload.Exchange(reply) => reply
           case Payload.Result(result, _) => result
         }
-        Right(ModelRequest(system, shown ++ mine))
+        Right(ModelRequest(system, sections ++ shown ++ mine))
     }
   }
 
@@ -931,7 +956,8 @@ object Turn {
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
-      sent <- requestOf(system, all, turn, window).map(shape)
+      near <- nearbyOf(entries, window).left.map(storeFailure)
+      sent <- requestOf(system, all, near, turn, window).map(shape)
       written <- recorded match {
         case WindowRecord.OwnStep => Right(0)
         case WindowRecord.WithReply => writeWindow(records, turn, window, next.seq, at)
@@ -1017,7 +1043,7 @@ object Turn {
             turn.turnSeq,
             None,
             from + queries.size,
-            Payload.Window(window.entries, recalled),
+            Payload.Window(window.entries, recalled, window.nearby),
             at
           )
         )
