@@ -3,10 +3,20 @@ package grit.models
 import java.net.URI
 import java.time.Duration
 
-import grit.core.model.{Assignment, ModelId, ModelRef, Policy, Upstream}
+import grit.core.model.{
+  Assignment,
+  Effort,
+  ModelId,
+  ModelRef,
+  Pinned,
+  Policy,
+  ReasoningReplay,
+  Upstream
+}
 
 /** How grit reaches OpenRouter for one role: `upstream` alone serves its calls, or whichever
-  * upstream OpenRouter picks when `None`. `toString` never shows the key.
+  * upstream OpenRouter picks when `None`; `effort` is asked of the model when set; earlier
+  * reasoning goes back as `replay` says. `toString` never shows the key.
   */
 final case class OpenRouterConfig(
     apiKey: String,
@@ -14,7 +24,9 @@ final case class OpenRouterConfig(
     maxTokens: Int,
     endpoint: URI,
     timeout: Duration,
-    upstream: Option[Upstream] = None
+    upstream: Option[Upstream] = None,
+    effort: Option[Effort] = None,
+    replay: ReasoningReplay = ReasoningReplay.Details
 ) {
   override def toString: String =
     s"OpenRouterConfig($model, $maxTokens, ${upstream.fold("open")(Upstream.value)}, $endpoint, <key redacted>)"
@@ -98,18 +110,22 @@ object OpenRouterConfig {
     } yield Policy(turn, summary, query)
   }
 
-  /** A role's configuration under `key`: its assignment's model, budget and upstream, with a
-    * five-minute timeout.
+  /** A role's configuration under `key`: its pinned assignment's model, budget, upstream and
+    * effort, its settings' reasoning replay, and a five-minute timeout.
     */
-  def of(key: String, assignment: Assignment): OpenRouterConfig =
+  def of(key: String, pinned: Pinned): OpenRouterConfig = {
+    val a = pinned.assignment
     OpenRouterConfig(
       key,
-      ModelId.value(assignment.ref.model),
-      assignment.maxTokens,
+      ModelId.value(a.ref.model),
+      a.maxTokens,
       Endpoint,
       Duration.ofMinutes(5),
-      assignment.ref.upstream
+      a.ref.upstream,
+      a.effort,
+      pinned.settings.replay
     )
+  }
 
   /** `role`'s configuration for this run: the key, and the [[Seed]]'s policy with `env` laid
     * over it ([[policy]]); `Left` says what is wrong, naming no value.
@@ -119,5 +135,5 @@ object OpenRouterConfig {
       k <- key(env).left.map(_.message)
       seed <- Seed.catalog
       p <- policy(env, seed.policy).left.map(_.message)
-    } yield of(k, role.in(p))
+    } yield of(k, role.in(seed.withPolicy(p).pin))
 }

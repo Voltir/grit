@@ -2,7 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.Upstream
+import grit.core.model.{Effort, ReasoningReplay, Upstream}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 
 import utest.*
@@ -151,6 +151,28 @@ object OpenRouterJsonTests extends TestSuite {
         .toVector
       sent(1)("tool_calls").arr.map(_("id").str).toVector ==> Vector("a", "b", "c")
       sent.drop(2).map(_("tool_call_id").str) ==> Vector("c", "b", "a")
+    }
+
+    test("request: effort asks for reasoning in OpenRouter's words; none asked sends none") {
+      val asked = ModelRequest("s", Vector(Message.User("hi")))
+      Effort.values.toVector.map(e =>
+        OpenRouterJson.request("m", 1, None, asked, effort = Some(e))("reasoning")("effort").str
+      ) ==> Vector("minimal", "low", "medium", "high", "xhigh", "max")
+      assert(!OpenRouterJson.request("m", 1, None, asked).obj.contains("reasoning"))
+    }
+
+    test(
+      "request: reasoning goes back as details, or not at all when the pair's replay is dropped"
+    ) {
+      val reply = OpenRouterJson.response(sampleResponse)
+      def sent(r: ReasoningReplay) = reply.map(m =>
+        OpenRouterJson
+          .request("m", 1, None, ModelRequest("s", Vector(m)), replay = r)("messages")(1)
+          .obj
+      )
+      sent(ReasoningReplay.Details).map(_.get("reasoning_details")) ==> Right(Some(replay))
+      sent(ReasoningReplay.Dropped).map(_.get("reasoning_details")) ==> Right(None)
+      sent(ReasoningReplay.Dropped).map(_.get("tool_calls").isDefined) ==> Right(true)
     }
 
     test("request: arguments that were not JSON go back as a JSON string of what was sent") {

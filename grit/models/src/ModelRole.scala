@@ -1,6 +1,6 @@
 package grit.models
 
-import grit.core.model.{Assignment, Policy}
+import grit.core.model.{Assignment, Pinned, Policy, TurnProfile}
 
 /** What a model is used for, and the environment variables that override its assignment in
   * the [[Policy]] for one run: the model, the output budget and the one upstream.
@@ -22,5 +22,12 @@ enum ModelRole(val modelVar: String, val maxTokensVar: String, val upstreamVar: 
     case Turn => policy.turn
     case Summary => policy.summary
     case Query => policy.query
+  }
+
+  /** This role's pin in `profile`. */
+  def in(profile: TurnProfile): Pinned = this match {
+    case Turn => profile.turn
+    case Summary => profile.summary
+    case Query => profile.query
   }
 }

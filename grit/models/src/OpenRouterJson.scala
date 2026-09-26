@@ -2,7 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.Upstream
+import grit.core.model.{Effort, ReasoningReplay, Upstream}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 
 /** OpenRouter's chat-completions wire format (OpenAI's shape), both ways. Pure. Checked
@@ -14,23 +14,28 @@ object OpenRouterJson {
     * or by whichever upstream OpenRouter picks when `None`. A request with
     * tools names them in `tools`, with `tool_choice` `auto` or `none` (OpenRouter's
     * tool-calling guide: every request of a tool exchange sends the tools again); one
-    * without has neither key. Each tool is sent `strict` as its [[ToolSchema]] says.
+    * without has neither key. Each tool is sent `strict` as its [[ToolSchema]] says. `effort`,
+    * when set, asks the model to reason that hard; an assistant message's reasoning goes back
+    * as `replay` says.
     */
   def request(
       model: String,
       maxTokens: Int,
       upstream: Option[Upstream],
-      request: ModelRequest
+      request: ModelRequest,
+      effort: Option[Effort] = None,
+      replay: ReasoningReplay = ReasoningReplay.Details
   ): ujson.Value = {
     val body = ujson.Obj(
       "model" -> model,
       "max_tokens" -> maxTokens,
       "messages" -> ujson.Arr.from(
         ujson.Obj("role" -> "system", "content" -> request.system) +: request.messages.map(
-          message
+          message(_, replay)
         )
       )
     )
+    effort.foreach(e => body("reasoning") = ujson.Obj("effort" -> effortWord(e)))
     upstream.foreach { u =>
       body("provider") =
         ujson.Obj("order" -> ujson.Arr(Upstream.value(u)), "allow_fallbacks" -> false)
@@ -56,7 +61,17 @@ object OpenRouterJson {
     ujson.Obj("type" -> "function", "function" -> function)
   }
 
-  private def message(m: Message): ujson.Value = m match {
+  /** OpenRouter's word for `e`. */
+  private def effortWord(e: Effort): String = e match {
+    case Effort.Minimal => "minimal"
+    case Effort.Low => "low"
+    case Effort.Medium => "medium"
+    case Effort.High => "high"
+    case Effort.XHigh => "xhigh"
+    case Effort.Max => "max"
+  }
+
+  private def message(m: Message, replay: ReasoningReplay): ujson.Value = m match {
     case Message.User(text) => ujson.Obj("role" -> "user", "content" -> text)
     case Message.ToolResult(callId, content, _) =>
       // The tool role has no error flag; an error is still a result the model reads.
@@ -75,14 +90,18 @@ object OpenRouterJson {
         )
       }
       // Sent back verbatim, as OpenRouter asks, so the model's reasoning carries across
-      // the calls of one turn.
-      val replay = blocks.collectFirst { case AssistantBlock.Reasoning(_, Some(r)) => r }
+      // the calls of one turn; or not at all, for a pair whose replay is dropped.
+      val details = replay match {
+        case ReasoningReplay.Details =>
+          blocks.collectFirst { case AssistantBlock.Reasoning(_, Some(r)) => r }
+        case ReasoningReplay.Dropped => None
+      }
       ujson.Obj.from(
         Vector[(String, ujson.Value)](
           "role" -> "assistant",
           "content" -> (if (text.isEmpty && calls.nonEmpty) ujson.Null else ujson.Str(text))
         ) ++ Option.when(calls.nonEmpty)("tool_calls" -> ujson.Arr.from(calls)) ++
-          replay.map("reasoning_details" -> _)
+          details.map("reasoning_details" -> _)
       )
   }
 

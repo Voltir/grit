@@ -106,10 +106,10 @@ object Main {
         val policy = exitOnLeft(OpenRouterConfig.policy(env, seed.policy).left.map(_.message))
         Some((key, seed.withPolicy(policy).pin))
       }
-    val openRouter = pinned.map((key, p) => OpenRouterConfig.of(key, p.turn.assignment))
+    val openRouter = pinned.map((key, p) => OpenRouterConfig.of(key, p.turn))
     val modelName = openRouter.fold(StubProvider.Model)(_.model)
-    val summaryConfig = pinned.map((key, p) => OpenRouterConfig.of(key, p.summary.assignment))
-    val queryConfig = pinned.map((key, p) => OpenRouterConfig.of(key, p.query.assignment))
+    val summaryConfig = pinned.map((key, p) => OpenRouterConfig.of(key, p.summary))
+    val queryConfig = pinned.map((key, p) => OpenRouterConfig.of(key, p.query))
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
     val stubDelay = exitOnLeft(millis(env, StubDelayVar))
     val topics = exitOnLeft(classifierChoice(env))

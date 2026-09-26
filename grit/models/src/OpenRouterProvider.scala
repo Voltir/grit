@@ -20,7 +20,16 @@ final class OpenRouterProvider(config: OpenRouterConfig) extends Provider {
   def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] =
     guarded {
       val response = http.send(
-        post(OpenRouterJson.request(config.model, config.maxTokens, config.upstream, request)),
+        post(
+          OpenRouterJson.request(
+            config.model,
+            config.maxTokens,
+            config.upstream,
+            request,
+            config.effort,
+            config.replay
+          )
+        ),
         HttpResponse.BodyHandlers.ofString()
       )
       if (response.statusCode == 200) OpenRouterJson.response(ujson.read(response.body))
@@ -35,7 +44,14 @@ final class OpenRouterProvider(config: OpenRouterConfig) extends Provider {
       onDelta: Delta => Unit
   ): Either[ProviderError, Message.Assistant] =
     guarded {
-      val body = OpenRouterJson.request(config.model, config.maxTokens, config.upstream, request)
+      val body = OpenRouterJson.request(
+        config.model,
+        config.maxTokens,
+        config.upstream,
+        request,
+        config.effort,
+        config.replay
+      )
       body("stream") = true
       val response = http.send(post(body), HttpResponse.BodyHandlers.ofLines())
       val lines = response.body

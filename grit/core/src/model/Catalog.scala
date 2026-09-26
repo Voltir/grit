@@ -1,8 +1,8 @@
 package grit.core.model
 
-/** How hard a reasoning model is asked to think. */
+/** How hard a reasoning model is asked to think, from least to most. */
 enum Effort {
-  case Minimal, Low, Medium, High, XHigh
+  case Minimal, Low, Medium, High, XHigh, Max
 }
 
 /** Which pair does one job, with its output budget (`maxTokens`, at least 1) and the effort

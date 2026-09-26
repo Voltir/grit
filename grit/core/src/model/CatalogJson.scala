@@ -108,6 +108,7 @@ object CatalogJson {
       case Effort.Medium => "medium"
       case Effort.High => "high"
       case Effort.XHigh => "xhigh"
+      case Effort.Max => "max"
     }
   )
 

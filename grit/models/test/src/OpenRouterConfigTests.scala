@@ -1,12 +1,19 @@
 package grit.models
 
+import java.time.LocalDate
+
 import grit.core.model.{
   Assignment,
+  Catalog,
   Effort,
+  Known,
   ModelId,
   ModelRef,
   Policy,
+  Profile,
+  ReasoningReplay,
   Settings,
+  Source,
   StrictSchemas,
   Upstream
 }
@@ -37,7 +44,8 @@ object OpenRouterConfigTests extends TestSuite {
       OpenRouterConfig.key(Map("OPENROUTER_API_KEY" -> " ")) ==>
         Left(OpenRouterConfig.Invalid.Empty("OPENROUTER_API_KEY"))
       OpenRouterConfig.key(Map("OPENROUTER_API_KEY" -> "sk-or-secret")) ==> Right("sk-or-secret")
-      val shown = OpenRouterConfig.of("sk-or-secret", seedLike.turn).toString
+      val shown =
+        OpenRouterConfig.of("sk-or-secret", Catalog.of(seedLike, Vector.empty).pin.turn).toString
       assert(!shown.contains("sk-or-secret"))
     }
 
@@ -96,13 +104,16 @@ object OpenRouterConfigTests extends TestSuite {
       )
     }
 
-    test("of: a role's model, budget and upstream") {
-      val c = OpenRouterConfig.of("k", seedLike.summary)
-      (c.model, c.maxTokens, c.upstream.map(Upstream.value)) ==> (
-        "small/one",
-        1024,
-        Some("fireworks")
-      )
+    test("of: a role's model, budget, upstream and effort, and its pair's reasoning replay") {
+      val nick = Source.Declared("nick", LocalDate.of(2026, 9, 25))
+      val dropped = Profile(seedLike.turn.ref, replay = Known.Of(ReasoningReplay.Dropped, nick))
+      val pin = Catalog.of(seedLike, Vector(dropped)).pin
+      val t = OpenRouterConfig.of("k", pin.turn)
+      (t.model, t.maxTokens, t.upstream.map(Upstream.value), t.effort, t.replay) ==>
+        ("big/one", 4096, Some("cerebras/fp16"), Some(Effort.Low), ReasoningReplay.Dropped)
+      val s = OpenRouterConfig.of("k", pin.summary)
+      (s.model, s.maxTokens, s.upstream.map(Upstream.value), s.effort, s.replay) ==>
+        ("small/one", 1024, Some("fireworks"), None, ReasoningReplay.Details)
     }
 
     test(
