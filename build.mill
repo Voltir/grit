@@ -108,11 +108,19 @@ object grit extends Module {
     )
 
     /* Live tests against a throwaway Postgres (Testcontainers; `TestPostgres`), and core's
-     * store contract run against the SQL stores. */
+     * store and durable contracts run against the SQL stores and DBOS. */
     object test extends GritTests with LivePostgres {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
       def mvnDeps = Task {
         super.mvnDeps() ++ Seq(mvn"org.testcontainers:testcontainers-postgresql:2.0.5")
+      }
+      /* CrashFidelityTests halts a child JVM, on this classpath, inside a step. */
+      def forkEnv = Task {
+        super.forkEnv() ++ Map(
+          "GRIT_TEST_CLASSPATH" -> runClasspath().map(_.path.toString).mkString(":"),
+          "GRIT_TEST_JAVA" -> javaHome().map(_.path / "bin" / "java").fold("java")(_.toString),
+          "GRIT_TEST_FORK_ARGS" -> forkArgs().mkString(" ")
+        )
       }
     }
   }
