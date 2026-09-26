@@ -1,19 +1,33 @@
 package grit.lifecycle.close
 
 import grit.core.classify.{Ask, Classifier, ClassifierError, StateJson}
+import grit.core.period.{Balance, Section}
 
-/** Which sections a period's closing needs, asked of a classifier in one call: was the
-  * question answered (the outcome), was a decision settled, a fact stated, is anything left
-  * open. A period of small talk gets the prose alone, and no section.
+/** What a period's closing needs, asked of a classifier in one call, beside what is already
+  * known: was the request answered (the outcome); did it settle a decision or establish a
+  * fact not already known; did it leave something open not already known; did it answer,
+  * finish or overturn anything already known. A period that did none of the last three,
+  * such as a recap or a lookup, is carried with no summary.
   */
 object CloseGate {
 
-  /** A period as the classifier is shown it: `{"transcript": ...}`, its turns in order. */
-  final case class Transcript(text: String)
+  /** A period as the classifier is shown it: `{"already_known": {"open": [...],
+    * "standing": [...]}, "transcript": ...}`, `known`'s open and standing lines, then its
+    * turns in order.
+    */
+  final case class Transcript(known: Balance, text: String)
 
-  given StateJson[Transcript] = StateJson.instance(t => ujson.Obj("transcript" -> t.text))
+  given StateJson[Transcript] = StateJson.instance(t =>
+    ujson.Obj(
+      "already_known" -> ujson.Obj(
+        "open" -> ujson.Arr.from(t.known.in(Section.Open).map(l => ujson.Str(l.text))),
+        "standing" -> ujson.Arr.from(t.known.in(Section.Standing).map(l => ujson.Str(l.text)))
+      ),
+      "transcript" -> t.text
+    )
+  )
 
-  /** The probability of yes at or above which a section is asked for. */
+  /** The probability of yes at or above which a part is asked for. */
   val Threshold = 0.5
 
   private val questions: Ask[Transcript, Asked] =
@@ -25,33 +39,36 @@ object CloseGate {
       )
       .zip(
         Ask.yesNo[Transcript](
-          "Read transcript. Was a decision settled: something chosen, agreed or ruled out?",
+          "Read transcript. Did it settle a decision or establish a fact worth keeping (a " +
+            "name, a number, a path, how something works) that is not already in " +
+            "already_known? Recaps, lookups and lists of earlier activity do not count.",
           None,
           None
         )
       )
       .zip(
         Ask.yesNo[Transcript](
-          "Read transcript. Was a fact stated that would be worth knowing later, such as a " +
-            "name, a number, a location or how something works?",
+          "Read transcript. Did it leave something open (a question unanswered, a task " +
+            "unfinished, a follow-up promised, something not known) that is not already in " +
+            "already_known?",
           None,
           None
         )
       )
       .zip(
         Ask.yesNo[Transcript](
-          "Read transcript. Is anything left open: a question unanswered, a task unfinished, " +
-            "a follow-up promised?",
+          "Read transcript. Did it answer, finish or overturn anything listed in " +
+            "already_known?",
           None,
           None
         )
       )
-      .map { case (((outcome, decisions), facts), open) =>
-        Asked(outcome >= Threshold, decisions >= Threshold, facts >= Threshold, open >= Threshold)
+      .map { case (((outcome, standing), open), settled) =>
+        Asked(outcome >= Threshold, open >= Threshold, standing >= Threshold, settled >= Threshold)
       }
 
-  /** The sections `transcript` needs, as `classifier` answers; [[Asked.Every]], and why,
-    * when it does not answer.
+  /** The parts `transcript` needs, as `classifier` answers; [[Asked.Every]], and why, when it
+    * does not answer.
     */
   def asked(classifier: Classifier^, transcript: Transcript): (Asked, Option[String]) =
     classifier.ask(transcript, questions) match {

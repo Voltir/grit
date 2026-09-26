@@ -62,9 +62,9 @@ private[close] object CloseJournal {
       (a, note) => {
         val o = ujson.Obj(
           "outcome" -> a.outcome,
-          "decisions" -> a.decisions,
-          "facts" -> a.facts,
-          "open" -> a.open
+          "open" -> a.open,
+          "standing" -> a.standing,
+          "settled" -> a.settled
         )
         note.foreach(n => o("note") = n)
         o
@@ -72,15 +72,15 @@ private[close] object CloseJournal {
       v =>
         for {
           o <- v.objOpt.toRight("asked: expected an object")
-          flags <- Vector("outcome", "decisions", "facts", "open")
+          flags <- Vector("outcome", "open", "standing", "settled")
             .foldLeft[Either[String, Vector[Boolean]]](Right(Vector.empty)) { (acc, key) =>
               acc.flatMap(bs =>
                 o.get(key).flatMap(_.boolOpt).map(bs :+ _).toRight(s"asked: missing $key")
               )
             }
           asked <- flags match {
-            case Vector(outcome, decisions, facts, open) =>
-              Right(Asked(outcome, decisions, facts, open))
+            case Vector(outcome, open, standing, settled) =>
+              Right(Asked(outcome, open, standing, settled))
             case _ => Left("asked: expected four flags")
           }
           note <- o.get("note") match {

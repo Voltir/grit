@@ -51,7 +51,7 @@ object RecordLifecycleHistories {
   private def written = new Summariser(_ =>
     Right(
       replyOf(
-        "Summary: We chose staging.\nOutcome: staging\nDecisions:\n- staging first\nOpen:\n- none"
+        "Summary: We chose staging.\nOutcome: staging\nStanding:\n- staging first\nOpen:\n- none\nTouched:\n- s1"
       )
     )
   )
@@ -175,6 +175,14 @@ object RecordLifecycleHistories {
         val id = w.attemptOn(PeriodRef(c, PeriodSeq.First.next)).workflowId
         d.run(id)(
           w.body(new Gate(Some(Vector(0.9, 0.9, 0.1, 0.8))), written, new SetClock(at(3 * Lapsed)))
+        )
+        id
+      },
+      record("close-nothing-new") { (w, d) =>
+        w.turn("where do we deploy?", "staging", "Chose staging.", 0)
+        val id = w.attempt.workflowId
+        d.run(id)(
+          w.body(new Gate(Some(Vector(0.9, 0.1, 0.1, 0.1))), written, new SetClock(at(Lapsed)))
         )
         id
       },

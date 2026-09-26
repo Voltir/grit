@@ -19,14 +19,15 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      changed, so the sweep makes a new attempt on the new deadline; otherwise due, for its
   *      reason, with the balance it opened with and the cap its closing's balance is held
   *      to. The attempt is taken to be enqueued once its deadline had come.
-  *   1. `gate` — which sections the closing needs ([[CloseGate]]); every one when the
-  *      classifier does not answer.
+  *   1. `gate` — what of the closing is new beside the balance the period opened with
+  *      ([[CloseGate]]); every part when the classifier does not answer.
   *   1. `summarise` — the closing: its flows written by the catalog's summary pin
   *      ([[ClosingSummary]]), and the balance it opened with after the writer's edits and
   *      the topics' ([[grit.core.store.EntryTopics.edits]]), held to the cap
   *      ([[grit.core.period.Balance]]); when the model fails, or writes nothing
-  *      readable, the period's per-turn summaries joined as the prose, and the balance
-  *      carried with the topics' edits alone. A close never fails for a model.
+  *      readable, or when the gate found nothing new (and then no model is called), the
+  *      period's per-turn summaries joined as the prose, and the balance carried with the
+  *      topics' edits alone. A close never fails for a model.
   *   1. `seal` — under the lock again: the closing entry, its cost in the ledger, and the
   *      period closed, together; abandoned, writing nothing, when a turn came in meanwhile.
   */
@@ -80,7 +81,7 @@ object Close {
             val gated = d.step(Step.Gate) { () =>
               CloseGate.asked(
                 env.classifier,
-                CloseGate.Transcript(transcript(own(env, attempt, first)))
+                CloseGate.Transcript(known, transcript(own(env, attempt, first)))
               )
             }
             val summarised = d.step(Step.Summarise) { () =>
@@ -171,29 +172,29 @@ object Close {
         .of(prose, outcome, edited.changes ++ fitted.changes)
         .map(Closing(_, fitted.balance))
     }
-    val request = ClosingSummary.request(transcript(entries), asked)
-    val written = for {
-      catalog <- env.models.catalog()
-      reply <- env.models.provider(catalog.pin.summary).complete(request).left.map(_.cause)
-      read <- ClosingSummary
-        .read(reply, asked)
-        .toRight(s"the summary had no prose (stop: ${reply.stop})")
-      closing <- closed(read.prose, read.outcome, read.edits).toRight("the summary had no prose")
-    } yield Summarised(
-      Some(closing),
-      Some(Cost(reply.model, reply.usage, env.records.estimator.request(request))),
-      None
+    val request = ClosingSummary.request(transcript(entries), known, asked)
+    def carried(note: String) = Summarised(
+      fallback(entries.getOrElse(Vector.empty), attempt, first)
+        .flatMap(closed(_, None, Vector.empty)),
+      None,
+      Some(note)
     )
-    written.fold(
-      why =>
-        Summarised(
-          fallback(entries.getOrElse(Vector.empty), attempt, first)
-            .flatMap(closed(_, None, Vector.empty)),
-          None,
-          Some(s"no summary: $why")
-        ),
-      identity
-    )
+    if (asked.nothingNew) carried("nothing new: carried")
+    else {
+      val written = for {
+        catalog <- env.models.catalog()
+        reply <- env.models.provider(catalog.pin.summary).complete(request).left.map(_.cause)
+        read <- ClosingSummary
+          .read(reply, known, asked)
+          .toRight(s"the summary had no prose (stop: ${reply.stop})")
+        closing <- closed(read.prose, read.outcome, read.edits).toRight("the summary had no prose")
+      } yield Summarised(
+        Some(closing),
+        Some(Cost(reply.model, reply.usage, env.records.estimator.request(request))),
+        None
+      )
+      written.fold(why => carried(s"no summary: $why"), identity)
+    }
   }
 
   /** A closing's prose written without a model: the period's per-turn summaries joined;

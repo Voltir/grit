@@ -10,10 +10,11 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   classifier or the summary model reads. Imports nothing else in lifecycle.
 - **`close`** — `Close`: one attempt to close a period, run on the turns' queue under its
   conversation (`grit.dbos.workflow.Closes`): `check` its deadline is still the attempt's,
-  `gate` which sections its closing needs (`CloseGate`, one classifier call), `summarise`
-  it (`ClosingSummary`: the summary role's prompt and a tolerant reader, falling back to
-  the per-turn summaries; the writer's edits and the topics' applied to the balance the
-  period opened with, held to the cap in force), `seal` it with its closing entry. `CloseEnv` is what it works
+  `gate` what of its closing is new beside the balance it opened with (`CloseGate`, one
+  classifier call), `summarise` it (`ClosingSummary`: the summary role's prompt, shown the
+  balance as already known under labels, and a tolerant reader of its flows and edits;
+  with nothing new, or when the model fails, the per-turn summaries as the prose and no
+  model call; the edits and the topics' applied to the balance, held to the cap in force), `seal` it with its closing entry. `CloseEnv` is what it works
   with. ← `transcript`
 - **`settle`** — `Settle`: the one question whether a quiet period is finished, asked
   once per quiet stretch, on the turns' queue under its conversation

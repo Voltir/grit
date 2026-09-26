@@ -10,11 +10,11 @@
     },
     {
       "name": "gate",
-      "output": "{\"outcome\":true,\"decisions\":true,\"facts\":true,\"open\":true,\"note\":\"gate unavailable: no classifier\"}"
+      "output": "{\"outcome\":true,\"open\":true,\"standing\":true,\"settled\":true,\"note\":\"gate unavailable: no classifier\"}"
     },
     {
       "name": "summarise",
-      "output": "{\"closing\":{\"v\":2,\"flows\":{\"prose\":\"x\",\"changes\":[]},\"balance\":{\"open\":[],\"standing\":[],\"topics\":[]}},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":17}}"
+      "output": "{\"closing\":{\"v\":2,\"flows\":{\"prose\":\"x\",\"changes\":[]},\"balance\":{\"open\":[],\"standing\":[],\"topics\":[]}},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":54}}"
     },
     {
       "name": "seal",

@@ -10,11 +10,11 @@
     },
     {
       "name": "gate",
-      "output": "{\"outcome\":true,\"decisions\":true,\"facts\":false,\"open\":true}"
+      "output": "{\"outcome\":true,\"open\":false,\"standing\":true,\"settled\":true}"
     },
     {
       "name": "summarise",
-      "output": "{\"closing\":{\"v\":2,\"flows\":{\"prose\":\"We chose staging.\",\"outcome\":\"staging\",\"changes\":[{\"added\":{\"section\":\"standing\",\"text\":\"staging first\",\"since\":1,\"touched\":1}}]},\"balance\":{\"open\":[],\"standing\":[{\"text\":\"staging first\",\"since\":1,\"touched\":1}],\"topics\":[]}},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":68}}"
+      "output": "{\"closing\":{\"v\":2,\"flows\":{\"prose\":\"We chose staging.\",\"outcome\":\"staging\",\"changes\":[{\"added\":{\"section\":\"standing\",\"text\":\"staging first\",\"since\":1,\"touched\":1}}]},\"balance\":{\"open\":[],\"standing\":[{\"text\":\"staging first\",\"since\":1,\"touched\":1}],\"topics\":[]}},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":105}}"
     },
     {
       "name": "seal",

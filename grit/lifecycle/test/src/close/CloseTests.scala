@@ -4,6 +4,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, PeriodRef, PeriodSeq, WorkflowId}
 import grit.core.period.TestClosings.{balance, line}
 import grit.core.period.{
+  Balance,
   Change,
   CloseReason,
   Closing,
@@ -32,12 +33,10 @@ object CloseTests extends TestSuite {
   private val written =
     """Summary: We chose a deploy target.
       |**Outcome:** staging deploys from main
-      |Decisions:
+      |Standing:
       |- deploy with make stage
       |Open:
-      |- prod
-      |Sources:
-      |- none""".stripMargin
+      |- prod""".stripMargin
 
   private val deploy = line(Section.Standing, "deploy with make stage", 1, 1)
   private val prod = line(Section.Open, "prod", 1, 1)
@@ -49,7 +48,7 @@ object CloseTests extends TestSuite {
         .of(
           "We chose a deploy target.",
           Some("staging deploys from main"),
-          Vector(Change.Added(deploy), Change.Added(prod))
+          Vector(Change.Added(prod), Change.Added(deploy))
         )
         .getOrElse(throw new java.lang.AssertionError("flows")),
       balance(deploy, prod)
@@ -57,8 +56,11 @@ object CloseTests extends TestSuite {
 
   private def answering(text: String) = new Summariser(_ => Right(replyOf(text)))
 
-  /** A gate that says: answered, decided, no fact, something open. */
-  private def gate = new Gate(Some(Vector(0.9, 0.9, 0.1, 0.8)))
+  /** A gate that says: answered, something standing, something open, nothing settled. */
+  private def gate = new Gate(Some(Vector(0.9, 0.9, 0.8, 0.1)))
+
+  /** A gate that says: answered, and nothing new. */
+  private def nothingNew = new Gate(Some(Vector(0.9, 0.1, 0.1, 0.1)))
 
   val tests = Tests {
 
@@ -181,15 +183,15 @@ object CloseTests extends TestSuite {
       summary.requests.size ==> 1
     }
 
-    test("the gate's answers choose the sections asked for; without a classifier, every one") {
+    test("the gate's answers choose the parts asked for; without a classifier, every one") {
       val w = new World
       w.say("hello", 0)
-      val none = answering("Summary: small talk.")
+      val some = answering("Summary: small talk.")
       new InMemoryDurable().run(w.attempt.workflowId)(
-        w.body(new Gate(Some(Vector(0.1, 0.2, 0.3, 0.4))), none, new SetClock(at(Lapsed)))
+        w.body(new Gate(Some(Vector(0.1, 0.2, 0.3, 0.6))), some, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1"
-      none.requests.map(_.system) ==> Vector(
-        ClosingSummary.request("", Asked(false, false, false, false)).system
+      some.requests.map(_.system) ==> Vector(
+        ClosingSummary.request("", Balance.empty, Asked(false, false, false, true)).system
       )
 
       val v = new World
@@ -198,7 +200,89 @@ object CloseTests extends TestSuite {
       new InMemoryDurable().run(v.attempt.workflowId)(
         v.body(new Gate(None), every, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1; gate unavailable: no classifier"
-      every.requests.map(_.system) ==> Vector(ClosingSummary.request("", Asked.Every).system)
+      every.requests.map(_.system) ==>
+        Vector(ClosingSummary.request("", Balance.empty, Asked.Every).system)
+    }
+
+    test(
+      "nothing new: the balance is carried with no summary, its lines untouched, topics as spoken"
+    ) {
+      val w = new World
+      val t0 = w.turn("where do we deploy?", "staging", "Chose staging.", 0)
+      val deployTopic = TopicId("topic:c1:0")
+      w.add(
+        t0,
+        Payload.Topic(
+          Vector(
+            TopicEvent.Opened(deployTopic),
+            TopicEvent.Placed(t0.turnSeq, Weights.whole(deployTopic), Placement.First),
+            TopicEvent.Described(deployTopic, "Deploy Target", "where to deploy")
+          )
+        ),
+        0,
+        "topic:0"
+      )
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, answering(written), new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1"
+      val topic = line(Section.Topics, "Deploy Target", 1, 1)
+      val t1 = w.turn("where did we say we deploy?", "staging", "Recalled staging.", Lapsed + 1)
+      w.add(
+        t1,
+        Payload.Topic(
+          Vector(
+            TopicEvent.Placed(t1.turnSeq, Weights.whole(TopicId.carried(topic.id)), Placement.First)
+          )
+        ),
+        Lapsed + 1,
+        "topic:1"
+      )
+      val p2 = PeriodRef(c, PeriodSeq.First.next)
+      val summary = answering("Summary: a recap.")
+      new InMemoryDurable().run(w.attemptOn(p2).workflowId)(
+        w.body(nothingNew, summary, new SetClock(at(3 * Lapsed)))
+      ) ==> "closed: closing:c1:2; nothing new: carried"
+      summary.requests.size ==> 0
+      w.closingOf(p2).map(_.payload) ==> Some(
+        Payload.Closed(
+          p2.seq,
+          CloseReason.Lapsed,
+          Closing(
+            Flows
+              .of("Recalled staging.", None, Vector())
+              .getOrElse(throw new java.lang.AssertionError("f")),
+            balance(prod, deploy, line(Section.Topics, "Deploy Target", 1, 2))
+          )
+        )
+      )
+    }
+
+    test("an edit naming no known line is listed as ignored, and the line kept") {
+      val w = new World
+      w.turn("where do we deploy?", "staging", "Chose staging.", 0)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, answering(written), new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1"
+      w.turn("prod done?", "yes", "Prod is done.", Lapsed + 1)
+      val p2 = PeriodRef(c, PeriodSeq.First.next)
+      new InMemoryDurable().run(w.attemptOn(p2).workflowId)(
+        w.body(
+          new Gate(Some(Vector(0.9, 0.1, 0.1, 0.9))),
+          answering("Summary: Prod is done.\nResolved:\n- o7: done\n- o1: shipped on Friday"),
+          new SetClock(at(3 * Lapsed))
+        )
+      ) ==> "closed: closing:c1:2"
+      w.closingOf(p2).map(_.payload).collect { case Payload.Closed(_, _, closing) =>
+        (closing.flows.changes, closing.balance)
+      } ==> Some(
+        (
+          Vector(
+            Change.Ignored("o7: done", "names no line"),
+            Change.Resolved(prod, "shipped on Friday")
+          ),
+          balance(deploy)
+        )
+      )
     }
 
     test("a close carries the balance its period opened with, the writer's lines added to it") {
@@ -254,7 +338,7 @@ object CloseTests extends TestSuite {
               .of(
                 "We chose a deploy target.",
                 Some("staging deploys from main"),
-                Vector(Change.Added(deploy), Change.Added(prod), Change.Refused(prod))
+                Vector(Change.Added(prod), Change.Added(deploy), Change.Refused(prod))
               )
               .getOrElse(throw new java.lang.AssertionError("flows")),
             balance(deploy)
