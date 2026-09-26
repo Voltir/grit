@@ -24,31 +24,21 @@ object CloseGateTests extends TestSuite {
       (asked, asked.nothingNew, note) ==> (Asked(true, false, false, false), true, None)
     }
 
-    test("the classifier is shown what is already known beside the transcript") {
+    test("the classifier is shown what is already known and what came from elsewhere") {
       val known = TestClosings.balance(
         TestClosings.line(Section.Open, "backup frequency?", 1, 1),
         TestClosings.line(Section.Standing, "exiftool renames photos", 1, 1),
         TestClosings.line(Section.Topics, "Photo Rename", 1, 1)
       )
+      // The state's keys are what the classifier reads the question against.
       StateJson[CloseGate.Transcript].json(
-        CloseGate.Transcript(known, Vector.empty, "User: hi")
+        CloseGate.Transcript(known, Vector("[fs:/a] User: flaky"), "User: hi")
       ) ==>
         ujson.Obj(
           "already_known" -> ujson.Obj(
             "open" -> ujson.Arr("backup frequency?"),
             "standing" -> ujson.Arr("exiftool renames photos")
           ),
-          "known_elsewhere" -> ujson.Arr(),
-          "transcript" -> "User: hi"
-        )
-    }
-
-    test("the classifier is shown what the period's windows showed from elsewhere") {
-      StateJson[CloseGate.Transcript].json(
-        CloseGate.Transcript(Balance.empty, Vector("[fs:/a] User: flaky"), "User: hi")
-      ) ==>
-        ujson.Obj(
-          "already_known" -> ujson.Obj("open" -> ujson.Arr(), "standing" -> ujson.Arr()),
           "known_elsewhere" -> ujson.Arr("[fs:/a] User: flaky"),
           "transcript" -> "User: hi"
         )

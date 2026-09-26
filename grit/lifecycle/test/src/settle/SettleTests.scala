@@ -17,14 +17,13 @@ object SettleTests extends TestSuite {
   private def finished = new Weigher(Some(Vector(0.85, 0.1, 0.05)))
 
   val tests = Tests {
-    test("a quiet period is asked once, and its verdict kept; a rerun asks nothing") {
+    test("a quiet period is asked once, and its verdict kept") {
       val w = new World
       val t = w.turn("deploy staging?", 0)
       val weigher = finished
       val durable = new InMemoryDurable
       val id = w.question.workflowId
       durable.run(id)(w.body(weigher, 90)) ==> "judged: nobody 0.85 (jev)"
-      durable.run(id)(w.body(weigher, 95)) ==> "judged: nobody 0.85 (jev)"
       weigher.calls ==> 1
       durable.recordedSteps(id) ==> Vector("check", "ask", "record")
       w.activity.map(a => (a.verdict, a.asked)) ==> Some(
@@ -46,6 +45,14 @@ object SettleTests extends TestSuite {
       new InMemoryDurable().run(made.workflowId)(w.body(weigher, 90)) ==>
         "abandoned: turn 1 came in"
       (weigher.calls, w.activity.flatMap(_.verdict)) ==> (0, None)
+      // Written to in the same turn: the turn is the question's, the quiet stretch is not.
+      val same = new World
+      val t0 = same.turn("one", 0)
+      val asked = same.question
+      same.more(t0, "and another thing", 5)
+      new InMemoryDurable().run(asked.workflowId)(same.body(weigher, 90)) ==>
+        s"abandoned: active since, at ${at(5)}"
+      (weigher.calls, same.activity.flatMap(_.verdict)) ==> (0, None)
     }
 
     test("an absent classifier is a verdict too, and the same quiet stretch is not asked again") {

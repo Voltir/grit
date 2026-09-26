@@ -52,6 +52,7 @@ object PostingTests extends TestSuite {
         )
   }
 
+  /** Writes straight through to the in-memory stores, never rolled back. */
   private final class FakeJot extends Jot {
     def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
       TestTx.fake
@@ -161,7 +162,7 @@ object PostingTests extends TestSuite {
       w.run(Vector(digest), PostRef(digest.name, 1, w.cursor(digest), 0)) ==> "posted 1"
     }
 
-    test("a new version clears the plugin's documents and posts every closed period again") {
+    test("a new version posts every closed period again") {
       val w = new World(2)
       w.run(
         Vector(new Recorder(name("digest"), 1)),

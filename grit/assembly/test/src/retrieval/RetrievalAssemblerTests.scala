@@ -68,17 +68,19 @@ object RetrievalAssemblerTests extends TestSuite {
   )
 
   /** Answers every search with the entries `ids` (`t{turn}:{seq}`), best first in the order
-    * given, whatever it is asked; keeps what it was asked. The ranking is the test's, not a
-    * scorer's whose ties would decide it.
+    * given, scored by `scores` where the test states them, whatever it is asked; keeps what
+    * it was asked. The ranking is the test's, not a scorer's whose ties would decide it.
     */
   private final class Scripted(ids: String*) extends EntrySearch {
     // What nearby answers: each conversation's hits, as (conversation, id, score), best
-    // first; and every nearby search it was asked for, as the periods and query.
+    // first, ids as `{name}:t{turn}:{seq}`, only those from its open period's first turn on;
+    // and every nearby search it was asked for, as the periods and query.
     @caps.unsafe.untrackedCaptures
     var near = Vector.empty[(ConversationId, String, Double)]
     @caps.unsafe.untrackedCaptures
     var nearAsked = Vector.empty[NearAsked]
-    // What search scores its hits, best first, when the test states them.
+    // What search scores its hits, best first, when the test states them; unstated, the
+    // hits score by rank, the last 1.
     @caps.unsafe.untrackedCaptures
     var scores = Vector.empty[Double]
     // Only ever holds immutable vectors; nothing reads it but the test that owns it.
@@ -100,7 +102,7 @@ object RetrievalAssemblerTests extends TestSuite {
         EntrySearch.Hit(
           EntryId(id),
           TurnRef(conversation, TurnSeq(turn)),
-          (ids.size - rank).toDouble
+          scores.lift(rank).getOrElse((ids.size - rank).toDouble)
         )
       })
     }
@@ -109,9 +111,14 @@ object RetrievalAssemblerTests extends TestSuite {
         Tx^
     ): Either[StoreError, Vector[EntrySearch.Hit]] = {
       nearAsked = nearAsked :+ NearAsked(open.map(_.conversation).toList, query)
-      Right(near.filter((c, _, _) => open.exists(_.conversation == c)).map { (c, id, score) =>
-        val turn = id.dropWhile(_ != 't').drop(1).takeWhile(_ != ':').toLongOption.getOrElse(0L)
-        EntrySearch.Hit(EntryId(id), TurnRef(c, TurnSeq(turn)), score)
+      Right(near.flatMap { (c, id, score) =>
+        val turn = Option
+          .when(id.contains(":t"))(id.drop(id.lastIndexOf(":t") + 2).takeWhile(_ != ':'))
+          .flatMap(_.toLongOption)
+          .getOrElse(sys.error(s"not a nearby id: $id"))
+        open
+          .find(o => o.conversation == c && TurnSeq.value(o.first) <= turn)
+          .map(_ => EntrySearch.Hit(EntryId(id), TurnRef(c, TurnSeq(turn)), score))
       })
     }
   }
@@ -225,7 +232,7 @@ object RetrievalAssemblerTests extends TestSuite {
       writer.requests ==> Vector()
     }
 
-    test("a closed period elsewhere, or a place out of scope, is never searched") {
+    test("a place out of scope is never searched") {
       val world = store(ask)
       elsewhere(world, "gone", close = true, exchange("flaky", "TZ"))
       val kept = elsewhere(world, "kept", close = false, exchange("flaky", "TZ"))
@@ -329,15 +336,20 @@ object RetrievalAssemblerTests extends TestSuite {
 
     test("a blank query, or a failed writer, falls back to the linear window and says why") {
       val entries = store(buried*)
-      val none = assemble(entries, new Writer(Some("  \n ")), budget = 60)
-      none.entries ==> linear(entries, 60).entries
-      none.notes.collect { case AssemblyNote.FellBack(why) => why } ==> Vector(
-        "the query was blank"
+      val blank = new Writer(Some("  \n "))
+      val none = assemble(entries, blank, budget = 60)
+      none ==> Window(
+        linear(entries, 60).entries,
+        Vector(
+          AssemblyNote.Queried(
+            "",
+            "writer",
+            Usage(Tokens(40), Tokens(6), Tokens.Zero, None),
+            blank.requests.headOption.map(CharEstimate.request).getOrElse(Tokens.Zero)
+          ),
+          AssemblyNote.FellBack("the query was blank")
+        )
       )
-      assert(none.notes.exists {
-        case AssemblyNote.Queried("", "writer", _, _) => true
-        case _ => false
-      })
 
       val failed = assemble(entries, new Writer(None), budget = 60)
       failed ==> Window(

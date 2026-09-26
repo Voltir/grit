@@ -128,6 +128,23 @@ object SettleFixtures {
       TurnRef(c, next.turnSeq)
     }
 
+    /** A user message added to `turn` at `minutes`: activity with no new turn. */
+    def more(turn: TurnRef, text: String, minutes: Long): Unit = {
+      given Tx = TestTx.fake
+      val next = entries.lockNext(c).getOrElse(sys.error("in-memory"))
+      entries.insert(
+        Entry(
+          EntryId(s"more:$text"),
+          c,
+          turn.turnSeq,
+          None,
+          next.seq,
+          Payload.Message(Message.User(text)),
+          at(minutes)
+        )
+      )
+    }
+
     def activity: Option[Activity] =
       periods.activity(p1)(using TestTx.fake).getOrElse(None)
 

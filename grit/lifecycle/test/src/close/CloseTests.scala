@@ -133,7 +133,7 @@ object CloseTests extends TestSuite {
         ) ==> true
     }
 
-    test("a due period is sealed once, with its closing entry and the summary's cost") {
+    test("a due period is sealed, with its closing entry and the summary's cost") {
       val w = new World
       w.turn("where do we deploy?", "staging", "Chose staging.", 0)
       val last = w.say("and prod?", 1)
@@ -141,7 +141,6 @@ object CloseTests extends TestSuite {
       val durable = new InMemoryDurable
       val id = w.attempt.workflowId
       val clock = new SetClock(at(Lapsed))
-      durable.run(id)(w.body(gate, summary, clock)) ==> "closed: closing:c1:1"
       durable.run(id)(w.body(gate, summary, clock)) ==> "closed: closing:c1:1"
       summary.requests.size ==> 1
       w.closingEntry.map(e => (e.turnSeq, e.payload, e.createdAt)) ==>

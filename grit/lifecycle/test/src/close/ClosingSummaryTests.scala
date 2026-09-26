@@ -100,10 +100,12 @@ object ClosingSummaryTests extends TestSuite {
           "Dropped: then one line per item, each starting with \"- \": each known line that no longer holds and was not resolved, as its label, a colon and why.\n" +
           "Touched: then one line per item, each starting with \"- \": each known line this stretch relied on or confirmed, as its label (\"- s3\").\n" +
           "Write none under a part with nothing in it.")
-      r.messages.map(_.toString) ==> Vector(
-        "User(Already known:\nOpen:\n[o1] How often should the laptop backup run?\n" +
-          "[o2] Which drive holds the off-site copy?\nStanding:\n[s1] Photos are renamed with exiftool" +
-          s"\n\nTranscript:\n${"x" * 40_000})"
+      r.messages ==> Vector(
+        grit.core.message.Message.User(
+          "Already known:\nOpen:\n[o1] How often should the laptop backup run?\n" +
+            "[o2] Which drive holds the off-site copy?\nStanding:\n[s1] Photos are renamed with exiftool" +
+            s"\n\nTranscript:\n${"x" * 40_000}"
+        )
       )
       ClosingSummary.request(
         "t",
@@ -131,6 +133,8 @@ object ClosingSummaryTests extends TestSuite {
             "[fs:/home/nick/api] Assistant: Pin TZ=UTC.\n\nTranscript:\nt"
         )
       )
+      // A reply built from another conversation's turns reads, to the writer, like something
+      // this period established, and was added to this conversation's balance.
       assert(
         ClosingSummary.System.contains(
           "Lines known elsewhere were shown from the person's other conversations: an Open or " +
@@ -139,14 +143,19 @@ object ClosingSummaryTests extends TestSuite {
       )
     }
 
+    // Each rule answers a failure a real-use run's closings showed.
     test("the prompt carries the rules: a line reads alone, only what is new, absence is open") {
       assert(
+        // A line that leaned on the transcript ("that file") meant nothing once it was gone.
         ClosingSummary.System.contains("Every line you add must read alone"),
+        // Lines already known were written again, and compounded.
         ClosingSummary.System.contains("Add only what this stretch newly established"),
+        // A lost detail became a Standing "fact" that it was never recorded.
         ClosingSummary.System.contains(
           "Something not known, not found or not recorded is an Open item (what to find out), " +
             "never a Standing fact."
         ),
+        // recent_activity's lines were copied into the balance as facts.
         ClosingSummary.System.contains(
           "never record a recap, a lookup, or a list of earlier activity"
         )

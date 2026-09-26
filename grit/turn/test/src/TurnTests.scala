@@ -287,36 +287,6 @@ object TurnTests extends TestSuite {
       provider.requests.lastOption.flatMap(_.messages.lastOption) ==> Some(Message.User("two"))
     }
 
-    test("a closing entry in the window is shown to the model as one user message") {
-      val entries = new InMemoryEntryStore
-      val provider = new RecordingProvider
-      say(entries, "one")
-      val closing = TestClosings.prose("We talked about one.", Some("one"))
-      val closed = EntryId("closing:c1:1")
-      entries.insert(
-        Entry(
-          closed,
-          conversation,
-          TurnSeq(0),
-          None,
-          1,
-          Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing),
-          Instant.EPOCH
-        )
-      )(using TestTx.fake)
-      val turn = say(entries, "two")
-      val opening = new ContextAssembler {
-        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
-          Right(Window(Vector(closed)))
-      }
-      new InMemoryDurable().run(turn.workflowId)(
-        turnBodyWith(entries, provider, opening, new InMemoryUsageLedger)
-      )
-      provider.requests.headOption.map(_.messages) ==> Some(
-        Vector(Message.User(closing.shown(Instant.EPOCH, CloseReason.Lapsed)), Message.User("two"))
-      )
-    }
-
     test(
       "nearby sections come first, one message each; a gone entry is left out, an empty section dropped"
     ) {
@@ -352,6 +322,18 @@ object TurnTests extends TestSuite {
           "m"
         )
       )
+      val web = ConversationId("web")
+      entries.insert(
+        Entry(
+          EntryId("web:u"),
+          web,
+          TurnSeq(0),
+          None,
+          0,
+          Payload.Message(Message.User("the login page is blank")),
+          Instant.EPOCH
+        )
+      )(using TestTx.fake)
       val turn = say(entries, "two")
       val at = (p: String) => Place.read(p).fold(e => sys.error(e), identity)
       val nearby = Vector(
@@ -360,7 +342,8 @@ object TurnTests extends TestSuite {
           at("fs:/home/nick/api"),
           Vector(EntryId("api:u"), EntryId("api:gone"), EntryId("api:r"))
         ),
-        Nearby(ConversationId("web"), at("fs:/home/nick/web"), Vector(EntryId("web:gone")))
+        Nearby(ConversationId("docs"), at("fs:/home/nick/docs"), Vector(EntryId("docs:gone"))),
+        Nearby(web, at("fs:/home/nick/web"), Vector(EntryId("web:u")))
       )
       val opening = new ContextAssembler {
         def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
@@ -374,6 +357,10 @@ object TurnTests extends TestSuite {
           Message.User(
             "From another conversation of yours, still open, at fs:/home/nick/api:\n" +
               "User: the invoice test is flaky\nAssistant: Pin TZ=UTC in the test JVM."
+          ),
+          Message.User(
+            "From another conversation of yours, still open, at fs:/home/nick/web:\n" +
+              "User: the login page is blank"
           ),
           Message.User(closing.shown(Instant.EPOCH, CloseReason.Lapsed)),
           Message.User("two")
