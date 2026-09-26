@@ -38,14 +38,18 @@ In dependency order:
   `Section`s, changed by `Edit`s into `Change`s and held to a cap) and its stored form
   `ClosingJson`, a `CloseOrdinal` (close order across
   conversations), and a `Purgeable` period's workflows. ← `id`
+- **`retention`** — what grit deletes, and when (ADR 0014): a `Target` (a period's raw
+  entries, a superseded closing, a quiet conversation, a plugin's posting runs, its documents
+  from before a restart, a plugin no longer enabled), its stored form, which window each kind
+  of target is kept for, and a `Tombstone`, the decision to delete one. ← `id`, `period`
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),
   `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
   `ConversationStore`, `UsageLedger`, `ModelProfileStore` (which profile each turn ran
   under), `ModelFactStore` (facts about pairs approved at runtime), `PeriodStore` (which
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
-  settings in force), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
-  conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`
+  settings in force), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
+  conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`, `retention`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
   `PluginDocs` (one plugin's documents, and no other's), `PluginCursors` (how

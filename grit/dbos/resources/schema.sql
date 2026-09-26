@@ -233,3 +233,22 @@ CREATE TABLE IF NOT EXISTS grit.plugin_cursors (
     version INTEGER NOT NULL,
     ordinal BIGINT NOT NULL
 );
+
+-- What grit has decided to delete (grit.core.store.Tombstones, ADR 0014): nothing deletes a row
+-- or a workflow history no tombstone names. One row per target, `kind` and `target` as
+-- grit.core.retention.Target stores them. Pending until the collector deletes the target
+-- (`collected_at`) or finds it alive (`collected_at` and `spared`); `deferred_at` is when it
+-- last could not be collected, which puts it behind the ones due since.
+CREATE TABLE IF NOT EXISTS grit.tombstones (
+    kind         TEXT NOT NULL,
+    target       TEXT NOT NULL,
+    written_at   TIMESTAMPTZ NOT NULL,
+    deferred_at  TIMESTAMPTZ,
+    collected_at TIMESTAMPTZ,
+    spared       BOOLEAN NOT NULL DEFAULT false,
+    PRIMARY KEY (kind, target),
+    CHECK (NOT spared OR collected_at IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tombstones_due ON grit.tombstones
+    (kind, (coalesce(deferred_at, written_at)), target COLLATE "C") WHERE collected_at IS NULL;

@@ -27,6 +27,7 @@ import grit.core.store.{
   Origin,
   PeriodStore,
   StoreError,
+  Tombstones,
   Tx,
   UsageLedger
 }
@@ -43,6 +44,7 @@ import grit.dbos.sql.{
   SqlPeriodStore,
   SqlPluginCursors,
   SqlPluginDocs,
+  SqlTombstones,
   SqlUsageLedger
 }
 import grit.dbos.workflow.{Closes, Posts, Settles, Turns}
@@ -82,6 +84,9 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
 
   /** The lifecycle's settings in force. */
   val lifecycle: LifecycleStore = new SqlLifecycleStore()
+
+  /** What grit has decided to delete, and when. */
+  val tombstones: Tombstones = new SqlTombstones
 
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource)

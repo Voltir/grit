@@ -1,0 +1,60 @@
+package grit.core.retention
+
+import scala.concurrent.duration.*
+
+import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, PluginName}
+import grit.core.period.{CloseOrdinal, Windows}
+
+import utest.*
+
+object TargetTests extends TestSuite {
+
+  private val p = PeriodRef(ConversationId("c1"), PeriodSeq.of(3).getOrElse(PeriodSeq.First))
+  private val digest = PluginName.of("digest").fold(sys.error, identity)
+  private val seven = CloseOrdinal.of(7).getOrElse(CloseOrdinal.Start)
+
+  private val all: Vector[Target] = Vector(
+    Target.Raw(p),
+    Target.Superseded(p),
+    Target.Quiet(p),
+    Target.PostRuns(digest, 2, seven),
+    Target.Restarted(digest),
+    Target.Disabled(digest)
+  )
+
+  val tests = Tests {
+    // The stored form: tombstones already written must keep reading after any change.
+    test("each target is stored as its kind's name and a key") {
+      all.map(t => (t.kind.name, Target.key(t))) ==> Vector(
+        ("raw", "c1:3"),
+        ("superseded", "c1:3"),
+        ("quiet", "c1:3"),
+        ("post-runs", "digest:2:7"),
+        ("restarted", "digest"),
+        ("disabled", "digest")
+      )
+    }
+
+    test("a stored target reads back as itself, and a malformed key says why") {
+      all.map(t =>
+        Target.Kind.named(t.kind.name).toRight("kind").flatMap(Target.read(_, Target.key(t)))
+      ) ==>
+        all.map(Right(_))
+      Target.read(Target.Kind.Raw, "c1:0") ==> Left("raw c1:0: not a period")
+      Target.read(Target.Kind.PostRuns, "digest:2") ==> Left("post-runs digest:2: not a run's")
+      Target.Kind.named("purge") ==> None
+    }
+
+    test("raw, posting runs and restarts keep the raw window; the rest the ledger's") {
+      val w = Windows.of(1.hour, 2.days, 9.days).fold(sys.error, identity)
+      Target.Kind.values.toVector.map(k => (k, k.retention(w))) ==> Vector(
+        (Target.Kind.Raw, 2.days),
+        (Target.Kind.Superseded, 9.days),
+        (Target.Kind.Quiet, 9.days),
+        (Target.Kind.PostRuns, 2.days),
+        (Target.Kind.Restarted, 2.days),
+        (Target.Kind.Disabled, 9.days)
+      )
+    }
+  }
+}
