@@ -45,12 +45,20 @@ object AppCaptureTests extends TestSuite {
       |  Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onCopy((t, _) => { term.copyOut(t); t.length })
       |""".stripMargin
 
+  private val CaptureChecking = "-language:experimental.captureChecking"
+
   private def rejected(errs: List[String]): Boolean =
     errs.exists(e => e.contains("term") && (e.contains("capture") || e.contains("Found:")))
 
+  /** Rejected with an error naming `term`, and compiled cleanly with capture checking off:
+    * refused for what it captures, not for a mistake of its own.
+    */
+  private def rejectedForCapture(body: String): Boolean =
+    rejected(errors(body)) && errors(body, options.filterNot(_ == CaptureChecking)).isEmpty
+
   val tests = Tests {
     test("the probe environment is set") {
-      assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
+      assert(classpath.nonEmpty, options.contains(CaptureChecking))
     }
 
     test("pure handlers, a mapped subtree and a view value compile") {
@@ -67,45 +75,51 @@ object AppCaptureTests extends TestSuite {
     }
 
     test("a handler that captures the terminal is rejected") {
-      val errs = errors(copies)
-      assert(rejected(errs))
+      assert(rejectedForCapture(copies))
     }
 
     test("a key handler that captures the terminal is rejected") {
-      val errs = errors(
-        """def screen(term: Terminal): Node[Int] =
+      assert(
+        rejectedForCapture(
+          """def screen(term: Terminal): Node[Int] =
           |  Node.column(Node.fixed(1) -> Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom))
           |    .onKey(_ => { term.flush(); None })
           |""".stripMargin
+        )
       )
-      assert(rejected(errs))
     }
 
     test("Node.map with a capturing function is rejected") {
-      val errs = errors(
-        """def screen(term: Terminal, n: Node[Int]): Node[Int] = n.map(i => { term.flush(); i })
+      assert(
+        rejectedForCapture(
+          """def screen(term: Terminal, n: Node[Int]): Node[Int] = n.map(i => { term.flush(); i })
           |""".stripMargin
+        )
       )
-      assert(rejected(errs))
     }
 
     test("a message that smuggles a thunk over the terminal is rejected at the handler") {
-      val errs = errors(
-        """enum Msg { case Run(f: () => Unit) }
+      assert(
+        rejectedForCapture(
+          """enum Msg { case Run(f: () => Unit) }
           |def pane(term: Terminal): Node[Msg] =
           |  Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onCopy((t, _) => Msg.Run(() => term.copyOut(t)))
           |""".stripMargin
+        )
       )
-      assert(rejected(errs))
     }
 
     test("a view value that closes over the terminal is rejected") {
-      val errs = errors(
-        """def app(term: Terminal): Int -> Node[Int] = s =>
+      // No control without capture checking: `->` itself needs it.
+      assert(
+        rejected(
+          errors(
+            """def app(term: Terminal): Int -> Node[Int] = s =>
           |  Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom).onScroll(_ => { term.flush(); s })
           |""".stripMargin
+          )
+        )
       )
-      assert(rejected(errs))
     }
 
     test("an app's handlers built in its own methods are pure with no ceremony") {
@@ -123,15 +137,16 @@ object AppCaptureTests extends TestSuite {
     }
 
     test("an app that holds the terminal is rejected where it is defined") {
-      val errs = errors(
-        """final class Leaky(term: Terminal) extends App[Int, N] {
+      assert(
+        rejectedForCapture(
+          """final class Leaky(term: Terminal) extends App[Int, N] {
           |  def init: (Int, Effect[N]) = (0, Effect.NoOp)
           |  def update(m: N, s: Int): (Int, Effect[N]) = { term.flush(); (s + m.n, Effect.NoOp) }
           |  def view(s: Int): Node[N] = Node.doc(PaneKey.of("k"), Doc.empty, Anchor.Bottom)
           |}
           |""".stripMargin
+        )
       )
-      assert(rejected(errs))
     }
 
     test("a message that carries the terminal is rejected where it is declared") {
@@ -167,11 +182,6 @@ object AppCaptureTests extends TestSuite {
           |""".stripMargin
       )
       assert(errs.exists(_.contains("does not conform to upper bound scala.caps.Pure")))
-    }
-
-    test("capture checking is what rejects the capturing handler") {
-      val errs = errors(copies, options.filterNot(_ == "-language:experimental.captureChecking"))
-      assert(errs.isEmpty)
     }
   }
 }
