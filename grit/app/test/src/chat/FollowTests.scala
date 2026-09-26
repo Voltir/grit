@@ -32,6 +32,10 @@ object FollowTests extends TestSuite {
     )
   )
 
+  /** A turn running, having recorded `recorded`. The step names here and in what the screen
+    * is told ("assemble", "record-window", "ask:0:0") are grit.turn's (`Turn.Step`,
+    * `Turn.running`), not Follow's: these tests pin that Follow passes them on.
+    */
   private def running(recorded: String*): TurnStatus =
     TurnStatus.Running(recorded.toVector.map(RecordedStep(_, None, None)))
 
