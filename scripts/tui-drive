@@ -1,0 +1,839 @@
+#!/usr/bin/env python3
+"""Drive grit.app's TUI in a pty, one named session at a time, across many commands.
+
+A real-use run types into the TUI, waits minutes for a close, kills the engine
+mid-step and restarts it, and reads the painted screen throughout. Each of those is a
+separate command here. A background daemon per session owns the pty, feeds everything
+grit paints into a terminal emulator (pyte, which parses escape sequences split across
+reads, unlike tui-gate.py's Vt), and answers requests on a unix socket.
+
+    scripts/tui-drive start api --cwd ~/Projects/api -- GRIT_SETTLE=1m GRIT_IDLE=4m
+    scripts/tui-drive type api "what did we decide about backups?" --enter
+    scripts/tui-drive wait api 'resolved \\(' --timeout 180
+    scripts/tui-drive screen api
+    scripts/tui-drive kill api            # SIGKILL the JVM (a crash mid-step)
+    scripts/tui-drive restart api         # the same command, env and directory again
+    scripts/tui-drive stop api            # ctrl-q, then escalate; checks the stamp is gone
+    scripts/tui-drive ps                  # sessions, and any stamped JVM with no session
+
+Rules it enforces, so a brief doesn't have to:
+  - The database is grit_agent unless --db names another; `grit` is refused (an engine
+    on it would recover Nick's in-flight turns).
+  - Only one live session per database: two engines on one database recover each
+    other's workflows. --shared-db overrides, for a test of exactly that.
+  - Every JVM carries -Dgrit.drive.stamp=<stamp>; stop, kill and ps touch only JVMs
+    with a stamp this tool made, never grit or Metals running elsewhere.
+  - Preferences go to the session's own XDG_CONFIG_HOME, so `/theme` in a run never
+    changes the developer's next launch.
+  - The model key comes from grit reading the repo's .env (GRIT_ENV_FILE, absolute, since
+    the session's directory may be another repo). This tool never reads .env itself.
+    --stub runs the stub model instead: no .env, no key.
+
+State lives in $GRIT_DRIVE_DIR (default /tmp/grit-tui-drive-<uid>/<name>/): meta.json,
+raw.log (every byte grit wrote), grit.log (GRIT_LOG) and daemon.log.
+`wait` matches only lines that were not on the screen when input was last sent (--any for
+the whole screen), so a divider left from an earlier close cannot pass for a new one.
+Screen lines have trailing spaces stripped. Text or a pattern that starts with `-` goes
+after `--`. The emulator has no alternate screen: after grit exits, the screen shows its
+last frame plus whatever it printed on the way out. raw.log grows without bound.
+
+Exit codes: 0 ok; 1 a wait timed out or a check failed; 2 no such session, or its
+process is gone; 3 refused or bad usage.
+"""
+
+import argparse
+import errno
+import fcntl
+import json
+import os
+import pty
+import re
+import select
+import shutil
+import signal
+import socket
+import struct
+import subprocess
+import sys
+import termios
+import time
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+STATE = Path(os.environ.get("GRIT_DRIVE_DIR", f"/tmp/grit-tui-drive-{os.getuid()}"))
+STAMP_PROP = "grit.drive.stamp"
+# How long a daemon keeps serving the last screen after its JVM exits, unless stopped.
+LINGER = 900
+KEYS = {
+    "enter": "\r", "esc": "\x1b", "tab": "\t", "backspace": "\x7f", "space": " ",
+    "up": "\x1b[A", "down": "\x1b[B", "right": "\x1b[C", "left": "\x1b[D",
+    "home": "\x1b[H", "end": "\x1b[F", "pgup": "\x1b[5~", "pgdn": "\x1b[6~",
+    "shift-tab": "\x1b[Z", "delete": "\x1b[3~",
+}
+
+
+class Refused(Exception):
+    """A request this tool will not carry out (exit 3)."""
+
+
+class Gone(Exception):
+    """No such session, or its daemon is not answering (exit 2)."""
+
+
+def die(code, msg):
+    print(f"tui-drive: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+# ---- sessions on disk
+
+
+def session_dir(name):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,40}", name):
+        raise Refused(f"bad session name {name!r}: letters, digits, _ . - only")
+    return STATE / name
+
+
+def sock_path(name):
+    """The session's socket: under /tmp and short, since a unix socket path is capped at
+    108 bytes and $GRIT_DRIVE_DIR may be deep; keyed by the state dir so two dirs never share."""
+    import hashlib
+    key = hashlib.sha1(str(STATE).encode()).hexdigest()[:8]
+    return Path(f"/tmp/gtd-{os.getuid()}-{key}-{name}.sock")
+
+
+def read_meta(name):
+    p = session_dir(name) / "meta.json"
+    try:
+        return json.loads(p.read_text())
+    except FileNotFoundError:
+        raise Gone(f"no session {name!r} (see `tui-drive ps`)")
+
+
+def write_meta(d, meta):
+    tmp = d / "meta.json.tmp"
+    tmp.write_text(json.dumps(meta, indent=1))
+    tmp.replace(d / "meta.json")
+
+
+def alive(pid):
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    # A zombie still answers kill 0; it has exited.
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except OSError:
+        return False
+
+
+def stamped_pids(stamp=None):
+    """PIDs of programs this tool started (any stamp, or exactly `stamp`): a java whose
+    first argument is the stamp, or the `sh -c CMD STAMP` of --exec. Anything else that
+    merely mentions a stamp (a grep, an editor) is not one."""
+    out = []
+    for p in Path("/proc").iterdir():
+        if not p.name.isdigit():
+            continue
+        try:
+            argv = [a.decode(errors="replace") for a in (p / "cmdline").read_bytes().split(b"\0")]
+            exe = os.path.basename(os.readlink(p / "exe"))
+        except OSError:
+            continue
+        at = 1 if exe == "java" else 3 if exe in ("sh", "dash", "bash") and argv[1:2] == ["-c"] else None
+        if at is None or len(argv) <= at or not argv[at].startswith(f"-D{STAMP_PROP}="):
+            continue
+        found = argv[at].split("=", 1)[1]
+        if stamp is None or found == stamp:
+            out.append((int(p.name), found))
+    return out
+
+
+def in_session(sid):
+    """PIDs whose session id is `sid`: a program and everything it started (pty.fork makes
+    the program a session leader), including what outlived it."""
+    out = []
+    for p in Path("/proc").iterdir():
+        if not p.name.isdigit():
+            continue
+        try:
+            stat = (p / "stat").read_text().rsplit(")", 1)[1].split()
+        except OSError:
+            continue
+        if int(stat[3]) == sid and stat[0] != "Z":  # fields after comm: state ppid pgrp session
+            out.append(int(p.name))
+    return out
+
+
+def live_sessions():
+    out = []
+    if not STATE.exists():
+        return out
+    for d in sorted(STATE.iterdir()):
+        try:
+            m = json.loads((d / "meta.json").read_text())
+        except (OSError, ValueError):
+            continue
+        out.append(m)
+    return out
+
+
+# ---- talking to a daemon
+
+
+def ask(name, req, timeout=10):
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    try:
+        s.connect(str(sock_path(name)))
+    except OSError as e:
+        raise Gone(f"session {name!r} has no daemon answering ({e.strerror or e}); "
+                   f"stopped, or it crashed: see {session_dir(name) / 'daemon.log'}")
+    s.sendall(json.dumps(req).encode() + b"\n")
+    buf = b""
+    while True:
+        chunk = s.recv(65536)
+        if not chunk:
+            break
+        buf += chunk
+    s.close()
+    resp = json.loads(buf.decode())
+    if "error" in resp:
+        raise Refused(resp["error"])
+    return resp
+
+
+# ---- the daemon
+
+
+def set_size(fd, rows, cols):
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+
+def run_daemon(d, meta):
+    import ctypes
+    import hashlib
+    import pyte  # only the daemon needs it; fail here with a clear log line if missing
+
+    rows, cols = meta["rows"], meta["cols"]
+    env = meta["env"]
+    pid, fd = pty.fork()
+    if pid == 0:
+        try:
+            # If the daemon dies for any reason, the kernel kills the program: a JVM left
+            # writing into a pty nobody drains would freeze mid-turn.
+            ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGKILL)  # PR_SET_PDEATHSIG
+            if os.getppid() == 1:
+                os._exit(125)
+            set_size(0, rows, cols)
+            os.chdir(meta["cwd"])
+            os.execve(meta["argv"][0], meta["argv"], env)
+        finally:
+            os._exit(127)
+    set_size(fd, rows, cols)
+    fcntl.fcntl(fd, fcntl.F_SETFL, fcntl.fcntl(fd, fcntl.F_GETFL) | os.O_NONBLOCK)
+    screen = pyte.Screen(cols, rows)
+    stream = pyte.ByteStream(screen)
+    pending = bytearray()  # input for the program, written as the pty takes it
+
+    def reply(data):
+        # Device status and attribute queries (DSR, DA) are answered, as a terminal would.
+        pending.extend(data.encode() if isinstance(data, str) else data)
+
+    screen.write_process_input = reply
+    meta.update(pid=pid, daemon=os.getpid(), started=time.time(), exit=None)
+    write_meta(d, meta)
+    raw = open(d / "raw.log", "ab")
+    sp = sock_path(meta["name"])
+    sp.unlink(missing_ok=True)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(str(sp))
+    srv.listen(8)
+    srv.setblocking(False)
+    sock_ino = sp.stat().st_ino
+    st = dict(changed=time.time(), serial=0, digest=b"", sent=None, exit=None, exited=None)
+    pty_open = True
+    quit_daemon = False
+
+    def lines():
+        return [l.rstrip() for l in screen.display]
+
+    def handle(req):
+        nonlocal quit_daemon
+        op = req.get("op")
+        running = st["exit"] is None
+        if op == "screen":
+            return {"lines": lines(), "cursor": [screen.cursor.y + 1, screen.cursor.x + 1],
+                    "changed": st["changed"], "serial": st["serial"], "sent": st["sent"],
+                    "running": running, "exit": st["exit"]}
+        if op == "send":
+            if not running or not pty_open:
+                return {"error": "the program has exited; nothing to send to"}
+            if len(pending) > 1 << 20:
+                return {"error": "the program is not reading its input (1 MiB pending)"}
+            pending.extend(req["data"].encode())
+            # What was on the screen when this input went in: `wait` looks only at lines
+            # that were not, so a match left over from before the keystroke never passes.
+            st["sent"] = lines()
+            return {"ok": True, "serial": st["serial"]}
+        if op == "resize":
+            screen.resize(req["rows"], req["cols"])
+            set_size(fd, req["rows"], req["cols"])
+            return {"ok": True}
+        if op == "quit":
+            quit_daemon = True
+            return {"ok": True}
+        return {"error": f"unknown op {op!r}"}
+
+    def serve(conn):
+        conn.settimeout(1)
+        try:
+            buf = b""
+            while not buf.endswith(b"\n"):
+                chunk = conn.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+            resp = handle(json.loads(buf.decode()))
+        except Exception as e:  # a bad or slow request never takes the daemon down
+            resp = {"error": f"{type(e).__name__}: {e}"}
+        try:
+            conn.sendall(json.dumps(resp).encode())
+        except OSError:
+            pass
+        conn.close()
+
+    try:
+        while not quit_daemon:
+            rd = [srv] + ([fd] if pty_open else [])
+            wr = [fd] if pty_open and pending else []
+            ready, writable, _ = select.select(rd, wr, [], 0.5)
+            if fd in writable:
+                try:
+                    n = os.write(fd, pending)
+                    del pending[:n]
+                except BlockingIOError:
+                    pass
+                except OSError:
+                    pending.clear()
+            if fd in ready:
+                try:
+                    data = os.read(fd, 65536)
+                except BlockingIOError:
+                    data = None
+                except OSError as e:
+                    if e.errno != errno.EIO:
+                        raise
+                    data = b""
+                if data:
+                    raw.write(data)
+                    raw.flush()
+                    stream.feed(data)
+                    digest = hashlib.sha1("\n".join(screen.display).encode()).digest()
+                    if digest != st["digest"]:  # a repaint of the same frame is not a change
+                        st.update(digest=digest, changed=time.time(), serial=st["serial"] + 1)
+                elif data == b"":
+                    pty_open = False
+                    os.close(fd)
+            if srv in ready:
+                try:
+                    conn, _ = srv.accept()
+                    serve(conn)
+                except BlockingIOError:
+                    pass
+            if st["exit"] is None:
+                done, status = os.waitpid(pid, os.WNOHANG)
+                if done:
+                    st["exit"] = (f"signal {os.WTERMSIG(status)}" if os.WIFSIGNALED(status)
+                                  else f"exit {os.WEXITSTATUS(status)}")
+                    st["exited"] = time.time()
+                    update_meta(d, os.getpid(), exit=st["exit"], exited=st["exited"])
+            elif time.time() - st["exited"] > LINGER:
+                break
+    finally:
+        # However the daemon ends, it takes its program's process group with it.
+        if st["exit"] is None:
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except OSError:
+                pass
+        srv.close()
+        try:
+            if sp.stat().st_ino == sock_ino:
+                sp.unlink()
+        except OSError:
+            pass
+        update_meta(d, os.getpid(), daemon=None)
+
+
+def update_meta(d, daemon_pid, **fields):
+    """Set `fields` in meta.json, only while it still names `daemon_pid` as its daemon: a
+    daemon replaced by `restart` never writes over its successor's meta."""
+    try:
+        m = json.loads((d / "meta.json").read_text())
+    except (OSError, ValueError):
+        return
+    if m.get("daemon") != daemon_pid:
+        return
+    m.update(fields)
+    write_meta(d, m)
+
+
+# ---- commands
+
+
+def mill_path(target):
+    out = subprocess.run(["./mill", "--ticker", "false", "show", target], cwd=REPO,
+                         env={**os.environ, "JAVA_OPTS": ""}, capture_output=True, text=True)
+    if out.returncode != 0:
+        raise Refused(f"./mill show {target} failed:\n{out.stderr[-2000:]}")
+    return out.stdout
+
+
+def build():
+    """(java, classpath) for grit.app. With no session live, compile it first (Mill's output
+    in build.log) and cache the answer. With one live, use the cache: a compile rewrites the
+    classes a running JVM loads lazily, and takes Mill's lock from whoever holds it."""
+    STATE.mkdir(parents=True, exist_ok=True)
+    cache = STATE / "build.json"
+    if any(alive(m.get("pid")) for m in live_sessions()):
+        try:
+            c = json.loads(cache.read_text())
+            print("a session is live: not rebuilding; using the build it started from", file=sys.stderr)
+            return c["java"], c["cp"]
+        except (OSError, ValueError, KeyError):
+            raise Refused("a session is live and there is no cached build; stop it first")
+    log = STATE / "build.log"
+    with open(log, "w") as f:
+        r = subprocess.run(["./mill", "--ticker", "false", "grit.app.compile"], cwd=REPO,
+                           env={**os.environ, "JAVA_OPTS": ""}, stdout=f, stderr=subprocess.STDOUT)
+    if r.returncode != 0:
+        raise Refused(f"grit.app does not compile; see {log}")
+    cp = ":".join(re.findall(r'"q?ref:v[01]:[0-9a-f]+:([^"]+)"', mill_path("grit.app.runClasspath")))
+    home = mill_path("grit.app.javaHome").strip().splitlines()[-1].strip('"').split(":", 3)[-1]
+    java = Path(home) / "bin" / "java"
+    if not cp or not java.exists():
+        raise Refused(f"could not resolve grit.app's classpath or JDK (java={java})")
+    cache.write_text(json.dumps({"java": str(java), "cp": cp}))
+    return str(java), cp
+
+
+def db_of(url):
+    m = re.match(r"jdbc:postgresql://[^/]+/([^?]+)", url)
+    if not m:
+        raise Refused(f"cannot read a database name from {url!r}")
+    return m.group(1)
+
+
+def cmd_start(a, reuse=None):
+    d = session_dir(a.name)
+    if reuse is None and d.exists():
+        try:
+            old = json.loads((d / "meta.json").read_text())
+        except (OSError, ValueError):
+            old = None
+        if old and alive(old.get("pid")):
+            raise Refused(f"session {a.name!r} is running; stop it, or `restart` it")
+        if old and alive(old.get("daemon")):
+            raise Refused(f"session {a.name!r} has exited, and its daemon is still serving the "
+                          "last screen; `restart` it, or `stop` it first")
+    if reuse is None:
+        extra = {}
+        for kv in a.env:
+            if "=" not in kv:
+                raise Refused(f"expected KEY=VALUE after --, got {kv!r}")
+            k, v = kv.split("=", 1)
+            extra[k] = v
+        url = extra.pop("GRIT_DATABASE_URL", f"jdbc:postgresql://localhost:5432/{a.db}")
+        cwd = str(Path(a.cwd).expanduser().resolve())
+        if not Path(cwd).is_dir():
+            raise Refused(f"no directory {cwd}")
+        conf = dict(name=a.name, cwd=cwd, rows=a.rows, cols=a.cols, url=url, stub=a.stub,
+                    extra=extra, args=a.args or [], exec=a.exec)
+    else:
+        conf = reuse
+    db = db_of(conf["url"])
+    if db == "grit" and not getattr(a, "allow_grit", False):
+        raise Refused("refusing the `grit` database: it is Nick's (--allow-grit if he asked)")
+    if not getattr(a, "shared_db", False):
+        for m in live_sessions():
+            if m["name"] != conf["name"] and alive(m.get("pid")) and db_of(m["url"]) == db:
+                raise Refused(f"session {m['name']!r} is live on {db}: two engines on one database "
+                              "recover each other's workflows (--shared-db to do it anyway)")
+    d.mkdir(parents=True, exist_ok=True)
+    stamp = f"{conf['name']}-{os.getpid()}-{int(time.time())}"
+    env = {k: v for k, v in os.environ.items()}
+    env.update(TERM="xterm-256color", GRIT_DATABASE_URL=conf["url"], GRIT_LOG=str(d / "grit.log"),
+               XDG_CONFIG_HOME=str(d / "config"))
+    env.pop("JAVA_OPTS", None)
+    if conf["stub"]:
+        env["GRIT_ENV_FILE"] = "/dev/null"
+        env.pop("OPENROUTER_API_KEY", None)
+    else:
+        env["GRIT_ENV_FILE"] = str(REPO / ".env")
+    env.update(conf["extra"])
+    if conf.get("exec"):
+        # Testing the driver itself: a shell command, stamped through its $0.
+        argv = ["/bin/sh", "-c", conf["exec"], f"-D{STAMP_PROP}={stamp}"]
+    else:
+        java, cp = build()
+        argv = [java, f"-D{STAMP_PROP}={stamp}", "--sun-misc-unsafe-memory-access=allow",
+                "--enable-native-access=ALL-UNNAMED", "-cp", cp, "grit.app.main.Main", *conf["args"]]
+    meta = dict(conf, stamp=stamp, argv=argv, env=env, pid=None, daemon=None, exit=None)
+    write_meta(d, meta)
+    sock_path(conf["name"]).unlink(missing_ok=True)
+    # Double fork: the daemon outlives this command and belongs to no terminal.
+    if os.fork() == 0:
+        os.setsid()
+        if os.fork() == 0:
+            log = os.open(d / "daemon.log", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+            nul = os.open(os.devnull, os.O_RDONLY)
+            os.dup2(nul, 0)
+            os.dup2(log, 1)
+            os.dup2(log, 2)
+            try:
+                run_daemon(d, meta)
+            except Exception:
+                import traceback
+                traceback.print_exc()
+            os._exit(0)
+        os._exit(0)
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        try:
+            m = json.loads((d / "meta.json").read_text())
+            if m.get("pid") and sock_path(conf["name"]).exists():
+                print(f"started {conf['name']}: pid {m['pid']}, stamp {stamp}, db {db}, cwd {conf['cwd']}"
+                      f"{' (stub model)' if conf['stub'] else ''}")
+                if getattr(a, "ready", None):
+                    a.pattern, a.timeout, a.gone, a.stable, a.any = a.ready, a.ready_timeout, False, None, False
+                    return cmd_wait(a)
+                return 0
+        except (OSError, ValueError):
+            pass
+        time.sleep(0.2)
+    raise Gone(f"the daemon for {conf['name']!r} did not come up; see {d / 'daemon.log'}")
+
+
+def cmd_restart(a):
+    m = read_meta(a.name)
+    if alive(m.get("pid")):
+        raise Refused(f"{a.name!r} is still running (pid {m['pid']}): stop or kill it first")
+    if alive(m.get("daemon")):
+        try:
+            ask(a.name, {"op": "quit"})
+        except (Gone, Refused):
+            pass
+        deadline = time.time() + 5
+        while time.time() < deadline and alive(m["daemon"]):
+            time.sleep(0.1)
+        if alive(m["daemon"]):
+            raise Refused(f"the old daemon (pid {m['daemon']}) did not exit; see daemon.log")
+    conf = {k: m.get(k) for k in ("name", "cwd", "rows", "cols", "url", "stub", "extra", "args", "exec")}
+    return cmd_start(a, reuse=conf)
+
+
+def cmd_type(a):
+    data = a.text + ("\r" if a.enter else "")
+    if a.slow:
+        for ch in data:
+            ask(a.name, {"op": "send", "data": ch})
+            time.sleep(a.slow)
+    else:
+        ask(a.name, {"op": "send", "data": data})
+    return 0
+
+
+def cmd_key(a):
+    seq = ""
+    for k in a.keys:
+        m = re.fullmatch(r"ctrl-([a-z])", k)
+        if m:
+            seq += chr(ord(m.group(1)) - 96)
+        elif m := re.fullmatch(r"alt-(.)", k):
+            seq += "\x1b" + m.group(1)
+        elif k in KEYS:
+            seq += KEYS[k]
+        else:
+            raise Refused(f"unknown key {k!r}; known: {', '.join(KEYS)}, ctrl-a..z, alt-x")
+    ask(a.name, {"op": "send", "data": seq})
+    return 0
+
+
+def cmd_click(a):
+    b = {"left": 0, "middle": 1, "right": 2}[a.button]
+    press = f"\x1b[<{b};{a.col};{a.row}M"
+    release = f"\x1b[<{b};{a.col};{a.row}m"
+    ask(a.name, {"op": "send", "data": press})
+    time.sleep(0.05)
+    ask(a.name, {"op": "send", "data": release})
+    return 0
+
+
+def show(resp, grep=None, trim=True):
+    lines = resp["lines"]
+    if trim:
+        while lines and not lines[-1]:
+            lines = lines[:-1]
+    for i, l in enumerate(lines, 1):
+        if grep is None or re.search(grep, l):
+            print(f"{i:>3}│{l}")
+
+
+def cmd_screen(a):
+    r = ask(a.name, {"op": "screen"})
+    show(r, a.grep)
+    state = "running" if r["running"] else f"exited ({r['exit']})"
+    print(f"--- {a.name}: {state}, cursor {r['cursor'][0]}:{r['cursor'][1]}, "
+          f"last paint {time.time() - r['changed']:.1f}s ago", file=sys.stderr)
+    return 0
+
+
+def cmd_wait(a):
+    rx = re.compile(a.pattern) if a.pattern else None
+    deadline = time.time() + a.timeout
+    r = None
+    while time.time() < deadline:
+        r = ask(a.name, {"op": "screen"})
+        lines = r["lines"]
+        if not a.any and not a.gone and r["sent"] is not None:
+            # Only lines not on the screen when input was last sent: a divider or reply
+            # left over from before the keystroke must not satisfy the wait.
+            before = {}
+            for l in r["sent"]:
+                before[l] = before.get(l, 0) + 1
+            fresh = []
+            for l in lines:
+                if before.get(l, 0):
+                    before[l] -= 1
+                else:
+                    fresh.append(l)
+            lines = fresh
+        text = "\n".join(lines)
+        found = bool(rx.search(text)) if rx else True
+        if a.gone:
+            found = not found
+        quiet = a.stable is None or time.time() - r["changed"] >= a.stable
+        if found and quiet:
+            if rx and not a.gone:
+                for l in lines:
+                    if rx.search(l):
+                        print(l)
+                        break
+                else:
+                    print("(matched across lines)")
+            return 0
+        if not r["running"] and not a.gone:
+            show(r)
+            die(2, f"{a.name} exited ({r['exit']}) before {a.pattern!r} appeared")
+        time.sleep(0.25)
+    if r:
+        show(r)
+    what = f"{'no ' if a.gone else ''}{a.pattern!r}" if a.pattern else "a quiet screen"
+    die(1, f"timed out after {a.timeout}s waiting for {what}"
+           f"{f' stable {a.stable}s' if a.stable else ''} in {a.name}")
+
+
+def signal_stamped(m, sig):
+    """Send `sig` to the session's program and everything it started (its process group),
+    but only while the program still carries the session's stamp: a reused pid is never
+    signalled."""
+    pid = m.get("pid")
+    if not pid or not alive(pid):
+        return False
+    if (pid, m["stamp"]) not in stamped_pids(m["stamp"]):
+        raise Refused(f"pid {pid} no longer carries stamp {m['stamp']}; not signalling it")
+    os.killpg(pid, sig)
+    return True
+
+
+def cmd_kill(a):
+    m = read_meta(a.name)
+    sig = getattr(signal, f"SIG{a.signal.upper()}", None) if not a.signal.isdigit() else int(a.signal)
+    if sig is None:
+        raise Refused(f"unknown signal {a.signal}")
+    if not signal_stamped(m, sig):
+        die(2, f"{a.name}'s JVM is not running")
+    deadline = time.time() + 10
+    while time.time() < deadline and alive(m["pid"]):
+        time.sleep(0.1)
+    print(f"{a.name}: sent {a.signal} to {m['pid']}; "
+          f"{'still running' if alive(m['pid']) else 'exited'}")
+    return 0
+
+
+def cmd_stop(a):
+    m = read_meta(a.name)
+    pid = m.get("pid")
+    how = "was not running"
+    if alive(pid):
+        try:
+            ask(a.name, {"op": "send", "data": "\x11"})  # ctrl-q
+        except (Gone, Refused):
+            pass
+        how = "quit (ctrl-q)"
+        steps = [(a.grace, None), (5, signal.SIGTERM), (5, signal.SIGKILL)]
+        for wait, sig in steps:
+            if sig is not None and alive(pid):
+                signal_stamped(m, sig)
+                how = f"sent {sig.name}"
+            deadline = time.time() + wait
+            while time.time() < deadline and alive(pid):
+                time.sleep(0.1)
+            if not alive(pid):
+                break
+    if alive(m.get("daemon")):
+        try:
+            ask(a.name, {"op": "quit"})
+        except (Gone, Refused):
+            pass
+    left = stamped_pids(m["stamp"]) + [(p, "started by it") for p in in_session(pid or -1)]
+    if left:
+        die(1, f"{a.name}: still running: {left} (`tui-drive ps --kill-orphans`)")
+    print(f"stopped {a.name}: {how}; nothing it started is still running")
+    return 0
+
+
+def cmd_ps(a):
+    sessions = live_sessions()
+    known = {m["stamp"] for m in sessions}
+    for m in sessions:
+        state = ("running" if alive(m.get("pid")) else
+                 f"exited ({m.get('exit') or '?'})" if m.get("pid") else "not started")
+        daemon = "daemon up" if alive(m.get("daemon")) else "no daemon"
+        print(f"{m['name']:<14} {state:<20} {daemon:<10} pid {m.get('pid')!s:<8} "
+              f"db {db_of(m['url']):<12} {m['cwd']}")
+    orphans = [(p, s) for p, s in stamped_pids() if s not in known or
+               not any(m["stamp"] == s and m.get("pid") == p for m in sessions)]
+    for m in sessions:
+        if m.get("pid") and not alive(m["pid"]):
+            orphans += [(p, f"left by {m['name']}") for p in in_session(m["pid"])]
+    for p, s in orphans:
+        print(f"ORPHAN pid {p} stamp {s}" + (" (killed)" if a.kill_orphans else ""))
+        if a.kill_orphans:
+            os.kill(p, signal.SIGKILL)
+    if not sessions and not orphans:
+        print("no sessions")
+    return 1 if orphans and not a.kill_orphans else 0
+
+
+def cmd_forget(a):
+    m = read_meta(a.name)
+    if alive(m.get("pid")) or alive(m.get("daemon")):
+        raise Refused(f"{a.name!r} is still running; stop it first")
+    shutil.rmtree(session_dir(a.name))
+    print(f"forgot {a.name}")
+    return 0
+
+
+def cmd_resize(a):
+    ask(a.name, {"op": "resize", "rows": a.rows, "cols": a.cols})
+    return 0
+
+
+def main():
+    p = argparse.ArgumentParser(prog="tui-drive", description=__doc__.split("\n\n")[0])
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("start", help="build grit.app and start it in a pty under NAME")
+    s.add_argument("name")
+    s.add_argument("--cwd", default=str(REPO), help="the directory grit runs in (its place)")
+    s.add_argument("--rows", type=int, default=50)
+    s.add_argument("--cols", type=int, default=160)
+    s.add_argument("--db", default="grit_agent")
+    s.add_argument("--stub", action="store_true", help="the stub model: no .env, no key")
+    s.add_argument("--allow-grit", action="store_true")
+    s.add_argument("--shared-db", action="store_true")
+    s.add_argument("--ready", metavar="REGEX", help="then wait for REGEX on the screen")
+    s.add_argument("--ready-timeout", type=float, default=60)
+    s.add_argument("--arg", dest="args", action="append", help="an argument to Main (one-shot mode)")
+    s.add_argument("--exec", metavar="SH", help="run this shell command instead of grit (tests the driver)")
+    s.add_argument("env", nargs="*", metavar="KEY=VALUE", help="after --: extra environment")
+    s.set_defaults(fn=cmd_start)
+
+    s = sub.add_parser("restart", help="start NAME again, as it was started")
+    s.add_argument("name")
+    s.add_argument("--ready", metavar="REGEX")
+    s.add_argument("--ready-timeout", type=float, default=60)
+    s.add_argument("--allow-grit", action="store_true")
+    s.add_argument("--shared-db", action="store_true")
+    s.set_defaults(fn=cmd_restart)
+
+    s = sub.add_parser("type", help="type TEXT into the TUI")
+    s.add_argument("name")
+    s.add_argument("text")
+    s.add_argument("--enter", action="store_true", help="then press Enter")
+    s.add_argument("--slow", type=float, metavar="SECONDS", help="one key at a time, this far apart")
+    s.set_defaults(fn=cmd_type)
+
+    s = sub.add_parser("key", help="press keys: enter esc tab up down ... ctrl-q alt-m")
+    s.add_argument("name")
+    s.add_argument("keys", nargs="+")
+    s.set_defaults(fn=cmd_key)
+
+    s = sub.add_parser("click", help="click at ROW COL (1-based, SGR mouse)")
+    s.add_argument("name")
+    s.add_argument("row", type=int)
+    s.add_argument("col", type=int)
+    s.add_argument("--button", choices=["left", "middle", "right"], default="left")
+    s.set_defaults(fn=cmd_click)
+
+    s = sub.add_parser("screen", help="print the painted screen")
+    s.add_argument("name")
+    s.add_argument("--grep", metavar="REGEX", help="only the lines matching")
+    s.set_defaults(fn=cmd_screen)
+
+    s = sub.add_parser("wait", help="wait for REGEX on the screen (or its absence, or quiet)")
+    s.add_argument("name")
+    s.add_argument("pattern", nargs="?")
+    s.add_argument("--timeout", type=float, default=60)
+    s.add_argument("--gone", action="store_true", help="wait until REGEX is no longer shown")
+    s.add_argument("--any", action="store_true",
+                   help="match the whole screen; by default only lines that appeared since input was last sent")
+    s.add_argument("--stable", type=float, metavar="SECONDS",
+                   help="and nothing painted for this long (a reply finished streaming)")
+    s.set_defaults(fn=cmd_wait)
+
+    s = sub.add_parser("kill", help="signal the JVM (default KILL: a crash)")
+    s.add_argument("name")
+    s.add_argument("--signal", default="KILL")
+    s.set_defaults(fn=cmd_kill)
+
+    s = sub.add_parser("stop", help="ctrl-q, then TERM, then KILL; verify the stamp is gone")
+    s.add_argument("name")
+    s.add_argument("--grace", type=float, default=15, help="seconds to wait after ctrl-q")
+    s.set_defaults(fn=cmd_stop)
+
+    s = sub.add_parser("ps", help="sessions, and stamped JVMs no session owns")
+    s.add_argument("--kill-orphans", action="store_true")
+    s.set_defaults(fn=cmd_ps)
+
+    s = sub.add_parser("resize", help="resize the pty (a real SIGWINCH)")
+    s.add_argument("name")
+    s.add_argument("rows", type=int)
+    s.add_argument("cols", type=int)
+    s.set_defaults(fn=cmd_resize)
+
+    s = sub.add_parser("forget", help="delete a stopped session's state and logs")
+    s.add_argument("name")
+    s.set_defaults(fn=cmd_forget)
+
+    a = p.parse_args()
+    if a.cmd == "wait" and not a.pattern and a.stable is None:
+        p.error("wait needs a PATTERN, --stable, or both")
+    try:
+        sys.exit(a.fn(a) or 0)
+    except Refused as e:
+        die(3, str(e))
+    except Gone as e:
+        die(2, str(e))
+
+
+if __name__ == "__main__":
+    main()

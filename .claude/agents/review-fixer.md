@@ -27,6 +27,11 @@ touch. Never read `.env`. No model calls unless the brief allows one and states 
 - **Never leave a JVM behind.** Kill only processes you started, by PID; never `pkill` by
   pattern. `./mill shutdown` in the worktree when done. On Mill "Connection refused",
   `./mill shutdown` and retry.
+- **Drive the TUI with `scripts/tui-drive`**, never a driver of your own, for a real-use
+  run: named sessions across many commands (`start`, `type`, `wait`, `screen`, `kill`,
+  `restart`, `stop`, `ps`). It stamps and cleans up the JVMs, defaults to `grit_agent`,
+  and refuses two live sessions on one database. `scripts/tui-drive --help` and its
+  header say how. A bug in it goes in your report; don't work around it.
 - **Stay in scope.** Other agents may be editing other packages; the brief names them. Ideas
   outside the brief go in your report's Parked list, not the code.
 - **Recorded data.** A change to a workflow step's name, order, or any recorded output
