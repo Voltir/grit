@@ -1,5 +1,6 @@
 package grit.app.config
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 
 import utest.*
@@ -51,11 +52,22 @@ object PrefsTests extends TestSuite {
       }
     }
 
-    test("a file that cannot be written says why; one that cannot be read is nothing") {
+    // Not "says why": for a directory that is a file, the JDK's message is the bare path.
+    test("a file that cannot be written is an error, not a throw") {
       inTemp { dir =>
         val blocked = dir.resolve("a-file")
         val _ = Files.writeString(blocked, "not a directory")
         assert(Prefs.save(blocked.resolve("prefs"), Prefs(Some("abyss"))).isLeft)
+      }
+    }
+
+    test("a file that cannot be read, or is not a file, is nothing") {
+      inTemp { dir =>
+        // A theme line, then an é in Latin-1, a byte that is not UTF-8: the whole file is
+        // unreadable, the theme line included.
+        val garbled = dir.resolve("prefs")
+        val _ = Files.writeString(garbled, "theme=abyss\né\n", StandardCharsets.ISO_8859_1)
+        Prefs.load(garbled) ==> Prefs.empty
         Prefs.load(dir) ==> Prefs.empty
       }
     }
