@@ -51,7 +51,7 @@ deleted because a type now says them.
   (`./mill grit.<module>.test`, `.testOnly <Suite>`) while iterating. Not Metals'
   `compile-module`/`test`: Metals serves the main checkout, so from the fixer worktree they
   build and test code that is not yours. At the end, once:
-  `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources`, `./mill __.test`
+  `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources`, `./mill __.test.testCached`
   with 0 warnings (and `scripts/it` if the change touches `grit.dbos`, `schema.sql` or an
   `it` module), `bash scripts/enola-law.sh` (`bash scripts/fetch-enola.sh` first if
   `tools/` lacks enola).

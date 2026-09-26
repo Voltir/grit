@@ -159,11 +159,16 @@ object grit extends Module {
       }
 
       /* Recorded turn histories, one directory per epoch (ADR 0004): TurnReplayTests
-       * replays them, RecordTurnHistories and scripts/capture-history.sh write them.
+       * replays them, RecordTurnHistories and scripts/capture-history.sh write them. Their
+       * content signature rides in the environment, read by no test, so that `testCached`
+       * reruns when a history is added or changed: Mill invalidates on an input's output,
+       * and the directory's path alone never changes.
        * TurnCaptureTests compiles probe sources against turn, with turn's own flags. */
+      def histories = Task.Source(moduleDir / "histories")
       def forkEnv = Task {
         super.forkEnv() ++ Map(
-          "GRIT_HISTORIES" -> (moduleDir / "histories").toString,
+          "GRIT_HISTORIES" -> histories().path.toString,
+          "GRIT_HISTORIES_SIG" -> histories().sig.toString,
           "GRIT_PROBE_CLASSPATH" -> turn.runClasspath().map(_.path.toString).mkString(":"),
           "GRIT_PROBE_OPTIONS" -> turn.scalacOptions().mkString(" ")
         )

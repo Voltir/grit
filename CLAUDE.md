@@ -93,15 +93,19 @@ implementation it stands in for. The `test-janitor` agent reviews test files aga
 ```bash
 ./mill grit.core.test                                   # the module you touched
 ./mill grit.core.test.testOnly grit.core.topic.TopicsTests   # one suite
-./mill __.test                                          # the unit tier: once, last, before committing
+./mill __.test.testCached                               # the unit tier: once, last, before committing
+./mill __.test                                          # the unit tier, every suite rerun
 scripts/it                                              # the integration tier (below)
 ./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources   # before committing
 ```
 
 **Test incrementally.** While iterating, compile and test only the module or suite the
 change touches (or Metals' `compile-module`/`test`, below). The unit tier is the last
-gate at a commit point, run once, not after every edit: it compiles every module, and
-Mill reruns every suite (a test run is a command, never cached).
+gate at a commit point, run once, not after every edit. `testCached` reruns a module's
+suites only when their inputs changed, and never caches a failure; `__.test` reruns them
+all (a flake hunt, a milestone's close). Write `__.test.testCached`: `__.testCached` also
+matches the `it` modules. A file a test reads by path is not an input unless build.mill
+makes its content one (`grit.turn.test`'s `histories` is the pattern).
 
 Braces, never significant indentation — `-no-indent` makes it a compile error.
 
