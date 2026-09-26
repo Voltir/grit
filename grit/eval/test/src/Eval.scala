@@ -235,10 +235,10 @@ object Eval {
     val live: Option[OpenRouterConfig] =
       if (!args.contains("--live")) None
       else
-        OpenRouterConfig.fromEnv(sys.env, ModelRole.Query) match {
+        OpenRouterConfig.forRole(sys.env, ModelRole.Query) match {
           case Right(c) => Some(c)
           case Left(invalid) =>
-            System.err.println(s"--live: ${invalid.message}")
+            System.err.println(s"--live: ${invalid}")
             sys.exit(2)
         }
     val cases = Cases.all.map((name, text) => Case.parse(name, text))

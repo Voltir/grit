@@ -1,0 +1,25 @@
+{
+  "policy": {
+    "turn": { "model": "openai/gpt-oss-120b", "upstream": "cerebras/fp16", "maxTokens": 4096 },
+    "summary": { "model": "openai/gpt-oss-120b", "upstream": "cerebras/fp16", "maxTokens": 1024 },
+    "query": { "model": "openai/gpt-oss-120b", "upstream": "cerebras/fp16", "maxTokens": 1024 }
+  },
+  "profiles": [
+    {
+      "model": "openai/gpt-oss-120b",
+      "upstream": "cerebras/fp16",
+      "strict": {
+        "value": "ignored",
+        "source": { "kind": "measured", "probe": "tool-decoding", "on": "2026-09-25", "runs": 9, "held": 9 }
+      }
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash-20260910",
+      "upstream": "fireworks",
+      "replay": {
+        "value": "details",
+        "source": { "kind": "measured", "probe": "wire-spike", "on": "2026-09-25", "runs": 1, "held": 1 }
+      }
+    }
+  ]
+}

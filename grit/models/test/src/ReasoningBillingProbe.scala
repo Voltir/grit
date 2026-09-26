@@ -23,8 +23,8 @@ object ReasoningBillingProbe {
 
   def main(args: Array[String]): Unit = {
     val _ = args
-    OpenRouterConfig.fromEnv(sys.env, ModelRole.Turn) match {
-      case Left(invalid) => println(invalid.message)
+    OpenRouterConfig.forRole(sys.env, ModelRole.Turn) match {
+      case Left(invalid) => println(invalid)
       case Right(config) => run(config.copy(maxTokens = 600))
     }
   }
@@ -37,7 +37,7 @@ object ReasoningBillingProbe {
         request: ModelRequest,
         host: Option[String]
     ): Either[String, (String, Message.Assistant)] = {
-      val body = OpenRouterJson.request(config.model, config.maxTokens, config.routing, request)
+      val body = OpenRouterJson.request(config.model, config.maxTokens, config.upstream, request)
       host.foreach(h =>
         body("provider") = ujson.Obj("order" -> ujson.Arr(h), "allow_fallbacks" -> false)
       )

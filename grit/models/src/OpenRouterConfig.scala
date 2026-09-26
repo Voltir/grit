@@ -3,33 +3,26 @@ package grit.models
 import java.net.URI
 import java.time.Duration
 
-/** How grit reaches OpenRouter. `toString` never shows the key. */
+import grit.core.model.{Assignment, ModelId, ModelRef, Policy, Upstream}
+
+/** How grit reaches OpenRouter for one role: `upstream` alone serves its calls, or whichever
+  * upstream OpenRouter picks when `None`. `toString` never shows the key.
+  */
 final case class OpenRouterConfig(
     apiKey: String,
     model: String,
     maxTokens: Int,
     endpoint: URI,
     timeout: Duration,
-    routing: Routing = Routing.Open
+    upstream: Option[Upstream] = None
 ) {
   override def toString: String =
-    s"OpenRouterConfig($model, $maxTokens, $routing, $endpoint, <key redacted>)"
+    s"OpenRouterConfig($model, $maxTokens, ${upstream.fold("open")(Upstream.value)}, $endpoint, <key redacted>)"
 }
 
 object OpenRouterConfig {
 
   val KeyVar = "OPENROUTER_API_KEY"
-
-  /** The turn's model when none is named: it reasons, so the `reasoning_details` round trip
-    * is exercised, and at [[DefaultUpstream]] it worked a coding task's tool loop at 0.3 to
-    * 0.6 s a call (a real-use run, 2026-09-25).
-    */
-  val DefaultModel = "openai/gpt-oss-120b"
-
-  /** The one upstream [[DefaultModel]] is pinned to when the turn names no upstreams. It
-    * does not enforce strict schemas, so the default leaves strict off.
-    */
-  val DefaultUpstream: Upstream = Upstream.CerebrasFp16
 
   val Endpoint: URI = URI.create("https://openrouter.ai/api/v1/chat/completions")
 
@@ -37,89 +30,94 @@ object OpenRouterConfig {
     case Missing(variable: String)
     case Empty(variable: String)
     case NotPositive(variable: String)
-    case NotUpstreams(variable: String)
-    case NotABoolean(variable: String)
-
-    /** `strict` is `true` but `upstreams` pins nothing. */
-    case StrictUnpinned(strict: String, upstreams: String)
+    case NotAModel(variable: String)
+    case NotAnUpstream(variable: String)
 
     /** Names the variable, never its value. */
     def message: String = this match {
       case Missing(v) => s"$v is not set"
       case Empty(v) => s"$v is empty"
       case NotPositive(v) => s"$v is not a positive whole number"
-      case NotUpstreams(v) =>
-        s"$v is not a comma-separated list of OpenRouter upstream slugs, such as open-inference/fp8"
-      case NotABoolean(v) => s"$v is neither true nor false"
-      case StrictUnpinned(s, u) =>
-        s"$s is true but $u is unset: strict schemas are enforced per upstream, so pin one"
+      case NotAModel(v) => s"$v is not an OpenRouter model id, such as openai/gpt-oss-120b"
+      case NotAnUpstream(v) =>
+        s"$v is not one OpenRouter upstream slug, such as open-inference/fp8"
     }
   }
 
-  /** `role`'s configuration. The key is `OPENROUTER_API_KEY` (required) for every role.
-    * The model is the role's variable; unset or blank, the turn uses [[DefaultModel]] and
-    * every other role the turn's model. The output budget is the role's `max_tokens` variable,
-    * or its default.
-    *
-    * The routing is the role's upstreams variable, a comma-separated list of [[Upstream]]
-    * slugs ([[Routing.Pinned]], in that order), and its strict variable, `true` or `false`
-    * (unset: `false`; `true` needs upstreams). Unset or blank upstreams are
-    * [[Routing.Open]], except for the turn when its model is [[DefaultModel]] because none
-    * is named: then [[DefaultUpstream]] alone. A role other than the turn that sets none of
-    * its model, upstreams and strict variables routes as the turn does.
-    */
-  def fromEnv(env: Map[String, String], role: ModelRole): Either[Invalid, OpenRouterConfig] =
+  /** The key, `OPENROUTER_API_KEY`: required, and not blank. */
+  def key(env: Map[String, String]): Either[Invalid, String] =
     for {
       key <- env.get(KeyVar).toRight(Invalid.Missing(KeyVar))
       _ <- Either.cond(key.trim.nonEmpty, (), Invalid.Empty(KeyVar))
-      maxTokens <- env.get(role.maxTokensVar) match {
-        case None => Right(role.defaultMaxTokens)
-        case Some(raw) =>
-          raw.trim.toIntOption.filter(_ > 0).toRight(Invalid.NotPositive(role.maxTokensVar))
+    } yield key
+
+  /** `policy` with each role's variables ([[ModelRole]]) laid over its assignment for this run;
+    * a blank variable is unset. A role's model variable names its model and leaves it open
+    * unless its upstream variable names one upstream; its upstream variable alone keeps its
+    * model. A summary or query role that sets neither follows the turn's model and upstream
+    * whenever the turn's variables set either. A budget variable replaces only the budget.
+    */
+  def policy(env: Map[String, String], policy: Policy): Either[Invalid, Policy] = {
+    def set(variable: String): Option[String] = env.get(variable).map(_.trim).filter(_.nonEmpty)
+    def names(role: ModelRole) = set(role.modelVar).isDefined || set(role.upstreamVar).isDefined
+
+    def ref(role: ModelRole, own: ModelRef): Either[Invalid, ModelRef] =
+      for {
+        model <- set(role.modelVar) match {
+          case None => Right(None)
+          case Some(m) => ModelId.of(m).map(Some(_)).toRight(Invalid.NotAModel(role.modelVar))
+        }
+        upstream <- set(role.upstreamVar) match {
+          case None => Right(None)
+          case Some(u) =>
+            Upstream.of(u).map(Some(_)).toRight(Invalid.NotAnUpstream(role.upstreamVar))
+        }
+      } yield (model, upstream) match {
+        case (None, None) => own
+        case (Some(m), u) => ModelRef(m, u)
+        case (None, Some(u)) => own.copy(upstream = Some(u))
       }
-      routing <- routing(env, role)
-    } yield OpenRouterConfig(
+
+    def assignment(role: ModelRole, own: Assignment, turn: ModelRef): Either[Invalid, Assignment] =
+      for {
+        r <-
+          if (role != ModelRole.Turn && !names(role) && names(ModelRole.Turn)) Right(turn)
+          else ref(role, own.ref)
+        max <- set(role.maxTokensVar) match {
+          case None => Right(own.maxTokens)
+          case Some(raw) =>
+            raw.toIntOption.filter(_ > 0).toRight(Invalid.NotPositive(role.maxTokensVar))
+        }
+      } yield own.copy(ref = r, maxTokens = max)
+
+    for {
+      turnRef <- ref(ModelRole.Turn, policy.turn.ref)
+      turn <- assignment(ModelRole.Turn, policy.turn, turnRef)
+      summary <- assignment(ModelRole.Summary, policy.summary, turnRef)
+      query <- assignment(ModelRole.Query, policy.query, turnRef)
+    } yield Policy(turn, summary, query)
+  }
+
+  /** A role's configuration under `key`: its assignment's model, budget and upstream, with a
+    * five-minute timeout.
+    */
+  def of(key: String, assignment: Assignment): OpenRouterConfig =
+    OpenRouterConfig(
       key,
-      model(env, role),
-      maxTokens,
+      ModelId.value(assignment.ref.model),
+      assignment.maxTokens,
       Endpoint,
       Duration.ofMinutes(5),
-      routing
+      assignment.ref.upstream
     )
 
-  private def model(env: Map[String, String], role: ModelRole): String =
-    env.get(role.modelVar).filter(_.trim.nonEmpty).getOrElse {
-      role match {
-        case ModelRole.Turn => DefaultModel
-        case ModelRole.Summary | ModelRole.Query => model(env, ModelRole.Turn)
-      }
-    }
-
-  private def routing(env: Map[String, String], role: ModelRole): Either[Invalid, Routing] = {
-    def set(variable: String): Option[String] = env.get(variable).map(_.trim).filter(_.nonEmpty)
-    val own = Vector(role.modelVar, role.upstreamsVar, role.strictVar).exists(set(_).isDefined)
-    if (role != ModelRole.Turn && !own) routing(env, ModelRole.Turn)
-    else
-      for {
-        strict <- set(role.strictVar) match {
-          case None | Some("false") => Right(false)
-          case Some("true") => Right(true)
-          case Some(_) => Left(Invalid.NotABoolean(role.strictVar))
-        }
-        upstreams <- set(role.upstreamsVar) match {
-          case None if role == ModelRole.Turn && set(role.modelVar).isEmpty =>
-            Right(Vector(DefaultUpstream))
-          case None => Right(Vector.empty[Upstream])
-          case Some(list) =>
-            val slugs = list.split(",", -1).toVector.map(s => Upstream.of(s.trim))
-            if (slugs.forall(_.isDefined)) Right(slugs.flatten)
-            else Left(Invalid.NotUpstreams(role.upstreamsVar))
-        }
-        routed <- upstreams match {
-          case first +: rest => Right(Routing.Pinned(first, rest, strict))
-          case _ if strict => Left(Invalid.StrictUnpinned(role.strictVar, role.upstreamsVar))
-          case _ => Right(Routing.Open)
-        }
-      } yield routed
-  }
+  /** `role`'s configuration for this run: the key, and the [[Seed]]'s policy with `env` laid
+    * over it ([[policy]]); `Left` says what is wrong, naming no value.
+    */
+  def forRole(env: Map[String, String], role: ModelRole): Either[String, OpenRouterConfig] =
+    for {
+      k <- key(env).left.map(_.message)
+      seed <- Seed.catalog
+      p <- policy(env, seed.policy).left.map(_.message)
+    } yield of(k, role.in(p))
 }

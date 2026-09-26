@@ -2,6 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.Upstream
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 
 import utest.*
@@ -49,7 +50,7 @@ object OpenRouterJsonTests extends TestSuite {
       val body = OpenRouterJson.request(
         "openai/gpt-oss-20b",
         512,
-        Routing.Open,
+        None,
         ModelRequest(
           "be brief",
           Vector(
@@ -89,13 +90,13 @@ object OpenRouterJsonTests extends TestSuite {
         ujson.Obj("type" -> "object", "properties" -> ujson.Obj())
       )
       val plain =
-        OpenRouterJson.request("m", 1, Routing.Open, ModelRequest("s", Vector(Message.User("hi"))))
+        OpenRouterJson.request("m", 1, None, ModelRequest("s", Vector(Message.User("hi"))))
       assert(!plain.obj.contains("tools"), !plain.obj.contains("tool_choice"))
       val auto =
         OpenRouterJson.request(
           "m",
           1,
-          Routing.Open,
+          None,
           ModelRequest("s", Vector(Message.User("hi")), Vector(topic))
         )
       auto("tools") ==> ujson.Arr(
@@ -112,7 +113,7 @@ object OpenRouterJsonTests extends TestSuite {
       val off = OpenRouterJson.request(
         "m",
         1,
-        Routing.Open,
+        None,
         ModelRequest("s", Vector(Message.User("hi")), Vector(topic), ToolUse.Off)
       )
       off("tool_choice") ==> ujson.Str("none")
@@ -120,25 +121,19 @@ object OpenRouterJsonTests extends TestSuite {
       val strict = OpenRouterJson.request(
         "m",
         1,
-        Routing.Open,
+        None,
         ModelRequest("s", Vector(Message.User("hi")), Vector(topic.copy(strict = true)))
       )
       strict("tools")(0)("function")("strict") ==> ujson.True
     }
 
-    test("request: pinned upstreams go in order, with no fallbacks; open routing sends none") {
+    test("request: a pinned upstream alone, with no fallbacks; open routing sends none") {
       val asked = ModelRequest("s", Vector(Message.User("hi")))
-      val pinned = for {
-        first <- Upstream.of("open-inference/fp8")
-        second <- Upstream.of("cerebras")
-      } yield Routing.Pinned(first, Vector(second), strict = true)
-      pinned.map(r => OpenRouterJson.request("m", 1, r, asked)("provider")) ==> Some(
-        ujson.Obj(
-          "order" -> ujson.Arr("open-inference/fp8", "cerebras"),
-          "allow_fallbacks" -> false
-        )
-      )
-      assert(!OpenRouterJson.request("m", 1, Routing.Open, asked).obj.contains("provider"))
+      Upstream
+        .of("open-inference/fp8")
+        .map(u => OpenRouterJson.request("m", 1, Some(u), asked)("provider")) ==>
+        Some(ujson.Obj("order" -> ujson.Arr("open-inference/fp8"), "allow_fallbacks" -> false))
+      assert(!OpenRouterJson.request("m", 1, None, asked).obj.contains("provider"))
     }
 
     test("request: several calls and their results keep their ids, in order") {
@@ -151,7 +146,7 @@ object OpenRouterJsonTests extends TestSuite {
       )
       val results = ids.reverse.map(id => Message.ToolResult(id, "ok", isError = false))
       val sent = OpenRouterJson
-        .request("m", 1, Routing.Open, ModelRequest("s", reply +: results))("messages")
+        .request("m", 1, None, ModelRequest("s", reply +: results))("messages")
         .arr
         .toVector
       sent(1)("tool_calls").arr.map(_("id").str).toVector ==> Vector("a", "b", "c")
@@ -165,7 +160,7 @@ object OpenRouterJsonTests extends TestSuite {
         Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
         "m"
       )
-      val sent = OpenRouterJson.request("m", 1, Routing.Open, ModelRequest("s", Vector(reply)))
+      val sent = OpenRouterJson.request("m", 1, None, ModelRequest("s", Vector(reply)))
       val arguments = sent("messages")(1)("tool_calls")(0)("function")("arguments").str
       ujson.read(arguments) ==> ujson.Str("{oops")
     }
@@ -187,7 +182,7 @@ object OpenRouterJsonTests extends TestSuite {
 
     test("response: a reply read back and sent again is the same message") {
       val resent = OpenRouterJson.response(sampleResponse).map { reply =>
-        OpenRouterJson.request("m", 1, Routing.Open, ModelRequest("s", Vector(reply)))("messages")(
+        OpenRouterJson.request("m", 1, None, ModelRequest("s", Vector(reply)))("messages")(
           1
         )
       }
@@ -320,118 +315,6 @@ object OpenRouterJsonTests extends TestSuite {
         ProviderError.Refused("model error: bad")
       OpenRouterJson.modelError(error("message" -> ujson.Str("odd"))) ==>
         ProviderError.Refused("model error: odd")
-    }
-
-    test("config: the key is required, the model defaults, and toString hides the key") {
-      OpenRouterConfig.fromEnv(Map.empty, ModelRole.Turn) ==>
-        Left(OpenRouterConfig.Invalid.Missing("OPENROUTER_API_KEY"))
-      OpenRouterConfig.fromEnv(Map("OPENROUTER_API_KEY" -> " "), ModelRole.Turn) ==>
-        Left(OpenRouterConfig.Invalid.Empty("OPENROUTER_API_KEY"))
-      val config =
-        OpenRouterConfig.fromEnv(Map("OPENROUTER_API_KEY" -> "sk-or-secret"), ModelRole.Turn)
-      config.map(_.model) ==> Right(OpenRouterConfig.DefaultModel)
-      config.map(_.maxTokens) ==> Right(ModelRole.Turn.defaultMaxTokens)
-      assert(!config.toString.contains("sk-or-secret"))
-      OpenRouterConfig
-        .fromEnv(Map("OPENROUTER_API_KEY" -> "k", "GRIT_MODEL" -> "x/y"), ModelRole.Turn)
-        .map(_.model) ==>
-        Right("x/y")
-    }
-
-    test(
-      "config: each role has its own model and budget; a summary falls back to the turn's model"
-    ) {
-      val env = Map("OPENROUTER_API_KEY" -> "k", "GRIT_MODEL" -> "big/one")
-      def of(role: ModelRole, extra: (String, String)*) =
-        OpenRouterConfig.fromEnv(env ++ extra, role).map(c => (c.model, c.maxTokens))
-      of(ModelRole.Summary) ==> Right(("big/one", ModelRole.Summary.defaultMaxTokens))
-      of(
-        ModelRole.Summary,
-        "GRIT_SUMMARY_MODEL" -> "small/one",
-        "GRIT_SUMMARY_MAX_TOKENS" -> "300"
-      ) ==>
-        Right(("small/one", 300))
-      of(ModelRole.Turn, "GRIT_SUMMARY_MODEL" -> "small/one", "GRIT_MAX_TOKENS" -> "2000") ==>
-        Right(("big/one", 2000))
-      of(ModelRole.Summary, "GRIT_SUMMARY_MODEL" -> " ") ==>
-        Right(("big/one", ModelRole.Summary.defaultMaxTokens))
-      of(ModelRole.Turn, "GRIT_SUMMARY_MAX_TOKENS" -> "junk") ==>
-        Right(("big/one", ModelRole.Turn.defaultMaxTokens))
-      for (bad <- Seq("0", "-5", "lots", "", "99999999999"))
-        of(ModelRole.Summary, "GRIT_SUMMARY_MAX_TOKENS" -> bad) ==>
-          Left(OpenRouterConfig.Invalid.NotPositive("GRIT_SUMMARY_MAX_TOKENS"))
-      assert(
-        !OpenRouterConfig.Invalid.NotPositive("GRIT_MAX_TOKENS").message.contains("lots")
-      )
-    }
-
-    test(
-      "config: upstreams pin a role in order, strict needs them; unset is open but for the default model"
-    ) {
-      val env = Map("OPENROUTER_API_KEY" -> "k")
-      def of(role: ModelRole, extra: (String, String)*) =
-        OpenRouterConfig.fromEnv(env ++ extra, role).map(_.routing)
-      def pinned(strict: Boolean, slugs: String*) =
-        slugs.flatMap(Upstream.of).toVector match {
-          case first +: rest => Routing.Pinned(first, rest, strict)
-          case _ => Routing.Open
-        }
-      // The default model is pinned to its upstream; any model named is open.
-      of(ModelRole.Turn) ==> Right(pinned(false, "cerebras/fp16"))
-      of(ModelRole.Turn, "GRIT_PROVIDER" -> " ", "GRIT_STRICT_TOOLS" -> "false") ==>
-        Right(pinned(false, "cerebras/fp16"))
-      of(ModelRole.Turn, "GRIT_MODEL" -> "x/y") ==> Right(Routing.Open)
-      of(ModelRole.Turn, "GRIT_PROVIDER" -> "coreweave") ==> Right(pinned(false, "coreweave"))
-      of(ModelRole.Turn, "GRIT_PROVIDER" -> "open-inference/fp8, cerebras") ==>
-        Right(pinned(false, "open-inference/fp8", "cerebras"))
-      of(ModelRole.Turn, "GRIT_PROVIDER" -> "coreweave", "GRIT_STRICT_TOOLS" -> "true") ==>
-        Right(pinned(true, "coreweave"))
-      of(ModelRole.Turn, "GRIT_PROVIDER" -> "coreweave", "GRIT_STRICT_TOOLS" -> "true")
-        .map(_.strictTools) ==> Right(true)
-      of(ModelRole.Turn, "GRIT_MODEL" -> "x/y", "GRIT_STRICT_TOOLS" -> "true") ==>
-        Left(OpenRouterConfig.Invalid.StrictUnpinned("GRIT_STRICT_TOOLS", "GRIT_PROVIDER"))
-      of(ModelRole.Turn, "GRIT_STRICT_TOOLS" -> "yes") ==>
-        Left(OpenRouterConfig.Invalid.NotABoolean("GRIT_STRICT_TOOLS"))
-      for (bad <- Seq("a,,b", "a,", "Open-Inference", "a b", "a/b/c", "/fp8"))
-        of(ModelRole.Turn, "GRIT_PROVIDER" -> bad) ==>
-          Left(OpenRouterConfig.Invalid.NotUpstreams("GRIT_PROVIDER"))
-    }
-
-    test("config: by default every role is the default model at its upstream") {
-      val env = Map("OPENROUTER_API_KEY" -> "k")
-      for (role <- Seq(ModelRole.Turn, ModelRole.Summary, ModelRole.Query))
-        OpenRouterConfig.fromEnv(env, role).map(c => (c.model, c.routing)) ==> Right(
-          (
-            "openai/gpt-oss-120b",
-            Upstream.of("cerebras/fp16").fold(Routing.Open)(Routing.Pinned(_, Vector(), false))
-          )
-        )
-      // A role that names its own model is not pinned to the turn's default upstream.
-      OpenRouterConfig
-        .fromEnv(env.updated("GRIT_SUMMARY_MODEL", "small/one"), ModelRole.Summary)
-        .map(_.routing) ==> Right(Routing.Open)
-    }
-
-    test("config: a role that names nothing of its own routes as the turn does") {
-      val env = Map(
-        "OPENROUTER_API_KEY" -> "k",
-        "GRIT_PROVIDER" -> "coreweave",
-        "GRIT_STRICT_TOOLS" -> "true"
-      )
-      def of(role: ModelRole, extra: (String, String)*) =
-        OpenRouterConfig.fromEnv(env ++ extra, role).map(_.routing)
-      val turns = of(ModelRole.Turn)
-      of(ModelRole.Summary) ==> turns
-      of(ModelRole.Query) ==> turns
-      of(ModelRole.Summary, "GRIT_SUMMARY_MODEL" -> "small/one") ==> Right(Routing.Open)
-      of(ModelRole.Query, "GRIT_QUERY_PROVIDER" -> "cerebras") ==>
-        Right(Upstream.of("cerebras").fold(Routing.Open)(Routing.Pinned(_, Vector(), false)))
-      of(ModelRole.Summary, "GRIT_SUMMARY_STRICT_TOOLS" -> "true") ==> Left(
-        OpenRouterConfig.Invalid.StrictUnpinned(
-          "GRIT_SUMMARY_STRICT_TOOLS",
-          "GRIT_SUMMARY_PROVIDER"
-        )
-      )
     }
   }
 }

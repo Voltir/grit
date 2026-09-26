@@ -11,6 +11,7 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
+import grit.core.model.{StrictSchemas, TurnProfile}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.Origin
 import grit.core.tool.{DuplicateName, ToolName}
@@ -20,9 +21,9 @@ import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
 import grit.models.{
   JevClassifier,
   JevConfig,
-  ModelRole,
   OpenRouterConfig,
   OpenRouterProvider,
+  Seed,
   StubClassifier,
   StubProvider
 }
@@ -32,8 +33,10 @@ import grit.tui.runtime.loop.Runtime
 import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
-  * OpenRouter's when `OPENROUTER_API_KEY` is set (per [[ModelRole]], see
-  * [[OpenRouterConfig]]), the stub otherwise, answering turns after `GRIT_STUB_DELAY_MS`
+  * OpenRouter's when `OPENROUTER_API_KEY` is set: each role's model, budget and upstream as
+  * the seed catalog's policy ([[Seed]]) says, overridden for the run by the role's variables
+  * ([[ModelRole]], [[OpenRouterConfig.policy]]), and its tool schemas strict when the turn's
+  * pair is known to enforce them. The stub otherwise, answering turns after `GRIT_STUB_DELAY_MS`
   * (default 0). Each turn's window fits in `GRIT_WINDOW_TOKENS`
   * estimated tokens (default [[LinearAssembler.DefaultBudget]]) and is chosen by
   * `GRIT_ASSEMBLER`: `retrieval` (the default), the recent turns that fit in
@@ -93,19 +96,20 @@ object Main {
     val system = systemPrompt(root)
     val prefsFile = Prefs.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
-    // OpenRouter when a key is set, otherwise the stub: no key, no spend.
-    val openRouter: Option[OpenRouterConfig] =
+    // OpenRouter when a key is set, otherwise the stub: no key, no spend. Each role's model
+    // is the seed catalog's policy, with the environment laid over it for this run.
+    val pinned: Option[(String, TurnProfile)] =
       if (!env.contains(OpenRouterConfig.KeyVar)) None
-      else Some(exitOnLeft(OpenRouterConfig.fromEnv(env, ModelRole.Turn).left.map(_.message)))
+      else {
+        val key = exitOnLeft(OpenRouterConfig.key(env).left.map(_.message))
+        val seed = exitOnLeft(Seed.catalog)
+        val policy = exitOnLeft(OpenRouterConfig.policy(env, seed.policy).left.map(_.message))
+        Some((key, seed.withPolicy(policy).pin))
+      }
+    val openRouter = pinned.map((key, p) => OpenRouterConfig.of(key, p.turn.assignment))
     val modelName = openRouter.fold(StubProvider.Model)(_.model)
-    val summaryConfig: Option[OpenRouterConfig] =
-      openRouter.map(_ =>
-        exitOnLeft(OpenRouterConfig.fromEnv(env, ModelRole.Summary).left.map(_.message))
-      )
-    val queryConfig: Option[OpenRouterConfig] =
-      openRouter.map(_ =>
-        exitOnLeft(OpenRouterConfig.fromEnv(env, ModelRole.Query).left.map(_.message))
-      )
+    val summaryConfig = pinned.map((key, p) => OpenRouterConfig.of(key, p.summary.assignment))
+    val queryConfig = pinned.map((key, p) => OpenRouterConfig.of(key, p.query.assignment))
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
     val stubDelay = exitOnLeft(millis(env, StubDelayVar))
     val topics = exitOnLeft(classifierChoice(env))
@@ -122,7 +126,7 @@ object Main {
           new RetrievalAssembler(engine.entries, engine.search, writer, CharEstimate, budget, tail)
         else new LinearAssembler(engine.entries, CharEstimate, budget)
       val checkout = new LocalWorkspace(root)
-      val strict = openRouter.exists(_.routing.strictTools)
+      val strict = pinned.exists(_._2.turn.settings.strict == StrictSchemas.Enforced)
       def launch(tooling: TurnTooling^): Unit =
         engine.launch(
           Turn.body(

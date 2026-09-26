@@ -15,8 +15,8 @@ object StreamingProbe {
 
   def main(args: Array[String]): Unit = {
     val _ = args
-    OpenRouterConfig.fromEnv(sys.env, ModelRole.Turn) match {
-      case Left(invalid) => println(invalid.message)
+    OpenRouterConfig.forRole(sys.env, ModelRole.Turn) match {
+      case Left(invalid) => println(invalid)
       case Right(config) => run(new OpenRouterProvider(config.copy(maxTokens = 300)))
     }
   }

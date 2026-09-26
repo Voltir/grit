@@ -2,6 +2,7 @@ package grit.models
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.Upstream
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 
 /** OpenRouter's chat-completions wire format (OpenAI's shape), both ways. Pure. Checked
@@ -9,16 +10,16 @@ import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
   */
 object OpenRouterJson {
 
-  /** The request body for `request` on `model`, served as `routing` says. A request with
+  /** The request body for `request` on `model`, served by `upstream` alone with no fallback,
+    * or by whichever upstream OpenRouter picks when `None`. A request with
     * tools names them in `tools`, with `tool_choice` `auto` or `none` (OpenRouter's
     * tool-calling guide: every request of a tool exchange sends the tools again); one
-    * without has neither key. Each tool is sent `strict` as its [[ToolSchema]] says,
-    * whatever `routing` is.
+    * without has neither key. Each tool is sent `strict` as its [[ToolSchema]] says.
     */
   def request(
       model: String,
       maxTokens: Int,
-      routing: Routing,
+      upstream: Option[Upstream],
       request: ModelRequest
   ): ujson.Value = {
     val body = ujson.Obj(
@@ -30,13 +31,9 @@ object OpenRouterJson {
         )
       )
     )
-    routing match {
-      case Routing.Open => ()
-      case Routing.Pinned(first, rest, _) =>
-        body("provider") = ujson.Obj(
-          "order" -> ujson.Arr.from((first +: rest).map(Upstream.value)),
-          "allow_fallbacks" -> false
-        )
+    upstream.foreach { u =>
+      body("provider") =
+        ujson.Obj("order" -> ujson.Arr(Upstream.value(u)), "allow_fallbacks" -> false)
     }
     if (request.tools.nonEmpty) {
       body("tools") = ujson.Arr.from(request.tools.map(tool))

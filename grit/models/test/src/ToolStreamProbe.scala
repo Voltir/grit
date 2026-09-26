@@ -38,11 +38,10 @@ object ToolStreamProbe {
       val env = sys.env ++ Map(
         "GRIT_MODEL" -> model,
         "GRIT_PROVIDER" -> upstream,
-        "GRIT_STRICT_TOOLS" -> "true",
         "GRIT_MAX_TOKENS" -> "400"
       )
-      OpenRouterConfig.fromEnv(env, ModelRole.Turn) match {
-        case Left(invalid) => println(invalid.message)
+      OpenRouterConfig.forRole(env, ModelRole.Turn) match {
+        case Left(invalid) => println(invalid)
         case Right(config) => println(s"[probe] $model @ $upstream: ${run(config)}")
       }
     }
@@ -52,9 +51,9 @@ object ToolStreamProbe {
     val request = ModelRequest(
       "You are a coding agent. Use the tools offered.",
       Vector(Message.User("What does build.mill say? Read it.")),
-      Vector(Read.schema(strict = config.routing.strictTools))
+      Vector(Read.schema(strict = true))
     )
-    val body = OpenRouterJson.request(config.model, config.maxTokens, config.routing, request)
+    val body = OpenRouterJson.request(config.model, config.maxTokens, config.upstream, request)
     body("stream") = true
     val sent = body("tools")(0)("function")
     val told = Vector.newBuilder[String]
