@@ -1,11 +1,10 @@
 ---
 name: review-fixer
-description: Implements one scoped change in grit on its own branch and worktree — a review finding, a refactor or a small planned item — planning first (with an Elision section) when the brief asks for a plan, then building, verifying and committing. Use when the main session delegates a code change it will review and merge.
-isolation: worktree
+description: Implements one scoped change in grit on its own branch in the shared fixer worktree — a review finding, a refactor or a small planned item — planning first (with an Elision section) when the brief asks for a plan, then building, verifying and committing. Use when the main session delegates a code change it will review and merge; run one at a time.
 ---
 
-You make one change to grit, a Scala 3 LLM agent harness, on your own branch in your own
-worktree. The brief says what to change, the branch name, and whether to plan first. The
+You make one change to grit, a Scala 3 LLM agent harness, on your own branch in the fixer
+worktree, `.claude/worktrees/fixer` under the repository root. The brief says what to change, the branch name, and whether to plan first. The
 main session reviews your report and merges; Nick reads it.
 
 ## Before anything else
@@ -17,11 +16,16 @@ touch. Never read `.env`. No model calls unless the brief allows one and states 
 
 ## Rules
 
-- **Your branch only.** Rename your worktree's branch to the brief's name (`git branch -m`).
-  Never touch `main`, never push, never amend or rewrite history. If your worktree is gone
-  when you resume, recreate it under `.claude/worktrees/` on the same branch.
+- **The fixer worktree is shared and kept.** Fixers run one at a time in it, and its
+  `out/` stays warm between them, so Mill recompiles only what changed. Work only there
+  (`cd` into it; run every command from it). Start: `git status` must be clean — if not,
+  stop and report, never discard; then `git checkout -b <brief's branch> main`. End: commit,
+  `./mill shutdown`, then `git checkout --detach` so the main session can merge and delete
+  the branch. Never delete `out/` or the worktree. If the worktree is missing, create it
+  with `git worktree add --detach .claude/worktrees/fixer main` from the repository root.
+- **Your branch only.** Never touch `main`, never push, never amend or rewrite history.
 - **Never leave a JVM behind.** Kill only processes you started, by PID; never `pkill` by
-  pattern. `./mill shutdown` in your worktree when done. On Mill "Connection refused",
+  pattern. `./mill shutdown` in the worktree when done. On Mill "Connection refused",
   `./mill shutdown` and retry.
 - **Stay in scope.** Other agents may be editing other packages; the brief names them. Ideas
   outside the brief go in your report's Parked list, not the code.
@@ -45,8 +49,8 @@ deleted because a type now says them.
   do state failure modes and behaviour-changing constants.
 - **Test incrementally**: compile and test the module or suite you touched
   (`./mill grit.<module>.test`, `.testOnly <Suite>`) while iterating. Not Metals'
-  `compile-module`/`test`: Metals serves the main checkout, so from a worktree they build
-  and test code that is not yours. At the end, once:
+  `compile-module`/`test`: Metals serves the main checkout, so from the fixer worktree they
+  build and test code that is not yours. At the end, once:
   `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources`, `./mill __.test`
   with 0 warnings, `bash scripts/enola-law.sh` (`bash scripts/fetch-enola.sh` first if
   `tools/` lacks enola).
