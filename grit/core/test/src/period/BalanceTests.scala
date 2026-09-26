@@ -87,6 +87,12 @@ object BalanceTests extends TestSuite {
       } ==> Vector("names no line", "names no line", "names no line", "blank", "names no line")
     }
 
+    test("an ignored edit names its line by the text the balance held, never by its id") {
+      val a = line(Section.Open, "a", 1, 1)
+      balance(a).edit(Vector(Edit.Resolve(a.id, "done"), Edit.Touch(a.id)), p(2)).changes ==>
+        Vector(Change.Resolved(a, "done"), Change.Ignored("touch \"a\"", "names no line"))
+    }
+
     test("under its cap a balance is kept as it is") {
       val b = balance(line(Section.Open, "abcd", 1, 1), line(Section.Standing, "ef", 1, 1))
       b.bytes ==> 6

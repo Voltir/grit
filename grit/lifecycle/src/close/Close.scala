@@ -3,9 +3,9 @@ package grit.lifecycle.close
 import java.time.Instant
 
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, EntryId, TurnSeq, WorkflowId}
+import grit.core.id.{CloseRef, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Message, Tokens, Usage}
-import grit.core.period.{CloseReason, Closing}
+import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows}
 import grit.core.store.{Entry, Payload, Sealed, StoreError, Tx}
 import grit.lifecycle.transcript.PeriodTranscript
 
@@ -17,12 +17,15 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      its deadline ([[grit.core.period.Deadline]], under the settings in force) is no longer
   *      the attempt's, because a turn came in, a turn's entries were written or the settings
   *      changed, so the sweep makes a new attempt on the new deadline; otherwise due, for its
-  *      reason. The attempt is taken to be enqueued once its deadline had come.
+  *      reason, with the balance it opened with and the cap its closing's balance is held
+  *      to. The attempt is taken to be enqueued once its deadline had come.
   *   1. `gate` — which sections the closing needs ([[CloseGate]]); every one when the
   *      classifier does not answer.
-  *   1. `summarise` — the closing, written by the catalog's summary pin
-  *      ([[ClosingSummary]]); when the model fails, or writes nothing readable, the
-  *      period's per-turn summaries joined, and no section. A close never fails for a model.
+  *   1. `summarise` — the closing: its flows written by the catalog's summary pin
+  *      ([[ClosingSummary]]), and the balance it opened with after the writer's edits, held
+  *      to the cap ([[grit.core.period.Balance]]); when the model fails, or writes nothing
+  *      readable, the period's per-turn summaries joined as the prose, and the balance
+  *      carried unedited. A close never fails for a model.
   *   1. `seal` — under the lock again: the closing entry, its cost in the ledger, and the
   *      period closed, together; abandoned, writing nothing, when a turn came in meanwhile.
   */
@@ -39,8 +42,10 @@ object Close {
   /** What `check` found. */
   enum Checked {
 
-    /** The period closes now for `reason`; its turns start at `first`. */
-    case Due(first: TurnSeq, reason: CloseReason)
+    /** The period closes now for `reason`; its turns start at `first`; it opened with
+      * `known`, and its balance is held to `cap` bytes.
+      */
+    case Due(first: TurnSeq, reason: CloseReason, known: Balance, cap: Int)
 
     /** The period is closed already. */
     case Closed
@@ -70,7 +75,7 @@ object Close {
           case Left(why) => s"failed: $why"
           case Right(Checked.Closed) => "already closed"
           case Right(Checked.Abandoned(why)) => s"abandoned: $why"
-          case Right(Checked.Due(first, reason)) =>
+          case Right(Checked.Due(first, reason, known, cap)) =>
             val gated = d.step(Step.Gate) { () =>
               CloseGate.asked(
                 env.classifier,
@@ -78,7 +83,7 @@ object Close {
               )
             }
             val summarised = d.step(Step.Summarise) { () =>
-              summarise(env, attempt, first, gated._1)
+              summarise(env, attempt, first, gated._1, known, cap)
             }
             val noted = (gated._2 ++ summarised.note).map(n => s"; $n").mkString
             d.transact(Step.Seal)(
@@ -101,10 +106,21 @@ object Close {
       period <- records.periods.get(attempt.period)
       activity <- records.periods.activity(attempt.period)
       settings <- records.lifecycle.current()
+      opening <- period.fold[Either[StoreError, Option[Balance]]](Right(None))(p =>
+        records.periods
+          .opening(TurnRef(attempt.period.conversationId, p.first))
+          .map(o => Some(o.balance))
+      )
     } yield (period, activity) match {
       case (Some(p), Some(a)) =>
         val current = a.attempt(settings)
-        if (current == attempt) Checked.Due(p.first, a.due(settings).reason)
+        if (current == attempt)
+          Checked.Due(
+            p.first,
+            a.due(settings).reason,
+            opening.getOrElse(Balance.empty),
+            settings.balance
+          )
         else if (a.last != attempt.last) Checked.Abandoned(s"turn ${TurnSeq.value(a.last)} came in")
         else Checked.Abandoned(s"its deadline moved to ${current.due}")
       case (Some(_), None) => Checked.Closed
@@ -126,24 +142,36 @@ object Close {
   private def transcript(entries: Either[String, Vector[Entry]]): String =
     PeriodTranscript.of(entries.getOrElse(Vector.empty))
 
-  /** The `summarise` step: the closing the summary model writes for the period's turns
-    * `first` to the attempt's last, asking for `asked`; or, when it fails, the fallback
-    * ([[fallback]]).
+  /** The `summarise` step: the closing of the period's turns `first` to the attempt's last,
+    * from the flows and edits the summary model writes, asking for `asked`, applied to
+    * `known` and held to `cap`; or, when it fails, the fallback prose ([[fallback]]) with
+    * `known` carried unedited.
     */
   private def summarise(
       env: CloseEnv^,
       attempt: CloseRef,
       first: TurnSeq,
-      asked: Asked
+      asked: Asked,
+      known: Balance,
+      cap: Int
   ): Summarised = {
     val entries = own(env, attempt, first)
+    val period = attempt.period.seq
+    def closed(prose: String, outcome: Option[String], edits: Vector[Edit]): Option[Closing] = {
+      val edited = known.edit(edits, period)
+      val fitted = edited.balance.fit(cap, period)
+      Flows
+        .of(prose, outcome, edited.changes ++ fitted.changes)
+        .map(Closing(_, fitted.balance))
+    }
     val request = ClosingSummary.request(transcript(entries), asked)
     val written = for {
       catalog <- env.models.catalog()
       reply <- env.models.provider(catalog.pin.summary).complete(request).left.map(_.cause)
-      closing <- ClosingSummary
+      read <- ClosingSummary
         .read(reply, asked)
         .toRight(s"the summary had no prose (stop: ${reply.stop})")
+      closing <- closed(read.prose, read.outcome, read.edits).toRight("the summary had no prose")
     } yield Summarised(
       Some(closing),
       Some(Cost(reply.model, reply.usage, env.records.estimator.request(request))),
@@ -152,7 +180,8 @@ object Close {
     written.fold(
       why =>
         Summarised(
-          fallback(entries.getOrElse(Vector.empty), attempt, first),
+          fallback(entries.getOrElse(Vector.empty), attempt, first)
+            .flatMap(closed(_, None, Vector.empty)),
           None,
           Some(s"no summary: $why")
         ),
@@ -160,14 +189,14 @@ object Close {
     )
   }
 
-  /** A closing written without a model: the period's per-turn summaries joined; without
-    * any, its user messages; without those, how many turns it had.
+  /** A closing's prose written without a model: the period's per-turn summaries joined;
+    * without any, its user messages; without those, how many turns it had.
     */
   private def fallback(
       entries: Vector[Entry],
       attempt: CloseRef,
       first: TurnSeq
-  ): Option[Closing] = {
+  ): Option[String] = {
     val summaries = entries.collect { case Entry(_, _, _, _, _, Payload.Summary(text), _) => text }
     val asked = entries.collect {
       case Entry(_, _, _, _, _, Payload.Message(Message.User(text)), _) => text
@@ -178,8 +207,7 @@ object Close {
       asked.mkString(" / "),
       s"A period of $turns turns, with nothing kept."
     )
-      .flatMap(Closing.of(_, None, Vector.empty, Vector.empty, Vector.empty, Vector.empty))
-      .headOption
+      .find(_.trim.nonEmpty)
   }
 
   /** The `seal` step, at `now`: the closing entry and its cost, and the period closed. */

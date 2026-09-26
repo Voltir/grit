@@ -17,10 +17,12 @@ private[close] object CloseJournal {
   given checked: Journaled[Either[String, Checked]] =
     outcome(
       {
-        case Checked.Due(first, reason) =>
+        case Checked.Due(first, reason, known, cap) =>
           val o = ujson.Obj(
             "due" -> PayloadJson.reasonName(reason),
-            "first" -> TurnSeq.value(first).toDouble
+            "first" -> TurnSeq.value(first).toDouble,
+            "known" -> ClosingJson.writeBalance(known),
+            "cap" -> cap.toDouble
           )
           PayloadJson.reasonConfidence(reason).foreach(c => o("confidence") = c)
           o
@@ -32,15 +34,24 @@ private[close] object CloseJournal {
         case o: ujson.Obj =>
           (o.value.get("due"), o.value.get("first"), o.value.get("abandoned")) match {
             case (Some(ujson.Str(reason)), Some(ujson.Num(n)), None) if n.isWhole && n >= 0 =>
-              o.value.get("confidence") match {
-                case None =>
-                  PayloadJson.readReason(reason, None).map(Checked.Due(TurnSeq(n.toLong), _))
-                case Some(ujson.Num(c)) =>
-                  PayloadJson.readReason(reason, Some(c)).map(Checked.Due(TurnSeq(n.toLong), _))
-                case Some(_) => Left("checked: confidence is not a number")
-              }
+              for {
+                confidence <- o.value.get("confidence") match {
+                  case None => Right(None)
+                  case Some(ujson.Num(c)) => Right(Some(c))
+                  case Some(_) => Left("checked: confidence is not a number")
+                }
+                r <- PayloadJson.readReason(reason, confidence)
+                known <- o.value
+                  .get("known")
+                  .toRight("checked: missing known")
+                  .flatMap(ClosingJson.readBalance)
+                cap <- o.value
+                  .get("cap")
+                  .collect { case ujson.Num(c) if c.isWhole => c.toInt }
+                  .toRight("checked: missing cap")
+              } yield Checked.Due(TurnSeq(n.toLong), r, known, cap)
             case (None, None, Some(ujson.Str(why))) => Right(Checked.Abandoned(why))
-            case _ => Left("checked: expected {due, first} or {abandoned}")
+            case _ => Left("checked: expected {due, first, known, cap} or {abandoned}")
           }
         case _ => Left("checked: expected \"closed\" or an object")
       }
@@ -53,8 +64,7 @@ private[close] object CloseJournal {
           "outcome" -> a.outcome,
           "decisions" -> a.decisions,
           "facts" -> a.facts,
-          "open" -> a.open,
-          "sources" -> a.sources
+          "open" -> a.open
         )
         note.foreach(n => o("note") = n)
         o
@@ -62,16 +72,16 @@ private[close] object CloseJournal {
       v =>
         for {
           o <- v.objOpt.toRight("asked: expected an object")
-          flags <- Vector("outcome", "decisions", "facts", "open", "sources")
+          flags <- Vector("outcome", "decisions", "facts", "open")
             .foldLeft[Either[String, Vector[Boolean]]](Right(Vector.empty)) { (acc, key) =>
               acc.flatMap(bs =>
                 o.get(key).flatMap(_.boolOpt).map(bs :+ _).toRight(s"asked: missing $key")
               )
             }
           asked <- flags match {
-            case Vector(outcome, decisions, facts, open, sources) =>
-              Right(Asked(outcome, decisions, facts, open, sources))
-            case _ => Left("asked: expected five flags")
+            case Vector(outcome, decisions, facts, open) =>
+              Right(Asked(outcome, decisions, facts, open))
+            case _ => Left("asked: expected four flags")
           }
           note <- o.get("note") match {
             case None => Right(None)

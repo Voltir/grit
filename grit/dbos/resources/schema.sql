@@ -11,7 +11,9 @@ CREATE EXTENSION IF NOT EXISTS pg_textsearch;
 
 -- The searchable text of a stored payload (PayloadJson): a message's user text, its
 -- assistant text blocks, a tool result's content; a summary's text; a closing entry's
--- prose, outcome and sections (ClosingJson). Never reasoning,
+-- flows (ClosingJson): its prose, its outcome, the lines it added, resolved or dropped and
+-- how or why. Never the balance it carries, which repeats in every closing: the closing
+-- that added a line holds it in its flows. Never reasoning,
 -- tool-call arguments, or any other kind of payload. IMMUTABLE, so the generated column
 -- below may call it.
 CREATE OR REPLACE FUNCTION grit.entry_text(payload jsonb) RETURNS text
@@ -27,13 +29,16 @@ RETURN CASE payload ->> 'kind'
         payload #>> '{message,content}')
     WHEN 'summary' THEN payload ->> 'text'
     WHEN 'closed' THEN concat_ws(' ',
-        payload #>> '{closing,prose}',
-        payload #>> '{closing,outcome}',
-        (SELECT string_agg(line, ' ')
-           FROM unnest(ARRAY['decisions', 'facts', 'open', 'sources']) AS section,
-                jsonb_array_elements_text(
-                  CASE WHEN jsonb_typeof(payload -> 'closing' -> section) = 'array'
-                       THEN payload -> 'closing' -> section ELSE '[]'::jsonb END) AS line))
+        payload #>> '{closing,flows,prose}',
+        payload #>> '{closing,flows,outcome}',
+        (SELECT string_agg(concat_ws(' ',
+                  change #>> '{added,text}',
+                  change #>> '{resolved,text}', change ->> 'how',
+                  change #>> '{dropped,text}',
+                  CASE WHEN change ? 'dropped' THEN change ->> 'why' END), ' ')
+           FROM jsonb_array_elements(
+                  CASE WHEN jsonb_typeof(payload #> '{closing,flows,changes}') = 'array'
+                       THEN payload #> '{closing,flows,changes}' ELSE '[]'::jsonb END) AS change))
 END;
 
 -- One row per origin; `origin` is the Origin ADT as JSON, and jsonb equality

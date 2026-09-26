@@ -17,6 +17,7 @@ import grit.core.period.{
   PeriodState,
   Probability,
   Purgeable,
+  TestClosings,
   Verdict,
   Windows
 }
@@ -69,17 +70,7 @@ abstract class PeriodContract extends TestSuite {
   private def first(n: Long): PeriodSeq =
     PeriodSeq.of(n).getOrElse(throw new java.lang.AssertionError(n))
 
-  private def closing(text: String): Closing =
-    Closing
-      .of(
-        text,
-        Some(s"$text: done"),
-        Vector("a decision"),
-        Vector(),
-        Vector("an open item"),
-        Vector()
-      )
-      .getOrElse(throw new java.lang.AssertionError(text))
+  private def closing(text: String): Closing = TestClosings.prose(text, Some(s"$text: done"))
 
   /** A user message starting `c`'s next turn at `minute`, its period opened for it as the
     * inbox does; the turn.

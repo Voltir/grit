@@ -2,87 +2,122 @@ package grit.core.period
 
 import java.time.Instant
 
+import grit.core.id.LineId
+
+import TestClosings.{balance, line}
 import utest.*
 
 object ClosingTests extends TestSuite {
 
-  private def closing(
-      prose: String,
-      outcome: Option[String] = None,
-      decisions: Vector[String] = Vector.empty,
-      facts: Vector[String] = Vector.empty,
-      open: Vector[String] = Vector.empty,
-      sources: Vector[String] = Vector.empty
-  ): Closing =
-    Closing
-      .of(prose, outcome, decisions, facts, open, sources)
-      .getOrElse(throw new java.lang.AssertionError(prose))
+  private def flows(prose: String, outcome: Option[String], changes: Change*): Flows =
+    Flows.of(prose, outcome, changes.toVector).getOrElse(throw new java.lang.AssertionError(prose))
 
-  private val full = closing(
-    "We set up the staging deploy.",
-    Some("staging deploys from main"),
-    Vector("deploy with make stage"),
-    Vector("the key lives in vault"),
-    Vector("prod is not done"),
-    Vector("docs/deploy.md")
+  private val backup = line(Section.Open, "How often should the laptop backup run?", 1, 1)
+
+  private val full = Closing(
+    flows(
+      "We set up the staging deploy.",
+      Some("staging deploys from main"),
+      Change.Added(line(Section.Standing, "Staging deploys with make stage", 3, 3)),
+      Change.Resolved(backup, "daily at 02:00"),
+      Change.Dropped(line(Section.Standing, "Deploys are manual", 1, 2), "superseded"),
+      Change.Evicted(line(Section.Standing, "The old key lived in vault", 1, 1)),
+      Change.Refused(line(Section.Open, "Too much to keep", 3, 3)),
+      Change.Ignored("o9: done", "names no line")
+    ),
+    balance(
+      line(Section.Open, "Prod deploy is not set up", 2, 3),
+      line(Section.Standing, "Staging deploys with make stage", 3, 3),
+      line(Section.Topics, "Laptop Backup Setup", 1, 2),
+      line(Section.Topics, "Staging Deploy", 2, 3)
+    )
   )
 
   val tests = Tests {
-    test("a closing needs prose; blank lines and a blank outcome are dropped") {
-      Closing.of("  ", Some("x"), Vector(), Vector(), Vector(), Vector()) ==> None
-      Closing.of(" p ", Some(" "), Vector("a", " ", ""), Vector(" b "), Vector(), Vector()) ==>
-        Some(closing("p", None, Vector("a"), Vector("b")))
+    test("flows need prose; prose and outcome are trimmed and a blank outcome dropped") {
+      Flows.of("  ", Some("x"), Vector()) ==> None
+      Flows.of(" p ", Some(" "), Vector()).map(f => (f.prose, f.outcome)) ==> Some(("p", None))
     }
 
-    test("a closing is shown as one message: when and why it closed, its prose, its sections") {
+    test("a closing is shown as one message: when and why it closed, its flows, its balance") {
       full.shown(
         Instant.parse("2026-09-20T23:30:00Z"),
         CloseReason.Resolved(Probability.of(0.9).getOrElse(throw new java.lang.AssertionError("p")))
       ) ==>
         """Earlier in this conversation (closed 2026-09-20, resolved): We set up the staging deploy.
           |Outcome: staging deploys from main
-          |Decisions:
-          |- deploy with make stage
-          |Facts:
-          |- the key lives in vault
-          |Open:
-          |- prod is not done
-          |Sources:
-          |- docs/deploy.md""".stripMargin
-      closing("Small talk.").shown(Instant.parse("2026-09-21T00:00:00Z"), CloseReason.Lapsed) ==>
+          |Settled then:
+          |- How often should the laptop backup run? — daily at 02:00
+          |Still open:
+          |- Prod deploy is not set up
+          |Standing:
+          |- Staging deploys with make stage
+          |Topics so far: Laptop Backup Setup; Staging Deploy""".stripMargin
+      TestClosings
+        .prose("Small talk.")
+        .shown(Instant.parse("2026-09-21T00:00:00Z"), CloseReason.Lapsed) ==>
         "Earlier in this conversation (closed 2026-09-21, lapsed): Small talk."
     }
 
     test("a closing's headline is its outcome, or else its prose's first sentence") {
       full.headline ==> "staging deploys from main"
-      closing("We set it up. Then we tested it.").headline ==> "We set it up."
-      closing("No full stop here").headline ==> "No full stop here"
-      closing("Version 1.2 works! It does.").headline ==> "Version 1.2 works!"
+      TestClosings.prose("We set it up. Then we tested it.").headline ==> "We set it up."
+      TestClosings.prose("No full stop here").headline ==> "No full stop here"
+      TestClosings.prose("Version 1.2 works! It does.").headline ==> "Version 1.2 works!"
     }
 
     // A pin of the stored form: every closing entry is written in it, and it outlives every
     // raw entry of its period, so a change that would make one unreadable fails here first.
-    test("a closing's stored form, version 1") {
+    test("a closing's stored form, version 2") {
       ClosingJson.write(full).render() ==>
-        """{"v":1,"prose":"We set up the staging deploy.","outcome":"staging deploys from main",""" +
-        """"decisions":["deploy with make stage"],"facts":["the key lives in vault"],""" +
-        """"open":["prod is not done"],"sources":["docs/deploy.md"]}"""
-      ClosingJson.write(closing("Small talk.")).render() ==>
-        """{"v":1,"prose":"Small talk.","decisions":[],"facts":[],"open":[],"sources":[]}"""
+        """{"v":2,"flows":{"prose":"We set up the staging deploy.","outcome":"staging deploys from main",""" +
+        """"changes":[""" +
+        """{"added":{"section":"standing","text":"Staging deploys with make stage","since":3,"touched":3}},""" +
+        """{"resolved":{"section":"open","text":"How often should the laptop backup run?","since":1,"touched":1},"how":"daily at 02:00"},""" +
+        """{"dropped":{"section":"standing","text":"Deploys are manual","since":1,"touched":2},"why":"superseded"},""" +
+        """{"evicted":{"section":"standing","text":"The old key lived in vault","since":1,"touched":1}},""" +
+        """{"refused":{"section":"open","text":"Too much to keep","since":3,"touched":3}},""" +
+        """{"ignored":"o9: done","why":"names no line"}]},""" +
+        """"balance":{"open":[{"text":"Prod deploy is not set up","since":2,"touched":3}],""" +
+        """"standing":[{"text":"Staging deploys with make stage","since":3,"touched":3}],""" +
+        """"topics":[{"text":"Laptop Backup Setup","since":1,"touched":2},""" +
+        """{"text":"Staging Deploy","since":2,"touched":3}]}}"""
+      ClosingJson.write(TestClosings.prose("Small talk.")).render() ==>
+        """{"v":2,"flows":{"prose":"Small talk.","changes":[]},""" +
+        """"balance":{"open":[],"standing":[],"topics":[]}}"""
     }
 
-    test("a stored closing reads back, a missing section as empty") {
+    test("a stored closing reads back, a missing balance or section as empty") {
       ClosingJson.read(ClosingJson.write(full)) ==> Right(full)
-      ClosingJson.read(ujson.read("""{"v":1,"prose":"Small talk."}""")) ==>
-        Right(closing("Small talk."))
+      ClosingJson.read(ujson.read("""{"v":2,"flows":{"prose":"Small talk."}}""")) ==>
+        Right(TestClosings.prose("Small talk."))
+      ClosingJson
+        .read(
+          ujson.read(
+            """{"v":2,"flows":{"prose":"x"},"balance":{"open":[{"text":"a","since":1,"touched":1}]}}"""
+          )
+        )
+        .map(_.balance) ==> Right(balance(line(Section.Open, "a", 1, 1)))
     }
 
-    test("a stored closing that is not version 1, has no prose, or a bad section, is refused") {
-      ClosingJson.read(ujson.read("""{"v":2,"prose":"x"}""")) ==> Left("unknown closing version: 2")
-      ClosingJson.read(ujson.read("""{"prose":"x"}""")) ==> Left("missing field: v")
-      ClosingJson.read(ujson.read("""{"v":1,"prose":" "}""")) ==> Left("prose is blank")
-      ClosingJson.read(ujson.read("""{"v":1,"prose":"x","facts":[1]}""")) ==>
-        Left("facts is not a list of strings")
+    test(
+      "a stored closing that is not version 2, or whose prose, change or line is bad, is refused"
+    ) {
+      ClosingJson.read(ujson.read("""{"v":1,"prose":"x"}""")) ==> Left("unknown closing version: 1")
+      ClosingJson.read(ujson.read("""{"flows":{"prose":"x"}}""")) ==> Left("missing field: v")
+      ClosingJson.read(ujson.read("""{"v":2,"flows":{"prose":" "}}""")) ==> Left("prose is blank")
+      ClosingJson.read(ujson.read("""{"v":2,"flows":{"prose":"x","changes":[{"moved":1}]}}""")) ==>
+        Left("""not a change: {"moved":1}""")
+      ClosingJson.read(
+        ujson.read(
+          """{"v":2,"flows":{"prose":"x"},"balance":{"open":[{"text":"a","since":2,"touched":1}]}}"""
+        )
+      ) ==> Left("a line touched at 1 before its since 2")
+      ClosingJson.read(
+        ujson.read(
+          """{"v":2,"flows":{"prose":"x"},"balance":{"open":[{"text":"a","since":1,"touched":1},{"text":"a","since":1,"touched":1}]}}"""
+        )
+      ) ==> Left(s"two lines share the id ${LineId.value(line(Section.Open, "a", 1, 1).id)}")
       ClosingJson.read(ujson.Arr()) ==> Left("expected an object")
     }
   }

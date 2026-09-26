@@ -162,17 +162,23 @@ object CloseFixtures {
     }
 
     /** The attempt a sweep would make on period 1 as it stands, under the settings in force. */
-    def attempt: CloseRef = {
+    def attempt: CloseRef = attemptOn(p1)
+
+    /** The attempt a sweep would make on `period` as it stands, under the settings in force. */
+    def attemptOn(period: PeriodRef): CloseRef = {
       given Tx = TestTx.fake
       (for {
         settings <- lifecycle.current()
-        open <- periods.activity(p1)
-      } yield open.map(_.attempt(settings))).toOption.flatten.getOrElse(sys.error("period 1 is not open"))
+        open <- periods.activity(period)
+      } yield open.map(_.attempt(settings))).toOption.flatten.getOrElse(sys.error(s"$period is not open"))
     }
 
     def all: Vector[Entry] = entries.list(c)(using TestTx.fake).getOrElse(Vector.empty)
 
-    def closingEntry: Option[Entry] = entries.get(p1.closingId)(using TestTx.fake).getOrElse(None)
+    def closingEntry: Option[Entry] = closingOf(p1)
+
+    def closingOf(period: PeriodRef): Option[Entry] =
+      entries.get(period.closingId)(using TestTx.fake).getOrElse(None)
 
     /** The close's body over this world, with `gate`, `summary` and `clock`, its periods
       * `sealing`.

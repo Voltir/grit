@@ -1,8 +1,21 @@
 package grit.lifecycle.close
 
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{EntryId, PeriodSeq, WorkflowId}
-import grit.core.period.{CloseReason, Closing, Judgement, PeriodState, Probability, Verdict}
+import grit.core.id.{EntryId, PeriodRef, PeriodSeq, WorkflowId}
+import grit.core.period.TestClosings.{balance, line}
+import grit.core.period.{
+  Change,
+  CloseReason,
+  Closing,
+  Flows,
+  Judgement,
+  LifecycleSettings,
+  PeriodState,
+  Probability,
+  Section,
+  TestClosings,
+  Verdict
+}
 import grit.core.provider.ProviderError
 import grit.core.store.{Payload, UsageLedger}
 import grit.dbos.sql.TestTx
@@ -25,17 +38,21 @@ object CloseTests extends TestSuite {
       |Sources:
       |- none""".stripMargin
 
+  private val deploy = line(Section.Standing, "deploy with make stage", 1, 1)
+  private val prod = line(Section.Open, "prod", 1, 1)
+
+  /** What [[written]] closes an empty balance's period 1 with. */
   private val closing: Closing =
-    Closing
-      .of(
-        "We chose a deploy target.",
-        Some("staging deploys from main"),
-        Vector("deploy with make stage"),
-        Vector(),
-        Vector("prod"),
-        Vector()
-      )
-      .getOrElse(throw new java.lang.AssertionError("closing"))
+    Closing(
+      Flows
+        .of(
+          "We chose a deploy target.",
+          Some("staging deploys from main"),
+          Vector(Change.Added(deploy), Change.Added(prod))
+        )
+        .getOrElse(throw new java.lang.AssertionError("flows")),
+      balance(deploy, prod)
+    )
 
   private def answering(text: String) = new Summariser(_ => Right(replyOf(text)))
 
@@ -138,9 +155,13 @@ object CloseTests extends TestSuite {
       val id = w.attempt.workflowId
       new InMemoryDurable().run(id)(w.body(gate, failing, new SetClock(at(Lapsed)))) ==>
         "closed: closing:c1:1; no summary: HTTP 503"
-      w.closingEntry.map(_.payload) ==> Closing
-        .of("Chose staging. Prod is later.", None, Vector(), Vector(), Vector(), Vector())
-        .map(Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, _))
+      w.closingEntry.map(_.payload) ==> Some(
+        Payload.Closed(
+          PeriodSeq.First,
+          CloseReason.Lapsed,
+          TestClosings.prose("Chose staging. Prod is later.")
+        )
+      )
       w.ledger.of(id)(using TestTx.fake) ==> Right(Vector.empty[UsageLedger.Row])
     }
 
@@ -167,7 +188,7 @@ object CloseTests extends TestSuite {
         w.body(new Gate(Some(Vector(0.1, 0.2, 0.3, 0.4))), none, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1"
       none.requests.map(_.system) ==> Vector(
-        ClosingSummary.request("", Asked(false, false, false, false, false)).system
+        ClosingSummary.request("", Asked(false, false, false, false)).system
       )
 
       val v = new World
@@ -177,6 +198,68 @@ object CloseTests extends TestSuite {
         v.body(new Gate(None), every, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1; gate unavailable: no classifier"
       every.requests.map(_.system) ==> Vector(ClosingSummary.request("", Asked.Every).system)
+    }
+
+    test("a close carries the balance its period opened with, the writer's lines added to it") {
+      val w = new World
+      w.turn("where do we deploy?", "staging", "Chose staging.", 0)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, answering(written), new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1"
+      w.turn("what about prod?", "needs a key", "Prod needs a key.", Lapsed + 1)
+      val p2 = PeriodRef(c, PeriodSeq.First.next)
+      new InMemoryDurable().run(w.attemptOn(p2).workflowId)(
+        w.body(
+          gate,
+          answering("Summary: We looked at prod.\nOpen:\n- prod needs a signing key"),
+          new SetClock(at(3 * Lapsed))
+        )
+      ) ==> "closed: closing:c1:2"
+      val key = line(Section.Open, "prod needs a signing key", 2, 2)
+      w.closingOf(p2).map(_.payload) ==> Some(
+        Payload.Closed(
+          p2.seq,
+          CloseReason.Lapsed,
+          Closing(
+            Flows
+              .of("We looked at prod.", None, Vector(Change.Added(key)))
+              .getOrElse(throw new java.lang.AssertionError("flows")),
+            balance(deploy, prod, key)
+          )
+        )
+      )
+    }
+
+    test("a close holds its balance to the cap in force, refusing its own adds by id") {
+      val w = new World
+      val d = LifecycleSettings.Default
+      // 22 bytes: room for "deploy with make stage" alone. "prod" has the lower id
+      // (a7542da0… against d627e55e…), so it is refused first, and that is enough.
+      w.lifecycle.set(
+        LifecycleSettings
+          .of(d.windows, 22, d.settle, d.finishedAt, d.asks)
+          .getOrElse(throw new java.lang.AssertionError("settings"))
+      )(using TestTx.fake)
+      w.say("where do we deploy?", 0)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, answering(written), new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1"
+      w.closingEntry.map(_.payload) ==> Some(
+        Payload.Closed(
+          PeriodSeq.First,
+          CloseReason.Lapsed,
+          Closing(
+            Flows
+              .of(
+                "We chose a deploy target.",
+                Some("staging deploys from main"),
+                Vector(Change.Added(deploy), Change.Added(prod), Change.Refused(prod))
+              )
+              .getOrElse(throw new java.lang.AssertionError("flows")),
+            balance(deploy)
+          )
+        )
+      )
     }
 
     test("a closed period's attempt says so, and writes nothing") {

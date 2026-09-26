@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq}
 import grit.core.message.Message
-import grit.core.period.{CloseOrdinal, CloseReason, Closing}
+import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
 import grit.core.plugin.{InMemoryPlugins, Plugin, PluginDocs, PluginName, PostRef}
 import grit.core.store.{
   ClosedPeriod,
@@ -40,12 +40,12 @@ object PostingTests extends TestSuite {
       refused: Set[String] = Set.empty
   ) extends Plugin {
     def post(closed: ClosedPeriod, docs: PluginDocs)(using Tx^): Either[StoreError, Unit] =
-      if (refused.contains(closed.closing.prose))
-        Left(StoreError.Invalid(s"refused ${closed.closing.prose}"))
+      if (refused.contains(closed.closing.flows.prose))
+        Left(StoreError.Invalid(s"refused ${closed.closing.flows.prose}"))
       else
         docs.put(
           CloseOrdinal.value(closed.order).toString,
-          ujson.Str(s"v$version ${closed.closing.prose}")
+          ujson.Str(s"v$version ${closed.closing.flows.prose}")
         )
   }
 
@@ -76,9 +76,7 @@ object PostingTests extends TestSuite {
             Instant.EPOCH
           )
         )
-        val closing = Closing
-          .of(s"p$i", None, Vector(), Vector(), Vector(), Vector())
-          .getOrElse(sys.error("closing"))
+        val closing = TestClosings.prose(s"p$i")
         periods.seal(
           CloseRef(
             PeriodRef(c, PeriodSeq.of(i.toLong).getOrElse(sys.error("seq"))),

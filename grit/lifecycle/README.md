@@ -12,7 +12,8 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   conversation (`grit.dbos.workflow.Closes`): `check` its deadline is still the attempt's,
   `gate` which sections its closing needs (`CloseGate`, one classifier call), `summarise`
   it (`ClosingSummary`: the summary role's prompt and a tolerant reader, falling back to
-  the per-turn summaries), `seal` it with its closing entry. `CloseEnv` is what it works
+  the per-turn summaries; the writer's edits applied to the balance the period opened
+  with, held to the cap in force), `seal` it with its closing entry. `CloseEnv` is what it works
   with. ← `transcript`
 - **`settle`** — `Settle`: the one question whether a quiet period is finished, asked
   once per quiet stretch, on the turns' queue under its conversation

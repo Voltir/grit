@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, ToolCallId}
 import grit.core.message.AssistantBlock
-import grit.core.period.{CloseOrdinal, CloseReason, Closing, Probability}
+import grit.core.period.{CloseOrdinal, CloseReason, Closing, Probability, TestClosings}
 import grit.core.plugin.{InMemoryPlugins, PluginName}
 import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
@@ -21,7 +21,7 @@ object DigestTests extends TestSuite {
   }
 
   private def closing(prose: String, outcome: Option[String]): Closing =
-    Closing.of(prose, outcome, Vector(), Vector(), Vector(), Vector()).getOrElse(throw new java.lang.AssertionError(prose))
+    TestClosings.prose(prose, outcome)
 
   private def closed(n: Long, origin: Origin, reason: CloseReason, c: Closing, at: String): ClosedPeriod =
     ClosedPeriod(

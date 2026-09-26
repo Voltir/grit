@@ -7,7 +7,7 @@ import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextA
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{CloseReason, Closing}
+import grit.core.period.{CloseReason, TestClosings}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{Db, Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
 import grit.dbos.sql.TestTx
@@ -290,9 +290,7 @@ object TurnTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val provider = new RecordingProvider
       say(entries, "one")
-      val closing = Closing
-        .of("We talked about one.", Some("one"), Vector(), Vector(), Vector(), Vector())
-        .getOrElse(sys.error("closing"))
+      val closing = TestClosings.prose("We talked about one.", Some("one"))
       val closed = EntryId("closing:c1:1")
       entries.insert(
         Entry(

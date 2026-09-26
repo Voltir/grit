@@ -8,7 +8,7 @@ In dependency order:
 - **`clock`** — what a function cannot compute: `Clock` (the time) and `Fresh` (values
   no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `WorkflowId`,
-  `SourceId`, `ToolCallId`, `PeriodSeq`), `TurnRef`, `PeriodRef`, `CloseRef` (one
+  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`), `TurnRef`, `PeriodRef`, `CloseRef` (one
   attempt to close a period on its deadline, and its workflow id) and `SettleRef` (the one
   question whether a quiet period is finished, and its workflow id). Imports nothing in core.
 - **`model`** — what grit knows about models, as data: `ModelRef` (a model snapshot at an
@@ -27,7 +27,9 @@ In dependency order:
   `Deadline` (when a period closes, and when it is asked whether it is finished: the one
   definition of each), a classifier's `Verdict` and its `Judgement`, `Probability`, an open
   period's `Activity`, the `Closing` a
-  closed one leaves and its stored form `ClosingJson`, a `CloseOrdinal` (close order across
+  closed one leaves (its `Flows`, and the conversation's `Balance` after it: `Line`s in
+  `Section`s, changed by `Edit`s into `Change`s and held to a cap) and its stored form
+  `ClosingJson`, a `CloseOrdinal` (close order across
   conversations), and a `Purgeable` period's workflows. ← `id`
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),
   `Jot` (short writes from inside a step), `Entry`,
@@ -35,7 +37,7 @@ In dependency order:
   `ConversationStore`, `UsageLedger`, `ModelProfileStore` (which profile each turn ran
   under), `ModelFactStore` (facts about pairs approved at runtime), `PeriodStore` (which
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
-  settings in force), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`
+  settings in force), `Opening` and `ClosingEntry` (the closing a period opens from), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
   `PluginName`, `PluginDocs` (one plugin's documents, and no other's), `PluginCursors` (how
@@ -73,6 +75,6 @@ No source file sits at core's root, and no two packages import each other in a c
 The test tree mirrors it: the in-memory fakes other modules' tests use are
 `store.InMemoryEntryStore`, `store.InMemoryUsageLedger`, `store.InMemoryModelProfileStore`,
 `store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore`, `plugin.InMemoryPlugins` and
-`durable.InMemoryDurable`.
+`durable.InMemoryDurable`; and `period.TestClosings` builds closings and balance lines.
 `TestTx` lives in package `grit.dbos.sql`, because the `null` it holds is legal only inside
 the DBOS quarantine (rule 6).

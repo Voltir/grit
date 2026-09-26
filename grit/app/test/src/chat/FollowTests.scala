@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{CloseReason, Closing, Probability}
+import grit.core.period.{Balance, CloseReason, Closing, Flows, Probability}
 import grit.core.store.{Entry, Payload}
 import grit.dbos.engine.{RecordedStep, TurnStatus}
 
@@ -44,9 +44,10 @@ object FollowTests extends TestSuite {
 
   val tests = Tests {
     test("a closing entry arrives as a closed divider: its reason and its headline") {
-      val closing = Closing
-        .of("We chose staging. Then lunch.", None, Vector(), Vector(), Vector(), Vector())
-        .getOrElse(sys.error("closing"))
+      val closing = Closing(
+        Flows.of("We chose staging. Then lunch.", None, Vector()).getOrElse(sys.error("flows")),
+        Balance.empty
+      )
       val closed = Entry(
         EntryId("closing:c:1"),
         c,

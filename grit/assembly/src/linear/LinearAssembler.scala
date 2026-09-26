@@ -11,10 +11,11 @@ import grit.core.store.{Db, Entry, EntryStore, Payload, PeriodStore}
   * the turn, that fit in what `budget` tokens by `estimator` leave; never their summaries.
   * The baseline every smarter assembler is measured against.
   *
-  * The closing entry is paid for first; a budget too small for it leaves it out. Turns are kept or dropped whole, so a window never
-  * opens on a reply without its question, or a tool result without its call. The first turn
-  * back that does not fit ends the window, even if older turns would: the model never sees
-  * a history with holes. A newest turn larger than what is left on its own leaves no turns.
+  * The closing entry is paid for first; a budget too small for it leaves it out. Turns are
+  * kept or dropped whole, so a window never opens on a reply without its question, or a tool
+  * result without its call. The first turn back that does not fit ends the window, even if
+  * older turns would: the model never sees a history with holes. A newest turn larger than
+  * what is left on its own leaves no turns.
   */
 final class LinearAssembler(
     entries: EntryStore,

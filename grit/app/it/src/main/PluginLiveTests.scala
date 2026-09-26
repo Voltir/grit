@@ -9,7 +9,7 @@ import scala.util.Using
 import grit.core.durable.Durable
 import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, SourceId, ToolCallId, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.period.{CloseOrdinal, CloseReason, Closing, Probability}
+import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
 import grit.core.plugin.{Plugin, PluginDocs, PluginName, PostRef}
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
@@ -44,7 +44,7 @@ object PluginLiveTests extends TestSuite {
       val t = engine.inbox
         .ingest(Origin.Tui("plugins"), SourceId(s"m$i"), Message.User(s"message $i"))
         .fold(e => sys.error(s"$e"), identity)
-      val closing = Closing.of(s"Period $i. More.", None, Vector(), Vector(), Vector(), Vector()).getOrElse(sys.error("c"))
+      val closing = TestClosings.prose(s"Period $i. More.")
       val ref = PeriodRef(t.conversationId, PeriodSeq.of(i.toLong).getOrElse(sys.error("seq")))
       engine.jot.write(engine.periods.seal(CloseRef(ref, t.turnSeq, Instant.EPOCH), CloseReason.Resolved(Probability.One), closing, Instant.parse(s"2026-09-2${i}T10:00:00Z"))) ==>
         Right(Sealed.Closed(ref.closingId))

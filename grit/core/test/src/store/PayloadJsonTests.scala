@@ -2,7 +2,7 @@ package grit.core.store
 
 import grit.core.id.{EntryId, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{CloseReason, Closing, Probability}
+import grit.core.period.{CloseReason, Closing, Probability, TestClosings}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
 
 import utest.*
@@ -21,10 +21,7 @@ object PayloadJsonTests extends TestSuite {
     "openai/gpt-5-mini"
   )
 
-  private val closing: Closing =
-    Closing
-      .of("Small talk.", Some("none"), Vector(), Vector(), Vector(), Vector())
-      .getOrElse(throw new java.lang.AssertionError("closing"))
+  private val closing: Closing = TestClosings.prose("Small talk.", Some("none"))
 
   private val samples: Seq[Message] = Seq(
     Message.User("hello"),
@@ -131,7 +128,7 @@ object PayloadJsonTests extends TestSuite {
     test("closed") {
       PayloadJson.write(Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing)).render() ==>
         """{"kind":"closed","period":1,"reason":"lapsed","closing":""" +
-        """{"v":1,"prose":"Small talk.","outcome":"none","decisions":[],"facts":[],"open":[],"sources":[]}}"""
+        """{"v":2,"flows":{"prose":"Small talk.","outcome":"none","changes":[]},"balance":{"open":[],"standing":[],"topics":[]}}}"""
       // A pin of the stored form: a resolved close keeps its confidence beside its reason, and
       // a closing entry outlives every raw entry of its period.
       val resolved = CloseReason.Resolved(
@@ -139,10 +136,10 @@ object PayloadJsonTests extends TestSuite {
       )
       PayloadJson.write(Payload.Closed(PeriodSeq.First, resolved, closing)).render() ==>
         """{"kind":"closed","period":1,"reason":"resolved","confidence":0.86,"closing":""" +
-        """{"v":1,"prose":"Small talk.","outcome":"none","decisions":[],"facts":[],"open":[],"sources":[]}}"""
+        """{"v":2,"flows":{"prose":"Small talk.","outcome":"none","changes":[]},"balance":{"open":[],"standing":[],"topics":[]}}}"""
       PayloadJson.read(
         ujson.read(
-          """{"kind":"closed","period":1,"reason":"resolved","closing":{"v":1,"prose":"x"}}"""
+          """{"kind":"closed","period":1,"reason":"resolved","closing":{"v":2,"flows":{"prose":"x"}}}"""
         )
       ) ==> Left("a resolved close has no confidence")
       PayloadJson.read(
@@ -150,7 +147,9 @@ object PayloadJsonTests extends TestSuite {
       ) ==>
         Left("period 0 is below the first")
       PayloadJson.read(
-        ujson.read("""{"kind":"closed","period":1,"reason":"quit","closing":{"v":1,"prose":"x"}}""")
+        ujson.read(
+          """{"kind":"closed","period":1,"reason":"quit","closing":{"v":2,"flows":{"prose":"x"}}}"""
+        )
       ) ==> Left("unknown close reason: quit")
     }
 

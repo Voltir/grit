@@ -1,14 +1,17 @@
 package grit.lifecycle.close
 
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.period.Closing
+import grit.core.period.{Edit, Section}
 import grit.core.provider.ModelRequest
 
 /** What the summary model is asked when a period closes, and how its reply becomes the
-  * period's [[Closing]]. It writes from the period's own transcript alone, so the closing
-  * reads on its own wherever it is shown.
+  * flows of the period's closing and its edits to the balance. It writes from the period's
+  * own transcript alone, so the closing reads on its own wherever it is shown.
   */
 object ClosingSummary {
+
+  /** What the writer wrote: `prose`, `outcome`, and its `edits` in the order written. */
+  final case class Written(prose: String, outcome: Option[String], edits: Vector[Edit])
 
   /** The system prompt, before the sections asked for. */
   val System: String =
@@ -33,12 +36,7 @@ object ClosingSummary {
           "each decision settled: what was chosen, agreed or ruled out"
         ) ++
         list(asked.facts, "Facts", "each fact stated that is worth knowing later") ++
-        list(asked.open, "Open", "each question left unanswered or task left unfinished") ++
-        list(
-          asked.sources,
-          "Sources",
-          "each file, link or document the facts or decisions came from"
-        )
+        list(asked.open, "Open", "each question left unanswered or task left unfinished")
     ModelRequest(
       (System +: parts).mkString("\n") +
         (if (parts.size > 1) "\nWrite none under a list with nothing in it." else ""),
@@ -50,14 +48,15 @@ object ClosingSummary {
     if (asked) Vector(s"$label: then one line per item, each starting with \"- \": $what.")
     else Vector.empty
 
-  /** The closing in `reply`, keeping only the sections `asked` names: `Summary:`,
-    * `Outcome:`, `Decisions:`, `Facts:`, `Open:` and `Sources:` (any case, markdown emphasis
-    * and headings ignored), a label's text running to the next label, a list's items one per
-    * line with any bullet or number taken off and "none" dropped. Text before the first
-    * label is the prose when `Summary:` is missing; without any label, the whole text is.
-    * `None` when it has no prose.
+  /** What `reply` wrote, keeping only the sections `asked` names: `Summary:`, `Outcome:`,
+    * `Decisions:`, `Facts:` and `Open:` (any case, markdown emphasis and headings ignored), a
+    * label's text running to the next label, a list's items one per line with any bullet or
+    * number taken off and "none" dropped. Each decision and fact is a `Standing` add, each
+    * open item an `Open` add, in that order. Text before the first label is the prose when
+    * `Summary:` is missing; without any label, the whole text is. `None` when it has no
+    * prose.
     */
-  def read(reply: Message.Assistant, asked: Asked): Option[Closing] = {
+  def read(reply: Message.Assistant, asked: Asked): Option[Written] = {
     val whole = reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
     val labelled = whole.linesIterator.toVector.foldLeft(Vector.empty[(String, String)]) {
       (acc, line) =>
@@ -79,13 +78,14 @@ object ClosingSummary {
       if (!on) Vector.empty
       else part(label).map(item).filter(i => i.nonEmpty && !isNone(i))
     val prose = Some(text(part("summary"))).filter(_.nonEmpty).getOrElse(text(part("")))
-    Closing.of(
-      prose,
-      Option.when(asked.outcome)(text(part("outcome"))).filterNot(isNone),
-      items("decisions", asked.decisions),
-      items("facts", asked.facts),
-      items("open", asked.open),
-      items("sources", asked.sources)
+    Option.when(prose.nonEmpty)(
+      Written(
+        prose,
+        Option.when(asked.outcome)(text(part("outcome"))).filter(o => o.nonEmpty && !isNone(o)),
+        (items("decisions", asked.decisions) ++ items("facts", asked.facts))
+          .map(Edit.Add(Section.Standing, _)) ++
+          items("open", asked.open).map(Edit.Add(Section.Open, _))
+      )
     )
   }
 

@@ -8,7 +8,14 @@ import scala.util.Using
 import grit.core.durable.Durable
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, SourceId, WorkflowId}
 import grit.core.message.Message
-import grit.core.period.{CloseReason, Closing, LifecycleSettings, PeriodState, Probability, Windows}
+import grit.core.period.{
+  CloseReason,
+  LifecycleSettings,
+  PeriodState,
+  Probability,
+  TestClosings,
+  Windows
+}
 import grit.core.store.{Origin, Tx}
 import grit.dbos.sql.{
   DbConfig,
@@ -50,9 +57,7 @@ object RetentionLiveTests extends TestSuite {
     CloseRef.fromWorkflowId(id) match {
       case None => "not a close"
       case Some(attempt) =>
-        val closing = Closing
-          .of("kept", None, Vector(), Vector(), Vector(), Vector())
-          .getOrElse(sys.error("closing"))
+        val closing = TestClosings.prose("kept")
         d.transact("seal")(
           periods.seal(attempt, CloseReason.Lapsed, closing, Instant.now()).toString
         )

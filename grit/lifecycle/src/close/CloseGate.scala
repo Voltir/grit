@@ -4,8 +4,7 @@ import grit.core.classify.{Ask, Classifier, ClassifierError, StateJson}
 
 /** Which sections a period's closing needs, asked of a classifier in one call: was the
   * question answered (the outcome), was a decision settled, a fact stated, is anything left
-  * open. Sources are asked for with decisions or facts. A period of small talk gets the
-  * prose alone, and no section.
+  * open. A period of small talk gets the prose alone, and no section.
   */
 object CloseGate {
 
@@ -48,8 +47,7 @@ object CloseGate {
         )
       )
       .map { case (((outcome, decisions), facts), open) =>
-        val (d, f) = (decisions >= Threshold, facts >= Threshold)
-        Asked(outcome >= Threshold, d, f, open >= Threshold, d || f)
+        Asked(outcome >= Threshold, decisions >= Threshold, facts >= Threshold, open >= Threshold)
       }
 
   /** The sections `transcript` needs, as `classifier` answers; [[Asked.Every]], and why,

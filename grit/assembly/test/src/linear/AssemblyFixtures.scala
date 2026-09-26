@@ -3,7 +3,7 @@ package grit.assembly.linear
 import java.time.Instant
 
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnSeq}
-import grit.core.period.{CloseReason, Closing, Probability}
+import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.store.{Db, Entry, InMemoryEntryStore, InMemoryPeriodStore, Payload, StoreError, Tx}
 import grit.dbos.sql.TestTx
 
@@ -56,16 +56,15 @@ object AssemblyFixtures {
           )
         }
       }
-      prose.lift(p).flatMap(Closing.of(_, None, Vector(), Vector(), Vector(), Vector())).foreach {
-        closing =>
-          val last = entries.lockNext(c1).getOrElse(sys.error("in-memory store")).turnSeq
-          val period = PeriodRef(c1, PeriodSeq.of(p + 1L).getOrElse(sys.error("period")))
-          val _ = world.periods.seal(
-            CloseRef(period, TurnSeq(TurnSeq.value(last) - 1), Instant.EPOCH),
-            CloseReason.Resolved(Probability.One),
-            closing,
-            Instant.EPOCH
-          )
+      prose.lift(p).map(TestClosings.prose(_)).foreach { closing =>
+        val last = entries.lockNext(c1).getOrElse(sys.error("in-memory store")).turnSeq
+        val period = PeriodRef(c1, PeriodSeq.of(p + 1L).getOrElse(sys.error("period")))
+        val _ = world.periods.seal(
+          CloseRef(period, TurnSeq(TurnSeq.value(last) - 1), Instant.EPOCH),
+          CloseReason.Resolved(Probability.One),
+          closing,
+          Instant.EPOCH
+        )
       }
     }
     world

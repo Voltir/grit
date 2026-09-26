@@ -6,15 +6,15 @@
   "steps": [
     {
       "name": "check",
-      "output": "{\"ok\":{\"due\":\"lapsed\",\"first\":0}}"
+      "output": "{\"ok\":{\"due\":\"lapsed\",\"first\":0,\"known\":{\"open\":[],\"standing\":[],\"topics\":[]},\"cap\":4096}}"
     },
     {
       "name": "gate",
-      "output": "{\"outcome\":true,\"decisions\":true,\"facts\":false,\"open\":true,\"sources\":true}"
+      "output": "{\"outcome\":true,\"decisions\":true,\"facts\":false,\"open\":true}"
     },
     {
       "name": "summarise",
-      "output": "{\"closing\":{\"v\":1,\"prose\":\"We chose staging.\",\"outcome\":\"staging\",\"decisions\":[\"staging first\"],\"facts\":[],\"open\":[],\"sources\":[]},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":68}}"
+      "output": "{\"closing\":{\"v\":2,\"flows\":{\"prose\":\"We chose staging.\",\"outcome\":\"staging\",\"changes\":[{\"added\":{\"section\":\"standing\",\"text\":\"staging first\",\"since\":1,\"touched\":1}}]},\"balance\":{\"open\":[],\"standing\":[{\"text\":\"staging first\",\"since\":1,\"touched\":1}],\"topics\":[]}},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":68}}"
     },
     {
       "name": "seal",

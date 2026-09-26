@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{CloseReason, Closing}
+import grit.core.period.{Change, CloseReason, Closing, Flows, Section, TestClosings}
 import grit.core.store.{Entry, EntrySearch, Origin, Payload}
 import grit.dbos.sql.{LiveDb, SqlEntrySearch, SqlEntryStore, TestPostgres}
 
@@ -132,24 +132,33 @@ object SearchLiveTests extends TestSuite {
       find(queried, "bilby").map(ids) ==> Right(Vector("query:e1"))
     }
 
-    test("a closing entry is searched by its prose, its outcome and its sections' lines") {
-      val closing = Closing
-        .of(
-          "we compared kakapo diets",
-          Some("kea eat anything"),
-          Vector("feed the takahe seeds"),
-          Vector("the kiwi is nocturnal"),
-          Vector("weka remain unsettled"),
-          Vector("notes on the tuatara")
-        )
-        .getOrElse(sys.error("closing"))
+    test("a closing entry is searched by its flows, never by the lines it only carries") {
+      import TestClosings.{balance, line}
+      val added = line(Section.Standing, "feed the takahe seeds", 2, 2)
+      val closing = Closing(
+        Flows
+          .of(
+            "we compared kakapo diets",
+            Some("kea eat anything"),
+            Vector(
+              Change.Added(added),
+              Change.Resolved(line(Section.Open, "where do weka roost", 1, 1), "the tuatara knows"),
+              Change
+                .Dropped(line(Section.Standing, "moa survive", 1, 1), "extinct, says the kokako")
+            )
+          )
+          .getOrElse(sys.error("flows")),
+        balance(line(Section.Standing, "the kiwi is nocturnal", 1, 1), added)
+      )
       val c = conversation(
         "closed",
-        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing),
+        Payload.Closed(PeriodSeq.of(2).getOrElse(sys.error("p")), CloseReason.Lapsed, closing),
         said("nothing to see")
       )
-      Vector("kakapo", "kea", "takahe", "kiwi", "weka", "tuatara").map(w => find(c, w).map(ids)) ==>
-        Vector.fill(6)(Right(Vector("closed:e0")))
+      Vector("kakapo", "kea", "takahe", "weka", "tuatara", "moa", "kokako").map(w =>
+        find(c, w).map(ids)
+      ) ==> Vector.fill(7)(Right(Vector("closed:e0")))
+      find(c, "kiwi").map(ids) ==> Right(Vector.empty)
     }
   }
 }

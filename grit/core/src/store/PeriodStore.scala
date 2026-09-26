@@ -3,7 +3,16 @@ package grit.core.store
 import java.time.Instant
 
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, TurnRef, TurnSeq}
-import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Purgeable, Verdict}
+import grit.core.period.{
+  Activity,
+  Balance,
+  CloseOrdinal,
+  CloseReason,
+  Closing,
+  Period,
+  Purgeable,
+  Verdict
+}
 
 /** A conversation's periods: which is open, closing one, and deleting what a closed one no
   * longer needs. Each writing method takes the conversation's lock itself
@@ -78,7 +87,11 @@ trait PeriodStore {
 /** What a turn's window, or a close, starts from: the first turn of its period, and the
   * closing entry of the period before it, if any.
   */
-final case class Opening(first: TurnSeq, closing: Option[ClosingEntry])
+final case class Opening(first: TurnSeq, closing: Option[ClosingEntry]) {
+
+  /** The balance it opens with; empty before the conversation's first close. */
+  def balance: Balance = closing.fold(Balance.empty)(_.closing.balance)
+}
 
 /** A closing entry, and the closing its payload holds. */
 final case class ClosingEntry private (entry: Entry, closing: Closing)

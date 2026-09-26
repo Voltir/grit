@@ -18,7 +18,7 @@ import grit.core.model.{
   StrictSchemas,
   Upstream
 }
-import grit.core.period.{CloseReason, Closing, Probability}
+import grit.core.period.{Balance, CloseReason, Closing, Flows, Probability}
 import grit.core.store.{Entry, Payload, UsageLedger}
 import grit.dbos.engine.RecordedStep
 import grit.turn.Turn
@@ -120,16 +120,10 @@ object TurnViewTests extends TestSuite {
     }
 
     test("a window opened by a closing entry counts it as the model was shown it") {
-      val closing = Closing
-        .of(
-          "We chose exiftool.",
-          Some("exiftool"),
-          Vector("exiftool"),
-          Vector(),
-          Vector(),
-          Vector()
-        )
-        .getOrElse(sys.error("closing"))
+      val closing = Closing(
+        Flows.of("We chose exiftool.", Some("exiftool"), Vector()).getOrElse(sys.error("flows")),
+        Balance.empty
+      )
       val closed = entry(
         0,
         0,

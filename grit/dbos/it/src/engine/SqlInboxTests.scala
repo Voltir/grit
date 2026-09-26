@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, SourceId, TurnSeq}
 import grit.core.message.Message
-import grit.core.period.{CloseReason, Closing, PeriodState}
+import grit.core.period.{CloseReason, PeriodState, TestClosings}
 import grit.core.store.{Origin, Sealed}
 import grit.dbos.sql.{LiveDb, SqlEntryStore, SqlPeriodStore, TestPostgres}
 
@@ -50,9 +50,7 @@ object SqlInboxTests extends TestSuite {
         LiveDb.transaction(config)(periods.get(p1)).map(_.map(p => (p.first, p.state))) ==>
           Right(Some((TurnSeq(0), PeriodState.Open)))
         val closing =
-          Closing
-            .of("one", None, Vector(), Vector(), Vector(), Vector())
-            .getOrElse(sys.error("closing"))
+          TestClosings.prose("one")
         LiveDb.transaction(config)(
           periods.seal(
             CloseRef(p1, TurnSeq(0), Instant.EPOCH),

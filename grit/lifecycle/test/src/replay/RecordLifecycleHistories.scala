@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.durable.{History, InMemoryDurable}
 import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq}
 import grit.core.message.Message
-import grit.core.period.{CloseOrdinal, CloseReason, Closing}
+import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
 import grit.core.plugin.{InMemoryPlugins, Plugin, PluginDocs, PluginName, PostRef}
 import grit.core.provider.ProviderError
 import grit.core.store.{
@@ -159,7 +159,7 @@ object RecordLifecycleHistories {
     val name: PluginName = PluginName.of("recorded").fold(sys.error, identity)
     val version: Int = 1
     def post(closed: ClosedPeriod, docs: PluginDocs)(using Tx^): Either[StoreError, Unit] =
-      docs.put(CloseOrdinal.value(closed.order).toString, ujson.Str(closed.closing.prose))
+      docs.put(CloseOrdinal.value(closed.order).toString, ujson.Str(closed.closing.flows.prose))
   }
 
   /** `n` closed periods of one conversation, and an empty plugin store. */
@@ -183,9 +183,7 @@ object RecordLifecycleHistories {
             Instant.EPOCH
           )
         )
-        val closing = Closing
-          .of(s"p$i", None, Vector(), Vector(), Vector(), Vector())
-          .getOrElse(sys.error("closing"))
+        val closing = TestClosings.prose(s"p$i")
         periods.seal(
           CloseRef(
             PeriodRef(CloseFixtures.c, PeriodSeq.of(i.toLong).getOrElse(sys.error("seq"))),
