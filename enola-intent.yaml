@@ -103,6 +103,12 @@ rules:
     mode: strict
     because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
 
+  - id: only-dbos-imports-dbos-list-workflows
+    forbid_name: outside-dbos
+    pattern: "* -> dev.dbos.transact.workflow.ListWorkflowsInput"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
+
   - id: only-dbos-imports-dbos-queue
     forbid_name: outside-dbos
     pattern: "* -> dev.dbos.transact.workflow.Queue"

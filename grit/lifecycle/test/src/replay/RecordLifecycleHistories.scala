@@ -67,7 +67,7 @@ object RecordLifecycleHistories {
     val posted = {
       val w = postWorld(2)
       val durable = new InMemoryDurable
-      val id = PostRef(Posted.name, Posted.version, CloseOrdinal.Start).workflowId
+      val id = PostRef(Posted.name, Posted.version, CloseOrdinal.Start, 0).workflowId
       durable.run(id)(
         Posting.body(
           Vector(Posted),
@@ -79,26 +79,31 @@ object RecordLifecycleHistories {
     posted +: Vector(
       record("close-sealed") { (w, d) =>
         w.turn("where do we deploy?", "staging", "Chose staging.", 0)
-        val id = attempt(w.say("and prod?", 1)).workflowId
+        w.say("and prod?", 1)
+        val id = w.attempt.workflowId
         d.run(id)(
           w.body(new Gate(Some(Vector(0.9, 0.9, 0.1, 0.8))), written, new SetClock(at(Lapsed)))
         )
         id
       },
-      record("close-not-due") { (w, d) =>
-        val id = attempt(w.say("hello", 0)).workflowId
-        d.run(id)(w.body(new Gate(None), written, new SetClock(at(1))))
+      record("close-deadline-moved") { (w, d) =>
+        val t = w.say("hello", 0)
+        val id = w.attempt.workflowId
+        w.add(t, Payload.Summary("said hello"), 30, "late")
+        d.run(id)(w.body(new Gate(None), written, new SetClock(at(3 * Lapsed))))
         id
       },
       record("close-abandoned-at-seal") { (w, d) =>
-        val id = attempt(w.say("hello", 0)).workflowId
+        w.say("hello", 0)
+        val id = w.attempt.workflowId
         val interrupting =
           new Summariser(_ => Right(replyOf("Summary: x")), () => { w.say("one more", 30); () })
         d.run(id)(w.body(new Gate(None), interrupting, new SetClock(at(Lapsed))))
         id
       },
       record("close-no-summary") { (w, d) =>
-        val id = attempt(w.turn("hi", "hello", "Greetings.", 0)).workflowId
+        w.turn("hi", "hello", "Greetings.", 0)
+        val id = w.attempt.workflowId
         val failing = new Summariser(_ => Left(ProviderError.Refused("HTTP 400")))
         d.run(id)(w.body(new Gate(None), failing, new SetClock(at(Lapsed))))
         id
@@ -143,7 +148,8 @@ object RecordLifecycleHistories {
         periods.seal(
           CloseRef(
             PeriodRef(CloseFixtures.c, PeriodSeq.of(i.toLong).getOrElse(sys.error("seq"))),
-            next.turnSeq
+            next.turnSeq,
+            Instant.EPOCH
           ),
           CloseReason.Lapsed,
           closing,

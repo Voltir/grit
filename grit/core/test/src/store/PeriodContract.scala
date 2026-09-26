@@ -110,7 +110,7 @@ abstract class PeriodContract extends TestSuite {
     transaction(
       right(
         periods.seal(
-          CloseRef(period, last.turnSeq),
+          CloseRef(period, last.turnSeq, at(minute)),
           CloseReason.Resolved,
           closing(text),
           at(minute)

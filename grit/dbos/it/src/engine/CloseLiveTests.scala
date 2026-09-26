@@ -8,12 +8,13 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, SourceId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{EntryId, PeriodRef, PeriodSeq, SourceId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.Message
 import grit.core.period.{LifecycleSettings, Windows}
-import grit.core.store.Origin
+import grit.core.store.{Entry, Origin, Payload}
 import grit.dbos.sql.{DbConfig, LiveDb, SqlLifecycleStore, TestPostgres}
 
+import dev.dbos.transact.DBOSClient
 import utest.*
 
 /** The close workflow and the sweep that enqueues it, over DBOS against a real Postgres,
@@ -74,8 +75,10 @@ object CloseLiveTests extends TestSuite {
         val t0 = ingested(engine, Origin.Task("close", "waits"), "one")
         engine.inbox.startTurn(t0) ==> Right(())
         assert(eventually(events.contains("turn started")))
-        val attempt = CloseRef(PeriodRef(t0.conversationId, PeriodSeq.First), TurnSeq(0))
-        engine.sweep(Instant.now().plusSeconds(120)) ==> Right(Swept(Vector(attempt), Vector.empty))
+        engine
+          .sweep(Instant.now().plusSeconds(120))
+          .map(_.enqueued.map(a => (a.period, a.last))) ==>
+          Right(Vector((PeriodRef(t0.conversationId, PeriodSeq.First), TurnSeq(0))))
         Thread.sleep(2000)
         events.asScala.toVector ==> Vector("turn started")
         release.countDown()
@@ -100,20 +103,86 @@ object CloseLiveTests extends TestSuite {
         )
         minuteIdle(config)
         val t0 = ingested(engine, Origin.Task("close", "once"), "one")
-        val attempt = CloseRef(PeriodRef(t0.conversationId, PeriodSeq.First), TurnSeq(0))
         engine.sweep(Instant.now()) ==> Right(Swept.nothing)
-        engine.sweep(Instant.now().plusSeconds(120)) ==> Right(Swept(Vector(attempt), Vector.empty))
+        engine
+          .sweep(Instant.now().plusSeconds(120))
+          .map(_.enqueued.map(a => (a.period, a.last))) ==>
+          Right(Vector((PeriodRef(t0.conversationId, PeriodSeq.First), TurnSeq(0))))
         engine.sweep(Instant.now().plusSeconds(121)).map(_.enqueued) ==> Right(Vector.empty)
         assert(eventually(runs.size == 1))
       } finally engine.close()
     }
 
-    test("an attempt that finished with its period still due is enqueued again, under its id") {
-      val config = TestPostgres.freshDatabase("close_retried")
-      val runs = new ConcurrentLinkedQueue[String]()
-      // Never seals: each run leaves the period open and due, as an abandoned attempt does.
+    test(
+      "an attempt whose deadline a running turn's entries moved is followed by one under a new id, the first kept"
+    ) {
+      val config = TestPostgres.freshDatabase("close_moved")
+      val release = new CountDownLatch(1)
+      val closes = new ConcurrentLinkedQueue[String]()
+      def turn(id: WorkflowId)(using @unused d: Durable^): String = {
+        release.await(30, TimeUnit.SECONDS)
+        WorkflowId.value(id)
+      }
+      // Never seals, as a close whose deadline moved does not.
       def close(id: WorkflowId)(using @unused d: Durable^): String = {
-        runs.add(WorkflowId.value(id)); "abandoned"
+        closes.add(WorkflowId.value(id)); "abandoned: its deadline moved"
+      }
+      val engine = Engine.open(config, "test")
+      try {
+        engine.launch(
+          turn,
+          close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          Vector.empty
+        )
+        minuteIdle(config)
+        val t0 = ingested(engine, Origin.Task("close", "moved"), "one")
+        engine.inbox.startTurn(t0) ==> Right(())
+        val first = engine.sweep(Instant.now().plusSeconds(120)).map(_.enqueued)
+        assert(first.map(_.size) == Right(1))
+        // The running turn writes its reply a minute on: the period's newest activity moves.
+        engine.jot.write {
+          for {
+            next <- engine.entries.lockNext(t0.conversationId)
+            _ <- engine.entries.insert(
+              Entry(
+                EntryId("reply"),
+                t0.conversationId,
+                t0.turnSeq,
+                None,
+                next.seq,
+                Payload.Summary("replied"),
+                Instant.now().plusSeconds(60)
+              )
+            )
+          } yield ()
+        } ==> Right(())
+        release.countDown()
+        assert(eventually(closes.size == 1))
+        val second = engine.sweep(Instant.now().plusSeconds(240)).map(_.enqueued)
+        assert(second.map(_.size) == Right(1), second != first)
+        assert(eventually(closes.size == 2))
+        closes.asScala.toVector.distinct.size ==> 2
+        val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
+        try
+          first.map(
+            _.map(a =>
+              client
+                .retrieveWorkflow[String, Exception](WorkflowId.value(a.workflowId))
+                .getStatus() != null
+            )
+          ) ==>
+            Right(Vector(true))
+        finally client.close()
+      } finally engine.close()
+    }
+
+    test("an attempt that failed is not run again while its deadline stands, however many sweeps") {
+      val config = TestPostgres.freshDatabase("close_failed")
+      val runs = new ConcurrentLinkedQueue[String]()
+      // Never seals, as a close whose seal fails does not.
+      def close(id: WorkflowId)(using @unused d: Durable^): String = {
+        runs.add(WorkflowId.value(id)); "failed: the database refused the seal"
       }
       val engine = Engine.open(config, "test")
       try {
@@ -124,14 +193,19 @@ object CloseLiveTests extends TestSuite {
           Vector.empty
         )
         minuteIdle(config)
-        val t0 = ingested(engine, Origin.Task("close", "retried"), "one")
-        val attempt = CloseRef(PeriodRef(t0.conversationId, PeriodSeq.First), TurnSeq(0))
+        ingested(engine, Origin.Task("close", "failed"), "one")
         val later = Instant.now().plusSeconds(120)
-        engine.sweep(later) ==> Right(Swept(Vector(attempt), Vector.empty))
+        engine.sweep(later).map(_.enqueued.size) ==> Right(1)
         assert(eventually(runs.size == 1))
-        assert(eventually(engine.sweep(later) == Right(Swept(Vector.empty, Vector(attempt)))))
-        assert(eventually(runs.size == 2))
-        runs.asScala.toVector.distinct ==> Vector(WorkflowId.value(attempt.workflowId))
+        Thread.sleep(500)
+        val attempt = engine.sweep(later).map(_.stuck)
+        (1 to 3).map(n =>
+          engine.sweep(later.plusSeconds(n.toLong)).map(s => (s.enqueued, s.stuck))
+        ) ==>
+          (1 to 3).map(_ => attempt.map((Vector.empty, _)))
+        assert(attempt.map(_.size) == Right(1))
+        Thread.sleep(1000)
+        runs.size ==> 1
       } finally engine.close()
     }
   }

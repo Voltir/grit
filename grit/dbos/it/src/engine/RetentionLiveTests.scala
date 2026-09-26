@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, SourceId, TurnSeq, WorkflowId}
+import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, SourceId, WorkflowId}
 import grit.core.message.Message
 import grit.core.period.{CloseReason, Closing, LifecycleSettings, PeriodState, Windows}
 import grit.core.store.{Origin, Tx}
@@ -18,6 +18,7 @@ import grit.dbos.sql.{
   SqlPeriodStore,
   TestPostgres
 }
+import grit.dbos.workflow.DurableWorkflow
 
 import dev.dbos.transact.DBOSClient
 import utest.*
@@ -109,8 +110,9 @@ object RetentionLiveTests extends TestSuite {
         engine.inbox.startTurn(t0) ==> Right(())
         engine.awaitTurn(t0)
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
-        val attempt = CloseRef(p1, TurnSeq(0))
-        engine.sweep(Instant.now().plusSeconds(120)).map(_.enqueued) ==> Right(Vector(attempt))
+        val swept = engine.sweep(Instant.now().plusSeconds(120)).map(_.enqueued)
+        val attempt = swept.toOption.flatMap(_.headOption).getOrElse(sys.error(s"none: $swept"))
+        attempt.period ==> p1
         assert(
           eventually(
             LiveDb
@@ -145,6 +147,56 @@ object RetentionLiveTests extends TestSuite {
             case PeriodState.Open(_) => false
           })) ==> Right(Some(true))
         engine.sweep(later.plusSeconds(60)) ==> Right(Swept.nothing)
+      } finally engine.close()
+    }
+
+    test("a purge finds its period's attempts by their ids' prefix, and not period 10's") {
+      val config = TestPostgres.freshDatabase("retention_prefix")
+      val engine = Engine.open(config, "test")
+      try {
+        engine.launch(
+          turn,
+          close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          Vector.empty
+        )
+        minutes(config)
+        val t0 = engine.inbox
+          .ingest(Origin.Task("retention", "prefix"), SourceId("one"), Message.User("one"))
+          .fold(e => sys.error(s"$e"), identity)
+        val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
+        engine.sweep(Instant.now().plusSeconds(120)).map(_.enqueued.size) ==> Right(1)
+        assert(
+          eventually(
+            LiveDb
+              .transaction(config)(periods.get(p1))
+              .exists(_.exists(_.state match {
+                case PeriodState.Closed(_, _, _, _, _, _) => true
+                case PeriodState.Open(_) => false
+              }))
+          )
+        )
+        // Workflows named as attempts on period 1 and on period 10 would be, whatever their
+        // turns: the close stand-in runs nothing for either.
+        val c = ConversationId.value(t0.conversationId)
+        val one = WorkflowId(s"close:$c:1:stray")
+        val ten = WorkflowId(s"close:$c:10:stray")
+        val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
+        try
+          Vector(one, ten).foreach { id =>
+            val _ = client.enqueueWorkflow[String, Exception](
+              new DBOSClient.EnqueueOptions("close", DurableWorkflow.ClassName, "turns")
+                .withWorkflowId(WorkflowId.value(id))
+                .withQueuePartitionKey(c),
+              // Empty, and DBOS only reads it; separation checking treats arrays as mutable.
+              caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
+            )
+          }
+        finally client.close()
+        assert(eventually(kept(config, Vector(one)) == Vector(1, 0)))
+        assert(eventually(kept(config, Vector(ten)) == Vector(1, 0)))
+        engine.sweep(Instant.now().plusSeconds(180)).map(_.purged) ==> Right(Vector(p1))
+        (kept(config, Vector(one)), kept(config, Vector(ten))) ==> (Vector(0, 0), Vector(1, 0))
       } finally engine.close()
     }
   }

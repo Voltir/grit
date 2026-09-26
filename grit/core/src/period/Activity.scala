@@ -18,8 +18,8 @@ final case class Activity(
   /** When it closes under `windows` ([[Deadline.of]]). */
   def due(windows: Windows): Due = Deadline.of(newest, signalled, windows)
 
-  /** The attempt to close it as it stands. */
-  def attempt: CloseRef = CloseRef(period, last)
+  /** The attempt to close it on its deadline under `windows`, as it stands. */
+  def attempt(windows: Windows): CloseRef = CloseRef(period, last, due(windows).at)
 
   /** Its signal once someone says it is done `at`: a signal given after its newest activity
     * stands, so a repeat changes nothing; otherwise `at`.

@@ -12,9 +12,11 @@ import grit.core.store.{Entry, Payload, Sealed, StoreError, Tx}
   * queue under its conversation, so never beside one of its turns. Each step's output is
   * recorded, so a close resumed after a crash never calls a model twice.
   *
-  *   1. `check` — the period, under its conversation's lock: already closed, or abandoned
-  *      when a turn came in after the attempt was made or its deadline ([[grit.core.period.Deadline]],
-  *      under the settings in force) has not come; otherwise due, for its reason.
+  *   1. `check` — the period, under its conversation's lock: already closed; abandoned when
+  *      its deadline ([[grit.core.period.Deadline]], under the settings in force) is no longer
+  *      the attempt's, because a turn came in, a turn's entries were written or the settings
+  *      changed, so the sweep makes a new attempt on the new deadline; otherwise due, for its
+  *      reason. The attempt is taken to be enqueued once its deadline had come.
   *   1. `gate` — which sections the closing needs ([[CloseGate]]); every one when the
   *      classifier does not answer.
   *   1. `summarise` — the closing, written by the catalog's summary pin
@@ -63,7 +65,7 @@ object Close {
       case Some(attempt) =>
         import CloseJournal.given
         val records = env.records
-        d.transact(Step.Check)(check(records, attempt, env.clock.now())) match {
+        d.transact(Step.Check)(check(records, attempt)) match {
           case Left(why) => s"failed: $why"
           case Right(Checked.Closed) => "already closed"
           case Right(Checked.Abandoned(why)) => s"abandoned: $why"
@@ -89,8 +91,8 @@ object Close {
         }
     }
 
-  /** The `check` step, at `now`. */
-  private def check(records: CloseRecords, attempt: CloseRef, now: Instant)(using
+  /** The `check` step. */
+  private def check(records: CloseRecords, attempt: CloseRef)(using
       Tx^
   ): Either[String, Checked] =
     (for {
@@ -100,10 +102,10 @@ object Close {
       settings <- records.lifecycle.current()
     } yield (period, activity) match {
       case (Some(p), Some(a)) =>
-        val due = a.due(settings.windows)
-        if (a.last != attempt.last) Checked.Abandoned(s"turn ${TurnSeq.value(a.last)} came in")
-        else if (due.at.isAfter(now)) Checked.Abandoned(s"not due until ${due.at}")
-        else Checked.Due(p.first, due.reason)
+        val current = a.attempt(settings.windows)
+        if (current == attempt) Checked.Due(p.first, a.due(settings.windows).reason)
+        else if (a.last != attempt.last) Checked.Abandoned(s"turn ${TurnSeq.value(a.last)} came in")
+        else Checked.Abandoned(s"its deadline moved to ${current.due}")
       case (Some(_), None) => Checked.Closed
       case (None, _) => Checked.Abandoned("no such period")
     }).left.map(describe)

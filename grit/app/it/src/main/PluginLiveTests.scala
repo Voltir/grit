@@ -46,7 +46,7 @@ object PluginLiveTests extends TestSuite {
         .fold(e => sys.error(s"$e"), identity)
       val closing = Closing.of(s"Period $i. More.", None, Vector(), Vector(), Vector(), Vector()).getOrElse(sys.error("c"))
       val ref = PeriodRef(t.conversationId, PeriodSeq.of(i.toLong).getOrElse(sys.error("seq")))
-      engine.jot.write(engine.periods.seal(CloseRef(ref, t.turnSeq), CloseReason.Resolved, closing, Instant.parse(s"2026-09-2${i}T10:00:00Z"))) ==>
+      engine.jot.write(engine.periods.seal(CloseRef(ref, t.turnSeq, Instant.EPOCH), CloseReason.Resolved, closing, Instant.parse(s"2026-09-2${i}T10:00:00Z"))) ==>
         Right(Sealed.Closed(ref.closingId))
     }
 
@@ -81,7 +81,7 @@ object PluginLiveTests extends TestSuite {
         val digest = new Digest(name("digest"))
         launch(engine, Vector(digest))
         closed(engine, 2)
-        val run = PostRef(digest.name, 1, CloseOrdinal.Start)
+        val run = PostRef(digest.name, 1, CloseOrdinal.Start, 0)
         engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector(run))
         assert(finished(config, run.workflowId))
         engine.jot.write(engine.cursors.start(digest.name, 1)) ==> Right(CloseOrdinal.of(2).getOrElse(sys.error("o")))
@@ -99,20 +99,25 @@ object PluginLiveTests extends TestSuite {
       } finally engine.close()
     }
 
-    test("a plugin that refuses leaves its cursor, and nothing it wrote, until the next sweep") {
+    test("a plugin that refuses leaves its cursor and nothing it wrote, and is run again a bounded number of times") {
       val config = TestPostgres.freshDatabase("plugin_refused")
       val engine = Engine.open(config, "test")
       try {
         val refusing = new Refusing(name("refusing"))
         launch(engine, Vector(refusing))
         closed(engine, 1)
-        val run = PostRef(refusing.name, 1, CloseOrdinal.Start)
-        engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector(run))
-        assert(finished(config, run.workflowId))
+        val runs = (0 until PostRef.Attempts).toVector.map(PostRef(refusing.name, 1, CloseOrdinal.Start, _))
+        // Still behind after each: the next run from the same cursor, under the next id.
+        runs.map { run =>
+          val posted = engine.sweep(Instant.now()).map(_.posted)
+          assert(finished(config, run.workflowId))
+          posted
+        } ==> runs.map(run => Right(Vector(run)))
         engine.db.read(engine.docs(refusing.name).get("half")) ==> Right(None)
         engine.jot.write(engine.cursors.start(refusing.name, 1)) ==> Right(CloseOrdinal.Start)
-        // Still behind: the finished run is enqueued again.
-        engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector(run))
+        // Then the cursor is left for a person, its last run named.
+        engine.sweep(Instant.now()).map(s => (s.posted, s.stuck)) ==>
+          Right((Vector(), runs.lastOption.map(_.workflowId).toVector))
       } finally engine.close()
     }
   }

@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, TurnSeq, WorkflowId}
+import grit.core.id.{CloseRef, ConversationId, PeriodRef, PeriodSeq, TurnSeq, WorkflowId}
 
 import utest.*
 
@@ -63,9 +63,16 @@ object PeriodTests extends TestSuite {
       LifecycleSettings.of(hourAndFive, 0).map(_.closings) ==> Right(0)
     }
 
-    test("a purge deletes the turn and every close attempt of each of its turns") {
-      Purgeable(p1, TurnSeq(3), TurnSeq(4)).workflows.map(WorkflowId.value) ==>
-        Vector("c:3", "c:4", "close:c:1:3", "close:c:1:4")
+    test("a purge deletes each of its turns, and every close attempt by its id's prefix") {
+      val purgeable = Purgeable(p1, TurnSeq(3), TurnSeq(4))
+      (purgeable.turns.map(WorkflowId.value), purgeable.attempts) ==>
+        (Vector("c:3", "c:4"), Vector("close:c:1:"))
+    }
+
+    test("an open period's attempt is on its deadline under the windows in force") {
+      val a = Activity(p1, Noon, TurnSeq(2), None)
+      a.attempt(hourAndFive) ==> CloseRef(p1, TurnSeq(2), Noon.plusSeconds(3600))
+      a.attempt(windows(2.hours, 5.minutes)) ==> CloseRef(p1, TurnSeq(2), Noon.plusSeconds(7200))
     }
   }
 }

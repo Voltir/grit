@@ -1,6 +1,6 @@
 {
   "workflow": "post",
-  "id": "post:recorded:1:0",
+  "id": "post:recorded:1:0:0",
   "epoch": "2026-09-25",
   "source": "recorded",
   "steps": [

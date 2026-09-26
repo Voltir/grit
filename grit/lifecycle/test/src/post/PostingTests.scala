@@ -80,7 +80,11 @@ object PostingTests extends TestSuite {
           .of(s"p$i", None, Vector(), Vector(), Vector(), Vector())
           .getOrElse(sys.error("closing"))
         periods.seal(
-          CloseRef(PeriodRef(c, PeriodSeq.of(i.toLong).getOrElse(sys.error("seq"))), next.turnSeq),
+          CloseRef(
+            PeriodRef(c, PeriodSeq.of(i.toLong).getOrElse(sys.error("seq"))),
+            next.turnSeq,
+            Instant.EPOCH
+          ),
           CloseReason.Lapsed,
           closing,
           Instant.EPOCH
@@ -101,14 +105,14 @@ object PostingTests extends TestSuite {
     test("each closed period is posted once, in close order, the cursor moved with it") {
       val w = new World(3)
       val digest = new Recorder(name("digest"), 1)
-      w.run(Vector(digest), PostRef(digest.name, 1, CloseOrdinal.Start)) ==> "posted 3"
+      w.run(Vector(digest), PostRef(digest.name, 1, CloseOrdinal.Start, 0)) ==> "posted 3"
       w.docs(digest) ==> Vector(
         "1" -> ujson.Str("v1 p1"),
         "2" -> ujson.Str("v1 p2"),
         "3" -> ujson.Str("v1 p3")
       )
       w.cursor(digest) ==> ordinal(3)
-      w.run(Vector(digest), PostRef(digest.name, 1, ordinal(3))) ==> "posted 0"
+      w.run(Vector(digest), PostRef(digest.name, 1, ordinal(3), 0)) ==> "posted 0"
     }
 
     test("a Left ends the run, the cursor before the period refused") {
@@ -116,7 +120,7 @@ object PostingTests extends TestSuite {
       val picky = new Recorder(name("picky"), 1, refused = Set("p2"))
       w.run(
         Vector(picky),
-        PostRef(picky.name, 1, CloseOrdinal.Start)
+        PostRef(picky.name, 1, CloseOrdinal.Start, 0)
       ) ==> "posted 1; stopped: refused p2"
       w.cursor(picky) ==> ordinal(1)
     }
@@ -124,16 +128,19 @@ object PostingTests extends TestSuite {
     test("a run posts at most MaxPerRun periods, and the next run goes on from its cursor") {
       val w = new World(Posting.MaxPerRun + 1)
       val digest = new Recorder(name("digest"), 1)
-      w.run(Vector(digest), PostRef(digest.name, 1, CloseOrdinal.Start)) ==>
+      w.run(Vector(digest), PostRef(digest.name, 1, CloseOrdinal.Start, 0)) ==>
         s"posted ${Posting.MaxPerRun}; more to come"
-      w.run(Vector(digest), PostRef(digest.name, 1, w.cursor(digest))) ==> "posted 1"
+      w.run(Vector(digest), PostRef(digest.name, 1, w.cursor(digest), 0)) ==> "posted 1"
     }
 
     test("a new version clears the plugin's documents and posts every closed period again") {
       val w = new World(2)
-      w.run(Vector(new Recorder(name("digest"), 1)), PostRef(name("digest"), 1, CloseOrdinal.Start))
+      w.run(
+        Vector(new Recorder(name("digest"), 1)),
+        PostRef(name("digest"), 1, CloseOrdinal.Start, 0)
+      )
       val v2 = new Recorder(name("digest"), 2)
-      w.run(Vector(v2), PostRef(v2.name, 2, CloseOrdinal.Start)) ==> "posted 2"
+      w.run(Vector(v2), PostRef(v2.name, 2, CloseOrdinal.Start, 0)) ==> "posted 2"
       w.docs(v2) ==> Vector("1" -> ujson.Str("v2 p1"), "2" -> ujson.Str("v2 p2"))
     }
 
@@ -142,11 +149,11 @@ object PostingTests extends TestSuite {
       val digest = new Recorder(name("digest"), 2)
       w.run(
         Vector(digest),
-        PostRef(name("wiki"), 1, CloseOrdinal.Start)
+        PostRef(name("wiki"), 1, CloseOrdinal.Start, 0)
       ) ==> "no plugin wiki at version 1"
       w.run(
         Vector(digest),
-        PostRef(name("digest"), 1, CloseOrdinal.Start)
+        PostRef(name("digest"), 1, CloseOrdinal.Start, 0)
       ) ==> "no plugin digest at version 1"
       w.docs(digest) ==> Vector()
     }

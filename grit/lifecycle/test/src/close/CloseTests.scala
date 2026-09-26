@@ -50,7 +50,7 @@ object CloseTests extends TestSuite {
       val last = w.say("and prod?", 1)
       val summary = answering(written)
       val durable = new InMemoryDurable
-      val id = attempt(last).workflowId
+      val id = w.attempt.workflowId
       val clock = new SetClock(at(Lapsed))
       durable.run(id)(w.body(gate, summary, clock)) ==> "closed: closing:c1:1"
       durable.run(id)(w.body(gate, summary, clock)) ==> "closed: closing:c1:1"
@@ -70,10 +70,10 @@ object CloseTests extends TestSuite {
 
     test("a signalled period is resolved once the grace window has passed") {
       val w = new World
-      val last = w.say("done?", 0)
+      w.say("done?", 0)
       w.periods.signal(c, at(5))(using TestTx.fake)
       val durable = new InMemoryDurable
-      durable.run(attempt(last).workflowId)(
+      durable.run(w.attempt.workflowId)(
         w.body(gate, answering(written), new SetClock(at(20)))
       ) ==>
         "closed: closing:c1:1"
@@ -82,23 +82,28 @@ object CloseTests extends TestSuite {
       )
     }
 
-    test("a period not yet due is abandoned at the check: nothing is written or called") {
+    test(
+      "an attempt whose deadline a turn's entries moved is abandoned at the check, however late"
+    ) {
       val w = new World
-      val last = w.say("hello", 0)
+      val t = w.say("hello", 0)
+      val made = w.attempt
+      w.add(t, Payload.Summary("said hello"), 30, "late")
       val summary = answering(written)
       val g = gate
-      new InMemoryDurable().run(attempt(last).workflowId)(
-        w.body(g, summary, new SetClock(at(60)))
+      new InMemoryDurable().run(made.workflowId)(
+        w.body(g, summary, new SetClock(at(3 * Lapsed)))
       ) ==>
-        s"abandoned: not due until ${at(24 * 60)}"
+        s"abandoned: its deadline moved to ${at(30 + 24 * 60)}"
       (summary.requests.size, g.calls, w.closingEntry) ==> (0, 0, None)
     }
 
     test("an attempt made before the newest turn came in is abandoned at the check") {
       val w = new World
-      val first = w.say("one", 0)
+      w.say("one", 0)
+      val made = w.attempt
       w.say("two", 1)
-      new InMemoryDurable().run(attempt(first).workflowId)(
+      new InMemoryDurable().run(made.workflowId)(
         w.body(gate, answering(written), new SetClock(at(Lapsed)))
       ) ==> "abandoned: turn 1 came in"
       w.closingEntry ==> None
@@ -108,10 +113,10 @@ object CloseTests extends TestSuite {
       "a turn that comes in while the summary is written abandons the seal: nothing is written"
     ) {
       val w = new World
-      val last = w.say("hello", 0)
+      w.say("hello", 0)
       val summary =
         new Summariser(_ => Right(replyOf(written)), () => { w.say("wait, one more", 30); () })
-      val id = attempt(last).workflowId
+      val id = w.attempt.workflowId
       new InMemoryDurable().run(id)(w.body(gate, summary, new SetClock(at(Lapsed)))) ==>
         "abandoned: a turn came in while it was summarised"
       w.closingEntry ==> None
@@ -124,9 +129,9 @@ object CloseTests extends TestSuite {
     test("a model that fails leaves the per-turn summaries as the prose, and no section") {
       val w = new World
       w.turn("where do we deploy?", "staging", "Chose staging.", 0)
-      val last = w.turn("and prod?", "later", "Prod is later.", 1)
+      w.turn("and prod?", "later", "Prod is later.", 1)
       val failing = new Summariser(_ => Left(ProviderError.Unavailable("HTTP 503")))
-      val id = attempt(last).workflowId
+      val id = w.attempt.workflowId
       new InMemoryDurable().run(id)(w.body(gate, failing, new SetClock(at(Lapsed)))) ==>
         "closed: closing:c1:1; no summary: HTTP 503"
       w.closingEntry.map(_.payload) ==> Closing
@@ -137,10 +142,10 @@ object CloseTests extends TestSuite {
 
     test("a close cut short while sealing runs again without calling the summary model again") {
       val w = new World
-      val last = w.say("hello", 0)
+      w.say("hello", 0)
       val summary = answering(written)
       val durable = new InMemoryDurable
-      val id = attempt(last).workflowId
+      val id = w.attempt.workflowId
       val crashing = new CrashOnSeal(w.periods)
       val clock = new SetClock(at(Lapsed))
       try { durable.run(id)(w.body(gate, summary, clock, crashing)); () }
@@ -152,9 +157,9 @@ object CloseTests extends TestSuite {
 
     test("the gate's answers choose the sections asked for; without a classifier, every one") {
       val w = new World
-      val last = w.say("hello", 0)
+      w.say("hello", 0)
       val none = answering("Summary: small talk.")
-      new InMemoryDurable().run(attempt(last).workflowId)(
+      new InMemoryDurable().run(w.attempt.workflowId)(
         w.body(new Gate(Some(Vector(0.1, 0.2, 0.3, 0.4))), none, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1"
       none.requests.map(_.system) ==> Vector(
@@ -162,9 +167,9 @@ object CloseTests extends TestSuite {
       )
 
       val v = new World
-      val again = v.say("hello", 0)
+      v.say("hello", 0)
       val every = answering("Summary: small talk.")
-      new InMemoryDurable().run(attempt(again).workflowId)(
+      new InMemoryDurable().run(v.attempt.workflowId)(
         v.body(new Gate(None), every, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1; gate unavailable: no classifier"
       every.requests.map(_.system) ==> Vector(ClosingSummary.request("", Asked.Every).system)
@@ -172,14 +177,15 @@ object CloseTests extends TestSuite {
 
     test("a closed period's attempt says so, and writes nothing") {
       val w = new World
-      val last = w.say("hello", 0)
+      w.say("hello", 0)
+      val made = w.attempt
       val durable = new InMemoryDurable
-      durable.run(attempt(last).workflowId)(
+      durable.run(made.workflowId)(
         w.body(gate, answering(written), new SetClock(at(Lapsed)))
       )
       val before = w.all
       val second = new InMemoryDurable
-      second.run(attempt(last).workflowId)(
+      second.run(made.workflowId)(
         w.body(gate, answering(written), new SetClock(at(Lapsed + 5)))
       ) ==>
         "already closed"

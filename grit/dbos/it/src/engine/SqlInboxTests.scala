@@ -55,7 +55,12 @@ object SqlInboxTests extends TestSuite {
             .of("one", None, Vector(), Vector(), Vector(), Vector())
             .getOrElse(sys.error("closing"))
         LiveDb.transaction(config)(
-          periods.seal(CloseRef(p1, TurnSeq(0)), CloseReason.Lapsed, closing, Instant.now())
+          periods.seal(
+            CloseRef(p1, TurnSeq(0), Instant.EPOCH),
+            CloseReason.Lapsed,
+            closing,
+            Instant.now()
+          )
         ) ==> Right(Sealed.Closed(p1.closingId))
         val two = engine.inbox.ingest(origin, SourceId("p2"), Message.User("two"))
         (one.map(_.turnSeq), two.map(_.turnSeq)) ==> (Right(TurnSeq(0)), Right(TurnSeq(1)))

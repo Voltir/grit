@@ -74,7 +74,7 @@ object AssemblyFixtures {
           val last = entries.lockNext(c1).getOrElse(sys.error("in-memory store")).turnSeq
           val period = PeriodRef(c1, PeriodSeq.of(p + 1L).getOrElse(sys.error("period")))
           val _ = world.periods.seal(
-            CloseRef(period, TurnSeq(TurnSeq.value(last) - 1)),
+            CloseRef(period, TurnSeq(TurnSeq.value(last) - 1), Instant.EPOCH),
             CloseReason.Resolved,
             closing,
             Instant.EPOCH

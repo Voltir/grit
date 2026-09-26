@@ -60,7 +60,8 @@ trait PeriodStore {
 
   /** Deletes `period`'s raw entries (every entry of its turns but its closing entry) and
     * records it purged at `at`; a period already purged, or not closed, is left as it is.
-    * Its workflows are the caller's to delete, first ([[Purgeable.workflows]]).
+    * Its workflows are the caller's to delete, first ([[Purgeable.turns]],
+    * [[Purgeable.attempts]]).
     */
   def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit]
 

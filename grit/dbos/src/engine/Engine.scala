@@ -125,30 +125,40 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
     new Sweeper(dataSource, client, periods, lifecycle, cursors, () => enabled.get())
 
   /** One sweep of the lifecycle at `now`, under the settings in force: every open period
-    * whose deadline has come has its close attempt enqueued
-    * ([[grit.core.id.CloseRef.workflowId]]), once, and an attempt that finished with its
-    * period still due is enqueued again; every enabled plugin behind the newest closed
-    * period has a posting run enqueued from its cursor ([[grit.core.plugin.PostRef]]), and a
-    * run that finished with its plugin still behind is enqueued again; then every period
-    * closed longer ago than the
-    * retention window has its turn and close workflows deleted, and after them its raw
-    * entries, keeping its closing entry and its row ([[grit.core.store.PeriodStore.purge]]).
-    * Only after [[launch]]. `Left` when the database fails, having done what came before.
+    * whose deadline has come has its attempt on that deadline enqueued
+    * ([[grit.core.id.CloseRef.workflowId]]); every enabled plugin behind the newest closed
+    * period has a run enqueued from its cursor ([[grit.core.plugin.PostRef]]) unless one is
+    * going; then every period closed longer ago than the retention window has its turn
+    * workflows and close attempts deleted, and after them its raw entries, keeping its
+    * closing entry and its row ([[grit.core.store.PeriodStore.purge]]). No workflow is ever
+    * deleted to be run again: what did not finish its work is reported `stuck`
+    * ([[Swept]]). Only after [[launch]]. `Left` when the database fails, having done what
+    * came before.
     */
   def sweep(now: Instant): Either[StoreError, Swept] = sweeper.once(now)
 
   private val sweeping = new AtomicBoolean(false)
 
   /** Sweeps at `clock`'s time every `every`, on a daemon thread of its own, until the engine
-    * closes; a sweep that fails is logged, and the next one tries again. Once, after
-    * [[launch]].
+    * closes; a sweep that fails is logged, and the next one tries again, and each workflow a
+    * sweep finds stuck is logged once. Once, after [[launch]].
     */
   def sweepEvery(every: FiniteDuration, clock: Clock^): Unit =
     if (sweeping.compareAndSet(false, true)) {
       val log = LoggerFactory.getLogger("grit.sweeper")
+      // Read and written only by the sweeping thread.
+      val logged = scala.collection.mutable.Set.empty[WorkflowId]
       val thread = new Thread(() => {
         while (sweeping.get()) {
-          try sweep(clock.now()).left.foreach(e => log.warn(s"sweep failed: $e"))
+          try
+            sweep(clock.now()) match {
+              case Left(e) => log.warn(s"sweep failed: $e")
+              case Right(swept) =>
+                swept.stuck.filterNot(logged.contains).foreach { id =>
+                  logged += id
+                  log.warn(s"stuck, and not run again: ${WorkflowId.value(id)}")
+                }
+            }
           catch { case NonFatal(e) => log.warn(s"sweep failed: $e") }
           try Thread.sleep(every.toMillis)
           catch { case _: InterruptedException => () }

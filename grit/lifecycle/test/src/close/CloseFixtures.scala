@@ -160,6 +160,15 @@ object CloseFixtures {
       t
     }
 
+    /** The attempt a sweep would make on period 1 as it stands, under the settings in force. */
+    def attempt: CloseRef = {
+      given Tx = TestTx.fake
+      (for {
+        settings <- lifecycle.current()
+        open <- periods.activity(p1)
+      } yield open.map(_.attempt(settings.windows))).toOption.flatten.getOrElse(sys.error("period 1 is not open"))
+    }
+
     def all: Vector[Entry] = entries.list(c)(using TestTx.fake).getOrElse(Vector.empty)
 
     def closingEntry: Option[Entry] = entries.get(p1.closingId)(using TestTx.fake).getOrElse(None)
@@ -181,8 +190,6 @@ object CloseFixtures {
       )(id)
   }
 
-  /** The attempt to close period 1 when `last` was its newest turn. */
-  def attempt(last: TurnRef): CloseRef = CloseRef(p1, last.turnSeq)
 
   /** `underlying`, dying once inside the first seal, before it writes. */
   final class CrashOnSeal(underlying: PeriodStore) extends PeriodStore {

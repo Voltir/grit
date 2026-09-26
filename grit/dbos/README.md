@@ -20,12 +20,13 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   the conversation's next period when none is open), records a signal that a period is
   done, and sends a turn the answer to its gated call (`DBOSClient.send`); `Sweeper`,
   the sweep `Engine.sweepEvery` runs: every open period whose deadline has come has its
-  close enqueued under its deterministic id, and an attempt that finished with its period
-  still due is deleted and enqueued again; every enabled plugin behind the newest closed
-  period has a posting run enqueued from its cursor, again when a run finished with it
-  still behind; then every period closed longer ago than the
-  retention window has its turn and close workflows deleted (`deleteWorkflows`), and after
-  them its raw entries, keeping its closing entry. ← `sql`, `workflow`
+  attempt on that deadline enqueued, under an id naming the deadline, so a moved deadline
+  is a new attempt and no workflow is ever deleted to run again; every enabled plugin
+  behind the newest closed period has a run enqueued from its cursor, up to
+  `PostRef.Attempts` runs from one cursor; what did not finish its work is logged as stuck;
+  then every period closed longer ago than the retention window has its turn workflows and
+  its close attempts (found by their ids' prefix, `listWorkflows`) deleted, and after them
+  its raw entries, keeping its closing entry. ← `sql`, `workflow`
 
 `sql` and `workflow` are siblings and never name each other. No source file sits at the
 root, and `scripts/enola-law.sh` fails on a new import cycle.
