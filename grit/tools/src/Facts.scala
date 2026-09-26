@@ -41,21 +41,7 @@ object Facts {
           )
           .refine(a =>
             for {
-              model <- ModelId
-                .of(a.model)
-                .toRight(
-                  invalid("model", "an OpenRouter model id, such as openai/gpt-oss-120b", a.model)
-                )
-              upstream <- a.upstream match {
-                case None => Right(None)
-                case Some(u) =>
-                  Upstream
-                    .of(u)
-                    .map(Some(_))
-                    .toRight(
-                      invalid("upstream", "one OpenRouter upstream slug, such as fireworks", u)
-                    )
-              }
+              ref <- pair(a.model, a.upstream)
               setting <- CatalogJson
                 .setting(a.setting, a.value)
                 .left
@@ -71,7 +57,7 @@ object Facts {
                 (),
                 ArgsError.Invalid("held", s"at most `runs` (${a.runs})", a.held.toString)
               )
-            } yield Fact(ModelRef(model, upstream), setting, a.probe, a.runs, a.held)
+            } yield Fact(ref, setting, a.probe, a.runs, a.held)
           )
       ),
       Gate.Ask(f => {
@@ -88,6 +74,22 @@ object Facts {
           case Left(why) => Outcome.Failed(s"Not kept: $why")
         }
     )
+
+  /** The pair `model` at `upstream` names, or which of them is not an id. */
+  private[tools] def pair(model: String, upstream: Option[String]): Either[ArgsError, ModelRef] =
+    for {
+      m <- ModelId
+        .of(model)
+        .toRight(invalid("model", "an OpenRouter model id, such as openai/gpt-oss-120b", model))
+      u <- upstream match {
+        case None => Right(None)
+        case Some(up) =>
+          Upstream
+            .of(up)
+            .map(Some(_))
+            .toRight(invalid("upstream", "one OpenRouter upstream slug, such as fireworks", up))
+      }
+    } yield ModelRef(m, u)
 
   private def invalid(field: String, accepts: String, got: String): ArgsError =
     ArgsError.Invalid(field, accepts, ujson.Str(got).render())

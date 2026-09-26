@@ -28,7 +28,7 @@ import grit.models.{
   StubModels,
   StubProvider
 }
-import grit.tools.{Coding, Facts}
+import grit.tools.{Coding, Facts, Probes}
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
 import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
@@ -160,17 +160,18 @@ object Main {
           val shell = new LocalShell(root, sys.env)
           val facts = new KeptFacts(engine.jot, engine.facts, Clock.system())
           Toolbox
-            .of[{checkout, edits, shell, facts}](
+            .of[{checkout, edits, shell, facts, models}](
               Coding.read(checkout),
               Coding.list(checkout),
               Coding.search(checkout),
               Coding.write(edits),
               Coding.edit(edits),
               Coding.run(shell),
-              Facts.propose(facts)
+              Facts.propose(facts),
+              Probes.probe(models)
             )
             .map(tools =>
-              launch(TurnTooling.Full(checkout, edits, shell, facts, tools, engine.jot, rounds))
+              launch(TurnTooling.Full(checkout, edits, shell, facts, models, tools, engine.jot, rounds))
             )
       }
       // Its caller closes the engine and reports the throw: in the chat, as the engine that
@@ -387,8 +388,8 @@ object Main {
     /** `read`, `list` and `search` (`Coding.readOnly`): nothing asks first. */
     case Read
 
-    /** Those and `write`, `edit` and `run` (`Coding`), and `propose_fact` (`Facts`), each of
-      * which asks first.
+    /** Those and `write`, `edit` and `run` (`Coding`), `propose_fact` (`Facts`) and
+      * `probe_pair` (`Probes`), each of which asks first.
       */
     case All
   }

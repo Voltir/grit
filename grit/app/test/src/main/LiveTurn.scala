@@ -74,6 +74,7 @@ object LiveTurn {
       answerWithin: FiniteDuration = TurnTools.AnswerWithin
   ): Unit = {
     val checkout = new LocalWorkspace(root)
+    val models = new LiveModels(provider)
     def launch(tooling: TurnTooling^): Unit =
       engine.launch(
         Turn.body(
@@ -82,7 +83,7 @@ object LiveTurn {
             TurnRecords(entries, engine.ledger, CharEstimate, engine.profiles),
             new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
             grit.core.classify.Classifier.none("no classifier"),
-            new LiveModels(provider),
+            models,
             engine.db,
             Clock.system(),
             Fresh.random()
@@ -100,6 +101,7 @@ object LiveTurn {
           edits,
           shell,
           NoFacts,
+          models,
           Coding.all(checkout, edits, shell).fold(d => sys.error(d.toString), identity),
           engine.jot,
           budget,

@@ -21,6 +21,7 @@ object TurnCaptureTests extends TestSuite {
     """package probe
       |import grit.core.host.*
       |import grit.core.model.FactBook
+      |import grit.core.provider.Models
       |import grit.core.store.Jot
       |import grit.core.tool.*
       |import grit.turn.*
@@ -72,8 +73,8 @@ object TurnCaptureTests extends TestSuite {
 
   /** A toolbox that edits through `other`, not the tooling's `e`, handed to a full turn. */
   private val smuggled =
-    """def offered(ws: Workspace^, e: Edits^, s: Shell^, f: FactBook^, other: Edits^, box: Toolbox[{ws, other}], j: Jot^, b: TurnLoop.Budget): TurnTooling^{ws, e, s, f, other, j} =
-      |  TurnTooling.Full(ws, e, s, f, box, j, b)
+    """def offered(ws: Workspace^, e: Edits^, s: Shell^, f: FactBook^, m: Models^, other: Edits^, box: Toolbox[{ws, other}], j: Jot^, b: TurnLoop.Budget): TurnTooling^{ws, e, s, f, m, other, j} =
+      |  TurnTooling.Full(ws, e, s, f, m, box, j, b)
       |""".stripMargin
 
   private def rejected(errs: List[String]): Boolean =
@@ -88,8 +89,8 @@ object TurnCaptureTests extends TestSuite {
       val errs = errors(
         """def reading(ws: Workspace^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling^{ws, j}] =
           |  Toolbox.of[{ws}](reads(ws)).toOption.map(box => TurnTooling.ReadOnly(ws, box, j, b))
-          |def editing(ws: Workspace^, e: Edits^, s: Shell^, f: FactBook^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling^{ws, e, s, f, j}] =
-          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling.Full(ws, e, s, f, box, j, b))
+          |def editing(ws: Workspace^, e: Edits^, s: Shell^, f: FactBook^, m: Models^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling^{ws, e, s, f, m, j}] =
+          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling.Full(ws, e, s, f, m, box, j, b))
           |""".stripMargin
       )
       assert(errs.isEmpty)

@@ -60,15 +60,16 @@ object TurnTooling {
       answerWithin: FiniteDuration = TurnTools.AnswerWithin
   ) extends TurnTooling
 
-  /** Tools that act through `workspace`, `edits`, `shell` and `facts`; they may be fewer than
-    * all four allow.
+  /** Tools that act through `workspace`, `edits`, `shell`, `facts` and `models` (to probe a
+    * pair); they may be fewer than all five allow.
     */
   final case class Full(
       workspace: Workspace^,
       edits: Edits^,
       shell: Shell^,
       facts: FactBook^,
-      tools: Toolbox[{workspace, edits, shell, facts}],
+      models: Models^,
+      tools: Toolbox[{workspace, edits, shell, facts, models}],
       jot: Jot^,
       budget: TurnLoop.Budget,
       answerWithin: FiniteDuration = TurnTools.AnswerWithin
