@@ -8,18 +8,21 @@ import grit.core.store.Tx
 import grit.dbos.sql.TestTx
 
 /** An in-memory stand-in for DBOS's workflow semantics, for tests of code written against
-  * [[Durable]]: one journal per workflow id, kept across runs of the same id.
+  * [[Durable]], keeping [[DurableContract]]: one journal per workflow id, kept across runs
+  * of the same id.
   *
   *   - A workflow that returned is not run again; its output is returned.
-  *   - Any other run, after a crash or a thrown exception, runs the body again. Each
-  *     recorded step returns its recorded output, or rethrows its recorded exception,
-  *     without running its body (as DBOS 1.0.0 does for an `ERROR` workflow).
+  *   - A workflow that threw is not run again either; its exception is rethrown, as DBOS
+  *     rethrows an `ERROR` workflow's recorded error.
+  *   - A run after a crash runs the body again. Each recorded step returns its recorded
+  *     output, or rethrows its recorded exception, without running its body.
   *   - A step whose name differs from the one recorded at its position throws
   *     [[InMemoryDurable.UnexpectedStep]].
   *   - A step body that throws [[InMemoryDurable.Crash]] is left unrecorded, as if the
   *     process died inside it.
   *   - A stream write outside a step body throws [[InMemoryDurable.WriteOutsideStep]]:
-  *     DBOS would record it as an operation, shifting every later step's position.
+  *     DBOS records it as an operation, shifting every later step's position. The one
+  *     place it is stricter than DBOS ([[Divergence.WriteOutsideStep]]).
   *   - `patch` and `deprecatePatch` record and read DBOS's own marker,
   *     `DBOS.patch-{name}`, so a history captured from Postgres replays here unchanged.
   *   - `recv` never waits: it takes the oldest message [[send]] left, or none, and records
@@ -45,7 +48,7 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
   private var journals = Map.empty[WorkflowId, Vector[(String, Recorded)]]
 
   @untrackedCaptures
-  private var outputs = Map.empty[WorkflowId, String]
+  private var outputs = Map.empty[WorkflowId, Either[Throwable, String]]
 
   /** Each workflow's streams, by key: every piece written, in order, across its runs. */
   @untrackedCaptures
@@ -91,13 +94,23 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
   @untrackedCaptures
   private var reached = Map.empty[WorkflowId, Int]
 
-  /** Runs the workflow `id`, or returns its output if a run of it already returned. */
+  /** Runs the workflow `id`, or returns its output, or rethrows its exception, if a run of
+    * it already returned or threw.
+    */
   def run(id: WorkflowId)(body: WorkflowId => Durable^ ?=> String): String =
     outputs.get(id) match {
-      case Some(output) => output
+      case Some(Right(output)) => output
+      case Some(Left(error)) => throw error
       case None =>
-        val output = body(id)(using new Run(id))
-        outputs = outputs.updated(id, output)
+        val output =
+          try body(id)(using new Run(id))
+          catch {
+            case crash: Crash => throw crash
+            case e: Exception =>
+              outputs = outputs.updated(id, Left(e))
+              throw e
+          }
+        outputs = outputs.updated(id, Right(output))
         output
     }
 
