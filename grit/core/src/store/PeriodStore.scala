@@ -22,6 +22,9 @@ trait PeriodStore {
   /** The period `period` names, or `None` when it has not opened. */
   def get(period: PeriodRef)(using Tx^): Either[StoreError, Option[Period]]
 
+  /** Every period of `conversation` still kept, oldest first. */
+  def all(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Period]]
+
   /** The period `turn` is in; `None` for a turn in no period, such as one recorded before
     * its conversation had any.
     */

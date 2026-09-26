@@ -362,8 +362,10 @@ abstract class PeriodContract extends TestSuite {
       transaction(periods.purge(p1, at(100))) ==> Right(())
       val kept = transaction(entries.list(c)).map(ids)
       kept.map(_.contains(EntryId.value(p1.closingId))) ==> Right(true)
+      transaction(periods.all(c)).map(_.map(_.ref)) ==> Right(Vector(p1, p2))
       transaction(periods.drop(p1)) ==> Right(true)
       transaction(periods.get(p1)) ==> Right(None)
+      transaction(periods.all(c)).map(_.map(_.ref)) ==> Right(Vector(p2))
       transaction(periods.get(p2)).map(_.map(_.ref)) ==> Right(Some(p2))
       transaction(entries.list(c)).map(ids) ==>
         kept.map(_.filterNot(_ == EntryId.value(p1.closingId)))

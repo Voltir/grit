@@ -43,6 +43,28 @@ final class SqlConversationStore extends ConversationStore {
       }
     }
   }
+
+  def remove(conversation: ConversationId)(using tx: Tx^): Either[StoreError, Unit] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    // Entries, periods and their verdicts go by cascade. A place another conversation took
+    // meanwhile is kept: the foreign key refuses its delete, and the caller tries again.
+    attempt {
+      Using.resource(
+        conn.prepareStatement(
+          """WITH gone AS (DELETE FROM grit.conversations WHERE id = ?::uuid RETURNING place_id)
+            |DELETE FROM grit.places p USING gone
+            | WHERE p.id = gone.place_id
+            |   AND NOT EXISTS (SELECT 1 FROM grit.conversations c
+            |                    WHERE c.place_id = gone.place_id AND c.id <> ?::uuid)""".stripMargin
+        )
+      ) { ps =>
+        ps.setString(1, ConversationId.value(conversation))
+        ps.setString(2, ConversationId.value(conversation))
+        ps.executeUpdate()
+        ()
+      }
+    }
+  }
 }
 
 private[dbos] object SqlConversationStore {

@@ -234,6 +234,8 @@ object CloseFixtures {
       underlying.closedAfter(after, n)
     def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit] = underlying.purge(period, at)
     def drop(period: PeriodRef)(using Tx^): Either[StoreError, Boolean] = underlying.drop(period)
+    def all(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Period]] =
+      underlying.all(conversation)
   }
 
   /** Turn numbers. */

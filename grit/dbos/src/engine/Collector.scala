@@ -5,10 +5,19 @@ import javax.sql.DataSource
 
 import scala.jdk.CollectionConverters.*
 
-import grit.core.id.WorkflowId
-import grit.core.period.{LifecycleSettings, PeriodState, Purgeable}
+import grit.core.id.{PeriodRef, PeriodSeq, TurnSeq, WorkflowId}
+import grit.core.period.{LifecycleSettings, Period, PeriodState, Purgeable}
 import grit.core.retention.{Target, Tombstone}
-import grit.core.store.{ModelProfileStore, PeriodStore, StoreError, Tombstones, Tx, UsageLedger}
+import grit.core.store.{
+  ConversationStore,
+  EntryStore,
+  ModelProfileStore,
+  PeriodStore,
+  StoreError,
+  Tombstones,
+  Tx,
+  UsageLedger
+}
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.workflow.ListWorkflowsInput
@@ -22,6 +31,8 @@ import dev.dbos.transact.workflow.ListWorkflowsInput
 private[engine] final class Collector(
     dataSource: DataSource,
     client: DBOSClient,
+    conversations: ConversationStore,
+    entries: EntryStore,
     periods: PeriodStore,
     ledger: UsageLedger,
     profiles: ModelProfileStore,
@@ -136,6 +147,25 @@ private[engine] final class Collector(
               case _ => Right(Outcome.Waiting)
             }
         }
+      case Target.Quiet(period) =>
+        val c = period.conversationId
+        for {
+          // Under the conversation's lock, as every writer of it: no period opens meanwhile.
+          _ <- entries.lockNext(c)
+          all <- periods.all(c)
+          outcome <- quiet(period, all) match {
+            case Quiet.Gone => tombstones.collected(target, now).map(_ => Outcome.Collected)
+            case Quiet.Alive => tombstones.spare(target, now).map(_ => Outcome.Spared)
+            case Quiet.Waiting => Right(Outcome.Waiting)
+            case Quiet.Removed(last) =>
+              for {
+                _ <- ledger.forget(c, TurnSeq.First, last)
+                _ <- profiles.forget(Purgeable(period, TurnSeq.First, last).turns)
+                _ <- conversations.remove(c)
+                _ <- tombstones.collected(target, now)
+              } yield Outcome.Collected
+          }
+        } yield outcome
       case _ => Right(Outcome.Waiting)
     }
 }
@@ -146,7 +176,8 @@ private[engine] object Collector {
   val Batch = 100
 
   /** The kinds collected, in order. */
-  private val Kinds: Vector[Target.Kind] = Vector(Target.Kind.Raw, Target.Kind.Superseded)
+  private val Kinds: Vector[Target.Kind] =
+    Vector(Target.Kind.Raw, Target.Kind.Superseded, Target.Kind.Quiet)
 
   /** Workflows by exact id, and by what their ids start with. */
   private final case class Named(ids: Vector[WorkflowId], prefixes: Vector[String])
@@ -158,4 +189,28 @@ private[engine] object Collector {
   private enum Outcome {
     case Collected, Spared, Waiting
   }
+
+  /** What a quiet tombstone on `period` finds, `all` its conversation's periods still kept:
+    * the conversation gone already; a later period opened, so it is alive; a period whose raw
+    * entries are still kept, which go first (their workflows are deleted only through their
+    * own tombstones); or removed, its newest turn `last`.
+    */
+  private enum Quiet {
+    case Gone, Alive, Waiting
+    case Removed(last: TurnSeq)
+  }
+
+  private def quiet(period: PeriodRef, all: Vector[Period]): Quiet =
+    if (all.exists(p => PeriodSeq.value(p.ref.seq) > PeriodSeq.value(period.seq))) Quiet.Alive
+    else
+      all.find(_.ref == period).map(_.state) match {
+        case None => Quiet.Gone
+        case Some(PeriodState.Open) => Quiet.Alive
+        case Some(PeriodState.Closed(last, _, _, _, _, _)) =>
+          val raw = all.exists(_.state match {
+            case PeriodState.Closed(_, _, _, _, _, purged) => purged.isEmpty
+            case PeriodState.Open => false
+          })
+          if (raw) Quiet.Waiting else Quiet.Removed(last)
+      }
 }

@@ -27,7 +27,7 @@ import grit.core.period.{
   TestClosings,
   Windows
 }
-import grit.core.place.Locality
+import grit.core.place.{Directory, Locality}
 import grit.core.retention.Target
 import grit.core.store.{Origin, Tx}
 import grit.dbos.sql.{
@@ -71,13 +71,13 @@ object CollectorLiveTests extends TestSuite {
     d.step("say")(() => WorkflowId.value(id))
 
   /** A close that seals its period at once, in a step, with a fixed closing, marking its raw
-    * entries for deletion; one whose id ends `:hold` waits a few seconds for a message that
+    * entries for deletion; one whose id ends `:hold` waits 15 seconds for a message that
     * never comes.
     */
   private def close(id: WorkflowId)(using d: Durable^): String =
     CloseRef.fromWorkflowId(id) match {
       case None if WorkflowId.value(id).endsWith(":hold") =>
-        d.recv("never", 4.seconds).getOrElse("held")
+        d.recv("never", 15.seconds).getOrElse("held")
       case None => "not a close"
       case Some(attempt) =>
         val closing = TestClosings.prose("kept")
@@ -169,16 +169,23 @@ object CollectorLiveTests extends TestSuite {
     val attempt = swept.toOption
       .flatMap(_.find(_.period == period))
       .getOrElse(sys.error(s"no attempt on $period: $swept"))
-    val c = ConversationId.value(period.conversationId)
     assert(
       eventually(
         LiveDb
           .transaction(config)(periods.get(period))
-          .exists(_.exists(_.state != PeriodState.Open)) && ended(config, s"close:$c:")
+          .exists(_.exists(_.state != PeriodState.Open)) &&
+          ended(config, WorkflowId.value(attempt.workflowId))
       )
     )
     attempt
   }
+
+  /** Whether `period` has closed and its close has ended. */
+  private def closed(config: DbConfig, period: PeriodRef): Boolean =
+    LiveDb
+      .transaction(config)(periods.get(period))
+      .exists(_.exists(_.state != PeriodState.Open)) &&
+      ended(config, s"close:${ConversationId.value(period.conversationId)}:")
 
   /** How many usage rows are kept for `entries`, and profiles for `turns`. */
   private def ledgered(
@@ -218,6 +225,38 @@ object CollectorLiveTests extends TestSuite {
       } yield ()
     } ==> Right(())
   }
+
+  /** Whether `conversation` is kept, and how many places are. */
+  private def kept(config: DbConfig, conversation: ConversationId): (Boolean, Int) =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      def count(sql: String): Int =
+        Using.resource(conn.prepareStatement(sql)) { ps =>
+          Using.resource(ps.executeQuery())(rs => { rs.next(); rs.getInt(1) })
+        }
+      (
+        count(
+          s"SELECT count(*) FROM grit.conversations WHERE id = '${ConversationId.value(conversation)}'"
+        ) == 1,
+        count("SELECT count(*) FROM grit.places")
+      )
+    }
+
+  private def launched(config: DbConfig, ledger: FiniteDuration): Engine^ = {
+    val engine = Engine.open(config, "test")
+    engine.launch(
+      turn,
+      close,
+      (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+      (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+      Vector.empty
+    )
+    minutes(config, ledger)
+    engine
+  }
+
+  private def tui(session: String): Origin =
+    Origin.Tui(Directory.of("/work/shared").getOrElse(sys.error("directory")), session)
 
   val tests = Tests {
     test(
@@ -438,6 +477,8 @@ object CollectorLiveTests extends TestSuite {
         val a2 = closeOf(engine, config, p2, Instant.now().plusSeconds(240))
         spent(config, "u1", t1, t1.workflowId)
         spent(config, EntryId.value(p2.closingId), t1, a2.workflowId)
+        // A third period open: the conversation is not quiet.
+        turnOn(engine, origin, "three")
 
         engine.sweep(Instant.now().plusSeconds(600)).map(_.collected) ==>
           Right(Vector(Target.Raw(p2), Target.Superseded(p1)))
@@ -446,7 +487,12 @@ object CollectorLiveTests extends TestSuite {
         LiveDb
           .transaction(config)(new SqlEntryStore().list(t0.conversationId))
           .map(_.map(e => EntryId.value(e.id))) ==>
-          Right(Vector(EntryId.value(p2.closingId)))
+          Right(
+            Vector(
+              EntryId.value(p2.closingId),
+              s"in:${ConversationId.value(t0.conversationId)}:three"
+            )
+          )
         ledgered(config, Vector("u0", EntryId.value(p1.closingId)), Vector(t0.workflowId)) ==> (
           0,
           0
@@ -455,6 +501,101 @@ object CollectorLiveTests extends TestSuite {
           2,
           1
         )
+      } finally engine.close()
+    }
+
+    test(
+      "a conversation quiet past the ledger window is removed whole, its place with it once no other conversation is there"
+    ) {
+      val config = TestPostgres.freshDatabase("collect_quiet")
+      val engine = launched(config, 2.minutes)
+      try {
+        val quiet = turnOn(engine, tui("quiet"), "one")
+        // Another session in the same directory: the same place.
+        val busy = turnOn(engine, tui("busy"), "two")
+        val p = PeriodRef(quiet.conversationId, PeriodSeq.First)
+        val q1 = PeriodRef(busy.conversationId, PeriodSeq.First)
+        closeOf(engine, config, p, Instant.now().plusSeconds(120))
+        assert(eventually(closed(config, q1)))
+        spent(config, "u-quiet", quiet, quiet.workflowId)
+        // Busy again: its next period is open.
+        turnOn(engine, tui("busy"), "three")
+        kept(config, quiet.conversationId) ==> (true, 1)
+
+        engine.sweep(Instant.now().plusSeconds(600)).map(s => (s.collected, s.spared)) ==>
+          Right(
+            (
+              Vector(Target.Raw(p), Target.Raw(q1), Target.Quiet(p)),
+              Vector(Target.Quiet(q1))
+            )
+          )
+        kept(config, quiet.conversationId) ==> (false, 1)
+        kept(config, busy.conversationId) ==> (true, 1)
+        ledgered(config, Vector("u-quiet"), Vector(quiet.workflowId)) ==> (0, 0)
+
+        val q2 = PeriodRef(busy.conversationId, PeriodSeq.First.next)
+        // That sweep found it due, and enqueued its close.
+        assert(eventually(closed(config, q2)))
+        engine.sweep(Instant.now().plusSeconds(1500)).map(_.collected) ==>
+          Right(Vector(Target.Raw(q2), Target.Superseded(q1), Target.Quiet(q2)))
+        kept(config, busy.conversationId) ==> (false, 0)
+      } finally engine.close()
+    }
+
+    test("a quiet tombstone is spared when a later period has opened") {
+      val config = TestPostgres.freshDatabase("collect_spared")
+      val engine = launched(config, 2.minutes)
+      try {
+        val origin = Origin.Task("collect", "spared")
+        val t0 = turnOn(engine, origin, "one")
+        val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
+        closeOf(engine, config, p1, Instant.now().plusSeconds(120))
+        turnOn(engine, origin, "two")
+        engine.sweep(Instant.now().plusSeconds(600)).map(_.spared) ==> Right(
+          Vector(Target.Quiet(p1))
+        )
+        kept(config, t0.conversationId)._1 ==> true
+      } finally engine.close()
+    }
+
+    test("a quiet conversation waits while an earlier period's raw entries are kept") {
+      val config = TestPostgres.freshDatabase("collect_quiet_waits")
+      val engine = launched(config, 2.minutes)
+      try {
+        val origin = Origin.Task("collect", "waits")
+        val t0 = turnOn(engine, origin, "one")
+        val c = ConversationId.value(t0.conversationId)
+        val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
+        closeOf(engine, config, p1, Instant.now().plusSeconds(120))
+        // A workflow named as an attempt on period 1, running through the sweeps below.
+        val hold = WorkflowId(s"close:$c:1:hold")
+        val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
+        try {
+          val _ = client.enqueueWorkflow[String, Exception](
+            new DBOSClient.EnqueueOptions("close", DurableWorkflow.ClassName, "turns")
+              .withWorkflowId(WorkflowId.value(hold))
+              .withQueuePartitionKey(c + ":hold"),
+            // Empty, and DBOS only reads it; separation checking treats arrays as mutable.
+            caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
+          )
+          assert(eventually(kept(config, Vector(hold)).headOption.contains(1)))
+          turnOn(engine, origin, "two")
+          val p2 = PeriodRef(t0.conversationId, PeriodSeq.First.next)
+          closeOf(engine, config, p2, Instant.now().plusSeconds(120))
+          engine.sweep(Instant.now().plusSeconds(600)).map(s => (s.collected, s.deferred)) ==>
+            Right(
+              (
+                Vector(Target.Raw(p2)),
+                Vector(Target.Raw(p1), Target.Superseded(p1), Target.Quiet(p2))
+              )
+            )
+          kept(config, t0.conversationId)._1 ==> true
+          assert(eventually(ended(config, s"close:$c:")))
+          engine.sweep(Instant.now().plusSeconds(600)).map(_.collected) ==>
+            Right(Vector(Target.Raw(p1), Target.Superseded(p1), Target.Quiet(p2)))
+        } finally client.close()
+        kept(config, t0.conversationId)._1 ==> false
+        kept(config, Vector(hold)) ==> Vector(0, 0)
       } finally engine.close()
     }
   }

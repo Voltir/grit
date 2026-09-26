@@ -70,6 +70,11 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       ps.setLong(2, PeriodSeq.value(period.seq))
     }(readPeriod)
 
+  def all(conversation: ConversationId)(using tx: Tx^): Either[StoreError, Vector[Period]] =
+    many(s"SELECT $columns FROM grit.periods WHERE conversation_id = ?::uuid ORDER BY seq")(
+      _.setString(1, ConversationId.value(conversation))
+    )(readPeriod)
+
   def of(turn: TurnRef)(using tx: Tx^): Either[StoreError, Option[Period]] =
     one(
       s"""SELECT $columns FROM grit.periods

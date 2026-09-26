@@ -133,6 +133,8 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
     new Sweeper(
       dataSource,
       client,
+      conversations,
+      entries,
       periods,
       ledger,
       profiles,

@@ -43,7 +43,7 @@ final class InMemoryPeriodStore(
     case PeriodState.Open => None
   }
 
-  private def all(c: ConversationId)(using Tx^): Vector[Entry] =
+  private def entriesOf(c: ConversationId)(using Tx^): Vector[Entry] =
     entries.list(c).getOrElse(Vector.empty)
 
   def openFor(conversation: ConversationId, turn: TurnSeq, at: Instant)(using
@@ -85,7 +85,9 @@ final class InMemoryPeriodStore(
 
   private def activityOf(p: Period)(using Tx^): Activity = {
     val own =
-      all(p.ref.conversationId).filter(e => TurnSeq.value(e.turnSeq) >= TurnSeq.value(p.first))
+      entriesOf(p.ref.conversationId).filter(e =>
+        TurnSeq.value(e.turnSeq) >= TurnSeq.value(p.first)
+      )
     val newest = (own.map(_.createdAt) :+ p.openedAt).maxBy(_.toEpochMilli)
     val last = own.map(_.turnSeq).maxByOption(TurnSeq.value).getOrElse(p.first)
     val judged = verdicts.collect { case (ref, v) if ref == p.ref => v }
@@ -136,7 +138,9 @@ final class InMemoryPeriodStore(
         closedOf(p).filter(c => TurnSeq.value(c.last) < TurnSeq.value(turn.turnSeq)).map(_.closing)
       )
       .lastOption
-    Right(id.flatMap(id => all(turn.conversationId).find(_.id == id)).flatMap(ClosingEntry.of))
+    Right(
+      id.flatMap(id => entriesOf(turn.conversationId).find(_.id == id)).flatMap(ClosingEntry.of)
+    )
   }
 
   def openElsewhere(conversation: ConversationId)(using
@@ -159,7 +163,7 @@ final class InMemoryPeriodStore(
         .sortBy(pc => CloseOrdinal.value(pc._2.order))
         .take(n max 0)
         .flatMap { (p, c) =>
-          all(p.ref.conversationId).find(_.id == c.closing).map(_.payload).collect {
+          entriesOf(p.ref.conversationId).find(_.id == c.closing).map(_.payload).collect {
             case Payload.Closed(_, _, closing) =>
               ClosedPeriod(p.ref, origin(p.ref.conversationId), c.reason, closing, c.at, c.order)
           }
@@ -167,6 +171,9 @@ final class InMemoryPeriodStore(
     )
 
   def verdictsOn(period: PeriodRef): Int = verdicts.count(_._1 == period)
+
+  def all(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Period]] =
+    Right(mine(conversation))
 
   def drop(period: PeriodRef)(using Tx^): Either[StoreError, Boolean] =
     Right(periods.find(_.ref == period).flatMap(p => closedOf(p).map(p -> _)) match {

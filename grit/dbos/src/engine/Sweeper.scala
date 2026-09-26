@@ -9,6 +9,8 @@ import grit.core.id.{CloseRef, PluginName, SettleRef, WorkflowId}
 import grit.core.plugin.{PluginCursors, PostRef}
 import grit.core.retention.Target
 import grit.core.store.{
+  ConversationStore,
+  EntryStore,
   LifecycleStore,
   ModelProfileStore,
   PeriodStore,
@@ -29,6 +31,8 @@ import dev.dbos.transact.workflow.ListWorkflowsInput
 private[engine] final class Sweeper(
     dataSource: DataSource,
     client: DBOSClient,
+    conversations: ConversationStore,
+    entries: EntryStore,
     periods: PeriodStore,
     ledger: UsageLedger,
     profiles: ModelProfileStore,
@@ -38,7 +42,16 @@ private[engine] final class Sweeper(
     plugins: () -> Vector[(PluginName, Int)]
 ) {
 
-  private val collector = new Collector(dataSource, client, periods, ledger, profiles, tombstones)
+  private val collector = new Collector(
+    dataSource,
+    client,
+    conversations,
+    entries,
+    periods,
+    ledger,
+    profiles,
+    tombstones
+  )
 
   private def attempted[A](body: => A): Either[StoreError, A] = Transact.attempted(body)
 
