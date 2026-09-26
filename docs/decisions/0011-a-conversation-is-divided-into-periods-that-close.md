@@ -1,6 +1,6 @@
 # 0011. A conversation is divided into periods that close, each closing carrying the conversation's balance
 
-Status: accepted (2026-09-26), revised (2026-09-26); when a period closes superseded by 0012
+Status: accepted (2026-09-26), revised (2026-09-26, twice); when a period closes superseded by 0012
 
 Context: every entry is kept, append-only, for the life of a conversation, and a
 conversation never ends. An open-ended log grows without bound and has to be carried
@@ -46,7 +46,9 @@ Decision:
   durable workflow, triggered by a close, outside the turn's steps. A consumer declares its
   documents as either a cache, rebuilt from closings and dropped with them, or a ledger,
   with a window and bound of its own. Only a ledger consumer keeps anything past the
-  closings' window.
+  closings' window. A cache document is made from one closing; a document merged from
+  several (a rollup, an index) is a ledger's, never a cache's, and a surface merges at read
+  time.
 
 Consequences:
 
@@ -60,6 +62,7 @@ Consequences:
   one needs a patch or an epoch (ADR 0004).
 - What was evicted, and not kept by a ledger consumer inside the window, is eventually
   forgotten.
-- Built so far: periods, the raw window, consumers built from closings, the balance and its
-  cap, and verdicts going with the raw purge. Still to build: the closings' window and
-  consumer classes.
+- Built: periods, the raw window, consumers built from closings, the balance and its cap,
+  verdicts going with the raw purge, and the closings' window, all deleted through
+  tombstones (ADR 0014). Every consumer is a cache; a ledger class, with its own window and
+  bound, comes with the first consumer that needs one.

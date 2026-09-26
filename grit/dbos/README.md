@@ -7,7 +7,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place, `grit.places`), `SqlUsageLedger`,
   `SqlModelProfileStore`, `SqlModelFactStore`, `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
-  row), `SqlPluginDocs` and `SqlPluginCursors` (each plugin's documents and cursor).
+  row), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
+  as posted from one closing, and its cursor), `SqlTombstones` (what is to be deleted, ADR 0014).
   Imports nothing else in dbos.
 - **`workflow`** — DBOS behind `Durable`: `DbosDurable`, `DurableWorkflow` (registers a
   body under the fixed class name `grit.workflow`, so moving it strands no workflow row),
@@ -25,9 +26,10 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   for the settle window has its question enqueued, under an id naming its quiet stretch; every enabled plugin
   behind the newest closed period has a run enqueued from its cursor, up to
   `PostRef.Attempts` runs from one cursor; what did not finish its work is logged as stuck;
-  then every period closed longer ago than the retention window has its turn workflows and
-  its close attempts and questions (found by their ids' prefix, `listWorkflows`) deleted, and after them
-  its raw entries, keeping its closing entry. ← `sql`, `workflow`
+  and every plugin with a cursor but not enabled is marked for
+  deletion; then `Collector` collects every tombstone whose kind's window has passed (ADR
+  0014): the workflows it names, unless one is still queued or running, then its rows.
+  `Transact` holds the sweep's short transactions. ← `sql`, `workflow`
 
 `sql` and `workflow` are siblings and never name each other. No source file sits at the
 root, and `scripts/enola-law.sh` fails on a new import cycle.

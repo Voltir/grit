@@ -16,7 +16,8 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   classifier call), `summarise` it (`ClosingSummary`: the summary role's prompt, shown the
   balance as already known under labels, and a tolerant reader of its flows and edits;
   with nothing new, or when the model fails, the per-turn summaries as the prose and no
-  model call; the edits and the topics' applied to the balance, held to the cap in force), `seal` it with its closing entry. `CloseEnv` is what it works
+  model call; the edits and the topics' applied to the balance, held to the cap in force), `seal` it with its closing entry, and the tombstones on its raw entries, on the closing it
+  replaces and on its conversation going quiet (ADR 0014). `CloseEnv` is what it works
   with. ← `transcript`
 - **`settle`** — `Settle`: the one question whether anyone is waiting on a quiet period, asked
   once per quiet stretch, on the turns' queue under its conversation
@@ -28,7 +29,8 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
 - **`post`** — `Posting`: one run posting closed periods to a plugin from its cursor
   (`grit.core.plugin`), on a queue of its own partitioned by plugin (`grit.dbos.workflow.Posts`):
   each step posts the next closed period and moves the cursor past it in one `Jot`
-  transaction, so a plugin's `Left` rolls back what it wrote and leaves the cursor; at most
+  transaction, so a plugin's `Left` rolls back what it wrote and leaves the cursor, and marks the runs from
+  the cursor it started at for deletion; at most
   `MaxPerRun` a run. `PostEnv` is what it works with. Imports nothing else in lifecycle.
 
 `close`, `settle` and `post` never name each other. Their replay gate,
