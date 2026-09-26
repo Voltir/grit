@@ -2,6 +2,7 @@ package grit.app.chat
 
 import grit.core.id.TurnRef
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.period.CloseReason
 import grit.core.store.{Entry, Payload}
 import grit.dbos.engine.Engine
 import grit.turn.Turn
@@ -30,6 +31,19 @@ object Replies {
         Payload.Exchange(_) | Payload.Result(_, _) | Payload.Attempt(_) | Payload.Ask(_, _) |
         Payload.Closed(_, _, _) =>
       None
+  }
+
+  /** A closing entry as the transcript's divider says it: why its period closed, and its
+    * [[grit.core.period.Closing.headline]]. `None` for any other entry.
+    */
+  def closed(entry: Entry): Option[String] = entry.payload match {
+    case Payload.Closed(_, reason, closing) =>
+      val why = reason match {
+        case CloseReason.Resolved => "resolved"
+        case CloseReason.Lapsed => "lapsed"
+      }
+      Some(s"$why · ${closing.headline}")
+    case _ => None
   }
 
   /** What a call of a turn's tool loop came to, as one line of the transcript, when `entry`

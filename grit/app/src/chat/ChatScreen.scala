@@ -44,6 +44,9 @@ object ChatScreen {
 
     /** One step of a turn's tool loop, as one line: a call, or what it came to. */
     case Tool
+
+    /** A period closed: why, and what it came to, in one line. */
+    case Closed
   }
 
   /** One message of the conversation, or a line of a turn's tool loop, and the turn it
@@ -214,6 +217,14 @@ object ChatScreen {
     /** For the host: record `text` as the user's message and start its turn. */
     case Send(text: String)
 
+    /** For the host: `/done`, the conversation is done for now ([[grit.core.inbox.Inbox.signal]]). */
+    case Signal
+
+    /** For the host: `/set`, the lifecycle's settings changed by `change`, or, with none,
+      * reported as they are.
+      */
+    case Settings(change: Option[grit.app.config.Lifecycle.Change])
+
     /** From the host: messages new to the conversation, oldest first, the step of the
       * turn in progress (`None` when none is), and the turns' summaries new to it.
       */
@@ -361,6 +372,9 @@ object ChatScreen {
           }
         case Msg.Send(_) | Msg.Load | Msg.Show(_) | Msg.KeepTheme(_) | Msg.Answer(_, _, _) =>
           (s, Effect.NoOp)
+        // From a command: for the host, which answers in the status line.
+        case Msg.Signal => (s.copy(status = "saying it is done…"), Effect.ToHost(Msg.Signal))
+        case m: Msg.Settings => (s.copy(status = "reading the settings…"), Effect.ToHost(m))
         case Msg.Asking(asked) => (s.copy(asking = asked), Effect.NoOp)
         case Msg.Noted(status) => (s.copy(status = status), Effect.NoOp)
         case Msg.Arrived(said, step, summaries) =>
@@ -554,6 +568,7 @@ object ChatScreen {
           Vector(look.separator -> Some(t), look.user(text) -> Some(t))
         case Entry.Spoken(Said(Voice.Reply, text, t)) => look.assistant(text).map(_ -> Some(t))
         case Entry.Spoken(Said(Voice.Tool, text, t)) => Vector(look.tool(text) -> Some(t))
+        case Entry.Spoken(Said(Voice.Closed, text, t)) => look.closed(text).map(_ -> Some(t))
         case Entry.Summary(_) => Vector.empty
         case Entry.Failure(reason) => Vector(look.failure(reason) -> None)
       }

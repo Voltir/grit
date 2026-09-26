@@ -9,7 +9,10 @@ Run it with `scripts/grit`.
 In dependency order:
 
 - **`config`** — `DotEnv`: settings from a `.env` file under the real environment.
-  `Durations`: a duration as a setting writes it (`30s`, `3m`, `24h`, `30d`).
+  `Durations`: a duration as a setting writes it (`30s`, `3m`, `24h`, `30d`). `Lifecycle`:
+  the lifecycle's settings as a person writes them, seeded from `GRIT_IDLE`, `GRIT_GRACE`,
+  `GRIT_RETENTION` and `GRIT_WINDOW_K` on a database's first start, and changed one at a time
+  by `/set`.
   `Prefs`: what grit remembers between runs (the theme last chosen), in
   `$XDG_CONFIG_HOME/grit/prefs` or `~/.config/grit/prefs`. Imports nothing in app.
 - **`look`** — `Theme`, a palette by role (Frost the default; `GRIT_THEME` picks
@@ -41,6 +44,11 @@ In dependency order:
   commands: what the palette (`/` in an empty prompt, or ctrl-p) lists, what `/help`
   describes, and what a submitted `/` draft runs; such a draft never reaches the model, but one starting `//` does, as a message starting
   with `/` (one slash taken off; the palette stays shut).
+  `/done` says the conversation is done for now (`Inbox.signal`): its period closes after
+  the grace window unless something is said first; `/set` shows the lifecycle's settings,
+  or changes one (`/set idle 3m`), taking effect from the next sweep and turn. A closed
+  period shows in the transcript as a double rule marked `closed`, then why it closed and
+  what it came to (`Replies.closed`).
   The theme is screen state, so `/theme` repaints everything live, and asks the host
   to keep it (`KeepTheme`): `Main` writes it to `Prefs`, and the next run starts in it
   unless `GRIT_THEME` says otherwise. `/summaries` shows

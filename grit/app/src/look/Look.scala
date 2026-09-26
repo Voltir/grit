@@ -110,6 +110,19 @@ final case class Look(theme: Theme) {
 
   def separator: Block.Separator = Block.Separator(Style.fg(theme.rail), '━', Runes.Turn)
 
+  /** A closed period's divider: a double rule marked `closed`, then `text` (why it closed,
+    * and what it came to), faint, on its first line only.
+    */
+  def closed(text: String): Vector[Block] = Vector(
+    Block.Separator(Style.fg(theme.rail), '═', "closed"),
+    Block.styled(
+      StyledText.styled(
+        s"  ${text.linesIterator.nextOption().getOrElse("")}",
+        Style.fg(theme.faint)
+      )
+    )
+  )
+
   /** The top bar: grit's name in runes on the accent, then `title`, then `session`,
     * faint, when there is one.
     */

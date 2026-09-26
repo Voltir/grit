@@ -34,7 +34,8 @@ object Follow {
     * that finished with no reply failed, and is reported once, with its outcome. While the
     * turn in progress has asked about a call ([[Payload.Ask]]) that has neither begun nor
     * come to a result, the screen is told it is asking, and told again when that changes.
-    * A tool call shows once it has a result, on one line with it ([[Replies.settled]]).
+    * A tool call shows once it has a result, on one line with it ([[Replies.settled]]), and
+    * a closed period as its divider ([[Replies.closed]]).
     */
   def step(
       state: Follow,
@@ -106,5 +107,6 @@ object Follow {
       .text(e)
       .map(ChatScreen.Said(voice, _, e.turnSeq))
       .orElse(Replies.settled(e).map(ChatScreen.Said(ChatScreen.Voice.Tool, _, e.turnSeq)))
+      .orElse(Replies.closed(e).map(ChatScreen.Said(ChatScreen.Voice.Closed, _, e.turnSeq)))
   }
 }

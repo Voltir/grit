@@ -3,7 +3,7 @@ package grit.app.main
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
-import grit.app.config.{DotEnv, Durations, Prefs}
+import grit.app.config.{DotEnv, Durations, Lifecycle, Prefs}
 import grit.app.look.Theme
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
@@ -56,7 +56,11 @@ import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
   * least 2), the last with tools off. A command it runs sees only the environment
   * `LocalShell` passes. The engine sweeps every `GRIT_SWEEP` (default
   * [[DefaultSweep]]), closing each period whose deadline has come ([[Close]]), its closing
-  * written by the summary role and gated by the same classifier as the topics.
+  * written by the summary role and gated by the same classifier as the topics. When a
+  * period closes, and how many closing entries open a window, are data in the database: on
+  * the first start against a database they are seeded from `GRIT_IDLE`, `GRIT_GRACE`,
+  * `GRIT_RETENTION` and `GRIT_WINDOW_K` ([[Lifecycle.fromEnv]]); after that, those variables
+  * are ignored, and `/set` (or SQL) changes them, from the next sweep and turn on.
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
   *     (default `default`). Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
@@ -120,12 +124,17 @@ object Main {
       openRouter.fold(StubProvider.Model)((_, c) => ModelId.value(c.policy.turn.ref.model))
     val topics = exitOnLeft(classifierChoice(env))
     val sweep = exitOnLeft(sweepEvery(env))
+    val seeded = exitOnLeft(Lifecycle.fromEnv(env))
 
-    /** `engine` with the turn launched on it: the assembler reads its stores, and the models
-      * its kept facts. Throws when the coding tools repeat a name, a fault in `grit.tools` that
-      * no setting can cause, or when the kept model facts cannot be read.
+    /** `engine` with its lifecycle's settings seeded, and the turn and the close launched on
+      * it: the assembler reads its stores, and the models its kept facts. Throws when the
+      * settings cannot be seeded, when the coding tools repeat a name, a fault in `grit.tools`
+      * that no setting can cause, or when the kept model facts cannot be read.
       */
     def launched(engine: Engine^): Engine^{engine} = {
+      engine.jot.write(engine.lifecycle.seed(seeded)).left.foreach { error =>
+        throw new IllegalStateException(s"the lifecycle's settings could not be seeded: $error")
+      }
       val reached: Models = openRouter match {
         case None => new StubModels(stubDelay)
         case Some((key, seed)) => new OpenRouterModels(key, seed, engine.db, engine.facts)

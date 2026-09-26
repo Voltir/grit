@@ -5,7 +5,9 @@ import java.util.concurrent.CountDownLatch
 
 import scala.util.control.NonFatal
 
+import grit.app.config.Lifecycle
 import grit.core.id.{ConversationId, SourceId, TurnRef, TurnSeq}
+import grit.core.inbox.Signalled
 import grit.core.message.Message
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Origin, StoreError, UsageLedger}
@@ -29,6 +31,8 @@ import grit.turn.TurnStream
   *     arrives by following.
   *   - `Show` pins the panel to a turn, or back to the latest.
   *   - `Answer` answers a turn's call that asks first, through the inbox; a failure says so.
+  *   - `Signal` says the conversation is done for now, through the inbox, and `Settings`
+  *     reads the lifecycle's settings or changes one; the status line says what came of it.
   *
   * All of it runs on virtual threads and answers through the mailbox, so the screen paints
   * at once and never waits on the database or the model. [[close]] stops following and
@@ -104,6 +108,50 @@ final class ChatHost(
               mailbox.offer(ChatScreen.Msg.Failed("not answered: the engine is not open"))
           }
         }
+      case ChatScreen.Msg.Signal =>
+        whenOpen(mailbox, "not done") { e =>
+          e.inbox.signal(origin) match {
+            case Right(Signalled.Closing) =>
+              e.db.read(e.lifecycle.current()) match {
+                case Right(settings) =>
+                  mailbox.offer(
+                    ChatScreen.Msg.Noted(
+                      s"done: closes in ${Lifecycle.written(settings.windows.grace)} unless you say more"
+                    )
+                  )
+                case Left(error) =>
+                  mailbox.offer(
+                    ChatScreen.Msg.Noted(s"done, but the settings are unreadable: $error")
+                  )
+              }
+            case Right(Signalled.NothingOpen) =>
+              mailbox.offer(
+                ChatScreen.Msg.Noted("nothing to close: nothing was said since the last close")
+              )
+            case Left(error) => mailbox.offer(ChatScreen.Msg.Failed(s"not done: $error"))
+          }
+        }
+      case ChatScreen.Msg.Settings(change) =>
+        whenOpen(mailbox, "settings not read") { e =>
+          val result = change match {
+            case None => e.db.read(e.lifecycle.current()).left.map(_.toString)
+            case Some(c) =>
+              // One transaction: read, change and write, so two changes at once both land.
+              e.jot
+                .write(e.lifecycle.current().flatMap { now =>
+                  c.applied(now) match {
+                    case Right(next) => e.lifecycle.set(next).map(_ => Right(next))
+                    case Left(why) => Right(Left(why))
+                  }
+                })
+                .left
+                .map(_.toString)
+                .flatten
+          }
+          mailbox.offer(
+            ChatScreen.Msg.Noted(result.fold(why => s"not set: $why", Lifecycle.describe))
+          )
+        }
       case ChatScreen.Msg.Send(text) =>
         background { () =>
           settled.await()
@@ -113,6 +161,20 @@ final class ChatHost(
           }
         }
       case _ => ()
+    }
+
+  /** Runs `work` off the screen's thread once the engine is open; says `failed` when it will
+    * not open.
+    */
+  private def whenOpen(mailbox: Mailbox[ChatScreen.Msg], failed: String)(
+      work: Engine^ => Unit
+  ): Unit =
+    background { () =>
+      settled.await()
+      current match {
+        case Some(e) => work(e)
+        case None => mailbox.offer(ChatScreen.Msg.Failed(s"$failed: the engine is not open"))
+      }
     }
 
   def close(): Unit = {

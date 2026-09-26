@@ -2,8 +2,9 @@ package grit.app.chat
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.period.{CloseReason, Closing}
 import grit.core.store.{Entry, Payload}
 import grit.dbos.engine.{RecordedStep, TurnStatus}
 
@@ -42,6 +43,32 @@ object FollowTests extends TestSuite {
   private def all(status: TurnStatus): TurnRef => TurnStatus = _ => status
 
   val tests = Tests {
+    test("a closing entry arrives as a closed divider: its reason and its headline") {
+      val closing = Closing
+        .of("We chose staging. Then lunch.", None, Vector(), Vector(), Vector(), Vector())
+        .getOrElse(sys.error("closing"))
+      val closed = Entry(
+        EntryId("closing:c:1"),
+        c,
+        TurnSeq(1),
+        None,
+        2,
+        Payload.Closed(PeriodSeq.First, CloseReason.Resolved, closing),
+        Instant.EPOCH
+      )
+      val entries = Vector(user(0, 0, "hi"), reply(1, 0, "hello"), closed)
+      Follow.step(Follow.start, entries, all(TurnStatus.Unknown))._2 ==> Vector(
+        ChatScreen.Msg.Arrived(
+          Vector(
+            ChatScreen.Said(ChatScreen.Voice.User, "hi"),
+            ChatScreen.Said(ChatScreen.Voice.Reply, "hello"),
+            ChatScreen.Said(ChatScreen.Voice.Closed, "resolved · We chose staging.", TurnSeq(1))
+          ),
+          None
+        )
+      )
+    }
+
     test("the conversation so far arrives once, in order") {
       val entries = Vector(user(0, 0, "hi"), reply(1, 0, "hello"))
       val (next, msgs) = Follow.step(Follow.start, entries, all(TurnStatus.Unknown))

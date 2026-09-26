@@ -50,6 +50,13 @@ object ClosingTests extends TestSuite {
         "Earlier in this conversation (closed 2026-09-21, lapsed): Small talk."
     }
 
+    test("a closing's headline is its outcome, or else its prose's first sentence") {
+      full.headline ==> "staging deploys from main"
+      closing("We set it up. Then we tested it.").headline ==> "We set it up."
+      closing("No full stop here").headline ==> "No full stop here"
+      closing("Version 1.2 works! It does.").headline ==> "Version 1.2 works!"
+    }
+
     // A pin of the stored form: every closing entry is written in it, and it outlives every
     // raw entry of its period, so a change that would make one unreadable fails here first.
     test("a closing's stored form, version 1") {

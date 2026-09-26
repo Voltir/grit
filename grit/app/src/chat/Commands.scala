@@ -1,6 +1,7 @@
 package grit.app.chat
 
 import grit.app.chat.ChatScreen.Msg
+import grit.app.config.Lifecycle
 import grit.app.look.Theme
 
 /** The chat screen's slash commands: the one table the palette lists, the help dialog
@@ -15,13 +16,16 @@ object Commands {
     case SetTheme extends Command("/theme", "switch the colour theme")
     case Panel extends Command("/panel", "show or hide the turn panel")
     case Summaries extends Command("/summaries", "show or hide turn summaries")
+    case Done extends Command("/done", "close this conversation soon")
+    case Set extends Command("/set", "when conversations close")
     case Help extends Command("/help", "commands and keys")
     case Quit extends Command("/quit", "leave grit")
 
     /** The arguments this command offers as a second list; empty when it takes none. */
     def choices: Vector[String] = this match {
       case SetTheme => Theme.all.map(_.key)
-      case Panel | Summaries | Help | Quit => Vector.empty
+      case Set => Lifecycle.Change.Names
+      case Panel | Summaries | Help | Quit | Done => Vector.empty
     }
 
     /** What the command does with `argument` (empty for none): the screen's message, or
@@ -34,6 +38,10 @@ object Commands {
       case Panel => bare(Msg.TogglePanel, argument)
       case Summaries => bare(Msg.ToggleSummaries, argument)
       case Help => bare(Msg.OpenHelp, argument)
+      case Done => bare(Msg.Signal, argument)
+      case Set =>
+        if (argument.isEmpty) Right(Msg.Settings(None))
+        else Lifecycle.Change.parse(argument).map(c => Msg.Settings(Some(c)))
       case Quit => bare(Msg.Quit, argument)
     }
 
@@ -91,7 +99,12 @@ object Commands {
         case Some(c) if c.choices.nonEmpty => Picked.Fill(s"$name ")
         case _ => Picked.Run(name)
       }
-    } else Picked.Run(s"${split(draft)._1} $item")
+    } else {
+      val name = split(draft)._1
+      // A setting's value is typed after its name, so choosing a name only fills it in.
+      if (named(name).contains(Command.Set)) Picked.Fill(s"$name $item ")
+      else Picked.Run(s"$name $item")
+    }
 
   /** A command's row in the palette: its name, then what it does. */
   private def row(c: Command): String = s"${c.name.padTo(NameCols, ' ')}${c.about}"

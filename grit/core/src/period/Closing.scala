@@ -14,6 +14,10 @@ final case class Closing private (
     sources: Vector[String]
 ) {
 
+  /** It in one line: its outcome, or else its prose's first sentence. */
+  def headline: String =
+    outcome.getOrElse(Closing.FirstSentence.findFirstIn(prose).getOrElse(prose).trim)
+
   /** The one message the model is shown for it: that it comes from earlier in the
     * conversation, closed `at` (its UTC date) for `reason`, then the prose and each section
     * with lines.
@@ -36,6 +40,11 @@ final case class Closing private (
 }
 
 object Closing {
+
+  /** Up to and including the first `.`, `!` or `?` that ends a sentence: one followed by
+    * whitespace or the end.
+    */
+  private val FirstSentence = """(?s)^.*?[.!?](?=\s|$)""".r
 
   /** A closing with every line trimmed, blank lines dropped from its sections and a blank
     * outcome dropped; `None` when `prose` is blank.

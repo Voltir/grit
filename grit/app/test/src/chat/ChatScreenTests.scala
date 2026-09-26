@@ -557,6 +557,28 @@ object ChatScreenTests extends TestSuite {
         Vector("ᚺ could not open the engine: refused")
     }
 
+    test("/done asks the host to signal once, and sends nothing to the model") {
+      val done = typed(ready, "/done").input(Input.Keyboard(Key.Enter))
+      done.effects.collect { case Effect.ToHost(m) => m } ==> Vector(Msg.Signal)
+      assert(!sends(done))
+    }
+
+    test("a closed period paints as a rule marked closed, then why and what it came to") {
+      val closed = ready.message(
+        Msg.Arrived(
+          Vector(
+            Said(ChatScreen.Voice.User, "hi"),
+            Said(ChatScreen.Voice.Closed, "resolved · We chose staging.", TurnSeq(0))
+          ),
+          None
+        )
+      )
+      val rows = closed.screen.map(_.dropRight(1).trim)
+      val rule = rows.indexWhere(_.contains(" closed "))
+      assert(rule > 0, rows.lift(rule).exists(_.startsWith("═")))
+      rows.lift(rule + 1) ==> Some("resolved · We chose staging.")
+    }
+
     test("a typed submission is sent to the host, and painted only once the store has it") {
       val sent = typed(ready, "hi").input(Input.Keyboard(Key.Enter))
       sent.effects.last ==> Effect.ToHost(Msg.Send("hi"))
@@ -690,7 +712,7 @@ object ChatScreenTests extends TestSuite {
 
     test("/help opens a dialog of the commands and keys; Escape closes it") {
       val helped = Headless
-        .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(30, 110))
+        .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(34, 110))
         .message(Msg.Opened)
       val open = typed(helped, "/help").input(Input.Keyboard(Key.Enter))
       open.state.modal ==> Some(ChatScreen.Dialog.Help)
