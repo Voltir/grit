@@ -388,7 +388,7 @@ abstract class PeriodContract extends TestSuite {
           locality: Locality
       ) =
         Windows
-          .of(idle, 1.day)
+          .of(idle, 1.day, 1.day)
           .flatMap(LifecycleSettings.of(_, balance, idle - 1.minute, p(resolveAt), asks, locality))
           .getOrElse(throw new java.lang.AssertionError(idle))
       def locality(scope: String, weight: Double) =

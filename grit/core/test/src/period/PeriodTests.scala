@@ -23,7 +23,7 @@ object PeriodTests extends TestSuite {
       asks: Int = 3
   ): LifecycleSettings =
     Windows
-      .of(idle, 30.days)
+      .of(idle, 30.days, 180.days)
       .flatMap(LifecycleSettings.of(_, 3, settle, p(resolveAt), asks, Locality.Default))
       .getOrElse(throw new java.lang.AssertionError(idle))
 
@@ -94,14 +94,19 @@ object PeriodTests extends TestSuite {
     }
 
     test("windows are refused when one is not positive") {
-      Windows.of(0.seconds, 1.day) ==> Left("idle must be positive")
-      Windows.of(1.hour, (-1).days) ==> Left("retention must be positive")
+      Windows.of(0.seconds, 1.day, 1.day) ==> Left("idle must be positive")
+      Windows.of(1.hour, (-1).days, 1.day) ==> Left("retention must be positive")
+    }
+
+    test("a ledger window shorter than retention is refused; one as long is kept") {
+      Windows.of(1.hour, 2.days, 1.day) ==> Left("ledger must be at least retention")
+      Windows.of(1.hour, 2.days, 2.days).map(_.ledger) ==> Right(2.days)
     }
 
     test(
       "the settings refuse a balance below 1, a settle not shorter than idle, resolveAt 0 and no asks"
     ) {
-      val w = Windows.of(1.hour, 1.day).getOrElse(throw new java.lang.AssertionError("w"))
+      val w = Windows.of(1.hour, 1.day, 1.day).getOrElse(throw new java.lang.AssertionError("w"))
       Vector(
         LifecycleSettings.of(w, 0, 5.minutes, p(0.8), 3, Locality.Default),
         LifecycleSettings.of(w, 1, 0.seconds, p(0.8), 3, Locality.Default),

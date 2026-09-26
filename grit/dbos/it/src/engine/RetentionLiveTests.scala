@@ -42,7 +42,7 @@ object RetentionLiveTests extends TestSuite {
   /** A minute idle, a minute's retention. */
   private def minutes(config: DbConfig): Unit = {
     val settings = Windows
-      .of(1.minute, 1.minute)
+      .of(1.minute, 1.minute, 1.day)
       .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1, Locality.Default))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))

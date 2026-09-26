@@ -23,7 +23,7 @@ object LifecycleTests extends TestSuite {
       locality: Locality = Locality.Default
   ): LifecycleSettings =
     Windows
-      .of(idle, retention)
+      .of(idle, retention, 180.days)
       .flatMap(LifecycleSettings.of(_, balance, settle, p(resolveAt), asks, locality))
       .getOrElse(throw new java.lang.AssertionError("settings"))
 
@@ -83,7 +83,9 @@ object LifecycleTests extends TestSuite {
       Change.parse("resolve 2") ==>
         Left("resolve: not a probability: write a number from 0 to 1, as 0.8")
       Change.parse("grace 3m") ==>
-        Left("no setting grace: idle, settle, resolve, asks, retention, balance, scope or weight")
+        Left(
+          "no setting grace: idle, settle, resolve, asks, retention, ledger, balance, scope or weight"
+        )
       Change.parse("idle 3") ==>
         Left("idle: not a duration: write a whole number and s, m, h or d, as 30s or 3m")
     }
@@ -100,6 +102,21 @@ object LifecycleTests extends TestSuite {
       Change.Settle(2.hours).applied(now) ==> Left("settle must be shorter than idle")
       Change.Idle(5.minutes).applied(now) ==> Left("settle must be shorter than idle")
       Change.Asks(0).applied(now) ==> Left("asks must be at least 1")
+    }
+
+    test("the ledger window is seeded by GRIT_LEDGER, set by /set, and never below retention") {
+      Lifecycle
+        .fromEnv(Map("GRIT_LEDGER" -> "6m", "GRIT_RETENTION" -> "3m"))
+        .map(
+          _.windows.ledger
+        ) ==> Right(6.minutes)
+      Lifecycle.fromEnv(Map("GRIT_LEDGER" -> "2m", "GRIT_RETENTION" -> "3m")) ==>
+        Left("GRIT_IDLE, GRIT_RETENTION, GRIT_LEDGER: ledger must be at least retention")
+      Change.parse("ledger 6m") ==> Right(Change.Ledger(6.minutes))
+      val now = settings(60.minutes, 600.minutes, 4096, 5.minutes, 0.8, 3)
+      Change.Ledger(12.hours).applied(now).map(_.windows.ledger) ==> Right(12.hours)
+      Change.Ledger(2.hours).applied(now) ==> Left("ledger must be at least retention")
+      Change.Retention(200.days).applied(now) ==> Left("ledger must be at least retention")
     }
 
     test("the environment seeds the scope and the weight") {
@@ -136,27 +153,27 @@ object LifecycleTests extends TestSuite {
     test("the settings in one line say where a window draws from") {
       Lifecycle.describe(settings(3.hours, 1.day, 300, 1.hour, 0.8, 3)) ==>
         "after 1h quiet, asks whether anyone is waiting (at most 3 times) and closes when nobody is at 0.8 or " +
-        "more; closes after 3h idle; raw entries kept 1d; the balance holds 300 bytes; draws on open " +
+        "more; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; the balance holds 300 bytes; draws on open " +
         "periods everywhere, its own weighted 2"
       Lifecycle.describe(
         settings(3.hours, 1.day, 300, 1.hour, 0.8, 3, Locality(scope("fs:/a slack:b"), weight(1.5)))
       ) ==> "after 1h quiet, asks whether anyone is waiting (at most 3 times) and closes when nobody is " +
-        "at 0.8 or more; closes after 3h idle; raw entries kept 1d; the balance holds 300 bytes; " +
+        "at 0.8 or more; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; the balance holds 300 bytes; " +
         "draws on open periods in fs:/a slack:b, its own weighted 1.5"
       Lifecycle.describe(
         settings(3.hours, 1.day, 300, 1.hour, 1.0, 3, Locality(Scope.Off, weight(2)))
       ) ==>
-        "never asks whether anyone is waiting; closes after 3h idle; raw entries kept 1d; " +
+        "never asks whether anyone is waiting; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; " +
         "the balance holds 300 bytes; draws on no other place"
     }
 
     test("the settings in one line; at resolve 1, nothing is asked") {
       Lifecycle.describe(settings(3.hours, 1.day, 300, 1.hour, 0.8, 3)) ==>
         "after 1h quiet, asks whether anyone is waiting (at most 3 times) and closes when nobody is at 0.8 or " +
-        "more; closes after 3h idle; raw entries kept 1d; the balance holds 300 bytes; draws on open " +
+        "more; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; the balance holds 300 bytes; draws on open " +
         "periods everywhere, its own weighted 2"
       Lifecycle.describe(settings(3.hours, 1.day, 300, 1.hour, 1.0, 3)) ==>
-        "never asks whether anyone is waiting; closes after 3h idle; raw entries kept 1d; " +
+        "never asks whether anyone is waiting; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; " +
         "the balance holds 300 bytes; draws on open periods everywhere, its own weighted 2"
     }
   }

@@ -21,6 +21,7 @@ final class SqlLifecycleStore extends LifecycleStore {
         conn.prepareStatement(
           """SELECT (extract(epoch FROM idle) * 1000)::bigint AS idle,
             |       (extract(epoch FROM retention) * 1000)::bigint AS retention,
+            |       (extract(epoch FROM ledger) * 1000)::bigint AS ledger,
             |       balance,
             |       (extract(epoch FROM settle) * 1000)::bigint AS settle,
             |       resolve_at, asks, to_jsonb(scope)::text AS scope, weight
@@ -38,7 +39,11 @@ final class SqlLifecycleStore extends LifecycleStore {
                 (acc, w) => acc.flatMap(done => Place.read(w).map(done :+ _))
               }
               weight <- Weight.of(rs.getDouble("weight"))
-              windows <- Windows.of(rs.getLong("idle").millis, rs.getLong("retention").millis)
+              windows <- Windows.of(
+                rs.getLong("idle").millis,
+                rs.getLong("retention").millis,
+                rs.getLong("ledger").millis
+              )
               at <- Probability
                 .of(resolveAt)
                 .toRight(s"resolve_at $resolveAt is not a probability")
@@ -64,6 +69,7 @@ final class SqlLifecycleStore extends LifecycleStore {
     write(
       settings,
       """ON CONFLICT (one) DO UPDATE SET idle = EXCLUDED.idle, retention = EXCLUDED.retention,
+        |  ledger = EXCLUDED.ledger,
         |  balance = EXCLUDED.balance, settle = EXCLUDED.settle,
         |  resolve_at = EXCLUDED.resolve_at, asks = EXCLUDED.asks,
         |  scope = EXCLUDED.scope, weight = EXCLUDED.weight""".stripMargin
@@ -78,8 +84,9 @@ final class SqlLifecycleStore extends LifecycleStore {
       Using.resource(
         conn.prepareStatement(
           s"""INSERT INTO grit.lifecycle_settings
-             |       (idle, retention, balance, settle, resolve_at, asks, scope, weight)
-             |VALUES (? * interval '1 millisecond', ? * interval '1 millisecond', ?,
+             |       (idle, retention, ledger, balance, settle, resolve_at, asks, scope, weight)
+             |VALUES (? * interval '1 millisecond', ? * interval '1 millisecond',
+             |        ? * interval '1 millisecond', ?,
              |        ? * interval '1 millisecond', ?, ?,
              |        ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?)
              |$onConflict""".stripMargin
@@ -87,16 +94,17 @@ final class SqlLifecycleStore extends LifecycleStore {
       ) { ps =>
         ps.setLong(1, w.idle.toMillis)
         ps.setLong(2, w.retention.toMillis)
-        ps.setInt(3, settings.balance)
-        ps.setLong(4, settings.settle.toMillis)
-        ps.setDouble(5, Probability.value(settings.resolveAt))
-        ps.setInt(6, settings.asks)
+        ps.setLong(3, w.ledger.toMillis)
+        ps.setInt(4, settings.balance)
+        ps.setLong(5, settings.settle.toMillis)
+        ps.setDouble(6, Probability.value(settings.resolveAt))
+        ps.setInt(7, settings.asks)
         // The scope's places as written, sent as JSON so no Java array crosses JDBC.
         ps.setString(
-          7,
+          8,
           ujson.Arr.from(settings.locality.scope.prefixes.map(p => ujson.Str(p.written))).render()
         )
-        ps.setDouble(8, Weight.value(settings.locality.weight))
+        ps.setDouble(9, Weight.value(settings.locality.weight))
         ps.executeUpdate()
         ()
       }

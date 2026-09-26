@@ -1,8 +1,11 @@
 package grit.dbos.engine
 
+import scala.concurrent.duration.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
+import grit.core.period.{LifecycleSettings, Probability, Windows}
+import grit.core.place.Locality
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.dbos.sql.{LiveDb, SqlLifecycleStore, TestPostgres}
 
@@ -45,14 +48,25 @@ object SchemaTests extends TestSuite {
       assert(refused.exists(_.contains("periods_check")))
     }
 
+    test("the settings are kept as set, the ledger window with them") {
+      val config = TestPostgres.freshDatabase("schema_ledger")
+      Engine.open(config, "test").close()
+      val settings = Windows
+        .of(2.minutes, 3.minutes, 6.minutes)
+        .flatMap(LifecycleSettings.of(_, 300, 1.minute, Probability.One, 1, Locality.Default))
+        .fold(sys.error, identity)
+      LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
+      LiveDb.transaction(config)(new SqlLifecycleStore().current()) ==> Right(settings)
+    }
+
     test("settings changed by hand to break their rules read as Invalid") {
       val config = TestPostgres.freshDatabase("schema_settings")
       Engine.open(config, "test").close()
       LiveDb.transaction(config)(
         execute(
           "INSERT INTO grit.lifecycle_settings " +
-            "(idle, retention, balance, settle, resolve_at, asks, scope, weight) " +
-            "VALUES ('10 minutes', '30 days', 4096, '1 hour', 0.8, 3, '{everywhere}', 2)"
+            "(idle, retention, ledger, balance, settle, resolve_at, asks, scope, weight) " +
+            "VALUES ('10 minutes', '30 days', '180 days', 4096, '1 hour', 0.8, 3, '{everywhere}', 2)"
         )
       )
       LiveDb.transaction(config)(new SqlLifecycleStore().current()) ==>

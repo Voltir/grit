@@ -68,7 +68,7 @@ import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
   * and closes, what its balance holds, and which other places' open periods a window draws
   * on, are data in the database: on the first start against a database they are seeded from
   * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
-  * `GRIT_BALANCE`, `GRIT_SCOPE` and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]); after that, those variables are ignored, and `/set` (or SQL)
+  * `GRIT_LEDGER`, `GRIT_BALANCE`, `GRIT_SCOPE` and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]); after that, those variables are ignored, and `/set` (or SQL)
   * changes them, from the next sweep and turn on.
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names

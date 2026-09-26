@@ -36,7 +36,7 @@ object SettleLiveTests extends TestSuite {
   /** Ten minutes idle, a minute to settle, resolved at 0.8, three asks. */
   private def settling(config: DbConfig): Unit = {
     val settings = Windows
-      .of(10.minutes, 1.day)
+      .of(10.minutes, 1.day, 1.day)
       .flatMap(LifecycleSettings.of(_, 4096, 1.minute, p(0.8), 3, Locality.Default))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
