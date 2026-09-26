@@ -161,7 +161,9 @@ object grit extends Module {
   object models extends GritModule {
     def moduleDeps = Seq(core)
 
-    object test extends GritTests
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
   }
 
   /* The local host: grit.core.host's Workspace, Edits and Shell over this machine's files

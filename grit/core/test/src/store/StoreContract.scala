@@ -4,11 +4,25 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, TurnSeq, WorkflowId}
 import grit.core.message.{Message, Tokens, Usage}
-import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy, TurnProfile, TurnProfileId}
+import grit.core.model.{
+  Assignment,
+  Catalog,
+  Known,
+  ModelId,
+  ModelRef,
+  NameRepair,
+  Policy,
+  Profile,
+  Source,
+  StrictSchemas,
+  TurnProfile,
+  TurnProfileId
+}
 
 import utest.*
 
-/** The contract every [[EntryStore]], [[UsageLedger]] and [[ModelProfileStore]] keeps, run against one
+/** The contract every [[EntryStore]], [[UsageLedger]], [[ModelProfileStore]] and
+  * [[ModelFactStore]] keeps, run against one
   * implementation of each: the in-memory fakes in core, the SQL stores in grit.dbos. The
   * fakes stand in for the SQL stores in every other module's tests, so whatever those tests
   * rely on belongs here.
@@ -26,6 +40,11 @@ abstract class StoreContract extends TestSuite {
 
   /** The profile store under test, over the same database as [[entries]]. */
   protected def profiles: ModelProfileStore
+
+  /** The fact store under test, over the same database as [[entries]]. It keeps every fact
+    * in one list, so only one test writes to it.
+    */
+  protected def facts: ModelFactStore
 
   /** Runs `body` in one transaction, committed when it returns. */
   protected def transaction[A](body: (Tx^) ?=> A): A
@@ -213,6 +232,25 @@ abstract class StoreContract extends TestSuite {
     test("a turn never pinned, or an id never kept, is None") {
       transaction(profiles.of(WorkflowId("w-unpinned"))) ==> Right(None)
       transaction(profiles.get(TurnProfileId("0000000000000000"))) ==> Right(None)
+    }
+
+    test("facts are kept as approved, and read back oldest first") {
+      val store = facts
+      val ref =
+        ModelRef(ModelId.of("a/facts").getOrElse(throw new java.lang.AssertionError("id")), None)
+      val on = java.time.LocalDate.of(2026, 9, 25)
+      val first =
+        Profile(ref, strict = Known.Of(StrictSchemas.Enforced, Source.Measured("probe", on, 5, 5)))
+      val second = Profile(ref, names = Known.Of(NameRepair.AsSent, Source.Declared("nick", on)))
+      transaction(store.all()) ==> Right(Vector.empty)
+      transaction(store.keep(first, "nick", Instant.parse("2026-09-25T10:00:00Z"))) ==> Right(())
+      transaction(store.keep(second, "ana", Instant.parse("2026-09-25T11:00:00Z"))) ==> Right(())
+      transaction(store.all()) ==> Right(
+        Vector(
+          ModelFactStore.Kept(first, "nick", Instant.parse("2026-09-25T10:00:00Z")),
+          ModelFactStore.Kept(second, "ana", Instant.parse("2026-09-25T11:00:00Z"))
+        )
+      )
     }
   }
 }

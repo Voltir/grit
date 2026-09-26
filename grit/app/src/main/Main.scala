@@ -25,7 +25,8 @@ import grit.models.{
   OpenRouterModels,
   Seed,
   StubClassifier,
-  StubModels
+  StubModels,
+  StubProvider
 }
 import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
@@ -100,25 +101,33 @@ object Main {
     // is the seed catalog's policy, with the environment laid over it for this run.
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
     val stubDelay = exitOnLeft(millis(env, StubDelayVar))
-    val reached: Models =
-      if (!env.contains(OpenRouterConfig.KeyVar)) new StubModels(stubDelay)
+    // The key and the seed under this run's policy; the facts the database keeps are laid
+    // over it once the engine is open.
+    val openRouter: Option[(String, Catalog)] =
+      if (!env.contains(OpenRouterConfig.KeyVar)) None
       else {
         val key = exitOnLeft(OpenRouterConfig.key(env).left.map(_.message))
         val seed = exitOnLeft(Seed.catalog)
         val policy = exitOnLeft(OpenRouterConfig.policy(env, seed.policy).left.map(_.message))
-        new OpenRouterModels(key, seed.withPolicy(policy))
+        Some((key, seed.withPolicy(policy)))
       }
-    val models: Models = if (tui) reached else announced(reached)
-    // Pinned at startup: what the turn's own pin will be until the catalog changes.
-    val startup = exitOnLeft(models.catalog()).pin
-    val modelName = ModelId.value(startup.turn.assignment.ref.model)
+    val modelName =
+      openRouter.fold(StubProvider.Model)((_, c) => ModelId.value(c.policy.turn.ref.model))
     val topics = exitOnLeft(classifierChoice(env))
-    val writer = models.provider(startup.query)
 
-    /** `engine` with the turn launched on it: the assembler reads its stores. Throws when the
-      * coding tools repeat a name, a fault in `grit.tools` that no setting can cause.
+    /** `engine` with the turn launched on it: the assembler reads its stores, and the models
+      * its kept facts. Throws when the coding tools repeat a name, a fault in `grit.tools` that
+      * no setting can cause, or when the kept model facts cannot be read.
       */
     def launched(engine: Engine^): Engine^{engine} = {
+      val reached: Models = openRouter match {
+        case None => new StubModels(stubDelay)
+        case Some((key, seed)) => new OpenRouterModels(key, seed, engine.db, engine.facts)
+      }
+      val models: Models = if (tui) reached else announced(reached)
+      // The query writer is built with the assembler, from the catalog as the engine opens.
+      val startup = models.catalog().fold(why => throw new IllegalStateException(why), _.pin)
+      val writer = models.provider(startup.query)
       val assembler: ContextAssembler^ =
         if (retrieving)
           new RetrievalAssembler(engine.entries, engine.search, writer, CharEstimate, budget, tail)

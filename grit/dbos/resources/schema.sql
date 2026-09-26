@@ -95,3 +95,13 @@ CREATE TABLE IF NOT EXISTS grit.turn_model_profiles (
     model_profile_id TEXT NOT NULL REFERENCES grit.model_profiles(id),
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Facts about model pairs learned while grit runs, each approved by a person: the
+-- database's layer over the checked-in seed catalog (grit/models/resources/catalog.json).
+-- Append-only; `facts` is a partial profile in the seed's form (CatalogJson.writeProfile).
+CREATE TABLE IF NOT EXISTS grit.model_facts (
+    ordinal     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    facts       JSONB NOT NULL,
+    approved_by TEXT NOT NULL,
+    approved_at TIMESTAMPTZ NOT NULL
+);

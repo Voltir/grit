@@ -2,19 +2,26 @@ package grit.models
 
 import grit.core.model.{Catalog, Pinned}
 import grit.core.provider.{Models, Provider}
+import grit.core.store.{Db, ModelFactStore}
 
-/** [[Models]] over OpenRouter, `inForce` the catalog for the run: each pin's calls are made
-  * with `key` as [[OpenRouterConfig.of]] says. The providers for `inForce`'s own pins are made
-  * once, here; any other pin gets a new provider on each call.
+/** [[Models]] over OpenRouter: the catalog in force is `seed` with every fact kept in `facts`
+  * laid over it, read through `db` each time it is asked for. Each pin's calls are made with
+  * `key` as [[OpenRouterConfig.of]] says; the providers for `seed`'s own pins are made once,
+  * here, and any other pin gets a new provider on each call.
   */
-final class OpenRouterModels(key: String, inForce: Catalog) extends Models {
+final class OpenRouterModels(key: String, seed: Catalog, db: Db^, facts: ModelFactStore)
+    extends Models {
 
-  private val pins = inForce.pin
+  private val pins = seed.pin
   private val turn: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.turn))
   private val summary: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.summary))
   private val query: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.query))
 
-  def catalog(): Either[String, Catalog] = Right(inForce)
+  def catalog(): Either[String, Catalog] =
+    db.read(facts.all())
+      .map(kept => seed.overlaid(kept.map(_.facts)))
+      .left
+      .map(e => s"the kept model facts cannot be read: $e")
 
   def provider(pinned: Pinned): Provider^ =
     if (pinned == pins.turn) turn

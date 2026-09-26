@@ -24,7 +24,7 @@ In dependency order:
   `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
   `ConversationStore`, `UsageLedger`, `ModelProfileStore` (which profile each turn ran
-  under), `StoreError`. ← `id`, `message`, `topic`, `model`
+  under), `ModelFactStore` (facts about pairs approved at runtime), `StoreError`. ← `id`, `message`, `topic`, `model`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash, and waits for a
   message (`recv`). ← `id`, `store`
 - **`approval`** — `Approval`, a person's answer to a gated tool call, and the message

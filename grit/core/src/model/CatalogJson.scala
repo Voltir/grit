@@ -20,6 +20,12 @@ object CatalogJson {
       profiles <- all(list.toVector.zipWithIndex.map((p, i) => readProfile(p, s"profiles[$i]")))
     } yield Catalog.of(policy, profiles)
 
+  /** One profile's form, as the seed lists it: its pair, then each known setting. */
+  def writeProfile(p: Profile): ujson.Value = profile(p)
+
+  /** The profile `v` encodes, or the first thing wrong with it, named by its path. */
+  def readProfile(v: ujson.Value): Either[String, Profile] = readProfile(v, "profile")
+
   /** The turn profile's form: its three pins. */
   def writeTurn(t: TurnProfile): ujson.Value = pins(t.turn, t.summary, t.query)
 

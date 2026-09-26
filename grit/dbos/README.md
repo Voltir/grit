@@ -5,7 +5,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
 
 - **`sql`** — Postgres behind core's store seams: `DbConfig` (where the database is),
   `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore`, `SqlUsageLedger`,
-  `SqlModelProfileStore`. Imports nothing else
+  `SqlModelProfileStore`, `SqlModelFactStore`. Imports nothing else
   in dbos.
 - **`workflow`** — DBOS behind `Durable`: `DbosDurable`, `DurableWorkflow` (registers a
   body under the fixed class name `grit.workflow`, so moving it strands no workflow row),

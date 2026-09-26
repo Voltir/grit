@@ -17,6 +17,7 @@ import grit.core.store.{
   EntrySearch,
   EntryStore,
   Jot,
+  ModelFactStore,
   ModelProfileStore,
   Origin,
   StoreError,
@@ -30,6 +31,7 @@ import grit.dbos.sql.{
   SqlEntrySearch,
   SqlEntryStore,
   SqlJot,
+  SqlModelFactStore,
   SqlModelProfileStore,
   SqlUsageLedger
 }
@@ -59,6 +61,9 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
 
   /** Which profile each turn's model calls were made under. */
   val profiles: ModelProfileStore = new SqlModelProfileStore()
+
+  /** Facts about model pairs approved while grit runs, over the seed catalog. */
+  val facts: ModelFactStore = new SqlModelFactStore()
 
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource)

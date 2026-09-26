@@ -3,8 +3,23 @@ package grit.dbos.engine
 import java.util.UUID
 
 import grit.core.id.ConversationId
-import grit.core.store.{EntryStore, ModelProfileStore, Origin, StoreContract, Tx, UsageLedger}
-import grit.dbos.sql.{LiveDb, SqlEntryStore, SqlModelProfileStore, SqlUsageLedger, TestPostgres}
+import grit.core.store.{
+  EntryStore,
+  ModelFactStore,
+  ModelProfileStore,
+  Origin,
+  StoreContract,
+  Tx,
+  UsageLedger
+}
+import grit.dbos.sql.{
+  LiveDb,
+  SqlEntryStore,
+  SqlModelFactStore,
+  SqlModelProfileStore,
+  SqlUsageLedger,
+  TestPostgres
+}
 
 /** The store contract, kept by the SQL stores against a real Postgres. */
 object SqlStoreTests extends StoreContract {
@@ -19,6 +34,7 @@ object SqlStoreTests extends StoreContract {
   protected val entries: EntryStore = new SqlEntryStore()
   protected val ledger: UsageLedger = new SqlUsageLedger()
   protected val profiles: ModelProfileStore = new SqlModelProfileStore()
+  protected val facts: ModelFactStore = new SqlModelFactStore()
 
   protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
 
