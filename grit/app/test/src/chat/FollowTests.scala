@@ -136,7 +136,7 @@ object FollowTests extends TestSuite {
       val (thinking, first) = Follow.step(Follow.start, asked, all(running()))
       first ==> Vector(
         ChatScreen.Msg
-          .Arrived(Vector(ChatScreen.Said(ChatScreen.Voice.User, "hi")), Some("classify"))
+          .Arrived(Vector(ChatScreen.Said(ChatScreen.Voice.User, "hi")), Some("pin-models"))
       )
       Follow.step(thinking, asked, all(running()))._2 ==> Vector.empty
       Follow

@@ -23,13 +23,15 @@ In dependency order:
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),
   `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
-  `ConversationStore`, `UsageLedger`, `StoreError`. ← `id`, `message`, `topic`
+  `ConversationStore`, `UsageLedger`, `ModelProfileStore` (which profile each turn ran
+  under), `StoreError`. ← `id`, `message`, `topic`, `model`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash, and waits for a
   message (`recv`). ← `id`, `store`
 - **`approval`** — `Approval`, a person's answer to a gated tool call, and the message
   that carries it to the turn waiting on its topic. ← `id`
 - **`context`**, **`provider`**, **`inbox`**, **`classify`** — the seams the engine plugs
-  into: `ContextAssembler` (and the `Window` it builds), `Provider`, `Inbox` (which also
+  into: `ContextAssembler` (and the `Window` it builds), `Provider` and `Models` (the
+  catalog in force, and a provider per role's pin; ← `model`), `Inbox` (which also
   answers a turn's gated call), and `Classifier` (closed questions about a state, answered
   with a probability per option; Jev's shape). Each names only the packages above, never
   another of the four.
@@ -51,6 +53,7 @@ No source file sits at core's root, and no two packages import each other in a c
 `scripts/enola-law.sh` fails on a new import cycle.
 
 The test tree mirrors it: the in-memory fakes other modules' tests use are
-`store.InMemoryEntryStore`, `store.InMemoryUsageLedger` and `durable.InMemoryDurable`.
+`store.InMemoryEntryStore`, `store.InMemoryUsageLedger`, `store.InMemoryModelProfileStore`
+and `durable.InMemoryDurable`.
 `TestTx` lives in package `grit.dbos.sql`, because the `null` it holds is legal only inside
 the DBOS quarantine (rule 6).

@@ -172,7 +172,8 @@ object TurnTopicsTests extends TestSuite {
       assertThrows[InMemoryDurable.Crash](
         runTurn(durable, entries, new RecordingProvider, turn, classifier = classifier)
       )
-      durable.recordedSteps(turn.workflowId) ==> Vector("DBOS.patch-topics", "classify")
+      durable
+        .recordedSteps(turn.workflowId) ==> Vector("pin-models", "DBOS.patch-topics", "classify")
       runTurn(durable, entries, new RecordingProvider, turn, classifier = classifier)
       classifier.calls ==> 1
       topics(store).placements.get(turn.turnSeq).map(_.size) ==> Some(1)

@@ -20,6 +20,7 @@ object TurnTests extends TestSuite {
 
   private val AllSteps: Vector[String] =
     Vector(
+      "pin-models",
       "classify",
       "record-topic",
       "assemble",
@@ -38,17 +39,19 @@ object TurnTests extends TestSuite {
 
   /** What a turn records: its steps, each patch's marker before the steps it brought. */
   private val Recorded: Vector[String] =
-    ("DBOS.patch-topics" +: Always)
-      .patch(4, Vector("DBOS.patch-record-window"), 0)
-      .patch(6, Vector("DBOS.patch-tools"), 0)
+    Always
+      .patch(1, Vector("DBOS.patch-topics"), 0)
+      .patch(5, Vector("DBOS.patch-record-window"), 0)
+      .patch(7, Vector("DBOS.patch-tools"), 0)
 
   /** How many of [[Recorded]] come before `assemble`. */
-  private val Placing = 3
+  private val Placing = 4
 
   val tests = Tests {
     test("the step names are the recorded ones, and a running turn is in the next") {
       Turn.Step.all ==> AllSteps
-      Turn.running(Vector.empty) ==> "classify"
+      Turn.running(Vector.empty) ==> "pin-models"
+      Turn.running(Vector("pin-models")) ==> "classify"
       Turn.running(Vector("DBOS.patch-topics", "classify")) ==> "record-topic"
       Turn.running(Vector("DBOS.patch-topics", "classify", "record-topic")) ==> "assemble"
       Turn.running(Vector("assemble")) ==> "record-window"

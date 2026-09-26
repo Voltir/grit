@@ -58,7 +58,7 @@ object TurnCaptureTests extends TestSuite {
     * workspace.
     */
   private val breach =
-    """final case class Breached[C^](workspace: Workspace^, tools: Toolbox[C], jot: Jot^, budget: TurnLoop.Budget, strict: Boolean)
+    """final case class Breached[C^](workspace: Workspace^, tools: Toolbox[C], jot: Jot^, budget: TurnLoop.Budget)
       |""".stripMargin
 
   /** A toolbox that edits through `e`, handed to `tooling` as a read-only turn's tools over
@@ -66,13 +66,13 @@ object TurnCaptureTests extends TestSuite {
     */
   private def editing(tooling: String, result: String) =
     s"""def offered(ws: Workspace^, e: Edits^, box: Toolbox[{ws, e}], j: Jot^, b: TurnLoop.Budget): $result =
-      |  $tooling(ws, box, j, b, strict = false)
+      |  $tooling(ws, box, j, b)
       |""".stripMargin
 
   /** A toolbox that edits through `other`, not the tooling's `e`, handed to a full turn. */
   private val smuggled =
     """def offered(ws: Workspace^, e: Edits^, s: Shell^, other: Edits^, box: Toolbox[{ws, other}], j: Jot^, b: TurnLoop.Budget): TurnTooling^{ws, e, s, other, j} =
-      |  TurnTooling.Full(ws, e, s, box, j, b, strict = false)
+      |  TurnTooling.Full(ws, e, s, box, j, b)
       |""".stripMargin
 
   private def rejected(errs: List[String]): Boolean =
@@ -86,9 +86,9 @@ object TurnCaptureTests extends TestSuite {
     test("a read-only turn offered reading tools, and a full one offered editing, compile") {
       val errs = errors(
         """def reading(ws: Workspace^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling^{ws, j}] =
-          |  Toolbox.of[{ws}](reads(ws)).toOption.map(box => TurnTooling.ReadOnly(ws, box, j, b, strict = false))
+          |  Toolbox.of[{ws}](reads(ws)).toOption.map(box => TurnTooling.ReadOnly(ws, box, j, b))
           |def editing(ws: Workspace^, e: Edits^, s: Shell^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling^{ws, e, s, j}] =
-          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling.Full(ws, e, s, box, j, b, strict = false))
+          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling.Full(ws, e, s, box, j, b))
           |""".stripMargin
       )
       assert(errs.isEmpty)

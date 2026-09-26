@@ -4,6 +4,7 @@ import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
 import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens}
+import grit.core.model.{CatalogJson, TurnProfile}
 import grit.core.store.{Payload, PayloadJson}
 import grit.core.topic.{TopicId, TopicJson}
 
@@ -194,6 +195,10 @@ private[turn] object TurnJournal {
           case _ => Left("settled: expected {result, failed}")
         }
     )
+
+  /** A turn's pinned profile, in its stored form ([[CatalogJson.writeTurn]]). */
+  given profile: Journaled[Either[TurnFailure, TurnProfile]] =
+    outcome(CatalogJson.writeTurn, CatalogJson.readTurn)
 
   private def outcome[A](
       write: A -> ujson.Value,

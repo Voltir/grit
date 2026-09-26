@@ -79,3 +79,19 @@ CREATE TABLE IF NOT EXISTS grit.usage_ledger (
 
 -- A turn's costs, read by edges (UsageLedger.of).
 CREATE INDEX IF NOT EXISTS idx_usage_ledger_workflow ON grit.usage_ledger (workflow_id, ordinal);
+
+-- Every distinct profile a turn ran under (grit.core.model.TurnProfile): the model, budget,
+-- upstream and settings each role's calls were made under. Keyed by its content hash, so
+-- it is written once however many turns share it, and never changed.
+CREATE TABLE IF NOT EXISTS grit.model_profiles (
+    id         TEXT PRIMARY KEY,
+    profile    JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Which profile each turn ran under, set once when the turn starts.
+CREATE TABLE IF NOT EXISTS grit.turn_model_profiles (
+    workflow_id      TEXT PRIMARY KEY,
+    model_profile_id TEXT NOT NULL REFERENCES grit.model_profiles(id),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);

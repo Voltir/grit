@@ -10,7 +10,8 @@ import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextA
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{ConversationId, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
+import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
+import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
 import grit.core.host.{
   Clipped,
   EditError,
@@ -28,8 +29,10 @@ import grit.core.store.{
   Db,
   Entry,
   EntryStore,
+  InMemoryModelProfileStore,
   InMemoryUsageLedger,
   Jot,
+  ModelProfileStore,
   Payload,
   StoreError,
   Tx,
@@ -328,6 +331,22 @@ object TurnFixtures {
       Tokens(28)
     )
 
+  /** A catalog whose three roles differ only in their model: what every fixture turn pins. */
+  val TestCatalog: Catalog = {
+    def role(name: String, budget: Int) =
+      Assignment(ModelRef(ModelId.of(s"test/$name").getOrElse(throw new java.lang.AssertionError(name)), None), budget, None)
+    Catalog.of(Policy(role("turn", 4096), role("summary", 1024), role("query", 1024)), Vector.empty)
+  }
+
+  /** Models for a test: [[TestCatalog]] is in force, and the summary's calls go to
+    * `summary`, every other role's to `turn`.
+    */
+  final class FixedModels(turn: Provider^, summary: Provider^) extends Models {
+    def catalog(): Either[String, Catalog] = Right(TestCatalog)
+    def provider(pinned: Pinned): Provider^ =
+      if (pinned.assignment == TestCatalog.policy.summary) summary else turn
+  }
+
   /** The turn's workflow body over `entries` and `provider`, windowed by `assembler`. */
   def turnBodyWith(
       entries: EntryStore,
@@ -340,16 +359,15 @@ object TurnFixtures {
     Turn.body(
       TurnEnv(
         system,
-        TurnRecords(entries, ledger, CharEstimate),
+        TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore),
         assembler,
         NoClassifier,
-        provider,
-        new StubProvider(),
+        new FixedModels(provider, new StubProvider()),
         FakeDb,
         new NoWait,
         Fresh.random()
       ),
-      TurnTooling.ReadOnly(NoCheckout, noTools, new FakeJot, budget(5), strict = false)
+      TurnTooling.ReadOnly(NoCheckout, noTools, new FakeJot, budget(5))
     )(id)
 
   /** The stub classifier, counting the questions it was asked, call by call. */
@@ -395,7 +413,7 @@ object TurnFixtures {
     )
 
   /** No tools offered: the loop's first call is the plain request, and answers. */
-  private def noTools: Toolbox[{NoCheckout}] =
+  def noTools: Toolbox[{NoCheckout}] =
     Toolbox.of[{NoCheckout}]().fold(d => throw new java.lang.AssertionError(d), identity)
 
   /** As [[turnBody]], the model offered `tools`, which read `ws`, for at most `calls` model
@@ -415,16 +433,39 @@ object TurnFixtures {
     Turn.body(
       TurnEnv(
         system,
-        TurnRecords(entries, ledger, CharEstimate),
+        TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore),
         new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
         classifier,
-        provider,
-        summarizer,
+        new FixedModels(provider, summarizer),
         FakeDb,
         clock,
         Fresh.random()
       ),
-      TurnTooling.ReadOnly(ws, tools, new FakeJot, budget(calls), strict = false)
+      TurnTooling.ReadOnly(ws, tools, new FakeJot, budget(calls))
+    )(id)
+
+  /** The turn's workflow body over `entries`, its models `models` and its profile kept in
+    * `profiles`, the loop offered `tools` over `ws`.
+    */
+  def modelsBody(
+      entries: EntryStore,
+      models: Models^,
+      profiles: ModelProfileStore,
+      ws: Workspace^,
+      tools: Toolbox[{ws}]
+  )(id: WorkflowId)(using Durable^): String =
+    Turn.body(
+      TurnEnv(
+        system,
+        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, profiles),
+        new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
+        NoClassifier,
+        models,
+        FakeDb,
+        new NoWait,
+        Fresh.random()
+      ),
+      TurnTooling.ReadOnly(ws, tools, new FakeJot, budget(5))
     )(id)
 
   def runTurn(

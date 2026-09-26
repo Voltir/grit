@@ -4,10 +4,11 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, TurnSeq, WorkflowId}
 import grit.core.message.{Message, Tokens, Usage}
+import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy, TurnProfile, TurnProfileId}
 
 import utest.*
 
-/** The contract every [[EntryStore]] and [[UsageLedger]] keeps, run against one
+/** The contract every [[EntryStore]], [[UsageLedger]] and [[ModelProfileStore]] keeps, run against one
   * implementation of each: the in-memory fakes in core, the SQL stores in grit.dbos. The
   * fakes stand in for the SQL stores in every other module's tests, so whatever those tests
   * rely on belongs here.
@@ -22,6 +23,9 @@ abstract class StoreContract extends TestSuite {
 
   /** The ledger under test, over the same database as [[entries]]. */
   protected def ledger: UsageLedger
+
+  /** The profile store under test, over the same database as [[entries]]. */
+  protected def profiles: ModelProfileStore
 
   /** Runs `body` in one transaction, committed when it returns. */
   protected def transaction[A](body: (Tx^) ?=> A): A
@@ -51,6 +55,13 @@ abstract class StoreContract extends TestSuite {
 
   private def ids(listed: Either[StoreError, Vector[Entry]]): Either[StoreError, Vector[String]] =
     listed.map(_.map(e => EntryId.value(e.id)))
+
+  /** A turn profile with every role on `model`, budget `budget`. */
+  private def profile(model: String, budget: Int): TurnProfile = {
+    val ref = ModelRef(ModelId.of(model).getOrElse(throw new java.lang.AssertionError(model)), None)
+    val a = Assignment(ref, budget, None)
+    Catalog.of(Policy(a, a, a), Vector.empty).pin
+  }
 
   private val usage = Usage(Tokens(10), Tokens(5), Tokens(2), Some(BigDecimal("0.0000123")))
 
@@ -175,6 +186,33 @@ abstract class StoreContract extends TestSuite {
 
     test("of a workflow that recorded nothing is empty") {
       transaction(ledger.of(WorkflowId("w-none"))) ==> Right(Vector.empty)
+    }
+
+    test("a pinned turn's profile is got back by the turn and by the profile's id") {
+      val p = profile("a/pinned", 100)
+      transaction(profiles.pin(WorkflowId("w-pin"), p)) ==> Right(())
+      transaction(profiles.of(WorkflowId("w-pin"))) ==> Right(Some(p))
+      transaction(profiles.get(p.id)) ==> Right(Some(p))
+    }
+
+    test("turns under one profile share it; a turn pinned again keeps its first") {
+      val p = profile("a/shared", 100)
+      val other = profile("a/shared", 200)
+      transaction {
+        for {
+          _ <- profiles.pin(WorkflowId("w-share-1"), p)
+          _ <- profiles.pin(WorkflowId("w-share-2"), p)
+          _ <- profiles.pin(WorkflowId("w-share-1"), other)
+        } yield ()
+      } ==> Right(())
+      transaction(profiles.of(WorkflowId("w-share-1"))) ==> Right(Some(p))
+      transaction(profiles.of(WorkflowId("w-share-2"))) ==> Right(Some(p))
+      transaction(profiles.get(other.id)) ==> Right(Some(other))
+    }
+
+    test("a turn never pinned, or an id never kept, is None") {
+      transaction(profiles.of(WorkflowId("w-unpinned"))) ==> Right(None)
+      transaction(profiles.get(TurnProfileId("0000000000000000"))) ==> Right(None)
     }
   }
 }

@@ -1,0 +1,49 @@
+{
+  "workflow": "turn",
+  "id": "c1:0",
+  "epoch": "2026-09-25",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "pin-models",
+      "output": "{\"ok\":{\"turn\":{\"catalog\":\"a7ae191d7d2e491e\",\"assignment\":{\"model\":\"test/turn\",\"maxTokens\":4096},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}},\"summary\":{\"catalog\":\"a7ae191d7d2e491e\",\"assignment\":{\"model\":\"test/summary\",\"maxTokens\":1024},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}},\"query\":{\"catalog\":\"a7ae191d7d2e491e\",\"assignment\":{\"model\":\"test/query\",\"maxTokens\":1024},\"settings\":{\"strict\":\"ignored\",\"replay\":\"details\",\"names\":\"harmony-cut\",\"repairs\":[\"quoted-list\",\"quoted-number\"],\"afterResult\":\"user-message\",\"guidance\":\"schema-only\",\"profiled\":false}}}}"
+    },
+    {
+      "name": "DBOS.patch-topics"
+    },
+    {
+      "name": "classify",
+      "output": "{\"events\":[{\"event\":\"opened\",\"topic\":\"topic:c1:0\"},{\"event\":\"placed\",\"turn\":0,\"weights\":[[\"topic:c1:0\",1]],\"elsewhere\":0,\"by\":{\"kind\":\"first\"}}],\"current\":null,\"earlier\":[],\"cost\":null,\"note\":null}"
+    },
+    {
+      "name": "record-topic",
+      "output": "{\"ok\":\"topic:c1:0:placed\"}"
+    },
+    {
+      "name": "assemble",
+      "output": "{\"ok\":[]}"
+    },
+    {
+      "name": "DBOS.patch-record-window"
+    },
+    {
+      "name": "record-window",
+      "output": "{\"ok\":\"window:c1:0\"}"
+    },
+    {
+      "name": "DBOS.patch-tools"
+    },
+    {
+      "name": "call-model",
+      "output": "{\"ok\":{\"kind\":\"message\",\"message\":{\"role\":\"assistant\",\"blocks\":[{\"type\":\"text\",\"text\":\"stub reply to: hello\"}],\"usage\":{\"input\":0,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0\"},\"model\":\"grit/stub\",\"stop\":\"end_turn\"}}}"
+    },
+    {
+      "name": "append",
+      "output": "{\"ok\":\"reply:c1:0\"}"
+    },
+    {
+      "name": "summarise",
+      "output": "{\"failed\":\"model\",\"reason\":\"down\"}"
+    }
+  ]
+}

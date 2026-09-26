@@ -157,7 +157,8 @@ object ChatScreenTests extends TestSuite {
         Headless
           .start(
             new ChatScreen.App("test-model", Theme.Default, Tokens(16000)),
-            Size(30, cols)
+            // Tall enough for every step's row and the panel's footer below them.
+            Size(32, cols)
           )
           .message(Msg.Opened)
           .message(Msg.Turn(view))

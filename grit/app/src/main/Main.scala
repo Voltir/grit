@@ -11,8 +11,8 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
-import grit.core.model.{StrictSchemas, TurnProfile}
-import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.model.{Catalog, ModelId, Pinned}
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.store.Origin
 import grit.core.tool.{DuplicateName, ToolName}
 import grit.dbos.engine.Engine
@@ -22,10 +22,10 @@ import grit.models.{
   JevClassifier,
   JevConfig,
   OpenRouterConfig,
-  OpenRouterProvider,
+  OpenRouterModels,
   Seed,
   StubClassifier,
-  StubProvider
+  StubModels
 }
 import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
@@ -98,24 +98,22 @@ object Main {
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend. Each role's model
     // is the seed catalog's policy, with the environment laid over it for this run.
-    val pinned: Option[(String, TurnProfile)] =
-      if (!env.contains(OpenRouterConfig.KeyVar)) None
+    // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
+    val stubDelay = exitOnLeft(millis(env, StubDelayVar))
+    val reached: Models =
+      if (!env.contains(OpenRouterConfig.KeyVar)) new StubModels(stubDelay)
       else {
         val key = exitOnLeft(OpenRouterConfig.key(env).left.map(_.message))
         val seed = exitOnLeft(Seed.catalog)
         val policy = exitOnLeft(OpenRouterConfig.policy(env, seed.policy).left.map(_.message))
-        Some((key, seed.withPolicy(policy).pin))
+        new OpenRouterModels(key, seed.withPolicy(policy))
       }
-    val openRouter = pinned.map((key, p) => OpenRouterConfig.of(key, p.turn))
-    val modelName = openRouter.fold(StubProvider.Model)(_.model)
-    val summaryConfig = pinned.map((key, p) => OpenRouterConfig.of(key, p.summary))
-    val queryConfig = pinned.map((key, p) => OpenRouterConfig.of(key, p.query))
-    // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
-    val stubDelay = exitOnLeft(millis(env, StubDelayVar))
+    val models: Models = if (tui) reached else announced(reached)
+    // Pinned at startup: what the turn's own pin will be until the catalog changes.
+    val startup = exitOnLeft(models.catalog()).pin
+    val modelName = ModelId.value(startup.turn.assignment.ref.model)
     val topics = exitOnLeft(classifierChoice(env))
-    val provider = announced(tui, "turn", openRouter, stubDelay)
-    val summarizer = announced(tui, "summary", summaryConfig)
-    val writer = announced(tui, "query", queryConfig)
+    val writer = models.provider(startup.query)
 
     /** `engine` with the turn launched on it: the assembler reads its stores. Throws when the
       * coding tools repeat a name, a fault in `grit.tools` that no setting can cause.
@@ -126,17 +124,15 @@ object Main {
           new RetrievalAssembler(engine.entries, engine.search, writer, CharEstimate, budget, tail)
         else new LinearAssembler(engine.entries, CharEstimate, budget)
       val checkout = new LocalWorkspace(root)
-      val strict = pinned.exists(_._2.turn.settings.strict == StrictSchemas.Enforced)
       def launch(tooling: TurnTooling^): Unit =
         engine.launch(
           Turn.body(
             TurnEnv(
               system,
-              TurnRecords(engine.entries, engine.ledger, CharEstimate),
+              TurnRecords(engine.entries, engine.ledger, CharEstimate, engine.profiles),
               assembler,
               classifier(topics),
-              provider,
-              summarizer,
+              models,
               engine.db,
               Clock.system(),
               Fresh.random()
@@ -148,7 +144,7 @@ object Main {
         case ToolChoice.Read =>
           Coding
             .readOnly(checkout)
-            .map(tools => launch(TurnTooling.ReadOnly(checkout, tools, engine.jot, rounds, strict)))
+            .map(tools => launch(TurnTooling.ReadOnly(checkout, tools, engine.jot, rounds)))
         case ToolChoice.All =>
           val edits = new LocalEdits(root)
           // The process's own environment, not .env's: a command never needs grit's settings.
@@ -156,7 +152,7 @@ object Main {
           Coding
             .all(checkout, edits, shell)
             .map(tools =>
-              launch(TurnTooling.Full(checkout, edits, shell, tools, engine.jot, rounds, strict))
+              launch(TurnTooling.Full(checkout, edits, shell, tools, engine.jot, rounds))
             )
       }
       // Its caller closes the engine and reports the throw: in the chat, as the engine that
@@ -236,29 +232,24 @@ object Main {
     }
   }
 
-  /** OpenRouter under `config`, or the stub without one. In the argument run each call is
-    * printed with its `role`, so a replayed turn is visibly one that did not call.
+  /** `models`, each call printed with the model it goes to, so in the argument run a
+    * replayed turn is visibly one that did not call.
     */
-  private def announced(
-      tui: Boolean,
-      role: String,
-      config: Option[OpenRouterConfig],
-      stubDelayMs: Long = 0
-  ): Provider = {
-    val model: Provider = config match {
-      case Some(c) => new OpenRouterProvider(c)
-      case None => new StubProvider(stubDelayMs)
-    }
-    val name = config.fold(StubProvider.Model)(_.model)
-    if (tui) model
-    else
-      new Provider {
-        def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
-          println(s"[provider] $role: $name called with ${request.messages.size} message(s)")
-          model.complete(request)
+  private def announced(models: Models): Models =
+    new Models {
+      def catalog(): Either[String, Catalog] = models.catalog()
+      def provider(pinned: Pinned): Provider^ = {
+        val model = models.provider(pinned)
+        new Provider {
+          def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+            println(
+              s"[provider] ${pinned.assignment.ref} called with ${request.messages.size} message(s)"
+            )
+            model.complete(request)
+          }
         }
       }
-  }
+    }
 
   private val BudgetVar = "GRIT_WINDOW_TOKENS"
 

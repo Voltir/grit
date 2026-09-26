@@ -7,11 +7,12 @@ import grit.assembly.linear.LinearAssembler
 import grit.core.clock.{Clock, Fresh}
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
+import grit.core.model.{Catalog, Pinned}
+import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
 import grit.core.store.{EntryStore, Origin, Payload}
 import grit.dbos.engine.Engine
 import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
-import grit.models.StubProvider
+import grit.models.{StubModels, StubProvider}
 import grit.tools.Coding
 import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling, TurnTools}
 
@@ -39,6 +40,16 @@ object LiveTurn {
     }
   }
 
+  /** The stub's catalog ([[StubModels.Catalog]]): the turn's calls go to `turn`, every
+    * other role's to the stub, uncounted.
+    */
+  final class LiveModels(turn: Provider^) extends Models {
+    private val rest = new StubProvider()
+    def catalog(): Either[String, Catalog] = Right(StubModels.Catalog)
+    def provider(pinned: Pinned): Provider^ =
+      if (pinned.assignment == StubModels.Catalog.policy.turn) turn else rest
+  }
+
   /** Launches `engine` with the turn over `entries` and `provider`, summarised by the
     * stub, which `provider` does not count.
     */
@@ -63,11 +74,10 @@ object LiveTurn {
         Turn.body(
           TurnEnv(
             "You are grit.",
-            TurnRecords(entries, engine.ledger, CharEstimate),
+            TurnRecords(entries, engine.ledger, CharEstimate, engine.profiles),
             new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
             grit.core.classify.Classifier.none("no classifier"),
-            provider,
-            new StubProvider(),
+            new LiveModels(provider),
             engine.db,
             Clock.system(),
             Fresh.random()
@@ -87,7 +97,6 @@ object LiveTurn {
           Coding.all(checkout, edits, shell).fold(d => sys.error(d.toString), identity),
           engine.jot,
           budget,
-          strict = false,
           answerWithin
         )
       )
@@ -98,8 +107,7 @@ object LiveTurn {
             checkout,
             Coding.readOnly(checkout).fold(d => sys.error(d.toString), identity),
             engine.jot,
-            budget,
-            strict = false
+            budget
           )
       )
   }

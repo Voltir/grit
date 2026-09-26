@@ -9,6 +9,7 @@ import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Window}
 import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
+import grit.core.model.{StrictSchemas, TurnProfile}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 import grit.core.store.{Entry, Jot, Payload, StoreError, Tx}
 import grit.core.tool.{Bound, DuplicateName, ToolName, Toolbox}
@@ -66,10 +67,11 @@ object Turn {
     * cannot carry, which strands the turns in flight under the old one. `TurnReplayTests`
     * replays the histories recorded under this epoch.
     */
-  val Epoch = "2026-09-23"
+  val Epoch = "2026-09-25"
 
   /** The turn's steps, as DBOS records their names, in the order they run. */
   object Step {
+    val PinModels = "pin-models"
     val Classify = "classify"
     val RecordTopic = "record-topic"
     val Assemble = "assemble"
@@ -87,6 +89,7 @@ object Turn {
 
     val all: Vector[String] =
       Vector(
+        PinModels,
         Classify,
         RecordTopic,
         Assemble,
@@ -255,35 +258,57 @@ object Turn {
       case None => s"not a turn: ${WorkflowId.value(workflowId)}"
       case Some(turn) =>
         import TurnJournal.given
-        val records = env.records
-        val placing =
-          if (d.patch(Patches.Topics))
-            Placing.Placed(d.step(Step.Classify) { () =>
-              TurnTopics.classify(env.classifier, records.entries, env.db, records.estimator, turn)
-            })
-          else Placing.Unplaced
-        val topicFailure = placing match {
-          case Placing.Placed(c) =>
-            d.transact(Step.RecordTopic)(
-              TurnTopics.record(records.entries, records.ledger, turn, c, env.clock.now())
-            ).left
-              .toOption
-          case Placing.Unplaced => None
-        }
-        val ran = run(turn, placing, tooling)(using env, d)
-        val topics = topicFailure.fold("")(f => s"; topics not recorded: $f") +
-          ran.verdictUnrecorded.fold("")(f => s"; verdict not recorded: $f")
-        ran.result match {
-          case Left(failure) => s"failed: $failure$topics"
-          case Right(reply) =>
-            val summary =
-              summarise(turn, reply, placing)(using env, d) match {
-                case Right(id) => s"summarised: ${EntryId.value(id)}"
-                case Left(failure) => s"no summary: $failure"
-              }
-            s"replied: ${EntryId.value(reply)}; $summary$topics"
+        d.transact(Step.PinModels)(pinModels(env, turn)) match {
+          case Left(failure) => s"failed: $failure"
+          case Right(profile) => pinned(env, tooling, turn)(using profile, d)
         }
     }
+
+  /** The catalog in force, pinned as `turn`'s profile: kept by the store, and the step's
+    * output, so a replay makes every call under the profile the turn started with.
+    */
+  private def pinModels(env: TurnEnv^, turn: TurnRef)(using Tx^): Either[TurnFailure, TurnProfile] =
+    for {
+      catalog <- env.models.catalog().left.map(why => TurnFailure.Model(s"no model catalog: $why"))
+      profile = catalog.pin
+      _ <- env.records.profiles.pin(turn.workflowId, profile).left.map(storeFailure)
+    } yield profile
+
+  /** [[body]] once `turn`'s models are pinned. */
+  private def pinned(env: TurnEnv^, tooling: TurnTooling^, turn: TurnRef)(using
+      pins: TurnProfile,
+      d: Durable^
+  ): String = {
+    import TurnJournal.given
+    val records = env.records
+    val placing =
+      if (d.patch(Patches.Topics))
+        Placing.Placed(d.step(Step.Classify) { () =>
+          TurnTopics.classify(env.classifier, records.entries, env.db, records.estimator, turn)
+        })
+      else Placing.Unplaced
+    val topicFailure = placing match {
+      case Placing.Placed(c) =>
+        d.transact(Step.RecordTopic)(
+          TurnTopics.record(records.entries, records.ledger, turn, c, env.clock.now())
+        ).left
+          .toOption
+      case Placing.Unplaced => None
+    }
+    val ran = run(turn, placing, tooling)(using env, pins, d)
+    val topics = topicFailure.fold("")(f => s"; topics not recorded: $f") +
+      ran.verdictUnrecorded.fold("")(f => s"; verdict not recorded: $f")
+    ran.result match {
+      case Left(failure) => s"failed: $failure$topics"
+      case Right(reply) =>
+        val summary =
+          summarise(turn, reply, placing)(using env, pins, d) match {
+            case Right(id) => s"summarised: ${EntryId.value(id)}"
+            case Left(failure) => s"no summary: $failure"
+          }
+        s"replied: ${EntryId.value(reply)}; $summary$topics"
+    }
+  }
 
   /** The id of the `i`-th search query assembly wrote for `turn`, from 0. */
   def queryId(turn: TurnRef, i: Int): EntryId = {
@@ -347,7 +372,7 @@ object Turn {
       turn: TurnRef,
       placing: Placing,
       tooling: TurnTooling^
-  )(using env: TurnEnv^, d: Durable^): Ran[EntryId] = {
+  )(using env: TurnEnv^, pins: TurnProfile, d: Durable^): Ran[EntryId] = {
     import TurnJournal.given
     val heard = d.stream(TurnStream.Key)
     val prepared = for {
@@ -414,7 +439,7 @@ object Turn {
       recorded: WindowRecord,
       asked: Option[TurnTopics.Classification],
       tooling: TurnTooling^
-  )(using env: TurnEnv^, d: Durable^): Ran[EntryId] =
+  )(using env: TurnEnv^, pins: TurnProfile, d: Durable^): Ran[EntryId] =
     tooling match {
       case t: TurnTooling.ReadOnly =>
         looping(
@@ -426,7 +451,7 @@ object Turn {
           t.tools,
           t.jot,
           t.budget,
-          t.strict,
+          pins.turn.settings.strict == StrictSchemas.Enforced,
           t.answerWithin
         )
       case t: TurnTooling.Full =>
@@ -439,13 +464,14 @@ object Turn {
           t.tools,
           t.jot,
           t.budget,
-          t.strict,
+          pins.turn.settings.strict == StrictSchemas.Enforced,
           t.answerWithin
         )
     }
 
   /** [[loop]], offering `own`, the turn's tools, their results kept through `jot`, as
-    * `budget`, `strict` and `answerWithin` say ([[TurnTooling]]).
+    * `budget` and `answerWithin` say ([[TurnTooling]]), their schemas `strict` when the turn's
+    * pair is known to enforce them.
     */
   private def looping[C^](
       heard: StreamWriter^,
@@ -458,7 +484,7 @@ object Turn {
       budget: TurnLoop.Budget,
       strict: Boolean,
       answerWithin: FiniteDuration
-  )(using env: TurnEnv^, d: Durable^): Ran[EntryId] = {
+  )(using env: TurnEnv^, pins: TurnProfile, d: Durable^): Ran[EntryId] = {
     import TurnJournal.given
     offered(own, asked) match {
       case Left(failure) => Ran(Left(failure), None)
@@ -590,7 +616,7 @@ object Turn {
       shape: ModelRequest -> ModelRequest,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
-    val TurnRecords(entries, ledger, estimator) = records
+    val TurnRecords(entries, ledger, estimator, _) = records
     val id = TurnTools.callId(turn, round)
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
@@ -626,7 +652,7 @@ object Turn {
       turn: TurnRef,
       window: Window,
       shape: Shape
-  )(using env: TurnEnv^): Either[TurnFailure, Message.Assistant] =
+  )(using env: TurnEnv^, pins: TurnProfile): Either[TurnFailure, Message.Assistant] =
     callShaped(heard, turn, window, shape(_))
 
   /** As [[callModel]], the request shaped by `shape`. A provider that is
@@ -639,7 +665,7 @@ object Turn {
       turn: TurnRef,
       window: Window,
       shape: ModelRequest -> ModelRequest
-  )(using env: TurnEnv^): Either[TurnFailure, Message.Assistant] =
+  )(using env: TurnEnv^, pins: TurnProfile): Either[TurnFailure, Message.Assistant] =
     request(env, turn, window).flatMap { req =>
       val sent = shape(req)
       def attempt(
@@ -647,7 +673,7 @@ object Turn {
           tries: Int
       ): Either[TurnFailure, Message.Assistant] = {
         val told = new TurnStream.Writer(heard, env.fresh.nonce(), () => env.clock.millis())
-        val result = env.provider.stream(sent, told.tell)
+        val result = env.models.provider(pins.turn).stream(sent, told.tell)
         told.flush()
         (result, waits) match {
           case (Left(ProviderError.Unavailable(_)), wait :: rest) =>
@@ -678,7 +704,7 @@ object Turn {
       seen: Window,
       c: TurnTopics.Classification,
       first: Message.Assistant
-  )(using env: TurnEnv^, d: Durable^): Ran[TurnVerdict.Replied] = {
+  )(using env: TurnEnv^, pins: TurnProfile, d: Durable^): Ran[TurnVerdict.Replied] = {
     import TurnJournal.given
     val further = new TurnVerdict.Calls {
       def again(shape: Shape.Again): Either[TurnFailure, Message.Assistant] =
@@ -727,7 +753,7 @@ object Turn {
       turn: TurnRef,
       answered: EntryId,
       placing: Placing
-  )(using env: TurnEnv^, d: Durable^): Either[TurnFailure, EntryId] = {
+  )(using env: TurnEnv^, pins: TurnProfile, d: Durable^): Either[TurnFailure, EntryId] = {
     import TurnJournal.given
     for {
       message <- d.step(Step.Summarise) { () =>
@@ -736,7 +762,8 @@ object Turn {
           .left
           .map(storeFailure)
           .flatMap { all =>
-            env.summarizer
+            env.models
+              .provider(pins.summary)
               .complete(summaryRequest(all, turn, placing))
               .left
               .map(e => TurnFailure.Model(e.cause))
@@ -779,7 +806,7 @@ object Turn {
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = TurnSummary.id(turn)
-    val TurnRecords(entries, ledger, estimator) = records
+    val TurnRecords(entries, ledger, estimator, _) = records
     for {
       read <- (placing match {
         case Placing.Placed(_) => TurnSummary.read(message)
@@ -893,7 +920,7 @@ object Turn {
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = replyId(turn)
-    val TurnRecords(entries, ledger, estimator) = records
+    val TurnRecords(entries, ledger, estimator, _) = records
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
@@ -948,7 +975,7 @@ object Turn {
       from: Long,
       at: Instant
   )(using Tx^): Either[TurnFailure, Int] = {
-    val TurnRecords(entries, ledger, _) = records
+    val TurnRecords(entries, ledger, _, _) = records
     val queries = window.notes.collect { case q: AssemblyNote.Queried => q }
     val recalled = window.notes.flatMap {
       case AssemblyNote.Recalled(turns) => turns

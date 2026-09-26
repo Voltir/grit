@@ -17,6 +17,7 @@ import grit.core.store.{
   EntrySearch,
   EntryStore,
   Jot,
+  ModelProfileStore,
   Origin,
   StoreError,
   Tx,
@@ -29,6 +30,7 @@ import grit.dbos.sql.{
   SqlEntrySearch,
   SqlEntryStore,
   SqlJot,
+  SqlModelProfileStore,
   SqlUsageLedger
 }
 import grit.dbos.workflow.Turns
@@ -54,6 +56,9 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   val search: EntrySearch = new SqlEntrySearch()
 
   val ledger: UsageLedger = new SqlUsageLedger()
+
+  /** Which profile each turn's model calls were made under. */
+  val profiles: ModelProfileStore = new SqlModelProfileStore()
 
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource)
