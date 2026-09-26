@@ -1,8 +1,8 @@
 package grit.dbos.workflow
 
 import grit.core.durable.Durable
-import grit.core.id.WorkflowId
-import grit.core.plugin.{PluginName, PostRef}
+import grit.core.id.{PluginName, WorkflowId}
+import grit.core.plugin.PostRef
 
 import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.workflow.Queue

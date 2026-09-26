@@ -1,5 +1,6 @@
 package grit.core.plugin
 
+import grit.core.id.PluginName
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
 
 /** A feature a deployment turns on, built from closed periods alone: it never sees a raw

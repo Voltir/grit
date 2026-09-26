@@ -7,9 +7,9 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.id.{CloseRef, PeriodRef, SettleRef, WorkflowId}
+import grit.core.id.{CloseRef, PeriodRef, PluginName, SettleRef, WorkflowId}
 import grit.core.period.Purgeable
-import grit.core.plugin.{PluginCursors, PluginName, PostRef}
+import grit.core.plugin.{PluginCursors, PostRef}
 import grit.core.store.{LifecycleStore, PeriodStore, StoreError, Tx}
 import grit.dbos.sql.SqlEntryStore
 import grit.dbos.workflow.{Closes, Posts, Settles}

@@ -3,8 +3,9 @@ package grit.digest
 import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneOffset}
 
+import grit.core.id.PluginName
 import grit.core.period.{CloseOrdinal, CloseReason}
-import grit.core.plugin.{Plugin, PluginDocs, PluginName}
+import grit.core.plugin.{Plugin, PluginDocs}
 import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
 

@@ -1,9 +1,9 @@
 package grit.lifecycle.post
 
 import grit.core.durable.{Durable, Journaled}
-import grit.core.id.WorkflowId
+import grit.core.id.{PluginName, WorkflowId}
 import grit.core.period.CloseOrdinal
-import grit.core.plugin.{Plugin, PluginCursors, PluginDocs, PluginName, PostRef}
+import grit.core.plugin.{Plugin, PluginCursors, PluginDocs, PostRef}
 import grit.core.store.{Jot, PeriodStore, StoreError}
 
 /** What posting works with besides its `Durable`: the closed periods, each plugin's cursor

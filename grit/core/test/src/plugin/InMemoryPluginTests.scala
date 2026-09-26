@@ -1,5 +1,6 @@
 package grit.core.plugin
 
+import grit.core.id.PluginName
 import grit.core.store.Tx
 import grit.dbos.sql.TestTx
 

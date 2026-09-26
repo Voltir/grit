@@ -4,8 +4,9 @@ import java.sql.PreparedStatement
 
 import scala.util.Using
 
+import grit.core.id.PluginName
 import grit.core.period.CloseOrdinal
-import grit.core.plugin.{PluginCursors, PluginDocs, PluginName}
+import grit.core.plugin.{PluginCursors, PluginDocs}
 import grit.core.store.{StoreError, Tx}
 
 /** [[PluginDocs]] over `plugin`'s rows of `grit.plugin_docs`, and no other plugin's. Keys

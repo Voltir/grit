@@ -7,10 +7,10 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, SourceId, ToolCallId, WorkflowId}
+import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, PluginName, SourceId, ToolCallId, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
-import grit.core.plugin.{Plugin, PluginDocs, PluginName, PostRef}
+import grit.core.plugin.{Plugin, PluginDocs, PostRef}
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.dbos.engine.Engine

@@ -12,9 +12,9 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{ConversationId, TurnRef, WorkflowId}
+import grit.core.id.{ConversationId, PluginName, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
-import grit.core.plugin.{Plugin, PluginCursors, PluginDocs, PluginName}
+import grit.core.plugin.{Plugin, PluginCursors, PluginDocs}
 import grit.core.store.{
   ConversationStore,
   Db,

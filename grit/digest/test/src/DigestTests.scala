@@ -2,10 +2,10 @@ package grit.digest
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, ToolCallId}
+import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, PluginName, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.period.{CloseOrdinal, CloseReason, Closing, Probability, TestClosings}
-import grit.core.plugin.{InMemoryPlugins, PluginName}
+import grit.core.plugin.InMemoryPlugins
 import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.dbos.sql.TestTx

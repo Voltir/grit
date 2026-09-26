@@ -3,10 +3,10 @@ package grit.lifecycle.replay
 import java.time.Instant
 
 import grit.core.durable.{History, InMemoryDurable}
-import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq}
+import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, PluginName}
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
-import grit.core.plugin.{InMemoryPlugins, Plugin, PluginDocs, PluginName, PostRef}
+import grit.core.plugin.{InMemoryPlugins, Plugin, PluginDocs, PostRef}
 import grit.core.provider.ProviderError
 import grit.core.store.{
   ClosedPeriod,

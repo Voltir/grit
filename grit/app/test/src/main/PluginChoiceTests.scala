@@ -10,7 +10,7 @@ object PluginChoiceTests extends TestSuite {
   private def names(env: Map[String, String]) =
     Main
       .pluginChoice(env)
-      .map(_.map(p => (p.getClass.getSimpleName, grit.core.plugin.PluginName.value(p.name))))
+      .map(_.map(p => (p.getClass.getSimpleName, grit.core.id.PluginName.value(p.name))))
 
   val tests = Tests {
     test("GRIT_PLUGINS: unset is none; a list of names turns each on once") {

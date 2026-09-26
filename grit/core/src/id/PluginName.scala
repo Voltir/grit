@@ -1,4 +1,4 @@
-package grit.core.plugin
+package grit.core.id
 
 /** A plugin's name, which keys its documents, its cursor and its workflows: lowercase
   * letters, digits and dashes, starting with a letter.

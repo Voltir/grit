@@ -8,7 +8,7 @@ In dependency order:
 - **`clock`** — what a function cannot compute: `Clock` (the time) and `Fresh` (values
   no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `WorkflowId`,
-  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`), `TurnRef`, `PeriodRef`, `CloseRef` (one
+  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`), `TurnRef`, `PeriodRef`, `CloseRef` (one
   attempt to close a period on its deadline, and its workflow id) and `SettleRef` (the one
   question whether anyone is waiting on a quiet period, and its workflow id). Imports nothing in core.
 - **`place`** — where conversations happen (ADR 0013): `Place`, a path in one
@@ -48,7 +48,7 @@ In dependency order:
   conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
-  `PluginName`, `PluginDocs` (one plugin's documents, and no other's), `PluginCursors` (how
+  `PluginDocs` (one plugin's documents, and no other's), `PluginCursors` (how
   far each has posted, in close order; a new version starts again) and `PostRef` (one
   posting run, and its workflow id). ← `id`, `period`, `store`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash, and waits for a

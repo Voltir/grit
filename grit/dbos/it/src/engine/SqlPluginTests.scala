@@ -1,6 +1,7 @@
 package grit.dbos.engine
 
-import grit.core.plugin.{PluginContract, PluginCursors, PluginDocs, PluginName}
+import grit.core.id.PluginName
+import grit.core.plugin.{PluginContract, PluginCursors, PluginDocs}
 import grit.core.store.Tx
 import grit.dbos.sql.{LiveDb, SqlPluginCursors, SqlPluginDocs, TestPostgres}
 

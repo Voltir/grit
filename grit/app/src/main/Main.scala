@@ -11,12 +11,12 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
-import grit.core.id.{SourceId, TurnRef}
+import grit.core.id.{PluginName, SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Catalog, ModelId, Pinned}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.place.Directory
-import grit.core.plugin.{Plugin, PluginName}
+import grit.core.plugin.Plugin
 import grit.core.store.{Db, Origin}
 import grit.core.tool.{DuplicateName, ToolName, Toolbox}
 import grit.dbos.engine.Engine

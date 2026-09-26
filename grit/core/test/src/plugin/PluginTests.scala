@@ -1,6 +1,6 @@
 package grit.core.plugin
 
-import grit.core.id.WorkflowId
+import grit.core.id.{PluginName, WorkflowId}
 import grit.core.period.CloseOrdinal
 
 import utest.*

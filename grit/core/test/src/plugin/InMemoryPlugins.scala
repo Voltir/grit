@@ -1,5 +1,6 @@
 package grit.core.plugin
 
+import grit.core.id.PluginName
 import grit.core.period.CloseOrdinal
 import grit.core.store.{StoreError, Tx}
 
