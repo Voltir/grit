@@ -4,6 +4,7 @@ import java.time.Duration
 
 import grit.core.id.{EntryId, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Message, Tokens}
+import grit.core.model.{ModelRef, TurnProfile}
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Payload, UsageLedger}
 import grit.dbos.engine.RecordedStep
@@ -21,6 +22,7 @@ import grit.turn.Turn
   * @param window what the model saw, once the reply is recorded
   * @param spent what its model calls cost, once one was made
   * @param billed the input tokens the provider counted for the reply
+  * @param models what its model calls were made under, once it pinned them
   */
 final case class TurnView(
     turn: TurnSeq,
@@ -30,7 +32,8 @@ final case class TurnView(
     query: Option[String],
     window: Option[TurnView.Window],
     spent: Option[Cost],
-    billed: Option[Tokens]
+    billed: Option[Tokens],
+    models: Option[TurnView.Models] = None
 ) {
 
   /** Whether nothing more will change: finished, its last step recorded. A turn that
@@ -40,6 +43,28 @@ final case class TurnView(
 }
 
 object TurnView {
+
+  /** What a turn's calls were made under: each role's pair, the turn's first and then any
+    * role whose pair differs from it; whether grit had a profile for the turn's pair; and
+    * the upstream the reply says served it.
+    */
+  final case class Models(
+      roles: Vector[(String, ModelRef)],
+      profiled: Boolean,
+      served: Option[String]
+  )
+
+  object Models {
+
+    /** From the turn's pinned `profile`, its reply's `served` upstream. */
+    def of(profile: TurnProfile, served: Option[String]): Models = {
+      val turn = profile.turn.assignment.ref
+      val others = Vector("summary" -> profile.summary, "query" -> profile.query).collect {
+        case (role, p) if p.assignment.ref != turn => role -> p.assignment.ref
+      }
+      Models(("model" -> turn) +: others, profile.turn.settings.profiled, served)
+    }
+  }
 
   /** A recorded step and how long it took, when DBOS kept both ends. */
   final case class Step(name: String, ms: Option[Long])
@@ -64,8 +89,9 @@ object TurnView {
       .map(e => TurnRef(e.conversationId, e.turnSeq))
 
   /** `turn`, from every entry of its conversation, the `steps` its workflow recorded,
-    * whether it is `running`, and its ledger rows `costs`. The window is estimated with
-    * `estimator`, as assembly estimated it, under the system prompt `system`.
+    * whether it is `running`, its ledger rows `costs`, and the `profile` it pinned. The
+    * window is estimated with `estimator`, as assembly estimated it, under the system
+    * prompt `system`.
     */
   def of(
       turn: TurnRef,
@@ -74,7 +100,8 @@ object TurnView {
       running: Boolean,
       costs: Vector[UsageLedger.Row],
       system: String,
-      estimator: TokenEstimator
+      estimator: TokenEstimator,
+      profile: Option[TurnProfile] = None
   ): TurnView = {
     val own = entries.filter(_.turnSeq == turn.turnSeq)
     val byId: Map[EntryId, Entry] = entries.map(e => e.id -> e).toMap
@@ -104,7 +131,8 @@ object TurnView {
       own.collectFirst { case Entry(_, _, _, _, _, Payload.Query(q), _) => q },
       window,
       spent,
-      reply.map(_.usage.input)
+      reply.map(_.usage.input),
+      profile.map(Models.of(_, reply.flatMap(_.upstream)))
     )
   }
 

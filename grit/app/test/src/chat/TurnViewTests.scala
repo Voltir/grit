@@ -1,10 +1,22 @@
 package grit.app.chat
 
-import java.time.Instant
+import java.time.{Instant, LocalDate}
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
+import grit.core.model.{
+  Assignment,
+  Catalog,
+  Known,
+  ModelId,
+  ModelRef,
+  Policy,
+  Profile,
+  Source,
+  StrictSchemas,
+  Upstream
+}
 import grit.core.store.{Entry, Payload, UsageLedger}
 import grit.dbos.engine.RecordedStep
 import grit.turn.Turn
@@ -103,6 +115,76 @@ object TurnViewTests extends TestSuite {
       w.recalled ==> Seq("first question", "first answer").map(msg).reduce(_ + _)
       w.recent ==> Seq("second", "second answer").map(msg).reduce(_ + _)
       w.message ==> CharEstimate.message(Message.User("third, about the first"))
+    }
+
+    test("what its calls were made under: the turn's pair, a role on another, and who served it") {
+      def ref(model: String, upstream: Option[String]) =
+        ModelRef(
+          ModelId.of(model).getOrElse(sys.error(model)),
+          upstream.map(u => Upstream.of(u).getOrElse(sys.error(u)))
+        )
+      val oss = ref("openai/gpt-oss-120b", Some("cerebras/fp16"))
+      val flash = ref("deepseek/deepseek-v4.1-flash-20260910", Some("fireworks"))
+      val profiled = Profile(
+        oss,
+        strict = Known.Of(StrictSchemas.Ignored, Source.Declared("nick", LocalDate.of(2026, 9, 25)))
+      )
+      val pinned = Catalog
+        .of(
+          Policy(
+            Assignment(oss, 4096, None),
+            Assignment(oss, 1024, None),
+            Assignment(flash, 1024, None)
+          ),
+          Vector(profiled)
+        )
+        .pin
+      val served = entries.map {
+        case e @ Entry(_, _, _, _, _, Payload.Message(m: Message.Assistant), _)
+            if e.turnSeq == TurnSeq(2) =>
+          e.copy(payload = Payload.Message(m.copy(upstream = Some("Cerebras"))))
+        case e => e
+      }
+      val v = TurnView.of(
+        turn2,
+        served,
+        Vector.empty,
+        running = false,
+        Vector.empty,
+        "s",
+        CharEstimate,
+        Some(pinned)
+      )
+      v.models ==> Some(
+        TurnView.Models(Vector("model" -> oss, "query" -> flash), profiled = true, Some("Cerebras"))
+      )
+      // No profile for the pair, and no upstream named: unprofiled, served by none said.
+      val bare = Catalog
+        .of(
+          Policy(
+            Assignment(oss, 4096, None),
+            Assignment(oss, 1024, None),
+            Assignment(oss, 1024, None)
+          ),
+          Vector.empty
+        )
+        .pin
+      TurnView
+        .of(
+          turn2,
+          entries,
+          Vector.empty,
+          running = false,
+          Vector.empty,
+          "s",
+          CharEstimate,
+          Some(bare)
+        )
+        .models ==>
+        Some(TurnView.Models(Vector("model" -> oss), profiled = false, None))
+      TurnView
+        .of(turn2, entries, Vector.empty, running = false, Vector.empty, "s", CharEstimate)
+        .models ==> None
     }
 
     test("settled once it has stopped with its summary recorded; not while either is missing") {

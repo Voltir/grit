@@ -156,14 +156,30 @@ object ChatScreenTests extends TestSuite {
           TurnView.Window(Tokens(12), Tokens(3200), Tokens(1700), Tokens(40), Vector(TurnSeq(0)))
         ),
         Some(Cost.AtLeast(BigDecimal("0.00031"))),
-        Some(Tokens(5000))
+        Some(Tokens(5000)),
+        Some(
+          TurnView.Models(
+            Vector(
+              "model" -> grit.core.model.ModelRef(
+                grit.core.model.ModelId.of("x/big").getOrElse(sys.error("id")),
+                grit.core.model.Upstream.of("fireworks")
+              ),
+              "summary" -> grit.core.model.ModelRef(
+                grit.core.model.ModelId.of("x/small").getOrElse(sys.error("id")),
+                None
+              )
+            ),
+            profiled = false,
+            Some("Fireworks")
+          )
+        )
       )
       def at(cols: Int) =
         Headless
           .start(
             new ChatScreen.App("test-model", Theme.Default, Tokens(16000)),
-            // Tall enough for every step's row and the panel's footer below them.
-            Size(32, cols)
+            // Tall enough for every step's row, the model rows and the footer below them.
+            Size(35, cols)
           )
           .message(Msg.Opened)
           .message(Msg.Turn(view))
@@ -174,7 +190,10 @@ object ChatScreenTests extends TestSuite {
         shown.contains("query    ward engine"),
         shown.contains("recalled turn 1"),
         shown.contains("4.9k of 16k budget"),
-        shown.contains("billed   5k in · ≥ $0.00031")
+        shown.contains("billed   5k in · ≥ $0.00031"),
+        shown.contains("model    x/big @ fireworks"),
+        shown.contains("Fireworks · unprofiled"),
+        shown.contains("summary  x/small")
       )
       assert(at(110).screen.exists(r => r.contains("████") && r.contains("░")))
       assert(!at(99).screen.mkString.contains("TURN 3"))

@@ -240,7 +240,8 @@ final class ChatHost(
       case TurnStatus.Finished(_) => (false, engine.steps(turn))
     }
     val costs = engine.db.read(engine.ledger.of(turn.workflowId)).getOrElse(Vector.empty)
-    TurnView.of(turn, entries, steps, running, costs, system, estimator)
+    val profile = engine.db.read(engine.profiles.of(turn.workflowId)).toOption.flatten
+    TurnView.of(turn, entries, steps, running, costs, system, estimator, profile)
   }
 
   /** Follows `turn`'s reply stream on a thread of its own, telling the screen what it has

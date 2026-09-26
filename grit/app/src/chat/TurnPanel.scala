@@ -32,7 +32,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       case None => Vector(row(" no turn yet" -> fg(t.faint)))
       case Some(v) =>
         Vector(title(v, pinned), blank) ++ steps(v, runningMs) ++ Vector(blank) ++ query(v) ++
-          window(v) ++ cost(v)
+          models(v) ++ window(v) ++ cost(v)
     }
 
   /** The rows of the session tab for `view`, or a placeholder before the host has read
@@ -235,6 +235,23 @@ final case class TurnPanel(look: Look, budget: Tokens) {
 
   private def query(v: TurnView): Vector[Block] =
     v.query.toVector.map(q => row(" query    " -> fg(t.faint), q -> fg(t.ink)))
+
+  /** The turn's pair, the upstream that served its reply, and `unprofiled` when grit knew
+    * nothing of the pair; then each role whose pair differs.
+    */
+  private def models(v: TurnView): Vector[Block] =
+    v.models.toVector.flatMap { m =>
+      m.roles.zipWithIndex.map { case ((role, ref), i) =>
+        val notes =
+          if (i > 0) ""
+          else (m.served.map(s => s" · $s") ++ Option.when(!m.profiled)(" · unprofiled")).mkString
+        row(
+          s" ${role.padTo(9, ' ')}" -> fg(t.faint),
+          ref.toString -> fg(t.ink),
+          notes -> fg(t.faint)
+        )
+      }
+    }
 
   /** The window as one bar: system, recent, recalled and the turn's own message, then
     * what is left of `budget`, each a colour, with a legend under it.
