@@ -22,6 +22,7 @@ import grit.core.store.{
   InMemoryPeriodStore,
   InMemoryUsageLedger,
   Jot,
+  OpenPeriod,
   Payload,
   PeriodStore,
   Sealed,
@@ -220,6 +221,8 @@ object CloseFixtures {
     def activity(period: PeriodRef)(using Tx^): Either[StoreError, Option[Activity]] = underlying.activity(period)
     def closingBefore(turn: TurnRef)(using Tx^): Either[StoreError, Option[ClosingEntry]] =
       underlying.closingBefore(turn)
+    def openElsewhere(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[OpenPeriod]] =
+      underlying.openElsewhere(conversation)
     def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]] =
       underlying.closedAfter(after, n)
     def expired(cutoff: Instant)(using Tx^): Either[StoreError, Vector[Purgeable]] = underlying.expired(cutoff)

@@ -2,10 +2,11 @@ package grit.dbos.engine
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, PeriodSeq, ToolCallId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Change, CloseReason, Closing, Flows, Section, TestClosings}
-import grit.core.store.{Entry, EntrySearch, Origin, Payload}
+import grit.core.place.Place
+import grit.core.store.{Entry, EntrySearch, OpenPeriod, Origin, Payload}
 import grit.dbos.sql.{LiveDb, SqlEntrySearch, SqlEntryStore, TestPostgres}
 
 import utest.*
@@ -58,7 +59,50 @@ object SearchLiveTests extends TestSuite {
   ) =
     LiveDb.transaction(config)(search.search(c, TurnSeq(from), TurnSeq(before), query, limit))
 
+  /** `c`'s period open from turn `first`, as openElsewhere would give it. */
+  private def open(c: ConversationId, first: Long): OpenPeriod =
+    OpenPeriod(c, Place.Everywhere, TurnSeq(first))
+
+  private def near(query: String, periods: OpenPeriod*) =
+    LiveDb.transaction(config)(search.nearby(periods.toVector, query, 10))
+
   val tests = Tests {
+    test("nearby finds other conversations' entries from their open period's first turn on") {
+      val x = conversation(
+        "near-x",
+        said("sourdough starter smells of acetone"),
+        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("sourdough")),
+        said("the sourdough levain doubled overnight"),
+        said("nothing about bread here")
+      )
+      val y = conversation("near-y", said("sourdough"))
+      near("sourdough levain", open(x, 2), open(y, 0)).map(ids) ==>
+        Right(Vector("near-x:e2", "near-y:e0"))
+      near("sourdough", open(x, 2), open(y, 0)).map((h: Vector[EntrySearch.Hit]) =>
+        h.map(_.turn)
+      ) ==>
+        Right(Vector(TurnRef(y, TurnSeq(0)), TurnRef(x, TurnSeq(2))))
+    }
+
+    test("one scale: the same text scores the same through search and through nearby") {
+      val a = conversation("scale-a", said("the flaky invoice test fails in CI"))
+      val b = conversation("scale-b", said("the flaky invoice test fails in CI"))
+      val both = LiveDb.transaction(config) {
+        for {
+          own <- search.search(a, TurnSeq(0), TurnSeq(1000), "flaky invoice test", 10)
+          there <- search.nearby(Vector(open(b, 0)), "flaky invoice test", 10)
+        } yield (own.map(_.score), there.map(_.score))
+      }
+      both.map((own, there) => (own.size, own == there)) ==> Right((1, true))
+    }
+
+    test("nearby over no periods, with a blank query or no limit, is empty") {
+      val z = conversation("near-z", said("kumquat"))
+      near("kumquat") ==> Right(Vector.empty)
+      near("  ", open(z, 0)) ==> Right(Vector.empty)
+      LiveDb.transaction(config)(search.nearby(Vector(open(z, 0)), "kumquat", 0)) ==>
+        Right(Vector.empty)
+    }
 
     test("the best match comes first, with a positive score, and only matches come back") {
       val c = conversation(

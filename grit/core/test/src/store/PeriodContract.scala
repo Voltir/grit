@@ -281,6 +281,31 @@ abstract class PeriodContract extends TestSuite {
       closing(TurnRef(c, TurnSeq(0))) ==> Right(None)
     }
 
+    test(
+      "the open periods elsewhere: every other conversation's open one, with its place, oldest first"
+    ) {
+      val (me, a, b, gone) =
+        (
+          conversation("near-me"),
+          conversation("near-a"),
+          conversation("near-b"),
+          conversation("near-gone")
+        )
+      say(me, 0)
+      say(b, 10)
+      val a0 = say(a, 20)
+      say(a, 21)
+      seal(PeriodRef(gone, PeriodSeq.First), say(gone, 5), 30, "gone")
+      val theirs = Set(a, b, gone)
+      transaction(periods.openElsewhere(me)).map(_.filter(o => theirs(o.conversation))) ==> Right(
+        Vector(
+          OpenPeriod(b, origin("near-b").place, TurnSeq(0)),
+          OpenPeriod(a, origin("near-a").place, a0.turnSeq)
+        )
+      )
+      transaction(periods.openElsewhere(a)).map(_.exists(_.conversation == a)) ==> Right(false)
+    }
+
     test("closed periods are listed in close order across conversations, with their origins") {
       val x = conversation("order-x")
       val y = conversation("order-y")

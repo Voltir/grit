@@ -13,6 +13,7 @@ import grit.core.period.{
   Purgeable,
   Verdict
 }
+import grit.core.place.Place
 
 /** A conversation's periods: which is open, closing one, and deleting what a closed one no
   * longer needs. Each writing method takes the conversation's lock itself
@@ -61,6 +62,11 @@ trait PeriodStore {
     */
   def closingBefore(turn: TurnRef)(using Tx^): Either[StoreError, Option[ClosingEntry]]
 
+  /** The open period of every conversation but `conversation` that has one, with where that
+    * conversation happens, oldest opened first.
+    */
+  def openElsewhere(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[OpenPeriod]]
+
   /** Closed periods after `after` in close order, at most `n`. */
   def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]]
 
@@ -92,6 +98,11 @@ final case class Opening(first: TurnSeq, closing: Option[ClosingEntry]) {
   /** The balance it opens with; empty before the conversation's first close. */
   def balance: Balance = closing.fold(Balance.empty)(_.closing.balance)
 }
+
+/** An open period of another conversation: that conversation, where it happens, and the
+  * period's first turn.
+  */
+final case class OpenPeriod(conversation: ConversationId, place: Place, first: TurnSeq)
 
 /** A closing entry, and the closing its payload holds. */
 final case class ClosingEntry private (entry: Entry, closing: Closing)

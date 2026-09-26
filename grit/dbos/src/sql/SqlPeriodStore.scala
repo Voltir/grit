@@ -23,6 +23,7 @@ import grit.core.store.{
   ClosingEntry,
   Entry,
   EntryStore,
+  OpenPeriod,
   Payload,
   PayloadJson,
   PeriodStore,
@@ -220,6 +221,27 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
             .toRight(StoreError.Invalid(s"${EntryId.value(e.id)} is not a closing entry"))
       }
     } yield closing
+
+  def openElsewhere(conversation: ConversationId)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[OpenPeriod]] =
+    many(
+      """SELECT p.conversation_id, p.first_turn, c.origin
+        |  FROM grit.periods p
+        |  JOIN grit.conversations c ON c.id = p.conversation_id
+        | WHERE p.closed_at IS NULL AND p.conversation_id <> ?::uuid
+        | ORDER BY p.opened_at, p.conversation_id""".stripMargin
+    )(_.setString(1, ConversationId.value(conversation))) { rs =>
+      // The place is the origin's (Origin.place), the one definition grit.places is built from.
+      OpenPeriod(
+        ConversationId(rs.getString("conversation_id")),
+        SqlConversationStore.readOrigin(ujson.read(rs.getString("origin"))) match {
+          case Right(o) => o.place
+          case Left(why) => throw new IllegalStateException(s"unreadable origin: $why")
+        },
+        TurnSeq(rs.getLong("first_turn"))
+      )
+    }
 
   def closedAfter(after: CloseOrdinal, n: Int)(using
       tx: Tx^

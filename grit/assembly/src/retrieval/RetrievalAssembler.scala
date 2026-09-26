@@ -108,7 +108,7 @@ final class RetrievalAssembler(
       used: Tokens
   ): Vector[Vector[Entry]] = {
     val byTurn = older.flatMap(t => t.headOption.map(e => TurnSeq.value(e.turnSeq) -> t)).toMap
-    val ranked = found.map(h => TurnSeq.value(h.turnSeq)).distinct.flatMap(byTurn.get)
+    val ranked = found.map(h => TurnSeq.value(h.turn.turnSeq)).distinct.flatMap(byTurn.get)
     ranked
       .foldLeft((used, Vector.empty[Vector[Entry]])) { case ((spentSoFar, kept), t) =>
         val after = spentSoFar + LinearAssembler.cost(t, estimator)

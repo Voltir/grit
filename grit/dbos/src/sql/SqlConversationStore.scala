@@ -8,7 +8,7 @@ import grit.core.id.ConversationId
 import grit.core.place.Directory
 import grit.core.store.{Conversation, ConversationStore, Origin, StoreError, Tx}
 
-/** [[ConversationStore]] over the `grit.conversations` table. */
+/** [[ConversationStore]] over the `grit.conversations` table, and `grit.places`. */
 final class SqlConversationStore extends ConversationStore {
   import SqlEntryStore.attempt
 
@@ -17,14 +17,21 @@ final class SqlConversationStore extends ConversationStore {
   )(using tx: Tx^): Either[StoreError, Conversation] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     // A no-op DO UPDATE, not DO NOTHING, so RETURNING yields the row whether it
-    // was inserted or already there: one statement, correct under any isolation.
+    // was inserted or already there: one statement, correct under any isolation. The place
+    // goes in first the same way, its path sent as JSON so no Java array crosses JDBC.
     val sql =
-      """INSERT INTO grit.conversations (origin) VALUES (?::jsonb)
+      """WITH place AS (
+        |  INSERT INTO grit.places (path)
+        |  VALUES (ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))
+        |  ON CONFLICT (path) DO UPDATE SET path = EXCLUDED.path
+        |  RETURNING id)
+        |INSERT INTO grit.conversations (origin, place_id) SELECT ?::jsonb, id FROM place
         |ON CONFLICT (origin) DO UPDATE SET origin = EXCLUDED.origin
         |RETURNING id, created_at""".stripMargin
     attempt {
       Using.resource(conn.prepareStatement(sql)) { ps =>
-        ps.setString(1, SqlConversationStore.originJson(origin).render())
+        ps.setString(1, ujson.Arr.from(origin.place.segments.map(ujson.Str(_))).render())
+        ps.setString(2, SqlConversationStore.originJson(origin).render())
         Using.resource(ps.executeQuery()) { rs =>
           rs.next()
           Conversation(

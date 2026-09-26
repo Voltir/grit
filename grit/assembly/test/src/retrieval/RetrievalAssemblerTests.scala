@@ -9,7 +9,7 @@ import grit.core.context.{AssemblyNote, AssemblyRequest, Window}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
-import grit.core.store.{Entry, EntrySearch, Payload, StoreError, Tx}
+import grit.core.store.{Entry, EntrySearch, OpenPeriod, Payload, StoreError, Tx}
 
 import utest.*
 
@@ -64,9 +64,17 @@ object RetrievalAssemblerTests extends TestSuite {
       asked = asked :+ Asked(conversation, from, before, query, limit)
       Right(ids.toVector.zipWithIndex.map { (id, rank) =>
         val turn = id.drop(1).takeWhile(_ != ':').toLongOption.getOrElse(sys.error(s"id $id"))
-        EntrySearch.Hit(EntryId(id), TurnSeq(turn), (ids.size - rank).toDouble)
+        EntrySearch.Hit(
+          EntryId(id),
+          TurnRef(conversation, TurnSeq(turn)),
+          (ids.size - rank).toDouble
+        )
       })
     }
+
+    def nearby(open: Vector[OpenPeriod], query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
   }
 
   /** How many hits the assembler is told to ask for. */

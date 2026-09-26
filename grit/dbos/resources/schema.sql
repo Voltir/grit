@@ -41,13 +41,30 @@ RETURN CASE payload ->> 'kind'
                        THEN payload #> '{closing,flows,changes}' ELSE '[]'::jsonb END) AS change))
 END;
 
+-- Where conversations happen (grit.core.place.Place, ADR 0013): one containment tree whose
+-- root is everywhere. A path runs from its namespace down: {fs,home,nick,Projects,grit},
+-- {slack,acme,#grit-dev,1712.3}, {task,m0,main}; segments verbatim, never empty or NULL. A
+-- place is recorded with its first conversation, from that conversation's origin
+-- (Origin.place), and never changes. Which place is within which is Place.within's alone:
+-- nothing here tests it.
+CREATE TABLE IF NOT EXISTS grit.places (
+    id   UUID PRIMARY KEY DEFAULT uuidv7(),
+    path TEXT[] NOT NULL UNIQUE
+         CHECK (cardinality(path) >= 1 AND array_position(path, '') IS NULL
+                AND array_position(path, NULL) IS NULL)
+);
+
 -- One row per origin; `origin` is the Origin ADT as JSON, and jsonb equality
--- ignores key order, so the unique index is on the value, not its spelling.
+-- ignores key order, so the unique index is on the value, not its spelling. Its place is
+-- its origin's, set when it is created.
 CREATE TABLE IF NOT EXISTS grit.conversations (
     id         UUID PRIMARY KEY DEFAULT uuidv7(),
     origin     JSONB NOT NULL UNIQUE,
+    place_id   UUID NOT NULL REFERENCES grit.places(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS idx_conversations_place ON grit.conversations (place_id);
 
 CREATE TABLE IF NOT EXISTS grit.entries (
     id              TEXT PRIMARY KEY,

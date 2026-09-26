@@ -140,6 +140,16 @@ final class InMemoryPeriodStore(
     Right(id.flatMap(id => all(turn.conversationId).find(_.id == id)).flatMap(ClosingEntry.of))
   }
 
+  def openElsewhere(conversation: ConversationId)(using
+      Tx^
+  ): Either[StoreError, Vector[OpenPeriod]] =
+    Right(
+      periods
+        .filter(p => isOpen(p) && p.ref.conversationId != conversation)
+        .sortBy(p => (p.openedAt.toEpochMilli, ConversationId.value(p.ref.conversationId)))
+        .map(p => OpenPeriod(p.ref.conversationId, origin(p.ref.conversationId).place, p.first))
+    )
+
   def closedAfter(after: CloseOrdinal, n: Int)(using
       Tx^
   ): Either[StoreError, Vector[ClosedPeriod]] =
