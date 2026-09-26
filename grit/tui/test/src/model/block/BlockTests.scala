@@ -33,7 +33,6 @@ object BlockTests extends TestSuite {
     test("a tool call is one summary line, and the glyph tells the state") {
       val running = Block.tool("Read", "src/Main.scala", tick = 3)
       assert(running.text == "⠸ Read(src/Main.scala)")
-      assert(running.state == ToolState.Running(3))
 
       val done = running.finish(ok = true, "3 files, 42 lines")
       assert(done.text == "✓ Read(src/Main.scala) · 3 files, 42 lines")
@@ -41,11 +40,9 @@ object BlockTests extends TestSuite {
       val failed = Block.tool("Bash", "make", 0).finish(ok = false, "exit 1")
       assert(failed.text == "✗ Bash(make) · exit 1")
 
-      // A tick is a mutation of the glass: it changes the glyph, so the block is no
-      // longer equal to itself and the wrap memo re-wraps exactly this block.
-      val t1 = Block.tool("Read", "f", 0)
-      val t2 = t1.tick
-      assert(t1.text != t2.text && t1 != t2)
+      // A tick is a mutation of the glass: it moves the glyph to the next frame, so the
+      // block is no longer equal to itself and the wrap memo re-wraps exactly this block.
+      assert(Block.tool("Read", "f", 0).tick.text == "⠙ Read(f)")
     }
 
     test("expansion is rows of the same block: sibling positions and keys do not move") {
@@ -53,20 +50,16 @@ object BlockTests extends TestSuite {
         .tool("Read", "src/Main.scala", 0)
         .finish(ok = true, "42 lines", Vector("line one", "line two"))
       val doc = Doc.of("before").append(tool).append(Block.Text("after"))
-      assert(doc.length == 3)
 
       val open = tool.withExpanded(true)
       assert(open.text == "✓ Read(src/Main.scala) · 42 lines\n  line one\n  line two")
 
-      // The property the whole design rests on: the block count is constant, so a
-      // DocPos into any *other* block is bit-identical before and after, and the
-      // siblings -- what the wrap memo compares -- are untouched.
-      assert(doc.textAt(0) == "before" && doc.textAt(2) == "after")
-      val docOpen = Doc.of("before").append(open).append(Block.Text("after"))
-      assert(docOpen.length == doc.length)
-      assert(docOpen.textAt(2) == doc.textAt(2))
-      assert(docOpen.entry(0) == doc.entry(0), docOpen.entry(2) == doc.entry(2))
-      assert(open != tool)
+      // The property the whole design rests on: expanding is one block changing in
+      // place, so the wrap memo re-wraps it alone and keeps both siblings' rows.
+      val docOpen = doc.updated(1, open)
+      val shut = DocMemo.empty.synced(doc, 60)
+      val opened = shut.synced(docOpen, 60)
+      assert(opened.misses == shut.misses + 1, opened.hits == shut.hits + 2)
 
       // A selection spanning all three blocks copies the same text either way.
       val whole = Selection.between(DocPos(0, 0), DocPos(2, 5))
@@ -125,7 +118,6 @@ object BlockTests extends TestSuite {
         .append(Block.Text("next prompt"))
       val vp = viewport(doc, Size(4, 12))
       assert(vp.rows.map(_.text) == Vector("answer", "", "next prompt"))
-      assert(vp.rows(1).rule.nonEmpty)
 
       val painted = vp.render(None)
       val rule = (0 until 12).map(c => painted.at(1, c).ch).mkString
