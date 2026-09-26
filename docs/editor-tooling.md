@@ -35,6 +35,14 @@ on every compile; watching them is what stalls the extension host. `.vscode/sett
 excludes them. Mill uses `out/`, **not** `target/` -- an sbt-style `**/target/**` exclude
 matches nothing here and silently leaves both trees watched.
 
+**Keep BSP out of loose `.scala` files.** Mill's BSP offers every `.scala` file outside a
+module's sources as a single-file script module, and Metals compiles each on import. The
+`bspScriptIgnore` line in `build.mill`'s header adds `**/.local/` to Mill's defaults (which
+already skip `src/`, `out/`, `target/`); without it, the vendored examples in `.local/` were
+compiled, and failed, on every build-server start. Check the effective list with
+`./mill --meta-level 1 show bspScriptIgnoreAll`, and extend the header if a new tree of
+non-module Scala lands in the repository.
+
 `.bsp/out/mill-no-daemon/` accumulates a sandbox directory per BSP process and is never
 reaped by Mill. It has run into five figures in the spike. If it grows into the thousands,
 stop the build server first, then clear it -- deleting them under a live server kills it:

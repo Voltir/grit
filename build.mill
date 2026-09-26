@@ -1,6 +1,9 @@
 //| mill-separate-bsp-output-dir: true
+//| bspScriptIgnore: ["**/.local/"]
 // Metals gets its own build directory (.bsp/out) and a foreground BSP JVM per connection,
-// which exits when Metals closes its stdin; docs/editor-tooling.md.
+// which exits when Metals closes its stdin; docs/editor-tooling.md. BSP otherwise offers
+// every loose .scala file outside a module's sources as a single-file script module, so
+// the vendored examples under .local/ were compiled, and failed, on every import.
 package build
 import mill.*, scalalib.*
 
