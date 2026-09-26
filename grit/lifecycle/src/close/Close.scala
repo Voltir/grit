@@ -6,7 +6,7 @@ import grit.core.durable.Durable
 import grit.core.id.{CloseRef, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows}
-import grit.core.store.{Entry, Payload, Sealed, StoreError, Tx}
+import grit.core.store.{Entry, EntryTopics, Payload, Sealed, StoreError, Tx}
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** The close: one workflow per attempt to close a period ([[CloseRef]]), run on the turns'
@@ -22,10 +22,11 @@ import grit.lifecycle.transcript.PeriodTranscript
   *   1. `gate` — which sections the closing needs ([[CloseGate]]); every one when the
   *      classifier does not answer.
   *   1. `summarise` — the closing: its flows written by the catalog's summary pin
-  *      ([[ClosingSummary]]), and the balance it opened with after the writer's edits, held
-  *      to the cap ([[grit.core.period.Balance]]); when the model fails, or writes nothing
+  *      ([[ClosingSummary]]), and the balance it opened with after the writer's edits and
+  *      the topics' ([[grit.core.store.EntryTopics.edits]]), held to the cap
+  *      ([[grit.core.period.Balance]]); when the model fails, or writes nothing
   *      readable, the period's per-turn summaries joined as the prose, and the balance
-  *      carried unedited. A close never fails for a model.
+  *      carried with the topics' edits alone. A close never fails for a model.
   *   1. `seal` — under the lock again: the closing entry, its cost in the ledger, and the
   *      period closed, together; abandoned, writing nothing, when a turn came in meanwhile.
   */
@@ -157,8 +158,14 @@ object Close {
   ): Summarised = {
     val entries = own(env, attempt, first)
     val period = attempt.period.seq
+    // The topics' edits are the fold's, free and exact: made whether or not a model writes.
+    val topics =
+      EntryTopics.edits(
+        known,
+        entries.getOrElse(Vector.empty).flatMap(e => EntryTopics.events(e.payload))
+      )
     def closed(prose: String, outcome: Option[String], edits: Vector[Edit]): Option[Closing] = {
-      val edited = known.edit(edits, period)
+      val edited = known.edit(edits ++ topics, period)
       val fitted = edited.balance.fit(cap, period)
       Flows
         .of(prose, outcome, edited.changes ++ fitted.changes)

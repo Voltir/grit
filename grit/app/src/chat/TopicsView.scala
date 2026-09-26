@@ -1,7 +1,7 @@
 package grit.app.chat
 
 import grit.core.id.TurnSeq
-import grit.core.store.{Entry, Payload}
+import grit.core.store.{Entry, EntryTopics}
 import grit.core.topic.{Band, Placement, TopicId, Topics, Verdict}
 
 /** The conversation's topics, as the panel's topics tab shows them: each topic, most
@@ -55,17 +55,14 @@ object TopicsView {
   /** The most weights a placing lists. */
   val Weights = 3
 
-  /** The topics `entries` record, and the placing of `turn`'s message (the latest placed
-    * turn's, without one).
+  /** The topics `entries` record as they stood through `turn` (the newest turn, without
+    * one): those the closing before its period carried, and those its period spoke in
+    * ([[EntryTopics]]); and the placing of `turn`'s message (the latest placed turn's,
+    * without one).
     */
   def of(entries: Vector[Entry], turn: Option[TurnSeq]): TopicsView = {
-    val events = entries.flatMap {
-      _.payload match {
-        case Payload.Topic(es) => es
-        case _ => Vector.empty
-      }
-    }
-    val topics = Topics.fold(events)
+    val through = turn.orElse(entries.map(_.turnSeq).maxByOption(TurnSeq.value))
+    val topics = through.fold(Topics.empty)(EntryTopics.through(entries, _))
     val current = topics.current.map(_.id)
     def name(id: TopicId): String = topics.get(id).fold(TopicId.value(id))(_.shown)
     val rows = topics.topics.map(t => Row(t.shown, t.turns.size, current.contains(t.id)))

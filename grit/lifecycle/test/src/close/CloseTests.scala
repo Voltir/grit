@@ -18,6 +18,7 @@ import grit.core.period.{
 }
 import grit.core.provider.ProviderError
 import grit.core.store.{Payload, UsageLedger}
+import grit.core.topic.{Placement, TopicEvent, TopicId, Weights}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -260,6 +261,48 @@ object CloseTests extends TestSuite {
           )
         )
       )
+    }
+
+    test("a close adds the topics named in its period, and touches carried ones spoken in") {
+      val w = new World
+      val t0 = w.turn("where do we deploy?", "staging", "Chose staging.", 0)
+      val deployTopic = TopicId("topic:c1:0")
+      w.add(
+        t0,
+        Payload.Topic(
+          Vector(
+            TopicEvent.Opened(deployTopic),
+            TopicEvent.Placed(t0.turnSeq, Weights.whole(deployTopic), Placement.First),
+            TopicEvent.Described(deployTopic, "Deploy Target", "where to deploy")
+          )
+        ),
+        0,
+        "topic:0"
+      )
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, answering("Summary: We chose staging."), new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1"
+      val topic = line(Section.Topics, "Deploy Target", 1, 1)
+      w.closingEntry.map(_.payload).collect { case Payload.Closed(_, _, c) => c.balance } ==>
+        Some(balance(topic))
+
+      val t1 = w.turn("staging again?", "yes", "Staging again.", Lapsed + 1)
+      w.add(
+        t1,
+        Payload.Topic(
+          Vector(
+            TopicEvent.Placed(t1.turnSeq, Weights.whole(TopicId.carried(topic.id)), Placement.First)
+          )
+        ),
+        Lapsed + 1,
+        "topic:1"
+      )
+      val p2 = PeriodRef(c, PeriodSeq.First.next)
+      new InMemoryDurable().run(w.attemptOn(p2).workflowId)(
+        w.body(gate, answering("Summary: Staging again."), new SetClock(at(3 * Lapsed)))
+      ) ==> "closed: closing:c1:2"
+      w.closingOf(p2).map(_.payload).collect { case Payload.Closed(_, _, c) => c.balance } ==>
+        Some(balance(line(Section.Topics, "Deploy Target", 1, 2)))
     }
 
     test("a closed period's attempt says so, and writes nothing") {

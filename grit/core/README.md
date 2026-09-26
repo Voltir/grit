@@ -21,7 +21,8 @@ In dependency order:
 - **`topic`** — a conversation's topics as recorded events: `TopicId`, `TopicEvent` (a
   topic opened, a message placed with its `Weights` over topics, a topic described), the
   `Placement` that says who placed it, `Band`, `Verdict`, and `Topics`, the pure fold over
-  the events; `TopicJson`, their stored form. ← `id`
+  the events and the topics a close carried (`Topics.Carried`); `TopicJson`, their stored
+  form. ← `id`
 - **`period`** — a conversation's time as periods that close (ADRs 0011, 0012): `Period`
   and its `PeriodState`, `CloseReason`, the `Windows` and `LifecycleSettings` in force,
   `Deadline` (when a period closes, and when it is asked whether it is finished: the one
@@ -37,7 +38,8 @@ In dependency order:
   `ConversationStore`, `UsageLedger`, `ModelProfileStore` (which profile each turn ran
   under), `ModelFactStore` (facts about pairs approved at runtime), `PeriodStore` (which
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
-  settings in force), `Opening` and `ClosingEntry` (the closing a period opens from), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`
+  settings in force), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
+  conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
   `PluginName`, `PluginDocs` (one plugin's documents, and no other's), `PluginCursors` (how

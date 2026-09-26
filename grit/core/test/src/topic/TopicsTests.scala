@@ -23,12 +23,35 @@ object TopicsTests extends TestSuite {
 
   val tests = Tests {
     test("nothing recorded: no topics, no current one") {
-      val t = Topics.fold(Vector.empty)
+      val t = Topics.fold(Vector.empty, Vector.empty)
       assert(t.topics.isEmpty, t.current.isEmpty, t.earlier.isEmpty)
+    }
+
+    test("before any message is placed, the current topic is the first carried one, named") {
+      val t = Topics.fold(
+        Vector(Topics.Carried(a, "Photo Rename"), Topics.Carried(b, "Backup")),
+        Vector.empty
+      )
+      t.current.map(c => (c.id, c.name, c.summary, c.turns)) ==>
+        Some((a, Some("Photo Rename"), None, Vector()))
+      t.topics.map(_.id) ==> Vector(a, b)
+    }
+
+    test("a carried topic ranks by its latest turn once spoken in; the rest follow in order") {
+      val t = Topics.fold(
+        Vector(Topics.Carried(a, "A"), Topics.Carried(b, "B"), Topics.Carried(c, "C")),
+        Vector(
+          placed(5, c),
+          TopicEvent.Described(c, "C", "all about c")
+        )
+      )
+      t.topics.map(_.id) ==> Vector(c, a, b)
+      t.current.map(x => (x.id, x.summary)) ==> Some((c, Some("all about c")))
     }
 
     test("topics come most recently spoken in first; the current is the latest turn's") {
       val t = Topics.fold(
+        Vector.empty,
         Vector(
           TopicEvent.Opened(a),
           placed(0, a),
@@ -48,6 +71,7 @@ object TopicsTests extends TestSuite {
 
     test("a turn placed again is where its latest placement puts it") {
       val t = Topics.fold(
+        Vector.empty,
         Vector(
           TopicEvent.Opened(a),
           placed(0, a),
@@ -100,6 +124,7 @@ object TopicsTests extends TestSuite {
 
     test("a description names a topic; the latest one stands; unnamed shows as new topic") {
       val t = Topics.fold(
+        Vector.empty,
         Vector(
           TopicEvent.Opened(a),
           placed(0, a),

@@ -14,8 +14,8 @@ import grit.core.classify.{
 import grit.core.id.{EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.TokenEstimator
-import grit.core.store.{Db, Entry, EntryStore, Payload, StoreError, Tx, UsageLedger}
-import grit.core.topic.{Band, Placement, Topic, TopicEvent, TopicId, Topics, Weights}
+import grit.core.store.{Db, Entry, EntryStore, EntryTopics, Payload, StoreError, Tx, UsageLedger}
+import grit.core.topic.{Band, Placement, Topic, TopicEvent, TopicId, Weights}
 
 /** Where a turn's message goes among its conversation's topics, before its window is
   * assembled: the `classify` step's work and the `record-topic` step's record.
@@ -142,7 +142,7 @@ object TurnTopics {
       all: Vector[Entry]
   ): Classification = {
     val before = all.filter(e => TurnSeq.value(e.turnSeq) < TurnSeq.value(turn.turnSeq))
-    val topics = Topics.fold(before.flatMap(e => events(e.payload)))
+    val topics = EntryTopics.before(all, turn.turnSeq)
     val asked = all
       .filter(_.turnSeq == turn.turnSeq)
       .collectFirst { case Entry(_, _, _, _, _, Payload.Message(Message.User(t)), _) => t }
@@ -302,7 +302,7 @@ object TurnTopics {
 
   /** The topic `turn`'s message is in, as `all` of its conversation's entries leave it. */
   def topicOf(all: Vector[Entry], turn: TurnRef): Option[Topic] = {
-    val topics = Topics.fold(all.flatMap(e => events(e.payload)))
+    val topics = EntryTopics.through(all, turn.turnSeq)
     topics.placed(turn.turnSeq).flatMap(topics.get)
   }
 
@@ -318,12 +318,6 @@ object TurnTopics {
         )
         .toVector
     }
-
-  /** The topic events `payload` holds, if it is a topic record. */
-  def events(payload: Payload): Vector[TopicEvent] = payload match {
-    case Payload.Topic(events) => events
-    case _ => Vector.empty
-  }
 
   /** The choice among the earlier topics, `first` then `more`, and a new one (`None`). */
   private def which(

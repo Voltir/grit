@@ -415,7 +415,7 @@ object TurnFixtures {
 
   /** The conversation's topics as its entries leave them. */
   def topics(entries: EntryStore): grit.core.topic.Topics =
-    grit.core.topic.Topics.fold(all(entries).flatMap(e => TurnTopics.events(e.payload)))
+    grit.core.topic.Topics.fold(Vector.empty, all(entries).flatMap(e => grit.core.store.EntryTopics.events(e.payload)))
 
   /** No classifier: every message after a conversation's first is unclassified. */
   def NoClassifier: Classifier^ = Classifier.none("no classifier")

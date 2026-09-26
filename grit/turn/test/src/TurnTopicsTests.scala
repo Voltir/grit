@@ -1,9 +1,10 @@
 package grit.turn
 
+import grit.assembly.estimate.CharEstimate
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{TurnRef, TurnSeq}
+import grit.core.id.{EntryId, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.Message
-import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
+import grit.core.store.{Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Topics, Weights}
 import grit.dbos.sql.TestTx
 import grit.models.StubClassifier
@@ -40,10 +41,58 @@ object TurnTopicsTests extends TestSuite {
       val id = TopicId(s"t$i")
       Vector(TopicEvent.Opened(id), TopicEvent.Described(id, name, "about"))
     }
-    TurnTopics.keys(Topics.fold(events).topics).map(_._2.key)
+    TurnTopics.keys(Topics.fold(Vector.empty, events).topics).map(_._2.key)
   }
 
   val tests = Tests {
+    test("after the purge, the first message of a period is weighed against the carried topic") {
+      import grit.core.period.{CloseReason, Closing, Flows, Section, TestClosings}
+      val photo = TestClosings.line(Section.Topics, "Photo Rename Script", 1, 1)
+      val at = java.time.Instant.parse("2026-09-20T10:00:00Z")
+      // Period 1 (turns 0 and 1) is purged: only its closing entry is left.
+      val all = Vector(
+        Entry(
+          EntryId("closing:c1:1"),
+          conversation,
+          TurnSeq(1),
+          None,
+          5,
+          Payload.Closed(
+            PeriodSeq.First,
+            CloseReason.Lapsed,
+            Closing(
+              Flows.of("p", None, Vector()).getOrElse(sys.error("flows")),
+              TestClosings.balance(photo)
+            )
+          ),
+          at
+        ),
+        Entry(
+          EntryId("u2"),
+          conversation,
+          TurnSeq(2),
+          None,
+          6,
+          Payload.Message(Message.User("more photos ~0.9")),
+          at
+        )
+      )
+      val placed = TurnTopics.place(
+        new CountingClassifier,
+        CharEstimate,
+        TurnRef(conversation, TurnSeq(2)),
+        all
+      )
+      placed.current.map(_.id) ==> Some(TopicId.carried(photo.id))
+      placed.events ==> Vector(
+        TopicEvent.Placed(
+          TurnSeq(2),
+          Weights.same(TopicId.carried(photo.id), 0.9),
+          Placement.Classified(0.9, Placement.Outcome.Same)
+        )
+      )
+    }
+
     test("the first message opens a topic, and nothing is asked") {
       val classifier = new CountingClassifier
       val (entries, turns) = converse(Vector("hello"), classifier)
@@ -232,6 +281,7 @@ object TurnTopicsTests extends TestSuite {
       val (a, b, c) = (TopicId("a"), TopicId("b"), TopicId("c"))
       val ts = Topics
         .fold(
+          Vector.empty,
           Vector(
             TopicEvent.Opened(a),
             TopicEvent.Opened(b),

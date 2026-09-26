@@ -127,6 +127,57 @@ object RecordLifecycleHistories {
         )
         id
       },
+      record("close-carried") { (w, d) =>
+        // Period 2's close, opening with period 1's balance: a standing line and a topic,
+        // the topic spoken in again.
+        val t0 = w.turn("where do we deploy?", "staging", "Chose staging.", 0)
+        val deploy = grit.core.topic.TopicId("topic:c1:0")
+        w.add(
+          t0,
+          Payload.Topic(
+            Vector(
+              grit.core.topic.TopicEvent.Opened(deploy),
+              grit.core.topic.TopicEvent.Placed(
+                t0.turnSeq,
+                grit.core.topic.Weights.whole(deploy),
+                grit.core.topic.Placement.First
+              ),
+              grit.core.topic.TopicEvent.Described(deploy, "Deploy Target", "where to deploy")
+            )
+          ),
+          0,
+          "topic:0"
+        )
+        new InMemoryDurable().run(w.attempt.workflowId)(
+          w.body(new Gate(Some(Vector(0.9, 0.9, 0.1, 0.8))), written, new SetClock(at(Lapsed)))
+        )
+        val t1 = w.turn("staging again?", "yes", "Staging again.", Lapsed + 1)
+        w.add(
+          t1,
+          Payload.Topic(
+            Vector(
+              grit.core.topic.TopicEvent.Placed(
+                t1.turnSeq,
+                grit.core.topic.Weights.whole(
+                  grit.core.topic.TopicId.carried(
+                    grit.core.period.TestClosings
+                      .line(grit.core.period.Section.Topics, "Deploy Target", 1, 1)
+                      .id
+                  )
+                ),
+                grit.core.topic.Placement.First
+              )
+            )
+          ),
+          Lapsed + 1,
+          "topic:1"
+        )
+        val id = w.attemptOn(PeriodRef(c, PeriodSeq.First.next)).workflowId
+        d.run(id)(
+          w.body(new Gate(Some(Vector(0.9, 0.9, 0.1, 0.8))), written, new SetClock(at(3 * Lapsed)))
+        )
+        id
+      },
       record("close-deadline-moved") { (w, d) =>
         val t = w.say("hello", 0)
         val id = w.attempt.workflowId

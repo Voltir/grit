@@ -34,7 +34,7 @@ In dependency order:
   transcript has three tabs, switched by ctrl-t or a click on a pill: the turn
   (`TurnView`), the session so far (`SessionView`: its length, what it was billed,
   what search recalled, the models in each role), and its topics (`TopicsView`: each
-  topic with its messages, the current one marked, and how the shown turn's message was
+  topic carried from the last close or spoken in since, with its messages, the current one marked, and how the shown turn's message was
   placed: p(same) and its band, the classifier's choice, the model's verdict, a flag when
   the two disagreed, the heaviest weights), each built purely from what the host read.
   A conversation with nothing in it yet shows the splash in the transcript's place,
