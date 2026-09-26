@@ -9,6 +9,11 @@ In dependency order:
   no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `WorkflowId`,
   `SourceId`, `ToolCallId`) and `TurnRef`. Imports nothing in core.
+- **`model`** — what grit knows about models, as data: `ModelRef` (a model snapshot at an
+  upstream), each setting's `Known` value and its `Source`, the switches a `Profile` picks
+  among and the `Settings` a call is made under, the `Policy` of which pair does each job,
+  the `Catalog` of both, and the `TurnProfile` a turn pins from it; `CatalogJson`, their
+  stored form. Imports nothing in core.
 - **`message`** — the model's vocabulary: `Message`, `AssistantBlock`, `StopReason`,
   `Tokens`, `Usage`. ← `id`
 - **`topic`** — a conversation's topics as recorded events: `TopicId`, `TopicEvent` (a
