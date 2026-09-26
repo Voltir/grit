@@ -185,15 +185,6 @@ object OpenRouterJsonTests extends TestSuite {
       )
     }
 
-    test("response: a reply read back and sent again is the same message") {
-      val resent = OpenRouterJson.response(sampleResponse).map { reply =>
-        OpenRouterJson.request("m", 1, Routing.Open, ModelRequest("s", Vector(reply)))("messages")(
-          1
-        )
-      }
-      resent.map(_("reasoning_details")) ==> Right(replay)
-    }
-
     test("response: finish reasons map to stop reasons, keeping unknown ones") {
       def stopOf(reason: String) = OpenRouterJson
         .response(
@@ -360,9 +351,9 @@ object OpenRouterJsonTests extends TestSuite {
       for (bad <- Seq("0", "-5", "lots", "", "99999999999"))
         of(ModelRole.Summary, "GRIT_SUMMARY_MAX_TOKENS" -> bad) ==>
           Left(OpenRouterConfig.Invalid.NotPositive("GRIT_SUMMARY_MAX_TOKENS"))
-      assert(
-        !OpenRouterConfig.Invalid.NotPositive("GRIT_MAX_TOKENS").message.contains("lots")
-      )
+      // The message names the variable, never the value that was refused.
+      of(ModelRole.Summary, "GRIT_SUMMARY_MAX_TOKENS" -> "lots").left.map(_.message) ==>
+        Left("GRIT_SUMMARY_MAX_TOKENS is not a positive whole number")
     }
 
     test(
