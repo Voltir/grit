@@ -7,6 +7,7 @@ import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, Payload, UsageLedger}
 import grit.dbos.engine.RecordedStep
+import grit.turn.Turn
 
 import utest.*
 
@@ -85,7 +86,6 @@ object TurnViewTests extends TestSuite {
       val v =
         TurnView.of(turn2, entries, steps, running = false, costs, "You are grit.", CharEstimate)
       v.turn ==> TurnSeq(2)
-      v.running ==> None
       v.steps ==> Vector(
         TurnView.Step("assemble", Some(400)),
         TurnView.Step("call-model", Some(3100))
@@ -103,7 +103,24 @@ object TurnViewTests extends TestSuite {
       w.recalled ==> Seq("first question", "first answer").map(msg).reduce(_ + _)
       w.recent ==> Seq("second", "second answer").map(msg).reduce(_ + _)
       w.message ==> CharEstimate.message(Message.User("third, about the first"))
-      assert(!v.settled)
+    }
+
+    test("settled once it has stopped with its summary recorded; not while either is missing") {
+      def of(steps: Vector[String], running: Boolean) = TurnView.of(
+        turn2,
+        entries,
+        steps.map(step(_, 0, 1)),
+        running,
+        Vector.empty,
+        "s",
+        CharEstimate
+      )
+      val summarised = Vector("assemble", "call-model", Turn.Step.AppendSummary)
+      of(summarised, running = false).settled ==> true
+      // Still running, though its last step is recorded.
+      of(summarised, running = true).settled ==> false
+      // Stopped short of the summary, as a failed turn does.
+      of(summarised.dropRight(1), running = false).settled ==> false
     }
 
     test("a person's wait is its own step, timed from the ask to the answer") {
