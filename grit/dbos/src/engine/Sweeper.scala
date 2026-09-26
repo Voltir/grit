@@ -96,6 +96,7 @@ private[engine] final class Sweeper(
         Enqueued.First
     }
 
+  // As `enqueue`'s: the array is empty and DBOS only reads it.
   private def enqueuePost(run: PostRef): () => Unit = () => {
     val _ = client.enqueueWorkflow[String, Exception](
       Posts.enqueueOptions(run),

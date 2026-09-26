@@ -69,6 +69,7 @@ object RetentionLiveTests extends TestSuite {
             1,
             conn.createArrayOf(
               "text",
+              // A fresh array the driver only reads; separation checking treats arrays as mutable.
               caps.unsafe.unsafeAssumePure(ids.map(WorkflowId.value).toArray[AnyRef])
             )
           )

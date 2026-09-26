@@ -45,6 +45,7 @@ object CloseFixtures {
 
   /** A clock the test moves. */
   final class SetClock(start: Instant) extends Clock {
+    // An immutable Instant, replaced; read only by the test that owns the clock.
     @caps.unsafe.untrackedCaptures
     var time: Instant = start
 
@@ -72,6 +73,7 @@ object CloseFixtures {
       script: Int -> Either[ProviderError, Message.Assistant],
       during: () -> Unit = () => ()
   ) extends Provider {
+    // Only ever replaced by a new immutable vector; read only by the test that owns it.
     @caps.unsafe.untrackedCaptures
     var requests = Vector.empty[ModelRequest]
 
@@ -102,6 +104,7 @@ object CloseFixtures {
     * none, unavailable.
     */
   final class Gate(yes: Option[Vector[Double]]) extends Classifier {
+    // A count, read only by the test that owns the gate.
     @caps.unsafe.untrackedCaptures
     var calls = 0
 
@@ -183,6 +186,7 @@ object CloseFixtures {
 
   /** `underlying`, dying once inside the first seal, before it writes. */
   final class CrashOnSeal(underlying: PeriodStore) extends PeriodStore {
+    // A flag, set once; nothing but this store reads it.
     @caps.unsafe.untrackedCaptures
     var armed = true
 

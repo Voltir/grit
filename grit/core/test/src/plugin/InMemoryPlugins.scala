@@ -12,6 +12,7 @@ final class InMemoryPlugins {
   @caps.unsafe.untrackedCaptures
   private var stored = Map.empty[(PluginName, String), ujson.Value]
 
+  // As `stored`: only ever replaced by a new immutable map.
   @caps.unsafe.untrackedCaptures
   private var positions = Map.empty[PluginName, (Int, CloseOrdinal)]
 
