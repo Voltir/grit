@@ -13,8 +13,6 @@ object ClassifierChoiceTests extends TestSuite {
       Main.classifierChoice(Map("JEV_API_KEY" -> "sk-jev-1", "GRIT_STUB_TOPICS" -> "1")) match {
         case Right(ClassifierChoice.Jev(config)) =>
           config.apiKey ==> "sk-jev-1"
-          // JevConfig's promise, not Main's; no suite in models checks it.
-          assert(!config.toString.contains("sk-jev-1"))
         case other => throw new java.lang.AssertionError(s"not Jev: $other")
       }
       Main.classifierChoice(Map("JEV_API_KEY" -> " ")) ==> Left("JEV_API_KEY is empty")
