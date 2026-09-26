@@ -6,8 +6,10 @@ seams and `Durable`, never DBOS, so its tests run them over core's in-memory fak
 body, and its epoch's replay gate is the turn's; each workflow here has its own recorded
 histories, replayed under the engine's epoch (`Turn.Epoch`).
 
-- **`transcript`** — `PeriodTranscript`: a period's own entries, and the transcript a
-  classifier or the summary model reads. Imports nothing else in lifecycle.
+- **`transcript`** — `PeriodTranscript`: a period's own entries, the transcript a
+  classifier or the summary model reads, and what its windows showed from other
+  conversations (`elsewhere`), which a close treats as known, never as its own. Imports
+  nothing else in lifecycle.
 - **`close`** — `Close`: one attempt to close a period, run on the turns' queue under its
   conversation (`grit.dbos.workflow.Closes`): `check` its deadline is still the attempt's,
   `gate` what of its closing is new beside the balance it opened with (`CloseGate`, one

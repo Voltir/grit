@@ -9,12 +9,15 @@ In dependency order:
   many as the settings in force say, paid for first), then the most recent whole turns of
   the period that fit. The baseline every other assembler is measured against.
   ← `estimate`
-- **`retrieval`**: `RetrievalAssembler`, the same closing entries, the recent tail, plus
-  the period's earlier turns that match a query `QueryWriter` has a model write, ranked by
-  an `EntrySearch` bounded to the period. ← `linear`
+- **`retrieval`**: `RetrievalAssembler`, the same closing entry, the recent tail, plus
+  what a query `QueryWriter` has a model write finds: the period's earlier turns, and the
+  turns of other conversations' open periods its scope holds (ADR 0013), ranked by an
+  `EntrySearch` in one pool, its own weighted up; those from elsewhere shown as their own
+  sections. ← `linear`
 
-Both see only the turn's own period (ADR 0011): what came before it is its closing
-entries.
+Neither reaches past a period (ADR 0011): what came before the turn's is its closing
+entry, and a closed period elsewhere is never a candidate. Only retrieval draws on other
+conversations.
 
 No source file sits at the module's root, and the test tree mirrors it. The assembly eval
 lives in its own module, `grit.eval`.

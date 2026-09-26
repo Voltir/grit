@@ -11,6 +11,12 @@ In dependency order:
   `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`), `TurnRef`, `PeriodRef`, `CloseRef` (one
   attempt to close a period on its deadline, and its workflow id) and `SettleRef` (the one
   question whether anyone is waiting on a quiet period, and its workflow id). Imports nothing in core.
+- **`place`** — where conversations happen (ADR 0013): `Place`, a path in one
+  containment tree under the root, everywhere, one `Namespace` per source (`fs`, `slack`,
+  `task`), and `within` (a prefix, defined once); `Directory`, an absolute normalized
+  path; `Scope` (the place prefixes a window may draw on beside its own conversation),
+  `Weight` (how far its own search hits outweigh those elsewhere) and `Locality`, both
+  together. Imports nothing in core.
 - **`model`** — what grit knows about models, as data: `ModelRef` (a model snapshot at an
   upstream), each setting's `Known` value and its `Source`, the switches a `Profile` picks
   among and the `Settings` a call is made under, the `Policy` of which pair does each job,

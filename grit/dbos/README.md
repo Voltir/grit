@@ -4,7 +4,7 @@ The DBOS quarantine (ADR 0001): the only module that names DBOS, JDBC or the Pos
 driver, translated into core's seams here. `resources/schema.sql` is the schema.
 
 - **`sql`** — Postgres behind core's store seams: `DbConfig` (where the database is),
-  `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore`, `SqlUsageLedger`,
+  `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place, `grit.places`), `SqlUsageLedger`,
   `SqlModelProfileStore`, `SqlModelFactStore`, `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
   row), `SqlPluginDocs` and `SqlPluginCursors` (each plugin's documents and cursor).
