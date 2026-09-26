@@ -30,6 +30,10 @@ final class InMemoryPeriodStore(
   private def mine(c: ConversationId): Vector[Period] =
     periods.filter(_.ref.conversationId == c).sortBy(p => PeriodSeq.value(p.ref.seq))
 
+  // Only ever replaced by the next ordinal, as the store's sequence would be.
+  @caps.unsafe.untrackedCaptures
+  private var lastOrdinal = CloseOrdinal.Start
+
   private def replace(p: Period): Unit =
     periods = periods.map(q => if (q.ref == p.ref) p else q)
 
@@ -110,7 +114,6 @@ final class InMemoryPeriodStore(
           if (next.turnSeq != attempt.last.next) Right(Sealed.Abandoned)
           else {
             val id = p.ref.closingId
-            val order = periods.flatMap(closedOf).map(_.order).maxByOption(CloseOrdinal.value)
             entries
               .insert(
                 Entry(
@@ -124,7 +127,9 @@ final class InMemoryPeriodStore(
                 )
               )
               .map { _ =>
-                val o = order.getOrElse(CloseOrdinal.Start).next
+                // Never taken again, as the SQL store's sequence: a dropped period's stays used.
+                val o = lastOrdinal.next
+                lastOrdinal = o
                 replace(p.copy(state = PeriodState.Closed(attempt.last, at, reason, id, o, None)))
                 Sealed.Closed(id)
               }

@@ -373,6 +373,24 @@ abstract class PeriodContract extends TestSuite {
       transaction(periods.drop(p1)) ==> Right(false)
     }
 
+    test("a close ordinal is never taken again, even once the period that took it is dropped") {
+      val c = conversation("ordinal-once")
+      val p1 = PeriodRef(c, PeriodSeq.First)
+      seal(p1, say(c, 0), 30, "first")
+      def orderOf(p: PeriodRef) =
+        transaction(periods.get(p)).toOption.flatten.flatMap(_.state match {
+          case PeriodState.Closed(_, _, _, _, order, _) => Some(order)
+          case PeriodState.Open => None
+        })
+      val first = orderOf(p1).getOrElse(throw new java.lang.AssertionError("sealed"))
+      val t1 = say(c, 50)
+      transaction(periods.purge(p1, at(40)))
+      transaction(periods.drop(p1)) ==> Right(true)
+      val p2 = PeriodRef(c, PeriodSeq.First.next)
+      seal(p2, t1, 60, "second")
+      orderOf(p2).map(_.isAfter(first)) ==> Some(true)
+    }
+
     test("a purge deletes its period's verdicts, and keeps another period's") {
       val c = conversation("purge-verdicts")
       val other = conversation("purge-verdicts-other")

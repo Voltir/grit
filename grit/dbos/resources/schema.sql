@@ -182,6 +182,10 @@ CREATE TABLE IF NOT EXISTS grit.periods (
     CHECK ((confidence IS NOT NULL) = (reason IS NOT DISTINCT FROM 'resolved'))
 );
 
+-- Close order, taken by each seal (SqlPeriodStore.seal): never the greatest kept, so an
+-- ordinal whose period was deleted is never taken again.
+CREATE SEQUENCE IF NOT EXISTS grit.close_ordinals;
+
 -- At most one open period per conversation.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_periods_open ON grit.periods (conversation_id)
     WHERE closed_at IS NULL;

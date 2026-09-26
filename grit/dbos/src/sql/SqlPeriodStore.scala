@@ -171,7 +171,9 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
         else
           for {
             // Held to commit: a seal that takes an ordinal commits before the next one takes
-            // its own, so a cursor never passes an ordinal whose seal is still to commit.
+            // its own, so a cursor never passes an ordinal whose seal is still to commit. The
+            // ordinal comes from a sequence, never the greatest kept: a dropped period's, or a
+            // removed conversation's, is never taken again, so no cursor skips a new close.
             _ <- one("SELECT pg_advisory_xact_lock(?)")(_.setLong(1, OrdinalLock))(_ => ())
             _ <- entries.insert(
               Entry(
@@ -187,7 +189,7 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
             _ <- update(
               """UPDATE grit.periods
                 |   SET last_turn = ?, closed_at = ?, reason = ?, confidence = ?, closing_id = ?,
-                |       close_ordinal = (SELECT coalesce(max(close_ordinal), 0) + 1 FROM grit.periods)
+                |       close_ordinal = nextval('grit.close_ordinals')
                 | WHERE conversation_id = ?::uuid AND seq = ?""".stripMargin
             ) { ps =>
               ps.setLong(1, TurnSeq.value(attempt.last))
