@@ -169,8 +169,8 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   private val sweeping = new AtomicBoolean(false)
 
   /** Sweeps at `clock`'s time every `every`, on a daemon thread of its own, until the engine
-    * closes; a sweep that fails is logged, and the next one tries again, and each workflow a
-    * sweep finds stuck is logged once. Once, after [[launch]].
+    * closes; a sweep that fails is logged, and the next one tries again, each workflow a
+    * sweep finds stuck is logged once, and so is each plugin it newly marks as not enabled. Once, after [[launch]].
     */
   def sweepEvery(every: FiniteDuration, clock: Clock^): Unit =
     if (sweeping.compareAndSet(false, true)) {
@@ -186,6 +186,12 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
                 swept.stuck.filterNot(logged.contains).foreach { id =>
                   logged += id
                   log.warn(s"stuck, and not run again: ${WorkflowId.value(id)}")
+                }
+                swept.disabled.foreach { p =>
+                  log.warn(
+                    s"plugin ${PluginName.value(p)} is not enabled: its documents and cursor " +
+                      "are deleted after the ledger window unless it is enabled again"
+                  )
                 }
             }
           catch { case NonFatal(e) => log.warn(s"sweep failed: $e") }
