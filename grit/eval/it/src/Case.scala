@@ -78,7 +78,9 @@ object Case {
             case l if l.startsWith("query:") && acc.query.isEmpty =>
               Right(acc.copy(query = Some(l.drop("query:".length).trim)))
             case l if l.startsWith("query:") => fail("a second query")
-            case l if l.startsWith("scope ") => Right(acc.copy(scope = Some(l.drop(6).trim)))
+            case l if l.startsWith("scope ") && acc.scope.isEmpty =>
+              Right(acc.copy(scope = Some(l.drop(6).trim)))
+            case l if l.startsWith("scope ") => fail("a second scope")
             case l if l.startsWith("place ") && acc.ask.isEmpty =>
               val words = l.drop(6).trim.split("\\s+").toVector
               words.headOption.filter(_.nonEmpty) match {

@@ -56,6 +56,7 @@ object EvalTests extends TestSuite {
         Left("x line 2: expected turn, ask, query:, place, here, you: or grit:")
       Case.parse("x", "turn\nask\nturn\n") ==> Left("x line 3: a turn after the ask")
       Case.parse("x", "query: a\nquery: b\n") ==> Left("x line 2: a second query")
+      Case.parse("x", "scope fs:/a\nscope fs:/b\n") ==> Left("x line 2: a second scope")
       Case.parse("x", "turn\nyou: a\nask\n") ==> Left("x: the ask must be one unlabelled you: line")
     }
 
