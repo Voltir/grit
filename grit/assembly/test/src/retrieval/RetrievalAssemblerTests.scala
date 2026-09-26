@@ -1,35 +1,17 @@
 package grit.assembly.retrieval
 
-import java.time.Instant
-
 import grit.assembly.estimate.CharEstimate
+import grit.assembly.linear.AssemblyFixtures.{FakeDb, c1, store}
 import grit.assembly.linear.LinearAssembler
 import grit.core.context.{AssemblyNote, AssemblyRequest, Window}
-import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.id.{EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
-import grit.core.store.{
-  Db,
-  Entry,
-  EntryStore,
-  InMemoryEntrySearch,
-  InMemoryEntryStore,
-  Payload,
-  StoreError,
-  Tx
-}
-import grit.dbos.sql.TestTx
+import grit.core.store.{EntryStore, InMemoryEntrySearch, Payload}
 
 import utest.*
 
 object RetrievalAssemblerTests extends TestSuite {
-
-  private val c1 = ConversationId("c1")
-
-  private object FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake)
-  }
 
   private def reply(text: String, model: String = "test"): Message.Assistant =
     Message.Assistant(
@@ -48,27 +30,6 @@ object RetrievalAssemblerTests extends TestSuite {
       requests = requests :+ request
       answer.map(reply(_, "writer")).toRight(ProviderError.Unavailable("down"))
     }
-  }
-
-  /** `turns` in a fresh store, turn `t` holding the `t`-th payloads, ids `t{turn}:{seq}`. */
-  private def store(turns: Vector[Payload]*): EntryStore = {
-    val entries = new InMemoryEntryStore
-    given Tx = TestTx.fake
-    for (turn <- turns.indices; payload <- turns(turn)) {
-      val next = entries.lockNext(c1).getOrElse(sys.error("in-memory store"))
-      val _ = entries.insert(
-        Entry(
-          EntryId(s"t$turn:${next.seq}"),
-          c1,
-          TurnSeq(turn.toLong),
-          None,
-          next.seq,
-          payload,
-          Instant.EPOCH
-        )
-      )
-    }
-    entries
   }
 
   private def exchange(question: String, answer: String): Vector[Payload] =
@@ -98,7 +59,7 @@ object RetrievalAssemblerTests extends TestSuite {
       Tokens(budget),
       Tokens(tail)
     )
-      .assemble(AssemblyRequest(turn))(using FakeDb)
+      .assemble(AssemblyRequest(turn))(using new FakeDb)
       .getOrElse(sys.error("in-memory store"))
   }
 
@@ -108,7 +69,7 @@ object RetrievalAssemblerTests extends TestSuite {
 
   private def linear(entries: EntryStore, budget: Long): Window =
     new LinearAssembler(entries, CharEstimate, Tokens(budget))
-      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(6))))(using FakeDb)
+      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(6))))(using new FakeDb)
       .getOrElse(sys.error("in-memory store"))
 
   val tests = Tests {

@@ -1,24 +1,15 @@
 package grit.assembly.linear
 
-import java.time.Instant
-
 import grit.assembly.estimate.CharEstimate
+import grit.assembly.linear.AssemblyFixtures.{FakeDb, c1}
 import grit.core.context.{AssemblyError, AssemblyRequest}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.store.{Db, Entry, EntryStore, InMemoryEntryStore, Payload, StoreError, Tx}
-import grit.dbos.sql.TestTx
+import grit.core.store.{Entry, EntryStore, Payload, StoreError, Tx}
 
 import utest.*
 
 object LinearAssemblerTests extends TestSuite {
-
-  private val c1 = ConversationId("c1")
-
-  private object FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using TestTx.fake)
-  }
 
   /** A four-character user message and an eight-character reply: 5 + 6 = 11 tokens. */
   private val SmallTurn = 11L
@@ -33,34 +24,15 @@ object LinearAssemblerTests extends TestSuite {
       "test"
     )
 
-  /** A store holding `turns`, each a list of messages, one turn per element from turn 0. */
-  private def store(turns: Vector[Message]*): EntryStore = storeOf(turns.toVector)
-
-  private def storeOf(turns: Vector[Vector[Message]]): EntryStore = {
-    val entries = new InMemoryEntryStore
-    given Tx = TestTx.fake
-    for (turn <- turns.indices; message <- turns(turn)) {
-      val next = entries.lockNext(c1).getOrElse(sys.error("in-memory store"))
-      val _ = entries.insert(
-        Entry(
-          EntryId(s"t$turn:${next.seq}"),
-          c1,
-          TurnSeq(turn.toLong),
-          None,
-          next.seq,
-          Payload.Message(message),
-          Instant.EPOCH
-        )
-      )
-    }
-    entries
-  }
-
   private def small(n: Int): Vector[Message] = Vector(user(f"q$n%03d"), reply(f"answer$n%02d"))
+
+  /** A store holding `turns`, each a list of messages, one turn per element from turn 0. */
+  private def store(turns: Vector[Message]*): EntryStore =
+    AssemblyFixtures.store(turns.map(_.map(Payload.Message(_)))*)
 
   private def window(entries: EntryStore, turn: Long, budget: Long): Vector[String] =
     new LinearAssembler(entries, CharEstimate, Tokens(budget))
-      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn))))(using FakeDb)
+      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn))))(using new FakeDb)
       .fold(e => sys.error(s"assembly failed: $e"), _.entries.map(EntryId.value))
 
   val tests = Tests {
@@ -111,7 +83,7 @@ object LinearAssemblerTests extends TestSuite {
         def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = Left(down)
       }
       new LinearAssembler(Down, CharEstimate, Tokens(1000))
-        .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(1))))(using FakeDb) ==>
+        .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(1))))(using new FakeDb) ==>
         Left(AssemblyError.Store(StoreError.DatabaseError("down")))
     }
   }
