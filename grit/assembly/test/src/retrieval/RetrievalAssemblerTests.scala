@@ -367,5 +367,11 @@ object RetrievalAssemblerTests extends TestSuite {
       QueryWriter.text(reply("  postgres\n  sqlite   decision ")) ==> "postgres sqlite decision"
       QueryWriter.text(reply(" \n ")) ==> ""
     }
+
+    test("a control character in the reply, such as NUL, is a space in the query") {
+      // Seen live: a query model wrote a NUL, and Postgres refuses one in a text parameter,
+      // which failed the turn's assembly.
+      QueryWriter.text(reply("utc\u0000date\u0007 picker")) ==> "utc date picker"
+    }
   }
 }

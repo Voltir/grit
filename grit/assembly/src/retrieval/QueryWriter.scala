@@ -32,11 +32,14 @@ object QueryWriter {
       Vector(Message.User(own.flatMap(e => line(e.payload)).mkString("New message:\n", "\n", "")))
     )
 
-  /** The query in `reply`: its text on one line, trimmed. Blank when it wrote nothing. */
+  /** The query in `reply`: its text on one line, trimmed, each control character (NUL
+    * among them, which Postgres refuses in a query) a space. Blank when it wrote nothing.
+    */
   def text(reply: Message.Assistant): String =
     reply.blocks
       .collect { case AssistantBlock.Text(t) => t }
       .mkString(" ")
+      .replaceAll("\\p{Cntrl}", " ")
       .split("\\s+")
       .filter(_.nonEmpty)
       .mkString(" ")
