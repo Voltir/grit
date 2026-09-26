@@ -3,7 +3,7 @@ package grit.turn
 import scala.annotation.tailrec
 
 import grit.core.message.{AssistantBlock, Message, StopReason}
-import grit.core.model.AfterToolResult
+import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.tool.Outcome
 
@@ -142,6 +142,21 @@ object TurnLoop {
           case _ => request.copy(messages = request.messages :+ Message.User(LastCall))
         }
     }
+
+  /** `request` with its tools named in its system prompt under
+    * [[ToolGuidance.SystemLines]]: after a blank line, `Tools you may call:`, then a line per
+    * tool, `- name: ` and the first line of its description. Unchanged under
+    * [[ToolGuidance.SchemaOnly]], or when it offers none.
+    */
+  def guided(request: ModelRequest, guidance: ToolGuidance): ModelRequest = guidance match {
+    case ToolGuidance.SchemaOnly => request
+    case ToolGuidance.SystemLines if request.tools.isEmpty => request
+    case ToolGuidance.SystemLines =>
+      val lines = request.tools.map(t =>
+        s"- ${t.name}: ${t.description.linesIterator.nextOption().getOrElse("")}"
+      )
+      request.copy(system = (s"${request.system}\n\nTools you may call:" +: lines).mkString("\n"))
+  }
 
   /** The effects the loop needs. The turn makes each a durable step. */
   trait Moves {

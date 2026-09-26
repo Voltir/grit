@@ -13,7 +13,8 @@ import grit.core.model.{
   Pinned,
   Profile,
   Source,
-  StrictSchemas
+  StrictSchemas,
+  ToolGuidance
 }
 import grit.core.provider.{Models, Provider}
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryModelProfileStore, Payload}
@@ -137,12 +138,13 @@ object TurnModelsTests extends TestSuite {
       sent(TestCatalog) ==> Vector(false, false)
     }
 
-    test("a turn reads its model's calls and tells its last call as its pin says") {
+    test("a turn guides, reads and tells its model as its pin says") {
       val nick = Source.Declared("nick", LocalDate.of(2026, 9, 25))
       val pair = Profile(
         TestCatalog.policy.turn.ref,
         names = Known.Of(NameRepair.AsSent, nick),
-        afterResult = Known.Of(AfterToolResult.InLastResult, nick)
+        afterResult = Known.Of(AfterToolResult.InLastResult, nick),
+        guidance = Known.Of(ToolGuidance.SystemLines, nick)
       )
       val leaked: Message.Assistant = Message.Assistant(
         Vector(
@@ -168,6 +170,10 @@ object TurnModelsTests extends TestSuite {
           calls = 2
         )
       )
+      provider.requests.headOption.map(_.system) ==>
+        Some(
+          s"$system\n\nTools you may call:\n- peek: Reads a file.\n- poke: Reads a file, asking first."
+        )
       // Not cut at `<|`: no tool has the name as sent, so nothing was read.
       ws.reads ==> 0
       provider.requests.lift(1).flatMap(_.messages.lastOption) ==> Some(

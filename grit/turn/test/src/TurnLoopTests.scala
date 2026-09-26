@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.AfterToolResult
+import grit.core.model.{AfterToolResult, ToolGuidance}
 import grit.core.provider.ToolUse
 
 import utest.*
@@ -217,6 +217,21 @@ object TurnLoopTests extends TestSuite {
       told(ToolUse.Off, AfterToolResult.InLastResult, plain) ==>
         Vector(Message.User("hi"), Message.User(TurnLoop.LastCall))
       told(ToolUse.Auto, AfterToolResult.InLastResult) ==> asked.messages
+    }
+
+    test("tool guidance names each offered tool in the system prompt, for a pair that needs it") {
+      val tools = Vector(
+        grit.core.provider.ToolSchema("read", "Reads a file.\nMore about reading.", ujson.Obj()),
+        grit.core.provider.ToolSchema("run", "Runs a command.", ujson.Obj())
+      )
+      val asked =
+        grit.core.provider.ModelRequest("You are grit.", Vector(Message.User("hi")), tools)
+      TurnLoop.guided(asked, ToolGuidance.SystemLines).system ==>
+        "You are grit.\n\nTools you may call:\n- read: Reads a file.\n- run: Runs a command."
+      TurnLoop.guided(asked, ToolGuidance.SchemaOnly) ==> asked
+      TurnLoop
+        .guided(asked.copy(tools = Vector.empty), ToolGuidance.SystemLines)
+        .system ==> "You are grit."
     }
   }
 }

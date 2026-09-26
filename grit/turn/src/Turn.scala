@@ -9,7 +9,7 @@ import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Window}
 import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
-import grit.core.model.{AfterToolResult, StrictSchemas, TurnProfile}
+import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 import grit.core.store.{Entry, Jot, Payload, StoreError, Tx}
 import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
@@ -494,11 +494,12 @@ object Turn {
         val settings = pins.turn.settings
         val repairs = Repairs(settings.names, settings.repairs)
         val after = settings.afterResult
+        val guidance = settings.guidance
         def shape(round: Round): ModelRequest -> ModelRequest =
-          loopShape(asked, round, TurnLoop.use(budget, round), schemas, after)
+          loopShape(asked, round, TurnLoop.use(budget, round), schemas, after, guidance)
         val moves = new TurnLoop.Moves {
           def call(round: Round, use: ToolUse): Either[TurnFailure, Message.Assistant] = {
-            val shaped = loopShape(asked, round, use, schemas, after)
+            val shaped = loopShape(asked, round, use, schemas, after, guidance)
             d.step(round.step) { () => callShaped(heard, turn, seen, shaped) }
           }
 
@@ -592,19 +593,20 @@ object Turn {
     }
 
   /** How the loop's call `round` is built from the plain request: tagged for `asked` on the
-    * first call, offering `tools` as `use` says, and told as [[TurnLoop.told]] says under
-    * `after`.
+    * first call, offering `tools` as `use` says, guided as [[TurnLoop.guided]] says under
+    * `guidance`, and told as [[TurnLoop.told]] says under `after`.
     */
   private def loopShape(
       asked: Option[TurnTopics.Classification],
       round: Round,
       use: ToolUse,
       tools: Vector[ToolSchema],
-      after: AfterToolResult
+      after: AfterToolResult,
+      guidance: ToolGuidance
   ): ModelRequest -> ModelRequest =
     base => {
       val tagged = asked.filter(_ => round == Round.First).fold(base)(TurnVerdict.tagged(base, _))
-      TurnLoop.told(use, tagged.copy(tools = tools, use = use), after)
+      TurnLoop.told(use, TurnLoop.guided(tagged.copy(tools = tools, use = use), guidance), after)
     }
 
   /** The `record-call:n` step: `reply`, the reply to `round` that called tools, kept as
