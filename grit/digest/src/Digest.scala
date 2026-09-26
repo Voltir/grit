@@ -44,7 +44,7 @@ object Digest {
     )
 
   private def where(origin: Origin): String = origin match {
-    case Origin.Tui(session) => s"tui $session"
+    case Origin.Tui(_, session) => s"tui $session"
     case Origin.Slack(_, channel, _) => s"slack #$channel"
     case Origin.Task(name, _) => s"task $name"
   }

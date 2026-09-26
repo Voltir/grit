@@ -1,5 +1,6 @@
 package grit.dbos.sql
 
+import grit.core.place.Directory
 import grit.core.store.Origin
 
 import utest.*
@@ -8,10 +9,12 @@ object OriginJsonTests extends TestSuite {
 
   // The stored form is the conversation's unique key: these pin it, so a
   // change that would orphan existing conversations fails here first.
+  private val home = Directory.of("/home/nick").fold(e => sys.error(e), identity)
+
   val tests = Tests {
     test("tui") {
-      SqlConversationStore.originJson(Origin.Tui("s1")) ==>
-        ujson.Obj("kind" -> "tui", "session" -> "s1")
+      SqlConversationStore.originJson(Origin.Tui(home, "s1")) ==>
+        ujson.Obj("kind" -> "tui", "directory" -> "/home/nick", "session" -> "s1")
     }
 
     test("slack") {
@@ -31,12 +34,16 @@ object OriginJsonTests extends TestSuite {
 
     test("every origin reads back from its stored form; any other form is refused") {
       val origins =
-        Vector(Origin.Tui("s1"), Origin.Slack("T1", "C1", "1.2"), Origin.Task("e2e", "r"))
+        Vector(Origin.Tui(home, "s1"), Origin.Slack("T1", "C1", "1.2"), Origin.Task("e2e", "r"))
       origins.map(o => SqlConversationStore.readOrigin(SqlConversationStore.originJson(o))) ==>
         origins.map(Right(_))
       SqlConversationStore.readOrigin(ujson.Obj("kind" -> "email", "to" -> "x")) ==>
         Left("unknown origin kind: email")
-      SqlConversationStore.readOrigin(ujson.Obj("kind" -> "tui")) ==> Left("missing field: session")
+      SqlConversationStore.readOrigin(ujson.Obj("kind" -> "tui", "directory" -> "/home/nick")) ==>
+        Left("missing field: session")
+      SqlConversationStore.readOrigin(
+        ujson.Obj("kind" -> "tui", "directory" -> "home", "session" -> "s1")
+      ) ==> Left("not an absolute path: home")
     }
   }
 }

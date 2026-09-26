@@ -15,6 +15,7 @@ import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Catalog, ModelId, Pinned}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
+import grit.core.place.Directory
 import grit.core.plugin.{Plugin, PluginName}
 import grit.core.store.{Db, Origin}
 import grit.core.tool.{DuplicateName, ToolName, Toolbox}
@@ -71,7 +72,8 @@ import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
   * changes them, from the next sweep and turn on.
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
-  *     (default `default`). Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
+  *     (default `default`) in the directory grit runs in: the same name in another
+  *     directory is another conversation. Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
   *     directory), never to the screen.
   *   - **Arguments: each is a message**, answered by one turn and printed. Repeat a
   *     message to watch a redelivery come back as the same turn; run again to watch
@@ -109,8 +111,16 @@ object Main {
     val retrieving = exitOnLeft(assemblerChoice(env))
     val rounds = exitOnLeft(toolRounds(env))
     val offered = exitOnLeft(toolChoice(env, chat = tui))
-    // The checkout the turn's tools read is the one grit runs in.
-    val root = java.nio.file.Path.of("").toAbsolutePath
+    // The checkout the turn's tools read is the one grit runs in, its links resolved, so a
+    // directory is one place however it was reached.
+    val root = exitOnLeft(
+      scala.util
+        .Try(java.nio.file.Path.of("").toAbsolutePath.toRealPath())
+        .toEither
+        .left
+        .map(e => s"the working directory cannot be read: $e")
+    )
+    val directory = exitOnLeft(Directory.of(root.toString))
     val system = systemPrompt(root)
     val prefsFile = Prefs.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
@@ -282,7 +292,7 @@ object Main {
         }
         val session = env.getOrElse("GRIT_SESSION", "default")
         val host = new ChatHost(
-          Origin.Tui(session),
+          Origin.Tui(directory, session),
           opener,
           system,
           CharEstimate,

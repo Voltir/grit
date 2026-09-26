@@ -34,7 +34,7 @@ object DigestTests extends TestSuite {
     )
 
   private val periods: Vector[ClosedPeriod] = Vector(
-    closed(1, Origin.Tui("default"), CloseReason.Resolved(Probability.One), closing("We set up staging. It works.", Some("staging deploys from main")), "2026-09-20T14:05:00Z"),
+    closed(1, Origin.Tui(grit.core.place.Directory.of("/home/nick").fold(e => sys.error(e), identity), "default"), CloseReason.Resolved(Probability.One), closing("We set up staging. It works.", Some("staging deploys from main")), "2026-09-20T14:05:00Z"),
     closed(2, Origin.Slack("T1", "eng", "1700.1"), CloseReason.Lapsed, closing("Someone asked about the flaky test. Nobody knew.", None), "2026-09-21T09:30:00Z"),
     closed(3, Origin.Task("nightly", "2026-09-22"), CloseReason.Lapsed, closing("Nothing to report", None), "2026-09-22T03:00:00Z")
   )

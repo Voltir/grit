@@ -21,7 +21,7 @@ import grit.core.period.{
   */
 final class InMemoryPeriodStore(
     entries: InMemoryEntryStore,
-    origin: ConversationId -> Origin = c => Origin.Tui(ConversationId.value(c))
+    origin: ConversationId -> Origin = c => Origin.Task("conversation", ConversationId.value(c))
 ) extends PeriodStore {
 
   // Only ever replaced by a new immutable vector, as the store's table would be.

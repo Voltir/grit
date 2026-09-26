@@ -5,6 +5,7 @@ import java.time.OffsetDateTime
 import scala.util.Using
 
 import grit.core.id.ConversationId
+import grit.core.place.Directory
 import grit.core.store.{Conversation, ConversationStore, Origin, StoreError, Tx}
 
 /** [[ConversationStore]] over the `grit.conversations` table. */
@@ -43,8 +44,8 @@ private[dbos] object SqlConversationStore {
     * it for an existing origin orphans that origin's conversation.
     */
   def originJson(origin: Origin): ujson.Obj = origin match {
-    case Origin.Tui(session) =>
-      ujson.Obj("kind" -> "tui", "session" -> session)
+    case Origin.Tui(directory, session) =>
+      ujson.Obj("kind" -> "tui", "directory" -> Directory.value(directory), "session" -> session)
     case Origin.Slack(team, channel, threadTs) =>
       ujson.Obj("kind" -> "slack", "team" -> team, "channel" -> channel, "threadTs" -> threadTs)
     case Origin.Task(name, run) =>
@@ -59,7 +60,12 @@ private[dbos] object SqlConversationStore {
       o <- v.objOpt.toRight("expected an object")
       kind <- str(o, "kind")
       origin <- kind match {
-        case "tui" => str(o, "session").map(Origin.Tui(_))
+        case "tui" =>
+          for {
+            raw <- str(o, "directory")
+            session <- str(o, "session")
+            directory <- Directory.of(raw)
+          } yield Origin.Tui(directory, session)
         case "slack" =>
           for {
             team <- str(o, "team")
