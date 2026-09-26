@@ -19,7 +19,9 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   done, and sends a turn the answer to its gated call (`DBOSClient.send`); `Sweeper`,
   the sweep `Engine.sweepEvery` runs: every open period whose deadline has come has its
   close enqueued under its deterministic id, and an attempt that finished with its period
-  still due is deleted and enqueued again. ← `sql`, `workflow`
+  still due is deleted and enqueued again; then every period closed longer ago than the
+  retention window has its turn and close workflows deleted (`deleteWorkflows`), and after
+  them its raw entries, keeping its closing entry. ← `sql`, `workflow`
 
 `sql` and `workflow` are siblings and never name each other. No source file sits at the
 root, and `scripts/enola-law.sh` fails on a new import cycle.

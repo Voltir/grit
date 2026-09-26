@@ -107,9 +107,12 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   private val sweeper = new Sweeper(dataSource, client, periods, lifecycle)
 
   /** One sweep of the lifecycle at `now`, under the settings in force: every open period
-    * whose deadline has come has its close attempt enqueued ([[grit.core.id.CloseRef.workflowId]]), once;
-    * an attempt that finished with its period still due is enqueued again. Only after
-    * [[launch]].
+    * whose deadline has come has its close attempt enqueued
+    * ([[grit.core.id.CloseRef.workflowId]]), once, and an attempt that finished with its
+    * period still due is enqueued again; then every period closed longer ago than the
+    * retention window has its turn and close workflows deleted, and after them its raw
+    * entries, keeping its closing entry and its row ([[grit.core.store.PeriodStore.purge]]).
+    * Only after [[launch]]. `Left` when the database fails, having done what came before.
     */
   def sweep(now: Instant): Either[StoreError, Swept] = sweeper.once(now)
 
