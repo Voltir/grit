@@ -116,7 +116,9 @@ object JevJsonTests extends TestSuite {
       JevJson.error(529, "overloaded") ==> ClassifierError.Unavailable("HTTP 529: overloaded")
     }
 
-    test("config: the key comes from JEV_API_KEY, and a missing one names the variable") {
+    test(
+      "config: the key comes from JEV_API_KEY, a missing one names the variable, and toString hides it"
+    ) {
       assert(JevConfig.fromEnv(Map()).left.map(_.message) == Left("JEV_API_KEY is not set"))
       assert(
         JevConfig.fromEnv(Map("JEV_API_KEY" -> " ")).left.map(_.message) == Left(
