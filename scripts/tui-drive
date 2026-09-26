@@ -25,8 +25,8 @@ Rules it enforces, so a brief doesn't have to:
     with a stamp this tool made, never grit or Metals running elsewhere.
   - Preferences go to the session's own XDG_CONFIG_HOME, so `/theme` in a run never
     changes the developer's next launch.
-  - The model key comes from grit reading the repo's .env (GRIT_ENV_FILE, absolute, since
-    the session's directory may be another repo). This tool never reads .env itself.
+  - The model key comes from grit reading the main checkout's .env, from a worktree too
+    (GRIT_ENV_FILE, absolute, since the session's directory may be another repo). This tool never reads .env itself.
     --stub runs the stub model instead: no .env, no key.
 
 State lives in $GRIT_DRIVE_DIR (default /tmp/grit-tui-drive-<uid>/<name>/): meta.json,
@@ -60,6 +60,14 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+
+
+def env_file() -> Path:
+    """The main checkout's .env: a worktree has none of its own. Named, never read."""
+    common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            cwd=REPO, capture_output=True, text=True)
+    main = Path(common.stdout.strip()).parent if common.returncode == 0 else REPO
+    return main / ".env"
 STATE = Path(os.environ.get("GRIT_DRIVE_DIR", f"/tmp/grit-tui-drive-{os.getuid()}"))
 STAMP_PROP = "grit.drive.stamp"
 # How long a daemon keeps serving the last screen after its JVM exits, unless stopped.
@@ -476,7 +484,7 @@ def cmd_start(a, reuse=None):
         env["GRIT_ENV_FILE"] = "/dev/null"
         env.pop("OPENROUTER_API_KEY", None)
     else:
-        env["GRIT_ENV_FILE"] = str(REPO / ".env")
+        env["GRIT_ENV_FILE"] = str(env_file())
     env.update(conf["extra"])
     if conf.get("exec"):
         # Testing the driver itself: a shell command, stamped through its $0.
@@ -754,7 +762,8 @@ def main():
     s.add_argument("--ready-timeout", type=float, default=60)
     s.add_argument("--arg", dest="args", action="append", help="an argument to Main (one-shot mode)")
     s.add_argument("--exec", metavar="SH", help="run this shell command instead of grit (tests the driver)")
-    s.add_argument("env", nargs="*", metavar="KEY=VALUE", help="after --: extra environment")
+    # KEY=VALUE pairs after `--` are split off before parsing (main), so options may come in
+    # any order around the session name.
     s.set_defaults(fn=cmd_start)
 
     s = sub.add_parser("restart", help="start NAME again, as it was started")
@@ -824,7 +833,15 @@ def main():
     s.add_argument("name")
     s.set_defaults(fn=cmd_forget)
 
-    a = p.parse_args()
+    argv = sys.argv[1:]
+    extra: list[str] = []
+    if "--" in argv:
+        i = argv.index("--")
+        argv, extra = argv[:i], argv[i + 1:]
+    a = p.parse_args(argv)
+    if extra and a.cmd != "start":
+        p.error("only start takes KEY=VALUE after --")
+    a.env = extra
     if a.cmd == "wait" and not a.pattern and a.stable is None:
         p.error("wait needs a PATTERN, --stable, or both")
     try:
