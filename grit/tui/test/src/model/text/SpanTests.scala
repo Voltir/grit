@@ -41,10 +41,11 @@ object SpanTests extends TestSuite {
     }
 
     test("order is preserved, so a later span still layers over an earlier one") {
-      // Painting applies spans in order and each layers over what is under it, so a
-      // ground written first and an accent written second must arrive in that order.
-      val spans = Vector(Span(0, 20, red), Span(3, 6, blue))
-      assert(Span.rebase(spans, 0, 20) == Vector(Span(0, 20, red), Span(3, 6, blue)))
+      // Painting applies spans in order and each layers over what is under it, so an
+      // accent written first and a ground written over it must arrive in that order --
+      // which is not the order of their starts, so a rebase that sorted would swap them.
+      val spans = Vector(Span(8, 12, blue), Span(5, 25, red))
+      assert(Span.rebase(spans, 4, 20) == Vector(Span(4, 8, blue), Span(1, 20, red)))
     }
 
     test("StyledText concatenation shifts the right-hand spans") {
