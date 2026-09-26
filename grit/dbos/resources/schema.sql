@@ -156,8 +156,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_periods_open ON grit.periods (conversation
     WHERE closed_at IS NULL;
 
 -- What the classifier made of each period once it went quiet (grit.core.period.Verdict):
--- whether anyone is waiting on anything, the tuning data for when a period closes, kept
--- when the period's raw entries are purged. A verdict is about the period as it stood with
+-- whether anyone is waiting on anything, the tuning data for when a period closes, deleted
+-- with the period's raw entries (ADR 0011). A verdict is about the period as it stood with
 -- `last_turn` its newest turn; weighed, with a probability for each answer (nobody, the
 -- person, something else) and the model, or unanswered, with why.
 CREATE TABLE IF NOT EXISTS grit.verdicts (

@@ -68,7 +68,7 @@ trait PeriodStore {
   def expired(cutoff: Instant)(using Tx^): Either[StoreError, Vector[Purgeable]]
 
   /** Deletes `period`'s raw entries (every entry of its turns but its closing entry) and
-    * records it purged at `at`; a period already purged, or not closed, is left as it is.
+    * every verdict on it, and records it purged at `at`; a period already purged, or not closed, is left as it is.
     * Its workflows are the caller's to delete, first ([[Purgeable.turns]],
     * [[Purgeable.attempts]]).
     */

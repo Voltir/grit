@@ -164,6 +164,9 @@ final class InMemoryPeriodStore(
         .map(c => Purgeable(p.ref, p.first, c.last))
     })
 
+  /** How many verdicts it keeps on `period`: what a test reads past the store's methods. */
+  def verdictsOn(period: PeriodRef): Int = verdicts.count(_._1 == period)
+
   def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit] = {
     periods.find(_.ref == period).foreach { p =>
       closedOf(p).filter(_.purged.isEmpty).foreach { c =>
@@ -172,6 +175,7 @@ final class InMemoryPeriodStore(
             TurnSeq.value(e.turnSeq) >= TurnSeq.value(p.first) &&
             TurnSeq.value(e.turnSeq) <= TurnSeq.value(c.last)
         )
+        verdicts = verdicts.filterNot(_._1 == period)
         replace(p.copy(state = c.copy(purged = Some(at))))
       }
     }

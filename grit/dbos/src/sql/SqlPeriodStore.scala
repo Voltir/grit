@@ -278,6 +278,12 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
               ps.setString(4, EntryId.value(closing))
             }
             _ <- update(
+              "DELETE FROM grit.verdicts WHERE conversation_id = ?::uuid AND seq = ?"
+            ) { ps =>
+              ps.setString(1, ConversationId.value(period.conversationId))
+              ps.setLong(2, PeriodSeq.value(period.seq))
+            }
+            _ <- update(
               "UPDATE grit.periods SET purged_at = ? WHERE conversation_id = ?::uuid AND seq = ?"
             ) { ps =>
               ps.setObject(1, at.atOffset(ZoneOffset.UTC))

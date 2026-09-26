@@ -60,6 +60,6 @@ Consequences:
   one needs a patch or an epoch (ADR 0004).
 - What was evicted, and not kept by a ledger consumer inside the window, is eventually
   forgotten.
-- Built so far: periods, the raw window, and consumers built from closings. Still to build:
-  the balance and its cap, the closings' window, verdicts going with the raw purge, and
+- Built so far: periods, the raw window, consumers built from closings, the balance and its
+  cap, and verdicts going with the raw purge. Still to build: the closings' window and
   consumer classes.

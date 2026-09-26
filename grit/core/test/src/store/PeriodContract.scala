@@ -53,6 +53,11 @@ abstract class PeriodContract extends TestSuite {
   /** The origin of [[conversation]]`(name)`. */
   protected def origin(name: String): Origin
 
+  /** How many verdicts are kept on `period`, read past the store's own methods: no method
+    * reads a closed period's.
+    */
+  protected def verdictsOn(period: PeriodRef): Int
+
   private val Start = Instant.parse("2026-09-20T10:00:00Z")
 
   /** `minute` minutes into the tests' day. */
@@ -331,6 +336,21 @@ abstract class PeriodContract extends TestSuite {
       transaction(periods.purge(p1, at(200))) ==> Right(())
       purged ==> Right(Some(Some(at(100))))
       transaction(entries.list(c)).map(ids) ==> Right(left)
+    }
+
+    test("a purge deletes its period's verdicts, and keeps another period's") {
+      val c = conversation("purge-verdicts")
+      val other = conversation("purge-verdicts-other")
+      val t0 = say(c, 0)
+      val o0 = say(other, 0)
+      val p1 = PeriodRef(c, PeriodSeq.First)
+      val q1 = PeriodRef(other, PeriodSeq.First)
+      val weighed = Judgement.Weighed(p(0.9), p(0.05), p(0.05), "jev")
+      transaction(periods.judged(p1, Verdict(at(60), t0.turnSeq, weighed))) ==> Right(true)
+      transaction(periods.judged(q1, Verdict(at(60), o0.turnSeq, weighed))) ==> Right(true)
+      seal(p1, t0, 70, "judged")
+      transaction(periods.purge(p1, at(100))) ==> Right(())
+      (verdictsOn(p1), verdictsOn(q1)) ==> (0, 1)
     }
 
     test("the lifecycle's settings are the defaults until seeded, seeded once, then set") {
