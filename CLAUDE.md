@@ -39,7 +39,7 @@ Mill modules, and what each may name:
 | `grit.host` | `grit.host` | core | the local host: `LocalWorkspace`, `LocalEdits`, `LocalShell` (`grit.core.host`'s capabilities over this machine's files and processes; a command sees only an allowlisted environment); the only module that starts a process |
 | `grit.tools` | `grit.tools` | core | the coding tool set (`Coding`): read, list, search, write, edit and run as `Tool`s over `grit.core.host`'s capabilities; `Facts`: `propose_fact`, a measured fact about a model kept once a person approves it; `Probes`: `probe_pair`, a battery of calls measuring a (model, upstream) pair |
 | `grit.assembly` | `grit.assembly.{estimate,linear,retrieval}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`grit/assembly/README.md`](grit/assembly/README.md) |
-| `grit.eval` | `grit.eval` | core, dbos, assembly, models | the assembly eval, test sources only: every assembler over labelled cases in a throwaway Postgres; a report, not a gate |
+| `grit.eval` | `grit.eval` | core, dbos, assembly, models | the assembly eval, integration sources only (`grit.eval.it`): every assembler over labelled cases in a throwaway Postgres; a report, not a gate |
 | `grit.app` | `grit.app.{config,look,chat,main}` | everything | the composition root; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), or a one-shot run with arguments; package order in [`grit/app/README.md`](grit/app/README.md) |
 
 Mill `moduleDeps` are transitive, so
@@ -93,22 +93,26 @@ implementation it stands in for. The `test-janitor` agent reviews test files aga
 ```bash
 ./mill grit.core.test                                   # the module you touched
 ./mill grit.core.test.testOnly grit.core.topic.TopicsTests   # one suite
-./mill __.test                                          # everything: once, last, before committing
+./mill __.test                                          # the unit tier: once, last, before committing
+scripts/it                                              # the integration tier (below)
 ./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources   # before committing
 ```
 
 **Test incrementally.** While iterating, compile and test only the module or suite the
-change touches (or Metals' `compile-module`/`test`, below). The full suite is the last
-gate at a commit point, run once, not after every edit: it compiles every module and
-starts Postgres.
+change touches (or Metals' `compile-module`/`test`, below). The unit tier is the last
+gate at a commit point, run once, not after every edit: it compiles every module, and
+Mill reruns every suite (a test run is a command, never cached).
 
 Braces, never significant indentation — `-no-indent` makes it a compile error.
 
-`./mill __.test` needs Docker: the live suites (`grit.dbos.test`, `grit.app.test`) start
-a throwaway Postgres with Testcontainers (`TestPostgres`), built from the same
-`docker/postgres/Dockerfile` compose builds: `postgres:18` plus `pg_textsearch`
+**Two tiers.** `test` modules need nothing outside the JVM. The live suites, which run
+against Postgres and DBOS, are in `it` modules (`grit.dbos.it`, `grit.app.it`,
+`grit.eval.it`) and run through `scripts/it`: one throwaway Postgres shared by every `it`
+JVM (`TestPostgres`), built from the same `docker/postgres/Dockerfile` compose builds:
+`postgres:18` plus `pg_textsearch`
 ([ADR 0005](docs/decisions/0005-entries-are-ranked-with-bm25-inside-postgres-through-pg-textsearch.md)).
-There is no skip.
+Run it at a milestone's close, and before committing a change to `grit.dbos`, `schema.sql`
+or the engine's live paths. It needs Docker; there is no skip.
 
 **Capture and separation checking: [`docs/capture-checking.md`](docs/capture-checking.md)**
 has every trap met so far (symptom, cause, fix), how to test that something does not
@@ -208,4 +212,4 @@ lists only the companion, so use `get-docs`. BSP set-up and failure modes:
   they are true as of that commit.
 - **LLM spend stays under a few cents per run** of anything that calls a real model, such
   as a live test, a probe or a real-use run. Use a cheap model and a small `max_tokens`,
-  and say what a run cost. `./mill __.test` makes no model calls.
+  and say what a run cost. Neither test tier makes model calls.

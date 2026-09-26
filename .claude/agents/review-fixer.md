@@ -52,7 +52,8 @@ deleted because a type now says them.
   `compile-module`/`test`: Metals serves the main checkout, so from the fixer worktree they
   build and test code that is not yours. At the end, once:
   `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources`, `./mill __.test`
-  with 0 warnings, `bash scripts/enola-law.sh` (`bash scripts/fetch-enola.sh` first if
+  with 0 warnings (and `scripts/it` if the change touches `grit.dbos`, `schema.sql` or an
+  `it` module), `bash scripts/enola-law.sh` (`bash scripts/fetch-enola.sh` first if
   `tools/` lacks enola).
 - **Tests follow `STYLE.md`'s Tests section: red for the right reason, and shown.** For new
   behaviour or a bug fix, write the test first and run it red against the code as it

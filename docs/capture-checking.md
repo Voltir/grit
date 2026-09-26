@@ -306,7 +306,7 @@ this pattern.
 
 ## On a Scala upgrade
 
-1. `./mill __.test` from clean. `SeparationTests` failing means separation checking now
+1. `./mill __.test` from clean, then `scripts/it`. `SeparationTests` failing means separation checking now
    accepts or rejects something different: read the probes before changing them.
 2. Re-check each trap above against the new compiler, and delete any that no longer
    applies.

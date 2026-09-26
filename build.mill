@@ -48,10 +48,22 @@ trait GritModule extends ScalaModule {
   }
 }
 
-/* A test module that starts Postgres with Testcontainers. The tag is read from
- * docker-compose.yml and the image is built from the Dockerfile compose builds, so the tests
- * and the dev database run the same Postgres (TestPostgres). */
+/* An integration test module (`it`): its suites run against a live Postgres, so they are
+ * kept out of `./mill __.test` and run as `scripts/it` (`./mill __.it` under one shared
+ * server). The tag is read from docker-compose.yml and the image is built from the
+ * Dockerfile compose builds, so the tests and the dev database run the same Postgres
+ * (TestPostgres).
+ *
+ * One JVM per module: Mill's default test parallelism forks a JVM per worker, and each
+ * started its own container -- six in one full run, on a 4-CPU machine. */
 trait LivePostgres extends TestModule {
+  def testParallelism = Task { false }
+
+  /* The server scripts/it started, as host:port; unset, each JVM starts its own. An input,
+   * so every run reads the shell's value afresh: the Mill daemon keeps its own environment. */
+  def sharedPostgres = Task.Input { Task.env.get("GRIT_TEST_POSTGRES") }
+
+
   def composeFile = Task.Source(mill.api.BuildCtx.workspaceRoot / "docker-compose.yml")
   def postgresDockerfile =
     Task.Source(mill.api.BuildCtx.workspaceRoot / "docker" / "postgres" / "Dockerfile")
@@ -67,7 +79,7 @@ trait LivePostgres extends TestModule {
     super.forkEnv() ++ Map(
       "GRIT_POSTGRES_IMAGE" -> postgresImage(),
       "GRIT_POSTGRES_DOCKERFILE" -> postgresDockerfile().path.toString
-    )
+    ) ++ sharedPostgres().map("GRIT_TEST_POSTGRES" -> _)
   }
 }
 
@@ -109,9 +121,12 @@ object grit extends Module {
       mvn"org.postgresql:postgresql:42.7.13"
     )
 
-    /* Live tests against a throwaway Postgres (Testcontainers; `TestPostgres`), and core's
-     * store and durable contracts run against the SQL stores and DBOS. */
-    object test extends GritTests with LivePostgres {
+    /* What needs no Postgres: configuration and codecs. */
+    object test extends GritTests
+
+    /* Live tests against a throwaway Postgres (`TestPostgres`), and core's store and durable
+     * contracts run against the SQL stores and DBOS. */
+    object it extends GritTests with LivePostgres {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
       def mvnDeps = Task {
         super.mvnDeps() ++ Seq(mvn"org.testcontainers:testcontainers-postgresql:2.0.5")
@@ -195,13 +210,13 @@ object grit extends Module {
   }
 
   /* The assembly eval: every assembler over the same labelled cases, in a throwaway
-   * Postgres so retrieval ranks with the real pg_textsearch. Test sources only; a report,
-   * not a gate. roadmap/mechanisms/assembly-eval.md. */
+   * Postgres so retrieval ranks with the real pg_textsearch. Integration sources only; a
+   * report, not a gate. roadmap/mechanisms/assembly-eval.md. */
   object eval extends GritModule {
     def moduleDeps = Seq(grit.core, grit.dbos, grit.assembly, grit.models)
 
-    object test extends GritTests with LivePostgres {
-      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.test)
+    object it extends GritTests with LivePostgres {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.it)
     }
   }
 
@@ -271,10 +286,12 @@ object grit extends Module {
     def forkArgs = Task { tui.forkArgs() }
     def mainClass = Some("grit.app.main.Main")
 
+    object test extends GritTests
+
     /* A provider called once, end to end and live. The crash test runs one phase in a child JVM on this
      * classpath, which it halts mid-turn. */
-    object test extends GritTests with LivePostgres {
-      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.test)
+    object it extends GritTests with LivePostgres {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.it)
       def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
       def forkEnv = Task {
         super.forkEnv() ++ Map(

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# The integration tier: every `it` module's suites against one throwaway Postgres, shared by
+# all their JVMs, removed when this exits. Run at a milestone's close, and before committing
+# a change to grit.dbos, schema.sql or the engine's live paths.
+#
+#   scripts/it                                            # ./mill __.it
+#   scripts/it grit.dbos.it.testOnly grit.dbos.engine.SqlStoreTests
+#
+# The image is compose's tag, built from the Dockerfile compose builds, as TestPostgres does.
+# Without this script each `it` JVM starts its own container through Testcontainers.
+set -euo pipefail
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+image=$(sed -nE 's/^\s*image:\s*(grit-postgres:\S+).*/\1/p' docker-compose.yml)
+[ -n "$image" ] || { echo "it: docker-compose.yml names no grit-postgres image" >&2; exit 1; }
+
+# A container whose script was killed outright is left behind; clear those, never another
+# live run's.
+for c in $(docker ps -aq --filter label=grit.it.pid); do
+  pid=$(docker inspect -f '{{index .Config.Labels "grit.it.pid"}}' "$c")
+  kill -0 "$pid" 2>/dev/null || docker rm -f "$c" >/dev/null
+done
+
+docker build -q -t "$image" docker/postgres >/dev/null
+
+# Test data is thrown away, so durability only slows the start and every write. Credentials
+# are TestPostgres's.
+container=$(docker run -d --rm --label grit.it.pid=$$ \
+  -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test \
+  --tmpfs /var/lib/postgresql:rw -p 127.0.0.1::5432 "$image" \
+  postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c max_connections=300)
+trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT INT TERM
+
+# The image's first start runs initdb on a server with no TCP listener, so a TCP connection
+# succeeding means the real server is up.
+for _ in $(seq 1 60); do
+  docker exec "$container" psql -h 127.0.0.1 -U test -d postgres -tAc 'SELECT 1' >/dev/null 2>&1 && break
+  sleep 0.5
+done
+docker exec "$container" psql -h 127.0.0.1 -U test -d postgres -tAc 'SELECT 1' >/dev/null
+
+export GRIT_TEST_POSTGRES="127.0.0.1:$(docker port "$container" 5432/tcp | head -1 | sed 's/.*://')"
+echo "it: Postgres $image at $GRIT_TEST_POSTGRES"
+
+./mill "${@:-__.it}"

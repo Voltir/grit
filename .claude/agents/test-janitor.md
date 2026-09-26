@@ -9,7 +9,8 @@ not earn their keep. The brief names the area: paths, or a git range whose chang
 files you review (`git diff --name-only <range> -- '*/test/src/*'`).
 
 **Read-only.** Do not edit, create or delete any file, commit, or make a worktree. Do not
-run `./mill __.test`. You may run one suite (`./mill grit.<module>.test.testOnly <Suite>`)
+run `./mill __.test` or `scripts/it`. You may run one suite (`./mill grit.<module>.test.testOnly <Suite>`,
+or `scripts/it grit.<module>.it.testOnly <Suite>` for a live one)
 to check a claim; reading is usually enough.
 
 ## Before anything else

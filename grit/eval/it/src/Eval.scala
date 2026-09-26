@@ -17,10 +17,10 @@ import grit.models.{ModelRole, OpenRouterConfig, OpenRouterProvider}
 /** The assembly eval (roadmap/mechanisms/assembly-eval.md): every case in [[Cases]], as
   * written and buried in filler, under every strategy, scored on how many of its `[must]`
   * entries the window holds and what the window costs in estimated tokens. It runs in a
-  * throwaway Postgres (Testcontainers), so retrieval ranks with the real pg_textsearch. A
+  * throwaway Postgres (`TestPostgres`), so retrieval ranks with the real pg_textsearch. A
   * report, not a gate: the tests pin the harness, never the scores.
   *
-  * {{{./mill grit.eval.test.runMain grit.eval.Eval [--live]}}}
+  * {{{./mill grit.eval.it.runMain grit.eval.Eval [--live]}}}
   *
   * Retrieval uses each case's handwritten `query:`; with `--live` it also runs with the
   * query written by the Query role's model (OpenRouter, `OPENROUTER_API_KEY`), once per
