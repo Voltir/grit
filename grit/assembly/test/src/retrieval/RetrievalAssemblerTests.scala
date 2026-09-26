@@ -3,13 +3,34 @@ package grit.assembly.retrieval
 import java.time.Instant
 
 import grit.assembly.estimate.CharEstimate
-import grit.assembly.linear.AssemblyFixtures.{FakeDb, World, c1, closed, closingOf, store}
+import grit.assembly.linear.AssemblyFixtures.{
+  FakeDb,
+  World,
+  c1,
+  closed,
+  closingOf,
+  elsewhere,
+  store
+}
 import grit.assembly.linear.LinearAssembler
 import grit.core.context.{AssemblyNote, AssemblyRequest, Window}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.period.LifecycleSettings
+import grit.core.place.{Locality, Place, Scope, Weight}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
-import grit.core.store.{Entry, EntrySearch, OpenPeriod, Payload, StoreError, Tx}
+import grit.core.store.{
+  Entry,
+  EntrySearch,
+  InMemoryLifecycleStore,
+  Nearby,
+  OpenPeriod,
+  Origin,
+  Payload,
+  StoreError,
+  Tx
+}
+import grit.dbos.sql.TestTx
 
 import utest.*
 
@@ -34,6 +55,9 @@ object RetrievalAssemblerTests extends TestSuite {
     }
   }
 
+  /** One nearby search the assembler made: the conversations searched, and the query. */
+  private final case class NearAsked(conversations: List[ConversationId], query: String)
+
   /** One search the assembler made. */
   private final case class Asked(
       conversation: ConversationId,
@@ -48,6 +72,15 @@ object RetrievalAssemblerTests extends TestSuite {
     * scorer's whose ties would decide it.
     */
   private final class Scripted(ids: String*) extends EntrySearch {
+    // What nearby answers: each conversation's hits, as (conversation, id, score), best
+    // first; and every nearby search it was asked for, as the periods and query.
+    @caps.unsafe.untrackedCaptures
+    var near = Vector.empty[(ConversationId, String, Double)]
+    @caps.unsafe.untrackedCaptures
+    var nearAsked = Vector.empty[NearAsked]
+    // What search scores its hits, best first, when the test states them.
+    @caps.unsafe.untrackedCaptures
+    var scores = Vector.empty[Double]
     // Only ever holds immutable vectors; nothing reads it but the test that owns it.
     @caps.unsafe.untrackedCaptures
     var asked = Vector.empty[Asked]
@@ -74,7 +107,13 @@ object RetrievalAssemblerTests extends TestSuite {
 
     def nearby(open: Vector[OpenPeriod], query: String, limit: Int)(using
         Tx^
-    ): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
+    ): Either[StoreError, Vector[EntrySearch.Hit]] = {
+      nearAsked = nearAsked :+ NearAsked(open.map(_.conversation).toList, query)
+      Right(near.filter((c, _, _) => open.exists(_.conversation == c)).map { (c, id, score) =>
+        val turn = id.dropWhile(_ != 't').drop(1).takeWhile(_ != ':').toLongOption.getOrElse(0L)
+        EntrySearch.Hit(EntryId(id), TurnRef(c, TurnSeq(turn)), score)
+      })
+    }
   }
 
   /** How many hits the assembler is told to ask for. */
@@ -101,12 +140,29 @@ object RetrievalAssemblerTests extends TestSuite {
       writer: Provider^,
       budget: Long,
       search: EntrySearch = new Scripted(),
-      at: Long = 6
+      at: Long = 6,
+      locality: Locality = Locality.Default
   ): Window = {
     val turn = TurnRef(c1, TurnSeq(at))
+    val lifecycle = new InMemoryLifecycleStore
+    lifecycle
+      .set(
+        LifecycleSettings
+          .of(
+            LifecycleSettings.Default.windows,
+            4096,
+            LifecycleSettings.Default.settle,
+            LifecycleSettings.Default.resolveAt,
+            3,
+            locality
+          )
+          .getOrElse(sys.error("settings"))
+      )(using TestTx.fake)
+      .getOrElse(sys.error("in-memory store"))
     new RetrievalAssembler(
       world.entries,
       world.periods,
+      lifecycle,
       search,
       writer,
       CharEstimate,
@@ -127,7 +183,82 @@ object RetrievalAssemblerTests extends TestSuite {
       .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(6))))(using new FakeDb)
       .getOrElse(sys.error("in-memory store"))
 
+  private def placeOf(name: String): Place = Origin.Task("conversation", name).place
+
   val tests = Tests {
+
+    test("a period's first turn, with a period open elsewhere, writes a query and shows its turn") {
+      val world = store(ask)
+      val api = elsewhere(
+        world,
+        "api",
+        close = false,
+        exchange("the invoice test is flaky", "Pin TZ=UTC in the test JVM."),
+        exchange("lunch?", "later")
+      )
+      val writer = new Writer(Some("invoice test flaky fix"))
+      val search = new Scripted()
+      search.near = Vector((api, "api:t0:1", 2.0))
+      val w = assemble(world, writer, budget = 1000, search, at = 0)
+      writer.requests.size ==> 1
+      search.nearAsked.map(_.query) ==> Vector("invoice test flaky fix")
+      w.entries ==> Vector()
+      w.nearby ==> Vector(
+        Nearby(api, placeOf("api"), Vector(EntryId("api:t0:0"), EntryId("api:t0:1")))
+      )
+    }
+
+    test("with the scope off, or nothing open elsewhere, no query is written for a first turn") {
+      val world = store(ask)
+      elsewhere(world, "api", close = false, exchange("flaky", "TZ"))
+      val writer = new Writer(None)
+      assemble(
+        world,
+        writer,
+        budget = 1000,
+        new Scripted(),
+        at = 0,
+        Locality(Scope.Off, Weight.Default)
+      ).nearby ==> Vector()
+      val alone = store(ask)
+      assemble(alone, writer, budget = 1000, new Scripted(), at = 0).nearby ==> Vector()
+      writer.requests ==> Vector()
+    }
+
+    test("a closed period elsewhere, or a place out of scope, is never searched") {
+      val world = store(ask)
+      elsewhere(world, "gone", close = true, exchange("flaky", "TZ"))
+      val kept = elsewhere(world, "kept", close = false, exchange("flaky", "TZ"))
+      elsewhere(world, "far", close = false, exchange("flaky", "TZ"))
+      val search = new Scripted()
+      val scope = Scope(Vector(placeOf("kept")))
+      assemble(world, new Writer(Some("q")), 1000, search, at = 0, Locality(scope, Weight.Default))
+      search.nearAsked.map(_.conversations) ==> Vector(List(kept))
+    }
+
+    test("the weight decides between an own turn and one elsewhere that both match") {
+      // Budget for the tail (turns 4 and 5, 22 tokens) and one more turn: turn 0 (22) or
+      // api's section (34), not both.
+      def pick(weight: Double): Window = {
+        val world = store(buried*)
+        val api = elsewhere(world, "api", close = false, exchange("Which database?", "grit_agent."))
+        val search = new Scripted("t0:1")
+        search.scores = Vector(1.0)
+        search.near = Vector((api, "api:t0:1", 1.5))
+        assemble(
+          world,
+          new Writer(Some("database")),
+          budget = 56,
+          search,
+          locality = Locality(Scope.Everywhere, Weight.of(weight).getOrElse(sys.error("w")))
+        )
+      }
+      val weighted = pick(2)
+      (turnsOf(weighted), weighted.nearby.size) ==> (Vector("t0", "t4", "t5"), 0)
+      val even = pick(1)
+      (turnsOf(even), even.nearby.map(_.entries.map(EntryId.value))) ==>
+        (Vector("t4", "t5"), Vector(Vector("api:t0:0", "api:t0:1")))
+    }
 
     test("when every earlier turn fits, the window is linear and no query is written") {
       val entries = store(buried*)

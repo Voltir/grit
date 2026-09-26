@@ -11,9 +11,10 @@ import grit.core.store.{Entry, Payload}
 object QueryWriter {
 
   val System: String =
-    "You write search queries over the earlier part of a conversation between a user and " +
-      "an assistant. Given the user's new message, write one query that would find the " +
-      "earlier messages needed to answer it: the names, files, commands, " +
+    "You write search queries over a person's conversations with an assistant: the earlier " +
+      "part of this one, and others they have open elsewhere. Given the user's new message, " +
+      "write one query that would find the earlier messages needed to answer it: the names, " +
+      "files, commands, " +
       "decisions and technical terms those messages would contain, with likely synonyms. " +
       "Write plain words: the search ranks by shared words, and ignores operators such as " +
       "AND, OR and quotes. Reply with the query alone, on one line."

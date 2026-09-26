@@ -9,7 +9,8 @@ import grit.core.store.{Db, Entry, EntryStore, Payload, PeriodStore}
 /** The window with no choosing: the closing entry of the conversation's newest closed
   * period, then the messages of the most recent whole turns of the turn's own period, before
   * the turn, that fit in what `budget` tokens by `estimator` leave; never their summaries.
-  * The baseline every smarter assembler is measured against.
+  * The baseline every smarter assembler is measured against. It never draws on other
+  * conversations.
   *
   * The closing entry is paid for first; a budget too small for it leaves it out. Turns are
   * kept or dropped whole, so a window never opens on a reply without its question, or a tool

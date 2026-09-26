@@ -70,6 +70,47 @@ object AssemblyFixtures {
     world
   }
 
+  /** `turns` of another conversation, `name`, in `world`'s store, its period open from its
+    * first turn and ids `{name}:t{turn}:{seq}`; closed after them when `close`.
+    */
+  def elsewhere(
+      world: World,
+      name: String,
+      close: Boolean,
+      turns: Vector[Payload]*
+  ): ConversationId = {
+    val c = ConversationId(name)
+    given Tx = TestTx.fake
+    for (turn <- turns) {
+      val first = world.entries.lockNext(c).getOrElse(sys.error("in-memory store"))
+      val _ = world.periods.openFor(c, first.turnSeq, Instant.EPOCH)
+      for (payload <- turn) {
+        val next = world.entries.lockNext(c).getOrElse(sys.error("in-memory store"))
+        val _ = world.entries.insert(
+          Entry(
+            EntryId(s"$name:t${TurnSeq.value(first.turnSeq)}:${next.seq}"),
+            c,
+            first.turnSeq,
+            None,
+            next.seq,
+            payload,
+            Instant.EPOCH
+          )
+        )
+      }
+    }
+    if (close) {
+      val last = world.entries.lockNext(c).getOrElse(sys.error("in-memory store")).turnSeq
+      val _ = world.periods.seal(
+        CloseRef(PeriodRef(c, PeriodSeq.First), TurnSeq(TurnSeq.value(last) - 1), Instant.EPOCH),
+        CloseReason.Resolved(Probability.One),
+        TestClosings.prose(s"$name closed"),
+        Instant.EPOCH
+      )
+    }
+    c
+  }
+
   /** The id of period `n`'s closing entry. */
   def closingOf(n: Long): String =
     EntryId.value(PeriodRef(c1, PeriodSeq.of(n).getOrElse(sys.error("period"))).closingId)

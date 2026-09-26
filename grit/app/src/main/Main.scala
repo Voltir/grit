@@ -167,6 +167,7 @@ object Main {
           new RetrievalAssembler(
             engine.entries,
             engine.periods,
+            engine.lifecycle,
             engine.search,
             writer,
             CharEstimate,
