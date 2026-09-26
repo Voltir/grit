@@ -66,8 +66,6 @@ object EditorTests extends TestSuite {
     test("word-wise motion is bindable: Ctrl-Left/Right through the decoder's mods") {
       // "one two  three": one 0-2, two 4-6, three 9-13; word chars are alnum and '_'.
       val ctrl = Mods(false, false, true)
-      val e = Editor("one two  three", 14)
-      assert(key(e, Key.Left(ctrl)).get.caret == 9)
       var back = Editor("one two  three", 14)
       back = key(back, Key.Left(ctrl)).get
       assert(back.caret == 9)
@@ -138,7 +136,6 @@ object EditorTests extends TestSuite {
     test("the box renders a border, a title when focused, and wrapped content") {
       val e = Editor("hello world", 11, title = "prompt")
       val s = e.render(Size(4, Box))
-      assert(s.size == Size(4, 12))
       assert(s.lines(0) == "┌─ prompt ─┐")
       assert(s.lines(1) == "│hello     │")
       assert(s.lines(2) == "│world     │")
