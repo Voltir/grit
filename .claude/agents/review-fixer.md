@@ -44,7 +44,9 @@ deleted because a type now says them.
   smart constructor, ADT shaped by case); don't restate what a type or visibility says;
   do state failure modes and behaviour-changing constants.
 - **Test incrementally**: compile and test the module or suite you touched
-  (`./mill grit.<module>.test`, `.testOnly <Suite>`) while iterating. At the end, once:
+  (`./mill grit.<module>.test`, `.testOnly <Suite>`) while iterating. Not Metals'
+  `compile-module`/`test`: Metals serves the main checkout, so from a worktree they build
+  and test code that is not yours. At the end, once:
   `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources`, `./mill __.test`
   with 0 warnings, `bash scripts/enola-law.sh` (`bash scripts/fetch-enola.sh` first if
   `tools/` lacks enola).
