@@ -22,7 +22,7 @@ import grit.dbos.sql.{
 
 import utest.*
 
-/** The sweep that asks whether a quiet period is finished, over DBOS against a real
+/** The sweep that asks whether anyone is waiting on a quiet period, over DBOS against a real
   * Postgres, with stand-in bodies: what the sweep does with a question and a verdict, not
   * what a settle does.
   */
@@ -32,7 +32,7 @@ object SettleLiveTests extends TestSuite {
 
   private def p(x: Double): Probability = Probability.of(x).getOrElse(sys.error(s"$x"))
 
-  /** Ten minutes idle, a minute to settle, finished at 0.8, three asks. */
+  /** Ten minutes idle, a minute to settle, resolved at 0.8, three asks. */
   private def settling(config: DbConfig): Unit = {
     val settings = Windows
       .of(10.minutes, 1.day)
@@ -87,10 +87,10 @@ object SettleLiveTests extends TestSuite {
     }
 
     test(
-      "a verdict of finished makes the next sweep close the period on the verdict's time, asking no more"
+      "a verdict of nobody waiting makes the next sweep close the period on the verdict's time, asking no more"
     ) {
       val config = TestPostgres.freshDatabase("settle_finished")
-      // Keeps a verdict of finished, as a settle whose classifier says so does.
+      // Keeps a verdict of nobody waiting, as a settle whose classifier says so does.
       def settle(id: WorkflowId)(using d: Durable^): String =
         SettleRef.fromWorkflowId(id) match {
           case None => "not a settle"
@@ -98,7 +98,7 @@ object SettleLiveTests extends TestSuite {
             val verdict = Verdict(
               Instant.now(),
               q.last,
-              Judgement.Weighed(p(0.9), p(0.05), p(0.05), p(0), "jev")
+              Judgement.Weighed(p(0.9), p(0.05), p(0.05), "jev")
             )
             d.transact("record")(periods.judged(q.period, verdict).toString)
         }

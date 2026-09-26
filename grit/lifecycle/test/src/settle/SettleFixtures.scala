@@ -53,11 +53,16 @@ object SettleFixtures {
     @caps.unsafe.untrackedCaptures
     var calls = 0
 
+    // Only ever replaced by a new immutable vector; read only by the test that owns it.
+    @caps.unsafe.untrackedCaptures
+    var asked = Vector.empty[Question]
+
     protected def answer(
         state: ujson.Value,
         questions: Vector[Question]
     ): Either[ClassifierError, Answers] = {
       calls += 1
+      asked = asked ++ questions
       during()
       weights match {
         case None => Left(ClassifierError.Unavailable("no classifier"))

@@ -13,11 +13,11 @@ object Lifecycle {
   private val RetentionVar = "GRIT_RETENTION"
   private val BalanceVar = "GRIT_BALANCE"
   private val SettleVar = "GRIT_SETTLE"
-  private val FinishedAtVar = "GRIT_FINISHED_AT"
+  private val ResolveAtVar = "GRIT_RESOLVE_AT"
   private val AsksVar = "GRIT_ASKS"
 
   /** The settings the environment seeds: `GRIT_IDLE`, `GRIT_RETENTION` and `GRIT_SETTLE`
-    * ([[Durations]]), `GRIT_BALANCE` and `GRIT_ASKS` (whole numbers) and `GRIT_FINISHED_AT`
+    * ([[Durations]]), `GRIT_BALANCE` and `GRIT_ASKS` (whole numbers) and `GRIT_RESOLVE_AT`
     * (a probability, as 0.8), each unset one as [[LifecycleSettings.Default]] has it; or why
     * they are none, naming the variable.
     */
@@ -38,15 +38,15 @@ object Lifecycle {
       settle <- duration(SettleVar, default.settle)
       balance <- whole(BalanceVar, default.balance)
       asks <- whole(AsksVar, default.asks)
-      finishedAt <- env.get(FinishedAtVar) match {
-        case None => Right(default.finishedAt)
-        case Some(raw) => probability(raw).left.map(why => s"$FinishedAtVar: $why")
+      resolveAt <- env.get(ResolveAtVar) match {
+        case None => Right(default.resolveAt)
+        case Some(raw) => probability(raw).left.map(why => s"$ResolveAtVar: $why")
       }
       windows <- Windows.of(idle, retention).left.map(why => s"$IdleVar, $RetentionVar: $why")
       settings <- LifecycleSettings
-        .of(windows, balance, settle, finishedAt, asks)
+        .of(windows, balance, settle, resolveAt, asks)
         .left
-        .map(why => s"$BalanceVar, $SettleVar, $FinishedAtVar, $AsksVar: $why")
+        .map(why => s"$BalanceVar, $SettleVar, $ResolveAtVar, $AsksVar: $why")
     } yield settings
   }
 
@@ -61,7 +61,7 @@ object Lifecycle {
     case Retention(to: FiniteDuration)
     case Balance(to: Int)
     case Settle(to: FiniteDuration)
-    case FinishedAt(to: Probability)
+    case ResolveAt(to: Probability)
     case Asks(to: Int)
 
     /** `settings` with this change, or why the result breaks their rules. */
@@ -72,15 +72,15 @@ object Lifecycle {
         case Idle(to) =>
           Windows
             .of(to, w.retention)
-            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.finishedAt, s.asks))
+            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.resolveAt, s.asks))
         case Retention(to) =>
           Windows
             .of(w.idle, to)
-            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.finishedAt, s.asks))
-        case Balance(to) => LifecycleSettings.of(w, to, s.settle, s.finishedAt, s.asks)
-        case Settle(to) => LifecycleSettings.of(w, s.balance, to, s.finishedAt, s.asks)
-        case FinishedAt(to) => LifecycleSettings.of(w, s.balance, s.settle, to, s.asks)
-        case Asks(to) => LifecycleSettings.of(w, s.balance, s.settle, s.finishedAt, to)
+            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.resolveAt, s.asks))
+        case Balance(to) => LifecycleSettings.of(w, to, s.settle, s.resolveAt, s.asks)
+        case Settle(to) => LifecycleSettings.of(w, s.balance, to, s.resolveAt, s.asks)
+        case ResolveAt(to) => LifecycleSettings.of(w, s.balance, s.settle, to, s.asks)
+        case Asks(to) => LifecycleSettings.of(w, s.balance, s.settle, s.resolveAt, to)
       }
     }
   }
@@ -89,9 +89,9 @@ object Lifecycle {
 
     /** The names `/set` takes, in the order its help lists them. */
     val Names: Vector[String] =
-      Vector("idle", "settle", "finished", "asks", "retention", "balance")
+      Vector("idle", "settle", "resolve", "asks", "retention", "balance")
 
-    /** The change `text` writes: a name, then its value (`idle 3m`, `finished 0.9`,
+    /** The change `text` writes: a name, then its value (`idle 3m`, `resolve 0.9`,
       * `balance 300`); or why it writes none.
       */
     def parse(text: String): Either[String, Change] = {
@@ -107,7 +107,7 @@ object Lifecycle {
         case "settle" => duration(Settle(_))
         case "balance" => whole(Balance(_))
         case "asks" => whole(Asks(_))
-        case "finished" => probability(value).map(FinishedAt(_)).left.map(why => s"$name: $why")
+        case "resolve" => probability(value).map(ResolveAt(_)).left.map(why => s"$name: $why")
         case other => Left(s"no setting $other: ${Names.init.mkString(", ")} or ${Names.last}")
       }
     }
@@ -117,10 +117,11 @@ object Lifecycle {
   def describe(settings: LifecycleSettings): String = {
     val w = settings.windows
     val asking =
-      if (Probability.value(settings.finishedAt) >= 1.0) "never asks whether it is finished"
+      if (Probability.value(settings.resolveAt) >= 1.0) "never asks whether anyone is waiting"
       else
-        s"after ${written(settings.settle)} quiet, asks whether it is finished (at most " +
-          s"${settings.asks} times) and closes at ${Probability.value(settings.finishedAt)} or more"
+        s"after ${written(settings.settle)} quiet, asks whether anyone is waiting (at most " +
+          s"${settings.asks} times) and closes when nobody is at " +
+          s"${Probability.value(settings.resolveAt)} or more"
     s"$asking; closes after ${written(w.idle)} idle; raw entries kept ${written(w.retention)}; " +
       s"the balance holds ${settings.balance} bytes"
   }

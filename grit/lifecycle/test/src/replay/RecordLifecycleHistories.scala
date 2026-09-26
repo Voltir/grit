@@ -90,7 +90,7 @@ object RecordLifecycleHistories {
       settled("settle-judged") { (w, d) =>
         w.turn("deploy staging?", 0)
         val id = w.question.workflowId
-        d.run(id)(w.body(new SettleFixtures.Weigher(Some(Vector(0.85, 0.05, 0.05, 0.05))), 90))
+        d.run(id)(w.body(new SettleFixtures.Weigher(Some(Vector(0.85, 0.1, 0.05))), 90))
         id
       },
       settled("settle-unanswered") { (w, d) =>
@@ -110,7 +110,7 @@ object RecordLifecycleHistories {
         w.turn("hello", 0)
         val id = w.question.workflowId
         val interrupted = new SettleFixtures.Weigher(
-          Some(Vector(0.9, 0.1, 0.0, 0.0)),
+          Some(Vector(0.9, 0.1, 0.0)),
           () => { w.turn("wait", 80); () }
         )
         d.run(id)(w.body(interrupted, 90))

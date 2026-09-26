@@ -26,15 +26,15 @@ private[settle] object SettleJournal {
         }
     )
 
-  private val Options: Vector[String] = Vector("finished", "onPerson", "onOther", "unclear")
+  private val Options: Vector[String] = Vector("nobody", "onPerson", "onOther")
 
   given judged: Journaled[Judgement] =
     Journaled.json[Judgement](
       {
-        case Judgement.Weighed(finished, onPerson, onOther, unclear, model) =>
+        case Judgement.Weighed(nobody, onPerson, onOther, model) =>
           val o = ujson.Obj()
-          Options.zip(Vector(finished, onPerson, onOther, unclear)).foreach {
-            (key: String, p: Probability) => o(key) = Probability.value(p)
+          Options.zip(Vector(nobody, onPerson, onOther)).foreach { (key: String, p: Probability) =>
+            o(key) = Probability.value(p)
           }
           o("model") = model
           o
@@ -50,9 +50,9 @@ private[settle] object SettleJournal {
               case None =>
                 val ps = Options.flatMap(k => o.get(k).flatMap(_.numOpt).flatMap(Probability.of))
                 (ps, o.get("model").flatMap(_.strOpt)) match {
-                  case (Vector(f, p, x, u), Some(model)) =>
-                    Right(Judgement.Weighed(f, p, x, u, model))
-                  case _ => Left("judged: expected four probabilities and a model")
+                  case (Vector(n, p, x), Some(model)) =>
+                    Right(Judgement.Weighed(n, p, x, model))
+                  case _ => Left("judged: expected three probabilities and a model")
                 }
             }
         }

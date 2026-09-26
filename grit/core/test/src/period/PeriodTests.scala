@@ -18,24 +18,24 @@ object PeriodTests extends TestSuite {
   private def settings(
       idle: FiniteDuration = 1.hour,
       settle: FiniteDuration = 5.minutes,
-      finishedAt: Double = 0.8,
+      resolveAt: Double = 0.8,
       asks: Int = 3
   ): LifecycleSettings =
     Windows
       .of(idle, 30.days)
-      .flatMap(LifecycleSettings.of(_, 3, settle, p(finishedAt), asks))
+      .flatMap(LifecycleSettings.of(_, 3, settle, p(resolveAt), asks))
       .getOrElse(throw new java.lang.AssertionError(idle))
 
   private val hourAndFive = settings()
 
   private val p1 = PeriodRef(ConversationId("c"), PeriodSeq.First)
 
-  /** A verdict at `seconds` after noon about turn `last`, finished with probability `f`. */
+  /** A verdict at `seconds` after noon about turn `last`, nobody waiting with probability `f`. */
   private def weighed(seconds: Long, last: Long, f: Double): Verdict =
     Verdict(
       Noon.plusSeconds(seconds),
       TurnSeq(last),
-      Judgement.Weighed(p(f), p(0), p(1 - f), p(0), "jev")
+      Judgement.Weighed(p(f), p(0), p(1 - f), "jev")
     )
 
   val tests = Tests {
@@ -46,13 +46,13 @@ object PeriodTests extends TestSuite {
         Due(Noon.plusSeconds(4200), CloseReason.Lapsed)
     }
 
-    test("a verdict of finished at the threshold, after the activity, resolves it at once") {
+    test("a verdict of nobody waiting at the threshold, after the activity, resolves it at once") {
       Deadline.of(Noon, TurnSeq(2), Some(weighed(300, 2, 0.8)), hourAndFive) ==>
         Due(Noon.plusSeconds(300), CloseReason.Resolved(p(0.8)))
     }
 
     test(
-      "a verdict below the threshold, before or at the activity, of another turn, unanswered or with finishedAt 1 leaves the idle deadline"
+      "a verdict below the threshold, before or at the activity, of another turn, unanswered or with resolveAt 1 leaves the idle deadline"
     ) {
       val lapses = Due(Noon.plusSeconds(3600), CloseReason.Lapsed)
       Vector(
@@ -65,12 +65,12 @@ object PeriodTests extends TestSuite {
           Some(Verdict(Noon.plusSeconds(300), TurnSeq(2), Judgement.Unanswered("down"))),
           hourAndFive
         ),
-        Deadline.of(Noon, TurnSeq(2), Some(weighed(300, 2, 1.0)), settings(finishedAt = 1.0))
+        Deadline.of(Noon, TurnSeq(2), Some(weighed(300, 2, 1.0)), settings(resolveAt = 1.0))
       ) ==> Vector.fill(5)(lapses)
     }
 
     test(
-      "a quiet period is asked the settle window after its activity, once as it stands, at most asks times, never with finishedAt 1"
+      "a quiet period is asked the settle window after its activity, once as it stands, at most asks times, never with resolveAt 1"
     ) {
       Deadline.ask(Noon, TurnSeq(2), None, 0, hourAndFive) ==> Some(Noon.plusSeconds(300))
       Deadline.ask(Noon, TurnSeq(2), Some(weighed(0, 2, 0.1)), 2, hourAndFive) ==>
@@ -78,7 +78,7 @@ object PeriodTests extends TestSuite {
       Vector(
         Deadline.ask(Noon, TurnSeq(2), Some(weighed(300, 2, 0.1)), 1, hourAndFive),
         Deadline.ask(Noon, TurnSeq(2), None, 3, hourAndFive),
-        Deadline.ask(Noon, TurnSeq(2), None, 0, settings(finishedAt = 1.0))
+        Deadline.ask(Noon, TurnSeq(2), None, 0, settings(resolveAt = 1.0))
       ) ==> Vector(None, None, None)
     }
 
@@ -98,7 +98,7 @@ object PeriodTests extends TestSuite {
     }
 
     test(
-      "the settings refuse a balance below 1, a settle not shorter than idle, finishedAt 0 and no asks"
+      "the settings refuse a balance below 1, a settle not shorter than idle, resolveAt 0 and no asks"
     ) {
       val w = Windows.of(1.hour, 1.day).getOrElse(throw new java.lang.AssertionError("w"))
       Vector(
@@ -111,7 +111,7 @@ object PeriodTests extends TestSuite {
         Left("balance must be at least 1"),
         Left("settle must be positive"),
         Left("settle must be shorter than idle"),
-        Left("finishedAt must be above 0"),
+        Left("resolveAt must be above 0"),
         Left("asks must be at least 1")
       )
       LifecycleSettings.of(w, 1, 59.minutes, p(1.0), 1).map(s => (s.balance, s.settle, s.asks)) ==>

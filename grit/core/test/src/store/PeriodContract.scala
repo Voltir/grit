@@ -214,7 +214,7 @@ abstract class PeriodContract extends TestSuite {
       val later = Verdict(
         at(120),
         t0.turnSeq,
-        Judgement.Weighed(p(0.86), p(0.04), p(0.06), p(0.04), "jev")
+        Judgement.Weighed(p(0.86), p(0.04), p(0.10), "jev")
       )
       transaction(periods.judged(p1, early)) ==> Right(true)
       transaction(periods.judged(p1, later)) ==> Right(true)
@@ -334,10 +334,10 @@ abstract class PeriodContract extends TestSuite {
     }
 
     test("the lifecycle's settings are the defaults until seeded, seeded once, then set") {
-      def settings(idle: FiniteDuration, balance: Int, finishedAt: Double, asks: Int) =
+      def settings(idle: FiniteDuration, balance: Int, resolveAt: Double, asks: Int) =
         Windows
           .of(idle, 1.day)
-          .flatMap(LifecycleSettings.of(_, balance, idle - 1.minute, p(finishedAt), asks))
+          .flatMap(LifecycleSettings.of(_, balance, idle - 1.minute, p(resolveAt), asks))
           .getOrElse(throw new java.lang.AssertionError(idle))
       val (seeded, ignored, later) = (
         settings(3.minutes, 300, 0.8, 3),

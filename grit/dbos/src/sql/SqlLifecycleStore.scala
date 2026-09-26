@@ -22,19 +22,19 @@ final class SqlLifecycleStore extends LifecycleStore {
             |       (extract(epoch FROM retention) * 1000)::bigint AS retention,
             |       balance,
             |       (extract(epoch FROM settle) * 1000)::bigint AS settle,
-            |       finished_at, asks
+            |       resolve_at, asks
             |  FROM grit.lifecycle_settings""".stripMargin
         )
       ) { ps =>
         Using.resource(ps.executeQuery()) { rs =>
           if (!rs.next()) Right(LifecycleSettings.Default)
           else {
-            val finishedAt = rs.getDouble("finished_at")
+            val resolveAt = rs.getDouble("resolve_at")
             (for {
               windows <- Windows.of(rs.getLong("idle").millis, rs.getLong("retention").millis)
               at <- Probability
-                .of(finishedAt)
-                .toRight(s"finished_at $finishedAt is not a probability")
+                .of(resolveAt)
+                .toRight(s"resolve_at $resolveAt is not a probability")
               settings <- LifecycleSettings.of(
                 windows,
                 rs.getInt("balance"),
@@ -57,7 +57,7 @@ final class SqlLifecycleStore extends LifecycleStore {
       settings,
       """ON CONFLICT (one) DO UPDATE SET idle = EXCLUDED.idle, retention = EXCLUDED.retention,
         |  balance = EXCLUDED.balance, settle = EXCLUDED.settle,
-        |  finished_at = EXCLUDED.finished_at, asks = EXCLUDED.asks""".stripMargin
+        |  resolve_at = EXCLUDED.resolve_at, asks = EXCLUDED.asks""".stripMargin
     )
 
   private def write(settings: LifecycleSettings, onConflict: String)(using
@@ -68,7 +68,7 @@ final class SqlLifecycleStore extends LifecycleStore {
     attempt {
       Using.resource(
         conn.prepareStatement(
-          s"""INSERT INTO grit.lifecycle_settings (idle, retention, balance, settle, finished_at, asks)
+          s"""INSERT INTO grit.lifecycle_settings (idle, retention, balance, settle, resolve_at, asks)
              |VALUES (? * interval '1 millisecond', ? * interval '1 millisecond', ?,
              |        ? * interval '1 millisecond', ?, ?)
              |$onConflict""".stripMargin
@@ -78,7 +78,7 @@ final class SqlLifecycleStore extends LifecycleStore {
         ps.setLong(2, w.retention.toMillis)
         ps.setInt(3, settings.balance)
         ps.setLong(4, settings.settle.toMillis)
-        ps.setDouble(5, Probability.value(settings.finishedAt))
+        ps.setDouble(5, Probability.value(settings.resolveAt))
         ps.setInt(6, settings.asks)
         ps.executeUpdate()
         ()

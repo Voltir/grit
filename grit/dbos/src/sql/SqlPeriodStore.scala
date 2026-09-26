@@ -88,25 +88,25 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       kept <- open match {
         case Some(a) if a.last == verdict.last =>
           update(
-            """INSERT INTO grit.verdicts (conversation_id, seq, last_turn, at, finished,
-              |  waiting_person, waiting_other, unclear, model, unanswered)
-              |VALUES (?::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?)""".stripMargin
+            """INSERT INTO grit.verdicts (conversation_id, seq, last_turn, at, nobody,
+              |  waiting_person, waiting_other, model, unanswered)
+              |VALUES (?::uuid, ?, ?, ?, ?, ?, ?, ?, ?)""".stripMargin
           ) { ps =>
             ps.setString(1, ConversationId.value(period.conversationId))
             ps.setLong(2, PeriodSeq.value(period.seq))
             ps.setLong(3, TurnSeq.value(verdict.last))
             ps.setObject(4, verdict.at.atOffset(ZoneOffset.UTC))
             verdict.judgement match {
-              case Judgement.Weighed(finished, onPerson, onOther, unclear, model) =>
-                Vector(finished, onPerson, onOther, unclear).zipWithIndex.foreach {
-                  (p: Probability, i: Int) => ps.setDouble(5 + i, Probability.value(p))
+              case Judgement.Weighed(nobody, onPerson, onOther, model) =>
+                Vector(nobody, onPerson, onOther).zipWithIndex.foreach { (p: Probability, i: Int) =>
+                  ps.setDouble(5 + i, Probability.value(p))
                 }
-                ps.setString(9, model)
-                ps.setNull(10, java.sql.Types.VARCHAR)
-              case Judgement.Unanswered(why) =>
-                (5 to 8).foreach(ps.setNull(_, java.sql.Types.DOUBLE))
+                ps.setString(8, model)
                 ps.setNull(9, java.sql.Types.VARCHAR)
-                ps.setString(10, why)
+              case Judgement.Unanswered(why) =>
+                (5 to 7).foreach(ps.setNull(_, java.sql.Types.DOUBLE))
+                ps.setNull(8, java.sql.Types.VARCHAR)
+                ps.setString(9, why)
             }
           }.map(_ => true)
         case _ => Right(false)
@@ -128,7 +128,7 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
   ): Either[StoreError, Vector[Activity]] =
     many(
       s"""SELECT p.conversation_id, p.seq, a.newest, a.last, n.asked,
-         |       v.at, v.last_turn, v.finished, v.waiting_person, v.waiting_other, v.unclear,
+         |       v.at, v.last_turn, v.nobody, v.waiting_person, v.waiting_other,
          |       v.model, v.unanswered
          |  FROM grit.periods p
          | CROSS JOIN LATERAL (
@@ -368,14 +368,13 @@ private object SqlPeriodStore {
     optInstant(rs, "at").map { at =>
       val judgement =
         (
-          probability(rs, "finished"),
+          probability(rs, "nobody"),
           probability(rs, "waiting_person"),
           probability(rs, "waiting_other"),
-          probability(rs, "unclear"),
           Option(rs.getString("model"))
         ) match {
-          case (Some(f), Some(p), Some(o), Some(u), Some(model)) =>
-            Judgement.Weighed(f, p, o, u, model)
+          case (Some(n), Some(p), Some(o), Some(model)) =>
+            Judgement.Weighed(n, p, o, model)
           case _ => Judgement.Unanswered(Option(rs.getString("unanswered")).getOrElse(""))
         }
       Verdict(at, TurnSeq(rs.getLong("last_turn")), judgement)

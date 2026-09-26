@@ -59,14 +59,14 @@ import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
   * runs in, in at most `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at
   * least 2), the last with tools off. A command it runs sees only the environment
   * `LocalShell` passes. The engine sweeps every `GRIT_SWEEP` (default
-  * [[DefaultSweep]]), asking the same classifier as the topics whether each quiet period is
-  * finished ([[Settle]]), closing each period whose deadline has come ([[Close]]), its
+  * [[DefaultSweep]]), asking the same classifier as the topics whether anyone is waiting on
+  * each quiet period ([[Settle]]), closing each period whose deadline has come ([[Close]]), its
   * closing written by the summary role and gated by that classifier, and posting each closed
   * period to the plugins `GRIT_PLUGINS` turns on ([[pluginChoice]], [[Posting]]; with
   * Digest on, each turn's model is offered `recent_activity`). When a period is asked about
   * and closes, and how many closing entries open a window, are data in the database: on the
   * first start against a database they are seeded from `GRIT_IDLE`, `GRIT_SETTLE`,
-  * `GRIT_FINISHED_AT`, `GRIT_ASKS`, `GRIT_RETENTION` and `GRIT_WINDOW_K`
+  * `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION` and `GRIT_WINDOW_K`
   * ([[Lifecycle.fromEnv]]); after that, those variables are ignored, and `/set` (or SQL)
   * changes them, from the next sweep and turn on.
   *

@@ -9,15 +9,15 @@ import grit.core.id.TurnSeq
 /** When a period closes, and the reason it will close for. */
 final case class Due(at: Instant, reason: CloseReason)
 
-/** When a period closes, and when the classifier is asked whether it is finished: the one
+/** When a period closes, and when the classifier is asked whether anyone is waiting: the one
   * definition of each, over an open period's newest `activity`, its newest turn `last`, its
   * latest verdict and the settings in force.
   */
 object Deadline {
 
   /** When the period closes: at the verdict's time, Resolved with its probability of
-    * finished, when the verdict came after `activity`, is about `last`, and weighed finished
-    * at or above `settings.finishedAt` (which, at 1, no verdict does); otherwise the idle
+    * nobody waiting, when the verdict came after `activity`, is about `last`, and weighed
+    * nobody at or above `settings.resolveAt` (which, at 1, no verdict does); otherwise the idle
     * window after `activity`, Lapsed.
     */
   def of(
@@ -27,17 +27,17 @@ object Deadline {
       settings: LifecycleSettings
   ): Due =
     current(activity, last, verdict)
-      .collect { case Verdict(at, _, Judgement.Weighed(finished, _, _, _, _)) =>
-        (at, finished)
+      .collect { case Verdict(at, _, Judgement.Weighed(nobody, _, _, _)) =>
+        (at, nobody)
       }
-      .filter((_, finished) => on(settings) && finished >= settings.finishedAt)
-      .fold(Due(plus(activity, settings.windows.idle), CloseReason.Lapsed))((at, finished) =>
-        Due(at, CloseReason.Resolved(finished))
+      .filter((_, nobody) => on(settings) && nobody >= settings.resolveAt)
+      .fold(Due(plus(activity, settings.windows.idle), CloseReason.Lapsed))((at, nobody) =>
+        Due(at, CloseReason.Resolved(nobody))
       )
 
   /** When the classifier is asked about the period: the settle window after `activity`,
     * unless it has already been asked since then about `last`, it has been asked
-    * `settings.asks` times (`asked`), or `settings.finishedAt` is 1; `None` then.
+    * `settings.asks` times (`asked`), or `settings.resolveAt` is 1; `None` then.
     */
   def ask(
       activity: Instant,
@@ -59,7 +59,7 @@ object Deadline {
     verdict.filter(v => v.at.isAfter(activity) && v.last == last)
 
   /** Whether a verdict can close a period at all. */
-  private def on(settings: LifecycleSettings): Boolean = Probability.One > settings.finishedAt
+  private def on(settings: LifecycleSettings): Boolean = Probability.One > settings.resolveAt
 
   private def plus(t: Instant, d: FiniteDuration): Instant = t.plusMillis(d.toMillis)
 }

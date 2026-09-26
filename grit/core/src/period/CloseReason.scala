@@ -3,7 +3,7 @@ package grit.core.period
 /** Why a period closed. */
 enum CloseReason {
 
-  /** The classifier judged it finished, with probability `confidence`, once it had been quiet
+  /** The classifier judged nobody waiting on anything, with probability `confidence`, once it had been quiet
     * for the settle window ([[Verdict]]).
     */
   case Resolved(confidence: Probability)

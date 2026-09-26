@@ -6,7 +6,7 @@ import grit.core.period.{Judgement, Probability, Verdict}
 import grit.core.store.{StoreError, Tx}
 import grit.lifecycle.transcript.PeriodTranscript
 
-/** The settle: one workflow per question whether a quiet period is finished
+/** The settle: one workflow per question whether anyone is waiting on a quiet period
   * ([[SettleRef]]), run on the turns' queue under its conversation, so never beside one of
   * its turns. Each step's output is recorded, so a settle resumed after a crash never asks
   * the classifier twice, and a question is asked once: its id names the quiet stretch.
@@ -99,8 +99,8 @@ object Settle {
     }).left.map(describe)
 
   private def shown(judgement: Judgement): String = judgement match {
-    case Judgement.Weighed(finished, _, _, _, model) =>
-      s"finished ${Probability.value(finished)} ($model)"
+    case Judgement.Weighed(nobody, _, _, model) =>
+      s"nobody ${Probability.value(nobody)} ($model)"
     case Judgement.Unanswered(why) => s"unanswered: $why"
   }
 

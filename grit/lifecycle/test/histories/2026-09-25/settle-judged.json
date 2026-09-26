@@ -10,7 +10,7 @@
     },
     {
       "name": "ask",
-      "output": "{\"finished\":0.85,\"onPerson\":0.05,\"onOther\":0.05,\"unclear\":0.05,\"model\":\"jev\"}"
+      "output": "{\"nobody\":0.85,\"onPerson\":0.1,\"onOther\":0.05,\"model\":\"jev\"}"
     },
     {
       "name": "record",

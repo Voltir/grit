@@ -16,12 +16,11 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   with nothing new, or when the model fails, the per-turn summaries as the prose and no
   model call; the edits and the topics' applied to the balance, held to the cap in force), `seal` it with its closing entry. `CloseEnv` is what it works
   with. ← `transcript`
-- **`settle`** — `Settle`: the one question whether a quiet period is finished, asked
+- **`settle`** — `Settle`: the one question whether anyone is waiting on a quiet period, asked
   once per quiet stretch, on the turns' queue under its conversation
   (`grit.dbos.workflow.Settles`): `check` the period is still quiet as the question was
-  made and still to be asked, `ask` the classifier (`SettleQuestion`: finished, waiting on
-  the person, waiting on something else, unclear), `record` the verdict, which a finished
-  one at or above the threshold turns into the period's deadline (`grit.core.period.Deadline`).
+  made and still to be asked, `ask` the classifier (`SettleQuestion`: nobody, the person, or
+  something else), `record` the verdict, which one of nobody at or above the threshold turns into the period's deadline (`grit.core.period.Deadline`).
   A classifier that fails is a verdict too, so nothing is asked again before new activity.
   `SettleEnv` is what it works with. ← `transcript`
 - **`post`** — `Posting`: one run posting closed periods to a plugin from its cursor

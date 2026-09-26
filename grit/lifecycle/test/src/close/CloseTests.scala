@@ -93,7 +93,7 @@ object CloseTests extends TestSuite {
       val last = w.say("done?", 0)
       val finished = Probability.of(0.9).getOrElse(throw new java.lang.AssertionError("p"))
       val weighed =
-        Judgement.Weighed(finished, Probability.Zero, Probability.Zero, Probability.Zero, "jev")
+        Judgement.Weighed(finished, Probability.Zero, Probability.Zero, "jev")
       w.periods.judged(p1, Verdict(at(61), last.turnSeq, weighed))(using TestTx.fake) ==>
         Right(true)
       val durable = new InMemoryDurable
@@ -322,7 +322,7 @@ object CloseTests extends TestSuite {
       // (a7542da0… against d627e55e…), so it is refused first, and that is enough.
       w.lifecycle.set(
         LifecycleSettings
-          .of(d.windows, 22, d.settle, d.finishedAt, d.asks)
+          .of(d.windows, 22, d.settle, d.resolveAt, d.asks)
           .getOrElse(throw new java.lang.AssertionError("settings"))
       )(using TestTx.fake)
       w.say("where do we deploy?", 0)

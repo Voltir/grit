@@ -3,8 +3,9 @@ package grit.lifecycle.settle
 import grit.core.classify.{Ask, Classifier, ClassifierError, Criterion, StateJson}
 import grit.core.period.{Judgement, Probability}
 
-/** The one question a quiet period is asked: is its work finished, or is it waiting, on the
-  * person or on something else, or is it unclear. Only finished can close it.
+/** The one question a quiet period is asked: is anyone waiting on anything, the person or
+  * something else, or nobody. Only nobody can close it: a lookup or a recap, with nothing
+  * left to do, closes as readily as a finished task.
   */
 object SettleQuestion {
 
@@ -14,17 +15,18 @@ object SettleQuestion {
   given StateJson[Transcript] = StateJson.instance(t => ujson.Obj("transcript" -> t.text))
 
   private enum Standing {
-    case Finished, OnPerson, OnOther, Unclear
+    case Nobody, OnPerson, OnOther
   }
 
   private val question =
     Ask.choice[Transcript, Standing](
-      "Read transcript. The conversation has gone quiet. Is the work it was about finished, " +
-        "or is it waiting?",
+      "Read transcript. The conversation has gone quiet. Is anyone waiting on anything?",
       Criterion(
-        Standing.Finished,
-        "finished",
-        Some("the question was answered or the task done, and nothing more is expected")
+        Standing.Nobody,
+        "nobody",
+        Some(
+          "nothing is left to do or answer: the question was answered, the task done, or it was only a lookup"
+        )
       ),
       Criterion(
         Standing.OnPerson,
@@ -35,8 +37,7 @@ object SettleQuestion {
         Standing.OnOther,
         "waiting_on_other",
         Some("it waits on something outside the conversation: a build, a review, someone else")
-      ),
-      Criterion(Standing.Unclear, "unclear", Some("the transcript does not say"))
+      )
     )
 
   /** What `classifier` makes of `transcript`: each option's probability and the model that
@@ -50,10 +51,9 @@ object SettleQuestion {
           case Right(answered) =>
             def p(o: Standing) = Probability.clamped(answered.value.probability(o))
             Judgement.Weighed(
-              p(Standing.Finished),
+              p(Standing.Nobody),
               p(Standing.OnPerson),
               p(Standing.OnOther),
-              p(Standing.Unclear),
               answered.model
             )
           case Left(ClassifierError.Unavailable(why)) => Judgement.Unanswered(s"unavailable: $why")

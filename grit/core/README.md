@@ -10,7 +10,7 @@ In dependency order:
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `WorkflowId`,
   `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`), `TurnRef`, `PeriodRef`, `CloseRef` (one
   attempt to close a period on its deadline, and its workflow id) and `SettleRef` (the one
-  question whether a quiet period is finished, and its workflow id). Imports nothing in core.
+  question whether anyone is waiting on a quiet period, and its workflow id). Imports nothing in core.
 - **`model`** — what grit knows about models, as data: `ModelRef` (a model snapshot at an
   upstream), each setting's `Known` value and its `Source`, the switches a `Profile` picks
   among and the `Settings` a call is made under, the `Policy` of which pair does each job,
@@ -25,7 +25,7 @@ In dependency order:
   form. ← `id`
 - **`period`** — a conversation's time as periods that close (ADRs 0011, 0012): `Period`
   and its `PeriodState`, `CloseReason`, the `Windows` and `LifecycleSettings` in force,
-  `Deadline` (when a period closes, and when it is asked whether it is finished: the one
+  `Deadline` (when a period closes, and when it is asked whether anyone is waiting: the one
   definition of each), a classifier's `Verdict` and its `Judgement`, `Probability`, an open
   period's `Activity`, the `Closing` a
   closed one leaves (its `Flows`, and the conversation's `Balance` after it: `Line`s in

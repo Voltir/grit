@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS grit.model_facts (
 -- before the next period's first. An entry's period follows from its turn_seq. A closed
 -- period has its closing entry, written in the same transaction as the seal, its reason,
 -- its last turn and its place in close order: all four, or none (PeriodState.Closed).
--- When it closes, and when it is asked whether it is finished, are never stored or computed
+-- When it closes, and when it is asked whether anyone is waiting, are never stored or computed
 -- here: Deadline is their one definition.
 CREATE TABLE IF NOT EXISTS grit.periods (
     conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,
@@ -134,7 +134,8 @@ CREATE TABLE IF NOT EXISTS grit.periods (
     last_turn       BIGINT,
     closed_at       TIMESTAMPTZ,
     reason          TEXT CHECK (reason IN ('resolved', 'lapsed')),
-    -- A resolved close's probability of finished (CloseReason.Resolved); none for a lapse.
+    -- A resolved close's probability that nobody was waiting (CloseReason.Resolved); none for a
+    -- lapse.
     confidence      DOUBLE PRECISION CHECK (confidence BETWEEN 0 AND 1),
     closing_id      TEXT REFERENCES grit.entries(id),
     -- Close order across conversations, what plugin cursors count. Taken under a lock held
@@ -154,29 +155,28 @@ CREATE TABLE IF NOT EXISTS grit.periods (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_periods_open ON grit.periods (conversation_id)
     WHERE closed_at IS NULL;
 
--- What the classifier made of each period once it went quiet (grit.core.period.Verdict): the
--- tuning data for when a period closes, kept when the period's raw entries are purged. A
--- verdict is about the period as it stood with `last_turn` its newest turn; weighed, with a
--- probability for each option and the model, or unanswered, with why.
+-- What the classifier made of each period once it went quiet (grit.core.period.Verdict):
+-- whether anyone is waiting on anything, the tuning data for when a period closes, kept
+-- when the period's raw entries are purged. A verdict is about the period as it stood with
+-- `last_turn` its newest turn; weighed, with a probability for each answer (nobody, the
+-- person, something else) and the model, or unanswered, with why.
 CREATE TABLE IF NOT EXISTS grit.verdicts (
     ordinal          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     conversation_id  UUID NOT NULL,
     seq              BIGINT NOT NULL,
     last_turn        BIGINT NOT NULL,
     at               TIMESTAMPTZ NOT NULL,
-    finished         DOUBLE PRECISION CHECK (finished BETWEEN 0 AND 1),
+    nobody           DOUBLE PRECISION CHECK (nobody BETWEEN 0 AND 1),
     waiting_person   DOUBLE PRECISION CHECK (waiting_person BETWEEN 0 AND 1),
     waiting_other    DOUBLE PRECISION CHECK (waiting_other BETWEEN 0 AND 1),
-    unclear          DOUBLE PRECISION CHECK (unclear BETWEEN 0 AND 1),
     model            TEXT,
     unanswered       TEXT,
     FOREIGN KEY (conversation_id, seq) REFERENCES grit.periods(conversation_id, seq)
         ON DELETE CASCADE,
-    CHECK ((unanswered IS NULL) = (finished IS NOT NULL)
-       AND (finished IS NULL) = (waiting_person IS NULL)
-       AND (finished IS NULL) = (waiting_other IS NULL)
-       AND (finished IS NULL) = (unclear IS NULL)
-       AND (finished IS NULL) = (model IS NULL))
+    CHECK ((unanswered IS NULL) = (nobody IS NOT NULL)
+       AND (nobody IS NULL) = (waiting_person IS NULL)
+       AND (nobody IS NULL) = (waiting_other IS NULL)
+       AND (nobody IS NULL) = (model IS NULL))
 );
 
 CREATE INDEX IF NOT EXISTS idx_verdicts_period ON grit.verdicts (conversation_id, seq, at);
@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
     retention   INTERVAL NOT NULL,
     balance     INTEGER NOT NULL,
     settle      INTERVAL NOT NULL,
-    finished_at DOUBLE PRECISION NOT NULL,
+    resolve_at DOUBLE PRECISION NOT NULL,
     asks        INTEGER NOT NULL
 );
 

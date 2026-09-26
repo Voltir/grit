@@ -9,19 +9,13 @@ import grit.core.id.TurnSeq
   */
 final case class Verdict(at: Instant, last: TurnSeq, judgement: Judgement)
 
-/** The classifier's answer to whether a quiet period is finished. */
+/** The classifier's answer to whether anyone is waiting on anything in a quiet period. */
 enum Judgement {
 
-  /** `model`'s probability of each option: finished, waiting on the person, waiting on
-    * something else, unclear.
+  /** `model`'s probability that nobody is waiting on anything (`nobody`), that the person
+    * is (`onPerson`), and that something else is (`onOther`).
     */
-  case Weighed(
-      finished: Probability,
-      onPerson: Probability,
-      onOther: Probability,
-      unclear: Probability,
-      model: String
-  )
+  case Weighed(nobody: Probability, onPerson: Probability, onOther: Probability, model: String)
 
   /** No answer, for `why`: the classifier was absent or failed, or its answer did not read. */
   case Unanswered(why: String)
