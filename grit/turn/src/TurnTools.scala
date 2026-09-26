@@ -230,5 +230,6 @@ object TurnTools {
     case StoreError.DuplicateId(id) =>
       TurnFailure.Store(s"entry ${EntryId.value(id)} already exists")
     case StoreError.DatabaseError(cause) => TurnFailure.Store(cause)
+    case StoreError.Invalid(cause) => TurnFailure.Store(cause)
   }
 }

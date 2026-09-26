@@ -13,4 +13,9 @@ enum StoreError {
 
   /** The database rejected or could not complete the statement. */
   case DatabaseError(cause: String)
+
+  /** A stored value this code does not accept, such as settings changed by hand to break
+    * their rules; `cause` says which and why.
+    */
+  case Invalid(cause: String)
 }

@@ -1032,5 +1032,6 @@ object Turn {
   private def describe(error: StoreError): String = error match {
     case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"
     case StoreError.DatabaseError(cause) => cause
+    case StoreError.Invalid(cause) => cause
   }
 }

@@ -1,7 +1,8 @@
 package grit.core.store
 
-import grit.core.id.{EntryId, ToolCallId, TurnSeq}
+import grit.core.id.{EntryId, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.period.{CloseReason, ClosingJson}
 import grit.core.topic.TopicJson
 
 /** The stored JSON form of a [[Payload]]. Written by hand, not derived: it is
@@ -29,6 +30,26 @@ object PayloadJson {
     case Payload.Attempt(call) => ujson.Obj("kind" -> "attempt", "call" -> ToolCallId.value(call))
     case Payload.Ask(call, shown) =>
       ujson.Obj("kind" -> "ask", "call" -> ToolCallId.value(call), "shown" -> shown)
+    case Payload.Closed(period, reason, closing) =>
+      ujson.Obj(
+        "kind" -> "closed",
+        "period" -> PeriodSeq.value(period).toDouble,
+        "reason" -> reasonName(reason),
+        "closing" -> ClosingJson.write(closing)
+      )
+  }
+
+  /** The stored name of a [[CloseReason]]: the same in a closing entry and a period's row. */
+  def reasonName(reason: CloseReason): String = reason match {
+    case CloseReason.Resolved => "resolved"
+    case CloseReason.Lapsed => "lapsed"
+  }
+
+  /** The [[CloseReason]] stored as `name`, or why it is none. */
+  def readReason(name: String): Either[String, CloseReason] = name match {
+    case "resolved" => Right(CloseReason.Resolved)
+    case "lapsed" => Right(CloseReason.Lapsed)
+    case other => Left(s"unknown close reason: $other")
   }
 
   /** The payload `v` encodes, or why it encodes none. An [[Payload.Exchange]] and a
@@ -73,6 +94,13 @@ object PayloadJson {
             call <- str(o, "call")
             shown <- str(o, "shown")
           } yield Payload.Ask(ToolCallId(call), shown)
+        case "closed" =>
+          for {
+            n <- long(o, "period")
+            period <- PeriodSeq.of(n).toRight(s"period $n is below the first")
+            reason <- str(o, "reason").flatMap(readReason)
+            closing <- field(o, "closing").flatMap(ClosingJson.read)
+          } yield Payload.Closed(period, reason, closing)
         case other => Left(s"unknown payload kind: $other")
       }
     } yield p

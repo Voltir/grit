@@ -1,7 +1,8 @@
 package grit.core.store
 
-import grit.core.id.{EntryId, ToolCallId, TurnSeq}
+import grit.core.id.{EntryId, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.period.{CloseReason, Closing}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
 
 import utest.*
@@ -19,6 +20,11 @@ object PayloadJsonTests extends TestSuite {
     Usage(Tokens(10), Tokens(5), Tokens(2), Some(BigDecimal("0.000123"))),
     "openai/gpt-5-mini"
   )
+
+  private val closing: Closing =
+    Closing
+      .of("Small talk.", Some("none"), Vector(), Vector(), Vector(), Vector())
+      .getOrElse(throw new java.lang.AssertionError("closing"))
 
   private val samples: Seq[Message] = Seq(
     Message.User("hello"),
@@ -122,6 +128,19 @@ object PayloadJsonTests extends TestSuite {
         """{"kind":"ask","call":"c1","shown":"Run ls"}"""
     }
 
+    test("closed") {
+      PayloadJson.write(Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing)).render() ==>
+        """{"kind":"closed","period":1,"reason":"lapsed","closing":""" +
+        """{"v":1,"prose":"Small talk.","outcome":"none","decisions":[],"facts":[],"open":[],"sources":[]}}"""
+      PayloadJson.read(
+        ujson.read("""{"kind":"closed","period":0,"reason":"lapsed","closing":{}}""")
+      ) ==>
+        Left("period 0 is below the first")
+      PayloadJson.read(
+        ujson.read("""{"kind":"closed","period":1,"reason":"quit","closing":{"v":1,"prose":"x"}}""")
+      ) ==> Left("unknown close reason: quit")
+    }
+
     test("every sample round-trips, through text too") {
       val window = Payload.Window(Vector(EntryId("a")), Vector(TurnSeq(0), TurnSeq(7)))
       val (t1, t2) = (TopicId("topic:c:0"), TopicId("topic:c:3"))
@@ -172,7 +191,8 @@ object PayloadJsonTests extends TestSuite {
       } ++ samples.collect { case r: Message.ToolResult => Payload.Result(r, "read a.txt") } :+
         Payload.Summary("s") :+
         Payload.Query("q") :+ window :+ topic :+ Payload.Attempt(ToolCallId("c1")) :+
-        Payload.Ask(ToolCallId("c1"), "Edit a.txt"))
+        Payload.Ask(ToolCallId("c1"), "Edit a.txt") :+
+        Payload.Closed(PeriodSeq.First, CloseReason.Resolved, closing))
         .foreach { p =>
           PayloadJson.read(ujson.read(PayloadJson.write(p).render())) ==> Right(p)
         }

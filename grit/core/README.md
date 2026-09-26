@@ -8,7 +8,8 @@ In dependency order:
 - **`clock`** — what a function cannot compute: `Clock` (the time) and `Fresh` (values
   no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `WorkflowId`,
-  `SourceId`, `ToolCallId`) and `TurnRef`. Imports nothing in core.
+  `SourceId`, `ToolCallId`, `PeriodSeq`), `TurnRef`, `PeriodRef` and `CloseRef` (one
+  attempt to close a period, and its workflow id). Imports nothing in core.
 - **`model`** — what grit knows about models, as data: `ModelRef` (a model snapshot at an
   upstream), each setting's `Known` value and its `Source`, the switches a `Profile` picks
   among and the `Settings` a call is made under, the `Policy` of which pair does each job,
@@ -20,11 +21,18 @@ In dependency order:
   topic opened, a message placed with its `Weights` over topics, a topic described), the
   `Placement` that says who placed it, `Band`, `Verdict`, and `Topics`, the pure fold over
   the events; `TopicJson`, their stored form. ← `id`
+- **`period`** — a conversation's time as periods that close (ADR 0011): `Period` and its
+  `PeriodState`, `CloseReason`, the `Windows` and `LifecycleSettings` in force, `Deadline`
+  (when a period closes: the one definition), an open period's `Activity`, the `Closing` a
+  closed one leaves and its stored form `ClosingJson`, a `CloseOrdinal` (close order across
+  conversations), and a `Purgeable` period's workflows. ← `id`
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),
   `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
   `ConversationStore`, `UsageLedger`, `ModelProfileStore` (which profile each turn ran
-  under), `ModelFactStore` (facts about pairs approved at runtime), `StoreError`. ← `id`, `message`, `topic`, `model`
+  under), `ModelFactStore` (facts about pairs approved at runtime), `PeriodStore` (which
+  period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
+  settings in force), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash, and waits for a
   message (`recv`). ← `id`, `store`
 - **`approval`** — `Approval`, a person's answer to a gated tool call, and the message
@@ -54,7 +62,7 @@ No source file sits at core's root, and no two packages import each other in a c
 `scripts/enola-law.sh` fails on a new import cycle.
 
 The test tree mirrors it: the in-memory fakes other modules' tests use are
-`store.InMemoryEntryStore`, `store.InMemoryUsageLedger`, `store.InMemoryModelProfileStore`
-and `durable.InMemoryDurable`.
+`store.InMemoryEntryStore`, `store.InMemoryUsageLedger`, `store.InMemoryModelProfileStore`,
+`store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore` and `durable.InMemoryDurable`.
 `TestTx` lives in package `grit.dbos.sql`, because the `null` it holds is legal only inside
 the DBOS quarantine (rule 6).

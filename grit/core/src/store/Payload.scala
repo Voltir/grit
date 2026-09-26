@@ -1,7 +1,8 @@
 package grit.core.store
 
-import grit.core.id.{EntryId, ToolCallId, TurnSeq}
+import grit.core.id.{EntryId, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.Message
+import grit.core.period.{CloseReason, Closing}
 import grit.core.topic.TopicEvent
 
 /** What an [[Entry]] holds. Each case is one kind of entry; context fetched during
@@ -58,4 +59,9 @@ enum Payload {
     * searched.
     */
   case Ask(call: ToolCallId, shown: String)
+
+  /** A period's closing entry, written when it closed. Searched by its prose; shown to the
+    * model as [[Closing.shown]] when a window includes it.
+    */
+  case Closed(period: PeriodSeq, reason: CloseReason, closing: Closing)
 }

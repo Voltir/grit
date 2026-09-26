@@ -109,6 +109,7 @@ final class SqlInbox(
         }
         result.left.map {
           case StoreError.DatabaseError(cause) => InboxError.Unavailable(cause)
+          case StoreError.Invalid(cause) => InboxError.Unavailable(cause)
           case StoreError.DuplicateId(id) =>
             InboxError.Unavailable(s"entry ${EntryId.value(id)} appeared mid-transaction")
         }

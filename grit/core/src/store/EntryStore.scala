@@ -2,7 +2,9 @@ package grit.core.store
 
 import grit.core.id.{ConversationId, EntryId, TurnSeq}
 
-/** Append-only entry store. Entries are never rewritten or deleted. */
+/** Append-only entry store. Entries are never rewritten, and deleted only by the purge of
+  * their closed period ([[PeriodStore.purge]]).
+  */
 trait EntryStore {
 
   /** Appends `entry`. Never overwrites: an id already taken is `DuplicateId`, and a `seq`

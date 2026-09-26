@@ -317,6 +317,7 @@ object TurnFixtures {
           Some(s"${if (isError) "error" else "result"}: $content")
         case Payload.Attempt(call) => Some(s"attempt: ${grit.core.id.ToolCallId.value(call)}")
         case Payload.Ask(call, shown) => Some(s"ask: ${grit.core.id.ToolCallId.value(call)}: $shown")
+        case Payload.Closed(_, _, closing) => Some(s"closed: ${closing.prose}")
         case Payload.Window(_, _) | Payload.Topic(_) => None
       }
     }

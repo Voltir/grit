@@ -23,6 +23,10 @@ final class InMemoryEntryStore extends EntryStore {
       Right(())
     }
 
+  /** Deletes every entry `doomed` picks: the in-memory form of a purge's `DELETE`. */
+  private[store] def remove(doomed: Entry -> Boolean): Unit =
+    entries = entries.filterNot(doomed)
+
   def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] =
     Right(entries.find(_.id == id))
 
