@@ -11,7 +11,7 @@ In dependency order:
 - **`config`** — `DotEnv`: settings from a `.env` file under the real environment.
   `Durations`: a duration as a setting writes it (`30s`, `3m`, `24h`, `30d`). `Lifecycle`:
   the lifecycle's settings as a person writes them, seeded from `GRIT_IDLE`, `GRIT_SETTLE`,
-  `GRIT_FINISHED_AT`, `GRIT_ASKS`, `GRIT_RETENTION` and `GRIT_WINDOW_K` on a database's
+  `GRIT_FINISHED_AT`, `GRIT_ASKS`, `GRIT_RETENTION` and `GRIT_BALANCE` on a database's
   first start, and changed one at a time by `/set`.
   `Prefs`: what grit remembers between runs (the theme last chosen), in
   `$XDG_CONFIG_HOME/grit/prefs` or `~/.config/grit/prefs`. Imports nothing in app.

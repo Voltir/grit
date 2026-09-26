@@ -30,9 +30,7 @@ import grit.core.store.{
   Entry,
   EntryStore,
   InMemoryEntryStore,
-  InMemoryLifecycleStore,
   InMemoryPeriodStore,
-  LifecycleStore,
   PeriodStore,
   InMemoryModelProfileStore,
   InMemoryUsageLedger,
@@ -337,7 +335,7 @@ object TurnFixtures {
   /** The linear window, with `note` added: an assembler that says it wrote a query. */
   final class Noting(entries: EntryStore, note: AssemblyNote) extends ContextAssembler {
     def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
-      new LinearAssembler(entries, NoPeriods, NoSettings, CharEstimate, LinearAssembler.DefaultBudget)
+      new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget)
         .assemble(request)
         .map(_.copy(notes = Vector(note)))
   }
@@ -346,9 +344,6 @@ object TurnFixtures {
     * its own.
     */
   val NoPeriods: PeriodStore = new InMemoryPeriodStore(new InMemoryEntryStore)
-
-  /** The settings when none are stored: the defaults. */
-  val NoSettings: LifecycleStore = new InMemoryLifecycleStore
 
   /** A query note, as retrieval would write it. */
   val queried: AssemblyNote.Queried =
@@ -462,7 +457,7 @@ object TurnFixtures {
       TurnEnv(
         system,
         TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore),
-        new LinearAssembler(entries, NoPeriods, NoSettings, CharEstimate, LinearAssembler.DefaultBudget),
+        new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
         classifier,
         new FixedModels(provider, summarizer),
         FakeDb,
@@ -487,7 +482,7 @@ object TurnFixtures {
       TurnEnv(
         system,
         TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, profiles),
-        new LinearAssembler(entries, NoPeriods, NoSettings, CharEstimate, LinearAssembler.DefaultBudget),
+        new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
         models,
         FakeDb,

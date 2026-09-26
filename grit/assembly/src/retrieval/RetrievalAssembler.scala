@@ -5,17 +5,17 @@ import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextA
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.core.provider.{Provider, TokenEstimator}
-import grit.core.store.{Db, Entry, EntrySearch, EntryStore, LifecycleStore, PeriodStore}
+import grit.core.store.{Db, Entry, EntrySearch, EntryStore, PeriodStore}
 
-/** A window of the closing entries that open the turn's period, the recent turns, and the
-  * earlier turns of the period that match a written query. The closing entries are paid for
+/** A window of the closing entry that opens the turn's period, the recent turns, and the
+  * earlier turns of the period that match a written query. The closing entry is paid for
   * first, as [[LinearAssembler]] pays for them; then the most recent whole turns that fit in
   * `tail` (or what is left, when less); `writer` then writes a search query
   * ([[QueryWriter]]), `search` ranks the period's earlier entries against it (its `hits`
   * best), and the turns those entries belong to fill the rest of `budget`, best first, each
-  * whole or not at all. The window holds the closing entries, then the turns in
+  * whole or not at all. The window holds the closing entry, then the turns in
   * conversation order. Search never reaches past the period: what came before it is its
-  * closing entries.
+  * closing entry.
   *
   * No query is written when the linear window of `budget` already holds every earlier turn
   * of the period. When the writer fails or writes nothing, the window is that linear one,
@@ -24,7 +24,6 @@ import grit.core.store.{Db, Entry, EntrySearch, EntryStore, LifecycleStore, Peri
 final class RetrievalAssembler(
     entries: EntryStore,
     periods: PeriodStore,
-    lifecycle: LifecycleStore,
     search: EntrySearch,
     writer: Provider^,
     estimator: TokenEstimator,
@@ -37,10 +36,9 @@ final class RetrievalAssembler(
     val turn = request.turn
     db.read {
       for {
-        settings <- lifecycle.current()
-        opening <- periods.opening(turn, settings.closings)
+        opening <- periods.opening(turn)
         all <- entries.list(turn.conversationId)
-      } yield Read(opening.first, opening.closings, all)
+      } yield Read(opening.first, opening.closing.map(_.entry).toVector, all)
     }.left
       .map(AssemblyError.Store(_))
       .flatMap { read =>

@@ -5,7 +5,6 @@ import grit.assembly.linear.AssemblyFixtures.{FakeDb, World, c1, closingOf}
 import grit.core.context.{AssemblyError, AssemblyRequest, Shown}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.LifecycleSettings
 import grit.core.store.{Entry, EntryStore, Payload, StoreError, Tx}
 import grit.dbos.sql.TestTx
 
@@ -33,7 +32,7 @@ object LinearAssemblerTests extends TestSuite {
     AssemblyFixtures.store(turns.map(_.map(Payload.Message(_)))*)
 
   private def window(world: World, turn: Long, budget: Long): Vector[String] =
-    new LinearAssembler(world.entries, world.periods, world.lifecycle, CharEstimate, Tokens(budget))
+    new LinearAssembler(world.entries, world.periods, CharEstimate, Tokens(budget))
       .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn))))(using new FakeDb)
       .fold(e => sys.error(s"assembly failed: $e"), _.entries.map(EntryId.value))
 
@@ -95,33 +94,19 @@ object LinearAssemblerTests extends TestSuite {
       window(store(small(0), small(1)), 1, 0) ==> Vector()
     }
 
-    test("after a close, the window opens with the closing entries, then the open period only") {
+    test(
+      "after a close, the window opens with the newest closing entry alone, then the open period"
+    ) {
       val w = threePeriods
-      window(w, 4, 1000) ==> Vector(closingOf(1), closingOf(2), "t3:8", "t3:9")
-    }
-
-    test("as many closing entries open the window as the settings say, the newest") {
-      val w = threePeriods
-      val d = LifecycleSettings.Default
-      def closings(n: Int) = LifecycleSettings
-        .of(d.windows, n, d.settle, d.finishedAt, d.asks)
-        .getOrElse(sys.error("settings"))
-      w.lifecycle.set(closings(1))(using
-        TestTx.fake
-      )
       window(w, 4, 1000) ==> Vector(closingOf(2), "t3:8", "t3:9")
-      w.lifecycle.set(closings(0))(using
-        TestTx.fake
-      )
-      window(w, 4, 1000) ==> Vector("t3:8", "t3:9")
     }
 
-    test("the closing entries are paid for first; a budget too small drops the oldest") {
+    test("the closing entry is paid for first; a budget too small for it leaves it out") {
       val w = threePeriods
       val newest = closingCost(w, 2)
       window(w, 4, newest + SmallTurn) ==> Vector(closingOf(2), "t3:8", "t3:9")
       window(w, 4, newest) ==> Vector(closingOf(2))
-      // None fits: what they would have cost is left to the turns.
+      // It does not fit: what it would have cost is left to the turns.
       window(w, 4, newest - 1) ==> Vector("t3:8", "t3:9")
     }
 
@@ -134,7 +119,7 @@ object LinearAssemblerTests extends TestSuite {
         def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = Left(down)
       }
       val w = store()
-      new LinearAssembler(Down, w.periods, w.lifecycle, CharEstimate, Tokens(1000))
+      new LinearAssembler(Down, w.periods, CharEstimate, Tokens(1000))
         .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(1))))(using new FakeDb) ==>
         Left(AssemblyError.Store(StoreError.DatabaseError("down")))
     }

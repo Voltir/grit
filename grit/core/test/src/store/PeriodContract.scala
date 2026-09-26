@@ -271,18 +271,18 @@ abstract class PeriodContract extends TestSuite {
       transaction(periods.activity(PeriodRef(b, PeriodSeq.First))) ==> Right(None)
     }
 
-    test("the closings before a turn are the newest n closed before its period, oldest first") {
+    test("the closing before a turn is the newest one closed before its period") {
       val c = conversation("closings")
       for ((n, minute) <- Vector(1L -> 0L, 2L -> 10L, 3L -> 20L)) {
         seal(PeriodRef(c, first(n)), say(c, minute), minute + 5, s"p$n")
       }
       val now = say(c, 30)
-      def closings(turn: TurnRef, n: Int) = transaction(periods.closingsBefore(turn, n)).map(ids)
+      def closing(turn: TurnRef) =
+        transaction(periods.closingBefore(turn)).map(_.map(e => EntryId.value(e.entry.id)))
       val closingOf = (n: Long) => EntryId.value(PeriodRef(c, first(n)).closingId)
-      closings(now, 2) ==> Right(Vector(closingOf(2), closingOf(3)))
-      closings(now, 5) ==> Right(Vector(closingOf(1), closingOf(2), closingOf(3)))
-      closings(now, 0) ==> Right(Vector())
-      closings(TurnRef(c, TurnSeq(1)), 5) ==> Right(Vector(closingOf(1)))
+      closing(now) ==> Right(Some(closingOf(3)))
+      closing(TurnRef(c, TurnSeq(1))) ==> Right(Some(closingOf(1)))
+      closing(TurnRef(c, TurnSeq(0))) ==> Right(None)
     }
 
     test("closed periods are listed in close order across conversations, with their origins") {
@@ -343,15 +343,15 @@ abstract class PeriodContract extends TestSuite {
     }
 
     test("the lifecycle's settings are the defaults until seeded, seeded once, then set") {
-      def settings(idle: FiniteDuration, closings: Int, finishedAt: Double, asks: Int) =
+      def settings(idle: FiniteDuration, balance: Int, finishedAt: Double, asks: Int) =
         Windows
           .of(idle, 1.day)
-          .flatMap(LifecycleSettings.of(_, closings, idle - 1.minute, p(finishedAt), asks))
+          .flatMap(LifecycleSettings.of(_, balance, idle - 1.minute, p(finishedAt), asks))
           .getOrElse(throw new java.lang.AssertionError(idle))
       val (seeded, ignored, later) = (
-        settings(3.minutes, 1, 0.8, 3),
-        settings(5.minutes, 2, 0.9, 2),
-        settings(7.minutes, 0, 0.75, 1)
+        settings(3.minutes, 300, 0.8, 3),
+        settings(5.minutes, 200, 0.9, 2),
+        settings(7.minutes, 100, 0.75, 1)
       )
       transaction(lifecycle.current()) ==> Right(LifecycleSettings.Default)
       transaction(lifecycle.seed(seeded)) ==> Right(seeded)

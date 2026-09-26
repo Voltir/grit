@@ -4,16 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnSeq}
 import grit.core.period.{CloseReason, Closing, Probability}
-import grit.core.store.{
-  Db,
-  Entry,
-  InMemoryEntryStore,
-  InMemoryLifecycleStore,
-  InMemoryPeriodStore,
-  Payload,
-  StoreError,
-  Tx
-}
+import grit.core.store.{Db, Entry, InMemoryEntryStore, InMemoryPeriodStore, Payload, StoreError, Tx}
 import grit.dbos.sql.TestTx
 
 /** One conversation in an in-memory store, for the assemblers' tests. */
@@ -30,12 +21,8 @@ object AssemblyFixtures {
       body(using TestTx.fake)
   }
 
-  /** A conversation's entries, its periods over them, and the settings in force. */
-  final class World(
-      val entries: InMemoryEntryStore,
-      val periods: InMemoryPeriodStore,
-      val lifecycle: InMemoryLifecycleStore
-  )
+  /** A conversation's entries, and its periods over them. */
+  final class World(val entries: InMemoryEntryStore, val periods: InMemoryPeriodStore)
 
   /** `turns` in a fresh store of [[c1]], turn `t` holding the `t`-th payloads, ids
     * `t{turn}:{seq}`, all in one period.
@@ -48,7 +35,7 @@ object AssemblyFixtures {
     */
   def closed(periods: Vector[Vector[Vector[Payload]]], prose: Vector[String]): World = {
     val entries = new InMemoryEntryStore
-    val world = new World(entries, new InMemoryPeriodStore(entries), new InMemoryLifecycleStore)
+    val world = new World(entries, new InMemoryPeriodStore(entries))
     given Tx = TestTx.fake
     for (p <- periods.indices) {
       for (turn <- periods(p)) {

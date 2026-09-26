@@ -20,6 +20,7 @@ import grit.core.period.{
 }
 import grit.core.store.{
   ClosedPeriod,
+  ClosingEntry,
   Entry,
   EntryStore,
   Payload,
@@ -199,23 +200,26 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
     } yield outcome
   }
 
-  def closingsBefore(turn: TurnRef, n: Int)(using tx: Tx^): Either[StoreError, Vector[Entry]] =
+  def closingBefore(turn: TurnRef)(using tx: Tx^): Either[StoreError, Option[ClosingEntry]] =
     for {
-      ids <- many(
-        """SELECT closing_id FROM (
-          |  SELECT closing_id, seq FROM grit.periods
-          |   WHERE conversation_id = ?::uuid AND closed_at IS NOT NULL AND last_turn < ?
-          |   ORDER BY seq DESC LIMIT ?
-          |) newest ORDER BY seq""".stripMargin
+      id <- one(
+        """SELECT closing_id FROM grit.periods
+          | WHERE conversation_id = ?::uuid AND closed_at IS NOT NULL AND last_turn < ?
+          | ORDER BY seq DESC LIMIT 1""".stripMargin
       ) { ps =>
         ps.setString(1, ConversationId.value(turn.conversationId))
         ps.setLong(2, TurnSeq.value(turn.turnSeq))
-        ps.setInt(3, n max 0)
       }(rs => EntryId(rs.getString("closing_id")))
-      found <- ids.foldLeft[Either[StoreError, Vector[Entry]]](Right(Vector.empty)) { (acc, id) =>
-        acc.flatMap(done => entries.get(id).map(done ++ _))
+      entry <- id.fold[Either[StoreError, Option[Entry]]](Right(None))(entries.get)
+      closing <- entry match {
+        case None => Right(None)
+        case Some(e) =>
+          ClosingEntry
+            .of(e)
+            .map(Some(_))
+            .toRight(StoreError.Invalid(s"${EntryId.value(e.id)} is not a closing entry"))
       }
-    } yield found
+    } yield closing
 
   def closedAfter(after: CloseOrdinal, n: Int)(using
       tx: Tx^

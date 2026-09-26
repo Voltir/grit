@@ -11,13 +11,13 @@ object Lifecycle {
 
   private val IdleVar = "GRIT_IDLE"
   private val RetentionVar = "GRIT_RETENTION"
-  private val ClosingsVar = "GRIT_WINDOW_K"
+  private val BalanceVar = "GRIT_BALANCE"
   private val SettleVar = "GRIT_SETTLE"
   private val FinishedAtVar = "GRIT_FINISHED_AT"
   private val AsksVar = "GRIT_ASKS"
 
   /** The settings the environment seeds: `GRIT_IDLE`, `GRIT_RETENTION` and `GRIT_SETTLE`
-    * ([[Durations]]), `GRIT_WINDOW_K` and `GRIT_ASKS` (whole numbers) and `GRIT_FINISHED_AT`
+    * ([[Durations]]), `GRIT_BALANCE` and `GRIT_ASKS` (whole numbers) and `GRIT_FINISHED_AT`
     * (a probability, as 0.8), each unset one as [[LifecycleSettings.Default]] has it; or why
     * they are none, naming the variable.
     */
@@ -36,7 +36,7 @@ object Lifecycle {
       idle <- duration(IdleVar, default.windows.idle)
       retention <- duration(RetentionVar, default.windows.retention)
       settle <- duration(SettleVar, default.settle)
-      closings <- whole(ClosingsVar, default.closings)
+      balance <- whole(BalanceVar, default.balance)
       asks <- whole(AsksVar, default.asks)
       finishedAt <- env.get(FinishedAtVar) match {
         case None => Right(default.finishedAt)
@@ -44,9 +44,9 @@ object Lifecycle {
       }
       windows <- Windows.of(idle, retention).left.map(why => s"$IdleVar, $RetentionVar: $why")
       settings <- LifecycleSettings
-        .of(windows, closings, settle, finishedAt, asks)
+        .of(windows, balance, settle, finishedAt, asks)
         .left
-        .map(why => s"$ClosingsVar, $SettleVar, $FinishedAtVar, $AsksVar: $why")
+        .map(why => s"$BalanceVar, $SettleVar, $FinishedAtVar, $AsksVar: $why")
     } yield settings
   }
 
@@ -59,7 +59,7 @@ object Lifecycle {
   enum Change extends caps.Pure {
     case Idle(to: FiniteDuration)
     case Retention(to: FiniteDuration)
-    case Closings(to: Int)
+    case Balance(to: Int)
     case Settle(to: FiniteDuration)
     case FinishedAt(to: Probability)
     case Asks(to: Int)
@@ -72,15 +72,15 @@ object Lifecycle {
         case Idle(to) =>
           Windows
             .of(to, w.retention)
-            .flatMap(LifecycleSettings.of(_, s.closings, s.settle, s.finishedAt, s.asks))
+            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.finishedAt, s.asks))
         case Retention(to) =>
           Windows
             .of(w.idle, to)
-            .flatMap(LifecycleSettings.of(_, s.closings, s.settle, s.finishedAt, s.asks))
-        case Closings(to) => LifecycleSettings.of(w, to, s.settle, s.finishedAt, s.asks)
-        case Settle(to) => LifecycleSettings.of(w, s.closings, to, s.finishedAt, s.asks)
-        case FinishedAt(to) => LifecycleSettings.of(w, s.closings, s.settle, to, s.asks)
-        case Asks(to) => LifecycleSettings.of(w, s.closings, s.settle, s.finishedAt, to)
+            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.finishedAt, s.asks))
+        case Balance(to) => LifecycleSettings.of(w, to, s.settle, s.finishedAt, s.asks)
+        case Settle(to) => LifecycleSettings.of(w, s.balance, to, s.finishedAt, s.asks)
+        case FinishedAt(to) => LifecycleSettings.of(w, s.balance, s.settle, to, s.asks)
+        case Asks(to) => LifecycleSettings.of(w, s.balance, s.settle, s.finishedAt, to)
       }
     }
   }
@@ -89,10 +89,10 @@ object Lifecycle {
 
     /** The names `/set` takes, in the order its help lists them. */
     val Names: Vector[String] =
-      Vector("idle", "settle", "finished", "asks", "retention", "closings")
+      Vector("idle", "settle", "finished", "asks", "retention", "balance")
 
     /** The change `text` writes: a name, then its value (`idle 3m`, `finished 0.9`,
-      * `closings 2`); or why it writes none.
+      * `balance 300`); or why it writes none.
       */
     def parse(text: String): Either[String, Change] = {
       val (name, value) = text.trim.span(_ != ' ')
@@ -105,7 +105,7 @@ object Lifecycle {
         case "idle" => duration(Idle(_))
         case "retention" => duration(Retention(_))
         case "settle" => duration(Settle(_))
-        case "closings" => whole(Closings(_))
+        case "balance" => whole(Balance(_))
         case "asks" => whole(Asks(_))
         case "finished" => probability(value).map(FinishedAt(_)).left.map(why => s"$name: $why")
         case other => Left(s"no setting $other: ${Names.init.mkString(", ")} or ${Names.last}")
@@ -122,7 +122,7 @@ object Lifecycle {
         s"after ${written(settings.settle)} quiet, asks whether it is finished (at most " +
           s"${settings.asks} times) and closes at ${Probability.value(settings.finishedAt)} or more"
     s"$asking; closes after ${written(w.idle)} idle; raw entries kept ${written(w.retention)}; " +
-      s"${settings.closings} closings open a window"
+      s"the balance holds ${settings.balance} bytes"
   }
 
   /** `d` in the largest of [[Durations]]' units that writes it whole. */

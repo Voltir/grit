@@ -99,7 +99,6 @@ object RetrievalAssemblerTests extends TestSuite {
     new RetrievalAssembler(
       world.entries,
       world.periods,
-      world.lifecycle,
       search,
       writer,
       CharEstimate,
@@ -116,7 +115,7 @@ object RetrievalAssemblerTests extends TestSuite {
   private def turnsOf(w: Window): Vector[String] = ids(w).map(_.takeWhile(_ != ':')).distinct
 
   private def linear(world: World, budget: Long): Window =
-    new LinearAssembler(world.entries, world.periods, world.lifecycle, CharEstimate, Tokens(budget))
+    new LinearAssembler(world.entries, world.periods, CharEstimate, Tokens(budget))
       .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(6))))(using new FakeDb)
       .getOrElse(sys.error("in-memory store"))
 

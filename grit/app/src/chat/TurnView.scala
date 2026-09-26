@@ -70,19 +70,19 @@ object TurnView {
   /** A recorded step and how long it took, when DBOS kept both ends. */
   final case class Step(name: String, ms: Option[Long])
 
-  /** What the reply's request held, estimated: the system prompt, the closing entries of
-    * earlier periods, the recent turns, the turns search recalled (`recalledTurns`), and the
+  /** What the reply's request held, estimated: the system prompt, the closing entry of the
+    * period before, the recent turns, the turns search recalled (`recalledTurns`), and the
     * turn's own messages.
     */
   final case class Window(
       system: Tokens,
-      closings: Tokens,
+      closing: Tokens,
       recent: Tokens,
       recalled: Tokens,
       message: Tokens,
       recalledTurns: Vector[TurnSeq]
   ) {
-    def total: Tokens = system + closings + recent + recalled + message
+    def total: Tokens = system + closing + recent + recalled + message
   }
 
   /** The latest turn in `entries`: the one its last user message started. */

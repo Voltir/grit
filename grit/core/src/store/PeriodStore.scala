@@ -47,10 +47,10 @@ trait PeriodStore {
       Tx^
   ): Either[StoreError, Sealed]
 
-  /** The closing entries of the `n` newest periods of `turn`'s conversation that closed
-    * before `turn`'s period opened, oldest first.
+  /** The closing entry of the newest period of `turn`'s conversation that closed before
+    * `turn`'s period opened; `None` before its first close.
     */
-  def closingsBefore(turn: TurnRef, n: Int)(using Tx^): Either[StoreError, Vector[Entry]]
+  def closingBefore(turn: TurnRef)(using Tx^): Either[StoreError, Option[ClosingEntry]]
 
   /** Closed periods after `after` in close order, at most `n`. */
   def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]]
@@ -66,18 +66,31 @@ trait PeriodStore {
   def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit]
 
   /** Where `turn`'s window opens: the first turn of its period ([[TurnSeq.First]] for a turn
-    * in none), and the closing entries of the `closings` newest periods closed before it,
-    * oldest first.
+    * in none), and the closing it opens from.
     */
-  final def opening(turn: TurnRef, closings: Int)(using Tx^): Either[StoreError, Opening] =
+  final def opening(turn: TurnRef)(using Tx^): Either[StoreError, Opening] =
     for {
       period <- of(turn)
-      before <- closingsBefore(turn, closings)
+      before <- closingBefore(turn)
     } yield Opening(period.fold(TurnSeq.First)(_.first), before)
 }
 
-/** What a turn's window starts from: the first turn of its period, after `closings`. */
-final case class Opening(first: TurnSeq, closings: Vector[Entry])
+/** What a turn's window, or a close, starts from: the first turn of its period, and the
+  * closing entry of the period before it, if any.
+  */
+final case class Opening(first: TurnSeq, closing: Option[ClosingEntry])
+
+/** A closing entry, and the closing its payload holds. */
+final case class ClosingEntry private (entry: Entry, closing: Closing)
+
+object ClosingEntry {
+
+  /** `entry` as a closing entry; `None` when its payload is not [[Payload.Closed]]. */
+  def of(entry: Entry): Option[ClosingEntry] = entry.payload match {
+    case Payload.Closed(_, _, closing) => Some(new ClosingEntry(entry, closing))
+    case _ => None
+  }
+}
 
 /** What a seal came to. */
 enum Sealed {

@@ -157,14 +157,13 @@ object Main {
           new RetrievalAssembler(
             engine.entries,
             engine.periods,
-            engine.lifecycle,
             engine.search,
             writer,
             CharEstimate,
             budget,
             tail
           )
-        else new LinearAssembler(engine.entries, engine.periods, engine.lifecycle, CharEstimate, budget)
+        else new LinearAssembler(engine.entries, engine.periods, CharEstimate, budget)
       val checkout = new LocalWorkspace(root)
       def launch(tooling: TurnTooling^): Unit = {
         engine.launch(

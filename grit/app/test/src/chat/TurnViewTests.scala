@@ -154,7 +154,7 @@ object TurnViewTests extends TestSuite {
         .window
         .getOrElse(sys.error("no window"))
       val shown = Shown.of(closed).map(CharEstimate.message).getOrElse(sys.error("not shown"))
-      w.closings ==> shown
+      w.closing ==> shown
       w.recent ==> Tokens.Zero
       w.total ==> CharEstimate.system("s") + shown + CharEstimate.message(
         Message.User("what did we decide?")

@@ -197,7 +197,7 @@ object ChatScreenTests extends TestSuite {
         shown.contains("query    ward engine"),
         shown.contains("recalled turn 1"),
         shown.contains("5.2k of 16k budget"),
-        shown.contains("closings 300"),
+        shown.contains("closing 300"),
         shown.contains("billed   5k in · ≥ $0.00031"),
         shown.contains("model    x/big @ fireworks"),
         shown.contains("Fireworks · unprofiled"),

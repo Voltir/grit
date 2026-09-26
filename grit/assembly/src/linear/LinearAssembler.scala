@@ -4,16 +4,14 @@ import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Show
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.core.provider.TokenEstimator
-import grit.core.store.{Db, Entry, EntryStore, LifecycleStore, Payload, PeriodStore}
+import grit.core.store.{Db, Entry, EntryStore, Payload, PeriodStore}
 
-/** The window with no choosing: the closing entries of the conversation's newest closed
-  * periods, as many as the settings in force say, then the messages of the most recent whole
-  * turns of the turn's own period, before the turn, that fit in what `budget` tokens by
-  * `estimator` leave; never their summaries. The baseline every smarter assembler is
-  * measured against.
+/** The window with no choosing: the closing entry of the conversation's newest closed
+  * period, then the messages of the most recent whole turns of the turn's own period, before
+  * the turn, that fit in what `budget` tokens by `estimator` leave; never their summaries.
+  * The baseline every smarter assembler is measured against.
   *
-  * The closing entries are paid for first, oldest first in the window; a budget too small
-  * for all of them drops the oldest. Turns are kept or dropped whole, so a window never
+  * The closing entry is paid for first; a budget too small for it leaves it out. Turns are kept or dropped whole, so a window never
   * opens on a reply without its question, or a tool result without its call. The first turn
   * back that does not fit ends the window, even if older turns would: the model never sees
   * a history with holes. A newest turn larger than what is left on its own leaves no turns.
@@ -21,7 +19,6 @@ import grit.core.store.{Db, Entry, EntryStore, LifecycleStore, Payload, PeriodSt
 final class LinearAssembler(
     entries: EntryStore,
     periods: PeriodStore,
-    lifecycle: LifecycleStore,
     estimator: TokenEstimator,
     budget: Tokens
 ) extends ContextAssembler {
@@ -29,11 +26,11 @@ final class LinearAssembler(
   def assemble(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] =
     db.read {
       for {
-        settings <- lifecycle.current()
-        opening <- periods.opening(request.turn, settings.closings)
+        opening <- periods.opening(request.turn)
         all <- entries.list(request.turn.conversationId)
       } yield {
-        val (closings, left) = LinearAssembler.opened(opening.closings, estimator, budget)
+        val (closings, left) =
+          LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, budget)
         val turns = LinearAssembler.turnsBefore(all, opening.first, request.turn.turnSeq)
         val kept = LinearAssembler.recent(turns, estimator, left)
         Window(closings.map(_.id) ++ kept.flatten.sortBy(_.seq).map(_.id))

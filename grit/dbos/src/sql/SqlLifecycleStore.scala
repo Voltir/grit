@@ -20,7 +20,7 @@ final class SqlLifecycleStore extends LifecycleStore {
         conn.prepareStatement(
           """SELECT (extract(epoch FROM idle) * 1000)::bigint AS idle,
             |       (extract(epoch FROM retention) * 1000)::bigint AS retention,
-            |       closings,
+            |       balance,
             |       (extract(epoch FROM settle) * 1000)::bigint AS settle,
             |       finished_at, asks
             |  FROM grit.lifecycle_settings""".stripMargin
@@ -37,7 +37,7 @@ final class SqlLifecycleStore extends LifecycleStore {
                 .toRight(s"finished_at $finishedAt is not a probability")
               settings <- LifecycleSettings.of(
                 windows,
-                rs.getInt("closings"),
+                rs.getInt("balance"),
                 rs.getLong("settle").millis,
                 at,
                 rs.getInt("asks")
@@ -56,7 +56,7 @@ final class SqlLifecycleStore extends LifecycleStore {
     write(
       settings,
       """ON CONFLICT (one) DO UPDATE SET idle = EXCLUDED.idle, retention = EXCLUDED.retention,
-        |  closings = EXCLUDED.closings, settle = EXCLUDED.settle,
+        |  balance = EXCLUDED.balance, settle = EXCLUDED.settle,
         |  finished_at = EXCLUDED.finished_at, asks = EXCLUDED.asks""".stripMargin
     )
 
@@ -68,7 +68,7 @@ final class SqlLifecycleStore extends LifecycleStore {
     attempt {
       Using.resource(
         conn.prepareStatement(
-          s"""INSERT INTO grit.lifecycle_settings (idle, retention, closings, settle, finished_at, asks)
+          s"""INSERT INTO grit.lifecycle_settings (idle, retention, balance, settle, finished_at, asks)
              |VALUES (? * interval '1 millisecond', ? * interval '1 millisecond', ?,
              |        ? * interval '1 millisecond', ?, ?)
              |$onConflict""".stripMargin
@@ -76,7 +76,7 @@ final class SqlLifecycleStore extends LifecycleStore {
       ) { ps =>
         ps.setLong(1, w.idle.toMillis)
         ps.setLong(2, w.retention.toMillis)
-        ps.setInt(3, settings.closings)
+        ps.setInt(3, settings.balance)
         ps.setLong(4, settings.settle.toMillis)
         ps.setDouble(5, Probability.value(settings.finishedAt))
         ps.setInt(6, settings.asks)

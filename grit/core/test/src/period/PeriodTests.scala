@@ -98,24 +98,24 @@ object PeriodTests extends TestSuite {
     }
 
     test(
-      "the settings refuse negative closings, a settle not shorter than idle, finishedAt 0 and no asks"
+      "the settings refuse a balance below 1, a settle not shorter than idle, finishedAt 0 and no asks"
     ) {
       val w = Windows.of(1.hour, 1.day).getOrElse(throw new java.lang.AssertionError("w"))
       Vector(
-        LifecycleSettings.of(w, -1, 5.minutes, p(0.8), 3),
-        LifecycleSettings.of(w, 0, 0.seconds, p(0.8), 3),
-        LifecycleSettings.of(w, 0, 1.hour, p(0.8), 3),
-        LifecycleSettings.of(w, 0, 5.minutes, p(0), 3),
-        LifecycleSettings.of(w, 0, 5.minutes, p(0.8), 0)
+        LifecycleSettings.of(w, 0, 5.minutes, p(0.8), 3),
+        LifecycleSettings.of(w, 1, 0.seconds, p(0.8), 3),
+        LifecycleSettings.of(w, 1, 1.hour, p(0.8), 3),
+        LifecycleSettings.of(w, 1, 5.minutes, p(0), 3),
+        LifecycleSettings.of(w, 1, 5.minutes, p(0.8), 0)
       ) ==> Vector(
-        Left("closings must not be negative"),
+        Left("balance must be at least 1"),
         Left("settle must be positive"),
         Left("settle must be shorter than idle"),
         Left("finishedAt must be above 0"),
         Left("asks must be at least 1")
       )
-      LifecycleSettings.of(w, 0, 59.minutes, p(1.0), 1).map(s => (s.settle, s.asks)) ==>
-        Right((59.minutes, 1))
+      LifecycleSettings.of(w, 1, 59.minutes, p(1.0), 1).map(s => (s.balance, s.settle, s.asks)) ==>
+        Right((1, 59.minutes, 1))
     }
 
     test("a probability is between 0 and 1, both included") {

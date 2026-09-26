@@ -26,7 +26,7 @@ object CloseLiveTests extends TestSuite {
   private def minuteIdle(config: DbConfig): Unit = {
     val settings = Windows
       .of(1.minute, 1.day)
-      .flatMap(LifecycleSettings.of(_, 3, 30.seconds, Probability.One, 1))
+      .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
     ()

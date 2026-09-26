@@ -14,6 +14,7 @@ import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenE
 import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Purgeable, Verdict}
 import grit.core.store.{
   ClosedPeriod,
+  ClosingEntry,
   Db,
   Entry,
   InMemoryEntryStore,
@@ -211,8 +212,8 @@ object CloseFixtures {
       underlying.judged(period, verdict)
     def open()(using Tx^): Either[StoreError, Vector[Activity]] = underlying.open()
     def activity(period: PeriodRef)(using Tx^): Either[StoreError, Option[Activity]] = underlying.activity(period)
-    def closingsBefore(turn: TurnRef, n: Int)(using Tx^): Either[StoreError, Vector[Entry]] =
-      underlying.closingsBefore(turn, n)
+    def closingBefore(turn: TurnRef)(using Tx^): Either[StoreError, Option[ClosingEntry]] =
+      underlying.closingBefore(turn)
     def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]] =
       underlying.closedAfter(after, n)
     def expired(cutoff: Instant)(using Tx^): Either[StoreError, Vector[Purgeable]] = underlying.expired(cutoff)

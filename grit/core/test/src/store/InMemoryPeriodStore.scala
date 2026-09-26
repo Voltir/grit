@@ -131,13 +131,13 @@ final class InMemoryPeriodStore(
         }
     }
 
-  def closingsBefore(turn: TurnRef, n: Int)(using Tx^): Either[StoreError, Vector[Entry]] = {
-    val ids = mine(turn.conversationId)
+  def closingBefore(turn: TurnRef)(using Tx^): Either[StoreError, Option[ClosingEntry]] = {
+    val id = mine(turn.conversationId)
       .flatMap(p =>
         closedOf(p).filter(c => TurnSeq.value(c.last) < TurnSeq.value(turn.turnSeq)).map(_.closing)
       )
-      .takeRight(n max 0)
-    Right(ids.flatMap(id => all(turn.conversationId).find(_.id == id)))
+      .lastOption
+    Right(id.flatMap(id => all(turn.conversationId).find(_.id == id)).flatMap(ClosingEntry.of))
   }
 
   def closedAfter(after: CloseOrdinal, n: Int)(using

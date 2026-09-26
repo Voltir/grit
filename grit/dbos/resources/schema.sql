@@ -183,7 +183,7 @@ CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
     one       BOOLEAN PRIMARY KEY DEFAULT true CHECK (one),
     idle        INTERVAL NOT NULL,
     retention   INTERVAL NOT NULL,
-    closings    INTEGER NOT NULL,
+    balance     INTEGER NOT NULL,
     settle      INTERVAL NOT NULL,
     finished_at DOUBLE PRECISION NOT NULL,
     asks        INTEGER NOT NULL

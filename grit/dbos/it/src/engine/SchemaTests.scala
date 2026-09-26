@@ -50,8 +50,8 @@ object SchemaTests extends TestSuite {
       Engine.open(config, "test").close()
       LiveDb.transaction(config)(
         execute(
-          "INSERT INTO grit.lifecycle_settings (idle, retention, closings, settle, finished_at, asks) " +
-            "VALUES ('10 minutes', '30 days', 3, '1 hour', 0.8, 3)"
+          "INSERT INTO grit.lifecycle_settings (idle, retention, balance, settle, finished_at, asks) " +
+            "VALUES ('10 minutes', '30 days', 4096, '1 hour', 0.8, 3)"
         )
       )
       LiveDb.transaction(config)(new SqlLifecycleStore().current()) ==>
