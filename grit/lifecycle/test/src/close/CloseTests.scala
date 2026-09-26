@@ -2,6 +2,7 @@ package grit.lifecycle.close
 
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, PeriodRef, PeriodSeq, WorkflowId}
+import grit.core.message.StopReason
 import grit.core.period.TestClosings.{balance, line}
 import grit.core.period.{
   Balance,
@@ -387,6 +388,28 @@ object CloseTests extends TestSuite {
       ) ==> "closed: closing:c1:2"
       w.closingOf(p2).map(_.payload).collect { case Payload.Closed(_, _, c) => c.balance } ==>
         Some(balance(line(Section.Topics, "Deploy Target", 1, 2)))
+    }
+
+    test(
+      "a summary cut off at its token limit is not read: the fallback prose, the balance carried, its cost kept"
+    ) {
+      val w = new World
+      w.turn("png too?", "yes", "Added PNG.", 0)
+      val cut = new Summariser(_ =>
+        Right(
+          replyOf("Summary: We added PNG.\nStanding:\n- The command now takes `*.").copy(
+            stop = StopReason.MaxTokens
+          )
+        )
+      )
+      val id = w.attempt.workflowId
+      new InMemoryDurable().run(id)(w.body(gate, cut, new SetClock(at(Lapsed)))) ==>
+        "closed: closing:c1:1; no summary: cut off at its token limit"
+      w.closingEntry.map(_.payload) ==> Some(
+        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("Added PNG."))
+      )
+      w.ledger.of(id)(using TestTx.fake).map(_.map(r => (EntryId.value(r.entry), r.usage))) ==>
+        Right(Vector(("closing:c1:1", summaryUsage)))
     }
 
     test("a closed period's attempt says so, and writes nothing") {

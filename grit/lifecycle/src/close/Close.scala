@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.durable.Durable
 import grit.core.id.{CloseRef, EntryId, TurnRef, TurnSeq, WorkflowId}
-import grit.core.message.{Message, Tokens, Usage}
+import grit.core.message.{Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows}
 import grit.core.store.{Entry, EntryTopics, Payload, Sealed, StoreError, Tx}
 import grit.lifecycle.transcript.PeriodTranscript
@@ -24,10 +24,11 @@ import grit.lifecycle.transcript.PeriodTranscript
   *   1. `summarise` — the closing: its flows written by the catalog's summary pin
   *      ([[ClosingSummary]]), and the balance it opened with after the writer's edits and
   *      the topics' ([[grit.core.store.EntryTopics.edits]]), held to the cap
-  *      ([[grit.core.period.Balance]]); when the model fails, or writes nothing
-  *      readable, or when the gate found nothing new (and then no model is called), the
-  *      period's per-turn summaries joined as the prose, and the balance carried with the
-  *      topics' edits alone. A close never fails for a model.
+  *      ([[grit.core.period.Balance]]); when the model fails, writes nothing readable or
+  *      is cut off at its token limit (its cost still kept), or when the gate found
+  *      nothing new (and then no model is called), the period's per-turn summaries joined
+  *      as the prose, and the balance carried with the topics' edits alone. A close never
+  *      fails for a model.
   *   1. `seal` — under the lock again: the closing entry, its cost in the ledger, and the
   *      period closed, together; abandoned, writing nothing, when a turn came in meanwhile.
   */
@@ -184,15 +185,20 @@ object Close {
       val written = for {
         catalog <- env.models.catalog()
         reply <- env.models.provider(catalog.pin.summary).complete(request).left.map(_.cause)
-        read <- ClosingSummary
-          .read(reply, known, asked)
-          .toRight(s"the summary had no prose (stop: ${reply.stop})")
-        closing <- closed(read.prose, read.outcome, read.edits).toRight("the summary had no prose")
-      } yield Summarised(
-        Some(closing),
-        Some(Cost(reply.model, reply.usage, env.records.estimator.request(request))),
-        None
-      )
+      } yield {
+        val cost = Cost(reply.model, reply.usage, env.records.estimator.request(request))
+        // A reply cut off at its token limit may have lost any part, a Resolved one
+        // included, and its last line may be half written: none of it is read.
+        if (reply.stop == StopReason.MaxTokens)
+          carried("no summary: cut off at its token limit").copy(cost = Some(cost))
+        else
+          ClosingSummary
+            .read(reply, known, asked)
+            .flatMap(read => closed(read.prose, read.outcome, read.edits))
+            .fold(carried(s"no summary: the summary had no prose (stop: ${reply.stop})"))(c =>
+              Summarised(Some(c), Some(cost), None)
+            )
+      }
       written.fold(why => carried(s"no summary: $why"), identity)
     }
   }
