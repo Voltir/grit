@@ -37,7 +37,7 @@ Mill modules, and what each may name:
 | `grit.turn` | `grit.turn` | core | the durable turn's body, written against `Durable` |
 | `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); `Classifier`s: `JevClassifier` |
 | `grit.host` | `grit.host` | core | the local host: `LocalWorkspace`, `LocalEdits`, `LocalShell` (`grit.core.host`'s capabilities over this machine's files and processes; a command sees only an allowlisted environment); the only module that starts a process |
-| `grit.tools` | `grit.tools` | core | the coding tool set (`Coding`): read, list, search, write, edit and run as `Tool`s over `grit.core.host`'s capabilities |
+| `grit.tools` | `grit.tools` | core | the coding tool set (`Coding`): read, list, search, write, edit and run as `Tool`s over `grit.core.host`'s capabilities; `Facts`: `propose_fact`, a measured fact about a model kept once a person approves it |
 | `grit.assembly` | `grit.assembly.{estimate,linear,retrieval}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`grit/assembly/README.md`](grit/assembly/README.md) |
 | `grit.eval` | `grit.eval` | core, dbos, assembly, models | the assembly eval, test sources only: every assembler over labelled cases in a throwaway Postgres; a report, not a gate |
 | `grit.app` | `grit.app.{config,look,chat,main}` | everything | the composition root; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), or a one-shot run with arguments; package order in [`grit/app/README.md`](grit/app/README.md) |

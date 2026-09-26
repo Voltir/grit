@@ -7,7 +7,7 @@ import grit.assembly.linear.LinearAssembler
 import grit.core.clock.{Clock, Fresh}
 import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.model.{Catalog, Pinned}
+import grit.core.model.{Catalog, Fact, FactBook, Pinned}
 import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
 import grit.core.store.{EntryStore, Origin, Payload}
 import grit.dbos.engine.Engine
@@ -48,6 +48,11 @@ object LiveTurn {
     def catalog(): Either[String, Catalog] = Right(StubModels.Catalog)
     def provider(pinned: Pinned): Provider^ =
       if (pinned.assignment == StubModels.Catalog.policy.turn) turn else rest
+  }
+
+  /** A fact book that keeps nothing: the live tests offer no tool that proposes one. */
+  object NoFacts extends FactBook {
+    def keep(fact: Fact): Either[String, Unit] = Left("the live tests keep no facts")
   }
 
   /** Launches `engine` with the turn over `entries` and `provider`, summarised by the
@@ -94,6 +99,7 @@ object LiveTurn {
           checkout,
           edits,
           shell,
+          NoFacts,
           Coding.all(checkout, edits, shell).fold(d => sys.error(d.toString), identity),
           engine.jot,
           budget,

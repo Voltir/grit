@@ -6,6 +6,7 @@ import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.host.{Edits, Shell, Workspace}
+import grit.core.model.FactBook
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.store.{Db, EntryStore, Jot, ModelProfileStore, UsageLedger}
 import grit.core.tool.Toolbox
@@ -59,14 +60,15 @@ object TurnTooling {
       answerWithin: FiniteDuration = TurnTools.AnswerWithin
   ) extends TurnTooling
 
-  /** Tools that act through `workspace`, `edits` and `shell`; they may be fewer than all
-    * three allow.
+  /** Tools that act through `workspace`, `edits`, `shell` and `facts`; they may be fewer than
+    * all four allow.
     */
   final case class Full(
       workspace: Workspace^,
       edits: Edits^,
       shell: Shell^,
-      tools: Toolbox[{workspace, edits, shell}],
+      facts: FactBook^,
+      tools: Toolbox[{workspace, edits, shell, facts}],
       jot: Jot^,
       budget: TurnLoop.Budget,
       answerWithin: FiniteDuration = TurnTools.AnswerWithin

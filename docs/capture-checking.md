@@ -256,6 +256,13 @@ trying to reduce `Args.Values[(Field[String]^'s3, Field[String]^'s4)^'s5]`"*: th
 gets a capture-set variable, the trap above. Bind the inner `Args` to a `val` first
 (`grit.tools.Coding.replacement`).
 
+**A helper whose result type names its own parameter's capability.** In a test,
+`def bound(book: Book, …) = Toolbox.of[{book}](…).bind(…)` crashed the compiler (3.9):
+*"assertion failed: orphan parameter reference: TermParamRef(book)"*, an internal error, not
+a diagnostic. The inferred result type mentions `{book}`, a parameter of the method it
+escapes. Build the value where the capability is a local `val` instead (`FactsTests`), or
+give the helper an explicit result type that does not name the parameter.
+
 **`-Wunused` on a default method.** A parameter a default `def` ignores warns where the
 `_` of a lambda never did. Mark it `@unused`.
 

@@ -14,7 +14,7 @@ import grit.core.message.{Message, Tokens}
 import grit.core.model.{Catalog, ModelId, Pinned}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.store.Origin
-import grit.core.tool.{DuplicateName, ToolName}
+import grit.core.tool.{DuplicateName, ToolName, Toolbox}
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
 import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
@@ -28,7 +28,7 @@ import grit.models.{
   StubModels,
   StubProvider
 }
-import grit.tools.Coding
+import grit.tools.{Coding, Facts}
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
 import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
@@ -158,10 +158,19 @@ object Main {
           val edits = new LocalEdits(root)
           // The process's own environment, not .env's: a command never needs grit's settings.
           val shell = new LocalShell(root, sys.env)
-          Coding
-            .all(checkout, edits, shell)
+          val facts = new KeptFacts(engine.jot, engine.facts, Clock.system())
+          Toolbox
+            .of[{checkout, edits, shell, facts}](
+              Coding.read(checkout),
+              Coding.list(checkout),
+              Coding.search(checkout),
+              Coding.write(edits),
+              Coding.edit(edits),
+              Coding.run(shell),
+              Facts.propose(facts)
+            )
             .map(tools =>
-              launch(TurnTooling.Full(checkout, edits, shell, tools, engine.jot, rounds))
+              launch(TurnTooling.Full(checkout, edits, shell, facts, tools, engine.jot, rounds))
             )
       }
       // Its caller closes the engine and reports the throw: in the chat, as the engine that
@@ -378,7 +387,9 @@ object Main {
     /** `read`, `list` and `search` (`Coding.readOnly`): nothing asks first. */
     case Read
 
-    /** Those and `write`, `edit` and `run` (`Coding.all`), each of which asks first. */
+    /** Those and `write`, `edit` and `run` (`Coding`), and `propose_fact` (`Facts`), each of
+      * which asks first.
+      */
     case All
   }
 

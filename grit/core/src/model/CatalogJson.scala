@@ -26,6 +26,55 @@ object CatalogJson {
   /** The profile `v` encodes, or the first thing wrong with it, named by its path. */
   def readProfile(v: ujson.Value): Either[String, Profile] = readProfile(v, "profile")
 
+  /** The settings a [[Setting]] is named by, in the stored form's words. */
+  val SettingNames: Vector[String] =
+    Vector("strict", "replay", "names", "repairs", "afterResult", "guidance")
+
+  /** `s`'s name and value in the stored form's words; a set of repairs is its words
+    * separated by `, `, in order.
+    */
+  def spelled(s: Setting): (String, String) = s match {
+    case Setting.Strict(v) => ("strict", StrictWords.of(v))
+    case Setting.Replay(v) => ("replay", ReplayWords.of(v))
+    case Setting.Names(v) => ("names", NameWords.of(v))
+    case Setting.Repairs(v) => ("repairs", v.toVector.map(RepairWords.of).sorted.mkString(", "))
+    case Setting.AfterResult(v) => ("afterResult", AfterWords.of(v))
+    case Setting.Guidance(v) => ("guidance", GuidanceWords.of(v))
+  }
+
+  /** The words setting `name` takes, in the stored form; empty for a name that is no setting.
+    * `repairs` takes a comma-separated list of its words.
+    */
+  def settingWords(name: String): Vector[String] = name match {
+    case "strict" => StrictSchemas.values.toVector.map(StrictWords.of)
+    case "replay" => ReasoningReplay.values.toVector.map(ReplayWords.of)
+    case "names" => NameRepair.values.toVector.map(NameWords.of)
+    case "repairs" => ArgRepair.values.toVector.map(RepairWords.of)
+    case "afterResult" => AfterToolResult.values.toVector.map(AfterWords.of)
+    case "guidance" => ToolGuidance.values.toVector.map(GuidanceWords.of)
+    case _ => Vector.empty
+  }
+
+  /** The setting `name` (one of [[SettingNames]]) at `value`, in the stored form's words; for
+    * `repairs`, a comma-separated list, empty for none. `Left` names what was wrong and the
+    * words it takes.
+    */
+  def setting(name: String, value: String): Either[String, Setting] = {
+    val v = ujson.Str(value.trim)
+    name match {
+      case "strict" => StrictWords.read(v, name).map(Setting.Strict(_))
+      case "replay" => ReplayWords.read(v, name).map(Setting.Replay(_))
+      case "names" => NameWords.read(v, name).map(Setting.Names(_))
+      case "afterResult" => AfterWords.read(v, name).map(Setting.AfterResult(_))
+      case "guidance" => GuidanceWords.read(v, name).map(Setting.Guidance(_))
+      case "repairs" =>
+        val words = value.split(",").toVector.map(_.trim).filter(_.nonEmpty)
+        all(words.zipWithIndex.map((w, i) => RepairWords.read(ujson.Str(w), s"$name[$i]")))
+          .map(rs => Setting.Repairs(rs.toSet))
+      case other => Left(s"$other is not a setting: one of ${SettingNames.mkString(", ")}")
+    }
+  }
+
   /** The turn profile's form: its three pins. */
   def writeTurn(t: TurnProfile): ujson.Value = pins(t.turn, t.summary, t.query)
 

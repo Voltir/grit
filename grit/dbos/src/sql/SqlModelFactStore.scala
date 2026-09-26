@@ -40,7 +40,12 @@ final class SqlModelFactStore extends ModelFactStore {
       ) { ps =>
         Using.resource(ps.executeQuery()) { rs =>
           val b = Vector.newBuilder[(String, String, java.time.Instant)]
-          while (rs.next()) b += ((rs.getString(1), rs.getString(2), rs.getObject(3, classOf[OffsetDateTime]).toInstant))
+          while (rs.next())
+            b += ((
+              rs.getString(1),
+              rs.getString(2),
+              rs.getObject(3, classOf[OffsetDateTime]).toInstant
+            ))
           b.result()
         }
       }

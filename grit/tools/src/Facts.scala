@@ -1,0 +1,94 @@
+package grit.tools
+
+import grit.core.model.{CatalogJson, Fact, FactBook, ModelId, ModelRef, Upstream}
+import grit.core.tool.{Args, ArgsError, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
+
+/** The tool that proposes what grit should know about a model: `propose_fact`, a measured
+  * setting of one (model, upstream) pair, kept in the book once a person approves it.
+  */
+object Facts {
+
+  /** The most runs a fact may claim. */
+  val MaxRuns = 10000
+
+  /** `propose_fact`, keeping in `book` what a person approves. */
+  def propose(book: FactBook^): Tool[Fact]^{book} =
+    new Tool(
+      ToolSpec(
+        ToolName("propose_fact"),
+        "Propose one measured fact about a model served by one upstream, to be kept once a " +
+          "person approves it; the next turn's model catalog includes it, this one does not. " +
+          "`setting` is one of " + CatalogJson.SettingNames.map(n => s"`$n`").mkString(", ") +
+          "; `value` is in that setting's words (" +
+          CatalogJson.SettingNames
+            .map(n => s"$n: ${CatalogJson.settingWords(n).mkString(" | ")}")
+            .mkString("; ") +
+          "), and for `repairs` a comma-separated list, empty for none. `probe` names what " +
+          "measured it; the fact held in `held` of `runs` runs. Refused, before anyone is asked, " +
+          "when a value is not one of those, or `held` is more than `runs`.",
+        Args
+          .of(
+            (
+              model =
+                Field.text("The model's OpenRouter id, the dated snapshot where there is one."),
+              upstream = Field.text("The one upstream that served it, as its slug.").optional,
+              setting = Field.oneOf("Which setting.", "strict", CatalogJson.SettingNames.drop(1)*),
+              value = Field.text("The setting's value, in its words."),
+              probe = Field.text("What measured it."),
+              runs = Field.count("How many runs measured it.", 1, MaxRuns),
+              held = Field.count("In how many of them it held.", 0, MaxRuns)
+            )
+          )
+          .refine(a =>
+            for {
+              model <- ModelId
+                .of(a.model)
+                .toRight(
+                  invalid("model", "an OpenRouter model id, such as openai/gpt-oss-120b", a.model)
+                )
+              upstream <- a.upstream match {
+                case None => Right(None)
+                case Some(u) =>
+                  Upstream
+                    .of(u)
+                    .map(Some(_))
+                    .toRight(
+                      invalid("upstream", "one OpenRouter upstream slug, such as fireworks", u)
+                    )
+              }
+              setting <- CatalogJson
+                .setting(a.setting, a.value)
+                .left
+                .map(_ =>
+                  invalid(
+                    "value",
+                    s"one of ${CatalogJson.settingWords(a.setting).mkString(", ")}",
+                    a.value
+                  )
+                )
+              _ <- Either.cond(
+                a.held <= a.runs,
+                (),
+                ArgsError.Invalid("held", s"at most `runs` (${a.runs})", a.held.toString)
+              )
+            } yield Fact(ModelRef(model, upstream), setting, a.probe, a.runs, a.held)
+          )
+      ),
+      Gate.Ask(f => {
+        val (name, value) = CatalogJson.spelled(f.setting)
+        s"Keep a fact about ${f.ref}: $name = $value, held in ${f.held} of ${f.runs} runs of ${f.probe}."
+      }),
+      f => s"${f.ref} ${CatalogJson.spelled(f.setting)(0)}",
+      f =>
+        book.keep(f) match {
+          case Right(()) =>
+            Outcome.Done(
+              "Kept. The next turn's catalog has it; this turn keeps the one it started with."
+            )
+          case Left(why) => Outcome.Failed(s"Not kept: $why")
+        }
+    )
+
+  private def invalid(field: String, accepts: String, got: String): ArgsError =
+    ArgsError.Invalid(field, accepts, ujson.Str(got).render())
+}

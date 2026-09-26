@@ -233,5 +233,39 @@ object CatalogTests extends TestSuite {
       flash.toString ==> "deepseek/deepseek-v4.1-flash-20260910 @ fireworks"
       ossOpen.toString ==> "openai/gpt-oss-120b"
     }
+
+    test("a fact is a profile of its pair that knows one setting, measured by its probe") {
+      val fact = Fact(flash, Setting.Names(NameRepair.AsSent), "tool-probe", 5, 4)
+      fact.profile(day) ==>
+        Profile(
+          flash,
+          names = Known.Of(NameRepair.AsSent, Source.Measured("tool-probe", day, 5, 4))
+        )
+      Fact(oss, Setting.Repairs(Set(ArgRepair.QuotedList)), "p", 1, 1).profile(day).repairs ==>
+        Known.Of(Set(ArgRepair.QuotedList), Source.Measured("p", day, 1, 1))
+    }
+
+    test("a setting read from its stored words, or refused with the words it takes") {
+      CatalogJson.setting("strict", "when-required") ==> Right(
+        Setting.Strict(StrictSchemas.WhenRequired)
+      )
+      CatalogJson.setting("replay", "dropped") ==> Right(Setting.Replay(ReasoningReplay.Dropped))
+      CatalogJson.setting("names", "as-sent") ==> Right(Setting.Names(NameRepair.AsSent))
+      CatalogJson.setting("repairs", "quoted-number, quoted-list") ==>
+        Right(Setting.Repairs(Set(ArgRepair.QuotedNumber, ArgRepair.QuotedList)))
+      CatalogJson.setting("repairs", "") ==> Right(Setting.Repairs(Set.empty))
+      CatalogJson.setting("afterResult", "in-last-result") ==> Right(
+        Setting.AfterResult(AfterToolResult.InLastResult)
+      )
+      CatalogJson.setting("guidance", "system-lines") ==> Right(
+        Setting.Guidance(ToolGuidance.SystemLines)
+      )
+      CatalogJson.setting("strict", "sometimes") ==>
+        Left("strict is not one of enforced, when-required, ignored, rejected")
+      CatalogJson.setting("repairs", "quoted-number, guess") ==>
+        Left("repairs[1] is not one of quoted-number, quoted-list")
+      CatalogJson.setting("speed", "fast") ==>
+        Left("speed is not a setting: one of strict, replay, names, repairs, afterResult, guidance")
+    }
   }
 }
