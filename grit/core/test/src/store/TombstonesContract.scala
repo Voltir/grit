@@ -36,11 +36,11 @@ abstract class TombstonesContract extends TestSuite {
       val b = Target.Quiet(period("write-b"))
       transaction {
         for {
-          _ <- tombstones.write(a, at(1))
-          _ <- tombstones.write(a, at(5))
-          _ <- tombstones.write(b, at(2))
-        } yield ()
-      }
+          first <- tombstones.write(a, at(1))
+          again <- tombstones.write(a, at(5))
+          other <- tombstones.write(b, at(2))
+        } yield (first, again, other)
+      } ==> Right((true, false, true))
       due(Target.Kind.Quiet, 10) ==> Vector(Tombstone(a, at(1)), Tombstone(b, at(2)))
       transaction {
         for {
@@ -51,10 +51,10 @@ abstract class TombstonesContract extends TestSuite {
       due(Target.Kind.Quiet, 10) ==> Vector.empty
       transaction {
         for {
-          _ <- tombstones.write(b, at(7))
-          _ <- tombstones.write(a, at(6))
-        } yield ()
-      }
+          spared <- tombstones.write(b, at(7))
+          collected <- tombstones.write(a, at(6))
+        } yield (spared, collected)
+      } ==> Right((true, true))
       due(Target.Kind.Quiet, 10) ==> Vector(Tombstone(a, at(6)), Tombstone(b, at(7)))
     }
 

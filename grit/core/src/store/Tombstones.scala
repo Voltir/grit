@@ -10,9 +10,10 @@ import grit.core.retention.{Target, Tombstone}
 trait Tombstones {
 
   /** Marks `target` for deletion as of `at`. A pending tombstone on it keeps its time; one
-    * collected or spared is pending again from `at`.
+    * collected or spared is pending again from `at`. Whether it armed one: `false` when one
+    * was pending already.
     */
-  def write(target: Target, at: Instant)(using Tx^): Either[StoreError, Unit]
+  def write(target: Target, at: Instant)(using Tx^): Either[StoreError, Boolean]
 
   /** Spares `target`'s pending tombstone at `at`, if it has one; a later [[write]] arms it
     * again.

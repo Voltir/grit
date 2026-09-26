@@ -105,6 +105,10 @@ private[engine] final class Collector(
             }
           case None => Named.none
         }
+      case Target.PostRuns(plugin, version, cursor) =>
+        Right(Named(Vector.empty, Vector(PostRef.prefix(plugin, version, cursor)), _ => true))
+      case Target.Disabled(plugin) =>
+        Right(Named(Vector.empty, Vector(PostRef.prefix(plugin)), _ => true))
       case Target.Restarted(plugin) =>
         // Its runs at every version but its cursor's, which are not to be run again.
         cursors
@@ -118,7 +122,7 @@ private[engine] final class Collector(
               )
             case None => Named.none
           })
-      case _ => Right(Named.none)
+      case Target.Superseded(_) | Target.Quiet(_) => Right(Named.none)
     }
 
   /** Each workflow DBOS has among `named`, and whether it is queued or running. */
@@ -194,7 +198,12 @@ private[engine] final class Collector(
           _ <- cursors.retire(plugin)
           _ <- tombstones.collected(target, now)
         } yield Outcome.Collected
-      case _ => Right(Outcome.Waiting)
+      case Target.PostRuns(_, _, _) => tombstones.collected(target, now).map(_ => Outcome.Collected)
+      case Target.Disabled(plugin) =>
+        for {
+          _ <- cursors.remove(plugin)
+          _ <- tombstones.collected(target, now)
+        } yield Outcome.Collected
     }
 }
 
@@ -205,7 +214,7 @@ private[engine] object Collector {
 
   /** The kinds collected, in order. */
   private val Kinds: Vector[Target.Kind] =
-    Vector(Target.Kind.Raw, Target.Kind.Superseded, Target.Kind.Quiet, Target.Kind.Restarted)
+    Target.Kind.values.toVector
 
   /** Workflows by exact id, and by what their ids start with, those `keep` keeps. */
   private final case class Named(

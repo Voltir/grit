@@ -217,7 +217,14 @@ object Main {
           ),
           Posting.body(
             plugins,
-            PostEnv(engine.periods, engine.cursors, engine.cache, engine.jot, Clock.system())
+            PostEnv(
+              engine.periods,
+              engine.cursors,
+              engine.cache,
+              engine.tombstones,
+              engine.jot,
+              Clock.system()
+            )
           ),
           plugins
         )

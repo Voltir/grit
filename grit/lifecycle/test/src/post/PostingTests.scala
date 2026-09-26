@@ -7,11 +7,13 @@ import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, Pl
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
 import grit.core.plugin.{CacheDocs, InMemoryPlugins, Plugin, PostRef}
+import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{
   ClosedPeriod,
   Entry,
   InMemoryEntryStore,
   InMemoryPeriodStore,
+  InMemoryTombstones,
   Jot,
   Payload,
   StoreError,
@@ -60,7 +62,8 @@ object PostingTests extends TestSuite {
   private final class World(n: Int) {
     val entries = new InMemoryEntryStore
     val periods = new InMemoryPeriodStore(entries)
-    val plugins = new InMemoryPlugins
+    val tombstones = new InMemoryTombstones
+    val plugins = new InMemoryPlugins(tombstones)
     locally {
       given Tx = TestTx.fake
       for (i <- 1 to n) {
@@ -98,6 +101,7 @@ object PostingTests extends TestSuite {
             periods,
             plugins.cursors,
             plugins.posting,
+            tombstones,
             new FakeJot,
             new SetClock(Instant.EPOCH)
           )
@@ -123,6 +127,20 @@ object PostingTests extends TestSuite {
       )
       w.cursor(digest) ==> ordinal(3)
       w.run(Vector(digest), PostRef(digest.name, 1, ordinal(3), 0)) ==> "posted 0"
+    }
+
+    test(
+      "a run that moves the cursor marks the runs from its start, and one that moves none, none"
+    ) {
+      val w = new World(3)
+      val digest = new Recorder(name("digest"), 1)
+      val from = PostRef(digest.name, 1, CloseOrdinal.Start, 0)
+      w.run(Vector(digest), from) ==> "posted 3"
+      w.tombstones.pending ==>
+        Vector(Tombstone(Target.PostRuns(digest.name, 1, CloseOrdinal.Start), Instant.EPOCH))
+      w.run(Vector(digest), PostRef(digest.name, 1, ordinal(3), 0)) ==> "posted 0"
+      w.tombstones.pending.map(_.target) ==>
+        Vector(Target.PostRuns(digest.name, 1, CloseOrdinal.Start))
     }
 
     test("a Left ends the run, the cursor before the period refused") {

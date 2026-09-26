@@ -125,7 +125,14 @@ object LiveTurn {
         Posting
           .body(
             Vector.empty,
-            PostEnv(engine.periods, engine.cursors, engine.cache, engine.jot, Clock.system())
+            PostEnv(
+              engine.periods,
+              engine.cursors,
+              engine.cache,
+              engine.tombstones,
+              engine.jot,
+              Clock.system()
+            )
           ),
         Vector.empty
       )

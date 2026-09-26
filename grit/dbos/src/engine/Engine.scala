@@ -156,7 +156,8 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
     * is waiting on it ([[grit.core.period.Deadline.ask]]) has its question enqueued
     * ([[grit.core.id.SettleRef.workflowId]]); every enabled plugin behind the newest closed
     * period has a run enqueued from its cursor ([[grit.core.plugin.PostRef]]) unless one is
-    * going; then every tombstone whose kind's retention has passed is collected
+    * going, and every other plugin with a cursor is marked for deletion
+    * ([[grit.core.retention.Target.Disabled]]); then every tombstone whose kind's retention has passed is collected
     * ([[grit.core.retention.Target]]): its workflows deleted, unless one is still queued or
     * running, which defers it to a later sweep, then its rows. No workflow is ever
     * deleted to be run again: what did not finish its work is reported `stuck`

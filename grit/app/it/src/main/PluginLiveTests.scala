@@ -71,7 +71,14 @@ object PluginLiveTests extends TestSuite {
       nothing,
       nothing,
       nothing,
-      Posting.body(plugins, PostEnv(engine.periods, engine.cursors, engine.cache, engine.jot, Clock.system())),
+      Posting.body(plugins, PostEnv(
+            engine.periods,
+            engine.cursors,
+            engine.cache,
+            engine.tombstones,
+            engine.jot,
+            Clock.system()
+          )),
       plugins
     )
 

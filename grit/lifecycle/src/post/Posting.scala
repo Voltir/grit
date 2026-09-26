@@ -5,17 +5,19 @@ import grit.core.durable.{Durable, Journaled}
 import grit.core.id.{PluginName, WorkflowId}
 import grit.core.period.CloseOrdinal
 import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PostRef}
-import grit.core.store.{ClosedPeriod, Jot, PeriodStore, StoreError}
+import grit.core.retention.Target
+import grit.core.store.{ClosedPeriod, Jot, PeriodStore, StoreError, Tombstones}
 
 /** What posting works with besides its `Durable`: the closed periods, each plugin's cursor,
   * `cache`, which gives one plugin the documents of the one closed period it is posting,
-  * `jot`, whose transaction holds one post and its cursor's move together, and `clock`,
+  * `tombstones`, where a run marks the runs from a cursor it has moved past, `jot`, whose transaction holds one post and its cursor's move together, and `clock`,
   * which says when a cursor starts again.
   */
 final case class PostEnv(
     periods: PeriodStore,
     cursors: PluginCursors,
     cache: (PluginName, ClosedPeriod) -> CacheDocs,
+    tombstones: Tombstones,
     jot: Jot^,
     clock: Clock^
 )
@@ -46,24 +48,27 @@ object Posting {
       case Some(ref) =>
         plugins.find(p => p.name == ref.plugin && p.version == ref.version) match {
           case None => s"no plugin ${PluginName.value(ref.plugin)} at version ${ref.version}"
-          case Some(plugin) => posting(plugin, env, 0)
+          case Some(plugin) => posting(ref, plugin, env, 0)
         }
     }
 
   /** The run's steps from the `n`-th on. */
-  private def posting(plugin: Plugin, env: PostEnv^, n: Int)(using d: Durable^): String =
+  private def posting(ref: PostRef, plugin: Plugin, env: PostEnv^, n: Int)(using
+      d: Durable^
+  ): String =
     if (n == MaxPerRun) s"posted $n; more to come"
     else
-      d.step(step(n)) { () => env.jot.write(next(plugin, env)).left.map(describe) } match {
-        case Right(Some(_)) => posting(plugin, env, n + 1)
+      d.step(step(n)) { () => env.jot.write(next(ref, plugin, env)).left.map(describe) } match {
+        case Right(Some(_)) => posting(ref, plugin, env, n + 1)
         case Right(None) => s"posted $n"
         case Left(why) => s"posted $n; stopped: $why"
       }
 
-  /** The next closed period after `plugin`'s cursor posted and the cursor moved past it; its
-    * close ordinal, or `None` when there is none.
+  /** The next closed period after `plugin`'s cursor posted and the cursor moved past it, and
+    * the runs from `ref`'s cursor marked for deletion; its close ordinal, or `None` when there
+    * is none. The run making the mark is one of those runs: the collector waits for it.
     */
-  private def next(plugin: Plugin, env: PostEnv^)(using
+  private def next(ref: PostRef, plugin: Plugin, env: PostEnv^)(using
       grit.core.store.Tx^
   ): Either[StoreError, Option[CloseOrdinal]] =
     for {
@@ -75,6 +80,10 @@ object Posting {
           for {
             _ <- plugin.post(closed, env.cache(plugin.name, closed))
             _ <- env.cursors.advance(plugin.name, plugin.version, closed.order)
+            _ <- env.tombstones.write(
+              Target.PostRuns(ref.plugin, ref.version, ref.cursor),
+              env.clock.now()
+            )
           } yield Some(closed.order)
       }
     } yield posted

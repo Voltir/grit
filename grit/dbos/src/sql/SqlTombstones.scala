@@ -14,7 +14,7 @@ import grit.core.store.{StoreError, Tombstones, Tx}
 final class SqlTombstones extends Tombstones {
   import SqlEntryStore.attempt
 
-  def write(target: Target, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
+  def write(target: Target, at: Instant)(using tx: Tx^): Either[StoreError, Boolean] =
     update(
       """INSERT INTO grit.tombstones (kind, target, written_at) VALUES (?, ?, ?)
         |ON CONFLICT (kind, target) DO UPDATE
@@ -24,7 +24,7 @@ final class SqlTombstones extends Tombstones {
     ) { ps =>
       bind(ps, target)
       ps.setObject(3, at.atOffset(ZoneOffset.UTC))
-    }.map(_ => ())
+    }.map(_ == 1)
 
   def spare(target: Target, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
     end(target, at, spared = true)

@@ -76,11 +76,31 @@ private[engine] final class Sweeper(
         .foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, a) =>
           acc.flatMap(done => ask(a.question).map(done + _))
         }
-      posted <- plugins().foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, p) =>
+      disabled <- enabling(now)
+      posted <- plugins().foldLeft[Either[StoreError, Swept]](Right(disabled)) { (acc, p) =>
         acc.flatMap(done => post(p._1, p._2, now).map(done + _))
       }
       collected <- collector.once(settings, now)
     } yield closed + asked + posted + collected
+
+  /** Every enabled plugin's disabled tombstone spared, and every other plugin with a cursor
+    * marked for deletion at `now` ([[Target.Disabled]]); those newly marked are `disabled`.
+    */
+  private def enabling(now: Instant): Either[StoreError, Swept] =
+    write {
+      val on = plugins().map(_._1).toSet
+      for {
+        stored <- cursors.stored()
+        _ <- on.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, p) =>
+          acc.flatMap(_ => tombstones.spare(Target.Disabled(p), now))
+        }
+        marked <- stored.map(_._1).filterNot(on).foldLeft[Either[StoreError, Vector[PluginName]]](
+          Right(Vector.empty)
+        ) { (acc, p) =>
+          acc.flatMap(done => tombstones.write(Target.Disabled(p), now).map(if (_) done :+ p else done))
+        }
+      } yield Swept(disabled = marked)
+    }
 
   /** The next run posting to `plugin` at `version` from its cursor, when the cursor is behind
     * the newest closed period and no run from it is still going: enqueued as [[close]]
@@ -174,8 +194,9 @@ private[engine] final class Sweeper(
   * `deferred` (a workflow of theirs still queued or running, or waiting on another target),
   * and the workflows it found `stuck`: a close attempt that finished without closing its
   * period, whose deadline has not moved since, or a plugin's last run from a cursor it failed
-  * to move [[PostRef.Attempts]] times. A stuck workflow is not run again; a close is attempted
-  * anew once its deadline moves.
+  * to move [[PostRef.Attempts]] times, and the plugins with a cursor but not enabled whose
+  * documents it newly marked for deletion (`disabled`). A stuck workflow is not run again; a
+  * close is attempted anew once its deadline moves.
   */
 final case class Swept(
     enqueued: Vector[CloseRef] = Vector.empty,
@@ -184,7 +205,8 @@ final case class Swept(
     stuck: Vector[WorkflowId] = Vector.empty,
     asked: Vector[SettleRef] = Vector.empty,
     spared: Vector[Target] = Vector.empty,
-    deferred: Vector[Target] = Vector.empty
+    deferred: Vector[Target] = Vector.empty,
+    disabled: Vector[PluginName] = Vector.empty
 ) {
   def +(other: Swept): Swept =
     Swept(
@@ -194,7 +216,8 @@ final case class Swept(
       stuck ++ other.stuck,
       asked ++ other.asked,
       spared ++ other.spared,
-      deferred ++ other.deferred
+      deferred ++ other.deferred,
+      disabled ++ other.disabled
     )
 }
 

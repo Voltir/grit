@@ -30,9 +30,9 @@ import grit.core.period.{
   Windows
 }
 import grit.core.place.{Directory, Locality}
-import grit.core.plugin.PostRef
+import grit.core.plugin.{CacheDocs, Plugin, PostRef}
 import grit.core.retention.Target
-import grit.core.store.{Origin, Tx}
+import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
 import grit.dbos.sql.{
   DbConfig,
   LiveDb,
@@ -271,14 +271,18 @@ object CollectorLiveTests extends TestSuite {
       )
     }
 
-  private def launched(config: DbConfig, ledger: FiniteDuration): Engine^ = {
+  private def launched(
+      config: DbConfig,
+      ledger: FiniteDuration,
+      plugins: Vector[Plugin] = Vector.empty
+  ): Engine^ = {
     val engine = Engine.open(config, "test")
     engine.launch(
       turn,
       close,
       (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
       (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
-      Vector.empty
+      plugins
     )
     minutes(config, ledger)
     engine
@@ -286,6 +290,25 @@ object CollectorLiveTests extends TestSuite {
 
   private def tui(session: String): Origin =
     Origin.Tui(Directory.of("/work/shared").getOrElse(sys.error("directory")), session)
+
+  /** A plugin that keeps nothing. */
+  private final class Idle(val name: PluginName) extends Plugin {
+    val version: Int = 1
+    def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] = Right(())
+  }
+
+  private def enqueue(config: DbConfig, runs: Vector[PostRef]): Unit = {
+    val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
+    try
+      runs.foreach { run =>
+        val _ = client.enqueueWorkflow[String, Exception](
+          Posts.enqueueOptions(run),
+          // Empty, and DBOS only reads it; separation checking treats arrays as mutable.
+          caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
+        )
+      }
+    finally client.close()
+  }
 
   val tests = Tests {
     test(
@@ -687,6 +710,87 @@ object CollectorLiveTests extends TestSuite {
           kept(config, Vector(old.workflowId)).headOption,
           kept(config, Vector(current.workflowId)).headOption
         ) ==> (Some(0), Some(1))
+      } finally engine.close()
+    }
+
+    test(
+      "the finished runs from a cursor passed go after the raw window, and those from another stay"
+    ) {
+      val config = TestPostgres.freshDatabase("collect_post_runs")
+      val engine = launched(config, 2.minutes)
+      try {
+        val p = PluginName.of("posted").getOrElse(sys.error("name"))
+        val five = CloseOrdinal.of(5).getOrElse(sys.error("ordinal"))
+        val passed = Vector(0, 1).map(PostRef(p, 1, CloseOrdinal.Start, _))
+        val current = PostRef(p, 1, five, 0)
+        enqueue(config, passed :+ current)
+        assert(
+          eventually(
+            ended(config, PostRef.prefix(p)) && kept(
+              config,
+              passed :+ current map (_.workflowId)
+            ).headOption.contains(3)
+          )
+        )
+        LiveDb.transaction(config)(
+          tombstones.write(Target.PostRuns(p, 1, CloseOrdinal.Start), Instant.now())
+        ) ==>
+          Right(true)
+        engine.sweep(Instant.now().plusSeconds(180)).map(_.collected) ==>
+          Right(Vector(Target.PostRuns(p, 1, CloseOrdinal.Start)))
+        (
+          kept(config, passed.map(_.workflowId)).headOption,
+          kept(config, Vector(current.workflowId)).headOption
+        ) ==>
+          (Some(0), Some(1))
+      } finally engine.close()
+    }
+
+    test("a plugin not enabled loses its documents, cursor and runs after the ledger window") {
+      val config = TestPostgres.freshDatabase("collect_disabled")
+      val engine = launched(config, 2.minutes)
+      try {
+        val p = PluginName.of("gone").getOrElse(sys.error("name"))
+        LiveDb.transaction(config) {
+          for {
+            _ <- new SqlPluginCursors(tombstones).start(p, 1, Instant.now())
+            _ <- new SqlCacheDocs(p, CloseOrdinal.Start).put("k", ujson.Str("v"))
+          } yield ()
+        } ==> Right(())
+        val run = PostRef(p, 1, CloseOrdinal.Start, 0)
+        enqueue(config, Vector(run))
+        assert(
+          eventually(
+            ended(config, PostRef.prefix(p)) && kept(config, Vector(run.workflowId)).headOption
+              .contains(1)
+          )
+        )
+        engine.sweep(Instant.now()).map(s => (s.disabled, s.collected)) ==> Right(
+          (Vector(p), Vector())
+        )
+        engine.sweep(Instant.now()).map(_.disabled) ==> Right(Vector())
+        engine.sweep(Instant.now().plusSeconds(180)).map(_.collected) ==>
+          Right(Vector(Target.Disabled(p)))
+        docRows(config, p) ==> 0
+        LiveDb.transaction(config)(new SqlPluginCursors(tombstones).stored()) ==> Right(Vector())
+        kept(config, Vector(run.workflowId)).headOption ==> Some(0)
+      } finally engine.close()
+    }
+
+    test("an enabled plugin's disabled tombstone is spared") {
+      val config = TestPostgres.freshDatabase("collect_enabled")
+      val p = PluginName.of("back").getOrElse(sys.error("name"))
+      val engine = launched(config, 2.minutes, Vector(new Idle(p)))
+      try {
+        LiveDb.transaction(config)(tombstones.write(Target.Disabled(p), Instant.now())) ==> Right(
+          true
+        )
+        engine.sweep(Instant.now().plusSeconds(180)).map(s => (s.spared, s.collected)) ==>
+          Right((Vector(), Vector()))
+        LiveDb.transaction(config)(
+          tombstones.due(Target.Kind.Disabled, Instant.now().plusSeconds(3600), 10)
+        ) ==>
+          Right(Vector())
       } finally engine.close()
     }
   }

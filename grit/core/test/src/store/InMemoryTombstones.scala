@@ -19,13 +19,13 @@ final class InMemoryTombstones extends Tombstones {
       .collect { case (t, r) if r.ended.isEmpty => Tombstone(t, r.written) }
       .sortBy(t => (t.written, t.target.kind.ordinal, Target.key(t.target)))
 
-  def write(target: Target, at: Instant)(using Tx^): Either[StoreError, Unit] = {
+  def write(target: Target, at: Instant)(using Tx^): Either[StoreError, Boolean] =
     rows.get(target) match {
-      case Some(r) if r.ended.isEmpty => ()
-      case _ => rows = rows.updated(target, Row(at, None, None, spared = false))
+      case Some(r) if r.ended.isEmpty => Right(false)
+      case _ =>
+        rows = rows.updated(target, Row(at, None, None, spared = false))
+        Right(true)
     }
-    Right(())
-  }
 
   def spare(target: Target, at: Instant)(using Tx^): Either[StoreError, Unit] =
     end(target, at, spared = true)
