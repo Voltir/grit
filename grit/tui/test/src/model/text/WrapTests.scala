@@ -65,12 +65,22 @@ object WrapTests extends TestSuite {
       assert(rows.map(_.text) == Vector("a", "b"))
     }
 
-    test("every row of a mixed document fits and slices back to its source") {
+    test("the rows of a mixed document fit, slice back to it, and cover it exactly") {
       // Soft breaks, hard breaks, wide glyphs, emoji and newlines in one text.
       val text = "seed message 世界\nindented  \uD83D\uDE00 entry\n0123456789abcdef"
       val rows = Wrap.wrap(text, 8)
       assertSlices(text)(rows)
       assertFits(rows, 8)
+      // ...and the rows cover it: between one row and the next lies only the space a
+      // soft break consumed, the newline a line ended on, or nothing at a hard break, so
+      // no character of the source is dropped or shown twice.
+      val ends = rows.map(r => r.startOffset + r.text.length)
+      val gaps = (0 +: ends).zip(rows.map(_.startOffset) :+ text.length).map { (from, to) =>
+        text.slice(from, to)
+      }
+      assert(gaps.forall(g => g == "" || g == " " || g == "\n"))
+      val rebuilt = gaps.zip(rows.map(_.text) :+ "").map((g, r) => g + r).mkString
+      assert(rebuilt == text)
     }
 
     test("the first row gets the first width, every later row the rest") {
