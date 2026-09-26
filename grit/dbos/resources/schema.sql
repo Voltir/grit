@@ -47,6 +47,7 @@ END;
 -- place is recorded with its first conversation, from that conversation's origin
 -- (Origin.place), and never changes. Which place is within which is Place.within's alone:
 -- nothing here tests it.
+-- Retention: ledger: deleted with its last conversation (Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.places (
     id   UUID PRIMARY KEY DEFAULT uuidv7(),
     path TEXT[] NOT NULL UNIQUE
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS grit.places (
 -- One row per origin; `origin` is the Origin ADT as JSON, and jsonb equality
 -- ignores key order, so the unique index is on the value, not its spelling. Its place is
 -- its origin's, set when it is created.
+-- Retention: ledger: deleted whole once quiet past the ledger window (Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.conversations (
     id         UUID PRIMARY KEY DEFAULT uuidv7(),
     origin     JSONB NOT NULL UNIQUE,
@@ -66,6 +68,8 @@ CREATE TABLE IF NOT EXISTS grit.conversations (
 
 CREATE INDEX IF NOT EXISTS idx_conversations_place ON grit.conversations (place_id);
 
+-- Retention: journal: a closed period's raw entries after the raw window (Target.Raw); its closing
+-- entry is ledger (Target.Superseded, Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.entries (
     id              TEXT PRIMARY KEY,
     conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,
@@ -92,6 +96,7 @@ CREATE INDEX IF NOT EXISTS idx_entries_bm25 ON grit.entries
 -- so the turn's append writes both in one transaction and a replay cannot count twice. Not a
 -- foreign key: the row outlives the entry's purge, and goes with its period's closing, by
 -- the turn it was made for (a close's, its period's last).
+-- Retention: ledger: with its period's closing (Target.Superseded, Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.usage_ledger (
     entry_id            TEXT PRIMARY KEY,
     conversation_id     UUID NOT NULL,
@@ -119,6 +124,7 @@ CREATE INDEX IF NOT EXISTS idx_usage_ledger_turn ON grit.usage_ledger (conversat
 -- Every distinct profile a turn ran under (grit.core.model.TurnProfile): the model, budget,
 -- upstream and settings each role's calls were made under. Keyed by its content hash, so
 -- it is written once however many turns share it, and never changed.
+-- Retention: kept: content-addressed, one per distinct profile a turn ran under.
 CREATE TABLE IF NOT EXISTS grit.model_profiles (
     id         TEXT PRIMARY KEY,
     profile    JSONB NOT NULL,
@@ -126,6 +132,7 @@ CREATE TABLE IF NOT EXISTS grit.model_profiles (
 );
 
 -- Which profile each turn ran under, set once when the turn starts.
+-- Retention: ledger: with its period's closing (Target.Superseded, Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.turn_model_profiles (
     workflow_id      TEXT PRIMARY KEY,
     model_profile_id TEXT NOT NULL REFERENCES grit.model_profiles(id),
@@ -135,6 +142,7 @@ CREATE TABLE IF NOT EXISTS grit.turn_model_profiles (
 -- Facts about model pairs learned while grit runs, each approved by a person: the
 -- database's layer over the checked-in seed catalog (grit/models/resources/catalog.json).
 -- Append-only; `facts` is a partial profile in the seed's form (CatalogJson.writeProfile).
+-- Retention: kept: approved by a person, the catalog's runtime layer.
 CREATE TABLE IF NOT EXISTS grit.model_facts (
     ordinal     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     facts       JSONB NOT NULL,
@@ -148,6 +156,7 @@ CREATE TABLE IF NOT EXISTS grit.model_facts (
 -- its last turn and its place in close order: all four, or none (PeriodState.Closed).
 -- When it closes, and when it is asked whether anyone is waiting, are never stored or computed
 -- here: Deadline is their one definition.
+-- Retention: ledger: with its closing (Target.Superseded, Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.periods (
     conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,
     seq             BIGINT NOT NULL CHECK (seq >= 1),
@@ -182,6 +191,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_periods_open ON grit.periods (conversation
 -- with the period's raw entries (ADR 0011). A verdict is about the period as it stood with
 -- `last_turn` its newest turn; weighed, with a probability for each answer (nobody, the
 -- person, something else) and the model, or unanswered, with why.
+-- Retention: journal: with its period's raw entries (Target.Raw).
 CREATE TABLE IF NOT EXISTS grit.verdicts (
     ordinal          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     conversation_id  UUID NOT NULL,
@@ -206,6 +216,7 @@ CREATE INDEX IF NOT EXISTS idx_verdicts_period ON grit.verdicts (conversation_id
 -- The lifecycle's settings in force (LifecycleSettings): one row, or none for the defaults.
 -- Seeded on first start, then changed by /set or by hand. Their rules are checked where
 -- they are read (LifecycleSettings.of), not here, so they have one home.
+-- Retention: kept: one row, changed by people.
 CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
     one       BOOLEAN PRIMARY KEY DEFAULT true CHECK (one),
     idle        INTERVAL NOT NULL,
@@ -225,6 +236,8 @@ CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
 -- closed periods, and reaches only its own rows. Each is of the generation of the plugin's
 -- cursor it was written under, and is read only while that is the cursor's; `source` is the
 -- close ordinal of the period it was posted from, and it is deleted with that closing.
+-- Retention: cache: with the closing each was posted from, or the generation it was written in
+-- (Target.Superseded, Target.Quiet, Target.Restarted, Target.Disabled).
 CREATE TABLE IF NOT EXISTS grit.plugin_docs (
     plugin     TEXT NOT NULL,
     generation BIGINT NOT NULL,
@@ -238,6 +251,7 @@ CREATE INDEX IF NOT EXISTS idx_plugin_docs_source ON grit.plugin_docs (source);
 
 -- How far each plugin has posted, in close order (grit.periods.close_ordinal), and at
 -- which version: another version starts again at 0, in the next generation.
+-- Retention: cache: with a plugin no longer enabled (Target.Disabled).
 CREATE TABLE IF NOT EXISTS grit.plugin_cursors (
     plugin     TEXT PRIMARY KEY,
     version    INTEGER NOT NULL,
@@ -250,6 +264,7 @@ CREATE TABLE IF NOT EXISTS grit.plugin_cursors (
 -- grit.core.retention.Target stores them. Pending until the collector deletes the target
 -- (`collected_at`) or finds it alive (`collected_at` and `spared`); `deferred_at` is when it
 -- last could not be collected, which puts it behind the ones due since.
+-- Retention: ledger: forgotten once collected or spared longer ago than the ledger window.
 CREATE TABLE IF NOT EXISTS grit.tombstones (
     kind         TEXT NOT NULL,
     target       TEXT NOT NULL,
