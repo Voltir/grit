@@ -17,9 +17,11 @@ import grit.core.store.{
   EntrySearch,
   EntryStore,
   Jot,
+  LifecycleStore,
   ModelFactStore,
   ModelProfileStore,
   Origin,
+  PeriodStore,
   StoreError,
   Tx,
   UsageLedger
@@ -31,8 +33,10 @@ import grit.dbos.sql.{
   SqlEntrySearch,
   SqlEntryStore,
   SqlJot,
+  SqlLifecycleStore,
   SqlModelFactStore,
   SqlModelProfileStore,
+  SqlPeriodStore,
   SqlUsageLedger
 }
 import grit.dbos.workflow.Turns
@@ -65,6 +69,12 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   /** Facts about model pairs approved while grit runs, over the seed catalog. */
   val facts: ModelFactStore = new SqlModelFactStore()
 
+  /** Each conversation's periods, and their closing entries. */
+  val periods: PeriodStore = new SqlPeriodStore(entries)
+
+  /** The lifecycle's settings in force. */
+  val lifecycle: LifecycleStore = new SqlLifecycleStore()
+
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource)
 
@@ -74,7 +84,7 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   // An edge's side: it reaches the engine only through Postgres (ADR 0002).
   private val client = new DBOSClient(dataSource)
 
-  val inbox: Inbox = new SqlInbox(dataSource, client, conversations, entries)
+  val inbox: Inbox = new SqlInbox(dataSource, client, conversations, entries, periods)
 
   /** Registers `turn` as the body of every turn and starts running queued turns. Once. */
   def launch(turn: WorkflowId => Durable^ ?=> String): Unit = {

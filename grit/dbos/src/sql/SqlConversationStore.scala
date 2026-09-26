@@ -50,4 +50,25 @@ private[dbos] object SqlConversationStore {
     case Origin.Task(name, run) =>
       ujson.Obj("kind" -> "task", "name" -> name, "run" -> run)
   }
+
+  /** The origin stored as `v` ([[originJson]]'s form), or why it is none. */
+  def readOrigin(v: ujson.Value): Either[String, Origin] = {
+    def str(o: collection.Map[String, ujson.Value], key: String): Either[String, String] =
+      o.get(key).toRight(s"missing field: $key").flatMap(_.strOpt.toRight(s"$key is not a string"))
+    for {
+      o <- v.objOpt.toRight("expected an object")
+      kind <- str(o, "kind")
+      origin <- kind match {
+        case "tui" => str(o, "session").map(Origin.Tui(_))
+        case "slack" =>
+          for {
+            team <- str(o, "team")
+            channel <- str(o, "channel")
+            threadTs <- str(o, "threadTs")
+          } yield Origin.Slack(team, channel, threadTs)
+        case "task" => str(o, "name").flatMap(n => str(o, "run").map(Origin.Task(n, _)))
+        case other => Left(s"unknown origin kind: $other")
+      }
+    } yield origin
+  }
 }

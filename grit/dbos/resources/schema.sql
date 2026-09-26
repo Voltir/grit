@@ -10,7 +10,8 @@ CREATE SCHEMA IF NOT EXISTS grit;
 CREATE EXTENSION IF NOT EXISTS pg_textsearch;
 
 -- The searchable text of a stored payload (PayloadJson): a message's user text, its
--- assistant text blocks, a tool result's content; a summary's text. Never reasoning,
+-- assistant text blocks, a tool result's content; a summary's text; a closing entry's
+-- prose, outcome and sections (ClosingJson). Never reasoning,
 -- tool-call arguments, or any other kind of payload. IMMUTABLE, so the generated column
 -- below may call it.
 CREATE OR REPLACE FUNCTION grit.entry_text(payload jsonb) RETURNS text
@@ -25,6 +26,14 @@ RETURN CASE payload ->> 'kind'
           WHERE b ->> 'type' = 'text'),
         payload #>> '{message,content}')
     WHEN 'summary' THEN payload ->> 'text'
+    WHEN 'closed' THEN concat_ws(' ',
+        payload #>> '{closing,prose}',
+        payload #>> '{closing,outcome}',
+        (SELECT string_agg(line, ' ')
+           FROM unnest(ARRAY['decisions', 'facts', 'open', 'sources']) AS section,
+                jsonb_array_elements_text(
+                  CASE WHEN jsonb_typeof(payload -> 'closing' -> section) = 'array'
+                       THEN payload -> 'closing' -> section ELSE '[]'::jsonb END) AS line))
 END;
 
 -- One row per origin; `origin` is the Origin ADT as JSON, and jsonb equality
@@ -104,4 +113,47 @@ CREATE TABLE IF NOT EXISTS grit.model_facts (
     facts       JSONB NOT NULL,
     approved_by TEXT NOT NULL,
     approved_at TIMESTAMPTZ NOT NULL
+);
+
+-- A conversation's periods (ADR 0011): a run of its turns, from `first_turn` to the turn
+-- before the next period's first. An entry's period follows from its turn_seq. A closed
+-- period has its closing entry, written in the same transaction as the seal, its reason,
+-- its last turn and its place in close order: all four, or none (PeriodState.Closed).
+-- When it closes is never stored or computed here: Deadline.of is its one definition.
+CREATE TABLE IF NOT EXISTS grit.periods (
+    conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,
+    seq             BIGINT NOT NULL CHECK (seq >= 1),
+    first_turn      BIGINT NOT NULL,
+    opened_at       TIMESTAMPTZ NOT NULL,
+    -- The last "done" given since the period's newest activity, if any.
+    signalled_at    TIMESTAMPTZ,
+    last_turn       BIGINT,
+    closed_at       TIMESTAMPTZ,
+    reason          TEXT CHECK (reason IN ('resolved', 'lapsed')),
+    closing_id      TEXT REFERENCES grit.entries(id),
+    -- Close order across conversations, what plugin cursors count. Taken under a lock held
+    -- to commit (SqlPeriodStore.seal), so no seal commits before one with a lower number.
+    close_ordinal   BIGINT UNIQUE,
+    purged_at       TIMESTAMPTZ,
+    PRIMARY KEY (conversation_id, seq),
+    CHECK ((closed_at IS NULL) = (reason IS NULL)
+       AND (closed_at IS NULL) = (closing_id IS NULL)
+       AND (closed_at IS NULL) = (last_turn IS NULL)
+       AND (closed_at IS NULL) = (close_ordinal IS NULL)),
+    CHECK (purged_at IS NULL OR closed_at IS NOT NULL)
+);
+
+-- At most one open period per conversation.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_periods_open ON grit.periods (conversation_id)
+    WHERE closed_at IS NULL;
+
+-- The lifecycle's settings in force (LifecycleSettings): one row, or none for the defaults.
+-- Seeded on first start, then changed by /set or by hand. Their rules are checked where
+-- they are read (LifecycleSettings.of), not here, so they have one home.
+CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
+    one       BOOLEAN PRIMARY KEY DEFAULT true CHECK (one),
+    idle      INTERVAL NOT NULL,
+    grace     INTERVAL NOT NULL,
+    retention INTERVAL NOT NULL,
+    closings  INTEGER NOT NULL
 );

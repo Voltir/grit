@@ -8,9 +8,18 @@ import scala.util.control.NonFatal
 
 import grit.core.approval.Approval
 import grit.core.id.{ConversationId, EntryId, SourceId, ToolCallId, TurnRef, WorkflowId}
-import grit.core.inbox.{Inbox, InboxError}
+import grit.core.inbox.{Inbox, InboxError, Signalled}
 import grit.core.message.Message
-import grit.core.store.{ConversationStore, Entry, EntryStore, Origin, Payload, StoreError, Tx}
+import grit.core.store.{
+  ConversationStore,
+  Entry,
+  EntryStore,
+  Origin,
+  Payload,
+  PeriodStore,
+  StoreError,
+  Tx
+}
 import grit.dbos.workflow.Turns
 
 import dev.dbos.transact.DBOSClient
@@ -23,7 +32,8 @@ final class SqlInbox(
     dataSource: DataSource,
     client: DBOSClient,
     conversations: ConversationStore,
-    entries: EntryStore
+    entries: EntryStore,
+    periods: PeriodStore
 ) extends Inbox {
 
   def ingest(
@@ -42,19 +52,22 @@ final class SqlInbox(
         turn <- existing match {
           case Some(entry) => Right(TurnRef(entry.conversationId, entry.turnSeq))
           case None =>
-            entries
-              .insert(
-                Entry(
-                  id,
-                  conversation.id,
-                  next.turnSeq,
-                  None,
-                  next.seq,
-                  Payload.Message(message),
-                  Instant.now()
+            val at = Instant.now()
+            periods.openFor(conversation.id, next.turnSeq, at).flatMap { _ =>
+              entries
+                .insert(
+                  Entry(
+                    id,
+                    conversation.id,
+                    next.turnSeq,
+                    None,
+                    next.seq,
+                    Payload.Message(message),
+                    at
+                  )
                 )
-              )
-              .map(_ => TurnRef(conversation.id, next.turnSeq))
+                .map(_ => TurnRef(conversation.id, next.turnSeq))
+            }
         }
       } yield turn
     }
@@ -93,6 +106,14 @@ final class SqlInbox(
     } catch {
       case _: DBOSNonExistentWorkflowException => Left(InboxError.NoSuchTurn(workflow))
       case NonFatal(e) => Left(SqlInbox.unavailable(e))
+    }
+
+  def signal(origin: Origin): Either[InboxError, Signalled] =
+    inTransaction {
+      for {
+        conversation <- conversations.findOrCreate(origin)
+        open <- periods.signal(conversation.id, Instant.now())
+      } yield if (open) Signalled.Closing else Signalled.NothingOpen
     }
 
   /** Runs `body` in its own transaction, committing on `Right` and rolling back otherwise. */

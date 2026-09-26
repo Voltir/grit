@@ -2,8 +2,9 @@ package grit.dbos.engine
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.period.{CloseReason, Closing}
 import grit.core.store.{Entry, EntrySearch, Origin, Payload}
 import grit.dbos.sql.{LiveDb, SqlEntrySearch, SqlEntryStore, TestPostgres}
 
@@ -120,6 +121,26 @@ object SearchLiveTests extends TestSuite {
       find(c, "numbat") ==> Right(Vector.empty)
       val queried = conversation("query", Payload.Query("bilby"), said("a bilby burrow"))
       find(queried, "bilby").map(ids) ==> Right(Vector("query:e1"))
+    }
+
+    test("a closing entry is searched by its prose, its outcome and its sections' lines") {
+      val closing = Closing
+        .of(
+          "we compared kakapo diets",
+          Some("kea eat anything"),
+          Vector("feed the takahe seeds"),
+          Vector("the kiwi is nocturnal"),
+          Vector("weka remain unsettled"),
+          Vector("notes on the tuatara")
+        )
+        .getOrElse(sys.error("closing"))
+      val c = conversation(
+        "closed",
+        Payload.Closed(PeriodSeq.First, CloseReason.Resolved, closing),
+        said("nothing to see")
+      )
+      Vector("kakapo", "kea", "takahe", "kiwi", "weka", "tuatara").map(w => find(c, w).map(ids)) ==>
+        Vector.fill(6)(Right(Vector("closed:e0")))
     }
   }
 }

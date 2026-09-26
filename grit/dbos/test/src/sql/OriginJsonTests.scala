@@ -28,5 +28,15 @@ object OriginJsonTests extends TestSuite {
       SqlConversationStore.originJson(Origin.Task("e2e", "2026-09-23")) ==>
         ujson.Obj("kind" -> "task", "name" -> "e2e", "run" -> "2026-09-23")
     }
+
+    test("every origin reads back from its stored form; any other form is refused") {
+      val origins =
+        Vector(Origin.Tui("s1"), Origin.Slack("T1", "C1", "1.2"), Origin.Task("e2e", "r"))
+      origins.map(o => SqlConversationStore.readOrigin(SqlConversationStore.originJson(o))) ==>
+        origins.map(Right(_))
+      SqlConversationStore.readOrigin(ujson.Obj("kind" -> "email", "to" -> "x")) ==>
+        Left("unknown origin kind: email")
+      SqlConversationStore.readOrigin(ujson.Obj("kind" -> "tui")) ==> Left("missing field: session")
+    }
   }
 }

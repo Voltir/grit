@@ -28,6 +28,24 @@ trait Inbox extends caps.SharedCapability {
     * no turn has that workflow.
     */
   def answer(workflow: WorkflowId, call: ToolCallId, approval: Approval): Either[InboxError, Unit]
+
+  /** Says `origin`'s conversation is done for now: its open period closes after the grace
+    * window unless something happens in it first. Repeating it changes nothing.
+    * `NothingOpen` when the conversation has no open period.
+    */
+  def signal(origin: Origin): Either[InboxError, Signalled]
+}
+
+/** What a signal came to. */
+enum Signalled {
+
+  /** The conversation's open period will close after the grace window, unless something
+    * happens in it first.
+    */
+  case Closing
+
+  /** The conversation has no open period: nothing was said in it since its last close. */
+  case NothingOpen
 }
 
 /** A failure an edge is expected to handle. */
