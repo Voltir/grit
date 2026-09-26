@@ -51,6 +51,8 @@ In dependency order:
   each turn's model the coding tools over the checkout it runs in (`grit.tools` over
   `grit.host`): which ones as `GRIT_TOOLS` says (`Main.toolChoice`), the edits and shell
   built only when they are offered, then runs the chat TUI, or with arguments answers each as a message.
+  `KeptFacts`, the fact book `propose_fact` keeps approved facts in; `PromoteFacts`, which
+  prints the seed catalog with every approved fact laid over it, for a reviewed commit.
   ← `config`, `look`, `chat`
 
 No source file sits at the module's root, and the test tree mirrors it.

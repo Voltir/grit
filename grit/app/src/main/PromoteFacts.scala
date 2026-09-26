@@ -1,0 +1,45 @@
+package grit.app.main
+
+import grit.app.config.DotEnv
+import grit.core.model.{Catalog, CatalogJson, Profile}
+import grit.dbos.engine.Engine
+import grit.dbos.sql.DbConfig
+import grit.models.Seed
+import grit.turn.Turn
+
+/** Prints the seed catalog with every fact approved at runtime laid over it, in the seed's
+  * form, for a person to put in `grit/models/resources/catalog.json` and commit. The facts
+  * are read from the Postgres `GRIT_DATABASE_*` names (a `.env` may set it), and nothing is
+  * written.
+  *
+  * {{{./mill grit.app.runMain grit.app.main.PromoteFacts > grit/models/resources/catalog.json}}}
+  */
+object PromoteFacts {
+
+  /** `seed` with `approved` laid over it, oldest first, as the seed file holds a catalog;
+    * ends with a newline.
+    */
+  def render(seed: Catalog, approved: Vector[Profile]): String =
+    ujson.write(CatalogJson.write(seed.overlaid(approved)), indent = 2) + "\n"
+
+  def main(args: Array[String]): Unit = {
+    val _ = args
+    val env = DotEnv
+      .load(java.nio.file.Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      .fold(fail, identity)
+    val config = DbConfig.fromEnv(env).left.map(_.message).fold(fail, identity)
+    val seed = Seed.catalog.fold(fail, identity)
+    val engine = Engine.open(config, Turn.Epoch)
+    try
+      engine.db.read(engine.facts.all()) match {
+        case Right(kept) => print(render(seed, kept.map(_.facts)))
+        case Left(e) => fail(s"the approved facts cannot be read: $e")
+      }
+    finally engine.close()
+  }
+
+  private def fail(message: String): Nothing = {
+    System.err.println(s"[promote] $message")
+    sys.exit(2)
+  }
+}
