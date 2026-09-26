@@ -40,11 +40,11 @@ object WidthTests extends TestSuite {
       }
     }
 
-    test("zero-width and astral code points never open a new column") {
-      // e + combining acute is one cell; so is U+1D400 -- column 1 starts at 'x'.
+    test("a combining mark takes no column and an astral narrow character takes one") {
+      // e + combining acute is one cell, so U+1D400 starts at column 1; it is one cell
+      // too, not two surrogate halves, so 'x' starts at column 2.
       val s = "e\u0301\uD835\uDC00x"
       assert(Width.columnAtOffset(s, 2) == 1)
-      assert(Width.columnAtOffset(s, 3) == 2)
       assert(Width.columnAtOffset(s, 4) == 2)
     }
   }

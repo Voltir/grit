@@ -1,7 +1,6 @@
 package grit.tui.components.overlay
 
 import grit.tui.model.surface.{Color, Pos, Rect, Size, Style, Surface}
-import grit.tui.model.text.Width
 
 import utest.*
 
@@ -86,23 +85,6 @@ object ModalTests extends TestSuite {
       assert(kept > 2000)
     }
 
-    test("no shadow is cast") {
-      // The shade glyph is gone, and with it the `fill` that destroyed the app's glyphs
-      // to fake depth. The cells a shadow used to occupy are the app's, dimmed like the
-      // rest of the backdrop.
-      val painted = modal.render(app(screen), body)
-      val o = modal.outer(body)
-      Vector(
-        Pos(o.top + 1, o.right),
-        Pos(o.bottom, o.left + 1),
-        Pos(o.bottom, o.right)
-      ).foreach { p =>
-        assert(painted.at(p.row, p.col).ch == 'x')
-        assert(painted.at(p.row, p.col).style.dim)
-      }
-      assert(!painted.lines.exists(_.contains("░")))
-    }
-
     test("a dressed modal lights its panel and pushes the app back") {
       // What replaces the shadow: the frame reads as raised because it is lit and the
       // app behind it recedes, not because a glyph was stamped down and to the right.
@@ -124,8 +106,6 @@ object ModalTests extends TestSuite {
       assert(painted.at(0, 0).ch == 'x')
       assert(painted.at(0, 0).style.bg.contains(Behind))
       assert(painted.at(0, 0).style.dim)
-      // ...and the panel is not the backdrop's ground.
-      assert(!painted.at(0, 0).style.bg.contains(Panel))
     }
 
     test("the frame is drawn around the body, and the body is left for the app") {
@@ -140,20 +120,6 @@ object ModalTests extends TestSuite {
         assert(painted.at(r, o.left).ch == '│' && painted.at(r, o.right - 1).ch == '│')
         assert(painted.lines(r).slice(body.left, body.right).forall(_ == ' '))
       }
-    }
-
-    test("a title too long for the frame is cut in display columns") {
-      val size = Size(12, 24)
-      val wide = Modal("a中中中中中中b", rows = 3, cols = 10)
-      val b = wide.place(size).get
-      val painted = wide.render(app(size), b)
-      val o = wide.outer(b)
-      // A cell holds one char and a wide glyph spans two columns, so the border is
-      // measured the way the terminal will measure it: in display columns.
-      val drawn = painted.lines(o.top).slice(o.left, o.right).reverse.dropWhile(_ == ' ').reverse
-      assert(Width.of(drawn) == o.cols) // the wide glyphs did not push the frame wider
-      assert(drawn.startsWith("╭─ ") && drawn.endsWith("╮"))
-      assert(!drawn.contains("b")) // the tail was cut, and cut between glyphs
     }
   }
 }

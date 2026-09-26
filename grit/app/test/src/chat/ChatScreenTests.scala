@@ -4,8 +4,10 @@ import grit.app.look.{Look, Theme}
 import grit.core.approval.Approval
 import grit.core.id.TurnSeq
 import grit.core.message.{Cost, Tokens}
+import grit.tui.components.pane.Anchor
+import grit.tui.components.tree.Scroller
 import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
-import grit.tui.model.surface.{Pos, Size}
+import grit.tui.model.surface.{Color, Pos, Size}
 import grit.tui.runtime.app.Effect
 import grit.tui.runtime.loop.Headless
 
@@ -71,8 +73,9 @@ object ChatScreenTests extends TestSuite {
             )
           )
         val surface = h.painted._1.surface
-        val unset = surface.cells.count(_.style.bg.isEmpty)
-        assert(unset == 0)
+        val palette: Set[Color] = theme.productIterator.collect { case c: Color => c }.toSet
+        // Set on every cell, and to one of this theme's colours, never another's or a literal.
+        surface.cells.map(_.style.bg).filterNot(_.exists(palette)).distinct ==> Vector.empty
         surface.at(size.rows / 2, size.cols / 2).style.bg ==> Some(theme.ground)
       }
     }
@@ -113,14 +116,16 @@ object ChatScreenTests extends TestSuite {
       ready.message(Msg.Tick).state.tick ==> ready.state.tick
     }
 
-    test("a turn in progress spins the Futhark, and the spinner stops with the turn") {
+    test("a turn in progress spins the Futhark last; its reply takes that line, spinner stopped") {
       val asked = ready.message(
         Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi")), step = Some("call-model"))
       )
       asked.effects.last ==> Effect.After(ChatScreen.Runes, ChatScreen.TickMs, Msg.Tick)
       said(asked) ==> Vector("▌ᛗ hi", "ᚠ grit is thinking…")
       said(asked.message(Msg.Tick).message(Msg.Tick)) ==> Vector("▌ᛗ hi", "ᚦ grit is thinking…")
-      val done = asked.message(Msg.Arrived(Vector(), step = None))
+      val done =
+        asked.message(Msg.Arrived(Vector(Said(ChatScreen.Voice.Reply, "hello")), step = None))
+      said(done) ==> Vector("▌ᛗ hi", "▌ᚨ hello")
       done.effects.last ==> Effect.Cancel(ChatScreen.Runes)
       assert(done.screen.last.contains("ᛁ idle"))
     }
@@ -189,9 +194,35 @@ object ChatScreenTests extends TestSuite {
         Some(Theme.Default.slab)
       assert(wide.screen.mkString.contains("no turn yet"))
 
-      // Ctrl-t: the session tab, waiting for the host until it describes the conversation.
+      // Ctrl-t: the session tab, and the lit pill moves with it.
       val keyed = wide.input(Input.Keyboard(Key.Ctrl('t')))
       keyed.state.tab ==> ChatScreen.Tab.Session
+      keyed.painted._1.surface.at(1, pills.indexOf(" session ") + 1).style.bg ==>
+        Some(Theme.Default.headerBg)
+      // Ctrl-t again: the topics; and once more comes round to the turn.
+      val topical = keyed.input(Input.Keyboard(Key.Ctrl('t')))
+      topical.state.tab ==> ChatScreen.Tab.Topics
+      topical.input(Input.Keyboard(Key.Ctrl('t'))).state.tab ==> ChatScreen.Tab.Turn
+
+      // A click on a pill shows its tab.
+      val clicked = click(wide, " session ")
+      clicked.state.tab ==> ChatScreen.Tab.Session
+      clicked.effects.last ==> Effect.NoOp
+      click(clicked, " turn ").state.tab ==> ChatScreen.Tab.Turn
+      // One on the tab already shown changes nothing, not even where the panel was scrolled.
+      val scrolled = wide.message(Msg.PanelReader(Scroller.Msg.Scrolled(Anchor.Bottom)))
+      click(scrolled, " turn ").state ==> scrolled.state
+      // A hidden panel is shown by a tab.
+      wide.input(Input.Keyboard(Key.Ctrl('b'))).input(Input.Keyboard(Key.Ctrl('t'))).state.panel ==>
+        true
+    }
+
+    test("the session tab: its length, what it was billed and spent, recalls, and roles") {
+      val keyed = Headless
+        .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(30, 110))
+        .message(Msg.Opened)
+        .input(Input.Keyboard(Key.Ctrl('t')))
+      // Waiting for the host until it describes the conversation.
       assert(keyed.screen.mkString.contains("reading the conversation"))
       val view = SessionView(
         turns = 2,
@@ -221,22 +252,6 @@ object ChatScreenTests extends TestSuite {
         shown.contains("turn     2 calls · ≥ $0.001"),
         shown.contains("vendor/big-model")
       )
-      // The lit pill moved with it.
-      keyed.painted._1.surface.at(1, pills.indexOf(" session ") + 1).style.bg ==>
-        Some(Theme.Default.headerBg)
-      // Ctrl-t again: the topics; and once more comes round to the turn.
-      val topical = keyed.input(Input.Keyboard(Key.Ctrl('t')))
-      topical.state.tab ==> ChatScreen.Tab.Topics
-      topical.input(Input.Keyboard(Key.Ctrl('t'))).state.tab ==> ChatScreen.Tab.Turn
-
-      // A click on a pill shows its tab; one on the tab already shown changes nothing.
-      val clicked = click(wide, " session ")
-      clicked.state.tab ==> ChatScreen.Tab.Session
-      clicked.effects.last ==> Effect.NoOp
-      click(clicked, " turn ").state.tab ==> ChatScreen.Tab.Turn
-      // A hidden panel is shown by a tab.
-      wide.input(Input.Keyboard(Key.Ctrl('b'))).input(Input.Keyboard(Key.Ctrl('t'))).state.panel ==>
-        true
     }
 
     test("the topics tab: the topics, the current marked, and how the shown turn was placed") {
@@ -521,16 +536,6 @@ object ChatScreenTests extends TestSuite {
     test("an engine that will not open ends the ward and says so") {
       said(started.message(Msg.Failed("could not open the engine: refused"))) ==>
         Vector("ᚺ could not open the engine: refused")
-    }
-
-    test("arrivals are painted in order, with the thinking line last while a turn runs") {
-      val asked = ready.message(
-        Msg.Arrived(Vector(Said(ChatScreen.Voice.User, "hi")), step = Some("call-model"))
-      )
-      said(asked) ==> Vector("▌ᛗ hi", "ᚠ grit is thinking…")
-      val answered =
-        asked.message(Msg.Arrived(Vector(Said(ChatScreen.Voice.Reply, "hello")), step = None))
-      said(answered) ==> Vector("▌ᛗ hi", "▌ᚨ hello")
     }
 
     test("a typed submission is sent to the host, and painted only once the store has it") {

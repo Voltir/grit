@@ -106,7 +106,10 @@ object ProseLookTests extends TestSuite {
         assert(!s.at(er, ec).style.italic)
         val (cr, cc) = find(s, "code.")
         s.at(cr, cc).style.bg ==> Some(theme.well)
-        s.at(cr, cc + 5).style.bg ==> Some(theme.ground)
+        // Only the code: the prose before it, and the full stop after it, are on the ground.
+        val (hr, hc) = find(s, "Here")
+        s.at(hr, hc).style.bg ==> Some(theme.ground)
+        s.at(cr, cc + 4).style.bg ==> Some(theme.ground)
         // A listing's ground runs the full width of each of its rows.
         val (lr, _) = find(s, "def twice")
         assert((0 until 60).forall(c => s.at(lr, c).style.bg.contains(theme.well)))

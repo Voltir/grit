@@ -208,7 +208,8 @@ object RecordTurnHistories {
 
     /** `said` answered in turn in one conversation with the stub classifier, the last turn by
       * `provider` with `peek` and `poke` offered over a checkout of `a.txt`, `b.txt` and
-      * `c.txt`, its entries crashing where `crash` says; the last turn's history.
+      * `c.txt`, its entries crashing where `crash` says and `answers` (call id, approval)
+      * sent once it reaches its first ask; the last turn's history.
       */
     def looping(
         said: Vector[String],
@@ -224,26 +225,32 @@ object RecordTurnHistories {
         durable.run(t.workflowId)(turnBody(store, new RecordingProvider, classifier = classifier))
       }
       val turn = say(store, said.lastOption.getOrElse("hello"))
-      answers.foreach { (call, approval) =>
-        val topic = grit.core.approval.Approval.topic(grit.core.id.ToolCallId(call))
-        durable.send(turn.workflowId, topic, grit.core.approval.Approval.encode(approval))
-      }
-      val entries = crash.fold[grit.core.store.EntryStore](store)(new CrashOnInsert(store, _))
       val ws = new Files(Map("a.txt" -> "alpha", "b.txt" -> "beta", "c.txt" -> "gamma"))
-      try
-        durable.run(turn.workflowId)(
-          tooledBody(
-            entries,
-            provider,
-            new InMemoryUsageLedger,
-            new grit.models.StubProvider(),
-            classifier,
-            ws,
-            tools(ws),
-            5
+      def run(entries: grit.core.store.EntryStore): String =
+        try
+          durable.run(turn.workflowId)(
+            tooledBody(
+              entries,
+              provider,
+              new InMemoryUsageLedger,
+              new grit.models.StubProvider(),
+              classifier,
+              ws,
+              tools(ws),
+              5
+            )
           )
-        )
-      catch { case _: InMemoryDurable.Crash => "" }
+        catch { case _: InMemoryDurable.Crash => "" }
+      if (answers.nonEmpty) {
+        // A send needs the turn started: stop it at its ask, which records nothing, and
+        // answer there.
+        run(crashingAtAsk(store))
+        answers.foreach { (call, approval) =>
+          val topic = grit.core.approval.Approval.topic(grit.core.id.ToolCallId(call))
+          durable.send(turn.workflowId, topic, grit.core.approval.Approval.encode(approval))
+        }
+      }
+      run(crash.fold[grit.core.store.EntryStore](store)(new CrashOnInsert(store, _)))
       recorded(durable, turn)
     }
 

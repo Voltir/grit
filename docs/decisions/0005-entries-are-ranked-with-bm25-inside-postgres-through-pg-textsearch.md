@@ -27,5 +27,5 @@ database or partition before one table holds two. The index file keeps its high-
 mark and needs a periodic `REINDEX CONCURRENTLY`. A lexical ranker finds nothing for a
 question that shares no words with its answer (the spike: verbatim asks found 0 of 5
 labelled entries, model-style queries 5 of 5), so retrieval queries are written, not
-copied from the user. Enforced by `PgTextsearchTests`, which fails if the image loses the
+copied from the user. Enforced by `PostgresImageTests`, which fails if the image loses the
 extension.

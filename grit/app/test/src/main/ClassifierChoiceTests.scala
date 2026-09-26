@@ -10,9 +10,10 @@ object ClassifierChoiceTests extends TestSuite {
 
   val tests = Tests {
     test("a key is Jev, even beside the stub's switch; an empty key is an error that hides it") {
-      Main.classifierChoice(Map("JEV_API_KEY" -> "k", "GRIT_STUB_TOPICS" -> "1")) match {
-        case Right(ClassifierChoice.Jev(config)) => assert(!config.toString.contains("k,"))
-        case other => assert(other.toString == "Jev")
+      Main.classifierChoice(Map("JEV_API_KEY" -> "sk-jev-1", "GRIT_STUB_TOPICS" -> "1")) match {
+        case Right(ClassifierChoice.Jev(config)) =>
+          config.apiKey ==> "sk-jev-1"
+        case other => throw new java.lang.AssertionError(s"not Jev: $other")
       }
       Main.classifierChoice(Map("JEV_API_KEY" -> " ")) ==> Left("JEV_API_KEY is empty")
     }

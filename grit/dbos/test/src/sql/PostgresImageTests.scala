@@ -6,16 +6,17 @@ import scala.util.Using
 
 import utest.*
 
-/** The test image carries pg_textsearch, preloaded: an extension and a BM25 index can be
-  * created in a fresh database, and the index ranks. Guards docker/postgres/Dockerfile.
+/** The diagnostic for docker/postgres/Dockerfile. An image without pg_textsearch fails
+  * every suite that opens an engine, in the fixture, at `schema.sql`'s `CREATE EXTENSION`;
+  * this suite touches nothing of grit's, so its failure points at the image alone.
   */
-object PgTextsearchTests extends TestSuite {
+object PostgresImageTests extends TestSuite {
 
   private lazy val config = TestPostgres.freshDatabase("pg_textsearch")
 
   val tests = Tests {
 
-    test("a bm25 index ranks the matching row first") {
+    test("the image has pg_textsearch preloaded: a bm25 index ranks the matching row first") {
       val ranked =
         Using.resource(DriverManager.getConnection(config.jdbcUrl, config.user, config.password)) {
           conn =>

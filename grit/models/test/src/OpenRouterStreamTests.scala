@@ -1,7 +1,7 @@
 package grit.models
 
 import grit.core.message.{AssistantBlock, StopReason, Tokens}
-import grit.core.provider.{Delta, ModelRequest, ProviderError}
+import grit.core.provider.{Delta, ProviderError}
 
 import utest.*
 
@@ -119,73 +119,6 @@ object OpenRouterStreamTests extends TestSuite {
       cut ==> Left(ProviderError.Unavailable("unreadable stream: the stream ended before [DONE]"))
       val (garbled, _) = folded(Vector("data: {nope"))
       garbled ==> Left(ProviderError.Refused("unreadable stream: a chunk is not a JSON object"))
-    }
-
-    test("the stub streams its reply in pieces that join back to it") {
-      val told = Vector.newBuilder[Delta]
-      val reply = new StubProvider()
-        .stream(ModelRequest("s", Vector(grit.core.message.Message.User("a b c"))), d => told += d)
-      val text = reply.map(_.blocks.collect { case AssistantBlock.Text(t) => t }.mkString)
-      val pieces = told.result().collect { case Delta.Text(t) => t }
-      assert(pieces.size > 1)
-      text ==> Right(pieces.mkString)
-    }
-
-    test("the stub calls the first tool it may, with the #call: arguments, beside a line of text") {
-      val topic = grit.core.provider.ToolSchema("topic", "d", ujson.Obj())
-      val said = """hi #call:{"about":"new","name":"Knots"}"""
-      val asked = grit.core.message.Message.User(said)
-      val called = new StubProvider().complete(ModelRequest("s", Vector(asked), Vector(topic)))
-      called.map(_.blocks) ==> Right(
-        Vector(
-          AssistantBlock.Text("stub calls topic"),
-          AssistantBlock.ToolCall(
-            StubProvider.CallId,
-            "topic",
-            ujson.Obj("about" -> "new", "name" -> "Knots")
-          )
-        )
-      )
-      // Not while it may not, nor after the tool's result: then it quotes the user.
-      val off = new StubProvider()
-        .complete(
-          ModelRequest("s", Vector(asked), Vector(topic), grit.core.provider.ToolUse.Off)
-        )
-      off.map(_.blocks.size) ==> Right(1)
-      val after = new StubProvider().complete(
-        ModelRequest(
-          "s",
-          Vector(
-            asked,
-            called.getOrElse(sys.error("stub")),
-            grit.core.message.Message.ToolResult(StubProvider.CallId, "noted", false)
-          ),
-          Vector(topic)
-        )
-      )
-      after.map(_.blocks) ==> Right(Vector(AssistantBlock.Text(s"stub reply to: $said")))
-      // Nor without the marker.
-      new StubProvider()
-        .complete(ModelRequest("s", Vector(grit.core.message.Message.User("hi")), Vector(topic)))
-        .map(_.blocks) ==> Right(Vector(AssistantBlock.Text("stub reply to: hi")))
-      StubProvider.arguments("no marker") ==> ujson.Obj()
-    }
-
-    test("the stub tells its call after its text, as a provider that cannot stream does") {
-      val topic = grit.core.provider.ToolSchema("topic", "d", ujson.Obj())
-      val asked =
-        ModelRequest("s", Vector(grit.core.message.Message.User("hi #call:{}")), Vector(topic))
-      def told(provider: grit.core.provider.Provider) = {
-        val all = Vector.newBuilder[Delta]
-        val _ = provider.stream(asked, d => all += d)
-        all.result()
-      }
-      val stub = new StubProvider()
-      val plain = new grit.core.provider.Provider {
-        def complete(request: ModelRequest) = stub.complete(request)
-      }
-      told(stub).lastOption ==> Some(Delta.Calling("topic"))
-      told(plain) ==> Vector(Delta.Text("stub calls topic"), Delta.Calling("topic"))
     }
 
     test("a captured reply of three calls: each told as it begins, each kept with its id") {

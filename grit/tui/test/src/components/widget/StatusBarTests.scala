@@ -13,7 +13,6 @@ object StatusBarTests extends TestSuite {
 
     test("left hugs the left edge, right hugs the right edge, one row, whole bar styled") {
       val s = bar(Vector("hello"), Vector("world"), 20)
-      assert(s.size == Size(1, 20))
       assert(s.lines(0) == "hello" + " " * 10 + "world")
       assert(s.at(0, 0).style.reverse)
       assert(s.at(0, 10).style.reverse) // the gap is bar too

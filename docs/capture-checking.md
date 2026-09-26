@@ -169,12 +169,25 @@ plain data with no function cases (`grit/tui/CLAUDE.md`, rule 3).
 - *Fix:* pass it in instead. A `uses` clause goes in the template header; written in the
   body it parses as an identifier.
 
-**An enum nested in a class captures `this`.**
+**An enum or case class nested in a class captures `this`.**
 
 - *Symptom:* a lambda that names one of its cases is typed `…^{C.this}` (it was
-  `Mailbox[M]^{NodeRuntime.this}` in the view-tree spike).
-- *Cause:* a nested enum is a path-dependent type.
-- *Fix:* move the enum to the companion object.
+  `Mailbox[M]^{NodeRuntime.this}` in the view-tree spike). A codec over a case class nested
+  in an abstract test base is rejected where a pure function is wanted: `Found: (v:
+  ujson.Value) ->{DurableContract.this} …  Required: ujson.Value -> …`.
+- *Cause:* a nested enum or case class is a path-dependent type.
+- *Fix:* move it, and anything built over it, to the companion object
+  (`DurableContract.Picked`).
+
+**A context function that takes a capability, stored in a field.**
+
+- *Symptom:* `capability body* cannot flow into capture set {any}`, putting a `WorkflowId =>
+  Durable^ ?=> String` into a map field.
+- *Cause:* the reach capability of the inner context function stays in the type.
+  `caps.unsafe.unsafeAssumePure` strips only the outer capture set, so it does not help.
+- *Fix:* cast to the pure type, `body.asInstanceOf[WorkflowId -> Durable^ ?-> String]`, with
+  the proof beside it that nothing it captures outlives the call that handed it in
+  (`DbosRuntime.run`: called only while `run` waits, removed in a `finally`).
 
 **A `=>` field makes its holder a capability.**
 

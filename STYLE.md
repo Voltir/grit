@@ -203,10 +203,19 @@ it. A test earns its keep when **some plausible wrong implementation that compil
 it, and no other test catches that one first**. A test that nothing could fail is not
 weak coverage, it is false coverage: it reads as a guarantee and holds none.
 
-- **Watched failing.** Every new test, and every strengthened assertion, is run once
-  against a planted break in the behaviour it claims, and the commit message says what
-  was planted. A test that still passes is testing something else: usually a fixture that
-  never reaches the branch the name promises, or a fake answering from a cache.
+- **Red for the right reason, and shown.** A test is seen failing before it is trusted,
+  and the failure it is seen with is an assertion on the behaviour its name claims —
+  expected against actual — never a compile error, a missing method or a stub that throws,
+  which any test fails on. The commit message quotes that failing assertion.
+  - *New behaviour or a bug fix:* the test comes first and is red against the code as it
+    stands; for a bug, red on the bug itself, before the fix.
+  - *Existing behaviour* (a test added later, or an assertion strengthened): there is
+    nothing to be red against, so plant the smallest plausible, compiling change the
+    test's name rules out — never a deletion or a constant, which fail anything — and put
+    the plant's diff in the commit message, so a reviewer can reapply it.
+
+  A test that stays green is testing something else: usually a fixture that never reaches
+  the branch the name promises, or a fake answering from a cache.
 - **The name states a contract; the assertion pins its value.** Names read as the spec, so
   a body that checks less than its name overclaims. These shapes pin nothing:
   - `isLeft` where which error is the contract — assert the error;

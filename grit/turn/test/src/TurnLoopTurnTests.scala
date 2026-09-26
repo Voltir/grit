@@ -218,6 +218,8 @@ object TurnLoopTurnTests extends TestSuite {
       )
       val turn = say(entries, "poke a")
       val durable = new InMemoryDurable
+      val atAsk = crashingAtAsk(entries)
+      assertThrows[InMemoryDurable.Crash](looped(durable, entries, atAsk, turn, provider, ws))
       durable.send(
         turn.workflowId,
         Approval.topic(ToolCallId("t1")),
@@ -245,6 +247,8 @@ object TurnLoopTurnTests extends TestSuite {
       val turn = say(entries, "poke a")
       val durable = new InMemoryDurable
       val no = Approval.Declined(Some("not that file"))
+      val atAsk = crashingAtAsk(entries)
+      assertThrows[InMemoryDurable.Crash](looped(durable, entries, atAsk, turn, provider, ws))
       durable.send(turn.workflowId, Approval.topic(ToolCallId("t1")), Approval.encode(no))
       looped(durable, entries, entries, turn, provider, ws)
       ws.reads ==> 0

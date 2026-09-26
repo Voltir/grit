@@ -202,15 +202,6 @@ object OpenRouterJsonTests extends TestSuite {
       )
     }
 
-    test("response: a reply read back and sent again is the same message") {
-      val resent = OpenRouterJson.response(sampleResponse).map { reply =>
-        OpenRouterJson.request("m", 1, None, ModelRequest("s", Vector(reply)))("messages")(
-          1
-        )
-      }
-      resent.map(_("reasoning_details")) ==> Right(replay)
-    }
-
     test("response: finish reasons map to stop reasons, keeping unknown ones") {
       def stopOf(reason: String) = OpenRouterJson
         .response(

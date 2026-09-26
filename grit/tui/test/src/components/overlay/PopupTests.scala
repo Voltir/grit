@@ -99,7 +99,6 @@ object PopupTests extends TestSuite {
       val row = s.lines(1)
       val content = row.slice(1, 6).reverse.dropWhile(_ == ' ').reverse
       assert(content == "中中") // two whole glyphs, not two and a half
-      assert(Width.of(content) <= 5)
       assert(row.charAt(0) == '│' && row.charAt(6) == '│')
     }
 

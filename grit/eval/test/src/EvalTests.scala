@@ -75,7 +75,10 @@ object EvalTests extends TestSuite {
         val buried = Eval.load(engine, config, parsed(sample), Eval.Variant.Buried)
         // Each of the two turns is followed by its filler turns, two entries each.
         buried.messages.size ==> 4 + 2 * 2 * Eval.FillerPerGap
-        buried.must.size ==> 2
+        // The labelled entries keep their turns' places: the second after the first's filler.
+        val second = 1 + Eval.FillerPerGap
+        buried.must.map(EntryId.value) ==>
+          Vector("sample/buried/t0:1", s"sample/buried/t$second:${2 * second}")
         buried.turn.turnSeq.toString ==> (2 + 2 * Eval.FillerPerGap).toString
       }
     }

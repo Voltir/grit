@@ -90,8 +90,12 @@ object TopicsViewTests extends TestSuite {
       assert(math.abs(p.elsewhere - 0.18) < 1e-9, !p.disagree, p.verdict.isEmpty)
     }
 
-    test("the first message, and a turn never placed, show as such") {
+    test("the first message shows as such") {
       TopicsView.of(entries, Some(TurnSeq(0))).placing.map(_.first) ==> Some(true)
+    }
+
+    test("a pinned turn never placed shows the latest placed turn's; none placed, none") {
+      TopicsView.of(entries, Some(TurnSeq(5))).placing.map(_.turn) ==> Some(TurnSeq(2))
       TopicsView.of(Vector.empty, Some(TurnSeq(5))) ==> TopicsView(Vector.empty, None)
     }
 

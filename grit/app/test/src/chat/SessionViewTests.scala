@@ -95,13 +95,27 @@ object SessionViewTests extends TestSuite {
         )
         .spent ==>
         Some(Cost.Exact(BigDecimal("0.00335")))
-      SessionView.of(Vector.empty, Vector.empty).spent ==> None
     }
 
     test("what search recalled: which earlier turns, and in how many windows") {
-      val v = SessionView.of(entries, costs)
-      v.recalls ==> 1
-      v.recalled ==> Vector(TurnSeq(0))
+      def window(seq: Long, turn: Long, recalled: Long*) =
+        entry(seq, turn, Payload.Window(Vector.empty, recalled.toVector.map(TurnSeq(_))))
+      // Four windows, one recalling nothing; turn 1 recalled first, turn 0 twice. Three
+      // windows recalled something, two turns were recalled, four recalls in all.
+      val recalling = Vector(
+        user(0, 0),
+        user(1, 1),
+        window(2, 1),
+        user(3, 2),
+        window(4, 2, 1),
+        user(5, 3),
+        window(6, 3, 1, 0),
+        user(7, 4),
+        window(8, 4, 0)
+      )
+      val v = SessionView.of(recalling, Vector.empty)
+      v.recalls ==> 3
+      v.recalled ==> Vector(TurnSeq(0), TurnSeq(1))
     }
 
     test("a turn's ledger is read until it has been read with its summary, then not again") {
