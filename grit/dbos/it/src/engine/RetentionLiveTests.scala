@@ -94,7 +94,12 @@ object RetentionLiveTests extends TestSuite {
       val config = TestPostgres.freshDatabase("retention")
       val engine = Engine.open(config, "test")
       try {
-        engine.launch(turn, close)
+        engine.launch(
+          turn,
+          close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          Vector.empty
+        )
         minutes(config)
         val origin = Origin.Task("retention", "purge")
         val t0 = engine.inbox

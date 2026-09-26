@@ -64,7 +64,12 @@ object CloseLiveTests extends TestSuite {
       }
       val engine = Engine.open(config, "test")
       try {
-        engine.launch(turn, close)
+        engine.launch(
+          turn,
+          close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          Vector.empty
+        )
         minuteIdle(config)
         val t0 = ingested(engine, Origin.Task("close", "waits"), "one")
         engine.inbox.startTurn(t0) ==> Right(())
@@ -87,7 +92,12 @@ object CloseLiveTests extends TestSuite {
       }
       val engine = Engine.open(config, "test")
       try {
-        engine.launch((id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id), close)
+        engine.launch(
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          Vector.empty
+        )
         minuteIdle(config)
         val t0 = ingested(engine, Origin.Task("close", "once"), "one")
         val attempt = CloseRef(PeriodRef(t0.conversationId, PeriodSeq.First), TurnSeq(0))
@@ -107,7 +117,12 @@ object CloseLiveTests extends TestSuite {
       }
       val engine = Engine.open(config, "test")
       try {
-        engine.launch((id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id), close)
+        engine.launch(
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          Vector.empty
+        )
         minuteIdle(config)
         val t0 = ingested(engine, Origin.Task("close", "retried"), "one")
         val attempt = CloseRef(PeriodRef(t0.conversationId, PeriodSeq.First), TurnSeq(0))

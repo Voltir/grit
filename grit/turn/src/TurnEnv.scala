@@ -42,7 +42,9 @@ final case class TurnRecords(
 /** The tools a turn's model may call in its loop ([[TurnLoop]]), and how the loop runs:
   * each case's `jot` keeps each call's result from inside its step ([[TurnTools.Settling]]);
   * `budget` bounds its model calls, the last made with tools off; a call a person approves
-  * first waits `answerWithin` for their answer. What the tools may act through is the case.
+  * first waits `answerWithin` for their answer. What the tools may act through is the case;
+  * in each, `store` lets a tool read what grit keeps (a plugin's documents), and never write
+  * it.
   */
 sealed trait TurnTooling {
   def budget: TurnLoop.Budget
@@ -51,17 +53,20 @@ sealed trait TurnTooling {
 
 object TurnTooling {
 
-  /** Tools that act only through `workspace`: the turn cannot change the checkout. */
+  /** Tools that act only through `workspace` and `store`: the turn cannot change the
+    * checkout.
+    */
   final case class ReadOnly(
       workspace: Workspace^,
-      tools: Toolbox[{workspace}],
+      store: Db^,
+      tools: Toolbox[{workspace, store}],
       jot: Jot^,
       budget: TurnLoop.Budget,
       answerWithin: FiniteDuration = TurnTools.AnswerWithin
   ) extends TurnTooling
 
-  /** Tools that act through `workspace`, `edits`, `shell`, `facts` and `models` (to probe a
-    * pair); they may be fewer than all five allow.
+  /** Tools that act through `workspace`, `edits`, `shell`, `facts`, `models` (to probe a
+    * pair) and `store`; they may be fewer than all six allow.
     */
   final case class Full(
       workspace: Workspace^,
@@ -69,7 +74,8 @@ object TurnTooling {
       shell: Shell^,
       facts: FactBook^,
       models: Models^,
-      tools: Toolbox[{workspace, edits, shell, facts, models}],
+      store: Db^,
+      tools: Toolbox[{workspace, edits, shell, facts, models, store}],
       jot: Jot^,
       budget: TurnLoop.Budget,
       answerWithin: FiniteDuration = TurnTools.AnswerWithin

@@ -29,13 +29,14 @@ Mill modules, and what each may name:
 
 | Module | Package | Depends on | Holds |
 |---|---|---|---|
-| `grit.core` | `grit.core.{clock,id,model,message,topic,period,store,durable,approval,context,provider,inbox,classify,host,tool}` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath; package order in [`grit/core/README.md`](grit/core/README.md) |
+| `grit.core` | `grit.core.{clock,id,model,message,topic,period,store,plugin,durable,approval,context,provider,inbox,classify,host,tool}` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath; package order in [`grit/core/README.md`](grit/core/README.md) |
 | `grit.dbos` | `grit.dbos.{sql,workflow,engine}` | core | DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `Engine` is what `grit.app` opens; package order in [`grit/dbos/README.md`](grit/dbos/README.md) |
 | `grit.prose` | `grit.prose.{form,markdown}` | — | prose as edge-neutral blocks, read from markdown; each edge renders them (`Renderer`); package order in [`grit/prose/README.md`](grit/prose/README.md) |
 | `grit.tui` | `grit.tui.{model,components,wire,runtime}.*` | core | the terminal UI: an `App` is three pure functions and a view tree (`Node`) that the runtime lays out, paints and routes input through; core only from `components`/`runtime` |
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo` is the target of every `scripts/tui-gate` scenario but `chat` and `reload`, which drive `grit.app` |
 | `grit.turn` | `grit.turn` | core | the durable turn's body, written against `Durable` |
-| `grit.lifecycle` | `grit.lifecycle.close` | core | the engine's workflows besides the turn: `Close`, a period sealed with its closing entry (ADR 0011); package order in [`grit/lifecycle/README.md`](grit/lifecycle/README.md) |
+| `grit.lifecycle` | `grit.lifecycle.{close,post}` | core | the engine's workflows besides the turn: `Close`, a period sealed with its closing entry, and `Posting`, closed periods posted to a plugin (ADR 0011); package order in [`grit/lifecycle/README.md`](grit/lifecycle/README.md) |
+| `grit.digest` | `grit.digest` | core | `Digest`, the hello-world plugin: one line per closed period, and the `recent_activity` tool that reads them; [`grit/digest/README.md`](grit/digest/README.md) |
 | `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); `Classifier`s: `JevClassifier` |
 | `grit.host` | `grit.host` | core | the local host: `LocalWorkspace`, `LocalEdits`, `LocalShell` (`grit.core.host`'s capabilities over this machine's files and processes; a command sees only an allowlisted environment); the only module that starts a process |
 | `grit.tools` | `grit.tools` | core | the coding tool set (`Coding`): read, list, search, write, edit and run as `Tool`s over `grit.core.host`'s capabilities; `Facts`: `propose_fact`, a measured fact about a model kept once a person approves it; `Probes`: `probe_pair`, a battery of calls measuring a (model, upstream) pair |
@@ -50,7 +51,7 @@ it. Working in `grit/tui/`? Read [`grit/tui/CLAUDE.md`](grit/tui/CLAUDE.md) firs
 **Changing a workflow's steps** (names, order, output encodings) must replay every
 history of the current epoch: guard the change with `Durable.patch`, or start a new
 `Turn.Epoch` ([ADR 0004](docs/decisions/0004-workflows-evolve-by-patch-within-a-compatibility-epoch.md)).
-`TurnReplayTests` is the gate, and `CloseReplayTests` for the close.
+`TurnReplayTests` is the gate, and `LifecycleReplayTests` for the close and posting.
 
 ## Style rules
 

@@ -13,6 +13,7 @@ import grit.core.store.{EntryStore, Origin, Payload}
 import grit.dbos.engine.Engine
 import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
+import grit.lifecycle.post.{PostEnv, Posting}
 import grit.models.{StubModels, StubProvider}
 import grit.tools.Coding
 import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling, TurnTools}
@@ -105,7 +106,10 @@ object LiveTurn {
             engine.db,
             Clock.system()
           )
-        )
+        ),
+        Posting
+          .body(Vector.empty, PostEnv(engine.periods, engine.cursors, engine.docs, engine.jot)),
+        Vector.empty
       )
     val budget = TurnLoop.Budget.of(5).fold(why => sys.error(why), identity)
     if (all) {
@@ -118,6 +122,7 @@ object LiveTurn {
           shell,
           NoFacts,
           models,
+          engine.db,
           Coding.all(checkout, edits, shell).fold(d => sys.error(d.toString), identity),
           engine.jot,
           budget,
@@ -129,6 +134,7 @@ object LiveTurn {
         TurnTooling
           .ReadOnly(
             checkout,
+            engine.db,
             Coding.readOnly(checkout).fold(d => sys.error(d.toString), identity),
             engine.jot,
             budget

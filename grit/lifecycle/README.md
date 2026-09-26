@@ -11,7 +11,15 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   `gate` which sections its closing needs (`CloseGate`, one classifier call), `summarise`
   it (`ClosingSummary`: the summary role's prompt and a tolerant reader, falling back to
   the per-turn summaries), `seal` it with its closing entry. `CloseEnv` is what it works
-  with; `CloseReplayTests` and `RecordCloseHistories` are its replay gate. Imports nothing
-  else in lifecycle.
+  with. Imports nothing else in lifecycle.
+- **`post`** — `Posting`: one run posting closed periods to a plugin from its cursor
+  (`grit.core.plugin`), on a queue of its own partitioned by plugin (`grit.dbos.workflow.Posts`):
+  each step posts the next closed period and moves the cursor past it in one `Jot`
+  transaction, so a plugin's `Left` rolls back what it wrote and leaves the cursor; at most
+  `MaxPerRun` a run. `PostEnv` is what it works with. Imports nothing else in lifecycle.
 
-No source file sits at the module's root, and the test tree mirrors it.
+`close` and `post` never name each other. Their replay gate, `LifecycleReplayTests`, with
+`RecordLifecycleHistories` writing its histories, is in the test tree's `replay`, which
+covers both.
+
+No source file sits at the module's root, and the test tree mirrors it, with `replay` beside.

@@ -2,7 +2,7 @@ package grit.dbos.engine
 
 import java.sql.DriverManager
 import java.time.Instant
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.io.Source
@@ -14,6 +14,7 @@ import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{ConversationId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
+import grit.core.plugin.{Plugin, PluginCursors, PluginDocs, PluginName}
 import grit.core.store.{
   ConversationStore,
   Db,
@@ -40,9 +41,11 @@ import grit.dbos.sql.{
   SqlModelFactStore,
   SqlModelProfileStore,
   SqlPeriodStore,
+  SqlPluginCursors,
+  SqlPluginDocs,
   SqlUsageLedger
 }
-import grit.dbos.workflow.{Closes, Turns}
+import grit.dbos.workflow.{Closes, Posts, Turns}
 
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory
@@ -91,25 +94,43 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
 
   val inbox: Inbox = new SqlInbox(dataSource, client, conversations, entries, periods)
 
-  /** Registers `turn` as the body of every turn and `close` of every attempt to close a
-    * period, and starts running what is queued. Once.
+  /** Each plugin's cursor. */
+  val cursors: PluginCursors = new SqlPluginCursors
+
+  /** Each plugin's documents: given a plugin's name, its own, and no other plugin's. */
+  val docs: PluginName -> PluginDocs = plugin => new SqlPluginDocs(plugin)
+
+  /** Registers `turn` as the body of every turn, `close` of every attempt to close a period
+    * and `post` of every posting run, and starts running what is queued; the sweep posts to
+    * `plugins`, the ones enabled. Once.
     */
   def launch(
       turn: WorkflowId => Durable^ ?=> String,
-      close: WorkflowId => Durable^ ?=> String
+      close: WorkflowId => Durable^ ?=> String,
+      post: WorkflowId => Durable^ ?=> String,
+      plugins: Vector[Plugin]
   ): Unit = {
     val steps = new JdbcStepFactory(dbos, dataSource)
     Turns.register(dbos, steps, turn)
     Closes.register(dbos, steps, close)
+    Posts.register(dbos, steps, post)
+    enabled.set(plugins.map(p => (p.name, p.version)))
     dbos.launch()
   }
 
-  private val sweeper = new Sweeper(dataSource, client, periods, lifecycle)
+  /** The enabled plugins' names and versions, set once by [[launch]]. */
+  private val enabled = new AtomicReference(Vector.empty[(PluginName, Int)])
+
+  private val sweeper =
+    new Sweeper(dataSource, client, periods, lifecycle, cursors, () => enabled.get())
 
   /** One sweep of the lifecycle at `now`, under the settings in force: every open period
     * whose deadline has come has its close attempt enqueued
     * ([[grit.core.id.CloseRef.workflowId]]), once, and an attempt that finished with its
-    * period still due is enqueued again; then every period closed longer ago than the
+    * period still due is enqueued again; every enabled plugin behind the newest closed
+    * period has a posting run enqueued from its cursor ([[grit.core.plugin.PostRef]]), and a
+    * run that finished with its plugin still behind is enqueued again; then every period
+    * closed longer ago than the
     * retention window has its turn and close workflows deleted, and after them its raw
     * entries, keeping its closing entry and its row ([[grit.core.store.PeriodStore.purge]]).
     * Only after [[launch]]. `Left` when the database fails, having done what came before.

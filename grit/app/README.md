@@ -59,8 +59,9 @@ In dependency order:
   `JEV_API_KEY`, the stub classifier with `GRIT_STUB_TOPICS=1`, none otherwise), offering
   each turn's model the coding tools over the checkout it runs in (`grit.tools` over
   `grit.host`): which ones as `GRIT_TOOLS` says (`Main.toolChoice`), the edits and shell
-  built only when they are offered, and launches the close (`grit.lifecycle`) beside the
-  turn, sweeping every `GRIT_SWEEP`; then runs the chat TUI, or with arguments answers each as a message.
+  built only when they are offered, and launches the close and posting (`grit.lifecycle`)
+  beside the turn, sweeping every `GRIT_SWEEP`, posting to the plugins `GRIT_PLUGINS` turns
+  on (`digest`, `grit.digest`, which also offers each turn's model `recent_activity`); then runs the chat TUI, or with arguments answers each as a message.
   `KeptFacts`, the fact book `propose_fact` keeps approved facts in; `PromoteFacts`, which
   prints the seed catalog with every approved fact laid over it, for a reviewed commit.
   ← `config`, `look`, `chat`

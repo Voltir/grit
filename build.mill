@@ -199,6 +199,17 @@ object grit extends Module {
     }
   }
 
+  /* Digest: the hello-world plugin, one line per closed period, and the recent_activity
+   * tool that reads them. Names only core. grit/digest/README.md. */
+  object digest extends GritModule {
+    def moduleDeps = Seq(core)
+
+    /* Over core's in-memory plugin store. */
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
+  }
+
   /* Models: the frontier provider, and later the relevance judge. A quarantine module
    * once it has an HTTP client. roadmap/mechanisms/models.md. */
   object models extends GritModule {
@@ -305,6 +316,7 @@ object grit extends Module {
         grit.dbos,
         grit.turn,
         grit.lifecycle,
+        grit.digest,
         grit.models,
         grit.assembly,
         grit.prose,

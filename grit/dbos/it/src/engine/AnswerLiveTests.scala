@@ -32,7 +32,7 @@ object AnswerLiveTests extends TestSuite {
     s"$first;$second"
   }
 
-  /** A close that does nothing: none is enqueued here. */
+  /** A close, or a post, that does nothing: none is enqueued here. */
   private def noClose(id: WorkflowId)(using @unused d: Durable^): String = WorkflowId.value(id)
 
   private def started(engine: Engine^, source: String): TurnRef = {
@@ -58,7 +58,7 @@ object AnswerLiveTests extends TestSuite {
     test("an answer reaches the waiting workflow once; a second answer is ignored") {
       val engine = Engine.open(TestPostgres.freshDatabase("answer_once"), "test")
       try {
-        engine.launch(waiting(1.minute), noClose)
+        engine.launch(waiting(1.minute), noClose, noClose, Vector.empty)
         val turn = started(engine, "once")
         waitingNow(engine, turn)
         engine.inbox.answer(turn.workflowId, call, Approval.Approved) ==> Right(())
@@ -70,7 +70,7 @@ object AnswerLiveTests extends TestSuite {
     test("an answer sent before the wait begins is received when it does") {
       val engine = Engine.open(TestPostgres.freshDatabase("answer_early"), "test")
       try {
-        engine.launch(waiting(1.minute), noClose)
+        engine.launch(waiting(1.minute), noClose, noClose, Vector.empty)
         val origin = Origin.Task("answer", "early")
         val turn = engine.inbox
           .ingest(origin, SourceId("early"), Message.User("early"))
@@ -85,7 +85,7 @@ object AnswerLiveTests extends TestSuite {
     test("nothing sent: the wait runs out, and says so") {
       val engine = Engine.open(TestPostgres.freshDatabase("answer_none"), "test")
       try {
-        engine.launch(waiting(1.second), noClose)
+        engine.launch(waiting(1.second), noClose, noClose, Vector.empty)
         val turn = started(engine, "none")
         engine.awaitTurn(turn) ==> "None;None"
       } finally engine.close()
@@ -94,7 +94,7 @@ object AnswerLiveTests extends TestSuite {
     test("an answer to a workflow that does not exist is NoSuchTurn") {
       val engine = Engine.open(TestPostgres.freshDatabase("answer_missing"), "test")
       try {
-        engine.launch(waiting(1.second), noClose)
+        engine.launch(waiting(1.second), noClose, noClose, Vector.empty)
         val nobody = WorkflowId("no-such-workflow")
         engine.inbox.answer(nobody, call, Approval.Approved) ==>
           Left(InboxError.NoSuchTurn(nobody))
@@ -106,14 +106,14 @@ object AnswerLiveTests extends TestSuite {
       val before = Engine.open(config, "test")
       val turn =
         try {
-          before.launch(waiting(1.minute), noClose)
+          before.launch(waiting(1.minute), noClose, noClose, Vector.empty)
           val t = started(before, "restart")
           waitingNow(before, t)
           t
         } finally before.close()
       val after = Engine.open(config, "test")
       try {
-        after.launch(waiting(1.minute), noClose)
+        after.launch(waiting(1.minute), noClose, noClose, Vector.empty)
         after.inbox.answer(turn.workflowId, call, Approval.Approved) ==> Right(())
         after.awaitTurn(turn) ==> s"Some($approved);None"
       } finally after.close()

@@ -395,7 +395,7 @@ object TurnFixtures {
         new NoWait,
         Fresh.random()
       ),
-      TurnTooling.ReadOnly(NoCheckout, noTools, new FakeJot, budget(5))
+      TurnTooling.ReadOnly(NoCheckout, FakeDb, noTools, new FakeJot, budget(5))
     )(id)
 
   /** The stub classifier, counting the questions it was asked, call by call. */
@@ -469,7 +469,7 @@ object TurnFixtures {
         clock,
         Fresh.random()
       ),
-      TurnTooling.ReadOnly(ws, tools, new FakeJot, budget(calls))
+      TurnTooling.ReadOnly(ws, FakeDb, tools, new FakeJot, budget(calls))
     )(id)
 
   /** The turn's workflow body over `entries`, its models `models` and its profile kept in
@@ -494,7 +494,7 @@ object TurnFixtures {
         new NoWait,
         Fresh.random()
       ),
-      TurnTooling.ReadOnly(ws, tools, new FakeJot, budget(calls))
+      TurnTooling.ReadOnly(ws, FakeDb, tools, new FakeJot, budget(calls))
     )(id)
 
   def runTurn(

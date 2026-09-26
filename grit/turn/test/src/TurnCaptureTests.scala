@@ -22,7 +22,7 @@ object TurnCaptureTests extends TestSuite {
       |import grit.core.host.*
       |import grit.core.model.FactBook
       |import grit.core.provider.Models
-      |import grit.core.store.Jot
+      |import grit.core.store.{Db, Jot}
       |import grit.core.tool.*
       |import grit.turn.*
       |object Probe {
@@ -60,21 +60,21 @@ object TurnCaptureTests extends TestSuite {
     * workspace.
     */
   private val breach =
-    """final case class Breached[C^](workspace: Workspace^, tools: Toolbox[C], jot: Jot^, budget: TurnLoop.Budget)
+    """final case class Breached[C^](workspace: Workspace^, store: Db^, tools: Toolbox[C], jot: Jot^, budget: TurnLoop.Budget)
       |""".stripMargin
 
   /** A toolbox that edits through `e`, handed to `tooling` as a read-only turn's tools over
     * `ws`, typed `result`.
     */
   private def editing(tooling: String, result: String) =
-    s"""def offered(ws: Workspace^, e: Edits^, box: Toolbox[{ws, e}], j: Jot^, b: TurnLoop.Budget): $result =
-      |  $tooling(ws, box, j, b)
+    s"""def offered(ws: Workspace^, db: Db^, e: Edits^, box: Toolbox[{ws, e}], j: Jot^, b: TurnLoop.Budget): $result =
+      |  $tooling(ws, db, box, j, b)
       |""".stripMargin
 
   /** A toolbox that edits through `other`, not the tooling's `e`, handed to a full turn. */
   private val smuggled =
-    """def offered(ws: Workspace^, e: Edits^, s: Shell^, f: FactBook^, m: Models^, other: Edits^, box: Toolbox[{ws, other}], j: Jot^, b: TurnLoop.Budget): TurnTooling^{ws, e, s, f, m, other, j} =
-      |  TurnTooling.Full(ws, e, s, f, m, box, j, b)
+    """def offered(ws: Workspace^, e: Edits^, s: Shell^, f: FactBook^, m: Models^, db: Db^, other: Edits^, box: Toolbox[{ws, other}], j: Jot^, b: TurnLoop.Budget): TurnTooling^{ws, e, s, f, m, db, other, j} =
+      |  TurnTooling.Full(ws, e, s, f, m, db, box, j, b)
       |""".stripMargin
 
   private def rejected(errs: List[String]): Boolean =
@@ -87,23 +87,23 @@ object TurnCaptureTests extends TestSuite {
 
     test("a read-only turn offered reading tools, and a full one offered editing, compile") {
       val errs = errors(
-        """def reading(ws: Workspace^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling^{ws, j}] =
-          |  Toolbox.of[{ws}](reads(ws)).toOption.map(box => TurnTooling.ReadOnly(ws, box, j, b))
-          |def editing(ws: Workspace^, e: Edits^, s: Shell^, f: FactBook^, m: Models^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling^{ws, e, s, f, m, j}] =
-          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling.Full(ws, e, s, f, m, box, j, b))
+        """def reading(ws: Workspace^, db: Db^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling^{ws, db, j}] =
+          |  Toolbox.of[{ws}](reads(ws)).toOption.map(box => TurnTooling.ReadOnly(ws, db, box, j, b))
+          |def editing(ws: Workspace^, e: Edits^, s: Shell^, f: FactBook^, m: Models^, db: Db^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling^{ws, e, s, f, m, db, j}] =
+          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling.Full(ws, e, s, f, m, db, box, j, b))
           |""".stripMargin
       )
       assert(errs.isEmpty)
     }
 
     test("a read-only turn offered a tool that edits is rejected") {
-      assert(rejected(errors(editing("TurnTooling.ReadOnly", "TurnTooling^{ws, e, j}"))))
+      assert(rejected(errors(editing("TurnTooling.ReadOnly", "TurnTooling^{ws, db, e, j}"))))
     }
 
     test("a read-only tooling whose tools are not tied to its workspace takes that tool") {
       // The breach the test above guards against, planted in a fixture: watched making that
       // test fail, kept so the rejection is known to come from the link alone.
-      val errs = errors(breach + editing("Breached", "Breached[{ws, e}]^{ws, j}"))
+      val errs = errors(breach + editing("Breached", "Breached[{ws, e}]^{ws, db, j}"))
       assert(errs.isEmpty)
     }
 
@@ -113,7 +113,7 @@ object TurnCaptureTests extends TestSuite {
 
     test("capture checking is what rejects the tool that edits") {
       val flags = options.filterNot(_.startsWith("-language:experimental."))
-      val sources = Vector(editing("TurnTooling.ReadOnly", "TurnTooling^{ws, e, j}"), smuggled)
+      val sources = Vector(editing("TurnTooling.ReadOnly", "TurnTooling^{ws, db, e, j}"), smuggled)
       val errs = sources.flatMap(s => compile(erased(prelude + s + "\n}\n"), flags))
       assert(errs.isEmpty)
     }

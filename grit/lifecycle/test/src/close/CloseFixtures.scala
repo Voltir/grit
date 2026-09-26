@@ -20,6 +20,7 @@ import grit.core.store.{
   InMemoryLifecycleStore,
   InMemoryPeriodStore,
   InMemoryUsageLedger,
+  Jot,
   Payload,
   PeriodStore,
   Sealed,
@@ -112,6 +113,11 @@ object CloseFixtures {
           Right(Answers(ps.take(questions.size).map(Answer.YesNo(_)), Usage(Tokens(1), Tokens(1), Tokens.Zero, None), "jev"))
       }
     }
+  }
+
+  /** Writes straight through to the in-memory stores, never rolled back. */
+  final class FakeJot extends Jot {
+    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using TestTx.fake)
   }
 
   object FakeDb extends Db {

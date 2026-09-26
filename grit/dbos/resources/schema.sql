@@ -157,3 +157,21 @@ CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
     retention INTERVAL NOT NULL,
     closings  INTEGER NOT NULL
 );
+
+-- Each plugin's documents, under keys it chooses (grit.core.plugin.PluginDocs): a plugin
+-- builds only from closed periods, and reaches only its own rows. Removing a plugin is
+-- DELETE ... WHERE plugin = its name.
+CREATE TABLE IF NOT EXISTS grit.plugin_docs (
+    plugin TEXT NOT NULL,
+    key    TEXT NOT NULL,
+    doc    JSONB NOT NULL,
+    PRIMARY KEY (plugin, key)
+);
+
+-- How far each plugin has posted, in close order (grit.periods.close_ordinal), and at
+-- which version: another version starts again at 0, its documents cleared.
+CREATE TABLE IF NOT EXISTS grit.plugin_cursors (
+    plugin  TEXT PRIMARY KEY,
+    version INTEGER NOT NULL,
+    ordinal BIGINT NOT NULL
+);

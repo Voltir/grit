@@ -28,17 +28,17 @@ components:
   # grit.dbos, and Mill's moduleDeps are transitive, so these rules are the only guard there.
   - name: outside-dbos
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**"]
 
   # Every module except grit.models, for the HTTP quarantine (STYLE rule 8).
   - name: outside-models
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**"]
 
   # Every module except grit.host, for the process quarantine (STYLE rule 8).
   - name: outside-host
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/tools/**", "grit/lifecycle/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**"]
 
   # The tui groups, for the direction rules. `runtime` needs no entry: it may import
   # every group.

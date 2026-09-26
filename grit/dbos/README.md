@@ -7,19 +7,23 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore`, `SqlUsageLedger`,
   `SqlModelProfileStore`, `SqlModelFactStore`, `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
-  row). Imports nothing else in dbos.
+  row), `SqlPluginDocs` and `SqlPluginCursors` (each plugin's documents and cursor).
+  Imports nothing else in dbos.
 - **`workflow`** — DBOS behind `Durable`: `DbosDurable`, `DurableWorkflow` (registers a
   body under the fixed class name `grit.workflow`, so moving it strands no workflow row),
   `Turns` (how a turn is known to DBOS: its workflow name and queue), `Closes` (the close
   workflow, on the same queue under the conversation's partition, so it never runs beside
-  one of its turns). Imports nothing else in dbos.
+  one of its turns), `Posts` (the posting workflow, on a `posts` queue partitioned by
+  plugin). Imports nothing else in dbos.
 - **`engine`** — both, composed: `Engine` (what `grit.app` opens), `TurnStatus`, and
   `SqlInbox`, which records a message and enqueues its turn in one transaction (opening
   the conversation's next period when none is open), records a signal that a period is
   done, and sends a turn the answer to its gated call (`DBOSClient.send`); `Sweeper`,
   the sweep `Engine.sweepEvery` runs: every open period whose deadline has come has its
   close enqueued under its deterministic id, and an attempt that finished with its period
-  still due is deleted and enqueued again; then every period closed longer ago than the
+  still due is deleted and enqueued again; every enabled plugin behind the newest closed
+  period has a posting run enqueued from its cursor, again when a run finished with it
+  still behind; then every period closed longer ago than the
   retention window has its turn and close workflows deleted (`deleteWorkflows`), and after
   them its raw entries, keeping its closing entry. ← `sql`, `workflow`
 

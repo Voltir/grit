@@ -33,6 +33,11 @@ In dependency order:
   under), `ModelFactStore` (facts about pairs approved at runtime), `PeriodStore` (which
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
   settings in force), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`
+- **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
+  (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
+  `PluginName`, `PluginDocs` (one plugin's documents, and no other's), `PluginCursors` (how
+  far each has posted, in close order; a new version starts again) and `PostRef` (one
+  posting run, and its workflow id). ← `id`, `period`, `store`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash, and waits for a
   message (`recv`). ← `id`, `store`
 - **`approval`** — `Approval`, a person's answer to a gated tool call, and the message
@@ -64,6 +69,7 @@ No source file sits at core's root, and no two packages import each other in a c
 
 The test tree mirrors it: the in-memory fakes other modules' tests use are
 `store.InMemoryEntryStore`, `store.InMemoryUsageLedger`, `store.InMemoryModelProfileStore`,
-`store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore` and `durable.InMemoryDurable`.
+`store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore`, `plugin.InMemoryPlugins` and
+`durable.InMemoryDurable`.
 `TestTx` lives in package `grit.dbos.sql`, because the `null` it holds is legal only inside
 the DBOS quarantine (rule 6).

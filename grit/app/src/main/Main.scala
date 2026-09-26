@@ -15,12 +15,15 @@ import grit.core.id.{SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Catalog, ModelId, Pinned}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
-import grit.core.store.Origin
+import grit.core.plugin.{Plugin, PluginName}
+import grit.core.store.{Db, Origin}
 import grit.core.tool.{DuplicateName, ToolName, Toolbox}
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
 import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
+import grit.digest.Digest
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
+import grit.lifecycle.post.{PostEnv, Posting}
 import grit.models.{
   JevClassifier,
   JevConfig,
@@ -55,7 +58,9 @@ import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
   * runs in, in at most `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at
   * least 2), the last with tools off. A command it runs sees only the environment
   * `LocalShell` passes. The engine sweeps every `GRIT_SWEEP` (default
-  * [[DefaultSweep]]), closing each period whose deadline has come ([[Close]]), its closing
+  * [[DefaultSweep]]), closing each period whose deadline has come ([[Close]]), posting each
+  * closed period to the plugins `GRIT_PLUGINS` turns on ([[pluginChoice]], [[Posting]]; with
+  * Digest on, each turn's model is offered `recent_activity`), its closing
   * written by the summary role and gated by the same classifier as the topics. When a
   * period closes, and how many closing entries open a window, are data in the database: on
   * the first start against a database they are seeded from `GRIT_IDLE`, `GRIT_GRACE`,
@@ -125,6 +130,7 @@ object Main {
     val topics = exitOnLeft(classifierChoice(env))
     val sweep = exitOnLeft(sweepEvery(env))
     val seeded = exitOnLeft(Lifecycle.fromEnv(env))
+    val plugins = exitOnLeft(pluginChoice(env))
 
     /** `engine` with its lifecycle's settings seeded, and the turn and the close launched on
       * it: the assembler reads its stores, and the models its kept facts. Throws when the
@@ -186,34 +192,60 @@ object Main {
               engine.db,
               Clock.system()
             )
-          )
+          ),
+          Posting.body(plugins, PostEnv(engine.periods, engine.cursors, engine.docs, engine.jot)),
+          plugins
         )
         engine.sweepEvery(sweep, Clock.system())
       }
+      val store: Db^ = engine.db
+      // Digest's recent_activity, offered when Digest is on.
+      val digest = plugins.collectFirst { case d: Digest => engine.docs(d.name) }
       val launching = offered match {
         case ToolChoice.Read =>
-          Coding
-            .readOnly(checkout)
-            .map(tools => launch(TurnTooling.ReadOnly(checkout, tools, engine.jot, rounds)))
+          (digest match {
+            case None =>
+              Toolbox.of[{checkout, store}](Coding.read(checkout), Coding.list(checkout), Coding.search(checkout))
+            case Some(docs) =>
+              Toolbox.of[{checkout, store}](
+                Coding.read(checkout),
+                Coding.list(checkout),
+                Coding.search(checkout),
+                Digest.recentActivity(store, docs)
+              )
+          }).map(tools => launch(TurnTooling.ReadOnly(checkout, store, tools, engine.jot, rounds)))
         case ToolChoice.All =>
           val edits = new LocalEdits(root)
           // The process's own environment, not .env's: a command never needs grit's settings.
           val shell = new LocalShell(root, sys.env)
           val facts = new KeptFacts(engine.jot, engine.facts, Clock.system())
-          Toolbox
-            .of[{checkout, edits, shell, facts, models}](
-              Coding.read(checkout),
-              Coding.list(checkout),
-              Coding.search(checkout),
-              Coding.write(edits),
-              Coding.edit(edits),
-              Coding.run(shell),
-              Facts.propose(facts),
-              Probes.probe(models)
-            )
-            .map(tools =>
-              launch(TurnTooling.Full(checkout, edits, shell, facts, models, tools, engine.jot, rounds))
-            )
+          (digest match {
+            case None =>
+              Toolbox.of[{checkout, edits, shell, facts, models, store}](
+                Coding.read(checkout),
+                Coding.list(checkout),
+                Coding.search(checkout),
+                Coding.write(edits),
+                Coding.edit(edits),
+                Coding.run(shell),
+                Facts.propose(facts),
+                Probes.probe(models)
+              )
+            case Some(docs) =>
+              Toolbox.of[{checkout, edits, shell, facts, models, store}](
+                Coding.read(checkout),
+                Coding.list(checkout),
+                Coding.search(checkout),
+                Coding.write(edits),
+                Coding.edit(edits),
+                Coding.run(shell),
+                Facts.propose(facts),
+                Probes.probe(models),
+                Digest.recentActivity(store, docs)
+              )
+          }).map(tools =>
+            launch(TurnTooling.Full(checkout, edits, shell, facts, models, store, tools, engine.jot, rounds))
+          )
       }
       // Its caller closes the engine and reports the throw: in the chat, as the engine that
       // could not open.
@@ -358,6 +390,27 @@ object Main {
       case Some(raw) =>
         Durations.read(raw).left.map(why => s"$SweepVar: $why").filterOrElse(_ >= 1.second, s"$SweepVar must be at least a second")
     }
+
+  private val PluginsVar = "GRIT_PLUGINS"
+
+  /** The plugins `GRIT_PLUGINS` turns on, a comma-separated list of names; none when unset.
+    * The one there is: `digest` ([[Digest]]).
+    */
+  private[main] def pluginChoice(env: Map[String, String]): Either[String, Vector[Plugin]] =
+    env
+      .get(PluginsVar)
+      .map(_.split(',').toVector.map(_.trim).filter(_.nonEmpty).distinct)
+      .getOrElse(Vector.empty)
+      .foldLeft[Either[String, Vector[Plugin]]](Right(Vector.empty)) { (acc, raw) =>
+        acc.flatMap { done =>
+          PluginName.of(raw).left.map(why => s"$PluginsVar: $why").flatMap { name =>
+            raw match {
+              case "digest" => Right(done :+ new Digest(name))
+              case other => Left(s"$PluginsVar: no plugin $other; there is digest")
+            }
+          }
+        }
+      }
 
   private val StubTopicsVar = "GRIT_STUB_TOPICS"
 
