@@ -12,10 +12,9 @@ import utest.*
 /** [[SqlEntrySearch]] against a real Postgres with pg_textsearch (ADR 0005). */
 object SearchLiveTests extends TestSuite {
 
-  // Opening an engine applies schema.sql; opening a second applies it again.
+  // Opening an engine applies schema.sql; nothing here launches DBOS.
   private lazy val config = {
     val c = TestPostgres.freshDatabase("search_live")
-    Engine.open(c, "test").close()
     Engine.open(c, "test").close()
     c
   }
@@ -47,7 +46,7 @@ object SearchLiveTests extends TestSuite {
   private def said(text: String): Payload = Payload.Message(Message.User(text))
 
   private def ids(hits: Vector[EntrySearch.Hit]): Vector[String] =
-    hits.map(h => EntryId.value(h.id).split(':').last)
+    hits.map(h => EntryId.value(h.id))
 
   private def find(c: ConversationId, query: String, before: Long = 1000, limit: Int = 10) =
     LiveDb.transaction(config)(search.search(c, TurnSeq(before), query, limit))
@@ -62,22 +61,22 @@ object SearchLiveTests extends TestSuite {
         said("Postgres 18 runs in docker compose")
       )
       val hits = find(c, "testcontainers postgres")
-      hits.map(ids) ==> Right(Vector("e1", "e2"))
+      hits.map(ids) ==> Right(Vector("rank:e1", "rank:e2"))
       assert(hits.exists(_.forall(_.score > 0)))
       assert(hits.exists(h => h.size == 2 && h(0).score > h(1).score))
     }
 
     test("equal scores come back latest first, and a limit keeps the latest") {
       val c = conversation("ties", said("flaky build"), said("flaky build"), said("flaky build"))
-      find(c, "flaky").map(ids) ==> Right(Vector("e2", "e1", "e0"))
-      find(c, "flaky", limit = 2).map(ids) ==> Right(Vector("e2", "e1"))
+      find(c, "flaky").map(ids) ==> Right(Vector("ties:e2", "ties:e1", "ties:e0"))
+      find(c, "flaky", limit = 2).map(ids) ==> Right(Vector("ties:e2", "ties:e1"))
     }
 
     test("only the conversation's own entries, in turns before the one given") {
       val c = conversation("scope", said("mill shutdown"), said("mill shutdown"), said("mill"))
       val other = conversation("elsewhere", said("mill shutdown"))
-      find(c, "mill", before = 2).map(ids) ==> Right(Vector("e1", "e0"))
-      find(other, "mill").map(ids) ==> Right(Vector("e0"))
+      find(c, "mill", before = 2).map(ids) ==> Right(Vector("scope:e1", "scope:e0"))
+      find(other, "mill").map(ids) ==> Right(Vector("elsewhere:e0"))
     }
 
     test("a limit smaller than the matches keeps the best") {
@@ -87,7 +86,7 @@ object SearchLiveTests extends TestSuite {
         said("reset-db"),
         said("unrelated words entirely")
       )
-      find(c, "reset-db wipes databases", limit = 1).map(ids) ==> Right(Vector("e0"))
+      find(c, "reset-db wipes databases", limit = 1).map(ids) ==> Right(Vector("limit:e0"))
     }
 
     test("nothing matching, a blank query or no limit is empty, not an error") {
@@ -114,13 +113,13 @@ object SearchLiveTests extends TestSuite {
           )
         )
       )
-      find(c, "quokka").map(ids) ==> Right(Vector("e0"))
-      find(c, "wombats").map(ids) ==> Right(Vector("e1"))
-      find(c, "platypus").map(ids) ==> Right(Vector("e2"))
+      find(c, "quokka").map(ids) ==> Right(Vector("kinds:e0"))
+      find(c, "wombats").map(ids) ==> Right(Vector("kinds:e1"))
+      find(c, "platypus").map(ids) ==> Right(Vector("kinds:e2"))
       find(c, "echidnas") ==> Right(Vector.empty)
       find(c, "numbat") ==> Right(Vector.empty)
       val queried = conversation("query", Payload.Query("bilby"), said("a bilby burrow"))
-      find(queried, "bilby").map(ids) ==> Right(Vector("e1"))
+      find(queried, "bilby").map(ids) ==> Right(Vector("query:e1"))
     }
   }
 }
