@@ -1,13 +1,15 @@
 package grit.assembly.retrieval
 
+import java.time.Instant
+
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.AssemblyFixtures.{FakeDb, c1, store}
 import grit.assembly.linear.LinearAssembler
 import grit.core.context.{AssemblyNote, AssemblyRequest, Window}
-import grit.core.id.{EntryId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
-import grit.core.store.{EntryStore, InMemoryEntrySearch, Payload}
+import grit.core.store.{Entry, EntrySearch, EntryStore, Payload, StoreError, Tx}
 
 import utest.*
 
@@ -32,32 +34,68 @@ object RetrievalAssemblerTests extends TestSuite {
     }
   }
 
+  /** One search the assembler made. */
+  private final case class Asked(
+      conversation: ConversationId,
+      before: TurnSeq,
+      query: String,
+      limit: Int
+  )
+
+  /** Answers every search with the entries `ids` (`t{turn}:{seq}`), best first in the order
+    * given, whatever it is asked; keeps what it was asked. The ranking is the test's, not a
+    * scorer's whose ties would decide it.
+    */
+  private final class Scripted(ids: String*) extends EntrySearch {
+    // Only ever holds immutable vectors; nothing reads it but the test that owns it.
+    @caps.unsafe.untrackedCaptures
+    var asked = Vector.empty[Asked]
+
+    def search(conversation: ConversationId, before: TurnSeq, query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[EntrySearch.Hit]] = {
+      asked = asked :+ Asked(conversation, before, query, limit)
+      Right(ids.toVector.zipWithIndex.map { (id, rank) =>
+        val turn = id.drop(1).takeWhile(_ != ':').toLongOption.getOrElse(sys.error(s"id $id"))
+        EntrySearch.Hit(EntryId(id), TurnSeq(turn), (ids.size - rank).toDouble)
+      })
+    }
+  }
+
+  /** How many hits the assembler is told to ask for. */
+  private val Hits = 7
+
   private def exchange(question: String, answer: String): Vector[Payload] =
     Vector(Payload.Message(Message.User(question)), Payload.Message(reply(answer)))
 
   /** A four-character question and an eight-character answer: 11 estimated tokens. */
   private def filler(n: Int): Vector[Payload] = exchange(f"q$n%03d", f"answer$n%02d")
 
+  private def ask: Vector[Payload] = Vector(
+    Payload.Message(Message.User("Where should my probe point?"))
+  )
+
   /** The fact at turn 0 (22 estimated tokens), five fillers, and the ask at turn 6. */
   private def buried: Vector[Vector[Payload]] =
     Vector(exchange("Which database do probes use?", "grit_agent, never grit.")) ++
-      (1 to 5).map(filler) :+
-      Vector(Payload.Message(Message.User("Where should my probe point?")))
+      (1 to 5).map(filler) :+ ask
 
+  /** Turn 6's window. With a 25-token tail, the recent turns are 4 and 5. */
   private def assemble(
       entries: EntryStore,
       writer: Provider^,
       budget: Long,
-      tail: Long = 25
+      search: EntrySearch = new Scripted()
   ): Window = {
     val turn = TurnRef(c1, TurnSeq(6))
     new RetrievalAssembler(
       entries,
-      new InMemoryEntrySearch(entries),
+      search,
       writer,
       CharEstimate,
       Tokens(budget),
-      Tokens(tail)
+      Tokens(25),
+      Hits
     )
       .assemble(AssemblyRequest(turn))(using new FakeDb)
       .getOrElse(sys.error("in-memory store"))
@@ -82,53 +120,49 @@ object RetrievalAssemblerTests extends TestSuite {
     }
 
     test(
-      "an older turn that matches the query joins the recent tail, in conversation order, noted as recalled"
+      "older turns that match the query join the recent tail, in conversation order, noted as recalled"
     ) {
       val entries = store(buried*)
       val writer = new Writer(Some("database for probes: grit_agent"))
-      val w = assemble(entries, writer, budget = 60)
-      turnsOf(w) ==> Vector("t0", "t4", "t5")
-      val asked = writer.requests.headOption
-      asked.map(_.system) ==> Some(QueryWriter.System)
-      assert(
-        asked.exists(
-          _.messages.toString.contains("New message:\nUser: Where should my probe point?")
+      // Ranked turn 2 above turn 0: the window still holds them oldest first.
+      val search = new Scripted("t2:5", "t0:1")
+      val w = assemble(entries, writer, budget = 60, search)
+      turnsOf(w) ==> Vector("t0", "t2", "t4", "t5")
+      writer.requests ==> Vector(
+        ModelRequest(
+          QueryWriter.System,
+          Vector(Message.User("New message:\nUser: Where should my probe point?"))
         )
       )
-      assert(asked.exists(!_.messages.toString.contains("q005")))
+      search.asked ==> Vector(Asked(c1, TurnSeq(4), "database for probes: grit_agent", Hits))
       w.notes ==> Vector(
         AssemblyNote.Queried(
           "database for probes: grit_agent",
           "writer",
           Usage(Tokens(40), Tokens(6), Tokens.Zero, None),
-          asked.map(CharEstimate.request).getOrElse(Tokens.Zero)
+          writer.requests.headOption.map(CharEstimate.request).getOrElse(Tokens.Zero)
         ),
-        AssemblyNote.Recalled(Vector(TurnSeq(0)))
+        AssemblyNote.Recalled(Vector(TurnSeq(0), TurnSeq(2)))
       )
     }
 
-    test("a match on a reply brings its whole turn") {
-      val w = assemble(store(buried*), new Writer(Some("grit_agent")), budget = 60)
-      ids(w).take(2) ==> Vector("t0:0", "t0:1")
+    test("a match brings its turn's messages whole, never a summary") {
+      val summarised = exchange("hmm", "ok") :+ Payload.Summary("probes use grit_agent")
+      val turns = Vector(summarised) ++ (1 to 5).map(filler) :+ ask
+      // t0:2 is the summary.
+      val w =
+        assemble(store(turns*), new Writer(Some("grit_agent")), budget = 60, new Scripted("t0:2"))
+      ids(w) ==> Vector("t0:0", "t0:1", "t4:9", "t4:10", "t5:11", "t5:12")
     }
 
     test("a match that does not fit what is left is passed over for one that does") {
       val big = exchange("Which database do probes use? " + ("and why " * 30), "grit_agent.")
       val small = exchange("probes db?", "grit_agent")
-      val turns = Vector(big, small) ++ (2 to 5).map(filler) :+
-        Vector(Payload.Message(Message.User("Where should my probe point?")))
-      val entries = store(turns*)
-      val w = assemble(entries, new Writer(Some("probes grit_agent")), budget = 60)
+      val turns = Vector(big, small) ++ (2 to 5).map(filler) :+ ask
+      // The big turn ranks first and cannot fit in the 38 tokens the tail leaves.
+      val search = new Scripted("t0:1", "t1:3")
+      val w = assemble(store(turns*), new Writer(Some("probes grit_agent")), budget = 60, search)
       turnsOf(w) ==> Vector("t1", "t4", "t5")
-    }
-
-    test("a summary's match brings its turn's messages, never the summary itself") {
-      val summarised = exchange("hmm", "ok") :+ Payload.Summary("probes use grit_agent")
-      val turns = Vector(summarised) ++ (1 to 5).map(filler) :+
-        Vector(Payload.Message(Message.User("Where should my probe point?")))
-      val w = assemble(store(turns*), new Writer(Some("grit_agent")), budget = 60)
-      ids(w).take(2) ==> Vector("t0:0", "t0:1")
-      assert(!ids(w).contains("t0:2"))
     }
 
     test("a blank query, or a failed writer, falls back to the linear window and says why") {
@@ -147,6 +181,23 @@ object RetrievalAssemblerTests extends TestSuite {
       failed ==> Window(
         linear(entries, 60).entries,
         Vector(AssemblyNote.FellBack("no query: down"))
+      )
+    }
+
+    test("the query model is shown the turn's own messages, one line each, and nothing else") {
+      def entry(seq: Long, payload: Payload) =
+        Entry(EntryId(s"t6:$seq"), c1, TurnSeq(6), None, seq, payload, Instant.EPOCH)
+      QueryWriter.request(
+        Vector(
+          entry(13, Payload.Message(Message.User("Where should my probe point?"))),
+          entry(14, Payload.Summary("not shown")),
+          entry(15, Payload.Message(Message.User("And the port?")))
+        )
+      ) ==> ModelRequest(
+        QueryWriter.System,
+        Vector(
+          Message.User("New message:\nUser: Where should my probe point?\nUser: And the port?")
+        )
       )
     }
 
