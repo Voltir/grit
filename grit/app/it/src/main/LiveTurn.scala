@@ -100,7 +100,14 @@ object LiveTurn {
         ),
         Close.body(
           CloseEnv(
-            CloseRecords(entries, engine.periods, engine.lifecycle, engine.ledger, CharEstimate),
+            CloseRecords(
+              entries,
+              engine.periods,
+              engine.lifecycle,
+              engine.ledger,
+              engine.tombstones,
+              CharEstimate
+            ),
             grit.core.classify.Classifier.none("no classifier"),
             models,
             engine.db,

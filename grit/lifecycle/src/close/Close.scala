@@ -3,10 +3,11 @@ package grit.lifecycle.close
 import java.time.Instant
 
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, EntryId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows}
-import grit.core.store.{Entry, EntryTopics, Payload, Sealed, StoreError, Tx}
+import grit.core.retention.Target
+import grit.core.store.{Entry, EntryTopics, Payload, Sealed, StoreError, Tombstones, Tx}
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** The close: one workflow per attempt to close a period ([[CloseRef]]), run on the turns'
@@ -30,8 +31,10 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      nothing new (and then no model is called), the period's per-turn summaries joined
   *      as the prose, and the balance carried with the topics' edits alone. A close never
   *      fails for a model.
-  *   1. `seal` — under the lock again: the closing entry, its cost in the ledger, and the
-  *      period closed, together; abandoned, writing nothing, when a turn came in meanwhile.
+  *   1. `seal` — under the lock again: the closing entry, its cost in the ledger, the period
+  *      closed, and the tombstones on its raw entries, on the closing it replaces and on its
+  *      conversation going quiet ([[grit.core.retention.Target]]), together; abandoned,
+  *      writing nothing, when a turn came in meanwhile.
   */
 object Close {
 
@@ -253,8 +256,29 @@ object Close {
               records.ledger.record(entry, attempt.workflowId, c.model, c.usage, c.estimate)
             case _ => Right(())
           }
+          _ <- outcome match {
+            case Sealed.Closed(_) => tombstones(records.tombstones, attempt.period, now)
+            case Sealed.Abandoned => Right(())
+          }
         } yield outcome).left.map(describe)
     }
+
+  /** What a seal of `period` at `now` marks for deletion: its raw entries, the closing of the
+    * period before it, which it replaces, and its conversation, quiet from now on unless
+    * another period opens.
+    */
+  private def tombstones(tombstones: Tombstones, period: PeriodRef, now: Instant)(using
+      Tx^
+  ): Either[StoreError, Unit] =
+    for {
+      _ <- tombstones.write(Target.Raw(period), now)
+      _ <- PeriodSeq.of(PeriodSeq.value(period.seq) - 1) match {
+        case Some(before) =>
+          tombstones.write(Target.Superseded(PeriodRef(period.conversationId, before)), now)
+        case None => Right(())
+      }
+      _ <- tombstones.write(Target.Quiet(period), now)
+    } yield ()
 
   private def describe(error: StoreError): String = error match {
     case StoreError.DuplicateId(id) => s"entry ${EntryId.value(id)} already exists"

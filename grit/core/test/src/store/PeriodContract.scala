@@ -16,7 +16,6 @@ import grit.core.period.{
   Period,
   PeriodState,
   Probability,
-  Purgeable,
   TestClosings,
   Verdict,
   Windows
@@ -331,20 +330,6 @@ abstract class PeriodContract extends TestSuite {
       all.map(_.map(_.order)) ==> Right(Vector(ordinal(y1), ordinal(x1), ordinal(x2)))
       assert(ordinal(x1).isAfter(ordinal(y1)), ordinal(x2).isAfter(ordinal(x1)))
       transaction(periods.closedAfter(ordinal(y1), 1)).map(_.map(_.ref)) ==> Right(Vector(x1))
-    }
-
-    test("expired periods are those closed before the cutoff and not yet purged") {
-      val c = conversation("expired")
-      val t0 = say(c, 0)
-      val t1 = say(c, 1)
-      val p1 = PeriodRef(c, PeriodSeq.First)
-      seal(p1, t1, 30, "old")
-      def mine(cutoff: Instant) =
-        transaction(periods.expired(cutoff)).map(_.filter(_.period.conversationId == c))
-      mine(at(30)) ==> Right(Vector())
-      mine(at(31)) ==> Right(Vector(Purgeable(p1, t0.turnSeq, t1.turnSeq)))
-      transaction(periods.purge(p1, at(50))) ==> Right(())
-      mine(at(60)) ==> Right(Vector())
     }
 
     test("a purge deletes its period's raw entries, and keeps its closing entry and the rest") {

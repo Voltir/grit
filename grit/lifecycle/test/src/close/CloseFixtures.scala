@@ -11,8 +11,9 @@ import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, Tu
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator}
-import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Purgeable, Verdict}
+import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Verdict}
 import grit.core.store.{
+  InMemoryTombstones,
   ClosedPeriod,
   ClosingEntry,
   Db,
@@ -140,6 +141,7 @@ object CloseFixtures {
     val periods = new InMemoryPeriodStore(entries)
     val lifecycle = new InMemoryLifecycleStore
     val ledger = new InMemoryUsageLedger
+    val tombstones = new InMemoryTombstones
 
     /** A user message starting the next turn at `minutes`, its period opened as the inbox
       * does.
@@ -194,7 +196,7 @@ object CloseFixtures {
     )(using Durable^): String =
       Close.body(
         CloseEnv(
-          CloseRecords(entries, sealing, lifecycle, ledger, Chars),
+          CloseRecords(entries, sealing, lifecycle, ledger, tombstones, Chars),
           gate,
           new OneModel(summary),
           FakeDb,
@@ -230,7 +232,6 @@ object CloseFixtures {
       underlying.openElsewhere(conversation)
     def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]] =
       underlying.closedAfter(after, n)
-    def expired(cutoff: Instant)(using Tx^): Either[StoreError, Vector[Purgeable]] = underlying.expired(cutoff)
     def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit] = underlying.purge(period, at)
   }
 

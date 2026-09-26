@@ -11,7 +11,6 @@ import grit.core.period.{
   LifecycleSettings,
   Period,
   PeriodState,
-  Purgeable,
   Verdict
 }
 
@@ -167,14 +166,6 @@ final class InMemoryPeriodStore(
         }
     )
 
-  def expired(cutoff: Instant)(using Tx^): Either[StoreError, Vector[Purgeable]] =
-    Right(periods.flatMap { p =>
-      closedOf(p)
-        .filter(c => c.at.isBefore(cutoff) && c.purged.isEmpty)
-        .map(c => Purgeable(p.ref, p.first, c.last))
-    })
-
-  /** How many verdicts it keeps on `period`: what a test reads past the store's methods. */
   def verdictsOn(period: PeriodRef): Int = verdicts.count(_._1 == period)
 
   def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit] = {

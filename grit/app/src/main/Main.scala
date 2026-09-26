@@ -198,6 +198,7 @@ object Main {
                 engine.periods,
                 engine.lifecycle,
                 engine.ledger,
+                engine.tombstones,
                 CharEstimate
               ),
               classifier(topics),

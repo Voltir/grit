@@ -3,7 +3,7 @@ package grit.lifecycle.close
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
 import grit.core.provider.{Models, TokenEstimator}
-import grit.core.store.{Db, EntryStore, LifecycleStore, PeriodStore, UsageLedger}
+import grit.core.store.{Db, EntryStore, LifecycleStore, PeriodStore, Tombstones, UsageLedger}
 
 /** What a close works with besides its `Durable`: where it reads and writes ([[CloseRecords]]),
   * then the capabilities it calls. `classifier` decides which sections the closing needs
@@ -19,13 +19,14 @@ final case class CloseEnv(
     clock: Clock^
 )
 
-/** Where a close reads its period and writes its closing entry, the entry's cost, and how a
-  * request is priced.
+/** Where a close reads its period and writes its closing entry, the entry's cost, the
+  * tombstones its seal writes, and how a request is priced.
   */
 final case class CloseRecords(
     entries: EntryStore,
     periods: PeriodStore,
     lifecycle: LifecycleStore,
     ledger: UsageLedger,
+    tombstones: Tombstones,
     estimator: TokenEstimator
 )

@@ -19,6 +19,7 @@ import grit.core.period.{
   Verdict
 }
 import grit.core.provider.ProviderError
+import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{Payload, UsageLedger}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Weights}
 import grit.dbos.sql.TestTx
@@ -386,6 +387,30 @@ object CloseTests extends TestSuite {
             balance(deploy, prod, key)
           )
         )
+      )
+    }
+
+    test(
+      "a seal marks its raw entries, the closing it replaces and its conversation going quiet"
+    ) {
+      val w = new World
+      w.turn("where do we deploy?", "staging", "Chose staging.", 0)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, answering(written), new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1"
+      w.tombstones.pending ==>
+        Vector(Target.Raw(p1), Target.Quiet(p1)).map(Tombstone(_, at(Lapsed)))
+      w.turn("what about prod?", "needs a key", "Prod needs a key.", Lapsed + 1)
+      val p2 = PeriodRef(c, PeriodSeq.First.next)
+      new InMemoryDurable().run(w.attemptOn(p2).workflowId)(
+        w.body(gate, answering(written), new SetClock(at(3 * Lapsed)))
+      ) ==> "closed: closing:c1:2"
+      w.tombstones.pending.toSet ==> Set(
+        Tombstone(Target.Raw(p1), at(Lapsed)),
+        Tombstone(Target.Quiet(p1), at(Lapsed)),
+        Tombstone(Target.Raw(p2), at(3 * Lapsed)),
+        Tombstone(Target.Superseded(p1), at(3 * Lapsed)),
+        Tombstone(Target.Quiet(p2), at(3 * Lapsed))
       )
     }
 

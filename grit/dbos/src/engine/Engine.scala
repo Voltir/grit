@@ -106,7 +106,7 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   val docs: PluginName -> PluginDocs = plugin => new SqlPluginDocs(plugin)
 
   /** Registers `turn` as the body of every turn, `close` of every attempt to close a period,
-    * `settle` of every question whether a quiet period is finished and `post` of every
+    * `settle` of every question whether anyone is waiting on a quiet period, and `post` of every
     * posting run, and starts running what is queued; the sweep posts to `plugins`, the ones
     * enabled. Once.
     */
@@ -130,17 +130,17 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   private val enabled = new AtomicReference(Vector.empty[(PluginName, Int)])
 
   private val sweeper =
-    new Sweeper(dataSource, client, periods, lifecycle, cursors, () => enabled.get())
+    new Sweeper(dataSource, client, periods, lifecycle, tombstones, cursors, () => enabled.get())
 
   /** One sweep of the lifecycle at `now`, under the settings in force: every open period
     * whose deadline has come has its attempt on that deadline enqueued
-    * ([[grit.core.id.CloseRef.workflowId]]), and every other that is to be asked whether it
-    * is finished ([[grit.core.period.Deadline.ask]]) has its question enqueued
+    * ([[grit.core.id.CloseRef.workflowId]]), and every other that is to be asked whether anyone
+    * is waiting on it ([[grit.core.period.Deadline.ask]]) has its question enqueued
     * ([[grit.core.id.SettleRef.workflowId]]); every enabled plugin behind the newest closed
     * period has a run enqueued from its cursor ([[grit.core.plugin.PostRef]]) unless one is
-    * going; then every period closed longer ago than the retention window has its turn
-    * workflows, close attempts and questions deleted, and after them its raw entries, keeping its
-    * closing entry and its row ([[grit.core.store.PeriodStore.purge]]). No workflow is ever
+    * going; then every tombstone whose kind's retention has passed is collected
+    * ([[grit.core.retention.Target]]): its workflows deleted, unless one is still queued or
+    * running, which defers it to a later sweep, then its rows. No workflow is ever
     * deleted to be run again: what did not finish its work is reported `stuck`
     * ([[Swept]]). Only after [[launch]]. `Left` when the database fails, having done what
     * came before.

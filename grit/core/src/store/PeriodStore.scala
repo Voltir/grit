@@ -3,16 +3,7 @@ package grit.core.store
 import java.time.Instant
 
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, TurnRef, TurnSeq}
-import grit.core.period.{
-  Activity,
-  Balance,
-  CloseOrdinal,
-  CloseReason,
-  Closing,
-  Period,
-  Purgeable,
-  Verdict
-}
+import grit.core.period.{Activity, Balance, CloseOrdinal, CloseReason, Closing, Period, Verdict}
 import grit.core.place.Place
 
 /** A conversation's periods: which is open, closing one, and deleting what a closed one no
@@ -70,13 +61,11 @@ trait PeriodStore {
   /** Closed periods after `after` in close order, at most `n`. */
   def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]]
 
-  /** Periods closed before `cutoff` whose raw entries are still kept. */
-  def expired(cutoff: Instant)(using Tx^): Either[StoreError, Vector[Purgeable]]
-
   /** Deletes `period`'s raw entries (every entry of its turns but its closing entry) and
     * every verdict on it, and records it purged at `at`; a period already purged, or not closed, is left as it is.
-    * Its workflows are the caller's to delete, first ([[Purgeable.turns]],
-    * [[Purgeable.attempts]]).
+    * Its workflows are the caller's to delete, first ([[grit.core.period.Purgeable.turns]],
+    * [[grit.core.period.Purgeable.attempts]]); only the collector calls it, for a
+    * [[grit.core.retention.Target.Raw]] tombstone.
     */
   def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit]
 

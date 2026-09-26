@@ -15,7 +15,6 @@ import grit.core.period.{
   Period,
   PeriodState,
   Probability,
-  Purgeable,
   Verdict
 }
 import grit.core.store.{
@@ -273,15 +272,6 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
         instant(rs, "closed_at"),
         ordinalOf(rs)
       )
-    }
-
-  def expired(cutoff: Instant)(using tx: Tx^): Either[StoreError, Vector[Purgeable]] =
-    many(
-      """SELECT conversation_id, seq, first_turn, last_turn FROM grit.periods
-        | WHERE closed_at < ? AND purged_at IS NULL
-        | ORDER BY close_ordinal""".stripMargin
-    )(_.setObject(1, cutoff.atOffset(ZoneOffset.UTC))) { rs =>
-      Purgeable(ref(rs), TurnSeq(rs.getLong("first_turn")), TurnSeq(rs.getLong("last_turn")))
     }
 
   def purge(period: PeriodRef, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =

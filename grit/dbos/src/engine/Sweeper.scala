@@ -4,14 +4,11 @@ import java.time.Instant
 import javax.sql.DataSource
 
 import scala.jdk.CollectionConverters.*
-import scala.util.Using
-import scala.util.control.NonFatal
 
-import grit.core.id.{CloseRef, PeriodRef, PluginName, SettleRef, WorkflowId}
-import grit.core.period.Purgeable
+import grit.core.id.{CloseRef, PluginName, SettleRef, WorkflowId}
 import grit.core.plugin.{PluginCursors, PostRef}
-import grit.core.store.{LifecycleStore, PeriodStore, StoreError, Tx}
-import grit.dbos.sql.SqlEntryStore
+import grit.core.retention.Target
+import grit.core.store.{LifecycleStore, PeriodStore, StoreError, Tombstones, Tx}
 import grit.dbos.workflow.{Closes, Posts, Settles}
 
 import dev.dbos.transact.DBOSClient
@@ -26,11 +23,22 @@ private[engine] final class Sweeper(
     client: DBOSClient,
     periods: PeriodStore,
     lifecycle: LifecycleStore,
+    tombstones: Tombstones,
     cursors: PluginCursors,
     plugins: () -> Vector[(PluginName, Int)]
 ) {
 
-  /** Closes and asks, then posts, then purges: see [[Engine.sweep]]. */
+  private val collector = new Collector(dataSource, client, periods, tombstones)
+
+  private def attempted[A](body: => A): Either[StoreError, A] = Transact.attempted(body)
+
+  private def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    Transact.write(dataSource)(body)
+
+  private def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    Transact.read(dataSource)(body)
+
+  /** Closes and asks, then posts, then collects: see [[Engine.sweep]]. */
   def once(now: Instant): Either[StoreError, Swept] =
     for {
       settings <- read(lifecycle.current())
@@ -47,34 +55,8 @@ private[engine] final class Sweeper(
       posted <- plugins().foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, p) =>
         acc.flatMap(done => post(p._1, p._2).map(done + _))
       }
-      cutoff = now.minusMillis(settings.windows.retention.toMillis)
-      expired <- read(periods.expired(cutoff))
-      purged <- expired.foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, p) =>
-        acc.flatMap(done => purge(p, now).map(done + _))
-      }
-    } yield closed + asked + posted + purged
-
-  /** `expired`'s workflows deleted, then its raw entries, marking it purged at `now`.
-    * Workflows go first: a crash between the two leaves entries for the next sweep, which
-    * deletes the workflows again (DBOS deletes what it has, and takes the rest as done),
-    * never workflow histories nobody would look for again.
-    */
-  private def purge(expired: Purgeable, now: Instant): Either[StoreError, Swept] =
-    for {
-      attempts <- attempted(expired.attempts.flatMap(named))
-      _ <- attempted(
-        client.deleteWorkflows((expired.turns.map(WorkflowId.value) ++ attempts).asJava, false)
-      )
-      _ <- write(periods.purge(expired.period, now))
-    } yield Swept(purged = Vector(expired.period))
-
-  /** The ids of every workflow DBOS has whose id starts with `prefix`. */
-  private def named(prefix: String): Vector[String] =
-    client
-      .listWorkflows(new ListWorkflowsInput().withWorkflowIdPrefix(prefix))
-      .asScala
-      .toVector
-      .map(_.workflowId())
+      collected <- collector.once(settings, now)
+    } yield closed + asked + posted + collected
 
   /** The next run posting to `plugin` at `version` from its cursor, when the cursor is behind
     * the newest closed period and no run from it is still going: enqueued as [[close]]
@@ -160,54 +142,35 @@ private[engine] final class Sweeper(
     )
   }
 
-  private def attempted[A](body: => A): Either[StoreError, A] =
-    try Right(body)
-    catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
-
-  private def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-    try {
-      Using.resource(dataSource.getConnection()) { conn =>
-        conn.setAutoCommit(false)
-        val result =
-          try body(using Tx.fromConnection(conn))
-          catch { case NonFatal(e) => conn.rollback(); throw e }
-        if (result.isRight) conn.commit() else conn.rollback()
-        result
-      }
-    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
-
-  private def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-    try {
-      Using.resource(dataSource.getConnection()) { conn =>
-        conn.setAutoCommit(false)
-        conn.setReadOnly(true)
-        try body(using Tx.fromConnection(conn))
-        finally conn.rollback()
-      }
-    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
 }
 
-/** What a sweep did: the close attempts it `enqueued`, the periods whose raw entries and
-  * workflows it `purged`, the posting runs it enqueued (`posted`), the questions whether a
-  * quiet period is finished it enqueued (`asked`), and the workflows it found
-  * `stuck`: a close attempt that finished without closing its period, whose deadline has not
-  * moved since, or a plugin's last run from a cursor it failed to move [[PostRef.Attempts]]
-  * times. A stuck workflow is not run again; a close is attempted anew once its deadline moves.
+/** What a sweep did: the close attempts it `enqueued`, the posting runs it enqueued
+  * (`posted`), the questions whether anyone is waiting on a quiet period it enqueued
+  * (`asked`), the targets whose tombstones it `collected`, `spared` (found alive) or
+  * `deferred` (a workflow of theirs still queued or running, or waiting on another target),
+  * and the workflows it found `stuck`: a close attempt that finished without closing its
+  * period, whose deadline has not moved since, or a plugin's last run from a cursor it failed
+  * to move [[PostRef.Attempts]] times. A stuck workflow is not run again; a close is attempted
+  * anew once its deadline moves.
   */
 final case class Swept(
     enqueued: Vector[CloseRef] = Vector.empty,
-    purged: Vector[PeriodRef] = Vector.empty,
+    collected: Vector[Target] = Vector.empty,
     posted: Vector[PostRef] = Vector.empty,
     stuck: Vector[WorkflowId] = Vector.empty,
-    asked: Vector[SettleRef] = Vector.empty
+    asked: Vector[SettleRef] = Vector.empty,
+    spared: Vector[Target] = Vector.empty,
+    deferred: Vector[Target] = Vector.empty
 ) {
   def +(other: Swept): Swept =
     Swept(
       enqueued ++ other.enqueued,
-      purged ++ other.purged,
+      collected ++ other.collected,
       posted ++ other.posted,
       stuck ++ other.stuck,
-      asked ++ other.asked
+      asked ++ other.asked,
+      spared ++ other.spared,
+      deferred ++ other.deferred
     )
 }
 

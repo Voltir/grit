@@ -11,11 +11,13 @@ final class InMemoryTombstones extends Tombstones {
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[Target, Row]
 
-  /** Every pending tombstone, oldest written first: what a test reads to see what was written. */
+  /** Every pending tombstone, oldest written first, then in the collector's order of kinds:
+    * what a test reads to see what was written.
+    */
   def pending: Vector[Tombstone] =
     rows.toVector
       .collect { case (t, r) if r.ended.isEmpty => Tombstone(t, r.written) }
-      .sortBy(_.written)
+      .sortBy(t => (t.written, t.target.kind.ordinal, Target.key(t.target)))
 
   def write(target: Target, at: Instant)(using Tx^): Either[StoreError, Unit] = {
     rows.get(target) match {
