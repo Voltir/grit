@@ -49,8 +49,14 @@ object SearchLiveTests extends TestSuite {
   private def ids(hits: Vector[EntrySearch.Hit]): Vector[String] =
     hits.map(h => EntryId.value(h.id))
 
-  private def find(c: ConversationId, query: String, before: Long = 1000, limit: Int = 10) =
-    LiveDb.transaction(config)(search.search(c, TurnSeq(before), query, limit))
+  private def find(
+      c: ConversationId,
+      query: String,
+      before: Long = 1000,
+      limit: Int = 10,
+      from: Long = 0
+  ) =
+    LiveDb.transaction(config)(search.search(c, TurnSeq(from), TurnSeq(before), query, limit))
 
   val tests = Tests {
 
@@ -73,10 +79,13 @@ object SearchLiveTests extends TestSuite {
       find(c, "flaky", limit = 2).map(ids) ==> Right(Vector("ties:e2", "ties:e1"))
     }
 
-    test("only the conversation's own entries, in turns before the one given") {
+    test("only the conversation's own entries, in turns from the first given and before the last") {
       val c = conversation("scope", said("mill shutdown"), said("mill shutdown"), said("mill"))
       val other = conversation("elsewhere", said("mill shutdown"))
       find(c, "mill", before = 2).map(ids) ==> Right(Vector("scope:e1", "scope:e0"))
+      find(c, "mill", from = 1).map(ids).map((v: Vector[String]) => v.sorted) ==> Right(
+        Vector("scope:e1", "scope:e2")
+      )
       find(other, "mill").map(ids) ==> Right(Vector("elsewhere:e0"))
     }
 

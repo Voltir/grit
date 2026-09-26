@@ -38,7 +38,8 @@ In dependency order:
 - **`approval`** — `Approval`, a person's answer to a gated tool call, and the message
   that carries it to the turn waiting on its topic. ← `id`
 - **`context`**, **`provider`**, **`inbox`**, **`classify`** — the seams the engine plugs
-  into: `ContextAssembler` (and the `Window` it builds), `Provider` and `Models` (the
+  into: `ContextAssembler` (and the `Window` it builds, and `Shown`: what the model is
+  shown of an entry a window names), `Provider` and `Models` (the
   catalog in force, and a provider per role's pin; ← `model`), `Inbox` (which also
   answers a turn's gated call), and `Classifier` (closed questions about a state, answered
   with a probability per option; Jev's shape). Each names only the packages above, never

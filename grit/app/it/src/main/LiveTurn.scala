@@ -82,7 +82,13 @@ object LiveTurn {
           TurnEnv(
             "You are grit.",
             TurnRecords(entries, engine.ledger, CharEstimate, engine.profiles),
-            new LinearAssembler(entries, CharEstimate, LinearAssembler.DefaultBudget),
+            new LinearAssembler(
+              entries,
+              engine.periods,
+              engine.lifecycle,
+              CharEstimate,
+              LinearAssembler.DefaultBudget
+            ),
             grit.core.classify.Classifier.none("no classifier"),
             models,
             engine.db,

@@ -1,11 +1,13 @@
 package grit.assembly.linear
 
 import grit.assembly.estimate.CharEstimate
-import grit.assembly.linear.AssemblyFixtures.{FakeDb, c1}
-import grit.core.context.{AssemblyError, AssemblyRequest}
+import grit.assembly.linear.AssemblyFixtures.{FakeDb, World, c1, closingOf}
+import grit.core.context.{AssemblyError, AssemblyRequest, Shown}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.period.{LifecycleSettings, Windows}
 import grit.core.store.{Entry, EntryStore, Payload, StoreError, Tx}
+import grit.dbos.sql.TestTx
 
 import utest.*
 
@@ -27,13 +29,32 @@ object LinearAssemblerTests extends TestSuite {
   private def small(n: Int): Vector[Message] = Vector(user(f"q$n%03d"), reply(f"answer$n%02d"))
 
   /** A store holding `turns`, each a list of messages, one turn per element from turn 0. */
-  private def store(turns: Vector[Message]*): EntryStore =
+  private def store(turns: Vector[Message]*): World =
     AssemblyFixtures.store(turns.map(_.map(Payload.Message(_)))*)
 
-  private def window(entries: EntryStore, turn: Long, budget: Long): Vector[String] =
-    new LinearAssembler(entries, CharEstimate, Tokens(budget))
+  private def window(world: World, turn: Long, budget: Long): Vector[String] =
+    new LinearAssembler(world.entries, world.periods, world.lifecycle, CharEstimate, Tokens(budget))
       .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn))))(using new FakeDb)
       .fold(e => sys.error(s"assembly failed: $e"), _.entries.map(EntryId.value))
+
+  /** Three periods: turns 0 and 1 closed as p1, turn 2 closed as p2, turns 3 and 4 open. */
+  private def threePeriods: World =
+    AssemblyFixtures.closed(
+      Vector(Vector(small(0), small(1)), Vector(small(2)), Vector(small(3), Vector(user("now!"))))
+        .map(
+          _.map(_.map(Payload.Message(_)))
+        ),
+      Vector("The first period.", "The second period.")
+    )
+
+  /** What the model is shown of period `n`'s closing entry costs. */
+  private def closingCost(world: World, n: Long): Long =
+    world.entries
+      .get(EntryId(closingOf(n)))(using TestTx.fake)
+      .toOption
+      .flatten
+      .flatMap(Shown.of)
+      .fold(0L)(m => Tokens.value(CharEstimate.message(m)))
 
   val tests = Tests {
     test("a budget the history fits in keeps every earlier turn, oldest first") {
@@ -74,6 +95,33 @@ object LinearAssemblerTests extends TestSuite {
       window(store(small(0), small(1)), 1, 0) ==> Vector()
     }
 
+    test("after a close, the window opens with the closing entries, then the open period only") {
+      val w = threePeriods
+      window(w, 4, 1000) ==> Vector(closingOf(1), closingOf(2), "t3:8", "t3:9")
+    }
+
+    test("as many closing entries open the window as the settings say, the newest") {
+      val w = threePeriods
+      val one = Windows.Default
+      w.lifecycle.set(LifecycleSettings.of(one, 1).getOrElse(sys.error("settings")))(using
+        TestTx.fake
+      )
+      window(w, 4, 1000) ==> Vector(closingOf(2), "t3:8", "t3:9")
+      w.lifecycle.set(LifecycleSettings.of(one, 0).getOrElse(sys.error("settings")))(using
+        TestTx.fake
+      )
+      window(w, 4, 1000) ==> Vector("t3:8", "t3:9")
+    }
+
+    test("the closing entries are paid for first; a budget too small drops the oldest") {
+      val w = threePeriods
+      val newest = closingCost(w, 2)
+      window(w, 4, newest + SmallTurn) ==> Vector(closingOf(2), "t3:8", "t3:9")
+      window(w, 4, newest) ==> Vector(closingOf(2))
+      // None fits: what they would have cost is left to the turns.
+      window(w, 4, newest - 1) ==> Vector("t3:8", "t3:9")
+    }
+
     test("a store failure is an assembly failure") {
       object Down extends EntryStore {
         private val down = StoreError.DatabaseError("down")
@@ -82,7 +130,8 @@ object LinearAssemblerTests extends TestSuite {
         def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] = Left(down)
         def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = Left(down)
       }
-      new LinearAssembler(Down, CharEstimate, Tokens(1000))
+      val w = store()
+      new LinearAssembler(Down, w.periods, w.lifecycle, CharEstimate, Tokens(1000))
         .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(1))))(using new FakeDb) ==>
         Left(AssemblyError.Store(StoreError.DatabaseError("down")))
     }

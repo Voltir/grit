@@ -8,7 +8,13 @@ import grit.core.store.{EntrySearch, StoreError, Tx}
 /** [[EntrySearch]] by BM25 over `grit.entries.search_text` (ADR 0005). */
 final class SqlEntrySearch extends EntrySearch {
 
-  def search(conversation: ConversationId, before: TurnSeq, query: String, limit: Int)(using
+  def search(
+      conversation: ConversationId,
+      from: TurnSeq,
+      before: TurnSeq,
+      query: String,
+      limit: Int
+  )(using
       tx: Tx^
   ): Either[StoreError, Vector[EntrySearch.Hit]] =
     if (query.isBlank || limit <= 0) Right(Vector.empty)
@@ -18,8 +24,9 @@ final class SqlEntrySearch extends EntrySearch {
         Using.resource(conn.prepareStatement(SqlEntrySearch.Ranked)) { ps =>
           ps.setString(1, query)
           ps.setString(2, ConversationId.value(conversation))
-          ps.setLong(3, TurnSeq.value(before))
-          ps.setInt(4, limit)
+          ps.setLong(3, TurnSeq.value(from))
+          ps.setLong(4, TurnSeq.value(before))
+          ps.setInt(5, limit)
           Using.resource(ps.executeQuery()) { rs =>
             val hits = Vector.newBuilder[EntrySearch.Hit]
             while (rs.next()) {
@@ -46,7 +53,7 @@ private object SqlEntrySearch {
       |  SELECT id, turn_seq, seq,
       |         search_text <@> to_bm25query(?, 'grit.idx_entries_bm25') AS s
       |    FROM grit.entries
-      |   WHERE conversation_id = ?::uuid AND turn_seq < ?
+      |   WHERE conversation_id = ?::uuid AND turn_seq >= ? AND turn_seq < ?
       |   ORDER BY s, seq DESC
       |   LIMIT ?
       |) ranked

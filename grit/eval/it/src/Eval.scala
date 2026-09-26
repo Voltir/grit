@@ -192,7 +192,15 @@ object Eval {
       assembler.assemble(request)(using engine.db).left.map(e => s"${strategy.label}: $e")
     val window: Either[String, Window] = strategy match {
       case Strategy.Linear(budget) =>
-        assemble(new LinearAssembler(engine.entries, CharEstimate, budget))
+        assemble(
+          new LinearAssembler(
+            engine.entries,
+            engine.periods,
+            engine.lifecycle,
+            CharEstimate,
+            budget
+          )
+        )
       case Strategy.Retrieval(budget, false) =>
         loaded.c.query.toRight(s"${loaded.c.name} has no query:").flatMap { q =>
           assemble(retrieval(engine, new Handwritten(q), budget))
@@ -210,6 +218,8 @@ object Eval {
   ): ContextAssembler^{writer} =
     new RetrievalAssembler(
       engine.entries,
+      engine.periods,
+      engine.lifecycle,
       engine.search,
       writer,
       CharEstimate,

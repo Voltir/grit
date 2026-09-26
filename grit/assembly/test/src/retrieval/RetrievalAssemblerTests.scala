@@ -3,13 +3,13 @@ package grit.assembly.retrieval
 import java.time.Instant
 
 import grit.assembly.estimate.CharEstimate
-import grit.assembly.linear.AssemblyFixtures.{FakeDb, c1, store}
+import grit.assembly.linear.AssemblyFixtures.{FakeDb, World, c1, closed, closingOf, store}
 import grit.assembly.linear.LinearAssembler
 import grit.core.context.{AssemblyNote, AssemblyRequest, Window}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
-import grit.core.store.{Entry, EntrySearch, EntryStore, Payload, StoreError, Tx}
+import grit.core.store.{Entry, EntrySearch, Payload, StoreError, Tx}
 
 import utest.*
 
@@ -37,6 +37,7 @@ object RetrievalAssemblerTests extends TestSuite {
   /** One search the assembler made. */
   private final case class Asked(
       conversation: ConversationId,
+      from: TurnSeq,
       before: TurnSeq,
       query: String,
       limit: Int
@@ -51,10 +52,16 @@ object RetrievalAssemblerTests extends TestSuite {
     @caps.unsafe.untrackedCaptures
     var asked = Vector.empty[Asked]
 
-    def search(conversation: ConversationId, before: TurnSeq, query: String, limit: Int)(using
+    def search(
+        conversation: ConversationId,
+        from: TurnSeq,
+        before: TurnSeq,
+        query: String,
+        limit: Int
+    )(using
         Tx^
     ): Either[StoreError, Vector[EntrySearch.Hit]] = {
-      asked = asked :+ Asked(conversation, before, query, limit)
+      asked = asked :+ Asked(conversation, from, before, query, limit)
       Right(ids.toVector.zipWithIndex.map { (id, rank) =>
         val turn = id.drop(1).takeWhile(_ != ':').toLongOption.getOrElse(sys.error(s"id $id"))
         EntrySearch.Hit(EntryId(id), TurnSeq(turn), (ids.size - rank).toDouble)
@@ -82,14 +89,17 @@ object RetrievalAssemblerTests extends TestSuite {
 
   /** Turn 6's window. With a 25-token tail, the recent turns are 4 and 5. */
   private def assemble(
-      entries: EntryStore,
+      world: World,
       writer: Provider^,
       budget: Long,
-      search: EntrySearch = new Scripted()
+      search: EntrySearch = new Scripted(),
+      at: Long = 6
   ): Window = {
-    val turn = TurnRef(c1, TurnSeq(6))
+    val turn = TurnRef(c1, TurnSeq(at))
     new RetrievalAssembler(
-      entries,
+      world.entries,
+      world.periods,
+      world.lifecycle,
       search,
       writer,
       CharEstimate,
@@ -105,8 +115,8 @@ object RetrievalAssemblerTests extends TestSuite {
 
   private def turnsOf(w: Window): Vector[String] = ids(w).map(_.takeWhile(_ != ':')).distinct
 
-  private def linear(entries: EntryStore, budget: Long): Window =
-    new LinearAssembler(entries, CharEstimate, Tokens(budget))
+  private def linear(world: World, budget: Long): Window =
+    new LinearAssembler(world.entries, world.periods, world.lifecycle, CharEstimate, Tokens(budget))
       .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(6))))(using new FakeDb)
       .getOrElse(sys.error("in-memory store"))
 
@@ -134,7 +144,8 @@ object RetrievalAssemblerTests extends TestSuite {
           Vector(Message.User("New message:\nUser: Where should my probe point?"))
         )
       )
-      search.asked ==> Vector(Asked(c1, TurnSeq(4), "database for probes: grit_agent", Hits))
+      search.asked ==>
+        Vector(Asked(c1, TurnSeq.First, TurnSeq(4), "database for probes: grit_agent", Hits))
       w.notes ==> Vector(
         AssemblyNote.Queried(
           "database for probes: grit_agent",
@@ -144,6 +155,19 @@ object RetrievalAssemblerTests extends TestSuite {
         ),
         AssemblyNote.Recalled(Vector(TurnSeq(0), TurnSeq(2)))
       )
+    }
+
+    test("after a close, the closings come first and the search stays in the open period") {
+      // Period 1 is the buried fact's turn, closed; period 2 is turns 1 to 7, the ask last.
+      val w = closed(
+        Vector(Vector(buried(0)), (1 to 6).map(filler).toVector :+ ask),
+        Vector("Probes use grit_agent.")
+      )
+      val search = new Scripted("t2:6")
+      val got = assemble(w, new Writer(Some("probes database")), budget = 60, search, at = 7)
+      ids(got).headOption ==> Some(closingOf(1))
+      turnsOf(got).drop(1) ==> Vector("t2", "t5", "t6")
+      search.asked.map(a => (a.from, a.before)) ==> Vector((TurnSeq(1), TurnSeq(5)))
     }
 
     test("a match brings its turn's messages whole, never a summary") {

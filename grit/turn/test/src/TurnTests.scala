@@ -1,12 +1,15 @@
 package grit.turn
 
+import java.time.Instant
+
 import grit.assembly.estimate.CharEstimate
-import grit.core.context.AssemblyNote
+import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{EntryId, WorkflowId}
+import grit.core.id.{EntryId, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.period.{CloseReason, Closing}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
-import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
+import grit.core.store.{Db, Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -281,6 +284,38 @@ object TurnTests extends TestSuite {
       provider.requests.map(_.messages.size) ==> Vector(1, 3)
       provider.requests.lastOption.flatMap(_.messages.headOption) ==> Some(Message.User("one"))
       provider.requests.lastOption.flatMap(_.messages.lastOption) ==> Some(Message.User("two"))
+    }
+
+    test("a closing entry in the window is shown to the model as one user message") {
+      val entries = new InMemoryEntryStore
+      val provider = new RecordingProvider
+      say(entries, "one")
+      val closing = Closing
+        .of("We talked about one.", Some("one"), Vector(), Vector(), Vector(), Vector())
+        .getOrElse(sys.error("closing"))
+      val closed = EntryId("closing:c1:1")
+      entries.insert(
+        Entry(
+          closed,
+          conversation,
+          TurnSeq(0),
+          None,
+          1,
+          Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing),
+          Instant.EPOCH
+        )
+      )(using TestTx.fake)
+      val turn = say(entries, "two")
+      val opening = new ContextAssembler {
+        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+          Right(Window(Vector(closed)))
+      }
+      new InMemoryDurable().run(turn.workflowId)(
+        turnBodyWith(entries, provider, opening, new InMemoryUsageLedger)
+      )
+      provider.requests.headOption.map(_.messages) ==> Some(
+        Vector(Message.User(closing.shown(Instant.EPOCH, CloseReason.Lapsed)), Message.User("two"))
+      )
     }
 
     test("each turn's window is recorded as its own entry, with the turns search recalled") {

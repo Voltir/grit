@@ -1,34 +1,44 @@
 package grit.assembly.linear
 
-import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Window}
+import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Shown, Window}
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.core.provider.TokenEstimator
-import grit.core.store.{Db, Entry, EntryStore, Payload}
+import grit.core.store.{Db, Entry, EntryStore, LifecycleStore, Payload, PeriodStore}
 
-/** The window with no choosing: the messages of the most recent whole turns before the
-  * turn that fit in `budget` tokens by `estimator`, oldest first; never their summaries. The
-  * baseline every smarter assembler is measured against.
+/** The window with no choosing: the closing entries of the conversation's newest closed
+  * periods, as many as the settings in force say, then the messages of the most recent whole
+  * turns of the turn's own period, before the turn, that fit in what `budget` tokens by
+  * `estimator` leave; never their summaries. The baseline every smarter assembler is
+  * measured against.
   *
-  * Turns are kept or dropped whole, so a window never opens on a reply without its
-  * question, or a tool result without its call. The first turn back that does not fit
-  * ends the window, even if older turns would: the model never sees a history with holes.
-  * A newest turn larger than the budget on its own leaves the window empty.
+  * The closing entries are paid for first, oldest first in the window; a budget too small
+  * for all of them drops the oldest. Turns are kept or dropped whole, so a window never
+  * opens on a reply without its question, or a tool result without its call. The first turn
+  * back that does not fit ends the window, even if older turns would: the model never sees
+  * a history with holes. A newest turn larger than what is left on its own leaves no turns.
   */
-final class LinearAssembler(entries: EntryStore, estimator: TokenEstimator, budget: Tokens)
-    extends ContextAssembler {
+final class LinearAssembler(
+    entries: EntryStore,
+    periods: PeriodStore,
+    lifecycle: LifecycleStore,
+    estimator: TokenEstimator,
+    budget: Tokens
+) extends ContextAssembler {
 
   def assemble(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] =
-    db.read(entries.list(request.turn.conversationId))
-      .map { all =>
-        val kept = LinearAssembler.recent(
-          LinearAssembler.turnsBefore(all, request.turn.turnSeq),
-          estimator,
-          budget
-        )
-        Window(kept.flatten.sortBy(_.seq).map(_.id))
+    db.read {
+      for {
+        settings <- lifecycle.current()
+        opening <- periods.opening(request.turn, settings.closings)
+        all <- entries.list(request.turn.conversationId)
+      } yield {
+        val (closings, left) = LinearAssembler.opened(opening.closings, estimator, budget)
+        val turns = LinearAssembler.turnsBefore(all, opening.first, request.turn.turnSeq)
+        val kept = LinearAssembler.recent(turns, estimator, left)
+        Window(closings.map(_.id) ++ kept.flatten.sortBy(_.seq).map(_.id))
       }
-      .left
+    }.left
       .map(AssemblyError.Store(_))
 }
 
@@ -39,16 +49,34 @@ object LinearAssembler {
     */
   val DefaultBudget: Tokens = Tokens(24_000)
 
-  /** The message entries of the turns in `all` before `turn`, one vector per turn, oldest
-    * turn first. Summaries and any other entries that are not messages are left out.
+  /** The message entries of the turns in `all` from `from` and before `turn`, one vector per
+    * turn, oldest turn first. Summaries and any other entries that are not messages are left
+    * out.
     */
-  def turnsBefore(all: Vector[Entry], turn: TurnSeq): Vector[Vector[Entry]] =
+  def turnsBefore(all: Vector[Entry], from: TurnSeq, turn: TurnSeq): Vector[Vector[Entry]] =
     all
-      .filter(e => TurnSeq.value(e.turnSeq) < TurnSeq.value(turn) && isMessage(e))
+      .filter { e =>
+        val t = TurnSeq.value(e.turnSeq)
+        t >= TurnSeq.value(from) && t < TurnSeq.value(turn) && isMessage(e)
+      }
       .groupBy(e => TurnSeq.value(e.turnSeq))
       .toVector
       .sortBy(_._1)
       .map(_._2.sortBy(_.seq))
+
+  /** The newest of `closings` (oldest first) whose shown messages fit in `budget` by
+    * `estimator` together, oldest first, and what of `budget` they leave. The first one back
+    * that does not fit ends them.
+    */
+  def opened(
+      closings: Vector[Entry],
+      estimator: TokenEstimator,
+      budget: Tokens
+  ): (Vector[Entry], Tokens) = {
+    val kept = recent(closings.map(Vector(_)), estimator, budget).flatten
+    val spent = kept.map(e => shownCost(e, estimator)).foldLeft(Tokens.Zero)(_ + _)
+    (kept, Tokens(Tokens.value(budget) - Tokens.value(spent)))
+  }
 
   /** The most recent of `turns` that fit in `budget` together, oldest first. The first turn
     * back that does not fit ends them, even if older ones would.
@@ -68,12 +96,12 @@ object LinearAssembler {
       .toVector
       .reverse
 
-  /** What `turn`'s messages cost by `estimator`. */
-  def cost(turn: Vector[Entry], estimator: TokenEstimator): Tokens =
-    turn
-      .map(_.payload)
-      .collect { case Payload.Message(m) => estimator.message(m) }
-      .foldLeft(Tokens.Zero)(_ + _)
+  /** What the model is shown of `entries` costs by `estimator` ([[Shown.of]]). */
+  def cost(entries: Vector[Entry], estimator: TokenEstimator): Tokens =
+    entries.map(shownCost(_, estimator)).foldLeft(Tokens.Zero)(_ + _)
+
+  private def shownCost(e: Entry, estimator: TokenEstimator): Tokens =
+    Shown.of(e).fold(Tokens.Zero)(estimator.message)
 
   private def isMessage(e: Entry): Boolean = e.payload match {
     case Payload.Message(_) => true

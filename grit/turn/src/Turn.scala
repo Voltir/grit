@@ -5,7 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.core.approval.Approval
-import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Window}
+import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
@@ -879,9 +879,10 @@ object Turn {
       .map(storeFailure)
       .flatMap(requestOf(env.system, _, turn, window))
 
-  /** The request [[request]] builds, from `all` of the conversation's entries: the window's
-    * messages, then the turn's own, its tool loop's exchange among them in order. Only
-    * messages are sent: a summary is not shown to the model yet.
+  /** The request [[request]] builds, from `all` of the conversation's entries: what the
+    * model is shown of the window's entries ([[Shown.of]]: its messages, and a closing entry
+    * as one user message), then the turn's own, its tool loop's exchange among them in order.
+    * A summary is not shown to the model yet.
     */
   private def requestOf(
       system: String,
@@ -898,9 +899,7 @@ object Turn {
           )
         )
       case _ =>
-        val shown = window.entries.flatMap(byId.get).map(_.payload).collect {
-          case Payload.Message(m) => m
-        }
+        val shown = window.entries.flatMap(byId.get).flatMap(Shown.of)
         val mine = own(all, turn).map(_.payload).collect {
           case Payload.Message(m) => m
           case Payload.Exchange(reply) => reply
