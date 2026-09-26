@@ -13,6 +13,7 @@ import grit.core.id.{
   EntryId,
   PeriodRef,
   PeriodSeq,
+  PluginName,
   SourceId,
   TurnRef,
   WorkflowId
@@ -20,6 +21,7 @@ import grit.core.id.{
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.period.{
+  CloseOrdinal,
   CloseReason,
   LifecycleSettings,
   PeriodState,
@@ -28,20 +30,24 @@ import grit.core.period.{
   Windows
 }
 import grit.core.place.{Directory, Locality}
+import grit.core.plugin.PostRef
 import grit.core.retention.Target
 import grit.core.store.{Origin, Tx}
 import grit.dbos.sql.{
   DbConfig,
   LiveDb,
+  SqlCacheDocs,
   SqlEntryStore,
   SqlLifecycleStore,
   SqlModelProfileStore,
   SqlPeriodStore,
+  SqlPluginCursors,
+  SqlPluginDocs,
   SqlTombstones,
   SqlUsageLedger,
   TestPostgres
 }
-import grit.dbos.workflow.DurableWorkflow
+import grit.dbos.workflow.{DurableWorkflow, Posts}
 
 import dev.dbos.transact.DBOSClient
 import utest.*
@@ -186,6 +192,29 @@ object CollectorLiveTests extends TestSuite {
       .transaction(config)(periods.get(period))
       .exists(_.exists(_.state != PeriodState.Open)) &&
       ended(config, s"close:${ConversationId.value(period.conversationId)}:")
+
+  /** `period`'s close ordinal. */
+  private def ordinalOf(config: DbConfig, period: PeriodRef): CloseOrdinal =
+    LiveDb.transaction(config)(periods.get(period)) match {
+      case Right(Some(p)) =>
+        p.state match {
+          case PeriodState.Closed(_, _, _, _, order, _) => order
+          case PeriodState.Open => sys.error(s"$period is open")
+        }
+      case other => sys.error(s"$period: $other")
+    }
+
+  /** How many rows of `plugin`'s documents are kept, of any generation. */
+  private def docRows(config: DbConfig, plugin: PluginName): Int =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement("SELECT count(*) FROM grit.plugin_docs WHERE plugin = ?")
+      ) { ps =>
+        ps.setString(1, PluginName.value(plugin))
+        Using.resource(ps.executeQuery())(rs => { rs.next(); rs.getInt(1) })
+      }
+    }
 
   /** How many usage rows are kept for `entries`, and profiles for `turns`. */
   private def ledgered(
@@ -479,6 +508,15 @@ object CollectorLiveTests extends TestSuite {
         spent(config, EntryId.value(p2.closingId), t1, a2.workflowId)
         // A third period open: the conversation is not quiet.
         turnOn(engine, origin, "three")
+        // A plugin's documents, one posted from each closing.
+        val cached = PluginName.of("cached").getOrElse(sys.error("name"))
+        LiveDb.transaction(config) {
+          for {
+            _ <- new SqlPluginCursors(tombstones).start(cached, 1, Instant.now())
+            _ <- new SqlCacheDocs(cached, ordinalOf(config, p1)).put("one", ujson.Str("one"))
+            _ <- new SqlCacheDocs(cached, ordinalOf(config, p2)).put("two", ujson.Str("two"))
+          } yield ()
+        } ==> Right(())
 
         engine.sweep(Instant.now().plusSeconds(600)).map(_.collected) ==>
           Right(Vector(Target.Raw(p2), Target.Superseded(p1)))
@@ -501,6 +539,8 @@ object CollectorLiveTests extends TestSuite {
           2,
           1
         )
+        LiveDb.transaction(config)(new SqlPluginDocs(cached).newest("", 10)).map(_.map(_._1)) ==>
+          Right(Vector("two"))
       } finally engine.close()
     }
 
@@ -596,6 +636,57 @@ object CollectorLiveTests extends TestSuite {
         } finally client.close()
         kept(config, t0.conversationId)._1 ==> false
         kept(config, Vector(hold)) ==> Vector(0, 0)
+      } finally engine.close()
+    }
+
+    test(
+      "a restarted plugin's earlier documents and its runs at the old version go after the raw window"
+    ) {
+      val config = TestPostgres.freshDatabase("collect_restarted")
+      val engine = launched(config, 2.minutes)
+      try {
+        val p = PluginName.of("restarted").getOrElse(sys.error("name"))
+        val cursors = new SqlPluginCursors(tombstones)
+        LiveDb.transaction(config) {
+          for {
+            _ <- cursors.start(p, 1, Instant.now())
+            _ <- new SqlCacheDocs(p, CloseOrdinal.Start).put("old", ujson.Str("v1"))
+          } yield ()
+        } ==> Right(())
+        val old = PostRef(p, 1, CloseOrdinal.Start, 0)
+        val current = PostRef(p, 2, CloseOrdinal.Start, 0)
+        val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
+        try
+          Vector(old, current).foreach { run =>
+            val _ = client.enqueueWorkflow[String, Exception](
+              Posts.enqueueOptions(run),
+              // Empty, and DBOS only reads it; separation checking treats arrays as mutable.
+              caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
+            )
+          }
+        finally client.close()
+        assert(
+          eventually(
+            ended(config, s"post:${PluginName.value(p)}:") &&
+              kept(config, Vector(old.workflowId, current.workflowId)).headOption.contains(2)
+          )
+        )
+        LiveDb.transaction(config) {
+          for {
+            _ <- cursors.start(p, 2, Instant.now())
+            _ <- new SqlCacheDocs(p, CloseOrdinal.Start).put("new", ujson.Str("v2"))
+          } yield ()
+        } ==> Right(())
+        docRows(config, p) ==> 2
+        engine.sweep(Instant.now().plusSeconds(180)).map(_.collected) ==>
+          Right(Vector(Target.Restarted(p)))
+        docRows(config, p) ==> 1
+        LiveDb.transaction(config)(new SqlPluginDocs(p).newest("", 10)).map(_.map(_._1)) ==>
+          Right(Vector("new"))
+        (
+          kept(config, Vector(old.workflowId)).headOption,
+          kept(config, Vector(current.workflowId)).headOption
+        ) ==> (Some(0), Some(1))
       } finally engine.close()
     }
   }

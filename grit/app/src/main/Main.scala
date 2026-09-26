@@ -215,7 +215,10 @@ object Main {
               Clock.system()
             )
           ),
-          Posting.body(plugins, PostEnv(engine.periods, engine.cursors, engine.docs, engine.jot)),
+          Posting.body(
+            plugins,
+            PostEnv(engine.periods, engine.cursors, engine.cache, engine.jot, Clock.system())
+          ),
           plugins
         )
         engine.sweepEvery(sweep, Clock.system())

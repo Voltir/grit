@@ -43,7 +43,8 @@ object DigestTests extends TestSuite {
   private def posted: InMemoryPlugins = {
     val plugins = new InMemoryPlugins
     val digest = new Digest(name)
-    periods.foreach(p => digest.post(p, plugins.docs(name))(using TestTx.fake))
+    plugins.cursors.start(name, digest.version, Instant.EPOCH)(using TestTx.fake)
+    periods.foreach(p => digest.post(p, plugins.posting(name, p))(using TestTx.fake))
     plugins
   }
 

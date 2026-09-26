@@ -14,8 +14,9 @@ import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{ConversationId, PluginName, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
-import grit.core.plugin.{Plugin, PluginCursors, PluginDocs}
+import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginDocs}
 import grit.core.store.{
+  ClosedPeriod,
   ConversationStore,
   Db,
   EntrySearch,
@@ -33,6 +34,7 @@ import grit.core.store.{
 }
 import grit.dbos.sql.{
   DbConfig,
+  SqlCacheDocs,
   SqlConversationStore,
   SqlDb,
   SqlEntrySearch,
@@ -100,10 +102,14 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   val inbox: Inbox = new SqlInbox(dataSource, client, conversations, entries, periods)
 
   /** Each plugin's cursor. */
-  val cursors: PluginCursors = new SqlPluginCursors
+  val cursors: PluginCursors = new SqlPluginCursors(tombstones)
 
   /** Each plugin's documents: given a plugin's name, its own, and no other plugin's. */
   val docs: PluginName -> PluginDocs = plugin => new SqlPluginDocs(plugin)
+
+  /** Given a plugin and the closed period it is posting, where it keeps what it makes of it. */
+  val cache: (PluginName, ClosedPeriod) -> CacheDocs =
+    (plugin, closed) => new SqlCacheDocs(plugin, closed.order)
 
   /** Registers `turn` as the body of every turn, `close` of every attempt to close a period,
     * `settle` of every question whether anyone is waiting on a quiet period, and `post` of every

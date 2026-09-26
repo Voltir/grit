@@ -1,20 +1,23 @@
 package grit.lifecycle.post
 
+import grit.core.clock.Clock
 import grit.core.durable.{Durable, Journaled}
 import grit.core.id.{PluginName, WorkflowId}
 import grit.core.period.CloseOrdinal
-import grit.core.plugin.{Plugin, PluginCursors, PluginDocs, PostRef}
-import grit.core.store.{Jot, PeriodStore, StoreError}
+import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PostRef}
+import grit.core.store.{ClosedPeriod, Jot, PeriodStore, StoreError}
 
-/** What posting works with besides its `Durable`: the closed periods, each plugin's cursor
-  * and documents (`docs` gives one plugin its own, and no other's), and `jot`, whose
-  * transaction holds one post and its cursor's move together.
+/** What posting works with besides its `Durable`: the closed periods, each plugin's cursor,
+  * `cache`, which gives one plugin the documents of the one closed period it is posting,
+  * `jot`, whose transaction holds one post and its cursor's move together, and `clock`,
+  * which says when a cursor starts again.
   */
 final case class PostEnv(
     periods: PeriodStore,
     cursors: PluginCursors,
-    docs: PluginName -> PluginDocs,
-    jot: Jot^
+    cache: (PluginName, ClosedPeriod) -> CacheDocs,
+    jot: Jot^,
+    clock: Clock^
 )
 
 /** Posting: one workflow per run of a plugin from its cursor ([[PostRef]]), on a queue of
@@ -64,13 +67,13 @@ object Posting {
       grit.core.store.Tx^
   ): Either[StoreError, Option[CloseOrdinal]] =
     for {
-      cursor <- env.cursors.start(plugin.name, plugin.version)
+      cursor <- env.cursors.start(plugin.name, plugin.version, env.clock.now())
       after <- env.periods.closedAfter(cursor, 1)
       posted <- after.headOption match {
         case None => Right(None)
         case Some(closed) =>
           for {
-            _ <- plugin.post(closed, env.docs(plugin.name))
+            _ <- plugin.post(closed, env.cache(plugin.name, closed))
             _ <- env.cursors.advance(plugin.name, plugin.version, closed.order)
           } yield Some(closed.order)
       }

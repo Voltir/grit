@@ -52,8 +52,9 @@ In dependency order:
   conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`, `retention`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
-  `PluginDocs` (one plugin's documents, and no other's), `PluginCursors` (how
-  far each has posted, in close order; a new version starts again) and `PostRef` (one
+  `CacheDocs` (where it keeps what it makes of one closed period, deleted with that period's
+  closing), `PluginDocs` (one plugin's documents as its surfaces read them), `PluginCursors` (how
+  far each has posted, in close order; a new version starts again, in a new generation) and `PostRef` (one
   posting run, and its workflow id). ← `id`, `period`, `store`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash, and waits for a
   message (`recv`). ← `id`, `store`

@@ -7,6 +7,7 @@ import scala.jdk.CollectionConverters.*
 
 import grit.core.id.{PeriodRef, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.period.{LifecycleSettings, Period, PeriodState, Purgeable}
+import grit.core.plugin.{PluginCursors, PostRef}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{
   ConversationStore,
@@ -36,6 +37,7 @@ private[engine] final class Collector(
     periods: PeriodStore,
     ledger: UsageLedger,
     profiles: ModelProfileStore,
+    cursors: PluginCursors,
     tombstones: Tombstones
 ) {
   import Collector.*
@@ -98,11 +100,24 @@ private[engine] final class Collector(
             p.state match {
               case PeriodState.Closed(last, _, _, _, _, _) =>
                 val purgeable = Purgeable(period, p.first, last)
-                Named(purgeable.turns, purgeable.attempts)
+                Named(purgeable.turns, purgeable.attempts, _ => true)
               case PeriodState.Open => Named.none
             }
           case None => Named.none
         }
+      case Target.Restarted(plugin) =>
+        // Its runs at every version but its cursor's, which are not to be run again.
+        cursors
+          .stored()
+          .map(_.find(_._1 == plugin) match {
+            case Some((_, version)) =>
+              Named(
+                Vector.empty,
+                Vector(PostRef.prefix(plugin)),
+                id => PostRef.fromWorkflowId(id).exists(_.version != version)
+              )
+            case None => Named.none
+          })
       case _ => Right(Named.none)
     }
 
@@ -118,7 +133,7 @@ private[engine] final class Collector(
     val byPrefix =
       if (named.prefixes.isEmpty) Vector.empty
       else list(new ListWorkflowsInput().withWorkflowIdPrefix(named.prefixes.asJava))
-    (byId ++ byPrefix).distinctBy(_._1)
+    (byId ++ byPrefix).distinctBy(_._1).filter((id, _) => named.keep(id))
   }
 
   /** `target`'s rows deleted and its tombstone ended, at `now`. */
@@ -135,9 +150,10 @@ private[engine] final class Collector(
           case None => tombstones.collected(target, now).map(_ => Outcome.Collected)
           case Some(p) =>
             p.state match {
-              case PeriodState.Closed(last, _, _, _, _, Some(_)) =>
+              case PeriodState.Closed(last, _, _, _, order, Some(_)) =>
                 val c = period.conversationId
                 for {
+                  _ <- cursors.forgetPosted(order)
                   _ <- periods.drop(period)
                   _ <- ledger.forget(c, p.first, last)
                   _ <- profiles.forget(Purgeable(period, p.first, last).turns)
@@ -159,6 +175,13 @@ private[engine] final class Collector(
             case Quiet.Waiting => Right(Outcome.Waiting)
             case Quiet.Removed(last) =>
               for {
+                _ <- all.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, p) =>
+                  p.state match {
+                    case PeriodState.Closed(_, _, _, _, order, _) =>
+                      acc.flatMap(_ => cursors.forgetPosted(order))
+                    case PeriodState.Open => acc
+                  }
+                }
                 _ <- ledger.forget(c, TurnSeq.First, last)
                 _ <- profiles.forget(Purgeable(period, TurnSeq.First, last).turns)
                 _ <- conversations.remove(c)
@@ -166,6 +189,11 @@ private[engine] final class Collector(
               } yield Outcome.Collected
           }
         } yield outcome
+      case Target.Restarted(plugin) =>
+        for {
+          _ <- cursors.retire(plugin)
+          _ <- tombstones.collected(target, now)
+        } yield Outcome.Collected
       case _ => Right(Outcome.Waiting)
     }
 }
@@ -177,13 +205,17 @@ private[engine] object Collector {
 
   /** The kinds collected, in order. */
   private val Kinds: Vector[Target.Kind] =
-    Vector(Target.Kind.Raw, Target.Kind.Superseded, Target.Kind.Quiet)
+    Vector(Target.Kind.Raw, Target.Kind.Superseded, Target.Kind.Quiet, Target.Kind.Restarted)
 
-  /** Workflows by exact id, and by what their ids start with. */
-  private final case class Named(ids: Vector[WorkflowId], prefixes: Vector[String])
+  /** Workflows by exact id, and by what their ids start with, those `keep` keeps. */
+  private final case class Named(
+      ids: Vector[WorkflowId],
+      prefixes: Vector[String],
+      keep: WorkflowId -> Boolean
+  )
 
   private object Named {
-    val none: Named = Named(Vector.empty, Vector.empty)
+    val none: Named = Named(Vector.empty, Vector.empty, _ => true)
   }
 
   private enum Outcome {

@@ -59,7 +59,13 @@ object LifecycleReplayTests extends TestSuite {
                 new InMemoryDurable().replay(history.id, history.steps)(
                   Posting.body(
                     Vector(Posted),
-                    PostEnv(w.periods, w.plugins.cursors, w.plugins.docs, new FakeJot)
+                    PostEnv(
+                      w.periods,
+                      w.plugins.cursors,
+                      w.plugins.posting,
+                      new FakeJot,
+                      new CloseFixtures.SetClock(java.time.Instant.EPOCH)
+                    )
                   )
                 )
               case other => Left(s"a $other history")

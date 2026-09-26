@@ -6,7 +6,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, PluginName}
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
-import grit.core.plugin.{InMemoryPlugins, Plugin, PluginDocs, PostRef}
+import grit.core.plugin.{CacheDocs, InMemoryPlugins, Plugin, PostRef}
 import grit.core.store.{
   ClosedPeriod,
   Entry,
@@ -18,6 +18,7 @@ import grit.core.store.{
   Tx
 }
 import grit.dbos.sql.TestTx
+import grit.lifecycle.close.CloseFixtures.SetClock
 
 import utest.*
 
@@ -39,7 +40,7 @@ object PostingTests extends TestSuite {
       val version: Int,
       refused: Set[String] = Set.empty
   ) extends Plugin {
-    def post(closed: ClosedPeriod, docs: PluginDocs)(using Tx^): Either[StoreError, Unit] =
+    def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
       if (refused.contains(closed.closing.flows.prose))
         Left(StoreError.Invalid(s"refused ${closed.closing.flows.prose}"))
       else
@@ -91,10 +92,21 @@ object PostingTests extends TestSuite {
     }
     def run(ps: Vector[Plugin], ref: PostRef): String =
       new InMemoryDurable().run(ref.workflowId)(
-        Posting.body(ps, PostEnv(periods, plugins.cursors, plugins.docs, new FakeJot))
+        Posting.body(
+          ps,
+          PostEnv(
+            periods,
+            plugins.cursors,
+            plugins.posting,
+            new FakeJot,
+            new SetClock(Instant.EPOCH)
+          )
+        )
       )
     def cursor(p: Plugin): CloseOrdinal =
-      plugins.cursors.start(p.name, p.version)(using TestTx.fake).getOrElse(sys.error("cursor"))
+      plugins.cursors
+        .start(p.name, p.version, Instant.EPOCH)(using TestTx.fake)
+        .getOrElse(sys.error("cursor"))
     def docs(p: Plugin): Vector[(String, ujson.Value)] =
       plugins.docs(p.name).newest("", 1000)(using TestTx.fake).getOrElse(Vector.empty).reverse
   }

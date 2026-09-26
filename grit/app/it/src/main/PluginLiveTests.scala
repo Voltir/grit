@@ -6,11 +6,12 @@ import scala.annotation.unused
 import scala.concurrent.duration.*
 import scala.util.Using
 
+import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, PluginName, SourceId, ToolCallId, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
-import grit.core.plugin.{Plugin, PluginDocs, PostRef}
+import grit.core.plugin.{CacheDocs, Plugin, PostRef}
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.dbos.engine.Engine
@@ -32,7 +33,7 @@ object PluginLiveTests extends TestSuite {
   /** Writes a document, then refuses: nothing it wrote may outlive the refusal. */
   private final class Refusing(val name: PluginName) extends Plugin {
     val version = 1
-    def post(closed: ClosedPeriod, docs: PluginDocs)(using Tx^): Either[StoreError, Unit] =
+    def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
       docs.put("half", ujson.Str("written before the refusal")).flatMap(_ => Left(StoreError.Invalid("refused")))
   }
 
@@ -70,7 +71,7 @@ object PluginLiveTests extends TestSuite {
       nothing,
       nothing,
       nothing,
-      Posting.body(plugins, PostEnv(engine.periods, engine.cursors, engine.docs, engine.jot)),
+      Posting.body(plugins, PostEnv(engine.periods, engine.cursors, engine.cache, engine.jot, Clock.system())),
       plugins
     )
 
@@ -85,7 +86,7 @@ object PluginLiveTests extends TestSuite {
         val run = PostRef(digest.name, 1, CloseOrdinal.Start, 0)
         engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector(run))
         assert(finished(config, run.workflowId))
-        engine.jot.write(engine.cursors.start(digest.name, 1)) ==> Right(CloseOrdinal.of(2).getOrElse(sys.error("o")))
+        engine.jot.write(engine.cursors.start(digest.name, 1, java.time.Instant.now())) ==> Right(CloseOrdinal.of(2).getOrElse(sys.error("o")))
         engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector())
         val store: Db^ = engine.db
         val tools = Toolbox.of[{store}](Digest.recentActivity(store, engine.docs(digest.name))).fold(d => sys.error(s"$d"), identity)
@@ -115,7 +116,7 @@ object PluginLiveTests extends TestSuite {
           posted
         } ==> runs.map(run => Right(Vector(run)))
         engine.db.read(engine.docs(refusing.name).get("half")) ==> Right(None)
-        engine.jot.write(engine.cursors.start(refusing.name, 1)) ==> Right(CloseOrdinal.Start)
+        engine.jot.write(engine.cursors.start(refusing.name, 1, java.time.Instant.now())) ==> Right(CloseOrdinal.Start)
         // Then the cursor is left for a person, its last run named.
         engine.sweep(Instant.now()).map(s => (s.posted, s.stuck)) ==>
           Right((Vector(), runs.lastOption.map(_.workflowId).toVector))

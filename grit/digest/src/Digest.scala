@@ -5,7 +5,7 @@ import java.time.{Instant, ZoneOffset}
 
 import grit.core.id.PluginName
 import grit.core.period.{CloseOrdinal, CloseReason}
-import grit.core.plugin.{Plugin, PluginDocs}
+import grit.core.plugin.{CacheDocs, Plugin, PluginDocs}
 import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
 
@@ -17,7 +17,7 @@ final class Digest(val name: PluginName) extends Plugin {
 
   val version: Int = 1
 
-  def post(closed: ClosedPeriod, docs: PluginDocs)(using Tx^): Either[StoreError, Unit] =
+  def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
     docs.put(Digest.key(closed.order), Digest.doc(closed))
 }
 

@@ -50,6 +50,7 @@ private[engine] final class Sweeper(
     periods,
     ledger,
     profiles,
+    cursors,
     tombstones
   )
 
@@ -76,7 +77,7 @@ private[engine] final class Sweeper(
           acc.flatMap(done => ask(a.question).map(done + _))
         }
       posted <- plugins().foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, p) =>
-        acc.flatMap(done => post(p._1, p._2).map(done + _))
+        acc.flatMap(done => post(p._1, p._2, now).map(done + _))
       }
       collected <- collector.once(settings, now)
     } yield closed + asked + posted + collected
@@ -84,13 +85,13 @@ private[engine] final class Sweeper(
   /** The next run posting to `plugin` at `version` from its cursor, when the cursor is behind
     * the newest closed period and no run from it is still going: enqueued as [[close]]
     * enqueues an attempt. A finished run that left the cursor where it was failed, and after
-    * [[PostRef.Attempts]] of them the cursor is `stuck`. Starting the cursor clears the
-    * plugin's documents when its version changed.
+    * [[PostRef.Attempts]] of them the cursor is `stuck`. Starting the cursor at `now` leaves
+    * the plugin's documents unread, and marked for deletion, when its version changed.
     */
-  private def post(plugin: PluginName, version: Int): Either[StoreError, Swept] =
+  private def post(plugin: PluginName, version: Int, now: Instant): Either[StoreError, Swept] =
     write {
       for {
-        cursor <- cursors.start(plugin, version)
+        cursor <- cursors.start(plugin, version, now)
         after <- periods.closedAfter(cursor, 1)
       } yield Option.when(after.nonEmpty)(cursor)
     }.flatMap {

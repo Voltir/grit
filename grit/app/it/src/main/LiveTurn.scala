@@ -123,7 +123,10 @@ object LiveTurn {
           )
         ),
         Posting
-          .body(Vector.empty, PostEnv(engine.periods, engine.cursors, engine.docs, engine.jot)),
+          .body(
+            Vector.empty,
+            PostEnv(engine.periods, engine.cursors, engine.cache, engine.jot, Clock.system())
+          ),
         Vector.empty
       )
     val budget = TurnLoop.Budget.of(5).fold(why => sys.error(why), identity)

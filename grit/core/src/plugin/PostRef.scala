@@ -22,11 +22,16 @@ object PostRef {
     */
   val Attempts = 3
 
+  /** What the workflow id of every run of `plugin`, at any version, starts with, and no other
+    * plugin's.
+    */
+  def prefix(plugin: PluginName): String = s"$Name:${PluginName.value(plugin)}:"
+
   /** What the workflow id of every run from `cursor` of `plugin` at `version` starts with,
     * and no other run's.
     */
   def prefix(plugin: PluginName, version: Int, cursor: CloseOrdinal): String =
-    s"$Name:${PluginName.value(plugin)}:$version:${CloseOrdinal.value(cursor)}:"
+    s"${prefix(plugin)}$version:${CloseOrdinal.value(cursor)}:"
 
   /** The run whose workflow id is `id`, or `None` if `id` is not a post's. */
   def fromWorkflowId(id: WorkflowId): Option[PostRef] =

@@ -221,22 +221,28 @@ CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
     weight      DOUBLE PRECISION NOT NULL
 );
 
--- Each plugin's documents, under keys it chooses (grit.core.plugin.PluginDocs): a plugin
--- builds only from closed periods, and reaches only its own rows. Removing a plugin is
--- DELETE ... WHERE plugin = its name.
+-- Each plugin's documents, under keys it chooses (grit.core.plugin): a plugin builds only from
+-- closed periods, and reaches only its own rows. Each is of the generation of the plugin's
+-- cursor it was written under, and is read only while that is the cursor's; `source` is the
+-- close ordinal of the period it was posted from, and it is deleted with that closing.
 CREATE TABLE IF NOT EXISTS grit.plugin_docs (
-    plugin TEXT NOT NULL,
-    key    TEXT NOT NULL,
-    doc    JSONB NOT NULL,
-    PRIMARY KEY (plugin, key)
+    plugin     TEXT NOT NULL,
+    generation BIGINT NOT NULL,
+    key        TEXT NOT NULL,
+    doc        JSONB NOT NULL,
+    source     BIGINT NOT NULL,
+    PRIMARY KEY (plugin, generation, key)
 );
 
+CREATE INDEX IF NOT EXISTS idx_plugin_docs_source ON grit.plugin_docs (source);
+
 -- How far each plugin has posted, in close order (grit.periods.close_ordinal), and at
--- which version: another version starts again at 0, its documents cleared.
+-- which version: another version starts again at 0, in the next generation.
 CREATE TABLE IF NOT EXISTS grit.plugin_cursors (
-    plugin  TEXT PRIMARY KEY,
-    version INTEGER NOT NULL,
-    ordinal BIGINT NOT NULL
+    plugin     TEXT PRIMARY KEY,
+    version    INTEGER NOT NULL,
+    ordinal    BIGINT NOT NULL,
+    generation BIGINT NOT NULL
 );
 
 -- What grit has decided to delete (grit.core.store.Tombstones, ADR 0014): nothing deletes a row

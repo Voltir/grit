@@ -6,7 +6,7 @@ import grit.core.durable.{History, InMemoryDurable}
 import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, PluginName}
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
-import grit.core.plugin.{InMemoryPlugins, Plugin, PluginDocs, PostRef}
+import grit.core.plugin.{CacheDocs, InMemoryPlugins, Plugin, PostRef}
 import grit.core.provider.ProviderError
 import grit.core.store.{
   ClosedPeriod,
@@ -72,7 +72,13 @@ object RecordLifecycleHistories {
       durable.run(id)(
         Posting.body(
           Vector(Posted),
-          PostEnv(w.periods, w.plugins.cursors, w.plugins.docs, new FakeJot)
+          PostEnv(
+            w.periods,
+            w.plugins.cursors,
+            w.plugins.posting,
+            new FakeJot,
+            new CloseFixtures.SetClock(java.time.Instant.EPOCH)
+          )
         )
       )
       "post-two" -> History("post", id, Turn.Epoch, "recorded", durable.history(id))
@@ -217,7 +223,7 @@ object RecordLifecycleHistories {
   object Posted extends Plugin {
     val name: PluginName = PluginName.of("recorded").fold(sys.error, identity)
     val version: Int = 1
-    def post(closed: ClosedPeriod, docs: PluginDocs)(using Tx^): Either[StoreError, Unit] =
+    def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
       docs.put(CloseOrdinal.value(closed.order).toString, ujson.Str(closed.closing.flows.prose))
   }
 
