@@ -109,17 +109,25 @@ object DurableTests extends TestSuite {
 
     test("replay: a recorded recv returns its message, and receives nothing more") {
       val durable = new InMemoryDurable
-      durable.send(id, "t", "yes")
-      def body(using d: Durable^): String =
+      @caps.unsafe.untrackedCaptures
+      var crash = true
+      def body(using d: Durable^): String = {
+        d.step("ready") { () => if (crash) throw new InMemoryDurable.Crash; "ready" }
         d.recv("t", scala.concurrent.duration.FiniteDuration(1, "s")).getOrElse("none")
+      }
+      // Started before anything is sent to it, as a send requires.
+      assertThrows[InMemoryDurable.Crash](durable.run(id)(_ => body))
+      durable.send(id, "t", "yes")
+      crash = false
       durable.run(id)(_ => body) ==> "yes"
       val history = durable.history(id)
       durable.send(id, "t", "later")
       durable.replay(id, history)(_ => body) ==> Right("yes")
       durable.unreceived(id, "t") ==> Vector("later")
-      durable.replay(id, history.map(s => s.copy(outcome = InMemoryDurable.Outcome.Marker)))(_ =>
-        body
-      ) ==> Right("none")
+      val nothing = history.map { s =>
+        if (s.name == InMemoryDurable.Recv) s.copy(outcome = Outcome.Marker) else s
+      }
+      durable.replay(id, nothing)(_ => body) ==> Right("none")
     }
   }
 }

@@ -52,6 +52,11 @@ trait DurableRuntime {
     */
   def send(id: WorkflowId, topic: String, message: String, key: Option[String]): Unit
 
+  /** The workflow named, if `error` is this runtime's refusal of a send to a workflow that
+    * has never started.
+    */
+  def noSuchWorkflow(error: Throwable): Option[WorkflowId]
+
   /** The messages sent to `id` on `topic` that it has not received, oldest first. */
   def unreceived(id: WorkflowId, topic: String): Vector[String]
 }
@@ -76,9 +81,6 @@ enum Divergence {
 
   /** A stream write outside a step, which DBOS records as an operation of its own. */
   case WriteOutsideStep
-
-  /** A send to a workflow that has not started, which DBOS refuses. */
-  case SendBeforeStart
 }
 
 /** The semantics grit relies on from every [[Durable]] runtime, run against each: DBOS's,
@@ -144,15 +146,6 @@ abstract class DurableContract extends TestSuite {
     rt.run(id)(_ => wf) ==> Settled.Returned("a")
     rt.streamed(id, "k") ==> Vector("p1")
     rt.recordedSteps(id) ==> Vector("DBOS.writeStream", "a")
-  }
-
-  private def sendBeforeStart(): Unit = {
-    val rt = runtime
-    val id = rt.freshId()
-    val refused =
-      try { rt.send(id, "t", "early", None); false }
-      catch { case _: Exception => true }
-    refused ==> true
   }
 
   val tests = Tests {
@@ -333,8 +326,14 @@ abstract class DurableContract extends TestSuite {
     }
 
     test("send: a message to a workflow that has not started is refused") {
-      scenario(Divergence.SendBeforeStart)(sendBeforeStart())
+      val rt = runtime
+      val id = rt.freshId()
+      val refused =
+        try { rt.send(id, "t", "early", None); None }
+        catch { case e: Exception => rt.noSuchWorkflow(e) }
+      refused ==> Some(id)
     }
+
     test("a recorded error rethrows on replay without running, with a message or without") {
       val rt = runtime
       val id = rt.freshId()

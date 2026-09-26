@@ -7,10 +7,8 @@ object InMemoryDurableTests extends DurableContract {
 
   def runtime: DurableRuntime = new InMemoryRuntime
 
-  // It throws InMemoryDurable.WriteOutsideStep for the first, and keeps the message for the
-  // second.
-  override def divergences: Set[Divergence] =
-    Set(Divergence.WriteOutsideStep, Divergence.SendBeforeStart)
+  // It throws InMemoryDurable.WriteOutsideStep instead.
+  override def divergences: Set[Divergence] = Set(Divergence.WriteOutsideStep)
 
   /** One [[InMemoryDurable]]; a crash is [[InMemoryDurable.Crash]] thrown from the step. */
   final class InMemoryRuntime extends DurableRuntime {
@@ -44,6 +42,11 @@ object InMemoryDurableTests extends DurableContract {
 
     def send(id: WorkflowId, topic: String, message: String, key: Option[String]): Unit =
       durable.send(id, topic, message, key)
+
+    def noSuchWorkflow(error: Throwable): Option[WorkflowId] = error match {
+      case e: InMemoryDurable.NoSuchWorkflow => Some(e.workflowId)
+      case _ => None
+    }
 
     def unreceived(id: WorkflowId, topic: String): Vector[String] = durable.unreceived(id, topic)
   }

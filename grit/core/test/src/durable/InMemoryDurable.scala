@@ -76,12 +76,18 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
   @untrackedCaptures
   private var sent = Set.empty[String]
 
+  /** The workflows a [[run]] or [[replay]] has started. */
+  @untrackedCaptures
+  private var started = Set.empty[WorkflowId]
+
   /** Sends `message` to workflow `id` on `topic`, for its [[Durable.recv]]; ignored when a
     * message was already sent under `key`, as DBOS's `send` ignores a repeated idempotency
-    * key.
+    * key. Throws [[InMemoryDurable.NoSuchWorkflow]] if no [[run]] or [[replay]] of `id` has
+    * started, as DBOS refuses a send to a workflow it has no record of.
     */
   def send(id: WorkflowId, topic: String, message: String, key: Option[String] = None): Unit =
-    if (!key.exists(sent.contains)) {
+    if (!started.contains(id)) throw NoSuchWorkflow(id)
+    else if (!key.exists(sent.contains)) {
       key.foreach(k => sent = sent + k)
       mail = mail.updated((id, topic), mail.getOrElse((id, topic), Vector.empty) :+ message)
     }
@@ -97,7 +103,8 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
   /** Runs the workflow `id`, or returns its output, or rethrows its exception, if a run of
     * it already returned or threw.
     */
-  def run(id: WorkflowId)(body: WorkflowId => Durable^ ?=> String): String =
+  def run(id: WorkflowId)(body: WorkflowId => Durable^ ?=> String): String = {
+    started += id
     outputs.get(id) match {
       case Some(Right(output)) => output
       case Some(Left(error)) => throw error
@@ -113,6 +120,7 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
         outputs = outputs.updated(id, Right(output))
         output
     }
+  }
 
   /** The names of the steps recorded for `id`, in order. */
   def recordedSteps(id: WorkflowId): Vector[String] =
@@ -310,6 +318,12 @@ object InMemoryDurable {
       extends RuntimeException(
         s"workflow ${WorkflowId.value(workflowId)} wrote stream '$key' outside a step"
       )
+
+  /** A send to a workflow no run has started, which DBOS refuses
+    * (`DBOSNonExistentWorkflowException`).
+    */
+  final case class NoSuchWorkflow(workflowId: WorkflowId)
+      extends RuntimeException(s"workflow ${WorkflowId.value(workflowId)} has not started")
 
   /** A run reached a step under a different name than the one recorded at its position. */
   final case class UnexpectedStep(

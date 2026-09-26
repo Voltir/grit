@@ -263,6 +263,20 @@ object TurnFixtures {
       underlying.lockNext(c)
   }
 
+  /** `underlying`, dying inside the step that records the turn's first ask. A turn run over
+    * it has started, and is resumed at that ask, so a test can answer the ask in between:
+    * [[InMemoryDurable.send]] refuses a turn that has not started, as DBOS does.
+    */
+  def crashingAtAsk(underlying: EntryStore): CrashOnInsert =
+    new CrashOnInsert(
+      underlying,
+      e =>
+        e.payload match {
+          case _: Payload.Ask => true
+          case _ => false
+        }
+    )
+
   /** Records `text` as the user message that starts the conversation's next turn. */
   def say(entries: EntryStore, text: String): TurnRef = {
     given Tx = TestTx.fake

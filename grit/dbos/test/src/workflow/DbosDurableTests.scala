@@ -12,7 +12,7 @@ import grit.core.id.WorkflowId
 import grit.dbos.sql.{DbConfig, TestPostgres}
 
 import dev.dbos.transact.config.DBOSConfig
-import dev.dbos.transact.exceptions.DBOSUnexpectedStepException
+import dev.dbos.transact.exceptions.{DBOSNonExistentWorkflowException, DBOSUnexpectedStepException}
 import dev.dbos.transact.execution.RegisteredWorkflow
 import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.workflow.WorkflowState
@@ -202,6 +202,11 @@ final class DbosRuntime(config: DbConfig) extends DurableRuntime {
 
   def send(id: WorkflowId, topic: String, message: String, key: Option[String]): Unit =
     dbos.send(WorkflowId.value(id), message, topic, key.orNull)
+
+  def noSuchWorkflow(error: Throwable): Option[WorkflowId] = error match {
+    case e: DBOSNonExistentWorkflowException => Some(WorkflowId(e.workflowId()))
+    case _ => None
+  }
 
   def unreceived(id: WorkflowId, topic: String): Vector[String] =
     strings(
