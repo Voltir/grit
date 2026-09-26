@@ -18,7 +18,7 @@ object EntryTopicsTests extends TestSuite {
   private def entry(id: String, turn: Long, seq: Long, payload: Payload): Entry =
     Entry(EntryId(id), c, TurnSeq(turn), None, seq, payload, at)
 
-  private val photo = line(Section.Topics, "Photo Rename", 1, 1)
+  private val photo = line(Section.Topics, "Photo Rename", 1, 1, Some("renaming photos"))
   private val backup = line(Section.Topics, "Laptop Backup", 1, 2)
 
   /** Period 1 (turns 0–1) opened the photo topic; its closing carries it and a backup one,
@@ -108,8 +108,30 @@ object EntryTopicsTests extends TestSuite {
         )
       EntryTopics.edits(balance(photo, backup), events) ==> Vector(
         Edit.Add(Section.Topics, "Tax Return"),
+        Edit.Summarise(line(Section.Topics, "Tax Return", 1, 1).id, "filing taxes"),
         Edit.Touch(photo.id)
       )
+    }
+
+    test(
+      "a carried topic comes with its summary, and a close re-summarises it only when described anew"
+    ) {
+      val all = period1 ++ Vector(closing)
+      EntryTopics.before(all, TurnSeq(2)).get(TopicId.carried(photo.id)).flatMap(_.summary) ==>
+        Some("renaming photos")
+      val spoken =
+        TopicEvent.Placed(TurnSeq(2), Weights.whole(TopicId.carried(photo.id)), Placement.First)
+      EntryTopics.edits(
+        balance(photo, backup),
+        Vector(
+          spoken,
+          TopicEvent.Described(TopicId.carried(photo.id), "Photo Rename", "renaming photos")
+        )
+      ) ==> Vector(Edit.Touch(photo.id))
+      EntryTopics.edits(
+        balance(photo, backup),
+        Vector(spoken, TopicEvent.Described(TopicId.carried(photo.id), "Photo Rename", "HEIC too"))
+      ) ==> Vector(Edit.Touch(photo.id), Edit.Summarise(photo.id, "HEIC too"))
     }
   }
 }

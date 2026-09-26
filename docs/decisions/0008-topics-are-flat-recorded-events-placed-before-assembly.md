@@ -32,12 +32,14 @@ Decision:
   described), stored as entries (`Payload.Topic`), like queries and windows. What stands
   now is a pure fold (`Topics.fold`).
 - **Carried across a close.** A closing entry's balance (ADR 0011) keeps the topics as
-  lines, each by its name. A period's topics are a fold over the balance of the closing it
+  lines, each by its name, with its one-line summary beside it (not part of the line's
+  identity). A period's topics are a fold over the balance of the closing it
   opened from and its own events alone (`EntryTopics`), never an earlier period's, so they
   stand the same before and after the raw entries are purged. A carried topic's id comes
   from its line (`TopicId.carried`), and before a period places any message the topic
   spoken in last is current. The close adds a topic named in its period and touches one
-  spoken in again, from the events, with no model. A topic never named is not carried.
+  spoken in again, from the events, with no model, and carries forward the summary the
+  period last described it with. A topic never named is not carried.
 - **Placements are weights.** A placement is weights over topics, with an explicit
   remainder `elsewhere`. The message is in the heaviest topic, and a turn's latest placement
   wins, the earlier ones kept.
@@ -49,8 +51,8 @@ Consequences:
 
 - Nothing is ever rewritten. A new rule for placement or naming needs no migration: it
   reads the same events.
-- A carried topic has no one-line summary until a turn in it is summarised again, so the
-  classifier's choice among earlier topics sees only its name until then.
+- A carried topic keeps its last summary, so the classifier's choice among earlier topics
+  sees it as it was when it was last spoken in.
 - Recording weights rather than a label lets later work treat topics as weighted labels
   (for example, recall ranked by overlap of weights) on the rows that exist now.
 - The ledger prices the classifier and the verdict on their own entries.

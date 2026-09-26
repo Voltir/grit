@@ -12,12 +12,20 @@ object TestClosings {
       Balance.empty
     )
 
-  /** A line of `section` reading `text`, added at `since` and touched at `touched`. */
-  def line(section: Section, text: String, since: Long, touched: Long): Line =
+  /** A line of `section` reading `text`, added at `since` and touched at `touched`, with
+    * `summary` if it is a topic's.
+    */
+  def line(
+      section: Section,
+      text: String,
+      since: Long,
+      touched: Long,
+      summary: Option[String] = None
+  ): Line =
     (for {
       s <- PeriodSeq.of(since).toRight(s"period $since")
       t <- PeriodSeq.of(touched).toRight(s"period $touched")
-      l <- Line.of(section, text, s, t)
+      l <- Line.of(section, text, s, t, summary)
     } yield l).fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** The balance of `lines`, in order. */

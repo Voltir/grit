@@ -4,7 +4,8 @@ import grit.core.id.PeriodSeq
 
 /** The stored form of a [[Closing]], which outlives every raw entry of its period. Version 2
   * is the first kept: every version from it on stays readable. Written by hand, never
-  * derived.
+  * derived. A topic line's `summary` is an optional key of version 2, added after its first
+  * closings were written: a line without it reads as having none.
   */
 object ClosingJson {
 
@@ -69,6 +70,7 @@ object ClosingJson {
     o("text") = l.text
     o("since") = PeriodSeq.value(l.since).toDouble
     o("touched") = PeriodSeq.value(l.touched).toDouble
+    l.summary.foreach(summary => o("summary") = summary)
     o
   }
 
@@ -82,7 +84,8 @@ object ClosingJson {
       text <- o.get("text").flatMap(_.strOpt).toRight("a line has no text")
       since <- period(o, "since")
       touched <- period(o, "touched")
-      line <- Line.of(s, text, since, touched)
+      summary <- optionalString(o, "summary")
+      line <- Line.of(s, text, since, touched, summary)
     } yield line
 
   private def period(

@@ -1,7 +1,7 @@
 package grit.core.store
 
 import grit.core.id.TurnSeq
-import grit.core.period.{Balance, Edit, Section}
+import grit.core.period.{Balance, Edit, Line, Section}
 import grit.core.topic.{TopicEvent, TopicId, Topics}
 
 /** A conversation's topics, one period at a time: carried by the balance of the newest
@@ -36,20 +36,30 @@ object EntryTopics {
   /** The edits a close makes to the topics of `balance`, the balance its period opened with,
     * given the topic `events` of the period's own turns, oldest spoken in first: a carried
     * topic that a message was placed in is touched; a topic opened in the period and named is
-    * added under its name; an unnamed one is left out.
+    * added under its name; an unnamed one is left out. Each topic kept whose summary the
+    * period described anew is then summarised with it.
     */
   def edits(balance: Balance, events: Vector[TopicEvent]): Vector[Edit] = {
     val topics = Topics.fold(carried(balance), events)
     val lines = balance.in(Section.Topics).map(l => TopicId.carried(l.id) -> l).toMap
     topics.topics.reverse.filter(_.turns.nonEmpty).flatMap { t =>
       lines.get(t.id) match {
-        case Some(line) => Some(Edit.Touch(line.id))
-        case None => t.name.map(Edit.Add(Section.Topics, _))
+        case Some(line) =>
+          Edit.Touch(line.id) +:
+            t.summary.filterNot(line.summary.contains).map(Edit.Summarise(line.id, _)).toVector
+        case None =>
+          t.name.toVector.flatMap { name =>
+            Edit.Add(Section.Topics, name) +:
+              t.summary.map(Edit.Summarise(Line.idOf(Section.Topics, name), _)).toVector
+          }
       }
     }
   }
 
   /** `balance`'s topics as the next period carries them, most recently spoken in first. */
   private def carried(balance: Balance): Vector[Topics.Carried] =
-    balance.in(Section.Topics).reverse.map(l => Topics.Carried(TopicId.carried(l.id), l.text))
+    balance
+      .in(Section.Topics)
+      .reverse
+      .map(l => Topics.Carried(TopicId.carried(l.id), l.text, l.summary))
 }

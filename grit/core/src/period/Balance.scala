@@ -25,26 +25,31 @@ object Section {
 
 /** A line of a balance: its `text` as first written, added at the close of period `since`,
   * and last added, confirmed or relied on at the close of `touched`, never before `since`.
+  * A topic's line also carries the topic's one-line `summary`, as it was last described;
+  * a line of another section never has one. The summary is not part of the line's id.
   */
 final case class Line private (
     section: Section,
     text: String,
     since: PeriodSeq,
-    touched: PeriodSeq
+    touched: PeriodSeq,
+    summary: Option[String]
 ) {
   def id: LineId = LineId.of(section.key, text)
 }
 
 object Line {
 
-  /** The line, or why not: `text` blank, or not already trimmed to one line with single
-    * spaces, or `touched` before `since`.
+  /** The line, or why not: `text` or `summary` blank, or not already trimmed to one line
+    * with single spaces, `touched` before `since`, or a summary on a line that is not a
+    * topic's.
     */
   private[period] def of(
       section: Section,
       text: String,
       since: PeriodSeq,
-      touched: PeriodSeq
+      touched: PeriodSeq,
+      summary: Option[String] = None
   ): Either[String, Line] =
     if (text.isEmpty) Left("a line's text is blank")
     else if (normal(text) != text) Left(s"a line's text is not normalised: $text")
@@ -52,19 +57,30 @@ object Line {
       Left(
         s"a line touched at ${PeriodSeq.value(touched)} before its since ${PeriodSeq.value(since)}"
       )
-    else Right(new Line(section, text, since, touched))
+    else if (summary.nonEmpty && section != Section.Topics)
+      Left(s"a ${section.key} line has a summary: $text")
+    else if (summary.exists(s => s.isEmpty || normal(s) != s))
+      Left(s"a line's summary is blank or not normalised: $text")
+    else Right(new Line(section, text, since, touched, summary))
 
-  /** `l`'s text in UTF-8 bytes. */
-  private[period] def bytes(l: Line): Int = l.text.getBytes("UTF-8").length
+  /** The id a line of `section` reading `text` has once added: `text` normalised as an
+    * [[Edit.Add]]'s is.
+    */
+  def idOf(section: Section, text: String): LineId = LineId.of(section.key, normal(text))
+
+  /** `l`'s text and summary in UTF-8 bytes. */
+  private[period] def bytes(l: Line): Int =
+    (l.text + l.summary.getOrElse("")).getBytes("UTF-8").length
 
   /** `text` trimmed, each run of whitespace one space. */
   private[period] def normal(text: String): String = text.trim.split("\\s+").mkString(" ")
 
   private[period] def added(section: Section, text: String, period: PeriodSeq): Line =
-    new Line(section, text, period, period)
+    new Line(section, text, period, period, None)
 
   extension (l: Line) {
     private[period] def touchedAt(period: PeriodSeq): Line = l.copy(touched = period)
+    private[period] def summarised(summary: String): Line = l.copy(summary = Some(summary))
   }
 }
 
@@ -83,6 +99,9 @@ enum Edit {
   /** `line` confirmed or relied on. */
   case Touch(line: LineId)
 
+  /** The topic `line` now summarised as `summary`, replacing the summary it had. */
+  case Summarise(line: LineId, summary: String)
+
   /** What the writer wrote as an edit that reads as none, and why. */
   case Unread(written: String, why: String)
 }
@@ -99,6 +118,7 @@ object Edit {
       case Resolve(id, how) => s"resolve ${line(id)}: $how"
       case Drop(id, why) => s"drop ${line(id)}: $why"
       case Touch(id) => s"touch ${line(id)}"
+      case Summarise(id, summary) => s"summarise ${line(id)}: $summary"
       case Unread(written, _) => written
     }
   }
@@ -128,15 +148,18 @@ final case class Balance private (lines: Vector[Line]) {
 
   def in(section: Section): Vector[Line] = lines.filter(_.section == section)
 
-  /** Its lines' text in UTF-8 bytes, summed: what [[fit]] holds to a cap. */
+  /** Its lines' text and summaries in UTF-8 bytes, summed: what [[fit]] holds to a cap. */
   def bytes: Int = lines.map(Line.bytes).sum
 
   /** `edits`, made at the close of `period`, applied in order. `Add` puts its text, trimmed
     * and with each run of whitespace made one space, last in its section with `since` and
     * `touched` at `period`, or touches the line already there. `Resolve` and `Drop` take a
-    * line out. `Touch` sets its `touched` to `period` and moves it last in its section. An
-    * edit naming no line of the balance, a blank `Add`, or `Unread` changes nothing and is
-    * listed as `Ignored`. Every other edit but a touch is listed as the change it made.
+    * line out. `Touch` sets its `touched` to `period` and moves it last in its section.
+    * `Summarise` replaces a topic line's summary, normalised as an `Add`'s text, and neither
+    * touches nor moves it. An edit naming no line of the balance, a blank `Add` or
+    * `Summarise`, a `Summarise` of a line that is not a topic's, or `Unread` changes nothing
+    * and is listed as `Ignored`. Every other edit but a touch or a summary is listed as the
+    * change it made.
     */
   def edit(edits: Vector[Edit], period: PeriodSeq): Balance.Changed = {
     // An edit is shown by the text of the line it names, as the balance held it before.
@@ -168,6 +191,13 @@ final case class Balance private (lines: Vector[Line]) {
           present(id)(l => Balance.Changed(b.without(l), done.changes :+ Change.Dropped(l, why)))
         case Edit.Touch(id) =>
           present(id)(l => Balance.Changed(b.moved(l.touchedAt(period)), done.changes))
+        case Edit.Summarise(id, summary) =>
+          present(id) { l =>
+            val normal = Line.normal(summary)
+            if (l.section != Section.Topics) ignored("only a topic's line has a summary")
+            else if (normal.isEmpty) ignored("blank")
+            else Balance.Changed(b.replaced(l.summarised(normal)), done.changes)
+          }
         case Edit.Unread(_, why) => ignored(why)
       }
     }
@@ -203,6 +233,9 @@ final case class Balance private (lines: Vector[Line]) {
   }
 
   private def without(l: Line): Balance = new Balance(lines.filterNot(_.id == l.id))
+
+  /** `l` in place of the line with its id, where that line was. */
+  private def replaced(l: Line): Balance = new Balance(lines.map(x => if (x.id == l.id) l else x))
 
   /** `l` in place of the line with its id, moved last in its section. */
   private def moved(l: Line): Balance = Balance.grouped(lines.filterNot(_.id == l.id) :+ l)

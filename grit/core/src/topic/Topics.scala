@@ -62,12 +62,14 @@ object Topics {
 
   val empty: Topics = Topics(Vector.empty, Map.empty, Vector.empty)
 
-  /** A topic carried by a closing's balance: its `id` ([[TopicId.carried]]) and `name`. */
-  final case class Carried(id: TopicId, name: String)
+  /** A topic carried by a closing's balance: its `id` ([[TopicId.carried]]), `name`, and
+    * one-line `summary` as it was last described, if it ever was.
+    */
+  final case class Carried(id: TopicId, name: String, summary: Option[String])
 
   /** The topics that `carried` (most recently spoken in first), then `events` (in the order
-    * they were recorded), leave. A carried topic is named and has no summary until
-    * described. It ranks as recent as the latest turn placed in it, and below every topic
+    * they were recorded), leave. A carried topic keeps its name, and its summary until it is
+    * described again. It ranks as recent as the latest turn placed in it, and below every topic
     * with a turn, in `carried`'s order, until one is.
     */
   def fold(carried: Vector[Carried], events: Vector[TopicEvent]): Topics = {
@@ -80,17 +82,20 @@ object Topics {
     val latest: Map[TurnSeq, TopicId] =
       placements.flatMap((turn, ps) => ps.lastOption.map(p => turn -> p.weights.heaviest))
     val described = events.collect { case d: TopicEvent.Described => d }
-    def topic(id: TopicId, name: Option[String]): Topic = {
+    def topic(id: TopicId, name: Option[String], summary: Option[String]): Topic = {
       val turns =
         latest.collect { case (turn, t) if t == id => turn }.toVector.sortBy(TurnSeq.value)
       val about = described.filter(_.topic == id).lastOption
-      Topic(id, about.map(_.name).orElse(name), about.map(_.summary), turns)
+      Topic(id, about.map(_.name).orElse(name), about.map(_.summary).orElse(summary), turns)
     }
     // Ties on the latest turn (none: -1) go to the higher rank: opened topics newest first,
     // then carried ones in carried order.
     val ranked =
-      carried.distinctBy(_.id).zipWithIndex.map((c, i) => (topic(c.id, Some(c.name)), -1 - i)) ++
-        opened.zipWithIndex.map((id, i) => (topic(id, None), i))
+      carried
+        .distinctBy(_.id)
+        .zipWithIndex
+        .map((c, i) => (topic(c.id, Some(c.name), c.summary), -1 - i)) ++
+        opened.zipWithIndex.map((id, i) => (topic(id, None, None), i))
     val ordered = ranked
       .sortBy { (t, rank) =>
         (t.turns.lastOption.fold(-1L)(TurnSeq.value), rank)

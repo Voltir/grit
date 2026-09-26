@@ -87,6 +87,20 @@ object ClosingTests extends TestSuite {
         """"balance":{"open":[],"standing":[],"topics":[]}}"""
     }
 
+    test("a topic line's summary is stored beside its text, and read back; other lines have none") {
+      val t = TestClosings.line(Section.Topics, "Photo Rename", 1, 2, Some("renaming photos"))
+      val c = Closing(TestClosings.prose("x").flows, balance(t))
+      ClosingJson.writeBalance(c.balance).render() ==>
+        """{"open":[],"standing":[],"topics":[{"text":"Photo Rename","since":1,"touched":2,"summary":"renaming photos"}]}"""
+      ClosingJson.read(ClosingJson.write(c)).map(_.balance.lines.map(_.summary)) ==>
+        Right(Vector(Some("renaming photos")))
+      ClosingJson
+        .readBalance(
+          ujson.read("""{"open":[{"text":"a","since":1,"touched":1,"summary":"s"}]}""")
+        ) ==>
+        Left("a open line has a summary: a")
+    }
+
     test("a stored closing reads back, a missing balance or section as empty") {
       ClosingJson.read(ClosingJson.write(full)) ==> Right(full)
       ClosingJson.read(ujson.read("""{"v":2,"flows":{"prose":"Small talk."}}""")) ==>

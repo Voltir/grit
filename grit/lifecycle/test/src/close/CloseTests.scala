@@ -252,7 +252,11 @@ object CloseTests extends TestSuite {
             Flows
               .of("Recalled staging.", None, Vector())
               .getOrElse(throw new java.lang.AssertionError("f")),
-            balance(prod, deploy, line(Section.Topics, "Deploy Target", 1, 2))
+            balance(
+              prod,
+              deploy,
+              line(Section.Topics, "Deploy Target", 1, 2, Some("where to deploy"))
+            )
           )
         )
       )
@@ -348,7 +352,9 @@ object CloseTests extends TestSuite {
       )
     }
 
-    test("a close adds the topics named in its period, and touches carried ones spoken in") {
+    test(
+      "a close adds the topics named in its period with their summaries, and touches carried ones spoken in"
+    ) {
       val w = new World
       val t0 = w.turn("where do we deploy?", "staging", "Chose staging.", 0)
       val deployTopic = TopicId("topic:c1:0")
@@ -369,7 +375,7 @@ object CloseTests extends TestSuite {
       ) ==> "closed: closing:c1:1"
       val topic = line(Section.Topics, "Deploy Target", 1, 1)
       w.closingEntry.map(_.payload).collect { case Payload.Closed(_, _, c) => c.balance } ==>
-        Some(balance(topic))
+        Some(balance(line(Section.Topics, "Deploy Target", 1, 1, Some("where to deploy"))))
 
       val t1 = w.turn("staging again?", "yes", "Staging again.", Lapsed + 1)
       w.add(
@@ -387,7 +393,7 @@ object CloseTests extends TestSuite {
         w.body(gate, answering("Summary: Staging again."), new SetClock(at(3 * Lapsed)))
       ) ==> "closed: closing:c1:2"
       w.closingOf(p2).map(_.payload).collect { case Payload.Closed(_, _, c) => c.balance } ==>
-        Some(balance(line(Section.Topics, "Deploy Target", 1, 2)))
+        Some(balance(line(Section.Topics, "Deploy Target", 1, 2, Some("where to deploy"))))
     }
 
     test(
