@@ -81,5 +81,18 @@ object DigestTests extends TestSuite {
       )
       run(db, new InMemoryPlugins) ==> Outcome.Done("No conversation has closed yet.")
     }
+
+    test("recent_activity shows the newest 10 when not told how many") {
+      val plugins = new InMemoryPlugins
+      val digest = new Digest(name)
+      plugins.cursors.start(name, digest.version, Instant.EPOCH)(using TestTx.fake)
+      val many = (1L to 12L).map { n =>
+        closed(n, Origin.Task("nightly", s"run $n"), CloseReason.Lapsed, closing(s"Run $n.", None), f"2026-09-${n}%02dT03:00:00Z")
+      }
+      many.foreach(p => digest.post(p, plugins.posting(name, p))(using TestTx.fake))
+      run(new FakeDb, plugins) ==> Outcome.Done(
+        (12L to 3L by -1L).map(n => f"2026-09-${n}%02d 03:00 · task nightly · lapsed · Run $n.").mkString("\n")
+      )
+    }
   }
 }

@@ -158,27 +158,24 @@ object TurnViewTests extends TestSuite {
 
     test("a window's nearby sections are counted as the model was shown them, listed by place") {
       val api = ConversationId("api")
-      val at = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
-      val theirs = Vector(
+      val web = ConversationId("web")
+      def place(written: String) = Place.read(written).fold(e => sys.error(e), identity)
+      val apiAt = place("fs:/home/nick/api")
+      val webAt = place("fs:/home/nick/web")
+      def their(id: String, conversation: ConversationId, turn: Long, seq: Long, text: String) =
         Entry(
-          EntryId("a0"),
-          api,
-          TurnSeq(3),
+          EntryId(id),
+          conversation,
+          TurnSeq(turn),
           None,
-          0,
-          Payload.Message(Message.User("flaky?")),
-          Instant.EPOCH
-        ),
-        Entry(
-          EntryId("a1"),
-          api,
-          TurnSeq(3),
-          None,
-          1,
-          Payload.Message(Message.User("TZ")),
+          seq,
+          Payload.Message(Message.User(text)),
           Instant.EPOCH
         )
-      )
+      val fromApi = Vector(their("a0", api, 3, 0, "flaky?"), their("a1", api, 3, 1, "TZ"))
+      val fromWeb = Vector(their("w0", web, 5, 0, "the login page is blank"))
+      // The window lists web before api, so neither id nor place order agrees with it; `gone`
+      // is an id the window named whose entry was not read back.
       val asked = Vector(
         user(0, 0, "which fix?"),
         entry(
@@ -187,7 +184,10 @@ object TurnViewTests extends TestSuite {
           Payload.Window(
             Vector.empty,
             Vector.empty,
-            Vector(Nearby(api, at, Vector(EntryId("a0"), EntryId("a1"))))
+            Vector(
+              Nearby(web, webAt, Vector(EntryId("w0"), EntryId("gone"))),
+              Nearby(api, apiAt, Vector(EntryId("a0"), EntryId("a1")))
+            )
           )
         ),
         reply(2, 0, "TZ=UTC", 50)
@@ -202,18 +202,22 @@ object TurnViewTests extends TestSuite {
           "s",
           CharEstimate,
           None,
-          theirs
+          fromApi ++ fromWeb
         )
         .window
         .getOrElse(sys.error("no window"))
-      val shown =
-        Shown.nearby(at, theirs).map(CharEstimate.message).getOrElse(sys.error("not shown"))
-      w.nearby ==> shown
-      w.total ==> CharEstimate.system("s") + shown + CharEstimate.message(
+      def shown(at: Place, es: Vector[Entry]) =
+        Shown.nearby(at, es).map(CharEstimate.message).getOrElse(sys.error("not shown"))
+      val sections = shown(webAt, fromWeb) + shown(apiAt, fromApi)
+      w.nearby ==> sections
+      w.total ==> CharEstimate.system("s") + sections + CharEstimate.message(
         Message.User("which fix?")
       )
-      w.nearbyTurns ==> Vector(TurnView.Near(at, Vector(TurnSeq(3))))
-      TurnView.Near.shown(w.nearbyTurns) ==> "api turn 3"
+      w.nearbyTurns ==> Vector(
+        TurnView.Near(webAt, Vector(TurnSeq(5))),
+        TurnView.Near(apiAt, Vector(TurnSeq(3)))
+      )
+      TurnView.Near.shown(w.nearbyTurns) ==> "web turn 5 · api turn 3"
     }
 
     test("what its calls were made under: the turn's pair, a role on another, and who served it") {

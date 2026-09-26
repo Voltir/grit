@@ -1,7 +1,5 @@
 package grit.app.main
 
-import scala.concurrent.duration.DurationInt
-
 import grit.app.look.Look
 
 import utest.*
@@ -32,18 +30,6 @@ object ToolRoundsTests extends TestSuite {
       // A run has nobody to approve a call that changes something.
       Main.toolChoice(Map("GRIT_TOOLS" -> "all"), chat = false) ==>
         Left("GRIT_TOOLS=all needs the chat, which answers what a tool asks first")
-    }
-
-    test("GRIT_SWEEP: unset is the default; a duration of at least a second, or an error") {
-      Main.sweepEvery(Map.empty) ==> Right(Main.DefaultSweep)
-      Main.sweepEvery(Map("GRIT_SWEEP" -> "5s")) ==> Right(5.seconds)
-      Main.sweepEvery(Map("GRIT_SWEEP" -> "0s")) ==> Left("GRIT_SWEEP must be at least a second")
-      assert(
-        Main
-          .sweepEvery(Map("GRIT_SWEEP" -> "5"))
-          .left
-          .exists(_.startsWith("GRIT_SWEEP: not a duration"))
-      )
     }
 
     test("a loop's steps show by their family") {

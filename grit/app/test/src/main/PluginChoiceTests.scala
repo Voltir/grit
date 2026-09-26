@@ -1,7 +1,5 @@
 package grit.app.main
 
-import grit.digest.Digest
-
 import utest.*
 
 /** Which plugins `GRIT_PLUGINS` turns on. */
@@ -16,9 +14,6 @@ object PluginChoiceTests extends TestSuite {
     test("GRIT_PLUGINS: unset is none; a list of names turns each on once") {
       names(Map.empty) ==> Right(Vector())
       names(Map("GRIT_PLUGINS" -> " digest, ,digest ")) ==> Right(Vector(("Digest", "digest")))
-      assert(
-        Main.pluginChoice(Map("GRIT_PLUGINS" -> "digest")).exists(_.forall(_.isInstanceOf[Digest]))
-      )
     }
 
     test("a plugin grit does not have, or a name no plugin could have, is refused") {

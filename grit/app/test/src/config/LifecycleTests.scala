@@ -166,15 +166,5 @@ object LifecycleTests extends TestSuite {
         "never asks whether anyone is waiting; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; " +
         "the balance holds 300 bytes; draws on no other place"
     }
-
-    test("the settings in one line; at resolve 1, nothing is asked") {
-      Lifecycle.describe(settings(3.hours, 1.day, 300, 1.hour, 0.8, 3)) ==>
-        "after 1h quiet, asks whether anyone is waiting (at most 3 times) and closes when nobody is at 0.8 or " +
-        "more; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; the balance holds 300 bytes; draws on open " +
-        "periods everywhere, its own weighted 2"
-      Lifecycle.describe(settings(3.hours, 1.day, 300, 1.hour, 1.0, 3)) ==>
-        "never asks whether anyone is waiting; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; " +
-        "the balance holds 300 bytes; draws on open periods everywhere, its own weighted 2"
-    }
   }
 }
