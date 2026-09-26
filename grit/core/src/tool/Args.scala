@@ -2,12 +2,14 @@ package grit.core.tool
 
 import scala.NamedTuple.NamedTuple
 
+import grit.core.model.ArgRepair
+
 /** A tool's arguments: a JSON object whose properties are its fields, read into a `T`. Built
   * with [[Args.of]]; `map` and `refine` change what is read, never the schema.
   */
 final class Args[T] private (
     shape: Boolean -> ujson.Obj,
-    reader: ujson.Value -> Either[ArgsError, T]
+    reader: (ujson.Value, Set[ArgRepair]) -> Either[ArgsError, T]
 ) {
 
   /** The JSON Schema of the arguments object, built afresh on each call: each field a
@@ -17,19 +19,26 @@ final class Args[T] private (
     */
   def schema(strict: Boolean): ujson.Obj = shape(strict)
 
-  /** The `T` that `arguments` hold. Refused, with the first failure in this order: not an
-    * object; a property that is no field (the first sent); then each field in order, missing
-    * when required, or invalid; then whatever `refine` refused.
+  /** The `T` that `arguments` hold, each field read with `repairs`. Refused, with the first
+    * failure in this order: not an object; a property that is no field (the first sent);
+    * then each field in order, missing when required, or invalid; then whatever `refine`
+    * refused.
     */
-  def read(arguments: ujson.Value): Either[ArgsError, T] = reader(arguments)
+  def read(arguments: ujson.Value, repairs: Set[ArgRepair]): Either[ArgsError, T] =
+    reader(arguments, repairs)
 
-  def map[U](f: T -> U): Args[U] = new Args(shape, arguments => reader(arguments).map(f))
+  /** As [[read]] with every [[ArgRepair]]. */
+  def read(arguments: ujson.Value): Either[ArgsError, T] =
+    reader(arguments, ArgRepair.values.toSet)
+
+  def map[U](f: T -> U): Args[U] =
+    new Args(shape, (arguments, repairs) => reader(arguments, repairs).map(f))
 
   /** Reads as before, then `f`: a check across fields the schema cannot state, such as a field
     * required only when another holds some value. Its `Left` is the read's.
     */
   def refine[U](f: T -> Either[ArgsError, U]): Args[U] =
-    new Args(shape, arguments => reader(arguments).flatMap(f))
+    new Args(shape, (arguments, repairs) => reader(arguments, repairs).flatMap(f))
 }
 
 object Args {
@@ -63,7 +72,7 @@ object Args {
           ),
           "additionalProperties" -> false
         ),
-      arguments =>
+      (arguments, repairs) =>
         arguments.objOpt match {
           case None => Left(ArgsError.NotAnObject(ArgsError.shown(arguments)))
           case Some(sent) =>
@@ -72,7 +81,8 @@ object Args {
               case None =>
                 named
                   .foldLeft[Either[ArgsError, Vector[Any]]](Right(Vector.empty)) {
-                    case (acc, (n, f)) => acc.flatMap(vs => f.read(n, sent.get(n)).map(vs :+ _))
+                    case (acc, (n, f)) =>
+                      acc.flatMap(vs => f.read(n, sent.get(n), repairs).map(vs :+ _))
                   }
                   // The values are in field order and each is its field's `A`, so the tuple
                   // they make is `T`, the tuple `Values` computes (and a named tuple is its

@@ -1,5 +1,7 @@
 package grit.core.tool
 
+import grit.core.model.ArgRepair
+
 /** One argument of a tool: its JSON type, what the model is told it means, and how the value
   * the model sends is read. A field is required unless made [[optional]]; `accepts` is what
   * it takes, in the words [[ArgsError.message]] uses ("one of `current`, `new`").
@@ -7,7 +9,7 @@ package grit.core.tool
 final class Field[A] private (
     shape: Boolean -> ujson.Obj,
     val accepts: String,
-    decode: (String, ujson.Value) -> Either[ArgsError, A],
+    decode: (String, ujson.Value, Set[ArgRepair]) -> Either[ArgsError, A],
     absent: Option[A]
 ) {
 
@@ -18,7 +20,7 @@ final class Field[A] private (
     new Field[Option[A]](
       strict => if (strict) Field.nullable(shape(strict)) else shape(strict),
       accepts,
-      (path, v) => decode(path, v).map(Some(_)),
+      (path, v, repairs) => decode(path, v, repairs).map(Some(_)),
       Some(None)
     )
 
@@ -27,11 +29,15 @@ final class Field[A] private (
   /** Its JSON Schema, built afresh on each call. */
   private[tool] def schema(strict: Boolean): ujson.Obj = shape(strict)
 
-  /** The value sent at `path`, if any; `null` counts as absent. */
-  private[tool] def read(path: String, sent: Option[ujson.Value]): Either[ArgsError, A] =
+  /** The value sent at `path`, if any, read with `repairs`; `null` counts as absent. */
+  private[tool] def read(
+      path: String,
+      sent: Option[ujson.Value],
+      repairs: Set[ArgRepair]
+  ): Either[ArgsError, A] =
     sent.filterNot(_.isNull) match {
       case None => absent.toRight(ArgsError.Missing(path, accepts))
-      case Some(v) => decode(path, v)
+      case Some(v) => decode(path, v, repairs)
     }
 }
 
@@ -39,7 +45,7 @@ object Field {
 
   /** Any string. */
   def text(meaning: String): Field[String] =
-    plain(() => ujson.Obj("type" -> "string", "description" -> meaning), "text", _.strOpt)
+    plain(() => ujson.Obj("type" -> "string", "description" -> meaning), "text", (v, _) => v.strOpt)
 
   /** Exactly one of `first +: rest`, compared exactly (case and spaces count); the schema lists
     * them as an enum, so a strict provider cannot send another. A repeated option is listed
@@ -55,12 +61,13 @@ object Field {
           "description" -> meaning
         ),
       if (options.size == 1) s"`$first`" else s"one of ${options.map(o => s"`$o`").mkString(", ")}",
-      _.strOpt.filter(options.contains)
+      (v, _) => v.strOpt.filter(options.contains)
     )
   }
 
   /** A whole number from `min` to `max` inclusive; a JSON number with a fractional part is
-    * refused, and a string of decimal digits reads as its number ([[Repair.quotedNumber]]).
+    * refused, and a string of decimal digits reads as its number under
+    * [[ArgRepair.QuotedNumber]] ([[Repair.quotedNumber]]).
     * With `min > max` no value is accepted.
     */
   def count(meaning: String, min: Int, max: Int): Field[Int] =
@@ -73,8 +80,12 @@ object Field {
           "description" -> meaning
         ),
       s"a whole number from $min to $max",
-      v =>
-        Repair.quotedNumber(v).numOpt.filter(n => n.isWhole && n >= min && n <= max).map(_.toInt)
+      (v, repairs) =>
+        Repair
+          .quotedNumber(v, repairs)
+          .numOpt
+          .filter(n => n.isWhole && n >= min && n <= max)
+          .map(_.toInt)
     )
 
   /** `true` or `false`. */
@@ -82,12 +93,13 @@ object Field {
     plain(
       () => ujson.Obj("type" -> "boolean", "description" -> meaning),
       "true or false",
-      _.boolOpt
+      (v, _) => v.boolOpt
     )
 
   /** A list of at least `min` objects (0 when `min` is negative), each read by `item`, in
     * order: `Field.each("The edits.", Args.of((oldText = Field.text(…), newText = …)))`. A
-    * string holding a JSON list reads as that list ([[Repair.quotedList]]). A failure inside
+    * string holding a JSON list reads as that list under [[ArgRepair.QuotedList]]
+    * ([[Repair.quotedList]]). A failure inside
     * an item is refused at its path, counting from 0: `edits[2].oldText`.
     */
   def each[T](meaning: String, item: Args[T], min: Int = 1): Field[List[T]] = {
@@ -103,13 +115,17 @@ object Field {
           "description" -> meaning
         ),
       accepts,
-      (path, v) =>
-        Repair.quotedList(v).arrOpt.map(_.toVector).filter(_.size >= least) match {
+      (path, v, repairs) =>
+        Repair.quotedList(v, repairs).arrOpt.map(_.toVector).filter(_.size >= least) match {
           case None => Left(ArgsError.Invalid(path, accepts, ArgsError.shown(v)))
           case Some(items) =>
             items.zipWithIndex.foldRight[Either[ArgsError, List[T]]](Right(Nil)) {
               case ((sent, i), acc) =>
-                item.read(sent).left.map(_.within(s"$path[$i]")).flatMap(t => acc.map(t :: _))
+                item
+                  .read(sent, repairs)
+                  .left
+                  .map(_.within(s"$path[$i]"))
+                  .flatMap(t => acc.map(t :: _))
             }
         },
       None
@@ -117,7 +133,8 @@ object Field {
   }
 
   /** The only repairs made to what a model sends before a field reads it, each for a
-    * slip models are known to make; any other value is read as sent. A refused value is
+    * slip models are known to make and each made only when its [[ArgRepair]] is asked for;
+    * any other value is read as sent. A refused value is
     * quoted as sent, not as repaired.
     */
   private object Repair {
@@ -126,16 +143,17 @@ object Field {
       * that number: models quote numbers in tool arguments, which pi coerces for the same
       * reason (its changelog: "string numbers in tool arguments not being coerced").
       */
-    def quotedNumber(v: ujson.Value): ujson.Value = v match {
-      case ujson.Str(s) if Digits.matches(s) => s.toDoubleOption.fold(v)(ujson.Num(_))
+    def quotedNumber(v: ujson.Value, repairs: Set[ArgRepair]): ujson.Value = v match {
+      case ujson.Str(s) if repairs.contains(ArgRepair.QuotedNumber) && Digits.matches(s) =>
+        s.toDoubleOption.fold(v)(ujson.Num(_))
       case _ => v
     }
 
     /** A list sent as a JSON string that parses to a list (`"[{…}]"`), read as that list:
       * pi's edit tool records Claude Opus 4.6 and GLM-5.1 sending its `edits` this way.
       */
-    def quotedList(v: ujson.Value): ujson.Value = v match {
-      case ujson.Str(s) =>
+    def quotedList(v: ujson.Value, repairs: Set[ArgRepair]): ujson.Value = v match {
+      case ujson.Str(s) if repairs.contains(ArgRepair.QuotedList) =>
         scala.util.Try(ujson.read(s)).toOption match {
           case Some(list: ujson.Arr) => list
           case _ => v
@@ -150,12 +168,13 @@ object Field {
   private def plain[A](
       schema: () -> ujson.Obj,
       accepts: String,
-      decode: ujson.Value -> Option[A]
+      decode: (ujson.Value, Set[ArgRepair]) -> Option[A]
   ): Field[A] =
     new Field(
       _ => schema(),
       accepts,
-      (path, v) => decode(v).toRight(ArgsError.Invalid(path, accepts, ArgsError.shown(v))),
+      (path, v, repairs) =>
+        decode(v, repairs).toRight(ArgsError.Invalid(path, accepts, ArgsError.shown(v))),
       None
     )
 

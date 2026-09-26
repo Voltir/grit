@@ -459,14 +459,15 @@ object TurnFixtures {
     )(id)
 
   /** The turn's workflow body over `entries`, its models `models` and its profile kept in
-    * `profiles`, the loop offered `tools` over `ws`.
+    * `profiles`, the loop offered `tools` over `ws` for at most `calls` model calls.
     */
   def modelsBody(
       entries: EntryStore,
       models: Models^,
       profiles: ModelProfileStore,
       ws: Workspace^,
-      tools: Toolbox[{ws}]
+      tools: Toolbox[{ws}],
+      calls: Int = 5
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
@@ -479,7 +480,7 @@ object TurnFixtures {
         new NoWait,
         Fresh.random()
       ),
-      TurnTooling.ReadOnly(ws, tools, new FakeJot, budget(5))
+      TurnTooling.ReadOnly(ws, tools, new FakeJot, budget(calls))
     )(id)
 
   def runTurn(

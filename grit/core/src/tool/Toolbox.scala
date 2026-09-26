@@ -2,6 +2,7 @@ package grit.core.tool
 
 import grit.core.approval.Approval
 import grit.core.message.AssistantBlock
+import grit.core.model.NameRepair
 import grit.core.provider.ToolSchema
 
 /** The tools offered on one model call, their names distinct, each acting only through the
@@ -21,25 +22,29 @@ final class Toolbox[+C^] private (tools: Vector[Tool.Offered^{C}]) {
   def including(tool: Tool.Offered): Either[DuplicateName, Toolbox[C]] =
     Toolbox.of[C]((tool +: tools)*)
 
-  /** `call` read against the tool it names ([[Toolbox.named]]), ready to run; or why it
-    * cannot be: no tool has that name, or its arguments do not read.
+  /** `call` read against the tool it names ([[Toolbox.named]]), with `repairs`, ready to
+    * run; or why it cannot be: no tool has that name, or its arguments do not read.
     */
-  def bind(call: AssistantBlock.ToolCall): Either[CallError, Bound^{C}] =
-    tools.find(t => ToolName.value(t.name) == Toolbox.named(call.name)) match {
+  def bind(call: AssistantBlock.ToolCall, repairs: Repairs): Either[CallError, Bound^{C}] =
+    tools.find(t => ToolName.value(t.name) == Toolbox.named(call.name, repairs.names)) match {
       case None => Left(CallError.Unknown(call.name, names))
-      case Some(tool) => tool.bind(call)
+      case Some(tool) => tool.bind(call, repairs.args)
     }
 }
 
 object Toolbox {
 
-  /** The tool name a call sent as `sent` means: `sent` up to its first `<|`, which no tool
-    * name holds. gpt-oss leaks its harmony tokens into the name it sends
-    * (`read<|channel|>commentary`); this is the one quirk of a name that is repaired.
+  /** The tool name a call sent as `sent` means: under [[NameRepair.HarmonyCut]], `sent` up to
+    * its first `<|`, which no tool name holds (gpt-oss leaks its harmony tokens into the name
+    * it sends: `read<|channel|>commentary`); under [[NameRepair.AsSent]], `sent`.
     */
-  def named(sent: String): String = sent.indexOf("<|") match {
-    case -1 => sent
-    case at => sent.take(at)
+  def named(sent: String, repair: NameRepair): String = repair match {
+    case NameRepair.AsSent => sent
+    case NameRepair.HarmonyCut =>
+      sent.indexOf("<|") match {
+        case -1 => sent
+        case at => sent.take(at)
+      }
   }
 
   /** A toolbox of `tools`, offered in this order; `Left` names the first name repeated. */

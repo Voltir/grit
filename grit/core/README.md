@@ -46,8 +46,9 @@ In dependency order:
   `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, how a call is
   shown in one line, and what it does, capture-tracked), `Toolbox` (the tools offered on one call, which `bind` a
   call to a `Bound` or a `CallError`: `Bound.Free` runs, `Bound.Gated` runs only given an
-  `Approval`) and `Outcome` (what a call came to, as the model reads it). ← `id`,
-  `message`, `provider`, `approval`
+  `Approval`), `Repairs` (what of a call is repaired before it is read, as the pair's
+  settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
+  `message`, `model`, `provider`, `approval`
 
 No source file sits at core's root, and no two packages import each other in a circle:
 `scripts/enola-law.sh` fails on a new import cycle.

@@ -9,10 +9,10 @@ import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Window}
 import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
-import grit.core.model.{StrictSchemas, TurnProfile}
+import grit.core.model.{AfterToolResult, StrictSchemas, TurnProfile}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 import grit.core.store.{Entry, Jot, Payload, StoreError, Tx}
-import grit.core.tool.{Bound, DuplicateName, ToolName, Toolbox}
+import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
 import grit.core.topic.Topic
 
 import TurnLoop.{Pending, Round}
@@ -490,11 +490,15 @@ object Turn {
       case Left(failure) => Ran(Left(failure), None)
       case Right(tools) =>
         val schemas = tools.schemas(strict)
+        // How this turn's pair is read and told: the pin's, fixed for the turn.
+        val settings = pins.turn.settings
+        val repairs = Repairs(settings.names, settings.repairs)
+        val after = settings.afterResult
         def shape(round: Round): ModelRequest -> ModelRequest =
-          loopShape(asked, round, TurnLoop.use(budget, round), schemas)
+          loopShape(asked, round, TurnLoop.use(budget, round), schemas, after)
         val moves = new TurnLoop.Moves {
           def call(round: Round, use: ToolUse): Either[TurnFailure, Message.Assistant] = {
-            val shaped = loopShape(asked, round, use, schemas)
+            val shaped = loopShape(asked, round, use, schemas, after)
             d.step(round.step) { () => callShaped(heard, turn, seen, shaped) }
           }
 
@@ -510,7 +514,7 @@ object Turn {
             val call = pending.call.id
             val clock = env.clock
             val settling = new TurnTools.Settling(jot, env.records.entries)
-            val settled = TurnTools.read(tools, pending) match {
+            val settled = TurnTools.read(tools, pending, repairs) match {
               case Left(outcome) =>
                 val named = pending.call.name
                 d.step(slot.step) { () => settling.answer(slot, call, named, outcome, clock.now()) }
@@ -588,17 +592,19 @@ object Turn {
     }
 
   /** How the loop's call `round` is built from the plain request: tagged for `asked` on the
-    * first call, offering `tools` as `use` says, and told as [[TurnLoop.told]] says.
+    * first call, offering `tools` as `use` says, and told as [[TurnLoop.told]] says under
+    * `after`.
     */
   private def loopShape(
       asked: Option[TurnTopics.Classification],
       round: Round,
       use: ToolUse,
-      tools: Vector[ToolSchema]
+      tools: Vector[ToolSchema],
+      after: AfterToolResult
   ): ModelRequest -> ModelRequest =
     base => {
       val tagged = asked.filter(_ => round == Round.First).fold(base)(TurnVerdict.tagged(base, _))
-      TurnLoop.told(use, tagged.copy(tools = tools, use = use))
+      TurnLoop.told(use, tagged.copy(tools = tools, use = use), after)
     }
 
   /** The `record-call:n` step: `reply`, the reply to `round` that called tools, kept as

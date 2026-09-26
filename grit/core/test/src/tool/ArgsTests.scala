@@ -1,5 +1,7 @@
 package grit.core.tool
 
+import grit.core.model.ArgRepair
+
 import utest.*
 
 /** [[Args]] and [[Field]]: the schema each field kind shows, what a read accepts and refuses,
@@ -112,6 +114,33 @@ object ArgsTests extends TestSuite {
         Left(ArgsError.Invalid("sure", "true or false", "\"yes\""))
       args.read(ujson.Obj("about" -> "new", "count" -> 1, "name" -> 7)) ==>
         Left(ArgsError.Invalid("name", "text", "7"))
+    }
+
+    test("each repair is made only when asked for") {
+      val edit = Args.of((oldText = Field.text("Old."), newText = Field.text("New.")))
+      val edits = Args.of((path = Field.text("P."), edits = Field.each("The edits.", edit)))
+      val quoted = ujson.Obj("about" -> "new", "count" -> "3")
+      val listed =
+        ujson.Obj(
+          "path" -> "f",
+          "edits" -> ujson.Arr(ujson.Obj("oldText" -> "a", "newText" -> "b")).render()
+        )
+      val none = Set.empty[ArgRepair]
+      args.read(quoted, none) ==>
+        Left(ArgsError.Invalid("count", "a whole number from 1 to 5", "\"3\""))
+      val asText =
+        ArgsError.Invalid("edits", "a list of at least 1 objects", listed("edits").render())
+      edits.read(listed, none) ==> Left(asText)
+      args.read(quoted, Set(ArgRepair.QuotedNumber)).map(_.count) ==> Right(3)
+      edits.read(listed, Set(ArgRepair.QuotedNumber)) ==> Left(asText)
+      edits.read(listed, Set(ArgRepair.QuotedList)).map(_.edits.size) ==> Right(1)
+      // Inside a repaired list, an item's number is repaired only when that is asked for too.
+      val counted =
+        Args.of((items = Field.each("I.", Args.of((n = Field.count("N.", 1, 5)))))).map(_.items)
+      val inner = ujson.Obj("items" -> ujson.Arr(ujson.Obj("n" -> "2")).render())
+      counted.read(inner, Set(ArgRepair.QuotedList)) ==>
+        Left(ArgsError.Invalid("items[0].n", "a whole number from 1 to 5", "\"2\""))
+      counted.read(inner, ArgRepair.values.toSet).map(_.map(_.n)) ==> Right(List(2))
     }
 
     test("a refusal's message names the field and what it accepts") {

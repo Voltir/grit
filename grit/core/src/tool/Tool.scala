@@ -1,6 +1,7 @@
 package grit.core.tool
 
 import grit.core.message.AssistantBlock
+import grit.core.model.ArgRepair
 import grit.core.provider.ToolSchema
 
 /** A tool the loop can offer and run: what the model is told of it, whether a person
@@ -20,8 +21,11 @@ final class Tool[A](
 
   def schema(strict: Boolean): ToolSchema = spec.schema(strict)
 
-  private[tool] def bind(call: AssistantBlock.ToolCall): Either[CallError, Bound^{this}] =
-    spec.args.read(call.arguments) match {
+  private[tool] def bind(
+      call: AssistantBlock.ToolCall,
+      repairs: Set[ArgRepair]
+  ): Either[CallError, Bound^{this}] =
+    spec.args.read(call.arguments, repairs) match {
       case Left(error) =>
         val sent = call.arguments match {
           case ujson.Str(raw) => raw
@@ -47,7 +51,10 @@ object Tool {
     /** What a request shows the model of it ([[ToolSpec.schema]]). */
     def schema(strict: Boolean): ToolSchema
 
-    /** `call`, which names this tool, read against it. */
-    private[tool] def bind(call: AssistantBlock.ToolCall): Either[CallError, Bound^{this}]
+    /** `call`, which names this tool, read against it with `repairs`. */
+    private[tool] def bind(
+        call: AssistantBlock.ToolCall,
+        repairs: Set[ArgRepair]
+    ): Either[CallError, Bound^{this}]
   }
 }

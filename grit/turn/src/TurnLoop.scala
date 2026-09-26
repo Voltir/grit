@@ -3,6 +3,7 @@ package grit.turn
 import scala.annotation.tailrec
 
 import grit.core.message.{AssistantBlock, Message, StopReason}
+import grit.core.model.AfterToolResult
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.tool.Outcome
 
@@ -117,20 +118,30 @@ object TurnLoop {
   def use(budget: Budget, round: Round): ToolUse =
     if (round >= budget.calls - 1) ToolUse.Off else ToolUse.Auto
 
-  /** What the model is told on a call made with tools off, as a user message after
-    * everything else it is sent.
+  /** What the model is told on a call made with tools off, after everything else it is
+    * sent ([[told]]).
     */
   val LastCall: String =
     "[grit: this is your last call in this turn, and it has no tools: call none. Answer " +
       "now from what you have found so far, and say what is unfinished or unchecked.]"
 
-  /** `request` as `use` says to send it: with [[LastCall]] after its messages when `use` is
-    * [[ToolUse.Off]], unchanged otherwise.
+  /** `request` as `use` says to send it: unchanged when `use` is [[ToolUse.Auto]]; when it is
+    * [[ToolUse.Off]], with [[LastCall]] after its messages, as a user message, or, under
+    * [[AfterToolResult.InLastResult]] when its last message is a tool result, at the end of
+    * that result's content, after a blank line.
     */
-  def told(use: ToolUse, request: ModelRequest): ModelRequest = use match {
-    case ToolUse.Off => request.copy(messages = request.messages :+ Message.User(LastCall))
-    case ToolUse.Auto => request
-  }
+  def told(use: ToolUse, request: ModelRequest, after: AfterToolResult): ModelRequest =
+    use match {
+      case ToolUse.Auto => request
+      case ToolUse.Off =>
+        (after, request.messages.lastOption) match {
+          case (AfterToolResult.InLastResult, Some(r: Message.ToolResult)) =>
+            request.copy(messages =
+              request.messages.init :+ r.copy(content = s"${r.content}\n\n$LastCall")
+            )
+          case _ => request.copy(messages = request.messages :+ Message.User(LastCall))
+        }
+    }
 
   /** The effects the loop needs. The turn makes each a durable step. */
   trait Moves {

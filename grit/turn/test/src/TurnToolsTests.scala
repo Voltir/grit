@@ -7,7 +7,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, Payload}
-import grit.core.tool.{Bound, Outcome}
+import grit.core.tool.{Bound, Outcome, Repairs}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -37,7 +37,7 @@ object TurnToolsTests extends TestSuite {
     val slot = TurnTools.Slot(turn, Round.First, 0)
     val id = pending.call.id
     val settling = new TurnTools.Settling(new FakeJot, entries)
-    TurnTools.read(tools(ws), pending) match {
+    TurnTools.read(tools(ws), pending, Repairs.All) match {
       case Left(outcome) => settling.answer(slot, id, pending.call.name, outcome, Instant.EPOCH)
       case Right(free: Bound.Free) => settling.run(slot, id, free, Instant.EPOCH)
       case Right(gated: Bound.Gated) =>

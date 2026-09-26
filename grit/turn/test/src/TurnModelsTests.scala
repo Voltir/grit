@@ -3,7 +3,18 @@ package grit.turn
 import java.time.LocalDate
 
 import grit.core.durable.InMemoryDurable
-import grit.core.model.{Catalog, Known, Pinned, Profile, Source, StrictSchemas}
+import grit.core.id.ToolCallId
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.{
+  AfterToolResult,
+  Catalog,
+  Known,
+  NameRepair,
+  Pinned,
+  Profile,
+  Source,
+  StrictSchemas
+}
 import grit.core.provider.{Models, Provider}
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryModelProfileStore, Payload}
 import grit.dbos.sql.TestTx
@@ -124,6 +135,49 @@ object TurnModelsTests extends TestSuite {
       sent(known(StrictSchemas.Enforced)) ==> Vector(true, true)
       sent(known(StrictSchemas.WhenRequired)) ==> Vector(false, false)
       sent(TestCatalog) ==> Vector(false, false)
+    }
+
+    test("a turn reads its model's calls and tells its last call as its pin says") {
+      val nick = Source.Declared("nick", LocalDate.of(2026, 9, 25))
+      val pair = Profile(
+        TestCatalog.policy.turn.ref,
+        names = Known.Of(NameRepair.AsSent, nick),
+        afterResult = Known.Of(AfterToolResult.InLastResult, nick)
+      )
+      val leaked: Message.Assistant = Message.Assistant(
+        Vector(
+          AssistantBlock
+            .ToolCall(ToolCallId("t1"), "peek<|channel|>x", ujson.Obj("path" -> "a.txt"))
+        ),
+        StopReason.ToolUse,
+        Usage(Tokens(1), Tokens(1), Tokens.Zero, None),
+        "m"
+      )
+      val provider = new Scripted((_, n) => Right(if (n == 0) leaked else said("done")))
+      val entries = new InMemoryEntryStore
+      val ws = new Files(Map("a.txt" -> "alpha"))
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(
+        modelsBody(
+          entries,
+          new Switching(provider, Right(TestCatalog.overlaid(Vector(pair)))),
+          new InMemoryModelProfileStore,
+          ws,
+          tools(ws),
+          calls = 2
+        )
+      )
+      // Not cut at `<|`: no tool has the name as sent, so nothing was read.
+      ws.reads ==> 0
+      provider.requests.lift(1).flatMap(_.messages.lastOption) ==> Some(
+        Message.ToolResult(
+          ToolCallId("t1"),
+          "There is no tool named `peek<|channel|>x`; the tools are `peek`, `poke`." +
+            s"\n\n${TurnLoop.LastCall}",
+          isError = true
+        )
+      )
     }
   }
 }

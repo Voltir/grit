@@ -3,6 +3,7 @@ package grit.core.tool
 import grit.core.approval.Approval
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.model.{ArgRepair, NameRepair}
 
 import utest.*
 
@@ -53,7 +54,7 @@ object ToolboxTests extends TestSuite {
     }
 
     test("a free call binds with nothing to ask, and runs") {
-      box.bind(call("echo", ujson.Obj("text" -> "hi"))) match {
+      box.bind(call("echo", ujson.Obj("text" -> "hi")), Repairs.All) match {
         case Right(b: Bound.Free) =>
           (b.tool, b.shown, b()) ==> (ToolName("echo"), "echo hi", Outcome.Done("hi"))
         case other => throw new java.lang.AssertionError(s"not free: $other")
@@ -61,7 +62,7 @@ object ToolboxTests extends TestSuite {
     }
 
     test("a gated call carries what the person is shown, and runs only when approved") {
-      box.bind(call("shout", ujson.Obj("text" -> "hi"))) match {
+      box.bind(call("shout", ujson.Obj("text" -> "hi")), Repairs.All) match {
         case Right(b: Bound.Gated) =>
           b.ask ==> "shout hi"
           b.shown ==> "shout hi loudly"
@@ -85,38 +86,52 @@ object ToolboxTests extends TestSuite {
       Toolbox
         .of(loud)
         .toOption
-        .flatMap(_.bind(call("loud", ujson.Obj("text" -> "x"))).toOption)
+        .flatMap(_.bind(call("loud", ujson.Obj("text" -> "x")), Repairs.All).toOption)
         .map(_.shown) ==> Some("loud")
       box.including(loud).map(_.names) ==>
         Right(Vector(ToolName("loud"), ToolName("echo"), ToolName("shout")))
     }
 
     test("an unknown tool is refused, naming the tools there are") {
-      val refused = box.bind(call("sing", ujson.Obj()))
+      val refused = box.bind(call("sing", ujson.Obj()), Repairs.All)
       refused.map(_.tool) ==> Left(CallError.Unknown("sing", box.names))
       refused.left.map(_.message) ==>
         Left("There is no tool named `sing`; the tools are `echo`, `shout`.")
     }
 
     test("arguments that do not read are refused, echoing what was sent") {
-      val refused = box.bind(call("echo", ujson.Obj("text" -> 3)))
+      val refused = box.bind(call("echo", ujson.Obj("text" -> 3)), Repairs.All)
       refused.left.map(_.message) ==> Left(
         "The call to `echo` was not run: `text` takes text, not 3. You sent: {\"text\":3}"
       )
     }
 
     test("a name with leaked harmony tokens binds to the tool it names") {
-      val bound = box.bind(call("echo<|channel|>commentary", ujson.Obj("text" -> "hi")))
+      val bound =
+        box.bind(call("echo<|channel|>commentary", ujson.Obj("text" -> "hi")), Repairs.All)
       bound.map(_.tool) ==> Right(ToolName("echo"))
-      Toolbox.named("grep<|channel|>json") ==> "grep"
-      Toolbox.named("<|x") ==> ""
-      box.bind(call("sing<|channel|>x", ujson.Obj())).left.map(_.message) ==>
+      Toolbox.named("grep<|channel|>json", NameRepair.HarmonyCut) ==> "grep"
+      Toolbox.named("<|x", NameRepair.HarmonyCut) ==> ""
+      box.bind(call("sing<|channel|>x", ujson.Obj()), Repairs.All).left.map(_.message) ==>
         Left("There is no tool named `sing<|channel|>x`; the tools are `echo`, `shout`.")
+    }
+
+    test("a name is taken as sent when its pair's names are not repaired") {
+      val asSent = Repairs(NameRepair.AsSent, ArgRepair.values.toSet)
+      Toolbox.named("grep<|channel|>json", NameRepair.AsSent) ==> "grep<|channel|>json"
+      box
+        .bind(call("echo<|channel|>commentary", ujson.Obj("text" -> "hi")), asSent)
+        .left
+        .map(_.message) ==>
+        Left("There is no tool named `echo<|channel|>commentary`; the tools are `echo`, `shout`.")
+      box.bind(call("echo", ujson.Obj("text" -> "hi")), asSent).map(_.tool) ==> Right(
+        ToolName("echo")
+      )
     }
 
     test("arguments that were not JSON are refused, echoing their text") {
       // The wire keeps text that does not parse as a JSON string (OpenRouterJson).
-      box.bind(call("echo", ujson.Str("{text: hi"))).left.map(_.message) ==> Left(
+      box.bind(call("echo", ujson.Str("{text: hi")), Repairs.All).left.map(_.message) ==> Left(
         "The call to `echo` was not run: The arguments must be a JSON object, not " +
           "\"{text: hi\". You sent: {text: hi"
       )
@@ -124,7 +139,7 @@ object ToolboxTests extends TestSuite {
 
     test("the echo of what was sent is cut") {
       val long = "x" * 1000
-      box.bind(call("echo", ujson.Obj("text" -> 1, "pad" -> long))).left.map {
+      box.bind(call("echo", ujson.Obj("text" -> 1, "pad" -> long)), Repairs.All).left.map {
         case CallError.BadArgs(_, _, sent) => sent.length
         case _ => -1
       } ==> Left(CallError.Echoed)
@@ -135,7 +150,7 @@ object ToolboxTests extends TestSuite {
         case Right(b) => b
         case Left(d) => throw new java.lang.AssertionError(s"duplicate $d")
       }
-      empty.bind(call("echo", ujson.Obj())).left.map(_.message) ==>
+      empty.bind(call("echo", ujson.Obj()), Repairs.All).left.map(_.message) ==>
         Left("There is no tool named `echo`, and no tool is offered.")
     }
 

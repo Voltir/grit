@@ -8,7 +8,7 @@ import grit.core.approval.Approval
 import grit.core.id.{EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.store.{Entry, EntryStore, Jot, Payload, StoreError, Tx}
-import grit.core.tool.{Bound, Outcome, Toolbox}
+import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 
 import TurnLoop.{Pending, Round}
 
@@ -98,13 +98,14 @@ object TurnTools {
     } yield slot.askId).left.map(storeFailure)
   }
 
-  /** `pending` read against `tools`, ready to run; or the outcome it is answered with,
-    * unrun: a refused call's, or the [[grit.core.tool.CallError]] of one that does not bind.
+  /** `pending` read against `tools` with `repairs`, ready to run; or the outcome it is
+    * answered with, unrun: a refused call's, or the [[grit.core.tool.CallError]] of one that
+    * does not bind.
     */
-  def read[C^](tools: Toolbox[C], pending: Pending): Either[Outcome, Bound^{C}] =
+  def read[C^](tools: Toolbox[C], pending: Pending, repairs: Repairs): Either[Outcome, Bound^{C}] =
     pending match {
       case Pending.Refused(_, refused) => Left(refused)
-      case Pending.Run(call) => tools.bind(call).left.map(_.outcome)
+      case Pending.Run(call) => tools.bind(call, repairs).left.map(_.outcome)
     }
 
   /** Where a turn keeps what its tool calls came to: in `entries`, written through `jot` from

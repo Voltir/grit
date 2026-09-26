@@ -6,7 +6,7 @@ import grit.core.approval.Approval
 import grit.core.host.*
 import grit.core.id.ToolCallId
 import grit.core.message.AssistantBlock
-import grit.core.tool.{Bound, Outcome, ToolName, Toolbox}
+import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
 
 import utest.*
 
@@ -78,7 +78,7 @@ object CodingTests extends TestSuite {
       name: String,
       args: ujson.Value
   ): Either[String, (Option[String], Outcome)] =
-    all(host).bind(call(name, args)).left.map(_.message).map {
+    all(host).bind(call(name, args), Repairs.All).left.map(_.message).map {
       case free: Bound.Free => (None, free())
       case gated: Bound.Gated => (Some(gated.ask), gated(Approval.Approved))
     }
@@ -104,7 +104,7 @@ object CodingTests extends TestSuite {
         ),
         "run" -> ujson.Obj("command" -> "git status\n  && ls")
       )
-      calls.map((name, args) => box.bind(call(name, args)).map(_.shown)) ==> Vector(
+      calls.map((name, args) => box.bind(call(name, args), Repairs.All).map(_.shown)) ==> Vector(
         Right("read src/a.scala:10"),
         Right("list ."),
         Right("search \"def \\w+\" src"),

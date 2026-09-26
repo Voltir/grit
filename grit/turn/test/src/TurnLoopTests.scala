@@ -2,6 +2,7 @@ package grit.turn
 
 import grit.core.id.ToolCallId
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.AfterToolResult
 import grit.core.provider.ToolUse
 
 import utest.*
@@ -193,6 +194,29 @@ object TurnLoopTests extends TestSuite {
       TurnLoop.from(budget(3), reply("", Vector("a")), moves) ==>
         Right(Looped(reply("done"), round(1), Vector(reply("", Vector("a")), reply("done"))))
       moves.made ==> Vector("record 0", "settle 0:0 run a", "call-model:1 Auto")
+    }
+
+    test(
+      "the last call's note follows the messages, or ends the last result where a pair refuses a user there"
+    ) {
+      val result: Message.ToolResult =
+        Message.ToolResult(ToolCallId("c1"), "3 lines", isError = false)
+      val asked = grit.core.provider.ModelRequest("s", Vector(Message.User("hi"), result))
+      def told(
+          use: ToolUse,
+          after: AfterToolResult,
+          request: grit.core.provider.ModelRequest = asked
+      ) =
+        TurnLoop.told(use, request, after).messages
+      told(ToolUse.Off, AfterToolResult.UserMessage) ==>
+        Vector(Message.User("hi"), result, Message.User(TurnLoop.LastCall))
+      told(ToolUse.Off, AfterToolResult.InLastResult) ==>
+        Vector(Message.User("hi"), result.copy(content = s"3 lines\n\n${TurnLoop.LastCall}"))
+      // With no tool result last, the note is a user message whatever the pair.
+      val plain = grit.core.provider.ModelRequest("s", Vector(Message.User("hi")))
+      told(ToolUse.Off, AfterToolResult.InLastResult, plain) ==>
+        Vector(Message.User("hi"), Message.User(TurnLoop.LastCall))
+      told(ToolUse.Auto, AfterToolResult.InLastResult) ==> asked.messages
     }
   }
 }
