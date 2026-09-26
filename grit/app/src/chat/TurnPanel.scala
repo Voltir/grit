@@ -280,12 +280,14 @@ final case class TurnPanel(look: Look, budget: Tokens) {
             " recalled " -> fg(t.faint),
             w.recalledTurns.map(s => s"turn ${number(s)}").mkString(" · ") -> fg(t.user)
           )
-      val nearby =
-        if (w.nearbyTurns.isEmpty) row(" nearby   " -> fg(t.faint), "none" -> fg(t.faint))
-        else row(" nearby   " -> fg(t.faint), TurnView.Near.shown(w.nearbyTurns) -> fg(t.headerFg))
-      Vector(
-        recalled,
-        nearby,
+      // Listed only when the window drew on elsewhere, so the panel stays as tall as before
+      // for a window that did not.
+      val nearby = Option
+        .when(w.nearbyTurns.nonEmpty)(
+          row(" nearby   " -> fg(t.faint), TurnView.Near.shown(w.nearbyTurns) -> fg(t.headerFg))
+        )
+        .toVector
+      Vector(recalled) ++ nearby ++ Vector(
         blank,
         row(Seq(" window   " -> fg(t.faint)) ++ bar*),
         row(
