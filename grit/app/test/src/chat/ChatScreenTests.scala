@@ -153,7 +153,14 @@ object ChatScreenTests extends TestSuite {
         grit.turn.Turn.Step.all.map(TurnView.Step(_, Some(400))),
         Some("ward engine"),
         Some(
-          TurnView.Window(Tokens(12), Tokens(3200), Tokens(1700), Tokens(40), Vector(TurnSeq(0)))
+          TurnView.Window(
+            Tokens(12),
+            Tokens(300),
+            Tokens(3200),
+            Tokens(1700),
+            Tokens(40),
+            Vector(TurnSeq(0))
+          )
         ),
         Some(Cost.AtLeast(BigDecimal("0.00031"))),
         Some(Tokens(5000)),
@@ -189,7 +196,8 @@ object ChatScreenTests extends TestSuite {
         shown.contains("ᛟ assemble"),
         shown.contains("query    ward engine"),
         shown.contains("recalled turn 1"),
-        shown.contains("4.9k of 16k budget"),
+        shown.contains("5.2k of 16k budget"),
+        shown.contains("closings 300"),
         shown.contains("billed   5k in · ≥ $0.00031"),
         shown.contains("model    x/big @ fireworks"),
         shown.contains("Fireworks · unprofiled"),

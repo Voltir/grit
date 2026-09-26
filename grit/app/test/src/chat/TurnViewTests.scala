@@ -3,7 +3,8 @@ package grit.app.chat
 import java.time.{Instant, LocalDate}
 
 import grit.assembly.estimate.CharEstimate
-import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.context.Shown
+import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.model.{
   Assignment,
@@ -17,6 +18,7 @@ import grit.core.model.{
   StrictSchemas,
   Upstream
 }
+import grit.core.period.{CloseReason, Closing, Probability}
 import grit.core.store.{Entry, Payload, UsageLedger}
 import grit.dbos.engine.RecordedStep
 import grit.turn.Turn
@@ -115,6 +117,48 @@ object TurnViewTests extends TestSuite {
       w.recalled ==> Seq("first question", "first answer").map(msg).reduce(_ + _)
       w.recent ==> Seq("second", "second answer").map(msg).reduce(_ + _)
       w.message ==> CharEstimate.message(Message.User("third, about the first"))
+    }
+
+    test("a window opened by a closing entry counts it as the model was shown it") {
+      val closing = Closing
+        .of(
+          "We chose exiftool.",
+          Some("exiftool"),
+          Vector("exiftool"),
+          Vector(),
+          Vector(),
+          Vector()
+        )
+        .getOrElse(sys.error("closing"))
+      val closed = entry(
+        0,
+        0,
+        Payload.Closed(PeriodSeq.First, CloseReason.Resolved(Probability.One), closing)
+      )
+      val asked = Vector(
+        closed,
+        user(1, 1, "what did we decide?"),
+        entry(2, 1, Payload.Window(Vector(EntryId("e0")), Vector.empty)),
+        reply(3, 1, "exiftool", 50)
+      )
+      val w = TurnView
+        .of(
+          TurnRef(c, TurnSeq(1)),
+          asked,
+          Vector.empty,
+          running = false,
+          Vector.empty,
+          "s",
+          CharEstimate
+        )
+        .window
+        .getOrElse(sys.error("no window"))
+      val shown = Shown.of(closed).map(CharEstimate.message).getOrElse(sys.error("not shown"))
+      w.closings ==> shown
+      w.recent ==> Tokens.Zero
+      w.total ==> CharEstimate.system("s") + shown + CharEstimate.message(
+        Message.User("what did we decide?")
+      )
     }
 
     test("what its calls were made under: the turn's pair, a role on another, and who served it") {

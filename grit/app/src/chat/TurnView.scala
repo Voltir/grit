@@ -2,6 +2,7 @@ package grit.app.chat
 
 import java.time.Duration
 
+import grit.core.context.Shown
 import grit.core.id.{EntryId, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Message, Tokens}
 import grit.core.model.{ModelRef, TurnProfile}
@@ -69,17 +70,19 @@ object TurnView {
   /** A recorded step and how long it took, when DBOS kept both ends. */
   final case class Step(name: String, ms: Option[Long])
 
-  /** What the reply's request held, estimated: the system prompt, the recent turns, the
-    * turns search recalled (`recalledTurns`), and the turn's own messages.
+  /** What the reply's request held, estimated: the system prompt, the closing entries of
+    * earlier periods, the recent turns, the turns search recalled (`recalledTurns`), and the
+    * turn's own messages.
     */
   final case class Window(
       system: Tokens,
+      closings: Tokens,
       recent: Tokens,
       recalled: Tokens,
       message: Tokens,
       recalledTurns: Vector[TurnSeq]
   ) {
-    def total: Tokens = system + recent + recalled + message
+    def total: Tokens = system + closings + recent + recalled + message
   }
 
   /** The latest turn in `entries`: the one its last user message started. */
@@ -108,9 +111,11 @@ object TurnView {
     val window =
       own.collectFirst { case Entry(_, _, _, _, _, w: Payload.Window, _) => w }.map { w =>
         val seen = w.entries.flatMap(byId.get)
-        val (recalled, recent) = seen.partition(e => w.recalled.contains(e.turnSeq))
+        val (closings, turns) = seen.partition(isClosed)
+        val (recalled, recent) = turns.partition(e => w.recalled.contains(e.turnSeq))
         Window(
           estimator.system(system),
+          tokens(closings, estimator),
           tokens(recent, estimator),
           tokens(recalled, estimator),
           tokens(own.filter(isUser), estimator),
@@ -160,8 +165,12 @@ object TurnView {
     case _ => false
   }
 
+  private def isClosed(e: Entry): Boolean = e.payload match {
+    case Payload.Closed(_, _, _) => true
+    case _ => false
+  }
+
+  /** What `entries` cost as the model is shown them ([[Shown.of]]), as assembly costs them. */
   private def tokens(entries: Vector[Entry], estimator: TokenEstimator): Tokens =
-    entries
-      .collect { case Entry(_, _, _, _, _, Payload.Message(m), _) => estimator.message(m) }
-      .foldLeft(Tokens.Zero)(_ + _)
+    entries.flatMap(Shown.of).map(estimator.message).foldLeft(Tokens.Zero)(_ + _)
 }

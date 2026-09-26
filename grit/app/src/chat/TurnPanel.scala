@@ -253,7 +253,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       }
     }
 
-  /** The window as one bar: system, recent, recalled and the turn's own message, then
+  /** The window as one bar: system, closings, recent, recalled and the turn's own message, then
     * what is left of `budget`, each a colour, with a legend under it.
     */
   private def window(v: TurnView): Vector[Block] = v.window match {
@@ -263,6 +263,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       val scale = math.max(Tokens.value(w.total), Tokens.value(budget + w.system + w.message))
       val parts = Vector(
         (w.system, t.faint),
+        (w.closings, t.thumb),
         (w.recent, t.grit),
         (w.recalled, t.user),
         (w.message, t.ink)
@@ -286,7 +287,12 @@ final case class TurnPanel(look: Look, budget: Tokens) {
           s"${count(w.total)} of ${count(budget)} budget" -> fg(t.ink)
         ),
         legend("system", w.system, t.faint, "recent", w.recent, t.grit),
-        legend("recalled", w.recalled, t.user, "message", w.message, t.ink)
+        legend("recalled", w.recalled, t.user, "message", w.message, t.ink),
+        row(
+          "   " -> fg(t.faint),
+          "■ " -> fg(t.thumb),
+          s"closings ${count(w.closings)}" -> fg(t.faint)
+        )
       )
   }
 
