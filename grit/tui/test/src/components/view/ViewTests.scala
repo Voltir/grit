@@ -5,7 +5,6 @@ import grit.tui.components.layout.{Border, Box}
 import grit.tui.components.overlay.Popup
 import grit.tui.components.widget.{Scrollbar, Spinner, StatusBar}
 import grit.tui.model.surface.{Frame, Size, Surface}
-import grit.tui.model.text.Width
 import grit.tui.wire.paint.Painter
 
 import utest.*
@@ -53,21 +52,16 @@ object ViewTests extends TestSuite {
       // The law layoutz cannot state: its alignment wrappers refuse to shrink
       // (`if (lineLength >= targetWidth) line`) and nothing clips. Here a view that
       // ignored its argument, or grew to fit its content, fails on the first size.
-      var checked = 0
       everyView.foreach { v =>
         sizes.foreach { size =>
           val s = v.render(size)
           assert(s.size == size)
           assert(s.cells.length == math.max(0, size.rows * size.cols))
-          checked += 1
         }
       }
-      assert(checked == everyView.length * sizes.length)
     }
 
-    test("measure is declared, not derived from a render") {
-      // layoutz's `width` re-renders to measure, so every child paints twice a frame.
-      // A measure that is cheap is a measure a parent can afford to ask for.
+    test("each view measures the size it wants, and a box never more than it is offered") {
       assert(Spinner(0).measure(Size(24, 80)) == Size(1, 1))
       assert(Scrollbar(100, 10, 0).measure(Size(24, 80)) == Size(24, 1))
       assert(StatusBar(Vector("a"), Vector("b")).measure(Size(24, 80)) == Size(1, 80))
@@ -77,12 +71,11 @@ object ViewTests extends TestSuite {
       assert(Box(Fill('x', Size(99, 99))).measure(Size(10, 12)) == Size(10, 12))
     }
 
-    test("an editor reports the height its draft wants, and still paints its box") {
-      // The two halves of the seam, and the whole of what makes a growing prompt
-      // legal: `measure` is a *report*, and the region above decides what to do with
-      // it. Both are asserted here because either one alone would be a bug -- a view
-      // that sized itself fails the law above, and a view that reported `avail` is
-      // what `Region.Fit` has nothing to ask.
+    test("an editor reports the height its draft wants") {
+      // Half of what makes a growing prompt legal: `measure` is a *report*, and the
+      // region above decides what to do with it. A view that reported `avail` is one
+      // `Region.Fit` has nothing to ask. The other half, painting exactly the box it is
+      // handed at a height it did not ask for, is the size law above.
       val empty = Editor("", 0)
       assert(empty.measure(Size(24, 20)) == Size(3, 20)) // two borders and a blank row
       val two = Editor("x" * 20, 0) // 18 columns inside the border: two wrapped rows
@@ -90,8 +83,6 @@ object ViewTests extends TestSuite {
       assert(Editor("x" * 180, 0).measure(Size(24, 20)) == Size(12, 20))
       // never more than it was offered, however long the draft.
       assert(Editor("x" * 9000, 0).measure(Size(24, 20)) == Size(24, 20))
-      // and it paints exactly the box it is handed, at a height it did not ask for.
-      assert(Editor("x" * 180, 0).render(Size(3, 20)).size == Size(3, 20))
     }
 
     test("a box frames its child and keeps the child inside the frame") {
@@ -110,12 +101,12 @@ object ViewTests extends TestSuite {
     test("a box title is cut in display columns, never mid-glyph") {
       val b = Box(Fill('x'), title = "a中中中中中中b")
       val s = b.render(Size(3, 14))
-      // A cell holds one char and a wide glyph spans two columns, so the row is 14
-      // cells but fewer chars: measure the drawn part the way the terminal will.
+      // A cell holds one char and a wide glyph spans two columns, so the rail is 14
+      // columns in 11 cells, and the 3 cells after it are blank.
       val top = s.lines.head.reverse.dropWhile(_ == ' ').reverse
-      assert(Width.of(top) == 14) // the wide glyphs did not push the frame wider
-      assert(top.startsWith("╭─ ") && top.endsWith("╮"))
-      assert(!top.contains("b")) // the tail was cut, and cut between glyphs
+      // Nine columns of title room: four whole 中 after the 'a', not four and a half,
+      // and the frame no wider for them.
+      assert(top == "╭─ a中中中中 ╮")
     }
 
     test("the borders are the four corner sets, and nothing else changes") {
@@ -132,16 +123,13 @@ object ViewTests extends TestSuite {
       // painter's diff is driven by cell equality, so a view whose render depended on
       // anything but its own fields would write bytes for a frame nobody changed --
       // at some size, if not at the obvious one.
-      var checked = 0
       everyView.foreach { v =>
         sizes.foreach { size =>
           val once = Frame(v.render(size))
           val again = Frame(v.render(size))
           assert(Painter.paint(again, Some(once)) == "")
-          checked += 1
         }
       }
-      assert(checked == everyView.length * sizes.length)
     }
   }
 }
