@@ -31,9 +31,7 @@ object DotEnvTests extends TestSuite {
     }
 
     test("an unreadable line is named by number, never by its value") {
-      val bad = DotEnv.parse("A=1\nsk-or-secret\n")
-      bad ==> Left(".env line 2: expected NAME=value")
-      assert(!bad.left.exists(_.contains("secret")))
+      DotEnv.parse("A=1\nsk-or-secret\n") ==> Left(".env line 2: expected NAME=value")
       DotEnv.parse("1BAD=secret") ==> Left(".env line 1: not a variable name")
     }
 
