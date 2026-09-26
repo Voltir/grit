@@ -9,7 +9,7 @@ import grit.app.config.Lifecycle
 import grit.core.id.{ConversationId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.provider.TokenEstimator
-import grit.core.store.{Entry, Origin, StoreError, UsageLedger}
+import grit.core.store.{Entry, Origin, Payload, StoreError, UsageLedger}
 import grit.dbos.engine.{Engine, TurnStatus}
 import grit.tui.runtime.app.{Fault, Host, Mailbox}
 import grit.turn.TurnStream
@@ -279,7 +279,22 @@ final class ChatHost(
     }
     val costs = engine.db.read(engine.ledger.of(turn.workflowId)).getOrElse(Vector.empty)
     val profile = engine.db.read(engine.profiles.of(turn.workflowId)).toOption.flatten
-    TurnView.of(turn, entries, steps, running, costs, system, estimator, profile)
+    // The entries of other conversations the turn's recorded window showed, as it showed
+    // them; one purged since is simply not counted.
+    val shown = entries
+      .filter(_.turnSeq == turn.turnSeq)
+      .flatMap(_.payload match {
+        case Payload.Window(_, _, nearby) => nearby.flatMap(_.entries)
+        case _ => Vector.empty
+      })
+    val nearby = engine.db
+      .read(
+        shown.foldLeft[Either[StoreError, Vector[Entry]]](Right(Vector.empty)) { (acc, id) =>
+          acc.flatMap(found => engine.entries.get(id).map(found ++ _))
+        }
+      )
+      .getOrElse(Vector.empty)
+    TurnView.of(turn, entries, steps, running, costs, system, estimator, profile, nearby)
   }
 
   /** Follows `turn`'s reply stream on a thread of its own, telling the screen what it has

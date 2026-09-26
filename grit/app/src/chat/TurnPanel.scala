@@ -253,8 +253,9 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       }
     }
 
-  /** The window as one bar: system, closing, recent, recalled and the turn's own message, then
-    * what is left of `budget`, each a colour, with a legend under it.
+  /** The window as one bar: system, what came from elsewhere, closing, recent, recalled and
+    * the turn's own message, then what is left of `budget`, each a colour, with a legend
+    * under it.
     */
   private def window(v: TurnView): Vector[Block] = v.window match {
     case None =>
@@ -263,6 +264,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       val scale = math.max(Tokens.value(w.total), Tokens.value(budget + w.system + w.message))
       val parts = Vector(
         (w.system, t.faint),
+        (w.nearby, t.headerFg),
         (w.closing, t.thumb),
         (w.recent, t.grit),
         (w.recalled, t.user),
@@ -278,8 +280,12 @@ final case class TurnPanel(look: Look, budget: Tokens) {
             " recalled " -> fg(t.faint),
             w.recalledTurns.map(s => s"turn ${number(s)}").mkString(" · ") -> fg(t.user)
           )
+      val nearby =
+        if (w.nearbyTurns.isEmpty) row(" nearby   " -> fg(t.faint), "none" -> fg(t.faint))
+        else row(" nearby   " -> fg(t.faint), TurnView.Near.shown(w.nearbyTurns) -> fg(t.headerFg))
       Vector(
         recalled,
+        nearby,
         blank,
         row(Seq(" window   " -> fg(t.faint)) ++ bar*),
         row(
@@ -288,11 +294,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
         ),
         legend("system", w.system, t.faint, "recent", w.recent, t.grit),
         legend("recalled", w.recalled, t.user, "message", w.message, t.ink),
-        row(
-          "   " -> fg(t.faint),
-          "■ " -> fg(t.thumb),
-          s"closing ${count(w.closing)}" -> fg(t.faint)
-        )
+        legend("closing", w.closing, t.thumb, "nearby", w.nearby, t.headerFg)
       )
   }
 

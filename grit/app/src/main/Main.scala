@@ -302,7 +302,7 @@ object Main {
         // Closing the host stops following and closes the engine, however far it got.
         try
           Runtime.run(
-            new ChatScreen.App(modelName, startTheme, budget, session),
+            new ChatScreen.App(modelName, startTheme, budget, s"$session · ${written(root)}"),
             keeping(host, prefsFile)
           )
         finally host.close()
@@ -549,6 +549,12 @@ object Main {
       case Some("linear") => Right(false)
       case Some(_) => Left(s"$AssemblerVar is neither linear nor retrieval")
     }
+
+  /** `dir` as the header shows it: under the home directory as `~/…`. */
+  private def written(dir: java.nio.file.Path): String = {
+    val home = sys.props.get("user.home").map(java.nio.file.Path.of(_))
+    home.filter(h => dir.startsWith(h) && dir != h).fold(dir.toString)(h => s"~/${h.relativize(dir)}")
+  }
 
   private def describe(turn: TurnRef): String =
     grit.core.id.WorkflowId.value(turn.workflowId)

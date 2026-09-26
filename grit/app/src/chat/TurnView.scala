@@ -6,6 +6,7 @@ import grit.core.context.Shown
 import grit.core.id.{EntryId, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Message, Tokens}
 import grit.core.model.{ModelRef, TurnProfile}
+import grit.core.place.Place
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Payload, UsageLedger}
 import grit.dbos.engine.RecordedStep
@@ -71,8 +72,9 @@ object TurnView {
   final case class Step(name: String, ms: Option[Long])
 
   /** What the reply's request held, estimated: the system prompt, the closing entry of the
-    * period before, the recent turns, the turns search recalled (`recalledTurns`), and the
-    * turn's own messages.
+    * period before, the recent turns, the turns search recalled (`recalledTurns`), the
+    * turn's own messages, and the sections from other conversations (`nearby`, their turns
+    * `nearbyTurns`).
     */
   final case class Window(
       system: Tokens,
@@ -80,9 +82,29 @@ object TurnView {
       recent: Tokens,
       recalled: Tokens,
       message: Tokens,
-      recalledTurns: Vector[TurnSeq]
+      recalledTurns: Vector[TurnSeq],
+      nearby: Tokens = Tokens.Zero,
+      nearbyTurns: Vector[Near] = Vector.empty
   ) {
-    def total: Tokens = system + closing + recent + recalled + message
+    def total: Tokens = system + closing + recent + recalled + message + nearby
+  }
+
+  /** A nearby section's place, and the turns of its conversation it showed. */
+  final case class Near(place: Place, turns: Vector[TurnSeq])
+
+  object Near {
+
+    /** `near` in one line, as the panel lists it: each turn under its place's last segment,
+      * `api turn 3 · web turn 5`.
+      */
+    def shown(near: Vector[Near]): String =
+      near
+        .flatMap(n =>
+          n.turns.map(t =>
+            s"${n.place.segments.lastOption.getOrElse(n.place.written)} turn ${TurnSeq.value(t)}"
+          )
+        )
+        .mkString(" · ")
   }
 
   /** The latest turn in `entries`: the one its last user message started. */
@@ -91,7 +113,8 @@ object TurnView {
       .collectFirst { case e @ Entry(_, _, _, _, _, Payload.Message(Message.User(_)), _) => e }
       .map(e => TurnRef(e.conversationId, e.turnSeq))
 
-  /** `turn`, from every entry of its conversation, the `steps` its workflow recorded,
+  /** `turn`, from every entry of its conversation and the `nearby` entries of other
+    * conversations its window showed, the `steps` its workflow recorded,
     * whether it is `running`, its ledger rows `costs`, and the `profile` it pinned. The
     * window is estimated with `estimator`, as assembly estimated it, under the system
     * prompt `system`.
@@ -104,7 +127,8 @@ object TurnView {
       costs: Vector[UsageLedger.Row],
       system: String,
       estimator: TokenEstimator,
-      profile: Option[TurnProfile] = None
+      profile: Option[TurnProfile] = None,
+      nearby: Vector[Entry] = Vector.empty
   ): TurnView = {
     val own = entries.filter(_.turnSeq == turn.turnSeq)
     val byId: Map[EntryId, Entry] = entries.map(e => e.id -> e).toMap
@@ -113,13 +137,20 @@ object TurnView {
         val seen = w.entries.flatMap(byId.get)
         val (closings, turns) = seen.partition(isClosed)
         val (recalled, recent) = turns.partition(e => w.recalled.contains(e.turnSeq))
+        val theirs = nearby.map(e => e.id -> e).toMap
+        val sections = w.nearby.map(n => n -> n.entries.flatMap(theirs.get))
         Window(
           estimator.system(system),
           tokens(closings, estimator),
           tokens(recent, estimator),
           tokens(recalled, estimator),
           tokens(own.filter(isUser), estimator),
-          w.recalled
+          w.recalled,
+          sections
+            .flatMap((n, es) => Shown.nearby(n.place, es))
+            .map(estimator.message)
+            .foldLeft(Tokens.Zero)(_ + _),
+          sections.map((n, es) => Near(n.place, es.map(_.turnSeq).distinct))
         )
       }
     val reply = own.collectFirst {

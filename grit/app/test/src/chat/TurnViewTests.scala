@@ -19,7 +19,8 @@ import grit.core.model.{
   Upstream
 }
 import grit.core.period.{Balance, CloseReason, Closing, Flows, Probability}
-import grit.core.store.{Entry, Payload, UsageLedger}
+import grit.core.place.Place
+import grit.core.store.{Entry, Nearby, Payload, UsageLedger}
 import grit.dbos.engine.RecordedStep
 import grit.turn.Turn
 
@@ -153,6 +154,66 @@ object TurnViewTests extends TestSuite {
       w.total ==> CharEstimate.system("s") + shown + CharEstimate.message(
         Message.User("what did we decide?")
       )
+    }
+
+    test("a window's nearby sections are counted as the model was shown them, listed by place") {
+      val api = ConversationId("api")
+      val at = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
+      val theirs = Vector(
+        Entry(
+          EntryId("a0"),
+          api,
+          TurnSeq(3),
+          None,
+          0,
+          Payload.Message(Message.User("flaky?")),
+          Instant.EPOCH
+        ),
+        Entry(
+          EntryId("a1"),
+          api,
+          TurnSeq(3),
+          None,
+          1,
+          Payload.Message(Message.User("TZ")),
+          Instant.EPOCH
+        )
+      )
+      val asked = Vector(
+        user(0, 0, "which fix?"),
+        entry(
+          1,
+          0,
+          Payload.Window(
+            Vector.empty,
+            Vector.empty,
+            Vector(Nearby(api, at, Vector(EntryId("a0"), EntryId("a1"))))
+          )
+        ),
+        reply(2, 0, "TZ=UTC", 50)
+      )
+      val w = TurnView
+        .of(
+          TurnRef(c, TurnSeq(0)),
+          asked,
+          Vector.empty,
+          running = false,
+          Vector.empty,
+          "s",
+          CharEstimate,
+          None,
+          theirs
+        )
+        .window
+        .getOrElse(sys.error("no window"))
+      val shown =
+        Shown.nearby(at, theirs).map(CharEstimate.message).getOrElse(sys.error("not shown"))
+      w.nearby ==> shown
+      w.total ==> CharEstimate.system("s") + shown + CharEstimate.message(
+        Message.User("which fix?")
+      )
+      w.nearbyTurns ==> Vector(TurnView.Near(at, Vector(TurnSeq(3))))
+      TurnView.Near.shown(w.nearbyTurns) ==> "api turn 3"
     }
 
     test("what its calls were made under: the turn's pair, a role on another, and who served it") {
