@@ -124,7 +124,7 @@ object TurnFixtures {
 
   /** Entries a crash is aimed at: the reply's insert. */
   val isReply: Entry -> Boolean = _.payload match {
-    case Payload.Message(Message.Assistant(_, _, _, _)) => true
+    case Payload.Message(Message.Assistant(_, _, _, _, _)) => true
     case _ => false
   }
 
@@ -303,12 +303,12 @@ object TurnFixtures {
     all(entries).flatMap {
       _.payload match {
         case Payload.Message(Message.User(text)) => Some(s"user: $text")
-        case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
+        case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
           Some(blocks.collect { case AssistantBlock.Text(t) => s"assistant: $t" }.mkString)
         case Payload.Message(other) => Some(other.toString)
         case Payload.Summary(text) => Some(s"summary: $text")
         case Payload.Query(text) => Some(s"query: $text")
-        case Payload.Exchange(Message.Assistant(blocks, _, _, _)) =>
+        case Payload.Exchange(Message.Assistant(blocks, _, _, _, _)) =>
           Some(blocks.collect {
             case AssistantBlock.Text(t) => s"called: $t"
             case AssistantBlock.ToolCall(_, name, args) => s"[$name ${args.render()}]"

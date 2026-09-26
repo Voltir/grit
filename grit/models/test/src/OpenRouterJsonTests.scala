@@ -202,6 +202,13 @@ object OpenRouterJsonTests extends TestSuite {
       )
     }
 
+    test("response: the upstream that served it is its provider, when the response names one") {
+      val served = ujson.Obj.from(sampleResponse.obj)
+      served("provider") = "Fireworks"
+      OpenRouterJson.response(served).map(_.upstream) ==> Right(Some("Fireworks"))
+      OpenRouterJson.response(sampleResponse).map(_.upstream) ==> Right(None)
+    }
+
     test("response: finish reasons map to stop reasons, keeping unknown ones") {
       def stopOf(reason: String) = OpenRouterJson
         .response(

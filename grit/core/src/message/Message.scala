@@ -11,13 +11,15 @@ enum Message {
   case User(text: String)
 
   /** One model response: its blocks in order, why it stopped, and what it
-    * cost. `model` is the id the provider says served it.
+    * cost. `model` is the id the provider says served it (an alias, never the snapshot
+    * behind it); `upstream` names the upstream that served it, when the provider says.
     */
   case Assistant(
       blocks: Vector[AssistantBlock],
       stop: StopReason,
       usage: Usage,
-      model: String
+      model: String,
+      upstream: Option[String] = None
   )
 
   /** The outcome of running the tool call `callId`. An error is still a result:

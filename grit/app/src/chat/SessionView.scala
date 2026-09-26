@@ -63,7 +63,7 @@ object SessionView {
     val roleOf: Map[EntryId, String] = entries.flatMap { e =>
       (e.payload match {
         case Payload.Query(_) => Some(Query)
-        case Payload.Message(Message.Assistant(_, _, _, _)) => Some(Turn)
+        case Payload.Message(Message.Assistant(_, _, _, _, _)) => Some(Turn)
         case Payload.Summary(_) => Some(Summary)
         case Payload.Topic(events) =>
           val asked = events.exists {
@@ -113,7 +113,7 @@ object SessionView {
   }
 
   private def isReply(e: Entry): Boolean = e.payload match {
-    case Payload.Message(Message.Assistant(_, _, _, _)) => true
+    case Payload.Message(Message.Assistant(_, _, _, _, _)) => true
     case _ => false
   }
 }

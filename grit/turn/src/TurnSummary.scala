@@ -124,7 +124,7 @@ object TurnSummary {
     case Payload.Exchange(reply) => line(Payload.Message(reply))
     case Payload.Result(result, _) => line(Payload.Message(result))
     case Payload.Message(Message.User(text)) => Some(s"User: $text")
-    case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
+    case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       val said = blocks.collect {
         case AssistantBlock.Text(t) => t
         case AssistantBlock.ToolCall(id, name, arguments) =>

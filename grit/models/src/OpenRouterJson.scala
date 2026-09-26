@@ -80,7 +80,7 @@ object OpenRouterJson {
         "tool_call_id" -> ToolCallId.value(callId),
         "content" -> content
       )
-    case Message.Assistant(blocks, _, _, _) =>
+    case Message.Assistant(blocks, _, _, _, _) =>
       val text = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
       val calls = blocks.collect { case AssistantBlock.ToolCall(id, name, arguments) =>
         ujson.Obj(
@@ -106,7 +106,8 @@ object OpenRouterJson {
   }
 
   /** The assistant message in a 200 response, or why there is none: a top-level or a
-    * choice's `error` (an upstream can refuse after the 200) is `model error: …`.
+    * choice's `error` (an upstream can refuse after the 200) is `model error: …`. Its
+    * `upstream` is the response's `provider`, the name of the upstream that served it.
     */
   def response(body: ujson.Value): Either[ProviderError, Message.Assistant] =
     for {
@@ -125,7 +126,8 @@ object OpenRouterJson {
       blocks,
       stop(choice.get("finish_reason").flatMap(_.strOpt)),
       usage(root.get("usage").flatMap(_.objOpt)),
-      root.get("model").flatMap(_.strOpt).getOrElse("unknown")
+      root.get("model").flatMap(_.strOpt).getOrElse("unknown"),
+      root.get("provider").flatMap(_.strOpt)
     )
 
   /** The error in a non-200 response with status `status`: [[ProviderError.Unavailable]]

@@ -55,7 +55,7 @@ final class StubProvider(delayMs: Long = 0) extends Provider {
           case Some(Message.User(text)) => s"stub reply to: $text"
           case Some(Message.ToolResult(_, content, _)) =>
             s"stub reply to: ${asked.getOrElse(content)}"
-          case Some(Message.Assistant(_, _, _, _)) => "stub reply to: (an assistant message)"
+          case Some(Message.Assistant(_, _, _, _, _)) => "stub reply to: (an assistant message)"
           case None => "stub reply to: (nothing)"
         }
     }

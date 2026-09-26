@@ -25,7 +25,8 @@ object PayloadJsonTests extends TestSuite {
     assistant,
     assistant
       .copy(stop = StopReason.EndTurn, usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, None)),
-    Message.ToolResult(ToolCallId("c1"), "no matches", isError = true)
+    Message.ToolResult(ToolCallId("c1"), "no matches", isError = true),
+    assistant.copy(upstream = Some("Fireworks"))
   )
 
   // These pin the stored form: every entry row is written in it, so a change
@@ -44,6 +45,16 @@ object PayloadJsonTests extends TestSuite {
         """{"type":"tool_call","id":"c1","name":"grep","arguments":{"q":"x"}}],""" +
         """"usage":{"input":10,"output":5,"cachedInput":2,"costUsd":"0.000123"},""" +
         """"model":"openai/gpt-5-mini","stop":"other","stopRaw":"weird"}}"""
+    }
+
+    test("assistant message with the upstream that served it") {
+      PayloadJson.write(Payload.Message(assistant.copy(upstream = Some("Fireworks")))).render() ==>
+        """{"kind":"message","message":{"role":"assistant","blocks":[""" +
+        """{"type":"reasoning","text":"thinking","replay":[{"type":"reasoning.text"}]},""" +
+        """{"type":"reasoning","text":""},{"type":"text","text":"hi"},""" +
+        """{"type":"tool_call","id":"c1","name":"grep","arguments":{"q":"x"}}],""" +
+        """"usage":{"input":10,"output":5,"cachedInput":2,"costUsd":"0.000123"},""" +
+        """"model":"openai/gpt-5-mini","upstream":"Fireworks","stop":"other","stopRaw":"weird"}}"""
     }
 
     test("tool result") {

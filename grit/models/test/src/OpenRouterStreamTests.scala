@@ -43,6 +43,8 @@ object OpenRouterStreamTests extends TestSuite {
         Some(thought)
       message.stop ==> StopReason.EndTurn
       message.model ==> "openai/gpt-oss-20b"
+      // The upstream that served it, as its chunks name it.
+      message.upstream ==> Some("AkashML")
       message.usage.input ==> Tokens(80)
       message.usage.output ==> Tokens(92)
       message.usage.costUsd ==> Some(BigDecimal("0.0000108"))

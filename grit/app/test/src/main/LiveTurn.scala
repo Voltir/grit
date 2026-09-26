@@ -125,7 +125,7 @@ object LiveTurn {
   def reply(engine: Engine^, turn: TurnRef): Option[String] =
     engine.db.read(engine.entries.get(Turn.replyId(turn))).toOption.flatten.map {
       _.payload match {
-        case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
+        case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
           blocks.collect { case AssistantBlock.Text(t) => t }.mkString
         case other => s"not a reply: $other"
       }

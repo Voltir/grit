@@ -22,7 +22,7 @@ object Replies {
     */
   def text(entry: Entry): Option[String] = entry.payload match {
     case Payload.Message(Message.User(text)) => Some(text)
-    case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
+    case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
       Some(if (said.isEmpty) "(no text in the reply)" else said)
     case Payload.Message(Message.ToolResult(_, _, _)) => None

@@ -27,7 +27,7 @@ object CharEstimate extends TokenEstimator {
       case Message.User(text) => text.length.toLong
       case Message.ToolResult(callId, content, _) =>
         ToolCallId.value(callId).length.toLong + content.length
-      case Message.Assistant(blocks, _, _, _) =>
+      case Message.Assistant(blocks, _, _, _, _) =>
         blocks.map {
           case AssistantBlock.Text(text) => text.length.toLong
           case AssistantBlock.Reasoning(_, _) => 0L

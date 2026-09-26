@@ -314,7 +314,7 @@ object Eval {
   private def gist(loaded: Loaded, id: EntryId): String =
     loaded.messages.get(id).fold(EntryId.value(id)) {
       case Message.User(text) => s"\"${text.take(40)}\""
-      case Message.Assistant(blocks, _, _, _) =>
+      case Message.Assistant(blocks, _, _, _, _) =>
         blocks.collect { case AssistantBlock.Text(t) => s"\"${t.take(40)}…\"" }.mkString
       case Message.ToolResult(_, content, _) => s"\"${content.take(40)}\""
     }

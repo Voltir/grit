@@ -79,13 +79,14 @@ object PayloadJson {
 
   private def message(m: Message): ujson.Value = m match {
     case Message.User(text) => ujson.Obj("role" -> "user", "text" -> text)
-    case Message.Assistant(blocks, stop, usage, model) =>
+    case Message.Assistant(blocks, stop, usage, model, upstream) =>
       val base = ujson.Obj(
         "role" -> "assistant",
         "blocks" -> ujson.Arr.from(blocks.map(block)),
         "usage" -> writeUsage(usage),
         "model" -> model
       )
+      upstream.foreach(u => base("upstream") = u)
       stop match {
         case StopReason.EndTurn => base("stop") = "end_turn"
         case StopReason.ToolUse => base("stop") = "tool_use"
@@ -143,7 +144,11 @@ object PayloadJson {
             stop <- readStop(o)
             usage <- field(o, "usage").flatMap(readUsage)
             model <- str(o, "model")
-          } yield Message.Assistant(blocks, stop, usage, model)
+            upstream <- o.value.get("upstream") match {
+              case None => Right(None)
+              case Some(u) => u.strOpt.map(Some(_)).toRight("upstream is not text")
+            }
+          } yield Message.Assistant(blocks, stop, usage, model, upstream)
         case "tool_result" =>
           for {
             callId <- str(o, "callId")

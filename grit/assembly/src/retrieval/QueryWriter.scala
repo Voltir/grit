@@ -42,7 +42,7 @@ object QueryWriter {
 
   private def line(payload: Payload): Option[String] = payload match {
     case Payload.Message(Message.User(text)) => Some(s"User: $text")
-    case Payload.Message(Message.Assistant(blocks, _, _, _)) =>
+    case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       val said = blocks.collect { case AssistantBlock.Text(t) => t }
       Option.when(said.nonEmpty)(s"Assistant: ${said.mkString("\n")}")
     case Payload.Message(Message.ToolResult(_, content, _)) =>

@@ -34,6 +34,7 @@ object OpenRouterStream {
     var finish: Option[String] = None
     var usage: Option[ujson.Value] = None
     var model: Option[String] = None
+    var provider: Option[String] = None
     var outcome: Option[Either[ProviderError, Unit]] = None
 
     while (outcome.isEmpty && lines.hasNext) {
@@ -50,6 +51,7 @@ object OpenRouterStream {
                   outcome = Some(Left(OpenRouterJson.modelError(error)))
                 case None =>
                   chunk.get("model").flatMap(_.strOpt).foreach(m => model = Some(m))
+                  chunk.get("provider").flatMap(_.strOpt).foreach(p => provider = Some(p))
                   chunk.get("usage").filter(_.objOpt.isDefined).foreach(u => usage = Some(u))
                   val choice = chunk
                     .get("choices")
@@ -108,6 +110,7 @@ object OpenRouterStream {
         )
       )
       usage.foreach(u => body("usage") = u)
+      provider.foreach(p => body("provider") = p)
       body
     }
   }

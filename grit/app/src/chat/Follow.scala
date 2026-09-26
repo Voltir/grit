@@ -96,7 +96,7 @@ object Follow {
   }
 
   private def isReply(e: Entry): Boolean = e.payload match {
-    case Payload.Message(Message.Assistant(_, _, _, _)) => true
+    case Payload.Message(Message.Assistant(_, _, _, _, _)) => true
     case _ => false
   }
 
