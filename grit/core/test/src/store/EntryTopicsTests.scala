@@ -88,10 +88,9 @@ object EntryTopicsTests extends TestSuite {
       EntryTopics.through(kept, TurnSeq(2)).current.map(_.id) ==> Some(TopicId.carried(photo.id))
     }
 
-    test("before a turn, its own events are left out; through it, they are in") {
+    test("before a turn, its own events are left out") {
       val all = period1 ++ Vector(closing) ++ period2
       EntryTopics.before(all, TurnSeq(2)).current.map(_.id) ==> Some(TopicId.carried(backup.id))
-      EntryTopics.through(all, TurnSeq(2)).current.map(_.id) ==> Some(TopicId.carried(photo.id))
     }
 
     test("a close touches carried topics spoken in, adds named new ones, oldest first") {

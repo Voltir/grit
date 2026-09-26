@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.PluginName
 import grit.core.period.CloseOrdinal
 import grit.core.retention.{Target, Tombstone}
-import grit.core.store.{Tombstones, Tx}
+import grit.core.store.{StoreError, Tombstones, Tx}
 
 import utest.*
 
@@ -26,6 +26,11 @@ abstract class PluginContract extends TestSuite {
 
   /** Where the cursors mark what they leave for deletion. */
   protected def tombstones: Tombstones
+
+  /** How many documents `plugin` has in every generation, read past the store: its surfaces
+    * read only the current one.
+    */
+  protected def docRows(plugin: PluginName): Int
 
   /** Runs `body` in one transaction, committed when it returns. */
   protected def transaction[A](body: (Tx^) ?=> A): A
@@ -119,8 +124,19 @@ abstract class PluginContract extends TestSuite {
       transaction(docs(p).get("k")) ==> Right(None)
       // Retired, the earlier generations' documents are gone; the current one's are kept.
       transaction(cache(p, ordinal(1010)).put("k", ujson.Str("v1 again")))
+      docRows(p) ==> 3
       transaction(cursors.retire(p)) ==> Right(())
+      docRows(p) ==> 1
       transaction(docs(p).get("k")) ==> Right(Some(ujson.Str("v1 again")))
+    }
+
+    test("a put for a plugin with no cursor is a DatabaseError, and keeps nothing") {
+      val p = name("no-cursor")
+      transaction(cache(p, ordinal(1012)).put("k", ujson.Str("lost"))) match {
+        case Left(StoreError.DatabaseError(_)) => ()
+        case other => throw new java.lang.AssertionError(s"not a DatabaseError: $other")
+      }
+      docRows(p) ==> 0
     }
 
     test("remove deletes a plugin's documents and cursor, and no other's") {

@@ -28,12 +28,16 @@ final class InMemoryPlugins(tombstones: Tombstones = new InMemoryTombstones) {
   def cache(plugin: PluginName, source: CloseOrdinal): CacheDocs = new CacheDocs {
     def put(key: String, doc: ujson.Value)(using Tx^): Either[StoreError, Unit] =
       generation(plugin) match {
-        case None => Left(StoreError.Invalid(s"no cursor for ${PluginName.value(plugin)}"))
+        // As the SQL store's insert fails: its generation, read from the cursor, is null.
+        case None => Left(StoreError.DatabaseError(s"no cursor for ${PluginName.value(plugin)}"))
         case Some(g) =>
           stored = stored.updated((plugin, g, key), Doc(doc, source))
           Right(())
       }
   }
+
+  /** How many documents `plugin` has in every generation, current or not. */
+  def rows(plugin: PluginName): Int = stored.keys.count(_._1 == plugin)
 
   /** Given a plugin and the closed period it is posting, where it keeps what it makes of it. */
   val posting: (PluginName, ClosedPeriod) -> CacheDocs = (p, closed) => cache(p, closed.order)

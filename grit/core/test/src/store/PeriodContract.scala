@@ -227,6 +227,18 @@ abstract class PeriodContract extends TestSuite {
         Right(Some((Some(later), 2)))
     }
 
+    test("of two verdicts at the same instant, the activity carries the one judged last") {
+      val c = conversation("judged-tie")
+      val t0 = say(c, 0)
+      val p1 = PeriodRef(c, PeriodSeq.First)
+      val first = Verdict(at(60), t0.turnSeq, Judgement.Unanswered("no classifier"))
+      val second = Verdict(at(60), t0.turnSeq, Judgement.Weighed(p(0.86), p(0.04), p(0.10), "jev"))
+      transaction(periods.judged(p1, first)) ==> Right(true)
+      transaction(periods.judged(p1, second)) ==> Right(true)
+      transaction(periods.activity(p1)).map(_.map(a => (a.verdict, a.asked))) ==>
+        Right(Some((Some(second), 2)))
+    }
+
     test("a verdict about a turn no longer the newest, or a period not open, is ignored") {
       val c = conversation("judged-late")
       val t0 = say(c, 0)
@@ -338,9 +350,28 @@ abstract class PeriodContract extends TestSuite {
       more(t0, 1)
       val p1 = PeriodRef(c, PeriodSeq.First)
       seal(p1, say(c, 2), 30, "kept")
-      say(c, 40)
+      val t2 = say(c, 40)
+      more(t2, 41)
+      val p2 = PeriodRef(c, first(2))
+      seal(p2, t2, 50, "also kept")
+      say(c, 60)
+      val name = ConversationId.value(c)
+      // Period 1's closing is at its last turn, the one before period 2's first: a purge of
+      // period 2 bounded only by its last turn would take it, and period 1's raw entries.
+      transaction(periods.purge(p2, at(100))) ==> Right(())
+      transaction(entries.list(c)).map(ids) ==> Right(
+        Vector(
+          s"$name:say:0",
+          s"$name:more:1",
+          s"$name:say:2",
+          EntryId.value(p1.closingId),
+          EntryId.value(p2.closingId),
+          s"$name:say:7"
+        )
+      )
       transaction(periods.purge(p1, at(100))) ==> Right(())
-      val left = Vector(EntryId.value(p1.closingId), s"${ConversationId.value(c)}:say:4")
+      val left =
+        Vector(EntryId.value(p1.closingId), EntryId.value(p2.closingId), s"$name:say:7")
       transaction(entries.list(c)).map(ids) ==> Right(left)
       def purged = transaction(periods.get(p1)).map(_.map(p => closed(p.state).flatMap(_._5)))
       purged ==> Right(Some(Some(at(100))))

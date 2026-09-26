@@ -1,5 +1,7 @@
 package grit.dbos.engine
 
+import scala.util.Using
+
 import grit.core.id.PluginName
 import grit.core.period.CloseOrdinal
 import grit.core.plugin.{CacheDocs, PluginContract, PluginCursors, PluginDocs}
@@ -31,6 +33,20 @@ object SqlPluginTests extends PluginContract {
   protected val tombstones: Tombstones = new SqlTombstones
 
   protected val cursors: PluginCursors = new SqlPluginCursors(tombstones)
+
+  protected def docRows(plugin: PluginName): Int =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement("SELECT count(*) FROM grit.plugin_docs WHERE plugin = ?")
+      ) { ps =>
+        ps.setString(1, PluginName.value(plugin))
+        Using.resource(ps.executeQuery()) { rs =>
+          rs.next()
+          rs.getInt(1)
+        }
+      }
+    }
 
   protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
 }

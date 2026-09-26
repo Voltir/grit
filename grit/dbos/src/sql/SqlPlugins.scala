@@ -43,7 +43,7 @@ final class SqlPluginDocs(plugin: PluginName) extends PluginDocs {
 }
 
 /** [[CacheDocs]] over `plugin`'s rows of `grit.plugin_docs`, posted from the closed period
-  * `source`, in its cursor's generation: a `DatabaseError` when it has no cursor.
+  * `source`, in its cursor's generation.
   */
 final class SqlCacheDocs(plugin: PluginName, source: CloseOrdinal) extends CacheDocs {
   import SqlPlugins.*

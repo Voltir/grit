@@ -29,7 +29,9 @@ trait Plugin {
   */
 trait CacheDocs {
 
-  /** Keeps `doc` under `key`, replacing any there, as the period's. */
+  /** Keeps `doc` under `key`, replacing any there, as the period's; a `DatabaseError` when the
+    * plugin's cursor was never started.
+    */
   def put(key: String, doc: ujson.Value)(using Tx^): Either[StoreError, Unit]
 }
 

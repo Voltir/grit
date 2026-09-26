@@ -2,7 +2,7 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, PeriodRef, PeriodSeq, TurnRef, TurnSeq}
+import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.period.{
   Activity,
   CloseOrdinal,
@@ -95,7 +95,11 @@ final class InMemoryPeriodStore(
     val newest = (own.map(_.createdAt) :+ p.openedAt).maxBy(_.toEpochMilli)
     val last = own.map(_.turnSeq).maxByOption(TurnSeq.value).getOrElse(p.first)
     val judged = verdicts.collect { case (ref, v) if ref == p.ref => v }
-    Activity(p.ref, newest, last, judged.maxByOption(_.at.toEpochMilli), judged.size)
+    // As the SQL store orders them: by time to the microsecond, then the one judged last.
+    val latest = judged.zipWithIndex
+      .maxByOption((v, i) => (v.at.getEpochSecond, v.at.getNano / 1000, i))
+      .map(_._1)
+    Activity(p.ref, newest, last, latest, judged.size)
   }
 
   def open()(using Tx^): Either[StoreError, Vector[Activity]] =
@@ -143,9 +147,14 @@ final class InMemoryPeriodStore(
         closedOf(p).filter(c => TurnSeq.value(c.last) < TurnSeq.value(turn.turnSeq)).map(_.closing)
       )
       .lastOption
-    Right(
-      id.flatMap(id => entriesOf(turn.conversationId).find(_.id == id)).flatMap(ClosingEntry.of)
-    )
+    id.flatMap(id => entriesOf(turn.conversationId).find(_.id == id)) match {
+      case None => Right(None)
+      case Some(e) =>
+        ClosingEntry
+          .of(e)
+          .map(Some(_))
+          .toRight(StoreError.Invalid(s"${EntryId.value(e.id)} is not a closing entry"))
+    }
   }
 
   def openElsewhere(conversation: ConversationId)(using
@@ -166,13 +175,13 @@ final class InMemoryPeriodStore(
         .flatMap(p => closedOf(p).map(p -> _))
         .filter(_._2.order.isAfter(after))
         .sortBy(pc => CloseOrdinal.value(pc._2.order))
-        .take(n max 0)
         .flatMap { (p, c) =>
           entriesOf(p.ref.conversationId).find(_.id == c.closing).map(_.payload).collect {
             case Payload.Closed(_, _, closing) =>
               ClosedPeriod(p.ref, origin(p.ref.conversationId), c.reason, closing, c.at, c.order)
           }
         }
+        .take(n max 0)
     )
 
   def verdictsOn(period: PeriodRef): Int = verdicts.count(_._1 == period)

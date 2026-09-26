@@ -28,13 +28,14 @@ object TopicsTests extends TestSuite {
     }
 
     test("before any message is placed, the current topic is the first carried one, named") {
+      // Carried in an order neither id nor name order gives.
       val t = Topics.fold(
-        Vector(Topics.Carried(a, "Photo Rename", None), Topics.Carried(b, "Backup", None)),
+        Vector(Topics.Carried(b, "Photo Rename", None), Topics.Carried(a, "Backup", None)),
         Vector.empty
       )
       t.current.map(c => (c.id, c.name, c.summary, c.turns)) ==>
-        Some((a, Some("Photo Rename"), None, Vector()))
-      t.topics.map(_.id) ==> Vector(a, b)
+        Some((b, Some("Photo Rename"), None, Vector()))
+      t.topics.map(_.id) ==> Vector(b, a)
     }
 
     test("a carried topic keeps its summary until it is described again") {
@@ -47,18 +48,19 @@ object TopicsTests extends TestSuite {
     }
 
     test("a carried topic ranks by its latest turn once spoken in; the rest follow in order") {
+      // Carried in an order neither id nor name order gives.
       val t = Topics.fold(
         Vector(
-          Topics.Carried(a, "A", None),
           Topics.Carried(b, "B", None),
-          Topics.Carried(c, "C", None)
+          Topics.Carried(c, "C", None),
+          Topics.Carried(a, "A", None)
         ),
         Vector(
           placed(5, c),
           TopicEvent.Described(c, "C", "all about c")
         )
       )
-      t.topics.map(_.id) ==> Vector(c, a, b)
+      t.topics.map(_.id) ==> Vector(c, b, a)
       t.current.map(x => (x.id, x.summary)) ==> Some((c, Some("all about c")))
     }
 

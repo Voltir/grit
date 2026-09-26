@@ -19,5 +19,7 @@ object InMemoryPluginTests extends PluginContract {
 
   protected val cursors: PluginCursors = plugins.cursors
 
+  protected def docRows(plugin: PluginName): Int = plugins.rows(plugin)
+
   protected def transaction[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)
 }
