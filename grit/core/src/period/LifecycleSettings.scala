@@ -2,19 +2,24 @@ package grit.core.period
 
 import scala.concurrent.duration.*
 
+import grit.core.place.Locality
+
 /** The lifecycle's settings in force: the `windows` periods lapse and are purged by; the cap,
   * in UTF-8 bytes of its lines' text, a closing's balance is held to (`balance`,
   * [[Balance.fit]]); how long a period is quiet before the classifier is asked whether
   * anyone is waiting on anything (`settle`); the probability that nobody is at which its
   * answer closes the period (`resolveAt`; at 1, no period is asked and none closes but by
-  * lapsing); and how many times one period is asked at most (`asks`).
+  * lapsing); how many times one period is asked at most (`asks`); and which other places'
+  * open periods a window draws on, and how its own conversation is weighted against them
+  * (`locality`).
   */
 final case class LifecycleSettings private (
     windows: Windows,
     balance: Int,
     settle: FiniteDuration,
     resolveAt: Probability,
-    asks: Int
+    asks: Int,
+    locality: Locality
 )
 
 object LifecycleSettings {
@@ -27,7 +32,8 @@ object LifecycleSettings {
       balance: Int,
       settle: FiniteDuration,
       resolveAt: Probability,
-      asks: Int
+      asks: Int,
+      locality: Locality
   ): Either[String, LifecycleSettings] =
     for {
       _ <- Either.cond(balance >= 1, (), "balance must be at least 1")
@@ -35,10 +41,10 @@ object LifecycleSettings {
       _ <- Either.cond(settle < windows.idle, (), "settle must be shorter than idle")
       _ <- Either.cond(resolveAt > Probability.Zero, (), "resolveAt must be above 0")
       _ <- Either.cond(asks >= 1, (), "asks must be at least 1")
-    } yield new LifecycleSettings(windows, balance, settle, resolveAt, asks)
+    } yield new LifecycleSettings(windows, balance, settle, resolveAt, asks, locality)
 
   /** [[Windows.Default]], a 4096-byte balance (about a thousand tokens), an hour to settle,
-    * resolved at 0.8, 3 asks.
+    * resolved at 0.8, 3 asks, and [[Locality.Default]].
     */
   val Default: LifecycleSettings =
     new LifecycleSettings(
@@ -47,6 +53,7 @@ object LifecycleSettings {
       1.hour,
       // 0.8 is a probability, so the fallback is never taken.
       Probability.of(0.8).getOrElse(Probability.One),
-      3
+      3,
+      Locality.Default
     )
 }

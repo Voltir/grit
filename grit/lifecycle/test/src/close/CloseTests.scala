@@ -327,7 +327,7 @@ object CloseTests extends TestSuite {
       // (a7542da0… against d627e55e…), so it is refused first, and that is enough.
       w.lifecycle.set(
         LifecycleSettings
-          .of(d.windows, 22, d.settle, d.resolveAt, d.asks)
+          .of(d.windows, 22, d.settle, d.resolveAt, d.asks, d.locality)
           .getOrElse(throw new java.lang.AssertionError("settings"))
       )(using TestTx.fake)
       w.say("where do we deploy?", 0)

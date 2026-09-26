@@ -4,11 +4,12 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.period.{LifecycleSettings, Probability, Windows}
+import grit.core.place.{Locality, Place, Scope, Weight}
 import grit.core.store.{LifecycleStore, StoreError, Tx}
 
 /** [[LifecycleStore]] over the one row of `grit.lifecycle_settings`. The durations are
   * `interval`s, so they can be changed by hand (`SET idle = '3 minutes'`), and read back to
-  * the millisecond.
+  * the millisecond; the scope is its places as written (`SET scope = '{fs:/home/you}'`).
   */
 final class SqlLifecycleStore extends LifecycleStore {
   import SqlEntryStore.attempt
@@ -22,7 +23,7 @@ final class SqlLifecycleStore extends LifecycleStore {
             |       (extract(epoch FROM retention) * 1000)::bigint AS retention,
             |       balance,
             |       (extract(epoch FROM settle) * 1000)::bigint AS settle,
-            |       resolve_at, asks
+            |       resolve_at, asks, to_jsonb(scope)::text AS scope, weight
             |  FROM grit.lifecycle_settings""".stripMargin
         )
       ) { ps =>
@@ -30,7 +31,13 @@ final class SqlLifecycleStore extends LifecycleStore {
           if (!rs.next()) Right(LifecycleSettings.Default)
           else {
             val resolveAt = rs.getDouble("resolve_at")
+            val written = ujson.read(rs.getString("scope")).arr.toVector.map(_.str)
             (for {
+              // Each place read on its own, so one written by hand may hold a space.
+              prefixes <- written.foldLeft[Either[String, Vector[Place]]](Right(Vector.empty)) {
+                (acc, w) => acc.flatMap(done => Place.read(w).map(done :+ _))
+              }
+              weight <- Weight.of(rs.getDouble("weight"))
               windows <- Windows.of(rs.getLong("idle").millis, rs.getLong("retention").millis)
               at <- Probability
                 .of(resolveAt)
@@ -40,7 +47,8 @@ final class SqlLifecycleStore extends LifecycleStore {
                 rs.getInt("balance"),
                 rs.getLong("settle").millis,
                 at,
-                rs.getInt("asks")
+                rs.getInt("asks"),
+                Locality(Scope(prefixes), weight)
               )
             } yield settings).left.map(why => StoreError.Invalid(s"lifecycle settings: $why"))
           }
@@ -57,7 +65,8 @@ final class SqlLifecycleStore extends LifecycleStore {
       settings,
       """ON CONFLICT (one) DO UPDATE SET idle = EXCLUDED.idle, retention = EXCLUDED.retention,
         |  balance = EXCLUDED.balance, settle = EXCLUDED.settle,
-        |  resolve_at = EXCLUDED.resolve_at, asks = EXCLUDED.asks""".stripMargin
+        |  resolve_at = EXCLUDED.resolve_at, asks = EXCLUDED.asks,
+        |  scope = EXCLUDED.scope, weight = EXCLUDED.weight""".stripMargin
     )
 
   private def write(settings: LifecycleSettings, onConflict: String)(using
@@ -68,9 +77,11 @@ final class SqlLifecycleStore extends LifecycleStore {
     attempt {
       Using.resource(
         conn.prepareStatement(
-          s"""INSERT INTO grit.lifecycle_settings (idle, retention, balance, settle, resolve_at, asks)
+          s"""INSERT INTO grit.lifecycle_settings
+             |       (idle, retention, balance, settle, resolve_at, asks, scope, weight)
              |VALUES (? * interval '1 millisecond', ? * interval '1 millisecond', ?,
-             |        ? * interval '1 millisecond', ?, ?)
+             |        ? * interval '1 millisecond', ?, ?,
+             |        ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?)
              |$onConflict""".stripMargin
         )
       ) { ps =>
@@ -80,6 +91,12 @@ final class SqlLifecycleStore extends LifecycleStore {
         ps.setLong(4, settings.settle.toMillis)
         ps.setDouble(5, Probability.value(settings.resolveAt))
         ps.setInt(6, settings.asks)
+        // The scope's places as written, sent as JSON so no Java array crosses JDBC.
+        ps.setString(
+          7,
+          ujson.Arr.from(settings.locality.scope.prefixes.map(p => ujson.Str(p.written))).render()
+        )
+        ps.setDouble(8, Weight.value(settings.locality.weight))
         ps.executeUpdate()
         ()
       }

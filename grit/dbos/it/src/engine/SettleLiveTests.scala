@@ -10,6 +10,7 @@ import grit.core.durable.Durable
 import grit.core.id.{PeriodRef, PeriodSeq, SettleRef, SourceId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.Message
 import grit.core.period.{Judgement, LifecycleSettings, Probability, Verdict, Windows}
+import grit.core.place.Locality
 import grit.core.store.Origin
 import grit.dbos.sql.{
   DbConfig,
@@ -36,7 +37,7 @@ object SettleLiveTests extends TestSuite {
   private def settling(config: DbConfig): Unit = {
     val settings = Windows
       .of(10.minutes, 1.day)
-      .flatMap(LifecycleSettings.of(_, 4096, 1.minute, p(0.8), 3))
+      .flatMap(LifecycleSettings.of(_, 4096, 1.minute, p(0.8), 3, Locality.Default))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
     ()

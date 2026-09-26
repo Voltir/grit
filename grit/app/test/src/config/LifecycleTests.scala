@@ -3,6 +3,7 @@ package grit.app.config
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.period.{LifecycleSettings, Probability, Windows}
+import grit.core.place.{Locality, Scope, Weight}
 
 import utest.*
 
@@ -18,12 +19,17 @@ object LifecycleTests extends TestSuite {
       balance: Int,
       settle: FiniteDuration,
       resolveAt: Double,
-      asks: Int
+      asks: Int,
+      locality: Locality = Locality.Default
   ): LifecycleSettings =
     Windows
       .of(idle, retention)
-      .flatMap(LifecycleSettings.of(_, balance, settle, p(resolveAt), asks))
+      .flatMap(LifecycleSettings.of(_, balance, settle, p(resolveAt), asks, locality))
       .getOrElse(throw new java.lang.AssertionError("settings"))
+
+  private def scope(text: String): Scope = Scope.read(text).fold(e => sys.error(e), identity)
+
+  private def weight(w: Double): Weight = Weight.of(w).fold(e => sys.error(e), identity)
 
   val tests = Tests {
     test("the environment seeds each setting it names; the rest are the defaults") {
@@ -77,7 +83,7 @@ object LifecycleTests extends TestSuite {
       Change.parse("resolve 2") ==>
         Left("resolve: not a probability: write a number from 0 to 1, as 0.8")
       Change.parse("grace 3m") ==>
-        Left("no setting grace: idle, settle, resolve, asks, retention or balance")
+        Left("no setting grace: idle, settle, resolve, asks, retention, balance, scope or weight")
       Change.parse("idle 3") ==>
         Left("idle: not a duration: write a whole number and s, m, h or d, as 30s or 3m")
     }
@@ -96,13 +102,62 @@ object LifecycleTests extends TestSuite {
       Change.Asks(0).applied(now) ==> Left("asks must be at least 1")
     }
 
+    test("the environment seeds the scope and the weight") {
+      Lifecycle
+        .fromEnv(Map("GRIT_SCOPE" -> "fs:/home/nick slack:acme", "GRIT_WEIGHT" -> "3"))
+        .map(
+          _.locality
+        ) ==> Right(Locality(scope("fs:/home/nick slack:acme"), weight(3)))
+      Lifecycle.fromEnv(Map("GRIT_SCOPE" -> "none")).map(_.locality.scope) ==> Right(Scope.Off)
+      Lifecycle.fromEnv(Map("GRIT_WEIGHT" -> "0.5")) ==>
+        Left("GRIT_WEIGHT: a weight is a number of at least 1, not 0.5")
+      Lifecycle.fromEnv(Map("GRIT_SCOPE" -> "home")) ==> Left(
+        "GRIT_SCOPE: no namespace in home: write it as fs:/a/path, slack:team/channel or task:name"
+      )
+    }
+
+    test("/set scope and weight change the locality, and every other change keeps it") {
+      Vector("scope fs:/home/nick slack:acme", "scope none", "weight 3").map(Change.parse) ==>
+        Vector(
+          Right(Change.Scope(scope("fs:/home/nick slack:acme"))),
+          Right(Change.Scope(Scope.Off)),
+          Right(Change.Weight(weight(3)))
+        )
+      Change.parse("weight 0.5") ==> Left("weight: a weight is a number of at least 1, not 0.5")
+      Change.parse("scope") ==> Left("scope takes none, everywhere, or places such as fs:/home/you")
+      val near = Locality(scope("fs:/home/nick"), weight(3))
+      val now = settings(60.minutes, 600.minutes, 4096, 5.minutes, 0.8, 3, near)
+      Change.Idle(10.minutes).applied(now).map(_.locality) ==> Right(near)
+      Change.Scope(Scope.Off).applied(now).map(_.locality) ==> Right(Locality(Scope.Off, weight(3)))
+      Change.Weight(weight(1)).applied(now).map(_.locality) ==>
+        Right(Locality(scope("fs:/home/nick"), weight(1)))
+    }
+
+    test("the settings in one line say where a window draws from") {
+      Lifecycle.describe(settings(3.hours, 1.day, 300, 1.hour, 0.8, 3)) ==>
+        "after 1h quiet, asks whether anyone is waiting (at most 3 times) and closes when nobody is at 0.8 or " +
+        "more; closes after 3h idle; raw entries kept 1d; the balance holds 300 bytes; draws on open " +
+        "periods everywhere, its own weighted 2"
+      Lifecycle.describe(
+        settings(3.hours, 1.day, 300, 1.hour, 0.8, 3, Locality(scope("fs:/a slack:b"), weight(1.5)))
+      ) ==> "after 1h quiet, asks whether anyone is waiting (at most 3 times) and closes when nobody is " +
+        "at 0.8 or more; closes after 3h idle; raw entries kept 1d; the balance holds 300 bytes; " +
+        "draws on open periods in fs:/a slack:b, its own weighted 1.5"
+      Lifecycle.describe(
+        settings(3.hours, 1.day, 300, 1.hour, 1.0, 3, Locality(Scope.Off, weight(2)))
+      ) ==>
+        "never asks whether anyone is waiting; closes after 3h idle; raw entries kept 1d; " +
+        "the balance holds 300 bytes; draws on no other place"
+    }
+
     test("the settings in one line; at resolve 1, nothing is asked") {
       Lifecycle.describe(settings(3.hours, 1.day, 300, 1.hour, 0.8, 3)) ==>
         "after 1h quiet, asks whether anyone is waiting (at most 3 times) and closes when nobody is at 0.8 or " +
-        "more; closes after 3h idle; raw entries kept 1d; the balance holds 300 bytes"
+        "more; closes after 3h idle; raw entries kept 1d; the balance holds 300 bytes; draws on open " +
+        "periods everywhere, its own weighted 2"
       Lifecycle.describe(settings(3.hours, 1.day, 300, 1.hour, 1.0, 3)) ==>
         "never asks whether anyone is waiting; closes after 3h idle; raw entries kept 1d; " +
-        "the balance holds 300 bytes"
+        "the balance holds 300 bytes; draws on open periods everywhere, its own weighted 2"
     }
   }
 }

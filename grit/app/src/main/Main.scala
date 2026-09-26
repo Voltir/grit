@@ -65,10 +65,10 @@ import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
   * closing written by the summary role and gated by that classifier, and posting each closed
   * period to the plugins `GRIT_PLUGINS` turns on ([[pluginChoice]], [[Posting]]; with
   * Digest on, each turn's model is offered `recent_activity`). When a period is asked about
-  * and closes, and how many closing entries open a window, are data in the database: on the
-  * first start against a database they are seeded from `GRIT_IDLE`, `GRIT_SETTLE`,
-  * `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION` and `GRIT_WINDOW_K`
-  * ([[Lifecycle.fromEnv]]); after that, those variables are ignored, and `/set` (or SQL)
+  * and closes, what its balance holds, and which other places' open periods a window draws
+  * on, are data in the database: on the first start against a database they are seeded from
+  * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
+  * `GRIT_BALANCE`, `GRIT_SCOPE` and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]); after that, those variables are ignored, and `/set` (or SQL)
   * changes them, from the next sweep and turn on.
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names

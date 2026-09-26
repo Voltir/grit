@@ -21,6 +21,7 @@ import grit.core.period.{
   Verdict,
   Windows
 }
+import grit.core.place.{Locality, Scope, Weight}
 
 import utest.*
 
@@ -379,15 +380,26 @@ abstract class PeriodContract extends TestSuite {
     }
 
     test("the lifecycle's settings are the defaults until seeded, seeded once, then set") {
-      def settings(idle: FiniteDuration, balance: Int, resolveAt: Double, asks: Int) =
+      def settings(
+          idle: FiniteDuration,
+          balance: Int,
+          resolveAt: Double,
+          asks: Int,
+          locality: Locality
+      ) =
         Windows
           .of(idle, 1.day)
-          .flatMap(LifecycleSettings.of(_, balance, idle - 1.minute, p(resolveAt), asks))
+          .flatMap(LifecycleSettings.of(_, balance, idle - 1.minute, p(resolveAt), asks, locality))
           .getOrElse(throw new java.lang.AssertionError(idle))
+      def locality(scope: String, weight: Double) =
+        (for {
+          s <- Scope.read(scope)
+          w <- Weight.of(weight)
+        } yield Locality(s, w)).fold(e => throw new java.lang.AssertionError(e), identity)
       val (seeded, ignored, later) = (
-        settings(3.minutes, 300, 0.8, 3),
-        settings(5.minutes, 200, 0.9, 2),
-        settings(7.minutes, 100, 0.75, 1)
+        settings(3.minutes, 300, 0.8, 3, locality("fs:/home/nick/Projects slack:acme", 1.5)),
+        settings(5.minutes, 200, 0.9, 2, Locality.Default),
+        settings(7.minutes, 100, 0.75, 1, locality("none", 3))
       )
       transaction(lifecycle.current()) ==> Right(LifecycleSettings.Default)
       transaction(lifecycle.seed(seeded)) ==> Right(seeded)

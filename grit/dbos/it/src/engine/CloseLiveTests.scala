@@ -11,6 +11,7 @@ import grit.core.durable.Durable
 import grit.core.id.{EntryId, PeriodRef, PeriodSeq, SourceId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.Message
 import grit.core.period.{LifecycleSettings, Probability, Windows}
+import grit.core.place.Locality
 import grit.core.store.{Entry, Origin, Payload}
 import grit.dbos.sql.{DbConfig, LiveDb, SqlLifecycleStore, TestPostgres}
 
@@ -26,7 +27,7 @@ object CloseLiveTests extends TestSuite {
   private def minuteIdle(config: DbConfig): Unit = {
     val settings = Windows
       .of(1.minute, 1.day)
-      .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1))
+      .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1, Locality.Default))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
     ()

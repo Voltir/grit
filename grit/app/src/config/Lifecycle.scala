@@ -3,6 +3,7 @@ package grit.app.config
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.period.{LifecycleSettings, Probability, Windows}
+import grit.core.place.{Locality, Scope as PlaceScope, Weight as PlaceWeight}
 
 /** The lifecycle's settings as a person writes them: seeded from the environment on first
   * start, then changed one at a time with `/set`.
@@ -15,11 +16,15 @@ object Lifecycle {
   private val SettleVar = "GRIT_SETTLE"
   private val ResolveAtVar = "GRIT_RESOLVE_AT"
   private val AsksVar = "GRIT_ASKS"
+  private val ScopeVar = "GRIT_SCOPE"
+  private val WeightVar = "GRIT_WEIGHT"
 
   /** The settings the environment seeds: `GRIT_IDLE`, `GRIT_RETENTION` and `GRIT_SETTLE`
     * ([[Durations]]), `GRIT_BALANCE` and `GRIT_ASKS` (whole numbers) and `GRIT_RESOLVE_AT`
-    * (a probability, as 0.8), each unset one as [[LifecycleSettings.Default]] has it; or why
-    * they are none, naming the variable.
+    * (a probability, as 0.8), `GRIT_SCOPE` (none, everywhere, or places separated by
+    * spaces, as `fs:/home/you slack:team`) and `GRIT_WEIGHT` (a number of at least 1), each
+    * unset one as [[LifecycleSettings.Default]] has it; or why they are none, naming the
+    * variable.
     */
   def fromEnv(env: Map[String, String]): Either[String, LifecycleSettings] = {
     val default = LifecycleSettings.Default
@@ -42,9 +47,16 @@ object Lifecycle {
         case None => Right(default.resolveAt)
         case Some(raw) => probability(raw).left.map(why => s"$ResolveAtVar: $why")
       }
+      scope <- env
+        .get(ScopeVar)
+        .fold(Right(default.locality.scope))(PlaceScope.read(_).left.map(why => s"$ScopeVar: $why"))
+      weight <- env.get(WeightVar) match {
+        case None => Right(default.locality.weight)
+        case Some(raw) => weightOf(raw).left.map(why => s"$WeightVar: $why")
+      }
       windows <- Windows.of(idle, retention).left.map(why => s"$IdleVar, $RetentionVar: $why")
       settings <- LifecycleSettings
-        .of(windows, balance, settle, resolveAt, asks)
+        .of(windows, balance, settle, resolveAt, asks, Locality(scope, weight))
         .left
         .map(why => s"$BalanceVar, $SettleVar, $ResolveAtVar, $AsksVar: $why")
     } yield settings
@@ -55,6 +67,11 @@ object Lifecycle {
       .flatMap(Probability.of)
       .toRight("not a probability: write a number from 0 to 1, as 0.8")
 
+  private def weightOf(raw: String): Either[String, PlaceWeight] =
+    raw.trim.toDoubleOption
+      .toRight(s"a weight is a number of at least 1, not ${raw.trim}")
+      .flatMap(PlaceWeight.of)
+
   /** One setting changed. */
   enum Change extends caps.Pure {
     case Idle(to: FiniteDuration)
@@ -63,6 +80,8 @@ object Lifecycle {
     case Settle(to: FiniteDuration)
     case ResolveAt(to: Probability)
     case Asks(to: Int)
+    case Scope(to: PlaceScope)
+    case Weight(to: PlaceWeight)
 
     /** `settings` with this change, or why the result breaks their rules. */
     def applied(settings: LifecycleSettings): Either[String, LifecycleSettings] = {
@@ -72,15 +91,33 @@ object Lifecycle {
         case Idle(to) =>
           Windows
             .of(to, w.retention)
-            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.resolveAt, s.asks))
+            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.resolveAt, s.asks, s.locality))
         case Retention(to) =>
           Windows
             .of(w.idle, to)
-            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.resolveAt, s.asks))
-        case Balance(to) => LifecycleSettings.of(w, to, s.settle, s.resolveAt, s.asks)
-        case Settle(to) => LifecycleSettings.of(w, s.balance, to, s.resolveAt, s.asks)
-        case ResolveAt(to) => LifecycleSettings.of(w, s.balance, s.settle, to, s.asks)
-        case Asks(to) => LifecycleSettings.of(w, s.balance, s.settle, s.resolveAt, to)
+            .flatMap(LifecycleSettings.of(_, s.balance, s.settle, s.resolveAt, s.asks, s.locality))
+        case Balance(to) => LifecycleSettings.of(w, to, s.settle, s.resolveAt, s.asks, s.locality)
+        case Settle(to) => LifecycleSettings.of(w, s.balance, to, s.resolveAt, s.asks, s.locality)
+        case ResolveAt(to) => LifecycleSettings.of(w, s.balance, s.settle, to, s.asks, s.locality)
+        case Asks(to) => LifecycleSettings.of(w, s.balance, s.settle, s.resolveAt, to, s.locality)
+        case Scope(to) =>
+          LifecycleSettings.of(
+            w,
+            s.balance,
+            s.settle,
+            s.resolveAt,
+            s.asks,
+            s.locality.copy(scope = to)
+          )
+        case Weight(to) =>
+          LifecycleSettings.of(
+            w,
+            s.balance,
+            s.settle,
+            s.resolveAt,
+            s.asks,
+            s.locality.copy(weight = to)
+          )
       }
     }
   }
@@ -89,10 +126,12 @@ object Lifecycle {
 
     /** The names `/set` takes, in the order its help lists them. */
     val Names: Vector[String] =
-      Vector("idle", "settle", "resolve", "asks", "retention", "balance")
+      Vector("idle", "settle", "resolve", "asks", "retention", "balance", "scope", "weight")
 
     /** The change `text` writes: a name, then its value (`idle 3m`, `resolve 0.9`,
-      * `balance 300`); or why it writes none.
+      * `balance 300`, `scope fs:/home/you slack:team`, `scope none`, `weight 2`); or why it
+      * writes none. A scope is places separated by spaces, so a path holding a space cannot
+      * be written here.
       */
     def parse(text: String): Either[String, Change] = {
       val (name, value) = text.trim.span(_ != ' ')
@@ -108,6 +147,10 @@ object Lifecycle {
         case "balance" => whole(Balance(_))
         case "asks" => whole(Asks(_))
         case "resolve" => probability(value).map(ResolveAt(_)).left.map(why => s"$name: $why")
+        case "scope" =>
+          if (value.isBlank) Left(s"$name takes none, everywhere, or places such as fs:/home/you")
+          else PlaceScope.read(value).map(Scope(_)).left.map(why => s"$name: $why")
+        case "weight" => weightOf(value).map(Weight(_)).left.map(why => s"$name: $why")
         case other => Left(s"no setting $other: ${Names.init.mkString(", ")} or ${Names.last}")
       }
     }
@@ -122,8 +165,16 @@ object Lifecycle {
         s"after ${written(settings.settle)} quiet, asks whether anyone is waiting (at most " +
           s"${settings.asks} times) and closes when nobody is at " +
           s"${Probability.value(settings.resolveAt)} or more"
+    val l = settings.locality
+    val weight = PlaceWeight.value(l.weight)
+    val weighted = if (weight.isWhole) weight.toLong.toString else weight.toString
+    val drawing =
+      if (l.scope.prefixes.isEmpty) "draws on no other place"
+      else if (l.scope == PlaceScope.Everywhere)
+        s"draws on open periods everywhere, its own weighted $weighted"
+      else s"draws on open periods in ${l.scope.written}, its own weighted $weighted"
     s"$asking; closes after ${written(w.idle)} idle; raw entries kept ${written(w.retention)}; " +
-      s"the balance holds ${settings.balance} bytes"
+      s"the balance holds ${settings.balance} bytes; $drawing"
   }
 
   /** `d` in the largest of [[Durations]]' units that writes it whole. */

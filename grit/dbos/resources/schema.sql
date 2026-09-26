@@ -208,7 +208,11 @@ CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
     balance     INTEGER NOT NULL,
     settle      INTERVAL NOT NULL,
     resolve_at DOUBLE PRECISION NOT NULL,
-    asks        INTEGER NOT NULL
+    asks        INTEGER NOT NULL,
+    -- Which places' open periods a window draws on (Place.written of each prefix; '{}' is
+    -- none, '{everywhere}' the default), and how its own conversation's hits are weighted.
+    scope       TEXT[] NOT NULL,
+    weight      DOUBLE PRECISION NOT NULL
 );
 
 -- Each plugin's documents, under keys it chooses (grit.core.plugin.PluginDocs): a plugin

@@ -16,6 +16,7 @@ import grit.core.period.{
   TestClosings,
   Windows
 }
+import grit.core.place.Locality
 import grit.core.store.{Origin, Tx}
 import grit.dbos.sql.{
   DbConfig,
@@ -42,7 +43,7 @@ object RetentionLiveTests extends TestSuite {
   private def minutes(config: DbConfig): Unit = {
     val settings = Windows
       .of(1.minute, 1.minute)
-      .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1))
+      .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1, Locality.Default))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
     ()
