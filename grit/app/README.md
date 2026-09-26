@@ -9,6 +9,7 @@ Run it with `scripts/grit`.
 In dependency order:
 
 - **`config`** — `DotEnv`: settings from a `.env` file under the real environment.
+  `Durations`: a duration as a setting writes it (`30s`, `3m`, `24h`, `30d`).
   `Prefs`: what grit remembers between runs (the theme last chosen), in
   `$XDG_CONFIG_HOME/grit/prefs` or `~/.config/grit/prefs`. Imports nothing in app.
 - **`look`** — `Theme`, a palette by role (Frost the default; `GRIT_THEME` picks
@@ -50,7 +51,8 @@ In dependency order:
   `JEV_API_KEY`, the stub classifier with `GRIT_STUB_TOPICS=1`, none otherwise), offering
   each turn's model the coding tools over the checkout it runs in (`grit.tools` over
   `grit.host`): which ones as `GRIT_TOOLS` says (`Main.toolChoice`), the edits and shell
-  built only when they are offered, then runs the chat TUI, or with arguments answers each as a message.
+  built only when they are offered, and launches the close (`grit.lifecycle`) beside the
+  turn, sweeping every `GRIT_SWEEP`; then runs the chat TUI, or with arguments answers each as a message.
   `KeptFacts`, the fact book `propose_fact` keeps approved facts in; `PromoteFacts`, which
   prints the seed catalog with every approved fact laid over it, for a reviewed commit.
   ← `config`, `look`, `chat`

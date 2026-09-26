@@ -176,6 +176,29 @@ object grit extends Module {
     }
   }
 
+  /* The engine's own workflows besides the turn: close (a period sealed with its closing
+   * entry; ADR 0011). Written against core's seams and Durable, never DBOS, so its tests
+   * run it over core's in-memory fakes. grit/lifecycle/README.md. */
+  object lifecycle extends GritModule {
+    def moduleDeps = Seq(core)
+
+    /* The close under core's in-memory durability and store fakes. Recorded close
+     * histories, one directory per epoch (ADR 0004), are replayed by CloseReplayTests and
+     * written by RecordCloseHistories, as grit.turn.test's are; the epoch is the engine's,
+     * Turn.Epoch, which is all this reads of grit.turn. */
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test, grit.turn)
+      def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
+      def histories = Task.Source(moduleDir / "histories")
+      def forkEnv = Task {
+        super.forkEnv() ++ Map(
+          "GRIT_HISTORIES" -> histories().path.toString,
+          "GRIT_HISTORIES_SIG" -> histories().sig.toString
+        )
+      }
+    }
+  }
+
   /* Models: the frontier provider, and later the relevance judge. A quarantine module
    * once it has an HTTP client. roadmap/mechanisms/models.md. */
   object models extends GritModule {
@@ -281,6 +304,7 @@ object grit extends Module {
         grit.core,
         grit.dbos,
         grit.turn,
+        grit.lifecycle,
         grit.models,
         grit.assembly,
         grit.prose,

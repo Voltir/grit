@@ -18,7 +18,10 @@ object Turns {
 
   private val WorkflowName = "turn"
 
-  private val QueueName = "turns"
+  /** The queue turns and closes share, partitioned by conversation, so a close never runs
+    * beside a turn of its conversation ([[Closes]]).
+    */
+  private[workflow] val QueueName = "turns"
 
   /** Registers the `turns` queue and `body` as the turn workflow. Must run before
     * `dbos.launch()`.

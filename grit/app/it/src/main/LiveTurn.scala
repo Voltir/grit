@@ -12,6 +12,7 @@ import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
 import grit.core.store.{EntryStore, Origin, Payload}
 import grit.dbos.engine.Engine
 import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
+import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.models.{StubModels, StubProvider}
 import grit.tools.Coding
 import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling, TurnTools}
@@ -89,6 +90,15 @@ object LiveTurn {
             Fresh.random()
           ),
           tooling
+        ),
+        Close.body(
+          CloseEnv(
+            CloseRecords(entries, engine.periods, engine.lifecycle, engine.ledger, CharEstimate),
+            grit.core.classify.Classifier.none("no classifier"),
+            models,
+            engine.db,
+            Clock.system()
+          )
         )
       )
     val budget = TurnLoop.Budget.of(5).fold(why => sys.error(why), identity)

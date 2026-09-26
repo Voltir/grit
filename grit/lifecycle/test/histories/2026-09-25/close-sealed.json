@@ -1,0 +1,24 @@
+{
+  "workflow": "close",
+  "id": "close:c1:1:1",
+  "epoch": "2026-09-25",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"due\":\"lapsed\",\"first\":0}}"
+    },
+    {
+      "name": "gate",
+      "output": "{\"outcome\":true,\"decisions\":true,\"facts\":false,\"open\":true,\"sources\":true}"
+    },
+    {
+      "name": "summarise",
+      "output": "{\"closing\":{\"v\":1,\"prose\":\"We chose staging.\",\"outcome\":\"staging\",\"decisions\":[\"staging first\"],\"facts\":[],\"open\":[],\"sources\":[]},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":68}}"
+    },
+    {
+      "name": "seal",
+      "output": "{\"ok\":{\"closed\":\"closing:c1:1\"}}"
+    }
+  ]
+}

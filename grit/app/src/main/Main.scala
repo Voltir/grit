@@ -1,7 +1,9 @@
 package grit.app.main
 
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
+
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
-import grit.app.config.{DotEnv, Prefs}
+import grit.app.config.{DotEnv, Durations, Prefs}
 import grit.app.look.Theme
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
@@ -18,6 +20,7 @@ import grit.core.tool.{DuplicateName, ToolName, Toolbox}
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
 import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
+import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.models.{
   JevClassifier,
   JevConfig,
@@ -51,7 +54,9 @@ import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
   * model is offered the tools `GRIT_TOOLS` names ([[ToolChoice]]) over the checkout grit
   * runs in, in at most `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at
   * least 2), the last with tools off. A command it runs sees only the environment
-  * `LocalShell` passes.
+  * `LocalShell` passes. The engine sweeps every `GRIT_SWEEP` (default
+  * [[DefaultSweep]]), closing each period whose deadline has come ([[Close]]), its closing
+  * written by the summary role and gated by the same classifier as the topics.
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
   *     (default `default`). Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
@@ -114,6 +119,7 @@ object Main {
     val modelName =
       openRouter.fold(StubProvider.Model)((_, c) => ModelId.value(c.policy.turn.ref.model))
     val topics = exitOnLeft(classifierChoice(env))
+    val sweep = exitOnLeft(sweepEvery(env))
 
     /** `engine` with the turn launched on it: the assembler reads its stores, and the models
       * its kept facts. Throws when the coding tools repeat a name, a fault in `grit.tools` that
@@ -133,7 +139,7 @@ object Main {
           new RetrievalAssembler(engine.entries, engine.search, writer, CharEstimate, budget, tail)
         else new LinearAssembler(engine.entries, CharEstimate, budget)
       val checkout = new LocalWorkspace(root)
-      def launch(tooling: TurnTooling^): Unit =
+      def launch(tooling: TurnTooling^): Unit = {
         engine.launch(
           Turn.body(
             TurnEnv(
@@ -147,8 +153,25 @@ object Main {
               Fresh.random()
             ),
             tooling
+          ),
+          Close.body(
+            CloseEnv(
+              CloseRecords(
+                engine.entries,
+                engine.periods,
+                engine.lifecycle,
+                engine.ledger,
+                CharEstimate
+              ),
+              classifier(topics),
+              models,
+              engine.db,
+              Clock.system()
+            )
           )
         )
+        engine.sweepEvery(sweep, Clock.system())
+      }
       val launching = offered match {
         case ToolChoice.Read =>
           Coding
@@ -301,6 +324,21 @@ object Main {
           .filter(_ >= 0)
           .map(Tokens(_))
           .toRight(s"$variable is not a non-negative whole number")
+    }
+
+  private val SweepVar = "GRIT_SWEEP"
+
+  /** How often the engine sweeps: closing due periods. */
+  private[main] val DefaultSweep: FiniteDuration = 30.seconds
+
+  /** The sweep's interval from `GRIT_SWEEP`, a duration ([[Durations]]) of at least a
+    * second; [[DefaultSweep]] when unset.
+    */
+  private[main] def sweepEvery(env: Map[String, String]): Either[String, FiniteDuration] =
+    env.get(SweepVar) match {
+      case None => Right(DefaultSweep)
+      case Some(raw) =>
+        Durations.read(raw).left.map(why => s"$SweepVar: $why").filterOrElse(_ >= 1.second, s"$SweepVar must be at least a second")
     }
 
   private val StubTopicsVar = "GRIT_STUB_TOPICS"

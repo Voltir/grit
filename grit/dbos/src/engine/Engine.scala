@@ -2,12 +2,15 @@ package grit.dbos.engine
 
 import java.sql.DriverManager
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicBoolean
 
+import scala.concurrent.duration.FiniteDuration
 import scala.io.Source
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
+import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{ConversationId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
@@ -39,16 +42,18 @@ import grit.dbos.sql.{
   SqlPeriodStore,
   SqlUsageLedger
 }
-import grit.dbos.workflow.Turns
+import grit.dbos.workflow.{Closes, Turns}
 
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.workflow.WorkflowState
 import dev.dbos.transact.{DBOS, DBOSClient}
 import org.postgresql.ds.PGSimpleDataSource
+import org.slf4j.LoggerFactory
 
-/** grit over one Postgres: the stores, the turn workflow, and an edge's [[Inbox]], all in
-  * this process. Open it, [[launch]] it with the turn's body, and close it when done; its
+/** grit over one Postgres: the stores, the turn and close workflows, the sweep that closes
+  * periods, and an edge's [[Inbox]], all in this process. Open it, [[launch]] it with the
+  * turn's and the close's bodies, start its [[sweepEvery]], and close it when done; its
   * threads keep the JVM alive until then.
   */
 final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
@@ -86,11 +91,49 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
 
   val inbox: Inbox = new SqlInbox(dataSource, client, conversations, entries, periods)
 
-  /** Registers `turn` as the body of every turn and starts running queued turns. Once. */
-  def launch(turn: WorkflowId => Durable^ ?=> String): Unit = {
-    Turns.register(dbos, new JdbcStepFactory(dbos, dataSource), turn)
+  /** Registers `turn` as the body of every turn and `close` of every attempt to close a
+    * period, and starts running what is queued. Once.
+    */
+  def launch(
+      turn: WorkflowId => Durable^ ?=> String,
+      close: WorkflowId => Durable^ ?=> String
+  ): Unit = {
+    val steps = new JdbcStepFactory(dbos, dataSource)
+    Turns.register(dbos, steps, turn)
+    Closes.register(dbos, steps, close)
     dbos.launch()
   }
+
+  private val sweeper = new Sweeper(dataSource, client, periods, lifecycle)
+
+  /** One sweep of the lifecycle at `now`, under the settings in force: every open period
+    * whose deadline has come has its close attempt enqueued ([[grit.core.id.CloseRef.workflowId]]), once;
+    * an attempt that finished with its period still due is enqueued again. Only after
+    * [[launch]].
+    */
+  def sweep(now: Instant): Either[StoreError, Swept] = sweeper.once(now)
+
+  private val sweeping = new AtomicBoolean(false)
+
+  /** Sweeps at `clock`'s time every `every`, on a daemon thread of its own, until the engine
+    * closes; a sweep that fails is logged, and the next one tries again. Once, after
+    * [[launch]].
+    */
+  def sweepEvery(every: FiniteDuration, clock: Clock^): Unit =
+    if (sweeping.compareAndSet(false, true)) {
+      val log = LoggerFactory.getLogger("grit.sweeper")
+      val thread = new Thread(() => {
+        while (sweeping.get()) {
+          try sweep(clock.now()).left.foreach(e => log.warn(s"sweep failed: $e"))
+          catch { case NonFatal(e) => log.warn(s"sweep failed: $e") }
+          try Thread.sleep(every.toMillis)
+          catch { case _: InterruptedException => () }
+        }
+      })
+      thread.setName("grit-sweeper")
+      thread.setDaemon(true)
+      thread.start()
+    }
 
   /** The conversation `origin` names, created if it is new, as an edge's first ingest
     * would.
@@ -160,8 +203,10 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
     client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId)).getResult()
 
   def close(): Unit =
-    try client.close()
-    finally dbos.shutdown()
+    try {
+      sweeping.set(false)
+      client.close()
+    } finally dbos.shutdown()
 }
 
 object Engine {
