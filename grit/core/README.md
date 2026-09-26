@@ -8,8 +8,9 @@ In dependency order:
 - **`clock`** — what a function cannot compute: `Clock` (the time) and `Fresh` (values
   no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `WorkflowId`,
-  `SourceId`, `ToolCallId`, `PeriodSeq`), `TurnRef`, `PeriodRef` and `CloseRef` (one
-  attempt to close a period, and its workflow id). Imports nothing in core.
+  `SourceId`, `ToolCallId`, `PeriodSeq`), `TurnRef`, `PeriodRef`, `CloseRef` (one
+  attempt to close a period on its deadline, and its workflow id) and `SettleRef` (the one
+  question whether a quiet period is finished, and its workflow id). Imports nothing in core.
 - **`model`** — what grit knows about models, as data: `ModelRef` (a model snapshot at an
   upstream), each setting's `Known` value and its `Source`, the switches a `Profile` picks
   among and the `Settings` a call is made under, the `Policy` of which pair does each job,
@@ -21,9 +22,11 @@ In dependency order:
   topic opened, a message placed with its `Weights` over topics, a topic described), the
   `Placement` that says who placed it, `Band`, `Verdict`, and `Topics`, the pure fold over
   the events; `TopicJson`, their stored form. ← `id`
-- **`period`** — a conversation's time as periods that close (ADR 0011): `Period` and its
-  `PeriodState`, `CloseReason`, the `Windows` and `LifecycleSettings` in force, `Deadline`
-  (when a period closes: the one definition), an open period's `Activity`, the `Closing` a
+- **`period`** — a conversation's time as periods that close (ADRs 0011, 0012): `Period`
+  and its `PeriodState`, `CloseReason`, the `Windows` and `LifecycleSettings` in force,
+  `Deadline` (when a period closes, and when it is asked whether it is finished: the one
+  definition of each), a classifier's `Verdict` and its `Judgement`, `Probability`, an open
+  period's `Activity`, the `Closing` a
   closed one leaves and its stored form `ClosingJson`, a `CloseOrdinal` (close order across
   conversations), and a `Purgeable` period's workflows. ← `id`
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),

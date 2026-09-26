@@ -217,9 +217,6 @@ object ChatScreen {
     /** For the host: record `text` as the user's message and start its turn. */
     case Send(text: String)
 
-    /** For the host: `/done`, the conversation is done for now ([[grit.core.inbox.Inbox.signal]]). */
-    case Signal
-
     /** For the host: `/set`, the lifecycle's settings changed by `change`, or, with none,
       * reported as they are.
       */
@@ -373,7 +370,6 @@ object ChatScreen {
         case Msg.Send(_) | Msg.Load | Msg.Show(_) | Msg.KeepTheme(_) | Msg.Answer(_, _, _) =>
           (s, Effect.NoOp)
         // From a command: for the host, which answers in the status line.
-        case Msg.Signal => (s.copy(status = "saying it is done…"), Effect.ToHost(Msg.Signal))
         case m: Msg.Settings => (s.copy(status = "reading the settings…"), Effect.ToHost(m))
         case Msg.Asking(asked) => (s.copy(asking = asked), Effect.NoOp)
         case Msg.Noted(status) => (s.copy(status = status), Effect.NoOp)

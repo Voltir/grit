@@ -27,9 +27,8 @@ object CommandsTests extends TestSuite {
       Commands.escaped("etc") ==> None
     }
 
-    test("/done signals, and takes no argument") {
-      Commands.run("/done") ==> Right(ChatScreen.Msg.Signal)
-      Commands.run("/done now") ==> Left("/done takes no argument")
+    test("there is no /done: a period closes when it is judged finished, or lapses") {
+      Commands.run("/done") ==> Left("no command /done")
     }
 
     test("/set alone asks for the settings; with a name and a value, changes one") {
@@ -37,7 +36,7 @@ object CommandsTests extends TestSuite {
       Commands.run("/set idle 3m") ==>
         Right(ChatScreen.Msg.Settings(Some(Lifecycle.Change.Idle(3.minutes))))
       Commands.run("/set idle") ==> Left("idle takes a duration, as 30s or 3m")
-      Commands.pick("/set ", "grace") ==> Commands.Picked.Fill("/set grace ")
+      Commands.pick("/set ", "settle") ==> Commands.Picked.Fill("/set settle ")
     }
 
     test("the palette offers nothing over a // draft") {

@@ -11,7 +11,8 @@ import grit.core.period.{
   LifecycleSettings,
   Period,
   PeriodState,
-  Purgeable
+  Purgeable,
+  Verdict
 }
 
 /** An in-memory [[PeriodStore]] for tests, keeping [[PeriodContract]], over the entries of
@@ -34,13 +35,13 @@ final class InMemoryPeriodStore(
     periods = periods.map(q => if (q.ref == p.ref) p else q)
 
   private def isOpen(p: Period): Boolean = p.state match {
-    case PeriodState.Open(_) => true
+    case PeriodState.Open => true
     case PeriodState.Closed(_, _, _, _, _, _) => false
   }
 
   private def closedOf(p: Period): Option[PeriodState.Closed] = p.state match {
     case c: PeriodState.Closed => Some(c)
-    case PeriodState.Open(_) => None
+    case PeriodState.Open => None
   }
 
   private def all(c: ConversationId)(using Tx^): Vector[Entry] =
@@ -54,7 +55,7 @@ final class InMemoryPeriodStore(
       case Some(p) => Right(p)
       case None =>
         val seq = had.lastOption.fold(PeriodSeq.First)(_.ref.seq.next)
-        val p = Period(PeriodRef(conversation, seq), turn, at, PeriodState.Open(None))
+        val p = Period(PeriodRef(conversation, seq), turn, at, PeriodState.Open)
         periods = periods :+ p
         Right(p)
     }
@@ -71,13 +72,16 @@ final class InMemoryPeriodStore(
         .filter(p => closedOf(p).forall(c => TurnSeq.value(turn.turnSeq) <= TurnSeq.value(c.last)))
     )
 
-  def signal(conversation: ConversationId, at: Instant)(using Tx^): Either[StoreError, Boolean] =
-    mine(conversation).find(isOpen) match {
-      case None => Right(false)
-      case Some(p) =>
-        val when = activityOf(p).signal(at)
-        replace(p.copy(state = PeriodState.Open(Some(when))))
+  // Only ever replaced by a new immutable vector, as the store's table would be.
+  @caps.unsafe.untrackedCaptures
+  private var verdicts = Vector.empty[(PeriodRef, Verdict)]
+
+  def judged(period: PeriodRef, verdict: Verdict)(using Tx^): Either[StoreError, Boolean] =
+    periods.find(p => p.ref == period && isOpen(p)).map(activityOf) match {
+      case Some(a) if a.last == verdict.last =>
+        verdicts = verdicts :+ (period -> verdict)
         Right(true)
+      case _ => Right(false)
     }
 
   private def activityOf(p: Period)(using Tx^): Activity = {
@@ -85,11 +89,8 @@ final class InMemoryPeriodStore(
       all(p.ref.conversationId).filter(e => TurnSeq.value(e.turnSeq) >= TurnSeq.value(p.first))
     val newest = (own.map(_.createdAt) :+ p.openedAt).maxBy(_.toEpochMilli)
     val last = own.map(_.turnSeq).maxByOption(TurnSeq.value).getOrElse(p.first)
-    val signalled = p.state match {
-      case PeriodState.Open(s) => s
-      case PeriodState.Closed(_, _, _, _, _, _) => None
-    }
-    Activity(p.ref, newest, last, signalled)
+    val judged = verdicts.collect { case (ref, v) if ref == p.ref => v }
+    Activity(p.ref, newest, last, judged.maxByOption(_.at.toEpochMilli), judged.size)
   }
 
   def open()(using Tx^): Either[StoreError, Vector[Activity]] =

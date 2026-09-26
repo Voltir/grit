@@ -5,7 +5,7 @@ import grit.assembly.linear.AssemblyFixtures.{FakeDb, World, c1, closingOf}
 import grit.core.context.{AssemblyError, AssemblyRequest, Shown}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{LifecycleSettings, Windows}
+import grit.core.period.LifecycleSettings
 import grit.core.store.{Entry, EntryStore, Payload, StoreError, Tx}
 import grit.dbos.sql.TestTx
 
@@ -102,12 +102,15 @@ object LinearAssemblerTests extends TestSuite {
 
     test("as many closing entries open the window as the settings say, the newest") {
       val w = threePeriods
-      val one = Windows.Default
-      w.lifecycle.set(LifecycleSettings.of(one, 1).getOrElse(sys.error("settings")))(using
+      val d = LifecycleSettings.Default
+      def closings(n: Int) = LifecycleSettings
+        .of(d.windows, n, d.settle, d.finishedAt, d.asks)
+        .getOrElse(sys.error("settings"))
+      w.lifecycle.set(closings(1))(using
         TestTx.fake
       )
       window(w, 4, 1000) ==> Vector(closingOf(2), "t3:8", "t3:9")
-      w.lifecycle.set(LifecycleSettings.of(one, 0).getOrElse(sys.error("settings")))(using
+      w.lifecycle.set(closings(0))(using
         TestTx.fake
       )
       window(w, 4, 1000) ==> Vector("t3:8", "t3:9")

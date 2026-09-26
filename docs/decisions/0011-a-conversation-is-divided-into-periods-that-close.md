@@ -1,6 +1,6 @@
 # 0011. A conversation is divided into periods that close, and derived data is built from closing entries
 
-Status: accepted (2026-09-26)
+Status: accepted (2026-09-26); when a period closes superseded by 0012
 
 Context: every entry is kept, append-only, for the life of a conversation, and a
 conversation never ends. An open-ended log grows without bound and has to be carried

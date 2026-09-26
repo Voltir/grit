@@ -45,7 +45,7 @@ import grit.dbos.sql.{
   SqlPluginDocs,
   SqlUsageLedger
 }
-import grit.dbos.workflow.{Closes, Posts, Turns}
+import grit.dbos.workflow.{Closes, Posts, Settles, Turns}
 
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory
@@ -54,10 +54,10 @@ import dev.dbos.transact.{DBOS, DBOSClient}
 import org.postgresql.ds.PGSimpleDataSource
 import org.slf4j.LoggerFactory
 
-/** grit over one Postgres: the stores, the turn and close workflows, the sweep that closes
-  * periods, and an edge's [[Inbox]], all in this process. Open it, [[launch]] it with the
-  * turn's and the close's bodies, start its [[sweepEvery]], and close it when done; its
-  * threads keep the JVM alive until then.
+/** grit over one Postgres: the stores, the turn, close, settle and posting workflows, the
+  * sweep that closes periods, and an edge's [[Inbox]], all in this process. Open it,
+  * [[launch]] it with the workflows' bodies, start its [[sweepEvery]], and close it when
+  * done; its threads keep the JVM alive until then.
   */
 final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
     extends caps.SharedCapability,
@@ -100,19 +100,22 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   /** Each plugin's documents: given a plugin's name, its own, and no other plugin's. */
   val docs: PluginName -> PluginDocs = plugin => new SqlPluginDocs(plugin)
 
-  /** Registers `turn` as the body of every turn, `close` of every attempt to close a period
-    * and `post` of every posting run, and starts running what is queued; the sweep posts to
-    * `plugins`, the ones enabled. Once.
+  /** Registers `turn` as the body of every turn, `close` of every attempt to close a period,
+    * `settle` of every question whether a quiet period is finished and `post` of every
+    * posting run, and starts running what is queued; the sweep posts to `plugins`, the ones
+    * enabled. Once.
     */
   def launch(
       turn: WorkflowId => Durable^ ?=> String,
       close: WorkflowId => Durable^ ?=> String,
+      settle: WorkflowId => Durable^ ?=> String,
       post: WorkflowId => Durable^ ?=> String,
       plugins: Vector[Plugin]
   ): Unit = {
     val steps = new JdbcStepFactory(dbos, dataSource)
     Turns.register(dbos, steps, turn)
     Closes.register(dbos, steps, close)
+    Settles.register(dbos, steps, settle)
     Posts.register(dbos, steps, post)
     enabled.set(plugins.map(p => (p.name, p.version)))
     dbos.launch()
@@ -126,10 +129,12 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
 
   /** One sweep of the lifecycle at `now`, under the settings in force: every open period
     * whose deadline has come has its attempt on that deadline enqueued
-    * ([[grit.core.id.CloseRef.workflowId]]); every enabled plugin behind the newest closed
+    * ([[grit.core.id.CloseRef.workflowId]]), and every other that is to be asked whether it
+    * is finished ([[grit.core.period.Deadline.ask]]) has its question enqueued
+    * ([[grit.core.id.SettleRef.workflowId]]); every enabled plugin behind the newest closed
     * period has a run enqueued from its cursor ([[grit.core.plugin.PostRef]]) unless one is
     * going; then every period closed longer ago than the retention window has its turn
-    * workflows and close attempts deleted, and after them its raw entries, keeping its
+    * workflows, close attempts and questions deleted, and after them its raw entries, keeping its
     * closing entry and its row ([[grit.core.store.PeriodStore.purge]]). No workflow is ever
     * deleted to be run again: what did not finish its work is reported `stuck`
     * ([[Swept]]). Only after [[launch]]. `Left` when the database fails, having done what

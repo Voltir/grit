@@ -2,7 +2,7 @@ package grit.lifecycle.close
 
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, PeriodSeq, WorkflowId}
-import grit.core.period.{CloseReason, Closing, PeriodState}
+import grit.core.period.{CloseReason, Closing, Judgement, PeriodState, Probability, Verdict}
 import grit.core.provider.ProviderError
 import grit.core.store.{Payload, UsageLedger}
 import grit.dbos.sql.TestTx
@@ -68,17 +68,21 @@ object CloseTests extends TestSuite {
       durable.recordedSteps(id) ==> Vector("check", "gate", "summarise", "seal")
     }
 
-    test("a signalled period is resolved once the grace window has passed") {
+    test("a period judged finished closes resolved, with the verdict's probability") {
       val w = new World
-      w.say("done?", 0)
-      w.periods.signal(c, at(5))(using TestTx.fake)
+      val last = w.say("done?", 0)
+      val finished = Probability.of(0.9).getOrElse(throw new java.lang.AssertionError("p"))
+      val weighed =
+        Judgement.Weighed(finished, Probability.Zero, Probability.Zero, Probability.Zero, "jev")
+      w.periods.judged(p1, Verdict(at(61), last.turnSeq, weighed))(using TestTx.fake) ==>
+        Right(true)
       val durable = new InMemoryDurable
       durable.run(w.attempt.workflowId)(
-        w.body(gate, answering(written), new SetClock(at(20)))
+        w.body(gate, answering(written), new SetClock(at(62)))
       ) ==>
         "closed: closing:c1:1"
       w.closingEntry.map(_.payload) ==> Some(
-        Payload.Closed(PeriodSeq.First, CloseReason.Resolved, closing)
+        Payload.Closed(PeriodSeq.First, CloseReason.Resolved(finished), closing)
       )
     }
 
@@ -121,7 +125,7 @@ object CloseTests extends TestSuite {
         "abandoned: a turn came in while it was summarised"
       w.closingEntry ==> None
       w.periods.get(p1)(using TestTx.fake).map(_.map(_.state)) ==> Right(
-        Some(PeriodState.Open(None))
+        Some(PeriodState.Open)
       )
       w.ledger.of(id)(using TestTx.fake) ==> Right(Vector.empty[UsageLedger.Row])
     }

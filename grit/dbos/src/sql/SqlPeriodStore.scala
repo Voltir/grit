@@ -11,9 +11,12 @@ import grit.core.period.{
   CloseOrdinal,
   CloseReason,
   Closing,
+  Judgement,
   Period,
   PeriodState,
-  Purgeable
+  Probability,
+  Purgeable,
+  Verdict
 }
 import grit.core.store.{
   ClosedPeriod,
@@ -77,26 +80,37 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       ps.setLong(3, TurnSeq.value(turn.turnSeq))
     }(readPeriod)
 
-  def signal(conversation: ConversationId, at: Instant)(using
-      tx: Tx^
-  ): Either[StoreError, Boolean] =
+  def judged(period: PeriodRef, verdict: Verdict)(using tx: Tx^): Either[StoreError, Boolean] =
     for {
-      _ <- entries.lockNext(conversation)
-      open <- activities("p.conversation_id = ?::uuid")(
-        _.setString(1, ConversationId.value(conversation))
-      )
-      signalled <- open.headOption match {
-        case None => Right(false)
-        case Some(a) =>
+      _ <- entries.lockNext(period.conversationId)
+      open <- activity(period)
+      kept <- open match {
+        case Some(a) if a.last == verdict.last =>
           update(
-            "UPDATE grit.periods SET signalled_at = ? WHERE conversation_id = ?::uuid AND seq = ?"
+            """INSERT INTO grit.verdicts (conversation_id, seq, last_turn, at, finished,
+              |  waiting_person, waiting_other, unclear, model, unanswered)
+              |VALUES (?::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?)""".stripMargin
           ) { ps =>
-            ps.setObject(1, a.signal(at).atOffset(ZoneOffset.UTC))
-            ps.setString(2, ConversationId.value(conversation))
-            ps.setLong(3, PeriodSeq.value(a.period.seq))
+            ps.setString(1, ConversationId.value(period.conversationId))
+            ps.setLong(2, PeriodSeq.value(period.seq))
+            ps.setLong(3, TurnSeq.value(verdict.last))
+            ps.setObject(4, verdict.at.atOffset(ZoneOffset.UTC))
+            verdict.judgement match {
+              case Judgement.Weighed(finished, onPerson, onOther, unclear, model) =>
+                Vector(finished, onPerson, onOther, unclear).zipWithIndex.foreach {
+                  (p: Probability, i: Int) => ps.setDouble(5 + i, Probability.value(p))
+                }
+                ps.setString(9, model)
+                ps.setNull(10, java.sql.Types.VARCHAR)
+              case Judgement.Unanswered(why) =>
+                (5 to 8).foreach(ps.setNull(_, java.sql.Types.DOUBLE))
+                ps.setNull(9, java.sql.Types.VARCHAR)
+                ps.setString(10, why)
+            }
           }.map(_ => true)
+        case _ => Right(false)
       }
-    } yield signalled
+    } yield kept
 
   def open()(using tx: Tx^): Either[StoreError, Vector[Activity]] =
     activities("true")(_ => ())
@@ -112,20 +126,30 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       tx: Tx^
   ): Either[StoreError, Vector[Activity]] =
     many(
-      s"""SELECT p.conversation_id, p.seq, p.signalled_at,
-         |       greatest(p.opened_at, max(e.created_at)) AS newest,
-         |       coalesce(max(e.turn_seq), p.first_turn) AS last
+      s"""SELECT p.conversation_id, p.seq, a.newest, a.last, n.asked,
+         |       v.at, v.last_turn, v.finished, v.waiting_person, v.waiting_other, v.unclear,
+         |       v.model, v.unanswered
          |  FROM grit.periods p
-         |  LEFT JOIN grit.entries e
-         |    ON e.conversation_id = p.conversation_id AND e.turn_seq >= p.first_turn
-         | WHERE p.closed_at IS NULL AND $where
-         | GROUP BY p.conversation_id, p.seq""".stripMargin
+         | CROSS JOIN LATERAL (
+         |   SELECT greatest(p.opened_at, max(e.created_at)) AS newest,
+         |          coalesce(max(e.turn_seq), p.first_turn) AS last
+         |     FROM grit.entries e
+         |    WHERE e.conversation_id = p.conversation_id AND e.turn_seq >= p.first_turn) a
+         | CROSS JOIN LATERAL (
+         |   SELECT count(*) AS asked FROM grit.verdicts
+         |    WHERE conversation_id = p.conversation_id AND seq = p.seq) n
+         |  LEFT JOIN LATERAL (
+         |   SELECT * FROM grit.verdicts
+         |    WHERE conversation_id = p.conversation_id AND seq = p.seq
+         |    ORDER BY at DESC, ordinal DESC LIMIT 1) v ON true
+         | WHERE p.closed_at IS NULL AND $where""".stripMargin
     )(bind) { rs =>
       Activity(
         ref(rs),
         instant(rs, "newest"),
         TurnSeq(rs.getLong("last")),
-        Option(rs.getObject("signalled_at", classOf[OffsetDateTime])).map(_.toInstant)
+        verdictOf(rs),
+        rs.getInt("asked")
       )
     }
 
@@ -156,16 +180,20 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
             )
             _ <- update(
               """UPDATE grit.periods
-                |   SET last_turn = ?, closed_at = ?, reason = ?, closing_id = ?,
+                |   SET last_turn = ?, closed_at = ?, reason = ?, confidence = ?, closing_id = ?,
                 |       close_ordinal = (SELECT coalesce(max(close_ordinal), 0) + 1 FROM grit.periods)
                 | WHERE conversation_id = ?::uuid AND seq = ?""".stripMargin
             ) { ps =>
               ps.setLong(1, TurnSeq.value(attempt.last))
               ps.setObject(2, at.atOffset(ZoneOffset.UTC))
               ps.setString(3, PayloadJson.reasonName(reason))
-              ps.setString(4, EntryId.value(period.closingId))
-              ps.setString(5, ConversationId.value(period.conversationId))
-              ps.setLong(6, PeriodSeq.value(period.seq))
+              PayloadJson.reasonConfidence(reason) match {
+                case Some(c) => ps.setDouble(4, c)
+                case None => ps.setNull(4, java.sql.Types.DOUBLE)
+              }
+              ps.setString(5, EntryId.value(period.closingId))
+              ps.setString(6, ConversationId.value(period.conversationId))
+              ps.setLong(7, PeriodSeq.value(period.seq))
             }
           } yield Sealed.Closed(period.closingId)
     } yield outcome
@@ -193,7 +221,7 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       tx: Tx^
   ): Either[StoreError, Vector[ClosedPeriod]] =
     many(
-      """SELECT p.conversation_id, p.seq, p.reason, p.closed_at, p.close_ordinal, c.origin, e.payload
+      """SELECT p.conversation_id, p.seq, p.reason, p.confidence, p.closed_at, p.close_ordinal, c.origin, e.payload
         |  FROM grit.periods p
         |  JOIN grit.conversations c ON c.id = p.conversation_id
         |  JOIN grit.entries e ON e.id = p.closing_id
@@ -295,7 +323,7 @@ private object SqlPeriodStore {
 
   /** Column order shared by every statement that reads a whole period, and `readPeriod`. */
   private val columns =
-    "conversation_id, seq, first_turn, opened_at, signalled_at, last_turn, closed_at, reason, " +
+    "conversation_id, seq, first_turn, opened_at, last_turn, closed_at, reason, confidence, " +
       "closing_id, close_ordinal, purged_at"
 
   /** The advisory lock every seal takes to number itself: grit's alone among the locks a
@@ -316,9 +344,37 @@ private object SqlPeriodStore {
     Option(rs.getObject(column, classOf[OffsetDateTime])).map(_.toInstant)
 
   private def reasonOf(rs: ResultSet): CloseReason =
-    PayloadJson.readReason(rs.getString("reason")) match {
+    PayloadJson.readReason(rs.getString("reason"), optDouble(rs, "confidence")) match {
       case Right(r) => r
       case Left(why) => throw new IllegalStateException(why)
+    }
+
+  private def optDouble(rs: ResultSet, column: String): Option[Double] = {
+    val d = rs.getDouble(column)
+    Option.when(!rs.wasNull())(d)
+  }
+
+  private def probability(rs: ResultSet, column: String): Option[Probability] =
+    optDouble(rs, column).flatMap(Probability.of)
+
+  /** The verdict a row of [[activities]] holds, if any; the table's CHECK keeps a weighed
+    * one's columns set together.
+    */
+  private def verdictOf(rs: ResultSet): Option[Verdict] =
+    optInstant(rs, "at").map { at =>
+      val judgement =
+        (
+          probability(rs, "finished"),
+          probability(rs, "waiting_person"),
+          probability(rs, "waiting_other"),
+          probability(rs, "unclear"),
+          Option(rs.getString("model"))
+        ) match {
+          case (Some(f), Some(p), Some(o), Some(u), Some(model)) =>
+            Judgement.Weighed(f, p, o, u, model)
+          case _ => Judgement.Unanswered(Option(rs.getString("unanswered")).getOrElse(""))
+        }
+      Verdict(at, TurnSeq(rs.getLong("last_turn")), judgement)
     }
 
   private def ordinalOf(rs: ResultSet): CloseOrdinal =
@@ -329,7 +385,7 @@ private object SqlPeriodStore {
   /** A period row; the table's CHECK keeps a closed one's four columns set together. */
   private def readPeriod(rs: ResultSet): Period = {
     val state = optInstant(rs, "closed_at") match {
-      case None => PeriodState.Open(optInstant(rs, "signalled_at"))
+      case None => PeriodState.Open
       case Some(closedAt) =>
         PeriodState.Closed(
           TurnSeq(rs.getLong("last_turn")),

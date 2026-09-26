@@ -2,7 +2,7 @@ package grit.core.store
 
 import grit.core.id.{EntryId, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{CloseReason, Closing}
+import grit.core.period.{CloseReason, Closing, Probability}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Verdict, Weights}
 
 import utest.*
@@ -132,6 +132,19 @@ object PayloadJsonTests extends TestSuite {
       PayloadJson.write(Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing)).render() ==>
         """{"kind":"closed","period":1,"reason":"lapsed","closing":""" +
         """{"v":1,"prose":"Small talk.","outcome":"none","decisions":[],"facts":[],"open":[],"sources":[]}}"""
+      // A pin of the stored form: a resolved close keeps its confidence beside its reason, and
+      // a closing entry outlives every raw entry of its period.
+      val resolved = CloseReason.Resolved(
+        Probability.of(0.86).getOrElse(throw new java.lang.AssertionError("p"))
+      )
+      PayloadJson.write(Payload.Closed(PeriodSeq.First, resolved, closing)).render() ==>
+        """{"kind":"closed","period":1,"reason":"resolved","confidence":0.86,"closing":""" +
+        """{"v":1,"prose":"Small talk.","outcome":"none","decisions":[],"facts":[],"open":[],"sources":[]}}"""
+      PayloadJson.read(
+        ujson.read(
+          """{"kind":"closed","period":1,"reason":"resolved","closing":{"v":1,"prose":"x"}}"""
+        )
+      ) ==> Left("a resolved close has no confidence")
       PayloadJson.read(
         ujson.read("""{"kind":"closed","period":0,"reason":"lapsed","closing":{}}""")
       ) ==>
@@ -192,7 +205,13 @@ object PayloadJsonTests extends TestSuite {
         Payload.Summary("s") :+
         Payload.Query("q") :+ window :+ topic :+ Payload.Attempt(ToolCallId("c1")) :+
         Payload.Ask(ToolCallId("c1"), "Edit a.txt") :+
-        Payload.Closed(PeriodSeq.First, CloseReason.Resolved, closing))
+        Payload.Closed(
+          PeriodSeq.First,
+          CloseReason.Resolved(
+            Probability.of(0.86).getOrElse(throw new java.lang.AssertionError("p"))
+          ),
+          closing
+        ))
         .foreach { p =>
           PayloadJson.read(ujson.read(PayloadJson.write(p).render())) ==> Right(p)
         }

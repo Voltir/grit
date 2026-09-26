@@ -3,8 +3,10 @@ package grit.core.period
 /** Why a period closed. */
 enum CloseReason {
 
-  /** Someone said the work was done, and nothing happened in the grace window after. */
-  case Resolved
+  /** The classifier judged it finished, with probability `confidence`, once it had been quiet
+    * for the settle window ([[Verdict]]).
+    */
+  case Resolved(confidence: Probability)
 
   /** Nothing happened for the idle window. */
   case Lapsed

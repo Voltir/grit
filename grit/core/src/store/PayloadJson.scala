@@ -2,7 +2,7 @@ package grit.core.store
 
 import grit.core.id.{EntryId, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{CloseReason, ClosingJson}
+import grit.core.period.{CloseReason, ClosingJson, Probability}
 import grit.core.topic.TopicJson
 
 /** The stored JSON form of a [[Payload]]. Written by hand, not derived: it is
@@ -31,26 +31,45 @@ object PayloadJson {
     case Payload.Ask(call, shown) =>
       ujson.Obj("kind" -> "ask", "call" -> ToolCallId.value(call), "shown" -> shown)
     case Payload.Closed(period, reason, closing) =>
-      ujson.Obj(
+      val o = ujson.Obj(
         "kind" -> "closed",
         "period" -> PeriodSeq.value(period).toDouble,
-        "reason" -> reasonName(reason),
-        "closing" -> ClosingJson.write(closing)
+        "reason" -> reasonName(reason)
       )
+      reasonConfidence(reason).foreach(c => o("confidence") = c)
+      o("closing") = ClosingJson.write(closing)
+      o
   }
 
-  /** The stored name of a [[CloseReason]]: the same in a closing entry and a period's row. */
+  /** The stored name of a [[CloseReason]]: the same in a closing entry, a period's row and a
+    * close's journal.
+    */
   def reasonName(reason: CloseReason): String = reason match {
-    case CloseReason.Resolved => "resolved"
+    case CloseReason.Resolved(_) => "resolved"
     case CloseReason.Lapsed => "lapsed"
   }
 
-  /** The [[CloseReason]] stored as `name`, or why it is none. */
-  def readReason(name: String): Either[String, CloseReason] = name match {
-    case "resolved" => Right(CloseReason.Resolved)
-    case "lapsed" => Right(CloseReason.Lapsed)
-    case other => Left(s"unknown close reason: $other")
+  /** A resolved reason's confidence, stored beside its name; `None` for a lapsed one. */
+  def reasonConfidence(reason: CloseReason): Option[Double] = reason match {
+    case CloseReason.Resolved(c) => Some(Probability.value(c))
+    case CloseReason.Lapsed => None
   }
+
+  /** The [[CloseReason]] stored as `name` with `confidence`, or why it is none: an unknown
+    * name, a resolved one without a confidence in [0, 1], or a lapsed one with a confidence.
+    */
+  def readReason(name: String, confidence: Option[Double]): Either[String, CloseReason] =
+    (name, confidence) match {
+      case ("resolved", Some(c)) =>
+        Probability
+          .of(c)
+          .map(CloseReason.Resolved(_))
+          .toRight(s"confidence $c is not a probability")
+      case ("resolved", None) => Left("a resolved close has no confidence")
+      case ("lapsed", None) => Right(CloseReason.Lapsed)
+      case ("lapsed", Some(_)) => Left("a lapsed close has a confidence")
+      case (other, _) => Left(s"unknown close reason: $other")
+    }
 
   /** The payload `v` encodes, or why it encodes none. An [[Payload.Exchange]] and a
     * [[Payload.Result]] share the kind `exchange`, told apart by their message's role, so
@@ -98,7 +117,13 @@ object PayloadJson {
           for {
             n <- long(o, "period")
             period <- PeriodSeq.of(n).toRight(s"period $n is below the first")
-            reason <- str(o, "reason").flatMap(readReason)
+            name <- str(o, "reason")
+            confidence <- o.value.get("confidence") match {
+              case None => Right(None)
+              case Some(ujson.Num(c)) => Right(Some(c))
+              case Some(_) => Left("confidence is not a number")
+            }
+            reason <- readReason(name, confidence)
             closing <- field(o, "closing").flatMap(ClosingJson.read)
           } yield Payload.Closed(period, reason, closing)
         case other => Left(s"unknown payload kind: $other")

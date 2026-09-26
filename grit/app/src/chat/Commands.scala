@@ -16,7 +16,6 @@ object Commands {
     case SetTheme extends Command("/theme", "switch the colour theme")
     case Panel extends Command("/panel", "show or hide the turn panel")
     case Summaries extends Command("/summaries", "show or hide turn summaries")
-    case Done extends Command("/done", "close this conversation soon")
     case Set extends Command("/set", "when conversations close")
     case Help extends Command("/help", "commands and keys")
     case Quit extends Command("/quit", "leave grit")
@@ -25,7 +24,7 @@ object Commands {
     def choices: Vector[String] = this match {
       case SetTheme => Theme.all.map(_.key)
       case Set => Lifecycle.Change.Names
-      case Panel | Summaries | Help | Quit | Done => Vector.empty
+      case Panel | Summaries | Help | Quit => Vector.empty
     }
 
     /** What the command does with `argument` (empty for none): the screen's message, or
@@ -38,7 +37,6 @@ object Commands {
       case Panel => bare(Msg.TogglePanel, argument)
       case Summaries => bare(Msg.ToggleSummaries, argument)
       case Help => bare(Msg.OpenHelp, argument)
-      case Done => bare(Msg.Signal, argument)
       case Set =>
         if (argument.isEmpty) Right(Msg.Settings(None))
         else Lifecycle.Change.parse(argument).map(c => Msg.Settings(Some(c)))

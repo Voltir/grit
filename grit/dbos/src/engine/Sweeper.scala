@@ -7,12 +7,12 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.id.{CloseRef, PeriodRef, WorkflowId}
+import grit.core.id.{CloseRef, PeriodRef, SettleRef, WorkflowId}
 import grit.core.period.Purgeable
 import grit.core.plugin.{PluginCursors, PluginName, PostRef}
 import grit.core.store.{LifecycleStore, PeriodStore, StoreError, Tx}
 import grit.dbos.sql.SqlEntryStore
-import grit.dbos.workflow.{Closes, Posts}
+import grit.dbos.workflow.{Closes, Posts, Settles}
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.workflow.ListWorkflowsInput
@@ -30,14 +30,20 @@ private[engine] final class Sweeper(
     plugins: () -> Vector[(PluginName, Int)]
 ) {
 
-  /** Closes, then posts, then purges: see [[Engine.sweep]]. */
+  /** Closes and asks, then posts, then purges: see [[Engine.sweep]]. */
   def once(now: Instant): Either[StoreError, Swept] =
     for {
       settings <- read(lifecycle.current())
-      due <- read(periods.open()).map(_.filter(a => !a.due(settings.windows).at.isAfter(now)))
+      open <- read(periods.open())
+      (due, quiet) = open.partition(a => !a.due(settings).at.isAfter(now))
       closed <- due.foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, a) =>
-        acc.flatMap(done => close(a.attempt(settings.windows)).map(done + _))
+        acc.flatMap(done => close(a.attempt(settings)).map(done + _))
       }
+      asked <- quiet
+        .filter(_.asks(settings).exists(!_.isAfter(now)))
+        .foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, a) =>
+          acc.flatMap(done => ask(a.question).map(done + _))
+        }
       posted <- plugins().foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, p) =>
         acc.flatMap(done => post(p._1, p._2).map(done + _))
       }
@@ -46,7 +52,7 @@ private[engine] final class Sweeper(
       purged <- expired.foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, p) =>
         acc.flatMap(done => purge(p, now).map(done + _))
       }
-    } yield closed + posted + purged
+    } yield closed + asked + posted + purged
 
   /** `expired`'s workflows deleted, then its raw entries, marking it purged at `now`.
     * Workflows go first: a crash between the two leaves entries for the next sweep, which
@@ -124,6 +130,27 @@ private[engine] final class Sweeper(
       }
     }
 
+  /** `question` enqueued if DBOS has no workflow under its id; one it has, running or
+    * finished, is left alone: a question is asked once. One that finished and left the
+    * period to be asked still (a verdict it could not keep) is `stuck` until new activity.
+    */
+  private def ask(question: SettleRef): Either[StoreError, Swept] =
+    attempted {
+      val id = question.workflowId
+      Option(client.retrieveWorkflow[String, Exception](WorkflowId.value(id)).getStatus())
+        .map(_.status()) match {
+        case Some(state) if state.isActive() => Swept.nothing
+        case Some(_) => Swept(stuck = Vector(id))
+        case None =>
+          val _ = client.enqueueWorkflow[String, Exception](
+            Settles.enqueueOptions(question),
+            // As `enqueue`'s: the array is empty and DBOS only reads it.
+            caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
+          )
+          Swept(asked = Vector(question))
+      }
+    }
+
   // A repeated enqueue of the same id is a no-op. The array is empty and DBOS only reads
   // it; separation checking treats arrays as mutable.
   private def enqueue(attempt: CloseRef): Unit = {
@@ -161,7 +188,8 @@ private[engine] final class Sweeper(
 }
 
 /** What a sweep did: the close attempts it `enqueued`, the periods whose raw entries and
-  * workflows it `purged`, the posting runs it enqueued (`posted`), and the workflows it found
+  * workflows it `purged`, the posting runs it enqueued (`posted`), the questions whether a
+  * quiet period is finished it enqueued (`asked`), and the workflows it found
   * `stuck`: a close attempt that finished without closing its period, whose deadline has not
   * moved since, or a plugin's last run from a cursor it failed to move [[PostRef.Attempts]]
   * times. A stuck workflow is not run again; a close is attempted anew once its deadline moves.
@@ -170,14 +198,16 @@ final case class Swept(
     enqueued: Vector[CloseRef] = Vector.empty,
     purged: Vector[PeriodRef] = Vector.empty,
     posted: Vector[PostRef] = Vector.empty,
-    stuck: Vector[WorkflowId] = Vector.empty
+    stuck: Vector[WorkflowId] = Vector.empty,
+    asked: Vector[SettleRef] = Vector.empty
 ) {
   def +(other: Swept): Swept =
     Swept(
       enqueued ++ other.enqueued,
       purged ++ other.purged,
       posted ++ other.posted,
-      stuck ++ other.stuck
+      stuck ++ other.stuck,
+      asked ++ other.asked
     )
 }
 

@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{CloseReason, Closing}
+import grit.core.period.{CloseReason, Closing, Probability}
 import grit.core.store.{Entry, Payload}
 import grit.dbos.engine.{RecordedStep, TurnStatus}
 
@@ -53,7 +53,11 @@ object FollowTests extends TestSuite {
         TurnSeq(1),
         None,
         2,
-        Payload.Closed(PeriodSeq.First, CloseReason.Resolved, closing),
+        Payload.Closed(
+          PeriodSeq.First,
+          CloseReason.Resolved(Probability.of(0.86).getOrElse(sys.error("p"))),
+          closing
+        ),
         Instant.EPOCH
       )
       val entries = Vector(user(0, 0, "hi"), reply(1, 0, "hello"), closed)
@@ -62,7 +66,8 @@ object FollowTests extends TestSuite {
           Vector(
             ChatScreen.Said(ChatScreen.Voice.User, "hi"),
             ChatScreen.Said(ChatScreen.Voice.Reply, "hello"),
-            ChatScreen.Said(ChatScreen.Voice.Closed, "resolved · We chose staging.", TurnSeq(1))
+            ChatScreen
+              .Said(ChatScreen.Voice.Closed, "resolved (0.86) · We chose staging.", TurnSeq(1))
           ),
           None
         )

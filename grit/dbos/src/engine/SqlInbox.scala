@@ -8,7 +8,7 @@ import scala.util.control.NonFatal
 
 import grit.core.approval.Approval
 import grit.core.id.{ConversationId, EntryId, SourceId, ToolCallId, TurnRef, WorkflowId}
-import grit.core.inbox.{Inbox, InboxError, Signalled}
+import grit.core.inbox.{Inbox, InboxError}
 import grit.core.message.Message
 import grit.core.store.{
   ConversationStore,
@@ -106,14 +106,6 @@ final class SqlInbox(
     } catch {
       case _: DBOSNonExistentWorkflowException => Left(InboxError.NoSuchTurn(workflow))
       case NonFatal(e) => Left(SqlInbox.unavailable(e))
-    }
-
-  def signal(origin: Origin): Either[InboxError, Signalled] =
-    inTransaction {
-      for {
-        conversation <- conversations.findOrCreate(origin)
-        open <- periods.signal(conversation.id, Instant.now())
-      } yield if (open) Signalled.Closing else Signalled.NothingOpen
     }
 
   /** Runs `body` in its own transaction, committing on `Right` and rolling back otherwise. */

@@ -4,20 +4,62 @@ import java.time.Instant
 
 import scala.concurrent.duration.FiniteDuration
 
+import grit.core.id.TurnSeq
+
 /** When a period closes, and the reason it will close for. */
 final case class Due(at: Instant, reason: CloseReason)
 
+/** When a period closes, and when the classifier is asked whether it is finished: the one
+  * definition of each, over an open period's newest `activity`, its newest turn `last`, its
+  * latest verdict and the settings in force.
+  */
 object Deadline {
 
-  /** When a period whose newest activity was at `activity` closes under `windows`:
-    * `signalled + grace`, Resolved, when someone signalled after `activity`; otherwise
-    * `activity + idle`, Lapsed.
+  /** When the period closes: at the verdict's time, Resolved with its probability of
+    * finished, when the verdict came after `activity`, is about `last`, and weighed finished
+    * at or above `settings.finishedAt` (which, at 1, no verdict does); otherwise the idle
+    * window after `activity`, Lapsed.
     */
-  def of(activity: Instant, signalled: Option[Instant], windows: Windows): Due =
-    signalled.filter(_.isAfter(activity)) match {
-      case Some(s) => Due(plus(s, windows.grace), CloseReason.Resolved)
-      case None => Due(plus(activity, windows.idle), CloseReason.Lapsed)
-    }
+  def of(
+      activity: Instant,
+      last: TurnSeq,
+      verdict: Option[Verdict],
+      settings: LifecycleSettings
+  ): Due =
+    current(activity, last, verdict)
+      .collect { case Verdict(at, _, Judgement.Weighed(finished, _, _, _, _)) =>
+        (at, finished)
+      }
+      .filter((_, finished) => on(settings) && finished >= settings.finishedAt)
+      .fold(Due(plus(activity, settings.windows.idle), CloseReason.Lapsed))((at, finished) =>
+        Due(at, CloseReason.Resolved(finished))
+      )
+
+  /** When the classifier is asked about the period: the settle window after `activity`,
+    * unless it has already been asked since then about `last`, it has been asked
+    * `settings.asks` times (`asked`), or `settings.finishedAt` is 1; `None` then.
+    */
+  def ask(
+      activity: Instant,
+      last: TurnSeq,
+      verdict: Option[Verdict],
+      asked: Int,
+      settings: LifecycleSettings
+  ): Option[Instant] =
+    Option.when(
+      on(settings) && asked < settings.asks && current(activity, last, verdict).isEmpty
+    )(plus(activity, settings.settle))
+
+  /** `verdict` when it judged the period as it stands: after `activity`, about `last`. */
+  private def current(
+      activity: Instant,
+      last: TurnSeq,
+      verdict: Option[Verdict]
+  ): Option[Verdict] =
+    verdict.filter(v => v.at.isAfter(activity) && v.last == last)
+
+  /** Whether a verdict can close a period at all. */
+  private def on(settings: LifecycleSettings): Boolean = Probability.One > settings.finishedAt
 
   private def plus(t: Instant, d: FiniteDuration): Instant = t.plusMillis(d.toMillis)
 }

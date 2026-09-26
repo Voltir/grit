@@ -24,7 +24,7 @@ final case class Closing private (
     */
   def shown(at: Instant, reason: CloseReason): String = {
     val why = reason match {
-      case CloseReason.Resolved => "resolved"
+      case CloseReason.Resolved(_) => "resolved"
       case CloseReason.Lapsed => "lapsed"
     }
     val day = at.atOffset(ZoneOffset.UTC).toLocalDate

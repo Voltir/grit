@@ -557,18 +557,12 @@ object ChatScreenTests extends TestSuite {
         Vector("ᚺ could not open the engine: refused")
     }
 
-    test("/done asks the host to signal once, and sends nothing to the model") {
-      val done = typed(ready, "/done").input(Input.Keyboard(Key.Enter))
-      done.effects.collect { case Effect.ToHost(m) => m } ==> Vector(Msg.Signal)
-      assert(!sends(done))
-    }
-
     test("a closed period paints as a rule marked closed, then why and what it came to") {
       val closed = ready.message(
         Msg.Arrived(
           Vector(
             Said(ChatScreen.Voice.User, "hi"),
-            Said(ChatScreen.Voice.Closed, "resolved · We chose staging.", TurnSeq(0))
+            Said(ChatScreen.Voice.Closed, "resolved (0.86) · We chose staging.", TurnSeq(0))
           ),
           None
         )
@@ -576,7 +570,7 @@ object ChatScreenTests extends TestSuite {
       val rows = closed.screen.map(_.dropRight(1).trim)
       val rule = rows.indexWhere(_.contains(" closed "))
       assert(rule > 0, rows.lift(rule).exists(_.startsWith("═")))
-      rows.lift(rule + 1) ==> Some("resolved · We chose staging.")
+      rows.lift(rule + 1) ==> Some("resolved (0.86) · We chose staging.")
     }
 
     test("a typed submission is sent to the host, and painted only once the store has it") {

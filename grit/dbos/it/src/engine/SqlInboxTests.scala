@@ -3,7 +3,6 @@ package grit.dbos.engine
 import java.time.Instant
 
 import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, SourceId, TurnSeq}
-import grit.core.inbox.Signalled
 import grit.core.message.Message
 import grit.core.period.{CloseReason, Closing, PeriodState}
 import grit.core.store.{Origin, Sealed}
@@ -49,7 +48,7 @@ object SqlInboxTests extends TestSuite {
         val c = LiveDb.conversation(config, origin).id
         val p1 = PeriodRef(c, PeriodSeq.First)
         LiveDb.transaction(config)(periods.get(p1)).map(_.map(p => (p.first, p.state))) ==>
-          Right(Some((TurnSeq(0), PeriodState.Open(None))))
+          Right(Some((TurnSeq(0), PeriodState.Open)))
         val closing =
           Closing
             .of("one", None, Vector(), Vector(), Vector(), Vector())
@@ -66,24 +65,7 @@ object SqlInboxTests extends TestSuite {
         (one.map(_.turnSeq), two.map(_.turnSeq)) ==> (Right(TurnSeq(0)), Right(TurnSeq(1)))
         val p2 = PeriodRef(c, PeriodSeq.First.next)
         LiveDb.transaction(config)(periods.get(p2)).map(_.map(p => (p.first, p.state))) ==>
-          Right(Some((TurnSeq(1), PeriodState.Open(None))))
-      } finally engine.close()
-    }
-
-    test("a signal is recorded once until something happens; with nothing open, NothingOpen") {
-      val origin = Origin.Task("sql", "signal")
-      val periods = new SqlPeriodStore(new SqlEntryStore())
-      val engine = Engine.open(config, "test")
-      try {
-        engine.inbox.signal(origin) ==> Right(Signalled.NothingOpen)
-        engine.inbox.ingest(origin, SourceId("s1"), Message.User("one"))
-        val p1 = PeriodRef(LiveDb.conversation(config, origin).id, PeriodSeq.First)
-        def signalled = LiveDb.transaction(config)(periods.activity(p1)).map(_.flatMap(_.signalled))
-        engine.inbox.signal(origin) ==> Right(Signalled.Closing)
-        val first = signalled
-        assert(first.exists(_.nonEmpty))
-        engine.inbox.signal(origin) ==> Right(Signalled.Closing)
-        signalled ==> first
+          Right(Some((TurnSeq(1), PeriodState.Open)))
       } finally engine.close()
     }
   }

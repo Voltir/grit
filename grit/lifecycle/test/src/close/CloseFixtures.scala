@@ -11,7 +11,7 @@ import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, Tu
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator}
-import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Purgeable}
+import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Purgeable, Verdict}
 import grit.core.store.{
   ClosedPeriod,
   Db,
@@ -166,7 +166,7 @@ object CloseFixtures {
       (for {
         settings <- lifecycle.current()
         open <- periods.activity(p1)
-      } yield open.map(_.attempt(settings.windows))).toOption.flatten.getOrElse(sys.error("period 1 is not open"))
+      } yield open.map(_.attempt(settings))).toOption.flatten.getOrElse(sys.error("period 1 is not open"))
     }
 
     def all: Vector[Entry] = entries.list(c)(using TestTx.fake).getOrElse(Vector.empty)
@@ -207,8 +207,8 @@ object CloseFixtures {
       underlying.openFor(conversation, turn, at)
     def get(period: PeriodRef)(using Tx^): Either[StoreError, Option[Period]] = underlying.get(period)
     def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Period]] = underlying.of(turn)
-    def signal(conversation: ConversationId, at: Instant)(using Tx^): Either[StoreError, Boolean] =
-      underlying.signal(conversation, at)
+    def judged(period: PeriodRef, verdict: Verdict)(using Tx^): Either[StoreError, Boolean] =
+      underlying.judged(period, verdict)
     def open()(using Tx^): Either[StoreError, Vector[Activity]] = underlying.open()
     def activity(period: PeriodRef)(using Tx^): Either[StoreError, Option[Activity]] = underlying.activity(period)
     def closingsBefore(turn: TurnRef, n: Int)(using Tx^): Either[StoreError, Vector[Entry]] =

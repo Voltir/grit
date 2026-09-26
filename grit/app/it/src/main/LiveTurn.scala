@@ -14,6 +14,7 @@ import grit.dbos.engine.Engine
 import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
+import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.models.{StubModels, StubProvider}
 import grit.tools.Coding
 import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling, TurnTools}
@@ -103,6 +104,14 @@ object LiveTurn {
             CloseRecords(entries, engine.periods, engine.lifecycle, engine.ledger, CharEstimate),
             grit.core.classify.Classifier.none("no classifier"),
             models,
+            engine.db,
+            Clock.system()
+          )
+        ),
+        Settle.body(
+          SettleEnv(
+            SettleRecords(entries, engine.periods, engine.lifecycle),
+            grit.core.classify.Classifier.none("no classifier"),
             engine.db,
             Clock.system()
           )

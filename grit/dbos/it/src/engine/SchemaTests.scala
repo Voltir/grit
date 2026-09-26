@@ -50,12 +50,12 @@ object SchemaTests extends TestSuite {
       Engine.open(config, "test").close()
       LiveDb.transaction(config)(
         execute(
-          "INSERT INTO grit.lifecycle_settings (idle, grace, retention, closings) " +
-            "VALUES ('10 minutes', '1 hour', '30 days', 3)"
+          "INSERT INTO grit.lifecycle_settings (idle, retention, closings, settle, finished_at, asks) " +
+            "VALUES ('10 minutes', '30 days', 3, '1 hour', 0.8, 3)"
         )
       )
       LiveDb.transaction(config)(new SqlLifecycleStore().current()) ==>
-        Left(StoreError.Invalid("lifecycle settings: grace must be no longer than idle"))
+        Left(StoreError.Invalid("lifecycle settings: settle must be shorter than idle"))
     }
   }
 }

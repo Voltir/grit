@@ -7,7 +7,6 @@ import scala.util.control.NonFatal
 
 import grit.app.config.Lifecycle
 import grit.core.id.{ConversationId, SourceId, TurnRef, TurnSeq}
-import grit.core.inbox.Signalled
 import grit.core.message.Message
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Origin, StoreError, UsageLedger}
@@ -31,8 +30,8 @@ import grit.turn.TurnStream
   *     arrives by following.
   *   - `Show` pins the panel to a turn, or back to the latest.
   *   - `Answer` answers a turn's call that asks first, through the inbox; a failure says so.
-  *   - `Signal` says the conversation is done for now, through the inbox, and `Settings`
-  *     reads the lifecycle's settings or changes one; the status line says what came of it.
+  *   - `Settings` reads the lifecycle's settings or changes one; the status line says what
+  *     came of it.
   *
   * All of it runs on virtual threads and answers through the mailbox, so the screen paints
   * at once and never waits on the database or the model. [[close]] stops following and
@@ -106,29 +105,6 @@ final class ChatHost(
               }
             case None =>
               mailbox.offer(ChatScreen.Msg.Failed("not answered: the engine is not open"))
-          }
-        }
-      case ChatScreen.Msg.Signal =>
-        whenOpen(mailbox, "not done") { e =>
-          e.inbox.signal(origin) match {
-            case Right(Signalled.Closing) =>
-              e.db.read(e.lifecycle.current()) match {
-                case Right(settings) =>
-                  mailbox.offer(
-                    ChatScreen.Msg.Noted(
-                      s"done: closes in ${Lifecycle.written(settings.windows.grace)} unless you say more"
-                    )
-                  )
-                case Left(error) =>
-                  mailbox.offer(
-                    ChatScreen.Msg.Noted(s"done, but the settings are unreadable: $error")
-                  )
-              }
-            case Right(Signalled.NothingOpen) =>
-              mailbox.offer(
-                ChatScreen.Msg.Noted("nothing to close: nothing was said since the last close")
-              )
-            case Left(error) => mailbox.offer(ChatScreen.Msg.Failed(s"not done: $error"))
           }
         }
       case ChatScreen.Msg.Settings(change) =>

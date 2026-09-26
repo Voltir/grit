@@ -20,9 +20,10 @@ import grit.core.store.{
 import grit.dbos.sql.TestTx
 import grit.lifecycle.close.CloseFixtures
 import grit.lifecycle.post.{PostEnv, Posting}
+import grit.lifecycle.settle.SettleFixtures
 import grit.turn.Turn
 
-/** Writes this epoch's recorded close and posting histories, one per shape each can leave
+/** Writes this epoch's recorded close, settle and posting histories, one per shape each can leave
   * behind, into `GRIT_HISTORIES/{Turn.Epoch}`. Never overwrites: a history, once written, is
   * what builds of this epoch must keep replaying. Run it when an epoch starts or a new shape
   * appears:
@@ -76,7 +77,47 @@ object RecordLifecycleHistories {
       )
       "post-two" -> History("post", id, Turn.Epoch, "recorded", durable.history(id))
     }
-    posted +: Vector(
+    def settled(
+        name: String
+    )(
+        run: (SettleFixtures.World, InMemoryDurable) => grit.core.id.WorkflowId
+    ): (String, History) = {
+      val durable = new InMemoryDurable
+      val id = run(new SettleFixtures.World, durable)
+      name -> History("settle", id, Turn.Epoch, "recorded", durable.history(id))
+    }
+    val settles = Vector(
+      settled("settle-judged") { (w, d) =>
+        w.turn("deploy staging?", 0)
+        val id = w.question.workflowId
+        d.run(id)(w.body(new SettleFixtures.Weigher(Some(Vector(0.85, 0.05, 0.05, 0.05))), 90))
+        id
+      },
+      settled("settle-unanswered") { (w, d) =>
+        w.turn("hello", 0)
+        val id = w.question.workflowId
+        d.run(id)(w.body(new SettleFixtures.Weigher(None), 90))
+        id
+      },
+      settled("settle-abandoned") { (w, d) =>
+        w.turn("one", 0)
+        val id = w.question.workflowId
+        w.turn("two", 5)
+        d.run(id)(w.body(new SettleFixtures.Weigher(None), 90))
+        id
+      },
+      settled("settle-ignored") { (w, d) =>
+        w.turn("hello", 0)
+        val id = w.question.workflowId
+        val interrupted = new SettleFixtures.Weigher(
+          Some(Vector(0.9, 0.1, 0.0, 0.0)),
+          () => { w.turn("wait", 80); () }
+        )
+        d.run(id)(w.body(interrupted, 90))
+        id
+      }
+    )
+    (posted +: settles) ++ Vector(
       record("close-sealed") { (w, d) =>
         w.turn("where do we deploy?", "staging", "Chose staging.", 0)
         w.say("and prod?", 1)

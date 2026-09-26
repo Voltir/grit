@@ -28,8 +28,8 @@ final case class Period(ref: PeriodRef, first: TurnSeq, openedAt: Instant, state
 
 enum PeriodState {
 
-  /** Taking turns. `signalled`: when someone last said the work was done, if they have. */
-  case Open(signalled: Option[Instant])
+  /** Taking turns. */
+  case Open
 
   /** Sealed `at` for `reason`, its turns running to `last`, `closing` its closing entry;
     * `purged`: when its raw entries were deleted, if they have been.

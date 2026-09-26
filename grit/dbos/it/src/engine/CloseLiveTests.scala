@@ -10,7 +10,7 @@ import scala.jdk.CollectionConverters.*
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, PeriodRef, PeriodSeq, SourceId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.Message
-import grit.core.period.{LifecycleSettings, Windows}
+import grit.core.period.{LifecycleSettings, Probability, Windows}
 import grit.core.store.{Entry, Origin, Payload}
 import grit.dbos.sql.{DbConfig, LiveDb, SqlLifecycleStore, TestPostgres}
 
@@ -22,11 +22,11 @@ import utest.*
   */
 object CloseLiveTests extends TestSuite {
 
-  /** A minute idle, a minute's grace. */
+  /** A minute idle. */
   private def minuteIdle(config: DbConfig): Unit = {
     val settings = Windows
-      .of(1.minute, 1.minute, 1.day)
-      .flatMap(LifecycleSettings.of(_, 3))
+      .of(1.minute, 1.day)
+      .flatMap(LifecycleSettings.of(_, 3, 30.seconds, Probability.One, 1))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
     ()
@@ -69,6 +69,7 @@ object CloseLiveTests extends TestSuite {
           turn,
           close,
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
         )
         minuteIdle(config)
@@ -98,6 +99,7 @@ object CloseLiveTests extends TestSuite {
         engine.launch(
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
         )
@@ -132,6 +134,7 @@ object CloseLiveTests extends TestSuite {
         engine.launch(
           turn,
           close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
         )
@@ -189,6 +192,7 @@ object CloseLiveTests extends TestSuite {
         engine.launch(
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
         )

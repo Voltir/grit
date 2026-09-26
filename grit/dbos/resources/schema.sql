@@ -119,17 +119,18 @@ CREATE TABLE IF NOT EXISTS grit.model_facts (
 -- before the next period's first. An entry's period follows from its turn_seq. A closed
 -- period has its closing entry, written in the same transaction as the seal, its reason,
 -- its last turn and its place in close order: all four, or none (PeriodState.Closed).
--- When it closes is never stored or computed here: Deadline.of is its one definition.
+-- When it closes, and when it is asked whether it is finished, are never stored or computed
+-- here: Deadline is their one definition.
 CREATE TABLE IF NOT EXISTS grit.periods (
     conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,
     seq             BIGINT NOT NULL CHECK (seq >= 1),
     first_turn      BIGINT NOT NULL,
     opened_at       TIMESTAMPTZ NOT NULL,
-    -- The last "done" given since the period's newest activity, if any.
-    signalled_at    TIMESTAMPTZ,
     last_turn       BIGINT,
     closed_at       TIMESTAMPTZ,
     reason          TEXT CHECK (reason IN ('resolved', 'lapsed')),
+    -- A resolved close's probability of finished (CloseReason.Resolved); none for a lapse.
+    confidence      DOUBLE PRECISION CHECK (confidence BETWEEN 0 AND 1),
     closing_id      TEXT REFERENCES grit.entries(id),
     -- Close order across conversations, what plugin cursors count. Taken under a lock held
     -- to commit (SqlPeriodStore.seal), so no seal commits before one with a lower number.
@@ -140,22 +141,52 @@ CREATE TABLE IF NOT EXISTS grit.periods (
        AND (closed_at IS NULL) = (closing_id IS NULL)
        AND (closed_at IS NULL) = (last_turn IS NULL)
        AND (closed_at IS NULL) = (close_ordinal IS NULL)),
-    CHECK (purged_at IS NULL OR closed_at IS NOT NULL)
+    CHECK (purged_at IS NULL OR closed_at IS NOT NULL),
+    CHECK ((confidence IS NOT NULL) = (reason IS NOT DISTINCT FROM 'resolved'))
 );
 
 -- At most one open period per conversation.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_periods_open ON grit.periods (conversation_id)
     WHERE closed_at IS NULL;
 
+-- What the classifier made of each period once it went quiet (grit.core.period.Verdict): the
+-- tuning data for when a period closes, kept when the period's raw entries are purged. A
+-- verdict is about the period as it stood with `last_turn` its newest turn; weighed, with a
+-- probability for each option and the model, or unanswered, with why.
+CREATE TABLE IF NOT EXISTS grit.verdicts (
+    ordinal          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    conversation_id  UUID NOT NULL,
+    seq              BIGINT NOT NULL,
+    last_turn        BIGINT NOT NULL,
+    at               TIMESTAMPTZ NOT NULL,
+    finished         DOUBLE PRECISION CHECK (finished BETWEEN 0 AND 1),
+    waiting_person   DOUBLE PRECISION CHECK (waiting_person BETWEEN 0 AND 1),
+    waiting_other    DOUBLE PRECISION CHECK (waiting_other BETWEEN 0 AND 1),
+    unclear          DOUBLE PRECISION CHECK (unclear BETWEEN 0 AND 1),
+    model            TEXT,
+    unanswered       TEXT,
+    FOREIGN KEY (conversation_id, seq) REFERENCES grit.periods(conversation_id, seq)
+        ON DELETE CASCADE,
+    CHECK ((unanswered IS NULL) = (finished IS NOT NULL)
+       AND (finished IS NULL) = (waiting_person IS NULL)
+       AND (finished IS NULL) = (waiting_other IS NULL)
+       AND (finished IS NULL) = (unclear IS NULL)
+       AND (finished IS NULL) = (model IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_verdicts_period ON grit.verdicts (conversation_id, seq, at);
+
 -- The lifecycle's settings in force (LifecycleSettings): one row, or none for the defaults.
 -- Seeded on first start, then changed by /set or by hand. Their rules are checked where
 -- they are read (LifecycleSettings.of), not here, so they have one home.
 CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
     one       BOOLEAN PRIMARY KEY DEFAULT true CHECK (one),
-    idle      INTERVAL NOT NULL,
-    grace     INTERVAL NOT NULL,
-    retention INTERVAL NOT NULL,
-    closings  INTEGER NOT NULL
+    idle        INTERVAL NOT NULL,
+    retention   INTERVAL NOT NULL,
+    closings    INTEGER NOT NULL,
+    settle      INTERVAL NOT NULL,
+    finished_at DOUBLE PRECISION NOT NULL,
+    asks        INTEGER NOT NULL
 );
 
 -- Each plugin's documents, under keys it chooses (grit.core.plugin.PluginDocs): a plugin

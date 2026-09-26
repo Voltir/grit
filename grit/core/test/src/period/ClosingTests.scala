@@ -35,7 +35,10 @@ object ClosingTests extends TestSuite {
     }
 
     test("a closing is shown as one message: when and why it closed, its prose, its sections") {
-      full.shown(Instant.parse("2026-09-20T23:30:00Z"), CloseReason.Resolved) ==>
+      full.shown(
+        Instant.parse("2026-09-20T23:30:00Z"),
+        CloseReason.Resolved(Probability.of(0.9).getOrElse(throw new java.lang.AssertionError("p")))
+      ) ==>
         """Earlier in this conversation (closed 2026-09-20, resolved): We set up the staging deploy.
           |Outcome: staging deploys from main
           |Decisions:

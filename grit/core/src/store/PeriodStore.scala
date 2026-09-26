@@ -3,7 +3,7 @@ package grit.core.store
 import java.time.Instant
 
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, TurnRef, TurnSeq}
-import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Purgeable}
+import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Purgeable, Verdict}
 
 /** A conversation's periods: which is open, closing one, and deleting what a closed one no
   * longer needs. Each writing method takes the conversation's lock itself
@@ -26,11 +26,11 @@ trait PeriodStore {
     */
   def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Period]]
 
-  /** Records that someone said `conversation`'s open period is done, at `at`
-    * ([[Activity.signal]]: a signal given since its newest activity stands). `false` when no
-    * period is open.
+  /** Records what the classifier made of `period` once it went quiet; a verdict whose last
+    * turn is no longer the period's newest, or about a period not open, is ignored. Whether
+    * it was recorded.
     */
-  def signal(conversation: ConversationId, at: Instant)(using Tx^): Either[StoreError, Boolean]
+  def judged(period: PeriodRef, verdict: Verdict)(using Tx^): Either[StoreError, Boolean]
 
   /** Every open period, as its deadline sees it. */
   def open()(using Tx^): Either[StoreError, Vector[Activity]]

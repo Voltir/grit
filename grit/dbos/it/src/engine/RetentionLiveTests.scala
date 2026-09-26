@@ -8,7 +8,7 @@ import scala.util.Using
 import grit.core.durable.Durable
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, SourceId, WorkflowId}
 import grit.core.message.Message
-import grit.core.period.{CloseReason, Closing, LifecycleSettings, PeriodState, Windows}
+import grit.core.period.{CloseReason, Closing, LifecycleSettings, PeriodState, Probability, Windows}
 import grit.core.store.{Origin, Tx}
 import grit.dbos.sql.{
   DbConfig,
@@ -31,11 +31,11 @@ object RetentionLiveTests extends TestSuite {
 
   private val periods = new SqlPeriodStore(new SqlEntryStore())
 
-  /** A minute idle, a minute's grace, a minute's retention. */
+  /** A minute idle, a minute's retention. */
   private def minutes(config: DbConfig): Unit = {
     val settings = Windows
-      .of(1.minute, 1.minute, 1.minute)
-      .flatMap(LifecycleSettings.of(_, 3))
+      .of(1.minute, 1.minute)
+      .flatMap(LifecycleSettings.of(_, 3, 30.seconds, Probability.One, 1))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
     ()
@@ -100,6 +100,7 @@ object RetentionLiveTests extends TestSuite {
           turn,
           close,
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
         )
         minutes(config)
@@ -119,7 +120,7 @@ object RetentionLiveTests extends TestSuite {
               .transaction(config)(periods.get(p1))
               .exists(_.exists(_.state match {
                 case PeriodState.Closed(_, _, _, _, _, _) => true
-                case PeriodState.Open(_) => false
+                case PeriodState.Open => false
               }))
           )
         )
@@ -144,19 +145,22 @@ object RetentionLiveTests extends TestSuite {
           .transaction(config)(periods.get(p1))
           .map(_.map(_.state match {
             case PeriodState.Closed(_, _, _, _, _, purged) => purged.nonEmpty
-            case PeriodState.Open(_) => false
+            case PeriodState.Open => false
           })) ==> Right(Some(true))
         engine.sweep(later.plusSeconds(60)) ==> Right(Swept.nothing)
       } finally engine.close()
     }
 
-    test("a purge finds its period's attempts by their ids' prefix, and not period 10's") {
+    test(
+      "a purge finds its period's close attempts and questions by their ids' prefix, and not period 10's"
+    ) {
       val config = TestPostgres.freshDatabase("retention_prefix")
       val engine = Engine.open(config, "test")
       try {
         engine.launch(
           turn,
           close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
         )
@@ -172,20 +176,21 @@ object RetentionLiveTests extends TestSuite {
               .transaction(config)(periods.get(p1))
               .exists(_.exists(_.state match {
                 case PeriodState.Closed(_, _, _, _, _, _) => true
-                case PeriodState.Open(_) => false
+                case PeriodState.Open => false
               }))
           )
         )
-        // Workflows named as attempts on period 1 and on period 10 would be, whatever their
-        // turns: the close stand-in runs nothing for either.
+        // Workflows named as close attempts and questions on period 1 and on period 10 would
+        // be, whatever their turns: the stand-ins run nothing for any.
         val c = ConversationId.value(t0.conversationId)
-        val one = WorkflowId(s"close:$c:1:stray")
-        val ten = WorkflowId(s"close:$c:10:stray")
+        val one = Vector(WorkflowId(s"close:$c:1:stray"), WorkflowId(s"settle:$c:1:stray"))
+        val ten = Vector(WorkflowId(s"close:$c:10:stray"), WorkflowId(s"settle:$c:10:stray"))
         val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
         try
-          Vector(one, ten).foreach { id =>
+          (one ++ ten).foreach { id =>
+            val name = WorkflowId.value(id).takeWhile(_ != ':')
             val _ = client.enqueueWorkflow[String, Exception](
-              new DBOSClient.EnqueueOptions("close", DurableWorkflow.ClassName, "turns")
+              new DBOSClient.EnqueueOptions(name, DurableWorkflow.ClassName, "turns")
                 .withWorkflowId(WorkflowId.value(id))
                 .withQueuePartitionKey(c),
               // Empty, and DBOS only reads it; separation checking treats arrays as mutable.
@@ -193,10 +198,10 @@ object RetentionLiveTests extends TestSuite {
             )
           }
         finally client.close()
-        assert(eventually(kept(config, Vector(one)) == Vector(1, 0)))
-        assert(eventually(kept(config, Vector(ten)) == Vector(1, 0)))
+        assert(eventually(kept(config, one) == Vector(2, 0)))
+        assert(eventually(kept(config, ten) == Vector(2, 0)))
         engine.sweep(Instant.now().plusSeconds(180)).map(_.purged) ==> Right(Vector(p1))
-        (kept(config, Vector(one)), kept(config, Vector(ten))) ==> (Vector(0, 0), Vector(1, 0))
+        (kept(config, one), kept(config, ten)) ==> (Vector(0, 0), Vector(2, 0))
       } finally engine.close()
     }
   }

@@ -37,7 +37,7 @@ object Digest {
       "at" -> closed.at.toString,
       "where" -> where(closed.origin),
       "why" -> (closed.reason match {
-        case CloseReason.Resolved => "resolved"
+        case CloseReason.Resolved(_) => "resolved"
         case CloseReason.Lapsed => "lapsed"
       }),
       "line" -> closed.closing.headline

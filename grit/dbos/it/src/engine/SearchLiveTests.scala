@@ -145,7 +145,7 @@ object SearchLiveTests extends TestSuite {
         .getOrElse(sys.error("closing"))
       val c = conversation(
         "closed",
-        Payload.Closed(PeriodSeq.First, CloseReason.Resolved, closing),
+        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing),
         said("nothing to see")
       )
       Vector("kakapo", "kea", "takahe", "kiwi", "weka", "tuatara").map(w => find(c, w).map(ids)) ==>

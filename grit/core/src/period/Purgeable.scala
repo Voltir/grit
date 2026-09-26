@@ -1,6 +1,6 @@
 package grit.core.period
 
-import grit.core.id.{CloseRef, PeriodRef, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{CloseRef, PeriodRef, SettleRef, TurnRef, TurnSeq, WorkflowId}
 
 /** A closed period whose raw entries are still kept, its turns running `first` to `last`. */
 final case class Purgeable(period: PeriodRef, first: TurnSeq, last: TurnSeq) {
@@ -11,7 +11,7 @@ final case class Purgeable(period: PeriodRef, first: TurnSeq, last: TurnSeq) {
       .map(t => TurnRef(period.conversationId, TurnSeq(t)).workflowId)
 
   /** What the ids of the other workflows its purge deletes start with: every attempt made
-    * to close it.
+    * to close it, and every question asked about it.
     */
-  def attempts: Vector[String] = Vector(CloseRef.prefix(period))
+  def attempts: Vector[String] = Vector(CloseRef.prefix(period), SettleRef.prefix(period))
 }

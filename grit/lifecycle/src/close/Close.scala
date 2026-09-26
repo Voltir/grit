@@ -4,9 +4,10 @@ import java.time.Instant
 
 import grit.core.durable.Durable
 import grit.core.id.{CloseRef, EntryId, TurnSeq, WorkflowId}
-import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
+import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.{CloseReason, Closing}
 import grit.core.store.{Entry, Payload, Sealed, StoreError, Tx}
+import grit.lifecycle.transcript.PeriodTranscript
 
 /** The close: one workflow per attempt to close a period ([[CloseRef]]), run on the turns'
   * queue under its conversation, so never beside one of its turns. Each step's output is
@@ -102,8 +103,8 @@ object Close {
       settings <- records.lifecycle.current()
     } yield (period, activity) match {
       case (Some(p), Some(a)) =>
-        val current = a.attempt(settings.windows)
-        if (current == attempt) Checked.Due(p.first, a.due(settings.windows).reason)
+        val current = a.attempt(settings)
+        if (current == attempt) Checked.Due(p.first, a.due(settings).reason)
         else if (a.last != attempt.last) Checked.Abandoned(s"turn ${TurnSeq.value(a.last)} came in")
         else Checked.Abandoned(s"its deadline moved to ${current.due}")
       case (Some(_), None) => Checked.Closed
@@ -116,27 +117,14 @@ object Close {
       attempt: CloseRef,
       first: TurnSeq
   ): Either[String, Vector[Entry]] =
-    env.db
-      .read(env.records.entries.list(attempt.period.conversationId))
+    PeriodTranscript
+      .entries(env.db, env.records.entries, attempt.period, first, attempt.last)
       .left
       .map(describe)
-      .map(_.filter { e =>
-        val t = TurnSeq.value(e.turnSeq)
-        t >= TurnSeq.value(first) && t <= TurnSeq.value(attempt.last)
-      })
 
-  /** The period as one transcript: its user messages and replies' text, in order. */
+  /** The period as one transcript ([[PeriodTranscript.of]]); empty when unread. */
   private def transcript(entries: Either[String, Vector[Entry]]): String =
-    entries
-      .getOrElse(Vector.empty)
-      .flatMap(_.payload match {
-        case Payload.Message(Message.User(text)) => Some(s"User: $text")
-        case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
-          val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
-          Option.when(said.nonEmpty)(s"Assistant: $said")
-        case _ => None
-      })
-      .mkString("\n\n")
+    PeriodTranscript.of(entries.getOrElse(Vector.empty))
 
   /** The `summarise` step: the closing the summary model writes for the period's turns
     * `first` to the attempt's last, asking for `asked`; or, when it fails, the fallback

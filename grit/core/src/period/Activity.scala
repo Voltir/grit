@@ -2,27 +2,30 @@ package grit.core.period
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, PeriodRef, TurnSeq}
+import grit.core.id.{CloseRef, PeriodRef, SettleRef, TurnSeq}
 
 /** An open period as its deadline sees it: its `newest` activity (the later of its opening
-  * and its newest entry's time), its `last` turn (its first while it has no entries), and
-  * when someone `signalled` it done.
+  * and its newest entry's time), its `last` turn (its first while it has no entries), its
+  * latest `verdict`, and how many verdicts it has had (`asked`).
   */
 final case class Activity(
     period: PeriodRef,
     newest: Instant,
     last: TurnSeq,
-    signalled: Option[Instant]
+    verdict: Option[Verdict],
+    asked: Int
 ) {
 
-  /** When it closes under `windows` ([[Deadline.of]]). */
-  def due(windows: Windows): Due = Deadline.of(newest, signalled, windows)
+  /** When it closes under `settings` ([[Deadline.of]]). */
+  def due(settings: LifecycleSettings): Due = Deadline.of(newest, last, verdict, settings)
 
-  /** The attempt to close it on its deadline under `windows`, as it stands. */
-  def attempt(windows: Windows): CloseRef = CloseRef(period, last, due(windows).at)
+  /** The attempt to close it on its deadline under `settings`, as it stands. */
+  def attempt(settings: LifecycleSettings): CloseRef = CloseRef(period, last, due(settings).at)
 
-  /** Its signal once someone says it is done `at`: a signal given after its newest activity
-    * stands, so a repeat changes nothing; otherwise `at`.
-    */
-  def signal(at: Instant): Instant = signalled.filter(_.isAfter(newest)).getOrElse(at)
+  /** When the classifier is to be asked about it under `settings` ([[Deadline.ask]]). */
+  def asks(settings: LifecycleSettings): Option[Instant] =
+    Deadline.ask(newest, last, verdict, asked, settings)
+
+  /** The question about it as it stands, quiet since its newest activity. */
+  def question: SettleRef = SettleRef(period, last, newest)
 }

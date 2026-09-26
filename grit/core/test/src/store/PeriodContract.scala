@@ -11,10 +11,13 @@ import grit.core.period.{
   CloseOrdinal,
   CloseReason,
   Closing,
+  Judgement,
   LifecycleSettings,
   Period,
   PeriodState,
+  Probability,
   Purgeable,
+  Verdict,
   Windows
 }
 
@@ -56,6 +59,12 @@ abstract class PeriodContract extends TestSuite {
 
   private def right[A](result: Either[StoreError, A]): A =
     result.fold(e => throw new java.lang.AssertionError(s"store failed: $e"), identity)
+
+  private def p(x: Double): Probability =
+    Probability.of(x).getOrElse(throw new java.lang.AssertionError(x))
+
+  /** How every seal here closes its period. */
+  private val Resolved = CloseReason.Resolved(p(0.86))
 
   private def first(n: Long): PeriodSeq =
     PeriodSeq.of(n).getOrElse(throw new java.lang.AssertionError(n))
@@ -111,7 +120,7 @@ abstract class PeriodContract extends TestSuite {
       right(
         periods.seal(
           CloseRef(period, last.turnSeq, at(minute)),
-          CloseReason.Resolved,
+          Resolved,
           closing(text),
           at(minute)
         )
@@ -127,7 +136,7 @@ abstract class PeriodContract extends TestSuite {
     state match {
       case PeriodState.Closed(last, when, reason, entry, _, purged) =>
         Some((last, when, reason, entry, purged))
-      case PeriodState.Open(_) => None
+      case PeriodState.Open => None
     }
 
   private def ordinal(period: PeriodRef): CloseOrdinal =
@@ -144,9 +153,9 @@ abstract class PeriodContract extends TestSuite {
       say(c, 1)
       val p1 = PeriodRef(c, PeriodSeq.First)
       transaction(periods.get(p1)) ==>
-        Right(Some(Period(p1, TurnSeq(0), at(0), PeriodState.Open(None))))
+        Right(Some(Period(p1, TurnSeq(0), at(0), PeriodState.Open)))
       transaction(periods.of(TurnRef(c, TurnSeq(1)))) ==>
-        Right(Some(Period(p1, TurnSeq(0), at(0), PeriodState.Open(None))))
+        Right(Some(Period(p1, TurnSeq(0), at(0), PeriodState.Open)))
       transaction(periods.get(PeriodRef(c, first(2)))) ==> Right(None)
     }
 
@@ -157,7 +166,7 @@ abstract class PeriodContract extends TestSuite {
       val p1 = PeriodRef(c, PeriodSeq.First)
       seal(p1, t0, 30, "sealed") ==> Sealed.Closed(p1.closingId)
       transaction(periods.get(p1)).map(_.map(p => closed(p.state))) ==>
-        Right(Some(Some((TurnSeq(0), at(30), CloseReason.Resolved, p1.closingId, None))))
+        Right(Some(Some((TurnSeq(0), at(30), Resolved, p1.closingId, None))))
       transaction(entries.get(p1.closingId)) ==> Right(
         Some(
           Entry(
@@ -166,7 +175,7 @@ abstract class PeriodContract extends TestSuite {
             TurnSeq(0),
             None,
             2,
-            Payload.Closed(PeriodSeq.First, CloseReason.Resolved, closing("sealed")),
+            Payload.Closed(PeriodSeq.First, Resolved, closing("sealed")),
             at(30)
           )
         )
@@ -180,7 +189,7 @@ abstract class PeriodContract extends TestSuite {
       val t1 = say(c, 40)
       val p2 = PeriodRef(c, first(2))
       transaction(periods.of(t1)) ==>
-        Right(Some(Period(p2, TurnSeq(1), at(40), PeriodState.Open(None))))
+        Right(Some(Period(p2, TurnSeq(1), at(40), PeriodState.Open)))
       transaction(periods.of(t0)).map(_.map(_.ref)) ==> Right(Some(PeriodRef(c, PeriodSeq.First)))
     }
 
@@ -190,7 +199,7 @@ abstract class PeriodContract extends TestSuite {
       say(c, 5)
       val p1 = PeriodRef(c, PeriodSeq.First)
       seal(p1, t0, 30, "late") ==> Sealed.Abandoned
-      transaction(periods.get(p1)).map(_.map(_.state)) ==> Right(Some(PeriodState.Open(None)))
+      transaction(periods.get(p1)).map(_.map(_.state)) ==> Right(Some(PeriodState.Open))
       transaction(entries.get(p1.closingId)) ==> Right(None)
     }
 
@@ -206,19 +215,37 @@ abstract class PeriodContract extends TestSuite {
         Right(Some(Some(at(30))))
     }
 
-    test("a signal stands until activity follows it; with no period open there is none") {
-      val c = conversation("signal")
-      transaction(periods.signal(c, at(0))) ==> Right(false)
-      val t0 = say(c, 1)
+    test("a verdict about the newest turn is kept; the activity carries the latest and how many") {
+      val c = conversation("judged")
+      val t0 = say(c, 0)
       val p1 = PeriodRef(c, PeriodSeq.First)
-      def signalled = transaction(periods.activity(p1)).map(_.flatMap(_.signalled))
-      transaction(periods.signal(c, at(5))) ==> Right(true)
-      signalled ==> Right(Some(at(5)))
-      transaction(periods.signal(c, at(7))) ==> Right(true)
-      signalled ==> Right(Some(at(5)))
-      more(t0, 9)
-      transaction(periods.signal(c, at(11))) ==> Right(true)
-      signalled ==> Right(Some(at(11)))
+      val early = Verdict(at(60), t0.turnSeq, Judgement.Unanswered("no classifier"))
+      val later = Verdict(
+        at(120),
+        t0.turnSeq,
+        Judgement.Weighed(p(0.86), p(0.04), p(0.06), p(0.04), "jev")
+      )
+      transaction(periods.judged(p1, early)) ==> Right(true)
+      transaction(periods.judged(p1, later)) ==> Right(true)
+      transaction(periods.activity(p1)).map(_.map(a => (a.verdict, a.asked))) ==>
+        Right(Some((Some(later), 2)))
+    }
+
+    test("a verdict about a turn no longer the newest, or a period not open, is ignored") {
+      val c = conversation("judged-late")
+      val t0 = say(c, 0)
+      say(c, 5)
+      val p1 = PeriodRef(c, PeriodSeq.First)
+      val stale = Verdict(at(60), t0.turnSeq, Judgement.Unanswered("no classifier"))
+      transaction(periods.judged(p1, stale)) ==> Right(false)
+      transaction(periods.activity(p1)).map(_.map(a => (a.verdict, a.asked))) ==>
+        Right(Some((None, 0)))
+      val d = conversation("judged-closed")
+      val d0 = say(d, 0)
+      val q1 = PeriodRef(d, PeriodSeq.First)
+      seal(q1, d0, 30, "closed")
+      transaction(periods.judged(q1, Verdict(at(60), d0.turnSeq, Judgement.Unanswered("x")))) ==>
+        Right(false)
     }
 
     test("an open period's activity is its newest entry's time and turn, or its opening") {
@@ -237,8 +264,8 @@ abstract class PeriodContract extends TestSuite {
           .sortBy(x => ConversationId.value(x.period.conversationId))
       ) ==> Right(
         Vector(
-          Activity(PeriodRef(a, PeriodSeq.First), at(6), TurnSeq(1), None),
-          Activity(PeriodRef(quiet, PeriodSeq.First), at(2), TurnSeq(0), None)
+          Activity(PeriodRef(a, PeriodSeq.First), at(6), TurnSeq(1), None, 0),
+          Activity(PeriodRef(quiet, PeriodSeq.First), at(2), TurnSeq(0), None, 0)
         ).sortBy(x => ConversationId.value(x.period.conversationId))
       )
       transaction(periods.activity(PeriodRef(b, PeriodSeq.First))) ==> Right(None)
@@ -274,9 +301,9 @@ abstract class PeriodContract extends TestSuite {
         .map(_.filter(p => mine.contains(p.ref.conversationId)))
       all.map(_.map(p => (p.ref, p.origin, p.reason, p.closing, p.at))) ==> Right(
         Vector(
-          (y1, origin("order-y"), CloseReason.Resolved, closing("y1"), at(20)),
-          (x1, origin("order-x"), CloseReason.Resolved, closing("x1"), at(21)),
-          (x2, origin("order-x"), CloseReason.Resolved, closing("x2"), at(40))
+          (y1, origin("order-y"), Resolved, closing("y1"), at(20)),
+          (x1, origin("order-x"), Resolved, closing("x1"), at(21)),
+          (x2, origin("order-x"), Resolved, closing("x2"), at(40))
         )
       )
       all.map(_.map(_.order)) ==> Right(Vector(ordinal(y1), ordinal(x1), ordinal(x2)))
@@ -316,13 +343,16 @@ abstract class PeriodContract extends TestSuite {
     }
 
     test("the lifecycle's settings are the defaults until seeded, seeded once, then set") {
-      def settings(idle: FiniteDuration, closings: Int): LifecycleSettings =
+      def settings(idle: FiniteDuration, closings: Int, finishedAt: Double, asks: Int) =
         Windows
-          .of(idle, 1.minute, 1.day)
-          .flatMap(LifecycleSettings.of(_, closings))
+          .of(idle, 1.day)
+          .flatMap(LifecycleSettings.of(_, closings, idle - 1.minute, p(finishedAt), asks))
           .getOrElse(throw new java.lang.AssertionError(idle))
-      val (seeded, ignored, later) =
-        (settings(3.minutes, 1), settings(5.minutes, 2), settings(7.minutes, 0))
+      val (seeded, ignored, later) = (
+        settings(3.minutes, 1, 0.8, 3),
+        settings(5.minutes, 2, 0.9, 2),
+        settings(7.minutes, 0, 0.75, 1)
+      )
       transaction(lifecycle.current()) ==> Right(LifecycleSettings.Default)
       transaction(lifecycle.seed(seeded)) ==> Right(seeded)
       transaction(lifecycle.seed(ignored)) ==> Right(seeded)

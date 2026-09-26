@@ -24,6 +24,7 @@ import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
 import grit.digest.Digest
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
+import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.models.{
   JevClassifier,
   JevConfig,
@@ -58,14 +59,16 @@ import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
   * runs in, in at most `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at
   * least 2), the last with tools off. A command it runs sees only the environment
   * `LocalShell` passes. The engine sweeps every `GRIT_SWEEP` (default
-  * [[DefaultSweep]]), closing each period whose deadline has come ([[Close]]), posting each
-  * closed period to the plugins `GRIT_PLUGINS` turns on ([[pluginChoice]], [[Posting]]; with
-  * Digest on, each turn's model is offered `recent_activity`), its closing
-  * written by the summary role and gated by the same classifier as the topics. When a
-  * period closes, and how many closing entries open a window, are data in the database: on
-  * the first start against a database they are seeded from `GRIT_IDLE`, `GRIT_GRACE`,
-  * `GRIT_RETENTION` and `GRIT_WINDOW_K` ([[Lifecycle.fromEnv]]); after that, those variables
-  * are ignored, and `/set` (or SQL) changes them, from the next sweep and turn on.
+  * [[DefaultSweep]]), asking the same classifier as the topics whether each quiet period is
+  * finished ([[Settle]]), closing each period whose deadline has come ([[Close]]), its
+  * closing written by the summary role and gated by that classifier, and posting each closed
+  * period to the plugins `GRIT_PLUGINS` turns on ([[pluginChoice]], [[Posting]]; with
+  * Digest on, each turn's model is offered `recent_activity`). When a period is asked about
+  * and closes, and how many closing entries open a window, are data in the database: on the
+  * first start against a database they are seeded from `GRIT_IDLE`, `GRIT_SETTLE`,
+  * `GRIT_FINISHED_AT`, `GRIT_ASKS`, `GRIT_RETENTION` and `GRIT_WINDOW_K`
+  * ([[Lifecycle.fromEnv]]); after that, those variables are ignored, and `/set` (or SQL)
+  * changes them, from the next sweep and turn on.
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
   *     (default `default`). Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
@@ -132,7 +135,7 @@ object Main {
     val seeded = exitOnLeft(Lifecycle.fromEnv(env))
     val plugins = exitOnLeft(pluginChoice(env))
 
-    /** `engine` with its lifecycle's settings seeded, and the turn and the close launched on
+    /** `engine` with its lifecycle's settings seeded, and its workflows launched on
       * it: the assembler reads its stores, and the models its kept facts. Throws when the
       * settings cannot be seeded, when the coding tools repeat a name, a fault in `grit.tools`
       * that no setting can cause, or when the kept model facts cannot be read.
@@ -189,6 +192,14 @@ object Main {
               ),
               classifier(topics),
               models,
+              engine.db,
+              Clock.system()
+            )
+          ),
+          Settle.body(
+            SettleEnv(
+              SettleRecords(engine.entries, engine.periods, engine.lifecycle),
+              classifier(topics),
               engine.db,
               Clock.system()
             )
