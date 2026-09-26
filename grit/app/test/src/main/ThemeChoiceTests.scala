@@ -11,7 +11,9 @@ object ThemeChoiceTests extends TestSuite {
   val tests = Tests {
     test("GRIT_THEME wins over the kept theme") {
       Main.theme(Map("GRIT_THEME" -> "abyss"), Prefs(Some("nightshade"))) ==> Right(Theme.Abyss)
-      assert(Main.theme(Map("GRIT_THEME" -> "sandstone"), Prefs(Some("abyss"))).isLeft)
+      // One grit does not have is an error listing those it has; the kept one is no fallback.
+      Main.theme(Map("GRIT_THEME" -> "sandstone"), Prefs(Some("abyss"))) ==>
+        Left("GRIT_THEME is none of frost, tokyo-night, tokyo-storm, tokyo-moon, abyss, nightshade")
     }
 
     test("unset, the kept theme; one grit no longer has, or none, is the default") {
