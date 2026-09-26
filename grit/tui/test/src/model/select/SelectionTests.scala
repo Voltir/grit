@@ -14,10 +14,17 @@ object SelectionTests extends TestSuite {
   )
 
   /** Paint `doc` wrapped to `width` onto a fresh surface, one entry after another, and
-    * apply `sel` as a reverse mask through the same projection the app would use.
+    * apply `sel` as a reverse mask through [[Selection.columnsOn]].
     *
     * Returns the surface and, for every painted cell, the [[DocPos]] it shows -- so the
     * mask can be compared against the model cell by cell.
+    *
+    * It stands in for `Viewport.render`, so the tests here hold the model's half of rule
+    * 5: the columns `columnsOn` covers on a row are exactly the positions `contains`
+    * admits. That `Viewport.render` paints what `columnsOn` says is DocMemoTests' half
+    * ("the highlighted cells are exactly what the selection model says"). The document
+    * is ASCII, so `where` maps one char to one cell; wide glyphs are the display-column
+    * test's.
     */
   private def painted(sel: Selection, width: Int): (Surface, Map[Pos, DocPos]) = {
     var s = Surface.blank(Size(24, width + 1))
@@ -96,7 +103,8 @@ object SelectionTests extends TestSuite {
       assertMaskMatchesModel(Selection(DocPos(0, 30), DocPos(2, 14)), 20)
     }
 
-    test("the mask equals the model at a width that forces many rows") {
+    test("the mask equals the model across a word hard-broken between rows") {
+      // At 8 columns "signature" fits no row, so it breaks mid-word.
       assertMaskMatchesModel(Selection(DocPos(0, 2), DocPos(2, 3)), 8)
     }
 
@@ -120,9 +128,7 @@ object SelectionTests extends TestSuite {
       val text = doc.textOf(sel)
       assert(text == "signature is the whole truth about a function\neffects")
       assert(doc.textOf(Selection(DocPos(0, 4), DocPos(0, 13))) == "signature")
-    }
-
-    test("an empty selection copies nothing") {
+      // ...and an empty selection copies nothing.
       assert(doc.textOf(Selection(DocPos(1, 3), DocPos(1, 3))) == "")
     }
 
