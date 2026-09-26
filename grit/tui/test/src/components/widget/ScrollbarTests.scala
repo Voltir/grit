@@ -19,11 +19,20 @@ object ScrollbarTests extends TestSuite {
     }
 
     test("the thumb never disappears and never exceeds the track") {
-      // A needle in a huge document still gets one row.
+      // A needle in a huge document still gets one row, at either end.
       assert(Scrollbar(10000, 1, 0).thumb(5) == (0, 1))
       assert(Scrollbar(10000, 1, 9999).thumb(5) == (4, 1))
-      // A window most of the document: clamped, not inverted.
-      assert(Scrollbar(5, 1, 0).thumb(3) == (0, 1))
+      // And over every geometry that scrolls, the thumb is at least a row and lies
+      // wholly inside the track.
+      for {
+        content <- 2 to 30
+        window <- 1 until content
+        offset <- -1 to content
+        track <- 1 to 12
+      } {
+        val (start, len) = Scrollbar(content, window, offset).thumb(track)
+        assert(len >= 1, start >= 0, start + len <= track)
+      }
     }
 
     test("a document that fits is all thumb, and draws nothing") {
@@ -38,9 +47,7 @@ object ScrollbarTests extends TestSuite {
     }
 
     test("the track renders as rail with a thumb block, one column") {
-      val s = sb.copy(offset = 45).render(Size(20, 1))
-      assert(s.size == Size(20, 1))
-      val rows = s.lines
+      val rows = sb.copy(offset = 45).render(Size(20, 1)).lines
       assert(rows.count(_ == "┃") == 2)
       assert(rows.count(_ == "│") == 18)
       assert(rows(9) == "┃" && rows(10) == "┃")
