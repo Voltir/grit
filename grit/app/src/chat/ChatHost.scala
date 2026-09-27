@@ -10,7 +10,7 @@ import grit.core.id.{ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Origin, Payload, StoreError, UsageLedger}
-import grit.dbos.engine.{Engine, TurnStatus}
+import grit.dbos.engine.{Link, TurnStatus}
 import grit.tui.runtime.app.{Fault, Host, Mailbox}
 import grit.turn.TurnStream
 
@@ -52,6 +52,12 @@ final class ChatHost(
     */
   private val PollMs = 400L
 
+  /** How often the screen looks whether an engine holds the database: every 2 s. */
+  private val HolderEvery = 2000L * 1000000L
+
+  /** What an attached screen says while no engine holds the database. */
+  private val EngineGoneNote = "engine gone: turns wait until grit runs again"
+
   @volatile @caps.unsafe.untrackedCaptures
   private var open = true
 
@@ -61,7 +67,7 @@ final class ChatHost(
 
   /** The open engine; `None` until it opens, and again once closed. Guarded by `lock`. */
   @caps.unsafe.untrackedCaptures
-  private var engine: Option[Engine^] = None
+  private var engine: Option[Link^] = None
 
   private val lock = new Object
 
@@ -142,7 +148,7 @@ final class ChatHost(
     * not open.
     */
   private def whenOpen(mailbox: Mailbox[ChatScreen.Msg], failed: String)(
-      work: Engine^ => Unit
+      work: Link^ => Unit
   ): Unit =
     background { () =>
       settled.await()
@@ -164,12 +170,12 @@ final class ChatHost(
     settled.countDown()
   }
 
-  private def current: Option[Engine^] = lock.synchronized(engine)
+  private def current: Option[Link^] = lock.synchronized(engine)
 
   /** The engine, opened; `None` when it failed (said on the mailbox) or the host closed
     * first (the engine is closed at once: DBOS's threads would keep the JVM alive).
     */
-  private def opened(mailbox: Mailbox[ChatScreen.Msg]): Option[Engine^] = {
+  private def opened(mailbox: Mailbox[ChatScreen.Msg]): Option[Link^] = {
     val result =
       try Right(opener.open())
       catch { case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.toString)) }
@@ -187,7 +193,7 @@ final class ChatHost(
     kept
   }
 
-  private def follow(engine: Engine^, mailbox: Mailbox[ChatScreen.Msg]): Unit =
+  private def follow(engine: Link^, mailbox: Mailbox[ChatScreen.Msg]): Unit =
     engine.conversation(origin, PrincipalId.Local) match {
       case Left(e) => mailbox.offer(ChatScreen.Msg.Failed(s"could not open the conversation: $e"))
       case Right(conversation) =>
@@ -198,7 +204,19 @@ final class ChatHost(
         var costs = Map.empty[TurnSeq, Vector[UsageLedger.Row]]
         var settled = Set.empty[TurnSeq]
         var sessionAt = Long.MinValue
+        // Whether an engine held the database when last looked, and when that was: an
+        // attached screen says when there is none, and turns wait (ADR 0015).
+        var engined = true
+        var lookedAt = 0L
         while (open) {
+          if (System.nanoTime() - lookedAt > HolderEvery) {
+            lookedAt = System.nanoTime()
+            val now = engine.holder().nonEmpty
+            if (now != engined) {
+              engined = now
+              mailbox.offer(ChatScreen.Msg.EngineGone(Option.when(!now)(EngineGoneNote)))
+            }
+          }
           engine.db.read(engine.entries.list(conversation)) match {
             case Right(entries) =>
               val (next, msgs) = Follow.step(state, entries, turn => engine.status(turn))
@@ -254,7 +272,7 @@ final class ChatHost(
     * could not be read.
     */
   private def ledgers(
-      engine: Engine^,
+      engine: Link^,
       conversation: ConversationId,
       turns: Vector[TurnSeq]
   ): Option[Map[TurnSeq, Vector[UsageLedger.Row]]] =
@@ -270,7 +288,7 @@ final class ChatHost(
   /** `turn` as the panel shows it, from `entries` and what DBOS and the ledger hold. A
     * turn not yet enqueued counts as running: its first step is next.
     */
-  private def described(engine: Engine^, turn: TurnRef, entries: Vector[Entry]): TurnView = {
+  private def described(engine: Link^, turn: TurnRef, entries: Vector[Entry]): TurnView = {
     val (running, steps) = engine.status(turn) match {
       case TurnStatus.Running(recorded) => (true, recorded)
       case TurnStatus.Unknown => (true, Vector.empty)
@@ -301,7 +319,7 @@ final class ChatHost(
     * heard so far after each piece, the latest attempt's ([[TurnStream.Heard]]). Ends with
     * the turn's workflow, or with the host.
     */
-  private def listen(engine: Engine^, turn: TurnRef, mailbox: Mailbox[ChatScreen.Msg]): Unit =
+  private def listen(engine: Link^, turn: TurnRef, mailbox: Mailbox[ChatScreen.Msg]): Unit =
     background { () =>
       val pieces = engine.stream(turn, TurnStream.Key)
       var heard = TurnStream.Heard.nothing
@@ -317,7 +335,7 @@ final class ChatHost(
       }
     }
 
-  private def send(engine: Engine^, text: String, mailbox: Mailbox[ChatScreen.Msg]): Unit = {
+  private def send(engine: Link^, text: String, mailbox: Mailbox[ChatScreen.Msg]): Unit = {
     // The TUI never redelivers, so each message is its own source.
     val started = for {
       turn <- engine.inbox.ingest(
@@ -344,10 +362,11 @@ final class ChatHost(
 
 object ChatHost {
 
-  /** Opens the engine the screen talks to, its turn launched. Called once, off the screen's
+  /** Opens the link the screen talks to: the engine this process runs, its turn launched, or
+    * one attached to the engine another process runs. Called once, off the screen's
     * thread; a throw is reported on screen.
     */
   trait Opener extends caps.SharedCapability {
-    def open(): Engine^
+    def open(): Link^
   }
 }

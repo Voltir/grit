@@ -97,10 +97,19 @@ object TurnHostedTests extends TestSuite {
       val turn = say(entries, "fetch")
       val durable = new InMemoryDurable
       val edge = served(durable, _ => Serve.Now(Outcome.Done("alpha")))
-      durable.run(turn.workflowId)(hostedBody(entries, model(("t1", "fetch", "a.txt")), edge)) ==> Done
+      durable.run(turn.workflowId)(
+        hostedBody(entries, model(("t1", "fetch", "a.txt")), edge)
+      ) ==> Done
       val slot = TurnTools.Slot(turn, TurnLoop.Round.First, 0)
-      entries.get(slot.resultId)(using grit.dbos.sql.TestTx.fake).toOption.flatten.map(_.payload) ==>
-        Some(grit.core.store.Payload.Result(Message.ToolResult(ToolCallId("t1"), "alpha", false), "fetch a.txt"))
+      entries
+        .get(slot.resultId)(using grit.dbos.sql.TestTx.fake)
+        .toOption
+        .flatten
+        .map(_.payload) ==>
+        Some(
+          grit.core.store.Payload
+            .Result(Message.ToolResult(ToolCallId("t1"), "alpha", false), "fetch a.txt")
+        )
     }
 
     test("a request its edge answers after the first wait is waited for again, and kept") {

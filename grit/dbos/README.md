@@ -18,7 +18,9 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `Settles` (the close and settle workflows, on the same queue under the conversation's
   partition, so neither runs beside one of its turns), `Posts` (the posting workflow, on a `posts` queue partitioned by
   plugin). Imports nothing else in dbos.
-- **`engine`** — both, composed: `EngineLock` (the database's one engine, ADR 0015: a
+- **`engine`** — both, composed: `Link` (an edge's view of the engine: inbox, reads,
+  streams, turn status, the holder, its registered edge; `Engine` is one, and
+  `Link.attach` another for a process refused the lock), `EngineLock` (the database's one engine, ADR 0015: a
   session advisory lock, its `grit.engines` row and heartbeat), `Engine` (what `grit.app`
   starts under the lock; closing it, or losing the lock, stops the sweep, then DBOS, waits
   for running bodies, and releases the lock last), `SqlDesk` (an edge's registration, live

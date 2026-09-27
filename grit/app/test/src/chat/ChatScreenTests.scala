@@ -178,6 +178,20 @@ object ChatScreenTests extends TestSuite {
       )
     }
 
+    test(
+      "with no engine holding the database the status line says so, over every other note, until one does"
+    ) {
+      val gone = "engine gone: turns wait until grit runs again"
+      def status(h: Headless[ChatScreen.State, Msg]) = h.screen.last.trim
+      val start =
+        Headless.start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(20, 80))
+      val attached = start.message(Msg.Opened).message(Msg.EngineGone(Some(gone)))
+      // A poll that clears the status line leaves the note standing.
+      val polled = attached.message(Msg.Arrived(Vector(), None))
+      assert(status(polled).contains(gone))
+      assert(!status(polled.message(Msg.EngineGone(None))).contains("engine gone"))
+    }
+
     test("from 100 columns the turn panel stands beside the transcript; ctrl-b hides it") {
       val view = TurnView(
         TurnSeq(2),

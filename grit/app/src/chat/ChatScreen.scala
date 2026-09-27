@@ -153,7 +153,8 @@ object ChatScreen {
       summaries: Boolean = false,
       loaded: Boolean = false,
       asking: Option[Asked] = None,
-      answered: Option[Asked] = None
+      answered: Option[Asked] = None,
+      engineGone: Option[String] = None
   ) {
 
     /** The call waiting for an answer from this screen: `asking`, unless it was answered. */
@@ -244,6 +245,11 @@ object ChatScreen {
 
     /** From the host: the engine is open. */
     case Opened
+
+    /** From the host: no engine holds the database (`note` says so, until it is `None`
+      * again, when one does).
+      */
+    case EngineGone(note: Option[String])
 
     /** The runes turn one step. */
     case Tick
@@ -373,6 +379,7 @@ object ChatScreen {
         case m: Msg.Settings => (s.copy(status = "reading the settings…"), Effect.ToHost(m))
         case Msg.Asking(asked) => (s.copy(asking = asked), Effect.NoOp)
         case Msg.Noted(status) => (s.copy(status = status), Effect.NoOp)
+        case Msg.EngineGone(note) => (s.copy(engineGone = note), Effect.NoOp)
         case Msg.Arrived(said, step, summaries) =>
           val since = if (step == s.step) s.stepSince else s.tick
           // A recorded reply takes the place of what was heard of it.
@@ -738,7 +745,8 @@ object ChatScreen {
                 case Some(step) => s" ${Look.Runes.step(step)} · ${TurnPanel.seconds(s.stepMs)}"
                 case None => s" ${Look.Runes.Idle} idle"
               },
-              s.status
+              // Said until an engine holds the database again, over any other status.
+              s.engineGone.getOrElse(s.status)
             ),
             Vector("enter sends", "ctrl-p commands", "ctrl-b panel", "ctrl-t tab", "ctrl-q quit "),
             look.status

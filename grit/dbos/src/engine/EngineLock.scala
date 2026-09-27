@@ -100,6 +100,17 @@ object EngineLock {
       case NonFatal(e) => Left(NotTaken.Unreachable(Option(e.getMessage).getOrElse(e.toString)))
     }
 
+  /** The engine holding the lock on the database `config` names, read on a short connection
+    * of its own; `None` when none holds it, it has not written its row, or the database
+    * cannot be read.
+    */
+  def holder(config: DbConfig): Option[Holder] =
+    try
+      Using.resource(DriverManager.getConnection(config.jdbcUrl, config.user, config.password))(
+        heldBy
+      )
+    catch { case NonFatal(_) => None }
+
   /** The row of the process holding the lock: only a row whose connection holds it, so a row
     * a dead engine left is never named. `None` when there is none, or it cannot be read.
     */

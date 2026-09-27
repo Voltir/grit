@@ -6,7 +6,6 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import scala.concurrent.duration.*
 import scala.io.Source
-import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
@@ -32,7 +31,6 @@ import grit.core.store.{
   PromptStore,
   StoreError,
   Tombstones,
-  Tx,
   UsageLedger
 }
 import grit.core.tool.ToolSets
@@ -61,7 +59,6 @@ import grit.dbos.workflow.{Closes, Posts, Running, Settles, Turns}
 
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory
-import dev.dbos.transact.workflow.WorkflowState
 import dev.dbos.transact.{DBOS, DBOSClient}
 import org.postgresql.ds.PGSimpleDataSource
 import org.slf4j.LoggerFactory
@@ -76,8 +73,7 @@ final class Engine private (
     dataSource: PGSimpleDataSource,
     lock: EngineLock^,
     config: DbConfig
-) extends caps.SharedCapability,
-      AutoCloseable {
+) extends Link {
 
   val conversations: ConversationStore = new SqlConversationStore()
 
@@ -281,68 +277,18 @@ final class Engine private (
     * ingest would.
     */
   def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId] =
-    transaction(conversations.findOrCreate(origin, by).map(_.id))
+    Link.transaction(dataSource)(conversations.findOrCreate(origin, by).map(_.id))
 
-  /** Where `turn`'s workflow is, without waiting for it. */
-  def status(turn: TurnRef): TurnStatus =
-    try {
-      val id = WorkflowId.value(turn.workflowId)
-      val handle = client.retrieveWorkflow[String, Exception](id)
-      Option(handle.getStatus()).map(_.status()) match {
-        case None => TurnStatus.Unknown
-        case Some(state) if state.isActive() => TurnStatus.Running(steps(turn))
-        case Some(WorkflowState.SUCCESS) => TurnStatus.Finished(handle.getResult())
-        case Some(state) => TurnStatus.Finished(s"workflow ${state.name.toLowerCase}")
-      }
-    } catch { case NonFatal(e) => TurnStatus.Finished(s"unreadable: ${e.getMessage}") }
+  def status(turn: TurnRef): TurnStatus = Link.status(client, turn)
 
-  /** The steps `turn`'s workflow has recorded so far, in the order it ran them; none when
-    * they cannot be read, which only dims what a watcher is shown. A step is recorded when
-    * it completes, so a running step is not among them.
-    */
-  def steps(turn: TurnRef): Vector[RecordedStep] =
-    try
-      client
-        .listWorkflowSteps(WorkflowId.value(turn.workflowId))
-        .asScala
-        .toVector
-        .sortBy(_.functionId())
-        .flatMap { step =>
-          Option(step.functionName()).map(
-            RecordedStep(_, Option(step.startedAt()), Option(step.completedAt()))
-          )
-        }
-    catch { case NonFatal(_) => Vector.empty }
+  def steps(turn: TurnRef): Vector[RecordedStep] = Link.steps(client, turn)
 
-  /** The pieces `turn`'s steps wrote to its stream `key`, in order, as they are written:
-    * each `next` waits for one, woken by DBOS's notification with polling behind it, and
-    * the pieces end when the turn's workflow does. An edge's read (ADR 0006); what the
-    * pieces mean is the writer's.
-    */
-  def stream(turn: TurnRef, key: String): Iterator[String] =
-    client
-      .readStream(WorkflowId.value(turn.workflowId), key)
-      .asScala
-      .collect { case piece: String => piece }
+  def stream(turn: TurnRef, key: String): Iterator[String] = Link.stream(client, turn, key)
 
-  /** Runs `body` in a transaction of its own: committed on `Right`, rolled back otherwise. */
-  private def transaction[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-    try {
-      Using.resource(dataSource.getConnection()) { conn =>
-        conn.setAutoCommit(false)
-        val result =
-          try body(using Tx.fromConnection(conn))
-          catch { case NonFatal(e) => conn.rollback(); throw e }
-        if (result.isRight) conn.commit() else conn.rollback()
-        result
-      }
-    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
+  def awaitTurn(turn: TurnRef): String = Link.awaitTurn(client, turn)
 
-  /** Waits for `turn` to finish and returns its workflow's output. A turn that threw
-    * rethrows here.
-    */
-  def awaitTurn(turn: TurnRef): String =
-    client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId)).getResult()
+  /** The engine holding this database's lock: this one, while it holds it. */
+  def holder(): Option[Holder] = EngineLock.holder(config)
 
   /** Stops sweeping, stops DBOS, waits up to [[Engine.BodiesWithin]] for every workflow body
     * still running (interrupted by the stop) to return, then releases the lock: no body this

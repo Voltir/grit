@@ -1,4 +1,4 @@
-# 0015. One engine per database, held by a session advisory lock
+# 0015. One engine per database, held by a session advisory lock; a process refused it attaches
 
 Status: accepted (2026-09-27)
 
@@ -23,7 +23,12 @@ Decision:
   the lock connection's backend pid, epoch, start, heartbeat. A process refused the lock
   reads it joined to `pg_locks`, so a row a dead engine left is never named as the holder.
   Where grit runs (a directory) is an edge's, and not in the row.
-- **A refused process says who holds the lock**, and a refused TUI exits before it paints.
+- **A process refused the lock attaches as an edge** (`Link.attach`): no DBOS executor, only
+  its client, the stores and the inbox, all through Postgres (ADR 0002). Its TUI serves its
+  own directory (ADR 0017) and shows its conversations; its header says it is attached and
+  to whom, and its status line says `engine gone` while no engine holds the lock: its
+  messages are kept, and their turns run when one does. It does not take the lock over.
+  An edge of another compatibility epoch than the engine's does not register.
 - **The heartbeat is every 2 s, on the lock's connection.** An update that fails or matches
   no row (the row taken, or deleted) means the lock is lost, and the engine stops.
 - **Stopping** (on close, or when the lock is lost): the sweeper stops, DBOS shuts down, grit
@@ -46,7 +51,11 @@ Consequences:
   already guarded.
 - A tool that reads the database without running workflows (`PromoteFacts`) takes the lock
   too, and so is refused while grit runs.
+- No takeover: when the engine stops, attached processes wait; a grit started next takes
+  the lock and recovers the waiting turns.
 - Enforced by `EngineLockTests`: a second engine refused and the holder named, a dead row
   not named, two databases not contending, the heartbeat advancing, a running turn stopped
   (and left pending) when the lock's session is terminated, nothing dequeued after, the lock
-  released only after running bodies return, and a deleted row stopping the engine.
+  released only after running bodies return, and a deleted row stopping the engine; and by
+  `AttachLiveTests`: an attached link's turn run by the engine, the holder named and then
+  gone, an edge of another epoch refused.

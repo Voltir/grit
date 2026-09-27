@@ -19,7 +19,7 @@ import grit.core.place.{Directory, Place}
 import grit.core.plugin.Plugin
 import grit.core.store.{Db, Origin}
 import grit.core.tool.{DuplicateName, ToolName, Toolbox}
-import grit.dbos.engine.{Engine, EngineLock}
+import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken}
 import grit.dbos.sql.DbConfig
 import grit.core.prompt.Fragment
 import grit.core.tool.ToolSet
@@ -76,8 +76,10 @@ import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling
   * `GRIT_LEDGER`, `GRIT_BALANCE`, `GRIT_SCOPE` and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]); after that, those variables are ignored, and `/set` (or SQL)
   * changes them, from the next sweep and turn on.
   *
-  * One grit runs per database (ADR 0015): a second, in either mode, says which process holds
-  * the database and exits 1.
+  * One grit runs the engine of a database (ADR 0015): a second, in either mode, attaches to
+  * it: its TUI serves its own directory and shows its conversations, the header saying
+  * `attached`, and the status line `engine gone` while no engine runs; its messages are
+  * then kept, and their turns run when one does.
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
   *     (default `default`) in the directory grit runs in: the same name in another
@@ -285,30 +287,39 @@ object Main {
 
     val failure: Option[String] =
       if (tui) {
-        // The lock first, before anything paints: a second grit on this database says who
-        // holds it and exits (ADR 0015).
-        val lock = EngineLock.take(config) match {
-          case Right(held) => held
+        // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
+        // refused, it attaches to the one that holds it, and serves its own directory.
+        val (mode, opener) = EngineLock.take(config) match {
+          case Right(lock) =>
+            val engine = new ChatHost.Opener {
+              // The screen paints first; the engine opens behind it, on the host's thread.
+              def open(): Link^ = {
+                val started = Engine.start(config, lock, Turn.Epoch)
+                try {
+                  val running = launched(started)
+                  serveHere(running, Place.of(directory), hosted, instructions, offered)
+                  running
+                } catch {
+                  case e: Throwable =>
+                    // DBOS's threads are non-daemon: an engine that is not handed on is closed.
+                    started.close()
+                    throw e
+                }
+              }
+            }
+            ("engine", engine)
+          case Left(NotTaken.Held(holder)) =>
+            val attached = new ChatHost.Opener {
+              def open(): Link^ = {
+                val link = Link.attach(config, Turn.Epoch)
+                serveHere(link, Place.of(directory), hosted, instructions, offered)
+                link
+              }
+            }
+            (holder.fold("attached")(h => s"attached · engine on ${h.machine} pid ${h.pid}"), attached)
           case Left(refused) =>
             System.err.println(s"[main] ${refused.message(java.time.Instant.now())}")
             sys.exit(1)
-        }
-        // The screen paints next; the engine opens behind it, on the host's thread.
-        val opener = new ChatHost.Opener {
-          def open(): Engine^ = {
-            val engine = Engine.start(config, lock, Turn.Epoch)
-            try {
-              val running = launched(engine)
-              serveHere(running, Place.of(directory), hosted, instructions, offered)
-              running
-            }
-            catch {
-              case e: Throwable =>
-                // DBOS's threads are non-daemon: an engine that is not handed on is closed.
-                engine.close()
-                throw e
-            }
-          }
         }
         val host = new ChatHost(
           origin,
@@ -319,13 +330,18 @@ object Main {
         // Closing the host stops following and closes the engine, however far it got.
         try
           Runtime.run(
-            new ChatScreen.App(modelName, startTheme, budget, s"$session · ${written(root)}"),
+            new ChatScreen.App(modelName, startTheme, budget, s"$session · ${written(root)} · $mode"),
             keeping(host, prefsFile)
           )
         finally host.close()
         None
       } else
         Engine.open(config, Turn.Epoch) match {
+          case Left(NotTaken.Held(_)) =>
+            // Another grit runs the engine: its turns are sent to it, as a TUI's are.
+            val link = Link.attach(config, Turn.Epoch)
+            try say(link, args.toList)
+            finally link.close()
           case Left(refused) => Some(refused.message(java.time.Instant.now()))
           case Right(engine) =>
             try say(launched(engine), args.toList)
@@ -345,11 +361,11 @@ object Main {
 
   /** This process's edge (ADR 0017), registered through `engine` for `place`: it offers
     * `hosted` and the directory's `instructions` there, and runs the requests addressed to it
-    * with the tools `offered` picks, each on a virtual thread, until the engine closes. A
+    * with the tools `offered` picks, each on a virtual thread, until the link closes. A
     * registration that fails is logged, and the turns are then served by no edge here.
     */
   private def serveHere(
-      engine: Engine^,
+      engine: Link^,
       place: Place,
       hosted: ToolSet,
       instructions: Vector[Fragment],
@@ -389,7 +405,7 @@ object Main {
   private val AdvertEvery: FiniteDuration = 5.seconds
 
   /** Each message answered by one turn, printed. */
-  private def say(engine: Engine^, messages: List[String]): Option[String] = {
+  private def say(engine: Link^, messages: List[String]): Option[String] = {
     val started = messages.map { text =>
       for {
         // The text is its own source id, so repeating a message redelivers it.
