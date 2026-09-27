@@ -21,7 +21,10 @@ import grit.core.store.{Db, Origin}
 import grit.core.tool.{DuplicateName, ToolName, Toolbox}
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
-import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
+import grit.core.prompt.SystemPrompt
+import grit.core.tool.ToolSet
+import grit.edge.PlaceFragments
+import grit.host.{LocalEdits, LocalInstructions, LocalShell, LocalWorkspace}
 import grit.digest.Digest
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
@@ -39,7 +42,7 @@ import grit.models.{
 import grit.tools.{Coding, Facts, Probes}
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
-import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling}
+import grit.turn.{Turn, TurnEnv, TurnLoop, TurnPrompt, TurnRecords, TurnTooling}
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set: each role's model, budget and upstream as
@@ -85,11 +88,19 @@ object Main {
   /** The argument runs share one conversation, apart from any TUI session. */
   private val RunOrigin: Origin = Origin.Task("m0", "main")
 
-  /** The system prompt, for a checkout whose root is `root`. What each tool does rides with
-    * the tool, never here: a model told of a tool it was not offered writes the call out.
+  /** The system prompt for a conversation from `origin` whose file tools are `hosted`, over
+    * `directory`: grit's base, what the edge is, what the turn may reach there, then the
+    * directory's instruction files (`AGENTS.md`, else `CLAUDE.md`, from `/` down, bounded as
+    * [[PlaceFragments]] says). What each tool does rides with the tool, never here: a model
+    * told of a tool it was not offered writes the call out.
     */
-  private def systemPrompt(root: java.nio.file.Path): String =
-    s"You are grit. You work in the repository at $root, through the tools you are offered."
+  private def systemPrompt(origin: Origin, directory: Directory, hosted: ToolSet): String =
+    SystemPrompt
+      .of(
+        Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(Some(directory), hosted)) ++
+          PlaceFragments.of(new LocalInstructions().around(directory), CharEstimate)
+      )
+      .render
 
   def main(args: Array[String]): Unit = {
     val tui = args.isEmpty
@@ -121,7 +132,20 @@ object Main {
         .map(e => s"the working directory cannot be read: $e")
     )
     val directory = exitOnLeft(Directory.of(root.toString))
-    val system = systemPrompt(root)
+    val session = env.getOrElse("GRIT_SESSION", "default")
+    val origin = if (tui) Origin.Tui(directory, session) else RunOrigin
+    // The file tools the turn is offered, as its prompt's reach describes them: built over
+    // the checkout here only to be described; the engine builds its own.
+    val hosted = exitOnLeft(
+      (offered match {
+        case ToolChoice.Read => Coding.readOnly(new LocalWorkspace(root)).map(_.set)
+        case ToolChoice.All =>
+          Coding
+            .all(new LocalWorkspace(root), new LocalEdits(root), new LocalShell(root, Map.empty))
+            .map(_.set)
+      }).left.map(d => s"the coding tools offer ${ToolName.value(d.name)} twice")
+    )
+    val system = systemPrompt(origin, directory, hosted)
     val prefsFile = Prefs.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend. Each role's model
@@ -302,9 +326,8 @@ object Main {
             }
           }
         }
-        val session = env.getOrElse("GRIT_SESSION", "default")
         val host = new ChatHost(
-          Origin.Tui(directory, session),
+          origin,
           opener,
           system,
           CharEstimate,

@@ -12,6 +12,7 @@ object InMemoryStoreTests extends StoreContract {
   protected val profiles: ModelProfileStore = new InMemoryModelProfileStore
   protected val facts: ModelFactStore = new InMemoryModelFactStore
   protected val toolSets: ToolSets = new InMemoryToolSets
+  protected val prompts: PromptStore = new InMemoryPromptStore
 
   protected def transaction[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)
 

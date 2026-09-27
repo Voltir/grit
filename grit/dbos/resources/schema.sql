@@ -162,6 +162,29 @@ CREATE TABLE IF NOT EXISTS grit.turn_model_profiles (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Every distinct system-prompt fragment a turn was sent or an edge advertised
+-- (grit.core.prompt.Fragment), keyed by its content hash, so it is written once however many
+-- turns and conversations share it, and never changed. Kept forever: a turn's recorded
+-- first step names these ids, and its replay reads the texts back from here. Nothing deletes
+-- a row, even one no turn names any more.
+-- Retention: kept: content-addressed; replay reads fragments by id.
+CREATE TABLE IF NOT EXISTS grit.prompt_fragments (
+    id         TEXT PRIMARY KEY,
+    layer      TEXT NOT NULL,
+    source     TEXT NOT NULL,
+    text       TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- The fragments each turn's system prompt was built from, in order: for the turn panel and
+-- the eval. Set once when the turn starts.
+-- Retention: ledger: with its period's closing (Target.Superseded, Target.Quiet).
+CREATE TABLE IF NOT EXISTS grit.turn_prompts (
+    workflow_id TEXT PRIMARY KEY,
+    fragments   JSONB NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Every distinct tool set a turn was offered (grit.core.tool.ToolSet): each tool's name,
 -- description, schema, whether it asks first, and its retry. Keyed by its content hash, so
 -- it is written once however many turns share it, and never changed; a turn's recorded

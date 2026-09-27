@@ -8,6 +8,7 @@ import grit.core.store.{
   ModelFactStore,
   ModelProfileStore,
   Origin,
+  PromptStore,
   StoreContract,
   Tx,
   UsageLedger
@@ -18,6 +19,7 @@ import grit.dbos.sql.{
   SqlEntryStore,
   SqlModelFactStore,
   SqlModelProfileStore,
+  SqlPromptStore,
   SqlToolSets,
   SqlUsageLedger,
   TestPostgres
@@ -38,6 +40,7 @@ object SqlStoreTests extends StoreContract {
   protected val profiles: ModelProfileStore = new SqlModelProfileStore()
   protected val facts: ModelFactStore = new SqlModelFactStore()
   protected val toolSets: ToolSets = new SqlToolSets()
+  protected val prompts: PromptStore = new SqlPromptStore()
 
   protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
 

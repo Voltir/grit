@@ -18,6 +18,10 @@ In dependency order:
   path; `Scope` (the place prefixes a window may draw on beside its own conversation),
   `Weight` (how far its own search hits outweigh those elsewhere) and `Locality`, both
   together. Imports nothing in core.
+- **`prompt`** — a turn's system prompt as ordered fragments (ADR 0016): `Layer` (base,
+  edge, reach, place: the most stable first, for a provider's prompt cache), `Fragment` (its
+  id a content hash) and `SystemPrompt` (fragments by layer, rendered to the same bytes
+  every time). ← `id`
 - **`model`** — what grit knows about models, as data: `ModelRef` (a model snapshot at an
   upstream), each setting's `Known` value and its `Source`, the switches a `Profile` picks
   among and the `Settings` a call is made under, the `Policy` of which pair does each job,
@@ -46,11 +50,12 @@ In dependency order:
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),
   `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
-  `ConversationStore` (each conversation's origin and who began it), `UsageLedger`, `ModelProfileStore` (which profile each turn ran
+  `ConversationStore` (each conversation's origin and who began it), `PromptStore` (each
+  turn's system prompt, its fragments kept by id), `UsageLedger`, `ModelProfileStore` (which profile each turn ran
   under), `ModelFactStore` (facts about pairs approved at runtime), `PeriodStore` (which
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
   settings in force), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
-  conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`, `retention`
+  conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`, `retention`, `prompt`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
   `CacheDocs` (where it keeps what it makes of one closed period, deleted with that period's
@@ -73,7 +78,8 @@ In dependency order:
   rules they share: `RelPath` (a path that stays inside the checkout and names no secrets
   file), `Clipped` (output cut to what the model is shown), `LineNumbers` (how `read`
   numbers a file's lines), `Replace.onto` (an edit's
-  matching), and their errors. Imports nothing in core.
+  matching), and their errors; and `Instructions`, the instruction files (`AGENTS.md`, else
+  `CLAUDE.md`) around a directory. ← `place`
 - **`tool`** — tools as typed data: `Field`, `Args` (read into a named tuple), `ArgsError`,
   `ToolName` and `ToolSpec`, from which come the schema the model is shown (a
   `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, how a call is

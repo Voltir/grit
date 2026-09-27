@@ -18,12 +18,13 @@ import grit.core.model.{
   TurnProfile,
   TurnProfileId
 }
+import grit.core.prompt.{Fragment, FragmentId, Layer, SystemPrompt}
 import grit.core.tool.{Retry, ToolName, ToolSet, ToolSetId, ToolSets}
 
 import utest.*
 
 /** The contract every [[EntryStore]], [[UsageLedger]], [[ModelProfileStore]],
-  * [[ModelFactStore]] and [[ToolSets]] keeps, run against one
+  * [[ModelFactStore]], [[ToolSets]] and [[PromptStore]] keeps, run against one
   * implementation of each: the in-memory fakes in core, the SQL stores in grit.dbos. The
   * fakes stand in for the SQL stores in every other module's tests, so whatever those tests
   * rely on belongs here.
@@ -49,6 +50,9 @@ abstract class StoreContract extends TestSuite {
 
   /** The tool-set store under test, over the same database as [[entries]]. */
   protected def toolSets: ToolSets
+
+  /** The prompt store under test, over the same database as [[entries]]. */
+  protected def prompts: PromptStore
 
   /** Runs `body` in one transaction, committed when it returns. */
   protected def transaction[A](body: (Tx^) ?=> A): A
@@ -338,6 +342,36 @@ abstract class StoreContract extends TestSuite {
       )
     }
 
+    test("a recorded prompt is got back by its turn, and by its fragments' ids, in order") {
+      val p = StoreContract.prompt("recorded")
+      transaction(prompts.record(WorkflowId("w-prompt"), p)) ==> Right(())
+      transaction(prompts.of(WorkflowId("w-prompt"))) ==> Right(Some(p))
+      transaction(prompts.prompt(p.ids)) ==> Right(p)
+    }
+
+    test("a turn recorded again keeps its first prompt; forgetting it keeps the fragments") {
+      val first = StoreContract.prompt("first")
+      val second = StoreContract.prompt("second")
+      transaction {
+        for {
+          _ <- prompts.record(WorkflowId("w-prompt-again"), first)
+          _ <- prompts.record(WorkflowId("w-prompt-again"), second)
+        } yield ()
+      } ==> Right(())
+      transaction(prompts.of(WorkflowId("w-prompt-again"))) ==> Right(Some(first))
+      transaction(prompts.forget(Vector(WorkflowId("w-prompt-again")))) ==> Right(())
+      transaction(prompts.of(WorkflowId("w-prompt-again"))) ==> Right(None)
+      transaction(prompts.prompt(second.ids)) ==> Right(second)
+    }
+
+    test("a prompt naming a fragment never kept is Invalid, naming the first such id") {
+      val kept = StoreContract.prompt("kept-only")
+      val never = Fragment(Layer.Place, "/never/AGENTS.md", "never kept")
+      transaction(prompts.keep(kept.fragments)) ==> Right(())
+      transaction(prompts.prompt(kept.ids :+ never.id)) ==>
+        Left(StoreError.Invalid(s"prompt fragment ${FragmentId.value(never.id)} is not kept"))
+    }
+
     test("a kept tool set is got back by its id, entry for entry") {
       val set = StoreContract.toolSet("kept_tool")
       transaction(toolSets.keep(set)) ==> Right(())
@@ -356,6 +390,19 @@ abstract class StoreContract extends TestSuite {
 }
 
 object StoreContract {
+
+  /** A prompt of a base, a reach and five place fragments, each naming `tag`: five, so an
+    * order other than theirs (their ids', say) is all but certain to differ from it.
+    */
+  def prompt(tag: String): SystemPrompt =
+    SystemPrompt.of(
+      Vector(
+        Fragment(Layer.Base, Fragment.Grit, s"Base $tag."),
+        Fragment(Layer.Reach, Fragment.Grit, s"Reach $tag.")
+      ) ++ (1 to 5).map(depth =>
+        Fragment(Layer.Place, s"/$tag${"/d" * depth}/AGENTS.md", s"Depth $depth, $tag.")
+      )
+    )
 
   /** A set of one tool named `name`, asking first and interrupted when cut short, beside a
     * free one that reruns: each field of an entry differs from the other's.

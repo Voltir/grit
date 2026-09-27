@@ -237,6 +237,16 @@ object grit extends Module {
     object test extends GritTests
   }
 
+  /* The edge's side of the engine: what an edge does for a place it hosts, over core's
+   * traits alone. Names no implementation of them; grit.app hands it grit.host's. */
+  object edge extends GritModule {
+    def moduleDeps = Seq(core)
+
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
+  }
+
   /* Assembly: builds each turn's context window from memory.
    * roadmap/mechanisms/assembly.md. */
   object assembly extends GritModule {
@@ -322,7 +332,8 @@ object grit extends Module {
         grit.prose,
         grit.tui,
         grit.host,
-        grit.tools
+        grit.tools,
+        grit.edge
       )
     def forkArgs = Task { tui.forkArgs() }
     def mainClass = Some("grit.app.main.Main")
