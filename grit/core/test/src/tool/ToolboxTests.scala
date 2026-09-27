@@ -57,9 +57,8 @@ object ToolboxTests extends TestSuite {
       "a tool that asks first tells the model that calling it is how the person is asked; a free one is as written"
     ) {
       // Pinned whole: the model is told this of every gated tool, hosted and gone ones too.
-      val asks = "Calling this tool asks the person to approve the call, and it runs only " +
-        "once they do: call it rather than asking for permission in your reply. If they " +
-        "decline, nothing runs and their reason, if any, is returned."
+      val asks = "Calling this tool asks the person to approve the call; do not ask in your " +
+        "reply. If they decline, nothing runs."
       box.schemas(strict = false).map(_.description) ==>
         Vector("Says it back.", s"Says it loudly. $asks")
       val hosted = new Hosted(shout.spec, Gate.Ask((t: String) => t), (t: String) => t)

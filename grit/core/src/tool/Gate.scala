@@ -18,12 +18,11 @@ object Gate {
 
   /** What a tool that asks first says after its description: that calling it is how the
     * person is asked to approve the call, so the model calls it rather than asking in its
-    * reply, and what a declined call returns.
+    * reply, and that a declined call runs nothing.
     */
   val AsksFirst: String =
-    "Calling this tool asks the person to approve the call, and it runs only once they do: " +
-      "call it rather than asking for permission in your reply. If they decline, nothing " +
-      "runs and their reason, if any, is returned."
+    "Calling this tool asks the person to approve the call; do not ask in your reply. If " +
+      "they decline, nothing runs."
 
   /** `schema`, its description followed by [[AsksFirst]] when `asks`. */
   private[tool] def described(schema: ToolSchema, asks: Boolean): ToolSchema =
