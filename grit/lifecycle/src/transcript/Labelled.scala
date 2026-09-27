@@ -42,14 +42,11 @@ final case class Labelled private (lines: Vector[Labelled.Line]) {
 
 object Labelled {
 
-  /** Who or what wrote a line: the person, stating or asking, the assistant, or a tool,
-    * whose result `succeeded` or was an error.
+  /** Who or what wrote a line: the person, the assistant, or a tool, whose result
+    * `succeeded` or was an error.
     */
   enum Source {
     case Person
-
-    /** The person asking, not stating: a question grounds nothing. */
-    case Asked
     case Assistant
     case Tool(succeeded: Boolean)
   }

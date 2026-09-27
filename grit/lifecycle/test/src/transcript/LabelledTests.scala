@@ -56,17 +56,6 @@ object LabelledTests extends TestSuite {
       t.ground(Vector("u99", "t42", "s1")) ==> Ground.Claimed
     }
 
-    test("under the question rule, a cited question of the person's grounds nothing") {
-      val asking = PeriodTranscript.labelled(period, questionsGround = false)
-      // u1 "What port does the api use?" is a question; u6 states a decision.
-      asking.ground(Vector("u1")) ==> Ground.Claimed
-      asking.ground(Vector("u1", "a7")) ==> Ground.Claimed
-      asking.ground(Vector("u6")) ==> Ground.Person
-      asking.ground(Vector("u1", "t4")) ==> Ground.Tool
-      // Without it, a question grounds as the person's word.
-      PeriodTranscript.labelled(period).ground(Vector("u1")) ==> Ground.Person
-    }
-
     test("a tool line whose result is an error grounds nothing") {
       val t = PeriodTranscript.labelled(period)
       t.ground(Vector("t3")) ==> Ground.Claimed
