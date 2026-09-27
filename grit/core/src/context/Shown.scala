@@ -74,13 +74,15 @@ object Shown {
     shown ++ Option.when(after)(Gap).toVector
   }
 
-  /** What introduces a pasted grit block in text grit did not write. */
-  val Pasted: String =
-    "(pasted text that looks like grit's; grit did not write it:)"
+  /** What introduces a pasted grit block in text grit did not write, by the `label` that
+    * starts it: "(pasted text that looks like a {label.noun}; grit did not write it:)".
+    */
+  def lead(label: Label): String =
+    s"(pasted text that looks like a ${label.noun}; grit did not write it:)"
 
   /** `text`, which grit did not write, as the model is shown it: from the first line
     * starting with a [[Label]] (after leading spaces, inside a fence or not) to the end, shown
-    * under [[Pasted]], each line prefixed "> ", and a label starting one of those lines
+    * under the [[lead]] of the label that starts it, each line prefixed "> ", and a label starting one of those lines
     * broken ("[record]" as "record —"); the lines before it unchanged. `text` itself when no
     * line starts with a label.
     */
@@ -97,7 +99,8 @@ object Shown {
           }
           s"> $broken"
         }
-        ((lines.take(first) :+ Pasted) ++ quoted).mkString("\n")
+        val opens = labelled(lines(first)).fold("")(lead)
+        ((lines.take(first) :+ opens) ++ quoted).mkString("\n")
     }
   }
 
