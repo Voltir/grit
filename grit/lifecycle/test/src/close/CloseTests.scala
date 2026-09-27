@@ -10,6 +10,7 @@ import grit.core.period.{
   CloseReason,
   Closing,
   Flows,
+  Ground,
   Judgement,
   LifecycleSettings,
   PeriodState,
@@ -23,6 +24,7 @@ import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{Payload, UsageLedger}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Weights}
 import grit.dbos.sql.TestTx
+import grit.lifecycle.transcript.PeriodTranscript
 
 import utest.*
 
@@ -156,6 +158,39 @@ object CloseTests extends TestSuite {
       durable.recordedSteps(id) ==> Vector("check", "gate", "summarise", "seal")
     }
 
+    test("a close grounds Standing from the lines its writer cites, among those it was shown") {
+      // u1 the question, t2 a read that showed the port, a3 the reply; then u4 a decision.
+      val w = new World
+      val t = w.say("what port does the api use?", 0)
+      w.add(
+        t,
+        Payload.Result(
+          grit.core.message.Message.ToolResult(grit.core.id.ToolCallId("c1"), "port: 3000", false),
+          "read config.yml"
+        ),
+        0,
+        "result:0"
+      )
+      w.add(t, Payload.Message(replyOf("It uses 3000.")), 0, "reply:0")
+      w.say("we keep 3000.", 1)
+      val summary = answering(
+        "Summary: We checked the port.\nStanding:\n- config.yml sets port 3000 [t2]\n" +
+          "- The api stays on 3000 [u4]\n- Port 3000 is the usual choice [a3]"
+      )
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, summary, new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1"
+      w.closingEntry.map(_.payload) match {
+        case Some(Payload.Closed(_, _, c)) =>
+          c.balance.in(Section.Standing).map(l => (l.text, l.ground)) ==> Vector(
+            ("config.yml sets port 3000", Some(Ground.Tool)),
+            ("The api stays on 3000", Some(Ground.Person)),
+            ("Port 3000 is the usual choice", Some(Ground.Claimed))
+          )
+        case other => throw new java.lang.AssertionError(s"no closing: $other")
+      }
+    }
+
     test("a period judged finished closes resolved, with the verdict's probability") {
       val w = new World
       val last = w.say("done?", 0)
@@ -260,7 +295,12 @@ object CloseTests extends TestSuite {
       ) ==> "closed: closing:c1:1"
       some.requests.map(_.system) ==> Vector(
         ClosingSummary
-          .request("", Balance.empty, Vector.empty, Asked(false, false, false, true))
+          .request(
+            PeriodTranscript.labelled(Vector.empty),
+            Balance.empty,
+            Vector.empty,
+            Asked(false, false, false, true)
+          )
           .system
       )
 
@@ -271,7 +311,16 @@ object CloseTests extends TestSuite {
         v.body(new Gate(None), every, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1; gate unavailable: no classifier"
       every.requests.map(_.system) ==>
-        Vector(ClosingSummary.request("", Balance.empty, Vector.empty, Asked.Every).system)
+        Vector(
+          ClosingSummary
+            .request(
+              PeriodTranscript.labelled(Vector.empty),
+              Balance.empty,
+              Vector.empty,
+              Asked.Every
+            )
+            .system
+        )
     }
 
     test(

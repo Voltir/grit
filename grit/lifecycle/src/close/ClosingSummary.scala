@@ -1,8 +1,9 @@
 package grit.lifecycle.close
 
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.period.{Balance, Edit, Ground, Line, Section}
+import grit.core.period.{Balance, Edit, Line, Section}
 import grit.core.provider.ModelRequest
+import grit.lifecycle.transcript.Labelled
 
 /** What the summary model is asked when a period closes, and how its reply becomes the
   * flows of the period's closing and its edits to the balance it opened with. It is shown
@@ -25,7 +26,12 @@ object ClosingSummary {
       "established. Never repeat a line already known, and never record a recap, a lookup, " +
       "or a list of earlier activity that a tool or the assistant reported. Something not " +
       "known, not found or not recorded is an Open item (what to find out), never a " +
-      "Standing fact. Lines known elsewhere were shown from the person's other " +
+      "Standing fact. The transcript's lines are labelled [u1] for the person's words, [a2] " +
+      "for the assistant's and [t3] for a tool's result. End each Standing item with the " +
+      "labels of the lines that established it, in brackets, as [u1, t3]: cite what " +
+      "established it: the person's line where they stated or decided it (never the one " +
+      "where they asked), a tool result that showed it; and cite the assistant's own line " +
+      "when nothing else did. Lines known elsewhere were shown from the person's other " +
       "conversations: an Open or Standing item that restates one is not new, like a line " +
       "already known."
 
@@ -44,14 +50,15 @@ object ClosingSummary {
     known.in(Section.Open).zipWithIndex.map((l, i) => s"o${i + 1}" -> l) ++
       known.in(Section.Standing).zipWithIndex.map((l, i) => s"s${i + 1}" -> l)
 
-  /** The request for the flows of the period whose `transcript` is given, and its edits to
-    * `known` ([[labels]]), asking for the parts `asked` names. The lines its windows showed
-    * from other conversations (`elsewhere`,
-    * [[grit.lifecycle.transcript.PeriodTranscript.elsewhere]]) are shown as known elsewhere,
-    * before the transcript, at most [[ElsewhereChars]] of them.
+  /** The request for the flows of the period whose `transcript` is given, its last whole
+    * lines within [[TranscriptChars]] ([[visible]]), and its edits to `known` ([[labels]]),
+    * asking for the parts `asked` names. The lines its windows showed from other
+    * conversations (`elsewhere`, [[grit.lifecycle.transcript.PeriodTranscript.elsewhere]])
+    * are shown as known elsewhere, before the transcript, at most [[ElsewhereChars]] of
+    * them, and unlabelled: they cannot be cited.
     */
   def request(
-      transcript: String,
+      transcript: Labelled,
       known: Balance,
       elsewhere: Vector[String],
       asked: Asked
@@ -70,7 +77,7 @@ object ClosingSummary {
           asked.standing,
           "Standing",
           "each decision settled or fact established that later work should rely on, that " +
-            "is not already known"
+            "is not already known, ending with the labels that establish it"
         ) ++
         list(
           asked.settled && shown.nonEmpty,
@@ -111,18 +118,26 @@ object ClosingSummary {
         (if (parts.size > 1) "\nWrite none under a part with nothing in it." else ""),
       Vector(
         Message.User(
-          s"$known_\n\n${elsewhere_}Transcript:\n${transcript.takeRight(TranscriptChars)}"
+          s"$known_\n\n${elsewhere_}Transcript:\n${visible(transcript).text}"
         )
       )
     )
   }
+
+  /** What of `transcript` the writer is shown, and so what its citations can name: its last
+    * whole lines within [[TranscriptChars]].
+    */
+  def visible(transcript: Labelled): Labelled = transcript.within(TranscriptChars)
 
   private def list(asked: Boolean, label: String, what: String): Vector[String] =
     if (asked) Vector(s"$label: then one line per item, each starting with \"- \": $what.")
     else Vector.empty
 
   /** What `reply` wrote, reading only the parts `asked` names (as [[request]] asks for them
-    * of `known`): prose, outcome, one `Add` per Open or Standing item, and a `Resolve`,
+    * of `known` and `transcript`): prose, outcome, one `Add` per Open item, one `Stand` per
+    * Standing item, its trailing citation of labels taken off its text and read into its
+    * ground by what of `transcript` the writer was shown ([[visible]],
+    * [[Labelled.ground]]): an item with none, or only labels it lacks, is `Claimed`; and a `Resolve`,
     * `Drop` or `Touch` per Resolved, Dropped or Touched item whose label is one of `known`'s
     * ([[labels]]). An item with no label, or a label `known` does not show, is `Unread`.
     * Parts are labelled `Summary:`, `Outcome:` and so on (any case, markdown emphasis and
@@ -131,7 +146,12 @@ object ClosingSummary {
     * label is the prose when `Summary:` is missing; without any label, the whole text is.
     * `None` when it has no prose.
     */
-  def read(reply: Message.Assistant, known: Balance, asked: Asked): Option[Written] = {
+  def read(
+      reply: Message.Assistant,
+      known: Balance,
+      asked: Asked,
+      transcript: Labelled
+  ): Option[Written] = {
     val whole = reply.blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
     val labelled = whole.linesIterator.toVector.foldLeft(Vector.empty[(String, String)]) {
       (acc, line) =>
@@ -159,7 +179,7 @@ object ClosingSummary {
         prose,
         Option.when(asked.outcome)(text(part("outcome"))).filter(o => o.nonEmpty && !isNone(o)),
         items("open", asked.open).map(Edit.Add(Section.Open, _)) ++
-          items("standing", asked.standing).map(Edit.Stand(_, Ground.Claimed)) ++
+          items("standing", asked.standing).map(stand(_, visible(transcript))) ++
           items("resolved", asked.settled && shown.nonEmpty).map(
             named(shown, _)((l, how) => Edit.Resolve(l.id, how))
           ) ++
@@ -184,6 +204,28 @@ object ClosingSummary {
           .getOrElse(Edit.Unread(written, "names no line"))
       case _ => Edit.Unread(written, "names no line")
     }
+
+  /** A Standing item as its edit: the citation at its end ([[Cited]]) taken off its text and
+    * read into its ground by `transcript`, the lines the writer was shown.
+    */
+  private def stand(item: String, transcript: Labelled): Edit = {
+    // Peel one citation at a time off the end: `[u1, t3]`, `[u1][t3]`, `(u1 t3)`, any
+    // emphasis around or inside them.
+    def peel(text: String, cited: Vector[String]): (String, Vector[String]) =
+      text match {
+        case Cited(rest, labels) =>
+          peel(rest, labels.split("[,\\s]+").toVector.filter(_.nonEmpty) ++ cited)
+        case _ => (text, cited)
+      }
+    val (text, cited) = peel(item.trim, Vector.empty)
+    Edit.Stand(text.trim, transcript.ground(cited))
+  }
+
+  /** An item's text, then one citation at its very end: a bracket or parenthesis holding
+    * only labels (a letter and a number each), with any emphasis marks around or inside it.
+    */
+  private val Cited =
+    """^(.*?)[\s*_]*[\[(][\s*_]*((?:[a-zA-Z]\d+[\s*_,]*)+)[\])][\s*_]*$""".r
 
   /** A label, bracketed or not, then an optional colon or dash, then the rest. */
   private val Named = """(?i)^\[?([os]\d+)\]?\s*(?:[:\-–—]\s*|$)(.*)$""".r

@@ -1,38 +1,15 @@
 package grit.lifecycle.transcript
 
-import java.time.Instant
-
-import grit.core.id.{ConversationId, EntryId, ToolCallId, TurnSeq}
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.Ground
-import grit.core.store.{Entry, Payload}
+import grit.core.store.Entry
 
+import TestTranscripts.{replied, result, said}
 import utest.*
 
 /** [[PeriodTranscript.labelled]] and [[Labelled]]: the transcript the closing writer cites
   * into, and the ground its citations give.
   */
 object LabelledTests extends TestSuite {
-
-  private def entry(seq: Long, payload: Payload): Entry =
-    Entry(EntryId(s"e$seq"), ConversationId("c"), TurnSeq(0), None, seq, payload, Instant.EPOCH)
-
-  private def said(seq: Long, text: String) = entry(seq, Payload.Message(Message.User(text)))
-
-  private def replied(seq: Long, text: String) = entry(
-    seq,
-    Payload.Message(
-      Message.Assistant(
-        Vector(AssistantBlock.Text(text)),
-        StopReason.EndTurn,
-        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
-        "m"
-      )
-    )
-  )
-
-  private def result(seq: Long, shown: String, content: String, error: Boolean = false) =
-    entry(seq, Payload.Result(Message.ToolResult(ToolCallId(s"c$seq"), content, error), shown))
 
   /** A period: a question, two searches (one empty, one failed), a read, a declined edit,
     * the person stating something, and an answer.

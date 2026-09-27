@@ -172,6 +172,8 @@ object Close {
       cap: Int
   ): Summarised = {
     val entries = own(env, attempt, first)
+    // What the writer reads and cites into: one value, cut once (ClosingSummary.visible).
+    val labelled = PeriodTranscript.labelled(entries.getOrElse(Vector.empty))
     val period = attempt.period.seq
     // The topics' edits are the fold's, free and exact: made whether or not a model writes.
     val topics =
@@ -187,7 +189,7 @@ object Close {
         .map(Closing(_, fitted.balance))
     }
     val request =
-      ClosingSummary.request(transcript(entries), known, elsewhere(env, entries), asked)
+      ClosingSummary.request(labelled, known, elsewhere(env, entries), asked)
     def carried(note: String) = Summarised(
       fallback(entries.getOrElse(Vector.empty), attempt, first)
         .flatMap(closed(_, None, Vector.empty)),
@@ -207,7 +209,7 @@ object Close {
           carried("no summary: cut off at its token limit").copy(cost = Some(cost))
         else
           ClosingSummary
-            .read(reply, known, asked)
+            .read(reply, known, asked, labelled)
             .flatMap(read => closed(read.prose, read.outcome, read.edits))
             .fold(carried(s"no summary: the summary had no prose (stop: ${reply.stop})"))(c =>
               Summarised(Some(c), Some(cost), None)

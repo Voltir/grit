@@ -1,0 +1,24 @@
+{
+  "workflow": "close",
+  "id": "close:c1:1:1:1789984860000",
+  "epoch": "2026-09-27",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"due\":\"lapsed\",\"first\":0,\"known\":{\"open\":[],\"standing\":[],\"topics\":[]},\"cap\":4096,\"v\":3}}"
+    },
+    {
+      "name": "gate",
+      "output": "{\"outcome\":true,\"open\":false,\"standing\":true,\"settled\":false}"
+    },
+    {
+      "name": "summarise",
+      "output": "{\"closing\":{\"v\":3,\"flows\":{\"prose\":\"We checked the port.\",\"changes\":[{\"added\":{\"section\":\"standing\",\"text\":\"config.yml sets port 3000\",\"since\":1,\"touched\":1,\"ground\":\"tool\"}},{\"added\":{\"section\":\"standing\",\"text\":\"The api stays on 3000\",\"since\":1,\"touched\":1,\"ground\":\"person\"}},{\"added\":{\"section\":\"standing\",\"text\":\"Port 3000 is the usual choice\",\"since\":1,\"touched\":1,\"ground\":\"claimed\"}}]},\"balance\":{\"open\":[],\"standing\":[{\"text\":\"config.yml sets port 3000\",\"since\":1,\"touched\":1,\"ground\":\"tool\"},{\"text\":\"The api stays on 3000\",\"since\":1,\"touched\":1,\"ground\":\"person\"},{\"text\":\"Port 3000 is the usual choice\",\"since\":1,\"touched\":1,\"ground\":\"claimed\"}],\"topics\":[]}},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":173}}"
+    },
+    {
+      "name": "seal",
+      "output": "{\"ok\":{\"closed\":\"closing:c1:1\"}}"
+    }
+  ]
+}

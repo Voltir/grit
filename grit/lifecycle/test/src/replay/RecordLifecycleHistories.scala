@@ -125,6 +125,34 @@ object RecordLifecycleHistories {
       }
     )
     (posted +: settles) ++ Vector(
+      record("close-grounded") { (w, d) =>
+        // A closing written as version 3: a person's, a tool's and a claimed Standing line.
+        val t = w.say("what port does the api use?", 0)
+        w.add(
+          t,
+          Payload.Result(
+            Message.ToolResult(grit.core.id.ToolCallId("c1"), "port: 3000", false),
+            "read config.yml"
+          ),
+          0,
+          "result:0"
+        )
+        w.add(t, Payload.Message(replyOf("It uses 3000.")), 0, "reply:0")
+        w.say("we keep 3000.", 1)
+        val cites = new Summariser(_ =>
+          Right(
+            replyOf(
+              "Summary: We checked the port.\nStanding:\n- config.yml sets port 3000 [t2]\n" +
+                "- The api stays on 3000 [u4]\n- Port 3000 is the usual choice [a3]"
+            )
+          )
+        )
+        val id = w.attempt.workflowId
+        d.run(id)(
+          w.body(new Gate(Some(Vector(0.9, 0.9, 0.1, 0.1))), cites, new SetClock(at(Lapsed)))
+        )
+        id
+      },
       record("close-sealed") { (w, d) =>
         w.turn("where do we deploy?", "staging", "Chose staging.", 0)
         w.say("and prod?", 1)

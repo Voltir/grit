@@ -16,7 +16,9 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   conversation (`grit.dbos.workflow.Closes`): `check` its deadline is still the attempt's,
   `gate` what of its closing is new beside the balance it opened with (`CloseGate`, one
   classifier call), `summarise` it (`ClosingSummary`: the summary role's prompt, shown the
-  balance as already known under labels, and a tolerant reader of its flows and edits;
+  balance as already known under labels and the period's labelled transcript, and a
+  tolerant reader of its flows and edits, each Standing item grounded by the lines it
+  cites (ADR 0018);
   with nothing new, or when the model fails, the per-turn summaries as the prose and no
   model call; the edits and the topics' applied to the balance, held to the cap in force), `seal` it with its closing entry, and the tombstones on its raw entries, on the closing it
   replaces and on its conversation going quiet (ADR 0014). `CloseEnv` is what it works
