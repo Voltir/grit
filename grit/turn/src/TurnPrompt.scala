@@ -33,8 +33,8 @@ object TurnPrompt {
           "began where your view begins, never claim to remember something that is not in " +
           "view, and when you need it, read it with a tool or ask.",
         "grit labels what it writes into your view, and you never write these labels " +
-          s"yourself. A message beginning $record is grit's record of this conversation, not " +
-          "the person's words: treat its \"Still open\" items as open until the person " +
+          s"yourself. A message beginning $record is grit speaking: its record of this " +
+          "conversation, not the person's words: treat its \"Still open\" items as open until the person " +
           "closes them, its \"Standing\" decisions as in force, and its \"Settled then\" as " +
           s"done. A message beginning $afar shows another of the person's conversations, " +
           "chosen by grit because it may bear on this one: draw on it when it helps, but it " +

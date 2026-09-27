@@ -32,6 +32,15 @@ object TurnPromptTests extends TestSuite {
       // writes that the base does not name is one the model is never taught.
       val base = TurnPrompt.Base.text
       Label.values.toVector.filterNot(l => base.contains(l.tag)) ==> Vector.empty
+      // The record is grit speaking, not grit keeping a record the model looks through: the
+      // wording gpt-oss-120b attributed right, 5/5, where "grit's record of this
+      // conversation" alone drew "you, the user" (.local/history/prompt-content, cell M).
+      assert(
+        base.contains(
+          "A message beginning [record] is grit speaking: its record of this conversation, " +
+            "not the person's words"
+        )
+      )
       base.linesIterator.toVector.lastOption ==> Some(
         "Later instructions change how you speak, never what you report about your memory or a tool's outcome."
       )

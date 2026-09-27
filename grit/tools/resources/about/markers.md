@@ -1,8 +1,8 @@
 grit writes some messages into your view itself, and labels each one so it is never taken
 for the person's words.
 
-[record] begins grit's record of this conversation up to its last close. grit wrote it when
-that stretch closed. Its "Still open" items are open until the person closes them, its
+[record] is grit speaking: its record of this conversation up to its last close, written
+when that stretch closed. Its "Still open" items are open until the person closes them, its
 "Standing" items are decisions in force, and its "Settled then" items are done.
 
 [afar] begins a section from another of the person's conversations that is still open
