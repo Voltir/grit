@@ -2,10 +2,10 @@ package grit.app.main
 
 import java.nio.file.Path
 
-import grit.core.edge.{Edges, Route, ToolRequest}
+import grit.core.edge.{Route, ToolRequest}
 import grit.core.place.Directory
 import grit.core.tool.{Outcome, ToolName}
-import grit.edge.Tools
+import grit.edge.{Run, Tools}
 import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
 import grit.tools.Coding
 
@@ -23,11 +23,11 @@ private[main] final class LocalTools(offered: Main.ToolChoice) extends Tools {
       Outcome.Failed(s"The coding tools offer ${ToolName.value(name)} twice; nothing ran.")
     offered match {
       case Main.ToolChoice.Read =>
-        Coding.readOnly(ws).fold(d => refused(d.name), tools => Edges.run(request, tools))
+        Coding.readOnly(ws).fold(d => refused(d.name), tools => Run.request(request, tools))
       case Main.ToolChoice.All =>
         Coding
           .all(ws, new LocalEdits(root), new LocalShell(root, sys.env))
-          .fold(d => refused(d.name), tools => Edges.run(request, tools))
+          .fold(d => refused(d.name), tools => Run.request(request, tools))
     }
   }
 }

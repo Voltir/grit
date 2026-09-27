@@ -94,7 +94,7 @@ In dependency order:
 - **`edge`** — tool calls an edge runs (ADR 0017): `ToolRequest` (one call, addressed to a
   workspace, with its `Permit` and retry), `OutcomeJson` (its answer's stored form),
   `Edges.authorize` (the one routing decision: an edge serves only the places it registered,
-  and a `Route` is the directory it may run over) and `Edges.run`, `Registration`, `Desk` (an
+  and a `Route` is the directory it may run over), `Registration`, `Desk` (an
   edge's side), `ToolRequests` (the engine's side: dispatch, settle, abandon, and each
   request's `RequestState`) and `EdgeDirectory` (which live edge serves a place, and its
   `Advert`). Named for the same idea as the `grit.edge` module: this package is the types
