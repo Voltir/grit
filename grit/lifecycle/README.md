@@ -7,9 +7,11 @@ body, and its epoch's replay gate is the turn's; each workflow here has its own 
 histories, replayed under the engine's epoch (`Turn.Epoch`).
 
 - **`transcript`** — `PeriodTranscript`: a period's own entries, the transcript a
-  classifier or the summary model reads, and what its windows showed from other
-  conversations (`elsewhere`), which a close treats as known, never as its own. Imports
-  nothing else in lifecycle.
+  classifier reads, and what its windows showed from other conversations (`elsewhere`),
+  which a close treats as known, never as its own; `Labelled`, the transcript the summary
+  model reads and cites into, each line labelled (`u`, `a`, `t`, a tool call as one
+  clipped line), and the ground a citation gives (ADR 0018). Imports nothing else in
+  lifecycle.
 - **`close`** — `Close`: one attempt to close a period, run on the turns' queue under its
   conversation (`grit.dbos.workflow.Closes`): `check` its deadline is still the attempt's,
   `gate` what of its closing is new beside the balance it opened with (`CloseGate`, one

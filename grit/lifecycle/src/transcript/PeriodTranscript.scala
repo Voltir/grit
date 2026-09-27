@@ -60,6 +60,43 @@ object PeriodTranscript {
       )
   }
 
+  /** The most characters a tool line holds, its label and an ending "…" included. */
+  val ToolChars = 120
+
+  /** `entries` as [[Labelled]]: each user message and reply text as [[of]] renders it, and
+    * each tool result as its call as shown, " → ", and its content on one line, "failed: "
+    * first when it failed, clipped to [[ToolChars]].
+    */
+  def labelled(entries: Vector[Entry]): Labelled = {
+    // Who wrote each line, and its text after the label.
+    val written: Vector[(Labelled.Source, String)] = entries.flatMap(e =>
+      e.payload match {
+        case Payload.Result(result, shown) =>
+          val content = result.content.trim.split("\\s+").mkString(" ")
+          val failed = if (result.isError) "failed: " else ""
+          Some(Labelled.Source.Tool(!result.isError) -> s"$shown → $failed$content")
+        case Payload.Message(Message.User(_)) =>
+          line(e.payload).map(Labelled.Source.Person -> _)
+        case other => line(other).map(Labelled.Source.Assistant -> _)
+      }
+    )
+    Labelled.of(written.zipWithIndex.map { case ((source, text), i) =>
+      val letter = source match {
+        case Labelled.Source.Person => "u"
+        case Labelled.Source.Assistant => "a"
+        case Labelled.Source.Tool(_) => "t"
+      }
+      val label = s"$letter${i + 1}"
+      val rendered = s"[$label] $text"
+      val clipped = source match {
+        case Labelled.Source.Tool(_) if rendered.length > ToolChars =>
+          rendered.take(ToolChars - 1) + "…"
+        case _ => rendered
+      }
+      Labelled.Line(label, source, clipped)
+    })
+  }
+
   private def line(payload: Payload): Option[String] = payload match {
     case Payload.Message(Message.User(text)) => Some(s"User: $text")
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
