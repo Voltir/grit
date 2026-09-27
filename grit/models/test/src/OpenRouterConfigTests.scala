@@ -124,7 +124,9 @@ object OpenRouterConfigTests extends TestSuite {
       seed.map(_.policy) ==> Right(
         Policy(
           Assignment(gptOss, 4096, None),
-          Assignment(gptOss, 1024, None),
+          // The summary role's budget holds a reasoning model's thinking and the closing: at
+          // 1024, deepseek-v4.1-flash was cut off in 5 of 10 closings.
+          Assignment(gptOss, 4096, None),
           Assignment(gptOss, 1024, None)
         )
       )
