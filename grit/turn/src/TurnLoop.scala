@@ -123,7 +123,9 @@ object TurnLoop {
     */
   val LastCall: String =
     "[grit: this is your last call in this turn, and it has no tools: call none. Answer " +
-      "now from what you have found so far, and say what is unfinished or unchecked.]"
+      "now from what you have found so far: say what you found, and plainly what you did " +
+      "not find or could not check. \"I could not find it\" is an answer; do not fill the " +
+      "gap with a guess.]"
 
   /** `request` as `use` says to send it: unchanged when `use` is [[ToolUse.Auto]]; when it is
     * [[ToolUse.Off]], with [[LastCall]] after its messages, as a user message, or, under
