@@ -65,9 +65,11 @@ object PeriodTranscript {
 
   /** `entries` as [[Labelled]]: each user message and reply text as [[of]] renders it, and
     * each tool result as its call as shown, " → ", and its content on one line, "failed: "
-    * first when it failed, clipped to [[ToolChars]].
+    * first when it failed, clipped to [[ToolChars]]. Unless `questionsGround`, a user
+    * message ending in "?" (trimmed) is a question, which grounds nothing (an eval toggle:
+    * kept as the rule, or removed, once measured).
     */
-  def labelled(entries: Vector[Entry]): Labelled = {
+  def labelled(entries: Vector[Entry], questionsGround: Boolean = true): Labelled = {
     // Who wrote each line, and its text after the label.
     val written: Vector[(Labelled.Source, String)] = entries.flatMap(e =>
       e.payload match {
@@ -75,14 +77,18 @@ object PeriodTranscript {
           val content = result.content.trim.split("\\s+").mkString(" ")
           val failed = if (result.isError) "failed: " else ""
           Some(Labelled.Source.Tool(!result.isError) -> s"$shown → $failed$content")
-        case Payload.Message(Message.User(_)) =>
-          line(e.payload).map(Labelled.Source.Person -> _)
+        case Payload.Message(Message.User(text)) =>
+          // Under the question rule, a question is not the person establishing anything.
+          val source =
+            if (!questionsGround && text.trim.endsWith("?")) Labelled.Source.Asked
+            else Labelled.Source.Person
+          line(e.payload).map(source -> _)
         case other => line(other).map(Labelled.Source.Assistant -> _)
       }
     )
     Labelled.of(written.zipWithIndex.map { case ((source, text), i) =>
       val letter = source match {
-        case Labelled.Source.Person => "u"
+        case Labelled.Source.Person | Labelled.Source.Asked => "u"
         case Labelled.Source.Assistant => "a"
         case Labelled.Source.Tool(_) => "t"
       }
