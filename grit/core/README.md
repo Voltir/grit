@@ -9,7 +9,8 @@ In dependency order:
   no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `WorkflowId`,
   `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `PrincipalId`: who an
-  action is done for), the one short content hash every content-addressed id uses, `TurnRef`, `PeriodRef`, `CloseRef` (one
+  action is done for, `EdgeId`), `CallSlot` (a tool call's place in its turn, and its
+  request's key), the one short content hash every content-addressed id uses, `TurnRef`, `PeriodRef`, `CloseRef` (one
   attempt to close a period on its deadline, and its workflow id) and `SettleRef` (the one
   question whether anyone is waiting on a quiet period, and its workflow id). Imports nothing in core.
 - **`place`** — where conversations happen (ADR 0013): `Place`, a path in one
@@ -89,6 +90,16 @@ In dependency order:
   `Approval`), `Repairs` (what of a call is repaired before it is read, as the pair's
   settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
   `message`, `model`, `store`, `provider`, `approval`
+
+- **`edge`** — tool calls an edge runs (ADR 0017): `ToolRequest` (one call, addressed to a
+  workspace, with its `Permit` and retry), `OutcomeJson` (its answer's stored form),
+  `Edges.authorize` (the one routing decision: an edge serves only the places it registered,
+  and a `Route` is the directory it may run over) and `Edges.run`, `Registration`, `Desk` (an
+  edge's side), `ToolRequests` (the engine's side: dispatch, settle, abandon, and each
+  request's `RequestState`) and `EdgeDirectory` (which live edge serves a place, and its
+  `Advert`). Named for the same idea as the `grit.edge` module: this package is the types
+  every side agrees on, that module the loop an edge runs over them. ← `id`, `place`,
+  `prompt`, `store`, `model`, `message`, `approval`, `tool`
 
 No source file sits at core's root, and no two packages import each other in a circle:
 `scripts/enola-law.sh` fails on a new import cycle.

@@ -12,8 +12,10 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.durable.Durable
+import grit.core.edge.{Desk, DeskError}
 import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
+import grit.core.place.Place
 import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginDocs}
 import grit.core.store.{
   ClosedPeriod,
@@ -63,8 +65,12 @@ import org.slf4j.LoggerFactory
   * database's [[EngineLock]]. Open it, [[launch]] it with the workflows' bodies, start its
   * [[sweepEvery]], and close it when done; its threads keep the JVM alive until then.
   */
-final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource, lock: EngineLock^)
-    extends caps.SharedCapability,
+final class Engine private (
+    dbos: DBOS,
+    dataSource: PGSimpleDataSource,
+    lock: EngineLock^,
+    config: DbConfig
+) extends caps.SharedCapability,
       AutoCloseable {
 
   val conversations: ConversationStore = new SqlConversationStore()
@@ -170,6 +176,23 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource, lock: En
 
   /** The sweeping thread, once [[sweepEvery]] started it. */
   private val sweepThread = new AtomicReference(Option.empty[Thread])
+
+  /** The desks registered through this engine: [[close]] closes them. */
+  private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()
+
+  /** Registers an edge in this process for `principal`, hosting `places`, and opens its desk
+    * (ADR 0017): live until it or the engine closes. `Left` when the database cannot be
+    * reached.
+    */
+  def register(principal: PrincipalId, places: Set[Place]): Either[DeskError, Desk^] =
+    SqlDesk.open(config, dataSource, client, principal, places) match {
+      case Left(e) => Left(e)
+      case Right(desk) =>
+        // The desk's only capability is its own connection, which close() closes: nothing it
+        // holds outlives the engine that keeps it here.
+        val _ = desks.add(caps.unsafe.unsafeAssumePure(desk))
+        Right(desk)
+    }
 
   /** The workflow bodies running in this process: [[close]] waits for them. */
   private val running = new Running
@@ -315,6 +338,7 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource, lock: En
           t.interrupt()
           t.join(Engine.BodiesWithin.toMillis)
         }
+        desks.forEach(_.close())
         try client.close()
         finally dbos.shutdown()
         if (!running.awaitNone(Engine.BodiesWithin))
@@ -375,7 +399,7 @@ object Engine {
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Engine(dbos, ds, lock)
+    new Engine(dbos, ds, lock, config)
   }
 
   /** Applies `grit/dbos/resources/schema.sql` idempotently. */

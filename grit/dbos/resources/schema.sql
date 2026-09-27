@@ -212,6 +212,77 @@ CREATE TABLE IF NOT EXISTS grit.tool_sets (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- An edge's registration (ADR 0017): the principal it acts for, the machine it runs on, and
+-- the places it hosts (edge_places). A live edge holds the advisory lock (EdgeLock.Class,
+-- lock_key) on its desk's connection: "live" is read from pg_locks, never from heartbeat_at,
+-- which the desk writes every beat for a person to read. `session` names its current
+-- incarnation, so a claim made by an earlier one is known for an orphan. A registration is
+-- reused when the same principal hosts the same places on the same machine again (`key`),
+-- unless it is live: then the new edge takes another slot.
+-- Retention: kept: bounded by the places opened on each machine, and the edges open at once.
+CREATE TABLE IF NOT EXISTS grit.edges (
+    id           UUID PRIMARY KEY DEFAULT uuidv7(),
+    lock_key     INTEGER GENERATED ALWAYS AS IDENTITY UNIQUE,
+    key          TEXT NOT NULL,
+    principal    TEXT NOT NULL REFERENCES grit.principals(id),
+    machine      TEXT NOT NULL,
+    pid          BIGINT NOT NULL,
+    session      UUID NOT NULL,
+    protocol     INTEGER NOT NULL,
+    started_at   TIMESTAMPTZ NOT NULL,
+    heartbeat_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_edges_key ON grit.edges (key);
+
+-- The places an edge registered, and what it offers in each: the tool set it runs there,
+-- and the instruction files it read there (fragment ids, farthest first; their texts in
+-- prompt_fragments).
+-- Retention: kept: with its edge.
+CREATE TABLE IF NOT EXISTS grit.edge_places (
+    edge_id   UUID NOT NULL REFERENCES grit.edges(id) ON DELETE CASCADE,
+    place_id  UUID NOT NULL REFERENCES grit.places(id),
+    tools     TEXT REFERENCES grit.tool_sets(id),
+    fragments JSONB NOT NULL DEFAULT '[]'::jsonb,
+    PRIMARY KEY (edge_id, place_id)
+);
+
+-- One hosted tool call (ADR 0017): written by the engine's turn, claimed and answered by an
+-- edge that hosts `workspace`. Keyed by the call's slot (CallSlot.key), so a rerun of the
+-- turn finds its own request. A claimed request is never run again by another claim: the
+-- claim is the attempt marker; an orphan is settled by its `retry`. Each phase is one
+-- conditional UPDATE: open -> claimed -> answered, or open|claimed -> expired, and nothing
+-- after expired or answered.
+-- Retention: journal: with its period's raw entries (Target.Raw): PeriodStore.purge deletes
+-- the requests of the period's turns with their entries.
+CREATE TABLE IF NOT EXISTS grit.tool_requests (
+    key             TEXT PRIMARY KEY,
+    protocol        INTEGER NOT NULL,
+    workflow_id     TEXT NOT NULL,
+    conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,
+    turn_seq        BIGINT NOT NULL,
+    workspace_id    UUID NOT NULL REFERENCES grit.places(id),
+    principal       TEXT NOT NULL REFERENCES grit.principals(id),
+    tool            TEXT NOT NULL,
+    permit          TEXT NOT NULL CHECK (permit IN ('free', 'approved')),
+    retry           TEXT NOT NULL CHECK (retry IN ('rerun', 'interrupt')),
+    arguments       JSONB NOT NULL,
+    repairs         JSONB NOT NULL,
+    state           TEXT NOT NULL CHECK (state IN ('open', 'claimed', 'answered', 'expired')),
+    claimed_by      UUID REFERENCES grit.edges(id),
+    claim_session   UUID,
+    outcome         JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    claimed_at      TIMESTAMPTZ,
+    answered_at     TIMESTAMPTZ,
+    CHECK ((state = 'answered') = (outcome IS NOT NULL)),
+    CHECK ((claimed_by IS NULL) = (claim_session IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_tool_requests_waiting ON grit.tool_requests (workspace_id)
+    WHERE state IN ('open', 'claimed');
+CREATE INDEX IF NOT EXISTS idx_tool_requests_turn ON grit.tool_requests (conversation_id, turn_seq);
+
 -- Facts about model pairs learned while grit runs, each approved by a person: the
 -- database's layer over the checked-in seed catalog (grit/models/resources/catalog.json).
 -- Append-only; `facts` is a partial profile in the seed's form (CatalogJson.writeProfile).

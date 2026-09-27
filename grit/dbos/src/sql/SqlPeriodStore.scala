@@ -315,6 +315,16 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
               ps.setLong(3, TurnSeq.value(last))
               ps.setString(4, EntryId.value(closing))
             }
+            // Its turns' tool requests hold their arguments and outcomes: raw, like the
+            // entries (Target.Raw).
+            _ <- update(
+              """DELETE FROM grit.tool_requests
+                | WHERE conversation_id = ?::uuid AND turn_seq BETWEEN ? AND ?""".stripMargin
+            ) { ps =>
+              ps.setString(1, ConversationId.value(period.conversationId))
+              ps.setLong(2, TurnSeq.value(p.first))
+              ps.setLong(3, TurnSeq.value(last))
+            }
             _ <- update(
               "DELETE FROM grit.verdicts WHERE conversation_id = ?::uuid AND seq = ?"
             ) { ps =>

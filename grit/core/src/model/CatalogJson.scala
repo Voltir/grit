@@ -141,6 +141,13 @@ object CatalogJson {
       case ArgRepair.QuotedList => "quoted-list"
     }
   )
+
+  /** `repair` as it is written in stored forms: `quoted-number`, `quoted-list`. */
+  def argRepair(repair: ArgRepair): String = RepairWords.of(repair)
+
+  /** The repair written `v` ([[argRepair]]'s form), or why it is none. */
+  def readArgRepair(v: ujson.Value): Either[String, ArgRepair] = RepairWords.read(v, "a repair")
+
   private val AfterWords: Words[AfterToolResult] = Words(
     AfterToolResult.values.toVector,
     {

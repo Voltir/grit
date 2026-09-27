@@ -29,7 +29,7 @@ Mill modules, and what each may name:
 
 | Module | Package | Depends on | Holds |
 |---|---|---|---|
-| `grit.core` | `grit.core.{clock,id,place,prompt,model,message,topic,period,retention,store,plugin,durable,approval,context,provider,inbox,classify,host,tool}` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath; package order in [`grit/core/README.md`](grit/core/README.md) |
+| `grit.core` | `grit.core.{clock,id,place,prompt,model,message,topic,period,retention,store,plugin,durable,approval,context,provider,inbox,classify,host,tool,edge}` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath; package order in [`grit/core/README.md`](grit/core/README.md) |
 | `grit.dbos` | `grit.dbos.{sql,workflow,engine}` | core | DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `Engine` is what `grit.app` opens; package order in [`grit/dbos/README.md`](grit/dbos/README.md) |
 | `grit.prose` | `grit.prose.{form,markdown}` | — | prose as edge-neutral blocks, read from markdown; each edge renders them (`Renderer`); package order in [`grit/prose/README.md`](grit/prose/README.md) |
 | `grit.tui` | `grit.tui.{model,components,wire,runtime}.*` | core | the terminal UI: an `App` is three pure functions and a view tree (`Node`) that the runtime lays out, paints and routes input through; core only from `components`/`runtime` |
@@ -39,7 +39,7 @@ Mill modules, and what each may name:
 | `grit.digest` | `grit.digest` | core | `Digest`, the hello-world plugin: one line per closed period, and the `recent_activity` tool that reads them; [`grit/digest/README.md`](grit/digest/README.md) |
 | `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); `Classifier`s: `JevClassifier` |
 | `grit.host` | `grit.host` | core | the local host: `LocalWorkspace`, `LocalEdits`, `LocalShell`, `LocalInstructions` (`grit.core.host`'s capabilities over this machine's files and processes; a command sees only an allowlisted environment); the only module that starts a process |
-| `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone: `PlaceFragments`, a place's instruction files as the prompt's Place layer |
+| `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone: `Server` (claims, runs and answers the tool requests addressed to the places it hosts, ADR 0017, with the `Tools` it is given), `PlaceFragments` (a place's instruction files as the prompt's Place layer) |
 | `grit.tools` | `grit.tools` | core | the coding tool set (`Coding`): read, list, search, write, edit and run as `Tool`s over `grit.core.host`'s capabilities; `Facts`: `propose_fact`, a measured fact about a model kept once a person approves it; `Probes`: `probe_pair`, a battery of calls measuring a (model, upstream) pair |
 | `grit.assembly` | `grit.assembly.{estimate,linear,retrieval}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`grit/assembly/README.md`](grit/assembly/README.md) |
 | `grit.eval` | `grit.eval` | core, dbos, assembly, models | the assembly eval, integration sources only (`grit.eval.it`): every assembler over labelled cases in a throwaway Postgres; a report, not a gate |

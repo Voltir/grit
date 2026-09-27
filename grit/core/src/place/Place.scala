@@ -26,6 +26,12 @@ object Namespace {
   */
 final case class Place private (segments: Vector[String]) {
 
+  /** The directory this place is, when it is one under `fs`; `None` for any other place. */
+  def directory: Option[Directory] =
+    segments.headOption
+      .filter(_ == Namespace.Fs.key)
+      .flatMap(_ => Directory.of("/" + segments.drop(1).mkString("/")).toOption)
+
   /** Whether this place is `other` or lies under it. Everywhere holds every place. */
   def within(other: Place): Boolean = segments.startsWith(other.segments)
 

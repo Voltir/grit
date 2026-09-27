@@ -4,7 +4,17 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq}
+import grit.core.id.{
+  CallSlot,
+  CloseRef,
+  ConversationId,
+  EntryId,
+  PeriodRef,
+  PeriodSeq,
+  PrincipalId,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.message.Message
 import grit.core.period.{
   Activity,
@@ -45,6 +55,9 @@ abstract class PeriodContract extends TestSuite {
   protected def lifecycle: LifecycleStore
 
   /** Runs `body` in one transaction, committed when it returns. */
+  /** The tool requests under test, over the same database as [[periods]]. */
+  protected def requests: grit.core.edge.ToolRequests
+
   protected def transaction[A](body: (Tx^) ?=> A): A
 
   /** A conversation entries may be written to, the same one for the same `name`. */
@@ -342,6 +355,37 @@ abstract class PeriodContract extends TestSuite {
       all.map(_.map(_.order)) ==> Right(Vector(ordinal(y1), ordinal(x1), ordinal(x2)))
       assert(ordinal(x1).isAfter(ordinal(y1)), ordinal(x2).isAfter(ordinal(x1)))
       transaction(periods.closedAfter(ordinal(y1), 1)).map(_.map(_.ref)) ==> Right(Vector(x1))
+    }
+
+    test("a purge deletes its period's turns' tool requests, and keeps the next period's") {
+      val c = conversation("purge-requests")
+      val t0 = say(c, 0)
+      val p1 = PeriodRef(c, PeriodSeq.First)
+      seal(p1, t0, 10, "kept")
+      val t1 = say(c, 20)
+      def request(turn: TurnRef): grit.core.edge.ToolRequest =
+        grit.core.edge.ToolRequest(
+          CallSlot.of(turn, 0, 0).getOrElse(throw new java.lang.AssertionError()),
+          grit.core.edge.ToolRequest.Protocol,
+          c,
+          grit.core.place.Place.of(
+            grit.core.place.Directory.of("/purge").getOrElse(throw new java.lang.AssertionError())
+          ),
+          PrincipalId.Local,
+          grit.core.tool.ToolName("read"),
+          grit.core.edge.Permit.Free,
+          grit.core.tool.Retry.Rerun,
+          ujson.Obj("path" -> "secret.txt"),
+          Set.empty
+        )
+      transaction(requests.dispatch(Vector(request(t0), request(t1)))) ==> Right(())
+      transaction(periods.purge(p1, at(100))) ==> Right(())
+      val gone = request(t0).slot
+      (transaction(requests.settle(gone)), transaction(requests.settle(request(t1).slot))) ==>
+        (
+          Left(StoreError.Invalid(s"no tool request ${gone.key}")),
+          Right(grit.core.edge.RequestState.Expired)
+        )
     }
 
     test("a purge deletes its period's raw entries, and keeps its closing entry and the rest") {

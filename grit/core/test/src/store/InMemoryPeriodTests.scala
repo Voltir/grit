@@ -9,8 +9,10 @@ object InMemoryPeriodTests extends PeriodContract {
   private val store = new InMemoryEntryStore
 
   protected val entries: EntryStore = store
+  private val edges = new grit.core.edge.InMemoryEdges
   private val fake =
-    new InMemoryPeriodStore(store, c => Origin.Task("contract", ConversationId.value(c)))
+    new InMemoryPeriodStore(store, c => Origin.Task("contract", ConversationId.value(c)), edges)
+  protected val requests: grit.core.edge.ToolRequests = edges
   protected val periods: PeriodStore = fake
   protected val lifecycle: LifecycleStore = new InMemoryLifecycleStore
 

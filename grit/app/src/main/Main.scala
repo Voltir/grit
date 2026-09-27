@@ -15,15 +15,15 @@ import grit.core.id.{PluginName, SourceId, TurnRef, PrincipalId}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Catalog, ModelId, Pinned}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
-import grit.core.place.Directory
+import grit.core.place.{Directory, Place}
 import grit.core.plugin.Plugin
 import grit.core.store.{Db, Origin}
 import grit.core.tool.{DuplicateName, ToolName, Toolbox}
 import grit.dbos.engine.{Engine, EngineLock}
 import grit.dbos.sql.DbConfig
-import grit.core.prompt.SystemPrompt
+import grit.core.prompt.{Fragment, SystemPrompt}
 import grit.core.tool.ToolSet
-import grit.edge.PlaceFragments
+import grit.edge.{PlaceFragments, Server}
 import grit.host.{LocalEdits, LocalInstructions, LocalShell, LocalWorkspace}
 import grit.digest.Digest
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
@@ -97,11 +97,16 @@ object Main {
     * [[PlaceFragments]] says). What each tool does rides with the tool, never here: a model
     * told of a tool it was not offered writes the call out.
     */
-  private def systemPrompt(origin: Origin, directory: Directory, hosted: ToolSet): String =
+  private def systemPrompt(
+      origin: Origin,
+      directory: Directory,
+      hosted: ToolSet,
+      instructions: Vector[Fragment]
+  ): String =
     SystemPrompt
       .of(
         Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(Some(directory), hosted)) ++
-          PlaceFragments.of(new LocalInstructions().around(directory), CharEstimate)
+          instructions
       )
       .render
 
@@ -148,7 +153,8 @@ object Main {
             .map(_.set)
       }).left.map(d => s"the coding tools offer ${ToolName.value(d.name)} twice")
     )
-    val system = systemPrompt(origin, directory, hosted)
+    val instructions = PlaceFragments.of(new LocalInstructions().around(directory), CharEstimate)
+    val system = systemPrompt(origin, directory, hosted, instructions)
     val prefsFile = Prefs.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend. Each role's model
@@ -328,7 +334,11 @@ object Main {
         val opener = new ChatHost.Opener {
           def open(): Engine^ = {
             val engine = Engine.start(config, lock, Turn.Epoch)
-            try launched(engine)
+            try {
+              val running = launched(engine)
+              serveHere(running, Place.of(directory), hosted, instructions, offered)
+              running
+            }
             catch {
               case e: Throwable =>
                 // DBOS's threads are non-daemon: an engine that is not handed on is closed.
@@ -368,6 +378,32 @@ object Main {
     failure.foreach { message =>
       System.err.println(s"[main] $message")
       sys.exit(1)
+    }
+  }
+
+  /** This process's edge (ADR 0017), registered through `engine` for `place`: it offers
+    * `hosted` and the directory's `instructions` there, and runs the requests addressed to it
+    * with the tools `offered` picks, each on a virtual thread, until the engine closes. A
+    * registration that fails is logged, and the turns are then served by no edge here.
+    */
+  private def serveHere(
+      engine: Engine^,
+      place: Place,
+      hosted: ToolSet,
+      instructions: Vector[Fragment],
+      offered: ToolChoice
+  ): Unit = {
+    val log = org.slf4j.LoggerFactory.getLogger("grit.edge")
+    engine.register(PrincipalId.Local, Set(place)) match {
+      case Left(e) => log.warn(s"this edge could not register: ${e.why}")
+      case Right(desk) =>
+        desk.advertise(place, hosted, instructions).left.foreach(e => log.warn(s"not advertised: ${e.why}"))
+        new Server(
+          desk,
+          new LocalTools(offered),
+          run => { val _ = Thread.ofVirtual().name("grit-tool").start(() => run()) },
+          said => log.info(said)
+        ).serve()
     }
   }
 

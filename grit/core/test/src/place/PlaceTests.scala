@@ -13,6 +13,14 @@ object PlaceTests extends TestSuite {
     Place.read(text).fold(e => throw new java.lang.AssertionError(e), identity)
 
   val tests = Tests {
+    test("a place under fs is its directory again; a place elsewhere is none") {
+      val dir = Directory.of("/home/nick/api").getOrElse(throw new java.lang.AssertionError())
+      val root = Directory.of("/").getOrElse(throw new java.lang.AssertionError())
+      (Place.of(dir).directory, Place.of(root).directory) ==> (Some(dir), Some(root))
+      Place.under(Namespace.Slack, Vector("acme", "dev")).directory ==> None
+      Place.Everywhere.directory ==> None
+    }
+
     test("a place's written form reads back to the same place, in every namespace") {
       val places = Vector(
         Place.of(dir("/home/nick/Projects/grit")),

@@ -21,6 +21,7 @@ object SqlPeriodTests extends PeriodContract {
   protected val entries: EntryStore = store
   protected val periods: PeriodStore = new SqlPeriodStore(store)
   protected val lifecycle: LifecycleStore = new SqlLifecycleStore()
+  protected val requests: grit.core.edge.ToolRequests = new grit.dbos.sql.SqlToolRequests()
 
   protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
 

@@ -20,7 +20,8 @@ import grit.core.period.{
   */
 final class InMemoryPeriodStore(
     entries: InMemoryEntryStore,
-    origin: ConversationId -> Origin = c => Origin.Task("conversation", ConversationId.value(c))
+    origin: ConversationId -> Origin = c => Origin.Task("conversation", ConversationId.value(c)),
+    edges: grit.core.edge.InMemoryEdges = new grit.core.edge.InMemoryEdges
 ) extends PeriodStore {
 
   // Only ever replaced by a new immutable vector, as the store's table would be.
@@ -207,6 +208,7 @@ final class InMemoryPeriodStore(
             TurnSeq.value(e.turnSeq) <= TurnSeq.value(c.last)
         )
         verdicts = verdicts.filterNot(_._1 == period)
+        edges.forget(period.conversationId, p.first, c.last)
         replace(p.copy(state = c.copy(purged = Some(at))))
       }
     }

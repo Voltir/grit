@@ -64,8 +64,8 @@ trait PeriodStore {
   /** Closed periods after `after` in close order, at most `n`. */
   def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]]
 
-  /** Deletes `period`'s raw entries (every entry of its turns but its closing entry) and
-    * every verdict on it, and records it purged at `at`; a period already purged, or not closed, is left as it is.
+  /** Deletes `period`'s raw entries (every entry of its turns but its closing entry), its
+    * turns' tool requests, and every verdict on it, and records it purged at `at`; a period already purged, or not closed, is left as it is.
     * Its workflows are the caller's to delete, first ([[grit.core.period.Purgeable.turns]],
     * [[grit.core.period.Purgeable.attempts]]); only the collector calls it, for a
     * [[grit.core.retention.Target.Raw]] tombstone.

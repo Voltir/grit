@@ -5,7 +5,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
 
 - **`sql`** — Postgres behind core's store seams: `DbConfig` (where the database is),
   `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place, `grit.places`, and who began it, one of `grit.principals`), `SqlUsageLedger`,
-  `SqlModelProfileStore`, `SqlModelFactStore`, `SqlToolSets`, `SqlPromptStore`, `SqlPeriodStore` (a conversation's periods,
+  `SqlModelProfileStore`, `SqlModelFactStore`, `SqlToolSets`, `SqlPromptStore`, `SqlToolRequests` and
+  `SqlEdgeDirectory` (hosted tool calls and the edges serving them, ADR 0017), `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
   row), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
   as posted from one closing, and its cursor), `SqlTombstones` (what is to be deleted, ADR 0014).
@@ -20,7 +21,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
 - **`engine`** — both, composed: `EngineLock` (the database's one engine, ADR 0015: a
   session advisory lock, its `grit.engines` row and heartbeat), `Engine` (what `grit.app`
   starts under the lock; closing it, or losing the lock, stops the sweep, then DBOS, waits
-  for running bodies, and releases the lock last), `TurnStatus`, and
+  for running bodies, and releases the lock last), `SqlDesk` (an edge's registration, live
+  while its own connection holds its lock, which also listens for requests), `TurnStatus`, and
   `SqlInbox`, which records a message, and who wrote it (`grit.inbound`), and enqueues its turn in one transaction (opening
   the conversation's next period when none is open), and sends a turn the answer to its
   gated call (`DBOSClient.send`); `Sweeper`,
