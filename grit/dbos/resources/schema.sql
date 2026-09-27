@@ -55,14 +55,28 @@ CREATE TABLE IF NOT EXISTS grit.places (
                 AND array_position(path, NULL) IS NULL)
 );
 
+-- Who actions are done for (grit.core.id.PrincipalId): `local`, the one person every edge
+-- acts for until principals are registered, and `grit`, the engine itself. Other tables
+-- name a principal here, never by a free string.
+-- Retention: kept: a few rows, the identities other rows name.
+CREATE TABLE IF NOT EXISTS grit.principals (
+    id   TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('person', 'grit'))
+);
+
+INSERT INTO grit.principals (id, kind) VALUES ('local', 'person'), ('grit', 'grit')
+    ON CONFLICT (id) DO NOTHING;
+
 -- One row per origin; `origin` is the Origin ADT as JSON, and jsonb equality
 -- ignores key order, so the unique index is on the value, not its spelling. Its place is
--- its origin's, set when it is created.
+-- its origin's, set when it is created, and `created_by` the principal of the edge that
+-- created it, kept whoever finds it later.
 -- Retention: ledger: deleted whole once quiet past the ledger window (Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.conversations (
     id         UUID PRIMARY KEY DEFAULT uuidv7(),
     origin     JSONB NOT NULL UNIQUE,
     place_id   UUID NOT NULL REFERENCES grit.places(id),
+    created_by TEXT NOT NULL REFERENCES grit.principals(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -91,6 +105,15 @@ CREATE INDEX IF NOT EXISTS idx_entries_conversation ON grit.entries(conversation
 -- each other's ranking (ADR 0005). Queries name it: to_bm25query(q, 'grit.idx_entries_bm25').
 CREATE INDEX IF NOT EXISTS idx_entries_bm25 ON grit.entries
     USING bm25 (search_text) WITH (text_config = 'english');
+
+-- Who wrote each inbound entry: the principal of the edge that ingested it (Inbox.ingest).
+-- Every other entry is grit's own. A table beside `entries` rather than a column on it, so
+-- no entry needs an author it does not have.
+-- Retention: journal: with its entry (Target.Raw), by cascade.
+CREATE TABLE IF NOT EXISTS grit.inbound (
+    entry_id TEXT PRIMARY KEY REFERENCES grit.entries(id) ON DELETE CASCADE,
+    author   TEXT NOT NULL REFERENCES grit.principals(id)
+);
 
 -- One row per model response: what it cost. Keyed by the entry that holds the response,
 -- so the turn's append writes both in one transaction and a replay cannot count twice. Not a
@@ -137,6 +160,17 @@ CREATE TABLE IF NOT EXISTS grit.turn_model_profiles (
     workflow_id      TEXT PRIMARY KEY,
     model_profile_id TEXT NOT NULL REFERENCES grit.model_profiles(id),
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Every distinct tool set a turn was offered (grit.core.tool.ToolSet): each tool's name,
+-- description, schema, whether it asks first, and its retry. Keyed by its content hash, so
+-- it is written once however many turns share it, and never changed; a turn's recorded
+-- first step names it, and its replay reads it back from here.
+-- Retention: kept: content-addressed; replay reads a set by id.
+CREATE TABLE IF NOT EXISTS grit.tool_sets (
+    id         TEXT PRIMARY KEY,
+    tools      JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Facts about model pairs learned while grit runs, each approved by a person: the

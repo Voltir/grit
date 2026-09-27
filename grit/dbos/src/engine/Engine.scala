@@ -12,7 +12,7 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{ConversationId, PluginName, TurnRef, WorkflowId}
+import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
 import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginDocs}
 import grit.core.store.{
@@ -204,11 +204,11 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
       thread.start()
     }
 
-  /** The conversation `origin` names, created if it is new, as an edge's first ingest
-    * would.
+  /** The conversation `origin` names, created by `by` if it is new, as an edge's first
+    * ingest would.
     */
-  def conversation(origin: Origin): Either[StoreError, ConversationId] =
-    transaction(conversations.findOrCreate(origin).map(_.id))
+  def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId] =
+    transaction(conversations.findOrCreate(origin, by).map(_.id))
 
   /** Where `turn`'s workflow is, without waiting for it. */
   def status(turn: TurnRef): TurnStatus =

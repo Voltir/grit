@@ -5,7 +5,7 @@ import scala.concurrent.duration.*
 
 import grit.core.approval.Approval
 import grit.core.durable.Durable
-import grit.core.id.{SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.store.Origin
@@ -38,7 +38,7 @@ object AnswerLiveTests extends TestSuite {
   private def started(engine: Engine^, source: String): TurnRef = {
     val origin = Origin.Task("answer", source)
     val turn = for {
-      t <- engine.inbox.ingest(origin, SourceId(source), Message.User(source))
+      t <- engine.inbox.ingest(origin, SourceId(source), Message.User(source), PrincipalId.Local)
       _ <- engine.inbox.startTurn(t)
     } yield t
     turn.fold(e => sys.error(s"inbox: $e"), identity)
@@ -73,7 +73,7 @@ object AnswerLiveTests extends TestSuite {
         engine.launch(waiting(1.minute), noClose, noClose, noClose, Vector.empty)
         val origin = Origin.Task("answer", "early")
         val turn = engine.inbox
-          .ingest(origin, SourceId("early"), Message.User("early"))
+          .ingest(origin, SourceId("early"), Message.User("early"), PrincipalId.Local)
           .fold(e => sys.error(s"inbox: $e"), identity)
         // The workflow must exist to be sent to: enqueued, then answered before it runs.
         engine.inbox.startTurn(turn) ==> Right(())

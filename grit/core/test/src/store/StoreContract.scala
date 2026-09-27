@@ -18,11 +18,12 @@ import grit.core.model.{
   TurnProfile,
   TurnProfileId
 }
+import grit.core.tool.{Retry, ToolName, ToolSet, ToolSetId, ToolSets}
 
 import utest.*
 
-/** The contract every [[EntryStore]], [[UsageLedger]], [[ModelProfileStore]] and
-  * [[ModelFactStore]] keeps, run against one
+/** The contract every [[EntryStore]], [[UsageLedger]], [[ModelProfileStore]],
+  * [[ModelFactStore]] and [[ToolSets]] keeps, run against one
   * implementation of each: the in-memory fakes in core, the SQL stores in grit.dbos. The
   * fakes stand in for the SQL stores in every other module's tests, so whatever those tests
   * rely on belongs here.
@@ -45,6 +46,9 @@ abstract class StoreContract extends TestSuite {
     * in one list, so only one test writes to it.
     */
   protected def facts: ModelFactStore
+
+  /** The tool-set store under test, over the same database as [[entries]]. */
+  protected def toolSets: ToolSets
 
   /** Runs `body` in one transaction, committed when it returns. */
   protected def transaction[A](body: (Tx^) ?=> A): A
@@ -333,5 +337,53 @@ abstract class StoreContract extends TestSuite {
         )
       )
     }
+
+    test("a kept tool set is got back by its id, entry for entry") {
+      val set = StoreContract.toolSet("kept_tool")
+      transaction(toolSets.keep(set)) ==> Right(())
+      transaction(toolSets.get(set.id)) ==> Right(set)
+    }
+
+    test("keeping a set again changes nothing, and an id never kept is Invalid naming it") {
+      val set = StoreContract.toolSet("twice_tool")
+      transaction(toolSets.keep(set).flatMap(_ => toolSets.keep(set))) ==> Right(())
+      transaction(toolSets.get(set.id)) ==> Right(set)
+      val never = StoreContract.toolSet("never_kept").id
+      transaction(toolSets.get(never)) ==>
+        Left(StoreError.Invalid(s"no tool set ${ToolSetId.value(never)} is kept"))
+    }
+  }
+}
+
+object StoreContract {
+
+  /** A set of one tool named `name`, asking first and interrupted when cut short, beside a
+    * free one that reruns: each field of an entry differs from the other's.
+    */
+  def toolSet(name: String): ToolSet = {
+    val named = ToolName.of(name).getOrElse(throw new java.lang.AssertionError(name))
+    ToolSet
+      .of(
+        Vector(
+          ToolSet.Entry(
+            named,
+            s"Does $name.",
+            ujson.Obj(
+              "type" -> "object",
+              "properties" -> ujson.Obj("path" -> ujson.Obj("type" -> "string"))
+            ),
+            asks = true,
+            Retry.Interrupt
+          ),
+          ToolSet.Entry(
+            ToolName("peek"),
+            "Peeks.",
+            ujson.Obj("type" -> "object"),
+            asks = false,
+            Retry.Rerun
+          )
+        )
+      )
+      .getOrElse(throw new java.lang.AssertionError("a duplicate name"))
   }
 }

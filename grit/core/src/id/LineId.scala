@@ -9,10 +9,7 @@ opaque type LineId = String
 object LineId {
 
   /** The id of the line `text` in the section keyed `section`. */
-  private[core] def of(section: String, text: String): LineId = {
-    val digest = java.security.MessageDigest.getInstance("SHA-256")
-    digest.digest(s"$section\n$text".getBytes("UTF-8")).take(8).map(b => f"$b%02x").mkString
-  }
+  private[core] def of(section: String, text: String): LineId = ShortHash.of(s"$section\n$text")
 
   def value(id: LineId): String = id
 }

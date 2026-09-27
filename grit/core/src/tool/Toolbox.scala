@@ -16,6 +16,9 @@ final class Toolbox[+C^] private (tools: Vector[Tool.Offered^{C}]) {
   /** The names offered, in order. */
   def names: Vector[ToolName] = tools.map(_.name)
 
+  /** The tools as a turn's tool set records them, in order. */
+  def set: ToolSet = ToolSet.of(tools.map(_.entry)).getOrElse(ToolSet.Empty)
+
   /** This toolbox with `tool`, which acts through no capability, offered first; `Left` when
     * one here has its name.
     */

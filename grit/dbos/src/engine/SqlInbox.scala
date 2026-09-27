@@ -7,7 +7,15 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.approval.Approval
-import grit.core.id.{ConversationId, EntryId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{
+  ConversationId,
+  EntryId,
+  PrincipalId,
+  SourceId,
+  ToolCallId,
+  TurnRef,
+  WorkflowId
+}
 import grit.core.inbox.{Inbox, InboxError}
 import grit.core.message.Message
 import grit.core.store.{
@@ -20,6 +28,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.dbos.sql.SqlEntryStore
 import grit.dbos.workflow.Turns
 
 import dev.dbos.transact.DBOSClient
@@ -39,11 +48,12 @@ final class SqlInbox(
   def ingest(
       origin: Origin,
       source: SourceId,
-      message: Message.User
+      message: Message.User,
+      by: PrincipalId
   ): Either[InboxError, TurnRef] =
     inTransaction {
       for {
-        conversation <- conversations.findOrCreate(origin)
+        conversation <- conversations.findOrCreate(origin, by)
         id = SqlInbox.entryId(conversation.id, source)
         // Serialises ingest per conversation: a concurrent ingest waits here, then sees
         // this one's entry and its sequence numbers.
@@ -66,6 +76,7 @@ final class SqlInbox(
                     at
                   )
                 )
+                .flatMap(_ => SqlInbox.authored(id, by))
                 .map(_ => TurnRef(conversation.id, next.turnSeq))
             }
         }
@@ -135,6 +146,21 @@ final class SqlInbox(
 private[dbos] object SqlInbox {
 
   /** An ingested message's entry id: deterministic, so a redelivery finds it. */
+  /** Records that `by` wrote the inbound entry `id`. */
+  private def authored(id: EntryId, by: PrincipalId)(using tx: Tx^): Either[StoreError, Unit] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    SqlEntryStore.attempt {
+      Using.resource(
+        conn.prepareStatement("INSERT INTO grit.inbound (entry_id, author) VALUES (?, ?)")
+      ) { ps =>
+        ps.setString(1, EntryId.value(id))
+        ps.setString(2, PrincipalId.value(by))
+        ps.executeUpdate()
+        ()
+      }
+    }
+  }
+
   def entryId(conversation: ConversationId, source: SourceId): EntryId =
     EntryId(s"in:${ConversationId.value(conversation)}:${SourceId.value(source)}")
 

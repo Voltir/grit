@@ -4,8 +4,8 @@ The DBOS quarantine (ADR 0001): the only module that names DBOS, JDBC or the Pos
 driver, translated into core's seams here. `resources/schema.sql` is the schema.
 
 - **`sql`** — Postgres behind core's store seams: `DbConfig` (where the database is),
-  `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place, `grit.places`), `SqlUsageLedger`,
-  `SqlModelProfileStore`, `SqlModelFactStore`, `SqlPeriodStore` (a conversation's periods,
+  `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place, `grit.places`, and who began it, one of `grit.principals`), `SqlUsageLedger`,
+  `SqlModelProfileStore`, `SqlModelFactStore`, `SqlToolSets`, `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
   row), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
   as posted from one closing, and its cursor), `SqlTombstones` (what is to be deleted, ADR 0014).
@@ -17,7 +17,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   partition, so neither runs beside one of its turns), `Posts` (the posting workflow, on a `posts` queue partitioned by
   plugin). Imports nothing else in dbos.
 - **`engine`** — both, composed: `Engine` (what `grit.app` opens), `TurnStatus`, and
-  `SqlInbox`, which records a message and enqueues its turn in one transaction (opening
+  `SqlInbox`, which records a message, and who wrote it (`grit.inbound`), and enqueues its turn in one transaction (opening
   the conversation's next period when none is open), and sends a turn the answer to its
   gated call (`DBOSClient.send`); `Sweeper`,
   the sweep `Engine.sweepEvery` runs: every open period whose deadline has come has its

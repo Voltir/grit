@@ -14,6 +14,7 @@ import grit.core.id.{
   PeriodRef,
   PeriodSeq,
   PluginName,
+  PrincipalId,
   SourceId,
   TurnRef,
   WorkflowId
@@ -169,7 +170,7 @@ object CollectorLiveTests extends TestSuite {
   /** `text` ingested on `origin` and its turn run to its end. */
   private def turnOn(engine: Engine^, origin: Origin, text: String): TurnRef = {
     val t = engine.inbox
-      .ingest(origin, SourceId(text), Message.User(text))
+      .ingest(origin, SourceId(text), Message.User(text), PrincipalId.Local)
       .fold(e => sys.error(s"$e"), identity)
     engine.inbox.startTurn(t) ==> Right(())
     engine.awaitTurn(t)
@@ -339,7 +340,7 @@ object CollectorLiveTests extends TestSuite {
         minutes(config)
         val origin = Origin.Task("retention", "purge")
         val t0 = engine.inbox
-          .ingest(origin, SourceId("one"), Message.User("one"))
+          .ingest(origin, SourceId("one"), Message.User("one"), PrincipalId.Local)
           .fold(e => sys.error(s"$e"), identity)
         engine.inbox.startTurn(t0) ==> Right(())
         engine.awaitTurn(t0)
@@ -418,7 +419,12 @@ object CollectorLiveTests extends TestSuite {
         )
         minutes(config)
         val t0 = engine.inbox
-          .ingest(Origin.Task("retention", "prefix"), SourceId("one"), Message.User("one"))
+          .ingest(
+            Origin.Task("retention", "prefix"),
+            SourceId("one"),
+            Message.User("one"),
+            PrincipalId.Local
+          )
           .fold(e => sys.error(s"$e"), identity)
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
         engine.sweep(Instant.now().plusSeconds(120)).map(_.enqueued.size) ==> Right(1)
@@ -474,7 +480,12 @@ object CollectorLiveTests extends TestSuite {
         )
         minutes(config)
         val t0 = engine.inbox
-          .ingest(Origin.Task("collect", "deferred"), SourceId("one"), Message.User("one"))
+          .ingest(
+            Origin.Task("collect", "deferred"),
+            SourceId("one"),
+            Message.User("one"),
+            PrincipalId.Local
+          )
           .fold(e => sys.error(s"$e"), identity)
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
         engine.sweep(Instant.now().plusSeconds(120)).map(_.enqueued.size) ==> Right(1)

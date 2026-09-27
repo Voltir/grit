@@ -12,11 +12,13 @@ import grit.core.store.{
   Tx,
   UsageLedger
 }
+import grit.core.tool.ToolSets
 import grit.dbos.sql.{
   LiveDb,
   SqlEntryStore,
   SqlModelFactStore,
   SqlModelProfileStore,
+  SqlToolSets,
   SqlUsageLedger,
   TestPostgres
 }
@@ -35,6 +37,7 @@ object SqlStoreTests extends StoreContract {
   protected val ledger: UsageLedger = new SqlUsageLedger()
   protected val profiles: ModelProfileStore = new SqlModelProfileStore()
   protected val facts: ModelFactStore = new SqlModelFactStore()
+  protected val toolSets: ToolSets = new SqlToolSets()
 
   protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
 

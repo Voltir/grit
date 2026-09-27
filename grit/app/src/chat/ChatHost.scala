@@ -6,7 +6,7 @@ import java.util.concurrent.CountDownLatch
 import scala.util.control.NonFatal
 
 import grit.app.config.Lifecycle
-import grit.core.id.{ConversationId, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Origin, Payload, StoreError, UsageLedger}
@@ -189,7 +189,7 @@ final class ChatHost(
   }
 
   private def follow(engine: Engine^, mailbox: Mailbox[ChatScreen.Msg]): Unit =
-    engine.conversation(origin) match {
+    engine.conversation(origin, PrincipalId.Local) match {
       case Left(e) => mailbox.offer(ChatScreen.Msg.Failed(s"could not open the conversation: $e"))
       case Right(conversation) =>
         var state = Follow.start
@@ -320,7 +320,12 @@ final class ChatHost(
   private def send(engine: Engine^, text: String, mailbox: Mailbox[ChatScreen.Msg]): Unit = {
     // The TUI never redelivers, so each message is its own source.
     val started = for {
-      turn <- engine.inbox.ingest(origin, SourceId(UUID.randomUUID().toString), Message.User(text))
+      turn <- engine.inbox.ingest(
+        origin,
+        SourceId(UUID.randomUUID().toString),
+        Message.User(text),
+        PrincipalId.Local
+      )
       _ <- engine.inbox.startTurn(turn)
     } yield turn
     started.left.foreach(e => mailbox.offer(ChatScreen.Msg.Failed(s"not sent: $e")))

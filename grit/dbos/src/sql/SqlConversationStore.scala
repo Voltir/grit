@@ -4,7 +4,7 @@ import java.time.OffsetDateTime
 
 import scala.util.Using
 
-import grit.core.id.ConversationId
+import grit.core.id.{ConversationId, PrincipalId}
 import grit.core.place.Directory
 import grit.core.store.{Conversation, ConversationStore, Origin, StoreError, Tx}
 
@@ -13,7 +13,8 @@ final class SqlConversationStore extends ConversationStore {
   import SqlEntryStore.attempt
 
   def findOrCreate(
-      origin: Origin
+      origin: Origin,
+      by: PrincipalId
   )(using tx: Tx^): Either[StoreError, Conversation] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     // A no-op DO UPDATE, not DO NOTHING, so RETURNING yields the row whether it
@@ -25,22 +26,55 @@ final class SqlConversationStore extends ConversationStore {
         |  VALUES (ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))
         |  ON CONFLICT (path) DO UPDATE SET path = EXCLUDED.path
         |  RETURNING id)
-        |INSERT INTO grit.conversations (origin, place_id) SELECT ?::jsonb, id FROM place
+        |INSERT INTO grit.conversations (origin, place_id, created_by)
+        |SELECT ?::jsonb, id, ? FROM place
         |ON CONFLICT (origin) DO UPDATE SET origin = EXCLUDED.origin
-        |RETURNING id, created_at""".stripMargin
+        |RETURNING id, created_by, created_at""".stripMargin
     attempt {
       Using.resource(conn.prepareStatement(sql)) { ps =>
         ps.setString(1, ujson.Arr.from(origin.place.segments.map(ujson.Str(_))).render())
         ps.setString(2, SqlConversationStore.originJson(origin).render())
+        ps.setString(3, PrincipalId.value(by))
         Using.resource(ps.executeQuery()) { rs =>
           rs.next()
           Conversation(
             id = ConversationId(rs.getString("id")),
             origin = origin,
+            createdBy = PrincipalId(rs.getString("created_by")),
             createdAt = rs.getObject("created_at", classOf[OffsetDateTime]).toInstant
           )
         }
       }
+    }
+  }
+
+  def get(id: ConversationId)(using tx: Tx^): Either[StoreError, Option[Conversation]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement(
+          "SELECT origin::text, created_by, created_at FROM grit.conversations WHERE id = ?::uuid"
+        )
+      ) { ps =>
+        ps.setString(1, ConversationId.value(id))
+        Using.resource(ps.executeQuery()) { rs =>
+          Option.when(rs.next()) {
+            (
+              rs.getString(1),
+              rs.getString(2),
+              rs.getObject(3, classOf[OffsetDateTime]).toInstant
+            )
+          }
+        }
+      }
+    }.flatMap {
+      case None => Right(None)
+      case Some((origin, by, at)) =>
+        SqlConversationStore
+          .readOrigin(ujson.read(origin))
+          .map(o => Some(Conversation(id, o, PrincipalId(by), at)))
+          .left
+          .map(why => StoreError.DatabaseError(s"conversation ${ConversationId.value(id)}: $why"))
     }
   }
 

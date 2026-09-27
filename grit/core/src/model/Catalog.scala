@@ -96,10 +96,7 @@ object TurnProfile {
     )
 }
 
-/** A short content hash: the first 16 hex digits of SHA-256 over the compact JSON. */
+/** A short content hash of the compact JSON ([[grit.core.id.ShortHash]]). */
 private object Hash {
-  def of(content: ujson.Value): String = {
-    val digest = java.security.MessageDigest.getInstance("SHA-256")
-    digest.digest(ujson.write(content).getBytes("UTF-8")).take(8).map(b => f"$b%02x").mkString
-  }
+  def of(content: ujson.Value): String = grit.core.id.ShortHash.of(ujson.write(content))
 }

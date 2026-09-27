@@ -11,7 +11,7 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
-import grit.core.id.{PluginName, SourceId, TurnRef}
+import grit.core.id.{PluginName, SourceId, TurnRef, PrincipalId}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Catalog, ModelId, Pinned}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
@@ -340,7 +340,7 @@ object Main {
     val started = messages.map { text =>
       for {
         // The text is its own source id, so repeating a message redelivers it.
-        turn <- engine.inbox.ingest(RunOrigin, SourceId(text), Message.User(text))
+        turn <- engine.inbox.ingest(RunOrigin, SourceId(text), Message.User(text), PrincipalId.Local)
         _ <- engine.inbox.startTurn(turn)
       } yield turn
     }

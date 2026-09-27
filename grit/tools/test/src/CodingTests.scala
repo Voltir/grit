@@ -6,7 +6,7 @@ import grit.core.approval.Approval
 import grit.core.host.*
 import grit.core.id.ToolCallId
 import grit.core.message.AssistantBlock
-import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
+import grit.core.tool.{Bound, Outcome, Repairs, Retry, ToolName, Toolbox}
 
 import utest.*
 
@@ -89,6 +89,19 @@ object CodingTests extends TestSuite {
       readOnly(host).names.map(ToolName.value) ==> Vector("read", "list", "search")
       all(host).names.map(ToolName.value) ==>
         Vector("read", "list", "search", "write", "edit", "run")
+    }
+
+    test("the tools that leave the same result when run twice rerun; edit and run interrupt") {
+      // Recorded in every turn's tool set and on every request: an orphaned call is rerun or
+      // answered Interrupted by this, so a change here changes what a crash does.
+      all(new Scripted()).set.tools.map(e => (ToolName.value(e.name), e.retry)) ==> Vector(
+        "read" -> Retry.Rerun,
+        "list" -> Retry.Rerun,
+        "search" -> Retry.Rerun,
+        "write" -> Retry.Rerun,
+        "edit" -> Retry.Interrupt,
+        "run" -> Retry.Interrupt
+      )
     }
 
     test("each call is shown in one line: the tool, then what it acts on") {

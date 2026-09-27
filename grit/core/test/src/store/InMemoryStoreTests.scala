@@ -1,6 +1,7 @@
 package grit.core.store
 
 import grit.core.id.ConversationId
+import grit.core.tool.ToolSets
 import grit.dbos.sql.TestTx
 
 /** The store contract, kept by the in-memory fakes. */
@@ -10,6 +11,7 @@ object InMemoryStoreTests extends StoreContract {
   protected val ledger: UsageLedger = new InMemoryUsageLedger
   protected val profiles: ModelProfileStore = new InMemoryModelProfileStore
   protected val facts: ModelFactStore = new InMemoryModelFactStore
+  protected val toolSets: ToolSets = new InMemoryToolSets
 
   protected def transaction[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)
 

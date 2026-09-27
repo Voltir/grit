@@ -21,6 +21,9 @@ final class Tool[A](
 
   def schema(strict: Boolean): ToolSchema = spec.schema(strict)
 
+  def entry: ToolSet.Entry =
+    ToolSet.Entry(spec.name, spec.does, spec.args.schema(false), gate != Gate.Free, spec.retry)
+
   private[tool] def bind(
       call: AssistantBlock.ToolCall,
       repairs: Set[ArgRepair]
@@ -50,6 +53,9 @@ object Tool {
 
     /** What a request shows the model of it ([[ToolSpec.schema]]). */
     def schema(strict: Boolean): ToolSchema
+
+    /** What a turn's tool set records of it ([[ToolSet]]). */
+    def entry: ToolSet.Entry
 
     /** `call`, which names this tool, read against it with `repairs`. */
     private[tool] def bind(

@@ -8,7 +8,16 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.durable.Durable
-import grit.core.id.{PeriodRef, PeriodSeq, SettleRef, SourceId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{
+  PeriodRef,
+  PeriodSeq,
+  PrincipalId,
+  SettleRef,
+  SourceId,
+  TurnRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.message.Message
 import grit.core.period.{Judgement, LifecycleSettings, Probability, Verdict, Windows}
 import grit.core.place.Locality
@@ -46,7 +55,7 @@ object SettleLiveTests extends TestSuite {
 
   private def ingested(engine: Engine^, origin: Origin, text: String): TurnRef =
     engine.inbox
-      .ingest(origin, SourceId(text), Message.User(text))
+      .ingest(origin, SourceId(text), Message.User(text), PrincipalId.Local)
       .fold(e => sys.error(s"inbox: $e"), identity)
 
   private def eventually(done: => Boolean): Boolean = {

@@ -19,6 +19,7 @@ import grit.core.tool.{
   Field,
   Gate,
   Outcome,
+  Retry,
   Tool,
   ToolName,
   ToolSpec,
@@ -85,7 +86,9 @@ object Coding {
               limit = Field.count("The most lines to read.", 1, Clipped.MaxLines).optional
             )
           )
-          .refine(a => located(a.path).map(p => (path = p, offset = a.offset, limit = a.limit)))
+          .refine(a => located(a.path).map(p => (path = p, offset = a.offset, limit = a.limit))),
+        // Running it twice leaves what running it once does.
+        retry = Retry.Rerun
       ),
       Gate.Free,
       a => RelPath.value(a.path) + a.offset.fold("")(o => s":$o"),
@@ -111,7 +114,9 @@ object Coding {
           )
           .refine(a =>
             located(a.path.getOrElse(".")).map(p => (path = p, depth = a.depth.getOrElse(1)))
-          )
+          ),
+        // Running it twice leaves what running it once does.
+        retry = Retry.Rerun
       ),
       Gate.Free,
       a => RelPath.value(a.path),
@@ -137,7 +142,9 @@ object Coding {
               path = Field.text("Where to search, relative to the checkout's root; `.` for all of it.").optional
             )
           )
-          .refine(a => located(a.path.getOrElse(".")).map(p => (pattern = a.pattern, path = p)))
+          .refine(a => located(a.path.getOrElse(".")).map(p => (pattern = a.pattern, path = p))),
+        // Running it twice leaves what running it once does.
+        retry = Retry.Rerun
       ),
       Gate.Free,
       a => s"\"${a.pattern}\" ${RelPath.value(a.path)}",
@@ -161,7 +168,9 @@ object Coding {
               content = Field.text("The file's whole new text.")
             )
           )
-          .refine(a => located(a.path).map(p => (path = p, content = a.content)))
+          .refine(a => located(a.path).map(p => (path = p, content = a.content))),
+        // Running it twice leaves what running it once does.
+        retry = Retry.Rerun
       ),
       Gate.Ask(a => {
         val lines = Clipped.lines(a.content)

@@ -1,7 +1,7 @@
 package grit.core.inbox
 
 import grit.core.approval.Approval
-import grit.core.id.{SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.store.Origin
 
@@ -10,11 +10,17 @@ import grit.core.store.Origin
   */
 trait Inbox extends caps.SharedCapability {
 
-  /** Records `message` from `origin`'s conversation as the first entry of a new turn, and
-    * returns that turn. A message whose `source` id was already recorded for `origin` is
-    * not recorded again: its existing turn is returned.
+  /** Records `message` from `origin`'s conversation, written by `by`, as the first entry of
+    * a new turn, and returns that turn; the conversation is created by `by` if it is new. A
+    * message whose `source` id was already recorded for `origin` is not recorded again: its
+    * existing turn is returned, with its first author.
     */
-  def ingest(origin: Origin, source: SourceId, message: Message.User): Either[InboxError, TurnRef]
+  def ingest(
+      origin: Origin,
+      source: SourceId,
+      message: Message.User,
+      by: PrincipalId
+  ): Either[InboxError, TurnRef]
 
   /** Starts `turn` if it has not been started. A conversation runs one turn at a time,
     * oldest first; this returns once the turn is queued, not when it has run.

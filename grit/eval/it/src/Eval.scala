@@ -6,7 +6,16 @@ import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.context.{AssemblyNote, AssemblyRequest, ContextAssembler, Window}
-import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq}
+import grit.core.id.{
+  CloseRef,
+  ConversationId,
+  EntryId,
+  PeriodRef,
+  PeriodSeq,
+  PrincipalId,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, LifecycleSettings, Section}
 import grit.core.place.{Directory, Locality, Namespace, Place, Scope, Weight}
@@ -108,7 +117,7 @@ object Eval {
   def load(engine: Engine^, config: DbConfig, c: Case, variant: Variant): Loaded = {
     val conversation: ConversationId =
       engine
-        .conversation(Origin.Task("eval", s"${c.name}/${variant.label}"))
+        .conversation(Origin.Task("eval", s"${c.name}/${variant.label}"), PrincipalId.Local)
         .fold(e => sys.error(s"eval: $e"), identity)
     val body = variant match {
       case Variant.Plain => c.turns
@@ -208,7 +217,7 @@ object Eval {
   ): Vector[(EntryId, Case.Line)] = {
     val root = Vector("eval", c.name, variant.label)
     val conversation = engine
-      .conversation(originAt(rooted(root, e.place)))
+      .conversation(originAt(rooted(root, e.place)), PrincipalId.Local)
       .fold(x => sys.error(s"eval: $x"), identity)
     def body(turns: Vector[Vector[Case.Line]], seed: Long) = variant match {
       case Variant.Plain => turns

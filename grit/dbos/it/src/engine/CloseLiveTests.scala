@@ -14,6 +14,7 @@ import grit.core.id.{
   EntryId,
   PeriodRef,
   PeriodSeq,
+  PrincipalId,
   SourceId,
   TurnRef,
   TurnSeq,
@@ -45,7 +46,7 @@ object CloseLiveTests extends TestSuite {
 
   private def ingested(engine: Engine^, origin: Origin, text: String): TurnRef =
     engine.inbox
-      .ingest(origin, SourceId(text), Message.User(text))
+      .ingest(origin, SourceId(text), Message.User(text), PrincipalId.Local)
       .fold(e => sys.error(s"inbox: $e"), identity)
 
   /** Asks `done` until it holds, for up to 30 s, and whether it did. */

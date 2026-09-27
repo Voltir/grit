@@ -8,7 +8,8 @@ In dependency order:
 - **`clock`** — what a function cannot compute: `Clock` (the time) and `Fresh` (values
   no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `WorkflowId`,
-  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`), `TurnRef`, `PeriodRef`, `CloseRef` (one
+  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `PrincipalId`: who an
+  action is done for), the one short content hash every content-addressed id uses, `TurnRef`, `PeriodRef`, `CloseRef` (one
   attempt to close a period on its deadline, and its workflow id) and `SettleRef` (the one
   question whether anyone is waiting on a quiet period, and its workflow id). Imports nothing in core.
 - **`place`** — where conversations happen (ADR 0013): `Place`, a path in one
@@ -45,7 +46,7 @@ In dependency order:
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),
   `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
-  `ConversationStore`, `UsageLedger`, `ModelProfileStore` (which profile each turn ran
+  `ConversationStore` (each conversation's origin and who began it), `UsageLedger`, `ModelProfileStore` (which profile each turn ran
   under), `ModelFactStore` (facts about pairs approved at runtime), `PeriodStore` (which
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
   settings in force), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
@@ -76,11 +77,12 @@ In dependency order:
 - **`tool`** — tools as typed data: `Field`, `Args` (read into a named tuple), `ArgsError`,
   `ToolName` and `ToolSpec`, from which come the schema the model is shown (a
   `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, how a call is
-  shown in one line, and what it does, capture-tracked), `Toolbox` (the tools offered on one call, which `bind` a
+  shown in one line, and what it does, capture-tracked), `Retry` (whether a call cut short is run again or answered `Interrupted`), `ToolSet`
+  (a turn's tools as recorded, by content id) and `ToolSets` (where each is kept), `Toolbox` (the tools offered on one call, which `bind` a
   call to a `Bound` or a `CallError`: `Bound.Free` runs, `Bound.Gated` runs only given an
   `Approval`), `Repairs` (what of a call is repaired before it is read, as the pair's
   settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
-  `message`, `model`, `provider`, `approval`
+  `message`, `model`, `store`, `provider`, `approval`
 
 No source file sits at core's root, and no two packages import each other in a circle:
 `scripts/enola-law.sh` fails on a new import cycle.

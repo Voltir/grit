@@ -43,7 +43,7 @@ object PluginLiveTests extends TestSuite {
   private def closed(engine: Engine^, n: Int): Unit =
     for (i <- 1 to n) {
       val t = engine.inbox
-        .ingest(Origin.Tui(grit.core.place.Directory.of("/plugins").fold(e => sys.error(e), identity), "plugins"), SourceId(s"m$i"), Message.User(s"message $i"))
+        .ingest(Origin.Tui(grit.core.place.Directory.of("/plugins").fold(e => sys.error(e), identity), "plugins"), SourceId(s"m$i"), Message.User(s"message $i"), grit.core.id.PrincipalId.Local)
         .fold(e => sys.error(s"$e"), identity)
       val closing = TestClosings.prose(s"Period $i. More.")
       val ref = PeriodRef(t.conversationId, PeriodSeq.of(i.toLong).getOrElse(sys.error("seq")))

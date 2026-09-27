@@ -5,7 +5,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.clock.{Clock, Fresh}
-import grit.core.id.{SourceId, TurnRef}
+import grit.core.id.{PrincipalId, SourceId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, Fact, FactBook, Pinned}
 import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
@@ -170,7 +170,12 @@ object LiveTurn {
   /** Ingests `source` and starts its turn. */
   def say(engine: Engine^, source: String): TurnRef = {
     val started = for {
-      turn <- engine.inbox.ingest(Origin, SourceId(source), Message.User(s"message $source"))
+      turn <- engine.inbox.ingest(
+        Origin,
+        SourceId(source),
+        Message.User(s"message $source"),
+        PrincipalId.Local
+      )
       _ <- engine.inbox.startTurn(turn)
     } yield turn
     started.fold(e => sys.error(s"inbox: $e"), identity)
