@@ -89,7 +89,8 @@ object TurnView {
   final case class Step(name: String, ms: Option[Long])
 
   /** What the reply's request held, estimated: the system prompt, the closing entry of the
-    * period before, the recent turns, the turns search recalled (`recalledTurns`), the
+    * period before, the recent turns with the gap lines between the window's turns, the
+    * turns search recalled (`recalledTurns`), the
     * turn's own messages, and the sections from other conversations (`nearby`, their turns
     * `nearbyTurns`).
     */
@@ -159,7 +160,7 @@ object TurnView {
         Window(
           prompt.fold(Tokens.Zero)(p => estimator.system(p.render)),
           tokens(closings, estimator),
-          tokens(recent, estimator),
+          tokens(recent, estimator) + gaps(seen, turn, estimator),
           tokens(recalled, estimator),
           tokens(own.filter(isUser), estimator),
           w.recalled,
@@ -217,6 +218,14 @@ object TurnView {
   private def isClosed(e: Entry): Boolean = e.payload match {
     case Payload.Closed(_, _, _) => true
     case _ => false
+  }
+
+  /** What the gap lines `seen`, a window's own entries, were shown with cost ([[Shown.own]]):
+    * counted with the recent turns.
+    */
+  private def gaps(seen: Vector[Entry], turn: TurnRef, estimator: TokenEstimator): Tokens = {
+    val lines = Shown.own(seen, turn.turnSeq).size - seen.flatMap(Shown.of).size
+    Tokens(lines * Tokens.value(estimator.message(Shown.Gap)))
   }
 
   /** What `entries` cost as the model is shown them ([[Shown.of]]), as assembly costs them. */

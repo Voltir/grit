@@ -66,7 +66,7 @@ enum Payload {
   case Ask(call: ToolCallId, shown: String)
 
   /** A period's closing entry, written when it closed. Searched by its flows; shown to the
-    * model as [[Closing.shown]] when a window includes it.
+    * model as [[grit.core.context.Shown.of]] shows it when a window includes it.
     */
   case Closed(period: PeriodSeq, reason: CloseReason, closing: Closing)
 }

@@ -357,19 +357,46 @@ object TurnTests extends TestSuite {
       provider.requests.headOption.map(_.messages) ==> Some(
         Vector(
           Message.User(
-            "From another conversation of yours, still open, at fs:/home/nick/api:\n" +
+            "[afar] another conversation of yours, shown by grit, still open, at fs:/home/nick/api:\n" +
               "User: the invoice test is flaky\nAssistant: Pin TZ=UTC in the test JVM."
           ),
           Message.User(
-            "From another conversation of yours, still open, at fs:/home/nick/web:\n" +
+            "[afar] another conversation of yours, shown by grit, still open, at fs:/home/nick/web:\n" +
               "User: the login page is blank"
           ),
-          Message.User(closing.shown(Instant.EPOCH, CloseReason.Lapsed)),
+          Message.User(
+            "[record] this conversation so far, written by grit (closed 1970-01-01): " +
+              "We talked about one.\nOutcome: one"
+          ),
           Message.User("two")
         )
       )
       windows(entries).lastOption.map(_._2) ==> Some(
         Payload.Window(Vector(closed), Vector.empty, nearby)
+      )
+    }
+
+    test("a window that leaves turns out is sent with a gap line where they were") {
+      val entries = new InMemoryEntryStore
+      val provider = new RecordingProvider
+      say(entries, "one")
+      say(entries, "two")
+      say(entries, "three")
+      val turn = say(entries, "four")
+      val recalled = new ContextAssembler {
+        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+          Right(Window(Vector(EntryId("in:one"), EntryId("in:three"))))
+      }
+      new InMemoryDurable().run(turn.workflowId)(
+        turnBodyWith(entries, provider, recalled, new InMemoryUsageLedger)
+      )
+      provider.requests.headOption.map(_.messages) ==> Some(
+        Vector(
+          Message.User("one"),
+          Message.User("[gap] earlier turns not shown"),
+          Message.User("three"),
+          Message.User("four")
+        )
       )
     }
 

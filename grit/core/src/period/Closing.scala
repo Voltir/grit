@@ -1,7 +1,5 @@
 package grit.core.period
 
-import java.time.{Instant, ZoneOffset}
-
 /** What one period did: `prose` (never blank), its `outcome` when it came to one, and the
   * `changes` its close made to the balance.
   */
@@ -28,32 +26,6 @@ final case class Closing(flows: Flows, balance: Balance) {
     flows.outcome.getOrElse(
       Closing.FirstSentence.findFirstIn(flows.prose).getOrElse(flows.prose).trim
     )
-
-  /** The one message the model is shown for it: that it comes from earlier in the
-    * conversation, closed `at` (its UTC date) for `reason`; its prose and outcome; the lines
-    * it resolved, and how; then the balance's open, standing and topic lines. Nothing
-    * dropped, evicted, refused or ignored.
-    */
-  def shown(at: Instant, reason: CloseReason): String = {
-    val why = reason match {
-      case CloseReason.Resolved(_) => "resolved"
-      case CloseReason.Lapsed => "lapsed"
-    }
-    val day = at.atOffset(ZoneOffset.UTC).toLocalDate
-    val settled = flows.changes.collect { case Change.Resolved(l, how) =>
-      if (how.trim.isEmpty) l.text else s"${l.text} — ${how.trim}"
-    }
-    def list(title: String, lines: Vector[String]): Vector[String] =
-      Option.when(lines.nonEmpty)(lines.map(l => s"- $l").mkString(s"$title:\n", "\n", "")).toVector
-    val topics = balance.in(Section.Topics).map(_.text)
-    (s"Earlier in this conversation (closed $day, $why): ${flows.prose}" +:
-      (flows.outcome.map(o => s"Outcome: $o").toVector ++
-        list("Settled then", settled) ++
-        list("Still open", balance.in(Section.Open).map(_.text)) ++
-        list("Standing", balance.in(Section.Standing).map(_.text)) ++
-        Option.when(topics.nonEmpty)(s"Topics so far: ${topics.mkString("; ")}").toVector))
-      .mkString("\n")
-  }
 }
 
 object Closing {

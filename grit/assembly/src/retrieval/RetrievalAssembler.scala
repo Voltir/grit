@@ -33,7 +33,8 @@ import grit.core.store.{
   * kinds of candidate against it, `hits` of each. The two rank in one pool, the turn's own
   * scores multiplied by the settings' weight (a tie goes to the turn's own), and whole turns
   * fill the rest of `budget`, best first, a turn that does not fit passed over for the next.
-  * Own turns join the window in conversation order. Turns from elsewhere form one section
+  * Own turns join the window in conversation order, each recalled one charged a gap line
+  * ([[Shown.Gap]]) besides its own cost, and a tail that leaves turns out one more. Turns from elsewhere form one section
   * per conversation ([[Nearby]], shown as [[Shown.nearby]] and costed so), in the order of
   * their best turn, each section's turns in its conversation's order. No closing entry is a
   * candidate, here or elsewhere.
@@ -80,7 +81,7 @@ final class RetrievalAssembler(
         val (closings, left) = LinearAssembler.opened(read.closings, estimator, budget)
         val all = read.all
         val turns = LinearAssembler.turnsBefore(all, read.first, turn.turnSeq)
-        val linear = LinearAssembler.recent(turns, estimator, left)
+        val linear = LinearAssembler.tail(turns, estimator, left)
         val ownToFind = linear.size != turns.size
         if (!ownToFind && read.open.isEmpty) Right(window(closings, linear, Vector.empty))
         else {
@@ -119,7 +120,9 @@ final class RetrievalAssembler(
                   .map { found =>
                     val older =
                       turns.filter(t => t.headOption.exists(e => before(e.turnSeq, from)))
-                    val used = Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(recent)
+                    // The tail leaves turns out, so the window holds a gap line before it.
+                    val used = Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(recent) +
+                      (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero)
                     val places = read.open.map(o => o.conversation -> o.place).toMap
                     val packed = pack(rank(found, older, places, read.locality.weight), used)
                     val recalled = packed.collect { case Candidate.Own(t) => t }
@@ -207,7 +210,9 @@ final class RetrievalAssembler(
     ranked
       .foldLeft((used, Vector.empty[Candidate])) { case ((spentSoFar, kept), c) =>
         val cost = c match {
-          case Candidate.Own(t) => LinearAssembler.cost(t, estimator)
+          // A recalled turn splits a gap in two at most: one more gap line.
+          case Candidate.Own(t) =>
+            LinearAssembler.cost(t, estimator) + LinearAssembler.gap(estimator)
           case Candidate.Near(conversation, place, t) =>
             val before = kept.collect {
               case Candidate.Near(k, _, es) if k == conversation => es

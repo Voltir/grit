@@ -135,6 +135,41 @@ object TurnViewTests extends TestSuite {
       w.message ==> CharEstimate.message(Message.User("third, about the first"))
     }
 
+    test("the gap lines a window was shown with count with its recent turns") {
+      // Turn 3's window: turn 0 recalled, turn 2 recent; turn 1 left out between them.
+      val asked = Vector(
+        user(0, 0, "first question"),
+        reply(1, 0, "first answer", 10),
+        user(2, 1, "second"),
+        reply(3, 1, "second answer", 20),
+        user(4, 2, "third"),
+        reply(5, 2, "third answer", 30),
+        user(6, 3, "fourth, about the first"),
+        entry(
+          7,
+          3,
+          Payload.Window(
+            Vector(EntryId("e0"), EntryId("e1"), EntryId("e4"), EntryId("e5")),
+            Vector(TurnSeq(0))
+          )
+        )
+      )
+      val w = TurnView
+        .of(
+          TurnRef(c, TurnSeq(3)),
+          asked,
+          Vector.empty,
+          false,
+          Vector.empty,
+          prompt("s"),
+          CharEstimate
+        )
+        .window
+        .getOrElse(sys.error("no window"))
+      val third = asked.slice(4, 6).flatMap(Shown.of).map(CharEstimate.message).reduce(_ + _)
+      w.recent ==> third + CharEstimate.message(Shown.Gap)
+    }
+
     test("a window opened by a closing entry counts it as the model was shown it") {
       val closing = Closing(
         Flows.of("We chose exiftool.", Some("exiftool"), Vector()).getOrElse(sys.error("flows")),

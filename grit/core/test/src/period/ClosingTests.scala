@@ -1,7 +1,5 @@
 package grit.core.period
 
-import java.time.Instant
-
 import grit.core.id.LineId
 
 import TestClosings.{balance, line}
@@ -37,26 +35,6 @@ object ClosingTests extends TestSuite {
     test("flows need prose; prose and outcome are trimmed and a blank outcome dropped") {
       Flows.of("  ", Some("x"), Vector()) ==> None
       Flows.of(" p ", Some(" "), Vector()).map(f => (f.prose, f.outcome)) ==> Some(("p", None))
-    }
-
-    test("a closing is shown as one message: when and why it closed, its flows, its balance") {
-      full.shown(
-        Instant.parse("2026-09-20T23:30:00Z"),
-        CloseReason.Resolved(Probability.of(0.9).getOrElse(throw new java.lang.AssertionError("p")))
-      ) ==>
-        """Earlier in this conversation (closed 2026-09-20, resolved): We set up the staging deploy.
-          |Outcome: staging deploys from main
-          |Settled then:
-          |- How often should the laptop backup run? — daily at 02:00
-          |Still open:
-          |- Prod deploy is not set up
-          |Standing:
-          |- Staging deploys with make stage
-          |Topics so far: Laptop Backup Setup; Staging Deploy""".stripMargin
-      TestClosings
-        .prose("Small talk.")
-        .shown(Instant.parse("2026-09-21T00:00:00Z"), CloseReason.Lapsed) ==>
-        "Earlier in this conversation (closed 2026-09-21, lapsed): Small talk."
     }
 
     test("a closing's headline is its outcome, or else its prose's first sentence") {

@@ -16,7 +16,8 @@ import grit.core.store.{Db, Entry, EntryStore, Payload, PeriodStore}
   * kept or dropped whole, so a window never opens on a reply without its question, or a tool
   * result without its call. The first turn back that does not fit ends the window, even if
   * older turns would: the model never sees a history with holes. A newest turn larger than
-  * what is left on its own leaves no turns.
+  * what is left on its own leaves no turns. A window that leaves turns out is charged one
+  * gap line ([[Shown.Gap]]).
   */
 final class LinearAssembler(
     entries: EntryStore,
@@ -34,7 +35,7 @@ final class LinearAssembler(
         val (closings, left) =
           LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, budget)
         val turns = LinearAssembler.turnsBefore(all, opening.first, request.turn.turnSeq)
-        val kept = LinearAssembler.recent(turns, estimator, left)
+        val kept = LinearAssembler.tail(turns, estimator, left)
         Window(closings.map(_.id) ++ kept.flatten.sortBy(_.seq).map(_.id))
       }
     }.left
@@ -94,6 +95,22 @@ object LinearAssembler {
       .map(_._2)
       .toVector
       .reverse
+
+  /** The most recent of `turns` that fit in `budget`, as [[recent]] chooses them, with one
+    * gap line ([[Shown.Gap]]) paid for out of `budget` when they are not all of `turns`.
+    */
+  def tail(
+      turns: Vector[Vector[Entry]],
+      estimator: TokenEstimator,
+      budget: Tokens
+  ): Vector[Vector[Entry]] = {
+    val all = recent(turns, estimator, budget)
+    if (all.size == turns.size) all
+    else recent(turns, estimator, Tokens(Tokens.value(budget) - Tokens.value(gap(estimator))))
+  }
+
+  /** What one gap line ([[Shown.Gap]]) costs by `estimator`. */
+  def gap(estimator: TokenEstimator): Tokens = estimator.message(Shown.Gap)
 
   /** What the model is shown of `entries` costs by `estimator` ([[Shown.of]]). */
   def cost(entries: Vector[Entry], estimator: TokenEstimator): Tokens =

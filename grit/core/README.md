@@ -69,7 +69,8 @@ In dependency order:
   that carries it to the turn waiting on its topic. ← `id`
 - **`context`**, **`provider`**, **`inbox`**, **`classify`** — the seams the engine plugs
   into: `ContextAssembler` (and the `Window` it builds, and `Shown`: what the model is
-  shown of an entry a window names), `Provider` and `Models` (the
+  shown of a window, each line grit writes into it under its `Label`: the record, a
+  section from afar, a gap where turns were left out), `Provider` and `Models` (the
   catalog in force, and a provider per role's pin; ← `model`), `Inbox` (which also
   answers a turn's gated call), and `Classifier` (closed questions about a state, answered
   with a probability per option; Jev's shape). Each names only the packages above, never

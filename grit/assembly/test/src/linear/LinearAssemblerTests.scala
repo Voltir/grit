@@ -36,6 +36,9 @@ object LinearAssemblerTests extends TestSuite {
       .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn))))(using new FakeDb)
       .fold(e => sys.error(s"assembly failed: $e"), _.entries.map(EntryId.value))
 
+  /** What one gap line costs ([[Shown.Gap]]): 29 characters, 8 + 4 = 12 tokens. */
+  private val Gap = Tokens.value(CharEstimate.message(Shown.Gap))
+
   /** Three periods: turns 0 and 1 closed as p1, turn 2 closed as p2, turns 3 and 4 open. */
   private def threePeriods: World =
     AssemblyFixtures.closed(
@@ -68,21 +71,35 @@ object LinearAssemblerTests extends TestSuite {
     }
 
     test("over budget, the newest whole turns are kept") {
+      val entries = store(small(0), small(1), small(2), small(3), small(4))
+      window(entries, 4, 2 * SmallTurn + Gap) ==> Vector("t2:4", "t2:5", "t3:6", "t3:7")
+      window(entries, 4, 2 * SmallTurn + Gap - 1) ==> Vector("t3:6", "t3:7")
+    }
+
+    test("a window that leaves turns out is charged its gap line") {
       val entries = store(small(0), small(1), small(2), small(3))
-      window(entries, 3, 2 * SmallTurn) ==> Vector("t1:2", "t1:3", "t2:4", "t2:5")
-      window(entries, 3, 2 * SmallTurn - 1) ==> Vector("t2:4", "t2:5")
+      // Turns 1 and 2 fit the budget, but not with the gap line left for turn 0.
+      window(entries, 3, 3 * SmallTurn - 1) ==> Vector("t2:4", "t2:5")
+      // Every turn fits: no gap, nothing charged.
+      window(entries, 3, 3 * SmallTurn) ==> Vector("t0:0", "t0:1", "t1:2", "t1:3", "t2:4", "t2:5")
     }
 
     test("a turn is kept whole, however many messages it holds") {
-      // Two messages queued before one reply: 5 + 5 + 6 = 16 tokens.
-      val entries = store(small(0), Vector(user("aaaa"), user("bbbb"), reply("answer!!")), small(2))
-      window(entries, 2, 16) ==> Vector("t1:2", "t1:3", "t1:4")
-      window(entries, 2, 15) ==> Vector()
+      // Two messages queued before one reply: 5 + 5 + 6 = 16 tokens, after a turn too large
+      // to join it, so the window leaves a turn out and pays for its gap line.
+      val entries =
+        store(
+          Vector(user("x" * 400)),
+          Vector(user("aaaa"), user("bbbb"), reply("answer!!")),
+          small(2)
+        )
+      window(entries, 2, 16 + Gap) ==> Vector("t1:1", "t1:2", "t1:3")
+      window(entries, 2, 15 + Gap) ==> Vector()
     }
 
     test("a turn that does not fit ends the window, though older ones would") {
       val entries = store(small(0), Vector(user("x" * 400)), small(2), small(3))
-      window(entries, 3, 50) ==> Vector("t2:3", "t2:4")
+      window(entries, 3, 50 + Gap) ==> Vector("t2:3", "t2:4")
     }
 
     test("a newest turn larger than the budget leaves the window empty") {

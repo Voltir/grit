@@ -1013,8 +1013,8 @@ object Turn {
   /** The request [[request]] builds, from `all` of the conversation's entries and `near`,
     * the nearby entries that still exist: each nearby section as one user message
     * ([[Shown.nearby]], a section with none of its entries left dropped), then what the
-    * model is shown of the window's entries ([[Shown.of]]: its messages, and a closing entry
-    * as one user message), then the turn's own, its tool loop's exchange among them in order.
+    * model is shown of the window's entries ([[Shown.own]]: its messages, a closing entry
+    * as one user message, and a gap line wherever turns are left out), then the turn's own, its tool loop's exchange among them in order.
     * A summary is not shown to the model yet.
     */
   private def requestOf(
@@ -1036,7 +1036,7 @@ object Turn {
           )
         )
       case _ =>
-        val shown = window.entries.flatMap(byId.get).flatMap(Shown.of)
+        val shown = Shown.own(window.entries.flatMap(byId.get), turn.turnSeq)
         val mine = own(all, turn).map(_.payload).collect {
           case Payload.Message(m) => m
           case Payload.Exchange(reply) => reply

@@ -13,7 +13,7 @@ import grit.assembly.linear.AssemblyFixtures.{
   store
 }
 import grit.assembly.linear.LinearAssembler
-import grit.core.context.{AssemblyNote, AssemblyRequest, Window}
+import grit.core.context.{AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.LifecycleSettings
@@ -244,8 +244,8 @@ object RetrievalAssemblerTests extends TestSuite {
     }
 
     test("the weight decides between an own turn and one elsewhere that both match") {
-      // Budget for the tail (turns 4 and 5, 22 tokens) and one more turn: turn 0 (22) or
-      // api's section (34), not both.
+      // Budget for the tail (turns 4 and 5, 22 tokens, and the gap line before them, 12) and
+      // one more turn: turn 0 (22, and its gap line, 12) or api's section (38), not both.
       def pick(weight: Double): Window = {
         val world = store(buried*)
         val api = elsewhere(world, "api", close = false, exchange("Which database?", "grit_agent."))
@@ -255,7 +255,7 @@ object RetrievalAssemblerTests extends TestSuite {
         assemble(
           world,
           new Writer(Some("database")),
-          budget = 56,
+          budget = 72,
           search,
           locality = Locality(Scope.Everywhere, Weight.of(weight).getOrElse(sys.error("w")))
         )
@@ -277,12 +277,14 @@ object RetrievalAssemblerTests extends TestSuite {
     test(
       "older turns that match the query join the recent tail, in conversation order, noted as recalled"
     ) {
-      val entries = store(buried*)
+      // The fact, nine fillers and the ask at turn 10: every earlier turn is 121 tokens.
+      val entries = store((buried.take(1) ++ (1 to 9).map(filler) :+ ask)*)
       val writer = new Writer(Some("database for probes: grit_agent"))
       // Ranked turn 2 above turn 0: the window still holds them oldest first.
       val search = new Scripted("t2:5", "t0:1")
-      val w = assemble(entries, writer, budget = 60, search)
-      turnsOf(w) ==> Vector("t0", "t2", "t4", "t5")
+      // The tail (22), turns 2 (11) and 0 (22), and a gap line before each of the three (36).
+      val w = assemble(entries, writer, budget = 91, search, at = 10)
+      turnsOf(w) ==> Vector("t0", "t2", "t8", "t9")
       writer.requests ==> Vector(
         ModelRequest(
           QueryWriter.System,
@@ -290,7 +292,7 @@ object RetrievalAssemblerTests extends TestSuite {
         )
       )
       search.asked ==>
-        Vector(Asked(c1, TurnSeq.First, TurnSeq(4), "database for probes: grit_agent", Hits))
+        Vector(Asked(c1, TurnSeq.First, TurnSeq(8), "database for probes: grit_agent", Hits))
       w.notes ==> Vector(
         AssemblyNote.Queried(
           "database for probes: grit_agent",
@@ -309,7 +311,9 @@ object RetrievalAssemblerTests extends TestSuite {
         Vector("Probes use grit_agent.")
       )
       val search = new Scripted("t2:6")
-      val got = assemble(w, new Writer(Some("probes database")), budget = 60, search, at = 7)
+      // The record (28), the tail (22) and turn 2 (11), each turn with a gap line (24); less
+      // than the record and every turn of the period (94).
+      val got = assemble(w, new Writer(Some("probes database")), budget = 88, search, at = 7)
       ids(got).headOption ==> Some(closingOf(1))
       turnsOf(got).drop(1) ==> Vector("t2", "t5", "t6")
       search.asked.map(a => (a.from, a.before)) ==> Vector((TurnSeq(1), TurnSeq(5)))
@@ -322,6 +326,20 @@ object RetrievalAssemblerTests extends TestSuite {
       val w =
         assemble(store(turns*), new Writer(Some("grit_agent")), budget = 60, new Scripted("t0:2"))
       ids(w) ==> Vector("t0:0", "t0:1", "t4:9", "t4:10", "t5:11", "t5:12")
+    }
+
+    test("each recalled turn is charged a gap line, and the tail one for the turns it leaves out") {
+      // The tail (turns 4 and 5) costs 22, and a gap line 12 (Shown.Gap): 34 before turn 0,
+      // which costs 11, and 12 more for the gap line it brings. So 57 recalls it; 56 does not.
+      val gap = Tokens.value(CharEstimate.message(Shown.Gap))
+      gap ==> 12L
+      val turns = (0 to 5).map(filler).toVector :+ ask
+      def at(budget: Long): Vector[String] =
+        turnsOf(
+          assemble(store(turns*), new Writer(Some("q000")), budget, new Scripted("t0:1"))
+        )
+      at(57) ==> Vector("t0", "t4", "t5")
+      at(56) ==> Vector("t4", "t5")
     }
 
     test("a match that does not fit what is left is passed over for one that does") {
