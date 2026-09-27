@@ -4,7 +4,16 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.{Change, CloseReason, Closing, Flows, Probability, Section, TestClosings}
+import grit.core.period.{
+  Change,
+  CloseReason,
+  Closing,
+  Flows,
+  Ground,
+  Probability,
+  Section,
+  TestClosings
+}
 import grit.core.place.Place
 import grit.core.store.{Entry, Payload}
 
@@ -60,7 +69,15 @@ object ShownTests extends TestSuite {
             "We set up the staging deploy.",
             Some("staging deploys from main"),
             Vector(
-              Change.Added(line(Section.Standing, "Staging deploys with make stage", 3, 3)),
+              Change.Added(
+                line(
+                  Section.Standing,
+                  "Staging deploys with make stage",
+                  3,
+                  3,
+                  ground = Ground.Person
+                )
+              ),
               Change.Resolved(backup, "daily at 02:00"),
               Change.Dropped(line(Section.Standing, "Deploys are manual", 1, 2), "superseded"),
               Change.Evicted(line(Section.Standing, "The old key lived in vault", 1, 1)),
@@ -71,7 +88,7 @@ object ShownTests extends TestSuite {
           .getOrElse(throw new java.lang.AssertionError("flows")),
         balance(
           line(Section.Open, "Prod deploy is not set up", 2, 3),
-          line(Section.Standing, "Staging deploys with make stage", 3, 3),
+          line(Section.Standing, "Staging deploys with make stage", 3, 3, ground = Ground.Person),
           line(Section.Topics, "Laptop Backup Setup", 1, 2),
           line(Section.Topics, "Staging Deploy", 2, 3)
         )
@@ -103,6 +120,30 @@ object ShownTests extends TestSuite {
       ) ==> Some(
         Message.User(
           "[record] this conversation so far, written by grit (closed 2026-09-21): Small talk."
+        )
+      )
+    }
+
+    test("a closing's unconfirmed Standing is listed apart, as said by the assistant") {
+      val closing = Closing(
+        TestClosings.prose("We checked the port.").flows,
+        balance(
+          line(Section.Standing, "config.yml sets port 3000", 1, 1, ground = Ground.Tool),
+          line(Section.Standing, "Port 3000 is the usual choice", 1, 1, ground = Ground.Claimed),
+          line(Section.Standing, "The api stays on 3000", 1, 1, ground = Ground.Person)
+        )
+      )
+      Shown.of(
+        entry(Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing))
+          .copy(createdAt = Instant.parse("2026-09-21T00:00:00Z"))
+      ) ==> Some(
+        Message.User(
+          """[record] this conversation so far, written by grit (closed 2026-09-21): We checked the port.
+            |Standing:
+            |- config.yml sets port 3000
+            |- The api stays on 3000
+            |Standing, said by the assistant and not confirmed:
+            |- Port 3000 is the usual choice""".stripMargin
         )
       )
     }

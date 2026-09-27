@@ -4,7 +4,7 @@ import java.time.{Instant, ZoneOffset}
 
 import grit.core.id.TurnSeq
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.period.{Change, Closing, Section}
+import grit.core.period.{Change, Closing, Ground, Section}
 import grit.core.place.Place
 import grit.core.store.{Entry, Payload}
 
@@ -15,8 +15,9 @@ object Shown {
 
   /** A message as it is; a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
-    * lines it resolved and how, and the balance's open, standing and topic lines; `None`
-    * for any other entry.
+    * lines it resolved and how, and the balance's open lines, its standing lines (those
+    * only the assistant said listed apart, as not confirmed) and its topics; `None` for any
+    * other entry.
     */
   def of(entry: Entry): Option[Message] = entry.payload match {
     case Payload.Message(m) => Some(m)
@@ -85,11 +86,15 @@ object Shown {
     def list(title: String, lines: Vector[String]): Vector[String] =
       Option.when(lines.nonEmpty)(lines.map(l => s"- $l").mkString(s"$title:\n", "\n", "")).toVector
     val topics = balance.in(Section.Topics).map(_.text)
+    // Standing only the assistant said is listed apart (ADR 0018).
+    val (claimed, confirmed) =
+      balance.in(Section.Standing).partition(_.ground.contains(Ground.Claimed))
     (s"${Label.Record.tag} this conversation so far, written by grit (closed $day): ${flows.prose}" +:
       (flows.outcome.map(o => s"Outcome: $o").toVector ++
         list("Settled then", settled) ++
         list("Still open", balance.in(Section.Open).map(_.text)) ++
-        list("Standing", balance.in(Section.Standing).map(_.text)) ++
+        list("Standing", confirmed.map(_.text)) ++
+        list("Standing, said by the assistant and not confirmed", claimed.map(_.text)) ++
         Option.when(topics.nonEmpty)(s"Topics so far: ${topics.mkString("; ")}").toVector))
       .mkString("\n")
   }

@@ -3,7 +3,9 @@ for the person's words.
 
 [record] is grit speaking: its record of this conversation up to its last close, written
 when that stretch closed. Its "Still open" items are open until the person closes them, its
-"Standing" items are decisions in force, and its "Settled then" items are done.
+"Standing" items are decisions in force, and its "Settled then" items are done. Standing
+items listed as said by the assistant and not confirmed rest on the assistant's word alone:
+no person stated them and no tool result showed them.
 
 [afar] begins a section from another of the person's conversations that is still open
 elsewhere, which grit chose because it may bear on this one. It is not this conversation's
