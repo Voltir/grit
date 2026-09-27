@@ -13,6 +13,7 @@ import grit.core.store.{
   EntryStore,
   LifecycleStore,
   ModelProfileStore,
+  PromptStore,
   PeriodStore,
   StoreError,
   Tombstones,
@@ -36,6 +37,7 @@ private[engine] final class Sweeper(
     periods: PeriodStore,
     ledger: UsageLedger,
     profiles: ModelProfileStore,
+    prompts: PromptStore,
     lifecycle: LifecycleStore,
     tombstones: Tombstones,
     cursors: PluginCursors,
@@ -50,6 +52,7 @@ private[engine] final class Sweeper(
     periods,
     ledger,
     profiles,
+    prompts,
     cursors,
     tombstones
   )

@@ -12,7 +12,7 @@ import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.edge.{Desk, DeskError}
+import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
 import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
@@ -29,16 +29,19 @@ import grit.core.store.{
   ModelProfileStore,
   Origin,
   PeriodStore,
+  PromptStore,
   StoreError,
   Tombstones,
   Tx,
   UsageLedger
 }
+import grit.core.tool.ToolSets
 import grit.dbos.sql.{
   DbConfig,
   SqlCacheDocs,
   SqlConversationStore,
   SqlDb,
+  SqlEdgeDirectory,
   SqlEntrySearch,
   SqlEntryStore,
   SqlJot,
@@ -48,7 +51,10 @@ import grit.dbos.sql.{
   SqlPeriodStore,
   SqlPluginCursors,
   SqlPluginDocs,
+  SqlPromptStore,
   SqlTombstones,
+  SqlToolRequests,
+  SqlToolSets,
   SqlUsageLedger
 }
 import grit.dbos.workflow.{Closes, Posts, Running, Settles, Turns}
@@ -83,6 +89,18 @@ final class Engine private (
 
   /** Which profile each turn's model calls were made under. */
   val profiles: ModelProfileStore = new SqlModelProfileStore()
+
+  /** The system prompt each turn was sent, its fragments kept by id (ADR 0016). */
+  val prompts: PromptStore = new SqlPromptStore()
+
+  /** Every tool set a turn was offered, by id. */
+  val toolSets: ToolSets = new SqlToolSets()
+
+  /** The requests hosted tool calls become (ADR 0017). */
+  val requests: ToolRequests = new SqlToolRequests()
+
+  /** Which live edge serves each place, and what it offers there. */
+  val edgeDirectory: EdgeDirectory = new SqlEdgeDirectory()
 
   /** Facts about model pairs approved while grit runs, over the seed catalog. */
   val facts: ModelFactStore = new SqlModelFactStore()
@@ -150,6 +168,7 @@ final class Engine private (
       periods,
       ledger,
       profiles,
+      prompts,
       lifecycle,
       tombstones,
       cursors,

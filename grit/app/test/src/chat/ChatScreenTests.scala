@@ -145,6 +145,39 @@ object ChatScreenTests extends TestSuite {
       assert(status(answering.message(Msg.Tick)).contains("ᚨ answering · 0.1s"))
     }
 
+    test(
+      "the turn panel lists the system prompt's fragments, each with its estimate, two to a row"
+    ) {
+      val view = TurnView(
+        TurnSeq(0),
+        "hello",
+        None,
+        Vector.empty,
+        None,
+        Some(
+          TurnView.Window(Tokens(683), Tokens(0), Tokens(0), Tokens(0), Tokens(5), Vector.empty)
+        ),
+        None,
+        None,
+        None,
+        Vector(
+          TurnView.Part("base", Tokens(42)),
+          TurnView.Part("edge", Tokens(31)),
+          TurnView.Part("AGENTS.md", Tokens(610))
+        )
+      )
+      val shown = Headless
+        .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(35, 110))
+        .message(Msg.Opened)
+        .message(Msg.Turn(view))
+        .screen
+        .mkString("\n")
+      assert(
+        shown.contains("prompt   base 42 · edge 31"),
+        shown.contains("          AGENTS.md 610")
+      )
+    }
+
     test("from 100 columns the turn panel stands beside the transcript; ctrl-b hides it") {
       val view = TurnView(
         TurnSeq(2),
@@ -186,7 +219,7 @@ object ChatScreenTests extends TestSuite {
           .start(
             new ChatScreen.App("test-model", Theme.Default, Tokens(16000)),
             // Tall enough for every step's row, the model rows and the footer below them.
-            Size(35, cols)
+            Size(36, cols)
           )
           .message(Msg.Opened)
           .message(Msg.Turn(view))

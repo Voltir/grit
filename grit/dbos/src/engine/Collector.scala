@@ -14,6 +14,7 @@ import grit.core.store.{
   EntryStore,
   ModelProfileStore,
   PeriodStore,
+  PromptStore,
   StoreError,
   Tombstones,
   Tx,
@@ -37,6 +38,7 @@ private[engine] final class Collector(
     periods: PeriodStore,
     ledger: UsageLedger,
     profiles: ModelProfileStore,
+    prompts: PromptStore,
     cursors: PluginCursors,
     tombstones: Tombstones
 ) {
@@ -161,6 +163,7 @@ private[engine] final class Collector(
                   _ <- periods.drop(period)
                   _ <- ledger.forget(c, p.first, last)
                   _ <- profiles.forget(Purgeable(period, p.first, last).turns)
+                  _ <- prompts.forget(Purgeable(period, p.first, last).turns)
                   _ <- tombstones.collected(target, now)
                 } yield Outcome.Collected
               // Its raw entries are still kept: they go first.
@@ -188,6 +191,7 @@ private[engine] final class Collector(
                 }
                 _ <- ledger.forget(c, TurnSeq.First, last)
                 _ <- profiles.forget(Purgeable(period, TurnSeq.First, last).turns)
+                _ <- prompts.forget(Purgeable(period, TurnSeq.First, last).turns)
                 _ <- conversations.remove(c)
                 _ <- tombstones.collected(target, now)
               } yield Outcome.Collected

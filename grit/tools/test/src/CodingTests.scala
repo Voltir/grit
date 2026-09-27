@@ -81,6 +81,7 @@ object CodingTests extends TestSuite {
     all(host).bind(call(name, args), Repairs.All).left.map(_.message).map {
       case free: Bound.Free => (None, free())
       case gated: Bound.Gated => (Some(gated.ask), gated(Approval.Approved))
+      case hosted: Bound.Hosted => (hosted.ask, Outcome.Failed("hosted, not run here"))
     }
 
   val tests = Tests {
@@ -102,6 +103,12 @@ object CodingTests extends TestSuite {
         "edit" -> Retry.Interrupt,
         "run" -> Retry.Interrupt
       )
+    }
+
+    test("the engine offers the tools an edge runs: the same names, schemas, gates and retries") {
+      // Each tool is written once, as a hosted description the runner is built on.
+      Coding.hosted.map(_.entry) ==> all(new Scripted()).set.tools
+      Coding.readOnlyHosted.map(_.entry) ==> readOnly(new Scripted()).set.tools
     }
 
     test("each call is shown in one line: the tool, then what it acts on") {

@@ -297,8 +297,26 @@ final case class TurnPanel(look: Look, budget: Tokens) {
         legend("system", w.system, t.faint, "recent", w.recent, t.grit),
         legend("recalled", w.recalled, t.user, "message", w.message, t.ink),
         legend("closing", w.closing, t.thumb, "nearby", w.nearby, t.headerFg)
-      )
+      ) ++ prompt(v)
   }
+
+  /** The system prompt's fragments, each with its estimate, two to a row so a narrow panel
+    * shows them whole; nothing for a turn that recorded none.
+    */
+  private def prompt(v: TurnView): Vector[Block] =
+    v.prompt
+      .map(p => s"${p.label} ${count(p.tokens)}")
+      .toList
+      .grouped(2)
+      .toList
+      .zipWithIndex
+      .map { (parts: List[String], i: Int) =>
+        row(
+          (if (i == 0) " prompt   " else "          ") -> fg(t.faint),
+          parts.mkString(" · ") -> fg(t.faint)
+        )
+      }
+      .toVector
 
   private def legend(
       a: String,

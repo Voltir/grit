@@ -222,7 +222,12 @@ object TurnTopicsTests extends TestSuite {
         runTurn(durable, entries, new RecordingProvider, turn, classifier = classifier)
       )
       durable
-        .recordedSteps(turn.workflowId) ==> Vector("pin-models", "DBOS.patch-topics", "classify")
+        .recordedSteps(turn.workflowId) ==> Vector(
+        "pin-models",
+        "offer",
+        "DBOS.patch-topics",
+        "classify"
+      )
       runTurn(durable, entries, new RecordingProvider, turn, classifier = classifier)
       classifier.calls ==> 1
       topics(store).placements.get(turn.turnSeq).map(_.size) ==> Some(1)

@@ -21,6 +21,11 @@ import TurnVerdict.Shape
 /** The durable turn: one workflow per turn. Each step's output is recorded, so a turn
   * resumed after a crash never calls a model twice.
   *
+  *   1. `pin-models` — the catalog in force, pinned as the turn's profile.
+  *   1. `offer` — what the turn offers its model ([[TurnOffer]]): its conversation's
+  *      workspace, the tool set (its own tools, and the hosted ones the edge serving that
+  *      workspace advertises) and the system prompt (ADR 0016), kept by content id and
+  *      recorded by id; a rerun reads them back, so it is offered what it first was.
   *   1. `classify` — where the turn's message goes among the conversation's topics
   *      ([[TurnTopics]]). Never fails the turn.
   *   1. `record-topic` — that placement recorded as an entry, with the classifier's cost.
@@ -41,7 +46,11 @@ import TurnVerdict.Shape
   *      budget's last call, made with tools off and told so ([[TurnLoop.LastCall]]). A call a person approves first is asked about in `ask:n:j`, an
   *      entry an edge shows, then waits up to [[TurnTooling.answerWithin]] for the answer
   *      [[grit.core.inbox.Inbox.answer]] sends ([[grit.core.durable.Durable.recv]]) before
-  *      its `tool:n:j`; unanswered, it is denied.
+  *      its `tool:n:j`; unanswered, it is denied. A call to a hosted tool is a request an
+  *      edge runs ([[TurnHosted]], ADR 0017): a round's free ones sent together in
+  *      `dispatch:n`, a gated one in `dispatch:n:j` once approved; its answer waited for,
+  *      then `expire:n:j` when none came and, if an edge had claimed it, `abandon:n:j`
+  *      when none came again; the outcome kept by `tool:n:j`.
   *   1. `record-verdict` — when `topic` was offered: the verdict of the first reply, and
   *      what went wrong with the loop's `topic` calls ([[TurnVerdict.anomaly]]).
   *   1. Turns that passed the loop's patch before it shipped ([[Patches.Tools]]) took
@@ -67,11 +76,12 @@ object Turn {
     * cannot carry, which strands the turns in flight under the old one. `TurnReplayTests`
     * replays the histories recorded under this epoch.
     */
-  val Epoch = "2026-09-25"
+  val Epoch = "2026-09-27"
 
   /** The turn's steps, as DBOS records their names, in the order they run. */
   object Step {
     val PinModels = "pin-models"
+    val Offer = "offer"
     val Classify = "classify"
     val RecordTopic = "record-topic"
     val Assemble = "assemble"
@@ -90,6 +100,7 @@ object Turn {
     val all: Vector[String] =
       Vector(
         PinModels,
+        Offer,
         Classify,
         RecordTopic,
         Assemble,
@@ -116,6 +127,21 @@ object Turn {
       */
     val Ask = "ask"
 
+    /** The family of `dispatch:n`, round n's free hosted calls sent to an edge together, and
+      * of `dispatch:n:j`, call j's, a gated one, sent once a person approved it.
+      */
+    val Dispatch = "dispatch"
+
+    /** The family of `expire:n:j`, call j of round n given up on when no edge claimed it in
+      * time, or found claimed and waited on again.
+      */
+    val Expire = "expire"
+
+    /** The family of `abandon:n:j`, call j of round n given up on when its edge claimed it
+      * and did not answer in time.
+      */
+    val Abandon = "abandon"
+
     /** The family of `wait:n:j`, a person's time to answer about call j of round n's reply:
       * not a step the turn records, but its wait between `ask:n:j` and the answer, which
       * DBOS records as [[Answered]] ([[named]] and [[running]] give it this name).
@@ -136,6 +162,19 @@ object Turn {
     /** The name of the step asking about call `index` (from 0) of `round`'s reply. */
     def ask(round: TurnLoop.Round, index: Int): String = s"$Ask:${round.index}:$index"
 
+    /** The name of the step sending `round`'s free hosted calls. */
+    def dispatch(round: TurnLoop.Round): String = s"$Dispatch:${round.index}"
+
+    /** The name of the step sending call `index` of `round`'s reply, a gated hosted one. */
+    def dispatchOne(round: TurnLoop.Round, index: Int): String =
+      s"$Dispatch:${round.index}:$index"
+
+    /** The name of the step giving up on call `index` of `round` when no edge claimed it. */
+    def expire(round: TurnLoop.Round, index: Int): String = s"$Expire:${round.index}:$index"
+
+    /** The name of the step giving up on call `index` of `round` when its edge was silent. */
+    def abandon(round: TurnLoop.Round, index: Int): String = s"$Abandon:${round.index}:$index"
+
     /** The step `name` stands for among [[all]], [[RecordCall]], [[Ask]], [[Wait]] and
       * [[Tool]]: its round and index dropped (`call-model:3` is [[CallModel]], `tool:1:0` is
       * [[Tool]]). `None` for a name that is not the turn's, such as a patch's marker or
@@ -148,6 +187,9 @@ object Turn {
         case Some(Loop.Ask(_, _)) => Some(Ask)
         case Some(Loop.Wait(_, _)) => Some(Wait)
         case Some(Loop.Tool(_, _)) => Some(Tool)
+        case Some(Loop.Sent(_) | Loop.SentOne(_, _)) => Some(Dispatch)
+        case Some(Loop.Expired(_, _)) => Some(Expire)
+        case Some(Loop.Abandoned(_, _)) => Some(Abandon)
         case None => Option.when(all.contains(name))(name)
       }
 
@@ -175,6 +217,10 @@ object Turn {
     case Ask(round: Int, index: Int)
     case Wait(round: Int, index: Int)
     case Tool(round: Int, index: Int)
+    case Sent(round: Int)
+    case SentOne(round: Int, index: Int)
+    case Expired(round: Int, index: Int)
+    case Abandoned(round: Int, index: Int)
   }
 
   private object Loop {
@@ -183,6 +229,10 @@ object Turn {
     private val AskName = """ask:(\d+):(\d+)""".r
     private val WaitName = """wait:(\d+):(\d+)""".r
     private val ToolName = """tool:(\d+):(\d+)""".r
+    private val SentName = """dispatch:(\d+)""".r
+    private val SentOneName = """dispatch:(\d+):(\d+)""".r
+    private val ExpiredName = """expire:(\d+):(\d+)""".r
+    private val AbandonedName = """abandon:(\d+):(\d+)""".r
 
     def of(name: String): Option[Loop] = name match {
       case CallName(n) => n.toIntOption.map(Call(_))
@@ -190,6 +240,10 @@ object Turn {
       case AskName(n, j) => n.toIntOption.zip(j.toIntOption).map(Ask(_, _))
       case WaitName(n, j) => n.toIntOption.zip(j.toIntOption).map(Wait(_, _))
       case ToolName(n, j) => n.toIntOption.zip(j.toIntOption).map(Tool(_, _))
+      case SentName(n) => n.toIntOption.map(Sent(_))
+      case SentOneName(n, j) => n.toIntOption.zip(j.toIntOption).map(SentOne(_, _))
+      case ExpiredName(n, j) => n.toIntOption.zip(j.toIntOption).map(Expired(_, _))
+      case AbandonedName(n, j) => n.toIntOption.zip(j.toIntOption).map(Abandoned(_, _))
       case _ => None
     }
   }
@@ -236,6 +290,10 @@ object Turn {
       case Some(Loop.Ask(n, j)) => s"${Step.Wait}:$n:$j"
       case Some(Loop.Wait(n, j)) => s"${Step.Tool}:$n:$j"
       case Some(Loop.Tool(n, _)) => s"${Step.CallModel}:${n + 1}"
+      case Some(Loop.Sent(n)) => s"${Step.Tool}:$n:0"
+      case Some(Loop.SentOne(n, j)) => s"${Step.Tool}:$n:$j"
+      case Some(Loop.Expired(n, j)) => s"${Step.Tool}:$n:$j"
+      case Some(Loop.Abandoned(n, j)) => s"${Step.Tool}:$n:$j"
       case _ =>
         val done =
           own.flatMap(Step.family).map(Step.all.indexOf).filter(_ >= 0).maxOption.getOrElse(-1)
@@ -248,10 +306,10 @@ object Turn {
   }
 
   /** The turn workflow's body, for the turn whose workflow id is `workflowId`, its model
-    * offered `tooling`'s tools. Returns what the turn did, for logs: its reply and summary are
-    * in the store, never in this string.
+    * offered the tools its `offer` step recorded from `tooling`'s. Returns what the turn did,
+    * for logs: its reply and summary are in the store, never in this string.
     */
-  def body(env: TurnEnv^, tooling: TurnTooling^)(
+  def body[C^](env: TurnEnv^, tooling: TurnTooling[C]^)(
       workflowId: WorkflowId
   )(using d: Durable^): String =
     TurnRef.fromWorkflowId(workflowId) match {
@@ -260,7 +318,13 @@ object Turn {
         import TurnJournal.given
         d.transact(Step.PinModels)(pinModels(env, turn)) match {
           case Left(failure) => s"failed: $failure"
-          case Right(profile) => pinned(env, tooling, turn)(using profile, d)
+          case Right(profile) =>
+            val hosting = env.hosting
+            d.transact(Step.Offer)(TurnOffer.decide(hosting, tooling, turn))
+              .flatMap(TurnOffer.load(hosting, env.db, _)) match {
+              case Left(failure) => s"failed: $failure"
+              case Right(offer) => pinned(env, tooling, turn)(using profile, offer, d)
+            }
         }
     }
 
@@ -274,9 +338,10 @@ object Turn {
       _ <- env.records.profiles.pin(turn.workflowId, profile).left.map(storeFailure)
     } yield profile
 
-  /** [[body]] once `turn`'s models are pinned. */
-  private def pinned(env: TurnEnv^, tooling: TurnTooling^, turn: TurnRef)(using
+  /** [[body]] once `turn`'s models are pinned and its offer is made. */
+  private def pinned[C^](env: TurnEnv^, tooling: TurnTooling[C]^, turn: TurnRef)(using
       pins: TurnProfile,
+      offer: TurnOffer,
       d: Durable^
   ): String = {
     import TurnJournal.given
@@ -295,7 +360,7 @@ object Turn {
           .toOption
       case Placing.Unplaced => None
     }
-    val ran = run(turn, placing, tooling)(using env, pins, d)
+    val ran = run(turn, placing, tooling)(using env, pins, offer, d)
     val topics = topicFailure.fold("")(f => s"; topics not recorded: $f") +
       ran.verdictUnrecorded.fold("")(f => s"; verdict not recorded: $f")
     ran.result match {
@@ -368,11 +433,11 @@ object Turn {
   /** The steps from `assemble` to `append`: `turn`'s reply entry, or why it has none, its
     * model offered `tooling`'s tools.
     */
-  private def run(
+  private def run[C^](
       turn: TurnRef,
       placing: Placing,
-      tooling: TurnTooling^
-  )(using env: TurnEnv^, pins: TurnProfile, d: Durable^): Ran[EntryId] = {
+      tooling: TurnTooling[C]^
+  )(using env: TurnEnv^, pins: TurnProfile, offer: TurnOffer, d: Durable^): Ran[EntryId] = {
     import TurnJournal.given
     val heard = d.stream(TurnStream.Key)
     val prepared = for {
@@ -409,7 +474,7 @@ object Turn {
             val shape = a.shape
             d.transact(Step.Append)(
               append(
-                env.system,
+                offer.system,
                 env.records,
                 turn,
                 window,
@@ -432,46 +497,31 @@ object Turn {
     * calls settled by `tool:n:j` ([[TurnTools]]); then `record-verdict` when `asked`, and
     * the answer appended as `turn`'s reply entry. The tools are `tooling`'s.
     */
-  private def loop(
+  private def loop[C^](
       heard: StreamWriter^,
       turn: TurnRef,
       seen: Window,
       recorded: WindowRecord,
       asked: Option[TurnTopics.Classification],
-      tooling: TurnTooling^
-  )(using env: TurnEnv^, pins: TurnProfile, d: Durable^): Ran[EntryId] =
-    tooling match {
-      case t: TurnTooling.ReadOnly =>
-        looping(
-          heard,
-          turn,
-          seen,
-          recorded,
-          asked,
-          t.tools,
-          t.jot,
-          t.budget,
-          pins.turn.settings.strict == StrictSchemas.Enforced,
-          t.answerWithin
-        )
-      case t: TurnTooling.Full =>
-        looping(
-          heard,
-          turn,
-          seen,
-          recorded,
-          asked,
-          t.tools,
-          t.jot,
-          t.budget,
-          pins.turn.settings.strict == StrictSchemas.Enforced,
-          t.answerWithin
-        )
-    }
+      tooling: TurnTooling[C]^
+  )(using env: TurnEnv^, pins: TurnProfile, offer: TurnOffer, d: Durable^): Ran[EntryId] =
+    looping(
+      heard,
+      turn,
+      seen,
+      recorded,
+      asked,
+      TurnOffer.toolbox(tooling, offer),
+      tooling.jot,
+      tooling.budget,
+      pins.turn.settings.strict == StrictSchemas.Enforced,
+      tooling.answerWithin
+    )
 
   /** [[loop]], offering `own`, the turn's tools, their results kept through `jot`, as
     * `budget` and `answerWithin` say ([[TurnTooling]]), their schemas `strict` when the turn's
-    * pair is known to enforce them.
+    * pair is known to enforce them. A hosted call ([[grit.core.tool.Bound.Hosted]]) is sent to
+    * the edge serving the offer's workspace ([[TurnHosted]]); every other runs in its step.
     */
   private def looping[C^](
       heard: StreamWriter^,
@@ -484,7 +534,7 @@ object Turn {
       budget: TurnLoop.Budget,
       strict: Boolean,
       answerWithin: FiniteDuration
-  )(using env: TurnEnv^, pins: TurnProfile, d: Durable^): Ran[EntryId] = {
+  )(using env: TurnEnv^, pins: TurnProfile, offer: TurnOffer, d: Durable^): Ran[EntryId] = {
     import TurnJournal.given
     offered(own, asked) match {
       case Left(failure) => Ran(Left(failure), None)
@@ -495,6 +545,11 @@ object Turn {
         val repairs = Repairs(settings.names, settings.repairs)
         val after = settings.afterResult
         val guidance = settings.guidance
+        val hosting = env.hosting
+        val workspace = offer.workspace
+        // Whether each round's free hosted calls were sent to a serving edge, as its dispatch
+        // step recorded: read by the round's settles, after its record.
+        val dispatched = scala.collection.mutable.Map.empty[Int, Boolean]
         def shape(round: Round): ModelRequest -> ModelRequest =
           loopShape(asked, round, TurnLoop.use(budget, round), schemas, after, guidance)
         val moves = new TurnLoop.Moves {
@@ -503,11 +558,40 @@ object Turn {
             d.step(round.step) { () => callShaped(heard, turn, seen, shaped) }
           }
 
-          def record(round: Round, reply: Message.Assistant): Either[TurnFailure, Unit] = {
+          def record(
+              round: Round,
+              reply: Message.Assistant,
+              calls: Vector[Pending]
+          ): Either[TurnFailure, Unit] = {
             val shaped = shape(round)
             d.transact(Step.recordCall(round))(
-              recordCall(env.system, env.records, turn, seen, round, reply, shaped, env.clock.now())
-            ).map(_ => ())
+              recordCall(
+                offer.system,
+                env.records,
+                turn,
+                seen,
+                round,
+                reply,
+                shaped,
+                env.clock.now()
+              )
+            ).flatMap { _ =>
+              // Every free hosted call of the round goes to the edge at once, in one step.
+              val free = calls.zipWithIndex.flatMap { (pending, index) =>
+                TurnTools.read(tools, pending, repairs) match {
+                  case Right(h: Bound.Hosted) if h.ask.isEmpty => Some((index, pending.call.id, h))
+                  case _ => None
+                }
+              }
+              TurnHosted.requests(turn, round, free, workspace) match {
+                case Left(failure) => Left(failure)
+                case Right(requests) if requests.isEmpty => Right(())
+                case Right(requests) =>
+                  d.transact(Step.dispatch(round))(TurnHosted.dispatch(hosting, requests)).map {
+                    sent => dispatched.update(round.index, sent)
+                  }
+              }
+            }
           }
 
           def settle(round: Round, index: Int, pending: Pending): Either[TurnFailure, Unit] = {
@@ -531,6 +615,19 @@ object Turn {
                       settling.decide(slot, call, gated, approval, clock.now())
                     }
                   }
+              case Right(hosted: Bound.Hosted) =>
+                val sent = dispatched.getOrElse(round.index, false)
+                TurnHosted.settle(
+                  hosting,
+                  slot,
+                  call,
+                  hosted,
+                  workspace,
+                  sent,
+                  answerWithin,
+                  settling,
+                  clock
+                )
             }
             settled.map(_ => ())
           }
@@ -559,7 +656,7 @@ object Turn {
               val shaped = shape(l.round)
               d.transact(Step.Append)(
                 append(
-                  env.system,
+                  offer.system,
                   env.records,
                   turn,
                   seen,
@@ -661,7 +758,11 @@ object Turn {
       turn: TurnRef,
       window: Window,
       shape: Shape
-  )(using env: TurnEnv^, pins: TurnProfile): Either[TurnFailure, Message.Assistant] =
+  )(using
+      env: TurnEnv^,
+      pins: TurnProfile,
+      offer: TurnOffer
+  ): Either[TurnFailure, Message.Assistant] =
     callShaped(heard, turn, window, shape(_))
 
   /** As [[callModel]], the request shaped by `shape`. A provider that is
@@ -674,8 +775,12 @@ object Turn {
       turn: TurnRef,
       window: Window,
       shape: ModelRequest -> ModelRequest
-  )(using env: TurnEnv^, pins: TurnProfile): Either[TurnFailure, Message.Assistant] =
-    request(env, turn, window).flatMap { req =>
+  )(using
+      env: TurnEnv^,
+      pins: TurnProfile,
+      offer: TurnOffer
+  ): Either[TurnFailure, Message.Assistant] =
+    request(env, offer.system, turn, window).flatMap { req =>
       val sent = shape(req)
       def attempt(
           waits: List[FiniteDuration],
@@ -713,7 +818,12 @@ object Turn {
       seen: Window,
       c: TurnTopics.Classification,
       first: Message.Assistant
-  )(using env: TurnEnv^, pins: TurnProfile, d: Durable^): Ran[TurnVerdict.Replied] = {
+  )(using
+      env: TurnEnv^,
+      pins: TurnProfile,
+      offer: TurnOffer,
+      d: Durable^
+  ): Ran[TurnVerdict.Replied] = {
     import TurnJournal.given
     val further = new TurnVerdict.Calls {
       def again(shape: Shape.Again): Either[TurnFailure, Message.Assistant] =
@@ -723,7 +833,7 @@ object Turn {
     }
     val round = TurnVerdict.round(c, first, further)
     val recorded = d.transact(Step.RecordVerdict)(
-      recordVerdict(env.system, env.records, turn, seen, c, round, env.clock.now())
+      recordVerdict(offer.system, env.records, turn, seen, c, round, env.clock.now())
     )
     Ran(round.answer, recorded.left.toOption)
   }
@@ -868,11 +978,12 @@ object Turn {
   private def own(all: Vector[Entry], turn: TurnRef): Vector[Entry] =
     all.filter(_.turnSeq == turn.turnSeq)
 
-  /** The window's entries, then the turn's own, as one model request, read through `env`'s
-    * `db`.
+  /** The window's entries, then the turn's own, as one model request under `system`, read
+    * through `env`'s `db`.
     */
   private def request(
       env: TurnEnv^,
+      system: String,
       turn: TurnRef,
       window: Window
   ): Either[TurnFailure, ModelRequest] =
@@ -881,7 +992,7 @@ object Turn {
         for {
           all <- env.records.entries.list(turn.conversationId)
           near <- nearbyOf(env.records.entries, window)
-        } yield requestOf(env.system, all, near, turn, window)
+        } yield requestOf(system, all, near, turn, window)
       }
       .left
       .map(storeFailure)

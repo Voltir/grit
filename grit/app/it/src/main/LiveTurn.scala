@@ -8,21 +8,36 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.id.{PrincipalId, SourceId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, Fact, FactBook, Pinned}
+import grit.core.place.Directory
 import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
 import grit.core.store.{EntryStore, Origin, Payload}
+import grit.core.tool.{ToolSet, Toolbox}
 import grit.dbos.engine.Engine
-import grit.host.{LocalEdits, LocalShell, LocalWorkspace}
+import grit.edge.Server
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.models.{StubModels, StubProvider}
 import grit.tools.Coding
-import grit.turn.{Turn, TurnEnv, TurnLoop, TurnRecords, TurnTooling, TurnTools}
+import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling, TurnTools}
 
-/** The real turn over a live engine, with the stub provider, for the end-to-end tests. */
+/** The real turn over a live engine, with the stub provider, for the end-to-end tests: a
+  * TUI session in the checkout the engine was launched over, whose coding tools an edge in
+  * this process serves, through requests, the host rule and `Edges.authorize` as grit's
+  * own edge does.
+  */
 object LiveTurn {
 
-  val Origin: grit.core.store.Origin = grit.core.store.Origin.Task("live", "gate")
+  /** The session a launched engine's turns are in: in the checkout it was launched over. */
+  @volatile @caps.unsafe.untrackedCaptures
+  private var session: Origin = Origin.Task("live", "unlaunched")
+
+  /** The conversation's origin: a TUI session named `gate` in `root`, its links resolved. */
+  def origin(root: java.nio.file.Path): Origin =
+    Origin.Tui(
+      Directory.of(root.toRealPath().toString).fold(e => sys.error(e), identity),
+      "gate"
+    )
 
   /** The stub provider, counting its calls through either entry point. */
   final class CountingProvider extends Provider {
@@ -76,14 +91,19 @@ object LiveTurn {
       all: Boolean = false,
       answerWithin: FiniteDuration = TurnTools.AnswerWithin
   ): Unit = {
-    val checkout = new LocalWorkspace(root)
     val models = new LiveModels(provider)
-    def launch(tooling: TurnTooling^): Unit =
+    def launch[C^](tooling: TurnTooling[C]^): Unit =
       engine.launch(
         Turn.body(
           TurnEnv(
-            "You are grit.",
             TurnRecords(entries, engine.ledger, CharEstimate, engine.profiles),
+            TurnHosting(
+              engine.conversations,
+              engine.prompts,
+              engine.toolSets,
+              engine.requests,
+              engine.edgeDirectory
+            ),
             new LinearAssembler(
               entries,
               engine.periods,
@@ -137,41 +157,38 @@ object LiveTurn {
         Vector.empty
       )
     val budget = TurnLoop.Budget.of(5).fold(why => sys.error(why), identity)
-    if (all) {
-      val edits = new LocalEdits(root)
-      val shell = new LocalShell(root, sys.env)
-      launch(
-        TurnTooling.Full(
-          checkout,
-          edits,
-          shell,
-          NoFacts,
-          models,
-          engine.db,
-          Coding.all(checkout, edits, shell).fold(d => sys.error(d.toString), identity),
-          engine.jot,
-          budget,
-          answerWithin
-        )
-      )
-    } else
-      launch(
-        TurnTooling
-          .ReadOnly(
-            checkout,
-            engine.db,
-            Coding.readOnly(checkout).fold(d => sys.error(d.toString), identity),
-            engine.jot,
-            budget
+    val hosted = if (all) Coding.hosted else Coding.readOnlyHosted
+    val none = Toolbox.of[{}]().fold(d => sys.error(d.toString), identity)
+    launch(TurnTooling[{}](none, hosted, engine.jot, budget, answerWithin))
+    // This process's edge, serving the checkout as grit's own does.
+    val here = origin(root)
+    session = here
+    val place = here.place
+    engine.register(PrincipalId.Local, Set(place)) match {
+      case Left(e) => sys.error(s"no edge: ${e.why}")
+      case Right(desk) =>
+        desk
+          .advertise(
+            place,
+            ToolSet.of(hosted.map(_.entry)).fold(d => sys.error(d.toString), identity),
+            Vector.empty
           )
-      )
+          .left
+          .foreach(e => sys.error(s"not advertised: ${e.why}"))
+        new Server(
+          desk,
+          new LocalTools(if (all) Main.ToolChoice.All else Main.ToolChoice.Read),
+          run => { val _ = Thread.ofVirtual().start(() => run()) },
+          _ => ()
+        ).serve()
+    }
   }
 
   /** Ingests `source` and starts its turn. */
   def say(engine: Engine^, source: String): TurnRef = {
     val started = for {
       turn <- engine.inbox.ingest(
-        Origin,
+        session,
         SourceId(source),
         Message.User(s"message $source"),
         PrincipalId.Local

@@ -21,7 +21,7 @@ import grit.core.store.{Db, Origin}
 import grit.core.tool.{DuplicateName, ToolName, Toolbox}
 import grit.dbos.engine.{Engine, EngineLock}
 import grit.dbos.sql.DbConfig
-import grit.core.prompt.{Fragment, SystemPrompt}
+import grit.core.prompt.Fragment
 import grit.core.tool.ToolSet
 import grit.edge.{PlaceFragments, Server}
 import grit.host.{LocalEdits, LocalInstructions, LocalShell, LocalWorkspace}
@@ -42,7 +42,7 @@ import grit.models.{
 import grit.tools.{Coding, Facts, Probes}
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
-import grit.turn.{Turn, TurnEnv, TurnLoop, TurnPrompt, TurnRecords, TurnTooling}
+import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling}
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set: each role's model, budget and upstream as
@@ -59,9 +59,11 @@ import grit.turn.{Turn, TurnEnv, TurnLoop, TurnPrompt, TurnRecords, TurnTooling}
   * the stub classifier when `GRIT_STUB_TOPICS=1` (for the gate), and otherwise by none,
   * which leaves each message in the topic it is in. The TUI starts in the theme
   * `GRIT_THEME` names, or else the one last chosen with `/theme` ([[Prefs]]). Each turn's
-  * model is offered the tools `GRIT_TOOLS` names ([[ToolChoice]]) over the checkout grit
-  * runs in, in at most `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at
-  * least 2), the last with tools off. A command it runs sees only the environment
+  * model is offered the tools `GRIT_TOOLS` names ([[ToolChoice]]) in at most
+  * `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at least 2), the last with
+  * tools off. The coding tools are hosted (ADR 0017): offered only when an edge serves the
+  * conversation's directory, and run by that edge. The TUI is the edge for the directory it
+  * runs in, with its instruction files; a command it runs sees only the environment
   * `LocalShell` passes. The engine sweeps every `GRIT_SWEEP` (default
   * [[DefaultSweep]]), asking the same classifier as the topics whether anyone is waiting on
   * each quiet period ([[Settle]]), closing each period whose deadline has come ([[Close]]), its
@@ -90,25 +92,6 @@ object Main {
 
   /** The argument runs share one conversation, apart from any TUI session. */
   private val RunOrigin: Origin = Origin.Task("m0", "main")
-
-  /** The system prompt for a conversation from `origin` whose file tools are `hosted`, over
-    * `directory`: grit's base, what the edge is, what the turn may reach there, then the
-    * directory's instruction files (`AGENTS.md`, else `CLAUDE.md`, from `/` down, bounded as
-    * [[PlaceFragments]] says). What each tool does rides with the tool, never here: a model
-    * told of a tool it was not offered writes the call out.
-    */
-  private def systemPrompt(
-      origin: Origin,
-      directory: Directory,
-      hosted: ToolSet,
-      instructions: Vector[Fragment]
-  ): String =
-    SystemPrompt
-      .of(
-        Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(Some(directory), hosted)) ++
-          instructions
-      )
-      .render
 
   def main(args: Array[String]): Unit = {
     val tui = args.isEmpty
@@ -154,7 +137,6 @@ object Main {
       }).left.map(d => s"the coding tools offer ${ToolName.value(d.name)} twice")
     )
     val instructions = PlaceFragments.of(new LocalInstructions().around(directory), CharEstimate)
-    val system = systemPrompt(origin, directory, hosted, instructions)
     val prefsFile = Prefs.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
     // OpenRouter when a key is set, otherwise the stub: no key, no spend. Each role's model
@@ -208,13 +190,18 @@ object Main {
             tail
           )
         else new LinearAssembler(engine.entries, engine.periods, CharEstimate, budget)
-      val checkout = new LocalWorkspace(root)
-      def launch(tooling: TurnTooling^): Unit = {
+      def launch[C^](tooling: TurnTooling[C]^): Unit = {
         engine.launch(
           Turn.body(
             TurnEnv(
-              system,
               TurnRecords(engine.entries, engine.ledger, CharEstimate, engine.profiles),
+              TurnHosting(
+                engine.conversations,
+                engine.prompts,
+                engine.toolSets,
+                engine.requests,
+                engine.edgeDirectory
+              ),
               assembler,
               classifier(topics),
               models,
@@ -266,51 +253,27 @@ object Main {
       val store: Db^ = engine.db
       // Digest's recent_activity, offered when Digest is on.
       val digest = plugins.collectFirst { case d: Digest => engine.docs(d.name) }
+      // The engine's own tools touch no file: they read grit's store, keep a fact, probe a
+      // model. The coding tools are hosted: offered here, run by the edge serving the
+      // conversation's directory (ADR 0017).
       val launching = offered match {
         case ToolChoice.Read =>
           (digest match {
-            case None =>
-              Toolbox.of[{checkout, store}](Coding.read(checkout), Coding.list(checkout), Coding.search(checkout))
-            case Some(docs) =>
-              Toolbox.of[{checkout, store}](
-                Coding.read(checkout),
-                Coding.list(checkout),
-                Coding.search(checkout),
-                Digest.recentActivity(store, docs)
-              )
-          }).map(tools => launch(TurnTooling.ReadOnly(checkout, store, tools, engine.jot, rounds)))
+            case None => Toolbox.of[{store}]()
+            case Some(docs) => Toolbox.of[{store}](Digest.recentActivity(store, docs))
+          }).map(tools => launch(TurnTooling[{store}](tools, Coding.readOnlyHosted, engine.jot, rounds)))
         case ToolChoice.All =>
-          val edits = new LocalEdits(root)
-          // The process's own environment, not .env's: a command never needs grit's settings.
-          val shell = new LocalShell(root, sys.env)
           val facts = new KeptFacts(engine.jot, engine.facts, Clock.system())
           (digest match {
             case None =>
-              Toolbox.of[{checkout, edits, shell, facts, models, store}](
-                Coding.read(checkout),
-                Coding.list(checkout),
-                Coding.search(checkout),
-                Coding.write(edits),
-                Coding.edit(edits),
-                Coding.run(shell),
-                Facts.propose(facts),
-                Probes.probe(models)
-              )
+              Toolbox.of[{facts, models, store}](Facts.propose(facts), Probes.probe(models))
             case Some(docs) =>
-              Toolbox.of[{checkout, edits, shell, facts, models, store}](
-                Coding.read(checkout),
-                Coding.list(checkout),
-                Coding.search(checkout),
-                Coding.write(edits),
-                Coding.edit(edits),
-                Coding.run(shell),
+              Toolbox.of[{facts, models, store}](
                 Facts.propose(facts),
                 Probes.probe(models),
                 Digest.recentActivity(store, docs)
               )
-          }).map(tools =>
-            launch(TurnTooling.Full(checkout, edits, shell, facts, models, store, tools, engine.jot, rounds))
-          )
+          }).map(tools => launch(TurnTooling[{facts, models, store}](tools, Coding.hosted, engine.jot, rounds)))
       }
       // Its caller closes the engine and reports the throw: in the chat, as the engine that
       // could not open.
@@ -350,7 +313,6 @@ object Main {
         val host = new ChatHost(
           origin,
           opener,
-          system,
           CharEstimate,
           Some(java.nio.file.Path.of(log))
         )
@@ -398,6 +360,22 @@ object Main {
       case Left(e) => log.warn(s"this edge could not register: ${e.why}")
       case Right(desk) =>
         desk.advertise(place, hosted, instructions).left.foreach(e => log.warn(s"not advertised: ${e.why}"))
+        // The instruction files are read again every AdvertEvery, and advertised when they
+        // changed, so an edit reaches the next turn without a restart.
+        place.directory.foreach { dir =>
+          val _ = Thread.ofVirtual().name("grit-advert").start { () =>
+            var sent = instructions
+            while (true) {
+              Thread.sleep(AdvertEvery.toMillis)
+              val now = PlaceFragments.of(new LocalInstructions().around(dir), CharEstimate)
+              if (now != sent)
+                desk.advertise(place, hosted, now) match {
+                  case Right(()) => sent = now
+                  case Left(e) => log.warn(s"not advertised: ${e.why}")
+                }
+            }
+          }
+        }
         new Server(
           desk,
           new LocalTools(offered),
@@ -406,6 +384,9 @@ object Main {
         ).serve()
     }
   }
+
+  /** How often this process's edge reads its directory's instruction files again: 5 s. */
+  private val AdvertEvery: FiniteDuration = 5.seconds
 
   /** Each message answered by one turn, printed. */
   private def say(engine: Engine^, messages: List[String]): Option[String] = {

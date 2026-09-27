@@ -42,6 +42,7 @@ object TurnToolsTests extends TestSuite {
       case Right(free: Bound.Free) => settling.run(slot, id, free, Instant.EPOCH)
       case Right(gated: Bound.Gated) =>
         settling.decide(slot, id, gated, approval, Instant.EPOCH)
+      case Right(_: Bound.Hosted) => Left(TurnFailure.Model("no hosted tools here"))
     }
   }
 

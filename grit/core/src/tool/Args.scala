@@ -43,6 +43,21 @@ final class Args[T] private (
 
 object Args {
 
+  /** Arguments with the recorded `schema`, shown as it is whether strict or not, read as the
+    * JSON object sent, unchecked: for a tool known only by its record ([[Tool.gone]]).
+    * Refused only when what is sent is not an object.
+    */
+  def raw(schema: ujson.Value): Args[ujson.Value] = {
+    val shown: ujson.Obj = schema.objOpt.fold(ujson.Obj())(o => ujson.Obj.from(o))
+    new Args(
+      _ => ujson.Obj.from(shown.value),
+      (arguments, _) =>
+        arguments.objOpt
+          .map(_ => arguments)
+          .toRight(ArgsError.NotAnObject(ArgsError.shown(arguments)))
+    )
+  }
+
   /** The value each field of `V` reads into. */
   type Values[V <: Tuple] <: Tuple = V match {
     case EmptyTuple => EmptyTuple

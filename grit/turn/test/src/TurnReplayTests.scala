@@ -36,19 +36,23 @@ object TurnReplayTests extends TestSuite {
           else {
             val entries = new InMemoryEntryStore
             // The tools the recorder offered: a gated call asks before its step, so the
-            // steps a history holds depend on which tools its calls bind to.
-            new InMemoryDurable().replay(history.id, history.steps)(
-              tooledBody(
-                entries,
-                new RecordingProvider,
-                new InMemoryUsageLedger,
-                new grit.models.StubProvider(),
-                NoClassifier,
-                NoCheckout,
-                tools(NoCheckout),
-                5
+            // steps a history holds depend on which tools its calls bind to. What its offer
+            // step names by id is read back from the rows the history keeps.
+            keepAll(history.kept).flatMap { _ =>
+              new InMemoryDurable().replay(history.id, history.steps)(
+                tooledBody(
+                  entries,
+                  new RecordingProvider,
+                  new InMemoryUsageLedger,
+                  new grit.models.StubProvider(),
+                  NoClassifier,
+                  NoCheckout,
+                  tools(NoCheckout),
+                  5,
+                  hosted = hostedTools
+                )
               )
-            )
+            }
           }
         }
         outcome.left.toOption.map(why => s"${path.last}: $why")

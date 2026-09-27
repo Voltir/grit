@@ -168,8 +168,14 @@ object TurnLoop {
       */
     def call(round: Round, use: ToolUse): Either[TurnFailure, Message.Assistant]
 
-    /** Keeps `reply`, the reply to `round` that called tools, before any call is settled. */
-    def record(round: Round, reply: Message.Assistant): Either[TurnFailure, Unit]
+    /** Keeps `reply`, the reply to `round` that called tools, before any call is settled;
+      * `calls` are its calls, as they will be settled.
+      */
+    def record(
+        round: Round,
+        reply: Message.Assistant,
+        calls: Vector[Pending]
+    ): Either[TurnFailure, Unit]
 
     /** Settles `pending`, the call at `index` (from 0) of `round`'s reply, and keeps its
       * result, paired with its call's id, after those of the calls before it. Only a store
@@ -221,7 +227,7 @@ object TurnLoop {
         reply: Message.Assistant,
         calls: Vector[Pending]
     ): Either[TurnFailure, Unit] =
-      moves.record(round, reply).flatMap { _ =>
+      moves.record(round, reply, calls).flatMap { _ =>
         calls.zipWithIndex.foldLeft[Either[TurnFailure, Unit]](Right(())) {
           case (acc, (pending, i)) => acc.flatMap(_ => moves.settle(round, i, pending))
         }

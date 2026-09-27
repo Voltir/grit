@@ -25,6 +25,15 @@ final class Toolbox[+C^] private (tools: Vector[Tool.Offered^{C}]) {
   def including(tool: Tool.Offered): Either[DuplicateName, Toolbox[C]] =
     Toolbox.of[C]((tool +: tools)*)
 
+  /** This toolbox with `first`, which act through no capability, offered before these, in
+    * order; `Left` naming the first name repeated.
+    */
+  def preceded(first: Vector[Tool.Offered]): Either[DuplicateName, Toolbox[C]] =
+    Toolbox.of[C]((first ++ tools)*)
+
+  /** The tool named `name`; `None` when none here has it. */
+  def tool(name: ToolName): Option[Tool.Offered^{C}] = tools.find(_.name == name)
+
   /** `call` read against the tool it names ([[Toolbox.named]]), with `repairs`, ready to
     * run; or why it cannot be: no tool has that name, or its arguments do not read.
     */
@@ -62,7 +71,8 @@ object Toolbox {
 }
 
 /** A call whose tool was found and whose arguments read, ready to run: [[Bound.Free]] as it
-  * is, [[Bound.Gated]] only with a person's [[Approval]] in hand.
+  * is, [[Bound.Gated]] only with a person's [[Approval]] in hand; [[Bound.Hosted]] by an
+  * edge.
   */
 sealed trait Bound {
   def tool: ToolName
@@ -108,6 +118,19 @@ object Bound {
     val flat = on.trim.replaceAll("\\s*\\R\\s*", " ")
     if (flat.isEmpty) ToolName.value(tool) else s"${ToolName.value(tool)} $flat"
   }
+
+  /** A call of a tool an edge runs ([[Hosted]]), read and checked: `arguments` as the model
+    * sent them, to be read again under `repairs` by the edge; `ask` is what a person is shown
+    * first when the tool asks, `None` when it runs without asking; `retry` is its tool's.
+    */
+  final class Hosted private[tool] (
+      val tool: ToolName,
+      val shown: String,
+      val ask: Option[String],
+      val arguments: ujson.Value,
+      val repairs: Set[grit.core.model.ArgRepair],
+      val retry: Retry
+  ) extends Bound
 
   /** The reason a call whose approval timed out is denied. */
   val Unanswered = "No answer came in time."

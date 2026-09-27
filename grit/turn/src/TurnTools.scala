@@ -115,7 +115,7 @@ object TurnTools {
     * result already kept is returned as it is, and nothing runs. Each fails only when `jot`
     * cannot read or write the store.
     */
-  final class Settling(jot: Jot^, entries: EntryStore) {
+  final class Settling(jot: Jot^, val entries: EntryStore) {
 
     /** The call answered with `outcome`, unrun, shown as `named`, the tool's name as the
       * call sent it.

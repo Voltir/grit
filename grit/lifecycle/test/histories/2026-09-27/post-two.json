@@ -1,0 +1,20 @@
+{
+  "workflow": "post",
+  "id": "post:recorded:1:0:0",
+  "epoch": "2026-09-27",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "post:0",
+      "output": "{\"ok\":1}"
+    },
+    {
+      "name": "post:1",
+      "output": "{\"ok\":2}"
+    },
+    {
+      "name": "post:2",
+      "output": "{\"ok\":null}"
+    }
+  ]
+}

@@ -28,8 +28,10 @@ object RecordTurnHistories {
     }
   }
 
-  private def recorded(durable: InMemoryDurable, turn: TurnRef): History =
-    History("turn", turn.workflowId, Turn.Epoch, "recorded", durable.history(turn.workflowId))
+  private def recorded(durable: InMemoryDurable, turn: TurnRef): History = {
+    val steps = durable.history(turn.workflowId)
+    History("turn", turn.workflowId, Turn.Epoch, "recorded", steps, keptBy(steps))
+  }
 
   /** Each shape, by name. A name whose file was written before a later step existed keeps
     * that shorter history, so a new step that changes a shape gets a new name.
@@ -285,6 +287,37 @@ object RecordTurnHistories {
       recorded(durable, turn)
     }
 
+    /** One turn whose model calls `first` in its first reply and answers after, its hosted
+      * calls sent to an edge that treats each as `serve` says (unadvertised when `advertised`
+      * is false), `answers` (call id, approval) sent once it reaches its first ask.
+      */
+    def hosting(
+        first: Vector[(String, String, ujson.Value)],
+        serve: grit.core.edge.ToolRequest -> Serve,
+        advertised: Boolean = true,
+        answers: Vector[(String, grit.core.approval.Approval)] = Vector.empty
+    ): History = {
+      val store = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val turn = say(store, "hosted")
+      val edge = new Served(new grit.core.edge.InMemoryEdges, durable, serve)
+      if (advertised) edge.advertise(hostedTools)
+      val provider =
+        new Scripted((_, n) => Right(if (n == 0) calling("", first*) else calling("done")))
+      def run(entries: grit.core.store.EntryStore): String =
+        try durable.run(turn.workflowId)(hostedBody(entries, provider, edge))
+        catch { case _: InMemoryDurable.Crash => "" }
+      if (answers.nonEmpty) {
+        run(crashingAtAsk(store))
+        answers.foreach { (call, approval) =>
+          val topic = grit.core.approval.Approval.topic(grit.core.id.ToolCallId(call))
+          durable.send(turn.workflowId, topic, grit.core.approval.Approval.encode(approval))
+        }
+      }
+      run(store)
+      recorded(durable, turn)
+    }
+
     def calling(
         text: String,
         calls: (String, String, ujson.Value)*
@@ -400,7 +433,39 @@ object RecordTurnHistories {
       "replied" -> replied,
       "later-turn" -> laterTurn,
       "model-failed" -> modelFailed,
-      "crashed-before-append" -> crashedBeforeAppend
+      "crashed-before-append" -> crashedBeforeAppend,
+      "hosted-read" -> hosting(
+        Vector(("h1", "fetch", ujson.Obj("path" -> "a.txt"))),
+        _ => Serve.Now(grit.core.tool.Outcome.Done("alpha"))
+      ),
+      "hosted-round" -> hosting(
+        Vector("a.txt", "b.txt", "c.txt").zipWithIndex.map((p, i) =>
+          (s"h$i", "fetch", ujson.Obj("path" -> p))
+        ),
+        q => Serve.Now(grit.core.tool.Outcome.Done(q.arguments("path").str))
+      ),
+      "hosted-approved" -> hosting(
+        Vector(("h1", "prod", ujson.Obj("path" -> "a.txt"))),
+        _ => Serve.Now(grit.core.tool.Outcome.Done("prodded")),
+        answers = Vector("h1" -> grit.core.approval.Approval.Approved)
+      ),
+      "hosted-unserved" -> hosting(
+        Vector(("h1", "fetch", ujson.Obj("path" -> "a.txt"))),
+        _ => Serve.Never,
+        advertised = false
+      ),
+      "hosted-expired" -> hosting(
+        Vector(("h1", "fetch", ujson.Obj("path" -> "a.txt"))),
+        _ => Serve.Never
+      ),
+      "hosted-slow" -> hosting(
+        Vector(("h1", "fetch", ujson.Obj("path" -> "a.txt"))),
+        _ => Serve.Later(grit.core.tool.Outcome.Done("late alpha"))
+      ),
+      "hosted-orphaned" -> hosting(
+        Vector(("h1", "fetch", ujson.Obj("path" -> "a.txt"))),
+        _ => Serve.Claimed
+      )
     )
   }
 }

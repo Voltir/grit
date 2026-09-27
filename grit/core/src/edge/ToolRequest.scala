@@ -27,7 +27,7 @@ final case class ToolRequest(
 object ToolRequest {
 
   /** The protocol version requests are written under now. An edge that knows a lower one
-    * answers a request of this one that it is too old ([[Edges.run]]).
+    * answers a request of this one that it is too old.
     */
   val Protocol: Int = 1
 }

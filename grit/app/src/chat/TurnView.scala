@@ -7,6 +7,7 @@ import grit.core.id.{EntryId, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Message, Tokens}
 import grit.core.model.{ModelRef, TurnProfile}
 import grit.core.place.Place
+import grit.core.prompt.{Layer, SystemPrompt}
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Payload, UsageLedger}
 import grit.dbos.engine.RecordedStep
@@ -35,7 +36,8 @@ final case class TurnView(
     window: Option[TurnView.Window],
     spent: Option[Cost],
     billed: Option[Tokens],
-    models: Option[TurnView.Models] = None
+    models: Option[TurnView.Models] = None,
+    prompt: Vector[TurnView.Part] = Vector.empty
 ) {
 
   /** Whether nothing more will change: finished, its last step recorded. A turn that
@@ -45,6 +47,21 @@ final case class TurnView(
 }
 
 object TurnView {
+
+  /** One fragment of the system prompt a turn was sent: its `label` (its layer, or for an
+    * instruction file the file's name) and its estimated `tokens`.
+    */
+  final case class Part(label: String, tokens: Tokens)
+
+  /** `prompt`'s fragments, each labelled and estimated with `estimator`, in its order. */
+  def parts(prompt: SystemPrompt, estimator: TokenEstimator): Vector[Part] =
+    prompt.fragments.map { f =>
+      val label =
+        if (f.layer == Layer.Place)
+          f.source.split('/').lastOption.filter(_.nonEmpty).getOrElse(f.source)
+        else f.layer.key
+      Part(label, estimator.system(f.text))
+    }
 
   /** What a turn's calls were made under: each role's pair, the turn's first and then any
     * role whose pair differs from it; whether grit had a profile for the turn's pair; and
@@ -115,9 +132,9 @@ object TurnView {
 
   /** `turn`, from every entry of its conversation and the `nearby` entries of other
     * conversations its window showed, the `steps` its workflow recorded,
-    * whether it is `running`, its ledger rows `costs`, and the `profile` it pinned. The
-    * window is estimated with `estimator`, as assembly estimated it, under the system
-    * prompt `system`.
+    * whether it is `running`, its ledger rows `costs`, the `profile` it pinned, and the
+    * system `prompt` it was sent (none for a turn that recorded none). The window is
+    * estimated with `estimator`, as assembly estimated it, the prompt with it too.
     */
   def of(
       turn: TurnRef,
@@ -125,7 +142,7 @@ object TurnView {
       steps: Vector[RecordedStep],
       running: Boolean,
       costs: Vector[UsageLedger.Row],
-      system: String,
+      prompt: Option[SystemPrompt],
       estimator: TokenEstimator,
       profile: Option[TurnProfile] = None,
       nearby: Vector[Entry] = Vector.empty
@@ -140,7 +157,7 @@ object TurnView {
         val theirs = nearby.map(e => e.id -> e).toMap
         val sections = w.nearby.map(n => n -> n.entries.flatMap(theirs.get))
         Window(
-          estimator.system(system),
+          prompt.fold(Tokens.Zero)(p => estimator.system(p.render)),
           tokens(closings, estimator),
           tokens(recent, estimator),
           tokens(recalled, estimator),
@@ -168,7 +185,8 @@ object TurnView {
       window,
       spent,
       reply.map(_.usage.input),
-      profile.map(Models.of(_, reply.flatMap(_.upstream)))
+      profile.map(Models.of(_, reply.flatMap(_.upstream))),
+      prompt.fold(Vector.empty[Part])(parts(_, estimator))
     )
   }
 

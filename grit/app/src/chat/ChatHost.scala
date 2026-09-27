@@ -21,8 +21,8 @@ import grit.turn.TurnStream
   *     conversation: its entries are polled and every new one is shown, whichever turn
   *     wrote it, so replies to turns recovered after a restart appear too ([[Follow]]);
   *     and its latest turn (or the one `Show` pinned) is described for the turn panel
-  *     whenever that changes ([[TurnView]], its window estimated with `estimator` under
-  *     the system prompt `system`); and the conversation as a whole is described for the
+  *     whenever that changes ([[TurnView]], its window and the system prompt it recorded
+  *     estimated with `estimator`); and the conversation as a whole is described for the
   *     panel's session tab whenever an entry is added ([[SessionView]]), and its topics
   *     for the topics tab, with the shown turn's placing, whenever those change
   *     ([[TopicsView]]).
@@ -41,7 +41,6 @@ import grit.turn.TurnStream
 final class ChatHost(
     origin: Origin,
     opener: ChatHost.Opener^,
-    system: String,
     estimator: TokenEstimator,
     log: Option[java.nio.file.Path] = None
 ) extends Host[ChatScreen.Msg],
@@ -294,7 +293,8 @@ final class ChatHost(
         }
       )
       .getOrElse(Vector.empty)
-    TurnView.of(turn, entries, steps, running, costs, system, estimator, profile, nearby)
+    val prompt = engine.db.read(engine.prompts.of(turn.workflowId)).toOption.flatten
+    TurnView.of(turn, entries, steps, running, costs, prompt, estimator, profile, nearby)
   }
 
   /** Follows `turn`'s reply stream on a thread of its own, telling the screen what it has

@@ -8,7 +8,10 @@ import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.{Durable, InMemoryDurable}
-import grit.core.id.{ConversationId, EntryId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.edge.{InMemoryEdges, OutcomeJson, Registration, ToolRequest}
+import grit.core.id.{CallSlot, ConversationId, EntryId, PrincipalId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.place.{Directory, Place}
+import grit.core.prompt.{Fragment, SystemPrompt}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
@@ -32,8 +35,12 @@ import grit.core.store.{
   InMemoryEntryStore,
   InMemoryPeriodStore,
   PeriodStore,
+  InMemoryConversationStore,
   InMemoryModelProfileStore,
+  InMemoryPromptStore,
+  InMemoryToolSets,
   InMemoryUsageLedger,
+  Origin,
   Jot,
   ModelProfileStore,
   Payload,
@@ -41,7 +48,7 @@ import grit.core.store.{
   Tx,
   UsageLedger
 }
-import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
+import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSet, ToolSpec, Toolbox}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -52,7 +59,34 @@ object TurnFixtures {
 
   val conversation = ConversationId("c1")
 
-  val system = "you are a test"
+  /** The directory the fixture conversation is a TUI session in. */
+  val checkout: Directory = Directory.of("/checkout").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The fixture conversation's origin: its id is `c1` in a fresh [[hosting]]. */
+  val origin: Origin = Origin.Tui(checkout, "test")
+
+  /** What a fixture turn is offered when no edge serves its directory: its conversations,
+    * the fixture one created first, and in-memory prompts, tool sets and `edges`.
+    */
+  def hosting(edges: InMemoryEdges = new InMemoryEdges): TurnHosting = {
+    val conversations = new InMemoryConversationStore
+    conversations.findOrCreate(origin, PrincipalId.Local)(using TestTx.fake)
+    TurnHosting(conversations, Prompts, ToolSets, edges, edges)
+  }
+
+  /** Every fixture turn's prompts and tool sets, kept by content id as the real stores keep
+    * them, forever: shared, so a turn run again over another world reads back what its first
+    * run kept.
+    */
+  val Prompts: InMemoryPromptStore = new InMemoryPromptStore
+
+  val ToolSets: InMemoryToolSets = new InMemoryToolSets
+
+  /** The system prompt a fixture turn is sent when no edge serves its directory. */
+  val system: String =
+    SystemPrompt
+      .of(Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(Some(checkout), ToolSet.Empty)))
+      .render
 
   /** The stub provider, keeping every request it was sent. */
   final class RecordingProvider(fail: Boolean = false) extends Provider {
@@ -251,6 +285,164 @@ object TurnFixtures {
   def tools(ws: Workspace^): Toolbox[{ws}] =
     Toolbox.of[{ws}](peek(ws), poke(ws)).fold(d => throw new java.lang.AssertionError(d), identity)
 
+  /** `fetch`, hosted: the engine offers it, an edge runs it. Free; reruns. */
+  val hostedFetch: Hosted[String] =
+    new Hosted(ToolSpec(ToolName("fetch"), "Fetches a file.", path, Retry.Rerun), Gate.Free, p => p)
+
+  /** `prod`, hosted, asking first. */
+  val hostedProd: Hosted[String] =
+    new Hosted(ToolSpec(ToolName("prod"), "Prods a file, asking first.", path), Gate.Ask(p => s"prod $p"), p => p)
+
+  /** Both hosted tools. */
+  val hostedTools: Vector[Tool.Offered] = Vector(hostedFetch, hostedProd)
+
+  /** How [[Served]]'s edge treats a request it is sent. */
+  enum Serve {
+
+    /** Claimed and answered at once. */
+    case Now(outcome: Outcome)
+
+    /** Claimed; answered only when the turn next looks at the row (its `expire` step). */
+    case Later(outcome: Outcome)
+
+    /** Claimed, and never answered. */
+    case Claimed
+
+    /** Not claimed: no edge takes it. */
+    case Never
+  }
+
+  /** The fixture directory's edge, over `edges`: live, it serves each request the turn sends
+    * as `serve` says, telling the turn's workflow in `durable` its answer as a desk does.
+    * Every request it is sent is kept in [[sent]].
+    */
+  final class Served(val edges: InMemoryEdges, durable: InMemoryDurable, serve: ToolRequest -> Serve)
+      extends grit.core.edge.ToolRequests {
+
+    val registration: Registration = edges.register(Set(Place.of(checkout)))
+
+    @caps.unsafe.untrackedCaptures
+    var sent = Vector.empty[ToolRequest]
+
+    @caps.unsafe.untrackedCaptures
+    private var later = Map.empty[CallSlot, Outcome]
+
+    /** Advertises `hosted`, and `files` as the directory's instruction files. */
+    def advertise(hosted: Vector[Tool.Offered], files: Vector[Fragment] = Vector.empty): Unit = {
+      val set = ToolSet.of(hosted.map(_.entry)).getOrElse(ToolSet.Empty)
+      // Kept as a desk keeps them, before it advertises their ids.
+      Prompts.keep(files)(using TestTx.fake)
+      ToolSets.keep(set)(using TestTx.fake)
+      edges.advertiseAs(registration, Place.of(checkout), set, files)
+    }
+
+    private def tell(q: ToolRequest, outcome: Outcome): Unit =
+      if (edges.answerAs(registration, q.slot, outcome))
+        durable.send(q.slot.turn.workflowId, q.slot.key, ujson.write(OutcomeJson.write(outcome)))
+
+    def dispatch(requests: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit] =
+      edges.dispatch(requests).map { _ =>
+        requests.foreach { q =>
+          sent = sent :+ q
+          serve(q) match {
+            case Serve.Never => ()
+            case Serve.Claimed => val _ = edges.claimAs(registration, q)
+            case Serve.Later(o) =>
+              if (edges.claimAs(registration, q)) later = later.updated(q.slot, o)
+            case Serve.Now(o) => if (edges.claimAs(registration, q)) tell(q, o)
+          }
+        }
+      }
+
+    def settle(slot: CallSlot)(using Tx^): Either[StoreError, grit.core.edge.RequestState] =
+      edges.settle(slot).map { state =>
+        later.get(slot).foreach { o =>
+          later = later - slot
+          sent.find(_.slot == slot).foreach(tell(_, o))
+        }
+        state
+      }
+
+    def abandon(slot: CallSlot)(using Tx^): Either[StoreError, grit.core.edge.RequestState] =
+      edges.abandon(slot)
+  }
+
+  /** The turn's workflow body over `entries` and `provider`, its hosted calls sent through
+    * `served`, its model offered `hosted` where the edge serves them, its tool sets kept in
+    * `toolSets`, for at most `calls` model calls.
+    */
+  def hostedBody(
+      entries: EntryStore,
+      provider: Provider^,
+      served: Served,
+      hosted: Vector[Tool.Offered] = hostedTools,
+      toolSets: InMemoryToolSets = ToolSets,
+      calls: Int = 5
+  )(id: WorkflowId)(using Durable^): String = {
+    val conversations = new InMemoryConversationStore
+    conversations.findOrCreate(origin, PrincipalId.Local)(using TestTx.fake)
+    Turn.body(
+      TurnEnv(
+        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, new InMemoryModelProfileStore),
+        TurnHosting(conversations, Prompts, toolSets, served, served.edges),
+        new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
+        NoClassifier,
+        new FixedModels(provider, new StubProvider()),
+        FakeDb,
+        new NoWait,
+        Fresh.random()
+      ),
+      TurnTooling[{}](
+        Toolbox.of[{}]().fold(d => throw new java.lang.AssertionError(d), identity),
+        hosted,
+        new FakeJot,
+        budget(calls)
+      )
+    )(id)
+  }
+
+  /** The rows the `offer` step among `steps` names, from the fixture stores: its tool set
+    * and prompt fragments, as a history keeps them ([[grit.core.durable.History.kept]]).
+    */
+  def keptBy(steps: Vector[InMemoryDurable.Step]): ujson.Obj = {
+    val offered = steps.collectFirst {
+      case InMemoryDurable.Step(Turn.Step.Offer, InMemoryDurable.Outcome.Output(out)) => ujson.read(out)
+    }
+    val ok = offered.flatMap(_.objOpt).flatMap(_.get("ok")).flatMap(_.objOpt)
+    val set = ok.flatMap(_.get("tools")).flatMap(_.strOpt).flatMap(id => ToolSets.sets.find(s => grit.core.tool.ToolSetId.value(s.id) == id))
+    val ids = ok.flatMap(_.get("prompt")).flatMap(_.arrOpt).fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt))
+    val fragments = ids.flatMap(id => Prompts.fragments.find(f => grit.core.prompt.FragmentId.value(f.id) == id))
+    if (offered.isEmpty) ujson.Obj()
+    else
+      ujson.Obj(
+        "toolSets" -> ujson.Arr.from(set.toVector.map(ToolSet.write)),
+        "fragments" -> ujson.Arr.from(fragments.map(Fragment.write))
+      )
+  }
+
+  /** Keeps in the fixture stores the rows a history holds ([[keptBy]]'s form). */
+  def keepAll(kept: ujson.Obj): Either[String, Unit] = {
+    val sets = kept.value.get("toolSets").flatMap(_.arrOpt).fold(Vector.empty[ujson.Value])(_.toVector)
+    val fragments = kept.value.get("fragments").flatMap(_.arrOpt).fold(Vector.empty[ujson.Value])(_.toVector)
+    for {
+      read <- sets.foldLeft[Either[String, Vector[ToolSet]]](Right(Vector.empty))((acc, v) => acc.flatMap(d => ToolSet.read(v).map(d :+ _)))
+      frags <- fragments.foldLeft[Either[String, Vector[Fragment]]](Right(Vector.empty)) { (acc, v) =>
+        acc.flatMap { d =>
+          (for {
+            o <- v.objOpt
+            layer <- o.get("layer").flatMap(_.strOpt).flatMap(grit.core.prompt.Layer.of)
+            source <- o.get("source").flatMap(_.strOpt)
+            text <- o.get("text").flatMap(_.strOpt)
+          } yield Fragment(layer, source, text)).map(d :+ _).toRight("a kept fragment does not read")
+        }
+      }
+    } yield {
+      read.foreach(ToolSets.keep(_)(using TestTx.fake))
+      Prompts.keep(frags)(using TestTx.fake)
+      ()
+    }
+  }
+
   /** `calls` model calls as a turn's budget. */
   def budget(calls: Int): TurnLoop.Budget =
     TurnLoop.Budget.of(calls).fold(why => throw new java.lang.AssertionError(why), identity)
@@ -381,8 +573,8 @@ object TurnFixtures {
   )(using Durable^): String =
     Turn.body(
       TurnEnv(
-        system,
         TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore),
+        hosting(),
         assembler,
         NoClassifier,
         new FixedModels(provider, new StubProvider()),
@@ -390,7 +582,7 @@ object TurnFixtures {
         new NoWait,
         Fresh.random()
       ),
-      TurnTooling.ReadOnly(NoCheckout, FakeDb, noTools, new FakeJot, budget(5))
+      TurnTooling[{NoCheckout}](noTools, Vector.empty, new FakeJot, budget(5))
     )(id)
 
   /** The stub classifier, counting the questions it was asked, call by call. */
@@ -451,12 +643,13 @@ object TurnFixtures {
       ws: Workspace^,
       tools: Toolbox[{ws}],
       calls: Int,
-      clock: Clock^ = new NoWait
+      clock: Clock^ = new NoWait,
+      hosted: Vector[Tool.Offered] = Vector.empty
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
-        system,
         TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore),
+        hosting(),
         new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
         classifier,
         new FixedModels(provider, summarizer),
@@ -464,7 +657,7 @@ object TurnFixtures {
         clock,
         Fresh.random()
       ),
-      TurnTooling.ReadOnly(ws, FakeDb, tools, new FakeJot, budget(calls))
+      TurnTooling[{ws}](tools, hosted, new FakeJot, budget(calls))
     )(id)
 
   /** The turn's workflow body over `entries`, its models `models` and its profile kept in
@@ -480,8 +673,8 @@ object TurnFixtures {
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
-        system,
         TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, profiles),
+        hosting(),
         new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
         models,
@@ -489,7 +682,7 @@ object TurnFixtures {
         new NoWait,
         Fresh.random()
       ),
-      TurnTooling.ReadOnly(ws, FakeDb, tools, new FakeJot, budget(calls))
+      TurnTooling[{ws}](tools, Vector.empty, new FakeJot, budget(calls))
     )(id)
 
   def runTurn(

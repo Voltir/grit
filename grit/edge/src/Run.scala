@@ -31,10 +31,15 @@ object Run {
         case Left(error) => error.outcome
         case Right(free: Bound.Free) =>
           if (request.permit == Permit.Free) free()
-          else Outcome.Failed(s"${ToolName.value(request.tool)} does not ask first here; it did not run.")
+          else
+            Outcome.Failed(
+              s"${ToolName.value(request.tool)} does not ask first here; it did not run."
+            )
         case Right(gated: Bound.Gated) =>
           if (request.permit == Permit.Approved) gated(Approval.Approved)
           else Outcome.Failed(s"${ToolName.value(request.tool)} asks first here; it did not run.")
+        case Right(_: Bound.Hosted) =>
+          Outcome.Failed(s"${ToolName.value(request.tool)} is not run here; it did not run.")
       }
     }
 }

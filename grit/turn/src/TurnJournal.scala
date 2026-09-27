@@ -2,10 +2,14 @@ package grit.turn
 
 import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
+import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{CatalogJson, TurnProfile}
+import grit.core.place.Place
+import grit.core.prompt.FragmentId
 import grit.core.store.{Nearby, Payload, PayloadJson}
+import grit.core.tool.ToolSetId
 import grit.core.topic.{TopicId, TopicJson}
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
@@ -212,6 +216,72 @@ private[turn] object TurnJournal {
   /** A turn's pinned profile, in its stored form ([[CatalogJson.writeTurn]]). */
   given profile: Journaled[Either[TurnFailure, TurnProfile]] =
     outcome(CatalogJson.writeTurn, CatalogJson.readTurn)
+
+  /** An `offer` step's output: `{"workspace": place written | null, "tools": set id,
+    * "prompt": [fragment ids]}`. References only: the texts are kept by id.
+    */
+  given recordedOffer: Journaled[Either[TurnFailure, TurnOffer.Recorded]] =
+    outcome(
+      r =>
+        ujson.Obj(
+          "workspace" -> r.workspace.fold[ujson.Value](ujson.Null)(p => ujson.Str(p.written)),
+          "tools" -> ToolSetId.value(r.tools),
+          "prompt" -> ujson.Arr.from(r.prompt.map(id => ujson.Str(FragmentId.value(id))))
+        ),
+      v =>
+        for {
+          o <- v.objOpt.toRight("offer: expected an object")
+          workspace <- o.get("workspace") match {
+            case Some(ujson.Null) | None => Right(None)
+            case Some(w) =>
+              w.strOpt.toRight("offer: workspace is not a string").flatMap(Place.read).map(Some(_))
+          }
+          tools <- o.get("tools").flatMap(_.strOpt).toRight("offer: no tools").flatMap(ToolSetId.of)
+          prompt <- o
+            .get("prompt")
+            .flatMap(_.arrOpt)
+            .toRight("offer: no prompt")
+            .flatMap(_.toVector.foldLeft[Either[String, Vector[FragmentId]]](Right(Vector.empty)) {
+              (acc, id) =>
+                acc.flatMap(done =>
+                  id.strOpt
+                    .toRight("offer: an id is not a string")
+                    .flatMap(FragmentId.of)
+                    .map(done :+ _)
+                )
+            })
+        } yield TurnOffer.Recorded(workspace, tools, prompt)
+    )
+
+  /** A `dispatch` step's output: whether its requests were sent to a serving edge (`true`),
+    * or no edge was serving the workspace (`false`).
+    */
+  given dispatchedTo: Journaled[Either[TurnFailure, Boolean]] =
+    outcome(b => ujson.Bool(b), v => v.boolOpt.toRight("sent: expected a boolean"))
+
+  /** An `expire` or `abandon` step's output: `"expired"`, `"claimed"`, or `{"answered":
+    * outcome}` ([[OutcomeJson]]).
+    */
+  given requestState: Journaled[Either[TurnFailure, RequestState]] =
+    outcome(
+      {
+        case RequestState.Expired => ujson.Str("expired")
+        case RequestState.Claimed => ujson.Str("claimed")
+        case RequestState.Answered(o) => ujson.Obj("answered" -> OutcomeJson.write(o))
+      },
+      v =>
+        v.strOpt match {
+          case Some("expired") => Right(RequestState.Expired)
+          case Some("claimed") => Right(RequestState.Claimed)
+          case Some(other) => Left(s"standing: no state $other")
+          case None =>
+            v.objOpt
+              .flatMap(_.get("answered"))
+              .toRight("standing: expected a state")
+              .flatMap(OutcomeJson.read)
+              .map(RequestState.Answered(_))
+        }
+    )
 
   private def outcome[A](
       write: A -> ujson.Value,

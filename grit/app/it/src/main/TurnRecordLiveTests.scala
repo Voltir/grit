@@ -29,9 +29,9 @@ object TurnRecordLiveTests extends TestSuite {
         steps.map(_.name) ==>
           Turn.Step.all
             .filterNot(Turn.Step.optional.contains)
-            .patch(1, Vector(s"DBOS.patch-${Turn.Patches.Topics}"), 0)
-            .patch(5, Vector(s"DBOS.patch-${Turn.Patches.RecordWindow}"), 0)
-            .patch(7, Vector(s"DBOS.patch-${Turn.Patches.Tools}"), 0)
+            .patch(2, Vector(s"DBOS.patch-${Turn.Patches.Topics}"), 0)
+            .patch(6, Vector(s"DBOS.patch-${Turn.Patches.RecordWindow}"), 0)
+            .patch(8, Vector(s"DBOS.patch-${Turn.Patches.Tools}"), 0)
         val own = steps.filter(s => Turn.Step.all.contains(s.name))
         assert(own.forall(s => s.started.zip(s.completed).exists((a, b) => !b.isBefore(a))))
         assert(!engine.status(turn).isInstanceOf[TurnStatus.Running])
@@ -58,11 +58,12 @@ object TurnRecordLiveTests extends TestSuite {
       try {
         val _ = java.nio.file.Files.writeString(root.resolve("notes.txt"), "the answer is 42\n")
         launchIn(engine, engine.entries, new CountingProvider, root)
-        // The stub calls the first tool offered, `read`, with the arguments after #call:.
+        // The stub calls the first tool offered, `read`, with the arguments after #call:. It
+        // is hosted: sent to this process's edge for the checkout, which reads the file.
         val turn = say(engine, """look #call:{"path":"notes.txt"}""")
         val _ = engine.awaitTurn(turn)
         engine.steps(turn).map(_.name).filter(n => n.contains(":") && !n.startsWith("DBOS")) ==>
-          Vector("record-call:0", "tool:0:0", "call-model:1")
+          Vector("record-call:0", "dispatch:0", "tool:0:0", "call-model:1")
         val own = engine.db
           .read(engine.entries.list(turn.conversationId))
           .getOrElse(Vector.empty)

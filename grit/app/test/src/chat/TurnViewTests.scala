@@ -20,6 +20,7 @@ import grit.core.model.{
 }
 import grit.core.period.{Balance, CloseReason, Closing, Flows, Probability}
 import grit.core.place.Place
+import grit.core.prompt.{Fragment, Layer, SystemPrompt}
 import grit.core.store.{Entry, Nearby, Payload, UsageLedger}
 import grit.dbos.engine.RecordedStep
 import grit.turn.Turn
@@ -30,6 +31,10 @@ import utest.*
 object TurnViewTests extends TestSuite {
 
   private val c = ConversationId("c")
+
+  /** A prompt of one base fragment, `text`. */
+  private def prompt(text: String): Option[SystemPrompt] =
+    Some(SystemPrompt.of(Vector(Fragment(Layer.Base, Fragment.Grit, text))))
 
   private def entry(seq: Long, turn: Long, payload: Payload): Entry =
     Entry(EntryId(s"e$seq"), c, TurnSeq(turn), None, seq, payload, Instant.EPOCH)
@@ -99,7 +104,15 @@ object TurnViewTests extends TestSuite {
         )
       )
       val v =
-        TurnView.of(turn2, entries, steps, running = false, costs, "You are grit.", CharEstimate)
+        TurnView.of(
+          turn2,
+          entries,
+          steps,
+          running = false,
+          costs,
+          prompt("You are grit."),
+          CharEstimate
+        )
       v.turn ==> TurnSeq(2)
       v.steps ==> Vector(
         TurnView.Step("assemble", Some(400)),
@@ -109,7 +122,9 @@ object TurnViewTests extends TestSuite {
       v.spent ==> Some(Cost.Exact(BigDecimal("0.0003")))
       val unpriced =
         costs.map(r => r.copy(usage = r.usage.copy(costUsd = None))).take(1) ++ costs.drop(1)
-      TurnView.of(turn2, entries, steps, running = false, unpriced, "s", CharEstimate).spent ==>
+      TurnView
+        .of(turn2, entries, steps, running = false, unpriced, prompt("s"), CharEstimate)
+        .spent ==>
         Some(Cost.AtLeast(BigDecimal("0.0002")))
       v.billed ==> Some(Tokens(99))
       val w = v.window.getOrElse(sys.error("no window"))
@@ -143,7 +158,7 @@ object TurnViewTests extends TestSuite {
           Vector.empty,
           running = false,
           Vector.empty,
-          "s",
+          prompt("s"),
           CharEstimate
         )
         .window
@@ -199,7 +214,7 @@ object TurnViewTests extends TestSuite {
           Vector.empty,
           running = false,
           Vector.empty,
-          "s",
+          prompt("s"),
           CharEstimate,
           None,
           fromApi ++ fromWeb
@@ -254,7 +269,7 @@ object TurnViewTests extends TestSuite {
         Vector.empty,
         running = false,
         Vector.empty,
-        "s",
+        prompt("s"),
         CharEstimate,
         Some(pinned)
       )
@@ -279,14 +294,14 @@ object TurnViewTests extends TestSuite {
           Vector.empty,
           running = false,
           Vector.empty,
-          "s",
+          prompt("s"),
           CharEstimate,
           Some(bare)
         )
         .models ==>
         Some(TurnView.Models(Vector("model" -> oss), profiled = false, None))
       TurnView
-        .of(turn2, entries, Vector.empty, running = false, Vector.empty, "s", CharEstimate)
+        .of(turn2, entries, Vector.empty, running = false, Vector.empty, prompt("s"), CharEstimate)
         .models ==> None
     }
 
@@ -297,7 +312,7 @@ object TurnViewTests extends TestSuite {
         steps.map(step(_, 0, 1)),
         running,
         Vector.empty,
-        "s",
+        prompt("s"),
         CharEstimate
       )
       val summarised = Vector("assemble", "call-model", Turn.Step.AppendSummary)
@@ -311,7 +326,15 @@ object TurnViewTests extends TestSuite {
     test("a person's wait is its own step, timed from the ask to the answer") {
       val asked = Vector(step("record-call:0", 0, 10), step("ask:0:0", 10, 20))
       def of(steps: Vector[RecordedStep]) =
-        TurnView.of(turn2, entries.take(5), steps, running = true, Vector.empty, "s", CharEstimate)
+        TurnView.of(
+          turn2,
+          entries.take(5),
+          steps,
+          running = true,
+          Vector.empty,
+          prompt("s"),
+          CharEstimate
+        )
       // DBOS records the wait's end as it begins; the wait itself only when it ends.
       val waiting = of(asked :+ step("DBOS.sleep", 21, 21))
       waiting.running ==> Some("wait:0:0")
@@ -333,7 +356,7 @@ object TurnViewTests extends TestSuite {
         Vector(step("assemble", 0, 10)),
         running = true,
         Vector.empty,
-        "s",
+        prompt("s"),
         CharEstimate
       )
       v.running ==> Some("record-window")

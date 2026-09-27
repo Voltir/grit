@@ -130,9 +130,10 @@ only a nested `step`.
 - *Cause:* a field typed `Workspace^` gets a capture set of its own in each value's
   refined type, and the declared type of the value that carries it has lost it.
 - *Fix:* construct the value inline where it is passed; pass its parts, not the value. Or
-  pass it as a supertype none of whose members holds a capability: `TurnTooling` is a
-  sealed trait whose cases hold them, so `Main` builds a `TurnTooling.ReadOnly` inline and
-  hands it on as a `TurnTooling^`.
+  pass it as a supertype none of whose members holds a capability. Or tie the capabilities
+  to a capture-set parameter the value's type names: `TurnTooling[C^]` holds a
+  `Toolbox[C]`, and `Main` builds a `TurnTooling[{facts, models, store}]` inline and hands
+  it to `Turn.body[C^]`.
 
 **An abstract capability member, implemented by a case-class field.**
 
@@ -140,8 +141,8 @@ only a nested `step`.
   jot of type Jot^ has incompatible type`.
 - *Cause:* a `def jot: Jot^` result is a fresh root capability, which no field's `^`
   matches.
-- *Fix:* leave the member off the trait and read it from the case the code has matched
-  (`TurnTooling`'s `jot`, read by `Turn.loop` from `ReadOnly` or `Full`).
+- *Fix:* leave the member off the trait and read it from the case the code has matched; or
+  make the holder a case class whose field it is (`TurnTooling`'s `jot`).
 
 **A tupled lambda over a nested `Vector`.** Under separation checking,
 `turns.zipWithIndex.flatMap((turn, t) => …)` over a `Vector[Vector[A]]` is rejected:
@@ -262,6 +263,16 @@ gets a capture-set variable, the trap above. Bind the inner `Args` to a `val` fi
 a diagnostic. The inferred result type mentions `{book}`, a parameter of the method it
 escapes. Build the value where the capability is a local `val` instead (`FactsTests`), or
 give the helper an explicit result type that does not name the parameter.
+
+**A generic call of `Toolbox.bind` from another file of `grit.core`.**
+
+- *Symptom:* a clean compile of `grit.core` fails inside `Toolbox.bind` itself: *"Reference
+  `C` is not included in the allowed capture set 's1 of the enclosing method bind in class
+  Toolbox"*. An incremental compile of the same sources passes, so a green test run proves
+  nothing; `./mill clean grit.core.compile` shows it.
+- *Cause:* not known; it appeared when `grit.core.edge` called `tools.bind` from a method
+  generic in `C^`, compiled in the same run as `Toolbox`.
+- *Fix:* call `bind` from another module: running a request is `grit.edge.Run.request`.
 
 **`-Wunused` on a default method.** A parameter a default `def` ignores warns where the
 `_` of a lambda never did. Mark it `@unused`.

@@ -229,12 +229,12 @@ object CollectorLiveTests extends TestSuite {
       }
     }
 
-  /** How many usage rows are kept for `entries`, and profiles for `turns`. */
+  /** How many usage rows are kept for `entries`, and profiles and prompts for `turns`. */
   private def ledgered(
       config: DbConfig,
       entries: Vector[String],
       turns: Vector[WorkflowId]
-  ): (Int, Int) =
+  ): (Int, Int, Int) =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       def count(sql: String, keys: Vector[String]): Int =
@@ -250,6 +250,10 @@ object CollectorLiveTests extends TestSuite {
         count(
           "SELECT count(*) FROM grit.turn_model_profiles WHERE workflow_id IN (SELECT jsonb_array_elements_text(?::jsonb))",
           turns.map(WorkflowId.value)
+        ),
+        count(
+          "SELECT count(*) FROM grit.turn_prompts WHERE workflow_id IN (SELECT jsonb_array_elements_text(?::jsonb))",
+          turns.map(WorkflowId.value)
         )
       )
     }
@@ -264,6 +268,12 @@ object CollectorLiveTests extends TestSuite {
         _ <- new SqlUsageLedger().record(EntryId(entry), turn, workflow, "m", usage, Tokens(1))
         _ <- new SqlModelProfileStore()
           .pin(turn.workflowId, Catalog.of(Policy(a, a, a), Vector.empty).pin)
+        _ <- new grit.dbos.sql.SqlPromptStore().record(
+          turn.workflowId,
+          grit.core.prompt.SystemPrompt.of(
+            Vector(grit.core.prompt.Fragment(grit.core.prompt.Layer.Base, "grit", "You are grit."))
+          )
+        )
       } yield ()
     } ==> Right(())
   }
@@ -387,7 +397,7 @@ object CollectorLiveTests extends TestSuite {
         val later = Instant.now().plusSeconds(180)
         engine.sweep(later).map(_.collected) ==> Right(Vector(Target.Raw(p1)))
         // Usage goes with the closing, not the raw entries.
-        ledgered(config, Vector("u0"), Vector(t0.workflowId)) ==> (1, 1)
+        ledgered(config, Vector("u0"), Vector(t0.workflowId)) ==> (1, 1, 1)
         kept(config, Vector(t0.workflowId)) ==> Vector(0, 0)
         kept(config, workflows) ==> Vector(0, 0)
         LiveDb
@@ -525,7 +535,7 @@ object CollectorLiveTests extends TestSuite {
     }
 
     test(
-      "a superseded closing goes with its row, its turns' usage and profiles and its close's cost; the latest stays"
+      "a superseded closing goes with its row, its turns' usage, profiles and prompts and its close's cost; the latest stays"
     ) {
       val config = TestPostgres.freshDatabase("collect_superseded")
       val engine = LiveEngine.open(config, "test")
@@ -577,10 +587,12 @@ object CollectorLiveTests extends TestSuite {
           )
         ledgered(config, Vector("u0", EntryId.value(p1.closingId)), Vector(t0.workflowId)) ==> (
           0,
+          0,
           0
         )
         ledgered(config, Vector("u1", EntryId.value(p2.closingId)), Vector(t1.workflowId)) ==> (
           2,
+          1,
           1
         )
         LiveDb.transaction(config)(new SqlPluginDocs(cached).newest("", 10)).map(_.map(_._1)) ==>
@@ -619,7 +631,7 @@ object CollectorLiveTests extends TestSuite {
           )
         kept(config, quiet.conversationId) ==> (false, 1)
         kept(config, busy.conversationId) ==> (true, 1)
-        ledgered(config, Vector("u-quiet"), Vector(quiet.workflowId)) ==> (0, 0)
+        ledgered(config, Vector("u-quiet"), Vector(quiet.workflowId)) ==> (0, 0, 0)
 
         val q2 = PeriodRef(busy.conversationId, PeriodSeq.First.next)
         // That sweep found it due, and enqueued its close.

@@ -84,7 +84,8 @@ In dependency order:
 - **`tool`** — tools as typed data: `Field`, `Args` (read into a named tuple), `ArgsError`,
   `ToolName` and `ToolSpec`, from which come the schema the model is shown (a
   `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, how a call is
-  shown in one line, and what it does, capture-tracked), `Retry` (whether a call cut short is run again or answered `Interrupted`), `ToolSet`
+  shown in one line, and what it does, capture-tracked), `Hosted` (a tool's description without its run: offered by the engine, run by an edge),
+  `Retry` (whether a call cut short is run again or answered `Interrupted`), `ToolSet`
   (a turn's tools as recorded, by content id) and `ToolSets` (where each is kept), `Toolbox` (the tools offered on one call, which `bind` a
   call to a `Bound` or a `CallError`: `Bound.Free` runs, `Bound.Gated` runs only given an
   `Approval`), `Repairs` (what of a call is repaired before it is read, as the pair's

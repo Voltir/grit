@@ -101,6 +101,33 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory {
     new InMemoryEdges.Fake(this, Registration(edge, principal, places), sessions)
   }
 
+  /** A live edge for `principal` hosting `places`, without a desk: [[claimAs]], [[answerAs]]
+    * and [[advertiseAs]] act as its desk would.
+    */
+  def register(places: Set[Place], principal: PrincipalId = PrincipalId.Local): Registration = {
+    sessions += 1
+    val edge = EdgeId(f"edge-$sessions%04d")
+    live = live.updated(edge, sessions)
+    Registration(edge, principal, places)
+  }
+
+  /** `q` claimed for `reg`'s live session, as its desk would; whether the claim won. */
+  def claimAs(reg: Registration, q: ToolRequest): Boolean =
+    live.get(reg.edge).exists(session => claim(reg, session, q))
+
+  /** The request at `slot` answered by `reg`'s live session, as its desk would. */
+  def answerAs(reg: Registration, slot: CallSlot, outcome: Outcome): Boolean =
+    live.get(reg.edge).exists(session => answer(reg, session, slot, outcome))
+
+  /** What `reg`'s edge offers in `place`, as its desk would advertise it. */
+  def advertiseAs(
+      reg: Registration,
+      place: Place,
+      tools: ToolSet,
+      fragments: Vector[Fragment]
+  ): Unit =
+    advertise(reg, place, tools, fragments)
+
   /** Ends `edge` as a crash would: it is no longer live. */
   def kill(edge: EdgeId): Unit = live = live - edge
 

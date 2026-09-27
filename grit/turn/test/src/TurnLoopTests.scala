@@ -51,7 +51,11 @@ object TurnLoopTests extends TestSuite {
       replies.lift(round.index).getOrElse(Left(TurnFailure.Model("no reply scripted")))
     }
 
-    def record(round: Round, reply: Message.Assistant): Either[TurnFailure, Unit] = {
+    def record(
+        round: Round,
+        reply: Message.Assistant,
+        calls: Vector[Pending]
+    ): Either[TurnFailure, Unit] = {
       made = made :+ s"record ${round.index}"
       recorded
     }

@@ -18,6 +18,7 @@ import grit.core.tool.{
   DuplicateName,
   Field,
   Gate,
+  Hosted,
   Outcome,
   Retry,
   Tool,
@@ -53,6 +54,15 @@ object Coding {
     */
   val Preview = 12
 
+  /** Every tool as the engine offers it, in the order [[all]] offers them: described, never
+    * run. An edge runs them.
+    */
+  lazy val hosted: Vector[Tool.Offered] =
+    Vector(readHosted, listHosted, searchHosted, writeHosted, editHosted, runHosted)
+
+  /** The first three of [[hosted]]: those that only read. */
+  lazy val readOnlyHosted: Vector[Tool.Offered] = Vector(readHosted, listHosted, searchHosted)
+
   /** `read`, `list` and `search`; `Left` names a tool offered twice. */
   def readOnly(ws: Workspace^): Either[DuplicateName, Toolbox[{ws}]] =
     Toolbox.of(read(ws), list(ws), search(ws))
@@ -67,8 +77,9 @@ object Coding {
   ): Either[DuplicateName, Toolbox[{ws, edits, shell}]] =
     Toolbox.of(read(ws), list(ws), search(ws), write(edits), edit(edits), run(shell))
 
-  def read(ws: Workspace^): Tool[ReadArgs]^{ws} =
-    new Tool(
+  /** `read` as the engine offers it: an edge runs it ([[read]]). */
+  lazy val readHosted: Hosted[ReadArgs] =
+    new Hosted(
       ToolSpec(
         ToolName("read"),
         "Read a UTF-8 text file in the checkout. Shows at most " + limits + ", from " +
@@ -91,13 +102,18 @@ object Coding {
         retry = Retry.Rerun
       ),
       Gate.Free,
-      a => RelPath.value(a.path) + a.offset.fold("")(o => s":$o"),
+      a => RelPath.value(a.path) + a.offset.fold("")(o => s":$o")
+    )
+
+  def read(ws: Workspace^): Tool[ReadArgs]^{ws} =
+    readHosted.over(
       a =>
         outcome(ws.read(a.path, Lines.of(a.offset.getOrElse(1), a.limit)))(c => c.show)
     )
 
-  def list(ws: Workspace^): Tool[ListArgs]^{ws} =
-    new Tool(
+  /** `list` as the engine offers it: an edge runs it ([[list]]). */
+  lazy val listHosted: Hosted[ListArgs] =
+    new Hosted(
       ToolSpec(
         ToolName("list"),
         "List the files and directories under a directory of the checkout, as paths " +
@@ -119,12 +135,17 @@ object Coding {
         retry = Retry.Rerun
       ),
       Gate.Free,
-      a => RelPath.value(a.path),
+      a => RelPath.value(a.path)
+    )
+
+  def list(ws: Workspace^): Tool[ListArgs]^{ws} =
+    listHosted.over(
       a => outcome(ws.list(a.path, a.depth))(_.show)
     )
 
-  def search(ws: Workspace^): Tool[SearchArgs]^{ws} =
-    new Tool(
+  /** `search` as the engine offers it: an edge runs it ([[search]]). */
+  lazy val searchHosted: Hosted[SearchArgs] =
+    new Hosted(
       ToolSpec(
         ToolName("search"),
         "Find the lines matching a Java regular expression in the files under a path of " +
@@ -147,12 +168,17 @@ object Coding {
         retry = Retry.Rerun
       ),
       Gate.Free,
-      a => s"\"${a.pattern}\" ${RelPath.value(a.path)}",
+      a => s"\"${a.pattern}\" ${RelPath.value(a.path)}"
+    )
+
+  def search(ws: Workspace^): Tool[SearchArgs]^{ws} =
+    searchHosted.over(
       a => outcome(ws.search(a.pattern, a.path))(_.show)
     )
 
-  def write(edits: Edits^): Tool[WriteArgs]^{edits} =
-    new Tool(
+  /** `write` as the engine offers it: an edge runs it ([[write]]). */
+  lazy val writeHosted: Hosted[WriteArgs] =
+    new Hosted(
       ToolSpec(
         ToolName("write"),
         "Make `content` the whole of a file in the checkout, creating it and any missing " +
@@ -177,15 +203,20 @@ object Coding {
         s"Write ${RelPath.value(a.path)} (${count(lines.size, "line")}):\n" +
           preview(lines, "+ ")
       }),
-      a => RelPath.value(a.path),
+      a => RelPath.value(a.path)
+    )
+
+  def write(edits: Edits^): Tool[WriteArgs]^{edits} =
+    writeHosted.over(
       a =>
         outcome(edits.write(a.path, a.content))(_ =>
           s"Wrote ${RelPath.value(a.path)}: ${count(Clipped.lines(a.content).size, "line")}."
         )
     )
 
-  def edit(edits: Edits^): Tool[EditArgs]^{edits} =
-    new Tool(
+  /** `edit` as the engine offers it: an edge runs it ([[edit]]). */
+  lazy val editHosted: Hosted[EditArgs] =
+    new Hosted(
       ToolSpec(
         ToolName("edit"),
         "Change a file in the checkout by replacing passages of it. Every `oldText` is " +
@@ -225,7 +256,11 @@ object Coding {
         s"Edit ${RelPath.value(a.path)} (${count(a.edits.size, "replacement")}):\n" +
           shown.mkString("\n")
       }),
-      a => RelPath.value(a.path),
+      a => RelPath.value(a.path)
+    )
+
+  def edit(edits: Edits^): Tool[EditArgs]^{edits} =
+    editHosted.over(
       a =>
         edits.edit(a.path, a.edits) match {
           case Left(error) => Outcome.Failed(error.message)
@@ -238,8 +273,9 @@ object Coding {
         }
     )
 
-  def run(shell: Shell^): Tool[RunArgs]^{shell} =
-    new Tool(
+  /** `run` as the engine offers it: an edge runs it ([[run]]). */
+  lazy val runHosted: Hosted[RunArgs] =
+    new Hosted(
       ToolSpec(
         ToolName("run"),
         "Run a shell command (sh -c) in the checkout's root, with nothing on its input, " +
@@ -266,7 +302,11 @@ object Coding {
           )
       ),
       Gate.Ask(a => s"Run in the checkout (timeout ${a.timeout.toSeconds} s):\n${a.command}"),
-      a => a.command,
+      a => a.command
+    )
+
+  def run(shell: Shell^): Tool[RunArgs]^{shell} =
+    runHosted.over(
       a =>
         outcome(shell.run(a.command, a.timeout)) { ran =>
           val out = ran.output.show
