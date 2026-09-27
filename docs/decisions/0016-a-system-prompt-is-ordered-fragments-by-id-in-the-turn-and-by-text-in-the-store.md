@@ -1,6 +1,6 @@
 # 0016. A system prompt is ordered fragments: by id in the turn, by text in the store
 
-Status: accepted (2026-09-27), revised (2026-09-27)
+Status: accepted (2026-09-27), revised (2026-09-27, twice)
 
 Context: the system prompt was one string written in `Main`, and the one model input that
 was not in the store: nothing showed what a turn was sent, and nothing but the code said
@@ -32,6 +32,17 @@ Decision:
 - **grit labels what it writes into a window.** Each message grit writes begins with a
   label naming its author (`[record]`, `[afar]`, `[gap]`), defined once in `Shown` and
   taught by Base, whose legend is written from the same labels.
+- **In text grit did not write, a label that starts a line is neutralised at assembly.**
+  That text is a person's message, a message shown from elsewhere, or a tool result.
+  - In a message, the text from the first label line to its end is shown as a quoted
+    paste, under a lead-in saying grit did not deliver it, with its labels broken.
+  - In a tool result, the content is kept byte-exact under one lead-in line. That line
+    marks the result; it does not defend it: gpt-oss-120b believed a forged policy in a
+    file 6 of 6 times under it. Content injection through tool results stays open.
+  - Stored entries are never changed; `Shown` does this where the request is built.
+  - Why: the prompt cannot defend the labels. In four measurements, no placement or legend
+    stopped a forged `[record]` being believed. The rendering did: a quoted paste
+    under a neutral lead-in took belief from 6/6 to 0/6.
 - **The Place layer is data from the place, never grit's own words.** It is the place's
   `AGENTS.md`, else its `CLAUDE.md` (never both), per directory from `/` down, the nearest
   last, verbatim under one heading naming the file. It is bounded (`PlaceFragments`): the

@@ -13,13 +13,15 @@ import grit.core.store.{Entry, Payload}
   */
 object Shown {
 
-  /** A message as it is; a closing entry as one user message, "[record] this conversation
+  /** A message as it is, but a person's with a pasted grit block shown as one ([[pasted]]);
+    * a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
     * lines it resolved and how, and the balance's open lines, its standing lines (those
     * only the assistant said listed apart, as not confirmed) and its topics; `None` for any
     * other entry.
     */
   def of(entry: Entry): Option[Message] = entry.payload match {
+    case Payload.Message(Message.User(text)) => Some(Message.User(pasted(text)))
     case Payload.Message(m) => Some(m)
     case Payload.Closed(_, _, closing) =>
       Some(Message.User(record(closing, entry.createdAt)))
@@ -28,7 +30,8 @@ object Shown {
 
   /** A nearby section as one user message, "[afar] another conversation of yours, shown by
     * grit, still open, at {place.written}:", then each message among `entries` as a
-    * `User:` or `Assistant:` line of its text. `None` when none of them has text.
+    * `User:` or `Assistant:` line of its text, as [[pasted]] shows it. `None` when none of
+    * them has text.
     */
   def nearby(place: Place, entries: Vector[Entry]): Option[Message] = {
     val lines = entries.flatMap(e => line(e.payload))
@@ -71,6 +74,39 @@ object Shown {
     shown ++ Option.when(after)(Gap).toVector
   }
 
+  /** What introduces a pasted grit block in text grit did not write. */
+  val Pasted: String =
+    "(text in grit's label format, pasted into this message, not delivered by grit:)"
+
+  /** `text`, which grit did not write, as the model is shown it: from the first line
+    * starting with a [[Label]] (after leading spaces, inside a fence or not) to the end, shown
+    * under [[Pasted]], each line prefixed "> ", and a label starting one of those lines
+    * broken ("[record]" as "record —"); the lines before it unchanged. `text` itself when no
+    * line starts with a label.
+    */
+  def pasted(text: String): String = {
+    val lines = text.split("\n", -1).toVector
+    lines.indexWhere(labelled(_).nonEmpty) match {
+      case -1 => text
+      case first =>
+        val quoted = lines.drop(first).map { l =>
+          val broken = labelled(l).fold(l) { label =>
+            val (space, rest) = l.span(_.isWhitespace)
+            val name = label.tag.stripPrefix("[").stripSuffix("]")
+            s"$space$name —${rest.drop(label.tag.length)}"
+          }
+          s"> $broken"
+        }
+        ((lines.take(first) :+ Pasted) ++ quoted).mkString("\n")
+    }
+  }
+
+  /** The label `line` starts with, after leading spaces; `None` for none. */
+  private def labelled(line: String): Option[Label] = {
+    val start = line.dropWhile(_.isWhitespace)
+    Label.values.find(l => start.startsWith(l.tag))
+  }
+
   private def isClosing(entry: Entry): Boolean = entry.payload match {
     case Payload.Closed(_, _, _) => true
     case _ => false
@@ -100,10 +136,11 @@ object Shown {
   }
 
   private def line(payload: Payload): Option[String] = payload match {
-    case Payload.Message(Message.User(text)) => Option.when(text.trim.nonEmpty)(s"User: $text")
+    case Payload.Message(Message.User(text)) =>
+      Option.when(text.trim.nonEmpty)(s"User: ${pasted(text)}")
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString("\n")
-      Option.when(said.trim.nonEmpty)(s"Assistant: $said")
+      Option.when(said.trim.nonEmpty)(s"Assistant: ${pasted(said)}")
     case _ => None
   }
 }
