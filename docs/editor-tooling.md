@@ -54,15 +54,42 @@ rm -rf .bsp/out/mill-no-daemon/*
 
 `.bloop/` is a leftover from the pre-Mill-BSP setup and is not used.
 
-**grit is on Mill 1.3, which has no BSP lock and no kill-other**, so neither failure below
-can happen here; the wrapper passes Mill ≥ 1.2 through untouched (1.2+ rejects
-`--bspNoKillOther`). The rest of this section is for projects still on Mill 1.0/1.1.
+**One BSP JVM per connection, and it exits when Metals lets go.** With the separate
+output directory (above), a BSP launch is a native launcher and one `MillBspMain` JVM.
+The JVM exits within a second of its stdin closing, whether Metals closes it, cancels the
+connection (SIGTERM, 200ms, SIGKILL on the launcher, then the pipe closes) or exits; a
+second server beside a live one neither waits for it nor kills it. So grit needs no
+wrapper around Mill's BSP launch: Mill 1.0/1.1's BSP lock and kill-other, which made one
+necessary, are gone. Killing only the launcher while the pipe stays open leaves the JVM
+running until the pipe closes.
 
-**If the build server crash-loops (SIGTERM/SIGKILL cycles in `.metals/metals.log`)**, it is the
-Mill 1.0/1.1 BSP kill-other behavior dueling with Metals reconnects — not a build error. A
-global wrapper (`~/.local/bin/mill-bsp-wrapper`, activated via `MILL_EXECUTABLE_PATH` in
-`~/.profile`) injects `--bspNoKillOther` to defuse it, and supervises each BSP server so it
-is killed when its client closes stdin or cancels it: Mill 1.1.x never exits on its own
-then, and waiting servers used to pile up at one JVM per 60s Metals retry. Full
-diagnosis, symptom signatures, and undo instructions in
-[`mill-bsp-nokill-workaround.md`](../mill-bsp-nokill-workaround.md).
+On Metals `1.6.8+57-ee0e9da8-SNAPSHOT`, Metals opened two connections at start, seconds
+apart, and kept the first idle until it exited: one extra ~0.5GB `MillBspMain` per
+Metals session, parented to Metals, is that and not a leak. An orphan is a `MillBspMain`
+whose parent is `/init` or a Metals that is gone. They ignore SIGTERM; `kill -9` them:
+
+```bash
+ps -eo pid,ppid,etime,rss,args | grep '[M]illBspMain' | cut -c1-120
+```
+
+## Metals for grit's own development
+
+**Registering the MCP server.** Metals serves MCP over HTTP; `.mcp.json` registers it for
+Claude Code as `grit-metals`, with the port Metals wrote to `.metals/mcp.json`. The port
+has stayed the same across Metals restarts; if Metals ever picks another, copy the new one
+into `.mcp.json`. `list-modules` is the cheapest check that it answers. What agents use it
+for is in [`CLAUDE.md`](../CLAUDE.md#metals).
+
+**`inspect` ignores `module`.** It resolves the symbol in the target of `fileInFocus`, or,
+without one, in the first build target Metals lists, which need not see the symbol. So
+`inspect {fqcn: "grit.app.chat.Commands", module: "grit.app"}` returns nothing although
+its footer says `Inspected from 'grit.app' module`, and with `fileInFocus` set to
+`grit/app/src/chat/Commands.scala` it lists the object. `get-docs` and `get-usages`
+honour `module`. For a generic class, `inspect` lists only the companion's members; use
+`get-docs`.
+
+**Metals serves this checkout, not a git worktree.** Its `compile-*` and `test` build the
+main checkout's sources. In a worktree, type-check with the narrowest
+`./mill` target, `grit.<module>.compile` or `grit.<module>.test.compile`,
+which answers in about a second on a warm build directory. Metals' read queries are still
+right there for code the worktree's branch has not changed.

@@ -137,7 +137,7 @@ Tests share `GritTests` in `build.mill`, which silences Scala 3.9's false
 other warning is real.
 
 A CLI `./mill` and Metals never block each other (separate build directories). Metals
-spinners, BSP crash loops and build-directory hygiene:
+spinners, BSP processes, build-directory hygiene and Metals' MCP set-up:
 [`docs/editor-tooling.md`](docs/editor-tooling.md).
 
 ## The architecture gate (enola)
