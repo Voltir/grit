@@ -31,7 +31,7 @@ object SqlStoreTests extends StoreContract {
   // Opening an engine applies schema.sql; nothing here launches DBOS.
   private lazy val config = {
     val c = TestPostgres.freshDatabase("sql_store")
-    Engine.open(c, "test").close()
+    LiveEngine.open(c, "test").close()
     c
   }
 

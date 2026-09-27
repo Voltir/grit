@@ -1,7 +1,7 @@
 package grit.app.main
 
 import grit.core.id.EntryId
-import grit.dbos.engine.Engine
+import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.models.StubProvider
 import grit.turn.{Turn, TurnSummary}
@@ -18,7 +18,7 @@ object ProviderOnceLiveTests extends TestSuite {
     test("the same source twice is one turn; started twice and rerun, the provider runs once") {
       val config = TestPostgres.freshDatabase("provider_once")
       val first = new CountingProvider
-      val engine = Engine.open(config, Turn.Epoch)
+      val engine = LiveEngine.open(config, Turn.Epoch)
       val (turn, again, output) =
         try {
           launch(engine, engine.entries, first)
@@ -32,7 +32,7 @@ object ProviderOnceLiveTests extends TestSuite {
 
       // A new engine on the same database: the finished turn is not run again.
       val second = new CountingProvider
-      val restarted = Engine.open(config, Turn.Epoch)
+      val restarted = LiveEngine.open(config, Turn.Epoch)
       val (rerun, text) =
         try {
           launch(restarted, restarted.entries, second)
@@ -70,7 +70,7 @@ object ProviderOnceLiveTests extends TestSuite {
       assert(child.exitCode == CrashingTurn.Halted)
 
       val provider = new CountingProvider
-      val engine = Engine.open(config, Turn.Epoch)
+      val engine = LiveEngine.open(config, Turn.Epoch)
       val (output, text) =
         try {
           launch(engine, engine.entries, provider)

@@ -1,7 +1,7 @@
 package grit.app.main
 
 import grit.core.store.Payload
-import grit.dbos.engine.{Engine, TurnStatus}
+import grit.dbos.engine.{Engine, LiveEngine, TurnStatus}
 import grit.dbos.sql.TestPostgres
 import grit.models.StubProvider
 import grit.turn.{Turn, TurnStream}
@@ -17,7 +17,7 @@ object TurnRecordLiveTests extends TestSuite {
   val tests = Tests {
     test("a finished turn's steps read back in order, each started before it completed") {
       val config = TestPostgres.freshDatabase("turn_record")
-      val engine = Engine.open(config, Turn.Epoch)
+      val engine = LiveEngine.open(config, Turn.Epoch)
       try {
         launch(engine, engine.entries, new CountingProvider)
         val first = say(engine, "one")
@@ -53,7 +53,7 @@ object TurnRecordLiveTests extends TestSuite {
 
     test("a loop turn against Postgres: read a file, then answer, the exchange kept") {
       val config = TestPostgres.freshDatabase("turn_loop")
-      val engine = Engine.open(config, Turn.Epoch)
+      val engine = LiveEngine.open(config, Turn.Epoch)
       val root = java.nio.file.Files.createTempDirectory("grit-loop")
       try {
         val _ = java.nio.file.Files.writeString(root.resolve("notes.txt"), "the answer is 42\n")
@@ -92,7 +92,7 @@ object TurnRecordLiveTests extends TestSuite {
 
     test("the reply streams to an edge while the turn runs, and joins back to it") {
       val config = TestPostgres.freshDatabase("turn_stream")
-      val engine = Engine.open(config, Turn.Epoch)
+      val engine = LiveEngine.open(config, Turn.Epoch)
       try {
         launch(engine, engine.entries, new StubProvider(2000))
         val turn = say(engine, Vector.tabulate(40)(i => s"w$i").mkString(" "))
@@ -130,7 +130,7 @@ object TurnRecordLiveTests extends TestSuite {
         )
       assert(child.exitCode == CrashingTurn.Halted)
 
-      val engine = Engine.open(config, Turn.Epoch)
+      val engine = LiveEngine.open(config, Turn.Epoch)
       try {
         launch(engine, engine.entries, new CountingProvider)
         val turn = say(engine, source)

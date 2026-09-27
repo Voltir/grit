@@ -84,7 +84,7 @@ object CloseLiveTests extends TestSuite {
         events.add("close ran")
         WorkflowId.value(id)
       }
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         engine.launch(
           turn,
@@ -115,7 +115,7 @@ object CloseLiveTests extends TestSuite {
       def close(id: WorkflowId)(using @unused d: Durable^): String = {
         runs.add(WorkflowId.value(id)); "ran"
       }
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         engine.launch(
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
@@ -150,7 +150,7 @@ object CloseLiveTests extends TestSuite {
       def close(id: WorkflowId)(using @unused d: Durable^): String = {
         closes.add(WorkflowId.value(id)); "abandoned: its deadline moved"
       }
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         engine.launch(
           turn,
@@ -218,7 +218,7 @@ object CloseLiveTests extends TestSuite {
       def close(id: WorkflowId)(using @unused d: Durable^): String = {
         runs.add(WorkflowId.value(id)); "failed: the database refused the seal"
       }
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         engine.launch(
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),

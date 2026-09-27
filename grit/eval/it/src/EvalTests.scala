@@ -3,7 +3,7 @@ package grit.eval
 import grit.core.context.Window
 import grit.core.id.EntryId
 import grit.core.message.Tokens
-import grit.dbos.engine.Engine
+import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
 
 import utest.*
@@ -31,7 +31,7 @@ object EvalTests extends TestSuite {
 
   /** An engine on the eval tests' database, closed after `body`. */
   private def withEngine[A](body: Engine^ => A): A = {
-    val engine = Engine.open(config, "eval")
+    val engine = LiveEngine.open(config, "eval")
     try body(engine)
     finally engine.close()
   }

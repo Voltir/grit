@@ -81,7 +81,8 @@ final class DbosRuntime(config: DbConfig) extends DurableRuntime {
       dbos,
       new JdbcStepFactory(dbos, dataSource),
       "spec",
-      id => d ?=> dispatch(id)
+      id => d ?=> dispatch(id),
+      new Running
     )
     dbos.launch()
     (dbos, registered)

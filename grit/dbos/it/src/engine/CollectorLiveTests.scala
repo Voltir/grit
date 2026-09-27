@@ -289,7 +289,7 @@ object CollectorLiveTests extends TestSuite {
       ledger: FiniteDuration,
       plugins: Vector[Plugin] = Vector.empty
   ): Engine^ = {
-    val engine = Engine.open(config, "test")
+    val engine = LiveEngine.open(config, "test")
     engine.launch(
       turn,
       close,
@@ -328,7 +328,7 @@ object CollectorLiveTests extends TestSuite {
       "a raw collection deletes a period's raw entries and workflows, keeping its closing entry and row"
     ) {
       val config = TestPostgres.freshDatabase("collect_raw")
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         engine.launch(
           turn,
@@ -408,7 +408,7 @@ object CollectorLiveTests extends TestSuite {
       "a raw collection finds its period's close attempts and questions by their ids' prefix, and not period 10's"
     ) {
       val config = TestPostgres.freshDatabase("collect_prefix")
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         engine.launch(
           turn,
@@ -469,7 +469,7 @@ object CollectorLiveTests extends TestSuite {
 
     test("a tombstone whose workflow is still running is deferred, and collected once it ends") {
       val config = TestPostgres.freshDatabase("collect_deferred")
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         engine.launch(
           turn,
@@ -528,7 +528,7 @@ object CollectorLiveTests extends TestSuite {
       "a superseded closing goes with its row, its turns' usage and profiles and its close's cost; the latest stays"
     ) {
       val config = TestPostgres.freshDatabase("collect_superseded")
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         engine.launch(
           turn,

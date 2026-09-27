@@ -4,7 +4,7 @@ import java.sql.DriverManager
 import java.time.Instant
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.*
 import scala.io.Source
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
@@ -49,7 +49,7 @@ import grit.dbos.sql.{
   SqlTombstones,
   SqlUsageLedger
 }
-import grit.dbos.workflow.{Closes, Posts, Settles, Turns}
+import grit.dbos.workflow.{Closes, Posts, Running, Settles, Turns}
 
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory
@@ -59,11 +59,11 @@ import org.postgresql.ds.PGSimpleDataSource
 import org.slf4j.LoggerFactory
 
 /** grit over one Postgres: the stores, the turn, close, settle and posting workflows, the
-  * sweep that closes periods, and an edge's [[Inbox]], all in this process. Open it,
-  * [[launch]] it with the workflows' bodies, start its [[sweepEvery]], and close it when
-  * done; its threads keep the JVM alive until then.
+  * sweep that closes periods, and an edge's [[Inbox]], all in this process, under the
+  * database's [[EngineLock]]. Open it, [[launch]] it with the workflows' bodies, start its
+  * [[sweepEvery]], and close it when done; its threads keep the JVM alive until then.
   */
-final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
+final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource, lock: EngineLock^)
     extends caps.SharedCapability,
       AutoCloseable {
 
@@ -124,10 +124,10 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
       plugins: Vector[Plugin]
   ): Unit = {
     val steps = new JdbcStepFactory(dbos, dataSource)
-    Turns.register(dbos, steps, turn)
-    Closes.register(dbos, steps, close)
-    Settles.register(dbos, steps, settle)
-    Posts.register(dbos, steps, post)
+    Turns.register(dbos, steps, turn, running)
+    Closes.register(dbos, steps, close, running)
+    Settles.register(dbos, steps, settle, running)
+    Posts.register(dbos, steps, post, running)
     enabled.set(plugins.map(p => (p.name, p.version)))
     dbos.launch()
   }
@@ -168,6 +168,36 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
 
   private val sweeping = new AtomicBoolean(false)
 
+  /** The sweeping thread, once [[sweepEvery]] started it. */
+  private val sweepThread = new AtomicReference(Option.empty[Thread])
+
+  /** The workflow bodies running in this process: [[close]] waits for them. */
+  private val running = new Running
+
+  private val closed = new AtomicBoolean(false)
+
+  /** Writes the lock's heartbeat every beat, on a daemon thread, until the engine closes; a
+    * heartbeat the lock refuses closes the engine. Once, from [[Engine.start]].
+    */
+  private def beating(): Unit = {
+    val log = LoggerFactory.getLogger("grit.engine")
+    val thread = new Thread(() => {
+      var alive = true
+      while (alive && !closed.get()) {
+        try Thread.sleep(lock.beat.toMillis)
+        catch { case _: InterruptedException => () }
+        if (!closed.get() && !lock.beatOnce()) {
+          alive = false
+          log.warn("lost the engine lock: stopping, so no workflow runs beside its new holder")
+          close()
+        }
+      }
+    })
+    thread.setName("grit-heartbeat")
+    thread.setDaemon(true)
+    thread.start()
+  }
+
   /** Sweeps at `clock`'s time every `every`, on a daemon thread of its own, until the engine
     * closes; a sweep that fails is logged, and the next one tries again, each workflow a
     * sweep finds stuck is logged once, and so is each plugin it newly marks as not enabled. Once, after [[launch]].
@@ -201,6 +231,7 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
       })
       thread.setName("grit-sweeper")
       thread.setDaemon(true)
+      sweepThread.set(Some(thread))
       thread.start()
     }
 
@@ -271,20 +302,64 @@ final class Engine private (dbos: DBOS, dataSource: PGSimpleDataSource)
   def awaitTurn(turn: TurnRef): String =
     client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId)).getResult()
 
+  /** Stops sweeping, stops DBOS, waits up to [[Engine.BodiesWithin]] for every workflow body
+    * still running (interrupted by the stop) to return, then releases the lock: no body this
+    * engine ran outlives its lock, unless one ignores its interrupt past the wait, which is
+    * logged. Also what losing the lock does. Once; later calls return at once.
+    */
   def close(): Unit =
-    try {
-      sweeping.set(false)
-      client.close()
-    } finally dbos.shutdown()
+    if (closed.compareAndSet(false, true)) {
+      try {
+        sweeping.set(false)
+        sweepThread.get().foreach { t =>
+          t.interrupt()
+          t.join(Engine.BodiesWithin.toMillis)
+        }
+        try client.close()
+        finally dbos.shutdown()
+        if (!running.awaitNone(Engine.BodiesWithin))
+          LoggerFactory
+            .getLogger("grit.engine")
+            .warn(s"workflow bodies still running after ${Engine.BodiesWithin}: releasing the lock")
+      } finally lock.close()
+    }
 }
 
 object Engine {
 
-  /** Applies `schema.sql` to the database `config` names, and connects to it. The engine
-    * recovers and dequeues only workflows of compatibility epoch `epoch` (ADR 0004).
+  /** How long [[Engine.close]] waits for running workflow bodies: 30 seconds. */
+  val BodiesWithin: FiniteDuration = 30.seconds
+
+  /** [[EngineLock.take]], then [[start]]. */
+  def open(config: DbConfig, epoch: String): Either[NotTaken, Engine^] =
+    EngineLock.take(config) match {
+      case Left(refused) => Left(refused)
+      case Right(lock) => Right(start(config, lock, epoch))
+    }
+
+  /** The engine of the database `config` names, which `lock` is held on: its schema applied,
+    * `lock`'s row written and its heartbeat begun, recovering and dequeuing only workflows of
+    * compatibility epoch `epoch` (ADR 0004). Losing the lock (its connection dropped, or its
+    * row gone or taken) stops the engine as [[Engine.close]] does, and an edge's calls on it
+    * then fail. Closes `lock` when it throws.
     */
-  def open(config: DbConfig, epoch: String): Engine^ = {
-    schemaSetup(config)
+  def start(config: DbConfig, lock: EngineLock^, epoch: String): Engine^ =
+    try {
+      schemaSetup(config)
+      lock
+        .claim(epoch)
+        .left
+        .foreach(why => sys.error(s"the engine's row could not be written: $why"))
+      val engine = build(config, lock, epoch)
+      engine.beating()
+      engine
+    } catch {
+      case e: Throwable =>
+        lock.close()
+        throw e
+    }
+
+  private def build(config: DbConfig, lock: EngineLock^, epoch: String): Engine^ = {
     val dbos = new DBOS(
       DBOSConfig
         .defaults("grit")
@@ -300,7 +375,7 @@ object Engine {
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Engine(dbos, ds)
+    new Engine(dbos, ds, lock)
   }
 
   /** Applies `grit/dbos/resources/schema.sql` idempotently. */

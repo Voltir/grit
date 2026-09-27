@@ -4,7 +4,7 @@ import grit.core.id.{ConversationId, EntryId, TurnRef}
 import grit.core.message.Message
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
 import grit.core.store.{Entry, EntryStore, StoreError, Tx}
-import grit.dbos.engine.Engine
+import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.DbConfig
 import grit.models.StubProvider
 import grit.turn.Turn
@@ -24,7 +24,7 @@ object CrashingTurn {
 
   def main(args: Array[String]): Unit = {
     val config = DbConfig.fromEnv(sys.env).fold(e => sys.error(e.message), identity)
-    val engine = Engine.open(config, Turn.Epoch)
+    val engine = LiveEngine.open(config, Turn.Epoch)
     val entries = new EntryStore {
       def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] = {
         if (entry.id == Turn.replyId(TurnRef(entry.conversationId, entry.turnSeq)))

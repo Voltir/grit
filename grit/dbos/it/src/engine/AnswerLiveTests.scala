@@ -56,7 +56,7 @@ object AnswerLiveTests extends TestSuite {
 
   val tests = Tests {
     test("an answer reaches the waiting workflow once; a second answer is ignored") {
-      val engine = Engine.open(TestPostgres.freshDatabase("answer_once"), "test")
+      val engine = LiveEngine.open(TestPostgres.freshDatabase("answer_once"), "test")
       try {
         engine.launch(waiting(1.minute), noClose, noClose, noClose, Vector.empty)
         val turn = started(engine, "once")
@@ -68,7 +68,7 @@ object AnswerLiveTests extends TestSuite {
     }
 
     test("an answer sent before the wait begins is received when it does") {
-      val engine = Engine.open(TestPostgres.freshDatabase("answer_early"), "test")
+      val engine = LiveEngine.open(TestPostgres.freshDatabase("answer_early"), "test")
       try {
         engine.launch(waiting(1.minute), noClose, noClose, noClose, Vector.empty)
         val origin = Origin.Task("answer", "early")
@@ -83,7 +83,7 @@ object AnswerLiveTests extends TestSuite {
     }
 
     test("nothing sent: the wait runs out, and says so") {
-      val engine = Engine.open(TestPostgres.freshDatabase("answer_none"), "test")
+      val engine = LiveEngine.open(TestPostgres.freshDatabase("answer_none"), "test")
       try {
         engine.launch(waiting(1.second), noClose, noClose, noClose, Vector.empty)
         val turn = started(engine, "none")
@@ -92,7 +92,7 @@ object AnswerLiveTests extends TestSuite {
     }
 
     test("an answer to a workflow that does not exist is NoSuchTurn") {
-      val engine = Engine.open(TestPostgres.freshDatabase("answer_missing"), "test")
+      val engine = LiveEngine.open(TestPostgres.freshDatabase("answer_missing"), "test")
       try {
         engine.launch(waiting(1.second), noClose, noClose, noClose, Vector.empty)
         val nobody = WorkflowId("no-such-workflow")
@@ -103,7 +103,7 @@ object AnswerLiveTests extends TestSuite {
 
     test("a restart while waiting: the recovered workflow still waits, and gets the answer") {
       val config = TestPostgres.freshDatabase("answer_restart")
-      val before = Engine.open(config, "test")
+      val before = LiveEngine.open(config, "test")
       val turn =
         try {
           before.launch(waiting(1.minute), noClose, noClose, noClose, Vector.empty)
@@ -111,7 +111,7 @@ object AnswerLiveTests extends TestSuite {
           waitingNow(before, t)
           t
         } finally before.close()
-      val after = Engine.open(config, "test")
+      val after = LiveEngine.open(config, "test")
       try {
         after.launch(waiting(1.minute), noClose, noClose, noClose, Vector.empty)
         after.inbox.answer(turn.workflowId, call, Approval.Approved) ==> Right(())

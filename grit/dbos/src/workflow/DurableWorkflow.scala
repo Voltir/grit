@@ -16,7 +16,8 @@ import dev.dbos.transact.txstep.JdbcStepFactory
 final class DurableWorkflow private (
     dbos: DBOS,
     steps: JdbcStepFactory,
-    body: WorkflowId => Durable^ ?=> String
+    body: WorkflowId => Durable^ ?=> String,
+    running: Running
 ) {
 
   /** The entry point DBOS calls reflectively, with no arguments. The workflow's only input
@@ -27,7 +28,9 @@ final class DurableWorkflow private (
       throw new IllegalStateException("DurableWorkflow.run called outside a DBOS workflow")
     }
     val workflowId = WorkflowId(id)
-    body(workflowId)(using new DbosDurable(dbos, steps, workflowId))
+    running.enter()
+    try body(workflowId)(using new DbosDurable(dbos, steps, workflowId))
+    finally running.exit()
   }
 }
 
@@ -39,12 +42,15 @@ object DurableWorkflow {
     */
   val ClassName = "grit.workflow"
 
-  /** Registers `body` as the workflow `name`. Must run before `dbos.launch()`. */
+  /** Registers `body` as the workflow `name`, each run counted in `running`. Must run before
+    * `dbos.launch()`.
+    */
   def register(
       dbos: DBOS,
       steps: JdbcStepFactory,
       name: String,
-      body: WorkflowId => Durable^ ?=> String
+      body: WorkflowId => Durable^ ?=> String,
+      running: Running
   ): RegisteredWorkflow =
     dbos
       .integration()
@@ -52,7 +58,7 @@ object DurableWorkflow {
         name,
         ClassName,
         null,
-        new DurableWorkflow(dbos, steps, body),
+        new DurableWorkflow(dbos, steps, body, running),
         classOf[DurableWorkflow].getMethod("run"),
         null,
         null

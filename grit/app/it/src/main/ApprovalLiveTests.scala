@@ -9,7 +9,7 @@ import grit.core.id.{ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{Entry, Payload}
-import grit.dbos.engine.Engine
+import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
 import grit.turn.Turn
 
@@ -87,7 +87,7 @@ object ApprovalLiveTests extends TestSuite {
   val tests = Tests {
     test("an edit asks, runs once approved, and a second answer is ignored") {
       checkout { root =>
-        val engine = Engine.open(TestPostgres.freshDatabase("approve_edit"), Turn.Epoch)
+        val engine = LiveEngine.open(TestPostgres.freshDatabase("approve_edit"), Turn.Epoch)
         try {
           launchIn(engine, engine.entries, new Editing, root, all = true)
           val turn = say(engine, "edit it")
@@ -108,7 +108,7 @@ object ApprovalLiveTests extends TestSuite {
 
     test("a declined edit does not run, and the model reads the reason") {
       checkout { root =>
-        val engine = Engine.open(TestPostgres.freshDatabase("decline_edit"), Turn.Epoch)
+        val engine = LiveEngine.open(TestPostgres.freshDatabase("decline_edit"), Turn.Epoch)
         try {
           launchIn(engine, engine.entries, new Editing, root, all = true)
           val turn = say(engine, "edit it")
@@ -127,7 +127,7 @@ object ApprovalLiveTests extends TestSuite {
 
     test("an edit nobody answers in time is denied, and does not run") {
       checkout { root =>
-        val engine = Engine.open(TestPostgres.freshDatabase("timeout_edit"), Turn.Epoch)
+        val engine = LiveEngine.open(TestPostgres.freshDatabase("timeout_edit"), Turn.Epoch)
         try {
           launchIn(engine, engine.entries, new Editing, root, all = true, answerWithin = 1.second)
           val turn = say(engine, "edit it")
@@ -144,7 +144,7 @@ object ApprovalLiveTests extends TestSuite {
     test("a restart while an edit waits: it still waits, then runs once approved") {
       checkout { root =>
         val config = TestPostgres.freshDatabase("restart_edit")
-        val before = Engine.open(config, Turn.Epoch)
+        val before = LiveEngine.open(config, Turn.Epoch)
         val turn =
           try {
             launchIn(before, before.entries, new Editing, root, all = true)
@@ -153,7 +153,7 @@ object ApprovalLiveTests extends TestSuite {
             t
           } finally before.close()
         Files.readString(root.resolve("notes.txt")) ==> "a draft\n"
-        val after = Engine.open(config, Turn.Epoch)
+        val after = LiveEngine.open(config, Turn.Epoch)
         try {
           launchIn(after, after.entries, new Editing, root, all = true)
           after.inbox.answer(turn.workflowId, call, Approval.Approved) ==> Right(())

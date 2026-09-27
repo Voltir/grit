@@ -20,9 +20,10 @@ object Settles {
   def register(
       dbos: DBOS,
       steps: JdbcStepFactory,
-      body: WorkflowId => Durable^ ?=> String
+      body: WorkflowId => Durable^ ?=> String,
+      running: Running
   ): Unit = {
-    DurableWorkflow.register(dbos, steps, WorkflowName, body)
+    DurableWorkflow.register(dbos, steps, WorkflowName, body, running)
     ()
   }
 

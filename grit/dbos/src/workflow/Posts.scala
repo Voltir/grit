@@ -23,10 +23,11 @@ object Posts {
   def register(
       dbos: DBOS,
       steps: JdbcStepFactory,
-      body: WorkflowId => Durable^ ?=> String
+      body: WorkflowId => Durable^ ?=> String,
+      running: Running
   ): Unit = {
     dbos.registerQueue(new Queue(QueueName).withConcurrency(1).withPartitioningEnabled(true))
-    DurableWorkflow.register(dbos, steps, WorkflowName, body)
+    DurableWorkflow.register(dbos, steps, WorkflowName, body, running)
     ()
   }
 

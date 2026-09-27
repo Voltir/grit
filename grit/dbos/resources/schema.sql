@@ -55,6 +55,22 @@ CREATE TABLE IF NOT EXISTS grit.places (
                 AND array_position(path, NULL) IS NULL)
 );
 
+-- The engine holding this database's lock (EngineLock, ADR 0015), as it described itself.
+-- The lock is the truth; this row says who holds it. It is current only while its
+-- backend_pid holds the advisory lock (pg_locks): a row a dead engine left is overwritten by
+-- the next holder, and never reported, since only a process refused the lock reads it.
+-- Where grit runs (a directory) is an edge's, and not here.
+-- Retention: kept: one row, overwritten by each holder.
+CREATE TABLE IF NOT EXISTS grit.engines (
+    slot         BOOLEAN PRIMARY KEY DEFAULT true CHECK (slot),
+    machine      TEXT NOT NULL,
+    pid          BIGINT NOT NULL,
+    backend_pid  INTEGER NOT NULL,
+    epoch        TEXT NOT NULL,
+    started_at   TIMESTAMPTZ NOT NULL,
+    heartbeat_at TIMESTAMPTZ NOT NULL
+);
+
 -- Who actions are done for (grit.core.id.PrincipalId): `local`, the one person every edge
 -- acts for until principals are registered, and `grit`, the engine itself. Other tables
 -- name a principal here, never by a free string.

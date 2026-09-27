@@ -21,7 +21,7 @@ import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, LifecycleSe
 import grit.core.place.{Directory, Locality, Namespace, Place, Scope, Weight}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{Entry, Origin, Payload}
-import grit.dbos.engine.Engine
+import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.models.{ModelRole, OpenRouterConfig, OpenRouterProvider}
 
@@ -434,7 +434,7 @@ object Eval {
     }
     val writer = new Once(model)
     val config = TestPostgres.freshDatabase("eval")
-    val engine = Engine.open(config, "eval")
+    val engine = LiveEngine.open(config, "eval")
     try {
       val results = for {
         c <- cases.collect { case Right(c) => c }

@@ -19,7 +19,7 @@ import grit.core.place.Directory
 import grit.core.plugin.Plugin
 import grit.core.store.{Db, Origin}
 import grit.core.tool.{DuplicateName, ToolName, Toolbox}
-import grit.dbos.engine.Engine
+import grit.dbos.engine.{Engine, EngineLock}
 import grit.dbos.sql.DbConfig
 import grit.core.prompt.SystemPrompt
 import grit.core.tool.ToolSet
@@ -73,6 +73,9 @@ import grit.turn.{Turn, TurnEnv, TurnLoop, TurnPrompt, TurnRecords, TurnTooling}
   * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
   * `GRIT_LEDGER`, `GRIT_BALANCE`, `GRIT_SCOPE` and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]); after that, those variables are ignored, and `/set` (or SQL)
   * changes them, from the next sweep and turn on.
+  *
+  * One grit runs per database (ADR 0015): a second, in either mode, says which process holds
+  * the database and exits 1.
   *
   *   - **No arguments: the chat TUI**, over the conversation `GRIT_SESSION` names
   *     (default `default`) in the directory grit runs in: the same name in another
@@ -313,10 +316,18 @@ object Main {
 
     val failure: Option[String] =
       if (tui) {
-        // The screen paints first; the engine opens behind it, on the host's thread.
+        // The lock first, before anything paints: a second grit on this database says who
+        // holds it and exits (ADR 0015).
+        val lock = EngineLock.take(config) match {
+          case Right(held) => held
+          case Left(refused) =>
+            System.err.println(s"[main] ${refused.message(java.time.Instant.now())}")
+            sys.exit(1)
+        }
+        // The screen paints next; the engine opens behind it, on the host's thread.
         val opener = new ChatHost.Opener {
           def open(): Engine^ = {
-            val engine = Engine.open(config, Turn.Epoch)
+            val engine = Engine.start(config, lock, Turn.Epoch)
             try launched(engine)
             catch {
               case e: Throwable =>
@@ -341,15 +352,17 @@ object Main {
           )
         finally host.close()
         None
-      } else {
-        val engine = Engine.open(config, Turn.Epoch)
-        try say(launched(engine), args.toList)
-        finally {
-          // DBOS's threads are non-daemon: a throw that skips this leaves the JVM, and mill,
-          // waiting forever.
-          engine.close()
+      } else
+        Engine.open(config, Turn.Epoch) match {
+          case Left(refused) => Some(refused.message(java.time.Instant.now()))
+          case Right(engine) =>
+            try say(launched(engine), args.toList)
+            finally {
+              // DBOS's threads are non-daemon: a throw that skips this leaves the JVM, and
+              // mill, waiting forever.
+              engine.close()
+            }
         }
-      }
 
     if (tui) println(s"[main] log: $log")
     failure.foreach { message =>

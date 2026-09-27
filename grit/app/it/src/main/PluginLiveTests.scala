@@ -14,7 +14,7 @@ import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
 import grit.core.plugin.{CacheDocs, Plugin, PostRef}
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
-import grit.dbos.engine.Engine
+import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.digest.Digest
 import grit.lifecycle.post.{PostEnv, Posting}
@@ -85,7 +85,7 @@ object PluginLiveTests extends TestSuite {
   val tests = Tests {
     test("Digest enabled on a database with closed periods posts them all, and lists them") {
       val config = TestPostgres.freshDatabase("plugin_backfill")
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         val digest = new Digest(name("digest"))
         launch(engine, Vector(digest))
@@ -110,7 +110,7 @@ object PluginLiveTests extends TestSuite {
 
     test("a plugin that refuses leaves its cursor and nothing it wrote, and is run again a bounded number of times") {
       val config = TestPostgres.freshDatabase("plugin_refused")
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         val refusing = new Refusing(name("refusing"))
         launch(engine, Vector(refusing))

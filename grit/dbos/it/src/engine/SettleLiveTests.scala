@@ -79,7 +79,7 @@ object SettleLiveTests extends TestSuite {
       def settle(id: WorkflowId)(using @unused d: Durable^): String = {
         asked.add(WorkflowId.value(id)); "asked"
       }
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         engine.launch(nothing, nothing, settle, nothing, Vector.empty)
         settling(config)
@@ -112,7 +112,7 @@ object SettleLiveTests extends TestSuite {
             val verdict = Verdict(now, q.last, Judgement.Weighed(p(0.9), p(0.05), p(0.05), "jev"))
             d.transact("record")(periods.judged(q.period, verdict).toString)
         }
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         engine.launch(nothing, nothing, settle, nothing, Vector.empty)
         settling(config)

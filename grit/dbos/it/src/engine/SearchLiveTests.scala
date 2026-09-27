@@ -17,7 +17,7 @@ object SearchLiveTests extends TestSuite {
   // Opening an engine applies schema.sql; nothing here launches DBOS.
   private lazy val config = {
     val c = TestPostgres.freshDatabase("search_live")
-    Engine.open(c, "test").close()
+    LiveEngine.open(c, "test").close()
     c
   }
 

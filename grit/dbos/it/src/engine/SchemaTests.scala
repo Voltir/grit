@@ -24,16 +24,16 @@ object SchemaTests extends TestSuite {
   val tests = Tests {
     test("opening an engine again applies the schema again, keeping the rows already there") {
       val config = TestPostgres.freshDatabase("schema_twice")
-      Engine.open(config, "test").close()
+      LiveEngine.open(config, "test").close()
       val origin = Origin.Task("schema", "twice")
       val first = LiveDb.conversation(config, origin)
-      Engine.open(config, "test").close()
+      LiveEngine.open(config, "test").close()
       LiveDb.conversation(config, origin).id ==> first.id
     }
 
     test("a period row closed in part is refused: closed means reason, last turn, entry, order") {
       val config = TestPostgres.freshDatabase("schema_periods")
-      Engine.open(config, "test").close()
+      LiveEngine.open(config, "test").close()
       val c = grit.core.id.ConversationId.value(
         LiveDb.conversation(config, Origin.Task("schema", "half-closed")).id
       )
@@ -65,7 +65,7 @@ object SchemaTests extends TestSuite {
 
     test("the settings are kept as set, the ledger window with them") {
       val config = TestPostgres.freshDatabase("schema_ledger")
-      Engine.open(config, "test").close()
+      LiveEngine.open(config, "test").close()
       val settings = Windows
         .of(2.minutes, 3.minutes, 6.minutes)
         .flatMap(LifecycleSettings.of(_, 300, 1.minute, Probability.One, 1, Locality.Default))
@@ -76,7 +76,7 @@ object SchemaTests extends TestSuite {
 
     test("settings changed by hand to break their rules read as Invalid") {
       val config = TestPostgres.freshDatabase("schema_settings")
-      Engine.open(config, "test").close()
+      LiveEngine.open(config, "test").close()
       LiveDb.transaction(config)(
         execute(
           "INSERT INTO grit.lifecycle_settings " +

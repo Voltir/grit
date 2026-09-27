@@ -11,12 +11,16 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   as posted from one closing, and its cursor), `SqlTombstones` (what is to be deleted, ADR 0014).
   Imports nothing else in dbos.
 - **`workflow`** — DBOS behind `Durable`: `DbosDurable`, `DurableWorkflow` (registers a
-  body under the fixed class name `grit.workflow`, so moving it strands no workflow row),
+  body under the fixed class name `grit.workflow`, so moving it strands no workflow row, and
+  counts it in `Running` while it runs),
   `Turns` (how a turn is known to DBOS: its workflow name and queue), `Closes` and
   `Settles` (the close and settle workflows, on the same queue under the conversation's
   partition, so neither runs beside one of its turns), `Posts` (the posting workflow, on a `posts` queue partitioned by
   plugin). Imports nothing else in dbos.
-- **`engine`** — both, composed: `Engine` (what `grit.app` opens), `TurnStatus`, and
+- **`engine`** — both, composed: `EngineLock` (the database's one engine, ADR 0015: a
+  session advisory lock, its `grit.engines` row and heartbeat), `Engine` (what `grit.app`
+  starts under the lock; closing it, or losing the lock, stops the sweep, then DBOS, waits
+  for running bodies, and releases the lock last), `TurnStatus`, and
   `SqlInbox`, which records a message, and who wrote it (`grit.inbound`), and enqueues its turn in one transaction (opening
   the conversation's next period when none is open), and sends a turn the answer to its
   gated call (`DBOSClient.send`); `Sweeper`,

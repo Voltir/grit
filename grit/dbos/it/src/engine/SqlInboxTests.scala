@@ -16,7 +16,7 @@ object SqlInboxTests extends TestSuite {
   // Opening an engine applies schema.sql; nothing here launches DBOS.
   private lazy val config = {
     val c = TestPostgres.freshDatabase("sql_inbox")
-    Engine.open(c, "test").close()
+    LiveEngine.open(c, "test").close()
     c
   }
 
@@ -24,7 +24,7 @@ object SqlInboxTests extends TestSuite {
 
     test("ingest: the same source is the same turn, a new one the next turn") {
       val origin = Origin.Task("sql", "ingest")
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       val (first, again, second) =
         try {
           (
@@ -47,7 +47,7 @@ object SqlInboxTests extends TestSuite {
     test("ingest opens a conversation's first period, and after a close the next, at its turn") {
       val origin = Origin.Task("sql", "periods")
       val periods = new SqlPeriodStore(new SqlEntryStore())
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         val one =
           engine.inbox.ingest(origin, SourceId("p1"), Message.User("one"), PrincipalId.Local)
@@ -76,7 +76,7 @@ object SqlInboxTests extends TestSuite {
 
     test("an ingested message records who wrote it, and a redelivery by another keeps the first") {
       val origin = Origin.Task("sql", "authors")
-      val engine = Engine.open(config, "test")
+      val engine = LiveEngine.open(config, "test")
       try {
         engine.inbox.ingest(origin, SourceId("a1"), Message.User("one"), PrincipalId.Local)
         engine.inbox.ingest(origin, SourceId("a1"), Message.User("one"), PrincipalId.Grit)
