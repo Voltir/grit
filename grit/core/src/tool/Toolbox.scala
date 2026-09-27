@@ -103,13 +103,13 @@ object Bound {
   ) extends Bound {
 
     /** Runs the call when `approval` is [[Approval.Approved]]. Otherwise it does not run:
-      * [[Outcome.Denied]] with the person's reason when they declined, or [[Unanswered]]
-      * when the wait timed out.
+      * [[Outcome.Declined]] with the person's reason when they declined, or
+      * [[Outcome.Unanswered]] when the wait timed out.
       */
     def apply(approval: Approval): Outcome = approval match {
       case Approval.Approved => run()
-      case Approval.Declined(reason) => Outcome.Denied(reason)
-      case Approval.TimedOut => Outcome.Denied(Some(Unanswered))
+      case Approval.Declined(reason) => Outcome.Declined(reason)
+      case Approval.TimedOut => Outcome.Unanswered
     }
   }
 
@@ -132,6 +132,4 @@ object Bound {
       val retry: Retry
   ) extends Bound
 
-  /** The reason a call whose approval timed out is denied. */
-  val Unanswered = "No answer came in time."
 }

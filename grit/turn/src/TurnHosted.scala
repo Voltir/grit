@@ -94,8 +94,8 @@ object TurnHosted {
         d.transact(slot.askStep)(TurnTools.ask(entries, slot, call, shown, clock.now())).flatMap {
           _ =>
             TurnTools.approval(d.recv(Approval.topic(call), answerWithin)) match {
-              case Approval.Declined(reason) => Right(Outcome.Denied(reason))
-              case Approval.TimedOut => Right(Outcome.Denied(Some(Bound.Unanswered)))
+              case Approval.Declined(reason) => Right(Outcome.Declined(reason))
+              case Approval.TimedOut => Right(Outcome.Unanswered)
               case Approval.Approved =>
                 for {
                   cs <- callSlot(slot)

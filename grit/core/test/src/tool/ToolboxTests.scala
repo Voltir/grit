@@ -81,9 +81,10 @@ object ToolboxTests extends TestSuite {
           b.ask ==> "shout hi"
           b.shown ==> "shout hi loudly"
           b(Approval.Approved) ==> Outcome.Done("HI")
-          b(Approval.Declined(Some("too loud"))) ==> Outcome.Denied(Some("too loud"))
-          b(Approval.Declined(None)) ==> Outcome.Denied(None)
-          b(Approval.TimedOut) ==> Outcome.Denied(Some(Bound.Unanswered))
+          b(Approval.Declined(Some("too loud"))) ==> Outcome.Declined(Some("too loud"))
+          b(Approval.Declined(None)) ==> Outcome.Declined(None)
+          // Nobody answering is not the person declining.
+          b(Approval.TimedOut) ==> Outcome.Unanswered
         case other => throw new java.lang.AssertionError(s"not gated: $other")
       }
     }
@@ -172,10 +173,22 @@ object ToolboxTests extends TestSuite {
       val id = ToolCallId("c1")
       Outcome.Done("ok").result(id) ==> Message.ToolResult(id, "ok", isError = false)
       Outcome.Failed("bad").result(id) ==> Message.ToolResult(id, "bad", isError = true)
-      Outcome.Denied(None).result(id) ==>
-        Message.ToolResult(id, "The person declined this call; it did not run.", isError = true)
-      Outcome.Denied(Some("not now")).result(id).content ==>
-        "The person declined this call; it did not run. They said: not now"
+      // Each labelled first, so the model reads neither as a broken result; and nobody
+      // answering is never told as the person declining, nor grit's words as theirs.
+      Outcome.Declined(None).result(id) ==>
+        Message.ToolResult(
+          id,
+          "Declined: the person declined this call; it did not run.",
+          isError = true
+        )
+      Outcome.Declined(Some("not now")).result(id).content ==>
+        "Declined: the person declined this call; it did not run. Their reason: not now"
+      Outcome.Unanswered.result(id) ==>
+        Message.ToolResult(
+          id,
+          "Unanswered: nobody answered in time; the call did not run.",
+          isError = true
+        )
       Outcome.Interrupted.result(id).isError ==> true
       assert(Outcome.Interrupted.result(id).content.contains("may have partly run"))
       CallError.Unknown("x", Vector.empty).outcome ==>

@@ -204,7 +204,7 @@ object TurnLoopTurnTests extends TestSuite {
       looped(durable, entries, entries, turn, provider, ws)
       ws.reads ==> 0
       exchange(entries, turn).collect { case r: Message.ToolResult => r } ==> Vector(
-        Outcome.Denied(Some(grit.core.tool.Bound.Unanswered)).result(ToolCallId("t1"))
+        Outcome.Unanswered.result(ToolCallId("t1"))
       )
       durable.recordedSteps(turn.workflowId).filter(_.contains(":0:0")) ==>
         Vector("ask:0:0", "tool:0:0")
@@ -252,7 +252,7 @@ object TurnLoopTurnTests extends TestSuite {
       durable.send(turn.workflowId, Approval.topic(ToolCallId("t1")), Approval.encode(no))
       looped(durable, entries, entries, turn, provider, ws)
       ws.reads ==> 0
-      val denied = Outcome.Denied(Some("not that file")).result(ToolCallId("t1"))
+      val denied = Outcome.Declined(Some("not that file")).result(ToolCallId("t1"))
       exchange(entries, turn).collect { case r: Message.ToolResult => r } ==> Vector(denied)
       provider.requests.lastOption.flatMap(_.messages.lastOption) ==> Some(denied)
     }

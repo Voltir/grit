@@ -106,8 +106,8 @@ object TurnToolsTests extends TestSuite {
     test("a gated call declined or timed out does not run") {
       val ws = new Files(files)
       val answers = Vector(
-        Approval.Declined(Some("not now")) -> Outcome.Denied(Some("not now")),
-        Approval.TimedOut -> Outcome.Denied(Some(grit.core.tool.Bound.Unanswered))
+        Approval.Declined(Some("not now")) -> Outcome.Declined(Some("not now")),
+        Approval.TimedOut -> Outcome.Unanswered
       )
       answers.foreach { (approval, expected) =>
         val entries = new InMemoryEntryStore

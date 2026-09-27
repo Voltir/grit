@@ -17,27 +17,35 @@ enum Outcome {
     */
   case Failed(why: String)
 
-  /** The person declined it, with their `reason` if they gave one, or did not answer in
-    * time.
-    */
-  case Denied(reason: Option[String])
+  /** The person declined it, with their `reason` if they gave one. */
+  case Declined(reason: Option[String])
+
+  /** Nobody answered in time whether it may run, so it did not. */
+  case Unanswered
 
   /** A crash cut a gated call short. It may have partly run, and is not run again. */
   case Interrupted
 
   /** The result the model reads for the call `call`: `Done` is not an error, every other
-    * case is. `Denied` says the person declined, and why when they said; `Interrupted`
-    * says the call may have partly run and should be checked before it is tried again.
+    * case is. `Declined` and `Unanswered` each begin with their name ("Declined: …",
+    * "Unanswered: …"), a declined one ending with the person's reason when they gave one;
+    * `Interrupted` says the call may have partly run and should be checked before it is
+    * tried again.
     */
   def result(call: ToolCallId): Message.ToolResult = this match {
     case Done(text) => Message.ToolResult(call, text, isError = false)
     case Failed(why) => Message.ToolResult(call, why, isError = true)
-    case Denied(None) =>
-      Message.ToolResult(call, "The person declined this call; it did not run.", isError = true)
-    case Denied(Some(reason)) =>
+    case Declined(reason) =>
+      val said = reason.fold("")(r => s" Their reason: $r")
       Message.ToolResult(
         call,
-        s"The person declined this call; it did not run. They said: $reason",
+        s"Declined: the person declined this call; it did not run.$said",
+        isError = true
+      )
+    case Unanswered =>
+      Message.ToolResult(
+        call,
+        "Unanswered: nobody answered in time; the call did not run.",
         isError = true
       )
     case Interrupted =>

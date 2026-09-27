@@ -118,14 +118,14 @@ object ApprovalLiveTests extends TestSuite {
           val _ = engine.awaitTurn(turn)
           Files.readString(root.resolve("notes.txt")) ==> "a draft\n"
           results(engine, turn) ==> Vector(
-            ("The person declined this call; it did not run. They said: not yet", true)
+            ("Declined: the person declined this call; it did not run. Their reason: not yet", true)
           )
-          assert(reply(engine, turn).exists(_.contains("They said: not yet")))
+          assert(reply(engine, turn).exists(_.contains("Their reason: not yet")))
         } finally engine.close()
       }
     }
 
-    test("an edit nobody answers in time is denied, and does not run") {
+    test("an edit nobody answers in time is unanswered, not declined, and does not run") {
       checkout { root =>
         val engine = LiveEngine.open(TestPostgres.freshDatabase("timeout_edit"), Turn.Epoch)
         try {
@@ -134,8 +134,7 @@ object ApprovalLiveTests extends TestSuite {
           val _ = engine.awaitTurn(turn)
           Files.readString(root.resolve("notes.txt")) ==> "a draft\n"
           results(engine, turn).map(_._1) ==> Vector(
-            "The person declined this call; it did not run. They said: " +
-              grit.core.tool.Bound.Unanswered
+            "Unanswered: nobody answered in time; the call did not run."
           )
         } finally engine.close()
       }
