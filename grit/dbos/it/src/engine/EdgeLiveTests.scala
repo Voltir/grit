@@ -28,10 +28,11 @@ object EdgeLiveTests extends TestSuite {
       ds.setPassword(config.password)
       val client = new DBOSClient(ds)
       val place = Place.of(Directory.of("/wake").getOrElse(throw new java.lang.AssertionError()))
-      val desk = SqlDesk.open(config, ds, client, PrincipalId.Local, Set(place)) match {
-        case Right(d) => d
-        case Left(e) => sys.error(s"$e")
-      }
+      val desk =
+        SqlDesk.open(config, ds, client, PrincipalId.Local, Set(place), LiveEngine.Identity) match {
+          case Right(d) => d
+          case Left(e) => sys.error(s"$e")
+        }
       try {
         val woke = new AtomicLong(-1)
         val waiting = new Thread(() => {

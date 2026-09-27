@@ -24,7 +24,7 @@ import grit.dbos.sql.DbConfig
 import grit.core.prompt.Fragment
 import grit.core.tool.ToolSet
 import grit.edge.{PlaceFragments, Server}
-import grit.host.{LocalEdits, LocalInstructions, LocalShell, LocalWorkspace}
+import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, LocalWorkspace}
 import grit.digest.Digest
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
@@ -285,6 +285,8 @@ object Main {
       engine
     }
 
+    // This process, as the engine's row and this edge's registration name it.
+    val identity = LocalMachine.identity()
     val failure: Option[String] =
       if (tui) {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
@@ -294,7 +296,7 @@ object Main {
             val engine = new ChatHost.Opener {
               // The screen paints first; the engine opens behind it, on the host's thread.
               def open(): Link^ = {
-                val started = Engine.start(config, lock, Turn.Epoch)
+                val started = Engine.start(config, lock, Turn.Epoch, identity)
                 try {
                   val running = launched(started)
                   serveHere(running, Place.of(directory), hosted, instructions, offered)
@@ -311,7 +313,7 @@ object Main {
           case Left(NotTaken.Held(holder)) =>
             val attached = new ChatHost.Opener {
               def open(): Link^ = {
-                val link = Link.attach(config, Turn.Epoch)
+                val link = Link.attach(config, Turn.Epoch, identity)
                 serveHere(link, Place.of(directory), hosted, instructions, offered)
                 link
               }
@@ -336,10 +338,10 @@ object Main {
         finally host.close()
         None
       } else
-        Engine.open(config, Turn.Epoch) match {
+        Engine.open(config, Turn.Epoch, identity) match {
           case Left(NotTaken.Held(_)) =>
             // Another grit runs the engine: its turns are sent to it, as a TUI's are.
-            val link = Link.attach(config, Turn.Epoch)
+            val link = Link.attach(config, Turn.Epoch, identity)
             try say(link, args.toList)
             finally link.close()
           case Left(refused) => Some(refused.message(java.time.Instant.now()))

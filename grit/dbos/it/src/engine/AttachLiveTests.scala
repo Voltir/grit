@@ -4,7 +4,6 @@ import scala.annotation.unused
 import scala.concurrent.duration.*
 
 import grit.core.durable.Durable
-import grit.core.edge.DeskError
 import grit.core.id.{PrincipalId, SourceId, WorkflowId}
 import grit.core.message.Message
 import grit.core.place.{Directory, Place}
@@ -31,7 +30,7 @@ object AttachLiveTests extends TestSuite {
     test("a turn an attached link sends runs on the engine that holds the lock") {
       val config = TestPostgres.freshDatabase("attach_send")
       val engine = LiveEngine.open(config, "test")
-      val link = Link.attach(config, "test")
+      val link = Link.attach(config, "test", LiveEngine.Identity)
       try {
         engine.launch(id => d ?=> s"ran ${WorkflowId.value(id)}", noop, noop, noop, Vector.empty)
         val turn = (for {
@@ -53,9 +52,11 @@ object AttachLiveTests extends TestSuite {
     test("an attached link names the engine holding the lock, and none once it stops") {
       val config = TestPostgres.freshDatabase("attach_holder")
       val engine = LiveEngine.open(config, "test")
-      val link = Link.attach(config, "test")
+      val link = Link.attach(config, "test", LiveEngine.Identity)
       try {
-        link.holder().map(h => (h.pid, h.epoch)) ==> Some((ProcessHandle.current().pid(), "test"))
+        link.holder().map(h => (h.machine, h.pid, h.epoch)) ==> Some(
+          ("test-machine", 4242L, "test")
+        )
         engine.close()
         assert(eventually(5.seconds)(link.holder().isEmpty))
       } finally {
@@ -67,12 +68,12 @@ object AttachLiveTests extends TestSuite {
     test("an edge attached as another epoch than the engine's is refused, naming both") {
       val config = TestPostgres.freshDatabase("attach_epoch")
       val engine = LiveEngine.open(config, "test")
-      val link = Link.attach(config, "older")
+      val link = Link.attach(config, "older", LiveEngine.Identity)
       try {
         val place =
           Place.of(Directory.of("/attach").getOrElse(throw new java.lang.AssertionError()))
         link.register(PrincipalId.Local, Set(place)).left.map(_.why) ==> Left(
-          s"the engine (pid ${ProcessHandle.current().pid()} on ${EngineLock.machine}) runs epoch test, " +
+          "the engine (pid 4242 on test-machine) runs epoch test, " +
             "and this grit older: it cannot serve that engine's turns"
         )
       } finally {

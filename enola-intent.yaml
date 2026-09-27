@@ -236,6 +236,20 @@ rules:
     mode: strict
     because: "STYLE rule 8: starting a process is quarantined to grit.host"
 
+  # Which machine and process this is, too: grit.host reads it (LocalMachine.identity), and
+  # everything else is handed a ProcessIdentity.
+  - id: only-host-imports-inet-address
+    forbid_name: outside-host
+    pattern: "* -> java.net.InetAddress"
+    mode: strict
+    because: "STYLE rule 8: reading this machine and process is quarantined to grit.host"
+
+  - id: only-host-imports-management-factory
+    forbid_name: outside-host
+    pattern: "* -> java.lang.management.ManagementFactory"
+    mode: strict
+    because: "STYLE rule 8: reading this machine and process is quarantined to grit.host"
+
   # -------------------------------------------------------------------------------------
   # 2. grit.tui's import direction: each group lists what it may import.
   #

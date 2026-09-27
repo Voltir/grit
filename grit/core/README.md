@@ -80,7 +80,7 @@ In dependency order:
   file), `Clipped` (output cut to what the model is shown), `LineNumbers` (how `read`
   numbers a file's lines), `Replace.onto` (an edit's
   matching), and their errors; and `Instructions`, the instruction files (`AGENTS.md`, else
-  `CLAUDE.md`) around a directory. ← `place`
+  `CLAUDE.md`) around a directory; `ProcessIdentity`, which machine and process something is. ← `place`
 - **`tool`** — tools as typed data: `Field`, `Args` (read into a named tuple), `ArgsError`,
   `ToolName` and `ToolSpec`, from which come the schema the model is shown (a
   `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, how a call is

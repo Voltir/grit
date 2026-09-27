@@ -9,6 +9,7 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.edge.{Desk, DeskError, OutcomeJson, Registration, ToolRequest}
+import grit.core.host.ProcessIdentity
 import grit.core.id.{CallSlot, EdgeId, PrincipalId, WorkflowId}
 import grit.core.place.Place
 import grit.core.prompt.{Fragment, FragmentId}
@@ -232,25 +233,27 @@ object SqlDesk {
   /** How often a desk writes its heartbeat, for a person to read: 2 seconds. */
   val Beat: FiniteDuration = 2.seconds
 
-  /** Registers an edge for `principal` hosting `places` on this machine, live while the desk
-    * is open: the same principal, machine and places reuse a registration no live edge holds,
-    * or take a new one. `Left` when the database cannot be reached.
+  /** Registers an edge for `principal` hosting `places`, in the process `identity` names,
+    * live while the desk is open: the same principal, machine and places reuse a
+    * registration no live edge holds, or take a new one. `Left` when the database cannot be
+    * reached.
     */
   def open(
       config: DbConfig,
       dataSource: DataSource,
       client: DBOSClient,
       principal: PrincipalId,
-      places: Set[Place]
+      places: Set[Place],
+      identity: ProcessIdentity
   ): Either[DeskError, SqlDesk^] =
     try {
       val conn = DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
       try {
         val key = (PrincipalId
-          .value(principal) +: EngineLock.machine +: places.toVector.map(_.written).sorted)
+          .value(principal) +: identity.machine +: places.toVector.map(_.written).sorted)
           .mkString("|")
         val session = UUID.randomUUID()
-        val edge = reuse(conn, key).getOrElse(insert(conn, key, principal))
+        val edge = reuse(conn, key).getOrElse(insert(conn, key, principal, identity))
         Using.resource(
           conn.prepareStatement(
             """UPDATE grit.edges SET session = ?::uuid, pid = ?, protocol = ?, started_at = now(),
@@ -258,7 +261,7 @@ object SqlDesk {
           )
         ) { ps =>
           ps.setString(1, session.toString)
-          ps.setLong(2, EngineLock.pid)
+          ps.setLong(2, identity.pid)
           ps.setInt(3, ToolRequest.Protocol)
           ps.setString(4, EdgeId.value(edge))
           ps.executeUpdate()
@@ -305,7 +308,12 @@ object SqlDesk {
   }
 
   /** A new registration under `key`, its lock held by `conn`. */
-  private def insert(conn: Connection, key: String, principal: PrincipalId): EdgeId = {
+  private def insert(
+      conn: Connection,
+      key: String,
+      principal: PrincipalId,
+      identity: ProcessIdentity
+  ): EdgeId = {
     val (id, lockKey) = Using.resource(
       conn.prepareStatement(
         """INSERT INTO grit.edges (key, principal, machine, pid, session, protocol, started_at, heartbeat_at)
@@ -314,8 +322,8 @@ object SqlDesk {
     ) { ps =>
       ps.setString(1, key)
       ps.setString(2, PrincipalId.value(principal))
-      ps.setString(3, EngineLock.machine)
-      ps.setLong(4, EngineLock.pid)
+      ps.setString(3, identity.machine)
+      ps.setLong(4, identity.pid)
       ps.setInt(5, ToolRequest.Protocol)
       Using.resource(ps.executeQuery()) { rs =>
         rs.next()

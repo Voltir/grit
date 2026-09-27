@@ -39,7 +39,7 @@ object SqlEdgesTests extends EdgesContract {
     LiveDb.conversation(config, Origin.Task("edges", name)).id
 
   protected def desk(places: Set[Place]): Desk^ =
-    SqlDesk.open(config, dataSource, client, PrincipalId.Local, places) match {
+    SqlDesk.open(config, dataSource, client, PrincipalId.Local, places, LiveEngine.Identity) match {
       case Right(d) => d
       case Left(e) => sys.error(s"no desk: $e")
     }

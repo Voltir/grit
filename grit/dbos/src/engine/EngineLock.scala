@@ -8,6 +8,7 @@ import scala.concurrent.duration.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
+import grit.core.host.ProcessIdentity
 import grit.dbos.sql.DbConfig
 
 /** This database's one engine: a session advisory lock held on a connection of its own until
@@ -18,10 +19,10 @@ final class EngineLock private (conn: Connection, val beat: FiniteDuration)
     extends caps.SharedCapability,
       AutoCloseable {
 
-  /** Writes this holder's row: its machine, process, epoch and start, over any row a dead
-    * holder left. Needs the schema; only [[Engine.start]] calls it.
+  /** Writes this holder's row: its `identity`, epoch and start, over any row a dead holder
+    * left. Needs the schema; only [[Engine.start]] calls it.
     */
-  private[engine] def claim(epoch: String): Either[String, Unit] =
+  private[engine] def claim(epoch: String, identity: ProcessIdentity): Either[String, Unit] =
     try {
       Using.resource(
         conn.prepareStatement(
@@ -32,8 +33,8 @@ final class EngineLock private (conn: Connection, val beat: FiniteDuration)
             |  started_at = EXCLUDED.started_at, heartbeat_at = EXCLUDED.heartbeat_at""".stripMargin
         )
       ) { ps =>
-        ps.setString(1, EngineLock.machine)
-        ps.setLong(2, EngineLock.pid)
+        ps.setString(1, identity.machine)
+        ps.setLong(2, identity.pid)
         ps.setString(3, epoch)
         ps.executeUpdate()
       }
@@ -140,15 +141,6 @@ object EngineLock {
       }
     catch { case NonFatal(_) => None }
 
-  /** This process's id, as the operating system knows it: read through the runtime's
-    * management interface, which names no process API.
-    */
-  private[engine] def pid: Long = java.lang.management.ManagementFactory.getRuntimeMXBean.getPid
-
-  /** This machine's name; `unknown` when it cannot be read. */
-  private[engine] def machine: String =
-    try java.net.InetAddress.getLocalHost.getHostName
-    catch { case NonFatal(_) => "unknown" }
 }
 
 /** Why a lock was not taken. */

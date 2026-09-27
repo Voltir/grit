@@ -12,6 +12,7 @@ import scala.util.control.NonFatal
 import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
+import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
@@ -72,7 +73,8 @@ final class Engine private (
     dbos: DBOS,
     dataSource: PGSimpleDataSource,
     lock: EngineLock^,
-    config: DbConfig
+    config: DbConfig,
+    identity: ProcessIdentity
 ) extends Link {
 
   val conversations: ConversationStore = new SqlConversationStore()
@@ -200,7 +202,7 @@ final class Engine private (
     * reached.
     */
   def register(principal: PrincipalId, places: Set[Place]): Either[DeskError, Desk^] =
-    SqlDesk.open(config, dataSource, client, principal, places) match {
+    SqlDesk.open(config, dataSource, client, principal, places, identity) match {
       case Left(e) => Left(e)
       case Right(desk) =>
         // The desk's only capability is its own connection, which close() closes: nothing it
@@ -320,26 +322,32 @@ object Engine {
   val BodiesWithin: FiniteDuration = 30.seconds
 
   /** [[EngineLock.take]], then [[start]]. */
-  def open(config: DbConfig, epoch: String): Either[NotTaken, Engine^] =
+  def open(config: DbConfig, epoch: String, identity: ProcessIdentity): Either[NotTaken, Engine^] =
     EngineLock.take(config) match {
       case Left(refused) => Left(refused)
-      case Right(lock) => Right(start(config, lock, epoch))
+      case Right(lock) => Right(start(config, lock, epoch, identity))
     }
 
   /** The engine of the database `config` names, which `lock` is held on: its schema applied,
-    * `lock`'s row written and its heartbeat begun, recovering and dequeuing only workflows of
+    * `lock`'s row written, naming this process as `identity` says, and its heartbeat begun,
+    * recovering and dequeuing only workflows of
     * compatibility epoch `epoch` (ADR 0004). Losing the lock (its connection dropped, or its
     * row gone or taken) stops the engine as [[Engine.close]] does, and an edge's calls on it
     * then fail. Closes `lock` when it throws.
     */
-  def start(config: DbConfig, lock: EngineLock^, epoch: String): Engine^ =
+  def start(
+      config: DbConfig,
+      lock: EngineLock^,
+      epoch: String,
+      identity: ProcessIdentity
+  ): Engine^ =
     try {
       schemaSetup(config)
       lock
-        .claim(epoch)
+        .claim(epoch, identity)
         .left
         .foreach(why => sys.error(s"the engine's row could not be written: $why"))
-      val engine = build(config, lock, epoch)
+      val engine = build(config, lock, epoch, identity)
       engine.beating()
       engine
     } catch {
@@ -348,7 +356,12 @@ object Engine {
         throw e
     }
 
-  private def build(config: DbConfig, lock: EngineLock^, epoch: String): Engine^ = {
+  private def build(
+      config: DbConfig,
+      lock: EngineLock^,
+      epoch: String,
+      identity: ProcessIdentity
+  ): Engine^ = {
     val dbos = new DBOS(
       DBOSConfig
         .defaults("grit")
@@ -364,7 +377,7 @@ object Engine {
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Engine(dbos, ds, lock, config)
+    new Engine(dbos, ds, lock, config, identity)
   }
 
   /** Applies `grit/dbos/resources/schema.sql` idempotently. */

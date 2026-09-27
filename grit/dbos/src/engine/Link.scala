@@ -7,6 +7,7 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.edge.{Desk, DeskError}
+import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PrincipalId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
@@ -109,15 +110,15 @@ trait Link extends caps.SharedCapability, AutoCloseable {
 object Link {
 
   /** A link to the engine another process runs on the database `config` names, as grit of
-    * compatibility epoch `epoch`: no DBOS executor here, only its client, the stores and the
-    * inbox. Throws when the database cannot be reached.
+    * compatibility epoch `epoch` in the process `identity` names: no DBOS executor here,
+    * only its client, the stores and the inbox. Throws when the database cannot be reached.
     */
-  def attach(config: DbConfig, epoch: String): Link^ = {
+  def attach(config: DbConfig, epoch: String, identity: ProcessIdentity): Link^ = {
     val ds = new PGSimpleDataSource()
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Attached(config, ds, new DBOSClient(ds), epoch)
+    new Attached(config, ds, new DBOSClient(ds), epoch, identity)
   }
 
   /** `turn`'s status through `client` ([[Link.status]]). */
@@ -182,7 +183,8 @@ private[engine] final class Attached(
     config: DbConfig,
     dataSource: PGSimpleDataSource,
     client: DBOSClient,
-    epoch: String
+    epoch: String,
+    identity: ProcessIdentity
 ) extends Link {
 
   private val conversations: ConversationStore = new SqlConversationStore()
@@ -229,7 +231,7 @@ private[engine] final class Attached(
           )
         )
       case _ =>
-        SqlDesk.open(config, dataSource, client, principal, places) match {
+        SqlDesk.open(config, dataSource, client, principal, places, identity) match {
           case Left(e) => Left(e)
           case Right(desk) =>
             // The desk's only capability is its own connection, which close() closes:

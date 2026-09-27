@@ -30,7 +30,7 @@ object PromoteFacts {
     val config = DbConfig.fromEnv(env).left.map(_.message).fold(fail, identity)
     val seed = Seed.catalog.fold(fail, identity)
     // The engine's lock, like any engine: while grit runs on this database, this says so.
-    val engine = Engine.open(config, Turn.Epoch) match {
+    val engine = Engine.open(config, Turn.Epoch, grit.host.LocalMachine.identity()) match {
       case Right(open) => open
       case Left(refused) => fail(refused.message(java.time.Instant.now()))
     }

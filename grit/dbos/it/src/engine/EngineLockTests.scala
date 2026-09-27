@@ -42,7 +42,7 @@ object EngineLockTests extends TestSuite {
   /** The engine of `config`, beating every [[beat]]. */
   private def engine(config: DbConfig): Engine^ =
     EngineLock.take(config, beat) match {
-      case Right(lock) => Engine.start(config, lock, "test")
+      case Right(lock) => Engine.start(config, lock, "test", LiveEngine.Identity)
       case Left(refused) => sys.error(s"not taken: $refused")
     }
 
@@ -109,7 +109,7 @@ object EngineLockTests extends TestSuite {
         EngineLock.take(config).left.map {
           case NotTaken.Held(holder) => holder.map(h => (h.machine, h.pid, h.epoch))
           case other => other
-        } ==> Left(Some((EngineLock.machine, ProcessHandle.current().pid(), "test")))
+        } ==> Left(Some(("test-machine", 4242L, "test")))
       finally first.close()
     }
 
