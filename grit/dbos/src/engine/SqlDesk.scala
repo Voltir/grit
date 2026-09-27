@@ -258,7 +258,7 @@ object SqlDesk {
           )
         ) { ps =>
           ps.setString(1, session.toString)
-          ps.setLong(2, ProcessHandle.current().pid())
+          ps.setLong(2, EngineLock.pid)
           ps.setInt(3, ToolRequest.Protocol)
           ps.setString(4, EdgeId.value(edge))
           ps.executeUpdate()
@@ -315,7 +315,7 @@ object SqlDesk {
       ps.setString(1, key)
       ps.setString(2, PrincipalId.value(principal))
       ps.setString(3, EngineLock.machine)
-      ps.setLong(4, ProcessHandle.current().pid())
+      ps.setLong(4, EngineLock.pid)
       ps.setInt(5, ToolRequest.Protocol)
       Using.resource(ps.executeQuery()) { rs =>
         rs.next()

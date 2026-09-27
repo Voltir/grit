@@ -33,7 +33,7 @@ final class EngineLock private (conn: Connection, val beat: FiniteDuration)
         )
       ) { ps =>
         ps.setString(1, EngineLock.machine)
-        ps.setLong(2, ProcessHandle.current().pid())
+        ps.setLong(2, EngineLock.pid)
         ps.setString(3, epoch)
         ps.executeUpdate()
       }
@@ -139,6 +139,11 @@ object EngineLock {
         }
       }
     catch { case NonFatal(_) => None }
+
+  /** This process's id, as the operating system knows it: read through the runtime's
+    * management interface, which names no process API.
+    */
+  private[engine] def pid: Long = java.lang.management.ManagementFactory.getRuntimeMXBean.getPid
 
   /** This machine's name; `unknown` when it cannot be read. */
   private[engine] def machine: String =

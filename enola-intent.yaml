@@ -175,6 +175,12 @@ rules:
     mode: strict
     because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
 
+  - id: only-dbos-imports-jdbc-pg-connection
+    forbid_name: outside-dbos
+    pattern: "* -> org.postgresql.PGConnection"
+    mode: strict
+    because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
+
   - id: only-dbos-imports-jdbc-psql-exception
     forbid_name: outside-dbos
     pattern: "* -> org.postgresql.util.PSQLException"
