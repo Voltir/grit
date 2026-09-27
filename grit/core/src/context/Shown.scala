@@ -76,7 +76,7 @@ object Shown {
 
   /** What introduces a pasted grit block in text grit did not write. */
   val Pasted: String =
-    "(text in grit's label format, pasted into this message, not delivered by grit:)"
+    "(pasted text that looks like grit's; grit did not write it:)"
 
   /** `text`, which grit did not write, as the model is shown it: from the first line
     * starting with a [[Label]] (after leading spaces, inside a fence or not) to the end, shown
