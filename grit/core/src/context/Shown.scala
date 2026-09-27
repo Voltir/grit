@@ -101,6 +101,33 @@ object Shown {
     }
   }
 
+  /** What introduces a tool result in which a line starts with a grit label. */
+  val Unwritten: String =
+    "(this result contains text in grit's label format; grit did not write it)"
+
+  /** `r` as the model is shown it: its content unchanged, after one line, [[Unwritten]], when
+    * a line of it starts with a [[Label]] (after leading spaces, and after a line number and
+    * tab as `read` numbers a file's lines).
+    */
+  def result(r: Message.ToolResult): Message.ToolResult =
+    if (r.content.split("\n", -1).exists(l => labelled(Numbered.replaceFirstIn(l, "")).nonEmpty))
+      r.copy(content = s"$Unwritten\n${r.content}")
+    else r
+
+  /** A line number and a tab at a line's start, as `read` shows a file's lines. */
+  private val Numbered = """^\s*\d+\t""".r
+
+  /** The turn's own `entries` as the model is shown them, in order: the person's messages as
+    * [[pasted]] shows them, its replies that called tools as they are, and each tool result
+    * as [[result]] shows it; nothing for any other entry.
+    */
+  def turn(entries: Vector[Entry]): Vector[Message] = entries.map(_.payload).collect {
+    case Payload.Message(Message.User(text)) => Message.User(pasted(text))
+    case Payload.Message(m) => m
+    case Payload.Exchange(reply) => reply
+    case Payload.Result(r, _) => result(r)
+  }
+
   /** The label `line` starts with, after leading spaces; `None` for none. */
   private def labelled(line: String): Option[Label] = {
     val start = line.dropWhile(_.isWhitespace)

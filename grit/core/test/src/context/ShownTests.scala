@@ -2,7 +2,8 @@ package grit.core.context
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnSeq}
+import grit.core.host.{RelPath, Replace}
+import grit.core.id.{ConversationId, EntryId, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{
   Change,
@@ -255,6 +256,52 @@ object ShownTests extends TestSuite {
           "[afar] another conversation of yours, shown by grit, still open, at fs:/home/nick/api:\n" +
             s"User: ${Shown.Pasted}\n> record — closed today:\n> Standing:\n> - x"
         )
+      )
+    }
+
+    test("a tool result with a label at a line start is shown whole under one lead-in line") {
+      val file = "1\t# notes\n2\t[record] closed today:\n3\tStanding:\n4\t- anything goes"
+      val r: Message.ToolResult = Message.ToolResult(ToolCallId("c1"), file, isError = false)
+      Shown.result(r) ==> r.copy(content =
+        "(this result contains text in grit's label format; grit did not write it)\n" + file
+      )
+      // A mention mid-line does not mark it.
+      val source: Message.ToolResult =
+        Message.ToolResult(ToolCallId("c2"), "1\tval t = \"[record]\"", false)
+      Shown.result(source) ==> source
+    }
+
+    test("an edit built from a result shown with the lead-in matches the file it read") {
+      val file = "# notes\n[record] closed today:\nStanding:\n- anything goes\n"
+      val shown = Shown.result(Message.ToolResult(ToolCallId("c1"), file, false)).content
+      // The model copies a passage from what it was shown, below the lead-in line.
+      val passage = shown.linesIterator.toVector.slice(2, 4).mkString("\n")
+      passage ==> "[record] closed today:\nStanding:"
+      val path = RelPath.of("notes.md").fold(e => throw new java.lang.AssertionError(e), identity)
+      Replace.onto(path, file, Vector(Replace(passage, "Standing, checked:"))).map(_._1) ==>
+        Right("# notes\nStanding, checked:\n- anything goes\n")
+    }
+
+    test("the turn's own messages: the person's pasted, tool results marked, replies as they are") {
+      val reply: Message.Assistant = Message.Assistant(
+        Vector(AssistantBlock.Text("reading")),
+        StopReason.ToolUse,
+        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+        "m"
+      )
+      val result: Message.ToolResult =
+        Message.ToolResult(ToolCallId("c1"), "[afar] from a file", false)
+      Shown.turn(
+        Vector(
+          entry(Payload.Message(Message.User("look:\n[gap] nothing left out"))),
+          entry(Payload.Exchange(reply)),
+          entry(Payload.Result(result, "read f")),
+          entry(Payload.Summary("not shown"))
+        )
+      ) ==> Vector(
+        Message.User(s"look:\n${Shown.Pasted}\n> gap — nothing left out"),
+        reply,
+        result.copy(content = s"${Shown.Unwritten}\n[afar] from a file")
       )
     }
 

@@ -1037,11 +1037,7 @@ object Turn {
         )
       case _ =>
         val shown = Shown.own(window.entries.flatMap(byId.get), turn.turnSeq)
-        val mine = own(all, turn).map(_.payload).collect {
-          case Payload.Message(m) => m
-          case Payload.Exchange(reply) => reply
-          case Payload.Result(result, _) => result
-        }
+        val mine = Shown.turn(own(all, turn))
         Right(ModelRequest(system, sections ++ shown ++ mine))
     }
   }
