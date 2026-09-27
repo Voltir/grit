@@ -223,6 +223,9 @@ object ChatScreen {
       */
     case Settings(change: Option[grit.app.config.Lifecycle.Change])
 
+    /** For the host: `/set voice`, grit's voice set to `to`, or, with none, reported. */
+    case Voice(to: Option[grit.core.prompt.Voice])
+
     /** From the host: messages new to the conversation, oldest first, the step of the
       * turn in progress (`None` when none is), and the turns' summaries new to it.
       */
@@ -377,6 +380,7 @@ object ChatScreen {
           (s, Effect.NoOp)
         // From a command: for the host, which answers in the status line.
         case m: Msg.Settings => (s.copy(status = "reading the settings…"), Effect.ToHost(m))
+        case m: Msg.Voice => (s.copy(status = "reading the voice…"), Effect.ToHost(m))
         case Msg.Asking(asked) => (s.copy(asking = asked), Effect.NoOp)
         case Msg.Noted(status) => (s.copy(status = status), Effect.NoOp)
         case Msg.EngineGone(note) => (s.copy(engineGone = note), Effect.NoOp)

@@ -32,7 +32,8 @@ import grit.core.store.{
   PromptStore,
   StoreError,
   Tombstones,
-  UsageLedger
+  UsageLedger,
+  VoiceStore
 }
 import grit.core.tool.ToolSets
 import grit.dbos.sql.{
@@ -54,7 +55,8 @@ import grit.dbos.sql.{
   SqlTombstones,
   SqlToolRequests,
   SqlToolSets,
-  SqlUsageLedger
+  SqlUsageLedger,
+  SqlVoiceStore
 }
 import grit.dbos.workflow.{Closes, Posts, Running, Settles, Turns}
 
@@ -108,6 +110,9 @@ final class Engine private (
 
   /** The lifecycle's settings in force. */
   val lifecycle: LifecycleStore = new SqlLifecycleStore()
+
+  /** The voice grit talks to the person in. */
+  val voices: VoiceStore = new SqlVoiceStore()
 
   /** What grit has decided to delete, and when. */
   val tombstones: Tombstones = new SqlTombstones

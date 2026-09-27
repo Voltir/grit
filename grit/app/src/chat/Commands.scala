@@ -3,6 +3,7 @@ package grit.app.chat
 import grit.app.chat.ChatScreen.Msg
 import grit.app.config.Lifecycle
 import grit.app.look.Theme
+import grit.core.prompt.Voice
 
 /** The chat screen's slash commands: the one table the palette lists, the help dialog
   * describes, and a submitted `/` draft runs. A draft that starts with `/` is a command,
@@ -16,14 +17,14 @@ object Commands {
     case SetTheme extends Command("/theme", "switch the colour theme")
     case Panel extends Command("/panel", "show or hide the turn panel")
     case Summaries extends Command("/summaries", "show or hide turn summaries")
-    case Set extends Command("/set", "when conversations close")
+    case Set extends Command("/set", "when conversations close, and grit's voice")
     case Help extends Command("/help", "commands and keys")
     case Quit extends Command("/quit", "leave grit")
 
     /** The arguments this command offers as a second list; empty when it takes none. */
     def choices: Vector[String] = this match {
       case SetTheme => Theme.all.map(_.key)
-      case Set => Lifecycle.Change.Names
+      case Set => Lifecycle.Change.Names :+ VoiceName
       case Panel | Summaries | Help | Quit => Vector.empty
     }
 
@@ -38,7 +39,11 @@ object Commands {
       case Summaries => bare(Msg.ToggleSummaries, argument)
       case Help => bare(Msg.OpenHelp, argument)
       case Set =>
+        val (setting, value) = split(argument)
         if (argument.isEmpty) Right(Msg.Settings(None))
+        else if (setting == VoiceName)
+          if (value.isEmpty) Right(Msg.Voice(None))
+          else Voice.of(value).map(v => Msg.Voice(Some(v)))
         else Lifecycle.Change.parse(argument).map(c => Msg.Settings(Some(c)))
       case Quit => bare(Msg.Quit, argument)
     }
@@ -48,6 +53,9 @@ object Commands {
   }
 
   val all: Vector[Command] = Command.values.toVector
+
+  /** The name `/set` takes grit's voice under: not a lifecycle setting ([[Voice.of]]). */
+  private val VoiceName = "voice"
 
   /** Whether `draft` is a command: it starts with `/`, and not with `//`. */
   def isCommand(draft: String): Boolean = draft.startsWith("/") && !draft.startsWith("//")

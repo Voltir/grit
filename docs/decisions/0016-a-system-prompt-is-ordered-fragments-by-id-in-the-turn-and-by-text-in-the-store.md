@@ -1,6 +1,6 @@
 # 0016. A system prompt is ordered fragments: by id in the turn, by text in the store
 
-Status: accepted (2026-09-27)
+Status: accepted (2026-09-27), revised (2026-09-27)
 
 Context: the system prompt was one string written in `Main`, and the one model input that
 was not in the store: nothing showed what a turn was sent, and nothing but the code said
@@ -18,9 +18,20 @@ Decision:
 - **A prompt is ordered fragments.** Each has a `Layer` and a source. The layers, stable to
   volatile: `Base` (grit's words, per release), `Edge` (what the edge is and renders),
   `Reach` (grit's words on where the conversation is and what a turn may reach there), then
-  `Place` (the place's own instruction files). A person layer comes later, between `Edge`
-  and `Reach`. `SystemPrompt.of` sorts stably by layer, and `render` joins the texts the
+  `Place` (the place's own instruction files). A `Person` layer sits between `Edge` and
+  `Reach`. `SystemPrompt.of` sorts stably by layer, and `render` joins the texts the
   same way every time, so equal fragments give equal bytes.
+- **The Person layer is the person's choice: how grit talks to them.** Its one fragment is
+  the voice (`Voice`), one for the database for now: a named voice (sassy by default, whose
+  text is fixed per release and so caches like Base), the person's own words, or `plain`,
+  which adds no fragment. Its source is the person, never `grit`. Only a turn's system
+  prompt carries it: of the engine's workflows, only the turn's offer is given a `VoiceStore`,
+  and the closing, query and summary writers take no system text a caller could pass it
+  in. Manner only: Base's last line, which every voice follows, says later instructions
+  never change what is reported about memory or a tool's outcome.
+- **grit labels what it writes into a window.** Each message grit writes begins with a
+  label naming its author (`[record]`, `[afar]`, `[gap]`), defined once in `Shown` and
+  taught by Base, whose legend is written from the same labels.
 - **The Place layer is data from the place, never grit's own words.** It is the place's
   `AGENTS.md`, else its `CLAUDE.md` (never both), per directory from `/` down, the nearest
   last, verbatim under one heading naming the file. It is bounded (`PlaceFragments`): the
@@ -40,5 +51,6 @@ turns in one place; an edit to a place's `AGENTS.md` changes only the Place laye
 turn was sent can be shown exactly. Fragments are never collected, so their table grows
 with every distinct text; a collection kind for unreferenced ones waits until nothing that
 can still replay names them. Enforced by `SystemPromptTests` (order, the pinned id),
-`PlaceFragmentsTests`, `LocalInstructionsTests`, `TurnPromptTests` (the markers the base
-names are the ones grit writes) and the store contract (`PromptStore`).
+`VoiceTests` and the voice contract, `TurnTests` (the voice in every turn call and never the
+summary's), `PlaceFragmentsTests`, `LocalInstructionsTests`, `TurnPromptTests` (the base
+teaches every label grit writes) and the store contract (`PromptStore`).

@@ -11,6 +11,11 @@ enum Layer(val key: String) {
   /** What the conversation's edge is, and what it renders. */
   case Edge extends Layer("edge")
 
+  /** How the person the conversation is with wants to be talked to: their choice, never
+    * grit's own words.
+    */
+  case Person extends Layer("person")
+
   /** grit's words on where the conversation is, and what a turn may reach there. */
   case Reach extends Layer("reach")
 

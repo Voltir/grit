@@ -14,7 +14,8 @@ import grit.core.store.{
   Jot,
   ModelProfileStore,
   PromptStore,
-  UsageLedger
+  UsageLedger,
+  VoiceStore
 }
 import grit.core.tool.{Tool, ToolSets, Toolbox}
 
@@ -49,14 +50,16 @@ final case class TurnRecords(
 
 /** What a turn offers, and where its hosted calls go (ADR 0017): each conversation's origin,
   * the system prompt and tool set each turn was offered (by content id), the requests its
-  * hosted calls become, and which edge serves a place.
+  * hosted calls become, which edge serves a place, and `voices`, the voice the turn's prompt
+  * speaks in.
   */
 final case class TurnHosting(
     conversations: ConversationStore,
     prompts: PromptStore,
     toolSets: ToolSets,
     requests: ToolRequests,
-    edges: EdgeDirectory
+    edges: EdgeDirectory,
+    voices: VoiceStore
 )
 
 /** The tools a turn's model may call in its loop ([[TurnLoop]]), and how the loop runs.

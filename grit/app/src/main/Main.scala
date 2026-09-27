@@ -202,7 +202,8 @@ object Main {
                 engine.prompts,
                 engine.toolSets,
                 engine.requests,
-                engine.edgeDirectory
+                engine.edgeDirectory,
+                engine.voices
               ),
               assembler,
               classifier(topics),

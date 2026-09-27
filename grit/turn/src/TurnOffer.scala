@@ -3,7 +3,7 @@ package grit.turn
 import grit.core.edge.Advert
 import grit.core.id.TurnRef
 import grit.core.place.Place
-import grit.core.prompt.{FragmentId, SystemPrompt}
+import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
 import grit.core.store.{Db, Origin, StoreError, Tx}
 import grit.core.tool.{DuplicateName, Tool, ToolName, ToolSet, ToolSetId, Toolbox}
 
@@ -25,8 +25,10 @@ object TurnOffer {
   /** What `turn` is offered now, kept, and recorded as `turn`'s prompt: its conversation's
     * workspace (a TUI session's directory); the hosted tools of `tooling` that the live edge
     * serving that workspace advertises, then `tooling`'s own; and its prompt: the base, its
-    * edge's fragment, what it may reach there, and the instruction files the edge read there.
-    * `TurnFailure.Store` when a store fails, or the conversation is gone.
+    * edge's fragment, the voice's fragment (none for plain), what it may reach there, and the
+    * instruction files the edge read there. `TurnFailure.Store` when a store fails, or the
+    * conversation is gone. A stored voice this build does not know is the default, never a
+    * failure.
     */
   def decide[C^](hosting: TurnHosting, tooling: TurnTooling[C]^, turn: TurnRef)(using
       Tx^
@@ -58,12 +60,13 @@ object TurnOffer {
       place <- advert.fold[Either[StoreError, SystemPrompt]](Right(SystemPrompt.of(Vector.empty)))(
         a => hosting.prompts.prompt(a.instructions)
       )
+      voice <- hosting.voices.current()
       prompt = SystemPrompt.of(
         Vector(
           TurnPrompt.Base,
           TurnPrompt.edge(conversation.origin),
           TurnPrompt.reach(workspace.flatMap(_.directory), hostedSet)
-        ) ++ place.fragments
+        ) ++ Voice.fragment(voice) ++ place.fragments
       )
       _ <- hosting.prompts.record(turn.workflowId, prompt)
     } yield Recorded(workspace, set.id, prompt.ids)).left.map(e => TurnFailure.Store(describe(e)))

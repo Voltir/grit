@@ -8,7 +8,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `SqlModelProfileStore`, `SqlModelFactStore`, `SqlToolSets`, `SqlPromptStore`, `SqlToolRequests` and
   `SqlEdgeDirectory` (hosted tool calls and the edges serving them, ADR 0017), `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
-  row), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
+  row), `SqlVoiceStore` (the voice, one row), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
   as posted from one closing, and its cursor), `SqlTombstones` (what is to be deleted, ADR 0014).
   Imports nothing else in dbos.
 - **`workflow`** — DBOS behind `Durable`: `DbosDurable`, `DurableWorkflow` (registers a

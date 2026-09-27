@@ -20,9 +20,10 @@ In dependency order:
   `Weight` (how far its own search hits outweigh those elsewhere) and `Locality`, both
   together. Imports nothing in core.
 - **`prompt`** — a turn's system prompt as ordered fragments (ADR 0016): `Layer` (base,
-  edge, reach, place: the most stable first, for a provider's prompt cache), `Fragment` (its
-  id a content hash) and `SystemPrompt` (fragments by layer, rendered to the same bytes
-  every time). ← `id`
+  edge, person, reach, place: the most stable first, for a provider's prompt cache),
+  `Fragment` (its id a content hash), `SystemPrompt` (fragments by layer, rendered to the
+  same bytes every time) and `Voice` (how grit talks to the person: a named voice, sassy by
+  default, or their own words; the person layer's one fragment). ← `id`
 - **`model`** — what grit knows about models, as data: `ModelRef` (a model snapshot at an
   upstream), each setting's `Known` value and its `Source`, the switches a `Profile` picks
   among and the `Settings` a call is made under, the `Policy` of which pair does each job,
@@ -55,7 +56,7 @@ In dependency order:
   turn's system prompt, its fragments kept by id), `UsageLedger`, `ModelProfileStore` (which profile each turn ran
   under), `ModelFactStore` (facts about pairs approved at runtime), `PeriodStore` (which
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
-  settings in force), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
+  settings in force), `VoiceStore` (the voice in force), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
   conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`, `retention`, `prompt`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
@@ -108,7 +109,7 @@ No source file sits at core's root, and no two packages import each other in a c
 
 The test tree mirrors it: the in-memory fakes other modules' tests use are
 `store.InMemoryEntryStore`, `store.InMemoryUsageLedger`, `store.InMemoryModelProfileStore`,
-`store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore`, `plugin.InMemoryPlugins` and
+`store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore`, `store.InMemoryVoiceStore`, `plugin.InMemoryPlugins` and
 `durable.InMemoryDurable`; and `period.TestClosings` builds closings and balance lines.
 `TestTx` lives in package `grit.dbos.sql`, because the `null` it holds is legal only inside
 the DBOS quarantine (rule 6).

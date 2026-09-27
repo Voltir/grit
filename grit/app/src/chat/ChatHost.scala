@@ -8,6 +8,7 @@ import scala.util.control.NonFatal
 import grit.app.config.Lifecycle
 import grit.core.id.{ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.Message
+import grit.core.prompt.Voice
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Entry, Origin, Payload, StoreError, UsageLedger}
 import grit.dbos.engine.{Link, TurnStatus}
@@ -30,8 +31,8 @@ import grit.turn.TurnStream
   *     arrives by following.
   *   - `Show` pins the panel to a turn, or back to the latest.
   *   - `Answer` answers a turn's call that asks first, through the inbox; a failure says so.
-  *   - `Settings` reads the lifecycle's settings or changes one; the status line says what
-  *     came of it.
+  *   - `Settings` reads the lifecycle's settings or changes one, and `Voice` reads grit's
+  *     voice or sets it; the status line says what came of it.
   *
   * All of it runs on virtual threads and answers through the mailbox, so the screen paints
   * at once and never waits on the database or the model. [[close]] stops following and
@@ -115,7 +116,8 @@ final class ChatHost(
       case ChatScreen.Msg.Settings(change) =>
         whenOpen(mailbox, "settings not read") { e =>
           val result = change match {
-            case None => e.db.read(e.lifecycle.current()).left.map(_.toString)
+            case None =>
+              e.db.read(e.lifecycle.current()).left.map(_.toString)
             case Some(c) =>
               // One transaction: read, change and write, so two changes at once both land.
               e.jot
@@ -129,8 +131,28 @@ final class ChatHost(
                 .map(_.toString)
                 .flatten
           }
+          // `/set` alone reports the voice too, after the lifecycle's settings.
+          val voice = change match {
+            case None =>
+              e.db.read(e.voices.current()).fold(_ => "", v => s"; ${ChatHost.voiced(v)}")
+            case Some(_) => ""
+          }
           mailbox.offer(
-            ChatScreen.Msg.Noted(result.fold(why => s"not set: $why", Lifecycle.describe))
+            ChatScreen.Msg.Noted(
+              result.fold(why => s"not set: $why", Lifecycle.describe(_) + voice)
+            )
+          )
+        }
+      case ChatScreen.Msg.Voice(to) =>
+        whenOpen(mailbox, "voice not read") { e =>
+          val result = to match {
+            case None => e.db.read(e.voices.current())
+            case Some(v) => e.jot.write(e.voices.set(v).map(_ => v))
+          }
+          mailbox.offer(
+            ChatScreen.Msg.Noted(
+              result.fold(why => s"voice not set: $why", ChatHost.voiced)
+            )
           )
         }
       case ChatScreen.Msg.Send(text) =>
@@ -368,5 +390,11 @@ object ChatHost {
     */
   trait Opener extends caps.SharedCapability {
     def open(): Link^
+  }
+
+  /** `voice` as the status line notes it: its name, or the person's own words. */
+  def voiced(voice: Voice): String = voice match {
+    case named: Voice.Named => s"voice: ${named.key}"
+    case Voice.Own(words) => s"voice: your own words: $words"
   }
 }

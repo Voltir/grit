@@ -11,7 +11,7 @@ import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.edge.{InMemoryEdges, OutcomeJson, Registration, ToolRequest}
 import grit.core.id.{CallSlot, ConversationId, EntryId, PrincipalId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.place.{Directory, Place}
-import grit.core.prompt.{Fragment, SystemPrompt}
+import grit.core.prompt.{Fragment, SystemPrompt, Voice}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
@@ -40,13 +40,15 @@ import grit.core.store.{
   InMemoryPromptStore,
   InMemoryToolSets,
   InMemoryUsageLedger,
+  InMemoryVoiceStore,
   Origin,
   Jot,
   ModelProfileStore,
   Payload,
   StoreError,
   Tx,
-  UsageLedger
+  UsageLedger,
+  VoiceStore
 }
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSet, ToolSpec, Toolbox}
 import grit.dbos.sql.TestTx
@@ -66,12 +68,16 @@ object TurnFixtures {
   val origin: Origin = Origin.Tui(checkout, "test")
 
   /** What a fixture turn is offered when no edge serves its directory: its conversations,
-    * the fixture one created first, and in-memory prompts, tool sets and `edges`.
+    * the fixture one created first, and in-memory prompts, tool sets, `edges` and `voices`
+    * (none set: the default).
     */
-  def hosting(edges: InMemoryEdges = new InMemoryEdges): TurnHosting = {
+  def hosting(
+      edges: InMemoryEdges = new InMemoryEdges,
+      voices: VoiceStore = new InMemoryVoiceStore
+  ): TurnHosting = {
     val conversations = new InMemoryConversationStore
     conversations.findOrCreate(origin, PrincipalId.Local)(using TestTx.fake)
-    TurnHosting(conversations, Prompts, ToolSets, edges, edges)
+    TurnHosting(conversations, Prompts, ToolSets, edges, edges, voices)
   }
 
   /** Every fixture turn's prompts and tool sets, kept by content id as the real stores keep
@@ -82,10 +88,15 @@ object TurnFixtures {
 
   val ToolSets: InMemoryToolSets = new InMemoryToolSets
 
-  /** The system prompt a fixture turn is sent when no edge serves its directory. */
+  /** The system prompt a fixture turn is sent when no edge serves its directory, in the
+    * default voice.
+    */
   val system: String =
     SystemPrompt
-      .of(Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(Some(checkout), ToolSet.Empty)))
+      .of(
+        Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(Some(checkout), ToolSet.Empty)) ++
+          Voice.fragment(Voice.Default)
+      )
       .render
 
   /** The stub provider, keeping every request it was sent. */
@@ -384,7 +395,7 @@ object TurnFixtures {
     Turn.body(
       TurnEnv(
         TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, new InMemoryModelProfileStore),
-        TurnHosting(conversations, Prompts, toolSets, served, served.edges),
+        TurnHosting(conversations, Prompts, toolSets, served, served.edges, new InMemoryVoiceStore),
         new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
         new FixedModels(provider, new StubProvider()),
@@ -578,6 +589,26 @@ object TurnFixtures {
         assembler,
         NoClassifier,
         new FixedModels(provider, new StubProvider()),
+        FakeDb,
+        new NoWait,
+        Fresh.random()
+      ),
+      TurnTooling[{NoCheckout}](noTools, Vector.empty, new FakeJot, budget(5))
+    )(id)
+
+  /** The turn's workflow body over `entries`, its calls to `turn`'s model and its summary to
+    * `summary`'s, in the voice `voices` holds.
+    */
+  def voicedBody(entries: EntryStore, turn: Provider^, summary: Provider^, voices: VoiceStore)(
+      id: WorkflowId
+  )(using Durable^): String =
+    Turn.body(
+      TurnEnv(
+        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, new InMemoryModelProfileStore),
+        hosting(voices = voices),
+        new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
+        NoClassifier,
+        new FixedModels(turn, summary),
         FakeDb,
         new NoWait,
         Fresh.random()

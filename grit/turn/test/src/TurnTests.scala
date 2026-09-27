@@ -9,8 +9,18 @@ import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.Place
+import grit.core.prompt.Voice
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
-import grit.core.store.{Db, Entry, InMemoryEntryStore, InMemoryUsageLedger, Nearby, Payload}
+import grit.core.store.{
+  Db,
+  Entry,
+  InMemoryEntryStore,
+  InMemoryUsageLedger,
+  InMemoryVoiceStore,
+  Nearby,
+  Payload
+}
+import grit.core.tool.ToolSet
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -373,6 +383,44 @@ object TurnTests extends TestSuite {
       )
       windows(entries).lastOption.map(_._2) ==> Some(
         Payload.Window(Vector(closed), Vector.empty, nearby)
+      )
+    }
+
+    test(
+      "the default voice reaches every model call of the turn, between its edge and its reach, and never its summary"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = new RecordingProvider
+      val summary = new RecordingProvider
+      val asked = say(entries, "hello")
+      new InMemoryDurable().run(asked.workflowId)(
+        voicedBody(entries, turn, summary, new InMemoryVoiceStore)
+      )
+      val person =
+        Voice.fragment(Voice.Default).map(_.text).getOrElse(throw new java.lang.AssertionError())
+      val edge = TurnPrompt.edge(origin).text
+      val reach = TurnPrompt.reach(Some(checkout), ToolSet.Empty).text
+      turn.requests.map(_.system) ==>
+        Vector(Vector(TurnPrompt.Base.text, edge, person, reach).mkString("\n\n"))
+      summary.requests.size ==> 1
+      summary.requests.map(_.system) ==> Vector(TurnSummary.TopicalSystem)
+    }
+
+    test("plain adds no person fragment") {
+      val entries = new InMemoryEntryStore
+      val turn = new RecordingProvider
+      val voices = new InMemoryVoiceStore
+      voices.set(Voice.Named.Plain)(using TestTx.fake)
+      val asked = say(entries, "hello")
+      new InMemoryDurable().run(asked.workflowId)(
+        voicedBody(entries, turn, new RecordingProvider, voices)
+      )
+      turn.requests.map(_.system) ==> Vector(
+        Vector(
+          TurnPrompt.Base.text,
+          TurnPrompt.edge(origin).text,
+          TurnPrompt.reach(Some(checkout), ToolSet.Empty).text
+        ).mkString("\n\n")
       )
     }
 

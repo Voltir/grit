@@ -380,6 +380,16 @@ CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
     weight      DOUBLE PRECISION NOT NULL
 );
 
+-- How grit talks to the person (Voice): one of grit's named voices, by key, or the person's
+-- own words. One row, or none for the default (sassy). Read by a turn's offer step into the
+-- person layer of its system prompt; a key this build does not know reads as the default.
+-- Retention: kept: one row, changed by people.
+CREATE TABLE IF NOT EXISTS grit.voice (
+    one  BOOLEAN PRIMARY KEY DEFAULT true CHECK (one),
+    kind TEXT NOT NULL CHECK (kind IN ('named', 'own')),
+    text TEXT NOT NULL
+);
+
 -- Each plugin's documents, under keys it chooses (grit.core.plugin): a plugin builds only from
 -- closed periods, and reaches only its own rows. Each is of the generation of the plugin's
 -- cursor it was written under, and is read only while that is the cursor's; `source` is the

@@ -18,6 +18,9 @@ object Fragment {
   /** The source of a fragment in grit's own words. */
   val Grit = "grit"
 
+  /** The source of a fragment the person chose. */
+  val Person = "person"
+
   /** The stored form, `{"layer","source","text"}`, which the id hashes: a change here changes
     * every fragment's id.
     */

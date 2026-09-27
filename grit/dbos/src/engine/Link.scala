@@ -22,7 +22,8 @@ import grit.core.store.{
   PromptStore,
   StoreError,
   Tx,
-  UsageLedger
+  UsageLedger,
+  VoiceStore
 }
 import grit.dbos.sql.{
   DbConfig,
@@ -34,7 +35,8 @@ import grit.dbos.sql.{
   SqlModelProfileStore,
   SqlPeriodStore,
   SqlPromptStore,
-  SqlUsageLedger
+  SqlUsageLedger,
+  SqlVoiceStore
 }
 
 import dev.dbos.transact.DBOSClient
@@ -60,6 +62,9 @@ trait Link extends caps.SharedCapability, AutoCloseable {
 
   /** The lifecycle's settings in force. */
   val lifecycle: LifecycleStore
+
+  /** The voice grit talks to the person in. */
+  val voices: VoiceStore
 
   /** Short read transactions. */
   val db: Db
@@ -198,6 +203,8 @@ private[engine] final class Attached(
   val prompts: PromptStore = new SqlPromptStore()
 
   val lifecycle: LifecycleStore = new SqlLifecycleStore()
+
+  val voices: VoiceStore = new SqlVoiceStore()
 
   val db: Db = new SqlDb(dataSource)
 
