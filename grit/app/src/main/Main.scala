@@ -18,7 +18,7 @@ import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.place.{Directory, Place}
 import grit.core.plugin.Plugin
 import grit.core.store.{Db, Origin}
-import grit.core.tool.{DuplicateName, ToolName, Toolbox}
+import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
 import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken}
 import grit.dbos.sql.DbConfig
 import grit.core.prompt.Fragment
@@ -39,7 +39,7 @@ import grit.models.{
   StubModels,
   StubProvider
 }
-import grit.tools.{Coding, Facts, Probes}
+import grit.tools.{About, Coding, Facts, Probes}
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
 import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling}
@@ -259,19 +259,23 @@ object Main {
       // The engine's own tools touch no file: they read grit's store, keep a fact, probe a
       // model. The coding tools are hosted: offered here, run by the edge serving the
       // conversation's directory (ADR 0017).
+      // What grit is, from the docs grit.tools ships; offered under either choice.
+      val about: Tool[Option[About.Subject]] =
+        About.load().fold(why => throw new IllegalStateException(why), t => t)
       val launching = offered match {
         case ToolChoice.Read =>
           (digest match {
-            case None => Toolbox.of[{store}]()
-            case Some(docs) => Toolbox.of[{store}](Digest.recentActivity(store, docs))
+            case None => Toolbox.of[{store}](about)
+            case Some(docs) => Toolbox.of[{store}](about, Digest.recentActivity(store, docs))
           }).map(tools => launch(TurnTooling[{store}](tools, Coding.readOnlyHosted, engine.jot, rounds)))
         case ToolChoice.All =>
           val facts = new KeptFacts(engine.jot, engine.facts, Clock.system())
           (digest match {
             case None =>
-              Toolbox.of[{facts, models, store}](Facts.propose(facts), Probes.probe(models))
+              Toolbox.of[{facts, models, store}](about, Facts.propose(facts), Probes.probe(models))
             case Some(docs) =>
               Toolbox.of[{facts, models, store}](
+                about,
                 Facts.propose(facts),
                 Probes.probe(models),
                 Digest.recentActivity(store, docs)
@@ -598,7 +602,7 @@ object Main {
   /** Which tools a turn's model is offered. */
   private[main] enum ToolChoice {
 
-    /** `read`, `list` and `search` (`Coding.readOnly`): nothing asks first. */
+    /** `read`, `list` and `search` (`Coding.readOnly`), and `about`: nothing asks first. */
     case Read
 
     /** Those and `write`, `edit` and `run` (`Coding`), `propose_fact` (`Facts`) and
