@@ -148,6 +148,14 @@ object BalanceTests extends TestSuite {
         Right(Some(Ground.Tool))
     }
 
+    test("the weaker of two grounds: Claimed below Tool below Person") {
+      Ground.min(Ground.Person, Ground.Tool) ==> Ground.Tool
+      Ground.min(Ground.Tool, Ground.Person) ==> Ground.Tool
+      Ground.min(Ground.Person, Ground.Claimed) ==> Ground.Claimed
+      Ground.min(Ground.Claimed, Ground.Tool) ==> Ground.Claimed
+      Ground.min(Ground.Person, Ground.Person) ==> Ground.Person
+    }
+
     test("an ignored stand is shown as a stand, with its ground") {
       Balance.empty.edit(Vector(Edit.Stand("  ", Ground.Tool)), p(1)).changes ==>
         Vector(Change.Ignored("stand (tool):   ", "blank"))

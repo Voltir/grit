@@ -174,8 +174,8 @@ object CloseTests extends TestSuite {
       w.add(t, Payload.Message(replyOf("It uses 3000.")), 0, "reply:0")
       w.say("we keep 3000.", 1)
       val summary = answering(
-        "Summary: We checked the port.\nStanding:\n- config.yml sets port 3000 [t2]\n" +
-          "- The api stays on 3000 [u4]\n- Port 3000 is the usual choice [a3]"
+        "Summary: We checked the port.\nStanding:\n- config.yml sets port 3000 [t2] by tool\n" +
+          "- The api stays on 3000 [u4] by person\n- Port 3000 is the usual choice [a3] by assistant"
       )
       new InMemoryDurable().run(w.attempt.workflowId)(
         w.body(gate, summary, new SetClock(at(Lapsed)))

@@ -40,6 +40,9 @@ object Ground {
 
   /** The ground whose [[Ground.key]] is `key`; `None` for no ground's. */
   def of(key: String): Option[Ground] = Ground.values.find(_.key == key)
+
+  /** The weaker of `a` and `b`: `Claimed` below `Tool` below `Person`. */
+  def min(a: Ground, b: Ground): Ground = if (a.ordinal >= b.ordinal) a else b
 }
 
 /** A line of a balance: its `text` as first written, added at the close of period `since`,

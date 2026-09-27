@@ -142,8 +142,8 @@ object RecordLifecycleHistories {
         val cites = new Summariser(_ =>
           Right(
             replyOf(
-              "Summary: We checked the port.\nStanding:\n- config.yml sets port 3000 [t2]\n" +
-                "- The api stays on 3000 [u4]\n- Port 3000 is the usual choice [a3]"
+              "Summary: We checked the port.\nStanding:\n- config.yml sets port 3000 [t2] by tool\n" +
+                "- The api stays on 3000 [u4] by person\n- Port 3000 is the usual choice [a3] by assistant"
             )
           )
         )

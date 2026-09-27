@@ -1,7 +1,7 @@
 package grit.lifecycle.close
 
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.period.{Balance, Edit, Line, Section}
+import grit.core.period.{Balance, Edit, Ground, Line, Section}
 import grit.core.provider.ModelRequest
 import grit.lifecycle.transcript.Labelled
 
@@ -31,7 +31,9 @@ object ClosingSummary {
       "labels of the lines that established it, in brackets, as [u1, t3]: cite what " +
       "established it: the person's line where they stated or decided it (never the one " +
       "where they asked), a tool result that showed it; and cite the assistant's own line " +
-      "when nothing else did. Lines known elsewhere were shown from the person's other " +
+      "when nothing else did. Then say who established it: by person (the person stated or " +
+      "decided it), by tool (a tool's result showed it), or by assistant (only the " +
+      "assistant said it), as \"- The api stays on 3000 [u4] by person\". Lines known elsewhere were shown from the person's other " +
       "conversations: an Open or Standing item that restates one is not new, like a line " +
       "already known."
 
@@ -77,7 +79,8 @@ object ClosingSummary {
           asked.standing,
           "Standing",
           "each decision settled or fact established that later work should rely on, that " +
-            "is not already known, ending with the labels that establish it"
+            "is not already known, ending with the labels that establish it, then who " +
+            "established it: by person, by tool, or by assistant"
         ) ++
         list(
           asked.settled && shown.nonEmpty,
@@ -135,9 +138,11 @@ object ClosingSummary {
 
   /** What `reply` wrote, reading only the parts `asked` names (as [[request]] asks for them
     * of `known` and `transcript`): prose, outcome, one `Add` per Open item, one `Stand` per
-    * Standing item, its trailing citation of labels taken off its text and read into its
-    * ground by what of `transcript` the writer was shown ([[visible]],
-    * [[Labelled.ground]]): an item with none, or only labels it lacks, is `Claimed`; and a `Resolve`,
+    * Standing item, its trailing citation of labels and the writer's answer (by person, by
+    * tool, by assistant) taken off its text: its ground is the weaker ([[Ground.min]]) of
+    * that answer and what the cited lines support in what of `transcript` the writer was
+    * shown ([[visible]], [[Labelled.ground]]), so the answer can only lower it; an item with
+    * no answer, no citation, or only labels it lacks, is `Claimed`; and a `Resolve`,
     * `Drop` or `Touch` per Resolved, Dropped or Touched item whose label is one of `known`'s
     * ([[labels]]). An item with no label, or a label `known` does not show, is `Unread`.
     * Parts are labelled `Summary:`, `Outcome:` and so on (any case, markdown emphasis and
@@ -205,20 +210,33 @@ object ClosingSummary {
       case _ => Edit.Unread(written, "names no line")
     }
 
-  /** A Standing item as its edit: the citation at its end ([[Cited]]) taken off its text and
-    * read into its ground by `transcript`, the lines the writer was shown.
+  /** A Standing item as its edit: the citation and the writer's answer at its end taken off
+    * its text; its ground the weaker ([[Ground.min]]) of the answer and what the cited
+    * lines of `transcript`, the lines the writer was shown, support. No answer, or one that
+    * does not read, is `Claimed`.
     */
   private def stand(item: String, transcript: Labelled): Edit = {
-    // Peel one citation at a time off the end: `[u1, t3]`, `[u1][t3]`, `(u1 t3)`, any
-    // emphasis around or inside them.
-    def peel(text: String, cited: Vector[String]): (String, Vector[String]) =
+    // Peel the end off one piece at a time: a citation (`[u1, t3]`, `[u1][t3]`, `(u1 t3)`)
+    // or the answer (`by person`, `(by tool)`, `By: assistant`), any emphasis around them.
+    def peel(
+        text: String,
+        cited: Vector[String],
+        answer: Option[Ground]
+    ): (String, Vector[String], Option[Ground]) =
       text match {
         case Cited(rest, labels) =>
-          peel(rest, labels.split("[,\\s]+").toVector.filter(_.nonEmpty) ++ cited)
-        case _ => (text, cited)
+          peel(rest, labels.split("[,\\s*_]+").toVector.filter(_.nonEmpty) ++ cited, answer)
+        case Answered(rest, who) if answer.isEmpty =>
+          val ground = who.toLowerCase match {
+            case "person" => Ground.Person
+            case "tool" => Ground.Tool
+            case _ => Ground.Claimed
+          }
+          peel(rest, cited, Some(ground))
+        case _ => (text, cited, answer)
       }
-    val (text, cited) = peel(item.trim, Vector.empty)
-    Edit.Stand(text.trim, transcript.ground(cited))
+    val (text, cited, answer) = peel(item.trim, Vector.empty, None)
+    Edit.Stand(text.trim, Ground.min(answer.getOrElse(Ground.Claimed), transcript.ground(cited)))
   }
 
   /** An item's text, then one citation at its very end: a bracket or parenthesis holding
@@ -226,6 +244,12 @@ object ClosingSummary {
     */
   private val Cited =
     """^(.*?)[\s*_]*[\[(][\s*_]*((?:[a-zA-Z]\d+[\s*_,]*)+)[\])][\s*_]*$""".r
+
+  /** An item's text, then the writer's answer at its very end: "by" and one of person, tool
+    * or assistant, any case, with an optional colon, parentheses and emphasis.
+    */
+  private val Answered =
+    """(?i)^(.*?)[\s*_,;:—–-]*\(?[\s*_]*by[\s*_]*:?[\s*_]*(person|tool|assistant)[\s*_]*\)?[\s*_.]*$""".r
 
   /** A label, bracketed or not, then an optional colon or dash, then the rest. */
   private val Named = """(?i)^\[?([os]\d+)\]?\s*(?:[:\-–—]\s*|$)(.*)$""".r
