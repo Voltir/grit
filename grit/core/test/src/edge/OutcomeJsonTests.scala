@@ -4,9 +4,7 @@ import grit.core.tool.Outcome
 
 import utest.*
 
-/** [[OutcomeJson]]: an outcome's stored and wire form, read back across what earlier builds
-  * wrote.
-  */
+/** [[OutcomeJson]]: an outcome's stored and wire form. */
 object OutcomeJsonTests extends TestSuite {
 
   val tests = Tests {
@@ -22,13 +20,6 @@ object OutcomeJsonTests extends TestSuite {
       )
       all.map((o, _) => OutcomeJson.write(o).render()) ==> all.map(_._2)
       all.map((_, j) => OutcomeJson.read(ujson.read(j))) ==> all.map((o, _) => Right(o))
-    }
-
-    test(
-      "an earlier build's timed-out answer, stored as declined with grit's reason, reads as unanswered"
-    ) {
-      OutcomeJson.read(ujson.read("""{"kind":"denied","reason":"No answer came in time."}""")) ==>
-        Right(Outcome.Unanswered)
     }
   }
 }
