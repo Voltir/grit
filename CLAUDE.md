@@ -170,15 +170,18 @@ Metals' MCP server (`grit-metals` in `.mcp.json`; port from `.metals/mcp.json`) 
 
 - **who uses X** — `get-usages`, compiler-exact where grep and enola's symbol facts are not;
 - **what exactly X's type is** — `typed-glob-search`, `inspect`, `get-docs`;
-- **compiling or testing one module mid-edit** — `compile-module`, `test`; it builds into
-  `.bsp/out`, so it never blocks a CLI `./mill`.
+- **compiling or testing one module mid-edit, in this checkout** — `compile-module`,
+  `test`; it builds into `.bsp/out`, so it never blocks a CLI `./mill`. Metals serves this
+  checkout only: in a git worktree, type-check with `./mill grit.<module>.compile`, and
+  ask Metals only about code the branch has not changed.
 
 Not for understanding a package's behaviour: read the files. Metals hands context out one
 symbol at a time; in a measured comparison, file reads answered edge-case questions
 perfectly at a third fewer tokens and an eighth of the calls. Quirk: `inspect` ignores `module` —
-**always pass `fileInFocus`** (a source file in the symbol's module); for a generic class it
-lists only the companion, so use `get-docs`. BSP set-up and failure modes:
-[`docs/editor-tooling.md`](docs/editor-tooling.md).
+**always pass `fileInFocus`** (a source file in the symbol's module); without it the result
+is empty although its footer names the module you passed. For a generic class it lists
+only the companion, so use `get-docs`. Set-up, the MCP port and BSP failure modes:
+[`docs/editor-tooling.md`](docs/editor-tooling.md#metals-for-grits-own-development).
 
 ## Working agreements
 

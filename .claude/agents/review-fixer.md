@@ -53,9 +53,14 @@ deleted because a type now says them.
   smart constructor, ADT shaped by case); don't restate what a type or visibility says;
   do state failure modes and behaviour-changing constants.
 - **Test incrementally**: compile and test the module or suite you touched
-  (`./mill grit.<module>.test`, `.testOnly <Suite>`) while iterating. Not Metals'
-  `compile-module`/`test`: Metals serves the main checkout, so from the fixer worktree they
-  build and test code that is not yours. At the end, once:
+  (`./mill grit.<module>.test`, `.testOnly <Suite>`) while iterating. When the only
+  question is whether it type-checks, `./mill grit.<module>.compile` or
+  `grit.<module>.test.compile` answers in about a second warm; a green suite run adds
+  nothing to that. `__.test.testCached` runs once, at the commit, never mid-iteration.
+  Not Metals' `compile-*`/`test`: Metals serves the main checkout, so from the fixer
+  worktree they build and test code that is not yours. Its read queries (`get-usages`,
+  `typed-glob-search`, `get-docs`, `inspect` with `fileInFocus`) are sound for code your
+  branch has not changed. At the end, once:
   `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources`, `./mill __.test.testCached`
   with 0 warnings (and `scripts/it` if the change touches `grit.dbos`, `schema.sql` or an
   `it` module), `bash scripts/enola-law.sh` (`bash scripts/fetch-enola.sh` first if
