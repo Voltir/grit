@@ -23,17 +23,39 @@ object Section {
   def of(key: String): Option[Section] = Section.values.find(_.key == key)
 }
 
+/** What established a Standing line (ADR 0018). */
+enum Ground(val key: String) {
+
+  /** The person said it. */
+  case Person extends Ground("person")
+
+  /** A tool's result in the period showed it. */
+  case Tool extends Ground("tool")
+
+  /** Only the assistant said it: kept, and shown as not confirmed. */
+  case Claimed extends Ground("claimed")
+}
+
+object Ground {
+
+  /** The ground whose [[Ground.key]] is `key`; `None` for no ground's. */
+  def of(key: String): Option[Ground] = Ground.values.find(_.key == key)
+}
+
 /** A line of a balance: its `text` as first written, added at the close of period `since`,
   * and last added, confirmed or relied on at the close of `touched`, never before `since`.
   * A topic's line also carries the topic's one-line `summary`, as it was last described;
-  * a line of another section never has one. The summary is not part of the line's id.
+  * a line of another section never has one. The summary is not part of the line's id. A
+  * Standing line carries its `ground`, as first recorded; a line of another section never
+  * has one.
   */
 final case class Line private (
     section: Section,
     text: String,
     since: PeriodSeq,
     touched: PeriodSeq,
-    summary: Option[String]
+    summary: Option[String],
+    ground: Option[Ground]
 ) {
   def id: LineId = LineId.of(section.key, text)
 }
@@ -41,15 +63,16 @@ final case class Line private (
 object Line {
 
   /** The line, or why not: `text` or `summary` blank, or not already trimmed to one line
-    * with single spaces, `touched` before `since`, or a summary on a line that is not a
-    * topic's.
+    * with single spaces, `touched` before `since`, a summary on a line that is not a
+    * topic's, or a Standing line without a ground, or another with one.
     */
   private[period] def of(
       section: Section,
       text: String,
       since: PeriodSeq,
       touched: PeriodSeq,
-      summary: Option[String] = None
+      summary: Option[String] = None,
+      ground: Option[Ground] = None
   ): Either[String, Line] =
     if (text.isEmpty) Left("a line's text is blank")
     else if (normal(text) != text) Left(s"a line's text is not normalised: $text")
@@ -61,7 +84,11 @@ object Line {
       Left(s"a ${section.key} line has a summary: $text")
     else if (summary.exists(s => s.isEmpty || normal(s) != s))
       Left(s"a line's summary is blank or not normalised: $text")
-    else Right(new Line(section, text, since, touched, summary))
+    else if (section == Section.Standing && ground.isEmpty)
+      Left(s"a standing line has no ground: $text")
+    else if (section != Section.Standing && ground.nonEmpty)
+      Left(s"a ${section.key} line has a ground: $text")
+    else Right(new Line(section, text, since, touched, summary, ground))
 
   /** The id a line of `section` reading `text` has once added: `text` normalised as an
     * [[Edit.Add]]'s is.
@@ -75,8 +102,16 @@ object Line {
   /** `text` trimmed, each run of whitespace one space. */
   private[period] def normal(text: String): String = text.trim.split("\\s+").mkString(" ")
 
-  private[period] def added(section: Section, text: String, period: PeriodSeq): Line =
-    new Line(section, text, period, period, None)
+  /** A new line of `section` reading `text`, added at `period`, on `ground` when it is a
+    * Standing line.
+    */
+  private[period] def added(
+      section: Section,
+      text: String,
+      period: PeriodSeq,
+      ground: Option[Ground]
+  ): Line =
+    new Line(section, text, period, period, None, ground)
 
   extension (l: Line) {
     private[period] def touchedAt(period: PeriodSeq): Line = l.copy(touched = period)
@@ -87,8 +122,11 @@ object Line {
 /** What a close proposes to do to the balance ([[Balance.edit]]). */
 enum Edit {
 
-  /** A new line `text` in `section`. */
-  case Add(section: Section, text: String)
+  /** A new line `text`: an open item, or a topic. */
+  case Add(section: Section.Open.type | Section.Topics.type, text: String)
+
+  /** A new Standing line `text`, established on `ground`. */
+  case Stand(text: String, ground: Ground)
 
   /** `line` taken out as answered or done: `how` it was. */
   case Resolve(line: LineId, how: String)
@@ -115,6 +153,7 @@ object Edit {
     def line(id: LineId) = named.get(id).fold(LineId.value(id))(t => s"\"$t\"")
     e match {
       case Add(section, text) => s"add ${section.key}: $text"
+      case Stand(text, ground) => s"stand (${ground.key}): $text"
       case Resolve(id, how) => s"resolve ${line(id)}: $how"
       case Drop(id, why) => s"drop ${line(id)}: $why"
       case Touch(id) => s"touch ${line(id)}"
@@ -153,7 +192,9 @@ final case class Balance private (lines: Vector[Line]) {
 
   /** `edits`, made at the close of `period`, applied in order. `Add` puts its text, trimmed
     * and with each run of whitespace made one space, last in its section with `since` and
-    * `touched` at `period`, or touches the line already there. `Resolve` and `Drop` take a
+    * `touched` at `period`, or touches the line already there. `Stand` adds a Standing line
+    * as `Add` does, with its ground; when that line is there already, it touches it and
+    * keeps the ground it has. `Resolve` and `Drop` take a
     * line out. `Touch` sets its `touched` to `period` and moves it last in its section.
     * `Summarise` replaces a topic line's summary, normalised as an `Add`'s text, and neither
     * touches nor moves it. An edit naming no line of the balance, a blank `Add` or
@@ -170,21 +211,21 @@ final case class Balance private (lines: Vector[Line]) {
         Balance.Changed(b, done.changes :+ Change.Ignored(Edit.shown(e, named), why))
       def present(id: LineId)(f: Line => Balance.Changed): Balance.Changed =
         b.lines.find(_.id == id).fold(ignored("names no line"))(f)
-      e match {
-        case Edit.Add(section, text) =>
-          val normal = Line.normal(text)
-          if (normal.isEmpty) ignored("blank")
-          else {
-            val line = Line.added(section, normal, period)
-            b.lines.find(_.id == line.id) match {
-              case Some(there) => Balance.Changed(b.moved(there.touchedAt(period)), done.changes)
-              case None =>
-                Balance.Changed(
-                  Balance.grouped(b.lines :+ line),
-                  done.changes :+ Change.Added(line)
-                )
-            }
+      def add(section: Section, text: String, ground: Option[Ground]): Balance.Changed = {
+        val normal = Line.normal(text)
+        if (normal.isEmpty) ignored("blank")
+        else {
+          val line = Line.added(section, normal, period, ground)
+          b.lines.find(_.id == line.id) match {
+            case Some(there) => Balance.Changed(b.moved(there.touchedAt(period)), done.changes)
+            case None =>
+              Balance.Changed(Balance.grouped(b.lines :+ line), done.changes :+ Change.Added(line))
           }
+        }
+      }
+      e match {
+        case Edit.Add(section, text) => add(section, text, None)
+        case Edit.Stand(text, ground) => add(Section.Standing, text, Some(ground))
         case Edit.Resolve(id, how) =>
           present(id)(l => Balance.Changed(b.without(l), done.changes :+ Change.Resolved(l, how)))
         case Edit.Drop(id, why) =>

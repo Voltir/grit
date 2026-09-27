@@ -1,6 +1,6 @@
 package grit.lifecycle.close
 
-import grit.core.period.{Balance, Edit, Section, TestClosings}
+import grit.core.period.{Balance, Edit, Ground, Section, TestClosings}
 
 import TestClosings.{balance, line}
 import utest.*
@@ -44,7 +44,7 @@ object ClosingSummaryTests extends TestSuite {
         "We set up the backup. It runs nightly.",
         Some("backups are scheduled"),
         Edit.Add(Section.Open, "Is the NAS at 192.168.1.20 reachable from the laptop?"),
-        Edit.Add(Section.Standing, "Backups run daily at 02:00 with restic"),
+        Edit.Stand("Backups run daily at 02:00 with restic", Ground.Claimed),
         Edit.Resolve(backup.id, "daily at 02:00"),
         Edit.Drop(exiftool.id, "the photos go to Pillow now"),
         Edit.Touch(drive.id)
@@ -65,7 +65,7 @@ object ClosingSummaryTests extends TestSuite {
       read(
         "Summary: We talked.\nOutcome: none\nOpen:\n- a question\nStanding:\n- a fact\nResolved:\n- o1: yes",
         Asked(outcome = true, open = false, standing = true, settled = false)
-      ) ==> written("We talked.", None, Edit.Add(Section.Standing, "a fact"))
+      ) ==> written("We talked.", None, Edit.Stand("a fact", Ground.Claimed))
     }
 
     test("labels in markdown emphasis or as headings, in any case, are read") {
@@ -74,12 +74,12 @@ object ClosingSummaryTests extends TestSuite {
           |## standing:
           |- ship it
           |__OUTCOME__: shipped""".stripMargin
-      ) ==> written("We talked.", Some("shipped"), Edit.Add(Section.Standing, "ship it"))
+      ) ==> written("We talked.", Some("shipped"), Edit.Stand("ship it", Ground.Claimed))
     }
 
     test("text before the first label is the prose when Summary is missing; unlabelled, all") {
       read("We talked about knots.\nStanding:\n- the bowline holds") ==>
-        written("We talked about knots.", None, Edit.Add(Section.Standing, "the bowline holds"))
+        written("We talked about knots.", None, Edit.Stand("the bowline holds", Ground.Claimed))
       read("Just some text\nover two lines.") ==> written("Just some text over two lines.", None)
     }
 

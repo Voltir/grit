@@ -143,7 +143,7 @@ object PayloadJsonTests extends TestSuite {
     test("closed") {
       PayloadJson.write(Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing)).render() ==>
         """{"kind":"closed","period":1,"reason":"lapsed","closing":""" +
-        """{"v":2,"flows":{"prose":"Small talk.","outcome":"none","changes":[]},"balance":{"open":[],"standing":[],"topics":[]}}}"""
+        """{"v":3,"flows":{"prose":"Small talk.","outcome":"none","changes":[]},"balance":{"open":[],"standing":[],"topics":[]}}}"""
       // A pin of the stored form: a resolved close keeps its confidence beside its reason, and
       // a closing entry outlives every raw entry of its period.
       val resolved = CloseReason.Resolved(
@@ -151,7 +151,7 @@ object PayloadJsonTests extends TestSuite {
       )
       PayloadJson.write(Payload.Closed(PeriodSeq.First, resolved, closing)).render() ==>
         """{"kind":"closed","period":1,"reason":"resolved","confidence":0.86,"closing":""" +
-        """{"v":2,"flows":{"prose":"Small talk.","outcome":"none","changes":[]},"balance":{"open":[],"standing":[],"topics":[]}}}"""
+        """{"v":3,"flows":{"prose":"Small talk.","outcome":"none","changes":[]},"balance":{"open":[],"standing":[],"topics":[]}}}"""
       PayloadJson.read(
         ujson.read(
           """{"kind":"closed","period":1,"reason":"resolved","closing":{"v":2,"flows":{"prose":"x"}}}"""

@@ -17,7 +17,7 @@ import grit.core.id.{
   TurnSeq
 }
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
-import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, LifecycleSettings, Section}
+import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, Ground, LifecycleSettings}
 import grit.core.place.{Directory, Locality, Namespace, Place, Scope, Weight}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{Entry, Origin, Payload}
@@ -266,7 +266,7 @@ object Eval {
     if (e.closed) {
       val p1 = PeriodRef(conversation, PeriodSeq.First)
       val carried =
-        Balance.empty.edit(e.carried.map(Edit.Add(Section.Standing, _)), PeriodSeq.First).balance
+        Balance.empty.edit(e.carried.map(Edit.Stand(_, Ground.Person)), PeriodSeq.First).balance
       val closing = Closing(
         Flows.of(s"${e.place} closed.", None, Vector.empty).getOrElse(sys.error("eval: flows")),
         carried

@@ -9,10 +9,14 @@ object BalanceTests extends TestSuite {
   private def p(n: Long): PeriodSeq =
     PeriodSeq.of(n).getOrElse(throw new java.lang.AssertionError(s"period $n"))
 
-  private def line(section: Section, text: String, since: Long, touched: Long): Line =
-    Line
-      .of(section, text, p(since), p(touched))
-      .fold(e => throw new java.lang.AssertionError(e), identity)
+  private def line(
+      section: Section,
+      text: String,
+      since: Long,
+      touched: Long,
+      ground: Ground = Ground.Claimed
+  ): Line =
+    TestClosings.line(section, text, since, touched, ground = ground)
 
   private def balance(lines: Line*): Balance =
     Balance.of(lines.toVector).fold(e => throw new java.lang.AssertionError(e), identity)
@@ -105,7 +109,7 @@ object BalanceTests extends TestSuite {
           Edit.Resolve(gone, "x"),
           Edit.Drop(gone, "y"),
           Edit.Touch(gone),
-          Edit.Add(Section.Standing, "  "),
+          Edit.Add(Section.Open, "  "),
           Edit.Unread("o9: done", "names no line")
         ),
         p(2)
@@ -115,6 +119,38 @@ object BalanceTests extends TestSuite {
         case Change.Ignored(_, why) => why
         case other => s"not ignored: $other"
       } ==> Vector("names no line", "names no line", "names no line", "blank", "names no line")
+    }
+
+    test("a standing line is added with its ground; one already there keeps its ground") {
+      val first =
+        Balance.empty.edit(Vector(Edit.Stand(" backups run  nightly ", Ground.Person)), p(1))
+      first.balance ==> balance(
+        line(Section.Standing, "backups run nightly", 1, 1, ground = Ground.Person)
+      )
+      first.changes ==>
+        Vector(
+          Change.Added(line(Section.Standing, "backups run nightly", 1, 1, ground = Ground.Person))
+        )
+      // Stood again on a weaker ground: touched, and its ground kept (no upgrade or downgrade).
+      val again =
+        first.balance.edit(Vector(Edit.Stand("backups run nightly", Ground.Claimed)), p(2))
+      again.balance ==> balance(
+        line(Section.Standing, "backups run nightly", 1, 2, ground = Ground.Person)
+      )
+      again.changes ==> Vector()
+    }
+
+    test("a standing line has a ground and no other line has one") {
+      Line.of(Section.Standing, "x", p(1), p(1)) ==> Left("a standing line has no ground: x")
+      Line.of(Section.Open, "x", p(1), p(1), ground = Some(Ground.Tool)) ==>
+        Left("a open line has a ground: x")
+      Line.of(Section.Standing, "x", p(1), p(1), ground = Some(Ground.Tool)).map(_.ground) ==>
+        Right(Some(Ground.Tool))
+    }
+
+    test("an ignored stand is shown as a stand, with its ground") {
+      Balance.empty.edit(Vector(Edit.Stand("  ", Ground.Tool)), p(1)).changes ==>
+        Vector(Change.Ignored("stand (tool):   ", "blank"))
     }
 
     test("an ignored edit names its line by the text the balance held, never by its id") {

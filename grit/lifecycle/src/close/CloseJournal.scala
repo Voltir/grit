@@ -22,7 +22,9 @@ private[close] object CloseJournal {
             "due" -> PayloadJson.reasonName(reason),
             "first" -> TurnSeq.value(first).toDouble,
             "known" -> ClosingJson.writeBalance(known),
-            "cap" -> cap.toDouble
+            "cap" -> cap.toDouble,
+            // The version `known` is written in: a record from before versions reads as 2.
+            "v" -> ClosingJson.Version.toDouble
           )
           PayloadJson.reasonConfidence(reason).foreach(c => o("confidence") = c)
           o
@@ -41,10 +43,15 @@ private[close] object CloseJournal {
                   case Some(_) => Left("checked: confidence is not a number")
                 }
                 r <- PayloadJson.readReason(reason, confidence)
+                version <- o.value.get("v") match {
+                  case None => Right(2)
+                  case Some(ujson.Num(v)) if v.isWhole => Right(v.toInt)
+                  case Some(_) => Left("checked: v is not a version")
+                }
                 known <- o.value
                   .get("known")
                   .toRight("checked: missing known")
-                  .flatMap(ClosingJson.readBalance)
+                  .flatMap(ClosingJson.readBalance(_, version))
                 cap <- o.value
                   .get("cap")
                   .collect { case ujson.Num(c) if c.isWhole => c.toInt }

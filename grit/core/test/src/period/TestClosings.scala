@@ -13,19 +13,21 @@ object TestClosings {
     )
 
   /** A line of `section` reading `text`, added at `since` and touched at `touched`, with
-    * `summary` if it is a topic's.
+    * `summary` if it is a topic's, and on `ground` (Claimed unless given) if it is a
+    * Standing line.
     */
   def line(
       section: Section,
       text: String,
       since: Long,
       touched: Long,
-      summary: Option[String] = None
+      summary: Option[String] = None,
+      ground: Ground = Ground.Claimed
   ): Line =
     (for {
       s <- PeriodSeq.of(since).toRight(s"period $since")
       t <- PeriodSeq.of(touched).toRight(s"period $touched")
-      l <- Line.of(section, text, s, t, summary)
+      l <- Line.of(section, text, s, t, summary, Option.when(section == Section.Standing)(ground))
     } yield l).fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** The balance of `lines`, in order. */

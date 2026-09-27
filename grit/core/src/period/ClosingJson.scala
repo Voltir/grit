@@ -5,12 +5,17 @@ import grit.core.id.PeriodSeq
 /** The stored form of a [[Closing]], which outlives every raw entry of its period. Version 2
   * is the first kept: every version from it on stays readable. Written by hand, never
   * derived. A topic line's `summary` is an optional key of version 2, added after its first
-  * closings were written: a line without it reads as having none.
+  * closings were written: a line without it reads as having none. Version 3 records each
+  * Standing line's ground (ADR 0018); a version-2 closing still reads, its Standing lines
+  * `Claimed`.
   */
 object ClosingJson {
 
   /** The version [[write]] writes. */
-  private val Version = 2
+  val Version = 3
+
+  /** The versions [[read]] reads. */
+  private val Readable = Set(2, 3)
 
   def write(c: Closing): ujson.Value = {
     val flows = ujson.Obj("prose" -> c.flows.prose)
@@ -19,27 +24,30 @@ object ClosingJson {
     ujson.Obj("v" -> Version, "flows" -> flows, "balance" -> writeBalance(c.balance))
   }
 
-  /** The closing `v` encodes, or why it encodes none: not an object, a version other than 2,
-    * blank or missing prose, a change or line that does not read, or two lines of one section
-    * with the same text. A missing section reads as empty.
+  /** The closing `v` encodes, or why it encodes none: not an object, a version other than 2
+    * or 3, blank or missing prose, a change or line that does not read (under 3, a Standing
+    * line without a ground or another line with one; under 2, any line with one), or two
+    * lines of one section with the same text. A missing section reads as empty.
     */
   def read(v: ujson.Value): Either[String, Closing] =
     for {
       o <- v.objOpt.toRight("expected an object")
       version <- o.get("v").toRight("missing field: v")
-      _ <- version.numOpt
-        .filter(_ == Version)
+      v <- version.numOpt
+        .collect { case n if n.isWhole && Readable.contains(n.toInt) => n.toInt }
         .toRight(s"unknown closing version: ${version.render()}")
       f <- o.get("flows").flatMap(_.objOpt).toRight("flows is missing or not an object")
       prose <- f.get("prose").flatMap(_.strOpt).toRight("prose is missing or not a string")
       outcome <- optionalString(f, "outcome")
       changes <- f.get("changes") match {
         case None => Right(Vector.empty)
-        case Some(ujson.Arr(items)) => all(items.toVector)(readChange)
+        case Some(ujson.Arr(items)) => all(items.toVector)(readChange(_, v))
         case Some(_) => Left("changes is not a list")
       }
       flows <- Flows.of(prose, outcome, changes).toRight("prose is blank")
-      balance <- o.get("balance").fold[Either[String, Balance]](Right(Balance.empty))(readBalance)
+      balance <- o
+        .get("balance")
+        .fold[Either[String, Balance]](Right(Balance.empty))(readBalance(_, v))
     } yield Closing(flows, balance)
 
   /** A balance's stored form: its lines by section, each in the balance's order. */
@@ -48,16 +56,19 @@ object ClosingJson {
       s.key -> ujson.Arr.from(b.in(s).map(l => writeLine(l, withSection = false)))
     })
 
-  /** The balance `v` encodes, or why none: not an object, a line that does not read, or two
-    * lines of one section with the same text. A missing section reads as empty.
+  /** The balance `v` encodes as a closing of `version` (2 or 3) stores it, or why none: not
+    * an object, a line that does not read (under 3, a Standing line without a ground or
+    * another line with one; under 2, any line with one, its Standing lines reading as
+    * `Claimed`), or two lines of one section with the same text. A missing section reads as
+    * empty.
     */
-  def readBalance(v: ujson.Value): Either[String, Balance] =
+  def readBalance(v: ujson.Value, version: Int): Either[String, Balance] =
     for {
       o <- v.objOpt.toRight("balance is not an object")
       lines <- all(Section.values.toVector) { s =>
         o.get(s.key) match {
           case None => Right(Vector.empty)
-          case Some(ujson.Arr(items)) => all(items.toVector)(readLine(Some(s), _))
+          case Some(ujson.Arr(items)) => all(items.toVector)(readLine(Some(s), _, version))
           case Some(_) => Left(s"balance ${s.key} is not a list")
         }
       }
@@ -71,11 +82,18 @@ object ClosingJson {
     o("since") = PeriodSeq.value(l.since).toDouble
     o("touched") = PeriodSeq.value(l.touched).toDouble
     l.summary.foreach(summary => o("summary") = summary)
+    l.ground.foreach(ground => o("ground") = ground.key)
     o
   }
 
-  /** A line, in `section` or else in the section its `section` field names. */
-  private def readLine(section: Option[Section], v: ujson.Value): Either[String, Line] =
+  /** A line, in `section` or else in the section its `section` field names, as a closing of
+    * `version` stores it.
+    */
+  private def readLine(
+      section: Option[Section],
+      v: ujson.Value,
+      version: Int
+  ): Either[String, Line] =
     for {
       o <- v.objOpt.toRight("a line is not an object")
       s <- section.fold(
@@ -85,7 +103,16 @@ object ClosingJson {
       since <- period(o, "since")
       touched <- period(o, "touched")
       summary <- optionalString(o, "summary")
-      line <- Line.of(s, text, since, touched, summary)
+      written <- optionalString(o, "ground")
+      ground <- (version, written) match {
+        // Version 2 recorded no ground: nothing checked its Standing lines.
+        case (2, None) => Right(Option.when(s == Section.Standing)(Ground.Claimed))
+        case (2, Some(_)) => Left(s"a version-2 line has a ground: $text")
+        case (_, None) => Right(None)
+        case (_, Some(key)) =>
+          Ground.of(key).map(Some(_)).toRight(s"a line's ground is not one: $key")
+      }
+      line <- Line.of(s, text, since, touched, summary, ground)
     } yield line
 
   private def period(
@@ -108,9 +135,9 @@ object ClosingJson {
     case Change.Ignored(edit, why) => ujson.Obj("ignored" -> edit, "why" -> why)
   }
 
-  private def readChange(v: ujson.Value): Either[String, Change] = {
+  private def readChange(v: ujson.Value, version: Int): Either[String, Change] = {
     def line(o: collection.Map[String, ujson.Value], key: String) =
-      o.get(key).toRight(s"$key has no line").flatMap(readLine(None, _))
+      o.get(key).toRight(s"$key has no line").flatMap(readLine(None, _, version))
     def text(o: collection.Map[String, ujson.Value], key: String) =
       o.get(key).flatMap(_.strOpt).toRight(s"a change's $key is not a string")
     v.objOpt.toRight("a change is not an object").flatMap { o =>

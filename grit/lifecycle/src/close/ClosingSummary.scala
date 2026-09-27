@@ -1,7 +1,7 @@
 package grit.lifecycle.close
 
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.period.{Balance, Edit, Line, Section}
+import grit.core.period.{Balance, Edit, Ground, Line, Section}
 import grit.core.provider.ModelRequest
 
 /** What the summary model is asked when a period closes, and how its reply becomes the
@@ -159,7 +159,7 @@ object ClosingSummary {
         prose,
         Option.when(asked.outcome)(text(part("outcome"))).filter(o => o.nonEmpty && !isNone(o)),
         items("open", asked.open).map(Edit.Add(Section.Open, _)) ++
-          items("standing", asked.standing).map(Edit.Add(Section.Standing, _)) ++
+          items("standing", asked.standing).map(Edit.Stand(_, Ground.Claimed)) ++
           items("resolved", asked.settled && shown.nonEmpty).map(
             named(shown, _)((l, how) => Edit.Resolve(l.id, how))
           ) ++

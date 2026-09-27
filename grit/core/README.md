@@ -42,7 +42,8 @@ In dependency order:
   definition of each), a classifier's `Verdict` and its `Judgement`, `Probability`, an open
   period's `Activity`, the `Closing` a
   closed one leaves (its `Flows`, and the conversation's `Balance` after it: `Line`s in
-  `Section`s, changed by `Edit`s into `Change`s and held to a cap) and its stored form
+  `Section`s, a Standing line with the `Ground` that established it (ADR 0018), changed by
+  `Edit`s into `Change`s and held to a cap) and its stored form
   `ClosingJson`, a `CloseOrdinal` (close order across
   conversations), and a `Purgeable` period's workflows. ← `id`
 - **`retention`** — what grit deletes, and when (ADR 0014): a `Target` (a period's raw

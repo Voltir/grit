@@ -16,16 +16,20 @@ object ClosingTests extends TestSuite {
     flows(
       "We set up the staging deploy.",
       Some("staging deploys from main"),
-      Change.Added(line(Section.Standing, "Staging deploys with make stage", 3, 3)),
+      Change.Added(
+        line(Section.Standing, "Staging deploys with make stage", 3, 3, ground = Ground.Person)
+      ),
       Change.Resolved(backup, "daily at 02:00"),
       Change.Dropped(line(Section.Standing, "Deploys are manual", 1, 2), "superseded"),
-      Change.Evicted(line(Section.Standing, "The old key lived in vault", 1, 1)),
+      Change.Evicted(
+        line(Section.Standing, "The old key lived in vault", 1, 1, ground = Ground.Tool)
+      ),
       Change.Refused(line(Section.Open, "Too much to keep", 3, 3)),
       Change.Ignored("o9: done", "names no line")
     ),
     balance(
       line(Section.Open, "Prod deploy is not set up", 2, 3),
-      line(Section.Standing, "Staging deploys with make stage", 3, 3),
+      line(Section.Standing, "Staging deploys with make stage", 3, 3, ground = Ground.Person),
       line(Section.Topics, "Laptop Backup Setup", 1, 2),
       line(Section.Topics, "Staging Deploy", 2, 3)
     )
@@ -46,22 +50,22 @@ object ClosingTests extends TestSuite {
 
     // A pin of the stored form: every closing entry is written in it, and it outlives every
     // raw entry of its period, so a change that would make one unreadable fails here first.
-    test("a closing's stored form, version 2") {
+    test("a closing's stored form, version 3: each standing line with its ground") {
       ClosingJson.write(full).render() ==>
-        """{"v":2,"flows":{"prose":"We set up the staging deploy.","outcome":"staging deploys from main",""" +
+        """{"v":3,"flows":{"prose":"We set up the staging deploy.","outcome":"staging deploys from main",""" +
         """"changes":[""" +
-        """{"added":{"section":"standing","text":"Staging deploys with make stage","since":3,"touched":3}},""" +
+        """{"added":{"section":"standing","text":"Staging deploys with make stage","since":3,"touched":3,"ground":"person"}},""" +
         """{"resolved":{"section":"open","text":"How often should the laptop backup run?","since":1,"touched":1},"how":"daily at 02:00"},""" +
-        """{"dropped":{"section":"standing","text":"Deploys are manual","since":1,"touched":2},"why":"superseded"},""" +
-        """{"evicted":{"section":"standing","text":"The old key lived in vault","since":1,"touched":1}},""" +
+        """{"dropped":{"section":"standing","text":"Deploys are manual","since":1,"touched":2,"ground":"claimed"},"why":"superseded"},""" +
+        """{"evicted":{"section":"standing","text":"The old key lived in vault","since":1,"touched":1,"ground":"tool"}},""" +
         """{"refused":{"section":"open","text":"Too much to keep","since":3,"touched":3}},""" +
         """{"ignored":"o9: done","why":"names no line"}]},""" +
         """"balance":{"open":[{"text":"Prod deploy is not set up","since":2,"touched":3}],""" +
-        """"standing":[{"text":"Staging deploys with make stage","since":3,"touched":3}],""" +
+        """"standing":[{"text":"Staging deploys with make stage","since":3,"touched":3,"ground":"person"}],""" +
         """"topics":[{"text":"Laptop Backup Setup","since":1,"touched":2},""" +
         """{"text":"Staging Deploy","since":2,"touched":3}]}}"""
       ClosingJson.write(TestClosings.prose("Small talk.")).render() ==>
-        """{"v":2,"flows":{"prose":"Small talk.","changes":[]},""" +
+        """{"v":3,"flows":{"prose":"Small talk.","changes":[]},""" +
         """"balance":{"open":[],"standing":[],"topics":[]}}"""
     }
 
@@ -74,7 +78,8 @@ object ClosingTests extends TestSuite {
         Right(Vector(Some("renaming photos")))
       ClosingJson
         .readBalance(
-          ujson.read("""{"open":[{"text":"a","since":1,"touched":1,"summary":"s"}]}""")
+          ujson.read("""{"open":[{"text":"a","since":1,"touched":1,"summary":"s"}]}"""),
+          3
         ) ==>
         Left("a open line has a summary: a")
     }
@@ -92,10 +97,45 @@ object ClosingTests extends TestSuite {
         .map(_.balance) ==> Right(balance(line(Section.Open, "a", 1, 1)))
     }
 
+    test("a version-2 closing still reads, its standing lines Claimed") {
+      ClosingJson
+        .read(
+          ujson.read(
+            """{"v":2,"flows":{"prose":"x","changes":[{"added":{"section":"standing","text":"s","since":1,"touched":1}}]},""" +
+              """"balance":{"standing":[{"text":"s","since":1,"touched":1}]}}"""
+          )
+        )
+        .map(c => (c.balance.lines.map(_.ground), c.flows.changes)) ==>
+        Right(
+          (
+            Vector(Some(Ground.Claimed)),
+            Vector(Change.Added(line(Section.Standing, "s", 1, 1, ground = Ground.Claimed)))
+          )
+        )
+    }
+
+    test(
+      "a version-3 standing line without a ground, a line of another section with one, or a ground in version 2, does not read"
+    ) {
+      def at(v: Int, lines: String) =
+        ClosingJson.read(ujson.read(s"""{"v":$v,"flows":{"prose":"x"},"balance":$lines}"""))
+      at(3, """{"standing":[{"text":"s","since":1,"touched":1}]}""") ==>
+        Left("a standing line has no ground: s")
+      at(3, """{"open":[{"text":"o","since":1,"touched":1,"ground":"person"}]}""") ==>
+        Left("a open line has a ground: o")
+      at(3, """{"standing":[{"text":"s","since":1,"touched":1,"ground":"sure"}]}""") ==>
+        Left("a line's ground is not one: sure")
+      at(2, """{"standing":[{"text":"s","since":1,"touched":1,"ground":"person"}]}""") ==>
+        Left("a version-2 line has a ground: s")
+      at(3, """{"standing":[{"text":"s","since":1,"touched":1,"ground":"tool"}]}""")
+        .map(_.balance.lines.map(_.ground)) ==> Right(Vector(Some(Ground.Tool)))
+    }
+
     test(
       "a stored closing that is not version 2, or whose prose, change or line is bad, is refused"
     ) {
       ClosingJson.read(ujson.read("""{"v":1,"prose":"x"}""")) ==> Left("unknown closing version: 1")
+      ClosingJson.read(ujson.read("""{"v":4,"prose":"x"}""")) ==> Left("unknown closing version: 4")
       ClosingJson.read(ujson.read("""{"flows":{"prose":"x"}}""")) ==> Left("missing field: v")
       ClosingJson.read(ujson.read("""{"v":2,"flows":{"prose":" "}}""")) ==> Left("prose is blank")
       ClosingJson.read(ujson.read("""{"v":2,"flows":{"prose":"x","changes":[{"moved":1}]}}""")) ==>
