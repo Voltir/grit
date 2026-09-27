@@ -18,6 +18,7 @@ import grit.core.model.{
 }
 import grit.core.provider.{Models, Provider}
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryModelProfileStore, Payload}
+import grit.core.tool.Gate
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -172,7 +173,8 @@ object TurnModelsTests extends TestSuite {
       )
       provider.requests.headOption.map(_.system) ==>
         Some(
-          s"$system\n\nTools you may call:\n- peek: Reads a file.\n- poke: Reads a file, asking first."
+          s"$system\n\nTools you may call:\n- peek: Reads a file.\n" +
+            s"- poke: Reads a file, asking first. ${Gate.AsksFirst}"
         )
       // Not cut at `<|`: no tool has the name as sent, so nothing was read.
       ws.reads ==> 0

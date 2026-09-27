@@ -184,8 +184,7 @@ object Coding {
         "Make `content` the whole of a file in the checkout, creating it and any missing " +
           "directory above it, or replacing what it held. `content` is the file's text " +
           "only: never the line numbers and tabs `read` shows. To change part of a file, " +
-          "use `edit`. A person approves each call first; if they decline, nothing is written " +
-          "and their reason, if any, is returned. Fails when the path is a directory or a " +
+          "use `edit`. Fails when the path is a directory or a " +
           "directory on the way is a file." + pathRule,
         Args
           .of(
@@ -225,8 +224,7 @@ object Coding {
           "`oldText` and `newText` are the file's text only: leave out the line number and " +
           "tab `read` shows before each line. All " +
           "the edits apply, or none does. Line endings (\\r\\n or \\n) and a byte order " +
-          "mark are kept. A person approves each call first; if they decline, nothing " +
-          "changes and their reason, if any, is returned. Fails, naming the edit by its " +
+          "mark are kept. Fails, naming the edit by its " +
           "index from 0, when an `oldText` is empty, not found (saying so when it carries " +
           "`read`'s line numbers), or found more than once, " +
           "when two edits overlap, or when the edits change nothing; also when the file " +
@@ -281,8 +279,7 @@ object Coding {
         "Run a shell command (sh -c) in the checkout's root, with nothing on its input, " +
           "and return its exit code and its output and errors, interleaved. A non-zero exit " +
           "is returned, not an error. Shows at most the last " + limits + " of output; " +
-          "narrow a long output with grep, head or tail. A person approves each call first; " +
-          "if they decline, nothing runs and their reason, if any, is returned. Fails when " +
+          "narrow a long output with grep, head or tail. Fails when " +
           s"the command runs past `timeout` (${DefaultTimeout.toSeconds} seconds when not " +
           "given), killing it and everything it started and returning its output so far, " +
           "or when it cannot start.",

@@ -19,7 +19,7 @@ final class Tool[A](
 
   def name: ToolName = spec.name
 
-  def schema(strict: Boolean): ToolSchema = spec.schema(strict)
+  def schema(strict: Boolean): ToolSchema = Gate.described(spec.schema(strict), gate != Gate.Free)
 
   def entry: ToolSet.Entry =
     ToolSet.Entry(spec.name, spec.does, spec.args.schema(false), gate != Gate.Free, spec.retry)
@@ -66,7 +66,9 @@ object Tool {
   sealed trait Offered {
     def name: ToolName
 
-    /** What a request shows the model of it ([[ToolSpec.schema]]). */
+    /** What a request shows the model of it: [[ToolSpec.schema]], its description followed
+      * by [[Gate.AsksFirst]] when it asks first.
+      */
     def schema(strict: Boolean): ToolSchema
 
     /** What a turn's tool set records of it ([[ToolSet]]). */
@@ -90,7 +92,7 @@ final class Hosted[A](val spec: ToolSpec[A], val gate: Gate[A], shown: A -> Stri
 
   def name: ToolName = spec.name
 
-  def schema(strict: Boolean): ToolSchema = spec.schema(strict)
+  def schema(strict: Boolean): ToolSchema = Gate.described(spec.schema(strict), gate != Gate.Free)
 
   def entry: ToolSet.Entry =
     ToolSet.Entry(spec.name, spec.does, spec.args.schema(false), gate != Gate.Free, spec.retry)

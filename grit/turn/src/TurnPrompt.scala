@@ -73,7 +73,8 @@ object TurnPrompt {
   }
 
   /** What a turn may reach: `tools`, the tools served in the directory `workspace`, which
-    * act on it (and say whether some ask first); nothing, and why, when none are served there
+    * act on it (and, when some ask first, that calling one is how the person is asked);
+    * nothing, and why, when none are served there
     * or the conversation has no directory. Worded by directory, never by what serves it, so
     * another edge serving the same directory leaves the prompt the same.
     */
@@ -86,7 +87,8 @@ object TurnPrompt {
           "read or change files there or run commands."
       case Some(dir) =>
         val asks =
-          if (tools.tools.exists(_.asks)) " Those that change something ask the person first."
+          if (tools.tools.exists(_.asks))
+            " Calling one that changes something is how the person is asked to approve it."
           else ""
         s"Your file and command tools act on the directory ${Directory.value(dir)}.$asks"
     }

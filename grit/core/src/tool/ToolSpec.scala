@@ -3,8 +3,9 @@ package grit.core.tool
 import grit.core.provider.ToolSchema
 
 /** A tool the model may call, reading its arguments into an `A`: `does` is what the model is
-  * told it is for, and when to call it; `retry` is what happens to a call its edge was cut
-  * short running.
+  * told it is for, and when to call it (never that a person approves it: its [[Gate]] says
+  * that, [[Gate.AsksFirst]]); `retry` is what happens to a call its edge was cut short
+  * running.
   */
 final case class ToolSpec[A](
     name: ToolName,

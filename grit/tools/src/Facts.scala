@@ -16,8 +16,8 @@ object Facts {
     new Tool(
       ToolSpec(
         ToolName("propose_fact"),
-        "Propose one measured fact about a model served by one upstream, to be kept once a " +
-          "person approves it; the next turn's model catalog includes it, this one does not. " +
+        "Propose one measured fact about a model served by one upstream, kept once " +
+          "approved; the next turn's model catalog includes it, this one does not. " +
           "`setting` is one of " + CatalogJson.SettingNames.map(n => s"`$n`").mkString(", ") +
           "; `value` is in that setting's words (" +
           CatalogJson.SettingNames

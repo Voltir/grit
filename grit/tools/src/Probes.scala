@@ -30,8 +30,8 @@ object Probes {
       ToolSpec(
         ToolName("probe_pair"),
         s"Measure how a model behaves at one upstream, over `runs` runs (1 to $MaxRuns) of " +
-          s"$CallsPerRun calls each, at up to $MaxTokens output tokens a call; a person approves " +
-          "the spend first. Reports, for each of strict, names, repairs, replay and " +
+          s"$CallsPerRun calls each, at up to $MaxTokens output tokens a call. Reports, for " +
+          "each of strict, names, repairs, replay and " +
           "afterResult, in how many answered runs the behaviour showed and the fact to propose " +
           "from it. A call that fails " +
           "leaves its check unanswered for that run; when nothing answers, the probe fails " +

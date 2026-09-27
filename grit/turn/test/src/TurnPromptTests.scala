@@ -39,7 +39,7 @@ object TurnPromptTests extends TestSuite {
 
     test("reach says what is reachable in the directory, by directory, and why nothing is") {
       TurnPrompt.reach(Some(dir), set(false, true)).text ==>
-        "Your file and command tools act on the directory /work/api. Those that change something ask the person first."
+        "Your file and command tools act on the directory /work/api. Calling one that changes something is how the person is asked to approve it."
       TurnPrompt.reach(Some(dir), set(false)).text ==>
         "Your file and command tools act on the directory /work/api."
       TurnPrompt.reach(Some(dir), ToolSet.Empty).text ==>

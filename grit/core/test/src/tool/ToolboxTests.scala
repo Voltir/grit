@@ -53,6 +53,21 @@ object ToolboxTests extends TestSuite {
         Vector(("echo", true), ("shout", true))
     }
 
+    test(
+      "a tool that asks first tells the model that calling it is how the person is asked; a free one is as written"
+    ) {
+      // Pinned whole: the model is told this of every gated tool, hosted and gone ones too.
+      val asks = "Calling this tool asks the person to approve the call, and it runs only " +
+        "once they do: call it rather than asking for permission in your reply. If they " +
+        "decline, nothing runs and their reason, if any, is returned."
+      box.schemas(strict = false).map(_.description) ==>
+        Vector("Says it back.", s"Says it loudly. $asks")
+      val hosted = new Hosted(shout.spec, Gate.Ask((t: String) => t), (t: String) => t)
+      hosted.schema(false).description ==> s"Says it loudly. $asks"
+      Tool.gone(hosted.entry).schema(false).description ==> s"Says it loudly. $asks"
+      Tool.gone(echo.entry).schema(false).description ==> "Says it back."
+    }
+
     test("a free call binds with nothing to ask, and runs") {
       box.bind(call("echo", ujson.Obj("text" -> "hi")), Repairs.All) match {
         case Right(b: Bound.Free) =>
