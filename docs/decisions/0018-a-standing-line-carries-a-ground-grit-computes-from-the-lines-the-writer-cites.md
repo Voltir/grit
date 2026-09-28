@@ -24,7 +24,8 @@ interrupted, gone) grounds nothing, and the writer is told to cite where the per
 stated a thing, never where they asked. Grounds are computed only over the lines the
 writer was shown. An uncited item or unknown label is Claimed, never dropped. A ground is
 copied verbatim when the line is carried, and never changed by a touch. The window's
-record lists Claimed Standing apart, as said by the assistant and not confirmed, and the
+record lists Claimed Standing apart, as said by the assistant and not confirmed, each line
+an open question (`Open: whether "…" (the assistant said so; nothing confirmed it)`), and the
 base prompt says to check it before relying on it. Closings are stored as version 3;
 version-2 Standing lines read as Claimed.
 

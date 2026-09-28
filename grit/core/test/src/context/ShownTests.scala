@@ -125,7 +125,9 @@ object ShownTests extends TestSuite {
       )
     }
 
-    test("a closing's unconfirmed Standing is listed apart, as said by the assistant") {
+    test(
+      "a closing's unconfirmed Standing is listed apart, each line an open question the assistant raised"
+    ) {
       val closing = Closing(
         TestClosings.prose("We checked the port.").flows,
         balance(
@@ -144,7 +146,7 @@ object ShownTests extends TestSuite {
             |- config.yml sets port 3000
             |- The api stays on 3000
             |Standing, said by the assistant and not confirmed:
-            |- Port 3000 is the usual choice""".stripMargin
+            |- Open: whether "Port 3000 is the usual choice" (the assistant said so; nothing confirmed it)""".stripMargin
         )
       )
     }

@@ -152,7 +152,9 @@ object Shown {
     def list(title: String, lines: Vector[String]): Vector[String] =
       Option.when(lines.nonEmpty)(lines.map(l => s"- $l").mkString(s"$title:\n", "\n", "")).toVector
     val topics = balance.in(Section.Topics).map(_.text)
-    // Standing only the assistant said is listed apart (ADR 0018).
+    // Standing only the assistant said is listed apart (ADR 0018), each line recast as an open
+    // question. The wording is measured: a model restated the plain list as fact, and hedged
+    // more often with this form. Rewording it needs a new measurement.
     val (claimed, confirmed) =
       balance.in(Section.Standing).partition(_.ground.contains(Ground.Claimed))
     (s"${Label.Record.tag} this conversation so far, written by grit (closed $day): ${flows.prose}" +:
@@ -160,7 +162,11 @@ object Shown {
         list("Settled then", settled) ++
         list("Still open", balance.in(Section.Open).map(_.text)) ++
         list("Standing", confirmed.map(_.text)) ++
-        list("Standing, said by the assistant and not confirmed", claimed.map(_.text)) ++
+        list(
+          "Standing, said by the assistant and not confirmed",
+          claimed
+            .map(l => s"Open: whether \"${l.text}\" (the assistant said so; nothing confirmed it)")
+        ) ++
         Option.when(topics.nonEmpty)(s"Topics so far: ${topics.mkString("; ")}").toVector))
       .mkString("\n")
   }
