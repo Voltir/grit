@@ -521,7 +521,8 @@ object Main {
     case Read
 
     /** Those and `write`, `edit` and `run` (`Coding`), `propose_model_setting` (`Tuning`) and
-      * `probe_pair` (`Probes`), each of which asks first.
+      * `probe_pair` (`Probes`), each of which asks first; the last two only in a TUI session
+      * (`Origin.operator`).
       */
     case All
   }

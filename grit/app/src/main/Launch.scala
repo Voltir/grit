@@ -154,30 +154,35 @@ object Launch {
     // What grit is, from the docs grit.tools ships; offered under either choice.
     val about: Tool[Option[About.Subject]] =
       About.load().fold(why => throw new IllegalStateException(why), t => t)
+    // Offered everywhere: what grit is, and Digest's recent_activity when it is on.
+    val everyone: Either[DuplicateName, Toolbox[{store}]] = digest match {
+      case None => Toolbox.of[{store}](about)
+      case Some(docs) => Toolbox.of[{store}](about, Digest.recentActivity(store, docs))
+    }
     val launching = offered match {
       case Main.ToolChoice.Read =>
-        (digest match {
-          case None => Toolbox.of[{store}](about)
-          case Some(docs) => Toolbox.of[{store}](about, Digest.recentActivity(store, docs))
-        }).map(tools => launch(TurnTooling[{store}](tools, Coding.readOnlyHosted, engine.jot, rounds)))
+        everyone.map(tools =>
+          launch(TurnTooling[{store}](tools, Toolbox.Empty, Coding.readOnlyHosted, engine.jot, rounds))
+        )
       case Main.ToolChoice.All =>
+        // Offered only to the operator (Origin.operator): they tune grit, and ask first.
         val tuned = new KeptModelSettings(engine.jot, engine.modelSettings, Clock.system())
-        (digest match {
-          case None =>
-            Toolbox.of[{tuned, models, store}](about, Tuning.propose(tuned), Probes.probe(models))
-          case Some(docs) =>
-            Toolbox.of[{tuned, models, store}](
-              about,
-              Tuning.propose(tuned),
-              Probes.probe(models),
-              Digest.recentActivity(store, docs)
-            )
-        }).map(tools => launch(TurnTooling[{tuned, models, store}](tools, Coding.hosted, engine.jot, rounds)))
+        (everyone, Toolbox.of[{tuned, models}](Tuning.propose(tuned), Probes.probe(models))) match {
+          case (Right(tools), Right(operator)) =>
+            // Refused here, at start, rather than as a failed offer on some turn.
+            Toolbox.joined[{tuned, models, store}](tools, operator).map { _ =>
+              launch(
+                TurnTooling[{tuned, models, store}](tools, operator, Coding.hosted, engine.jot, rounds)
+              )
+            }
+          case (Left(repeated), _) => Left(repeated)
+          case (_, Left(repeated)) => Left(repeated)
+        }
     }
     // Its caller closes the engine and reports the throw: in the chat, as the engine that
     // could not open.
     launching.left.foreach { case DuplicateName(name) =>
-      throw new IllegalStateException(s"the coding tools offer ${ToolName.value(name)} twice")
+      throw new IllegalStateException(s"grit's tools offer ${ToolName.value(name)} twice")
     }
     engine
   }

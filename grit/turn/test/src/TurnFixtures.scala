@@ -407,6 +407,7 @@ object TurnFixtures {
       ),
       TurnTooling[{}](
         Toolbox.of[{}]().fold(d => throw new java.lang.AssertionError(d), identity),
+        Toolbox.Empty,
         hosted,
         new FakeJot,
         budget(calls)
@@ -595,7 +596,7 @@ object TurnFixtures {
         new NoWait,
         Fresh.random()
       ),
-      TurnTooling[{NoCheckout}](noTools, Vector.empty, new FakeJot, budget(5))
+      TurnTooling[{NoCheckout}](noTools, Toolbox.Empty, Vector.empty, new FakeJot, budget(5))
     )(id)
 
   /** The turn's workflow body over `entries`, its calls to `turn`'s model and its summary to
@@ -627,7 +628,7 @@ object TurnFixtures {
         new NoWait,
         Fresh.random()
       ),
-      TurnTooling[{NoCheckout}](noTools, Vector.empty, new FakeJot, budget(5))
+      TurnTooling[{NoCheckout}](noTools, Toolbox.Empty, Vector.empty, new FakeJot, budget(5))
     )(id)
 
   /** The stub classifier, counting the questions it was asked, call by call. */
@@ -702,7 +703,7 @@ object TurnFixtures {
         clock,
         Fresh.random()
       ),
-      TurnTooling[{ws}](tools, hosted, new FakeJot, budget(calls))
+      TurnTooling[{ws}](tools, Toolbox.Empty, hosted, new FakeJot, budget(calls))
     )(id)
 
   /** The turn's workflow body over `entries`, its models `models` and its profile kept in
@@ -727,7 +728,7 @@ object TurnFixtures {
         new NoWait,
         Fresh.random()
       ),
-      TurnTooling[{ws}](tools, Vector.empty, new FakeJot, budget(calls))
+      TurnTooling[{ws}](tools, Toolbox.Empty, Vector.empty, new FakeJot, budget(calls))
     )(id)
 
   def runTurn(

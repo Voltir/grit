@@ -59,7 +59,7 @@ object TurnCaptureTests extends TestSuite {
 
   /** The planted breach: [[TurnTooling]]'s shape, its hosted tools allowed to capture. */
   private val breach =
-    """final case class Breached[C^](tools: Toolbox[C], hosted: Vector[Tool.Offered^], jot: Jot^, budget: TurnLoop.Budget)
+    """final case class Breached[C^](tools: Toolbox[C], operator: Toolbox[C], hosted: Vector[Tool.Offered^], jot: Jot^, budget: TurnLoop.Budget)
       |""".stripMargin
 
   /** A toolbox that edits through `e`, handed to `tooling` as the tools of a turn whose own
@@ -67,7 +67,7 @@ object TurnCaptureTests extends TestSuite {
     */
   private val editing =
     """def offered(ws: Workspace^, e: Edits^, box: Toolbox[{ws, e}], j: Jot^, b: TurnLoop.Budget): TurnTooling[{ws}]^{j} =
-      |  TurnTooling(box, Vector.empty, j, b)
+      |  TurnTooling(box, Toolbox.Empty, Vector.empty, j, b)
       |""".stripMargin
 
   /** A tool that edits through `e`, handed to `tooling` as a hosted tool: one the edge runs,
@@ -75,7 +75,7 @@ object TurnCaptureTests extends TestSuite {
     */
   private def smuggled(tooling: String) =
     s"""def offered(e: Edits^, j: Jot^, b: TurnLoop.Budget): Option[$tooling[{}]^{j, e}] =
-      |  Toolbox.of().toOption.map(box => $tooling(box, Vector(writes(e)), j, b))
+      |  Toolbox.of().toOption.map(box => $tooling(box, Toolbox.Empty, Vector(writes(e)), j, b))
       |""".stripMargin
 
   private def rejected(errs: List[String]): Boolean =
@@ -89,7 +89,7 @@ object TurnCaptureTests extends TestSuite {
     test("a turn offered tools through what it names, and pure hosted tools, compiles") {
       val errs = errors(
         """def reading(ws: Workspace^, e: Edits^, j: Jot^, b: TurnLoop.Budget): Option[TurnTooling[{ws, e}]^{j}] =
-          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling[{ws, e}](box, Vector(spec.hosted), j, b))
+          |  Toolbox.of[{ws, e}](reads(ws), writes(e)).toOption.map(box => TurnTooling[{ws, e}](box, Toolbox.Empty, Vector(spec.hosted), j, b))
           |""".stripMargin
       )
       assert(errs.isEmpty)

@@ -47,6 +47,17 @@ object ToolboxTests extends TestSuite {
       Toolbox.of(echo, shout, echo).map(_.names) ==> Left(DuplicateName(ToolName("echo")))
     }
 
+    test("joined: the first's tools, then the second's; a name both hold is refused") {
+      val echoes =
+        Toolbox.of(echo).fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      val shouts =
+        Toolbox.of(shout).fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      Toolbox.joined(shouts, echoes).map(_.names) ==> Right(
+        Vector(ToolName("shout"), ToolName("echo"))
+      )
+      Toolbox.joined(box, echoes).map(_.names) ==> Left(DuplicateName(ToolName("echo")))
+    }
+
     test("schemas and names come in the order given") {
       box.names ==> Vector(ToolName("echo"), ToolName("shout"))
       box.schemas(strict = true).map(s => (s.name, s.strict)) ==>

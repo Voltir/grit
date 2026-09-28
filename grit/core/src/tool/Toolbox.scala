@@ -8,7 +8,7 @@ import grit.core.provider.ToolSchema
 /** The tools offered on one model call, their names distinct, each acting only through the
   * capabilities `C`: a `Toolbox[{ws}]` cannot edit or run a command unless `ws` can.
   */
-final class Toolbox[+C^] private (tools: Vector[Tool.Offered^{C}]) {
+final class Toolbox[+C^] private (private val tools: Vector[Tool.Offered^{C}]) {
 
   /** The tools as a request shows them, in the order given to [[Toolbox.of]]. */
   def schemas(strict: Boolean): Vector[ToolSchema] = tools.map(_.schema(strict))
@@ -58,6 +58,13 @@ object Toolbox {
         case at => sent.take(at)
       }
   }
+
+  /** No tools. */
+  val Empty: Toolbox[{}] = new Toolbox[{}](Vector.empty)
+
+  /** `first`'s tools, then `second`'s; `Left` naming the first name both hold. */
+  def joined[C^](first: Toolbox[C], second: Toolbox[C]): Either[DuplicateName, Toolbox[C]] =
+    of[C]((first.tools ++ second.tools)*)
 
   /** A toolbox of `tools`, offered in this order; `Left` names the first name repeated. */
   def of[C^](tools: Tool.Offered^{C}*): Either[DuplicateName, Toolbox[C]] = {

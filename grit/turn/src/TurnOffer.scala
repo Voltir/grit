@@ -24,11 +24,12 @@ object TurnOffer {
 
   /** What `turn` is offered now, kept, and recorded as `turn`'s prompt: its conversation's
     * workspace (a TUI session's directory); the hosted tools of `tooling` that the live edge
-    * serving that workspace advertises, then `tooling`'s own; and its prompt: the base, its
+    * serving that workspace advertises, then `tooling`'s own, then its operator tools when
+    * its origin is the operator's ([[grit.core.store.Origin.operator]]); and its prompt: the base, its
     * edge's fragment, what its workspace calls the assistant (when it has named it,
     * [[grit.core.store.Origin.assistant]]), the voice's fragment (none for plain), what it may reach there, and the
-    * instruction files the edge read there. `TurnFailure.Store` when a store fails, or the
-    * conversation is gone. A stored voice this build does not know is the default, never a
+    * instruction files the edge read there. `TurnFailure.Store` when a store fails, the
+    * conversation is gone, or two tools offered share a name. A stored voice this build does not know is the default, never a
     * failure.
     */
   def decide[C^](hosting: TurnHosting, tooling: TurnTooling[C]^, turn: TurnRef)(using
@@ -51,7 +52,12 @@ object TurnOffer {
       offered <- Toolbox
         .of[{}](hosted*)
         .map(_.set)
-        .flatMap(h => tooling.tools.preceded(hosted).map(all => (h, all.set)))
+        .flatMap(h =>
+          (if (conversation.origin.operator) Toolbox.joined(tooling.tools, tooling.operator)
+           else Right(tooling.tools))
+            .flatMap(_.preceded(hosted))
+            .map(all => (h, all.set))
+        )
         .left
         .map { case DuplicateName(n) =>
           StoreError.Invalid(s"two tools are named ${ToolName.value(n)}")
@@ -88,12 +94,12 @@ object TurnOffer {
     }.left
       .map(e => TurnFailure.Store(describe(e)))
 
-  /** The tools `offer`'s set names, in its order: each `tooling`'s own tool, else its hosted
-    * one, else a stand-in for a tool this build no longer has ([[Tool.gone]]).
+  /** The tools `offer`'s set names, in its order: each `tooling`'s own tool or operator
+    * tool, else its hosted one, else a stand-in for a tool this build no longer has ([[Tool.gone]]).
     */
   def toolbox[C^](tooling: TurnTooling[C]^, offer: TurnOffer): Toolbox[C] = {
     val chosen: Vector[Tool.Offered^{C}] = offer.tools.tools.map { entry =>
-      tooling.tools.tool(entry.name) match {
+      tooling.tools.tool(entry.name).orElse(tooling.operator.tool(entry.name)) match {
         case Some(own) => own
         case None =>
           tooling.hosted.find(_.name == entry.name) match {
