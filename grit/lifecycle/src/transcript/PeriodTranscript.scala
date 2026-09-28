@@ -2,6 +2,7 @@ package grit.lifecycle.transcript
 
 import grit.core.id.{PeriodRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.period.Section
 import grit.core.store.{Db, Entry, EntryStore, Payload, StoreError}
 
 /** A period as a classifier or the summary model reads it. */
@@ -30,9 +31,11 @@ object PeriodTranscript {
   def of(entries: Vector[Entry]): String = entries.flatMap(e => line(e.payload)).mkString("\n\n")
 
   /** What the recorded windows among `entries` showed from other conversations
-    * ([[Payload.Window]]'s nearby sections), read from `store` through `db`: each message
-    * once, in the order first shown, as `[{place}] User: …` or `[{place}] Assistant: …`, as
-    * [[of]] writes it. One gone since (its period closed and was purged) is left out.
+    * ([[Payload.Window]]'s nearby sections), read from `store` through `db`: each entry
+    * once, in the order first shown; a message as `[{place}] User: …` or
+    * `[{place}] Assistant: …`, as [[of]] writes it, and a closed conversation's record as
+    * `[{place}] Record: {prose}` and one `[{place}] Standing: {line}` for each Standing
+    * line. One gone since (purged, or collected) is left out.
     */
   def elsewhere(
       db: Db^,
@@ -54,10 +57,20 @@ object PeriodTranscript {
             acc.flatMap(done =>
               store
                 .get(id)
-                .map(found => done ++ found.flatMap(e => line(e.payload)).map(l => s"[$place] $l"))
+                .map(found => done ++ found.toVector.flatMap(known).map(l => s"[$place] $l"))
             )
         }
       )
+  }
+
+  /** What `entry`, shown from elsewhere, is known as: a message's line, or a record's prose
+    * and Standing lines.
+    */
+  private def known(entry: Entry): Vector[String] = entry.payload match {
+    case Payload.Closed(_, _, closing) =>
+      s"Record: ${closing.flows.prose}" +:
+        closing.balance.in(Section.Standing).map(l => s"Standing: ${l.text}")
+    case other => line(other).toVector
   }
 
   /** The most characters a tool line holds, its label and an ending "…" included. */

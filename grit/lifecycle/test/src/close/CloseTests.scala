@@ -69,7 +69,7 @@ object CloseTests extends TestSuite {
   val tests = Tests {
 
     test(
-      "what the period's windows showed from elsewhere is known to the gate and the writer, once each"
+      "what the period's windows showed from elsewhere, turns and records, is known to the gate and the writer, once each"
     ) {
       val w = new World
       val api = grit.core.id.ConversationId("api")
@@ -96,12 +96,37 @@ object CloseTests extends TestSuite {
           at(0)
         )
       )
+      val ops = grit.core.id.ConversationId("ops")
+      val freeze =
+        line(Section.Standing, "Deploys freeze Friday 17:00", 1, 1, ground = Ground.Person)
+      w.entries.insert(
+        grit.core.store.Entry(
+          EntryId("ops:closing"),
+          ops,
+          grit.core.id.TurnSeq(3),
+          None,
+          4,
+          Payload.Closed(
+            PeriodSeq.First,
+            CloseReason.Lapsed,
+            Closing(
+              Flows.of("Froze deploys.", None, Vector.empty).getOrElse(sys.error("flows")),
+              balance(freeze)
+            )
+          ),
+          at(0)
+        )
+      )
       val place = grit.core.place.Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
+      val thread = grit.core.place.Place.read("slack:T1/C1/2.0").fold(e => sys.error(e), identity)
       def shown(ids: String*) =
         Payload.Window(
           Vector.empty,
           Vector.empty,
-          Vector(grit.core.store.Nearby.Open(api, place, ids.toVector.map(EntryId(_))))
+          Vector(
+            grit.core.store.Nearby.Open(api, place, ids.toVector.map(EntryId(_))),
+            grit.core.store.Nearby.Closed(ops, thread, EntryId("ops:closing"))
+          )
         )
       val t0 = w.turn(
         "which fix for the flaky test?",
@@ -120,7 +145,9 @@ object CloseTests extends TestSuite {
         "closed: closing:c1:1"
       val lines = Vector(
         "[fs:/home/nick/api] User: the invoice test is flaky",
-        "[fs:/home/nick/api] Assistant: Pin TZ=UTC in the test JVM."
+        "[fs:/home/nick/api] Assistant: Pin TZ=UTC in the test JVM.",
+        "[slack:T1/C1/2.0] Record: Froze deploys.",
+        "[slack:T1/C1/2.0] Standing: Deploys freeze Friday 17:00"
       )
       g.states.map(_.obj.get("known_elsewhere")) ==> Vector(Some(ujson.Arr.from(lines)))
       summary.requests

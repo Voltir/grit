@@ -160,6 +160,49 @@ object RecordTurnHistories {
       )
       recorded(durable, turn)
     }
+    // Another conversation's record, and one whose closing was collected before the model
+    // call: its section is dropped from the request, and the window keeps naming it.
+    val nearbyClosed = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val ops = grit.core.id.ConversationId("ops")
+      entries.insert(
+        grit.core.store.Entry(
+          grit.core.id.EntryId("ops:closing"),
+          ops,
+          grit.core.id.TurnSeq(3),
+          None,
+          4,
+          Payload.Closed(
+            grit.core.id.PeriodSeq.First,
+            grit.core.period.CloseReason.Lapsed,
+            grit.core.period.TestClosings.prose("Froze deploys until Friday.")
+          ),
+          java.time.Instant.EPOCH
+        )
+      )(using grit.dbos.sql.TestTx.fake)
+      val turn = say(entries, "when does the freeze end?")
+      val thread = (ts: String) =>
+        grit.core.place.Place.read(s"slack:T1/C1/$ts").fold(e => sys.error(e), identity)
+      val sections = Vector(
+        grit.core.store.Nearby.Closed(ops, thread("2.0"), grit.core.id.EntryId("ops:closing")),
+        grit.core.store.Nearby.Closed(
+          grit.core.id.ConversationId("old"),
+          thread("1.0"),
+          grit.core.id.EntryId("old:collected")
+        )
+      )
+      val near = new grit.core.context.ContextAssembler {
+        def assemble(request: grit.core.context.AssemblyRequest)(using
+            grit.core.store.Db^
+        ): Either[grit.core.context.AssemblyError, grit.core.context.Window] =
+          Right(grit.core.context.Window(Vector.empty, Vector(TurnFixtures.queried), sections))
+      }
+      durable.run(turn.workflowId)(
+        turnBodyWith(entries, new RecordingProvider, near, new InMemoryUsageLedger)
+      )
+      recorded(durable, turn)
+    }
     val windowFirst = {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -425,6 +468,7 @@ object RecordTurnHistories {
       "crashed-recording-window" -> crashedRecordingWindow,
       "crashed-before-append-window-first" -> crashedBeforeAppendWindowFirst,
       "nearby" -> nearby,
+      "nearby-closed" -> nearbyClosed,
       "recalled" -> recalled,
       "queried" -> queried,
       "summarised" -> summarised,
