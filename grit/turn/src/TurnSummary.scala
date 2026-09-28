@@ -122,6 +122,8 @@ object TurnSummary {
 
   private def line(payload: Payload): Option[String] = payload match {
     case Payload.Exchange(reply) => line(Payload.Message(reply))
+    // A turn's own entries: a heard message is never one.
+    case Payload.Heard(_) => None
     case Payload.Result(result, _) => line(Payload.Message(result))
     case Payload.Message(Message.User(text)) => Some(s"User: $text")
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>

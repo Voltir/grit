@@ -13,6 +13,13 @@ enum Payload {
   /** A message sent to or received from the model. */
   case Message(message: grit.core.message.Message)
 
+  /** A person's message where grit listens but was not addressed
+    * ([[grit.core.inbox.Inbox.hear]]): the only entry of its turn, which runs no workflow.
+    * Its author is in [[Speakers]]. Shown to the model as speech not said to it, and
+    * searched by its text.
+    */
+  case Heard(text: String)
+
   /** A short summary of the turn the entry belongs to, written after its reply. Not a
     * message: the model sees it only if an assembler chooses to show it.
     */

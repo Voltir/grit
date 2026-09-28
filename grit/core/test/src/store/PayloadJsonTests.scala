@@ -67,6 +67,13 @@ object PayloadJsonTests extends TestSuite {
         """"content":"no matches","isError":true}}"""
     }
 
+    test("heard message") {
+      val heard = Payload.Heard("standup moves to 10:00")
+      val stored = """{"kind":"heard","text":"standup moves to 10:00"}"""
+      PayloadJson.write(heard).render() ==> stored
+      PayloadJson.read(ujson.read(stored)) ==> Right(heard)
+    }
+
     test("summary") {
       PayloadJson.write(Payload.Summary("Asked X; decided Y.")).render() ==>
         """{"kind":"summary","text":"Asked X; decided Y."}"""

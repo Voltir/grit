@@ -15,6 +15,7 @@ object PayloadJson {
 
   def write(p: Payload): ujson.Value = p match {
     case Payload.Message(m) => ujson.Obj("kind" -> "message", "message" -> message(m))
+    case Payload.Heard(text) => ujson.Obj("kind" -> "heard", "text" -> text)
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
     case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
     case Payload.Window(entries, recalled, nearby) =>
@@ -87,6 +88,7 @@ object PayloadJson {
       kind <- str(o, "kind")
       p <- kind match {
         case "message" => field(o, "message").flatMap(readMessage).map(Payload.Message(_))
+        case "heard" => str(o, "text").map(Payload.Heard(_))
         case "summary" => str(o, "text").map(Payload.Summary(_))
         case "query" => str(o, "text").map(Payload.Query(_))
         case "window" =>
