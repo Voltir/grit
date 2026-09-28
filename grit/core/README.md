@@ -80,7 +80,7 @@ In dependency order:
   section from afar, a gap where turns were left out; and a grit label that starts a line
   in text grit did not write, shown as a quoted paste), `Provider` and `Models` (the
   catalog in force, and a provider per role's pin; ← `model`), `Inbox` (which also
-  answers a turn's gated call, and says how far a turn has got: its `Progress`), and `Classifier` (closed questions about a state, answered
+  records a message heard where grit listens, not said to it, answers a turn's gated call, and says how far a turn has got: its `Progress`), and `Classifier` (closed questions about a state, answered
   with a probability per option; Jev's shape). Each names only the packages above, never
   another of the four.
 - **`host`** — what a tool may do to the machine, as capabilities: `Workspace` (read, list,

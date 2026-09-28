@@ -1,6 +1,6 @@
 # 0019. A Slack thread is a conversation, and one database is one trust boundary
 
-Status: accepted (2026-09-27)
+Status: accepted (2026-09-27), revised (2026-09-28)
 
 Context: grit's first edge for several people is Slack. Two choices shape every later
 edge that serves more than one person.
@@ -40,6 +40,11 @@ Consequences:
 - A colleague's word grounds a Standing line as a person's (ADR 0018), the same as the
   asker's.
 - Visibility, when it comes, narrows this boundary. It never has to widen it.
+- A deployment names the channels grit listens in (ADR 0020). Every message in them is
+  recorded inside the boundary, as a mention was. No notice is posted in the channel:
+  which channels are listened in is the deployment's configuration. A private channel is
+  never served, addressed or heard.
 - Enforced by:
-  - `SlackEdge` ignoring any channel Slack does not report as public (`SlackEdgeTests`);
+  - `SlackEdge` ignoring any channel Slack does not report as public, and hearing only in
+    the channels it is told to listen in (`SlackEdgeTests`);
   - `grit serve` refusing to attach to an engine another grit holds.
