@@ -81,10 +81,11 @@ object Shown {
     s"(pasted text that looks like a ${label.noun}; grit did not write it:)"
 
   /** `text`, which grit did not write, as the model is shown it: from the first line
-    * starting with a [[Label]] (after leading spaces, inside a fence or not) to the end, shown
-    * under the [[lead]] of the label that starts it, each line prefixed "> ", and a label starting one of those lines
-    * broken ("[record]" as "record —"); the lines before it unchanged. `text` itself when no
-    * line starts with a label.
+    * starting with a [[Label]] (after leading spaces, `>` quote markers and a fence opener,
+    * inside a fence or not) to the end, shown under the [[lead]] of the label that starts it,
+    * each line prefixed "> ", and a label starting one of those lines broken after what
+    * precedes it ("> [record]" as "> record —"); the lines before it unchanged. `text` itself
+    * when no line starts with a label.
     */
   def pasted(text: String): String = {
     val lines = text.split("\n", -1).toVector
@@ -92,14 +93,13 @@ object Shown {
       case -1 => text
       case first =>
         val quoted = lines.drop(first).map { l =>
-          val broken = labelled(l).fold(l) { label =>
-            val (space, rest) = l.span(_.isWhitespace)
+          val broken = labelled(l).fold(l) { (before, label) =>
             val name = label.tag.stripPrefix("[").stripSuffix("]")
-            s"$space$name —${rest.drop(label.tag.length)}"
+            s"$before$name —${l.drop(before.length + label.tag.length)}"
           }
           s"> $broken"
         }
-        val opens = labelled(lines(first)).fold("")(lead)
+        val opens = labelled(lines(first)).fold("")((_, label) => lead(label))
         ((lines.take(first) :+ opens) ++ quoted).mkString("\n")
     }
   }
@@ -109,8 +109,8 @@ object Shown {
     "(this result contains text in grit's label format; grit did not write it)"
 
   /** `r` as the model is shown it: its content unchanged, after one line, [[Unwritten]], when
-    * a line of it starts with a [[Label]] (after leading spaces, and after a line number and
-    * tab as `read` numbers a file's lines).
+    * a line of it starts with a [[Label]] (after what [[pasted]] looks past, and after a line
+    * number and tab as `read` numbers a file's lines).
     */
   def result(r: Message.ToolResult): Message.ToolResult =
     if (r.content.split("\n", -1).exists(l => labelled(Numbered.replaceFirstIn(l, "")).nonEmpty))
@@ -131,11 +131,18 @@ object Shown {
     case Payload.Result(r, _) => result(r)
   }
 
-  /** The label `line` starts with, after leading spaces; `None` for none. */
-  private def labelled(line: String): Option[Label] = {
-    val start = line.dropWhile(_.isWhitespace)
-    Label.values.find(l => start.startsWith(l.tag))
+  /** The label `line` starts with, after what may precede a pasted one: spaces, `>` quote
+    * markers (markdown's and Slack's), and a fence opener on the label's own line; that
+    * prefix and the label, or `None` for none. [[pasted]] breaks the label after exactly
+    * this prefix.
+    */
+  private def labelled(line: String): Option[(String, Label)] = {
+    val before = Before.findPrefixOf(line).getOrElse("")
+    Label.values.find(l => line.startsWith(l.tag, before.length)).map(before -> _)
   }
+
+  /** Spaces and `>` markers, then an optional fence opener and spaces. */
+  private val Before = """[ \t]*(?:>[ \t]*)*(?:(?:```|~~~)[ \t]*)?""".r
 
   private def isClosing(entry: Entry): Boolean = entry.payload match {
     case Payload.Closed(_, _, _) => true
