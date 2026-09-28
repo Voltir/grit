@@ -19,8 +19,8 @@ object Shown {
     * a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
     * lines it resolved and how, and the balance's open lines, its standing lines (those
-    * only the assistant said listed apart, as not confirmed) and its topics; `None` for any
-    * other entry.
+    * only the assistant said listed apart, as not confirmed) and its topics, each text the
+    * period carried as [[pasted]] shows it; `None` for any other entry.
     */
   def of(entry: Entry, speakers: Speakers): Option[Message] = entry.payload match {
     case Payload.Message(Message.User(text)) => Some(said(entry, text, speakers))
@@ -164,29 +164,40 @@ object Shown {
   }
 
   private def record(closing: Closing, at: Instant): String = {
+    val day = at.atOffset(ZoneOffset.UTC).toLocalDate
+    s"${Label.Record.tag} this conversation so far, written by grit (closed $day): " + body(closing)
+  }
+
+  /** `closing` as a record shows it after its header: its prose, its outcome, the lines it
+    * resolved and how, and the balance's open lines, its standing lines (those only the
+    * assistant said listed apart, as not confirmed) and its topics; each text grit carried
+    * from the period as [[pasted]] shows it, since the writer can copy a person's words.
+    */
+  private def body(closing: Closing): String = {
     val flows = closing.flows
     val balance = closing.balance
-    val day = at.atOffset(ZoneOffset.UTC).toLocalDate
     val settled = flows.changes.collect { case Change.Resolved(l, how) =>
-      if (how.trim.isEmpty) l.text else s"${l.text} — ${how.trim}"
+      if (how.trim.isEmpty) pasted(l.text) else s"${pasted(l.text)} — ${pasted(how.trim)}"
     }
     def list(title: String, lines: Vector[String]): Vector[String] =
       Option.when(lines.nonEmpty)(lines.map(l => s"- $l").mkString(s"$title:\n", "\n", "")).toVector
-    val topics = balance.in(Section.Topics).map(_.text)
+    val topics = balance.in(Section.Topics).map(l => pasted(l.text))
     // Standing only the assistant said is listed apart (ADR 0018), each line recast as an open
     // question. The wording is measured: a model restated the plain list as fact, and hedged
     // more often with this form. Rewording it needs a new measurement.
     val (claimed, confirmed) =
       balance.in(Section.Standing).partition(_.ground.contains(Ground.Claimed))
-    (s"${Label.Record.tag} this conversation so far, written by grit (closed $day): ${flows.prose}" +:
-      (flows.outcome.map(o => s"Outcome: $o").toVector ++
+    (pasted(flows.prose) +:
+      (flows.outcome.map(o => s"Outcome: ${pasted(o)}").toVector ++
         list("Settled then", settled) ++
-        list("Still open", balance.in(Section.Open).map(_.text)) ++
-        list("Standing", confirmed.map(_.text)) ++
+        list("Still open", balance.in(Section.Open).map(l => pasted(l.text))) ++
+        list("Standing", confirmed.map(l => pasted(l.text))) ++
         list(
           "Standing, said by the assistant and not confirmed",
           claimed
-            .map(l => s"Open: whether \"${l.text}\" (the assistant said so; nothing confirmed it)")
+            .map(l =>
+              s"Open: whether \"${pasted(l.text)}\" (the assistant said so; nothing confirmed it)"
+            )
         ) ++
         Option.when(topics.nonEmpty)(s"Topics so far: ${topics.mkString("; ")}").toVector))
       .mkString("\n")
