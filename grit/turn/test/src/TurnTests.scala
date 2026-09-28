@@ -309,7 +309,7 @@ object TurnTests extends TestSuite {
     }
 
     test(
-      "nearby sections come first, one message each; a gone entry is left out, an empty section dropped"
+      "nearby sections come first, one message each, a closed one as its record; a gone entry is left out, an empty section dropped"
     ) {
       val entries = new InMemoryEntryStore
       val provider = new RecordingProvider
@@ -355,16 +355,30 @@ object TurnTests extends TestSuite {
           Instant.EPOCH
         )
       )(using TestTx.fake)
+      val ops = ConversationId("ops")
+      entries.insert(
+        Entry(
+          EntryId("ops:closing"),
+          ops,
+          TurnSeq(4),
+          None,
+          5,
+          Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("Froze deploys.")),
+          Instant.parse("2026-09-27T10:00:00Z")
+        )
+      )(using TestTx.fake)
       val turn = say(entries, "two")
       val at = (p: String) => Place.read(p).fold(e => sys.error(e), identity)
       val nearby = Vector(
-        Nearby(
+        Nearby.Open(
           api,
           at("fs:/home/nick/api"),
           Vector(EntryId("api:u"), EntryId("api:gone"), EntryId("api:r"))
         ),
-        Nearby(ConversationId("docs"), at("fs:/home/nick/docs"), Vector(EntryId("docs:gone"))),
-        Nearby(web, at("fs:/home/nick/web"), Vector(EntryId("web:u")))
+        Nearby.Open(ConversationId("docs"), at("fs:/home/nick/docs"), Vector(EntryId("docs:gone"))),
+        Nearby.Open(web, at("fs:/home/nick/web"), Vector(EntryId("web:u"))),
+        Nearby.Closed(ops, at("slack:T1/C1/2.0"), EntryId("ops:closing")),
+        Nearby.Closed(ConversationId("old"), at("slack:T1/C1/1.0"), EntryId("old:collected"))
       )
       val opening = new ContextAssembler {
         def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
@@ -376,12 +390,16 @@ object TurnTests extends TestSuite {
       provider.requests.headOption.map(_.messages) ==> Some(
         Vector(
           Message.User(
-            "[afar] another conversation of yours, shown by grit, still open, at fs:/home/nick/api:\n" +
+            "[afar] another conversation, shown by grit, still open, at fs:/home/nick/api:\n" +
               "User: the invoice test is flaky\nAssistant: Pin TZ=UTC in the test JVM."
           ),
           Message.User(
-            "[afar] another conversation of yours, shown by grit, still open, at fs:/home/nick/web:\n" +
+            "[afar] another conversation, shown by grit, still open, at fs:/home/nick/web:\n" +
               "User: the login page is blank"
+          ),
+          Message.User(
+            "[afar] another conversation's record, written by grit when it closed on 2026-09-27, " +
+              "at slack:T1/C1/2.0: Froze deploys."
           ),
           Message.User(
             "[record] this conversation so far, written by grit (closed 1970-01-01): " +

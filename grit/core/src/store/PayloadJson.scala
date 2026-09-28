@@ -263,13 +263,24 @@ object PayloadJson {
       }
     } yield Usage(Tokens(input), Tokens(output), Tokens(cached), cost)
 
-  /** A nearby section's stored form: its conversation, its place as written, its entries. */
+  /** A nearby section's stored form: its conversation, its place as written, and an open
+    * one's `entries` or a closed one's `closing`.
+    */
   def writeNearby(n: Nearby): ujson.Value =
-    ujson.Obj(
-      "conversation" -> ConversationId.value(n.conversation),
-      "place" -> n.place.written,
-      "entries" -> ujson.Arr.from(n.entries.map(e => ujson.Str(EntryId.value(e))))
-    )
+    n match {
+      case Nearby.Open(c, place, entries) =>
+        ujson.Obj(
+          "conversation" -> ConversationId.value(c),
+          "place" -> place.written,
+          "entries" -> ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e))))
+        )
+      case Nearby.Closed(c, place, closing) =>
+        ujson.Obj(
+          "conversation" -> ConversationId.value(c),
+          "place" -> place.written,
+          "closing" -> EntryId.value(closing)
+        )
+    }
 
   /** The nearby section `v` stores ([[writeNearby]]'s form), or why none. */
   def readNearby(v: ujson.Value): Either[String, Nearby] =
@@ -278,11 +289,17 @@ object PayloadJson {
       c <- str(o, "conversation")
       written <- str(o, "place")
       place <- Place.read(written)
-      entries <- arr(o, "entries").flatMap(traverse(_) {
-        case ujson.Str(id) => Right(EntryId(id))
-        case _ => Left("an entry id is not a string")
-      })
-    } yield Nearby(ConversationId(c), place, entries)
+      section <-
+        if (o.value.contains("closing"))
+          str(o, "closing").map(k => Nearby.Closed(ConversationId(c), place, EntryId(k)))
+        else
+          arr(o, "entries")
+            .flatMap(traverse(_) {
+              case ujson.Str(id) => Right(EntryId(id))
+              case _ => Left("an entry id is not a string")
+            })
+            .map(Nearby.Open(ConversationId(c), place, _))
+    } yield section
 
   private def obj(v: ujson.Value): Either[String, ujson.Obj] = v match {
     case o: ujson.Obj => Right(o)

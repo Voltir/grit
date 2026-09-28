@@ -71,7 +71,7 @@ object TurnJournalTests extends TestSuite {
         Window(
           Vector(EntryId("a")),
           Vector.empty,
-          Vector(Nearby(ConversationId("c9"), api, Vector(EntryId("x"))))
+          Vector(Nearby.Open(ConversationId("c9"), api, Vector(EntryId("x"))))
         )
       )
       val j = summon[Journaled[Either[TurnFailure, Window]]]

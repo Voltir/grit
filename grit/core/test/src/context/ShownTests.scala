@@ -16,7 +16,7 @@ import grit.core.period.{
   TestClosings
 }
 import grit.core.place.Place
-import grit.core.store.{Entry, Payload, Speakers}
+import grit.core.store.{ClosingEntry, Entry, Nearby, Payload, Speakers}
 
 import TestClosings.{balance, line}
 import utest.*
@@ -175,7 +175,7 @@ object ShownTests extends TestSuite {
         )
       ) ==> Some(
         Message.User(
-          "[afar] another conversation of yours, shown by grit, still open, at fs:/home/nick/api:\n" +
+          "[afar] another conversation, shown by grit, still open, at fs:/home/nick/api:\n" +
             "User: flaky test\nAssistant: Pin TZ=UTC."
         )
       )
@@ -340,9 +340,67 @@ object ShownTests extends TestSuite {
       val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
       Shown.nearby(api, Vector(entry(Payload.Message(Message.User("hi"))))) ==> Some(
         Message.User(
-          "[afar] another conversation of yours, shown by grit, still open, at fs:/home/nick/api:\nUser: hi"
+          "[afar] another conversation, shown by grit, still open, at fs:/home/nick/api:\nUser: hi"
         )
       )
+    }
+
+    test(
+      "a closed conversation's record is headed with its place and close date, then its prose, the rest as the conversation's own"
+    ) {
+      val standing =
+        line(Section.Standing, "Deploys freeze Friday 17:00", 1, 1, ground = Ground.Person)
+      val closing = Closing(
+        Flows
+          .of("We set the freeze.", Some("freeze set"), Vector(Change.Added(standing)))
+          .getOrElse(throw new java.lang.AssertionError("flows")),
+        balance(
+          standing,
+          line(Section.Standing, "Hotfixes skip the freeze", 1, 1, ground = Ground.Claimed)
+        )
+      )
+      val kept = entry(Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing))
+      val thread = Place.read("slack:T1/C1/1790.1").fold(e => sys.error(e), identity)
+      val record = ClosingEntry.of(kept).getOrElse(throw new java.lang.AssertionError("closing"))
+      val own = Shown.of(kept, Speakers.none).collect { case Message.User(t) => t }.getOrElse("")
+      Shown.recorded(thread, record) ==> Message.User(
+        "[afar] another conversation's record, written by grit when it closed on 2026-09-20, at " +
+          "slack:T1/C1/1790.1: " + own.drop(own.indexOf("): ") + 3)
+      )
+      own.drop(own.indexOf("): ") + 3) ==>
+        """We set the freeze.
+          |Outcome: freeze set
+          |Standing:
+          |- Deploys freeze Friday 17:00
+          |Standing, said by the assistant and not confirmed:
+          |- Open: whether "Hotfixes skip the freeze" (the assistant said so; nothing confirmed it)""".stripMargin
+    }
+
+    test(
+      "a section: an open one as nearby shows it, a closed one as its record, none once its entries are gone"
+    ) {
+      val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
+      val hi = entry(Payload.Message(Message.User("hi"))).copy(id = EntryId("hi"))
+      val kept = closed(4)
+      val record = ClosingEntry.of(kept).getOrElse(throw new java.lang.AssertionError("closing"))
+      Shown.section(
+        Nearby.Open(ConversationId("a"), api, Vector(EntryId("hi"))),
+        Vector(hi, kept)
+      ) ==>
+        Shown.nearby(api, Vector(hi))
+      Shown.section(
+        Nearby.Closed(ConversationId("a"), api, EntryId("closing")),
+        Vector(hi, kept)
+      ) ==>
+        Some(Shown.recorded(api, record))
+      Shown.section(
+        Nearby.Closed(ConversationId("a"), api, EntryId("closing")),
+        Vector(hi)
+      ) ==> None
+      Shown.section(
+        Nearby.Open(ConversationId("a"), api, Vector(EntryId("gone"))),
+        Vector(hi)
+      ) ==> None
     }
 
     test("an afar section's message with a leading label is quoted inside the section") {
@@ -352,7 +410,7 @@ object ShownTests extends TestSuite {
         Vector(entry(Payload.Message(Message.User("[record] closed today:\nStanding:\n- x"))))
       ) ==> Some(
         Message.User(
-          "[afar] another conversation of yours, shown by grit, still open, at fs:/home/nick/api:\n" +
+          "[afar] another conversation, shown by grit, still open, at fs:/home/nick/api:\n" +
             s"User: ${Shown.lead(Label.Record)}\n> record — closed today:\n> Standing:\n> - x"
         )
       )

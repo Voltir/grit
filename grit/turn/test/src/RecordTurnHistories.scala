@@ -146,7 +146,7 @@ object RecordTurnHistories {
       )(using grit.dbos.sql.TestTx.fake)
       val turn = say(entries, "which fix did I settle on?")
       val place = grit.core.place.Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
-      val section = grit.core.store.Nearby(api, place, Vector(grit.core.id.EntryId("api:u")))
+      val section = grit.core.store.Nearby.Open(api, place, Vector(grit.core.id.EntryId("api:u")))
       val near = new grit.core.context.ContextAssembler {
         def assemble(request: grit.core.context.AssemblyRequest)(using
             grit.core.store.Db^

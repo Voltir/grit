@@ -218,7 +218,7 @@ object RetrievalAssemblerTests extends TestSuite {
       search.nearAsked.map(_.query) ==> Vector("invoice test flaky fix")
       w.entries ==> Vector()
       w.nearby ==> Vector(
-        Nearby(api, placeOf("api"), Vector(EntryId("api:t0:0"), EntryId("api:t0:1")))
+        Nearby.Open(api, placeOf("api"), Vector(EntryId("api:t0:0"), EntryId("api:t0:1")))
       )
     }
 
@@ -270,7 +270,7 @@ object RetrievalAssemblerTests extends TestSuite {
       val weighted = pick(2)
       (turnsOf(weighted), weighted.nearby.size) ==> (Vector("t0", "t4", "t5"), 0)
       val even = pick(1)
-      (turnsOf(even), even.nearby.map(_.entries.map(EntryId.value))) ==>
+      (turnsOf(even), even.nearby.map(_.names.map(EntryId.value))) ==>
         (Vector("t4", "t5"), Vector(Vector("api:t0:0", "api:t0:1")))
     }
 

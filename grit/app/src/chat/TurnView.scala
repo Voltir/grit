@@ -9,7 +9,7 @@ import grit.core.model.{ModelRef, TurnProfile}
 import grit.core.place.Place
 import grit.core.prompt.{Layer, SystemPrompt}
 import grit.core.provider.TokenEstimator
-import grit.core.store.{Entry, Payload, Speakers, UsageLedger}
+import grit.core.store.{Entry, Nearby, Payload, Speakers, UsageLedger}
 import grit.dbos.engine.RecordedStep
 import grit.turn.Turn
 
@@ -107,22 +107,30 @@ object TurnView {
     def total: Tokens = system + closing + recent + recalled + message + nearby
   }
 
-  /** A nearby section's place, and the turns of its conversation it showed. */
-  final case class Near(place: Place, turns: Vector[TurnSeq])
+  /** A nearby section the window showed, by its place. */
+  enum Near {
+
+    /** The turns of an open conversation it showed. */
+    case Turns(place: Place, turns: Vector[TurnSeq])
+
+    /** The record of a closed one. */
+    case Record(place: Place)
+  }
 
   object Near {
 
-    /** `near` in one line, as the panel lists it: each turn under its place's last segment,
-      * `api turn 3 · web turn 5`.
+    /** `near` in one line, as the panel lists it, under each place's last segment: each turn
+      * shown, and a record, `api turn 3 · web turn 5 · docs record`.
       */
-    def shown(near: Vector[Near]): String =
+    def shown(near: Vector[Near]): String = {
+      def name(p: Place) = p.segments.lastOption.getOrElse(p.written)
       near
-        .flatMap(n =>
-          n.turns.map(t =>
-            s"${n.place.segments.lastOption.getOrElse(n.place.written)} turn ${TurnSeq.value(t)}"
-          )
-        )
+        .flatMap {
+          case Turns(place, turns) => turns.map(t => s"${name(place)} turn ${TurnSeq.value(t)}")
+          case Record(place) => Vector(s"${name(place)} record")
+        }
         .mkString(" · ")
+    }
   }
 
   /** The latest turn in `entries`: the one its last user message started. */
@@ -158,7 +166,7 @@ object TurnView {
         val (closings, turns) = seen.partition(isClosed)
         val (recalled, recent) = turns.partition(e => w.recalled.contains(e.turnSeq))
         val theirs = nearby.map(e => e.id -> e).toMap
-        val sections = w.nearby.map(n => n -> n.entries.flatMap(theirs.get))
+        val sections = w.nearby.map(n => n -> n.names.flatMap(theirs.get))
         Window(
           prompt.fold(Tokens.Zero)(p => estimator.system(p.render)),
           tokens(closings, speakers, estimator),
@@ -166,11 +174,14 @@ object TurnView {
           tokens(recalled, speakers, estimator),
           tokens(own.filter(isUser), speakers, estimator),
           w.recalled,
-          sections
-            .flatMap((n, es) => Shown.nearby(n.place, es))
+          w.nearby
+            .flatMap(Shown.section(_, nearby))
             .map(estimator.message)
             .foldLeft(Tokens.Zero)(_ + _),
-          sections.map((n, es) => Near(n.place, es.map(_.turnSeq).distinct))
+          sections.collect {
+            case (Nearby.Open(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
+            case (Nearby.Closed(_, place, _), es) if es.nonEmpty => Near.Record(place)
+          }
         )
       }
     val reply = own.collectFirst {

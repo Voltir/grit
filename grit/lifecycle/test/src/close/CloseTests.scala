@@ -101,7 +101,7 @@ object CloseTests extends TestSuite {
         Payload.Window(
           Vector.empty,
           Vector.empty,
-          Vector(grit.core.store.Nearby(api, place, ids.toVector.map(EntryId(_))))
+          Vector(grit.core.store.Nearby.Open(api, place, ids.toVector.map(EntryId(_))))
         )
       val t0 = w.turn(
         "which fix for the flaky test?",

@@ -42,7 +42,7 @@ object PeriodTranscript {
     val shown = entries
       .flatMap(_.payload match {
         case Payload.Window(_, _, nearby) =>
-          nearby.flatMap(n => n.entries.map(id => (n.place.written, id)))
+          nearby.flatMap(n => n.names.map(id => (n.place.written, id)))
         case _ => Vector.empty
       })
       .distinctBy(_._2)

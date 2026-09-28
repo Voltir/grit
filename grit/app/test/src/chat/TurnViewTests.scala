@@ -266,8 +266,8 @@ object TurnViewTests extends TestSuite {
             Vector.empty,
             Vector.empty,
             Vector(
-              Nearby(web, webAt, Vector(EntryId("w0"), EntryId("gone"))),
-              Nearby(api, apiAt, Vector(EntryId("a0"), EntryId("a1")))
+              Nearby.Open(web, webAt, Vector(EntryId("w0"), EntryId("gone"))),
+              Nearby.Open(api, apiAt, Vector(EntryId("a0"), EntryId("a1")))
             )
           )
         ),
@@ -296,10 +296,59 @@ object TurnViewTests extends TestSuite {
         Message.User("which fix?")
       )
       w.nearbyTurns ==> Vector(
-        TurnView.Near(webAt, Vector(TurnSeq(5))),
-        TurnView.Near(apiAt, Vector(TurnSeq(3)))
+        TurnView.Near.Turns(webAt, Vector(TurnSeq(5))),
+        TurnView.Near.Turns(apiAt, Vector(TurnSeq(3)))
       )
       TurnView.Near.shown(w.nearbyTurns) ==> "web turn 5 · api turn 3"
+    }
+
+    test("a closed section is counted as its record, and listed as a record") {
+      val ops = ConversationId("ops")
+      val opsAt = Place.read("slack:T1/C1/2.0").fold(e => sys.error(e), identity)
+      val kept = Entry(
+        EntryId("k"),
+        ops,
+        TurnSeq(4),
+        None,
+        5,
+        Payload.Closed(
+          grit.core.id.PeriodSeq.First,
+          grit.core.period.CloseReason.Lapsed,
+          Closing(
+            Flows.of("Froze deploys.", None, Vector.empty).getOrElse(sys.error("flows")),
+            Balance.empty
+          )
+        ),
+        Instant.EPOCH
+      )
+      val asked = Vector(
+        user(0, 0, "when is the freeze?"),
+        entry(
+          1,
+          0,
+          Payload
+            .Window(Vector.empty, Vector.empty, Vector(Nearby.Closed(ops, opsAt, EntryId("k"))))
+        ),
+        reply(2, 0, "Friday", 50)
+      )
+      val w = TurnView
+        .of(
+          TurnRef(c, TurnSeq(0)),
+          asked,
+          Speakers.none,
+          Vector.empty,
+          running = false,
+          Vector.empty,
+          prompt("s"),
+          CharEstimate,
+          None,
+          Vector(kept)
+        )
+        .window
+        .getOrElse(sys.error("no window"))
+      val record = grit.core.store.ClosingEntry.of(kept).getOrElse(sys.error("closing"))
+      w.nearby ==> CharEstimate.message(Shown.recorded(opsAt, record))
+      TurnView.Near.shown(w.nearbyTurns) ==> "2.0 record"
     }
 
     test("what its calls were made under: the turn's pair, a role on another, and who served it") {

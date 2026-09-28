@@ -403,7 +403,7 @@ object Eval {
     * alike count as held; its size is each held message's estimate.
     */
   def score(loaded: Loaded, window: Window): Score = {
-    val all = window.entries ++ window.nearby.flatMap(_.entries)
+    val all = window.entries ++ window.nearby.flatMap(_.names)
     val held = all.toSet
     Score(
       loaded.must.count(held),

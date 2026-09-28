@@ -6,7 +6,7 @@ import grit.core.id.TurnSeq
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{Change, Closing, Ground, Section}
 import grit.core.place.Place
-import grit.core.store.{Entry, Payload, Speakers}
+import grit.core.store.{ClosingEntry, Entry, Nearby, Payload, Speakers}
 
 /** What the model is shown of an entry a window names: the one definition, which an
   * assembler costs and the turn sends.
@@ -30,8 +30,8 @@ object Shown {
     case _ => None
   }
 
-  /** A nearby section as one user message, "[afar] another conversation of yours, shown by
-    * grit, still open, at {place.written}:", then each message among `entries` as a
+  /** A nearby section as one user message, "[afar] another conversation, shown by grit,
+    * still open, at {place.written}:", then each message among `entries` as a
     * `User:` or `Assistant:` line of its text, as [[pasted]] shows it. `None` when none of
     * them has text.
     */
@@ -39,10 +39,36 @@ object Shown {
     val lines = entries.flatMap(e => line(e.payload))
     Option.when(lines.nonEmpty)(
       Message.User(
-        (s"${Label.Afar.tag} another conversation of yours, shown by grit, still open, at ${place.written}:" +: lines)
+        (s"${Label.Afar.tag} another conversation, shown by grit, still open, at ${place.written}:" +: lines)
           .mkString("\n")
       )
     )
+  }
+
+  /** A closed conversation's closing entry `closing`, at `place`, as one user message:
+    * "[afar] another conversation's record, written by grit when it closed on {its UTC
+    * date}, at {place.written}: ", then its record as [[of]] shows the conversation's own
+    * after that one's "): ".
+    */
+  def recorded(place: Place, closing: ClosingEntry): Message = {
+    val day = closing.entry.createdAt.atOffset(ZoneOffset.UTC).toLocalDate
+    Message.User(
+      s"${Label.Afar.tag} another conversation's record, written by grit when it closed on " +
+        s"$day, at ${place.written}: " + body(closing.closing)
+    )
+  }
+
+  /** A nearby section as the model is shown it, from those of `entries` it names: an open one
+    * as [[nearby]], a closed one as [[recorded]]. `None` when none of its entries is among
+    * `entries`, or none of them has text.
+    */
+  def section(nearby: Nearby, entries: Vector[Entry]): Option[Message] = {
+    val byId = entries.map(e => e.id -> e).toMap
+    nearby match {
+      case Nearby.Open(_, place, ids) => this.nearby(place, ids.flatMap(byId.get))
+      case Nearby.Closed(_, place, id) =>
+        byId.get(id).flatMap(ClosingEntry.of).map(recorded(place, _))
+    }
   }
 
   /** The line standing for turns left out: one user message, "[gap] earlier turns not

@@ -248,7 +248,7 @@ final class RetrievalAssembler(
     val near = packed.collect { case n: Candidate.Near => n }
     near.map(_.conversation).distinct.flatMap { c =>
       near.find(_.conversation == c).map { first =>
-        Nearby(
+        Nearby.Open(
           c,
           first.place,
           near.filter(_.conversation == c).flatMap(_.turn).sortBy(_.seq).map(_.id)

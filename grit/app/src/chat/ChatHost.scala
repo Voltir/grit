@@ -350,7 +350,7 @@ final class ChatHost(
     val shown = entries
       .filter(_.turnSeq == turn.turnSeq)
       .flatMap(_.payload match {
-        case Payload.Window(_, _, nearby) => nearby.flatMap(_.entries)
+        case Payload.Window(_, _, nearby) => nearby.flatMap(_.names)
         case _ => Vector.empty
       })
     val nearby = engine.db

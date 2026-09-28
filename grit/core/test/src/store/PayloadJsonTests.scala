@@ -90,11 +90,25 @@ object PayloadJsonTests extends TestSuite {
       val window = Payload.Window(
         Vector(EntryId("a")),
         Vector.empty,
-        Vector(Nearby(ConversationId("c9"), api, Vector(EntryId("x"), EntryId("y"))))
+        Vector(Nearby.Open(ConversationId("c9"), api, Vector(EntryId("x"), EntryId("y"))))
       )
       PayloadJson.write(window).render() ==>
         """{"kind":"window","entries":["a"],"recalled":[],""" +
         """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":["x","y"]}]}"""
+      PayloadJson.read(ujson.read(PayloadJson.write(window).render())) ==> Right(window)
+    }
+
+    test("a closed nearby section is stored with its closing, and read back") {
+      // Stored data: an open section keeps the form above; a closed one names its closing.
+      val thread = Place.read("slack:T1/C1/1.0").fold(e => sys.error(e), identity)
+      val window = Payload.Window(
+        Vector(EntryId("a")),
+        Vector.empty,
+        Vector(Nearby.Closed(ConversationId("c9"), thread, EntryId("k")))
+      )
+      PayloadJson.write(window).render() ==>
+        """{"kind":"window","entries":["a"],"recalled":[],""" +
+        """"nearby":[{"conversation":"c9","place":"slack:T1/C1/1.0","closing":"k"}]}"""
       PayloadJson.read(ujson.read(PayloadJson.write(window).render())) ==> Right(window)
     }
 

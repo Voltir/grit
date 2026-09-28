@@ -1004,14 +1004,14 @@ object Turn {
       Tx^
   ): Either[StoreError, Vector[Entry]] =
     window.nearby
-      .flatMap(_.entries)
+      .flatMap(_.names)
       .foldLeft[Either[StoreError, Vector[Entry]]](Right(Vector.empty)) { (acc, id) =>
         acc.flatMap(found => entries.get(id).map(found ++ _))
       }
 
   /** The request [[request]] builds, from `all` of the conversation's entries and `near`,
     * the nearby entries that still exist: each nearby section as one user message
-    * ([[Shown.nearby]], a section with none of its entries left dropped), then what the
+    * ([[Shown.section]], a section with none of its entries left dropped), then what the
     * model is shown of the window's entries ([[Shown.own]]: its messages, a closing entry
     * as one user message, and a gap line wherever turns are left out), then the turn's own, its tool loop's exchange among them in order.
     * A summary is not shown to the model yet.
@@ -1025,9 +1025,7 @@ object Turn {
       named: Speakers
   ): Either[TurnFailure, ModelRequest] = {
     val byId = all.map(e => e.id -> e).toMap
-    val nearById = near.map(e => e.id -> e).toMap
-    val sections =
-      window.nearby.flatMap(n => Shown.nearby(n.place, n.entries.flatMap(nearById.get)))
+    val sections = window.nearby.flatMap(Shown.section(_, near))
     window.entries.filterNot(byId.contains) match {
       case missing if missing.nonEmpty =>
         Left(
