@@ -247,6 +247,24 @@ object grit extends Module {
     }
   }
 
+  /* The Slack edge (ADR 0019): the Slack SDK's quarantine (STYLE rule 8), and the edge that
+   * brings Slack threads in and posts grit's replies out, over core's traits alone. The SDK
+   * is slack-api-client, without Bolt: grit acknowledges an event only after it is recorded,
+   * and wants the transport alone. Its Socket Mode WebSocket backend is Java-WebSocket, a
+   * `provided` dependency of the SDK, at the version its parent POM pins.
+   * grit/slack/README.md. */
+  object slack extends GritModule {
+    def moduleDeps = Seq(core, prose)
+    def mvnDeps = Seq(
+      mvn"com.slack.api:slack-api-client:1.51.0",
+      mvn"org.java-websocket:Java-WebSocket:1.6.0"
+    )
+
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
+  }
+
   /* Assembly: builds each turn's context window from memory.
    * roadmap/mechanisms/assembly.md. */
   object assembly extends GritModule {
@@ -333,7 +351,8 @@ object grit extends Module {
         grit.tui,
         grit.host,
         grit.tools,
-        grit.edge
+        grit.edge,
+        grit.slack
       )
     def forkArgs = Task { tui.forkArgs() }
     def mainClass = Some("grit.app.main.Main")

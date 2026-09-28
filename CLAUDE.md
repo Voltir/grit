@@ -41,6 +41,7 @@ Mill modules, and what each may name:
 | `grit.host` | `grit.host` | core | the local host: `LocalWorkspace`, `LocalEdits`, `LocalShell`, `LocalInstructions` (`grit.core.host`'s capabilities over this machine's files and processes; a command sees only an allowlisted environment), `LocalMachine` (this process's `ProcessIdentity`); the only module that starts a process or reads which process and machine this is |
 | `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone: `Server` (claims, runs and answers the tool requests addressed to the places it hosts, ADR 0017, with the `Tools` it is given), `Run` (a request run by a toolbox, as its permit says), `PlaceFragments` (a place's instruction files as the prompt's Place layer) |
 | `grit.tools` | `grit.tools` | core | the coding tool set (`Coding`): read, list, search, write, edit and run, each written once as a `Hosted` description the engine offers and the `Tool` over `grit.core.host`'s capabilities an edge runs (ADR 0017); `Facts`: `propose_fact`, a measured fact about a model kept once a person approves it; `Probes`: `probe_pair`, a battery of calls measuring a (model, upstream) pair; `About`: `about`, what grit is and how it works, from docs shipped in its resources |
+| `grit.slack` | `grit.slack.{event,text,client}` | core, prose | the Slack edge: the Slack SDK's quarantine (`SocketSlack`, over Socket Mode), Slack's events and text read into grit's terms, and a reply's prose as Slack rich text; package order in [`grit/slack/README.md`](grit/slack/README.md) |
 | `grit.assembly` | `grit.assembly.{estimate,linear,retrieval}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`grit/assembly/README.md`](grit/assembly/README.md) |
 | `grit.eval` | `grit.eval` | core, dbos, assembly, models | the assembly eval, integration sources only (`grit.eval.it`): every assembler over labelled cases in a throwaway Postgres; a report, not a gate |
 | `grit.app` | `grit.app.{config,look,chat,main}` | everything | the composition root; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), or a one-shot run with arguments; package order in [`grit/app/README.md`](grit/app/README.md) |
@@ -74,8 +75,8 @@ capability is a promise of purity.**
 8. **Java libraries are quarantined by role.** Each lives only in the module whose job
    needs it, translated into grit's conventions there; such modules depend only on core and
    meet only in `grit.app`. Nothing outside `grit.dbos` imports `dev.dbos.*` or `java.sql.*`,
-   nothing outside `grit.models` imports `java.net.http.*`, and nothing outside `grit.host`
-   starts a process.
+   nothing outside `grit.models` imports `java.net.http.*`, nothing outside `grit.slack` imports
+   `com.slack.*`, and nothing outside `grit.host` starts a process.
 9. Explicit capability parameters over clever inference.
 10. **The elision test** — if assembly dropped the body and kept only the signature and
     its doc, could a competent agent still call it correctly? If not, fix the signature.

@@ -2,7 +2,8 @@
 #
 # It enforces two things:
 #   1. Only grit.dbos may import dev.dbos.*, JDBC or the Postgres driver, only
-#      grit.models the JDK HTTP client, and only grit.host may start a process (STYLE rule 8)
+#      grit.models the JDK HTTP client, only grit.slack the Slack SDK, and only grit.host
+#      may start a process (STYLE rule 8); grit.slack names core and prose alone
 #   2. grit.tui's four groups import in one direction (grit/tui/CLAUDE.md)
 #   3. grit.prose names no other grit module (grit/prose/README.md)
 #
@@ -28,17 +29,25 @@ components:
   # grit.dbos, and Mill's moduleDeps are transitive, so these rules are the only guard there.
   - name: outside-dbos
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/slack/**"]
 
   # Every module except grit.models, for the HTTP quarantine (STYLE rule 8).
   - name: outside-models
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/slack/**"]
 
   # Every module except grit.host, for the process quarantine (STYLE rule 8).
   - name: outside-host
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/slack/**"]
+
+  # Every module except grit.slack, for the Slack SDK's quarantine (STYLE rule 8).
+  - name: outside-slack
+    kind: dependency
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**"]
+
+  # grit.slack's sources, for its rule below: an edge names core and prose, never the turn.
+  - {name: slack-code,     kind: module, match: ["grit/slack/src", "grit/slack/src/**"]}
 
   # The tui groups, for the direction rules. `runtime` needs no entry: it may import
   # every group.
@@ -249,6 +258,110 @@ rules:
     pattern: "* -> java.lang.management.ManagementFactory"
     mode: strict
     because: "STYLE rule 8: reading this machine and process is quarantined to grit.host"
+
+  # -------------------------------------------------------------------------------------
+  # 1e. Only grit.slack imports the Slack SDK: one rule per class it imports, as for DBOS;
+  # scripts/enola-law.sh fails when grit.slack imports a com.slack class no rule names.
+  # -------------------------------------------------------------------------------------
+  - id: only-slack-imports-slack
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.Slack"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-methods-client
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.MethodsClient"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-slack-api-exception
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.SlackApiException"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-slack-api-text-response
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.SlackApiTextResponse"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-auth-test-request
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.request.auth.AuthTestRequest"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-chat-post-message-request
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.request.chat.ChatPostMessageRequest"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-conversations-info-request
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.request.conversations.ConversationsInfoRequest"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-conversations-replies-request
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.request.conversations.ConversationsRepliesRequest"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-reactions-add-request
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.request.reactions.ReactionsAddRequest"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-reactions-remove-request
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.request.reactions.ReactionsRemoveRequest"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-users-info-request
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.request.users.UsersInfoRequest"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-message
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.model.Message"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-socket-mode-client
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.socket_mode.SocketModeClient"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-events-api-envelope
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.socket_mode.request.EventsApiEnvelope"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  - id: only-slack-imports-ack-response
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.socket_mode.response.AckResponse"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  # grit.slack names core and prose alone: an edge reaches the engine through Postgres (ADR
+  # 0002) and never the turn. Mill already keeps grit.turn off its classpath; this rule is the
+  # record of the intent, and the guard if a moduleDeps entry is ever added.
+  - id: slack-names-core-and-prose
+    allow: slack-code
+    only: [core-code, prose-code, slack-code]
+    via: imports
+    mode: strict
+    because: "an edge reaches the engine only through Postgres (ADR 0002): grit.slack names grit.core's traits and grit.prose's form, never grit.turn or an implementation"
 
   # -------------------------------------------------------------------------------------
   # 2. grit.tui's import direction: each group lists what it may import.
