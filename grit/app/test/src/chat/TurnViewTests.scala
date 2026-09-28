@@ -166,7 +166,8 @@ object TurnViewTests extends TestSuite {
         )
         .window
         .getOrElse(sys.error("no window"))
-      val third = asked.slice(4, 6).flatMap(Shown.of).map(CharEstimate.message).reduce(_ + _)
+      val third =
+        asked.slice(4, 6).flatMap(e => Shown.of(e)).map(CharEstimate.message).reduce(_ + _)
       w.recent ==> third + CharEstimate.message(Shown.Gap)
     }
 

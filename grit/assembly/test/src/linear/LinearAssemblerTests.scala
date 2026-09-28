@@ -55,7 +55,7 @@ object LinearAssemblerTests extends TestSuite {
       .get(EntryId(closingOf(n)))(using TestTx.fake)
       .toOption
       .flatten
-      .flatMap(Shown.of)
+      .flatMap(e => Shown.of(e))
       .fold(0L)(m => Tokens.value(CharEstimate.message(m)))
 
   val tests = Tests {

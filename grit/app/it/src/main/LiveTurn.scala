@@ -96,7 +96,7 @@ object LiveTurn {
       engine.launch(
         Turn.body(
           TurnEnv(
-            TurnRecords(entries, engine.ledger, CharEstimate, engine.profiles),
+            TurnRecords(entries, engine.ledger, CharEstimate, engine.profiles, engine.principals),
             TurnHosting(
               engine.conversations,
               engine.prompts,

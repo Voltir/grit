@@ -224,11 +224,11 @@ object TurnView {
     * counted with the recent turns.
     */
   private def gaps(seen: Vector[Entry], turn: TurnRef, estimator: TokenEstimator): Tokens = {
-    val lines = Shown.own(seen, turn.turnSeq).size - seen.flatMap(Shown.of).size
+    val lines = Shown.own(seen, turn.turnSeq).size - seen.flatMap(e => Shown.of(e)).size
     Tokens(lines * Tokens.value(estimator.message(Shown.Gap)))
   }
 
   /** What `entries` cost as the model is shown them ([[Shown.of]]), as assembly costs them. */
   private def tokens(entries: Vector[Entry], estimator: TokenEstimator): Tokens =
-    entries.flatMap(Shown.of).map(estimator.message).foldLeft(Tokens.Zero)(_ + _)
+    entries.flatMap(e => Shown.of(e)).map(estimator.message).foldLeft(Tokens.Zero)(_ + _)
 }

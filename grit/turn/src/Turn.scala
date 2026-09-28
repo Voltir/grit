@@ -11,7 +11,7 @@ import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
-import grit.core.store.{Entry, EntryStore, Jot, Payload, StoreError, Tx}
+import grit.core.store.{Entry, EntryStore, Jot, Payload, Speakers, StoreError, Tx}
 import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
 import grit.core.topic.Topic
 
@@ -717,13 +717,14 @@ object Turn {
       shape: ModelRequest -> ModelRequest,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
-    val TurnRecords(entries, ledger, estimator, _) = records
+    val TurnRecords(entries, ledger, estimator, _, principals) = records
     val id = TurnTools.callId(turn, round)
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
       near <- nearbyOf(entries, window).left.map(storeFailure)
-      sent <- requestOf(system, all, near, turn, window).map(shape)
+      named <- principals.speakers(all.map(_.id)).left.map(storeFailure)
+      sent <- requestOf(system, all, near, turn, window, named).map(shape)
       _ <- entries
         .insert(
           Entry(
@@ -850,7 +851,8 @@ object Turn {
     for {
       all <- records.entries.list(turn.conversationId).left.map(storeFailure)
       near <- nearbyOf(records.entries, window).left.map(storeFailure)
-      base <- requestOf(system, all, near, turn, window)
+      named <- records.principals.speakers(all.map(_.id)).left.map(storeFailure)
+      base <- requestOf(system, all, near, turn, window, named)
       id <- TurnTopics.writeEvents(
         records.entries,
         records.ledger,
@@ -922,7 +924,7 @@ object Turn {
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = TurnSummary.id(turn)
-    val TurnRecords(entries, ledger, estimator, _) = records
+    val TurnRecords(entries, ledger, estimator, _, principals) = records
     for {
       read <- (placing match {
         case Placing.Placed(_) => TurnSummary.read(message)
@@ -988,7 +990,8 @@ object Turn {
         for {
           all <- env.records.entries.list(turn.conversationId)
           near <- nearbyOf(env.records.entries, window)
-        } yield requestOf(system, all, near, turn, window)
+          named <- env.records.principals.speakers(all.map(_.id))
+        } yield requestOf(system, all, near, turn, window, named)
       }
       .left
       .map(storeFailure)
@@ -1018,7 +1021,8 @@ object Turn {
       all: Vector[Entry],
       near: Vector[Entry],
       turn: TurnRef,
-      window: Window
+      window: Window,
+      named: Speakers
   ): Either[TurnFailure, ModelRequest] = {
     val byId = all.map(e => e.id -> e).toMap
     val nearById = near.map(e => e.id -> e).toMap
@@ -1032,8 +1036,8 @@ object Turn {
           )
         )
       case _ =>
-        val shown = Shown.own(window.entries.flatMap(byId.get), turn.turnSeq)
-        val mine = Shown.turn(own(all, turn))
+        val shown = Shown.own(window.entries.flatMap(byId.get), turn.turnSeq, named)
+        val mine = Shown.turn(own(all, turn), named)
         Right(ModelRequest(system, sections ++ shown ++ mine))
     }
   }
@@ -1056,12 +1060,13 @@ object Turn {
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = turn.replyId
-    val TurnRecords(entries, ledger, estimator, _) = records
+    val TurnRecords(entries, ledger, estimator, _, principals) = records
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
       near <- nearbyOf(entries, window).left.map(storeFailure)
-      sent <- requestOf(system, all, near, turn, window).map(shape)
+      named <- principals.speakers(all.map(_.id)).left.map(storeFailure)
+      sent <- requestOf(system, all, near, turn, window, named).map(shape)
       written <- recorded match {
         case WindowRecord.OwnStep => Right(0)
         case WindowRecord.WithReply => writeWindow(records, turn, window, next.seq, at)
@@ -1112,7 +1117,7 @@ object Turn {
       from: Long,
       at: Instant
   )(using Tx^): Either[TurnFailure, Int] = {
-    val TurnRecords(entries, ledger, _, _) = records
+    val TurnRecords(entries, ledger, _, _, _) = records
     val queries = window.notes.collect { case q: AssemblyNote.Queried => q }
     val recalled = window.notes.flatMap {
       case AssemblyNote.Recalled(turns) => turns

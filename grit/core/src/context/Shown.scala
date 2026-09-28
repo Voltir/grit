@@ -6,22 +6,25 @@ import grit.core.id.TurnSeq
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{Change, Closing, Ground, Section}
 import grit.core.place.Place
-import grit.core.store.{Entry, Payload}
+import grit.core.store.{Entry, Payload, Speakers}
 
 /** What the model is shown of an entry a window names: the one definition, which an
   * assembler costs and the turn sends.
   */
 object Shown {
 
-  /** A message as it is, but a person's with a pasted grit block shown as one ([[pasted]]);
+  /** A message as it is, but a person's, when `speakers` names its author, under a line of
+    * its own, "{name} wrote:", and with a pasted grit block, that line included, shown as one
+    * ([[pasted]]);
     * a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
     * lines it resolved and how, and the balance's open lines, its standing lines (those
     * only the assistant said listed apart, as not confirmed) and its topics; `None` for any
-    * other entry.
+    * other entry. An assembler costs a window with no speakers, so a named message costs
+    * one short line more than it was costed at.
     */
-  def of(entry: Entry): Option[Message] = entry.payload match {
-    case Payload.Message(Message.User(text)) => Some(Message.User(pasted(text)))
+  def of(entry: Entry, speakers: Speakers = Speakers.none): Option[Message] = entry.payload match {
+    case Payload.Message(Message.User(text)) => Some(said(entry, text, speakers))
     case Payload.Message(m) => Some(m)
     case Payload.Closed(_, _, closing) =>
       Some(Message.User(record(closing, entry.createdAt)))
@@ -50,13 +53,17 @@ object Shown {
 
   /** A window's own `entries` (oldest first: a closing entry, which stands at its period's
     * last turn, then whole turns) as the model is shown them before `turn`'s own messages:
-    * each as [[of]] shows it, with [[Gap]] wherever turns are left out. That is, before an
+    * each as [[of]] shows it with `speakers`, with [[Gap]] wherever turns are left out. That is, before an
     * entry whose turn is more than one after the entry before it, before the first when it
     * is a turn after [[TurnSeq.First]] with no closing before it, and at the end when the
     * last entry's turn is not the one just before `turn` (or when there are no entries and
     * `turn` is not the first).
     */
-  def own(entries: Vector[Entry], turn: TurnSeq): Vector[Message] = {
+  def own(
+      entries: Vector[Entry],
+      turn: TurnSeq,
+      speakers: Speakers = Speakers.none
+  ): Vector[Message] = {
     val previous: Vector[Option[Entry]] = None +: entries.map(Some(_))
     val shown = entries.zip(previous).flatMap { (entry: Entry, prior: Option[Entry]) =>
       val skipped = prior match {
@@ -65,7 +72,7 @@ object Shown {
         case None =>
           !isClosing(entry) && TurnSeq.value(entry.turnSeq) > TurnSeq.value(TurnSeq.First)
       }
-      Option.when(skipped)(Gap).toVector ++ of(entry).toVector
+      Option.when(skipped)(Gap).toVector ++ of(entry, speakers).toVector
     }
     val after = entries.lastOption match {
       case Some(last) => TurnSeq.value(turn) > TurnSeq.value(last.turnSeq) + 1
@@ -121,15 +128,23 @@ object Shown {
   private val Numbered = """^\s*\d+\t""".r
 
   /** The turn's own `entries` as the model is shown them, in order: the person's messages as
-    * [[pasted]] shows them, its replies that called tools as they are, and each tool result
+    * [[of]] shows them with `speakers`, its replies that called tools as they are, and each tool result
     * as [[result]] shows it; nothing for any other entry.
     */
-  def turn(entries: Vector[Entry]): Vector[Message] = entries.map(_.payload).collect {
-    case Payload.Message(Message.User(text)) => Message.User(pasted(text))
-    case Payload.Message(m) => m
-    case Payload.Exchange(reply) => reply
-    case Payload.Result(r, _) => result(r)
-  }
+  def turn(entries: Vector[Entry], speakers: Speakers = Speakers.none): Vector[Message] =
+    entries.flatMap { e =>
+      e.payload match {
+        case Payload.Message(Message.User(text)) => Some(said(e, text, speakers))
+        case Payload.Message(m) => Some(m)
+        case Payload.Exchange(reply) => Some(reply)
+        case Payload.Result(r, _) => Some(result(r))
+        case _ => None
+      }
+    }
+
+  /** A person's message `text`, the entry `entry`, as [[of]] shows it. */
+  private def said(entry: Entry, text: String, speakers: Speakers): Message.User =
+    Message.User(pasted(speakers.of(entry.id).fold(text)(name => s"$name wrote:\n$text")))
 
   /** The label `line` starts with, after what may precede a pasted one: spaces, `>` quote
     * markers (markdown's and Slack's), and a fence opener on the label's own line; that

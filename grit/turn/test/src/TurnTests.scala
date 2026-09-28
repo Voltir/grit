@@ -23,6 +23,7 @@ import grit.core.store.{
   Db,
   Entry,
   InMemoryEntryStore,
+  InMemoryPrincipals,
   InMemoryUsageLedger,
   InMemoryVoiceStore,
   Nearby,
@@ -416,6 +417,33 @@ object TurnTests extends TestSuite {
         Vector(Vector(TurnPrompt.Base.text, edge, person, reach).mkString("\n\n"))
       summary.requests.size ==> 1
       summary.requests.map(_.system) ==> Vector(TurnSummary.TopicalSystem)
+    }
+
+    test(
+      "an enrolled author's message reaches the model under their name, in the window and as the turn's own; an unenrolled one's as it is"
+    ) {
+      val entries = new InMemoryEntryStore
+      val principals = new InMemoryPrincipals
+      val ana = grit.core.id.PrincipalId("slack:T1/U1")
+      principals.enroll(ana, "Ana Lima")(using TestTx.fake)
+      val first = say(entries, "hello")
+      new InMemoryDurable().run(first.workflowId)(
+        voicedBody(
+          entries,
+          new RecordingProvider,
+          new RecordingProvider,
+          new InMemoryVoiceStore,
+          principals
+        )
+      )
+      val second = say(entries, "thanks")
+      principals.authored(EntryId("in:thanks"), ana)
+      val turn = new RecordingProvider
+      new InMemoryDurable().run(second.workflowId)(
+        voicedBody(entries, turn, new RecordingProvider, new InMemoryVoiceStore, principals)
+      )
+      turn.requests.headOption.map(_.messages.collect { case Message.User(t) => t }) ==>
+        Some(Vector("hello", "Ana Lima wrote:\nthanks"))
     }
 
     test("with no voice set, the turn adds no person fragment") {

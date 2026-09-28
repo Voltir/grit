@@ -86,7 +86,7 @@ object Launch {
       engine.launch(
         Turn.body(
           TurnEnv(
-            TurnRecords(engine.entries, engine.ledger, CharEstimate, engine.profiles),
+            TurnRecords(engine.entries, engine.ledger, CharEstimate, engine.profiles, engine.principals),
             TurnHosting(
               engine.conversations,
               engine.prompts,

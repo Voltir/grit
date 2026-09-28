@@ -13,6 +13,7 @@ import grit.core.store.{
   EntryStore,
   Jot,
   ModelProfileStore,
+  Principals,
   PromptStore,
   UsageLedger,
   VoiceStore
@@ -38,14 +39,15 @@ final case class TurnEnv(
     fresh: Fresh^
 )
 
-/** Where a turn's entries, their costs and its model profile are written, and how a request
-  * is priced.
+/** Where a turn's entries, their costs and its model profile are written, how a request is
+  * priced, and whose names its messages are shown under (`principals`).
   */
 final case class TurnRecords(
     entries: EntryStore,
     ledger: UsageLedger,
     estimator: TokenEstimator,
-    profiles: ModelProfileStore
+    profiles: ModelProfileStore,
+    principals: Principals
 )
 
 /** What a turn offers, and where its hosted calls go (ADR 0017): each conversation's origin,

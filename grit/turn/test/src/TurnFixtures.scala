@@ -37,6 +37,7 @@ import grit.core.store.{
   PeriodStore,
   InMemoryConversationStore,
   InMemoryModelProfileStore,
+  InMemoryPrincipals,
   InMemoryPromptStore,
   InMemoryToolSets,
   InMemoryUsageLedger,
@@ -45,6 +46,7 @@ import grit.core.store.{
   Jot,
   ModelProfileStore,
   Payload,
+  Principals,
   StoreError,
   Tx,
   UsageLedger,
@@ -394,7 +396,7 @@ object TurnFixtures {
     conversations.findOrCreate(origin, PrincipalId.Local)(using TestTx.fake)
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, new InMemoryModelProfileStore),
+        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
         TurnHosting(conversations, Prompts, toolSets, served, served.edges, new InMemoryVoiceStore),
         new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
@@ -584,7 +586,7 @@ object TurnFixtures {
   )(using Durable^): String =
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore),
+        TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
         hosting(),
         assembler,
         NoClassifier,
@@ -599,12 +601,24 @@ object TurnFixtures {
   /** The turn's workflow body over `entries`, its calls to `turn`'s model and its summary to
     * `summary`'s, in the voice `voices` holds.
     */
-  def voicedBody(entries: EntryStore, turn: Provider^, summary: Provider^, voices: VoiceStore)(
+  def voicedBody(
+      entries: EntryStore,
+      turn: Provider^,
+      summary: Provider^,
+      voices: VoiceStore,
+      principals: Principals = new InMemoryPrincipals
+  )(
       id: WorkflowId
   )(using Durable^): String =
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, new InMemoryModelProfileStore),
+        TurnRecords(
+          entries,
+          new InMemoryUsageLedger,
+          CharEstimate,
+          new InMemoryModelProfileStore,
+          principals
+        ),
         hosting(voices = voices),
         new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
@@ -679,7 +693,7 @@ object TurnFixtures {
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore),
+        TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
         hosting(),
         new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
         classifier,
@@ -704,7 +718,7 @@ object TurnFixtures {
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, profiles),
+        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, profiles, new InMemoryPrincipals),
         hosting(),
         new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
