@@ -18,7 +18,7 @@ import grit.core.store.{
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[Inbox]] for tests, keeping [[InboxContract]], over the in-memory stores it
-  * is given: an ingested message is an entry of its conversation, its author told to
+  * is given: an ingested or heard message is an entry of its conversation, its author told to
   * `principals`, and a new one is refused once `ledger`'s spend today reaches `budget`'s cap,
   * today being the day `ledger.now` falls on. No turn runs: a test ends one with [[finish]].
   */
@@ -74,6 +74,26 @@ final class InMemoryInbox(
       message: Message.User,
       by: PrincipalId
   ): Either[InboxError, TurnRef] =
+    recorded(origin, source, Payload.Message(message), by, capped = true)
+
+  def hear(
+      origin: Origin,
+      source: SourceId,
+      text: String,
+      by: PrincipalId
+  ): Either[InboxError, Unit] =
+    recorded(origin, source, Payload.Heard(text), by, capped = false).map(_ => ())
+
+  /** `payload` recorded as the first entry of a new turn of `origin`'s conversation, unless
+    * `source` was recorded before (its turn then) or, when `capped`, the day's spend refuses it.
+    */
+  private def recorded(
+      origin: Origin,
+      source: SourceId,
+      payload: Payload,
+      by: PrincipalId,
+      capped: Boolean
+  ): Either[InboxError, TurnRef] =
     if (down) unavailable
     else
       inTx {
@@ -82,7 +102,7 @@ final class InMemoryInbox(
           before <- known.fold(Right(None): Either[StoreError, Option[Entry]])(c =>
             entries.get(InMemoryInbox.entryId(c.id.toString, source))
           )
-          refused <- before.fold(overCap)(_ => Right(None))
+          refused <- before.fold(if (capped) overCap else Right(None))(_ => Right(None))
           turn <- (before, refused) match {
             case (Some(e), _) => Right(Right(TurnRef(e.conversationId, e.turnSeq)))
             case (None, Some(why)) => Right(Left(why))
@@ -98,7 +118,7 @@ final class InMemoryInbox(
                     next.turnSeq,
                     None,
                     next.seq,
-                    Payload.Message(message),
+                    payload,
                     java.time.Instant.EPOCH
                   )
                 )
@@ -133,7 +153,9 @@ final class InMemoryInbox(
           case Some(c) =>
             entries
               .get(InMemoryInbox.entryId(c.id.toString, source))
-              .map(_.map(e => TurnRef(e.conversationId, e.turnSeq)))
+              .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _) =>
+                TurnRef(e.conversationId, e.turnSeq)
+              })
               .left
               .map(e => InboxError.Unavailable(e.toString))
         }

@@ -133,6 +133,15 @@ object SearchLiveTests extends TestSuite {
       find(other, "mill").map(ids) ==> Right(Vector("elsewhere:e0"))
     }
 
+    test("a heard message is searched by its text") {
+      val c = conversation(
+        "heard",
+        Payload.Heard("standup moves to ten from Monday"),
+        said("lunch at noon")
+      )
+      find(c, "standup").map(ids) ==> Right(Vector("heard:e0"))
+    }
+
     test("a limit smaller than the matches keeps the best") {
       val c = conversation(
         "limit",

@@ -2,11 +2,11 @@ package grit.app.main
 
 import java.util.UUID
 
-import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
 import grit.core.inbox.{Inbox, InboxContract}
 import grit.core.message.{Tokens, Usage}
 import grit.core.spend.Budget
-import grit.core.store.Origin
+import grit.core.store.{Entry, Origin, Payload, StoreError}
 import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.TestPostgres
 import grit.turn.Turn
@@ -19,9 +19,7 @@ object SqlInboxContractTests extends InboxContract {
 
   private lazy val config = TestPostgres.freshDatabase("sql_inbox_contract")
 
-  protected def withInbox[A](budget: Budget)(
-      body: (Inbox, BigDecimal => Unit, Origin => Boolean) => A
-  ): A = {
+  protected def withInbox[A](budget: Budget)(body: (Inbox, InboxContract.Store^) => A): A = {
     val engine = LiveEngine.open(config, Turn.Epoch, budget)
     try {
       launch(engine, engine.entries, new CountingProvider)
@@ -46,7 +44,21 @@ object SqlInboxContractTests extends InboxContract {
         engine.db
           .read(engine.conversations.find(origin))
           .fold(e => sys.error(e.toString), _.nonEmpty)
-      body(engine.inbox, spend, exists)
+      def written(origin: Origin): Vector[(Payload, Option[String])] =
+        engine.db
+          .read(for {
+            found <- engine.conversations.find(origin)
+            all <- found.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
+              engine.entries.list(c.id)
+            )
+            names <- engine.principals.speakers(all.map(_.id))
+          } yield all.map(e => (e.payload, names.of(e.id))))
+          .fold(e => sys.error(e.toString), identity)
+      def enroll(id: PrincipalId, name: String): Unit =
+        engine.jot
+          .write(engine.principals.enroll(id, name))
+          .fold(e => sys.error(e.toString), identity)
+      body(engine.inbox, InboxContract.Store(spend, exists, written, enroll))
     } finally engine.close()
   }
 }

@@ -64,11 +64,21 @@ final class SqlInbox(
         case None =>
           overCap(Instant.now()).flatMap {
             case Some(refused) => Right(Left(refused))
-            case None => recorded(origin, source, message, by)
+            case None => recorded(origin, source, Payload.Message(message), by, capped = true)
           }
-        case Some(_) => recorded(origin, source, message, by)
+        case Some(_) => recorded(origin, source, Payload.Message(message), by, capped = true)
       }
     }.flatMap(identity)
+
+  def hear(
+      origin: Origin,
+      source: SourceId,
+      text: String,
+      by: PrincipalId
+  ): Either[InboxError, Unit] =
+    inTransaction(recorded(origin, source, Payload.Heard(text), by, capped = false))
+      .flatMap(identity)
+      .map(_ => ())
 
   /** Why the day's spend at `now` refuses a new message; `None` when it does not. */
   private def overCap(now: Instant)(using Tx^): Either[StoreError, Option[InboxError]] =
@@ -81,14 +91,16 @@ final class SqlInbox(
           .map(spent => Option.when(!budget.admits(spent))(InboxError.OverCap(spent, cap, day)))
     }
 
-  /** `message` recorded as [[ingest]] says, in the transaction open: its existing turn when
-    * it was recorded before, else refused over the cap, else a new turn.
+  /** `payload` recorded as the first entry of a new turn, in the transaction open: its
+    * existing turn when `source` was recorded before, else, when `capped`, refused over the
+    * cap, else a new turn.
     */
   private def recorded(
       origin: Origin,
       source: SourceId,
-      message: Message.User,
-      by: PrincipalId
+      payload: Payload,
+      by: PrincipalId,
+      capped: Boolean
   )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
     for {
       conversation <- conversations.findOrCreate(origin, by)
@@ -98,7 +110,7 @@ final class SqlInbox(
       next <- entries.lockNext(conversation.id)
       existing <- entries.get(id)
       at = Instant.now()
-      refused <- existing.fold(overCap(at))(_ => Right(None))
+      refused <- existing.fold(if (capped) overCap(at) else Right(None))(_ => Right(None))
       turn <- (existing, refused) match {
         case (Some(entry), _) => Right(Right(TurnRef(entry.conversationId, entry.turnSeq)))
         case (None, Some(why)) => Right(Left(why))
@@ -112,7 +124,7 @@ final class SqlInbox(
                   next.turnSeq,
                   None,
                   next.seq,
-                  Payload.Message(message),
+                  payload,
                   at
                 )
               )
@@ -129,7 +141,9 @@ final class SqlInbox(
         case Some(c) =>
           entries
             .get(SqlInbox.entryId(c.id, source))
-            .map(_.map(e => TurnRef(e.conversationId, e.turnSeq)))
+            .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _) =>
+              TurnRef(e.conversationId, e.turnSeq)
+            })
       }
     }
 

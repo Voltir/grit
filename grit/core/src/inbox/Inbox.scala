@@ -25,8 +25,21 @@ trait Inbox extends caps.SharedCapability {
       by: PrincipalId
   ): Either[InboxError, TurnRef]
 
+  /** Records `text` from `origin`'s conversation, written by `by`, as heard: said where grit
+    * listens, not to it ([[grit.core.store.Payload.Heard]]). The edge never answers it, and
+    * no turn runs for it. The conversation is created by `by` if it is new. A message whose
+    * `source` was already recorded for `origin`, heard or ingested, is not recorded again.
+    * Never refused over the day's cap.
+    */
+  def hear(
+      origin: Origin,
+      source: SourceId,
+      text: String,
+      by: PrincipalId
+  ): Either[InboxError, Unit]
+
   /** The turn the message `source` from `origin` was recorded as by [[ingest]]; `None` when it
-    * never was.
+    * never was, or was heard ([[hear]]).
     */
   def ingested(origin: Origin, source: SourceId): Either[InboxError, Option[TurnRef]]
 

@@ -3,7 +3,7 @@ package grit.core.inbox
 import grit.core.id.{ConversationId, EntryId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.spend.Budget
-import grit.core.store.Origin
+import grit.core.store.{Origin, Payload}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -11,9 +11,7 @@ import utest.*
 /** The inbox contract, kept by the in-memory fake. */
 object InMemoryInboxTests extends InboxContract {
 
-  protected def withInbox[A](budget: Budget)(
-      body: (Inbox, BigDecimal => Unit, Origin => Boolean) => A
-  ): A = {
+  protected def withInbox[A](budget: Budget)(body: (Inbox, InboxContract.Store^) => A): A = {
     val inbox = InMemoryInbox.fresh(budget)
     def spend(usd: BigDecimal): Unit = {
       val entry = EntryId(s"spent:${inbox.ledger.rows.size}")
@@ -23,7 +21,28 @@ object InMemoryInboxTests extends InboxContract {
         TestTx.fake
       )
     }
-    body(inbox, spend, o => inbox.conversations.all.exists(_.origin == o))
+    def written(origin: Origin): Vector[(Payload, Option[String])] =
+      inbox.conversations.all.find(_.origin == origin).toVector.flatMap { c =>
+        val tx = TestTx.fake
+        val all = inbox.entries.list(c.id)(using tx).fold(e => sys.error(e.toString), identity)
+        val names = inbox.principals
+          .speakers(all.map(_.id))(using tx)
+          .fold(e => sys.error(e.toString), identity)
+        all.map(e => (e.payload, names.of(e.id)))
+      }
+    def enroll(id: PrincipalId, name: String): Unit =
+      inbox.principals
+        .enroll(id, name)(using TestTx.fake)
+        .fold(e => sys.error(e.toString), identity)
+    body(
+      inbox,
+      InboxContract.Store(
+        spend,
+        o => inbox.conversations.all.exists(_.origin == o),
+        written,
+        enroll
+      )
+    )
   }
 }
 

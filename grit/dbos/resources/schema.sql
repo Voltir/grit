@@ -10,7 +10,7 @@ CREATE SCHEMA IF NOT EXISTS grit;
 CREATE EXTENSION IF NOT EXISTS pg_textsearch;
 
 -- The searchable text of a stored payload (PayloadJson): a message's user text, its
--- assistant text blocks, a tool result's content; a summary's text; a closing entry's
+-- assistant text blocks, a tool result's content; a heard message's text; a summary's text; a closing entry's
 -- flows (ClosingJson): its prose, its outcome, the lines it added, resolved or dropped and
 -- how or why. Never the balance it carries, which repeats in every closing: the closing
 -- that added a line holds it in its flows. Never reasoning,
@@ -27,6 +27,7 @@ RETURN CASE payload ->> 'kind'
                        THEN payload #> '{message,blocks}' ELSE '[]'::jsonb END) AS b
           WHERE b ->> 'type' = 'text'),
         payload #>> '{message,content}')
+    WHEN 'heard' THEN payload ->> 'text'
     WHEN 'summary' THEN payload ->> 'text'
     WHEN 'closed' THEN concat_ws(' ',
         payload #>> '{closing,flows,prose}',
