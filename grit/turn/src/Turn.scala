@@ -384,10 +384,6 @@ object Turn {
   /** The id of the record of `turn`'s window. */
   def windowId(turn: TurnRef): EntryId = EntryId(s"window:${WorkflowId.value(turn.workflowId)}")
 
-  /** The id of `turn`'s reply entry. */
-  def replyId(turn: TurnRef): EntryId =
-    EntryId(s"reply:${WorkflowId.value(turn.workflowId)}")
-
   /** Whether `turn`'s message was placed among its conversation's topics
     * ([[Patches.Topics]]).
     */
@@ -1042,7 +1038,7 @@ object Turn {
     }
   }
 
-  /** Records `message` as `turn`'s reply entry [[replyId]], dated `at`, after everything
+  /** Records `message` as `turn`'s reply entry ([[TurnRef.replyId]]), dated `at`, after everything
     * already in the conversation, and what it cost in the ledger beside the estimate of the
     * request that produced it: rebuilt from the same window and the same entries (the
     * turn's own were all recorded before its call, and the reply is not yet among them),
@@ -1059,7 +1055,7 @@ object Turn {
       recorded: WindowRecord,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
-    val id = replyId(turn)
+    val id = turn.replyId
     val TurnRecords(entries, ledger, estimator, _) = records
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)

@@ -72,12 +72,15 @@ CREATE TABLE IF NOT EXISTS grit.engines (
 );
 
 -- Who actions are done for (grit.core.id.PrincipalId): `local`, the one person every edge
--- acts for until principals are registered, and `grit`, the engine itself. Other tables
--- name a principal here, never by a free string.
--- Retention: kept: a few rows, the identities other rows name.
+-- acts for until principals are registered, `grit`, the engine itself, and each person an
+-- edge enrolled (Principals.enroll: a Slack user as `slack:{team}/{user}`), with the name a
+-- window shows on what they wrote. Other tables name a principal here, never by a free
+-- string.
+-- Retention: kept: the identities other rows name.
 CREATE TABLE IF NOT EXISTS grit.principals (
     id   TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK (kind IN ('person', 'grit'))
+    kind TEXT NOT NULL CHECK (kind IN ('person', 'grit')),
+    name TEXT
 );
 
 INSERT INTO grit.principals (id, kind) VALUES ('local', 'person'), ('grit', 'grit')

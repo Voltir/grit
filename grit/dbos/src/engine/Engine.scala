@@ -29,6 +29,7 @@ import grit.core.store.{
   ModelProfileStore,
   Origin,
   PeriodStore,
+  Principals,
   PromptStore,
   StoreError,
   Tombstones,
@@ -51,6 +52,7 @@ import grit.dbos.sql.{
   SqlPeriodStore,
   SqlPluginCursors,
   SqlPluginDocs,
+  SqlPrincipals,
   SqlPromptStore,
   SqlTombstones,
   SqlToolRequests,
@@ -113,6 +115,8 @@ final class Engine private (
 
   /** The voice grit talks to the person in. */
   val voices: VoiceStore = new SqlVoiceStore()
+
+  val principals: Principals = new SqlPrincipals()
 
   /** What grit has decided to delete, and when. */
   val tombstones: Tombstones = new SqlTombstones

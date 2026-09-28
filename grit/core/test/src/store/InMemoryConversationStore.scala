@@ -22,6 +22,9 @@ final class InMemoryConversationStore extends ConversationStore {
         Right(made)
     }
 
+  def find(origin: Origin)(using Tx^): Either[StoreError, Option[Conversation]] =
+    Right(all.find(_.origin == origin))
+
   def get(id: ConversationId)(using Tx^): Either[StoreError, Option[Conversation]] =
     Right(all.find(_.id == id))
 

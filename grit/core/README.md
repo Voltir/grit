@@ -10,7 +10,7 @@ In dependency order:
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `WorkflowId`,
   `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `PrincipalId`: who an
   action is done for, `EdgeId`), `CallSlot` (a tool call's place in its turn, and its
-  request's key), the one short content hash every content-addressed id uses, `TurnRef`, `PeriodRef`, `CloseRef` (one
+  request's key), the one short content hash every content-addressed id uses, `TurnRef` (and its reply entry's id), `PeriodRef`, `CloseRef` (one
   attempt to close a period on its deadline, and its workflow id) and `SettleRef` (the one
   question whether anyone is waiting on a quiet period, and its workflow id). Imports nothing in core.
 - **`place`** — where conversations happen (ADR 0013): `Place`, a path in one
@@ -57,7 +57,7 @@ In dependency order:
   turn's system prompt, its fragments kept by id), `UsageLedger`, `ModelProfileStore` (which profile each turn ran
   under), `ModelFactStore` (facts about pairs approved at runtime), `PeriodStore` (which
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
-  settings in force), `VoiceStore` (the voice in force), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
+  settings in force), `VoiceStore` (the voice in force), `Principals` (the people an edge enrolled, by name) and `Speakers` (whose names a window shows on the inbound entries they wrote), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
   conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`, `retention`, `prompt`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
@@ -75,7 +75,7 @@ In dependency order:
   section from afar, a gap where turns were left out; and a grit label that starts a line
   in text grit did not write, shown as a quoted paste), `Provider` and `Models` (the
   catalog in force, and a provider per role's pin; ← `model`), `Inbox` (which also
-  answers a turn's gated call), and `Classifier` (closed questions about a state, answered
+  answers a turn's gated call, and says how far a turn has got: its `Progress`), and `Classifier` (closed questions about a state, answered
   with a probability per option; Jev's shape). Each names only the packages above, never
   another of the four.
 - **`host`** — what a tool may do to the machine, as capabilities: `Workspace` (read, list,

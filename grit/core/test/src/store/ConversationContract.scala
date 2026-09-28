@@ -41,6 +41,13 @@ abstract class ConversationContract extends TestSuite {
       )
     }
 
+    test("find: the conversation an origin was created as, and none for one never used") {
+      val created = transaction(conversations.findOrCreate(tui("found"), PrincipalId.Local))
+      transaction(conversations.find(tui("found"))) ==> created.map(Some(_))
+      transaction(conversations.find(tui("never"))) ==> Right(None)
+      transaction(conversations.find(tui("never"))) ==> Right(None) // and find never creates
+    }
+
     test("get of an id no conversation has is None") {
       transaction(conversations.get(unknown)) ==> Right(None)
     }

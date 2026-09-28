@@ -11,6 +11,9 @@ trait ConversationStore {
     */
   def findOrCreate(origin: Origin, by: PrincipalId)(using Tx^): Either[StoreError, Conversation]
 
+  /** The conversation for `origin`, if one was ever created; never creates one. */
+  def find(origin: Origin)(using Tx^): Either[StoreError, Option[Conversation]]
+
   /** The conversation `id` names; `None` when there is none, never created or removed. */
   def get(id: ConversationId)(using Tx^): Either[StoreError, Option[Conversation]]
 

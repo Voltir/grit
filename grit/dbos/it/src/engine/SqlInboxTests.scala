@@ -3,6 +3,7 @@ package grit.dbos.engine
 import java.time.Instant
 
 import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, PrincipalId, SourceId, TurnSeq}
+import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.period.{CloseReason, PeriodState, TestClosings}
 import grit.core.store.{Origin, Sealed}
@@ -21,6 +22,22 @@ object SqlInboxTests extends TestSuite {
   }
 
   val tests = Tests {
+
+    test("a turn's progress that cannot be read is Unavailable, never its end") {
+      // DBOS never launched on this database, so its workflow tables do not exist.
+      val origin = Origin.Task("sql", "progress")
+      val engine = LiveEngine.open(config, "test")
+      val progress =
+        try
+          engine.inbox
+            .ingest(origin, SourceId("m1"), Message.User("one"), PrincipalId.Local)
+            .flatMap(engine.inbox.progress)
+        finally engine.close()
+      progress.left.map {
+        case InboxError.Unavailable(why) => why.contains("dbos.workflow_status")
+        case other => false
+      } ==> Left(true)
+    }
 
     test("ingest: the same source is the same turn, a new one the next turn") {
       val origin = Origin.Task("sql", "ingest")

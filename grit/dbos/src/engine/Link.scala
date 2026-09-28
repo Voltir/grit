@@ -19,6 +19,7 @@ import grit.core.store.{
   LifecycleStore,
   ModelProfileStore,
   Origin,
+  Principals,
   PromptStore,
   StoreError,
   Tx,
@@ -34,6 +35,7 @@ import grit.dbos.sql.{
   SqlLifecycleStore,
   SqlModelProfileStore,
   SqlPeriodStore,
+  SqlPrincipals,
   SqlPromptStore,
   SqlUsageLedger,
   SqlVoiceStore
@@ -65,6 +67,9 @@ trait Link extends caps.SharedCapability, AutoCloseable {
 
   /** The voice grit talks to the person in. */
   val voices: VoiceStore
+
+  /** The people an edge enrolled, and whose names a window shows. */
+  val principals: Principals
 
   /** Short read transactions. */
   val db: Db
@@ -205,6 +210,8 @@ private[engine] final class Attached(
   val lifecycle: LifecycleStore = new SqlLifecycleStore()
 
   val voices: VoiceStore = new SqlVoiceStore()
+
+  val principals: Principals = new SqlPrincipals()
 
   val db: Db = new SqlDb(dataSource)
 

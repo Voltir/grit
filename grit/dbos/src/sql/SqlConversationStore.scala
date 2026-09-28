@@ -48,6 +48,23 @@ final class SqlConversationStore extends ConversationStore {
     }
   }
 
+  def find(origin: Origin)(using tx: Tx^): Either[StoreError, Option[Conversation]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement("SELECT id FROM grit.conversations WHERE origin = ?::jsonb")
+      ) { ps =>
+        ps.setString(1, SqlConversationStore.originJson(origin).render())
+        Using.resource(ps.executeQuery()) { rs =>
+          Option.when(rs.next())(ConversationId(rs.getString(1)))
+        }
+      }
+    }.flatMap {
+      case None => Right(None)
+      case Some(id) => get(id)
+    }
+  }
+
   def get(id: ConversationId)(using tx: Tx^): Either[StoreError, Option[Conversation]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     attempt {

@@ -150,7 +150,7 @@ object TurnTests extends TestSuite {
       )
       runTurn(durable, entries, provider, turn, ledger, summarizer) ==> Done
       ledger.rows.map(r => (r._1, r._2, r._3)) ==>
-        Vector(Turn.replyId(turn), TurnSummary.id(turn))
+        Vector(turn.replyId, TurnSummary.id(turn))
           .map(id => (id, turn.workflowId, StubProvider.Model))
       // Beside each, the estimate of exactly the request that was sent.
       ledger.rows.map(_._5) ==>
@@ -225,7 +225,7 @@ object TurnTests extends TestSuite {
       )
       val all = entries.list(conversation)(using TestTx.fake).getOrElse(Vector.empty)
       val summary = all.find(_.id == TurnSummary.id(turn))
-      summary.map(_.parentId) ==> Some(Some(Turn.replyId(turn)))
+      summary.map(_.parentId) ==> Some(Some(turn.replyId))
       summary.map(_.turnSeq) ==> Some(turn.turnSeq)
       all.lastOption.map(_.id) ==> Some(TurnSummary.id(turn))
     }
@@ -501,7 +501,7 @@ object TurnTests extends TestSuite {
       windows(entries) ==> Vector(
         Turn.windowId(one) -> Payload.Window(Vector.empty, Vector.empty),
         Turn.windowId(two) ->
-          Payload.Window(Vector(EntryId("in:one"), Turn.replyId(one)), Vector(one.turnSeq))
+          Payload.Window(Vector(EntryId("in:one"), one.replyId), Vector(one.turnSeq))
       )
     }
 

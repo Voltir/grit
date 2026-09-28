@@ -43,7 +43,7 @@ object ProviderOnceLiveTests extends TestSuite {
       second.calls ==> 0
       text ==> Some("stub reply to: message a")
       LiveDb.ledger(config).map(r => (r._1, r._2, r._3)) ==>
-        Vector(Turn.replyId(turn), TurnSummary.id(turn))
+        Vector(turn.replyId, TurnSummary.id(turn))
           .map(id => (EntryId.value(id), StubProvider.Model, Some(BigDecimal(0))))
     }
 

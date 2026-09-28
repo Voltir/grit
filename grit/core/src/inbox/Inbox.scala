@@ -22,6 +22,16 @@ trait Inbox extends caps.SharedCapability {
       by: PrincipalId
   ): Either[InboxError, TurnRef]
 
+  /** The turn the message `source` from `origin` was recorded as by [[ingest]]; `None` when it
+    * never was.
+    */
+  def ingested(origin: Origin, source: SourceId): Either[InboxError, Option[TurnRef]]
+
+  /** Where `turn` has got to; [[InboxError.Unavailable]] when that cannot be read, which is
+    * never read as the turn's end.
+    */
+  def progress(turn: TurnRef): Either[InboxError, Progress]
+
   /** Starts `turn` if it has not been started. A conversation runs one turn at a time,
     * oldest first; this returns once the turn is queued, not when it has run.
     */

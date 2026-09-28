@@ -16,7 +16,7 @@ import grit.core.id.{
   TurnRef,
   WorkflowId
 }
-import grit.core.inbox.{Inbox, InboxError}
+import grit.core.inbox.{Inbox, InboxError, Progress}
 import grit.core.message.Message
 import grit.core.store.{
   ConversationStore,
@@ -33,6 +33,7 @@ import grit.dbos.workflow.Turns
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
+import dev.dbos.transact.workflow.WorkflowState
 
 /** [[Inbox]] over Postgres alone, so an edge in another process can use it: ingest is one
   * short transaction, and a turn is started by enqueueing it through `client`.
@@ -82,6 +83,42 @@ final class SqlInbox(
         }
       } yield turn
     }
+
+  def ingested(origin: Origin, source: SourceId): Either[InboxError, Option[TurnRef]] =
+    inTransaction {
+      conversations.find(origin).flatMap {
+        case None => Right(None)
+        case Some(c) =>
+          entries
+            .get(SqlInbox.entryId(c.id, source))
+            .map(_.map(e => TurnRef(e.conversationId, e.turnSeq)))
+      }
+    }
+
+  /** From the turn's workflow status (a workflow DBOS has not heard of, queued or running is
+    * Open), and, once it has ended, its reply entry. A status that cannot be read is
+    * `Unavailable`, never read as the turn's end.
+    */
+  def progress(turn: TurnRef): Either[InboxError, Progress] = {
+    val ended: Either[InboxError, Option[String]] =
+      try {
+        val handle = client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId))
+        Right(Option(handle.getStatus()).map(_.status()) match {
+          case Some(WorkflowState.SUCCESS) => Some(handle.getResult())
+          case Some(state) if !state.isActive() => Some(s"workflow ${state.name.toLowerCase}")
+          case _ => None
+        })
+      } catch { case NonFatal(e) => Left(SqlInbox.unavailable(e)) }
+    ended.flatMap {
+      case None => Right(Progress.Open)
+      case Some(outcome) =>
+        inTransaction(entries.get(turn.replyId)).map { entry =>
+          val reply =
+            entry.map(_.payload).collect { case Payload.Message(a: Message.Assistant) => a }
+          Progress.Done(reply, outcome)
+        }
+    }
+  }
 
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
     try {

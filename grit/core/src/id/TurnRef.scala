@@ -6,6 +6,11 @@ final case class TurnRef(conversationId: ConversationId, turnSeq: TurnSeq) {
   /** The turn's workflow id, `{conversationId}:{turnSeq}`. Starting it twice runs it once. */
   def workflowId: WorkflowId =
     WorkflowId(s"${ConversationId.value(conversationId)}:${TurnSeq.value(turnSeq)}")
+
+  /** The id of the turn's reply entry: what the turn writes its reply under, and what an edge
+    * reads it back by.
+    */
+  def replyId: EntryId = EntryId(s"reply:${WorkflowId.value(workflowId)}")
 }
 
 object TurnRef {

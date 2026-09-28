@@ -27,7 +27,7 @@ object CrashingTurn {
     val engine = LiveEngine.open(config, Turn.Epoch)
     val entries = new EntryStore {
       def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] = {
-        if (entry.id == Turn.replyId(TurnRef(entry.conversationId, entry.turnSeq)))
+        if (entry.id == TurnRef(entry.conversationId, entry.turnSeq).replyId)
           Runtime.getRuntime.halt(Halted)
         engine.entries.insert(entry)
       }
