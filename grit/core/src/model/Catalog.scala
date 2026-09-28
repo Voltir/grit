@@ -10,10 +10,11 @@ enum Effort {
   */
 final case class Assignment(ref: ModelRef, maxTokens: Int, effort: Option[Effort])
 
-/** Which pair does each job: answering the turn, summarising it, and writing its search
-  * query. A person's decision; a probe proposes settings of pairs, never an assignment.
+/** Which pair does each job: answering the turn, summarising it, writing its search query,
+  * and writing the closing of a period grit only heard (`heard`: nothing in it was said to
+  * grit). A person's decision; a probe proposes settings of pairs, never an assignment.
   */
-final case class Policy(turn: Assignment, summary: Assignment, query: Assignment)
+final case class Policy(turn: Assignment, summary: Assignment, query: Assignment, heard: Assignment)
 
 /** A catalog's content hash: equal content, equal version. */
 opaque type CatalogVersion = String
@@ -38,6 +39,11 @@ final case class Catalog private (
     def pinned(a: Assignment) = Pinned(version, a, Settings.of(profile(a.ref)))
     TurnProfile.of(pinned(policy.turn), pinned(policy.summary), pinned(policy.query))
   }
+
+  /** What the closing of a period grit only heard is written under: the policy's `heard`
+    * role. No turn's call, so no [[TurnProfile]] holds it.
+    */
+  def heardPin: Pinned = Pinned(version, policy.heard, Settings.of(profile(policy.heard.ref)))
 
   /** This catalog under `policy` instead. */
   def withPolicy(policy: Policy): Catalog = Catalog.of(policy, profiles)

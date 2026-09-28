@@ -31,7 +31,8 @@ object OpenRouterConfigTests extends TestSuite {
   private val seedLike = Policy(
     Assignment(ref("big/one", "cerebras/fp16"), 4096, Some(Effort.Low)),
     Assignment(ref("small/one", "fireworks"), 1024, None),
-    Assignment(ref("small/one", "fireworks"), 512, None)
+    Assignment(ref("small/one", "fireworks"), 512, None),
+    Assignment(ref("small/one", "fireworks"), 1024, None)
   )
 
   private def overlay(env: (String, String)*) = OpenRouterConfig.policy(env.toMap, seedLike)
@@ -127,7 +128,9 @@ object OpenRouterConfigTests extends TestSuite {
           // The summary role's budget holds a reasoning model's thinking and the closing: at
           // 1024, deepseek-v4.1-flash was cut off in 5 of 10 closings.
           Assignment(gptOss, 4096, None),
-          Assignment(gptOss, 1024, None)
+          Assignment(gptOss, 1024, None),
+          // Until a cheaper pair passes the probe on the closing's format.
+          Assignment(gptOss, 4096, None)
         )
       )
       seed.map(c => Settings.of(c.profile(gptOss)).strict) ==> Right(StrictSchemas.Ignored)

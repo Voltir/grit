@@ -92,7 +92,8 @@ object CatalogJson {
       "policy" -> ujson.Obj(
         "turn" -> assignment(policy.turn),
         "summary" -> assignment(policy.summary),
-        "query" -> assignment(policy.query)
+        "query" -> assignment(policy.query),
+        "heard" -> assignment(policy.heard)
       ),
       "profiles" -> ujson.Arr.from(profiles.map(profile))
     )
@@ -299,7 +300,8 @@ object CatalogJson {
       turn <- field(o, "turn", "policy").flatMap(readAssignment(_, "policy.turn"))
       summary <- field(o, "summary", "policy").flatMap(readAssignment(_, "policy.summary"))
       query <- field(o, "query", "policy").flatMap(readAssignment(_, "policy.query"))
-    } yield Policy(turn, summary, query)
+      heard <- field(o, "heard", "policy").flatMap(readAssignment(_, "policy.heard"))
+    } yield Policy(turn, summary, query, heard)
 
   private def readRepairs(v: ujson.Value, at: String): Either[String, Set[ArgRepair]] =
     v.arrOpt

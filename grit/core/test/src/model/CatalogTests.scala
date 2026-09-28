@@ -24,7 +24,8 @@ object CatalogTests extends TestSuite {
   private val policy = Policy(
     Assignment(oss, 4096, Some(Effort.Low)),
     Assignment(oss, 1024, None),
-    Assignment(flash, 1024, None)
+    Assignment(flash, 1024, None),
+    Assignment(flash, 2048, None)
   )
 
   private val ossProfile = Profile(
@@ -142,12 +143,22 @@ object CatalogTests extends TestSuite {
 
     // These pin the stored forms: the seed file is written in the catalog's, and every
     // turn's profile row in the turn profile's.
+    test("the heard role pins its own assignment under the catalog, with its pair's settings") {
+      catalog.heardPin ==> Pinned(
+        catalog.version,
+        Assignment(flash, 2048, None),
+        Settings.of(Some(flashProfile))
+      )
+      assert(catalog.withPolicy(policy.copy(heard = policy.summary)).version != catalog.version)
+    }
+
     test("stored form: a catalog") {
       val one = Catalog.of(
         Policy(
           Assignment(oss, 4096, Some(Effort.XHigh)),
           Assignment(oss, 1024, None),
-          Assignment(ossOpen, 1, None)
+          Assignment(ossOpen, 1, None),
+          Assignment(flash, 2048, None)
         ),
         Vector(
           Profile(
@@ -160,7 +171,8 @@ object CatalogTests extends TestSuite {
       CatalogJson.write(one).render() ==>
         """{"policy":{"turn":{"model":"openai/gpt-oss-120b","upstream":"cerebras/fp16","maxTokens":4096,"effort":"xhigh"},""" +
         """"summary":{"model":"openai/gpt-oss-120b","upstream":"cerebras/fp16","maxTokens":1024},""" +
-        """"query":{"model":"openai/gpt-oss-120b","maxTokens":1}},""" +
+        """"query":{"model":"openai/gpt-oss-120b","maxTokens":1},""" +
+        """"heard":{"model":"deepseek/deepseek-v4.1-flash-20260910","upstream":"fireworks","maxTokens":2048}},""" +
         """"profiles":[{"model":"openai/gpt-oss-120b","upstream":"cerebras/fp16",""" +
         """"strict":{"value":"when-required","source":{"kind":"measured","probe":"exit-task","on":"2026-09-25","runs":3,"held":3}},""" +
         """"repairs":{"value":["quoted-list","quoted-number"],"source":{"kind":"advertised","on":"2026-09-25"}}}]}"""
@@ -220,6 +232,7 @@ object CatalogTests extends TestSuite {
       read(good.replace("\"kind\":\"declared\"", "\"kind\":\"rumoured\"")) ==>
         Left("profiles[1].repairs.source.kind is not declared, measured or advertised: rumoured")
       read("""{"policy":{}}""") ==> Left("policy has no turn")
+      read(good.replaceFirst(",\"heard\":\\{[^}]*\\}", "")) ==> Left("policy has no heard")
     }
 
     test("ids: model ids and upstream slugs") {

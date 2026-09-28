@@ -87,7 +87,7 @@ abstract class StoreContract extends TestSuite {
   private def profile(model: String, budget: Int): TurnProfile = {
     val ref = ModelRef(ModelId.of(model).getOrElse(throw new java.lang.AssertionError(model)), None)
     val a = Assignment(ref, budget, None)
-    Catalog.of(Policy(a, a, a), Vector.empty).pin
+    Catalog.of(Policy(a, a, a, a), Vector.empty).pin
   }
 
   private val usage = Usage(Tokens(10), Tokens(5), Tokens(2), Some(BigDecimal("0.0000123")))

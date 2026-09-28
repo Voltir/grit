@@ -56,6 +56,7 @@ object StubModels {
       grit.core.model.Policy(
         grit.core.model.Assignment(stub, 4096, None),
         grit.core.model.Assignment(stub, 1024, None),
+        grit.core.model.Assignment(stub, 1024, None),
         grit.core.model.Assignment(stub, 1024, None)
       ),
       Vector.empty

@@ -2,7 +2,8 @@
   "policy": {
     "turn": { "model": "openai/gpt-oss-120b", "upstream": "cerebras/fp16", "maxTokens": 4096 },
     "summary": { "model": "openai/gpt-oss-120b", "upstream": "cerebras/fp16", "maxTokens": 4096 },
-    "query": { "model": "openai/gpt-oss-120b", "upstream": "cerebras/fp16", "maxTokens": 1024 }
+    "query": { "model": "openai/gpt-oss-120b", "upstream": "cerebras/fp16", "maxTokens": 1024 },
+    "heard": { "model": "openai/gpt-oss-120b", "upstream": "cerebras/fp16", "maxTokens": 4096 }
   },
   "profiles": [
     {

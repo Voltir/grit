@@ -96,7 +96,7 @@ object CloseFixtures {
       1024,
       None
     )
-    Catalog.of(Policy(a, a, a), Vector.empty)
+    Catalog.of(Policy(a, a, a, a), Vector.empty)
   }
 
   /** Every role's calls to `provider`. */

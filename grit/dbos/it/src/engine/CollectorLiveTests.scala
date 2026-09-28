@@ -267,7 +267,7 @@ object CollectorLiveTests extends TestSuite {
       for {
         _ <- new SqlUsageLedger().record(EntryId(entry), turn, workflow, "m", usage, Tokens(1))
         _ <- new SqlModelProfileStore()
-          .pin(turn.workflowId, Catalog.of(Policy(a, a, a), Vector.empty).pin)
+          .pin(turn.workflowId, Catalog.of(Policy(a, a, a, a), Vector.empty).pin)
         _ <- new grit.dbos.sql.SqlPromptStore().record(
           turn.workflowId,
           grit.core.prompt.SystemPrompt.of(

@@ -107,7 +107,7 @@ object OpenRouterConfig {
       turn <- assignment(ModelRole.Turn, policy.turn, turnRef)
       summary <- assignment(ModelRole.Summary, policy.summary, turnRef)
       query <- assignment(ModelRole.Query, policy.query, turnRef)
-    } yield Policy(turn, summary, query)
+    } yield Policy(turn, summary, query, policy.heard)
   }
 
   /** A role's configuration under `key`: its pinned assignment's model, budget, upstream and

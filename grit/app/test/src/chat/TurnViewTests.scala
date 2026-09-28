@@ -368,7 +368,8 @@ object TurnViewTests extends TestSuite {
           Policy(
             Assignment(oss, 4096, None),
             Assignment(oss, 1024, None),
-            Assignment(flash, 1024, None)
+            Assignment(flash, 1024, None),
+            Assignment(oss, 1024, None)
           ),
           Vector(profiled)
         )
@@ -398,6 +399,7 @@ object TurnViewTests extends TestSuite {
         .of(
           Policy(
             Assignment(oss, 4096, None),
+            Assignment(oss, 1024, None),
             Assignment(oss, 1024, None),
             Assignment(oss, 1024, None)
           ),

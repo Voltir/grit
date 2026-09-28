@@ -565,7 +565,7 @@ object TurnFixtures {
   val TestCatalog: Catalog = {
     def role(name: String, budget: Int) =
       Assignment(ModelRef(ModelId.of(s"test/$name").getOrElse(throw new java.lang.AssertionError(name)), None), budget, None)
-    Catalog.of(Policy(role("turn", 4096), role("summary", 1024), role("query", 1024)), Vector.empty)
+    Catalog.of(Policy(role("turn", 4096), role("summary", 1024), role("query", 1024), role("summary", 1024)), Vector.empty)
   }
 
   /** Models for a test: [[TestCatalog]] is in force, and the summary's calls go to
