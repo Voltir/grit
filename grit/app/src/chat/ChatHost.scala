@@ -10,7 +10,7 @@ import grit.core.id.{ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.prompt.Voice
 import grit.core.provider.TokenEstimator
-import grit.core.store.{Entry, Origin, Payload, StoreError, UsageLedger}
+import grit.core.store.{Entry, Origin, Payload, Speakers, StoreError, UsageLedger}
 import grit.dbos.engine.{Link, TurnStatus}
 import grit.tui.runtime.app.{Fault, Host, Mailbox}
 import grit.turn.TurnStream
@@ -334,7 +334,10 @@ final class ChatHost(
       )
       .getOrElse(Vector.empty)
     val prompt = engine.db.read(engine.prompts.of(turn.workflowId)).toOption.flatten
-    TurnView.of(turn, entries, steps, running, costs, prompt, estimator, profile, nearby)
+    // Unread names cost the window as unnamed: the panel is a view, never a failure.
+    val speakers =
+      engine.db.read(engine.principals.speakers(entries.map(_.id))).getOrElse(Speakers.none)
+    TurnView.of(turn, entries, speakers, steps, running, costs, prompt, estimator, profile, nearby)
   }
 
   /** Follows `turn`'s reply stream on a thread of its own, telling the screen what it has

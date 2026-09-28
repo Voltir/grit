@@ -9,7 +9,7 @@ import grit.core.model.{ModelRef, TurnProfile}
 import grit.core.place.Place
 import grit.core.prompt.{Layer, SystemPrompt}
 import grit.core.provider.TokenEstimator
-import grit.core.store.{Entry, Payload, UsageLedger}
+import grit.core.store.{Entry, Payload, Speakers, UsageLedger}
 import grit.dbos.engine.RecordedStep
 import grit.turn.Turn
 
@@ -131,8 +131,9 @@ object TurnView {
       .collectFirst { case e @ Entry(_, _, _, _, _, Payload.Message(Message.User(_)), _) => e }
       .map(e => TurnRef(e.conversationId, e.turnSeq))
 
-  /** `turn`, from every entry of its conversation and the `nearby` entries of other
-    * conversations its window showed, the `steps` its workflow recorded,
+  /** `turn`, from every entry of its conversation, whose person's messages `speakers` names,
+    * and the `nearby` entries of other conversations its window showed, the `steps` its
+    * workflow recorded,
     * whether it is `running`, its ledger rows `costs`, the `profile` it pinned, and the
     * system `prompt` it was sent (none for a turn that recorded none). The window is
     * estimated with `estimator`, as assembly estimated it, the prompt with it too.
@@ -140,6 +141,7 @@ object TurnView {
   def of(
       turn: TurnRef,
       entries: Vector[Entry],
+      speakers: Speakers,
       steps: Vector[RecordedStep],
       running: Boolean,
       costs: Vector[UsageLedger.Row],
@@ -159,10 +161,10 @@ object TurnView {
         val sections = w.nearby.map(n => n -> n.entries.flatMap(theirs.get))
         Window(
           prompt.fold(Tokens.Zero)(p => estimator.system(p.render)),
-          tokens(closings, estimator),
-          tokens(recent, estimator) + gaps(seen, turn, estimator),
-          tokens(recalled, estimator),
-          tokens(own.filter(isUser), estimator),
+          tokens(closings, speakers, estimator),
+          tokens(recent, speakers, estimator) + gaps(seen, turn, estimator),
+          tokens(recalled, speakers, estimator),
+          tokens(own.filter(isUser), speakers, estimator),
           w.recalled,
           sections
             .flatMap((n, es) => Shown.nearby(n.place, es))
@@ -221,14 +223,23 @@ object TurnView {
   }
 
   /** What the gap lines `seen`, a window's own entries, were shown with cost ([[Shown.own]]):
-    * counted with the recent turns.
+    * counted with the recent turns. Names add no lines, only length, so none are needed to
+    * count them.
     */
   private def gaps(seen: Vector[Entry], turn: TurnRef, estimator: TokenEstimator): Tokens = {
-    val lines = Shown.own(seen, turn.turnSeq).size - seen.flatMap(e => Shown.of(e)).size
+    val lines =
+      Shown.own(seen, turn.turnSeq, Speakers.none).size -
+        seen.flatMap(e => Shown.of(e, Speakers.none)).size
     Tokens(lines * Tokens.value(estimator.message(Shown.Gap)))
   }
 
-  /** What `entries` cost as the model is shown them ([[Shown.of]]), as assembly costs them. */
-  private def tokens(entries: Vector[Entry], estimator: TokenEstimator): Tokens =
-    entries.flatMap(e => Shown.of(e)).map(estimator.message).foldLeft(Tokens.Zero)(_ + _)
+  /** What `entries` cost as the model is shown them with `speakers`' names ([[Shown.of]]), as
+    * assembly costs them.
+    */
+  private def tokens(
+      entries: Vector[Entry],
+      speakers: Speakers,
+      estimator: TokenEstimator
+  ): Tokens =
+    entries.flatMap(e => Shown.of(e, speakers)).map(estimator.message).foldLeft(Tokens.Zero)(_ + _)
 }

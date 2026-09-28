@@ -108,6 +108,7 @@ object LiveTurn {
             new LinearAssembler(
               entries,
               engine.periods,
+              engine.principals,
               CharEstimate,
               LinearAssembler.DefaultBudget
             ),

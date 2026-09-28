@@ -20,10 +20,9 @@ object Shown {
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
     * lines it resolved and how, and the balance's open lines, its standing lines (those
     * only the assistant said listed apart, as not confirmed) and its topics; `None` for any
-    * other entry. An assembler costs a window with no speakers, so a named message costs
-    * one short line more than it was costed at.
+    * other entry.
     */
-  def of(entry: Entry, speakers: Speakers = Speakers.none): Option[Message] = entry.payload match {
+  def of(entry: Entry, speakers: Speakers): Option[Message] = entry.payload match {
     case Payload.Message(Message.User(text)) => Some(said(entry, text, speakers))
     case Payload.Message(m) => Some(m)
     case Payload.Closed(_, _, closing) =>
@@ -62,7 +61,7 @@ object Shown {
   def own(
       entries: Vector[Entry],
       turn: TurnSeq,
-      speakers: Speakers = Speakers.none
+      speakers: Speakers
   ): Vector[Message] = {
     val previous: Vector[Option[Entry]] = None +: entries.map(Some(_))
     val shown = entries.zip(previous).flatMap { (entry: Entry, prior: Option[Entry]) =>
@@ -131,7 +130,7 @@ object Shown {
     * [[of]] shows them with `speakers`, its replies that called tools as they are, and each tool result
     * as [[result]] shows it; nothing for any other entry.
     */
-  def turn(entries: Vector[Entry], speakers: Speakers = Speakers.none): Vector[Message] =
+  def turn(entries: Vector[Entry], speakers: Speakers): Vector[Message] =
     entries.flatMap { e =>
       e.payload match {
         case Payload.Message(Message.User(text)) => Some(said(e, text, speakers))

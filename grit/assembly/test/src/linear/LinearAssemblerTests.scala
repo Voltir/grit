@@ -5,7 +5,7 @@ import grit.assembly.linear.AssemblyFixtures.{FakeDb, World, c1, closingOf}
 import grit.core.context.{AssemblyError, AssemblyRequest, Shown}
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.store.{Entry, EntryStore, Payload, StoreError, Tx}
+import grit.core.store.{Entry, EntryStore, Payload, Speakers, StoreError, Tx}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -32,7 +32,13 @@ object LinearAssemblerTests extends TestSuite {
     AssemblyFixtures.store(turns.map(_.map(Payload.Message(_)))*)
 
   private def window(world: World, turn: Long, budget: Long): Vector[String] =
-    new LinearAssembler(world.entries, world.periods, CharEstimate, Tokens(budget))
+    new LinearAssembler(
+      world.entries,
+      world.periods,
+      world.principals,
+      CharEstimate,
+      Tokens(budget)
+    )
       .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn))))(using new FakeDb)
       .fold(e => sys.error(s"assembly failed: $e"), _.entries.map(EntryId.value))
 
@@ -55,7 +61,7 @@ object LinearAssemblerTests extends TestSuite {
       .get(EntryId(closingOf(n)))(using TestTx.fake)
       .toOption
       .flatten
-      .flatMap(e => Shown.of(e))
+      .flatMap(e => Shown.of(e, Speakers.none))
       .fold(0L)(m => Tokens.value(CharEstimate.message(m)))
 
   val tests = Tests {
@@ -94,6 +100,17 @@ object LinearAssemblerTests extends TestSuite {
       val answer = Tokens.value(CharEstimate.message(reply("answer!!")))
       window(entries, 1, Tokens.value(sent) + answer) ==> Vector("t0:0", "t0:1")
       window(entries, 1, Tokens.value(raw) + answer) ==> Vector()
+    }
+
+    test("a named person's message is charged its name line") {
+      // Unnamed, turns 0 and 1 cost 22 and fit in 23. "Ana wrote:\n" makes turn 0's
+      // question 15 characters, 3 tokens more: 25 no longer fits, and with the gap line
+      // charged (12) only turn 1 does.
+      window(store(small(0), small(1), Vector(user("now!"))), 2, 2 * SmallTurn + 1) ==>
+        Vector("t0:0", "t0:1", "t1:2", "t1:3")
+      val named = store(small(0), small(1), Vector(user("now!")))
+      AssemblyFixtures.named(named, "t0:0", "Ana")
+      window(named, 2, 2 * SmallTurn + 1) ==> Vector("t1:2", "t1:3")
     }
 
     test("a turn is kept whole, however many messages it holds") {
@@ -148,7 +165,7 @@ object LinearAssemblerTests extends TestSuite {
         def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = Left(down)
       }
       val w = store()
-      new LinearAssembler(Down, w.periods, CharEstimate, Tokens(1000))
+      new LinearAssembler(Down, w.periods, w.principals, CharEstimate, Tokens(1000))
         .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(1))))(using new FakeDb) ==>
         Left(AssemblyError.Store(StoreError.DatabaseError("down")))
     }

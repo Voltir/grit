@@ -21,7 +21,7 @@ import grit.core.model.{
 import grit.core.period.{Balance, CloseReason, Closing, Flows, Probability}
 import grit.core.place.Place
 import grit.core.prompt.{Fragment, Layer, SystemPrompt}
-import grit.core.store.{Entry, Nearby, Payload, UsageLedger}
+import grit.core.store.{Entry, Nearby, Payload, Speakers, UsageLedger}
 import grit.dbos.engine.RecordedStep
 import grit.turn.Turn
 
@@ -107,6 +107,7 @@ object TurnViewTests extends TestSuite {
         TurnView.of(
           turn2,
           entries,
+          Speakers.none,
           steps,
           running = false,
           costs,
@@ -123,7 +124,16 @@ object TurnViewTests extends TestSuite {
       val unpriced =
         costs.map(r => r.copy(usage = r.usage.copy(costUsd = None))).take(1) ++ costs.drop(1)
       TurnView
-        .of(turn2, entries, steps, running = false, unpriced, prompt("s"), CharEstimate)
+        .of(
+          turn2,
+          entries,
+          Speakers.none,
+          steps,
+          running = false,
+          unpriced,
+          prompt("s"),
+          CharEstimate
+        )
         .spent ==>
         Some(Cost.AtLeast(BigDecimal("0.0002")))
       v.billed ==> Some(Tokens(99))
@@ -133,6 +143,19 @@ object TurnViewTests extends TestSuite {
       w.recalled ==> Seq("first question", "first answer").map(msg).reduce(_ + _)
       w.recent ==> Seq("second", "second answer").map(msg).reduce(_ + _)
       w.message ==> CharEstimate.message(Message.User("third, about the first"))
+    }
+
+    test("a window's messages count the name lines their speakers were shown with") {
+      val named =
+        Speakers(Map(EntryId("e0") -> "Ana", EntryId("e2") -> "Bo", EntryId("e4") -> "Ana"))
+      val w = TurnView
+        .of(turn2, entries, named, Vector.empty, running = false, Vector.empty, None, CharEstimate)
+        .window
+        .getOrElse(sys.error("no window"))
+      def said(text: String) = CharEstimate.message(Message.User(text))
+      w.recalled ==> said("Ana wrote:\nfirst question") + msg("first answer")
+      w.recent ==> said("Bo wrote:\nsecond") + msg("second answer")
+      w.message ==> said("Ana wrote:\nthird, about the first")
     }
 
     test("the gap lines a window was shown with count with its recent turns") {
@@ -158,6 +181,7 @@ object TurnViewTests extends TestSuite {
         .of(
           TurnRef(c, TurnSeq(3)),
           asked,
+          Speakers.none,
           Vector.empty,
           false,
           Vector.empty,
@@ -167,7 +191,11 @@ object TurnViewTests extends TestSuite {
         .window
         .getOrElse(sys.error("no window"))
       val third =
-        asked.slice(4, 6).flatMap(e => Shown.of(e)).map(CharEstimate.message).reduce(_ + _)
+        asked
+          .slice(4, 6)
+          .flatMap(e => Shown.of(e, Speakers.none))
+          .map(CharEstimate.message)
+          .reduce(_ + _)
       w.recent ==> third + CharEstimate.message(Shown.Gap)
     }
 
@@ -191,6 +219,7 @@ object TurnViewTests extends TestSuite {
         .of(
           TurnRef(c, TurnSeq(1)),
           asked,
+          Speakers.none,
           Vector.empty,
           running = false,
           Vector.empty,
@@ -199,7 +228,8 @@ object TurnViewTests extends TestSuite {
         )
         .window
         .getOrElse(sys.error("no window"))
-      val shown = Shown.of(closed).map(CharEstimate.message).getOrElse(sys.error("not shown"))
+      val shown =
+        Shown.of(closed, Speakers.none).map(CharEstimate.message).getOrElse(sys.error("not shown"))
       w.closing ==> shown
       w.recent ==> Tokens.Zero
       w.total ==> CharEstimate.system("s") + shown + CharEstimate.message(
@@ -247,6 +277,7 @@ object TurnViewTests extends TestSuite {
         .of(
           TurnRef(c, TurnSeq(0)),
           asked,
+          Speakers.none,
           Vector.empty,
           running = false,
           Vector.empty,
@@ -302,6 +333,7 @@ object TurnViewTests extends TestSuite {
       val v = TurnView.of(
         turn2,
         served,
+        Speakers.none,
         Vector.empty,
         running = false,
         Vector.empty,
@@ -327,6 +359,7 @@ object TurnViewTests extends TestSuite {
         .of(
           turn2,
           entries,
+          Speakers.none,
           Vector.empty,
           running = false,
           Vector.empty,
@@ -337,7 +370,16 @@ object TurnViewTests extends TestSuite {
         .models ==>
         Some(TurnView.Models(Vector("model" -> oss), profiled = false, None))
       TurnView
-        .of(turn2, entries, Vector.empty, running = false, Vector.empty, prompt("s"), CharEstimate)
+        .of(
+          turn2,
+          entries,
+          Speakers.none,
+          Vector.empty,
+          running = false,
+          Vector.empty,
+          prompt("s"),
+          CharEstimate
+        )
         .models ==> None
     }
 
@@ -345,6 +387,7 @@ object TurnViewTests extends TestSuite {
       def of(steps: Vector[String], running: Boolean) = TurnView.of(
         turn2,
         entries,
+        Speakers.none,
         steps.map(step(_, 0, 1)),
         running,
         Vector.empty,
@@ -365,6 +408,7 @@ object TurnViewTests extends TestSuite {
         TurnView.of(
           turn2,
           entries.take(5),
+          Speakers.none,
           steps,
           running = true,
           Vector.empty,
@@ -389,6 +433,7 @@ object TurnViewTests extends TestSuite {
       val v = TurnView.of(
         turn2,
         asked,
+        Speakers.none,
         Vector(step("assemble", 0, 10)),
         running = true,
         Vector.empty,

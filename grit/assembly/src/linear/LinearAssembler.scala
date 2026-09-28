@@ -4,7 +4,7 @@ import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Show
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.core.provider.TokenEstimator
-import grit.core.store.{Db, Entry, EntryStore, Payload, PeriodStore}
+import grit.core.store.{Db, Entry, EntryStore, Payload, PeriodStore, Principals, Speakers}
 
 /** The window with no choosing: the closing entry of the conversation's newest closed
   * period, then the messages of the most recent whole turns of the turn's own period, before
@@ -17,11 +17,13 @@ import grit.core.store.{Db, Entry, EntryStore, Payload, PeriodStore}
   * result without its call. The first turn back that does not fit ends the window, even if
   * older turns would: the model never sees a history with holes. A newest turn larger than
   * what is left on its own leaves no turns. A window that leaves turns out is charged one
-  * gap line ([[Shown.Gap]]).
+  * gap line ([[Shown.Gap]]). A person's message is costed with its author's name line
+  * ([[Shown.of]]), as it is sent.
   */
 final class LinearAssembler(
     entries: EntryStore,
     periods: PeriodStore,
+    principals: Principals,
     estimator: TokenEstimator,
     budget: Tokens
 ) extends ContextAssembler {
@@ -31,11 +33,12 @@ final class LinearAssembler(
       for {
         opening <- periods.opening(request.turn)
         all <- entries.list(request.turn.conversationId)
+        speakers <- principals.speakers(all.map(_.id))
       } yield {
         val (closings, left) =
           LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, budget)
         val turns = LinearAssembler.turnsBefore(all, opening.first, request.turn.turnSeq)
-        val kept = LinearAssembler.tail(turns, estimator, left)
+        val kept = LinearAssembler.tail(turns, speakers, estimator, left)
         Window(closings.map(_.id) ++ kept.flatten.sortBy(_.seq).map(_.id))
       }
     }.left
@@ -73,22 +76,25 @@ object LinearAssembler {
       estimator: TokenEstimator,
       budget: Tokens
   ): (Vector[Entry], Tokens) = {
-    val kept = recent(closings.map(Vector(_)), estimator, budget).flatten
-    val spent = kept.map(e => shownCost(e, estimator)).foldLeft(Tokens.Zero)(_ + _)
+    // A closing is grit's, never a person's: no name line is shown on it.
+    val kept = recent(closings.map(Vector(_)), Speakers.none, estimator, budget).flatten
+    val spent = kept.map(e => shownCost(e, Speakers.none, estimator)).foldLeft(Tokens.Zero)(_ + _)
     (kept, Tokens(Tokens.value(budget) - Tokens.value(spent)))
   }
 
-  /** The most recent of `turns` that fit in `budget` together, oldest first. The first turn
-    * back that does not fit ends them, even if older ones would.
+  /** The most recent of `turns` that fit in `budget` together, each costed with `speakers`'
+    * names, oldest first. The first turn back that does not fit ends them, even if older ones
+    * would.
     */
   def recent(
       turns: Vector[Vector[Entry]],
+      speakers: Speakers,
       estimator: TokenEstimator,
       budget: Tokens
   ): Vector[Vector[Entry]] =
     turns.reverseIterator
       .scanLeft((Tokens.Zero, Vector.empty[Entry])) { case ((spent, _), turn) =>
-        (spent + cost(turn, estimator), turn)
+        (spent + cost(turn, speakers, estimator), turn)
       }
       .drop(1)
       .takeWhile { case (spent, _) => Tokens.value(spent) <= Tokens.value(budget) }
@@ -101,23 +107,32 @@ object LinearAssembler {
     */
   def tail(
       turns: Vector[Vector[Entry]],
+      speakers: Speakers,
       estimator: TokenEstimator,
       budget: Tokens
   ): Vector[Vector[Entry]] = {
-    val all = recent(turns, estimator, budget)
+    val all = recent(turns, speakers, estimator, budget)
     if (all.size == turns.size) all
-    else recent(turns, estimator, Tokens(Tokens.value(budget) - Tokens.value(gap(estimator))))
+    else
+      recent(
+        turns,
+        speakers,
+        estimator,
+        Tokens(Tokens.value(budget) - Tokens.value(gap(estimator)))
+      )
   }
 
   /** What one gap line ([[Shown.Gap]]) costs by `estimator`. */
   def gap(estimator: TokenEstimator): Tokens = estimator.message(Shown.Gap)
 
-  /** What the model is shown of `entries` costs by `estimator` ([[Shown.of]]). */
-  def cost(entries: Vector[Entry], estimator: TokenEstimator): Tokens =
-    entries.map(shownCost(_, estimator)).foldLeft(Tokens.Zero)(_ + _)
+  /** What the model is shown of `entries`, with `speakers`' names, costs by `estimator`
+    * ([[Shown.of]]).
+    */
+  def cost(entries: Vector[Entry], speakers: Speakers, estimator: TokenEstimator): Tokens =
+    entries.map(shownCost(_, speakers, estimator)).foldLeft(Tokens.Zero)(_ + _)
 
-  private def shownCost(e: Entry, estimator: TokenEstimator): Tokens =
-    Shown.of(e).fold(Tokens.Zero)(estimator.message)
+  private def shownCost(e: Entry, speakers: Speakers, estimator: TokenEstimator): Tokens =
+    Shown.of(e, speakers).fold(Tokens.Zero)(estimator.message)
 
   private def isMessage(e: Entry): Boolean = e.payload match {
     case Payload.Message(_) => true

@@ -367,6 +367,7 @@ object Eval {
           new LinearAssembler(
             engine.entries,
             engine.periods,
+            engine.principals,
             CharEstimate,
             budget
           )
@@ -389,6 +390,7 @@ object Eval {
     new RetrievalAssembler(
       engine.entries,
       engine.periods,
+      engine.principals,
       engine.lifecycle,
       engine.search,
       writer,

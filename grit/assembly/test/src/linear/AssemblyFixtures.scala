@@ -2,9 +2,18 @@ package grit.assembly.linear
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnSeq}
+import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, PrincipalId, TurnSeq}
 import grit.core.period.{CloseReason, Probability, TestClosings}
-import grit.core.store.{Db, Entry, InMemoryEntryStore, InMemoryPeriodStore, Payload, StoreError, Tx}
+import grit.core.store.{
+  Db,
+  Entry,
+  InMemoryEntryStore,
+  InMemoryPeriodStore,
+  InMemoryPrincipals,
+  Payload,
+  StoreError,
+  Tx
+}
 import grit.dbos.sql.TestTx
 
 /** One conversation in an in-memory store, for the assemblers' tests. */
@@ -21,8 +30,18 @@ object AssemblyFixtures {
       body(using TestTx.fake)
   }
 
-  /** A conversation's entries, and its periods over them. */
-  final class World(val entries: InMemoryEntryStore, val periods: InMemoryPeriodStore)
+  /** A conversation's entries, its periods over them, and the people who wrote them. */
+  final class World(val entries: InMemoryEntryStore, val periods: InMemoryPeriodStore) {
+    val principals: InMemoryPrincipals = new InMemoryPrincipals
+  }
+
+  /** Makes `entry` of `world` a message written by a person enrolled as `name`. */
+  def named(world: World, entry: String, name: String): Unit = {
+    given Tx = TestTx.fake
+    val who = PrincipalId(s"test:$name")
+    val _ = world.principals.enroll(who, name)
+    world.principals.authored(EntryId(entry), who)
+  }
 
   /** `turns` in a fresh store of [[c1]], turn `t` holding the `t`-th payloads, ids
     * `t{turn}:{seq}`, all in one period.

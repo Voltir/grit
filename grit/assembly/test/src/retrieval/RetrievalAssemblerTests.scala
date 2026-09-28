@@ -169,6 +169,7 @@ object RetrievalAssemblerTests extends TestSuite {
     new RetrievalAssembler(
       world.entries,
       world.periods,
+      world.principals,
       lifecycle,
       search,
       writer,
@@ -186,7 +187,13 @@ object RetrievalAssemblerTests extends TestSuite {
   private def turnsOf(w: Window): Vector[String] = ids(w).map(_.takeWhile(_ != ':')).distinct
 
   private def linear(world: World, budget: Long): Window =
-    new LinearAssembler(world.entries, world.periods, CharEstimate, Tokens(budget))
+    new LinearAssembler(
+      world.entries,
+      world.periods,
+      world.principals,
+      CharEstimate,
+      Tokens(budget)
+    )
       .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(6))))(using new FakeDb)
       .getOrElse(sys.error("in-memory store"))
 
@@ -340,6 +347,18 @@ object RetrievalAssemblerTests extends TestSuite {
         )
       at(57) ==> Vector("t0", "t4", "t5")
       at(56) ==> Vector("t4", "t5")
+    }
+
+    test("a recalled turn's named message is charged its name line") {
+      // As above, turn 0 recalled at 57; named "Ana", its question costs 3 tokens more.
+      val turns = (0 to 5).map(filler).toVector :+ ask
+      def at(budget: Long): Vector[String] = {
+        val world = store(turns*)
+        grit.assembly.linear.AssemblyFixtures.named(world, "t0:0", "Ana")
+        turnsOf(assemble(world, new Writer(Some("q000")), budget, new Scripted("t0:1")))
+      }
+      at(59) ==> Vector("t4", "t5")
+      at(60) ==> Vector("t0", "t4", "t5")
     }
 
     test("a match that does not fit what is left is passed over for one that does") {

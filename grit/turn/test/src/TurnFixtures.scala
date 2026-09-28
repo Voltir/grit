@@ -398,7 +398,7 @@ object TurnFixtures {
       TurnEnv(
         TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
         TurnHosting(conversations, Prompts, toolSets, served, served.edges, new InMemoryVoiceStore),
-        new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
+        new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
         new FixedModels(provider, new StubProvider()),
         FakeDb,
@@ -540,7 +540,7 @@ object TurnFixtures {
   /** The linear window, with `note` added: an assembler that says it wrote a query. */
   final class Noting(entries: EntryStore, note: AssemblyNote) extends ContextAssembler {
     def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
-      new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget)
+      new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget)
         .assemble(request)
         .map(_.copy(notes = Vector(note)))
   }
@@ -620,7 +620,7 @@ object TurnFixtures {
           principals
         ),
         hosting(voices = voices),
-        new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
+        new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
         new FixedModels(turn, summary),
         FakeDb,
@@ -695,7 +695,7 @@ object TurnFixtures {
       TurnEnv(
         TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
         hosting(),
-        new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
+        new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
         classifier,
         new FixedModels(provider, summarizer),
         FakeDb,
@@ -720,7 +720,7 @@ object TurnFixtures {
       TurnEnv(
         TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, profiles, new InMemoryPrincipals),
         hosting(),
-        new LinearAssembler(entries, NoPeriods, CharEstimate, LinearAssembler.DefaultBudget),
+        new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
         models,
         FakeDb,

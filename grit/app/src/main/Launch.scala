@@ -74,6 +74,7 @@ object Launch {
         new RetrievalAssembler(
           engine.entries,
           engine.periods,
+          engine.principals,
           engine.lifecycle,
           engine.search,
           writer,
@@ -81,7 +82,7 @@ object Launch {
           budget,
           tail
         )
-      else new LinearAssembler(engine.entries, engine.periods, CharEstimate, budget)
+      else new LinearAssembler(engine.entries, engine.periods, engine.principals, CharEstimate, budget)
     def launch[C^](tooling: TurnTooling[C]^): Unit = {
       engine.launch(
         Turn.body(

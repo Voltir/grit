@@ -22,6 +22,8 @@ import grit.core.store.{
   Nearby,
   OpenPeriod,
   PeriodStore,
+  Principals,
+  Speakers,
   StoreError
 }
 
@@ -37,7 +39,8 @@ import grit.core.store.{
   * ([[Shown.Gap]]) besides its own cost, and a tail that leaves turns out one more. Turns from elsewhere form one section
   * per conversation ([[Nearby]], shown as [[Shown.nearby]] and costed so), in the order of
   * their best turn, each section's turns in its conversation's order. No closing entry is a
-  * candidate, here or elsewhere.
+  * candidate, here or elsewhere. A person's message is costed with its author's name line
+  * ([[Shown.of]]), as it is sent.
   *
   * No query is written when there is nothing to search: the linear window of `budget` holds
   * every earlier turn of the period, and no open period elsewhere is in scope. When the
@@ -47,6 +50,7 @@ import grit.core.store.{
 final class RetrievalAssembler(
     entries: EntryStore,
     periods: PeriodStore,
+    principals: Principals,
     lifecycle: LifecycleStore,
     search: EntrySearch,
     writer: Provider^,
@@ -65,6 +69,7 @@ final class RetrievalAssembler(
         opening <- periods.opening(turn)
         all <- entries.list(turn.conversationId)
         open <- periods.openElsewhere(turn.conversationId)
+        speakers <- principals.speakers(all.map(_.id))
       } yield {
         val locality = settings.locality
         Read(
@@ -72,6 +77,7 @@ final class RetrievalAssembler(
           opening.first,
           opening.closing.map(_.entry).toVector,
           all,
+          speakers,
           open.filter(o => locality.scope.holds(o.place))
         )
       }
@@ -81,7 +87,7 @@ final class RetrievalAssembler(
         val (closings, left) = LinearAssembler.opened(read.closings, estimator, budget)
         val all = read.all
         val turns = LinearAssembler.turnsBefore(all, read.first, turn.turnSeq)
-        val linear = LinearAssembler.tail(turns, estimator, left)
+        val linear = LinearAssembler.tail(turns, read.speakers, estimator, left)
         val ownToFind = linear.size != turns.size
         if (!ownToFind && read.open.isEmpty) Right(window(closings, linear, Vector.empty))
         else {
@@ -90,6 +96,7 @@ final class RetrievalAssembler(
             else
               LinearAssembler.recent(
                 turns,
+                read.speakers,
                 estimator,
                 Tokens(Tokens.value(tail) min Tokens.value(left))
               )
@@ -121,10 +128,14 @@ final class RetrievalAssembler(
                     val older =
                       turns.filter(t => t.headOption.exists(e => before(e.turnSeq, from)))
                     // The tail leaves turns out, so the window holds a gap line before it.
-                    val used = Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(recent) +
+                    val used = Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(
+                      recent,
+                      read.speakers
+                    ) +
                       (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero)
                     val places = read.open.map(o => o.conversation -> o.place).toMap
-                    val packed = pack(rank(found, older, places, read.locality.weight), used)
+                    val packed =
+                      pack(rank(found, older, places, read.locality.weight), used, read.speakers)
                     val recalled = packed.collect { case Candidate.Own(t) => t }
                     val seqs = recalled.flatMap(_.headOption.map(_.turnSeq)).sortBy(TurnSeq.value)
                     val notes =
@@ -139,14 +150,15 @@ final class RetrievalAssembler(
   }
 
   /** What one read of the store gave: the locality in force, the turn's period's first turn,
-    * the closings that open it, every entry of the conversation, and the open periods
-    * elsewhere its scope holds.
+    * the closings that open it, every entry of the conversation and who of them is named,
+    * and the open periods elsewhere its scope holds.
     */
   private final case class Read(
       locality: Locality,
       first: TurnSeq,
       closings: Vector[Entry],
       all: Vector[Entry],
+      speakers: Speakers,
       open: Vector[OpenPeriod]
   )
 
@@ -206,13 +218,13 @@ final class RetrievalAssembler(
     * does not fit is passed over for the next. A turn from elsewhere costs what it adds to
     * its section, its label included with its first turn.
     */
-  private def pack(ranked: Vector[Candidate], used: Tokens): Vector[Candidate] =
+  private def pack(ranked: Vector[Candidate], used: Tokens, speakers: Speakers): Vector[Candidate] =
     ranked
       .foldLeft((used, Vector.empty[Candidate])) { case ((spentSoFar, kept), c) =>
         val cost = c match {
           // A recalled turn splits a gap in two at most: one more gap line.
           case Candidate.Own(t) =>
-            LinearAssembler.cost(t, estimator) + LinearAssembler.gap(estimator)
+            LinearAssembler.cost(t, speakers, estimator) + LinearAssembler.gap(estimator)
           case Candidate.Near(conversation, place, t) =>
             val before = kept.collect {
               case Candidate.Near(k, _, es) if k == conversation => es
@@ -245,8 +257,8 @@ final class RetrievalAssembler(
     }
   }
 
-  private def spent(turns: Vector[Vector[Entry]]): Tokens =
-    turns.map(LinearAssembler.cost(_, estimator)).foldLeft(Tokens.Zero)(_ + _)
+  private def spent(turns: Vector[Vector[Entry]], speakers: Speakers): Tokens =
+    turns.map(LinearAssembler.cost(_, speakers, estimator)).foldLeft(Tokens.Zero)(_ + _)
 
   private def before(a: TurnSeq, b: TurnSeq): Boolean = TurnSeq.value(a) < TurnSeq.value(b)
 
