@@ -143,6 +143,9 @@ object SocketSlack {
   /** The metadata event type a grit reply carries. */
   val ReplyEvent = "grit_reply"
 
+  /** The metadata event type grit's line refusing a message carries. */
+  val RefusalEvent = "grit_refusal"
+
   /** The request that posts `post` in `thread` of `channel`, carrying `tag` as metadata; link
     * previews off, so a reply is only what grit wrote.
     */
@@ -156,8 +159,8 @@ object SocketSlack {
       .metadata(
         Message.Metadata
           .builder()
-          .eventType(ReplyEvent)
-          .eventPayload(Map[String, AnyRef]("turn" -> tag.turn, "part" -> tag.part.toString).asJava)
+          .eventType(event(tag))
+          .eventPayload(payload(tag).asJava)
           .build()
       )
       .unfurlLinks(false)
@@ -167,14 +170,23 @@ object SocketSlack {
   /** Whether `m` carries `tag`, as [[request]] wrote it. */
   def carries(m: Message, tag: Tag): Boolean =
     Option(m.getMetadata).exists { md =>
-      md.getEventType == ReplyEvent &&
+      md.getEventType == event(tag) &&
       Option(md.getEventPayload).map(_.asScala).exists { p =>
-        p.get("turn").map(_.toString).contains(tag.turn) && p
-          .get("part")
-          .map(_.toString)
-          .contains(tag.part.toString)
+        payload(tag).forall((k, v) => p.get(k).map(_.toString).contains(v))
       }
     }
+
+  /** The metadata event type `tag` is written under. */
+  private def event(tag: Tag): String = tag match {
+    case Tag.Reply(_, _) => ReplyEvent
+    case Tag.Refused(_) => RefusalEvent
+  }
+
+  /** `tag`'s metadata payload. */
+  private def payload(tag: Tag): Map[String, String] = tag match {
+    case Tag.Reply(turn, part) => Map("turn" -> turn, "part" -> part.toString)
+    case Tag.Refused(message) => Map("message" -> Ts.value(message))
+  }
 
   /** A refusal `code` as done, anything else as it is. */
   private def settled(code: String)(e: SlackError): Either[SlackError, Unit] = e match {

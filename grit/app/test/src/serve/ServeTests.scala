@@ -12,7 +12,14 @@ object ServeTests extends TestSuite {
   private val nowhere = DbConfig("jdbc:postgresql://127.0.0.1:1/none", "none", "none")
 
   private def run(env: Map[String, String]): Option[String] =
-    Serve.run(env, nowhere, "test", ProcessIdentity("m", 1), _ => ())
+    Serve.run(
+      env,
+      nowhere,
+      "test",
+      ProcessIdentity("m", 1),
+      grit.core.spend.Budget(java.time.ZoneOffset.UTC, None),
+      _ => ()
+    )
 
   val tests = Tests {
     test(

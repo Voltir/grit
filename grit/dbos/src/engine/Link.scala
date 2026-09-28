@@ -11,6 +11,7 @@ import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PrincipalId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
+import grit.core.spend.{Budget, Spending}
 import grit.core.store.{
   ConversationStore,
   Db,
@@ -55,6 +56,12 @@ trait Link extends caps.SharedCapability, AutoCloseable {
   val entries: EntryStore
 
   val ledger: UsageLedger
+
+  /** What the ledger's calls cost, read back. */
+  val spending: Spending
+
+  /** How this link's inbox meters new messages: the cap, and where days begin. */
+  val budget: Budget
 
   /** Which profile each turn's model calls were made under. */
   val profiles: ModelProfileStore
@@ -124,14 +131,20 @@ object Link {
 
   /** A link to the engine another process runs on the database `config` names, as grit of
     * compatibility epoch `epoch` in the process `identity` names: no DBOS executor here,
-    * only its client, the stores and the inbox. Throws when the database cannot be reached.
+    * only its client, the stores and the inbox, which takes new messages as `budget` allows.
+    * Throws when the database cannot be reached.
     */
-  def attach(config: DbConfig, epoch: String, identity: ProcessIdentity): Link^ = {
+  def attach(
+      config: DbConfig,
+      epoch: String,
+      identity: ProcessIdentity,
+      budget: Budget
+  ): Link^ = {
     val ds = new PGSimpleDataSource()
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Attached(config, ds, new DBOSClient(ds), epoch, identity)
+    new Attached(config, ds, new DBOSClient(ds), epoch, identity, budget)
   }
 
   /** `turn`'s status through `client` ([[Link.status]]). */
@@ -197,14 +210,19 @@ private[engine] final class Attached(
     dataSource: PGSimpleDataSource,
     client: DBOSClient,
     epoch: String,
-    identity: ProcessIdentity
+    identity: ProcessIdentity,
+    val budget: Budget
 ) extends Link {
 
   private val conversations: ConversationStore = new SqlConversationStore()
 
   val entries: EntryStore = new SqlEntryStore()
 
-  val ledger: UsageLedger = new SqlUsageLedger()
+  private val sqlLedger = new SqlUsageLedger()
+
+  val ledger: UsageLedger = sqlLedger
+
+  val spending: Spending = sqlLedger
 
   val profiles: ModelProfileStore = new SqlModelProfileStore()
 
@@ -223,7 +241,15 @@ private[engine] final class Attached(
   val jot: Jot = new SqlJot(dataSource)
 
   val inbox: Inbox =
-    new SqlInbox(dataSource, client, conversations, entries, new SqlPeriodStore(entries))
+    new SqlInbox(
+      dataSource,
+      client,
+      conversations,
+      entries,
+      new SqlPeriodStore(entries),
+      spending,
+      budget
+    )
 
   private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()
 

@@ -12,7 +12,8 @@ In dependency order:
   `Durations`: a duration as a setting writes it (`30s`, `3m`, `24h`, `30d`). `Lifecycle`:
   the lifecycle's settings as a person writes them, seeded from `GRIT_IDLE`, `GRIT_SETTLE`,
   `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION` and `GRIT_BALANCE` on a database's
-  first start, and changed one at a time by `/set`.
+  first start, and changed one at a time by `/set`. `Budgets`: the daily cap on model spend,
+  `GRIT_DAILY_USD` (`grit serve`'s default $1.00).
   `Prefs`: what grit remembers between runs (the theme last chosen), in
   `$XDG_CONFIG_HOME/grit/prefs` or `~/.config/grit/prefs`. Imports nothing in app.
 - **`look`** — `Theme`, a palette by role (Frost the default; `GRIT_THEME` picks

@@ -7,9 +7,11 @@ import scala.util.control.NonFatal
 
 import grit.app.config.Lifecycle
 import grit.core.id.{ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
+import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.prompt.Voice
 import grit.core.provider.TokenEstimator
+import grit.core.spend.Budget
 import grit.core.store.{Entry, Origin, Payload, Speakers, StoreError, UsageLedger}
 import grit.dbos.engine.{Link, TurnStatus}
 import grit.tui.runtime.app.{Fault, Host, Mailbox}
@@ -371,7 +373,7 @@ final class ChatHost(
       )
       _ <- engine.inbox.startTurn(turn)
     } yield turn
-    started.left.foreach(e => mailbox.offer(ChatScreen.Msg.Failed(s"not sent: $e")))
+    started.left.foreach(e => mailbox.offer(ChatScreen.Msg.Failed(ChatHost.notSent(e))))
   }
 
   private def background(work: () => Unit): Unit = {
@@ -393,6 +395,15 @@ object ChatHost {
     */
   trait Opener extends caps.SharedCapability {
     def open(): Link^
+  }
+
+  /** What a person is told of a message `error` kept from being taken: for one over the
+    * day's cap, the one refusal every edge gives, which names no cost; otherwise that it was
+    * not sent, and why.
+    */
+  def notSent(error: InboxError): String = error match {
+    case InboxError.OverCap(_, _, _) => Budget.Refusal
+    case other => s"not sent: $other"
   }
 
   /** `voice` as the status line notes it: its name, or the person's own words. */

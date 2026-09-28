@@ -31,7 +31,7 @@ object SocketSlackTests extends TestSuite {
 
   val tests = Tests {
     test("a reply's request carries its thread, blocks, fallback and tag, with link previews off") {
-      val r = SocketSlack.request(ChannelId("C1"), Ts("1.0"), post, Tag("c:3", 1))
+      val r = SocketSlack.request(ChannelId("C1"), Ts("1.0"), post, Tag.Reply("c:3", 1))
       (
         r.getChannel,
         r.getThreadTs,
@@ -45,8 +45,25 @@ object SocketSlackTests extends TestSuite {
         ("grit_reply", Map("turn" -> "c:3", "part" -> "1"))
     }
 
+    test(
+      "a refusal carries the message it answers under grit's refusal event, and no reply's tag"
+    ) {
+      val refused = Tag.Refused(Ts("5.0"))
+      val r = SocketSlack.request(ChannelId("C1"), Ts("1.0"), post, refused)
+      (r.getMetadata.getEventType, r.getMetadata.getEventPayload.asScala.toMap) ==>
+        ("grit_refusal", Map("message" -> "5.0"))
+      val m = new Message()
+      m.setMetadata(r.getMetadata)
+      (
+        SocketSlack.carries(m, refused),
+        SocketSlack.carries(m, Tag.Refused(Ts("6.0"))),
+        SocketSlack.carries(message("grit_reply", "c:3", "1"), refused),
+        SocketSlack.carries(m, Tag.Reply("c:3", 1))
+      ) ==> (true, false, false, false)
+    }
+
     test("a message carries a tag only under grit's event type, with the same turn and part") {
-      val tag = Tag("c:3", 1)
+      val tag = Tag.Reply("c:3", 1)
       SocketSlack.carries(message("grit_reply", "c:3", "1"), tag) ==> true
       SocketSlack.carries(message("grit_reply", "c:3", "0"), tag) ==> false
       SocketSlack.carries(message("grit_reply", "c:4", "1"), tag) ==> false

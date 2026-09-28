@@ -30,7 +30,7 @@ object AttachLiveTests extends TestSuite {
     test("a turn an attached link sends runs on the engine that holds the lock") {
       val config = TestPostgres.freshDatabase("attach_send")
       val engine = LiveEngine.open(config, "test")
-      val link = Link.attach(config, "test", LiveEngine.Identity)
+      val link = Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped)
       try {
         engine.launch(id => d ?=> s"ran ${WorkflowId.value(id)}", noop, noop, noop, Vector.empty)
         val turn = (for {
@@ -52,7 +52,7 @@ object AttachLiveTests extends TestSuite {
     test("an attached link names the engine holding the lock, and none once it stops") {
       val config = TestPostgres.freshDatabase("attach_holder")
       val engine = LiveEngine.open(config, "test")
-      val link = Link.attach(config, "test", LiveEngine.Identity)
+      val link = Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped)
       try {
         link.holder().map(h => (h.machine, h.pid, h.epoch)) ==> Some(
           ("test-machine", 4242L, "test")
@@ -68,7 +68,7 @@ object AttachLiveTests extends TestSuite {
     test("an edge attached as another epoch than the engine's is refused, naming both") {
       val config = TestPostgres.freshDatabase("attach_epoch")
       val engine = LiveEngine.open(config, "test")
-      val link = Link.attach(config, "older", LiveEngine.Identity)
+      val link = Link.attach(config, "older", LiveEngine.Identity, LiveEngine.Uncapped)
       try {
         val place =
           Place.of(Directory.of("/attach").getOrElse(throw new java.lang.AssertionError()))

@@ -5,8 +5,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 import grit.core.edge.{Deliveries, Part, Pending}
 import grit.core.id.{PrincipalId, SourceId, WorkflowId}
-import grit.core.inbox.{Inbox, Progress}
+import grit.core.inbox.{Inbox, InboxError, Progress}
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.spend.Budget
 import grit.core.store.{Jot, Origin, Principals}
 import grit.prose.form.{Block, Doc, Text}
 import grit.prose.markdown.Markdown
@@ -60,7 +61,8 @@ final class SlackEdge(slack: Slack, self: Self, stores: EdgeStores^, said: Strin
     * (one whose root message mentioned grit); everything else is ignored. Recorded, it is in
     * the person's words ([[Incoming]]), written by them as enrolled under their Slack name
     * (`slack:{team}/{user}`), its turn started, its reply awaited, and the message marked
-    * `:eyes:` until the reply is posted. `true` once that is done or needs no doing (a
+    * `:eyes:` until the reply is posted. A new message the inbox refuses over the day's cap
+    * is not recorded: it is answered, once, in its thread, with [[Budget.Refusal]]. `true` once that is done or needs no doing (a
     * redelivery included), so the payload may be acknowledged; `false` when Slack or the
     * database could not be asked, so Slack sends it again.
     */
@@ -103,26 +105,54 @@ final class SlackEdge(slack: Slack, self: Self, stores: EdgeStores^, said: Strin
         val known = (m.user +: mentioned).distinct.flatMap(u => nameOf(u).map(u -> _)).toMap
         val author = PrincipalId(s"slack:${TeamId.value(m.team)}/${UserId.value(m.user)}")
         val message: Message.User = Message.User(Incoming.text(m.text, self.bot, known.get))
-        for {
-          _ <- stores.jot
-            .write(stores.principals.enroll(author, known.getOrElse(m.user, UserId.value(m.user))))
-            .left
-            .map(_.toString)
-          turn <- stores.inbox
-            .ingest(origin, SourceId(Ts.value(m.ts)), message, author)
-            .left
-            .map(_.toString)
-          _ <- stores.jot
-            .write(stores.deliveries.await(turn, Address(m.channel, m.thread, m.ts).written))
-            .left
-            .map(_.toString)
-          _ <- stores.inbox.startTurn(turn).left.map(_.toString)
-        } yield slack
-          .react(m.channel, m.ts, Working)
+        stores.jot
+          .write(stores.principals.enroll(author, known.getOrElse(m.user, UserId.value(m.user))))
           .left
-          .foreach(e => said(s"slack: not marked: $e"))
+          .map(_.toString)
+          .flatMap { _ =>
+            stores.inbox.ingest(origin, SourceId(Ts.value(m.ts)), message, author) match {
+              case Left(over @ InboxError.OverCap(_, _, _)) => refuse(m, over)
+              case Left(other) => Left(other.toString)
+              case Right(turn) =>
+                for {
+                  _ <- stores.jot
+                    .write(
+                      stores.deliveries.await(turn, Address(m.channel, m.thread, m.ts).written)
+                    )
+                    .left
+                    .map(_.toString)
+                  _ <- stores.inbox.startTurn(turn).left.map(_.toString)
+                } yield slack
+                  .react(m.channel, m.ts, Working)
+                  .left
+                  .foreach(e => said(s"slack: not marked: $e"))
+            }
+          }
       }
     }
+
+  /** Tells the person who wrote `m` that it was not taken ([[Budget.Refusal]]), in its
+    * thread, once: a refusal already there under its tag is not posted again.
+    */
+  private def refuse(m: Event.Said, over: InboxError.OverCap): Either[String, Unit] = {
+    said(
+      s"slack: message ${Ts.value(m.ts)} refused: ${over.spent.cost.written} spent on ${over.day.date}, the cap is $$${over.cap.usd}"
+    )
+    val tag = Tag.Refused(m.ts)
+    slack
+      .tagged(m.channel, m.thread, tag)
+      .flatMap { there =>
+        if (there.nonEmpty) Right(())
+        else
+          RichText
+            .render(Doc(Vector(Block.Paragraph(Text.plain(Budget.Refusal)))))
+            .foldLeft[Either[SlackError, Unit]](Right(()))((done, post) =>
+              done.flatMap(_ => slack.post(m.channel, m.thread, post, tag).map(_ => ()))
+            )
+      }
+      .left
+      .map(_.toString)
+  }
 
   /** Whether `channel` is public, asked of Slack once per channel. */
   private def public(channel: ChannelId): Either[String, Boolean] =
@@ -188,7 +218,7 @@ final class SlackEdge(slack: Slack, self: Self, stores: EdgeStores^, said: Strin
       case Some(to) =>
         val parts = posts(reply, outcome)
         val all = parts.zipWithIndex.forall { (part, i) =>
-          val tag = Tag(WorkflowId.value(p.turn.workflowId), i)
+          val tag = Tag.Reply(WorkflowId.value(p.turn.workflowId), i)
           val there: Either[SlackError, Boolean] = p.parts.get(i) match {
             case Some(Part.Posted(_)) => Right(true)
             case Some(Part.Posting) => slack.tagged(to.channel, to.thread, tag).map(_.nonEmpty)

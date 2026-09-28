@@ -2,6 +2,7 @@ package grit.app.main
 
 import grit.app.config.DotEnv
 import grit.core.model.{Catalog, CatalogJson, Profile}
+import grit.core.spend.Budget
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
 import grit.models.Seed
@@ -30,7 +31,13 @@ object PromoteFacts {
     val config = DbConfig.fromEnv(env).left.map(_.message).fold(fail, identity)
     val seed = Seed.catalog.fold(fail, identity)
     // The engine's lock, like any engine: while grit runs on this database, this says so.
-    val engine = Engine.open(config, Turn.Epoch, grit.host.LocalMachine.identity()) match {
+    val engine = Engine.open(
+      config,
+      Turn.Epoch,
+      grit.host.LocalMachine.identity(),
+      // It takes no messages: no cap, and any zone.
+      Budget(java.time.ZoneOffset.UTC, None)
+    ) match {
       case Right(open) => open
       case Left(refused) => fail(refused.message(java.time.Instant.now()))
     }

@@ -1,9 +1,12 @@
 package grit.slack.edge
 
+import java.time.ZoneOffset
+
 import grit.core.edge.{InMemoryDeliveries, Part}
 import grit.core.id.{PrincipalId, SourceId, TurnRef}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Jot, Origin, Payload, StoreError, Tx}
 import grit.dbos.sql.TestTx
 import grit.slack.client.{FakeSlack, Self, Tag}
@@ -25,9 +28,23 @@ object SlackEdgeTests extends TestSuite {
 
   private val C = ChannelId("C123ABC456")
 
-  private final class World {
+  private final class World(budget: Budget = Budget(ZoneOffset.UTC, None)) {
     val slack = new FakeSlack
-    val inbox: InMemoryInbox = InMemoryInbox.fresh()
+    val inbox: InMemoryInbox = InMemoryInbox.fresh(budget)
+
+    /** Records a call that cost `usd` today. */
+    def spend(usd: String): Unit = {
+      val turn = TurnRef(grit.core.id.ConversationId("elsewhere"), grit.core.id.TurnSeq.First)
+      val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(BigDecimal(usd)))
+      val _ = inbox.ledger.record(
+        grit.core.id.EntryId(s"spent:${inbox.ledger.rows.size}"),
+        turn,
+        turn.workflowId,
+        "m",
+        usage,
+        Tokens(1)
+      )(using TestTx.fake)
+    }
     val deliveries = new InMemoryDeliveries
     def edge(): SlackEdge^ =
       new SlackEdge(
@@ -81,7 +98,7 @@ object SlackEdgeTests extends TestSuite {
     )
 
   private def tag(turn: TurnRef, part: Int): Tag =
-    Tag(grit.core.id.WorkflowId.value(turn.workflowId), part)
+    Tag.Reply(grit.core.id.WorkflowId.value(turn.workflowId), part)
 
   val tests = Tests {
     test("introduce names the workspace's assistant as Slack names grit's bot, and says why not") {
@@ -148,6 +165,21 @@ object SlackEdgeTests extends TestSuite {
         None,
         Vector.empty
       )
+    }
+
+    test(
+      "over the day's cap a new message is not recorded, is told the refusal once in its thread, unmarked, and acknowledged"
+    ) {
+      val cap = DailyCap.of("1").fold(e => throw new java.lang.AssertionError(e), identity)
+      val w = new World(Budget(ZoneOffset.UTC, Some(cap)))
+      w.spend("1.00")
+      w.slack.deliver(mention("1.0")) ==> true
+      // Delivered again, as after a crash between the post and the acknowledgement.
+      w.slack.deliver(mention("1.0")) ==> true
+      w.turnOf("1.0", "1.0") ==> None
+      w.slack.posts.map(p => (p.thread, p.post.fallback, p.tag)) ==>
+        Vector((Ts("1.0"), Budget.Refusal, Tag.Refused(Ts("1.0"))))
+      (w.slack.reactions, w.pending, w.inbox.started) ==> (Set.empty, Vector.empty, Vector.empty)
     }
 
     test("a message the database cannot record is not acknowledged, so Slack sends it again") {

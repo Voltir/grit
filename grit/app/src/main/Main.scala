@@ -3,7 +3,7 @@ package grit.app.main
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
-import grit.app.config.{DotEnv, Durations, Lifecycle, Prefs}
+import grit.app.config.{Budgets, DotEnv, Durations, Lifecycle, Prefs}
 import grit.app.look.Theme
 import grit.app.serve.Serve
 import grit.assembly.estimate.CharEstimate
@@ -158,6 +158,14 @@ object Main {
     val sweep = exitOnLeft(sweepEvery(env))
     val seeded = exitOnLeft(Lifecycle.fromEnv(env))
     val plugins = exitOnLeft(pluginChoice(env))
+    // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
+    val spend = exitOnLeft(
+      Budgets.fromEnv(
+        env,
+        java.time.ZoneId.systemDefault(),
+        if (serving) Budgets.ServeDefault else None
+      )
+    )
 
     val settings = Launch.Settings(
       seeded,
@@ -179,7 +187,7 @@ object Main {
     val identity = LocalMachine.identity()
     val failure: Option[String] =
       if (serving)
-        Serve.run(env, config, Turn.Epoch, identity, engine => { val _ = launched(engine) })
+        Serve.run(env, config, Turn.Epoch, identity, spend, engine => { val _ = launched(engine) })
       else if (tui) {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
         // refused, it attaches to the one that holds it, and serves its own directory.
@@ -188,7 +196,7 @@ object Main {
             val engine = new ChatHost.Opener {
               // The screen paints first; the engine opens behind it, on the host's thread.
               def open(): Link^ = {
-                val started = Engine.start(config, lock, Turn.Epoch, identity)
+                val started = Engine.start(config, lock, Turn.Epoch, identity, spend)
                 try {
                   val running = launched(started)
                   serveHere(running, Place.of(directory), hosted, instructions, offered)
@@ -205,7 +213,7 @@ object Main {
           case Left(NotTaken.Held(holder)) =>
             val attached = new ChatHost.Opener {
               def open(): Link^ = {
-                val link = Link.attach(config, Turn.Epoch, identity)
+                val link = Link.attach(config, Turn.Epoch, identity, spend)
                 serveHere(link, Place.of(directory), hosted, instructions, offered)
                 link
               }
@@ -238,10 +246,10 @@ object Main {
         finally host.close()
         None
       } else
-        Engine.open(config, Turn.Epoch, identity) match {
+        Engine.open(config, Turn.Epoch, identity, spend) match {
           case Left(NotTaken.Held(_)) =>
             // Another grit runs the engine: its turns are sent to it, as a TUI's are.
-            val link = Link.attach(config, Turn.Epoch, identity)
+            val link = Link.attach(config, Turn.Epoch, identity, spend)
             try say(link, args.toList)
             finally link.close()
           case Left(refused) => Some(refused.message(java.time.Instant.now()))
@@ -324,7 +332,7 @@ object Main {
       } yield turn
     }
     started.collectFirst { case Left(error) => error } match {
-      case Some(error) => Some(s"inbox: $error")
+      case Some(error) => Some(ChatHost.notSent(error))
       case None =>
         started.collect { case Right(turn) => turn }.distinct.foreach { turn =>
           val outcome = engine.awaitTurn(turn)

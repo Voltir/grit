@@ -26,4 +26,14 @@ In dependency order:
   bot (`introduce`), and each turn's prompt then says what the assistant is called there.
   ← `client`, `text`, `event`
 
+**The daily cap.** `grit serve` takes new messages until the day's recorded spend reaches
+`GRIT_DAILY_USD` ($1.00 when unset); a message after that is not recorded, and its thread is
+told, once, that grit can't take new messages right now (`Budget.Refusal`, which names no
+cost). It is checked only as a message arrives, so a day can end above the cap by what the
+turns already running spend (each up to `GRIT_TOOL_ROUNDS` model calls of about
+`GRIT_WINDOW_TOKENS` in and `GRIT_MAX_TOKENS` out) and a closing summary per period they end.
+A call its provider does not price counts as nothing: under such a provider the cap is never
+reached, and `grit serve` says so at start. Days begin at this machine's midnight; OpenRouter
+counts its own daily figure in UTC.
+
 No source file sits at the module's root, and the test tree mirrors it.

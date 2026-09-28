@@ -44,10 +44,15 @@ object AppToken {
 /** Who grit is in its workspace: the team, and grit's bot user. */
 final case class Self(team: TeamId, bot: UserId)
 
-/** What a post carries (Slack message metadata) to be found again: the turn it replies for, by
-  * its workflow id, and which part of that reply it is, from 0.
-  */
-final case class Tag(turn: String, part: Int)
+/** What a post of grit's carries (Slack message metadata), to be found again. */
+enum Tag {
+
+  /** Part `part`, from 0, of the reply of the turn whose workflow id is `turn`. */
+  case Reply(turn: String, part: Int)
+
+  /** The line telling the person who wrote message `message` that it was not taken. */
+  case Refused(message: Ts)
+}
 
 /** Slack as grit uses it: one workspace, through grit's bot. */
 trait Slack extends caps.SharedCapability {

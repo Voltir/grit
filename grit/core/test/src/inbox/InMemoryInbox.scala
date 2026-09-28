@@ -3,25 +3,31 @@ package grit.core.inbox
 import grit.core.approval.Approval
 import grit.core.id.{EntryId, PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
+import grit.core.spend.Budget
 import grit.core.store.{
   Entry,
   InMemoryConversationStore,
   InMemoryEntryStore,
   InMemoryPrincipals,
+  InMemoryUsageLedger,
   Origin,
   Payload,
+  StoreError,
   Tx
 }
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[Inbox]] for tests, keeping [[InboxContract]], over the in-memory stores it
   * is given: an ingested message is an entry of its conversation, its author told to
-  * `principals`. No turn runs: a test ends one with [[finish]].
+  * `principals`, and a new one is refused once `ledger`'s spend today reaches `budget`'s cap,
+  * today being the day `ledger.now` falls on. No turn runs: a test ends one with [[finish]].
   */
 final class InMemoryInbox(
     val conversations: InMemoryConversationStore,
     val entries: InMemoryEntryStore,
-    val principals: InMemoryPrincipals
+    val principals: InMemoryPrincipals,
+    val ledger: InMemoryUsageLedger,
+    budget: Budget
 ) extends Inbox {
 
   /** The turns started, oldest first; a turn started twice is here once. */
@@ -71,35 +77,52 @@ final class InMemoryInbox(
     if (down) unavailable
     else
       inTx {
-        val result = for {
-          conversation <- conversations.findOrCreate(origin, by)
-          id = InMemoryInbox.entryId(conversation.id.toString, source)
-          existing <- entries.get(id)
-          turn <- existing match {
-            case Some(e) => Right(TurnRef(e.conversationId, e.turnSeq))
-            case None =>
-              entries.lockNext(conversation.id).flatMap { next =>
-                entries
-                  .insert(
-                    Entry(
-                      id,
-                      conversation.id,
-                      next.turnSeq,
-                      None,
-                      next.seq,
-                      Payload.Message(message),
-                      java.time.Instant.EPOCH
-                    )
+        val known = conversations.all.find(_.origin == origin)
+        val result: Either[StoreError, Either[InboxError, TurnRef]] = for {
+          before <- known.fold(Right(None): Either[StoreError, Option[Entry]])(c =>
+            entries.get(InMemoryInbox.entryId(c.id.toString, source))
+          )
+          refused <- before.fold(overCap)(_ => Right(None))
+          turn <- (before, refused) match {
+            case (Some(e), _) => Right(Right(TurnRef(e.conversationId, e.turnSeq)))
+            case (None, Some(why)) => Right(Left(why))
+            case (None, None) =>
+              for {
+                conversation <- conversations.findOrCreate(origin, by)
+                id = InMemoryInbox.entryId(conversation.id.toString, source)
+                next <- entries.lockNext(conversation.id)
+                _ <- entries.insert(
+                  Entry(
+                    id,
+                    conversation.id,
+                    next.turnSeq,
+                    None,
+                    next.seq,
+                    Payload.Message(message),
+                    java.time.Instant.EPOCH
                   )
-                  .map { _ =>
-                    principals.authored(id, by)
-                    TurnRef(conversation.id, next.turnSeq)
-                  }
+                )
+              } yield {
+                principals.authored(id, by)
+                Right(TurnRef(conversation.id, next.turnSeq))
               }
           }
         } yield turn
-        result.left.map(e => InboxError.Unavailable(e.toString))
+        result.left.map(e => InboxError.Unavailable(e.toString)).flatMap(identity)
       }
+
+  /** Why the spend on the day `ledger.now` falls on refuses a new message; `None` when it
+    * does not.
+    */
+  private def overCap(using Tx^): Either[StoreError, Option[InboxError]] =
+    budget.cap match {
+      case None => Right(None)
+      case Some(cap) =>
+        val day = budget.today(ledger.now)
+        ledger
+          .on(day)
+          .map(spent => Option.when(!budget.admits(spent))(InboxError.OverCap(spent, cap, day)))
+    }
 
   def ingested(origin: Origin, source: SourceId): Either[InboxError, Option[TurnRef]] =
     if (down) unavailable
@@ -137,8 +160,14 @@ final class InMemoryInbox(
 object InMemoryInbox {
 
   /** Empty in-memory stores. */
-  def fresh(): InMemoryInbox =
-    new InMemoryInbox(new InMemoryConversationStore, new InMemoryEntryStore, new InMemoryPrincipals)
+  def fresh(budget: Budget = Budget(java.time.ZoneOffset.UTC, None)): InMemoryInbox =
+    new InMemoryInbox(
+      new InMemoryConversationStore,
+      new InMemoryEntryStore,
+      new InMemoryPrincipals,
+      new InMemoryUsageLedger,
+      budget
+    )
 
   private def entryId(conversation: String, source: SourceId): EntryId =
     EntryId(s"in:$conversation:${SourceId.value(source)}")

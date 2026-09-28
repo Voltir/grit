@@ -17,6 +17,7 @@ import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowI
 import grit.core.inbox.Inbox
 import grit.core.place.Place
 import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginDocs}
+import grit.core.spend.{Budget, Spending}
 import grit.core.store.{
   ClosedPeriod,
   ConversationStore,
@@ -78,7 +79,8 @@ final class Engine private (
     dataSource: PGSimpleDataSource,
     lock: EngineLock^,
     config: DbConfig,
-    identity: ProcessIdentity
+    identity: ProcessIdentity,
+    val budget: Budget
 ) extends Link {
 
   val conversations: ConversationStore = new SqlConversationStore()
@@ -87,7 +89,11 @@ final class Engine private (
 
   val search: EntrySearch = new SqlEntrySearch()
 
-  val ledger: UsageLedger = new SqlUsageLedger()
+  private val sqlLedger = new SqlUsageLedger()
+
+  val ledger: UsageLedger = sqlLedger
+
+  val spending: Spending = sqlLedger
 
   /** Which profile each turn's model calls were made under. */
   val profiles: ModelProfileStore = new SqlModelProfileStore()
@@ -132,7 +138,8 @@ final class Engine private (
   // An edge's side: it reaches the engine only through Postgres (ADR 0002).
   private val client = new DBOSClient(dataSource)
 
-  val inbox: Inbox = new SqlInbox(dataSource, client, conversations, entries, periods)
+  val inbox: Inbox =
+    new SqlInbox(dataSource, client, conversations, entries, periods, spending, budget)
 
   /** Each plugin's cursor. */
   val cursors: PluginCursors = new SqlPluginCursors(tombstones)
@@ -333,10 +340,15 @@ object Engine {
   val BodiesWithin: FiniteDuration = 30.seconds
 
   /** [[EngineLock.take]], then [[start]]. */
-  def open(config: DbConfig, epoch: String, identity: ProcessIdentity): Either[NotTaken, Engine^] =
+  def open(
+      config: DbConfig,
+      epoch: String,
+      identity: ProcessIdentity,
+      budget: Budget
+  ): Either[NotTaken, Engine^] =
     EngineLock.take(config) match {
       case Left(refused) => Left(refused)
-      case Right(lock) => Right(start(config, lock, epoch, identity))
+      case Right(lock) => Right(start(config, lock, epoch, identity, budget))
     }
 
   /** The engine of the database `config` names, which `lock` is held on: its schema applied,
@@ -344,13 +356,15 @@ object Engine {
     * recovering and dequeuing only workflows of
     * compatibility epoch `epoch` (ADR 0004). Losing the lock (its connection dropped, or its
     * row gone or taken) stops the engine as [[Engine.close]] does, and an edge's calls on it
-    * then fail. Closes `lock` when it throws.
+    * then fail. Its inbox takes new messages as `budget` allows. Closes `lock` when it
+    * throws.
     */
   def start(
       config: DbConfig,
       lock: EngineLock^,
       epoch: String,
-      identity: ProcessIdentity
+      identity: ProcessIdentity,
+      budget: Budget
   ): Engine^ =
     try {
       schemaSetup(config)
@@ -358,7 +372,7 @@ object Engine {
         .claim(epoch, identity)
         .left
         .foreach(why => sys.error(s"the engine's row could not be written: $why"))
-      val engine = build(config, lock, epoch, identity)
+      val engine = build(config, lock, epoch, identity, budget)
       engine.beating()
       engine
     } catch {
@@ -371,7 +385,8 @@ object Engine {
       config: DbConfig,
       lock: EngineLock^,
       epoch: String,
-      identity: ProcessIdentity
+      identity: ProcessIdentity,
+      budget: Budget
   ): Engine^ = {
     val dbos = new DBOS(
       DBOSConfig
@@ -388,7 +403,7 @@ object Engine {
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Engine(dbos, ds, lock, config, identity)
+    new Engine(dbos, ds, lock, config, identity, budget)
   }
 
   /** Applies `grit/dbos/resources/schema.sql` idempotently. */

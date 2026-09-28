@@ -3,6 +3,7 @@ package grit.core.inbox
 import grit.core.approval.Approval
 import grit.core.id.{PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
+import grit.core.spend.{DailyCap, Day, Spend}
 import grit.core.store.Origin
 
 /** How an edge hands the engine work (ADR 0002). Every operation is idempotent, so an edge
@@ -13,7 +14,9 @@ trait Inbox extends caps.SharedCapability {
   /** Records `message` from `origin`'s conversation, written by `by`, as the first entry of
     * a new turn, and returns that turn; the conversation is created by `by` if it is new. A
     * message whose `source` id was already recorded for `origin` is not recorded again: its
-    * existing turn is returned, with its first author.
+    * existing turn is returned, with its first author, whatever was spent. A new message once
+    * the day's recorded spend has reached the inbox's cap ([[grit.core.spend.Budget]]) is
+    * [[InboxError.OverCap]]: nothing is recorded, its conversation not even created.
     */
   def ingest(
       origin: Origin,
@@ -54,4 +57,10 @@ enum InboxError {
 
   /** No turn has the workflow `workflow`. */
   case NoSuchTurn(workflow: WorkflowId)
+
+  /** A new message not recorded: `spent` on `day` reached `cap`. Retrying does not help
+    * before the next day. A person is told [[grit.core.spend.Budget.Refusal]], which names
+    * neither.
+    */
+  case OverCap(spent: Spend, cap: DailyCap, day: Day)
 }

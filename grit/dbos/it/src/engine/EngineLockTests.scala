@@ -42,7 +42,8 @@ object EngineLockTests extends TestSuite {
   /** The engine of `config`, beating every [[beat]]. */
   private def engine(config: DbConfig): Engine^ =
     EngineLock.take(config, beat) match {
-      case Right(lock) => Engine.start(config, lock, "test", LiveEngine.Identity)
+      case Right(lock) =>
+        Engine.start(config, lock, "test", LiveEngine.Identity, LiveEngine.Uncapped)
       case Left(refused) => sys.error(s"not taken: $refused")
     }
 
@@ -211,7 +212,9 @@ object EngineLockTests extends TestSuite {
                 client,
                 new SqlConversationStore(),
                 entries,
-                new SqlPeriodStore(entries)
+                new SqlPeriodStore(entries),
+                new grit.dbos.sql.SqlUsageLedger(),
+                LiveEngine.Uncapped
               ),
               "after"
             )

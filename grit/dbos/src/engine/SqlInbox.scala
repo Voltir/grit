@@ -18,6 +18,7 @@ import grit.core.id.{
 }
 import grit.core.inbox.{Inbox, InboxError, Progress}
 import grit.core.message.Message
+import grit.core.spend.{Budget, Spending}
 import grit.core.store.{
   ConversationStore,
   Entry,
@@ -36,14 +37,18 @@ import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
 import dev.dbos.transact.workflow.WorkflowState
 
 /** [[Inbox]] over Postgres alone, so an edge in another process can use it: ingest is one
-  * short transaction, and a turn is started by enqueueing it through `client`.
+  * short transaction, which refuses a new message once `spending` says today's spend has
+  * reached `budget`'s cap (today by this machine's clock, in `budget`'s zone), and a turn is
+  * started by enqueueing it through `client`.
   */
 final class SqlInbox(
     dataSource: DataSource,
     client: DBOSClient,
     conversations: ConversationStore,
     entries: EntryStore,
-    periods: PeriodStore
+    periods: PeriodStore,
+    spending: Spending,
+    budget: Budget
 ) extends Inbox {
 
   def ingest(
@@ -53,36 +58,69 @@ final class SqlInbox(
       by: PrincipalId
   ): Either[InboxError, TurnRef] =
     inTransaction {
-      for {
-        conversation <- conversations.findOrCreate(origin, by)
-        id = SqlInbox.entryId(conversation.id, source)
-        // Serialises ingest per conversation: a concurrent ingest waits here, then sees
-        // this one's entry and its sequence numbers.
-        next <- entries.lockNext(conversation.id)
-        existing <- entries.get(id)
-        turn <- existing match {
-          case Some(entry) => Right(TurnRef(entry.conversationId, entry.turnSeq))
-          case None =>
-            val at = Instant.now()
-            periods.openFor(conversation.id, next.turnSeq, at).flatMap { _ =>
-              entries
-                .insert(
-                  Entry(
-                    id,
-                    conversation.id,
-                    next.turnSeq,
-                    None,
-                    next.seq,
-                    Payload.Message(message),
-                    at
-                  )
-                )
-                .flatMap(_ => SqlInbox.authored(id, by))
-                .map(_ => TurnRef(conversation.id, next.turnSeq))
-            }
-        }
-      } yield turn
+      conversations.find(origin).flatMap {
+        // No conversation yet: the message is new, and is refused over the cap before its
+        // conversation is created.
+        case None =>
+          overCap(Instant.now()).flatMap {
+            case Some(refused) => Right(Left(refused))
+            case None => recorded(origin, source, message, by)
+          }
+        case Some(_) => recorded(origin, source, message, by)
+      }
+    }.flatMap(identity)
+
+  /** Why the day's spend at `now` refuses a new message; `None` when it does not. */
+  private def overCap(now: Instant)(using Tx^): Either[StoreError, Option[InboxError]] =
+    budget.cap match {
+      case None => Right(None)
+      case Some(cap) =>
+        val day = budget.today(now)
+        spending
+          .on(day)
+          .map(spent => Option.when(!budget.admits(spent))(InboxError.OverCap(spent, cap, day)))
     }
+
+  /** `message` recorded as [[ingest]] says, in the transaction open: its existing turn when
+    * it was recorded before, else refused over the cap, else a new turn.
+    */
+  private def recorded(
+      origin: Origin,
+      source: SourceId,
+      message: Message.User,
+      by: PrincipalId
+  )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
+    for {
+      conversation <- conversations.findOrCreate(origin, by)
+      id = SqlInbox.entryId(conversation.id, source)
+      // Serialises ingest per conversation: a concurrent ingest waits here, then sees
+      // this one's entry and its sequence numbers.
+      next <- entries.lockNext(conversation.id)
+      existing <- entries.get(id)
+      at = Instant.now()
+      refused <- existing.fold(overCap(at))(_ => Right(None))
+      turn <- (existing, refused) match {
+        case (Some(entry), _) => Right(Right(TurnRef(entry.conversationId, entry.turnSeq)))
+        case (None, Some(why)) => Right(Left(why))
+        case (None, None) =>
+          periods.openFor(conversation.id, next.turnSeq, at).flatMap { _ =>
+            entries
+              .insert(
+                Entry(
+                  id,
+                  conversation.id,
+                  next.turnSeq,
+                  None,
+                  next.seq,
+                  Payload.Message(message),
+                  at
+                )
+              )
+              .flatMap(_ => SqlInbox.authored(id, by))
+              .map(_ => Right(TurnRef(conversation.id, next.turnSeq)))
+          }
+      }
+    } yield turn
 
   def ingested(origin: Origin, source: SourceId): Either[InboxError, Option[TurnRef]] =
     inTransaction {

@@ -5,6 +5,7 @@ import java.util.concurrent.CountDownLatch
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.host.ProcessIdentity
+import grit.core.spend.Budget
 import grit.dbos.engine.{Engine, Link}
 import grit.dbos.sql.DbConfig
 import grit.slack.client.{AppToken, BotToken, SocketSlack}
@@ -23,7 +24,8 @@ object Serve {
   val DeliverEvery: FiniteDuration = 500.millis
 
   /** Runs the engine of `config`'s database, launched by `launch`, and the Slack edge over it,
-    * connected with the tokens in `env`, until the process is stopped (its shutdown closes
+    * connected with the tokens in `env`, taking new messages as `budget` allows, until the
+    * process is stopped (its shutdown closes
     * Slack, then the engine). Why it could not start: a token missing or of the wrong kind
     * (never quoted), the database's engine held by another grit (never attached to: two edges
     * would each post the same replies), or Slack refusing the tokens.
@@ -33,6 +35,7 @@ object Serve {
       config: DbConfig,
       epoch: String,
       identity: ProcessIdentity,
+      budget: Budget,
       launch: Engine^ => Unit
   ): Option[String] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
@@ -49,7 +52,7 @@ object Serve {
     tokens match {
       case Left(why) => Some(why)
       case Right((bot, app)) =>
-        Engine.open(config, epoch, identity) match {
+        Engine.open(config, epoch, identity, budget) match {
           case Left(refused) => Some(refused.message(java.time.Instant.now()))
           case Right(engine) =>
             val slack = new SocketSlack(bot, app)
@@ -67,6 +70,7 @@ object Serve {
                     EdgeStores(link.inbox, link.principals, link.deliveries, link.jot),
                     said => log.info(said)
                   )
+                  Serve.metered(link, budget, java.time.Instant.now()).foreach(log.info)
                   // Unnamed, turns are simply not told a name: worth a warning, not a refusal.
                   edge.introduce() match {
                     case Right(()) => log.info("slack: the assistant is named as grit's bot is")
@@ -105,4 +109,23 @@ object Serve {
         }
     }
   }
+
+  /** What the log says of `budget` as `link`'s ledger stands at `now`: the cap, and, when
+    * some of today's calls were not priced, that the cap counts them as nothing (a provider
+    * that prices none is never capped). None with no cap.
+    */
+  private def metered(link: Link^, budget: Budget, now: java.time.Instant): Option[String] =
+    budget.cap.map { cap =>
+      val today = budget.today(now)
+      val unpriced = link.db.read(link.spending.on(today)) match {
+        case Right(spent) =>
+          spent.cost match {
+            case grit.core.message.Cost.AtLeast(_) =>
+              s"; today's recorded spend, ${spent.cost.written}, includes calls no provider priced, which the cap counts as nothing"
+            case grit.core.message.Cost.Exact(_) => ""
+          }
+        case Left(e) => s"; today's spend could not be read: $e"
+      }
+      s"daily cap $$${cap.usd}, days from midnight ${budget.zone}$unpriced"
+    }
 }

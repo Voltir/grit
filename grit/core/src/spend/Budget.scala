@@ -15,9 +15,9 @@ final case class Budget(zone: ZoneId, cap: Option[DailyCap]) {
     * provider does not price counts as nothing, so under a provider that prices none the
     * cap is never reached. It is checked only before a message is recorded: the turns
     * already running each spend up to their own bound (`GRIT_TOOL_ROUNDS` model calls, each
-    * of about `GRIT_WINDOW_TOKENS` in and at most the turn role's `maxTokens` out, in the
-    * model catalog) and a closing summary per period they end, so a day can end above its
-    * cap by that much.
+    * of about `GRIT_WINDOW_TOKENS` in and at most the turn's output budget, `GRIT_MAX_TOKENS`,
+    * out) and a closing summary per period they end, so a day can end above its cap by that
+    * much.
     */
   def admits(spent: Spend): Boolean = cap.forall { c =>
     val priced = spent.cost match {
