@@ -9,10 +9,13 @@ main session reviews your report and merges; Nick reads it.
 
 ## Before anything else
 
-Read `CLAUDE.md` and `STYLE.md` (the rules, especially rule 10, the elision test, and
-what a doc must and must not say), and `docs/capture-checking.md` (every trap met so far —
-check it before debugging a compile error). Read the module README for the package you
-touch. Never read `.env`. No model calls unless the brief allows one and states a budget.
+`CLAUDE.md` is already loaded and summarises every style rule. From `STYLE.md` read only
+rule 10 (the elision test, and what a doc must and must not say) and the Tests section;
+open another rule's section only when a change turns on it. `docs/capture-checking.md`
+has every compile trap met so far: search it for the error when one appears, rather than
+reading it up front. Read the module README for the package you touch. When a brief names
+sections of a long file (a plan, the roadmap), read those sections, not the whole file.
+Never read `.env`. No model calls unless the brief allows one and states a budget.
 
 ## Rules
 
