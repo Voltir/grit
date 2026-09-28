@@ -35,7 +35,7 @@ object SqlVoiceTests extends VoiceContract {
 object SqlVoiceUnknownTests extends TestSuite {
 
   val tests = Tests {
-    test("a stored name this build does not know reads as the default, sassy") {
+    test("a stored name this build does not know reads as the default, plain") {
       val c = SqlVoiceDatabases.fresh()
       LiveDb.transaction(c) { (tx: Tx^) ?=>
         val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -43,7 +43,7 @@ object SqlVoiceUnknownTests extends TestSuite {
           .createStatement()
           .executeUpdate("INSERT INTO grit.voice (kind, text) VALUES ('named', 'pirate')")
       }
-      LiveDb.transaction(c)(new SqlVoiceStore().current()) ==> Right(Voice.Named.Sassy)
+      LiveDb.transaction(c)(new SqlVoiceStore().current()) ==> Right(Voice.Named.Plain)
     }
   }
 }

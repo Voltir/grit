@@ -52,7 +52,7 @@ object Voice {
   }
 
   /** The voice when none is set. */
-  val Default: Voice = Named.Sassy
+  val Default: Voice = Named.Plain
 
   /** A person's own words for how to talk to them: trimmed, never blank, at most
     * [[MaxChars]] characters.

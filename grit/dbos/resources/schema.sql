@@ -381,7 +381,7 @@ CREATE TABLE IF NOT EXISTS grit.lifecycle_settings (
 );
 
 -- How grit talks to the person (Voice): one of grit's named voices, by key, or the person's
--- own words. One row, or none for the default (sassy). Read by a turn's offer step into the
+-- own words. One row, or none for the default (plain). Read by a turn's offer step into the
 -- person layer of its system prompt; a key this build does not know reads as the default.
 -- Retention: kept: one row, changed by people.
 CREATE TABLE IF NOT EXISTS grit.voice (

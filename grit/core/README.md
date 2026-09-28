@@ -22,8 +22,8 @@ In dependency order:
 - **`prompt`** — a turn's system prompt as ordered fragments (ADR 0016): `Layer` (base,
   edge, person, reach, place: the most stable first, for a provider's prompt cache),
   `Fragment` (its id a content hash), `SystemPrompt` (fragments by layer, rendered to the
-  same bytes every time) and `Voice` (how grit talks to the person: a named voice, sassy by
-  default, or their own words; the person layer's one fragment). ← `id`
+  same bytes every time) and `Voice` (how grit talks to the person: a named voice, plain
+  by default, or their own words; the person layer's one fragment). ← `id`
 - **`model`** — what grit knows about models, as data: `ModelRef` (a model snapshot at an
   upstream), each setting's `Known` value and its `Source`, the switches a `Profile` picks
   among and the `Settings` a call is made under, the `Policy` of which pair does each job,

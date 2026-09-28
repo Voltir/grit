@@ -22,9 +22,9 @@ Decision:
   `Reach`. `SystemPrompt.of` sorts stably by layer, and `render` joins the texts the
   same way every time, so equal fragments give equal bytes.
 - **The Person layer is the person's choice: how grit talks to them.** Its one fragment is
-  the voice (`Voice`), one for the database for now: a named voice (sassy by default, whose
-  text is fixed per release and so caches like Base), the person's own words, or `plain`,
-  which adds no fragment. Its source is the person, never `grit`. Only a turn's system
+  the voice (`Voice`), one for the database for now: a named voice (whose text is fixed per
+  release and so caches like Base), the person's own words, or `plain`, the default, which
+  adds no fragment. Its source is the person, never `grit`. Only a turn's system
   prompt carries it: of the engine's workflows, only the turn's offer is given a `VoiceStore`,
   and the closing, query and summary writers take no system text a caller could pass it
   in. Manner only: Base's last line, which every voice follows, says later instructions
