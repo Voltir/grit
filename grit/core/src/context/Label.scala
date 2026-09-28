@@ -9,7 +9,7 @@ enum Label(val tag: String, val noun: String) {
   /** The record of the conversation up to its last close. */
   case Record extends Label("[record]", "grit record")
 
-  /** A section of another of the person's conversations. */
+  /** A section of another conversation: its open turns, or its record once closed. */
   case Afar extends Label("[afar]", "grit section from another conversation")
 
   /** Turns left out between the messages on either side of it. */

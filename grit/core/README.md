@@ -16,7 +16,7 @@ In dependency order:
 - **`place`** — where conversations happen (ADR 0013): `Place`, a path in one
   containment tree under the root, everywhere, one `Namespace` per source (`fs`, `slack`,
   `task`), and `within` (a prefix, defined once); `Directory`, an absolute normalized
-  path; `Scope` (the place prefixes a window may draw on beside its own conversation),
+  path; `Scope` (the `Prefix`es a window may draw on beside its own conversation: places, or its own room),
   `Weight` (how far its own search hits outweigh those elsewhere) and `Locality`, both
   together. Imports nothing in core.
 - **`prompt`** — a turn's system prompt as ordered fragments (ADR 0016): `Layer` (base,
