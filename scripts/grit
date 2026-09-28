@@ -4,6 +4,7 @@
 # the TUI is open, so every other ./mill command waits on it.
 #
 #   scripts/grit                 # the chat TUI
+#   scripts/grit serve           # grit serve: the engine and the Slack edge (ADR 0019)
 #   scripts/grit hello "hi"      # one-shot: each argument a message
 #
 # Settings come from .env (see .env.example). A rebuild rewrites the classes a running
