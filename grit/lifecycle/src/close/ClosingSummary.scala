@@ -37,6 +37,21 @@ object ClosingSummary {
       "conversations: an Open or Standing item that restates one is not new, like a line " +
       "already known."
 
+  /** The system prompt for a period grit only heard, before the parts asked for: people spoke
+    * to each other, never to grit, so what it records is reported speech.
+    */
+  val Overheard: String =
+    "You keep the books of a team's conversation that the assistant only overheard: nobody " +
+      "in it spoke to the assistant. It has ended, and you record what was said. You are " +
+      "shown what is already known, each line labelled like [o1] or [s1], and then the " +
+      "transcript, each line labelled like [h1] and starting with the name of the person who " +
+      "said it. Reply with exactly the labelled parts below, in this order, and nothing else. " +
+      "Write it as reported speech, naming who said what (\"Emily said the freeze moves to " +
+      "Thursday\"): what someone said is what they said, never an established fact. Write " +
+      "names, numbers, dates, file paths and identifiers out in full, never \"as discussed\", " +
+      "\"that\" or \"the above\". Lines known elsewhere were shown from other conversations: " +
+      "never repeat one."
+
   /** How much of the transcript, from its end, the model is shown. */
   val TranscriptChars = 40_000
 
@@ -57,18 +72,28 @@ object ClosingSummary {
     * asking for the parts `asked` names. The lines its windows showed from other
     * conversations (`elsewhere`, [[grit.lifecycle.transcript.PeriodTranscript.elsewhere]])
     * are shown as known elsewhere, before the transcript, at most [[ElsewhereChars]] of
-    * them, and unlabelled: they cannot be cited.
+    * them, and unlabelled: they cannot be cited. When `overheard` (grit only heard the
+    * period), it is asked under [[Overheard]] instead of [[System]], its prose and outcome as
+    * reported speech.
     */
   def request(
       transcript: Labelled,
       known: Balance,
       elsewhere: Vector[String],
-      asked: Asked
+      asked: Asked,
+      overheard: Boolean
   ): ModelRequest = {
     val shown = labels(known)
     val parts =
-      Vector("Summary: two to four sentences: what was asked, and what came of it.") ++
-        Option.when(asked.outcome)("Outcome: one line: what the conversation came to.") ++
+      Vector(
+        if (overheard)
+          "Summary: two to four sentences of reported speech: who said what, and what came of it."
+        else "Summary: two to four sentences: what was asked, and what came of it."
+      ) ++
+        Option.when(asked.outcome)(
+          if (overheard) "Outcome: one line of reported speech: what the conversation came to."
+          else "Outcome: one line: what the conversation came to."
+        ) ++
         list(
           asked.open,
           "Open",
@@ -111,13 +136,14 @@ object ClosingSummary {
           }
         ("Already known:" +: (section("Open", "o") ++ section("Standing", "s"))).mkString("\n")
       }
+    val system: String = if (overheard) Overheard else System
     val elsewhere_ =
       if (elsewhere.isEmpty) ""
       else
         "Known elsewhere (shown from other places; never record it here):\n" +
           elsewhere.mkString("\n").take(ElsewhereChars) + "\n\n"
     ModelRequest(
-      (System +: parts).mkString("\n") +
+      (system +: parts).mkString("\n") +
         (if (parts.size > 1) "\nWrite none under a part with nothing in it." else ""),
       Vector(
         Message.User(

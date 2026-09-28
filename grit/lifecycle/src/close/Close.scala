@@ -29,8 +29,10 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      ([[grit.core.period.Balance]]); when the model fails, writes nothing readable or
   *      is cut off at its token limit (its cost still kept), or when the gate found
   *      nothing new (and then no model is called), the period's per-turn summaries joined
-  *      as the prose, and the balance carried with the topics' edits alone. A close never
-  *      fails for a model.
+  *      as the prose, and the balance carried with the topics' edits alone. A period grit
+  *      only heard ([[grit.lifecycle.transcript.PeriodTranscript.overheard]]) is always
+  *      written, by the catalog's heard pin, as reported speech, asking only its prose and
+  *      outcome. A close never fails for a model.
   *   1. `seal` — under the lock again: the closing entry, its cost in the ledger, the period
   *      closed, and the tombstones on its raw entries, on the closing it replaces and on its
   *      conversation going quiet ([[grit.core.retention.Target]]), together; abandoned,
@@ -199,19 +201,24 @@ object Close {
         .of(prose, outcome, edited.changes ++ fitted.changes)
         .map(Closing(_, fitted.balance))
     }
+    // A period grit only heard is always written, under the heard pin, asking for its prose
+    // and outcome alone: nothing said to each other stands as the conversation's own.
+    val overheard = PeriodTranscript.overheard(entries.getOrElse(Vector.empty))
+    val asking = if (overheard) asked.heard else asked
     val request =
-      ClosingSummary.request(labelled, known, elsewhere(env, entries), asked)
+      ClosingSummary.request(labelled, known, elsewhere(env, entries), asking, overheard)
     def carried(note: String) = Summarised(
       fallback(entries.getOrElse(Vector.empty), attempt, first)
         .flatMap(closed(_, None, Vector.empty)),
       None,
       Some(note)
     )
-    if (asked.nothingNew) carried("nothing new: carried")
+    if (asked.nothingNew && !overheard) carried("nothing new: carried")
     else {
       val written = for {
         catalog <- env.models.catalog()
-        reply <- env.models.provider(catalog.pin.summary).complete(request).left.map(_.cause)
+        pin = if (overheard) catalog.heardPin else catalog.pin.summary
+        reply <- env.models.provider(pin).complete(request).left.map(_.cause)
       } yield {
         val cost = Cost(reply.model, reply.usage, env.records.estimator.request(request))
         // A reply cut off at its token limit may have lost any part, a Resolved one
@@ -220,7 +227,7 @@ object Close {
           carried("no summary: cut off at its token limit").copy(cost = Some(cost))
         else
           ClosingSummary
-            .read(reply, known, asked, labelled)
+            .read(reply, known, asking, labelled)
             .flatMap(read => closed(read.prose, read.outcome, read.edits))
             .fold(carried(s"no summary: the summary had no prose (stop: ${reply.stop})"))(c =>
               Summarised(Some(c), Some(cost), None)

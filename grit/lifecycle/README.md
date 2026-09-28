@@ -9,8 +9,8 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
 - **`transcript`** — `PeriodTranscript`: a period's own entries, the transcript a
   classifier reads, and what its windows showed from other conversations (`elsewhere`),
   which a close treats as known, never as its own; `Labelled`, the transcript the summary
-  model reads and cites into, each line labelled (`u`, `a`, `t`, a tool call as one
-  clipped line), and the ground a citation gives (ADR 0018). Imports nothing else in
+  model reads and cites into, each line labelled (`u`, `h` for a heard one, `a`, `t`, a
+  tool call as one clipped line), a person's under their name, and the ground a citation gives (ADR 0018). Imports nothing else in
   lifecycle.
 - **`close`** — `Close`: one attempt to close a period, run on the turns' queue under its
   conversation (`grit.dbos.workflow.Closes`): `check` its deadline is still the attempt's,
@@ -20,7 +20,8 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   tolerant reader of its flows and edits, each Standing item grounded by the lines it
   cites (ADR 0018);
   with nothing new, or when the model fails, the per-turn summaries as the prose and no
-  model call; the edits and the topics' applied to the balance, held to the cap in force), `seal` it with its closing entry, and the tombstones on its raw entries, on the closing it
+  model call; a period grit only heard always written, by the heard pin, as reported
+  speech, and nothing resting only on heard lines kept as Standing; the edits and the topics' applied to the balance, held to the cap in force), `seal` it with its closing entry, and the tombstones on its raw entries, on the closing it
   replaces and on its conversation going quiet (ADR 0014). `CloseEnv` is what it works
   with. ← `transcript`
 - **`settle`** — `Settle`: the one question whether anyone is waiting on a quiet period, asked

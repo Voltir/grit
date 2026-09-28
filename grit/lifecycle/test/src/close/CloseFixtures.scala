@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question}
 import grit.core.clock.Clock
 import grit.core.durable.{Durable, InMemoryDurable}
-import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, PrincipalId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator}
@@ -96,13 +96,21 @@ object CloseFixtures {
       1024,
       None
     )
-    Catalog.of(Policy(a, a, a, a), Vector.empty)
+    // The heard role on its own budget, so a test can tell its pin from the summary's.
+    Catalog.of(Policy(a, a, a, a.copy(maxTokens = 512)), Vector.empty)
   }
 
-  /** Every role's calls to `provider`. */
+  /** Every role's calls to `provider`, keeping each pin a provider was asked for. */
   final class OneModel(provider: Provider^) extends Models {
+    // Only ever replaced by a new immutable vector; read only by the test that owns it.
+    @caps.unsafe.untrackedCaptures
+    var pins = Vector.empty[Pinned]
+
     def catalog(): Either[String, Catalog] = Right(TestCatalog)
-    def provider(pinned: Pinned): Provider^ = provider
+    def provider(pinned: Pinned): Provider^ = {
+      pins = pins :+ pinned
+      provider
+    }
   }
 
   /** A classifier answering each yes/no with the next of `yes`, counting its calls; or, with
@@ -157,6 +165,21 @@ object CloseFixtures {
       TurnRef(c, next.turnSeq)
     }
 
+    /** A message `text` by `name`, heard where grit listens, as the next turn at `minutes`, its
+      * period opened as the inbox does.
+      */
+    def hear(text: String, name: String, minutes: Long): TurnRef = {
+      given Tx = TestTx.fake
+      val next = entries.lockNext(c).getOrElse(sys.error("in-memory"))
+      periods.openFor(c, next.turnSeq, at(minutes))
+      val id = EntryId(s"heard:$text")
+      entries.insert(Entry(id, c, next.turnSeq, None, next.seq, Payload.Heard(text), at(minutes)))
+      val by = PrincipalId(s"test:$name")
+      principals.enroll(by, name)
+      principals.authored(id, by)
+      TurnRef(c, next.turnSeq)
+    }
+
     /** `payload` added to `turn` at `minutes`. */
     def add(turn: TurnRef, payload: Payload, minutes: Long, id: String): Unit = {
       given Tx = TestTx.fake
@@ -197,11 +220,17 @@ object CloseFixtures {
     def body(gate: Classifier^, summary: Provider^, clock: Clock^, sealing: PeriodStore = periods)(
         id: WorkflowId
     )(using Durable^): String =
+      bodyOver(gate, new OneModel(summary), clock, sealing)(id)
+
+    /** The close's body over this world, its models `models`. */
+    def bodyOver(gate: Classifier^, models: Models^, clock: Clock^, sealing: PeriodStore = periods)(
+        id: WorkflowId
+    )(using Durable^): String =
       Close.body(
         CloseEnv(
           CloseRecords(entries, sealing, lifecycle, ledger, tombstones, Chars, principals),
           gate,
-          new OneModel(summary),
+          models,
           FakeDb,
           clock
         )

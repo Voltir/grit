@@ -185,6 +185,54 @@ object CloseTests extends TestSuite {
       durable.recordedSteps(id) ==> Vector("check", "gate", "summarise", "seal")
     }
 
+    test(
+      "a period grit only heard is written by the heard pin as reported speech, asking no Standing, though the gate finds nothing new"
+    ) {
+      val w = new World
+      w.hear("The freeze moves to Friday.", "Ana", 0)
+      w.hear("Fine by me.", "Ben", 1)
+      val summary = answering("Summary: Ana said the freeze moves to Friday; Ben agreed.")
+      val models = new OneModel(summary)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.bodyOver(nothingNew, models, new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1"
+      models.pins ==> Vector(TestCatalog.heardPin)
+      val request = summary.requests.headOption
+      request.map(_.system.startsWith(ClosingSummary.Overheard)) ==> Some(true)
+      request.map(_.system.contains("Standing:")) ==> Some(false)
+      request.map(
+        _.messages
+          .map(_.toString)
+          .mkString
+          .contains(
+            "[h1] Ana: The freeze moves to Friday.\n\n[h2] Ben: Fine by me."
+          )
+      ) ==> Some(true)
+      w.closingEntry.map(_.payload).collect { case Payload.Closed(_, _, c) => c.flows.prose } ==>
+        Some("Ana said the freeze moves to Friday; Ben agreed.")
+    }
+
+    test(
+      "a period with anything said to grit is written by the summary pin; what rests only on heard lines does not stand, what was said to grit does"
+    ) {
+      val w = new World
+      w.hear("The freeze moves to Friday.", "Ana", 0)
+      w.turn("we freeze on Friday, then.", "Noted.", "Freeze on Friday.", 1)
+      val summary = answering(
+        "Summary: The freeze moved.\nStanding:\n- The freeze moved to Friday [h1] by person\n" +
+          "- The team freezes on Friday [u2] by person"
+      )
+      val models = new OneModel(summary)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.bodyOver(gate, models, new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1"
+      models.pins ==> Vector(TestCatalog.pin.summary)
+      summary.requests.map(_.system.startsWith(ClosingSummary.System)) ==> Vector(true)
+      w.closingEntry.map(_.payload).collect { case Payload.Closed(_, _, c) =>
+        c.balance.in(Section.Standing).map(l => (l.text, l.ground))
+      } ==> Some(Vector(("The team freezes on Friday", Some(Ground.Person))))
+    }
+
     test("a close grounds Standing from the lines its writer cites, among those it was shown") {
       // u1 the question, t2 a read that showed the port, a3 the reply; then u4 a decision.
       val w = new World
@@ -326,7 +374,8 @@ object CloseTests extends TestSuite {
             PeriodTranscript.labelled(Vector.empty, Speakers.none),
             Balance.empty,
             Vector.empty,
-            Asked(false, false, false, true)
+            Asked(false, false, false, true),
+            overheard = false
           )
           .system
       )
@@ -344,7 +393,8 @@ object CloseTests extends TestSuite {
               PeriodTranscript.labelled(Vector.empty, Speakers.none),
               Balance.empty,
               Vector.empty,
-              Asked.Every
+              Asked.Every,
+              overheard = false
             )
             .system
         )

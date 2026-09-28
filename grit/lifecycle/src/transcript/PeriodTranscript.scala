@@ -84,6 +84,18 @@ object PeriodTranscript {
     case _ => line(entry, Speakers.none).toVector
   }
 
+  /** Whether grit only heard the period whose entries are `entries`: some message was heard
+    * ([[Payload.Heard]]), and none was said to grit or by it.
+    */
+  def overheard(entries: Vector[Entry]): Boolean =
+    entries.exists(_.payload match {
+      case Payload.Heard(_) => true
+      case _ => false
+    }) && !entries.exists(_.payload match {
+      case Payload.Message(_) => true
+      case _ => false
+    })
+
   /** The most characters a tool line holds, its label and an ending "…" included. */
   val ToolChars = 120
 

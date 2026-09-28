@@ -227,7 +227,7 @@ object ClosingSummaryTests extends TestSuite {
     test("the request shows what is known by label, then the transcript's last whole lines") {
       val long = labelled((0 until 1_000).map(i => said(i.toLong, "x" * 60))*)
       val r =
-        ClosingSummary.request(long, known, Vector.empty, Asked(true, true, false, true))
+        ClosingSummary.request(long, known, Vector.empty, Asked(true, true, false, true), false)
       r.system ==>
         (ClosingSummary.System + "\n" +
           "Summary: two to four sentences: what was asked, and what came of it.\n" +
@@ -256,7 +256,8 @@ object ClosingSummaryTests extends TestSuite {
         labelled(said(0, "t")),
         Balance.empty,
         Vector.empty,
-        Asked(false, false, false, false)
+        Asked(false, false, false, false),
+        false
       ) ==>
         grit.core.provider.ModelRequest(
           ClosingSummary.System + "\nSummary: two to four sentences: what was asked, and what came of it.",
@@ -271,7 +272,8 @@ object ClosingSummaryTests extends TestSuite {
         labelled(said(0, "t")),
         Balance.empty,
         Vector("[fs:/home/nick/api] Assistant: Pin TZ=UTC."),
-        Asked(false, false, false, false)
+        Asked(false, false, false, false),
+        false
       )
       r.messages ==> Vector(
         grit.core.message.Message.User(

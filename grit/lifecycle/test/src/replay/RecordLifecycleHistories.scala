@@ -125,6 +125,17 @@ object RecordLifecycleHistories {
       }
     )
     (posted +: settles) ++ Vector(
+      record("close-overheard") { (w, d) =>
+        // A period grit only heard: written by the heard pin though the gate found nothing new.
+        w.hear("The freeze moves to Friday.", "Ana", 0)
+        val id = w.attempt.workflowId
+        val heard =
+          new Summariser(_ => Right(replyOf("Summary: Ana said the freeze moves to Friday.")))
+        d.run(id)(
+          w.body(new Gate(Some(Vector(0.9, 0.1, 0.1, 0.1))), heard, new SetClock(at(Lapsed)))
+        )
+        id
+      },
       record("close-grounded") { (w, d) =>
         // A closing written as version 3: a person's, a tool's and a claimed Standing line.
         val t = w.say("what port does the api use?", 0)
