@@ -1,10 +1,34 @@
 package grit.core.store
 
+import java.time.Instant
+
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Tokens, Usage}
+import grit.core.spend.{Day, Spend, Spending}
 
-/** An in-memory [[UsageLedger]] for tests, keeping [[StoreContract]]. It ignores the `Tx`. */
-final class InMemoryUsageLedger extends UsageLedger {
+/** An in-memory [[UsageLedger]] for tests, keeping [[StoreContract]], and the [[Spending]]
+  * read from it, keeping `SpendingContract`. It ignores the `Tx`. A row is recorded at
+  * [[now]], as the SQL store's are at the transaction's time.
+  */
+final class InMemoryUsageLedger extends UsageLedger, Spending {
+
+  /** When the rows recorded from now on are recorded. */
+  @caps.unsafe.untrackedCaptures
+  var now: Instant = Instant.EPOCH
+
+  @caps.unsafe.untrackedCaptures
+  private var recordedAt = Map.empty[EntryId, Instant]
+
+  def on(day: Day)(using Tx^): Either[StoreError, Spend] =
+    Right(spent(rows.filter { row =>
+      recordedAt.get(row._1).exists(at => !at.isBefore(day.from) && at.isBefore(day.until))
+    }))
+
+  def conversation(id: ConversationId)(using Tx^): Either[StoreError, Spend] =
+    Right(spent(rows.filter(_._6.conversationId == id)))
+
+  private def spent(of: Vector[(EntryId, WorkflowId, String, Usage, Tokens, TurnRef)]): Spend =
+    of.foldLeft(Spend.Zero)((s, row) => s + Spend(1, grit.core.message.Cost.of(row._4)))
 
   @caps.unsafe.untrackedCaptures
   var rows = Vector.empty[(EntryId, WorkflowId, String, Usage, Tokens, TurnRef)]
@@ -20,6 +44,7 @@ final class InMemoryUsageLedger extends UsageLedger {
     if (rows.exists(_._1 == entry)) Left(StoreError.DuplicateId(entry))
     else {
       rows = rows :+ (entry, workflow, model, usage, estimatedInput, turn)
+      recordedAt = recordedAt.updated(entry, now)
       Right(())
     }
 

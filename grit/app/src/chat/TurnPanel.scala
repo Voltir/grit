@@ -2,7 +2,7 @@ package grit.app.chat
 
 import grit.app.look.{Look, ProseLook, Theme}
 import grit.core.id.TurnSeq
-import grit.core.message.{Cost, Tokens}
+import grit.core.message.Tokens
 import grit.core.topic.{Band, Verdict}
 import grit.tui.model.block.Block
 import grit.tui.model.surface.Style
@@ -64,7 +64,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
           row(" said     " -> fg(t.faint), messages -> fg(t.ink)),
           row(" billed   " -> fg(t.faint), billed -> fg(t.ink))
         ) ++
-          v.spent.map(c => row(" spent    " -> fg(t.faint), dollars(c) -> fg(t.ink))) ++
+          v.spent.map(c => row(" spent    " -> fg(t.faint), c.written -> fg(t.ink))) ++
           Vector(blank) ++ recalled ++ Vector(blank) ++ roles(v.roles)
     }
 
@@ -152,7 +152,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
         val calls = if (r.calls == 1) "1 call" else s"${r.calls} calls"
         row(
           Seq(s" ${r.name.padTo(9, ' ')}" -> fg(t.faint), calls -> fg(t.ink)) ++
-            r.spent.map(c => s" · ${dollars(c)}" -> fg(t.ink))*
+            r.spent.map(c => s" · ${c.written}" -> fg(t.ink))*
         ) +: r.models.map(m => row(s"   $m" -> fg(t.grit)))
       }
 
@@ -336,7 +336,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
 
   private def cost(v: TurnView): Vector[Block] = {
     val billed = v.billed.map(b => s"${count(b)} in")
-    val spent = v.spent.map(dollars)
+    val spent = v.spent.map(_.written)
     val said = (billed ++ spent).mkString(" · ")
     Option
       .when(said.nonEmpty)(Vector(blank, row(" billed   " -> fg(t.faint), said -> fg(t.ink))))
@@ -366,15 +366,6 @@ object TurnPanel {
 
   /** `ms` as seconds to a tenth, whatever the locale: `3.2s`. */
   def seconds(ms: Long): String = s"${ms / 1000}.${ms % 1000 / 100}s"
-
-  /** A cost in dollars: `$0.00031`, or `≥ $0.00031` for a lower bound. */
-  def dollars(cost: Cost): String = cost match {
-    case Cost.Exact(usd) => plain(usd)
-    case Cost.AtLeast(usd) => s"≥ ${plain(usd)}"
-  }
-
-  private def plain(usd: BigDecimal): String =
-    s"$$${usd.bigDecimal.stripTrailingZeros.toPlainString}"
 
   /** A probability to two places, whatever the locale: `0.81`, `1.00`. */
   def share(p: Double): String = {

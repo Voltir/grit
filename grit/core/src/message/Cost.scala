@@ -16,6 +16,14 @@ enum Cost {
     case (AtLeast(a), Exact(b)) => AtLeast(a + b)
     case (AtLeast(a), AtLeast(b)) => AtLeast(a + b)
   }
+
+  /** As grit writes a cost: `$` and the dollars, trailing zeros dropped (`$0.00031`); `≥ `
+    * first when some call was not priced.
+    */
+  def written: String = this match {
+    case Exact(usd) => Cost.plain(usd)
+    case AtLeast(usd) => s"≥ ${Cost.plain(usd)}"
+  }
 }
 
 object Cost {
@@ -25,4 +33,7 @@ object Cost {
   def of(usage: Usage): Cost = usage.costUsd.fold(AtLeast(BigDecimal(0)))(Exact(_))
 
   def total(usages: Iterable[Usage]): Cost = usages.foldLeft(Zero)(_ + of(_))
+
+  private def plain(usd: BigDecimal): String =
+    s"$$${usd.bigDecimal.stripTrailingZeros.toPlainString}"
 }

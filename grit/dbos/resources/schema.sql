@@ -162,6 +162,8 @@ CREATE TABLE IF NOT EXISTS grit.usage_ledger (
 -- A turn's costs, read by edges (UsageLedger.of).
 CREATE INDEX IF NOT EXISTS idx_usage_ledger_workflow ON grit.usage_ledger (workflow_id, ordinal);
 CREATE INDEX IF NOT EXISTS idx_usage_ledger_turn ON grit.usage_ledger (conversation_id, turn_seq);
+-- A day's spend, read before each new message when a daily cap is set (Spending.on).
+CREATE INDEX IF NOT EXISTS idx_usage_ledger_created ON grit.usage_ledger (created_at);
 
 -- Every distinct profile a turn ran under (grit.core.model.TurnProfile): the model, budget,
 -- upstream and settings each role's calls were made under. Keyed by its content hash, so

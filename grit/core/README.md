@@ -30,7 +30,7 @@ In dependency order:
   the `Catalog` of both, and the `TurnProfile` a turn pins from it; `CatalogJson`, their
   stored form. Imports nothing in core.
 - **`message`** — the model's vocabulary: `Message`, `AssistantBlock`, `StopReason`,
-  `Tokens`, `Usage`. ← `id`
+  `Tokens`, `Usage`, and `Cost` (what calls cost together, and how grit writes it). ← `id`
 - **`topic`** — a conversation's topics as recorded events: `TopicId`, `TopicEvent` (a
   topic opened, a message placed with its `Weights` over topics, a topic described), the
   `Placement` that says who placed it, `Band`, `Verdict`, and `Topics`, the pure fold over
@@ -59,6 +59,11 @@ In dependency order:
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
   settings in force), `VoiceStore` (the voice in force), `Principals` (the people an edge enrolled, and each workspace's assistant, by name; `Origin.assistant` says which principal the assistant is where a conversation happens) and `Speakers` (whose names a window shows on the inbound entries they wrote), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
   conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`, `retention`, `prompt`
+- **`spend`** — what grit spends on model calls, read back: `Spend` (some recorded calls: how
+  many, and their `Cost`), `Spending` (a day's, or a conversation's, from the ledger; what the
+  ledger misses is in its doc), `Day` (a calendar day in a zone, as instants), `DailyCap`
+  and `Budget` (the zone days begin in, the cap, and whether a new message is taken), and
+  `Budget.Refusal`, the one line a person is told when it is not. ← `id`, `message`, `store`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
   `CacheDocs` (where it keeps what it makes of one closed period, deleted with that period's

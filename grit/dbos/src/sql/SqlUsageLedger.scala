@@ -4,13 +4,46 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
-import grit.core.message.{Tokens, Usage}
+import grit.core.message.{Cost, Tokens, Usage}
+import grit.core.spend.{Day, Spend, Spending}
 import grit.core.store.{StoreError, Tx, UsageLedger}
 
 import org.postgresql.util.PSQLException
 
-/** [[UsageLedger]] over the `grit.usage_ledger` table. */
-final class SqlUsageLedger extends UsageLedger {
+/** [[UsageLedger]] over the `grit.usage_ledger` table, and the [[Spending]] read from it. */
+final class SqlUsageLedger extends UsageLedger, Spending {
+
+  def on(day: Day)(using tx: Tx^): Either[StoreError, Spend] =
+    spent("created_at >= ? AND created_at < ?") { ps =>
+      ps.setObject(1, java.time.OffsetDateTime.ofInstant(day.from, java.time.ZoneOffset.UTC))
+      ps.setObject(2, java.time.OffsetDateTime.ofInstant(day.until, java.time.ZoneOffset.UTC))
+    }
+
+  def conversation(id: ConversationId)(using tx: Tx^): Either[StoreError, Spend] =
+    spent("conversation_id = ?::uuid")(_.setString(1, ConversationId.value(id)))
+
+  /** The rows `where` picks, its parameters set by `bind`, summed: an unpriced row makes the
+    * cost a lower bound.
+    */
+  private def spent(where: String)(bind: java.sql.PreparedStatement => Unit)(using
+      tx: Tx^
+  ): Either[StoreError, Spend] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    try {
+      Using.resource(
+        conn.prepareStatement(
+          s"SELECT count(*), count(cost_usd), coalesce(sum(cost_usd), 0) FROM grit.usage_ledger WHERE $where"
+        )
+      ) { ps =>
+        bind(ps)
+        Using.resource(ps.executeQuery()) { rs =>
+          val _ = rs.next()
+          val (calls, priced, usd) = (rs.getInt(1), rs.getInt(2), BigDecimal(rs.getBigDecimal(3)))
+          Right(Spend(calls, if (priced == calls) Cost.Exact(usd) else Cost.AtLeast(usd)))
+        }
+      }
+    } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
+  }
 
   def record(
       entry: EntryId,
