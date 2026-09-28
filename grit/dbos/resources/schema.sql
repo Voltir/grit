@@ -215,6 +215,31 @@ CREATE TABLE IF NOT EXISTS grit.tool_sets (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- A turn's reply an edge is to post outside grit (Deliveries): where it goes (the edge's own
+-- address, such as a Slack channel and thread), and whether it is wholly delivered; each part
+-- begun is a row of delivery_parts, `posted_as` NULL while it is being posted. What lets an
+-- edge that restarts post every reply and none twice.
+-- Retention: journal: with its turn's period (Target.Raw), by PeriodStore.purge.
+CREATE TABLE IF NOT EXISTS grit.deliveries (
+    workflow        TEXT PRIMARY KEY,
+    conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,
+    turn_seq        BIGINT NOT NULL,
+    address         TEXT NOT NULL,
+    delivered       BOOLEAN NOT NULL DEFAULT false,
+    awaited         BIGSERIAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_deliveries_pending ON grit.deliveries (awaited) WHERE NOT delivered;
+CREATE INDEX IF NOT EXISTS idx_deliveries_turn ON grit.deliveries (conversation_id, turn_seq);
+
+-- Retention: journal: with its delivery, by cascade.
+CREATE TABLE IF NOT EXISTS grit.delivery_parts (
+    workflow  TEXT NOT NULL REFERENCES grit.deliveries(workflow) ON DELETE CASCADE,
+    part      INTEGER NOT NULL,
+    posted_as TEXT,
+    PRIMARY KEY (workflow, part)
+);
+
 -- An edge's registration (ADR 0017): the principal it acts for, the machine it runs on, and
 -- the places it hosts (edge_places). A live edge holds the advisory lock (EdgeLock.Class,
 -- lock_key) on its desk's connection: "live" is read from pg_locks, never from heartbeat_at,

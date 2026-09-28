@@ -58,6 +58,9 @@ abstract class PeriodContract extends TestSuite {
   /** The tool requests under test, over the same database as [[periods]]. */
   protected def requests: grit.core.edge.ToolRequests
 
+  /** The deliveries under test, over the same database as [[periods]]. */
+  protected def deliveries: grit.core.edge.Deliveries
+
   protected def transaction[A](body: (Tx^) ?=> A): A
 
   /** A conversation entries may be written to, the same one for the same `name`. */
@@ -386,6 +389,19 @@ abstract class PeriodContract extends TestSuite {
           Left(StoreError.Invalid(s"no tool request ${gone.key}")),
           Right(grit.core.edge.RequestState.Expired)
         )
+    }
+
+    test("a purge deletes its period's turns' deliveries, and keeps the next period's") {
+      val c = conversation("purge-deliveries")
+      val t0 = say(c, 0)
+      val p1 = PeriodRef(c, PeriodSeq.First)
+      seal(p1, t0, 10, "kept")
+      val t1 = say(c, 20)
+      transaction(deliveries.await(t0, "here")) ==> Right(())
+      transaction(deliveries.await(t1, "here")) ==> Right(())
+      transaction(periods.purge(p1, at(100))) ==> Right(())
+      transaction(deliveries.pending()).map(_.map(_.turn).filter(_.conversationId == c)) ==>
+        Right(Vector(t1))
     }
 
     test("a purge deletes its period's raw entries, and keeps its closing entry and the rest") {

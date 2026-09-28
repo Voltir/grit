@@ -71,6 +71,9 @@ trait Link extends caps.SharedCapability, AutoCloseable {
   /** The people an edge enrolled, and whose names a window shows. */
   val principals: Principals
 
+  /** The replies an edge has yet to post outside grit, and the parts it has. */
+  val deliveries: grit.core.edge.Deliveries
+
   /** Short read transactions. */
   val db: Db
 
@@ -212,6 +215,8 @@ private[engine] final class Attached(
   val voices: VoiceStore = new SqlVoiceStore()
 
   val principals: Principals = new SqlPrincipals()
+
+  val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
 
   val db: Db = new SqlDb(dataSource)
 

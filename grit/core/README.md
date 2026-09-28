@@ -96,7 +96,9 @@ In dependency order:
   settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
   `message`, `model`, `store`, `provider`, `approval`
 
-- **`edge`** — tool calls an edge runs (ADR 0017): `ToolRequest` (one call, addressed to a
+- **`edge`** — what an edge and the engine share: `Deliveries` (the replies an edge has yet
+  to post outside grit, each part `Posting` or `Posted`), and the tool calls an edge runs
+  (ADR 0017): `ToolRequest` (one call, addressed to a
   workspace, with its `Permit` and retry), `OutcomeJson` (its answer's stored form),
   `Edges.authorize` (the one routing decision: an edge serves only the places it registered,
   and a `Route` is the directory it may run over), `Registration`, `Desk` (an

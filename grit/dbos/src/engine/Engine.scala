@@ -118,6 +118,8 @@ final class Engine private (
 
   val principals: Principals = new SqlPrincipals()
 
+  val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
+
   /** What grit has decided to delete, and when. */
   val tombstones: Tombstones = new SqlTombstones
 
