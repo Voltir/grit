@@ -4,6 +4,7 @@ import grit.app.look.{Look, Theme}
 import grit.core.approval.Approval
 import grit.core.id.TurnSeq
 import grit.core.message.{Cost, Tokens}
+import grit.core.spend.DailyCap
 import grit.tui.components.pane.Anchor
 import grit.tui.components.tree.Scroller
 import grit.tui.model.input.{Button, Input, Key, Mods, MouseEvent, MouseKind}
@@ -313,6 +314,12 @@ object ChatScreenTests extends TestSuite {
             2,
             Some(Cost.AtLeast(BigDecimal("0.001")))
           )
+        ),
+        today = Some(
+          SessionView.Today(
+            Cost.Exact(BigDecimal("0.31")),
+            DailyCap.of("1.00").toOption
+          )
         )
       )
       val shown = keyed.message(Msg.Session(view)).screen.mkString("\n")
@@ -321,11 +328,26 @@ object ChatScreenTests extends TestSuite {
         shown.contains("said     4 messages"),
         shown.contains("billed   12.3k in · 900 out"),
         shown.contains("spent    $0.0042"),
+        shown.contains("today    $0.31 of $1 "),
         shown.contains("recalled turn 1"),
         shown.contains("by 1 of 2 turns"),
         shown.contains("turn     2 calls · ≥ $0.001"),
         shown.contains("vendor/big-model")
       )
+    }
+
+    test("the session tab's day, with no cap, is what was spent alone") {
+      val view = SessionView.empty.copy(today =
+        Some(SessionView.Today(Cost.AtLeast(BigDecimal("0.2")), None))
+      )
+      val shown = Headless
+        .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(30, 110))
+        .message(Msg.Opened)
+        .input(Input.Keyboard(Key.Ctrl('t')))
+        .message(Msg.Session(view))
+        .screen
+        .mkString("\n")
+      assert(shown.contains("today    ≥ $0.2"), !shown.contains(" of $"))
     }
 
     test("the topics tab: the topics, the current marked, and how the shown turn was placed") {

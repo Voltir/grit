@@ -2,7 +2,7 @@ package grit.app.chat
 
 import grit.app.look.{Look, ProseLook, Theme}
 import grit.core.id.TurnSeq
-import grit.core.message.Tokens
+import grit.core.message.{Cost, Tokens}
 import grit.core.topic.{Band, Verdict}
 import grit.tui.model.block.Block
 import grit.tui.model.surface.Style
@@ -36,7 +36,8 @@ final case class TurnPanel(look: Look, budget: Tokens) {
     }
 
   /** The rows of the session tab for `view`, or a placeholder before the host has read
-    * the conversation: its length, what it was billed and cost, what search recalled,
+    * the conversation: its length, what it was billed and cost, what the database spent
+    * today (of its cap, when one is set), what search recalled,
     * then each role that called a model, with the models that answered it.
     */
   def session(view: Option[SessionView]): Vector[Block] =
@@ -65,6 +66,13 @@ final case class TurnPanel(look: Look, budget: Tokens) {
           row(" billed   " -> fg(t.faint), billed -> fg(t.ink))
         ) ++
           v.spent.map(c => row(" spent    " -> fg(t.faint), c.written -> fg(t.ink))) ++
+          v.today.map(d =>
+            row(
+              " today    " -> fg(t.faint),
+              (d.spent.written + d.cap.fold("")(c => s" of ${Cost.Exact(c.usd).written}")) ->
+                fg(t.ink)
+            )
+          ) ++
           Vector(blank) ++ recalled ++ Vector(blank) ++ roles(v.roles)
     }
 

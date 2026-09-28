@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, TurnSeq}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
+import grit.core.spend.Spend
 import grit.core.store.{Entry, Payload, UsageLedger}
 
 import utest.*
@@ -69,32 +70,25 @@ object SessionViewTests extends TestSuite {
 
   val tests = Tests {
     test("an empty conversation is empty") {
-      SessionView.of(Vector.empty, Vector.empty) ==> SessionView.empty
+      SessionView.of(Vector.empty, Vector.empty, Spend.Zero, None) ==> SessionView.empty
     }
 
     test("its length: the turns asked, and the messages said, replies included") {
-      val v = SessionView.of(entries, costs)
+      val v = SessionView.of(entries, costs, Spend.Zero, None)
       v.turns ==> 3
       v.messages ==> 5
     }
 
-    test("what it was billed and cost: every row, at least the priced ones if any is not") {
-      val v = SessionView.of(entries, costs)
+    test(
+      "what it was billed: its turns' rows; what it cost: every call recorded for it, its closes' included"
+    ) {
+      // The rows' own sum is at least 0.00325; the conversation's, with a close, is more.
+      val recorded = Spend(7, Cost.AtLeast(BigDecimal("0.0045")))
+      val v = SessionView.of(entries, costs, recorded, None)
       v.input ==> Tokens(460)
       v.output ==> Tokens(65)
-      // Row 7 is unpriced, so the priced rows' sum is a lower bound.
-      v.spent ==> Some(Cost.AtLeast(BigDecimal("0.00325")))
-      SessionView
-        .of(
-          entries,
-          costs.map(r =>
-            r.copy(usage =
-              r.usage.copy(costUsd = r.usage.costUsd.orElse(Some(BigDecimal("0.0001"))))
-            )
-          )
-        )
-        .spent ==>
-        Some(Cost.Exact(BigDecimal("0.00335")))
+      v.spent ==> Some(Cost.AtLeast(BigDecimal("0.0045")))
+      SessionView.of(entries, Vector.empty, Spend.Zero, None).spent ==> None
     }
 
     test("what search recalled: which earlier turns, and in how many windows") {
@@ -113,7 +107,7 @@ object SessionViewTests extends TestSuite {
         user(7, 4),
         window(8, 4, 0)
       )
-      val v = SessionView.of(recalling, Vector.empty)
+      val v = SessionView.of(recalling, Vector.empty, Spend.Zero, None)
       v.recalls ==> 3
       v.recalled ==> Vector(TurnSeq(0), TurnSeq(1))
     }
@@ -131,7 +125,7 @@ object SessionViewTests extends TestSuite {
     }
 
     test("each role that called a model, with its models, calls and cost, in turn order") {
-      SessionView.of(entries, costs).roles ==> Vector(
+      SessionView.of(entries, costs, Spend.Zero, None).roles ==> Vector(
         SessionView.Role(SessionView.Turn, Vector("big"), 2, Some(Cost.Exact(BigDecimal("0.003")))),
         SessionView
           .Role(SessionView.Query, Vector("writer"), 1, Some(Cost.Exact(BigDecimal("0.00005")))),
@@ -139,7 +133,10 @@ object SessionViewTests extends TestSuite {
           .Role(SessionView.Summary, Vector("small"), 2, Some(Cost.AtLeast(BigDecimal("0.0001"))))
       )
       // A role no model answered is not listed.
-      SessionView.of(entries, costs.filter(_.model != "writer")).roles.map(_.name) ==>
+      SessionView
+        .of(entries, costs.filter(_.model != "writer"), Spend.Zero, None)
+        .roles
+        .map(_.name) ==>
         Vector(SessionView.Turn, SessionView.Summary)
     }
   }

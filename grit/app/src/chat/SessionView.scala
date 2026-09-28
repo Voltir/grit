@@ -2,6 +2,7 @@ package grit.app.chat
 
 import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.{Cost, Message, Tokens}
+import grit.core.spend.{DailyCap, Spend}
 import grit.core.store.{Entry, Payload, UsageLedger}
 import grit.core.topic.{Placement, TopicEvent}
 
@@ -13,10 +14,12 @@ import grit.core.topic.{Placement, TopicEvent}
   * @param messages the user's messages and the replies
   * @param input the input tokens every model call was billed for
   * @param output the output tokens every model call was billed for
-  * @param spent what every model call cost, once one was made
+  * @param spent what this conversation's recorded calls cost, its closes' included, once one
+  *   was made
   * @param recalls how many turns' windows recalled an earlier turn
   * @param recalled every earlier turn some window recalled, in conversation order
   * @param roles each role that called a model, in the order a turn calls them
+  * @param today what every conversation in this database spent today, and the day's cap
   */
 final case class SessionView(
     turns: Int,
@@ -26,14 +29,18 @@ final case class SessionView(
     spent: Option[Cost],
     recalls: Int,
     recalled: Vector[TurnSeq],
-    roles: Vector[SessionView.Role]
+    roles: Vector[SessionView.Role],
+    today: Option[SessionView.Today]
 )
 
 object SessionView {
 
   /** A conversation with nothing in it. */
   val empty: SessionView =
-    SessionView(0, 0, Tokens.Zero, Tokens.Zero, None, 0, Vector.empty, Vector.empty)
+    SessionView(0, 0, Tokens.Zero, Tokens.Zero, None, 0, Vector.empty, Vector.empty, None)
+
+  /** What the database spent today, `spent`, against the day's `cap`, if any. */
+  final case class Today(spent: Cost, cap: Option[DailyCap])
 
   /** What one role's calls came to: the models that answered it, in the order they first
     * did, how many calls it made, and what they cost.
@@ -56,10 +63,16 @@ object SessionView {
   val Verdict = "verdict"
 
   /** The conversation `entries` describe, with `costs`: the ledger rows of its turns, in
-    * any order. A row is put to a role by the entry it holds; a row whose entry is not in
-    * `entries` counts toward the totals and no role.
+    * any order; `recorded`, what all its recorded calls cost, its closes' included; and
+    * `today`. A row is put to a role by the entry it holds; a row whose entry is not in
+    * `entries` counts toward the tokens billed and no role.
     */
-  def of(entries: Vector[Entry], costs: Vector[UsageLedger.Row]): SessionView = {
+  def of(
+      entries: Vector[Entry],
+      costs: Vector[UsageLedger.Row],
+      recorded: Spend,
+      today: Option[Today]
+  ): SessionView = {
     val roleOf: Map[EntryId, String] = entries.flatMap { e =>
       (e.payload match {
         case Payload.Query(_) => Some(Query)
@@ -84,13 +97,14 @@ object SessionView {
       messages = entries.count(e => isUser(e) || isReply(e)),
       input = costs.foldLeft(Tokens.Zero)(_ + _.usage.input),
       output = costs.foldLeft(Tokens.Zero)(_ + _.usage.output),
-      spent = spent(costs),
+      spent = Option.when(recorded.calls > 0)(recorded.cost),
       recalls = windows.count(_.recalled.nonEmpty),
       recalled = windows
         .flatMap(_.recalled)
         .distinct
         .sortBy(TurnSeq.value),
-      roles = roles
+      roles = roles,
+      today = today
     )
   }
 

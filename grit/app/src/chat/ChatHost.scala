@@ -11,7 +11,7 @@ import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.prompt.Voice
 import grit.core.provider.TokenEstimator
-import grit.core.spend.Budget
+import grit.core.spend.{Budget, Spend}
 import grit.core.store.{Entry, Origin, Payload, Speakers, StoreError, UsageLedger}
 import grit.dbos.engine.{Link, TurnStatus}
 import grit.tui.runtime.app.{Fault, Host, Mailbox}
@@ -57,6 +57,9 @@ final class ChatHost(
 
   /** How often the screen looks whether an engine holds the database: every 2 s. */
   private val HolderEvery = 2000L * 1000000L
+
+  /** How often the session tab's day's spend is read again, in nanoseconds: 5 s. */
+  private val SpentEvery = 5000L * 1000000L
 
   /** What an attached screen says while no engine holds the database. */
   private val EngineGoneNote = "engine gone: turns wait until grit runs again"
@@ -228,6 +231,7 @@ final class ChatHost(
         var costs = Map.empty[TurnSeq, Vector[UsageLedger.Row]]
         var settled = Set.empty[TurnSeq]
         var sessionAt = Long.MinValue
+        var spentAt = 0L
         // Whether an engine held the database when last looked, and when that was: an
         // attached screen says when there is none, and turns wait (ADR 0015).
         var engined = true
@@ -249,13 +253,20 @@ final class ChatHost(
               // The ledger is written with the entries it prices, so it changes only when
               // they do.
               val last = entries.lastOption.fold(-1L)(_.seq)
-              if (last != sessionAt) {
+              // Other conversations spend too (a Slack edge on this database): the day's
+              // total is read again every SpentEvery, whether or not this one changed.
+              val stale = System.nanoTime() - spentAt > SpentEvery
+              if (last != sessionAt || stale) {
                 val (unread, final1) = SessionView.unread(entries, settled)
-                ledgers(engine, conversation, unread).foreach { read =>
+                for {
+                  read <- ledgers(engine, conversation, unread)
+                  (recorded, today) <- spent(engine, conversation)
+                } {
                   costs = costs ++ read
                   settled = final1
                   sessionAt = last
-                  val view = SessionView.of(entries, costs.values.toVector.flatten)
+                  spentAt = System.nanoTime()
+                  val view = SessionView.of(entries, costs.values.toVector.flatten, recorded, today)
                   mailbox.offer(ChatScreen.Msg.Session(view))
                 }
               }
@@ -291,6 +302,20 @@ final class ChatHost(
           Thread.sleep(PollMs)
         }
     }
+
+  /** What `conversation`'s recorded calls cost, and the day's spend across the database
+    * against the link's cap; `None` when the store could not be read.
+    */
+  private def spent(
+      engine: Link^,
+      conversation: ConversationId
+  ): Option[(Spend, Option[SessionView.Today])] =
+    engine.db.read {
+      for {
+        recorded <- engine.spending.conversation(conversation)
+        today <- engine.spending.on(engine.budget.today(java.time.Instant.now()))
+      } yield (recorded, Some(SessionView.Today(today.cost, engine.budget.cap)))
+    }.toOption
 
   /** The ledger rows of each of `turns`, read in one transaction; `None` when the store
     * could not be read.

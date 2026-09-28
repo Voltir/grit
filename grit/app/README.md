@@ -33,8 +33,9 @@ In dependency order:
   (`Follow`, pure), so replies to any turn appear, recovered ones included (ADR 0002);
   `Send` ingests and starts a turn once the engine is open. The panel beside the
   transcript has three tabs, switched by ctrl-t or a click on a pill: the turn
-  (`TurnView`), the session so far (`SessionView`: its length, what it was billed,
-  what search recalled, the models in each role), and its topics (`TopicsView`: each
+  (`TurnView`), the session so far (`SessionView`: its length, what it was billed, what
+  its recorded calls cost with its closes', what the whole database spent today against
+  the daily cap, what search recalled, the models in each role), and its topics (`TopicsView`: each
   topic carried from the last close or spoken in since, with its messages, the current one marked, and how the shown turn's message was
   placed: p(same) and its band, the classifier's choice, the model's verdict, a flag when
   the two disagreed, the heaviest weights), each built purely from what the host read.
