@@ -9,40 +9,26 @@ import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.classify.Classifier
-import grit.core.clock.{Clock, Fresh}
-import grit.core.context.ContextAssembler
-import grit.core.id.{PluginName, SourceId, TurnRef, PrincipalId}
+import grit.core.id.{PluginName, PrincipalId, SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Catalog, ModelId, Pinned}
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.place.{Directory, Place}
 import grit.core.plugin.Plugin
-import grit.core.store.{Db, Origin}
-import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
+import grit.core.prompt.Fragment
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
+import grit.core.store.Origin
+import grit.core.tool.ToolName
+import grit.core.tool.ToolSet
 import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken}
 import grit.dbos.sql.DbConfig
-import grit.core.prompt.Fragment
-import grit.core.tool.ToolSet
+import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
 import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, LocalWorkspace}
-import grit.digest.Digest
-import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
-import grit.lifecycle.post.{PostEnv, Posting}
-import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
-import grit.models.{
-  JevClassifier,
-  JevConfig,
-  OpenRouterConfig,
-  OpenRouterModels,
-  Seed,
-  StubClassifier,
-  StubModels,
-  StubProvider
-}
-import grit.tools.{About, Coding, Facts, Probes}
+import grit.models.{JevClassifier, JevConfig, OpenRouterConfig, Seed, StubClassifier, StubProvider}
+import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
-import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling}
+import grit.turn.{Turn, TurnLoop}
 
 /** grit, against the Postgres named by `GRIT_DATABASE_*` (see [[DbConfig]]). The model is
   * OpenRouter's when `OPENROUTER_API_KEY` is set: each role's model, budget and upstream as
@@ -162,133 +148,21 @@ object Main {
     val seeded = exitOnLeft(Lifecycle.fromEnv(env))
     val plugins = exitOnLeft(pluginChoice(env))
 
-    /** `engine` with its lifecycle's settings seeded, and its workflows launched on
-      * it: the assembler reads its stores, and the models its kept facts. Throws when the
-      * settings cannot be seeded, when the coding tools repeat a name, a fault in `grit.tools`
-      * that no setting can cause, or when the kept model facts cannot be read.
-      */
-    def launched(engine: Engine^): Engine^{engine} = {
-      engine.jot.write(engine.lifecycle.seed(seeded)).left.foreach { error =>
-        throw new IllegalStateException(s"the lifecycle's settings could not be seeded: $error")
-      }
-      val reached: Models = openRouter match {
-        case None => new StubModels(stubDelay)
-        case Some((key, seed)) => new OpenRouterModels(key, seed, engine.db, engine.facts)
-      }
-      val models: Models = if (tui) reached else announced(reached)
-      // The query writer is built with the assembler, from the catalog as the engine opens.
-      val startup = models.catalog().fold(why => throw new IllegalStateException(why), _.pin)
-      val writer = models.provider(startup.query)
-      val assembler: ContextAssembler^ =
-        if (retrieving)
-          new RetrievalAssembler(
-            engine.entries,
-            engine.periods,
-            engine.lifecycle,
-            engine.search,
-            writer,
-            CharEstimate,
-            budget,
-            tail
-          )
-        else new LinearAssembler(engine.entries, engine.periods, CharEstimate, budget)
-      def launch[C^](tooling: TurnTooling[C]^): Unit = {
-        engine.launch(
-          Turn.body(
-            TurnEnv(
-              TurnRecords(engine.entries, engine.ledger, CharEstimate, engine.profiles),
-              TurnHosting(
-                engine.conversations,
-                engine.prompts,
-                engine.toolSets,
-                engine.requests,
-                engine.edgeDirectory,
-                engine.voices
-              ),
-              assembler,
-              classifier(topics),
-              models,
-              engine.db,
-              Clock.system(),
-              Fresh.random()
-            ),
-            tooling
-          ),
-          Close.body(
-            CloseEnv(
-              CloseRecords(
-                engine.entries,
-                engine.periods,
-                engine.lifecycle,
-                engine.ledger,
-                engine.tombstones,
-                CharEstimate
-              ),
-              classifier(topics),
-              models,
-              engine.db,
-              Clock.system()
-            )
-          ),
-          Settle.body(
-            SettleEnv(
-              SettleRecords(engine.entries, engine.periods, engine.lifecycle),
-              classifier(topics),
-              engine.db,
-              Clock.system()
-            )
-          ),
-          Posting.body(
-            plugins,
-            PostEnv(
-              engine.periods,
-              engine.cursors,
-              engine.cache,
-              engine.tombstones,
-              engine.jot,
-              Clock.system()
-            )
-          ),
-          plugins
-        )
-        engine.sweepEvery(sweep, Clock.system())
-      }
-      val store: Db^ = engine.db
-      // Digest's recent_activity, offered when Digest is on.
-      val digest = plugins.collectFirst { case d: Digest => engine.docs(d.name) }
-      // The engine's own tools touch no file: they read grit's store, keep a fact, probe a
-      // model. The coding tools are hosted: offered here, run by the edge serving the
-      // conversation's directory (ADR 0017).
-      // What grit is, from the docs grit.tools ships; offered under either choice.
-      val about: Tool[Option[About.Subject]] =
-        About.load().fold(why => throw new IllegalStateException(why), t => t)
-      val launching = offered match {
-        case ToolChoice.Read =>
-          (digest match {
-            case None => Toolbox.of[{store}](about)
-            case Some(docs) => Toolbox.of[{store}](about, Digest.recentActivity(store, docs))
-          }).map(tools => launch(TurnTooling[{store}](tools, Coding.readOnlyHosted, engine.jot, rounds)))
-        case ToolChoice.All =>
-          val facts = new KeptFacts(engine.jot, engine.facts, Clock.system())
-          (digest match {
-            case None =>
-              Toolbox.of[{facts, models, store}](about, Facts.propose(facts), Probes.probe(models))
-            case Some(docs) =>
-              Toolbox.of[{facts, models, store}](
-                about,
-                Facts.propose(facts),
-                Probes.probe(models),
-                Digest.recentActivity(store, docs)
-              )
-          }).map(tools => launch(TurnTooling[{facts, models, store}](tools, Coding.hosted, engine.jot, rounds)))
-      }
-      // Its caller closes the engine and reports the throw: in the chat, as the engine that
-      // could not open.
-      launching.left.foreach { case DuplicateName(name) =>
-        throw new IllegalStateException(s"the coding tools offer ${ToolName.value(name)} twice")
-      }
-      engine
-    }
+    val settings = Launch.Settings(
+      seeded,
+      openRouter,
+      stubDelay,
+      tui,
+      retrieving,
+      budget,
+      tail,
+      topics,
+      plugins,
+      sweep,
+      offered,
+      rounds
+    )
+    def launched(engine: Engine^): Engine^{engine} = Launch(engine, settings)
 
     // This process, as the engine's row and this edge's registration name it.
     val identity = LocalMachine.identity()
@@ -323,7 +197,10 @@ object Main {
                 link
               }
             }
-            (holder.fold("attached")(h => s"attached · engine on ${h.machine} pid ${h.pid}"), attached)
+            (
+              holder.fold("attached")(h => s"attached · engine on ${h.machine} pid ${h.pid}"),
+              attached
+            )
           case Left(refused) =>
             System.err.println(s"[main] ${refused.message(java.time.Instant.now())}")
             sys.exit(1)
@@ -337,7 +214,12 @@ object Main {
         // Closing the host stops following and closes the engine, however far it got.
         try
           Runtime.run(
-            new ChatScreen.App(modelName, startTheme, budget, s"$session · ${written(root)} · $mode"),
+            new ChatScreen.App(
+              modelName,
+              startTheme,
+              budget,
+              s"$session · ${written(root)} · $mode"
+            ),
             keeping(host, prefsFile)
           )
         finally host.close()
@@ -382,7 +264,10 @@ object Main {
     engine.register(PrincipalId.Local, Set(place)) match {
       case Left(e) => log.warn(s"this edge could not register: ${e.why}")
       case Right(desk) =>
-        desk.advertise(place, hosted, instructions).left.foreach(e => log.warn(s"not advertised: ${e.why}"))
+        desk
+          .advertise(place, hosted, instructions)
+          .left
+          .foreach(e => log.warn(s"not advertised: ${e.why}"))
         // The instruction files are read again every AdvertEvery, and advertised when they
         // changed, so an edit reaches the next turn without a restart.
         place.directory.foreach { dir =>
@@ -416,7 +301,12 @@ object Main {
     val started = messages.map { text =>
       for {
         // The text is its own source id, so repeating a message redelivers it.
-        turn <- engine.inbox.ingest(RunOrigin, SourceId(text), Message.User(text), PrincipalId.Local)
+        turn <- engine.inbox.ingest(
+          RunOrigin,
+          SourceId(text),
+          Message.User(text),
+          PrincipalId.Local
+        )
         _ <- engine.inbox.startTurn(turn)
       } yield turn
     }
@@ -435,7 +325,7 @@ object Main {
   /** `models`, each call printed with the model it goes to, so in the argument run a
     * replayed turn is visibly one that did not call.
     */
-  private def announced(models: Models): Models =
+  private[main] def announced(models: Models): Models =
     new Models {
       def catalog(): Either[String, Catalog] = models.catalog()
       def provider(pinned: Pinned): Provider^ = {
@@ -496,7 +386,11 @@ object Main {
     env.get(SweepVar) match {
       case None => Right(DefaultSweep)
       case Some(raw) =>
-        Durations.read(raw).left.map(why => s"$SweepVar: $why").filterOrElse(_ >= 1.second, s"$SweepVar must be at least a second")
+        Durations
+          .read(raw)
+          .left
+          .map(why => s"$SweepVar: $why")
+          .filterOrElse(_ >= 1.second, s"$SweepVar must be at least a second")
     }
 
   private val PluginsVar = "GRIT_PLUGINS"
@@ -540,7 +434,7 @@ object Main {
     else if (env.get(StubTopicsVar).map(_.trim).contains("1")) Right(ClassifierChoice.Stub)
     else Right(ClassifierChoice.Off(s"${JevConfig.KeyVar} is not set"))
 
-  private def classifier(choice: ClassifierChoice): Classifier^ = choice match {
+  private[main] def classifier(choice: ClassifierChoice): Classifier^ = choice match {
     case ClassifierChoice.Jev(config) => new JevClassifier(config)
     case ClassifierChoice.Stub => new StubClassifier
     case ClassifierChoice.Off(reason) => Classifier.none(reason)
@@ -640,7 +534,9 @@ object Main {
   /** `dir` as the header shows it: under the home directory as `~/…`. */
   private def written(dir: java.nio.file.Path): String = {
     val home = sys.props.get("user.home").map(java.nio.file.Path.of(_))
-    home.filter(h => dir.startsWith(h) && dir != h).fold(dir.toString)(h => s"~/${h.relativize(dir)}")
+    home
+      .filter(h => dir.startsWith(h) && dir != h)
+      .fold(dir.toString)(h => s"~/${h.relativize(dir)}")
   }
 
   private def describe(turn: TurnRef): String =
