@@ -14,15 +14,26 @@ import grit.assembly.linear.AssemblyFixtures.{
 }
 import grit.assembly.linear.LinearAssembler
 import grit.core.context.{AssemblyNote, AssemblyRequest, Shown, Window}
-import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq}
+import grit.core.id.{
+  CloseRef,
+  ConversationId,
+  EntryId,
+  PeriodRef,
+  PeriodSeq,
+  PrincipalId,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, LifecycleSettings, Probability, TestClosings}
-import grit.core.place.{Locality, Place, Scope, Weight}
+import grit.core.place.{Locality, Place, Prefix, Scope, Weight}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{
   ClosingEntry,
+  Conversation,
   Entry,
   EntrySearch,
+  InMemoryConversationStore,
   InMemoryLifecycleStore,
   Nearby,
   OpenPeriod,
@@ -166,9 +177,12 @@ object RetrievalAssemblerTests extends TestSuite {
       budget: Long,
       search: EntrySearch = new Scripted(),
       at: Long = 6,
-      locality: Locality = Locality.Default
+      locality: Locality = Locality.Default,
+      origin: Origin = Origin.Task("conversation", "c1")
   ): Window = {
     val turn = TurnRef(c1, TurnSeq(at))
+    val conversations = new InMemoryConversationStore
+    conversations.all = Vector(Conversation(c1, origin, PrincipalId.Local, Instant.EPOCH))
     val lifecycle = new InMemoryLifecycleStore
     lifecycle
       .set(
@@ -186,6 +200,7 @@ object RetrievalAssemblerTests extends TestSuite {
       .getOrElse(sys.error("in-memory store"))
     new RetrievalAssembler(
       world.entries,
+      conversations,
       world.periods,
       world.principals,
       lifecycle,
@@ -343,6 +358,36 @@ object RetrievalAssemblerTests extends TestSuite {
         Vector(Nearby.Closed(small, placeOf("small"), EntryId(firstClosing(small))))
     }
 
+    test(
+      "under scope room a thread draws on its own channel's threads, open and closed, and not another channel's"
+    ) {
+      val channel = (c: ConversationId) =>
+        ConversationId.value(c) match {
+          case "c1" => Origin.Slack("T1", "C1", "1.0")
+          case "ops" => Origin.Slack("T1", "C1", "2.0")
+          case "api" => Origin.Slack("T1", "C1", "3.0")
+          case other => Origin.Slack("T1", "C2", other)
+        }
+      val world = closed(Vector(Vector(ask)), Vector.empty, channel)
+      val ops = elsewhere(world, "ops", close = true, exchange("freeze?", "Friday"))
+      val api = elsewhere(world, "api", close = false, exchange("flaky?", "TZ"))
+      val far = elsewhere(world, "far", close = true, exchange("freeze?", "Monday"))
+      val near = elsewhere(world, "near", close = false, exchange("flaky?", "TZ"))
+      val search = new Scripted()
+      assemble(
+        world,
+        new Writer(Some("freeze")),
+        budget = 1000,
+        search,
+        at = 0,
+        Locality(Scope.Room, Weight.Default),
+        Origin.Slack("T1", "C1", "1.0")
+      )
+      (search.nearAsked.map(_.conversations), search.closedAsked) ==>
+        (Vector(List(api)), Vector(List(ops)))
+      val _ = (far, near)
+    }
+
     test("with the scope off, or nothing open elsewhere, no query is written for a first turn") {
       val world = store(ask)
       elsewhere(world, "api", close = false, exchange("flaky", "TZ"))
@@ -366,7 +411,7 @@ object RetrievalAssemblerTests extends TestSuite {
       val kept = elsewhere(world, "kept", close = false, exchange("flaky", "TZ"))
       elsewhere(world, "far", close = false, exchange("flaky", "TZ"))
       val search = new Scripted()
-      val scope = Scope(Vector(placeOf("kept")))
+      val scope = Scope(Vector(Prefix.At(placeOf("kept"))))
       assemble(world, new Writer(Some("q")), 1000, search, at = 0, Locality(scope, Weight.Default))
       search.nearAsked.map(_.conversations) ==> Vector(List(kept))
     }

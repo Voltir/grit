@@ -3,7 +3,7 @@ package grit.app.config
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.period.{LifecycleSettings, Probability, Windows}
-import grit.core.place.{Locality, Scope as PlaceScope, Weight as PlaceWeight}
+import grit.core.place.{Locality, Prefix, Scope as PlaceScope, Weight as PlaceWeight}
 
 /** The lifecycle's settings as a person writes them: seeded from the environment on first
   * start, then changed one at a time with `/set`.
@@ -20,14 +20,22 @@ object Lifecycle {
   private val ScopeVar = "GRIT_SCOPE"
   private val WeightVar = "GRIT_WEIGHT"
 
+  /** The scope `grit serve` seeds when `GRIT_SCOPE` is unset: each Slack thread draws on its
+    * own channel's threads alone.
+    */
+  val ServeScope: PlaceScope = PlaceScope.Room
+
   /** The settings the environment seeds: `GRIT_IDLE`, `GRIT_RETENTION`, `GRIT_LEDGER` and
     * `GRIT_SETTLE` ([[Durations]]), `GRIT_BALANCE` and `GRIT_ASKS` (whole numbers) and `GRIT_RESOLVE_AT`
-    * (a probability, as 0.8), `GRIT_SCOPE` (none, everywhere, or places separated by
-    * spaces, as `fs:/home/you slack:team`) and `GRIT_WEIGHT` (a number of at least 1), each
-    * unset one as [[LifecycleSettings.Default]] has it; or why they are none, naming the
-    * variable.
+    * (a probability, as 0.8), `GRIT_SCOPE` (none, everywhere, or `room` and places separated
+    * by spaces, as `room fs:/home/you slack:team`; `unset` when it is unset) and
+    * `GRIT_WEIGHT` (a number of at least 1), each other unset one as
+    * [[LifecycleSettings.Default]] has it; or why they are none, naming the variable.
     */
-  def fromEnv(env: Map[String, String]): Either[String, LifecycleSettings] = {
+  def fromEnv(
+      env: Map[String, String],
+      unset: PlaceScope = LifecycleSettings.Default.locality.scope
+  ): Either[String, LifecycleSettings] = {
     val default = LifecycleSettings.Default
     def duration(variable: String, otherwise: FiniteDuration): Either[String, FiniteDuration] =
       env
@@ -51,7 +59,7 @@ object Lifecycle {
       }
       scope <- env
         .get(ScopeVar)
-        .fold(Right(default.locality.scope))(PlaceScope.read(_).left.map(why => s"$ScopeVar: $why"))
+        .fold(Right(unset))(PlaceScope.read(_).left.map(why => s"$ScopeVar: $why"))
       weight <- env.get(WeightVar) match {
         case None => Right(default.locality.weight)
         case Some(raw) => weightOf(raw).left.map(why => s"$WeightVar: $why")
@@ -149,8 +157,8 @@ object Lifecycle {
       )
 
     /** The change `text` writes: a name, then its value (`idle 3m`, `ledger 180d`, `resolve 0.9`,
-      * `balance 300`, `scope fs:/home/you slack:team`, `scope none`, `weight 2`); or why it
-      * writes none. A scope is places separated by spaces, so a path holding a space cannot
+      * `balance 300`, `scope fs:/home/you slack:team`, `scope room`, `scope none`, `weight 2`);
+      * or why it writes none. A scope is `room` and places separated by spaces, so a path holding a space cannot
       * be written here.
       */
     def parse(text: String): Either[String, Change] = {
@@ -169,7 +177,8 @@ object Lifecycle {
         case "asks" => whole(Asks(_))
         case "resolve" => probability(value).map(ResolveAt(_)).left.map(why => s"$name: $why")
         case "scope" =>
-          if (value.isBlank) Left(s"$name takes none, everywhere, or places such as fs:/home/you")
+          if (value.isBlank)
+            Left(s"$name takes none, everywhere, room, or places such as fs:/home/you")
           else PlaceScope.read(value).map(Scope(_)).left.map(why => s"$name: $why")
         case "weight" => weightOf(value).map(Weight(_)).left.map(why => s"$name: $why")
         case other => Left(s"no setting $other: ${Names.init.mkString(", ")} or ${Names.last}")
@@ -189,11 +198,17 @@ object Lifecycle {
     val l = settings.locality
     val weight = PlaceWeight.value(l.weight)
     val weighted = if (weight.isWhole) weight.toLong.toString else weight.toString
+    val within = l.scope.prefixes
+      .map {
+        case Prefix.Room => "its own room"
+        case Prefix.At(place) => place.written
+      }
+      .mkString(", ")
     val drawing =
       if (l.scope.prefixes.isEmpty) "draws on no other place"
       else if (l.scope == PlaceScope.Everywhere)
-        s"draws on open periods everywhere, its own weighted $weighted"
-      else s"draws on open periods in ${l.scope.written}, its own weighted $weighted"
+        s"draws on open periods and closings everywhere, its own weighted $weighted"
+      else s"draws on open periods and closings in $within, its own weighted $weighted"
     s"$asking; closes after ${written(w.idle)} idle; raw entries kept ${written(w.retention)}; " +
       s"closings kept ${written(w.ledger)} after the next; " +
       s"the balance holds ${settings.balance} bytes; $drawing"

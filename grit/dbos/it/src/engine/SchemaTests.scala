@@ -5,7 +5,7 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.period.{LifecycleSettings, Probability, Windows}
-import grit.core.place.Locality
+import grit.core.place.{Locality, Scope, Weight}
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.dbos.sql.{LiveDb, SqlLifecycleStore, TestPostgres}
 
@@ -72,6 +72,19 @@ object SchemaTests extends TestSuite {
         .fold(sys.error, identity)
       LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
       LiveDb.transaction(config)(new SqlLifecycleStore().current()) ==> Right(settings)
+    }
+
+    test("a scope of the room and places is kept as set") {
+      val config = TestPostgres.freshDatabase("schema_room")
+      LiveEngine.open(config, "test").close()
+      val scope = Scope.read("room slack:T1").fold(sys.error, identity)
+      val d = LifecycleSettings.Default
+      val settings = LifecycleSettings
+        .of(d.windows, d.balance, d.settle, d.resolveAt, d.asks, Locality(scope, Weight.Default))
+        .fold(sys.error, identity)
+      LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
+      LiveDb.transaction(config)(new SqlLifecycleStore().current()).map(_.locality.scope) ==>
+        Right(scope)
     }
 
     test("settings changed by hand to break their rules read as Invalid") {

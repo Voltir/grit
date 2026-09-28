@@ -16,6 +16,7 @@ import grit.core.provider.{Provider, TokenEstimator}
 import grit.core.store.{
   ClosedElsewhere,
   ClosingEntry,
+  ConversationStore,
   Db,
   Entry,
   EntrySearch,
@@ -31,7 +32,9 @@ import grit.core.store.{
 
 /** A window of the closing entry that opens the turn's period, the recent turns, and what a
   * written query finds: the period's earlier turns and, when the settings' scope holds other
-  * conversations' places, the turns of their open periods and their kept closings. The
+  * conversations' places (the conversation's room read from its origin,
+  * [[grit.core.store.Origin.room]]), the turns of their open periods and their kept
+  * closings. The
   * closing is paid first and the recent tail next, as in [[LinearAssembler]] (the tail is
   * `tail` tokens, or what is left when less). `writer` then writes one query
   * ([[QueryWriter]]), and `search` ranks each kind of candidate against it, `hits` of each.
@@ -51,10 +54,12 @@ import grit.core.store.{
   * every earlier turn of the period, and no other conversation's open period or closing is
   * in scope. When the
   * writer fails or writes nothing, the window is that linear one, with a note saying why,
-  * and nothing from elsewhere.
+  * and nothing from elsewhere. `AssemblyError.Store` when a store fails or the turn's
+  * conversation is gone.
   */
 final class RetrievalAssembler(
     entries: EntryStore,
+    conversations: ConversationStore,
     periods: PeriodStore,
     principals: Principals,
     lifecycle: LifecycleStore,
@@ -72,6 +77,10 @@ final class RetrievalAssembler(
     db.read {
       for {
         settings <- lifecycle.current()
+        found <- conversations.get(turn.conversationId)
+        conversation <- found.toRight(
+          StoreError.Invalid(s"conversation ${ConversationId.value(turn.conversationId)} is gone")
+        )
         opening <- periods.opening(turn)
         all <- entries.list(turn.conversationId)
         open <- periods.openElsewhere(turn.conversationId)
@@ -85,8 +94,8 @@ final class RetrievalAssembler(
           opening.closing.map(_.entry).toVector,
           all,
           speakers,
-          open.filter(o => locality.scope.holds(o.place)),
-          closed.filter(c => locality.scope.holds(c.place))
+          open.filter(o => locality.scope.holds(conversation.origin.room, o.place)),
+          closed.filter(c => locality.scope.holds(conversation.origin.room, c.place))
         )
       }
     }.left

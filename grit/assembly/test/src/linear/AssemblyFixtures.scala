@@ -10,6 +10,7 @@ import grit.core.store.{
   InMemoryEntryStore,
   InMemoryPeriodStore,
   InMemoryPrincipals,
+  Origin,
   Payload,
   StoreError,
   Tx
@@ -50,11 +51,15 @@ object AssemblyFixtures {
 
   /** `periods` of turns in a fresh store of [[c1]], numbered on from turn 0 and ids as
     * [[store]]'s; each period but the last is closed after its turns, its closing entry's
-    * prose the matching one of `prose`.
+    * prose the matching one of `prose`; each conversation's origin `origin`'s.
     */
-  def closed(periods: Vector[Vector[Vector[Payload]]], prose: Vector[String]): World = {
+  def closed(
+      periods: Vector[Vector[Vector[Payload]]],
+      prose: Vector[String],
+      origin: ConversationId -> Origin = c => Origin.Task("conversation", ConversationId.value(c))
+  ): World = {
     val entries = new InMemoryEntryStore
-    val world = new World(entries, new InMemoryPeriodStore(entries))
+    val world = new World(entries, new InMemoryPeriodStore(entries, origin))
     given Tx = TestTx.fake
     for (p <- periods.indices) {
       for (turn <- periods(p)) {

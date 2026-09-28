@@ -73,6 +73,7 @@ object Launch {
       if (retrieving)
         new RetrievalAssembler(
           engine.entries,
+          engine.conversations,
           engine.periods,
           engine.principals,
           engine.lifecycle,

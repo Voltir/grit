@@ -75,18 +75,44 @@ object PlaceTests extends TestSuite {
 
     test("a scope holds the places within any of its prefixes; none holds nothing") {
       val scope = Scope.read("fs:/home/nick/Projects slack:acme").fold(e => sys.error(e), identity)
+      val room = place("fs:/home/nick/Projects/api")
       assert(
-        scope.holds(place("fs:/home/nick/Projects/api")),
-        scope.holds(place("slack:acme/C01/1.2")),
-        !scope.holds(place("fs:/tmp/x")),
-        Scope.Everywhere.holds(place("task:m0/main")),
-        !Scope.Off.holds(place("fs:/"))
+        scope.holds(room, place("fs:/home/nick/Projects/api")),
+        scope.holds(room, place("slack:acme/C01/1.2")),
+        !scope.holds(room, place("fs:/tmp/x")),
+        Scope.Everywhere.holds(room, place("task:m0/main")),
+        !Scope.Off.holds(room, place("fs:/home/nick/Projects/api"))
       )
       scope.written ==> "fs:/home/nick/Projects slack:acme"
       Vector("none", "everywhere").map(Scope.read(_).map(_.written)) ==>
         Vector(Right("none"), Right("everywhere"))
       Scope.read("fs:/a bad") ==>
         Left("no namespace in bad: write it as fs:/a/path, slack:team/channel or task:name")
+    }
+
+    test("a scope reads and writes room beside places, in the order written") {
+      Scope.read("room fs:/home/nick") ==> Right(
+        Scope(Vector(Prefix.Room, Prefix.At(place("fs:/home/nick"))))
+      )
+      Scope.read("slack:acme room").map(_.written) ==> Right("slack:acme room")
+      Scope.Room.written ==> "room"
+    }
+
+    test(
+      "with room, a place within the conversation's own room is held, and one outside it is not"
+    ) {
+      val channel = Origin.Slack("acme", "C01", "1.0").room
+      assert(
+        Scope.Room.holds(channel, place("slack:acme/C01/2.0")),
+        !Scope.Room.holds(channel, place("slack:acme/C02/2.0")),
+        !Scope.Room.holds(channel, place("fs:/home/nick"))
+      )
+    }
+
+    test("a room: a thread's channel, a session's directory, a task's name") {
+      Origin.Slack("acme", "C01", "1712.3").room.written ==> "slack:acme/C01"
+      Origin.Tui(dir("/home/nick/api"), "default").room.written ==> "fs:/home/nick/api"
+      Origin.Task("nightly", "7").room.written ==> "task:nightly"
     }
 
     test("a weight is at least 1") {

@@ -119,6 +119,12 @@ object LifecycleTests extends TestSuite {
       Change.Retention(200.days).applied(now) ==> Left("ledger must be at least retention")
     }
 
+    test("grit serve seeds room when GRIT_SCOPE is unset; a set one wins") {
+      Lifecycle.fromEnv(Map.empty, Lifecycle.ServeScope).map(_.locality.scope) ==> Right(Scope.Room)
+      Lifecycle.fromEnv(Map("GRIT_SCOPE" -> "none"), Lifecycle.ServeScope).map(_.locality.scope) ==>
+        Right(Scope.Off)
+    }
+
     test("the environment seeds the scope and the weight") {
       Lifecycle
         .fromEnv(Map("GRIT_SCOPE" -> "fs:/home/nick slack:acme", "GRIT_WEIGHT" -> "3"))
@@ -134,14 +140,18 @@ object LifecycleTests extends TestSuite {
     }
 
     test("/set scope and weight change the locality, and every other change keeps it") {
-      Vector("scope fs:/home/nick slack:acme", "scope none", "weight 3").map(Change.parse) ==>
+      Vector("scope fs:/home/nick slack:acme", "scope none", "scope room", "weight 3").map(
+        Change.parse
+      ) ==>
         Vector(
           Right(Change.Scope(scope("fs:/home/nick slack:acme"))),
           Right(Change.Scope(Scope.Off)),
+          Right(Change.Scope(Scope.Room)),
           Right(Change.Weight(weight(3)))
         )
       Change.parse("weight 0.5") ==> Left("weight: a weight is a number of at least 1, not 0.5")
-      Change.parse("scope") ==> Left("scope takes none, everywhere, or places such as fs:/home/you")
+      Change.parse("scope") ==>
+        Left("scope takes none, everywhere, room, or places such as fs:/home/you")
       val near = Locality(scope("fs:/home/nick"), weight(3))
       val now = settings(60.minutes, 600.minutes, 4096, 5.minutes, 0.8, 3, near)
       Change.Idle(10.minutes).applied(now).map(_.locality) ==> Right(near)
@@ -154,12 +164,20 @@ object LifecycleTests extends TestSuite {
       Lifecycle.describe(settings(3.hours, 1.day, 300, 1.hour, 0.8, 3)) ==>
         "after 1h quiet, asks whether anyone is waiting (at most 3 times) and closes when nobody is at 0.8 or " +
         "more; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; the balance holds 300 bytes; draws on open " +
-        "periods everywhere, its own weighted 2"
+        "periods and closings everywhere, its own weighted 2"
       Lifecycle.describe(
-        settings(3.hours, 1.day, 300, 1.hour, 0.8, 3, Locality(scope("fs:/a slack:b"), weight(1.5)))
+        settings(
+          3.hours,
+          1.day,
+          300,
+          1.hour,
+          0.8,
+          3,
+          Locality(scope("room fs:/a slack:b"), weight(1.5))
+        )
       ) ==> "after 1h quiet, asks whether anyone is waiting (at most 3 times) and closes when nobody is " +
         "at 0.8 or more; closes after 3h idle; raw entries kept 1d; closings kept 180d after the next; the balance holds 300 bytes; " +
-        "draws on open periods in fs:/a slack:b, its own weighted 1.5"
+        "draws on open periods and closings in its own room, fs:/a, slack:b, its own weighted 1.5"
       Lifecycle.describe(
         settings(3.hours, 1.day, 300, 1.hour, 1.0, 3, Locality(Scope.Off, weight(2)))
       ) ==>

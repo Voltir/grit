@@ -13,6 +13,7 @@ import grit.core.classify.Classifier
 import grit.core.id.{PluginName, PrincipalId, SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Catalog, ModelId, Pinned}
+import grit.core.period.LifecycleSettings
 import grit.core.place.{Directory, Place}
 import grit.core.plugin.Plugin
 import grit.core.prompt.Fragment
@@ -60,7 +61,8 @@ import grit.turn.{Turn, TurnLoop}
   * and closes, what its balance holds, and which other places' open periods a window draws
   * on, are data in the database: on the first start against a database they are seeded from
   * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
-  * `GRIT_LEDGER`, `GRIT_BALANCE`, `GRIT_SCOPE` and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]); after that, those variables are ignored, and `/set` (or SQL)
+  * `GRIT_LEDGER`, `GRIT_BALANCE`, `GRIT_SCOPE` (under `grit serve`, `room` when unset:
+  * [[Lifecycle.ServeScope]]) and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]); after that, those variables are ignored, and `/set` (or SQL)
   * changes them, from the next sweep and turn on.
   *
   * One grit runs the engine of a database (ADR 0015): a second, in either mode, attaches to
@@ -156,7 +158,12 @@ object Main {
       openRouter.fold(StubProvider.Model)((_, c) => ModelId.value(c.policy.turn.ref.model))
     val topics = exitOnLeft(classifierChoice(env))
     val sweep = exitOnLeft(sweepEvery(env))
-    val seeded = exitOnLeft(Lifecycle.fromEnv(env))
+    val seeded = exitOnLeft(
+      Lifecycle.fromEnv(
+        env,
+        if (serving) Lifecycle.ServeScope else LifecycleSettings.Default.locality.scope
+      )
+    )
     val plugins = exitOnLeft(pluginChoice(env))
     // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
     val spend = exitOnLeft(

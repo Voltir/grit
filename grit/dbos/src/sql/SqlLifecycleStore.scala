@@ -4,7 +4,7 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.period.{LifecycleSettings, Probability, Windows}
-import grit.core.place.{Locality, Place, Scope, Weight}
+import grit.core.place.{Locality, Prefix, Scope, Weight}
 import grit.core.store.{LifecycleStore, StoreError, Tx}
 
 /** [[LifecycleStore]] over the one row of `grit.lifecycle_settings`. The durations are
@@ -35,8 +35,8 @@ final class SqlLifecycleStore extends LifecycleStore {
             val written = ujson.read(rs.getString("scope")).arr.toVector.map(_.str)
             (for {
               // Each place read on its own, so one written by hand may hold a space.
-              prefixes <- written.foldLeft[Either[String, Vector[Place]]](Right(Vector.empty)) {
-                (acc, w) => acc.flatMap(done => Place.read(w).map(done :+ _))
+              prefixes <- written.foldLeft[Either[String, Vector[Prefix]]](Right(Vector.empty)) {
+                (acc, w) => acc.flatMap(done => Prefix.read(w).map(done :+ _))
               }
               weight <- Weight.of(rs.getDouble("weight"))
               windows <- Windows.of(

@@ -40,6 +40,16 @@ enum Origin {
     case Slack(_, _, _) | Task(_, _) => false
   }
 
+  /** The place its conversation shares with its neighbours, what a scope's `room` stands
+    * for ([[grit.core.place.Scope]]): a TUI session's directory, a Slack thread's channel
+    * (`slack:{team}/{channel}`), a task's name (`task:{name}`).
+    */
+  def room: Place = this match {
+    case Tui(directory, _) => Place.of(directory)
+    case Slack(team, channel, _) => Place.under(Namespace.Slack, Vector(team, channel))
+    case Task(name, _) => Place.under(Namespace.Task, Vector(name))
+  }
+
   /** Who the assistant is in this origin's workspace, going by the name given it there
     * ([[Principals.name]]): `slack:{team}` for a Slack thread; none for a TUI session or a
     * task, where it is simply grit.

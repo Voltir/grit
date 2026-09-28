@@ -18,7 +18,7 @@ import grit.core.id.{
 }
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, Ground, LifecycleSettings}
-import grit.core.place.{Directory, Locality, Namespace, Place, Scope, Weight}
+import grit.core.place.{Directory, Locality, Namespace, Place, Prefix, Scope, Weight}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{Entry, Origin, Payload}
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -155,9 +155,9 @@ object Eval {
     )
     val theirs = others.flatten
     val root = Vector("eval", c.name, variant.label)
-    val scope = c.scope.fold(Scope(Vector(rooted(root, "fs:/"), rooted(root, "task:"))))(written =>
-      Scope(written.split("\\s+").toVector.map(rooted(root, _)))
-    )
+    val scope = c.scope.fold(
+      Scope(Vector(Prefix.At(rooted(root, "fs:/")), Prefix.At(rooted(root, "task:"))))
+    )(written => Scope(written.split("\\s+").toVector.map(w => Prefix.At(rooted(root, w)))))
     Loaded(
       c,
       variant,
@@ -389,6 +389,7 @@ object Eval {
   ): ContextAssembler^{writer} =
     new RetrievalAssembler(
       engine.entries,
+      engine.conversations,
       engine.periods,
       engine.principals,
       engine.lifecycle,

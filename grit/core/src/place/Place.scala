@@ -80,15 +80,42 @@ object Place {
   }
 }
 
-/** The places whose open periods a window may draw on besides its own conversation's:
-  * those within any of `prefixes`. No prefixes turns cross-place recall off.
+/** One of a [[Scope]]'s prefixes: a place, or the conversation's own room
+  * ([[grit.core.store.Origin.room]]), which differs from one conversation to the next.
   */
-final case class Scope(prefixes: Vector[Place]) {
+enum Prefix {
+  case At(place: Place)
+  case Room
 
-  def holds(place: Place): Boolean = prefixes.exists(place.within)
+  /** A place's written form, or `room`. */
+  def written: String = this match {
+    case At(place) => place.written
+    case Room => Prefix.RoomWritten
+  }
+}
 
-  /** `everywhere`, `none`, or the prefixes' written forms separated by spaces:
-    * [[Scope.read]] reads it back.
+object Prefix {
+  private[place] val RoomWritten = "room"
+
+  /** `room`, or a written place ([[Place.read]]); why not, as [[Place.read]] says. */
+  def read(word: String): Either[String, Prefix] =
+    if (word.trim == RoomWritten) Right(Room) else Place.read(word).map(At(_))
+}
+
+/** The places whose open periods and closings a window may draw on besides its own
+  * conversation's: those within any of `prefixes`, the room standing for the conversation's
+  * own room. No prefixes turns cross-place recall off.
+  */
+final case class Scope(prefixes: Vector[Prefix]) {
+
+  /** Whether a conversation at `place` is in scope for one whose room is `room`. */
+  def holds(room: Place, place: Place): Boolean = prefixes.exists {
+    case Prefix.At(p) => place.within(p)
+    case Prefix.Room => place.within(room)
+  }
+
+  /** `none`, or the prefixes' written forms separated by spaces: [[Scope.read]] reads it
+    * back.
     */
   def written: String =
     if (prefixes.isEmpty) Scope.NoneWritten else prefixes.map(_.written).mkString(" ")
@@ -98,22 +125,25 @@ object Scope {
 
   private val NoneWritten = "none"
 
-  val Everywhere: Scope = Scope(Vector(Place.Everywhere))
+  val Everywhere: Scope = Scope(Vector(Prefix.At(Place.Everywhere)))
 
   val Off: Scope = Scope(Vector.empty)
 
-  /** `none`, or written places separated by spaces (so a path with a space cannot be
-    * written here); why not, naming the first place that does not read.
+  /** The conversation's own room alone. */
+  val Room: Scope = Scope(Vector(Prefix.Room))
+
+  /** `none`, or words separated by spaces, each `room` or a written place (so a path with a
+    * space cannot be written here); why not, naming the first word that is neither.
     */
   def read(text: String): Either[String, Scope] = {
     val t = text.trim
     if (t == NoneWritten) Right(Off)
-    else if (t.isEmpty) Left("a scope is none, everywhere, or places such as fs:/home/you")
+    else if (t.isEmpty) Left("a scope is none, everywhere, room, or places such as fs:/home/you")
     else
       t.split("\\s+")
         .toVector
-        .foldLeft[Either[String, Vector[Place]]](Right(Vector.empty)) { (acc, w) =>
-          acc.flatMap(done => Place.read(w).map(done :+ _))
+        .foldLeft[Either[String, Vector[Prefix]]](Right(Vector.empty)) { (acc, w) =>
+          acc.flatMap(done => Prefix.read(w).map(done :+ _))
         }
         .map(Scope(_))
   }
