@@ -18,5 +18,10 @@ In dependency order:
 - **`client`** — Slack as grit uses it: the `Slack` trait (listen, post, find a post by its
   `Tag`, react, a person's name, whether a channel is public), `SlackError`, the tokens, and
   `SocketSlack`, the SDK over Socket Mode behind it. ← `event`, `text`
+- **`edge`** — `SlackEdge`, the edge itself, over core's traits (`EdgeStores`: the inbox,
+  the people it enrolls, the replies it awaits) and a `Slack`: a person's message in a public
+  channel becomes a turn of its thread's conversation when it mentions grit or is in a thread
+  grit started, and each finished turn's reply is posted in its thread, once, found again by
+  its tag after a crash. ← `client`, `text`, `event`
 
 No source file sits at the module's root, and the test tree mirrors it.

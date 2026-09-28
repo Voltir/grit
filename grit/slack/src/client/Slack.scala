@@ -50,7 +50,7 @@ final case class Self(team: TeamId, bot: UserId)
 final case class Tag(turn: String, part: Int)
 
 /** Slack as grit uses it: one workspace, through grit's bot. */
-trait Slack {
+trait Slack extends caps.SharedCapability {
 
   /** Who grit is. */
   def self(): Either[SlackError, Self]
