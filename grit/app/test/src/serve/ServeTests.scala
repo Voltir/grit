@@ -21,7 +21,16 @@ object ServeTests extends TestSuite {
       _ => ()
     )
 
+  private val tokens = Map("SLACK_BOT_TOKEN" -> "xoxb-1", "SLACK_APP_TOKEN" -> "xapp-1")
+
   val tests = Tests {
+    test("a listened channel that is not a channel id refuses the start, naming it") {
+      run(tokens + ("GRIT_SLACK_LISTEN" -> "C123ABC456, #general")) ==>
+        Some(
+          "GRIT_SLACK_LISTEN: #general is not a channel id (C…, as Slack's channel details show it)"
+        )
+    }
+
     test(
       "without its tokens, or with the wrong kind, it refuses to start, naming the variable and never the token"
     ) {

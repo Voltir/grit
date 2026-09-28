@@ -88,6 +88,11 @@ trait Slack extends caps.SharedCapability {
     * grit may not look at.
     */
   def public(channel: ChannelId): Either[SlackError, Boolean]
+
+  /** The name `channel` shows in Slack, without its `#`; `None` for a conversation with none,
+    * or one grit may not look at.
+    */
+  def channelName(channel: ChannelId): Either[SlackError, Option[String]]
 }
 
 /** A Slack call that did not do what was asked. */

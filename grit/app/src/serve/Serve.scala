@@ -10,6 +10,7 @@ import grit.dbos.engine.{Engine, Link}
 import grit.dbos.sql.DbConfig
 import grit.slack.client.{AppToken, BotToken, SocketSlack}
 import grit.slack.edge.{EdgeStores, SlackEdge}
+import grit.slack.event.ChannelId
 
 /** `grit serve`: the engine of one database, and the Slack edge in its process (ADR 0019). */
 object Serve {
@@ -19,6 +20,30 @@ object Serve {
 
   /** The Slack app-level token's variable (`xapp-…`), which opens Socket Mode. */
   val AppTokenVar = "SLACK_APP_TOKEN"
+
+  /** The variable naming the channels grit listens in: their ids, comma-separated. Unset,
+    * it listens in none.
+    */
+  val ListenVar = "GRIT_SLACK_LISTEN"
+
+  /** The channels `env` says grit listens in ([[ListenVar]]); why not, naming the first entry
+    * that is not a channel id.
+    */
+  def listening(env: Map[String, String]): Either[String, Set[ChannelId]] =
+    env
+      .get(ListenVar)
+      .toVector
+      .flatMap(_.split(',').toVector.map(_.trim).filter(_.nonEmpty))
+      .foldLeft[Either[String, Set[ChannelId]]](Right(Set.empty)) { (acc, raw) =>
+        acc.flatMap(ids =>
+          ChannelId
+            .read(raw)
+            .map(ids + _)
+            .toRight(
+              s"$ListenVar: $raw is not a channel id (C…, as Slack's channel details show it)"
+            )
+        )
+      }
 
   /** How often the edge looks for finished turns to post: 500 ms. */
   val DeliverEvery: FiniteDuration = 500.millis
@@ -48,10 +73,11 @@ object Serve {
         .get(AppTokenVar)
         .toRight(s"$AppTokenVar is not set")
         .flatMap(AppToken.of(_).left.map(w => s"$AppTokenVar: $w"))
-    } yield (bot, app)
+      listen <- listening(env)
+    } yield (bot, app, listen)
     tokens match {
       case Left(why) => Some(why)
-      case Right((bot, app)) =>
+      case Right((bot, app, listen)) =>
         Engine.open(config, epoch, identity, budget) match {
           case Left(refused) => Some(refused.message(java.time.Instant.now()))
           case Right(engine) =>
@@ -68,9 +94,14 @@ object Serve {
                     slack,
                     self,
                     EdgeStores(link.inbox, link.principals, link.deliveries, link.jot),
+                    listen,
                     said => log.info(said)
                   )
                   Serve.metered(link, budget, java.time.Instant.now()).foreach(log.info)
+                  log.info(edge.listened() match {
+                    case Vector() => "slack: listening in no channel"
+                    case channels => s"slack: listening in ${channels.sorted.mkString(", ")}"
+                  })
                   // Unnamed, turns are simply not told a name: worth a warning, not a refusal.
                   edge.introduce() match {
                     case Right(()) => log.info("slack: the assistant is named as grit's bot is")

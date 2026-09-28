@@ -16,13 +16,15 @@ In dependency order:
   `grit.prose` doc) as Slack messages (`Post`s) of rich-text blocks, within Slack's limits.
   ← `event`
 - **`client`** — Slack as grit uses it: the `Slack` trait (listen, post, find a post by its
-  `Tag`, react, a person's name, whether a channel is public), `SlackError`, the tokens, and
+  `Tag`, react, a person's name, whether a channel is public, and its name), `SlackError`, the tokens, and
   `SocketSlack`, the SDK over Socket Mode behind it. ← `event`, `text`
 - **`edge`** — `SlackEdge`, the edge itself, over core's traits (`EdgeStores`: the inbox,
   the people it enrolls, the replies it awaits) and a `Slack`: a person's message in a public
-  channel becomes a turn of its thread's conversation when it mentions grit or is in a thread
-  grit started, and each finished turn's reply is posted in its thread, once, found again by
-  its tag after a crash. At start it names the workspace's assistant as Slack names grit's
+  channel becomes a turn of its thread's conversation when it is addressed to grit (it
+  mentions grit, or is in a thread whose root did), and each finished turn's reply is posted
+  in its thread, once, found again by its tag after a crash. In the channels it listens in
+  (`listening`, a deployment's `GRIT_SLACK_LISTEN`), a message not addressed to grit is heard:
+  an entry of its thread's conversation with no turn, never answered. At start it names the workspace's assistant as Slack names grit's
   bot (`introduce`), and each turn's prompt then says what the assistant is called there.
   ← `client`, `text`, `event`
 

@@ -26,6 +26,14 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var names = Map(UserId(Payloads.Ana) -> "Ana Lima")
 
+  /** The names channels show in Slack. */
+  @caps.unsafe.untrackedCaptures
+  var channelNames = Map(ChannelId("C123ABC456") -> "standup")
+
+  /** The channels Slack cannot be asked about. */
+  @caps.unsafe.untrackedCaptures
+  var unreachable = Set.empty[ChannelId]
+
   /** The channels that are not public. */
   @caps.unsafe.untrackedCaptures
   var privateChannels = Set.empty[ChannelId]
@@ -71,7 +79,11 @@ final class FakeSlack extends Slack {
 
   def name(user: UserId): Either[SlackError, Option[String]] = Right(names.get(user))
 
-  def public(channel: ChannelId): Either[SlackError, Boolean] = Right(
-    !privateChannels.contains(channel)
-  )
+  def channelName(channel: ChannelId): Either[SlackError, Option[String]] =
+    if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
+    else Right(channelNames.get(channel))
+
+  def public(channel: ChannelId): Either[SlackError, Boolean] =
+    if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
+    else Right(!privateChannels.contains(channel))
 }

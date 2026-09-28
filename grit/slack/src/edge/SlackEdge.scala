@@ -25,7 +25,13 @@ final case class EdgeStores(inbox: Inbox, principals: Principals, deliveries: De
   * the stores alone; grit being `self` in the workspace. `said` is told what it did that a
   * person running it may want to read.
   */
-final class SlackEdge(slack: Slack, self: Self, stores: EdgeStores^, said: String => Unit) {
+final class SlackEdge(
+    slack: Slack,
+    self: Self,
+    stores: EdgeStores^,
+    listening: Set[ChannelId],
+    said: String => Unit
+) {
   import SlackEdge.*
 
   // Caches and a flag, each written only through its own atomic operations. What they hold
@@ -56,15 +62,38 @@ final class SlackEdge(slack: Slack, self: Self, stores: EdgeStores^, said: Strin
 
   private val assistant: PrincipalId = Origin.slackAssistant(TeamId.value(self.team))
 
-  /** One Events API payload. A person's message in a public channel is recorded as a turn of
-    * its thread's conversation when it mentions grit, or when it is in a thread grit started
-    * (one whose root message mentioned grit); everything else is ignored. Recorded, it is in
-    * the person's words ([[Incoming]]), written by them as enrolled under their Slack name
-    * (`slack:{team}/{user}`), its turn started, its reply awaited, and the message marked
-    * `:eyes:` until the reply is posted. A new message the inbox refuses over the day's cap
-    * is not recorded: it is answered, once, in its thread, with [[Budget.Refusal]]. `true` once that is done or needs no doing (a
-    * redelivery included), so the payload may be acknowledged; `false` when Slack or the
-    * database could not be asked, so Slack sends it again.
+  /** Each channel in `listening`, as a person reads it: `#{name} ({id})` (its id alone when it
+    * has no name); or, with its id,
+    * that nothing in it is heard because it is not a public channel grit can see, or that
+    * Slack could not be asked.
+    */
+  def listened(): Vector[String] =
+    listening.toVector.map { channel =>
+      val id = ChannelId.value(channel)
+      public(channel)
+        .flatMap(open =>
+          if (!open) Right(s"$id (not a public channel grit can see: nothing there is heard)")
+          else
+            slack
+              .channelName(channel)
+              .left
+              .map(_.toString)
+              .map(_.fold(id)(name => s"#$name ($id)"))
+        )
+        .fold(why => s"$id (Slack not asked: $why)", identity)
+    }
+
+  /** One Events API payload. A person's message in a public channel is addressed to grit when
+    * it mentions grit, or is in a thread whose root did; addressed, it is recorded as a turn of
+    * its thread's conversation, in the person's words ([[Incoming]]), written by them as
+    * enrolled under their Slack name (`slack:{team}/{user}`), its turn started, its reply
+    * awaited, and the message marked `:eyes:` until the reply is posted. A new message the
+    * inbox refuses over the day's cap is not recorded: it is answered, once, in its thread,
+    * with [[Budget.Refusal]]. A message not addressed, in a channel in `listening`, is heard
+    * ([[Inbox.hear]]) in the same words under the same name, with no turn, mark or reply.
+    * Everything else is ignored. `true` once that is done or needs no doing (a redelivery
+    * included), so the payload may be acknowledged; `false` when Slack or the database could
+    * not be asked, so Slack sends it again.
     */
   def receive(payload: String): Boolean =
     Events.read(payload, self.bot) match {
@@ -85,7 +114,10 @@ final class SlackEdge(slack: Slack, self: Self, stores: EdgeStores^, said: Strin
                 .map(_.nonEmpty)
                 .left
                 .map(_.toString)
-          done <- if (!wanted) Right(()) else record(m, origin)
+          done <-
+            if (wanted) record(m, origin)
+            else if (listening.contains(m.channel)) hear(m, origin)
+            else Right(())
         } yield done
         result match {
           case Right(()) => true
@@ -97,38 +129,54 @@ final class SlackEdge(slack: Slack, self: Self, stores: EdgeStores^, said: Strin
         }
     }
 
-  private def record(m: Event.Said, origin: Origin): Either[String, Unit] =
+  /** Records `m`, heard, in its thread's conversation; nothing in a channel not public. */
+  private def hear(m: Event.Said, origin: Origin): Either[String, Unit] =
+    spoken(m).flatMap {
+      case None => Right(())
+      case Some((author, text)) =>
+        stores.inbox.hear(origin, SourceId(Ts.value(m.ts)), text, author).left.map(_.toString)
+    }
+
+  /** Who wrote `m`, enrolled under their Slack name, and its text in their words; `None` in a
+    * channel that is not public.
+    */
+  private def spoken(m: Event.Said): Either[String, Option[(PrincipalId, String)]] =
     public(m.channel).flatMap { open =>
-      if (!open) Right(())
+      if (!open) Right(None)
       else {
         val mentioned = Mentioned.findAllMatchIn(m.text).map(x => UserId(x.group(1))).toVector
         val known = (m.user +: mentioned).distinct.flatMap(u => nameOf(u).map(u -> _)).toMap
         val author = PrincipalId(s"slack:${TeamId.value(m.team)}/${UserId.value(m.user)}")
-        val message: Message.User = Message.User(Incoming.text(m.text, self.bot, known.get))
         stores.jot
           .write(stores.principals.enroll(author, known.getOrElse(m.user, UserId.value(m.user))))
           .left
           .map(_.toString)
-          .flatMap { _ =>
-            stores.inbox.ingest(origin, SourceId(Ts.value(m.ts)), message, author) match {
-              case Left(over @ InboxError.OverCap(_, _, _)) => refuse(m, over)
-              case Left(other) => Left(other.toString)
-              case Right(turn) =>
-                for {
-                  _ <- stores.jot
-                    .write(
-                      stores.deliveries.await(turn, Address(m.channel, m.thread, m.ts).written)
-                    )
-                    .left
-                    .map(_.toString)
-                  _ <- stores.inbox.startTurn(turn).left.map(_.toString)
-                } yield slack
-                  .react(m.channel, m.ts, Working)
-                  .left
-                  .foreach(e => said(s"slack: not marked: $e"))
-            }
-          }
+          .map(_ => Some((author, Incoming.text(m.text, self.bot, known.get))))
       }
+    }
+
+  private def record(m: Event.Said, origin: Origin): Either[String, Unit] =
+    spoken(m).flatMap {
+      case None => Right(())
+      case Some((author, text)) =>
+        val message: Message.User = Message.User(text)
+        stores.inbox.ingest(origin, SourceId(Ts.value(m.ts)), message, author) match {
+          case Left(over @ InboxError.OverCap(_, _, _)) => refuse(m, over)
+          case Left(other) => Left(other.toString)
+          case Right(turn) =>
+            for {
+              _ <- stores.jot
+                .write(
+                  stores.deliveries.await(turn, Address(m.channel, m.thread, m.ts).written)
+                )
+                .left
+                .map(_.toString)
+              _ <- stores.inbox.startTurn(turn).left.map(_.toString)
+            } yield slack
+              .react(m.channel, m.ts, Working)
+              .left
+              .foreach(e => said(s"slack: not marked: $e"))
+        }
     }
 
   /** Tells the person who wrote `m` that it was not taken ([[Budget.Refusal]]), in its

@@ -28,7 +28,10 @@ object SlackEdgeTests extends TestSuite {
 
   private val C = ChannelId("C123ABC456")
 
-  private final class World(budget: Budget = Budget(ZoneOffset.UTC, None)) {
+  private final class World(
+      budget: Budget = Budget(ZoneOffset.UTC, None),
+      listening: Set[ChannelId] = Set.empty
+  ) {
     val slack = new FakeSlack
     val inbox: InMemoryInbox = InMemoryInbox.fresh(budget)
 
@@ -51,6 +54,7 @@ object SlackEdgeTests extends TestSuite {
         slack,
         Self(TeamId(Team), UserId(Bot)),
         EdgeStores(inbox, inbox.principals, deliveries, FakeJot),
+        listening,
         _ => ()
       )
     val first: SlackEdge^ = edge()
@@ -84,6 +88,18 @@ object SlackEdgeTests extends TestSuite {
           .toOption
           .flatMap(_.of(entry.id))
       )
+
+    /** The heard messages of the thread rooted at `thread`, in order, each with its speaker. */
+    def heard(thread: String): Vector[(String, Option[String])] =
+      inbox.conversations.all.find(_.origin == origin(thread)).toVector.flatMap { c =>
+        val all = inbox.entries.list(c.id)(using TestTx.fake).getOrElse(Vector.empty)
+        val names = inbox.principals
+          .speakers(all.map(_.id))(using TestTx.fake)
+          .getOrElse(grit.core.store.Speakers.none)
+        all.collect { case e @ grit.core.store.Entry(_, _, _, _, _, Payload.Heard(text), _) =>
+          (text, names.of(e.id))
+        }
+      }
 
     def pending: Vector[grit.core.edge.Pending] =
       deliveries.pending()(using TestTx.fake).getOrElse(Vector.empty)
@@ -154,12 +170,59 @@ object SlackEdgeTests extends TestSuite {
         Vector(true, false, true, false, false)
     }
 
-    test("a message in a channel that is not public, or a bot's, is ignored and acknowledged") {
-      val w = new World
+    test(
+      "in a channel grit listens in, a message not addressed to it is heard under the person's name, with no turn, mark or delivery; in one it does not, it is ignored"
+    ) {
+      val w = new World(listening = Set(C))
+      w.slack.deliver(message("2.0", "standup moves to 10:00")) ==> true
+      w.slack.deliver(message("2.1", "fine by me", Some("2.0"))) ==> true
+      w.heard("2.0") ==> Vector(
+        ("standup moves to 10:00", Some("Ana Lima")),
+        ("fine by me", Some("Ana Lima"))
+      )
+      (w.turnOf("2.0", "2.0"), w.inbox.started, w.pending, w.slack.reactions) ==>
+        (None, Vector.empty, Vector.empty, Set.empty)
+      val deaf = new World
+      deaf.slack.deliver(message("2.0", "standup moves to 10:00")) ==> true
+      (deaf.heard("2.0"), deaf.inbox.conversations.all) ==> (Vector.empty, Vector.empty)
+    }
+
+    test(
+      "listened names each channel as Slack shows it, and says which will hear nothing and why"
+    ) {
+      val (secret, gone) = (ChannelId("C0SECRET1"), ChannelId("C0GONE123"))
+      val w = new World(listening = Set(C, secret, gone))
+      w.slack.privateChannels = Set(secret)
+      w.slack.unreachable = Set(gone)
+      w.first.listened().sorted ==> Vector(
+        "#standup (C123ABC456)",
+        "C0GONE123 (Slack not asked: Unreachable(gone))",
+        "C0SECRET1 (not a public channel grit can see: nothing there is heard)"
+      )
+    }
+
+    test(
+      "a mention in a heard thread is one turn, and the replies after it without a mention are still heard"
+    ) {
+      val w = new World(listening = Set(C))
+      w.slack.deliver(message("3.0", "is the freeze on Thursday?")) ==> true
+      w.slack.deliver(mentionIn("3.0", "3.1")) ==> true
+      w.slack.deliver(message("3.2", "it is", Some("3.0"))) ==> true
+      w.inbox.started ==> Vector(w.turn("3.0", "3.1"))
+      w.heard("3.0").map(_._1) ==> Vector("is the freeze on Thursday?", "it is")
+    }
+
+    test(
+      "a message in a channel that is not public, or a bot's, is ignored and acknowledged, in a channel grit listens in too"
+    ) {
+      val w = new World(listening = Set(C))
       w.slack.privateChannels = Set(C)
       w.slack.deliver(mention("1.0")) ==> true
+      w.slack.deliver(message("6.0", "overheard in private")) ==> true
       w.slack.privateChannels = Set.empty
       w.slack.deliver(message("5.0", s"<@$Bot> hi", user = Bot)) ==> true
+      w.slack.deliver(message("5.1", "a bot's aside", user = Bot)) ==> true
+      (w.heard("6.0"), w.heard("5.1")) ==> (Vector.empty, Vector.empty)
       (w.turnOf("1.0", "1.0"), w.turnOf("5.0", "5.0"), w.inbox.started) ==> (
         None,
         None,

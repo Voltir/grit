@@ -132,6 +132,21 @@ final class SocketSlack(bot: BotToken, app: AppToken) extends Slack, AutoCloseab
         case other => Left(other)
       }
 
+  def channelName(channel: ChannelId): Either[SlackError, Option[String]] =
+    call(
+      methods.conversationsInfo(
+        ConversationsInfoRequest.builder().channel(ChannelId.value(channel)).build()
+      )
+    )
+      .map(r => Option(r.getChannel).flatMap(c => Option(c.getName)).filter(_.nonEmpty))
+      .left
+      .flatMap {
+        // One grit may not look at has no name it can be told.
+        case SlackError.Refused("channel_not_found" | "missing_scope" | "not_in_channel") =>
+          Right(None)
+        case other => Left(other)
+      }
+
   def close(): Unit = socket.foreach { s =>
     try s.close()
     catch { case NonFatal(_) => () }
