@@ -63,6 +63,12 @@ object TurnPromptTests extends TestSuite {
         "replies are rendered from Markdown; keep them short."
     }
 
+    test("called: what the workspace calls the assistant, as an edge fragment of its own") {
+      val f = TurnPrompt.called("Bort")
+      f.text ==> "In this workspace you are called Bort."
+      f.layer ==> Layer.Edge
+    }
+
     test("reach says what is reachable in the directory, by directory, and why nothing is") {
       TurnPrompt.reach(Some(dir), set(false, true)).text ==>
         "Your file and command tools act on the directory /work/api. Calling one that changes something is how the person is asked to approve it."

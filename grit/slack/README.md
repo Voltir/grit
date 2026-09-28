@@ -22,6 +22,8 @@ In dependency order:
   the people it enrolls, the replies it awaits) and a `Slack`: a person's message in a public
   channel becomes a turn of its thread's conversation when it mentions grit or is in a thread
   grit started, and each finished turn's reply is posted in its thread, once, found again by
-  its tag after a crash. ← `client`, `text`, `event`
+  its tag after a crash. At start it names the workspace's assistant as Slack names grit's
+  bot (`introduce`), and each turn's prompt then says what the assistant is called there.
+  ← `client`, `text`, `event`
 
 No source file sits at the module's root, and the test tree mirrors it.

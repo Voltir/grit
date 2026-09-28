@@ -67,6 +67,11 @@ object Serve {
                     EdgeStores(link.inbox, link.principals, link.deliveries, link.jot),
                     said => log.info(said)
                   )
+                  // Unnamed, turns are simply not told a name: worth a warning, not a refusal.
+                  edge.introduce() match {
+                    case Right(()) => log.info("slack: the assistant is named as grit's bot is")
+                    case Left(why) => log.warn(s"slack: the assistant is not named: $why")
+                  }
                   slack.listen(edge.receive) match {
                     case Left(e) => Some(s"Socket Mode would not open: $e")
                     case Right(()) =>

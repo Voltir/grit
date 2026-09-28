@@ -39,6 +39,22 @@ final class SlackEdge(slack: Slack, self: Self, stores: EdgeStores^, said: Strin
   @caps.unsafe.untrackedCaptures
   private val started = new AtomicBoolean(false)
 
+  /** Enrolls grit's name in Slack (its bot user's) as the assistant's in this workspace
+    * ([[Origin.assistant]]), so turns from now on are told it; why not, when Slack or the
+    * store could not be asked, or the bot has no name.
+    */
+  def introduce(): Either[String, Unit] =
+    for {
+      named <- slack.name(self.bot).left.map(_.toString)
+      name <- named.toRight(s"grit's bot ${UserId.value(self.bot)} has no name in Slack")
+      _ <- stores.jot
+        .write(stores.principals.enrollAssistant(assistant, name))
+        .left
+        .map(_.toString)
+    } yield ()
+
+  private val assistant: PrincipalId = Origin.slackAssistant(TeamId.value(self.team))
+
   /** One Events API payload. A person's message in a public channel is recorded as a turn of
     * its thread's conversation when it mentions grit, or when it is in a thread grit started
     * (one whose root message mentioned grit); everything else is ignored. Recorded, it is in

@@ -78,6 +78,15 @@ object TurnPrompt {
     Fragment(Layer.Edge, Fragment.Grit, text)
   }
 
+  /** The assistant's name where it is `called` that: "In this workspace you are called
+    * {called}.", an edge-layer fragment of its own, so the edge's measured fragment stays
+    * as it is.
+    */
+  // Its own fragment (not a sentence in `edge`'s Slack text) so that measured text stays
+  // byte-identical; checked for gross regression on the forgery check, 2026-09-28.
+  def called(called: String): Fragment =
+    Fragment(Layer.Edge, Fragment.Grit, s"In this workspace you are called $called.")
+
   /** What a turn may reach: `tools`, the tools served in the directory `workspace`, which
     * act on it (and, when some ask first, that calling one is how the person is asked);
     * nothing, and why, when none are served there

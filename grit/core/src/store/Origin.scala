@@ -1,5 +1,6 @@
 package grit.core.store
 
+import grit.core.id.PrincipalId
 import grit.core.place.{Directory, Namespace, Place}
 
 /** Where a conversation's work comes from. Each origin names exactly one
@@ -27,4 +28,19 @@ enum Origin {
       Place.under(Namespace.Slack, Vector(team, channel, threadTs))
     case Task(name, run) => Place.under(Namespace.Task, Vector(name, run))
   }
+
+  /** Who the assistant is in this origin's workspace, going by the name given it there
+    * ([[Principals.name]]): `slack:{team}` for a Slack thread; none for a TUI session or a
+    * task, where it is simply grit.
+    */
+  def assistant: Option[PrincipalId] = this match {
+    case Slack(team, _, _) => Some(Origin.slackAssistant(team))
+    case Tui(_, _) | Task(_, _) => None
+  }
+}
+
+object Origin {
+
+  /** The assistant of every thread in Slack team `team` ([[Origin.assistant]]). */
+  def slackAssistant(team: String): PrincipalId = PrincipalId(s"slack:$team")
 }

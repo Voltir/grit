@@ -79,7 +79,7 @@ object TurnFixtures {
   ): TurnHosting = {
     val conversations = new InMemoryConversationStore
     conversations.findOrCreate(origin, PrincipalId.Local)(using TestTx.fake)
-    TurnHosting(conversations, Prompts, ToolSets, edges, edges, voices)
+    TurnHosting(conversations, Prompts, ToolSets, edges, edges, voices, new InMemoryPrincipals)
   }
 
   /** Every fixture turn's prompts and tool sets, kept by content id as the real stores keep
@@ -397,7 +397,7 @@ object TurnFixtures {
     Turn.body(
       TurnEnv(
         TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
-        TurnHosting(conversations, Prompts, toolSets, served, served.edges, new InMemoryVoiceStore),
+        TurnHosting(conversations, Prompts, toolSets, served, served.edges, new InMemoryVoiceStore, new InMemoryPrincipals),
         new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
         new FixedModels(provider, new StubProvider()),

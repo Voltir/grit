@@ -1,7 +1,7 @@
 package grit.slack.edge
 
 import grit.core.edge.{InMemoryDeliveries, Part}
-import grit.core.id.{SourceId, TurnRef}
+import grit.core.id.{PrincipalId, SourceId, TurnRef}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Jot, Origin, Payload, StoreError, Tx}
@@ -84,6 +84,17 @@ object SlackEdgeTests extends TestSuite {
     Tag(grit.core.id.WorkflowId.value(turn.workflowId), part)
 
   val tests = Tests {
+    test("introduce names the workspace's assistant as Slack names grit's bot, and says why not") {
+      val w = new World
+      w.slack.names = w.slack.names.updated(UserId(Bot), "Bort")
+      w.first.introduce() ==> Right(())
+      w.inbox.principals.name(PrincipalId(s"slack:$Team"))(using TestTx.fake) ==> Right(
+        Some("Bort")
+      )
+      w.slack.names = w.slack.names.removed(UserId(Bot))
+      w.edge().introduce() ==> Left(s"grit's bot $Bot has no name in Slack")
+    }
+
     test(
       "a mention is a turn of its thread's conversation, in the person's words under their Slack name, started, awaited and marked :eyes:"
     ) {

@@ -52,8 +52,8 @@ final case class TurnRecords(
 
 /** What a turn offers, and where its hosted calls go (ADR 0017): each conversation's origin,
   * the system prompt and tool set each turn was offered (by content id), the requests its
-  * hosted calls become, which edge serves a place, and `voices`, the voice the turn's prompt
-  * speaks in.
+  * hosted calls become, which edge serves a place, `voices`, the voice the turn's prompt
+  * speaks in, and `principals`, what the assistant is called where the turn is.
   */
 final case class TurnHosting(
     conversations: ConversationStore,
@@ -61,7 +61,8 @@ final case class TurnHosting(
     toolSets: ToolSets,
     requests: ToolRequests,
     edges: EdgeDirectory,
-    voices: VoiceStore
+    voices: VoiceStore,
+    principals: Principals
 )
 
 /** The tools a turn's model may call in its loop ([[TurnLoop]]), and how the loop runs.

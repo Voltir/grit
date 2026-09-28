@@ -25,7 +25,8 @@ object TurnOffer {
   /** What `turn` is offered now, kept, and recorded as `turn`'s prompt: its conversation's
     * workspace (a TUI session's directory); the hosted tools of `tooling` that the live edge
     * serving that workspace advertises, then `tooling`'s own; and its prompt: the base, its
-    * edge's fragment, the voice's fragment (none for plain), what it may reach there, and the
+    * edge's fragment, what its workspace calls the assistant (when it has named it,
+    * [[grit.core.store.Origin.assistant]]), the voice's fragment (none for plain), what it may reach there, and the
     * instruction files the edge read there. `TurnFailure.Store` when a store fails, or the
     * conversation is gone. A stored voice this build does not know is the default, never a
     * failure.
@@ -61,10 +62,14 @@ object TurnOffer {
         a => hosting.prompts.prompt(a.instructions)
       )
       voice <- hosting.voices.current()
+      called <- conversation.origin.assistant.fold[Either[StoreError, Option[String]]](
+        Right(None)
+      )(hosting.principals.name)
       prompt = SystemPrompt.of(
         Vector(
           TurnPrompt.Base,
-          TurnPrompt.edge(conversation.origin),
+          TurnPrompt.edge(conversation.origin)
+        ) ++ called.map(TurnPrompt.called) ++ Vector(
           TurnPrompt.reach(workspace.flatMap(_.directory), hostedSet)
         ) ++ Voice.fragment(voice) ++ place.fragments
       )

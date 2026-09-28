@@ -94,7 +94,8 @@ object Launch {
               engine.toolSets,
               engine.requests,
               engine.edgeDirectory,
-              engine.voices
+              engine.voices,
+              engine.principals
             ),
             assembler,
             Main.classifier(topics),

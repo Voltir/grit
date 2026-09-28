@@ -25,6 +25,20 @@ final class InMemoryPrincipals extends Principals {
         Right(())
     }
 
+  @caps.unsafe.untrackedCaptures
+  private var assistants = Map.empty[PrincipalId, String]
+
+  def enrollAssistant(id: PrincipalId, name: String)(using Tx^): Either[StoreError, Unit] =
+    Principals.refusal(id, name) match {
+      case Some(why) => Left(why)
+      case None =>
+        assistants = assistants.updated(id, name.trim)
+        Right(())
+    }
+
+  def name(id: PrincipalId)(using Tx^): Either[StoreError, Option[String]] =
+    Right(names.get(id).orElse(assistants.get(id)))
+
   def speakers(entries: Vector[EntryId])(using Tx^): Either[StoreError, Speakers] =
     Right(Speakers(entries.flatMap(e => authors.get(e).flatMap(names.get).map(e -> _)).toMap))
 }
