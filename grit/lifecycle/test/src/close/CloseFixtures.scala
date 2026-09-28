@@ -15,6 +15,7 @@ import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, V
 import grit.core.store.{
   InMemoryTombstones,
   ClosedPeriod,
+  ClosedElsewhere,
   ClosingEntry,
   Db,
   Entry,
@@ -230,6 +231,8 @@ object CloseFixtures {
       underlying.closingBefore(turn)
     def openElsewhere(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[OpenPeriod]] =
       underlying.openElsewhere(conversation)
+    def closedElsewhere(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[ClosedElsewhere]] =
+      underlying.closedElsewhere(conversation)
     def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]] =
       underlying.closedAfter(after, n)
     def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit] = underlying.purge(period, at)

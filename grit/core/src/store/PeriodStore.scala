@@ -61,6 +61,13 @@ trait PeriodStore {
     */
   def openElsewhere(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[OpenPeriod]]
 
+  /** Every conversation but `conversation` with a closing entry still kept, with where it
+    * happens and its newest kept closing entry; in the close order of that closing.
+    */
+  def closedElsewhere(conversation: ConversationId)(using
+      Tx^
+  ): Either[StoreError, Vector[ClosedElsewhere]]
+
   /** Closed periods after `after` in close order, at most `n`. */
   def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]]
 
@@ -101,6 +108,11 @@ final case class Opening(first: TurnSeq, closing: Option[ClosingEntry]) {
   * period's first turn.
   */
 final case class OpenPeriod(conversation: ConversationId, place: Place, first: TurnSeq)
+
+/** Another conversation with a closing kept: that conversation, where it happens, and its
+  * newest kept closing entry.
+  */
+final case class ClosedElsewhere(conversation: ConversationId, place: Place, newest: EntryId)
 
 /** A closing entry, and the closing its payload holds. */
 final case class ClosingEntry private (entry: Entry, closing: Closing)

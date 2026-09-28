@@ -121,6 +121,10 @@ object RetrievalAssemblerTests extends TestSuite {
           .map(_ => EntrySearch.Hit(EntryId(id), TurnRef(c, TurnSeq(turn)), score))
       })
     }
+
+    def closings(conversations: Vector[ConversationId], query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
   }
 
   /** How many hits the assembler is told to ask for. */

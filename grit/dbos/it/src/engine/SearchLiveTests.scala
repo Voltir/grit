@@ -176,6 +176,34 @@ object SearchLiveTests extends TestSuite {
       find(queried, "bilby").map(ids) ==> Right(Vector("query:e1"))
     }
 
+    test("closings ranks only the closing entries of the conversations given, on search's scale") {
+      def closedOn(prose: String) =
+        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose(prose))
+      val a = conversation(
+        "closings-a",
+        said("the deploy freeze starts friday"),
+        closedOn("we set the deploy freeze for friday afternoon")
+      )
+      val b = conversation("closings-b", closedOn("the deploy freeze starts friday"))
+      val other = conversation("closings-other", closedOn("the deploy freeze starts friday"))
+      val found = LiveDb.transaction(config) {
+        for {
+          hits <- search.closings(Vector(a, b), "deploy freeze friday", 10)
+          own <- search.search(b, TurnSeq(0), TurnSeq(1000), "deploy freeze friday", 10)
+        } yield (hits, own)
+      }
+      found.map((hits, _) => ids(hits)) ==> Right(Vector("closings-b:e0", "closings-a:e1"))
+      found.map((hits, _) => hits.map(_.turn)) ==>
+        Right(Vector(TurnRef(b, TurnSeq(0)), TurnRef(a, TurnSeq(1))))
+      found.map((hits, own) => hits.headOption.map(_.score) == own.headOption.map(_.score)) ==>
+        Right(true)
+      LiveDb.transaction(config)(search.closings(Vector.empty, "deploy", 10)) ==> Right(
+        Vector.empty
+      )
+      LiveDb.transaction(config)(search.closings(Vector(a), " ", 10)) ==> Right(Vector.empty)
+      val _ = other
+    }
+
     test("a closing entry is searched by its flows, never by the lines it only carries") {
       import TestClosings.{balance, line}
       val added = line(Section.Standing, "feed the takahe seeds", 2, 2)

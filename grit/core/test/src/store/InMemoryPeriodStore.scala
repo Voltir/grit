@@ -169,6 +169,23 @@ final class InMemoryPeriodStore(
         .map(p => OpenPeriod(p.ref.conversationId, origin(p.ref.conversationId).place, p.first))
     )
 
+  def closedElsewhere(conversation: ConversationId)(using
+      Tx^
+  ): Either[StoreError, Vector[ClosedElsewhere]] =
+    Right(
+      periods
+        .filter(_.ref.conversationId != conversation)
+        .flatMap(p => closedOf(p).map(p -> _))
+        .groupBy(_._1.ref.conversationId)
+        .values
+        .flatMap(_.maxByOption((p, _) => PeriodSeq.value(p.ref.seq)))
+        .toVector
+        .sortBy((_, c) => CloseOrdinal.value(c.order))
+        .map((p, c) =>
+          ClosedElsewhere(p.ref.conversationId, origin(p.ref.conversationId).place, c.closing)
+        )
+    )
+
   def closedAfter(after: CloseOrdinal, n: Int)(using
       Tx^
   ): Either[StoreError, Vector[ClosedPeriod]] =

@@ -77,6 +77,37 @@ final class SqlEntrySearch extends EntrySearch {
         }
       }
     }
+
+  def closings(conversations: Vector[ConversationId], query: String, limit: Int)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[EntrySearch.Hit]] =
+    if (query.isBlank || limit <= 0 || conversations.isEmpty) Right(Vector.empty)
+    else {
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      // The ids go as JSON, so no Java array crosses JDBC.
+      val ids = ujson.Arr.from(conversations.map(c => ujson.Str(ConversationId.value(c))))
+      SqlEntryStore.attempt {
+        Using.resource(conn.prepareStatement(SqlEntrySearch.Closings)) { ps =>
+          ps.setString(1, query)
+          ps.setString(2, ids.render())
+          ps.setInt(3, limit)
+          Using.resource(ps.executeQuery()) { rs =>
+            val hits = Vector.newBuilder[EntrySearch.Hit]
+            while (rs.next()) {
+              hits += EntrySearch.Hit(
+                EntryId(rs.getString("id")),
+                TurnRef(
+                  ConversationId(rs.getString("conversation_id")),
+                  TurnSeq(rs.getLong("turn_seq"))
+                ),
+                -rs.getDouble("s")
+              )
+            }
+            hits.result()
+          }
+        }
+      }
+    }
 }
 
 private object SqlEntrySearch {
@@ -106,6 +137,20 @@ private object SqlEntrySearch {
       |    FROM grit.entries e
       |    JOIN jsonb_to_recordset(?::jsonb) AS r(c uuid, f bigint)
       |      ON e.conversation_id = r.c AND e.turn_seq >= r.f
+      |   ORDER BY s, e.created_at DESC, e.id DESC
+      |   LIMIT ?
+      |) ranked
+      |WHERE s < 0
+      |ORDER BY s, created_at DESC, id DESC""".stripMargin
+
+  // Form C over the closing entries of the conversations given, whatever their turn.
+  private val Closings =
+    """SELECT id, conversation_id, turn_seq, s FROM (
+      |  SELECT e.id, e.conversation_id, e.turn_seq, e.created_at,
+      |         e.search_text <@> to_bm25query(?, 'grit.idx_entries_bm25') AS s
+      |    FROM grit.entries e
+      |    JOIN jsonb_array_elements_text(?::jsonb) AS r(c) ON e.conversation_id = r.c::uuid
+      |   WHERE e.payload ->> 'kind' = 'closed'
       |   ORDER BY s, e.created_at DESC, e.id DESC
       |   LIMIT ?
       |) ranked

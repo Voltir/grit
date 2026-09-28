@@ -31,13 +31,21 @@ trait EntrySearch {
   def nearby(open: Vector[OpenPeriod], query: String, limit: Int)(using
       Tx^
   ): Either[StoreError, Vector[EntrySearch.Hit]]
+
+  /** The closing entries of `conversations` that match `query`: best first, at most `limit`,
+    * and equally good matches latest first; each searched by what [[search]] searches of a
+    * closing. Empty when nothing matches, `query` is blank or `conversations` is empty.
+    */
+  def closings(conversations: Vector[ConversationId], query: String, limit: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[EntrySearch.Hit]]
 }
 
 object EntrySearch {
 
   /** A matching entry, the turn it belongs to, and how well it matched: positive, higher is
     * better. Hits for the same query read in one transaction share one scale, from
-    * [[search]] or [[nearby]] alike.
+    * [[search]], [[nearby]] or [[closings]] alike.
     */
   final case class Hit(id: EntryId, turn: TurnRef, score: Double)
 }

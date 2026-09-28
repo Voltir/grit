@@ -334,6 +334,39 @@ abstract class PeriodContract extends TestSuite {
       transaction(periods.openElsewhere(a)).map(_.exists(_.conversation == a)) ==> Right(false)
     }
 
+    test(
+      "the closed elsewhere: every other conversation with a kept closing, its newest, in that closing's close order"
+    ) {
+      val (me, a, b, open, dropped) =
+        (
+          conversation("closed-me"),
+          conversation("closed-a"),
+          conversation("closed-b"),
+          conversation("closed-open"),
+          conversation("closed-dropped")
+        )
+      val (a1, a2) = (PeriodRef(a, PeriodSeq.First), PeriodRef(a, PeriodSeq.First.next))
+      val b1 = PeriodRef(b, PeriodSeq.First)
+      val d1 = PeriodRef(dropped, PeriodSeq.First)
+      seal(PeriodRef(me, PeriodSeq.First), say(me, 0), 5, "mine")
+      seal(a1, say(a, 1), 10, "a first")
+      seal(b1, say(b, 2), 20, "b")
+      // a's second close is after b's, so a comes second, by its newest closing.
+      seal(a2, say(a, 25), 30, "a second")
+      say(open, 3)
+      seal(d1, say(dropped, 4), 12, "gone")
+      say(dropped, 40)
+      transaction(periods.purge(d1, at(50))) ==> Right(())
+      transaction(periods.drop(d1)) ==> Right(true)
+      val theirs = Set(me, a, b, open, dropped)
+      transaction(periods.closedElsewhere(me)).map(_.filter(c => theirs(c.conversation))) ==> Right(
+        Vector(
+          ClosedElsewhere(b, origin("closed-b").place, b1.closingId),
+          ClosedElsewhere(a, origin("closed-a").place, a2.closingId)
+        )
+      )
+    }
+
     test("closed periods are listed in close order across conversations, with their origins") {
       val x = conversation("order-x")
       val y = conversation("order-y")
