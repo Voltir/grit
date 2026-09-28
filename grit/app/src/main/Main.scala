@@ -142,7 +142,7 @@ object Main {
     // is the seed catalog's policy, with the environment laid over it for this run.
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
     val stubDelay = exitOnLeft(millis(env, StubDelayVar))
-    // The key and the seed under this run's policy; the facts the database keeps are laid
+    // The key and the seed under this run's policy; the model settings the database keeps are laid
     // over it once the engine is open.
     val openRouter: Option[(String, Catalog)] =
       if (!env.contains(OpenRouterConfig.KeyVar)) None
@@ -520,7 +520,7 @@ object Main {
     /** `read`, `list` and `search` (`Coding.readOnly`), and `about`: nothing asks first. */
     case Read
 
-    /** Those and `write`, `edit` and `run` (`Coding`), `propose_fact` (`Facts`) and
+    /** Those and `write`, `edit` and `run` (`Coding`), `propose_model_setting` (`Tuning`) and
       * `probe_pair` (`Probes`), each of which asks first.
       */
     case All

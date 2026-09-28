@@ -68,8 +68,9 @@ In dependency order:
   beside the turn, sweeping every `GRIT_SWEEP`, posting to the plugins `GRIT_PLUGINS` turns
   on (`digest`, `grit.digest`, which also offers each turn's model `recent_activity`); then runs the chat TUI, or with arguments answers each as a message.
   `Launch`, the engine's workflows launched on an open engine, the same for every way grit
-  runs. `KeptFacts`, the fact book `propose_fact` keeps approved facts in; `PromoteFacts`, which
-  prints the seed catalog with every approved fact laid over it, for a reviewed commit.
+  runs. `KeptModelSettings`, where `propose_model_setting` keeps the settings a person
+  approves; `PromoteModelSettings`, which prints the seed catalog with every approved setting
+  laid over it, for a reviewed commit.
   ← `config`, `look`, `chat`, `serve`
 
 No source file sits at the module's root, and the test tree mirrors it.

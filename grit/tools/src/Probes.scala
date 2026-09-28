@@ -7,7 +7,7 @@ import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
 
 /** The tool that measures how a model behaves at an upstream: `probe_pair`, a small battery
   * of calls to the pair, each check made once per run, reported as counts a model can turn
-  * into facts ([[Facts.propose]]).
+  * into model settings ([[Tuning.propose]]).
   */
 object Probes {
 
@@ -32,7 +32,7 @@ object Probes {
         s"Measure how a model behaves at one upstream, over `runs` runs (1 to $MaxRuns) of " +
           s"$CallsPerRun calls each, at up to $MaxTokens output tokens a call. Reports, for " +
           "each of strict, names, repairs, replay and " +
-          "afterResult, in how many answered runs the behaviour showed and the fact to propose " +
+          "afterResult, in how many answered runs the behaviour showed and the setting to propose " +
           "from it. A call that fails " +
           "leaves its check unanswered for that run; when nothing answers, the probe fails " +
           "with the last error.",
@@ -45,7 +45,7 @@ object Probes {
               runs = Field.count("How many runs.", 1, MaxRuns)
             )
           )
-          .refine(a => Facts.pair(a.model, a.upstream).map(ref => (ref = ref, runs = a.runs)))
+          .refine(a => Tuning.pair(a.model, a.upstream).map(ref => (ref = ref, runs = a.runs)))
       ),
       Gate.Ask(a =>
         s"Probe ${a.ref}: ${a.runs} runs, about ${a.runs * CallsPerRun} model calls at up to " +
@@ -223,7 +223,7 @@ object Probes {
     else
       Outcome.Done(
         (s"Probed $ref, $runs runs:" +: lines.map(_(1)) :+
-          "Propose each as written with propose_fact, probe `probe_pair`; a check with no answered run, or nothing to propose, is left out.")
+          "Propose each as written with propose_model_setting, probe `probe_pair`; a check with no answered run, or nothing to propose, is left out.")
           .mkString("\n")
       )
   }

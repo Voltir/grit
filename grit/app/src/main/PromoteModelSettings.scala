@@ -8,14 +8,14 @@ import grit.dbos.sql.DbConfig
 import grit.models.Seed
 import grit.turn.Turn
 
-/** Prints the seed catalog with every fact approved at runtime laid over it, in the seed's
-  * form, for a person to put in `grit/models/resources/catalog.json` and commit. The facts
+/** Prints the seed catalog with every model setting approved at runtime laid over it, in the seed's
+  * form, for a person to put in `grit/models/resources/catalog.json` and commit. The settings
   * are read from the Postgres `GRIT_DATABASE_*` names (a `.env` may set it), and nothing is
   * written.
   *
-  * {{{./mill grit.app.runMain grit.app.main.PromoteFacts > grit/models/resources/catalog.json}}}
+  * {{{./mill grit.app.runMain grit.app.main.PromoteModelSettings > grit/models/resources/catalog.json}}}
   */
-object PromoteFacts {
+object PromoteModelSettings {
 
   /** `seed` with `approved` laid over it, oldest first, as the seed file holds a catalog;
     * ends with a newline.
@@ -42,9 +42,9 @@ object PromoteFacts {
       case Left(refused) => fail(refused.message(java.time.Instant.now()))
     }
     try
-      engine.db.read(engine.facts.all()) match {
-        case Right(kept) => print(render(seed, kept.map(_.facts)))
-        case Left(e) => fail(s"the approved facts cannot be read: $e")
+      engine.db.read(engine.modelSettings.all()) match {
+        case Right(kept) => print(render(seed, kept.map(_.settings)))
+        case Left(e) => fail(s"the approved model settings cannot be read: $e")
       }
     finally engine.close()
   }

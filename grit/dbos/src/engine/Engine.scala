@@ -26,8 +26,8 @@ import grit.core.store.{
   EntryStore,
   Jot,
   LifecycleStore,
-  ModelFactStore,
   ModelProfileStore,
+  ModelSettingStore,
   Origin,
   PeriodStore,
   Principals,
@@ -48,8 +48,8 @@ import grit.dbos.sql.{
   SqlEntryStore,
   SqlJot,
   SqlLifecycleStore,
-  SqlModelFactStore,
   SqlModelProfileStore,
+  SqlModelSettingStore,
   SqlPeriodStore,
   SqlPluginCursors,
   SqlPluginDocs,
@@ -110,8 +110,8 @@ final class Engine private (
   /** Which live edge serves each place, and what it offers there. */
   val edgeDirectory: EdgeDirectory = new SqlEdgeDirectory()
 
-  /** Facts about model pairs approved while grit runs, over the seed catalog. */
-  val facts: ModelFactStore = new SqlModelFactStore()
+  /** Settings of model pairs approved while grit runs, over the seed catalog. */
+  val modelSettings: ModelSettingStore = new SqlModelSettingStore()
 
   /** Each conversation's periods, and their closing entries. */
   val periods: PeriodStore = new SqlPeriodStore(entries)

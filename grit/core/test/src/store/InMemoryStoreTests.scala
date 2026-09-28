@@ -10,7 +10,7 @@ object InMemoryStoreTests extends StoreContract {
   protected val entries: EntryStore = new InMemoryEntryStore
   protected val ledger: UsageLedger = new InMemoryUsageLedger
   protected val profiles: ModelProfileStore = new InMemoryModelProfileStore
-  protected val facts: ModelFactStore = new InMemoryModelFactStore
+  protected val modelSettings: ModelSettingStore = new InMemoryModelSettingStore
   protected val toolSets: ToolSets = new InMemoryToolSets
   protected val prompts: PromptStore = new InMemoryPromptStore
 

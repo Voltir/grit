@@ -132,7 +132,7 @@ only a nested `step`.
 - *Fix:* construct the value inline where it is passed; pass its parts, not the value. Or
   pass it as a supertype none of whose members holds a capability. Or tie the capabilities
   to a capture-set parameter the value's type names: `TurnTooling[C^]` holds a
-  `Toolbox[C]`, and `Main` builds a `TurnTooling[{facts, models, store}]` inline and hands
+  `Toolbox[C]`, and `Main` builds a `TurnTooling[{tuned, models, store}]` inline and hands
   it to `Turn.body[C^]`.
 
 **An abstract capability member, implemented by a case-class field.**
@@ -261,7 +261,7 @@ gets a capture-set variable, the trap above. Bind the inner `Args` to a `val` fi
 `def bound(book: Book, …) = Toolbox.of[{book}](…).bind(…)` crashed the compiler (3.9):
 *"assertion failed: orphan parameter reference: TermParamRef(book)"*, an internal error, not
 a diagnostic. The inferred result type mentions `{book}`, a parameter of the method it
-escapes. Build the value where the capability is a local `val` instead (`FactsTests`), or
+escapes. Build the value where the capability is a local `val` instead (`TuningTests`), or
 give the helper an explicit result type that does not name the parameter.
 
 **A generic call of `Toolbox.bind` from another file of `grit.core`.**

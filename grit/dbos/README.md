@@ -5,7 +5,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
 
 - **`sql`** — Postgres behind core's store seams: `DbConfig` (where the database is),
   `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place, `grit.places`, and who began it, one of `grit.principals`), `SqlUsageLedger`,
-  `SqlModelProfileStore`, `SqlModelFactStore`, `SqlToolSets`, `SqlPromptStore`, `SqlToolRequests` and
+  `SqlModelProfileStore`, `SqlModelSettingStore`, `SqlToolSets`, `SqlPromptStore`, `SqlToolRequests` and
   `SqlEdgeDirectory` (hosted tool calls and the edges serving them, ADR 0017), `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
   row), `SqlVoiceStore` (the voice, one row), `SqlPrincipals` (people by name, and who wrote each inbound entry), `SqlDeliveries` (the replies an edge has yet to post outside grit), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and

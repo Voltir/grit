@@ -55,7 +55,7 @@ In dependency order:
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin`,
   `ConversationStore` (each conversation's origin and who began it), `PromptStore` (each
   turn's system prompt, its fragments kept by id), `UsageLedger`, `ModelProfileStore` (which profile each turn ran
-  under), `ModelFactStore` (facts about pairs approved at runtime), `PeriodStore` (which
+  under), `ModelSettingStore` (settings of pairs approved at runtime), `PeriodStore` (which
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
   settings in force), `VoiceStore` (the voice in force), `Principals` (the people an edge enrolled, and each workspace's assistant, by name; `Origin.assistant` says which principal the assistant is where a conversation happens) and `Speakers` (whose names a window shows on the inbound entries they wrote), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
   conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`, `retention`, `prompt`

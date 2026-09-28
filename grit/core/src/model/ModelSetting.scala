@@ -12,12 +12,18 @@ enum Setting {
   case Guidance(value: ToolGuidance)
 }
 
-/** A measured fact about `ref`: `setting` held in `held` of `runs` runs of `probe`
-  * (`held <= runs`, both checked where a fact is read).
+/** A measured setting of `ref`: `setting` held in `held` of `runs` runs of `probe`
+  * (`held <= runs`, both checked where one is read).
   */
-final case class Fact(ref: ModelRef, setting: Setting, probe: String, runs: Int, held: Int) {
+final case class ModelSetting(
+    ref: ModelRef,
+    setting: Setting,
+    probe: String,
+    runs: Int,
+    held: Int
+) {
 
-  /** The fact as a profile of `ref` that knows only `setting`, measured on `on`. */
+  /** As a profile of `ref` that knows only `setting`, measured on `on`. */
   def profile(on: LocalDate): Profile = {
     val source = Source.Measured(probe, on, runs, held)
     val none = Profile(ref)
@@ -32,11 +38,11 @@ final case class Fact(ref: ModelRef, setting: Setting, probe: String, runs: Int,
   }
 }
 
-/** Capability to keep a fact a person approved: kept, the next turn's catalog lays it over
-  * the seed. The book dates it and names who approved it.
+/** Capability to keep a model setting a person approved: kept, the next turn's catalog lays
+  * it over the seed. It dates the setting and names who approved it.
   */
-trait FactBook extends caps.SharedCapability {
+trait ModelSettings extends caps.SharedCapability {
 
-  /** Keeps `fact`; `Left` says why it was not kept. */
-  def keep(fact: Fact): Either[String, Unit]
+  /** Keeps `setting`; `Left` says why it was not kept. */
+  def keep(setting: ModelSetting): Either[String, Unit]
 }

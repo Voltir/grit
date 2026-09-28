@@ -313,13 +313,13 @@ CREATE INDEX IF NOT EXISTS idx_tool_requests_waiting ON grit.tool_requests (work
     WHERE state IN ('open', 'claimed');
 CREATE INDEX IF NOT EXISTS idx_tool_requests_turn ON grit.tool_requests (conversation_id, turn_seq);
 
--- Facts about model pairs learned while grit runs, each approved by a person: the
+-- Settings of model pairs learned while grit runs, each approved by a person: the
 -- database's layer over the checked-in seed catalog (grit/models/resources/catalog.json).
--- Append-only; `facts` is a partial profile in the seed's form (CatalogJson.writeProfile).
+-- Append-only; `settings` is a partial profile in the seed's form (CatalogJson.writeProfile).
 -- Retention: kept: approved by a person, the catalog's runtime layer.
-CREATE TABLE IF NOT EXISTS grit.model_facts (
+CREATE TABLE IF NOT EXISTS grit.model_settings (
     ordinal     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    facts       JSONB NOT NULL,
+    settings    JSONB NOT NULL,
     approved_by TEXT NOT NULL,
     approved_at TIMESTAMPTZ NOT NULL
 );

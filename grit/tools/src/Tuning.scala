@@ -1,22 +1,22 @@
 package grit.tools
 
-import grit.core.model.{CatalogJson, Fact, FactBook, ModelId, ModelRef, Upstream}
+import grit.core.model.{CatalogJson, ModelId, ModelRef, ModelSetting, ModelSettings, Upstream}
 import grit.core.tool.{Args, ArgsError, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
 
-/** The tool that proposes what grit should know about a model: `propose_fact`, a measured
-  * setting of one (model, upstream) pair, kept in the book once a person approves it.
+/** The tool that proposes how grit should call a model: `propose_model_setting`, a measured
+  * setting of one (model, upstream) pair, kept once a person approves it.
   */
-object Facts {
+object Tuning {
 
-  /** The most runs a fact may claim. */
+  /** The most runs a proposed setting may claim. */
   val MaxRuns = 10000
 
-  /** `propose_fact`, keeping in `book` what a person approves. */
-  def propose(book: FactBook^): Tool[Fact]^{book} =
+  /** `propose_model_setting`, keeping in `book` what a person approves. */
+  def propose(book: ModelSettings^): Tool[ModelSetting]^{book} =
     new Tool(
       ToolSpec(
-        ToolName("propose_fact"),
-        "Propose one measured fact about a model served by one upstream, kept once " +
+        ToolName("propose_model_setting"),
+        "Propose one measured setting of a model served by one upstream, kept once " +
           "approved; the next turn's model catalog includes it, this one does not. " +
           "`setting` is one of " + CatalogJson.SettingNames.map(n => s"`$n`").mkString(", ") +
           "; `value` is in that setting's words (" +
@@ -24,7 +24,7 @@ object Facts {
             .map(n => s"$n: ${CatalogJson.settingWords(n).mkString(" | ")}")
             .mkString("; ") +
           "), and for `repairs` a comma-separated list, empty for none. `probe` names what " +
-          "measured it; the fact held in `held` of `runs` runs. Refused, before anyone is asked, " +
+          "measured it; the setting held in `held` of `runs` runs. Refused, before anyone is asked, " +
           "when a value is not one of those, or `held` is more than `runs`.",
         Args
           .of(
@@ -57,12 +57,12 @@ object Facts {
                 (),
                 ArgsError.Invalid("held", s"at most `runs` (${a.runs})", a.held.toString)
               )
-            } yield Fact(ref, setting, a.probe, a.runs, a.held)
+            } yield ModelSetting(ref, setting, a.probe, a.runs, a.held)
           )
       ),
       Gate.Ask(f => {
         val (name, value) = CatalogJson.spelled(f.setting)
-        s"Keep a fact about ${f.ref}: $name = $value, held in ${f.held} of ${f.runs} runs of ${f.probe}."
+        s"Keep a model setting for ${f.ref}: $name = $value, held in ${f.held} of ${f.runs} runs of ${f.probe}."
       }),
       f => s"${f.ref} ${CatalogJson.spelled(f.setting)(0)}",
       f =>

@@ -5,8 +5,8 @@ import java.util.UUID
 import grit.core.id.ConversationId
 import grit.core.store.{
   EntryStore,
-  ModelFactStore,
   ModelProfileStore,
+  ModelSettingStore,
   Origin,
   PromptStore,
   StoreContract,
@@ -17,8 +17,8 @@ import grit.core.tool.ToolSets
 import grit.dbos.sql.{
   LiveDb,
   SqlEntryStore,
-  SqlModelFactStore,
   SqlModelProfileStore,
+  SqlModelSettingStore,
   SqlPromptStore,
   SqlToolSets,
   SqlUsageLedger,
@@ -38,7 +38,7 @@ object SqlStoreTests extends StoreContract {
   protected val entries: EntryStore = new SqlEntryStore()
   protected val ledger: UsageLedger = new SqlUsageLedger()
   protected val profiles: ModelProfileStore = new SqlModelProfileStore()
-  protected val facts: ModelFactStore = new SqlModelFactStore()
+  protected val modelSettings: ModelSettingStore = new SqlModelSettingStore()
   protected val toolSets: ToolSets = new SqlToolSets()
   protected val prompts: PromptStore = new SqlPromptStore()
 

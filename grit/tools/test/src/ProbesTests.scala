@@ -72,7 +72,7 @@ object ProbesTests extends TestSuite {
               |- repairs: a number came back quoted in 2 of 2 answered runs → propose repairs = quoted-number, held 2 of 2.
               |- replay: reasoning sent back was accepted in 2 of 2 answered runs → propose replay = details, held 2 of 2.
               |- afterResult: a user message after a tool result was refused in 2 of 2 answered runs → propose afterResult = in-last-result, held 2 of 2.
-              |Propose each as written with propose_fact, probe `probe_pair`; a check with no answered run, or nothing to propose, is left out.""".stripMargin
+              |Propose each as written with propose_model_setting, probe `probe_pair`; a check with no answered run, or nothing to propose, is left out.""".stripMargin
           )
           models.asked.map(_.assignment.ref).distinct.map(_.toString) ==>
             Vector("deepseek/deepseek-v4.1-flash-20260910 @ fireworks")
@@ -121,7 +121,7 @@ object ProbesTests extends TestSuite {
               |- repairs: a number came back quoted in 0 of 1 answered runs → nothing to propose.
               |- replay: no reasoning to send back in 1 runs.
               |- afterResult: a user message after a tool result was refused in 0 of 1 answered runs → propose afterResult = user-message, held 1 of 1.
-              |Propose each as written with propose_fact, probe `probe_pair`; a check with no answered run, or nothing to propose, is left out.""".stripMargin
+              |Propose each as written with propose_model_setting, probe `probe_pair`; a check with no answered run, or nothing to propose, is left out.""".stripMargin
           )
         case other => sys.error(s"not gated: $other")
       }

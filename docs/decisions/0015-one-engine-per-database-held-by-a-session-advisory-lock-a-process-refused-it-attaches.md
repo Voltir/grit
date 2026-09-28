@@ -49,8 +49,8 @@ Consequences:
   at most once by its attempt marker (ADR 0009). A per-transaction fence (every write
   checking the holder) is not built: the window is bounded, and what it would guard is
   already guarded.
-- A tool that reads the database without running workflows (`PromoteFacts`) takes the lock
-  too, and so is refused while grit runs.
+- A tool that reads the database without running workflows (`PromoteModelSettings`) takes
+  the lock too, and so is refused while grit runs.
 - No takeover: when the engine stops, attached processes wait; a grit started next takes
   the lock and recovers the waiting turns.
 - Enforced by `EngineLockTests`: a second engine refused and the holder named, a dead row

@@ -11,7 +11,7 @@ enum Effort {
 final case class Assignment(ref: ModelRef, maxTokens: Int, effort: Option[Effort])
 
 /** Which pair does each job: answering the turn, summarising it, and writing its search
-  * query. A person's decision; a probe proposes facts about pairs, never an assignment.
+  * query. A person's decision; a probe proposes settings of pairs, never an assignment.
   */
 final case class Policy(turn: Assignment, summary: Assignment, query: Assignment)
 

@@ -24,7 +24,7 @@ import grit.core.tool.{Retry, ToolName, ToolSet, ToolSetId, ToolSets}
 import utest.*
 
 /** The contract every [[EntryStore]], [[UsageLedger]], [[ModelProfileStore]],
-  * [[ModelFactStore]], [[ToolSets]] and [[PromptStore]] keeps, run against one
+  * [[ModelSettingStore]], [[ToolSets]] and [[PromptStore]] keeps, run against one
   * implementation of each: the in-memory fakes in core, the SQL stores in grit.dbos. The
   * fakes stand in for the SQL stores in every other module's tests, so whatever those tests
   * rely on belongs here.
@@ -43,10 +43,10 @@ abstract class StoreContract extends TestSuite {
   /** The profile store under test, over the same database as [[entries]]. */
   protected def profiles: ModelProfileStore
 
-  /** The fact store under test, over the same database as [[entries]]. It keeps every fact
+  /** The model setting store under test, over the same database as [[entries]]. It keeps every one
     * in one list, so only one test writes to it.
     */
-  protected def facts: ModelFactStore
+  protected def modelSettings: ModelSettingStore
 
   /** The tool-set store under test, over the same database as [[entries]]. */
   protected def toolSets: ToolSets
@@ -323,10 +323,10 @@ abstract class StoreContract extends TestSuite {
       transaction(profiles.get(TurnProfileId("0000000000000000"))) ==> Right(None)
     }
 
-    test("facts are kept as approved, and read back oldest first") {
-      val store = facts
+    test("settings are kept as approved, and read back oldest first") {
+      val store = modelSettings
       val ref =
-        ModelRef(ModelId.of("a/facts").getOrElse(throw new java.lang.AssertionError("id")), None)
+        ModelRef(ModelId.of("a/settings").getOrElse(throw new java.lang.AssertionError("id")), None)
       val on = java.time.LocalDate.of(2026, 9, 25)
       val first =
         Profile(ref, strict = Known.Of(StrictSchemas.Enforced, Source.Measured("probe", on, 5, 5)))
@@ -336,8 +336,8 @@ abstract class StoreContract extends TestSuite {
       transaction(store.keep(second, "ana", Instant.parse("2026-09-25T11:00:00Z"))) ==> Right(())
       transaction(store.all()) ==> Right(
         Vector(
-          ModelFactStore.Kept(first, "nick", Instant.parse("2026-09-25T10:00:00Z")),
-          ModelFactStore.Kept(second, "ana", Instant.parse("2026-09-25T11:00:00Z"))
+          ModelSettingStore.Kept(first, "nick", Instant.parse("2026-09-25T10:00:00Z")),
+          ModelSettingStore.Kept(second, "ana", Instant.parse("2026-09-25T11:00:00Z"))
         )
       )
     }

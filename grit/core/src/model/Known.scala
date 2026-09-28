@@ -2,13 +2,13 @@ package grit.core.model
 
 import java.time.LocalDate
 
-/** Where a fact about a pair came from. */
+/** Where a setting of a pair came from. */
 enum Source {
 
   /** A person said so: `by` names them, or `env` for a setting read from the environment. */
   case Declared(by: String, on: LocalDate)
 
-  /** `held` of `runs` runs of the probe named `probe` showed the fact; `held <= runs`. */
+  /** `held` of `runs` runs of the probe named `probe` showed the setting; `held <= runs`. */
   case Measured(probe: String, on: LocalDate, runs: Int, held: Int)
 
   /** The upstream's own metadata said so. It never predicted strict enforcement when that

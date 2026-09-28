@@ -19,7 +19,7 @@ import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.models.{OpenRouterModels, StubModels}
-import grit.tools.{About, Coding, Facts, Probes}
+import grit.tools.{About, Coding, Probes, Tuning}
 import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling}
 
 import grit.core.period.LifecycleSettings
@@ -52,9 +52,9 @@ object Launch {
   )
 
   /** `engine` with its lifecycle's settings seeded, and its workflows launched on
-    * it: the assembler reads its stores, and the models its kept facts. Throws when the
+    * it: the assembler reads its stores, and the models its kept model settings. Throws when the
     * settings cannot be seeded, when the coding tools repeat a name, a fault in `grit.tools`
-    * that no setting can cause, or when the kept model facts cannot be read.
+    * that no setting can cause, or when the kept model settings cannot be read.
     */
   def apply(engine: Engine^, s: Settings): Engine^{engine} = {
     import s.*
@@ -63,7 +63,7 @@ object Launch {
     }
     val reached: Models = openRouter match {
       case None => new StubModels(stubDelay)
-      case Some((key, seed)) => new OpenRouterModels(key, seed, engine.db, engine.facts)
+      case Some((key, seed)) => new OpenRouterModels(key, seed, engine.db, engine.modelSettings)
     }
     val models: Models = if (tui) reached else Main.announced(reached)
     // The query writer is built with the assembler, from the catalog as the engine opens.
@@ -148,7 +148,7 @@ object Launch {
     val store: Db^ = engine.db
     // Digest's recent_activity, offered when Digest is on.
     val digest = plugins.collectFirst { case d: Digest => engine.docs(d.name) }
-    // The engine's own tools touch no file: they read grit's store, keep a fact, probe a
+    // The engine's own tools touch no file: they read grit's store, keep a model setting, probe a
     // model. The coding tools are hosted: offered here, run by the edge serving the
     // conversation's directory (ADR 0017).
     // What grit is, from the docs grit.tools ships; offered under either choice.
@@ -161,18 +161,18 @@ object Launch {
           case Some(docs) => Toolbox.of[{store}](about, Digest.recentActivity(store, docs))
         }).map(tools => launch(TurnTooling[{store}](tools, Coding.readOnlyHosted, engine.jot, rounds)))
       case Main.ToolChoice.All =>
-        val facts = new KeptFacts(engine.jot, engine.facts, Clock.system())
+        val tuned = new KeptModelSettings(engine.jot, engine.modelSettings, Clock.system())
         (digest match {
           case None =>
-            Toolbox.of[{facts, models, store}](about, Facts.propose(facts), Probes.probe(models))
+            Toolbox.of[{tuned, models, store}](about, Tuning.propose(tuned), Probes.probe(models))
           case Some(docs) =>
-            Toolbox.of[{facts, models, store}](
+            Toolbox.of[{tuned, models, store}](
               about,
-              Facts.propose(facts),
+              Tuning.propose(tuned),
               Probes.probe(models),
               Digest.recentActivity(store, docs)
             )
-        }).map(tools => launch(TurnTooling[{facts, models, store}](tools, Coding.hosted, engine.jot, rounds)))
+        }).map(tools => launch(TurnTooling[{tuned, models, store}](tools, Coding.hosted, engine.jot, rounds)))
     }
     // Its caller closes the engine and reports the throw: in the chat, as the engine that
     // could not open.

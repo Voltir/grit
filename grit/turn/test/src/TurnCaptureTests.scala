@@ -20,7 +20,7 @@ object TurnCaptureTests extends TestSuite {
   private val prelude =
     """package probe
       |import grit.core.host.*
-      |import grit.core.model.FactBook
+      |import grit.core.model.ModelSettings
       |import grit.core.provider.Models
       |import grit.core.store.{Db, Jot}
       |import grit.core.tool.*

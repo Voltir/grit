@@ -82,7 +82,7 @@ object CatalogTests extends TestSuite {
       Known.Unmeasured.orOver(measured) ==> measured
     }
 
-    test("catalog: one profile per pair, later facts laid over earlier by rank") {
+    test("catalog: one profile per pair, later settings laid over earlier by rank") {
       val override1 = Profile(oss, strict = Known.Of(StrictSchemas.Rejected, nick))
       val override2 = Profile(oss, names = Known.Of(NameRepair.AsSent, listed))
       val merged = Catalog.of(policy, Vector(ossProfile, flashProfile, override1, override2))
@@ -103,7 +103,7 @@ object CatalogTests extends TestSuite {
       c.profile(ossOpen) ==> Some(open)
     }
 
-    test("version: the same content is the same version; any fact or policy change is another") {
+    test("version: the same content is the same version; any setting or policy change is another") {
       Catalog.of(policy, Vector(ossProfile, flashProfile)).version ==> catalog.version
       val oneFact = Catalog.of(
         policy,
@@ -234,14 +234,16 @@ object CatalogTests extends TestSuite {
       ossOpen.toString ==> "openai/gpt-oss-120b"
     }
 
-    test("a fact is a profile of its pair that knows one setting, measured by its probe") {
-      val fact = Fact(flash, Setting.Names(NameRepair.AsSent), "tool-probe", 5, 4)
-      fact.profile(day) ==>
+    test("a model setting is a profile of its pair that knows one setting, measured by its probe") {
+      val measured = ModelSetting(flash, Setting.Names(NameRepair.AsSent), "tool-probe", 5, 4)
+      measured.profile(day) ==>
         Profile(
           flash,
           names = Known.Of(NameRepair.AsSent, Source.Measured("tool-probe", day, 5, 4))
         )
-      Fact(oss, Setting.Repairs(Set(ArgRepair.QuotedList)), "p", 1, 1).profile(day).repairs ==>
+      ModelSetting(oss, Setting.Repairs(Set(ArgRepair.QuotedList)), "p", 1, 1)
+        .profile(day)
+        .repairs ==>
         Known.Of(Set(ArgRepair.QuotedList), Source.Measured("p", day, 1, 1))
     }
 
