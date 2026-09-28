@@ -51,10 +51,12 @@ object QueryWriter {
       Option.when(said.nonEmpty)(s"Assistant: ${said.mkString("\n")}")
     case Payload.Message(Message.ToolResult(_, content, _)) =>
       Some(s"Tool result: ${content.take(ToolResultChars)}")
+    // The turn's own entries: a heard message is never one.
+    case Payload.Heard(_) => None
     // Assembly runs before the turn's tool loop, so its own entries hold no exchange yet.
-    case Payload.Heard(_) | Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _) |
-        Payload.Topic(_) | Payload.Exchange(_) | Payload.Result(_, _) | Payload.Attempt(_) |
-        Payload.Ask(_, _) | Payload.Closed(_, _, _) =>
+    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _) | Payload.Topic(_) |
+        Payload.Exchange(_) | Payload.Result(_, _) | Payload.Attempt(_) | Payload.Ask(_, _) |
+        Payload.Closed(_, _, _) =>
       None
   }
 }

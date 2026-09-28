@@ -15,7 +15,8 @@ object Shown {
 
   /** A message as it is, but a person's, when `speakers` names its author, under a line of
     * its own, "{name} wrote:", and with a pasted grit block, that line included, shown as one
-    * ([[pasted]]);
+    * ([[pasted]]); a heard message as a person's under "{name} said, not to you:"
+    * ("Someone" when `speakers` does not name its author);
     * a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
     * lines it resolved and how, and the balance's open lines, its standing lines (those
@@ -25,6 +26,9 @@ object Shown {
   def of(entry: Entry, speakers: Speakers): Option[Message] = entry.payload match {
     case Payload.Message(Message.User(text)) => Some(said(entry, text, speakers))
     case Payload.Message(m) => Some(m)
+    case Payload.Heard(text) =>
+      val name = speakers.of(entry.id).getOrElse("Someone")
+      Some(Message.User(pasted(s"$name said, not to you:\n$text")))
     case Payload.Closed(_, _, closing) =>
       Some(Message.User(record(closing, entry.createdAt)))
     case _ => None
@@ -32,7 +36,7 @@ object Shown {
 
   /** A nearby section as one user message, "[afar] another conversation, shown by grit,
     * still open, at {place.written}:", then each message among `entries` as a
-    * `User:` or `Assistant:` line of its text, as [[pasted]] shows it. `None` when none of
+    * `User:`, `Overheard:` or `Assistant:` line of its text, as [[pasted]] shows it. `None` when none of
     * them has text.
     */
   def nearby(place: Place, entries: Vector[Entry]): Option[Message] = {
@@ -232,6 +236,7 @@ object Shown {
   private def line(payload: Payload): Option[String] = payload match {
     case Payload.Message(Message.User(text)) =>
       Option.when(text.trim.nonEmpty)(s"User: ${pasted(text)}")
+    case Payload.Heard(text) => Option.when(text.trim.nonEmpty)(s"Overheard: ${pasted(text)}")
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString("\n")
       Option.when(said.trim.nonEmpty)(s"Assistant: ${pasted(said)}")

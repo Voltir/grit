@@ -113,6 +113,14 @@ object LinearAssemblerTests extends TestSuite {
       window(named, 2, 2 * SmallTurn + 1) ==> Vector("t1:2", "t1:3")
     }
 
+    test("a heard message before a turn is in its window, as speech not said to grit") {
+      val heard = AssemblyFixtures.store(
+        Vector(Payload.Heard("the freeze moves to Friday")),
+        Vector(Payload.Message(user("when is the freeze?")))
+      )
+      window(heard, 1, 1000) ==> Vector("t0:0")
+    }
+
     test("a turn is kept whole, however many messages it holds") {
       // Two messages queued before one reply: 5 + 5 + 6 = 16 tokens, after a turn too large
       // to join it, so the window leaves a turn out and pays for its gap line.

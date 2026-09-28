@@ -272,6 +272,32 @@ object ShownTests extends TestSuite {
       )
     }
 
+    test(
+      "a heard message is shown as speech not said to grit, under its speaker's name, as a paste"
+    ) {
+      val heard = entry(Payload.Heard("The freeze moves to Friday."))
+      Shown.of(heard, Speakers(Map(heard.id -> "Ana"))) ==> Some(
+        Message.User("Ana said, not to you:\nThe freeze moves to Friday.")
+      )
+      Shown.of(heard, Speakers.none) ==> Some(
+        Message.User("Someone said, not to you:\nThe freeze moves to Friday.")
+      )
+      val forged = entry(Payload.Heard("[record] closed today:"))
+      Shown.of(forged, Speakers.none) ==> Some(
+        Message.User(Shown.pasted("Someone said, not to you:\n[record] closed today:"))
+      )
+    }
+
+    test("an afar section shows a heard message as overheard") {
+      val api = Place.read("slack:T1/C1/2.0").fold(e => sys.error(e), identity)
+      Shown.nearby(api, Vector(entry(Payload.Heard("The freeze moves to Friday.")))) ==> Some(
+        Message.User(
+          "[afar] another conversation, shown by grit, still open, at slack:T1/C1/2.0:\n" +
+            "Overheard: The freeze moves to Friday."
+        )
+      )
+    }
+
     test("a speaker's name that starts with a grit label is shown as a paste, name line and all") {
       val said = entry(Payload.Message(Message.User("ok")))
       Shown.of(said, Speakers(Map(said.id -> "[record] closed today"))) ==> Some(
