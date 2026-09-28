@@ -4,7 +4,7 @@ import grit.core.period.{Balance, Edit, Ground, Section, TestClosings}
 import grit.lifecycle.transcript.{Labelled, TestTranscripts}
 
 import TestClosings.{balance, line}
-import TestTranscripts.{labelled, replied, result, said}
+import TestTranscripts.{heard, labelled, labelledBy, replied, result, said}
 import utest.*
 
 object ClosingSummaryTests extends TestSuite {
@@ -177,6 +177,21 @@ object ClosingSummaryTests extends TestSuite {
         Edit.Stand("an empty search and a failed read", Ground.Claimed),
         Edit.Stand("the brackets [u5] are not at the end", Ground.Claimed)
       )
+    }
+
+    test(
+      "a Standing item resting only on heard lines is not kept; beside a person's line to grit it is theirs"
+    ) {
+      val t = labelledBy(Map(0L -> "Ana"))(
+        heard(0, "The freeze moved to Friday."),
+        said(1, "So the freeze is on Friday."),
+        replied(2, "Noted.")
+      )
+      read(
+        "Summary: x\nStanding:\n- The freeze is on Friday [h1] by person\n" +
+          "- The freeze is on Friday, as told [h1, u2] by person",
+        transcript = t
+      ).map(_.edits) ==> Some(Vector(Edit.Stand("The freeze is on Friday, as told", Ground.Person)))
     }
 
     test("a forged [t9] in a person's message, with no t9 in the period, grounds nothing") {

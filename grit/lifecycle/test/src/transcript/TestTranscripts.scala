@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.store.{Entry, Payload}
+import grit.core.store.{Entry, Payload, Speakers}
 
 /** Entries of one period, as a transcript test writes them: `seq` orders them. */
 object TestTranscripts {
@@ -14,6 +14,9 @@ object TestTranscripts {
 
   /** The person's message `text`. */
   def said(seq: Long, text: String): Entry = entry(seq, Payload.Message(Message.User(text)))
+
+  /** A person's message `text`, heard where grit listens. */
+  def heard(seq: Long, text: String): Entry = entry(seq, Payload.Heard(text))
 
   /** The assistant's reply `text`. */
   def replied(seq: Long, text: String): Entry = entry(
@@ -32,6 +35,16 @@ object TestTranscripts {
   def result(seq: Long, shown: String, content: String, error: Boolean = false): Entry =
     entry(seq, Payload.Result(Message.ToolResult(ToolCallId(s"c$seq"), content, error), shown))
 
-  /** `entries` as the writer's transcript. */
-  def labelled(entries: Entry*): Labelled = PeriodTranscript.labelled(entries.toVector)
+  /** `entries` as the writer's transcript, nobody named. */
+  def labelled(entries: Entry*): Labelled =
+    PeriodTranscript.labelled(entries.toVector, Speakers.none)
+
+  /** `entries` as the writer's transcript, the entry at each `seq` of `names` written by that
+    * person.
+    */
+  def labelledBy(names: Map[Long, String])(entries: Entry*): Labelled =
+    PeriodTranscript.labelled(
+      entries.toVector,
+      Speakers(names.map((seq, name) => EntryId(s"e$seq") -> name))
+    )
 }

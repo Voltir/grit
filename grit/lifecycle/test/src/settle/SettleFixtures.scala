@@ -15,6 +15,7 @@ import grit.core.store.{
   Entry,
   InMemoryEntryStore,
   InMemoryLifecycleStore,
+  InMemoryPrincipals,
   InMemoryPeriodStore,
   Payload,
   StoreError,
@@ -87,6 +88,7 @@ object SettleFixtures {
     val entries = new InMemoryEntryStore
     val periods = new InMemoryPeriodStore(entries)
     val lifecycle = new InMemoryLifecycleStore
+    val principals = new InMemoryPrincipals
 
     /** A user message starting the next turn at `minutes`, and a reply, its period opened as
       * the inbox does.
@@ -154,7 +156,7 @@ object SettleFixtures {
     /** The settle's body over this world, with `classifier`, at `minutes`. */
     def body(classifier: Classifier^, minutes: Long)(id: WorkflowId)(using Durable^): String =
       Settle.body(
-        SettleEnv(SettleRecords(entries, periods, lifecycle), classifier, FakeDb, new Stopped(at(minutes)))
+        SettleEnv(SettleRecords(entries, periods, lifecycle, principals), classifier, FakeDb, new Stopped(at(minutes)))
       )(id)
   }
 }

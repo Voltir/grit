@@ -115,7 +115,8 @@ object Launch {
               engine.lifecycle,
               engine.ledger,
               engine.tombstones,
-              CharEstimate
+              CharEstimate,
+              engine.principals
             ),
             Main.classifier(topics),
             models,
@@ -125,7 +126,7 @@ object Launch {
         ),
         Settle.body(
           SettleEnv(
-            SettleRecords(engine.entries, engine.periods, engine.lifecycle),
+            SettleRecords(engine.entries, engine.periods, engine.lifecycle, engine.principals),
             Main.classifier(topics),
             engine.db,
             Clock.system()

@@ -21,7 +21,7 @@ import grit.core.period.{
 }
 import grit.core.provider.ProviderError
 import grit.core.retention.{Target, Tombstone}
-import grit.core.store.{Payload, UsageLedger}
+import grit.core.store.{Payload, Speakers, UsageLedger}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Weights}
 import grit.dbos.sql.TestTx
 import grit.lifecycle.transcript.PeriodTranscript
@@ -323,7 +323,7 @@ object CloseTests extends TestSuite {
       some.requests.map(_.system) ==> Vector(
         ClosingSummary
           .request(
-            PeriodTranscript.labelled(Vector.empty),
+            PeriodTranscript.labelled(Vector.empty, Speakers.none),
             Balance.empty,
             Vector.empty,
             Asked(false, false, false, true)
@@ -341,7 +341,7 @@ object CloseTests extends TestSuite {
         Vector(
           ClosingSummary
             .request(
-              PeriodTranscript.labelled(Vector.empty),
+              PeriodTranscript.labelled(Vector.empty, Speakers.none),
               Balance.empty,
               Vector.empty,
               Asked.Every

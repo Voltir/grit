@@ -7,7 +7,7 @@ import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq, 
 import grit.core.message.{Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows}
 import grit.core.retention.Target
-import grit.core.store.{Entry, EntryTopics, Payload, Sealed, StoreError, Tombstones, Tx}
+import grit.core.store.{Entry, EntryTopics, Payload, Sealed, Speakers, StoreError, Tombstones, Tx}
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** The close: one workflow per attempt to close a period ([[CloseRef]]), run on the turns'
@@ -87,7 +87,7 @@ object Close {
               val entries = own(env, attempt, first)
               CloseGate.asked(
                 env.classifier,
-                CloseGate.Transcript(known, elsewhere(env, entries), transcript(entries))
+                CloseGate.Transcript(known, elsewhere(env, entries), transcript(env, entries))
               )
             }
             val summarised = d.step(Step.Summarise) { () =>
@@ -155,8 +155,16 @@ object Close {
       .getOrElse(Vector.empty)
 
   /** The period as one transcript ([[PeriodTranscript.of]]); empty when unread. */
-  private def transcript(entries: Either[String, Vector[Entry]]): String =
-    PeriodTranscript.of(entries.getOrElse(Vector.empty))
+  private def transcript(env: CloseEnv^, entries: Either[String, Vector[Entry]]): String = {
+    val own = entries.getOrElse(Vector.empty)
+    PeriodTranscript.of(own, names(env, own))
+  }
+
+  /** Who wrote `entries`; nobody named when that cannot be read, so each line is then its
+    * role's.
+    */
+  private def names(env: CloseEnv^, entries: Vector[Entry]): Speakers =
+    PeriodTranscript.speakers(env.db, env.records.principals, entries).getOrElse(Speakers.none)
 
   /** The `summarise` step: the closing of the period's turns `first` to the attempt's last,
     * from the flows and edits the summary model writes, asking for `asked`, applied to
@@ -173,7 +181,10 @@ object Close {
   ): Summarised = {
     val entries = own(env, attempt, first)
     // What the writer reads and cites into: one value, cut once (ClosingSummary.visible).
-    val labelled = PeriodTranscript.labelled(entries.getOrElse(Vector.empty))
+    val labelled = {
+      val own = entries.getOrElse(Vector.empty)
+      PeriodTranscript.labelled(own, names(env, own))
+    }
     val period = attempt.period.seq
     // The topics' edits are the fold's, free and exact: made whether or not a model writes.
     val topics =

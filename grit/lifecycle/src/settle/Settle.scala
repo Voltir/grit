@@ -3,7 +3,7 @@ package grit.lifecycle.settle
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, SettleRef, TurnSeq, WorkflowId}
 import grit.core.period.{Judgement, Probability, Verdict}
-import grit.core.store.{StoreError, Tx}
+import grit.core.store.{Speakers, StoreError, Tx}
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** The settle: one workflow per question whether anyone is waiting on a quiet period
@@ -62,9 +62,13 @@ object Settle {
               entries match {
                 case Left(error) => Judgement.Unanswered(s"transcript unread: ${describe(error)}")
                 case Right(own) =>
+                  // Unread names are no names: each line is then its role's.
+                  val names = PeriodTranscript
+                    .speakers(env.db, env.records.principals, own)
+                    .getOrElse(Speakers.none)
                   SettleQuestion.judge(
                     env.classifier,
-                    SettleQuestion.Transcript(PeriodTranscript.of(own))
+                    SettleQuestion.Transcript(PeriodTranscript.of(own, names))
                   )
               }
             }

@@ -131,7 +131,8 @@ object LiveTurn {
               engine.lifecycle,
               engine.ledger,
               engine.tombstones,
-              CharEstimate
+              CharEstimate,
+              engine.principals
             ),
             grit.core.classify.Classifier.none("no classifier"),
             models,
@@ -141,7 +142,7 @@ object LiveTurn {
         ),
         Settle.body(
           SettleEnv(
-            SettleRecords(entries, engine.periods, engine.lifecycle),
+            SettleRecords(entries, engine.periods, engine.lifecycle, engine.principals),
             grit.core.classify.Classifier.none("no classifier"),
             engine.db,
             Clock.system()

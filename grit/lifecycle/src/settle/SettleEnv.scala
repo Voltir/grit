@@ -2,7 +2,7 @@ package grit.lifecycle.settle
 
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
-import grit.core.store.{Db, EntryStore, LifecycleStore, PeriodStore}
+import grit.core.store.{Db, EntryStore, LifecycleStore, PeriodStore, Principals}
 
 /** What a settle works with besides its `Durable`: where it reads the period and keeps the
   * verdict ([[SettleRecords]]), the `classifier` it asks, `db` to read the period's
@@ -15,9 +15,12 @@ final case class SettleEnv(
     clock: Clock^
 )
 
-/** Where a settle reads its period and the settings in force, and keeps its verdict. */
+/** Where a settle reads its period, who wrote it and the settings in force, and keeps its
+  * verdict.
+  */
 final case class SettleRecords(
     entries: EntryStore,
     periods: PeriodStore,
-    lifecycle: LifecycleStore
+    lifecycle: LifecycleStore,
+    principals: Principals
 )

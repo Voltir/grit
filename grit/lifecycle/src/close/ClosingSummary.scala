@@ -141,7 +141,8 @@ object ClosingSummary {
     * Standing item, its trailing citation of labels and the writer's answer (by person, by
     * tool, by assistant) taken off its text: its ground is the weaker ([[Ground.min]]) of
     * that answer and what the cited lines support in what of `transcript` the writer was
-    * shown ([[visible]], [[Labelled.ground]]), so the answer can only lower it; an item with
+    * shown ([[visible]], [[Labelled.ground]]), so the answer can only lower it, and an item
+    * resting only on heard lines is not kept; an item with
     * no answer, no citation, or only labels it lacks, is `Claimed`; and a `Resolve`,
     * `Drop` or `Touch` per Resolved, Dropped or Touched item whose label is one of `known`'s
     * ([[labels]]). An item with no label, or a label `known` does not show, is `Unread`.
@@ -184,7 +185,7 @@ object ClosingSummary {
         prose,
         Option.when(asked.outcome)(text(part("outcome"))).filter(o => o.nonEmpty && !isNone(o)),
         items("open", asked.open).map(Edit.Add(Section.Open, _)) ++
-          items("standing", asked.standing).map(stand(_, visible(transcript))) ++
+          items("standing", asked.standing).flatMap(stand(_, visible(transcript))) ++
           items("resolved", asked.settled && shown.nonEmpty).map(
             named(shown, _)((l, how) => Edit.Resolve(l.id, how))
           ) ++
@@ -213,9 +214,9 @@ object ClosingSummary {
   /** A Standing item as its edit: the citation and the writer's answer at its end taken off
     * its text; its ground the weaker ([[Ground.min]]) of the answer and what the cited
     * lines of `transcript`, the lines the writer was shown, support. No answer, or one that
-    * does not read, is `Claimed`.
+    * does not read, is `Claimed`. `None` for an item resting only on heard lines.
     */
-  private def stand(item: String, transcript: Labelled): Edit = {
+  private def stand(item: String, transcript: Labelled): Option[Edit] = {
     // Peel the end off one piece at a time: a citation (`[u1, t3]`, `[u1][t3]`, `(u1 t3)`)
     // or the answer (`by person`, `(by tool)`, `By: assistant`), any emphasis around them.
     def peel(
@@ -236,7 +237,11 @@ object ClosingSummary {
         case _ => (text, cited, answer)
       }
     val (text, cited, answer) = peel(item.trim, Vector.empty, None)
-    Edit.Stand(text.trim, Ground.min(answer.getOrElse(Ground.Claimed), transcript.ground(cited)))
+    transcript
+      .ground(cited)
+      .map(supported =>
+        Edit.Stand(text.trim, Ground.min(answer.getOrElse(Ground.Claimed), supported))
+      )
   }
 
   /** An item's text, then one citation at its very end: a bracket or parenthesis holding

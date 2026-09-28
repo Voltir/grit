@@ -21,6 +21,7 @@ import grit.core.store.{
   Entry,
   InMemoryEntryStore,
   InMemoryLifecycleStore,
+  InMemoryPrincipals,
   InMemoryPeriodStore,
   InMemoryUsageLedger,
   Jot,
@@ -141,6 +142,7 @@ object CloseFixtures {
     val entries = new InMemoryEntryStore
     val periods = new InMemoryPeriodStore(entries)
     val lifecycle = new InMemoryLifecycleStore
+    val principals = new InMemoryPrincipals
     val ledger = new InMemoryUsageLedger
     val tombstones = new InMemoryTombstones
 
@@ -197,7 +199,7 @@ object CloseFixtures {
     )(using Durable^): String =
       Close.body(
         CloseEnv(
-          CloseRecords(entries, sealing, lifecycle, ledger, tombstones, Chars),
+          CloseRecords(entries, sealing, lifecycle, ledger, tombstones, Chars, principals),
           gate,
           new OneModel(summary),
           FakeDb,

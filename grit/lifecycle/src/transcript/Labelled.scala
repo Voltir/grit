@@ -3,8 +3,8 @@ package grit.lifecycle.transcript
 import grit.core.period.Ground
 
 /** A period's transcript as the closing writer reads it: each line under a label, `u` for
-  * the person's words, `a` for the assistant's, `t` for a tool call and its result,
-  * numbered through the period (ADR 0018).
+  * a person's words to grit, `h` for a person's heard where grit listens, `a` for the
+  * assistant's, `t` for a tool call and its result, numbered through the period (ADR 0018).
   */
 final case class Labelled private (lines: Vector[Labelled.Line]) {
 
@@ -29,24 +29,28 @@ final case class Labelled private (lines: Vector[Labelled.Line]) {
   /** The ground `cited` labels give: `Person` when any names a person's line, else `Tool`
     * when any names a tool line whose result succeeded, else `Claimed`. A tool line whose
     * result is an error (failed, declined, interrupted, gone) grounds nothing, and a label
-    * this transcript does not have counts for nothing.
+    * this transcript does not have counts for nothing. A heard line supports nothing: `None`
+    * when every label that names a line names a heard one, so what rests on them alone is
+    * not kept.
     */
-  def ground(cited: Vector[String]): Ground = {
+  def ground(cited: Vector[String]): Option[Ground] = {
     val named = cited.map(_.trim.toLowerCase).toSet
     val sources = lines.filter(l => named.contains(l.label)).map(_.source)
-    if (sources.contains(Labelled.Source.Person)) Ground.Person
-    else if (sources.contains(Labelled.Source.Tool(succeeded = true))) Ground.Tool
-    else Ground.Claimed
+    if (sources.nonEmpty && sources.forall(_ == Labelled.Source.Heard)) None
+    else if (sources.contains(Labelled.Source.Person)) Some(Ground.Person)
+    else if (sources.contains(Labelled.Source.Tool(succeeded = true))) Some(Ground.Tool)
+    else Some(Ground.Claimed)
   }
 }
 
 object Labelled {
 
-  /** Who or what wrote a line: the person, the assistant, or a tool, whose result
-    * `succeeded` or was an error.
+  /** Who or what wrote a line: a person speaking to grit, a person heard where grit
+    * listens, the assistant, or a tool, whose result `succeeded` or was an error.
     */
   enum Source {
     case Person
+    case Heard
     case Assistant
     case Tool(succeeded: Boolean)
   }
