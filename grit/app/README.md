@@ -54,6 +54,9 @@ In dependency order:
   unless `GRIT_THEME` says otherwise. `/summaries` shows
   each turn's summary, faint, under its reply (off by default: the transcript is the
   conversation, and a summary lands after its reply, so the rows below would move). ← `look`
+- **`serve`** — `Serve`, `grit serve`: the engine of one database and the Slack edge
+  (`grit.slack`'s `SlackEdge` over `SocketSlack`) in its process, wired and run until
+  stopped (ADR 0019). Wiring only: what the edge does is `grit.slack`'s. ← nothing in app
 - **`main`** — `Main`: reads the settings, opens the engine and launches the turn
   (OpenRouter with a key, the stub without; Jev placing messages among topics with
   `JEV_API_KEY`, the stub classifier with `GRIT_STUB_TOPICS=1`, none otherwise), offering
@@ -65,6 +68,6 @@ In dependency order:
   `Launch`, the engine's workflows launched on an open engine, the same for every way grit
   runs. `KeptFacts`, the fact book `propose_fact` keeps approved facts in; `PromoteFacts`, which
   prints the seed catalog with every approved fact laid over it, for a reviewed commit.
-  ← `config`, `look`, `chat`
+  ← `config`, `look`, `chat`, `serve`
 
 No source file sits at the module's root, and the test tree mirrors it.

@@ -5,6 +5,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
 import grit.app.config.{DotEnv, Durations, Lifecycle, Prefs}
 import grit.app.look.Theme
+import grit.app.serve.Serve
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
@@ -71,7 +72,13 @@ import grit.turn.{Turn, TurnLoop}
   *     (default `default`) in the directory grit runs in: the same name in another
   *     directory is another conversation. Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
   *     directory), never to the screen.
-  *   - **Arguments: each is a message**, answered by one turn and printed. Repeat a
+  *   - **`serve` alone: `grit serve`**, the engine of the database and the Slack edge in its
+  *     process ([[Serve]]; ADR 0019), over Socket Mode with `SLACK_BOT_TOKEN` and
+  *     `SLACK_APP_TOKEN`, until stopped. Its tools are `read`'s, as in a run with arguments:
+  *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. It never
+  *     attaches: another grit holding the database's engine stops it. Give it a database of
+  *     its own (`GRIT_DATABASE_URL`): everyone in the workspace sees what that database holds.
+  *   - **Other arguments: each is a message**, answered by one turn and printed. Repeat a
   *     message to watch a redelivery come back as the same turn; run again to watch
   *     finished turns replay without calling the model. Nothing here answers a gated call,
   *     so `GRIT_TOOLS=all` is refused.
@@ -83,6 +90,8 @@ object Main {
 
   def main(args: Array[String]): Unit = {
     val tui = args.isEmpty
+    // `grit serve` alone: the engine and the Slack edge (a lone message "serve" is this).
+    val serving = args.sameElements(Array("serve"))
     // `.env` in the working directory (GRIT_ENV_FILE to name another), under the real
     // environment: a variable set in both takes the environment's value.
     val envFile = java.nio.file.Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env"))
@@ -94,6 +103,8 @@ object Main {
     // Before anything loads slf4j (DBOS does): a log line on stderr would paint over the
     // screen.
     if (tui) { val _ = System.setProperty("org.slf4j.simpleLogger.logFile", log) }
+    // The Slack SDK logs request bodies at debug: never below info.
+    if (serving) { val _ = System.setProperty("org.slf4j.simpleLogger.log.com.slack.api", "info") }
 
     val config = exitOnLeft(DbConfig.fromEnv(env).left.map(_.message))
     val budget = exitOnLeft(tokens(env, BudgetVar, LinearAssembler.DefaultBudget))
@@ -167,7 +178,9 @@ object Main {
     // This process, as the engine's row and this edge's registration name it.
     val identity = LocalMachine.identity()
     val failure: Option[String] =
-      if (tui) {
+      if (serving)
+        Serve.run(env, config, Turn.Epoch, identity, engine => { val _ = launched(engine) })
+      else if (tui) {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
         // refused, it attaches to the one that holds it, and serves its own directory.
         val (mode, opener) = EngineLock.take(config) match {

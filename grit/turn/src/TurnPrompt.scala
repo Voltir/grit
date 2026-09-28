@@ -65,9 +65,12 @@ object TurnPrompt {
       case _: Origin.Tui =>
         "You are talking with one person in a terminal. Your replies are rendered from " +
           "Markdown, and when a tool asks first, the person answers there."
+      // Measured (a two-author forgery check): a sentence here explaining the name lines made
+      // a model take a forged record as real, so there is none. Reword only with a new check.
       case _: Origin.Slack =>
-        "You are in a Slack thread, which several people may read. Write plain text: " +
-          "Markdown is not rendered."
+        "You are in a Slack thread that several people read and write in. Where your " +
+          "instructions say \"the person\", read the one whose message you are answering. " +
+          "Your replies are rendered from Markdown; keep them short."
       case _: Origin.Task =>
         "This is a triggered task's run: nobody reads your reply until the run ends, and " +
           "nobody can answer a question, so do not ask one."

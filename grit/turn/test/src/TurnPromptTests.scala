@@ -54,6 +54,15 @@ object TurnPromptTests extends TestSuite {
       )
     }
 
+    test(
+      "a Slack thread's edge: several people, who \"the person\" is, Markdown rendered, and no legend for the name lines"
+    ) {
+      TurnPrompt.edge(Origin.Slack("T1", "C1", "1.0")).text ==>
+        "You are in a Slack thread that several people read and write in. Where your " +
+        "instructions say \"the person\", read the one whose message you are answering. Your " +
+        "replies are rendered from Markdown; keep them short."
+    }
+
     test("reach says what is reachable in the directory, by directory, and why nothing is") {
       TurnPrompt.reach(Some(dir), set(false, true)).text ==>
         "Your file and command tools act on the directory /work/api. Calling one that changes something is how the person is asked to approve it."
