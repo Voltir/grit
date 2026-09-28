@@ -14,12 +14,13 @@ import grit.assembly.linear.AssemblyFixtures.{
 }
 import grit.assembly.linear.LinearAssembler
 import grit.core.context.{AssemblyNote, AssemblyRequest, Shown, Window}
-import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.period.LifecycleSettings
+import grit.core.period.{CloseReason, LifecycleSettings, Probability, TestClosings}
 import grit.core.place.{Locality, Place, Scope, Weight}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{
+  ClosingEntry,
   Entry,
   EntrySearch,
   InMemoryLifecycleStore,
@@ -122,9 +123,22 @@ object RetrievalAssemblerTests extends TestSuite {
       })
     }
 
+    // What closings answers: closing entries as (conversation, id, score), best first, only
+    // those of the conversations asked; and every closings search, as its conversations.
+    @caps.unsafe.untrackedCaptures
+    var closed = Vector.empty[(ConversationId, String, Double)]
+    @caps.unsafe.untrackedCaptures
+    var closedAsked = Vector.empty[List[ConversationId]]
+
     def closings(conversations: Vector[ConversationId], query: String, limit: Int)(using
         Tx^
-    ): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
+    ): Either[StoreError, Vector[EntrySearch.Hit]] = {
+      closedAsked = closedAsked :+ conversations.toList
+      Right(closed.collect {
+        case (c, id, score) if conversations.contains(c) =>
+          EntrySearch.Hit(EntryId(id), TurnRef(c, TurnSeq(0)), score)
+      })
+    }
   }
 
   /** How many hits the assembler is told to ask for. */
@@ -203,6 +217,44 @@ object RetrievalAssemblerTests extends TestSuite {
 
   private def placeOf(name: String): Place = Origin.Task("conversation", name).place
 
+  /** Closes `c`'s period `n` in `world` after one more turn saying `said`, its prose `prose`;
+    * its closing entry's id.
+    */
+  private def closeAgain(
+      world: World,
+      c: ConversationId,
+      n: Long,
+      said: String,
+      prose: String
+  ): String = {
+    given Tx = TestTx.fake
+    val first = world.entries.lockNext(c).getOrElse(sys.error("in-memory store"))
+    val _ = world.periods.openFor(c, first.turnSeq, Instant.EPOCH)
+    val _ = world.entries.insert(
+      Entry(
+        EntryId(s"${ConversationId.value(c)}:t${TurnSeq.value(first.turnSeq)}:${first.seq}"),
+        c,
+        first.turnSeq,
+        None,
+        first.seq,
+        Payload.Message(Message.User(said)),
+        Instant.EPOCH
+      )
+    )
+    val period = PeriodRef(c, PeriodSeq.of(n).getOrElse(sys.error("period")))
+    val _ = world.periods.seal(
+      CloseRef(period, first.turnSeq, Instant.EPOCH),
+      CloseReason.Resolved(Probability.One),
+      TestClosings.prose(prose),
+      Instant.EPOCH
+    )
+    EntryId.value(period.closingId)
+  }
+
+  /** The closing entry of `c`'s first period. */
+  private def firstClosing(c: ConversationId): String =
+    EntryId.value(PeriodRef(c, PeriodSeq.First).closingId)
+
   val tests = Tests {
 
     test("a period's first turn, with a period open elsewhere, writes a query and shows its turn") {
@@ -224,6 +276,71 @@ object RetrievalAssemblerTests extends TestSuite {
       w.nearby ==> Vector(
         Nearby.Open(api, placeOf("api"), Vector(EntryId("api:t0:0"), EntryId("api:t0:1")))
       )
+    }
+
+    test(
+      "a closing elsewhere in scope is a candidate: a first turn writes a query, and a match shows the newest kept record"
+    ) {
+      val world = store(ask)
+      val ops = elsewhere(world, "ops", close = true, exchange("when is the freeze?", "Friday"))
+      val newest = closeAgain(world, ops, 2, "and hotfixes?", "Hotfixes skip it.")
+      val writer = new Writer(Some("deploy freeze"))
+      val search = new Scripted()
+      // The older closing matches; the section shows the newest, whose balance is current.
+      search.closed = Vector((ops, firstClosing(ops), 2.0))
+      val w = assemble(world, writer, budget = 1000, search, at = 0)
+      writer.requests.size ==> 1
+      search.closedAsked ==> Vector(List(ops))
+      w.nearby ==> Vector(Nearby.Closed(ops, placeOf("ops"), EntryId(newest)))
+    }
+
+    test("one section per conversation: its open turns win over its closing") {
+      val world = store(ask)
+      val api = elsewhere(world, "api", close = true, exchange("flaky?", "TZ"))
+      val reopened = world.entries.lockNext(api)(using TestTx.fake).getOrElse(sys.error("store"))
+      val _ = world.periods.openFor(api, reopened.turnSeq, Instant.EPOCH)(using TestTx.fake)
+      val _ = world.entries.insert(
+        Entry(
+          EntryId(s"api:t${TurnSeq.value(reopened.turnSeq)}:${reopened.seq}"),
+          api,
+          reopened.turnSeq,
+          None,
+          reopened.seq,
+          Payload.Message(Message.User("still flaky")),
+          Instant.EPOCH
+        )
+      )(using TestTx.fake)
+      val open = s"api:t${TurnSeq.value(reopened.turnSeq)}:${reopened.seq}"
+      val search = new Scripted()
+      // The closing ranks first; the open turn still wins the conversation's one section.
+      search.closed = Vector((api, firstClosing(api), 3.0))
+      search.near = Vector((api, open, 1.0))
+      assemble(world, new Writer(Some("flaky")), budget = 1000, search, at = 0).nearby ==>
+        Vector(Nearby.Open(api, placeOf("api"), Vector(EntryId(open))))
+    }
+
+    test("a record that does not fit is passed over for the next") {
+      val world = store(ask)
+      val big = elsewhere(world, "big", close = false, exchange("x", "y"))
+      val _ = closeAgain(world, big, 1, "freeze?", "freeze " * 200)
+      val small = elsewhere(world, "small", close = true, exchange("freeze?", "Friday"))
+      val search = new Scripted()
+      search.closed = Vector((big, firstClosing(big), 2.0), (small, firstClosing(small), 1.0))
+      val smallCost = world.entries
+        .get(EntryId(firstClosing(small)))(using TestTx.fake)
+        .toOption
+        .flatten
+        .flatMap(ClosingEntry.of)
+        .map(e => CharEstimate.message(Shown.recorded(placeOf("small"), e)))
+        .getOrElse(sys.error("small's closing"))
+      assemble(
+        world,
+        new Writer(Some("freeze")),
+        Tokens.value(smallCost) + 5,
+        search,
+        at = 0
+      ).nearby ==>
+        Vector(Nearby.Closed(small, placeOf("small"), EntryId(firstClosing(small))))
     }
 
     test("with the scope off, or nothing open elsewhere, no query is written for a first turn") {

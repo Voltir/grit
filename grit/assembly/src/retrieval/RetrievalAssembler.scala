@@ -14,6 +14,8 @@ import grit.core.message.Tokens
 import grit.core.place.{Locality, Place, Weight}
 import grit.core.provider.{Provider, TokenEstimator}
 import grit.core.store.{
+  ClosedElsewhere,
+  ClosingEntry,
   Db,
   Entry,
   EntrySearch,
@@ -29,21 +31,25 @@ import grit.core.store.{
 
 /** A window of the closing entry that opens the turn's period, the recent turns, and what a
   * written query finds: the period's earlier turns and, when the settings' scope holds other
-  * conversations' places, the turns of their open periods. The closing is paid first and the
-  * recent tail next, as in [[LinearAssembler]] (the tail is `tail` tokens, or what is left
-  * when less). `writer` then writes one query ([[QueryWriter]]), and `search` ranks both
-  * kinds of candidate against it, `hits` of each. The two rank in one pool, the turn's own
-  * scores multiplied by the settings' weight (a tie goes to the turn's own), and whole turns
-  * fill the rest of `budget`, best first, a turn that does not fit passed over for the next.
+  * conversations' places, the turns of their open periods and their kept closings. The
+  * closing is paid first and the recent tail next, as in [[LinearAssembler]] (the tail is
+  * `tail` tokens, or what is left when less). `writer` then writes one query
+  * ([[QueryWriter]]), and `search` ranks each kind of candidate against it, `hits` of each.
+  * They rank in one pool, the turn's own scores multiplied by the settings' weight (a tie
+  * goes to the turn's own), and fill the rest of `budget`, best first, one that does not
+  * fit passed over for the next.
   * Own turns join the window in conversation order, each recalled one charged a gap line
   * ([[Shown.Gap]]) besides its own cost, and a tail that leaves turns out one more. Turns from elsewhere form one section
-  * per conversation ([[Nearby]], shown as [[Shown.nearby]] and costed so), in the order of
-  * their best turn, each section's turns in its conversation's order. No closing entry is a
-  * candidate, here or elsewhere. A person's message is costed with its author's name line
-  * ([[Shown.of]]), as it is sent.
+  * per conversation ([[Nearby]], shown as [[Shown.section]] and costed so), in the order of
+  * their best candidate, each section's turns in its conversation's order. A conversation
+  * elsewhere whose closings match is one candidate, shown as its newest kept closing's record
+  * ([[Shown.recorded]]), unless any of its open turns is a candidate: then those alone are
+  * its section. The conversation's own closing is paid first, never a candidate. A person's
+  * message is costed with its author's name line ([[Shown.of]]), as it is sent.
   *
   * No query is written when there is nothing to search: the linear window of `budget` holds
-  * every earlier turn of the period, and no open period elsewhere is in scope. When the
+  * every earlier turn of the period, and no other conversation's open period or closing is
+  * in scope. When the
   * writer fails or writes nothing, the window is that linear one, with a note saying why,
   * and nothing from elsewhere.
   */
@@ -69,6 +75,7 @@ final class RetrievalAssembler(
         opening <- periods.opening(turn)
         all <- entries.list(turn.conversationId)
         open <- periods.openElsewhere(turn.conversationId)
+        closed <- periods.closedElsewhere(turn.conversationId)
         speakers <- principals.speakers(all.map(_.id))
       } yield {
         val locality = settings.locality
@@ -78,7 +85,8 @@ final class RetrievalAssembler(
           opening.closing.map(_.entry).toVector,
           all,
           speakers,
-          open.filter(o => locality.scope.holds(o.place))
+          open.filter(o => locality.scope.holds(o.place)),
+          closed.filter(c => locality.scope.holds(c.place))
         )
       }
     }.left
@@ -89,7 +97,8 @@ final class RetrievalAssembler(
         val turns = LinearAssembler.turnsBefore(all, read.first, turn.turnSeq)
         val linear = LinearAssembler.tail(turns, read.speakers, estimator, left)
         val ownToFind = linear.size != turns.size
-        if (!ownToFind && read.open.isEmpty) Right(window(closings, linear, Vector.empty))
+        if (!ownToFind && read.open.isEmpty && read.closed.isEmpty)
+          Right(window(closings, linear, Vector.empty))
         else {
           val recent =
             if (!ownToFind) linear
@@ -135,7 +144,11 @@ final class RetrievalAssembler(
                       (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero)
                     val places = read.open.map(o => o.conversation -> o.place).toMap
                     val packed =
-                      pack(rank(found, older, places, read.locality.weight), used, read.speakers)
+                      pack(
+                        rank(found, older, places, read.closed, read.locality.weight),
+                        used,
+                        read.speakers
+                      )
                     val recalled = packed.collect { case Candidate.Own(t) => t }
                     val seqs = recalled.flatMap(_.headOption.map(_.turnSeq)).sortBy(TurnSeq.value)
                     val notes =
@@ -159,7 +172,8 @@ final class RetrievalAssembler(
       closings: Vector[Entry],
       all: Vector[Entry],
       speakers: Speakers,
-      open: Vector[OpenPeriod]
+      open: Vector[OpenPeriod],
+      closed: Vector[ClosedElsewhere]
   )
 
   /** Both searches for `query`, in one read: the period's own earlier turns before `from`
@@ -175,13 +189,27 @@ final class RetrievalAssembler(
       near <-
         if (read.open.isEmpty) Right(Vector.empty)
         else search.nearby(read.open, query, hits)
+      records <-
+        if (read.closed.isEmpty) Right(Vector.empty)
+        else search.closings(read.closed.map(_.conversation), query, hits)
+      // Each conversation a closing matched is shown by its newest kept closing.
+      newest <- read.closed
+        .filter(c => records.exists(_.turn.conversationId == c.conversation))
+        .foldLeft[Either[StoreError, Map[ConversationId, ClosingEntry]]](Right(Map.empty)) {
+          (acc, c) =>
+            acc.flatMap(done =>
+              entries
+                .get(c.newest)
+                .map(e => done ++ e.flatMap(ClosingEntry.of).map(c.conversation -> _))
+            )
+        }
       theirs <- near
         .map(_.turn.conversationId)
         .distinct
         .foldLeft[Either[StoreError, Map[ConversationId, Vector[Entry]]]](Right(Map.empty)) {
           (acc, c) => acc.flatMap(done => entries.list(c).map(es => done + (c -> es)))
         }
-    } yield Found(mine, near, theirs)
+    } yield Found(mine, near, theirs, records, newest)
 
   /** The candidate turns, best first: each hit scores its turn, own ones × `weight`; a turn
     * scores its best hit, and a tie keeps the order the hits came in, own ones first.
@@ -190,6 +218,7 @@ final class RetrievalAssembler(
       found: Found,
       older: Vector[Vector[Entry]],
       places: Map[ConversationId, Place],
+      closed: Vector[ClosedElsewhere],
       weight: Weight
   ): Vector[Candidate] = {
     val w = Weight.value(weight)
@@ -208,7 +237,18 @@ final class RetrievalAssembler(
         .filter(_ => messages.nonEmpty)
         .map(p => (h.score, Candidate.Near(c, p, messages)))
     }
-    (own ++ near).zipWithIndex
+    val closedAt = closed.map(c => c.conversation -> c.place).toMap
+    val records: Vector[(Double, Candidate.Record)] = found.records.flatMap { h =>
+      val c = h.turn.conversationId
+      for {
+        place <- closedAt.get(c)
+        record <- found.newest.get(c)
+      } yield (h.score, Candidate.Record(c, place, record))
+    }
+    // One section per conversation: its open turns, when any is a candidate, whose period
+    // is newer than any closing it has.
+    val openHere = near.map(_._2).collect { case Candidate.Near(c, _, _) => c }.toSet
+    (own ++ near ++ records.filterNot(r => openHere(r._2.conversation))).zipWithIndex
       .sortBy { case ((score, _), i) => (-score, i) }
       .map(_._1._2)
       .distinctBy(_.key)
@@ -231,6 +271,8 @@ final class RetrievalAssembler(
             }.flatten
             val without = shown(place, before)
             Tokens(Tokens.value(shown(place, before ++ t)) - Tokens.value(without))
+          case Candidate.Record(_, place, record) =>
+            estimator.message(Shown.recorded(place, record))
         }
         val after = spentSoFar + cost
         if (Tokens.value(after) <= Tokens.value(budget)) (after, kept :+ c)
@@ -246,15 +288,27 @@ final class RetrievalAssembler(
     */
   private def sections(packed: Vector[Candidate]): Vector[Nearby] = {
     val near = packed.collect { case n: Candidate.Near => n }
-    near.map(_.conversation).distinct.flatMap { c =>
-      near.find(_.conversation == c).map { first =>
-        Nearby.Open(
-          c,
-          first.place,
-          near.filter(_.conversation == c).flatMap(_.turn).sortBy(_.seq).map(_.id)
-        )
+    packed
+      .collect {
+        case n: Candidate.Near => n.conversation
+        case r: Candidate.Record => r.conversation
       }
-    }
+      .distinct
+      .flatMap { c =>
+        near
+          .find(_.conversation == c)
+          .map { first =>
+            Nearby.Open(
+              c,
+              first.place,
+              near.filter(_.conversation == c).flatMap(_.turn).sortBy(_.seq).map(_.id)
+            )
+          }
+          .toVector ++ packed.collect {
+          case Candidate.Record(k, place, record) if k == c =>
+            Nearby.Closed(c, place, record.entry.id)
+        }
+      }
   }
 
   private def spent(turns: Vector[Vector[Entry]], speakers: Speakers): Tokens =
@@ -285,19 +339,24 @@ object RetrievalAssembler {
   private final case class Found(
       own: Vector[EntrySearch.Hit],
       near: Vector[EntrySearch.Hit],
-      theirs: Map[ConversationId, Vector[Entry]]
+      theirs: Map[ConversationId, Vector[Entry]],
+      records: Vector[EntrySearch.Hit],
+      newest: Map[ConversationId, ClosingEntry]
   )
 
   /** A turn the pool ranks: one of the conversation's own, or one from elsewhere. */
   private enum Candidate {
     case Own(turn: Vector[Entry])
     case Near(conversation: ConversationId, place: Place, turn: Vector[Entry])
+    case Record(conversation: ConversationId, place: Place, record: ClosingEntry)
 
     /** Which turn it is, so a turn found by several hits is ranked once. */
     def key: (String, Long) = this match {
       case Own(t) => ("", t.headOption.fold(-1L)(e => TurnSeq.value(e.turnSeq)))
       case Near(c, _, t) =>
         (ConversationId.value(c), t.headOption.fold(-1L)(e => TurnSeq.value(e.turnSeq)))
+      // One record per conversation, whichever of its closings matched.
+      case Record(c, _, _) => (s"record:${ConversationId.value(c)}", -1L)
     }
   }
 }

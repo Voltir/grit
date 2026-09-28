@@ -11,13 +11,12 @@ In dependency order:
   ← `estimate`
 - **`retrieval`**: `RetrievalAssembler`, the same closing entry, the recent tail, plus
   what a query `QueryWriter` has a model write finds: the period's earlier turns, and the
-  turns of other conversations' open periods its scope holds (ADR 0013), ranked by an
-  `EntrySearch` in one pool, its own weighted up; those from elsewhere shown as their own
-  sections. ← `linear`
+  turns of other conversations' open periods its scope holds and their kept closings
+  (ADR 0013), ranked by an `EntrySearch` in one pool, its own weighted up; those from
+  elsewhere shown as their own sections, one per conversation. ← `linear`
 
-Neither reaches past a period (ADR 0011): what came before the turn's is its closing
-entry, and a closed period elsewhere is never a candidate. Only retrieval draws on other
-conversations.
+Neither reaches past its own period (ADR 0011): what came before the turn's is its closing
+entry. Only retrieval draws on other conversations.
 
 No source file sits at the module's root, and the test tree mirrors it. The assembly eval
 lives in its own module, `grit.eval`.
