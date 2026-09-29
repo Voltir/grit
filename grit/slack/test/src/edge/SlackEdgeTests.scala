@@ -10,7 +10,7 @@ import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Jot, Origin, Payload, StoreError, Tx}
 import grit.dbos.sql.TestTx
 import grit.slack.client.{FakeSlack, Self, Tag}
-import grit.slack.event.{ChannelId, Payloads, TeamId, Ts, UserId}
+import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
 
 import utest.*
 
@@ -101,6 +101,12 @@ object SlackEdgeTests extends TestSuite {
         }
       }
 
+    /** When each entry of the thread rooted at `thread` is dated, in order. */
+    def dated(thread: String): Vector[java.time.Instant] =
+      inbox.conversations.all.find(_.origin == origin(thread)).toVector.flatMap { c =>
+        inbox.entries.list(c.id)(using TestTx.fake).getOrElse(Vector.empty).map(_.createdAt)
+      }
+
     def pending: Vector[grit.core.edge.Pending] =
       deliveries.pending()(using TestTx.fake).getOrElse(Vector.empty)
   }
@@ -117,6 +123,40 @@ object SlackEdgeTests extends TestSuite {
     Tag.Reply(grit.core.id.WorkflowId.value(turn.workflowId), part)
 
   val tests = Tests {
+    test(
+      "unheard lists what a listened channel said since, as live messages are read, leaving out what is recorded"
+    ) {
+      val w = new World(listening = Set(C))
+      w.slack.histories = Map(
+        C -> Vector(
+          Listed(Ts("1.0"), Some(Ts("1.0")), Some(UserId(Ana)), false, None, "is the freeze on?"),
+          Listed(Ts("1.1"), Some(Ts("1.0")), Some(UserId(Ana)), false, None, "it is"),
+          Listed(Ts("1.2"), Some(Ts("1.0")), None, true, None, "beep"),
+          Listed(Ts("1.3"), None, Some(UserId(Ana)), false, Some("channel_join"), "joined"),
+          Listed(Ts("2.0"), None, Some(UserId(Ana)), false, None, s"<@$Bot> lunch?")
+        )
+      )
+      w.slack.deliver(message("1.1", "it is", Some("1.0"))) ==> true
+      w.first.unheard(C, java.time.Instant.EPOCH).map(_.map(m => Ts.value(m.ts))) ==>
+        Right(Vector("1.0", "2.0"))
+    }
+
+    test(
+      "backfill hears a past mention at the time it was said, and never takes it as a turn or answers it"
+    ) {
+      val w = new World(listening = Set(C))
+      w.slack.histories = Map(
+        C -> Vector(Listed(Ts("2.0"), None, Some(UserId(Ana)), false, None, s"<@$Bot> lunch?"))
+      )
+      val unheard = w.first.unheard(C, java.time.Instant.EPOCH)
+      unheard.flatMap(w.first.backfill) ==> Right(())
+      (w.turnOf("2.0", "2.0"), w.inbox.started, w.slack.posts, w.slack.reactions) ==>
+        (None, Vector.empty, Vector.empty, Set.empty)
+      (w.heard("2.0"), w.dated("2.0")) ==>
+        (Vector(("lunch?", Some("Ana Lima"))), Vector(java.time.Instant.ofEpochSecond(2)))
+      w.first.unheard(C, java.time.Instant.EPOCH) ==> Right(Vector.empty)
+    }
+
     test("introduce names the workspace's assistant as Slack names grit's bot, and says why not") {
       val w = new World
       w.slack.names = w.slack.names.updated(UserId(Bot), "Bort")

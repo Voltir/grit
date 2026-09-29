@@ -1,5 +1,6 @@
 package grit.slack.edge
 
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -127,6 +128,60 @@ final class SlackEdge(
             )
             false
         }
+    }
+
+  /** What [[backfill]] would hear of `channel`: each message said there from `since` on,
+    * read as [[receive]] reads a live one ([[Events.listed]]), that the inbox has not
+    * recorded, oldest first; none in a channel that is not public. A listing grit cannot read
+    * is left out, and said. Why not, when Slack or the inbox could not be asked.
+    */
+  def unheard(channel: ChannelId, since: Instant): Either[String, Vector[Event.Said]] =
+    public(channel).flatMap { open =>
+      if (!open) Right(Vector.empty)
+      else
+        slack.history(channel, since).left.map(_.toString).flatMap { listed =>
+          val spoken = listed.flatMap(l =>
+            Events.listed(l, self.team, channel, self.bot) match {
+              case Right(m: Event.Said) => Some(m)
+              case Right(Event.Ignored(_)) => None
+              case Left(why) =>
+                said(s"slack: a listed message grit cannot read, left out: $why")
+                None
+            }
+          )
+          spoken
+            .groupBy(_.thread)
+            .toVector
+            .foldLeft[Either[String, Set[Ts]]](Right(Set.empty)) { case (acc, (thread, ms)) =>
+              acc.flatMap(known =>
+                stores.inbox
+                  .recorded(originOf(channel, thread), ms.map(m => SourceId(Ts.value(m.ts))).toSet)
+                  .left
+                  .map(_.toString)
+                  .map(r => known ++ r.map(s => Ts(SourceId.value(s))))
+              )
+            }
+            .map(known => spoken.filterNot(m => known.contains(m.ts)))
+        }
+    }
+
+  /** The conversation of the thread rooted at `thread` in `channel`. */
+  private def originOf(channel: ChannelId, thread: Ts): Origin =
+    Origin.Slack(TeamId.value(self.team), ChannelId.value(channel), Ts.value(thread))
+
+  /** Hears each of `messages`, in order, in its thread's conversation, dated when it was said
+    * ([[Inbox.hear]]), in the person's words under their Slack name, a mention of grit
+    * included: a past message is heard, never answered. Nothing in a channel that is not
+    * public. Why not, naming the first message not heard, when Slack or the inbox could not be
+    * asked; those before it stay heard.
+    */
+  def backfill(messages: Vector[Event.Said]): Either[String, Unit] =
+    messages.foldLeft[Either[String, Unit]](Right(())) { (done, m) =>
+      done.flatMap { _ =>
+        val origin =
+          Origin.Slack(TeamId.value(m.team), ChannelId.value(m.channel), Ts.value(m.thread))
+        hear(m, origin).left.map(why => s"message ${Ts.value(m.ts)} not heard: $why")
+      }
     }
 
   /** Records `m`, heard, in its thread's conversation; nothing in a channel not public. */
