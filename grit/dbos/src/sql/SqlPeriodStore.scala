@@ -259,7 +259,8 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
         |         p.close_ordinal, c.origin
         |    FROM grit.periods p
         |    JOIN grit.conversations c ON c.id = p.conversation_id
-        |   WHERE p.closed_at IS NOT NULL AND p.conversation_id <> ?::uuid
+        |   WHERE p.closed_at IS NOT NULL AND p.reason <> 'unearned'
+        |     AND p.conversation_id <> ?::uuid
         |   ORDER BY p.conversation_id, p.seq DESC
         |) newest
         |ORDER BY close_ordinal""".stripMargin

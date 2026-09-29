@@ -387,6 +387,38 @@ abstract class PeriodContract extends TestSuite {
       )
     }
 
+    test(
+      "an unearned closing is never one closed elsewhere: its conversation is shown by its newest earned closing kept, or not at all"
+    ) {
+      val (me, mixed, heard) =
+        (
+          conversation("unearned-me"),
+          conversation("unearned-mixed"),
+          conversation("unearned-heard")
+        )
+      val (m1, m2) = (PeriodRef(mixed, PeriodSeq.First), PeriodRef(mixed, PeriodSeq.First.next))
+      val h1 = PeriodRef(heard, PeriodSeq.First)
+      def unearned(period: PeriodRef, last: TurnRef, minute: Long, text: String): Sealed =
+        transaction(
+          right(
+            periods.seal(
+              CloseRef(period, last.turnSeq, at(minute)),
+              CloseReason.Unearned,
+              closing(text),
+              at(minute)
+            )
+          )
+        )
+      seal(PeriodRef(me, PeriodSeq.First), say(me, 0), 5, "mine")
+      seal(m1, say(mixed, 1), 10, "mixed, earned")
+      unearned(m2, say(mixed, 15), 20, "mixed, heard")
+      unearned(h1, say(heard, 2), 25, "only heard")
+      val theirs = Set(me, mixed, heard)
+      transaction(periods.closedElsewhere(me)).map(_.filter(c => theirs(c.conversation))) ==> Right(
+        Vector(ClosedElsewhere(mixed, origin("unearned-mixed").place, m1.closingId))
+      )
+    }
+
     test("closed periods are listed in close order across conversations, with their origins") {
       val x = conversation("order-x")
       val y = conversation("order-y")
