@@ -11,14 +11,19 @@ import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
 
 /** The digest: one line per closed period, across every conversation: when it closed,
   * where, why, and what it came to ([[grit.core.period.Closing.headline]]). The hello-world
-  * plugin, kept under `name`: one document per closed period, keyed by its close ordinal.
+  * plugin, kept under `name`: one document per closed period, keyed by its close ordinal;
+  * none for a period closed unearned ([[CloseReason.Unearned]]), whose closing says only
+  * that nothing was kept.
   */
 final class Digest(val name: PluginName) extends Plugin {
 
   val version: Int = 1
 
   def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
-    docs.put(Digest.key(closed.order), Digest.doc(closed))
+    Digest.why(closed.reason) match {
+      case None => Right(())
+      case Some(why) => docs.put(Digest.key(closed.order), Digest.doc(closed, why))
+    }
 }
 
 object Digest {
@@ -32,16 +37,19 @@ object Digest {
   /** A document's key: its close ordinal, zero-padded, so keys order as closes do. */
   private def key(o: CloseOrdinal): String = f"${CloseOrdinal.value(o)}%020d"
 
-  /** The document kept for `closed`: `at`, `where`, `why`, `line`. */
-  private def doc(closed: ClosedPeriod): ujson.Value =
+  /** Why a period closed, as its line says it; `None` for one that keeps no line. */
+  private def why(reason: CloseReason): Option[String] = reason match {
+    case CloseReason.Resolved(_) => Some("resolved")
+    case CloseReason.Lapsed => Some("lapsed")
+    case CloseReason.Unearned => None
+  }
+
+  /** The document kept for `closed`, which closed for `why`: `at`, `where`, `why`, `line`. */
+  private def doc(closed: ClosedPeriod, why: String): ujson.Value =
     ujson.Obj(
       "at" -> closed.at.toString,
       "where" -> where(closed.origin),
-      "why" -> (closed.reason match {
-        case CloseReason.Resolved(_) => "resolved"
-        case CloseReason.Lapsed => "lapsed"
-        case CloseReason.Unearned => "unearned"
-      }),
+      "why" -> why,
       "line" -> closed.closing.headline
     )
 

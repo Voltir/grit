@@ -67,6 +67,23 @@ object DigestTests extends TestSuite {
       )
     }
 
+    // A listened channel's chatter closes unearned all day: a line each would bury the rest.
+    test("a period closed unearned keeps no line") {
+      val plugins = posted
+      val digest = new Digest(name)
+      val unearned = closed(
+        4,
+        Origin.Slack("T1", "eng", "1700.2"),
+        CloseReason.Unearned,
+        closing("Heard 3 messages; nothing kept.", None),
+        "2026-09-22T04:00:00Z"
+      )
+      digest.post(unearned, plugins.posting(name, unearned))(using TestTx.fake) ==> Right(())
+      plugins.docs(name).newest("", 10)(using TestTx.fake).map(_.map(_._1)) ==> Right(
+        Vector("00000000000000000003", "00000000000000000002", "00000000000000000001")
+      )
+    }
+
     test("recent_activity lists the newest lines, as many as asked, newest first") {
       val db = new FakeDb
       val plugins = posted
