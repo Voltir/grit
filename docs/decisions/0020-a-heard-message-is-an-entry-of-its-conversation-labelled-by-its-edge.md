@@ -21,6 +21,19 @@ Decision:
   turn, as before. A heard one is recorded through `Inbox.hear` as an entry of its
   conversation (`Payload.Heard`) on a turn number of its own, which runs no workflow. The
   engine never inspects an edge's specifics.
+- **A heard message keeps the time it was said.** `Inbox.hear` takes it: the entry is dated
+  then, and a period it opens opens then, so a message heard late is exactly as quiet as it
+  was. A thread already past idle closes on the next sweep, never asked whether anyone is
+  waiting. An addressed message is dated when it is ingested. The closing itself is dated
+  when the sweep reaches it, not at its deadline.
+- **What was said before grit listened is heard by a command, `grit backfill`**, run before
+  `grit serve`, never as a catch-up inside it. It reads each listened channel's last days,
+  shows what hearing them would cost at most, and asks first. It hears each message at its
+  own time, a past mention of grit included (a past message is never answered), then sweeps
+  until nothing due is left and every workflow it started has ended. Nothing caps what it
+  spends: over what today's cap leaves, it only warns. A catch-up at every serve start was
+  turned down: listening and catching up at once reorders a thread, and with nothing
+  running beforehand, serve's first sweep would enqueue every due close at once.
 - **Hearing is never refused over the daily cap.** What a heard period costs is its closing,
   which is in the ledger.
 - **A heard line supports no Standing line.** The closing writer sees it labelled `h`,
@@ -53,7 +66,9 @@ Consequences:
   earned one. What `helps` measures is recorded for when grit may speak unprompted.
 - A window shows a heard message as speech not said to grit.
 - Enforced by:
-  - the inbox contract (`InboxContract`);
+  - the inbox contract (`InboxContract`: a heard message dated when it was said);
+  - `CloseLiveTests` (a message heard days late is closed on the first sweep, never asked);
+  - `BackfillTests` (backfill waits out every workflow before its last sweep);
   - `SlackEdgeTests` (what is addressed, heard or ignored);
   - `LabelledTests` and `ClosingSummaryTests` (heard lines ground nothing);
   - `CloseTests` (the heard pin, reported speech, and an unearned close);

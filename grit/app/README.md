@@ -58,7 +58,11 @@ In dependency order:
   conversation, and a summary lands after its reply, so the rows below would move). ← `look`
 - **`serve`** — `Serve`, `grit serve`: the engine of one database and the Slack edge
   (`grit.slack`'s `SlackEdge` over `SocketSlack`) in its process, wired and run until
-  stopped (ADR 0019). Wiring only: what the edge does is `grit.slack`'s. ← nothing in app
+  stopped (ADR 0019). `Backfill`, `grit backfill`, run before it: the same wiring with no
+  edge listening and no sweep of the engine's own; each listened channel's unheard last
+  days, their `Estimate` shown and agreed to, heard at their times, then swept until nothing
+  is left to close (ADR 0020). Wiring only: what the edge does is `grit.slack`'s. ← nothing
+  in app
 - **`main`** — `Main`: reads the settings, opens the engine and launches the turn
   (OpenRouter with a key, the stub without; Jev placing messages among topics with
   `JEV_API_KEY`, the stub classifier with `GRIT_STUB_TOPICS=1`, none otherwise), offering

@@ -81,6 +81,13 @@ import grit.turn.{Turn, TurnLoop}
   *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. It never
   *     attaches: another grit holding the database's engine stops it. Give it a database of
   *     its own (`GRIT_DATABASE_URL`): everyone in the workspace sees what that database holds.
+  *   - **`backfill` alone, or with `--yes`: `grit backfill`**, run before `grit serve` on its
+  *     database ([[Backfill]]; ADR 0020): what each channel in `GRIT_SLACK_LISTEN` said over
+  *     the last `GRIT_BACKFILL_DAYS` (default 2) that grit has not recorded, heard at the time
+  *     it was said, and closed as it would have closed. It prints each channel's estimate and
+  *     asks before hearing anything (`--yes` does not ask); nothing caps what it spends. It
+  *     takes serve's tokens and variables, and, like serve, never attaches. Threads still
+  *     inside idle are left for serve.
   *   - **Other arguments: each is a message**, answered by one turn and printed. Repeat a
   *     message to watch a redelivery come back as the same turn; run again to watch
   *     finished turns replay without calling the model. Nothing here answers a gated call,
