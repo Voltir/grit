@@ -258,7 +258,7 @@ object ClosingSummaryTests extends TestSuite {
       val r =
         ClosingSummary.request(long, known, Vector.empty, Asked(true, true, false, true), false)
       r.system ==>
-        (ClosingSummary.System + "\n" +
+        (ClosingSummary.system(true) + "\n" +
           "Summary: two to four sentences: what was asked, and what came of it.\n" +
           "Outcome: one line: what the conversation came to.\n" +
           "Open: then one line per item, each starting with \"- \": each question left unanswered, task left unfinished or thing not known, that is not already known.\n" +
@@ -289,11 +289,27 @@ object ClosingSummaryTests extends TestSuite {
         false
       ) ==>
         grit.core.provider.ModelRequest(
-          ClosingSummary.System + "\nSummary: two to four sentences: what was asked, and what came of it.",
+          ClosingSummary.system(
+            false
+          ) + "\nSummary: two to four sentences: what was asked, and what came of it.",
           Vector(
             grit.core.message.Message.User("Already known: nothing.\n\nTranscript:\n[u1] User: t")
           )
         )
+    }
+
+    // With nothing known, a writer told the known lines are "labelled like [o1] or [s1]"
+    // took those labels for the parts' own and wrote its summary under [s1] and its outcome
+    // under [o1].
+    test("neither prompt names the known lines' labels when no known line is shown") {
+      val none = Asked(false, false, false, false)
+      def names(known: Balance, overheard: Boolean) =
+        ClosingSummary
+          .request(labelled(heard(0, "t")), known, Vector.empty, none, overheard)
+          .system
+          .contains("labelled like [o1] or [s1]")
+      (names(Balance.empty, false), names(Balance.empty, true)) ==> (false, false)
+      (names(known, false), names(known, true)) ==> (true, true)
     }
 
     test("what the period was shown from elsewhere is known, before the transcript; never new") {
@@ -314,10 +330,12 @@ object ClosingSummaryTests extends TestSuite {
       // A reply built from another conversation's turns reads, to the writer, like something
       // this period established, and was added to this conversation's balance.
       assert(
-        ClosingSummary.System.contains(
-          "Lines known elsewhere were shown from the person's other conversations: an Open or " +
-            "Standing item that restates one is not new, like a line already known."
-        )
+        ClosingSummary
+          .system(true)
+          .contains(
+            "Lines known elsewhere were shown from the person's other conversations: an Open or " +
+              "Standing item that restates one is not new, like a line already known."
+          )
       )
     }
 
@@ -327,30 +345,38 @@ object ClosingSummaryTests extends TestSuite {
     ) {
       assert(
         // Asked who established it, the writer can only lower what its citations support.
-        ClosingSummary.System.contains(
-          "Then say who established it: by person (the person stated or decided it), by " +
-            "tool (a tool's result showed it), or by assistant (only the assistant said it)"
-        ),
+        ClosingSummary
+          .system(true)
+          .contains(
+            "Then say who established it: by person (the person stated or decided it), by " +
+              "tool (a tool's result showed it), or by assistant (only the assistant said it)"
+          ),
         // A model's invented definitions were kept as Standing (ADR 0018).
-        ClosingSummary.System.contains(
-          "End each Standing item with the labels of the lines that established it, in " +
-            "brackets, as [u1, t3]: cite what established it: the person's line where they " +
-            "stated or decided it (never the one where they asked), a tool result that " +
-            "showed it; and cite the assistant's own line when nothing else did."
-        ),
+        ClosingSummary
+          .system(true)
+          .contains(
+            "End each Standing item with the labels of the lines that established it, in " +
+              "brackets, as [u1, t3]: cite what established it: the person's line where they " +
+              "stated or decided it (never the one where they asked), a tool result that " +
+              "showed it; and cite the assistant's own line when nothing else did."
+          ),
         // A line that leaned on the transcript ("that file") meant nothing once it was gone.
-        ClosingSummary.System.contains("Every line you add must read alone"),
+        ClosingSummary.system(true).contains("Every line you add must read alone"),
         // Lines already known were written again, and compounded.
-        ClosingSummary.System.contains("Add only what this stretch newly established"),
+        ClosingSummary.system(true).contains("Add only what this stretch newly established"),
         // A lost detail became a Standing "fact" that it was never recorded.
-        ClosingSummary.System.contains(
-          "Something not known, not found or not recorded is an Open item (what to find out), " +
-            "never a Standing fact."
-        ),
+        ClosingSummary
+          .system(true)
+          .contains(
+            "Something not known, not found or not recorded is an Open item (what to find out), " +
+              "never a Standing fact."
+          ),
         // recent_activity's lines were copied into the balance as facts.
-        ClosingSummary.System.contains(
-          "never record a recap, a lookup, or a list of earlier activity"
-        )
+        ClosingSummary
+          .system(true)
+          .contains(
+            "never record a recap, a lookup, or a list of earlier activity"
+          )
       )
     }
   }

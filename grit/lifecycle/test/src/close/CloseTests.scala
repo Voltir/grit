@@ -198,7 +198,7 @@ object CloseTests extends TestSuite {
       ) ==> "closed: closing:c1:1"
       models.pins ==> Vector(TestCatalog.heardPin)
       val request = summary.requests.headOption
-      request.map(_.system.startsWith(ClosingSummary.Overheard)) ==> Some(true)
+      request.map(_.system.startsWith(ClosingSummary.overheard(false))) ==> Some(true)
       request.map(_.system.contains("Standing:")) ==> Some(false)
       request.map(
         _.messages
@@ -227,7 +227,7 @@ object CloseTests extends TestSuite {
         w.bodyOver(gate, models, new SetClock(at(Lapsed)))
       ) ==> "closed: closing:c1:1"
       models.pins ==> Vector(TestCatalog.pin.summary)
-      summary.requests.map(_.system.startsWith(ClosingSummary.System)) ==> Vector(true)
+      summary.requests.map(_.system.startsWith(ClosingSummary.system(false))) ==> Vector(true)
       w.closingEntry.map(_.payload).collect { case Payload.Closed(_, _, c) =>
         c.balance.in(Section.Standing).map(l => (l.text, l.ground))
       } ==> Some(Vector(("The team freezes on Friday", Some(Ground.Person))))

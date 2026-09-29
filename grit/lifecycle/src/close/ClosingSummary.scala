@@ -15,11 +15,14 @@ object ClosingSummary {
   /** What the writer wrote: `prose`, `outcome`, and its `edits` in the order written. */
   final case class Written(prose: String, outcome: Option[String], edits: Vector[Edit])
 
-  /** The system prompt, before the parts asked for. */
-  val System: String =
+  /** The system prompt, before the parts asked for; it names the known lines' labels only
+    * when `labels`, since a writer told of labels it is never shown takes them for the parts'
+    * own.
+    */
+  def system(labels: Boolean): String =
     "You keep the books of a conversation. A stretch of it has ended, and you record what " +
-      "it changed. You are shown what is already known, each line labelled like [o1] or " +
-      "[s1], and then the stretch's transcript. Reply with exactly the labelled parts " +
+      s"it changed. You are shown what is already known${labelledLike(labels)}, and then " +
+      "the stretch's transcript. Reply with exactly the labelled parts " +
       "below, in this order, and nothing else. Every line you add must read alone: write " +
       "names, numbers, file paths, commands and identifiers out in full, never \"as " +
       "discussed\", \"that file\" or \"the above\". Add only what this stretch newly " +
@@ -38,12 +41,13 @@ object ClosingSummary {
       "already known."
 
   /** The system prompt for a period grit only heard, before the parts asked for: people spoke
-    * to each other, never to grit, so what it records is reported speech.
+    * to each other, never to grit, so what it records is reported speech. It names the known
+    * lines' labels only when `labels`, as [[system]] does.
     */
-  val Overheard: String =
+  def overheard(labels: Boolean): String =
     "You keep the books of a team's conversation that the assistant only overheard: nobody " +
       "in it spoke to the assistant. It has ended, and you record what was said. You are " +
-      "shown what is already known, each line labelled like [o1] or [s1], and then the " +
+      s"shown what is already known${labelledLike(labels)}, and then the " +
       "transcript, each line labelled like [h1] and starting with the name of the person who " +
       "said it. Reply with exactly the labelled parts below, in this order, and nothing else. " +
       "Write it as reported speech, naming who said what (\"Emily said the freeze moves to " +
@@ -51,6 +55,9 @@ object ClosingSummary {
       "names, numbers, dates, file paths and identifiers out in full, never \"as discussed\", " +
       "\"that\" or \"the above\". Lines known elsewhere were shown from other conversations: " +
       "never repeat one."
+
+  private def labelledLike(labels: Boolean): String =
+    if (labels) ", each line labelled like [o1] or [s1]" else ""
 
   /** How much of the transcript, from its end, the model is shown. */
   val TranscriptChars = 40_000
@@ -73,7 +80,7 @@ object ClosingSummary {
     * conversations (`elsewhere`, [[grit.lifecycle.transcript.PeriodTranscript.elsewhere]])
     * are shown as known elsewhere, before the transcript, at most [[ElsewhereChars]] of
     * them, and unlabelled: they cannot be cited. When `overheard` (grit only heard the
-    * period), it is asked under [[Overheard]] instead of [[System]], its prose and outcome as
+    * period), it is asked under [[overheard]] instead of [[system]], its prose and outcome as
     * reported speech.
     */
   def request(
@@ -136,7 +143,9 @@ object ClosingSummary {
           }
         ("Already known:" +: (section("Open", "o") ++ section("Standing", "s"))).mkString("\n")
       }
-    val system: String = if (overheard) Overheard else System
+    val system: String =
+      if (overheard) ClosingSummary.overheard(shown.nonEmpty)
+      else ClosingSummary.system(shown.nonEmpty)
     val elsewhere_ =
       if (elsewhere.isEmpty) ""
       else
