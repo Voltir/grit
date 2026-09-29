@@ -79,6 +79,7 @@ object PluginLiveTests extends TestSuite {
             engine.jot,
             Clock.system()
           )),
+      nothing,
       plugins
     )
 

@@ -16,7 +16,9 @@ import grit.core.id.{
   PluginName,
   PrincipalId,
   SourceId,
+  TriageRef,
   TurnRef,
+  TurnSeq,
   WorkflowId
 }
 import grit.core.message.{Message, Tokens, Usage}
@@ -305,6 +307,7 @@ object CollectorLiveTests extends TestSuite {
       close,
       (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
       (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+      (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
       plugins
     )
     minutes(config, ledger)
@@ -343,6 +346,7 @@ object CollectorLiveTests extends TestSuite {
         engine.launch(
           turn,
           close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
@@ -415,7 +419,7 @@ object CollectorLiveTests extends TestSuite {
     }
 
     test(
-      "a raw collection finds its period's close attempts and questions by their ids' prefix, and not period 10's"
+      "a raw collection finds its period's close attempts, questions and triages by their ids' prefix, and not period 10's; a heard turn, which ran no turn workflow, is no hindrance"
     ) {
       val config = TestPostgres.freshDatabase("collect_prefix")
       val engine = LiveEngine.open(config, "test")
@@ -423,6 +427,7 @@ object CollectorLiveTests extends TestSuite {
         engine.launch(
           turn,
           close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
@@ -436,7 +441,23 @@ object CollectorLiveTests extends TestSuite {
             PrincipalId.Local
           )
           .fold(e => sys.error(s"$e"), identity)
+        // Turn 1 is heard: its triage runs, and no turn workflow ever does.
+        engine.inbox.hear(
+          Origin.Task("retention", "prefix"),
+          SourceId("two"),
+          "heard",
+          PrincipalId.Local
+        ) ==> Right(())
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
+        val triaged = TriageRef(p1, TurnSeq(1)).workflowId
+        assert(
+          eventually(
+            ended(config, WorkflowId.value(triaged)) && kept(config, Vector(triaged)) == Vector(
+              1,
+              0
+            )
+          )
+        )
         engine.sweep(Instant.now().plusSeconds(120)).map(_.enqueued.size) ==> Right(1)
         assert(
           eventually(
@@ -451,8 +472,16 @@ object CollectorLiveTests extends TestSuite {
         // Workflows named as close attempts and questions on period 1 and on period 10 would
         // be, whatever their turns: the stand-ins run nothing for any.
         val c = ConversationId.value(t0.conversationId)
-        val one = Vector(WorkflowId(s"close:$c:1:stray"), WorkflowId(s"settle:$c:1:stray"))
-        val ten = Vector(WorkflowId(s"close:$c:10:stray"), WorkflowId(s"settle:$c:10:stray"))
+        val one = Vector(
+          WorkflowId(s"close:$c:1:stray"),
+          WorkflowId(s"settle:$c:1:stray"),
+          WorkflowId(s"triage:$c:1:stray")
+        )
+        val ten = Vector(
+          WorkflowId(s"close:$c:10:stray"),
+          WorkflowId(s"settle:$c:10:stray"),
+          WorkflowId(s"triage:$c:10:stray")
+        )
         val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
         try
           (one ++ ten).foreach { id =>
@@ -466,14 +495,19 @@ object CollectorLiveTests extends TestSuite {
             )
           }
         finally client.close()
-        assert(eventually(kept(config, one) == Vector(2, 0)))
-        assert(eventually(kept(config, ten) == Vector(2, 0)))
+        assert(eventually(kept(config, one) == Vector(3, 0)))
+        assert(eventually(kept(config, ten) == Vector(3, 0)))
         // The collector waits for a workflow still running; these all end at once.
-        assert(eventually(ended(config, s"close:$c:") && ended(config, s"settle:$c:")))
+        assert(
+          eventually(
+            ended(config, s"close:$c:") && ended(config, s"settle:$c:") &&
+              ended(config, s"triage:$c:")
+          )
+        )
         engine.sweep(Instant.now().plusSeconds(180)).map(_.collected) ==> Right(
           Vector(Target.Raw(p1))
         )
-        (kept(config, one), kept(config, ten)) ==> (Vector(0, 0), Vector(2, 0))
+        (kept(config, one :+ triaged), kept(config, ten)) ==> (Vector(0, 0), Vector(3, 0))
       } finally engine.close()
     }
 
@@ -484,6 +518,7 @@ object CollectorLiveTests extends TestSuite {
         engine.launch(
           turn,
           close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
@@ -543,6 +578,7 @@ object CollectorLiveTests extends TestSuite {
         engine.launch(
           turn,
           close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty

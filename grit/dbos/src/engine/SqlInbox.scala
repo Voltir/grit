@@ -13,6 +13,7 @@ import grit.core.id.{
   PrincipalId,
   SourceId,
   ToolCallId,
+  TriageRef,
   TurnRef,
   WorkflowId
 }
@@ -30,7 +31,7 @@ import grit.core.store.{
   Tx
 }
 import grit.dbos.sql.SqlEntryStore
-import grit.dbos.workflow.Turns
+import grit.dbos.workflow.{Triages, Turns}
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
@@ -76,9 +77,25 @@ final class SqlInbox(
       text: String,
       by: PrincipalId
   ): Either[InboxError, Unit] =
-    inTransaction(recorded(origin, source, Payload.Heard(text), by, capped = false))
-      .flatMap(identity)
-      .map(_ => ())
+    inTransaction(
+      recorded(origin, source, Payload.Heard(text), by, capped = false).flatMap {
+        case Left(_) => Right(None)
+        case Right(turn) =>
+          for {
+            entry <- entries.get(SqlInbox.entryId(turn.conversationId, source))
+            period <- periods.of(turn)
+          } yield entry.map(_.payload) match {
+            // A message recorded as a turn before is not heard, and not triaged.
+            case Some(Payload.Heard(_)) => period.map(p => TriageRef(p.ref, turn.turnSeq))
+            case _ => None
+          }
+      }
+    ).flatMap {
+      case None => Right(())
+      // Enqueued after the commit, and again on a redelivery: a triage enqueued twice runs
+      // once, so a redelivery after a lost enqueue repairs it.
+      case Some(triage) => enqueue(Triages.enqueueOptions(triage))
+    }
 
   /** Why the day's spend at `now` refuses a new message; `None` when it does not. */
   private def overCap(now: Instant)(using Tx^): Either[StoreError, Option[InboxError]] =
@@ -173,11 +190,15 @@ final class SqlInbox(
   }
 
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
+    enqueue(Turns.enqueueOptions(turn))
+
+  /** Enqueues the workflow `options` names, with no arguments. */
+  private def enqueue(options: DBOSClient.EnqueueOptions): Either[InboxError, Unit] =
     try {
       // A repeated enqueue of the same id is a no-op (`ON CONFLICT (workflow_uuid)`). The
       // array is empty and DBOS only reads it; separation checking treats arrays as mutable.
       client.enqueueWorkflow[String, Exception](
-        Turns.enqueueOptions(turn),
+        options,
         caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
       )
       Right(())

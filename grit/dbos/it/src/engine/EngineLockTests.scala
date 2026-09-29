@@ -172,6 +172,7 @@ object EngineLockTests extends TestSuite {
           noop,
           noop,
           noop,
+          noop,
           Vector.empty
         )
         val turn = started(lost.inbox, "running")
@@ -190,6 +191,7 @@ object EngineLockTests extends TestSuite {
       try {
         lost.launch(
           id => d ?=> { ran.set(true); WorkflowId.value(id) },
+          noop,
           noop,
           noop,
           noop,
@@ -242,6 +244,7 @@ object EngineLockTests extends TestSuite {
               "done"
             }
           },
+        noop,
         noop,
         noop,
         noop,

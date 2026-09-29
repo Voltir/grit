@@ -21,9 +21,10 @@ import grit.dbos.sql.TestTx
 import grit.lifecycle.close.CloseFixtures
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.SettleFixtures
+import grit.lifecycle.triage.TriageFixtures
 import grit.turn.Turn
 
-/** Writes this epoch's recorded close, settle and posting histories, one per shape each can leave
+/** Writes this epoch's recorded close, settle, posting and triage histories, one per shape each can leave
   * behind, into `GRIT_HISTORIES/{Turn.Epoch}`. Never overwrites: a history, once written, is
   * what builds of this epoch must keep replaying. Run it when an epoch starts or a new shape
   * appears:
@@ -124,7 +125,49 @@ object RecordLifecycleHistories {
         id
       }
     )
-    (posted +: settles) ++ Vector(
+    def triaged(
+        name: String
+    )(
+        run: (TriageFixtures.World, InMemoryDurable) => grit.core.id.WorkflowId
+    ): (String, History) = {
+      val durable = new InMemoryDurable
+      val id = run(new TriageFixtures.World, durable)
+      name -> History("triage", id, Turn.Epoch, "recorded", durable.history(id))
+    }
+    val triages = Vector(
+      triaged("triage-tagged") { (w, d) =>
+        val t = w.hear("standup moves to 10:00 from Monday", "Ana", 0)
+        val decided =
+          new TriageFixtures.Scripted(
+            Vector(0.125, 0.0, 0.75, 0.125, 0.0),
+            Vector(0.125, 0.875, 0.25)
+          )
+        d.run(t.workflowId)(w.body(decided, 5))
+        t.workflowId
+      },
+      triaged("triage-unanswered") { (w, d) =>
+        val t = w.hear("lunch?", "Ana", 0)
+        d.run(t.workflowId)(w.body(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 5))
+        t.workflowId
+      },
+      triaged("triage-ignored") { (w, d) =>
+        val t = w.hear("lunch?", "Ana", 0)
+        val purging = new TriageFixtures.Scripted(
+          Vector(0, 0, 0, 0, 1),
+          Vector(0.1, 0.1, 0.1),
+          () => w.purge(grit.core.id.TurnRef(TriageFixtures.c, t.turn))
+        )
+        d.run(t.workflowId)(w.body(purging, 5))
+        t.workflowId
+      },
+      triaged("triage-no-message") { (w, d) =>
+        val said = w.say("hello", 0)
+        val id = grit.core.id.TriageRef(TriageFixtures.p1, said.turnSeq).workflowId
+        d.run(id)(w.body(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 5))
+        id
+      }
+    )
+    (posted +: settles) ++ triages ++ Vector(
       record("close-overheard") { (w, d) =>
         // A period grit only heard: written by the heard pin though the gate found nothing new.
         w.hear("The freeze moves to Friday.", "Ana", 0)

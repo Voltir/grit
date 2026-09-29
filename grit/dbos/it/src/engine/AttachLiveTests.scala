@@ -32,7 +32,14 @@ object AttachLiveTests extends TestSuite {
       val engine = LiveEngine.open(config, "test")
       val link = Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped)
       try {
-        engine.launch(id => d ?=> s"ran ${WorkflowId.value(id)}", noop, noop, noop, Vector.empty)
+        engine.launch(
+          id => d ?=> s"ran ${WorkflowId.value(id)}",
+          noop,
+          noop,
+          noop,
+          noop,
+          Vector.empty
+        )
         val turn = (for {
           t <- link.inbox.ingest(
             Origin.Task("attach", "send"),

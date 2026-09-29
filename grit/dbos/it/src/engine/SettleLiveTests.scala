@@ -81,7 +81,7 @@ object SettleLiveTests extends TestSuite {
       }
       val engine = LiveEngine.open(config, "test")
       try {
-        engine.launch(nothing, nothing, settle, nothing, Vector.empty)
+        engine.launch(nothing, nothing, settle, nothing, nothing, Vector.empty)
         settling(config)
         val t0 = ingested(engine, Origin.Task("settle", "once"), "one")
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
@@ -114,7 +114,7 @@ object SettleLiveTests extends TestSuite {
         }
       val engine = LiveEngine.open(config, "test")
       try {
-        engine.launch(nothing, nothing, settle, nothing, Vector.empty)
+        engine.launch(nothing, nothing, settle, nothing, nothing, Vector.empty)
         settling(config)
         val t0 = ingested(engine, Origin.Task("settle", "finished"), "one")
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)

@@ -18,6 +18,7 @@ import grit.digest.Digest
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
+import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords}
 import grit.models.{OpenRouterModels, StubModels}
 import grit.tools.{About, Coding, Probes, Tuning}
 import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling}
@@ -140,6 +141,14 @@ object Launch {
             engine.cache,
             engine.tombstones,
             engine.jot,
+            Clock.system()
+          )
+        ),
+        Triage.body(
+          TriageEnv(
+            TriageRecords(engine.entries, engine.triage, engine.principals),
+            Main.classifier(topics),
+            engine.db,
             Clock.system()
           )
         ),

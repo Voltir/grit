@@ -1,0 +1,16 @@
+{
+  "workflow": "triage",
+  "id": "triage:c1:1:0",
+  "epoch": "2026-09-27",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "ask",
+      "output": "{\"ok\":{\"entry\":\"e0\",\"tags\":{\"kind\":\"decision\",\"kindP\":0.75,\"waiting\":0.125,\"durable\":0.875,\"helps\":0.25,\"model\":\"jev-1.13.0\",\"usage\":{\"input\":640,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.00002688\"}}}}"
+    },
+    {
+      "name": "record",
+      "output": "{\"ok\":true}"
+    }
+  ]
+}

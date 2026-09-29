@@ -38,6 +38,7 @@ import grit.core.store.{
   VoiceStore
 }
 import grit.core.tool.ToolSets
+import grit.core.triage.TriageStore
 import grit.dbos.sql.{
   DbConfig,
   SqlCacheDocs,
@@ -58,10 +59,11 @@ import grit.dbos.sql.{
   SqlTombstones,
   SqlToolRequests,
   SqlToolSets,
+  SqlTriageStore,
   SqlUsageLedger,
   SqlVoiceStore
 }
-import grit.dbos.workflow.{Closes, Posts, Running, Settles, Turns}
+import grit.dbos.workflow.{Closes, Posts, Running, Settles, Triages, Turns}
 
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory
@@ -69,7 +71,7 @@ import dev.dbos.transact.{DBOS, DBOSClient}
 import org.postgresql.ds.PGSimpleDataSource
 import org.slf4j.LoggerFactory
 
-/** grit over one Postgres: the stores, the turn, close, settle and posting workflows, the
+/** grit over one Postgres: the stores, the turn, close, settle, posting and triage workflows, the
   * sweep that closes periods, and an edge's [[Inbox]], all in this process, under the
   * database's [[EngineLock]]. Open it, [[launch]] it with the workflows' bodies, start its
   * [[sweepEvery]], and close it when done; its threads keep the JVM alive until then.
@@ -129,6 +131,9 @@ final class Engine private (
   /** What grit has decided to delete, and when. */
   val tombstones: Tombstones = new SqlTombstones
 
+  /** What triage made of each heard message. */
+  val triage: TriageStore = new SqlTriageStore
+
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource)
 
@@ -152,15 +157,16 @@ final class Engine private (
     (plugin, closed) => new SqlCacheDocs(plugin, closed.order)
 
   /** Registers `turn` as the body of every turn, `close` of every attempt to close a period,
-    * `settle` of every question whether anyone is waiting on a quiet period, and `post` of every
-    * posting run, and starts running what is queued; the sweep posts to `plugins`, the ones
-    * enabled. Once.
+    * `settle` of every question whether anyone is waiting on a quiet period, `post` of every
+    * posting run, and `triage` of every heard message's triage, and starts running what is
+    * queued; the sweep posts to `plugins`, the ones enabled. Once.
     */
   def launch(
       turn: WorkflowId => Durable^ ?=> String,
       close: WorkflowId => Durable^ ?=> String,
       settle: WorkflowId => Durable^ ?=> String,
       post: WorkflowId => Durable^ ?=> String,
+      triage: WorkflowId => Durable^ ?=> String,
       plugins: Vector[Plugin]
   ): Unit = {
     val steps = new JdbcStepFactory(dbos, dataSource)
@@ -168,6 +174,7 @@ final class Engine private (
     Closes.register(dbos, steps, close, running)
     Settles.register(dbos, steps, settle, running)
     Posts.register(dbos, steps, post, running)
+    Triages.register(dbos, steps, triage, running)
     enabled.set(plugins.map(p => (p.name, p.version)))
     dbos.launch()
   }

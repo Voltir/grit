@@ -5,11 +5,12 @@ import grit.core.period.{ClosingJson, Ground, Section}
 import grit.lifecycle.close.CloseFixtures
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.SettleFixtures
+import grit.lifecycle.triage.TriageFixtures
 import grit.turn.Turn
 
 import utest.*
 
-/** The versioning gate for the close, settle and posting workflows (ADR 0004): every history of
+/** The versioning gate for the close, settle, posting and triage workflows (ADR 0004): every history of
   * either recorded under the engine's current epoch, [[Turn.Epoch]], must replay under
   * today's body. A step renamed, reordered, dropped or given an output the old records
   * cannot satisfy fails here, before it strands a workflow in flight.
@@ -29,14 +30,19 @@ object LifecycleReplayTests extends TestSuite {
   }
 
   val tests = Tests {
-    test("the current epoch has close, settle and posting histories to replay") {
+    test("the current epoch has close, settle, posting and triage histories to replay") {
       // Without them the gate below passes vacuously.
       val workflows = histories.flatMap(_._2.toOption.map(_.workflow)).toSet
-      assert(workflows.contains("close"), workflows.contains("settle"), workflows.contains("post"))
+      assert(
+        workflows.contains("close"),
+        workflows.contains("settle"),
+        workflows.contains("post"),
+        workflows.contains("triage")
+      )
     }
 
     test(
-      "every close, settle and posting history of the current epoch replays under today's body"
+      "every close, settle, posting and triage history of the current epoch replays under today's body"
     ) {
       val failures = histories.flatMap { case (path, parsed) =>
         val outcome = parsed.flatMap { history =>
@@ -69,6 +75,11 @@ object LifecycleReplayTests extends TestSuite {
                       new CloseFixtures.SetClock(java.time.Instant.EPOCH)
                     )
                   )
+                )
+              case "triage" =>
+                new InMemoryDurable().replay(history.id, history.steps)(
+                  new TriageFixtures.World()
+                    .body(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 0)
                 )
               case other => Left(s"a $other history")
             }

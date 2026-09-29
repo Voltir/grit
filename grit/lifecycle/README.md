@@ -31,6 +31,13 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   something else), `record` the verdict, which one of nobody at or above the threshold turns into the period's deadline (`grit.core.period.Deadline`).
   A classifier that fails is a verdict too, so nothing is asked again before new activity.
   `SettleEnv` is what it works with. ← `transcript`
+- **`triage`** — `Triage`: what a heard message is, asked once per message, on the turns'
+  queue under its conversation (`grit.dbos.workflow.Triages`), so ahead of any later close
+  of it: `ask` the classifier (`TriageQuestion`: its kind, and whether someone waits on it,
+  whether it states something worth keeping, whether a reply would help) over the message,
+  who said it and the thread before it, then `record` the tags (`grit.core.triage`). A
+  classifier that fails leaves unanswered tags. It writes no entry, so it never moves a
+  deadline. `TriageEnv` is what it works with. ← `transcript`
 - **`post`** — `Posting`: one run posting closed periods to a plugin from its cursor
   (`grit.core.plugin`), on a queue of its own partitioned by plugin (`grit.dbos.workflow.Posts`):
   each step posts the next closed period and moves the cursor past it in one `Jot`
@@ -38,8 +45,8 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   the cursor it started at for deletion; at most
   `MaxPerRun` a run. `PostEnv` is what it works with. Imports nothing else in lifecycle.
 
-`close`, `settle` and `post` never name each other. Their replay gate,
+`close`, `settle`, `triage` and `post` never name each other. Their replay gate,
 `LifecycleReplayTests`, with `RecordLifecycleHistories` writing its histories, is in the
-test tree's `replay`, which covers all three.
+test tree's `replay`, which covers them all.
 
 No source file sits at the module's root, and the test tree mirrors it, with `replay` beside.

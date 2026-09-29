@@ -29,7 +29,8 @@ trait Inbox extends caps.SharedCapability {
     * listens, not to it ([[grit.core.store.Payload.Heard]]). The edge never answers it, and
     * no turn runs for it. The conversation is created by `by` if it is new. A message whose
     * `source` was already recorded for `origin`, heard or ingested, is not recorded again.
-    * Never refused over the day's cap.
+    * Once recorded, it is triaged, once ([[grit.core.triage.Tags]]); hearing it again
+    * triages it if that was lost. Never refused over the day's cap.
     */
   def hear(
       origin: Origin,

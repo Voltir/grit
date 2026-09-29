@@ -1,0 +1,16 @@
+{
+  "workflow": "triage",
+  "id": "triage:c1:1:0",
+  "epoch": "2026-09-27",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "ask",
+      "output": "{\"ok\":{\"entry\":\"e0\",\"tags\":{\"unanswered\":\"unavailable: no classifier\"}}}"
+    },
+    {
+      "name": "record",
+      "output": "{\"ok\":true}"
+    }
+  ]
+}

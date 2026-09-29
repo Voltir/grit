@@ -17,6 +17,7 @@ import grit.edge.Server
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
+import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords}
 import grit.models.{StubModels, StubProvider}
 import grit.tools.Coding
 import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling, TurnTools}
@@ -160,6 +161,14 @@ object LiveTurn {
               Clock.system()
             )
           ),
+        Triage.body(
+          TriageEnv(
+            TriageRecords(entries, engine.triage, engine.principals),
+            grit.core.classify.Classifier.none("no classifier"),
+            engine.db,
+            Clock.system()
+          )
+        ),
         Vector.empty
       )
     val budget = TurnLoop.Budget.of(5).fold(why => sys.error(why), identity)

@@ -91,6 +91,7 @@ object CloseLiveTests extends TestSuite {
           close,
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
         )
         minuteIdle(config)
@@ -120,6 +121,7 @@ object CloseLiveTests extends TestSuite {
         engine.launch(
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
@@ -155,6 +157,7 @@ object CloseLiveTests extends TestSuite {
         engine.launch(
           turn,
           close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty
@@ -223,6 +226,7 @@ object CloseLiveTests extends TestSuite {
         engine.launch(
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           close,
+          (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           Vector.empty

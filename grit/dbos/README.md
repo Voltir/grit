@@ -9,14 +9,15 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `SqlEdgeDirectory` (hosted tool calls and the edges serving them, ADR 0017), `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
   row), `SqlVoiceStore` (the voice, one row), `SqlPrincipals` (people by name, and who wrote each inbound entry), `SqlDeliveries` (the replies an edge has yet to post outside grit), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
-  as posted from one closing, and its cursor), `SqlTombstones` (what is to be deleted, ADR 0014).
+  as posted from one closing, and its cursor), `SqlTombstones` (what is to be deleted, ADR 0014), `SqlTriageStore`
+  (what triage made of each heard message, deleted with its entry).
   Imports nothing else in dbos.
 - **`workflow`** — DBOS behind `Durable`: `DbosDurable`, `DurableWorkflow` (registers a
   body under the fixed class name `grit.workflow`, so moving it strands no workflow row, and
   counts it in `Running` while it runs),
-  `Turns` (how a turn is known to DBOS: its workflow name and queue), `Closes` and
-  `Settles` (the close and settle workflows, on the same queue under the conversation's
-  partition, so neither runs beside one of its turns), `Posts` (the posting workflow, on a `posts` queue partitioned by
+  `Turns` (how a turn is known to DBOS: its workflow name and queue), `Closes`, `Settles`
+  and `Triages` (the close, settle and triage workflows, on the same queue under the
+  conversation's partition, so none runs beside one of its turns), `Posts` (the posting workflow, on a `posts` queue partitioned by
   plugin). Imports nothing else in dbos.
 - **`engine`** — both, composed: `Link` (an edge's view of the engine: inbox, reads,
   streams, turn status, the holder, its registered edge; `Engine` is one, and
@@ -26,7 +27,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   for running bodies, and releases the lock last), `SqlDesk` (an edge's registration, live
   while its own connection holds its lock, which also listens for requests), `TurnStatus`, and
   `SqlInbox`, which records a message, and who wrote it (`grit.inbound`), and enqueues its turn in one transaction (opening
-  the conversation's next period when none is open), and sends a turn the answer to its
+  the conversation's next period when none is open), enqueues a heard message's triage
+  once it is recorded, and sends a turn the answer to its
   gated call (`DBOSClient.send`); `Sweeper`,
   the sweep `Engine.sweepEvery` runs: every open period whose deadline has come has its
   attempt on that deadline enqueued, under an id naming the deadline, so a moved deadline
