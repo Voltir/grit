@@ -1,6 +1,6 @@
 package grit.dbos.sql
 
-import java.sql.{PreparedStatement, ResultSet, Types}
+import java.sql.{PreparedStatement, ResultSet}
 import java.time.{Instant, ZoneOffset}
 
 import scala.util.Using
@@ -76,15 +76,15 @@ final class SqlTriageStore extends TriageStore {
       ps.setLong(10, Tokens.value(usage.cachedInput))
       usage.costUsd match {
         case Some(c) => ps.setBigDecimal(11, c.bigDecimal)
-        case None => ps.setNull(11, Types.NUMERIC)
+        case None => ps.setNull(11, java.sql.Types.NUMERIC)
       }
-      ps.setNull(12, Types.VARCHAR)
+      ps.setNull(12, java.sql.Types.VARCHAR)
     case Tags.Unanswered(why) =>
-      ps.setNull(2, Types.VARCHAR)
-      (3 to 6).foreach(ps.setNull(_, Types.DOUBLE))
-      ps.setNull(7, Types.VARCHAR)
-      (8 to 10).foreach(ps.setNull(_, Types.BIGINT))
-      ps.setNull(11, Types.NUMERIC)
+      ps.setNull(2, java.sql.Types.VARCHAR)
+      (3 to 6).foreach(ps.setNull(_, java.sql.Types.DOUBLE))
+      ps.setNull(7, java.sql.Types.VARCHAR)
+      (8 to 10).foreach(ps.setNull(_, java.sql.Types.BIGINT))
+      ps.setNull(11, java.sql.Types.NUMERIC)
       ps.setString(12, why)
   }
 
