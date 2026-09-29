@@ -1,6 +1,6 @@
 package grit.core.inbox
 
-import java.time.ZoneOffset
+import java.time.{Instant, ZoneOffset}
 
 import grit.core.id.{PrincipalId, SourceId}
 import grit.core.message.{Cost, Message}
@@ -22,6 +22,9 @@ abstract class InboxContract extends TestSuite {
   private val Uncapped = Budget(ZoneOffset.UTC, None)
 
   private def said(text: String): Message.User = Message.User(text)
+
+  /** When the heard messages below were said, days before any test runs. */
+  private val Said = Instant.parse("2026-09-26T10:00:00Z")
 
   val tests = Tests {
     test("ingested: the turn a message was recorded as; none for one never recorded") {
@@ -50,10 +53,21 @@ abstract class InboxContract extends TestSuite {
         val here = Origin.Task("inbox", "heard")
         val ana = PrincipalId("task:ana")
         store.enroll(ana, "Ana")
-        inbox.hear(here, SourceId("m1"), "standup moves to 10:00", ana) ==> Right(())
-        inbox.hear(here, SourceId("m1"), "standup moves to 10:00", ana) ==> Right(())
+        inbox.hear(here, SourceId("m1"), "standup moves to 10:00", ana, Said) ==> Right(())
+        inbox.hear(here, SourceId("m1"), "standup moves to 10:00", ana, Said) ==> Right(())
         store.written(here) ==> Vector((Payload.Heard("standup moves to 10:00"), Some("Ana")))
         inbox.ingested(here, SourceId("m1")) ==> Right(None)
+      }
+    }
+
+    test("a heard message's entry, and the period it opens, are dated when it was said") {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "dated")
+        val later = Said.plusSeconds(300)
+        inbox.hear(here, SourceId("m1"), "standup moves to 10:00", PrincipalId.Local, Said) ==>
+          Right(())
+        inbox.hear(here, SourceId("m2"), "fine by me", PrincipalId.Local, later) ==> Right(())
+        (store.dated(here), store.opened(here)) ==> (Vector(Said, later), Vector(Said))
       }
     }
 
@@ -77,7 +91,7 @@ abstract class InboxContract extends TestSuite {
         inbox.ingest(fresh, SourceId("m1"), said("one"), PrincipalId.Local).isLeft ==> true
         store.exists(fresh) ==> false
         val heard = Origin.Task("inbox", "capped-heard")
-        inbox.hear(heard, SourceId("m1"), "lunch?", PrincipalId.Local) ==> Right(())
+        inbox.hear(heard, SourceId("m1"), "lunch?", PrincipalId.Local, Said) ==> Right(())
         store.written(heard) ==> Vector((Payload.Heard("lunch?"), None))
       }
     }
@@ -89,12 +103,15 @@ object InboxContract {
   /** What a test reads and writes of the store under an inbox: `spend` records a call that
     * cost that many dollars now; `exists`, whether a conversation from an origin exists;
     * `written`, the entries of an origin's conversation in order, each with the name its
-    * author was enrolled under; `enroll` names a person.
+    * author was enrolled under; `dated`, when each of those entries is dated; `opened`, when
+    * each of its periods opened, oldest first; `enroll` names a person.
     */
   final case class Store(
       spend: BigDecimal => Unit,
       exists: Origin => Boolean,
       written: Origin => Vector[(Payload, Option[String])],
+      dated: Origin => Vector[Instant],
+      opened: Origin => Vector[Instant],
       enroll: (PrincipalId, String) => Unit
   )
 }

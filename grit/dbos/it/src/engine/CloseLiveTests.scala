@@ -214,6 +214,29 @@ object CloseLiveTests extends TestSuite {
       } finally engine.close()
     }
 
+    test(
+      "a message heard two days after it was said is closed on the first sweep, at its idle deadline, never asked"
+    ) {
+      val config = TestPostgres.freshDatabase("close_heard_late")
+      val nothing = (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id)
+      val engine = LiveEngine.open(config, "test")
+      try {
+        engine.launch(nothing, nothing, nothing, nothing, nothing, Vector.empty)
+        minuteIdle(config)
+        val here = Origin.Task("close", "heard-late")
+        val said = Instant.now().minus(2, ChronoUnit.DAYS).truncatedTo(ChronoUnit.MILLIS)
+        engine.inbox.hear(here, SourceId("m1"), "standup moves", PrincipalId.Local, said) ==>
+          Right(())
+        val c = LiveDb.conversation(config, here).id
+        engine.sweep(Instant.now()).map(s => (s.enqueued, s.asked)) ==> Right(
+          (
+            Vector(CloseRef(PeriodRef(c, PeriodSeq.First), TurnSeq(0), said.plusSeconds(60))),
+            Vector.empty
+          )
+        )
+      } finally engine.close()
+    }
+
     test("an attempt that failed is not run again while its deadline stands, however many sweeps") {
       val config = TestPostgres.freshDatabase("close_failed")
       val runs = new ConcurrentLinkedQueue[String]()

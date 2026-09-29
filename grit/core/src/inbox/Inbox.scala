@@ -1,5 +1,7 @@
 package grit.core.inbox
 
+import java.time.Instant
+
 import grit.core.approval.Approval
 import grit.core.id.{PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
@@ -27,16 +29,19 @@ trait Inbox extends caps.SharedCapability {
 
   /** Records `text` from `origin`'s conversation, written by `by`, as heard: said where grit
     * listens, not to it ([[grit.core.store.Payload.Heard]]). The edge never answers it, and
-    * no turn runs for it. The conversation is created by `by` if it is new. A message whose
-    * `source` was already recorded for `origin`, heard or ingested, is not recorded again.
-    * Once recorded, it is triaged, once ([[grit.core.triage.Tags]]); hearing it again
-    * triages it if that was lost. Never refused over the day's cap.
+    * no turn runs for it. The conversation is created by `by` if it is new. It was said
+    * `at`: its entry is dated `at`, and a period it opens opens `at`, so a message heard late
+    * is as quiet as it was. A message whose `source` was already recorded for `origin`,
+    * heard or ingested, is not recorded again. Once recorded, it is triaged, once
+    * ([[grit.core.triage.Tags]]); hearing it again triages it if that was lost. Never
+    * refused over the day's cap.
     */
   def hear(
       origin: Origin,
       source: SourceId,
       text: String,
-      by: PrincipalId
+      by: PrincipalId,
+      at: Instant
   ): Either[InboxError, Unit]
 
   /** The turn the message `source` from `origin` was recorded as by [[ingest]]; `None` when it

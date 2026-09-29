@@ -8,6 +8,7 @@ import grit.core.store.{
   Entry,
   InMemoryConversationStore,
   InMemoryEntryStore,
+  InMemoryPeriodStore,
   InMemoryPrincipals,
   InMemoryUsageLedger,
   Origin,
@@ -18,8 +19,8 @@ import grit.core.store.{
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[Inbox]] for tests, keeping [[InboxContract]], over the in-memory stores it
-  * is given: an ingested or heard message is an entry of its conversation, its author told to
-  * `principals`, and a new one is refused once `ledger`'s spend today reaches `budget`'s cap,
+  * is given: an ingested or heard message is an entry of its conversation, in its open period
+  * ([[periods]], opened by the message when none is), its author told to `principals`, and a new one is refused once `ledger`'s spend today reaches `budget`'s cap,
   * today being the day `ledger.now` falls on. No turn runs: a test ends one with [[finish]].
   */
 final class InMemoryInbox(
@@ -29,6 +30,9 @@ final class InMemoryInbox(
     val ledger: InMemoryUsageLedger,
     budget: Budget
 ) extends Inbox {
+
+  /** The conversations' periods, over [[entries]]. */
+  val periods: InMemoryPeriodStore = new InMemoryPeriodStore(entries)
 
   /** The turns started, oldest first; a turn started twice is here once. */
   @caps.unsafe.untrackedCaptures
@@ -74,24 +78,27 @@ final class InMemoryInbox(
       message: Message.User,
       by: PrincipalId
   ): Either[InboxError, TurnRef] =
-    recorded(origin, source, Payload.Message(message), by, capped = true)
+    recorded(origin, source, Payload.Message(message), by, java.time.Instant.EPOCH, capped = true)
 
   def hear(
       origin: Origin,
       source: SourceId,
       text: String,
-      by: PrincipalId
+      by: PrincipalId,
+      at: java.time.Instant
   ): Either[InboxError, Unit] =
-    recorded(origin, source, Payload.Heard(text), by, capped = false).map(_ => ())
+    recorded(origin, source, Payload.Heard(text), by, at, capped = false).map(_ => ())
 
-  /** `payload` recorded as the first entry of a new turn of `origin`'s conversation, unless
-    * `source` was recorded before (its turn then) or, when `capped`, the day's spend refuses it.
+  /** `payload` recorded as the first entry of a new turn of `origin`'s conversation, dated
+    * `at` as the period it opens is, unless `source` was recorded before (its turn then) or,
+    * when `capped`, the day's spend refuses it.
     */
   private def recorded(
       origin: Origin,
       source: SourceId,
       payload: Payload,
       by: PrincipalId,
+      at: java.time.Instant,
       capped: Boolean
   ): Either[InboxError, TurnRef] =
     if (down) unavailable
@@ -111,6 +118,7 @@ final class InMemoryInbox(
                 conversation <- conversations.findOrCreate(origin, by)
                 id = InMemoryInbox.entryId(conversation.id.toString, source)
                 next <- entries.lockNext(conversation.id)
+                _ <- periods.openFor(conversation.id, next.turnSeq, at)
                 _ <- entries.insert(
                   Entry(
                     id,
@@ -119,7 +127,7 @@ final class InMemoryInbox(
                     None,
                     next.seq,
                     payload,
-                    java.time.Instant.EPOCH
+                    at
                   )
                 )
               } yield {

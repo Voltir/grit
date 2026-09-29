@@ -446,7 +446,8 @@ object CollectorLiveTests extends TestSuite {
           Origin.Task("retention", "prefix"),
           SourceId("two"),
           "heard",
-          PrincipalId.Local
+          PrincipalId.Local,
+          java.time.Instant.now()
         ) ==> Right(())
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
         val triaged = TriageRef(p1, TurnSeq(1)).workflowId

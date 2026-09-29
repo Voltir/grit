@@ -65,9 +65,11 @@ final class SqlInbox(
         case None =>
           overCap(Instant.now()).flatMap {
             case Some(refused) => Right(Left(refused))
-            case None => recorded(origin, source, Payload.Message(message), by, capped = true)
+            case None =>
+              recorded(origin, source, Payload.Message(message), by, Instant.now(), capped = true)
           }
-        case Some(_) => recorded(origin, source, Payload.Message(message), by, capped = true)
+        case Some(_) =>
+          recorded(origin, source, Payload.Message(message), by, Instant.now(), capped = true)
       }
     }.flatMap(identity)
 
@@ -75,10 +77,11 @@ final class SqlInbox(
       origin: Origin,
       source: SourceId,
       text: String,
-      by: PrincipalId
+      by: PrincipalId,
+      at: Instant
   ): Either[InboxError, Unit] =
     inTransaction(
-      recorded(origin, source, Payload.Heard(text), by, capped = false).flatMap {
+      recorded(origin, source, Payload.Heard(text), by, at, capped = false).flatMap {
         case Left(_) => Right(None)
         case Right(turn) =>
           for {
@@ -108,15 +111,16 @@ final class SqlInbox(
           .map(spent => Option.when(!budget.admits(spent))(InboxError.OverCap(spent, cap, day)))
     }
 
-  /** `payload` recorded as the first entry of a new turn, in the transaction open: its
-    * existing turn when `source` was recorded before, else, when `capped`, refused over the
-    * cap, else a new turn.
+  /** `payload` recorded as the first entry of a new turn, in the transaction open, dated `at`
+    * as the period it opens is: its existing turn when `source` was recorded before, else,
+    * when `capped`, refused over the cap of the day `at` falls on, else a new turn.
     */
   private def recorded(
       origin: Origin,
       source: SourceId,
       payload: Payload,
       by: PrincipalId,
+      at: Instant,
       capped: Boolean
   )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
     for {
@@ -126,7 +130,6 @@ final class SqlInbox(
       // this one's entry and its sequence numbers.
       next <- entries.lockNext(conversation.id)
       existing <- entries.get(id)
-      at = Instant.now()
       refused <- existing.fold(if (capped) overCap(at) else Right(None))(_ => Right(None))
       turn <- (existing, refused) match {
         case (Some(entry), _) => Right(Right(TurnRef(entry.conversationId, entry.turnSeq)))

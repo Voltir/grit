@@ -1,5 +1,6 @@
 package grit.dbos.engine
 
+import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
 
 import scala.annotation.unused
@@ -44,9 +45,9 @@ object TriageLiveTests extends TestSuite {
       try {
         engine.launch(nothing, nothing, nothing, nothing, triage, Vector.empty)
         val here = Origin.Task("triage", "once")
-        engine.inbox.hear(here, SourceId("m1"), "standup moves to 10:00", PrincipalId.Local) ==>
+        engine.inbox.hear(here, SourceId("m1"), "standup moves to 10:00", PrincipalId.Local, Instant.now()) ==>
           Right(())
-        engine.inbox.hear(here, SourceId("m1"), "standup moves to 10:00", PrincipalId.Local) ==>
+        engine.inbox.hear(here, SourceId("m1"), "standup moves to 10:00", PrincipalId.Local, Instant.now()) ==>
           Right(())
         val c = LiveDb.conversation(config, here).id
         val expected = TriageRef(PeriodRef(c, PeriodSeq.First), TurnSeq(0)).workflowId
@@ -68,8 +69,8 @@ object TriageLiveTests extends TestSuite {
         engine.launch(nothing, nothing, nothing, nothing, triage, Vector.empty)
         val here = Origin.Task("triage", "addressed")
         engine.inbox.ingest(here, SourceId("m1"), Message.User("@grit hi"), PrincipalId.Local)
-        engine.inbox.hear(here, SourceId("m1"), "@grit hi", PrincipalId.Local) ==> Right(())
-        engine.inbox.hear(here, SourceId("m2"), "and this", PrincipalId.Local) ==> Right(())
+        engine.inbox.hear(here, SourceId("m1"), "@grit hi", PrincipalId.Local, Instant.now()) ==> Right(())
+        engine.inbox.hear(here, SourceId("m2"), "and this", PrincipalId.Local, Instant.now()) ==> Right(())
         val c = LiveDb.conversation(config, here).id
         assert(eventually(ran.size >= 1))
         Thread.sleep(500)

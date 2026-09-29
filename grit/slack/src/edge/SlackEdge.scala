@@ -134,7 +134,10 @@ final class SlackEdge(
     spoken(m).flatMap {
       case None => Right(())
       case Some((author, text)) =>
-        stores.inbox.hear(origin, SourceId(Ts.value(m.ts)), text, author).left.map(_.toString)
+        stores.inbox
+          .hear(origin, SourceId(Ts.value(m.ts)), text, author, m.at)
+          .left
+          .map(_.toString)
     }
 
   /** Who wrote `m`, enrolled under their Slack name, and its text in their words; `None` in a

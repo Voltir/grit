@@ -5,6 +5,7 @@ import java.util.UUID
 import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
 import grit.core.inbox.{Inbox, InboxContract}
 import grit.core.message.{Tokens, Usage}
+import grit.core.period.Period
 import grit.core.spend.Budget
 import grit.core.store.{Entry, Origin, Payload, StoreError}
 import grit.dbos.engine.LiveEngine
@@ -54,11 +55,31 @@ object SqlInboxContractTests extends InboxContract {
             names <- engine.principals.speakers(all.map(_.id))
           } yield all.map(e => (e.payload, names.of(e.id))))
           .fold(e => sys.error(e.toString), identity)
+      def dated(origin: Origin): Vector[java.time.Instant] =
+        engine.db
+          .read(
+            engine.conversations
+              .find(origin)
+              .flatMap(_.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
+                engine.entries.list(c.id)
+              ))
+          )
+          .fold(e => sys.error(e.toString), _.map(_.createdAt))
+      def opened(origin: Origin): Vector[java.time.Instant] =
+        engine.db
+          .read(
+            engine.conversations
+              .find(origin)
+              .flatMap(_.fold(Right(Vector.empty): Either[StoreError, Vector[Period]])(c =>
+                engine.periods.all(c.id)
+              ))
+          )
+          .fold(e => sys.error(e.toString), _.map(_.openedAt))
       def enroll(id: PrincipalId, name: String): Unit =
         engine.jot
           .write(engine.principals.enroll(id, name))
           .fold(e => sys.error(e.toString), identity)
-      body(engine.inbox, InboxContract.Store(spend, exists, written, enroll))
+      body(engine.inbox, InboxContract.Store(spend, exists, written, dated, opened, enroll))
     } finally engine.close()
   }
 }
