@@ -178,6 +178,13 @@ object PayloadJsonTests extends TestSuite {
           """{"kind":"closed","period":1,"reason":"resolved","closing":{"v":2,"flows":{"prose":"x"}}}"""
         )
       ) ==> Left("a resolved close has no confidence")
+      // An unearned close, as a period only heard and kept nothing of closes (ADR 0020).
+      val unearned = Payload.Closed(PeriodSeq.First, CloseReason.Unearned, closing)
+      PayloadJson.write(unearned).render() ==>
+        """{"kind":"closed","period":1,"reason":"unearned","closing":""" +
+        """{"v":3,"flows":{"prose":"Small talk.","outcome":"none","changes":[]},"balance":{"open":[],"standing":[],"topics":[]}}}"""
+      PayloadJson.read(PayloadJson.write(unearned)) ==> Right(unearned)
+      PayloadJson.readReason("unearned", Some(0.5)) ==> Left("an unearned close has a confidence")
       PayloadJson.read(
         ujson.read("""{"kind":"closed","period":0,"reason":"lapsed","closing":{}}""")
       ) ==>

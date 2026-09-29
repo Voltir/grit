@@ -12,6 +12,7 @@ import grit.core.store.{
   Tombstones,
   UsageLedger
 }
+import grit.core.triage.TriageStore
 
 /** What a close works with besides its `Durable`: where it reads and writes ([[CloseRecords]]),
   * then the capabilities it calls. `classifier` decides which sections the closing needs
@@ -27,8 +28,9 @@ final case class CloseEnv(
     clock: Clock^
 )
 
-/** Where a close reads its period and who wrote it, and writes its closing entry, the
-  * entry's cost, the tombstones its seal writes, and how a request is priced.
+/** Where a close reads its period, who wrote it and what triage made of its heard messages,
+  * and writes its closing entry, the entry's cost, the tombstones its seal writes, and how a
+  * request is priced.
   */
 final case class CloseRecords(
     entries: EntryStore,
@@ -37,5 +39,6 @@ final case class CloseRecords(
     ledger: UsageLedger,
     tombstones: Tombstones,
     estimator: TokenEstimator,
-    principals: Principals
+    principals: Principals,
+    triage: TriageStore
 )

@@ -14,14 +14,16 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   lifecycle.
 - **`close`** — `Close`: one attempt to close a period, run on the turns' queue under its
   conversation (`grit.dbos.workflow.Closes`): `check` its deadline is still the attempt's,
+  and whether it earned a written closing (`grit.core.triage.Earning`; one that did not
+  closes `Unearned`, with no classifier or model call and a fixed line as its prose),
   `gate` what of its closing is new beside the balance it opened with (`CloseGate`, one
   classifier call), `summarise` it (`ClosingSummary`: the summary role's prompt, shown the
   balance as already known under labels and the period's labelled transcript, and a
   tolerant reader of its flows and edits, each Standing item grounded by the lines it
   cites (ADR 0018);
   with nothing new, or when the model fails, the per-turn summaries as the prose and no
-  model call; a period grit only heard always written, by the heard pin, as reported
-  speech, and nothing resting only on heard lines kept as Standing; the edits and the topics' applied to the balance, held to the cap in force), `seal` it with its closing entry, and the tombstones on its raw entries, on the closing it
+  model call; a period grit only heard that earned its closing written by the heard pin,
+  as reported speech, and nothing resting only on heard lines kept as Standing; the edits and the topics' applied to the balance, held to the cap in force), `seal` it with its closing entry, and the tombstones on its raw entries, on the closing it
   replaces and on its conversation going quiet (ADR 0014). `CloseEnv` is what it works
   with. ← `transcript`
 - **`settle`** — `Settle`: the one question whether anyone is waiting on a quiet period, asked

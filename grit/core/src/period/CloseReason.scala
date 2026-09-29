@@ -10,4 +10,10 @@ enum CloseReason {
 
   /** Nothing happened for the idle window. */
   case Lapsed
+
+  /** Nothing in it was said to grit, and triage kept nothing
+    * ([[grit.core.triage.Earning]]): closed on its deadline with a closing written without a
+    * model.
+    */
+  case Unearned
 }

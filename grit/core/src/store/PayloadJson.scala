@@ -53,16 +53,18 @@ object PayloadJson {
   def reasonName(reason: CloseReason): String = reason match {
     case CloseReason.Resolved(_) => "resolved"
     case CloseReason.Lapsed => "lapsed"
+    case CloseReason.Unearned => "unearned"
   }
 
-  /** A resolved reason's confidence, stored beside its name; `None` for a lapsed one. */
+  /** A resolved reason's confidence, stored beside its name; `None` for any other. */
   def reasonConfidence(reason: CloseReason): Option[Double] = reason match {
     case CloseReason.Resolved(c) => Some(Probability.value(c))
-    case CloseReason.Lapsed => None
+    case CloseReason.Lapsed | CloseReason.Unearned => None
   }
 
   /** The [[CloseReason]] stored as `name` with `confidence`, or why it is none: an unknown
-    * name, a resolved one without a confidence in [0, 1], or a lapsed one with a confidence.
+    * name, a resolved one without a confidence in [0, 1], or a lapsed or unearned one with a
+    * confidence.
     */
   def readReason(name: String, confidence: Option[Double]): Either[String, CloseReason] =
     (name, confidence) match {
@@ -74,6 +76,8 @@ object PayloadJson {
       case ("resolved", None) => Left("a resolved close has no confidence")
       case ("lapsed", None) => Right(CloseReason.Lapsed)
       case ("lapsed", Some(_)) => Left("a lapsed close has a confidence")
+      case ("unearned", None) => Right(CloseReason.Unearned)
+      case ("unearned", Some(_)) => Left("an unearned close has a confidence")
       case (other, _) => Left(s"unknown close reason: $other")
     }
 

@@ -32,6 +32,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.triage.{InMemoryTriageStore, Tags}
 import grit.dbos.sql.TestTx
 
 /** The close's test world: one conversation in core's in-memory stores, a clock the test
@@ -153,6 +154,12 @@ object CloseFixtures {
     val principals = new InMemoryPrincipals
     val ledger = new InMemoryUsageLedger
     val tombstones = new InMemoryTombstones
+    val triage = new InMemoryTriageStore(entries)
+
+    /** What triage made of the message `text` heard ([[hear]]). */
+    def tag(text: String, tags: Tags): Unit = {
+      val _ = triage.record(EntryId(s"heard:$text"), tags, Start)(using TestTx.fake)
+    }
 
     /** A user message starting the next turn at `minutes`, its period opened as the inbox
       * does.
@@ -228,7 +235,7 @@ object CloseFixtures {
     )(using Durable^): String =
       Close.body(
         CloseEnv(
-          CloseRecords(entries, sealing, lifecycle, ledger, tombstones, Chars, principals),
+          CloseRecords(entries, sealing, lifecycle, ledger, tombstones, Chars, principals, triage),
           gate,
           models,
           FakeDb,

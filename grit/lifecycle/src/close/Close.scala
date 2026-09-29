@@ -8,6 +8,7 @@ import grit.core.message.{Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows}
 import grit.core.retention.Target
 import grit.core.store.{Entry, EntryTopics, Payload, Sealed, Speakers, StoreError, Tombstones, Tx}
+import grit.core.triage.Earning
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** The close: one workflow per attempt to close a period ([[CloseRef]]), run on the turns'
@@ -19,10 +20,12 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      the attempt's, because a turn came in, a turn's entries were written or the settings
   *      changed, so the sweep makes a new attempt on the new deadline; otherwise due, for its
   *      reason, with the balance it opened with and the cap its closing's balance is held
-  *      to. The attempt is taken to be enqueued once its deadline had come.
+  *      to. The reason is `Unearned`, whatever the deadline's, when the period did not earn a
+  *      written closing ([[grit.core.triage.Earning]], over what triage made of its heard
+  *      messages). The attempt is taken to be enqueued once its deadline had come.
   *   1. `gate` — what of the closing is new beside the balance the period opened with and
   *      what its windows showed from other conversations ([[CloseGate]]); every part when
-  *      the classifier does not answer.
+  *      the classifier does not answer; none, with no classifier call, when unearned.
   *   1. `summarise` — the closing: its flows written by the catalog's summary pin
   *      ([[ClosingSummary]]), shown what the period drew from elsewhere as known, and the balance it opened with after the writer's edits and
   *      the topics' ([[grit.core.store.EntryTopics.edits]]), held to the cap
@@ -30,9 +33,11 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      is cut off at its token limit (its cost still kept), or when the gate found
   *      nothing new (and then no model is called), the period's per-turn summaries joined
   *      as the prose, and the balance carried with the topics' edits alone. A period grit
-  *      only heard ([[grit.lifecycle.transcript.PeriodTranscript.overheard]]) is always
-  *      written, by the catalog's heard pin, as reported speech, asking only its prose and
-  *      outcome. A close never fails for a model.
+  *      only heard ([[grit.lifecycle.transcript.PeriodTranscript.overheard]]) that earned
+  *      its closing is written by the catalog's heard pin, as reported speech, asking only its
+  *      prose and outcome; one that did not is closed with no model call, its prose
+  *      `Heard 4 messages; nothing kept.` and its balance carried. A close never fails for a
+  *      model.
   *   1. `seal` — under the lock again: the closing entry, its cost in the ledger, the period
   *      closed, and the tombstones on its raw entries, on the closing it replaces and on its
   *      conversation going quiet ([[grit.core.retention.Target]]), together; abandoned,
@@ -85,15 +90,19 @@ object Close {
           case Right(Checked.Closed) => "already closed"
           case Right(Checked.Abandoned(why)) => s"abandoned: $why"
           case Right(Checked.Due(first, reason, known, cap)) =>
+            val unearned = reason == CloseReason.Unearned
             val gated = d.step(Step.Gate) { () =>
-              val entries = own(env, attempt, first)
-              CloseGate.asked(
-                env.classifier,
-                CloseGate.Transcript(known, elsewhere(env, entries), transcript(env, entries))
-              )
+              if (unearned) (Asked.NoPart, Some("unearned"))
+              else {
+                val entries = own(env, attempt, first)
+                CloseGate.asked(
+                  env.classifier,
+                  CloseGate.Transcript(known, elsewhere(env, entries), transcript(env, entries))
+                )
+              }
             }
             val summarised = d.step(Step.Summarise) { () =>
-              summarise(env, attempt, first, gated._1, known, cap)
+              summarise(env, attempt, first, gated._1, known, cap, unearned)
             }
             val noted = (gated._2 ++ summarised.note).map(n => s"; $n").mkString
             d.transact(Step.Seal)(
@@ -121,13 +130,26 @@ object Close {
           .opening(TurnRef(attempt.period.conversationId, p.first))
           .map(o => Some(o.balance))
       )
+      // Its own entries and what triage made of them, read under the lock, so a message
+      // heard after this check is in a later attempt's.
+      own <- period.fold[Either[StoreError, Vector[Entry]]](Right(Vector.empty))(p =>
+        records.entries
+          .list(attempt.period.conversationId)
+          .map(_.filter { e =>
+            val t = TurnSeq.value(e.turnSeq)
+            t >= TurnSeq.value(p.first) && t <= TurnSeq.value(attempt.last)
+          })
+      )
+      tags <- records.triage.of(own.collect { case e @ Entry(_, _, _, _, _, Payload.Heard(_), _) =>
+        e.id
+      })
     } yield (period, activity) match {
       case (Some(p), Some(a)) =>
         val current = a.attempt(settings)
         if (current == attempt)
           Checked.Due(
             p.first,
-            a.due(settings).reason,
+            if (Earning.earns(own, tags)) a.due(settings).reason else CloseReason.Unearned,
             opening.getOrElse(Balance.empty),
             settings.balance
           )
@@ -179,7 +201,8 @@ object Close {
       first: TurnSeq,
       asked: Asked,
       known: Balance,
-      cap: Int
+      cap: Int,
+      unearned: Boolean
   ): Summarised = {
     val entries = own(env, attempt, first)
     // What the writer reads and cites into: one value, cut once (ClosingSummary.visible).
@@ -213,7 +236,14 @@ object Close {
       None,
       Some(note)
     )
-    if (asked.nothingNew && !overheard) carried("nothing new: carried")
+    if (unearned)
+      Summarised(
+        fallback(entries.getOrElse(Vector.empty), attempt, first)
+          .flatMap(closed(_, None, Vector.empty)),
+        None,
+        None
+      )
+    else if (asked.nothingNew && !overheard) carried("nothing new: carried")
     else {
       val written = for {
         catalog <- env.models.catalog()
@@ -237,26 +267,35 @@ object Close {
     }
   }
 
-  /** A closing's prose written without a model: the period's per-turn summaries joined;
-    * without any, its user messages; without those, how many turns it had.
+  /** A closing's prose written without a model: for a period grit only heard, how many
+    * messages it heard ("Heard 4 messages; nothing kept."); otherwise the period's per-turn
+    * summaries joined; without any, its user messages; without those, how many turns it had.
     */
   private def fallback(
       entries: Vector[Entry],
       attempt: CloseRef,
       first: TurnSeq
-  ): Option[String] = {
-    val summaries = entries.collect { case Entry(_, _, _, _, _, Payload.Summary(text), _) => text }
-    val asked = entries.collect {
-      case Entry(_, _, _, _, _, Payload.Message(Message.User(text)), _) => text
+  ): Option[String] =
+    if (PeriodTranscript.overheard(entries)) {
+      val heard = entries.count(_.payload match {
+        case Payload.Heard(_) => true
+        case _ => false
+      })
+      Some(s"Heard $heard message${if (heard == 1) "" else "s"}; nothing kept.")
+    } else {
+      val summaries =
+        entries.collect { case Entry(_, _, _, _, _, Payload.Summary(text), _) => text }
+      val asked = entries.collect {
+        case Entry(_, _, _, _, _, Payload.Message(Message.User(text)), _) => text
+      }
+      val turns = TurnSeq.value(attempt.last) - TurnSeq.value(first) + 1
+      Vector(
+        summaries.mkString(" "),
+        asked.mkString(" / "),
+        s"A period of $turns turns, with nothing kept."
+      )
+        .find(_.trim.nonEmpty)
     }
-    val turns = TurnSeq.value(attempt.last) - TurnSeq.value(first) + 1
-    Vector(
-      summaries.mkString(" "),
-      asked.mkString(" / "),
-      s"A period of $turns turns, with nothing kept."
-    )
-      .find(_.trim.nonEmpty)
-  }
 
   /** The `seal` step, at `now`: the closing entry and its cost, and the period closed. */
   private def seal(

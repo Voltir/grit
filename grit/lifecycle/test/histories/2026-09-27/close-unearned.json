@@ -1,0 +1,24 @@
+{
+  "workflow": "close",
+  "id": "close:c1:1:0:1789984800000",
+  "epoch": "2026-09-27",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"due\":\"unearned\",\"first\":0,\"known\":{\"open\":[],\"standing\":[],\"topics\":[]},\"cap\":4096,\"v\":3}}"
+    },
+    {
+      "name": "gate",
+      "output": "{\"outcome\":false,\"open\":false,\"standing\":false,\"settled\":false,\"note\":\"unearned\"}"
+    },
+    {
+      "name": "summarise",
+      "output": "{\"closing\":{\"v\":3,\"flows\":{\"prose\":\"Heard 1 message; nothing kept.\",\"changes\":[]},\"balance\":{\"open\":[],\"standing\":[],\"topics\":[]}}}"
+    },
+    {
+      "name": "seal",
+      "output": "{\"ok\":{\"closed\":\"closing:c1:1\"}}"
+    }
+  ]
+}

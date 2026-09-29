@@ -40,6 +40,7 @@ object Digest {
       "why" -> (closed.reason match {
         case CloseReason.Resolved(_) => "resolved"
         case CloseReason.Lapsed => "lapsed"
+        case CloseReason.Unearned => "unearned"
       }),
       "line" -> closed.closing.headline
     )

@@ -179,6 +179,32 @@ object RecordLifecycleHistories {
         )
         id
       },
+      record("close-unearned") { (w, d) =>
+        // A period only heard, all of it chatter: no gate call, no model call, a fixed line.
+        w.hear("lunch?", "Ana", 0)
+        w.tag(
+          "lunch?",
+          grit.core.triage.Tags.Weighed(
+            grit.core.triage.Kind.Chatter,
+            grit.core.period.Probability.clamped(0.9),
+            grit.core.period.Probability.clamped(0.1),
+            grit.core.period.Probability.clamped(0.1),
+            grit.core.period.Probability.clamped(0.1),
+            "jev",
+            grit.core.message.Usage(
+              grit.core.message.Tokens(1),
+              grit.core.message.Tokens.Zero,
+              grit.core.message.Tokens.Zero,
+              None
+            )
+          )
+        )
+        val id = w.attempt.workflowId
+        d.run(id)(
+          w.body(new Gate(Some(Vector(0.9, 0.9, 0.9, 0.9))), written, new SetClock(at(Lapsed)))
+        )
+        id
+      },
       record("close-grounded") { (w, d) =>
         // A closing written as version 3: a person's, a tool's and a claimed Standing line.
         val t = w.say("what port does the api use?", 0)

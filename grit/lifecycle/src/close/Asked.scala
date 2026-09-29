@@ -21,4 +21,7 @@ object Asked {
 
   /** Every part: what a close asks for when it cannot tell which the period needs. */
   val Every: Asked = Asked(true, true, true, true)
+
+  /** No part: what an unearned close asks for, of no classifier and no model. */
+  val NoPart: Asked = Asked(false, false, false, false)
 }

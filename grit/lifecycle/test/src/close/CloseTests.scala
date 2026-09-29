@@ -23,6 +23,7 @@ import grit.core.provider.ProviderError
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{Payload, Speakers, UsageLedger}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Weights}
+import grit.core.triage.{Kind, Tags}
 import grit.dbos.sql.TestTx
 import grit.lifecycle.transcript.PeriodTranscript
 
@@ -65,6 +66,28 @@ object CloseTests extends TestSuite {
 
   /** A gate that says: answered, and nothing new. */
   private def nothingNew = new Gate(Some(Vector(0.9, 0.1, 0.1, 0.1)))
+
+  private def tags(kind: Kind, durable: Double): Tags =
+    Tags.Weighed(
+      kind,
+      Probability.clamped(0.9),
+      Probability.clamped(0.1),
+      Probability.clamped(durable),
+      Probability.clamped(0.1),
+      "jev",
+      grit.core.message.Usage(
+        grit.core.message.Tokens(1),
+        grit.core.message.Tokens.Zero,
+        grit.core.message.Tokens.Zero,
+        None
+      )
+    )
+
+  /** Weighed as chatter, not worth keeping. */
+  private val chatter = tags(Kind.Chatter, 0.1)
+
+  /** Weighed as a decision worth keeping. */
+  private val worthKeeping = tags(Kind.Decision, 0.9)
 
   val tests = Tests {
 
@@ -264,6 +287,70 @@ object CloseTests extends TestSuite {
           )
         case other => throw new java.lang.AssertionError(s"no closing: $other")
       }
+    }
+
+    test(
+      "a period only heard, all of it chatter, closes Unearned on a fixed line: no gate call, no model call"
+    ) {
+      val w = new World
+      w.hear("lunch?", "Ana", 0)
+      w.hear("sure", "Ben", 1)
+      w.tag("lunch?", chatter)
+      w.tag("sure", chatter)
+      val g = gate
+      val summary = answering(written)
+      val models = new OneModel(summary)
+      val durable = new InMemoryDurable
+      val id = w.attempt.workflowId
+      durable.run(id)(w.bodyOver(g, models, new SetClock(at(Lapsed)))) ==>
+        "closed: closing:c1:1; unearned"
+      (g.calls, summary.requests.size, models.pins) ==> (0, 0, Vector.empty)
+      durable.recordedSteps(id) ==> Vector("check", "gate", "summarise", "seal")
+      w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, c) =>
+        (reason, c.flows.prose, c.flows.outcome)
+      } ==> Some((CloseReason.Unearned, "Heard 2 messages; nothing kept.", None))
+      w.ledger.rows ==> Vector.empty
+    }
+
+    test("a heard message weighed worth keeping earns its period a closing by the heard pin") {
+      val w = new World
+      w.hear("lunch?", "Ana", 0)
+      w.hear("Standup moves to 10:00 from Monday.", "Ben", 1)
+      w.tag("lunch?", chatter)
+      w.tag("Standup moves to 10:00 from Monday.", worthKeeping)
+      val summary = answering("Summary: Ben said standup moves to 10:00 from Monday.")
+      val models = new OneModel(summary)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.bodyOver(gate, models, new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1"
+      models.pins ==> Vector(TestCatalog.heardPin)
+      w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, c) =>
+        (reason, c.flows.prose)
+      } ==> Some((CloseReason.Lapsed, "Ben said standup moves to 10:00 from Monday."))
+    }
+
+    test(
+      "a verdict of nobody waiting on a period that did not earn closes it Unearned; the verdict is kept"
+    ) {
+      val w = new World
+      val last = w.hear("lunch?", "Ana", 0)
+      w.tag("lunch?", chatter)
+      val finished = Probability.of(0.9).getOrElse(throw new java.lang.AssertionError("p"))
+      w.periods.judged(
+        p1,
+        Verdict(
+          at(61),
+          last.turnSeq,
+          Judgement.Weighed(finished, Probability.Zero, Probability.Zero, "jev")
+        )
+      )(using TestTx.fake) ==> Right(true)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, answering(written), new SetClock(at(62)))
+      ) ==> "closed: closing:c1:1; unearned"
+      w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, c) =>
+        (reason, c.flows.prose)
+      } ==> Some((CloseReason.Unearned, "Heard 1 message; nothing kept."))
+      w.periods.verdictsOn(p1) ==> 1
     }
 
     test("a period judged finished closes resolved, with the verdict's probability") {

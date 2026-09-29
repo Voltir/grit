@@ -133,7 +133,8 @@ object LiveTurn {
               engine.ledger,
               engine.tombstones,
               CharEstimate,
-              engine.principals
+              engine.principals,
+              engine.triage
             ),
             grit.core.classify.Classifier.none("no classifier"),
             models,
