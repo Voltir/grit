@@ -1,8 +1,10 @@
 package grit.slack.client
 
+import java.time.Instant
+
 import scala.concurrent.duration.FiniteDuration
 
-import grit.slack.event.{ChannelId, TeamId, Ts, UserId}
+import grit.slack.event.{ChannelId, Listed, TeamId, Ts, UserId}
 import grit.slack.text.Post
 
 /** Slack's bot token, `xoxb-…`. It shows only as `BotToken(****)`. */
@@ -88,6 +90,12 @@ trait Slack extends caps.SharedCapability {
     * grit may not look at.
     */
   def public(channel: ChannelId): Either[SlackError, Boolean]
+
+  /** Every message in `channel` from `since` on, with every reply in a thread rooted in that
+    * span, oldest first, each once. A rate limit is waited out, up to 5 times a call, before
+    * it is `Limited`; `Refused("not_in_channel")` when grit's bot is not in the channel.
+    */
+  def history(channel: ChannelId, since: Instant): Either[SlackError, Vector[Listed]]
 
   /** The name `channel` shows in Slack, without its `#`; `None` for a conversation with none,
     * or one grit may not look at.

@@ -97,6 +97,14 @@ only a nested `step`.
   with a varargs alternative (Testcontainers' `withCommand(String...)`).
 - *Fix:* call a non-varargs overload (`withCommand(String)` in `TestPostgres`).
 
+**A generic by-name parameter handed on to another by-name parameter crashes the compiler.**
+
+- *Symptom:* `java.lang.AssertionError: assertion failed` from `CaptureOps.boxDeeply`
+  under `cc.Setup`, naming no file.
+- *Cause:* `def patient[R <: SlackApiTextResponse](body: => R) = call(body)`, where `call`
+  takes `body: => R` too.
+- *Fix:* take a thunk, `body: () => R`, and call `call(body())` (`SocketSlack.patient`).
+
 **A capability cannot be a field of an object.**
 
 - *Symptom:* `lazy value engine needs an explicit type because it captures a root

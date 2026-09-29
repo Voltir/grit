@@ -1,6 +1,8 @@
 package grit.slack.client
 
-import grit.slack.event.{ChannelId, Payloads, TeamId, Ts, UserId}
+import java.time.Instant
+
+import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
 import grit.slack.text.Post
 
 /** A [[Slack]] for tests, keeping what [[Slack]] says in memory: the handler `listen` was
@@ -37,6 +39,10 @@ final class FakeSlack extends Slack {
   /** The channels that are not public. */
   @caps.unsafe.untrackedCaptures
   var privateChannels = Set.empty[ChannelId]
+
+  /** Each channel's history, oldest first, each listing said at the time its ts names. */
+  @caps.unsafe.untrackedCaptures
+  var histories = Map.empty[ChannelId, Vector[Listed]]
 
   /** When set, every post fails as Slack being unreachable would. */
   @caps.unsafe.untrackedCaptures
@@ -78,6 +84,15 @@ final class FakeSlack extends Slack {
   }
 
   def name(user: UserId): Either[SlackError, Option[String]] = Right(names.get(user))
+
+  def history(channel: ChannelId, since: Instant): Either[SlackError, Vector[Listed]] =
+    if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
+    else
+      Right(
+        histories
+          .getOrElse(channel, Vector.empty)
+          .filter(m => BigDecimal(Ts.value(m.ts)) >= BigDecimal(since.getEpochSecond))
+      )
 
   def channelName(channel: ChannelId): Either[SlackError, Option[String]] =
     if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))

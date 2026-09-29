@@ -1,22 +1,25 @@
 package grit.slack.client
 
+import java.time.Instant
+
 import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
-import grit.slack.event.{ChannelId, TeamId, Ts, UserId}
+import grit.slack.event.{ChannelId, Listed, TeamId, Ts, UserId}
 import grit.slack.text.Post
 
 import com.slack.api.methods.request.auth.AuthTestRequest
 import com.slack.api.methods.request.chat.ChatPostMessageRequest
 import com.slack.api.methods.request.conversations.{
+  ConversationsHistoryRequest,
   ConversationsInfoRequest,
   ConversationsRepliesRequest
 }
 import com.slack.api.methods.request.reactions.{ReactionsAddRequest, ReactionsRemoveRequest}
 import com.slack.api.methods.request.users.UsersInfoRequest
 import com.slack.api.methods.{MethodsClient, SlackApiException, SlackApiTextResponse}
-import com.slack.api.model.Message
+import com.slack.api.model.{Message, ResponseMetadata}
 import com.slack.api.socket_mode.SocketModeClient
 import com.slack.api.socket_mode.request.EventsApiEnvelope
 import com.slack.api.socket_mode.response.AckResponse
@@ -132,6 +135,35 @@ final class SocketSlack(bot: BotToken, app: AppToken) extends Slack, AutoCloseab
         case other => Left(other)
       }
 
+  def history(channel: ChannelId, since: Instant): Either[SlackError, Vector[Listed]] = {
+    val from = oldest(since)
+    val id = ChannelId.value(channel)
+    def top(cursor: Option[String]): Either[SlackError, Page] = {
+      val req = ConversationsHistoryRequest.builder().channel(id).oldest(from).limit(200)
+      cursor.foreach(c => req.cursor(c))
+      patient(() => methods.conversationsHistory(req.build()))
+        .map(r => page(r.getMessages, r.getResponseMetadata, r.isHasMore))
+    }
+    def replies(root: String)(cursor: Option[String]): Either[SlackError, Page] = {
+      val req =
+        ConversationsRepliesRequest.builder().channel(id).ts(root).oldest(from).limit(200)
+      cursor.foreach(c => req.cursor(c))
+      patient(() => methods.conversationsReplies(req.build()))
+        .map(r => page(r.getMessages, r.getResponseMetadata, r.isHasMore))
+    }
+    for {
+      roots <- pages(top)
+      threads <- roots
+        .filter(m => Option(m.getReplyCount).exists(_ > 0))
+        .foldLeft[Either[SlackError, Vector[Message]]](Right(Vector.empty)) { (acc, root) =>
+          acc.flatMap(found => pages(replies(root.getTs)).map(found ++ _))
+        }
+    } yield (roots ++ threads)
+      .distinctBy(_.getTs)
+      .sortBy(m => scala.util.Try(BigDecimal(m.getTs)).getOrElse(BigDecimal(0)))
+      .map(listed)
+  }
+
   def channelName(channel: ChannelId): Either[SlackError, Option[String]] =
     call(
       methods.conversationsInfo(
@@ -201,6 +233,73 @@ object SocketSlack {
   private def payload(tag: Tag): Map[String, String] = tag match {
     case Tag.Reply(turn, part) => Map("turn" -> turn, "part" -> part.toString)
     case Tag.Refused(message) => Map("message" -> Ts.value(message))
+  }
+
+  /** How many times a rate-limited call is waited out and made again. */
+  val Retries = 5
+
+  /** `since` as a ts, to the microsecond. */
+  def oldest(since: Instant): String = {
+    val micros = (since.getNano / 1000).toString
+    s"${since.getEpochSecond}.${"0" * (6 - micros.length)}$micros"
+  }
+
+  /** `m` as a channel's history lists it. */
+  def listed(m: Message): Listed =
+    Listed(
+      Ts(m.getTs),
+      Option(m.getThreadTs).map(Ts(_)),
+      Option(m.getUser).map(UserId(_)),
+      Option(m.getBotId).nonEmpty,
+      Option(m.getSubtype),
+      Option(m.getText).getOrElse("")
+    )
+
+  /** One page of a listing: its messages, and the cursor of the next when there is one. */
+  private final case class Page(messages: Vector[Message], next: Option[String])
+
+  private def page(
+      messages: java.util.List[Message],
+      meta: ResponseMetadata,
+      more: Boolean
+  ): Page =
+    Page(
+      Option(messages).fold(Vector.empty[Message])(_.asScala.toVector),
+      Option(meta).flatMap(m => Option(m.getNextCursor)).filter(c => more && c.nonEmpty)
+    )
+
+  /** Every message of every page `fetch` returns, from the first (no cursor) on. */
+  private def pages(
+      fetch: Option[String] => Either[SlackError, Page]
+  ): Either[SlackError, Vector[Message]] = {
+    @scala.annotation.tailrec
+    def from(cursor: Option[String], found: Vector[Message]): Either[SlackError, Vector[Message]] =
+      fetch(cursor) match {
+        case Left(e) => Left(e)
+        case Right(p) =>
+          p.next match {
+            case Some(next) => from(Some(next), found ++ p.messages)
+            case None => Right(found ++ p.messages)
+          }
+      }
+    from(None, Vector.empty)
+  }
+
+  /** `body`'s response as [[call]] reads it, a rate limit waited out and the call made again,
+    * up to [[Retries]] times.
+    */
+  /** `body`'s response as [[call]] reads it, a rate limit waited out and the call made again,
+    * up to [[Retries]] times.
+    */
+  private def patient[R <: SlackApiTextResponse](body: () => R): Either[SlackError, R] = {
+    @scala.annotation.tailrec
+    def attempt(left: Int): Either[SlackError, R] = call(body()) match {
+      case Left(SlackError.Limited(after)) if left > 0 =>
+        Thread.sleep(after.toMillis)
+        attempt(left - 1)
+      case other => other
+    }
+    attempt(Retries)
   }
 
   /** A refusal `code` as done, anything else as it is. */

@@ -3,7 +3,7 @@ package grit.slack.client
 import scala.jdk.CollectionConverters.*
 
 import grit.prose.form.{Block, Doc, Text}
-import grit.slack.event.{ChannelId, Ts}
+import grit.slack.event.{ChannelId, Listed, Ts, UserId}
 import grit.slack.text.RichText
 
 import com.slack.api.model.Message
@@ -30,6 +30,29 @@ object SocketSlackTests extends TestSuite {
   }
 
   val tests = Tests {
+    test(
+      "a listed message keeps its ts, thread, user, subtype and text, and whether a bot sent it"
+    ) {
+      val reply = new Message()
+      reply.setTs("2.0")
+      reply.setThreadTs("1.0")
+      reply.setUser("U1")
+      reply.setSubtype("thread_broadcast")
+      reply.setText("also")
+      val bots = new Message()
+      bots.setTs("3.0")
+      bots.setBotId("B1")
+      (SocketSlack.listed(reply), SocketSlack.listed(bots)) ==> (
+        Listed(Ts("2.0"), Some(Ts("1.0")), Some(UserId("U1")), false, Some("thread_broadcast"), "also"),
+        Listed(Ts("3.0"), None, None, true, None, "")
+      )
+    }
+
+    test("history starts at the ts naming its instant, to the microsecond") {
+      SocketSlack.oldest(java.time.Instant.parse("2018-01-08T22:12:02.000016Z")) ==>
+        "1515449522.000016"
+    }
+
     test("a reply's request carries its thread, blocks, fallback and tag, with link previews off") {
       val r = SocketSlack.request(ChannelId("C1"), Ts("1.0"), post, Tag.Reply("c:3", 1))
       (
