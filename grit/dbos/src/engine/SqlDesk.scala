@@ -72,6 +72,14 @@ final class SqlDesk private (
          | ORDER BY r.created_at, r.key""".stripMargin
     ).map(_.map(_._1))
 
+  // Known gap: a claim never asks whether this desk's own edge is still live
+  // (`SqlToolRequests.live`). If the connection holding its lock drops while the process
+  // lives on, the desk keeps claiming and running requests under a dead session, and
+  // another edge's `orphans` takes the same requests over: a `Rerun` tool runs twice, and
+  // an `Interrupt` one is answered Interrupted while it may still be running. The fix is a
+  // claim that requires this edge's lock, and a desk that stops serving once its lock is
+  // gone. `EdgesContract` pins today's behaviour ("a desk's claim does not ask whether its
+  // edge is live").
   def claim(request: ToolRequest): Either[DeskError, Boolean] =
     changed(
       """UPDATE grit.tool_requests SET state = 'claimed', claimed_by = ?::uuid,
