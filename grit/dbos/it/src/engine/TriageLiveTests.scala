@@ -1,7 +1,7 @@
 package grit.dbos.engine
 
 import java.time.Instant
-import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch, TimeUnit}
 
 import scala.annotation.unused
 import scala.concurrent.duration.*
@@ -55,6 +55,31 @@ object TriageLiveTests extends TestSuite {
         Thread.sleep(500)
         ran.asScala.toVector ==> Vector(WorkflowId.value(expected))
         LiveDb.transaction(config)(new SqlEntryStore().list(c)).map(_.size) ==> Right(1)
+      } finally engine.close()
+    }
+
+    test("unfinished counts each workflow queued or running, and none once they have ended") {
+      val config = TestPostgres.freshDatabase("triage_unfinished")
+      val started = new CountDownLatch(1)
+      val release = new CountDownLatch(1)
+      def triage(id: WorkflowId)(using @unused d: Durable^): String = {
+        started.countDown()
+        release.await(30, TimeUnit.SECONDS)
+        "triaged"
+      }
+      val engine = LiveEngine.open(config, "test")
+      try {
+        engine.launch(nothing, nothing, nothing, nothing, triage, Vector.empty)
+        val here = Origin.Task("triage", "unfinished")
+        engine.inbox.hear(here, SourceId("m1"), "one", PrincipalId.Local, Instant.now()) ==>
+          Right(())
+        engine.inbox.hear(here, SourceId("m2"), "two", PrincipalId.Local, Instant.now()) ==>
+          Right(())
+        assert(started.await(30, TimeUnit.SECONDS))
+        // One runs; the other waits behind it in its conversation's partition.
+        engine.unfinished() ==> Right(2)
+        release.countDown()
+        assert(eventually(engine.unfinished() == Right(0)))
       } finally engine.close()
     }
 

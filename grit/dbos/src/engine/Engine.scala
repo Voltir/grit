@@ -67,6 +67,7 @@ import grit.dbos.workflow.{Closes, Posts, Running, Settles, Triages, Turns}
 
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.txstep.JdbcStepFactory
+import dev.dbos.transact.workflow.{ListWorkflowsInput, WorkflowState}
 import dev.dbos.transact.{DBOS, DBOSClient}
 import org.postgresql.ds.PGSimpleDataSource
 import org.slf4j.LoggerFactory
@@ -213,6 +214,25 @@ final class Engine private (
     * came before.
     */
   def sweep(now: Instant): Either[StoreError, Swept] = sweeper.once(now)
+
+  /** How many workflows are queued or running, a turn's, close's, question's, posting's or
+    * triage's; none once everything enqueued has ended. `Left` when DBOS's tables cannot be
+    * read.
+    */
+  def unfinished(): Either[StoreError, Int] =
+    try
+      Right(
+        client
+          .listWorkflows(
+            new ListWorkflowsInput()
+              .withStatus(WorkflowState.PENDING, WorkflowState.ENQUEUED, WorkflowState.DELAYED)
+          )
+          .size()
+      )
+    catch {
+      case NonFatal(e) =>
+        Left(StoreError.DatabaseError(Option(e.getMessage).getOrElse(e.getClass.getSimpleName)))
+    }
 
   private val sweeping = new AtomicBoolean(false)
 

@@ -24,7 +24,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `Link.attach` another for a process refused the lock), `EngineLock` (the database's one engine, ADR 0015: a
   session advisory lock, its `grit.engines` row and heartbeat), `Engine` (what `grit.app`
   starts under the lock; closing it, or losing the lock, stops the sweep, then DBOS, waits
-  for running bodies, and releases the lock last), `SqlDesk` (an edge's registration, live
+  for running bodies, and releases the lock last; `unfinished` counts the workflows still
+  queued or running, which `grit backfill` waits out), `SqlDesk` (an edge's registration, live
   while its own connection holds its lock, which also listens for requests), `TurnStatus`, and
   `SqlInbox`, which records a message, and who wrote it (`grit.inbound`), and enqueues its turn in one transaction (opening
   the conversation's next period when none is open), enqueues a heard message's triage
