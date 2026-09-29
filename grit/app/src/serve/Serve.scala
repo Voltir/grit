@@ -45,6 +45,24 @@ object Serve {
         )
       }
 
+  /** The tokens and the channels listened in that `env` sets; why not, naming the variable,
+    * never quoting a token.
+    */
+  private[serve] def slackOf(
+      env: Map[String, String]
+  ): Either[String, (BotToken, AppToken, Set[ChannelId])] =
+    for {
+      bot <- env
+        .get(BotTokenVar)
+        .toRight(s"$BotTokenVar is not set")
+        .flatMap(BotToken.of(_).left.map(w => s"$BotTokenVar: $w"))
+      app <- env
+        .get(AppTokenVar)
+        .toRight(s"$AppTokenVar is not set")
+        .flatMap(AppToken.of(_).left.map(w => s"$AppTokenVar: $w"))
+      listen <- listening(env)
+    } yield (bot, app, listen)
+
   /** How often the edge looks for finished turns to post: 500 ms. */
   val DeliverEvery: FiniteDuration = 500.millis
 
@@ -64,18 +82,7 @@ object Serve {
       launch: Engine^ => Unit
   ): Option[String] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
-    val tokens = for {
-      bot <- env
-        .get(BotTokenVar)
-        .toRight(s"$BotTokenVar is not set")
-        .flatMap(BotToken.of(_).left.map(w => s"$BotTokenVar: $w"))
-      app <- env
-        .get(AppTokenVar)
-        .toRight(s"$AppTokenVar is not set")
-        .flatMap(AppToken.of(_).left.map(w => s"$AppTokenVar: $w"))
-      listen <- listening(env)
-    } yield (bot, app, listen)
-    tokens match {
+    slackOf(env) match {
       case Left(why) => Some(why)
       case Right((bot, app, listen)) =>
         Engine.open(config, epoch, identity, budget) match {

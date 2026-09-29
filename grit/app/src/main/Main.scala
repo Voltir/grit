@@ -5,7 +5,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
 import grit.app.config.{Budgets, DotEnv, Durations, Lifecycle, Prefs}
 import grit.app.look.Theme
-import grit.app.serve.Serve
+import grit.app.serve.{Backfill, Serve}
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
@@ -95,6 +95,10 @@ object Main {
     val tui = args.isEmpty
     // `grit serve` alone: the engine and the Slack edge (a lone message "serve" is this).
     val serving = args.sameElements(Array("serve"))
+    // `grit backfill`, and `--yes` to hear without asking.
+    val backfilling =
+      args.sameElements(Array("backfill")) || args.sameElements(Array("backfill", "--yes"))
+    val slack = serving || backfilling
     // `.env` in the working directory (GRIT_ENV_FILE to name another), under the real
     // environment: a variable set in both takes the environment's value.
     val envFile = java.nio.file.Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env"))
@@ -107,7 +111,7 @@ object Main {
     // screen.
     if (tui) { val _ = System.setProperty("org.slf4j.simpleLogger.logFile", log) }
     // The Slack SDK logs request bodies at debug: never below info.
-    if (serving) { val _ = System.setProperty("org.slf4j.simpleLogger.log.com.slack.api", "info") }
+    if (slack) { val _ = System.setProperty("org.slf4j.simpleLogger.log.com.slack.api", "info") }
 
     val config = exitOnLeft(DbConfig.fromEnv(env).left.map(_.message))
     val budget = exitOnLeft(tokens(env, BudgetVar, LinearAssembler.DefaultBudget))
@@ -162,7 +166,7 @@ object Main {
     val seeded = exitOnLeft(
       Lifecycle.fromEnv(
         env,
-        if (serving) Lifecycle.ServeScope else LifecycleSettings.Default.locality.scope
+        if (slack) Lifecycle.ServeScope else LifecycleSettings.Default.locality.scope
       )
     )
     val plugins = exitOnLeft(pluginChoice(env))
@@ -171,7 +175,7 @@ object Main {
       Budgets.fromEnv(
         env,
         java.time.ZoneId.systemDefault(),
-        if (serving) Budgets.ServeDefault else None
+        if (slack) Budgets.ServeDefault else None
       )
     )
 
@@ -185,7 +189,8 @@ object Main {
       tail,
       topics,
       plugins,
-      sweep,
+      // Backfill sweeps the engine itself, until nothing is left to close.
+      Option.when(!backfilling)(sweep),
       offered,
       rounds
     )
@@ -196,6 +201,21 @@ object Main {
     val failure: Option[String] =
       if (serving)
         Serve.run(env, config, Turn.Epoch, identity, spend, engine => { val _ = launched(engine) })
+      else if (backfilling)
+        Backfill.run(
+          env,
+          config,
+          Turn.Epoch,
+          identity,
+          spend,
+          engine => { val _ = launched(engine) },
+          question =>
+            args.contains("--yes") || {
+              print(s"$question [y/N] ")
+              Option(scala.io.StdIn.readLine()).exists(a => Set("y", "yes").contains(a.trim.toLowerCase))
+            },
+          println
+        )
       else if (tui) {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
         // refused, it attaches to the one that holds it, and serves its own directory.

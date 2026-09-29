@@ -34,8 +34,8 @@ object Launch {
     * settings (`seeded`), OpenRouter's key and catalog (the stub, answering after
     * `stubDelay` ms, without one), whether this is the chat (`tui`: a run with arguments
     * prints each model call), the assembler (`retrieving`, within `budget`, keeping `tail`),
-    * the topic classifier, the plugins on, how often to sweep, the tools offered and the
-    * turn's model calls (`rounds`).
+    * the topic classifier, the plugins on, how often the engine sweeps (`None`: its caller
+    * sweeps it), the tools offered and the turn's model calls (`rounds`).
     */
   final case class Settings(
       seeded: LifecycleSettings,
@@ -47,7 +47,7 @@ object Launch {
       tail: Tokens,
       topics: Main.ClassifierChoice,
       plugins: Vector[Plugin],
-      sweep: FiniteDuration,
+      sweep: Option[FiniteDuration],
       offered: Main.ToolChoice,
       rounds: TurnLoop.Budget
   )
@@ -155,7 +155,7 @@ object Launch {
         ),
         plugins
       )
-      engine.sweepEvery(sweep, Clock.system())
+      sweep.foreach(engine.sweepEvery(_, Clock.system()))
     }
     val store: Db^ = engine.db
     // Digest's recent_activity, offered when Digest is on.
