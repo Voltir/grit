@@ -30,8 +30,9 @@ object PlaceFragmentsTests extends TestSuite {
     test(
       "the nearest file is kept as read; a farther one is cut at 8 KiB before a character it would split, and says so"
     ) {
-      // Two bytes a character: 8 KiB holds 4096 of them.
-      val far = file("/AGENTS.md", "é" * 5000)
+      // One byte, then two a character: 8 KiB holds the one and 4095 of them, 8191 bytes; the
+      // next would straddle the cap.
+      val far = file("/AGENTS.md", "a" + "é" * 5000)
       val near = file("/x/AGENTS.md", "n" * 6000)
       shape(Vector(far, near)) ==> Vector(("/AGENTS.md", 4096, true), ("/x/AGENTS.md", 6000, false))
     }

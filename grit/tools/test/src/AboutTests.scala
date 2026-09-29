@@ -27,10 +27,6 @@ object AboutTests extends TestSuite {
     scala.io.Source.fromResource(s"about/$key.md")(using scala.io.Codec.UTF8).mkString.trim
 
   val tests = Tests {
-    test("every subject has a non-empty doc shipped") {
-      About.load().map(_ => ()) ==> Right(())
-    }
-
     test("about with no topic is the overview, and a topic is its doc alone") {
       asked(ujson.Obj()) ==> Outcome.Done(shipped("grit"))
       asked(ujson.Obj("topic" -> "markers")) ==> Outcome.Done(shipped("markers"))

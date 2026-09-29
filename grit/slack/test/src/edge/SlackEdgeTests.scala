@@ -259,12 +259,18 @@ object SlackEdgeTests extends TestSuite {
       w.slack.privateChannels = Set(C)
       w.slack.deliver(mention("1.0")) ==> true
       w.slack.deliver(message("6.0", "overheard in private")) ==> true
-      w.slack.privateChannels = Set.empty
-      w.slack.deliver(message("5.0", s"<@$Bot> hi", user = Bot)) ==> true
-      w.slack.deliver(message("5.1", "a bot's aside", user = Bot)) ==> true
-      (w.heard("6.0"), w.heard("5.1")) ==> (Vector.empty, Vector.empty)
-      (w.turnOf("1.0", "1.0"), w.turnOf("5.0", "5.0"), w.inbox.started) ==> (
+      (w.heard("6.0"), w.turnOf("1.0", "1.0"), w.inbox.started) ==> (
+        Vector.empty,
         None,
+        Vector.empty
+      )
+      // A public channel's bot, in a world of its own: a cached answer that C is private
+      // would drop the bot's messages for the wrong reason.
+      val b = new World(listening = Set(C))
+      b.slack.deliver(message("5.0", s"<@$Bot> hi", user = Bot)) ==> true
+      b.slack.deliver(message("5.1", "a bot's aside", user = Bot)) ==> true
+      (b.heard("5.1"), b.turnOf("5.0", "5.0"), b.inbox.started) ==> (
+        Vector.empty,
         None,
         Vector.empty
       )

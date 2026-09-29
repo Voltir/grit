@@ -65,10 +65,14 @@ object TuningTests extends TestSuite {
         "The call to `propose_model_setting` was not run: `value` takes one of as-sent, harmony-cut, not \"sometimes\"." +
           " You sent: " + ujson.Obj.from((sent + ("value" -> ujson.Str("sometimes"))).toSeq).render()
       )
-      refused((sent + ("held" -> ujson.Num(6))).toSeq*).left.map(_.contains("`held` takes at most `runs` (5), not 6")) ==>
-        Left(true)
-      refused((sent + ("model" -> ujson.Str("DeepSeek"))).toSeq*).left.map(_.contains("`model` takes an OpenRouter model id")) ==>
-        Left(true)
+      refused((sent + ("held" -> ujson.Num(6))).toSeq*) ==> Left(
+        "The call to `propose_model_setting` was not run: `held` takes at most `runs` (5), not 6." +
+          " You sent: " + ujson.Obj.from((sent + ("held" -> ujson.Num(6))).toSeq).render()
+      )
+      refused((sent + ("model" -> ujson.Str("DeepSeek"))).toSeq*) ==> Left(
+        "The call to `propose_model_setting` was not run: `model` takes an OpenRouter model id, such as openai/gpt-oss-120b, not \"DeepSeek\"." +
+          " You sent: " + ujson.Obj.from((sent + ("model" -> ujson.Str("DeepSeek"))).toSeq).render()
+      )
     }
 
     test("a setting the book will not keep is a failed outcome saying why") {

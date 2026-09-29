@@ -187,10 +187,11 @@ object ChatScreenTests extends TestSuite {
       val start =
         Headless.start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(20, 80))
       val attached = start.message(Msg.Opened).message(Msg.EngineGone(Some(gone)))
-      // A poll that clears the status line leaves the note standing.
-      val polled = attached.message(Msg.Arrived(Vector(), None))
-      assert(status(polled).contains(gone))
-      assert(!status(polled.message(Msg.EngineGone(None))).contains("engine gone"))
+      // Another note arriving does not cover it.
+      val noted = attached.message(Msg.Noted("copied 3 chars"))
+      assert(status(noted).contains(gone))
+      val back = noted.message(Msg.EngineGone(None))
+      assert(!status(back).contains("engine gone"), status(back).contains("copied 3 chars"))
     }
 
     test("from 100 columns the turn panel stands beside the transcript; ctrl-b hides it") {

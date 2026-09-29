@@ -28,6 +28,8 @@ object IncomingTests extends TestSuite {
       Incoming.text("<https://example.com|the docs> or <https://example.com/x>", bot, names) ==>
         "the docs (https://example.com) or https://example.com/x"
       Incoming.text("a &lt; b &amp;&amp; c &gt; d", bot, names) ==> "a < b && c > d"
+      // Undone once, `&amp;` last: a person who typed "&lt;" sees it as typed.
+      Incoming.text("&amp;lt;", bot, names) ==> "&lt;"
     }
 
     test("a pasted grit label, quoted as Slack sends it, arrives as the label defence reads it") {

@@ -135,7 +135,8 @@ object RetrievalAssemblerTests extends TestSuite {
     }
 
     // What closings answers: closing entries as (conversation, id, score), best first, only
-    // those of the conversations asked; and every closings search, as its conversations.
+    // those of the conversations asked, at most `limit`; and every closings search, as its
+    // conversations.
     @caps.unsafe.untrackedCaptures
     var closed = Vector.empty[(ConversationId, String, Double)]
     @caps.unsafe.untrackedCaptures
@@ -145,10 +146,14 @@ object RetrievalAssemblerTests extends TestSuite {
         Tx^
     ): Either[StoreError, Vector[EntrySearch.Hit]] = {
       closedAsked = closedAsked :+ conversations.toList
-      Right(closed.collect {
-        case (c, id, score) if conversations.contains(c) =>
-          EntrySearch.Hit(EntryId(id), TurnRef(c, TurnSeq(0)), score)
-      })
+      Right(
+        closed
+          .collect {
+            case (c, id, score) if conversations.contains(c) =>
+              EntrySearch.Hit(EntryId(id), TurnRef(c, TurnSeq(0)), score)
+          }
+          .take(limit)
+      )
     }
   }
 
