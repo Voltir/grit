@@ -219,7 +219,8 @@ object Main {
           question =>
             args.contains("--yes") || {
               print(s"$question [y/N] ")
-              Option(scala.io.StdIn.readLine()).exists(a => Set("y", "yes").contains(a.trim.toLowerCase))
+              Option(scala.io.StdIn.readLine())
+                .exists(a => Set("y", "yes").contains(a.trim.toLowerCase))
             },
           println
         )

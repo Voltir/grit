@@ -31,13 +31,21 @@ object InMemoryInboxTests extends InboxContract {
         all.map(e => (e.payload, names.of(e.id)))
       }
     def dated(origin: Origin): Vector[java.time.Instant] =
-      inbox.conversations.all.find(_.origin == origin).toVector.flatMap { c =>
-        inbox.entries.list(c.id)(using TestTx.fake).fold(e => sys.error(e.toString), identity)
-      }.map(_.createdAt)
+      inbox.conversations.all
+        .find(_.origin == origin)
+        .toVector
+        .flatMap { c =>
+          inbox.entries.list(c.id)(using TestTx.fake).fold(e => sys.error(e.toString), identity)
+        }
+        .map(_.createdAt)
     def opened(origin: Origin): Vector[java.time.Instant] =
-      inbox.conversations.all.find(_.origin == origin).toVector.flatMap { c =>
-        inbox.periods.all(c.id)(using TestTx.fake).fold(e => sys.error(e.toString), identity)
-      }.map(_.openedAt)
+      inbox.conversations.all
+        .find(_.origin == origin)
+        .toVector
+        .flatMap { c =>
+          inbox.periods.all(c.id)(using TestTx.fake).fold(e => sys.error(e.toString), identity)
+        }
+        .map(_.openedAt)
     def enroll(id: PrincipalId, name: String): Unit =
       inbox.principals
         .enroll(id, name)(using TestTx.fake)

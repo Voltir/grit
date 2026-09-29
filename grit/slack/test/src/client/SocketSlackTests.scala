@@ -43,7 +43,14 @@ object SocketSlackTests extends TestSuite {
       bots.setTs("3.0")
       bots.setBotId("B1")
       (SocketSlack.listed(reply), SocketSlack.listed(bots)) ==> (
-        Listed(Ts("2.0"), Some(Ts("1.0")), Some(UserId("U1")), false, Some("thread_broadcast"), "also"),
+        Listed(
+          Ts("2.0"),
+          Some(Ts("1.0")),
+          Some(UserId("U1")),
+          false,
+          Some("thread_broadcast"),
+          "also"
+        ),
         Listed(Ts("3.0"), None, None, true, None, "")
       )
     }

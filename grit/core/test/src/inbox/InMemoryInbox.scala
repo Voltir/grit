@@ -176,9 +176,11 @@ final class InMemoryInbox(
         conversations.all.find(_.origin == origin) match {
           case None => Right(Set.empty)
           case Some(c) =>
-            Right(sources.filter(s =>
-              entries.get(InMemoryInbox.entryId(c.id.toString, s)).exists(_.nonEmpty)
-            ))
+            Right(
+              sources.filter(s =>
+                entries.get(InMemoryInbox.entryId(c.id.toString, s)).exists(_.nonEmpty)
+              )
+            )
         }
       }
 

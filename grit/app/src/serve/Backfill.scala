@@ -140,16 +140,18 @@ object Backfill {
                                     "nothing caps what backfill spends, and grit serve takes no new message once the cap is reached"
                                 )
                             }
-                            if (!confirm(s"hear ${all.messages} messages, up to ${usd(all.total)}?"))
-                              {
-                                say("backfill: nothing heard")
-                                None
-                              }
-                            else
+                            if (
+                              !confirm(s"hear ${all.messages} messages, up to ${usd(all.total)}?")
+                            ) {
+                              say("backfill: nothing heard")
+                              None
+                            } else
                               edge.backfill(unheard.flatten) match {
                                 case Left(why) => Some(why)
                                 case Right(()) =>
-                                  say(s"backfill: heard ${all.messages} messages; closing what is due")
+                                  say(
+                                    s"backfill: heard ${all.messages} messages; closing what is due"
+                                  )
                                   drain(
                                     () => engine.sweep(Instant.now()).left.map(_.toString),
                                     () => engine.unfinished().left.map(_.toString),

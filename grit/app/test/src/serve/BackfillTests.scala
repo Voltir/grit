@@ -2,10 +2,10 @@ package grit.app.serve
 
 import java.time.{Instant, LocalDate}
 
+import scala.jdk.CollectionConverters.*
+
 import grit.core.id.{CloseRef, ConversationId, PeriodRef, PeriodSeq, TurnSeq}
 import grit.dbos.engine.Swept
-
-import scala.jdk.CollectionConverters.*
 
 import utest.*
 
@@ -46,7 +46,9 @@ object BackfillTests extends TestSuite {
       )
     }
 
-    test("the days read are GRIT_BACKFILL_DAYS, 2 when unset, refused unless a whole number above zero") {
+    test(
+      "the days read are GRIT_BACKFILL_DAYS, 2 when unset, refused unless a whole number above zero"
+    ) {
       (
         Backfill.days(Map.empty),
         Backfill.days(Map("GRIT_BACKFILL_DAYS" -> " 7 ")),
@@ -60,7 +62,9 @@ object BackfillTests extends TestSuite {
       )
     }
 
-    test("a channel's line names it, its counts, the day it reads from, and each bound rounded up") {
+    test(
+      "a channel's line names it, its counts, the day it reads from, and each bound rounded up"
+    ) {
       Backfill.line(
         "#standup (C123ABC456)",
         Estimate(812, 143, BigDecimal("0.0190001"), BigDecimal("0.2145")),

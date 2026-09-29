@@ -60,9 +60,11 @@ object SqlInboxContractTests extends InboxContract {
           .read(
             engine.conversations
               .find(origin)
-              .flatMap(_.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
-                engine.entries.list(c.id)
-              ))
+              .flatMap(
+                _.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
+                  engine.entries.list(c.id)
+                )
+              )
           )
           .fold(e => sys.error(e.toString), _.map(_.createdAt))
       def opened(origin: Origin): Vector[java.time.Instant] =
@@ -70,9 +72,11 @@ object SqlInboxContractTests extends InboxContract {
           .read(
             engine.conversations
               .find(origin)
-              .flatMap(_.fold(Right(Vector.empty): Either[StoreError, Vector[Period]])(c =>
-                engine.periods.all(c.id)
-              ))
+              .flatMap(
+                _.fold(Right(Vector.empty): Either[StoreError, Vector[Period]])(c =>
+                  engine.periods.all(c.id)
+                )
+              )
           )
           .fold(e => sys.error(e.toString), _.map(_.openedAt))
       def enroll(id: PrincipalId, name: String): Unit =
