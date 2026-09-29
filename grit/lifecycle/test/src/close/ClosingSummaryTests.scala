@@ -128,6 +128,30 @@ object ClosingSummaryTests extends TestSuite {
     }
 
     test(
+      "no transcript label, [uN] [aN] [tN] [hN] alone or in a citation, reaches the prose or outcome"
+    ) {
+      // An earned overheard closing as a real run stored it.
+      read(
+        "[h1] Nick Childers said the standup is moving to 10:30 starting Monday.",
+        Asked.Every.heard,
+        Balance.empty
+      ) ==> written("Nick Childers said the standup is moving to 10:30 starting Monday.", None)
+      read(
+        "Summary: The api stays on 3000 [u4, t3] as [a5] said.\nOutcome: port 3000 [T3]",
+        Asked(outcome = true, open = false, standing = false, settled = false)
+      ) ==> written("The api stays on 3000 as said.", Some("port 3000"))
+    }
+
+    // A real overheard closing added "The team will adjust their schedule accordingly."
+    test("the overheard prompt says to report only what was said, adding nothing") {
+      assert(
+        ClosingSummary
+          .overheard(false)
+          .contains("Report only what was said; add nothing nobody said.")
+      )
+    }
+
+    test(
       "a known line's label in the prose is taken out, never split on; a written Outcome part stands"
     ) {
       read(

@@ -54,7 +54,7 @@ object ClosingSummary {
       "Thursday\"): what someone said is what they said, never an established fact. Write " +
       "names, numbers, dates, file paths and identifiers out in full, never \"as discussed\", " +
       "\"that\" or \"the above\". Lines known elsewhere were shown from other conversations: " +
-      "never repeat one."
+      "never repeat one. Report only what was said; add nothing nobody said."
 
   private def labelledLike(labels: Boolean): String =
     if (labels) ", each line labelled like [o1] or [s1]" else ""
@@ -185,7 +185,8 @@ object ClosingSummary {
     * headings ignored), a label's text running to the next label, a list's items one per
     * line with any bullet or number taken off and "none" dropped. Text before the first
     * label is the prose when `Summary:` is missing; without any label, the whole text is.
-    * No `[o1]` or `[s1]` label reaches the prose or outcome. When an outcome is asked for and
+    * No line label (`[u1]`, `[a2]`, `[t3]`, `[h4]`, `[o1]`, `[s1]`, or several in one
+    * citation) reaches the prose or outcome. When an outcome is asked for and
     * no `Outcome:` part was written, the prose's text after its first `[oN]` naming no known
     * line is the outcome. `None` when it has no prose.
     */
@@ -310,9 +311,14 @@ object ClosingSummary {
   /** A known-line label written inline, `[o1]` or `[s1]`; its label is group 1. */
   private val Inline = """(?i)\[([os]\d+)\]""".r
 
-  /** `s` with every inline known-line label taken out, spaces closed up. */
+  /** Any label grit writes on a line, a transcript's (`u`, `a`, `t`, `h`) or a known line's
+    * (`o`, `s`), alone or several in one citation (`[u4, t3]`).
+    */
+  private val AnyLabel = """(?i)\[\s*[uathos]\d+(?:\s*,\s*[uathos]\d+)*\s*\]""".r
+
+  /** `s` with every line label taken out, spaces closed up. */
   private def unlabelled(s: String): String =
-    Inline.replaceAllIn(s, "").replaceAll("\\s+", " ").trim
+    AnyLabel.replaceAllIn(s, "").replaceAll("\\s+", " ").trim
 
   /** A label, bracketed or not, then an optional colon or dash, then the rest. */
   private val Named = """(?i)^\[?([os]\d+)\]?\s*(?:[:\-–—]\s*|$)(.*)$""".r
