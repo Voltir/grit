@@ -107,6 +107,35 @@ object ClosingSummaryTests extends TestSuite {
       read("Just some text\nover two lines.") ==> written("Just some text over two lines.", None)
     }
 
+    test(
+      "part labels written as [s1] and [o1] never reach the prose; the text after an inline [o1] is the outcome"
+    ) {
+      // Two overheard closings as gpt-oss wrote them, with nothing known.
+      val heard = Asked.Every.heard
+      read(
+        "[s1] Nick Childers said he was testing bort now and hoped it would work.",
+        heard,
+        Balance.empty
+      ) ==> written("Nick Childers said he was testing bort now and hoped it would work.", None)
+      read(
+        "[s1] Nick Childers asked Emily Childers ...; ... [o1] Nick Childers praised Emily Childers' sandwich choice.",
+        heard,
+        Balance.empty
+      ) ==> written(
+        "Nick Childers asked Emily Childers ...; ...",
+        Some("Nick Childers praised Emily Childers' sandwich choice.")
+      )
+    }
+
+    test(
+      "a known line's label in the prose is taken out, never split on; a written Outcome part stands"
+    ) {
+      read(
+        "Summary: We kept [s1] and answered [o1] by Monday.\nOutcome: backups run daily",
+        Asked(outcome = true, open = false, standing = false, settled = false)
+      ) ==> written("We kept and answered by Monday.", Some("backups run daily"))
+    }
+
     test("a reply with no prose is none") {
       read("") ==> None
       read("Standing:\n- ship it") ==> None

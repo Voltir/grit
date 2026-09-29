@@ -176,7 +176,9 @@ object ClosingSummary {
     * headings ignored), a label's text running to the next label, a list's items one per
     * line with any bullet or number taken off and "none" dropped. Text before the first
     * label is the prose when `Summary:` is missing; without any label, the whole text is.
-    * `None` when it has no prose.
+    * No `[o1]` or `[s1]` label reaches the prose or outcome. When an outcome is asked for and
+    * no `Outcome:` part was written, the prose's text after its first `[oN]` naming no known
+    * line is the outcome. `None` when it has no prose.
     */
   def read(
       reply: Message.Assistant,
@@ -204,12 +206,26 @@ object ClosingSummary {
     def items(label: String, on: Boolean): Vector[String] =
       if (!on) Vector.empty
       else part(label).map(item).filter(i => i.nonEmpty && !isNone(i))
-    val prose = Some(text(part("summary"))).filter(_.nonEmpty).getOrElse(text(part("")))
     val shown = labels(known)
+    val whole_ = Some(text(part("summary"))).filter(_.nonEmpty).getOrElse(text(part("")))
+    val outcomePart =
+      Option.when(asked.outcome)(text(part("outcome"))).filter(o => o.nonEmpty && !isNone(o))
+    // A writer that takes [s1] and [o1] for part labels writes its parts inline: what follows
+    // the first [oN] naming no known line is then the outcome, when no Outcome part was.
+    val inline = Inline
+      .findAllMatchIn(whole_)
+      .map(m => (m, m.group(1).toLowerCase))
+      .collectFirst { case (m, l) if l.startsWith("o") && !shown.exists(_._1 == l) => m }
+      .filter(_ => asked.outcome && outcomePart.isEmpty)
+    val prose = unlabelled(inline.fold(whole_)(m => whole_.take(m.start)))
+    val outcome = outcomePart
+      .orElse(inline.map(m => whole_.drop(m.end)))
+      .map(unlabelled)
+      .filter(o => o.nonEmpty && !isNone(o))
     Option.when(prose.nonEmpty)(
       Written(
         prose,
-        Option.when(asked.outcome)(text(part("outcome"))).filter(o => o.nonEmpty && !isNone(o)),
+        outcome,
         items("open", asked.open).map(Edit.Add(Section.Open, _)) ++
           items("standing", asked.standing).flatMap(stand(_, visible(transcript))) ++
           items("resolved", asked.settled && shown.nonEmpty).map(
@@ -281,6 +297,13 @@ object ClosingSummary {
     */
   private val Answered =
     """(?i)^(.*?)[\s*_,;:—–-]*\(?[\s*_]*by[\s*_]*:?[\s*_]*(person|tool|assistant)[\s*_]*\)?[\s*_.]*$""".r
+
+  /** A known-line label written inline, `[o1]` or `[s1]`; its label is group 1. */
+  private val Inline = """(?i)\[([os]\d+)\]""".r
+
+  /** `s` with every inline known-line label taken out, spaces closed up. */
+  private def unlabelled(s: String): String =
+    Inline.replaceAllIn(s, "").replaceAll("\\s+", " ").trim
 
   /** A label, bracketed or not, then an optional colon or dash, then the rest. */
   private val Named = """(?i)^\[?([os]\d+)\]?\s*(?:[:\-–—]\s*|$)(.*)$""".r
