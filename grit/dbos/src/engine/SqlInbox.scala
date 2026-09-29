@@ -167,6 +167,19 @@ final class SqlInbox(
       }
     }
 
+  def recorded(origin: Origin, sources: Set[SourceId]): Either[InboxError, Set[SourceId]] =
+    inTransaction {
+      conversations.find(origin).flatMap {
+        case None => Right(Set.empty)
+        case Some(c) =>
+          sources.foldLeft[Either[StoreError, Set[SourceId]]](Right(Set.empty)) { (acc, s) =>
+            acc.flatMap(found =>
+              entries.get(SqlInbox.entryId(c.id, s)).map(e => if (e.isEmpty) found else found + s)
+            )
+          }
+      }
+    }
+
   /** From the turn's workflow status (a workflow DBOS has not heard of, queued or running is
     * Open), and, once it has ended, its reply entry. A status that cannot be read is
     * `Unavailable`, never read as the turn's end.

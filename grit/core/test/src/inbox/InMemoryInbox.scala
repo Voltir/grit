@@ -169,6 +169,19 @@ final class InMemoryInbox(
         }
       }
 
+  def recorded(origin: Origin, sources: Set[SourceId]): Either[InboxError, Set[SourceId]] =
+    if (down) unavailable
+    else
+      inTx {
+        conversations.all.find(_.origin == origin) match {
+          case None => Right(Set.empty)
+          case Some(c) =>
+            Right(sources.filter(s =>
+              entries.get(InMemoryInbox.entryId(c.id.toString, s)).exists(_.nonEmpty)
+            ))
+        }
+      }
+
   def progress(turn: TurnRef): Either[InboxError, Progress] =
     if (down) unavailable else Right(finished.getOrElse(turn, Progress.Open))
 

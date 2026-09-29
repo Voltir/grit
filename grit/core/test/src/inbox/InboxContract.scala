@@ -38,6 +38,19 @@ abstract class InboxContract extends TestSuite {
       }
     }
 
+    test("recorded names the sources heard or ingested from an origin, and no others") {
+      withInbox(Uncapped) { (inbox, _) =>
+        val here = Origin.Task("inbox", "recorded")
+        val there = Origin.Task("inbox", "recorded-elsewhere")
+        val asked = Set(SourceId("m1"), SourceId("m2"), SourceId("m3"))
+        inbox.recorded(here, asked) ==> Right(Set.empty)
+        inbox.ingest(here, SourceId("m1"), said("one"), PrincipalId.Local)
+        inbox.hear(here, SourceId("m2"), "two", PrincipalId.Local, Said) ==> Right(())
+        inbox.hear(there, SourceId("m3"), "three", PrincipalId.Local, Said) ==> Right(())
+        inbox.recorded(here, asked) ==> Right(Set(SourceId("m1"), SourceId("m2")))
+      }
+    }
+
     test("a turn recorded but never started is Open") {
       withInbox(Uncapped) { (inbox, _) =>
         val here = Origin.Task("inbox", "open")

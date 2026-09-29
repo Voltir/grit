@@ -49,6 +49,11 @@ trait Inbox extends caps.SharedCapability {
     */
   def ingested(origin: Origin, source: SourceId): Either[InboxError, Option[TurnRef]]
 
+  /** Which of `sources` from `origin` are recorded, heard or ingested; none when its
+    * conversation does not exist.
+    */
+  def recorded(origin: Origin, sources: Set[SourceId]): Either[InboxError, Set[SourceId]]
+
   /** Where `turn` has got to; [[InboxError.Unavailable]] when that cannot be read, which is
     * never read as the turn's end.
     */
