@@ -1,4 +1,4 @@
-# 0020. A heard message is an entry of its conversation, labelled by its edge, and supports no Standing line
+# 0020. A heard message is an entry of its conversation, labelled by its edge and triaged, and supports no Standing line
 
 Status: accepted (2026-09-28)
 
@@ -30,17 +30,33 @@ Decision:
   said the freeze moves to Thursday"): its prose and outcome, never Open or Standing lines.
   The policy's `heard` role writes it. In a period with anything said to grit, what was
   said to grit can still stand.
+- **Each heard message is triaged once** by a classifier, in one call: what kind of message
+  it is (question, answer, decision, announcement or chatter), and whether someone waits on
+  a reply, whether it states something worth keeping (durable), and whether a reply from
+  grit would help. Its tags are kept beside its entry and deleted with it. Triage writes no
+  entry, so it never moves a period's deadline. The kind decides nothing yet.
+- **A period earns a written closing** when grit was addressed in it, or a heard message in
+  it was tagged durable (at 0.5 or above), or one is untagged or unanswered. It fails open,
+  so a triage outage costs money, never a record. `Earning.earns` is the one definition.
+- **A due period that does not earn closes `Unearned`**, whatever its deadline's reason, with
+  no classifier or model call. Its closing's prose is a fixed line ("Heard 4 messages;
+  nothing kept.") and its balance is carried, so retention and the next period work as for
+  any close. A Resolved verdict on such a period is recorded as unearned; the verdict stays
+  in `grit.verdicts`. An unearned closing is never shown from elsewhere, and keeps no
+  digest line.
 
 Consequences:
 
 - A thread nobody addressed to grit leaves a record, so a question elsewhere can be answered
   from it as what someone said, never as a settled fact.
-- Every heard period costs a closing for now. Which heard periods earn one is decided by
-  triage, which is not built.
+- A heard period costs one classifier call per message, and a written closing only when it
+  earned one. What `helps` measures is recorded for when grit may speak unprompted.
 - A window shows a heard message as speech not said to grit.
 - Enforced by:
   - the inbox contract (`InboxContract`);
   - `SlackEdgeTests` (what is addressed, heard or ignored);
   - `LabelledTests` and `ClosingSummaryTests` (heard lines ground nothing);
-  - `CloseTests` (the heard pin, and reported speech);
+  - `CloseTests` (the heard pin, reported speech, and an unearned close);
+  - `EarningTests` and `TriageTests` (what earns, and triage once per message);
+  - `PeriodContract` (an unearned closing is never closed elsewhere) and `DigestTests`;
   - `LifecycleReplayTests`.
