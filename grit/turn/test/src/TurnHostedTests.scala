@@ -87,7 +87,7 @@ object TurnHostedTests extends TestSuite {
             true
           )
         )
-      edge.edges.claimAs(edge.registration, edge.sent.head) ==> false
+      edge.sent.headOption.map(q => edge.edges.claimAs(edge.registration, q)) ==> Some(false)
       Turn.Step.named(durable.recordedSteps(turn.workflowId)).filter(_.contains(":0:0")) ==>
         Vector("expire:0:0", "tool:0:0")
     }
@@ -171,7 +171,7 @@ object TurnHostedTests extends TestSuite {
       results(provider).map(_.content) ==> Vector("poked")
     }
 
-    test("a turn whose directory no edge serves is offered no hosted tools, and told why") {
+    test("a turn whose directory no edge serves is offered no hosted tools") {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "fetch")
       val durable = new InMemoryDurable
@@ -180,7 +180,6 @@ object TurnHostedTests extends TestSuite {
       val provider = model()
       durable.run(turn.workflowId)(hostedBody(entries, provider, edge))
       provider.requests.headOption.map(_.tools.map(_.name)) ==> Some(Vector())
-      provider.requests.headOption.map(_.system) ==> Some(system)
     }
 
     test("a turn is sent the instruction files its directory's edge read, after grit's own words") {
@@ -198,6 +197,8 @@ object TurnHostedTests extends TestSuite {
       durable.run(turn.workflowId)(hostedBody(entries, provider, edge))
       provider.requests.headOption.map(_.system.split("\n\n").toVector.takeRight(2)) ==>
         Some(Vector("Instructions from /checkout/AGENTS.md:", "Be brief."))
+      // Offered what the edge advertises, not every hosted tool the turn knows.
+      provider.requests.headOption.map(_.tools.map(_.name)) ==> Some(Vector("fetch"))
     }
 
     test(

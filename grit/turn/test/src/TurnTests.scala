@@ -417,7 +417,14 @@ object TurnTests extends TestSuite {
       "the voice set reaches every model call of the turn, between its edge and its reach, and never its summary"
     ) {
       val entries = new InMemoryEntryStore
-      val turn = new RecordingProvider
+      // Two rounds: a call to a tool the turn does not offer, answered, then a reply.
+      val call: Message.Assistant = Message.Assistant(
+        Vector(AssistantBlock.ToolCall(grit.core.id.ToolCallId("c1"), "nope", ujson.Obj())),
+        StopReason.ToolUse,
+        Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
+        "m"
+      )
+      val turn = new Scripted((_, n) => Right(if (n == 0) call else said("done")))
       val summary = new RecordingProvider
       val voices = new InMemoryVoiceStore
       voices.set(Voice.Named.Sassy)(using TestTx.fake)
@@ -432,7 +439,7 @@ object TurnTests extends TestSuite {
       val edge = TurnPrompt.edge(origin).text
       val reach = TurnPrompt.reach(Some(checkout), ToolSet.Empty).text
       turn.requests.map(_.system) ==>
-        Vector(Vector(TurnPrompt.Base.text, edge, person, reach).mkString("\n\n"))
+        Vector.fill(2)(Vector(TurnPrompt.Base.text, edge, person, reach).mkString("\n\n"))
       summary.requests.size ==> 1
       summary.requests.map(_.system) ==> Vector(TurnSummary.TopicalSystem)
     }
@@ -444,24 +451,29 @@ object TurnTests extends TestSuite {
       val principals = new InMemoryPrincipals
       val ana = grit.core.id.PrincipalId("slack:T1/U1")
       principals.enroll(ana, "Ana Lima")(using TestTx.fake)
-      val first = say(entries, "hello")
-      new InMemoryDurable().run(first.workflowId)(
-        voicedBody(
-          entries,
-          new RecordingProvider,
-          new RecordingProvider,
-          new InMemoryVoiceStore,
-          principals
+      def earlier(text: String): Unit = {
+        val t = say(entries, text)
+        val _ = new InMemoryDurable().run(t.workflowId)(
+          voicedBody(
+            entries,
+            new RecordingProvider,
+            new RecordingProvider,
+            new InMemoryVoiceStore,
+            principals
+          )
         )
-      )
-      val second = say(entries, "thanks")
+      }
+      earlier("hello")
+      principals.authored(EntryId("in:hello"), ana)
+      earlier("hmm")
+      val last = say(entries, "thanks")
       principals.authored(EntryId("in:thanks"), ana)
       val turn = new RecordingProvider
-      new InMemoryDurable().run(second.workflowId)(
+      new InMemoryDurable().run(last.workflowId)(
         voicedBody(entries, turn, new RecordingProvider, new InMemoryVoiceStore, principals)
       )
       turn.requests.headOption.map(_.messages.collect { case Message.User(t) => t }) ==>
-        Some(Vector("hello", "Ana Lima wrote:\nthanks"))
+        Some(Vector("Ana Lima wrote:\nhello", "hmm", "Ana Lima wrote:\nthanks"))
     }
 
     test("with no voice set, the turn adds no person fragment") {
