@@ -28,7 +28,40 @@ enum Event {
   case Ignored(why: String)
 }
 
+/** A message as a channel's history lists it, before grit reads it ([[Events.listed]]): its
+  * `ts`, the thread it is in (`None` when it is in none), who wrote it (`None` for a message
+  * with no user, as some bots' and Slack's own are), whether a bot sent it, its `subtype`, and
+  * its text as Slack sent it.
+  */
+final case class Listed(
+    ts: Ts,
+    thread: Option[Ts],
+    user: Option[UserId],
+    bot: Boolean,
+    subtype: Option[String],
+    text: String
+)
+
 object Events {
+
+  /** `m`, listed in `channel` of `team`, read by [[read]]'s rules for a `message` event in a
+    * channel, grit's own bot user being `bot`; why not, as [[read]] says.
+    */
+  def listed(m: Listed, team: TeamId, channel: ChannelId, bot: UserId): Either[String, Event] = {
+    // The live event this listing would have been, so both are read by one set of rules.
+    val event = ujson.Obj(
+      "type" -> "message",
+      "channel" -> ChannelId.value(channel),
+      "channel_type" -> "channel",
+      "ts" -> Ts.value(m.ts),
+      "text" -> m.text
+    )
+    m.thread.foreach(t => event("thread_ts") = Ts.value(t))
+    m.user.foreach(u => event("user") = UserId.value(u))
+    m.subtype.foreach(st => event("subtype") = st)
+    if (m.bot) event("bot_id") = "listed"
+    said(event, team, bot)
+  }
 
   /** The event an Events API payload (a Socket Mode envelope's `payload`) carries, grit's own
     * bot user being `bot`: `app_mention` and `message` events as [[Event.Said]] (a `message`

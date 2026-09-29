@@ -84,6 +84,32 @@ object EventsTests extends TestSuite {
     }
 
     test(
+      "a listed message is read as a live one: bots', grit's and joins ignored, a broadcast and a mention said"
+    ) {
+      def listed(
+          ts: String,
+          text: String = "hi",
+          thread: Option[String] = None,
+          user: Option[String] = Some(Ana),
+          fromBot: Boolean = false,
+          subtype: Option[String] = None
+      ) = Events.listed(
+        Listed(Ts(ts), thread.map(Ts(_)), user.map(UserId(_)), fromBot, subtype, text),
+        TeamId(Team),
+        ChannelId("C123ABC456"),
+        bot
+      )
+      listed("4.0", fromBot = true) ==> Right(Event.Ignored("a bot's message"))
+      listed("4.1", user = Some(Bot)) ==> Right(Event.Ignored("a bot's message"))
+      listed("4.2", subtype = Some("channel_join")) ==>
+        Right(Event.Ignored("a message's channel_join"))
+      listed("4.3", user = None) ==> Left("a message event without user")
+      listed("3.0", "also", Some("1.0"), subtype = Some("thread_broadcast")) ==>
+        Right(said("3.0", "1.0", "also", false))
+      listed("6.0", s"hey <@$Bot>") ==> Right(said("6.0", "6.0", s"hey <@$Bot>", true))
+    }
+
+    test(
       "another event type is ignored; a payload that is not an event callback, or lacks a field, is not read"
     ) {
       Events.read(
