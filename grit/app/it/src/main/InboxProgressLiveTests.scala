@@ -1,7 +1,7 @@
 package grit.app.main
 
 import grit.core.inbox.Progress
-import grit.core.message.{AssistantBlock, Message}
+import grit.core.message.AssistantBlock
 import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.TestPostgres
 import grit.turn.Turn

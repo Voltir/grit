@@ -42,7 +42,7 @@ final class FakeSlack extends Slack {
 
   /** Each channel's history, oldest first, each listing said at the time its ts names. */
   @caps.unsafe.untrackedCaptures
-  var histories = Map.empty[ChannelId, Vector[Listed]]
+  var histories: Map[ChannelId, Vector[Listed]] = Map.empty
 
   /** When set, every post fails as Slack being unreachable would. */
   @caps.unsafe.untrackedCaptures
