@@ -1,11 +1,14 @@
 package grit.slack.event
 
+import java.time.Instant
+
 /** What Slack told grit, as grit acts on it. */
 enum Event {
 
   /** A person's message `ts` in `channel` of `team`, in the thread rooted at `thread` (its own
     * `ts` when it is in none), by `user`, with `text` as Slack sent it (mrkdwn escapes and
-    * `<@U…>` mentions, [[grit.slack.text.Incoming]]); `mentions` when it mentions grit.
+    * `<@U…>` mentions, [[grit.slack.text.Incoming]]); `mentions` when it mentions grit; said
+    * `at`, the time its `ts` names.
     */
   case Said(
       team: TeamId,
@@ -14,7 +17,8 @@ enum Event {
       thread: Ts,
       user: UserId,
       text: String,
-      mentions: Boolean
+      mentions: Boolean,
+      at: Instant
   )
 
   /** Something grit does not act on, and why: a bot's message (grit's own included), an
@@ -30,7 +34,7 @@ object Events {
     * bot user being `bot`: `app_mention` and `message` events as [[Event.Said]] (a `message`
     * only from a person, in a channel, new or broadcast from a thread, or sharing a file),
     * everything else [[Event.Ignored]]. Why not, when it is not an event callback, or an event
-    * grit reads lacks a field it needs.
+    * grit reads lacks a field it needs or has a ts that names no time.
     */
   def read(payload: String, bot: UserId): Either[String, Event] =
     scala.util
@@ -81,6 +85,7 @@ object Events {
       user <- field("user")
       channel <- field("channel")
       ts <- field("ts")
+      at <- time(ts).toRight(s"$article $kind event whose ts names no time: $ts")
       text <- field("text")
     } yield
       if (UserId(user) == bot || str(event, "bot_id").nonEmpty) Event.Ignored("a bot's message")
@@ -92,9 +97,23 @@ object Events {
           Ts(str(event, "thread_ts").getOrElse(ts)),
           UserId(user),
           text,
-          mention || text.contains(s"<@${UserId.value(bot)}>")
+          mention || text.contains(s"<@${UserId.value(bot)}>"),
+          at
         )
   }
+
+  /** The time a ts names: seconds since the epoch, a point, then up to nine digits of the
+    * second.
+    */
+  private def time(ts: String): Option[Instant] = ts match {
+    case Stamp(seconds, fraction) =>
+      seconds.toLongOption.map(s =>
+        Instant.ofEpochSecond(s, Option(fraction).fold(0L)(f => (f + "000000000").take(9).toLong))
+      )
+    case _ => None
+  }
+
+  private val Stamp = "([0-9]{1,18})(?:\\.([0-9]{1,9}))?".r
 
   private def str(v: ujson.Value, key: String): Option[String] =
     v.objOpt.flatMap(_.get(key)).flatMap(_.strOpt)

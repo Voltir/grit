@@ -1,5 +1,7 @@
 package grit.slack.event
 
+import java.time.Instant
+
 import utest.*
 
 /** [[Events.read]] over payloads shaped as Slack's docs give them. */
@@ -8,6 +10,7 @@ object EventsTests extends TestSuite {
 
   private val bot = UserId(Bot)
 
+  /** Said at `ts`'s whole seconds: every ts below but the first names no fraction. */
   private def said(ts: String, thread: String, text: String, mentions: Boolean): Event =
     Event.Said(
       TeamId(Team),
@@ -16,32 +19,45 @@ object EventsTests extends TestSuite {
       Ts(thread),
       UserId(Ana),
       text,
-      mentions
+      mentions,
+      Instant.ofEpochSecond(ts.takeWhile(_ != '.').toLong)
     )
 
   val tests = Tests {
     test("a top-level mention is said by its author, in the thread it starts, mentioning grit") {
-      Events.read(mention("1515449522.000016"), bot) ==> Right(
+      Events.read(mention("1515449522.000000"), bot) ==> Right(
         said(
-          "1515449522.000016",
-          "1515449522.000016",
+          "1515449522.000000",
+          "1515449522.000000",
           s"<@$Bot> is it everything a river should be?",
           true
         )
       )
     }
 
+    test("a message is said at the time its ts names, to the microsecond") {
+      Events.read(message("1515449522.000016", "hi"), bot).map {
+        case m: Event.Said => Some(m.at)
+        case Event.Ignored(_) => None
+      } ==> Right(Some(Instant.parse("2018-01-08T22:12:02.000016Z")))
+    }
+
+    test("a message whose ts names no time is not read") {
+      Events.read(message("yesterday", "hi"), bot) ==>
+        Left("a message event whose ts names no time: yesterday")
+    }
+
     test("a mention in a thread is in that thread") {
-      Events.read(mentionIn("1.0", "1.5"), bot) ==> Right(
-        said("1.5", "1.0", s"<@$Bot> and this?", true)
+      Events.read(mentionIn("1.0", "5.0"), bot) ==> Right(
+        said("5.0", "1.0", s"<@$Bot> and this?", true)
       )
     }
 
     test("a message is said, mentioning grit only when its text does") {
       Events.read(message("2.0", "just chatting", Some("1.0")), bot) ==>
         Right(said("2.0", "1.0", "just chatting", false))
-      Events.read(message("2.1", s"hey <@$Bot>"), bot) ==> Right(
-        said("2.1", "2.1", s"hey <@$Bot>", true)
+      Events.read(message("6.0", s"hey <@$Bot>"), bot) ==> Right(
+        said("6.0", "6.0", s"hey <@$Bot>", true)
       )
     }
 
@@ -51,8 +67,8 @@ object EventsTests extends TestSuite {
         bot
       ) ==>
         Right(said("3.0", "1.0", "also", false))
-      Events.read(message("3.1", "see file", extra = Seq("subtype" -> "file_share")), bot) ==>
-        Right(said("3.1", "3.1", "see file", false))
+      Events.read(message("7.0", "see file", extra = Seq("subtype" -> "file_share")), bot) ==>
+        Right(said("7.0", "7.0", "see file", false))
     }
 
     test("grit's own messages, other bots', edits, and messages outside a channel are ignored") {
