@@ -132,7 +132,7 @@ object ClosingTests extends TestSuite {
     }
 
     test(
-      "a stored closing that is not version 2, or whose prose, change or line is bad, is refused"
+      "a stored closing that is not version 2 or 3, or whose prose, change or line is bad, is refused"
     ) {
       ClosingJson.read(ujson.read("""{"v":1,"prose":"x"}""")) ==> Left("unknown closing version: 1")
       ClosingJson.read(ujson.read("""{"v":4,"prose":"x"}""")) ==> Left("unknown closing version: 4")

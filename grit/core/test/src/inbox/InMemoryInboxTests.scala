@@ -1,9 +1,12 @@
 package grit.core.inbox
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId, SourceId, TurnRef, TurnSeq}
+import java.time.Instant
+
+import grit.core.id.{CloseRef, ConversationId, EntryId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.spend.Budget
-import grit.core.store.{Origin, Payload}
+import grit.core.store.{Origin, Payload, StoreError}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -38,14 +41,26 @@ object InMemoryInboxTests extends InboxContract {
           inbox.entries.list(c.id)(using TestTx.fake).fold(e => sys.error(e.toString), identity)
         }
         .map(_.createdAt)
-    def opened(origin: Origin): Vector[java.time.Instant] =
-      inbox.conversations.all
-        .find(_.origin == origin)
-        .toVector
-        .flatMap { c =>
-          inbox.periods.all(c.id)(using TestTx.fake).fold(e => sys.error(e.toString), identity)
-        }
-        .map(_.openedAt)
+    def periods(origin: Origin): Vector[Period] =
+      inbox.conversations.all.find(_.origin == origin).toVector.flatMap { c =>
+        inbox.periods.all(c.id)(using TestTx.fake).fold(e => sys.error(e.toString), identity)
+      }
+    def close(turn: TurnRef): Unit = {
+      val tx = TestTx.fake
+      val _ = inbox.periods
+        .of(turn)(using tx)
+        .flatMap(
+          _.toRight(StoreError.Invalid(s"no period holds $turn")).flatMap(p =>
+            inbox.periods.seal(
+              CloseRef(p.ref, turn.turnSeq, Instant.EPOCH),
+              CloseReason.Lapsed,
+              TestClosings.prose("closed"),
+              Instant.EPOCH
+            )(using tx)
+          )
+        )
+        .fold(e => sys.error(e.toString), identity)
+    }
     def enroll(id: PrincipalId, name: String): Unit =
       inbox.principals
         .enroll(id, name)(using TestTx.fake)
@@ -57,7 +72,8 @@ object InMemoryInboxTests extends InboxContract {
         o => inbox.conversations.all.exists(_.origin == o),
         written,
         dated,
-        opened,
+        periods,
+        close,
         enroll
       )
     )

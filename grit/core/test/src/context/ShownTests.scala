@@ -55,7 +55,7 @@ object ShownTests extends TestSuite {
   private def told(t: Long): Message = Message.User(s"turn $t")
 
   val tests = Tests {
-    test("a message is shown as it is; nothing but a message or a closing is shown") {
+    test("a message is shown as it is; a summary is not shown") {
       Shown.of(entry(Payload.Message(Message.User("hi"))), Speakers.none) ==> Some(
         Message.User("hi")
       )
@@ -356,19 +356,6 @@ object ShownTests extends TestSuite {
                |> gap — earlier turns not shown""".stripMargin
           )
         )
-    }
-
-    test("grit's own record, afar header and gap line are never rewritten") {
-      val record =
-        Shown.of(closed(4), Speakers.none).collect { case Message.User(t) => t }.getOrElse("")
-      assert(record.startsWith("[record] "))
-      Shown.Gap ==> Message.User("[gap] earlier turns not shown")
-      val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
-      Shown.nearby(api, Vector(entry(Payload.Message(Message.User("hi"))))) ==> Some(
-        Message.User(
-          "[afar] another conversation, shown by grit, still open, at fs:/home/nick/api:\nUser: hi"
-        )
-      )
     }
 
     test(

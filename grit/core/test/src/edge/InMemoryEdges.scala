@@ -37,6 +37,10 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory {
   @caps.unsafe.untrackedCaptures
   private var sessions = 0
 
+  /** Each edge's session as registered, kept when it is killed: a desk acts under it still. */
+  @caps.unsafe.untrackedCaptures
+  private var registered = Map.empty[EdgeId, Int]
+
   private def row(slot: CallSlot): Either[StoreError, Row] =
     rows.find(_.request.slot == slot).toRight(StoreError.Invalid(s"no tool request ${slot.key}"))
 
@@ -98,6 +102,7 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory {
     sessions += 1
     val edge = EdgeId(f"edge-$sessions%04d")
     live = live.updated(edge, sessions)
+    registered = registered.updated(edge, sessions)
     new InMemoryEdges.Fake(this, Registration(edge, principal, places), sessions)
   }
 
@@ -108,16 +113,17 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory {
     sessions += 1
     val edge = EdgeId(f"edge-$sessions%04d")
     live = live.updated(edge, sessions)
+    registered = registered.updated(edge, sessions)
     Registration(edge, principal, places)
   }
 
-  /** `q` claimed for `reg`'s live session, as its desk would; whether the claim won. */
+  /** `q` claimed for `reg`'s session, as its desk would; whether the claim won. */
   def claimAs(reg: Registration, q: ToolRequest): Boolean =
-    live.get(reg.edge).exists(session => claim(reg, session, q))
+    registered.get(reg.edge).exists(session => claim(reg, session, q))
 
-  /** The request at `slot` answered by `reg`'s live session, as its desk would. */
+  /** The request at `slot` answered by `reg`'s session, as its desk would. */
   def answerAs(reg: Registration, slot: CallSlot, outcome: Outcome): Boolean =
-    live.get(reg.edge).exists(session => answer(reg, session, slot, outcome))
+    registered.get(reg.edge).exists(session => answer(reg, session, slot, outcome))
 
   /** What `reg`'s edge offers in `place`, as its desk would advertise it. */
   def advertiseAs(
@@ -195,13 +201,7 @@ object InMemoryEdges {
     def await(within: FiniteDuration): Boolean = edges.open(registration).nonEmpty
     def open(): Either[DeskError, Vector[ToolRequest]] = Right(edges.open(registration))
     def claim(request: ToolRequest): Either[DeskError, Boolean] =
-      Right(
-        edges.live.get(registration.edge).contains(session) && edges.claim(
-          registration,
-          session,
-          request
-        )
-      )
+      Right(edges.claim(registration, session, request))
     def answer(slot: CallSlot, outcome: Outcome): Either[DeskError, Boolean] =
       Right(edges.answer(registration, session, slot, outcome))
     def orphans(): Either[DeskError, Vector[ToolRequest]] = Right(

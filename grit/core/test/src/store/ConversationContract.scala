@@ -51,5 +51,26 @@ abstract class ConversationContract extends TestSuite {
     test("get of an id no conversation has is None") {
       transaction(conversations.get(unknown)) ==> Right(None)
     }
+
+    test("a removed conversation is gone, its origin free, and removing it again is harmless") {
+      val removed = transaction(conversations.findOrCreate(tui("removed"), PrincipalId.Local))
+      removed.map(c => transaction(conversations.remove(c.id))) ==> Right(Right(()))
+      removed.map(c => transaction(conversations.remove(c.id))) ==> Right(Right(()))
+      removed.map(c => transaction(conversations.get(c.id))) ==> Right(Right(None))
+      transaction(conversations.find(tui("removed"))) ==> Right(None)
+      val again = transaction(conversations.findOrCreate(tui("removed"), someone))
+      again.map(_.createdBy) ==> Right(someone)
+    }
+
+    test("a conversation made after a removal takes no live conversation's id") {
+      val gone = transaction(conversations.findOrCreate(tui("gone"), PrincipalId.Local))
+      val kept = transaction(conversations.findOrCreate(tui("kept"), PrincipalId.Local))
+      gone.map(c => transaction(conversations.remove(c.id))) ==> Right(Right(()))
+      val next = transaction(conversations.findOrCreate(tui("next"), PrincipalId.Local))
+      (
+        kept.flatMap(c => transaction(conversations.get(c.id))).map(_.map(_.origin)),
+        next.flatMap(c => transaction(conversations.get(c.id))).map(_.map(_.origin))
+      ) ==> (Right(Some(tui("kept"))), Right(Some(tui("next"))))
+    }
   }
 }

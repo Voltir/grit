@@ -1,5 +1,7 @@
 package grit.core.edge
 
+import scala.concurrent.duration.*
+
 import grit.core.id.{CallSlot, ConversationId, PrincipalId, TurnRef, TurnSeq}
 import grit.core.place.{Directory, Place}
 import grit.core.prompt.{Fragment, Layer}
@@ -184,6 +186,16 @@ abstract class EdgesContract extends TestSuite {
       transaction(requests.settle(r.slot)) ==> Right(RequestState.Claimed)
     }
 
+    test("a desk's claim does not ask whether its edge is live: a killed desk's claim wins") {
+      val here = place("claim-killed")
+      val r = request("claim-killed", 0, here)
+      val gone = desk(Set(here))
+      dispatched(r)
+      kill(gone)
+      gone.claim(r) ==> Right(true)
+      transaction(requests.settle(r.slot)) ==> Right(RequestState.Claimed)
+    }
+
     test("serving names what the live edge offers in a place, and nothing once it is gone") {
       val here = place("serving")
       val tools = ToolSet
@@ -200,6 +212,17 @@ abstract class EdgesContract extends TestSuite {
         Right(Some((d.registration.edge, tools.id, Vector(file.id))))
       kill(d)
       transaction(directory.serving(here)) ==> Right(None)
+    }
+
+    test(
+      "await is false when nothing arrives within its wait, and true once a request is dispatched to its place"
+    ) {
+      val here = place("await")
+      val r = request("await", 0, here)
+      val d = desk(Set(here))
+      d.await(200.millis) ==> false
+      dispatched(r)
+      d.await(10.seconds) ==> true
     }
   }
 }

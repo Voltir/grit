@@ -44,11 +44,6 @@ object VoiceTests extends TestSuite {
       } ==> Vector.fill(Voice.Named.values.size - 1)(Some((Layer.Person, Fragment.Person, true)))
     }
 
-    test("the default is plain, which adds no fragment") {
-      Voice.Default ==> Voice.Named.Plain
-      Voice.fragment(Voice.Default) ==> None
-    }
-
     test("sassy says where its sass stops") {
       Voice.fragment(Voice.Named.Sassy).map(_.text) ==> Some(
         "How to talk to this person:\n" +

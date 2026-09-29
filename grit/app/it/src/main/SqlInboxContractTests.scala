@@ -1,11 +1,12 @@
 package grit.app.main
 
+import java.time.Instant
 import java.util.UUID
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{CloseRef, ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
 import grit.core.inbox.{Inbox, InboxContract}
 import grit.core.message.{Tokens, Usage}
-import grit.core.period.Period
+import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.spend.Budget
 import grit.core.store.{Entry, Origin, Payload, StoreError}
 import grit.dbos.engine.LiveEngine
@@ -67,7 +68,7 @@ object SqlInboxContractTests extends InboxContract {
               )
           )
           .fold(e => sys.error(e.toString), _.map(_.createdAt))
-      def opened(origin: Origin): Vector[java.time.Instant] =
+      def periods(origin: Origin): Vector[Period] =
         engine.db
           .read(
             engine.conversations
@@ -78,12 +79,29 @@ object SqlInboxContractTests extends InboxContract {
                 )
               )
           )
-          .fold(e => sys.error(e.toString), _.map(_.openedAt))
+          .fold(e => sys.error(e.toString), identity)
+      def close(turn: TurnRef): Unit =
+        engine.jot
+          .write(
+            engine.periods
+              .of(turn)
+              .flatMap(
+                _.toRight(StoreError.Invalid(s"no period holds $turn")).flatMap(p =>
+                  engine.periods.seal(
+                    CloseRef(p.ref, turn.turnSeq, Instant.EPOCH),
+                    CloseReason.Lapsed,
+                    TestClosings.prose("closed"),
+                    Instant.EPOCH
+                  )
+                )
+              )
+          )
+          .fold(e => sys.error(e.toString), _ => ())
       def enroll(id: PrincipalId, name: String): Unit =
         engine.jot
           .write(engine.principals.enroll(id, name))
           .fold(e => sys.error(e.toString), identity)
-      body(engine.inbox, InboxContract.Store(spend, exists, written, dated, opened, enroll))
+      body(engine.inbox, InboxContract.Store(spend, exists, written, dated, periods, close, enroll))
     } finally engine.close()
   }
 }

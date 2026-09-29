@@ -64,6 +64,8 @@ abstract class PrincipalsContract extends TestSuite {
       transaction(principals.speakers(Vector(its))) ==> Right(Speakers.none)
       transaction(principals.enrollAssistant(bort, " ")) ==>
         Left(StoreError.Invalid("a person's name is not blank"))
+      transaction(principals.enrollAssistant(PrincipalId.Local, "Bort")) ==>
+        Left(StoreError.Invalid("local is never enrolled"))
       transaction(principals.enrollAssistant(PrincipalId.Grit, "Bort")) ==>
         Left(StoreError.Invalid("grit is never enrolled"))
     }

@@ -361,6 +361,7 @@ abstract class StoreContract extends TestSuite {
       transaction(prompts.of(WorkflowId("w-prompt-again"))) ==> Right(Some(first))
       transaction(prompts.forget(Vector(WorkflowId("w-prompt-again")))) ==> Right(())
       transaction(prompts.of(WorkflowId("w-prompt-again"))) ==> Right(None)
+      transaction(prompts.prompt(first.ids)) ==> Right(first)
       transaction(prompts.prompt(second.ids)) ==> Right(second)
     }
 

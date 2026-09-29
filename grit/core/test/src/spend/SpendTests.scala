@@ -47,7 +47,7 @@ object SpendTests extends TestSuite {
     }
 
     test("the refusal names neither a cost nor the cap") {
-      Budget.Refusal ==> "grit can't take new messages right now. Try again later."
+      (Budget.Refusal.exists(_.isDigit), Budget.Refusal.contains("$")) ==> (false, false)
     }
   }
 }

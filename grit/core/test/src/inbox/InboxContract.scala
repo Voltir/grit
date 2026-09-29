@@ -2,8 +2,9 @@ package grit.core.inbox
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.id.{PrincipalId, SourceId}
+import grit.core.id.{PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Message}
+import grit.core.period.{Period, PeriodState}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Origin, Payload}
 
@@ -51,6 +52,48 @@ abstract class InboxContract extends TestSuite {
       }
     }
 
+    test("ingest: the same source is the same turn, a new one the next turn") {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "same-source")
+        val first = inbox.ingest(here, SourceId("m1"), said("one"), PrincipalId.Local)
+        val again = inbox.ingest(here, SourceId("m1"), said("one, redelivered"), PrincipalId.Local)
+        val second = inbox.ingest(here, SourceId("m2"), said("two"), PrincipalId.Local)
+        (first.map(_.turnSeq), again, second.map(_.turnSeq)) ==>
+          (Right(TurnSeq.First), first, Right(TurnSeq.First.next))
+        store.written(here).map(_._1) ==> Vector(
+          Payload.Message(said("one")),
+          Payload.Message(said("two"))
+        )
+      }
+    }
+
+    test("ingest opens a conversation's first period, and after a close the next, at its turn") {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "periods")
+        val one = inbox.ingest(here, SourceId("p1"), said("one"), PrincipalId.Local)
+        store.periods(here).map(p => (p.first, p.state)) ==>
+          Vector((TurnSeq.First, PeriodState.Open))
+        one.foreach(store.close)
+        val two = inbox.ingest(here, SourceId("p2"), said("two"), PrincipalId.Local)
+        two.map(_.turnSeq) ==> Right(TurnSeq.First.next)
+        store.periods(here).map(p => (p.first, p.state == PeriodState.Open)) ==>
+          Vector((TurnSeq.First, false), (TurnSeq.First.next, true))
+      }
+    }
+
+    test("an ingested message records who wrote it, and a redelivery by another keeps the first") {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "authors")
+        val ana = PrincipalId("task:ana")
+        val bo = PrincipalId("task:bo")
+        store.enroll(ana, "Ana")
+        store.enroll(bo, "Bo")
+        inbox.ingest(here, SourceId("a1"), said("one"), ana)
+        inbox.ingest(here, SourceId("a1"), said("one"), bo)
+        store.written(here) ==> Vector((Payload.Message(said("one")), Some("Ana")))
+      }
+    }
+
     test("a turn recorded but never started is Open") {
       withInbox(Uncapped) { (inbox, _) =>
         val here = Origin.Task("inbox", "open")
@@ -80,7 +123,10 @@ abstract class InboxContract extends TestSuite {
         inbox.hear(here, SourceId("m1"), "standup moves to 10:00", PrincipalId.Local, Said) ==>
           Right(())
         inbox.hear(here, SourceId("m2"), "fine by me", PrincipalId.Local, later) ==> Right(())
-        (store.dated(here), store.opened(here)) ==> (Vector(Said, later), Vector(Said))
+        (store.dated(here), store.periods(here).map(_.openedAt)) ==> (
+          Vector(Said, later),
+          Vector(Said)
+        )
       }
     }
 
@@ -101,7 +147,10 @@ abstract class InboxContract extends TestSuite {
         } ==> Left((2, Cost.Exact(BigDecimal("1.0")), cap))
         inbox.ingested(here, SourceId("m2")) ==> Right(None)
         val fresh = Origin.Task("inbox", "capped-first")
-        inbox.ingest(fresh, SourceId("m1"), said("one"), PrincipalId.Local).isLeft ==> true
+        inbox.ingest(fresh, SourceId("m1"), said("one"), PrincipalId.Local).left.map {
+          case InboxError.OverCap(_, c, _) => c
+          case other => other
+        } ==> Left(cap)
         store.exists(fresh) ==> false
         val heard = Origin.Task("inbox", "capped-heard")
         inbox.hear(heard, SourceId("m1"), "lunch?", PrincipalId.Local, Said) ==> Right(())
@@ -116,15 +165,17 @@ object InboxContract {
   /** What a test reads and writes of the store under an inbox: `spend` records a call that
     * cost that many dollars now; `exists`, whether a conversation from an origin exists;
     * `written`, the entries of an origin's conversation in order, each with the name its
-    * author was enrolled under; `dated`, when each of those entries is dated; `opened`, when
-    * each of its periods opened, oldest first; `enroll` names a person.
+    * author was enrolled under; `dated`, when each of those entries is dated;
+    * `periods`, an origin's conversation's periods, oldest first; `close` seals the period a
+    * turn is in, its last turn that one; `enroll` names a person.
     */
   final case class Store(
       spend: BigDecimal => Unit,
       exists: Origin => Boolean,
       written: Origin => Vector[(Payload, Option[String])],
       dated: Origin => Vector[Instant],
-      opened: Origin => Vector[Instant],
+      periods: Origin => Vector[Period],
+      close: TurnRef => Unit,
       enroll: (PrincipalId, String) => Unit
   )
 }

@@ -19,7 +19,7 @@ import utest.*
 object EdgeLiveTests extends TestSuite {
 
   val tests = Tests {
-    test("a dispatch wakes an idle desk at once, well inside its wait") {
+    test("an idle desk waits out its wait, and a dispatch wakes it at once, well inside it") {
       val config = TestPostgres.freshDatabase("edge_wake")
       LiveEngine.open(config, "test").close()
       val ds = new PGSimpleDataSource()
@@ -34,6 +34,9 @@ object EdgeLiveTests extends TestSuite {
           case Left(e) => sys.error(s"$e")
         }
       try {
+        val idle = System.nanoTime()
+        desk.await(300.millis) ==> false
+        assert((System.nanoTime() - idle) / 1000000 >= 300)
         val woke = new AtomicLong(-1)
         val waiting = new Thread(() => {
           val started = System.nanoTime()
@@ -58,7 +61,7 @@ object EdgeLiveTests extends TestSuite {
         LiveDb.transaction(config)(new SqlToolRequests().dispatch(Vector(request))) ==> Right(())
         waiting.join()
         // Woken by the NOTIFY, half a second into a ten-second wait.
-        assert(woke.get() >= 0, woke.get() < 2000)
+        assert(woke.get() >= 400, woke.get() < 2000)
       } finally {
         desk.close()
         client.close()
