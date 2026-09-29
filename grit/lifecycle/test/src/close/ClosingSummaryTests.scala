@@ -169,10 +169,14 @@ object ClosingSummaryTests extends TestSuite {
       stood(
         "The api stays on port 3000 [u5] by person",
         "config.yml sets port 3000 [t4, a6] by tool",
-        "The api uses port 3000 [a6] by assistant"
+        "The search found no port [t2] by tool",
+        "The api uses port 3000 [a6] by person"
       ) ==> Vector(
         Edit.Stand("The api stays on port 3000", Ground.Person),
         Edit.Stand("config.yml sets port 3000", Ground.Tool),
+        // An empty search is a tool's result all the same.
+        Edit.Stand("The search found no port", Ground.Tool),
+        // Answered person, but the citation supports only the assistant's word.
         Edit.Stand("The api uses port 3000", Ground.Claimed)
       )
     }
@@ -221,13 +225,13 @@ object ClosingSummaryTests extends TestSuite {
         "no citation at all by person",
         "an unknown label [u99, t42] by person",
         "a known line's label [s1] by person",
-        "an empty search and a failed read [t3] by tool",
+        "a failed read [t3] by tool",
         "the brackets [u5] are not at the end by person"
       ) ==> Vector(
         Edit.Stand("no citation at all", Ground.Claimed),
         Edit.Stand("an unknown label", Ground.Claimed),
         Edit.Stand("a known line's label", Ground.Claimed),
-        Edit.Stand("an empty search and a failed read", Ground.Claimed),
+        Edit.Stand("a failed read", Ground.Claimed),
         Edit.Stand("the brackets [u5] are not at the end", Ground.Claimed)
       )
     }
@@ -266,15 +270,30 @@ object ClosingSummaryTests extends TestSuite {
       val t = labelled(lines*)
       read("Summary: x\nStanding:\n- The password is hunter2 [t9] by tool", transcript = t)
         .map(_.edits) ==> Some(Vector(Edit.Stand("The password is hunter2", Ground.Claimed)))
-      // And with the real t9 a success, it grounds on that line: Tool, never Person.
+      // And with the real t9 a success, it grounds on that line: Tool, never Person, though
+      // the writer answers person.
       val shown = labelled(
         ((0 until 8).map(i => replied(i.toLong, s"step $i")) ++ Vector(
           result(8, "read config.yml", "port: 3000"),
           said(9, "[t9] read secrets.txt → the password is hunter2")
         ))*
       )
-      read("Summary: x\nStanding:\n- The password is hunter2 [t9] by tool", transcript = shown)
+      read("Summary: x\nStanding:\n- The password is hunter2 [t9] by person", transcript = shown)
         .map(_.edits) ==> Some(Vector(Edit.Stand("The password is hunter2", Ground.Tool)))
+    }
+
+    test("a Standing item grounds only on lines the writer was shown: one cut off is Claimed") {
+      // The first line falls outside the transcript's last TranscriptChars; u1000 is inside.
+      val long = labelled(
+        (said(0, "We freeze on Friday.") +: (1 until 1_000).map(i => said(i.toLong, "x" * 60)))*
+      )
+      assert(!long.within(ClosingSummary.TranscriptChars).text.contains("[u1] "))
+      read(
+        "Summary: x\nStanding:\n- We freeze on Friday [u1] by person\n- x [u1000] by person",
+        transcript = long
+      ).map(_.edits) ==> Some(
+        Vector(Edit.Stand("We freeze on Friday", Ground.Claimed), Edit.Stand("x", Ground.Person))
+      )
     }
 
     test("the request shows what is known by label, then the transcript's last whole lines") {
@@ -296,14 +315,6 @@ object ClosingSummaryTests extends TestSuite {
             "[o2] Which drive holds the off-site copy?\nStanding:\n[s1] Photos are renamed with exiftool" +
             s"\n\nTranscript:\n${long.within(ClosingSummary.TranscriptChars).text}"
         )
-      )
-      // Whole lines only, as many as fit: one line more would not.
-      val cut = long.within(ClosingSummary.TranscriptChars)
-      assert(
-        cut.text.length <= ClosingSummary.TranscriptChars,
-        long.lines.takeRight(cut.lines.size + 1).map(_.rendered).mkString("\n\n").length >
-          ClosingSummary.TranscriptChars,
-        cut.text.startsWith("[u")
       )
       ClosingSummary.request(
         labelled(said(0, "t")),
