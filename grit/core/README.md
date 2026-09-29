@@ -11,8 +11,9 @@ In dependency order:
   `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `PrincipalId`: who an
   action is done for, `EdgeId`), `CallSlot` (a tool call's place in its turn, and its
   request's key), the one short content hash every content-addressed id uses, `TurnRef` (and its reply entry's id), `PeriodRef`, `CloseRef` (one
-  attempt to close a period on its deadline, and its workflow id) and `SettleRef` (the one
-  question whether anyone is waiting on a quiet period, and its workflow id). Imports nothing in core.
+  attempt to close a period on its deadline, and its workflow id), `SettleRef` (the one
+  question whether anyone is waiting on a quiet period, and its workflow id) and `TriageRef`
+  (the one triage of a heard message, and its workflow id). Imports nothing in core.
 - **`place`** — where conversations happen (ADR 0013): `Place`, a path in one
   containment tree under the root, everywhere, one `Namespace` per source (`fs`, `slack`,
   `task`), and `within` (a prefix, defined once); `Directory`, an absolute normalized
@@ -64,6 +65,9 @@ In dependency order:
   ledger misses is in its doc), `Day` (a calendar day in a zone, as instants), `DailyCap`
   and `Budget` (the zone days begin in, the cap, and whether a new message is taken), and
   `Budget.Refusal`, the one line a person is told when it is not. ← `id`, `message`, `store`
+- **`triage`** — what grit makes of a message it heard (ADR 0020): `Kind`, `Tags` (triage's
+  answer, or none) and `TriageStore`, where they are kept beside their entry and deleted
+  with it. ← `id`, `message`, `period`, `store`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
   `CacheDocs` (where it keeps what it makes of one closed period, deleted with that period's

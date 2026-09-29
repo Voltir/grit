@@ -1,0 +1,32 @@
+package grit.core.triage
+
+import grit.core.id.ConversationId
+import grit.core.store.{
+  EntryStore,
+  InMemoryEntryStore,
+  InMemoryPeriodStore,
+  Origin,
+  PeriodStore,
+  Tx
+}
+import grit.dbos.sql.TestTx
+
+/** The triage contract, kept by the in-memory fake. */
+object InMemoryTriageTests extends TriageContract {
+
+  private val store = new InMemoryEntryStore
+
+  protected val entries: EntryStore = store
+  protected val periods: PeriodStore =
+    new InMemoryPeriodStore(
+      store,
+      c => Origin.Task("contract", ConversationId.value(c)),
+      new grit.core.edge.InMemoryEdges,
+      new grit.core.edge.InMemoryDeliveries
+    )
+  protected val triage: TriageStore = new InMemoryTriageStore(store)
+
+  protected def transaction[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)
+
+  protected def conversation(name: String): ConversationId = ConversationId(name)
+}

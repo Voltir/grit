@@ -132,11 +132,11 @@ object PeriodTests extends TestSuite {
     }
 
     test(
-      "a purge deletes each of its turns, and every close attempt and question by its id's prefix"
+      "a purge deletes each of its turns, and every close attempt, question and triage by its id's prefix"
     ) {
       val purgeable = Purgeable(p1, TurnSeq(3), TurnSeq(4))
       (purgeable.turns.map(WorkflowId.value), purgeable.attempts) ==>
-        (Vector("c:3", "c:4"), Vector("close:c:1:", "settle:c:1:"))
+        (Vector("c:3", "c:4"), Vector("close:c:1:", "settle:c:1:", "triage:c:1:"))
     }
   }
 }
