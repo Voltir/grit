@@ -19,8 +19,8 @@ Decision:
 
 - **The edge labels each message it takes, addressed or heard.** An addressed message is a
   turn, as before. A heard one is recorded through `Inbox.hear` as an entry of its
-  conversation (`Payload.Heard`) on a turn number of its own, which runs no workflow. The
-  engine never inspects an edge's specifics.
+  conversation (`Payload.Heard`) on a turn number of its own, which runs a workflow only when
+  grit drafts a reply to it (ADR 0022). The engine never inspects an edge's specifics.
 - **A heard message keeps the time it was said.** `Inbox.hear` takes it: the entry is dated
   then, and a period it opens opens then, so a message heard late is exactly as quiet as it
   was. A thread already past idle closes on the next sweep, never asked whether anyone is
@@ -47,7 +47,8 @@ Decision:
   it is (question, answer, decision, announcement or chatter), and whether someone waits on
   a reply, whether it states something worth keeping (durable), and whether a reply from
   grit would help. Its tags are kept beside its entry and deleted with it. Triage writes no
-  entry, so it never moves a period's deadline. The kind decides nothing yet.
+  entry, so it never moves a period's deadline. The kind decides only that chatter is never
+  answered unprompted (ADR 0022).
 - **A period earns a written closing** when grit was addressed in it, or a heard message in
   it was tagged durable (at 0.5 or above), or one is untagged or unanswered. It fails open,
   so a triage outage costs money, never a record. `Earning.earns` is the one definition.
