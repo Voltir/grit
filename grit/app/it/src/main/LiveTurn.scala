@@ -122,7 +122,13 @@ object LiveTurn {
             engine.db,
             Clock.system(),
             Fresh.random(),
-            grit.turn.TurnSpeech(grit.core.speech.Speaking.Off, engine.speech, engine.deliveries)
+            grit.turn.TurnSpeech(grit.core.speech.Speaking.Off, engine.speech, engine.deliveries),
+            grit.turn.TurnStitching(
+              engine.stitches,
+              engine.search,
+              engine.lifecycle,
+              grit.core.stitch.Tuning.Default
+            )
           ),
           tooling
         ),

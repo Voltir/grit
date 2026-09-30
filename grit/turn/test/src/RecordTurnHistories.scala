@@ -494,6 +494,13 @@ object RecordTurnHistories {
       "heard-posted" -> heard(grit.core.speech.Speaking.Within(speechLimits)),
       "heard-shadowed" -> heard(grit.core.speech.Speaking.Shadow(speechLimits)),
       "replied" -> replied,
+      "stitched-first" -> {
+        val ch = new StitchChannel(
+          Payload.Message(grit.core.message.Message.User("@grit is this a real question?"))
+        )
+        val (durable, _) = ch.run(new FirstOption)
+        recorded(durable, ch.turn)
+      },
       "later-turn" -> laterTurn,
       "model-failed" -> modelFailed,
       "crashed-before-append" -> crashedBeforeAppend,

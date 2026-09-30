@@ -66,22 +66,7 @@ private[triage] object TriageJournal {
     * ([[StitchJson.write]]), or `null` when nothing was asked.
     */
   given stitched: Journaled[Either[String, Option[(EntryId, Placed)]]] =
-    outcome(
-      {
-        case Some((entry, placed)) =>
-          ujson.Obj("entry" -> EntryId.value(entry), "placed" -> StitchJson.write(placed))
-        case None => ujson.Null
-      },
-      {
-        case ujson.Null => Right(None)
-        case v =>
-          for {
-            o <- v.objOpt.toRight("stitched: expected an object")
-            entry <- o.get("entry").flatMap(_.strOpt).toRight("stitched: missing entry")
-            placed <- o.get("placed").toRight("stitched: missing placed").flatMap(StitchJson.read)
-          } yield Some((EntryId(entry), placed))
-      }
-    )
+    outcome(StitchJson.writeKept, StitchJson.readKept)
 
   /** A `consider` step's output: the decision ([[SpeechJson.writeDecision]]). */
   given considered: Journaled[Either[String, Decision]] =

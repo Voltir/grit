@@ -8,6 +8,7 @@ import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.Place
+import grit.core.stitch.{Said, Strand}
 import grit.core.store.{Entry, Nearby, Payload, Speakers}
 
 import utest.*
@@ -43,7 +44,15 @@ object TurnJudgeTests extends TestSuite {
     test(
       "the judge sees every message so far under names, replies after the root included, and only the records it recalled"
     ) {
-      val state = TurnJudge.state(all, Window(all.map(_.id)), Vector.empty, names, "draft")
+      val state = TurnJudge.state(
+        all,
+        Window(all.map(_.id)),
+        Vector.empty,
+        Strand.Read.empty,
+        800,
+        names,
+        "draft"
+      )
       state.thread ==>
         "Ana: when is the freeze?\nAssistant: Thursday.\nBen: is it still on?\nSomeone: said after"
       assert(state.recalled.contains("The freeze moved."), !state.recalled.contains("when is"))
@@ -81,6 +90,8 @@ object TurnJudgeTests extends TestSuite {
           )
         ),
         Vector(decided, markup),
+        Strand.Read.empty,
+        800,
         Speakers(Map(question.id -> "Nick")),
         "draft"
       )
@@ -93,8 +104,51 @@ object TurnJudgeTests extends TestSuite {
       )
     }
 
+    test(
+      "a strand is the thread's start, its opening kept when the thread is cut, and never recalled"
+    ) {
+      val place = Place.read("slack:T1/C1/1.0").fold(e => sys.error(e), identity)
+      def said(n: Long, text: String) = Said(
+        ConversationId("a"),
+        place,
+        Entry(
+          EntryId(s"a$n"),
+          ConversationId("a"),
+          TurnSeq(n),
+          None,
+          n,
+          Payload.Heard(text),
+          Instant.EPOCH
+        )
+      )
+      val opening = said(0, "where did we land on the Engine contract term?")
+      val real = entry(1, Payload.Heard("Is this a real question"))
+      val strand = Strand.Read(Some(opening), Vector(opening), Vector.empty)
+      val long = entry(2, Payload.Heard("x" * TurnJudge.ThreadChars))
+      val state = TurnJudge.state(
+        Vector(real, long),
+        Window(
+          Vector(real.id),
+          Vector.empty,
+          Vector(Nearby.Along(ConversationId("a"), place, Vector(opening.entry.id)))
+        ),
+        Vector(opening.entry),
+        strand,
+        800,
+        Speakers(Map(opening.entry.id -> "Nick", real.id -> "David")),
+        "draft"
+      )
+      assert(
+        state.thread.startsWith("Nick: where did we land on the Engine contract term?\n"),
+        state.thread.length == TurnJudge.ThreadChars,
+        state.recalled == ""
+      )
+    }
+
     test("a window with no record recalls nothing") {
-      TurnJudge.state(all, Window(Vector(asked.id)), Vector.empty, names, "d").recalled ==> ""
+      TurnJudge
+        .state(all, Window(Vector(asked.id)), Vector.empty, Strand.Read.empty, 800, names, "d")
+        .recalled ==> ""
     }
 
     test("the judge is shown the thread's end and the recalled's start, each cut to its limit") {

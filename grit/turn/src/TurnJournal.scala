@@ -339,6 +339,12 @@ private[turn] object TurnJournal {
         }
     )
 
+  /** A `stitch` step's output: the conversation's first message and where it was placed, or
+    * nothing asked ([[grit.core.stitch.StitchJson.writeKept]]).
+    */
+  given stitched: Journaled[Either[TurnFailure, Option[(EntryId, grit.core.stitch.Placed)]]] =
+    outcome(grit.core.stitch.StitchJson.writeKept, grit.core.stitch.StitchJson.readKept)
+
   /** A `record-speech` step's output: what became of the draft ([[SpeechJson.writeOutcome]]). */
   given speechSettled: Journaled[Either[TurnFailure, Outcome]] =
     outcome(SpeechJson.writeOutcome, SpeechJson.readOutcome)

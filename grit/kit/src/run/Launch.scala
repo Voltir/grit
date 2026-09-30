@@ -105,7 +105,13 @@ private[grit] object Launch {
             engine.db,
             Clock.system(),
             Fresh.random(),
-            grit.turn.TurnSpeech(d.speaking, engine.speech, engine.deliveries)
+            grit.turn.TurnSpeech(d.speaking, engine.speech, engine.deliveries),
+            grit.turn.TurnStitching(
+              engine.stitches,
+              engine.search,
+              engine.lifecycle,
+              grit.core.stitch.Tuning.Default
+            )
           ),
           tooling
         ),

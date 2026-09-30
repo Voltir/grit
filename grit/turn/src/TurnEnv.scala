@@ -8,11 +8,14 @@ import grit.core.context.ContextAssembler
 import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.speech.{Speaking, SpeechStore}
+import grit.core.stitch.{StitchStore, Tuning}
 import grit.core.store.{
   ConversationStore,
   Db,
+  EntrySearch,
   EntryStore,
   Jot,
+  LifecycleStore,
   ModelProfileStore,
   Principals,
   PromptStore,
@@ -27,8 +30,9 @@ import grit.core.tool.{Tool, ToolSets, Toolbox}
   * pins and makes each role's calls under its pin, `db` reads the store outside a
   * transaction, `clock` dates entries and paces the reply's stream, and `fresh` tags each
   * attempt at a model call ([[TurnStream]]); `classifier` also judges an unprompted turn's
-  * draft, settled as [[TurnSpeech]] says. None of them writes the store, so a step body that
-  * captures this can only read it.
+  * draft, settled as [[TurnSpeech]] says, and stitches a conversation's first message as
+  * [[TurnStitching]] says. None of them writes the store, so a step body that captures this
+  * can only read it.
   */
 final case class TurnEnv(
     records: TurnRecords,
@@ -39,7 +43,19 @@ final case class TurnEnv(
     db: Db^,
     clock: Clock^,
     fresh: Fresh^,
-    speech: TurnSpeech
+    speech: TurnSpeech,
+    stitching: TurnStitching
+)
+
+/** How a conversation's first message is stitched to an exchange in its room, and its strand
+  * read (ADR 0023): the placements kept (`stitches`), the room's `search`, the scope in force
+  * (`lifecycle`), and the `tuning`.
+  */
+final case class TurnStitching(
+    stitches: StitchStore,
+    search: EntrySearch,
+    lifecycle: LifecycleStore,
+    tuning: Tuning
 )
 
 /** What a turn rooted on a heard message settles its draft against (ADR 0022): whether and

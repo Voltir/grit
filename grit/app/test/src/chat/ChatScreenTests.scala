@@ -235,7 +235,7 @@ object ChatScreenTests extends TestSuite {
           .start(
             new ChatScreen.App("test-model", Theme.Default, Tokens(16000)),
             // Tall enough for every step's row, the model rows and the footer below them.
-            Size(38, cols)
+            Size(40, cols)
           )
           .message(Msg.Opened)
           .message(Msg.Turn(view))

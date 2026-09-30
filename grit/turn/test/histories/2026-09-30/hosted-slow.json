@@ -13,6 +13,10 @@
       "output": "{\"ok\":{\"workspace\":\"fs:/checkout\",\"tools\":\"a5ff6acd22dd9eb6\",\"prompt\":[\"fe2533b3357716dd\",\"a9a2c10173a5ff4e\",\"2cc33604dfaf7dbf\"]}}"
     },
     {
+      "name": "stitch",
+      "output": "{\"ok\":null}"
+    },
+    {
       "name": "DBOS.patch-topics"
     },
     {

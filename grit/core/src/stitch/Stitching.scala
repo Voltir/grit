@@ -12,10 +12,23 @@ import grit.core.classify.{
   StateJson
 }
 import grit.core.id.ConversationId
+import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseReason, Probability}
 import grit.core.place.{Place, Scope}
-import grit.core.store.{Conversation, Db, Entry, EntrySearch, Payload, Principals, Speakers}
+import grit.core.store.{
+  Conversation,
+  ConversationStore,
+  Db,
+  Entry,
+  EntrySearch,
+  EntryStore,
+  LifecycleStore,
+  Payload,
+  Principals,
+  Speakers,
+  StoreError
+}
 
 /** One exchange as the classifier is offered it: its `root` (the conversation it began in),
   * the root's `opening` message, its `latest` messages, its newest closing's headline when it
@@ -27,6 +40,19 @@ final case class Exchange private[stitch] (
     latest: Vector[Said],
     record: Option[String],
     offered: Offered
+)
+
+/** Where stitching reads: a conversation's `entries` and origin (`conversations`), the scope
+  * in force (`lifecycle`), the placements kept (`stitches`), the room's `search`, and who said
+  * each message (`principals`).
+  */
+final case class StitchReads(
+    entries: EntryStore,
+    conversations: ConversationStore,
+    lifecycle: LifecycleStore,
+    stitches: StitchStore,
+    search: EntrySearch,
+    principals: Principals
 )
 
 /** Whether a stitchable conversation's first message continues an exchange in its room
@@ -109,6 +135,54 @@ object Stitching {
       links: Vector[Link],
       openings: Vector[Said],
       speakers: Speakers
+  )
+
+  /** Where `turn`'s message goes ([[judge]]), when its entry is its conversation's first and
+    * a person said it, in the scope in force, read through `db` from `reads`: that entry and its
+    * placement. `None`, asking nothing, otherwise. `Left` when the store fails.
+    */
+  def turn(
+      classifier: Classifier^,
+      reads: StitchReads,
+      db: Db^,
+      turn: TurnRef,
+      tuning: Tuning
+  ): Either[StoreError, Option[(EntryId, Placed)]] =
+    db.read {
+      for {
+        all <- reads.entries.list(turn.conversationId)
+        conversation <- reads.conversations.get(turn.conversationId)
+        settings <- reads.lifecycle.current()
+      } yield Opening(
+        all.minByOption(_.seq).filter(e => e.turnSeq == turn.turnSeq && e.payload.said.nonEmpty),
+        conversation,
+        settings.locality.scope
+      )
+    }.flatMap { o =>
+      (o.conversation, o.first) match {
+        case (Some(c), Some(first)) =>
+          judge(
+            classifier,
+            reads.stitches,
+            reads.search,
+            reads.principals,
+            db,
+            c,
+            first,
+            o.scope,
+            tuning
+          ).map(_.map(first.id -> _))
+        case _ => Right(None)
+      }
+    }
+
+  /** What [[turn]] reads: the conversation's first entry when it is the turn's and said, its
+    * conversation, and the scope in force.
+    */
+  private final case class Opening(
+      first: Option[Entry],
+      conversation: Option[Conversation],
+      scope: Scope
   )
 
   /** A reader's thread of at most `chars`: `strand` (its excerpt, [[excerpt]]) first, then as

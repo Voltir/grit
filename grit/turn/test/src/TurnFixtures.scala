@@ -11,6 +11,7 @@ import grit.core.id.{PeriodSeq, TurnSeq}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.speech.{Decision, Heard, InMemorySpeechStore, Limits, Reach}
 import grit.core.spend.DailyCap
+import grit.core.stitch.{InMemoryStitchStore, Tuning}
 import grit.core.triage.{Kind, Tags}
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
@@ -88,6 +89,41 @@ object TurnFixtures {
     conversations.findOrCreate(origin, PrincipalId.Local)(using TestTx.fake)
     TurnHosting(conversations, Prompts, ToolSets, edges, edges, voices, new InMemoryPrincipals)
   }
+
+  /** A search that finds nothing: what a turn whose conversation is never stitched reads. */
+  object NoSearch extends grit.core.store.EntrySearch {
+    def search(
+        conversation: ConversationId,
+        from: TurnSeq,
+        before: TurnSeq,
+        query: String,
+        limit: Int
+    )(using Tx^): Either[StoreError, Vector[grit.core.store.EntrySearch.Hit]] = Right(Vector.empty)
+    def nearby(open: Vector[grit.core.store.OpenPeriod], query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[grit.core.store.EntrySearch.Hit]] = Right(Vector.empty)
+    def closings(conversations: Vector[ConversationId], query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[grit.core.store.EntrySearch.Hit]] = Right(Vector.empty)
+    def room(
+        room: grit.core.place.Place,
+        from: Instant,
+        until: Instant,
+        query: String,
+        limit: Int
+    )(using Tx^): Either[StoreError, Vector[grit.core.store.EntrySearch.Hit]] = Right(Vector.empty)
+  }
+
+  /** Stitching over stores of its own: what a fixture turn at [[origin]], a TUI session, which
+    * is never stitched, is given.
+    */
+  def unstitched(): TurnStitching =
+    TurnStitching(
+      new grit.core.stitch.InMemoryStitchStore(new InMemoryEntryStore, _ => origin),
+      NoSearch,
+      new grit.core.store.InMemoryLifecycleStore,
+      grit.core.stitch.Tuning.Default
+    )
 
   /** Every fixture turn's prompts and tool sets, kept by content id as the real stores keep
     * them, forever: shared, so a turn run again over another world reads back what its first
@@ -411,7 +447,8 @@ object TurnFixtures {
         FakeDb,
         new NoWait,
         Fresh.random(),
-        quiet()
+        quiet(),
+        unstitched()
       ),
       TurnTooling[{}](
         Toolbox.of[{}]().fold(d => throw new java.lang.AssertionError(d), identity),
@@ -614,21 +651,24 @@ object TurnFixtures {
       assembler: ContextAssembler^,
       ledger: UsageLedger,
       classifier: Classifier^ = NoClassifier,
-      speech: TurnSpeech = quiet()
+      speech: TurnSpeech = quiet(),
+      stitching: TurnStitching = unstitched(),
+      hosted: TurnHosting = hosting()
   )(
       id: WorkflowId
   )(using Durable^): String =
     Turn.body(
       TurnEnv(
         TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
-        hosting(),
+        hosted,
         assembler,
         classifier,
         new FixedModels(provider, new StubProvider()),
         FakeDb,
         new NoWait,
         Fresh.random(),
-        speech
+        speech,
+        stitching
       ),
       TurnTooling[{NoCheckout}](noTools, Toolbox.Empty, Vector.empty, new FakeJot, budget(5))
     )(id)
@@ -661,7 +701,8 @@ object TurnFixtures {
         FakeDb,
         new NoWait,
         Fresh.random(),
-        quiet()
+        quiet(),
+        unstitched()
       ),
       TurnTooling[{NoCheckout}](noTools, Toolbox.Empty, Vector.empty, new FakeJot, budget(5))
     )(id)
@@ -703,7 +744,8 @@ object TurnFixtures {
       summarizer: Provider^ = new StubProvider(),
       classifier: Classifier^ = NoClassifier,
       clock: Clock^ = new NoWait,
-      speech: TurnSpeech = quiet()
+      speech: TurnSpeech = quiet(),
+      stitching: TurnStitching = unstitched()
   )(id: WorkflowId)(using Durable^): String =
     tooledBody(
       entries,
@@ -715,7 +757,8 @@ object TurnFixtures {
       noTools,
       5,
       clock,
-      speech = speech
+      speech = speech,
+      stitching = stitching
     )(id)
 
   /** The limits a speech fixture speaks within: [[grit.core.speech.Limits.suggested]], $0.25. */
@@ -824,7 +867,8 @@ object TurnFixtures {
       calls: Int,
       clock: Clock^ = new NoWait,
       hosted: Vector[Tool.Offered] = Vector.empty,
-      speech: TurnSpeech = quiet()
+      speech: TurnSpeech = quiet(),
+      stitching: TurnStitching = unstitched()
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
@@ -836,7 +880,8 @@ object TurnFixtures {
         FakeDb,
         clock,
         Fresh.random(),
-        speech
+        speech,
+        stitching
       ),
       TurnTooling[{ws}](tools, Toolbox.Empty, hosted, new FakeJot, budget(calls))
     )(id)
@@ -862,7 +907,8 @@ object TurnFixtures {
         FakeDb,
         new NoWait,
         Fresh.random(),
-        quiet()
+        quiet(),
+        unstitched()
       ),
       TurnTooling[{ws}](tools, Toolbox.Empty, Vector.empty, new FakeJot, budget(calls))
     )(id)
@@ -877,4 +923,94 @@ object TurnFixtures {
       classifier: Classifier^ = NoClassifier
   ): String =
     durable.run(turn.workflowId)(turnBody(entries, provider, ledger, summarizer, classifier))
+
+  /** Answers every choice with its first option at 0.9, counting its calls. */
+  final class FirstOption extends Classifier {
+    @caps.unsafe.untrackedCaptures
+    var calls = 0
+
+    protected def answer(
+        state: ujson.Value,
+        questions: Vector[Question]
+    ): Either[ClassifierError, Answers] = {
+      calls += 1
+      val answers = questions.map {
+        case q: Question.Choice =>
+          val keys = q.keys.map(_.name)
+          Answer.Choice(
+            keys.headOption.getOrElse(""),
+            keys.zipWithIndex.map((k, i) => Answer.Weight(k, if (i == 0) 0.9 else 0.1)),
+            0.8
+          )
+        case Question.YesNo(_, _, _) => Answer.YesNo(0.9)
+      }
+      Right(Answers(answers, Usage(Tokens(900), Tokens.Zero, Tokens.Zero, None), "jev"))
+    }
+  }
+
+  val StitchedAt = Instant.parse("2026-09-30T22:31:57Z")
+
+  /** Slack channel C's first thread, holding a heard question, and a second, whose first message is
+    * `first`; the second thread's turn.
+    */
+  final class StitchChannel(first: Payload) {
+    val entries = new InMemoryEntryStore
+    val conversations = new InMemoryConversationStore
+    private def originOf(c: ConversationId): Origin =
+      conversations.get(c)(using TestTx.fake).toOption.flatten.fold(origin)(_.origin)
+    val stitches = new InMemoryStitchStore(entries, originOf)
+    val a: ConversationId =
+      conversations
+        .findOrCreate(Origin.Slack("T", "C", "1.0"), PrincipalId.Local)(using TestTx.fake)
+        .fold(e => sys.error(e.toString), _.id)
+    val b: ConversationId =
+      conversations
+        .findOrCreate(Origin.Slack("T", "C", "2.0"), PrincipalId.Local)(using TestTx.fake)
+        .fold(e => sys.error(e.toString), _.id)
+    private def put(c: ConversationId, id: String, payload: Payload, at: Instant): Entry = {
+      given grit.core.store.Tx = TestTx.fake
+      val next = entries.lockNext(c).getOrElse(sys.error("store"))
+      val e = Entry(EntryId(id), c, next.turnSeq, None, next.seq, payload, at)
+      entries.insert(e)
+      e
+    }
+    val asked = put(a, "a:asked", Payload.Heard("where did we land on the Engine contract term?"), StitchedAt)
+    val root = put(b, "b:first", first, StitchedAt.plusSeconds(29))
+    val turn = TurnRef(b, root.turnSeq)
+
+    def run(classifier: Classifier^): (InMemoryDurable, String) = {
+      val durable = new InMemoryDurable
+      val hosted = TurnHosting(
+        conversations,
+        Prompts,
+        ToolSets,
+        new grit.core.edge.InMemoryEdges,
+        new grit.core.edge.InMemoryEdges,
+        new grit.core.store.InMemoryVoiceStore,
+        new grit.core.store.InMemoryPrincipals
+      )
+      val done = durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new Scripted((_, _) =>
+            Right(
+              Message.Assistant(
+                Vector(AssistantBlock.Text("It is a real question.")),
+                StopReason.EndTurn,
+                Usage(Tokens(10), Tokens(2), Tokens.Zero, None),
+                "m"
+              )
+            )
+          ),
+          new Before(entries),
+          new InMemoryUsageLedger,
+          classifier,
+          stitching = TurnStitching(stitches, NoSearch, new grit.core.store.InMemoryLifecycleStore, Tuning.Default),
+          hosted = hosted
+        )
+      )
+      (durable, done)
+    }
+  }
+
 }

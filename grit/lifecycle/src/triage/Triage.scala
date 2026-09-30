@@ -1,10 +1,10 @@
 package grit.lifecycle.triage
 
 import grit.core.durable.Durable
-import grit.core.id.{EntryId, TriageRef, TurnSeq, WorkflowId}
+import grit.core.id.{EntryId, TriageRef, TurnRef, TurnSeq, WorkflowId}
 import grit.core.period.Probability
 import grit.core.speech.{Decision, SpeechJson}
-import grit.core.stitch.{Along, Placed, StitchJson, Stitching, Strand}
+import grit.core.stitch.{Along, Placed, StitchJson, StitchReads, Stitching, Strand}
 import grit.core.store.{Entry, Payload, Speakers, StoreError}
 import grit.core.triage.{Kind, Tags}
 import grit.lifecycle.transcript.PeriodTranscript
@@ -96,57 +96,27 @@ object Triage {
         })
     }
 
-  /** What the `stitch` step reads of the heard message's conversation. */
-  private final case class Thread(
-      all: Vector[Entry],
-      conversation: Option[grit.core.store.Conversation],
-      scope: grit.core.place.Scope
-  )
-
   /** The `stitch` step: where the heard message that is `triage`'s turn goes among its
-    * room's exchanges, when it is its conversation's first message; `None` when it is not, is
-    * gone, or nothing was asked. Why not, when the store cannot be read.
+    * room's exchanges, when it is its conversation's first message ([[Stitching.turn]]);
+    * `None` when it is not, is gone, or nothing was asked. Why not, when the store cannot be
+    * read.
     */
   private def stitch(
       env: TriageEnv^,
       triage: TriageRef
-  ): Either[String, Option[(EntryId, Placed)]] =
-    for {
-      read <- env.db
-        .read { (tx: grit.core.store.Tx^) ?=>
-          for {
-            all <- env.records.entries.list(triage.period.conversationId)
-            conversation <- env.records.conversations.get(triage.period.conversationId)
-            settings <- env.records.lifecycle.current()
-          } yield Thread(all, conversation, settings.locality.scope)
-        }
-        .left
-        .map(e => s"thread unread: ${describe(e)}")
-      all = read.all
-      // A message gone is `ask`'s to report.
-      heard = all.collectFirst {
-        case e @ Entry(_, _, turn, _, _, Payload.Heard(_), _) if turn == triage.turn => e
-      }
-      placed <- (read.conversation, heard) match {
-        case (Some(c), Some(heard)) if all.minByOption(_.seq).exists(_.id == heard.id) =>
-          val r = env.records
-          Stitching
-            .judge(
-              env.classifier,
-              r.stitches,
-              r.search,
-              r.principals,
-              env.db,
-              c,
-              heard,
-              read.scope,
-              env.tuning
-            )
-            .left
-            .map(e => s"room unread: ${describe(e)}")
-        case _ => Right(None)
-      }
-    } yield placed.flatMap(p => heard.map(_.id -> p))
+  ): Either[String, Option[(EntryId, Placed)]] = {
+    val r = env.records
+    Stitching
+      .turn(
+        env.classifier,
+        StitchReads(r.entries, r.conversations, r.lifecycle, r.stitches, r.search, r.principals),
+        env.db,
+        TurnRef(triage.period.conversationId, triage.turn),
+        env.tuning
+      )
+      .left
+      .map(e => s"room unread: ${describe(e)}")
+  }
 
   /** The `ask` step: the heard message that is `triage`'s turn, and what the classifier made
     * of it; why not, when it cannot be read or is not there.

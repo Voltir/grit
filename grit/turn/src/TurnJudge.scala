@@ -7,7 +7,8 @@ import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.period.Probability
 import grit.core.provider.TokenEstimator
 import grit.core.speech.Judged
-import grit.core.store.{Entry, Payload, Speakers}
+import grit.core.stitch.{Stitching, Strand}
+import grit.core.store.{Entry, Nearby, Payload, Speakers}
 
 /** What judges an unprompted turn's draft before it is posted (ADR 0022): one classifier call,
   * two yes/no questions about the draft against its thread and what the turn recalled. Their
@@ -101,14 +102,19 @@ object TurnJudge {
 
   /** The judge's state for a draft `draft`, from `all` of its conversation's entries so far,
     * `window` the turn's window over them, `near` the other conversations' entries its
-    * sections name, and `speakers` who wrote each: the thread is each person's message and
-    * each reply so far, the heard message and every reply after it included, one per line under its speaker's name ("Assistant" for grit's); recalled is each record the window showed and
-    * each other conversation's section, as the model was shown them ([[Shown]]).
+    * sections name, `strand` what its strand said, and `speakers` who wrote each: the thread
+    * is the strand's excerpt within `strandChars` ([[Stitching.excerpt]]), then each person's
+    * message and each reply so far, the heard message and every reply after it included,
+    * within [[ThreadChars]] altogether ([[Stitching.thread]]), one per line under its speaker's name ("Assistant" for grit's); recalled is each record the window showed and
+    * each other conversation's section but its strand's, as the model was shown them
+    * ([[Shown]]): a strand is context, not recall.
     */
   def state(
       all: Vector[Entry],
       window: Window,
       near: Vector[Entry],
+      strand: Strand.Read,
+      strandChars: Int,
       speakers: Speakers,
       draft: String
   ): State = {
@@ -130,9 +136,18 @@ object TurnJudge {
         }
       )
     val recalled = records.flatMap(Shown.of(_, speakers)) ++
-      window.nearby.flatMap(Shown.section(_, near, speakers))
+      window.nearby
+        .filter {
+          case Nearby.Along(_, _, _) => false
+          case Nearby.Open(_, _, _) | Nearby.Closed(_, _, _) => true
+        }
+        .flatMap(Shown.section(_, near, speakers))
     State(
-      thread.mkString("\n"),
+      Stitching.thread(
+        Stitching.excerpt(strand.opening, strand.said, speakers, strandChars),
+        thread.mkString("\n"),
+        ThreadChars
+      ),
       draft,
       recalled
         .collect { case Message.User(text) => text }

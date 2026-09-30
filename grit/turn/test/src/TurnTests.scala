@@ -45,6 +45,8 @@ object TurnTests extends TestSuite {
     Vector(
       "pin-models",
       "offer",
+      "stitch",
+      "record-stitch",
       "classify",
       "record-topic",
       "assemble",
@@ -66,12 +68,12 @@ object TurnTests extends TestSuite {
   /** What a turn records: its steps, each patch's marker before the steps it brought. */
   private val Recorded: Vector[String] =
     Always
-      .patch(2, Vector("DBOS.patch-topics"), 0)
-      .patch(6, Vector("DBOS.patch-record-window"), 0)
-      .patch(8, Vector("DBOS.patch-tools"), 0)
+      .patch(3, Vector("DBOS.patch-topics"), 0)
+      .patch(7, Vector("DBOS.patch-record-window"), 0)
+      .patch(9, Vector("DBOS.patch-tools"), 0)
 
   /** How many of [[Recorded]] come before `assemble`. */
-  private val Placing = 5
+  private val Placing = 6
 
   val tests = Tests {
     test("a turn rooted on a heard message keeps its answer as a draft: no reply, no summary") {
@@ -100,7 +102,8 @@ object TurnTests extends TestSuite {
       Turn.Step.all ==> AllSteps
       Turn.running(Vector.empty) ==> "pin-models"
       Turn.running(Vector("pin-models")) ==> "offer"
-      Turn.running(Vector("pin-models", "offer")) ==> "classify"
+      Turn.running(Vector("pin-models", "offer")) ==> "stitch"
+      Turn.running(Vector("pin-models", "offer", "stitch")) ==> "classify"
       Turn.running(Vector("DBOS.patch-topics", "classify")) ==> "record-topic"
       Turn.running(Vector("DBOS.patch-topics", "classify", "record-topic")) ==> "assemble"
       Turn.running(Vector("assemble")) ==> "record-window"

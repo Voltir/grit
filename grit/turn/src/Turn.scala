@@ -12,6 +12,7 @@ import grit.core.message.Message
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 import grit.core.speech.{Outcome, Speech, SpeechJson}
+import grit.core.stitch.{Along, StitchReads, Stitching, Strand}
 import grit.core.store.{Entry, EntryStore, Jot, Payload, Speakers, StoreError, Tx}
 import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
 import grit.core.topic.Topic
@@ -27,6 +28,11 @@ import TurnVerdict.Shape
   *      workspace, the tool set (its own tools, and the hosted ones the edge serving that
   *      workspace advertises) and the system prompt (ADR 0016), kept by content id and
   *      recorded by id; a rerun reads them back, so it is offered what it first was.
+  *   1. `stitch` — when the turn's message is its conversation's first, said by a person,
+  *      in a stitchable origin: where it goes among its room's exchanges
+  *      ([[grit.core.stitch.Stitching.turn]]); nothing asked otherwise, nor for a heard one its
+  *      triage placed. Never fails the turn.
+  *   1. `record-stitch` — that placement kept, only when one was made.
   *   1. `classify` — where the turn's message goes among the conversation's topics
   *      ([[TurnTopics]]). Never fails the turn.
   *   1. `record-topic` — that placement recorded as an entry, with the classifier's cost.
@@ -92,6 +98,8 @@ object Turn {
   object Step {
     val PinModels = "pin-models"
     val Offer = "offer"
+    val Stitch = "stitch"
+    val RecordStitch = "record-stitch"
     val Classify = "classify"
     val RecordTopic = "record-topic"
     val Assemble = "assemble"
@@ -106,17 +114,20 @@ object Turn {
     val Summarise = "summarise"
     val AppendSummary = "append-summary"
 
-    /** The steps only some turns take: `call-model-again`, `call-model-plain` and
-      * `record-verdict`, a turn whose model was asked about its topic; `judge` and
-      * `record-speech`, a turn rooted on a heard message.
+    /** The steps only some turns take: `record-stitch`, a turn whose first message was
+      * stitched; `call-model-again`, `call-model-plain` and `record-verdict`, a turn whose
+      * model was asked about its topic; `judge` and `record-speech`, a turn rooted on a heard
+      * message.
       */
     val optional: Vector[String] =
-      Vector(CallModelAgain, CallModelPlain, RecordVerdict, Judge, RecordSpeech)
+      Vector(RecordStitch, CallModelAgain, CallModelPlain, RecordVerdict, Judge, RecordSpeech)
 
     val all: Vector[String] =
       Vector(
         PinModels,
         Offer,
+        Stitch,
+        RecordStitch,
         Classify,
         RecordTopic,
         Assemble,
@@ -364,6 +375,32 @@ object Turn {
   ): String = {
     import TurnJournal.given
     val records = env.records
+    val stitching = env.stitching
+    val reads = StitchReads(
+      records.entries,
+      env.hosting.conversations,
+      stitching.lifecycle,
+      stitching.stitches,
+      stitching.search,
+      records.principals
+    )
+    val stitched = d.step(Step.Stitch) { () =>
+      Stitching
+        .turn(env.classifier, reads, env.db, turn, stitching.tuning)
+        .left
+        .map(storeFailure)
+    } match {
+      case Right(Some((root, placed))) =>
+        val at = env.clock.now()
+        d.transact(Step.RecordStitch)(
+          stitching.stitches.record(root, placed, at).left.map(storeFailure)
+        ) match {
+          case Right(_) => ""
+          case Left(failure) => s"; stitch not kept: $failure"
+        }
+      case Right(None) => ""
+      case Left(failure) => s"; not stitched: $failure"
+    }
     val placing =
       if (d.patch(Patches.Topics))
         Placing.Placed(d.step(Step.Classify) { () =>
@@ -379,7 +416,7 @@ object Turn {
       case Placing.Unplaced => None
     }
     val ran = run(turn, placing, tooling)(using env, pins, offer, d)
-    val topics = topicFailure.fold("")(f => s"; topics not recorded: $f") +
+    val topics = stitched + topicFailure.fold("")(f => s"; topics not recorded: $f") +
       ran.verdictUnrecorded.fold("")(f => s"; verdict not recorded: $f")
     (ran.result, offer.root) match {
       case (Left(failure), TurnOffer.Root.Addressed) => s"failed: $failure$topics"
@@ -425,6 +462,9 @@ object Turn {
     */
   private def judgeDraft(env: TurnEnv^, turn: TurnRef): TurnJudge.Judgement = {
     val records = env.records
+    val stitching = env.stitching
+    val conversations = env.hosting.conversations
+    val now = env.clock.now()
     env.db
       .read { (tx: Tx^) ?=>
         for {
@@ -437,11 +477,12 @@ object Turn {
           near <- window.fold[Either[StoreError, Vector[Entry]]](Right(Vector.empty))(
             nearbyOf(records.entries, _)
           )
-          named <- records.principals.speakers(all.map(_.id))
-        } yield (all, window, near, named)
+          strand <- strandOf(stitching, conversations, turn, all, now)
+          named <- records.principals.speakers((all ++ strand.shown).map(_.id))
+        } yield Judging(all, window, near, strand, named)
       } match {
       case Left(e) => TurnJudge.Judgement.Unjudged(s"store: ${describe(e)}")
-      case Right((all, window, near, named)) =>
+      case Right(Judging(all, window, near, strand, named)) =>
         (
           all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq),
           all.collectFirst {
@@ -459,6 +500,8 @@ object Turn {
                     all,
                     window.getOrElse(Window(Vector.empty)),
                     near,
+                    strand,
+                    stitching.tuning.strandChars,
                     named,
                     text
                   )
@@ -468,6 +511,41 @@ object Turn {
         }
     }
   }
+
+  /** What the `judge` step reads. */
+  private final case class Judging(
+      all: Vector[Entry],
+      window: Option[Window],
+      near: Vector[Entry],
+      strand: Strand.Read,
+      named: grit.core.store.Speakers
+  )
+
+  /** What `turn`'s conversation's strand said from the horizon before its first entry
+    * (`all`'s) until `until`, in the scope in force ([[Along.read]]); nothing for a
+    * conversation gone.
+    */
+  private def strandOf(
+      stitching: TurnStitching,
+      conversations: grit.core.store.ConversationStore,
+      turn: TurnRef,
+      all: Vector[Entry],
+      until: Instant
+  )(using Tx^): Either[StoreError, Strand.Read] =
+    for {
+      conversation <- conversations.get(turn.conversationId)
+      settings <- stitching.lifecycle.current()
+      read <- conversation.fold[Either[StoreError, Strand.Read]](Right(Strand.Read.empty)) { c =>
+        val began = all.minByOption(_.seq).fold(until)(_.createdAt)
+        Along.read(
+          stitching.stitches,
+          c,
+          settings.locality.scope,
+          began.minusNanos(stitching.tuning.horizon.toNanos),
+          until
+        )
+      }
+    } yield read
 
   /** The `record-speech` step: what becomes of `turn`'s draft, as `judgement` and the
     * speaking in force say ([[Speech.post]]), unless the assistant already replied after its
@@ -494,8 +572,17 @@ object Turn {
         .collectFirst { case Entry(id, _, _, _, _, Payload.Draft(m), _) if id == turn.draftId => m }
         .toRight(TurnFailure.Store(s"${WorkflowId.value(turn.workflowId)} has no draft"))
       reach <- store.reach(turn).left.map(storeFailure)
+      // The strand after the root, to now: the assistant's reply there holds the draft too.
+      strand <- strandOf(
+        env.stitching,
+        env.hosting.conversations,
+        turn,
+        all,
+        at.plusSeconds(1)
+      ).left
+        .map(storeFailure)
       judged = Speech
-        .spoken(root, all, Vector.empty)
+        .spoken(root, all, strand.said.map(_.entry))
         .getOrElse(judgement match {
           case TurnJudge.Judgement.Passed => Outcome.Passed
           case TurnJudge.Judgement.NothingRecalled => Outcome.NothingRecalled

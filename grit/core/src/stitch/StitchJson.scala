@@ -2,7 +2,7 @@ package grit.core.stitch
 
 import scala.concurrent.duration.*
 
-import grit.core.id.ConversationId
+import grit.core.id.{ConversationId, EntryId}
 import grit.core.message.Tokens
 import grit.core.period.Probability
 import grit.core.store.PayloadJson
@@ -66,6 +66,26 @@ object StitchJson {
         case other => Left(s"placed: no kind $other")
       }
     } yield placed
+
+  /** A step's placement of a first message: `{"entry", "placed"}`, or `null` when nothing was
+    * asked.
+    */
+  def writeKept(kept: Option[(EntryId, Placed)]): ujson.Value = kept match {
+    case Some((entry, placed)) =>
+      ujson.Obj("entry" -> EntryId.value(entry), "placed" -> write(placed))
+    case None => ujson.Null
+  }
+
+  /** The placement `v` stores in [[writeKept]]'s form, or why it stores none. */
+  def readKept(v: ujson.Value): Either[String, Option[(EntryId, Placed)]] = v match {
+    case ujson.Null => Right(None)
+    case other =>
+      for {
+        o <- obj(other)
+        entry <- str(o, "entry")
+        placed <- o.get("placed").toRight("kept: no placed").flatMap(read)
+      } yield Some((EntryId(entry), placed))
+  }
 
   /** The stored name of `placed`'s kind: `follows`, `begins` or `unread`. */
   def kindOf(placed: Placed): String = placed match {
