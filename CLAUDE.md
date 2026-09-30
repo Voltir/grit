@@ -88,29 +88,24 @@ capability is a promise of purity.**
     untracked effect cannot be observed.
 
 **Tests** ([`STYLE.md`](STYLE.md#tests)): a test is seen red for the right reason before
-it is trusted — test first for new behaviour and bug fixes, a minimal planted change for
-existing behaviour — and the commit quotes the failing assertion (and the plant's diff); a
-name states a contract and its assertion pins the value; a fake shares one spec with the
-implementation it stands in for. The `test-janitor` agent reviews test files against these rules.
+it is trusted (the procedure is the `grit-test-cycle` skill's); a name states a contract
+and its assertion pins the value; a fake shares one spec with the implementation it stands
+in for. The `test-janitor` agent reviews test files against these rules.
 
 ## Build and format
 
 ```bash
-./mill grit.core.test                                   # the module you touched
-./mill grit.core.test.testOnly grit.core.topic.TopicsTests   # one suite
-./mill __.test.testCached                               # the unit tier: once, last, before committing
-./mill __.test                                          # the unit tier, every suite rerun
-scripts/it                                              # the integration tier (below)
+scripts/check grit.core.topic.TopicsTests   # one suite, while iterating
+scripts/check grit.core                     # the module you touched
+./mill grit.core.compile                    # does it type-check
 ./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources   # before committing
+scripts/check                               # the commit gate: unit tier, law, lint; once, last
+scripts/check --it                          # and the integration tier (below)
+./mill __.test                              # every unit suite rerun: a flake hunt
+scripts/sql grit_agent "SELECT …"           # a read-only query on a local database
 ```
 
-**Test incrementally.** While iterating, compile and test only the module or suite the
-change touches (or Metals' `compile-module`/`test`, below). The unit tier is the last
-gate at a commit point, run once, not after every edit. `testCached` reruns a module's
-suites only when their inputs changed, and never caches a failure; `__.test` reruns them
-all (a flake hunt, a milestone's close). Write `__.test.testCached`: `__.testCached` also
-matches the `it` modules. A file a test reads by path is not an input unless build.mill
-makes its content one (`grit.turn.test`'s `histories` is the pattern).
+The procedure: the `grit-test-cycle` and `grit-local-db` skills.
 
 Braces, never significant indentation — `-no-indent` makes it a compile error.
 
@@ -120,8 +115,7 @@ against Postgres and DBOS, are in `it` modules (`grit.dbos.it`, `grit.app.it`,
 JVM (`TestPostgres`), built from the same `docker/postgres/Dockerfile` compose builds:
 `postgres:18` plus `pg_textsearch`
 ([ADR 0005](docs/decisions/0005-entries-are-ranked-with-bm25-inside-postgres-through-pg-textsearch.md)).
-Run it at a milestone's close, and before committing a change to `grit.dbos`, `schema.sql`
-or the engine's live paths. It needs Docker; there is no skip.
+It needs Docker; there is no skip.
 
 **Capture and separation checking: [`docs/capture-checking.md`](docs/capture-checking.md)**
 has every trap met so far (symptom, cause, fix), how to test that something does not
@@ -136,10 +130,10 @@ compile, and the Scala-upgrade checklist. The ones that bite most:
   `SeparationTests`.
 
 Every warning the build enables is an error (`-Werror`); `build.mill`'s `scalacOptions`
-lists the set in force, and a warning joins it in its own commit.
+lists the set in force, and a warning joins it in its own commit. `-Wunused:all` is on only
+in `scripts/check`'s lint tier.
 
-A CLI `./mill` and Metals never block each other (separate build directories). Metals
-spinners, BSP processes, build-directory hygiene and Metals' MCP set-up:
+Metals spinners, BSP processes, build-directory hygiene and Metals' MCP set-up:
 [`docs/editor-tooling.md`](docs/editor-tooling.md).
 
 ## The architecture gate (enola)
@@ -173,9 +167,8 @@ Metals' MCP server (`grit-metals` in `.mcp.json`; port from `.metals/mcp.json`) 
 - **who uses X** — `get-usages`, compiler-exact where grep and enola's symbol facts are not;
 - **what exactly X's type is** — `typed-glob-search`, `inspect`, `get-docs`;
 - **compiling or testing one module mid-edit, in this checkout** — `compile-module`,
-  `test`; it builds into `.bsp/out`, so it never blocks a CLI `./mill`. Metals serves this
-  checkout only: in a git worktree, type-check with `./mill grit.<module>.compile`, and
-  ask Metals only about code the branch has not changed.
+  `test`; it builds into `.bsp/out`, so it never blocks a CLI `./mill`. It serves this
+  checkout only (a worktree: the `grit-test-cycle` skill).
 
 Not for understanding a package's behaviour: read the files. Metals hands context out one
 symbol at a time; in a measured comparison, file reads answered edge-case questions

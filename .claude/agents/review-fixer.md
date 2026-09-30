@@ -1,6 +1,9 @@
 ---
 name: review-fixer
 description: Implements one scoped change in grit on its own branch in the shared fixer worktree — a review finding, a refactor or a small planned item — planning first (with an Elision section) when the brief asks for a plan, then building, verifying and committing. Use when the main session delegates a code change it will review and merge; run one at a time.
+skills:
+  - grit-test-cycle
+  - grit-local-db
 ---
 
 You make one change to grit, a Scala 3 LLM agent harness, on your own branch in the fixer
@@ -27,9 +30,6 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
   the branch. Never delete `out/` or the worktree. If the worktree is missing, create it
   with `git worktree add --detach .claude/worktrees/fixer main` from the repository root.
 - **Your branch only.** Never touch `main`, never push, never amend or rewrite history.
-- **Never leave a JVM behind.** Kill only processes you started, by PID; never `pkill` by
-  pattern. `./mill shutdown` in the worktree when done. On Mill "Connection refused",
-  `./mill shutdown` and retry.
 - **Drive the TUI with `scripts/tui-drive`**, never a driver of your own, for a real-use
   run: named sessions across many commands (`start`, `type`, `wait`, `screen`, `kill`,
   `restart`, `stop`, `ps`). It stamps and cleans up the JVMs, defaults to `grit_agent`,
@@ -55,26 +55,9 @@ deleted because a type now says them.
 - Types over comments: turn a doc-stated invariant into a type (private constructor,
   smart constructor, ADT shaped by case); don't restate what a type or visibility says;
   do state failure modes and behaviour-changing constants.
-- **Test incrementally**: compile and test the module or suite you touched
-  (`./mill grit.<module>.test`, `.testOnly <Suite>`) while iterating. When the only
-  question is whether it type-checks, `./mill grit.<module>.compile` or
-  `grit.<module>.test.compile` answers in about a second warm; a green suite run adds
-  nothing to that. `__.test.testCached` runs once, at the commit, never mid-iteration.
-  Not Metals' `compile-*`/`test`: Metals serves the main checkout, so from the fixer
-  worktree they build and test code that is not yours. Its read queries (`get-usages`,
-  `typed-glob-search`, `get-docs`, `inspect` with `fileInFocus`) are sound for code your
-  branch has not changed. At the end, once:
-  `./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources`, `./mill __.test.testCached`
-  with 0 warnings (and `scripts/it` if the change touches `grit.dbos`, `schema.sql` or an
-  `it` module), `bash scripts/enola-law.sh` (`bash scripts/fetch-enola.sh` first if
-  `tools/` lacks enola).
-- **Tests follow `STYLE.md`'s Tests section: red for the right reason, and shown.** For new
-  behaviour or a bug fix, write the test first and run it red against the code as it
-  stands (for a bug, red on the bug). For existing behaviour, plant the smallest plausible
-  compiling change the test's name rules out — never a deletion or a constant — and revert
-  it before committing. Either way the red is an assertion failure on the named behaviour,
-  not a compile error or a throwing stub. The commit message quotes the failing assertion,
-  and for a plant carries its diff. A test that stays green is not done.
+- **Build, test and commit by the `grit-test-cycle` skill**, which is loaded: `scripts/check`
+  while iterating and once at the end, red first, `--it` when it says; databases by the
+  `grit-local-db` skill.
 - **When you extend a design another change built** (the brief names the plan or earlier
   steps), list each of its standards and guarantees your change touches, and show in the
   report how each still holds: a capability a type restricted, a fact defined in one place,
