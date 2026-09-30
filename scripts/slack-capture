@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""Records the Slack Web API answers SlackContract's socket runner replays.
+
+Posts a few messages as grit's bot in a test channel, reads them back with exactly the
+requests SocketSlack makes, then deletes what it posted. The answers are kept, cut down to
+the fields SocketSlack reads, with every real id replaced by a fixed placeholder, in
+grit/slack/test/resources/slack-api/ (one file per request, plus workspace.json, the ts
+Slack gave each post). Run it from a checkout; review the diff before committing it.
+
+    SLACK_BOT_TOKEN=xoxb-... scripts/slack-capture \\
+        --public C...    a public channel the bot is in: everything is posted here
+        --private C...   a private channel the bot is in
+        --outside C...   a public channel the bot is not in
+        --user U...      a person with a display name
+        [--keep]         leave the posts in place
+
+    scripts/slack-capture --delete C... TS [TS ...]   deletes posts a failed run left
+
+The bot needs chat:write, reactions:write, channels:history, groups:history,
+channels:read, groups:read and users:read. The token is read from the environment and
+written nowhere.
+"""
+
+import argparse
+import json
+import os
+import pathlib
+import re
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+API = "https://slack.com/api/"
+OUT = pathlib.Path(__file__).resolve().parent.parent / "grit/slack/test/resources/slack-api"
+REPLY_EVENT = "grit_reply"  # SocketSlack.ReplyEvent
+PAGE = 2  # small, so paging is real; the stub ignores `limit`
+
+
+def call(token, method, params):
+    """Slack's answer to `method` with `params`: (status, headers, body). A rate limit is
+    waited out and not recorded."""
+    data = urllib.parse.urlencode(params).encode()
+    while True:
+        req = urllib.request.Request(API + method, data=data, method="POST")
+        req.add_header("Authorization", "Bearer " + token)
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return r.status, dict(r.headers), json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                time.sleep(int(e.headers.get("Retry-After", "1")) + 1)
+                continue
+            return e.code, dict(e.headers), json.loads(e.read() or b"{}")
+
+
+# What SocketSlack reads of an answer; every other field is dropped.
+MESSAGE_FIELDS = ["ts", "thread_ts", "user", "bot_id", "subtype", "text", "reply_count", "metadata"]
+CHANNEL_FIELDS = ["is_channel", "is_private", "is_im", "is_mpim", "name"]
+
+
+def kept(body):
+    out = {k: body[k] for k in ["ok", "error", "has_more", "team_id", "user_id", "ts"] if k in body}
+    if "messages" in body:
+        out["messages"] = [{k: m[k] for k in MESSAGE_FIELDS if k in m} for m in body["messages"]]
+    cursor = (body.get("response_metadata") or {}).get("next_cursor")
+    if cursor is not None:
+        out["response_metadata"] = {"next_cursor": cursor}
+    if isinstance(body.get("channel"), dict):
+        out["channel"] = {k: body["channel"][k] for k in CHANNEL_FIELDS if k in body["channel"]}
+    if isinstance(body.get("user"), dict):
+        u = body["user"]
+        out["user"] = {"real_name": u.get("real_name", ""),
+                       "profile": {"display_name": (u.get("profile") or {}).get("display_name", "")}}
+    return out
+
+
+def oldest(ts, shift_micros=0):
+    """`ts` moved by `shift_micros`, as SocketSlack.oldest writes an instant: 6 µs digits."""
+    seconds, micros = ts.split(".")
+    total = int(seconds) * 1_000_000 + int(micros) + shift_micros
+    return f"{total // 1_000_000}.{total % 1_000_000:06d}"
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--public")
+    p.add_argument("--private")
+    p.add_argument("--outside")
+    p.add_argument("--user")
+    p.add_argument("--keep", action="store_true")
+    p.add_argument("--delete", nargs="+", metavar="ARG")
+    a = p.parse_args()
+    token = os.environ.get("SLACK_BOT_TOKEN", "")
+    if not token.startswith("xoxb-"):
+        sys.exit("slack-capture: SLACK_BOT_TOKEN is not a bot token (xoxb-...)")
+
+    if a.delete:
+        channel, *stamps = a.delete
+        for ts in stamps:
+            print(ts, call(token, "chat.delete", {"channel": channel, "ts": ts})[2].get("error", "deleted"))
+        return
+    if not (a.public and a.private and a.outside and a.user):
+        sys.exit("slack-capture: --public, --private, --outside and --user are all needed")
+
+    recorded = []
+
+    def record(method, params):
+        status, headers, body = call(token, method, params)
+        recorded.append({"method": method, "params": params, "status": status,
+                         "headers": {"content-type": "application/json; charset=utf-8"},
+                         "body": kept(body), "source": "recorded"})
+        return body
+
+    auth = record("auth.test", {})
+    if not auth.get("ok"):
+        sys.exit(f"slack-capture: auth.test failed: {auth.get('error')}")
+
+    # Posts, in this order; each reply's root named. Replies first when deleting.
+    seeds = [("m1", None, False, "one"), ("m2", None, False, "two"),
+             ("r1", "m1", False, "one, a reply"), ("r2", "m2", False, "two, a reply"),
+             ("b2", "m2", True, "two, a reply also sent to the channel"),
+             ("m3", None, False, "three"), ("t1", "m3", False, "three, grit's tagged reply")]
+    ts = {}
+    try:
+        for name, root, broadcast, text in seeds:
+            params = {"channel": a.public, "text": text}
+            if root:
+                params["thread_ts"] = ts[root]
+            if broadcast:
+                params["reply_broadcast"] = "true"
+            if name == "t1":
+                params["metadata"] = json.dumps(
+                    {"event_type": REPLY_EVENT, "event_payload": {"turn": "contract", "part": "0"}})
+                params["unfurl_links"] = params["unfurl_media"] = "false"
+                body = record("chat.postMessage", params)
+            else:
+                _, _, body = call(token, "chat.postMessage", params)
+            if not body.get("ok"):
+                raise RuntimeError(f"posting {name}: {body.get('error')}")
+            ts[name] = body["ts"]
+            time.sleep(1.1)
+
+        for method in ["reactions.add", "reactions.add", "reactions.remove", "reactions.remove"]:
+            record(method, {"channel": a.public, "timestamp": ts["m1"], "name": "eyes"})
+
+        def pages(method, params):
+            found, cursor = [], None
+            while True:
+                q = dict(params, limit=str(PAGE), **({"cursor": cursor} if cursor else {}))
+                body = record(method, q)
+                found += body.get("messages", [])
+                cursor = (body.get("response_metadata") or {}).get("next_cursor")
+                if not (body.get("has_more") and cursor):
+                    return found
+
+        # history as SocketSlack reads it, at every `since` the contract uses, both with and
+        # without `inclusive`, so the socket runner meets today's SocketSlack as well as the fix.
+        spans = [oldest(ts["m1"], -1_000_000), oldest(ts["m2"]), oldest(ts["m2"], 1), oldest(ts["m3"])]
+        for inclusive in ["false", "true"]:
+            for since in spans:
+                common = {"oldest": since, "inclusive": inclusive, "include_all_metadata": "false"}
+                roots = pages("conversations.history", dict(common, channel=a.public))
+                for root in roots:
+                    if root.get("reply_count", 0) > 0:
+                        pages("conversations.replies", dict(common, channel=a.public, ts=root["ts"]))
+            record("conversations.history", {"channel": a.outside, "oldest": spans[0],
+                                             "inclusive": inclusive, "include_all_metadata": "false",
+                                             "limit": str(PAGE)})
+        pages("conversations.replies", {"channel": a.public, "ts": ts["m3"],
+                                        "inclusive": "false", "include_all_metadata": "true"})
+
+        for channel in [a.public, a.private, a.outside, "C0000000000"]:
+            record("conversations.info", {"channel": channel})
+        for user in [a.user, auth["user_id"], "U0000000000"]:
+            record("users.info", {"user": user})
+    finally:
+        if ts and not a.keep:
+            for name in reversed([s[0] for s in seeds if s[0] in ts]):
+                call(token, "chat.delete", {"channel": a.public, "ts": ts[name]})
+                time.sleep(1.1)
+        elif ts:
+            print("kept; to delete: scripts/slack-capture --delete", a.public, *ts.values())
+
+    # Names set by the capture, so the recordings name no one: the person shows "Ana"
+    # (display) over "Ana Lima" (real); the bot has no display name and is "grit".
+    for r in recorded:
+        u = r["body"].get("user")
+        if r["method"] == "users.info" and u:
+            me = r["params"]["user"] == a.user
+            u["real_name"] = "Ana Lima" if me else "grit"
+            u["profile"]["display_name"] = "Ana" if me else ""
+        c = r["body"].get("channel")
+        if r["method"] == "conversations.info" and c and "name" in c:
+            c["name"] = {a.public: "grit-contract", a.private: "grit-private",
+                         a.outside: "grit-outside"}.get(r["params"]["channel"], "grit-other")
+
+    ids = {auth["team_id"]: "T0000000001", a.user: "U0000000001", auth["user_id"]: "U0000000002",
+           a.public: "C0000000001", a.private: "C0000000002", a.outside: "C0000000003"}
+    if auth.get("bot_id"):
+        ids[auth["bot_id"]] = "B0000000001"
+
+    def redact(text):
+        for real, placeholder in ids.items():
+            text = text.replace(real, placeholder)
+        return text
+
+    files = {f"{i:03d}-{r['method']}.json": redact(json.dumps(r, indent=2, ensure_ascii=False)) + "\n"
+             for i, r in enumerate(recorded)}
+    files["rate-limited.json"] = json.dumps({
+        "method": "*", "params": {}, "status": 429,
+        "headers": {"content-type": "application/json; charset=utf-8", "retry-after": "0"},
+        "body": {"ok": False, "error": "ratelimited"},
+        "source": "hand-written: https://api.slack.com/apis/rate-limits (Retry-After 0 keeps the unit tier fast)"},
+        indent=2) + "\n"
+    files["workspace.json"] = json.dumps({
+        "source": "recorded by scripts/slack-capture: the ts Slack gave each post",
+        "messages": [{"name": n, "ts": ts[n], "root": r, "broadcast": b, "text": t} for n, r, b, t in seeds]},
+        indent=2, ensure_ascii=False) + "\n"
+
+    everything = "".join(files.values())
+    leaks = [real for real in ids if real in everything] + re.findall(r"xox[a-z]-[\w-]+", everything)
+    if leaks:
+        sys.exit(f"slack-capture: {len(leaks)} real ids or tokens survived redaction; nothing written")
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    for old in OUT.glob("*.json"):
+        old.unlink()
+    for name, text in files.items():
+        (OUT / name).write_text(text)
+    print(f"slack-capture: {len(recorded)} answers in {OUT}")
+
+
+if __name__ == "__main__":
+    main()
