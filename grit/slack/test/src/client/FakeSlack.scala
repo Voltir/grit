@@ -2,13 +2,15 @@ package grit.slack.client
 
 import java.time.Instant
 
+import scala.concurrent.duration.Duration
+
 import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
 import grit.slack.text.Post
 
-/** A [[Slack]] for tests, keeping what [[Slack]] says in memory: the handler `listen` was
-  * given ([[deliver]] hands it a payload, as Socket Mode would, and says whether it was
-  * acknowledged), the posts made, each with its tag, and grit's reactions. Every post is
-  * made at a new ts `p1`, `p2`, …
+/** A [[Slack]] for tests, keeping what [[Slack]] says in memory and held to it by
+  * [[SlackContract]]: the handler `listen` was given ([[deliver]] hands it a payload, as
+  * Socket Mode would, and says whether it was acknowledged), the posts made, each with its tag,
+  * and grit's reactions. Every post is made at a ts a microsecond after the latest it knows.
   */
 final class FakeSlack extends Slack {
 
@@ -24,11 +26,17 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var reactions = Set.empty[(ChannelId, Ts, String)]
 
-  /** The names people show in Slack. */
+  /** Who grit is. */
   @caps.unsafe.untrackedCaptures
-  var names = Map(UserId(Payloads.Ana) -> "Ana Lima")
+  var me = Self(TeamId(Payloads.Team), UserId(Payloads.Bot))
 
-  /** The names channels show in Slack. */
+  /** The people in the workspace, each with the name they show in Slack, if any; anyone else
+    * is no such user.
+    */
+  @caps.unsafe.untrackedCaptures
+  var names: Map[UserId, Option[String]] = Map(UserId(Payloads.Ana) -> Some("Ana Lima"))
+
+  /** The channels there are, each with the name it shows in Slack; any other does not exist. */
   @caps.unsafe.untrackedCaptures
   var channelNames = Map(ChannelId("C123ABC456") -> "standup")
 
@@ -40,18 +48,39 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var privateChannels = Set.empty[ChannelId]
 
-  /** Each channel's history, oldest first, each listing said at the time its ts names. */
+  /** The channels grit's bot is not a member of. */
+  @caps.unsafe.untrackedCaptures
+  var notIn = Set.empty[ChannelId]
+
+  /** Each channel's messages as Slack lists them, in any order, a message possibly more than
+    * once (in the channel's history and in its thread's replies).
+    */
   @caps.unsafe.untrackedCaptures
   var histories: Map[ChannelId, Vector[Listed]] = Map.empty
 
-  /** When set, every post fails as Slack being unreachable would. */
+  /** How many of the next Web API requests are answered rate-limited, 0 s to wait. Counted
+    * across calls; `history` waits out up to [[SocketSlack.Retries]] in a row, each spending
+    * one, as [[SocketSlack]] does.
+    */
+  @caps.unsafe.untrackedCaptures
+  var limited = 0
+
+  /** When set, every call but `listen` fails as Slack being unreachable would. */
   @caps.unsafe.untrackedCaptures
   var down = false
 
   /** Hands `payload` to the listening handler; whether it was acknowledged. */
   def deliver(payload: String): Boolean = handler.exists(_(payload))
 
-  def self(): Either[SlackError, Self] = Right(Self(TeamId(Payloads.Team), UserId(Payloads.Bot)))
+  /** `body`, as one Web API request is answered. */
+  private def request[A](body: => Either[SlackError, A]): Either[SlackError, A] =
+    if (down) Left(SlackError.Unreachable("down"))
+    else if (limited > 0) {
+      limited -= 1
+      Left(SlackError.Limited(Duration.Zero))
+    } else body
+
+  def self(): Either[SlackError, Self] = request(Right(me))
 
   def listen(handle: String => Boolean): Either[SlackError, Unit] = {
     // Kept past the call, as Socket Mode keeps its listener: the test that made this fake
@@ -61,44 +90,75 @@ final class FakeSlack extends Slack {
   }
 
   def post(channel: ChannelId, thread: Ts, post: Post, tag: Tag): Either[SlackError, Ts] =
-    if (down) Left(SlackError.Unreachable("down"))
-    else {
-      val ts = Ts(s"p${posts.size + 1}")
+    request {
+      val known = histories.values.flatten.map(_.ts) ++ posts.map(_.ts)
+      val latest = known.flatMap(ts => scala.util.Try(BigDecimal(Ts.value(ts))).toOption).maxOption
+      val ts = Ts((latest.getOrElse(BigDecimal(0)) + FakeSlack.Micro).setScale(6).toString)
       posts = posts :+ Posted(channel, thread, post, tag, ts)
       Right(ts)
     }
 
   def tagged(channel: ChannelId, thread: Ts, tag: Tag): Either[SlackError, Vector[Ts]] =
-    if (down) Left(SlackError.Unreachable("down"))
-    else
+    request(
       Right(posts.filter(p => p.channel == channel && p.thread == thread && p.tag == tag).map(_.ts))
+    )
 
-  def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] = {
-    reactions = reactions + ((channel, ts, emoji))
-    Right(())
+  def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] =
+    request {
+      reactions = reactions + ((channel, ts, emoji))
+      Right(())
+    }
+
+  def unreact(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] =
+    request {
+      reactions = reactions - ((channel, ts, emoji))
+      Right(())
+    }
+
+  def name(user: UserId): Either[SlackError, Option[String]] =
+    request(names.get(user).toRight(SlackError.Refused("user_not_found")))
+
+  def history(channel: ChannelId, since: Instant): Either[SlackError, Vector[Listed]] = {
+    @scala.annotation.tailrec
+    def patient(left: Int): Either[SlackError, Unit] = request(Right(())) match {
+      case Left(SlackError.Limited(_)) if left > 0 => patient(left - 1)
+      case other => other
+    }
+    val from = BigDecimal(SocketSlack.oldest(since))
+    def at(ts: Ts): BigDecimal = BigDecimal(Ts.value(ts))
+    patient(SocketSlack.Retries).flatMap { _ =>
+      if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
+      else if (notIn.contains(channel)) Left(SlackError.Refused("not_in_channel"))
+      else
+        Right(
+          histories
+            .getOrElse(channel, Vector.empty)
+            .filter { m =>
+              val root = m.thread.getOrElse(m.ts)
+              at(m.ts) >= from &&
+              (at(root) >= from || m.subtype.contains("thread_broadcast"))
+            }
+            .distinctBy(_.ts)
+            .sortBy(m => at(m.ts))
+        )
+    }
   }
-
-  def unreact(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] = {
-    reactions = reactions - ((channel, ts, emoji))
-    Right(())
-  }
-
-  def name(user: UserId): Either[SlackError, Option[String]] = Right(names.get(user))
-
-  def history(channel: ChannelId, since: Instant): Either[SlackError, Vector[Listed]] =
-    if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
-    else
-      Right(
-        histories
-          .getOrElse(channel, Vector.empty)
-          .filter(m => BigDecimal(Ts.value(m.ts)) >= BigDecimal(since.getEpochSecond))
-      )
 
   def channelName(channel: ChannelId): Either[SlackError, Option[String]] =
-    if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
-    else Right(channelNames.get(channel))
+    request {
+      if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
+      else Right(channelNames.get(channel))
+    }
 
   def public(channel: ChannelId): Either[SlackError, Boolean] =
-    if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
-    else Right(!privateChannels.contains(channel))
+    request {
+      if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
+      else Right(channelNames.contains(channel) && !privateChannels.contains(channel))
+    }
+}
+
+object FakeSlack {
+
+  /** One microsecond, as a ts counts it. */
+  private val Micro = BigDecimal("0.000001")
 }

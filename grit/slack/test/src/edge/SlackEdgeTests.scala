@@ -159,12 +159,12 @@ object SlackEdgeTests extends TestSuite {
 
     test("introduce names the workspace's assistant as Slack names grit's bot, and says why not") {
       val w = new World
-      w.slack.names = w.slack.names.updated(UserId(Bot), "Bort")
+      w.slack.names = w.slack.names.updated(UserId(Bot), Some("Bort"))
       w.first.introduce() ==> Right(())
       w.inbox.principals.name(PrincipalId(s"slack:$Team"))(using TestTx.fake) ==> Right(
         Some("Bort")
       )
-      w.slack.names = w.slack.names.removed(UserId(Bot))
+      w.slack.names = w.slack.names.updated(UserId(Bot), None)
       w.edge().introduce() ==> Left(s"grit's bot $Bot has no name in Slack")
     }
 

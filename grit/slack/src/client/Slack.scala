@@ -82,23 +82,24 @@ trait Slack extends caps.SharedCapability {
   def unreact(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit]
 
   /** The name `user` shows in Slack: their display name, else their real name; `None` when
-    * they have neither.
+    * they have neither. `Refused("user_not_found")` when there is no such user.
     */
   def name(user: UserId): Either[SlackError, Option[String]]
 
-  /** Whether `channel` is a public channel. `false` for any other conversation, and for one
-    * grit may not look at.
+  /** Whether `channel` is a public channel. `false` for any other conversation, for one grit
+    * may not look at, and for none at all; Slack being unreachable is still `Unreachable`.
     */
   def public(channel: ChannelId): Either[SlackError, Boolean]
 
-  /** Every message in `channel` from `since` on, with every reply in a thread rooted in that
-    * span, oldest first, each once. A rate limit is waited out, up to 5 times a call, before
+  /** Every message in `channel` at or after `since`, to the microsecond, with every reply in a
+    * thread rooted in that span, oldest first, each once; a reply in a thread rooted earlier
+    * only when it was also sent to the channel. A rate limit is waited out, up to 5 times a call, before
     * it is `Limited`; `Refused("not_in_channel")` when grit's bot is not in the channel.
     */
   def history(channel: ChannelId, since: Instant): Either[SlackError, Vector[Listed]]
 
   /** The name `channel` shows in Slack, without its `#`; `None` for a conversation with none,
-    * or one grit may not look at.
+    * one grit may not look at, or none at all; Slack being unreachable is still `Unreachable`.
     */
   def channelName(channel: ChannelId): Either[SlackError, Option[String]]
 }
