@@ -144,7 +144,11 @@ final class ChatHost(
           }
           mailbox.offer(
             ChatScreen.Msg.Noted(
-              result.fold(why => s"not set: $why", Lifecycle.describe(_) + voice)
+              result.fold(
+                why => s"not set: $why",
+                now =>
+                  (if (change.isEmpty) Lifecycle.describe(now) else Lifecycle.changed(now)) + voice
+              )
             )
           )
         }

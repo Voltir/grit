@@ -28,12 +28,12 @@ object ServeChoiceTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "serving an edge seeds scope room and caps a day at $1.00 when their variables are unset; the chat does neither"
+      "serving an edge declares scope room and caps a day at $1.00 when their variables are unset; the chat does neither"
     ) {
       def of(edges: Vector[ServedEdge]) =
         Main
           .deployment(Map.empty, Offered.Read, edges, java.time.ZoneOffset.UTC)
-          .map(d => (d.seed.locality.scope, d.budget.cap))
+          .map(d => (d.lifecycle.locality.scope, d.budget.cap))
       (of(Vector(Quiet)), of(Vector.empty)) ==> (
         Right((PlaceScope.Room, DailyCap.of("1.00").toOption)),
         Right((grit.core.period.LifecycleSettings.Default.locality.scope, None))

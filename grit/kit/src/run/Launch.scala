@@ -9,7 +9,9 @@ import grit.core.context.ContextAssembler
 import grit.core.message.Message
 import grit.core.model.{Catalog, Pinned}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
-import grit.core.store.Db
+import grit.core.period.{LifecycleSettings, Probability}
+import grit.core.place.Weight
+import grit.core.store.{Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
 import grit.dbos.engine.Engine
 import grit.digest.Digest
@@ -41,16 +43,20 @@ private[grit] object Launch {
     val Served: Run = Run(announced = false, stubDelay = 0)
   }
 
-  /** `engine` with `d`'s lifecycle seeded and its workflows launched on it, sweeping every
+  /** `engine` with `d`'s lifecycle settings written over those its database keeps (logged as
+    * they stand after), and its workflows launched on it, sweeping every
     * `d.sweep` when `sweeping` (otherwise its caller sweeps it): the assembler reads its
     * stores, and the models its kept model settings, OpenRouter's under `d.policy` when `s`
-    * holds its key, the stub's otherwise. Throws when the settings cannot be seeded, when the
+    * holds its key, the stub's otherwise. Throws when the settings cannot be written, when the
     * seed catalog cannot be read or the tools repeat a name (faults of the build no setting
     * can cause), or when the kept model settings cannot be read.
     */
   def apply(engine: Engine^, d: Deployment, s: Secrets, run: Run, sweeping: Boolean): Engine^{engine} = {
-    engine.jot.write(engine.lifecycle.seed(d.seed)).left.foreach { error =>
-      throw new IllegalStateException(s"the lifecycle's settings could not be seeded: $error")
+    declare(engine.lifecycle, engine.jot, d.lifecycle) match {
+      case Left(error) =>
+        throw new IllegalStateException(s"the lifecycle's settings could not be written: $error")
+      case Right(inForce) =>
+        org.slf4j.LoggerFactory.getLogger("grit.launch").info(s"lifecycle settings: ${written(inForce)}")
     }
     val reached: Models = s.openRouter match {
       case None => new StubModels(run.stubDelay)
@@ -191,6 +197,24 @@ private[grit] object Launch {
       throw new IllegalStateException(s"grit's tools offer ${ToolName.value(name)} twice")
     }
     engine
+  }
+
+  /** `declared` written over the settings `lifecycle` keeps, through `jot`; the settings in
+    * force after, read back.
+    */
+  private[run] def declare(
+      lifecycle: LifecycleStore,
+      jot: Jot,
+      declared: LifecycleSettings
+  ): Either[StoreError, LifecycleSettings] =
+    jot.write(lifecycle.set(declared).flatMap(_ => lifecycle.current()))
+
+  /** `s` in one line, for the log. */
+  private def written(s: LifecycleSettings): String = {
+    val w = s.windows
+    s"idle ${w.idle.toCoarsest}, retention ${w.retention.toCoarsest}, ledger ${w.ledger.toCoarsest}, balance ${s.balance}, " +
+      s"settle ${s.settle.toCoarsest}, resolve at ${Probability.value(s.resolveAt)}, asks ${s.asks}, " +
+      s"scope ${s.locality.scope.written}, weight ${Weight.value(s.locality.weight)}"
   }
 
   /** The classifier `d` places topics with: Jev over `s`'s settings, which [[Secrets.of]]

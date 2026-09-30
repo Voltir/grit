@@ -11,9 +11,10 @@ Run it with `scripts/grit`.
 In dependency order:
 
 - **`config`** — `Durations`: a duration as a setting writes it (`30s`, `3m`, `24h`, `30d`). `Lifecycle`:
-  the lifecycle's settings as a person writes them, seeded from `GRIT_IDLE`, `GRIT_SETTLE`,
-  `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION` and `GRIT_BALANCE` on a database's
-  first start, and changed one at a time by `/set`. `Budgets`: the daily cap on model spend,
+  the lifecycle's settings as a person writes them, written from `GRIT_IDLE`, `GRIT_SETTLE`,
+  `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`, `GRIT_LEDGER`, `GRIT_BALANCE`, `GRIT_SCOPE`
+  and `GRIT_WEIGHT` over the database's on every start (logged as they stand), and changed
+  one at a time by `/set` until the next start. `Budgets`: the daily cap on model spend,
   `GRIT_DAILY_USD` (`grit serve`'s default $1.00).
   `Prefs`: what grit remembers between runs (the theme last chosen), in
   `$XDG_CONFIG_HOME/grit/prefs` or `~/.config/grit/prefs`. Imports nothing in app.
@@ -49,7 +50,8 @@ In dependency order:
   with `/` (one slash taken off; the palette stays shut).
   `/set` shows the lifecycle's settings and grit's voice, or changes one (`/set idle 3m`,
   `/set resolve 0.9`, `/set voice colleague`, `/set voice <your own words>`), taking effect
-  from the next sweep and turn. A closed period shows in the
+  from the next sweep and turn; a lifecycle setting holds until grit next starts, which
+  writes the `GRIT_` variables' settings again (the voice is kept), and `/set` says so. A closed period shows in the
   transcript as a double rule marked `closed`, then why it closed (`resolved (0.86)`, as
   judged with nobody waiting, or `lapsed`) and what it came to (`Replies.closed`).
   The theme is screen state, so `/theme` repaints everything live, and asks the host

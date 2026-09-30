@@ -245,11 +245,6 @@ final class InMemoryLifecycleStore extends LifecycleStore {
   def current()(using Tx^): Either[StoreError, LifecycleSettings] =
     Right(stored.getOrElse(LifecycleSettings.Default))
 
-  def seed(settings: LifecycleSettings)(using Tx^): Either[StoreError, LifecycleSettings] = {
-    if (stored.isEmpty) stored = Some(settings)
-    current()
-  }
-
   def set(settings: LifecycleSettings)(using Tx^): Either[StoreError, Unit] = {
     stored = Some(settings)
     Right(())

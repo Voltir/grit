@@ -50,7 +50,7 @@ object Deployments {
       offer = Offer(tools, TurnLoop.Budget.of(4).getOrElse(sys.error("rounds"))),
       assembly = Assembly.Linear(Tokens(1000)),
       topics = topics,
-      seed = LifecycleSettings.Default,
+      lifecycle = LifecycleSettings.Default,
       budget = Budget(java.time.ZoneOffset.UTC, None),
       sweep = sweep
     )

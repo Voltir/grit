@@ -13,9 +13,6 @@ trait LifecycleStore {
     */
   def current()(using Tx^): Either[StoreError, LifecycleSettings]
 
-  /** Stores `settings` unless some are stored already; the settings in force after. */
-  def seed(settings: LifecycleSettings)(using Tx^): Either[StoreError, LifecycleSettings]
-
   /** Replaces the settings in force with `settings`. */
   def set(settings: LifecycleSettings)(using Tx^): Either[StoreError, Unit]
 }

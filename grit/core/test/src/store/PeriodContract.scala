@@ -582,7 +582,7 @@ abstract class PeriodContract extends TestSuite {
       (verdictsOn(p1), verdictsOn(q1)) ==> (0, 1)
     }
 
-    test("the lifecycle's settings are the defaults until seeded, seeded once, then set") {
+    test("the lifecycle's settings are the defaults until set, and each set replaces the last") {
       def settings(
           idle: FiniteDuration,
           balance: Int,
@@ -599,15 +599,16 @@ abstract class PeriodContract extends TestSuite {
           s <- Scope.read(scope)
           w <- Weight.of(weight)
         } yield Locality(s, w)).fold(e => throw new java.lang.AssertionError(e), identity)
-      val (seeded, ignored, later) = (
+      val (first, second, later) = (
         settings(3.minutes, 300, 0.8, 3, locality("fs:/home/nick/Projects slack:acme", 1.5)),
         settings(5.minutes, 200, 0.9, 2, Locality.Default),
         settings(7.minutes, 100, 0.75, 1, locality("none", 3))
       )
       transaction(lifecycle.current()) ==> Right(LifecycleSettings.Default)
-      transaction(lifecycle.seed(seeded)) ==> Right(seeded)
-      transaction(lifecycle.seed(ignored)) ==> Right(seeded)
-      transaction(lifecycle.current()) ==> Right(seeded)
+      transaction(lifecycle.set(first)) ==> Right(())
+      transaction(lifecycle.current()) ==> Right(first)
+      transaction(lifecycle.set(second)) ==> Right(())
+      transaction(lifecycle.current()) ==> Right(second)
       transaction(lifecycle.set(later)) ==> Right(())
       transaction(lifecycle.current()) ==> Right(later)
     }

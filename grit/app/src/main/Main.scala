@@ -61,11 +61,11 @@ import grit.turn.{Turn, TurnLoop}
   * period to the plugins `GRIT_PLUGINS` turns on ([[pluginChoice]], [[Posting]]; with
   * Digest on, each turn's model is offered `recent_activity`). When a period is asked about
   * and closes, what its balance holds, and which other places' open periods a window draws
-  * on, are data in the database: on the first start against a database they are seeded from
+  * on, are data in the database: on every start the engine writes them from
   * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
   * `GRIT_LEDGER`, `GRIT_BALANCE`, `GRIT_SCOPE` (under `grit serve`, `room` when unset:
-  * [[Lifecycle.ServeScope]]) and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]); after that, those variables are ignored, and `/set` (or SQL)
-  * changes them, from the next sweep and turn on.
+  * [[Lifecycle.ServeScope]]) and `GRIT_WEIGHT` ([[Lifecycle.fromEnv]]), and logs them; `/set`
+  * (or SQL) changes them from the next sweep and turn on, until the next start.
   *
   * One grit runs the engine of a database (ADR 0015): a second, in either mode, attaches to
   * it: its TUI serves its own directory and shows its conversations, the header saying
@@ -464,7 +464,7 @@ object Main {
       rounds <- toolRounds(env)
       models <- policy(env)
       sweep <- sweepEvery(env)
-      seed <- Lifecycle.fromEnv(
+      lifecycle <- Lifecycle.fromEnv(
         env,
         if (serving) Lifecycle.ServeScope else LifecycleSettings.Default.locality.scope
       )
@@ -478,7 +478,7 @@ object Main {
           offer = Offer(offered, rounds),
           assembly = if (retrieving) Assembly.Retrieval(window, tail) else Assembly.Linear(window),
           topics = topics(env),
-          seed = seed,
+          lifecycle = lifecycle,
           budget = spend,
           sweep = sweep
         )

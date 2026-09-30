@@ -75,7 +75,7 @@ enum DeploymentRefusal {
 /** A deployment of grit, declared in code: the edges it serves, the plugins it posts to, the
   * model policy its calls are made under (laid over by the model settings the database keeps),
   * what its turns are offered and how their windows are assembled, how messages are placed
-  * among topics, the lifecycle's first settings, what it may spend a day, and how often its
+  * among topics, the lifecycle's settings, what it may spend a day, and how often its
   * engine sweeps. The database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
@@ -87,7 +87,7 @@ final case class Deployment private (
     offer: Offer,
     assembly: Assembly,
     topics: Topics,
-    seed: LifecycleSettings,
+    lifecycle: LifecycleSettings,
     budget: Budget,
     sweep: FiniteDuration
 )
@@ -96,8 +96,8 @@ object Deployment {
 
   /** The deployment of these; call it with named arguments. Refused when `offer` asks first
     * ([[Offered.All]]) and an edge cannot answer an ask, when two edges share a name, or when
-    * `sweep` is under a second. `seed` is written to a database only on its first start;
-    * after that `/set` or SQL changes the settings, and `seed` is ignored.
+    * `sweep` is under a second. `lifecycle` is written over the database's settings on every
+    * start, so a change made while grit runs (`/set`, SQL) holds until the next start.
     */
   def of(
       edges: Vector[ServedEdge],
@@ -106,7 +106,7 @@ object Deployment {
       offer: Offer,
       assembly: Assembly,
       topics: Topics,
-      seed: LifecycleSettings,
+      lifecycle: LifecycleSettings,
       budget: Budget,
       sweep: FiniteDuration
   ): Either[DeploymentRefusal, Deployment] = {
@@ -120,6 +120,6 @@ object Deployment {
         DeploymentRefusal.AsksUnanswered(unanswered)
       )
       _ <- Either.cond(sweep >= 1.second, (), DeploymentRefusal.SweepTooOften(sweep))
-    } yield Deployment(edges, plugins, policy, offer, assembly, topics, seed, budget, sweep)
+    } yield Deployment(edges, plugins, policy, offer, assembly, topics, lifecycle, budget, sweep)
   }
 }

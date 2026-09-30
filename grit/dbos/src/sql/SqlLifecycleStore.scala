@@ -62,34 +62,23 @@ final class SqlLifecycleStore extends LifecycleStore {
     }.flatten
   }
 
-  def seed(settings: LifecycleSettings)(using tx: Tx^): Either[StoreError, LifecycleSettings] =
-    write(settings, "ON CONFLICT (one) DO NOTHING").flatMap(_ => current())
-
-  def set(settings: LifecycleSettings)(using tx: Tx^): Either[StoreError, Unit] =
-    write(
-      settings,
-      """ON CONFLICT (one) DO UPDATE SET idle = EXCLUDED.idle, retention = EXCLUDED.retention,
-        |  ledger = EXCLUDED.ledger,
-        |  balance = EXCLUDED.balance, settle = EXCLUDED.settle,
-        |  resolve_at = EXCLUDED.resolve_at, asks = EXCLUDED.asks,
-        |  scope = EXCLUDED.scope, weight = EXCLUDED.weight""".stripMargin
-    )
-
-  private def write(settings: LifecycleSettings, onConflict: String)(using
-      tx: Tx^
-  ): Either[StoreError, Unit] = {
+  def set(settings: LifecycleSettings)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val w = settings.windows
     attempt {
       Using.resource(
         conn.prepareStatement(
-          s"""INSERT INTO grit.lifecycle_settings
+          """INSERT INTO grit.lifecycle_settings
              |       (idle, retention, ledger, balance, settle, resolve_at, asks, scope, weight)
              |VALUES (? * interval '1 millisecond', ? * interval '1 millisecond',
              |        ? * interval '1 millisecond', ?,
              |        ? * interval '1 millisecond', ?, ?,
              |        ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?)
-             |$onConflict""".stripMargin
+             |ON CONFLICT (one) DO UPDATE SET idle = EXCLUDED.idle, retention = EXCLUDED.retention,
+             |  ledger = EXCLUDED.ledger,
+             |  balance = EXCLUDED.balance, settle = EXCLUDED.settle,
+             |  resolve_at = EXCLUDED.resolve_at, asks = EXCLUDED.asks,
+             |  scope = EXCLUDED.scope, weight = EXCLUDED.weight""".stripMargin
         )
       ) { ps =>
         ps.setLong(1, w.idle.toMillis)

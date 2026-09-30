@@ -104,7 +104,7 @@ object LifecycleTests extends TestSuite {
       Change.Asks(0).applied(now) ==> Left("asks must be at least 1")
     }
 
-    test("the ledger window is seeded by GRIT_LEDGER, set by /set, and never below retention") {
+    test("the ledger window is declared by GRIT_LEDGER, set by /set, and never below retention") {
       Lifecycle
         .fromEnv(Map("GRIT_LEDGER" -> "6m", "GRIT_RETENTION" -> "3m"))
         .map(
@@ -158,6 +158,12 @@ object LifecycleTests extends TestSuite {
       Change.Scope(Scope.Off).applied(now).map(_.locality) ==> Right(Locality(Scope.Off, weight(3)))
       Change.Weight(weight(1)).applied(now).map(_.locality) ==>
         Right(Locality(scope("fs:/home/nick"), weight(1)))
+    }
+
+    test("a change /set reports says it holds until grit next starts") {
+      val now = settings(3.hours, 1.day, 300, 1.hour, 1.0, 3, Locality(Scope.Off, weight(2)))
+      Lifecycle.changed(now) ==>
+        "set until grit restarts, when its GRIT_ variables apply again: " + Lifecycle.describe(now)
     }
 
     test("the settings in one line say where a window draws from") {

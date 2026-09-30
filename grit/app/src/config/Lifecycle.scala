@@ -5,8 +5,8 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.period.{LifecycleSettings, Probability, Windows}
 import grit.core.place.{Locality, Prefix, Scope as PlaceScope, Weight as PlaceWeight}
 
-/** The lifecycle's settings as a person writes them: seeded from the environment on first
-  * start, then changed one at a time with `/set`.
+/** The lifecycle's settings as a person writes them: written from the environment on every
+  * start, and changed one at a time with `/set` until the next.
   */
 object Lifecycle {
 
@@ -20,12 +20,12 @@ object Lifecycle {
   private val ScopeVar = "GRIT_SCOPE"
   private val WeightVar = "GRIT_WEIGHT"
 
-  /** The scope `grit serve` seeds when `GRIT_SCOPE` is unset: each Slack thread draws on its
+  /** The scope `grit serve` declares when `GRIT_SCOPE` is unset: each Slack thread draws on its
     * own channel's threads alone.
     */
   val ServeScope: PlaceScope = PlaceScope.Room
 
-  /** The settings the environment seeds: `GRIT_IDLE`, `GRIT_RETENTION`, `GRIT_LEDGER` and
+  /** The settings the environment declares: `GRIT_IDLE`, `GRIT_RETENTION`, `GRIT_LEDGER` and
     * `GRIT_SETTLE` ([[Durations]]), `GRIT_BALANCE` and `GRIT_ASKS` (whole numbers) and `GRIT_RESOLVE_AT`
     * (a probability, as 0.8), `GRIT_SCOPE` (none, everywhere, or `room` and places separated
     * by spaces, as `room fs:/home/you slack:team`; `unset` when it is unset) and
@@ -213,6 +213,12 @@ object Lifecycle {
       s"closings kept ${written(w.ledger)} after the next; " +
       s"the balance holds ${settings.balance} bytes; $drawing"
   }
+
+  /** `settings` as `/set` reports a change to them: that it holds until grit next starts,
+    * first, since the status line cuts a long line short; then [[describe]]'s line.
+    */
+  def changed(settings: LifecycleSettings): String =
+    "set until grit restarts, when its GRIT_ variables apply again: " + describe(settings)
 
   /** `d` in the largest of [[Durations]]' units that writes it whole. */
   def written(d: FiniteDuration): String = {

@@ -17,7 +17,8 @@ object Commands {
     case SetTheme extends Command("/theme", "switch the colour theme")
     case Panel extends Command("/panel", "show or hide the turn panel")
     case Summaries extends Command("/summaries", "show or hide turn summaries")
-    case Set extends Command("/set", "when conversations close, and grit's voice")
+    case Set
+        extends Command("/set", "when conversations close (until grit restarts), and grit's voice")
     case Help extends Command("/help", "commands and keys")
     case Quit extends Command("/quit", "leave grit")
 
