@@ -24,9 +24,8 @@ object TurnJudge {
   /** How much of what the turn recalled, from its start, the judge is shown. */
   val RecalledChars = 60_000
 
-  /** The judge's state: `{"thread": ..., "draft": ..., "recalled": ...}`, the thread up to
-    * and including the heard message its last [[ThreadChars]], the draft, and what the turn
-    * recalled its first [[RecalledChars]].
+  /** The judge's state: `{"thread": ..., "draft": ..., "recalled": ...}`, the thread's last
+    * [[ThreadChars]], the draft, and what the turn recalled its first [[RecalledChars]].
     */
   final case class State(thread: String, draft: String, recalled: String)
 
@@ -100,22 +99,20 @@ object TurnJudge {
         case Left(ClassifierError.Unreadable(why)) => Judgement.Unjudged(s"unreadable: $why")
       }
 
-  /** The judge's state for a draft `draft`, from `all` of its conversation's entries, the
-    * heard message `root` among them, `window` the turn's window over them, `near` the other
-    * conversations' entries its sections name, and `speakers` who wrote each: the thread is
-    * each person's message and each reply up to and including `root`, one per line under its
-    * speaker's name ("Assistant" for grit's); recalled is each record the window showed and
+  /** The judge's state for a draft `draft`, from `all` of its conversation's entries so far,
+    * `window` the turn's window over them, `near` the other conversations' entries its
+    * sections name, and `speakers` who wrote each: the thread is each person's message and
+    * each reply so far, the heard message and every reply after it included, one per line under its speaker's name ("Assistant" for grit's); recalled is each record the window showed and
     * each other conversation's section, as the model was shown them ([[Shown]]).
     */
   def state(
       all: Vector[Entry],
-      root: Entry,
       window: Window,
       near: Vector[Entry],
       speakers: Speakers,
       draft: String
   ): State = {
-    val thread = all.filter(_.seq <= root.seq).flatMap { e =>
+    val thread = all.flatMap { e =>
       e.payload match {
         case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
           val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString

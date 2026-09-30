@@ -40,9 +40,12 @@ object TurnJudgeTests extends TestSuite {
   private val names = Speakers(Map(EntryId("e1") -> "Ana", EntryId("e3") -> "Ben"))
 
   val tests = Tests {
-    test("the judge sees the thread to its root under names, and only the records it recalled") {
-      val state = TurnJudge.state(all, root, Window(all.map(_.id)), Vector.empty, names, "draft")
-      state.thread ==> "Ana: when is the freeze?\nAssistant: Thursday.\nBen: is it still on?"
+    test(
+      "the judge sees every message so far under names, replies after the root included, and only the records it recalled"
+    ) {
+      val state = TurnJudge.state(all, Window(all.map(_.id)), Vector.empty, names, "draft")
+      state.thread ==>
+        "Ana: when is the freeze?\nAssistant: Thursday.\nBen: is it still on?\nSomeone: said after"
       assert(state.recalled.contains("The freeze moved."), !state.recalled.contains("when is"))
     }
 
@@ -69,7 +72,6 @@ object TurnJudgeTests extends TestSuite {
       val question = entry(1, Payload.Heard("where did we land on the term?"))
       val state = TurnJudge.state(
         Vector(record, question),
-        question,
         Window(
           Vector(record.id, question.id),
           Vector.empty,
@@ -92,7 +94,7 @@ object TurnJudgeTests extends TestSuite {
     }
 
     test("a window with no record recalls nothing") {
-      TurnJudge.state(all, root, Window(Vector(asked.id)), Vector.empty, names, "d").recalled ==> ""
+      TurnJudge.state(all, Window(Vector(asked.id)), Vector.empty, names, "d").recalled ==> ""
     }
 
     test("the judge is shown the thread's end and the recalled's start, each cut to its limit") {

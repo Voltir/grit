@@ -5,7 +5,7 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.*
 
 import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
-import grit.core.message.{Cost, Message, Tokens, Usage}
+import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Budget, DailyCap, Spend}
@@ -177,16 +177,33 @@ object SpeechTests extends TestSuite {
       }
     }
 
-    test("a draft is answered by the first thing a person said after its root, and nothing else") {
-      def entry(n: Long, payload: Payload) =
-        Entry(EntryId(s"e$n"), ConversationId("c"), TurnSeq(n), None, n, payload, now)
-      val grits = entry(11, Payload.Summary("grit's own"))
-      Speech.answered(Vector(grits)) ==> None
-      Speech.answered(
-        Vector(grits, entry(12, Payload.Heard("it's Thursday")), entry(13, Payload.Heard("ok")))
-      ) ==> Some(Outcome.Answered(EntryId("e12")))
-      Speech.answered(Vector(entry(14, Payload.Message(Message.User("@bort?"))))) ==>
-        Some(Outcome.Answered(EntryId("e14")))
+    test(
+      "a person's reply does not hold a draft; the assistant's own reply after its root does, in its thread or its strand"
+    ) {
+      def entry(n: Long, payload: Payload, c: String = "c", at: Instant = now) =
+        Entry(EntryId(s"$c$n"), ConversationId(c), TurnSeq(n), None, n, payload, at)
+      val root = entry(10, Payload.Heard("where did we land?"))
+      val reply = Payload.Message(
+        Message.Assistant(
+          Vector(AssistantBlock.Text("12 months.")),
+          StopReason.EndTurn,
+          Usage.Zero,
+          "m"
+        )
+      )
+      val people = Vector(
+        entry(11, Payload.Summary("grit's own")),
+        entry(12, Payload.Heard("it's Thursday")),
+        entry(13, Payload.Message(Message.User("@bort?")))
+      )
+      Speech.spoken(root, people, Vector.empty) ==> None
+      Speech.spoken(root, people :+ entry(14, reply), Vector.empty) ==>
+        Some(Outcome.Spoken(EntryId("c14")))
+      // In the strand, by time: a reply before the root is not after it.
+      val before = entry(3, reply, "s", now.minusSeconds(5))
+      val after = entry(4, reply, "s", now.plusSeconds(5))
+      Speech.spoken(root, people, Vector(before)) ==> None
+      Speech.spoken(root, people, Vector(before, after)) ==> Some(Outcome.Spoken(EntryId("s4")))
     }
 
     test("a rate needs a count of at least 1 and a positive window") {

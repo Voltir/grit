@@ -140,8 +140,10 @@ enum Outcome {
     */
   case NothingRecalled
 
-  /** A person spoke in the thread after its root (`by`, their entry): not posted. */
-  case Answered(by: EntryId)
+  /** The assistant already replied after its root (`by`, its entry), in the thread or its
+    * strand: not posted, so it never posts twice.
+    */
+  case Spoken(by: EntryId)
 
   /** The deployment stopped speaking after the draft was decided on: not posted. */
   case Withdrawn
@@ -243,12 +245,21 @@ object Speech {
     case Cost.AtLeast(usd) => usd
   }
 
-  /** The first of `after` (the conversation's entries after the heard message a draft
-    * answers) that a person said ([[grit.core.store.Payload.said]]), as `Answered`; `None`
-    * when none did.
+  /** The assistant's own reply after `root`, the heard message a draft answers, as
+    * `Spoken`: the first among `own`, its conversation's entries after it by position, and
+    * `strand`, what its strand's other conversations said, after it by time. A person's reply
+    * is not one: the judge weighs it. `None` when the assistant has not replied.
     */
-  def answered(after: Vector[Entry]): Option[Outcome.Answered] =
-    after.find(_.payload.said.nonEmpty).map(e => Outcome.Answered(e.id))
+  def spoken(root: Entry, own: Vector[Entry], strand: Vector[Entry]): Option[Outcome.Spoken] =
+    (own.filter(_.seq > root.seq) ++ strand.filter(_.createdAt.isAfter(root.createdAt)))
+      .filter(e =>
+        e.payload match {
+          case grit.core.store.Payload.Message(_: grit.core.message.Message.Assistant) => true
+          case _ => false
+        }
+      )
+      .minByOption(_.createdAt)
+      .map(e => Outcome.Spoken(e.id))
 
   /** What becomes of a draft `judged` under `speaking`: `Posted` (or `Shadowed` under
     * [[Speaking.Shadow]]) when its score is at or above `postAt`, else `Below`; `Unjudged`,

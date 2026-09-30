@@ -42,7 +42,7 @@ object SpeechJsonTests extends TestSuite {
   private val outcomes: Vector[Outcome] = Vector(
     Outcome.Passed,
     Outcome.NothingRecalled,
-    Outcome.Answered(EntryId("in:c:m2")),
+    Outcome.Spoken(EntryId("in:c:m2")),
     Outcome.Withdrawn,
     Outcome.Unjudged("down"),
     Outcome.Below(judged, p(0.5)),
@@ -72,7 +72,7 @@ object SpeechJsonTests extends TestSuite {
       outcomes.map(SpeechJson.outcomeName) ==> Vector(
         "passed",
         "nothing_recalled",
-        "answered",
+        "spoken",
         "withdrawn",
         "unjudged",
         "below",
@@ -80,6 +80,14 @@ object SpeechJsonTests extends TestSuite {
         "posted",
         "failed"
       )
+    }
+
+    test(
+      "an outcome stored as answered, before a person's reply stopped holding a draft, reads as spoken"
+    ) {
+      // The stored name of the hold before ADR 0023: rows kept under it must keep reading.
+      SpeechJson.readOutcome(ujson.Obj("kind" -> "answered", "by" -> "in:c:m2")) ==>
+        Right(Outcome.Spoken(EntryId("in:c:m2")))
     }
 
     test("a judgement recorded with the dropped adds question reads, without it") {

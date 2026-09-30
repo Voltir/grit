@@ -65,7 +65,7 @@ import TurnVerdict.Shape
   *   1. `judge` — a heard-rooted turn's draft scored against its thread and what its window
   *      recalled ([[TurnJudge]]); nothing asked when it passes or nothing was recalled.
   *   1. `record-speech` — what becomes of the draft ([[grit.core.speech.Speech.post]]),
-  *      held when a person spoke in the thread after its root: a posted one written as the
+  *      held when the assistant already replied after its root ([[Speech.spoken]]): a posted one written as the
   *      turn's reply and awaited at its heard message's address, in one transaction with
   *      the judge's cost and the outcome kept. A heard-rooted turn that failed before its
   *      draft records only `Failed` here. Only a posted draft goes on to the summary.
@@ -448,7 +448,7 @@ object Turn {
             case Entry(id, _, _, _, _, Payload.Draft(m), _) if id == turn.draftId => m
           }
         ) match {
-          case (Some(root), Some(draft)) =>
+          case (Some(_), Some(draft)) =>
             TurnJudge.said(draft) match {
               case None => TurnJudge.Judgement.Passed
               case Some(text) =>
@@ -457,7 +457,6 @@ object Turn {
                   records.estimator,
                   TurnJudge.state(
                     all,
-                    root,
                     window.getOrElse(Window(Vector.empty)),
                     near,
                     named,
@@ -471,8 +470,8 @@ object Turn {
   }
 
   /** The `record-speech` step: what becomes of `turn`'s draft, as `judgement` and the
-    * speaking in force say ([[Speech.post]]), unless a person spoke in the thread after its
-    * root ([[Speech.answered]]); the judge's cost in the ledger; a posted draft written as the
+    * speaking in force say ([[Speech.post]]), unless the assistant already replied after its
+    * root ([[Speech.spoken]]); the judge's cost in the ledger; a posted draft written as the
     * turn's reply and awaited at the address its heard message was heard with; and the
     * outcome kept ([[grit.core.speech.SpeechStore.drafted]]), dated `at`. A post with no
     * address to go to is `Failed`.
@@ -496,7 +495,7 @@ object Turn {
         .toRight(TurnFailure.Store(s"${WorkflowId.value(turn.workflowId)} has no draft"))
       reach <- store.reach(turn).left.map(storeFailure)
       judged = Speech
-        .answered(all.filter(_.seq > root.seq))
+        .spoken(root, all, Vector.empty)
         .getOrElse(judgement match {
           case TurnJudge.Judgement.Passed => Outcome.Passed
           case TurnJudge.Judgement.NothingRecalled => Outcome.NothingRecalled

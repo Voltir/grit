@@ -88,7 +88,7 @@ object SpeechJson {
   def writeOutcome(out: Outcome): ujson.Value = {
     val detail: Vector[(String, ujson.Value)] = out match {
       case Outcome.Passed | Outcome.NothingRecalled | Outcome.Withdrawn => Vector.empty
-      case Outcome.Answered(by) => Vector("by" -> ujson.Str(EntryId.value(by)))
+      case Outcome.Spoken(by) => Vector("by" -> ujson.Str(EntryId.value(by)))
       case Outcome.Unjudged(why) => Vector("why" -> ujson.Str(why))
       case Outcome.Below(j, at) => Vector("judged" -> writeJudged(j), "post_at" -> num(at))
       case Outcome.Shadowed(j) => Vector("judged" -> writeJudged(j))
@@ -104,7 +104,8 @@ object SpeechJson {
       str(o, "kind").flatMap {
         case "passed" => Right(Outcome.Passed)
         case "nothing_recalled" => Right(Outcome.NothingRecalled)
-        case "answered" => str(o, "by").map(b => Outcome.Answered(EntryId(b)))
+        // Stored as answered while a person's reply held a draft (before ADR 0023).
+        case "spoken" | "answered" => str(o, "by").map(b => Outcome.Spoken(EntryId(b)))
         case "withdrawn" => Right(Outcome.Withdrawn)
         case "unjudged" => str(o, "why").map(Outcome.Unjudged(_))
         case "below" =>
@@ -124,7 +125,7 @@ object SpeechJson {
     case Outcome.Below(j, _) => Some(j)
     case Outcome.Shadowed(j) => Some(j)
     case Outcome.Posted(j) => Some(j)
-    case Outcome.Passed | Outcome.NothingRecalled | Outcome.Answered(_) | Outcome.Withdrawn |
+    case Outcome.Passed | Outcome.NothingRecalled | Outcome.Spoken(_) | Outcome.Withdrawn |
         Outcome.Unjudged(_) | Outcome.Failed(_) =>
       None
   }
@@ -133,7 +134,7 @@ object SpeechJson {
   def outcomeName(out: Outcome): String = out match {
     case Outcome.Passed => "passed"
     case Outcome.NothingRecalled => "nothing_recalled"
-    case Outcome.Answered(_) => "answered"
+    case Outcome.Spoken(_) => "spoken"
     case Outcome.Withdrawn => "withdrawn"
     case Outcome.Unjudged(_) => "unjudged"
     case Outcome.Below(_, _) => "below"

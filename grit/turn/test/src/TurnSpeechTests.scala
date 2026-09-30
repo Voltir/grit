@@ -96,15 +96,34 @@ object TurnSpeechTests extends TestSuite {
         (Some(Outcome.Below(judged(0.49), speechLimits.postAt)), Vector.empty, None)
     }
 
-    test("a person spoke in the thread after the root: answered, nothing posted") {
+    test(
+      "a person spoke in the thread after the root: the judge weighs it, and the draft is posted"
+    ) {
       val w = speechWorld()
-      val later = hear(w.entries, "yes, Thursday")
+      hear(w.entries, "yes, Thursday")
       run(w, new Judge(Some(0.9)))
-      (outcome(w), awaited(w)) ==> (
-        Some(Outcome.Answered(EntryId("heard:yes, Thursday"))),
-        Vector.empty
-      )
-      assert(later != w.turn)
+      (outcome(w), awaited(w)) ==> (Some(Outcome.Posted(judged(0.9))), Vector((w.turn, "C/1")))
+    }
+
+    test("the assistant replied in the thread after the root: spoken, nothing posted") {
+      val w = speechWorld()
+      val replied = {
+        given grit.core.store.Tx = TestTx.fake
+        val next = w.entries.lockNext(conversation).getOrElse(sys.error("store"))
+        val e = grit.core.store.Entry(
+          EntryId("replied"),
+          conversation,
+          next.turnSeq,
+          None,
+          next.seq,
+          Payload.Message(said("Thursday, as before.")),
+          java.time.Instant.EPOCH
+        )
+        w.entries.insert(e)
+        e
+      }
+      run(w, new Judge(Some(0.9)))
+      (outcome(w), awaited(w)) ==> (Some(Outcome.Spoken(replied.id)), Vector.empty)
     }
 
     test("a draft that passes is kept passed, and the judge is not asked") {
