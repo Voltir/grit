@@ -59,8 +59,9 @@ object TurnJudge {
   private def yesNo(instructions: String) = Ask.yesNo[State](instructions, None, None)
 
   private val adds = yesNo(
-    "Read draft and thread. Does draft state something that thread does not already say? " +
-      "Restating, summarising or agreeing with the thread is no."
+    "Read draft and thread. Does draft tell the people in thread something that thread does " +
+      "not already say? Answering a question asked in thread is yes. Restating, summarising " +
+      "or agreeing with what thread already says is no."
   )
 
   private val grounded = yesNo(
@@ -70,8 +71,8 @@ object TurnJudge {
 
   private val worth = yesNo(
     "Read thread and draft. Would the people in thread want to be interrupted by draft now? " +
-      "Small talk, correcting a detail nobody relies on, or something they could look up " +
-      "themselves is no."
+      "Recalling a decision, fact or earlier discussion they are asking about or reaching for " +
+      "is yes. Small talk, or correcting a detail nobody relies on, is no."
   )
 
   /** A draft's text: `None` when it passes, its whole text, trimmed and lower-cased,
