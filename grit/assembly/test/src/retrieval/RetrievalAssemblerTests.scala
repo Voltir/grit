@@ -84,6 +84,18 @@ object RetrievalAssemblerTests extends TestSuite {
     * it was asked. The ranking is the test's, not a scorer's whose ties would decide it.
     */
   private final class Scripted(ids: String*) extends EntrySearch {
+    // What room answers: its hits as given, best first.
+    @caps.unsafe.untrackedCaptures
+    var inRoom = Vector.empty[EntrySearch.Hit]
+
+    def room(
+        room: grit.core.place.Place,
+        from: java.time.Instant,
+        until: java.time.Instant,
+        query: String,
+        limit: Int
+    )(using Tx^): Either[StoreError, Vector[EntrySearch.Hit]] = Right(inRoom.take(limit))
+
     // What nearby answers: each conversation's hits, as (conversation, id, score), best
     // first, ids as `{name}:t{turn}:{seq}`, only those from its open period's first turn on;
     // and every nearby search it was asked for, as the periods and query.

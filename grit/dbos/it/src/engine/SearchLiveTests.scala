@@ -257,5 +257,62 @@ object SearchLiveTests extends TestSuite {
       ) ==> Vector.fill(7)(Right(Vector("closed:e0")))
       find(c, "kiwi").map(ids) ==> Right(Vector.empty)
     }
+
+    test(
+      "room ranks the messages and closings said in its channel's threads in range, on search's scale"
+    ) {
+      val t0 = Instant.parse("2026-09-30T22:00:00Z")
+      def thread(channel: String, ts: String, payloads: (Payload, Long)*): ConversationId = {
+        val c = LiveDb.conversation(config, Origin.Slack("T", channel, ts)).id
+        LiveDb.transaction(config) {
+          payloads.zipWithIndex.foreach { case ((p, secs), i) =>
+            val _ = entries.insert(
+              Entry(
+                EntryId(s"room-$channel-$ts:e$i"),
+                c,
+                TurnSeq(i.toLong),
+                None,
+                i.toLong,
+                p,
+                t0.plusSeconds(secs)
+              )
+            )
+          }
+        }
+        c
+      }
+      val a = thread(
+        "wallaby",
+        "1.0",
+        Payload.Heard("the quokka contract term") -> 10,
+        Payload.Draft(
+          Message.Assistant(
+            Vector(AssistantBlock.Text("quokka quokka quokka")),
+            StopReason.EndTurn,
+            Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+            "m"
+          )
+        ) -> 20,
+        Payload
+          .Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("quokka settled")) -> 30,
+        Payload.Heard("quokka too late") -> 4_000
+      )
+      thread("numbat", "1.0", Payload.Heard("the quokka contract term") -> 10)
+      val room = Origin.Slack("T", "wallaby", "1.0").room
+      val hits = LiveDb.transaction(config)(
+        search.room(room, t0, t0.plusSeconds(3_600), "quokka contract", 10)
+      )
+      hits.map(ids) ==> Right(Vector("room-wallaby-1.0:e0", "room-wallaby-1.0:e2"))
+      hits.map(_.map(_.turn.conversationId).distinct) ==> Right(Vector(a))
+      val one = LiveDb.transaction(config) {
+        for {
+          r <- search.room(room, t0, t0.plusSeconds(3_600), "quokka contract", 10)
+          s <- search.search(a, TurnSeq(0), TurnSeq(1), "quokka contract", 10)
+        } yield (r.headOption.map(_.score), s.headOption.map(_.score))
+      }
+      one.map((r, s) => r == s && r.nonEmpty) ==> Right(true)
+      LiveDb.transaction(config)(search.room(room, t0, t0.plusSeconds(3_600), " ", 10)) ==>
+        Right(Vector.empty)
+    }
   }
 }

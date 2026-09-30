@@ -1,6 +1,9 @@
 package grit.core.store
 
+import java.time.Instant
+
 import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.place.Place
 
 /** Ranks entries against a text query: a conversation's own, or other conversations' open
   * periods'. Read-only.
@@ -39,13 +42,23 @@ trait EntrySearch {
   def closings(conversations: Vector[ConversationId], query: String, limit: Int)(using
       Tx^
   ): Either[StoreError, Vector[EntrySearch.Hit]]
+
+  /** The messages and closing entries of the conversations at places within `room`, said from
+    * `from` until before `until`, that match `query`: best first, at most `limit`, and equally
+    * good matches latest first, on [[search]]'s scale. A message is a person's, to grit or
+    * heard, or grit's reply; never a draft. Empty when nothing matches, `query` is blank or
+    * `limit` is not positive.
+    */
+  def room(room: Place, from: Instant, until: Instant, query: String, limit: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[EntrySearch.Hit]]
 }
 
 object EntrySearch {
 
   /** A matching entry, the turn it belongs to, and how well it matched: positive, higher is
     * better. Hits for the same query read in one transaction share one scale, from
-    * [[search]], [[nearby]] or [[closings]] alike.
+    * [[search]], [[nearby]], [[closings]] or [[room]] alike.
     */
   final case class Hit(id: EntryId, turn: TurnRef, score: Double)
 }

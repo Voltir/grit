@@ -131,7 +131,7 @@ private[dbos] object SqlEntryStore {
   private[dbos] def databaseError(e: Throwable): StoreError.DatabaseError =
     StoreError.DatabaseError(Option(e.getMessage).getOrElse(e.toString))
 
-  private def readEntry(rs: ResultSet): Entry =
+  private[sql] def readEntry(rs: ResultSet): Entry =
     Entry(
       id = EntryId(rs.getString("id")),
       conversationId = ConversationId(rs.getString("conversation_id")),

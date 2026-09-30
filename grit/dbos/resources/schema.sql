@@ -435,6 +435,25 @@ CREATE TABLE IF NOT EXISTS grit.heard (
     UNIQUE (conversation_id, turn_seq)
 );
 
+-- Where each stitchable conversation's first message was placed among its room's exchanges
+-- (grit.core.stitch.Placed, ADR 0023): it follows `root`'s exchange, begins something new, or
+-- was not read; `placed` is its StitchJson form, with what the classifier was shown, each
+-- exchange offered and why, and the tuning in force. `root` is set for a follows alone.
+-- Retention: journal: deleted with its entry, so with its period's raw entries (Target.Raw),
+-- or with the conversation it follows.
+CREATE TABLE IF NOT EXISTS grit.stitches (
+    entry_id        TEXT PRIMARY KEY REFERENCES grit.entries(id) ON DELETE CASCADE,
+    conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL CHECK (kind IN ('follows', 'begins', 'unread')),
+    root            UUID REFERENCES grit.conversations(id) ON DELETE CASCADE,
+    at              TIMESTAMPTZ NOT NULL,
+    placed          JSONB NOT NULL,
+    CHECK ((kind = 'follows') = (root IS NOT NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_stitches_conversation ON grit.stitches (conversation_id);
+CREATE INDEX IF NOT EXISTS idx_stitches_root ON grit.stitches (root);
+
 -- grit's decision on each heard message that reached it (grit.core.speech.Decision): held,
 -- with why (`silence`), or drafting in the heard message's own turn (`workflow`); triage's
 -- kind and helps; and, once the turn settles its draft, what became of it (`outcome`), the judge's
