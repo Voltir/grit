@@ -29,15 +29,13 @@ enum Origin {
     case Task(name, run) => Place.under(Namespace.Task, Vector(name, run))
   }
 
-  /** Whether its conversation is held with the person running grit, at a terminal on this
-    * machine, who answers what a tool asks first and may tune grit itself: a TUI session.
-    * Not a Slack thread, whose readers are colleagues, nor a task's run, which has no one.
+  /** Who its conversation's messages are for: the operator in a TUI session, colleagues in a
+    * Slack thread, nobody in a task's run.
     */
-  // The second audience-shaped match on Origin, after `assistant`: when a third appears,
-  // fold them into one `audience`.
-  def operator: Boolean = this match {
-    case Tui(_, _) => true
-    case Slack(_, _, _) | Task(_, _) => false
+  def audience: Audience = this match {
+    case Tui(_, _) => Audience.Operator
+    case Slack(_, _, _) => Audience.Colleagues
+    case Task(_, _) => Audience.Nobody
   }
 
   /** The place its conversation shares with its neighbours, what a scope's `room` stands
@@ -64,4 +62,34 @@ object Origin {
 
   /** The assistant of every thread in Slack team `team` ([[Origin.assistant]]). */
   def slackAssistant(team: String): PrincipalId = PrincipalId(s"slack:$team")
+}
+
+/** Who a conversation's messages are for, and what that decides. */
+enum Audience {
+
+  /** The person running grit, at a terminal on this machine: a TUI session. */
+  case Operator
+
+  /** Colleagues in a workspace: a Slack thread, begun by a message said at a channel's top
+    * level.
+    */
+  case Colleagues
+
+  /** No one: a task's run. */
+  case Nobody
+
+  /** Whether it answers what a tool asks first and may tune grit itself: the operator. */
+  def operator: Boolean = this match {
+    case Operator => true
+    case Colleagues | Nobody => false
+  }
+
+  /** Whether a conversation's first message may continue an exchange elsewhere in its room
+    * (stitched to it, ADR 0023): colleagues' threads. A TUI session or a task's run is
+    * begun on purpose.
+    */
+  def stitchable: Boolean = this match {
+    case Colleagues => true
+    case Operator | Nobody => false
+  }
 }

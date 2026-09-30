@@ -190,7 +190,7 @@ private[grit] object Launch {
           launch(TurnTooling[{store}](tools, Toolbox.Empty, Coding.readOnlyHosted, engine.jot, d.offer.rounds))
         )
       case Offered.All =>
-        // Offered only to the operator (Origin.operator): they tune grit, and ask first.
+        // Offered only to the operator (Audience.operator): they tune grit, and ask first.
         val tuned = new KeptModelSettings(engine.jot, engine.modelSettings, Clock.system())
         (everyone, Toolbox.of[{tuned, models}](Tuning.propose(tuned), Probes.probe(models))) match {
           case (Right(tools), Right(operator)) =>

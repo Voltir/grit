@@ -45,7 +45,7 @@ object TurnOffer {
   /** What `turn` is offered now, kept, and recorded as `turn`'s prompt: its conversation's
     * workspace (a TUI session's directory); the hosted tools of `tooling` that the live edge
     * serving that workspace advertises, then `tooling`'s own, then its operator tools when
-    * its origin is the operator's ([[grit.core.store.Origin.operator]]); and its prompt: the base, its
+    * its origin is the operator's ([[grit.core.store.Audience.operator]]); and its prompt: the base, its
     * edge's fragment, what its workspace calls the assistant (when it has named it,
     * [[grit.core.store.Origin.assistant]]), [[TurnPrompt.unprompted]] when its root is heard,
     * the voice's fragment (none for plain), what it may reach there, and the
@@ -80,7 +80,8 @@ object TurnOffer {
         .of[{}](hosted*)
         .map(_.set)
         .flatMap(h =>
-          (if (conversation.origin.operator) Toolbox.joined(tooling.tools, tooling.operator)
+          (if (conversation.origin.audience.operator)
+             Toolbox.joined(tooling.tools, tooling.operator)
            else Right(tooling.tools))
             .flatMap(_.preceded(hosted))
             .map(all => (h, all.set))

@@ -77,7 +77,7 @@ final case class TurnHosting(
 /** The tools a turn's model may call in its loop ([[TurnLoop]]), and how the loop runs.
   * `tools` run in the turn's own steps and act only through the capabilities `C`;
   * `operator`, too, but are offered only in a conversation with the person running grit
-  * ([[grit.core.store.Origin.operator]]), after `tools`; `hosted` are run by an edge serving the conversation's workspace, and act through nothing here.
+  * ([[grit.core.store.Audience.operator]]), after `tools`; `hosted` are run by an edge serving the conversation's workspace, and act through nothing here.
   * `jot` keeps each call's result from inside its step ([[TurnTools.Settling]]); `budget`
   * bounds its model calls, the last made with tools off; a call a person approves first
   * waits `answerWithin` for their answer.
