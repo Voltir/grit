@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# One read-only query against a local database, through the compose Postgres container, in
+# psql's unaligned tuples-only form (-At): one row per line, columns split by `|`.
+#
+#   scripts/sql grit_agent "SELECT count(*) FROM grit.entries"
+#   scripts/sql grit_agent "SELECT * FROM dbos.workflow_status" -- -x    # more psql flags
+#   scripts/sql --nick-db grit "SELECT 1"
+#
+# Refuses `grit` and `grit_slack` without --nick-db: they are Nick's. Every transaction is
+# read-only by default (default_transaction_read_only), so a write fails; that guards
+# against accidents, not intent, since a query can still switch it off. Works from a git
+# worktree: compose is reached through the main checkout, whose directory names the project.
+set -euo pipefail
+
+usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
+
+nick=false
+[ "${1:-}" = --nick-db ] && { nick=true; shift; }
+[ $# -ge 2 ] || usage
+db=$1 query=$2
+shift 2
+if [ $# -gt 0 ]; then
+  [ "$1" = -- ] || usage
+  shift
+fi
+
+case $db in
+  grit|grit_slack)
+    $nick || { echo "sql: $db is Nick's database; pass --nick-db to read it (agents use grit_agent)" >&2; exit 2; } ;;
+esac
+
+main=$(cd "$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
+
+docker compose --project-directory "$main" exec -T \
+  -e PGOPTIONS='-c default_transaction_read_only=on' \
+  postgres psql -U grit -d "$db" -At -v ON_ERROR_STOP=1 "$@" -c "$query"
