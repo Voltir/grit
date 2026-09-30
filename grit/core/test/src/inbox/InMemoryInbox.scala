@@ -3,6 +3,7 @@ package grit.core.inbox
 import grit.core.approval.Approval
 import grit.core.id.{EntryId, PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
+import grit.core.speech.{InMemorySpeechStore, Reach}
 import grit.core.spend.Budget
 import grit.core.store.{
   Entry,
@@ -33,6 +34,9 @@ final class InMemoryInbox(
 
   /** The conversations' periods, over [[entries]]. */
   val periods: InMemoryPeriodStore = new InMemoryPeriodStore(entries)
+
+  /** Where each heard message could be answered, over [[entries]] and [[ledger]]. */
+  val speech: InMemorySpeechStore = new InMemorySpeechStore(entries, ledger)
 
   /** The turns started, oldest first; a turn started twice is here once. */
   @caps.unsafe.untrackedCaptures
@@ -85,9 +89,16 @@ final class InMemoryInbox(
       source: SourceId,
       text: String,
       by: PrincipalId,
-      at: java.time.Instant
+      at: java.time.Instant,
+      reach: Reach
   ): Either[InboxError, Unit] =
-    recorded(origin, source, Payload.Heard(text), by, at, capped = false).map(_ => ())
+    recorded(origin, source, Payload.Heard(text), by, at, capped = false).flatMap { turn =>
+      inTx(speech.heard(turn, reach)) match {
+        // A message recorded as a turn before is not heard, and keeps no reach.
+        case Left(StoreError.Invalid(_)) | Right(()) => Right(())
+        case Left(other) => Left(InboxError.Unavailable(other.toString))
+      }
+    }
 
   /** `payload` recorded as the first entry of a new turn of `origin`'s conversation, dated
     * `at` as the period it opens is, unless `source` was recorded before (its turn then) or,

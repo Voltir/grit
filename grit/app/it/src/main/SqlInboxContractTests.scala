@@ -7,6 +7,7 @@ import grit.core.id.{CloseRef, ConversationId, EntryId, PrincipalId, TurnRef, Tu
 import grit.core.inbox.{Inbox, InboxContract}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
+import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{Entry, Origin, Payload, StoreError}
 import grit.dbos.engine.LiveEngine
@@ -101,7 +102,26 @@ object SqlInboxContractTests extends InboxContract {
         engine.jot
           .write(engine.principals.enroll(id, name))
           .fold(e => sys.error(e.toString), identity)
-      body(engine.inbox, InboxContract.Store(spend, exists, written, dated, periods, close, enroll))
+      def reached(origin: Origin): Vector[Option[Reach]] =
+        engine.db
+          .read(for {
+            found <- engine.conversations.find(origin)
+            all <- found.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
+              engine.entries.list(c.id)
+            )
+            reaches <- all.foldLeft[Either[StoreError, Vector[Option[Reach]]]](
+              Right(Vector.empty)
+            ) { (acc, e) =>
+              acc.flatMap(done =>
+                engine.speech.reach(TurnRef(e.conversationId, e.turnSeq)).map(done :+ _)
+              )
+            }
+          } yield reaches)
+          .fold(e => sys.error(e.toString), identity)
+      body(
+        engine.inbox,
+        InboxContract.Store(spend, exists, written, dated, periods, close, enroll, reached)
+      )
     } finally engine.close()
   }
 }

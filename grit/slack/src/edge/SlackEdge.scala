@@ -8,6 +8,7 @@ import grit.core.edge.{CatchUp, EdgeStores, Part, Pending, ServedEdge}
 import grit.core.id.{PrincipalId, SourceId, WorkflowId}
 import grit.core.inbox.{InboxError, Progress}
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError}
 import grit.prose.form.{Block, Doc, Text}
@@ -184,7 +185,7 @@ final class SlackEdge(
       case None => Right(())
       case Some((author, text)) =>
         stores.inbox
-          .hear(origin, SourceId(Ts.value(m.ts)), text, author, m.at)
+          .hear(origin, SourceId(Ts.value(m.ts)), text, author, m.at, Reach.Nowhere)
           .left
           .map(_.toString)
     }

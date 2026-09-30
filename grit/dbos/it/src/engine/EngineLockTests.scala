@@ -215,6 +215,7 @@ object EngineLockTests extends TestSuite {
                 new SqlConversationStore(),
                 entries,
                 new SqlPeriodStore(entries),
+                new grit.dbos.sql.SqlSpeechStore,
                 new grit.dbos.sql.SqlUsageLedger(),
                 LiveEngine.Uncapped
               ),

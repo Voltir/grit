@@ -447,7 +447,8 @@ object CollectorLiveTests extends TestSuite {
           SourceId("two"),
           "heard",
           PrincipalId.Local,
-          java.time.Instant.now()
+          java.time.Instant.now(),
+          grit.core.speech.Reach.Nowhere
         ) ==> Right(())
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
         val triaged = TriageRef(p1, TurnSeq(1)).workflowId

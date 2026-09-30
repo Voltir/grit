@@ -10,7 +10,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
   row), `SqlVoiceStore` (the voice, one row), `SqlPrincipals` (people by name, and who wrote each inbound entry), `SqlDeliveries` (the replies an edge has yet to post outside grit), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
   as posted from one closing, and its cursor), `SqlTombstones` (what is to be deleted, ADR 0014), `SqlTriageStore`
-  (what triage made of each heard message, deleted with its entry).
+  (what triage made of each heard message, deleted with its entry), `SqlSpeechStore` (each
+  heard message's reach, and grit's decisions to speak or not, kept with their period's usage).
   Imports nothing else in dbos.
 - **`workflow`** — DBOS behind `Durable`: `DbosDurable`, `DurableWorkflow` (registers a
   body under the fixed class name `grit.workflow`, so moving it strands no workflow row, and

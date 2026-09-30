@@ -50,7 +50,8 @@ object TriageLiveTests extends TestSuite {
           SourceId("m1"),
           "standup moves to 10:00",
           PrincipalId.Local,
-          Instant.now()
+          Instant.now(),
+          grit.core.speech.Reach.Nowhere
         ) ==>
           Right(())
         engine.inbox.hear(
@@ -58,7 +59,8 @@ object TriageLiveTests extends TestSuite {
           SourceId("m1"),
           "standup moves to 10:00",
           PrincipalId.Local,
-          Instant.now()
+          Instant.now(),
+          grit.core.speech.Reach.Nowhere
         ) ==>
           Right(())
         val c = LiveDb.conversation(config, here).id
@@ -83,9 +85,23 @@ object TriageLiveTests extends TestSuite {
       try {
         engine.launch(nothing, nothing, nothing, nothing, triage, Vector.empty)
         val here = Origin.Task("triage", "unfinished")
-        engine.inbox.hear(here, SourceId("m1"), "one", PrincipalId.Local, Instant.now()) ==>
+        engine.inbox.hear(
+          here,
+          SourceId("m1"),
+          "one",
+          PrincipalId.Local,
+          Instant.now(),
+          grit.core.speech.Reach.Nowhere
+        ) ==>
           Right(())
-        engine.inbox.hear(here, SourceId("m2"), "two", PrincipalId.Local, Instant.now()) ==>
+        engine.inbox.hear(
+          here,
+          SourceId("m2"),
+          "two",
+          PrincipalId.Local,
+          Instant.now(),
+          grit.core.speech.Reach.Nowhere
+        ) ==>
           Right(())
         assert(started.await(30, TimeUnit.SECONDS))
         // One runs; the other waits behind it in its conversation's partition.
@@ -111,14 +127,16 @@ object TriageLiveTests extends TestSuite {
           SourceId("m1"),
           "@grit hi",
           PrincipalId.Local,
-          Instant.now()
+          Instant.now(),
+          grit.core.speech.Reach.Nowhere
         ) ==> Right(())
         engine.inbox.hear(
           here,
           SourceId("m2"),
           "and this",
           PrincipalId.Local,
-          Instant.now()
+          Instant.now(),
+          grit.core.speech.Reach.Nowhere
         ) ==> Right(())
         val c = LiveDb.conversation(config, here).id
         assert(eventually(ran.size >= 1))

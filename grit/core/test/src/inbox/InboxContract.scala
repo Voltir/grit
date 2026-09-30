@@ -5,6 +5,7 @@ import java.time.{Instant, ZoneOffset}
 import grit.core.id.{PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Message}
 import grit.core.period.{Period, PeriodState}
+import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Origin, Payload}
 
@@ -46,8 +47,17 @@ abstract class InboxContract extends TestSuite {
         val asked = Set(SourceId("m1"), SourceId("m2"), SourceId("m3"))
         inbox.recorded(here, asked) ==> Right(Set.empty)
         inbox.ingest(here, SourceId("m1"), said("one"), PrincipalId.Local)
-        inbox.hear(here, SourceId("m2"), "two", PrincipalId.Local, Said) ==> Right(())
-        inbox.hear(there, SourceId("m3"), "three", PrincipalId.Local, Said) ==> Right(())
+        inbox.hear(here, SourceId("m2"), "two", PrincipalId.Local, Said, Reach.Nowhere) ==> Right(
+          ()
+        )
+        inbox.hear(
+          there,
+          SourceId("m3"),
+          "three",
+          PrincipalId.Local,
+          Said,
+          Reach.Nowhere
+        ) ==> Right(())
         inbox.recorded(here, asked) ==> Right(Set(SourceId("m1"), SourceId("m2")))
       }
     }
@@ -109,10 +119,36 @@ abstract class InboxContract extends TestSuite {
         val here = Origin.Task("inbox", "heard")
         val ana = PrincipalId("task:ana")
         store.enroll(ana, "Ana")
-        inbox.hear(here, SourceId("m1"), "standup moves to 10:00", ana, Said) ==> Right(())
-        inbox.hear(here, SourceId("m1"), "standup moves to 10:00", ana, Said) ==> Right(())
+        inbox.hear(
+          here,
+          SourceId("m1"),
+          "standup moves to 10:00",
+          ana,
+          Said,
+          Reach.Nowhere
+        ) ==> Right(())
+        inbox.hear(
+          here,
+          SourceId("m1"),
+          "standup moves to 10:00",
+          ana,
+          Said,
+          Reach.Nowhere
+        ) ==> Right(())
         store.written(here) ==> Vector((Payload.Heard("standup moves to 10:00"), Some("Ana")))
         inbox.ingested(here, SourceId("m1")) ==> Right(None)
+      }
+    }
+
+    test("a heard message keeps the reach it was heard with; heard again, the first stands") {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "reach")
+        val first = Reach(Some("C/1"), Set(PrincipalId("task:ben")))
+        inbox.hear(here, SourceId("m1"), "ask Ben", PrincipalId.Local, Said, first) ==> Right(())
+        inbox.hear(here, SourceId("m1"), "ask Ben", PrincipalId.Local, Said, Reach.Nowhere) ==>
+          Right(())
+        inbox.ingest(here, SourceId("m2"), said("hi"), PrincipalId.Local).map(_ => ()) ==> Right(())
+        store.reached(here) ==> Vector(Some(first), None)
       }
     }
 
@@ -120,9 +156,23 @@ abstract class InboxContract extends TestSuite {
       withInbox(Uncapped) { (inbox, store) =>
         val here = Origin.Task("inbox", "dated")
         val later = Said.plusSeconds(300)
-        inbox.hear(here, SourceId("m1"), "standup moves to 10:00", PrincipalId.Local, Said) ==>
+        inbox.hear(
+          here,
+          SourceId("m1"),
+          "standup moves to 10:00",
+          PrincipalId.Local,
+          Said,
+          Reach.Nowhere
+        ) ==>
           Right(())
-        inbox.hear(here, SourceId("m2"), "fine by me", PrincipalId.Local, later) ==> Right(())
+        inbox.hear(
+          here,
+          SourceId("m2"),
+          "fine by me",
+          PrincipalId.Local,
+          later,
+          Reach.Nowhere
+        ) ==> Right(())
         (store.dated(here), store.periods(here).map(_.openedAt)) ==> (
           Vector(Said, later),
           Vector(Said)
@@ -153,7 +203,14 @@ abstract class InboxContract extends TestSuite {
         } ==> Left(cap)
         store.exists(fresh) ==> false
         val heard = Origin.Task("inbox", "capped-heard")
-        inbox.hear(heard, SourceId("m1"), "lunch?", PrincipalId.Local, Said) ==> Right(())
+        inbox.hear(
+          heard,
+          SourceId("m1"),
+          "lunch?",
+          PrincipalId.Local,
+          Said,
+          Reach.Nowhere
+        ) ==> Right(())
         store.written(heard) ==> Vector((Payload.Heard("lunch?"), None))
       }
     }
@@ -167,7 +224,8 @@ object InboxContract {
     * `written`, the entries of an origin's conversation in order, each with the name its
     * author was enrolled under; `dated`, when each of those entries is dated;
     * `periods`, an origin's conversation's periods, oldest first; `close` seals the period a
-    * turn is in, its last turn that one; `enroll` names a person.
+    * turn is in, its last turn that one; `enroll` names a person; `reached`, the reach kept
+    * for each of an origin's conversation's entries, in order (none for one not heard).
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -176,6 +234,7 @@ object InboxContract {
       dated: Origin => Vector[Instant],
       periods: Origin => Vector[Period],
       close: TurnRef => Unit,
-      enroll: (PrincipalId, String) => Unit
+      enroll: (PrincipalId, String) => Unit,
+      reached: Origin => Vector[Option[Reach]]
   )
 }

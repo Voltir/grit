@@ -422,6 +422,55 @@ CREATE TABLE IF NOT EXISTS grit.triage (
        AND (kind IS NOT NULL OR cost_usd IS NULL))
 );
 
+-- Where a reply to each heard message could go, and whom it names (grit.core.speech.Reach): its
+-- edge's own address, NULL when it is never answered (a past message), and the principals it
+-- names besides the assistant. Written by Inbox.hear; the first kept stands.
+-- Retention: journal: deleted with its entry, so with its period's raw entries (Target.Raw).
+CREATE TABLE IF NOT EXISTS grit.heard (
+    entry_id        TEXT PRIMARY KEY REFERENCES grit.entries(id) ON DELETE CASCADE,
+    conversation_id UUID NOT NULL,
+    turn_seq        BIGINT NOT NULL,
+    reply_to        TEXT,
+    asked           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    UNIQUE (conversation_id, turn_seq)
+);
+
+-- grit's decision on each heard message that reached it (grit.core.speech.Decision): held,
+-- with why (`silence`), or drafting in the heard message's own turn (`workflow`); triage's
+-- kind and helps; and, once the turn settles its draft, what became of it (`outcome`), the judge's
+-- scores and model, an excerpt of the draft, and a posted reply's position. Forms in
+-- SpeechJson. No foreign key: it outlives the heard entry's purge, so the rates and the
+-- day's speech spend count every decision, and each post can be stated with its approval.
+-- Retention: ledger: with its period's usage (UsageLedger.forget), or its conversation.
+CREATE TABLE IF NOT EXISTS grit.speech (
+    workflow        TEXT PRIMARY KEY,
+    conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,
+    turn_seq        BIGINT NOT NULL,
+    room            TEXT NOT NULL,
+    decided_at      TIMESTAMPTZ NOT NULL,
+    drafting        BOOLEAN NOT NULL,
+    silence         JSONB,
+    kind            TEXT,
+    helps           DOUBLE PRECISION CHECK (helps BETWEEN 0 AND 1),
+    outcome         JSONB,
+    outcome_kind    TEXT,
+    adds            DOUBLE PRECISION CHECK (adds BETWEEN 0 AND 1),
+    grounded        DOUBLE PRECISION CHECK (grounded BETWEEN 0 AND 1),
+    worth           DOUBLE PRECISION CHECK (worth BETWEEN 0 AND 1),
+    post_at         DOUBLE PRECISION CHECK (post_at BETWEEN 0 AND 1),
+    judge_model     TEXT,
+    excerpt         TEXT,
+    posted_seq      BIGINT,
+    judged_at       TIMESTAMPTZ,
+    CHECK (drafting = (silence IS NULL)
+       AND (outcome IS NULL) = (outcome_kind IS NULL)
+       AND (outcome IS NULL OR drafting)
+       AND (outcome IS NULL) = (judged_at IS NULL)
+       AND (posted_seq IS NULL OR outcome_kind = 'posted'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_speech_decided ON grit.speech (decided_at);
+
 -- The lifecycle's settings in force (LifecycleSettings): one row, or none for the defaults.
 -- Seeded on first start, then changed by /set or by hand. Their rules are checked where
 -- they are read (LifecycleSettings.of), not here, so they have one home.

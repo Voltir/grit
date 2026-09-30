@@ -72,8 +72,9 @@ In dependency order:
   shadow, or within `Limits`, whose windows are `Rate`s), a heard message as it is weighed
   (`Heard`, its `Reach`), the ledger it is weighed against (`Ledger`, each `Spoken` turn at its
   `Stage`), `Speech.decide` (drafted, or held for a `Silence`), and `Speech.post` (what becomes
-  of a draft the judge scored, `Judged`, as an `Outcome`). ← `id`, `message`, `period`,
-  `place`, `spend`, `triage`
+  of a draft the judge scored, `Judged`, as an `Outcome`), `SpeechStore` (each heard
+  message's `Reach`, and grit's decisions, kept with its period's usage) and `SpeechJson`
+  (their stored form). ← `id`, `message`, `period`, `place`, `spend`, `store`, `triage`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
   `CacheDocs` (where it keeps what it makes of one closed period, deleted with that period's

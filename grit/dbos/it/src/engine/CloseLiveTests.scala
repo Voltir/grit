@@ -225,7 +225,14 @@ object CloseLiveTests extends TestSuite {
         minuteIdle(config)
         val here = Origin.Task("close", "heard-late")
         val said = Instant.now().minus(2, ChronoUnit.DAYS).truncatedTo(ChronoUnit.MILLIS)
-        engine.inbox.hear(here, SourceId("m1"), "standup moves", PrincipalId.Local, said) ==>
+        engine.inbox.hear(
+          here,
+          SourceId("m1"),
+          "standup moves",
+          PrincipalId.Local,
+          said,
+          grit.core.speech.Reach.Nowhere
+        ) ==>
           Right(())
         val c = LiveDb.conversation(config, here).id
         engine.sweep(Instant.now()).map(s => (s.enqueued, s.asked)) ==> Right(

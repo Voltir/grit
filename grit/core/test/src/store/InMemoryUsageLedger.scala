@@ -19,6 +19,9 @@ final class InMemoryUsageLedger extends UsageLedger, Spending {
   @caps.unsafe.untrackedCaptures
   private var recordedAt = Map.empty[EntryId, Instant]
 
+  /** When the row for `entry` was recorded; `None` for none. */
+  def recordedOn(entry: EntryId): Option[Instant] = recordedAt.get(entry)
+
   def on(day: Day)(using Tx^): Either[StoreError, Spend] =
     Right(spent(rows.filter { row =>
       recordedAt.get(row._1).exists(at => !at.isBefore(day.from) && at.isBefore(day.until))

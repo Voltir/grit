@@ -19,6 +19,7 @@ import grit.core.id.{
 }
 import grit.core.inbox.{Inbox, InboxError, Progress}
 import grit.core.message.Message
+import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.store.{
   ConversationStore,
@@ -48,6 +49,7 @@ final class SqlInbox(
     conversations: ConversationStore,
     entries: EntryStore,
     periods: PeriodStore,
+    speech: SpeechStore,
     spending: Spending,
     budget: Budget
 ) extends Inbox {
@@ -78,7 +80,8 @@ final class SqlInbox(
       source: SourceId,
       text: String,
       by: PrincipalId,
-      at: Instant
+      at: Instant,
+      reach: Reach
   ): Either[InboxError, Unit] =
     inTransaction(
       recorded(origin, source, Payload.Heard(text), by, at, capped = false).flatMap {
@@ -87,11 +90,13 @@ final class SqlInbox(
           for {
             entry <- entries.get(SqlInbox.entryId(turn.conversationId, source))
             period <- periods.of(turn)
-          } yield entry.map(_.payload) match {
-            // A message recorded as a turn before is not heard, and not triaged.
-            case Some(Payload.Heard(_)) => period.map(p => TriageRef(p.ref, turn.turnSeq))
-            case _ => None
-          }
+            triage <- entry.map(_.payload) match {
+              // A message recorded as a turn before is not heard, and not triaged.
+              case Some(Payload.Heard(_)) =>
+                speech.heard(turn, reach).map(_ => period.map(p => TriageRef(p.ref, turn.turnSeq)))
+              case _ => Right(None)
+            }
+          } yield triage
       }
     ).flatMap {
       case None => Right(())

@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.id.{CloseRef, ConversationId, EntryId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
+import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{Origin, Payload, StoreError}
 import grit.dbos.sql.TestTx
@@ -61,6 +62,18 @@ object InMemoryInboxTests extends InboxContract {
         )
         .fold(e => sys.error(e.toString), identity)
     }
+    def reached(origin: Origin): Vector[Option[Reach]] =
+      inbox.conversations.all.find(_.origin == origin).toVector.flatMap { c =>
+        val tx = TestTx.fake
+        inbox.entries
+          .list(c.id)(using tx)
+          .fold(e => sys.error(e.toString), identity)
+          .map(e =>
+            inbox.speech
+              .reach(TurnRef(c.id, e.turnSeq))(using tx)
+              .fold(e => sys.error(e.toString), identity)
+          )
+      }
     def enroll(id: PrincipalId, name: String): Unit =
       inbox.principals
         .enroll(id, name)(using TestTx.fake)
@@ -74,7 +87,8 @@ object InMemoryInboxTests extends InboxContract {
         dated,
         periods,
         close,
-        enroll
+        enroll,
+        reached
       )
     )
   }

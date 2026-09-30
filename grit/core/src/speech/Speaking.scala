@@ -1,5 +1,7 @@
 package grit.core.speech
 
+import java.time.Instant
+
 import scala.concurrent.duration.*
 
 import grit.core.period.Probability
@@ -42,7 +44,16 @@ final case class Limits(
     room: Rate,
     deployment: Rate,
     spend: DailyCap
-)
+) {
+
+  /** The earliest instant any of its rates reaches back to from `now`: what a decision at
+    * `now` reads of the ledger ([[SpeechStore.spoken]]).
+    */
+  def from(now: Instant): Instant =
+    now.minusNanos(
+      Vector(thread, room, deployment).foldLeft(0L)((m, r) => math.max(m, r.per.toNanos))
+    )
+}
 
 object Limits {
 

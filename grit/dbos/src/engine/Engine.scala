@@ -17,6 +17,7 @@ import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowI
 import grit.core.inbox.Inbox
 import grit.core.place.Place
 import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginDocs}
+import grit.core.speech.SpeechStore
 import grit.core.spend.{Budget, Spending}
 import grit.core.store.{
   ClosedPeriod,
@@ -56,6 +57,7 @@ import grit.dbos.sql.{
   SqlPluginDocs,
   SqlPrincipals,
   SqlPromptStore,
+  SqlSpeechStore,
   SqlTombstones,
   SqlToolRequests,
   SqlToolSets,
@@ -135,6 +137,9 @@ final class Engine private (
   /** What triage made of each heard message. */
   val triage: TriageStore = new SqlTriageStore
 
+  /** Where each heard message could be answered, and grit's decisions on each. */
+  val speech: SpeechStore = new SqlSpeechStore
+
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource)
 
@@ -145,7 +150,7 @@ final class Engine private (
   private val client = new DBOSClient(dataSource)
 
   val inbox: Inbox =
-    new SqlInbox(dataSource, client, conversations, entries, periods, spending, budget)
+    new SqlInbox(dataSource, client, conversations, entries, periods, speech, spending, budget)
 
   /** Each plugin's cursor. */
   val cursors: PluginCursors = new SqlPluginCursors(tombstones)

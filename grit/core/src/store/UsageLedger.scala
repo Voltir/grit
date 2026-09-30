@@ -25,7 +25,10 @@ trait UsageLedger {
   /** The rows workflow `workflow` recorded, in the order it recorded them. */
   def of(workflow: WorkflowId)(using Tx^): Either[StoreError, Vector[UsageLedger.Row]]
 
-  /** Deletes the rows recorded for `conversation`'s turns `from` to `to`, both included. */
+  /** Deletes the rows recorded for `conversation`'s turns `from` to `to`, both included, and
+    * the speech decisions on those turns ([[grit.core.speech.SpeechStore]]), which are kept
+    * as long as their usage.
+    */
   def forget(conversation: ConversationId, from: TurnSeq, to: TurnSeq)(using
       Tx^
   ): Either[StoreError, Unit]

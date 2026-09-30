@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.approval.Approval
 import grit.core.id.{PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
+import grit.core.speech.Reach
 import grit.core.spend.{DailyCap, Day, Spend}
 import grit.core.store.Origin
 
@@ -28,20 +29,23 @@ trait Inbox extends caps.SharedCapability {
   ): Either[InboxError, TurnRef]
 
   /** Records `text` from `origin`'s conversation, written by `by`, as heard: said where grit
-    * listens, not to it ([[grit.core.store.Payload.Heard]]). The edge never answers it, and
-    * no turn runs for it. The conversation is created by `by` if it is new. It was said
-    * `at`: its entry is dated `at`, and a period it opens opens `at`, so a message heard late
-    * is as quiet as it was. A message whose `source` was already recorded for `origin`,
-    * heard or ingested, is not recorded again. Once recorded, it is triaged, once
-    * ([[grit.core.triage.Tags]]); hearing it again triages it if that was lost. Never
-    * refused over the day's cap.
+    * listens, not to it ([[grit.core.store.Payload.Heard]]), as the first entry of a turn of
+    * its own. The conversation is created by `by` if it is new. It was said `at`: its entry
+    * is dated `at`, and a period it opens opens `at`, so a message heard late is as quiet as
+    * it was. `reach` is where a reply to it could go and whom it names
+    * ([[grit.core.speech.Reach]]). A message whose `source` was already recorded for
+    * `origin`, heard or ingested, is not recorded again, and its first reach stands. Once
+    * recorded, it is triaged, once ([[grit.core.triage.Tags]]); hearing it again triages it
+    * if that was lost. Its turn runs only when grit drafts a reply to it
+    * ([[grit.core.speech.Speech.decide]]). Never refused over the day's cap.
     */
   def hear(
       origin: Origin,
       source: SourceId,
       text: String,
       by: PrincipalId,
-      at: Instant
+      at: Instant,
+      reach: Reach
   ): Either[InboxError, Unit]
 
   /** The turn the message `source` from `origin` was recorded as by [[ingest]]; `None` when it

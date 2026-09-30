@@ -247,6 +247,7 @@ private[engine] final class Attached(
       conversations,
       entries,
       new SqlPeriodStore(entries),
+      new grit.dbos.sql.SqlSpeechStore,
       spending,
       budget
     )

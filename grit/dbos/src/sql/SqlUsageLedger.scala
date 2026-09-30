@@ -127,13 +127,19 @@ final class SqlUsageLedger extends UsageLedger, Spending {
     try {
       Using.resource(
         conn.prepareStatement(
-          """DELETE FROM grit.usage_ledger
+          // The speech decisions on those turns are ledger too (grit.speech).
+          """WITH speech AS (
+            |  DELETE FROM grit.speech
+            |   WHERE conversation_id = ?::uuid AND turn_seq BETWEEN ? AND ?)
+            |DELETE FROM grit.usage_ledger
             | WHERE conversation_id = ?::uuid AND turn_seq BETWEEN ? AND ?""".stripMargin
         )
       ) { ps =>
-        ps.setString(1, ConversationId.value(conversation))
-        ps.setLong(2, TurnSeq.value(from))
-        ps.setLong(3, TurnSeq.value(to))
+        Vector(0, 3).foreach { i =>
+          ps.setString(i + 1, ConversationId.value(conversation))
+          ps.setLong(i + 2, TurnSeq.value(from))
+          ps.setLong(i + 3, TurnSeq.value(to))
+        }
         ps.executeUpdate()
       }
       Right(())
