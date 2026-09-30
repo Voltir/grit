@@ -1,6 +1,6 @@
 package grit.lifecycle.triage
 
-import java.time.Instant
+import java.time.{Instant, ZoneOffset}
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -20,12 +20,17 @@ import grit.core.id.{
 }
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
+import grit.core.speech.{InMemorySpeechStore, Reach, Speaking}
+import grit.core.spend.Budget
 import grit.core.store.{
   Db,
   Entry,
+  InMemoryConversationStore,
   InMemoryEntryStore,
   InMemoryPeriodStore,
   InMemoryPrincipals,
+  InMemoryUsageLedger,
+  Origin,
   Payload,
   StoreError,
   Tx
@@ -97,12 +102,22 @@ object TriageFixtures {
       body(using TestTx.fake)
   }
 
-  /** One conversation's stores. */
+  /** One conversation's stores, a Slack thread's. */
   final class World {
     val entries = new InMemoryEntryStore
     val periods = new InMemoryPeriodStore(entries)
     val principals = new InMemoryPrincipals
     val triage = new InMemoryTriageStore(entries)
+    val conversations = new InMemoryConversationStore
+    val ledger = new InMemoryUsageLedger
+    val speech = new InMemorySpeechStore(entries, ledger)
+
+    // The conversation is c1: the first a fresh store creates.
+    conversations.findOrCreate(Origin.Slack("T", "C", "1.0"), PrincipalId.Local)(using TestTx.fake)
+
+    /** The turns started, in order. */
+    @caps.unsafe.untrackedCaptures
+    var started = Vector.empty[TurnRef]
 
     private def insert(payload: Payload, by: Option[(String, String)], minutes: Long): Entry = {
       given Tx = TestTx.fake
@@ -117,9 +132,12 @@ object TriageFixtures {
       e
     }
 
-    /** `text` heard from `name` as the next turn at `minutes`; its triage. */
+    /** `text` heard from `name` as the next turn at `minutes`, with a reply address; its
+      * triage.
+      */
     def hear(text: String, name: String, minutes: Long): TriageRef = {
       val e = insert(Payload.Heard(text), Some(s"u-$name" -> name), minutes)
+      speech.heard(TurnRef(c, e.turnSeq), Reach(Some("C/1.0"), Set.empty))(using TestTx.fake)
       TriageRef(p1, e.turnSeq)
     }
 
@@ -144,10 +162,27 @@ object TriageFixtures {
         .find(_.turnSeq == triage.turn)
         .flatMap(e => this.triage.of(Vector(e.id))(using TestTx.fake).toOption.flatMap(_.get(e.id)))
 
-    /** The triage's body over this world, with `classifier`, at `minutes`. */
-    def body(classifier: Classifier^, minutes: Long)(id: WorkflowId)(using Durable^): String =
+    /** The triage's body over this world, with `classifier`, at `minutes`, speaking as
+      * `speaking` says, with no daily cap; a turn it starts is kept in [[started]].
+      */
+    def body(classifier: Classifier^, minutes: Long, speaking: Speaking = Speaking.Off)(
+        id: WorkflowId
+    )(using Durable^): String =
       Triage.body(
-        TriageEnv(TriageRecords(entries, triage, principals), classifier, FakeDb, new Stopped(at(minutes)))
+        TriageEnv(
+          TriageRecords(entries, triage, principals, conversations, speech, ledger),
+          classifier,
+          FakeDb,
+          new Stopped(at(minutes)),
+          TriageSpeech(
+            speaking,
+            Budget(ZoneOffset.UTC, None),
+            turn => {
+              started = started :+ turn
+              Right(())
+            }
+          )
+        )
       )(id)
   }
 }

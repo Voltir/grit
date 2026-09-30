@@ -37,9 +37,11 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   queue under its conversation (`grit.dbos.workflow.Triages`), so ahead of any later close
   of it: `ask` the classifier (`TriageQuestion`: its kind, and whether someone waits on it,
   whether it states something worth keeping, whether a reply would help) over the message,
-  who said it and the thread before it, then `record` the tags (`grit.core.triage`). A
-  classifier that fails leaves unanswered tags. It writes no entry, so it never moves a
-  deadline. `TriageEnv` is what it works with. ← `transcript`
+  who said it and the thread before it, then `record` the tags (`grit.core.triage`), then
+  `consider` whether grit drafts a reply (`Speak`, over `grit.core.speech`) and, when it does,
+  `start` the heard message's own turn (ADR 0022). A classifier that fails leaves unanswered
+  tags, and no draft. It writes no entry, so it never moves a deadline. `TriageEnv` is what
+  it works with. ← `transcript`
 - **`post`** — `Posting`: one run posting closed periods to a plugin from its cursor
   (`grit.core.plugin`), on a queue of its own partitioned by plugin (`grit.dbos.workflow.Posts`):
   each step posts the next closed period and moves the cursor past it in one `Jot`

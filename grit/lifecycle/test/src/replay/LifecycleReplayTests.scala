@@ -76,6 +76,8 @@ object LifecycleReplayTests extends TestSuite {
                     )
                   )
                 )
+              // Speaking off: a history recorded before `consider` runs it past its end, and
+              // keeps nothing; one recorded after reads its decision and start back.
               case "triage" =>
                 new InMemoryDurable().replay(history.id, history.steps)(
                   new TriageFixtures.World()

@@ -166,10 +166,22 @@ object LiveTurn {
           ),
         Triage.body(
           TriageEnv(
-            TriageRecords(entries, engine.triage, engine.principals),
+            TriageRecords(
+              entries,
+              engine.triage,
+              engine.principals,
+              engine.conversations,
+              engine.speech,
+              engine.spending
+            ),
             grit.core.classify.Classifier.none("no classifier"),
             engine.db,
-            Clock.system()
+            Clock.system(),
+            grit.lifecycle.triage.TriageSpeech(
+              grit.core.speech.Speaking.Off,
+              engine.budget,
+              turn => engine.inbox.startTurn(turn).left.map(_.toString)
+            )
           )
         ),
         Vector.empty

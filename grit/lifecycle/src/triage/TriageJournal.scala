@@ -1,8 +1,9 @@
 package grit.lifecycle.triage
 
 import grit.core.durable.Journaled
-import grit.core.id.EntryId
+import grit.core.id.{EntryId, WorkflowId}
 import grit.core.period.Probability
+import grit.core.speech.{Decision, SpeechJson}
 import grit.core.store.PayloadJson
 import grit.core.triage.{Kind, Tags}
 
@@ -58,6 +59,17 @@ private[triage] object TriageJournal {
           entry <- o.get("entry").flatMap(_.strOpt).toRight("asked: missing entry")
           tags <- o.get("tags").toRight("asked: missing tags").flatMap(readTags)
         } yield (EntryId(entry), tags)
+    )
+
+  /** A `consider` step's output: the decision ([[SpeechJson.writeDecision]]). */
+  given considered: Journaled[Either[String, Decision]] =
+    outcome(SpeechJson.writeDecision, SpeechJson.readDecision)
+
+  /** A `start` step's output: the workflow id of the turn it queued. */
+  given started: Journaled[Either[String, WorkflowId]] =
+    outcome(
+      w => ujson.Str(WorkflowId.value(w)),
+      v => v.strOpt.map(WorkflowId(_)).toRight("started: expected a workflow id")
     )
 
   given recorded: Journaled[Either[String, Boolean]] =

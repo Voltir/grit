@@ -3,6 +3,7 @@ package grit.lifecycle.triage
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, TriageRef, TurnSeq, WorkflowId}
 import grit.core.period.Probability
+import grit.core.speech.{Decision, SpeechJson}
 import grit.core.store.{Entry, Payload, Speakers, StoreError}
 import grit.core.triage.{Kind, Tags}
 import grit.lifecycle.transcript.PeriodTranscript
@@ -18,6 +19,11 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      or is gone.
   *   1. `record` — the tags kept ([[grit.core.triage.TriageStore.record]]); ignored when the
   *      message is gone or already tagged.
+  *   1. `consider` — when it was tagged now, whether grit drafts a reply to it
+  *      ([[grit.core.speech.Speech.decide]], against the speech ledger), the decision kept,
+  *      held or drafting, in one transaction; a deployment that does not speak keeps none.
+  *   1. `start` — when drafting, the heard message's own turn started, a turn rooted on it
+  *      ([[grit.core.store.Payload.Heard]]).
   */
 object Triage {
 
@@ -25,6 +31,8 @@ object Triage {
   object Step {
     val Ask = "ask"
     val Record = "record"
+    val Consider = "consider"
+    val Start = "start"
   }
 
   /** The triage workflow's body, for the heard message whose workflow id is `workflowId`.
@@ -45,7 +53,23 @@ object Triage {
             ) match {
               case Left(why) => s"failed: $why"
               case Right(false) => "ignored: the message is gone or tagged already"
-              case Right(true) => s"tagged: ${shown(tags)}"
+              case Right(true) =>
+                val now = env.clock.now()
+                val (records, speech) = (env.records, env.speech)
+                val considered = d.transact(Step.Consider)(
+                  Speak.consider(records, speech.speaking, speech.budget, triage, entry, tags, now)
+                )
+                s"tagged: ${shown(tags)}; " + (considered match {
+                  case Left(why) => s"not considered: $why"
+                  case Right(Decision.Held(why)) =>
+                    s"held: ${SpeechJson.writeSilence(why).render()}"
+                  case Right(Decision.Drafting(turn)) =>
+                    val start = speech.start
+                    d.step(Step.Start)(() => start(turn).map(_ => turn.workflowId)) match {
+                      case Left(why) => s"drafting, not started: $why"
+                      case Right(queued) => s"drafting: ${WorkflowId.value(queued)}"
+                    }
+                })
             }
         }
     }

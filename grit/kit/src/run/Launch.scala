@@ -20,7 +20,7 @@ import grit.kit.environment.Secrets
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
-import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords}
+import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.{JevClassifier, OpenRouterModels, Seed, StubClassifier, StubModels}
 import grit.tools.{About, Coding, Probes, Tuning}
 import grit.turn.{Turn, TurnEnv, TurnHosting, TurnRecords, TurnTooling}
@@ -148,10 +148,22 @@ private[grit] object Launch {
         ),
         Triage.body(
           TriageEnv(
-            TriageRecords(engine.entries, engine.triage, engine.principals),
+            TriageRecords(
+              engine.entries,
+              engine.triage,
+              engine.principals,
+              engine.conversations,
+              engine.speech,
+              engine.spending
+            ),
             classifier(d, s),
             engine.db,
-            Clock.system()
+            Clock.system(),
+            TriageSpeech(
+              grit.core.speech.Speaking.Off,
+              d.budget,
+              turn => engine.inbox.startTurn(turn).left.map(_.toString)
+            )
           )
         ),
         d.plugins

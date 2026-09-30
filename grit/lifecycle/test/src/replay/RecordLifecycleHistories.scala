@@ -160,6 +160,17 @@ object RecordLifecycleHistories {
         d.run(t.workflowId)(w.body(purging, 5))
         t.workflowId
       },
+      triaged("triage-drafting") { (w, d) =>
+        val t = w.hear("what did we decide about the refi page?", "Ana", 0)
+        val asking = new TriageFixtures.Scripted(Vector(1, 0, 0, 0, 0), Vector(0.5, 0.5, 0.9))
+        val within = grit.core.speech.Speaking.Within(
+          grit.core.speech.Limits.suggested(
+            grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap"))
+          )
+        )
+        d.run(t.workflowId)(w.body(asking, 1, within))
+        t.workflowId
+      },
       triaged("triage-no-message") { (w, d) =>
         val said = w.say("hello", 0)
         val id = grit.core.id.TriageRef(TriageFixtures.p1, said.turnSeq).workflowId
