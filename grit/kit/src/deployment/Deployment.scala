@@ -65,19 +65,27 @@ enum DeploymentRefusal {
   /** The sweep, `every`, is under a second. */
   case SweepTooOften(every: FiniteDuration)
 
+  /** It speaks where it was not addressed, but places topics with no classifier, so no draft
+    * could be judged: it would pay for drafts and never post one. `topics` says why it has none.
+    */
+  case SpeaksUnjudged(topics: String)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
     case EdgeRepeated(name) => s"two edges are named ${EdgeName.value(name)}"
     case SweepTooOften(every) => s"the sweep, every $every, must be at least a second apart"
+    case SpeaksUnjudged(topics) =>
+      s"speaking unprompted needs a classifier to judge each draft, and topics are off: $topics"
   }
 }
 
 /** A deployment of grit, declared in code: the edges it serves, the plugins it posts to, the
-  * model policy its calls are made under (laid over by the model settings the database keeps),
-  * what its turns are offered and how their windows are assembled, how messages are placed
-  * among topics, the lifecycle's settings, what it may spend a day, whether and within what
-  * it speaks where it was not addressed (ADR 0022), and how often its engine sweeps. The database and the model's keys come from the environment
+  * model policy its calls are made under (laid over by the model settings the database
+  * keeps), what its turns are offered and how their windows are assembled, how messages are
+  * placed among topics, the lifecycle's settings, what it may spend a day, whether and within
+  * what it speaks where it was not addressed (ADR 0022), and how often its engine sweeps. The
+  * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
   */
@@ -97,11 +105,12 @@ final case class Deployment private (
 object Deployment {
 
   /** The deployment of these; call it with named arguments. Refused when `offer` asks first
-    * ([[Offered.All]]) and an edge cannot answer an ask, when two edges share a name, or when
-    * `sweep` is under a second. `lifecycle` is written over the database's settings on every
-    * start, so a change made while grit runs (`/set`, SQL) holds until the next start. What
-    * `speaking` spends is counted in `budget` as well as against its own cap
-    * ([[grit.core.speech.Limits.spend]]).
+    * ([[Offered.All]]) and an edge cannot answer an ask, when two edges share a name, when
+    * `sweep` is under a second, or when it speaks (`speaking` not Off) with `topics` Off: the
+    * topics' classifier is also the judge of each draft. `lifecycle` is written over the
+    * database's settings on every start, so a change made while grit runs (`/set`, SQL)
+    * holds until the next start. What `speaking` spends is counted in `budget` as well as
+    * against its own cap ([[grit.core.speech.Limits.spend]]).
     */
   def of(
       edges: Vector[ServedEdge],
@@ -125,6 +134,12 @@ object Deployment {
         DeploymentRefusal.AsksUnanswered(unanswered)
       )
       _ <- Either.cond(sweep >= 1.second, (), DeploymentRefusal.SweepTooOften(sweep))
+      _ <- (speaking, topics) match {
+        // The judge is the topics' classifier: with none, no draft could ever post.
+        case (Speaking.Shadow(_) | Speaking.Within(_), Topics.Off(reason)) =>
+          Left(DeploymentRefusal.SpeaksUnjudged(reason))
+        case _ => Right(())
+      }
     } yield Deployment(
       edges,
       plugins,

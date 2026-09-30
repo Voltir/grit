@@ -41,7 +41,8 @@ object Deployments {
       edges: Vector[ServedEdge] = Vector.empty,
       tools: Offered = Offered.Read,
       topics: Topics = Topics.Stub,
-      sweep: FiniteDuration = 30.seconds
+      sweep: FiniteDuration = 30.seconds,
+      speaking: grit.core.speech.Speaking = grit.core.speech.Speaking.Off
   ): Either[DeploymentRefusal, Deployment] =
     Deployment.of(
       edges = edges,
@@ -52,7 +53,7 @@ object Deployments {
       topics = topics,
       lifecycle = LifecycleSettings.Default,
       budget = Budget(java.time.ZoneOffset.UTC, None),
-      speaking = grit.core.speech.Speaking.Off,
+      speaking = speaking,
       sweep = sweep
     )
 
