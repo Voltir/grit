@@ -218,16 +218,25 @@ private[turn] object TurnJournal {
     outcome(CatalogJson.writeTurn, CatalogJson.readTurn)
 
   /** An `offer` step's output: `{"workspace": place written | null, "tools": set id,
-    * "prompt": [fragment ids]}`. References only: the texts are kept by id.
+    * "prompt": [fragment ids]}`, and `"root": "heard"` for a turn rooted on a heard message.
+    * References only: the texts are kept by id. No `root` reads as addressed, so every offer
+    * recorded before roots reads as it did.
     */
   given recordedOffer: Journaled[Either[TurnFailure, TurnOffer.Recorded]] =
     outcome(
-      r =>
-        ujson.Obj(
+      r => {
+        val o = ujson.Obj(
           "workspace" -> r.workspace.fold[ujson.Value](ujson.Null)(p => ujson.Str(p.written)),
           "tools" -> ToolSetId.value(r.tools),
           "prompt" -> ujson.Arr.from(r.prompt.map(id => ujson.Str(FragmentId.value(id))))
-        ),
+        )
+        // Written only for a heard root, so an addressed turn's offer keeps its earlier form.
+        r.root match {
+          case TurnOffer.Root.Heard => o("root") = "heard"
+          case TurnOffer.Root.Addressed => ()
+        }
+        o
+      },
       v =>
         for {
           o <- v.objOpt.toRight("offer: expected an object")
@@ -250,7 +259,12 @@ private[turn] object TurnJournal {
                     .map(done :+ _)
                 )
             })
-        } yield TurnOffer.Recorded(workspace, tools, prompt)
+          root <- o.get("root") match {
+            case None => Right(TurnOffer.Root.Addressed)
+            case Some(ujson.Str("heard")) => Right(TurnOffer.Root.Heard)
+            case Some(other) => Left(s"offer: unknown root ${other.render()}")
+          }
+        } yield TurnOffer.Recorded(workspace, tools, prompt, root)
     )
 
   /** A `dispatch` step's output: whether its requests were sent to a serving edge (`true`),

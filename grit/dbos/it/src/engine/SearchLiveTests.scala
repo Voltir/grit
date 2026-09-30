@@ -142,6 +142,22 @@ object SearchLiveTests extends TestSuite {
       find(c, "standup").map(ids) ==> Right(Vector("heard:e0"))
     }
 
+    test("a draft is never searched: an unposted draft is not something grit said") {
+      val c = conversation(
+        "draft",
+        said("when is the freeze"),
+        Payload.Draft(
+          Message.Assistant(
+            Vector(AssistantBlock.Text("the freeze moved to Thursday")),
+            StopReason.EndTurn,
+            Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+            "m"
+          )
+        )
+      )
+      find(c, "freeze thursday").map(ids) ==> Right(Vector("draft:e0"))
+    }
+
     test("a limit smaller than the matches keeps the best") {
       val c = conversation(
         "limit",

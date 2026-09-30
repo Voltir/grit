@@ -28,7 +28,7 @@ object Replies {
     case Payload.Message(Message.ToolResult(_, _, _)) => None
     case Payload.Heard(_) | Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _) |
         Payload.Topic(_) | Payload.Exchange(_) | Payload.Result(_, _) | Payload.Attempt(_) |
-        Payload.Ask(_, _) | Payload.Closed(_, _, _) =>
+        Payload.Ask(_, _) | Payload.Closed(_, _, _) | Payload.Draft(_) =>
       None
   }
 

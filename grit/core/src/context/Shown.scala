@@ -156,14 +156,16 @@ object Shown {
   /** A line number and a tab at a line's start, as `read` shows a file's lines. */
   private val Numbered = """^\s*\d+\t""".r
 
-  /** The turn's own `entries` as the model is shown them, in order: the person's messages as
-    * [[of]] shows them with `speakers`, its replies that called tools as they are, and each tool result
-    * as [[result]] shows it; nothing for any other entry.
+  /** The turn's own `entries` as the model is shown them, in order: the person's messages,
+    * the heard message a turn is rooted on among them, as [[of]] shows them with `speakers`,
+    * its replies that called tools as they are, and each tool result as [[result]] shows it;
+    * nothing for any other entry, a draft among them.
     */
   def turn(entries: Vector[Entry], speakers: Speakers): Vector[Message] =
     entries.flatMap { e =>
       e.payload match {
         case Payload.Message(Message.User(text)) => Some(said(e, text, speakers))
+        case Payload.Heard(_) => of(e, speakers)
         case Payload.Message(m) => Some(m)
         case Payload.Exchange(reply) => Some(reply)
         case Payload.Result(r, _) => Some(result(r))

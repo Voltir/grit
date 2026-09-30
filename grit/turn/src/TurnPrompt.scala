@@ -81,6 +81,24 @@ object TurnPrompt {
     Fragment(Layer.Edge, Fragment.Grit, text)
   }
 
+  /** What a turn rooted on a heard message is told: nobody asked it; add what the thread
+    * lacks from what it knows (a record, another conversation), briefly, without introducing
+    * itself; or reply exactly [[Pass]]. An edge-layer fragment of its own.
+    */
+  val unprompted: Fragment =
+    Fragment(
+      Layer.Edge,
+      Fragment.Grit,
+      "Nobody asked you anything: the last message was said in this thread, not to you. " +
+        "grit is drafting a reply to it because one might help. Add only what the thread " +
+        "lacks and you know from what grit showed you: its records, and other conversations. " +
+        "Be brief, and do not introduce yourself or say that you were not asked. If you have " +
+        s"nothing to add that the thread does not already say, reply with exactly: $Pass"
+    )
+
+  /** The whole reply that says a turn rooted on a heard message has nothing to add. */
+  val Pass = "pass"
+
   /** The assistant's name where it is `called` that: "In this workspace you are called
     * {called}.", an edge-layer fragment of its own, so the edge's measured fragment stays
     * as it is.

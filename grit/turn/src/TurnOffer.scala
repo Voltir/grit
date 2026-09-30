@@ -4,14 +4,19 @@ import grit.core.edge.Advert
 import grit.core.id.TurnRef
 import grit.core.place.Place
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
-import grit.core.store.{Db, Origin, StoreError, Tx}
+import grit.core.store.{Db, EntryStore, Origin, Payload, StoreError, Tx}
 import grit.core.tool.{DuplicateName, Tool, ToolName, ToolSet, ToolSetId, Toolbox}
 
 /** What a turn offers its model, as its `offer` step decided (ADR 0016, 0017): the workspace
   * its hosted calls are addressed to, none for a conversation with no directory; its tool
-  * set; and its system prompt.
+  * set; its system prompt; and its `root`, what it answers.
   */
-final case class TurnOffer(workspace: Option[Place], tools: ToolSet, prompt: SystemPrompt) {
+final case class TurnOffer(
+    workspace: Option[Place],
+    tools: ToolSet,
+    prompt: SystemPrompt,
+    root: TurnOffer.Root
+) {
 
   /** The system text every model call of the turn is sent. */
   def system: String = prompt.render
@@ -19,20 +24,42 @@ final case class TurnOffer(workspace: Option[Place], tools: ToolSet, prompt: Sys
 
 object TurnOffer {
 
-  /** The `offer` step's output: references only, the texts kept by id. */
-  final case class Recorded(workspace: Option[Place], tools: ToolSetId, prompt: Vector[FragmentId])
+  /** The `offer` step's output: references only, the texts kept by id; and the turn's
+    * `root`, which decides the steps it takes after its reply.
+    */
+  final case class Recorded(
+      workspace: Option[Place],
+      tools: ToolSetId,
+      prompt: Vector[FragmentId],
+      root: Root
+  )
+
+  /** What a turn answers: a message said to grit, or one grit heard and chose to draft a
+    * reply to ([[grit.core.speech.Speech.decide]]). An offer recorded before roots existed is
+    * `Addressed`.
+    */
+  enum Root {
+    case Addressed, Heard
+  }
 
   /** What `turn` is offered now, kept, and recorded as `turn`'s prompt: its conversation's
     * workspace (a TUI session's directory); the hosted tools of `tooling` that the live edge
     * serving that workspace advertises, then `tooling`'s own, then its operator tools when
     * its origin is the operator's ([[grit.core.store.Origin.operator]]); and its prompt: the base, its
     * edge's fragment, what its workspace calls the assistant (when it has named it,
-    * [[grit.core.store.Origin.assistant]]), the voice's fragment (none for plain), what it may reach there, and the
-    * instruction files the edge read there. `TurnFailure.Store` when a store fails, the
+    * [[grit.core.store.Origin.assistant]]), [[TurnPrompt.unprompted]] when its root is heard,
+    * the voice's fragment (none for plain), what it may reach there, and the
+    * instruction files the edge read there. Its root is `Heard` when its first entry in
+    * `entries` is a heard message ([[grit.core.store.Payload.Heard]]), else `Addressed`. `TurnFailure.Store` when a store fails, the
     * conversation is gone, or two tools offered share a name. A stored voice this build does not know is the default, never a
     * failure.
     */
-  def decide[C^](hosting: TurnHosting, tooling: TurnTooling[C]^, turn: TurnRef)(using
+  def decide[C^](
+      hosting: TurnHosting,
+      entries: EntryStore,
+      tooling: TurnTooling[C]^,
+      turn: TurnRef
+  )(using
       Tx^
   ): Either[TurnFailure, Recorded] =
     (for {
@@ -71,16 +98,24 @@ object TurnOffer {
       called <- conversation.origin.assistant.fold[Either[StoreError, Option[String]]](
         Right(None)
       )(hosting.principals.name)
+      all <- entries.list(turn.conversationId)
+      root = all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq).map(_.payload) match {
+        case Some(Payload.Heard(_)) => Root.Heard
+        case _ => Root.Addressed
+      }
       prompt = SystemPrompt.of(
         Vector(
           TurnPrompt.Base,
           TurnPrompt.edge(conversation.origin)
-        ) ++ called.map(TurnPrompt.called) ++ Vector(
-          TurnPrompt.reach(workspace.flatMap(_.directory), hostedSet)
-        ) ++ Voice.fragment(voice) ++ place.fragments
+        ) ++ called.map(TurnPrompt.called) ++
+          Option.when(root == Root.Heard)(TurnPrompt.unprompted) ++ Vector(
+            TurnPrompt.reach(workspace.flatMap(_.directory), hostedSet)
+          ) ++ Voice.fragment(voice) ++ place.fragments
       )
       _ <- hosting.prompts.record(turn.workflowId, prompt)
-    } yield Recorded(workspace, set.id, prompt.ids)).left.map(e => TurnFailure.Store(describe(e)))
+    } yield Recorded(workspace, set.id, prompt.ids, root)).left.map(e =>
+      TurnFailure.Store(describe(e))
+    )
 
   /** The offer `recorded` read back through `db`: its tool set and prompt, by id.
     * `TurnFailure.Store` naming what is not kept.
@@ -90,7 +125,7 @@ object TurnOffer {
       for {
         set <- hosting.toolSets.get(recorded.tools)
         prompt <- hosting.prompts.prompt(recorded.prompt)
-      } yield TurnOffer(recorded.workspace, set, prompt)
+      } yield TurnOffer(recorded.workspace, set, prompt, recorded.root)
     }.left
       .map(e => TurnFailure.Store(describe(e)))
 

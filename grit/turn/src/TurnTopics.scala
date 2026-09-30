@@ -143,9 +143,11 @@ object TurnTopics {
   ): Classification = {
     val before = all.filter(e => TurnSeq.value(e.turnSeq) < TurnSeq.value(turn.turnSeq))
     val topics = EntryTopics.before(all, turn.turnSeq)
+    // What its person said: a message to grit, or the heard one an unprompted turn answers.
     val asked = all
       .filter(_.turnSeq == turn.turnSeq)
-      .collectFirst { case Entry(_, _, _, _, _, Payload.Message(Message.User(t)), _) => t }
+      .flatMap(_.payload.said)
+      .headOption
       .getOrElse("")
     val keyed = keys(topics.topics)
     val current =

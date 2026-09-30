@@ -122,8 +122,8 @@ object TurnSummary {
 
   private def line(payload: Payload): Option[String] = payload match {
     case Payload.Exchange(reply) => line(Payload.Message(reply))
-    // A turn's own entries: a heard message is never one.
-    case Payload.Heard(_) => None
+    // The heard message an unprompted turn is rooted on.
+    case Payload.Heard(text) => Some(s"Overheard: $text")
     case Payload.Result(result, _) => line(Payload.Message(result))
     case Payload.Message(Message.User(text)) => Some(s"User: $text")
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
@@ -137,7 +137,7 @@ object TurnSummary {
       val kind = if (isError) "Tool error" else "Tool result"
       Some(s"$kind (${ToolCallId.value(id)}): ${content.take(ToolResultChars)}")
     case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _) | Payload.Topic(_) |
-        Payload.Attempt(_) | Payload.Ask(_, _) | Payload.Closed(_, _, _) =>
+        Payload.Attempt(_) | Payload.Ask(_, _) | Payload.Closed(_, _, _) | Payload.Draft(_) =>
       None
   }
 }

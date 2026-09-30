@@ -72,6 +72,28 @@ object TurnTests extends TestSuite {
   private val Placing = 5
 
   val tests = Tests {
+    test("a turn rooted on a heard message keeps its answer as a draft: no reply, no summary") {
+      val entries = new InMemoryEntryStore
+      val turn = hear(entries, "is the freeze still on?")
+      val provider = new RecordingProvider
+      val durable = new InMemoryDurable
+      runTurn(durable, entries, provider, turn)
+      val own =
+        entries.list(conversation)(using TestTx.fake).map(_.map(_.payload)).getOrElse(Vector.empty)
+      val kinds = own.map {
+        case Payload.Draft(_) => "draft"
+        case Payload.Message(_) => "message"
+        case Payload.Summary(_) => "summary"
+        case Payload.Heard(_) => "heard"
+        case _ => "record"
+      }
+      (kinds.filterNot(_ == "record"), entries.get(turn.replyId)(using TestTx.fake)) ==>
+        (Vector("heard", "draft"), Right(None))
+      // The model was shown the heard message as heard.
+      provider.requests.map(_.messages.lastOption) ==>
+        Vector(Some(Message.User("Someone said, not to you:\nis the freeze still on?")))
+    }
+
     test("the step names are the recorded ones, and a running turn is in the next") {
       Turn.Step.all ==> AllSteps
       Turn.running(Vector.empty) ==> "pin-models"

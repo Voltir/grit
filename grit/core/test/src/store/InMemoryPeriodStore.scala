@@ -94,7 +94,14 @@ final class InMemoryPeriodStore(
       entriesOf(p.ref.conversationId).filter(e =>
         TurnSeq.value(e.turnSeq) >= TurnSeq.value(p.first)
       )
-    val newest = (own.map(_.createdAt) :+ p.openedAt).maxBy(_.toEpochMilli)
+    // A draft is not activity (Payload.Draft).
+    val active = own.filter(e =>
+      e.payload match {
+        case Payload.Draft(_) => false
+        case _ => true
+      }
+    )
+    val newest = (active.map(_.createdAt) :+ p.openedAt).maxBy(_.toEpochMilli)
     val last = own.map(_.turnSeq).maxByOption(TurnSeq.value).getOrElse(p.first)
     val judged = verdicts.collect { case (ref, v) if ref == p.ref => v }
     // As the SQL store orders them: by time to the microsecond, then the one judged last.

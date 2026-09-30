@@ -11,6 +11,11 @@ final case class TurnRef(conversationId: ConversationId, turnSeq: TurnSeq) {
     * reads it back by.
     */
   def replyId: EntryId = EntryId(s"reply:${WorkflowId.value(workflowId)}")
+
+  /** The id of the turn's draft entry, when it is rooted on a heard message
+    * ([[grit.core.store.Payload.Draft]]): its answer before it was judged.
+    */
+  def draftId: EntryId = EntryId(s"draft:${WorkflowId.value(workflowId)}")
 }
 
 object TurnRef {

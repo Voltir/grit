@@ -507,6 +507,26 @@ object TurnFixtures {
     TurnRef(conversation, next.turnSeq)
   }
 
+  /** Records `text` as a heard message, the first entry of the conversation's next turn:
+    * what an unprompted turn is rooted on.
+    */
+  def hear(entries: EntryStore, text: String): TurnRef = {
+    given Tx = TestTx.fake
+    val next = entries.lockNext(conversation).getOrElse(sys.error("in-memory store"))
+    entries.insert(
+      Entry(
+        EntryId(s"heard:$text"),
+        conversation,
+        next.turnSeq,
+        None,
+        next.seq,
+        Payload.Heard(text),
+        Instant.EPOCH
+      )
+    )
+    TurnRef(conversation, next.turnSeq)
+  }
+
   /** The conversation as a transcript: every entry but the windows' records. */
   def texts(entries: EntryStore): Vector[String] =
     all(entries).flatMap {
@@ -528,6 +548,8 @@ object TurnFixtures {
         case Payload.Attempt(call) => Some(s"attempt: ${grit.core.id.ToolCallId.value(call)}")
         case Payload.Ask(call, shown) => Some(s"ask: ${grit.core.id.ToolCallId.value(call)}: $shown")
         case Payload.Closed(_, _, closing) => Some(s"closed: ${closing.flows.prose}")
+        case Payload.Draft(Message.Assistant(blocks, _, _, _, _)) =>
+          Some(blocks.collect { case AssistantBlock.Text(t) => s"draft: $t" }.mkString)
         case Payload.Window(_, _, _) | Payload.Topic(_) => None
       }
     }

@@ -118,6 +118,21 @@ object TurnJournalTests extends TestSuite {
       j.encode(Left(TurnFailure.Model("down"))) ==> """{"failed":"model","reason":"down"}"""
     }
 
+    test(
+      "an offer's root: heard is written, and an offer recorded before roots reads as addressed"
+    ) {
+      val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
+      val tools = grit.core.tool.ToolSet.Empty.id
+      val heard: Either[TurnFailure, TurnOffer.Recorded] =
+        Right(TurnOffer.Recorded(None, tools, Vector.empty, TurnOffer.Root.Heard))
+      val set = grit.core.tool.ToolSetId.value(tools)
+      j.encode(heard) ==> s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"root":"heard"}}"""
+      j.decode(j.encode(heard)) ==> Right(heard)
+      // Every offer recorded before this field was an addressed turn's.
+      j.decode(s"""{"ok":{"workspace":null,"tools":"$set","prompt":[]}}""") ==>
+        Right(Right(TurnOffer.Recorded(None, tools, Vector.empty, TurnOffer.Root.Addressed)))
+    }
+
     test("a record in neither shape is rejected") {
       val j = summon[Journaled[Either[TurnFailure, EntryId]]]
       assert(j.decode("""{"ok":"x","failed":"model","reason":"r"}""").isLeft)

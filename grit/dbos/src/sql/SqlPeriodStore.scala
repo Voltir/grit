@@ -138,7 +138,8 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
          |       v.model, v.unanswered
          |  FROM grit.periods p
          | CROSS JOIN LATERAL (
-         |   SELECT greatest(p.opened_at, max(e.created_at)) AS newest,
+         |   SELECT greatest(p.opened_at,
+         |                   max(e.created_at) FILTER (WHERE e.payload ->> 'kind' <> 'draft')) AS newest,
          |          coalesce(max(e.turn_seq), p.first_turn) AS last
          |     FROM grit.entries e
          |    WHERE e.conversation_id = p.conversation_id AND e.turn_seq >= p.first_turn) a

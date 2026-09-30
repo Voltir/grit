@@ -1,10 +1,21 @@
 package grit.turn
 
+import java.time.Instant
+
 import grit.core.edge.InMemoryEdges
-import grit.core.id.{ConversationId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.message.Message
 import grit.core.place.Directory
 import grit.core.prompt.SystemPrompt
-import grit.core.store.{InMemoryConversationStore, InMemoryPrincipals, InMemoryVoiceStore, Origin}
+import grit.core.store.{
+  Entry,
+  InMemoryConversationStore,
+  InMemoryEntryStore,
+  InMemoryPrincipals,
+  InMemoryVoiceStore,
+  Origin,
+  Payload
+}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSet, ToolSpec, Toolbox}
 import grit.dbos.sql.TestTx
 
@@ -16,8 +27,14 @@ object TurnOfferTests extends TestSuite {
 
   private val slack = Origin.Slack("T1", "C1", "1.0")
 
-  /** The prompt `origin`'s first turn is offered, with `principals` saying who is who. */
-  private def offered(origin: Origin, principals: InMemoryPrincipals): String = {
+  /** The prompt `origin`'s first turn is offered, with `principals` saying who is who, and
+    * the root it was recorded with; the turn starts with `root`.
+    */
+  private def offeredAs(
+      origin: Origin,
+      principals: InMemoryPrincipals,
+      root: Payload
+  ): (String, TurnOffer.Root) = {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
@@ -40,11 +57,23 @@ object TurnOfferTests extends TestSuite {
       new FakeJot,
       budget(5)
     )
+    val entries = new InMemoryEntryStore
+    entries.insert(Entry(EntryId("root"), c, TurnSeq.First, None, 0, root, Instant.EPOCH))
     TurnOffer
-      .decide(hosting, tooling, TurnRef(c, TurnSeq.First))
-      .flatMap(r => Prompts.prompt(r.prompt).left.map(e => TurnFailure.Store(e.toString)))
-      .fold(f => throw new java.lang.AssertionError(f.toString), _.render)
+      .decide(hosting, entries, tooling, TurnRef(c, TurnSeq.First))
+      .flatMap(r =>
+        Prompts
+          .prompt(r.prompt)
+          .left
+          .map(e => TurnFailure.Store(e.toString))
+          .map(_.render -> r.root)
+      )
+      .fold(f => throw new java.lang.AssertionError(f.toString), identity)
   }
+
+  /** The prompt `origin`'s first turn, a person's message to grit, is offered. */
+  private def offered(origin: Origin, principals: InMemoryPrincipals): String =
+    offeredAs(origin, principals, Payload.Message(Message.User("hi")))._1
 
   /** A tool named `name` that says `name` back, asking first when `asks`. */
   private def tool(name: ToolName, asks: Boolean): Tool[String] =
@@ -89,7 +118,7 @@ object TurnOfferTests extends TestSuite {
       budget(5)
     )
     TurnOffer
-      .decide(hosting, tooling, TurnRef(c, TurnSeq.First))
+      .decide(hosting, new InMemoryEntryStore, tooling, TurnRef(c, TurnSeq.First))
       .flatMap(r => ToolSets.get(r.tools).left.map(e => TurnFailure.Store(e.toString)))
       .fold(
         f => throw new java.lang.AssertionError(f.toString),
@@ -124,6 +153,27 @@ object TurnOfferTests extends TestSuite {
 
     test("with no name given in its workspace, a Slack turn's prompt has no name fragment") {
       offered(slack, new InMemoryPrincipals) ==> expected(slack, None)
+    }
+
+    test("a turn rooted on a heard message is recorded so, and told it was not addressed") {
+      val (prompt, root) =
+        offeredAs(slack, new InMemoryPrincipals, Payload.Heard("is it Thursday?"))
+      root ==> TurnOffer.Root.Heard
+      prompt ==> SystemPrompt
+        .of(
+          Vector(
+            TurnPrompt.Base,
+            TurnPrompt.edge(slack),
+            TurnPrompt.unprompted,
+            TurnPrompt.reach(None, ToolSet.Empty)
+          )
+        )
+        .render
+    }
+
+    test("a turn rooted on a person's message to grit is recorded as addressed") {
+      offeredAs(slack, new InMemoryPrincipals, Payload.Message(Message.User("hi")))._2 ==>
+        TurnOffer.Root.Addressed
     }
   }
 }

@@ -1,6 +1,10 @@
 package grit.turn
 
+import java.time.Instant
+
+import grit.core.id.{ConversationId, EntryId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.store.{Entry, Payload}
 
 import utest.*
 
@@ -15,6 +19,24 @@ object TurnSummaryTests extends TestSuite {
     )
 
   val tests = Tests {
+    test("an unprompted turn's summary sees the heard message it answered, and its reply once") {
+      def entry(seq: Long, payload: Payload) =
+        Entry(EntryId(s"e$seq"), ConversationId("c"), TurnSeq(3), None, seq, payload, Instant.EPOCH)
+      val said = reply("It moved to Thursday.")
+      TurnSummary
+        .request(
+          Vector(
+            entry(1, Payload.Heard("is the freeze still on?")),
+            entry(2, Payload.Draft(said)),
+            entry(3, Payload.Message(said))
+          ),
+          None
+        )
+        .messages ==> Vector(
+        Message.User("Overheard: is the freeze still on?\n\nAssistant: It moved to Thursday.")
+      )
+    }
+
     test("labelled lines: the summary, and the topic's name and what it covers") {
       TurnSummary.read(reply("Summary: a.\nTopic: Knots\nAbout: which knot.")) ==>
         Some(TurnSummary.Read("a.", Some(("Knots", "which knot."))))

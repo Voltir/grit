@@ -583,6 +583,25 @@ object RetrievalAssemblerTests extends TestSuite {
       )
     }
 
+    test("a turn rooted on a heard message: the query model is shown it as overheard") {
+      QueryWriter.request(
+        Vector(
+          Entry(
+            EntryId("t7:16"),
+            c1,
+            TurnSeq(7),
+            None,
+            16,
+            Payload.Heard("is the freeze still on?"),
+            Instant.EPOCH
+          )
+        )
+      ) ==> ModelRequest(
+        QueryWriter.System,
+        Vector(Message.User("New message:\nOverheard: is the freeze still on?"))
+      )
+    }
+
     test("the query is the reply's text on one line") {
       QueryWriter.text(reply("  postgres\n  sqlite   decision ")) ==> "postgres sqlite decision"
       QueryWriter.text(reply(" \n ")) ==> ""

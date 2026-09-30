@@ -62,6 +62,24 @@ object ShownTests extends TestSuite {
       Shown.of(entry(Payload.Summary("s")), Speakers.none) ==> None
     }
 
+    test("a draft is never shown: an unposted draft is not something grit said") {
+      val draft: Message.Assistant = Message.Assistant(
+        Vector(AssistantBlock.Text("a draft")),
+        StopReason.EndTurn,
+        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+        "m"
+      )
+      Shown.of(entry(Payload.Draft(draft)), Speakers.none) ==> None
+      Shown.turn(Vector(entry(Payload.Draft(draft))), Speakers.none) ==> Vector.empty
+    }
+
+    test("a turn rooted on a heard message shows it as heard, under its speaker's name") {
+      Shown.turn(
+        Vector(entry(Payload.Heard("the deploy is at 3"))),
+        Speakers(Map(EntryId("e") -> "Emily"))
+      ) ==> Vector(Message.User("Emily said, not to you:\nthe deploy is at 3"))
+    }
+
     test(
       "a closing is shown as one message: its record label, that grit wrote it, when it closed, its flows, its balance"
     ) {

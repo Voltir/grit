@@ -74,6 +74,24 @@ object PayloadJsonTests extends TestSuite {
       PayloadJson.read(ujson.read(stored)) ==> Right(heard)
     }
 
+    test("draft: an assistant's message under its own kind, and nothing else read as one") {
+      val reply: Message.Assistant = Message.Assistant(
+        Vector(AssistantBlock.Text("the freeze moved to Thursday")),
+        StopReason.EndTurn,
+        Usage(Tokens(3), Tokens(2), Tokens.Zero, None),
+        "m"
+      )
+      val stored =
+        """{"kind":"draft","message":{"role":"assistant","blocks":[""" +
+          """{"type":"text","text":"the freeze moved to Thursday"}],""" +
+          """"usage":{"input":3,"output":2,"cachedInput":0},"model":"m","stop":"end_turn"}}"""
+      PayloadJson.write(Payload.Draft(reply)).render() ==> stored
+      PayloadJson.read(ujson.read(stored)) ==> Right(Payload.Draft(reply))
+      PayloadJson.read(
+        ujson.read("""{"kind":"draft","message":{"role":"user","text":"hi"}}""")
+      ) ==> Left("a draft holds an assistant's message")
+    }
+
     test("summary") {
       PayloadJson.write(Payload.Summary("Asked X; decided Y.")).render() ==>
         """{"kind":"summary","text":"Asked X; decided Y."}"""

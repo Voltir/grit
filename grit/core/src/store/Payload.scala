@@ -14,9 +14,9 @@ enum Payload {
   case Message(message: grit.core.message.Message)
 
   /** A person's message where grit listens but was not addressed
-    * ([[grit.core.inbox.Inbox.hear]]): the only entry of its turn, which runs no workflow.
-    * Its author is in [[Speakers]]. Shown to the model as speech not said to it, and
-    * searched by its text.
+    * ([[grit.core.inbox.Inbox.hear]]): the first entry of its turn, which runs only when grit
+    * drafts a reply to it ([[grit.core.speech.Speech.decide]]). Its author is in
+    * [[Speakers]]. Shown to the model as speech not said to it, and searched by its text.
     */
   case Heard(text: String)
 
@@ -76,4 +76,17 @@ enum Payload {
     * model as [[grit.core.context.Shown.of]] shows it when a window includes it.
     */
   case Closed(period: PeriodSeq, reason: CloseReason, closing: Closing)
+
+  /** An unprompted turn's answer before it was judged ([[grit.core.speech.Outcome]]): a
+    * record, never shown to the model, never searched, and not a period's activity. A posted
+    * one is also the turn's reply.
+    */
+  case Draft(message: grit.core.message.Message.Assistant)
+
+  /** The words a person said in this entry, to grit or heard; `None` for any other entry. */
+  def said: Option[String] = this match {
+    case Message(grit.core.message.Message.User(text)) => Some(text)
+    case Heard(text) => Some(text)
+    case _ => None
+  }
 }

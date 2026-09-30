@@ -31,6 +31,7 @@ object PayloadJson {
     case Payload.Topic(events) =>
       ujson.Obj("kind" -> "topic", "events" -> ujson.Arr.from(events.map(TopicJson.write)))
     case Payload.Exchange(reply) => ujson.Obj("kind" -> "exchange", "message" -> message(reply))
+    case Payload.Draft(reply) => ujson.Obj("kind" -> "draft", "message" -> message(reply))
     case Payload.Result(result, shown) =>
       ujson.Obj("kind" -> "exchange", "message" -> message(result), "shown" -> shown)
     case Payload.Attempt(call) => ujson.Obj("kind" -> "attempt", "call" -> ToolCallId.value(call))
@@ -120,6 +121,11 @@ object PayloadJson {
                 case Some(_) => Left("shown is not a string")
               }
             case Message.User(_) => Left("an exchange holds no user message")
+          }
+        case "draft" =>
+          field(o, "message").flatMap(readMessage).flatMap {
+            case reply: Message.Assistant => Right(Payload.Draft(reply))
+            case _ => Left("a draft holds an assistant's message")
           }
         case "attempt" => str(o, "call").map(c => Payload.Attempt(ToolCallId(c)))
         case "ask" =>

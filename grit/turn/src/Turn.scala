@@ -58,7 +58,9 @@ import TurnVerdict.Shape
   *      model called again after its call to the tool, a plain call if that does not
   *      answer, then `record-verdict` ([[Step.optional]]).
   *   1. `append` — the reply recorded as the turn's entry, with its cost in the ledger
-  *      beside the estimate of its request, atomically with the step.
+  *      beside the estimate of its request, atomically with the step. A turn rooted on a
+  *      heard message ([[TurnOffer.Root.Heard]], as its `offer` recorded) records its answer
+  *      as a draft instead ([[grit.core.store.Payload.Draft]]), and ends there.
   *   1. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]).
   *   1. `append-summary` — the summary recorded as the turn's entry after the reply, with
   *      its cost in the ledger as in `append`.
@@ -320,7 +322,7 @@ object Turn {
           case Left(failure) => s"failed: $failure"
           case Right(profile) =>
             val hosting = env.hosting
-            d.transact(Step.Offer)(TurnOffer.decide(hosting, tooling, turn))
+            d.transact(Step.Offer)(TurnOffer.decide(hosting, env.records.entries, tooling, turn))
               .flatMap(TurnOffer.load(hosting, env.db, _)) match {
               case Left(failure) => s"failed: $failure"
               case Right(offer) => pinned(env, tooling, turn)(using profile, offer, d)
@@ -363,9 +365,10 @@ object Turn {
     val ran = run(turn, placing, tooling)(using env, pins, offer, d)
     val topics = topicFailure.fold("")(f => s"; topics not recorded: $f") +
       ran.verdictUnrecorded.fold("")(f => s"; verdict not recorded: $f")
-    ran.result match {
-      case Left(failure) => s"failed: $failure$topics"
-      case Right(reply) =>
+    (ran.result, offer.root) match {
+      case (Left(failure), _) => s"failed: $failure$topics"
+      case (Right(draft), TurnOffer.Root.Heard) => s"drafted: ${EntryId.value(draft)}$topics"
+      case (Right(reply), TurnOffer.Root.Addressed) =>
         val summary =
           summarise(turn, reply, placing)(using env, pins, d) match {
             case Right(id) => s"summarised: ${EntryId.value(id)}"
@@ -470,7 +473,7 @@ object Turn {
             val shape = a.shape
             d.transact(Step.Append)(
               append(
-                offer.system,
+                offer,
                 env.records,
                 turn,
                 window,
@@ -652,7 +655,7 @@ object Turn {
               val shaped = shape(l.round)
               d.transact(Step.Append)(
                 append(
-                  offer.system,
+                  offer,
                   env.records,
                   turn,
                   seen,
@@ -1040,15 +1043,16 @@ object Turn {
     }
   }
 
-  /** Records `message` as `turn`'s reply entry ([[TurnRef.replyId]]), dated `at`, after everything
-    * already in the conversation, and what it cost in the ledger beside the estimate of the
-    * request that produced it: rebuilt from the same window and the same entries (the
-    * turn's own were all recorded before its call, and the reply is not yet among them),
-    * shaped by `shape`. When the window is `recorded` with the reply, its queries and the
-    * window itself go in first ([[writeWindow]]).
+  /** Records `message` as `turn`'s reply entry ([[TurnRef.replyId]]), or, when `offer`'s
+    * root is heard, as its draft ([[TurnRef.draftId]], [[Payload.Draft]]), dated `at`, after
+    * everything already in the conversation, and what it cost in the ledger beside the
+    * estimate of the request that produced it: rebuilt from the same window and the same
+    * entries (the turn's own were all recorded before its call, and the reply is not yet
+    * among them), shaped by `shape`. When the window is `recorded` with the reply, its
+    * queries and the window itself go in first ([[writeWindow]]).
     */
   private def append(
-      system: String,
+      offer: TurnOffer,
       records: TurnRecords,
       turn: TurnRef,
       window: Window,
@@ -1057,14 +1061,17 @@ object Turn {
       recorded: WindowRecord,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
-    val id = turn.replyId
+    val (id, payload) = offer.root match {
+      case TurnOffer.Root.Addressed => (turn.replyId, Payload.Message(message))
+      case TurnOffer.Root.Heard => (turn.draftId, Payload.Draft(message))
+    }
     val TurnRecords(entries, ledger, estimator, _, principals) = records
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
       near <- nearbyOf(entries, window).left.map(storeFailure)
       named <- principals.speakers(all.map(_.id)).left.map(storeFailure)
-      sent <- requestOf(system, all, near, turn, window, named).map(shape)
+      sent <- requestOf(offer.system, all, near, turn, window, named).map(shape)
       written <- recorded match {
         case WindowRecord.OwnStep => Right(0)
         case WindowRecord.WithReply => writeWindow(records, turn, window, next.seq, at)
@@ -1077,7 +1084,7 @@ object Turn {
             turn.turnSeq,
             None,
             next.seq + written,
-            Payload.Message(message),
+            payload,
             at
           )
         )

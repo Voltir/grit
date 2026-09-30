@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{CloseRef, PeriodRef, SettleRef, TurnSeq}
 
 /** An open period as its deadline sees it: its `newest` activity (the latest of its opening
-  * and its entries' times), its `last` turn (its first while it has no entries), its
+  * and its entries' times, a draft's left out: [[grit.core.store.Payload.Draft]]), its `last` turn (its first while it has no entries), its
   * latest `verdict`, and how many verdicts it has had (`asked`).
   */
 final case class Activity(

@@ -93,6 +93,56 @@ object TurnTopicsTests extends TestSuite {
       )
     }
 
+    test("a turn rooted on a heard message is placed by what was heard") {
+      val at = java.time.Instant.parse("2026-09-20T10:00:00Z")
+      val all = Vector(
+        Entry(
+          EntryId("u0"),
+          conversation,
+          TurnSeq(0),
+          None,
+          0,
+          Payload.Message(Message.User("photos")),
+          at
+        ),
+        Entry(
+          EntryId("h1"),
+          conversation,
+          TurnSeq(1),
+          None,
+          1,
+          Payload.Heard("more photos ~0.85"),
+          at
+        )
+      )
+      val opened = TopicEvent.Opened(TopicId.openedBy(TurnRef(conversation, TurnSeq(0))))
+      val first = TopicEvent.Placed(
+        TurnSeq(0),
+        Weights.whole(TopicId.openedBy(TurnRef(conversation, TurnSeq(0)))),
+        Placement.First
+      )
+      val withTopic = all.patch(
+        1,
+        Vector(
+          Entry(
+            EntryId("topic0"),
+            conversation,
+            TurnSeq(0),
+            None,
+            0,
+            Payload.Topic(Vector(opened, first)),
+            at
+          )
+        ),
+        0
+      )
+      TurnTopics
+        .place(new CountingClassifier, CharEstimate, TurnRef(conversation, TurnSeq(1)), withTopic)
+        .events
+        .collect { case p: TopicEvent.Placed => p.by } ==>
+        Vector(Placement.Classified(0.85, Placement.Outcome.Same))
+    }
+
     test("the first message opens a topic, and nothing is asked") {
       val classifier = new CountingClassifier
       val (entries, turns) = converse(Vector("hello"), classifier)

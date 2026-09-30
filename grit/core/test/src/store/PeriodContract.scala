@@ -315,6 +315,36 @@ abstract class PeriodContract extends TestSuite {
       transaction(periods.activity(PeriodRef(b, PeriodSeq.First))) ==> Right(None)
     }
 
+    test("a draft is not a period's activity: its time moves no deadline") {
+      val c = conversation("activity-draft")
+      val t0 = say(c, 0)
+      transaction {
+        val next = right(entries.lockNext(c))
+        right(
+          entries.insert(
+            Entry(
+              EntryId(s"${ConversationId.value(c)}:draft"),
+              c,
+              t0.turnSeq,
+              None,
+              next.seq,
+              Payload.Draft(
+                Message.Assistant(
+                  Vector(grit.core.message.AssistantBlock.Text("a draft")),
+                  grit.core.message.StopReason.EndTurn,
+                  grit.core.message.Usage.Zero,
+                  "m"
+                )
+              ),
+              at(30)
+            )
+          )
+        )
+      }
+      transaction(periods.activity(PeriodRef(c, PeriodSeq.First))).map(_.map(_.newest)) ==>
+        Right(Some(at(0)))
+    }
+
     test("the closing before a turn is the newest one closed before its period") {
       val c = conversation("closings")
       for ((n, minute) <- Vector(1L -> 0L, 2L -> 10L, 3L -> 20L)) {
