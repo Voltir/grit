@@ -1191,7 +1191,7 @@ object Turn {
       named: Speakers
   ): Either[TurnFailure, ModelRequest] = {
     val byId = all.map(e => e.id -> e).toMap
-    val sections = window.nearby.flatMap(Shown.section(_, near))
+    val sections = window.nearby.flatMap(Shown.section(_, near, named))
     window.entries.filterNot(byId.contains) match {
       case missing if missing.nonEmpty =>
         Left(

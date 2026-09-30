@@ -133,7 +133,7 @@ object TurnJudge {
         }
       )
     val recalled = records.flatMap(Shown.of(_, speakers)) ++
-      window.nearby.flatMap(Shown.section(_, near))
+      window.nearby.flatMap(Shown.section(_, near, speakers))
     State(
       thread.mkString("\n"),
       draft,

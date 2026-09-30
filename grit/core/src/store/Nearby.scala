@@ -12,13 +12,19 @@ enum Nearby {
   /** `closing`, the closing entry of one of its closed periods. */
   case Closed(conversation: ConversationId, place: Place, closing: EntryId)
 
+  /** `entries` of a conversation in the window's own strand ([[grit.core.stitch.Strand]]), in
+    * the order said: context the window's conversation continues, shown unranked, not recall.
+    */
+  case Along(conversation: ConversationId, place: Place, entries: Vector[EntryId])
+
   def conversation: ConversationId
 
   def place: Place
 
-  /** Every entry it names: an open section's entries, a closed one's closing. */
+  /** Every entry it names: an open or strand section's entries, a closed one's closing. */
   def names: Vector[EntryId] = this match {
     case Open(_, _, entries) => entries
+    case Along(_, _, entries) => entries
     case Closed(_, _, closing) => Vector(closing)
   }
 }

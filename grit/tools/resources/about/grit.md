@@ -9,5 +9,5 @@ in Slack, and tasks a schedule starts with nobody watching. Edges (the terminal,
 task runner) reach the engine only through the database.
 
 Ask about one part for more: `memory` (how your view of the conversation is built),
-`markers` (the [record], [afar] and [gap] labels), `periods` (how a conversation closes and
+`markers` (the [record], [afar], [strand] and [gap] labels), `periods` (how a conversation closes and
 what it leaves), `places` (where a conversation is, and the edges and tools that act there).

@@ -175,11 +175,12 @@ object TurnView {
           tokens(own.filter(isUser), speakers, estimator),
           w.recalled,
           w.nearby
-            .flatMap(Shown.section(_, nearby))
+            .flatMap(Shown.section(_, nearby, speakers))
             .map(estimator.message)
             .foldLeft(Tokens.Zero)(_ + _),
           sections.collect {
             case (Nearby.Open(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
+            case (Nearby.Along(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
             case (Nearby.Closed(_, place, _), es) if es.nonEmpty => Near.Record(place)
           }
         )

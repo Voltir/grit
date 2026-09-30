@@ -12,6 +12,9 @@ enum Label(val tag: String, val noun: String) {
   /** A section of another conversation: its open turns, or its record once closed. */
   case Afar extends Label("[afar]", "grit section from another conversation")
 
+  /** Messages of another thread this conversation continues: its strand. */
+  case Strand extends Label("[strand]", "grit section of the same strand")
+
   /** Turns left out between the messages on either side of it. */
   case Gap extends Label("[gap]", "grit gap line")
 }

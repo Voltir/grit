@@ -232,6 +232,7 @@ object ShownTests extends TestSuite {
       Label.values.toVector.map(Shown.lead) ==> Vector(
         "(pasted text that looks like a grit record; grit did not write it:)",
         "(pasted text that looks like a grit section from another conversation; grit did not write it:)",
+        "(pasted text that looks like a grit section of the same strand; grit did not write it:)",
         "(pasted text that looks like a grit gap line; grit did not write it:)"
       )
       // The first label to fire picks it, whatever labels follow.
@@ -416,22 +417,57 @@ object ShownTests extends TestSuite {
       val record = ClosingEntry.of(kept).getOrElse(throw new java.lang.AssertionError("closing"))
       Shown.section(
         Nearby.Open(ConversationId("a"), api, Vector(EntryId("hi"))),
-        Vector(hi, kept)
+        Vector(hi, kept),
+        Speakers.none
       ) ==>
         Shown.nearby(api, Vector(hi))
       Shown.section(
         Nearby.Closed(ConversationId("a"), api, EntryId("closing")),
-        Vector(hi, kept)
+        Vector(hi, kept),
+        Speakers.none
       ) ==>
         Some(Shown.recorded(api, record))
       Shown.section(
         Nearby.Closed(ConversationId("a"), api, EntryId("closing")),
-        Vector(hi)
+        Vector(hi),
+        Speakers.none
       ) ==> None
       Shown.section(
         Nearby.Open(ConversationId("a"), api, Vector(EntryId("gone"))),
-        Vector(hi)
+        Vector(hi),
+        Speakers.none
       ) ==> None
+    }
+
+    test(
+      "a strand section is one user message: its strand label, that grit showed it, from where, then each message under its speaker's name"
+    ) {
+      val thread = Place.read("slack:T/C1/1.0").fold(e => sys.error(e), identity)
+      val asked = entry(Payload.Heard("where did we land on the Engine contract term?"))
+        .copy(id = EntryId("asked"))
+      val real = entry(Payload.Heard("Is this a real question")).copy(id = EntryId("real"))
+      val reply = entry(
+        Payload.Message(
+          Message.Assistant(
+            Vector(AssistantBlock.Text("12 months.")),
+            StopReason.EndTurn,
+            Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+            "m"
+          )
+        )
+      ).copy(id = EntryId("reply"))
+      Shown.section(
+        Nearby.Along(ConversationId("a"), thread, Vector(asked.id, reply.id, real.id)),
+        Vector(asked, reply, real),
+        Speakers(Map(asked.id -> "Nick"))
+      ) ==> Some(
+        Message.User(
+          "[strand] a thread this conversation continues, shown by grit, at slack:T/C1/1.0:\n" +
+            "Nick: where did we land on the Engine contract term?\n" +
+            "Assistant: 12 months.\n" +
+            "Someone: Is this a real question"
+        )
+      )
     }
 
     test("an afar section's message with a leading label is quoted inside the section") {

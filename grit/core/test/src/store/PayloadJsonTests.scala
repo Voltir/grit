@@ -137,6 +137,25 @@ object PayloadJsonTests extends TestSuite {
       PayloadJson.read(ujson.read(PayloadJson.write(window).render())) ==> Right(window)
     }
 
+    test("a strand section is stored marked as one, and read back; an unmarked one is open") {
+      val thread = Place.read("slack:T/C1/1.0").fold(e => sys.error(e), identity)
+      val along: Payload.Window = Payload.Window(
+        Vector(EntryId("a")),
+        Vector.empty,
+        Vector(Nearby.Along(ConversationId("c9"), thread, Vector(EntryId("x"), EntryId("y"))))
+      )
+      val json = PayloadJson.write(along)
+      // The stored mark: windows recorded with a strand must keep reading as one.
+      json("nearby")(0)("strand") ==> ujson.True
+      PayloadJson.read(json) ==> Right(along)
+      json("nearby")(0).obj.remove("strand")
+      PayloadJson.read(json) ==> Right(
+        along.copy(nearby =
+          Vector(Nearby.Open(ConversationId("c9"), thread, Vector(EntryId("x"), EntryId("y"))))
+        )
+      )
+    }
+
     test("topic") {
       PayloadJson
         .write(

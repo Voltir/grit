@@ -49,6 +49,29 @@ object Shown {
     )
   }
 
+  /** A strand section as one user message, "[strand] a thread this conversation continues,
+    * shown by grit, at {place.written}:", then each message among `entries` as a line of its
+    * text under its speaker's name (`speakers`; "Someone" when it names none, "Assistant" for
+    * grit's replies), as [[pasted]] shows it. `None` when none of them has text.
+    */
+  def strand(place: Place, entries: Vector[Entry], speakers: Speakers): Option[Message] = {
+    val lines = entries.flatMap { e =>
+      val name = speakers.of(e.id).getOrElse("Someone")
+      e.payload match {
+        case Payload.Message(Message.User(text)) =>
+          Option.when(text.trim.nonEmpty)(s"$name: ${pasted(text)}")
+        case Payload.Heard(text) => Option.when(text.trim.nonEmpty)(s"$name: ${pasted(text)}")
+        case p => line(p)
+      }
+    }
+    Option.when(lines.nonEmpty)(
+      Message.User(
+        (s"${Label.Strand.tag} a thread this conversation continues, shown by grit, at ${place.written}:" +: lines)
+          .mkString("\n")
+      )
+    )
+  }
+
   /** A closed conversation's closing entry `closing`, at `place`, as one user message:
     * "[afar] another conversation's record, written by grit when it closed on {its UTC
     * date}, at {place.written}: ", then its record as [[of]] shows the conversation's own
@@ -63,13 +86,14 @@ object Shown {
   }
 
   /** A nearby section as the model is shown it, from those of `entries` it names: an open one
-    * as [[nearby]], a closed one as [[recorded]]. `None` when none of its entries is among
-    * `entries`, or none of them has text.
+    * as [[nearby]], a closed one as [[recorded]], a strand's as [[strand]] with `speakers`.
+    * `None` when none of its entries is among `entries`, or none of them has text.
     */
-  def section(nearby: Nearby, entries: Vector[Entry]): Option[Message] = {
+  def section(nearby: Nearby, entries: Vector[Entry], speakers: Speakers): Option[Message] = {
     val byId = entries.map(e => e.id -> e).toMap
     nearby match {
       case Nearby.Open(_, place, ids) => this.nearby(place, ids.flatMap(byId.get))
+      case Nearby.Along(_, place, ids) => strand(place, ids.flatMap(byId.get), speakers)
       case Nearby.Closed(_, place, id) =>
         byId.get(id).flatMap(ClosingEntry.of).map(recorded(place, _))
     }

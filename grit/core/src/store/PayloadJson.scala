@@ -276,7 +276,7 @@ object PayloadJson {
     } yield Usage(Tokens(input), Tokens(output), Tokens(cached), cost)
 
   /** A nearby section's stored form: its conversation, its place as written, and an open
-    * one's `entries` or a closed one's `closing`.
+    * one's `entries`, a strand's `entries` marked `"strand": true`, or a closed one's `closing`.
     */
   def writeNearby(n: Nearby): ujson.Value =
     n match {
@@ -291,6 +291,13 @@ object PayloadJson {
           "conversation" -> ConversationId.value(c),
           "place" -> place.written,
           "closing" -> EntryId.value(closing)
+        )
+      case Nearby.Along(c, place, entries) =>
+        ujson.Obj(
+          "conversation" -> ConversationId.value(c),
+          "place" -> place.written,
+          "entries" -> ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e)))),
+          "strand" -> true
         )
     }
 
@@ -310,7 +317,12 @@ object PayloadJson {
               case ujson.Str(id) => Right(EntryId(id))
               case _ => Left("an entry id is not a string")
             })
-            .map(Nearby.Open(ConversationId(c), place, _))
+            .map(ids =>
+              // A section stored before strands existed has no mark: an open one.
+              if (o.value.get("strand").contains(ujson.True))
+                Nearby.Along(ConversationId(c), place, ids)
+              else Nearby.Open(ConversationId(c), place, ids)
+            )
     } yield section
 
   private def obj(v: ujson.Value): Either[String, ujson.Obj] = v match {
