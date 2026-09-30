@@ -1,11 +1,13 @@
 # grit's architecture law, checked by `bash scripts/enola-law.sh`.
 #
-# It enforces two things:
+# It enforces these things:
 #   1. Only grit.dbos may import dev.dbos.*, JDBC or the Postgres driver, only
 #      grit.models the JDK HTTP client, only grit.slack the Slack SDK, and only grit.host
 #      may start a process (STYLE rule 8); grit.slack names core and prose alone
 #   2. grit.tui's four groups import in one direction (grit/tui/CLAUDE.md)
 #   3. grit.prose names no other grit module (grit/prose/README.md)
+#   4. core names no extension, each extension names core alone, and the kit names no edge
+#      extension, terminal UI or deployment (ADR 0021; grit/kit/README.md)
 #
 # Every rule was watched failing on a deliberately planted bad import before it was
 # adopted. Do the same for any new rule: a rule that can't fail passes silently.
@@ -59,6 +61,22 @@ components:
   # grit.prose, for its rule below: the source tree alone, so a test's imports are not
   # counted against it.
   - {name: prose-code,     kind: module, match: ["grit/prose/src", "grit/prose/src/**"]}
+
+  # Core, extension, kit and deployment (ADR 0021; the table is grit/kit/README.md's), for
+  # rule 4 below. Source trees alone, so a test's imports are not counted. Which core module
+  # may name which is Mill's moduleDeps' job, not these rules'.
+  - name: core-modules
+    kind: module
+    match: ["grit/core/src", "grit/core/src/**", "grit/dbos/src", "grit/dbos/src/**",
+            "grit/turn/src", "grit/turn/src/**", "grit/lifecycle/src", "grit/lifecycle/src/**",
+            "grit/assembly/src", "grit/assembly/src/**", "grit/prose/src", "grit/prose/src/**",
+            "grit/edge/src", "grit/edge/src/**"]
+  - {name: models-code,    kind: module, match: ["grit/models/src", "grit/models/src/**"]}
+  - {name: host-code,      kind: module, match: ["grit/host/src", "grit/host/src/**"]}
+  - {name: tools-code,     kind: module, match: ["grit/tools/src", "grit/tools/src/**"]}
+  - {name: digest-code,    kind: module, match: ["grit/digest/src", "grit/digest/src/**"]}
+  - {name: tui-code,       kind: module, match: ["grit/tui/src", "grit/tui/src/**"]}
+  - {name: kit-code,       kind: module, match: ["grit/kit/src", "grit/kit/src/**"]}
 
 rules:
   # -------------------------------------------------------------------------------------
@@ -429,3 +447,61 @@ rules:
     via: imports
     mode: strict
     because: "grit.prose is the edge-neutral form a reply is rendered from; naming grit.tui, grit.core or any edge would make it one edge's form"
+
+  # -------------------------------------------------------------------------------------
+  # 4. Core, extensions, kit and deployments (ADR 0021): an extension module is named only
+  # by the kit and by a deployment. Core names no extension; each extension names core
+  # alone (grit.slack's rule above says it for Slack); the kit names no edge extension, no
+  # terminal UI and no deployment, since an edge reaches it as a ServedEdge value. Mill's
+  # moduleDeps already keep each of these off the classpath; the rules are the record of the
+  # intent, and the guard if a moduleDeps entry is ever added. grit.eval, an it-only
+  # harness, is unruled.
+  # -------------------------------------------------------------------------------------
+  - id: core-names-no-extension
+    allow: core-modules
+    only: [core-modules]
+    via: imports
+    mode: strict
+    because: "ADR 0021: core is what the thesis fails without; naming an extension would make every deployment carry it"
+
+  - id: models-names-core-alone
+    allow: models-code
+    only: [core-modules, models-code]
+    via: imports
+    mode: strict
+    because: "ADR 0021: a shipped extension implements core's traits and names no other extension"
+
+  - id: host-names-core-alone
+    allow: host-code
+    only: [core-modules, host-code]
+    via: imports
+    mode: strict
+    because: "ADR 0021: a shipped extension implements core's traits and names no other extension"
+
+  - id: tools-names-core-alone
+    allow: tools-code
+    only: [core-modules, tools-code]
+    via: imports
+    mode: strict
+    because: "ADR 0021: a shipped extension implements core's traits and names no other extension"
+
+  - id: digest-names-core-alone
+    allow: digest-code
+    only: [core-modules, digest-code]
+    via: imports
+    mode: strict
+    because: "ADR 0021: a shipped extension implements core's traits and names no other extension"
+
+  - id: tui-names-core-alone
+    allow: tui-code
+    only: [core-modules, tui-code]
+    via: imports
+    mode: strict
+    because: "ADR 0021: the terminal UI is an extension a cloud deployment never loads; it names core alone"
+
+  - id: kit-names-no-edge-or-deployment
+    allow: kit-code
+    only: [core-modules, models-code, tools-code, digest-code, host-code, kit-code]
+    via: imports
+    mode: strict
+    because: "ADR 0021: an edge reaches the kit as a ServedEdge value, a cloud deployment never loads the terminal UI, and the kit names no deployment"
