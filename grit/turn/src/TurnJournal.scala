@@ -8,6 +8,7 @@ import grit.core.message.{Message, Tokens}
 import grit.core.model.{CatalogJson, TurnProfile}
 import grit.core.place.Place
 import grit.core.prompt.FragmentId
+import grit.core.speech.{Outcome, SpeechJson}
 import grit.core.store.{Nearby, Payload, PayloadJson}
 import grit.core.tool.ToolSetId
 import grit.core.topic.{TopicId, TopicJson}
@@ -296,6 +297,51 @@ private[turn] object TurnJournal {
               .map(RequestState.Answered(_))
         }
     )
+
+  /** A `judge` step's output: `{"judgement": "passed" | "nothing_recalled"}`,
+    * `{"judgement": "unjudged", "why": ...}`, or `{"judgement": "scored", "judged": ...,
+    * "estimated": tokens}` ([[SpeechJson.writeJudged]]).
+    */
+  given judgement: Journaled[TurnJudge.Judgement] =
+    Journaled.json[TurnJudge.Judgement](
+      {
+        case TurnJudge.Judgement.Passed => ujson.Obj("judgement" -> "passed")
+        case TurnJudge.Judgement.NothingRecalled => ujson.Obj("judgement" -> "nothing_recalled")
+        case TurnJudge.Judgement.Unjudged(why) => ujson.Obj("judgement" -> "unjudged", "why" -> why)
+        case TurnJudge.Judgement.Scored(j, estimated) =>
+          ujson.Obj(
+            "judgement" -> "scored",
+            "judged" -> SpeechJson.writeJudged(j),
+            "estimated" -> Tokens.value(estimated).toDouble
+          )
+      },
+      v =>
+        v.objOpt.flatMap(_.get("judgement")).flatMap(_.strOpt) match {
+          case Some("passed") => Right(TurnJudge.Judgement.Passed)
+          case Some("nothing_recalled") => Right(TurnJudge.Judgement.NothingRecalled)
+          case Some("unjudged") =>
+            v.objOpt
+              .flatMap(_.get("why"))
+              .flatMap(_.strOpt)
+              .toRight("judgement: no why")
+              .map(TurnJudge.Judgement.Unjudged(_))
+          case Some("scored") =>
+            for {
+              o <- v.objOpt.toRight("judgement: expected an object")
+              j <- o.get("judged").toRight("judgement: no judged").flatMap(SpeechJson.readJudged)
+              n <- o
+                .get("estimated")
+                .flatMap(_.numOpt)
+                .filter(_.isWhole)
+                .toRight("judgement: no estimate")
+            } yield TurnJudge.Judgement.Scored(j, Tokens(n.toLong))
+          case _ => Left("judgement: expected a judgement")
+        }
+    )
+
+  /** A `record-speech` step's output: what became of the draft ([[SpeechJson.writeOutcome]]). */
+  given speechSettled: Journaled[Either[TurnFailure, Outcome]] =
+    outcome(SpeechJson.writeOutcome, SpeechJson.readOutcome)
 
   private def outcome[A](
       write: A -> ujson.Value,

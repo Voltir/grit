@@ -142,7 +142,8 @@ object SpeechJson {
     case Outcome.Failed(_) => "failed"
   }
 
-  private def writeJudged(j: Judged): ujson.Value =
+  /** `{"adds", "grounded", "worth", "model", "usage"}`. */
+  def writeJudged(j: Judged): ujson.Value =
     ujson.Obj(
       "adds" -> num(j.adds),
       "grounded" -> num(j.grounded),
@@ -151,7 +152,7 @@ object SpeechJson {
       "usage" -> PayloadJson.writeUsage(j.usage)
     )
 
-  private def readJudged(v: ujson.Value): Either[String, Judged] =
+  def readJudged(v: ujson.Value): Either[String, Judged] =
     for {
       o <- obj(v)
       adds <- probability(o, "adds")

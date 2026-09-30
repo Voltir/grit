@@ -5,6 +5,13 @@ import java.time.Instant
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.classify.Classifier
+import grit.core.classify.{Answer, Answers, ClassifierError, Question}
+import grit.core.edge.InMemoryDeliveries
+import grit.core.id.{PeriodSeq, TurnSeq}
+import grit.core.period.{CloseReason, Probability, TestClosings}
+import grit.core.speech.{Decision, Heard, InMemorySpeechStore, Limits, Reach}
+import grit.core.spend.DailyCap
+import grit.core.triage.{Kind, Tags}
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.{Durable, InMemoryDurable}
@@ -403,7 +410,8 @@ object TurnFixtures {
         new FixedModels(provider, new StubProvider()),
         FakeDb,
         new NoWait,
-        Fresh.random()
+        Fresh.random(),
+        quiet()
       ),
       TurnTooling[{}](
         Toolbox.of[{}]().fold(d => throw new java.lang.AssertionError(d), identity),
@@ -604,7 +612,9 @@ object TurnFixtures {
       entries: EntryStore,
       provider: Provider^,
       assembler: ContextAssembler^,
-      ledger: UsageLedger
+      ledger: UsageLedger,
+      classifier: Classifier^ = NoClassifier,
+      speech: TurnSpeech = quiet()
   )(
       id: WorkflowId
   )(using Durable^): String =
@@ -613,11 +623,12 @@ object TurnFixtures {
         TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
         hosting(),
         assembler,
-        NoClassifier,
+        classifier,
         new FixedModels(provider, new StubProvider()),
         FakeDb,
         new NoWait,
-        Fresh.random()
+        Fresh.random(),
+        speech
       ),
       TurnTooling[{NoCheckout}](noTools, Toolbox.Empty, Vector.empty, new FakeJot, budget(5))
     )(id)
@@ -649,7 +660,8 @@ object TurnFixtures {
         new FixedModels(turn, summary),
         FakeDb,
         new NoWait,
-        Fresh.random()
+        Fresh.random(),
+        quiet()
       ),
       TurnTooling[{NoCheckout}](noTools, Toolbox.Empty, Vector.empty, new FakeJot, budget(5))
     )(id)
@@ -690,10 +702,108 @@ object TurnFixtures {
       ledger: UsageLedger = new InMemoryUsageLedger,
       summarizer: Provider^ = new StubProvider(),
       classifier: Classifier^ = NoClassifier,
-      clock: Clock^ = new NoWait
+      clock: Clock^ = new NoWait,
+      speech: TurnSpeech = quiet()
   )(id: WorkflowId)(using Durable^): String =
-    tooledBody(entries, provider, ledger, summarizer, classifier, NoCheckout, noTools, 5, clock)(
-      id
+    tooledBody(
+      entries,
+      provider,
+      ledger,
+      summarizer,
+      classifier,
+      NoCheckout,
+      noTools,
+      5,
+      clock,
+      speech = speech
+    )(id)
+
+  /** The limits a speech fixture speaks within: [[grit.core.speech.Limits.suggested]], $0.25. */
+  val speechLimits: Limits =
+    Limits.suggested(DailyCap.of("0.25").getOrElse(throw new java.lang.AssertionError("a cap")))
+
+  /** Answers every yes/no question with `yes`, counting its calls; unavailable when `yes` is
+    * `None`.
+    */
+  final class Judge(yes: Option[Double]) extends Classifier {
+    @caps.unsafe.untrackedCaptures
+    var calls = 0
+
+    protected def answer(
+        state: ujson.Value,
+        questions: Vector[Question]
+    ): Either[ClassifierError, Answers] = {
+      calls += 1
+      yes match {
+        case None => Left(ClassifierError.Unavailable("down"))
+        case Some(p) =>
+          Right(
+            Answers(
+              questions.map(_ => Answer.YesNo(p)),
+              Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017"))),
+              "jev"
+            )
+          )
+      }
+    }
+  }
+
+  /** A window of the conversation's entries before the turn, the closing among them. */
+  final class Before(entries: InMemoryEntryStore) extends ContextAssembler {
+    def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
+      Right(
+        Window(
+          entries
+            .list(conversation)(using TestTx.fake)
+            .getOrElse(Vector.empty)
+            .filter(e => TurnSeq.value(e.turnSeq) < TurnSeq.value(request.turn.turnSeq))
+            .map(_.id)
+        )
+      )
+  }
+
+  final case class SpeechWorld(
+      entries: InMemoryEntryStore,
+      ledger: InMemoryUsageLedger,
+      store: InMemorySpeechStore,
+      deliveries: InMemoryDeliveries,
+      turn: TurnRef
+  )
+
+  /** A conversation that begins with a record of its closed period (turn 0) when
+    * `recalled`, else with a person's message, then a heard message (the turn), decided on and
+    * heard with a reply address.
+    */
+  def speechWorld(recalled: Boolean = true): SpeechWorld = {
+    given grit.core.store.Tx = TestTx.fake
+    val entries = new InMemoryEntryStore
+    val ledger = new InMemoryUsageLedger
+    val next = entries.lockNext(conversation).getOrElse(sys.error("store"))
+    val first =
+      if (recalled)
+        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("The freeze moved to Thursday."))
+      else Payload.Heard("morning all")
+    entries.insert(Entry(EntryId("first"), conversation, next.turnSeq, None, next.seq, first, Instant.EPOCH))
+    val turn = hear(entries, "is the freeze still on?")
+    val store = new InMemorySpeechStore(entries, ledger)
+    store.heard(turn, Reach(Some("C/1"), Set.empty))
+    val p = Probability.clamped(0.9)
+    store.decided(
+      Heard(turn, 1, Place.Everywhere, Instant.EPOCH, Reach(Some("C/1"), Set.empty), Tags.Weighed(Kind.Question, p, p, p, p, "jev", Usage.Zero)),
+      Decision.Drafting(turn),
+      Instant.EPOCH
+    )
+    SpeechWorld(entries, ledger, store, new InMemoryDeliveries, turn)
+  }
+
+  /** Speaking off, over stores of its own: what a turn not rooted on a heard message never
+    * reads.
+    */
+  def quiet(): TurnSpeech =
+    TurnSpeech(
+      grit.core.speech.Speaking.Off,
+      new grit.core.speech.InMemorySpeechStore(new InMemoryEntryStore, new InMemoryUsageLedger),
+      new grit.core.edge.InMemoryDeliveries
     )
 
   /** No tools offered: the loop's first call is the plain request, and answers. */
@@ -713,7 +823,8 @@ object TurnFixtures {
       tools: Toolbox[{ws}],
       calls: Int,
       clock: Clock^ = new NoWait,
-      hosted: Vector[Tool.Offered] = Vector.empty
+      hosted: Vector[Tool.Offered] = Vector.empty,
+      speech: TurnSpeech = quiet()
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
@@ -724,7 +835,8 @@ object TurnFixtures {
         new FixedModels(provider, summarizer),
         FakeDb,
         clock,
-        Fresh.random()
+        Fresh.random(),
+        speech
       ),
       TurnTooling[{ws}](tools, Toolbox.Empty, hosted, new FakeJot, budget(calls))
     )(id)
@@ -749,7 +861,8 @@ object TurnFixtures {
         models,
         FakeDb,
         new NoWait,
-        Fresh.random()
+        Fresh.random(),
+        quiet()
       ),
       TurnTooling[{ws}](tools, Toolbox.Empty, Vector.empty, new FakeJot, budget(calls))
     )(id)

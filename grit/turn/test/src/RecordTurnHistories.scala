@@ -41,6 +41,23 @@ object RecordTurnHistories {
     * name's file was written by an earlier build, and is replayed as it was written.
     */
   private def shapes: Vector[(String, History)] = {
+
+    /** A turn rooted on a heard message, its draft judged at 0.9, under `speaking`. */
+    def heard(speaking: grit.core.speech.Speaking): History = {
+      val w = speechWorld()
+      val durable = new InMemoryDurable
+      durable.run(w.turn.workflowId)(
+        turnBodyWith(
+          w.entries,
+          new RecordingProvider,
+          new Before(w.entries),
+          w.ledger,
+          new Judge(Some(0.9)),
+          TurnSpeech(speaking, w.store, w.deliveries)
+        )
+      )
+      recorded(durable, w.turn)
+    }
     val replied = {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -474,6 +491,8 @@ object RecordTurnHistories {
       "summarised" -> summarised,
       "summary-failed" -> summaryFailed,
       "crashed-before-summary-append" -> crashedBeforeSummaryAppend,
+      "heard-posted" -> heard(grit.core.speech.Speaking.Within(speechLimits)),
+      "heard-shadowed" -> heard(grit.core.speech.Speaking.Shadow(speechLimits)),
       "replied" -> replied,
       "later-turn" -> laterTurn,
       "model-failed" -> modelFailed,

@@ -5,8 +5,9 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
-import grit.core.edge.{EdgeDirectory, ToolRequests}
+import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
 import grit.core.provider.{Models, TokenEstimator}
+import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.store.{
   ConversationStore,
   Db,
@@ -25,8 +26,9 @@ import grit.core.tool.{Tool, ToolSets, Toolbox}
   * `classifier` places its message among the topics, `models` holds the catalog the turn
   * pins and makes each role's calls under its pin, `db` reads the store outside a
   * transaction, `clock` dates entries and paces the reply's stream, and `fresh` tags each
-  * attempt at a model call ([[TurnStream]]). None of them writes the store, so a step body
-  * that captures this can only read it.
+  * attempt at a model call ([[TurnStream]]); `classifier` also judges an unprompted turn's
+  * draft, settled as [[TurnSpeech]] says. None of them writes the store, so a step body that
+  * captures this can only read it.
   */
 final case class TurnEnv(
     records: TurnRecords,
@@ -36,8 +38,15 @@ final case class TurnEnv(
     models: Models^,
     db: Db^,
     clock: Clock^,
-    fresh: Fresh^
+    fresh: Fresh^,
+    speech: TurnSpeech
 )
+
+/** What a turn rooted on a heard message settles its draft against (ADR 0022): whether and
+  * within what grit speaks (`speaking`, read when the draft is settled), where each decision
+  * is kept (`store`), and the replies edges await (`deliveries`), where a posted one is sent.
+  */
+final case class TurnSpeech(speaking: Speaking, store: SpeechStore, deliveries: Deliveries)
 
 /** Where a turn's entries, their costs and its model profile are written, how a request is
   * priced, and whose names its messages are shown under (`principals`).

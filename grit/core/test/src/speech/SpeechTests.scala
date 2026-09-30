@@ -4,11 +4,12 @@ import java.time.{Instant, ZoneOffset}
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{ConversationId, PrincipalId, TurnRef, TurnSeq}
-import grit.core.message.{Cost, Tokens, Usage}
+import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.message.{Cost, Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Budget, DailyCap, Spend}
+import grit.core.store.{Entry, Payload}
 import grit.core.triage.{Kind, Tags}
 
 import utest.*
@@ -171,6 +172,18 @@ object SpeechTests extends TestSuite {
       test("speaking switched off since: withdrawn") {
         assert(Speech.post(Speaking.Off, Right(judged)) == Outcome.Withdrawn)
       }
+    }
+
+    test("a draft is answered by the first thing a person said after its root, and nothing else") {
+      def entry(n: Long, payload: Payload) =
+        Entry(EntryId(s"e$n"), ConversationId("c"), TurnSeq(n), None, n, payload, now)
+      val grits = entry(11, Payload.Summary("grit's own"))
+      Speech.answered(Vector(grits)) ==> None
+      Speech.answered(
+        Vector(grits, entry(12, Payload.Heard("it's Thursday")), entry(13, Payload.Heard("ok")))
+      ) ==> Some(Outcome.Answered(EntryId("e12")))
+      Speech.answered(Vector(entry(14, Payload.Message(Message.User("@bort?"))))) ==>
+        Some(Outcome.Answered(EntryId("e14")))
     }
 
     test("a rate needs a count of at least 1 and a positive window") {

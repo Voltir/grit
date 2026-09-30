@@ -121,7 +121,8 @@ object LiveTurn {
             models,
             engine.db,
             Clock.system(),
-            Fresh.random()
+            Fresh.random(),
+            grit.turn.TurnSpeech(grit.core.speech.Speaking.Off, engine.speech, engine.deliveries)
           ),
           tooling
         ),

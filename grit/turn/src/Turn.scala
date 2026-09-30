@@ -11,6 +11,7 @@ import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile}
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
+import grit.core.speech.{Outcome, Speech, SpeechJson}
 import grit.core.store.{Entry, EntryStore, Jot, Payload, Speakers, StoreError, Tx}
 import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
 import grit.core.topic.Topic
@@ -60,7 +61,14 @@ import TurnVerdict.Shape
   *   1. `append` — the reply recorded as the turn's entry, with its cost in the ledger
   *      beside the estimate of its request, atomically with the step. A turn rooted on a
   *      heard message ([[TurnOffer.Root.Heard]], as its `offer` recorded) records its answer
-  *      as a draft instead ([[grit.core.store.Payload.Draft]]), and ends there.
+  *      as a draft instead ([[grit.core.store.Payload.Draft]]), then:
+  *   1. `judge` — a heard-rooted turn's draft scored against its thread and what its window
+  *      recalled ([[TurnJudge]]); nothing asked when it passes or nothing was recalled.
+  *   1. `record-speech` — what becomes of the draft ([[grit.core.speech.Speech.post]]),
+  *      held when a person spoke in the thread after its root: a posted one written as the
+  *      turn's reply and awaited at its heard message's address, in one transaction with
+  *      the judge's cost and the outcome kept. A heard-rooted turn that failed before its
+  *      draft records only `Failed` here. Only a posted draft goes on to the summary.
   *   1. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]).
   *   1. `append-summary` — the summary recorded as the turn's entry after the reply, with
   *      its cost in the ledger as in `append`.
@@ -93,11 +101,17 @@ object Turn {
     val CallModelPlain = "call-model-plain"
     val RecordVerdict = "record-verdict"
     val Append = "append"
+    val Judge = "judge"
+    val RecordSpeech = "record-speech"
     val Summarise = "summarise"
     val AppendSummary = "append-summary"
 
-    /** The steps only a turn whose model was asked about its topic takes. */
-    val optional: Vector[String] = Vector(CallModelAgain, CallModelPlain, RecordVerdict)
+    /** The steps only some turns take: `call-model-again`, `call-model-plain` and
+      * `record-verdict`, a turn whose model was asked about its topic; `judge` and
+      * `record-speech`, a turn rooted on a heard message.
+      */
+    val optional: Vector[String] =
+      Vector(CallModelAgain, CallModelPlain, RecordVerdict, Judge, RecordSpeech)
 
     val all: Vector[String] =
       Vector(
@@ -112,6 +126,8 @@ object Turn {
         CallModelPlain,
         RecordVerdict,
         Append,
+        Judge,
+        RecordSpeech,
         Summarise,
         AppendSummary
       )
@@ -366,8 +382,33 @@ object Turn {
     val topics = topicFailure.fold("")(f => s"; topics not recorded: $f") +
       ran.verdictUnrecorded.fold("")(f => s"; verdict not recorded: $f")
     (ran.result, offer.root) match {
-      case (Left(failure), _) => s"failed: $failure$topics"
-      case (Right(draft), TurnOffer.Root.Heard) => s"drafted: ${EntryId.value(draft)}$topics"
+      case (Left(failure), TurnOffer.Root.Addressed) => s"failed: $failure$topics"
+      case (Left(failure), TurnOffer.Root.Heard) =>
+        val at = env.clock.now()
+        val speech = env.speech
+        val settled = d.transact(Step.RecordSpeech)(
+          speech.store
+            .drafted(turn, Outcome.Failed(failure.toString), None, at)
+            .left
+            .map(storeFailure)
+            .map(_ => Outcome.Failed(failure.toString))
+        )
+        s"failed: $failure$topics${settled.fold(f => s"; not recorded: $f", _ => "")}"
+      case (Right(draft), TurnOffer.Root.Heard) =>
+        val judgement = d.step(Step.Judge)(() => judgeDraft(env, turn))
+        val at = env.clock.now()
+        d.transact(Step.RecordSpeech)(recordSpeech(env, turn, judgement, at)) match {
+          case Left(failure) => s"drafted: ${EntryId.value(draft)}; not settled: $failure$topics"
+          case Right(Outcome.Posted(_)) =>
+            val summary =
+              summarise(turn, turn.replyId, placing)(using env, pins, d) match {
+                case Right(id) => s"summarised: ${EntryId.value(id)}"
+                case Left(failure) => s"no summary: $failure"
+              }
+            s"posted: ${EntryId.value(turn.replyId)}; $summary$topics"
+          case Right(other) =>
+            s"drafted: ${EntryId.value(draft)}; ${SpeechJson.outcomeName(other)}$topics"
+        }
       case (Right(reply), TurnOffer.Root.Addressed) =>
         val summary =
           summarise(turn, reply, placing)(using env, pins, d) match {
@@ -376,6 +417,128 @@ object Turn {
           }
         s"replied: ${EntryId.value(reply)}; $summary$topics"
     }
+  }
+
+  /** The `judge` step: what the classifier makes of `turn`'s draft against its thread and
+    * what its recorded window recalled ([[TurnJudge]]); `Passed`, asking nothing, when the
+    * draft passes; `Unjudged` when the store cannot be read or the draft is not there.
+    */
+  private def judgeDraft(env: TurnEnv^, turn: TurnRef): TurnJudge.Judgement = {
+    val records = env.records
+    env.db
+      .read { (tx: Tx^) ?=>
+        for {
+          all <- records.entries.list(turn.conversationId)
+          window = all.collectFirst {
+            case Entry(id, _, _, _, _, Payload.Window(entries, _, nearby), _)
+                if id == windowId(turn) =>
+              Window(entries, Vector.empty, nearby)
+          }
+          near <- window.fold[Either[StoreError, Vector[Entry]]](Right(Vector.empty))(
+            nearbyOf(records.entries, _)
+          )
+          named <- records.principals.speakers(all.map(_.id))
+        } yield (all, window, near, named)
+      } match {
+      case Left(e) => TurnJudge.Judgement.Unjudged(s"store: ${describe(e)}")
+      case Right((all, window, near, named)) =>
+        (
+          all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq),
+          all.collectFirst {
+            case Entry(id, _, _, _, _, Payload.Draft(m), _) if id == turn.draftId => m
+          }
+        ) match {
+          case (Some(root), Some(draft)) =>
+            TurnJudge.said(draft) match {
+              case None => TurnJudge.Judgement.Passed
+              case Some(text) =>
+                TurnJudge.judge(
+                  env.classifier,
+                  records.estimator,
+                  TurnJudge.state(
+                    all,
+                    root,
+                    window.getOrElse(Window(Vector.empty)),
+                    near,
+                    named,
+                    text
+                  )
+                )
+            }
+          case _ => TurnJudge.Judgement.Unjudged("the draft is not there")
+        }
+    }
+  }
+
+  /** The `record-speech` step: what becomes of `turn`'s draft, as `judgement` and the
+    * speaking in force say ([[Speech.post]]), unless a person spoke in the thread after its
+    * root ([[Speech.answered]]); the judge's cost in the ledger; a posted draft written as the
+    * turn's reply and awaited at the address its heard message was heard with; and the
+    * outcome kept ([[grit.core.speech.SpeechStore.drafted]]), dated `at`. A post with no
+    * address to go to is `Failed`.
+    */
+  private def recordSpeech(
+      env: TurnEnv^,
+      turn: TurnRef,
+      judgement: TurnJudge.Judgement,
+      at: Instant
+  )(using Tx^): Either[TurnFailure, Outcome] = {
+    val TurnRecords(entries, ledger, _, _, _) = env.records
+    val TurnSpeech(speaking, store, deliveries) = env.speech
+    for {
+      all <- entries.list(turn.conversationId).left.map(storeFailure)
+      root <- all
+        .filter(_.turnSeq == turn.turnSeq)
+        .minByOption(_.seq)
+        .toRight(TurnFailure.Store(s"${WorkflowId.value(turn.workflowId)} has no entries"))
+      draft <- all
+        .collectFirst { case Entry(id, _, _, _, _, Payload.Draft(m), _) if id == turn.draftId => m }
+        .toRight(TurnFailure.Store(s"${WorkflowId.value(turn.workflowId)} has no draft"))
+      reach <- store.reach(turn).left.map(storeFailure)
+      judged = Speech
+        .answered(all.filter(_.seq > root.seq))
+        .getOrElse(judgement match {
+          case TurnJudge.Judgement.Passed => Outcome.Passed
+          case TurnJudge.Judgement.NothingRecalled => Outcome.NothingRecalled
+          case TurnJudge.Judgement.Unjudged(why) => Speech.post(speaking, Left(why))
+          case TurnJudge.Judgement.Scored(j, _) => Speech.post(speaking, Right(j))
+        })
+      outcome = (judged, reach.flatMap(_.replyTo)) match {
+        case (Outcome.Posted(_), None) => Outcome.Failed("no address to reply to")
+        case (o, _) => o
+      }
+      _ <- judgement match {
+        case TurnJudge.Judgement.Scored(j, estimated) =>
+          ledger
+            .record(TurnJudge.id(turn), turn, turn.workflowId, j.model, j.usage, estimated)
+            .left
+            .map(storeFailure)
+        case _ => Right(())
+      }
+      _ <- (outcome, reach.flatMap(_.replyTo)) match {
+        case (Outcome.Posted(_), Some(to)) =>
+          for {
+            next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
+            _ <- entries
+              .insert(
+                Entry(
+                  turn.replyId,
+                  turn.conversationId,
+                  turn.turnSeq,
+                  None,
+                  next.seq,
+                  Payload.Message(draft),
+                  at
+                )
+              )
+              .left
+              .map(storeFailure)
+            _ <- deliveries.await(turn, to).left.map(storeFailure)
+          } yield ()
+        case _ => Right(())
+      }
+      _ <- store.drafted(turn, outcome, TurnJudge.said(draft), at).left.map(storeFailure)
+    } yield outcome
   }
 
   /** The id of the `i`-th search query assembly wrote for `turn`, from 0. */

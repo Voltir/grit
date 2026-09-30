@@ -54,6 +54,8 @@ object TurnTests extends TestSuite {
       "call-model-plain",
       "record-verdict",
       "append",
+      "judge",
+      "record-speech",
       "summarise",
       "append-summary"
     )

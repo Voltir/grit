@@ -9,6 +9,7 @@ import grit.core.message.{Cost, Usage}
 import grit.core.period.Probability
 import grit.core.place.Place
 import grit.core.spend.{Budget, DailyCap, Spend}
+import grit.core.store.Entry
 import grit.core.triage.{Kind, Tags}
 
 /** Where a reply to a heard message could go, in its edge's own address form (`None`: it is
@@ -242,6 +243,13 @@ object Speech {
     case Cost.Exact(usd) => usd
     case Cost.AtLeast(usd) => usd
   }
+
+  /** The first of `after` (the conversation's entries after the heard message a draft
+    * answers) that a person said ([[grit.core.store.Payload.said]]), as `Answered`; `None`
+    * when none did.
+    */
+  def answered(after: Vector[Entry]): Option[Outcome.Answered] =
+    after.find(_.payload.said.nonEmpty).map(e => Outcome.Answered(e.id))
 
   /** What becomes of a draft `judged` under `speaking`: `Posted` (or `Shadowed` under
     * [[Speaking.Shadow]]) when its score is at or above `postAt`, else `Below`; `Unjudged`,
