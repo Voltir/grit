@@ -28,6 +28,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, LifecycleSettings, Probability, TestClosings}
 import grit.core.place.{Locality, Place, Prefix, Scope, Weight}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
+import grit.core.stitch.{InMemoryStitchStore, StitchJson, StitchStore, Tuning}
 import grit.core.store.{
   ClosingEntry,
   Conversation,
@@ -195,7 +196,9 @@ object RetrievalAssemblerTests extends TestSuite {
       search: EntrySearch = new Scripted(),
       at: Long = 6,
       locality: Locality = Locality.Default,
-      origin: Origin = Origin.Task("conversation", "c1")
+      origin: Origin = Origin.Task("conversation", "c1"),
+      stitches: Option[StitchStore] = None,
+      tuning: Tuning = Tuning.Default
   ): Window = {
     val turn = TurnRef(c1, TurnSeq(at))
     val conversations = new InMemoryConversationStore
@@ -222,10 +225,17 @@ object RetrievalAssemblerTests extends TestSuite {
       world.principals,
       lifecycle,
       search,
+      stitches.getOrElse(
+        new InMemoryStitchStore(
+          world.entries,
+          c => Origin.Task("conversation", ConversationId.value(c))
+        )
+      ),
       writer,
       CharEstimate,
       Tokens(budget),
       Tokens(25),
+      tuning,
       Hits
     )
       .assemble(AssemblyRequest(turn))(using new FakeDb)
@@ -248,6 +258,60 @@ object RetrievalAssemblerTests extends TestSuite {
       .getOrElse(sys.error("in-memory store"))
 
   private def placeOf(name: String): Place = Origin.Task("conversation", name).place
+
+  /** Slack thread `ts` of channel C; c1 is thread 2.0. */
+  private def thread(ts: String): Origin = Origin.Slack("T", "C", ts)
+
+  /** Where each conversation of a strand world is: c1 thread 2.0, any other its name's thread. */
+  private def threads(c: ConversationId): Origin =
+    if (c == c1) thread("2.0") else thread(ConversationId.value(c))
+
+  /** Heard `texts` in conversation `name`, each said its seconds before the epoch, oldest
+    * first; ids `{name}:{i}`.
+    */
+  private def said(world: World, name: String, texts: (String, Long)*): ConversationId = {
+    val c = ConversationId(name)
+    given Tx = TestTx.fake
+    texts.zipWithIndex.foreach { case ((text, ago), i) =>
+      val next = world.entries.lockNext(c).getOrElse(sys.error("in-memory store"))
+      val at = Instant.EPOCH.minusSeconds(ago)
+      val _ = world.periods.openFor(c, next.turnSeq, at)
+      val _ = world.entries.insert(
+        Entry(EntryId(s"$name:$i"), c, next.turnSeq, None, next.seq, Payload.Heard(text), at)
+      )
+    }
+    c
+  }
+
+  /** c1's first message placed as following `root`'s exchange. */
+  private def follow(world: World, root: ConversationId): StitchStore = {
+    val stitches = new InMemoryStitchStore(world.entries, threads)
+    val placed = StitchJson
+      .read(
+        ujson.Obj(
+          "kind" -> "follows",
+          "root" -> ConversationId.value(root),
+          "p" -> 0.9,
+          "model" -> "jev",
+          "usage" -> grit.core.store.PayloadJson.writeUsage(Usage.Zero),
+          "seen" -> ujson.Obj(
+            "state" -> ujson.Obj(),
+            "offered" -> ujson.Arr(),
+            "tuning" -> ujson.Obj(
+              "horizon_seconds" -> 604800,
+              "recent" -> 2,
+              "lexical" -> 2,
+              "follows_at" -> 0.6,
+              "window_tokens" -> 1500,
+              "strand_chars" -> 800
+            )
+          )
+        )
+      )
+      .fold(e => sys.error(e), identity)
+    stitches.record(EntryId("t0:0"), placed, Instant.EPOCH)(using TestTx.fake)
+    stitches
+  }
 
   /** Closes `c`'s period `n` in `world` after one more turn saying `said`, its prose `prose`;
     * its closing entry's id.
@@ -403,6 +467,70 @@ object RetrievalAssemblerTests extends TestSuite {
       (search.nearAsked.map(_.conversations), search.closedAsked) ==>
         (Vector(List(api)), Vector(List(ops)))
       val _ = (far, near)
+    }
+
+    test(
+      "a stitched conversation's window shows its strand before its own turns: the opening, then the nearest that fit windowTokens"
+    ) {
+      val world = closed(Vector(Vector(ask)), Vector.empty, threads)
+      val a = said(
+        world,
+        "1.0",
+        "where did we land on the Engine contract term?" -> 120,
+        "an old aside, long enough that it will not fit" -> 90,
+        "lol" -> 30
+      )
+      val stitches = follow(world, a)
+      val strand = Vector(EntryId("1.0:0"), EntryId("1.0:1"), EntryId("1.0:2"))
+      def shown(tokens: Long) = assemble(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = 0,
+        origin = thread("2.0"),
+        stitches = Some(stitches),
+        tuning = Tuning.Default.copy(windowTokens = Tokens(tokens))
+      ).nearby
+      shown(1000) ==> Vector(Nearby.Along(a, thread("1.0").place, strand))
+      // 45 tokens: the section with all three costs 55, with the opening and "lol" 41.
+      shown(45) ==> Vector(Nearby.Along(a, thread("1.0").place, Vector(strand(0), strand(2))))
+    }
+
+    test("a strand's root whose first message is purged is shown by its newest kept record") {
+      val world = closed(Vector(Vector(ask)), Vector.empty, threads)
+      val a =
+        elsewhere(world, "1.0", close = true, exchange("the Engine contract term?", "12 months"))
+      world.periods.purge(PeriodRef(a, PeriodSeq.First), Instant.EPOCH)(using TestTx.fake)
+      val stitches = follow(world, a)
+      val w = assemble(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = 0,
+        origin = thread("2.0"),
+        stitches = Some(stitches)
+      )
+      w.nearby ==> Vector(
+        Nearby.Closed(a, thread("1.0").place, PeriodRef(a, PeriodSeq.First).closingId)
+      )
+    }
+
+    test("a strand member is shown in the strand alone, never also as a section from afar") {
+      val world = closed(Vector(Vector(ask)), Vector.empty, threads)
+      val a = said(world, "1.0", "where did we land on the Engine contract term?" -> 120)
+      val stitches = follow(world, a)
+      val search = new Scripted()
+      search.near = Vector((a, "1.0:0", 5.0))
+      val w = assemble(
+        world,
+        new Writer(Some("engine contract")),
+        budget = 1000,
+        search,
+        at = 0,
+        origin = thread("2.0"),
+        stitches = Some(stitches)
+      )
+      w.nearby ==> Vector(Nearby.Along(a, thread("1.0").place, Vector(EntryId("1.0:0"))))
     }
 
     test("with the scope off, or nothing open elsewhere, no query is written for a first turn") {

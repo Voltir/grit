@@ -394,10 +394,12 @@ object Eval {
       engine.principals,
       engine.lifecycle,
       engine.search,
+      engine.stitches,
       writer,
       CharEstimate,
       budget,
-      Tokens(Tokens.value(budget) / 3)
+      Tokens(Tokens.value(budget) / 3),
+      grit.core.stitch.Tuning.Default
     )
 
   /** `window` scored against `loaded`'s labels: its own entries and its nearby sections'

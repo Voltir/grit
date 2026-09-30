@@ -77,10 +77,12 @@ private[grit] object Launch {
           engine.principals,
           engine.lifecycle,
           engine.search,
+          engine.stitches,
           writer,
           CharEstimate,
           budget,
-          tail
+          tail,
+          grit.core.stitch.Tuning.Default
         )
       case Assembly.Linear(budget) =>
         new LinearAssembler(engine.entries, engine.periods, engine.principals, CharEstimate, budget)

@@ -13,6 +13,7 @@ import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.message.Tokens
 import grit.core.place.{Locality, Place, Weight}
 import grit.core.provider.{Provider, TokenEstimator}
+import grit.core.stitch.{Along, Said, StitchStore, Strand, Tuning}
 import grit.core.store.{
   ClosedElsewhere,
   ClosingEntry,
@@ -50,6 +51,14 @@ import grit.core.store.{
   * its section. The conversation's own closing is paid first, never a candidate. A person's
   * message is costed with its author's name line ([[Shown.of]]), as it is sent.
   *
+  * A conversation in a strand ([[grit.core.stitch.Strand]], read through `stitches` in the
+  * scope in force, from `tuning.horizon` before its first message until before the turn) is
+  * shown the strand as one [[Nearby.Along]] section per other member, after any sections from
+  * afar: its root's opening message, then the messages nearest the turn, newest first while
+  * they fit, at most `tuning.windowTokens` together, paid after the closing and before the
+  * tail. A member whose first message is gone is shown by its newest kept closing's record.
+  * Strand members are never also candidates.
+  *
   * No query is written when there is nothing to search: the linear window of `budget` holds
   * every earlier turn of the period, and no other conversation's open period or closing is
   * in scope. When the
@@ -64,10 +73,12 @@ final class RetrievalAssembler(
     principals: Principals,
     lifecycle: LifecycleStore,
     search: EntrySearch,
+    stitches: StitchStore,
     writer: Provider^,
     estimator: TokenEstimator,
     budget: Tokens,
     tail: Tokens,
+    tuning: Tuning,
     hits: Int = RetrievalAssembler.DefaultHits
 ) extends ContextAssembler {
   import RetrievalAssembler.{Candidate, Found}
@@ -85,87 +96,121 @@ final class RetrievalAssembler(
         all <- entries.list(turn.conversationId)
         open <- periods.openElsewhere(turn.conversationId)
         closed <- periods.closedElsewhere(turn.conversationId)
-        speakers <- principals.speakers(all.map(_.id))
+        until = all
+          .filter(_.turnSeq == turn.turnSeq)
+          .map(_.createdAt)
+          .minOption
+          .orElse(all.map(_.createdAt).maxOption.map(_.plusSeconds(1)))
+          .getOrElse(java.time.Instant.EPOCH)
+        began = all.minByOption(_.seq).fold(until)(_.createdAt)
+        strand <- Along.read(
+          stitches,
+          conversation,
+          settings.locality.scope,
+          began.minusNanos(tuning.horizon.toNanos),
+          until
+        )
+        speakers <- principals.speakers((all ++ strand.shown).map(_.id))
       } yield {
         val locality = settings.locality
+        val members = strand.members.toSet ++ strand.gone
+        val held = closed.filter(c => locality.scope.holds(conversation.origin.room, c.place))
         Read(
           locality,
           opening.first,
           opening.closing.map(_.entry).toVector,
           all,
           speakers,
-          open.filter(o => locality.scope.holds(conversation.origin.room, o.place)),
-          closed.filter(c => locality.scope.holds(conversation.origin.room, c.place))
+          open.filter(o =>
+            locality.scope.holds(conversation.origin.room, o.place) && !members(o.conversation)
+          ),
+          held.filterNot(c => members(c.conversation)),
+          strand,
+          held.filter(c => strand.gone.contains(c.conversation))
         )
       }
     }.left
       .map(AssemblyError.Store(_))
       .flatMap { read =>
-        val (closings, left) = LinearAssembler.opened(read.closings, estimator, budget)
-        val all = read.all
-        val turns = LinearAssembler.turnsBefore(all, read.first, turn.turnSeq)
-        val linear = LinearAssembler.tail(turns, read.speakers, estimator, left)
-        val ownToFind = linear.size != turns.size
-        if (!ownToFind && read.open.isEmpty && read.closed.isEmpty)
-          Right(window(closings, linear, Vector.empty))
-        else {
-          val recent =
-            if (!ownToFind) linear
-            else
-              LinearAssembler.recent(
-                turns,
-                read.speakers,
-                estimator,
-                Tokens(Tokens.value(tail) min Tokens.value(left))
-              )
-          val own = all.filter(_.turnSeq == turn.turnSeq)
-          val asked = QueryWriter.request(own)
-          writer.complete(asked) match {
-            case Left(error) =>
-              Right(
-                window(closings, linear, Vector(AssemblyNote.FellBack(s"no query: ${error.cause}")))
-              )
-            case Right(reply) =>
-              val query = QueryWriter.text(reply)
-              val queried =
-                AssemblyNote.Queried(query, reply.model, reply.usage, estimator.request(asked))
-              if (query.isEmpty)
+        val (closings, afterClosing) = LinearAssembler.opened(read.closings, estimator, budget)
+        val along = db.read(strandSections(read, afterClosing)).left.map(AssemblyError.Store(_))
+        along.flatMap { (strandShown, strandCost) =>
+          val left = Tokens(Tokens.value(afterClosing) - Tokens.value(strandCost))
+          def window(
+              closings: Vector[Entry],
+              turns: Vector[Vector[Entry]],
+              notes: Vector[AssemblyNote],
+              nearby: Vector[Nearby] = Vector.empty
+          ): Window = this.window(closings, turns, notes, nearby ++ strandShown)
+          val all = read.all
+          val turns = LinearAssembler.turnsBefore(all, read.first, turn.turnSeq)
+          val linear = LinearAssembler.tail(turns, read.speakers, estimator, left)
+          val ownToFind = linear.size != turns.size
+          if (!ownToFind && read.open.isEmpty && read.closed.isEmpty)
+            Right(window(closings, linear, Vector.empty))
+          else {
+            val recent =
+              if (!ownToFind) linear
+              else
+                LinearAssembler.recent(
+                  turns,
+                  read.speakers,
+                  estimator,
+                  Tokens(Tokens.value(tail) min Tokens.value(left))
+                )
+            val own = all.filter(_.turnSeq == turn.turnSeq)
+            val asked = QueryWriter.request(own)
+            writer.complete(asked) match {
+              case Left(error) =>
                 Right(
                   window(
                     closings,
                     linear,
-                    Vector(queried, AssemblyNote.FellBack("the query was blank"))
+                    Vector(AssemblyNote.FellBack(s"no query: ${error.cause}"))
                   )
                 )
-              else {
-                val from = recent.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq)
-                db.read(find(turn, read, ownToFind, from, query))
-                  .left
-                  .map(AssemblyError.Store(_))
-                  .map { found =>
-                    val older =
-                      turns.filter(t => t.headOption.exists(e => before(e.turnSeq, from)))
-                    // The tail leaves turns out, so the window holds a gap line before it.
-                    val used = Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(
-                      recent,
-                      read.speakers
-                    ) +
-                      (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero)
-                    val places = read.open.map(o => o.conversation -> o.place).toMap
-                    val packed =
-                      pack(
-                        rank(found, older, places, read.closed, read.locality.weight),
-                        used,
+              case Right(reply) =>
+                val query = QueryWriter.text(reply)
+                val queried =
+                  AssemblyNote.Queried(query, reply.model, reply.usage, estimator.request(asked))
+                if (query.isEmpty)
+                  Right(
+                    window(
+                      closings,
+                      linear,
+                      Vector(queried, AssemblyNote.FellBack("the query was blank"))
+                    )
+                  )
+                else {
+                  val from = recent.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq)
+                  db.read(find(turn, read, ownToFind, from, query))
+                    .left
+                    .map(AssemblyError.Store(_))
+                    .map { found =>
+                      val older =
+                        turns.filter(t => t.headOption.exists(e => before(e.turnSeq, from)))
+                      // The tail leaves turns out, so the window holds a gap line before it.
+                      val used = Tokens(Tokens.value(budget) - Tokens.value(left)) + spent(
+                        recent,
                         read.speakers
-                      )
-                    val recalled = packed.collect { case Candidate.Own(t) => t }
-                    val seqs = recalled.flatMap(_.headOption.map(_.turnSeq)).sortBy(TurnSeq.value)
-                    val notes =
-                      if (ownToFind) Vector(queried, AssemblyNote.Recalled(seqs))
-                      else Vector(queried)
-                    window(closings, recent ++ recalled, notes, sections(packed))
-                  }
-              }
+                      ) +
+                        (if (ownToFind) LinearAssembler.gap(estimator) else Tokens.Zero)
+                      val places = read.open.map(o => o.conversation -> o.place).toMap
+                      val packed =
+                        pack(
+                          rank(found, older, places, read.closed, read.locality.weight),
+                          used,
+                          read.speakers
+                        )
+                      val recalled = packed.collect { case Candidate.Own(t) => t }
+                      val seqs = recalled.flatMap(_.headOption.map(_.turnSeq)).sortBy(TurnSeq.value)
+                      val notes =
+                        if (ownToFind) Vector(queried, AssemblyNote.Recalled(seqs))
+                        else Vector(queried)
+                      window(closings, recent ++ recalled, notes, sections(packed))
+                    }
+                }
+            }
           }
         }
       }
@@ -182,8 +227,72 @@ final class RetrievalAssembler(
       all: Vector[Entry],
       speakers: Speakers,
       open: Vector[OpenPeriod],
-      closed: Vector[ClosedElsewhere]
+      closed: Vector[ClosedElsewhere],
+      strand: Strand.Read,
+      goneRecords: Vector[ClosedElsewhere]
   )
+
+  /** The strand's sections as the window shows them, and what they cost: a gone member's
+    * newest kept closing, then the root's opening and the messages nearest the turn, newest
+    * first while they fit, within `tuning.windowTokens` and `left`, one section per member in
+    * the order they were said.
+    */
+  private def strandSections(read: Read, left: Tokens)(using
+      grit.core.store.Tx^
+  ): Either[StoreError, (Vector[Nearby], Tokens)] = {
+    val cap = Tokens(math.min(Tokens.value(tuning.windowTokens), Tokens.value(left)))
+    read.goneRecords
+      .foldLeft[Either[StoreError, Vector[(ConversationId, Place, ClosingEntry)]]](
+        Right(Vector.empty)
+      ) { (acc, c) =>
+        acc.flatMap(done =>
+          entries
+            .get(c.newest)
+            .map(e => done ++ e.flatMap(ClosingEntry.of).map((c.conversation, c.place, _)))
+        )
+      }
+      .map { records =>
+        val recordCosts = records.map((_, place, r) => estimator.message(Shown.recorded(place, r)))
+        val recordsKept = records
+          .zip(recordCosts)
+          .scanLeft(Tokens.Zero)((u, rc) => u + rc._2)
+          .drop(1)
+          .zip(records)
+          .takeWhile((u, _) => Tokens.value(u) <= Tokens.value(cap))
+          .map(_._2)
+        val recordsCost = recordCosts.take(recordsKept.size).foldLeft(Tokens.Zero)(_ + _)
+        val room = Tokens(Tokens.value(cap) - Tokens.value(recordsCost))
+        val opening = read.strand.opening.toVector
+        val rest = read.strand.said
+          .filterNot(s => opening.exists(_.entry.id == s.entry.id))
+          .sortBy(_.entry.createdAt)
+        def sections(shown: Vector[Said]): Vector[Nearby] =
+          shown
+            .sortBy(_.entry.createdAt)
+            .map(s => (s.conversation, s.place))
+            .distinct
+            .map((c, place) =>
+              Nearby.Along(
+                c,
+                place,
+                shown.filter(_.conversation == c).sortBy(_.entry.createdAt).map(_.entry.id)
+              )
+            )
+        def cost(shown: Vector[Said]): Tokens =
+          sections(shown)
+            .flatMap(n => Shown.section(n, shown.map(_.entry), read.speakers))
+            .map(estimator.message)
+            .foldLeft(Tokens.Zero)(_ + _)
+        val fits = (rest.size to 0 by -1).iterator
+          .map(k => opening ++ rest.takeRight(k))
+          .find(shown => Tokens.value(cost(shown)) <= Tokens.value(room))
+          .getOrElse(Vector.empty)
+        (
+          recordsKept.map((c, place, r) => Nearby.Closed(c, place, r.entry.id)) ++ sections(fits),
+          recordsCost + cost(fits)
+        )
+      }
+  }
 
   /** Both searches for `query`, in one read: the period's own earlier turns before `from`
     * when `own`, and the open periods elsewhere; with the turns the nearby hits point into.
@@ -329,7 +438,7 @@ final class RetrievalAssembler(
       closings: Vector[Entry],
       turns: Vector[Vector[Entry]],
       notes: Vector[AssemblyNote],
-      nearby: Vector[Nearby] = Vector.empty
+      nearby: Vector[Nearby]
   ): Window =
     Window(closings.map(_.id) ++ turns.flatten.sortBy(_.seq).map(_.id), notes, nearby)
 }

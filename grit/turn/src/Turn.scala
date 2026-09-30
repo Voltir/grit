@@ -975,7 +975,7 @@ object Turn {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
       near <- nearbyOf(entries, window).left.map(storeFailure)
-      named <- principals.speakers(all.map(_.id)).left.map(storeFailure)
+      named <- principals.speakers((all ++ near).map(_.id)).left.map(storeFailure)
       sent <- requestOf(system, all, near, turn, window, named).map(shape)
       _ <- entries
         .insert(
@@ -1103,7 +1103,7 @@ object Turn {
     for {
       all <- records.entries.list(turn.conversationId).left.map(storeFailure)
       near <- nearbyOf(records.entries, window).left.map(storeFailure)
-      named <- records.principals.speakers(all.map(_.id)).left.map(storeFailure)
+      named <- records.principals.speakers((all ++ near).map(_.id)).left.map(storeFailure)
       base <- requestOf(system, all, near, turn, window, named)
       id <- TurnTopics.writeEvents(
         records.entries,
@@ -1242,7 +1242,7 @@ object Turn {
         for {
           all <- env.records.entries.list(turn.conversationId)
           near <- nearbyOf(env.records.entries, window)
-          named <- env.records.principals.speakers(all.map(_.id))
+          named <- env.records.principals.speakers((all ++ near).map(_.id))
         } yield requestOf(system, all, near, turn, window, named)
       }
       .left
@@ -1319,7 +1319,7 @@ object Turn {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
       near <- nearbyOf(entries, window).left.map(storeFailure)
-      named <- principals.speakers(all.map(_.id)).left.map(storeFailure)
+      named <- principals.speakers((all ++ near).map(_.id)).left.map(storeFailure)
       sent <- requestOf(offer.system, all, near, turn, window, named).map(shape)
       written <- recorded match {
         case WindowRecord.OwnStep => Right(0)
