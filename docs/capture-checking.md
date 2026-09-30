@@ -321,7 +321,9 @@ this pattern.
 - **Mill prints only the first 10 errors per module.** Turning a flag on across a module
   can report "21 errors found" and show half of them.
 - **Scala 3.9's `-Wunused`** reports variables read only inside utest's `assert` as unused.
-  `GritTests` silences exactly that message in tests.
+  Any test module that turns `-Wunused` on must silence that message.
+- **`-Werror` turns a probe's warning into an error.** The `Driver` probes compile with
+  `probeOptions`, the module's flags less `-Werror`, so a probe sees only the checkers' errors.
 
 ## On a Scala upgrade
 

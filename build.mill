@@ -14,14 +14,22 @@ trait GritModule extends ScalaModule {
    * `Durable` it runs on (a nested step) is a compile error. See ADR 0003. */
   def separationChecking: Boolean = true
 
-  // See STYLE.md
+  /* See STYLE.md. Every warning enabled is an error (-Werror), so none is lost to a cached or
+   * incremental compile, which prints nothing for a file it does not recompile. In force: the
+   * compiler's defaults (exhaustivity and unreachable cases, which rule 4 relies on),
+   * -deprecation and -feature. Another warning is added when one comes up, in its own commit. */
   def scalacOptions = Seq(
     "-no-indent",
     "-language:experimental.captureChecking",
     "-deprecation",
     "-feature",
-    "-Wunused:all"
+    "-Werror"
   ) ++ Option.when(separationChecking)("-language:experimental.separationChecking")
+
+  /* The flags a capture or separation probe (SeparationTests' `Driver`) compiles with: this
+   * module's, less -Werror. A probe pins which errors the checkers report; a warning in its
+   * source would otherwise become one more error beside them. */
+  def probeOptions = Task { scalacOptions().filterNot(_ == "-Werror") }
 
   /* JDK 24 warns on every sun.misc.Unsafe call; Scala 3's LazyVals$ still
    * uses objectFieldOffset, so the warning is spurious and not ours to fix. */
@@ -35,16 +43,11 @@ trait GritModule extends ScalaModule {
       .map(p => PathRef(os.Path(p)))
   }
 
-  /* Every module's tests: utest, forked with the module's own JVM flags.
-   *
-   * Scala 3.9's -Wunused reports every pattern variable read only inside utest's `assert`
-   * macro as unused -- ~85 false positives across the tui suite, checked by hand. Silenced
-   * for tests only; main sources keep the full check. */
+  /* Every module's tests: utest, forked with the module's own JVM flags. */
   trait GritTests extends ScalaTests {
     def forkArgs = Task { GritModule.this.forkArgs() }
     def testFramework = "utest.runner.Framework"
     def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.9.5")
-    def scalacOptions = Task { super.scalacOptions() ++ Seq("-Wconf:msg=unused pattern variable:s") }
   }
 }
 
@@ -118,7 +121,7 @@ object grit extends Module {
       def forkEnv = Task {
         super.forkEnv() ++ Map(
           "GRIT_PROBE_CLASSPATH" -> core.runClasspath().map(_.path.toString).mkString(":"),
-          "GRIT_PROBE_OPTIONS" -> core.scalacOptions().mkString(" ")
+          "GRIT_PROBE_OPTIONS" -> core.probeOptions().mkString(" ")
         )
       }
     }
@@ -186,7 +189,7 @@ object grit extends Module {
           "GRIT_HISTORIES" -> histories().path.toString,
           "GRIT_HISTORIES_SIG" -> histories().sig.toString,
           "GRIT_PROBE_CLASSPATH" -> turn.runClasspath().map(_.path.toString).mkString(":"),
-          "GRIT_PROBE_OPTIONS" -> turn.scalacOptions().mkString(" ")
+          "GRIT_PROBE_OPTIONS" -> turn.probeOptions().mkString(" ")
         )
       }
     }
@@ -336,7 +339,7 @@ object grit extends Module {
       def forkEnv = Task {
         super.forkEnv() ++ Map(
           "GRIT_PROBE_CLASSPATH" -> tui.runClasspath().map(_.path.toString).mkString(":"),
-          "GRIT_PROBE_OPTIONS" -> tui.scalacOptions().mkString(" ")
+          "GRIT_PROBE_OPTIONS" -> tui.probeOptions().mkString(" ")
         )
       }
     }

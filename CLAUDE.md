@@ -135,9 +135,8 @@ compile, and the Scala-upgrade checklist. The ones that bite most:
 - `assertCompileError` never sees capture-checking errors; use the `Driver` probe in
   `SeparationTests`.
 
-Tests share `GritTests` in `build.mill`, which silences Scala 3.9's false
-`unused pattern variable` warnings for variables read only inside utest's `assert`. Every
-other warning is real.
+Every warning the build enables is an error (`-Werror`); `build.mill`'s `scalacOptions`
+lists the set in force, and a warning joins it in its own commit.
 
 A CLI `./mill` and Metals never block each other (separate build directories). Metals
 spinners, BSP processes, build-directory hygiene and Metals' MCP set-up:
