@@ -17,14 +17,23 @@ trait GritModule extends ScalaModule {
   /* See STYLE.md. Every warning enabled is an error (-Werror), so none is lost to a cached or
    * incremental compile, which prints nothing for a file it does not recompile. In force: the
    * compiler's defaults (exhaustivity and unreachable cases, which rule 4 relies on),
-   * -deprecation and -feature. Another warning is added when one comes up, in its own commit. */
-  def scalacOptions = Seq(
-    "-no-indent",
-    "-language:experimental.captureChecking",
-    "-deprecation",
-    "-feature",
-    "-Werror"
-  ) ++ Option.when(separationChecking)("-language:experimental.separationChecking")
+   * -deprecation and -feature. Another warning is added when one comes up, in its own commit.
+   * Under lint, -Wunused:all too. */
+  def scalacOptions = Task {
+    Seq(
+      "-no-indent",
+      "-language:experimental.captureChecking",
+      "-deprecation",
+      "-feature",
+      "-Werror"
+    ) ++ Option.when(separationChecking)("-language:experimental.separationChecking") ++
+      Option.when(lint())("-Wunused:all")
+  }
+
+  /* Whether this is scripts/check's lint pass (GRIT_LINT=1): the commit gate's last tier, in its
+   * own output directory so that neither pass's compiles invalidate the other's. An input, so
+   * every run reads the shell's value afresh: the Mill daemon keeps its own environment. */
+  def lint = Task.Input { Task.env.get("GRIT_LINT").contains("1") }
 
   /* The flags a capture or separation probe (SeparationTests' `Driver`) compiles with: this
    * module's, less -Werror. A probe pins which errors the checkers report; a warning in its
@@ -48,6 +57,13 @@ trait GritModule extends ScalaModule {
     def forkArgs = Task { GritModule.this.forkArgs() }
     def testFramework = "utest.runner.Framework"
     def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.9.5")
+
+    /* Scala 3.9's -Wunused reports a pattern variable read only inside utest's `assert` macro
+     * as unused; silenced in tests, where it is always false. */
+    def scalacOptions = Task {
+      super.scalacOptions() ++
+        Option.when(GritModule.this.lint())("-Wconf:msg=unused pattern variable:s")
+    }
   }
 }
 

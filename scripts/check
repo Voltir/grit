@@ -1,0 +1,268 @@
+#!/usr/bin/env bash
+# The test cycle's one command: runs tests and gates, and prints only what needs reading —
+# each failing test, every compile error and warning, and one totals line per tier that a
+# commit message can quote. The full output of each tier is kept in out/check/<tier>.log.
+#
+#   scripts/check                                  # the commit gate: unit, law, lint
+#   scripts/check --it                             # the same, and the integration tier
+#   scripts/check grit.core                        # one module's unit tests (testCached)
+#   scripts/check grit.core.speech.SpeechTests     # one suite (testOnly)
+#   scripts/check grit.dbos.it                     # an `it` module or suite, through scripts/it
+#
+# Tiers, with no target:
+#   unit  ./mill __.test.testCached: reruns a module's suites only when their inputs changed;
+#         a failure is never cached. (`__.testCached` would also match the `it` modules.)
+#   law   scripts/enola-law.sh.
+#   it    with --it: scripts/it __.it.testForked, every live suite rerun.
+#   lint  every module compiled with -Wunused:all (build.mill reads GRIT_LINT=1), in its own
+#         output directory, out/lint, so neither cache invalidates the other. Its Mill daemon
+#         is shut down when the tier ends. --no-lint skips it.
+# A target runs just that: no law, no lint; --it with a target is a usage error.
+#
+# Exits non-zero when any tier had a failed test, a compile error, a warning, a law failure
+# or a timeout. Every tier runs even after an earlier one fails. When Mill fails, the totals
+# line does not claim a passed count: a run cut short by a compile error or a timeout has
+# fewer tests, not fewer failures.
+#
+# --timeout DUR bounds each tier's Mill call (a timeout(1) duration; default 20m). On expiry
+# the tier's Mill daemon is shut down, which stops the test JVMs it forked.
+set -euo pipefail
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
+
+timeout=20m it=false lint=true targets=()
+while [ $# -gt 0 ]; do
+  case $1 in
+    --timeout) [ $# -ge 2 ] || usage; timeout=$2; shift 2 ;;
+    --timeout=*) timeout=${1#*=}; shift ;;
+    --it) it=true; shift ;;
+    --no-lint) lint=false; shift ;;
+    -h|--help) usage ;;
+    -*) echo "check: unknown option $1" >&2; usage ;;
+    *) targets+=("$1"); shift ;;
+  esac
+done
+if [ ${#targets[@]} -gt 0 ] && $it; then
+  echo "check: --it runs the whole integration tier; name an it module or suite instead" >&2
+  exit 2
+fi
+
+logs=out/check
+mkdir -p "$logs"
+mill=(./mill --color false --ticker false -k)
+totals=() status=0
+
+# A module (grit.core) is a directory grit/core with test/src or it/src; its tier is which.
+modules_of() { # tier -> module names, one per line
+  find grit -type d -path "*/$1/src" | sed -E "s#/$1/src\$##; s#/#.#g" | sort
+}
+
+# A suite's module and tier, from the one source file declaring it: <Name>.scala under
+# grit/**/{test,it}/src whose package clauses, joined, are the suite's package.
+locate_suite() { # fqcn -> "module tier"
+  local fqcn=$1 name=${1##*.} pkg=${1%.*} f found=()
+  while IFS= read -r f; do
+    [ "$(sed -nE 's/^package ([A-Za-z0-9_.]+).*/\1/p' "$f" | paste -sd.)" = "$pkg" ] &&
+      grep -qE "^(private )?object $name\b" "$f" && found+=("$f")
+  done < <(find grit \( -path '*/test/src/*' -o -path '*/it/src/*' \) -name "$name.scala")
+  if [ ${#found[@]} -ne 1 ]; then
+    echo "check: $fqcn: ${#found[@]} sources declare it${found:+ (${found[*]})}" >&2
+    return 1
+  fi
+  sed -E 's#^(.*)/(test|it)/src/.*#\1 \2#; s#/#.#g' <<<"${found[0]}"
+}
+
+# Prints a tier's failing tests from its fresh reports, its compile errors and warnings from
+# its log, and its totals line (appended to $totals via stdout's last line).
+summarise() { # tier log rc start report...
+  python3 - "$@" <<'PY'
+import os, re, sys, xml.etree.ElementTree as ET
+tier, log, rc, start, reports = sys.argv[1], sys.argv[2], int(sys.argv[3]), float(sys.argv[4]), sys.argv[5:]
+out = []
+passed = failed = 0
+counted = 0
+for path in reports:
+    if not os.path.exists(path):
+        continue
+    fresh = os.path.getmtime(path) >= start
+    root = ET.parse(path).getroot()
+    for case in root.iter("testcase"):
+        bad = case.find("failure") if case.find("failure") is not None else case.find("error")
+        if bad is None:
+            passed += 1
+            continue
+        failed += 1
+        if not fresh:
+            continue
+        out.append(f"FAIL {case.get('classname')} > {case.get('name')}")
+        text = (bad.get("message") or "").strip().splitlines()[:6]
+        out += ["  " + l for l in text]
+        frame = next((l.strip() for l in (bad.text or "").splitlines()
+                      if l.strip().startswith("at grit.")), None)
+        if frame:
+            out.append("  " + frame)
+    counted += 1
+
+lines = open(log, errors="replace").read().splitlines() if os.path.exists(log) else []
+errors = warnings = 0
+i = 0
+while i < len(lines):
+    m = re.match(r"\[(error|warn)\] (.*)", lines[i])
+    if not m:
+        i += 1
+        continue
+    kind, rest = m.groups()
+    if re.search(r"tests? failed|task failed|Compilation failed|errors? found|warnings? found", rest):
+        i += 1
+        continue
+    if kind == "warn":
+        warnings += 1
+    else:
+        errors += 1
+    block = [lines[i]]
+    i += 1
+    if re.match(r"\S+\.scala:\d+:\d+", rest):  # a compiler diagnostic: its source and message
+        while i < len(lines) and not lines[i].startswith("[") and not re.match(r"(compiling|done compiling)", lines[i]):
+            if lines[i].strip() or (block[-1].strip() and len(block) > 1):
+                block.append(lines[i])
+            i += 1
+        while block and not block[-1].strip():
+            block.pop()
+    out += block[:15]
+
+timed_out = rc == 124
+# enola's verdict: the regressions block, up to the next blank line.
+regressions = next((k for k, l in enumerate(lines) if l.startswith("Regressions (fail):")), None)
+if tier == "law" and rc != 0 and regressions is not None:
+    end = next((k for k in range(regressions + 1, len(lines)) if not lines[k].strip()), len(lines))
+    out += lines[regressions:end][:30]
+elif timed_out or (rc != 0 and failed == 0 and errors == 0 and warnings == 0):
+    out.append(f"-- last lines of {log}:")
+    out += ["  " + l for l in lines[-20:]]
+for l in out:
+    print(l)
+
+def n(k, word):
+    return f"{k} {word}{'' if k == 1 else 's'}"
+parts = []
+if failed: parts.append(f"{failed} failed")
+if errors: parts.append(n(errors, "error"))
+if warnings: parts.append(n(warnings, "warning"))
+if timed_out:
+    total = f"{tier}: TIMED OUT" + (f", {', '.join(parts)}" if parts else "")
+elif rc != 0 or failed or errors or warnings:
+    total = f"{tier}: FAILED" + (f", {', '.join(parts)}" if parts else f", exit {rc}")
+elif reports:
+    total = f"{tier}: {passed} passed, 0 failed ({n(counted, 'module')})"
+else:
+    total = f"{tier}: passed"
+print(total)
+PY
+}
+
+# Runs one tier: its command under the timeout into its log, then its summary. The tier's
+# Mill daemon lives in MILL_OUTPUT_DIR (default out).
+run_tier() { # tier outdir reports-file -- command...
+  local tier=$1 outdir=$2 reports=$3 log="$logs/$1.log" rc=0 start summary
+  shift 4
+  echo "== $tier: $*"
+  start=$(date +%s)
+  timeout "$timeout" "$@" >"$log" 2>&1 || rc=$?
+  if [ "$rc" = 124 ]; then
+    echo "$tier: timed out after $timeout; shutting down its Mill daemon" >>"$log"
+    MILL_OUTPUT_DIR=$outdir ./mill shutdown >>"$log" 2>&1 || true
+  fi
+  local -a paths=()
+  [ -n "$reports" ] && mapfile -t paths <"$reports"
+  summary=$(summarise "$tier" "$log" "$rc" "$start" "${paths[@]}")
+  printf '%s\n' "$summary"
+  totals+=("$(tail -1 <<<"$summary")")
+  case ${totals[-1]} in *FAILED*|*"TIMED OUT"*) status=1 ;; esac
+  [ "$rc" = 0 ] || status=1
+}
+
+report_path() { # module tier task
+  echo "out/$(tr . / <<<"$1")/$2/$3.dest/test-report.xml"
+}
+
+if [ ${#targets[@]} -eq 0 ]; then
+  modules_of test | while read -r m; do report_path "$m" test testCached; done >"$logs/unit.reports"
+  run_tier unit out "$logs/unit.reports" -- "${mill[@]}" __.test.testCached
+
+  : >"$logs/law.reports"
+  run_tier law out "" -- bash scripts/enola-law.sh
+
+  if $it; then
+    modules_of it | while read -r m; do report_path "$m" it testForked; done >"$logs/it.reports"
+    run_tier it out "$logs/it.reports" -- scripts/it "${mill[@]:1}" __.it.testForked
+  fi
+
+  if $lint; then
+    run_tier lint out/lint "" -- env GRIT_LINT=1 MILL_OUTPUT_DIR=out/lint "${mill[@]}" __.compile
+    MILL_OUTPUT_DIR=out/lint ./mill shutdown >>"$logs/lint.log" 2>&1 || true
+  fi
+else
+  # Each target becomes a Mill task: a module's whole tests, or its named suites in one
+  # testOnly. Unit tasks share one Mill call, it tasks one scripts/it call, `+`-joined.
+  declare -A suites=()
+  unit_groups=() it_groups=()
+  : >"$logs/unit.reports"
+  : >"$logs/it.reports"
+  for t in "${targets[@]}"; do
+    if [[ $t =~ ^(.*)\.it$ ]] && modules_of it | grep -qx "${BASH_REMATCH[1]}"; then
+      module=${BASH_REMATCH[1]} tier=it suite=
+    elif modules_of test | grep -qx "$t"; then
+      module=$t tier=test suite=
+    elif [[ $t =~ \.[A-Z][A-Za-z0-9_]*$ ]]; then
+      read -r module tier < <(locate_suite "$t") || exit 2
+      suite=$t
+    else
+      echo "check: $t is neither a module with tests nor a suite" >&2
+      exit 2
+    fi
+    if [ -n "$suite" ]; then
+      suites[$module.$tier]+=" $suite"
+    elif [ "$tier" = it ]; then
+      it_groups+=("$module.it.testForked")
+      report_path "$module" it testForked >>"$logs/it.reports"
+    else
+      unit_groups+=("$module.test.testCached")
+      report_path "$module" test testCached >>"$logs/unit.reports"
+    fi
+  done
+  for key in "${!suites[@]}"; do
+    module=${key%.*} tier=${key##*.}
+    if [ "$tier" = it ]; then
+      it_groups+=("$module.it.testOnly${suites[$key]}")
+    else
+      unit_groups+=("$module.test.testOnly${suites[$key]}")
+    fi
+    report_path "$module" "$tier" testOnly >>"$logs/$tier.reports"
+  done
+  [ -s "$logs/test.reports" ] && cat "$logs/test.reports" >>"$logs/unit.reports"
+  rm -f "$logs/test.reports"
+
+  joined() { # group... -> Mill arguments, one per line, the groups separated by +
+    local g w first=true
+    for g in "$@"; do
+      $first || echo +
+      first=false
+      for w in $g; do echo "$w"; done
+    done
+  }
+  if [ ${#unit_groups[@]} -gt 0 ]; then
+    mapfile -t args < <(joined "${unit_groups[@]}")
+    run_tier unit out "$logs/unit.reports" -- "${mill[@]}" "${args[@]}"
+  fi
+  if [ ${#it_groups[@]} -gt 0 ]; then
+    mapfile -t args < <(joined "${it_groups[@]}")
+    run_tier it out "$logs/it.reports" -- scripts/it "${mill[@]:1}" "${args[@]}"
+  fi
+fi
+
+echo "== totals"
+printf '%s\n' "${totals[@]}"
+echo "logs: $logs/"
+exit $status
