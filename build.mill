@@ -5,7 +5,7 @@
 // every loose .scala file outside a module's sources as a single-file script module, so
 // the vendored examples under .local/ were compiled, and failed, on every import.
 package build
-import mill.*, scalalib.*
+import mill.*, scalalib.*, scalalib.publish.*
 
 trait GritModule extends ScalaModule {
   def scalaVersion = "3.9.0"
@@ -48,6 +48,22 @@ trait GritModule extends ScalaModule {
   }
 }
 
+/* A module a deployment outside grit compiles against (ADR 0021): `./mill __.publishLocal`
+ * writes each to the local ivy repository (~/.ivy2/local/dev.grit/grit-<module>_3). Every
+ * module the kit reaches, and grit.slack for a deployment that serves Slack; never grit.tui,
+ * grit.edge or grit.app. A -SNAPSHOT version, republished in place: nothing is released. */
+trait GritPublished extends GritModule with PublishModule {
+  def publishVersion = "0.1.0-SNAPSHOT"
+  def pomSettings = PomSettings(
+    description = "grit, an LLM agent harness: " + artifactName(),
+    organization = "dev.grit",
+    url = "",
+    licenses = Seq(),
+    versionControl = VersionControl(),
+    developers = Seq()
+  )
+}
+
 /* An integration test module (`it`): its suites run against a live Postgres, so they are
  * kept out of `./mill __.test` and run as `scripts/it` (`./mill __.it` under one shared
  * server). The tag is read from docker-compose.yml and the image is built from the
@@ -86,7 +102,7 @@ trait LivePostgres extends TestModule {
 object grit extends Module {
   /* The domain and its seams. Names no other module, and has neither DBOS nor a JDBC
    * driver on its classpath -- STYLE rule 8's dev.dbos.* half is a compile error here. */
-  object core extends GritModule {
+  object core extends GritPublished {
 
     def mvnDeps = Seq(
       mvn"com.lihaoyi::upickle:4.4.3"
@@ -110,7 +126,7 @@ object grit extends Module {
 
   /* The DBOS quarantine module (STYLE rule 8): everything that touches DBOS, JDBC or
    * Postgres, translated into grit-style capabilities before it leaves. */
-  object dbos extends GritModule {
+  object dbos extends GritPublished {
     def moduleDeps = Seq(core)
 
     def mvnDeps = Seq(
@@ -144,7 +160,7 @@ object grit extends Module {
 
   /* Durable turn: the per-turn workflow, written against core's seams, not DBOS.
    * roadmap/mechanisms/durable-turn.md. */
-  object turn extends GritModule {
+  object turn extends GritPublished {
     def moduleDeps = Seq(core)
 
     /* The turn under core's in-memory durability and store fakes, with the stub provider
@@ -179,7 +195,7 @@ object grit extends Module {
   /* The engine's own workflows besides the turn: close (a period sealed with its closing
    * entry; ADR 0011). Written against core's seams and Durable, never DBOS, so its tests
    * run it over core's in-memory fakes. grit/lifecycle/README.md. */
-  object lifecycle extends GritModule {
+  object lifecycle extends GritPublished {
     def moduleDeps = Seq(core)
 
     /* The close under core's in-memory durability and store fakes. Recorded close
@@ -201,7 +217,7 @@ object grit extends Module {
 
   /* Digest: the hello-world plugin, one line per closed period, and the recent_activity
    * tool that reads them. Names only core. grit/digest/README.md. */
-  object digest extends GritModule {
+  object digest extends GritPublished {
     def moduleDeps = Seq(core)
 
     /* Over core's in-memory plugin store. */
@@ -212,7 +228,7 @@ object grit extends Module {
 
   /* Models: the frontier provider, and later the relevance judge. A quarantine module
    * once it has an HTTP client. roadmap/mechanisms/models.md. */
-  object models extends GritModule {
+  object models extends GritPublished {
     def moduleDeps = Seq(core)
 
     object test extends GritTests {
@@ -222,7 +238,7 @@ object grit extends Module {
 
   /* The local host: grit.core.host's Workspace, Edits and Shell over this machine's files
    * and processes, in a checkout. The only module that starts a process (enola-intent.yaml). */
-  object host extends GritModule {
+  object host extends GritPublished {
     def moduleDeps = Seq(core)
 
     /* Against a temporary directory, and `sh` for the shell. */
@@ -231,7 +247,7 @@ object grit extends Module {
 
   /* The coding tool set: read, list, search, write, edit and run, as grit.core.tool Tools
    * over grit.core.host's capabilities. Names no implementation of them. */
-  object tools extends GritModule {
+  object tools extends GritPublished {
     def moduleDeps = Seq(core)
 
     object test extends GritTests
@@ -253,7 +269,7 @@ object grit extends Module {
    * and wants the transport alone. Its Socket Mode WebSocket backend is Java-WebSocket, a
    * `provided` dependency of the SDK, at the version its parent POM pins.
    * grit/slack/README.md. */
-  object slack extends GritModule {
+  object slack extends GritPublished {
     def moduleDeps = Seq(core, prose)
     def mvnDeps = Seq(
       mvn"com.slack.api:slack-api-client:1.51.0",
@@ -267,7 +283,7 @@ object grit extends Module {
 
   /* Assembly: builds each turn's context window from memory.
    * roadmap/mechanisms/assembly.md. */
-  object assembly extends GritModule {
+  object assembly extends GritPublished {
     def moduleDeps = Seq(core)
 
     /* The assemblers over core's in-memory store. */
@@ -289,7 +305,7 @@ object grit extends Module {
 
   /* Prose: a reply's structure as edge-neutral blocks (the form), read from markdown.
    * Names no other module; each edge renders the form its own way. grit/prose/README.md. */
-  object prose extends GritModule {
+  object prose extends GritPublished {
     object test extends GritTests
   }
 
@@ -339,7 +355,7 @@ object grit extends Module {
    * environment supplies, and the runner that serves a deployment's edges beside its engine.
    * Names no edge extension and no terminal UI: an edge arrives as a ServedEdge value.
    * grit/kit/README.md. */
-  object kit extends GritModule {
+  object kit extends GritPublished {
     def moduleDeps =
       Seq(
         grit.core,
