@@ -4,6 +4,7 @@ import grit.core.durable.Journaled
 import grit.core.id.{EntryId, WorkflowId}
 import grit.core.period.Probability
 import grit.core.speech.{Decision, SpeechJson}
+import grit.core.stitch.{Placed, StitchJson}
 import grit.core.store.PayloadJson
 import grit.core.triage.{Kind, Tags}
 
@@ -59,6 +60,27 @@ private[triage] object TriageJournal {
           entry <- o.get("entry").flatMap(_.strOpt).toRight("asked: missing entry")
           tags <- o.get("tags").toRight("asked: missing tags").flatMap(readTags)
         } yield (EntryId(entry), tags)
+    )
+
+  /** A `stitch` step's output: the heard message and where it was placed
+    * ([[StitchJson.write]]), or `null` when nothing was asked.
+    */
+  given stitched: Journaled[Either[String, Option[(EntryId, Placed)]]] =
+    outcome(
+      {
+        case Some((entry, placed)) =>
+          ujson.Obj("entry" -> EntryId.value(entry), "placed" -> StitchJson.write(placed))
+        case None => ujson.Null
+      },
+      {
+        case ujson.Null => Right(None)
+        case v =>
+          for {
+            o <- v.objOpt.toRight("stitched: expected an object")
+            entry <- o.get("entry").flatMap(_.strOpt).toRight("stitched: missing entry")
+            placed <- o.get("placed").toRight("stitched: missing placed").flatMap(StitchJson.read)
+          } yield Some((EntryId(entry), placed))
+      }
     )
 
   /** A `consider` step's output: the decision ([[SpeechJson.writeDecision]]). */

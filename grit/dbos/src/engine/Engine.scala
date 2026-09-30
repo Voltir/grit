@@ -140,6 +140,9 @@ final class Engine private (
   /** Where each heard message could be answered, and grit's decisions on each. */
   val speech: SpeechStore = new SqlSpeechStore
 
+  /** Where each thread's first message was placed among its room's exchanges (ADR 0023). */
+  val stitches: grit.core.stitch.StitchStore = new grit.dbos.sql.SqlStitchStore
+
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource)
 

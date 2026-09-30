@@ -1,0 +1,12 @@
+{
+  "workflow": "close",
+  "id": "close:c1:1:0:1789984800000",
+  "epoch": "2026-09-30",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"abandoned\":\"its deadline moved to 2026-09-21T10:30:00Z\"}}"
+    }
+  ]
+}

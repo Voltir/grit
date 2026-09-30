@@ -154,7 +154,10 @@ private[grit] object Launch {
               engine.principals,
               engine.conversations,
               engine.speech,
-              engine.spending
+              engine.spending,
+              engine.stitches,
+              engine.search,
+              engine.lifecycle
             ),
             classifier(d, s),
             engine.db,
@@ -163,7 +166,8 @@ private[grit] object Launch {
               d.speaking,
               d.budget,
               turn => engine.inbox.startTurn(turn).left.map(_.toString)
-            )
+            ),
+            grit.core.stitch.Tuning.Default
           )
         ),
         d.plugins

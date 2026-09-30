@@ -38,7 +38,7 @@ object TriageTests extends TestSuite {
       durable.run(t.workflowId)(w.body(classifier, 5)) ==>
         """tagged: decision 0.75, durable 0.875 (jev-1.13.0); held: {"kind":"off"}"""
       (classifier.calls, durable.recordedSteps(t.workflowId)) ==>
-        (1, Vector("ask", "record", "consider"))
+        (1, Vector("stitch", "ask", "record", "consider"))
       w.tags(t) ==> Some(decision)
     }
 
@@ -47,7 +47,7 @@ object TriageTests extends TestSuite {
       val t = w.hear("standup moves to 10:00 from Monday", "Ana", 0)
       val first = new InMemoryDurable
       first.run(t.workflowId)(w.body(decided, 5))
-      val history = first.history(t.workflowId).take(1)
+      val history = first.history(t.workflowId).take(2)
       // Resumed after the ask was recorded: a classifier that now answers otherwise is not called.
       val again = new World
       val t2 = again.hear("standup moves to 10:00 from Monday", "Ana", 0)
@@ -72,6 +72,22 @@ object TriageTests extends TestSuite {
           "thread" -> "Ben: when is standup?\n\nUser: unrelated"
         )
       )
+    }
+
+    test("a top-level reply is triaged with the message it follows, and its stitch kept") {
+      val w = new World
+      w.hear("where did we land on the Engine contract term?", "Nick", 0)
+      val b = w.thread("2.0")
+      val t = w.hear("Is this a real question", "David", 1, in = b)
+      // Exchange 1 at 0.9, then a question at 0.9: the one scripted weight answers both.
+      val classifier = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
+      val durable = new InMemoryDurable
+      durable.run(t.workflowId)(w.body(classifier, 2))
+      durable.recordedSteps(t.workflowId).take(3) ==> Vector("stitch", "record-stitch", "ask")
+      classifier.states.lastOption.map(_("thread").str) ==>
+        Some("Nick: where did we land on the Engine contract term?")
+      w.stitches.links(Vector(b))(using grit.dbos.sql.TestTx.fake) ==>
+        Right(Vector(grit.core.stitch.Link(b, c)))
     }
 
     test("an absent classifier's tags are unanswered, and kept") {
@@ -120,7 +136,7 @@ object TriageTests extends TestSuite {
       val history = durable.history(t.workflowId)
       new InMemoryDurable().replay(t.workflowId, history)(w.body(asking, 1, within))
       w.started ==> Vector(turn)
-      history.map(_.name) ==> Vector("ask", "record", "consider", "start")
+      history.map(_.name) ==> Vector("stitch", "ask", "record", "consider", "start")
     }
 
     test("a message under helpsAt is kept held, and no turn starts") {
@@ -133,7 +149,7 @@ object TriageTests extends TestSuite {
       (w.started, w.speech.decisions.map(_._2), durable.recordedSteps(t.workflowId)) ==> (
         Vector.empty,
         Vector(Decision.Held(Silence.Below(p(0.25), p(0.6)))),
-        Vector("ask", "record", "consider")
+        Vector("stitch", "ask", "record", "consider")
       )
     }
 

@@ -86,7 +86,7 @@ object Turn {
     * cannot carry, which strands the turns in flight under the old one. `TurnReplayTests`
     * replays the histories recorded under this epoch.
     */
-  val Epoch = "2026-09-27"
+  val Epoch = "2026-09-30"
 
   /** The turn's steps, as DBOS records their names, in the order they run. */
   object Step {

@@ -29,6 +29,10 @@ object Strand {
     */
   final case class Read(opening: Option[Said], said: Vector[Said], gone: Vector[ConversationId]) {
 
+    /** Every entry it shows: the opening, then what was said, each once. */
+    def shown: Vector[grit.core.store.Entry] =
+      (opening.toVector ++ said).map(_.entry).distinctBy(_.id)
+
     /** Every conversation it shows messages of. */
     def members: Vector[ConversationId] =
       (opening.map(_.conversation).toVector ++ said.map(_.conversation)).distinct

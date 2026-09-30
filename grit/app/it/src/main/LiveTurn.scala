@@ -172,7 +172,10 @@ object LiveTurn {
               engine.principals,
               engine.conversations,
               engine.speech,
-              engine.spending
+              engine.spending,
+              engine.stitches,
+              engine.search,
+              engine.lifecycle
             ),
             grit.core.classify.Classifier.none("no classifier"),
             engine.db,
@@ -181,7 +184,8 @@ object LiveTurn {
               grit.core.speech.Speaking.Off,
               engine.budget,
               turn => engine.inbox.startTurn(turn).left.map(_.toString)
-            )
+            ),
+            grit.core.stitch.Tuning.Default
           )
         ),
         Vector.empty

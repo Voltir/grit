@@ -1,0 +1,24 @@
+{
+  "workflow": "close",
+  "id": "close:c1:1:0:1789984800000",
+  "epoch": "2026-09-30",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"due\":\"lapsed\",\"first\":0,\"known\":{\"open\":[],\"standing\":[],\"topics\":[]},\"cap\":4096,\"v\":3}}"
+    },
+    {
+      "name": "gate",
+      "output": "{\"outcome\":true,\"open\":false,\"standing\":false,\"settled\":false}"
+    },
+    {
+      "name": "summarise",
+      "output": "{\"closing\":{\"v\":3,\"flows\":{\"prose\":\"Chose staging.\",\"changes\":[]},\"balance\":{\"open\":[],\"standing\":[],\"topics\":[]}},\"note\":\"nothing new: carried\"}"
+    },
+    {
+      "name": "seal",
+      "output": "{\"ok\":{\"closed\":\"closing:c1:1\"}}"
+    }
+  ]
+}

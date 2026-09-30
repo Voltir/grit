@@ -171,6 +171,14 @@ object RecordLifecycleHistories {
         d.run(t.workflowId)(w.body(asking, 1, within))
         t.workflowId
       },
+      triaged("triage-stitched") { (w, d) =>
+        w.hear("where did we land on the Engine contract term?", "Nick", 0)
+        val t = w.hear("Is this a real question", "David", 1, in = w.thread("2.0"))
+        val following =
+          new TriageFixtures.Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
+        d.run(t.workflowId)(w.body(following, 2))
+        t.workflowId
+      },
       triaged("triage-no-message") { (w, d) =>
         val said = w.say("hello", 0)
         val id = grit.core.id.TriageRef(TriageFixtures.p1, said.turnSeq).workflowId

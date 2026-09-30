@@ -1,0 +1,24 @@
+{
+  "workflow": "triage",
+  "id": "triage:c1:1:0",
+  "epoch": "2026-09-30",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "stitch",
+      "output": "{\"ok\":null}"
+    },
+    {
+      "name": "ask",
+      "output": "{\"ok\":{\"entry\":\"e0\",\"tags\":{\"unanswered\":\"unavailable: no classifier\"}}}"
+    },
+    {
+      "name": "record",
+      "output": "{\"ok\":true}"
+    },
+    {
+      "name": "consider",
+      "output": "{\"ok\":{\"held\":{\"kind\":\"off\"}}}"
+    }
+  ]
+}

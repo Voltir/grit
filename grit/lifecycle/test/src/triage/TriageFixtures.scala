@@ -22,14 +22,18 @@ import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.speech.{InMemorySpeechStore, Reach, Speaking}
 import grit.core.spend.Budget
+import grit.core.stitch.{InMemoryStitchStore, Tuning}
 import grit.core.store.{
   Db,
   Entry,
+  EntrySearch,
   InMemoryConversationStore,
   InMemoryEntryStore,
+  InMemoryLifecycleStore,
   InMemoryPeriodStore,
   InMemoryPrincipals,
   InMemoryUsageLedger,
+  OpenPeriod,
   Origin,
   Payload,
   StoreError,
@@ -102,28 +106,81 @@ object TriageFixtures {
       body(using TestTx.fake)
   }
 
-  /** One conversation's stores, a Slack thread's. */
+  /** A search that finds nothing but what a test gives its room, best first. */
+  final class RoomSearch extends EntrySearch {
+    @caps.unsafe.untrackedCaptures
+    var inRoom = Vector.empty[EntrySearch.Hit]
+
+    def search(
+        conversation: ConversationId,
+        from: grit.core.id.TurnSeq,
+        before: grit.core.id.TurnSeq,
+        query: String,
+        limit: Int
+    )(using Tx^): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
+
+    def nearby(open: Vector[OpenPeriod], query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
+
+    def closings(conversations: Vector[ConversationId], query: String, limit: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
+
+    def room(
+        room: grit.core.place.Place,
+        from: Instant,
+        until: Instant,
+        query: String,
+        limit: Int
+    )(using Tx^): Either[StoreError, Vector[EntrySearch.Hit]] = Right(inRoom.take(limit))
+  }
+
+  /** A channel's stores: conversation c1, a Slack thread, and any others [[World.thread]]
+    * begins in the same channel.
+    */
   final class World {
     val entries = new InMemoryEntryStore
-    val periods = new InMemoryPeriodStore(entries)
+    val conversations = new InMemoryConversationStore
+    private def originOf(id: ConversationId): Origin =
+      conversations
+        .get(id)(using TestTx.fake)
+        .toOption
+        .flatten
+        .fold(Origin.Task("unknown", ConversationId.value(id)))(_.origin)
+    val periods = new InMemoryPeriodStore(entries, originOf)
     val principals = new InMemoryPrincipals
     val triage = new InMemoryTriageStore(entries)
-    val conversations = new InMemoryConversationStore
     val ledger = new InMemoryUsageLedger
     val speech = new InMemorySpeechStore(entries, ledger)
+    val stitches = new InMemoryStitchStore(entries, originOf)
+    val search = new RoomSearch
+    val lifecycle = new InMemoryLifecycleStore
 
     // The conversation is c1: the first a fresh store creates.
     conversations.findOrCreate(Origin.Slack("T", "C", "1.0"), PrincipalId.Local)(using TestTx.fake)
+
+    /** Another thread of channel C, rooted at `ts`. */
+    def thread(ts: String): ConversationId =
+      conversations
+        .findOrCreate(Origin.Slack("T", "C", ts), PrincipalId.Local)(using TestTx.fake)
+        .fold(e => sys.error(e.toString), _.id)
 
     /** The turns started, in order. */
     @caps.unsafe.untrackedCaptures
     var started = Vector.empty[TurnRef]
 
-    private def insert(payload: Payload, by: Option[(String, String)], minutes: Long): Entry = {
+    private def insert(
+        payload: Payload,
+        by: Option[(String, String)],
+        minutes: Long,
+        in: ConversationId = c
+    ): Entry = {
       given Tx = TestTx.fake
-      val next = entries.lockNext(c).getOrElse(sys.error("in-memory"))
-      periods.openFor(c, next.turnSeq, at(minutes))
-      val e = Entry(EntryId(s"e${next.seq}"), c, next.turnSeq, None, next.seq, payload, at(minutes))
+      val next = entries.lockNext(in).getOrElse(sys.error("in-memory"))
+      periods.openFor(in, next.turnSeq, at(minutes))
+      val id = if (in == c) s"e${next.seq}" else s"${ConversationId.value(in)}:e${next.seq}"
+      val e = Entry(EntryId(id), in, next.turnSeq, None, next.seq, payload, at(minutes))
       entries.insert(e)
       by.foreach { (id, name) =>
         principals.enroll(PrincipalId(id), name)
@@ -135,10 +192,10 @@ object TriageFixtures {
     /** `text` heard from `name` as the next turn at `minutes`, with a reply address; its
       * triage.
       */
-    def hear(text: String, name: String, minutes: Long): TriageRef = {
-      val e = insert(Payload.Heard(text), Some(s"u-$name" -> name), minutes)
-      speech.heard(TurnRef(c, e.turnSeq), Reach(Some("C/1.0"), Set.empty))(using TestTx.fake)
-      TriageRef(p1, e.turnSeq)
+    def hear(text: String, name: String, minutes: Long, in: ConversationId = c): TriageRef = {
+      val e = insert(Payload.Heard(text), Some(s"u-$name" -> name), minutes, in)
+      speech.heard(TurnRef(in, e.turnSeq), Reach(Some("C/1.0"), Set.empty))(using TestTx.fake)
+      TriageRef(PeriodRef(in, PeriodSeq.First), e.turnSeq)
     }
 
     /** `text` said to grit as the next turn at `minutes`; its turn. */
@@ -170,7 +227,17 @@ object TriageFixtures {
     )(using Durable^): String =
       Triage.body(
         TriageEnv(
-          TriageRecords(entries, triage, principals, conversations, speech, ledger),
+          TriageRecords(
+            entries,
+            triage,
+            principals,
+            conversations,
+            speech,
+            ledger,
+            stitches,
+            search,
+            lifecycle
+          ),
           classifier,
           FakeDb,
           new Stopped(at(minutes)),
@@ -181,7 +248,8 @@ object TriageFixtures {
               started = started :+ turn
               Right(())
             }
-          )
+          ),
+          Tuning.Default
         )
       )(id)
   }

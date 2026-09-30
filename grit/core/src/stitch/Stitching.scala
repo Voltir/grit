@@ -15,7 +15,7 @@ import grit.core.id.ConversationId
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseReason, Probability}
 import grit.core.place.{Place, Scope}
-import grit.core.store.{EntrySearch, Payload, Speakers}
+import grit.core.store.{Conversation, Db, Entry, EntrySearch, Payload, Principals, Speakers}
 
 /** One exchange as the classifier is offered it: its `root` (the conversation it began in),
   * the root's `opening` message, its `latest` messages, its newest closing's headline when it
@@ -42,6 +42,86 @@ object Stitching {
 
   /** The key the classifier is offered for beginning something new. */
   val NewKey = "something new"
+
+  /** How many BM25 hits in the room a first message's lexical slots are chosen from. */
+  val Hits = 30
+
+  /** Where `classifier` places `first`, `conversation`'s first message, among the exchanges of
+    * its room that `scope` holds, read through `db` ([[offer]], [[place]]). `None`, asking
+    * nothing, when the conversation is not stitchable, `first` is not its first message, a
+    * placement is kept for it already, or nothing is offered. `Left` when the store fails.
+    */
+  def judge(
+      classifier: Classifier^,
+      stitches: StitchStore,
+      search: EntrySearch,
+      principals: Principals,
+      db: Db^,
+      conversation: Conversation,
+      first: Entry,
+      scope: Scope,
+      tuning: Tuning
+  ): Either[grit.core.store.StoreError, Option[Placed]] =
+    if (!conversation.origin.audience.stitchable) Right(None)
+    else {
+      val room = conversation.origin.room
+      val at = first.createdAt
+      val from = at.minusNanos(tuning.horizon.toNanos)
+      val text = first.payload.said.getOrElse("")
+      db.read {
+        for {
+          opening <- stitches.openings(Vector(conversation.id))
+          kept <- stitches.placed(first.id)
+          said <-
+            if (kept.nonEmpty || !opening.exists(_.entry.id == first.id)) Right(Vector.empty)
+            else stitches.spokenIn(room, from, at)
+          hits <-
+            if (said.isEmpty) Right(Vector.empty)
+            else search.room(room, from, at, text, Hits)
+          links <- stitches.links(said.map(_.conversation).distinct)
+          roots = said
+            .map(s => links.find(_.conversation == s.conversation).fold(s.conversation)(_.root))
+            .distinct
+          openings <- stitches.openings(roots)
+          speakers <- principals.speakers(
+            (first +: (said ++ openings).map(_.entry)).map(_.id).distinct
+          )
+        } yield Room(said, hits, links, openings, speakers)
+      }.map { r =>
+        val mine = Said(conversation.id, conversation.origin.place, first)
+        val exchanges = offer(mine, room, r.said, r.openings, r.hits, r.links, scope, tuning)
+        val speakers = r.speakers
+        place(
+          classifier,
+          mine,
+          speakers.of(first.id).getOrElse("Someone"),
+          exchanges,
+          speakers,
+          tuning
+        )
+      }
+    }
+
+  /** What [[judge]] reads of a room. */
+  private final case class Room(
+      said: Vector[Said],
+      hits: Vector[EntrySearch.Hit],
+      links: Vector[Link],
+      openings: Vector[Said],
+      speakers: Speakers
+  )
+
+  /** A reader's thread of at most `chars`: `strand` (its excerpt, [[excerpt]]) first, then as
+    * much of `own` (the conversation's own messages) as fits, cut from its start. `own` alone
+    * when there is no strand.
+    */
+  def thread(strand: String, own: String, chars: Int): String =
+    if (strand.isEmpty) own.takeRight(chars)
+    else {
+      val room = math.max(0, chars - strand.length - 1)
+      if (own.isEmpty || room == 0) strand.take(chars)
+      else s"$strand\n${own.takeRight(room)}"
+    }
 
   /** The exchanges `first`, a stitchable conversation's first message in `room`, may continue,
     * from `said` (what `room` said within `tuning.horizon` before it,

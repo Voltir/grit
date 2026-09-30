@@ -5,25 +5,29 @@ import grit.core.clock.Clock
 import grit.core.id.TurnRef
 import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.spend.{Budget, Spending}
-import grit.core.store.{ConversationStore, Db, EntryStore, Principals}
+import grit.core.stitch.{StitchStore, Tuning}
+import grit.core.store.{ConversationStore, Db, EntrySearch, EntryStore, LifecycleStore, Principals}
 import grit.core.triage.TriageStore
 
 /** What a triage works with besides its `Durable`: where it reads the heard message and
   * keeps its tags ([[TriageRecords]]), the `classifier` it asks, `db` to read the thread
-  * outside a transaction, `clock` to say when the tags were made, and whether grit then
-  * drafts a reply ([[TriageSpeech]]).
+  * outside a transaction, `clock` to say when the tags were made, whether grit then drafts a
+  * reply ([[TriageSpeech]]), and how a heard first message is stitched (`tuning`).
   */
 final case class TriageEnv(
     records: TriageRecords,
     classifier: Classifier^,
     db: Db^,
     clock: Clock^,
-    speech: TriageSpeech^
+    speech: TriageSpeech^,
+    tuning: Tuning
 )
 
 /** Where a triage reads the heard message, its thread, its conversation and who wrote them,
   * keeps its tags, and weighs and keeps its decision to speak: the speech ledger (`speech`)
-  * and the day's spend (`spending`).
+  * and the day's spend (`spending`); and where a heard first message is stitched: its room's
+  * exchanges and strands (`stitches`), searched (`search`), in the scope in force
+  * (`lifecycle`).
   */
 final case class TriageRecords(
     entries: EntryStore,
@@ -31,7 +35,10 @@ final case class TriageRecords(
     principals: Principals,
     conversations: ConversationStore,
     speech: SpeechStore,
-    spending: Spending
+    spending: Spending,
+    stitches: StitchStore,
+    search: EntrySearch,
+    lifecycle: LifecycleStore
 )
 
 /** Whether and within what grit speaks where it was not addressed (`speaking`, read when a

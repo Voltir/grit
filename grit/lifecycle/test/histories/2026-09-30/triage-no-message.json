@@ -1,0 +1,16 @@
+{
+  "workflow": "triage",
+  "id": "triage:c1:1:0",
+  "epoch": "2026-09-30",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "stitch",
+      "output": "{\"ok\":null}"
+    },
+    {
+      "name": "ask",
+      "output": "{\"failed\":\"no heard message at turn 0\"}"
+    }
+  ]
+}
