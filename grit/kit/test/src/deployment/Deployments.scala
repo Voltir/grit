@@ -52,6 +52,7 @@ object Deployments {
       topics = topics,
       lifecycle = LifecycleSettings.Default,
       budget = Budget(java.time.ZoneOffset.UTC, None),
+      speaking = grit.core.speech.Speaking.Off,
       sweep = sweep
     )
 

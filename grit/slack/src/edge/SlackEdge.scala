@@ -86,7 +86,10 @@ final class SlackEdge(
     * awaited, and the message marked `:eyes:` until the reply is posted. A new message the
     * inbox refuses over the day's cap is not recorded: it is answered, once, in its thread,
     * with [[Budget.Refusal]]. A message not addressed, in a channel in `listening`, is heard
-    * ([[grit.core.inbox.Inbox.hear]]) in the same words under the same name, with no turn, mark or reply.
+    * ([[grit.core.inbox.Inbox.hear]]) in the same words under the same name, with no mark, its
+    * thread kept as where a reply would go and whom it names besides grit
+    * ([[grit.core.speech.Reach]]): grit replies there only when it drafts a reply and the
+    * draft is posted (ADR 0022).
     * Everything else is ignored. `true` once that is done or needs no doing (a redelivery
     * included), so the payload may be acknowledged; `false` when Slack or the database could
     * not be asked, so Slack sends it again.
@@ -112,7 +115,7 @@ final class SlackEdge(
                 .map(_.toString)
           done <-
             if (wanted) record(m, origin)
-            else if (listening.contains(m.channel)) hear(m, origin)
+            else if (listening.contains(m.channel)) hear(m, origin, live = true)
             else Right(())
         } yield done
         result match {
@@ -175,17 +178,27 @@ final class SlackEdge(
       done.flatMap { _ =>
         val origin =
           Origin.Slack(TeamId.value(m.team), ChannelId.value(m.channel), Ts.value(m.thread))
-        hear(m, origin).left.map(why => s"message ${Ts.value(m.ts)} not heard: $why")
+        hear(m, origin, live = false).left.map(why => s"message ${Ts.value(m.ts)} not heard: $why")
       }
     }
 
-  /** Records `m`, heard, in its thread's conversation; nothing in a channel not public. */
-  private def hear(m: Event.Said, origin: Origin): Either[String, Unit] =
+  /** Records `m`, heard, in its thread's conversation, with whom it names besides grit and,
+    * when it is heard `live`, its thread as where a reply to it would go; nothing in a
+    * channel not public.
+    */
+  private def hear(m: Event.Said, origin: Origin, live: Boolean): Either[String, Unit] =
     spoken(m).flatMap {
       case None => Right(())
       case Some((author, text)) =>
+        val asked = Mentioned
+          .findAllMatchIn(m.text)
+          .map(x => UserId(x.group(1)))
+          .filterNot(_ == self.bot)
+          .map(u => PrincipalId(s"slack:${TeamId.value(m.team)}/${UserId.value(u)}"))
+          .toSet
+        val to = Option.when(live)(Address(m.channel, m.thread, m.ts).written)
         stores.inbox
-          .hear(origin, SourceId(Ts.value(m.ts)), text, author, m.at, Reach.Nowhere)
+          .hear(origin, SourceId(Ts.value(m.ts)), text, author, m.at, Reach(to, asked))
           .left
           .map(_.toString)
     }

@@ -8,6 +8,7 @@ import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
 import grit.core.plugin.Plugin
+import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.turn.TurnLoop
 
@@ -75,8 +76,8 @@ enum DeploymentRefusal {
 /** A deployment of grit, declared in code: the edges it serves, the plugins it posts to, the
   * model policy its calls are made under (laid over by the model settings the database keeps),
   * what its turns are offered and how their windows are assembled, how messages are placed
-  * among topics, the lifecycle's settings, what it may spend a day, and how often its
-  * engine sweeps. The database and the model's keys come from the environment
+  * among topics, the lifecycle's settings, what it may spend a day, whether and within what
+  * it speaks where it was not addressed (ADR 0022), and how often its engine sweeps. The database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
   */
@@ -89,6 +90,7 @@ final case class Deployment private (
     topics: Topics,
     lifecycle: LifecycleSettings,
     budget: Budget,
+    speaking: Speaking,
     sweep: FiniteDuration
 )
 
@@ -97,7 +99,9 @@ object Deployment {
   /** The deployment of these; call it with named arguments. Refused when `offer` asks first
     * ([[Offered.All]]) and an edge cannot answer an ask, when two edges share a name, or when
     * `sweep` is under a second. `lifecycle` is written over the database's settings on every
-    * start, so a change made while grit runs (`/set`, SQL) holds until the next start.
+    * start, so a change made while grit runs (`/set`, SQL) holds until the next start. What
+    * `speaking` spends is counted in `budget` as well as against its own cap
+    * ([[grit.core.speech.Limits.spend]]).
     */
   def of(
       edges: Vector[ServedEdge],
@@ -108,6 +112,7 @@ object Deployment {
       topics: Topics,
       lifecycle: LifecycleSettings,
       budget: Budget,
+      speaking: Speaking,
       sweep: FiniteDuration
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
@@ -120,6 +125,17 @@ object Deployment {
         DeploymentRefusal.AsksUnanswered(unanswered)
       )
       _ <- Either.cond(sweep >= 1.second, (), DeploymentRefusal.SweepTooOften(sweep))
-    } yield Deployment(edges, plugins, policy, offer, assembly, topics, lifecycle, budget, sweep)
+    } yield Deployment(
+      edges,
+      plugins,
+      policy,
+      offer,
+      assembly,
+      topics,
+      lifecycle,
+      budget,
+      speaking,
+      sweep
+    )
   }
 }

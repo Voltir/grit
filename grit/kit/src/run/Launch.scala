@@ -105,7 +105,7 @@ private[grit] object Launch {
             engine.db,
             Clock.system(),
             Fresh.random(),
-            grit.turn.TurnSpeech(grit.core.speech.Speaking.Off, engine.speech, engine.deliveries)
+            grit.turn.TurnSpeech(d.speaking, engine.speech, engine.deliveries)
           ),
           tooling
         ),
@@ -160,7 +160,7 @@ private[grit] object Launch {
             engine.db,
             Clock.system(),
             TriageSpeech(
-              grit.core.speech.Speaking.Off,
+              d.speaking,
               d.budget,
               turn => engine.inbox.startTurn(turn).left.map(_.toString)
             )

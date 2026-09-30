@@ -16,6 +16,7 @@ import grit.core.period.LifecycleSettings
 import grit.core.place.{Directory, Place}
 import grit.core.plugin.Plugin
 import grit.core.prompt.Fragment
+import grit.core.speech.Speaking
 import grit.core.store.Origin
 import grit.core.tool.ToolName
 import grit.core.tool.ToolSet
@@ -480,6 +481,9 @@ object Main {
           topics = topics(env),
           lifecycle = lifecycle,
           budget = spend,
+          // grit's own deployment never speaks where it was not addressed; a deployment that
+          // does declares its limits (ADR 0022).
+          speaking = Speaking.Off,
           sweep = sweep
         )
         .left

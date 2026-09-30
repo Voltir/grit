@@ -6,6 +6,7 @@ import grit.core.edge.{EdgeStores, InMemoryDeliveries, Part}
 import grit.core.id.{PrincipalId, SourceId, TurnRef}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Jot, Origin, Payload, StoreError, Tx}
 import grit.dbos.sql.TestTx
@@ -27,6 +28,9 @@ object SlackEdgeTests extends TestSuite {
   }
 
   private val C = ChannelId("C123ABC456")
+
+  /** Another person, whom a message may name. */
+  private val Ben = "U0BEN0001"
 
   private final class World(
       budget: Budget = Budget(ZoneOffset.UTC, None),
@@ -107,6 +111,15 @@ object SlackEdgeTests extends TestSuite {
         inbox.entries.list(c.id)(using TestTx.fake).getOrElse(Vector.empty).map(_.createdAt)
       }
 
+    /** The reach kept for each entry of the thread rooted at `thread`, in order. */
+    def reached(thread: String): Vector[Option[Reach]] =
+      inbox.conversations.all.find(_.origin == origin(thread)).toVector.flatMap { c =>
+        inbox.entries
+          .list(c.id)(using TestTx.fake)
+          .getOrElse(Vector.empty)
+          .map(e => inbox.speech.reach(TurnRef(c.id, e.turnSeq))(using TestTx.fake).getOrElse(None))
+      }
+
     def pending: Vector[grit.core.edge.Pending] =
       deliveries.pending()(using TestTx.fake).getOrElse(Vector.empty)
   }
@@ -154,7 +167,37 @@ object SlackEdgeTests extends TestSuite {
         (None, Vector.empty, Vector.empty, Set.empty)
       (w.heard("2.0"), w.dated("2.0")) ==>
         (Vector(("lunch?", Some("Ana Lima"))), Vector(java.time.Instant.ofEpochSecond(2)))
+      // A past message has no reply address: it is never answered.
+      w.reached("2.0") ==> Vector(Some(Reach(None, Set.empty)))
       w.first.unheard(C, java.time.Instant.EPOCH) ==> Right(Vector.empty)
+    }
+
+    test(
+      "a message heard live keeps its thread as where a reply would go, and whom it names besides grit"
+    ) {
+      val w = new World(listening = Set(C))
+      w.slack.deliver(message("2.0", s"<@$Ben> is the deploy done?")) ==> true
+      w.slack.deliver(message("2.1", "yes", Some("2.0"))) ==> true
+      w.reached("2.0") ==> Vector(
+        Some(Reach(Some("C123ABC456/2.0/2.0"), Set(PrincipalId(s"slack:$Team/$Ben")))),
+        Some(Reach(Some("C123ABC456/2.0/2.1"), Set.empty))
+      )
+    }
+
+    test("an unprompted reply to a top-level message is posted in a thread under it") {
+      val w = new World(listening = Set(C))
+      w.slack.deliver(message("2.0", "what did we decide about the refi page?")) ==> true
+      val heard = w.inbox.conversations.all
+        .find(_.origin == w.origin("2.0"))
+        .map(c => TurnRef(c.id, grit.core.id.TurnSeq.First))
+        .getOrElse(throw new java.lang.AssertionError("not heard"))
+      // As record-speech does for a posted draft: awaited at the reach it was heard with.
+      val to = w.reached("2.0").flatten.flatMap(_.replyTo).headOption.getOrElse("none")
+      w.deliveries.await(heard, to)(using TestTx.fake) ==> Right(())
+      w.inbox.finish(heard, Some(reply("We moved it to Thursday.")), "posted")
+      w.first.deliver() ==> Right(1)
+      w.slack.posts.map(p => (p.channel, p.thread, p.post.fallback)) ==>
+        Vector((C, Ts("2.0"), "We moved it to Thursday."))
     }
 
     test("introduce names the workspace's assistant as Slack names grit's bot, and says why not") {
