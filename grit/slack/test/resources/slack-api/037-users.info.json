@@ -1,0 +1,20 @@
+{
+  "method": "users.info",
+  "params": {
+    "user": "U0000000002"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "user": {
+      "real_name": "grit",
+      "profile": {
+        "display_name": ""
+      }
+    }
+  },
+  "source": "recorded"
+}

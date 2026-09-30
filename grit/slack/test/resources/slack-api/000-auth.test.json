@@ -1,0 +1,14 @@
+{
+  "method": "auth.test",
+  "params": {},
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "team_id": "T0000000001",
+    "user_id": "U0000000002"
+  },
+  "source": "recorded"
+}

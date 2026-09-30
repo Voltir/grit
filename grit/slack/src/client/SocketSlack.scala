@@ -23,16 +23,25 @@ import com.slack.api.model.{Message, ResponseMetadata}
 import com.slack.api.socket_mode.SocketModeClient
 import com.slack.api.socket_mode.request.EventsApiEnvelope
 import com.slack.api.socket_mode.response.AckResponse
-import com.slack.api.{Slack => Sdk}
+import com.slack.api.{Slack => Sdk, SlackConfig}
 
-/** [[Slack]] over Socket Mode, opened with `app`, calling the Web API with `bot`: the Slack SDK
-  * (slack-api-client) behind the trait, and the only file that names it. Closing it closes the
-  * socket.
+/** [[Slack]] over Socket Mode, opened with `app`, calling the Web API at `api` (a URL ending
+  * `/api/`) with `bot`: the Slack SDK (slack-api-client) behind the trait, and the only file
+  * that names it. Closing it closes the socket.
   */
-final class SocketSlack(bot: BotToken, app: AppToken) extends Slack, AutoCloseable {
+final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: String)
+    extends Slack,
+      AutoCloseable {
   import SocketSlack.*
 
-  private val sdk: Sdk = Sdk.getInstance()
+  /** At Slack's own Web API. */
+  def this(bot: BotToken, app: AppToken) = this(bot, app, SocketSlack.SlackApi)
+
+  private val sdk: Sdk = {
+    val config = new SlackConfig()
+    config.setMethodsEndpointUrlPrefix(api)
+    Sdk.getInstance(config)
+  }
   private val methods: MethodsClient = sdk.methods(bot.value)
 
   // Set once by listen, closed by close; only ever replaced whole.
@@ -139,14 +148,21 @@ final class SocketSlack(bot: BotToken, app: AppToken) extends Slack, AutoCloseab
     val from = oldest(since)
     val id = ChannelId.value(channel)
     def top(cursor: Option[String]): Either[SlackError, Page] = {
-      val req = ConversationsHistoryRequest.builder().channel(id).oldest(from).limit(200)
+      val req =
+        ConversationsHistoryRequest.builder().channel(id).oldest(from).inclusive(true).limit(200)
       cursor.foreach(c => req.cursor(c))
       patient(() => methods.conversationsHistory(req.build()))
         .map(r => page(r.getMessages, r.getResponseMetadata, r.isHasMore))
     }
     def replies(root: String)(cursor: Option[String]): Either[SlackError, Page] = {
       val req =
-        ConversationsRepliesRequest.builder().channel(id).ts(root).oldest(from).limit(200)
+        ConversationsRepliesRequest
+          .builder()
+          .channel(id)
+          .ts(root)
+          .oldest(from)
+          .inclusive(true)
+          .limit(200)
       cursor.foreach(c => req.cursor(c))
       patient(() => methods.conversationsReplies(req.build()))
         .map(r => page(r.getMessages, r.getResponseMetadata, r.isHasMore))
@@ -186,6 +202,9 @@ final class SocketSlack(bot: BotToken, app: AppToken) extends Slack, AutoCloseab
 }
 
 object SocketSlack {
+
+  /** Slack's own Web API. */
+  private val SlackApi = "https://slack.com/api/"
 
   /** The metadata event type a grit reply carries. */
   val ReplyEvent = "grit_reply"
@@ -285,9 +304,6 @@ object SocketSlack {
     from(None, Vector.empty)
   }
 
-  /** `body`'s response as [[call]] reads it, a rate limit waited out and the call made again,
-    * up to [[Retries]] times.
-    */
   /** `body`'s response as [[call]] reads it, a rate limit waited out and the call made again,
     * up to [[Retries]] times.
     */

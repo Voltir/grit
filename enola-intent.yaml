@@ -365,6 +365,12 @@ rules:
     mode: strict
     because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
 
+  - id: only-slack-imports-slack-config
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.SlackConfig"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
   # grit.slack names core and prose alone: an edge reaches the engine through Postgres (ADR
   # 0002) and never the turn. Mill already keeps grit.turn off its classpath; this rule is the
   # record of the intent, and the guard if a moduleDeps entry is ever added.

@@ -1,0 +1,45 @@
+{
+  "method": "conversations.replies",
+  "params": {
+    "oldest": "1790782262.102319",
+    "inclusive": "true",
+    "include_all_metadata": "false",
+    "channel": "C0000000001",
+    "ts": "1790782262.102319",
+    "limit": "2"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "has_more": false,
+    "messages": [
+      {
+        "ts": "1790782262.102319",
+        "thread_ts": "1790782262.102319",
+        "user": "U0000000002",
+        "bot_id": "B0000000001",
+        "text": "two",
+        "reply_count": 2
+      },
+      {
+        "ts": "1790782264.739569",
+        "thread_ts": "1790782262.102319",
+        "user": "U0000000002",
+        "bot_id": "B0000000001",
+        "text": "two, a reply"
+      },
+      {
+        "ts": "1790782266.057979",
+        "thread_ts": "1790782262.102319",
+        "user": "U0000000002",
+        "bot_id": "B0000000001",
+        "subtype": "thread_broadcast",
+        "text": "two, a reply also sent to the channel"
+      }
+    ]
+  },
+  "source": "recorded"
+}

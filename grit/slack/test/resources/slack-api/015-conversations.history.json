@@ -1,0 +1,20 @@
+{
+  "method": "conversations.history",
+  "params": {
+    "oldest": "1790782267.387839",
+    "inclusive": "false",
+    "include_all_metadata": "false",
+    "channel": "C0000000001",
+    "limit": "2"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "has_more": false,
+    "messages": []
+  },
+  "source": "recorded"
+}

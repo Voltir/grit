@@ -1,0 +1,17 @@
+{
+  "method": "reactions.remove",
+  "params": {
+    "channel": "C0000000001",
+    "timestamp": "1790782260.791279",
+    "name": "eyes"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": false,
+    "error": "no_reaction"
+  },
+  "source": "recorded"
+}

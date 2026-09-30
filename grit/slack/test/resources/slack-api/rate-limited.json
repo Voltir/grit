@@ -1,0 +1,14 @@
+{
+  "method": "*",
+  "params": {},
+  "status": 429,
+  "headers": {
+    "content-type": "application/json; charset=utf-8",
+    "retry-after": "0"
+  },
+  "body": {
+    "ok": false,
+    "error": "ratelimited"
+  },
+  "source": "hand-written: https://api.slack.com/apis/rate-limits (Retry-After 0 keeps the unit tier fast)"
+}

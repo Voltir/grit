@@ -1,0 +1,15 @@
+{
+  "method": "conversations.info",
+  "params": {
+    "channel": "C0000000000"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": false,
+    "error": "channel_not_found"
+  },
+  "source": "recorded"
+}

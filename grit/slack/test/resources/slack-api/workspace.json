@@ -1,12 +1,54 @@
 {
-  "source": "synthetic until scripts/slack-capture replaces it with the ts Slack gave the posts it recorded",
+  "source": "recorded by scripts/slack-capture: the ts Slack gave each post",
   "messages": [
-    {"name": "m1", "ts": "1700000000.000100", "root": null, "broadcast": false, "text": "one"},
-    {"name": "m2", "ts": "1700000001.000200", "root": null, "broadcast": false, "text": "two"},
-    {"name": "r1", "ts": "1700000002.000300", "root": "m1", "broadcast": false, "text": "one, a reply"},
-    {"name": "r2", "ts": "1700000003.000400", "root": "m2", "broadcast": false, "text": "two, a reply"},
-    {"name": "b2", "ts": "1700000004.000500", "root": "m2", "broadcast": true, "text": "two, a reply also sent to the channel"},
-    {"name": "m3", "ts": "1700000005.000600", "root": null, "broadcast": false, "text": "three"},
-    {"name": "t1", "ts": "1700000006.000700", "root": "m3", "broadcast": false, "text": "three, grit's tagged reply"}
+    {
+      "name": "m1",
+      "ts": "1790782260.791279",
+      "root": null,
+      "broadcast": false,
+      "text": "one"
+    },
+    {
+      "name": "m2",
+      "ts": "1790782262.102319",
+      "root": null,
+      "broadcast": false,
+      "text": "two"
+    },
+    {
+      "name": "r1",
+      "ts": "1790782263.425369",
+      "root": "m1",
+      "broadcast": false,
+      "text": "one, a reply"
+    },
+    {
+      "name": "r2",
+      "ts": "1790782264.739569",
+      "root": "m2",
+      "broadcast": false,
+      "text": "two, a reply"
+    },
+    {
+      "name": "b2",
+      "ts": "1790782266.057979",
+      "root": "m2",
+      "broadcast": true,
+      "text": "two, a reply also sent to the channel"
+    },
+    {
+      "name": "m3",
+      "ts": "1790782267.387839",
+      "root": null,
+      "broadcast": false,
+      "text": "three"
+    },
+    {
+      "name": "t1",
+      "ts": "1790782268.704459",
+      "root": "m3",
+      "broadcast": false,
+      "text": "three, grit's tagged reply"
+    }
   ]
 }

@@ -1,0 +1,21 @@
+{
+  "method": "conversations.info",
+  "params": {
+    "channel": "C0000000002"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "channel": {
+      "is_channel": true,
+      "is_private": true,
+      "is_im": false,
+      "is_mpim": false,
+      "name": "grit-private"
+    }
+  },
+  "source": "recorded"
+}
