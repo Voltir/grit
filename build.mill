@@ -335,22 +335,38 @@ object grit extends Module {
     }
   }
 
-  /* The composition root: the only module that sees every implementation, and the only
-   * place quarantine modules meet. Its Main is the M0 run until tui mode lands. */
-  object app extends GritModule {
+  /* The kit a deployment is built against (ADR 0021): the Deployment value, what the
+   * environment supplies, and the runner that serves a deployment's edges beside its engine.
+   * Names no edge extension and no terminal UI: an edge arrives as a ServedEdge value.
+   * grit/kit/README.md. */
+  object kit extends GritModule {
     def moduleDeps =
       Seq(
         grit.core,
         grit.dbos,
         grit.turn,
         grit.lifecycle,
-        grit.digest,
-        grit.models,
         grit.assembly,
+        grit.models,
+        grit.tools,
+        grit.digest,
+        grit.host
+      )
+
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
+  }
+
+  /* The reference deployment: grit's own chat, `grit serve` and `grit backfill`, filled from
+   * GRIT_* variables and run through the kit. The only module that sees every module. */
+  object app extends GritModule {
+    def moduleDeps =
+      Seq(
+        grit.kit,
         grit.prose,
         grit.tui,
         grit.host,
-        grit.tools,
         grit.edge,
         grit.slack
       )

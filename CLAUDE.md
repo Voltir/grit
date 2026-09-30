@@ -44,10 +44,11 @@ Mill modules, and what each may name:
 | `grit.slack` | `grit.slack.{event,text,client,edge}` | core, prose | the Slack edge (ADR 0019): the Slack SDK's quarantine (`SocketSlack`, over Socket Mode), Slack's events and text read into grit's terms, a reply's prose as Slack rich text, and `SlackEdge`, which records a thread's messages as turns and posts their replies; package order in [`grit/slack/README.md`](grit/slack/README.md) |
 | `grit.assembly` | `grit.assembly.{estimate,linear,retrieval}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`grit/assembly/README.md`](grit/assembly/README.md) |
 | `grit.eval` | `grit.eval` | core, dbos, assembly, models | the assembly eval, integration sources only (`grit.eval.it`): every assembler over labelled cases in a throwaway Postgres; a report, not a gate |
-| `grit.app` | `grit.app.{config,look,chat,serve,main}` | everything | the composition root; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), `grit serve` (the engine and the Slack edge, `Serve`), or a one-shot run with arguments; package order in [`grit/app/README.md`](grit/app/README.md) |
+| `grit.kit` | `grit.kit.{deployment,environment,run}` | core, dbos, turn, lifecycle, assembly, models, tools, digest, host | what a deployment is built against (ADR 0021): the `Deployment` value, `Secrets`, and `Kit.serve`/`Kit.catchUp`, which run a deployment's `ServedEdge`s beside its engine; which modules are core, extension or deployment, and the package order, in [`grit/kit/README.md`](grit/kit/README.md) |
+| `grit.app` | `grit.app.{config,look,chat,main}` | kit, slack, tui, host, edge (everything, transitively) | the reference deployment; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), `grit serve` (the Slack edge through `Kit.serve`), `grit backfill`, or a one-shot run with arguments; package order in [`grit/app/README.md`](grit/app/README.md) |
 
 Mill `moduleDeps` are transitive, so
-`grit.app` sees `dev.dbos.*` through `grit.dbos` — enola's rule, not the compiler, guards
+`grit.kit` and `grit.app` see `dev.dbos.*` through `grit.dbos` — enola's rule, not the compiler, guards
 it. Working in `grit/tui/`? Read [`grit/tui/CLAUDE.md`](grit/tui/CLAUDE.md) first.
 
 **Changing a workflow's steps** (names, order, output encodings) must replay every
@@ -74,7 +75,7 @@ capability is a promise of purity.**
 7. Immutable data; mutation only in scoped locals.
 8. **Java libraries are quarantined by role.** Each lives only in the module whose job
    needs it, translated into grit's conventions there; such modules depend only on core and
-   meet only in `grit.app`. Nothing outside `grit.dbos` imports `dev.dbos.*` or `java.sql.*`,
+   meet only in `grit.kit` and `grit.app`. Nothing outside `grit.dbos` imports `dev.dbos.*` or `java.sql.*`,
    nothing outside `grit.models` imports `java.net.http.*`, nothing outside `grit.slack` imports
    `com.slack.*`, and nothing outside `grit.host` starts a process.
 9. Explicit capability parameters over clever inference.

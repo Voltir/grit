@@ -1,77 +1,69 @@
-package grit.app.main
-
-import scala.concurrent.duration.FiniteDuration
+package grit.kit.run
 
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
+import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
-import grit.core.message.Tokens
-import grit.core.model.Catalog
-import grit.core.plugin.Plugin
-import grit.core.provider.Models
+import grit.core.message.Message
+import grit.core.model.{Catalog, Pinned}
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.store.Db
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
 import grit.dbos.engine.Engine
 import grit.digest.Digest
+import grit.kit.deployment.{Assembly, Deployment, Offered, Topics}
+import grit.kit.environment.Secrets
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords}
-import grit.models.{OpenRouterModels, StubModels}
+import grit.models.{JevClassifier, OpenRouterModels, Seed, StubClassifier, StubModels}
 import grit.tools.{About, Coding, Probes, Tuning}
-import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling}
-
-import grit.core.period.LifecycleSettings
+import grit.turn.{Turn, TurnEnv, TurnHosting, TurnRecords, TurnTooling}
 
 /** The engine's workflows, launched on an open engine the same way by every way grit runs:
-  * the chat, a run with arguments, and `grit serve`.
+  * the chat, a run with arguments, `grit serve` and a catch-up.
   */
-object Launch {
+private[grit] object Launch {
 
-  /** What a run chose, as [[Main]] read it from the settings: the lifecycle's first
-    * settings (`seeded`), OpenRouter's key and catalog (the stub, answering after
-    * `stubDelay` ms, without one), whether this is the chat (`tui`: a run with arguments
-    * prints each model call), the assembler (`retrieving`, within `budget`, keeping `tail`),
-    * the topic classifier, the plugins on, how often the engine sweeps (`None`: its caller
-    * sweeps it), the tools offered and the turn's model calls (`rounds`).
+  /** What a process wants beside its deployment: whether each model call is printed with
+    * the model it goes to (`announced`: a run with arguments, where a replayed turn is then
+    * visibly one that did not call), and how long the stub model waits before it answers, in
+    * milliseconds (`stubDelay`; the stub answers only without OpenRouter's key).
     */
-  final case class Settings(
-      seeded: LifecycleSettings,
-      openRouter: Option[(String, Catalog)],
-      stubDelay: Long,
-      tui: Boolean,
-      retrieving: Boolean,
-      budget: Tokens,
-      tail: Tokens,
-      topics: Main.ClassifierChoice,
-      plugins: Vector[Plugin],
-      sweep: Option[FiniteDuration],
-      offered: Main.ToolChoice,
-      rounds: TurnLoop.Budget
-  )
+  final case class Run(announced: Boolean, stubDelay: Long)
 
-  /** `engine` with its lifecycle's settings seeded, and its workflows launched on
-    * it: the assembler reads its stores, and the models its kept model settings. Throws when the
-    * settings cannot be seeded, when the coding tools repeat a name, a fault in `grit.tools`
-    * that no setting can cause, or when the kept model settings cannot be read.
+  object Run {
+
+    /** A served deployment's: nothing printed, the stub answering at once. */
+    val Served: Run = Run(announced = false, stubDelay = 0)
+  }
+
+  /** `engine` with `d`'s lifecycle seeded and its workflows launched on it, sweeping every
+    * `d.sweep` when `sweeping` (otherwise its caller sweeps it): the assembler reads its
+    * stores, and the models its kept model settings, OpenRouter's under `d.policy` when `s`
+    * holds its key, the stub's otherwise. Throws when the settings cannot be seeded, when the
+    * seed catalog cannot be read or the tools repeat a name (faults of the build no setting
+    * can cause), or when the kept model settings cannot be read.
     */
-  def apply(engine: Engine^, s: Settings): Engine^{engine} = {
-    import s.*
-    engine.jot.write(engine.lifecycle.seed(seeded)).left.foreach { error =>
+  def apply(engine: Engine^, d: Deployment, s: Secrets, run: Run, sweeping: Boolean): Engine^{engine} = {
+    engine.jot.write(engine.lifecycle.seed(d.seed)).left.foreach { error =>
       throw new IllegalStateException(s"the lifecycle's settings could not be seeded: $error")
     }
-    val reached: Models = openRouter match {
-      case None => new StubModels(stubDelay)
-      case Some((key, seed)) => new OpenRouterModels(key, seed, engine.db, engine.modelSettings)
+    val reached: Models = s.openRouter match {
+      case None => new StubModels(run.stubDelay)
+      case Some(key) =>
+        val seed = Seed.catalog.fold(why => throw new IllegalStateException(why), identity)
+        new OpenRouterModels(key, seed.withPolicy(d.policy), engine.db, engine.modelSettings)
     }
-    val models: Models = if (tui) reached else Main.announced(reached)
+    val models: Models = if (run.announced) announced(reached) else reached
     // The query writer is built with the assembler, from the catalog as the engine opens.
     val startup = models.catalog().fold(why => throw new IllegalStateException(why), _.pin)
     val writer = models.provider(startup.query)
-    val assembler: ContextAssembler^ =
-      if (retrieving)
+    val assembler: ContextAssembler^ = d.assembly match {
+      case Assembly.Retrieval(budget, tail) =>
         new RetrievalAssembler(
           engine.entries,
           engine.conversations,
@@ -84,7 +76,9 @@ object Launch {
           budget,
           tail
         )
-      else new LinearAssembler(engine.entries, engine.periods, engine.principals, CharEstimate, budget)
+      case Assembly.Linear(budget) =>
+        new LinearAssembler(engine.entries, engine.periods, engine.principals, CharEstimate, budget)
+    }
     def launch[C^](tooling: TurnTooling[C]^): Unit = {
       engine.launch(
         Turn.body(
@@ -100,7 +94,7 @@ object Launch {
               engine.principals
             ),
             assembler,
-            Main.classifier(topics),
+            classifier(d, s),
             models,
             engine.db,
             Clock.system(),
@@ -120,7 +114,7 @@ object Launch {
               engine.principals,
               engine.triage
             ),
-            Main.classifier(topics),
+            classifier(d, s),
             models,
             engine.db,
             Clock.system()
@@ -129,13 +123,13 @@ object Launch {
         Settle.body(
           SettleEnv(
             SettleRecords(engine.entries, engine.periods, engine.lifecycle, engine.principals),
-            Main.classifier(topics),
+            classifier(d, s),
             engine.db,
             Clock.system()
           )
         ),
         Posting.body(
-          plugins,
+          d.plugins,
           PostEnv(
             engine.periods,
             engine.cursors,
@@ -148,18 +142,18 @@ object Launch {
         Triage.body(
           TriageEnv(
             TriageRecords(engine.entries, engine.triage, engine.principals),
-            Main.classifier(topics),
+            classifier(d, s),
             engine.db,
             Clock.system()
           )
         ),
-        plugins
+        d.plugins
       )
-      sweep.foreach(engine.sweepEvery(_, Clock.system()))
+      if (sweeping) engine.sweepEvery(d.sweep, Clock.system())
     }
     val store: Db^ = engine.db
     // Digest's recent_activity, offered when Digest is on.
-    val digest = plugins.collectFirst { case d: Digest => engine.docs(d.name) }
+    val digest = d.plugins.collectFirst { case d: Digest => engine.docs(d.name) }
     // The engine's own tools touch no file: they read grit's store, keep a model setting, probe a
     // model. The coding tools are hosted: offered here, run by the edge serving the
     // conversation's directory (ADR 0017).
@@ -171,12 +165,12 @@ object Launch {
       case None => Toolbox.of[{store}](about)
       case Some(docs) => Toolbox.of[{store}](about, Digest.recentActivity(store, docs))
     }
-    val launching = offered match {
-      case Main.ToolChoice.Read =>
+    val launching = d.offer.tools match {
+      case Offered.Read =>
         everyone.map(tools =>
-          launch(TurnTooling[{store}](tools, Toolbox.Empty, Coding.readOnlyHosted, engine.jot, rounds))
+          launch(TurnTooling[{store}](tools, Toolbox.Empty, Coding.readOnlyHosted, engine.jot, d.offer.rounds))
         )
-      case Main.ToolChoice.All =>
+      case Offered.All =>
         // Offered only to the operator (Origin.operator): they tune grit, and ask first.
         val tuned = new KeptModelSettings(engine.jot, engine.modelSettings, Clock.system())
         (everyone, Toolbox.of[{tuned, models}](Tuning.propose(tuned), Probes.probe(models))) match {
@@ -184,7 +178,7 @@ object Launch {
             // Refused here, at start, rather than as a failed offer on some turn.
             Toolbox.joined[{tuned, models, store}](tools, operator).map { _ =>
               launch(
-                TurnTooling[{tuned, models, store}](tools, operator, Coding.hosted, engine.jot, rounds)
+                TurnTooling[{tuned, models, store}](tools, operator, Coding.hosted, engine.jot, d.offer.rounds)
               )
             }
           case (Left(repeated), _) => Left(repeated)
@@ -198,4 +192,31 @@ object Launch {
     }
     engine
   }
+
+  /** The classifier `d` places topics with: Jev over `s`'s settings, which [[Secrets.of]]
+    * holds for [[Topics.Jev]].
+    */
+  private def classifier(d: Deployment, s: Secrets): Classifier^ = (d.topics, s.jev) match {
+    case (Topics.Jev, Some(config)) => new JevClassifier(config)
+    case (Topics.Jev, None) => Classifier.none("JEV_API_KEY is not set")
+    case (Topics.Stub, _) => new StubClassifier
+    case (Topics.Off(reason), _) => Classifier.none(reason)
+  }
+
+  /** `models`, each call printed with the model it goes to. */
+  private def announced(models: Models): Models =
+    new Models {
+      def catalog(): Either[String, Catalog] = models.catalog()
+      def provider(pinned: Pinned): Provider^ = {
+        val model = models.provider(pinned)
+        new Provider {
+          def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+            println(
+              s"[provider] ${pinned.assignment.ref} called with ${request.messages.size} message(s)"
+            )
+            model.complete(request)
+          }
+        }
+      }
+    }
 }

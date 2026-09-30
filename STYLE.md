@@ -126,7 +126,7 @@ for fakes of stateful seams — not for convenience elsewhere in tests.
 Each Java-facing library lives in the one module whose job needs it — a *quarantine
 module* — and that module translates Java's conventions (`null`, thrown exceptions,
 mutable handles, reflection) into grit's before anything leaves it. Quarantine modules
-depend only on `grit.core` and meet only in `grit.app`, so no Java library can leak into
+depend only on `grit.core` and meet only in `grit.kit` and `grit.app`, so no Java library can leak into
 another mechanism through a module dependency.
 [ADR 0001](docs/decisions/0001-quarantine-by-role.md).
 

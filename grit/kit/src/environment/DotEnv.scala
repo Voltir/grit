@@ -1,4 +1,4 @@
-package grit.app.config
+package grit.kit.environment
 
 /** A `.env` file: local settings, secrets included, for a developer's machine only. It is
   * gitignored; `.env.example` lists what grit reads. A variable set in the real

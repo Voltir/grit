@@ -1,4 +1,4 @@
-package grit.app.config
+package grit.kit.environment
 
 import utest.*
 

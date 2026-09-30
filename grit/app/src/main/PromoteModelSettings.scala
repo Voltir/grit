@@ -1,10 +1,10 @@
 package grit.app.main
 
-import grit.app.config.DotEnv
 import grit.core.model.{Catalog, CatalogJson, Profile}
 import grit.core.spend.Budget
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
+import grit.kit.environment.DotEnv
 import grit.models.Seed
 import grit.turn.Turn
 

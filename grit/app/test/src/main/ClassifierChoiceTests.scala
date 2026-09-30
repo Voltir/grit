@@ -1,28 +1,23 @@
 package grit.app.main
 
+import grit.kit.deployment.Topics
+
 import utest.*
 
 /** Which classifier places messages among topics: Jev with a key, the stub only when asked,
-  * otherwise none.
+  * otherwise none. The key's value is read, and a blank one refused, by `Secrets`.
   */
 object ClassifierChoiceTests extends TestSuite {
-  import Main.ClassifierChoice
 
   val tests = Tests {
-    test("a key is Jev, even beside the stub's switch; an empty key is an error that hides it") {
-      Main.classifierChoice(Map("JEV_API_KEY" -> "sk-jev-1", "GRIT_STUB_TOPICS" -> "1")) match {
-        case Right(ClassifierChoice.Jev(config)) =>
-          config.apiKey ==> "sk-jev-1"
-        case other => throw new java.lang.AssertionError(s"not Jev: $other")
-      }
-      Main.classifierChoice(Map("JEV_API_KEY" -> " ")) ==> Left("JEV_API_KEY is empty")
+    test("a key is Jev, even beside the stub's switch") {
+      Main.topics(Map("JEV_API_KEY" -> "sk-jev-1", "GRIT_STUB_TOPICS" -> "1")) ==> Topics.Jev
     }
 
     test("no key: the stub only with GRIT_STUB_TOPICS=1, otherwise none, saying why") {
-      Main.classifierChoice(Map("GRIT_STUB_TOPICS" -> "1")) ==> Right(ClassifierChoice.Stub)
-      Main.classifierChoice(Map("GRIT_STUB_TOPICS" -> "yes")) ==>
-        Right(ClassifierChoice.Off("JEV_API_KEY is not set"))
-      Main.classifierChoice(Map.empty) ==> Right(ClassifierChoice.Off("JEV_API_KEY is not set"))
+      Main.topics(Map("GRIT_STUB_TOPICS" -> "1")) ==> Topics.Stub
+      Main.topics(Map("GRIT_STUB_TOPICS" -> "yes")) ==> Topics.Off("JEV_API_KEY is not set")
+      Main.topics(Map.empty) ==> Topics.Off("JEV_API_KEY is not set")
     }
   }
 }

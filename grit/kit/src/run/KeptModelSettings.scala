@@ -1,4 +1,4 @@
-package grit.app.main
+package grit.kit.run
 
 import java.time.ZoneOffset
 

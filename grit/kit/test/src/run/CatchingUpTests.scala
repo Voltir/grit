@@ -1,4 +1,4 @@
-package grit.app.serve
+package grit.kit.run
 
 import java.time.{Instant, LocalDate}
 
@@ -9,8 +9,8 @@ import grit.dbos.engine.Swept
 
 import utest.*
 
-/** What `grit backfill` decides without Slack or the database. */
-object BackfillTests extends TestSuite {
+/** What a catch-up decides without an edge or the database. */
+object CatchingUpTests extends TestSuite {
 
   private val close = CloseRef(
     PeriodRef(ConversationId("c1"), PeriodSeq.First),
@@ -25,7 +25,7 @@ object BackfillTests extends TestSuite {
       val looks = new java.util.concurrent.ConcurrentLinkedQueue[String]()
       var counts = List(2, 0, 1, 0)
       var sweeps = List(Swept(enqueued = Vector(close)), Swept.nothing)
-      val made = Backfill.drain(
+      val made = CatchingUp.drain(
         () => {
           looks.add("sweep")
           val s = sweeps.headOption.getOrElse(Swept.nothing)
@@ -47,25 +47,9 @@ object BackfillTests extends TestSuite {
     }
 
     test(
-      "the days read are GRIT_BACKFILL_DAYS, 2 when unset, refused unless a whole number above zero"
-    ) {
-      (
-        Backfill.days(Map.empty),
-        Backfill.days(Map("GRIT_BACKFILL_DAYS" -> " 7 ")),
-        Backfill.days(Map("GRIT_BACKFILL_DAYS" -> "0")),
-        Backfill.days(Map("GRIT_BACKFILL_DAYS" -> "1.5"))
-      ) ==> (
-        Right(2),
-        Right(7),
-        Left("GRIT_BACKFILL_DAYS is a whole number of days above zero, not '0'"),
-        Left("GRIT_BACKFILL_DAYS is a whole number of days above zero, not '1.5'")
-      )
-    }
-
-    test(
       "a channel's line names it, its counts, the day it reads from, and each bound rounded up"
     ) {
-      Backfill.line(
+      CatchingUp.line(
         "#standup (C123ABC456)",
         Estimate(812, 143, BigDecimal("0.0190001"), BigDecimal("0.2145")),
         LocalDate.parse("2026-09-26")

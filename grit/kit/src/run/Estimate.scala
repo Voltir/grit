@@ -1,8 +1,8 @@
-package grit.app.serve
+package grit.kit.run
 
+import grit.core.edge.Unheard
 import grit.lifecycle.triage.TriageQuestion
 import grit.models.JevConfig
-import grit.slack.event.Event
 
 /** What hearing `messages` in `threads` adds to the day's spend, at most, in dollars: each
   * message triaged (`triage`), and every thread written a closing (`closings`, at
@@ -32,24 +32,23 @@ object Estimate {
   /** The characters a triage call sends beyond the message and its thread: its questions. */
   val TriageOverhead: Int = 2_000
 
-  /** What hearing `said` would add: each message one Jev call of [[TriageOverhead]], its
-    * text and the text before it in its thread among `said` (the last
-    * [[TriageQuestion.ThreadChars]] of it), a token every 4 characters, at
-    * [[JevConfig.UsdPerMillionInput]]; and a closing for each thread.
+  /** What hearing `unheard` would add: each message one Jev call of [[TriageOverhead]], its
+    * text and the text before it in its thread (the last [[TriageQuestion.ThreadChars]] of
+    * it), a token every 4 characters, at [[JevConfig.UsdPerMillionInput]]; and a closing for
+    * each thread.
     */
-  def of(said: Vector[Event.Said]): Estimate = {
-    val byThread = said.groupBy(m => (m.channel, m.thread))
-    val chars = byThread.values.toVector.map { thread =>
+  def of(unheard: Unheard): Estimate = {
+    val chars = unheard.threads.map { thread =>
       thread
-        .foldLeft((0L, 0L)) { case ((sum, before), m) =>
+        .foldLeft((0L, 0L)) { case ((sum, before), length) =>
           val shown = math.min(before, TriageQuestion.ThreadChars.toLong)
-          (sum + TriageOverhead + m.text.length + shown, before + m.text.length)
+          (sum + TriageOverhead + length + shown, before + length)
         }
         ._1
     }.sum
-    val threads = byThread.size
+    val threads = unheard.threads.count(_.nonEmpty)
     Estimate(
-      said.size,
+      unheard.messages,
       threads,
       BigDecimal(chars) / 4 * JevConfig.UsdPerMillionInput / 1_000_000,
       PerClosing * threads

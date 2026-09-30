@@ -3,30 +3,32 @@ package grit.app.main
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.app.chat.{ChatHost, ChatScreen, Replies}
-import grit.app.config.{Budgets, DotEnv, Durations, Lifecycle, Prefs}
+import grit.app.config.{Budgets, Durations, Lifecycle, Prefs}
 import grit.app.look.Theme
-import grit.app.serve.{Backfill, Serve}
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
-import grit.core.classify.Classifier
+import grit.core.edge.ServedEdge
 import grit.core.id.{PluginName, PrincipalId, SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
-import grit.core.model.{Catalog, ModelId, Pinned}
+import grit.core.model.{ModelId, Policy}
 import grit.core.period.LifecycleSettings
 import grit.core.place.{Directory, Place}
 import grit.core.plugin.Plugin
 import grit.core.prompt.Fragment
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.store.Origin
 import grit.core.tool.ToolName
 import grit.core.tool.ToolSet
 import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken}
-import grit.dbos.sql.DbConfig
 import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
 import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, LocalWorkspace}
-import grit.models.{JevClassifier, JevConfig, OpenRouterConfig, Seed, StubClassifier, StubProvider}
+import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
+import grit.kit.environment.{DotEnv, Secrets}
+import grit.kit.run.{Kit, Launch}
+import grit.models.{JevConfig, OpenRouterConfig, Seed, StubProvider}
+import grit.slack.edge.SlackEdge
+import grit.slack.event.ChannelId
 import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
@@ -47,7 +49,7 @@ import grit.turn.{Turn, TurnLoop}
   * the stub classifier when `GRIT_STUB_TOPICS=1` (for the gate), and otherwise by none,
   * which leaves each message in the topic it is in. The TUI starts in the theme
   * `GRIT_THEME` names, or else the one last chosen with `/theme` ([[Prefs]]). Each turn's
-  * model is offered the tools `GRIT_TOOLS` names ([[ToolChoice]]) in at most
+  * model is offered the tools `GRIT_TOOLS` names ([[Offered]]) in at most
   * `GRIT_TOOL_ROUNDS` model calls (default [[DefaultToolRounds]], at least 2), the last with
   * tools off. The coding tools are hosted (ADR 0017): offered only when an edge serves the
   * conversation's directory, and run by that edge. The TUI is the edge for the directory it
@@ -75,14 +77,14 @@ import grit.turn.{Turn, TurnLoop}
   *     directory is another conversation. Logs go to `GRIT_LOG` (default `grit-tui.log` in the temp
   *     directory), never to the screen.
   *   - **`serve` alone: `grit serve`**, the engine of the database and the Slack edge in its
-  *     process ([[Serve]]; ADR 0019), over Socket Mode with `SLACK_BOT_TOKEN` and
+  *     process ([[Kit.serve]], [[SlackEdge.serving]]; ADR 0019), over Socket Mode with `SLACK_BOT_TOKEN` and
   *     `SLACK_APP_TOKEN`, until stopped. In the public channels `GRIT_SLACK_LISTEN` names (ids,
   *     comma-separated; none by default) it also hears what is not said to it. Its tools are `read`'s, as in a run with arguments:
   *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. It never
   *     attaches: another grit holding the database's engine stops it. Give it a database of
   *     its own (`GRIT_DATABASE_URL`): everyone in the workspace sees what that database holds.
   *   - **`backfill` alone, or with `--yes`: `grit backfill`**, run before `grit serve` on its
-  *     database ([[Backfill]]; ADR 0020): what each channel in `GRIT_SLACK_LISTEN` said over
+  *     database ([[Kit.catchUp]], [[SlackEdge.backfill]]; ADR 0020): what each channel in `GRIT_SLACK_LISTEN` said over
   *     the last `GRIT_BACKFILL_DAYS` (default 2) that grit has not recorded, heard at the time
   *     it was said, and closed as it would have closed. It prints each channel's estimate and
   *     asks before hearing anything (`--yes` does not ask); nothing caps what it spends. It
@@ -120,12 +122,20 @@ object Main {
     // The Slack SDK logs request bodies at debug: never below info.
     if (slack) { val _ = System.setProperty("org.slf4j.simpleLogger.log.com.slack.api", "info") }
 
-    val config = exitOnLeft(DbConfig.fromEnv(env).left.map(_.message))
-    val budget = exitOnLeft(tokens(env, BudgetVar, LinearAssembler.DefaultBudget))
-    val tail = exitOnLeft(tokens(env, TailVar, RetrievalAssembler.DefaultTail))
-    val retrieving = exitOnLeft(assemblerChoice(env))
-    val rounds = exitOnLeft(toolRounds(env))
     val offered = exitOnLeft(toolChoice(env, chat = tui))
+    // `grit serve` and `grit backfill` serve Slack, in the channels GRIT_SLACK_LISTEN names.
+    val listen = if (slack) exitOnLeft(listening(env)) else Set.empty[ChannelId]
+    val edges: Vector[ServedEdge] =
+      if (slack) Vector(SlackEdge.serving(listen)) else Vector.empty
+    // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
+    val deployment =
+      exitOnLeft(Main.deployment(env, offered, edges, java.time.ZoneId.systemDefault()))
+    val secrets = exitOnLeft(Secrets.of(env, deployment).left.map(_.message))
+    val config = secrets.database
+    val budget = deployment.assembly match {
+      case Assembly.Retrieval(window, _) => window
+      case Assembly.Linear(window) => window
+    }
     // The checkout the turn's tools read is the one grit runs in, its links resolved, so a
     // directory is one place however it was reached.
     val root = exitOnLeft(
@@ -142,8 +152,8 @@ object Main {
     // the checkout here only to be described; the engine builds its own.
     val hosted = exitOnLeft(
       (offered match {
-        case ToolChoice.Read => Coding.readOnly(new LocalWorkspace(root)).map(_.set)
-        case ToolChoice.All =>
+        case Offered.Read => Coding.readOnly(new LocalWorkspace(root)).map(_.set)
+        case Offered.All =>
           Coding
             .all(new LocalWorkspace(root), new LocalEdits(root), new LocalShell(root, Map.empty))
             .map(_.set)
@@ -152,78 +162,41 @@ object Main {
     val instructions = PlaceFragments.of(new LocalInstructions().around(directory), CharEstimate)
     val prefsFile = Prefs.path(env)
     val startTheme = exitOnLeft(theme(env, prefsFile.fold(Prefs.empty)(Prefs.load)))
-    // OpenRouter when a key is set, otherwise the stub: no key, no spend. Each role's model
-    // is the seed catalog's policy, with the environment laid over it for this run.
     // The stub answers the turn after GRIT_STUB_DELAY_MS, a slow model to watch for free.
     val stubDelay = exitOnLeft(millis(env, StubDelayVar))
-    // The key and the seed under this run's policy; the model settings the database keeps are laid
-    // over it once the engine is open.
-    val openRouter: Option[(String, Catalog)] =
-      if (!env.contains(OpenRouterConfig.KeyVar)) None
-      else {
-        val key = exitOnLeft(OpenRouterConfig.key(env).left.map(_.message))
-        val seed = exitOnLeft(Seed.catalog)
-        val policy = exitOnLeft(OpenRouterConfig.policy(env, seed.policy).left.map(_.message))
-        Some((key, seed.withPolicy(policy)))
-      }
-    val modelName =
-      openRouter.fold(StubProvider.Model)((_, c) => ModelId.value(c.policy.turn.ref.model))
-    val topics = exitOnLeft(classifierChoice(env))
-    val sweep = exitOnLeft(sweepEvery(env))
-    val seeded = exitOnLeft(
-      Lifecycle.fromEnv(
-        env,
-        if (slack) Lifecycle.ServeScope else LifecycleSettings.Default.locality.scope
-      )
+    val modelName = secrets.openRouter.fold(StubProvider.Model)(_ =>
+      ModelId.value(deployment.policy.turn.ref.model)
     )
-    val plugins = exitOnLeft(pluginChoice(env))
-    // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
-    val spend = exitOnLeft(
-      Budgets.fromEnv(
-        env,
-        java.time.ZoneId.systemDefault(),
-        if (slack) Budgets.ServeDefault else None
-      )
-    )
-
-    val settings = Launch.Settings(
-      seeded,
-      openRouter,
-      stubDelay,
-      tui,
-      retrieving,
-      budget,
-      tail,
-      topics,
-      plugins,
-      // Backfill sweeps the engine itself, until nothing is left to close.
-      Option.when(!backfilling)(sweep),
-      offered,
-      rounds
-    )
-    def launched(engine: Engine^): Engine^{engine} = Launch(engine, settings)
+    // A run with arguments prints each model call, so a replayed turn is visibly one that
+    // did not call.
+    val run = Launch.Run(announced = !tui, stubDelay)
+    def launched(engine: Engine^): Engine^{engine} = Kit.launch(engine, deployment, secrets, run)
 
     // This process, as the engine's row and this edge's registration name it.
     val identity = LocalMachine.identity()
     val failure: Option[String] =
-      if (serving)
-        Serve.run(env, config, Turn.Epoch, identity, spend, engine => { val _ = launched(engine) })
+      if (serving) Kit.serve(deployment, env).left.map(_.message).swap.toOption
       else if (backfilling)
-        Backfill.run(
-          env,
-          config,
-          Turn.Epoch,
-          identity,
-          spend,
-          engine => { val _ = launched(engine) },
-          question =>
-            args.contains("--yes") || {
-              print(s"$question [y/N] ")
-              Option(scala.io.StdIn.readLine())
-                .exists(a => Set("y", "yes").contains(a.trim.toLowerCase))
-            },
-          println
-        )
+        backfillDays(env)
+          .flatMap { days =>
+            Kit
+              .catchUp(
+                deployment,
+                SlackEdge.backfill(listen, days),
+                env,
+                question =>
+                  args.contains("--yes") || {
+                    print(s"$question [y/N] ")
+                    Option(scala.io.StdIn.readLine())
+                      .exists(a => Set("y", "yes").contains(a.trim.toLowerCase))
+                  },
+                println
+              )
+              .left
+              .map(_.message)
+          }
+          .swap
+          .toOption
       else if (tui) {
         // The lock first, before anything paints (ADR 0015): held, this grit is the engine;
         // refused, it attaches to the one that holds it, and serves its own directory.
@@ -232,7 +205,7 @@ object Main {
             val engine = new ChatHost.Opener {
               // The screen paints first; the engine opens behind it, on the host's thread.
               def open(): Link^ = {
-                val started = Engine.start(config, lock, Turn.Epoch, identity, spend)
+                val started = Engine.start(config, lock, Turn.Epoch, identity, deployment.budget)
                 try {
                   val running = launched(started)
                   serveHere(running, Place.of(directory), hosted, instructions, offered)
@@ -249,7 +222,7 @@ object Main {
           case Left(NotTaken.Held(holder)) =>
             val attached = new ChatHost.Opener {
               def open(): Link^ = {
-                val link = Link.attach(config, Turn.Epoch, identity, spend)
+                val link = Link.attach(config, Turn.Epoch, identity, deployment.budget)
                 serveHere(link, Place.of(directory), hosted, instructions, offered)
                 link
               }
@@ -282,10 +255,10 @@ object Main {
         finally host.close()
         None
       } else
-        Engine.open(config, Turn.Epoch, identity, spend) match {
+        Engine.open(config, Turn.Epoch, identity, deployment.budget) match {
           case Left(NotTaken.Held(_)) =>
             // Another grit runs the engine: its turns are sent to it, as a TUI's are.
-            val link = Link.attach(config, Turn.Epoch, identity, spend)
+            val link = Link.attach(config, Turn.Epoch, identity, deployment.budget)
             try say(link, args.toList)
             finally link.close()
           case Left(refused) => Some(refused.message(java.time.Instant.now()))
@@ -315,7 +288,7 @@ object Main {
       place: Place,
       hosted: ToolSet,
       instructions: Vector[Fragment],
-      offered: ToolChoice
+      offered: Offered
   ): Unit = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.edge")
     engine.register(PrincipalId.Local, Set(place)) match {
@@ -378,25 +351,6 @@ object Main {
         None
     }
   }
-
-  /** `models`, each call printed with the model it goes to, so in the argument run a
-    * replayed turn is visibly one that did not call.
-    */
-  private[main] def announced(models: Models): Models =
-    new Models {
-      def catalog(): Either[String, Catalog] = models.catalog()
-      def provider(pinned: Pinned): Provider^ = {
-        val model = models.provider(pinned)
-        new Provider {
-          def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
-            println(
-              s"[provider] ${pinned.assignment.ref} called with ${request.messages.size} message(s)"
-            )
-            model.complete(request)
-          }
-        }
-      }
-    }
 
   private val BudgetVar = "GRIT_WINDOW_TOKENS"
 
@@ -473,29 +427,116 @@ object Main {
 
   private val StubTopicsVar = "GRIT_STUB_TOPICS"
 
-  /** Which classifier places each message among its conversation's topics. */
-  private[main] enum ClassifierChoice {
-    case Jev(config: JevConfig)
-    case Stub
-
-    /** None, for `reason`: every message after a conversation's first stays where it is. */
-    case Off(reason: String)
-  }
-
-  /** Jev when `JEV_API_KEY` is set (an empty one is an error, named, never shown); else the
-    * stub when `GRIT_STUB_TOPICS` is `1`; else none.
+  /** Jev when `JEV_API_KEY` is set (its value is [[Secrets]]'s to read); else the stub when
+    * `GRIT_STUB_TOPICS` is `1`; else none, saying why.
     */
-  private[main] def classifierChoice(env: Map[String, String]): Either[String, ClassifierChoice] =
-    if (env.contains(JevConfig.KeyVar))
-      JevConfig.fromEnv(env).map(ClassifierChoice.Jev(_)).left.map(_.message)
-    else if (env.get(StubTopicsVar).map(_.trim).contains("1")) Right(ClassifierChoice.Stub)
-    else Right(ClassifierChoice.Off(s"${JevConfig.KeyVar} is not set"))
+  private[main] def topics(env: Map[String, String]): Topics =
+    if (env.contains(JevConfig.KeyVar)) Topics.Jev
+    else if (env.get(StubTopicsVar).map(_.trim).contains("1")) Topics.Stub
+    else Topics.Off(s"${JevConfig.KeyVar} is not set")
 
-  private[main] def classifier(choice: ClassifierChoice): Classifier^ = choice match {
-    case ClassifierChoice.Jev(config) => new JevClassifier(config)
-    case ClassifierChoice.Stub => new StubClassifier
-    case ClassifierChoice.Off(reason) => Classifier.none(reason)
+  /** The model policy: the seed catalog's ([[Seed]]), with the roles' variables laid over it
+    * ([[OpenRouterConfig.policy]]) when OpenRouter's key is set.
+    */
+  private def policy(env: Map[String, String]): Either[String, Policy] =
+    Seed.catalog.flatMap { seed =>
+      if (!env.contains(OpenRouterConfig.KeyVar)) Right(seed.policy)
+      else OpenRouterConfig.policy(env, seed.policy).left.map(_.message)
+    }
+
+  /** The reference deployment as `env` declares it, serving `edges` with the tools `offered`,
+    * its days beginning in `zone`. Serving any edge, it seeds scope `room` when `GRIT_SCOPE`
+    * is unset ([[Lifecycle.ServeScope]]) and caps a day at [[Budgets.ServeDefault]] when
+    * `GRIT_DAILY_USD` is; the first variable malformed, or the deployment refused, is the
+    * failure.
+    */
+  private[main] def deployment(
+      env: Map[String, String],
+      offered: Offered,
+      edges: Vector[ServedEdge],
+      zone: java.time.ZoneId
+  ): Either[String, Deployment] = {
+    val serving = edges.nonEmpty
+    for {
+      window <- tokens(env, BudgetVar, LinearAssembler.DefaultBudget)
+      tail <- tokens(env, TailVar, RetrievalAssembler.DefaultTail)
+      retrieving <- assemblerChoice(env)
+      rounds <- toolRounds(env)
+      models <- policy(env)
+      sweep <- sweepEvery(env)
+      seed <- Lifecycle.fromEnv(
+        env,
+        if (serving) Lifecycle.ServeScope else LifecycleSettings.Default.locality.scope
+      )
+      plugins <- pluginChoice(env)
+      spend <- Budgets.fromEnv(env, zone, if (serving) Budgets.ServeDefault else None)
+      deployment <- Deployment
+        .of(
+          edges = edges,
+          plugins = plugins,
+          policy = models,
+          offer = Offer(offered, rounds),
+          assembly = if (retrieving) Assembly.Retrieval(window, tail) else Assembly.Linear(window),
+          topics = topics(env),
+          seed = seed,
+          budget = spend,
+          sweep = sweep
+        )
+        .left
+        .map(_.message)
+    } yield deployment
   }
+
+  /** The variable naming the channels grit listens in: their ids, comma-separated. Unset, it
+    * listens in none.
+    */
+  private val ListenVar = "GRIT_SLACK_LISTEN"
+
+  /** The channels `env` says grit listens in ([[ListenVar]]); why not, naming the first entry
+    * that is not a channel id.
+    */
+  private[main] def listening(env: Map[String, String]): Either[String, Set[ChannelId]] =
+    env
+      .get(ListenVar)
+      .toVector
+      .flatMap(_.split(',').toVector.map(_.trim).filter(_.nonEmpty))
+      .foldLeft[Either[String, Set[ChannelId]]](Right(Set.empty)) { (acc, raw) =>
+        acc.flatMap(ids =>
+          ChannelId
+            .read(raw)
+            .map(ids + _)
+            .toRight(
+              s"$ListenVar: $raw is not a channel id (C…, as Slack's channel details show it)"
+            )
+        )
+      }
+
+  /** The variable saying how many days back `grit backfill` reads. */
+  private val DaysVar = "GRIT_BACKFILL_DAYS"
+
+  /** The days read when [[DaysVar]] is unset. */
+  private[main] val DefaultDays: Int = 2
+
+  /** The days `grit backfill` reads ([[DaysVar]]); why not, naming the variable, when it is
+    * not a whole number above zero, or when [[ListenVar]] names no channel, so there is
+    * nothing to backfill.
+    */
+  private[main] def backfillDays(env: Map[String, String]): Either[String, Int] =
+    for {
+      listen <- listening(env)
+      _ <- Either.cond(
+        listen.nonEmpty,
+        (),
+        s"$ListenVar names no channel: there is nothing to backfill"
+      )
+      days <- env.get(DaysVar) match {
+        case None => Right(DefaultDays)
+        case Some(raw) =>
+          raw.trim.toIntOption
+            .filter(_ > 0)
+            .toRight(s"$DaysVar is a whole number of days above zero, not '$raw'")
+      }
+    } yield days
 
   private val ThemeVar = "GRIT_THEME"
 
@@ -550,32 +591,19 @@ object Main {
 
   private val ToolsVar = "GRIT_TOOLS"
 
-  /** Which tools a turn's model is offered. */
-  private[main] enum ToolChoice {
-
-    /** `read`, `list` and `search` (`Coding.readOnly`), and `about`: nothing asks first. */
-    case Read
-
-    /** Those and `write`, `edit` and `run` (`Coding`), `propose_model_setting` (`Tuning`) and
-      * `probe_pair` (`Probes`), each of which asks first; the last two only in a TUI session
-      * (`Origin.operator`).
-      */
-    case All
-  }
-
   /** The tools `GRIT_TOOLS` names, `read` or `all`, for the chat when `chat`, else for a run
-    * with arguments. Unset is [[ToolChoice.All]] in the chat, where a person approves each
-    * call that changes something, and [[ToolChoice.Read]] in a run, where nobody can; `all`
+    * with arguments. Unset is [[Offered.All]] in the chat, where a person approves each
+    * call that changes something, and [[Offered.Read]] in a run, where nobody can; `all`
     * in a run is refused.
     */
   private[main] def toolChoice(
       env: Map[String, String],
       chat: Boolean
-  ): Either[String, ToolChoice] =
+  ): Either[String, Offered] =
     env.get(ToolsVar).map(_.trim) match {
-      case None => Right(if (chat) ToolChoice.All else ToolChoice.Read)
-      case Some("read") => Right(ToolChoice.Read)
-      case Some("all") if chat => Right(ToolChoice.All)
+      case None => Right(if (chat) Offered.All else Offered.Read)
+      case Some("read") => Right(Offered.Read)
+      case Some("all") if chat => Right(Offered.All)
       case Some("all") =>
         Left(s"$ToolsVar=all needs the chat, which answers what a tool asks first")
       case Some(_) => Left(s"$ToolsVar is neither read nor all")

@@ -1,15 +1,16 @@
 # grit.app
 
-The composition root: wires implementations into the seams. The only module that depends
-on every other one, and so the only place quarantine modules meet. Because Mill's
+The reference deployment (ADR 0021): grit's own chat, `grit serve` and `grit backfill`, each
+filled from `GRIT_*` variables into a `grit.kit` `Deployment` and run through the kit
+([`grit/kit/README.md`](../kit/README.md)). The only module that depends on every other one,
+and so the only place quarantine modules meet. Because Mill's
 `moduleDeps` are transitive, DBOS is on its classpath — enola's `only-dbos-imports-*`
 rules are what keep it out; it reaches Postgres only through `grit.dbos.engine.Engine`.
 Run it with `scripts/grit`.
 
 In dependency order:
 
-- **`config`** — `DotEnv`: settings from a `.env` file under the real environment.
-  `Durations`: a duration as a setting writes it (`30s`, `3m`, `24h`, `30d`). `Lifecycle`:
+- **`config`** — `Durations`: a duration as a setting writes it (`30s`, `3m`, `24h`, `30d`). `Lifecycle`:
   the lifecycle's settings as a person writes them, seeded from `GRIT_IDLE`, `GRIT_SETTLE`,
   `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION` and `GRIT_BALANCE` on a database's
   first start, and changed one at a time by `/set`. `Budgets`: the daily cap on model spend,
@@ -56,14 +57,11 @@ In dependency order:
   unless `GRIT_THEME` says otherwise. `/summaries` shows
   each turn's summary, faint, under its reply (off by default: the transcript is the
   conversation, and a summary lands after its reply, so the rows below would move). ← `look`
-- **`serve`** — `Serve`, `grit serve`: the engine of one database and the Slack edge
-  (`grit.slack`'s `SlackEdge` over `SocketSlack`) in its process, wired and run until
-  stopped (ADR 0019). `Backfill`, `grit backfill`, run before it: the same wiring with no
-  edge listening and no sweep of the engine's own; each listened channel's unheard last
-  days, their `Estimate` shown and agreed to, heard at their times, then swept until nothing
-  is left to close (ADR 0020). Wiring only: what the edge does is `grit.slack`'s. ← nothing
-  in app
-- **`main`** — `Main`: reads the settings, opens the engine and launches the turn
+- **`main`** — `Main`: reads the settings into the reference `Deployment`
+  (`Main.deployment`), and serves it (`grit serve`: the Slack edge, `SlackEdge.serving`,
+  in the channels `GRIT_SLACK_LISTEN` names, through `Kit.serve`), catches it up (`grit
+  backfill`: `SlackEdge.backfill` over the last `GRIT_BACKFILL_DAYS`, through `Kit.catchUp`),
+  or opens the engine and launches the turn
   (OpenRouter with a key, the stub without; Jev placing messages among topics with
   `JEV_API_KEY`, the stub classifier with `GRIT_STUB_TOPICS=1`, none otherwise), offering
   each turn's model the coding tools over the checkout it runs in (`grit.tools` over
@@ -71,10 +69,8 @@ In dependency order:
   built only when they are offered, and launches the close and posting (`grit.lifecycle`)
   beside the turn, sweeping every `GRIT_SWEEP`, posting to the plugins `GRIT_PLUGINS` turns
   on (`digest`, `grit.digest`, which also offers each turn's model `recent_activity`); then runs the chat TUI, or with arguments answers each as a message.
-  `Launch`, the engine's workflows launched on an open engine, the same for every way grit
-  runs. `KeptModelSettings`, where `propose_model_setting` keeps the settings a person
-  approves; `PromoteModelSettings`, which prints the seed catalog with every approved setting
+  `LocalTools`, the chat's edge's tools over this checkout; `PromoteModelSettings`, which prints the seed catalog with every approved setting
   laid over it, for a reviewed commit.
-  ← `config`, `look`, `chat`, `serve`
+  ← `config`, `look`, `chat`
 
 No source file sits at the module's root, and the test tree mirrors it.
