@@ -94,6 +94,13 @@ In dependency order:
   records a message heard where grit listens, not said to it, at the time it was said, says which of a thread's messages it has recorded, answers a turn's gated call, and says how far a turn has got: its `Progress`), and `Classifier` (closed questions about a state, answered
   with a probability per option; Jev's shape). Each names only the packages above, never
   another of the four.
+- **`stitch`** — a Slack thread's first message joined to an exchange in its room (ADR 0023):
+  a `Link` from a conversation to the root it follows, a `Strand` (a root and its direct
+  followers, never a chain), `Stitching` (which `Exchange`s a first message is offered, where
+  the classifier places it, as a `Placed` keeping what it was `Seen`, under a `Tuning`, and the
+  one excerpt rule readers cut a strand by), `StitchStore` (placements kept beside their entry
+  and deleted with it; what a room said), `StitchJson`, and `Along`, the one read of a strand,
+  in scope. ← `id`, `message`, `place`, `period`, `store`, `classify`
 - **`host`** — what a tool may do to the machine, as capabilities: `Workspace` (read, list,
   search), `Edits` (write, edit) and `Shell` (run), implemented in `grit.host`; and the pure
   rules they share: `RelPath` (a path that stays inside the checkout and names no secrets

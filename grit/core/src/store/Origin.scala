@@ -85,7 +85,7 @@ enum Audience {
   }
 
   /** Whether a conversation's first message may continue an exchange elsewhere in its room
-    * (stitched to it, ADR 0023): colleagues' threads. A TUI session or a task's run is
+    * ([[grit.core.stitch.Stitching]]): colleagues' threads. A TUI session or a task's run is
     * begun on purpose.
     */
   def stitchable: Boolean = this match {

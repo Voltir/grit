@@ -27,6 +27,9 @@ final class InMemoryEntryStore extends EntryStore {
   private[store] def remove(doomed: Entry -> Boolean): Unit =
     entries = entries.filterNot(doomed)
 
+  /** Every entry kept, in the order written: what a fake reading across conversations scans. */
+  def everything: Vector[Entry] = entries
+
   def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] =
     Right(entries.find(_.id == id))
 
