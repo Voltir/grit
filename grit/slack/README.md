@@ -24,13 +24,17 @@ In dependency order:
   channel becomes a turn of its thread's conversation when it is addressed to grit (it
   mentions grit, or is in a thread whose root did), and each finished turn's reply is posted
   in its thread, once, found again by its tag after a crash. In the channels it listens in
-  (`listening`, a deployment's `GRIT_SLACK_LISTEN`), a message not addressed to grit is heard:
+  (`listening`, the channels a deployment declares), a message not addressed to grit is heard:
   an entry of its thread's conversation with no turn, never answered, dated when it was said.
   `unheard` and `backfill` are `grit backfill`'s: a listened channel's history since an
   instant (`Slack.history`, read by the rules a live message is, `Events.listed`), less what
   the inbox has recorded, then each of those heard at its own time, a past mention of grit
   included, since a past message is never answered. At start it names the workspace's assistant as Slack names grit's
   bot (`introduce`), and each turn's prompt then says what the assistant is called there.
+  `SlackEdge.serving(channels)` is the module's entry: the edge as a deployment serves it
+  (`grit.core.edge.ServedEdge`, ADR 0021), its tokens read from `SLACK_BOT_TOKEN` and
+  `SLACK_APP_TOKEN` as it opens; `SlackEdge.backfill(channels, days)` is `grit backfill`'s
+  (`CatchUp`), what each channel said over those days that grit has not recorded.
   ← `client`, `text`, `event`
 
 **The daily cap.** `grit serve` takes new messages until the day's recorded spend reaches

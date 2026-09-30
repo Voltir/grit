@@ -2,7 +2,7 @@ package grit.slack.edge
 
 import java.time.ZoneOffset
 
-import grit.core.edge.{InMemoryDeliveries, Part}
+import grit.core.edge.{EdgeStores, InMemoryDeliveries, Part}
 import grit.core.id.{PrincipalId, SourceId, TurnRef}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}

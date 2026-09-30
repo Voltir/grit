@@ -8,7 +8,7 @@ In dependency order:
 - **`clock`** — what a function cannot compute: `Clock` (the time) and `Fresh` (values
   no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `WorkflowId`,
-  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `PrincipalId`: who an
+  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `EdgeName`, `PrincipalId`: who an
   action is done for, `EdgeId`), `CallSlot` (a tool call's place in its turn, and its
   request's key), the one short content hash every content-addressed id uses, `TurnRef` (and its reply entry's id), `PeriodRef`, `CloseRef` (one
   attempt to close a period on its deadline, and its workflow id), `SettleRef` (the one
@@ -105,7 +105,11 @@ In dependency order:
   settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
   `message`, `model`, `store`, `provider`, `approval`
 
-- **`edge`** — what an edge and the engine share: `Deliveries` (the replies an edge has yet
+- **`edge`** — what an edge and the engine share: `ServedEdge`, an edge a deployment serves
+  beside its engine as it posts to a plugin (ADR 0021), opened over `EdgeStores` (what an
+  edge reaches the engine through, ADR 0002) with the `Variable`s it `needs`, refused as an
+  `EdgeRefusal`; `CatchUp`, what an edge hears once before serving, as `Unheard` per source;
+  `Deliveries` (the replies an edge has yet
   to post outside grit, each part `Posting` or `Posted`), and the tool calls an edge runs
   (ADR 0017): `ToolRequest` (one call, addressed to a
   workspace, with its `Permit` and retry), `OutcomeJson` (its answer's stored form),

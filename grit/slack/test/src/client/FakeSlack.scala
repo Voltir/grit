@@ -69,6 +69,12 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var down = false
 
+  /** Whether it was closed. */
+  @caps.unsafe.untrackedCaptures
+  var closed = false
+
+  def close(): Unit = closed = true
+
   /** Hands `payload` to the listening handler; whether it was acknowledged. */
   def deliver(payload: String): Boolean = handler.exists(_(payload))
 

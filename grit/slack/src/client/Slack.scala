@@ -98,6 +98,9 @@ trait Slack extends caps.SharedCapability {
     */
   def history(channel: ChannelId, since: Instant): Either[SlackError, Vector[Listed]]
 
+  /** Stops listening and disconnects; nothing is asked of it after. */
+  def close(): Unit
+
   /** The name `channel` shows in Slack, without its `#`; `None` for a conversation with none,
     * one grit may not look at, or none at all; Slack being unreachable is still `Unreachable`.
     */

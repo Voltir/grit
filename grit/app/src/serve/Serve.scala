@@ -4,12 +4,13 @@ import java.util.concurrent.CountDownLatch
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
+import grit.core.edge.EdgeStores
 import grit.core.host.ProcessIdentity
 import grit.core.spend.Budget
 import grit.dbos.engine.{Engine, Link}
 import grit.dbos.sql.DbConfig
 import grit.slack.client.{AppToken, BotToken, SocketSlack}
-import grit.slack.edge.{EdgeStores, SlackEdge}
+import grit.slack.edge.SlackEdge
 import grit.slack.event.ChannelId
 
 /** `grit serve`: the engine of one database, and the Slack edge in its process (ADR 0019). */

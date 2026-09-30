@@ -1,10 +1,11 @@
 package grit.app.main
 
+import grit.core.edge.EdgeStores
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
 import grit.prose.markdown.Markdown
 import grit.slack.client.{FakeSlack, Self}
-import grit.slack.edge.{EdgeStores, SlackEdge}
+import grit.slack.edge.SlackEdge
 import grit.slack.event.{Payloads, TeamId, Ts, UserId}
 import grit.slack.text.RichText
 import grit.turn.Turn

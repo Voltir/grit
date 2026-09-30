@@ -2,13 +2,14 @@ package grit.app.serve
 
 import java.time.{Duration, Instant, LocalDate}
 
+import grit.core.edge.EdgeStores
 import grit.core.host.ProcessIdentity
 import grit.core.message.Cost
 import grit.core.spend.Budget
 import grit.dbos.engine.{Engine, Link, Swept}
 import grit.dbos.sql.DbConfig
 import grit.slack.client.SocketSlack
-import grit.slack.edge.{EdgeStores, SlackEdge}
+import grit.slack.edge.SlackEdge
 import grit.slack.event.{ChannelId, Event}
 
 /** `grit backfill`: a listened channel's last days heard, as if grit had been listening, and

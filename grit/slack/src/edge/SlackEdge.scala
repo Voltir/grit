@@ -4,23 +4,17 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
-import grit.core.edge.{Deliveries, Part, Pending}
+import grit.core.edge.{CatchUp, EdgeStores, Part, Pending, ServedEdge}
 import grit.core.id.{PrincipalId, SourceId, WorkflowId}
-import grit.core.inbox.{Inbox, InboxError, Progress}
+import grit.core.inbox.{InboxError, Progress}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.spend.Budget
-import grit.core.store.{Jot, Origin, Principals}
+import grit.core.store.{Origin, StoreError}
 import grit.prose.form.{Block, Doc, Text}
 import grit.prose.markdown.Markdown
-import grit.slack.client.{Self, Slack, SlackError, Tag}
+import grit.slack.client.{AppToken, BotToken, Self, Slack, SlackError, SocketSlack, Tag}
 import grit.slack.event.{ChannelId, Event, Events, TeamId, Ts, UserId}
 import grit.slack.text.{Incoming, Post, RichText}
-
-/** What the Slack edge records through: the inbox it hands messages to and reads turns from,
-  * the people it enrolls, the replies it awaits, and `jot`, the short transactions it writes
-  * those two in.
-  */
-final case class EdgeStores(inbox: Inbox, principals: Principals, deliveries: Deliveries, jot: Jot)
 
 /** The Slack edge (ADR 0002, 0019): Slack's messages in as turns, grit's replies out, through
   * the stores alone; grit being `self` in the workspace. `said` is told what it did that a
@@ -91,7 +85,7 @@ final class SlackEdge(
     * awaited, and the message marked `:eyes:` until the reply is posted. A new message the
     * inbox refuses over the day's cap is not recorded: it is answered, once, in its thread,
     * with [[Budget.Refusal]]. A message not addressed, in a channel in `listening`, is heard
-    * ([[Inbox.hear]]) in the same words under the same name, with no turn, mark or reply.
+    * ([[grit.core.inbox.Inbox.hear]]) in the same words under the same name, with no turn, mark or reply.
     * Everything else is ignored. `true` once that is done or needs no doing (a redelivery
     * included), so the payload may be acknowledged; `false` when Slack or the database could
     * not be asked, so Slack sends it again.
@@ -170,7 +164,7 @@ final class SlackEdge(
     Origin.Slack(TeamId.value(self.team), ChannelId.value(channel), Ts.value(thread))
 
   /** Hears each of `messages`, in order, in its thread's conversation, dated when it was said
-    * ([[Inbox.hear]]), in the person's words under their Slack name, a mention of grit
+    * ([[grit.core.inbox.Inbox.hear]]), in the person's words under their Slack name, a mention of grit
     * included: a past message is heard, never answered. Nothing in a channel that is not
     * public. Why not, naming the first message not heard, when Slack or the inbox could not be
     * asked; those before it stay heard.
@@ -296,8 +290,8 @@ final class SlackEdge(
     * stays posting, for the next pass. How many turns it delivered; why not, when the store
     * could not be read.
     */
-  def deliver(): Either[String, Int] =
-    stores.jot.write(stores.deliveries.pending()).left.map(_.toString).map { pending =>
+  def deliver(): Either[StoreError, Int] =
+    stores.jot.write(stores.deliveries.pending()).map { pending =>
       if (!started.getAndSet(true))
         pending.foreach(p =>
           stores.inbox.startTurn(p.turn).left.foreach(e => said(s"slack: not restarted: $e"))
@@ -369,6 +363,25 @@ final class SlackEdge(
 
 object SlackEdge {
 
+  /** The Slack edge, served over Socket Mode with `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN`:
+    * every message in `channels` heard (ADR 0020), a message addressed to grit answered in its
+    * thread, and the workspace's assistant named as grit's bot is in Slack. It cannot answer a
+    * tool call that asks first.
+    */
+  def serving(channels: Set[ChannelId]): ServedEdge =
+    Served.serving(channels, Socket)
+
+  /** What `channels` said over the `days` before the catch-up opens that the database has not
+    * recorded, one [[grit.core.edge.Unheard]] per channel; heard at the times it was said,
+    * a past mention of grit never answered. Refused when `channels` is empty.
+    */
+  def backfill(channels: Set[ChannelId], days: Int): CatchUp =
+    Served.backfill(channels, days, Socket)
+
+  private object Socket extends Served.Connect {
+    def apply(bot: BotToken, app: AppToken): Slack^ = new SocketSlack(bot, app)
+  }
+
   /** The reaction a message wears while grit works on it. */
   val Working = "eyes"
 
@@ -388,7 +401,7 @@ object SlackEdge {
   }
 
   /** Where a reply goes: the channel, the thread to post in, and the message it answers (whose
-    * `:eyes:` it removes). Written as `{channel}/{thread}/{answered}` in [[Deliveries]].
+    * `:eyes:` it removes). Written as `{channel}/{thread}/{answered}` in [[grit.core.edge.Deliveries]].
     */
   private final case class Address(channel: ChannelId, thread: Ts, answered: Ts) {
     def written: String = s"${ChannelId.value(channel)}/${Ts.value(thread)}/${Ts.value(answered)}"
