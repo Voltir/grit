@@ -2,7 +2,7 @@ package grit.core.speech
 
 import java.time.Instant
 
-import grit.core.id.TurnRef
+import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.message.Cost
 import grit.core.spend.{Day, Spend}
 import grit.core.store.{EntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
@@ -89,4 +89,16 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
         true
       }
     }
+
+  def forget(conversation: ConversationId, from: TurnSeq, to: TurnSeq)(using
+      Tx^
+  ): Either[StoreError, Unit] = {
+    def on(turn: TurnRef): Boolean =
+      turn.conversationId == conversation &&
+        TurnSeq.value(turn.turnSeq) >= TurnSeq.value(from) &&
+        TurnSeq.value(turn.turnSeq) <= TurnSeq.value(to)
+    decisions = decisions.filterNot(d => on(d._1.turn))
+    outcomes = outcomes.filterNot((t, _) => on(t))
+    Right(())
+  }
 }

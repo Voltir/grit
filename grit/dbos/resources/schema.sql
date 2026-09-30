@@ -441,7 +441,8 @@ CREATE TABLE IF NOT EXISTS grit.heard (
 -- scores and model, an excerpt of the draft, and a posted reply's position. Forms in
 -- SpeechJson. No foreign key: it outlives the heard entry's purge, so the rates and the
 -- day's speech spend count every decision, and each post can be stated with its approval.
--- Retention: ledger: with its period's usage (UsageLedger.forget), or its conversation.
+-- Retention: ledger: with its period's usage (SpeechStore.forget, beside UsageLedger.forget),
+-- or its conversation.
 CREATE TABLE IF NOT EXISTS grit.speech (
     workflow        TEXT PRIMARY KEY,
     conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,

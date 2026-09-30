@@ -147,6 +147,17 @@ abstract class SpeechContract extends TestSuite {
       mine(c, At).map(_.stage) ==> Vector(Stage.Drafting)
     }
 
+    test(
+      "forget deletes a conversation's decisions on turns from..to, both included, and no other"
+    ) {
+      val c = conversation("speech-forget")
+      val other = conversation("speech-forget-other")
+      val turns = (0 to 2).toVector.map(i => decide(c, At.plusSeconds(i.toLong), drafting = true))
+      val kept = decide(other, At, drafting = true)
+      transaction(speech.forget(c, turns(0).turnSeq, turns(1).turnSeq)) ==> Right(())
+      (mine(c, At).map(_.turn), mine(other, At).map(_.turn)) ==> (Vector(turns(2)), Vector(kept))
+    }
+
     test("the day's speech spend: the drafting turns' recorded calls, and no other turn's") {
       val c = conversation("speech-spent")
       val drafting = decide(c, At, drafting = true)

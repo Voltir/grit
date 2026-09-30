@@ -2,7 +2,7 @@ package grit.core.speech
 
 import java.time.Instant
 
-import grit.core.id.TurnRef
+import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.spend.{Day, Spend}
 import grit.core.store.{StoreError, Tx}
 
@@ -47,6 +47,13 @@ trait SpeechStore {
   def drafted(turn: TurnRef, outcome: Outcome, draft: Option[String], at: Instant)(using
       Tx^
   ): Either[StoreError, Boolean]
+
+  /** Deletes the decisions kept on `conversation`'s turns `from` to `to`, both included: what
+    * goes with those turns' usage ([[grit.core.store.UsageLedger.forget]]).
+    */
+  def forget(conversation: ConversationId, from: TurnSeq, to: TurnSeq)(using
+      Tx^
+  ): Either[StoreError, Unit]
 }
 
 object SpeechStore {

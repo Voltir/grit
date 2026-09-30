@@ -196,6 +196,7 @@ final class Engine private (
       entries,
       periods,
       ledger,
+      speech,
       profiles,
       prompts,
       lifecycle,

@@ -46,6 +46,7 @@ import grit.dbos.sql.{
   SqlPeriodStore,
   SqlPluginCursors,
   SqlPluginDocs,
+  SqlSpeechStore,
   SqlTombstones,
   SqlUsageLedger,
   TestPostgres
@@ -278,6 +279,31 @@ object CollectorLiveTests extends TestSuite {
         )
       } yield ()
     } ==> Right(())
+  }
+
+  /** A decision to draft kept on `turn`, as triage keeps one (grit.speech: ledger). */
+  private def decided(config: DbConfig, turn: TurnRef): Unit = {
+    val p = grit.core.period.Probability.clamped(0.9)
+    val tags = grit.core.triage.Tags.Weighed(
+      grit.core.triage.Kind.Question,
+      p,
+      p,
+      p,
+      p,
+      "jev",
+      Usage(Tokens(1), Tokens(0), Tokens(0), None)
+    )
+    val heard = grit.core.speech.Heard(
+      turn,
+      0,
+      grit.core.place.Place.Everywhere,
+      Instant.now(),
+      grit.core.speech.Reach.Nowhere,
+      tags
+    )
+    LiveDb.transaction(config)(
+      new SqlSpeechStore().decided(heard, grit.core.speech.Decision.Drafting(turn), Instant.now())
+    ) ==> Right(true)
   }
 
   /** Whether `conversation` is kept, and how many places are. */
@@ -572,7 +598,7 @@ object CollectorLiveTests extends TestSuite {
     }
 
     test(
-      "a superseded closing goes with its row, its turns' usage, profiles and prompts and its close's cost; the latest stays"
+      "a superseded closing goes with its row, its turns' usage, speech decisions, profiles and prompts and its close's cost; the latest stays"
     ) {
       val config = TestPostgres.freshDatabase("collect_superseded")
       val engine = LiveEngine.open(config, "test")
@@ -598,6 +624,7 @@ object CollectorLiveTests extends TestSuite {
         val a2 = closeOf(engine, config, p2, Instant.now().plusSeconds(240))
         spent(config, "u1", t1, t1.workflowId)
         spent(config, EntryId.value(p2.closingId), t1, a2.workflowId)
+        Vector(t0, t1).foreach(decided(config, _))
         // A third period open: the conversation is not quiet.
         turnOn(engine, origin, "three")
         // A plugin's documents, one posted from each closing.
@@ -635,6 +662,9 @@ object CollectorLiveTests extends TestSuite {
         )
         LiveDb.transaction(config)(new SqlPluginDocs(cached).newest("", 10)).map(_.map(_._1)) ==>
           Right(Vector("two"))
+        LiveDb
+          .transaction(config)(new SqlSpeechStore().spoken(Instant.EPOCH))
+          .map(_.map(_.turn).filter(_.conversationId == t0.conversationId)) ==> Right(Vector(t1))
       } finally engine.close()
     }
 

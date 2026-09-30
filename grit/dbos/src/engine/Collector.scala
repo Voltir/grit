@@ -9,6 +9,7 @@ import grit.core.id.{PeriodRef, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.period.{LifecycleSettings, Period, PeriodState, Purgeable}
 import grit.core.plugin.{PluginCursors, PostRef}
 import grit.core.retention.{Target, Tombstone}
+import grit.core.speech.SpeechStore
 import grit.core.store.{
   ConversationStore,
   EntryStore,
@@ -37,6 +38,7 @@ private[engine] final class Collector(
     entries: EntryStore,
     periods: PeriodStore,
     ledger: UsageLedger,
+    speech: SpeechStore,
     profiles: ModelProfileStore,
     prompts: PromptStore,
     cursors: PluginCursors,
@@ -162,6 +164,7 @@ private[engine] final class Collector(
                   _ <- cursors.forgetPosted(order)
                   _ <- periods.drop(period)
                   _ <- ledger.forget(c, p.first, last)
+                  _ <- speech.forget(c, p.first, last)
                   _ <- profiles.forget(Purgeable(period, p.first, last).turns)
                   _ <- prompts.forget(Purgeable(period, p.first, last).turns)
                   _ <- tombstones.collected(target, now)
@@ -190,6 +193,7 @@ private[engine] final class Collector(
                   }
                 }
                 _ <- ledger.forget(c, TurnSeq.First, last)
+                _ <- speech.forget(c, TurnSeq.First, last)
                 _ <- profiles.forget(Purgeable(period, TurnSeq.First, last).turns)
                 _ <- prompts.forget(Purgeable(period, TurnSeq.First, last).turns)
                 _ <- conversations.remove(c)

@@ -20,6 +20,7 @@ import grit.core.store.{
   Tx,
   UsageLedger
 }
+import grit.core.speech.SpeechStore
 import grit.dbos.workflow.{Closes, Posts, Settles}
 
 import dev.dbos.transact.DBOSClient
@@ -36,6 +37,7 @@ private[engine] final class Sweeper(
     entries: EntryStore,
     periods: PeriodStore,
     ledger: UsageLedger,
+    speech: SpeechStore,
     profiles: ModelProfileStore,
     prompts: PromptStore,
     lifecycle: LifecycleStore,
@@ -51,6 +53,7 @@ private[engine] final class Sweeper(
     entries,
     periods,
     ledger,
+    speech,
     profiles,
     prompts,
     cursors,

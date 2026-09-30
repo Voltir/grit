@@ -241,6 +241,26 @@ final class SqlSpeechStore extends SpeechStore {
     }
   }
 
+  def forget(conversation: ConversationId, from: TurnSeq, to: TurnSeq)(using
+      tx: Tx^
+  ): Either[StoreError, Unit] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement(
+          """DELETE FROM grit.speech
+            | WHERE conversation_id = ?::uuid AND turn_seq BETWEEN ? AND ?""".stripMargin
+        )
+      ) { ps =>
+        ps.setString(1, ConversationId.value(conversation))
+        ps.setLong(2, TurnSeq.value(from))
+        ps.setLong(3, TurnSeq.value(to))
+        ps.executeUpdate()
+        ()
+      }
+    }
+  }
+
   /** Whether `turn` was decided on drafting, and whether it has an outcome; `None` when it
     * was never decided on, or was held.
     */
