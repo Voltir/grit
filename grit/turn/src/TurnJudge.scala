@@ -10,7 +10,7 @@ import grit.core.speech.Judged
 import grit.core.store.{Entry, Payload, Speakers}
 
 /** What judges an unprompted turn's draft before it is posted (ADR 0022): one classifier call,
-  * three yes/no questions about the draft against its thread and what the turn recalled. Their
+  * two yes/no questions about the draft against its thread and what the turn recalled. Their
   * weakest answer is its score ([[Judged.score]]).
   */
 object TurnJudge {
@@ -58,12 +58,6 @@ object TurnJudge {
 
   private def yesNo(instructions: String) = Ask.yesNo[State](instructions, None, None)
 
-  private val adds = yesNo(
-    "Read draft and thread. Does draft tell the people in thread something that thread does " +
-      "not already say? Answering a question asked in thread is yes. Restating, summarising " +
-      "or agreeing with what thread already says is no."
-  )
-
   private val grounded = yesNo(
     "Read draft and recalled. Is what draft states found in recalled? Anything that recalled " +
       "does not contain is no, however true it may be."
@@ -90,12 +84,11 @@ object TurnJudge {
   def judge(classifier: Classifier^, estimator: TokenEstimator, state: State): Judgement =
     if (state.recalled.trim.isEmpty) Judgement.NothingRecalled
     else
-      classifier.ask(state, adds.zip(grounded).zip(worth)) match {
+      classifier.ask(state, grounded.zip(worth)) match {
         case Right(answered) =>
-          val ((a, g), w) = answered.value
+          val (g, w) = answered.value
           Judgement.Scored(
             Judged(
-              Probability.clamped(a),
               Probability.clamped(g),
               Probability.clamped(w),
               answered.model,

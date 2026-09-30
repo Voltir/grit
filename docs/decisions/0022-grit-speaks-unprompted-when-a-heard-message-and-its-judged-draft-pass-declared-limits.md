@@ -34,9 +34,11 @@ Decision:
 - **The turn drafts.** It is told it was not addressed, to add what the thread lacks from what
   it was shown, or to reply `pass`. Its answer is a draft: never shown, never searched, and
   not a period's activity.
-- **A classifier judges the draft** against the thread and what the turn recalled: does it add
-  something, is it grounded in what was recalled, is it worth the interruption. The weakest
-  of the three is its score. A pass, or a window that recalled no record and no other
+- **A classifier judges the draft** against the thread and what the turn recalled: is it
+  grounded in what was recalled, is it worth the interruption. The weaker of the two is its
+  score. A third question, whether the draft adds what the thread lacks, was dropped: it
+  scored a correct recalled answer to the thread's own question as a restatement, and chatter
+  answered with trivia as adding. A pass, or a window that recalled no record and no other
   conversation, is settled without asking.
 - **The draft is posted** in the message's thread, only when its score reaches `postAt`,
   speaking is `Within`, and no person has spoken in the thread since the message. That is

@@ -113,21 +113,20 @@ enum Silence {
   case OverBudget
 }
 
-/** The judge's scores for a draft: the probability that it `adds` what the thread lacks, that
-  * it is `grounded` in what the turn recalled, and that it is `worth` the interruption; the
-  * `model` that weighed them, and what the call consumed.
+/** The judge's scores for a draft: the probability that it is `grounded` in what the turn
+  * recalled, and that it is `worth` the interruption; the `model` that weighed them, and what
+  * the call consumed.
   */
 final case class Judged(
-    adds: Probability,
     grounded: Probability,
     worth: Probability,
     model: String,
     usage: Usage
 ) {
 
-  /** The weakest of the three: what `postAt` is compared with. */
+  /** The weaker of the two: what `postAt` is compared with. */
   def score: Probability =
-    Vector(adds, grounded, worth).minByOption(Probability.value).getOrElse(Probability.Zero)
+    if (Probability.value(grounded) <= Probability.value(worth)) grounded else worth
 }
 
 /** What became of an unprompted turn's draft. */

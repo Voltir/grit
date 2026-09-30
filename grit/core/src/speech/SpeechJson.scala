@@ -82,8 +82,8 @@ object SpeechJson {
       }
     }
 
-  /** `{"kind": its name}`, with its detail beside it: a judgement as `{"adds", "grounded",
-    * "worth", "model", "usage"}`.
+  /** `{"kind": its name}`, with its detail beside it: a judgement as `{"grounded", "worth",
+    * "model", "usage"}`.
     */
   def writeOutcome(out: Outcome): ujson.Value = {
     val detail: Vector[(String, ujson.Value)] = out match {
@@ -142,25 +142,26 @@ object SpeechJson {
     case Outcome.Failed(_) => "failed"
   }
 
-  /** `{"adds", "grounded", "worth", "model", "usage"}`. */
+  /** `{"grounded", "worth", "model", "usage"}`. */
   def writeJudged(j: Judged): ujson.Value =
     ujson.Obj(
-      "adds" -> num(j.adds),
       "grounded" -> num(j.grounded),
       "worth" -> num(j.worth),
       "model" -> j.model,
       "usage" -> PayloadJson.writeUsage(j.usage)
     )
 
+  /** A judgement as [[writeJudged]] writes it; an `"adds"` beside it, which judgements
+    * recorded before the judge dropped that question carry, is ignored.
+    */
   def readJudged(v: ujson.Value): Either[String, Judged] =
     for {
       o <- obj(v)
-      adds <- probability(o, "adds")
       grounded <- probability(o, "grounded")
       worth <- probability(o, "worth")
       model <- str(o, "model")
       usage <- o.get("usage").toRight("judged: no usage").flatMap(PayloadJson.readUsage)
-    } yield Judged(adds, grounded, worth, model, usage)
+    } yield Judged(grounded, worth, model, usage)
 
   private def writeSpend(s: Spend): ujson.Value = s.cost match {
     case Cost.Exact(usd) => ujson.Obj("calls" -> s.calls, "usd" -> usd.toString)

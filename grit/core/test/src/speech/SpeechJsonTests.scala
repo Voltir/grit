@@ -17,7 +17,6 @@ object SpeechJsonTests extends TestSuite {
   private val cap = DailyCap.of("0.25").getOrElse(sys.error("a cap"))
   private val judged =
     Judged(
-      p(0.75),
       p(0.5),
       p(0.625),
       "jev",
@@ -68,7 +67,7 @@ object SpeechJsonTests extends TestSuite {
       SpeechJson.writeDecision(Decision.Held(Silence.Below(p(0.5), p(0.6)))).render() ==>
         """{"held":{"kind":"below","helps":0.5,"helps_at":0.6}}"""
       SpeechJson.writeOutcome(Outcome.Posted(judged)).render() ==>
-        """{"kind":"posted","judged":{"adds":0.75,"grounded":0.5,"worth":0.625,"model":"jev",""" +
+        """{"kind":"posted","judged":{"grounded":0.5,"worth":0.625,"model":"jev",""" +
         """"usage":{"input":812,"output":0,"cachedInput":0,"costUsd":"0.000034"}}}"""
       outcomes.map(SpeechJson.outcomeName) ==> Vector(
         "passed",
@@ -81,6 +80,15 @@ object SpeechJsonTests extends TestSuite {
         "posted",
         "failed"
       )
+    }
+
+    test("a judgement recorded with the dropped adds question reads, without it") {
+      SpeechJson.readJudged(
+        ujson.read(
+          """{"adds":0.9,"grounded":0.5,"worth":0.625,"model":"jev",""" +
+            """"usage":{"input":812,"output":0,"cachedInput":0,"costUsd":"0.000034"}}"""
+        )
+      ) ==> Right(judged)
     }
 
     test("a form no build wrote is a Left, not a throw") {

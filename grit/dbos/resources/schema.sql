@@ -455,7 +455,6 @@ CREATE TABLE IF NOT EXISTS grit.speech (
     helps           DOUBLE PRECISION CHECK (helps BETWEEN 0 AND 1),
     outcome         JSONB,
     outcome_kind    TEXT,
-    adds            DOUBLE PRECISION CHECK (adds BETWEEN 0 AND 1),
     grounded        DOUBLE PRECISION CHECK (grounded BETWEEN 0 AND 1),
     worth           DOUBLE PRECISION CHECK (worth BETWEEN 0 AND 1),
     post_at         DOUBLE PRECISION CHECK (post_at BETWEEN 0 AND 1),

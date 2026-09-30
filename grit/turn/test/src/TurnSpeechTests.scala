@@ -55,7 +55,6 @@ object TurnSpeechTests extends TestSuite {
     Judged(
       x,
       x,
-      x,
       "jev",
       Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017")))
     )

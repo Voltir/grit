@@ -56,7 +56,7 @@ object SpeechTests extends TestSuite {
 
   private def held(why: Silence) = Decision.Held(why)
 
-  private val judged = Judged(p(0.7), p(0.6), p(0.8), "jev", usage)
+  private val judged = Judged(p(0.6), p(0.8), "jev", usage)
 
   val tests = Tests {
     test("a heard message that passes every check is drafted in its own turn") {
@@ -148,8 +148,11 @@ object SpeechTests extends TestSuite {
       assert(decide(l = l) == Decision.Drafting(turn))
     }
 
-    test("a draft's score is the weakest of its three") {
-      assert(judged.score == p(0.6))
+    test("a draft's score is the weaker of grounded and worth") {
+      assert(
+        judged.score == p(0.6),
+        judged.copy(worth = p(0.3)).score == p(0.3)
+      )
     }
 
     test("what becomes of a draft") {

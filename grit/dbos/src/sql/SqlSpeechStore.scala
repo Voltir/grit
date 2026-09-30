@@ -190,8 +190,8 @@ final class SqlSpeechStore extends SpeechStore {
     attempt {
       Using.resource(
         conn.prepareStatement(
-          """UPDATE grit.speech SET outcome = ?::jsonb, outcome_kind = ?, adds = ?, grounded = ?,
-            |       worth = ?, post_at = ?, judge_model = ?, excerpt = ?, judged_at = ?,
+          """UPDATE grit.speech SET outcome = ?::jsonb, outcome_kind = ?, grounded = ?, worth = ?,
+            |       post_at = ?, judge_model = ?, excerpt = ?, judged_at = ?,
             |       posted_seq = CASE WHEN ? THEN (SELECT seq FROM grit.entries WHERE id = ?) END
             | WHERE workflow = ? AND drafting AND outcome IS NULL
             |   AND (NOT ? OR EXISTS (SELECT 1 FROM grit.entries WHERE id = ?))""".stripMargin
@@ -203,30 +203,29 @@ final class SqlSpeechStore extends SpeechStore {
           case Some(x) => ps.setDouble(i, Probability.value(x))
           case None => ps.setNull(i, java.sql.Types.DOUBLE)
         }
-        probability(3, judged.map(_.adds))
-        probability(4, judged.map(_.grounded))
-        probability(5, judged.map(_.worth))
+        probability(3, judged.map(_.grounded))
+        probability(4, judged.map(_.worth))
         probability(
-          6,
+          5,
           outcome match {
             case Outcome.Below(_, postAt) => Some(postAt)
             case _ => None
           }
         )
         judged match {
-          case Some(j) => ps.setString(7, j.model)
-          case None => ps.setNull(7, java.sql.Types.VARCHAR)
+          case Some(j) => ps.setString(6, j.model)
+          case None => ps.setNull(6, java.sql.Types.VARCHAR)
         }
         draft match {
-          case Some(d) => ps.setString(8, d.take(SpeechStore.Excerpt))
-          case None => ps.setNull(8, java.sql.Types.VARCHAR)
+          case Some(d) => ps.setString(7, d.take(SpeechStore.Excerpt))
+          case None => ps.setNull(7, java.sql.Types.VARCHAR)
         }
-        ps.setObject(9, at.atOffset(ZoneOffset.UTC))
-        ps.setBoolean(10, posted)
-        ps.setString(11, grit.core.id.EntryId.value(turn.replyId))
-        ps.setString(12, workflow)
-        ps.setBoolean(13, posted)
-        ps.setString(14, grit.core.id.EntryId.value(turn.replyId))
+        ps.setObject(8, at.atOffset(ZoneOffset.UTC))
+        ps.setBoolean(9, posted)
+        ps.setString(10, grit.core.id.EntryId.value(turn.replyId))
+        ps.setString(11, workflow)
+        ps.setBoolean(12, posted)
+        ps.setString(13, grit.core.id.EntryId.value(turn.replyId))
         ps.executeUpdate() == 1
       }
     }.flatMap { updated =>
