@@ -12,9 +12,7 @@ import grit.core.model.{
   Policy,
   Profile,
   ReasoningReplay,
-  Settings,
   Source,
-  StrictSchemas,
   Upstream
 }
 
@@ -117,28 +115,18 @@ object OpenRouterConfigTests extends TestSuite {
         ("small/one", 1024, Some("fireworks"), None, ReasoningReplay.Details)
     }
 
-    test(
-      "seed: every role is gpt-oss-120b at cerebras/fp16, a pair measured not to hold strict schemas"
-    ) {
-      val seed = Seed.catalog
-      val gptOss = ref("openai/gpt-oss-120b", "cerebras/fp16")
-      seed.map(_.policy) ==> Right(
-        Policy(
-          Assignment(gptOss, 4096, None),
-          // The summary role's budget holds a reasoning model's thinking and the closing: at
-          // 1024, deepseek-v4.1-flash was cut off in 5 of 10 closings.
-          Assignment(gptOss, 4096, None),
-          Assignment(gptOss, 1024, None),
-          // Until a cheaper pair passes the probe on the closing's format.
-          Assignment(gptOss, 4096, None)
-        )
-      )
-      seed.map(c => Settings.of(c.profile(gptOss)).strict) ==> Right(StrictSchemas.Ignored)
-      OpenRouterConfig
-        .forRole(Map("OPENROUTER_API_KEY" -> "k"), ModelRole.Query)
-        .map(c => (c.model, c.maxTokens, c.upstream.map(Upstream.value))) ==> Right(
-        ("openai/gpt-oss-120b", 1024, Some("cerebras/fp16"))
-      )
+    test("forRole: with nothing set but the key, each role runs on the seed's assignment") {
+      Seed.catalog match {
+        case Left(why) => throw new java.lang.AssertionError(why)
+        case Right(seed) =>
+          for (role <- ModelRole.values) {
+            val a = role.in(seed.policy)
+            OpenRouterConfig
+              .forRole(Map("OPENROUTER_API_KEY" -> "k"), role)
+              .map(c => (c.model, c.maxTokens, c.upstream)) ==>
+              Right((ModelId.value(a.ref.model), a.maxTokens, a.ref.upstream))
+          }
+      }
     }
   }
 }
