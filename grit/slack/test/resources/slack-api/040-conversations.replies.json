@@ -1,0 +1,33 @@
+{
+  "method": "conversations.replies",
+  "params": {
+    "channel": "C0000000001",
+    "ts": "1790782300.000100",
+    "inclusive": "false",
+    "include_all_metadata": "true",
+    "limit": "200"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "has_more": false,
+    "messages": [
+      {
+        "ts": "1790782300.000100",
+        "user": "U0000000002",
+        "bot_id": "B0000000001",
+        "text": "hi",
+        "metadata": {
+          "event_type": "grit_post",
+          "event_payload": {
+            "request": "contract"
+          }
+        }
+      }
+    ]
+  },
+  "source": "hand-written from Slack's conversations.replies docs (a message with no replies lists itself alone), not yet captured"
+}

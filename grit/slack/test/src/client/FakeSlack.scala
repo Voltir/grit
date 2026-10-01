@@ -97,12 +97,28 @@ final class FakeSlack extends Slack {
 
   def post(channel: ChannelId, thread: Ts, post: Post, tag: Tag): Either[SlackError, Ts] =
     request {
-      val known = histories.values.flatten.map(_.ts) ++ posts.map(_.ts)
-      val latest = known.flatMap(ts => scala.util.Try(BigDecimal(Ts.value(ts))).toOption).maxOption
-      val ts = Ts((latest.getOrElse(BigDecimal(0)) + FakeSlack.Micro).setScale(6).toString)
+      val ts = next()
       posts = posts :+ Posted(channel, thread, post, tag, ts)
       Right(ts)
     }
+
+  /** Kept as a post whose thread is its own ts, as Slack lists a message no one replied to. */
+  def postTopLevel(channel: ChannelId, post: Post, tag: Tag): Either[SlackError, Ts] =
+    request {
+      if (notIn.contains(channel)) Left(SlackError.Refused("not_in_channel"))
+      else {
+        val ts = next()
+        posts = posts :+ Posted(channel, ts, post, tag, ts)
+        Right(ts)
+      }
+    }
+
+  /** A microsecond after the latest ts it knows. */
+  private def next(): Ts = {
+    val known = histories.values.flatten.map(_.ts) ++ posts.map(_.ts)
+    val latest = known.flatMap(ts => scala.util.Try(BigDecimal(Ts.value(ts))).toOption).maxOption
+    Ts((latest.getOrElse(BigDecimal(0)) + FakeSlack.Micro).setScale(6).toString)
+  }
 
   def tagged(channel: ChannelId, thread: Ts, tag: Tag): Either[SlackError, Vector[Ts]] =
     request(

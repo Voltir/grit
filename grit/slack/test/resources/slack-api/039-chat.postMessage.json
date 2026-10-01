@@ -1,0 +1,20 @@
+{
+  "method": "chat.postMessage",
+  "params": {
+    "channel": "C0000000001",
+    "text": "hi",
+    "metadata": "{\"event_type\": \"grit_post\", \"event_payload\": {\"request\": \"contract\"}}",
+    "unfurl_links": "false",
+    "unfurl_media": "false"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "channel": "C0000000001",
+    "ts": "1790782300.000100"
+  },
+  "source": "hand-written from Slack's chat.postMessage docs (a top-level post: no thread_ts), not yet captured"
+}

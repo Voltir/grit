@@ -54,6 +54,9 @@ enum Tag {
 
   /** The line telling the person who wrote message `message` that it was not taken. */
   case Refused(message: Ts)
+
+  /** A post `slack_post` made for the request at slot `request` ([[grit.core.id.CallSlot.key]]). */
+  case Sent(request: String)
 }
 
 /** Slack as grit uses it: one workspace, through grit's bot. */
@@ -71,6 +74,11 @@ trait Slack extends caps.SharedCapability {
 
   /** Posts `post` as a reply in `thread` of `channel`, carrying `tag`; the new message's ts. */
   def post(channel: ChannelId, thread: Ts, post: Post, tag: Tag): Either[SlackError, Ts]
+
+  /** Posts `post` at `channel`'s top level, carrying `tag`; the new message's ts, which is
+    * also the thread it starts. `Refused("not_in_channel")` when grit's bot is not a member.
+    */
+  def postTopLevel(channel: ChannelId, post: Post, tag: Tag): Either[SlackError, Ts]
 
   /** The messages in `thread` of `channel` that carry `tag`, oldest first. */
   def tagged(channel: ChannelId, thread: Ts, tag: Tag): Either[SlackError, Vector[Ts]]

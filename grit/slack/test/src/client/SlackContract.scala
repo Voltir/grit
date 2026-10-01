@@ -95,6 +95,23 @@ abstract class SlackContract extends TestSuite {
       }
     }
 
+    test("postTopLevel starts a thread of its own, the post found there by its tag") {
+      withSlack() { slack =>
+        val found = for {
+          ts <- slack.postTopLevel(Public, post, Tag.Sent("contract"))
+          tagged <- slack.tagged(Public, ts, Tag.Sent("contract"))
+        } yield tagged == Vector(ts)
+        found ==> Right(true)
+      }
+    }
+
+    test("postTopLevel where grit's bot is not a member is Refused(not_in_channel)") {
+      withSlack() { slack =>
+        slack.postTopLevel(Outside, post, Tag.Sent("contract")) ==>
+          Left(SlackError.Refused("not_in_channel"))
+      }
+    }
+
     test("a reaction added twice, or removed twice, is never an error") {
       withSlack() { slack =>
         val m1 = w.ts("m1")
@@ -140,6 +157,7 @@ abstract class SlackContract extends TestSuite {
         Vector(
           "self" -> kind(slack.self()),
           "post" -> kind(slack.post(Public, m1, post, Tag.Reply("contract", 0))),
+          "postTopLevel" -> kind(slack.postTopLevel(Public, post, Tag.Sent("contract"))),
           "tagged" -> kind(slack.tagged(Public, m1, Tag.Reply("contract", 0))),
           "react" -> kind(slack.react(Public, m1, "eyes")),
           "unreact" -> kind(slack.unreact(Public, m1, "eyes")),

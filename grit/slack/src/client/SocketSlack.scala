@@ -70,6 +70,9 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
   def post(channel: ChannelId, thread: Ts, post: Post, tag: Tag): Either[SlackError, Ts] =
     call(methods.chatPostMessage(request(channel, thread, post, tag))).map(r => Ts(r.getTs))
 
+  def postTopLevel(channel: ChannelId, post: Post, tag: Tag): Either[SlackError, Ts] =
+    call(methods.chatPostMessage(topLevel(channel, post, tag))).map(r => Ts(r.getTs))
+
   def tagged(channel: ChannelId, thread: Ts, tag: Tag): Either[SlackError, Vector[Ts]] = {
     def page(cursor: Option[String], found: Vector[Ts]): Either[SlackError, Vector[Ts]] = {
       val req = ConversationsRepliesRequest
@@ -212,14 +215,30 @@ object SocketSlack {
   /** The metadata event type grit's line refusing a message carries. */
   val RefusalEvent = "grit_refusal"
 
+  /** The metadata event type a post `slack_post` made carries. */
+  val PostEvent = "grit_post"
+
   /** The request that posts `post` in `thread` of `channel`, carrying `tag` as metadata; link
     * previews off, so a reply is only what grit wrote.
     */
   def request(channel: ChannelId, thread: Ts, post: Post, tag: Tag): ChatPostMessageRequest =
+    message(channel, post, tag).threadTs(Ts.value(thread)).build()
+
+  /** The request that posts `post` at `channel`'s top level, as [[request]] posts one in a
+    * thread.
+    */
+  def topLevel(channel: ChannelId, post: Post, tag: Tag): ChatPostMessageRequest =
+    message(channel, post, tag).build()
+
+  /** [[request]] and [[topLevel]] alike, but for the thread. */
+  private def message(
+      channel: ChannelId,
+      post: Post,
+      tag: Tag
+  ): ChatPostMessageRequest.ChatPostMessageRequestBuilder =
     ChatPostMessageRequest
       .builder()
       .channel(ChannelId.value(channel))
-      .threadTs(Ts.value(thread))
       .blocksAsString(post.blocks.render())
       .text(post.fallback)
       .metadata(
@@ -231,7 +250,6 @@ object SocketSlack {
       )
       .unfurlLinks(false)
       .unfurlMedia(false)
-      .build()
 
   /** Whether `m` carries `tag`, as [[request]] wrote it. */
   def carries(m: Message, tag: Tag): Boolean =
@@ -246,12 +264,14 @@ object SocketSlack {
   private def event(tag: Tag): String = tag match {
     case Tag.Reply(_, _) => ReplyEvent
     case Tag.Refused(_) => RefusalEvent
+    case Tag.Sent(_) => PostEvent
   }
 
   /** `tag`'s metadata payload. */
   private def payload(tag: Tag): Map[String, String] = tag match {
     case Tag.Reply(turn, part) => Map("turn" -> turn, "part" -> part.toString)
     case Tag.Refused(message) => Map("message" -> Ts.value(message))
+    case Tag.Sent(request) => Map("request" -> request)
   }
 
   /** How many times a rate-limited call is waited out and made again. */
