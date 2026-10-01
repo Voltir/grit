@@ -1,95 +1,94 @@
-# grit — durable context harness
+# grit
 
-A from-scratch LLM coding harness on Scala 3.8 + DBOS (JVM), built around one claim:
+An LLM agent harness, written from scratch in Scala 3, built around one claim: **no
+manual context-window management.**
 
-> **No manual context-window management.** A local LLM continuously grooms and compacts
-> conversation and code-awareness data into DBOS/Postgres tables, and the prompt sent to
-> frontier models is assembled dynamically from those tables — *contentual compaction*.
+Every turn is a durable [DBOS](https://docs.dbos.dev/) workflow, and every turn's context
+window is assembled fresh from long-term memory in Postgres: messages and end-of-turn
+summaries today, code context from the language server to come. Nothing is carried forward as a transcript; there is nothing
+to compact, trim or reset by hand. A turn that is interrupted, by a crash or a restart,
+resumes where it stopped without calling the model twice.
 
-First-class LSP/BSP integration as a code-awareness source. Tool calling as code, not
-JSON.
-
-## Architecture in one paragraph
+## The design in one paragraph
 
 Context is not a scrollback buffer; it is a queryable store, and what goes to the model is
-a **computed projection** of that store. That yields three seams — `EntryStore`
-(append-only, never rewritten), `ContextAssembler` (the projection), and `Provider`. The
-groomer, compaction, retrieval, and LSP symbol linkage are all future `ContextAssembler`
-implementations, so getting that one signature right is the real design work; everything
-else is a swap behind it.
+a computed projection of that store. Three traits carry the design: `EntryStore`
+(append-only, never rewritten), `ContextAssembler` (the projection), and `Provider` (the
+model call). Retrieval is a `ContextAssembler` today, and relevance checks and code
+context will be further ones, so that one signature is the real design work and everything
+else swaps behind it. Effects are capabilities in signatures, checked by Scala's capture checking: the
+database transaction is a scoped value the compiler will not let outlive its block.
+
+One engine is designed to run in three modes: a local terminal harness, a cloud agent
+driven from Slack, and triggered tasks. Edges reach the engine only through Postgres
+([ADR 0002](docs/decisions/0002-edges-reach-the-engine-through-postgres.md)).
+
+## State
+
+grit is under active development; its APIs and its database schema change without
+migration. What works today:
+
+- **The chat TUI**: a terminal chat over the current checkout, with tools to read, search,
+  edit and run, each write or command approved first.
+- **The Slack edge** (`grit serve`): grit answers in Slack threads, recording each thread's
+  messages as turns.
+- **The MCP client**: a declared server's read-only tools, offered to the model (GitHub's,
+  under `grit serve`).
+
+A deployment outside this repository, Bort, runs on grit in Slack.
 
 ## Layout
 
-| Folder | Holds |
-|---|---|
-| `core/` | what the thesis fails without |
-| `extensions/` | shipped extensions: each names a generic protocol, tool or service |
-| `kit/` | what a deployment is built against |
-| `deployments/` | `app`, the reference deployment: grit's own chat, `grit serve` and `grit backfill` |
-| `eval/` | the assembly eval |
+The top-level folders answer [ADR 0021](docs/decisions/0021-grit-owns-six-semantics-and-a-deployment-is-a-value-built-against-its-kit.md)'s
+questions: `core/`, `extensions/`, `kit/`, `deployments/` and `eval/`. What each holds,
+where new code goes, which traits a deployment can supply, and how a module is added:
+[`docs/extending.md`](docs/extending.md). A module's `README.md`, where it has one, gives its packages and their order.
 
-Where new code goes, and how a deployment outside grit builds on it:
-[`docs/extending.md`](docs/extending.md).
+## Getting started
 
-## Status
+Prerequisites:
 
-**Phase 0 — making the thesis testable.** The exit criterion is one conversational turn
-persisting to Postgres through a durable DBOS workflow, where invoking the same workflow
-id twice calls the provider *exactly once*. That proves durable execution earns its
-complexity on turn one.
+- A JDK. `build.mill` runs everything with the one `GRIT_JDK_HOME` names, and is developed
+  on JDK 26.
+- Docker, for the local Postgres (`postgres:18` plus `pg_textsearch`, built from
+  `docker/postgres/`) and for the integration tests.
 
-Done so far: Mill project on Scala 3.9.0 with `dev.dbos:transact:1.0.0`, local Postgres 18
-via docker-compose, and a durable no-arg workflow landing a `SUCCESS` row in
-`dbos.workflow_status`.
-
-## Documents
-
-| File | What it is |
-|---|---|
-| [`STYLE.md`](STYLE.md) | Programming style. Referential transparency as a context-compression strategy |
-| [`CLAUDE.md`](CLAUDE.md) | Terse working agreements, loaded every session |
-
-Planning artifacts — the roadmap, its decisions log, and the feature backlog — are kept as
-local working documents and are not distributed with the repository.
-
-## Influences
-
-grit is designed against three bodies of prior art, studied locally rather than vendored
-here:
-
-- **pi** — a working coding-agent harness; the source of the append-only session tree,
-  the projection-based context build, and compaction-as-checkpoint.
-- **dbos4s** — a Scala wrapper over `dev.dbos:transact`; the source of the interop idioms.
-- **Papers** — *Executable Code Actions* (CodeAct), *The Bitter Lesson of Tool Calling*,
-  and *Securing Agents With Tracked Capabilities* (tacit), which supplies the
-  capture-checking capability-safety model that `Tx` is the first instance of.
-
-## Running
+`./mill` is Mill's bootstrap script: it fetches the version `.mill-version` pins, and Mill
+fetches Scala and every library. Versions live in `build.mill`.
 
 ```sh
 docker compose up -d postgres
-scripts/grit                          # the chat TUI; ctrl-q quits
-scripts/grit hello "what is 2+2?"     # one-shot: each argument a message
+cp .env.example .env                 # then fill in what you need; the real environment wins
+scripts/grit                         # the chat TUI
+scripts/grit hello "what is 2+2?"    # one-shot: each argument a message, one turn each
+scripts/grit serve                   # the Slack edge; needs the Slack tokens in .env
 ```
 
-`scripts/grit` has mill build a launcher and exit, then runs grit with plain `java`, so no
-mill process sits behind the TUI holding the build lock. Restart grit after recompiling:
-a rebuild rewrites the classes it loaded.
+Without `OPENROUTER_API_KEY` the model is a stub that calls nothing and costs nothing.
+`.env.example` documents every setting: models, token budgets, the tools offered, a daily
+spending cap, the database. `scripts/grit` has Mill build a launcher and exit, then runs it
+with plain `java`, so restart grit after recompiling.
 
-Settings, the OpenRouter key included, can live in a gitignored `.env`: copy
-`.env.example`. The real environment wins over it.
+Building and testing:
 
-The TUI talks to the conversation `GRIT_SESSION` names (default `default`) and logs to
-`GRIT_LOG` (default `grit-tui.log` in the temp directory). In the one-shot run each argument
-is a message, answered by one durable turn. A repeated message is the same
-turn; run it again and finished turns replay without calling the model. The model is the
-stub unless `OPENROUTER_API_KEY` is set; then each role (`ModelRole`: the turn, the
-summary, the retrieval query) has its own model and `max_tokens` variables, listed in `.env.example`.
-Each turn's window is the recent turns plus the earlier ones a written query finds, or
-with `GRIT_ASSEMBLER=linear` the recent turns alone.
+```sh
+./mill grit.core.compile             # does one module type-check
+scripts/check grit.core              # one module's unit tests
+bash scripts/fetch-enola.sh          # once: the architecture checker the gate runs
+scripts/check                        # the gate: unit tests, the architecture law, lint
+scripts/check --it                   # and the integration tier, against a throwaway Postgres (Docker)
+```
 
-The local databases are disposable: `scripts/reset-db` wipes them, and grit rebuilds
-its tables on the next start.
+The unit tier needs nothing outside the JVM; neither tier calls a model.
 
-`GRIT_DATABASE_URL` (a `jdbc:postgresql:` URL), `GRIT_DATABASE_USER` and
-`GRIT_DATABASE_PASSWORD` override the compose database; each defaults to it when unset.
+## Where things are written down
+
+- [`docs/decisions/`](docs/decisions/README.md): the architecture decision records, and the
+  threshold a decision must clear to get one.
+- [`STYLE.md`](STYLE.md): the programming style, and why it is load-bearing: a signature
+  without a capability is a promise of purity.
+- [`docs/capture-checking.md`](docs/capture-checking.md): every capture- and
+  separation-checking trap met so far, with its symptom, cause and fix.
+- [`docs/extending.md`](docs/extending.md): extending grit, inside and outside this
+  repository.
+- [`CLAUDE.md`](CLAUDE.md): the working agreements, terse, as an agent reads them.
