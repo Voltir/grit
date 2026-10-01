@@ -426,7 +426,7 @@ object grit extends Module {
     /* A provider called once, end to end and live. The crash test runs one phase in a child JVM on this
      * classpath, which it halts mid-turn. */
     object it extends GritTests with LivePostgres {
-      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.it, grit.slack.test)
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.it, grit.slack.test, grit.mcp.test)
       def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
       def forkEnv = Task {
         super.forkEnv() ++ Map(
