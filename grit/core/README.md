@@ -16,8 +16,9 @@ In dependency order:
   (the one triage of a heard message, and its workflow id). Imports nothing in core.
 - **`place`** — where conversations happen (ADR 0013): `Place`, a path in one
   containment tree under the root, everywhere, one `Namespace` per source (`fs`, `slack`,
-  `task`), and `within` (a prefix, defined once); `Directory`, an absolute normalized
-  path; `Scope` (the `Prefix`es a window may draw on beside its own conversation: places, or its own room),
+  `task`, `service`), and `within` (a prefix, defined once); `Directory`, an absolute normalized
+  path; `Service`, an outside service's place, and `WorksIn`, a deployment's link from
+  conversations with no directory to the service they work in; `Scope` (the `Prefix`es a window may draw on beside its own conversation: places, or its own room),
   `Weight` (how far its own search hits outweigh those elsewhere) and `Locality`, both
   together. Imports nothing in core.
 - **`prompt`** — a turn's system prompt as ordered fragments (ADR 0016): `Layer` (base,

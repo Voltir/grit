@@ -13,6 +13,9 @@ enum Namespace(val key: String) {
 
   /** Triggered tasks and their runs. */
   case Task extends Namespace("task")
+
+  /** Outside services, each hosting tools an edge serves there: `service:github`. */
+  case Service extends Namespace("service")
 }
 
 object Namespace {
@@ -31,6 +34,14 @@ final case class Place private (segments: Vector[String]) {
     segments.headOption
       .filter(_ == Namespace.Fs.key)
       .flatMap(_ => Directory.of("/" + segments.drop(1).mkString("/")).toOption)
+
+  /** The service this place is, when it is `service:{name}` with `name` a service's
+    * ([[Service.of]]); `None` for any other place.
+    */
+  def service: Option[Service] = segments match {
+    case Vector(ns, name) if ns == Namespace.Service.key => Service.of(name).toOption
+    case _ => None
+  }
 
   /** Whether this place is `other` or lies under it. Everywhere holds every place. */
   def within(other: Place): Boolean = segments.startsWith(other.segments)
