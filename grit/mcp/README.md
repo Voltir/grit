@@ -15,11 +15,14 @@ In dependency order:
   `Skipped` and why; `Rpc`, the requests grit sends and the results and errors read back;
   `Headers`, what a request carries besides its body; `Sse`, the response in an event
   stream; `Answer`, a call's result as the text the model reads. Imports nothing in mcp.
-- **`scope`** — a server's reach, pure: `McpScope`, which of its tools are offered and which
-  calls are sent, `Open` or held `Within` exact argument `Bound`s, so a deployment bounds a
-  service at the edge rather than by asking the model (ADR 0017). Imports `wire`.
+- **`scope`** — a server's reach, pure: `McpScope`, which of its tools are offered, which
+  calls are sent and which of their answers' results are shown, `Open` or held `Within` exact
+  argument `Bound`s, so a deployment bounds a service at the edge rather than by asking the
+  model (ADR 0017). A tool whose answers an `Attribution` places is offered and its results
+  outside every bound withheld; an answer it cannot place is not shown at all. Imports `wire`.
 - **`github`** — GitHub's side of a scope: `GitHubScope`, a repository or an owner as the
-  `Bound` GitHub's tools name it. It names a service, no organisation; which repositories
+  `Bound` GitHub's tools name it, and a scope within them whose search tools are held by the
+  repository each result names. It names a service, no organisation; which repositories
   is the deployment's to say. Imports `scope`; nothing else in mcp imports it
   (`mcp-generic-names-no-github`).
 - **`client`** — a server reached over HTTP: `McpServer`, a server a deployment declares;
@@ -46,7 +49,16 @@ entries a real server sends, `x-mcp-header` annotations included. Beside it,
 (in an event stream) to `get_file_contents` for a private repository's README, its envelope
 kept as sent and its icons removed; the file was replaced by a short neutral text, the SHA in
 its text block by that text's git blob SHA, and the resource's `repo://` URI's owner,
-repository and commit by `octocat/Hello-World` and a placeholder. `test/resources/toolsnaps/`
+repository and commit by `octocat/Hello-World` and a placeholder. `search-issues.json`,
+`search-pull-requests.json` and `search-code.json` are the `tools/call` results the same server
+answered on 2026-10-01 (in an event stream) to `search_issues`, `search_pull_requests` and
+`search_code`, their envelopes kept as sent and their icons removed. The issue and pull-request
+searches read a private repository: in each, the second of the three results was moved to a
+made-up repository (`elsewhere-org/elsewhere`) and the others to `octocat/Hello-World`, in
+`repository_url` and every URL; titles, bodies, ids and node ids were replaced by neutral
+values and the author by `octocat`; `total_count` was set to 12; keys and their order are as
+sent. The code search read a public repository, `github/github-mcp-server`, and is as sent but
+for its second result's `repository`, set to `octocat/Hello-World`. `test/resources/toolsnaps/`
 holds GitHub's write tool `issue_write`, which that server does not list, as its source lists
 it: https://github.com/github/github-mcp-server at `5a1a3866d4a681d771162d35680d6c7219eac3b0`
 (MIT). The source's snapshots lack the hosted server's annotations, so they are not kept for

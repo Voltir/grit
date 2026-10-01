@@ -41,6 +41,11 @@ enum McpError {
     */
   case OutOfScope(why: String)
 
+  /** The call was answered, but its results cannot be held to the server's scope, so none of it
+    * is shown: `why`.
+    */
+  case Unattributed(why: String)
+
   /** A line a person or the model reads, of the server unnamed ("refused grit's token"). */
   def message: String = this match {
     case Unreachable(why) => s"could not be reached: $why"
@@ -57,6 +62,8 @@ enum McpError {
     case Unreadable(why) => s"answered something grit cannot read: $why"
     case Status(code) => s"answered HTTP $code"
     case OutOfScope(why) => s"was not asked: $why"
+    case Unattributed(why) =>
+      s"answered, but grit cannot hold the answer to its scope, so none of it is shown: $why"
   }
 
   private def asks(challenge: Option[String]): String = challenge.fold("")(c => s"; it asks: $c")

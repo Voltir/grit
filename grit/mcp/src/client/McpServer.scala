@@ -9,7 +9,8 @@ import grit.mcp.scope.McpScope
 
 /** An MCP server grit reaches over Streamable HTTP at [[grit.mcp.wire.Rpc.Version]]: its tools
   * are offered as `{name}_{tool}`, and of those only the ones `allow` names when it names any
-  * and `scope` offers; its calls are sent as `scope` sends them; each request carries
+  * and `scope` offers; its calls are sent, and their answers shown, as `scope` sends and shows
+  * them; each request carries
   * `Authorization: Bearer` with the value of `token`.
   */
 final case class McpServer private (

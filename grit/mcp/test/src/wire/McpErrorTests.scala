@@ -20,7 +20,8 @@ object McpErrorTests extends TestSuite {
         McpError.InputRequired,
         McpError.Unreadable("no result"),
         McpError.Status(502),
-        McpError.OutOfScope("its scope does not offer search_code")
+        McpError.OutOfScope("its scope does not offer search_code"),
+        McpError.Unattributed("its answer's text is not a JSON object")
       ).map(_.message) ==> Vector(
         "could not be reached: connection refused",
         "refused grit's token (HTTP 401; it asks: Bearer realm=\"mcp\")",
@@ -34,7 +35,9 @@ object McpErrorTests extends TestSuite {
         "wanted input that grit does not give",
         "answered something grit cannot read: no result",
         "answered HTTP 502",
-        "was not asked: its scope does not offer search_code"
+        "was not asked: its scope does not offer search_code",
+        "answered, but grit cannot hold the answer to its scope, so none of it is shown: " +
+          "its answer's text is not a JSON object"
       )
     }
   }

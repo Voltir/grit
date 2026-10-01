@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-102990907a285e34449beb3ffb31718d8702b436"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"total_count\":2,\"incomplete_results\":false,\"items\":[{\"name\":\"issues.go\",\"path\":\"pkg/github/issues.go\",\"sha\":\"f1de84eb27fd68c7c71a89490a3b4222a3fc5e5a\",\"repository\":\"github/github-mcp-server\",\"text_matches\":[{\"object_url\":\"https://api.github.com/repositories/942771284/contents/pkg/github/issues.go?ref=a1f6500450302da817537cbad58e440ec4bb5a24\",\"object_type\":\"FileContent\",\"property\":\"content\",\"fragment\":\"// It also sanitizes the embedded issue's Title and Body in place: search_issues is one of the few\\n// response paths that marshals a raw *github.Issue directly rather than routing through a\\n// convertToMinimal* helper (see minimal_types.go), so sanitization must happen here instead.\\nfunc (r SearchIssueResult) MarshalJSON() ([]byte, error) {\\n\\tsanitizeIssueTitleAndBody(r.Issue)\\n\\n\\tissueBytes, err := json.Marshal(r.Issue)\",\"matches\":[{\"text\":\"MarshalJSON\",\"indices\":[311,322]}]}]},{\"name\":\"sanitize_coverage_test.go\",\"path\":\"pkg/github/sanitize_coverage_test.go\",\"sha\":\"20a175b07a9f5e9389d62994eee52ca5d5dd76ef\",\"repository\":\"octocat/Hello-World\",\"text_matches\":[{\"object_url\":\"https://api.github.com/repositories/942771284/contents/pkg/github/sanitize_coverage_test.go?ref=a1f6500450302da817537cbad58e440ec4bb5a24\",\"object_type\":\"FileContent\",\"property\":\"content\",\"fragment\":\"}\\n\\n// Test_SearchIssueResult_SanitizesTitleAndBody covers search_issues, which marshals the raw\\n// *github.Issue REST search hit directly (via SearchIssueResult.MarshalJSON) instead of routing\\n// through a convertToMinimal* helper. Sanitization must happen at serialization time here.\\nfunc Test_SearchIssueResult_SanitizesTitleAndBody(t *testing.T) {\\n\\tresult := SearchIssueResult{\",\"matches\":[{\"text\":\"MarshalJSON\",\"indices\":[161,172]}]}]}]}"
+    }
+  ],
+  "resultType": "complete"
+}

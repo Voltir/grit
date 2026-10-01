@@ -1,5 +1,7 @@
 package grit.mcp.scope
 
+import scala.util.chaining.*
+
 import grit.mcp.client.FakeMcpServer
 import grit.mcp.wire.{McpTool, Skipped}
 
@@ -35,6 +37,40 @@ object McpScopeTests extends TestSuite {
     Bound.of(first, rest*).fold(why => throw new java.lang.AssertionError(why), identity)
 
   private val Repository = bound("owner" -> "the-actual-best", "repo" -> "actualbest")
+
+  /** Results under `results`, counted at `count`, each placed by its `where`, `{owner}/{repo}`;
+    * `fields` never sent.
+    */
+  private val Where: Attribution = Attribution
+    .of(
+      "results",
+      Some("count"),
+      Vector("owner", "repo"),
+      Set("fields"),
+      result =>
+        result.objOpt
+          .flatMap(_.get("where"))
+          .flatMap(_.strOpt)
+          .map(_.split("/", -1).toVector)
+          .toRight("it has no where")
+    )
+    .fold(why => throw new java.lang.AssertionError(why), identity)
+
+  /** Within [[Repository]], `search_issues` and `search_code` attributed by [[Where]]. */
+  private val Searched: McpScope =
+    McpScope
+      .attributed(Map("search_issues" -> Where, "search_code" -> Where), Repository)
+      .fold(why => throw new java.lang.AssertionError(why), identity)
+
+  /** A `tools/call` result whose one text block is `payload`, written compactly. */
+  private def answer(payload: ujson.Value): ujson.Obj =
+    ujson.Obj(
+      "content" -> ujson.Arr(ujson.Obj("type" -> "text", "text" -> ujson.write(payload))),
+      "resultType" -> "complete"
+    )
+
+  private def result(where: String, title: String): ujson.Obj =
+    ujson.Obj("title" -> title, "where" -> where)
 
   val tests = Tests {
     test("within a repository, of Bort's tools exactly the three searches are not offered") {
@@ -112,6 +148,155 @@ object McpScopeTests extends TestSuite {
           tool("search_issues"),
           ujson.Obj("query" -> "x", "owner" -> "the-actual-best", "repo" -> "actualbest")
         ) ==> Left("its scope does not offer search_issues")
+    }
+
+    test("a tool whose answers are attributed is offered within any bound") {
+      Vector("search_issues", "search_code", "search_pull_requests").map(n =>
+        Searched.excludes(tool(n))
+      ) ==> Vector(None, None, Some(Skipped.OutOfScope("search_pull_requests")))
+    }
+
+    test(
+      "an attributed call is sent less its unsent arguments when the bound's arguments its " +
+        "schema declares are equal, and refused otherwise"
+    ) {
+      val issues = tool("search_issues")
+      Vector(
+        Searched.request(
+          issues,
+          ujson.Obj(
+            "query" -> "x",
+            "owner" -> "the-actual-best",
+            "repo" -> "actualbest",
+            "fields" -> ujson.Arr("title")
+          )
+        ),
+        Searched.request(issues, ujson.Obj("query" -> "x", "owner" -> "the-actual-best")),
+        // search_code declares neither owner nor repo: its answers alone hold it
+        Searched.request(tool("search_code"), ujson.Obj("query" -> "x", "fields" -> ujson.Arr()))
+      ) ==> Vector(
+        Right(ujson.Obj("query" -> "x", "owner" -> "the-actual-best", "repo" -> "actualbest")),
+        Left(
+          "its calls are limited to owner the-actual-best with repo actualbest, " +
+            "and this one has owner the-actual-best with no repo"
+        ),
+        Right(ujson.Obj("query" -> "x"))
+      )
+    }
+
+    test(
+      "an attributed answer is shown with only its results within a bound, its count the kept, " +
+        "and a block saying how many were withheld"
+    ) {
+      val sent = answer(
+        ujson.Obj(
+          "count" -> 40,
+          "more" -> true,
+          "results" -> ujson.Arr(
+            result("the-actual-best/actualbest", "in"),
+            result("elsewhere/actualbest", "out"),
+            result("the-actual-best/other", "out too"),
+            result("the-actual-best/actualbest", "in too")
+          )
+        )
+      )
+      Searched.shown(tool("search_issues"), sent) ==> Right(
+        ujson.Obj(
+          "content" -> ujson.Arr(
+            ujson.Obj(
+              "type" -> "text",
+              "text" -> ujson.write(
+                ujson.Obj(
+                  "count" -> 2,
+                  "more" -> true,
+                  "results" -> ujson.Arr(
+                    result("the-actual-best/actualbest", "in"),
+                    result("the-actual-best/actualbest", "in too")
+                  )
+                )
+              )
+            ),
+            ujson.Obj(
+              "type" -> "text",
+              "text" -> ("Withheld as outside this server's scope (owner the-actual-best with " +
+                "repo actualbest): 2 of the 4 results in this answer.")
+            )
+          ),
+          "resultType" -> "complete"
+        )
+      )
+    }
+
+    test("an attributed answer with every result within a bound is shown as sent, recounted") {
+      val sent = answer(
+        ujson.Obj("count" -> 9, "results" -> ujson.Arr(result("the-actual-best/actualbest", "a")))
+      )
+      Searched.shown(tool("search_code"), sent) ==> Right(
+        answer(
+          ujson.Obj("count" -> 1, "results" -> ujson.Arr(result("the-actual-best/actualbest", "a")))
+        )
+      )
+    }
+
+    test("an error answer, or the answer of a tool not attributed, is shown as it is") {
+      val error = ujson.Obj(
+        "content" -> ujson.Arr(ujson.Obj("type" -> "text", "text" -> "rate limited")),
+        "isError" -> true,
+        "structuredContent" -> ujson.Obj("why" -> "rate")
+      )
+      (
+        Searched.shown(tool("search_issues"), error),
+        Searched.shown(tool("get_file_contents"), FakeMcpServer.githubFileContents)
+      ) ==> (Right(error), Right(FakeMcpServer.githubFileContents))
+    }
+
+    test("an attributed answer it cannot hold to its bounds is not shown, saying why") {
+      val one = ujson.Obj("results" -> ujson.Arr(result("the-actual-best/actualbest", "in")))
+      val text = ujson.Obj("type" -> "text", "text" -> ujson.write(one))
+      def content(blocks: ujson.Value*): ujson.Obj = ujson.Obj("content" -> ujson.Arr(blocks*))
+      Vector(
+        answer(one).tap(_("structuredContent") = one),
+        content(text, text),
+        content(ujson.Obj("type" -> "image", "data" -> "", "mimeType" -> "image/png")),
+        content(ujson.Obj("type" -> "text", "text" -> "no results")),
+        answer(ujson.Arr(one)),
+        answer(ujson.Obj("results" -> one)),
+        answer(ujson.Obj("results" -> ujson.Arr(ujson.Obj("title" -> "nowhere")))),
+        answer(ujson.Obj("results" -> ujson.Arr(result("the-actual-best", "one segment"))))
+      ).map(Searched.shown(tool("search_issues"), _)) ==> Vector(
+        Left("its answer has structuredContent, which grit cannot hold to its scope"),
+        Left("its answer is not one text block"),
+        Left("its answer is not one text block"),
+        Left("its answer's text is not a JSON object"),
+        Left("its answer's text is not a JSON object"),
+        Left("its answer's text has no results array"),
+        Left("a result's place cannot be read: it has no where"),
+        Left("a result's place has 1 value, not one for each of owner, repo")
+      )
+    }
+
+    test(
+      "an attribution whose keys leave out a bound's argument, or that is malformed, is refused"
+    ) {
+      def of(items: String, keys: Vector[String]): Either[String, Attribution] =
+        Attribution.of(items, None, keys, Set.empty, _ => Left("unread"))
+      (
+        McpScope.attributed(Map("search_issues" -> Where), bound("team" -> "core")),
+        Vector(
+          of(" ", Vector("owner")),
+          of("items", Vector.empty),
+          of("items", Vector("owner", " ")),
+          of("items", Vector("owner", "owner"))
+        )
+      ) ==> (
+        Left("search_issues's results are placed by owner, repo, never by a bound's team"),
+        Vector(
+          Left("an attribution's items is blank"),
+          Left("an attribution names no key"),
+          Left("an attribution's key is blank"),
+          Left("an attribution names owner twice")
+        )
+      )
     }
 
     test("a bound naming an argument twice, or with a blank name or value, is refused") {

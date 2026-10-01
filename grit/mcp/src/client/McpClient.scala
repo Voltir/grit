@@ -78,8 +78,10 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
   }
 
   /** `tool` called with `arguments` as the server's scope sends them
-    * ([[grit.mcp.scope.McpScope.request]]): its answer, an `isError` one included, or why none;
-    * [[McpError.OutOfScope]], with nothing sent, when the scope refuses the call. An
+    * ([[grit.mcp.scope.McpScope.request]]): its answer as the scope shows it
+    * ([[grit.mcp.scope.McpScope.shown]]), an `isError` one included, or why none;
+    * [[McpError.OutOfScope]], with nothing sent, when the scope refuses the call;
+    * [[McpError.Unattributed]], with none of the answer shown, when the scope cannot hold it. An
     * [[McpError.Rpc]] with code `-32602` (an unknown tool, or invalid arguments) makes the list
     * [[stale]], since the server's tools may have changed. Blocks on the server for up to
     * [[McpClient.Timeout]].
@@ -90,6 +92,7 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
       .left
       .map(McpError.OutOfScope(_))
       .flatMap(sent => exchange(Rpc.Call.CallTool(tool, sent)))
+      .flatMap(server.scope.shown(tool, _).left.map(McpError.Unattributed(_)))
       .flatMap(Answer.of)
     // A -32020 HeaderMismatch is not re-listed and retried, though the spec says a client
     // SHOULD (streamable-http.mdx, Client Behavior): a list with ttlMs 0, as GitHub's is, is

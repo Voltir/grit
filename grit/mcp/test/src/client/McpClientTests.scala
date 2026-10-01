@@ -7,7 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.clock.Clock
 import grit.core.edge.Variable
 import grit.core.tool.ToolName
-import grit.mcp.scope.{Bound, McpScope}
+import grit.mcp.scope.{Attribution, Bound, McpScope}
 import grit.mcp.wire.{McpError, Skipped}
 
 import utest.*
@@ -180,6 +180,58 @@ object McpClientTests extends TestSuite {
           0,
           Right(false),
           1
+        )
+      }
+    }
+
+    test(
+      "an attributed tool's answer reaches the caller with its results outside the scope " +
+        "withheld; one the scope cannot attribute is Unattributed, none of it shown"
+    ) {
+      withFake { fake =>
+        fake.lists(Vector(FakeMcpServer.github("search_code")))
+        val where = Attribution
+          .of(
+            "results",
+            None,
+            Vector("owner", "repo"),
+            Set.empty,
+            r => r("where").strOpt.map(_.split("/").toVector).toRight("it has no where")
+          )
+          .fold(why => throw new java.lang.AssertionError(why), identity)
+        val scope = Bound
+          .of("owner" -> "the-actual-best", "repo" -> "actualbest")
+          .flatMap(McpScope.attributed(Map("search_code" -> where), _))
+          .fold(why => throw new java.lang.AssertionError(why), identity)
+        val c = client(fake, scope = scope)
+        def answered(text: String): Either[McpError, String] = {
+          fake.answers(
+            "search_code",
+            ujson.Obj("content" -> ujson.Arr(ujson.Obj("type" -> "text", "text" -> text)))
+          )
+          c.tools()
+            .flatMap(_.tools.headOption.toRight(McpError.Unreadable("unlisted")))
+            .flatMap(c.call(_, ujson.Obj("query" -> "x")))
+            .map(_.text)
+        }
+        Vector(
+          answered(
+            """{"results":[{"where":"elsewhere/actualbest"},{"where":"the-actual-best/actualbest"}]}"""
+          ),
+          answered("""{"results":[{"where":"the-actual-best"}]}"""),
+          answered("not JSON")
+        ) ==> Vector(
+          Right(
+            """{"results":[{"where":"the-actual-best/actualbest"}]}""" + "\n" +
+              "Withheld as outside this server's scope (owner the-actual-best with repo " +
+              "actualbest): 1 of the 2 results in this answer."
+          ),
+          Left(
+            McpError.Unattributed(
+              "a result's place has 1 value, not one for each of owner, repo"
+            )
+          ),
+          Left(McpError.Unattributed("its answer's text is not a JSON object"))
         )
       }
     }

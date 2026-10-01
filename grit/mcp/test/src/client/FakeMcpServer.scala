@@ -402,6 +402,13 @@ object FakeMcpServer {
     */
   def githubFileContents: ujson.Obj = resource("/github/get-file-contents.json")
 
+  /** The `tools/call` result GitHub's hosted read-only server answered to `tool`, one of
+    * `search_code`, `search_issues` and `search_pull_requests`, as it answered but redacted (see
+    * grit/mcp/README.md): one text block holding the search's JSON, its results from two
+    * repositories, `octocat/Hello-World` among them.
+    */
+  def githubSearch(tool: String): ujson.Obj = resource(s"/github/${tool.replace('_', '-')}.json")
+
   private def resource(path: String): ujson.Obj =
     ujson.Obj.from(
       ujson
