@@ -16,7 +16,9 @@ object Shown {
   /** A message as it is, but a person's, when `speakers` names its author, under a line of
     * its own, "{name} wrote:", and with a pasted grit block, that line included, shown as one
     * ([[pasted]]); a heard message as a person's under "{name} said, not to you:"
-    * ("Someone" when `speakers` does not name its author);
+    * ("Someone" when `speakers` does not name its author); grit's post the conversation
+    * begins with as one user message, [[PostedLead]] then the post as [[pasted]] shows it, so
+    * no window opens with an assistant message;
     * a closing entry as one user message, "[record] this conversation
     * so far, written by grit (closed {its UTC date}):", then its prose, its outcome, the
     * lines it resolved and how, and the balance's open lines, its standing lines (those
@@ -31,8 +33,13 @@ object Shown {
       Some(Message.User(pasted(s"$name said, not to you:\n$text")))
     case Payload.Closed(_, _, closing) =>
       Some(Message.User(record(closing, entry.createdAt)))
+    case Payload.Posted(text) => Some(Message.User(s"$PostedLead\n${pasted(text)}"))
     case _ => None
   }
+
+  /** What introduces grit's post a conversation begins with ([[of]]). */
+  val PostedLead: String =
+    s"${Label.Record.tag} this thread begins with grit's post, made at another conversation's request:"
 
   /** A nearby section as one user message, "[afar] another conversation, shown by grit,
     * still open, at {place.written}:", then each message among `entries` as a
@@ -189,7 +196,7 @@ object Shown {
     entries.flatMap { e =>
       e.payload match {
         case Payload.Message(Message.User(text)) => Some(said(e, text, speakers))
-        case Payload.Heard(_) => of(e, speakers)
+        case Payload.Heard(_) | Payload.Posted(_) => of(e, speakers)
         case Payload.Message(m) => Some(m)
         case Payload.Exchange(reply) => Some(reply)
         case Payload.Result(r, _) => Some(result(r))
@@ -266,6 +273,7 @@ object Shown {
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString("\n")
       Option.when(said.trim.nonEmpty)(s"Assistant: ${pasted(said)}")
+    case Payload.Posted(text) => Option.when(text.trim.nonEmpty)(s"Assistant: ${pasted(text)}")
     case _ => None
   }
 }

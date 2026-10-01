@@ -162,9 +162,9 @@ private object SqlStitchStore {
   val SaidColumns: String =
     "e.id, e.conversation_id, e.turn_seq, e.parent_id, e.seq, e.payload, e.created_at, c.origin"
 
-  /** A person's message, to grit or heard, or grit's reply: what a strand is said in. */
+  /** A person's message, to grit or heard, or grit's reply or post: what a strand is said in. */
   val Spoken: String =
-    "(e.payload ->> 'kind' = 'heard' OR (e.payload ->> 'kind' = 'message' AND " +
+    "(e.payload ->> 'kind' IN ('heard', 'posted') OR (e.payload ->> 'kind' = 'message' AND " +
       "e.payload -> 'message' ->> 'role' IN ('user', 'assistant')))"
 
   def ids(conversations: Vector[ConversationId]): String =

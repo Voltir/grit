@@ -10,7 +10,7 @@ CREATE SCHEMA IF NOT EXISTS grit;
 CREATE EXTENSION IF NOT EXISTS pg_textsearch;
 
 -- The searchable text of a stored payload (PayloadJson): a message's user text, its
--- assistant text blocks, a tool result's content; a heard message's text; a summary's text; a closing entry's
+-- assistant text blocks, a tool result's content; a heard message's text; a post's text; a summary's text; a closing entry's
 -- flows (ClosingJson): its prose, its outcome, the lines it added, resolved or dropped and
 -- how or why. Never the balance it carries, which repeats in every closing: the closing
 -- that added a line holds it in its flows. Never reasoning,
@@ -28,6 +28,7 @@ RETURN CASE payload ->> 'kind'
           WHERE b ->> 'type' = 'text'),
         payload #>> '{message,content}')
     WHEN 'heard' THEN payload ->> 'text'
+    WHEN 'posted' THEN payload ->> 'text'
     WHEN 'summary' THEN payload ->> 'text'
     WHEN 'closed' THEN concat_ws(' ',
         payload #>> '{closing,flows,prose}',
@@ -433,6 +434,16 @@ CREATE TABLE IF NOT EXISTS grit.heard (
     reply_to        TEXT,
     asked           JSONB NOT NULL DEFAULT '[]'::jsonb,
     UNIQUE (conversation_id, turn_seq)
+);
+
+-- The hosted call whose post a conversation begins with (Inbox.posted): a thread under a
+-- post of grit's, its first entry that post. `request` is the call's slot key (CallSlot.key),
+-- which names the turn that asked for it.
+-- Retention: journal: deleted with its entry, so with its period's raw entries (Target.Raw).
+CREATE TABLE IF NOT EXISTS grit.posted (
+    entry_id        TEXT PRIMARY KEY REFERENCES grit.entries(id) ON DELETE CASCADE,
+    conversation_id UUID NOT NULL UNIQUE REFERENCES grit.conversations(id) ON DELETE CASCADE,
+    request         TEXT NOT NULL
 );
 
 -- Where each stitchable conversation's first message was placed among its room's exchanges

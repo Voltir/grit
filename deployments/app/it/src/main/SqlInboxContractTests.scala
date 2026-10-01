@@ -3,7 +3,7 @@ package grit.app.main
 import java.time.Instant
 import java.util.UUID
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{CallSlot, CloseRef, ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
 import grit.core.inbox.{Inbox, InboxContract}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
@@ -118,9 +118,31 @@ object SqlInboxContractTests extends InboxContract {
             }
           } yield reaches)
           .fold(e => sys.error(e.toString), identity)
+      def postedBy(origin: Origin): Option[CallSlot] =
+        engine.db
+          .read(
+            engine.conversations
+              .find(origin)
+              .flatMap(
+                _.fold(Right(None): Either[StoreError, Option[CallSlot]])(c =>
+                  engine.conversations.postedBy(c.id)
+                )
+              )
+          )
+          .fold(e => sys.error(e.toString), identity)
       body(
         engine.inbox,
-        InboxContract.Store(spend, exists, written, dated, periods, close, enroll, reached)
+        InboxContract.Store(
+          spend,
+          exists,
+          written,
+          dated,
+          periods,
+          close,
+          enroll,
+          reached,
+          postedBy
+        )
       )
     } finally engine.close()
   }

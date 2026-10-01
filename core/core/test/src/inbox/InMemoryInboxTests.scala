@@ -88,7 +88,11 @@ object InMemoryInboxTests extends InboxContract {
         periods,
         close,
         enroll,
-        reached
+        reached,
+        o =>
+          inbox.conversations.all
+            .find(_.origin == o)
+            .flatMap(c => inbox.conversations.posts.get(c.id))
       )
     )
   }

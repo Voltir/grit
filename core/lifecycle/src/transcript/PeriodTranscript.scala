@@ -85,7 +85,8 @@ object PeriodTranscript {
   }
 
   /** Whether grit only heard the period whose entries are `entries`: some message was heard
-    * ([[Payload.Heard]]), and none was said to grit or by it.
+    * ([[Payload.Heard]]), none was said to grit, and grit said nothing in it but the post it
+    * may begin with ([[Payload.Posted]]), which it made elsewhere.
     */
   def overheard(entries: Vector[Entry]): Boolean =
     entries.exists(_.payload match {
@@ -137,8 +138,8 @@ object PeriodTranscript {
   }
 
   /** `entry` as one line: a person's words under their name in `speakers` (`User` for one
-    * unnamed, speaking to grit; `Someone` for one unnamed and heard), a reply's text under
-    * `Assistant`; `None` for a reply with no text and every other kind of entry.
+    * unnamed, speaking to grit; `Someone` for one unnamed and heard), a reply's or a post's
+    * text under `Assistant`; `None` for a reply with no text and every other kind of entry.
     */
   private def line(entry: Entry, speakers: Speakers): Option[String] = entry.payload match {
     case Payload.Message(Message.User(text)) =>
@@ -147,6 +148,7 @@ object PeriodTranscript {
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString.trim
       Option.when(said.nonEmpty)(s"Assistant: $said")
+    case Payload.Posted(text) => Option.when(text.trim.nonEmpty)(s"Assistant: ${text.trim}")
     case _ => None
   }
 }

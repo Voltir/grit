@@ -3,7 +3,7 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.speech.Reach
 import grit.core.spend.{DailyCap, Day, Spend}
@@ -47,6 +47,27 @@ trait Inbox extends caps.SharedCapability {
       at: Instant,
       reach: Reach
   ): Either[InboxError, Unit]
+
+  /** Records `text`, grit's post that `origin`'s thread begins with, as its conversation's
+    * first entry ([[grit.core.store.Payload.Posted]]), dated `at`, its source `source`, made by
+    * the hosted call at `request` ([[grit.core.store.ConversationStore.postedBy]]); the
+    * conversation is created by `by`. `true` when this call recorded it; `false`, recording
+    * nothing, when anything is recorded for `origin` already, a repeat included. Never
+    * triaged, never a turn that runs, never refused over the day's cap.
+    */
+  def posted(
+      origin: Origin,
+      source: SourceId,
+      text: String,
+      at: Instant,
+      request: CallSlot,
+      by: PrincipalId
+  ): Either[InboxError, Boolean]
+
+  /** Whether `origin`'s conversation exists: one is created with its first entry, so whether
+    * anything is recorded for it.
+    */
+  def begun(origin: Origin): Either[InboxError, Boolean]
 
   /** The turn the message `source` from `origin` was recorded as by [[ingest]]; `None` when it
     * never was, or was heard ([[hear]]).

@@ -26,9 +26,10 @@ object Replies {
       val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
       Some(if (said.isEmpty) "(no text in the reply)" else said)
     case Payload.Message(Message.ToolResult(_, _, _)) => None
-    case Payload.Heard(_) | Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _) |
-        Payload.Topic(_) | Payload.Exchange(_) | Payload.Result(_, _) | Payload.Attempt(_) |
-        Payload.Ask(_, _) | Payload.Closed(_, _, _) | Payload.Draft(_) =>
+    // Heard messages and posts begin and fill Slack threads, never a terminal's session.
+    case Payload.Heard(_) | Payload.Posted(_) | Payload.Summary(_) | Payload.Query(_) |
+        Payload.Window(_, _, _) | Payload.Topic(_) | Payload.Exchange(_) | Payload.Result(_, _) |
+        Payload.Attempt(_) | Payload.Ask(_, _) | Payload.Closed(_, _, _) | Payload.Draft(_) =>
       None
   }
 

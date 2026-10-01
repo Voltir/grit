@@ -2,7 +2,7 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, PrincipalId}
+import grit.core.id.{CallSlot, ConversationId, PrincipalId}
 
 /** An in-memory [[ConversationStore]] for tests, keeping [[ConversationContract]]. It ignores
   * the `Tx`; each new conversation's id is `c` and its number, from 1, never reused after a
@@ -33,8 +33,16 @@ final class InMemoryConversationStore extends ConversationStore {
   def get(id: ConversationId)(using Tx^): Either[StoreError, Option[Conversation]] =
     Right(all.find(_.id == id))
 
+  /** The call each conversation's opening post was made by, as an inbox keeps it. */
+  @caps.unsafe.untrackedCaptures
+  var posts = Map.empty[ConversationId, CallSlot]
+
+  def postedBy(conversation: ConversationId)(using Tx^): Either[StoreError, Option[CallSlot]] =
+    Right(posts.get(conversation))
+
   def remove(conversation: ConversationId)(using Tx^): Either[StoreError, Unit] = {
     all = all.filterNot(_.id == conversation)
+    posts = posts - conversation
     Right(())
   }
 }

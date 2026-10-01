@@ -70,6 +70,14 @@ object LinearAssemblerTests extends TestSuite {
       window(entries, 2, 1000) ==> Vector("t0:0", "t0:1", "t1:2", "t1:3")
     }
 
+    test("grit's post a conversation begins with is in its window, as a turn of its own") {
+      val world = AssemblyFixtures.store(
+        Vector(Payload.Posted("The engine's open issues.")),
+        Vector(Payload.Message(user("why this?")))
+      )
+      window(world, 1, 1000) ==> Vector("t0:0")
+    }
+
     test("the turn's own entries and later turns are never in its window") {
       val entries = store(small(0), small(1), small(2))
       window(entries, 1, 1000) ==> Vector("t0:0", "t0:1")

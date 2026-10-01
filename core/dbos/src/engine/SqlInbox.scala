@@ -8,6 +8,7 @@ import scala.util.control.NonFatal
 
 import grit.core.approval.Approval
 import grit.core.id.{
+  CallSlot,
   ConversationId,
   EntryId,
   PrincipalId,
@@ -159,6 +160,51 @@ final class SqlInbox(
       }
     } yield turn
 
+  def posted(
+      origin: Origin,
+      source: SourceId,
+      text: String,
+      at: Instant,
+      request: CallSlot,
+      by: PrincipalId
+  ): Either[InboxError, Boolean] =
+    inTransaction {
+      conversations.find(origin).flatMap {
+        case Some(_) => Right(false)
+        case None =>
+          for {
+            conversation <- conversations.findOrCreate(origin, by)
+            // Serialises with any other writer to the conversation; past the lock, what it
+            // holds is settled.
+            next <- entries.lockNext(conversation.id)
+            before <- entries.list(conversation.id)
+            recorded <-
+              if (before.nonEmpty) Right(false)
+              else {
+                val id = SqlInbox.entryId(conversation.id, source)
+                for {
+                  _ <- periods.openFor(conversation.id, next.turnSeq, at)
+                  _ <- entries.insert(
+                    Entry(
+                      id,
+                      conversation.id,
+                      next.turnSeq,
+                      None,
+                      next.seq,
+                      Payload.Posted(text),
+                      at
+                    )
+                  )
+                  _ <- SqlInbox.madeBy(id, conversation.id, request)
+                } yield true
+              }
+          } yield recorded
+      }
+    }
+
+  def begun(origin: Origin): Either[InboxError, Boolean] =
+    inTransaction(conversations.find(origin).map(_.nonEmpty))
+
   def ingested(origin: Origin, source: SourceId): Either[InboxError, Option[TurnRef]] =
     inTransaction {
       conversations.find(origin).flatMap {
@@ -286,6 +332,28 @@ private[dbos] object SqlInbox {
       ) { ps =>
         ps.setString(1, EntryId.value(id))
         ps.setString(2, PrincipalId.value(by))
+        ps.executeUpdate()
+        ()
+      }
+    }
+  }
+
+  /** Records that the hosted call at `request` made the post `id`, `conversation`'s first
+    * entry.
+    */
+  private def madeBy(id: EntryId, conversation: ConversationId, request: CallSlot)(using
+      tx: Tx^
+  ): Either[StoreError, Unit] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    SqlEntryStore.attempt {
+      Using.resource(
+        conn.prepareStatement(
+          "INSERT INTO grit.posted (entry_id, conversation_id, request) VALUES (?, ?::uuid, ?)"
+        )
+      ) { ps =>
+        ps.setString(1, EntryId.value(id))
+        ps.setString(2, ConversationId.value(conversation))
+        ps.setString(3, request.key)
         ps.executeUpdate()
         ()
       }

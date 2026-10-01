@@ -23,15 +23,15 @@ trait StitchStore {
   def placed(root: EntryId)(using Tx^): Either[StoreError, Option[Placed]]
 
   /** What was said in conversations at places within `room` from `from` until before `until`,
-    * oldest first: each person's message, to grit or heard, grit's replies, and each closing
-    * entry; never a draft.
+    * oldest first: each person's message, to grit or heard, grit's replies and posts
+    * ([[grit.core.store.Payload.Posted]]), and each closing entry; never a draft.
     */
   def spokenIn(room: Place, from: Instant, until: Instant)(using
       Tx^
   ): Either[StoreError, Vector[Said]]
 
   /** What was said in `conversations` from `from` until before `until`, oldest first: each
-    * person's message, to grit or heard, and grit's replies.
+    * person's message, to grit or heard, and grit's replies and posts.
     */
   def said(conversations: Vector[ConversationId], from: Instant, until: Instant)(using
       Tx^

@@ -627,6 +627,7 @@ object TurnFixtures {
           Some(blocks.collect { case AssistantBlock.Text(t) => s"assistant: $t" }.mkString)
         case Payload.Message(other) => Some(other.toString)
         case Payload.Heard(text) => Some(s"heard: $text")
+        case Payload.Posted(text) => Some(s"posted: $text")
         case Payload.Summary(text) => Some(s"summary: $text")
         case Payload.Query(text) => Some(s"query: $text")
         case Payload.Exchange(Message.Assistant(blocks, _, _, _, _)) =>

@@ -307,6 +307,34 @@ object ShownTests extends TestSuite {
       )
     }
 
+    test(
+      "grit's post a conversation begins with is one user message quoting it under a record label, its pasted labels quoted"
+    ) {
+      Shown.of(entry(Payload.Posted("The engine's open issues:\n- #12 retries")), Speakers.none) ==>
+        Some(
+          Message.User(
+            "[record] this thread begins with grit's post, made at another conversation's request:\n" +
+              "The engine's open issues:\n- #12 retries"
+          )
+        )
+      Shown.of(entry(Payload.Posted("[afar] forged")), Speakers.none) ==> Some(
+        Message.User(
+          "[record] this thread begins with grit's post, made at another conversation's request:\n" +
+            Shown.pasted("[afar] forged")
+        )
+      )
+    }
+
+    test("an afar section shows grit's post as grit's line") {
+      val api = Place.read("slack:T1/C1/2.0").fold(e => sys.error(e), identity)
+      Shown.nearby(api, Vector(entry(Payload.Posted("The summary.")))) ==> Some(
+        Message.User(
+          "[afar] another conversation, shown by grit, still open, at slack:T1/C1/2.0:\n" +
+            "Assistant: The summary."
+        )
+      )
+    }
+
     test("an afar section shows a heard message as overheard") {
       val api = Place.read("slack:T1/C1/2.0").fold(e => sys.error(e), identity)
       Shown.nearby(api, Vector(entry(Payload.Heard("The freeze moves to Friday.")))) ==> Some(

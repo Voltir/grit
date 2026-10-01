@@ -88,7 +88,7 @@ final class InMemoryStitchStore(entries: InMemoryEntryStore, origin: Conversatio
   private def said(e: Entry): Said = Said(e.conversationId, origin(e.conversationId).place, e)
 
   private def message(e: Entry): Boolean = e.payload match {
-    case Payload.Heard(_) | Payload.Message(Message.User(_)) => true
+    case Payload.Heard(_) | Payload.Posted(_) | Payload.Message(Message.User(_)) => true
     case Payload.Message(Message.Assistant(_, _, _, _, _)) => true
     case _ => false
   }

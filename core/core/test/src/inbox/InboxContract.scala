@@ -2,7 +2,7 @@ package grit.core.inbox
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.id.{PrincipalId, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{CallSlot, ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Message}
 import grit.core.period.{Period, PeriodState}
 import grit.core.speech.Reach
@@ -27,6 +27,15 @@ abstract class InboxContract extends TestSuite {
 
   /** When the heard messages below were said, days before any test runs. */
   private val Said = Instant.parse("2026-09-26T10:00:00Z")
+
+  /** When the posts below were made, before anything was said under them. */
+  private val PostedAt = Instant.parse("2026-09-25T09:00:00Z")
+
+  /** The call the posts below were made by: one of another conversation's turns. */
+  private val Asking: CallSlot =
+    CallSlot
+      .of(TurnRef(ConversationId("0190a000-0000-7000-8000-000000000001"), TurnSeq.First), 0, 1)
+      .getOrElse(throw new java.lang.AssertionError("a slot at 0, 1 reads"))
 
   val tests = Tests {
     test("ingested: the turn a message was recorded as; none for one never recorded") {
@@ -181,7 +190,47 @@ abstract class InboxContract extends TestSuite {
     }
 
     test(
-      "once the day's spend reaches the cap a new message is refused, recording nothing, not even its conversation; one already recorded is still its turn; a heard one is still recorded"
+      "a post begins a new conversation as its first entry, grit's own, dated when it was posted, opening its period then, made by the call it names; its source addresses nothing"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val here = Origin.Task("inbox", "posted")
+        val ana = PrincipalId("task:ana")
+        store.enroll(ana, "Ana")
+        inbox.begun(here) ==> Right(false)
+        inbox.posted(here, SourceId("root"), "the summary", PostedAt, Asking, ana) ==> Right(true)
+        inbox.hear(here, SourceId("r1"), "why this?", ana, Said, Reach.Nowhere) ==> Right(())
+        store.written(here) ==> Vector(
+          (Payload.Posted("the summary"), None),
+          (Payload.Heard("why this?"), Some("Ana"))
+        )
+        (store.dated(here), store.periods(here).map(_.openedAt), store.postedBy(here)) ==>
+          (Vector(PostedAt, Said), Vector(PostedAt), Some(Asking))
+        inbox.begun(here) ==> Right(true)
+        inbox.ingested(here, SourceId("root")) ==> Right(None)
+      }
+    }
+
+    test("a post records nothing once its origin has anything, a repeat of itself included") {
+      withInbox(Uncapped) { (inbox, store) =>
+        val heard = Origin.Task("inbox", "posted-late")
+        inbox.hear(heard, SourceId("r1"), "first", PrincipalId.Local, Said, Reach.Nowhere) ==>
+          Right(())
+        inbox.begun(heard) ==> Right(true)
+        inbox.posted(heard, SourceId("root"), "late", PostedAt, Asking, PrincipalId.Local) ==>
+          Right(false)
+        (store.written(heard).map(_._1), store.postedBy(heard)) ==>
+          (Vector(Payload.Heard("first")), None)
+        val twice = Origin.Task("inbox", "posted-twice")
+        inbox.posted(twice, SourceId("root"), "once", PostedAt, Asking, PrincipalId.Local) ==>
+          Right(true)
+        inbox.posted(twice, SourceId("root"), "once", PostedAt, Asking, PrincipalId.Local) ==>
+          Right(false)
+        store.written(twice).map(_._1) ==> Vector(Payload.Posted("once"))
+      }
+    }
+
+    test(
+      "once the day's spend reaches the cap a new message is refused, recording nothing, not even its conversation; one already recorded is still its turn; a heard one and a post are still recorded"
     ) {
       val cap = DailyCap.of("1").fold(e => throw new java.lang.AssertionError(e), identity)
       withInbox(Budget(ZoneOffset.UTC, Some(cap))) { (inbox, store) =>
@@ -212,6 +261,10 @@ abstract class InboxContract extends TestSuite {
           Reach.Nowhere
         ) ==> Right(())
         store.written(heard) ==> Vector((Payload.Heard("lunch?"), None))
+        val posted = Origin.Task("inbox", "capped-posted")
+        inbox.posted(posted, SourceId("root"), "posted", PostedAt, Asking, PrincipalId.Local) ==>
+          Right(true)
+        store.written(posted).map(_._1) ==> Vector(Payload.Posted("posted"))
       }
     }
   }
@@ -225,7 +278,8 @@ object InboxContract {
     * author was enrolled under; `dated`, when each of those entries is dated;
     * `periods`, an origin's conversation's periods, oldest first; `close` seals the period a
     * turn is in, its last turn that one; `enroll` names a person; `reached`, the reach kept
-    * for each of an origin's conversation's entries, in order (none for one not heard).
+    * for each of an origin's conversation's entries, in order (none for one not heard);
+    * `postedBy`, the call an origin's conversation's opening post was made by.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -235,6 +289,7 @@ object InboxContract {
       periods: Origin => Vector[Period],
       close: TurnRef => Unit,
       enroll: (PrincipalId, String) => Unit,
-      reached: Origin => Vector[Option[Reach]]
+      reached: Origin => Vector[Option[Reach]],
+      postedBy: Origin => Option[CallSlot]
   )
 }

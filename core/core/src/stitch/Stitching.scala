@@ -351,15 +351,16 @@ object Stitching {
       .getOrElse(shown(0).take(chars))
   }
 
-  /** `s`'s words, when it is a message: a person's, or grit's reply. */
+  /** `s`'s words, when it is a message: a person's, grit's reply, or grit's post. */
   private def spoken(s: Said): Option[String] = s.entry.payload match {
     case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
       Some(blocks.collect { case AssistantBlock.Text(t) => t }.mkString).filter(_.nonEmpty)
+    case Payload.Posted(text) => Some(text).filter(_.nonEmpty)
     case p => p.said
   }
 
   private def speaker(s: Said, speakers: Speakers): String = s.entry.payload match {
-    case Payload.Message(Message.Assistant(_, _, _, _, _)) => "Assistant"
+    case Payload.Message(Message.Assistant(_, _, _, _, _)) | Payload.Posted(_) => "Assistant"
     case _ => speakers.of(s.entry.id).getOrElse("Someone")
   }
 

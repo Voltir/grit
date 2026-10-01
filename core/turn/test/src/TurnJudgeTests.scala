@@ -145,6 +145,22 @@ object TurnJudgeTests extends TestSuite {
       )
     }
 
+    test("the judge's thread shows grit's post the thread begins with as grit's line") {
+      val posted = entry(0, Payload.Posted("The engine's open issues."))
+      val heard = entry(1, Payload.Heard("why this?"))
+      TurnJudge
+        .state(
+          Vector(posted, heard),
+          Window(Vector(posted.id)),
+          Vector.empty,
+          Strand.Read.empty,
+          800,
+          Speakers(Map(heard.id -> "Nick")),
+          "draft"
+        )
+        .thread ==> "Assistant: The engine's open issues.\nNick: why this?"
+    }
+
     test("a window with no record recalls nothing") {
       TurnJudge
         .state(all, Window(Vector(asked.id)), Vector.empty, Strand.Read.empty, 800, names, "d")

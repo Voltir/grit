@@ -1,7 +1,9 @@
 package grit.core.inbox
 
+import java.time.Instant
+
 import grit.core.approval.Approval
-import grit.core.id.{EntryId, PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, EntryId, PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.speech.{InMemorySpeechStore, Reach}
 import grit.core.spend.Budget
@@ -162,6 +164,43 @@ final class InMemoryInbox(
           .on(day)
           .map(spent => Option.when(!budget.admits(spent))(InboxError.OverCap(spent, cap, day)))
     }
+
+  def posted(
+      origin: Origin,
+      source: SourceId,
+      text: String,
+      at: Instant,
+      request: CallSlot,
+      by: PrincipalId
+  ): Either[InboxError, Boolean] =
+    if (down) unavailable
+    else if (conversations.all.exists(_.origin == origin)) Right(false)
+    else
+      inTx {
+        val result: Either[StoreError, Boolean] = for {
+          conversation <- conversations.findOrCreate(origin, by)
+          next <- entries.lockNext(conversation.id)
+          _ <- periods.openFor(conversation.id, next.turnSeq, at)
+          _ <- entries.insert(
+            Entry(
+              InMemoryInbox.entryId(conversation.id.toString, source),
+              conversation.id,
+              next.turnSeq,
+              None,
+              next.seq,
+              Payload.Posted(text),
+              at
+            )
+          )
+        } yield {
+          conversations.posts = conversations.posts.updated(conversation.id, request)
+          true
+        }
+        result.left.map(e => InboxError.Unavailable(e.toString))
+      }
+
+  def begun(origin: Origin): Either[InboxError, Boolean] =
+    if (down) unavailable else Right(conversations.all.exists(_.origin == origin))
 
   def ingested(origin: Origin, source: SourceId): Either[InboxError, Option[TurnRef]] =
     if (down) unavailable

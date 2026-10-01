@@ -123,6 +123,7 @@ object TurnJudge {
         case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
           val said = blocks.collect { case AssistantBlock.Text(t) => t }.mkString
           Option.when(said.nonEmpty)(s"Assistant: $said")
+        case Payload.Posted(text) => Option.when(text.nonEmpty)(s"Assistant: $text")
         case p => p.said.map(t => s"${speakers.of(e.id).getOrElse("Someone")}: $t")
       }
     }

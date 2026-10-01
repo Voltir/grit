@@ -4,7 +4,7 @@ import java.time.OffsetDateTime
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, PrincipalId}
+import grit.core.id.{CallSlot, ConversationId, PrincipalId}
 import grit.core.place.Directory
 import grit.core.store.{Conversation, ConversationStore, Origin, StoreError, Tx}
 
@@ -62,6 +62,27 @@ final class SqlConversationStore extends ConversationStore {
     }.flatMap {
       case None => Right(None)
       case Some(id) => get(id)
+    }
+  }
+
+  def postedBy(
+      conversation: ConversationId
+  )(using tx: Tx^): Either[StoreError, Option[CallSlot]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement("SELECT request FROM grit.posted WHERE conversation_id = ?::uuid")
+      ) { ps =>
+        ps.setString(1, ConversationId.value(conversation))
+        Using.resource(ps.executeQuery())(rs => Option.when(rs.next())(rs.getString(1)))
+      }
+    }.flatMap {
+      case None => Right(None)
+      case Some(key) =>
+        CallSlot
+          .read(key)
+          .map(Some(_))
+          .toRight(StoreError.Invalid(s"grit.posted holds $key, which is no call's slot"))
     }
   }
 

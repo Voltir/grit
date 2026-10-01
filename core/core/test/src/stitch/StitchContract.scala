@@ -130,6 +130,17 @@ abstract class StitchContract extends TestSuite {
         .map(_.entry) ==> Vector(asked)
     }
 
+    test("grit's post a thread begins with is its opening, said there and in its room") {
+      val c = thread("posted", "1.0")
+      val post = say(c, Payload.Posted("The engine's open issues."), 10)
+      val reply = say(c, Payload.Heard("why this?"), 20)
+      right(transaction(stitches.openings(Vector(c)))).map(_.entry) ==> Vector(post)
+      right(transaction(stitches.said(Vector(c), At, At.plusSeconds(3_600)))).map(_.entry) ==>
+        Vector(post, reply)
+      right(transaction(stitches.spokenIn(room("posted"), At, At.plusSeconds(3_600))))
+        .map(_.entry) ==> Vector(post, reply)
+    }
+
     test("conversations say their messages, never their closings; openings are first messages") {
       val a = thread("said", "1.0")
       val b = thread("said", "2.0")

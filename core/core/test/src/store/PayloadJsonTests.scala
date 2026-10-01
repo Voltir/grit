@@ -74,6 +74,13 @@ object PayloadJsonTests extends TestSuite {
       PayloadJson.read(ujson.read(stored)) ==> Right(heard)
     }
 
+    test("a post a conversation begins with is stored under its own kind") {
+      val posted = Payload.Posted("The engine's open issues.")
+      val stored = """{"kind":"posted","text":"The engine's open issues."}"""
+      PayloadJson.write(posted).render() ==> stored
+      PayloadJson.read(ujson.read(stored)) ==> Right(posted)
+    }
+
     test("draft: an assistant's message under its own kind, and nothing else read as one") {
       val reply: Message.Assistant = Message.Assistant(
         Vector(AssistantBlock.Text("the freeze moved to Thursday")),

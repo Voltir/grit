@@ -1,7 +1,7 @@
 package grit.lifecycle.transcript
 
 import grit.core.period.Ground
-import grit.core.store.Entry
+import grit.core.store.{Entry, Payload}
 
 import TestTranscripts.{heard, labelledBy, replied, result, said}
 import utest.*
@@ -41,6 +41,15 @@ object LabelledTests extends TestSuite {
       val long = TestTranscripts.labelled(result(0, "read big.txt", "x" * 500)).text
       long.length ==> PeriodTranscript.ToolChars
       long ==> ("[t1] read big.txt → " + "x" * (PeriodTranscript.ToolChars - 21) + "…")
+    }
+
+    test(
+      "grit's post a thread begins with is grit's line, a period of it and heard replies still overheard"
+    ) {
+      val posted = TestTranscripts.entry(0, Payload.Posted("The engine's open issues."))
+      labelledBy(Map(1L -> "Nick"))(posted, heard(1, "why this?")).text ==>
+        "[a1] Assistant: The engine's open issues.\n\n[h2] Nick: why this?"
+      PeriodTranscript.overheard(Vector(posted, heard(1, "why this?"))) ==> true
     }
 
     test("a cited person line grounds Person, then a tool line Tool; otherwise Claimed") {

@@ -206,7 +206,7 @@ private object SqlEntrySearch {
       |   WHERE p.path[1:cardinality(ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))]
       |         = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
       |     AND e.created_at >= ? AND e.created_at < ?
-      |     AND (e.payload ->> 'kind' IN ('heard', 'closed')
+      |     AND (e.payload ->> 'kind' IN ('heard', 'posted', 'closed')
       |          OR (e.payload ->> 'kind' = 'message'
       |              AND e.payload -> 'message' ->> 'role' IN ('user', 'assistant')))
       |   ORDER BY s, e.created_at DESC, e.id DESC

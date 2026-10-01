@@ -3,7 +3,7 @@ package grit.core.stitch
 import grit.core.id.{ConversationId, TurnRef, TurnSeq}
 import grit.core.period.Probability
 import grit.core.place.Scope
-import grit.core.store.{EntrySearch, Speakers}
+import grit.core.store.{EntrySearch, Payload, Speakers}
 
 import utest.*
 import StitchFixtures.*
@@ -182,6 +182,20 @@ object StitchingTests extends TestSuite {
         s"$openLine\n…\nDavid: second reply\nDavid: lol"
       Stitching.excerpt(Some(opening), strand, names, 1_000) ==>
         s"$openLine\nDavid: first reply here\nDavid: second reply\nDavid: lol"
+    }
+
+    test("an excerpt whose opening is grit's post shows it under Assistant") {
+      val heardOpening = heard("post", "unused", 60)
+      val opening = heardOpening.copy(entry =
+        heardOpening.entry.copy(payload = Payload.Posted("The engine's open issues."))
+      )
+      val reply = heard("post", "why this?", 30, seq = 1)
+      Stitching.excerpt(
+        Some(opening),
+        Vector(reply),
+        Speakers(Map(reply.entry.id -> "Nick")),
+        1_000
+      ) ==> "Assistant: The engine's open issues.\nNick: why this?"
     }
   }
 }

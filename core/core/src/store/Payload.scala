@@ -20,6 +20,13 @@ enum Payload {
     */
   case Heard(text: String)
 
+  /** grit's post that its conversation begins with, made at another turn's request
+    * ([[grit.core.inbox.Inbox.posted]]): the first entry of a turn that never runs. Shown to
+    * the model as grit's post, quoted ([[grit.core.context.Shown.of]]), and searched by its
+    * text.
+    */
+  case Posted(text: String)
+
   /** A short summary of the turn the entry belongs to, written after its reply. Not a
     * message: the model sees it only if an assembler chooses to show it.
     */

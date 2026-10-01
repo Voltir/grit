@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.{ConversationId, PrincipalId}
+import grit.core.id.{CallSlot, ConversationId, PrincipalId}
 
 /** Conversations, one per [[Origin]]. */
 trait ConversationStore {
@@ -16,6 +16,11 @@ trait ConversationStore {
 
   /** The conversation `id` names; `None` when there is none, never created or removed. */
   def get(id: ConversationId)(using Tx^): Either[StoreError, Option[Conversation]]
+
+  /** The hosted call that made the post `conversation` begins with ([[Payload.Posted]]);
+    * `None` when it begins otherwise, or that entry is gone.
+    */
+  def postedBy(conversation: ConversationId)(using Tx^): Either[StoreError, Option[CallSlot]]
 
   /** Deletes `conversation` with its entries, periods and verdicts, and its place when no
     * other conversation is there; nothing when it is gone already. Its usage, profiles and
