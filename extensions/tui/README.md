@@ -1,5 +1,8 @@
 # grit.tui
 
+Implements none of core's traits: a library a deployment's terminal edge renders with
+([`docs/extending.md`](../../docs/extending.md#extension-points)).
+
 A fullscreen terminal UI library for Scala 3, in the shape of
 [layoutz](https://github.com/matthieucourt/layoutz) — the same small, declarative surface —
 but built for an app that has taken the alternate screen and owes the terminal's job back.

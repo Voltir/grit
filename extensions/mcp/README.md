@@ -1,5 +1,8 @@
 # grit.mcp
 
+Implements `ServedEdge`, serving a server's tools as `Hosted` (what a deployment can
+supply: [`docs/extending.md`](../../docs/extending.md#extension-points)).
+
 grit's client of Model Context Protocol servers, at revision 2026-07-28 over Streamable
 HTTP: no handshake and no session, each request a POST of its own carrying its protocol
 version. A server's tools are offered to a turn by an edge hosting them at a service place

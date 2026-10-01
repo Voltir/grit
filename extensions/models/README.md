@@ -1,5 +1,8 @@
 # grit.models
 
+Implements `Provider` and `Classifier` (what a deployment can supply:
+[`docs/extending.md`](../../docs/extending.md#extension-points)).
+
 Models behind `grit.core`'s traits: `Provider`s (`StubProvider`, which calls nothing, and
 `OpenRouterProvider`) and `Classifier`s (`JevClassifier`, over typesafe.ai's Jev, and
 `StubClassifier`, which answers from markers in the message, for tests and the gate); and

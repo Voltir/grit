@@ -1,5 +1,8 @@
 # grit.slack
 
+Implements `ServedEdge` and `CatchUp`, and serves `slack_post` as a `Hosted` (what a
+deployment can supply: [`docs/extending.md`](../../docs/extending.md#extension-points)).
+
 The Slack edge (ADR 0019): a Slack thread is a conversation, brought into the engine and
 answered through Postgres alone (ADR 0002). The Slack SDK's quarantine (STYLE rule 8):
 `com.slack.*` is named in `client/SocketSlack.scala` and nowhere else in grit, and the law's
