@@ -55,7 +55,8 @@ fi
 # TRAP: java.lang needs no import, so a process started with `new ProcessBuilder` or
 # `Runtime.getRuntime.exec` makes no import edge, and rule 1d cannot see it. Grep for it.
 # grit.tui's clipboard (clip.exe, in wire/term) predates grit.host and is the one exception.
-started=$(grep -rlE 'ProcessBuilder|sys\.process|getRuntime\.exec|ProcessHandle' --include='*.scala' grit/*/src |
+# Every production source root: grit.tui.examples' is nested in grit.tui's folder.
+started=$(grep -rlE 'ProcessBuilder|sys\.process|getRuntime\.exec|ProcessHandle' --include='*.scala' grit/*/src grit/tui/examples/src |
   grep -vE '^grit/host/src/|^grit/tui/src/wire/term/SystemTerminal\.scala$' || true)
 if [ -n "$started" ]; then
   echo "Only grit.host may start a process; these sources name a process API:" >&2
