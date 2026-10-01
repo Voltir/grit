@@ -129,6 +129,78 @@ object McpClientTests extends TestSuite {
       }
     }
 
+    test("a list is kept while fresh, and listed again once ttlMs has passed since it came") {
+      withFake { fake =>
+        fake.lists(Vector(tool("a")), ttlMs = Vector(Some(1000L)))
+        val clock = new Hands(start = 5000L)
+        val c = client(fake, clock)
+        c.tools()
+        clock.at = 5999L
+        offered(c.tools()) ==> Right(Vector("fake_a"))
+        fake.count("tools/list") ==> 1
+        fake.lists(Vector(tool("b")), ttlMs = Vector(Some(1000L)))
+        clock.at = 6000L
+        offered(c.tools()) ==> Right(Vector("fake_b"))
+        fake.count("tools/list") ==> 2
+      }
+    }
+
+    test("a list with no ttlMs, or 0, is stale at once") {
+      withFake { fake =>
+        val c = client(fake)
+        fake.lists(Vector(tool("a")), ttlMs = Vector(None))
+        c.tools()
+        c.tools()
+        fake.lists(Vector(tool("a")), ttlMs = Vector(Some(0L)))
+        c.tools()
+        fake.count("tools/list") ==> 3
+      }
+    }
+
+    test("a list of pages is fresh while its least fresh page is") {
+      withFake { fake =>
+        fake.lists(
+          Vector(tool("a"), tool("b"), tool("c")),
+          pageSize = 1,
+          ttlMs = Vector(Some(5000L), Some(1000L), Some(9000L))
+        )
+        val clock = new Hands()
+        val c = client(fake, clock)
+        c.tools()
+        clock.at = 999L
+        c.tools()
+        fake.count("tools/list") ==> 3
+        clock.at = 1000L
+        c.tools()
+        fake.count("tools/list") ==> 6
+      }
+    }
+
+    test("a list made stale is listed again while still fresh") {
+      withFake { fake =>
+        fake.lists(Vector(tool("a")), ttlMs = Vector(Some(60000L)))
+        val c = client(fake)
+        c.tools()
+        c.stale()
+        c.tools()
+        fake.count("tools/list") ==> 2
+      }
+    }
+
+    test("a re-list that fails serves the kept list; with none kept, its error") {
+      withFake { fake =>
+        fake.lists(Vector(tool("a")), ttlMs = Vector(Some(1000L)))
+        val clock = new Hands()
+        val c = client(fake, clock)
+        c.tools()
+        fake.refuses(Some(FakeMcpServer.Refusal(503, Vector.empty, "")))
+        clock.at = 2000L
+        offered(c.tools()) ==> Right(Vector("fake_a"))
+        offered(client(fake).tools()) ==> Left(McpError.Status(503))
+        fake.count("tools/list") ==> 3
+      }
+    }
+
     test("a list longer than MaxPages pages is unreadable, not followed for ever") {
       withFake { fake =>
         fake.lists(Vector.tabulate(McpClient.MaxPages + 1)(i => tool(s"t$i")), pageSize = 1)

@@ -1,7 +1,7 @@
 package grit.mcp.client
 
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 import java.util.concurrent.{
   CompletableFuture,
   ExecutionException,
@@ -36,32 +36,66 @@ final class McpClient(server: McpServer, bearer: Bearer, clock: Clock) {
   @caps.unsafe.untrackedCaptures
   private val ids = new AtomicLong(0L)
 
-  /** The tools grit may offer from `server`, every page of its list; [[McpError.Unreadable]]
-    * when the list runs past [[McpClient.MaxPages]] pages.
-    */
-  def tools(): Either[McpError, Listed] = list()
+  // The list as last read, and the Clock.millis reading until which it is fresh. Replaced
+  // whole through the reference's own atomic operations, so a reader sees one list or the
+  // other; two callers that both find it stale both list, and either result is right.
+  @caps.unsafe.untrackedCaptures
+  private val kept = new AtomicReference[Option[(Listed, Long)]](None)
 
-  /** Every page of the list, from the first. */
-  private def list(): Either[McpError, Listed] = {
+  /** The tools grit may offer from `server`, every page of its list: the list kept while
+    * fresh, else listed again. A list is fresh until the earliest of its pages' receipt plus
+    * that page's `ttlMs`, so a page without one makes it stale at once. A re-list that fails
+    * returns the kept list when there is one, else its error; [[McpError.Unreadable]] when the
+    * list runs past [[McpClient.MaxPages]] pages.
+    */
+  def tools(): Either[McpError, Listed] = {
+    val held = kept.get()
+    held match {
+      case Some((listed, until)) if clock.millis() < until => Right(listed)
+      case _ =>
+        list() match {
+          case Right((listed, until)) =>
+            kept.set(Some((listed, until)))
+            Right(listed)
+          case Left(e) => held.map(_._1).toRight(e)
+        }
+    }
+  }
+
+  /** The kept list made stale, so the next [[tools]] lists again; it is still served when
+    * that fails.
+    */
+  def stale(): Unit = {
+    kept.updateAndGet(_.map((listed, _) => (listed, Long.MinValue)))
+    ()
+  }
+
+  /** Every page of the list, from the first, and the reading until which it is fresh. */
+  private def list(): Either[McpError, (Listed, Long)] = {
     def from(
         cursor: Option[String],
         pages: Int,
-        read: Vector[McpTool.Page]
-    ): Either[McpError, Vector[McpTool.Page]] =
+        read: Vector[(McpTool.Page, Long)]
+    ): Either[McpError, Vector[(McpTool.Page, Long)]] =
       if (pages >= MaxPages)
         Left(McpError.Unreadable(s"tools/list ran past $MaxPages pages"))
       else
         exchange(Rpc.Call.ListTools(cursor)).flatMap(McpTool.page(_, server.name)).flatMap { page =>
+          val received = (page, fresh(clock.millis(), page.ttlMs))
           page.next match {
-            case None => Right(read :+ page)
-            case next => from(next, pages + 1, read :+ page)
+            case None => Right(read :+ received)
+            case next => from(next, pages + 1, read :+ received)
           }
         }
-    from(None, 0, Vector.empty).map { pages =>
+    from(None, 0, Vector.empty).map { read =>
+      val pages = read.map(_._1)
       val listed = pages.flatMap(_.tools).distinctBy(_.name)
       val (allowed, unallowed) =
         listed.partition(t => server.allow.isEmpty || server.allow.contains(t.name))
-      Listed(allowed, pages.flatMap(_.skipped) ++ unallowed.map(t => Skipped.NotAllowed(t.name)))
+      (
+        Listed(allowed, pages.flatMap(_.skipped) ++ unallowed.map(t => Skipped.NotAllowed(t.name))),
+        read.map(_._2).minOption.getOrElse(Long.MinValue)
+      )
     }
   }
 
@@ -145,6 +179,10 @@ object McpClient {
 
   /** The most pages one listing reads: 100. */
   val MaxPages: Int = 100
+
+  /** The reading until which a page received at `received` with `ttlMs` is fresh. */
+  private def fresh(received: Long, ttlMs: Long): Long =
+    if (ttlMs > Long.MaxValue - received) Long.MaxValue else received + ttlMs
 
   /** A `Content-Type`'s media type, lowercase, without its parameters. */
   private def mediaType(contentType: String): String =
