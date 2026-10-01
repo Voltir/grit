@@ -11,7 +11,8 @@ In dependency order:
 - **`event`** — what Slack says, as grit reads it: the opaque ids (`TeamId`, `ChannelId`,
   `UserId`, `Ts`), and `Event`, a person's message `Said` (at the time its ts names) or
   `Ignored` with why, read from an Events API payload by `Events.read`, or from a `Listed`
-  message of a channel's history by `Events.listed`, under the same rules. Imports nothing in slack.
+  message of a channel's history by `Events.listed`, under the same rules; and `MessageLink`, the
+  channel and thread a message's link names. Imports nothing in slack.
 - **`text`** — Slack's text, both ways: `Incoming`, a person's message as grit stores it
   (mentions as names, markup written out, escapes undone), and `RichText`, grit's reply (a
   `grit.prose` doc) as Slack messages (`Post`s) of rich-text blocks, within Slack's limits.
