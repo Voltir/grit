@@ -8,6 +8,7 @@ import grit.core.edge.{CatchUp, EdgeStores, Part, Pending, ServedEdge}
 import grit.core.id.{PrincipalId, SourceId, WorkflowId}
 import grit.core.inbox.{InboxError, Progress}
 import grit.core.message.{AssistantBlock, Message}
+import grit.core.place.Service
 import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError}
@@ -383,7 +384,24 @@ object SlackEdge {
     * tool call that asks first.
     */
   def serving(channels: Set[ChannelId]): ServedEdge =
-    Served.serving(channels, Socket)
+    Served.serving(channels, None, Socket)
+
+  /** As [[serving]], and posting as `posts` allows: it serves `slack_post` at [[PostsAt]]'s
+    * place, offering the channels of `posts` whose names Slack gives at open; one without is
+    * left out and logged, and with none left nothing is served there. A post is a top-level
+    * message, or a reply in a thread its message link names, rendered as a reply is (nothing
+    * in it becomes a mention), and one Slack message at most; it never asks first and is never
+    * run again after a crash.
+    */
+  def serving(channels: Set[ChannelId], posts: Posts): ServedEdge =
+    Served.serving(channels, Some(posts), Socket)
+
+  /** The service place `slack_post` is served at: `service:slack`. A deployment links
+    * conversations to it with [[grit.core.place.Reaches]].
+    */
+  val PostsAt: Service =
+    // "slack" is a service's name by Service.of's rule, so the Left is never taken.
+    Service.of("slack").fold(why => throw new IllegalStateException(why), identity)
 
   /** What `channels` said over the `days` before the catch-up opens that the database has not
     * recorded, one [[grit.core.edge.Unheard]] per channel; heard at the times it was said,

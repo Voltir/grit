@@ -71,6 +71,16 @@ object EventsTests extends TestSuite {
         Right(said("7.0", "7.0", "see file", false))
     }
 
+    test(
+      "a post grit's bot made at a channel's top level is a bot's message, as a message and as a mention of grit"
+    ) {
+      val text = s"<@$Bot> the build is green"
+      Events.read(botPost("8.0", text, mention = false), bot) ==>
+        Right(Event.Ignored("a bot's message"))
+      Events.read(botPost("8.0", text, mention = true), bot) ==>
+        Right(Event.Ignored("a bot's message"))
+    }
+
     test("grit's own messages, other bots', edits, and messages outside a channel are ignored") {
       Events.read(message("4.0", "reply", user = Bot), bot) ==> Right(
         Event.Ignored("a bot's message")

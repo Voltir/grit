@@ -83,4 +83,28 @@ object Payloads {
     extra.foreach((k, v) => event(k) = v)
     callback(event)
   }
+
+  /** A post grit's bot made with its bot token at the top level of `channel`
+    * (`chat.postMessage`, as `slack_post` makes one), as Slack delivers it: by grit's bot user,
+    * with the bot's and the app's ids and no subtype; as an `app_mention` when `mention`.
+    */
+  def botPost(
+      ts: String,
+      text: String,
+      mention: Boolean,
+      channel: String = "C123ABC456"
+  ): String = {
+    val event = ujson.Obj(
+      "type" -> (if (mention) "app_mention" else "message"),
+      "user" -> Bot,
+      "bot_id" -> "B0LAN0Z89",
+      "app_id" -> "A123ABC456",
+      "text" -> text,
+      "ts" -> ts,
+      "channel" -> channel,
+      "event_ts" -> ts
+    )
+    if (!mention) event("channel_type") = "channel"
+    callback(event)
+  }
 }

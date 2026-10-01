@@ -50,8 +50,13 @@ components:
     kind: dependency
     match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/mcp/**"]
 
-  # grit.slack's sources, for its rule below: an edge names core and prose, never the turn.
+  # grit.slack's sources, for its rule below: an edge names core, prose and grit.edge, never
+  # the turn.
   - {name: slack-code,     kind: module, match: ["grit/slack/src", "grit/slack/src/**"]}
+
+  # grit.edge's sources alone, for slack's rule: core-modules also holds grit.turn, which an
+  # edge must never name.
+  - {name: edge-code,      kind: module, match: ["grit/edge/src", "grit/edge/src/**"]}
 
   # The tui groups, for the direction rules. `runtime` needs no entry: it may import
   # every group.
@@ -399,15 +404,16 @@ rules:
     mode: strict
     because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
 
-  # grit.slack names core and prose alone: an edge reaches the engine through Postgres (ADR
-  # 0002) and never the turn. Mill already keeps grit.turn off its classpath; this rule is the
+  # grit.slack names core, prose and grit.edge alone: an edge reaches the engine through
+  # Postgres (ADR 0002) and never the turn; grit.edge is the edge's side of the desk it serves
+  # slack_post through. Mill already keeps grit.turn off its classpath; this rule is the
   # record of the intent, and the guard if a moduleDeps entry is ever added.
-  - id: slack-names-core-and-prose
+  - id: slack-names-core-prose-and-edge
     allow: slack-code
-    only: [core-code, prose-code, slack-code]
+    only: [core-code, prose-code, edge-code, slack-code]
     via: imports
     mode: strict
-    because: "an edge reaches the engine only through Postgres (ADR 0002): grit.slack names grit.core's traits and grit.prose's form, never grit.turn or an implementation"
+    because: "an edge reaches the engine only through Postgres (ADR 0002): grit.slack names grit.core's traits, grit.prose's form and grit.edge's server, never grit.turn or an implementation"
 
   # -------------------------------------------------------------------------------------
   # 2. grit.tui's import direction: each group lists what it may import.

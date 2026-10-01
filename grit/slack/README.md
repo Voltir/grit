@@ -3,8 +3,9 @@
 The Slack edge (ADR 0019): a Slack thread is a conversation, brought into the engine and
 answered through Postgres alone (ADR 0002). The Slack SDK's quarantine (STYLE rule 8):
 `com.slack.*` is named in `client/SocketSlack.scala` and nowhere else in grit, and the law's
-`only-slack-imports-*` rules hold it there. Depends on `grit.core` and `grit.prose`, never
-the turn (`slack-names-core-and-prose`).
+`only-slack-imports-*` rules hold it there. Depends on `grit.core`, `grit.prose` and
+`grit.edge` (whose `Server` serves `slack_post`), never the turn
+(`slack-names-core-prose-and-edge`).
 
 In dependency order:
 
@@ -34,7 +35,10 @@ In dependency order:
   bot (`introduce`), and each turn's prompt then says what the assistant is called there.
   `SlackEdge.serving(channels)` is the module's entry: the edge as a deployment serves it
   (`grit.core.edge.ServedEdge`, ADR 0021), its tokens read from `SLACK_BOT_TOKEN` and
-  `SLACK_APP_TOKEN` as it opens; `SlackEdge.backfill(channels, days)` is `grit backfill`'s
+  `SLACK_APP_TOKEN` as it opens; `SlackEdge.serving(channels, posts)` also serves
+  `slack_post` at `service:slack` (`SlackEdge.PostsAt`), a turn's post in the channels
+  `Posts` declares, within its rate (`Posting`), for the conversations a deployment links
+  there (`grit.core.place.Reaches`); `SlackEdge.backfill(channels, days)` is `grit backfill`'s
   (`CatchUp`), what each channel said over those days that grit has not recorded.
   ← `client`, `text`, `event`
 

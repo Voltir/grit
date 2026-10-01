@@ -297,13 +297,14 @@ object grit extends Module {
   }
 
   /* The Slack edge (ADR 0019): the Slack SDK's quarantine (STYLE rule 8), and the edge that
-   * brings Slack threads in and posts grit's replies out, over core's traits alone. The SDK
+   * brings Slack threads in and posts grit's replies out, over core's traits alone, and serves
+   * slack_post with grit.edge's server. The SDK
    * is slack-api-client, without Bolt: grit acknowledges an event only after it is recorded,
    * and wants the transport alone. Its Socket Mode WebSocket backend is Java-WebSocket, a
    * `provided` dependency of the SDK, at the version its parent POM pins.
    * grit/slack/README.md. */
   object slack extends GritPublished {
-    def moduleDeps = Seq(core, prose)
+    def moduleDeps = Seq(core, prose, edge)
     def mvnDeps = Seq(
       mvn"com.slack.api:slack-api-client:1.51.0",
       mvn"org.java-websocket:Java-WebSocket:1.6.0"

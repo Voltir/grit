@@ -2,9 +2,11 @@ package grit.slack.edge
 
 import java.time.{Duration, Instant}
 
+import grit.core.clock.Clock
 import grit.core.edge.{CatchUp, EdgeRefusal, EdgeStores, ServedEdge, Unheard, Variable}
-import grit.core.id.EdgeName
+import grit.core.id.{EdgeName, PrincipalId}
 import grit.core.store.StoreError
+import grit.edge.Server
 import grit.slack.client.{AppToken, BotToken, Slack}
 import grit.slack.event.{ChannelId, Event, TeamId, UserId}
 
@@ -45,7 +47,11 @@ private[slack] object Served {
   private def refusedToken(e: Any): EdgeRefusal =
     EdgeRefusal.Refused(s"Slack refused the bot token: $e")
 
-  def serving(channels: Set[ChannelId], connect: Connect^): ServedEdge^{connect} = new ServedEdge {
+  def serving(
+      channels: Set[ChannelId],
+      posts: Option[Posts],
+      connect: Connect^
+  ): ServedEdge^{connect} = new ServedEdge {
     def name: EdgeName = Name
     def needs: Vector[Variable] = Needs
     def answersAsks: Boolean = false
@@ -81,13 +87,74 @@ private[slack] object Served {
                   log(
                     s"slack: serving team ${TeamId.value(self.team)} as ${UserId.value(self.bot)}"
                   )
+                  val stopPosting = posts match {
+                    case Some(p) => posting(slack, p, stores, log)
+                    case None => None
+                  }
                   Right(new ServedEdge.Open {
                     def deliver(): Either[StoreError, Int] = edge.deliver()
-                    def close(): Unit = slack.close()
+                    def close(): Unit = {
+                      stopPosting.foreach(_())
+                      slack.close()
+                    }
                   })
               }
           }
       }
+  }
+
+  /** `slack_post` served at [[SlackEdge.PostsAt]] as `posts` allows, over the channels of
+    * `posts` Slack gives a name, each left out logged; `None`, logged, when none has one or the
+    * desk would not register or advertise, so the edge serves its replies without it. What
+    * stops serving it.
+    */
+  private def posting(
+      slack: Slack^,
+      posts: Posts,
+      stores: EdgeStores^,
+      log: String => Unit
+  ): Option[() ->{slack, stores, log, caps.any} Unit] = {
+    val named = posts.to.toVector.sortBy(ChannelId.value).flatMap { id =>
+      val shown = ChannelId.value(id)
+      slack.channelName(id) match {
+        case Right(Some(name)) => Vector((name, id))
+        case Right(None) =>
+          log(s"slack: not posting to $shown: Slack gives grit no name for it")
+          Vector.empty
+        case Left(e) =>
+          log(s"slack: not posting to $shown: Slack not asked: $e")
+          Vector.empty
+      }
+    }
+    val place = SlackEdge.PostsAt.place
+    def nowhere(why: String): None.type = {
+      log(s"slack: posts nowhere: $why")
+      None
+    }
+    Posting.of(slack, Clock.system(), posts.rate, named) match {
+      case None => nowhere("no channel it may post to has a name grit can read")
+      case Some(tool) =>
+        stores.desks.register(PrincipalId.Grit, Set(place)) match {
+          case Left(e) => nowhere(s"${place.written} not registered: ${e.why}")
+          case Right(desk) =>
+            desk.advertise(place, tool.offered, Vector.empty) match {
+              case Left(e) => nowhere(s"${place.written} not advertised: ${e.why}")
+              case Right(()) =>
+                val server = new Server(
+                  desk,
+                  tool,
+                  run => { val _ = Thread.ofVirtual().start(() => run()) },
+                  said => log(s"${place.written}: $said")
+                )
+                log(
+                  s"slack: posts to ${named.map((n, id) => s"#$n (${ChannelId.value(id)})").mkString(", ")}, " +
+                    s"at most ${posts.rate.count} per ${posts.rate.per}"
+                )
+                server.serve()
+                Some(() => server.close())
+            }
+        }
+    }
   }
 
   def backfill(channels: Set[ChannelId], days: Int, connect: Connect^): CatchUp^{connect} =

@@ -2,11 +2,14 @@ package grit.slack.edge
 
 import java.time.ZoneOffset
 
+import scala.concurrent.duration.*
+
+import grit.core.clock.Clock
 import grit.core.edge.{EdgeStores, InMemoryDeliveries, InMemoryEdges, Part}
 import grit.core.id.{PrincipalId, SourceId, TurnRef}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.speech.Reach
+import grit.core.speech.{Rate, Reach}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Jot, Origin, Payload, StoreError, Tx}
 import grit.dbos.sql.TestTx
@@ -332,6 +335,34 @@ object SlackEdgeTests extends TestSuite {
       w.slack.posts.map(p => (p.thread, p.post.fallback, p.tag)) ==>
         Vector((Ts("1.0"), Budget.Refusal, Tag.Refused(Ts("1.0"))))
       (w.slack.reactions, w.pending, w.inbox.started) ==> (Set.empty, Vector.empty, Vector.empty)
+    }
+
+    test(
+      "a post slack_post made, delivered back as Slack sends it, records nothing and starts no turn, listened to or not"
+    ) {
+      val rate = Rate.of(2, 1.hour).getOrElse(throw new java.lang.AssertionError("a rate"))
+      Vector(Set.empty[ChannelId], Set(C)).map { listening =>
+        val w = new World(listening = listening)
+        val posting = Posting.of(w.slack, Clock.system(), rate, Vector(("standup", C))) match {
+          case Some(p) => p
+          case None => throw new java.lang.AssertionError("one channel is a posting")
+        }
+        val q = PostingTests.request(
+          ujson.Obj("channel" -> "standup", "text" -> s"<@$Bot> the build is green"),
+          0
+        )
+        posting.run(PostingTests.route(q), q)
+        val delivered = w.slack.posts.map { p =>
+          val ts = Ts.value(p.ts)
+          // As Slack sends it: the mention a person would read in it, not the escaped text.
+          val text = s"<@$Bot> the build is green"
+          (
+            w.slack.deliver(botPost(ts, text, mention = false)),
+            w.slack.deliver(botPost(ts, text, mention = true))
+          )
+        }
+        (delivered, w.inbox.conversations.all, w.inbox.started)
+      } ==> Vector.fill(2)((Vector((true, true)), Vector.empty, Vector.empty))
     }
 
     test("a message the database cannot record is not acknowledged, so Slack sends it again") {

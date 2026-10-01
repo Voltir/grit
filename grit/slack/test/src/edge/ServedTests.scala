@@ -2,20 +2,25 @@ package grit.slack.edge
 
 import java.time.{Instant, ZoneOffset}
 
+import scala.concurrent.duration.*
+
+import grit.core.clock.Clock
 import grit.core.edge.{
   EdgeRefusal,
   EdgeStores,
   InMemoryDeliveries,
   InMemoryEdges,
+  ServedEdge,
   Unheard,
   Variable
 }
-import grit.core.id.PrincipalId
-import grit.core.id.SourceId
+import grit.core.id.{PrincipalId, SourceId}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.speech.Rate
 import grit.core.spend.Budget
 import grit.core.store.{Jot, Origin, StoreError, Tx}
+import grit.core.tool.Outcome
 import grit.dbos.sql.TestTx
 import grit.slack.client.{AppToken, BotToken, FakeSlack, Slack}
 import grit.slack.event.{ChannelId, Listed, Payloads, Ts, UserId}
@@ -38,11 +43,33 @@ object ServedTests extends TestSuite {
 
   private val Env = Map("SLACK_BOT_TOKEN" -> "xoxb-1", "SLACK_APP_TOKEN" -> "xapp-1")
 
+  private val Skynet = ChannelId("C0C5U2FPAL8")
+
+  /** A channel Slack gives no name. */
+  private val Unnamed = ChannelId("C0UNNAMED1")
+
+  private val TwoAnHour: Rate =
+    Rate.of(2, 1.hour).getOrElse(throw new java.lang.AssertionError("a rate"))
+
   private final class World {
     val slack = new FakeSlack
     val inbox: InMemoryInbox = InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None))
+    val edges: InMemoryEdges = new InMemoryEdges
     val stores =
-      EdgeStores(inbox, inbox.principals, new InMemoryDeliveries, FakeJot, new InMemoryEdges)
+      EdgeStores(inbox, inbox.principals, new InMemoryDeliveries, FakeJot, edges)
+
+    /** What opening logged, in order. */
+    @caps.unsafe.untrackedCaptures
+    var logged = Vector.empty[String]
+
+    /** The edge as `serving` makes it, posting as `posts` allows, opened; logged in [[logged]]. */
+    def openPosting(posts: Posts): ServedEdge.Open^{this} =
+      Served
+        .serving(Set.empty, Some(posts), connect)
+        .open(stores, Env, line => logged :+= line) match {
+        case Right(o) => o
+        case Left(r) => throw new java.lang.AssertionError(r.message)
+      }
     val connect: Served.Connect^{slack} = new Served.Connect {
       def apply(bot: BotToken, app: AppToken): Slack^ = slack
     }
@@ -65,7 +92,7 @@ object ServedTests extends TestSuite {
   val tests = Tests {
     test("serving refuses a token unset or of the wrong kind by its variable, never quoting it") {
       val w = new World
-      val edge = Served.serving(Set(C), w.connect)
+      val edge = Served.serving(Set(C), None, w.connect)
       def refused(env: Map[String, String]) = refusal(edge.open(w.stores, env, _ => ()))
       refused(Map("SLACK_APP_TOKEN" -> "xapp-1")) ==>
         Some(EdgeRefusal.Missing(Variable("SLACK_BOT_TOKEN")))
@@ -79,7 +106,7 @@ object ServedTests extends TestSuite {
     ) {
       val w = new World
       w.slack.names = w.slack.names.updated(UserId(Bot), Some("Bort"))
-      val open = Served.serving(Set(C), w.connect).open(w.stores, Env, _ => ()) match {
+      val open = Served.serving(Set(C), None, w.connect).open(w.stores, Env, _ => ()) match {
         case Right(o) => o
         case Left(r) => throw new java.lang.AssertionError(r.message)
       }
@@ -99,16 +126,69 @@ object ServedTests extends TestSuite {
       w.slack.closed ==> true
     }
 
+    test(
+      "serving with posts registers service:slack, advertises slack_post over the channels Slack names, and runs a request sent there"
+    ) {
+      val w = new World
+      w.slack.channelNames = w.slack.channelNames.updated(Skynet, "probably-not-skynet")
+      val open = w.openPosting(Posts(TwoAnHour, Skynet, Unnamed))
+      try {
+        val expected =
+          Posting.of(
+            w.slack,
+            Clock.system(),
+            TwoAnHour,
+            Vector(("probably-not-skynet", Skynet))
+          ) match {
+            case Some(p) => Some(p.offered.id)
+            case None => None
+          }
+        w.edges.adverts.toVector.map((at, advert) => (at._2, Some(advert.tools))) ==>
+          Vector((SlackEdge.PostsAt.place, expected))
+        w.logged.filter(_.contains("post")) ==> Vector(
+          "slack: not posting to C0UNNAMED1: Slack gives grit no name for it",
+          "slack: posts to #probably-not-skynet (C0C5U2FPAL8), at most 2 per 1 hour"
+        )
+        val q = PostingTests.request(
+          ujson.Obj("channel" -> "probably-not-skynet", "text" -> "the build is green"),
+          0
+        )
+        val _ = w.edges.dispatch(Vector(q))(using TestTx.fake)
+        val deadline = System.nanoTime() + 10_000_000_000L
+        while (w.edges.told.isEmpty && System.nanoTime() < deadline) Thread.sleep(20)
+        (w.edges.told, w.slack.posts.map(p => (p.channel, p.post.fallback))) ==> (
+          Vector((q.slot, Outcome.Done("Posted in #probably-not-skynet."))),
+          Vector((Skynet, "the build is green"))
+        )
+      } finally open.close()
+    }
+
+    test(
+      "serving with posts none of whose channels Slack names serves nothing there, and says so"
+    ) {
+      val w = new World
+      val open = w.openPosting(Posts(TwoAnHour, Unnamed))
+      try {
+        (w.edges.adverts, w.logged.filter(_.contains("post"))) ==> (
+          Map.empty,
+          Vector(
+            "slack: not posting to C0UNNAMED1: Slack gives grit no name for it",
+            "slack: posts nowhere: no channel it may post to has a name grit can read"
+          )
+        )
+      } finally open.close()
+    }
+
     test("serving refuses when Slack will not say who grit is, and closes the connection") {
       val w = new World
       w.slack.down = true
-      refusal(Served.serving(Set(C), w.connect).open(w.stores, Env, _ => ())) ==>
+      refusal(Served.serving(Set(C), None, w.connect).open(w.stores, Env, _ => ())) ==>
         Some(EdgeRefusal.Refused("Slack refused the bot token: Unreachable(down)"))
       w.slack.closed ==> true
     }
 
     test("serving cannot answer a tool call that asks first") {
-      Served.serving(Set(C), new World().connect).answersAsks ==> false
+      Served.serving(Set(C), None, new World().connect).answersAsks ==> false
     }
 
     test(
