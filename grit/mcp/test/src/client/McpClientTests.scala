@@ -257,6 +257,28 @@ object McpClientTests extends TestSuite {
       }
     }
 
+    test("a call answered input_required is refused: grit gives no input") {
+      withFake { fake =>
+        fake.lists(Vector(FakeMcpServer.Weather))
+        // server/tools.mdx, Input Required Tool Results.
+        fake.answers(
+          "get_weather",
+          ujson.Obj(
+            "resultType" -> "input_required",
+            "inputRequests" -> ujson.Obj(
+              "github_login" -> ujson.Obj("method" -> "elicitation/create", "params" -> ujson.Obj())
+            ),
+            "requestState" -> "eyJsb2NhdGlvbiI6Ik5ldyBZb3JrIn0..."
+          )
+        )
+        val c = client(fake)
+        c.tools()
+          .flatMap(_.tools.find(_.name == "get_weather").toRight(McpError.Unreadable("unlisted")))
+          .flatMap(c.call(_, ujson.Obj("location" -> "New York")))
+          .map(_.text) ==> Left(McpError.InputRequired)
+      }
+    }
+
     test("a tool the server no longer lists is a -32602 error at 400, and makes the list stale") {
       withFake { fake =>
         fake.lists(Vector(tool("a"), tool("gone")), ttlMs = Vector(Some(60000L)))
