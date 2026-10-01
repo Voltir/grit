@@ -4,7 +4,7 @@
 Posts a few messages as grit's bot in a test channel, reads them back with exactly the
 requests SocketSlack makes, then deletes what it posted. The answers are kept, cut down to
 the fields SocketSlack reads, with every real id replaced by a fixed placeholder, in
-grit/slack/test/resources/slack-api/ (one file per request, plus workspace.json, the ts
+extensions/slack/test/resources/slack-api/ (one file per request, plus workspace.json, the ts
 Slack gave each post). Run it from a checkout; review the diff before committing it.
 
     SLACK_BOT_TOKEN=xoxb-... scripts/slack-capture \\
@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 
 API = "https://slack.com/api/"
-OUT = pathlib.Path(__file__).resolve().parent.parent / "grit/slack/test/resources/slack-api"
+OUT = pathlib.Path(__file__).resolve().parent.parent / "extensions/slack/test/resources/slack-api"
 REPLY_EVENT = "grit_reply"  # SocketSlack.ReplyEvent
 PAGE = 2  # small, so paging is real; the stub ignores `limit`
 

@@ -54,24 +54,33 @@ mkdir -p "$logs"
 mill=(./mill --color false --ticker false -k)
 totals=() status=0
 
-# A module (grit.core) is a directory grit/core with test/src or it/src; its tier is which.
-modules_of() { # tier -> module names, one per line
-  find grit -type d -path "*/$1/src" | sed -E "s#/$1/src\$##; s#/#.#g" | sort
+# A module's folder is <group>/<name>, or the group alone for kit and eval, and the module is
+# grit.<name> (build.mill's Placed): core/core is grit.core, extensions/tui/examples is
+# grit.tui.examples, kit is grit.kit. Its tier is which of test/src or it/src it has.
+groups=(core extensions kit deployments eval)
+module_of() { # folders, one per line -> module names
+  sed -E 's#^(core|extensions|deployments)/##; s#/#.#g; s#^#grit.#'
 }
 
-# A suite's module and tier, from the one source file declaring it: <Name>.scala under
-# grit/**/{test,it}/src whose package clauses, joined, are the suite's package.
+modules_of() { # tier -> module names, one per line
+  find "${groups[@]}" -type d -path "*/$1/src" | sed -E "s#/$1/src\$##" | module_of | sort
+}
+
+# A suite's module and tier, from the one source file declaring it: <Name>.scala under a
+# {test,it}/src whose package clauses, joined, are the suite's package.
 locate_suite() { # fqcn -> "module tier"
   local fqcn=$1 name=${1##*.} pkg=${1%.*} f found=()
   while IFS= read -r f; do
     [ "$(sed -nE 's/^package ([A-Za-z0-9_.]+).*/\1/p' "$f" | paste -sd.)" = "$pkg" ] &&
       grep -qE "^(private )?object $name\b" "$f" && found+=("$f")
-  done < <(find grit \( -path '*/test/src/*' -o -path '*/it/src/*' \) -name "$name.scala")
+  done < <(find "${groups[@]}" \( -path '*/test/src/*' -o -path '*/it/src/*' \) -name "$name.scala")
   if [ ${#found[@]} -ne 1 ]; then
     echo "check: $fqcn: ${#found[@]} sources declare it${found:+ (${found[*]})}" >&2
     return 1
   fi
-  sed -E 's#^(.*)/(test|it)/src/.*#\1 \2#; s#/#.#g' <<<"${found[0]}"
+  local folder=${found[0]%%/test/src/*} tier=test
+  [ "$folder" = "${found[0]}" ] && folder=${found[0]%%/it/src/*} tier=it
+  echo "$(module_of <<<"$folder") $tier"
 }
 
 # Prints a tier's failing tests from its fresh reports, its compile errors and warnings from

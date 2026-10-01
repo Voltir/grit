@@ -4,7 +4,7 @@
 #
 #   bash scripts/capture-history.sh <workflow-id>
 #
-# Writes grit/turn/test/histories/<epoch>/captured-<id>.json and never overwrites.
+# Writes core/turn/test/histories/<epoch>/captured-<id>.json and never overwrites.
 # TurnReplayTests then replays it under every later build of that epoch. Commit it only if
 # the turn is worth keeping as evidence: the fixture holds the step outputs verbatim,
 # model replies included.
@@ -43,7 +43,7 @@ json=$($psql -At -v id="$id" <<<"$query")
 
 epoch=$(sed -n 's/^ *"epoch": "\(.*\)",$/\1/p' <<<"$json" | head -1)
 [ -n "$epoch" ] || { echo "workflow $id has no application version" >&2; exit 1; }
-out="grit/turn/test/histories/$epoch/captured-${id//[^A-Za-z0-9._-]/_}.json"
+out="core/turn/test/histories/$epoch/captured-${id//[^A-Za-z0-9._-]/_}.json"
 [ -e "$out" ] && { echo "exists, not overwritten: $out" >&2; exit 1; }
 
 mkdir -p "$(dirname "$out")"

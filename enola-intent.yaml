@@ -4,11 +4,11 @@
 #   1. Only grit.dbos may import dev.dbos.*, JDBC or the Postgres driver, only
 #      grit.models and grit.mcp the JDK HTTP client, only grit.slack the Slack SDK, and only
 #      grit.host may start a process (STYLE rule 8); grit.slack names core and prose alone
-#   2. grit.tui's four groups import in one direction (grit/tui/CLAUDE.md)
-#   3. grit.prose names no other grit module (grit/prose/README.md)
+#   2. grit.tui's four groups import in one direction (extensions/tui/CLAUDE.md)
+#   3. grit.prose names no other grit module (core/prose/README.md)
 #   4. core names no extension, each extension names core alone, and the kit names no edge
-#      extension, terminal UI or deployment (ADR 0021; grit/kit/README.md)
-#   5. grit.mcp's protocol, scope, client and edge name no GitHub package (grit/mcp/README.md)
+#      extension, terminal UI or deployment (ADR 0021; kit/README.md)
+#   5. grit.mcp's protocol, scope, client and edge name no GitHub package (extensions/mcp/README.md)
 #
 # Every rule was watched failing on a deliberately planted bad import before it was
 # adopted. Do the same for any new rule: a rule that can't fail passes silently.
@@ -32,65 +32,65 @@ components:
   # grit.dbos, and Mill's moduleDeps are transitive, so these rules are the only guard there.
   - name: outside-dbos
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/slack/**", "grit/mcp/**"]
+    match: ["core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "extensions/digest/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
 
   # Every module except grit.models and grit.mcp, the two egresses, for the HTTP quarantine
   # (STYLE rule 8).
   - name: outside-egress
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/slack/**"]
+    match: ["core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "extensions/digest/**", "core/edge/**", "extensions/slack/**"]
 
   # Every module except grit.host, for the process quarantine (STYLE rule 8).
   - name: outside-host
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/slack/**", "grit/mcp/**"]
+    match: ["core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/tools/**", "core/lifecycle/**", "extensions/digest/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
 
   # Every module except grit.slack, for the Slack SDK's quarantine (STYLE rule 8).
   - name: outside-slack
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/mcp/**"]
+    match: ["core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "extensions/digest/**", "core/edge/**", "extensions/mcp/**"]
 
   # grit.slack's sources, for its rule below: an edge names core, prose and grit.edge, never
   # the turn.
-  - {name: slack-code,     kind: module, match: ["grit/slack/src", "grit/slack/src/**"]}
+  - {name: slack-code,     kind: module, match: ["extensions/slack/src", "extensions/slack/src/**"]}
 
   # grit.edge's sources alone, for slack's rule: core-modules also holds grit.turn, which an
   # edge must never name.
-  - {name: edge-code,      kind: module, match: ["grit/edge/src", "grit/edge/src/**"]}
+  - {name: edge-code,      kind: module, match: ["core/edge/src", "core/edge/src/**"]}
 
   # The tui groups, for the direction rules. `runtime` needs no entry: it may import
   # every group.
-  - {name: core-code,      kind: module, match: ["grit/core/src", "grit/core/src/**"]}
-  - {name: tui-model,      kind: module, match: ["grit/tui/src/model", "grit/tui/src/model/**"]}
-  - {name: tui-components, kind: module, match: ["grit/tui/src/components", "grit/tui/src/components/**"]}
-  - {name: tui-wire,       kind: module, match: ["grit/tui/src/wire", "grit/tui/src/wire/**"]}
+  - {name: core-code,      kind: module, match: ["core/core/src", "core/core/src/**"]}
+  - {name: tui-model,      kind: module, match: ["extensions/tui/src/model", "extensions/tui/src/model/**"]}
+  - {name: tui-components, kind: module, match: ["extensions/tui/src/components", "extensions/tui/src/components/**"]}
+  - {name: tui-wire,       kind: module, match: ["extensions/tui/src/wire", "extensions/tui/src/wire/**"]}
 
   # grit.prose, for its rule below: the source tree alone, so a test's imports are not
   # counted against it.
-  - {name: prose-code,     kind: module, match: ["grit/prose/src", "grit/prose/src/**"]}
+  - {name: prose-code,     kind: module, match: ["core/prose/src", "core/prose/src/**"]}
 
-  # Core, extension, kit and deployment (ADR 0021; the table is grit/kit/README.md's), for
+  # Core, extension, kit and deployment (ADR 0021; the table is kit/README.md's), for
   # rule 4 below. Source trees alone, so a test's imports are not counted. Which core module
   # may name which is Mill's moduleDeps' job, not these rules'.
   - name: core-modules
     kind: module
-    match: ["grit/core/src", "grit/core/src/**", "grit/dbos/src", "grit/dbos/src/**",
-            "grit/turn/src", "grit/turn/src/**", "grit/lifecycle/src", "grit/lifecycle/src/**",
-            "grit/assembly/src", "grit/assembly/src/**", "grit/prose/src", "grit/prose/src/**",
-            "grit/edge/src", "grit/edge/src/**"]
-  - {name: models-code,    kind: module, match: ["grit/models/src", "grit/models/src/**"]}
-  - {name: host-code,      kind: module, match: ["grit/host/src", "grit/host/src/**"]}
-  - {name: tools-code,     kind: module, match: ["grit/tools/src", "grit/tools/src/**"]}
-  - {name: digest-code,    kind: module, match: ["grit/digest/src", "grit/digest/src/**"]}
-  - {name: tui-code,       kind: module, match: ["grit/tui/src", "grit/tui/src/**"]}
-  - {name: kit-code,       kind: module, match: ["grit/kit/src", "grit/kit/src/**"]}
-  - {name: mcp-code,       kind: module, match: ["grit/mcp/src", "grit/mcp/src/**"]}
+    match: ["core/core/src", "core/core/src/**", "core/dbos/src", "core/dbos/src/**",
+            "core/turn/src", "core/turn/src/**", "core/lifecycle/src", "core/lifecycle/src/**",
+            "core/assembly/src", "core/assembly/src/**", "core/prose/src", "core/prose/src/**",
+            "core/edge/src", "core/edge/src/**"]
+  - {name: models-code,    kind: module, match: ["extensions/models/src", "extensions/models/src/**"]}
+  - {name: host-code,      kind: module, match: ["extensions/host/src", "extensions/host/src/**"]}
+  - {name: tools-code,     kind: module, match: ["extensions/tools/src", "extensions/tools/src/**"]}
+  - {name: digest-code,    kind: module, match: ["extensions/digest/src", "extensions/digest/src/**"]}
+  - {name: tui-code,       kind: module, match: ["extensions/tui/src", "extensions/tui/src/**"]}
+  - {name: kit-code,       kind: module, match: ["kit/src", "kit/src/**"]}
+  - {name: mcp-code,       kind: module, match: ["extensions/mcp/src", "extensions/mcp/src/**"]}
   # grit.mcp less its github package, for the rule that keeps the protocol, client, scope
   # and edge generic: GitHub's names are a package a deployment uses, never one they import.
   - name: mcp-generic
     kind: module
-    match: ["grit/mcp/src/wire", "grit/mcp/src/wire/**", "grit/mcp/src/scope", "grit/mcp/src/scope/**",
-            "grit/mcp/src/client", "grit/mcp/src/client/**", "grit/mcp/src/edge", "grit/mcp/src/edge/**"]
+    match: ["extensions/mcp/src/wire", "extensions/mcp/src/wire/**", "extensions/mcp/src/scope", "extensions/mcp/src/scope/**",
+            "extensions/mcp/src/client", "extensions/mcp/src/client/**", "extensions/mcp/src/edge", "extensions/mcp/src/edge/**"]
 
 rules:
   # -------------------------------------------------------------------------------------
@@ -520,7 +520,7 @@ rules:
     only: [core-modules, mcp-generic]
     via: imports
     mode: strict
-    because: "grit/mcp/README.md: grit.mcp's protocol, client, scope and edge serve any MCP server; GitHub's bounds are grit.mcp.github, which a deployment names and they never do"
+    because: "extensions/mcp/README.md: grit.mcp's protocol, client, scope and edge serve any MCP server; GitHub's bounds are grit.mcp.github, which a deployment names and they never do"
 
   - id: tui-names-core-alone
     allow: tui-code

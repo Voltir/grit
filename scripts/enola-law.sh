@@ -38,11 +38,11 @@ fi
 # anywhere, and nothing says so. Every quarantined class grit.dbos (DBOS, JDBC, the
 # driver), grit.models or grit.mcp (java.net.http), grit.slack (the Slack SDK) or grit.host
 # (processes) imports must be named by a rule.
-unruled=$( { grep -oE '"name":"grit/dbos/src(/[a-z]+)* -\\u003e (dev\.dbos|java\.sql|javax\.sql|org\.postgresql)\.[^"]*"' .enola/facts.jsonl
-    grep -oE '"name":"grit/models/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
-    grep -oE '"name":"grit/mcp/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
-    grep -oE '"name":"grit/host/src(/[a-z]+)* -\\u003e (java\.lang\.Process|scala\.sys\.process)[^"]*"' .enola/facts.jsonl
-    grep -oE '"name":"grit/slack/src(/[a-z]+)* -\\u003e com\.slack\.[^"]*"' .enola/facts.jsonl; } |
+unruled=$( { grep -oE '"name":"core/dbos/src(/[a-z]+)* -\\u003e (dev\.dbos|java\.sql|javax\.sql|org\.postgresql)\.[^"]*"' .enola/facts.jsonl
+    grep -oE '"name":"extensions/models/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
+    grep -oE '"name":"extensions/mcp/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
+    grep -oE '"name":"extensions/host/src(/[a-z]+)* -\\u003e (java\.lang\.Process|scala\.sys\.process)[^"]*"' .enola/facts.jsonl
+    grep -oE '"name":"extensions/slack/src(/[a-z]+)* -\\u003e com\.slack\.[^"]*"' .enola/facts.jsonl; } |
   sed -E 's/.*u003e ([^"]*)"/\1/' | sort -u | while read -r class; do
     grep -qF "\"* -> $class\"" enola-intent.yaml || echo "$class"
   done)
@@ -56,8 +56,8 @@ fi
 # `Runtime.getRuntime.exec` makes no import edge, and rule 1d cannot see it. Grep for it.
 # grit.tui's clipboard (clip.exe, in wire/term) predates grit.host and is the one exception.
 # Every production source root: grit.tui.examples' is nested in grit.tui's folder.
-started=$(grep -rlE 'ProcessBuilder|sys\.process|getRuntime\.exec|ProcessHandle' --include='*.scala' grit/*/src grit/tui/examples/src |
-  grep -vE '^grit/host/src/|^grit/tui/src/wire/term/SystemTerminal\.scala$' || true)
+started=$(grep -rlE 'ProcessBuilder|sys\.process|getRuntime\.exec|ProcessHandle' --include='*.scala' core/*/src extensions/*/src extensions/tui/examples/src kit/src deployments/*/src |
+  grep -vE '^extensions/host/src/|^extensions/tui/src/wire/term/SystemTerminal\.scala$' || true)
 if [ -n "$started" ]; then
   echo "Only grit.host may start a process; these sources name a process API:" >&2
   printf '  %s\n' $started >&2

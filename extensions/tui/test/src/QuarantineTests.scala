@@ -49,7 +49,7 @@ object QuarantineTests extends TestSuite {
 
   /** Library sources only -- `examples` is an app and plays by app rules. */
   private def librarySources: Vector[(String, String)] = repoRoot match {
-    case Some(root) => sources(root, new File(root, "grit/tui/src"))
+    case Some(root) => sources(root, new File(root, "extensions/tui/src"))
     case None => Vector.empty
   }
 
@@ -79,7 +79,7 @@ object QuarantineTests extends TestSuite {
     "runtime" -> Set("model", "components", "wire")
   ).withDefaultValue(Set.empty)
 
-  private val Root = "grit/tui/src/"
+  private val Root = "extensions/tui/src/"
 
   /** The terminal seam, the one package allowed to touch a device. */
   private val Term = Root + "wire/term/"
@@ -217,7 +217,7 @@ object QuarantineTests extends TestSuite {
       // group rule above; this holds the example's side -- Transcript.scala, the file
       // that builds and grows the mock transcript, names no wire package.
       val root = repoRoot.getOrElse(sys.error("no repo root"))
-      val f = new File(root, "grit/tui/examples/src/Transcript.scala")
+      val f = new File(root, "extensions/tui/examples/src/Transcript.scala")
       assert(f.isFile)
       val body = java.nio.file.Files.readString(f.toPath)
       assert(body.nonEmpty)
