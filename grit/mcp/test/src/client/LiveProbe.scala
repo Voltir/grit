@@ -59,6 +59,8 @@ object LiveProbe {
     protected def server: McpServer = s
     protected def bearer: Bearer = b
     protected def read: (String, ujson.Obj) = ("get_file_contents", arguments)
+    // A fine-grained PAT's shape, so GitHub refuses it as unknown (401), not as malformed (400).
+    protected def unknownToken: String = "github_pat_" + "0" * 22 + "_" + "0" * 59
   }
 
   /** Writes the answers to the first `tools/list` page and to `get_file_contents` with

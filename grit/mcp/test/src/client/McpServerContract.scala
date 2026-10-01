@@ -21,6 +21,12 @@ abstract class McpServerContract extends TestSuite {
   /** Its token. */
   protected def bearer: Bearer
 
+  /** A token shaped as the server's tokens are that it does not know, so that it is refused
+    * as unknown (401) rather than as malformed, which a server may answer otherwise (GitHub's
+    * answers 400).
+    */
+  protected def unknownToken: String
+
   /** A tool it lists as read-only that mirrors an argument into a header (`x-mcp-header`), by
     * its own name, and arguments it answers without error, the mirrored one among them.
     */
@@ -190,7 +196,7 @@ abstract class McpServerContract extends TestSuite {
     }
 
     test("a token it does not know is refused: 401, with its challenge") {
-      Bearer.of(Map("NOT_A_TOKEN" -> "grit-contract-not-a-token"), Variable("NOT_A_TOKEN")) match {
+      Bearer.of(Map("UNKNOWN_TOKEN" -> unknownToken), Variable("UNKNOWN_TOKEN")) match {
         case Right(wrong) =>
           // The challenge's scheme: the rest is the server's to word.
           client(wrong).tools().map(_.tools.size).left.map {
@@ -220,6 +226,8 @@ object McpServerFakeTests extends McpServerContract {
       case Right(b) => b
       case Left(why) => throw new java.lang.AssertionError(why.message)
     }
+
+  protected val unknownToken: String = "fake-unknown-token"
 
   protected val read: (String, ujson.Obj) = (
     "get_file_contents",
