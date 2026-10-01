@@ -28,6 +28,16 @@ object RichTextTests extends TestSuite {
     }
 
   val tests = Tests {
+    test(
+      "a post's fallback escapes &, < and >, so nothing in it becomes a mention, a broadcast or a link"
+    ) {
+      RichText
+        .render(Doc(Vector(para("<!channel> <@U0BEN0001> & <https://x.io|y>"))))
+        .map(
+          _.fallback
+        ) ==> Vector("&lt;!channel&gt; &lt;@U0BEN0001&gt; &amp; &lt;https://x.io|y&gt;")
+    }
+
     test("a paragraph is a section, each mark a style, a link a link element") {
       val doc = Doc(
         Vector(

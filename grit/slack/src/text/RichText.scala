@@ -3,8 +3,8 @@ package grit.slack.text
 import grit.prose.form.{Block, Doc, Item, Mark, Renderer, Span, Text}
 
 /** One Slack message of a reply: its rich_text and divider blocks, and the plain text Slack
-  * shows where blocks are not shown (a notification). Only [[RichText]] makes one, so none
-  * is past Slack's limits.
+  * shows where blocks are not shown (a notification), escaped so it reads as written. Only
+  * [[RichText]] makes one, so none is past Slack's limits.
   */
 final case class Post private[text] (blocks: ujson.Arr, fallback: String)
 
@@ -31,6 +31,12 @@ object RichText extends Renderer[Vector[Post]] {
   def render(doc: Doc): Vector[Post] =
     posts(doc.blocks.flatMap(block).flatMap(fit))
 
+  /** `text` with `&`, `<` and `>` written as Slack's mrkdwn escapes them, so a message's
+    * plain text reads as written: nothing in it becomes a mention, a broadcast or a link.
+    */
+  private def escaped(text: String): String =
+    text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
   /** A Slack block and its plain text, which is what counts against [[MaxChars]]. */
   private final case class Piece(json: ujson.Value, plain: String)
 
@@ -43,7 +49,7 @@ object RichText extends Renderer[Vector[Post]] {
       val ps = run.reverse
       done += Post(
         ujson.Arr.from(ps.map(_.json)),
-        ps.map(_.plain).filter(_.nonEmpty).mkString("\n")
+        escaped(ps.map(_.plain).filter(_.nonEmpty).mkString("\n"))
       )
       run = Nil
       size = 0
