@@ -29,7 +29,8 @@ Never read `.env`. No model calls unless the brief allows one and states a budge
   `./mill shutdown`, then `git checkout --detach` so the main session can merge and delete
   the branch. Never delete `out/` or the worktree. If the worktree is missing, create it
   with `git worktree add --detach .claude/worktrees/fixer main` from the repository root.
-- **Your branch only.** Never touch `main`, never push, never amend or rewrite history.
+- **Your branch only.** Never touch `main`, never push, never call GitHub, never amend or
+  rewrite history. The main session pushes your branch and opens its pull request.
 - **Drive the TUI with `scripts/tui-drive`**, never a driver of your own, for a real-use
   run: named sessions across many commands (`start`, `type`, `wait`, `screen`, `kill`,
   `restart`, `stop`, `ps`). It stamps and cleans up the JVMs, defaults to `grit_agent`,

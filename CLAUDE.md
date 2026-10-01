@@ -213,7 +213,8 @@ only the companion, so use `get-docs`. Set-up, the MCP port and BSP failure mode
   stub, have passed paint and latency bugs.
 - **Commit points.** Commit when a planned item, or a self-contained step inside one, has
   its tests passing with no warnings and the law green. Don't ask first; report the hash.
-  One item per commit, never two mixed. Never push, amend or rewrite history unless asked.
+  One item per commit, never two mixed. Work reaches `main` through a pull request; never
+  push to `main` directly, and never amend or rewrite history on it.
 - **One home per fact.** State a fact in one place and link to it from the others. No
   counts in docs: test totals, check counts and rule counts go in commit messages, where
   they are true as of that commit.
