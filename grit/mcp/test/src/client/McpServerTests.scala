@@ -16,11 +16,16 @@ object McpServerTests extends TestSuite {
     test("a name is a lowercase letter then up to 15 lowercase letters, digits or _") {
       Vector("g", "github", "git_hub2", "abcdefghijklmnop").map(n => server(n).map(_._1)) ==>
         Vector(Right("g"), Right("github"), Right("git_hub2"), Right("abcdefghijklmnop"))
-      Vector("", "GitHub", "2git", "_git", "git-hub", "git.hub", "abcdefghijklmnopq")
-        .map(n => server(n).isLeft) ==> Vector.fill(7)(true)
+      val bad = Vector("", "GitHub", "2git", "_git", "git-hub", "git.hub", "abcdefghijklmnopq")
+      bad.map(n => server(n)) ==> bad.map(n =>
+        Left(
+          "an MCP server's name must be a lowercase letter then up to 15 lowercase letters, " +
+            s"digits or _, not '$n'"
+        )
+      )
     }
 
-    test("an endpoint is https, or http on a loopback host only") {
+    test("an endpoint is an absolute URL with a host, https or http on a loopback host only") {
       Vector(
         "https://api.githubcopilot.com/mcp/readonly",
         "http://localhost:8080/mcp",
@@ -32,18 +37,20 @@ object McpServerTests extends TestSuite {
         Right("http://127.0.0.1:9/mcp"),
         Right("http://[::1]:9/mcp")
       )
-      server(endpoint = "http://example.com/mcp") ==>
-        Left(
-          "github's endpoint must be https (http only on a loopback host): 'http://example.com/mcp'"
+      val insecure =
+        Vector(
+          "http://example.com/mcp",
+          "http://127.0.0.1.example.com/mcp",
+          "http://128.0.0.1/mcp",
+          "ftp://localhost/mcp"
         )
-      Vector(
-        "http://127.0.0.1.example.com/mcp",
-        "http://128.0.0.1/mcp",
-        "ftp://localhost/mcp",
-        "/mcp",
-        "https:///mcp",
-        "https://exa mple.com"
-      ).map(e => server(endpoint = e).isLeft) ==> Vector.fill(6)(true)
+      insecure.map(e => server(endpoint = e)) ==> insecure.map(e =>
+        Left(s"github's endpoint must be https (http only on a loopback host): '$e'")
+      )
+      val hostless = Vector("/mcp", "https:///mcp", "https://exa mple.com")
+      hostless.map(e => server(endpoint = e)) ==> hostless.map(e =>
+        Left(s"github's endpoint is not an absolute URL with a host: '$e'")
+      )
     }
 
     test("a token is the variable's value; unset, blank or not visible ASCII names the variable") {
