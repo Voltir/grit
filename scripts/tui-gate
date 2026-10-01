@@ -90,7 +90,9 @@ classpath() {
 }
 CP=$(classpath grit.tui.examples.runClasspath)
 APP_CP=$(classpath grit.app.runClasspath)
-J=${GRIT_JDK_HOME:-/home/nickchilders/.jdks/jdk-26.0.2}
+# The JDK build.mill pins (its jvmId), as Mill fetched it; `show` prints a PathRef, whose path
+# is everything after its third colon.
+J=$(JAVA_OPTS= ./mill --ticker false show grit.tui.examples.javaHome 2>/dev/null | tail -1 | tr -d '"' | cut -d: -f4-)
 # Every JVM this script forks carries a stamp on its command line, and teardown kills
 # only processes carrying *this* stamp. A blanket `pkill -f Demo` also kills the
 # copy the developer is playing with in another window -- which is exactly what it did
