@@ -9,8 +9,9 @@ import grit.mcp.wire.{Headers, McpError, McpTool, Rpc}
 import utest.*
 
 /** The exchanges an MCP server at revision 2026-07-28 must answer as grit's client reads them,
-  * run against [[FakeMcpServer]] in the unit tier ([[McpServerFakeTests]]) and against
-  * GitHub's by `LiveProbe`, so the fake is held to what a real server does.
+  * run against [[FakeMcpServer]] in the unit tier ([[McpServerFakeTests]]). `LiveProbe` runs it
+  * against GitHub's at the live run, which holds the fake to a real server; until then it is
+  * held only to the spec and to go-sdk's source.
   */
 abstract class McpServerContract extends TestSuite {
 
@@ -49,10 +50,10 @@ abstract class McpServerContract extends TestSuite {
     case _ => None
   }
 
-  /** The HTTP status of a POST carrying `sent`, the token and `body`, and the JSON-RPC error
-    * code its answer carries, when it carries one.
+  /** The HTTP status of a POST carrying `sent`, the token and `body`, and its answer read as a
+    * refusal ([[Rpc.failure]]).
     */
-  private def raw(sent: Vector[(String, String)], body: ujson.Value): (Int, Option[Int]) = {
+  private def answered(sent: Vector[(String, String)], body: ujson.Value): (Int, McpError) = {
     val response = HttpClient
       .newHttpClient()
       .send(
@@ -63,7 +64,13 @@ abstract class McpServerContract extends TestSuite {
           .build(),
         HttpResponse.BodyHandlers.ofString()
       )
-    (response.statusCode, code(Rpc.failure(response.statusCode, response.body, None)))
+    (response.statusCode, Rpc.failure(response.statusCode, response.body, None))
+  }
+
+  /** [[answered]]'s status, and the JSON-RPC error code its answer carries, when it carries one. */
+  private def raw(sent: Vector[(String, String)], body: ujson.Value): (Int, Option[Int]) = {
+    val (status, e) = answered(sent, body)
+    (status, code(e))
   }
 
   val tests = Tests {
@@ -92,6 +99,46 @@ abstract class McpServerContract extends TestSuite {
       val call = Rpc.Call.ListTools(None)
       raw(Headers.of(call).filter(_._1 != "Mcp-Method"), Rpc.request(1, call)) ==>
         (400, Some(-32020))
+    }
+
+    test("a version it does not speak is rejected: 400, -32022, naming 2026-07-28 as one it does") {
+      // basic/versioning.mdx; a version later than 2026-07-28, which go-sdk refuses in JSON-RPC.
+      val call = Rpc.Call.ListTools(None)
+      val later = "2099-12-31"
+      val body = Rpc.request(1, call)
+      body("params")("_meta")("io.modelcontextprotocol/protocolVersion") = later
+      val (status, e) = answered(
+        Headers.of(call).map((k, v) => if (k == "MCP-Protocol-Version") (k, later) else (k, v)),
+        body
+      )
+      (
+        status,
+        e match {
+          case McpError.Unsupported(supported) => Some(supported.contains(Rpc.Version))
+          case _ => None
+        }
+      ) ==> (400, Some(true))
+    }
+
+    test("a call whose Mcp-Name is not the body's tool is rejected: 400 and -32020") {
+      // streamable-http.mdx, Server Validation: a header that does not match the body.
+      unlisted.map { t =>
+        val call = Rpc.Call.CallTool(t, ujson.Obj())
+        raw(
+          Headers
+            .of(call)
+            .map((k, v) => if (k == "Mcp-Name") (k, "grit_contract_other") else (k, v)),
+          Rpc.request(1, call)
+        )
+      } ==> Some((400, Some(-32020)))
+    }
+
+    test("a request whose _meta lacks clientCapabilities is rejected: 400 and -32602") {
+      // basic/index.mdx, Per-request protocol fields: a required field missing.
+      val call = Rpc.Call.ListTools(None)
+      val body = Rpc.request(1, call)
+      val _ = body("params")("_meta").obj.remove("io.modelcontextprotocol/clientCapabilities")
+      raw(Headers.of(call), body) ==> (400, Some(-32602))
     }
 
     test("a request whose Accept lacks text/event-stream is rejected: 400, with no MCP error") {

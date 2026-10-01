@@ -28,7 +28,8 @@ The test tree mirrors it. `client`'s and `edge`'s tests run against `FakeMcpServ
 test JVM (`com.sun.net.httpserver`) that checks every request as the spec's server rules say.
 `McpServerContract` is the exchanges a server must answer as the client reads them; the fake
 keeps it in the unit tier (`McpServerFakeTests`), and `LiveProbe`, a main in test sources that
-needs a token and so is no tier, runs it against GitHub's (its doc says how).
+needs a token and so is no tier, will run it against GitHub's at the live run (its doc says
+how); until then the fake is held to the spec and go-sdk's source, not to a real server.
 
 `test/resources/toolsnaps/` holds three of GitHub's MCP server's tool snapshots, each a tool
 exactly as its `tools/list` lists it, so the reader is tested on entries a real server sends:

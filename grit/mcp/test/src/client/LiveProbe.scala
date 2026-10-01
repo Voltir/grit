@@ -20,7 +20,7 @@ import grit.mcp.wire.{Headers, McpTool, Rpc}
   */
 object LiveProbe {
 
-  /** GitHub's hosted endpoint, which lists only its read-only tools. */
+  /** GitHub's hosted endpoint, which by its docs lists only its read-only tools. */
   val Endpoint = "https://api.githubcopilot.com/mcp/readonly"
 
   val Token: Variable = Variable("GITHUB_MCP_TOKEN")

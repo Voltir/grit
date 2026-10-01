@@ -10,7 +10,7 @@ import scala.jdk.CollectionConverters.*
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 
 /** An MCP server at revision 2026-07-28 in this JVM, over Streamable HTTP on a loopback port,
-  * held to [[McpServerContract]] as GitHub's is. It checks every request as the spec's server
+  * held to [[McpServerContract]]. It checks every request as the spec's server
   * rules say (`streamable-http.mdx` §Server Validation, `basic/index.mdx` §`_meta`), in the
   * order go-sdk's stateless server does, and rejects one that breaks them: `401` without its
   * token; `415` for a `Content-Type` other than `application/json`; `400` in plain text for an
