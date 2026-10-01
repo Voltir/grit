@@ -53,8 +53,9 @@ object TurnOffer {
     * that workspace advertises, then the others it advertises that
     * [[grit.core.tool.Hosted.advertised]] offers, less any whose name one of `tooling`'s has,
     * then `tooling`'s own, then its operator tools when
-    * its origin is the operator's ([[grit.core.store.Audience.operator]]); and its prompt: the base, its
-    * edge's fragment, what its workspace calls the assistant (when it has named it,
+    * its origin is the operator's ([[grit.core.store.Audience.operator]]); and its prompt: the base,
+    * [[TurnPrompt.Candour]], its edge's fragment, where its reply goes
+    * ([[TurnPrompt.destination]]), what its workspace calls the assistant (when it has named it,
     * [[grit.core.store.Origin.assistant]]), [[TurnPrompt.unprompted]] when its root is heard,
     * the voice's fragment (none for plain), what it may reach there, and the
     * instruction files the edge read there. Its root is `Heard` when its first entry in
@@ -118,8 +119,9 @@ object TurnOffer {
       prompt = SystemPrompt.of(
         Vector(
           TurnPrompt.Base,
+          TurnPrompt.Candour,
           TurnPrompt.edge(conversation.origin)
-        ) ++ called.map(TurnPrompt.called) ++
+        ) ++ TurnPrompt.destination(conversation.origin) ++ called.map(TurnPrompt.called) ++
           Option.when(root == Root.Heard)(TurnPrompt.unprompted) ++ Vector(
             TurnPrompt.reach(workspace, hostedSet)
           ) ++ Voice.fragment(voice) ++ place.fragments

@@ -466,7 +466,10 @@ object TurnTests extends TestSuite {
       val edge = TurnPrompt.edge(origin).text
       val reach = TurnPrompt.reach(Some(Place.of(checkout)), ToolSet.Empty).text
       turn.requests.map(_.system) ==>
-        Vector.fill(2)(Vector(TurnPrompt.Base.text, edge, person, reach).mkString("\n\n"))
+        Vector.fill(2)(
+          Vector(TurnPrompt.Base.text, TurnPrompt.Candour.text, edge, person, reach)
+            .mkString("\n\n")
+        )
       summary.requests.size ==> 1
       summary.requests.map(_.system) ==> Vector(TurnSummary.TopicalSystem)
     }
@@ -514,6 +517,7 @@ object TurnTests extends TestSuite {
       turn.requests.map(_.system) ==> Vector(
         Vector(
           TurnPrompt.Base.text,
+          TurnPrompt.Candour.text,
           TurnPrompt.edge(origin).text,
           TurnPrompt.reach(Some(Place.of(checkout)), ToolSet.Empty).text
         ).mkString("\n\n")

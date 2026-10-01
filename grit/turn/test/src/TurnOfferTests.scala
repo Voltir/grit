@@ -208,7 +208,8 @@ object TurnOfferTests extends TestSuite {
   private def expected(origin: Origin, called: Option[String]): String =
     SystemPrompt
       .of(
-        Vector(TurnPrompt.Base, TurnPrompt.edge(origin)) ++ called.map(TurnPrompt.called) :+
+        Vector(TurnPrompt.Base, TurnPrompt.Candour, TurnPrompt.edge(origin)) ++
+          TurnPrompt.destination(origin) ++ called.map(TurnPrompt.called) :+
           TurnPrompt.reach(None, ToolSet.Empty)
       )
       .render
@@ -222,6 +223,28 @@ object TurnOfferTests extends TestSuite {
     test("a Slack thread's turn and a task's run are offered none of the operator's tools") {
       names(slack) ==> Vector("about")
       names(Origin.Task("nightly", "1")) ==> Vector("about")
+    }
+
+    test(
+      "every turn is told candour after the base; a Slack turn is told where its reply goes after its edge, a TUI turn is not"
+    ) {
+      // Joined by hand, not through SystemPrompt.of, so the order within each layer is pinned.
+      offered(slack, new InMemoryPrincipals) ==> Vector(
+        TurnPrompt.Base.text,
+        TurnPrompt.Candour.text,
+        TurnPrompt.edge(slack).text,
+        "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
+          "only by calling a tool that does it, and only if one is offered to you.",
+        TurnPrompt.reach(None, ToolSet.Empty).text
+      ).mkString("\n\n")
+      val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
+      val tui = Origin.Tui(dir, "default")
+      offered(tui, new InMemoryPrincipals) ==> Vector(
+        TurnPrompt.Base.text,
+        TurnPrompt.Candour.text,
+        TurnPrompt.edge(tui).text,
+        TurnPrompt.reach(Some(Place.of(dir)), ToolSet.Empty).text
+      ).mkString("\n\n")
     }
 
     test("a Slack turn's prompt says what its workspace calls the assistant, after its edge") {
@@ -240,12 +263,9 @@ object TurnOfferTests extends TestSuite {
       root ==> TurnOffer.Root.Heard
       prompt ==> SystemPrompt
         .of(
-          Vector(
-            TurnPrompt.Base,
-            TurnPrompt.edge(slack),
-            TurnPrompt.unprompted,
-            TurnPrompt.reach(None, ToolSet.Empty)
-          )
+          Vector(TurnPrompt.Base, TurnPrompt.Candour, TurnPrompt.edge(slack)) ++
+            TurnPrompt.destination(slack) ++
+            Vector(TurnPrompt.unprompted, TurnPrompt.reach(None, ToolSet.Empty))
         )
         .render
     }

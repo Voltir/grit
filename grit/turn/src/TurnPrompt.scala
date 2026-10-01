@@ -65,6 +65,39 @@ object TurnPrompt {
     )
   }
 
+  /** What every turn is told about what its tools did: a refused or failed call, or one that
+    * found nothing, is told to the person, never answered around; it acts only through the
+    * tools it is offered and only in this turn, so it promises nothing else. A base-layer
+    * fragment of its own, so [[Base]]'s measured text stays as it is.
+    */
+  val Candour: Fragment =
+    Fragment(
+      Layer.Base,
+      Fragment.Grit,
+      "When a tool call is refused, fails or finds nothing, say so in your reply and why, " +
+        "and do not answer with something else in its place as if it were what was asked. " +
+        "You act only through the tools you are offered, and only during this turn: never " +
+        "say you will do something none of them does, or do something later; say what you " +
+        "cannot do."
+    )
+
+  /** Where a reply from `origin`'s edge goes, when a person might expect more: a Slack
+    * thread's is posted there alone, and anything else only through an offered tool. `None`
+    * for a terminal or a task, whose reply has one reader. An edge-layer fragment of its own.
+    */
+  def destination(origin: Origin): Option[Fragment] = origin match {
+    case _: Origin.Slack =>
+      Some(
+        Fragment(
+          Layer.Edge,
+          Fragment.Grit,
+          "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
+            "only by calling a tool that does it, and only if one is offered to you."
+        )
+      )
+    case _: Origin.Tui | _: Origin.Task => None
+  }
+
   /** Who reads a reply from `origin`'s edge, and what it renders: one person in a terminal,
     * several people in a Slack thread, or nobody until a task's run ends.
     */

@@ -139,7 +139,12 @@ object TurnFixtures {
   val system: String =
     SystemPrompt
       .of(
-        Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(Some(Place.of(checkout)), ToolSet.Empty)) ++
+        Vector(
+          TurnPrompt.Base,
+          TurnPrompt.Candour,
+          TurnPrompt.edge(origin),
+          TurnPrompt.reach(Some(Place.of(checkout)), ToolSet.Empty)
+        ) ++
           Voice.fragment(Voice.Default)
       )
       .render

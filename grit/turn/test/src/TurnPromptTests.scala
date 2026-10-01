@@ -75,6 +75,33 @@ object TurnPromptTests extends TestSuite {
         "replies are rendered from Markdown; keep them short."
     }
 
+    test(
+      "candour: a refused, failed or empty call is said, never answered around, and nothing is promised that no offered tool does"
+    ) {
+      TurnPrompt.Candour.text ==>
+        "When a tool call is refused, fails or finds nothing, say so in your reply and why, " +
+        "and do not answer with something else in its place as if it were what was asked. " +
+        "You act only through the tools you are offered, and only during this turn: never " +
+        "say you will do something none of them does, or do something later; say what you " +
+        "cannot do."
+      TurnPrompt.Candour.layer ==> Layer.Base
+    }
+
+    test(
+      "destination: a Slack reply goes to its thread alone, and elsewhere only through an offered tool; a terminal or a task is told nothing"
+    ) {
+      TurnPrompt.destination(Origin.Slack("T1", "C1", "1.0")).map(f => (f.layer, f.text)) ==>
+        Some(
+          (
+            Layer.Edge,
+            "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
+              "only by calling a tool that does it, and only if one is offered to you."
+          )
+        )
+      TurnPrompt.destination(Origin.Tui(dir, "s")) ==> None
+      TurnPrompt.destination(Origin.Task("nightly", "1")) ==> None
+    }
+
     test("called: what the workspace calls the assistant, as an edge fragment of its own") {
       val f = TurnPrompt.called("Bort")
       f.text ==> "In this workspace you are called Bort."

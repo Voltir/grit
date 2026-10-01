@@ -35,7 +35,10 @@ object McpErrorTests extends TestSuite {
         "wanted input that grit does not give",
         "answered something grit cannot read: no result",
         "answered HTTP 502",
-        "was not asked: its scope does not offer search_code",
+        // The model reads this as the call's result: it says nothing was read, and to
+        // tell the person rather than answer around it.
+        "was not asked, so nothing of it was read: its scope does not offer search_code. " +
+          "Tell the person this is out of reach; do not answer with something else in its place.",
         "answered, but grit cannot hold the answer to its scope, so none of it is shown: " +
           "its answer's text is not a JSON object"
       )

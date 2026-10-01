@@ -61,7 +61,9 @@ enum McpError {
     case InputRequired => "wanted input that grit does not give"
     case Unreadable(why) => s"answered something grit cannot read: $why"
     case Status(code) => s"answered HTTP $code"
-    case OutOfScope(why) => s"was not asked: $why"
+    case OutOfScope(why) =>
+      s"was not asked, so nothing of it was read: $why. Tell the person this is out of " +
+        "reach; do not answer with something else in its place."
     case Unattributed(why) =>
       s"answered, but grit cannot hold the answer to its scope, so none of it is shown: $why"
   }
