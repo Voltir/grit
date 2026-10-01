@@ -1,6 +1,6 @@
 # 0022. grit speaks unprompted when a heard message passes triage, its draft passes a judge, and declared limits allow it
 
-Status: accepted (2026-09-30)
+Status: accepted (2026-09-30), revised (2026-09-30)
 
 Context: a listened channel (ADR 0020) is kept, but grit only ever answered what was said to
 it. A deployment also wants grit to join in, with context or insight a thread lacks, when that
@@ -41,8 +41,10 @@ Decision:
   answered with trivia as adding. A pass, or a window that recalled no record and no other
   conversation, is settled without asking.
 - **The draft is posted** in the message's thread, only when its score reaches `postAt`,
-  speaking is `Within`, and no person has spoken in the thread since the message. That is
-  checked in the transaction that writes the reply and awaits its delivery.
+  speaking is `Within`, and the assistant has not already replied after the message, in the
+  thread or its strand (ADR 0023). That is checked in the transaction that writes the reply
+  and awaits its delivery. A person's reply does not hold it: the judge sees every reply so
+  far, and `worth` decides.
 - **Replay.** Whether a turn drafts is recorded in its `offer` (`root`), so replaying it never
   depends on live settings.
 - **Every decision, score and outcome is kept** (`grit.speech`), with an excerpt of the draft,
