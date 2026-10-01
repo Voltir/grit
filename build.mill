@@ -69,8 +69,9 @@ trait GritModule extends ScalaModule {
 
 /* A module a deployment outside grit compiles against (ADR 0021): `./mill __.publishLocal`
  * writes each to the local ivy repository (~/.ivy2/local/dev.grit/grit-<module>_3). Every
- * module the kit reaches, and grit.slack for a deployment that serves Slack; never grit.tui,
- * grit.edge or grit.app. A -SNAPSHOT version, republished in place: nothing is released. */
+ * module the kit reaches, grit.slack for a deployment that serves Slack, and grit.mcp and the
+ * grit.edge it depends on for one that serves an MCP server's tools; never grit.tui or
+ * grit.app. A -SNAPSHOT version, republished in place: nothing is released. */
 trait GritPublished extends GritModule with PublishModule {
   def publishVersion = "0.1.0-SNAPSHOT"
   def pomSettings = PomSettings(
@@ -274,8 +275,19 @@ object grit extends Module {
 
   /* The edge's side of the engine: what an edge does for a place it hosts, over core's
    * traits alone. Names no implementation of them; grit.app hands it grit.host's. */
-  object edge extends GritModule {
+  object edge extends GritPublished {
     def moduleDeps = Seq(core)
+
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
+  }
+
+  /* The MCP client: grit's toolbox over Model Context Protocol servers (revision 2026-07-28,
+   * Streamable HTTP), served by an edge at a service place (ADR 0017). The JDK HTTP client's
+   * second egress beside grit.models (STYLE rule 8). grit/mcp/README.md. */
+  object mcp extends GritPublished {
+    def moduleDeps = Seq(core, edge)
 
     object test extends GritTests {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
