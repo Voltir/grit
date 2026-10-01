@@ -66,7 +66,7 @@ object TurnOffer {
     * offers, less any whose name an earlier tool has (a heard-rooted turn is offered none of
     * them), then `tooling`'s own, then its operator tools when
     * its origin is the operator's ([[grit.core.store.Audience.operator]]); and its prompt: the base,
-    * [[TurnPrompt.Candour]], its edge's fragment, where its reply goes
+    * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], its edge's fragment, where its reply goes
     * ([[TurnPrompt.destination]]), what its workspace calls the assistant (when it has named it,
     * [[grit.core.store.Origin.assistant]]), [[TurnPrompt.unprompted]] when its root is heard,
     * what it may reach there, what it reaches besides ([[TurnPrompt.reached]], for each
@@ -139,6 +139,7 @@ object TurnOffer {
         Vector(
           TurnPrompt.Base,
           TurnPrompt.Candour,
+          TurnPrompt.Answering,
           TurnPrompt.edge(conversation.origin)
         ) ++ TurnPrompt.destination(conversation.origin) ++ called.map(TurnPrompt.called) ++
           Option.when(root == Root.Heard)(TurnPrompt.unprompted) ++ Vector(

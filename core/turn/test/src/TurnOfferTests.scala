@@ -270,7 +270,12 @@ object TurnOfferTests extends TestSuite {
   private def expected(origin: Origin, called: Option[String]): String =
     SystemPrompt
       .of(
-        Vector(TurnPrompt.Base, TurnPrompt.Candour, TurnPrompt.edge(origin)) ++
+        Vector(
+          TurnPrompt.Base,
+          TurnPrompt.Candour,
+          TurnPrompt.Answering,
+          TurnPrompt.edge(origin)
+        ) ++
           TurnPrompt.destination(origin) ++ called.map(TurnPrompt.called) :+
           TurnPrompt.reach(None, ToolSet.Empty)
       )
@@ -294,6 +299,7 @@ object TurnOfferTests extends TestSuite {
       offered(slack, new InMemoryPrincipals) ==> Vector(
         TurnPrompt.Base.text,
         TurnPrompt.Candour.text,
+        TurnPrompt.Answering.text,
         TurnPrompt.edge(slack).text,
         "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
           "only by calling a tool that does it, and only if one is offered to you.",
@@ -304,6 +310,7 @@ object TurnOfferTests extends TestSuite {
       offered(tui, new InMemoryPrincipals) ==> Vector(
         TurnPrompt.Base.text,
         TurnPrompt.Candour.text,
+        TurnPrompt.Answering.text,
         TurnPrompt.edge(tui).text,
         TurnPrompt.reach(Some(Place.of(dir)), ToolSet.Empty).text
       ).mkString("\n\n")
@@ -325,7 +332,12 @@ object TurnOfferTests extends TestSuite {
       root ==> TurnOffer.Root.Heard
       prompt ==> SystemPrompt
         .of(
-          Vector(TurnPrompt.Base, TurnPrompt.Candour, TurnPrompt.edge(slack)) ++
+          Vector(
+            TurnPrompt.Base,
+            TurnPrompt.Candour,
+            TurnPrompt.Answering,
+            TurnPrompt.edge(slack)
+          ) ++
             TurnPrompt.destination(slack) ++
             Vector(TurnPrompt.unprompted, TurnPrompt.reach(None, ToolSet.Empty))
         )
@@ -416,6 +428,7 @@ object TurnOfferTests extends TestSuite {
       prompt ==> (Vector(
         TurnPrompt.Base,
         TurnPrompt.Candour,
+        TurnPrompt.Answering,
         TurnPrompt.edge(slack)
       ) ++ TurnPrompt.destination(slack) ++ Vector(
         TurnPrompt.reach(Some(github.place), set(advert("github_search")))
