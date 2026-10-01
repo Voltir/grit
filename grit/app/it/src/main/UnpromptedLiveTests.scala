@@ -126,11 +126,21 @@ object UnpromptedLiveTests extends TestSuite {
     right(engine.db.read(engine.speech.spoken(Instant.EPOCH))).find(_.turn == turn).map(_.stage)
 
   val tests = Tests {
-    test("within its limits, a question heard in a thread with a record is answered there") {
+    test(
+      "within its limits, a question heard in a thread with a record is answered there, and its turn's line told once, its draft and reply one round"
+    ) {
       val d = deployment(Speaking.Within(limits))
       val engine = LiveEngine.open(config, Turn.Epoch)
+      val told = new java.util.concurrent.ConcurrentLinkedQueue[String]
       try {
-        Launch(engine, d, secrets(d, config), Launch.Run.Served, sweeping = false)
+        Launch(
+          engine,
+          d,
+          secrets(d, config),
+          Launch.Run.Served,
+          sweeping = false,
+          line => told.add(line): Unit
+        )
         val turn = converse(engine, "10.0")
         assert(eventually(stage(engine, turn) match {
           case Some(Stage.Posted(_)) => true
@@ -139,6 +149,20 @@ object UnpromptedLiveTests extends TestSuite {
         val pending = right(engine.jot.write(engine.deliveries.pending())).filter(_.turn == turn)
         val reply = right(engine.db.read(engine.entries.get(turn.replyId)))
         (pending.map(_.to), reply.nonEmpty) ==> (Vector("C1/10.0/10.0:1"), true)
+        // Told once the body returns, after the summary: wait for it, then for no second line.
+        val wf = grit.core.id.WorkflowId.value(turn.workflowId)
+        def lines: Vector[String] =
+          scala.jdk.CollectionConverters
+            .ListHasAsScala(java.util.List.copyOf(told))
+            .asScala
+            .toVector
+            .filter(_.startsWith(s"turn $wf "))
+        assert(eventually(lines.nonEmpty))
+        Thread.sleep(500)
+        lines.map(l =>
+          (l.takeWhile(_ != ';'), l.endsWith(s"; posted: reply:$wf; summarised: summary:$wf"))
+        ) ==>
+          Vector((s"turn $wf at slack:T1/C1/10.0: 1 round, no tools", true))
       } finally engine.close()
     }
 
@@ -146,7 +170,7 @@ object UnpromptedLiveTests extends TestSuite {
       val d = deployment(Speaking.Shadow(limits))
       val engine = LiveEngine.open(config, Turn.Epoch)
       try {
-        Launch(engine, d, secrets(d, config), Launch.Run.Served, sweeping = false)
+        Launch(engine, d, secrets(d, config), Launch.Run.Served, sweeping = false, _ => ())
         val turn = converse(engine, "20.0")
         assert(eventually(stage(engine, turn).contains(Stage.Settled)))
         val pending = right(engine.jot.write(engine.deliveries.pending())).filter(_.turn == turn)

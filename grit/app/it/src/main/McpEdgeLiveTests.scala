@@ -81,7 +81,7 @@ object McpEdgeLiveTests extends TestSuite {
       try {
         fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         fake.answers("get_file_contents", FakeMcpServer.githubFileContents)
-        Launch(engine, deployment, secrets(config), Launch.Run.Served, sweeping = false)
+        Launch(engine, deployment, secrets(config), Launch.Run.Served, sweeping = false, _ => ())
         val server =
           McpServer.of("github", fake.endpoint, Token, McpScope.Open).fold(sys.error(_), identity)
         val edge = McpEdge.serving(Github, Vector(server)).fold(sys.error(_), identity)

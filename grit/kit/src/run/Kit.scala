@@ -46,6 +46,9 @@ object Kit {
   val DeliverEvery: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(500).millis
 
+  /** The logger [[serve]] and [[catchUp]] write each finished turn's line to: `grit.turn`. */
+  val TurnLog: String = "grit.turn"
+
   /** How long the shutdown hook holds the process open for the edges and the engine to close:
     * 45 s, over the engine's own 30 s wait for running turns.
     */
@@ -57,10 +60,11 @@ object Kit {
     * that stops serving, closes each edge, then the engine (which waits up to 30 s for running
     * turns), holding the process open [[ClosedWithin]] for them. Refused before the engine
     * opens when a secret or an edge's variable is missing; an edge refusing to open closes
-    * those already opened.
+    * those already opened. Each finished turn is logged in one line at INFO under [[TurnLog]].
     */
   def serve(deployment: Deployment, env: Map[String, String]): Either[KitFailure, Unit] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
+    val turns = org.slf4j.LoggerFactory.getLogger(TurnLog)
     preflight(deployment, env, deployment.edges.toList.map(e => (e.name, e.needs))) match {
       case Left(failure) => Left(failure)
       case Right(secrets) =>
@@ -70,7 +74,14 @@ object Kit {
             val stopped = new CountDownLatch(1)
             val closed = new CountDownLatch(1)
             try {
-              Launch(engine, deployment, secrets, Launch.Run.Served, sweeping = true)
+              Launch(
+                engine,
+                deployment,
+                secrets,
+                Launch.Run.Served,
+                sweeping = true,
+                said => turns.info(said)
+              )
               val link: Link^{engine} = engine
               metered(link, deployment.budget, Instant.now()).foreach(log.info)
               Serving.open(
@@ -112,7 +123,7 @@ object Kit {
     * the estimate is more than today's cap leaves; hears it once `agree` accepts, sweeps
     * until nothing is left to close or ask, says what the day's recorded spend rose by, and
     * closes. Nothing is heard when `agree` declines or nothing is unheard. Refused as
-    * [[serve]] is, before the engine opens.
+    * [[serve]] is, before the engine opens. Each finished turn is logged as [[serve]] logs it.
     */
   def catchUp(
       deployment: Deployment,
@@ -127,8 +138,16 @@ object Kit {
         open(deployment, secrets) match {
           case Left(failure) => Left(failure)
           case Right(engine) =>
+            val turns = org.slf4j.LoggerFactory.getLogger(TurnLog)
             try {
-              Launch(engine, deployment, secrets, Launch.Run.Served, sweeping = false)
+              Launch(
+                engine,
+                deployment,
+                secrets,
+                Launch.Run.Served,
+                sweeping = false,
+                said => turns.info(said)
+              )
               val link: Link^{engine} = engine
               CatchingUp.run(
                 catchUp,
@@ -146,7 +165,8 @@ object Kit {
     }
 
   /** `engine` with `deployment`'s workflows launched, for a process that runs its own edge
-    * (the chat), sweeping as `deployment` says. Throws as [[Launch.apply]] does.
+    * (the chat), sweeping as `deployment` says, its finished turns not logged: a line on the
+    * terminal would draw over the chat. Throws as [[Launch.apply]] does.
     */
   private[grit] def launch(
       engine: Engine^,
@@ -154,7 +174,7 @@ object Kit {
       secrets: Secrets,
       run: Launch.Run
   ): Engine^{engine} =
-    Launch(engine, deployment, secrets, run, sweeping = true)
+    Launch(engine, deployment, secrets, run, sweeping = true, _ => ())
 
   /** `deployment`'s secrets in `env`, once every variable each of `needs` names is set. */
   private[run] def preflight(

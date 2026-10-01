@@ -6,6 +6,7 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
+import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.model.{Catalog, Pinned}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
@@ -23,7 +24,7 @@ import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.{JevClassifier, OpenRouterModels, Seed, StubClassifier, StubModels}
 import grit.tools.{About, Coding, Probes, Tuning}
-import grit.turn.{Turn, TurnEnv, TurnHosting, TurnRecords, TurnTooling}
+import grit.turn.{Turn, TurnEnv, TurnHosting, TurnRecords, TurnTally, TurnTooling}
 
 /** The engine's workflows, launched on an open engine the same way by every way grit runs:
   * the chat, a run with arguments, `grit serve` and a catch-up.
@@ -49,9 +50,18 @@ private[grit] object Launch {
     * stores, and the models its kept model settings, OpenRouter's under `d.policy` when `s`
     * holds its key, the stub's otherwise. Throws when the settings cannot be written, when the
     * seed catalog cannot be read or the tools repeat a name (faults of the build no setting
-    * can cause), or when the kept model settings cannot be read.
+    * can cause), or when the kept model settings cannot be read. `finished` is told each
+    * turn's [[TurnTally.line]] when its workflow's body returns (again if a recovered turn's
+    * body returns again), or, when the tally cannot be read, what the body returned and why.
     */
-  def apply(engine: Engine^, d: Deployment, s: Secrets, run: Run, sweeping: Boolean): Engine^{engine} = {
+  def apply(
+      engine: Engine^,
+      d: Deployment,
+      s: Secrets,
+      run: Run,
+      sweeping: Boolean,
+      finished: String => Unit
+  ): Engine^{engine} = {
     declare(engine.lifecycle, engine.jot, d.lifecycle) match {
       case Left(error) =>
         throw new IllegalStateException(s"the lifecycle's settings could not be written: $error")
@@ -88,8 +98,7 @@ private[grit] object Launch {
         new LinearAssembler(engine.entries, engine.periods, engine.principals, CharEstimate, budget)
     }
     def launch[C^](tooling: TurnTooling[C]^): Unit = {
-      engine.launch(
-        Turn.body(
+      val turnEnv =
           TurnEnv(
             TurnRecords(engine.entries, engine.ledger, CharEstimate, engine.profiles, engine.principals),
             TurnHosting(
@@ -114,9 +123,10 @@ private[grit] object Launch {
               engine.lifecycle,
               grit.core.stitch.Tuning.Default
             )
-          ),
-          tooling
-        ),
+          )
+      engine.launch(
+        // Told after the body returns, outside any step: the turn's steps are unchanged.
+        id => d ?=> told(engine, id, Turn.body(turnEnv, tooling)(id)(using d), finished),
         Close.body(
           CloseEnv(
             CloseRecords(
@@ -238,6 +248,20 @@ private[grit] object Launch {
       throw new IllegalStateException(s"grit's tools offer ${ToolName.value(name)} twice")
     }
     engine
+  }
+
+  /** `said`, what the body of the workflow `id` returned, once `finished` is told its
+    * [[TurnTally.line]], or `said` and why the tally could not be read.
+    */
+  private def told(engine: Engine^, id: WorkflowId, said: String, finished: String => Unit): String = {
+    finished(TurnRef.fromWorkflowId(id) match {
+      case None => said
+      case Some(turn) =>
+        engine.db
+          .read(TurnTally.read(engine.conversations, engine.entries, engine.ledger, turn, said))
+          .fold(why => s"turn ${WorkflowId.value(id)}: $said; not tallied: $why", _.line)
+    })
+    said
   }
 
   /** `declared` written over the settings `lifecycle` keeps, through `jot`; the settings in
