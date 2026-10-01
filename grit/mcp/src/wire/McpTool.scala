@@ -117,6 +117,9 @@ enum Skipped {
   /** An entry of the list that is not a tool: `why`. */
   case Malformed(why: String)
 
+  /** `tool` is not one the server's allowlist names. */
+  case NotAllowed(tool: String)
+
   /** A line for the log. */
   def message: String = this match {
     case NotReadOnly(tool) => s"$tool is not offered: it is not marked read-only"
@@ -124,5 +127,6 @@ enum Skipped {
     case HasHeaderParams(tool) =>
       s"$tool is not offered: it mirrors an argument into a header (x-mcp-header)"
     case Malformed(why) => s"a listed tool is not offered: $why"
+    case NotAllowed(tool) => s"$tool is not offered: the server's allowlist does not name it"
   }
 }

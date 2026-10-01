@@ -16,10 +16,12 @@ In dependency order:
   `Headers`, what a request carries besides its body; `Sse`, the response in an event
   stream; `Answer`, a call's result as the text the model reads. Imports nothing in mcp.
 - **`client`** — a server reached over HTTP: `McpServer`, a server a deployment declares;
-  `Bearer`, its token read from the environment and never shown. The JDK HTTP client lives
-  here alone. Imports `wire`.
+  `Bearer`, its token read from the environment and never shown; `McpClient`, its tools
+  (`Listed`) and calls, each request a POST of its own. The JDK HTTP client lives here alone.
+  Imports `wire`.
 
-The test tree mirrors it.
+The test tree mirrors it. `client`'s tests run against `FakeMcpServer`, an MCP server in the
+test JVM (`com.sun.net.httpserver`) that checks every request as the spec's server rules say.
 
 `test/resources/toolsnaps/` holds three of GitHub's MCP server's tool snapshots, each a tool
 exactly as its `tools/list` lists it, so the reader is tested on entries a real server sends:

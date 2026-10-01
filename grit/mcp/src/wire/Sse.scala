@@ -9,7 +9,7 @@ object Sse {
     * ends first (in the middle of an event included), [[McpError.Unreadable]] when an
     * event's data is not JSON.
     */
-  def response(lines: Iterator[String], id: Long): Either[McpError, ujson.Value] = {
+  def response(lines: Iterator[String]^, id: Long): Either[McpError, ujson.Value] = {
     // The data lines of the event being read; an event ends at a blank line.
     val data = Vector.newBuilder[String]
     var pending = false
