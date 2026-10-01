@@ -138,7 +138,7 @@ object Events {
   /** The time a ts names: seconds since the epoch, a point, then up to nine digits of the
     * second.
     */
-  private def time(ts: String): Option[Instant] = ts match {
+  private[slack] def time(ts: String): Option[Instant] = ts match {
     case Stamp(seconds, fraction) =>
       seconds.toLongOption.map(s =>
         Instant.ofEpochSecond(s, Option(fraction).fold(0L)(f => (f + "000000000").take(9).toLong))

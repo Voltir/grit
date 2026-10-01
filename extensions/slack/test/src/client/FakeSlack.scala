@@ -125,6 +125,21 @@ final class FakeSlack extends Slack {
       Right(posts.filter(p => p.channel == channel && p.thread == thread && p.tag == tag).map(_.ts))
     )
 
+  /** A post of grit's whose ts is `thread`, as grit's bot's with its tag and plain text; else
+    * a listed message whose ts it is, with no tag.
+    */
+  def root(channel: ChannelId, thread: Ts): Either[SlackError, Option[Root]] =
+    request {
+      val posted = posts
+        .find(p => p.channel == channel && p.ts == thread)
+        .map(p => Root(Some(me.bot), Some(p.tag), p.post.fallback))
+      val listed = histories
+        .getOrElse(channel, Vector.empty)
+        .find(_.ts == thread)
+        .map(l => Root(l.user, None, l.text))
+      Right(posted.orElse(listed))
+    }
+
   def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] =
     request {
       reactions = reactions + ((channel, ts, emoji))

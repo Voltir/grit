@@ -105,6 +105,13 @@ abstract class SlackContract extends TestSuite {
       }
     }
 
+    test("root of a thread grit posted is grit's bot's message, with its tag and text") {
+      withSlack() { slack =>
+        slack.postTopLevel(Public, post, Tag.Sent("contract")).flatMap(slack.root(Public, _)) ==>
+          Right(Some(Root(Some(Bot), Some(Tag.Sent("contract")), "hi")))
+      }
+    }
+
     test("postTopLevel where grit's bot is not a member is Refused(not_in_channel)") {
       withSlack() { slack =>
         slack.postTopLevel(Outside, post, Tag.Sent("contract")) ==>
@@ -159,6 +166,7 @@ abstract class SlackContract extends TestSuite {
           "post" -> kind(slack.post(Public, m1, post, Tag.Reply("contract", 0))),
           "postTopLevel" -> kind(slack.postTopLevel(Public, post, Tag.Sent("contract"))),
           "tagged" -> kind(slack.tagged(Public, m1, Tag.Reply("contract", 0))),
+          "root" -> kind(slack.root(Public, m1)),
           "react" -> kind(slack.react(Public, m1, "eyes")),
           "unreact" -> kind(slack.unreact(Public, m1, "eyes")),
           "name" -> kind(slack.name(Ana)),

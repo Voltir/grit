@@ -6,15 +6,17 @@ import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeStores, InMemoryDeliveries, InMemoryEdges, Part}
-import grit.core.id.{PrincipalId, SourceId, TurnRef}
+import grit.core.id.{CallSlot, ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.speech.{Rate, Reach}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Jot, Origin, Payload, StoreError, Tx}
 import grit.dbos.sql.TestTx
+import grit.prose.markdown.Markdown
 import grit.slack.client.{FakeSlack, Self, Tag}
 import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
+import grit.slack.text.RichText
 
 import utest.*
 
@@ -56,14 +58,41 @@ object SlackEdgeTests extends TestSuite {
       )(using TestTx.fake)
     }
     val deliveries = new InMemoryDeliveries
+
+    /** What the edges said, in order. */
+    @caps.unsafe.untrackedCaptures
+    var logged = Vector.empty[String]
+
     def edge(): SlackEdge^ =
       new SlackEdge(
         slack,
         Self(TeamId(Team), UserId(Bot)),
         EdgeStores(inbox, inbox.principals, deliveries, FakeJot, new InMemoryEdges),
         listening,
-        _ => ()
+        s => logged = logged :+ s
       )
+
+    /** The entries of the thread rooted at `thread`, in order. */
+    def written(thread: String): Vector[Payload] =
+      inbox.conversations.all.find(_.origin == origin(thread)).toVector.flatMap { c =>
+        inbox.entries.list(c.id)(using TestTx.fake).getOrElse(Vector.empty).map(_.payload)
+      }
+
+    /** The call the thread rooted at `thread` was begun by, if a post began it. */
+    def postedBy(thread: String): Option[CallSlot] =
+      inbox.conversations.all
+        .find(_.origin == origin(thread))
+        .flatMap(c => inbox.conversations.posts.get(c.id))
+
+    /** A post grit made with `slack_post` at the top of C, for the call `slot`; its ts. */
+    def post(slot: CallSlot, text: String = "The engine's open issues."): String =
+      RichText.render(Markdown.parse(text)) match {
+        case one +: _ =>
+          slack
+            .postTopLevel(C, one, Tag.Sent(slot.key))
+            .fold(e => throw new java.lang.AssertionError(e.toString), Ts.value)
+        case _ => throw new java.lang.AssertionError("nothing to post")
+      }
     val first: SlackEdge^ = edge()
     val _ = slack.listen(first.receive)
 
@@ -134,6 +163,12 @@ object SlackEdgeTests extends TestSuite {
       Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
       "m"
     )
+
+  /** The call a post below was made by: one of another conversation's turns. */
+  private val Asking: CallSlot =
+    CallSlot
+      .of(TurnRef(ConversationId("asker"), TurnSeq.First), 0, 1)
+      .getOrElse(throw new java.lang.AssertionError("a slot at 0, 1 reads"))
 
   private def tag(turn: TurnRef, part: Int): Tag =
     Tag.Reply(grit.core.id.WorkflowId.value(turn.workflowId), part)
@@ -224,6 +259,72 @@ object SlackEdgeTests extends TestSuite {
       w.inbox.started ==> Vector(t)
       w.pending.map(_.turn) ==> Vector(t)
       w.slack.reactions ==> Set((C, Ts("1.0"), "eyes"))
+    }
+
+    test(
+      "a mention under grit's post records the post first, as its thread's opening, made by the call its tag names, then the turn"
+    ) {
+      val w = new World
+      val root = w.post(Asking)
+      w.slack.deliver(mentionIn(root, "9.1", s"<@$Bot> why this?")) ==> true
+      w.written(root) ==> Vector(
+        Payload.Posted("The engine's open issues."),
+        Payload.Message(Message.User("why this?"))
+      )
+      w.postedBy(root) ==> Some(Asking)
+      w.inbox.started ==> Vector(w.turn(root, "9.1"))
+    }
+
+    test("heard replies under grit's post record the post once, before the first") {
+      val w = new World(listening = Set(C))
+      val root = w.post(Asking)
+      w.slack.deliver(message("9.1", "why this?", Some(root))) ==> true
+      w.slack.deliver(message("9.2", "no idea", Some(root))) ==> true
+      w.written(root) ==> Vector(
+        Payload.Posted("The engine's open issues."),
+        Payload.Heard("why this?"),
+        Payload.Heard("no idea")
+      )
+    }
+
+    test("a reply under a person's message, or under grit's reply, records nothing before it") {
+      val w = new World(listening = Set(C))
+      w.slack.histories = Map(
+        C -> Vector(Listed(Ts("5.0"), None, Some(UserId(Ana)), false, None, "a person's"))
+      )
+      w.slack.deliver(mentionIn("5.0", "5.1", s"<@$Bot> and this?")) ==> true
+      w.written("5.0") ==> Vector(Payload.Message(Message.User("and this?")))
+      val reply = w.slack
+        .postTopLevel(
+          C,
+          RichText.render(Markdown.parse("hi")).headOption.getOrElse(sys.error("no post")),
+          Tag.Reply("c:0", 0)
+        )
+        .fold(e => sys.error(e.toString), Ts.value)
+      w.slack.deliver(message("9.9", "ok", Some(reply))) ==> true
+      w.written(reply) ==> Vector(Payload.Heard("ok"))
+    }
+
+    test("a reply whose thread's root Slack will not give is recorded without it, and said") {
+      val w = new World
+      // Slack is asked who Ana is and whether C is public once; then the root is refused.
+      w.slack.deliver(mention("1.0")) ==> true
+      val root = w.post(Asking)
+      w.slack.limited = 1
+      // An app_mention whose text names no one, so the root is the next thing Slack is asked.
+      w.slack.deliver(mentionIn(root, "9.1", "why this?")) ==> true
+      w.written(root) ==> Vector(Payload.Message(Message.User("why this?")))
+      w.logged.exists(_.contains(s"the root of thread $root not read")) ==> true
+    }
+
+    test("backfill hears a past reply under grit's post after recording the post") {
+      val w = new World(listening = Set(C))
+      val root = w.post(Asking)
+      w.slack.histories = Map(
+        C -> Vector(Listed(Ts("9.1"), Some(Ts(root)), Some(UserId(Ana)), false, None, "why?"))
+      )
+      w.first.unheard(C, java.time.Instant.EPOCH).flatMap(w.first.backfill) ==> Right(())
+      w.written(root) ==> Vector(Payload.Posted("The engine's open issues."), Payload.Heard("why?"))
     }
 
     test("the same message delivered twice (as a mention and as a message) is one turn") {

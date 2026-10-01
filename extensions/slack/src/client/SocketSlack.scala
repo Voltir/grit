@@ -98,6 +98,34 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
     page(None, Vector.empty)
   }
 
+  def root(channel: ChannelId, thread: Ts): Either[SlackError, Option[Root]] = {
+    val req = ConversationsRepliesRequest
+      .builder()
+      .channel(ChannelId.value(channel))
+      .ts(Ts.value(thread))
+      .includeAllMetadata(true)
+      .limit(1)
+      .build()
+    call(methods.conversationsReplies(req))
+      .map { r =>
+        Option(r.getMessages)
+          .fold(Vector.empty[Message])(_.asScala.toVector)
+          .find(_.getTs == Ts.value(thread))
+          .map(m =>
+            Root(
+              Option(m.getUser).map(UserId(_)),
+              SocketSlack.tagOf(m),
+              Option(m.getText).getOrElse("")
+            )
+          )
+      }
+      .left
+      .flatMap {
+        case SlackError.Refused("thread_not_found") => Right(None)
+        case other => Left(other)
+      }
+  }
+
   def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] =
     call(
       methods.reactionsAdd(
@@ -257,6 +285,23 @@ object SocketSlack {
       md.getEventType == event(tag) &&
       Option(md.getEventPayload).map(_.asScala).exists { p =>
         payload(tag).forall((k, v) => p.get(k).map(_.toString).contains(v))
+      }
+    }
+
+  /** The tag `m` carries, as [[request]] wrote it; `None` for a message carrying none. */
+  def tagOf(m: Message): Option[Tag] =
+    Option(m.getMetadata).flatMap { md =>
+      val p: Map[String, String] = Option(md.getEventPayload)
+        .fold(Map.empty[String, String])(_.asScala.toMap.map((k, v) => (k, String.valueOf(v))))
+      Option(md.getEventType).flatMap {
+        case PostEvent => p.get("request").map(Tag.Sent(_))
+        case ReplyEvent =>
+          for {
+            turn <- p.get("turn")
+            part <- p.get("part").flatMap(_.toIntOption)
+          } yield Tag.Reply(turn, part)
+        case RefusalEvent => p.get("message").map(m => Tag.Refused(Ts(m)))
+        case _ => None
       }
     }
 

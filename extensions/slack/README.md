@@ -22,8 +22,9 @@ In dependency order:
   `grit.prose` doc) as Slack messages (`Post`s) of rich-text blocks, within Slack's limits.
   ← `event`
 - **`client`** — Slack as grit uses it: the `Slack` trait (listen, a channel's history, post in a thread or at a channel's top level, find a post by its
-  `Tag`, react, a person's name, whether a channel is public, and its name), `SlackError`, the tokens, and
-  `SocketSlack`, the SDK over Socket Mode behind it. ← `event`, `text`
+  `Tag`, the message a thread begins with, react, a person's name, whether a channel is public, and its name), `SlackError`, the tokens, and
+  `SocketSlack`, the SDK over Socket Mode behind it; and `Root`, the message a thread begins
+  with, its author and its tag. ← `event`, `text`
 - **`edge`** — `SlackEdge`, the edge itself, over core's traits (`EdgeStores`: the inbox,
   the people it enrolls, the replies it awaits) and a `Slack`: a person's message in a public
   channel becomes a turn of its thread's conversation when it is addressed to grit (it
@@ -31,6 +32,10 @@ In dependency order:
   in its thread, once, found again by its tag after a crash. In the channels it listens in
   (`listening`, the channels a deployment declares), a message not addressed to grit is heard:
   an entry of its thread's conversation with no turn, never answered, dated when it was said.
+  A thread under a post grit made with `slack_post` begins with that post: when the first
+  message recorded or heard there arrives, the edge reads the root from Slack (`Slack.root`)
+  and records it as the conversation's opening, made by the call its tag names, so the
+  thread's windows show the turn that asked for it.
   `unheard` and `backfill` are `grit backfill`'s: a listened channel's history since an
   instant (`Slack.history`, read by the rules a live message is, `Events.listed`), less what
   the inbox has recorded, then each of those heard at its own time, a past mention of grit

@@ -5,7 +5,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 import grit.core.edge.{CatchUp, EdgeStores, Part, Pending, ServedEdge}
-import grit.core.id.{PrincipalId, SourceId, WorkflowId}
+import grit.core.id.{CallSlot, PrincipalId, SourceId, WorkflowId}
 import grit.core.inbox.{InboxError, Progress}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
@@ -14,7 +14,7 @@ import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError}
 import grit.prose.form.{Block, Doc, Text}
 import grit.prose.markdown.Markdown
-import grit.slack.client.{AppToken, BotToken, Self, Slack, SlackError, SocketSlack, Tag}
+import grit.slack.client.{AppToken, BotToken, Root, Self, Slack, SlackError, SocketSlack, Tag}
 import grit.slack.event.{ChannelId, Event, Events, TeamId, Ts, UserId}
 import grit.slack.text.{Incoming, Post, RichText}
 
@@ -91,6 +91,11 @@ final class SlackEdge(
     * thread kept as where a reply would go and whom it names besides grit
     * ([[grit.core.speech.Reach]]): grit replies there only when it drafts a reply and the
     * draft is posted (ADR 0022).
+    * A message recorded or heard that begins its conversation as a reply in a thread whose root
+    * grit's bot posted with `slack_post` ([[Tag.Sent]]) first records that post as the
+    * conversation's opening ([[grit.core.inbox.Inbox.posted]]), in its text as Slack gives it,
+    * made by the call its tag names; when Slack cannot be asked for the root, the message is
+    * recorded without it, and that is said.
     * Everything else is ignored. `true` once that is done or needs no doing (a redelivery
     * included), so the payload may be acknowledged; `false` when Slack or the database could
     * not be asked, so Slack sends it again.
@@ -170,8 +175,8 @@ final class SlackEdge(
 
   /** Hears each of `messages`, in order, in its thread's conversation, dated when it was said
     * ([[grit.core.inbox.Inbox.hear]]), in the person's words under their Slack name, a mention of grit
-    * included: a past message is heard, never answered. Nothing in a channel that is not
-    * public. Why not, naming the first message not heard, when Slack or the inbox could not be
+    * included: a past message is heard, never answered; a thread under a post of grit's
+    * begins with that post, as in [[receive]]. Nothing in a channel that is not public. Why not, naming the first message not heard, when Slack or the inbox could not be
     * asked; those before it stay heard.
     */
   def backfill(messages: Vector[Event.Said]): Either[String, Unit] =
@@ -198,10 +203,12 @@ final class SlackEdge(
           .map(u => PrincipalId(s"slack:${TeamId.value(m.team)}/${UserId.value(u)}"))
           .toSet
         val to = Option.when(live)(Address(m.channel, m.thread, m.ts).written)
-        stores.inbox
-          .hear(origin, SourceId(Ts.value(m.ts)), text, author, m.at, Reach(to, asked))
-          .left
-          .map(_.toString)
+        opening(m, origin, author).flatMap(_ =>
+          stores.inbox
+            .hear(origin, SourceId(Ts.value(m.ts)), text, author, m.at, Reach(to, asked))
+            .left
+            .map(_.toString)
+        )
     }
 
   /** Who wrote `m`, enrolled under their Slack name, and its text in their words; `None` in a
@@ -227,24 +234,75 @@ final class SlackEdge(
       case None => Right(())
       case Some((author, text)) =>
         val message: Message.User = Message.User(text)
-        stores.inbox.ingest(origin, SourceId(Ts.value(m.ts)), message, author) match {
-          case Left(over @ InboxError.OverCap(_, _, _)) => refuse(m, over)
-          case Left(other) => Left(other.toString)
-          case Right(turn) =>
-            for {
-              _ <- stores.jot
-                .write(
-                  stores.deliveries.await(turn, Address(m.channel, m.thread, m.ts).written)
-                )
-                .left
-                .map(_.toString)
-              _ <- stores.inbox.startTurn(turn).left.map(_.toString)
-            } yield slack
-              .react(m.channel, m.ts, Working)
-              .left
-              .foreach(e => said(s"slack: not marked: $e"))
-        }
+        opening(m, origin, author).flatMap(_ => ingest(m, origin, message, author))
     }
+
+  private def ingest(
+      m: Event.Said,
+      origin: Origin,
+      message: Message.User,
+      author: PrincipalId
+  ): Either[String, Unit] =
+    stores.inbox.ingest(origin, SourceId(Ts.value(m.ts)), message, author) match {
+      case Left(over @ InboxError.OverCap(_, _, _)) => refuse(m, over)
+      case Left(other) => Left(other.toString)
+      case Right(turn) =>
+        for {
+          _ <- stores.jot
+            .write(
+              stores.deliveries.await(turn, Address(m.channel, m.thread, m.ts).written)
+            )
+            .left
+            .map(_.toString)
+          _ <- stores.inbox.startTurn(turn).left.map(_.toString)
+        } yield slack
+          .react(m.channel, m.ts, Working)
+          .left
+          .foreach(e => said(s"slack: not marked: $e"))
+    }
+
+  /** Records grit's post that `m`'s thread begins with as its conversation's opening
+    * ([[grit.core.inbox.Inbox.posted]]), written by `by`, when `m` is a reply that begins its
+    * conversation and grit's bot posted the thread's root with `slack_post` ([[Tag.Sent]]):
+    * its text as Slack gives it, made by the call its tag names. Nothing for any other
+    * message. When Slack cannot be asked for the root, or the post is not recorded, that is
+    * said and `m` goes on without it; why not, when the inbox could not be asked.
+    */
+  private def opening(m: Event.Said, origin: Origin, by: PrincipalId): Either[String, Unit] =
+    if (m.thread == m.ts) Right(())
+    else
+      stores.inbox.begun(origin).left.map(_.toString).flatMap { begun =>
+        if (begun) Right(())
+        else
+          slack.root(m.channel, m.thread) match {
+            case Left(e) =>
+              said(
+                s"slack: the root of thread ${Ts.value(m.thread)} not read, so a post there is not recorded: $e"
+              )
+              Right(())
+            case Right(Some(Root(Some(user), Some(Tag.Sent(key)), text))) if user == self.bot =>
+              (CallSlot.read(key), Events.time(Ts.value(m.thread))) match {
+                case (Some(request), Some(at)) =>
+                  val shown = Incoming.text(text, self.bot, _ => None)
+                  stores.inbox
+                    .posted(origin, SourceId(Ts.value(m.thread)), shown, at, request, by)
+                    .left
+                    .map(_.toString)
+                    .map { recorded =>
+                      if (!recorded)
+                        said(
+                          s"slack: grit's post ${Ts.value(m.thread)} not recorded: its thread has begun"
+                        )
+                    }
+                case _ =>
+                  said(
+                    s"slack: grit's post ${Ts.value(m.thread)} names no call grit can read: $key"
+                  )
+                  Right(())
+              }
+            case Right(_) => Right(())
+          }
+      }
 
   /** Tells the person who wrote `m` that it was not taken ([[Budget.Refusal]]), in its
     * thread, once: a refusal already there under its tag is not posted again.

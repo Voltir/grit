@@ -1,7 +1,7 @@
 # 0019. A Slack thread is a conversation, and one database is one trust boundary
 
 Status: accepted (2026-09-27), revised (2026-09-28), amended (2026-10-01): posting beyond
-a thread
+a thread; amended (2026-10-01): a post's thread
 
 Context: grit's first edge for several people is Slack. Two choices shape every later
 edge that serves more than one person.
@@ -51,12 +51,18 @@ Consequences:
   and never run again after a crash. Anyone who can address the deployment may ask for a
   post, bounded by where it may post and by the rate. A post's text is literal, so it never
   mentions or broadcasts. A post is grit's bot's message, so it is never heard or answered,
-  wherever it lands. It is not recorded in the conversation of the channel it lands in;
-  the turn that made it keeps what it posted where.
+  wherever it lands. A post at a channel's top level is recorded in the thread it begins
+  once someone's message there is first recorded or heard: the thread's conversation
+  begins with it, as grit's own words, and while its first period is open each window
+  shows the turn that asked for it, from whatever room, when both are colleagues'
+  conversations. Until then, and for a post into an existing thread, the turn that made it
+  keeps what it posted where.
 - Enforced by:
   - `SlackEdge` ignoring any channel Slack does not report as public, and hearing only in
     the channels it is told to listen in (`SlackEdgeTests`);
   - `grit serve` refusing to attach to an engine another grit holds;
   - `slack_post` refusing a channel not declared, a link into another channel and a post
     past the rate (`PostingTests`), and a turn rooted on a heard message never being
-    offered it (`TurnOfferTests`).
+    offered it (`TurnOfferTests`);
+  - a post's thread beginning with it (`SlackEdgeTests`, `InboxContract`), and the turn
+    that asked shown there (`RetrievalAssemblerTests`).

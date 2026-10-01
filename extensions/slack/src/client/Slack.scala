@@ -59,6 +59,12 @@ enum Tag {
   case Sent(request: String)
 }
 
+/** The message a thread begins with, as [[Slack.root]] reads it: who wrote it (`None` for one
+  * with no user), the [[Tag]] grit posted it with, if any, and its text as Slack gives it,
+  * escaped as Slack escapes it.
+  */
+final case class Root(user: Option[UserId], tag: Option[Tag], text: String)
+
 /** Slack as grit uses it: one workspace, through grit's bot. */
 trait Slack extends caps.SharedCapability {
 
@@ -82,6 +88,9 @@ trait Slack extends caps.SharedCapability {
 
   /** The messages in `thread` of `channel` that carry `tag`, oldest first. */
   def tagged(channel: ChannelId, thread: Ts, tag: Tag): Either[SlackError, Vector[Ts]]
+
+  /** The message `thread` of `channel` begins with; `None` when there is none. */
+  def root(channel: ChannelId, thread: Ts): Either[SlackError, Option[Root]]
 
   /** Adds grit's `emoji` reaction to message `ts`; one already there is not an error. */
   def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit]
