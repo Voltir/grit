@@ -179,10 +179,23 @@ object RpcTests extends TestSuite {
         McpError.Unsupported(Vector("2026-07-28", "2025-11-25")),
         McpError.Rpc(-32601, "Method not found"),
         McpError.Rpc(-32020, "Header mismatch"),
-        McpError.Legacy(405),
-        McpError.Legacy(404),
+        McpError.Rejected(405, "<html>Method Not Allowed</html>"),
+        McpError.Rejected(404, ""),
         McpError.Status(502),
         McpError.Rpc(-32603, "Internal error")
+      )
+    }
+
+    test("a 4xx body with no MCP error is kept as one line of text, at most Excerpt characters") {
+      // What a person reads of it: no line break or control character, nothing unbounded.
+      Vector(
+        Rpc.failure(400, "unauthorized:\r\n  bad\ttoken\u0007format\n", None),
+        Rpc.failure(400, "x" * (Rpc.Excerpt + 1), None),
+        Rpc.failure(400, "x" * Rpc.Excerpt, None)
+      ) ==> Vector(
+        McpError.Rejected(400, "unauthorized: bad token format"),
+        McpError.Rejected(400, "x" * Rpc.Excerpt + "…"),
+        McpError.Rejected(400, "x" * Rpc.Excerpt)
       )
     }
   }

@@ -302,7 +302,11 @@ object McpClientTests extends TestSuite {
         fake.refuses(Some(FakeMcpServer.Refusal(403, Vector("WWW-Authenticate" -> scope), "")))
         listed(client(fake)) ==> Left(McpError.Forbidden(Some(scope)))
         fake.refuses(Some(FakeMcpServer.Refusal(404, Vector.empty, "Not Found")))
-        listed(client(fake)) ==> Left(McpError.Legacy(404))
+        listed(client(fake)) ==> Left(McpError.Rejected(404, "Not Found"))
+        fake.refuses(
+          Some(FakeMcpServer.Refusal(400, Vector.empty, s"bad credentials: Bearer ${fake.token}"))
+        )
+        listed(client(fake)) ==> Left(McpError.Rejected(400, "bad credentials: Bearer [token]"))
         fake.refuses(Some(FakeMcpServer.Refusal(502, Vector.empty, "")))
         listed(client(fake)) ==> Left(McpError.Status(502))
         fake.refuses(None)

@@ -167,7 +167,8 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
         Left(
           Rpc.failure(
             status,
-            body.lines.mkString("\n"),
+            // A server that echoes the token in a refusal does not get it into the error.
+            body.lines.mkString("\n").replace(bearer.value, "[token]"),
             info.headers.firstValue("WWW-Authenticate").toScala
           )
         )

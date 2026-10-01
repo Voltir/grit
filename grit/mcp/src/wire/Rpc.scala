@@ -75,8 +75,9 @@ object Rpc {
   /** The error an HTTP `status` other than 200 is, its body `body`: with 401
     * [[McpError.Unauthorized]] and with 403 [[McpError.Forbidden]], each keeping `challenge`
     * (the response's `WWW-Authenticate`); else the JSON-RPC error in `body`, as
-    * [[result]] reads one; else, with no error in `body`, [[McpError.Legacy]] for a 4xx and
-    * [[McpError.Status]] for any other status.
+    * [[result]] reads one; else, with no error in `body`, [[McpError.Rejected]] for a 4xx,
+    * keeping `body` as one line (each run of whitespace or control characters a space, at most
+    * [[Excerpt]] characters, then "…"), and [[McpError.Status]] for any other status.
     */
   def failure(status: Int, body: String, challenge: Option[String]): McpError =
     status match {
@@ -85,10 +86,22 @@ object Rpc {
       case _ =>
         scala.util.Try(ujson.read(body)).toOption.flatMap(_.objOpt).flatMap(_.get("error")) match {
           case Some(e) => error(e)
-          case None if status >= 400 && status < 500 => McpError.Legacy(status)
+          case None if status >= 400 && status < 500 => McpError.Rejected(status, line(body))
           case None => McpError.Status(status)
         }
     }
+
+  /** The most characters of a body [[failure]] keeps: 200. */
+  val Excerpt: Int = 200
+
+  /** `body` as one line of at most [[Excerpt]] characters, then "…". */
+  private def line(body: String): String = {
+    val flat = body
+      .map(c => if (c.isWhitespace || c.isControl) ' ' else c)
+      .trim
+      .replaceAll(" {2,}", " ")
+    if (flat.length > Excerpt) flat.take(Excerpt) + "…" else flat
+  }
 
   private val UnsupportedProtocolVersion = -32022
 
