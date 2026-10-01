@@ -251,18 +251,21 @@ object TurnOfferTests extends TestSuite {
     }
 
     test(
-      "a conversation with no directory works in the service of the first link holding it; none links it, none"
+      "a conversation with no directory works in the service a link holding it names; else none"
     ) {
-      val other = Service.of("tracker").fold(e => throw new java.lang.AssertionError(e), identity)
-      val links = Vector(
-        WorksIn(Place.under(grit.core.place.Namespace.Slack, Vector("T2")), other),
-        WorksIn(Place.under(grit.core.place.Namespace.Slack, Vector("T1")), github),
-        WorksIn(Place.Everywhere, other)
-      )
-      linked(links, Vector.empty)._1.workspace ==> Some(github.place)
-      linked(links.take(1), Vector.empty)._1.workspace ==> None
+      val t1 = Place.under(grit.core.place.Namespace.Slack, Vector("T1"))
+      val t2 = Place.under(grit.core.place.Namespace.Slack, Vector("T2"))
+      linked(Vector(WorksIn(t1, github)), Vector.empty)._1.workspace ==> Some(github.place)
+      linked(Vector(WorksIn(t2, github)), Vector.empty)._1.workspace ==> None
+    }
+
+    test("a TUI conversation works in its directory, though a link holds its place") {
       val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
-      TurnOffer.workspaceOf(Origin.Tui(dir, "default"), links) ==> Some(Place.of(dir))
+      TurnOffer.workspaceOf(
+        Origin.Tui(dir, "default"),
+        Vector(WorksIn(Place.Everywhere, github))
+      ) ==>
+        Some(Place.of(dir))
     }
 
     test(
