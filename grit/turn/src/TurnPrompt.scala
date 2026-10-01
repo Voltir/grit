@@ -4,7 +4,7 @@ import grit.core.context.Label
 import grit.core.place.{Directory, Place}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
-import grit.core.tool.{ToolName, ToolSet}
+import grit.core.tool.ToolSet
 
 /** grit's own words in a turn's system prompt: the base every turn is sent, what the
   * conversation's edge is, and what the turn may reach. The place's own instruction files
@@ -115,9 +115,8 @@ object TurnPrompt {
 
   /** What a turn may reach in `workspace`: `tools`, the tools served in a directory, which
     * act on it (and, when some ask first, that calling one is how the person is asked); or
-    * the tools served at a service place, named by what precedes their first `_`
-    * (`github_…`), which read the outside service; nothing, and why, when none are served
-    * there, or when the conversation has no workspace (a place neither a directory nor a
+    * at a service place, that the tools served there run at that service; nothing, and why,
+    * when none are served there, or when the conversation has no workspace (a place neither a directory nor a
     * service reads as none). Worded by workspace, never by what serves it, so another edge
     * serving the same one leaves the prompt the same.
     */
@@ -135,17 +134,8 @@ object TurnPrompt {
       case (None, Some(service)) if tools.tools.isEmpty =>
         s"Nothing is serving ${service.name} right now, so its tools are not offered."
       case (None, Some(service)) =>
-        val named = tools.tools.map { t =>
-          val name = ToolName.value(t.name)
-          name.indexOf('_') match {
-            case -1 => name
-            case at => s"${name.take(at)}_…"
-          }
-        }.distinct
-        val listed =
-          if (named.size < 2) named.mkString
-          else s"${named.dropRight(1).mkString(", ")} and ${named.lastOption.getOrElse("")}"
-        s"Your tools named $listed read ${service.name} as it is now; they change nothing there."
+        s"This conversation works in ${service.name}: the tools served there are offered to " +
+          s"you, and calling one runs it at ${service.name}."
       case (None, None) =>
         "This conversation has no directory, so you cannot read or change files or run commands."
     }

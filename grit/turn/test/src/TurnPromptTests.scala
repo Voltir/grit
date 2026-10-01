@@ -93,7 +93,7 @@ object TurnPromptTests extends TestSuite {
     }
 
     test(
-      "reach at a service place names its tools by prefix and says they only read it; with none served, says so"
+      "reach at a service place names the service and says its served tools run there, naming none; with none served, says so"
     ) {
       val github = Place.under(Namespace.Service, Vector("github"))
       val tools = ToolSet
@@ -108,7 +108,7 @@ object TurnPromptTests extends TestSuite {
         })
         .getOrElse(throw new java.lang.AssertionError())
       TurnPrompt.reach(Some(github), tools).text ==>
-        "Your tools named github_…, jira_… and about read github as it is now; they change nothing there."
+        "This conversation works in github: the tools served there are offered to you, and calling one runs it at github."
       TurnPrompt.reach(Some(github), ToolSet.Empty).text ==>
         "Nothing is serving github right now, so its tools are not offered."
       TurnPrompt.reach(Some(Place.under(Namespace.Slack, Vector("T1"))), tools).text ==>
