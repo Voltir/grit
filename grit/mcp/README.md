@@ -22,6 +22,8 @@ In dependency order:
 
 The test tree mirrors it. `client`'s tests run against `FakeMcpServer`, an MCP server in the
 test JVM (`com.sun.net.httpserver`) that checks every request as the spec's server rules say.
+`McpServerContract` is the exchanges a server must answer as the client reads them; the fake
+keeps it in the unit tier (`McpServerFakeTests`), and `LiveProbe` runs it against GitHub's.
 
 `test/resources/toolsnaps/` holds three of GitHub's MCP server's tool snapshots, each a tool
 exactly as its `tools/list` lists it, so the reader is tested on entries a real server sends:

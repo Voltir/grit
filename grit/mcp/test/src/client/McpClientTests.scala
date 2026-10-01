@@ -210,5 +210,104 @@ object McpClientTests extends TestSuite {
         client(fake).tools().map(_.tools.size) ==> Right(McpClient.MaxPages)
       }
     }
+
+    test("a call's answer is the tool's result as the model reads it, isError kept") {
+      withFake { fake =>
+        fake.lists(Vector(FakeMcpServer.Weather))
+        // server/tools.mdx, Calling Tools, and Error Handling: the spec's own results.
+        fake.answers(
+          "get_weather",
+          ujson.Obj(
+            "content" -> ujson.Arr(
+              ujson.Obj(
+                "type" -> "text",
+                "text" -> "Current weather in New York:\nTemperature: 72°F\nConditions: Partly cloudy"
+              )
+            ),
+            "isError" -> false
+          )
+        )
+        val c = client(fake)
+        def weather(): Either[McpError, (String, Boolean)] =
+          c.tools()
+            .flatMap(_.tools.find(_.name == "get_weather").toRight(McpError.Unreadable("unlisted")))
+            .flatMap(c.call(_, ujson.Obj("location" -> "New York")))
+            .map(a => (a.text, a.isError))
+        weather() ==> Right(
+          ("Current weather in New York:\nTemperature: 72°F\nConditions: Partly cloudy", false)
+        )
+        fake.answers(
+          "get_weather",
+          ujson.Obj(
+            "content" -> ujson.Arr(
+              ujson.Obj(
+                "type" -> "text",
+                "text" -> "Invalid departure date: must be in the future. Current date is 08/08/2025."
+              )
+            ),
+            "isError" -> true
+          )
+        )
+        weather() ==> Right(
+          ("Invalid departure date: must be in the future. Current date is 08/08/2025.", true)
+        )
+        fake.received.lastOption.map(r =>
+          (r.method, r.headers.get("mcp-name"), ujson.read(r.body)("params")("arguments"))
+        ) ==> Some((Some("tools/call"), Some("get_weather"), ujson.Obj("location" -> "New York")))
+      }
+    }
+
+    test("a tool the server no longer lists is a -32602 error, and makes the list stale") {
+      withFake { fake =>
+        fake.lists(Vector(tool("a"), tool("gone")), ttlMs = Vector(Some(60000L)))
+        val c = client(fake)
+        val gone = c.tools().toOption.flatMap(_.tools.find(_.name == "gone"))
+        fake.lists(Vector(tool("a")), ttlMs = Vector(Some(60000L)))
+        gone.map(c.call(_, ujson.Obj())) ==>
+          Some(Left(McpError.Rpc(-32602, "Unknown tool: gone")))
+        offered(c.tools()) ==> Right(Vector("fake_a"))
+        fake.count("tools/list") ==> 2
+      }
+    }
+
+    test("each refusal is the McpError its status and body mean, its challenge kept") {
+      withFake { fake =>
+        fake.lists(Vector(tool("a")))
+        def listed(c: McpClient^): Either[McpError, Int] = c.tools().map(_.tools.size)
+        val scope = "Bearer error=\"insufficient_scope\", scope=\"repo\""
+        listed(client(fake, token = "not-the-token")) ==>
+          Left(McpError.Unauthorized(Some(FakeMcpServer.Challenge)))
+        fake.refuses(Some(FakeMcpServer.Refusal(403, Vector("WWW-Authenticate" -> scope), "")))
+        listed(client(fake)) ==> Left(McpError.Forbidden(Some(scope)))
+        fake.refuses(Some(FakeMcpServer.Refusal(404, Vector.empty, "Not Found")))
+        listed(client(fake)) ==> Left(McpError.Legacy(404))
+        fake.refuses(Some(FakeMcpServer.Refusal(502, Vector.empty, "")))
+        listed(client(fake)) ==> Left(McpError.Status(502))
+        fake.refuses(None)
+        fake.speaks(Vector("2025-11-25", "2025-06-18"))
+        listed(client(fake)) ==> Left(McpError.Unsupported(Vector("2025-11-25", "2025-06-18")))
+      }
+    }
+
+    test("a server that cannot be reached is Unreachable") {
+      val fake = FakeMcpServer.start()
+      val c = client(fake)
+      fake.stop()
+      c.tools() match {
+        case Left(McpError.Unreachable(why)) => why.takeWhile(_ != ':') ==> "ConnectException"
+        case other => throw new java.lang.AssertionError(s"not Unreachable: $other")
+      }
+    }
+
+    test("an answer that has not come by Timeout on the clock is Unreachable") {
+      withFake { fake =>
+        fake.lists(Vector(tool("a")))
+        fake.stalls(true)
+        // Each reading of this clock is 61 seconds after the last, so the deadline has passed
+        // by the first line of the stalled stream.
+        client(fake, new Hands(step = 61000L)).tools() ==>
+          Left(McpError.Unreachable("no answer within 60 seconds"))
+      }
+    }
   }
 }

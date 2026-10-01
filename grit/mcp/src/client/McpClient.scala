@@ -16,7 +16,7 @@ import scala.jdk.DurationConverters.*
 import scala.jdk.OptionConverters.*
 
 import grit.core.clock.Clock
-import grit.mcp.wire.{Headers, McpError, McpTool, Rpc, Skipped, Sse}
+import grit.mcp.wire.{Answer, Headers, McpError, McpTool, Rpc, Skipped, Sse}
 
 /** A server's tools as listed: `tools`, those grit may offer, each name once, in the order
   * listed; `skipped`, the others and why.
@@ -68,6 +68,19 @@ final class McpClient(server: McpServer, bearer: Bearer, clock: Clock) {
   def stale(): Unit = {
     kept.updateAndGet(_.map((listed, _) => (listed, Long.MinValue)))
     ()
+  }
+
+  /** `tool` called with `arguments`: its answer, an `isError` one included, or why none. An
+    * [[McpError.Rpc]] with code `-32602` (an unknown tool, or invalid arguments) makes the list
+    * [[stale]], since the server's tools may have changed.
+    */
+  def call(tool: McpTool, arguments: ujson.Obj): Either[McpError, Answer] = {
+    val answered = exchange(Rpc.Call.CallTool(tool, arguments)).flatMap(Answer.of)
+    answered match {
+      case Left(McpError.Rpc(InvalidParams, _)) => stale()
+      case _ => ()
+    }
+    answered
   }
 
   /** Every page of the list, from the first, and the reading until which it is fresh. */
@@ -176,6 +189,9 @@ object McpClient {
     * claimed request.
     */
   val Timeout: FiniteDuration = 60.seconds
+
+  /** JSON-RPC's Invalid params, which a server answers for an unknown tool. */
+  private val InvalidParams = -32602
 
   /** The most pages one listing reads: 100. */
   val MaxPages: Int = 100
