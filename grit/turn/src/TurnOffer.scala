@@ -8,14 +8,17 @@ import grit.core.store.{Db, EntryStore, Origin, Payload, StoreError, Tx}
 import grit.core.tool.{DuplicateName, Hosted, Tool, ToolName, ToolSet, ToolSetId, Toolbox}
 
 /** What a turn offers its model, as its `offer` step decided (ADR 0016, 0017): the workspace
-  * its hosted calls are addressed to, none for a conversation with no directory; its tool
-  * set; its system prompt; and its `root`, what it answers.
+  * its hosted calls are addressed to, none when its conversation has none
+  * ([[TurnOffer.workspaceOf]]); its tool set; its system prompt; its `root`, what it answers;
+  * and `advertised`, the tools of its set taken from an edge's advert
+  * ([[TurnOffer.Recorded]]).
   */
 final case class TurnOffer(
     workspace: Option[Place],
     tools: ToolSet,
     prompt: SystemPrompt,
-    root: TurnOffer.Root
+    root: TurnOffer.Root,
+    advertised: Vector[ToolName]
 ) {
 
   /** The system text every model call of the turn is sent. */
@@ -134,12 +137,14 @@ object TurnOffer {
       for {
         set <- hosting.toolSets.get(recorded.tools)
         prompt <- hosting.prompts.prompt(recorded.prompt)
-      } yield TurnOffer(recorded.workspace, set, prompt, recorded.root)
+      } yield TurnOffer(recorded.workspace, set, prompt, recorded.root, recorded.advertised)
     }.left
       .map(e => TurnFailure.Store(describe(e)))
 
   /** The tools `offer`'s set names, in its order: each `tooling`'s own tool or operator
-    * tool, else its hosted one, else a stand-in for a tool this build no longer has ([[Tool.gone]]).
+    * tool, else its hosted one, else, for a name `offer` took from an advert, that tool as
+    * [[grit.core.tool.Hosted.advertised]] makes it from the set's entry, else a stand-in for
+    * a tool this build no longer has ([[Tool.gone]]).
     */
   def toolbox[C^](tooling: TurnTooling[C]^, offer: TurnOffer): Toolbox[C] = {
     val chosen: Vector[Tool.Offered^{C}] = offer.tools.tools.map { entry =>
@@ -148,7 +153,11 @@ object TurnOffer {
         case None =>
           tooling.hosted.find(_.name == entry.name) match {
             case Some(hosted) => hosted
-            case None => Tool.gone(entry)
+            case None =>
+              Option
+                .when(offer.advertised.contains(entry.name))(entry)
+                .flatMap(Hosted.advertised)
+                .getOrElse(Tool.gone(entry))
           }
       }
     }

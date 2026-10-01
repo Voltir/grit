@@ -3,8 +3,8 @@ package grit.turn
 import java.time.Instant
 
 import grit.core.edge.InMemoryEdges
-import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
-import grit.core.message.Message
+import grit.core.id.{ConversationId, EntryId, PrincipalId, ToolCallId, TurnRef, TurnSeq}
+import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.{Directory, Place, Service, WorksIn}
 import grit.core.prompt.SystemPrompt
 import grit.core.store.{
@@ -18,10 +18,12 @@ import grit.core.store.{
 }
 import grit.core.tool.{
   Args,
+  Bound,
   Field,
   Gate,
   Hosted,
   Outcome,
+  Repairs,
   Retry,
   Tool,
   ToolName,
@@ -278,6 +280,42 @@ object TurnOfferTests extends TestSuite {
       )
       offered ==> Vector("fetch", "github_search", "github_issue", "about")
       recorded.advertised ==> Vector(ToolName("github_search"), ToolName("github_issue"))
+    }
+
+    test(
+      "a tool the offer took from an advert is rebuilt from the recorded set as a hosted call; one this build lacks is gone"
+    ) {
+      val set = ToolSet
+        .of(Vector(advert("github_search"), advert("github_issue")))
+        .fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      val offer = TurnOffer(
+        Some(github.place),
+        set,
+        SystemPrompt.of(Vector.empty),
+        TurnOffer.Root.Addressed,
+        Vector(named("github_search"))
+      )
+      val tooling = TurnTooling[{}](
+        box(tool(ToolName("about"), asks = false)),
+        Toolbox.Empty,
+        Vector.empty,
+        new FakeJot,
+        budget(5)
+      )
+      val rebuilt = TurnOffer.toolbox(tooling, offer)
+      def bound(name: String): String =
+        rebuilt.bind(
+          AssistantBlock.ToolCall(ToolCallId("c1"), name, ujson.Obj("q" -> "grit")),
+          Repairs.All
+        ) match {
+          case Right(h: Bound.Hosted) => s"hosted ${h.shown}"
+          case Right(f: Bound.Free) => s"free ${f()}"
+          case other => other.toString
+        }
+      Vector("github_search", "github_issue").map(bound) ==> Vector(
+        "hosted github_search {\"q\":\"grit\"}",
+        "free Failed(The tool github_issue is gone; nothing ran.)"
+      )
     }
 
     test("a turn rooted on a person's message to grit is recorded as addressed") {
