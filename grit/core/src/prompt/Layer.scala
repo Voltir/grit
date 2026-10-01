@@ -19,7 +19,9 @@ enum Layer(val key: String) {
   /** grit's words on where the conversation is, and what a turn may reach there. */
   case Reach extends Layer("reach")
 
-  /** The place's own instruction files, verbatim: data from the place, never grit's words. */
+  /** The place's own instructions, verbatim: its instruction files, or what the edge hosting
+    * it was declared with; data from the place, never grit's words.
+    */
   case Place extends Layer("place")
 }
 

@@ -2,11 +2,13 @@ package grit.edge
 
 import grit.core.host.InstructionFile
 import grit.core.message.{Message, Tokens}
+import grit.core.place.Service
+import grit.core.prompt.{Fragment, Layer}
 import grit.core.provider.TokenEstimator
 
 import utest.*
 
-/** [[PlaceFragments]]: the bounds on a place's instruction files. */
+/** [[PlaceFragments]]: the bounds on a place's instruction files, and declared instructions. */
 object PlaceFragmentsTests extends TestSuite {
 
   /** A token per character, so the layer's cap is a count of characters. */
@@ -64,6 +66,24 @@ object PlaceFragmentsTests extends TestSuite {
         file("/x/y/AGENTS.md", "c" * 5000)
       )
       shape(files).map(_._1) ==> Vector("/x/AGENTS.md", "/x/y/AGENTS.md")
+    }
+
+    test("a declared text is one Place fragment from the place, headed with it; blank is refused") {
+      val github =
+        Service.of("github").fold(why => throw new java.lang.AssertionError(why), _.place)
+      (
+        PlaceFragments.declared(github, "  ours is octocat/Hello-World\n"),
+        PlaceFragments.declared(github, " \n\t")
+      ) ==> (
+        Right(
+          Fragment(
+            Layer.Place,
+            "service:github",
+            "Instructions for service:github:\n\nours is octocat/Hello-World"
+          )
+        ),
+        Left("the instructions declared for service:github are blank")
+      )
     }
   }
 }

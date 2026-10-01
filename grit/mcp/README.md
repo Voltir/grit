@@ -30,7 +30,8 @@ In dependency order:
   (`Listed`) and calls, each request a POST of its own, held to its scope. The JDK HTTP
   client lives here alone. Imports `wire` and `scope`.
 - **`edge`** — the servers' tools served at a service place: `McpEdge`, the `ServedEdge` a
-  deployment declares, which registers the place, advertises there and serves it; and
+  deployment declares, which registers the place, advertises there (with the instructions
+  the deployment declared for the place, if any, as its Place layer) and serves it; and
   `McpTools`, the `grit.edge.Tools` it serves with, which runs a request by calling its server
   and tells the desk what to advertise when the lists change. Imports `wire` and `client`.
 

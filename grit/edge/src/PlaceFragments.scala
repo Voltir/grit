@@ -1,11 +1,13 @@
 package grit.edge
 
 import grit.core.host.InstructionFile
+import grit.core.place.Place
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.provider.TokenEstimator
 
-/** A place's instruction files as the Place layer of a system prompt: data from the place,
-  * never grit's words, bounded so a deep tree cannot crowd out the rest.
+/** A place's own instructions as the Place layer of a system prompt: its instruction files,
+  * bounded so a deep tree cannot crowd out the rest, or the words a deployment declared for
+  * it; data from the place, never grit's words.
   */
 object PlaceFragments {
 
@@ -45,6 +47,16 @@ object PlaceFragments {
       .iterate(distinct)(_.drop(1))
       .find(fs => fs.size <= 1 || tokens(fs) <= LayerTokens)
       .getOrElse(Vector.empty)
+  }
+
+  /** `text`, words a deployment declared for `place`, as its Place fragment: from source
+    * `place.written`, its text "Instructions for {place.written}:", a blank line, then `text`
+    * trimmed. `Left` saying why when `text` is blank.
+    */
+  def declared(place: Place, text: String): Either[String, Fragment] = {
+    val said = text.trim
+    if (said.isEmpty) Left(s"the instructions declared for ${place.written} are blank")
+    else Right(Fragment(Layer.Place, place.written, s"Instructions for ${place.written}:\n\n$said"))
   }
 
   /** The longest prefix of `text` whose UTF-8 is at most `max` bytes, never splitting a

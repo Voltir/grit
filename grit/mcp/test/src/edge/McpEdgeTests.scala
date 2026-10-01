@@ -21,6 +21,7 @@ import grit.core.spend.Budget
 import grit.core.store.{Jot, StoreError, Tx}
 import grit.core.tool.{Retry, ToolName, ToolSet}
 import grit.dbos.sql.TestTx
+import grit.edge.PlaceFragments
 import grit.mcp.client.{FakeMcpServer, McpServer}
 import grit.mcp.scope.{Bound, McpScope}
 
@@ -63,7 +64,8 @@ object McpEdgeTests extends TestSuite {
       env: Map[String, String],
       reachable: Boolean = true,
       allow: Set[String] = Set.empty,
-      scope: McpScope = McpScope.Open
+      scope: McpScope = McpScope.Open,
+      instructions: Option[String] = None
   ): (Either[EdgeRefusal, Unit], InMemoryEdges, Vector[String]) = {
     val edges = new InMemoryEdges
     val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
@@ -76,7 +78,7 @@ object McpEdgeTests extends TestSuite {
     )
     val log = new ConcurrentLinkedQueue[String]()
     val edge = McpEdge
-      .serving(Github, Vector(server(fake, allow = allow, scope = scope)))
+      .serving(Github, Vector(server(fake, allow = allow, scope = scope)), instructions)
       .fold(why => throw new java.lang.AssertionError(why), identity)
     val result = edge.open(stores, env, line => { val _ = log.add(line) }) match {
       case Left(refusal) => Left(refusal)
@@ -101,14 +103,16 @@ object McpEdgeTests extends TestSuite {
       }
     }
 
-    test("an edge of no servers, or of two with one name, is refused") {
+    test("an edge of no servers, of two with one name, or with blank instructions is refused") {
       withFake { fake =>
         Vector(
           McpEdge.serving(Github, Vector.empty).map(_ => ()),
-          McpEdge.serving(Github, Vector(server(fake), server(fake))).map(_ => ())
+          McpEdge.serving(Github, Vector(server(fake), server(fake))).map(_ => ()),
+          McpEdge.serving(Github, Vector(server(fake)), Some(" ")).map(_ => ())
         ) ==> Vector(
           Left("the MCP edge for service:github names no server"),
-          Left("two MCP servers are named github")
+          Left("two MCP servers are named github"),
+          Left("the instructions declared for service:github are blank")
         )
       }
     }
@@ -139,6 +143,17 @@ object McpEdgeTests extends TestSuite {
             "service:github: serving github_get_file_contents"
           )
         )
+      }
+    }
+
+    test("opened with instructions, it advertises them as the place's Place layer") {
+      withFake { fake =>
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
+        val text = "Our code is the GitHub repository octocat/Hello-World."
+        val (_, edges, _) =
+          opened(fake, Map("FAKE_MCP_TOKEN" -> fake.token), instructions = Some(text))
+        edges.adverts.values.toVector.map(_.instructions) ==>
+          Vector(PlaceFragments.declared(Github.place, text).toSeq.toVector.map(_.id))
       }
     }
 

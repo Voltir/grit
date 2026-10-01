@@ -4,38 +4,54 @@ import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
 import grit.core.id.{EdgeName, PrincipalId}
 import grit.core.place.Service
+import grit.core.prompt.Fragment
 import grit.core.store.StoreError
 import grit.core.tool.ToolName
-import grit.edge.Server
+import grit.edge.{PlaceFragments, Server}
 import grit.mcp.client.{Bearer, McpClient, McpServer}
 import grit.mcp.wire.{McpError, Skipped}
 
 /** An edge hosting MCP servers' tools at a service's place (ADR 0017). */
 object McpEdge {
 
-  /** The edge named for `service`, hosting `servers`' tools there, or why not: no servers, or
-    * two with one name. Opened, it registers the service's place for grit itself
-    * ([[PrincipalId.Grit]]); logs in one line the listed tools each server's allowlist leaves
-    * out, in one line those its scope cannot hold, in one line the allowlisted names it does
-    * not list, and each other tool it skips on a line of its own; advertises there each
-    * server's tools ([[McpTools.offered]]); and serves the requests addressed there with
-    * [[McpTools]]. It needs each server's token variable, answers no ask, and delivers no
+  /** The edge named for `service`, hosting `servers`' tools there, or why not: no servers, two
+    * with one name, or `instructions` given blank. Opened, it registers the service's place for
+    * grit itself ([[PrincipalId.Grit]]); logs in one line the listed tools each server's
+    * allowlist leaves out, in one line those its scope cannot hold, in one line the allowlisted
+    * names it does not list, and each other tool it skips on a line of its own; advertises
+    * there each server's tools ([[McpTools.offered]]) with `instructions`, when given, as the
+    * place's Place layer ([[PlaceFragments.declared]]): an aid to the model, never a bound on
+    * what it reaches, which is each server's scope; and serves the requests addressed there
+    * with [[McpTools]]. It needs each server's token variable, answers no ask, and delivers no
     * replies. Opening it is refused when a token is unset or malformed ([[Bearer.of]]); when
     * a server's list cannot be read, it naming the server and why, and for a refused token
     * the variable; when a server lists no tool grit may offer; or when the desk cannot be
     * registered or advertise.
     */
-  def serving(service: Service, servers: Vector[McpServer]): Either[String, ServedEdge] = {
+  def serving(
+      service: Service,
+      servers: Vector[McpServer],
+      instructions: Option[String] = None
+  ): Either[String, ServedEdge] = {
     val names = servers.map(_.name)
     if (servers.isEmpty) Left(s"the MCP edge for ${service.place.written} names no server")
     else
       names.diff(names.distinct).headOption match {
         case Some(repeated) => Left(s"two MCP servers are named $repeated")
-        case None => Right(new Edge(service, servers))
+        case None =>
+          instructions
+            .map(PlaceFragments.declared(service.place, _))
+            .fold(Right(Vector.empty))(_.map(Vector(_)))
+            .map(new Edge(service, servers, _))
       }
   }
 
-  private final class Edge(service: Service, servers: Vector[McpServer]) extends ServedEdge {
+  /** The edge [[serving]] describes; `declared`, the Place layer it advertises. */
+  private final class Edge(
+      service: Service,
+      servers: Vector[McpServer],
+      declared: Vector[Fragment]
+  ) extends ServedEdge {
 
     def name: EdgeName = EdgeName(service.name)
 
@@ -70,7 +86,7 @@ object McpEdge {
                     clients,
                     // Not logged: `log` goes to the server, and a refusal is tried again on the
                     // next run.
-                    set => desk.advertise(place, set, Vector.empty)
+                    set => desk.advertise(place, set, declared)
                   )
                   tools.offered() match {
                     case Left(e) =>
