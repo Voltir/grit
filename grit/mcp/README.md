@@ -15,6 +15,9 @@ In dependency order:
   `Skipped` and why; `Rpc`, the requests grit sends and the results and errors read back;
   `Headers`, what a request carries besides its body; `Sse`, the response in an event
   stream; `Answer`, a call's result as the text the model reads. Imports nothing in mcp.
+- **`client`** — a server reached over HTTP: `McpServer`, a server a deployment declares;
+  `Bearer`, its token read from the environment and never shown. The JDK HTTP client lives
+  here alone. Imports `wire`.
 
 The test tree mirrors it.
 
