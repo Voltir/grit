@@ -47,8 +47,9 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
   @caps.unsafe.untrackedCaptures
   private val kept = new AtomicReference[Option[(Listed, Long)]](None)
 
-  /** The tools grit may offer from `server`, every page of its list: the list kept while
-    * fresh, else listed again. A list is fresh until the earliest of its pages' receipt plus
+  /** The tools grit may offer from `server`, every page of its list, less those its allowlist
+    * leaves out ([[Skipped.NotAllowed]]) and then those its scope excludes
+    * ([[Skipped.OutOfScope]]): the list kept while fresh, else listed again. A list is fresh until the earliest of its pages' receipt plus
     * that page's `ttlMs`, so a page without one makes it stale at once. A re-list that fails
     * returns the kept list when there is one, else its error; [[McpError.Unreadable]] when the
     * list runs past [[McpClient.MaxPages]] pages. A re-list blocks on its server for up to
@@ -76,13 +77,20 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
     ()
   }
 
-  /** `tool` called with `arguments`: its answer, an `isError` one included, or why none. An
+  /** `tool` called with `arguments` as the server's scope sends them
+    * ([[grit.mcp.scope.McpScope.request]]): its answer, an `isError` one included, or why none;
+    * [[McpError.OutOfScope]], with nothing sent, when the scope refuses the call. An
     * [[McpError.Rpc]] with code `-32602` (an unknown tool, or invalid arguments) makes the list
     * [[stale]], since the server's tools may have changed. Blocks on the server for up to
     * [[McpClient.Timeout]].
     */
   def call(tool: McpTool, arguments: ujson.Obj): Either[McpError, Answer] = {
-    val answered = exchange(Rpc.Call.CallTool(tool, arguments)).flatMap(Answer.of)
+    val answered = server.scope
+      .request(tool, arguments)
+      .left
+      .map(McpError.OutOfScope(_))
+      .flatMap(sent => exchange(Rpc.Call.CallTool(tool, sent)))
+      .flatMap(Answer.of)
     // A -32020 HeaderMismatch is not re-listed and retried, though the spec says a client
     // SHOULD (streamable-http.mdx, Client Behavior): a list with ttlMs 0, as GitHub's is, is
     // re-read on every access, so `tool` already carries the schema the server holds and a
@@ -117,10 +125,11 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
       val skipped = pages.flatMap(_.skipped)
       val (allowed, unallowed) =
         listed.partition(t => server.allow.isEmpty || server.allow.contains(t.name))
+      val held = allowed.map(t => (t, server.scope.excludes(t)))
       (
         Listed(
-          allowed,
-          skipped ++ unallowed.map(t => Skipped.NotAllowed(t.name)),
+          held.collect { case (t, None) => t },
+          skipped ++ unallowed.map(t => Skipped.NotAllowed(t.name)) ++ held.flatMap(_._2),
           server.allow -- listed.map(_.name) -- skipped.flatMap(named)
         ),
         read.map(_._2).minOption.getOrElse(Long.MinValue)
@@ -219,6 +228,7 @@ object McpClient {
     case Skipped.BadName(tool, _) => Some(tool)
     case Skipped.BadHeader(tool, _) => Some(tool)
     case Skipped.NotAllowed(tool) => Some(tool)
+    case Skipped.OutOfScope(tool) => Some(tool)
     case Skipped.Malformed(_) => None
   }
 

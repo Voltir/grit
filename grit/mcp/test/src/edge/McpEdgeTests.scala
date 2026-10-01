@@ -22,6 +22,7 @@ import grit.core.store.{Jot, StoreError, Tx}
 import grit.core.tool.{Retry, ToolName, ToolSet}
 import grit.dbos.sql.TestTx
 import grit.mcp.client.{FakeMcpServer, McpServer}
+import grit.mcp.scope.{Bound, McpScope}
 
 import utest.*
 
@@ -41,10 +42,11 @@ object McpEdgeTests extends TestSuite {
   private def server(
       fake: FakeMcpServer,
       name: String = "github",
-      allow: Set[String] = Set.empty
+      allow: Set[String] = Set.empty,
+      scope: McpScope = McpScope.Open
   ): McpServer =
     McpServer
-      .of(name, fake.endpoint, Token, allow)
+      .of(name, fake.endpoint, Token, scope, allow)
       .fold(why => throw new java.lang.AssertionError(why), identity)
 
   /** Desks that cannot be registered: the database cannot be reached. */
@@ -60,7 +62,8 @@ object McpEdgeTests extends TestSuite {
       fake: FakeMcpServer,
       env: Map[String, String],
       reachable: Boolean = true,
-      allow: Set[String] = Set.empty
+      allow: Set[String] = Set.empty,
+      scope: McpScope = McpScope.Open
   ): (Either[EdgeRefusal, Unit], InMemoryEdges, Vector[String]) = {
     val edges = new InMemoryEdges
     val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
@@ -73,7 +76,7 @@ object McpEdgeTests extends TestSuite {
     )
     val log = new ConcurrentLinkedQueue[String]()
     val edge = McpEdge
-      .serving(Github, Vector(server(fake, allow = allow)))
+      .serving(Github, Vector(server(fake, allow = allow, scope = scope)))
       .fold(why => throw new java.lang.AssertionError(why), identity)
     val result = edge.open(stores, env, line => { val _ = log.add(line) }) match {
       case Left(refusal) => Left(refusal)
@@ -154,6 +157,25 @@ object McpEdgeTests extends TestSuite {
           "MCP server github: its allowlist names tools it does not list: get_me, list_tags",
           "service:github: serving github_get_file_contents"
         )
+      }
+    }
+
+    test("the tools its scope cannot hold are logged in one line, after those not allowed") {
+      withFake { fake =>
+        fake.lists(
+          Vector("get_file_contents", "search_code", "search_issues", "get_me")
+            .map(FakeMcpServer.github)
+        )
+        val scope = Bound
+          .of("owner" -> "the-actual-best", "repo" -> "actualbest")
+          .fold(why => throw new java.lang.AssertionError(why), McpScope.within(_))
+        val allow = Set("get_file_contents", "search_code", "search_issues")
+        opened(fake, Map("FAKE_MCP_TOKEN" -> fake.token), allow = allow, scope = scope)._3 ==>
+          Vector(
+            "MCP server github: 1 listed tool is not on its allowlist: get_me",
+            "MCP server github: 2 listed tools are outside its scope: search_code, search_issues",
+            "service:github: serving github_get_file_contents"
+          )
       }
     }
 

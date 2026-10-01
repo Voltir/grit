@@ -6,6 +6,7 @@ import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, Tur
 import grit.core.place.{Directory, Place, Service}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
 import grit.mcp.client.{Bearer, FakeMcpServer, McpClient, McpServer}
+import grit.mcp.scope.McpScope
 
 import utest.*
 
@@ -19,7 +20,7 @@ object McpToolsTests extends TestSuite {
   /** A client of `fake` as the server `github`, reading `clock`. */
   private def client(fake: FakeMcpServer, clock: Clock): McpClient^{clock} = {
     val server = McpServer
-      .of("github", fake.endpoint, Token)
+      .of("github", fake.endpoint, Token, McpScope.Open)
       .fold(
         why => throw new java.lang.AssertionError(why),
         identity

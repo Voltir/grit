@@ -1,6 +1,7 @@
 # 0017. A tool call is a durable request addressed to a workspace, and run by an edge hosting it
 
-Status: accepted (2026-09-27); amended (2026-09-30): service places. Extends 0002 and 0010; supersedes 0009's in-step run for the
+Status: accepted (2026-09-27); amended (2026-09-30): service places; amended (2026-10-01): a
+service place's reach. Extends 0002 and 0010; supersedes 0009's in-step run for the
 tools an edge hosts.
 
 Context: the engine ran every tool call in its own step, over the directory the engine's
@@ -42,7 +43,10 @@ Decision:
   place that is neither a directory nor a service. A conversation with no directory of its
   own works in the service place its deployment links it to (`WorksIn`), first link first;
   a stored per-conversation link will override that default. One workspace per turn: a
-  conversation's hosted calls all go to it.
+  conversation's hosted calls all go to it. A service place's reach is bounded at the edge
+  hosting it, by exact argument bounds and attributed answers, failing closed: a tool it
+  cannot hold to them is not offered, and a call outside them is not sent. Words to the
+  model are an aid, never the guard; nor is the service's token, which may reach further.
 - **The engine offers what an edge advertises.** A hosted tool the engine does not
   describe is offered as the serving edge advertised it, when it does not ask first; its
   arguments are read by the edge. The offer records which tools it took from the advert,
@@ -54,4 +58,5 @@ Consequences: no open edge means no access, which the turn is told. A tool call 
 round trip through Postgres (a dispatch, a NOTIFY, a claim, the run, an update, a send, the
 turn's wake) instead of a function call. Requests are journal-class: `PeriodStore.purge`
 deletes a period's turns' requests with their entries. Enforced by `EdgesContract` (in
-memory and SQL), `EdgesTests`, `ServerTests`, `EdgeLiveTests` and `PeriodContract`.
+memory and SQL), `EdgesTests`, `ServerTests`, `EdgeLiveTests`, `PeriodContract` and, for a
+service place's reach, `McpScopeTests` and `McpClientTests`.

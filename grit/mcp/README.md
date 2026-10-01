@@ -15,10 +15,17 @@ In dependency order:
   `Skipped` and why; `Rpc`, the requests grit sends and the results and errors read back;
   `Headers`, what a request carries besides its body; `Sse`, the response in an event
   stream; `Answer`, a call's result as the text the model reads. Imports nothing in mcp.
+- **`scope`** — a server's reach, pure: `McpScope`, which of its tools are offered and which
+  calls are sent, `Open` or held `Within` exact argument `Bound`s, so a deployment bounds a
+  service at the edge rather than by asking the model (ADR 0017). Imports `wire`.
+- **`github`** — GitHub's side of a scope: `GitHubScope`, a repository or an owner as the
+  `Bound` GitHub's tools name it. It names a service, no organisation; which repositories
+  is the deployment's to say. Imports `scope`; nothing else in mcp imports it
+  (`mcp-generic-names-no-github`).
 - **`client`** — a server reached over HTTP: `McpServer`, a server a deployment declares;
   `Bearer`, its token read from the environment and never shown; `McpClient`, its tools
-  (`Listed`) and calls, each request a POST of its own. The JDK HTTP client lives here alone.
-  Imports `wire`.
+  (`Listed`) and calls, each request a POST of its own, held to its scope. The JDK HTTP
+  client lives here alone. Imports `wire` and `scope`.
 - **`edge`** — the servers' tools served at a service place: `McpEdge`, the `ServedEdge` a
   deployment declares, which registers the place, advertises there and serves it; and
   `McpTools`, the `grit.edge.Tools` it serves with, which runs a request by calling its server

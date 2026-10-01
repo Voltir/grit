@@ -5,15 +5,18 @@ import java.net.URI
 import scala.util.Try
 
 import grit.core.edge.Variable
+import grit.mcp.scope.McpScope
 
 /** An MCP server grit reaches over Streamable HTTP at [[grit.mcp.wire.Rpc.Version]]: its tools
-  * are offered as `{name}_{tool}`, and of those only the ones `allow` names when it names any;
-  * each request carries `Authorization: Bearer` with the value of `token`.
+  * are offered as `{name}_{tool}`, and of those only the ones `allow` names when it names any
+  * and `scope` offers; its calls are sent as `scope` sends them; each request carries
+  * `Authorization: Bearer` with the value of `token`.
   */
 final case class McpServer private (
     name: String,
     endpoint: URI,
     token: Variable,
+    scope: McpScope,
     allow: Set[String]
 )
 
@@ -27,6 +30,7 @@ object McpServer {
       name: String,
       endpoint: String,
       token: Variable,
+      scope: McpScope,
       allow: Set[String] = Set.empty
   ): Either[String, McpServer] =
     for {
@@ -45,7 +49,7 @@ object McpServer {
         case _ =>
           Left(s"$name's endpoint must be https (http only on a loopback host): '$endpoint'")
       }
-    } yield new McpServer(name, uri, token, allow)
+    } yield new McpServer(name, uri, token, scope, allow)
 
   private val Name = "[a-z][a-z0-9_]{0,15}".r
 

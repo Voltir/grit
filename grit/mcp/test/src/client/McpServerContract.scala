@@ -4,6 +4,7 @@ import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 
 import grit.core.clock.Clock
 import grit.core.edge.Variable
+import grit.mcp.scope.McpScope
 import grit.mcp.wire.{Headers, McpError, McpTool, Rpc}
 
 import utest.*
@@ -216,7 +217,7 @@ object McpServerFakeTests extends McpServerContract {
   fake.lists(Vector(FakeMcpServer.Weather, FakeMcpServer.github("get_file_contents")))
 
   protected val server: McpServer =
-    McpServer.of("fake", fake.endpoint, Variable("FAKE_MCP_TOKEN")) match {
+    McpServer.of("fake", fake.endpoint, Variable("FAKE_MCP_TOKEN"), McpScope.Open) match {
       case Right(s) => s
       case Left(why) => throw new java.lang.AssertionError(why)
     }

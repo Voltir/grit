@@ -19,7 +19,8 @@ object McpErrorTests extends TestSuite {
         McpError.Rpc(-32602, "Unknown tool: invalid_tool_name"),
         McpError.InputRequired,
         McpError.Unreadable("no result"),
-        McpError.Status(502)
+        McpError.Status(502),
+        McpError.OutOfScope("its scope does not offer search_code")
       ).map(_.message) ==> Vector(
         "could not be reached: connection refused",
         "refused grit's token (HTTP 401; it asks: Bearer realm=\"mcp\")",
@@ -32,7 +33,8 @@ object McpErrorTests extends TestSuite {
         "answered error -32602: Unknown tool: invalid_tool_name",
         "wanted input that grit does not give",
         "answered something grit cannot read: no result",
-        "answered HTTP 502"
+        "answered HTTP 502",
+        "was not asked: its scope does not offer search_code"
       )
     }
   }

@@ -4,6 +4,7 @@ import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.nio.file.{Files, Path}
 
 import grit.core.edge.Variable
+import grit.mcp.scope.McpScope
 import grit.mcp.wire.{Headers, McpError, McpTool, Rpc, Sse}
 
 /** [[McpServerContract]] against GitHub's MCP server, read-only (no model call, no spend):
@@ -34,7 +35,7 @@ object LiveProbe {
         sys.exit(2)
     }
     val probe = for {
-      server <- McpServer.of("github", Endpoint, Token)
+      server <- McpServer.of("github", Endpoint, Token, McpScope.Open)
       bearer <- Bearer.of(sys.env, Token).left.map(_.message)
     } yield (server, bearer)
     probe match {

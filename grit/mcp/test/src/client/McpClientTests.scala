@@ -7,6 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.clock.Clock
 import grit.core.edge.Variable
 import grit.core.tool.ToolName
+import grit.mcp.scope.{Bound, McpScope}
 import grit.mcp.wire.{McpError, Skipped}
 
 import utest.*
@@ -28,14 +29,17 @@ object McpClientTests extends TestSuite {
 
   private val Token = Variable("FAKE_MCP_TOKEN")
 
-  /** A client of `fake`, as the server `name` allowing `allow`, its token `token`. */
+  /** A client of `fake`, as the server `fake` allowing `allow` within `scope`, its token
+    * `token`.
+    */
   private def client(
       fake: FakeMcpServer,
       clock: Clock = new Hands(),
       allow: Set[String] = Set.empty,
-      token: String = "fake-token"
+      token: String = "fake-token",
+      scope: McpScope = McpScope.Open
   ): McpClient^{clock} = {
-    val server = McpServer.of("fake", fake.endpoint, Token, allow) match {
+    val server = McpServer.of("fake", fake.endpoint, Token, scope, allow) match {
       case Right(s) => s
       case Left(why) => throw new java.lang.AssertionError(why)
     }
@@ -60,6 +64,12 @@ object McpClientTests extends TestSuite {
     try body(fake)
     finally fake.stop()
   }
+
+  /** Within the repository `the-actual-best/actualbest`. */
+  private val Repository: McpScope =
+    Bound
+      .of("owner" -> "the-actual-best", "repo" -> "actualbest")
+      .fold(why => throw new java.lang.AssertionError(why), McpScope.within(_))
 
   private def offered(listed: Either[McpError, Listed]): Either[McpError, Vector[String]] =
     listed.map(_.tools.map(t => ToolName.value(t.offered)))
@@ -127,6 +137,50 @@ object McpClientTests extends TestSuite {
         fake.lists(Vector(tool("a"), FakeMcpServer.issueWrite, tool("b")))
         client(fake, allow = Set("a", "issue_write", "gone", "renamed")).tools().map(_.unlisted) ==>
           Right(Set("gone", "renamed"))
+      }
+    }
+
+    test(
+      "a tool its scope cannot hold is skipped as out of scope, one not allowed as not allowed"
+    ) {
+      withFake { fake =>
+        fake.lists(
+          Vector("get_file_contents", "search_code", "list_commits").map(FakeMcpServer.github)
+        )
+        client(fake, allow = Set("get_file_contents", "search_code"), scope = Repository)
+          .tools()
+          .map(l => (l.tools.map(t => ToolName.value(t.offered)), l.skipped)) ==> Right(
+          (
+            Vector("fake_get_file_contents"),
+            Vector(Skipped.NotAllowed("list_commits"), Skipped.OutOfScope("search_code"))
+          )
+        )
+      }
+    }
+
+    test("a call its scope refuses is never sent; one it admits is") {
+      withFake { fake =>
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
+        fake.answers("get_file_contents", FakeMcpServer.githubFileContents)
+        val c = client(fake, scope = Repository)
+        def read(owner: String): Either[McpError, Boolean] =
+          c.tools()
+            .flatMap(_.tools.headOption.toRight(McpError.Unreadable("unlisted")))
+            .flatMap(c.call(_, ujson.Obj("owner" -> owner, "repo" -> "actualbest")))
+            .map(_.isError)
+        val refused = read("actualbest")
+        val sent = fake.count("tools/call")
+        (refused, sent, read("the-actual-best"), fake.count("tools/call")) ==> (
+          Left(
+            McpError.OutOfScope(
+              "its calls are limited to owner the-actual-best with repo actualbest, " +
+                "and this one has owner actualbest with repo actualbest"
+            )
+          ),
+          0,
+          Right(false),
+          1
+        )
       }
     }
 

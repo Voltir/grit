@@ -18,6 +18,7 @@ import grit.kit.environment.Secrets
 import grit.kit.run.Launch
 import grit.mcp.client.{FakeMcpServer, McpServer}
 import grit.mcp.edge.McpEdge
+import grit.mcp.scope.McpScope
 import grit.models.StubProvider
 import grit.turn.{Turn, TurnLoop}
 
@@ -81,7 +82,8 @@ object McpEdgeLiveTests extends TestSuite {
         fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         fake.answers("get_file_contents", FakeMcpServer.githubFileContents)
         Launch(engine, deployment, secrets(config), Launch.Run.Served, sweeping = false)
-        val server = McpServer.of("github", fake.endpoint, Token).fold(sys.error(_), identity)
+        val server =
+          McpServer.of("github", fake.endpoint, Token, McpScope.Open).fold(sys.error(_), identity)
         val edge = McpEdge.serving(Github, Vector(server)).fold(sys.error(_), identity)
         val stores =
           EdgeStores(engine.inbox, engine.principals, engine.deliveries, engine.jot, engine)

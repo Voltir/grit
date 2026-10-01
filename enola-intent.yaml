@@ -8,6 +8,7 @@
 #   3. grit.prose names no other grit module (grit/prose/README.md)
 #   4. core names no extension, each extension names core alone, and the kit names no edge
 #      extension, terminal UI or deployment (ADR 0021; grit/kit/README.md)
+#   5. grit.mcp's protocol, scope, client and edge name no GitHub package (grit/mcp/README.md)
 #
 # Every rule was watched failing on a deliberately planted bad import before it was
 # adopted. Do the same for any new rule: a rule that can't fail passes silently.
@@ -79,6 +80,12 @@ components:
   - {name: tui-code,       kind: module, match: ["grit/tui/src", "grit/tui/src/**"]}
   - {name: kit-code,       kind: module, match: ["grit/kit/src", "grit/kit/src/**"]}
   - {name: mcp-code,       kind: module, match: ["grit/mcp/src", "grit/mcp/src/**"]}
+  # grit.mcp less its github package, for the rule that keeps the protocol, client, scope
+  # and edge generic: GitHub's names are a package a deployment uses, never one they import.
+  - name: mcp-generic
+    kind: module
+    match: ["grit/mcp/src/wire", "grit/mcp/src/wire/**", "grit/mcp/src/scope", "grit/mcp/src/scope/**",
+            "grit/mcp/src/client", "grit/mcp/src/client/**", "grit/mcp/src/edge", "grit/mcp/src/edge/**"]
 
 rules:
   # -------------------------------------------------------------------------------------
@@ -501,6 +508,13 @@ rules:
     via: imports
     mode: strict
     because: "ADR 0021: a shipped extension implements core's traits and names no other extension"
+
+  - id: mcp-generic-names-no-github
+    allow: mcp-generic
+    only: [core-modules, mcp-generic]
+    via: imports
+    mode: strict
+    because: "grit/mcp/README.md: grit.mcp's protocol, client, scope and edge serve any MCP server; GitHub's bounds are grit.mcp.github, which a deployment names and they never do"
 
   - id: tui-names-core-alone
     allow: tui-code

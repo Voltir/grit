@@ -1,6 +1,7 @@
 package grit.mcp.client
 
 import grit.core.edge.{EdgeRefusal, Variable}
+import grit.mcp.scope.McpScope
 
 import utest.*
 
@@ -10,7 +11,7 @@ object McpServerTests extends TestSuite {
   private val token = Variable("GITHUB_MCP_TOKEN")
 
   private def server(name: String = "github", endpoint: String = "https://example.com/mcp") =
-    McpServer.of(name, endpoint, token).map(s => (s.name, s.endpoint.toString))
+    McpServer.of(name, endpoint, token, McpScope.Open).map(s => (s.name, s.endpoint.toString))
 
   val tests = Tests {
     test("a name is a lowercase letter then up to 15 lowercase letters, digits or _") {

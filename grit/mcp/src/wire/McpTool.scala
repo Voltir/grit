@@ -199,6 +199,9 @@ enum Skipped {
   /** `tool` is not one the server's allowlist names. */
   case NotAllowed(tool: String)
 
+  /** `tool` is not one the server's scope can hold to its bounds (`grit.mcp.scope.McpScope`). */
+  case OutOfScope(tool: String)
+
   /** A line for the log. */
   def message: String = this match {
     case NotReadOnly(tool) => s"$tool is not offered: it is not marked read-only"
@@ -207,5 +210,7 @@ enum Skipped {
       s"$tool is not offered: its x-mcp-header annotations break the spec: $why"
     case Malformed(why) => s"a listed tool is not offered: $why"
     case NotAllowed(tool) => s"$tool is not offered: the server's allowlist does not name it"
+    case OutOfScope(tool) =>
+      s"$tool is not offered: its server's scope cannot hold it to its bounds"
   }
 }

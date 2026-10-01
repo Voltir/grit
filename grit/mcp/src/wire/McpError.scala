@@ -35,6 +35,12 @@ enum McpError {
   /** Any other HTTP status. */
   case Status(code: Int)
 
+  /** The call was not sent: the server's scope does not offer its tool, or admits no call with
+    * its arguments; `why` says which, naming the bounds and the call's values of their
+    * arguments.
+    */
+  case OutOfScope(why: String)
+
   /** A line a person or the model reads, of the server unnamed ("refused grit's token"). */
   def message: String = this match {
     case Unreachable(why) => s"could not be reached: $why"
@@ -50,6 +56,7 @@ enum McpError {
     case InputRequired => "wanted input that grit does not give"
     case Unreadable(why) => s"answered something grit cannot read: $why"
     case Status(code) => s"answered HTTP $code"
+    case OutOfScope(why) => s"was not asked: $why"
   }
 
   private def asks(challenge: Option[String]): String = challenge.fold("")(c => s"; it asks: $c")

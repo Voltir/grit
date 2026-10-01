@@ -29,6 +29,7 @@ import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}
 import grit.mcp.client.McpServer
 import grit.mcp.edge.McpEdge
+import grit.mcp.scope.McpScope
 import grit.models.{JevConfig, OpenRouterConfig, Seed, StubProvider}
 import grit.slack.edge.SlackEdge
 import grit.slack.event.ChannelId
@@ -567,8 +568,10 @@ object Main {
   )
 
   /** GitHub's MCP server as `env` declares it: named `github`, at [[GithubUrlVar]], its token
-    * [[GithubTokenVar]], allowing the tools [[GithubToolsVar]] names; why not, naming the
-    * variable, when the URL is not one [[McpServer.of]] takes or the list names no tool.
+    * [[GithubTokenVar]], allowing the tools [[GithubToolsVar]] names, its scope
+    * [[McpScope.Open]]: every allowed tool offered and every call sent, reaching whatever the
+    * token reaches; why not, naming the variable, when the URL is not one [[McpServer.of]]
+    * takes or the list names no tool.
     */
   private[main] def githubServer(env: Map[String, String]): Either[String, McpServer] = {
     val allow = env
@@ -581,6 +584,7 @@ object Main {
           "github",
           env.getOrElse(GithubUrlVar, GithubUrl),
           grit.core.edge.Variable(GithubTokenVar),
+          McpScope.Open,
           allow
         )
         .left

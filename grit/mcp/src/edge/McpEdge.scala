@@ -16,8 +16,9 @@ object McpEdge {
   /** The edge named for `service`, hosting `servers`' tools there, or why not: no servers, or
     * two with one name. Opened, it registers the service's place for grit itself
     * ([[PrincipalId.Grit]]); logs in one line the listed tools each server's allowlist leaves
-    * out, in one line the allowlisted names it does not list, and each other tool it skips on a
-    * line of its own; advertises there each server's tools ([[McpTools.offered]]); and serves the requests addressed there with
+    * out, in one line those its scope cannot hold, in one line the allowlisted names it does
+    * not list, and each other tool it skips on a line of its own; advertises there each
+    * server's tools ([[McpTools.offered]]); and serves the requests addressed there with
     * [[McpTools]]. It needs each server's token variable, answers no ask, and delivers no
     * replies. Opening it is refused when a token is unset or malformed ([[Bearer.of]]); when
     * a server's list cannot be read, it naming the server and why, and for a refused token
@@ -113,12 +114,15 @@ object McpEdge {
         case Right(listed) =>
           val said = s"MCP server ${server.name}:"
           val unallowed = listed.skipped.collect { case Skipped.NotAllowed(tool) => tool }
+          val outside = listed.skipped.collect { case Skipped.OutOfScope(tool) => tool }
           listed.skipped.foreach {
-            case Skipped.NotAllowed(_) => ()
+            case Skipped.NotAllowed(_) | Skipped.OutOfScope(_) => ()
             case other => log(s"$said ${other.message}")
           }
           if (unallowed.nonEmpty)
             log(s"$said ${counted(unallowed)} not on its allowlist: ${unallowed.mkString(", ")}")
+          if (outside.nonEmpty)
+            log(s"$said ${counted(outside)} outside its scope: ${outside.mkString(", ")}")
           if (listed.unlisted.nonEmpty)
             log(
               s"$said its allowlist names tools it does not list: " +

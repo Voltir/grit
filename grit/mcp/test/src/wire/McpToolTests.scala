@@ -333,12 +333,14 @@ object McpToolTests extends TestSuite {
           "a tool name is a lowercase letter, then lowercase letters, digits or _: github_getUser"
         ),
         Skipped.BadHeader("in_items", "the x-mcp-header at /properties/where/items is misplaced"),
-        Skipped.Malformed("a listed tool has no name")
+        Skipped.Malformed("a listed tool has no name"),
+        Skipped.OutOfScope("search_code")
       ).map(_.message) ==> Vector(
         "issue_write is not offered: it is not marked read-only",
         "getUser is not offered: a tool name is a lowercase letter, then lowercase letters, digits or _: github_getUser",
         "in_items is not offered: its x-mcp-header annotations break the spec: the x-mcp-header at /properties/where/items is misplaced",
-        "a listed tool is not offered: a listed tool has no name"
+        "a listed tool is not offered: a listed tool has no name",
+        "search_code is not offered: its server's scope cannot hold it to its bounds"
       )
     }
   }
