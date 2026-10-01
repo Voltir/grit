@@ -251,8 +251,10 @@ object grit extends Module {
   object models extends GritPublished {
     def moduleDeps = Seq(core)
 
+    /* grit.assembly only for QueryDoubledProbe, which sends the query role's request as
+     * retrieval builds it; models' own sources never name assembly (models-names-core-alone). */
     object test extends GritTests {
-      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test, grit.assembly)
     }
   }
 
