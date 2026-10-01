@@ -54,7 +54,12 @@ private[slack] final class Posting private (
           "A post cut short may already be in Slack.",
         Args.of(
           (
-            channel = Field.oneOf("The channel to post in, by name.", first._1, rest.map(_._1)*),
+            // Each name bare and with its "#", as people write it; both read as the channel.
+            channel = Field.oneOf(
+              "The channel to post in, by name, with or without its #.",
+              first._1,
+              (rest.map(_._1) ++ channels.map((n, _) => s"#$n"))*
+            ),
             text = Field.text(
               s"What to post, in markdown: one Slack message, at most ${RichText.MaxChars} " +
                 "characters."
@@ -94,7 +99,7 @@ private[slack] final class Posting private (
 
   /** `a` posted for the request keyed `request`, as the tool's text says. */
   private def post(request: String, a: PostArgs): Outcome =
-    channels.find(_._1 == a.channel) match {
+    channels.find(_._1 == a.channel.stripPrefix("#")) match {
       // The arguments' enum holds only these names.
       case None => Outcome.Failed(s"grit does not post in #${a.channel}. $Unposted")
       case Some((name, id)) =>

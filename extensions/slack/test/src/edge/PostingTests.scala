@@ -105,6 +105,13 @@ object PostingTests extends TestSuite {
       w.slack.posts.map(p => p.thread == p.ts) ==> Vector(true)
     }
 
+    test("a channel named with its leading # posts there, as named without it") {
+      val w = new World
+      w.call(post("one", channel = "#probably-not-skynet")) ==>
+        Outcome.Done("Posted in #probably-not-skynet.")
+      w.posted.map((c, _, text, _) => (c, text)) ==> Vector((Skynet, "one"))
+    }
+
     test("it posts in the thread a link to a message in that channel names") {
       val w = new World
       val replyLink = s"$RootLink?thread_ts=1790782260.000001&cid=C0C5U2FPAL8"
@@ -128,8 +135,9 @@ object PostingTests extends TestSuite {
         w.call(reply("hi", "the thread from this morning"))
       ) ==> Vector(
         Outcome.Failed(
-          "The call to `slack_post` was not run: `channel` takes `probably-not-skynet`, not " +
-            "\"general\". You sent: {\"channel\":\"general\",\"text\":\"hi\"}"
+          "The call to `slack_post` was not run: `channel` takes one of `probably-not-skynet`, " +
+            "`#probably-not-skynet`, not \"general\". You sent: " +
+            "{\"channel\":\"general\",\"text\":\"hi\"}"
         ),
         Outcome.Failed(
           "That link is to a message outside #probably-not-skynet. Nothing was posted."
@@ -185,13 +193,13 @@ object PostingTests extends TestSuite {
     }
 
     test(
-      "its advert: slack_post alone, never asking first, never run again, the channels an enum"
+      "its advert: slack_post alone, never asking first, never run again, the channels an enum of each name bare and with its #"
     ) {
       val w = new World
       w.posting.offered.tools.map(e => (e.name, e.asks, e.retry)) ==>
         Vector((ToolName("slack_post"), false, Retry.Interrupt))
       w.posting.offered.tools.map(_.parameters("properties")("channel")("enum")) ==>
-        Vector(ujson.Arr("probably-not-skynet"))
+        Vector(ujson.Arr("probably-not-skynet", "#probably-not-skynet"))
       w.posting.offered.tools.map(_.does) ==> Vector(
         "Post a message in a Slack channel, as grit: at the channel's top level, or as a " +
           "reply in a thread when `thread` is a link to a message in that channel. It posts " +
