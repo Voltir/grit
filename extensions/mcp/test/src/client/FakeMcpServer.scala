@@ -382,12 +382,12 @@ object FakeMcpServer {
   )
 
   /** GitHub's own write tool `issue_write`'s `tools/list` entry, from its source (see
-    * grit/mcp/README.md); the hosted read-only server does not list it.
+    * extensions/mcp/README.md); the hosted read-only server does not list it.
     */
   def issueWrite: ujson.Obj = resource("/toolsnaps/issue_write.snap")
 
   /** The `tools/list` entry for `name` from GitHub's hosted read-only server's list, as it
-    * answered (see grit/mcp/README.md): `get_file_contents` and `get_me` among them.
+    * answered (see extensions/mcp/README.md): `get_file_contents` and `get_me` among them.
     */
   def github(name: String): ujson.Obj =
     resource("/github/tools-list.json")("tools").arr
@@ -397,14 +397,14 @@ object FakeMcpServer {
       )
 
   /** The `tools/call` result GitHub's hosted read-only server answered to a
-    * `get_file_contents` call for a README, as it answered (see grit/mcp/README.md): a text
+    * `get_file_contents` call for a README, as it answered (see extensions/mcp/README.md): a text
     * block saying the file's SHA, then the file as an embedded resource.
     */
   def githubFileContents: ujson.Obj = resource("/github/get-file-contents.json")
 
   /** The `tools/call` result GitHub's hosted read-only server answered to `tool`, one of
     * `search_code`, `search_issues` and `search_pull_requests`, as it answered but redacted (see
-    * grit/mcp/README.md): one text block holding the search's JSON, its results from two
+    * extensions/mcp/README.md): one text block holding the search's JSON, its results from two
     * repositories, `octocat/Hello-World` among them.
     */
   def githubSearch(tool: String): ujson.Obj = resource(s"/github/${tool.replace('_', '-')}.json")

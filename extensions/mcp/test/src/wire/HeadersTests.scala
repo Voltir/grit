@@ -123,7 +123,7 @@ object HeadersTests extends TestSuite {
     }
 
     test("a call of GitHub's get_file_contents mirrors owner and repo, as GitHub requires") {
-      // The live list's entry (grit/mcp/README.md); without these GitHub answers -32020.
+      // The live list's entry (extensions/mcp/README.md); without these GitHub answers -32020.
       val entry = ujson.Obj.from(
         ujson
           .read(

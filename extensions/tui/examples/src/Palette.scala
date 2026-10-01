@@ -8,7 +8,7 @@ import grit.tui.model.text.StyledText
 
 /** The demo's colours, and the vocabulary it dresses its transcript in.
   *
-  * **Nothing in `grit/tui/` knows this file exists.** The library ships `Color`, a `Style`
+  * **Nothing in `extensions/tui/` knows this file exists.** The library ships `Color`, a `Style`
   * that composes, and spans that survive wrapping; it ships no theme, no palette and no
   * notion that a transcript has a user turn and an assistant turn. Those are an app's,
   * and this is the app saying so -- the same position `Border` takes, where a value is

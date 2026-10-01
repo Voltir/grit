@@ -315,7 +315,7 @@ CREATE INDEX IF NOT EXISTS idx_tool_requests_waiting ON grit.tool_requests (work
 CREATE INDEX IF NOT EXISTS idx_tool_requests_turn ON grit.tool_requests (conversation_id, turn_seq);
 
 -- Settings of model pairs learned while grit runs, each approved by a person: the
--- database's layer over the checked-in seed catalog (grit/models/resources/catalog.json).
+-- database's layer over the checked-in seed catalog (extensions/models/resources/catalog.json).
 -- Append-only; `settings` is a partial profile in the seed's form (CatalogJson.writeProfile).
 -- Retention: kept: approved by a person, the catalog's runtime layer.
 CREATE TABLE IF NOT EXISTS grit.model_settings (

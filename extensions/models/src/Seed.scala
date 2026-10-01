@@ -5,7 +5,7 @@ import scala.util.Using
 
 import grit.core.model.{Catalog, CatalogJson}
 
-/** The catalog checked in beside this module, `grit/models/resources/catalog.json`: the
+/** The catalog checked in beside this module, `extensions/models/resources/catalog.json`: the
   * policy and the profiles every run starts from. It is part of the build, so reading it
   * gives the same catalog every time.
   */
@@ -17,7 +17,7 @@ object Seed {
   def catalog: Either[String, Catalog] =
     for {
       text <- Option(getClass.getResourceAsStream("/catalog.json"))
-        .toRight("catalog.json is not on the classpath (grit/models/resources/)")
+        .toRight("catalog.json is not on the classpath (extensions/models/resources/)")
         .flatMap(in =>
           scala.util
             .Try(Using.resource(in)(Source.fromInputStream(_, "UTF-8").mkString))

@@ -53,7 +53,7 @@ engine's live paths, and when a milestone closes. It needs Docker; there is no s
 ## Replay histories
 
 `bash scripts/capture-history.sh <workflow-id>` writes a recorded workflow as a fixture under
-`grit/turn/test/histories/<epoch>/`. A change to a workflow's step names, order or output
+`core/turn/test/histories/<epoch>/`. A change to a workflow's step names, order or output
 encodings must replay every history of its epoch
 ([ADR 0004](../../../docs/decisions/0004-workflows-evolve-by-patch-within-a-compatibility-epoch.md));
 `TurnReplayTests` and `LifecycleReplayTests` are the gate.

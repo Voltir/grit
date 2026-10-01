@@ -30,7 +30,7 @@ tools/enola
 .claude/settings.local.json
 .claude/worktrees/
 
-# Local settings and secrets for grit.app (grit/app/src/DotEnv.scala). .env.example is
+# Local settings and secrets for grit.app (kit/src/environment/DotEnv.scala). .env.example is
 # the committed list of what grit reads.
 .env
 

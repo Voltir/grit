@@ -53,7 +53,7 @@ object Transcript {
           "Width measures per code point, so the cut has to resolve to a glyph start. Checking offsetAtColumn."
         ),
         Block
-          .tool("Read", "grit/tui/src/model/text/Width.scala")
+          .tool("Read", "extensions/tui/src/model/text/Width.scala")
           .styled(Palette.tool)
           .finish(
             ok = true,

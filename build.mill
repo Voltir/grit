@@ -225,7 +225,7 @@ object grit extends Module {
 
   /* The engine's own workflows besides the turn: close (a period sealed with its closing
    * entry; ADR 0011). Written against core's seams and Durable, never DBOS, so its tests
-   * run it over core's in-memory fakes. grit/lifecycle/README.md. */
+   * run it over core's in-memory fakes. core/lifecycle/README.md. */
   object lifecycle extends GritPublished with Placed {
     def folder = os.sub / "core" / "lifecycle"
     def moduleDeps = Seq(core)
@@ -248,7 +248,7 @@ object grit extends Module {
   }
 
   /* Digest: the hello-world plugin, one line per closed period, and the recent_activity
-   * tool that reads them. Names only core. grit/digest/README.md. */
+   * tool that reads them. Names only core. extensions/digest/README.md. */
   object digest extends GritPublished with Placed {
     def folder = os.sub / "extensions" / "digest"
     def moduleDeps = Seq(core)
@@ -304,7 +304,7 @@ object grit extends Module {
 
   /* The MCP client: grit's toolbox over Model Context Protocol servers (revision 2026-07-28,
    * Streamable HTTP), served by an edge at a service place (ADR 0017). The JDK HTTP client's
-   * second egress beside grit.models (STYLE rule 8). grit/mcp/README.md. */
+   * second egress beside grit.models (STYLE rule 8). extensions/mcp/README.md. */
   object mcp extends GritPublished with Placed {
     def folder = os.sub / "extensions" / "mcp"
     def moduleDeps = Seq(core, edge)
@@ -320,7 +320,7 @@ object grit extends Module {
    * is slack-api-client, without Bolt: grit acknowledges an event only after it is recorded,
    * and wants the transport alone. Its Socket Mode WebSocket backend is Java-WebSocket, a
    * `provided` dependency of the SDK, at the version its parent POM pins.
-   * grit/slack/README.md. */
+   * extensions/slack/README.md. */
   object slack extends GritPublished with Placed {
     def folder = os.sub / "extensions" / "slack"
     def moduleDeps = Seq(core, prose, edge)
@@ -359,15 +359,15 @@ object grit extends Module {
   }
 
   /* Prose: a reply's structure as edge-neutral blocks (the form), read from markdown.
-   * Names no other module; each edge renders the form its own way. grit/prose/README.md. */
+   * Names no other module; each edge renders the form its own way. core/prose/README.md. */
   object prose extends GritPublished with Placed {
     def folder = os.sub / "core" / "prose"
     object test extends GritTests
   }
 
   /* The terminal UI -- ported from ../Spikes/tui-spike-slate. No external dependencies:
-   * the terminal seam is hand-rolled over FFM (grit/tui/src/wire/term), not JLine. It may
-   * render core's types, but only from `components` and `runtime`; see grit/tui/CLAUDE.md. */
+   * the terminal seam is hand-rolled over FFM (extensions/tui/src/wire/term), not JLine. It may
+   * render core's types, but only from `components` and `runtime`; see extensions/tui/CLAUDE.md. */
   object tui extends GritModule with Placed {
     def folder = os.sub / "extensions" / "tui"
     def moduleDeps = Seq(core)
@@ -411,7 +411,7 @@ object grit extends Module {
   /* The kit a deployment is built against (ADR 0021): the Deployment value, what the
    * environment supplies, and the runner that serves a deployment's edges beside its engine.
    * Names no edge extension and no terminal UI: an edge arrives as a ServedEdge value.
-   * grit/kit/README.md. */
+   * kit/README.md. */
   object kit extends GritPublished with Placed {
     def folder = os.sub / "kit"
     def moduleDeps =

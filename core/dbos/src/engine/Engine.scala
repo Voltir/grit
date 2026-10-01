@@ -442,13 +442,13 @@ object Engine {
     new Engine(dbos, ds, lock, config, identity, budget)
   }
 
-  /** Applies `grit/dbos/resources/schema.sql` idempotently. */
+  /** Applies `core/dbos/resources/schema.sql` idempotently. */
   private def schemaSetup(config: DbConfig): Unit = {
     val sql = Option(getClass.getResourceAsStream("/schema.sql")) match {
       case Some(is) => Using.resource(is)(Source.fromInputStream(_).mkString)
       case None =>
         sys.error(
-          "schema.sql not found on classpath — is grit/dbos/resources/ on the resource path?"
+          "schema.sql not found on classpath — is core/dbos/resources/ on the resource path?"
         )
     }
     Using.resource(

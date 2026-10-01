@@ -7,7 +7,7 @@ import utest.*
 /** [[McpTool.page]]: a `tools/list` page read, and only the tools grit may offer kept. */
 object McpToolTests extends TestSuite {
 
-  /** GitHub's own `tools/list` entry for `name`, from its source (see grit/mcp/README.md). */
+  /** GitHub's own `tools/list` entry for `name`, from its source (see extensions/mcp/README.md). */
   private def snap(name: String): ujson.Value =
     ujson.read(
       scala.io.Source
@@ -16,7 +16,7 @@ object McpToolTests extends TestSuite {
     )
 
   /** GitHub's hosted read-only server's `tools/list` result, as it answered (see
-    * grit/mcp/README.md).
+    * extensions/mcp/README.md).
     */
   private val live: ujson.Obj =
     ujson.Obj.from(
