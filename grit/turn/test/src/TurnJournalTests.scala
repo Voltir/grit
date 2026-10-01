@@ -133,6 +133,31 @@ object TurnJournalTests extends TestSuite {
         Right(Right(TurnOffer.Recorded(None, tools, Vector.empty, TurnOffer.Root.Addressed)))
     }
 
+    test(
+      "an offer's advertised tools are written by name, and an offer recorded before them reads as none"
+    ) {
+      // Pinned: replay reads this key to rebuild the tools a turn took from an edge's advert.
+      val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
+      val tools = grit.core.tool.ToolSet.Empty.id
+      val set = grit.core.tool.ToolSetId.value(tools)
+      val workspace = grit.core.place.Place.read("service:github").toOption
+      val took: Either[TurnFailure, TurnOffer.Recorded] = Right(
+        TurnOffer.Recorded(
+          workspace,
+          tools,
+          Vector.empty,
+          TurnOffer.Root.Addressed,
+          Vector(grit.core.tool.ToolName("github_search"))
+        )
+      )
+      j.encode(took) ==>
+        s"""{"ok":{"workspace":"service:github","tools":"$set","prompt":[],"advertised":["github_search"]}}"""
+      j.decode(j.encode(took)) ==> Right(took)
+      j.decode(s"""{"ok":{"workspace":null,"tools":"$set","prompt":[]}}""")
+        .map(_.map(_.advertised)) ==>
+        Right(Right(Vector.empty))
+    }
+
     test("a record in neither shape is rejected") {
       val j = summon[Journaled[Either[TurnFailure, EntryId]]]
       assert(j.decode("""{"ok":"x","failed":"model","reason":"r"}""").isLeft)

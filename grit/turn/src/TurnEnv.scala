@@ -6,6 +6,7 @@ import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
+import grit.core.place.WorksIn
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.stitch.{StitchStore, Tuning}
@@ -96,7 +97,8 @@ final case class TurnHosting(
   * ([[grit.core.store.Audience.operator]]), after `tools`; `hosted` are run by an edge serving the conversation's workspace, and act through nothing here.
   * `jot` keeps each call's result from inside its step ([[TurnTools.Settling]]); `budget`
   * bounds its model calls, the last made with tools off; a call a person approves first
-  * waits `answerWithin` for their answer.
+  * waits `answerWithin` for their answer. `worksIn` gives a conversation with no directory
+  * its workspace ([[WorksIn.of]]).
   */
 final case class TurnTooling[C^](
     tools: Toolbox[C],
@@ -104,5 +106,6 @@ final case class TurnTooling[C^](
     hosted: Vector[Tool.Offered],
     jot: Jot^,
     budget: TurnLoop.Budget,
-    answerWithin: FiniteDuration = TurnTools.AnswerWithin
+    answerWithin: FiniteDuration = TurnTools.AnswerWithin,
+    worksIn: Vector[WorksIn] = Vector.empty
 )

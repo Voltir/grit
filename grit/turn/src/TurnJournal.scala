@@ -10,7 +10,7 @@ import grit.core.place.Place
 import grit.core.prompt.FragmentId
 import grit.core.speech.{Outcome, SpeechJson}
 import grit.core.store.{Nearby, Payload, PayloadJson}
-import grit.core.tool.ToolSetId
+import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.topic.{TopicId, TopicJson}
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
@@ -219,9 +219,10 @@ private[turn] object TurnJournal {
     outcome(CatalogJson.writeTurn, CatalogJson.readTurn)
 
   /** An `offer` step's output: `{"workspace": place written | null, "tools": set id,
-    * "prompt": [fragment ids]}`, and `"root": "heard"` for a turn rooted on a heard message.
-    * References only: the texts are kept by id. No `root` reads as addressed, so every offer
-    * recorded before roots reads as it did.
+    * "prompt": [fragment ids]}`, `"root": "heard"` for a turn rooted on a heard message, and
+    * `"advertised": [tool names]` when it took tools from an edge's advert. References only:
+    * the texts are kept by id. No `root` reads as addressed and no `advertised` as none, so
+    * every offer recorded before them reads as it did.
     */
   given recordedOffer: Journaled[Either[TurnFailure, TurnOffer.Recorded]] =
     outcome(
@@ -236,6 +237,9 @@ private[turn] object TurnJournal {
           case TurnOffer.Root.Heard => o("root") = "heard"
           case TurnOffer.Root.Addressed => ()
         }
+        // Written only when some were taken, so every other offer keeps its earlier form.
+        if (r.advertised.nonEmpty)
+          o("advertised") = ujson.Arr.from(r.advertised.map(n => ujson.Str(ToolName.value(n))))
         o
       },
       v =>
@@ -265,7 +269,24 @@ private[turn] object TurnJournal {
             case Some(ujson.Str("heard")) => Right(TurnOffer.Root.Heard)
             case Some(other) => Left(s"offer: unknown root ${other.render()}")
           }
-        } yield TurnOffer.Recorded(workspace, tools, prompt, root)
+          advertised <- o.get("advertised") match {
+            case None => Right(Vector.empty)
+            case Some(names) =>
+              names.arrOpt
+                .toRight("offer: advertised is not an array")
+                .flatMap(
+                  _.toVector.foldLeft[Either[String, Vector[ToolName]]](Right(Vector.empty)) {
+                    (acc, n) =>
+                      acc.flatMap(done =>
+                        n.strOpt
+                          .toRight("offer: an advertised name is not a string")
+                          .flatMap(ToolName.of(_).left.map(e => s"offer: $e"))
+                          .map(done :+ _)
+                      )
+                  }
+                )
+          }
+        } yield TurnOffer.Recorded(workspace, tools, prompt, root, advertised)
     )
 
   /** A `dispatch` step's output: whether its requests were sent to a serving edge (`true`),

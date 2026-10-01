@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.edge.InMemoryEdges
 import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
 import grit.core.message.Message
-import grit.core.place.Directory
+import grit.core.place.{Directory, Place, Service, WorksIn}
 import grit.core.prompt.SystemPrompt
 import grit.core.store.{
   Entry,
@@ -16,7 +16,19 @@ import grit.core.store.{
   Origin,
   Payload
 }
-import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSet, ToolSpec, Toolbox}
+import grit.core.tool.{
+  Args,
+  Field,
+  Gate,
+  Hosted,
+  Outcome,
+  Retry,
+  Tool,
+  ToolName,
+  ToolSet,
+  ToolSpec,
+  Toolbox
+}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -126,6 +138,71 @@ object TurnOfferTests extends TestSuite {
       )
   }
 
+  private val github: Service =
+    Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  private def named(name: String): ToolName =
+    ToolName.of(name).fold(e => throw new java.lang.AssertionError(e.toString), identity)
+
+  /** An advert's entry for a tool named `name`, asking first when `asks`. */
+  private def advert(name: String, asks: Boolean = false): ToolSet.Entry =
+    ToolSet.Entry(named(name), s"Does $name.", ujson.Obj("type" -> "object"), asks, Retry.Rerun)
+
+  /** `hosted`, a hosted tool the engine describes, named `name`. */
+  private def described(name: String): Hosted[String] =
+    new Hosted(
+      ToolSpec(named(name), s"Does $name.", Args.of((text = Field.text("What."))).map(_.text)),
+      Gate.Free,
+      t => t
+    )
+
+  /** The recorded offer of `slack`'s first turn, linked by `links`, and its set's names, while
+    * an edge at `github`'s place advertises `entries`; the engine has `about` of its own and
+    * describes the hosted `fetch`.
+    */
+  private def linked(
+      links: Vector[WorksIn],
+      entries: Vector[ToolSet.Entry]
+  ): (TurnOffer.Recorded, Vector[String]) = {
+    given grit.core.store.Tx = TestTx.fake
+    val conversations = new InMemoryConversationStore
+    val c: ConversationId = conversations
+      .findOrCreate(slack, PrincipalId.Local)
+      .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
+    val edges = new InMemoryEdges
+    val set =
+      ToolSet.of(entries).fold(d => throw new java.lang.AssertionError(d.toString), identity)
+    ToolSets.keep(set)
+    edges.advertiseAs(edges.register(Set(github.place)), github.place, set, Vector.empty)
+    val hosting = TurnHosting(
+      conversations,
+      Prompts,
+      ToolSets,
+      edges,
+      edges,
+      new InMemoryVoiceStore,
+      new InMemoryPrincipals
+    )
+    val tooling = TurnTooling[{}](
+      box(tool(ToolName("about"), asks = false)),
+      Toolbox.Empty,
+      Vector(described("fetch")),
+      new FakeJot,
+      budget(5),
+      worksIn = links
+    )
+    TurnOffer
+      .decide(hosting, new InMemoryEntryStore, tooling, TurnRef(c, TurnSeq.First))
+      .flatMap(r =>
+        ToolSets
+          .get(r.tools)
+          .left
+          .map(e => TurnFailure.Store(e.toString))
+          .map(set => r -> set.tools.map(t => ToolName.value(t.name)))
+      )
+      .fold(f => throw new java.lang.AssertionError(f.toString), identity)
+  }
+
   private def expected(origin: Origin, called: Option[String]): String =
     SystemPrompt
       .of(
@@ -169,6 +246,38 @@ object TurnOfferTests extends TestSuite {
           )
         )
         .render
+    }
+
+    test(
+      "a conversation with no directory works in the service of the first link holding it; none links it, none"
+    ) {
+      val other = Service.of("tracker").fold(e => throw new java.lang.AssertionError(e), identity)
+      val links = Vector(
+        WorksIn(Place.under(grit.core.place.Namespace.Slack, Vector("T2")), other),
+        WorksIn(Place.under(grit.core.place.Namespace.Slack, Vector("T1")), github),
+        WorksIn(Place.Everywhere, other)
+      )
+      linked(links, Vector.empty)._1.workspace ==> Some(github.place)
+      linked(links.take(1), Vector.empty)._1.workspace ==> None
+      val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
+      TurnOffer.workspaceOf(Origin.Tui(dir, "default"), links) ==> Some(Place.of(dir))
+    }
+
+    test(
+      "the advertised tools the engine does not describe are offered after its hosted ones and recorded; one asking first, or named as an engine tool, is not"
+    ) {
+      val (recorded, offered) = linked(
+        Vector(WorksIn(Place.Everywhere, github)),
+        Vector(
+          advert("github_search"),
+          advert("fetch"),
+          advert("github_merge", asks = true),
+          advert("about"),
+          advert("github_issue")
+        )
+      )
+      offered ==> Vector("fetch", "github_search", "github_issue", "about")
+      recorded.advertised ==> Vector(ToolName("github_search"), ToolName("github_issue"))
     }
 
     test("a turn rooted on a person's message to grit is recorded as addressed") {

@@ -2,10 +2,10 @@ package grit.turn
 
 import grit.core.edge.Advert
 import grit.core.id.TurnRef
-import grit.core.place.Place
+import grit.core.place.{Place, WorksIn}
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
 import grit.core.store.{Db, EntryStore, Origin, Payload, StoreError, Tx}
-import grit.core.tool.{DuplicateName, Tool, ToolName, ToolSet, ToolSetId, Toolbox}
+import grit.core.tool.{DuplicateName, Hosted, Tool, ToolName, ToolSet, ToolSetId, Toolbox}
 
 /** What a turn offers its model, as its `offer` step decided (ADR 0016, 0017): the workspace
   * its hosted calls are addressed to, none for a conversation with no directory; its tool
@@ -24,14 +24,17 @@ final case class TurnOffer(
 
 object TurnOffer {
 
-  /** The `offer` step's output: references only, the texts kept by id; and the turn's
-    * `root`, which decides the steps it takes after its reply.
+  /** The `offer` step's output: references only, the texts kept by id; the turn's `root`,
+    * which decides the steps it takes after its reply; and `advertised`, the offered tools
+    * taken from the serving edge's advert ([[grit.core.tool.Hosted.advertised]]), which
+    * [[toolbox]] rebuilds from the recorded set.
     */
   final case class Recorded(
       workspace: Option[Place],
       tools: ToolSetId,
       prompt: Vector[FragmentId],
-      root: Root
+      root: Root,
+      advertised: Vector[ToolName] = Vector.empty
   )
 
   /** What a turn answers: a message said to grit, or one grit heard and chose to draft a
@@ -43,8 +46,10 @@ object TurnOffer {
   }
 
   /** What `turn` is offered now, kept, and recorded as `turn`'s prompt: its conversation's
-    * workspace (a TUI session's directory); the hosted tools of `tooling` that the live edge
-    * serving that workspace advertises, then `tooling`'s own, then its operator tools when
+    * workspace ([[workspaceOf]]); the hosted tools of `tooling` that the live edge serving
+    * that workspace advertises, then the others it advertises that
+    * [[grit.core.tool.Hosted.advertised]] offers, less any whose name one of `tooling`'s has,
+    * then `tooling`'s own, then its operator tools when
     * its origin is the operator's ([[grit.core.store.Audience.operator]]); and its prompt: the base, its
     * edge's fragment, what its workspace calls the assistant (when it has named it,
     * [[grit.core.store.Origin.assistant]]), [[TurnPrompt.unprompted]] when its root is heard,
@@ -67,7 +72,7 @@ object TurnOffer {
       conversation <- found.toRight(
         StoreError.Invalid(s"conversation of ${turn.workflowId} is gone")
       )
-      workspace = workspaceOf(conversation.origin)
+      workspace = workspaceOf(conversation.origin, tooling.worksIn)
       advert <- workspace.fold[Either[StoreError, Option[Advert]]](Right(None))(
         hosting.edges.serving
       )
@@ -75,7 +80,10 @@ object TurnOffer {
         hosting.toolSets.get(a.tools)
       )
       names = served.tools.map(_.name).toSet
-      hosted = tooling.hosted.filter(h => names.contains(h.name))
+      described = tooling.hosted.filter(h => names.contains(h.name))
+      engines = (tooling.tools.names ++ tooling.operator.names ++ tooling.hosted.map(_.name)).toSet
+      advertised = served.tools.filterNot(e => engines.contains(e.name)).flatMap(Hosted.advertised)
+      hosted: Vector[Tool.Offered] = described ++ advertised
       offered <- Toolbox
         .of[{}](hosted*)
         .map(_.set)
@@ -114,7 +122,7 @@ object TurnOffer {
           ) ++ Voice.fragment(voice) ++ place.fragments
       )
       _ <- hosting.prompts.record(turn.workflowId, prompt)
-    } yield Recorded(workspace, set.id, prompt.ids, root)).left.map(e =>
+    } yield Recorded(workspace, set.id, prompt.ids, root, advertised.map(_.name))).left.map(e =>
       TurnFailure.Store(describe(e))
     )
 
@@ -148,12 +156,12 @@ object TurnOffer {
     Toolbox.of[C](chosen*).getOrElse(tooling.tools)
   }
 
-  /** Where a conversation from `origin` works: a TUI session's directory; none for others,
-    * until a conversation can be linked to a workspace.
+  /** Where a conversation from `origin` works: a TUI session's directory; else the service the
+    * first of `links` holding its place names ([[WorksIn.of]]); else none.
     */
-  def workspaceOf(origin: Origin): Option[Place] = origin match {
+  def workspaceOf(origin: Origin, links: Vector[WorksIn]): Option[Place] = origin match {
     case Origin.Tui(dir, _) => Some(Place.of(dir))
-    case _ => None
+    case other => WorksIn.of(links, other.place).map(_.place)
   }
 
   private def describe(error: StoreError): String = error match {
