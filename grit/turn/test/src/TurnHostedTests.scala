@@ -5,7 +5,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.edge.{InMemoryEdges, Permit}
 import grit.core.id.{CallSlot, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.place.{Place, Service, WorksIn}
+import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
 import grit.core.store.{InMemoryEntryStore, InMemoryToolSets}
@@ -88,6 +88,39 @@ object TurnHostedTests extends TestSuite {
       worksIn = Vector(WorksIn(Place.Everywhere, github))
     )(id)
 
+  private val elsewhere: Service =
+    Service.of("elsewhere").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** An edge at `elsewhere`'s place over `edges`, advertising `post_x`, serving each request
+    * as `serve` says.
+    */
+  private def atElsewhere(
+      edges: InMemoryEdges,
+      durable: InMemoryDurable,
+      serve: grit.core.edge.ToolRequest -> Serve
+  ): Served = {
+    val s = new Served(edges, durable, serve, elsewhere.place)
+    val entry =
+      ToolSet.Entry(ToolName("post_x"), "Posts.", ujson.Obj("type" -> "object"), false, Retry.Rerun)
+    s.advertise(Hosted.advertised(entry).toVector)
+    s
+  }
+
+  /** The body of the fixture's TUI turn, reaching `elsewhere`, whose edge is `there`. */
+  private def reachingBody(
+      entries: InMemoryEntryStore,
+      provider: Scripted,
+      edge: Served,
+      there: Served
+  )(id: grit.core.id.WorkflowId)(using grit.core.durable.Durable^): String =
+    hostedBody(
+      entries,
+      provider,
+      edge,
+      reaches = Vector(Reaches(Place.Everywhere, elsewhere)),
+      reached = Vector(there)
+    )(id)
+
   private def slot(turn: grit.core.id.TurnRef, index: Int): CallSlot =
     CallSlot.of(turn, 0, index).getOrElse(throw new java.lang.AssertionError())
 
@@ -152,6 +185,48 @@ object TurnHostedTests extends TestSuite {
       durable.run(turn.workflowId)(linkedBody(entries, provider, edge)) ==> Done
       results(provider).map(r => (r.content, r.isError)) ==>
         Vector(("No edge is serving github right now, so this call did not run.", true))
+    }
+
+    test(
+      "an addressed turn's call to a reached tool is a request at that service, run by the edge there; a workspace call in the same round still goes to the workspace"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch, and post it")
+      val durable = new InMemoryDurable
+      val edge = served(durable, q => Serve.Now(Outcome.Done(s"read ${q.arguments("path").str}")))
+      val there =
+        atElsewhere(
+          edge.edges,
+          durable,
+          q => Serve.Now(Outcome.Done(s"posted at ${q.workspace.written}"))
+        )
+      val provider = model(("t1", "fetch", "a.txt"), ("t2", "post_x", "hi"))
+      durable.run(turn.workflowId)(reachingBody(entries, provider, edge, there)) ==> Done
+      edge.sent.map(_.workspace) ==> Vector(Place.of(checkout))
+      there.sent.map(q => (q.slot, q.workspace)) ==> Vector((slot(turn, 1), elsewhere.place))
+      results(provider).map(r => (r.content, r.isError)) ==>
+        Vector(("read a.txt", false), ("posted at service:elsewhere", false))
+      durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-call:0").take(3) ==>
+        Vector("record-call:0", "dispatch:0", "reach:0:service:elsewhere")
+    }
+
+    test("a call to a reached tool when no edge serves that service is answered so, unsent") {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "post it")
+      val durable = new InMemoryDurable
+      val edge = served(durable, _ => Serve.Never)
+      val there = atElsewhere(edge.edges, durable, _ => Serve.Now(Outcome.Done("posted")))
+      val edges = edge.edges
+      val gone = there.registration.edge
+      // The edge at elsewhere is live when the turn is offered its tools, and gone by the call.
+      val provider = new Scripted((_, n) => {
+        if (n == 0) edges.kill(gone)
+        Right(if (n == 0) calling("", ("t1", "post_x", "hi")) else calling("done"))
+      })
+      durable.run(turn.workflowId)(reachingBody(entries, provider, edge, there)) ==> Done
+      results(provider).map(r => (r.content, r.isError)) ==>
+        Vector(("No edge is serving elsewhere right now, so this call did not run.", true))
+      there.sent ==> Vector.empty
     }
 
     test("a hosted call's result is shown as its call is: the tool, then what it acts on") {

@@ -220,9 +220,10 @@ private[turn] object TurnJournal {
 
   /** An `offer` step's output: `{"workspace": place written | null, "tools": set id,
     * "prompt": [fragment ids]}`, `"root": "heard"` for a turn rooted on a heard message, and
-    * `"advertised": [tool names]` when it took tools from an edge's advert. References only:
-    * the texts are kept by id. No `root` reads as addressed and no `advertised` as none, so
-    * every offer recorded before them reads as it did.
+    * `"advertised": [tool names]` when it took tools from an edge's advert, and `"reached":
+    * {tool name: place written}` when it took tools from a reached service's. References
+    * only: the texts are kept by id. No `root` reads as addressed and no `advertised` or
+    * `reached` as none, so every offer recorded before them reads as it did.
     */
   given recordedOffer: Journaled[Either[TurnFailure, TurnOffer.Recorded]] =
     outcome(
@@ -240,6 +241,13 @@ private[turn] object TurnJournal {
         // Written only when some were taken, so every other offer keeps its earlier form.
         if (r.advertised.nonEmpty)
           o("advertised") = ujson.Arr.from(r.advertised.map(n => ujson.Str(ToolName.value(n))))
+        // Written only when some were taken, so every other offer keeps its earlier form.
+        if (r.reached.nonEmpty)
+          o("reached") = ujson.Obj.from(
+            r.reached.toVector
+              .sortBy((n, _) => ToolName.value(n))
+              .map((n, p) => ToolName.value(n) -> ujson.Str(p.written))
+          )
         o
       },
       v =>
@@ -286,7 +294,25 @@ private[turn] object TurnJournal {
                   }
                 )
           }
-        } yield TurnOffer.Recorded(workspace, tools, prompt, root, advertised)
+          reached <- o.get("reached") match {
+            case None => Right(Map.empty[ToolName, Place])
+            case Some(places) =>
+              places.objOpt
+                .toRight("offer: reached is not an object")
+                .flatMap(
+                  _.toVector.foldLeft[Either[String, Map[ToolName, Place]]](Right(Map.empty)) {
+                    case (acc, (n, p)) =>
+                      acc.flatMap(done =>
+                        for {
+                          name <- ToolName.of(n).left.map(e => s"offer: $e")
+                          written <- p.strOpt.toRight("offer: a reached place is not a string")
+                          place <- Place.read(written).left.map(e => s"offer: $e")
+                        } yield done.updated(name, place)
+                      )
+                  }
+                )
+          }
+        } yield TurnOffer.Recorded(workspace, tools, prompt, root, advertised, reached)
     )
 
   /** A `dispatch` step's output: whether its requests were sent to a serving edge (`true`),

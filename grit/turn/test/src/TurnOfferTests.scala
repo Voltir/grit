@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.edge.InMemoryEdges
 import grit.core.id.{ConversationId, EntryId, PrincipalId, ToolCallId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.place.{Directory, Place, Service, WorksIn}
+import grit.core.place.{Directory, Place, Reaches, Service, WorksIn}
 import grit.core.prompt.SystemPrompt
 import grit.core.store.{
   Entry,
@@ -205,6 +205,68 @@ object TurnOfferTests extends TestSuite {
       .fold(f => throw new java.lang.AssertionError(f.toString), identity)
   }
 
+  private val elsewhere: Service =
+    Service.of("elsewhere").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The recorded offer of `slack`'s first turn, rooted on `root`, its set's names and its
+    * rendered prompt: the conversation works in `github`, whose edge advertises
+    * `github_search`, and reaches `elsewhere`, whose edge advertises `entries`; the engine has
+    * `about` of its own.
+    */
+  private def reaching(
+      root: Payload,
+      entries: Vector[ToolSet.Entry]
+  ): (TurnOffer.Recorded, Vector[String], String) = {
+    given grit.core.store.Tx = TestTx.fake
+    val conversations = new InMemoryConversationStore
+    val c: ConversationId = conversations
+      .findOrCreate(slack, PrincipalId.Local)
+      .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
+    val edges = new InMemoryEdges
+    def advertising(at: Place, tools: Vector[ToolSet.Entry]): Unit = {
+      val set =
+        ToolSet.of(tools).fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      ToolSets.keep(set)
+      edges.advertiseAs(edges.register(Set(at)), at, set, Vector.empty)
+    }
+    advertising(github.place, Vector(advert("github_search")))
+    advertising(elsewhere.place, entries)
+    val hosting = TurnHosting(
+      conversations,
+      Prompts,
+      ToolSets,
+      edges,
+      edges,
+      new InMemoryVoiceStore,
+      new InMemoryPrincipals
+    )
+    val slackTeams = Place.under(grit.core.place.Namespace.Slack, Vector.empty)
+    val tooling = TurnTooling[{}](
+      box(tool(ToolName("about"), asks = false)),
+      Toolbox.Empty,
+      Vector.empty,
+      new FakeJot,
+      budget(5),
+      worksIn = Vector(WorksIn(slackTeams, github)),
+      reaches = Vector(Reaches(slackTeams, elsewhere))
+    )
+    val log = new InMemoryEntryStore
+    log.insert(Entry(EntryId("root"), c, TurnSeq.First, None, 0, root, Instant.EPOCH))
+    TurnOffer
+      .decide(hosting, log, tooling, TurnRef(c, TurnSeq.First))
+      .flatMap(r =>
+        (for {
+          set <- ToolSets.get(r.tools)
+          prompt <- Prompts.prompt(r.prompt)
+        } yield (r, set.tools.map(t => ToolName.value(t.name)), prompt.render)).left
+          .map(e => TurnFailure.Store(e.toString))
+      )
+      .fold(f => throw new java.lang.AssertionError(f.toString), identity)
+  }
+
+  private def set(entries: ToolSet.Entry*): ToolSet =
+    ToolSet.of(entries.toVector).fold(d => throw new java.lang.AssertionError(d.toString), identity)
+
   private def expected(origin: Origin, called: Option[String]): String =
     SystemPrompt
       .of(
@@ -316,7 +378,8 @@ object TurnOfferTests extends TestSuite {
         set,
         SystemPrompt.of(Vector.empty),
         TurnOffer.Root.Addressed,
-        Vector(named("github_search"))
+        Vector(named("github_search")),
+        Map.empty
       )
       val tooling = TurnTooling[{}](
         box(tool(ToolName("about"), asks = false)),
@@ -339,6 +402,45 @@ object TurnOfferTests extends TestSuite {
         "hosted github_search {\"q\":\"grit\"}",
         "free Failed(The tool github_issue is gone; nothing ran.)"
       )
+    }
+
+    test(
+      "an addressed turn is offered the tools advertised at a service it reaches, after its workspace's, each recorded at that place, and told so after its reach"
+    ) {
+      val (recorded, offered, prompt) =
+        reaching(Payload.Message(Message.User("post it")), Vector(advert("post_x")))
+      offered ==> Vector("github_search", "post_x", "about")
+      recorded.advertised ==> Vector(named("github_search"))
+      recorded.reached ==> Map(named("post_x") -> elsewhere.place)
+      // Joined by hand, not through SystemPrompt.of, so the order within each layer is pinned.
+      prompt ==> (Vector(
+        TurnPrompt.Base,
+        TurnPrompt.Candour,
+        TurnPrompt.edge(slack)
+      ) ++ TurnPrompt.destination(slack) ++ Vector(
+        TurnPrompt.reach(Some(github.place), set(advert("github_search")))
+      ) ++ TurnPrompt.reached(elsewhere, set(advert("post_x")))).map(_.text).mkString("\n\n")
+    }
+
+    test("a turn rooted on a heard message is offered none of a reached service's tools") {
+      // Unprompted drafts run tools, and only their reply is gated: a reached tool offered
+      // here would act although grit was configured not to speak unprompted.
+      val (recorded, offered, prompt) =
+        reaching(Payload.Heard("someone should post it"), Vector(advert("post_x")))
+      offered ==> Vector("github_search", "about")
+      recorded.reached ==> Map.empty
+      assert(!prompt.contains("You also reach"))
+    }
+
+    test(
+      "a reached tool named as one the turn already has is not offered again, and the rest are"
+    ) {
+      val (recorded, offered, _) = reaching(
+        Payload.Message(Message.User("post it")),
+        Vector(advert("github_search"), advert("about"), advert("post_x"))
+      )
+      offered ==> Vector("github_search", "post_x", "about")
+      recorded.reached ==> Map(named("post_x") -> elsewhere.place)
     }
 
     test("a turn rooted on a person's message to grit is recorded as addressed") {

@@ -18,7 +18,7 @@ import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextA
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.edge.{InMemoryEdges, OutcomeJson, Registration, ToolRequest}
 import grit.core.id.{CallSlot, ConversationId, EntryId, PrincipalId, ToolCallId, TurnRef, WorkflowId}
-import grit.core.place.{Directory, Place, WorksIn}
+import grit.core.place.{Directory, Place, Reaches, WorksIn}
 import grit.core.prompt.{Fragment, SystemPrompt, Voice}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
@@ -381,7 +381,7 @@ object TurnFixtures {
       val edges: InMemoryEdges,
       durable: InMemoryDurable,
       serve: ToolRequest -> Serve,
-      at: Place = Place.of(checkout)
+      val at: Place = Place.of(checkout)
   ) extends grit.core.edge.ToolRequests {
 
     val registration: Registration = edges.register(Set(at))
@@ -406,36 +406,64 @@ object TurnFixtures {
         durable.send(q.slot.turn.workflowId, q.slot.key, ujson.write(OutcomeJson.write(outcome)))
 
     def dispatch(requests: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit] =
-      edges.dispatch(requests).map { _ =>
-        requests.foreach { q =>
-          sent = sent :+ q
-          serve(q) match {
-            case Serve.Never => ()
-            case Serve.Claimed => val _ = edges.claimAs(registration, q)
-            case Serve.Later(o) =>
-              if (edges.claimAs(registration, q)) later = later.updated(q.slot, o)
-            case Serve.Now(o) => if (edges.claimAs(registration, q)) tell(q, o)
-          }
-        }
+      edges.dispatch(requests).map(_ => requests.foreach(take))
+
+    /** `q`, already dispatched, kept in [[sent]] and served as `serve` says. */
+    def take(q: ToolRequest): Unit = {
+      sent = sent :+ q
+      serve(q) match {
+        case Serve.Never => ()
+        case Serve.Claimed => val _ = edges.claimAs(registration, q)
+        case Serve.Later(o) =>
+          if (edges.claimAs(registration, q)) later = later.updated(q.slot, o)
+        case Serve.Now(o) => if (edges.claimAs(registration, q)) tell(q, o)
       }
+    }
 
     def settle(slot: CallSlot)(using Tx^): Either[StoreError, grit.core.edge.RequestState] =
       edges.settle(slot).map { state =>
-        later.get(slot).foreach { o =>
-          later = later - slot
-          sent.find(_.slot == slot).foreach(tell(_, o))
-        }
+        resume(slot)
         state
+      }
+
+    /** The answer `serve` held back for `slot`, told now ([[Serve.Later]]). */
+    def resume(slot: CallSlot): Unit =
+      later.get(slot).foreach { o =>
+        later = later - slot
+        sent.find(_.slot == slot).foreach(tell(_, o))
       }
 
     def abandon(slot: CallSlot)(using Tx^): Either[StoreError, grit.core.edge.RequestState] =
       edges.abandon(slot)
   }
 
+  /** The edges `first` and `rest`, over `first`'s [[InMemoryEdges]]: each request dispatched
+    * is taken by the one whose place it is addressed to; one at no edge's place is taken by
+    * none.
+    */
+  final class Desks(first: Served, rest: Vector[Served]) extends grit.core.edge.ToolRequests {
+    private def all: Vector[Served] = first +: rest
+
+    def dispatch(requests: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit] =
+      first.edges.dispatch(requests).map { _ =>
+        requests.foreach(q => all.find(_.at == q.workspace).foreach(_.take(q)))
+      }
+
+    def settle(slot: CallSlot)(using Tx^): Either[StoreError, grit.core.edge.RequestState] =
+      first.edges.settle(slot).map { state =>
+        all.foreach(_.resume(slot))
+        state
+      }
+
+    def abandon(slot: CallSlot)(using Tx^): Either[StoreError, grit.core.edge.RequestState] =
+      first.edges.abandon(slot)
+  }
+
   /** The turn's workflow body over `entries` and `provider`, its hosted calls sent through
     * `served`, its model offered `hosted` where the edge serves them, its tool sets kept in
     * `toolSets`, for at most `calls` model calls; its conversation is from `from`, the
-    * fixture's TUI session unless given, linked to a service by `worksIn`.
+    * fixture's TUI session unless given, linked to a service by `worksIn`, and to services it
+    * reaches by `reaches`, whose edges, over `served`'s, are `reached` ([[Desks]]).
     */
   def hostedBody(
       entries: EntryStore,
@@ -445,14 +473,18 @@ object TurnFixtures {
       toolSets: InMemoryToolSets = ToolSets,
       calls: Int = 5,
       from: Origin = origin,
-      worksIn: Vector[WorksIn] = Vector.empty
+      worksIn: Vector[WorksIn] = Vector.empty,
+      reaches: Vector[Reaches] = Vector.empty,
+      reached: Vector[Served] = Vector.empty
   )(id: WorkflowId)(using Durable^): String = {
+    val requests: grit.core.edge.ToolRequests =
+      if (reached.isEmpty) served else new Desks(served, reached)
     val conversations = new InMemoryConversationStore
     conversations.findOrCreate(from, PrincipalId.Local)(using TestTx.fake)
     Turn.body(
       TurnEnv(
         TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
-        TurnHosting(conversations, Prompts, toolSets, served, served.edges, new InMemoryVoiceStore, new InMemoryPrincipals),
+        TurnHosting(conversations, Prompts, toolSets, requests, served.edges, new InMemoryVoiceStore, new InMemoryPrincipals),
         new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
         new FixedModels(provider, new StubProvider()),
@@ -468,7 +500,8 @@ object TurnFixtures {
         hosted,
         new FakeJot,
         budget(calls),
-        worksIn = worksIn
+        worksIn = worksIn,
+        reaches = reaches
       )
     )(id)
   }

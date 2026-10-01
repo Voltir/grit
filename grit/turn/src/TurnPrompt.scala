@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.context.Label
-import grit.core.place.{Directory, Place}
+import grit.core.place.{Directory, Place, Service}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
 import grit.core.tool.ToolSet
@@ -175,4 +175,18 @@ object TurnPrompt {
     }
     Fragment(Layer.Reach, Fragment.Grit, text)
   }
+
+  /** What a turn is told of `service`, a service it reaches besides its workspace
+    * ([[grit.core.place.Reaches]]): `tools`, the tools served there, are offered and calling
+    * one runs it there. `None` when `tools` is empty: nothing is offered, so nothing is said.
+    */
+  def reached(service: Service, tools: ToolSet): Option[Fragment] =
+    Option.when(tools.tools.nonEmpty)(
+      Fragment(
+        Layer.Reach,
+        Fragment.Grit,
+        s"You also reach ${service.name}: the tools served there are offered to you, and " +
+          s"calling one runs it at ${service.name}."
+      )
+    )
 }

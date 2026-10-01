@@ -148,6 +148,25 @@ object PlaceTests extends TestSuite {
         Vector(Some(service("tracker")), Some(service("github")), None, None)
     }
 
+    test(
+      "a conversation reaches the service of every link holding its place, each once, first linked first"
+    ) {
+      def service(name: String): Service =
+        Service.of(name).fold(e => throw new java.lang.AssertionError(e), identity)
+      val links = Vector(
+        Reaches(place("slack:acme/C01"), service("slack")),
+        Reaches(place("slack:acme"), service("tracker")),
+        Reaches(place("slack:"), service("slack"))
+      )
+      Vector("slack:acme/C01/1.2", "slack:acme/C02/1.2", "fs:/home/nick")
+        .map(p => Reaches.of(links, place(p))) ==>
+        Vector(
+          Vector(service("slack"), service("tracker")),
+          Vector(service("tracker"), service("slack")),
+          Vector.empty
+        )
+    }
+
     test("a weight is at least 1") {
       Weight.of(0.5) ==> Left("a weight is a number of at least 1, not 0.5")
       Weight.of(Double.NaN) ==> Left("a weight is a number of at least 1, not NaN")

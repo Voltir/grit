@@ -13,10 +13,10 @@ import grit.core.tool.{Bound, Outcome, ToolName}
 
 import TurnLoop.Round
 
-/** How a turn settles a hosted call (ADR 0017): as a request addressed to the offer's
-  * workspace, which an edge serving it claims, runs and answers. The turn waits for the
-  * answer as it waits for an approval, then keeps it as the call's result, as it keeps an
-  * in-step call's ([[TurnTools.Settling]]).
+/** How a turn settles a hosted call (ADR 0017): as a request addressed to its tool's place in
+  * the offer, its workspace or a service it reaches, which an edge serving it claims, runs
+  * and answers. The turn waits for the answer as it waits for an approval, then keeps it as
+  * the call's result, as it keeps an in-step call's ([[TurnTools.Settling]]).
   */
 object TurnHosted {
 
@@ -33,43 +33,52 @@ object TurnHosted {
   val RunWithin: FiniteDuration = 11.minutes
 
   /** The requests for `calls`, round `round`'s free hosted calls by their index and call id,
-    * addressed to `workspace`; none when the conversation has no workspace.
+    * each addressed to its tool's place in `offer` ([[TurnOffer.placeOf]]), grouped by place
+    * in the order each place is first called; a call whose tool has no place is not requested.
     */
   def requests(
       turn: TurnRef,
       round: Round,
       calls: Vector[(Int, ToolCallId, Bound.Hosted)],
-      workspace: Option[Place]
-  ): Either[TurnFailure, Vector[ToolRequest]] =
-    workspace.fold[Either[TurnFailure, Vector[ToolRequest]]](Right(Vector.empty)) { place =>
-      calls.foldLeft[Either[TurnFailure, Vector[ToolRequest]]](Right(Vector.empty)) {
+      offer: TurnOffer
+  ): Either[TurnFailure, Vector[(Place, Vector[ToolRequest])]] =
+    calls
+      .foldLeft[Either[TurnFailure, Vector[(Place, Vector[ToolRequest])]]](Right(Vector.empty)) {
         case (acc, (index, _, hosted)) =>
-          acc.flatMap(done =>
-            request(turn, round, index, hosted, place, Permit.Free).map(done :+ _)
-          )
+          offer.placeOf(hosted.tool).fold(acc) { place =>
+            acc.flatMap(done =>
+              request(turn, round, index, hosted, place, Permit.Free).map { q =>
+                done.span(_._1 != place) match {
+                  case (before, (at, sent) +: after) => (before :+ (at -> (sent :+ q))) ++ after
+                  case _ => done :+ (place -> Vector(q))
+                }
+              }
+            )
+          }
       }
-    }
 
-  /** The `dispatch` steps: `requests` sent to the edge serving their workspace, true; false,
-    * and nothing sent, when no live edge serves it.
+  /** A `dispatch` or `reach` step: those of `requests` addressed to `place` sent to the edge
+    * serving it, true; false, and nothing sent, when no live edge serves it or none is
+    * addressed there.
     */
-  def dispatch(hosting: TurnHosting, requests: Vector[ToolRequest])(using
+  def dispatch(hosting: TurnHosting, place: Place, requests: Vector[ToolRequest])(using
       Tx^
-  ): Either[TurnFailure, Boolean] =
-    requests.headOption match {
-      case None => Right(false)
-      case Some(first) =>
-        (for {
-          serving <- hosting.edges.serving(first.workspace)
-          sent <- serving.fold[Either[StoreError, Boolean]](Right(false))(_ =>
-            hosting.requests.dispatch(requests).map(_ => true)
-          )
-        } yield sent).left.map(e => TurnFailure.Store(e.toString))
-    }
+  ): Either[TurnFailure, Boolean] = {
+    val there = requests.filter(_.workspace == place)
+    if (there.isEmpty) Right(false)
+    else
+      (for {
+        serving <- hosting.edges.serving(place)
+        sent <- serving.fold[Either[StoreError, Boolean]](Right(false))(_ =>
+          hosting.requests.dispatch(there).map(_ => true)
+        )
+      } yield sent).left.map(e => TurnFailure.Store(e.toString))
+  }
 
-  /** The call at `slot`, `hosted`, bound to a hosted tool, settled: asked about first when it
-    * asks (`ask:n:j`, then the wait), and sent then (`dispatch:n:j`); a free one was sent with
-    * its round, and `sent` says whether an edge was serving then. Its outcome, the answer, or
+  /** The call at `slot`, `hosted`, bound to a hosted tool addressed to `place`
+    * ([[TurnOffer.placeOf]]), settled: asked about first when it asks (`ask:n:j`, then the
+    * wait), and sent then (`dispatch:n:j`); a free one was sent with its round, and `sent`
+    * says whether an edge was serving its place then. Its outcome, the answer, or
     * why there is none, is kept by `tool:n:j` through `settling`.
     */
   def settle(
@@ -77,7 +86,7 @@ object TurnHosted {
       slot: TurnTools.Slot,
       call: ToolCallId,
       hosted: Bound.Hosted,
-      workspace: Option[Place],
+      place: Option[Place],
       sent: Boolean,
       answerWithin: FiniteDuration,
       settling: TurnTools.Settling^,
@@ -88,9 +97,7 @@ object TurnHosted {
     val shown = hosted.shown
     val outcome: Either[TurnFailure, Outcome] = hosted.ask match {
       case None =>
-        callSlot(slot).map(cs =>
-          if (sent) awaited(hosting, cs, slot, workspace) else unserved(workspace)
-        )
+        callSlot(slot).map(cs => if (sent) awaited(hosting, cs, slot, place) else unserved(place))
       case Some(shown) =>
         val entries = settling.entries
         d.transact(slot.askStep)(TurnTools.ask(entries, slot, call, shown, clock.now())).flatMap {
@@ -101,12 +108,12 @@ object TurnHosted {
               case Approval.Approved =>
                 for {
                   cs <- callSlot(slot)
-                  place <- workspace.toRight(TurnFailure.Store(s"$named has no workspace to go to"))
-                  one <- request(slot.turn, slot.round, slot.index, hosted, place, Permit.Approved)
+                  to <- place.toRight(TurnFailure.Store(s"$named has no workspace to go to"))
+                  one <- request(slot.turn, slot.round, slot.index, hosted, to, Permit.Approved)
                   went <- d.transact(TurnHostedSteps.dispatchOne(slot))(
-                    dispatch(hosting, Vector(one))
+                    dispatch(hosting, to, Vector(one))
                   )
-                } yield if (went) awaited(hosting, cs, slot, workspace) else unserved(workspace)
+                } yield if (went) awaited(hosting, cs, slot, place) else unserved(place)
             }
         }
     }

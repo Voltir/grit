@@ -158,6 +158,34 @@ object TurnJournalTests extends TestSuite {
         Right(Right(Vector.empty))
     }
 
+    test(
+      "an offer's reached tools are written with their places, and an offer recorded before them reads as none"
+    ) {
+      // Pinned: replay reads this key to address each reached tool's calls to its place.
+      val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
+      val tools = grit.core.tool.ToolSet.Empty.id
+      val set = grit.core.tool.ToolSetId.value(tools)
+      val workspace = grit.core.place.Place.read("service:github").toOption
+      val elsewhere = grit.core.place.Place
+        .read("service:elsewhere")
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      val took: Either[TurnFailure, TurnOffer.Recorded] = Right(
+        TurnOffer.Recorded(
+          workspace,
+          tools,
+          Vector.empty,
+          TurnOffer.Root.Addressed,
+          reached = Map(grit.core.tool.ToolName("post_x") -> elsewhere)
+        )
+      )
+      j.encode(took) ==>
+        s"""{"ok":{"workspace":"service:github","tools":"$set","prompt":[],"reached":{"post_x":"service:elsewhere"}}}"""
+      j.decode(j.encode(took)) ==> Right(took)
+      j.decode(s"""{"ok":{"workspace":null,"tools":"$set","prompt":[]}}""")
+        .map(_.map(_.reached)) ==>
+        Right(Right(Map.empty))
+    }
+
     test("a record in neither shape is rejected") {
       val j = summon[Journaled[Either[TurnFailure, EntryId]]]
       assert(j.decode("""{"ok":"x","failed":"model","reason":"r"}""").isLeft)

@@ -216,7 +216,8 @@ private[grit] object Launch {
               Coding.readOnlyHosted,
               engine.jot,
               d.offer.rounds,
-              worksIn = d.worksIn
+              worksIn = d.worksIn,
+              reaches = d.reaches
             )
           )
         )
@@ -234,7 +235,8 @@ private[grit] object Launch {
                   Coding.hosted,
                   engine.jot,
                   d.offer.rounds,
-                  worksIn = d.worksIn
+                  worksIn = d.worksIn,
+                  reaches = d.reaches
                 )
               )
             }

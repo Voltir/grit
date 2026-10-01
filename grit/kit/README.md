@@ -29,7 +29,9 @@ In dependency order:
   called with named arguments, which refuses tools that ask first beside an edge that cannot
   answer an ask, two edges of one name, and a sweep under a second), `Offer` and `Offered`
   (the tools every turn's model is offered), `Assembly` (how a window is assembled),
-  `Topics` (how a message is placed among topics). Imports nothing in kit.
+  `Topics` (how a message is placed among topics). Beside its edges it declares, by core's
+  links, which conversations work in a service an edge hosts (`WorksIn`) and which
+  conversations' addressed turns also reach one (`Reaches`). Imports nothing in kit.
 - **`environment`** — what the process environment supplies, never declared: `DotEnv` (a
   `.env` file under the real environment) and `Secrets` (the database, OpenRouter's key, and
   Jev's settings for `Topics.Jev`). An edge's credentials are its own `needs`. ← `deployment`

@@ -1,8 +1,8 @@
 # 0017. A tool call is a durable request addressed to a workspace, and run by an edge hosting it
 
 Status: accepted (2026-09-27); amended (2026-09-30): service places; amended (2026-10-01): a
-service place's reach. Extends 0002 and 0010; supersedes 0009's in-step run for the
-tools an edge hosts.
+service place's reach; amended (2026-10-01): services an addressed turn reaches. Extends
+0002 and 0010; supersedes 0009's in-step run for the tools an edge hosts.
 
 Context: the engine ran every tool call in its own step, over the directory the engine's
 process ran in. With one engine per database (ADR 0015) and conversations in many
@@ -42,15 +42,24 @@ Decision:
   `Edges.authorize` routes a request there to the place itself, and refuses any registered
   place that is neither a directory nor a service. A conversation with no directory of its
   own works in the service place its deployment links it to (`WorksIn`), first link first;
-  a stored per-conversation link will override that default. One workspace per turn: a
-  conversation's hosted calls all go to it. A service place's reach is bounded at the edge
-  hosting it, by exact argument bounds and attributed answers, failing closed: a tool it
-  cannot hold to them is not offered, and a call outside them is not sent. Words to the
+  a stored per-conversation link will override that default. One workspace per turn: it is
+  where the conversation works, and its hosted calls go there, but for one exception. An
+  addressed turn is also offered the tools advertised at each service its deployment links
+  the conversation's place to (`Reaches`), tools that act beyond the conversation, such as
+  posting elsewhere; less any whose name an earlier tool has. The offer records which tool
+  goes to which place, and a call to a reached tool is a request addressed to that place.
+  A turn rooted on a message grit heard is offered none of them: its draft runs tools, and
+  only its reply is gated by whether grit may speak unprompted. So anyone who can address
+  the deployment may ask it to act at a reached service, bounded by what that service's edge
+  allows (where it may act, how often); the principal a request records is where a bound on
+  who will plug in. A service place's reach is bounded at the edge hosting it, by exact
+  argument bounds and attributed answers, failing closed: a tool it cannot hold to them is
+  not offered, and a call outside them is not sent. Words to the
   model are an aid, never the guard; nor is the service's token, which may reach further.
 - **The engine offers what an edge advertises.** A hosted tool the engine does not
   describe is offered as the serving edge advertised it, when it does not ask first; its
   arguments are read by the edge. The offer records which tools it took from the advert,
-  so a replay rebuilds them without the edge.
+  its workspace's or a reached service's, so a replay rebuilds them without the edge.
 - **Engine tools stay in the step**: a tool that touches no machine (reading grit's store, a
   model probe) runs in the turn as before, under ADR 0009.
 
@@ -58,5 +67,6 @@ Consequences: no open edge means no access, which the turn is told. A tool call 
 round trip through Postgres (a dispatch, a NOTIFY, a claim, the run, an update, a send, the
 turn's wake) instead of a function call. Requests are journal-class: `PeriodStore.purge`
 deletes a period's turns' requests with their entries. Enforced by `EdgesContract` (in
-memory and SQL), `EdgesTests`, `ServerTests`, `EdgeLiveTests`, `PeriodContract` and, for a
-service place's reach, `McpScopeTests` and `McpClientTests`.
+memory and SQL), `EdgesTests`, `ServerTests`, `EdgeLiveTests`, `PeriodContract`, for a
+service place's reach, `McpScopeTests` and `McpClientTests`, and, for a reached service,
+`TurnOfferTests` and `TurnHostedTests`.

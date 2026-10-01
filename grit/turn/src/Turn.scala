@@ -10,6 +10,7 @@ import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile}
+import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 import grit.core.speech.{Outcome, Speech, SpeechJson}
 import grit.core.stitch.{Along, StitchReads, Stitching, Strand}
@@ -55,7 +56,8 @@ import TurnVerdict.Shape
   *      [[grit.core.inbox.Inbox.answer]] sends ([[grit.core.durable.Durable.recv]]) before
   *      its `tool:n:j`; unanswered, it is denied. A call to a hosted tool is a request an
   *      edge runs ([[TurnHosted]], ADR 0017): a round's free ones sent together in
-  *      `dispatch:n`, a gated one in `dispatch:n:j` once approved; its answer waited for,
+  *      `dispatch:n`, those to a reached service's tools in `reach:n:{place}`, a gated one
+  *      in `dispatch:n:j` once approved; its answer waited for,
   *      then `expire:n:j` when none came and, if an edge had claimed it, `abandon:n:j`
   *      when none came again; the outcome kept by `tool:n:j`.
   *   1. `record-verdict` — when `topic` was offered: the verdict of the first reply, and
@@ -161,6 +163,11 @@ object Turn {
       */
     val Dispatch = "dispatch"
 
+    /** The family of `reach:n:{place}`, round n's free calls to the tools of a service the
+      * turn reaches sent to the edge at its place (written), together.
+      */
+    val Reach = "reach"
+
     /** The family of `expire:n:j`, call j of round n given up on when no edge claimed it in
       * time, or found claimed and waited on again.
       */
@@ -194,6 +201,12 @@ object Turn {
     /** The name of the step sending `round`'s free hosted calls. */
     def dispatch(round: TurnLoop.Round): String = s"$Dispatch:${round.index}"
 
+    /** The name of the step sending `round`'s free calls to tools at `place`, a reached
+      * service's.
+      */
+    def reach(round: TurnLoop.Round, place: Place): String =
+      s"$Reach:${round.index}:${place.written}"
+
     /** The name of the step sending call `index` of `round`'s reply, a gated hosted one. */
     def dispatchOne(round: TurnLoop.Round, index: Int): String =
       s"$Dispatch:${round.index}:$index"
@@ -204,8 +217,9 @@ object Turn {
     /** The name of the step giving up on call `index` of `round` when its edge was silent. */
     def abandon(round: TurnLoop.Round, index: Int): String = s"$Abandon:${round.index}:$index"
 
-    /** The step `name` stands for among [[all]], [[RecordCall]], [[Ask]], [[Wait]] and
-      * [[Tool]]: its round and index dropped (`call-model:3` is [[CallModel]], `tool:1:0` is
+    /** The step `name` stands for among [[all]] and the tool loop's families ([[RecordCall]],
+      * [[Ask]], [[Wait]], [[Tool]], [[Dispatch]], [[Reach]], [[Expire]], [[Abandon]]): its
+      * round, index or place dropped (`call-model:3` is [[CallModel]], `tool:1:0` is
       * [[Tool]]). `None` for a name that is not the turn's, such as a patch's marker or
       * DBOS's own records of a wait ([[Answered]] before [[named]] renames it).
       */
@@ -217,6 +231,7 @@ object Turn {
         case Some(Loop.Wait(_, _)) => Some(Wait)
         case Some(Loop.Tool(_, _)) => Some(Tool)
         case Some(Loop.Sent(_) | Loop.SentOne(_, _)) => Some(Dispatch)
+        case Some(Loop.Reached(_)) => Some(Reach)
         case Some(Loop.Expired(_, _)) => Some(Expire)
         case Some(Loop.Abandoned(_, _)) => Some(Abandon)
         case None => Option.when(all.contains(name))(name)
@@ -248,6 +263,7 @@ object Turn {
     case Tool(round: Int, index: Int)
     case Sent(round: Int)
     case SentOne(round: Int, index: Int)
+    case Reached(round: Int)
     case Expired(round: Int, index: Int)
     case Abandoned(round: Int, index: Int)
   }
@@ -260,6 +276,7 @@ object Turn {
     private val ToolName = """tool:(\d+):(\d+)""".r
     private val SentName = """dispatch:(\d+)""".r
     private val SentOneName = """dispatch:(\d+):(\d+)""".r
+    private val ReachedName = """reach:(\d+):.+""".r
     private val ExpiredName = """expire:(\d+):(\d+)""".r
     private val AbandonedName = """abandon:(\d+):(\d+)""".r
 
@@ -271,6 +288,7 @@ object Turn {
       case ToolName(n, j) => n.toIntOption.zip(j.toIntOption).map(Tool(_, _))
       case SentName(n) => n.toIntOption.map(Sent(_))
       case SentOneName(n, j) => n.toIntOption.zip(j.toIntOption).map(SentOne(_, _))
+      case ReachedName(n) => n.toIntOption.map(Reached(_))
       case ExpiredName(n, j) => n.toIntOption.zip(j.toIntOption).map(Expired(_, _))
       case AbandonedName(n, j) => n.toIntOption.zip(j.toIntOption).map(Abandoned(_, _))
       case _ => None
@@ -320,6 +338,7 @@ object Turn {
       case Some(Loop.Wait(n, j)) => s"${Step.Tool}:$n:$j"
       case Some(Loop.Tool(n, _)) => s"${Step.CallModel}:${n + 1}"
       case Some(Loop.Sent(n)) => s"${Step.Tool}:$n:0"
+      case Some(Loop.Reached(n)) => s"${Step.Tool}:$n:0"
       case Some(Loop.SentOne(n, j)) => s"${Step.Tool}:$n:$j"
       case Some(Loop.Expired(n, j)) => s"${Step.Tool}:$n:$j"
       case Some(Loop.Abandoned(n, j)) => s"${Step.Tool}:$n:$j"
@@ -795,9 +814,9 @@ object Turn {
         val guidance = settings.guidance
         val hosting = env.hosting
         val workspace = offer.workspace
-        // Whether each round's free hosted calls were sent to a serving edge, as its dispatch
-        // step recorded: read by the round's settles, after its record.
-        val dispatched = scala.collection.mutable.Map.empty[Int, Boolean]
+        // Whether each round's free hosted calls to each place were sent to a serving edge, as
+        // its dispatch or reach step recorded: read by the round's settles, after its record.
+        val dispatched = scala.collection.mutable.Map.empty[(Int, Place), Boolean]
         def shape(round: Round): ModelRequest -> ModelRequest =
           loopShape(asked, round, TurnLoop.use(budget, round), schemas, after, guidance)
         val moves = new TurnLoop.Moves {
@@ -831,13 +850,18 @@ object Turn {
                   case _ => None
                 }
               }
-              TurnHosted.requests(turn, round, free, workspace) match {
-                case Left(failure) => Left(failure)
-                case Right(requests) if requests.isEmpty => Right(())
-                case Right(requests) =>
-                  d.transact(Step.dispatch(round))(TurnHosted.dispatch(hosting, requests)).map {
-                    sent => dispatched.update(round.index, sent)
+              // The workspace's go in `dispatch:n`, each reached place's in its `reach:n:place`.
+              TurnHosted.requests(turn, round, free, offer).flatMap { groups =>
+                groups.foldLeft[Either[TurnFailure, Unit]](Right(())) { case (acc, (place, qs)) =>
+                  acc.flatMap { _ =>
+                    val step =
+                      if (workspace.contains(place)) Step.dispatch(round)
+                      else Step.reach(round, place)
+                    d.transact(step)(TurnHosted.dispatch(hosting, place, qs)).map { sent =>
+                      dispatched.update((round.index, place), sent)
+                    }
                   }
+                }
               }
             }
           }
@@ -864,13 +888,14 @@ object Turn {
                     }
                   }
               case Right(hosted: Bound.Hosted) =>
-                val sent = dispatched.getOrElse(round.index, false)
+                val place = offer.placeOf(hosted.tool)
+                val sent = place.exists(p => dispatched.getOrElse((round.index, p), false))
                 TurnHosted.settle(
                   hosting,
                   slot,
                   call,
                   hosted,
-                  workspace,
+                  place,
                   sent,
                   answerWithin,
                   settling,

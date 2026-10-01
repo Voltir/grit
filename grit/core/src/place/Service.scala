@@ -30,3 +30,19 @@ object WorksIn {
   def of(links: Vector[WorksIn], place: Place): Option[Service] =
     links.find(l => place.within(l.within)).map(_.service)
 }
+
+/** Conversations within `within` are also offered, on turns addressed to grit, the tools an
+  * edge serves at `service`, beside their workspace's: tools that act beyond the
+  * conversation, such as posting elsewhere. A turn nobody addressed, rooted on a message grit
+  * heard, is never offered them.
+  */
+final case class Reaches(within: Place, service: Service)
+
+object Reaches {
+
+  /** The services of every one of `links` whose `within` holds `place`, each once, in the
+    * order first linked.
+    */
+  def of(links: Vector[Reaches], place: Place): Vector[Service] =
+    links.filter(l => place.within(l.within)).map(_.service).distinct
+}

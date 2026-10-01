@@ -150,6 +150,23 @@ object TurnPromptTests extends TestSuite {
         "This conversation has no directory, so you cannot read or change files or run commands."
     }
 
+    test(
+      "reached says the tools served at a service the turn reaches run there; with none, nothing"
+    ) {
+      val elsewhere =
+        grit.core.place.Service
+          .of("elsewhere")
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+      TurnPrompt.reached(elsewhere, set(false)).map(f => (f.layer, f.text)) ==> Some(
+        (
+          Layer.Reach,
+          "You also reach elsewhere: the tools served there are offered to you, and calling " +
+            "one runs it at elsewhere."
+        )
+      )
+      TurnPrompt.reached(elsewhere, ToolSet.Empty) ==> None
+    }
+
     test("each layer's fragment is in its layer, in grit's words") {
       val origin = Origin.Tui(dir, "s")
       Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(None, ToolSet.Empty))

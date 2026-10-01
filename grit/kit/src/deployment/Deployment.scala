@@ -7,7 +7,7 @@ import grit.core.id.EdgeName
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
-import grit.core.place.WorksIn
+import grit.core.place.{Reaches, WorksIn}
 import grit.core.plugin.Plugin
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
@@ -82,7 +82,9 @@ enum DeploymentRefusal {
 }
 
 /** A deployment of grit, declared in code: the edges it serves, which conversations with no
-  * directory work in a service one of them hosts ([[WorksIn]]), the plugins it posts to, the
+  * directory work in a service one of them hosts ([[WorksIn]]), which conversations'
+  * addressed turns also reach a service one of them hosts ([[Reaches]]), the plugins it
+  * posts to, the
   * model policy its calls are made under (laid over by the model settings the database
   * keeps), what its turns are offered and how their windows are assembled, how messages are
   * placed among topics, the lifecycle's settings, what it may spend a day, whether and within
@@ -102,7 +104,8 @@ final case class Deployment private (
     lifecycle: LifecycleSettings,
     budget: Budget,
     speaking: Speaking,
-    sweep: FiniteDuration
+    sweep: FiniteDuration,
+    reaches: Vector[Reaches]
 )
 
 object Deployment {
@@ -126,7 +129,8 @@ object Deployment {
       lifecycle: LifecycleSettings,
       budget: Budget,
       speaking: Speaking,
-      sweep: FiniteDuration
+      sweep: FiniteDuration,
+      reaches: Vector[Reaches] = Vector.empty
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filterNot(_.answersAsks).map(_.name)
@@ -155,7 +159,8 @@ object Deployment {
       lifecycle,
       budget,
       speaking,
-      sweep
+      sweep,
+      reaches
     )
   }
 }
