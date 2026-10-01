@@ -163,6 +163,18 @@ object PayloadJsonTests extends TestSuite {
       )
     }
 
+    test("an asked section is stored marked as one, and read back as one") {
+      val thread = Place.read("slack:T/C2/3.0").fold(e => sys.error(e), identity)
+      val asked: Payload.Window = Payload.Window(
+        Vector(EntryId("a")),
+        Vector.empty,
+        Vector(Nearby.Asked(ConversationId("c9"), thread, Vector(EntryId("x"), EntryId("y"))))
+      )
+      val json = PayloadJson.write(asked)
+      json("nearby")(0)("asked") ==> ujson.True
+      PayloadJson.read(json) ==> Right(asked)
+    }
+
     test("topic") {
       PayloadJson
         .write(

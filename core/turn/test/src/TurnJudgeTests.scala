@@ -161,6 +161,35 @@ object TurnJudgeTests extends TestSuite {
         .thread ==> "Assistant: The engine's open issues.\nNick: why this?"
     }
 
+    test("an asked section is recalled: what grit was asked elsewhere grounds a draft") {
+      val place = Place.read("slack:T1/C2/3.0").fold(e => sys.error(e), identity)
+      val ask = Entry(
+        EntryId("o1"),
+        ConversationId("asker"),
+        TurnSeq(0),
+        None,
+        0,
+        Payload.Message(Message.User("post the open issues")),
+        Instant.EPOCH
+      )
+      TurnJudge
+        .state(
+          Vector(root),
+          Window(
+            Vector.empty,
+            Vector.empty,
+            Vector(Nearby.Asked(ConversationId("asker"), place, Vector(ask.id)))
+          ),
+          Vector(ask),
+          Strand.Read.empty,
+          800,
+          Speakers(Map(ask.id -> "Nick")),
+          "draft"
+        )
+        .recalled
+        .contains("Nick: post the open issues") ==> true
+    }
+
     test("a window with no record recalls nothing") {
       TurnJudge
         .state(all, Window(Vector(asked.id)), Vector.empty, Strand.Read.empty, 800, names, "d")

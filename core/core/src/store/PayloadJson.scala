@@ -301,6 +301,13 @@ object PayloadJson {
           "entries" -> ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e)))),
           "strand" -> true
         )
+      case Nearby.Asked(c, place, entries) =>
+        ujson.Obj(
+          "conversation" -> ConversationId.value(c),
+          "place" -> place.written,
+          "entries" -> ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e)))),
+          "asked" -> true
+        )
     }
 
   /** The nearby section `v` stores ([[writeNearby]]'s form), or why none. */
@@ -323,6 +330,8 @@ object PayloadJson {
               // A section stored before strands existed has no mark: an open one.
               if (o.value.get("strand").contains(ujson.True))
                 Nearby.Along(ConversationId(c), place, ids)
+              else if (o.value.get("asked").contains(ujson.True))
+                Nearby.Asked(ConversationId(c), place, ids)
               else Nearby.Open(ConversationId(c), place, ids)
             )
     } yield section

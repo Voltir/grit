@@ -498,6 +498,36 @@ object ShownTests extends TestSuite {
       )
     }
 
+    test(
+      "an asked section is one user message: why grit shows it, from where, then each message under its speaker's name"
+    ) {
+      val thread = Place.read("slack:T/C2/3.0").fold(e => sys.error(e), identity)
+      val ask = entry(Payload.Message(Message.User("post the open issues in #skynet")))
+        .copy(id = EntryId("ask"))
+      val done = entry(
+        Payload.Message(
+          Message.Assistant(
+            Vector(AssistantBlock.Text("Posted in #skynet.")),
+            StopReason.EndTurn,
+            Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
+            "m"
+          )
+        )
+      ).copy(id = EntryId("done"))
+      Shown.section(
+        Nearby.Asked(ConversationId("a"), thread, Vector(ask.id, done.id)),
+        Vector(ask, done),
+        Speakers(Map(ask.id -> "Nick"))
+      ) ==> Some(
+        Message.User(
+          "[afar] the conversation where grit was asked for the post this thread begins with, " +
+            "shown by grit, at slack:T/C2/3.0:\n" +
+            "Nick: post the open issues in #skynet\n" +
+            "Assistant: Posted in #skynet."
+        )
+      )
+    }
+
     test("an afar section's message with a leading label is quoted inside the section") {
       val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
       Shown.nearby(

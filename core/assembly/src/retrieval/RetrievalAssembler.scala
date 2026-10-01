@@ -9,14 +9,16 @@ import grit.core.context.{
   Shown,
   Window
 }
-import grit.core.id.{ConversationId, TurnRef, TurnSeq}
-import grit.core.message.Tokens
+import grit.core.id.{CallSlot, ConversationId, TurnRef, TurnSeq}
+import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.place.{Locality, Place, Weight}
 import grit.core.provider.{Provider, TokenEstimator}
 import grit.core.stitch.{Along, Said, StitchStore, Strand, Tuning}
 import grit.core.store.{
+  Audience,
   ClosedElsewhere,
   ClosingEntry,
+  Conversation,
   ConversationStore,
   Db,
   Entry,
@@ -25,6 +27,7 @@ import grit.core.store.{
   LifecycleStore,
   Nearby,
   OpenPeriod,
+  Payload,
   PeriodStore,
   Principals,
   Speakers,
@@ -58,6 +61,14 @@ import grit.core.store.{
   * they fit, at most `tuning.windowTokens` together, paid after the closing and before the
   * tail. A member whose first message is gone is shown by its newest kept closing's record.
   * Strand members are never also candidates.
+  *
+  * A conversation that begins with grit's post
+  * ([[grit.core.store.ConversationStore.postedBy]]) is shown the turn that asked for it as
+  * one [[Nearby.Asked]] section, first, while the turn's period is the conversation's first
+  * and both conversations are colleagues' ([[Audience.Colleagues]]), whatever the scope: its
+  * person's messages and grit's reply, from the first, as many as fit in the strand's
+  * allowance, which it is paid from before the strand. That conversation is then never also
+  * a candidate.
   *
   * No query is written when there is nothing to search: the linear window of `budget` holds
   * every earlier turn of the period, and no other conversation's open period or closing is
@@ -110,10 +121,14 @@ final class RetrievalAssembler(
           began.minusNanos(tuning.horizon.toNanos),
           until
         )
-        speakers <- principals.speakers((all ++ strand.shown).map(_.id))
+        posted <- conversations.postedBy(turn.conversationId)
+        asked <- askedOf(conversation, posted, opening.closing.isEmpty)
+        speakers <- principals.speakers(
+          (all ++ strand.shown ++ asked.toVector.flatMap(_._3)).map(_.id)
+        )
       } yield {
         val locality = settings.locality
-        val members = strand.members.toSet ++ strand.gone
+        val members = strand.members.toSet ++ strand.gone ++ asked.map(_._1)
         val held = closed.filter(c => locality.scope.holds(conversation.origin.room, c.place))
         Read(
           locality,
@@ -126,22 +141,32 @@ final class RetrievalAssembler(
           ),
           held.filterNot(c => members(c.conversation)),
           strand,
-          held.filter(c => strand.gone.contains(c.conversation))
+          held.filter(c => strand.gone.contains(c.conversation)),
+          asked
         )
       }
     }.left
       .map(AssemblyError.Store(_))
       .flatMap { read =>
         val (closings, afterClosing) = LinearAssembler.opened(read.closings, estimator, budget)
-        val along = db.read(strandSections(read, afterClosing)).left.map(AssemblyError.Store(_))
+        val allowance = Tokens(
+          math.min(Tokens.value(tuning.windowTokens), Tokens.value(afterClosing))
+        )
+        val (askedShown, askedCost) = askedSection(read, allowance)
+        val along = db
+          .read(strandSections(read, Tokens(Tokens.value(allowance) - Tokens.value(askedCost))))
+          .left
+          .map(AssemblyError.Store(_))
         along.flatMap { (strandShown, strandCost) =>
-          val left = Tokens(Tokens.value(afterClosing) - Tokens.value(strandCost))
+          val left = Tokens(
+            Tokens.value(afterClosing) - Tokens.value(askedCost) - Tokens.value(strandCost)
+          )
           def window(
               closings: Vector[Entry],
               turns: Vector[Vector[Entry]],
               notes: Vector[AssemblyNote],
               nearby: Vector[Nearby] = Vector.empty
-          ): Window = this.window(closings, turns, notes, nearby ++ strandShown)
+          ): Window = this.window(closings, turns, notes, askedShown ++ nearby ++ strandShown)
           val all = read.all
           val turns = LinearAssembler.turnsBefore(all, read.first, turn.turnSeq)
           val linear = LinearAssembler.tail(turns, read.speakers, estimator, left)
@@ -229,18 +254,69 @@ final class RetrievalAssembler(
       open: Vector[OpenPeriod],
       closed: Vector[ClosedElsewhere],
       strand: Strand.Read,
-      goneRecords: Vector[ClosedElsewhere]
+      goneRecords: Vector[ClosedElsewhere],
+      asked: Option[(ConversationId, Place, Vector[Entry])]
   )
+
+  /** The turn that asked for the post `conversation` begins with, made by the call `posted`
+    * names: its conversation, place, and the messages of that turn with text (a person's, and
+    * grit's reply). `None` unless `first` (the turn's period is the conversation's first),
+    * both conversations are colleagues' ([[Audience.Colleagues]]), and the asker is kept.
+    */
+  private def askedOf(
+      conversation: Conversation,
+      posted: Option[CallSlot],
+      first: Boolean
+  )(using
+      grit.core.store.Tx^
+  ): Either[StoreError, Option[(ConversationId, Place, Vector[Entry])]] =
+    posted match {
+      case Some(slot) if first && conversation.origin.audience == Audience.Colleagues =>
+        val by = slot.turn.conversationId
+        conversations.get(by).flatMap {
+          case Some(asker) if asker.origin.audience == Audience.Colleagues =>
+            entries.list(by).map { all =>
+              val said = all.filter(e => e.turnSeq == slot.turn.turnSeq && spoken(e))
+              Option.when(said.nonEmpty)((by, asker.origin.place, said))
+            }
+          case _ => Right(None)
+        }
+      case _ => Right(None)
+    }
+
+  /** Whether `e` is a message with words: a person's, or grit's reply with text. */
+  private def spoken(e: Entry): Boolean = e.payload match {
+    case Payload.Message(Message.User(_)) | Payload.Heard(_) => true
+    case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
+      blocks.exists {
+        case AssistantBlock.Text(t) => t.trim.nonEmpty
+        case _ => false
+      }
+    case _ => false
+  }
+
+  /** The asked section as the window shows it, and what it costs: as many of its messages,
+    * from the first, as fit in `allowance`; none when none does.
+    */
+  private def askedSection(read: Read, allowance: Tokens): (Vector[Nearby], Tokens) =
+    read.asked match {
+      case None => (Vector.empty, Tokens.Zero)
+      case Some((c, place, said: Vector[Entry])) =>
+        def cost(k: Int): Tokens =
+          Shown.asked(place, said.take(k), read.speakers).fold(Tokens.Zero)(estimator.message)
+        (said.size to 1 by -1).find(k => Tokens.value(cost(k)) <= Tokens.value(allowance)) match {
+          case Some(k) => (Vector(Nearby.Asked(c, place, said.take(k).map(_.id))), cost(k))
+          case None => (Vector.empty, Tokens.Zero)
+        }
+    }
 
   /** The strand's sections as the window shows them, and what they cost: a gone member's
     * newest kept closing, then the root's opening and the messages nearest the turn, newest
-    * first while they fit, within `tuning.windowTokens` and `left`, one section per member in
-    * the order they were said.
+    * first while they fit, within `cap`, one section per member in the order they were said.
     */
-  private def strandSections(read: Read, left: Tokens)(using
+  private def strandSections(read: Read, cap: Tokens)(using
       grit.core.store.Tx^
   ): Either[StoreError, (Vector[Nearby], Tokens)] = {
-    val cap = Tokens(math.min(Tokens.value(tuning.windowTokens), Tokens.value(left)))
     read.goneRecords
       .foldLeft[Either[StoreError, Vector[(ConversationId, Place, ClosingEntry)]]](
         Right(Vector.empty)

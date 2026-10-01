@@ -181,6 +181,7 @@ object TurnView {
           sections.collect {
             case (Nearby.Open(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
             case (Nearby.Along(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
+            case (Nearby.Asked(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
             case (Nearby.Closed(_, place, _), es) if es.nonEmpty => Near.Record(place)
           }
         )

@@ -61,7 +61,17 @@ object Shown {
     * text under its speaker's name (`speakers`; "Someone" when it names none, "Assistant" for
     * grit's replies), as [[pasted]] shows it. `None` when none of them has text.
     */
-  def strand(place: Place, entries: Vector[Entry], speakers: Speakers): Option[Message] = {
+  def strand(place: Place, entries: Vector[Entry], speakers: Speakers): Option[Message] =
+    named(
+      s"${Label.Strand.tag} a thread this conversation continues, shown by grit, at ${place.written}:",
+      entries,
+      speakers
+    )
+
+  /** `header`, then each message among `entries` as a line of its text under its speaker's
+    * name, as [[strand]] and [[asked]] show them; `None` when none of them has text.
+    */
+  private def named(header: String, entries: Vector[Entry], speakers: Speakers): Option[Message] = {
     val lines = entries.flatMap { e =>
       val name = speakers.of(e.id).getOrElse("Someone")
       e.payload match {
@@ -71,13 +81,22 @@ object Shown {
         case p => line(p)
       }
     }
-    Option.when(lines.nonEmpty)(
-      Message.User(
-        (s"${Label.Strand.tag} a thread this conversation continues, shown by grit, at ${place.written}:" +: lines)
-          .mkString("\n")
-      )
-    )
+    Option.when(lines.nonEmpty)(Message.User((header +: lines).mkString("\n")))
   }
+
+  /** An asked section as one user message, "[afar] the conversation where grit was asked for
+    * the post this thread begins with, shown by grit, at {place.written}:", then each message
+    * among `entries` as a line of its text under its speaker's name (`speakers`; "Someone"
+    * when it names none, "Assistant" for grit's), as [[pasted]] shows it. `None` when none of
+    * them has text.
+    */
+  def asked(place: Place, entries: Vector[Entry], speakers: Speakers): Option[Message] =
+    named(
+      s"${Label.Afar.tag} the conversation where grit was asked for the post this thread " +
+        s"begins with, shown by grit, at ${place.written}:",
+      entries,
+      speakers
+    )
 
   /** A closed conversation's closing entry `closing`, at `place`, as one user message:
     * "[afar] another conversation's record, written by grit when it closed on {its UTC
@@ -93,7 +112,8 @@ object Shown {
   }
 
   /** A nearby section as the model is shown it, from those of `entries` it names: an open one
-    * as [[nearby]], a closed one as [[recorded]], a strand's as [[strand]] with `speakers`.
+    * as [[nearby]], a closed one as [[recorded]], a strand's as [[strand]] and an asked one as
+    * [[asked]] with `speakers`.
     * `None` when none of its entries is among `entries`, or none of them has text.
     */
   def section(nearby: Nearby, entries: Vector[Entry], speakers: Speakers): Option[Message] = {
@@ -101,6 +121,7 @@ object Shown {
     nearby match {
       case Nearby.Open(_, place, ids) => this.nearby(place, ids.flatMap(byId.get))
       case Nearby.Along(_, place, ids) => strand(place, ids.flatMap(byId.get), speakers)
+      case Nearby.Asked(_, place, ids) => asked(place, ids.flatMap(byId.get), speakers)
       case Nearby.Closed(_, place, id) =>
         byId.get(id).flatMap(ClosingEntry.of).map(recorded(place, _))
     }

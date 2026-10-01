@@ -15,6 +15,7 @@ import grit.assembly.linear.AssemblyFixtures.{
 import grit.assembly.linear.LinearAssembler
 import grit.core.context.{AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.id.{
+  CallSlot,
   CloseRef,
   ConversationId,
   EntryId,
@@ -198,11 +199,14 @@ object RetrievalAssemblerTests extends TestSuite {
       locality: Locality = Locality.Default,
       origin: Origin = Origin.Task("conversation", "c1"),
       stitches: Option[StitchStore] = None,
-      tuning: Tuning = Tuning.Default
+      tuning: Tuning = Tuning.Default,
+      others: Vector[Conversation] = Vector.empty,
+      posted: Option[CallSlot] = None
   ): Window = {
     val turn = TurnRef(c1, TurnSeq(at))
     val conversations = new InMemoryConversationStore
-    conversations.all = Vector(Conversation(c1, origin, PrincipalId.Local, Instant.EPOCH))
+    conversations.all = Conversation(c1, origin, PrincipalId.Local, Instant.EPOCH) +: others
+    posted.foreach(slot => conversations.posts = Map(c1 -> slot))
     val lifecycle = new InMemoryLifecycleStore
     lifecycle
       .set(
@@ -513,6 +517,116 @@ object RetrievalAssemblerTests extends TestSuite {
       w.nearby ==> Vector(
         Nearby.Closed(a, thread("1.0").place, PeriodRef(a, PeriodSeq.First).closingId)
       )
+    }
+
+    // A thread begun by grit's post (c1, thread 2.0 of C), asked for in another channel.
+    val askedIn: Origin = Origin.Slack("T", "C2", "9.0")
+    val asker = ConversationId("asker")
+    def askedFor(slot: Long = 0): CallSlot =
+      CallSlot.of(TurnRef(asker, TurnSeq(slot)), 0, 0).getOrElse(sys.error("slot"))
+    def postThread(periods: Vector[Vector[Vector[Payload]]], prose: Vector[String]): World = {
+      val world = closed(periods, prose, c => if (c == asker) askedIn else thread("2.0"))
+      elsewhere(
+        world,
+        "asker",
+        close = false,
+        exchange("post the open issues in #skynet", "Posted in #skynet.")
+      )
+      world
+    }
+    val posted = Vector(Payload.Posted("The engine's open issues."))
+    val why = Vector(Payload.Message(Message.User("why this?")))
+    def askerAt(origin: Origin): Conversation =
+      Conversation(asker, origin, PrincipalId.Local, Instant.EPOCH)
+
+    test(
+      "a thread begun by grit's post is shown first the turn that asked for it, out of its room's scope too, and the asker is not also ranked"
+    ) {
+      val world = postThread(Vector(Vector(posted, why)), Vector.empty)
+      val search = new Scripted()
+      search.near = Vector((asker, "asker:t0:0", 5.0))
+      val w = assemble(
+        world,
+        new Writer(Some("open issues")),
+        budget = 1000,
+        search,
+        at = 1,
+        locality = Locality(Scope.Everywhere, Weight.Default),
+        origin = thread("2.0"),
+        others = Vector(askerAt(askedIn)),
+        posted = Some(askedFor())
+      )
+      w.nearby ==> Vector(
+        Nearby.Asked(asker, askedIn.place, Vector(EntryId("asker:t0:0"), EntryId("asker:t0:1")))
+      )
+      ids(w) ==> Vector("t0:0")
+      assemble(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = 1,
+        locality = Locality(Scope.Room, Weight.Default),
+        origin = thread("2.0"),
+        others = Vector(askerAt(askedIn)),
+        posted = Some(askedFor())
+      ).nearby.map(_.conversation) ==> Vector(asker)
+    }
+
+    test("a terminal's or a task's asker is never shown into a Slack thread") {
+      val world = postThread(Vector(Vector(posted, why)), Vector.empty)
+      val tui = Origin.Tui(
+        grit.core.place.Directory.of("/home/nick/api").getOrElse(sys.error("a directory")),
+        "s1"
+      )
+      Vector(tui, Origin.Task("nightly", "r1")).map { origin =>
+        assemble(
+          world,
+          new Writer(Some("unused")),
+          budget = 1000,
+          at = 1,
+          locality = Locality(Scope.Off, Weight.Default),
+          origin = thread("2.0"),
+          others = Vector(askerAt(origin)),
+          posted = Some(askedFor())
+        ).nearby
+      } ==> Vector(Vector.empty, Vector.empty)
+    }
+
+    test("once the thread's first period has closed, its record stands for the asked section") {
+      val world = postThread(Vector(Vector(posted), Vector(why)), Vector("A post, asked about."))
+      assemble(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = 1,
+        locality = Locality(Scope.Off, Weight.Default),
+        origin = thread("2.0"),
+        others = Vector(askerAt(askedIn)),
+        posted = Some(askedFor())
+      ).nearby ==> Vector.empty
+    }
+
+    test("an asked section keeps its first messages that fit the strand's allowance") {
+      val world = postThread(Vector(Vector(posted, why)), Vector.empty)
+      val askEntry = world.entries
+        .get(EntryId("asker:t0:0"))(using TestTx.fake)
+        .toOption
+        .flatten
+        .getOrElse(sys.error("the ask"))
+      val oneLine = Shown
+        .asked(askedIn.place, Vector(askEntry), grit.core.store.Speakers.none)
+        .fold(sys.error("no section"))(CharEstimate.message)
+      assemble(
+        world,
+        new Writer(Some("unused")),
+        budget = 1000,
+        at = 1,
+        locality = Locality(Scope.Off, Weight.Default),
+        origin = thread("2.0"),
+        tuning = Tuning.Default.copy(windowTokens = oneLine),
+        others = Vector(askerAt(askedIn)),
+        posted = Some(askedFor())
+      ).nearby ==> Vector(Nearby.Asked(asker, askedIn.place, Vector(EntryId("asker:t0:0"))))
     }
 
     test("a strand member is shown in the strand alone, never also as a section from afar") {

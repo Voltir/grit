@@ -13,7 +13,8 @@ In dependency order:
   what a query `QueryWriter` has a model write finds: the period's earlier turns, and the
   turns of other conversations' open periods its scope holds and their kept closings
   (ADR 0013), ranked by an `EntrySearch` in one pool, its own weighted up; those from
-  elsewhere shown as their own sections, one per conversation. ← `linear`
+  elsewhere shown as their own sections, one per conversation; and a thread that begins with
+  grit's post, the turn that asked for it, whatever the scope. ← `linear`
 
 Neither reaches past its own period (ADR 0011): what came before the turn's is its closing
 entry. Only retrieval draws on other conversations.

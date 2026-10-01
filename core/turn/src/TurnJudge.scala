@@ -140,7 +140,7 @@ object TurnJudge {
       window.nearby
         .filter {
           case Nearby.Along(_, _, _) => false
-          case Nearby.Open(_, _, _) | Nearby.Closed(_, _, _) => true
+          case Nearby.Open(_, _, _) | Nearby.Closed(_, _, _) | Nearby.Asked(_, _, _) => true
         }
         .flatMap(Shown.section(_, near, speakers))
     State(
