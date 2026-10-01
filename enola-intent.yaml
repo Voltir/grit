@@ -2,8 +2,8 @@
 #
 # It enforces these things:
 #   1. Only grit.dbos may import dev.dbos.*, JDBC or the Postgres driver, only
-#      grit.models the JDK HTTP client, only grit.slack the Slack SDK, and only grit.host
-#      may start a process (STYLE rule 8); grit.slack names core and prose alone
+#      grit.models and grit.mcp the JDK HTTP client, only grit.slack the Slack SDK, and only
+#      grit.host may start a process (STYLE rule 8); grit.slack names core and prose alone
 #   2. grit.tui's four groups import in one direction (grit/tui/CLAUDE.md)
 #   3. grit.prose names no other grit module (grit/prose/README.md)
 #   4. core names no extension, each extension names core alone, and the kit names no edge
@@ -31,22 +31,23 @@ components:
   # grit.dbos, and Mill's moduleDeps are transitive, so these rules are the only guard there.
   - name: outside-dbos
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/slack/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/models/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/slack/**", "grit/mcp/**"]
 
-  # Every module except grit.models, for the HTTP quarantine (STYLE rule 8).
-  - name: outside-models
+  # Every module except grit.models and grit.mcp, the two egresses, for the HTTP quarantine
+  # (STYLE rule 8).
+  - name: outside-egress
     kind: dependency
     match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/slack/**"]
 
   # Every module except grit.host, for the process quarantine (STYLE rule 8).
   - name: outside-host
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/slack/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/slack/**", "grit/mcp/**"]
 
   # Every module except grit.slack, for the Slack SDK's quarantine (STYLE rule 8).
   - name: outside-slack
     kind: dependency
-    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**"]
+    match: ["grit/core/**", "grit/tui/**", "grit/turn/**", "grit/dbos/**", "grit/models/**", "grit/assembly/**", "grit/kit/**", "grit/app/**", "grit/eval/**", "grit/prose/**", "grit/host/**", "grit/tools/**", "grit/lifecycle/**", "grit/digest/**", "grit/edge/**", "grit/mcp/**"]
 
   # grit.slack's sources, for its rule below: an edge names core and prose, never the turn.
   - {name: slack-code,     kind: module, match: ["grit/slack/src", "grit/slack/src/**"]}
@@ -77,6 +78,7 @@ components:
   - {name: digest-code,    kind: module, match: ["grit/digest/src", "grit/digest/src/**"]}
   - {name: tui-code,       kind: module, match: ["grit/tui/src", "grit/tui/src/**"]}
   - {name: kit-code,       kind: module, match: ["grit/kit/src", "grit/kit/src/**"]}
+  - {name: mcp-code,       kind: module, match: ["grit/mcp/src", "grit/mcp/src/**"]}
 
 rules:
   # -------------------------------------------------------------------------------------
@@ -215,26 +217,27 @@ rules:
     because: "STYLE rule 8: java.sql, javax.sql and the Postgres driver are quarantined to grit.dbos"
 
   # -------------------------------------------------------------------------------------
-  # 1c. Only grit.models imports the JDK HTTP client: every model that is not local is an
-  # egress, and egress is grit.models' job (roadmap/mechanisms/models.md).
+  # 1c. Only grit.models and grit.mcp import the JDK HTTP client: each is an egress of its
+  # own, grit.models for model calls and grit.mcp for MCP servers, and neither names the
+  # other (mcp-names-core-alone, models-names-core-alone).
   # -------------------------------------------------------------------------------------
   - id: only-models-imports-http-client
-    forbid_name: outside-models
+    forbid_name: outside-egress
     pattern: "* -> java.net.http.HttpClient"
     mode: strict
-    because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models, where model calls leave the machine"
+    because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models and grit.mcp, where model calls and MCP requests leave the machine"
 
   - id: only-models-imports-http-request
-    forbid_name: outside-models
+    forbid_name: outside-egress
     pattern: "* -> java.net.http.HttpRequest"
     mode: strict
-    because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models, where model calls leave the machine"
+    because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models and grit.mcp, where model calls and MCP requests leave the machine"
 
   - id: only-models-imports-http-response
-    forbid_name: outside-models
+    forbid_name: outside-egress
     pattern: "* -> java.net.http.HttpResponse"
     mode: strict
-    because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models, where model calls leave the machine"
+    because: "STYLE rule 8: the JDK HTTP client is quarantined to grit.models and grit.mcp, where model calls and MCP requests leave the machine"
 
   # -------------------------------------------------------------------------------------
   # 1d. Only grit.host starts a process: a command runs on the machine, and running things
@@ -488,6 +491,13 @@ rules:
   - id: digest-names-core-alone
     allow: digest-code
     only: [core-modules, digest-code]
+    via: imports
+    mode: strict
+    because: "ADR 0021: a shipped extension implements core's traits and names no other extension"
+
+  - id: mcp-names-core-alone
+    allow: mcp-code
+    only: [core-modules, mcp-code]
     via: imports
     mode: strict
     because: "ADR 0021: a shipped extension implements core's traits and names no other extension"

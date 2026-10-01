@@ -139,6 +139,9 @@ For DBOS the module is `grit.dbos`. Everything ugly — DBOS reflection over
 java.sql.Connection` — may name it fully-qualified without an `import`; that is a type
 definition, not an I/O call site.)
 
+The JDK HTTP client lives in `grit.models` (model calls) and `grit.mcp` (MCP servers), each
+an egress of its own; neither names the other.
+
 This is the rule most likely to be inconvenient, and the one most worth holding. It is
 also where capture checking will fight hardest; a per-file escape inside a quarantine
 module is acceptable, everywhere else is not.

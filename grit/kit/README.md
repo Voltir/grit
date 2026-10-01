@@ -11,7 +11,7 @@ deployment registers no workflow of its own. It reaches DBOS only through
 | Kind | Modules | The question |
 |---|---|---|
 | core | `grit.core`, `grit.dbos`, `grit.turn`, `grit.lifecycle`, `grit.assembly`, `grit.prose`, `grit.edge` | the thesis fails without it |
-| shipped extension | `grit.models`, `grit.host`, `grit.tools`, `grit.digest`, `grit.slack`, `grit.tui` | it names a generic protocol, tool or service, and no organisation |
+| shipped extension | `grit.models`, `grit.host`, `grit.tools`, `grit.digest`, `grit.slack`, `grit.mcp`, `grit.tui` | it names a generic protocol, tool or service, and no organisation |
 | kit | `grit.kit` | a deployment is built against it |
 | deployment | `grit.app` (the reference: grit's own chat, `grit serve`, `grit backfill`), and a deployment's own module outside grit | it names an organisation's systems, data or people, or is one deployment's wiring |
 

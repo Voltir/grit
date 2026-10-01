@@ -36,10 +36,11 @@ fi
 # TRAP: enola has no package pattern, so rule 8 is one rule per class. A class a
 # quarantine module starts importing without a matching rule may then be imported
 # anywhere, and nothing says so. Every quarantined class grit.dbos (DBOS, JDBC, the
-# driver), grit.models (java.net.http), grit.slack (the Slack SDK) or grit.host (processes)
-# imports must be named by a rule.
+# driver), grit.models or grit.mcp (java.net.http), grit.slack (the Slack SDK) or grit.host
+# (processes) imports must be named by a rule.
 unruled=$( { grep -oE '"name":"grit/dbos/src(/[a-z]+)* -\\u003e (dev\.dbos|java\.sql|javax\.sql|org\.postgresql)\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"grit/models/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
+    grep -oE '"name":"grit/mcp/src(/[a-z]+)* -\\u003e java\.net\.http\.[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"grit/host/src(/[a-z]+)* -\\u003e (java\.lang\.Process|scala\.sys\.process)[^"]*"' .enola/facts.jsonl
     grep -oE '"name":"grit/slack/src(/[a-z]+)* -\\u003e com\.slack\.[^"]*"' .enola/facts.jsonl; } |
   sed -E 's/.*u003e ([^"]*)"/\1/' | sort -u | while read -r class; do
