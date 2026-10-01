@@ -47,7 +47,7 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
     * that page's `ttlMs`, so a page without one makes it stale at once. A re-list that fails
     * returns the kept list when there is one, else its error; [[McpError.Unreadable]] when the
     * list runs past [[McpClient.MaxPages]] pages. A re-list blocks on its server for up to
-    * [[McpClient.Timeout]] a page.
+    * [[McpClient.Timeout]] a page, so up to [[McpClient.MaxPages]] times that in all.
     */
   def tools(): Either[McpError, Listed] = {
     val held = kept.get()
