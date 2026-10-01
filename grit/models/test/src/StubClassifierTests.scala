@@ -36,6 +36,9 @@ object StubClassifierTests extends TestSuite {
       c.ask(state("back to it ~0.1 ~back:Redis eviction"), which).map(_.value.choice) ==> Right(2)
       c.ask(state("anything ~0.1"), which).map(_.value.choice) ==> Right(3)
       c.ask(state("~back:nothing like it"), which).map(_.value.choice) ==> Right(3)
+      // Several markers: each choice takes the first that names one of its own keys.
+      c.ask(state("real? ~back:question ~back:Redis eviction"), which).map(_.value.choice) ==>
+        Right(2)
       c.ask(state("~back:Knots"), which) match {
         case Right(Answered(d, _, model)) =>
           assert(math.abs(d.top - 0.9) < 1e-9, model == StubClassifier.Model)

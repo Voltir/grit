@@ -23,8 +23,9 @@ object StubClassifier {
     * topic states send):
     *
     *   - A yes/no question: the probability after `~` (`~0.1`, `~0.5`), or 0.9 without one.
-    *   - A choice: the key that follows `~back:` (to the end of the message) at 0.9, the rest
-    *     sharing 0.1; without that marker, or naming no key, the last key.
+    *   - A choice: the key that follows `~back:` (to the next `~back:` or the end of the
+    *     message) at 0.9, the rest sharing 0.1; with several markers, the first naming one of
+    *     its keys; without one naming a key, the last key.
     */
   def answers(state: ujson.Value, questions: Vector[Question]): Answers = {
     val message = state.objOpt.flatMap(_.get("new_message")).flatMap(_.strOpt).getOrElse("")
@@ -33,8 +34,8 @@ object StubClassifier {
         case Question.YesNo(_, _, _) => Answer.YesNo(probability(message))
         case c: Question.Choice =>
           val keys = c.keys.map(_.name)
-          val pick = back(message)
-            .filter(keys.contains)
+          val pick = backs(message)
+            .find(keys.contains)
             .getOrElse(c.rest.lastOption.getOrElse(c.second).name)
           val rest = 0.1 / (keys.size - 1)
           val ps = keys.map(k => Answer.Weight(k, if (k == pick) 0.9 else rest))
@@ -51,9 +52,9 @@ object StubClassifier {
   def probability(message: String): Double =
     Marked.findFirstMatchIn(message).flatMap(_.group(1).toDoubleOption).getOrElse(0.9)
 
-  /** The option key after `~back:` in `message`, trimmed, if any. */
-  def back(message: String): Option[String] = {
-    val at = message.indexOf("~back:")
-    Option.when(at >= 0)(message.drop(at + 6).trim).filter(_.nonEmpty)
-  }
+  /** Every option key after a `~back:` in `message`, in order, each to the next marker or
+    * the end, trimmed.
+    */
+  def backs(message: String): Vector[String] =
+    message.split("~back:", -1).toVector.drop(1).map(_.trim).filter(_.nonEmpty)
 }
