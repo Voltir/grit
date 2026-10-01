@@ -17,3 +17,8 @@ In dependency order:
   stream; `Answer`, a call's result as the text the model reads. Imports nothing in mcp.
 
 The test tree mirrors it.
+
+`test/resources/toolsnaps/` holds three of GitHub's MCP server's tool snapshots, each a tool
+exactly as its `tools/list` lists it, so the reader is tested on entries a real server sends:
+https://github.com/github/github-mcp-server at `5a1a3866d4a681d771162d35680d6c7219eac3b0`
+(MIT).
