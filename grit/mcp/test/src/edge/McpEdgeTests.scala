@@ -4,10 +4,19 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 import scala.jdk.CollectionConverters.*
 
-import grit.core.edge.{EdgeRefusal, EdgeStores, InMemoryDeliveries, InMemoryEdges, Variable}
-import grit.core.id.EdgeName
+import grit.core.edge.{
+  Desk,
+  DeskError,
+  Desks,
+  EdgeRefusal,
+  EdgeStores,
+  InMemoryDeliveries,
+  InMemoryEdges,
+  Variable
+}
+import grit.core.id.{EdgeName, PrincipalId}
 import grit.core.inbox.InMemoryInbox
-import grit.core.place.Service
+import grit.core.place.{Place, Service}
 import grit.core.spend.Budget
 import grit.core.store.{Jot, StoreError, Tx}
 import grit.core.tool.{Retry, ToolName, ToolSet}
@@ -34,16 +43,29 @@ object McpEdgeTests extends TestSuite {
       .of(name, fake.endpoint, Token)
       .fold(why => throw new java.lang.AssertionError(why), identity)
 
+  /** Desks that cannot be registered: the database cannot be reached. */
+  private object Unreachable extends Desks {
+    def register(principal: PrincipalId, places: Set[Place]): Either[DeskError, Desk^] =
+      Left(DeskError("the database could not be reached"))
+  }
+
   /** What [[McpEdge]] opened over `fake` did: its result, the edges it registered in, and its
-    * log; closed after.
+    * log; closed after. Its desks are those edges, or [[Unreachable]] when `reachable` is false.
     */
   private def opened(
       fake: FakeMcpServer,
-      env: Map[String, String]
+      env: Map[String, String],
+      reachable: Boolean = true
   ): (Either[EdgeRefusal, Unit], InMemoryEdges, Vector[String]) = {
     val edges = new InMemoryEdges
     val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
-    val stores = EdgeStores(inbox, inbox.principals, new InMemoryDeliveries, FakeJot, edges)
+    val stores = EdgeStores(
+      inbox,
+      inbox.principals,
+      new InMemoryDeliveries,
+      FakeJot,
+      if (reachable) edges else Unreachable
+    )
     val log = new ConcurrentLinkedQueue[String]()
     val edge = McpEdge
       .serving(Github, Vector(server(fake)))
@@ -137,6 +159,18 @@ object McpEdgeTests extends TestSuite {
         fake.lists(Vector(FakeMcpServer.snap("issue_write")))
         opened(fake, Map("FAKE_MCP_TOKEN" -> fake.token))._1 ==>
           Left(EdgeRefusal.Refused("MCP server github lists no tool grit may offer"))
+      }
+    }
+
+    test("open fails, saying why, when its desk cannot be registered") {
+      withFake { fake =>
+        fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
+        opened(fake, Map("FAKE_MCP_TOKEN" -> fake.token), reachable = false)._1 ==>
+          Left(
+            EdgeRefusal.Failed(
+              "its desk could not be registered: the database could not be reached"
+            )
+          )
       }
     }
 
