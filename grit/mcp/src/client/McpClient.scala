@@ -46,7 +46,8 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
     * fresh, else listed again. A list is fresh until the earliest of its pages' receipt plus
     * that page's `ttlMs`, so a page without one makes it stale at once. A re-list that fails
     * returns the kept list when there is one, else its error; [[McpError.Unreadable]] when the
-    * list runs past [[McpClient.MaxPages]] pages.
+    * list runs past [[McpClient.MaxPages]] pages. A re-list blocks on its server for up to
+    * [[McpClient.Timeout]] a page.
     */
   def tools(): Either[McpError, Listed] = {
     val held = kept.get()
@@ -72,7 +73,8 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
 
   /** `tool` called with `arguments`: its answer, an `isError` one included, or why none. An
     * [[McpError.Rpc]] with code `-32602` (an unknown tool, or invalid arguments) makes the list
-    * [[stale]], since the server's tools may have changed.
+    * [[stale]], since the server's tools may have changed. Blocks on the server for up to
+    * [[McpClient.Timeout]].
     */
   def call(tool: McpTool, arguments: ujson.Obj): Either[McpError, Answer] = {
     val answered = exchange(Rpc.Call.CallTool(tool, arguments)).flatMap(Answer.of)

@@ -48,6 +48,10 @@ final class McpTools(
       }
   }
 
+  /** `request` run as the class says, its failures each an [[Outcome.Failed]]. A refused
+    * `advertise` ([[offered]]'s `Left`) does not fail it: the run proceeds with the servers'
+    * current lists.
+    */
   def run(route: Route, request: ToolRequest): Outcome = {
     val _ = offered()
     val tools: Vector[Tool.Offered^{clock}] = McpTools.current(clock, clients).flatMap { (at, tool) =>
