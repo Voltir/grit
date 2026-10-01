@@ -1,7 +1,7 @@
 package grit.turn
 
 import grit.core.context.Label
-import grit.core.place.Directory
+import grit.core.place.{Directory, Namespace, Place}
 import grit.core.prompt.Layer
 import grit.core.store.Origin
 import grit.core.tool.{Retry, ToolName, ToolSet}
@@ -82,13 +82,36 @@ object TurnPromptTests extends TestSuite {
     }
 
     test("reach says what is reachable in the directory, by directory, and why nothing is") {
-      TurnPrompt.reach(Some(dir), set(false, true)).text ==>
+      TurnPrompt.reach(Some(Place.of(dir)), set(false, true)).text ==>
         "Your file and command tools act on the directory /work/api. Calling one that changes something is how the person is asked to approve it."
-      TurnPrompt.reach(Some(dir), set(false)).text ==>
+      TurnPrompt.reach(Some(Place.of(dir)), set(false)).text ==>
         "Your file and command tools act on the directory /work/api."
-      TurnPrompt.reach(Some(dir), ToolSet.Empty).text ==>
+      TurnPrompt.reach(Some(Place.of(dir)), ToolSet.Empty).text ==>
         "Nothing is serving the directory /work/api right now, so you cannot read or change files there or run commands."
       TurnPrompt.reach(None, set(false)).text ==>
+        "This conversation has no directory, so you cannot read or change files or run commands."
+    }
+
+    test(
+      "reach at a service place names its tools by prefix and says they only read it; with none served, says so"
+    ) {
+      val github = Place.under(Namespace.Service, Vector("github"))
+      val tools = ToolSet
+        .of(Vector("github_search", "github_issue", "jira_find", "about").map { n =>
+          ToolSet.Entry(
+            ToolName.of(n).getOrElse(throw new java.lang.AssertionError()),
+            "T.",
+            ujson.Obj(),
+            false,
+            Retry.Rerun
+          )
+        })
+        .getOrElse(throw new java.lang.AssertionError())
+      TurnPrompt.reach(Some(github), tools).text ==>
+        "Your tools named github_…, jira_… and about read github as it is now; they change nothing there."
+      TurnPrompt.reach(Some(github), ToolSet.Empty).text ==>
+        "Nothing is serving github right now, so its tools are not offered."
+      TurnPrompt.reach(Some(Place.under(Namespace.Slack, Vector("T1"))), tools).text ==>
         "This conversation has no directory, so you cannot read or change files or run commands."
     }
 

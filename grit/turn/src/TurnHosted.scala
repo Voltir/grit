@@ -7,7 +7,7 @@ import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.edge.{OutcomeJson, Permit, RequestState, ToolRequest}
 import grit.core.id.{CallSlot, PrincipalId, ToolCallId, TurnRef}
-import grit.core.place.{Directory, Place}
+import grit.core.place.{Directory, Place, Service}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, ToolName}
 
@@ -88,7 +88,9 @@ object TurnHosted {
     val shown = hosted.shown
     val outcome: Either[TurnFailure, Outcome] = hosted.ask match {
       case None =>
-        callSlot(slot).map(cs => if (sent) awaited(hosting, cs, slot) else unserved(workspace))
+        callSlot(slot).map(cs =>
+          if (sent) awaited(hosting, cs, slot, workspace) else unserved(workspace)
+        )
       case Some(shown) =>
         val entries = settling.entries
         d.transact(slot.askStep)(TurnTools.ask(entries, slot, call, shown, clock.now())).flatMap {
@@ -104,7 +106,7 @@ object TurnHosted {
                   went <- d.transact(TurnHostedSteps.dispatchOne(slot))(
                     dispatch(hosting, Vector(one))
                   )
-                } yield if (went) awaited(hosting, cs, slot) else unserved(workspace)
+                } yield if (went) awaited(hosting, cs, slot, workspace) else unserved(workspace)
             }
         }
     }
@@ -116,7 +118,12 @@ object TurnHosted {
   /** The answer to the request at `cs`, waited for: within [[ServeWithin]]; else, if an edge
     * claimed it, within [[RunWithin]] more; else why there is none.
     */
-  private def awaited(hosting: TurnHosting, cs: CallSlot, slot: TurnTools.Slot)(using
+  private def awaited(
+      hosting: TurnHosting,
+      cs: CallSlot,
+      slot: TurnTools.Slot,
+      workspace: Option[Place]
+  )(using
       d: Durable^
   ): Outcome = {
     import TurnJournal.given
@@ -126,7 +133,8 @@ object TurnHosted {
         d.transact(TurnHostedSteps.expire(slot))(standing(hosting.requests.settle(cs))) match {
           case Left(failure) => Outcome.Failed(s"The request could not be read: $failure")
           case Right(RequestState.Answered(o)) => o
-          case Right(RequestState.Expired) => Outcome.Failed(NoEdge)
+          case Right(RequestState.Expired) =>
+            Outcome.Failed(workspace.flatMap(_.service).fold(NoEdge)(noService))
           case Right(RequestState.Claimed) =>
             d.recv(cs.key, RunWithin) match {
               case Some(message) => read(message)
@@ -146,13 +154,17 @@ object TurnHosted {
   private val NoEdge =
     "No edge is serving this conversation's directory right now, so this call did not run."
 
+  private def noService(service: Service): String =
+    s"No edge is serving ${service.name} right now, so this call did not run."
+
   /** Why a call no edge was serving has no answer. */
   private def unserved(workspace: Option[Place]): Outcome =
     Outcome.Failed(
-      workspace.flatMap(_.directory) match {
-        case Some(dir) =>
+      (workspace.flatMap(_.directory), workspace.flatMap(_.service)) match {
+        case (Some(dir), _) =>
           s"No edge is serving ${Directory.value(dir)} right now, so this call did not run."
-        case None => NoEdge
+        case (None, Some(service)) => noService(service)
+        case (None, None) => NoEdge
       }
     )
 

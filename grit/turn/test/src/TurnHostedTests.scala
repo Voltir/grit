@@ -5,9 +5,11 @@ import grit.core.durable.InMemoryDurable
 import grit.core.edge.{InMemoryEdges, Permit}
 import grit.core.id.{CallSlot, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.place.{Place, Service, WorksIn}
 import grit.core.prompt.{Fragment, Layer}
+import grit.core.store.Origin
 import grit.core.store.{InMemoryEntryStore, InMemoryToolSets}
-import grit.core.tool.Outcome
+import grit.core.tool.{Hosted, Outcome, Retry, ToolName, ToolSet}
 
 import utest.*
 
@@ -51,6 +53,41 @@ object TurnHostedTests extends TestSuite {
 
   private val Done = "replied: reply:c1:0; summarised: summary:c1:0"
 
+  private val github: Service =
+    Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** An edge at `github`'s place advertising `github_search`, which the engine does not
+    * describe, serving each request as `serve` says.
+    */
+  private def atGithub(
+      durable: InMemoryDurable,
+      serve: grit.core.edge.ToolRequest -> Serve
+  ): Served = {
+    val s = new Served(new InMemoryEdges, durable, serve, github.place)
+    val entry = ToolSet.Entry(
+      ToolName("github_search"),
+      "Searches GitHub.",
+      ujson.Obj("type" -> "object"),
+      false,
+      Retry.Rerun
+    )
+    s.advertise(Hosted.advertised(entry).toVector)
+    s
+  }
+
+  /** The body of a Slack thread's turn linked to `github`, offered no hosted tool of its own. */
+  private def linkedBody(entries: InMemoryEntryStore, provider: Scripted, edge: Served)(
+      id: grit.core.id.WorkflowId
+  )(using grit.core.durable.Durable^): String =
+    hostedBody(
+      entries,
+      provider,
+      edge,
+      hosted = Vector.empty,
+      from = Origin.Slack("T1", "C1", "1.0"),
+      worksIn = Vector(WorksIn(Place.Everywhere, github))
+    )(id)
+
   private def slot(turn: grit.core.id.TurnRef, index: Int): CallSlot =
     CallSlot.of(turn, 0, index).getOrElse(throw new java.lang.AssertionError())
 
@@ -90,6 +127,31 @@ object TurnHostedTests extends TestSuite {
       edge.sent.headOption.map(q => edge.edges.claimAs(edge.registration, q)) ==> Some(false)
       Turn.Step.named(durable.recordedSteps(turn.workflowId)).filter(_.contains(":0:0")) ==>
         Vector("expire:0:0", "tool:0:0")
+    }
+
+    test(
+      "a conversation linked to a service calls the tools advertised there, run by the edge at that service"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "search")
+      val durable = new InMemoryDurable
+      val edge = atGithub(durable, q => Serve.Now(Outcome.Done(s"found at ${q.workspace.written}")))
+      val provider = model(("t1", "github_search", "grit"))
+      durable.run(turn.workflowId)(linkedBody(entries, provider, edge)) ==> Done
+      edge.sent.map(_.workspace) ==> Vector(github.place)
+      results(provider).map(r => (r.content, r.isError)) ==>
+        Vector(("found at service:github", false))
+    }
+
+    test("a request at a service no edge claims in time is answered that nothing serves it") {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "search")
+      val durable = new InMemoryDurable
+      val edge = atGithub(durable, _ => Serve.Never)
+      val provider = model(("t1", "github_search", "grit"))
+      durable.run(turn.workflowId)(linkedBody(entries, provider, edge)) ==> Done
+      results(provider).map(r => (r.content, r.isError)) ==>
+        Vector(("No edge is serving github right now, so this call did not run.", true))
     }
 
     test("a hosted call's result is shown as its call is: the tool, then what it acts on") {

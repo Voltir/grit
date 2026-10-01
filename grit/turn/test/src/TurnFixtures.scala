@@ -18,7 +18,7 @@ import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextA
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.edge.{InMemoryEdges, OutcomeJson, Registration, ToolRequest}
 import grit.core.id.{CallSlot, ConversationId, EntryId, PrincipalId, ToolCallId, TurnRef, WorkflowId}
-import grit.core.place.{Directory, Place}
+import grit.core.place.{Directory, Place, WorksIn}
 import grit.core.prompt.{Fragment, SystemPrompt, Voice}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
@@ -139,7 +139,7 @@ object TurnFixtures {
   val system: String =
     SystemPrompt
       .of(
-        Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(Some(checkout), ToolSet.Empty)) ++
+        Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(Some(Place.of(checkout)), ToolSet.Empty)) ++
           Voice.fragment(Voice.Default)
       )
       .render
@@ -368,14 +368,18 @@ object TurnFixtures {
     case Never
   }
 
-  /** The fixture directory's edge, over `edges`: live, it serves each request the turn sends
-    * as `serve` says, telling the turn's workflow in `durable` its answer as a desk does.
-    * Every request it is sent is kept in [[sent]].
+  /** The edge at `at`, the fixture directory unless given, over `edges`: live, it serves each
+    * request the turn sends as `serve` says, telling the turn's workflow in `durable` its
+    * answer as a desk does. Every request it is sent is kept in [[sent]].
     */
-  final class Served(val edges: InMemoryEdges, durable: InMemoryDurable, serve: ToolRequest -> Serve)
-      extends grit.core.edge.ToolRequests {
+  final class Served(
+      val edges: InMemoryEdges,
+      durable: InMemoryDurable,
+      serve: ToolRequest -> Serve,
+      at: Place = Place.of(checkout)
+  ) extends grit.core.edge.ToolRequests {
 
-    val registration: Registration = edges.register(Set(Place.of(checkout)))
+    val registration: Registration = edges.register(Set(at))
 
     @caps.unsafe.untrackedCaptures
     var sent = Vector.empty[ToolRequest]
@@ -383,13 +387,13 @@ object TurnFixtures {
     @caps.unsafe.untrackedCaptures
     private var later = Map.empty[CallSlot, Outcome]
 
-    /** Advertises `hosted`, and `files` as the directory's instruction files. */
+    /** Advertises `hosted` at its place, and `files` as the place's instruction files. */
     def advertise(hosted: Vector[Tool.Offered], files: Vector[Fragment] = Vector.empty): Unit = {
       val set = ToolSet.of(hosted.map(_.entry)).getOrElse(ToolSet.Empty)
       // Kept as a desk keeps them, before it advertises their ids.
       Prompts.keep(files)(using TestTx.fake)
       ToolSets.keep(set)(using TestTx.fake)
-      edges.advertiseAs(registration, Place.of(checkout), set, files)
+      edges.advertiseAs(registration, at, set, files)
     }
 
     private def tell(q: ToolRequest, outcome: Outcome): Unit =
@@ -425,7 +429,8 @@ object TurnFixtures {
 
   /** The turn's workflow body over `entries` and `provider`, its hosted calls sent through
     * `served`, its model offered `hosted` where the edge serves them, its tool sets kept in
-    * `toolSets`, for at most `calls` model calls.
+    * `toolSets`, for at most `calls` model calls; its conversation is from `from`, the
+    * fixture's TUI session unless given, linked to a service by `worksIn`.
     */
   def hostedBody(
       entries: EntryStore,
@@ -433,10 +438,12 @@ object TurnFixtures {
       served: Served,
       hosted: Vector[Tool.Offered] = hostedTools,
       toolSets: InMemoryToolSets = ToolSets,
-      calls: Int = 5
+      calls: Int = 5,
+      from: Origin = origin,
+      worksIn: Vector[WorksIn] = Vector.empty
   )(id: WorkflowId)(using Durable^): String = {
     val conversations = new InMemoryConversationStore
-    conversations.findOrCreate(origin, PrincipalId.Local)(using TestTx.fake)
+    conversations.findOrCreate(from, PrincipalId.Local)(using TestTx.fake)
     Turn.body(
       TurnEnv(
         TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
@@ -455,7 +462,8 @@ object TurnFixtures {
         Toolbox.Empty,
         hosted,
         new FakeJot,
-        budget(calls)
+        budget(calls),
+        worksIn = worksIn
       )
     )(id)
   }

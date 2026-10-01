@@ -1,10 +1,10 @@
 package grit.turn
 
 import grit.core.context.Label
-import grit.core.place.Directory
+import grit.core.place.{Directory, Place}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
-import grit.core.tool.ToolSet
+import grit.core.tool.{ToolName, ToolSet}
 
 /** grit's own words in a turn's system prompt: the base every turn is sent, what the
   * conversation's edge is, and what the turn may reach. The place's own instruction files
@@ -113,25 +113,41 @@ object TurnPrompt {
   def called(called: String): Fragment =
     Fragment(Layer.Edge, Fragment.Grit, s"In this workspace you are called $called.")
 
-  /** What a turn may reach: `tools`, the tools served in the directory `workspace`, which
-    * act on it (and, when some ask first, that calling one is how the person is asked);
-    * nothing, and why, when none are served there
-    * or the conversation has no directory. Worded by directory, never by what serves it, so
-    * another edge serving the same directory leaves the prompt the same.
+  /** What a turn may reach in `workspace`: `tools`, the tools served in a directory, which
+    * act on it (and, when some ask first, that calling one is how the person is asked); or
+    * the tools served at a service place, named by what precedes their first `_`
+    * (`github_…`), which read the outside service; nothing, and why, when none are served
+    * there, or when the conversation has no workspace (a place neither a directory nor a
+    * service reads as none). Worded by workspace, never by what serves it, so another edge
+    * serving the same one leaves the prompt the same.
     */
-  def reach(workspace: Option[Directory], tools: ToolSet): Fragment = {
-    val text = workspace match {
-      case None =>
-        "This conversation has no directory, so you cannot read or change files or run commands."
-      case Some(dir) if tools.tools.isEmpty =>
+  def reach(workspace: Option[Place], tools: ToolSet): Fragment = {
+    val text = (workspace.flatMap(_.directory), workspace.flatMap(_.service)) match {
+      case (Some(dir), _) if tools.tools.isEmpty =>
         s"Nothing is serving the directory ${Directory.value(dir)} right now, so you cannot " +
           "read or change files there or run commands."
-      case Some(dir) =>
+      case (Some(dir), _) =>
         val asks =
           if (tools.tools.exists(_.asks))
             " Calling one that changes something is how the person is asked to approve it."
           else ""
         s"Your file and command tools act on the directory ${Directory.value(dir)}.$asks"
+      case (None, Some(service)) if tools.tools.isEmpty =>
+        s"Nothing is serving ${service.name} right now, so its tools are not offered."
+      case (None, Some(service)) =>
+        val named = tools.tools.map { t =>
+          val name = ToolName.value(t.name)
+          name.indexOf('_') match {
+            case -1 => name
+            case at => s"${name.take(at)}_…"
+          }
+        }.distinct
+        val listed =
+          if (named.size < 2) named.mkString
+          else s"${named.dropRight(1).mkString(", ")} and ${named.lastOption.getOrElse("")}"
+        s"Your tools named $listed read ${service.name} as it is now; they change nothing there."
+      case (None, None) =>
+        "This conversation has no directory, so you cannot read or change files or run commands."
     }
     Fragment(Layer.Reach, Fragment.Grit, text)
   }

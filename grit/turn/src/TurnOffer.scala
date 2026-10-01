@@ -121,7 +121,7 @@ object TurnOffer {
           TurnPrompt.edge(conversation.origin)
         ) ++ called.map(TurnPrompt.called) ++
           Option.when(root == Root.Heard)(TurnPrompt.unprompted) ++ Vector(
-            TurnPrompt.reach(workspace.flatMap(_.directory), hostedSet)
+            TurnPrompt.reach(workspace, hostedSet)
           ) ++ Voice.fragment(voice) ++ place.fragments
       )
       _ <- hosting.prompts.record(turn.workflowId, prompt)
