@@ -79,10 +79,7 @@ object McpEdgeLiveTests extends TestSuite {
       val engine = LiveEngine.open(config, Turn.Epoch)
       try {
         fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
-        fake.answers(
-          "get_file_contents",
-          ujson.Obj("content" -> ujson.Arr(ujson.Obj("type" -> "text", "text" -> "# actualbest")))
-        )
+        fake.answers("get_file_contents", FakeMcpServer.githubFileContents)
         Launch(engine, deployment, secrets(config), Launch.Run.Served, sweeping = false)
         val server = McpServer.of("github", fake.endpoint, Token).fold(sys.error(_), identity)
         val edge = McpEdge.serving(Github, Vector(server)).fold(sys.error(_), identity)
@@ -116,7 +113,14 @@ object McpEdgeLiveTests extends TestSuite {
                 .map(r => ujson.read(r.body)("params"))
                 .map(p => (p("name").str, p("arguments")))
               (results, calls) ==> (
-                Vector(Message.ToolResult(StubProvider.CallId, "# actualbest", isError = false)),
+                Vector(
+                  Message.ToolResult(
+                    StubProvider.CallId,
+                    "successfully downloaded text file (SHA: 5091ae127e2f9c44169ff054c4426ad726309090)\n" +
+                      "# Hello-World\n\nA short neutral README, standing in for the file GitHub answered with.\n",
+                    isError = false
+                  )
+                ),
                 Vector(("get_file_contents", read))
               )
             } finally open.close()

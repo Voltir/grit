@@ -34,7 +34,12 @@ how); until then the fake is held to the spec and go-sdk's source, not to a real
 `test/resources/github/tools-list.json` is the `tools/list` result GitHub's hosted read-only
 server (`https://api.githubcopilot.com/mcp/readonly`) answered on 2026-09-30, its icons
 removed and nothing else changed, so the reader and the header mirroring are tested on the
-entries a real server sends, `x-mcp-header` annotations included. `test/resources/toolsnaps/`
+entries a real server sends, `x-mcp-header` annotations included. Beside it,
+`get-file-contents.json` is the `tools/call` result the same server answered the same day
+(in an event stream) to `get_file_contents` for a private repository's README, its envelope
+kept as sent and its icons removed; the file was replaced by a short neutral text, the SHA in
+its text block by that text's git blob SHA, and the resource's `repo://` URI's owner,
+repository and commit by `octocat/Hello-World` and a placeholder. `test/resources/toolsnaps/`
 holds GitHub's write tool `issue_write`, which that server does not list, as its source lists
 it: https://github.com/github/github-mcp-server at `5a1a3866d4a681d771162d35680d6c7219eac3b0`
 (MIT). The source's snapshots lack the hosted server's annotations, so they are not kept for

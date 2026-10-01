@@ -396,6 +396,12 @@ object FakeMcpServer {
         ujson.Obj.from(t.obj)
       )
 
+  /** The `tools/call` result GitHub's hosted read-only server answered to a
+    * `get_file_contents` call for a README, as it answered (see grit/mcp/README.md): a text
+    * block saying the file's SHA, then the file as an embedded resource.
+    */
+  def githubFileContents: ujson.Obj = resource("/github/get-file-contents.json")
+
   private def resource(path: String): ujson.Obj =
     ujson.Obj.from(
       ujson

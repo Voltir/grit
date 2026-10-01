@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "github-mcp-server",
+      "title": "GitHub MCP Server",
+      "version": "github-mcp-server/remote-102990907a285e34449beb3ffb31718d8702b436"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "successfully downloaded text file (SHA: 5091ae127e2f9c44169ff054c4426ad726309090)"
+    },
+    {
+      "type": "resource",
+      "resource": {
+        "uri": "repo://octocat/Hello-World/sha/0123456789abcdef0123456789abcdef01234567/contents/README.md",
+        "mimeType": "text/plain; charset=utf-8",
+        "text": "# Hello-World\n\nA short neutral README, standing in for the file GitHub answered with.\n"
+      }
+    }
+  ],
+  "resultType": "complete"
+}
