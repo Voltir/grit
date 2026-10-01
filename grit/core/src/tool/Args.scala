@@ -44,7 +44,8 @@ final class Args[T] private (
 object Args {
 
   /** Arguments with the recorded `schema`, shown as it is whether strict or not, read as the
-    * JSON object sent, unchecked: for a tool known only by its record ([[Tool.gone]]).
+    * JSON object sent, unchecked: for a tool known only by its record ([[Tool.gone]]) or by
+    * an edge's advert ([[Hosted.advertised]]).
     * Refused only when what is sent is not an object.
     */
   def raw(schema: ujson.Value): Args[ujson.Value] = {

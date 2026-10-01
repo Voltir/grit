@@ -78,6 +78,31 @@ object ToolboxTests extends TestSuite {
       Tool.gone(echo.entry).schema(false).description ==> "Says it back."
     }
 
+    test(
+      "an advertised tool is offered as its entry, a call bound as sent and shown as its compact JSON cut to ShownMax; one that asks first is not offered"
+    ) {
+      val schema = ujson.Obj(
+        "type" -> "object",
+        "properties" -> ujson.Obj("query" -> ujson.Obj("type" -> "string"))
+      )
+      val entry = ToolSet.Entry(ToolName("github_search"), "Searches.", schema, false, Retry.Rerun)
+      val advertised =
+        Hosted.advertised(entry).getOrElse(throw new java.lang.AssertionError("not offered"))
+      advertised.entry ==> entry
+      val sent = ujson.Obj("query" -> ("x" * 200), "page" -> 2)
+      val boxed = Toolbox.of(advertised).getOrElse(throw new java.lang.AssertionError())
+      boxed.bind(call("github_search", sent), Repairs.All) match {
+        case Right(b: Bound.Hosted) =>
+          (b.shown, b.arguments, b.ask, b.retry) ==>
+            (s"github_search ${sent.render().take(Hosted.ShownMax)}", sent, None, Retry.Rerun)
+        case other => throw new java.lang.AssertionError(s"not hosted: $other")
+      }
+      Hosted.ShownMax ==> 120
+      boxed.bind(call("github_search", ujson.Str("x")), Repairs.All).map(_.tool) ==>
+        Left(CallError.BadArgs(ToolName("github_search"), ArgsError.NotAnObject("\"x\""), "x"))
+      Hosted.advertised(entry.copy(asks = true)).map(_.entry) ==> None
+    }
+
     test("a free call binds with nothing to ask, and runs") {
       box.bind(call("echo", ujson.Obj("text" -> "hi")), Repairs.All) match {
         case Right(b: Bound.Free) =>

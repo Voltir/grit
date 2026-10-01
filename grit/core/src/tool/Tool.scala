@@ -120,3 +120,24 @@ final class Hosted[A](val spec: ToolSpec[A], val gate: Gate[A], shown: A -> Stri
         Right(new Bound.Hosted(spec.name, line, ask, call.arguments, repairs, spec.retry))
     }
 }
+
+object Hosted {
+
+  /** The hosted tool an edge advertised as `entry`, for one the engine has no description of:
+    * offered under `entry`'s name, description and schema, its arguments any JSON object (the
+    * edge reads them), a call shown as its arguments' compact JSON cut to [[ShownMax]]
+    * characters; `None` when `entry` asks first, since nothing describes what a person would
+    * be shown.
+    */
+  def advertised(entry: ToolSet.Entry): Option[Hosted[ujson.Value]] =
+    Option.unless(entry.asks)(
+      new Hosted[ujson.Value](
+        ToolSpec(entry.name, entry.does, Args.raw(entry.parameters), entry.retry),
+        Gate.Free,
+        args => args.render().take(ShownMax)
+      )
+    )
+
+  /** The most characters a call of an advertised tool shows of its arguments: 120. */
+  val ShownMax: Int = 120
+}
