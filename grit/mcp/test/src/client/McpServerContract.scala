@@ -94,6 +94,24 @@ abstract class McpServerContract extends TestSuite {
         (400, Some(-32020))
     }
 
+    test("a request whose Accept lacks text/event-stream is rejected: 400, with no MCP error") {
+      // streamable-http.mdx, Sending Messages: a client lists both types it reads. The status is
+      // go-sdk's (streamable.go, serveStateless), as is the next case's.
+      val call = Rpc.Call.ListTools(None)
+      raw(
+        Headers.of(call).map((k, v) => if (k == "Accept") (k, "application/json") else (k, v)),
+        Rpc.request(1, call)
+      ) ==> (400, None)
+    }
+
+    test("a request whose Content-Type is not application/json is rejected: 415") {
+      val call = Rpc.Call.ListTools(None)
+      raw(
+        Headers.of(call).map((k, v) => if (k == "Content-Type") (k, "text/plain") else (k, v)),
+        Rpc.request(1, call)
+      ) ==> (415, None)
+    }
+
     test("a token it does not know is refused: 401, with its challenge") {
       Bearer.of(Map("NOT_A_TOKEN" -> "grit-contract-not-a-token"), Variable("NOT_A_TOKEN")) match {
         case Right(wrong) =>
