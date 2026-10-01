@@ -97,7 +97,7 @@ object McpToolsTests extends TestSuite {
   val tests = Tests {
     test("a request runs its tool on the server, with its arguments, and answers its text") {
       withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         fake.answers("get_file_contents", text("# actualbest"))
         val mcp = toolsOver(fake)
         val q = request("github_get_file_contents", Read)
@@ -110,7 +110,7 @@ object McpToolsTests extends TestSuite {
 
     test("an answer the tool marks isError is Failed with its text") {
       withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         fake.answers(
           "get_file_contents",
           ujson.Obj.from(text("no such path").value ++ Seq("isError" -> ujson.True))
@@ -123,7 +123,7 @@ object McpToolsTests extends TestSuite {
 
     test("an exchange that fails is Failed, naming the server and why") {
       withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         val mcp = toolsOver(fake)
         val _ = mcp.offered()
         fake.refuses(
@@ -138,7 +138,7 @@ object McpToolsTests extends TestSuite {
     test("a tool no list offers is Failed naming those that are, and no call is sent") {
       withFake { fake =>
         fake.lists(
-          Vector(FakeMcpServer.snap("get_file_contents"), FakeMcpServer.snap("issue_write"))
+          Vector(FakeMcpServer.github("get_file_contents"), FakeMcpServer.issueWrite)
         )
         val mcp = toolsOver(fake)
         val q = request("github_issue_write", ujson.Obj())
@@ -151,7 +151,7 @@ object McpToolsTests extends TestSuite {
 
     test("where a request was routed plays no part: a directory's runs as the service's") {
       withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         fake.answers("get_file_contents", text("same"))
         val mcp = toolsOver(fake)
         val dir = Place.of(Directory.of("/repo").getOrElse(throw new java.lang.AssertionError()))
@@ -165,7 +165,7 @@ object McpToolsTests extends TestSuite {
 
     test("each tool is advertised as listed: free, rerun when cut short, its schema as sent") {
       withFake { fake =>
-        val snap = FakeMcpServer.snap("get_file_contents")
+        val snap = FakeMcpServer.github("get_file_contents")
         fake.lists(Vector(snap))
         toolsOver(fake).offered().map(_.tools) ==> Right(
           Vector(
@@ -183,13 +183,15 @@ object McpToolsTests extends TestSuite {
 
     test("the set is advertised when the lists change, and not again while they do not") {
       withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         val adverts = new Adverts()
         val mcp = toolsOver(fake, adverts.advertise)
         val q = request("github_get_file_contents", Read)
         mcp.run(route(q), q)
         mcp.run(route(q), q)
-        fake.lists(Vector(FakeMcpServer.snap("get_file_contents"), FakeMcpServer.snap("get_me")))
+        fake.lists(
+          Vector(FakeMcpServer.github("get_file_contents"), FakeMcpServer.github("get_me"))
+        )
         mcp.run(route(q), q)
         adverts.names ==> Vector(
           Vector("github_get_file_contents"),
@@ -200,7 +202,7 @@ object McpToolsTests extends TestSuite {
 
     test("a set the desk failed to advertise is advertised again on the next run") {
       withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         val adverts = new Adverts(Left(DeskError("down")))
         val mcp = toolsOver(fake, adverts.advertise)
         val q = request("github_get_file_contents", Read)

@@ -31,7 +31,11 @@ keeps it in the unit tier (`McpServerFakeTests`), and `LiveProbe`, a main in tes
 needs a token and so is no tier, will run it against GitHub's at the live run (its doc says
 how); until then the fake is held to the spec and go-sdk's source, not to a real server.
 
-`test/resources/toolsnaps/` holds three of GitHub's MCP server's tool snapshots, each a tool
-exactly as its `tools/list` lists it, so the reader is tested on entries a real server sends:
-https://github.com/github/github-mcp-server at `5a1a3866d4a681d771162d35680d6c7219eac3b0`
-(MIT).
+`test/resources/github/tools-list.json` is the `tools/list` result GitHub's hosted read-only
+server (`https://api.githubcopilot.com/mcp/readonly`) answered on 2026-09-30, its icons
+removed and nothing else changed, so the reader and the header mirroring are tested on the
+entries a real server sends, `x-mcp-header` annotations included. `test/resources/toolsnaps/`
+holds GitHub's write tool `issue_write`, which that server does not list, as its source lists
+it: https://github.com/github/github-mcp-server at `5a1a3866d4a681d771162d35680d6c7219eac3b0`
+(MIT). The source's snapshots lack the hosted server's annotations, so they are not kept for
+its read tools.

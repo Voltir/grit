@@ -16,7 +16,8 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
   * token; `415` for a `Content-Type` other than `application/json`; `400` in plain text for an
   * `Accept` lacking either type it answers in, or a body that is not JSON; `400` with `-32020`
   * for a missing `MCP-Protocol-Version`, or one, an `Mcp-Method` or an `Mcp-Name` that does
-  * not match the body; `400` with `-32602` for `_meta` without its protocol version or client
+  * not match the body, or for a call an `Mcp-Param-*` header missing, unexpected or not
+  * matching its argument, as the listed tool's `x-mcp-header` annotations say; `400` with `-32602` for `_meta` without its protocol version or client
   * capabilities; and `400` with `-32022` for a version it does not [[speaks]]. It answers
   * `tools/list` from [[lists]], a page at a time, and `tools/call` from [[answers]] (an
   * unlisted tool, like an unknown cursor, is `400` with `-32602`), in JSON or, after
@@ -226,11 +227,14 @@ final class FakeMcpServer private (val token: String) {
                       ok(id, result)
                   }
                 case Some("tools/call") =>
-                  val listed = script.tools.flatMap(_.obj.get("name")).flatMap(_.strOpt)
-                  name.filter(listed.contains) match {
+                  val listed = name.flatMap(n =>
+                    script.tools.find(_.obj.get("name").contains(ujson.Str(n))).map(t => (n, t))
+                  )
+                  val arguments = params.flatMap(_.get("arguments")).getOrElse(ujson.Obj())
+                  listed.map((n, t) => (n, mismatch(t, arguments, headers))) match {
                     case None => error(400, -32602, s"Unknown tool: ${name.getOrElse("")}")
-                    case Some(n) =>
-                      val arguments = params.flatMap(_.get("arguments")).getOrElse(ujson.Obj())
+                    case Some((_, Some(why))) => error(400, -32020, why)
+                    case Some((n, None)) =>
                       ok(
                         id,
                         script.results.getOrElse(
@@ -250,6 +254,56 @@ final class FakeMcpServer private (val token: String) {
               }
           }
       }
+  }
+
+  /** Why `headers` do not mirror `arguments` as `tool`'s `x-mcp-header` annotations say, as
+    * go-sdk's server checks them (streamable_headers.go, validateParamHeaders): a header for an
+    * argument absent or null, none for one present, or one whose decoded value is not the
+    * argument's (an integer compared as a number).
+    */
+  private def mismatch(
+      tool: ujson.Obj,
+      arguments: ujson.Value,
+      headers: Map[String, String]
+  ): Option[String] = {
+    def annotated(schema: ujson.Value, path: Vector[String]): Vector[(Vector[String], String)] =
+      schema.objOpt.flatMap(_.get("properties")).flatMap(_.objOpt).toVector.flatMap {
+        _.toVector.flatMap { (key, property) =>
+          property.objOpt
+            .flatMap(_.get("x-mcp-header"))
+            .flatMap(_.strOpt)
+            .toVector
+            .map(h => (path :+ key, h)) ++ annotated(property, path :+ key)
+        }
+      }
+    def at(path: Vector[String]): Option[ujson.Value] =
+      path.foldLeft(Option(arguments))((v, k) => v.flatMap(_.objOpt).flatMap(_.get(k)))
+    annotated(tool.obj.getOrElse("inputSchema", ujson.Obj()), Vector.empty).flatMap {
+      (path: Vector[String], header: String) =>
+        val name = s"Mcp-Param-$header"
+        val sent = headers.get(name.toLowerCase)
+        val where = path.mkString(".")
+        (at(path).filter(_ != ujson.Null), sent) match {
+          case (None, None) => None
+          case (None, Some(_)) =>
+            Some(
+              s"header mismatch: unexpected $name header for absent or null parameter \"$where\""
+            )
+          case (Some(_), None) =>
+            Some(s"header mismatch: missing $name header for parameter \"$where\"")
+          case (Some(value), Some(h)) =>
+            val decodedHeader = decoded(h)
+            val same = value match {
+              case ujson.Str(v) => decodedHeader == v
+              case ujson.Bool(v) => decodedHeader == v.toString
+              case ujson.Num(v) => decodedHeader.toDoubleOption.contains(v)
+              case _ => false
+            }
+            Option.when(!same)(
+              s"header mismatch: $name header value '$h' does not match body value"
+            )
+        }
+    }.headOption
   }
 
   /** A refusal in plain text, as go-sdk's `http.Error` sends one. */
@@ -327,16 +381,26 @@ object FakeMcpServer {
     "annotations" -> ujson.Obj("readOnlyHint" -> true)
   )
 
-  /** GitHub's own `tools/list` entry for `name` (see grit/mcp/README.md): `get_file_contents`,
-    * `get_me` (read-only) or `issue_write` (not).
+  /** GitHub's own write tool `issue_write`'s `tools/list` entry, from its source (see
+    * grit/mcp/README.md); the hosted read-only server does not list it.
     */
-  def snap(name: String): ujson.Obj =
+  def issueWrite: ujson.Obj = resource("/toolsnaps/issue_write.snap")
+
+  /** The `tools/list` entry for `name` from GitHub's hosted read-only server's list, as it
+    * answered (see grit/mcp/README.md): `get_file_contents` and `get_me` among them.
+    */
+  def github(name: String): ujson.Obj =
+    resource("/github/tools-list.json")("tools").arr
+      .find(_.obj.get("name").contains(ujson.Str(name)))
+      .fold(throw new java.lang.AssertionError(s"$name is not in GitHub's list"))(t =>
+        ujson.Obj.from(t.obj)
+      )
+
+  private def resource(path: String): ujson.Obj =
     ujson.Obj.from(
       ujson
         .read(
-          scala.io.Source
-            .fromInputStream(classOf[FakeMcpServer].getResourceAsStream(s"/toolsnaps/$name.snap"))
-            .mkString
+          scala.io.Source.fromInputStream(classOf[FakeMcpServer].getResourceAsStream(path)).mkString
         )
         .obj
     )

@@ -76,7 +76,7 @@ object McpClientTests extends TestSuite {
 
     test("a list sent as an event stream is read as one sent as JSON") {
       withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.Weather, FakeMcpServer.snap("get_me")), pageSize = 1)
+        fake.lists(Vector(FakeMcpServer.Weather, FakeMcpServer.github("get_me")), pageSize = 1)
         fake.streams(true)
         offered(client(fake).tools()) ==> Right(Vector("fake_get_weather", "fake_get_me"))
       }
@@ -109,7 +109,7 @@ object McpClientTests extends TestSuite {
     test("only the tools the allowlist names are offered; the others are skipped as not allowed") {
       withFake { fake =>
         fake.lists(
-          Vector(tool("a"), FakeMcpServer.snap("issue_write"), tool("b"), tool("c"))
+          Vector(tool("a"), FakeMcpServer.issueWrite, tool("b"), tool("c"))
         )
         client(fake, allow = Set("a", "c", "issue_write"))
           .tools()

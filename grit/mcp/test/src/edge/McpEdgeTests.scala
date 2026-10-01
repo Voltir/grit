@@ -107,8 +107,8 @@ object McpEdgeTests extends TestSuite {
 
     test("opened, it advertises at the service's place the tools the server offers, logged") {
       withFake { fake =>
-        val snap = FakeMcpServer.snap("get_file_contents")
-        fake.lists(Vector(snap, FakeMcpServer.snap("issue_write")))
+        val snap = FakeMcpServer.github("get_file_contents")
+        fake.lists(Vector(snap, FakeMcpServer.issueWrite))
         val (result, edges, log) = opened(fake, Map("FAKE_MCP_TOKEN" -> fake.token))
         val offered = ToolSet
           .of(
@@ -138,7 +138,7 @@ object McpEdgeTests extends TestSuite {
       "open is refused when the server refuses the token, naming its variable; nothing registers"
     ) {
       withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         fake.refuses(
           Some(FakeMcpServer.Refusal(401, Vector("WWW-Authenticate" -> "Bearer"), ""))
         )
@@ -156,7 +156,7 @@ object McpEdgeTests extends TestSuite {
 
     test("open is refused when the server lists no tool grit may offer") {
       withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.snap("issue_write")))
+        fake.lists(Vector(FakeMcpServer.issueWrite))
         opened(fake, Map("FAKE_MCP_TOKEN" -> fake.token))._1 ==>
           Left(EdgeRefusal.Refused("MCP server github lists no tool grit may offer"))
       }
@@ -164,7 +164,7 @@ object McpEdgeTests extends TestSuite {
 
     test("open fails, saying why, when its desk cannot be registered") {
       withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         opened(fake, Map("FAKE_MCP_TOKEN" -> fake.token), reachable = false)._1 ==>
           Left(
             EdgeRefusal.Failed(
@@ -176,7 +176,7 @@ object McpEdgeTests extends TestSuite {
 
     test("open is refused, and nothing is sent, when the token is unset") {
       withFake { fake =>
-        fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         (opened(fake, Map.empty)._1, fake.received) ==> (Left(EdgeRefusal.Missing(Token)), Vector())
       }
     }

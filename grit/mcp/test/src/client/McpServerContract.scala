@@ -21,7 +21,9 @@ abstract class McpServerContract extends TestSuite {
   /** Its token. */
   protected def bearer: Bearer
 
-  /** A tool it lists as read-only, by its own name, and arguments it answers without error. */
+  /** A tool it lists as read-only that mirrors an argument into a header (`x-mcp-header`), by
+    * its own name, and arguments it answers without error, the mirrored one among them.
+    */
   protected def read: (String, ujson.Obj)
 
   private def client(b: Bearer = bearer): McpClient^ = new McpClient(server, b, Clock.system())
@@ -43,6 +45,10 @@ abstract class McpServerContract extends TestSuite {
       )
       .toOption
       .flatMap(_.tools.headOption)
+
+  /** The read tool as listed, when it mirrors an argument into a header. */
+  private def mirroring: Option[McpTool] =
+    client().tools().toOption.flatMap(_.tools.find(t => t.name == read._1 && t.params.nonEmpty))
 
   /** `e`'s JSON-RPC error code, when it is a JSON-RPC error. */
   private def code(e: McpError): Option[Int] = e match {
@@ -84,6 +90,30 @@ abstract class McpServerContract extends TestSuite {
         .flatMap(_.tools.find(_.name == read._1).toRight(McpError.Unreadable("not listed")))
         .flatMap(c.call(_, read._2))
         .map(a => (a.isError, a.text.nonEmpty)) ==> Right((false, true))
+    }
+
+    test("a call of the read tool without its Mcp-Param headers is rejected: 400 and -32020") {
+      // streamable-http.mdx, Server Behavior for Custom Headers: a client that omits the header
+      // while the value is in the body is non-conforming, and the server must reject it.
+      mirroring.map { t =>
+        val call = Rpc.Call.CallTool(t, read._2)
+        raw(Headers.of(call).filterNot(_._1.startsWith("Mcp-Param-")), Rpc.request(1, call))
+      } ==> Some((400, Some(-32020)))
+    }
+
+    test(
+      "a call of the read tool whose Mcp-Param value is not its argument is rejected: 400 and -32020"
+    ) {
+      // streamable-http.mdx, Server Validation: a header that does not match the body.
+      mirroring.map { t =>
+        val call = Rpc.Call.CallTool(t, read._2)
+        raw(
+          Headers
+            .of(call)
+            .map((k, v) => if (k.startsWith("Mcp-Param-")) (k, s"$v-other") else (k, v)),
+          Rpc.request(1, call)
+        )
+      } ==> Some((400, Some(-32020)))
     }
 
     test("a tool it does not list is rejected: 400 and -32602") {
@@ -177,7 +207,7 @@ abstract class McpServerContract extends TestSuite {
 object McpServerFakeTests extends McpServerContract {
 
   private val fake = FakeMcpServer.start()
-  fake.lists(Vector(FakeMcpServer.Weather, FakeMcpServer.snap("get_file_contents")))
+  fake.lists(Vector(FakeMcpServer.Weather, FakeMcpServer.github("get_file_contents")))
 
   protected val server: McpServer =
     McpServer.of("fake", fake.endpoint, Variable("FAKE_MCP_TOKEN")) match {
@@ -191,8 +221,10 @@ object McpServerFakeTests extends McpServerContract {
       case Left(why) => throw new java.lang.AssertionError(why.message)
     }
 
-  protected val read: (String, ujson.Obj) =
-    ("get_weather", ujson.Obj("location" -> "New York"))
+  protected val read: (String, ujson.Obj) = (
+    "get_file_contents",
+    ujson.Obj("owner" -> "the-actual-best", "repo" -> "actualbest", "path" -> "README.md")
+  )
 
   override def utestAfterAll(): Unit = fake.stop()
 }

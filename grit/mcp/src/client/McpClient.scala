@@ -76,6 +76,10 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
     */
   def call(tool: McpTool, arguments: ujson.Obj): Either[McpError, Answer] = {
     val answered = exchange(Rpc.Call.CallTool(tool, arguments)).flatMap(Answer.of)
+    // A -32020 HeaderMismatch is not re-listed and retried, though the spec says a client
+    // SHOULD (streamable-http.mdx, Client Behavior): a list with ttlMs 0, as GitHub's is, is
+    // re-read on every access, so `tool` already carries the schema the server holds and a
+    // retry would mirror the same headers. A server listing with a longer ttlMs may want it.
     answered match {
       case Left(McpError.Rpc(InvalidParams, _)) => stale()
       case _ => ()

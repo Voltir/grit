@@ -78,7 +78,7 @@ object McpEdgeLiveTests extends TestSuite {
       val fake = FakeMcpServer.start()
       val engine = LiveEngine.open(config, Turn.Epoch)
       try {
-        fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
         fake.answers(
           "get_file_contents",
           ujson.Obj("content" -> ujson.Arr(ujson.Obj("type" -> "text", "text" -> "# actualbest")))

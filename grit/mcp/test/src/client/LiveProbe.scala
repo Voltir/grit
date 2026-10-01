@@ -4,7 +4,7 @@ import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.nio.file.{Files, Path}
 
 import grit.core.edge.Variable
-import grit.mcp.wire.{Headers, McpTool, Rpc}
+import grit.mcp.wire.{Headers, McpError, McpTool, Rpc, Sse}
 
 /** [[McpServerContract]] against GitHub's MCP server, read-only (no model call, no spend):
   *
@@ -62,12 +62,13 @@ object LiveProbe {
   }
 
   /** Writes the answers to the first `tools/list` page and to `get_file_contents` with
-    * `arguments` into `dir`, as they came.
+    * `arguments` into `dir`, as they came; the call is made as that page lists the tool, so
+    * with its `Mcp-Param-*` headers, and is not made when the page does not offer it.
     */
   private def capture(server: McpServer, bearer: Bearer, arguments: ujson.Obj, dir: Path): Unit = {
     Files.createDirectories(dir)
     val http = HttpClient.newHttpClient()
-    def post(id: Long, call: Rpc.Call, name: String): Unit = {
+    def post(id: Long, call: Rpc.Call, name: String): (Boolean, String) = {
       val response = http.send(
         Headers
           .of(call)
@@ -78,27 +79,24 @@ object LiveProbe {
         HttpResponse.BodyHandlers.ofString()
       )
       val kind = response.headers.firstValue("Content-Type").orElse("none")
-      val suffix = if (kind.startsWith("text/event-stream")) "sse" else "json"
-      val file = dir.resolve(s"$name.${response.statusCode}.$suffix")
+      val streamed = kind.startsWith("text/event-stream")
+      val file = dir.resolve(s"$name.${response.statusCode}.${if (streamed) "sse" else "json"}")
       Files.writeString(file, response.body)
       println(s"wrote $file ($kind)")
+      (streamed, response.body)
     }
-    post(1, Rpc.Call.ListTools(None), "tools-list")
-    McpTool
-      .page(
-        ujson.Obj(
-          "tools" -> ujson.Arr(
-            ujson.Obj(
-              "name" -> "get_file_contents",
-              "inputSchema" -> ujson.Obj("type" -> "object"),
-              "annotations" -> ujson.Obj("readOnlyHint" -> true)
-            )
-          )
-        ),
-        server.name
-      )
-      .toOption
-      .flatMap(_.tools.headOption)
-      .foreach(tool => post(2, Rpc.Call.CallTool(tool, arguments), "get-file-contents"))
+    val (streamed, listed) = post(1, Rpc.Call.ListTools(None), "tools-list")
+    val message =
+      if (streamed) Sse.response(listed.linesIterator, 1)
+      else scala.util.Try(ujson.read(listed)).toOption.toRight(McpError.Unreadable("not JSON"))
+    message.flatMap(Rpc.result(1, _)).flatMap(McpTool.page(_, server.name)) match {
+      case Right(page) =>
+        page.tools.find(_.name == "get_file_contents") match {
+          case Some(tool) =>
+            val _ = post(2, Rpc.Call.CallTool(tool, arguments), "get-file-contents")
+          case None => println("get_file_contents is not offered on the first page; not called")
+        }
+      case Left(e) => println(s"the first page is not read: ${e.message}")
+    }
   }
 }
