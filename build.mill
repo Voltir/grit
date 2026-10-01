@@ -415,7 +415,8 @@ object grit extends Module {
         grit.tui,
         grit.host,
         grit.edge,
-        grit.slack
+        grit.slack,
+        grit.mcp
       )
     def forkArgs = Task { tui.forkArgs() }
     def mainClass = Some("grit.app.main.Main")

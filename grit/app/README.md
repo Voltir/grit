@@ -61,7 +61,9 @@ In dependency order:
   conversation, and a summary lands after its reply, so the rows below would move). ← `look`
 - **`main`** — `Main`: reads the settings into the reference `Deployment`
   (`Main.deployment`), and serves it (`grit serve`: the Slack edge, `SlackEdge.serving`,
-  in the channels `GRIT_SLACK_LISTEN` names, through `Kit.serve`), catches it up (`grit
+  in the channels `GRIT_SLACK_LISTEN` names, and with `GITHUB_MCP_TOKEN` set, GitHub's
+  read-only MCP tools at `service:github` for every Slack conversation, `McpEdge.serving`
+  (`Main.github`), through `Kit.serve`), catches it up (`grit
   backfill`: `SlackEdge.backfill` over the last `GRIT_BACKFILL_DAYS`, through `Kit.catchUp`),
   or opens the engine and launches the turn
   (OpenRouter with a key, the stub without; Jev placing messages among topics with

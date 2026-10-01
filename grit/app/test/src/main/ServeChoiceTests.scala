@@ -32,7 +32,7 @@ object ServeChoiceTests extends TestSuite {
     ) {
       def of(edges: Vector[ServedEdge]) =
         Main
-          .deployment(Map.empty, Offered.Read, edges, java.time.ZoneOffset.UTC)
+          .deployment(Map.empty, Offered.Read, edges, Vector.empty, java.time.ZoneOffset.UTC)
           .map(d => (d.lifecycle.locality.scope, d.budget.cap))
       (of(Vector(Quiet)), of(Vector.empty)) ==> (
         Right((PlaceScope.Room, DailyCap.of("1.00").toOption)),
@@ -63,6 +63,74 @@ object ServeChoiceTests extends TestSuite {
         Left("GRIT_BACKFILL_DAYS is a whole number of days above zero, not '0'"),
         Left("GRIT_BACKFILL_DAYS is a whole number of days above zero, not '1.5'"),
         Left("GRIT_SLACK_LISTEN names no channel: there is nothing to backfill")
+      )
+    }
+
+    test("with GITHUB_MCP_TOKEN unset, serve serves no GitHub edge") {
+      Main.github(Map("GRIT_GITHUB_TOOLS" -> "get_me")) ==> Right(None)
+    }
+
+    test(
+      "with it set, serve serves GitHub's read-only MCP endpoint, offering the ten tools, and Slack's conversations work there"
+    ) {
+      val env = Map("GITHUB_MCP_TOKEN" -> "never-read")
+      (
+        Main.githubServer(env).map(s => (s.name, s.endpoint.toString, s.token, s.allow)),
+        Main
+          .github(env)
+          .map(
+            _.map((edge, link) =>
+              (
+                EdgeName.value(edge.name),
+                edge.needs,
+                link.within.written,
+                link.service.place.written
+              )
+            )
+          )
+      ) ==> (
+        Right(
+          (
+            "github",
+            "https://api.githubcopilot.com/mcp/readonly",
+            Variable("GITHUB_MCP_TOKEN"),
+            Set(
+              "get_file_contents",
+              "list_commits",
+              "get_commit",
+              "search_code",
+              "issue_read",
+              "list_issues",
+              "search_issues",
+              "pull_request_read",
+              "list_pull_requests",
+              "search_pull_requests"
+            )
+          )
+        ),
+        Right(Some(("github", Vector(Variable("GITHUB_MCP_TOKEN")), "slack:", "service:github")))
+      )
+    }
+
+    test(
+      "GRIT_GITHUB_MCP_URL and GRIT_GITHUB_TOOLS replace the defaults; a URL MCP refuses, or a list naming no tool, is refused naming its variable"
+    ) {
+      val env = Map("GITHUB_MCP_TOKEN" -> "never-read")
+      def server(more: (String, String)*) =
+        Main.githubServer(env ++ more).map(s => (s.endpoint.toString, s.allow))
+      (
+        server(
+          "GRIT_GITHUB_MCP_URL" -> "http://127.0.0.1:8082/mcp",
+          "GRIT_GITHUB_TOOLS" -> " get_me, issue_read "
+        ),
+        server("GRIT_GITHUB_MCP_URL" -> "http://example.com/mcp"),
+        server("GRIT_GITHUB_TOOLS" -> " , ")
+      ) ==> (
+        Right(("http://127.0.0.1:8082/mcp", Set("get_me", "issue_read"))),
+        Left(
+          "GRIT_GITHUB_MCP_URL: github's endpoint must be https (http only on a loopback host): 'http://example.com/mcp'"
+        ),
+        Left("GRIT_GITHUB_TOOLS names no tool")
       )
     }
   }

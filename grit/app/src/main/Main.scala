@@ -13,7 +13,7 @@ import grit.core.id.{PluginName, PrincipalId, SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{ModelId, Policy}
 import grit.core.period.LifecycleSettings
-import grit.core.place.{Directory, Place}
+import grit.core.place.{Directory, Namespace, Place, Service, WorksIn}
 import grit.core.plugin.Plugin
 import grit.core.prompt.Fragment
 import grit.core.speech.Speaking
@@ -27,6 +27,8 @@ import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, Local
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
 import grit.kit.environment.{DotEnv, Secrets}
 import grit.kit.run.{Kit, Launch}
+import grit.mcp.client.McpServer
+import grit.mcp.edge.McpEdge
 import grit.models.{JevConfig, OpenRouterConfig, Seed, StubProvider}
 import grit.slack.edge.SlackEdge
 import grit.slack.event.ChannelId
@@ -84,6 +86,11 @@ import grit.turn.{Turn, TurnLoop}
   *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. It never
   *     attaches: another grit holding the database's engine stops it. Give it a database of
   *     its own (`GRIT_DATABASE_URL`): everyone in the workspace sees what that database holds.
+  *     With `GITHUB_MCP_TOKEN` set it also serves GitHub's read-only tools at
+  *     `service:github`, and every Slack conversation works there ([[github]]): from the MCP
+  *     server at `GRIT_GITHUB_MCP_URL` (default [[GithubUrl]]), the tools `GRIT_GITHUB_TOOLS`
+  *     names (comma-separated; default [[GithubTools]]). It refuses to start when that server
+  *     cannot be reached, refuses the token, or offers none of those tools.
   *   - **`backfill` alone, or with `--yes`: `grit backfill`**, run before `grit serve` on its
   *     database ([[Kit.catchUp]], [[SlackEdge.backfill]]; ADR 0020): what each channel in `GRIT_SLACK_LISTEN` said over
   *     the last `GRIT_BACKFILL_DAYS` (default 2) that grit has not recorded, heard at the time
@@ -126,11 +133,22 @@ object Main {
     val offered = exitOnLeft(toolChoice(env, chat = tui))
     // `grit serve` and `grit backfill` serve Slack, in the channels GRIT_SLACK_LISTEN names.
     val listen = if (slack) exitOnLeft(listening(env)) else Set.empty[ChannelId]
+    // `grit serve` also serves GitHub's tools when GITHUB_MCP_TOKEN is set, Slack's
+    // conversations working there.
+    val githubEdge = if (serving) exitOnLeft(github(env)) else None
     val edges: Vector[ServedEdge] =
-      if (slack) Vector(SlackEdge.serving(listen)) else Vector.empty
+      (if (slack) Vector(SlackEdge.serving(listen)) else Vector.empty) ++ githubEdge.map(_._1)
     // Days begin at this machine's midnight (OpenRouter's own daily figure is UTC's).
     val deployment =
-      exitOnLeft(Main.deployment(env, offered, edges, java.time.ZoneId.systemDefault()))
+      exitOnLeft(
+        Main.deployment(
+          env,
+          offered,
+          edges,
+          githubEdge.map(_._2).toVector,
+          java.time.ZoneId.systemDefault()
+        )
+      )
     val secrets = exitOnLeft(Secrets.of(env, deployment).left.map(_.message))
     val config = secrets.database
     val budget = deployment.assembly match {
@@ -445,8 +463,9 @@ object Main {
       else OpenRouterConfig.policy(env, seed.policy).left.map(_.message)
     }
 
-  /** The reference deployment as `env` declares it, serving `edges` with the tools `offered`,
-    * its days beginning in `zone`. Serving any edge, it seeds scope `room` when `GRIT_SCOPE`
+  /** The reference deployment as `env` declares it, serving `edges` with the tools `offered`
+    * and the conversations `worksIn` links working in their services, its days beginning in
+    * `zone`. Serving any edge, it seeds scope `room` when `GRIT_SCOPE`
     * is unset ([[Lifecycle.ServeScope]]) and caps a day at [[Budgets.ServeDefault]] when
     * `GRIT_DAILY_USD` is; the first variable malformed, or the deployment refused, is the
     * failure.
@@ -455,6 +474,7 @@ object Main {
       env: Map[String, String],
       offered: Offered,
       edges: Vector[ServedEdge],
+      worksIn: Vector[WorksIn],
       zone: java.time.ZoneId
   ): Either[String, Deployment] = {
     val serving = edges.nonEmpty
@@ -474,7 +494,7 @@ object Main {
       deployment <- Deployment
         .of(
           edges = edges,
-          worksIn = Vector.empty,
+          worksIn = worksIn,
           plugins = plugins,
           policy = models,
           offer = Offer(offered, rounds),
@@ -515,6 +535,73 @@ object Main {
             )
         )
       }
+
+  /** The variable whose token `grit serve` sends GitHub's MCP server; unset, it serves no
+    * GitHub edge.
+    */
+  private val GithubTokenVar = "GITHUB_MCP_TOKEN"
+
+  /** The variable naming GitHub's MCP endpoint, [[GithubUrl]] when unset. */
+  private val GithubUrlVar = "GRIT_GITHUB_MCP_URL"
+
+  /** GitHub's hosted MCP server, listing only the tools that read. */
+  private[main] val GithubUrl = "https://api.githubcopilot.com/mcp/readonly"
+
+  /** The variable naming the GitHub tools offered, comma-separated; [[GithubTools]] when unset. */
+  private val GithubToolsVar = "GRIT_GITHUB_TOOLS"
+
+  /** The GitHub tools offered when [[GithubToolsVar]] is unset: files, commits, code search,
+    * issues and pull requests, kept to these so their schemas stay small in every call.
+    */
+  private[main] val GithubTools: Set[String] = Set(
+    "get_file_contents",
+    "list_commits",
+    "get_commit",
+    "search_code",
+    "issue_read",
+    "list_issues",
+    "search_issues",
+    "pull_request_read",
+    "list_pull_requests",
+    "search_pull_requests"
+  )
+
+  /** GitHub's MCP server as `env` declares it: named `github`, at [[GithubUrlVar]], its token
+    * [[GithubTokenVar]], allowing the tools [[GithubToolsVar]] names; why not, naming the
+    * variable, when the URL is not one [[McpServer.of]] takes or the list names no tool.
+    */
+  private[main] def githubServer(env: Map[String, String]): Either[String, McpServer] = {
+    val allow = env
+      .get(GithubToolsVar)
+      .fold(GithubTools)(_.split(',').toVector.map(_.trim).filter(_.nonEmpty).toSet)
+    for {
+      _ <- Either.cond(allow.nonEmpty, (), s"$GithubToolsVar names no tool")
+      server <- McpServer
+        .of(
+          "github",
+          env.getOrElse(GithubUrlVar, GithubUrl),
+          grit.core.edge.Variable(GithubTokenVar),
+          allow
+        )
+        .left
+        .map(why => s"$GithubUrlVar: $why")
+    } yield server
+  }
+
+  /** The GitHub edge `grit serve` serves when `env` sets [[GithubTokenVar]] ([[McpEdge]], over
+    * [[githubServer]]), and the link that makes every Slack conversation work in its service;
+    * `None` when the token is unset; why not as [[githubServer]] says.
+    */
+  private[main] def github(
+      env: Map[String, String]
+  ): Either[String, Option[(ServedEdge, WorksIn)]] =
+    if (!env.contains(GithubTokenVar)) Right(None)
+    else
+      for {
+        service <- Service.of("github")
+        server <- githubServer(env)
+        edge <- McpEdge.serving(service, Vector(server))
+      } yield Some((edge, WorksIn(Place.under(Namespace.Slack, Vector.empty), service)))
 
   /** The variable saying how many days back `grit backfill` reads. */
   private val DaysVar = "GRIT_BACKFILL_DAYS"
