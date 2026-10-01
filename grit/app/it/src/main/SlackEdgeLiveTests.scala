@@ -25,7 +25,7 @@ object SlackEdgeLiveTests extends TestSuite {
     new SlackEdge(
       slack,
       self,
-      EdgeStores(engine.inbox, engine.principals, engine.deliveries, engine.jot),
+      EdgeStores(engine.inbox, engine.principals, engine.deliveries, engine.jot, engine),
       Set.empty,
       _ => ()
     )

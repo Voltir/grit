@@ -2,7 +2,7 @@ package grit.core.edge
 
 import scala.concurrent.duration.FiniteDuration
 
-import grit.core.id.CallSlot
+import grit.core.id.{CallSlot, PrincipalId}
 import grit.core.place.Place
 import grit.core.prompt.Fragment
 import grit.core.tool.{Outcome, ToolSet}
@@ -50,6 +50,16 @@ trait Desk extends caps.SharedCapability {
       tools: ToolSet,
       instructions: Vector[Fragment]
   ): Either[DeskError, Unit]
+}
+
+/** Where an edge registers the places it hosts (ADR 0017). */
+trait Desks {
+
+  /** Registers an edge in this process acting for `principal`, hosting `places`, and opens
+    * its desk: live until it or the engine's link closes. `Left` when the database cannot be
+    * reached, or the engine running it is of another compatibility epoch than this grit.
+    */
+  def register(principal: PrincipalId, places: Set[Place]): Either[DeskError, Desk^]
 }
 
 /** Why a desk could not do what was asked: `why`, in the database's words. */

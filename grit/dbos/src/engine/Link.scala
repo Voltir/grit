@@ -6,7 +6,7 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.edge.{Desk, DeskError}
+import grit.core.edge.{Desk, DeskError, Desks}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PrincipalId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
@@ -51,7 +51,7 @@ import org.postgresql.ds.PGSimpleDataSource
   * attached to one another process runs ([[Link.attach]]). Everything crosses Postgres
   * (ADR 0002), so it works while no engine runs; turns then wait.
   */
-trait Link extends caps.SharedCapability, AutoCloseable {
+trait Link extends caps.SharedCapability, AutoCloseable, Desks {
 
   val entries: EntryStore
 
@@ -119,12 +119,6 @@ trait Link extends caps.SharedCapability, AutoCloseable {
     * does.
     */
   def holder(): Option[Holder]
-
-  /** Registers an edge in this process for `principal`, hosting `places`, and opens its desk
-    * (ADR 0017): live until it or this link closes. `Left` when the database cannot be
-    * reached, or the engine running it is of another compatibility epoch than this link's.
-    */
-  def register(principal: PrincipalId, places: Set[Place]): Either[DeskError, Desk^]
 }
 
 object Link {

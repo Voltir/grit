@@ -8,9 +8,16 @@ import grit.core.store.{Jot, Principals, StoreError}
 
 /** What an edge is given to reach the engine (ADR 0002): the inbox it hands messages to and
   * reads turns from, the people it enrolls, the replies it awaits, and `jot`, the short
-  * transactions it writes those two in.
+  * transactions it writes those two in, and `desks`, where it registers places it hosts
+  * tools in.
   */
-final case class EdgeStores(inbox: Inbox, principals: Principals, deliveries: Deliveries, jot: Jot)
+final case class EdgeStores(
+    inbox: Inbox,
+    principals: Principals,
+    deliveries: Deliveries,
+    jot: Jot,
+    desks: Desks^
+)
 
 /** The name of an environment variable an edge reads, such as `SLACK_BOT_TOKEN`; never its
   * value.

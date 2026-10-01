@@ -1,6 +1,13 @@
 package grit.kit.run
 
-import grit.core.edge.{EdgeRefusal, EdgeStores, InMemoryDeliveries, ServedEdge, Variable}
+import grit.core.edge.{
+  EdgeRefusal,
+  EdgeStores,
+  InMemoryDeliveries,
+  InMemoryEdges,
+  ServedEdge,
+  Variable
+}
 import grit.core.id.EdgeName
 import grit.core.inbox.InMemoryInbox
 import grit.core.spend.Budget
@@ -21,7 +28,8 @@ object ServingTests extends TestSuite {
   }
 
   private val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
-  private val stores = EdgeStores(inbox, inbox.principals, new InMemoryDeliveries, FakeJot)
+  private val stores =
+    EdgeStores(inbox, inbox.principals, new InMemoryDeliveries, FakeJot, new InMemoryEdges)
 
   /** An edge named `called` that records, in `seen`, each open, deliver and close; it refuses
     * to open when `refuse` is set, and its deliveries fail when `unreadable`.

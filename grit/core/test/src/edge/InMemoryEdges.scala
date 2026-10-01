@@ -8,11 +8,11 @@ import grit.core.prompt.Fragment
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
 
-/** In-memory [[ToolRequests]], [[EdgeDirectory]] and desks for tests, keeping
+/** In-memory [[ToolRequests]], [[EdgeDirectory]] and [[Desks]] for tests, keeping
   * [[EdgesContract]]. It ignores the `Tx`. Each answer an edge gives is also kept in
   * [[told]], in order: what the turn waiting on it would receive.
   */
-final class InMemoryEdges extends ToolRequests, EdgeDirectory {
+final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
 
   /** A request and where it stands: `claimedBy` the edge and session that claimed it. */
   final case class Row(
@@ -105,6 +105,9 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory {
     registered = registered.updated(edge, sessions)
     new InMemoryEdges.Fake(this, Registration(edge, principal, places), sessions)
   }
+
+  def register(principal: PrincipalId, places: Set[Place]): Either[DeskError, Desk^] =
+    Right(desk(places, principal))
 
   /** A live edge for `principal` hosting `places`, without a desk: [[claimAs]], [[answerAs]]
     * and [[advertiseAs]] act as its desk would.

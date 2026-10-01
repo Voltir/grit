@@ -2,7 +2,7 @@ package grit.slack.edge
 
 import java.time.ZoneOffset
 
-import grit.core.edge.{EdgeStores, InMemoryDeliveries, Part}
+import grit.core.edge.{EdgeStores, InMemoryDeliveries, InMemoryEdges, Part}
 import grit.core.id.{PrincipalId, SourceId, TurnRef}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -57,7 +57,7 @@ object SlackEdgeTests extends TestSuite {
       new SlackEdge(
         slack,
         Self(TeamId(Team), UserId(Bot)),
-        EdgeStores(inbox, inbox.principals, deliveries, FakeJot),
+        EdgeStores(inbox, inbox.principals, deliveries, FakeJot, new InMemoryEdges),
         listening,
         _ => ()
       )

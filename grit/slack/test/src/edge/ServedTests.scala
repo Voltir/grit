@@ -2,7 +2,14 @@ package grit.slack.edge
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.edge.{EdgeRefusal, EdgeStores, InMemoryDeliveries, Unheard, Variable}
+import grit.core.edge.{
+  EdgeRefusal,
+  EdgeStores,
+  InMemoryDeliveries,
+  InMemoryEdges,
+  Unheard,
+  Variable
+}
 import grit.core.id.PrincipalId
 import grit.core.id.SourceId
 import grit.core.inbox.InMemoryInbox
@@ -34,7 +41,8 @@ object ServedTests extends TestSuite {
   private final class World {
     val slack = new FakeSlack
     val inbox: InMemoryInbox = InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None))
-    val stores = EdgeStores(inbox, inbox.principals, new InMemoryDeliveries, FakeJot)
+    val stores =
+      EdgeStores(inbox, inbox.principals, new InMemoryDeliveries, FakeJot, new InMemoryEdges)
     val connect: Served.Connect^{slack} = new Served.Connect {
       def apply(bot: BotToken, app: AppToken): Slack^ = slack
     }
