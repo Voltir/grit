@@ -11,14 +11,22 @@ import grit.kit.deployment.Offered
 import grit.tools.Coding
 
 /** The coding tools this process's edge runs a request with, over the directory it was routed
-  * to: `read`, `list` and `search` when `offered` is [[Offered.Read]], every coding
+  * to (a request routed to a service is `Failed`, and nothing runs): `read`, `list` and `search` when `offered` is [[Offered.Read]], every coding
   * tool when it is [[Offered.All]]. A command sees the process's own environment,
   * not `.env`'s.
   */
 private[main] final class LocalTools(offered: Offered) extends Tools {
 
-  def run(route: Route, request: ToolRequest): Outcome = {
-    val root = Path.of(Directory.value(route.root))
+  def run(route: Route, request: ToolRequest): Outcome = route match {
+    case Route.Directory(dir) => over(Path.of(Directory.value(dir)), request)
+    // This edge registers only directories, so a service route never reaches it.
+    case Route.Service(service) =>
+      Outcome.Failed(
+        s"The coding tools act on a directory, not ${service.place.written}; nothing ran."
+      )
+  }
+
+  private def over(root: Path, request: ToolRequest): Outcome = {
     val ws = new LocalWorkspace(root)
     def refused(name: ToolName): Outcome =
       Outcome.Failed(s"The coding tools offer ${ToolName.value(name)} twice; nothing ran.")

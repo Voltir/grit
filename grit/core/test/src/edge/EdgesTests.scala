@@ -1,7 +1,7 @@
 package grit.core.edge
 
 import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, TurnSeq}
-import grit.core.place.{Directory, Namespace, Place}
+import grit.core.place.{Directory, Namespace, Place, Service}
 import grit.core.tool.{Retry, ToolName}
 
 import utest.*
@@ -41,15 +41,23 @@ object EdgesTests extends TestSuite {
     test(
       "a request in a place the edge registered routes to that directory; one below it does not"
     ) {
-      Edges.authorize(request(api), by).map(_.root) ==> Right(dir("/work/api"))
+      Edges.authorize(request(api), by) ==> Right(Route.Directory(dir("/work/api")))
       val below = Place.of(dir("/work/api/src"))
       Edges.authorize(request(below), by) ==> Left(Refused.NotHosted(below))
     }
 
-    test("a registered place with no directory is refused") {
+    test("a service place the edge registered routes to its service; one below it does not") {
+      val github = Service.of("github").getOrElse(throw new java.lang.AssertionError())
+      val issues = Place.under(Namespace.Service, Vector("github", "issues"))
+      val serving = by.copy(places = Set(github.place, issues))
+      Edges.authorize(request(github.place), serving) ==> Right(Route.Service(github))
+      Edges.authorize(request(issues), serving) ==> Left(Refused.NoRoute(issues))
+    }
+
+    test("a registered place that is neither a directory nor a service is refused") {
       val thread = Place.under(Namespace.Slack, Vector("acme", "dev"))
       Edges.authorize(request(thread), by.copy(places = Set(thread))) ==> Left(
-        Refused.NoDirectory(thread)
+        Refused.NoRoute(thread)
       )
     }
   }

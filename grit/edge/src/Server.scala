@@ -8,8 +8,8 @@ import scala.util.control.NonFatal
 import grit.core.edge.{Desk, Edges, Route, ToolRequest}
 import grit.core.tool.Outcome
 
-/** What an edge runs a request with: its tools over the directory the request was routed to.
-  * Never throws: every failure is an [[Outcome]].
+/** What an edge runs a request with: its tools where [[Edges.authorize]] routed the request
+  * ([[Route]]). Never throws: every failure is an [[Outcome]].
   */
 trait Tools {
   def run(route: Route, request: ToolRequest): Outcome

@@ -42,7 +42,10 @@ object ServerTests extends TestSuite {
     def note(key: String): Unit = runs = runs :+ key
     def run(route: Route, request: ToolRequest): Outcome = {
       note(request.slot.key)
-      Outcome.Done(s"ran in ${Directory.value(route.root)}")
+      route match {
+        case Route.Directory(root) => Outcome.Done(s"ran in ${Directory.value(root)}")
+        case Route.Service(service) => Outcome.Done(s"ran at ${service.place.written}")
+      }
     }
   }
 

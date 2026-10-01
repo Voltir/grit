@@ -1,6 +1,6 @@
 # 0017. A tool call is a durable request addressed to a workspace, and run by an edge hosting it
 
-Status: accepted (2026-09-27). Extends 0002 and 0010; supersedes 0009's in-step run for the
+Status: accepted (2026-09-27); amended (2026-09-30): service places. Extends 0002 and 0010; supersedes 0009's in-step run for the
 tools an edge hosts.
 
 Context: the engine ran every tool call in its own step, over the directory the engine's
@@ -36,6 +36,17 @@ Decision:
   topic and idempotency key (ADR 0010's mechanism); the row is the truth when a send is lost.
 - **A protocol version rides on each request**; an edge answers a later one that it is too
   old.
+- **A workspace is a directory or a service place (later, a repository place).** An
+  outside service's tools are hosted by an edge at a `service:` place it registers;
+  `Edges.authorize` routes a request there to the place itself, and refuses any registered
+  place that is neither a directory nor a service. A conversation with no directory of its
+  own works in the service place its deployment links it to (`WorksIn`), first link first;
+  a stored per-conversation link will override that default. One workspace per turn: a
+  conversation's hosted calls all go to it.
+- **The engine offers what an edge advertises.** A hosted tool the engine does not
+  describe is offered as the serving edge advertised it, when it does not ask first; its
+  arguments are read by the edge. The offer records which tools it took from the advert,
+  so a replay rebuilds them without the edge.
 - **Engine tools stay in the step**: a tool that touches no machine (reading grit's store, a
   model probe) runs in the turn as before, under ADR 0009.
 
