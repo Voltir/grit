@@ -19,9 +19,14 @@ import grit.core.clock.Clock
 import grit.mcp.wire.{Answer, Headers, McpError, McpTool, Rpc, Skipped, Sse}
 
 /** A server's tools as listed: `tools`, those grit may offer, each name once, in the order
-  * listed; `skipped`, the others and why.
+  * listed; `skipped`, the others and why; `unlisted`, the names the server's allowlist gives
+  * that no entry of the list has.
   */
-final case class Listed private[client] (tools: Vector[McpTool], skipped: Vector[Skipped])
+final case class Listed private[client] (
+    tools: Vector[McpTool],
+    skipped: Vector[Skipped],
+    unlisted: Set[String]
+)
 
 /** `server`'s tools and calls, each request a POST of its own (no session), timing out after
   * [[McpClient.Timeout]].
@@ -109,10 +114,15 @@ final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
     from(None, 0, Vector.empty).map { read =>
       val pages = read.map(_._1)
       val listed = pages.flatMap(_.tools).distinctBy(_.name)
+      val skipped = pages.flatMap(_.skipped)
       val (allowed, unallowed) =
         listed.partition(t => server.allow.isEmpty || server.allow.contains(t.name))
       (
-        Listed(allowed, pages.flatMap(_.skipped) ++ unallowed.map(t => Skipped.NotAllowed(t.name))),
+        Listed(
+          allowed,
+          skipped ++ unallowed.map(t => Skipped.NotAllowed(t.name)),
+          server.allow -- listed.map(_.name) -- skipped.flatMap(named)
+        ),
         read.map(_._2).minOption.getOrElse(Long.MinValue)
       )
     }
@@ -202,6 +212,15 @@ object McpClient {
 
   /** The most pages one listing reads: 100. */
   val MaxPages: Int = 100
+
+  /** The listed tool `skipped` names, `None` for an entry with no name it can read. */
+  private def named(skipped: Skipped): Option[String] = skipped match {
+    case Skipped.NotReadOnly(tool) => Some(tool)
+    case Skipped.BadName(tool, _) => Some(tool)
+    case Skipped.BadHeader(tool, _) => Some(tool)
+    case Skipped.NotAllowed(tool) => Some(tool)
+    case Skipped.Malformed(_) => None
+  }
 
   /** The reading until which a page received at `received` with `ttlMs` is fresh. */
   private def fresh(received: Long, ttlMs: Long): Long =

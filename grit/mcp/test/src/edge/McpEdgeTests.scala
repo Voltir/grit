@@ -38,9 +38,13 @@ object McpEdgeTests extends TestSuite {
 
   private val Github: Service = Service.of("github").getOrElse(throw new java.lang.AssertionError())
 
-  private def server(fake: FakeMcpServer, name: String = "github"): McpServer =
+  private def server(
+      fake: FakeMcpServer,
+      name: String = "github",
+      allow: Set[String] = Set.empty
+  ): McpServer =
     McpServer
-      .of(name, fake.endpoint, Token)
+      .of(name, fake.endpoint, Token, allow)
       .fold(why => throw new java.lang.AssertionError(why), identity)
 
   /** Desks that cannot be registered: the database cannot be reached. */
@@ -55,7 +59,8 @@ object McpEdgeTests extends TestSuite {
   private def opened(
       fake: FakeMcpServer,
       env: Map[String, String],
-      reachable: Boolean = true
+      reachable: Boolean = true,
+      allow: Set[String] = Set.empty
   ): (Either[EdgeRefusal, Unit], InMemoryEdges, Vector[String]) = {
     val edges = new InMemoryEdges
     val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
@@ -68,7 +73,7 @@ object McpEdgeTests extends TestSuite {
     )
     val log = new ConcurrentLinkedQueue[String]()
     val edge = McpEdge
-      .serving(Github, Vector(server(fake)))
+      .serving(Github, Vector(server(fake, allow = allow)))
       .fold(why => throw new java.lang.AssertionError(why), identity)
     val result = edge.open(stores, env, line => { val _ = log.add(line) }) match {
       case Left(refusal) => Left(refusal)
@@ -130,6 +135,24 @@ object McpEdgeTests extends TestSuite {
             "MCP server github: issue_write is not offered: it is not marked read-only",
             "service:github: serving github_get_file_contents"
           )
+        )
+      }
+    }
+
+    test(
+      "the tools an allowlist leaves out are logged in one line, its unlisted names in another"
+    ) {
+      withFake { fake =>
+        fake.lists(
+          Vector("get_file_contents", "list_commits", "search_code").map(FakeMcpServer.github) :+
+            FakeMcpServer.issueWrite
+        )
+        val allow = Set("get_file_contents", "issue_write", "list_tags", "get_me")
+        opened(fake, Map("FAKE_MCP_TOKEN" -> fake.token), allow = allow)._3 ==> Vector(
+          "MCP server github: issue_write is not offered: it is not marked read-only",
+          "MCP server github: 2 listed tools are not on its allowlist: list_commits, search_code",
+          "MCP server github: its allowlist names tools it does not list: get_me, list_tags",
+          "service:github: serving github_get_file_contents"
         )
       }
     }

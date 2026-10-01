@@ -122,6 +122,14 @@ object McpClientTests extends TestSuite {
       }
     }
 
+    test("a listing names the allowlist's names it does not list, a skipped entry's as listed") {
+      withFake { fake =>
+        fake.lists(Vector(tool("a"), FakeMcpServer.issueWrite, tool("b")))
+        client(fake, allow = Set("a", "issue_write", "gone", "renamed")).tools().map(_.unlisted) ==>
+          Right(Set("gone", "renamed"))
+      }
+    }
+
     test("a tool listed twice is offered once") {
       withFake { fake =>
         fake.lists(Vector(tool("a"), tool("b"), tool("a")), pageSize = 2)

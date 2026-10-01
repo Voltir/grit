@@ -8,15 +8,16 @@ import grit.core.store.StoreError
 import grit.core.tool.ToolName
 import grit.edge.Server
 import grit.mcp.client.{Bearer, McpClient, McpServer}
-import grit.mcp.wire.McpError
+import grit.mcp.wire.{McpError, Skipped}
 
 /** An edge hosting MCP servers' tools at a service's place (ADR 0017). */
 object McpEdge {
 
   /** The edge named for `service`, hosting `servers`' tools there, or why not: no servers, or
     * two with one name. Opened, it registers the service's place for grit itself
-    * ([[PrincipalId.Grit]]), logs each listed tool it skips and why, advertises there each
-    * server's tools ([[McpTools.offered]]), and serves the requests addressed there with
+    * ([[PrincipalId.Grit]]); logs in one line the listed tools each server's allowlist leaves
+    * out, in one line the allowlisted names it does not list, and each other tool it skips on a
+    * line of its own; advertises there each server's tools ([[McpTools.offered]]); and serves the requests addressed there with
     * [[McpTools]]. It needs each server's token variable, answers no ask, and delivers no
     * replies. Opening it is refused when a token is unset or malformed ([[Bearer.of]]); when
     * a server's list cannot be read, it naming the server and why, and for a refused token
@@ -95,7 +96,11 @@ object McpEdge {
       }
     }
 
-    /** `client`'s list read at open, each tool skipped logged; why it is refused. */
+    /** "1 listed tool is", or "n listed tools are", for `tools`. */
+    private def counted(tools: Vector[String]): String =
+      if (tools.size == 1) "1 listed tool is" else s"${tools.size} listed tools are"
+
+    /** `client`'s list read at open, its skips logged as [[serving]] says; why it is refused. */
     private def listing(client: McpClient^, log: String => Unit): Either[EdgeRefusal, Unit] = {
       val server = client.server
       client.tools() match {
@@ -106,7 +111,19 @@ object McpEdge {
           }
           Left(EdgeRefusal.Refused(s"MCP server ${server.name} ${e.message}$token"))
         case Right(listed) =>
-          listed.skipped.foreach(s => log(s"MCP server ${server.name}: ${s.message}"))
+          val said = s"MCP server ${server.name}:"
+          val unallowed = listed.skipped.collect { case Skipped.NotAllowed(tool) => tool }
+          listed.skipped.foreach {
+            case Skipped.NotAllowed(_) => ()
+            case other => log(s"$said ${other.message}")
+          }
+          if (unallowed.nonEmpty)
+            log(s"$said ${counted(unallowed)} not on its allowlist: ${unallowed.mkString(", ")}")
+          if (listed.unlisted.nonEmpty)
+            log(
+              s"$said its allowlist names tools it does not list: " +
+                listed.unlisted.toVector.sorted.mkString(", ")
+            )
           Either.cond(
             listed.tools.nonEmpty,
             (),
