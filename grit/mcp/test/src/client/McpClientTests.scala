@@ -257,7 +257,7 @@ object McpClientTests extends TestSuite {
       }
     }
 
-    test("a tool the server no longer lists is a -32602 error, and makes the list stale") {
+    test("a tool the server no longer lists is a -32602 error at 400, and makes the list stale") {
       withFake { fake =>
         fake.lists(Vector(tool("a"), tool("gone")), ttlMs = Vector(Some(60000L)))
         val c = client(fake)

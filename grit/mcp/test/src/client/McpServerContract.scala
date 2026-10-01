@@ -49,6 +49,23 @@ abstract class McpServerContract extends TestSuite {
     case _ => None
   }
 
+  /** The HTTP status of a POST carrying `sent`, the token and `body`, and the JSON-RPC error
+    * code its answer carries, when it carries one.
+    */
+  private def raw(sent: Vector[(String, String)], body: ujson.Value): (Int, Option[Int]) = {
+    val response = HttpClient
+      .newHttpClient()
+      .send(
+        sent
+          .foldLeft(HttpRequest.newBuilder(server.endpoint)) { case (b, (k, v)) => b.header(k, v) }
+          .header("Authorization", s"Bearer ${bearer.value}")
+          .POST(HttpRequest.BodyPublishers.ofString(ujson.write(body)))
+          .build(),
+        HttpResponse.BodyHandlers.ofString()
+      )
+    (response.statusCode, code(Rpc.failure(response.statusCode, response.body, None)))
+  }
+
   val tests = Tests {
     test("the list is read, and offers the read tool") {
       client().tools().map(_.tools.exists(_.name == read._1)) ==> Right(true)
@@ -62,31 +79,18 @@ abstract class McpServerContract extends TestSuite {
         .map(a => (a.isError, a.text.nonEmpty)) ==> Right((false, true))
     }
 
-    test("a tool it does not list is a -32602 error") {
-      unlisted.map(client().call(_, ujson.Obj()).left.map(code).map(_.isError)) ==>
-        Some(Left(Some(-32602)))
+    test("a tool it does not list is rejected: 400 and -32602") {
+      // SEP-2575: Invalid params is 400 on HTTP, as go-sdk, the SDK of GitHub's server, sends it.
+      unlisted.map { t =>
+        val call = Rpc.Call.CallTool(t, ujson.Obj())
+        raw(Headers.of(call), Rpc.request(1, call))
+      } ==> Some((400, Some(-32602)))
     }
 
     test("a request without Mcp-Method is rejected: 400 and -32020") {
       // streamable-http.mdx, Server Validation: a required standard header missing.
-      val sent = Headers.of(Rpc.Call.ListTools(None)).filter(_._1 != "Mcp-Method")
-      val response = HttpClient
-        .newHttpClient()
-        .send(
-          sent
-            .foldLeft(HttpRequest.newBuilder(server.endpoint)) { case (b, (k, v)) =>
-              b.header(k, v)
-            }
-            .header("Authorization", s"Bearer ${bearer.value}")
-            .POST(
-              HttpRequest.BodyPublishers.ofString(
-                ujson.write(Rpc.request(1, Rpc.Call.ListTools(None)))
-              )
-            )
-            .build(),
-          HttpResponse.BodyHandlers.ofString()
-        )
-      (response.statusCode, code(Rpc.failure(response.statusCode, response.body, None))) ==>
+      val call = Rpc.Call.ListTools(None)
+      raw(Headers.of(call).filter(_._1 != "Mcp-Method"), Rpc.request(1, call)) ==>
         (400, Some(-32020))
     }
 

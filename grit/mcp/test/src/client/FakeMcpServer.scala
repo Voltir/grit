@@ -16,7 +16,7 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
   * `-32020` for a missing or mismatched `MCP-Protocol-Version`, `Mcp-Method` or `Mcp-Name`,
   * `400` with `-32602` for `_meta` without its required fields, and `400` with `-32022` for a
   * version it does not [[speaks]]. It answers `tools/list` from [[lists]], a page at a time,
-  * and `tools/call` from [[answers]] (an unlisted tool is `-32602`), in JSON or, after
+  * and `tools/call` from [[answers]] (an unlisted tool, like an unknown cursor, is `400` with `-32602`), in JSON or, after
   * [[streams]], an event stream with a comment and a notification before the response. Every
   * request it was sent is kept, in [[received]].
   */
@@ -195,7 +195,7 @@ final class FakeMcpServer private (val token: String) {
                 val pages = script.tools.grouped(script.perPage).toVector
                 val at = cursor.fold(Some(0))(c => pages.indices.find(i => i > 0 && Cursor(i) == c))
                 at match {
-                  case None => error(200, -32602, s"Invalid params: unknown cursor")
+                  case None => error(400, -32602, "Invalid params: unknown cursor")
                   case Some(i) =>
                     val result = ujson.Obj(
                       "resultType" -> "complete",
@@ -210,7 +210,7 @@ final class FakeMcpServer private (val token: String) {
               case Some("tools/call") =>
                 val listed = script.tools.flatMap(_.obj.get("name")).flatMap(_.strOpt)
                 name.filter(listed.contains) match {
-                  case None => error(200, -32602, s"Unknown tool: ${name.getOrElse("")}")
+                  case None => error(400, -32602, s"Unknown tool: ${name.getOrElse("")}")
                   case Some(n) =>
                     val arguments = params.flatMap(_.get("arguments")).getOrElse(ujson.Obj())
                     ok(
