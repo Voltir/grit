@@ -26,7 +26,7 @@ Decision: grit sets the app version itself to a **compatibility epoch**, a date 
   epoch are then never resumed by the new engine. What happens to them is policy, not yet
   decided.
 - The gate is a replay test: `TurnReplayTests` runs today's turn body over every history
-  in `grit/turn/test/histories/{epoch}/` through `InMemoryDurable`, which models DBOS's
+  in `core/turn/test/histories/{epoch}/` through `InMemoryDurable`, which models DBOS's
   replay and patch semantics, and fails on a renamed, reordered or dropped step, an output
   the codec cannot read, or a body that ends before its history does. Histories come from
   `RecordTurnHistories` (one per shape a turn can leave behind) and from Postgres through

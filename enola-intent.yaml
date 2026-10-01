@@ -7,7 +7,7 @@
 #   2. grit.tui's four groups import in one direction (extensions/tui/CLAUDE.md)
 #   3. grit.prose names no other grit module (core/prose/README.md)
 #   4. core names no extension, each extension names core alone, and the kit names no edge
-#      extension, terminal UI or deployment (ADR 0021; kit/README.md)
+#      extension, terminal UI or deployment (ADR 0021; docs/extending.md)
 #   5. grit.mcp's protocol, scope, client and edge name no GitHub package (extensions/mcp/README.md)
 #
 # Every rule was watched failing on a deliberately planted bad import before it was
@@ -69,7 +69,7 @@ components:
   # counted against it.
   - {name: prose-code,     kind: module, match: ["core/prose/src", "core/prose/src/**"]}
 
-  # Core, extension, kit and deployment (ADR 0021; the table is kit/README.md's), for
+  # Core, extension, kit and deployment (ADR 0021; the table is docs/extending.md's), for
   # rule 4 below. Source trees alone, so a test's imports are not counted. Which core module
   # may name which is Mill's moduleDeps' job, not these rules'.
   - name: core-modules

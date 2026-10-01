@@ -159,7 +159,7 @@ parameter type showing `Vector`'s internal `prefix1: Array[Object^…]`. Writing
 types out fixes it: `(turn: Vector[A], t: Int) => …` (`grit.assembly.eval.Eval.load`).
 
 **A thunk in a data type launders capabilities.** This is why `grit.tui`'s `Effect` is
-plain data with no function cases (`grit/tui/CLAUDE.md`, rule 3).
+plain data with no function cases (`extensions/tui/CLAUDE.md`, rule 3).
 
 **`this` in a trait is `^{any}`.**
 

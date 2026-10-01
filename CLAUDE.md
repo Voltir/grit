@@ -25,32 +25,34 @@ Retrieval, summaries, relevance checks and LSP code context are all future
 else swaps behind it. The database transaction is a scoped, non-escaping capability (`Tx`) — capture
 checking rejects any attempt to let it outlive its block.
 
-Mill modules, and what each may name:
+Mill modules, and what each may name. A module's folder follows ADR 0021's three questions
+(`core/`, `extensions/`, `kit/`, `deployments/`, `eval/`; [`docs/extending.md`](docs/extending.md)),
+while its Mill name, package and artifact stay `grit.<name>`:
 
 | Module | Package | Depends on | Holds |
 |---|---|---|---|
-| `grit.core` | `grit.core.{clock,id,place,prompt,model,message,topic,period,retention,store,spend,triage,speech,plugin,durable,approval,context,provider,inbox,classify,stitch,host,tool,edge}` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath; package order in [`grit/core/README.md`](grit/core/README.md) |
-| `grit.dbos` | `grit.dbos.{sql,workflow,engine}` | core | DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `Engine` is what `grit.app` opens; package order in [`grit/dbos/README.md`](grit/dbos/README.md) |
-| `grit.prose` | `grit.prose.{form,markdown}` | — | prose as edge-neutral blocks, read from markdown; each edge renders them (`Renderer`); package order in [`grit/prose/README.md`](grit/prose/README.md) |
+| `grit.core` | `grit.core.{clock,id,place,prompt,model,message,topic,period,retention,store,spend,triage,speech,plugin,durable,approval,context,provider,inbox,classify,stitch,host,tool,edge}` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath; package order in [`core/core/README.md`](core/core/README.md) |
+| `grit.dbos` | `grit.dbos.{sql,workflow,engine}` | core | DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `Engine` is what `grit.app` opens; package order in [`core/dbos/README.md`](core/dbos/README.md) |
+| `grit.prose` | `grit.prose.{form,markdown}` | — | prose as edge-neutral blocks, read from markdown; each edge renders them (`Renderer`); package order in [`core/prose/README.md`](core/prose/README.md) |
 | `grit.tui` | `grit.tui.{model,components,wire,runtime}.*` | core | the terminal UI: an `App` is three pure functions and a view tree (`Node`) that the runtime lays out, paints and routes input through; core only from `components`/`runtime` |
 | `grit.tui.examples` | `grit.tui.examples` | tui | runnable demos; `Demo` is the target of every `scripts/tui-gate` scenario but `chat` and `reload`, which drive `grit.app` |
 | `grit.turn` | `grit.turn` | core | the durable turn's body, written against `Durable`: what it offers (`TurnOffer`, its prompt's words `TurnPrompt`), and its hosted calls as requests (`TurnHosted`) |
-| `grit.lifecycle` | `grit.lifecycle.{transcript,close,settle,triage,post}` | core | the engine's workflows besides the turn: `Close`, a period sealed with its closing entry, `Settle`, a quiet period asked whether anyone is waiting, `Posting`, closed periods posted to a plugin (ADRs 0011, 0012), and `Triage`, what a heard message is (ADR 0020) and whether grit drafts a reply to it (ADR 0022); package order in [`grit/lifecycle/README.md`](grit/lifecycle/README.md) |
-| `grit.digest` | `grit.digest` | core | `Digest`, the hello-world plugin: one line per closed period, and the `recent_activity` tool that reads them; [`grit/digest/README.md`](grit/digest/README.md) |
+| `grit.lifecycle` | `grit.lifecycle.{transcript,close,settle,triage,post}` | core | the engine's workflows besides the turn: `Close`, a period sealed with its closing entry, `Settle`, a quiet period asked whether anyone is waiting, `Posting`, closed periods posted to a plugin (ADRs 0011, 0012), and `Triage`, what a heard message is (ADR 0020) and whether grit drafts a reply to it (ADR 0022); package order in [`core/lifecycle/README.md`](core/lifecycle/README.md) |
+| `grit.digest` | `grit.digest` | core | `Digest`, the hello-world plugin: one line per closed period, and the `recent_activity` tool that reads them; [`extensions/digest/README.md`](extensions/digest/README.md) |
 | `grit.models` | `grit.models` | core | `Provider`s: `StubProvider`, `OpenRouterProvider` (the JDK HTTP client lives here); `Classifier`s: `JevClassifier` |
 | `grit.host` | `grit.host` | core | the local host: `LocalWorkspace`, `LocalEdits`, `LocalShell`, `LocalInstructions` (`grit.core.host`'s capabilities over this machine's files and processes; a command sees only an allowlisted environment), `LocalMachine` (this process's `ProcessIdentity`); the only module that starts a process or reads which process and machine this is |
 | `grit.edge` | `grit.edge` | core | an edge's side of the engine, over core's traits alone: `Server` (claims, runs and answers the tool requests addressed to the places it hosts, ADR 0017, with the `Tools` it is given), `Run` (a request run by a toolbox, as its permit says), `PlaceFragments` (a place's instruction files, or the text its edge was declared with, as the prompt's Place layer) |
 | `grit.tools` | `grit.tools` | core | the coding tool set (`Coding`): read, list, search, write, edit and run, each written once as a `Hosted` description the engine offers and the `Tool` over `grit.core.host`'s capabilities an edge runs (ADR 0017); `Tuning`: `propose_model_setting`, a measured setting of a model kept once a person approves it; `Probes`: `probe_pair`, a battery of calls measuring a (model, upstream) pair; `About`: `about`, what grit is and how it works, from docs shipped in its resources |
-| `grit.slack` | `grit.slack.{event,text,client,edge}` | core, prose, edge | the Slack edge (ADR 0019): the Slack SDK's quarantine (`SocketSlack`, over Socket Mode), Slack's events and text read into grit's terms, a reply's prose as Slack rich text, and `SlackEdge`, which records a thread's messages as turns, posts their replies, and serves `slack_post` where a deployment allows; package order in [`grit/slack/README.md`](grit/slack/README.md) |
-| `grit.mcp` | `grit.mcp.{wire,client,edge}` | core modules (incl. `grit.edge`) | the MCP client (revision 2026-07-28, Streamable HTTP): a declared server's read-only tools, offered by an edge hosting them at a service place (ADR 0017); `wire`, the protocol over ujson, pure; `edge`, `McpEdge`, the `ServedEdge` a deployment declares; the JDK HTTP client's second egress beside `grit.models`; package order in [`grit/mcp/README.md`](grit/mcp/README.md) |
-| `grit.assembly` | `grit.assembly.{estimate,linear,retrieval}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`grit/assembly/README.md`](grit/assembly/README.md) |
+| `grit.slack` | `grit.slack.{event,text,client,edge}` | core, prose, edge | the Slack edge (ADR 0019): the Slack SDK's quarantine (`SocketSlack`, over Socket Mode), Slack's events and text read into grit's terms, a reply's prose as Slack rich text, and `SlackEdge`, which records a thread's messages as turns, posts their replies, and serves `slack_post` where a deployment allows; package order in [`extensions/slack/README.md`](extensions/slack/README.md) |
+| `grit.mcp` | `grit.mcp.{wire,client,edge}` | core modules (incl. `grit.edge`) | the MCP client (revision 2026-07-28, Streamable HTTP): a declared server's read-only tools, offered by an edge hosting them at a service place (ADR 0017); `wire`, the protocol over ujson, pure; `edge`, `McpEdge`, the `ServedEdge` a deployment declares; the JDK HTTP client's second egress beside `grit.models`; package order in [`extensions/mcp/README.md`](extensions/mcp/README.md) |
+| `grit.assembly` | `grit.assembly.{estimate,linear,retrieval}` | core | `ContextAssembler`s: builds each turn's context window; package order in [`core/assembly/README.md`](core/assembly/README.md) |
 | `grit.eval` | `grit.eval` | core, dbos, assembly, models | the assembly eval, integration sources only (`grit.eval.it`): every assembler over labelled cases in a throwaway Postgres; a report, not a gate |
-| `grit.kit` | `grit.kit.{deployment,environment,run}` | core, dbos, turn, lifecycle, assembly, models, tools, digest, host | what a deployment is built against (ADR 0021): the `Deployment` value, `Secrets`, and `Kit.serve`/`Kit.catchUp`, which run a deployment's `ServedEdge`s beside its engine; which modules are core, extension or deployment, and the package order, in [`grit/kit/README.md`](grit/kit/README.md) |
-| `grit.app` | `grit.app.{config,look,chat,main}` | kit, slack, mcp, tui, host, edge (everything, transitively) | the reference deployment; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), `grit serve` (the Slack edge, and GitHub's MCP tools when its token is set, through `Kit.serve`), `grit backfill`, or a one-shot run with arguments; package order in [`grit/app/README.md`](grit/app/README.md) |
+| `grit.kit` | `grit.kit.{deployment,environment,run}` | core, dbos, turn, lifecycle, assembly, models, tools, digest, host | what a deployment is built against (ADR 0021): the `Deployment` value, `Secrets`, and `Kit.serve`/`Kit.catchUp`, which run a deployment's `ServedEdge`s beside its engine; package order in [`kit/README.md`](kit/README.md); which modules are core, extension or deployment, and what a deployment can supply, in [`docs/extending.md`](docs/extending.md) |
+| `grit.app` | `grit.app.{config,look,chat,main}` | kit, slack, mcp, tui, host, edge (everything, transitively) | the reference deployment; `Main` is the chat TUI (`ChatScreen` + `ChatHost`), `grit serve` (the Slack edge, and GitHub's MCP tools when its token is set, through `Kit.serve`), `grit backfill`, or a one-shot run with arguments; package order in [`deployments/app/README.md`](deployments/app/README.md) |
 
 Mill `moduleDeps` are transitive, so
 `grit.kit` and `grit.app` see `dev.dbos.*` through `grit.dbos` — enola's rule, not the compiler, guards
-it. Working in `grit/tui/`? Read [`grit/tui/CLAUDE.md`](grit/tui/CLAUDE.md) first.
+it. Working in `extensions/tui/`? Read [`extensions/tui/CLAUDE.md`](extensions/tui/CLAUDE.md) first.
 
 **Changing a workflow's steps** (names, order, output encodings) must replay every
 history of the current epoch: guard the change with `Durable.patch`, or start a new
@@ -201,7 +203,7 @@ only the companion, so use `get-docs`. Set-up, the MCP port and BSP failure mode
 - **Package layout is designed, not accreted.** A new module, library or package starts
   with its layout in the plan: each package one idea, named for it; no source file at a
   group's root; the packages in a one-way dependency order, written down where the module
-  is documented (`grit/tui/CLAUDE.md` is the pattern). A module that is one idea is one
+  is documented (`extensions/tui/CLAUDE.md` is the pattern). A module that is one idea is one
   package; when it grows a second, it becomes subpackages, none of its files left at the
   root. A layout that has drifted gets redesigned, not patched. The law fails on a new
   import cycle; the rest is review.

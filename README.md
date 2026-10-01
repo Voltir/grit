@@ -18,6 +18,19 @@ groomer, compaction, retrieval, and LSP symbol linkage are all future `ContextAs
 implementations, so getting that one signature right is the real design work; everything
 else is a swap behind it.
 
+## Layout
+
+| Folder | Holds |
+|---|---|
+| `core/` | what the thesis fails without |
+| `extensions/` | shipped extensions: each names a generic protocol, tool or service |
+| `kit/` | what a deployment is built against |
+| `deployments/` | `app`, the reference deployment: grit's own chat, `grit serve` and `grit backfill` |
+| `eval/` | the assembly eval |
+
+Where new code goes, and how a deployment outside grit builds on it:
+[`docs/extending.md`](docs/extending.md).
+
 ## Status
 
 **Phase 0 — making the thesis testable.** The exit criterion is one conversational turn

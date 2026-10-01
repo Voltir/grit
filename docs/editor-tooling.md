@@ -84,7 +84,7 @@ for is in [`CLAUDE.md`](../CLAUDE.md#metals).
 without one, in the first build target Metals lists, which need not see the symbol. So
 `inspect {fqcn: "grit.app.chat.Commands", module: "grit.app"}` returns nothing although
 its footer says `Inspected from 'grit.app' module`, and with `fileInFocus` set to
-`grit/app/src/chat/Commands.scala` it lists the object. `get-docs` and `get-usages`
+`deployments/app/src/chat/Commands.scala` it lists the object. `get-docs` and `get-usages`
 honour `module`. For a generic class, `inspect` lists only the companion's members; use
 `get-docs`.
 

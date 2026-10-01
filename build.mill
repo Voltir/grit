@@ -411,7 +411,7 @@ object grit extends Module {
   /* The kit a deployment is built against (ADR 0021): the Deployment value, what the
    * environment supplies, and the runner that serves a deployment's edges beside its engine.
    * Names no edge extension and no terminal UI: an edge arrives as a ServedEdge value.
-   * kit/README.md. */
+   * kit/README.md; where every module goes, docs/extending.md. */
   object kit extends GritPublished with Placed {
     def folder = os.sub / "kit"
     def moduleDeps =

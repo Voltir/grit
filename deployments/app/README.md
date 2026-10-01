@@ -2,7 +2,7 @@
 
 The reference deployment (ADR 0021): grit's own chat, `grit serve` and `grit backfill`, each
 filled from `GRIT_*` variables into a `grit.kit` `Deployment` and run through the kit
-([`grit/kit/README.md`](../kit/README.md)). The only module that depends on every other one,
+([`kit/README.md`](../../kit/README.md)). The only module that depends on every other one,
 and so the only place quarantine modules meet. Because Mill's
 `moduleDeps` are transitive, DBOS is on its classpath — enola's `only-dbos-imports-*`
 rules are what keep it out; it reaches Postgres only through `grit.dbos.engine.Engine`.

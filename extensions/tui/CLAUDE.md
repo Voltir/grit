@@ -95,7 +95,7 @@ So the test suite ships a VT model — CUP / LF / CR / EL / ED / wrap / SGR — 
 against the painted grid: the frame never scrolls, is always exactly `rows` lines, is never
 wider than `cols - 1`, and **the reverse-video cells equal what the selection model says**.
 A prototype lived at `../Spikes/tui-spike-layoutz` scratch (`emu.py`); the Scala port is
-`grit/tui/test/src/wire/paint/Vt.scala`.
+`extensions/tui/test/src/wire/paint/Vt.scala`.
 
 Prefer `Snapshot` (above) over a real run — it renders the same pure view with no
 terminal. When the real thing is needed it takes a pty *with a size* (an unsized pty
