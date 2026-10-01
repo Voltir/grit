@@ -14,17 +14,18 @@ import grit.core.store.{Entry, Payload}
 
 /** Live probe: is the query role's text doubled (one text twice over), and where? The query
   * role's request as retrieval builds it ([[QueryWriter.request]]) for one message, sent
-  * `Calls` times plain and `Calls` times streamed to `Model` on `Pin` (the query role's
-  * catalog pin, set here so that no override in the environment moves it), with each
-  * response's `provider` and stop. A reply is read twice: its raw text (the plain body's
-  * `content`, the stream's `delta.content` joined) and grit's ([[OpenRouterJson.response]],
-  * [[OpenRouterStream.fold]], then [[QueryWriter.text]]). Doubled raw text is the upstream's;
-  * grit's doubled over a single raw text is grit's. Each raw body is saved to a fresh
+  * `Calls` times plain and `Calls` times streamed to the model and upstream the arguments
+  * name (set over any override in the environment; upstream `open` leaves the choice to
+  * OpenRouter), with each response's `provider` and stop. A reply is read twice: its raw text
+  * (the plain body's `content`, the stream's `delta.content` joined) and grit's
+  * ([[OpenRouterJson.response]], [[OpenRouterStream.fold]], then [[QueryWriter.text]]), and is
+  * doubled when [[doubled]] says so. Doubled raw text is the upstream's; grit's doubled over a
+  * single raw text is grit's. Each raw body is saved to a fresh
   * temporary directory, which the run prints.
   *
   * `MaxTokens` caps each call; the run stops once its spend passes `Budget`.
   *
-  * {{{set -a; . ./.env; set +a; ./mill grit.models.test.runMain grit.models.QueryDoubledProbe [--heard] <message>}}}
+  * {{{set -a; . ./.env; set +a; ./mill grit.models.test.runMain grit.models.QueryDoubledProbe <model> <upstream> [--heard] <message>}}}
   *
   * `--heard` sends the message as overheard (an unprompted turn's root) rather than said to
   * grit. Not a test: `./mill __.test` makes no model calls.
@@ -34,8 +35,6 @@ object QueryDoubledProbe {
   private val Calls = 10
   private val MaxTokens = 400
   private val Budget = BigDecimal("0.009")
-  private val Model = "openai/gpt-oss-120b"
-  private val Pin = "cerebras/fp16"
 
   /** One reply: the raw text, grit's query, the upstream that served it, its stop and cost. */
   private final case class Read(
@@ -46,22 +45,23 @@ object QueryDoubledProbe {
       cost: Option[BigDecimal]
   )
 
-  def main(args: Array[String]): Unit = {
-    val heard = args.headOption.contains("--heard")
-    val message = args.dropWhile(_ == "--heard").mkString(" ").trim
-    if (message.isEmpty) println("usage: QueryDoubledProbe [--heard] <message>")
-    else {
-      val env = sys.env ++ Map(
-        ModelRole.Query.modelVar -> Model,
-        ModelRole.Query.upstreamVar -> Pin,
-        ModelRole.Query.maxTokensVar -> MaxTokens.toString
-      )
-      OpenRouterConfig.forRole(env, ModelRole.Query) match {
-        case Left(invalid) => println(invalid)
-        case Right(config) => run(config, entry(message, heard))
-      }
+  def main(args: Array[String]): Unit =
+    args.toList match {
+      case model :: upstream :: rest if rest.dropWhile(_ == "--heard").exists(_.trim.nonEmpty) =>
+        val heard = rest.headOption.contains("--heard")
+        val message = rest.dropWhile(_ == "--heard").mkString(" ").trim
+        val env = sys.env ++ Map(
+          ModelRole.Query.modelVar -> model,
+          // A blank upstream variable is unset: the model's upstream is left open.
+          ModelRole.Query.upstreamVar -> (if (upstream == "open") "" else upstream),
+          ModelRole.Query.maxTokensVar -> MaxTokens.toString
+        )
+        OpenRouterConfig.forRole(env, ModelRole.Query) match {
+          case Left(invalid) => println(invalid)
+          case Right(config) => run(config, entry(message, heard))
+        }
+      case _ => println("usage: QueryDoubledProbe <model> <upstream> [--heard] <message>")
     }
-  }
 
   private def entry(message: String, heard: Boolean): Entry =
     Entry(
@@ -124,18 +124,15 @@ object QueryDoubledProbe {
     println(s"[probe] spent $$$spent${if (spent > Budget) " (stopped at the budget)" else ""}")
   }
 
-  /** `exact` when the text, trimmed, is one shorter text repeated; `spaced` when only its
-    * words are (a repetition with whitespace at the join); `single` otherwise.
+  /** `doubled` when the text's first three words appear again later in it, whether the second
+    * answer follows with whitespace, with none (`…logactualbest main…`) or after text between
+    * the two; `single` otherwise, and for a text of fewer than three words.
     */
-  private def doubled(text: String): String = {
-    def periodic[A](s: Seq[A]): Boolean =
-      s.size >= 2 && (1 to s.size / 2).exists { p =>
-        s.size % p == 0 && s.indices.forall(i => s(i) == s(i % p))
-      }
-    val trimmed = text.trim
-    if (periodic(trimmed)) "exact"
-    else if (periodic(trimmed.split("\\s+").toVector.filter(_.nonEmpty))) "spaced"
-    else "single"
+  private[models] def doubled(text: String): String = {
+    val words = text.trim.split("\\s+").toVector.filter(_.nonEmpty)
+    val joined = words.mkString(" ")
+    val opening = words.take(3).mkString(" ")
+    if (words.size >= 3 && joined.indexOf(opening, opening.length) >= 0) "doubled" else "single"
   }
 
   private def call(
