@@ -1,0 +1,88 @@
+package grit.mcp.edge
+
+import java.util.concurrent.atomic.AtomicReference
+
+import grit.core.edge.{DeskError, Route, ToolRequest}
+import grit.core.tool.{Hosted, Outcome, Retry, Tool, ToolName, ToolSet, Toolbox}
+import grit.edge.{Run, Tools}
+import grit.mcp.client.McpClient
+import grit.mcp.wire.McpTool
+
+/** The requests an edge is sent, run by calling `clients`' servers, wherever they were routed:
+  * a request's tool is found by name in the servers' lists as they stand ([[McpClient.tools]],
+  * listed again when stale), and run as [[Run.request]] runs a tool, its arguments the JSON
+  * object sent. Its answer is [[Outcome.Done]], or [[Outcome.Failed]] with the tool's text
+  * when it marks it `isError`, or naming the server and the [[grit.mcp.wire.McpError]] when
+  * the exchange fails. Before each run, the tools are told to `advertise` when they differ
+  * from those it last took (the first time included); one it refused is told again next run.
+  */
+final class McpTools[C^](
+    clients: Vector[McpClient^{C}],
+    advertise: ToolSet => Either[DeskError, Unit]
+) extends Tools {
+
+  // The set `advertise` last took. Replaced whole; two runs that both find it changed both
+  // advertise the same set, which is harmless.
+  @caps.unsafe.untrackedCaptures
+  private val advertised = new AtomicReference[Option[ToolSet]](None)
+
+  /** The tools the servers' lists offer now, each `{server}_{tool}`, free, and rerun when an
+    * edge dies running it ([[Retry.Rerun]]), in the order of `clients`, then as listed; a name
+    * two servers both offer is the first's. A server whose list cannot be read offers none.
+    * Advertised as [[run]] does.
+    */
+  def offered(): ToolSet = {
+    val set = current().map((_, tool) => McpTools.entry(tool))
+    val offering = ToolSet.of(set).getOrElse(ToolSet.Empty)
+    if (!advertised.get().contains(offering))
+      advertise(offering).foreach(_ => advertised.set(Some(offering)))
+    offering
+  }
+
+  def run(route: Route, request: ToolRequest): Outcome = {
+    val _ = offered()
+    val tools: Vector[Tool.Offered^{C}] = current().flatMap { (at, tool) =>
+      clients.lift(at).toVector.flatMap { client =>
+        Hosted
+          .advertised(McpTools.entry(tool))
+          .toVector
+          .map(hosted => hosted.over(args => McpTools.call(client, tool, args)))
+      }
+    }
+    Toolbox.of[C](tools*) match {
+      case Right(box) => Run.request(request, box)
+      // current() offers each name once.
+      case Left(repeated) =>
+        Outcome.Failed(s"two MCP tools are named ${ToolName.value(repeated.name)}; nothing ran.")
+    }
+  }
+
+  /** Each server's tools as listed now, with its client's index, each name once, the first
+    * server's kept.
+    */
+  private def current(): Vector[(Int, McpTool)] =
+    clients.indices.toVector
+      .flatMap(at =>
+        clients.lift(at).toVector.flatMap(_.tools().fold(_ => Vector.empty, _.tools.map((at, _))))
+      )
+      .distinctBy(_._2.offered)
+}
+
+object McpTools {
+
+  /** `tool` as an edge advertises it. */
+  private def entry(tool: McpTool): ToolSet.Entry =
+    ToolSet.Entry(tool.offered, tool.does, tool.inputSchema, asks = false, Retry.Rerun)
+
+  /** `tool` called on `client`'s server with `args`, as the model reads it. */
+  private def call(client: McpClient^, tool: McpTool, args: ujson.Value): Outcome =
+    args.objOpt match {
+      case None => Outcome.Failed(s"${tool.name}'s arguments are not a JSON object; nothing ran.")
+      case Some(obj) =>
+        client.call(tool, ujson.Obj.from(obj)) match {
+          case Left(error) => Outcome.Failed(s"${client.server.name} ${error.message}")
+          case Right(answer) =>
+            if (answer.isError) Outcome.Failed(answer.text) else Outcome.Done(answer.text)
+        }
+    }
+}

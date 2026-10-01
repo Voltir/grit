@@ -26,7 +26,7 @@ final case class Listed private[client] (tools: Vector[McpTool], skipped: Vector
 /** `server`'s tools and calls, each request a POST of its own (no session), timing out after
   * [[McpClient.Timeout]].
   */
-final class McpClient(server: McpServer, bearer: Bearer, clock: Clock) {
+final class McpClient(val server: McpServer, bearer: Bearer, clock: Clock) {
   import McpClient.*
 
   private val http = HttpClient.newBuilder().connectTimeout(Timeout.toJava).build()
