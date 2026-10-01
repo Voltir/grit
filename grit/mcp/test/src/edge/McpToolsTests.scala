@@ -16,8 +16,8 @@ object McpToolsTests extends TestSuite {
 
   private val Github: Service = Service.of("github").getOrElse(throw new java.lang.AssertionError())
 
-  /** A client of `fake` as the server `github`. */
-  private def client(fake: FakeMcpServer): McpClient^ = {
+  /** A client of `fake` as the server `github`, reading `clock`. */
+  private def client(fake: FakeMcpServer, clock: Clock): McpClient^{clock} = {
     val server = McpServer
       .of("github", fake.endpoint, Token)
       .fold(
@@ -30,7 +30,16 @@ object McpToolsTests extends TestSuite {
         why => throw new java.lang.AssertionError(why.message),
         identity
       )
-    new McpClient(server, bearer, Clock.system())
+    new McpClient(server, bearer, clock)
+  }
+
+  /** The tools over `fake` as the server `github`, advertising with `advertise`. */
+  private def toolsOver(
+      fake: FakeMcpServer,
+      advertise: ToolSet -> Either[DeskError, Unit] = _ => Right(())
+  ): McpTools^ = {
+    val clock = Clock.system()
+    new McpTools(clock, Vector(client(fake, clock)), advertise)
   }
 
   /** A request of `tool` with `arguments`, addressed to `at`. */
@@ -90,9 +99,9 @@ object McpToolsTests extends TestSuite {
       withFake { fake =>
         fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
         fake.answers("get_file_contents", text("# actualbest"))
-        val tools = new McpTools(Vector(client(fake)), _ => Right(()))
+        val mcp = toolsOver(fake)
         val q = request("github_get_file_contents", Read)
-        tools.run(route(q), q) ==> Outcome.Done("# actualbest")
+        mcp.run(route(q), q) ==> Outcome.Done("# actualbest")
         fake.received
           .filter(_.method.contains("tools/call"))
           .map(r => ujson.read(r.body)("params")("arguments")) ==> Vector(Read)
@@ -106,22 +115,22 @@ object McpToolsTests extends TestSuite {
           "get_file_contents",
           ujson.Obj.from(text("no such path").value ++ Seq("isError" -> ujson.True))
         )
-        val tools = new McpTools(Vector(client(fake)), _ => Right(()))
+        val mcp = toolsOver(fake)
         val q = request("github_get_file_contents", Read)
-        tools.run(route(q), q) ==> Outcome.Failed("no such path")
+        mcp.run(route(q), q) ==> Outcome.Failed("no such path")
       }
     }
 
     test("an exchange that fails is Failed, naming the server and why") {
       withFake { fake =>
         fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
-        val tools = new McpTools(Vector(client(fake)), _ => Right(()))
-        tools.offered()
+        val mcp = toolsOver(fake)
+        val _ = mcp.offered()
         fake.refuses(
           Some(FakeMcpServer.Refusal(401, Vector("WWW-Authenticate" -> "Bearer"), ""))
         )
         val q = request("github_get_file_contents", Read)
-        tools.run(route(q), q) ==>
+        mcp.run(route(q), q) ==>
           Outcome.Failed("github refused grit's token (HTTP 401; it asks: Bearer)")
       }
     }
@@ -131,9 +140,9 @@ object McpToolsTests extends TestSuite {
         fake.lists(
           Vector(FakeMcpServer.snap("get_file_contents"), FakeMcpServer.snap("issue_write"))
         )
-        val tools = new McpTools(Vector(client(fake)), _ => Right(()))
+        val mcp = toolsOver(fake)
         val q = request("github_issue_write", ujson.Obj())
-        tools.run(route(q), q) ==> Outcome.Failed(
+        mcp.run(route(q), q) ==> Outcome.Failed(
           "There is no tool named `github_issue_write`; the tools are `github_get_file_contents`."
         )
         fake.count("tools/call") ==> 0
@@ -144,13 +153,13 @@ object McpToolsTests extends TestSuite {
       withFake { fake =>
         fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
         fake.answers("get_file_contents", text("same"))
-        val tools = new McpTools(Vector(client(fake)), _ => Right(()))
+        val mcp = toolsOver(fake)
         val dir = Place.of(Directory.of("/repo").getOrElse(throw new java.lang.AssertionError()))
         Vector(
           request("github_get_file_contents", Read, dir),
           request("github_get_file_contents", Read)
         )
-          .map(q => tools.run(route(q), q)) ==> Vector(Outcome.Done("same"), Outcome.Done("same"))
+          .map(q => mcp.run(route(q), q)) ==> Vector(Outcome.Done("same"), Outcome.Done("same"))
       }
     }
 
@@ -158,13 +167,15 @@ object McpToolsTests extends TestSuite {
       withFake { fake =>
         val snap = FakeMcpServer.snap("get_file_contents")
         fake.lists(Vector(snap))
-        new McpTools(Vector(client(fake)), _ => Right(())).offered().tools ==> Vector(
-          ToolSet.Entry(
-            ToolName("github_get_file_contents"),
-            "Get file or directory contents: Get the contents of a file or directory from a GitHub repository",
-            snap("inputSchema"),
-            asks = false,
-            Retry.Rerun
+        toolsOver(fake).offered().map(_.tools) ==> Right(
+          Vector(
+            ToolSet.Entry(
+              ToolName("github_get_file_contents"),
+              "Get file or directory contents: Get the contents of a file or directory from a GitHub repository",
+              snap("inputSchema"),
+              asks = false,
+              Retry.Rerun
+            )
           )
         )
       }
@@ -174,12 +185,12 @@ object McpToolsTests extends TestSuite {
       withFake { fake =>
         fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
         val adverts = new Adverts()
-        val tools = new McpTools(Vector(client(fake)), adverts.advertise)
+        val mcp = toolsOver(fake, adverts.advertise)
         val q = request("github_get_file_contents", Read)
-        tools.run(route(q), q)
-        tools.run(route(q), q)
+        mcp.run(route(q), q)
+        mcp.run(route(q), q)
         fake.lists(Vector(FakeMcpServer.snap("get_file_contents"), FakeMcpServer.snap("get_me")))
-        tools.run(route(q), q)
+        mcp.run(route(q), q)
         adverts.names ==> Vector(
           Vector("github_get_file_contents"),
           Vector("github_get_file_contents", "github_get_me")
@@ -191,11 +202,11 @@ object McpToolsTests extends TestSuite {
       withFake { fake =>
         fake.lists(Vector(FakeMcpServer.snap("get_file_contents")))
         val adverts = new Adverts(Left(DeskError("down")))
-        val tools = new McpTools(Vector(client(fake)), adverts.advertise)
+        val mcp = toolsOver(fake, adverts.advertise)
         val q = request("github_get_file_contents", Read)
-        tools.run(route(q), q)
-        tools.run(route(q), q)
-        tools.run(route(q), q)
+        mcp.run(route(q), q)
+        mcp.run(route(q), q)
+        mcp.run(route(q), q)
         adverts.names ==> Vector(
           Vector("github_get_file_contents"),
           Vector("github_get_file_contents")

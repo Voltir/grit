@@ -19,9 +19,10 @@ In dependency order:
   `Bearer`, its token read from the environment and never shown; `McpClient`, its tools
   (`Listed`) and calls, each request a POST of its own. The JDK HTTP client lives here alone.
   Imports `wire`.
-- **`edge`** — the servers' tools served at a service place: `McpTools`, the `grit.edge.Tools`
-  that runs a request by calling its server, and tells the edge's desk what to advertise
-  when the lists change. Imports `wire` and `client`.
+- **`edge`** — the servers' tools served at a service place: `McpEdge`, the `ServedEdge` a
+  deployment declares, which registers the place, advertises there and serves it; and
+  `McpTools`, the `grit.edge.Tools` it serves with, which runs a request by calling its server
+  and tells the desk what to advertise when the lists change. Imports `wire` and `client`.
 
 The test tree mirrors it. `client`'s and `edge`'s tests run against `FakeMcpServer`, an MCP server in the
 test JVM (`com.sun.net.httpserver`) that checks every request as the spec's server rules say.

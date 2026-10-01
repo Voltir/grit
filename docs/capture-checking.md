@@ -246,6 +246,18 @@ the caller's side: `args.read(json).map(_.edits.size)`, where `edits: Vector[…
   Vector[Tool.Offered^{C}])`, built by `def of[C^](tools: Tool.Offered^{C}*)`. The type is
   then written `Toolbox[{ws}]`, not `Toolbox^{ws}`.
 
+**A capset parameter a class's body alone uses.**
+
+- *Symptom:* `Reference \`C\` is not included in the allowed capture set 's1 of the enclosing
+  method …`, in a class built as the Toolbox fix above, but only when a file of the same
+  module that constructs or calls it is checked first (it sorts earlier: `McpEdge.scala`
+  before `McpTools.scala`); with that file moved or renamed, it compiles.
+- *Cause:* the class's capture set is inferred from its signature when the other file is
+  checked, where `C` appears only inside `Vector[…^{C}]`, so its methods may not reach `C`.
+- *Fix:* name the capability as a term parameter the elements capture, `final class
+  McpTools(clock: Clock, clients: Vector[McpClient^{clock}], …)`, so the class captures it
+  by signature.
+
 **A wildcard over a class with a `=>` field.**
 
 - *Symptom:* `Found: Tool[String]^{ws}  Required: Tool[?]{val run: (Tool[?]^'s1)#A^'s2 ->'s3

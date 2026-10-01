@@ -2,6 +2,7 @@ package grit.mcp.edge
 
 import java.util.concurrent.atomic.AtomicReference
 
+import grit.core.clock.Clock
 import grit.core.edge.{DeskError, Route, ToolRequest}
 import grit.core.tool.{Hosted, Outcome, Retry, Tool, ToolName, ToolSet, Toolbox}
 import grit.edge.{Run, Tools}
@@ -15,9 +16,14 @@ import grit.mcp.wire.McpTool
   * when it marks it `isError`, or naming the server and the [[grit.mcp.wire.McpError]] when
   * the exchange fails. Before each run, the tools are told to `advertise` when they differ
   * from those it last took (the first time included); one it refused is told again next run.
+  * `clients` read `clock` for their lists' freshness.
   */
-final class McpTools[C^](
-    clients: Vector[McpClient^{C}],
+// `clock` is a parameter, rather than a capture-set parameter over `clients`, so the class's
+// captures are in its signature (docs/capture-checking.md, "A capset parameter a class's body
+// alone uses").
+final class McpTools(
+    clock: Clock,
+    clients: Vector[McpClient^{clock}],
     advertise: ToolSet => Either[DeskError, Unit]
 ) extends Tools {
 
@@ -29,19 +35,22 @@ final class McpTools[C^](
   /** The tools the servers' lists offer now, each `{server}_{tool}`, free, and rerun when an
     * edge dies running it ([[Retry.Rerun]]), in the order of `clients`, then as listed; a name
     * two servers both offer is the first's. A server whose list cannot be read offers none.
-    * Advertised as [[run]] does.
+    * Given to `advertise` as [[run]] gives it; `Left` when `advertise` refused it.
     */
-  def offered(): ToolSet = {
-    val set = current().map((_, tool) => McpTools.entry(tool))
+  def offered(): Either[DeskError, ToolSet] = {
+    val set = McpTools.current(clock, clients).map((_, tool) => McpTools.entry(tool))
     val offering = ToolSet.of(set).getOrElse(ToolSet.Empty)
-    if (!advertised.get().contains(offering))
-      advertise(offering).foreach(_ => advertised.set(Some(offering)))
-    offering
+    if (advertised.get().contains(offering)) Right(offering)
+    else
+      advertise(offering).map { _ =>
+        advertised.set(Some(offering))
+        offering
+      }
   }
 
   def run(route: Route, request: ToolRequest): Outcome = {
     val _ = offered()
-    val tools: Vector[Tool.Offered^{C}] = current().flatMap { (at, tool) =>
+    val tools: Vector[Tool.Offered^{clock}] = McpTools.current(clock, clients).flatMap { (at, tool) =>
       clients.lift(at).toVector.flatMap { client =>
         Hosted
           .advertised(McpTools.entry(tool))
@@ -49,26 +58,26 @@ final class McpTools[C^](
           .map(hosted => hosted.over(args => McpTools.call(client, tool, args)))
       }
     }
-    Toolbox.of[C](tools*) match {
+    Toolbox.of[{clock}](tools*) match {
       case Right(box) => Run.request(request, box)
-      // current() offers each name once.
+      // current offers each name once.
       case Left(repeated) =>
         Outcome.Failed(s"two MCP tools are named ${ToolName.value(repeated.name)}; nothing ran.")
     }
   }
-
-  /** Each server's tools as listed now, with its client's index, each name once, the first
-    * server's kept.
-    */
-  private def current(): Vector[(Int, McpTool)] =
-    clients.indices.toVector
-      .flatMap(at =>
-        clients.lift(at).toVector.flatMap(_.tools().fold(_ => Vector.empty, _.tools.map((at, _))))
-      )
-      .distinctBy(_._2.offered)
 }
 
 object McpTools {
+
+  /** Each of `clients`' tools as listed now, with its client's index, each name once, the
+    * first client's kept.
+    */
+  private def current(clock: Clock, clients: Vector[McpClient^{clock}]): Vector[(Int, McpTool)] =
+    clients
+      .map(_.tools())
+      .zipWithIndex
+      .flatMap((listed, at) => listed.fold(_ => Vector.empty, _.tools.map((at, _))))
+      .distinctBy(_._2.offered)
 
   /** `tool` as an edge advertises it. */
   private def entry(tool: McpTool): ToolSet.Entry =
