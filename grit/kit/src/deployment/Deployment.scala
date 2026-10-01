@@ -7,6 +7,7 @@ import grit.core.id.EdgeName
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
+import grit.core.place.WorksIn
 import grit.core.plugin.Plugin
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
@@ -80,7 +81,8 @@ enum DeploymentRefusal {
   }
 }
 
-/** A deployment of grit, declared in code: the edges it serves, the plugins it posts to, the
+/** A deployment of grit, declared in code: the edges it serves, which conversations with no
+  * directory work in a service one of them hosts ([[WorksIn]]), the plugins it posts to, the
   * model policy its calls are made under (laid over by the model settings the database
   * keeps), what its turns are offered and how their windows are assembled, how messages are
   * placed among topics, the lifecycle's settings, what it may spend a day, whether and within
@@ -91,6 +93,7 @@ enum DeploymentRefusal {
   */
 final case class Deployment private (
     edges: Vector[ServedEdge],
+    worksIn: Vector[WorksIn],
     plugins: Vector[Plugin],
     policy: Policy,
     offer: Offer,
@@ -114,6 +117,7 @@ object Deployment {
     */
   def of(
       edges: Vector[ServedEdge],
+      worksIn: Vector[WorksIn],
       plugins: Vector[Plugin],
       policy: Policy,
       offer: Offer,
@@ -142,6 +146,7 @@ object Deployment {
       }
     } yield Deployment(
       edges,
+      worksIn,
       plugins,
       policy,
       offer,

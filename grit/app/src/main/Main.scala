@@ -474,6 +474,7 @@ object Main {
       deployment <- Deployment
         .of(
           edges = edges,
+          worksIn = Vector.empty,
           plugins = plugins,
           policy = models,
           offer = Offer(offered, rounds),

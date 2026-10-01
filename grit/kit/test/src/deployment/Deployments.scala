@@ -46,6 +46,7 @@ object Deployments {
   ): Either[DeploymentRefusal, Deployment] =
     Deployment.of(
       edges = edges,
+      worksIn = Vector.empty,
       plugins = Vector.empty,
       policy = Policy(assigned, assigned, assigned, assigned),
       offer = Offer(tools, TurnLoop.Budget.of(4).getOrElse(sys.error("rounds"))),

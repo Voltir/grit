@@ -199,7 +199,16 @@ private[grit] object Launch {
     val launching = d.offer.tools match {
       case Offered.Read =>
         everyone.map(tools =>
-          launch(TurnTooling[{store}](tools, Toolbox.Empty, Coding.readOnlyHosted, engine.jot, d.offer.rounds))
+          launch(
+            TurnTooling[{store}](
+              tools,
+              Toolbox.Empty,
+              Coding.readOnlyHosted,
+              engine.jot,
+              d.offer.rounds,
+              worksIn = d.worksIn
+            )
+          )
         )
       case Offered.All =>
         // Offered only to the operator (Audience.operator): they tune grit, and ask first.
@@ -209,7 +218,14 @@ private[grit] object Launch {
             // Refused here, at start, rather than as a failed offer on some turn.
             Toolbox.joined[{tuned, models, store}](tools, operator).map { _ =>
               launch(
-                TurnTooling[{tuned, models, store}](tools, operator, Coding.hosted, engine.jot, d.offer.rounds)
+                TurnTooling[{tuned, models, store}](
+                  tools,
+                  operator,
+                  Coding.hosted,
+                  engine.jot,
+                  d.offer.rounds,
+                  worksIn = d.worksIn
+                )
               )
             }
           case (Left(repeated), _) => Left(repeated)
