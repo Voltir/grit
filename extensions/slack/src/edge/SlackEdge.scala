@@ -38,6 +38,9 @@ final class SlackEdge(
   private val names = new ConcurrentHashMap[UserId, String]()
 
   @caps.unsafe.untrackedCaptures
+  private val channelNames = new ConcurrentHashMap[ChannelId, String]()
+
+  @caps.unsafe.untrackedCaptures
   private val publics = new ConcurrentHashMap[ChannelId, java.lang.Boolean]()
 
   @caps.unsafe.untrackedCaptures
@@ -220,12 +223,18 @@ final class SlackEdge(
       else {
         val mentioned = Mentioned.findAllMatchIn(m.text).map(x => UserId(x.group(1))).toVector
         val known = (m.user +: mentioned).distinct.flatMap(u => nameOf(u).map(u -> _)).toMap
+        val linked = Incoming
+          .channels(m.text)
+          .collect { case (c, None) => c }
+          .distinct
+          .flatMap(c => channelNameOf(c).map(c -> _))
+          .toMap
         val author = PrincipalId(s"slack:${TeamId.value(m.team)}/${UserId.value(m.user)}")
         stores.jot
           .write(stores.principals.enroll(author, known.getOrElse(m.user, UserId.value(m.user))))
           .left
           .map(_.toString)
-          .map(_ => Some((author, Incoming.text(m.text, self.bot, known.get))))
+          .map(_ => Some((author, Incoming.text(m.text, self.bot, known.get, linked.get))))
       }
     }
 
@@ -283,7 +292,7 @@ final class SlackEdge(
             case Right(Some(Root(Some(user), Some(Tag.Sent(key)), text))) if user == self.bot =>
               (CallSlot.read(key), Events.time(Ts.value(m.thread))) match {
                 case (Some(request), Some(at)) =>
-                  val shown = Incoming.text(text, self.bot, _ => None)
+                  val shown = Incoming.text(text, self.bot, _ => None, _ => None)
                   stores.inbox
                     .posted(origin, SourceId(Ts.value(m.thread)), shown, at, request, by)
                     .left
@@ -350,6 +359,22 @@ final class SlackEdge(
         case Right(None) => None
         case Left(e) =>
           said(s"slack: no name for ${UserId.value(user)}: $e")
+          None
+      }
+    }
+
+  /** `channel`'s Slack name, asked of Slack once per channel; `None` when it has none grit may
+    * see, or Slack could not say (the id stands in, and it is asked again next time).
+    */
+  private def channelNameOf(channel: ChannelId): Option[String] =
+    Option(channelNames.get(channel)).orElse {
+      slack.channelName(channel) match {
+        case Right(Some(n)) =>
+          val _ = channelNames.put(channel, n)
+          Some(n)
+        case Right(None) => None
+        case Left(e) =>
+          said(s"slack: no name for channel ${ChannelId.value(channel)}: $e")
           None
       }
     }

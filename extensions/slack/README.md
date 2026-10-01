@@ -18,7 +18,7 @@ In dependency order:
   message of a channel's history by `Events.listed`, under the same rules; and `MessageLink`, the
   channel and thread a message's link names. Imports nothing in slack.
 - **`text`** — Slack's text, both ways: `Incoming`, a person's message as grit stores it
-  (mentions as names, markup written out, escapes undone), and `RichText`, grit's reply (a
+  (mentions and channel links as names, markup written out, escapes undone), and `RichText`, grit's reply (a
   `grit.prose` doc) as Slack messages (`Post`s) of rich-text blocks, within Slack's limits.
   ← `event`
 - **`client`** — Slack as grit uses it: the `Slack` trait (listen, a channel's history, post in a thread or at a channel's top level, find a post by its

@@ -342,6 +342,21 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test(
+      "a channel link reaches the store as the channel's name, asked of Slack once, else its id"
+    ) {
+      val w = new World
+      w.slack.channelNames = w.slack.channelNames.updated(ChannelId("C222"), "ops")
+      w.slack.unreachable = Set(ChannelId("C333"))
+      w.slack.deliver(
+        mention("1.0", s"<@$Bot> in <#C222|>, <#C444|named>, <#C555|> or <#C333|>?")
+      ) ==> true
+      w.stored("1.0", "1.0").map(_._1) ==> Some("in #ops, #named, #C555 or #C333?")
+      w.slack.channelNames = w.slack.channelNames.updated(ChannelId("C222"), "renamed")
+      w.slack.deliver(mention("2.0", s"<@$Bot> and <#C222>?")) ==> true
+      w.stored("2.0", "2.0").map(_._1) ==> Some("and #ops?")
+    }
+
+    test(
       "in a thread grit started every message is a turn; elsewhere only a mention, so a thread grit is pulled into has no history"
     ) {
       val w = new World
