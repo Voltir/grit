@@ -8,8 +8,10 @@ import grit.core.period.{CloseOrdinal, Windows}
 /** Something grit has decided to delete. */
 enum Target {
 
-  /** A closed period's raw entries (every entry of its turns but its closing entry), the
-    * verdicts on it, and its turn, close and settle workflows.
+  /** A closed period's raw entries (every entry of its turns but its closing entry) with
+    * what triage and its shadows made of them, the verdicts on it, and its workflows: its
+    * turns', every attempt to close it, every question asked about it, and every triage and
+    * shadow of a message heard in it ([[grit.core.period.Purgeable]]).
     */
   case Raw(period: PeriodRef)
 
