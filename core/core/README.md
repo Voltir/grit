@@ -8,12 +8,13 @@ In dependency order:
 - **`clock`** — what a function cannot compute: `Clock` (the time) and `Fresh` (values
   no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `EntrySeq`, `WorkflowId`,
-  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `EdgeName`, `PrincipalId`: who an
+  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `ShadowName`, `EdgeName`, `PrincipalId`: who an
   action is done for, `EdgeId`), `CallSlot` (a tool call's place in its turn, and its
   request's key), the one short content hash every content-addressed id uses, `TurnRef` (and its reply entry's id), `PeriodRef`, `CloseRef` (one
   attempt to close a period on its deadline, and its workflow id), `SettleRef` (the one
-  question whether anyone is waiting on a quiet period, and its workflow id) and `TriageRef`
-  (the one triage of a heard message, and its workflow id). Imports nothing in core.
+  question whether anyone is waiting on a quiet period, and its workflow id), `TriageRef`
+  (the one triage of a heard message, and its workflow id) and `ShadowRef` (one shadow
+  variant's run on a heard message, and its workflow id). Imports nothing in core.
 - **`place`** — where conversations happen (ADR 0013): `Place`, a path in one
   containment tree under the root, everywhere, one `Namespace` per source (`fs`, `slack`,
   `task`, `service`), and `within` (a prefix, defined once); `Directory`, an absolute normalized
@@ -33,6 +34,11 @@ In dependency order:
   stored form. Imports nothing in core.
 - **`message`** — the model's vocabulary: `Message`, `AssistantBlock`, `StopReason`,
   `Tokens`, `Usage`, and `Cost` (what calls cost together, and how grit writes it). ← `id`
+- **`classify`** — the classifier seam: `Classifier` (closed questions about a state,
+  answered with a probability per option; Jev's shape; each call one `Request`, which
+  `around` hands to a function before the classifier it wraps, for caching or recording),
+  and `ClassifierError` with its `Kind`, a failure without its words. Above the packages that
+  record what a classifier answered. ← `message`
 - **`topic`** — a conversation's topics as recorded events: `TopicId`, `TopicEvent` (a
   topic opened, a message placed with its `Weights` over topics, a topic described), the
   `Placement` that says who placed it, `Band`, `Verdict`, and `Topics`, the pure fold over
@@ -68,7 +74,10 @@ In dependency order:
   `Budget.Refusal`, the one line a person is told when it is not. ← `id`, `message`, `store`
 - **`triage`** — what grit makes of a message it heard (ADR 0020): `Kind`, `Tags` (triage's
   answer, or none) and `TriageStore`, where they are kept beside their entry and deleted
-  with it. ← `id`, `message`, `period`, `store`
+  with it; `Shadowing` (a shadow variant as the sweep enqueues it, within its daily cap),
+  `Shadowed` (what one variant made of one message) and `TriageShadows`, where those are
+  kept beside the entry and deleted with it. ← `id`, `message`, `period`, `store`, `spend`,
+  `classify`
 - **`speech`** — whether grit speaks where it was not addressed (ADR 0022): `Speaking` (off,
   shadow, or within `Limits`, whose windows are `Rate`s), a heard message as it is weighed
   (`Heard`, its `Reach`), the ledger it is weighed against (`Ledger`, each `Spoken` turn at its
@@ -87,17 +96,15 @@ In dependency order:
   message (`recv`). ← `id`, `store`
 - **`approval`** — `Approval`, a person's answer to a gated tool call, and the message
   that carries it to the turn waiting on its topic. ← `id`
-- **`context`**, **`provider`**, **`inbox`**, **`classify`** — the seams the engine plugs
+- **`context`**, **`provider`**, **`inbox`** — the seams the engine plugs
   into: `ContextAssembler` (and the `Window` it builds, and `Shown`: what the model is
   shown of a window, each line grit writes into it under its `Label`: the record, a
   section from afar, a gap where turns were left out; and a grit label that starts a line
   in text grit did not write, shown as a quoted paste), `Provider` and `Models` (the
-  catalog in force, and a provider per role's pin; ← `model`), `Inbox` (which also
+  catalog in force, and a provider per role's pin; ← `model`), and `Inbox` (which also
   records a message heard where grit listens, not said to it, at the time it was said, says which of a thread's messages it has recorded, answers a turn's gated call, and says how far a turn has got: its `Progress`; the id its entry is kept under is
-  `InboundId`'s), and `Classifier` (closed questions about a state, answered
-  with a probability per option; Jev's shape; each call one `Request`, which `around` hands
-  to a function before the classifier it wraps, for caching or recording). Each names only the packages above, never
-  another of the four.
+  `InboundId`'s). Each names only the packages above, never
+  another of the three.
 - **`stitch`** — a Slack thread's first message joined to an exchange in its room (ADR 0023):
   a `Link` from a conversation to the root it follows, a `Strand` (a root and its direct
   followers, never a chain), `Stitching` (which `Exchange`s a first message is offered, its
