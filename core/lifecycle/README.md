@@ -52,7 +52,8 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   classifier (`ShadowAsking`); `record` keeps what it made of it, every answer, the
   request's digest, both models and the latency, or which kind of failure
   (`grit.core.triage.TriageShadows`). How many are enqueued each day is the sweep's, within
-  the variant's cap (`grit.core.triage.Shadowing`). `ShadowEnv` is what it works with.
+  the variant's cap (`grit.core.triage.Shadowing`). `ShadowEnv` is what it works with, and
+  `ShadowVariant` a variant as a deployment declares it.
   ← `triage`
 - **`post`** — `Posting`: one run posting closed periods to a plugin from its cursor
   (`grit.core.plugin`), on a queue of its own partitioned by plugin (`grit.dbos.workflow.Posts`):

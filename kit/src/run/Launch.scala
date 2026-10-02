@@ -6,12 +6,13 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
-import grit.core.id.{TurnRef, WorkflowId}
+import grit.core.id.{ShadowName, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.model.{Catalog, Pinned}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.period.{LifecycleSettings, Probability}
 import grit.core.place.Weight
+import grit.core.stitch.StitchReads
 import grit.core.store.{Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
 import grit.dbos.engine.Engine
@@ -21,8 +22,9 @@ import grit.kit.environment.Secrets
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
+import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords, TriageSpeech}
-import grit.models.{JevClassifier, OpenRouterModels, Seed, StubClassifier, StubModels}
+import grit.models.{JevClassifier, JevConfig, OpenRouterModels, Seed, StubClassifier, StubModels}
 import grit.tools.{About, Coding, Probes, Tuning}
 import grit.turn.{Turn, TurnEnv, TurnHosting, TurnRecords, TurnTally, TurnTooling}
 
@@ -188,7 +190,25 @@ private[grit] object Launch {
             grit.core.stitch.Tuning.Default
           )
         ),
-        d.plugins
+        d.plugins,
+        Shadow.body(
+          ShadowEnv(
+            StitchReads(
+              engine.entries,
+              engine.conversations,
+              engine.lifecycle,
+              engine.stitches,
+              engine.search,
+              engine.principals
+            ),
+            engine.shadows,
+            variants(d, s),
+            engine.db,
+            Clock.system(),
+            grit.core.stitch.Tuning.Default
+          )
+        ),
+        d.shadows.map(_.shadowing)
       )
       if (sweeping) engine.sweepEvery(d.sweep, Clock.system())
     }
@@ -293,6 +313,50 @@ private[grit] object Launch {
     case (Topics.Stub, _) => new StubClassifier
     case (Topics.Off(reason), _) => Classifier.none(reason)
   }
+
+  /** Each of `d`'s shadows by name, asking in its wording of the classifier `d` places
+    * topics with ([[classifier]]): Jev's of the shadow's model when it names one.
+    */
+  private def variants(d: Deployment, s: Secrets): Map[ShadowName, ShadowAsking^] =
+    asked(d.topics, s.jev, d.shadows.toList)
+
+  // Recursive rather than a `map`: each classifier is a capability made per variant, which
+  // a lambda's result cannot carry out into the map.
+  private def asked(
+      topics: Topics,
+      jev: Option[JevConfig],
+      shadows: List[ShadowVariant]
+  ): Map[ShadowName, ShadowAsking^] =
+    shadows match {
+      case Nil => Map.empty
+      case v :: rest =>
+        val others = asked(topics, jev, rest)
+        (topics, jev) match {
+          case (Topics.Jev, Some(config)) =>
+            val model = v.model.getOrElse(config.model)
+            others.updated(
+              v.name,
+              ShadowAsking(v.wording, model, new JevClassifier(config.copy(model = model)))
+            )
+          case (Topics.Stub, _) =>
+            others.updated(
+              v.name,
+              ShadowAsking(v.wording, v.model.getOrElse(StubClassifier.Model), new StubClassifier)
+            )
+          case (Topics.Jev, None) =>
+            others.updated(
+              v.name,
+              ShadowAsking(
+                v.wording,
+                v.model.getOrElse(JevConfig.DefaultModel),
+                Classifier.none("JEV_API_KEY is not set")
+              )
+            )
+          // Deployment.of refuses shadows with topics off.
+          case (Topics.Off(reason), _) =>
+            others.updated(v.name, ShadowAsking(v.wording, "none", Classifier.none(reason)))
+        }
+    }
 
   /** `models`, each call printed with the model it goes to. */
   private def announced(models: Models): Models =

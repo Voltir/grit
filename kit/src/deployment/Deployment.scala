@@ -3,7 +3,7 @@ package grit.kit.deployment
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.edge.ServedEdge
-import grit.core.id.EdgeName
+import grit.core.id.{EdgeName, ShadowName}
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
@@ -11,6 +11,7 @@ import grit.core.place.{Reaches, WorksIn}
 import grit.core.plugin.Plugin
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
+import grit.lifecycle.shadow.ShadowVariant
 import grit.turn.TurnLoop
 
 /** What every turn's model is offered, at every place, in at most `rounds` model calls. */
@@ -71,6 +72,14 @@ enum DeploymentRefusal {
     */
   case SpeaksUnjudged(topics: String)
 
+  /** Two shadows are named `name`. */
+  case ShadowRepeated(name: ShadowName)
+
+  /** Shadows are declared, but topics are placed with no classifier, so none could be asked.
+    * `topics` says why there is none.
+    */
+  case ShadowsUnasked(topics: String)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
@@ -78,6 +87,9 @@ enum DeploymentRefusal {
     case SweepTooOften(every) => s"the sweep, every $every, must be at least a second apart"
     case SpeaksUnjudged(topics) =>
       s"speaking unprompted needs a classifier to judge each draft, and topics are off: $topics"
+    case ShadowRepeated(name) => s"two shadows are named ${ShadowName.value(name)}"
+    case ShadowsUnasked(topics) =>
+      s"a shadow asks the topics' classifier in its own wording, and topics are off: $topics"
   }
 }
 
@@ -88,7 +100,8 @@ enum DeploymentRefusal {
   * model policy its calls are made under (laid over by the model settings the database
   * keeps), what its turns are offered and how their windows are assembled, how messages are
   * placed among topics, the lifecycle's settings, what it may spend a day, whether and within
-  * what it speaks where it was not addressed (ADR 0022), and how often its engine sweeps. The
+  * what it speaks where it was not addressed (ADR 0022), the shadows of triage's question it
+  * records beside live triage ([[ShadowVariant]]), and how often its engine sweeps. The
   * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
@@ -105,7 +118,8 @@ final case class Deployment private (
     budget: Budget,
     speaking: Speaking,
     sweep: FiniteDuration,
-    reaches: Vector[Reaches]
+    reaches: Vector[Reaches],
+    shadows: Vector[ShadowVariant]
 )
 
 object Deployment {
@@ -113,7 +127,9 @@ object Deployment {
   /** The deployment of these; call it with named arguments. Refused when `offer` asks first
     * ([[Offered.All]]) and an edge cannot answer an ask, when two edges share a name, when
     * `sweep` is under a second, or when it speaks (`speaking` not Off) with `topics` Off: the
-    * topics' classifier is also the judge of each draft. `lifecycle` is written over the
+    * topics' classifier is also the judge of each draft, or when two of `shadows` share a
+    * name, or any is declared with `topics` Off: each shadow asks the topics' classifier, Jev
+    * (of the shadow's own model when it names one) or the stub. `lifecycle` is written over the
     * database's settings on every start, so a change made while grit runs (`/set`, SQL)
     * holds until the next start. What `speaking` spends is counted in `budget` as well as
     * against its own cap ([[grit.core.speech.Limits.spend]]).
@@ -130,7 +146,8 @@ object Deployment {
       budget: Budget,
       speaking: Speaking,
       sweep: FiniteDuration,
-      reaches: Vector[Reaches] = Vector.empty
+      reaches: Vector[Reaches] = Vector.empty,
+      shadows: Vector[ShadowVariant] = Vector.empty
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filterNot(_.answersAsks).map(_.name)
@@ -148,6 +165,18 @@ object Deployment {
           Left(DeploymentRefusal.SpeaksUnjudged(reason))
         case _ => Right(())
       }
+      shadowNames = shadows.map(_.name)
+      _ <- shadowNames
+        .diff(shadowNames.distinct)
+        .headOption
+        .map(DeploymentRefusal.ShadowRepeated(_))
+        .toLeft(())
+      _ <- topics match {
+        // A shadow asks the topics' classifier: with none, it could never be asked.
+        case Topics.Off(reason) if shadows.nonEmpty =>
+          Left(DeploymentRefusal.ShadowsUnasked(reason))
+        case _ => Right(())
+      }
     } yield Deployment(
       edges,
       worksIn,
@@ -160,7 +189,8 @@ object Deployment {
       budget,
       speaking,
       sweep,
-      reaches
+      reaches,
+      shadows
     )
   }
 }

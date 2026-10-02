@@ -57,6 +57,37 @@ object DeploymentTests extends TestSuite {
       )
     }
 
+    test(
+      "two shadows of one name are refused, and shadows with topics off: no classifier could be asked"
+    ) {
+      def variant(name: String) = grit.lifecycle.shadow.ShadowVariant(
+        grit.core.id.ShadowName.of(name).getOrElse(sys.error("a name")),
+        grit.lifecycle.triage.TriageQuestion.Wording.Shipped,
+        None,
+        grit.core.spend.DailyCap.of("0.01").getOrElse(sys.error("a cap")),
+        java.time.Instant.EPOCH
+      )
+      def shadowed(topics: Topics, shadows: String*) =
+        Deployments.of(topics = topics, shadows = shadows.toVector.map(variant)).map(_ => ())
+      (
+        shadowed(Topics.Jev, "words", "replica", "words"),
+        shadowed(Topics.Off("no key"), "words"),
+        shadowed(Topics.Off("no key")),
+        shadowed(Topics.Jev, "words", "replica"),
+        shadowed(Topics.Stub, "words")
+      ) ==> (
+        Left(
+          DeploymentRefusal.ShadowRepeated(
+            grit.core.id.ShadowName.of("words").getOrElse(sys.error("a name"))
+          )
+        ),
+        Left(DeploymentRefusal.ShadowsUnasked("no key")),
+        Right(()),
+        Right(()),
+        Right(())
+      )
+    }
+
     test("a sweep under a second is refused; a second is not") {
       (
         Deployments.of(sweep = 999.millis).map(_ => ()),

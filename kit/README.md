@@ -15,9 +15,11 @@ In dependency order:
 
 - **`deployment`** — what a deployment declares: `Deployment` (built by `Deployment.of`,
   called with named arguments, which refuses tools that ask first beside an edge that cannot
-  answer an ask, two edges of one name, and a sweep under a second), `Offer` and `Offered`
+  answer an ask, two edges of one name, a sweep under a second, two shadows of one name, and
+  shadows with topics off), `Offer` and `Offered`
   (the tools every turn's model is offered), `Assembly` (how a window is assembled),
-  `Topics` (how a message is placed among topics). Beside its edges it declares, by core's
+  `Topics` (how a message is placed among topics), and the shadows of triage's question it
+  records (`grit.lifecycle.shadow.ShadowVariant`). Beside its edges it declares, by core's
   links, which conversations work in a service an edge hosts (`WorksIn`) and which
   conversations' addressed turns also reach one (`Reaches`). Imports nothing in kit.
 - **`environment`** — what the process environment supplies, never declared: `DotEnv` (a
