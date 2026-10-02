@@ -85,10 +85,7 @@ object Spread {
         r,
         Question(r.suite, r.id),
         ws.flatMap {
-          case Weights.Choice(_, ps, _) =>
-            val clean = ps.map(x => if (x >= 0 && !x.isInfinite) x else 0.0)
-            val total = clean.sum
-            if (total > 0) clean.map(_ / total) else clean
+          case Weights.Choice(_, ps, _) => Answers.normalised(ps)
           case Weights.YesNo(yes) => Vector(yes)
         }
       )

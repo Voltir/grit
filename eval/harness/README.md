@@ -46,8 +46,13 @@ Packages, each importing only those above it:
 - **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
   (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
   kept, within the cap; `Repeats`, how many times each is asked. ← `corpus`, `log`, `jev`
-- **`score`** — what a run's log says: `Spread`, how far apart its repeats answered, and how
-  far its answers are from what was kept live. ← `corpus`, `log`
+- **`score`** — what a run's log says: `Answers`, its answers by case, each averaged over its
+  repeats with their spread; `Scoring`, those answers beside the cases and their labels, by
+  `Tag` (waiting, durable, helps), kind and place; the scorers over them (`Brier`,
+  `Reliability`, `Sweep`, and `Cost`, a curve over the cost-of-error ratio), each a mean
+  `Clustered` by exchange and by author and `Split` by the label `context`; `Spread`, how far
+  apart its repeats answered, and how far its answers are from what was kept live.
+  ← `stats`, `corpus`, `label`, `log`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
 
 No source file sits at the module's root.
