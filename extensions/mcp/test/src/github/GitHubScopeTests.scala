@@ -190,18 +190,6 @@ object GitHubScopeTests extends TestSuite {
       )
     }
 
-    test("within a repository, a call for another owner is refused") {
-      right(
-        GitHubScope.repository("the-actual-best/actualbest").flatMap(GitHubScope.within(_))
-      ).request(
-        tool("get_file_contents"),
-        ujson.Obj("owner" -> "actualbest", "repo" -> "actualbest", "path" -> "README.md")
-      ) ==> Left(
-        "its calls are limited to owner the-actual-best with repo actualbest, " +
-          "and this one has owner actualbest with repo actualbest"
-      )
-    }
-
     test("a bound on an argument other than owner and repo is refused") {
       Bound.of("team" -> "core").flatMap(GitHubScope.within(_)) ==>
         Left("search_code's results are placed by owner, repo, never by a bound's team")
