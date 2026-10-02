@@ -14,6 +14,9 @@ corpus's text stays in Postgres, in the database the corpus was restored to.
 
 Packages, each importing only those above it:
 
+- **`stats`** — `Estimate`, a mean with its standard error clustered (CR1), its 95% interval
+  and the least difference a paired comparison of its precision detects, over Student's t;
+  pure, naming nothing of grit's.
 - **`corpus`** — a corpus, text-free: `CaseId`, a heard message's identity outside any one
   database (its Slack channel and ts); `Case`, what a heard message was live, the digests of
   the inputs the shipped builders rebuild for it, and how it clusters; `Manifest`, the
