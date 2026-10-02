@@ -16,7 +16,7 @@ import grit.core.store.{
   Principals,
   StoreError
 }
-import grit.core.triage.TriageStore
+import grit.core.triage.{TriageShadows, TriageStore}
 import grit.dbos.sql.{
   DbConfig,
   SqlConversationStore,
@@ -26,6 +26,7 @@ import grit.dbos.sql.{
   SqlLifecycleStore,
   SqlPrincipals,
   SqlStitchStore,
+  SqlTriageShadows,
   SqlTriageStore
 }
 
@@ -47,6 +48,7 @@ trait Reader extends caps.SharedCapability, AutoCloseable {
   val search: EntrySearch
   val principals: Principals
   val triage: TriageStore
+  val shadows: TriageShadows
 
   /** `id`'s status, the epoch it ran under, and when it was created; `None` when DBOS does not
     * know it, or its tables cannot be read.
@@ -87,6 +89,7 @@ object Reader {
     val search: EntrySearch = new SqlEntrySearch()
     val principals: Principals = new SqlPrincipals()
     val triage: TriageStore = new SqlTriageStore
+    val shadows: TriageShadows = new SqlTriageShadows
 
     def workflow(id: WorkflowId): Option[Recorded] =
       try {

@@ -46,7 +46,7 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   tags, and no draft. It writes no entry, so it never moves a deadline. `TriageEnv` is what
   it works with. ← `transcript`
 - **`shadow`** — `Shadow`: a declared variant's run on a heard message already triaged,
-  recorded and never acted on, on a queue of its own, so it
+  recorded and never acted on, on a queue of its own (`grit.dbos.workflow.Shadows`), so it
   never delays a triage: `ask` rebuilds triage's question as `triage` builds it, from the
   store as it stands now, and asks it once in the variant's wording, of the variant's
   classifier (`ShadowAsking`); `record` keeps what it made of it, every answer, the

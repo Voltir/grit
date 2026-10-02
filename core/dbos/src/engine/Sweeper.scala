@@ -1,11 +1,11 @@
 package grit.dbos.engine
 
-import java.time.Instant
+import java.time.{Instant, ZoneOffset}
 import javax.sql.DataSource
 
 import scala.jdk.CollectionConverters.*
 
-import grit.core.id.{CloseRef, PluginName, SettleRef, WorkflowId}
+import grit.core.id.{CloseRef, PluginName, SettleRef, ShadowRef, WorkflowId}
 import grit.core.plugin.{PluginCursors, PostRef}
 import grit.core.retention.Target
 import grit.core.store.{
@@ -21,10 +21,12 @@ import grit.core.store.{
   UsageLedger
 }
 import grit.core.speech.SpeechStore
-import grit.dbos.workflow.{Closes, Posts, Settles}
+import grit.core.spend.Day
+import grit.core.triage.{Shadowing, TriageShadows}
+import grit.dbos.workflow.{Closes, Posts, Settles, Shadows}
 
 import dev.dbos.transact.DBOSClient
-import dev.dbos.transact.workflow.ListWorkflowsInput
+import dev.dbos.transact.workflow.{ListWorkflowsInput, WorkflowState}
 
 /** One sweep of the lifecycle. Every decision it makes is recomputed from the database, and
   * every action it takes is a workflow under a deterministic id, so a missed or doubled sweep,
@@ -43,7 +45,9 @@ private[engine] final class Sweeper(
     lifecycle: LifecycleStore,
     tombstones: Tombstones,
     cursors: PluginCursors,
-    plugins: () -> Vector[(PluginName, Int)]
+    shadows: TriageShadows,
+    plugins: () -> Vector[(PluginName, Int)],
+    declared: () -> Vector[Shadowing]
 ) {
 
   private val collector = new Collector(
@@ -86,8 +90,11 @@ private[engine] final class Sweeper(
       posted <- plugins().foldLeft[Either[StoreError, Swept]](Right(disabled)) { (acc, p) =>
         acc.flatMap(done => post(p._1, p._2, now).map(done + _))
       }
+      shadowed <- declared().foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) {
+        (acc, s) => acc.flatMap(done => shadow(s, now).map(done + _))
+      }
       collected <- collector.once(settings, now)
-    } yield closed + asked + posted + collected
+    } yield closed + asked + posted + shadowed + collected
 
   /** Every enabled plugin's disabled tombstone spared, and every other plugin with a cursor
     * marked for deletion at `now` ([[Target.Disabled]]); those newly marked are `disabled`.
@@ -183,6 +190,54 @@ private[engine] final class Sweeper(
       }
     }
 
+  /** `variant`'s oldest unshadowed messages enqueued, when none of its shadows is queued or
+    * running, so nothing in flight is counted twice: as many as the rest of its cap for the
+    * UTC day of `now` covers ([[Shadowing.batch]]). A message whose shadow DBOS already has,
+    * finished without keeping a row, is `stuck` and not run again; it keeps its place among
+    * the oldest, and its share of the batch, until its period's purge takes it.
+    */
+  private def shadow(variant: Shadowing, now: Instant): Either[StoreError, Swept] =
+    attempted {
+      client
+        .listWorkflows(
+          new ListWorkflowsInput()
+            .withWorkflowName(Shadows.WorkflowName)
+            .withStatus(WorkflowState.PENDING, WorkflowState.ENQUEUED, WorkflowState.DELAYED)
+        )
+        .asScala
+        .exists(w => ShadowRef.fromWorkflowId(WorkflowId(w.workflowId())).exists(_.name == variant.name))
+    }.flatMap {
+      case true => Right(Swept.nothing)
+      case false =>
+        read {
+          for {
+            spent <- shadows.spent(variant.name, Day.at(now, ZoneOffset.UTC).from)
+            recent <- shadows.recent(variant.name, Shadowing.Recent)
+            n = variant.batch(spent, recent)
+            due <-
+              if (n > 0) shadows.unshadowed(variant.name, variant.since, n)
+              else Right(Vector.empty)
+          } yield due
+        }.flatMap { due =>
+          attempted {
+            due.map(ShadowRef(_, variant.name)).foldLeft(Swept.nothing) { (done, shadow) =>
+              val id = shadow.workflowId
+              Option(client.retrieveWorkflow[String, Exception](WorkflowId.value(id)).getStatus())
+                match {
+                case Some(_) => done + Swept(stuck = Vector(id))
+                case None =>
+                  val _ = client.enqueueWorkflow[String, Exception](
+                    Shadows.enqueueOptions(shadow),
+                    // As `enqueue`'s: the array is empty and DBOS only reads it.
+                    caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
+                  )
+                  done + Swept(shadowed = Vector(shadow))
+              }
+            }
+          }
+        }
+    }
+
   // A repeated enqueue of the same id is a no-op. The array is empty and DBOS only reads
   // it; separation checking treats arrays as mutable.
   private def enqueue(attempt: CloseRef): Unit = {
@@ -196,13 +251,14 @@ private[engine] final class Sweeper(
 
 /** What a sweep did: the close attempts it `enqueued`, the posting runs it enqueued
   * (`posted`), the questions whether anyone is waiting on a quiet period it enqueued
-  * (`asked`), the targets whose tombstones it `collected`, `spared` (found alive) or
-  * `deferred` (a workflow of theirs still queued or running, or waiting on another target),
-  * and the workflows it found `stuck`: a close attempt that finished without closing its
-  * period, whose deadline has not moved since, or a plugin's last run from a cursor it failed
-  * to move [[PostRef.Attempts]] times, and the plugins with a cursor but not enabled whose
-  * documents it newly marked for deletion (`disabled`). A stuck workflow is not run again; a
-  * close is attempted anew once its deadline moves.
+  * (`asked`), the shadows it enqueued (`shadowed`), the targets whose tombstones it
+  * `collected`, `spared` (found alive) or `deferred` (a workflow of theirs still queued or
+  * running, or waiting on another target), and the workflows it found `stuck`: a close
+  * attempt that finished without closing its period, whose deadline has not moved since, a
+  * plugin's last run from a cursor it failed to move [[PostRef.Attempts]] times, or a shadow
+  * that ended keeping nothing; and the plugins with a cursor but not enabled whose documents
+  * it newly marked for deletion (`disabled`). A stuck workflow is not run again; a close is
+  * attempted anew once its deadline moves.
   */
 final case class Swept(
     enqueued: Vector[CloseRef] = Vector.empty,
@@ -212,7 +268,8 @@ final case class Swept(
     asked: Vector[SettleRef] = Vector.empty,
     spared: Vector[Target] = Vector.empty,
     deferred: Vector[Target] = Vector.empty,
-    disabled: Vector[PluginName] = Vector.empty
+    disabled: Vector[PluginName] = Vector.empty,
+    shadowed: Vector[ShadowRef] = Vector.empty
 ) {
   def +(other: Swept): Swept =
     Swept(
@@ -223,7 +280,8 @@ final case class Swept(
       asked ++ other.asked,
       spared ++ other.spared,
       deferred ++ other.deferred,
-      disabled ++ other.disabled
+      disabled ++ other.disabled,
+      shadowed ++ other.shadowed
     )
 }
 

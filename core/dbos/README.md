@@ -10,7 +10,9 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
   row), `SqlVoiceStore` (the voice, one row), `SqlPrincipals` (people by name, and who wrote each inbound entry), `SqlDeliveries` (the replies an edge has yet to post outside grit), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
   as posted from one closing, and its cursor), `SqlTombstones` (what is to be deleted, ADR 0014), `SqlTriageStore`
-  (what triage made of each heard message, deleted with its entry), `SqlSpeechStore` (each
+  (what triage made of each heard message, deleted with its entry), `SqlTriageShadows` (what
+  each declared shadow variant made of a heard message, `grit.triage_shadows`, deleted with its
+  entry), `SqlSpeechStore` (each
   heard message's reach, and grit's decisions to speak or not, kept with their period's usage).
   Imports nothing else in dbos.
 - **`workflow`** — DBOS behind `Durable`: `DbosDurable`, `DurableWorkflow` (registers a
@@ -19,7 +21,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `Turns` (how a turn is known to DBOS: its workflow name and queue), `Closes`, `Settles`
   and `Triages` (the close, settle and triage workflows, on the same queue under the
   conversation's partition, so none runs beside one of its turns), `Posts` (the posting workflow, on a `posts` queue partitioned by
-  plugin). Imports nothing else in dbos.
+  plugin), `Shadows` (the shadow workflow, on a `shadows` queue of its own, one at a time,
+  never the turns' queue). Imports nothing else in dbos.
 - **`engine`** — both, composed: `Link` (an edge's view of the engine: inbox, reads,
   streams, turn status, the holder, its registered edge; `Engine` is one, and
   `Link.attach` another for a process refused the lock), `EngineLock` (the database's one engine, ADR 0015: a
@@ -40,7 +43,9 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   is a new attempt and no workflow is ever deleted to run again, and every other one quiet
   for the settle window has its question enqueued, under an id naming its quiet stretch; every enabled plugin
   behind the newest closed period has a run enqueued from its cursor, up to
-  `PostRef.Attempts` runs from one cursor; what did not finish its work is logged as stuck;
+  `PostRef.Attempts` runs from one cursor; every declared shadow variant none of whose shadows
+  is queued or running has its oldest unshadowed messages enqueued, as many as the rest of its
+  day's cap covers (`grit.core.triage.Shadowing`); what did not finish its work is logged as stuck;
   and every plugin with a cursor but not enabled is marked for
   deletion; then `Collector` collects every tombstone whose kind's window has passed (ADR
   0014): the workflows it names, unless one is still queued or running, then its rows.

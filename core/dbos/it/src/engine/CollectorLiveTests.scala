@@ -546,7 +546,7 @@ object CollectorLiveTests extends TestSuite {
     }
 
     test(
-      "a raw collection finds its period's close attempts, questions and triages by their ids' prefix, and not period 10's; a heard turn, which ran no turn workflow, is no hindrance"
+      "a raw collection finds its period's close attempts, questions, triages and shadows by their ids' prefix, and not period 10's; a heard turn, which ran no turn workflow, is no hindrance"
     ) {
       val config = TestPostgres.freshDatabase("collect_prefix")
       val engine = LiveEngine.open(config, "test")
@@ -598,45 +598,54 @@ object CollectorLiveTests extends TestSuite {
               }))
           )
         )
-        // Workflows named as close attempts and questions on period 1 and on period 10 would
-        // be, whatever their turns: the stand-ins run nothing for any.
+        // Workflows named as close attempts, questions, triages and shadows on period 1 and on
+        // period 10 would be, whatever their turns: the stand-ins run nothing for any.
         val c = ConversationId.value(t0.conversationId)
         val one = Vector(
           WorkflowId(s"close:$c:1:stray"),
           WorkflowId(s"settle:$c:1:stray"),
-          WorkflowId(s"triage:$c:1:stray")
+          WorkflowId(s"triage:$c:1:stray"),
+          WorkflowId(s"shadow:$c:1:1:stray")
         )
         val ten = Vector(
           WorkflowId(s"close:$c:10:stray"),
           WorkflowId(s"settle:$c:10:stray"),
-          WorkflowId(s"triage:$c:10:stray")
+          WorkflowId(s"triage:$c:10:stray"),
+          WorkflowId(s"shadow:$c:10:1:stray")
         )
         val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
         try
           (one ++ ten).foreach { id =>
             val name = WorkflowId.value(id).takeWhile(_ != ':')
+            // A shadow runs on its own queue, which is not partitioned.
+            val options =
+              if (name == "shadow")
+                new EnqueueOptions(name, DurableWorkflow.ClassName, QueueName.of("shadows"))
+                  .withWorkflowId(WorkflowId.value(id))
+              else
+                new EnqueueOptions(name, DurableWorkflow.ClassName, QueueName.of("turns"))
+                  .withWorkflowId(WorkflowId.value(id))
+                  .withQueuePartitionKey(c)
             val _ = client.enqueueWorkflow[String, Exception](
-              new EnqueueOptions(name, DurableWorkflow.ClassName, QueueName.of("turns"))
-                .withWorkflowId(WorkflowId.value(id))
-                .withQueuePartitionKey(c),
+              options,
               // Empty, and DBOS only reads it; separation checking treats arrays as mutable.
               caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
             )
           }
         finally client.close()
-        assert(eventually(kept(config, one) == Vector(3, 0)))
-        assert(eventually(kept(config, ten) == Vector(3, 0)))
+        assert(eventually(kept(config, one) == Vector(4, 0)))
+        assert(eventually(kept(config, ten) == Vector(4, 0)))
         // The collector waits for a workflow still running; these all end at once.
         assert(
           eventually(
             ended(config, s"close:$c:") && ended(config, s"settle:$c:") &&
-              ended(config, s"triage:$c:")
+              ended(config, s"triage:$c:") && ended(config, s"shadow:$c:")
           )
         )
         engine.sweep(Instant.now().plusSeconds(180)).map(_.collected) ==> Right(
           Vector(Target.Raw(p1))
         )
-        (kept(config, one :+ triaged), kept(config, ten)) ==> (Vector(0, 0), Vector(3, 0))
+        (kept(config, one :+ triaged), kept(config, ten)) ==> (Vector(0, 0), Vector(4, 0))
       } finally engine.close()
     }
 

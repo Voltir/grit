@@ -447,6 +447,38 @@ CREATE TABLE IF NOT EXISTS grit.triage (
        AND (kind IS NOT NULL OR cost_usd IS NULL))
 );
 
+-- What each declared shadow variant made of a heard message already triaged
+-- (grit.core.triage.Shadowed), one row per message and variant: recorded, never acted on. The
+-- request's digest, and either every answer (keys and probabilities, grit.core.triage.ShadowedJson),
+-- what the call consumed and the models requested and answering, or which kind of failure;
+-- and how long the call took. Not grit.shadows: speech's shadow mode is another thing.
+-- Retention: journal: deleted with its entry, so with its period's raw entries (Target.Raw).
+CREATE TABLE IF NOT EXISTS grit.triage_shadows (
+    entry_id        TEXT NOT NULL REFERENCES grit.entries(id) ON DELETE CASCADE,
+    name            TEXT NOT NULL CHECK (name ~ '^[a-z0-9-]+$'),
+    at              TIMESTAMPTZ NOT NULL,
+    request         TEXT NOT NULL,
+    latency_ms      BIGINT NOT NULL CHECK (latency_ms >= 0),
+    failure         TEXT CHECK (failure IN ('unavailable', 'unreadable')),
+    answers         JSONB,
+    requested       TEXT,
+    answered        TEXT,
+    input_tokens    BIGINT CHECK (input_tokens >= 0),
+    output_tokens   BIGINT CHECK (output_tokens >= 0),
+    cached_tokens   BIGINT CHECK (cached_tokens >= 0),
+    cost_usd        NUMERIC,
+    PRIMARY KEY (entry_id, name),
+    CHECK ((failure IS NULL) = (answers IS NOT NULL)
+       AND (answers IS NULL) = (requested IS NULL)
+       AND (answers IS NULL) = (answered IS NULL)
+       AND (answers IS NULL) = (input_tokens IS NULL)
+       AND (answers IS NULL) = (output_tokens IS NULL)
+       AND (answers IS NULL) = (cached_tokens IS NULL)
+       AND (answers IS NOT NULL OR cost_usd IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_triage_shadows_name_at ON grit.triage_shadows (name, at);
+
 -- Where a reply to each heard message could go, and whom it names (grit.core.speech.Reach): its
 -- edge's own address, NULL when it is never answered (a past message), and the principals it
 -- names besides the assistant. Written by Inbox.hear; the first kept stands.
