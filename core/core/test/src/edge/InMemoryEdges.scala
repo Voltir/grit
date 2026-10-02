@@ -10,7 +10,7 @@ import grit.core.tool.{Outcome, Retry, ToolSet}
 
 /** In-memory [[ToolRequests]], [[EdgeDirectory]] and [[Desks]] for tests, keeping
   * [[EdgesContract]]. It ignores the `Tx`. Each answer an edge gives is also kept in
-  * [[told]], in order: what the turn waiting on it would receive.
+  * [[told]], in order.
   */
 final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
 
@@ -74,6 +74,12 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
           RequestState.Expired
       }
     }
+
+  def answered(slot: CallSlot)(using Tx^): Either[StoreError, Option[Outcome]] =
+    row(slot).map(_.state match {
+      case RequestState.Answered(outcome) => Some(outcome)
+      case _ => None
+    })
 
   def serving(place: Place)(using Tx^): Either[StoreError, Option[Advert]] =
     Right(

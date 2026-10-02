@@ -1,19 +1,20 @@
 package grit.app.main
 
 import scala.concurrent.duration.*
+import scala.util.Using
 
-import grit.core.edge.{Route, ToolRequest}
-import grit.core.id.{PrincipalId, SourceId}
+import grit.core.edge.{Desk, OutcomeJson, Route, ToolRequest}
+import grit.core.id.{PrincipalId, SourceId, TurnRef, WorkflowId}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
 import grit.core.place.{Namespace, Place, Reaches}
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
-import grit.core.store.{Origin, Payload}
+import grit.core.store.{Origin, Payload, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
-import grit.dbos.engine.LiveEngine
-import grit.dbos.sql.{DbConfig, TestPostgres}
+import grit.dbos.engine.{Engine, LiveEngine}
+import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.edge.{Server, Tools}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
 import grit.kit.environment.Secrets
@@ -26,7 +27,7 @@ import utest.*
 
 /** Against Postgres and DBOS: a deployment whose tasks reach Slack's posting service, launched
   * as the kit launches it, offers a task's turn the tool an edge serves there, and its call is
-  * answered by that edge.
+  * answered by that edge, which rings the turn; the turn reads the answer from the request.
   */
 object ReachLiveTests extends TestSuite {
 
@@ -88,48 +89,104 @@ object ReachLiveTests extends TestSuite {
       Outcome.Done(s"noted at ${request.workspace.written}")
   }
 
+  /** A task's turn in a fresh database `name`, its call answered by an edge serving
+    * [[Noting]] at [[SlackEdge.PostsAt]], awaited; `check` then reads the engine and the turn.
+    */
+  private def reached[A](name: String)(check: (Engine^, DbConfig, TurnRef) => A): A = {
+    val config = TestPostgres.freshDatabase(name)
+    val engine = LiveEngine.open(config, Turn.Epoch)
+    try {
+      Launch(engine, deployment, secrets(config), Launch.Run.Served, sweeping = false, _ => ())
+      val place = SlackEdge.PostsAt.place
+      val desk = engine.register(PrincipalId.Grit, Set(place)) match {
+        case Right(d) => d
+        case Left(e) => sys.error(e.why)
+      }
+      desk.advertise(place, Noting.offered, Vector.empty).fold(e => sys.error(e.why), identity)
+      val server = new Server(
+        desk,
+        Noting,
+        run => { val _ = Thread.ofVirtual().start(() => run()) },
+        _ => ()
+      )
+      server.serve()
+      try {
+        // The stub calls the first tool offered: with no workspace, the reached one.
+        val turn = (for {
+          turn <- engine.inbox.ingest(
+            Origin.Task("reach", name),
+            SourceId(s"$name-1"),
+            Message.User(s"note it ${StubProvider.CallMarker}{}"),
+            PrincipalId.Local
+          )
+          _ <- engine.inbox.startTurn(turn)
+        } yield turn).fold(e => sys.error(s"inbox: $e"), identity)
+        val _ = engine.awaitTurn(turn)
+        check(engine, config, turn)
+      } finally server.close()
+    } finally engine.close()
+  }
+
+  /** The first column of `sql`'s rows as text, its one parameter `param`. */
+  private def column(config: DbConfig, sql: String, param: String): Vector[String] =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(conn.prepareStatement(sql)) { ps =>
+        ps.setString(1, param)
+        Using.resource(ps.executeQuery()) { rs =>
+          val out = Vector.newBuilder[String]
+          while (rs.next()) out += rs.getString(1)
+          out.result()
+        }
+      }
+    }
+
   val tests = Tests {
+    test(
+      "an edge's answer is kept in its request and the turn's result entry only: the turn is rung, never sent it"
+    ) {
+      reached("reach_rung") { (_, config, turn) =>
+        val id = WorkflowId.value(turn.workflowId)
+        val answer = "noted at service:slack"
+        // The outcome, once on the request's row and once in the result entry it became.
+        column(config, "SELECT outcome::text FROM grit.tool_requests WHERE workflow_id = ?", id)
+          .map(ujson.read(_)) ==> Vector(OutcomeJson.write(Outcome.Done(answer)))
+        column(
+          config,
+          "SELECT payload #>> '{message,content}' FROM grit.entries WHERE payload ->> 'shown' IS NOT NULL AND id LIKE '%' || ? || '%'",
+          id
+        ) ==> Vector(answer)
+        // DBOS keeps a String as a JSON string: the ring, in the message and in the turn's
+        // journal of its wait. The answer is in no step but the summary, which the stub
+        // writes by quoting the turn.
+        val ring = ujson.write(ujson.Str(Desk.Doorbell))
+        column(config, "SELECT message FROM dbos.notifications WHERE destination_uuid = ?", id) ==>
+          Vector(ring)
+        column(
+          config,
+          "SELECT output FROM dbos.operation_outputs WHERE workflow_uuid = ? AND function_name = 'DBOS.recv'",
+          id
+        ) ==> Vector(ring)
+        column(
+          config,
+          s"SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = ? AND output LIKE '%$answer%'",
+          id
+        ) ==> Vector("summarise")
+      }
+    }
+
     test(
       "a task's turn, its deployment reaching service:slack, calls the tool served there, and keeps the answer"
     ) {
-      val config = TestPostgres.freshDatabase("reach")
-      val engine = LiveEngine.open(config, Turn.Epoch)
-      try {
-        Launch(engine, deployment, secrets(config), Launch.Run.Served, sweeping = false, _ => ())
-        val place = SlackEdge.PostsAt.place
-        val desk = engine.register(PrincipalId.Grit, Set(place)) match {
-          case Right(d) => d
-          case Left(e) => sys.error(e.why)
-        }
-        desk.advertise(place, Noting.offered, Vector.empty).fold(e => sys.error(e.why), identity)
-        val server = new Server(
-          desk,
-          Noting,
-          run => { val _ = Thread.ofVirtual().start(() => run()) },
-          _ => ()
+      reached("reach") { (engine, _, turn) =>
+        engine.db
+          .read(engine.entries.list(turn.conversationId))
+          .fold(e => sys.error(e.toString), identity)
+          .collect { case e if e.turnSeq == turn.turnSeq => e.payload }
+          .collect { case Payload.Result(r, _) => r } ==> Vector(
+          Message.ToolResult(StubProvider.CallId, "noted at service:slack", isError = false)
         )
-        server.serve()
-        try {
-          // The stub calls the first tool offered: with no workspace, the reached one.
-          val turn = (for {
-            turn <- engine.inbox.ingest(
-              Origin.Task("reach", "live"),
-              SourceId("reach-1"),
-              Message.User(s"note it ${StubProvider.CallMarker}{}"),
-              PrincipalId.Local
-            )
-            _ <- engine.inbox.startTurn(turn)
-          } yield turn).fold(e => sys.error(s"inbox: $e"), identity)
-          val _ = engine.awaitTurn(turn)
-          engine.db
-            .read(engine.entries.list(turn.conversationId))
-            .fold(e => sys.error(e.toString), identity)
-            .collect { case e if e.turnSeq == turn.turnSeq => e.payload }
-            .collect { case Payload.Result(r, _) => r } ==> Vector(
-            Message.ToolResult(StubProvider.CallId, "noted at service:slack", isError = false)
-          )
-        } finally server.close()
-      } finally engine.close()
+      }
     }
   }
 }

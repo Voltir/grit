@@ -26,6 +26,11 @@ trait ToolRequests {
     * `StoreError.Invalid` when no request has its key.
     */
   def abandon(slot: CallSlot)(using Tx^): Either[StoreError, RequestState]
+
+  /** The outcome the request at `slot` was answered with; `None` while it is open or claimed,
+    * or once it expired. `StoreError.Invalid` when no request has its key.
+    */
+  def answered(slot: CallSlot)(using Tx^): Either[StoreError, Option[Outcome]]
 }
 
 /** Where a request stands for the turn that made it. */

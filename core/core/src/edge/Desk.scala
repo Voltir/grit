@@ -28,9 +28,9 @@ trait Desk extends caps.SharedCapability {
     */
   def claim(request: ToolRequest): Either[DeskError, Boolean]
 
-  /** Answers the request at `slot`, which this session claimed, with `outcome`, and tells the
-    * turn waiting on it; false, and nothing told, when the turn stopped waiting first.
-    * Repeating it is harmless.
+  /** Answers the request at `slot`, which this session claimed, with `outcome`, and rings the
+    * turn waiting on it ([[Desk.Doorbell]]); false, and nothing rung, when the turn stopped
+    * waiting first. Repeating it is harmless.
     */
   def answer(slot: CallSlot, outcome: Outcome): Either[DeskError, Boolean]
 
@@ -50,6 +50,14 @@ trait Desk extends caps.SharedCapability {
       tools: ToolSet,
       instructions: Vector[Fragment]
   ): Either[DeskError, Unit]
+}
+
+object Desk {
+
+  /** What [[Desk.answer]] sends the turn waiting on the request: a wake-up, never the outcome,
+    * which the turn reads from the request.
+    */
+  val Doorbell: String = "answered"
 }
 
 /** Where an edge registers the places it hosts (ADR 0017). */

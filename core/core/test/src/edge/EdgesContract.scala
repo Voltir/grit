@@ -139,10 +139,27 @@ abstract class EdgesContract extends TestSuite {
       transaction(requests.abandon(r.slot)) ==> Right(RequestState.Answered(Outcome.Done("first")))
     }
 
-    test("a request no request has is Invalid, naming its key") {
+    test("a key no request has is Invalid to settle and to answered, naming it") {
       val slot = request("none", 9, place("none")).slot
       transaction(requests.settle(slot)) ==>
         Left(StoreError.Invalid(s"no tool request ${slot.key}"))
+      transaction(requests.answered(slot)) ==>
+        Left(StoreError.Invalid(s"no tool request ${slot.key}"))
+    }
+
+    test("answered is an answered request's outcome, and None while open, claimed or expired") {
+      val here = place("answered")
+      val open = request("answered", 0, here)
+      val claimed = request("answered", 1, here)
+      val answered = request("answered", 2, here)
+      val expired = request("answered", 3, here)
+      val d = desk(Set(here))
+      dispatched(open, claimed, answered, expired)
+      (d.claim(claimed), d.claim(answered)) ==> (Right(true), Right(true))
+      d.answer(answered.slot, Outcome.Done("text")) ==> Right(true)
+      transaction(requests.settle(expired.slot)) ==> Right(RequestState.Expired)
+      Vector(open, claimed, answered, expired).map(r => transaction(requests.answered(r.slot))) ==>
+        Vector(Right(None), Right(None), Right(Some(Outcome.Done("text"))), Right(None))
     }
 
     test("an orphan declared Interrupt is answered Interrupted, and never run again") {

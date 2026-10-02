@@ -1,7 +1,8 @@
 # 0017. A tool call is a durable request addressed to a workspace, and run by an edge hosting it
 
 Status: accepted (2026-09-27); amended (2026-09-30): service places; amended (2026-10-01): a
-service place's reach; amended (2026-10-01): services an addressed turn reaches. Extends
+service place's reach; amended (2026-10-01): services an addressed turn reaches; amended
+(2026-10-02): the turn is rung, and reads the answer from the row. Extends
 0002 and 0010; supersedes 0009's in-step run for the tools an edge hosts.
 
 Context: the engine ran every tool call in its own step, over the directory the engine's
@@ -33,8 +34,10 @@ Decision:
   settled by the retry its tool declares (`ToolSpec.retry`), never by its gate: `Rerun`
   claims it again for the edge that finds it, in one statement; `Interrupt` answers it
   `Interrupted`, and it is never run again. The gate is permission; the retry is idempotency.
-- **The answer is written on the row, then sent** to the waiting turn under the slot's key as
-  topic and idempotency key (ADR 0010's mechanism); the row is the truth when a send is lost.
+- **The answer is written on the row, then the waiting turn is rung** under the slot's key as
+  topic and idempotency key (ADR 0010's mechanism), with a constant that carries no outcome;
+  the turn reads the answer from the row in the step that keeps it, so the row is its one
+  transport copy, and the truth when a ring is lost.
 - **A protocol version rides on each request**; an edge answers a later one that it is too
   old.
 - **A workspace is a directory or a service place (later, a repository place).** An
@@ -64,9 +67,9 @@ Decision:
   model probe) runs in the turn as before, under ADR 0009.
 
 Consequences: no open edge means no access, which the turn is told. A tool call costs a
-round trip through Postgres (a dispatch, a NOTIFY, a claim, the run, an update, a send, the
-turn's wake) instead of a function call. Requests are journal-class: `PeriodStore.purge`
-deletes a period's turns' requests with their entries. Enforced by `EdgesContract` (in
+round trip through Postgres (a dispatch, a NOTIFY, a claim, the run, an update, a ring, the
+turn's wake and its read) instead of a function call. Requests are journal-class:
+`PeriodStore.purge` deletes a period's turns' requests with their entries. Enforced by `EdgesContract` (in
 memory and SQL), `EdgesTests`, `ServerTests`, `EdgeLiveTests`, `PeriodContract`, for a
 service place's reach, `McpScopeTests` and `McpClientTests`, and, for a reached service,
 `TurnOfferTests` and `TurnHostedTests`.

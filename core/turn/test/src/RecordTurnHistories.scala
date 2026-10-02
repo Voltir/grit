@@ -349,13 +349,15 @@ object RecordTurnHistories {
 
     /** One turn whose model calls `first` in its first reply and answers after, its hosted
       * calls sent to an edge that treats each as `serve` says (unadvertised when `advertised`
-      * is false), `answers` (call id, approval) sent once it reaches its first ask.
+      * is false), `answers` (call id, approval) sent once it reaches its first ask, its
+      * entries crashing where `crash` says.
       */
     def hosting(
         first: Vector[(String, String, ujson.Value)],
         serve: grit.core.edge.ToolRequest -> Serve,
         advertised: Boolean = true,
-        answers: Vector[(String, grit.core.approval.Approval)] = Vector.empty
+        answers: Vector[(String, grit.core.approval.Approval)] = Vector.empty,
+        crash: Option[grit.core.store.Entry -> Boolean] = None
     ): History = {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -374,7 +376,7 @@ object RecordTurnHistories {
           durable.send(turn.workflowId, topic, grit.core.approval.Approval.encode(approval))
         }
       }
-      run(store)
+      run(crash.fold[grit.core.store.EntryStore](store)(new CrashOnInsert(store, _)))
       recorded(durable, turn)
     }
 
@@ -535,6 +537,12 @@ object RecordTurnHistories {
       "hosted-orphaned" -> hosting(
         Vector(("h1", "fetch", ujson.Obj("path" -> "a.txt"))),
         _ => Serve.Claimed
+      ),
+      // Rung, its `DBOS.recv` recorded, and crashed keeping the answer in `tool:0:0`.
+      "hosted-rung-crashed-before-tool" -> hosting(
+        Vector(("h1", "fetch", ujson.Obj("path" -> "a.txt"))),
+        _ => Serve.Now(grit.core.tool.Outcome.Done("alpha")),
+        crash = Some(_.payload.isInstanceOf[Payload.Result])
       )
     )
   }

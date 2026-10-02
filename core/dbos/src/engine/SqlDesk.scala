@@ -23,8 +23,8 @@ import org.slf4j.LoggerFactory
 /** [[Desk]] over Postgres (ADR 0017): the edge's registration in `grit.edges`, live for as
   * long as `conn`, a connection of its own, holds its advisory lock; `conn` also listens for
   * dispatched requests and writes the heartbeat, from the one thread that calls [[await]].
-  * Everything else runs on `dataSource`, from any thread. An answer is sent to its turn
-  * through `client`.
+  * Everything else runs on `dataSource`, from any thread. The turn waiting on an answer is
+  * rung through `client`.
   */
 final class SqlDesk private (
     conn: Connection,
@@ -100,7 +100,7 @@ final class SqlDesk private (
       slot.key,
       session.toString
     ).map { rows =>
-      if (rows == 1) tell(slot, json)
+      if (rows == 1) tell(slot)
       rows == 1
     }
   }
@@ -129,7 +129,7 @@ final class SqlDesk private (
                   q.slot.key,
                   dead
                 ).map { rows =>
-                  if (rows == 1) tell(q.slot, json)
+                  if (rows == 1) tell(q.slot)
                   reruns
                 }
               case Retry.Rerun =>
@@ -186,11 +186,12 @@ final class SqlDesk private (
     try conn.close()
     catch { case NonFatal(_) => () }
 
-  /** Tells the turn waiting on `slot` its outcome, `json`. The row is the truth: a turn that
-    * is not waiting, or a send that fails, is left to read it there.
+  /** Rings the turn waiting on `slot` with [[Desk.Doorbell]]; the turn reads the answer from
+    * the row. A turn that is not waiting, or a ring that fails, is left to read it there when
+    * its wait ends.
     */
-  private def tell(slot: CallSlot, json: String): Unit =
-    try client.send(WorkflowId.value(slot.turn.workflowId), json, slot.key, slot.key)
+  private def tell(slot: CallSlot): Unit =
+    try client.send(WorkflowId.value(slot.turn.workflowId), Desk.Doorbell, slot.key, slot.key)
     catch {
       case NonFatal(e) =>
         LoggerFactory.getLogger("grit.edge").debug(s"not told ${slot.key}: ${e.getMessage}")

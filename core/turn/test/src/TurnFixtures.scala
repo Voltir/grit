@@ -16,7 +16,7 @@ import grit.core.triage.{Kind, Tags}
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.{Durable, InMemoryDurable}
-import grit.core.edge.{InMemoryEdges, OutcomeJson, Registration, ToolRequest}
+import grit.core.edge.{InMemoryEdges, Registration, ToolRequest}
 import grit.core.id.{CallSlot, ConversationId, EntryId, PrincipalId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.place.{Directory, Place, Reaches, WorksIn}
 import grit.core.prompt.{Fragment, SystemPrompt, Voice}
@@ -372,11 +372,17 @@ object TurnFixtures {
 
     /** Not claimed: no edge takes it. */
     case Never
+
+    /** Claimed, and the turn rung without an answer. */
+    case Rung
+
+    /** Claimed, then deleted as a purge would, and the turn rung. */
+    case Lost
   }
 
   /** The edge at `at`, the fixture directory unless given, over `edges`: live, it serves each
-    * request the turn sends as `serve` says, telling the turn's workflow in `durable` its
-    * answer as a desk does. Every request it is sent is kept in [[sent]].
+    * request the turn sends as `serve` says, keeping its answer and ringing the turn's
+    * workflow in `durable` as a desk does. Every request it is sent is kept in [[sent]].
     */
   final class Served(
       val edges: InMemoryEdges,
@@ -403,8 +409,10 @@ object TurnFixtures {
     }
 
     private def tell(q: ToolRequest, outcome: Outcome): Unit =
-      if (edges.answerAs(registration, q.slot, outcome))
-        durable.send(q.slot.turn.workflowId, q.slot.key, ujson.write(OutcomeJson.write(outcome)))
+      if (edges.answerAs(registration, q.slot, outcome)) ring(q)
+
+    private def ring(q: ToolRequest): Unit =
+      durable.send(q.slot.turn.workflowId, q.slot.key, grit.core.edge.Desk.Doorbell)
 
     def dispatch(requests: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit] =
       edges.dispatch(requests).map(_ => requests.foreach(take))
@@ -418,6 +426,13 @@ object TurnFixtures {
         case Serve.Later(o) =>
           if (edges.claimAs(registration, q)) later = later.updated(q.slot, o)
         case Serve.Now(o) => if (edges.claimAs(registration, q)) tell(q, o)
+        case Serve.Rung => if (edges.claimAs(registration, q)) ring(q)
+        case Serve.Lost =>
+          if (edges.claimAs(registration, q)) {
+            val t = q.slot.turn
+            edges.forget(t.conversationId, t.turnSeq, t.turnSeq)
+            ring(q)
+          }
       }
     }
 
@@ -436,6 +451,9 @@ object TurnFixtures {
 
     def abandon(slot: CallSlot)(using Tx^): Either[StoreError, grit.core.edge.RequestState] =
       edges.abandon(slot)
+
+    def answered(slot: CallSlot)(using Tx^): Either[StoreError, Option[Outcome]] =
+      edges.answered(slot)
   }
 
   /** The edges `first` and `rest`, over `first`'s [[InMemoryEdges]]: each request dispatched
@@ -458,6 +476,9 @@ object TurnFixtures {
 
     def abandon(slot: CallSlot)(using Tx^): Either[StoreError, grit.core.edge.RequestState] =
       first.edges.abandon(slot)
+
+    def answered(slot: CallSlot)(using Tx^): Either[StoreError, Option[Outcome]] =
+      first.edges.answered(slot)
   }
 
   /** The turn's workflow body over `entries` and `provider`, its hosted calls sent through

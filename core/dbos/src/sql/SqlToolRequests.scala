@@ -18,7 +18,7 @@ import grit.core.model.CatalogJson
 import grit.core.place.Place
 import grit.core.prompt.FragmentId
 import grit.core.store.{StoreError, Tx}
-import grit.core.tool.{Retry, ToolName, ToolSetId}
+import grit.core.tool.{Outcome, Retry, ToolName, ToolSetId}
 
 /** [[ToolRequests]] over `grit.tool_requests`. */
 final class SqlToolRequests extends ToolRequests {
@@ -69,6 +69,13 @@ final class SqlToolRequests extends ToolRequests {
 
   def abandon(slot: CallSlot)(using tx: Tx^): Either[StoreError, RequestState] =
     SqlToolRequests.expire(slot, "state IN ('open', 'claimed')")
+
+  def answered(slot: CallSlot)(using tx: Tx^): Either[StoreError, Option[Outcome]] =
+    SqlToolRequests.standing(slot).flatMap {
+      case None => Left(StoreError.Invalid(s"no tool request ${slot.key}"))
+      case Some(("answered", Some(outcome))) => SqlToolRequests.outcome(slot, outcome).map(Some(_))
+      case Some(_) => Right(None)
+    }
 }
 
 /** [[EdgeDirectory]] over `grit.edges` and `grit.edge_places`, live by `pg_locks`. */
@@ -198,6 +205,22 @@ private[dbos] object SqlToolRequests {
         ps.setString(1, slot.key)
         ps.executeUpdate()
       }
+    }.flatMap(_ => standing(slot)).flatMap {
+      case None => Left(StoreError.Invalid(s"no tool request ${slot.key}"))
+      case Some(("expired", _)) => Right(RequestState.Expired)
+      case Some(("answered", Some(json))) => outcome(slot, json).map(RequestState.Answered(_))
+      case Some((_, _)) => Right(RequestState.Claimed)
+    }
+  }
+
+  /** The state of the request at `slot` and its outcome's JSON; `None` when no request has
+    * its key.
+    */
+  def standing(
+      slot: CallSlot
+  )(using tx: Tx^): Either[StoreError, Option[(String, Option[String])]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
       Using.resource(
         conn.prepareStatement("SELECT state, outcome::text FROM grit.tool_requests WHERE key = ?")
       ) { ps =>
@@ -206,16 +229,13 @@ private[dbos] object SqlToolRequests {
           Option.when(rs.next())((rs.getString(1), Option(rs.getString(2))))
         )
       }
-    }.flatMap {
-      case None => Left(StoreError.Invalid(s"no tool request ${slot.key}"))
-      case Some(("expired", _)) => Right(RequestState.Expired)
-      case Some(("answered", Some(outcome))) =>
-        OutcomeJson
-          .read(ujson.read(outcome))
-          .map(RequestState.Answered(_))
-          .left
-          .map(why => StoreError.DatabaseError(s"tool request ${slot.key}: $why"))
-      case Some((_, _)) => Right(RequestState.Claimed)
     }
   }
+
+  /** The outcome `json` holds, the request at `slot`'s; `DatabaseError` when it cannot be read. */
+  def outcome(slot: CallSlot, json: String): Either[StoreError, Outcome] =
+    OutcomeJson
+      .read(ujson.read(json))
+      .left
+      .map(why => StoreError.DatabaseError(s"tool request ${slot.key}: $why"))
 }

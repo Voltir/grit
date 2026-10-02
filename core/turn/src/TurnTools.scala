@@ -129,6 +129,14 @@ object TurnTools {
     ): Either[TurnFailure, Settled] =
       settle(slot, call, named, at)(() => Right(outcome))
 
+    /** The call answered, unrun, with what `read` finds in the store, in a transaction of its
+      * own, shown as `named`; `read` runs only when no result is kept.
+      */
+    def answerFrom(slot: Slot, call: ToolCallId, named: String, at: Instant)(
+        read: (Tx^) ?=> Outcome
+    ): Either[TurnFailure, Settled] =
+      settle(slot, call, named, at)(() => jot.write(Right(read)).left.map(storeFailure))
+
     /** `free` run. */
     def run(
         slot: Slot,

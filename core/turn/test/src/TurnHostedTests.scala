@@ -269,6 +269,57 @@ object TurnHostedTests extends TestSuite {
         )
     }
 
+    test("a turn rung by its edge keeps the outcome its request holds, not the ring's message") {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "fetch")
+      val durable = new InMemoryDurable
+      val edge = served(durable, _ => Serve.Now(Outcome.Done("alpha")))
+      durable.run(turn.workflowId)(
+        hostedBody(entries, model(("t1", "fetch", "a.txt")), edge)
+      ) ==> Done
+      durable.history(turn.workflowId).collect { case s if s.name == "DBOS.recv" => s.outcome } ==>
+        Vector(InMemoryDurable.Outcome.Output(grit.core.edge.Desk.Doorbell))
+      val slot = TurnTools.Slot(turn, TurnLoop.Round.First, 0)
+      entries
+        .get(slot.resultId)(using grit.dbos.sql.TestTx.fake)
+        .toOption
+        .flatten
+        .map(_.payload) ==>
+        Some(
+          grit.core.store.Payload
+            .Result(Message.ToolResult(ToolCallId("t1"), "alpha", false), "fetch a.txt")
+        )
+    }
+
+    test(
+      "a turn rung while its request holds no answer, or no request is kept, settles the call failed and runs on"
+    ) {
+      val outcomes = Vector(Serve.Rung, Serve.Lost).map { serve =>
+        val entries = new InMemoryEntryStore
+        val turn = say(entries, "fetch")
+        val durable = new InMemoryDurable
+        val provider = model(("t1", "fetch", "a.txt"))
+        val ran =
+          durable.run(turn.workflowId)(hostedBody(entries, provider, served(durable, _ => serve)))
+        (ran, results(provider).map(r => (r.content, r.isError)))
+      }
+      outcomes ==> Vector(
+        (
+          Done,
+          Vector(
+            (
+              "The edge rang, but its request holds no answer, so this call's result is unknown.",
+              true
+            )
+          )
+        ),
+        (
+          Done,
+          Vector(("This call's request is no longer kept, so its result is unknown.", true))
+        )
+      )
+    }
+
     test(
       "a claimed request never answered is abandoned as interrupted, and its edge's late answer is refused"
     ) {
