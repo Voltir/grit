@@ -28,7 +28,7 @@ import grit.eval.harness.label.Labels
 import grit.eval.harness.log.{Cache, Cached, Footer, Header, LogJson, Outcome, Row, Suite, Weights}
 import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
-import grit.eval.harness.score.Spread
+import grit.eval.harness.score.{Decision, Paired, Rule, Scoring, Spread}
 import grit.kit.environment.DotEnv
 import grit.models.JevClassifier
 import grit.models.JevConfig
@@ -47,7 +47,12 @@ object Main {
       case "inputs" :: rest =>
         exit(flags(rest.filterNot(_ == "--more")).flatMap(inputs(_, rest.contains("--more"))))
       case "score" :: rest => exit(flags(rest).flatMap(score))
-      case "compare" :: rest => exit(flags(rest).flatMap(compare))
+      case "compare" :: rest =>
+        flags(rest).flatMap(compare) match {
+          case Right(0) => ()
+          case Right(code) => sys.exit(code)
+          case Left(why) => exit(Left(why))
+        }
       case _ =>
         exit(
           Left(
@@ -289,22 +294,37 @@ object Main {
       _ <- publish(dir, run.name.stripSuffix(".jsonl"), Report.score(run))
     } yield ()
 
-  /** `compare --eval <dir> --a <name> --b <name> [--labels <file>]`: run B against run A, both
-    * in `<dir>/runs/`, written to `<dir>/reports/<A>-vs-<B>.md` (each name less `.jsonl`) and
-    * printed; the labels as for `score`.
+  /** `compare --eval <dir> --a <name> --b <name> [--labels <file>] [--decide <rule file>]`: run
+    * B against run A, both in `<dir>/runs/`, written to `<dir>/reports/<A>-vs-<B>.md` (each name
+    * less `.jsonl`) and printed; the labels as for `score`. With `--decide`, what the rule makes
+    * of them too, and the exit code says it: 0 adopt B, 3 refused, 4 keep A.
     */
-  private def compare(f: Map[String, String]): Either[String, Unit] =
+  private def compare(f: Map[String, String]): Either[String, Int] =
     for {
       dir <- need(f, "eval").map(Path.of(_))
       labels <- labelsAt(dir, f)
       a <- need(f, "a").flatMap(scored(dir, _, labels))
       b <- need(f, "b").flatMap(scored(dir, _, labels))
+      rule <- f
+        .get("decide")
+        .fold(Right(None))(r => read(Path.of(r)).flatMap(Rule.read).map(Some(_)))
+      decided = rule.map(r =>
+        r -> Decision.of(
+          r,
+          b.log.header,
+          Paired.of(r, Scoring(a.cases, a.answers, labels), Scoring(b.cases, b.answers, labels))
+        )
+      )
       _ <- publish(
         dir,
         s"${a.name.stripSuffix(".jsonl")}-vs-${b.name.stripSuffix(".jsonl")}",
-        Report.compare(a, b)
+        Report.compare(a, b, decided)
       )
-    } yield ()
+    } yield decided.fold(0)(_._2 match {
+      case Decision.Adopted(_) => 0
+      case Decision.Refused(_) => 3
+      case Decision.Kept(_) => 4
+    })
 
   /** The labels `--labels` names, else `<dir>/labels.json`; none when that file does not exist. */
   private def labelsAt(dir: Path, f: Map[String, String]): Either[String, Labels] = {

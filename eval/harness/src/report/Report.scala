@@ -11,8 +11,11 @@ import grit.eval.harness.score.{
   Clustered,
   Comparison,
   Cost,
+  Decision,
+  Refusal,
   Reliability,
   Repeated,
+  Rule,
   Scoring,
   Spending,
   Split,
@@ -64,10 +67,10 @@ object Report {
   }
 
   /** Run `b` against run `a`, paired on the cases both answered: B − A per question, the cases
-    * whose decision changed by id, and, once labels exist, the paired difference in Brier score,
-    * all and by context, with its MDE.
+    * whose decision changed by id, once labels exist the paired difference in Brier score, all
+    * and by context, with its MDE, and what `decided` says a rule made of them, when given.
     */
-  def compare(a: Scored, b: Scored): String = {
+  def compare(a: Scored, b: Scored, decided: Option[(Rule, Decision)] = None): String = {
     val lines = Vector(
       s"# compare: ${a.name} (A) and ${b.name} (B)",
       "",
@@ -78,8 +81,31 @@ object Report {
       labelLine(b),
       ""
     ) ++ spending(a, "A") ++ spending(b, "B") ++ moved(a, b) ++ changes(a, b) ++
-      (if (b.labelled == 0) Vector.empty else brierPaired(a, b))
+      (if (b.labelled == 0) Vector.empty else brierPaired(a, b)) ++
+      decided.toVector.flatMap(decision)
     lines.mkString("\n") + "\n"
+  }
+
+  private def decision(rule: Rule, d: Decision): Vector[String] = {
+    def diff(e: Estimate) = s"B − A: ${est(Some(e))}, MDE ${num(e.mde)}"
+    val (what, by) = d match {
+      case Decision.Adopted(e) => ("adopt B", Some(e))
+      case Decision.Kept(e) => ("keep A", Some(e))
+      case Decision.Refused(Refusal.OtherRule) =>
+        ("refused: run B was not started under this rule", None)
+      case Decision.Refused(Refusal.Unclustered) =>
+        ("refused: the difference has under two clusters", None)
+      case Decision.Refused(Refusal.UnderMde(e)) =>
+        ("refused: the difference is under its MDE", Some(e))
+      case Decision.Refused(Refusal.UnderLeast(e)) =>
+        (s"refused: the difference is under the rule's least, ${num(rule.least)}", Some(e))
+    }
+    Vector(
+      "## Decision",
+      "",
+      s"rule: ${Target.written(rule.question)} by ${rule.metric.toString.toLowerCase}, " +
+        s"least ${num(rule.least)}, digest ${rule.digest.hex.take(12)}"
+    ) ++ by.map(diff).toVector ++ Vector(s"decision: $what", "")
   }
 
   private def labelLine(run: Scored): String =
@@ -146,7 +172,7 @@ object Report {
 
   private def labelled(run: Scored): Vector[String] = {
     val s = Scoring(run.cases, run.answers, run.labels)
-    val briers = Target.all.map(q => q -> brier(q, s))
+    val briers = Target.all.map(q => q -> Brier.of(q, s))
     Vector(
       "## Brier score",
       "",
@@ -171,12 +197,6 @@ object Report {
           )
         )
       }
-  }
-
-  private def brier(q: Target, s: Scoring): Vector[(Case, Double)] = q match {
-    case Target.Tagged(t) => Brier.tag(s.tag(t))
-    case Target.Kinds => Brier.kind(s.kind)
-    case Target.Places => Brier.place(s.place)
   }
 
   private def tagged(name: String, s: Scoring): Vector[String] =
@@ -281,8 +301,8 @@ object Report {
     val (sa, sb) = (Scoring(a.cases, a.answers, b.labels), Scoring(b.cases, b.answers, b.labels))
     Vector("## Brier score, B − A", "", "Negative: B is better.", "", ContextHeader, ContextRule) ++
       Target.all.map { q =>
-        val was = brier(q, sa).map((c, v) => c.id -> v).toMap
-        val diff = brier(q, sb).flatMap((c, v) => was.get(c.id).map(x => c -> (v - x)))
+        val was = Brier.of(q, sa).map((c, v) => c.id -> v).toMap
+        val diff = Brier.of(q, sb).flatMap((c, v) => was.get(c.id).map(x => c -> (v - x)))
         contextRow(Target.written(q), Split.of(diff, b.labels))
       } :+ ""
   }

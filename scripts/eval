@@ -46,11 +46,15 @@
 #       over the cost-of-error ratio, all and by the label context (ok, short). Every mean
 #       has its 95% interval clustered by exchange, and by author beside it.
 #
-#   scripts/eval compare <runs file A> <runs file B> [--labels <file>]
+#   scripts/eval compare <runs file A> <runs file B> [--labels <file>] [--decide <rule>]
 #       Run B against run A, paired on the cases both answered: B - A per question, the
 #       cases each question's decision fixed, broke or moved, by id, and once labels exist
 #       the paired difference in Brier score with its MDE. Written to
-#       .local/eval/reports/<A>-vs-<B>.md and printed.
+#       .local/eval/reports/<A>-vs-<B>.md and printed. With --decide, the adoption rule in
+#       <rule> (JSON: {"question": "durable", "metric": "brier", "better": "lower",
+#       "least": 0.01}) judges B over A, and the exit code says what it decided: 0 adopt B,
+#       3 refused (B was not run with --rule <rule>, or the difference is under its MDE or
+#       the rule's least), 4 keep A.
 #
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.

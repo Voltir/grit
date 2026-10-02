@@ -31,6 +31,13 @@ object Brier {
       c -> placing.ps.zipWithIndex.map((p, i) => square(p - (if (i == at) 1.0 else 0.0))).sum
     )
 
+  /** Each case's score on `q`: [[tag]], [[kind]] or [[place]] over what `s` pairs. */
+  def of(q: Target, s: Scoring): Vector[(Case, Double)] = q match {
+    case Target.Tagged(t) => tag(s.tag(t))
+    case Target.Kinds => kind(s.kind)
+    case Target.Places => place(s.place)
+  }
+
   private def square(x: Double): Double = x * x
 }
 
