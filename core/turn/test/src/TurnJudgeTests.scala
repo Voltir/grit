@@ -56,6 +56,7 @@ object TurnJudgeTests extends TestSuite {
       state.thread ==>
         "Ana: when is the freeze?\nAssistant: Thursday.\nBen: is it still on?\nSomeone: said after"
       assert(state.recalled.contains("The freeze moved."), !state.recalled.contains("when is"))
+      state.recalled.split("\n\n").size ==> 1
     }
 
     test(
@@ -102,6 +103,7 @@ object TurnJudgeTests extends TestSuite {
         state.recalled.contains("I marked up the contract."),
         !state.recalled.contains("where did we land")
       )
+      state.recalled.split("\n\n").size ==> 3
     }
 
     test(
