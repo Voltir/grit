@@ -3,7 +3,7 @@ package grit.core.stitch
 import java.time.Instant
 
 import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question}
-import grit.core.id.{ConversationId, EntryId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.message.{Tokens, Usage}
 import grit.core.place.{Namespace, Place}
 import grit.core.store.{Entry, Payload}
@@ -32,7 +32,7 @@ object StitchFixtures {
         ConversationId(s"$channel/$thread"),
         TurnSeq.First,
         None,
-        seq,
+        EntrySeq(seq),
         Payload.Heard(text),
         Now.minusSeconds(secondsAgo)
       )

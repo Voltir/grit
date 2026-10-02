@@ -2,7 +2,7 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.model.{
   Assignment,
@@ -75,7 +75,7 @@ abstract class StoreContract extends TestSuite {
       c,
       turn,
       parent.map(EntryId(_)),
-      seq,
+      EntrySeq(seq),
       Payload.Message(Message.User(id)),
       Instant.EPOCH
     )
@@ -153,13 +153,13 @@ abstract class StoreContract extends TestSuite {
 
     test("lockNext is the start of an empty conversation, and past everything in one") {
       val c = conversation("next")
-      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq.First, 0L))
+      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq.First, EntrySeq(0)))
       transaction {
         entries.insert(entry(c, "late", 4, TurnSeq(2)))
         entries.insert(entry(c, "early", 1, TurnSeq(0)))
         entries.insert(entry(conversation("next-other"), "beyond", 9, TurnSeq(5)))
       }
-      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq(3), 5L))
+      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq(3), EntrySeq(5)))
     }
 
     test("the ledger gives back what was recorded, the cost exactly and its absence as None") {

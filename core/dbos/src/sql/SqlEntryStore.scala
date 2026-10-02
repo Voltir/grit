@@ -6,7 +6,7 @@ import java.time.{OffsetDateTime, ZoneOffset}
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.id.{ConversationId, EntryId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.store.{Entry, EntryStore, PayloadJson, StoreError, Tx}
 
 import org.postgresql.util.PSQLException
@@ -30,7 +30,7 @@ final class SqlEntryStore extends EntryStore {
         ps.setString(2, ConversationId.value(entry.conversationId))
         ps.setLong(3, TurnSeq.value(entry.turnSeq))
         ps.setString(4, entry.parentId.map(EntryId.value).orNull)
-        ps.setLong(5, entry.seq)
+        ps.setLong(5, EntrySeq.value(entry.seq))
         ps.setString(6, PayloadJson.write(entry.payload).render())
         ps.setObject(7, entry.createdAt.atOffset(ZoneOffset.UTC))
         ps.executeUpdate()
@@ -44,7 +44,7 @@ final class SqlEntryStore extends EntryStore {
         )
       ) { ps =>
         ps.setLong(1, TurnSeq.value(entry.turnSeq))
-        ps.setLong(2, entry.seq)
+        ps.setLong(2, EntrySeq.value(entry.seq))
         ps.setString(3, ConversationId.value(entry.conversationId))
         ps.executeUpdate()
       }
@@ -105,8 +105,9 @@ final class SqlEntryStore extends EntryStore {
         ps.setString(1, ConversationId.value(conversation))
         Using.resource(ps.executeQuery()) { rs =>
           // A conversation not (or no longer) recorded has nothing in it to come after.
-          if (rs.next()) EntryStore.Next(TurnSeq(rs.getLong("next_turn")), rs.getLong("next_seq"))
-          else EntryStore.Next(TurnSeq.First, 0L)
+          if (rs.next())
+            EntryStore.Next(TurnSeq(rs.getLong("next_turn")), EntrySeq(rs.getLong("next_seq")))
+          else EntryStore.Next(TurnSeq.First, EntrySeq.First)
         }
       }
     }
@@ -144,7 +145,7 @@ private[dbos] object SqlEntryStore {
       conversationId = ConversationId(rs.getString("conversation_id")),
       turnSeq = TurnSeq(rs.getLong("turn_seq")),
       parentId = Option(rs.getString("parent_id")).map(EntryId(_)),
-      seq = rs.getLong("seq"),
+      seq = EntrySeq(rs.getLong("seq")),
       // A payload that does not decode is grit's own bug, not a caller's
       // expected failure; `attempt` reports the throw as a DatabaseError.
       payload = PayloadJson.read(ujson.read(rs.getString("payload"))) match {

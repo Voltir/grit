@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.context.AssemblyNote
 import grit.core.durable.{History, InMemoryDurable}
-import grit.core.id.TurnRef
+import grit.core.id.{EntrySeq, TurnRef}
 import grit.core.store.{InMemoryEntryStore, InMemoryUsageLedger, Payload}
 
 /** Writes this epoch's recorded turn histories, one per shape a turn can leave behind,
@@ -156,7 +156,7 @@ object RecordTurnHistories {
           api,
           grit.core.id.TurnSeq(0),
           None,
-          0,
+          EntrySeq(0),
           Payload.Message(grit.core.message.Message.User("the invoice test is flaky")),
           java.time.Instant.EPOCH
         )
@@ -189,7 +189,7 @@ object RecordTurnHistories {
           ops,
           grit.core.id.TurnSeq(3),
           None,
-          4,
+          EntrySeq(4),
           Payload.Closed(
             grit.core.id.PeriodSeq.First,
             grit.core.period.CloseReason.Lapsed,

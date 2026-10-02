@@ -4,7 +4,7 @@ import java.time.{Instant, ZoneOffset}
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PrincipalId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
@@ -34,7 +34,7 @@ object SpeechTests extends TestSuite {
 
   private val heard = Heard(
     turn,
-    10,
+    EntrySeq(10),
     room,
     now.minusSeconds(60),
     Reach(Some("C/1"), Set.empty),
@@ -44,7 +44,12 @@ object SpeechTests extends TestSuite {
   private val empty = Ledger(Vector.empty, Spend.Zero, Spend.Zero)
 
   private def posted(conversation: String, seq: Long, at: Instant, in: Place = room) =
-    Spoken(TurnRef(ConversationId(conversation), TurnSeq(seq)), in, at, Stage.Posted(seq + 1))
+    Spoken(
+      TurnRef(ConversationId(conversation), TurnSeq(seq)),
+      in,
+      at,
+      Stage.Posted(EntrySeq(seq + 1))
+    )
 
   private def decide(
       h: Heard = heard,
@@ -108,7 +113,7 @@ object SpeechTests extends TestSuite {
       test("an earlier unprompted turn here posted after this message") {
         val previous = TurnRef(ConversationId("c"), TurnSeq(3))
         val l = empty.copy(turns =
-          Vector(Spoken(previous, room, now.minusSeconds(30 * 60 * 60), Stage.Posted(11)))
+          Vector(Spoken(previous, room, now.minusSeconds(30 * 60 * 60), Stage.Posted(EntrySeq(11))))
         )
         assert(decide(l = l) == held(Silence.Unanswered(previous)))
       }
@@ -205,7 +210,7 @@ object SpeechTests extends TestSuite {
       "a person's reply does not hold a draft; the assistant's own reply after its root does, in its thread or its strand"
     ) {
       def entry(n: Long, payload: Payload, c: String = "c", at: Instant = now) =
-        Entry(EntryId(s"$c$n"), ConversationId(c), TurnSeq(n), None, n, payload, at)
+        Entry(EntryId(s"$c$n"), ConversationId(c), TurnSeq(n), None, EntrySeq(n), payload, at)
       val root = entry(10, Payload.Heard("where did we land?"))
       val reply = Payload.Message(
         Message.Assistant(

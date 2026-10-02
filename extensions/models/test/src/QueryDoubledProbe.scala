@@ -7,7 +7,7 @@ import java.time.Instant
 import scala.util.control.NonFatal
 
 import grit.assembly.retrieval.QueryWriter
-import grit.core.id.{ConversationId, EntryId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.message.{Message, Usage}
 import grit.core.provider.ProviderError
 import grit.core.store.{Entry, Payload}
@@ -69,7 +69,7 @@ object QueryDoubledProbe {
       ConversationId("probe"),
       TurnSeq.First,
       None,
-      0L,
+      EntrySeq(0),
       if (heard) Payload.Heard(message) else Payload.Message(Message.User(message)),
       Instant.EPOCH
     )

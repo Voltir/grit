@@ -2,7 +2,7 @@ package grit.app.chat
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.store.{Entry, Payload}
 import grit.core.topic.{Band, Placement, TopicEvent, TopicId, Verdict, Weights}
 
@@ -20,7 +20,7 @@ object TopicsViewTests extends TestSuite {
       c,
       TurnSeq(turn),
       None,
-      seq,
+      EntrySeq(seq),
       Payload.Topic(events.toVector),
       Instant.EPOCH
     )

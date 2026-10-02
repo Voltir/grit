@@ -7,7 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.approval.Approval
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.durable.{Durable, StreamWriter}
-import grit.core.id.{EntryId, TurnRef, WorkflowId}
+import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile}
 import grit.core.place.Place
@@ -1359,8 +1359,8 @@ object Turn {
       near <- nearbyOf(entries, window).left.map(storeFailure)
       named <- principals.speakers((all ++ near).map(_.id)).left.map(storeFailure)
       sent <- requestOf(offer.system, all, near, turn, window, named).map(shape)
-      written <- recorded match {
-        case WindowRecord.OwnStep => Right(0)
+      replySeq <- recorded match {
+        case WindowRecord.OwnStep => Right(next.seq)
         case WindowRecord.WithReply => writeWindow(records, turn, window, next.seq, at)
       }
       _ <- entries
@@ -1370,7 +1370,7 @@ object Turn {
             turn.conversationId,
             turn.turnSeq,
             None,
-            next.seq + written,
+            replySeq,
             payload,
             at
           )
@@ -1399,16 +1399,16 @@ object Turn {
     } yield windowId(turn)
 
   /** Writes each query `window`'s notes say assembly wrote, as [[queryId]] with its own
-    * cost, then the window itself, as [[windowId]], from position `from`, dated `at`; how many
-    * entries that was.
+    * cost, then the window itself, as [[windowId]], from position `from`, dated `at`; the
+    * position after the last one written.
     */
   private def writeWindow(
       records: TurnRecords,
       turn: TurnRef,
       window: Window,
-      from: Long,
+      from: EntrySeq,
       at: Instant
-  )(using Tx^): Either[TurnFailure, Int] = {
+  )(using Tx^): Either[TurnFailure, EntrySeq] = {
     val TurnRecords(entries, ledger, _, _, _) = records
     val queries = window.notes.collect { case q: AssemblyNote.Queried => q }
     val recalled = window.notes.flatMap {
@@ -1416,16 +1416,16 @@ object Turn {
       case _ => Vector.empty
     }
     for {
-      _ <- queries.zipWithIndex.foldLeft[Either[TurnFailure, Unit]](Right(())) {
+      windowSeq <- queries.zipWithIndex.foldLeft[Either[TurnFailure, EntrySeq]](Right(from)) {
         case (done, (q, i)) =>
-          done.flatMap { _ =>
+          done.flatMap { seq =>
             val qid = queryId(turn, i)
             val entry = Entry(
               qid,
               turn.conversationId,
               turn.turnSeq,
               None,
-              from + i,
+              seq,
               Payload.Query(q.query),
               at
             )
@@ -1434,6 +1434,7 @@ object Turn {
               .flatMap(_ => ledger.record(qid, turn, turn.workflowId, q.model, q.usage, q.estimate))
               .left
               .map(storeFailure)
+              .map(_ => seq.next)
           }
       }
       _ <- entries
@@ -1443,14 +1444,14 @@ object Turn {
             turn.conversationId,
             turn.turnSeq,
             None,
-            from + queries.size,
+            windowSeq,
             Payload.Window(window.entries, recalled, window.nearby),
             at
           )
         )
         .left
         .map(storeFailure)
-    } yield queries.size + 1
+    } yield windowSeq.next
   }
 
   private def storeFailure(error: StoreError): TurnFailure = TurnFailure.Store(describe(error))

@@ -2,7 +2,7 @@ package grit.app.chat
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Flows, Probability}
 import grit.core.store.{Entry, Payload}
@@ -18,7 +18,15 @@ object FollowTests extends TestSuite {
   private val c = ConversationId("c")
 
   private def entry(seq: Long, turn: Long, message: Message): Entry =
-    Entry(EntryId(s"e$seq"), c, TurnSeq(turn), None, seq, Payload.Message(message), Instant.EPOCH)
+    Entry(
+      EntryId(s"e$seq"),
+      c,
+      TurnSeq(turn),
+      None,
+      EntrySeq(seq),
+      Payload.Message(message),
+      Instant.EPOCH
+    )
 
   private def user(seq: Long, turn: Long, text: String) = entry(seq, turn, Message.User(text))
 
@@ -53,7 +61,7 @@ object FollowTests extends TestSuite {
         c,
         TurnSeq(1),
         None,
-        2,
+        EntrySeq(2),
         Payload.Closed(
           PeriodSeq.First,
           CloseReason.Resolved(Probability.of(0.86).getOrElse(sys.error("p"))),
@@ -93,7 +101,7 @@ object FollowTests extends TestSuite {
 
     test("a turn's tool loop arrives as one line per call, with what it came to, in order") {
       def at(seq: Long, p: Payload) =
-        Entry(EntryId(s"x$seq"), c, TurnSeq(0), None, seq, p, Instant.EPOCH)
+        Entry(EntryId(s"x$seq"), c, TurnSeq(0), None, EntrySeq(seq), p, Instant.EPOCH)
       def result(seq: Long, id: String, content: String, failed: Boolean, shown: String) =
         at(
           seq,
@@ -144,7 +152,7 @@ object FollowTests extends TestSuite {
     test("a running turn's call that asks is told once, and put away once it moves on") {
       val call = grit.core.id.ToolCallId("t1")
       def at(seq: Long, p: Payload) =
-        Entry(EntryId(s"x$seq"), c, TurnSeq(0), None, seq, p, Instant.EPOCH)
+        Entry(EntryId(s"x$seq"), c, TurnSeq(0), None, EntrySeq(seq), p, Instant.EPOCH)
       val asking = Vector(user(0, 0, "edit it"), at(1, Payload.Ask(call, "Edit a.txt")))
       val turn = TurnRef(c, TurnSeq(0))
       val (waiting, first) = Follow.step(Follow.start, asking, all(running("ask:0:0")))
@@ -211,7 +219,7 @@ object FollowTests extends TestSuite {
         c,
         TurnSeq(0),
         None,
-        2,
+        EntrySeq(2),
         Payload.Summary("greeted"),
         Instant.EPOCH
       )

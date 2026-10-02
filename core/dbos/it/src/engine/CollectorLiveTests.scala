@@ -11,6 +11,7 @@ import grit.core.id.{
   CloseRef,
   ConversationId,
   EntryId,
+  EntrySeq,
   PeriodRef,
   PeriodSeq,
   PluginName,
@@ -316,7 +317,7 @@ object CollectorLiveTests extends TestSuite {
     )
     val heard = grit.core.speech.Heard(
       turn,
-      0,
+      EntrySeq(0),
       grit.core.place.Place.Everywhere,
       Instant.now(),
       grit.core.speech.Reach.Nowhere,

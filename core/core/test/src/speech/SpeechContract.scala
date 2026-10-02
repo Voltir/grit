@@ -2,7 +2,7 @@ package grit.core.speech
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, PrincipalId, TurnRef}
+import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, PrincipalId, TurnRef}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
@@ -61,7 +61,7 @@ abstract class SpeechContract extends TestSuite {
   private def heardAs(turn: TurnRef): Heard =
     Heard(
       turn,
-      0,
+      EntrySeq(0),
       room,
       At,
       Reach(Some("C/1"), Set.empty),

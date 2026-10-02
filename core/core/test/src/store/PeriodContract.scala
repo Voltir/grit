@@ -9,6 +9,7 @@ import grit.core.id.{
   CloseRef,
   ConversationId,
   EntryId,
+  EntrySeq,
   PeriodRef,
   PeriodSeq,
   PrincipalId,
@@ -186,7 +187,7 @@ abstract class PeriodContract extends TestSuite {
             c,
             TurnSeq(0),
             None,
-            2,
+            EntrySeq(2),
             Payload.Closed(PeriodSeq.First, Resolved, closing("sealed")),
             at(30)
           )
@@ -565,10 +566,10 @@ abstract class PeriodContract extends TestSuite {
       seal(p1, t0, 30, "sealed early")
       more(t0, 31)
       val late = transaction(entries.list(c)).map(_.map(_.seq).maxOption)
-      late ==> Right(Some(2L))
+      late ==> Right(Some(EntrySeq(2)))
       transaction(periods.purge(p1, at(100))) ==> Right(())
       transaction(entries.list(c)).map(ids) ==> Right(Vector(EntryId.value(p1.closingId)))
-      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq(1), 3L))
+      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq(1), EntrySeq(3)))
     }
 
     test("drop deletes a purged period's row and closing entry, and leaves one not purged") {

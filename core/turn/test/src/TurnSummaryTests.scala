@@ -2,7 +2,7 @@ package grit.turn
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, Payload}
 
@@ -21,7 +21,15 @@ object TurnSummaryTests extends TestSuite {
   val tests = Tests {
     test("an unprompted turn's summary sees the heard message it answered, and its reply once") {
       def entry(seq: Long, payload: Payload) =
-        Entry(EntryId(s"e$seq"), ConversationId("c"), TurnSeq(3), None, seq, payload, Instant.EPOCH)
+        Entry(
+          EntryId(s"e$seq"),
+          ConversationId("c"),
+          TurnSeq(3),
+          None,
+          EntrySeq(seq),
+          payload,
+          Instant.EPOCH
+        )
       val said = reply("It moved to Thursday.")
       TurnSummary
         .request(

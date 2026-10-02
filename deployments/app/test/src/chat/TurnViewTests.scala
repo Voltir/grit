@@ -4,7 +4,7 @@ import java.time.{Instant, LocalDate}
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.context.Shown
-import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.model.{
   Assignment,
@@ -37,7 +37,7 @@ object TurnViewTests extends TestSuite {
     Some(SystemPrompt.of(Vector(Fragment(Layer.Base, Fragment.Grit, text))))
 
   private def entry(seq: Long, turn: Long, payload: Payload): Entry =
-    Entry(EntryId(s"e$seq"), c, TurnSeq(turn), None, seq, payload, Instant.EPOCH)
+    Entry(EntryId(s"e$seq"), c, TurnSeq(turn), None, EntrySeq(seq), payload, Instant.EPOCH)
 
   private def user(seq: Long, turn: Long, text: String) =
     entry(seq, turn, Payload.Message(Message.User(text)))
@@ -249,7 +249,7 @@ object TurnViewTests extends TestSuite {
           conversation,
           TurnSeq(turn),
           None,
-          seq,
+          EntrySeq(seq),
           Payload.Message(Message.User(text)),
           Instant.EPOCH
         )
@@ -310,7 +310,7 @@ object TurnViewTests extends TestSuite {
         ops,
         TurnSeq(4),
         None,
-        5,
+        EntrySeq(5),
         Payload.Closed(
           grit.core.id.PeriodSeq.First,
           grit.core.period.CloseReason.Lapsed,

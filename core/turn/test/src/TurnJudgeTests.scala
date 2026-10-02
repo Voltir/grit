@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.classify.StateJson
 import grit.core.context.Window
-import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.Place
@@ -16,7 +16,15 @@ import utest.*
 object TurnJudgeTests extends TestSuite {
 
   private def entry(n: Long, payload: Payload): Entry =
-    Entry(EntryId(s"e$n"), ConversationId("c"), TurnSeq(n), None, n, payload, Instant.EPOCH)
+    Entry(
+      EntryId(s"e$n"),
+      ConversationId("c"),
+      TurnSeq(n),
+      None,
+      EntrySeq(n),
+      payload,
+      Instant.EPOCH
+    )
 
   private val record =
     entry(
@@ -69,7 +77,7 @@ object TurnJudgeTests extends TestSuite {
           ConversationId(conversation),
           TurnSeq(0),
           None,
-          0,
+          EntrySeq(0),
           payload,
           Instant.EPOCH
         )
@@ -118,7 +126,7 @@ object TurnJudgeTests extends TestSuite {
           ConversationId("a"),
           TurnSeq(n),
           None,
-          n,
+          EntrySeq(n),
           Payload.Heard(text),
           Instant.EPOCH
         )
@@ -170,7 +178,7 @@ object TurnJudgeTests extends TestSuite {
         ConversationId("asker"),
         TurnSeq(0),
         None,
-        0,
+        EntrySeq(0),
         Payload.Message(Message.User("post the open issues")),
         Instant.EPOCH
       )

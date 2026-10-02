@@ -2,7 +2,7 @@ package grit.core.triage
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.store.{Entry, Payload}
@@ -12,7 +12,15 @@ import utest.*
 object EarningTests extends TestSuite {
 
   private def entry(n: Long, payload: Payload): Entry =
-    Entry(EntryId(s"e$n"), ConversationId("c"), TurnSeq(n), None, n, payload, Instant.EPOCH)
+    Entry(
+      EntryId(s"e$n"),
+      ConversationId("c"),
+      TurnSeq(n),
+      None,
+      EntrySeq(n),
+      payload,
+      Instant.EPOCH
+    )
 
   private def heard(n: Long): Entry = entry(n, Payload.Heard(s"heard $n"))
 

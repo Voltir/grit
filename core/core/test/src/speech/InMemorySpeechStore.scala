@@ -2,7 +2,7 @@ package grit.core.speech
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.Cost
 import grit.core.spend.{Day, Spend}
 import grit.core.store.{Entry, EntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
@@ -23,7 +23,7 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
   var decisions = Vector.empty[(Heard, Decision, Instant)]
 
   @caps.unsafe.untrackedCaptures
-  var outcomes = Map.empty[TurnRef, (Outcome, Option[String], Option[Long])]
+  var outcomes = Map.empty[TurnRef, (Outcome, Option[String], Option[EntrySeq])]
 
   def heard(turn: TurnRef, reach: Reach)(using Tx^): Either[StoreError, Unit] =
     entries.list(turn.conversationId).flatMap { all =>
@@ -84,7 +84,7 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
       Left(StoreError.Invalid(s"${turn.workflowId} was never decided on"))
     else if (outcomes.contains(turn)) Right(false)
     else {
-      val posted: Either[StoreError, Option[Long]] = outcome match {
+      val posted: Either[StoreError, Option[EntrySeq]] = outcome match {
         case Outcome.Posted(_) =>
           entries
             .get(turn.replyId)

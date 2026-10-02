@@ -19,6 +19,7 @@ import grit.core.id.{
   CloseRef,
   ConversationId,
   EntryId,
+  EntrySeq,
   PeriodRef,
   PeriodSeq,
   PrincipalId,
@@ -828,7 +829,7 @@ object RetrievalAssemblerTests extends TestSuite {
 
     test("the query model is shown the turn's own messages, one line each, and nothing else") {
       def entry(seq: Long, payload: Payload) =
-        Entry(EntryId(s"t6:$seq"), c1, TurnSeq(6), None, seq, payload, Instant.EPOCH)
+        Entry(EntryId(s"t6:$seq"), c1, TurnSeq(6), None, EntrySeq(seq), payload, Instant.EPOCH)
       QueryWriter.request(
         Vector(
           entry(13, Payload.Message(Message.User("Where should my probe point?"))),
@@ -851,7 +852,7 @@ object RetrievalAssemblerTests extends TestSuite {
             c1,
             TurnSeq(7),
             None,
-            16,
+            EntrySeq(16),
             Payload.Heard("is the freeze still on?"),
             Instant.EPOCH
           )

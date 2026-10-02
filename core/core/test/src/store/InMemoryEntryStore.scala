@@ -1,6 +1,8 @@
 package grit.core.store
 
-import grit.core.id.{ConversationId, EntryId, TurnSeq}
+import scala.math.Ordering.Implicits.infixOrderingOps
+
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 
 /** An in-memory [[EntryStore]] for tests, keeping [[StoreContract]]. It ignores the `Tx`:
   * writes are never rolled back, and `lockNext` locks nothing. Unlike Postgres it takes any
@@ -15,7 +17,7 @@ final class InMemoryEntryStore extends EntryStore {
     * `grit.conversations` keeps them: a purge does not lower them.
     */
   @caps.unsafe.untrackedCaptures
-  private var marks = Map.empty[ConversationId, (TurnSeq, Long)]
+  private var marks = Map.empty[ConversationId, (TurnSeq, EntrySeq)]
 
   def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] =
     if (entries.exists(_.id == entry.id)) {
@@ -26,12 +28,12 @@ final class InMemoryEntryStore extends EntryStore {
       Left(StoreError.DatabaseError(s"seq ${entry.seq} is taken in its conversation"))
     } else {
       entries = entries :+ entry
-      val (turn, seq) = marks.getOrElse(entry.conversationId, (TurnSeq.First, 0L))
+      val (turn, seq) = marks.getOrElse(entry.conversationId, (TurnSeq.First, EntrySeq.First))
       marks = marks.updated(
         entry.conversationId,
         (
           if (TurnSeq.value(entry.turnSeq) >= TurnSeq.value(turn)) entry.turnSeq.next else turn,
-          math.max(seq, entry.seq + 1)
+          if (entry.seq >= seq) entry.seq.next else seq
         )
       )
       Right(())
@@ -51,7 +53,7 @@ final class InMemoryEntryStore extends EntryStore {
     Right(entries.filter(_.conversationId == conversation).sortBy(_.seq))
 
   def lockNext(conversation: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = {
-    val (turn, seq) = marks.getOrElse(conversation, (TurnSeq.First, 0L))
+    val (turn, seq) = marks.getOrElse(conversation, (TurnSeq.First, EntrySeq.First))
     Right(EntryStore.Next(turn, seq))
   }
 }

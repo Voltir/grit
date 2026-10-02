@@ -7,7 +7,7 @@ import grit.assembly.linear.LinearAssembler
 import grit.core.classify.Classifier
 import grit.core.classify.{Answer, Answers, ClassifierError, Question}
 import grit.core.edge.InMemoryDeliveries
-import grit.core.id.{PeriodSeq, TurnSeq}
+import grit.core.id.{EntrySeq, PeriodSeq, TurnSeq}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.speech.{Decision, Heard, InMemorySpeechStore, Limits, Reach}
 import grit.core.spend.DailyCap
@@ -883,7 +883,7 @@ object TurnFixtures {
     store.heard(turn, Reach(replyTo, Set.empty))
     val p = Probability.clamped(0.9)
     store.decided(
-      Heard(turn, 1, Place.Everywhere, Instant.EPOCH, Reach(replyTo, Set.empty), Tags.Weighed(Kind.Question, p, p, p, p, "jev", Usage.Zero)),
+      Heard(turn, EntrySeq(1), Place.Everywhere, Instant.EPOCH, Reach(replyTo, Set.empty), Tags.Weighed(Kind.Question, p, p, p, p, "jev", Usage.Zero)),
       Decision.Drafting(turn),
       Instant.EPOCH
     )

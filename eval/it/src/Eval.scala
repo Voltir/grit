@@ -10,6 +10,7 @@ import grit.core.id.{
   CloseRef,
   ConversationId,
   EntryId,
+  EntrySeq,
   PeriodRef,
   PeriodSeq,
   PrincipalId,
@@ -142,7 +143,7 @@ object Eval {
               conversation,
               TurnSeq(t.toLong),
               None,
-              seq.toLong,
+              EntrySeq(seq.toLong),
               Payload.Message(message(line)),
               Instant.EPOCH
             )
@@ -254,7 +255,7 @@ object Eval {
                 conversation,
                 TurnSeq(t.toLong),
                 None,
-                seq.toLong,
+                EntrySeq(seq.toLong),
                 Payload.Message(message(line)),
                 Instant.EPOCH
               )

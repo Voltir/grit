@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.{ConversationId, EntryId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 
 /** Append-only entry store. Entries are never rewritten, and deleted only by the purge of
   * their closed period ([[PeriodStore.purge]]).
@@ -29,5 +29,5 @@ trait EntryStore {
 object EntryStore {
 
   /** The next unused turn seq and entry seq of a conversation. */
-  final case class Next(turnSeq: TurnSeq, seq: Long)
+  final case class Next(turnSeq: TurnSeq, seq: EntrySeq)
 }

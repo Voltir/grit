@@ -13,7 +13,7 @@ import grit.core.context.{
   Window
 }
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{ConversationId, EntryId, PeriodSeq, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.Place
@@ -397,7 +397,7 @@ object TurnTests extends TestSuite {
           conversation,
           TurnSeq(0),
           None,
-          1,
+          EntrySeq(1),
           Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, closing),
           Instant.EPOCH
         )
@@ -405,7 +405,15 @@ object TurnTests extends TestSuite {
       val api = ConversationId("api")
       def elsewhere(id: String, seq: Long, message: Message) =
         entries.insert(
-          Entry(EntryId(id), api, TurnSeq(0), None, seq, Payload.Message(message), Instant.EPOCH)
+          Entry(
+            EntryId(id),
+            api,
+            TurnSeq(0),
+            None,
+            EntrySeq(seq),
+            Payload.Message(message),
+            Instant.EPOCH
+          )
         )(using TestTx.fake)
       elsewhere("api:u", 0, Message.User("the invoice test is flaky"))
       elsewhere(
@@ -425,7 +433,7 @@ object TurnTests extends TestSuite {
           web,
           TurnSeq(0),
           None,
-          0,
+          EntrySeq(0),
           Payload.Message(Message.User("the login page is blank")),
           Instant.EPOCH
         )
@@ -437,7 +445,7 @@ object TurnTests extends TestSuite {
           ops,
           TurnSeq(4),
           None,
-          5,
+          EntrySeq(5),
           Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("Froze deploys.")),
           Instant.parse("2026-09-27T10:00:00Z")
         )

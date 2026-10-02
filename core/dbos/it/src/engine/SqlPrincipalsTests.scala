@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import scala.util.Using
 
-import grit.core.id.{EntryId, PrincipalId, TurnSeq}
+import grit.core.id.{EntryId, EntrySeq, PrincipalId, TurnSeq}
 import grit.core.message.Message
 import grit.core.store.{Entry, Origin, Payload, Principals, PrincipalsContract, Tx}
 import grit.dbos.sql.{DbConfig, LiveDb, SqlEntryStore, SqlPrincipals, TestPostgres}
@@ -43,7 +43,7 @@ object SqlPrincipalsTests extends PrincipalsContract {
             c,
             TurnSeq.First,
             None,
-            0L,
+            EntrySeq(0),
             Payload.Message(Message.User("hi")),
             java.time.Instant.EPOCH
           )

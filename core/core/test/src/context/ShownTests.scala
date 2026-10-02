@@ -3,7 +3,7 @@ package grit.core.context
 import java.time.Instant
 
 import grit.core.host.{RelPath, Replace}
-import grit.core.id.{ConversationId, EntryId, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{
   Change,
@@ -26,7 +26,7 @@ object ShownTests extends TestSuite {
   private val at = Instant.parse("2026-09-20T12:00:00Z")
 
   private def entry(payload: Payload): Entry =
-    Entry(EntryId("e"), ConversationId("c"), TurnSeq(0), None, 0, payload, at)
+    Entry(EntryId("e"), ConversationId("c"), TurnSeq(0), None, EntrySeq(0), payload, at)
 
   /** A user message of turn `t`. */
   private def said(t: Long): Entry =
@@ -35,7 +35,7 @@ object ShownTests extends TestSuite {
       ConversationId("c"),
       TurnSeq(t),
       None,
-      t,
+      EntrySeq(t),
       Payload.Message(Message.User(s"turn $t")),
       at
     )
@@ -47,7 +47,7 @@ object ShownTests extends TestSuite {
       ConversationId("c"),
       TurnSeq(last),
       None,
-      last,
+      EntrySeq(last),
       Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("We talked.")),
       at
     )
@@ -635,7 +635,7 @@ object ShownTests extends TestSuite {
         ConversationId("c"),
         TurnSeq(5),
         None,
-        50,
+        EntrySeq(50),
         Payload.Message(Message.User("again")),
         at
       )

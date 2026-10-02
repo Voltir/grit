@@ -1,6 +1,8 @@
 package grit.app.chat
 
-import grit.core.id.{TurnRef, TurnSeq}
+import scala.math.Ordering.Implicits.infixOrderingOps
+
+import grit.core.id.{EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.store.{Entry, Payload}
 import grit.dbos.engine.TurnStatus
@@ -11,7 +13,7 @@ import grit.turn.Turn
   * whether it has `looked` at all, and the call the turn in progress was `asking` about.
   */
 final case class Follow(
-    lastSeq: Long,
+    lastSeq: Option[EntrySeq],
     step: Option[String],
     reported: Set[TurnSeq],
     looked: Boolean = false,
@@ -22,7 +24,7 @@ final case class Follow(
 
 object Follow {
 
-  val start: Follow = Follow(-1L, None, Set.empty)
+  val start: Follow = Follow(None, None, Set.empty)
 
   /** One look at the conversation: what the screen should be told, given every entry in
     * it now and where a turn's workflow is. The first look always says what it saw, even
@@ -42,7 +44,7 @@ object Follow {
       entries: Vector[Entry],
       status: TurnRef => TurnStatus
   ): (Follow, Vector[ChatScreen.Msg]) = {
-    val fresh = entries.filter(_.seq > state.lastSeq)
+    val fresh = entries.filter(e => state.lastSeq.forall(_ < e.seq))
     val said = fresh.flatMap(said1)
     val summaries = fresh.collect { case Entry(_, _, t, _, _, Payload.Summary(text), _) =>
       ChatScreen.Summarised(t, text)
@@ -61,7 +63,7 @@ object Follow {
     }
     val asking = open.filter(_ => step.nonEmpty).flatMap(asked(entries, _))
     val next = Follow(
-      fresh.lastOption.fold(state.lastSeq)(_.seq),
+      fresh.lastOption.map(_.seq).orElse(state.lastSeq),
       step,
       state.reported ++ failure.map(_._1),
       looked = true,

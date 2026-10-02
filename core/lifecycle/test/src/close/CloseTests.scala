@@ -1,7 +1,7 @@
 package grit.lifecycle.close
 
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{EntryId, PeriodRef, PeriodSeq, WorkflowId}
+import grit.core.id.{EntryId, EntrySeq, PeriodRef, PeriodSeq, WorkflowId}
 import grit.core.message.StopReason
 import grit.core.period.TestClosings.{balance, line}
 import grit.core.period.{
@@ -103,7 +103,7 @@ object CloseTests extends TestSuite {
           api,
           grit.core.id.TurnSeq(0),
           None,
-          0,
+          EntrySeq(0),
           Payload.Message(grit.core.message.Message.User("the invoice test is flaky")),
           at(0)
         )
@@ -114,7 +114,7 @@ object CloseTests extends TestSuite {
           api,
           grit.core.id.TurnSeq(0),
           None,
-          1,
+          EntrySeq(1),
           Payload.Message(replyOf("Pin TZ=UTC in the test JVM.")),
           at(0)
         )
@@ -128,7 +128,7 @@ object CloseTests extends TestSuite {
           ops,
           grit.core.id.TurnSeq(3),
           None,
-          4,
+          EntrySeq(4),
           Payload.Closed(
             PeriodSeq.First,
             CloseReason.Lapsed,

@@ -6,7 +6,7 @@ import java.util.concurrent.CountDownLatch
 import scala.util.control.NonFatal
 
 import grit.app.config.Lifecycle
-import grit.core.id.{ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntrySeq, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.prompt.Voice
@@ -234,7 +234,7 @@ final class ChatHost(
         var listened = Set.empty[TurnSeq]
         var costs = Map.empty[TurnSeq, Vector[UsageLedger.Row]]
         var settled = Set.empty[TurnSeq]
-        var sessionAt = Long.MinValue
+        var sessionAt = Option.empty[Option[EntrySeq]]
         var spentAt = 0L
         // Whether an engine held the database when last looked, and when that was: an
         // attached screen says when there is none, and turns wait (ADR 0015).
@@ -256,11 +256,11 @@ final class ChatHost(
               msgs.foreach(mailbox.offer)
               // The ledger is written with the entries it prices, so it changes only when
               // they do.
-              val last = entries.lastOption.fold(-1L)(_.seq)
+              val last = entries.lastOption.map(_.seq)
               // Other conversations spend too (a Slack edge on this database): the day's
               // total is read again every SpentEvery, whether or not this one changed.
               val stale = System.nanoTime() - spentAt > SpentEvery
-              if (last != sessionAt || stale) {
+              if (!sessionAt.contains(last) || stale) {
                 val (unread, final1) = SessionView.unread(entries, settled)
                 for {
                   read <- ledgers(engine, conversation, unread)
@@ -268,7 +268,7 @@ final class ChatHost(
                 } {
                   costs = costs ++ read
                   settled = final1
-                  sessionAt = last
+                  sessionAt = Some(last)
                   spentAt = System.nanoTime()
                   val view = SessionView.of(entries, costs.values.toVector.flatten, recorded, today)
                   mailbox.offer(ChatScreen.Msg.Session(view))

@@ -3,7 +3,7 @@ package grit.turn
 import java.time.Instant
 
 import grit.core.edge.InMemoryEdges
-import grit.core.id.{ConversationId, EntryId, PrincipalId, ToolCallId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PrincipalId, ToolCallId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.{Directory, Place, Reaches, Service, WorksIn}
 import grit.core.prompt.SystemPrompt
@@ -72,7 +72,7 @@ object TurnOfferTests extends TestSuite {
       budget(5)
     )
     val entries = new InMemoryEntryStore
-    entries.insert(Entry(EntryId("root"), c, TurnSeq.First, None, 0, root, Instant.EPOCH))
+    entries.insert(Entry(EntryId("root"), c, TurnSeq.First, None, EntrySeq(0), root, Instant.EPOCH))
     TurnOffer
       .decide(hosting, entries, tooling, TurnRef(c, TurnSeq.First))
       .flatMap(r =>
@@ -251,7 +251,7 @@ object TurnOfferTests extends TestSuite {
       reaches = Vector(Reaches(slackTeams, elsewhere))
     )
     val log = new InMemoryEntryStore
-    log.insert(Entry(EntryId("root"), c, TurnSeq.First, None, 0, root, Instant.EPOCH))
+    log.insert(Entry(EntryId("root"), c, TurnSeq.First, None, EntrySeq(0), root, Instant.EPOCH))
     TurnOffer
       .decide(hosting, log, tooling, TurnRef(c, TurnSeq.First))
       .flatMap(r =>

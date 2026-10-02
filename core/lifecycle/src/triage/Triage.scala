@@ -1,5 +1,7 @@
 package grit.lifecycle.triage
 
+import scala.math.Ordering.Implicits.infixOrderingOps
+
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, TriageRef, TurnRef, TurnSeq, WorkflowId}
 import grit.core.period.Probability

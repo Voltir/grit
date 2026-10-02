@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{EntryId, PeriodSeq, TurnRef, TurnSeq}
+import grit.core.id.{EntryId, EntrySeq, PeriodSeq, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Topics, Weights}
@@ -56,7 +56,7 @@ object TurnTopicsTests extends TestSuite {
           conversation,
           TurnSeq(1),
           None,
-          5,
+          EntrySeq(5),
           Payload.Closed(
             PeriodSeq.First,
             CloseReason.Lapsed,
@@ -72,7 +72,7 @@ object TurnTopicsTests extends TestSuite {
           conversation,
           TurnSeq(2),
           None,
-          6,
+          EntrySeq(6),
           Payload.Message(Message.User("more photos ~0.9")),
           at
         )
@@ -101,7 +101,7 @@ object TurnTopicsTests extends TestSuite {
           conversation,
           TurnSeq(0),
           None,
-          0,
+          EntrySeq(0),
           Payload.Message(Message.User("photos")),
           at
         ),
@@ -110,7 +110,7 @@ object TurnTopicsTests extends TestSuite {
           conversation,
           TurnSeq(1),
           None,
-          1,
+          EntrySeq(1),
           Payload.Heard("more photos ~0.85"),
           at
         )
@@ -129,7 +129,7 @@ object TurnTopicsTests extends TestSuite {
             conversation,
             TurnSeq(0),
             None,
-            0,
+            EntrySeq(0),
             Payload.Topic(Vector(opened, first)),
             at
           )

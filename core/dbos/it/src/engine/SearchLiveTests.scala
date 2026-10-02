@@ -2,7 +2,7 @@ package grit.dbos.engine
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, PeriodSeq, ToolCallId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, ToolCallId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Change, CloseReason, Closing, Flows, Section, TestClosings}
 import grit.core.place.Place
@@ -38,7 +38,15 @@ object SearchLiveTests extends TestSuite {
     LiveDb.transaction(config) {
       payloads.zipWithIndex.foreach { (p, i) =>
         val _ = entries.insert(
-          Entry(EntryId(s"$name:e$i"), c, TurnSeq(i.toLong), None, i.toLong, p, Instant.EPOCH)
+          Entry(
+            EntryId(s"$name:e$i"),
+            c,
+            TurnSeq(i.toLong),
+            None,
+            EntrySeq(i.toLong),
+            p,
+            Instant.EPOCH
+          )
         )
       }
     }
@@ -272,7 +280,7 @@ object SearchLiveTests extends TestSuite {
                 c,
                 TurnSeq(i.toLong),
                 None,
-                i.toLong,
+                EntrySeq(i.toLong),
                 p,
                 t0.plusSeconds(secs)
               )

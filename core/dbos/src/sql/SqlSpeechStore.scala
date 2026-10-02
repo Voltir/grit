@@ -4,7 +4,7 @@ import java.time.{Instant, OffsetDateTime, ZoneOffset}
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, PrincipalId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, EntrySeq, PrincipalId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.Cost
 import grit.core.period.Probability
 import grit.core.place.Place
@@ -99,7 +99,7 @@ final class SqlSpeechStore extends SpeechStore {
             val workflow = rs.getString(1)
             val posted = rs.getLong(5)
             val stage =
-              if (!rs.wasNull()) Stage.Posted(posted)
+              if (!rs.wasNull()) Stage.Posted(EntrySeq(posted))
               else if (Option(rs.getString(4)).isEmpty) Stage.Drafting
               else Stage.Settled
             rows += (for {

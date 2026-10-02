@@ -2,7 +2,7 @@ package grit.lifecycle.transcript
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, Payload, Speakers}
 
@@ -10,7 +10,15 @@ import grit.core.store.{Entry, Payload, Speakers}
 object TestTranscripts {
 
   def entry(seq: Long, payload: Payload): Entry =
-    Entry(EntryId(s"e$seq"), ConversationId("c"), TurnSeq(0), None, seq, payload, Instant.EPOCH)
+    Entry(
+      EntryId(s"e$seq"),
+      ConversationId("c"),
+      TurnSeq(0),
+      None,
+      EntrySeq(seq),
+      payload,
+      Instant.EPOCH
+    )
 
   /** The person's message `text`. */
   def said(seq: Long, text: String): Entry = entry(seq, Payload.Message(Message.User(text)))

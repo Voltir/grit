@@ -3,8 +3,9 @@ package grit.core.speech
 import java.time.{Duration as JDuration, Instant}
 
 import scala.concurrent.duration.*
+import scala.math.Ordering.Implicits.infixOrderingOps
 
-import grit.core.id.{EntryId, PrincipalId, TurnRef}
+import grit.core.id.{EntryId, EntrySeq, PrincipalId, TurnRef}
 import grit.core.message.{Cost, Usage}
 import grit.core.period.Probability
 import grit.core.place.Place
@@ -28,7 +29,7 @@ object Reach {
   */
 final case class Heard(
     turn: TurnRef,
-    seq: Long,
+    seq: EntrySeq,
     room: Place,
     said: Instant,
     reach: Reach,
@@ -42,7 +43,7 @@ enum Stage {
   case Drafting
 
   /** Its reply was posted, at position `seq` of its conversation. */
-  case Posted(seq: Long)
+  case Posted(seq: EntrySeq)
 
   /** Settled without a post ([[Outcome]]). */
   case Settled
