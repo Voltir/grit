@@ -2,6 +2,7 @@ package grit.dbos.engine
 
 import scala.annotation.unused
 import scala.concurrent.duration.*
+import scala.util.{Success, Try}
 
 import grit.core.durable.Durable
 import grit.core.id.{PrincipalId, SourceId, WorkflowId}
@@ -66,6 +67,27 @@ object AttachLiveTests extends TestSuite {
         )
         engine.close()
         assert(eventually(5.seconds)(link.holder().isEmpty))
+      } finally {
+        link.close()
+        engine.close()
+      }
+    }
+
+    test("a stream of a turn DBOS has no workflow for ends, with no pieces") {
+      val config = TestPostgres.freshDatabase("attach_stream")
+      val engine = LiveEngine.open(config, "test")
+      val link = Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped)
+      try {
+        // Recorded, never started: DBOS has no workflow for it.
+        val turn = link.inbox
+          .ingest(
+            Origin.Task("attach", "stream"),
+            SourceId("m1"),
+            Message.User("hi"),
+            PrincipalId.Local
+          )
+          .fold(e => sys.error(s"$e"), identity)
+        Try(link.stream(turn, "reply").toVector) ==> Success(Vector())
       } finally {
         link.close()
         engine.close()

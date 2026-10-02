@@ -43,6 +43,7 @@ import grit.dbos.sql.{
 }
 
 import dev.dbos.transact.DBOSClient
+import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
 import dev.dbos.transact.workflow.WorkflowState
 import org.postgresql.ds.PGSimpleDataSource
 
@@ -105,8 +106,9 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
 
   /** The pieces `turn`'s steps wrote to its stream `key`, in order, as they are written:
     * each `next` waits for one, woken by DBOS's notification with polling behind it, and
-    * the pieces end when the turn's workflow does. An edge's read (ADR 0006); what the
-    * pieces mean is the writer's.
+    * the pieces end when the turn's workflow does. None when DBOS has no workflow for
+    * `turn`: not yet enqueued, or collected. An edge's read (ADR 0006); what the pieces mean
+    * is the writer's.
     */
   def stream(turn: TurnRef, key: String): Iterator[String]
 
@@ -170,11 +172,16 @@ object Link {
     catch { case NonFatal(_) => Vector.empty }
 
   /** `turn`'s stream `key` through `client` ([[Link.stream]]). */
-  private[engine] def stream(client: DBOSClient, turn: TurnRef, key: String): Iterator[String] =
-    client
-      .readStream(WorkflowId.value(turn.workflowId), key)
-      .asScala
+  private[engine] def stream(client: DBOSClient, turn: TurnRef, key: String): Iterator[String] = {
+    val pieces = client.readStream(WorkflowId.value(turn.workflowId), key).asScala
+    // DBOS 1.1 throws here for a workflow it does not have, where 1.0 ended the stream.
+    def more: Boolean =
+      try pieces.hasNext
+      catch { case _: DBOSNonExistentWorkflowException => false }
+    Iterator
+      .unfold(())(_ => Option.when(more)((pieces.next(), ())))
       .collect { case piece: String => piece }
+  }
 
   /** `turn`'s output through `client` ([[Link.awaitTurn]]). */
   private[engine] def awaitTurn(client: DBOSClient, turn: TurnRef): String =
