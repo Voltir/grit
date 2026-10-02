@@ -140,14 +140,35 @@ object McpToolTests extends TestSuite {
     }
 
     test("GitHub's live list is offered whole, each tool mirroring the arguments it annotates") {
-      // Every tool of the hosted read-only server, 20 of them with x-mcp-header annotations.
+      // Every tool of the hosted read-only server. Those annotating arguments each annotate
+      // owner and repo, whether the schema requires them or not; every other tool, none.
       val p = read(live)
       p.skipped ==> Vector.empty
       p.tools.map(_.name) ==> live("tools").arr.toVector.flatMap(_.obj.get("name")).map(_.str)
-      p.tools.find(_.name == "get_file_contents").map(_.params) ==> Some(
+      val ownerAndRepo =
         Vector(McpTool.Param(Vector("owner"), "owner"), McpTool.Param(Vector("repo"), "repo"))
-      )
-      p.tools.find(_.name == "get_me").map(_.params) ==> Some(Vector.empty)
+      p.tools.filter(_.params.nonEmpty).map(t => (t.name, t.params)) ==> Vector(
+        "get_commit",
+        "get_file_contents",
+        "get_label",
+        "get_latest_release",
+        "get_release_by_tag",
+        "get_tag",
+        "issue_read",
+        "list_branches",
+        "list_commits",
+        "list_issue_fields",
+        "list_issue_types",
+        "list_issues",
+        "list_pull_requests",
+        "list_releases",
+        "list_repository_collaborators",
+        "list_tags",
+        "pull_request_read",
+        "run_secret_scanning",
+        "search_issues",
+        "search_pull_requests"
+      ).map(name => (name, ownerAndRepo))
     }
 
     test("an x-mcp-header annotation is read at its chain of properties keys, however deep") {
