@@ -167,9 +167,6 @@ object grit extends Module {
       mvn"org.postgresql:postgresql:42.7.13"
     )
 
-    /* Temporary, while grit moves off what DBOS 1.1 deprecated: those uses reported, not fatal. */
-    def scalacOptions = Task { super.scalacOptions() ++ Seq("-Wconf:cat=deprecation:i") }
-
     /* What needs no Postgres: configuration and codecs. */
     object test extends GritTests
 
