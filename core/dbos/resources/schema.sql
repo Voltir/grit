@@ -120,8 +120,9 @@ CREATE TABLE IF NOT EXISTS grit.entries (
     CONSTRAINT entries_conversation_seq UNIQUE (conversation_id, seq)
 );
 
-CREATE INDEX IF NOT EXISTS idx_entries_parent       ON grit.entries(parent_id);
-CREATE INDEX IF NOT EXISTS idx_entries_conversation ON grit.entries(conversation_id);
+-- A conversation's entries, and its turns': every query that names a conversation, and a
+-- period's purge, which deletes by its turns' range.
+CREATE INDEX IF NOT EXISTS idx_entries_turn ON grit.entries (conversation_id, turn_seq);
 -- The index's statistics span every row it holds, so conversations sharing it affect
 -- each other's ranking (ADR 0005). Queries name it: to_bm25query(q, 'grit.idx_entries_bm25').
 CREATE INDEX IF NOT EXISTS idx_entries_bm25 ON grit.entries
@@ -344,7 +345,9 @@ CREATE TABLE IF NOT EXISTS grit.periods (
     -- A resolved close's probability that nobody was waiting (CloseReason.Resolved); none for a
     -- lapse.
     confidence      DOUBLE PRECISION CHECK (confidence BETWEEN 0 AND 1),
-    closing_id      TEXT REFERENCES grit.entries(id),
+    -- UNIQUE: a period has one closing, and the index serves the check each entry's delete
+    -- makes against it.
+    closing_id      TEXT UNIQUE REFERENCES grit.entries(id),
     -- Close order across conversations, what plugin cursors count. Taken under a lock held
     -- to commit (SqlPeriodStore.seal), so no seal commits before one with a lower number.
     close_ordinal   BIGINT UNIQUE,
@@ -500,6 +503,8 @@ CREATE TABLE IF NOT EXISTS grit.speech (
 );
 
 CREATE INDEX IF NOT EXISTS idx_speech_decided ON grit.speech (decided_at);
+-- A turn's decisions: what SpeechStore.forget deletes, and a conversation's removal cascades.
+CREATE INDEX IF NOT EXISTS idx_speech_turn ON grit.speech (conversation_id, turn_seq);
 
 -- The lifecycle's settings in force (LifecycleSettings): one row, or none for the defaults.
 -- Seeded on first start, then changed by /set or by hand. Their rules are checked where
@@ -576,3 +581,6 @@ CREATE TABLE IF NOT EXISTS grit.tombstones (
 
 CREATE INDEX IF NOT EXISTS idx_tombstones_due ON grit.tombstones
     (kind, (coalesce(deferred_at, written_at)), target COLLATE "C") WHERE collected_at IS NULL;
+-- What Tombstones.forget deletes each sweep: the rows collected or spared before a time.
+CREATE INDEX IF NOT EXISTS idx_tombstones_collected ON grit.tombstones (collected_at)
+    WHERE collected_at IS NOT NULL;
