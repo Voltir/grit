@@ -116,8 +116,7 @@ object TurnPromptTests extends TestSuite {
       // The judge reads a draft that is exactly `Pass` as nothing to add (TurnJudge.said): a
       // fragment naming any other word has every heard-rooted draft reply with it instead.
       val text = TurnPrompt.unprompted.text
-      text.drop(text.lastIndexOf(':') + 2) ==> "pass"
-      TurnPrompt.Pass ==> "pass"
+      text.drop(text.lastIndexOf(':') + 2) ==> TurnPrompt.Pass
     }
 
     test("called: what the workspace calls the assistant, as an edge fragment of its own") {
