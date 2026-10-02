@@ -32,6 +32,8 @@ object TurnVerdictTests extends TestSuite {
         Tx^
     ): Either[StoreError, Vector[Entry]] =
       underlying.at(c, seqs)
+    def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]] =
+      underlying.ofTurn(turn)
     def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
       underlying.lockNext(c)
   }
@@ -310,6 +312,21 @@ object TurnVerdictTests extends TestSuite {
         log.startsWith("replied: "),
         log.endsWith("; verdict not recorded: Store(no room for a verdict)")
       )
+    }
+
+    test("the verdict's rounds are built and recorded without listing the conversation") {
+      val store = new InMemoryEntryStore
+      val classifier = new CountingClassifier
+      Vector("hello", "knots? ~0.1").foreach { text =>
+        val t = say(store, text)
+        runTurn(new InMemoryDurable, store, new RecordingProvider, t, classifier = classifier)
+      }
+      val turn = say(store, """hm ~0.5 #call:{"about":"new","name":"Sailing"}""")
+      val entries = new UnlistedWhileAnswering(store)
+      runTurn(before, entries, new RecordingProvider, turn, classifier = classifier) ==>
+        "replied: reply:c1:2; summarised: summary:c1:2"
+      entries.windows ==> 1
+      lastBy(store, turn) ==> Some(Placement.Asked(Verdict.New(Some("Sailing")), None))
     }
 
     test("a crash in round two resumes there, without calling round one again") {

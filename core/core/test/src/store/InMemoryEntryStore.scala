@@ -2,7 +2,7 @@ package grit.core.store
 
 import scala.math.Ordering.Implicits.infixOrderingOps
 
-import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 
 /** An in-memory [[EntryStore]] for tests, keeping [[StoreContract]]. It ignores the `Tx`:
   * writes are never rolled back, and `lockNext` locks nothing. Unlike Postgres it takes any
@@ -56,6 +56,9 @@ final class InMemoryEntryStore extends EntryStore {
       Tx^
   ): Either[StoreError, Vector[Entry]] =
     list(conversation).map(_.filter(e => seqs.contains(e.seq)))
+
+  def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]] =
+    list(turn.conversationId).map(_.filter(_.turnSeq == turn.turnSeq))
 
   def lockNext(conversation: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = {
     val (turn, seq) = marks.getOrElse(conversation, (TurnSeq.First, EntrySeq.First))

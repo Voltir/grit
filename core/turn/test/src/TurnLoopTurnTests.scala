@@ -149,6 +149,22 @@ object TurnLoopTurnTests extends TestSuite {
       )
     }
 
+    test("a tool turn's rounds are built and recorded without listing the conversation") {
+      val store = new InMemoryEntryStore
+      val entries = new UnlistedWhileAnswering(store)
+      val provider = threeRounds
+      val turn = say(store, "read them")
+      looped(new InMemoryDurable, store, entries, turn, provider, new Files(files)) ==>
+        "replied: reply:c1:0; summarised: summary:c1:0"
+      entries.windows ==> 1
+      val kept = exchange(store, turn)
+      provider.requests.map(_.messages) ==> Vector(
+        Vector(Message.User("read them")),
+        Message.User("read them") +: kept.take(2),
+        Message.User("read them") +: kept
+      )
+    }
+
     test("the turn replayed calls nothing and runs nothing") {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable

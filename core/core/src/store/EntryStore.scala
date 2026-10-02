@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 
 /** Append-only entry store. Entries are never rewritten, and deleted only by the purge of
   * their closed period ([[PeriodStore.purge]]).
@@ -26,6 +26,9 @@ trait EntryStore {
   def at(conversation: ConversationId, seqs: Vector[EntrySeq])(using
       Tx^
   ): Either[StoreError, Vector[Entry]]
+
+  /** `turn`'s entries, ascending by seq; empty when it has none. */
+  def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]]
 
   /** Locks `conversation` against other writers until the transaction ends, and returns the
     * positions after every entry ever recorded in it, purged ones included. Every writer of a

@@ -163,6 +163,20 @@ abstract class StoreContract extends TestSuite {
       ids(transaction(entries.at(c, seqs))) ==> Right(Vector("at-2", "at-7"))
     }
 
+    test("ofTurn is one turn's entries ascending, and empty for a turn with none") {
+      val c = conversation("of-turn")
+      transaction {
+        entries.insert(entry(c, "of-turn-1b", 6, TurnSeq(1)))
+        entries.insert(entry(c, "of-turn-0", 1, TurnSeq(0)))
+        entries.insert(entry(c, "of-turn-1a", 3, TurnSeq(1)))
+        entries.insert(entry(c, "of-turn-2", 8, TurnSeq(2)))
+        entries.insert(entry(conversation("of-turn-other"), "not-mine", 4, TurnSeq(1)))
+      }
+      ids(transaction(entries.ofTurn(TurnRef(c, TurnSeq(1))))) ==>
+        Right(Vector("of-turn-1a", "of-turn-1b"))
+      transaction(entries.ofTurn(TurnRef(c, TurnSeq(3)))) ==> Right(Vector.empty)
+    }
+
     test("lockNext is the start of an empty conversation, and past everything in one") {
       val c = conversation("next")
       transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq.First, EntrySeq(0)))

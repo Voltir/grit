@@ -190,6 +190,7 @@ object LinearAssemblerTests extends TestSuite {
             Tx^
         ): Either[StoreError, Vector[Entry]] =
           Left(down)
+        def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]] = Left(down)
         def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = Left(down)
       }
       val w = store()

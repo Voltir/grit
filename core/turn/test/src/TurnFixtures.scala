@@ -586,6 +586,39 @@ object TurnFixtures {
     def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] = underlying.list(c)
     def at(c: ConversationId, seqs: Vector[EntrySeq])(using Tx^): Either[StoreError, Vector[Entry]] =
       underlying.at(c, seqs)
+    def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]] = underlying.ofTurn(turn)
+    def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
+      underlying.lockNext(c)
+  }
+
+  /** `underlying`, failing `list` from a turn's window being recorded until its reply or
+    * draft is: while its model rounds build their requests and record their replies.
+    * `windows` counts the windows recorded, so a test can tell the failing span was entered.
+    */
+  final class UnlistedWhileAnswering(underlying: EntryStore) extends EntryStore {
+    @caps.unsafe.untrackedCaptures
+    private var answering = false
+
+    @caps.unsafe.untrackedCaptures
+    var windows = 0
+
+    def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] = {
+      val turn = TurnRef(entry.conversationId, entry.turnSeq)
+      if (entry.id == turn.replyId || entry.id == turn.draftId) answering = false
+      val inserted = underlying.insert(entry)
+      entry.payload match {
+        case _: Payload.Window => windows += 1; answering = true
+        case _ => ()
+      }
+      inserted
+    }
+    def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] = underlying.get(id)
+    def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] =
+      if (answering) Left(StoreError.DatabaseError("the conversation is not listed mid-answer"))
+      else underlying.list(c)
+    def at(c: ConversationId, seqs: Vector[EntrySeq])(using Tx^): Either[StoreError, Vector[Entry]] =
+      underlying.at(c, seqs)
+    def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]] = underlying.ofTurn(turn)
     def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
       underlying.lockNext(c)
   }

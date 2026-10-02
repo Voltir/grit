@@ -1008,14 +1008,12 @@ object Turn {
       shape: ModelRequest -> ModelRequest,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
-    val TurnRecords(entries, ledger, estimator, _, principals) = records
+    val TurnRecords(entries, ledger, estimator, _, _) = records
     val id = TurnTools.callId(turn, round)
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
-      all <- entries.list(turn.conversationId).left.map(storeFailure)
-      near <- Nearby.read(window.nearby, entries).left.map(storeFailure)
-      named <- principals.speakers((all ++ near).map(_.id)).left.map(storeFailure)
-      sent <- requestOf(system, all, near, turn, window, named).map(shape)
+      showing <- shown(records, turn, window).left.map(storeFailure)
+      sent <- requestOf(system, showing, turn, window).map(shape)
       _ <- entries
         .insert(
           Entry(
@@ -1140,10 +1138,8 @@ object Turn {
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
-      all <- records.entries.list(turn.conversationId).left.map(storeFailure)
-      near <- Nearby.read(window.nearby, records.entries).left.map(storeFailure)
-      named <- records.principals.speakers((all ++ near).map(_.id)).left.map(storeFailure)
-      base <- requestOf(system, all, near, turn, window, named)
+      showing <- shown(records, turn, window).left.map(storeFailure)
+      base <- requestOf(system, showing, turn, window)
       id <- TurnTopics.writeEvents(
         records.entries,
         records.ledger,
@@ -1290,33 +1286,50 @@ object Turn {
       window: Window
   ): Either[TurnFailure, ModelRequest] =
     env.db
-      .read { (tx: Tx^) ?=>
-        for {
-          all <- env.records.entries.list(turn.conversationId)
-          near <- Nearby.read(window.nearby, env.records.entries)
-          named <- env.records.principals.speakers((all ++ near).map(_.id))
-        } yield requestOf(system, all, near, turn, window, named)
-      }
+      .read(shown(env.records, turn, window))
       .left
       .map(storeFailure)
-      .flatten
+      .flatMap(requestOf(system, _, turn, window))
 
-  /** The request [[request]] builds, from `all` of the conversation's entries and `near`,
-    * the nearby entries that still exist: each nearby section as one user message
+  /** What a request for `turn` over `window` can show, read from `records`: the entries of
+    * its conversation at the window's seqs, the turn's own entries, the nearby sections'
+    * entries that still exist, and who said each; nothing else of the conversation.
+    */
+  private def shown(records: TurnRecords, turn: TurnRef, window: Window)(using
+      Tx^
+  ): Either[StoreError, Showing] =
+    for {
+      at <- records.entries.at(turn.conversationId, window.entries)
+      mine <- records.entries.ofTurn(turn)
+      near <- Nearby.read(window.nearby, records.entries)
+      named <- records.principals.speakers((at ++ mine ++ near).map(_.id).distinct)
+    } yield Showing(at, mine, near, named)
+
+  /** What [[shown]] read: `window`, the entries at the window's seqs that exist; `mine`,
+    * the turn's own; `near`, the nearby entries that still exist; `named`, their speakers.
+    */
+  private final case class Showing(
+      window: Vector[Entry],
+      mine: Vector[Entry],
+      near: Vector[Entry],
+      named: Speakers
+  )
+
+  /** The request [[request]] builds from `showing`: each nearby section as one user message
     * ([[Shown.section]], a section with none of its entries left dropped), then what the
     * model is shown of the window's entries ([[Shown.own]]: its messages, a closing entry
     * as one user message, and a gap line wherever turns are left out), then the turn's own, its tool loop's exchange among them in order.
-    * A summary is not shown to the model yet.
+    * A summary is not shown to the model yet. A window seq with no entry is an `Assembly`
+    * failure naming every such seq.
     */
   private def requestOf(
       system: String,
-      all: Vector[Entry],
-      near: Vector[Entry],
+      showing: Showing,
       turn: TurnRef,
-      window: Window,
-      named: Speakers
+      window: Window
   ): Either[TurnFailure, ModelRequest] = {
-    val bySeq = all.map(e => e.seq -> e).toMap
+    val Showing(at, mine, near, named) = showing
+    val bySeq = at.map(e => e.seq -> e).toMap
     val sections = window.nearby.flatMap(Shown.section(_, near, named))
     window.entries.filterNot(bySeq.contains) match {
       case missing if missing.nonEmpty =>
@@ -1327,8 +1340,7 @@ object Turn {
         )
       case _ =>
         val shown = Shown.own(window.entries.flatMap(bySeq.get), turn.turnSeq, named)
-        val mine = Shown.turn(own(all, turn), named)
-        Right(ModelRequest(system, sections ++ shown ++ mine))
+        Right(ModelRequest(system, sections ++ shown ++ Shown.turn(mine, named)))
     }
   }
 
@@ -1354,13 +1366,11 @@ object Turn {
       case TurnOffer.Root.Addressed => (turn.replyId, Payload.Message(message))
       case TurnOffer.Root.Heard => (turn.draftId, Payload.Draft(message))
     }
-    val TurnRecords(entries, ledger, estimator, _, principals) = records
+    val TurnRecords(entries, ledger, estimator, _, _) = records
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
-      all <- entries.list(turn.conversationId).left.map(storeFailure)
-      near <- Nearby.read(window.nearby, entries).left.map(storeFailure)
-      named <- principals.speakers((all ++ near).map(_.id)).left.map(storeFailure)
-      sent <- requestOf(offer.system, all, near, turn, window, named).map(shape)
+      showing <- shown(records, turn, window).left.map(storeFailure)
+      sent <- requestOf(offer.system, showing, turn, window).map(shape)
       replySeq <- recorded match {
         case WindowRecord.OwnStep => Right(next.seq)
         case WindowRecord.WithReply => writeWindow(records, turn, window, next.seq, at)

@@ -38,6 +38,8 @@ object CrashingTurn {
           Tx^
       ): Either[StoreError, Vector[Entry]] =
         engine.entries.at(c, seqs)
+      def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]] =
+        engine.entries.ofTurn(turn)
       def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
         engine.entries.lockNext(c)
     }

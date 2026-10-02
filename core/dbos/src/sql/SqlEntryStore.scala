@@ -6,7 +6,7 @@ import java.time.{OffsetDateTime, ZoneOffset}
 import scala.util.Using
 import scala.util.control.NonFatal
 
-import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.store.{Entry, EntryStore, PayloadJson, StoreError, Tx}
 
 import org.postgresql.util.PSQLException
@@ -105,6 +105,27 @@ final class SqlEntryStore extends EntryStore {
         ps.setString(1, ConversationId.value(conversation))
         // An array literal of numbers, so no Java array is handed to the driver.
         ps.setString(2, seqs.map(EntrySeq.value).mkString("{", ",", "}"))
+        Using.resource(ps.executeQuery()) { rs =>
+          val rows = Vector.newBuilder[Entry]
+          while (rs.next()) {
+            rows += readEntry(rs)
+          }
+          rows.result()
+        }
+      }
+    }
+  }
+
+  def ofTurn(turn: TurnRef)(using tx: Tx^): Either[StoreError, Vector[Entry]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    val sql =
+      s"""SELECT $columns FROM grit.entries
+         | WHERE conversation_id = ?::uuid AND turn_seq = ?
+         | ORDER BY seq""".stripMargin
+    attempt {
+      Using.resource(conn.prepareStatement(sql)) { ps =>
+        ps.setString(1, ConversationId.value(turn.conversationId))
+        ps.setLong(2, TurnSeq.value(turn.turnSeq))
         Using.resource(ps.executeQuery()) { rs =>
           val rows = Vector.newBuilder[Entry]
           while (rs.next()) {
