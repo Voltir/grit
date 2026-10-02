@@ -16,12 +16,18 @@
 #       Every case of the corpus rebuilt through the shipped builders from grit_eval_<date>,
 #       how its inputs changed from capture printed (ids and counts), then asked of Jev as
 #       the variant says (live, durable-lasting, jev-latest): each request --repeats times
-#       (default 1), over the first n cases by ts with --first, answered from
-#       .local/eval/cache/ unless --no-cache. --spend is a hard cap in USD: the run refuses
-#       before any call when its estimate is over it, and skips every call past it. Writes
+#       (default 3: Jev's answers vary from call to call), over the first n cases by ts with
+#       --first, answered from .local/eval/cache/ unless --no-cache. --spend is a hard cap in
+#       USD: the run refuses before any call when its estimate is over it, and skips every
+#       call past it. Writes
 #       .local/eval/runs/<stamp>-<variant>.jsonl and prints counts and the spend. Jev's key
 #       is JEV_API_KEY, from the environment over GRIT_ENV_FILE (the main checkout's .env
 #       when unset), read by the harness as grit does.
+#
+#   scripts/eval determinism --corpus <yyyymmdd> --log <runs file>
+#       How far apart a run's repeats answered, and how far its answers are from what triage
+#       and stitching kept live: the largest gap, and the questions and cases over 1e-9, by
+#       id. <runs file> is a name in .local/eval/runs/.
 #
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.
@@ -112,8 +118,23 @@ run() {
     --labels "$main/.local/eval/labels.json" "${rest[@]}"
 }
 
+determinism() {
+  local corpus= log=
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --corpus) corpus=$2; shift 2 ;;
+      --log) log=$2; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [[ $corpus =~ ^[0-9]{8}$ ]] && [ -n "$log" ] || usage
+  harness determinism --corpus "$main/.local/eval/corpus/$corpus" \
+    --log "$main/.local/eval/runs/$log"
+}
+
 case $1 in
   capture) shift; capture "$@" ;;
+  determinism) shift; determinism "$@" ;;
   run) shift; run "$@" ;;
   *) usage ;;
 esac

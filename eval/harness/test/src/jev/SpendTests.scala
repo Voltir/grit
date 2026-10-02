@@ -6,11 +6,12 @@ import utest.*
 object SpendTests extends TestSuite {
 
   val tests = Tests {
-    // 3,001 bytes is 1,001 tokens, rounded up, at $0.042 a million.
-    test("a request is estimated at its bytes over three, rounded up, at Jev's input price") {
-      Spend.estimate("x" * 3001) ==> BigDecimal("0.000042042")
-      // é is two bytes in UTF-8: 6 bytes, 2 tokens.
-      Spend.estimate("ééé") ==> BigDecimal("0.000000084")
+    // 3,001 bytes is 1,001 tokens, rounded up, and 300 for the call: 1,301 at $0.042 a million.
+    test("a request is estimated at its bytes over three, rounded up, and Jev's per-call tokens") {
+      Spend.tokens("x" * 3001) ==> 1301L
+      Spend.estimate("x" * 3001) ==> BigDecimal("0.000054642")
+      // é is two bytes in UTF-8: 6 bytes, 2 tokens, and the call's.
+      Spend.tokens("ééé") ==> 302L
     }
 
     test("a run estimated over its cap is refused before any call") {

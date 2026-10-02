@@ -34,7 +34,9 @@ Packages, each importing only those above it:
   and `Budget`, a run's spend under its cap. ← `corpus`, `log`
 - **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
   (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
-  kept, within the cap. ← `corpus`, `log`, `jev`
+  kept, within the cap; `Repeats`, how many times each is asked. ← `corpus`, `log`, `jev`
+- **`score`** — what a run's log says: `Spread`, how far apart its repeats answered, and how
+  far its answers are from what was kept live. ← `corpus`, `log`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
 
 No source file sits at the module's root.

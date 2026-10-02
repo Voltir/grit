@@ -25,7 +25,8 @@ import grit.eval.harness.corpus.{
 }
 import grit.eval.harness.jev.{Budget, Drift, Inputs, Rebuilt, Spend, Variant, Variants}
 import grit.eval.harness.log.{Cache, Cached, Footer, Header, LogJson, Outcome, Row, Suite, Weights}
-import grit.eval.harness.run.{Call, Run}
+import grit.eval.harness.run.{Call, Repeats, Run}
+import grit.eval.harness.score.Spread
 import grit.kit.environment.DotEnv
 import grit.models.JevClassifier
 import grit.models.JevConfig
@@ -40,7 +41,11 @@ object Main {
       case "capture" :: rest => exit(flags(rest).flatMap(capture))
       case "run" :: rest =>
         exit(flags(rest.filterNot(_ == "--no-cache")).flatMap(run(_, !rest.contains("--no-cache"))))
-      case _ => exit(Left("usage: scripts/eval capture|run (scripts/eval says what each takes)"))
+      case "determinism" :: rest => exit(flags(rest).flatMap(determinism))
+      case _ =>
+        exit(
+          Left("usage: scripts/eval capture|run|determinism (scripts/eval says what each takes)")
+        )
     }
 
   /** `capture --url <jdbc> --source <db> --restored <db> --sha256 <hex> --at <instant> --out
@@ -73,7 +78,7 @@ object Main {
     } yield report(captured.manifest, captured.cases)
 
   /** `run --corpus <dir> --url <jdbc> --variant <name> --spend <usd> --cache <dir> --runs
-    * <dir> [--repeats n] [--first n] [--rule <file>] [--labels <file>]`, and `cache` false for
+    * <dir> [--repeats n (default [[Repeats.Default]])] [--first n] [--rule <file>] [--labels <file>]`, and `cache` false for
     * `--no-cache`: the corpus's cases' questions rebuilt, how they changed from capture
     * reported, then asked of Jev under the cap, and the log written to `<runs>/<stamp>-<variant>.jsonl`.
     * The key comes from the environment over `GRIT_ENV_FILE` (`.env` when unset), the
@@ -91,7 +96,7 @@ object Main {
       cap <- need(f, "spend").flatMap(decimal("spend"))
       cacheDir <- need(f, "cache").map(Path.of(_))
       runs <- need(f, "runs").map(Path.of(_))
-      repeats <- f.get("repeats").fold(Right(1))(positive("repeats"))
+      repeats <- f.get("repeats").fold(Right(Repeats.Default))(positive("repeats"))
       first <- f.get("first").fold(Right(None))(positive("first")(_).map(Some(_)))
       rule <- f.get("rule").fold(Right(None))(r => read(Path.of(r)).map(t => Some(Digest.text(t))))
       labels <- f
@@ -172,12 +177,10 @@ object Main {
       }
       val reported =
         asked.map((_: Call, r: Row[Vector[Weights]]) => Tokens.value(r.usage.input)).sum
-      val estimatedTokens = asked
-        .map((c: Call, _: Row[Vector[Weights]]) =>
-          Run.body(model, c.request).getBytes(StandardCharsets.UTF_8).length
-        )
-        .map(b => (b + Spend.BytesPerToken - 1) / Spend.BytesPerToken)
-        .sum
+      val estimatedTokens =
+        asked
+          .map((c: Call, _: Row[Vector[Weights]]) => Spend.tokens(Run.body(model, c.request)))
+          .sum
       println(
         s"rows: ${ran.rows.size}; answered ${footer.answered} (cached ${footer.cached}), " +
           s"failed ${footer.failed}, skipped ${footer.skipped}; spent $$${footer.spent}"
@@ -185,6 +188,43 @@ object Main {
       println(s"input tokens of the calls asked: reported $reported, estimated $estimatedTokens")
       println(s"log: ${out.getFileName}")
     }
+
+  /** `determinism --corpus <dir> --log <file>`: how far apart the log's repeats answered,
+    * and how far its answers are from what was kept live: the largest gap, and the questions
+    * and cases over [[Spread.Tolerance]], by id.
+    */
+  private def determinism(f: Map[String, String]): Either[String, Unit] =
+    for {
+      dir <- need(f, "corpus").map(Path.of(_))
+      logText <- need(f, "log").map(Path.of(_)).flatMap(read)
+      log <- LogJson.read[Vector[Weights]](logText.linesIterator.filter(_.nonEmpty).toVector)
+      cases <- readCases(dir)
+    } yield {
+      def show(what: String, s: Spread): Unit = {
+        val bySuite = Suite.values.map(x => s"${Suite.written(x)} ${s.spread.count(_._1 == x)}")
+        println(
+          s"$what: largest ${s.largest}; questions over ${Spread.Tolerance}: ${s.spread.size} " +
+            s"of ${s.compared} (${bySuite.mkString(", ")}); cases: ${s.spread.map(_._2).distinct.size}"
+        )
+        s.spread.foreach((suite, id) => println(s"  ${Suite.written(suite)} ${id.written}"))
+      }
+      println(
+        s"log: ${log.header.variant}, ${log.header.model}, ${log.header.repeats} repeats, " +
+          s"${log.rows.size} rows, cache ${if (log.header.cache) "on" else "off"}"
+      )
+      show("across repeats", Spread.repeats(log.rows))
+      show("against live", Spread.live(log.rows, cases))
+    }
+
+  /** The cases of the corpus in `dir`. */
+  private def readCases(dir: Path): Either[String, Vector[Case]] =
+    read(dir.resolve("cases.jsonl")).flatMap(text =>
+      Fields.each(text.linesIterator.filter(_.nonEmpty).toVector)(l =>
+        Try(ujson.read(l)).toOption
+          .toRight("cases.jsonl: a line is not JSON")
+          .flatMap(CorpusJson.readCase)
+      )
+    )
 
   /** Each suite's rebuilt states against the corpus's, as counts, and the ids of every case
     * that drifted under the shipped builder: ids only.

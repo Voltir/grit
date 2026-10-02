@@ -8,17 +8,28 @@ import grit.models.JevConfig
 object Spend {
 
   /** The fewest bytes of a request the estimate counts as one token. Meant to over-estimate:
-    * JSON text runs nearer four bytes to a token.
+    * a request's text is billed nearer four bytes to a token.
     */
   val BytesPerToken = 3
 
-  /** What sending `request`, Jev's wire body, costs at most in USD: its UTF-8 bytes over
-    * [[BytesPerToken]], rounded up, at [[JevConfig.UsdPerMillionInput]]; output is not billed.
+  /** The input tokens Jev bills a call for beyond its body's: its own template around the
+    * request. Meant to over-estimate: a triage request with a near-empty message is billed
+    * about 550 tokens, where its body's bytes over [[BytesPerToken]] are about 440.
     */
-  def estimate(request: String): BigDecimal = {
-    val bytes = request.getBytes(StandardCharsets.UTF_8).length
-    val tokens = (bytes + BytesPerToken - 1) / BytesPerToken
-    BigDecimal(tokens) * JevConfig.UsdPerMillionInput / BigDecimal(1_000_000)
+  val TokensPerCall = 300
+
+  /** What sending `request`, Jev's wire body, costs at most in USD: [[tokens]] at
+    * [[JevConfig.UsdPerMillionInput]]; output is not billed.
+    */
+  def estimate(request: String): BigDecimal =
+    BigDecimal(tokens(request)) * JevConfig.UsdPerMillionInput / BigDecimal(1_000_000)
+
+  /** The input tokens [[estimate]] prices `request` at: its UTF-8 bytes over
+    * [[BytesPerToken]], rounded up, and [[TokensPerCall]].
+    */
+  def tokens(request: String): Long = {
+    val bytes = request.getBytes(StandardCharsets.UTF_8).length.toLong
+    (bytes + BytesPerToken - 1) / BytesPerToken + TokensPerCall
   }
 }
 
