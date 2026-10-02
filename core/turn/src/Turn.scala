@@ -1224,7 +1224,7 @@ object Turn {
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = TurnSummary.id(turn)
-    val TurnRecords(entries, ledger, estimator, _, principals) = records
+    val TurnRecords(entries, ledger, estimator, _, _) = records
     for {
       read <- (placing match {
         case Placing.Placed(_) => TurnSummary.read(message)
