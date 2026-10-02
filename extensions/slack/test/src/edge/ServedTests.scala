@@ -158,8 +158,8 @@ object ServedTests extends TestSuite {
         )
         val _ = w.edges.dispatch(Vector(q))(using TestTx.fake)
         val deadline = System.nanoTime() + 10_000_000_000L
-        while (w.edges.told.isEmpty && System.nanoTime() < deadline) Thread.sleep(20)
-        (w.edges.told, w.slack.posts.map(p => (p.channel, p.post.fallback))) ==> (
+        while (w.edges.answers.isEmpty && System.nanoTime() < deadline) Thread.sleep(20)
+        (w.edges.answers, w.slack.posts.map(p => (p.channel, p.post.fallback))) ==> (
           Vector((q.slot, Outcome.Done("Posted in #probably-not-skynet."))),
           Vector((Skynet, "the build is green"))
         )

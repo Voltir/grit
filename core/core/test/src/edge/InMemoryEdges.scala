@@ -10,7 +10,8 @@ import grit.core.tool.{Outcome, Retry, ToolSet}
 
 /** In-memory [[ToolRequests]], [[EdgeDirectory]] and [[Desks]] for tests, keeping
   * [[EdgesContract]]. It ignores the `Tx`. Each answer an edge gives is also kept in
-  * [[told]], in order.
+  * [[answers]], in order, for a test to read; the turn is told none of them, only rung with
+  * [[Desk.Doorbell]], and reads its answer from the request.
   */
 final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
 
@@ -32,7 +33,7 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
   var adverts = Map.empty[(EdgeId, Place), Advert]
 
   @caps.unsafe.untrackedCaptures
-  var told = Vector.empty[(CallSlot, Outcome)]
+  var answers = Vector.empty[(CallSlot, Outcome)]
 
   @caps.unsafe.untrackedCaptures
   private var sessions = 0
@@ -166,7 +167,7 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
     rows.find(_.request.slot == slot) match {
       case Some(Row(_, InMemoryEdges.Open, Some(by))) if by == (reg.edge, session) =>
         update(slot)(_.copy(state = RequestState.Answered(outcome)))
-        told = told :+ (slot, outcome)
+        answers = answers :+ (slot, outcome)
         true
       case _ => false
     }
@@ -181,7 +182,7 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
       q.retry match {
         case Retry.Interrupt =>
           update(q.slot)(_.copy(state = RequestState.Answered(Outcome.Interrupted)))
-          told = told :+ (q.slot, Outcome.Interrupted)
+          answers = answers :+ (q.slot, Outcome.Interrupted)
           None
         case Retry.Rerun =>
           update(q.slot)(_.copy(claimedBy = Some((reg.edge, session))))

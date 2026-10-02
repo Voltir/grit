@@ -60,7 +60,7 @@ object ServerTests extends TestSuite {
       edges.dispatch(Vector(q))(using TestTx.fake)
       val tools = new Counting
       new Server(edges.desk(Set(api)), tools, inline, quiet).pass() ==> 1
-      edges.told ==> Vector((q.slot, Outcome.Done("ran in /work/api")))
+      edges.answers ==> Vector((q.slot, Outcome.Done("ran in /work/api")))
     }
 
     test("a request outside the registered places is never claimed, whatever the desk lists") {
@@ -108,7 +108,7 @@ object ServerTests extends TestSuite {
       val tools = new Counting
       val server = new Server(edges.desk(Set(api)), tools, inline, quiet)
       (server.pass(), server.pass()) ==> (1, 0)
-      (tools.runs, edges.told) ==> (
+      (tools.runs, edges.answers) ==> (
         Vector(q.slot.key),
         Vector((q.slot, Outcome.Done("ran in /work/api")))
       )
@@ -123,7 +123,7 @@ object ServerTests extends TestSuite {
       edges.kill(dead.registration.edge)
       val tools = new Counting
       new Server(edges.desk(Set(api)), tools, inline, quiet).pass() ==> 0
-      (tools.runs, edges.told) ==> (Vector(), Vector((q.slot, Outcome.Interrupted)))
+      (tools.runs, edges.answers) ==> (Vector(), Vector((q.slot, Outcome.Interrupted)))
     }
   }
 }
