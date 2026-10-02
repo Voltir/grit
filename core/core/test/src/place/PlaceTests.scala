@@ -146,6 +146,8 @@ object PlaceTests extends TestSuite {
       Vector("slack:acme/C01/1.2", "slack:acme/C02/1.2", "slack:other/C01/1.2", "fs:/home/nick")
         .map(p => WorksIn.of(links, place(p))) ==>
         Vector(Some(service("tracker")), Some(service("github")), None, None)
+      // The first link, not the most specific: a broader one listed first wins.
+      WorksIn.of(links.reverse, place("slack:acme/C01/1.2")) ==> Some(service("github"))
     }
 
     test(
