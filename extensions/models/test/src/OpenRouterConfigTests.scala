@@ -115,18 +115,24 @@ object OpenRouterConfigTests extends TestSuite {
         ("small/one", 1024, Some("fireworks"), None, ReasoningReplay.Details)
     }
 
-    test("forRole: with nothing set but the key, each role runs on the seed's assignment") {
-      Seed.catalog match {
-        case Left(why) => throw new java.lang.AssertionError(why)
-        case Right(seed) =>
-          for (role <- ModelRole.values) {
-            val a = role.in(seed.policy)
-            OpenRouterConfig
-              .forRole(Map("OPENROUTER_API_KEY" -> "k"), role)
-              .map(c => (c.model, c.maxTokens, c.upstream)) ==>
-              Right((ModelId.value(a.ref.model), a.maxTokens, a.ref.upstream))
-          }
-      }
+    test("forRole: each role runs on its own variables, over the seed's budgets") {
+      val env = Map(
+        "OPENROUTER_API_KEY" -> "k",
+        "GRIT_MODEL" -> "t/m",
+        "GRIT_SUMMARY_MODEL" -> "s/m",
+        "GRIT_QUERY_MODEL" -> "q/m"
+      )
+      ModelRole.values.toSeq.map(role =>
+        OpenRouterConfig.forRole(env, role).map(c => (c.model, c.maxTokens, c.upstream))
+      ) ==> Seq(
+        Right(("t/m", 4096, None)),
+        Right(("s/m", 4096, None)),
+        Right(("q/m", 1024, None))
+      )
+      // With nothing set but the key, the query runs on the seed's own budget.
+      OpenRouterConfig
+        .forRole(Map("OPENROUTER_API_KEY" -> "k"), ModelRole.Query)
+        .map(_.maxTokens) ==> Right(1024)
     }
   }
 }
