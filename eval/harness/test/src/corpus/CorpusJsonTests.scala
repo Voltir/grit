@@ -54,7 +54,14 @@ object CorpusJsonTests extends TestSuite {
           Offering(id("C1/1726900000.000900"), Offered.Lexical(3.25), None)
         ),
         Some(Built(d2, d1)),
-        SeenCheck.of(Set(SeenCheck.Field.NewMessage, SeenCheck.Field.Roots)),
+        Vector(
+          Slot(id("C1/1726990000.000100"), Offered.Recent(1)),
+          Slot(id("C1/1726900000.000900"), Offered.Lexical(3.5))
+        ),
+        new SeenCheck.SameRootDiffers(
+          Vector(id("C1/1726990000.000100")),
+          Set(SeenCheck.Field.Latest, SeenCheck.Field.Record)
+        ),
         1
       )
     ),

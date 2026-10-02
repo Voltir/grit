@@ -72,17 +72,36 @@ object Main {
 
   private def report(m: Manifest, cases: Vector[Case]): Unit = {
     val stitches = cases.flatMap(_.stitch)
-    val differs = stitches.map(_.seen).collect { case d: SeenCheck.Differs => d.fields }
-    println(s"cases: ${m.cases}")
-    println(s"stitched: ${m.stitched}")
-    println(s"triage rebuilt: ${cases.count(_.asked.isDefined)} of ${cases.size}")
+    val seen = stitches.map(_.seen)
+    def count(kind: String)(f: SeenCheck => Boolean) = s"$kind ${seen.count(f)}"
     println(
-      s"seen check: match ${stitches.count(_.seen == SeenCheck.Match)}, " +
-        s"differs ${differs.size}, unbuilt ${stitches.count(_.seen == SeenCheck.Unbuilt)}"
+      "seen check: " + Vector(
+        count("match")(_ == SeenCheck.Match),
+        count("lexical only")(_.isInstanceOf[SeenCheck.LexicalOnly]),
+        count("recent differs")(_.isInstanceOf[SeenCheck.RecentDiffers]),
+        count("same root differs")(_.isInstanceOf[SeenCheck.SameRootDiffers]),
+        count("message differs")(_.isInstanceOf[SeenCheck.MessageDiffers]),
+        count("unbuilt")(_ == SeenCheck.Unbuilt)
+      ).mkString(", ")
     )
-    SeenCheck.Field.values.foreach { field =>
-      val n = differs.count(_.contains(field))
-      if (n > 0) println(s"  differs in ${SeenCheck.Field.written(field)}: $n")
+    // A difference the rebuild should never show, by case id and slot: ids and times only.
+    cases.foreach { c =>
+      c.stitch.map(_.seen).foreach {
+        case SeenCheck.RecentDiffers(ranks) =>
+          println(
+            s"  recent differs: ${c.id.written} tagged ${c.tagged}, ranks ${ranks.mkString(" ")}"
+          )
+        case SeenCheck.SameRootDiffers(roots, fields) =>
+          println(
+            s"  same root differs: ${c.id.written} tagged ${c.tagged}, roots " +
+              s"${roots.map(_.written).mkString(" ")} in ${fields.map(SeenCheck.Field.written).mkString(" ")}"
+          )
+        case SeenCheck.MessageDiffers(fields) =>
+          println(
+            s"  message differs: ${c.id.written} in ${fields.map(SeenCheck.Field.written).mkString(" ")}"
+          )
+        case _ => ()
+      }
     }
     println(
       s"lexical drift: ${stitches.count(_.drift > 0)} cases, " +

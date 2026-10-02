@@ -113,7 +113,8 @@ final case class Clusters(conversation: CaseId, exchange: CaseId)
 
 /** A first message's placement among its room's exchanges, live and rebuilt: what became of
   * it, the exchanges it was offered as it was shown live (most recently spoken in first), its
-  * input as rebuilt now (`None` when nothing is offered on rebuild), the [[SeenCheck]] of
+  * input as rebuilt now (`None` when nothing is offered on rebuild) and the slots it offers
+  * then (most recently spoken in first; none when nothing is), the [[SeenCheck]] of
   * the two, and `drift`, how many exchanges offered lexically both live and on rebuild have
   * scores further apart than [[Stitched.Tolerance]].
   */
@@ -121,6 +122,7 @@ final case class Stitched(
     placed: Placement,
     offered: Vector[Offering],
     input: Option[Built],
+    rebuilt: Vector[Slot],
     seen: SeenCheck,
     drift: Int
 )
@@ -133,14 +135,11 @@ object Stitched {
   /** How many exchanges, by root, `live` and `rebuilt` both offer lexically with scores
     * further apart than [[Tolerance]].
     */
-  def drift(
-      live: Vector[(ConversationId, Offered)],
-      rebuilt: Vector[(ConversationId, Offered)]
-  ): Int =
+  def drift(live: Vector[Slot], rebuilt: Vector[Slot]): Int =
     live.count {
-      case (root, Offered.Lexical(was)) =>
+      case Slot(root, Offered.Lexical(was)) =>
         rebuilt.exists {
-          case (r, Offered.Lexical(now)) => r == root && math.abs(now - was) > Tolerance
+          case Slot(r, Offered.Lexical(now)) => r == root && math.abs(now - was) > Tolerance
           case _ => false
         }
       case _ => false
@@ -165,8 +164,15 @@ enum Placement {
   */
 final case class Offering(root: CaseId, why: Offered, p: Option[Probability])
 
+/** One exchange offered: the case that began it, and why it was offered. */
+final case class Slot(root: CaseId, why: Offered)
+
 /** Whether the state the shipped builder shows the classifier now is the one it was shown
-  * live (`grit.core.stitch.Seen.state`).
+  * live (`grit.core.stitch.Seen.state`), and when not, which kind of difference it is. A
+  * recent slot is one offered as [[Offered.Recent]] with a rank no greater than the tuning's
+  * `recent`; a slot ranked after them filled a lexical slot nothing matched, so it is
+  * lexical. Only a lexical slot may differ without the rebuild reading rows from after the
+  * message (BM25's statistics span every row).
   */
 sealed trait SeenCheck
 
@@ -175,47 +181,70 @@ object SeenCheck {
   /** The same, field for field. */
   case object Match extends SeenCheck
 
-  /** These fields differ; never none. */
-  final case class Differs private[SeenCheck] (fields: Set[Field]) extends SeenCheck
-
   /** Nothing is offered on rebuild, or the room cannot be read. */
   case object Unbuilt extends SeenCheck
 
-  /** `Match` when no field differs, else `Differs`. */
-  def of(fields: Set[Field]): SeenCheck = if (fields.isEmpty) Match else new Differs(fields)
+  /** The message or its author differs: these `fields`, never none. */
+  final case class MessageDiffers private[corpus] (fields: Set[Field]) extends SeenCheck
 
-  /** How the stitch question's state `rebuilt`, offering exchanges with roots `rebuiltRoots`,
-    * differs from `live`, offering `liveRoots`: the message and its author, how many exchanges
-    * and which roots in which order, and for each exchange offered at the same place in both,
-    * its opening, latest messages and record. A field missing from either state differs.
+  /** The recent slots differ: the ranks, from 1, whose roots differ, never none. */
+  final case class RecentDiffers private[corpus] (ranks: Vector[Int]) extends SeenCheck
+
+  /** An exchange both sides offer, by root, is shown differently: those `roots` and the
+    * `fields` (`opening`, `latest`, `record`) that differ, neither ever none.
+    */
+  final case class SameRootDiffers private[corpus] (roots: Vector[CaseId], fields: Set[Field])
+      extends SeenCheck
+
+  /** The recent slots are the same, in the same order, and only lexical slots differ, in
+    * these `fields` of the state, never none.
+    */
+  final case class LexicalOnly private[corpus] (fields: Set[Field]) extends SeenCheck
+
+  /** How `rebuilt`, the stitch question's state offering `rebuiltSlots`, differs from `live`,
+    * offering `liveSlots`, under a tuning of `recent` recent slots; each state's exchanges in
+    * its slots' order. When more than one kind holds, the first of `MessageDiffers`,
+    * `RecentDiffers`, `SameRootDiffers` and `LexicalOnly`. A field missing from either state
+    * differs.
     */
   def compare(
       live: ujson.Value,
-      liveRoots: Vector[ConversationId],
+      liveSlots: Vector[Slot],
       rebuilt: ujson.Value,
-      rebuiltRoots: Vector[ConversationId]
+      rebuiltSlots: Vector[Slot],
+      recent: Int
   ): SeenCheck = {
     def at(v: ujson.Value, k: String): Option[ujson.Value] = v.objOpt.flatMap(_.get(k))
     def same(x: Option[ujson.Value], y: Option[ujson.Value]): Boolean = x.isDefined && x == y
-    val (was, now) = (
-      at(live, "exchanges").flatMap(_.arrOpt).map(_.toVector),
-      at(rebuilt, "exchanges").flatMap(_.arrOpt).map(_.toVector)
-    )
-    val shared = was.getOrElse(Vector.empty).zip(now.getOrElse(Vector.empty))
-    def anyDiffer(k: String): Boolean = shared.exists((x, y) => !same(at(x, k), at(y, k)))
-    of(
-      Set(
-        Option.when(!same(at(live, "new_message"), at(rebuilt, "new_message")))(Field.NewMessage),
-        Option.when(!same(at(live, "author"), at(rebuilt, "author")))(Field.Author),
-        Option.when(was.isEmpty || now.isEmpty || was.map(_.size) != now.map(_.size))(
-          Field.Exchanges
-        ),
-        Option.when(liveRoots != rebuiltRoots)(Field.Roots),
-        Option.when(anyDiffer("opening"))(Field.Opening),
-        Option.when(anyDiffer("latest"))(Field.Latest),
-        Option.when(anyDiffer("record"))(Field.Record)
-      ).flatten
-    )
+    def exchanges(v: ujson.Value): Vector[ujson.Value] =
+      at(v, "exchanges").flatMap(_.arrOpt).fold(Vector.empty[ujson.Value])(_.toVector)
+    val (was, now) = (exchanges(live), exchanges(rebuilt))
+    val shown =
+      Vector(Field.Opening -> "opening", Field.Latest -> "latest", Field.Record -> "record")
+    def differ(x: ujson.Value, y: ujson.Value): Set[Field] =
+      shown.collect { case (f, k) if !same(at(x, k), at(y, k)) => f }.toSet
+    val message = Set(
+      Option.when(!same(at(live, "new_message"), at(rebuilt, "new_message")))(Field.NewMessage),
+      Option.when(!same(at(live, "author"), at(rebuilt, "author")))(Field.Author)
+    ).flatten
+    def recents(s: Vector[Slot]): Map[Int, CaseId] =
+      s.collect { case Slot(root, Offered.Recent(rank)) if rank <= recent => rank -> root }.toMap
+    val (r1, r2) = (recents(liveSlots), recents(rebuiltSlots))
+    val ranks = (r1.keySet ++ r2.keySet).toVector.sorted.filter(k => r1.get(k) != r2.get(k))
+    val byRoot = rebuiltSlots.map(_.root).zip(now).toMap
+    val sameRoot = liveSlots.map(_.root).zip(was).flatMap { (root, x) =>
+      byRoot.get(root).map(y => root -> differ(x, y)).filter(_._2.nonEmpty)
+    }
+    val positional = Set(
+      Option.when(was.isEmpty || was.size != now.size)(Field.Exchanges),
+      Option.when(liveSlots.map(_.root) != rebuiltSlots.map(_.root))(Field.Roots)
+    ).flatten ++ was.zip(now).flatMap(differ(_, _))
+    if (message.nonEmpty) new MessageDiffers(message)
+    else if (ranks.nonEmpty) new RecentDiffers(ranks)
+    else if (sameRoot.nonEmpty)
+      new SameRootDiffers(sameRoot.map(_._1), sameRoot.flatMap(_._2).toSet)
+    else if (positional.nonEmpty) new LexicalOnly(positional)
+    else Match
   }
 
   /** A field of the stitch question's state. */

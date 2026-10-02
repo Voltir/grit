@@ -3,7 +3,7 @@ package grit.eval.harness.corpus
 import java.time.Instant
 
 import grit.core.id.{ConversationId, TurnRef}
-import grit.core.stitch.{Placed, Seen as LiveSeen, StitchReads, Stitching, Tuning}
+import grit.core.stitch.{Placed, StitchReads, Stitching, Tuning}
 import grit.core.store.{Origin, StoreError}
 import grit.core.triage.{Tags, TriageStore}
 import grit.dbos.engine.{Build, Reader}
@@ -158,20 +158,23 @@ object Capture {
         case u: Placed.Unread => Right(Placement.Unread(Failure.of(u.why)))
       }
       offered <- each(live.seen.offered)(o => opening(o.root).map(Offering(_, o.why, o.p)))
+      rebuilt = Stitching.offered(reads, reader.db, turn, tuning).toOption.flatten
+      now <- each(rebuilt.fold(Vector.empty)(_.exchanges))(e =>
+        opening(e.root).map(Slot(_, e.offered))
+      )
     } yield {
-      val rebuilt = Stitching.offered(reads, reader.db, turn, tuning).toOption.flatten
-      val liveOffered = live.seen.offered.map((o: LiveSeen.Offer) => o.root -> o.why)
+      val was = offered.map(o => Slot(o.root, o.why))
       rebuilt match {
-        case None => Stitched(placement, offered, None, SeenCheck.Unbuilt, 0)
+        case None => Stitched(placement, offered, None, Vector.empty, SeenCheck.Unbuilt, 0)
         case Some(offer) =>
-          val now = offer.exchanges.map(e => e.root -> e.offered)
           val shown = Stitching.shown(offer)
           Stitched(
             placement,
             offered,
             Stitching.request(offer).map(r => Built(Digest.json(shown), Digest.request(r))),
-            SeenCheck.compare(live.seen.state, liveOffered.map(_._1), shown, now.map(_._1)),
-            Stitched.drift(liveOffered, now)
+            now,
+            SeenCheck.compare(live.seen.state, was, shown, now, tuning.recent),
+            Stitched.drift(was, now)
           )
       }
     }

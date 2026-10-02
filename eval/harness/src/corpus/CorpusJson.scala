@@ -256,9 +256,13 @@ object CorpusJson {
             })
         )
       input <- f.optional("input").flatMap(opt(_)(readBuilt("stitch")))
+      rebuilt <- f
+        .field("rebuilt")
+        .flatMap(_.arrOpt.toRight("stitch: rebuilt is not an array"))
+        .flatMap(xs => each(xs.toVector)(readSlot))
       seen <- f.field("seen").flatMap(readSeen)
       drift <- f.int("drift")
-    } yield Stitched(placed, offered, input, seen, drift)
+    } yield Stitched(placed, offered, input, rebuilt, seen, drift)
   }
 
   private def readPlacement(v: ujson.Value): Either[String, Placement] = {
@@ -279,11 +283,7 @@ object CorpusJson {
     val f = Fields("offered", v)
     for {
       root <- f.str("root").flatMap(CaseId.read)
-      why <- f.obj("why").flatMap { w =>
-        val wf = Fields("offered why", w)
-        if (w.objOpt.exists(_.contains("recent"))) wf.int("recent").map(Offered.Recent(_))
-        else wf.num("lexical").map(Offered.Lexical(_))
-      }
+      why <- f.obj("why").flatMap(readWhy("offered"))
       p <- f
         .optional("p")
         .flatMap(
@@ -292,26 +292,66 @@ object CorpusJson {
     } yield Offering(root, why, p)
   }
 
+  private def readWhy(what: String)(w: ujson.Value): Either[String, Offered] = {
+    val wf = Fields(s"$what why", w)
+    if (w.objOpt.exists(_.contains("recent"))) wf.int("recent").map(Offered.Recent(_))
+    else wf.num("lexical").map(Offered.Lexical(_))
+  }
+
+  private def readSlot(v: ujson.Value): Either[String, Slot] = {
+    val f = Fields("rebuilt", v)
+    for {
+      root <- f.str("root").flatMap(CaseId.read)
+      why <- f.obj("why").flatMap(readWhy("rebuilt"))
+    } yield Slot(root, why)
+  }
+
   private def readSeen(v: ujson.Value): Either[String, SeenCheck] = v match {
     case ujson.Str("match") => Right(SeenCheck.Match)
     case ujson.Str("unbuilt") => Right(SeenCheck.Unbuilt)
     case o: ujson.Obj =>
-      Fields("seen", o)
-        .field("differs")
-        .flatMap(_.arrOpt.toRight("seen: differs is not an array"))
-        .flatMap(_.toVector.foldLeft[Either[String, Set[SeenCheck.Field]]](Right(Set.empty)) {
-          (acc, x) =>
-            acc.flatMap(done =>
-              x.strOpt
-                .flatMap(SeenCheck.Field.read)
-                .toRight(s"seen: no field ${x.render()}")
-                .map(done + _)
+      val f = Fields("seen", o)
+      def fields: Either[String, Set[SeenCheck.Field]] =
+        f.field("fields")
+          .flatMap(_.arrOpt.toRight("seen: fields is not an array"))
+          .flatMap(xs =>
+            each(xs.toVector)(x =>
+              x.strOpt.flatMap(SeenCheck.Field.read).toRight(s"seen: no field ${x.render()}")
             )
-        })
-        .filterOrElse(_.nonEmpty, "seen: differs in no field")
-        .map(SeenCheck.of)
-    case _ => Left("seen: neither match, unbuilt nor differs")
+          )
+          .map(_.toSet)
+          .filterOrElse(_.nonEmpty, "seen: differs in no field")
+      f.str("kind").flatMap {
+        case "message_differs" => fields.map(new SeenCheck.MessageDiffers(_))
+        case "lexical_only" => fields.map(new SeenCheck.LexicalOnly(_))
+        case "recent_differs" =>
+          f.field("ranks")
+            .flatMap(_.arrOpt.toRight("seen: ranks is not an array"))
+            .flatMap(xs =>
+              each(xs.toVector)(x =>
+                x.numOpt.filter(_.isWhole).map(_.toInt).toRight("seen: a rank is not an integer")
+              )
+            )
+            .filterOrElse(_.nonEmpty, "seen: no rank differs")
+            .map(new SeenCheck.RecentDiffers(_))
+        case "same_root_differs" =>
+          for {
+            roots <- f
+              .field("roots")
+              .flatMap(_.arrOpt.toRight("seen: roots is not an array"))
+              .flatMap(xs => each(xs.toVector)(x => str("seen: root", x).flatMap(CaseId.read)))
+              .filterOrElse(_.nonEmpty, "seen: no root differs")
+            fs <- fields
+          } yield new SeenCheck.SameRootDiffers(roots, fs)
+        case k => Left(s"seen: no kind $k")
+      }
+    case _ => Left("seen: neither match, unbuilt nor a difference")
   }
+
+  private def each[A, B](as: Vector[A])(f: A => Either[String, B]): Either[String, Vector[B]] =
+    as.foldLeft[Either[String, Vector[B]]](Right(Vector.empty))((acc, a) =>
+      acc.flatMap(done => f(a).map(done :+ _))
+    )
 
   private def readTuning(v: ujson.Value): Either[String, Tuning] = {
     val f = Fields("tuning", v)
@@ -388,26 +428,40 @@ object CorpusJson {
     "offered" -> ujson.Arr.from(s.offered.map { o =>
       ujson.Obj(
         "root" -> o.root.written,
-        "why" -> (o.why match {
-          case Offered.Recent(rank) => ujson.Obj("recent" -> rank)
-          case Offered.Lexical(score) => ujson.Obj("lexical" -> score)
-        }),
+        "why" -> writeWhy(o.why),
         "p" -> o.p.fold[ujson.Value](ujson.Null)(p => ujson.Num(Probability.value(p)))
       )
     }),
     "input" -> s.input.fold[ujson.Value](ujson.Null)(writeBuilt),
+    "rebuilt" -> ujson.Arr.from(
+      s.rebuilt.map(r => ujson.Obj("root" -> r.root.written, "why" -> writeWhy(r.why)))
+    ),
     "seen" -> (s.seen match {
       case SeenCheck.Match => ujson.Str("match")
       case SeenCheck.Unbuilt => ujson.Str("unbuilt")
-      case SeenCheck.Differs(fields) =>
+      case SeenCheck.MessageDiffers(fields) =>
+        ujson.Obj("kind" -> "message_differs", "fields" -> writeFields(fields))
+      case SeenCheck.RecentDiffers(ranks) =>
+        ujson.Obj("kind" -> "recent_differs", "ranks" -> ujson.Arr.from(ranks.map(ujson.Num(_))))
+      case SeenCheck.SameRootDiffers(roots, fields) =>
         ujson.Obj(
-          "differs" -> ujson.Arr.from(
-            SeenCheck.Field.values.filter(fields.contains).map(SeenCheck.Field.written)
-          )
+          "kind" -> "same_root_differs",
+          "roots" -> ujson.Arr.from(roots.map(r => ujson.Str(r.written))),
+          "fields" -> writeFields(fields)
         )
+      case SeenCheck.LexicalOnly(fields) =>
+        ujson.Obj("kind" -> "lexical_only", "fields" -> writeFields(fields))
     }),
     "drift" -> s.drift
   )
+
+  private def writeWhy(why: Offered): ujson.Value = why match {
+    case Offered.Recent(rank) => ujson.Obj("recent" -> rank)
+    case Offered.Lexical(score) => ujson.Obj("lexical" -> score)
+  }
+
+  private def writeFields(fields: Set[SeenCheck.Field]): ujson.Value =
+    ujson.Arr.from(SeenCheck.Field.values.filter(fields.contains).map(SeenCheck.Field.written))
 
   private def writeTuning(t: Tuning): ujson.Value = ujson.Obj(
     "horizon_ms" -> t.horizon.toMillis.toDouble,
