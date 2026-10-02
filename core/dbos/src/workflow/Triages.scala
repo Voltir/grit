@@ -4,7 +4,7 @@ import grit.core.durable.Durable
 import grit.core.id.{ConversationId, TriageRef, WorkflowId}
 
 import dev.dbos.transact.txstep.JdbcStepFactory
-import dev.dbos.transact.{DBOS, DBOSClient, EnqueueOptions}
+import dev.dbos.transact.{DBOS, EnqueueOptions}
 
 /** How a triage is known to DBOS: the workflow it runs as, on the turns' queue under its
   * conversation's partition, as a close is ([[Closes]]), so it runs ahead of any close of its

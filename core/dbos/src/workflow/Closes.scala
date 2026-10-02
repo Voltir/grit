@@ -4,7 +4,7 @@ import grit.core.durable.Durable
 import grit.core.id.{CloseRef, ConversationId, WorkflowId}
 
 import dev.dbos.transact.txstep.JdbcStepFactory
-import dev.dbos.transact.{DBOS, DBOSClient, EnqueueOptions}
+import dev.dbos.transact.{DBOS, EnqueueOptions}
 
 /** How a close is known to DBOS: the workflow it runs as, on the turns' queue under its
   * conversation's partition, so DBOS never runs it beside a turn of the same conversation:

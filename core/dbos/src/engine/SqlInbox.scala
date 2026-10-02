@@ -36,7 +36,6 @@ import grit.dbos.sql.SqlEntryStore
 import grit.dbos.workflow.{Triages, Turns}
 
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
-import dev.dbos.transact.workflow.QueueName
 import dev.dbos.transact.workflow.WorkflowState
 import dev.dbos.transact.{DBOSClient, EnqueueOptions}
 

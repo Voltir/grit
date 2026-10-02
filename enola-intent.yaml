@@ -150,9 +150,33 @@ rules:
     mode: strict
     because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
 
-  - id: only-dbos-imports-dbos-queue
+  - id: only-dbos-imports-dbos-enqueue-options
     forbid_name: outside-dbos
-    pattern: "* -> dev.dbos.transact.workflow.Queue"
+    pattern: "* -> dev.dbos.transact.EnqueueOptions"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
+
+  - id: only-dbos-imports-dbos-queue-name
+    forbid_name: outside-dbos
+    pattern: "* -> dev.dbos.transact.workflow.QueueName"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
+
+  - id: only-dbos-imports-dbos-queue-options
+    forbid_name: outside-dbos
+    pattern: "* -> dev.dbos.transact.workflow.QueueOptions"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
+
+  - id: only-dbos-imports-dbos-queue-conflict
+    forbid_name: outside-dbos
+    pattern: "* -> dev.dbos.transact.workflow.QueueConflictResolution"
+    mode: strict
+    because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
+
+  - id: only-dbos-imports-dbos-migrations
+    forbid_name: outside-dbos
+    pattern: "* -> dev.dbos.transact.migrations.MigrationManager"
     mode: strict
     because: "STYLE rule 8: dev.dbos.* is quarantined to grit.dbos"
 
