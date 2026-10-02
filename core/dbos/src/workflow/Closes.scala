@@ -4,7 +4,7 @@ import grit.core.durable.Durable
 import grit.core.id.{CloseRef, ConversationId, WorkflowId}
 
 import dev.dbos.transact.txstep.JdbcStepFactory
-import dev.dbos.transact.{DBOS, DBOSClient}
+import dev.dbos.transact.{DBOS, DBOSClient, EnqueueOptions}
 
 /** How a close is known to DBOS: the workflow it runs as, on the turns' queue under its
   * conversation's partition, so DBOS never runs it beside a turn of the same conversation:
@@ -28,8 +28,8 @@ object Closes {
   /** How `attempt` is enqueued: under its workflow id, on the turns' queue, partitioned by its
     * conversation.
     */
-  def enqueueOptions(attempt: CloseRef): DBOSClient.EnqueueOptions =
-    new DBOSClient.EnqueueOptions(WorkflowName, DurableWorkflow.ClassName, Turns.QueueName)
+  def enqueueOptions(attempt: CloseRef): EnqueueOptions =
+    new EnqueueOptions(WorkflowName, DurableWorkflow.ClassName, Turns.Queue)
       .withWorkflowId(WorkflowId.value(attempt.workflowId))
       .withQueuePartitionKey(ConversationId.value(attempt.period.conversationId))
 }

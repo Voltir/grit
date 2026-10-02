@@ -35,9 +35,10 @@ import grit.core.store.{
 import grit.dbos.sql.SqlEntryStore
 import grit.dbos.workflow.{Triages, Turns}
 
-import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
+import dev.dbos.transact.workflow.QueueName
 import dev.dbos.transact.workflow.WorkflowState
+import dev.dbos.transact.{DBOSClient, EnqueueOptions}
 
 /** [[Inbox]] over Postgres alone, so an edge in another process can use it: ingest is one
   * short transaction, which refuses a new message once `spending` says today's spend has
@@ -260,7 +261,7 @@ final class SqlInbox(
     enqueue(Turns.enqueueOptions(turn))
 
   /** Enqueues the workflow `options` names, with no arguments. */
-  private def enqueue(options: DBOSClient.EnqueueOptions): Either[InboxError, Unit] =
+  private def enqueue(options: EnqueueOptions): Either[InboxError, Unit] =
     try {
       // A repeated enqueue of the same id is a no-op (`ON CONFLICT (workflow_uuid)`). The
       // array is empty and DBOS only reads it; separation checking treats arrays as mutable.

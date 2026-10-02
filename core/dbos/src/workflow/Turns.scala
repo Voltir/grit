@@ -4,8 +4,9 @@ import grit.core.durable.Durable
 import grit.core.id.{ConversationId, TurnRef, WorkflowId}
 
 import dev.dbos.transact.txstep.JdbcStepFactory
+import dev.dbos.transact.workflow.QueueName
 import dev.dbos.transact.workflow.{QueueConflictResolution, QueueOptions}
-import dev.dbos.transact.{DBOS, DBOSClient}
+import dev.dbos.transact.{DBOS, DBOSClient, EnqueueOptions}
 
 /** How a turn is known to DBOS: the workflow it runs as, and the queue that runs one turn
   * per conversation at a time, oldest first. DBOS counts running workflows and dequeues
@@ -21,7 +22,7 @@ object Turns {
   /** The queue turns and closes share, partitioned by conversation, so a close never runs
     * beside a turn of its conversation ([[Closes]]).
     */
-  private[workflow] val QueueName = "turns"
+  private[workflow] val Queue: QueueName = QueueName.of("turns")
 
   /** Registers `body` as the turn workflow. Must run before `dbos.launch()`. */
   def register(
@@ -41,15 +42,15 @@ object Turns {
     */
   def registerQueue(client: DBOSClient): Unit =
     client.registerQueue(
-      QueueName,
+      Queue.value,
       new QueueOptions().withPartitionConcurrency(1),
       QueueConflictResolution.ALWAYS_UPDATE,
       DurableWorkflow.ApplicationName
     )
 
   /** How an edge enqueues `turn`: under its workflow id, partitioned by its conversation. */
-  def enqueueOptions(turn: TurnRef): DBOSClient.EnqueueOptions =
-    new DBOSClient.EnqueueOptions(WorkflowName, DurableWorkflow.ClassName, QueueName)
+  def enqueueOptions(turn: TurnRef): EnqueueOptions =
+    new EnqueueOptions(WorkflowName, DurableWorkflow.ClassName, Queue)
       .withWorkflowId(WorkflowId.value(turn.workflowId))
       .withQueuePartitionKey(ConversationId.value(turn.conversationId))
 }

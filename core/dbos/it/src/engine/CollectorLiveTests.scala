@@ -54,7 +54,8 @@ import grit.dbos.sql.{
 }
 import grit.dbos.workflow.{DurableWorkflow, Posts}
 
-import dev.dbos.transact.DBOSClient
+import dev.dbos.transact.workflow.QueueName
+import dev.dbos.transact.{DBOSClient, EnqueueOptions}
 import utest.*
 
 /** The collector over DBOS against a real Postgres: a period closed longer than the retention
@@ -567,7 +568,7 @@ object CollectorLiveTests extends TestSuite {
           (one ++ ten).foreach { id =>
             val name = WorkflowId.value(id).takeWhile(_ != ':')
             val _ = client.enqueueWorkflow[String, Exception](
-              new DBOSClient.EnqueueOptions(name, DurableWorkflow.ClassName, "turns")
+              new EnqueueOptions(name, DurableWorkflow.ClassName, QueueName.of("turns"))
                 .withWorkflowId(WorkflowId.value(id))
                 .withQueuePartitionKey(c),
               // Empty, and DBOS only reads it; separation checking treats arrays as mutable.
@@ -630,7 +631,7 @@ object CollectorLiveTests extends TestSuite {
         val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
         try {
           val _ = client.enqueueWorkflow[String, Exception](
-            new DBOSClient.EnqueueOptions("close", DurableWorkflow.ClassName, "turns")
+            new EnqueueOptions("close", DurableWorkflow.ClassName, QueueName.of("turns"))
               .withWorkflowId(WorkflowId.value(hold))
               .withQueuePartitionKey(c + ":hold"),
             // Empty, and DBOS only reads it; separation checking treats arrays as mutable.
@@ -776,7 +777,7 @@ object CollectorLiveTests extends TestSuite {
         val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
         try {
           val _ = client.enqueueWorkflow[String, Exception](
-            new DBOSClient.EnqueueOptions("close", DurableWorkflow.ClassName, "turns")
+            new EnqueueOptions("close", DurableWorkflow.ClassName, QueueName.of("turns"))
               .withWorkflowId(WorkflowId.value(hold))
               .withQueuePartitionKey(c + ":hold"),
             // Empty, and DBOS only reads it; separation checking treats arrays as mutable.
