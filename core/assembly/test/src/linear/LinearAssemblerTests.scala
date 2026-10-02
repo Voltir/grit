@@ -3,7 +3,7 @@ package grit.assembly.linear
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.AssemblyFixtures.{FakeDb, World, c1, closingOf}
 import grit.core.context.{AssemblyError, AssemblyRequest, Shown}
-import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, EntryStore, Payload, Speakers, StoreError, Tx}
 import grit.dbos.sql.TestTx
@@ -178,6 +178,10 @@ object LinearAssemblerTests extends TestSuite {
         def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] = Left(down)
         def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] = Left(down)
         def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] = Left(down)
+        def at(c: ConversationId, seqs: Vector[EntrySeq])(using
+            Tx^
+        ): Either[StoreError, Vector[Entry]] =
+          Left(down)
         def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = Left(down)
       }
       val w = store()

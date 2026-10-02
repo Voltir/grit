@@ -1,6 +1,6 @@
 package grit.app.main
 
-import grit.core.id.{ConversationId, EntryId, TurnRef}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef}
 import grit.core.message.Message
 import grit.core.provider.{Delta, ModelRequest, Provider, ProviderError}
 import grit.core.store.{Entry, EntryStore, StoreError, Tx}
@@ -34,6 +34,10 @@ object CrashingTurn {
       def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] = engine.entries.get(id)
       def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] =
         engine.entries.list(c)
+      def at(c: ConversationId, seqs: Vector[EntrySeq])(using
+          Tx^
+      ): Either[StoreError, Vector[Entry]] =
+        engine.entries.at(c, seqs)
       def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
         engine.entries.lockNext(c)
     }

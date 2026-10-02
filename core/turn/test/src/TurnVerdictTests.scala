@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.provider.{Provider, ProviderError, ToolUse}
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, InMemoryUsageLedger, StoreError, Tx}
@@ -28,6 +28,10 @@ object TurnVerdictTests extends TestSuite {
       else underlying.insert(entry)
     def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] = underlying.get(id)
     def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] = underlying.list(c)
+    def at(c: ConversationId, seqs: Vector[EntrySeq])(using
+        Tx^
+    ): Either[StoreError, Vector[Entry]] =
+      underlying.at(c, seqs)
     def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
       underlying.lockNext(c)
   }

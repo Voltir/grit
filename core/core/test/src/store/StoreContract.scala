@@ -151,6 +151,18 @@ abstract class StoreContract extends TestSuite {
       transaction(entries.list(unknownConversation)) ==> Right(Vector.empty)
     }
 
+    test("at gives a conversation's entries ascending, once each, leaving out seqs with none") {
+      val c = conversation("at")
+      transaction {
+        entries.insert(entry(c, "at-7", 7))
+        entries.insert(entry(c, "at-2", 2))
+        entries.insert(entry(c, "at-5", 5))
+        entries.insert(entry(conversation("at-other"), "not-mine", 4))
+      }
+      val seqs = Vector(7L, 4L, 2L, 9L, 7L).map(EntrySeq(_))
+      ids(transaction(entries.at(c, seqs))) ==> Right(Vector("at-2", "at-7"))
+    }
+
     test("lockNext is the start of an empty conversation, and past everything in one") {
       val c = conversation("next")
       transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq.First, EntrySeq(0)))

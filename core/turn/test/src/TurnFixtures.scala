@@ -563,6 +563,8 @@ object TurnFixtures {
       else underlying.insert(entry)
     def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] = underlying.get(id)
     def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] = underlying.list(c)
+    def at(c: ConversationId, seqs: Vector[EntrySeq])(using Tx^): Either[StoreError, Vector[Entry]] =
+      underlying.at(c, seqs)
     def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
       underlying.lockNext(c)
   }

@@ -52,6 +52,11 @@ final class InMemoryEntryStore extends EntryStore {
   def list(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] =
     Right(entries.filter(_.conversationId == conversation).sortBy(_.seq))
 
+  def at(conversation: ConversationId, seqs: Vector[EntrySeq])(using
+      Tx^
+  ): Either[StoreError, Vector[Entry]] =
+    list(conversation).map(_.filter(e => seqs.contains(e.seq)))
+
   def lockNext(conversation: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = {
     val (turn, seq) = marks.getOrElse(conversation, (TurnSeq.First, EntrySeq.First))
     Right(EntryStore.Next(turn, seq))

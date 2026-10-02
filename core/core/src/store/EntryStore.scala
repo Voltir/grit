@@ -19,6 +19,14 @@ trait EntryStore {
   /** Every entry in `conversation`, ascending by `seq`. Empty for an unknown conversation. */
   def list(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]]
 
+  /** The entries of `conversation` at `seqs`, ascending by seq, each once however often its
+    * seq is given. A seq with no entry (never written, or purged with its period) is left out,
+    * so the result can be shorter than `seqs`.
+    */
+  def at(conversation: ConversationId, seqs: Vector[EntrySeq])(using
+      Tx^
+  ): Either[StoreError, Vector[Entry]]
+
   /** Locks `conversation` against other writers until the transaction ends, and returns the
     * positions after every entry ever recorded in it, purged ones included. Every writer of a
     * conversation's entries takes this lock first, then writes at the positions returned.
