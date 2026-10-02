@@ -2,6 +2,7 @@ package grit.eval.harness.corpus
 
 import java.time.Instant
 
+import grit.core.classify.ClassifierError
 import grit.core.id.{ConversationId, EntryId, WorkflowId}
 import grit.core.period.Probability
 import grit.core.stitch.{Offered, Tuning}
@@ -84,6 +85,20 @@ enum Failure {
 }
 
 object Failure {
+
+  /** `f`'s written name, as a corpus and a run log keep it: `unavailable`, `unreadable`,
+    * `unasked` or `other`.
+    */
+  def written(f: Failure): String = f.toString.toLowerCase
+
+  /** The failure written `name`; `None` for no failure's. */
+  def read(name: String): Option[Failure] = values.find(written(_) == name)
+
+  /** The kind of `e`, never its words: they can quote the request. */
+  def of(e: ClassifierError): Failure = e match {
+    case ClassifierError.Unavailable(_) => Unavailable
+    case ClassifierError.Unreadable(_) => Unreadable
+  }
 
   /** The kind of failure `why` states, in the words triage and stitching keep: `unavailable:
     * …`, `unreadable: …`, `the question repeats …` or `fewer than two options`.

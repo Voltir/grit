@@ -17,6 +17,12 @@ Packages, each importing only those above it:
   the build that captured it); `CorpusJson`, their files' JSON; `Capture`, a `Corpus` read
   from a restored database through `grit.dbos`'s `Reader` and rebuilt through the shipped
   builders (`TriageInput`, `TriageQuestion`, `Stitching`), never through SQL of its own.
+  `Fields`, the reader every file's JSON is read through.
+- **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the
+  corpus, variant, build, cap and repeats a run was started with), `Row` (one request: its
+  case, digest, cache key, `Outcome`, usage and latency), `Footer` (what it spent), and
+  `Weights`, a classifier's answer by position, never by key; `LogJson`, their JSON lines.
+  ← `corpus`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← `corpus`
 
 No source file sits at the module's root.

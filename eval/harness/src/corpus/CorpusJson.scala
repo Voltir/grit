@@ -1,8 +1,5 @@
 package grit.eval.harness.corpus
 
-import java.time.Instant
-
-import scala.concurrent.duration.*
 import scala.util.Try
 
 import grit.core.id.{ConversationId, EntryId, WorkflowId}
@@ -11,6 +8,8 @@ import grit.core.period.Probability
 import grit.core.stitch.{Offered, Tuning}
 import grit.core.triage.Kind
 import grit.dbos.engine.{Build, Reader}
+
+import Fields.{each, opt}
 
 /** A corpus's files as JSON: a case, one line of `cases.jsonl` each, and the manifest,
   * `corpus.json`. Each value is written with its fields in one fixed order, so equal values
@@ -45,7 +44,9 @@ object CorpusJson {
       triage <- f.obj("triage").flatMap(readTriaged)
       tags <- f.obj("tags").flatMap(readLive)
       asked <- f.optional("asked").flatMap(opt(_)(readAsked))
-      author <- f.optional("author").flatMap(opt(_)(a => str("author", a).flatMap(Digest.read)))
+      author <- f
+        .optional("author")
+        .flatMap(opt(_)(a => Fields.str("author", a).flatMap(Digest.read)))
       clusters <- f.obj("clusters").flatMap { c =>
         val cf = Fields("clusters", c)
         for {
@@ -129,44 +130,6 @@ object CorpusJson {
     )
   }
 
-  /** The fields of `v`, an object read as `what`: each read is `Left` naming `what` and the
-    * field when it is missing or not of its form.
-    */
-  private final case class Fields(what: String, v: ujson.Value) {
-    def field(k: String): Either[String, ujson.Value] =
-      v.objOpt.flatMap(_.get(k)).toRight(s"$what: no $k")
-    def optional(k: String): Either[String, Option[ujson.Value]] =
-      field(k).map {
-        case ujson.Null => None
-        case x => Some(x)
-      }
-    def obj(k: String): Either[String, ujson.Value] =
-      field(k).filterOrElse(_.objOpt.isDefined, s"$what: $k is not an object")
-    def str(k: String): Either[String, String] =
-      field(k).flatMap(x => CorpusJson.str(s"$what: $k", x))
-    def num(k: String): Either[String, Double] =
-      field(k).flatMap(_.numOpt.toRight(s"$what: $k is not a number"))
-    def int(k: String): Either[String, Int] =
-      num(k)
-        .filterOrElse(n => n.isWhole && n.abs <= Int.MaxValue, s"$what: $k is not an integer")
-        .map(_.toInt)
-    def millis(k: String): Either[String, FiniteDuration] =
-      num(k).filterOrElse(_.isWhole, s"$what: $k is not whole milliseconds").map(_.toLong.millis)
-    def probability(k: String): Either[String, Probability] =
-      num(k).flatMap(Probability.of(_).toRight(s"$what: $k is not a probability"))
-    def instant(k: String): Either[String, Instant] =
-      str(k).flatMap(t => Try(Instant.parse(t)).toOption.toRight(s"$what: $k is not an instant"))
-    def bool(k: String): Either[String, Boolean] =
-      field(k).flatMap(_.boolOpt.toRight(s"$what: $k is not a boolean"))
-  }
-
-  private def str(what: String, v: ujson.Value): Either[String, String] =
-    v.strOpt.toRight(s"$what is not a string")
-
-  private def opt[A](o: Option[ujson.Value])(
-      read: ujson.Value => Either[String, A]
-  ): Either[String, Option[A]] = o.fold(Right(None))(read(_).map(Some(_)))
-
   private def readTriaged(v: ujson.Value): Either[String, Triaged] = {
     val f = Fields("triage", v)
     for {
@@ -185,7 +148,8 @@ object CorpusJson {
     } yield Triaged(WorkflowId(workflow), recorded, build)
   }
 
-  private def readBuild(what: String, v: ujson.Value): Either[String, Build] = v match {
+  /** A build as [[writeBuild]] writes it, read as part of `what`. */
+  def readBuild(what: String, v: ujson.Value): Either[String, Build] = v match {
     case ujson.Str("unknown") => Right(Build.Unknown)
     case o: ujson.Obj =>
       val f = Fields(s"$what build", o)
@@ -201,7 +165,7 @@ object CorpusJson {
     (if (v.objOpt.exists(_.contains("unanswered"))) f.optional("unanswered") else Right(None))
       .flatMap {
         case Some(u) =>
-          str("tags: unanswered", u).flatMap(readFailure("tags")).map(Live.Unanswered(_))
+          Fields.str("tags: unanswered", u).flatMap(readFailure("tags")).map(Live.Unanswered(_))
         case None =>
           for {
             kind <- f.str("kind").flatMap(k => Kind.read(k).toRight(s"tags: no kind $k"))
@@ -213,7 +177,8 @@ object CorpusJson {
             cost <- f
               .optional("cost_usd")
               .flatMap(opt(_) { c =>
-                str("tags: cost_usd", c)
+                Fields
+                  .str("tags: cost_usd", c)
                   .flatMap(t =>
                     Try(BigDecimal(t)).toOption.toRight("tags: cost_usd is not a number")
                   )
@@ -222,8 +187,9 @@ object CorpusJson {
       }
   }
 
-  private def readFailure(what: String)(name: String): Either[String, Failure] =
-    Failure.values.find(written(_) == name).toRight(s"$what: no failure $name")
+  /** The failure written `name` ([[Failure.written]]), read as part of `what`. */
+  def readFailure(what: String)(name: String): Either[String, Failure] =
+    Failure.read(name).toRight(s"$what: no failure $name")
 
   private def readAsked(v: ujson.Value): Either[String, Asked] = {
     val f = Fields("asked", v)
@@ -339,7 +305,9 @@ object CorpusJson {
             roots <- f
               .field("roots")
               .flatMap(_.arrOpt.toRight("seen: roots is not an array"))
-              .flatMap(xs => each(xs.toVector)(x => str("seen: root", x).flatMap(CaseId.read)))
+              .flatMap(xs =>
+                each(xs.toVector)(x => Fields.str("seen: root", x).flatMap(CaseId.read))
+              )
               .filterOrElse(_.nonEmpty, "seen: no root differs")
             fs <- fields
           } yield new SeenCheck.SameRootDiffers(roots, fs)
@@ -348,12 +316,8 @@ object CorpusJson {
     case _ => Left("seen: neither match, unbuilt nor a difference")
   }
 
-  private def each[A, B](as: Vector[A])(f: A => Either[String, B]): Either[String, Vector[B]] =
-    as.foldLeft[Either[String, Vector[B]]](Right(Vector.empty))((acc, a) =>
-      acc.flatMap(done => f(a).map(done :+ _))
-    )
-
-  private def readTuning(v: ujson.Value): Either[String, Tuning] = {
+  /** A tuning as [[writeTuning]] writes it. */
+  def readTuning(v: ujson.Value): Either[String, Tuning] = {
     val f = Fields("tuning", v)
     for {
       horizon <- f.millis("horizon_ms")
@@ -388,7 +352,8 @@ object CorpusJson {
     "build" -> writeBuild(t.build)
   )
 
-  private def writeBuild(b: Build): ujson.Value = b match {
+  /** `"unknown"`, or the commit and whether it was dirty. */
+  def writeBuild(b: Build): ujson.Value = b match {
     case Build.Known(commit, dirty) => ujson.Obj("commit" -> commit, "dirty" -> dirty)
     case Build.Unknown => ujson.Str("unknown")
   }
@@ -404,10 +369,8 @@ object CorpusJson {
         "model" -> model,
         "cost_usd" -> cost.fold[ujson.Value](ujson.Null)(c => ujson.Str(c.toString))
       )
-    case Live.Unanswered(failure) => ujson.Obj("unanswered" -> written(failure))
+    case Live.Unanswered(failure) => ujson.Obj("unanswered" -> Failure.written(failure))
   }
-
-  private def written(f: Failure): String = f.toString.toLowerCase
 
   private def writeAsked(a: Asked): ujson.Value = ujson.Obj(
     "input" -> writeBuilt(a.input),
@@ -423,7 +386,7 @@ object CorpusJson {
       case Placement.Follows(root, p) =>
         ujson.Obj("follows" -> root.written, "p" -> Probability.value(p))
       case Placement.Begins(p) => ujson.Obj("begins" -> Probability.value(p))
-      case Placement.Unread(failure) => ujson.Obj("unread" -> written(failure))
+      case Placement.Unread(failure) => ujson.Obj("unread" -> Failure.written(failure))
     }),
     "offered" -> ujson.Arr.from(s.offered.map { o =>
       ujson.Obj(
@@ -463,7 +426,8 @@ object CorpusJson {
   private def writeFields(fields: Set[SeenCheck.Field]): ujson.Value =
     ujson.Arr.from(SeenCheck.Field.values.filter(fields.contains).map(SeenCheck.Field.written))
 
-  private def writeTuning(t: Tuning): ujson.Value = ujson.Obj(
+  /** Durations in milliseconds, and the window in tokens. */
+  def writeTuning(t: Tuning): ujson.Value = ujson.Obj(
     "horizon_ms" -> t.horizon.toMillis.toDouble,
     "recent" -> t.recent,
     "lexical" -> t.lexical,
