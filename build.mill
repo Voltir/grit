@@ -162,10 +162,13 @@ object grit extends Module {
     def mvnDeps = Seq(
       /* On an upgrade, run grit.dbos.test: CrashFidelityTests pins the two DBOSExecutor
        * internals DbosDurableTests' in-process crash relies on. */
-      mvn"dev.dbos:transact:1.0.0",
+      mvn"dev.dbos:transact:1.2.0",
       mvn"org.slf4j:slf4j-simple:2.0.20",
       mvn"org.postgresql:postgresql:42.7.13"
     )
+
+    /* Temporary, while grit moves off what DBOS 1.1 deprecated: those uses reported, not fatal. */
+    def scalacOptions = Task { super.scalacOptions() ++ Seq("-Wconf:cat=deprecation:i") }
 
     /* What needs no Postgres: configuration and codecs. */
     object test extends GritTests

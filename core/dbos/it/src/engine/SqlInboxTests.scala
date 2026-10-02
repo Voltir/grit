@@ -18,7 +18,7 @@ import utest.*
   */
 object SqlInboxTests extends TestSuite {
 
-  // Opening an engine applies schema.sql; nothing here launches DBOS.
+  // Opening an engine applies schema.sql and DBOS's; nothing here launches DBOS.
   private lazy val config = {
     val c = TestPostgres.freshDatabase("sql_inbox")
     LiveEngine.open(c, "test").close()
@@ -65,15 +65,19 @@ object SqlInboxTests extends TestSuite {
     }
 
     test("a turn's progress that cannot be read is Unavailable, never its end") {
-      // DBOS never launched on this database, so its workflow tables do not exist.
+      // Its own database, whose DBOS workflow table is taken away once the engine is open.
+      val unreadable = TestPostgres.freshDatabase("sql_inbox_unreadable")
       val origin = Origin.Task("sql", "progress")
-      val engine = LiveEngine.open(config, "test")
+      val engine = LiveEngine.open(unreadable, "test")
       val progress =
-        try
+        try {
+          LiveDb.transaction(unreadable)(
+            execute("ALTER TABLE dbos.workflow_status RENAME TO workflow_status_gone")
+          )
           engine.inbox
             .ingest(origin, SourceId("m1"), Message.User("one"), PrincipalId.Local)
             .flatMap(engine.inbox.progress)
-        finally engine.close()
+        } finally engine.close()
       progress.left.map {
         case InboxError.Unavailable(why) => why.contains("dbos.workflow_status")
         case other => false

@@ -68,6 +68,7 @@ import grit.dbos.sql.{
 import grit.dbos.workflow.{Closes, Posts, Running, Settles, Triages, Turns}
 
 import dev.dbos.transact.config.DBOSConfig
+import dev.dbos.transact.migrations.MigrationManager
 import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.workflow.{ListWorkflowsInput, WorkflowState}
 import dev.dbos.transact.{DBOS, DBOSClient}
@@ -387,13 +388,13 @@ object Engine {
       case Right(lock) => Right(start(config, lock, epoch, identity, budget))
     }
 
-  /** The engine of the database `config` names, which `lock` is held on: its schema applied,
-    * `lock`'s row written, naming this process as `identity` says, and its heartbeat begun,
+  /** The engine of the database `config` names, which `lock` is held on: its schema and
+    * DBOS's applied (DBOS's migrations run here, under `lock`), `lock`'s row written, naming this process as `identity` says, and its heartbeat begun,
     * recovering and dequeuing only workflows of
     * compatibility epoch `epoch` (ADR 0004). Losing the lock (its connection dropped, or its
     * row gone or taken) stops the engine as [[Engine.close]] does, and an edge's calls on it
-    * then fail. Its inbox takes new messages as `budget` allows. Closes `lock` when it
-    * throws.
+    * then fail. Its inbox takes new messages as `budget` allows. Throws, having closed
+    * `lock`, when either schema cannot be applied.
     */
   def start(
       config: DbConfig,
@@ -404,11 +405,14 @@ object Engine {
   ): Engine^ =
     try {
       schemaSetup(config)
+      val dbosConfig = dbosConfigOf(config, epoch)
+      // Before anything builds a DBOSClient, which refuses a database DBOS has not migrated.
+      MigrationManager.runMigrations(dbosConfig)
       lock
         .claim(epoch, identity)
         .left
         .foreach(why => sys.error(s"the engine's row could not be written: $why"))
-      val engine = build(config, lock, epoch, identity, budget)
+      val engine = build(config, dbosConfig, lock, identity, budget)
       engine.beating()
       engine
     } catch {
@@ -417,24 +421,28 @@ object Engine {
         throw e
     }
 
+  /** DBOS's configuration for the database `config` names, recovering and dequeuing only
+    * workflows of epoch `epoch`.
+    */
+  private def dbosConfigOf(config: DbConfig, epoch: String): DBOSConfig =
+    DBOSConfig
+      .defaults("grit")
+      .withDatabaseUrl(config.jdbcUrl)
+      .withDbUser(config.user)
+      .withDbPassword(config.password)
+      // Last in DBOS's precedence, so it beats both DBOS__APPVERSION and the constant
+      // that enabling patching sets (DBOSExecutor's constructor).
+      .withEnablePatching()
+      .withAppVersion(epoch)
+
   private def build(
       config: DbConfig,
+      dbosConfig: DBOSConfig,
       lock: EngineLock^,
-      epoch: String,
       identity: ProcessIdentity,
       budget: Budget
   ): Engine^ = {
-    val dbos = new DBOS(
-      DBOSConfig
-        .defaults("grit")
-        .withDatabaseUrl(config.jdbcUrl)
-        .withDbUser(config.user)
-        .withDbPassword(config.password)
-        // Last in DBOS's precedence, so it beats both DBOS__APPVERSION and the constant
-        // that enabling patching sets (DBOSExecutor's constructor).
-        .withEnablePatching()
-        .withAppVersion(epoch)
-    )
+    val dbos = new DBOS(dbosConfig)
     val ds = new PGSimpleDataSource()
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
