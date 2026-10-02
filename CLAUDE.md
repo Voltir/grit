@@ -115,7 +115,7 @@ Braces, never significant indentation — `-no-indent` makes it a compile error.
 
 **Two tiers.** `test` modules need nothing outside the JVM. The live suites, which run
 against Postgres and DBOS, are in `it` modules (`grit.dbos.it`, `grit.app.it`,
-`grit.eval.it`) and run through `scripts/it`: one throwaway Postgres shared by every `it`
+`grit.eval.it`, `grit.eval.harness.it`) and run through `scripts/it`: one throwaway Postgres shared by every `it`
 JVM (`TestPostgres`), built from the same `docker/postgres/Dockerfile` compose builds:
 `postgres:18` plus `pg_textsearch`
 ([ADR 0005](docs/decisions/0005-entries-are-ranked-with-bm25-inside-postgres-through-pg-textsearch.md)).

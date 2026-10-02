@@ -1,0 +1,125 @@
+package grit.eval.harness.corpus
+
+import java.time.Instant
+
+import scala.concurrent.duration.*
+
+import grit.core.clock.Clock
+import grit.core.durable.Durable
+import grit.core.id.{PrincipalId, SourceId, WorkflowId}
+import grit.core.period.Probability
+import grit.core.speech.{Reach, Speaking}
+import grit.core.stitch.Tuning
+import grit.core.store.{Origin, StoreError}
+import grit.dbos.engine.{Build, LiveEngine, Reader}
+import grit.dbos.sql.{LiveDb, TestPostgres}
+import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords, TriageSpeech}
+import grit.models.StubClassifier
+
+import utest.*
+
+/** A corpus captured from a database a live engine triaged, with the stub classifier. Every
+  * message is synthetic.
+  */
+object CaptureTests extends TestSuite {
+
+  private val nothing = (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id)
+
+  private def eventually(done: => Boolean): Boolean = {
+    val until = System.nanoTime() + 30.seconds.toNanos
+    var held = done
+    while (!held && System.nanoTime() < until) { Thread.sleep(50); held = done }
+    held
+  }
+
+  private def right[A](e: Either[String, A]): A =
+    e.fold(why => throw new java.lang.AssertionError(why), identity)
+
+  private val dump = Dump(Digest.text("synthetic dump"), Instant.parse("2100-01-01T00:00:00Z"))
+
+  val tests = Tests {
+    test(
+      "every placement rebuilds to the state it was shown live, and a recapture writes the same bytes"
+    ) {
+      val config = TestPostgres.freshDatabase("harness_capture")
+      val engine = LiveEngine.open(config, "test")
+      try {
+        engine.launch(
+          nothing,
+          nothing,
+          nothing,
+          nothing,
+          Triage.body(
+            TriageEnv(
+              TriageRecords(
+                engine.entries,
+                engine.triage,
+                engine.principals,
+                engine.conversations,
+                engine.speech,
+                engine.spending,
+                engine.stitches,
+                engine.search,
+                engine.lifecycle
+              ),
+              new StubClassifier,
+              engine.db,
+              Clock.system(),
+              TriageSpeech(Speaking.Off, engine.budget, _ => Right(())),
+              Tuning.Default
+            )
+          ),
+          Vector.empty
+        )
+        val start = Instant.now().minusSeconds(3_600)
+        def thread(ts: String) = Origin.Slack("T1", "C1", ts)
+        // Four threads begun in one channel and a reply in the first: each heard only once
+        // the one before it is tagged, so every placement was made over every earlier row.
+        val heard = Vector(
+          (thread("1000.1"), "1000.1", "lunch at noon tomorrow?"),
+          (thread("1000.2"), "1000.2", "the deploy moves to friday"),
+          (thread("1000.3"), "1000.3", "who has the release notes"),
+          (thread("1000.1"), "1000.4", "noon works for me"),
+          (thread("1000.5"), "1000.5", "back to lunch: noon it is ~back:exchange 1")
+        )
+        heard.zipWithIndex.foreach { (h: (Origin, String, String), i: Int) =>
+          val (origin, ts, text) = h
+          engine.inbox.hear(
+            origin,
+            SourceId(ts),
+            text,
+            PrincipalId.Local,
+            start.plusSeconds(60L * i),
+            Reach.Nowhere
+          ) ==> Right(())
+          assert(
+            eventually(
+              LiveDb
+                .transaction(config)(engine.triage.tagged(Instant.EPOCH, dump.at))
+                .map(_.size) == Right[StoreError, Int](i + 1)
+            )
+          )
+        }
+        def captured(): Corpus = {
+          val reader = Reader.open(config)
+          try right(Capture(reader, "source", "restored", dump, Build.Unknown))
+          finally reader.close()
+        }
+        val corpus = captured()
+        corpus.cases.map(_.id.written) ==>
+          Vector("C1/1000.1", "C1/1000.2", "C1/1000.3", "C1/1000.4", "C1/1000.5")
+        corpus.cases.map(_.stitch.map(_.seen)) ==>
+          Vector(None, Some(SeenCheck.Match), Some(SeenCheck.Match), None, Some(SeenCheck.Match))
+        corpus.cases.lastOption.flatMap(_.stitch).map(_.placed) ==> Some(
+          Placement.Follows(right(CaseId.read("C1/1000.1")), Probability.clamped(0.9))
+        )
+        corpus.cases.lastOption.map(_.clusters.exchange.written) ==> Some("C1/1000.1")
+        def bytes(c: Corpus) =
+          CorpusJson.writeManifest(c.manifest).render() +
+            c.cases.map(CorpusJson.writeCase(_).render()).mkString("\n")
+        bytes(captured()) ==> bytes(corpus)
+      } finally engine.close()
+    }
+  }
+
+}

@@ -405,6 +405,11 @@ object grit extends Module {
 
       /* The instrument's own code against fixed values: no database, no model. */
       object test extends GritTests
+
+      /* Capture over a live engine's database, triaged by the stub classifier. */
+      object it extends GritTests with LivePostgres {
+        def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.it, grit.models)
+      }
     }
   }
 
