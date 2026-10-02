@@ -35,6 +35,11 @@ Packages, each importing only those above it:
   `Weights`, a classifier's answer by position, never by key; `LogJson`, their JSON lines;
   `CacheKey` and `Cache`, answers kept as files under their request's key, so an unchanged
   request is never paid for twice. ← `corpus`
+- **`pull`** — `Pull`, what a deployment's database kept of the heard messages a corpus
+  holds, read through `Reader` as run logs the scorers read beside offline runs: live
+  triage's tags (variant `kept`, which keeps only the likeliest kind's probability), and
+  each declared shadow's answers (`grit.lifecycle.shadow`); with the messages no
+  corpus holds yet, and each shadow's that ended keeping nothing. ← `corpus`, `log`
 - **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
   (the model, triage's wording or the tuning), and `Variants`, those a run can name;
   `Inputs`, a case's questions rebuilt through the shipped builders, and `Drift`, how a
@@ -58,7 +63,7 @@ Packages, each importing only those above it:
   force) and two runs compared, as markdown with every mean's interval; text-free. With no case
   labelled, only what needs no label: spend and latency (`score.Spending`), the repeats' spread
   (`score.Repeated`) and agreement with what was kept live (`score.Agreement`). ← `stats`,
-  `corpus`, `label`, `log`, `score`
+  `corpus`, `label`, `log`, `pull`, `score`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
 
 No source file sits at the module's root.

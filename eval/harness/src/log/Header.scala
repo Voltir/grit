@@ -15,6 +15,9 @@ import grit.eval.harness.corpus.Digest
   *
   * @param labels
   *   `None` when no labels existed
+  * @param wording
+  *   `None` for a log pulled from a database, which keeps each request's digest but not the
+  *   words it was asked in
   * @param tuning
   *   `None` when each case's own tuning was used
   * @param rule
@@ -25,7 +28,7 @@ final case class Header(
     corpusDigest: Digest,
     labels: Option[Digest],
     variant: String,
-    wording: Digest,
+    wording: Option[Digest],
     model: String,
     tuning: Option[Tuning],
     build: Build,

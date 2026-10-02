@@ -24,7 +24,7 @@ object LogJsonTests extends TestSuite {
     Digest.text("corpus"),
     Some(Digest.text("labels")),
     "live",
-    Digest.text("wording"),
+    Some(Digest.text("wording")),
     "jev-1.13.0",
     Some(Tuning.Default),
     Build.Known("0123456789abcdef0123456789abcdef01234567", false),
@@ -36,7 +36,7 @@ object LogJsonTests extends TestSuite {
   )
 
   private val bareHeader =
-    header.copy(labels = None, tuning = None, build = Build.Unknown, rule = None)
+    header.copy(labels = None, tuning = None, build = Build.Unknown, rule = None, wording = None)
 
   private val answered: Row[Vector[Weights]] = Row(
     Suite.Triage,

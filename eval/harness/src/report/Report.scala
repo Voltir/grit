@@ -3,6 +3,7 @@ package grit.eval.harness.report
 import grit.eval.harness.corpus.{Case, CaseId}
 import grit.eval.harness.label.{Context, Labelled, Labels}
 import grit.eval.harness.log.{Log, Weights}
+import grit.eval.harness.pull.Pull
 import grit.eval.harness.score.{
   Agreement,
   Answers,
@@ -46,9 +47,14 @@ final case class Scored(
   */
 object Report {
 
+  /** What a report says of a log of live triage's kept tags ([[Pull.Kept]]). */
+  val KeptNote: String = "kept: live triage keeps only the likeliest kind's probability; " +
+    "the other kinds share the rest evenly, so its kind compares the likeliest kind and its " +
+    "probability only"
+
   /** `run` scored. With no case labelled it says `unlabelled: 0 of N cases labelled` and gives
     * only what needs no label: spend and latency, its repeats' spread, and its agreement with
-    * what was kept live.
+    * what was kept live. A log of live triage's kept tags carries [[KeptNote]].
     */
   def score(run: Scored): String = {
     val h = run.log.header
@@ -59,16 +65,16 @@ object Report {
         s"${if (h.cache) "on" else "off"}, corpus ${h.corpus}, started ${h.started}",
       s"cases: ${run.cases.size}; answered: triage ${run.answers.triage.size}, stitch " +
         s"${run.answers.stitch.size}",
-      labelLine(run),
-      ""
-    ) ++ spending(run) ++ repeats(run) ++ live(run) ++
+      labelLine(run)
+    ) ++ kept(run) ++ Vector("") ++ spending(run) ++ repeats(run) ++ live(run) ++
       (if (run.labelled == 0) Vector.empty else labelled(run))
     lines.mkString("\n") + "\n"
   }
 
   /** Run `b` against run `a`, paired on the cases both answered: B − A per question, the cases
     * whose decision changed by id, once labels exist the paired difference in Brier score, all
-    * and by context, with its MDE, and what `decided` says a rule made of them, when given.
+    * and by context, with its MDE, and what `decided` says a rule made of them, when given;
+    * [[KeptNote]] when either is a log of live triage's kept tags.
     */
   def compare(a: Scored, b: Scored, decided: Option[(Rule, Decision)] = None): String = {
     val lines = Vector(
@@ -78,13 +84,19 @@ object Report {
       s"B: variant ${b.log.header.variant}, model ${b.log.header.model}, repeats ${b.log.header.repeats}",
       s"answered by both: triage ${a.answers.triage.keySet.intersect(b.answers.triage.keySet).size}, " +
         s"stitch ${a.answers.stitch.keySet.intersect(b.answers.stitch.keySet).size}",
-      labelLine(b),
-      ""
-    ) ++ spending(a, "A") ++ spending(b, "B") ++ moved(a, b) ++ changes(a, b) ++
+      labelLine(b)
+    ) ++ kept(a, b) ++ Vector("") ++ spending(a, "A") ++ spending(b, "B") ++ moved(a, b) ++ changes(
+      a,
+      b
+    ) ++
       (if (b.labelled == 0) Vector.empty else brierPaired(a, b)) ++
       decided.toVector.flatMap(decision)
     lines.mkString("\n") + "\n"
   }
+
+  /** [[KeptNote]], once, when any of `runs` is a log of live triage's kept tags. */
+  private def kept(runs: Scored*): Vector[String] =
+    Vector(KeptNote).filter(_ => runs.exists(_.log.header.variant == Pull.Kept))
 
   private def decision(rule: Rule, d: Decision): Vector[String] = {
     def diff(e: Estimate) = s"B − A: ${est(Some(e))}, MDE ${num(e.mde)}"

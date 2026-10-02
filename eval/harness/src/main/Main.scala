@@ -10,6 +10,7 @@ import scala.util.chaining.*
 import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
+import grit.core.id.ShadowName
 import grit.core.message.Tokens
 import grit.dbos.engine.{Build, Reader}
 import grit.dbos.sql.DbConfig
@@ -26,7 +27,19 @@ import grit.eval.harness.corpus.{
 }
 import grit.eval.harness.jev.{Budget, Drift, Inputs, Rebuilt, Review, Spend, Variant, Variants}
 import grit.eval.harness.label.Labels
-import grit.eval.harness.log.{Cache, Cached, Footer, Header, LogJson, Outcome, Row, Suite, Weights}
+import grit.eval.harness.log.{
+  Cache,
+  Cached,
+  Footer,
+  Header,
+  Log,
+  LogJson,
+  Outcome,
+  Row,
+  Suite,
+  Weights
+}
+import grit.eval.harness.pull.Pull
 import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{Decision, Order, Paired, Rule, Scoring, Spread, Target}
@@ -49,6 +62,7 @@ object Main {
         exit(flags(rest.filterNot(_ == "--more")).flatMap(inputs(_, rest.contains("--more"))))
       case "score" :: rest => exit(flags(rest).flatMap(score))
       case "order" :: rest => exit(flags(rest).flatMap(order))
+      case "pull" :: rest => exit(flags(rest).flatMap(pull))
       case "compare" :: rest =>
         flags(rest).flatMap(compare) match {
           case Right(0) => ()
@@ -58,7 +72,7 @@ object Main {
       case _ =>
         exit(
           Left(
-            "usage: scripts/eval capture|run|determinism|inputs|score|compare " +
+            "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull " +
               "(scripts/eval says what each takes)"
           )
         )
@@ -163,7 +177,7 @@ object Main {
         Digest.text(manifestText + casesText),
         labels,
         Variant.name(variant),
-        Variant.digest(Variant.wording(variant)),
+        Some(Variant.digest(Variant.wording(variant))),
         model,
         Variant.tuning(variant),
         Build.current,
@@ -364,6 +378,86 @@ object Main {
         s"${by.count(id => !Target.labelled(q, labels.of(id)))} not yet labelled on it first; " +
         s"written to order/$name"
     )
+
+  /** `pull --corpus <dir> --url <jdbc> --runs <dir> --shadows <name,…> [--since <instant>]`:
+    * what the database kept of the heard messages tagged since `<instant>` (default: ever) and
+    * the corpus in `<dir>` holds, as run logs ([[Pull]]): `<runs>/live-<yyyymmdd>.jsonl`, live
+    * triage's tags, and `<runs>/shadow-<name>-<yyyymmdd>.jsonl` for each shadow named, with
+    * the database's login from `GRIT_DATABASE_USER` and `_PASSWORD`. Prints counts, and the
+    * ids of the messages no corpus holds yet, for the next capture.
+    */
+  private def pull(f: Map[String, String]): Either[String, Unit] =
+    for {
+      dir <- need(f, "corpus").map(Path.of(_))
+      url <- need(f, "url")
+      runs <- need(f, "runs").map(Path.of(_))
+      names <- need(f, "shadows").flatMap(n =>
+        Fields.each(n.split(',').toVector.filter(_.nonEmpty))(x =>
+          ShadowName.of(x).left.map(w => s"--shadows $x: $w")
+        )
+      )
+      since <- f
+        .get("since")
+        .fold(Right(Instant.EPOCH))(a =>
+          Try(Instant.parse(a)).toOption.toRight(s"--since $a: not an instant")
+        )
+      manifest <- read(dir.resolve("corpus.json"))
+      casesText <- read(dir.resolve("cases.jsonl"))
+      cases <- readCases(dir)
+      config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      at = Instant.now()
+      pulled <- opened(config)(reader =>
+        Pull(
+          reader,
+          dir.getFileName.toString,
+          Digest.text(manifest + casesText),
+          cases,
+          names,
+          since,
+          at
+        )
+      )
+      day = Day.format(at.atOffset(ZoneOffset.UTC))
+      logs = Pulled(s"live-$day.jsonl", pulled.live) +:
+        pulled.shadows.map((s: Pull.Pulled.Shadow) =>
+          Pulled(s"shadow-${ShadowName.value(s.name)}-$day.jsonl", s.log)
+        )
+      _ <- Try(Files.createDirectories(runs)).toEither.left.map(e =>
+        s"$runs: ${e.getClass.getName}"
+      )
+      _ <- logs.foldLeft[Either[String, Unit]](Right(()))((done, p: Pulled) =>
+        done.flatMap(_ => write(runs.resolve(p.name), lines(p.log)))
+      )
+    } yield {
+      def counted(log: Log[Vector[Weights]]): String = {
+        val footer = log.footer.getOrElse(Footer.of(BigDecimal(0), log.rows))
+        s"${log.rows.size} rows: answered ${footer.answered}, failed ${footer.failed}; " +
+          s"spent $$${footer.spent}"
+      }
+      println(
+        s"live (${Pull.Kept}): ${counted(pulled.live)}; corpus cases with no rebuilt " +
+          s"question, left out: ${pulled.unbuilt}"
+      )
+      println(s"  ${Report.KeptNote}")
+      pulled.shadows.foreach(s =>
+        println(
+          s"shadow ${ShadowName.value(s.name)}: ${counted(s.log)}; tagged since with no row: " +
+            s"ended keeping nothing ${s.ended}, not yet shadowed ${s.waiting}"
+        )
+      )
+      println(s"not in the corpus, for the next capture: ${pulled.uncaptured.size}")
+      pulled.uncaptured.foreach(id => println(s"  ${id.written}"))
+      println(s"written: ${logs.map((p: Pulled) => p.name).mkString(", ")}")
+    }
+
+  /** A pulled log, and the name of the file it is written to. */
+  private final case class Pulled(name: String, log: Log[Vector[Weights]])
+
+  /** `log` as its file's lines: header, rows, then its footer when it has one. */
+  private def lines(log: Log[Vector[Weights]]): String =
+    (Vector(LogJson.header(log.header)) ++
+      log.rows.map((r: Row[Vector[Weights]]) => LogJson.row(r)) ++
+      log.footer.map(LogJson.footer).toVector).map(_ + "\n").mkString
 
   /** The labels `--labels` names, else `<dir>/labels.json`; none when that file does not exist. */
   private def labelsAt(dir: Path, f: Map[String, String]): Either[String, Labels] = {

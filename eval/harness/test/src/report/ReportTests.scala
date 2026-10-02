@@ -16,11 +16,16 @@ object ReportTests extends TestSuite {
     caseOf(2, 2, live = weighed(Kind.Answer, 0.8, 0.5, 0.3, 0.7))
   )
 
-  private def run(name: String, durable: Double, labels: Labels): Scored =
+  private def run(
+      name: String,
+      durable: Double,
+      labels: Labels,
+      variant: String = "live"
+  ): Scored =
     Scored(
       name,
       Log(
-        header(),
+        header(variant),
         cases.map(c =>
           row(Suite.Triage, c.id, 0, triage(Vector(1, 0, 0, 0, 0), 0.5, durable, 0.5))
         ),
@@ -57,6 +62,20 @@ object ReportTests extends TestSuite {
           "## Tags, context ok",
           "## Tags, context short"
         )
+    }
+
+    test(
+      "a log of live triage's kept tags is said to hold only the likeliest kind's probability, scored or compared"
+    ) {
+      val note = Report.KeptNote
+      val kept = run("live-20261002.jsonl", 0.7, Labels.Empty, grit.eval.harness.pull.Pull.Kept)
+      val other = run("b.jsonl", 0.7, Labels.Empty)
+      (
+        lines(Report.score(kept)).count(_ == note),
+        lines(Report.compare(kept, other)).count(_ == note),
+        lines(Report.compare(other, other)).count(_ == note),
+        lines(Report.score(other)).count(_ == note)
+      ) ==> (1, 1, 0, 0)
     }
 
     test("a comparison lists by id the cases each question's decision moved") {

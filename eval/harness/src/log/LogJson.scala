@@ -58,7 +58,7 @@ object LogJson {
         "corpus_digest" -> h.corpusDigest.hex,
         "labels" -> digest(h.labels),
         "variant" -> h.variant,
-        "wording" -> h.wording.hex,
+        "wording" -> digest(h.wording),
         "model" -> h.model,
         "tuning" -> h.tuning.fold[ujson.Value](ujson.Null)(CorpusJson.writeTuning),
         "build" -> CorpusJson.writeBuild(h.build),
@@ -149,7 +149,7 @@ object LogJson {
       corpusDigest <- f.str("corpus_digest").flatMap(Digest.read)
       labels <- f.optional("labels").flatMap(opt(_)(readDigest("labels")))
       variant <- f.str("variant")
-      wording <- f.str("wording").flatMap(Digest.read)
+      wording <- f.optional("wording").flatMap(opt(_)(readDigest("wording")))
       model <- f.str("model")
       tuning <- f.optional("tuning").flatMap(opt(_)(CorpusJson.readTuning))
       build <- f.field("build").flatMap(CorpusJson.readBuild("header", _))

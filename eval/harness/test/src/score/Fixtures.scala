@@ -83,7 +83,7 @@ object Fixtures {
       Digest.text("c"),
       None,
       variant,
-      Digest.text("w"),
+      Some(Digest.text("w")),
       "m",
       None,
       Build.Unknown,
