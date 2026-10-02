@@ -310,7 +310,9 @@ object SearchLiveTests extends TestSuite {
           s <- search.search(a, TurnSeq(0), TurnSeq(1), "quokka contract", 10)
         } yield (r.headOption.map(_.score), s.headOption.map(_.score))
       }
-      one.map((r, s) => r == s && r.nonEmpty) ==> Right(true)
+      // Compared as the scores themselves, so a failure shows both.
+      one.map(_._1.nonEmpty) ==> Right(true)
+      one.map(_._1) ==> one.map(_._2)
       LiveDb.transaction(config)(search.room(room, t0, t0.plusSeconds(3_600), " ", 10)) ==>
         Right(Vector.empty)
     }
