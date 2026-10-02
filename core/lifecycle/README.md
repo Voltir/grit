@@ -45,6 +45,15 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   `start` the heard message's own turn (ADR 0022). A classifier that fails leaves unanswered
   tags, and no draft. It writes no entry, so it never moves a deadline. `TriageEnv` is what
   it works with. ← `transcript`
+- **`shadow`** — `Shadow`: a declared variant's run on a heard message already triaged,
+  recorded and never acted on, on a queue of its own, so it
+  never delays a triage: `ask` rebuilds triage's question as `triage` builds it, from the
+  store as it stands now, and asks it once in the variant's wording, of the variant's
+  classifier (`ShadowAsking`); `record` keeps what it made of it, every answer, the
+  request's digest, both models and the latency, or which kind of failure
+  (`grit.core.triage.TriageShadows`). How many are enqueued each day is the sweep's, within
+  the variant's cap (`grit.core.triage.Shadowing`). `ShadowEnv` is what it works with.
+  ← `triage`
 - **`post`** — `Posting`: one run posting closed periods to a plugin from its cursor
   (`grit.core.plugin`), on a queue of its own partitioned by plugin (`grit.dbos.workflow.Posts`):
   each step posts the next closed period and moves the cursor past it in one `Jot`
@@ -52,7 +61,8 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   the cursor it started at for deletion; at most
   `MaxPerRun` a run. `PostEnv` is what it works with. Imports nothing else in lifecycle.
 
-`close`, `settle`, `triage` and `post` never name each other. Their replay gate,
+`close`, `settle`, `triage` and `post` never name each other; `shadow` names `triage`
+alone, whose question it asks again. Their replay gate,
 `LifecycleReplayTests`, with `RecordLifecycleHistories` writing its histories, is in the
 test tree's `replay`, which covers them all.
 

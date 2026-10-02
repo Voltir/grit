@@ -1,0 +1,16 @@
+{
+  "workflow": "shadow",
+  "id": "shadow:c1:1:0:words",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "ask",
+      "output": "{\"ok\":{\"entry\":\"e0\",\"row\":{\"failed\":{\"request\":\"b650e097ab6363df907dc096b3da3a8a6ce65dbf18a0977bb0a71f38f563efb3\",\"kind\":\"unavailable\",\"ms\":250}}}}"
+    },
+    {
+      "name": "record",
+      "output": "{\"ok\":true}"
+    }
+  ]
+}

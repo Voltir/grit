@@ -1,0 +1,12 @@
+{
+  "workflow": "shadow",
+  "id": "shadow:c1:1:0:words",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "ask",
+      "output": "{\"failed\":\"no heard message at turn 0\"}"
+    }
+  ]
+}

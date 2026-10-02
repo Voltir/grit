@@ -21,10 +21,11 @@ import grit.dbos.sql.TestTx
 import grit.lifecycle.close.CloseFixtures
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.SettleFixtures
+import grit.lifecycle.shadow.ShadowFixtures
 import grit.lifecycle.triage.TriageFixtures
 import grit.turn.Turn
 
-/** Writes this epoch's recorded close, settle, posting and triage histories, one per shape each can leave
+/** Writes this epoch's recorded close, settle, posting, triage and shadow histories, one per shape each can leave
   * behind, into `GRIT_HISTORIES/{Turn.Epoch}`. Never overwrites: a history, once written, is
   * what builds of this epoch must keep replaying. Run it when an epoch starts or a new shape
   * appears:
@@ -186,7 +187,44 @@ object RecordLifecycleHistories {
         id
       }
     )
-    (posted +: settles) ++ triages ++ Vector(
+    def shadowed(
+        name: String
+    )(
+        run: (ShadowFixtures.World, InMemoryDurable) => grit.core.id.WorkflowId
+    ): (String, History) = {
+      val durable = new InMemoryDurable
+      val id = run(new ShadowFixtures.World, durable)
+      name -> History("shadow", id, Turn.Epoch, "recorded", durable.history(id))
+    }
+    val shadows = Vector(
+      shadowed("shadow-answered") { (w, d) =>
+        val t = grit.core.id
+          .ShadowRef(w.hear("standup moves to 10:00 from Monday", "Ana", 0), ShadowFixtures.Words)
+        val decided =
+          new TriageFixtures.Scripted(
+            Vector(0.125, 0.0, 0.75, 0.125, 0.0),
+            Vector(0.125, 0.875, 0.25)
+          )
+        d.run(t.workflowId)(w.body(decided, 5))
+        t.workflowId
+      },
+      shadowed("shadow-failed") { (w, d) =>
+        val t = grit.core.id.ShadowRef(w.hear("lunch?", "Ana", 0), ShadowFixtures.Words)
+        d.run(t.workflowId)(w.body(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 5))
+        t.workflowId
+      },
+      shadowed("shadow-gone") { (w, d) =>
+        // A shadow of a turn that holds no heard message: nothing is asked or kept.
+        val said = w.triaged.say("hello", 0)
+        val t = grit.core.id.ShadowRef(
+          grit.core.id.TriageRef(TriageFixtures.p1, said.turnSeq),
+          ShadowFixtures.Words
+        )
+        d.run(t.workflowId)(w.body(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 5))
+        t.workflowId
+      }
+    )
+    (posted +: settles) ++ triages ++ shadows ++ Vector(
       record("close-overheard") { (w, d) =>
         // A period grit only heard: written by the heard pin though the gate found nothing new.
         w.hear("The freeze moves to Friday.", "Ana", 0)

@@ -5,12 +5,13 @@ import grit.core.period.ClosingJson
 import grit.lifecycle.close.CloseFixtures
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.SettleFixtures
+import grit.lifecycle.shadow.ShadowFixtures
 import grit.lifecycle.triage.TriageFixtures
 import grit.turn.Turn
 
 import utest.*
 
-/** The versioning gate for the close, settle, posting and triage workflows (ADR 0004): every history of
+/** The versioning gate for the close, settle, posting, triage and shadow workflows (ADR 0004): every history of
   * either recorded under the engine's current epoch, [[Turn.Epoch]], must replay under
   * today's body. A step renamed, reordered, dropped or given an output the old records
   * cannot satisfy fails here, before it strands a workflow in flight.
@@ -30,19 +31,20 @@ object LifecycleReplayTests extends TestSuite {
   }
 
   val tests = Tests {
-    test("the current epoch has close, settle, posting and triage histories to replay") {
+    test("the current epoch has close, settle, posting, triage and shadow histories to replay") {
       // Without them the gate below passes vacuously.
       val workflows = histories.flatMap(_._2.toOption.map(_.workflow)).toSet
       assert(
         workflows.contains("close"),
         workflows.contains("settle"),
         workflows.contains("post"),
-        workflows.contains("triage")
+        workflows.contains("triage"),
+        workflows.contains("shadow")
       )
     }
 
     test(
-      "every close, settle, posting and triage history of the current epoch replays under today's body"
+      "every close, settle, posting, triage and shadow history of the current epoch replays under today's body"
     ) {
       val failures = histories.flatMap { case (path, parsed) =>
         val outcome = parsed.flatMap { history =>
@@ -81,6 +83,12 @@ object LifecycleReplayTests extends TestSuite {
               case "triage" =>
                 new InMemoryDurable().replay(history.id, history.steps)(
                   new TriageFixtures.World()
+                    .body(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 0)
+                )
+              // An empty world: a history's ask is read back, and its record replays its output.
+              case "shadow" =>
+                new InMemoryDurable().replay(history.id, history.steps)(
+                  new ShadowFixtures.World()
                     .body(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 0)
                 )
               case other => Left(s"a $other history")

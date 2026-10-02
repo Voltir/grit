@@ -1,0 +1,16 @@
+{
+  "workflow": "shadow",
+  "id": "shadow:c1:1:0:words",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "ask",
+      "output": "{\"ok\":{\"entry\":\"e0\",\"row\":{\"answered\":{\"request\":\"5e7bbe26c6e59391c8b6b118376dfbf2794daaf8b40c96d217860d7125856999\",\"answers\":[{\"choice\":\"decision\",\"weights\":[{\"key\":\"question\",\"p\":0.125},{\"key\":\"answer\",\"p\":0},{\"key\":\"decision\",\"p\":0.75},{\"key\":\"announcement\",\"p\":0.125},{\"key\":\"chatter\",\"p\":0}]},{\"yes\":0.125},{\"yes\":0.875},{\"yes\":0.25}],\"usage\":{\"input\":640,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.00002688\"},\"requested\":\"jev-variant\",\"model\":\"jev-1.13.0\",\"ms\":250}}}}"
+    },
+    {
+      "name": "record",
+      "output": "{\"ok\":true}"
+    }
+  ]
+}
