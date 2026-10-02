@@ -149,16 +149,16 @@ object UnpromptedLiveTests extends TestSuite {
         val pending = right(engine.jot.write(engine.deliveries.pending())).filter(_.turn == turn)
         val reply = right(engine.db.read(engine.entries.get(turn.replyId)))
         (pending.map(_.to), reply.nonEmpty) ==> (Vector("C1/10.0/10.0:1"), true)
-        // Told once the body returns, after the summary: wait for it, then for no second line.
+        // Told inside the workflow as its body returns, before DBOS records the result: once
+        // the result is in, the body never runs again, so no later line can come.
         val wf = grit.core.id.WorkflowId.value(turn.workflowId)
-        def lines: Vector[String] =
+        val _ = engine.awaitTurn(turn)
+        val lines =
           scala.jdk.CollectionConverters
             .ListHasAsScala(java.util.List.copyOf(told))
             .asScala
             .toVector
             .filter(_.startsWith(s"turn $wf "))
-        assert(eventually(lines.nonEmpty))
-        Thread.sleep(500)
         lines.map(l =>
           (l.takeWhile(_ != ';'), l.endsWith(s"; posted: reply:$wf; summarised: summary:$wf"))
         ) ==>
