@@ -680,10 +680,9 @@ object TurnTests extends TestSuite {
       runTurn(durable, entries, provider, one)
       val two = say(entries, "two")
       runTurn(durable, entries, provider, two)
-      def number(id: EntryId): ujson.Value = ujson.Num(EntrySeq.value(seqOf(entries, id)).toDouble)
-      val window = ujson.Obj("ok" -> ujson.Arr(number(EntryId("in:one")), number(one.replyId)))
+      // Turn one's message, at seq 0, and its reply, at 3.
       durable.history(two.workflowId).find(_.name == "assemble") ==>
-        Some(InMemoryDurable.Step("assemble", InMemoryDurable.Outcome.Output(window.render())))
+        Some(InMemoryDurable.Step("assemble", InMemoryDurable.Outcome.Output("""{"ok":[0,3]}""")))
     }
 
     test("a failed model call ends the turn with no reply") {
