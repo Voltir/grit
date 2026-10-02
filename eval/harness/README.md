@@ -24,6 +24,8 @@ Packages, each importing only those above it:
   `Weights`, a classifier's answer by position, never by key; `LogJson`, their JSON lines;
   `CacheKey` and `Cache`, answers kept as files under their request's key, so an unchanged
   request is never paid for twice. ← `corpus`
+- **`jev`** — the first suite, Jev's: `Spend`, what a request costs before it is sent, and
+  `Budget`, a run's spend under its cap. ← `corpus`, `log`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← `corpus`
 
 No source file sits at the module's root.
