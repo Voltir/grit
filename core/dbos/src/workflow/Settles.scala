@@ -14,9 +14,7 @@ object Settles {
 
   private val WorkflowName = "settle"
 
-  /** Registers `body` as the settle workflow. Must run before `dbos.launch()`, after
-    * [[Turns.register]], which registers the queue.
-    */
+  /** Registers `body` as the settle workflow. Must run before `dbos.launch()`. */
   def register(
       dbos: DBOS,
       steps: JdbcStepFactory,

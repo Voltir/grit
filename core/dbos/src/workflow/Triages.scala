@@ -14,9 +14,7 @@ object Triages {
 
   private val WorkflowName = "triage"
 
-  /** Registers `body` as the triage workflow. Must run before `dbos.launch()`, after
-    * [[Turns.register]], which registers the queue.
-    */
+  /** Registers `body` as the triage workflow. Must run before `dbos.launch()`. */
   def register(
       dbos: DBOS,
       steps: JdbcStepFactory,

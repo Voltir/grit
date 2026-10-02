@@ -14,9 +14,7 @@ object Closes {
 
   private val WorkflowName = "close"
 
-  /** Registers `body` as the close workflow. Must run before `dbos.launch()`, after
-    * [[Turns.register]], which registers the queue.
-    */
+  /** Registers `body` as the close workflow. Must run before `dbos.launch()`. */
   def register(
       dbos: DBOS,
       steps: JdbcStepFactory,

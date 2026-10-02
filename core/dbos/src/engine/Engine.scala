@@ -65,7 +65,7 @@ import grit.dbos.sql.{
   SqlUsageLedger,
   SqlVoiceStore
 }
-import grit.dbos.workflow.{Closes, Posts, Running, Settles, Triages, Turns}
+import grit.dbos.workflow.{Closes, DurableWorkflow, Posts, Running, Settles, Triages, Turns}
 
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.migrations.MigrationManager
@@ -150,7 +150,9 @@ final class Engine private (
   /** Short write transactions, for a step that records what it did as it goes. */
   val jot: Jot = new SqlJot(dataSource)
 
-  // An edge's side: it reaches the engine only through Postgres (ADR 0002).
+  // An edge's side: it reaches the engine only through Postgres (ADR 0002). Built with no
+  // application name, so what it enqueues is unclaimed (application_name NULL), which DBOS
+  // dequeues for this executor's application by `application_name = 'grit' OR IS NULL`.
   private val client = new DBOSClient(dataSource)
 
   val inbox: Inbox =
@@ -186,6 +188,9 @@ final class Engine private (
     Posts.register(dbos, steps, post, running)
     Triages.register(dbos, steps, triage, running)
     enabled.set(plugins.map(p => (p.name, p.version)))
+    // Before launch, so the queues are there when recovery puts work back on them.
+    Turns.registerQueue(client)
+    Posts.registerQueue(client)
     dbos.launch()
   }
 
@@ -426,7 +431,7 @@ object Engine {
     */
   private def dbosConfigOf(config: DbConfig, epoch: String): DBOSConfig =
     DBOSConfig
-      .defaults("grit")
+      .defaults(DurableWorkflow.ApplicationName)
       .withDatabaseUrl(config.jdbcUrl)
       .withDbUser(config.user)
       .withDbPassword(config.password)

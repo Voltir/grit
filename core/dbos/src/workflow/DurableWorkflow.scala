@@ -42,6 +42,9 @@ object DurableWorkflow {
     */
   val ClassName = "grit.workflow"
 
+  /** The application name every grit executor runs as, and owns its queues under. */
+  val ApplicationName = "grit"
+
   /** Registers `body` as the workflow `name`, each run counted in `running`. Must run before
     * `dbos.launch()`.
     */

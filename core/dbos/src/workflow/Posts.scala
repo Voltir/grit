@@ -5,7 +5,7 @@ import grit.core.id.{PluginName, WorkflowId}
 import grit.core.plugin.PostRef
 
 import dev.dbos.transact.txstep.JdbcStepFactory
-import dev.dbos.transact.workflow.Queue
+import dev.dbos.transact.workflow.{QueueConflictResolution, QueueOptions}
 import dev.dbos.transact.{DBOS, DBOSClient}
 
 /** How a plugin's posting run is known to DBOS: the workflow it runs as, and its own queue,
@@ -17,19 +17,29 @@ object Posts {
 
   private val QueueName = "posts"
 
-  /** Registers the `posts` queue and `body` as the posting workflow. Must run before
-    * `dbos.launch()`.
-    */
+  /** Registers `body` as the posting workflow. Must run before `dbos.launch()`. */
   def register(
       dbos: DBOS,
       steps: JdbcStepFactory,
       body: WorkflowId => Durable^ ?=> String,
       running: Running
   ): Unit = {
-    dbos.registerQueue(new Queue(QueueName).withConcurrency(1).withPartitioningEnabled(true))
     DurableWorkflow.register(dbos, steps, WorkflowName, body, running)
     ()
   }
+
+  /** Writes the `posts` queue to DBOS's database as application
+    * [[DurableWorkflow.ApplicationName]]'s, replacing the configuration stored there: within
+    * each partition (a plugin) one run at a time, oldest first, and no limit across
+    * partitions. Throws when the database fails, or when another application owns the queue.
+    */
+  def registerQueue(client: DBOSClient): Unit =
+    client.registerQueue(
+      QueueName,
+      new QueueOptions().withPartitionConcurrency(1),
+      QueueConflictResolution.ALWAYS_UPDATE,
+      DurableWorkflow.ApplicationName
+    )
 
   /** How `run` is enqueued: under its workflow id, partitioned by its plugin. */
   def enqueueOptions(run: PostRef): DBOSClient.EnqueueOptions =
