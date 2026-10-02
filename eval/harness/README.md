@@ -10,6 +10,11 @@ text stays in Postgres, in the database the corpus was restored to.
 
 Packages, each importing only those above it:
 
+- **`corpus`** — a corpus, text-free: `CaseId`, a heard message's identity outside any one
+  database (its Slack channel and ts); `Case`, what a heard message was live, the digests of
+  the inputs the shipped builders rebuild for it, and how it clusters; `Manifest`, the
+  corpus as a whole (its dump, the settings and tuning in force, the builders' constants,
+  the build that captured it); `CorpusJson`, their files' JSON.
 - **`main`** — `Main`, the command line `scripts/eval` runs.
 
 No source file sits at the module's root.

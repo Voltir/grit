@@ -402,6 +402,9 @@ object grit extends Module {
       def mainClass = Some("grit.eval.harness.main.Main")
       /* So a capture records the build it ran (grit.dbos.buildInfo). */
       def runClasspath = Task { super.runClasspath() :+ grit.dbos.buildInfo() }
+
+      /* The instrument's own code against fixed values: no database, no model. */
+      object test extends GritTests
     }
   }
 
