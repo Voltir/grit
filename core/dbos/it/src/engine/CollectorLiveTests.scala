@@ -69,9 +69,13 @@ object CollectorLiveTests extends TestSuite {
   private val tombstones = new SqlTombstones
 
   /** A minute idle, a minute's retention, and a `ledger` window. */
-  private def minutes(config: DbConfig, ledger: FiniteDuration = 1.day): Unit = {
+  private def minutes(
+      config: DbConfig,
+      ledger: FiniteDuration = 1.day,
+      idle: FiniteDuration = 1.minute
+  ): Unit = {
     val settings = Windows
-      .of(1.minute, 1.minute, ledger)
+      .of(idle, 1.minute, ledger)
       .flatMap(LifecycleSettings.of(_, 4096, 30.seconds, Probability.One, 1, Locality.Default))
       .getOrElse(sys.error("settings"))
     LiveDb.transaction(config)(new SqlLifecycleStore().set(settings))
@@ -722,7 +726,9 @@ object CollectorLiveTests extends TestSuite {
         spent(config, "u1", t1, t1.workflowId)
         spent(config, EntryId.value(p2.closingId), t1, a2.workflowId)
         Vector(t0, t1).foreach(decided(config, _))
-        // A third period open: the conversation is not quiet.
+        // A third period open: the conversation is not quiet. Idle for an hour from here, so
+        // no sweep below makes it due.
+        minutes(config, ledger = 2.minutes, idle = 1.hour)
         turnOn(engine, origin, "three")
         // A plugin's documents, one posted from each closing.
         val cached = PluginName.of("cached").getOrElse(sys.error("name"))
@@ -734,8 +740,12 @@ object CollectorLiveTests extends TestSuite {
           } yield ()
         } ==> Right(())
 
-        engine.sweep(Instant.now().plusSeconds(600)).map(_.collected) ==>
-          Right(Vector(Target.Raw(p2), Target.Superseded(p1)))
+        // The third period stays open: a close of it would race the reads below.
+        engine
+          .sweep(Instant.now().plusSeconds(600))
+          .map(s => (s.collected, s.enqueued.map(_.period))) ==> Right(
+          (Vector(Target.Raw(p2), Target.Superseded(p1)), Vector.empty)
+        )
         LiveDb.transaction(config)(periods.get(p1)) ==> Right(None)
         LiveDb.transaction(config)(periods.get(p2)).map(_.map(_.ref)) ==> Right(Some(p2))
         LiveDb
