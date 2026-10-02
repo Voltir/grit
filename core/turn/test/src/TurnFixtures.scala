@@ -813,10 +813,11 @@ object TurnFixtures {
   val speechLimits: Limits =
     Limits.suggested(DailyCap.of("0.25").getOrElse(throw new java.lang.AssertionError("a cap")))
 
-  /** Answers every yes/no question with `yes`, counting its calls; unavailable when `yes` is
-    * `None`.
+  /** Answers the judge's two yes/no questions, in the order asked ([[TurnJudge]] asks
+    * grounded, then worth), with `answers`' first and second, counting its calls; unavailable
+    * when `answers` is `None`, unreadable when asked any other number of questions.
     */
-  final class Judge(yes: Option[Double]) extends Classifier {
+  final class Judge(answers: Option[(Double, Double)]) extends Classifier {
     @caps.unsafe.untrackedCaptures
     var calls = 0
 
@@ -825,12 +826,14 @@ object TurnFixtures {
         questions: Vector[Question]
     ): Either[ClassifierError, Answers] = {
       calls += 1
-      yes match {
+      answers match {
         case None => Left(ClassifierError.Unavailable("down"))
-        case Some(p) =>
+        case Some(_) if questions.size != 2 =>
+          Left(ClassifierError.Unreadable(s"asked ${questions.size} questions, not 2"))
+        case Some((first, second)) =>
           Right(
             Answers(
-              questions.map(_ => Answer.YesNo(p)),
+              Vector(Answer.YesNo(first), Answer.YesNo(second)),
               Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017"))),
               "jev"
             )
@@ -863,9 +866,9 @@ object TurnFixtures {
 
   /** A conversation that begins with a record of its closed period (turn 0) when
     * `recalled`, else with a person's message, then a heard message (the turn), decided on and
-    * heard with a reply address.
+    * heard with the reply address `replyTo`.
     */
-  def speechWorld(recalled: Boolean = true): SpeechWorld = {
+  def speechWorld(recalled: Boolean = true, replyTo: Option[String] = Some("C/1")): SpeechWorld = {
     given grit.core.store.Tx = TestTx.fake
     val entries = new InMemoryEntryStore
     val ledger = new InMemoryUsageLedger
@@ -877,10 +880,10 @@ object TurnFixtures {
     entries.insert(Entry(EntryId("first"), conversation, next.turnSeq, None, next.seq, first, Instant.EPOCH))
     val turn = hear(entries, "is the freeze still on?")
     val store = new InMemorySpeechStore(entries, ledger)
-    store.heard(turn, Reach(Some("C/1"), Set.empty))
+    store.heard(turn, Reach(replyTo, Set.empty))
     val p = Probability.clamped(0.9)
     store.decided(
-      Heard(turn, 1, Place.Everywhere, Instant.EPOCH, Reach(Some("C/1"), Set.empty), Tags.Weighed(Kind.Question, p, p, p, p, "jev", Usage.Zero)),
+      Heard(turn, 1, Place.Everywhere, Instant.EPOCH, Reach(replyTo, Set.empty), Tags.Weighed(Kind.Question, p, p, p, p, "jev", Usage.Zero)),
       Decision.Drafting(turn),
       Instant.EPOCH
     )

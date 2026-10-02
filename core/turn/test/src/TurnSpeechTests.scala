@@ -50,25 +50,23 @@ object TurnSpeechTests extends TestSuite {
   private def reply(w: SpeechWorld): Option[Payload] =
     w.entries.get(w.turn.replyId)(using TestTx.fake).toOption.flatten.map(_.payload)
 
-  private def judged(p: Double) = {
-    val x = Probability.clamped(p)
+  private def judged(grounded: Double, worth: Double) =
     Judged(
-      x,
-      x,
+      Probability.clamped(grounded),
+      Probability.clamped(worth),
       "jev",
       Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017")))
     )
-  }
 
   val tests = Tests {
     test(
-      "scored at or above postAt: the draft is the reply, awaited at its address, and kept posted"
+      "its weaker answer at or above postAt: the draft is the reply, awaited at its address, and kept posted with each answer"
     ) {
       val w = speechWorld()
-      val judge = new Judge(Some(0.5))
+      val judge = new Judge(Some((0.9, 0.5)))
       val done = run(w, judge)
       (outcome(w), awaited(w), reply(w), judge.calls) ==> (
-        Some(Outcome.Posted(judged(0.5))),
+        Some(Outcome.Posted(judged(0.9, 0.5))),
         Vector((w.turn, "C/1")),
         Some(Payload.Message(said("It moved to Thursday."))),
         1
@@ -81,28 +79,29 @@ object TurnSpeechTests extends TestSuite {
 
     test("under Shadow, scored the same: nothing posted, kept shadowed") {
       val w = speechWorld()
-      run(w, new Judge(Some(0.5)), Speaking.Shadow(speechLimits))
+      run(w, new Judge(Some((0.9, 0.5))), Speaking.Shadow(speechLimits))
       (outcome(w), awaited(w), reply(w)) ==> (
-        Some(Outcome.Shadowed(judged(0.5))),
+        Some(Outcome.Shadowed(judged(0.9, 0.5))),
         Vector.empty,
         None
       )
     }
 
-    test("scored under postAt: nothing posted, kept below") {
+    test("its weaker answer under postAt, though the other is above: nothing posted, kept below") {
       val w = speechWorld()
-      run(w, new Judge(Some(0.49)))
+      run(w, new Judge(Some((0.49, 0.9))))
       (outcome(w), awaited(w), reply(w)) ==>
-        (Some(Outcome.Below(judged(0.49), speechLimits.postAt)), Vector.empty, None)
+        (Some(Outcome.Below(judged(0.49, 0.9), speechLimits.postAt)), Vector.empty, None)
     }
 
     test(
-      "a person spoke in the thread after the root: the judge weighs it, and the draft is posted"
+      "a person's message after the root is not a reply: the draft is still judged and posted"
     ) {
       val w = speechWorld()
       hear(w.entries, "yes, Thursday")
-      run(w, new Judge(Some(0.9)))
-      (outcome(w), awaited(w)) ==> (Some(Outcome.Posted(judged(0.9))), Vector((w.turn, "C/1")))
+      run(w, new Judge(Some((0.9, 0.9))))
+      (outcome(w), awaited(w)) ==>
+        (Some(Outcome.Posted(judged(0.9, 0.9))), Vector((w.turn, "C/1")))
     }
 
     test("the assistant replied in the thread after the root: spoken, nothing posted") {
@@ -122,22 +121,29 @@ object TurnSpeechTests extends TestSuite {
         w.entries.insert(e)
         e
       }
-      run(w, new Judge(Some(0.9)))
+      run(w, new Judge(Some((0.9, 0.9))))
       (outcome(w), awaited(w)) ==> (Some(Outcome.Spoken(replied.id)), Vector.empty)
     }
 
     test("a draft that passes is kept passed, and the judge is not asked") {
       val w = speechWorld()
-      val judge = new Judge(Some(0.9))
+      val judge = new Judge(Some((0.9, 0.9)))
       run(w, judge, answer = Right(said("  Pass ")))
       (outcome(w), judge.calls, awaited(w)) ==> (Some(Outcome.Passed), 0, Vector.empty)
     }
 
     test("a window that recalled no record: nothing recalled, and the judge is not asked") {
       val w = speechWorld(recalled = false)
-      val judge = new Judge(Some(0.9))
+      val judge = new Judge(Some((0.9, 0.9)))
       run(w, judge)
       (outcome(w), judge.calls, awaited(w)) ==> (Some(Outcome.NothingRecalled), 0, Vector.empty)
+    }
+
+    test("heard with no reply address, a draft that would post: kept failed, nothing posted") {
+      val w = speechWorld(replyTo = None)
+      run(w, new Judge(Some((0.9, 0.9))))
+      (outcome(w), awaited(w), reply(w)) ==>
+        (Some(Outcome.Failed("no address to reply to")), Vector.empty, None)
     }
 
     test("the judge unavailable: unjudged, nothing posted") {
@@ -146,14 +152,15 @@ object TurnSpeechTests extends TestSuite {
       (outcome(w), awaited(w)) ==> (Some(Outcome.Unjudged("unavailable: down")), Vector.empty)
     }
 
-    test("the turn failing before its draft: kept failed") {
+    test("the turn failing before its draft: kept failed with the turn's failure, nothing posted") {
       val w = speechWorld()
-      run(w, new Judge(Some(0.9)), answer = Left(ProviderError.Unavailable("down")))
-      outcome(w).map(SpeechJsonName.of) ==> Some("failed")
+      run(w, new Judge(Some((0.9, 0.9))), answer = Left(ProviderError.Unavailable("down")))
+      (outcome(w), awaited(w), reply(w)) ==>
+        (
+          Some(Outcome.Failed(TurnFailure.Model("down (after 3 tries)").toString)),
+          Vector.empty,
+          None
+        )
     }
-  }
-
-  private object SpeechJsonName {
-    def of(o: Outcome): String = grit.core.speech.SpeechJson.outcomeName(o)
   }
 }

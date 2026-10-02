@@ -52,7 +52,7 @@ object RecordTurnHistories {
           new RecordingProvider,
           new Before(w.entries),
           w.ledger,
-          new Judge(Some(0.9)),
+          new Judge(Some((0.9, 0.9))),
           TurnSpeech(speaking, w.store, w.deliveries)
         )
       )
