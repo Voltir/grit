@@ -179,7 +179,7 @@ abstract class StoreContract extends TestSuite {
 
     test("lockNext is the start of an empty conversation, and past everything in one") {
       val c = conversation("next")
-      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq.First, EntrySeq(0)))
+      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq.First, EntrySeq.First))
       transaction {
         entries.insert(entry(c, "late", 4, TurnSeq(2)))
         entries.insert(entry(c, "early", 1, TurnSeq(0)))

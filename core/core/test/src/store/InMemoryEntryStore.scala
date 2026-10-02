@@ -1,7 +1,5 @@
 package grit.core.store
 
-import scala.math.Ordering.Implicits.infixOrderingOps
-
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 
 /** An in-memory [[EntryStore]] for tests, keeping [[StoreContract]]. It ignores the `Tx`:
@@ -32,7 +30,7 @@ final class InMemoryEntryStore extends EntryStore {
       marks = marks.updated(
         entry.conversationId,
         (
-          if (TurnSeq.value(entry.turnSeq) >= TurnSeq.value(turn)) entry.turnSeq.next else turn,
+          if (entry.turnSeq >= turn) entry.turnSeq.next else turn,
           if (entry.seq >= seq) entry.seq.next else seq
         )
       )

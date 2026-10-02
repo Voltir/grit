@@ -15,5 +15,9 @@ object EntrySeq {
   given Ordering[EntrySeq] = Ordering.Long
   extension (seq: EntrySeq) {
     def next: EntrySeq = seq + 1
+    def <(other: EntrySeq): Boolean = seq < other
+    def <=(other: EntrySeq): Boolean = seq <= other
+    def >(other: EntrySeq): Boolean = seq > other
+    def >=(other: EntrySeq): Boolean = seq >= other
   }
 }

@@ -1,7 +1,5 @@
 package grit.app.chat
 
-import scala.math.Ordering.Implicits.infixOrderingOps
-
 import grit.core.id.{EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.Message
 import grit.core.store.{Entry, Payload}

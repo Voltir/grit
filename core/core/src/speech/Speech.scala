@@ -3,7 +3,6 @@ package grit.core.speech
 import java.time.{Duration as JDuration, Instant}
 
 import scala.concurrent.duration.*
-import scala.math.Ordering.Implicits.infixOrderingOps
 
 import grit.core.id.{EntryId, EntrySeq, PrincipalId, TurnRef}
 import grit.core.message.{Cost, Usage}

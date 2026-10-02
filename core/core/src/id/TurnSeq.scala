@@ -9,8 +9,13 @@ object TurnSeq {
   val First: TurnSeq = 0L
   def apply(value: Long): TurnSeq = value
   def value(seq: TurnSeq): Long = seq
+  given Ordering[TurnSeq] = Ordering.Long
 
   extension (seq: TurnSeq) {
     def next: TurnSeq = seq + 1
+    def <(other: TurnSeq): Boolean = seq < other
+    def <=(other: TurnSeq): Boolean = seq <= other
+    def >(other: TurnSeq): Boolean = seq > other
+    def >=(other: TurnSeq): Boolean = seq >= other
   }
 }
