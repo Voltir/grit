@@ -465,11 +465,14 @@ object ShownTests extends TestSuite {
         .copy(conversationId = ConversationId("a"), seq = EntrySeq(1))
       val theirs = entry(Payload.Message(Message.User("theirs")))
         .copy(id = EntryId("theirs"), conversationId = ConversationId("b"), seq = EntrySeq(1))
-      Shown.section(
-        Nearby.Open(ConversationId("a"), api, Vector(EntrySeq(1))),
-        Vector(mine, theirs),
-        Speakers.none
-      ) ==> Shown.nearby(api, Vector(mine))
+      // Both orders, so neither the first nor the last entry at a seq wins by position.
+      for (entries <- Vector(Vector(mine, theirs), Vector(theirs, mine))) {
+        Shown.section(
+          Nearby.Open(ConversationId("a"), api, Vector(EntrySeq(1))),
+          entries,
+          Speakers.none
+        ) ==> Shown.nearby(api, Vector(mine))
+      }
     }
 
     test(
