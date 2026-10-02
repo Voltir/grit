@@ -143,7 +143,7 @@ object ReachLiveTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "an edge's answer is kept in its request and the turn's result entry only: the turn is rung, never sent it"
+      "an edge's answer is kept in its request and its result entry; DBOS holds only the ring"
     ) {
       reached("reach_rung") { (_, config, turn) =>
         val id = WorkflowId.value(turn.workflowId)
@@ -157,8 +157,8 @@ object ReachLiveTests extends TestSuite {
           id
         ) ==> Vector(answer)
         // DBOS keeps a String as a JSON string: the ring, in the message and in the turn's
-        // journal of its wait. The answer is in no step but the summary, which the stub
-        // writes by quoting the turn.
+        // journal of its wait. No step holds the answer; the summary is left out, since the
+        // stub writes it by quoting the turn.
         val ring = ujson.write(ujson.Str(Desk.Doorbell))
         column(config, "SELECT message FROM dbos.notifications WHERE destination_uuid = ?", id) ==>
           Vector(ring)
@@ -171,7 +171,7 @@ object ReachLiveTests extends TestSuite {
           config,
           s"SELECT function_name FROM dbos.operation_outputs WHERE workflow_uuid = ? AND output LIKE '%$answer%'",
           id
-        ) ==> Vector("summarise")
+        ).filterNot(_ == "summarise") ==> Vector()
       }
     }
 
