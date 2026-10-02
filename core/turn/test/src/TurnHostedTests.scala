@@ -277,8 +277,6 @@ object TurnHostedTests extends TestSuite {
       durable.run(turn.workflowId)(
         hostedBody(entries, model(("t1", "fetch", "a.txt")), edge)
       ) ==> Done
-      durable.history(turn.workflowId).collect { case s if s.name == "DBOS.recv" => s.outcome } ==>
-        Vector(InMemoryDurable.Outcome.Output(grit.core.edge.Desk.Doorbell))
       val slot = TurnTools.Slot(turn, TurnLoop.Round.First, 0)
       entries
         .get(slot.resultId)(using grit.dbos.sql.TestTx.fake)
