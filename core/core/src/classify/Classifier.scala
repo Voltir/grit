@@ -15,8 +15,9 @@ trait Classifier extends caps.SharedCapability {
   final def ask[S: StateJson, T](
       state: S,
       questions: Ask[S, T]
-  ): Either[ClassifierError, Answered[T]] =
-    answer(StateJson[S].json(state), questions.questions).flatMap { a =>
+  ): Either[ClassifierError, Answered[T]] = {
+    val request = Request.of(state, questions)
+    answer(request.state, request.questions).flatMap { a =>
       if (a.answers.size != questions.questions.size)
         Left(
           ClassifierError.Unreadable(
@@ -25,6 +26,7 @@ trait Classifier extends caps.SharedCapability {
         )
       else questions.read(a.answers).map(Answered(_, a.usage, a.model))
     }
+  }
 
   /** One answer per question, in the questions' order and of each one's kind. Called only by
     * [[ask]], which never sends an empty `questions`.
@@ -54,6 +56,30 @@ enum ClassifierError {
 }
 
 object Classifier {
+
+  /** `inner`, each request first handed to `f` with `ask`, which asks `inner` that request
+    * once each time it is called: `f`'s result is the answer. For caching, timing or
+    * recording what a classifier is asked; `f` that never calls `ask` answers alone.
+    */
+  def around(inner: Classifier^)(f: Around^): Classifier^ =
+    new Classifier {
+      protected def answer(
+          state: ujson.Value,
+          questions: Vector[Question]
+      ): Either[ClassifierError, Answers] =
+        f(Request(state, questions), () => inner.answer(state, questions))
+    }
+
+  /** What [[around]] hands each request to: the request, and `ask`, which asks the classifier
+    * it wraps. A capability shared like the classifier it becomes part of, so a lambda that
+    * captures only shared capabilities is one.
+    */
+  trait Around extends caps.SharedCapability {
+    def apply(
+        request: Request,
+        ask: () => Either[ClassifierError, Answers]
+    ): Either[ClassifierError, Answers]
+  }
 
   /** A classifier that is not there: every call is `Unavailable` with `why`, at once. For
     * running without one, so code that asks need not branch on whether it can.

@@ -29,7 +29,22 @@ object TriageTests extends TestSuite {
   private val decision =
     Tags.Weighed(Kind.Decision, p(0.75), p(0.125), p(0.875), p(0.25), "jev-1.13.0", Spent)
 
+  /** One heard message, as the question is shown it: fixed, so its request's digest is too. */
+  private val fixed = TriageQuestion.State(
+    "standup moves to 10:00 from Monday",
+    "Ana",
+    "Ben: when is standup?"
+  )
+
   val tests = Tests {
+    test("judge sends the request whose digest was taken before the words moved") {
+      val requests = new Requests
+      TriageQuestion.judge(recording(requests), fixed)
+      requests.sent.map(_.digest) ==> Vector(
+        "8ec33547bce9c3e3a9c64edef8eecae7f216738a1407cc8088957d609cb78edd"
+      )
+    }
+
     test("a heard message is asked once, in one call, and its tags kept") {
       val w = new World
       val t = w.hear("standup moves to 10:00 from Monday", "Ana", 0)

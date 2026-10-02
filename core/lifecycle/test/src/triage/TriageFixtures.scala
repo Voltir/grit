@@ -4,7 +4,7 @@ import java.time.{Instant, ZoneOffset}
 
 import scala.concurrent.duration.FiniteDuration
 
-import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question}
+import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question, Request}
 import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{
@@ -92,6 +92,21 @@ object TriageFixtures {
         }
         Right(Answers(answers, Spent, "jev-1.13.0"))
       }
+    }
+  }
+
+  /** The requests a classifier was sent, kept by [[recording]]. */
+  final class Requests {
+    @caps.unsafe.untrackedCaptures
+    var sent: Vector[Request] = Vector.empty
+  }
+
+  /** A classifier that keeps each request it is sent in `into`, and is unavailable. */
+  def recording(into: Requests): Classifier^ = {
+    val none = Classifier.none("recording")
+    Classifier.around(none) { (request, ask) =>
+      into.sent = into.sent :+ request
+      ask()
     }
   }
 
