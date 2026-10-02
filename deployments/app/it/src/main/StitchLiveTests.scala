@@ -108,7 +108,11 @@ object StitchLiveTests extends TestSuite {
   private def links(engine: Engine^, c: ConversationId): Vector[Link] =
     right(engine.db.read(engine.stitches.links(Vector(c)))).filter(_.conversation == c)
 
-  /** The kind of what became of `turn`'s draft, and whose entry settled it, from grit.speech. */
+  /** The kind of what became of `turn`'s draft, and whose entry settled it, from grit.speech.
+    * Read in SQL because no store reads an outcome back (SpeechStore only writes it), and
+    * kept as the stored JSON on purpose: the test pins its form, `kind` and `by`, which
+    * `SpeechJson.writeOutcome` gives the row and the record-speech step's output alike.
+    */
   private def outcome(turn: TurnRef): Option[String] =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -191,6 +195,7 @@ object StitchLiveTests extends TestSuite {
         // The first reply was drafted in its own turn, and held: grit had replied in the strand.
         val drafted = TurnRef(real.conversationId, real.turnSeq)
         assert(eventually(outcome(drafted).nonEmpty))
+        // A pin of the stored form (see outcome): its key names and the spoken kind.
         outcome(drafted).map(ujson.read(_)) ==>
           Some(ujson.Obj("kind" -> "spoken", "by" -> EntryId.value(replied.id)))
         right(engine.db.read(engine.speech.spoken(Instant.EPOCH)))
