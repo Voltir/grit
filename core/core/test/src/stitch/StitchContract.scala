@@ -147,6 +147,20 @@ abstract class StitchContract extends TestSuite {
       val opening = say(a, Payload.Heard("the Engine contract term?"), 10)
       val answer = say(a, Payload.Message(reply), 20)
       val other = say(b, Payload.Heard("lunch?"), 30)
+      val period = right(transaction(periods.of(TurnRef(a, answer.turnSeq))))
+        .map(_.ref)
+        .getOrElse(throw new java.lang.AssertionError("no period"))
+      // Sealed inside the range, so its closing entry is there to be left out.
+      right(
+        transaction(
+          periods.seal(
+            CloseRef(period, answer.turnSeq, At.plusSeconds(25)),
+            CloseReason.Lapsed,
+            TestClosings.prose("Someone asked about the contract term."),
+            At.plusSeconds(25)
+          )
+        )
+      )
       right(transaction(stitches.said(Vector(a), At, At.plusSeconds(3_600)))).map(_.entry) ==>
         Vector(opening, answer)
       right(transaction(stitches.openings(Vector(a, b)))).map(s => (s.conversation, s.entry)) ==>
