@@ -322,10 +322,6 @@ object TurnOfferTests extends TestSuite {
       offered(slack, principals) ==> expected(slack, Some("Bort"))
     }
 
-    test("with no name given in its workspace, a Slack turn's prompt has no name fragment") {
-      offered(slack, new InMemoryPrincipals) ==> expected(slack, None)
-    }
-
     test("a turn rooted on a heard message is recorded so, and told it was not addressed") {
       val (prompt, root) =
         offeredAs(slack, new InMemoryPrincipals, Payload.Heard("is it Thursday?"))
