@@ -25,6 +25,10 @@ Packages, each importing only those above it:
   from a restored database through `grit.dbos`'s `Reader` and rebuilt through the shipped
   builders (`TriageInput`, `TriageQuestion`, `Stitching`), never through SQL of its own.
   `Fields`, the reader every file's JSON is read through.
+- **`label`** — a person's labels of a corpus's cases, kept apart from the cases so a
+  recapture keeps them: `Labels`, read from `labels.json` as the labelling tool writes it, and
+  each case's `Labelled` (its kind, the three yes/no tags, `Context`, whether it states a fact,
+  and its `Place`). ← `corpus`
 - **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the
   corpus, variant, build, cap and repeats a run was started with), `Row` (one request: its
   case, digest, cache key, `Outcome`, usage and latency), `Footer` (what it spent), and
