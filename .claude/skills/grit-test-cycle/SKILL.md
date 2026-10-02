@@ -65,6 +65,11 @@ build code that is not yours; its read queries (`get-usages`, `typed-glob-search
 `get-docs`, `inspect` with `fileInFocus`) are sound for code your branch has not changed. A
 CLI `./mill` and Metals never block each other (separate build directories).
 
+A targeted `scripts/check` right after `--it` can leave two Mill daemons: the exiting one
+deletes `out/mill-daemon/socketPort`, orphaning the live one, and the next `./mill` says
+"server launch failed". Kill the orphan by PID, yours only: its working directory
+(`/proc/<pid>/cwd`) is your checkout's `out/mill-daemon/sandbox`. Then rerun.
+
 ## JVMs
 
 - One JVM-heavy job at a time on this machine: no parallel Mill, test or grit runs.
