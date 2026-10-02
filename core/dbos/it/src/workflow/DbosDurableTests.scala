@@ -44,10 +44,10 @@ final class ProcessDied extends Error("simulated process death")
   * (`DBOSExecutor.executeWorkflow`: "interrupted before workflow.invoke completion").
   * `CrashFidelityTests` holds this to a JVM halted inside a step.
   *
-  * The next run of a crashed id restarts: a new DBOS instance is launched while the old one
-  * shuts down beside it, and its recovery resumes every `PENDING` workflow, as a restarted
-  * process's would. Launching beside the shutdown, rather than after it, saves the up to
-  * 1 s the shutdown spends joining DBOS's notification poller.
+  * The next run of a crashed id restarts: the old DBOS instance shuts down, then a new one
+  * is launched, and its recovery resumes every `PENDING` workflow, as a restarted process's
+  * would. Not beside the shutdown: recovery puts the workflow back on a queue (DBOS 1.1),
+  * and the old instance, polling as the same executor, could claim it as it stops.
   */
 final class DbosRuntime(config: DbConfig) extends DurableRuntime {
 
@@ -92,10 +92,6 @@ final class DbosRuntime(config: DbConfig) extends DurableRuntime {
   private var current: (DBOS, RegisteredWorkflow) = launched()
 
   private def dbos: DBOS = current._1
-
-  /** Replaced instances still shutting down, which [[close]] waits for. */
-  @caps.unsafe.untrackedCaptures
-  private var retiring = Vector.empty[Thread]
 
   @caps.unsafe.untrackedCaptures
   private var issued = 0
@@ -144,8 +140,7 @@ final class DbosRuntime(config: DbConfig) extends DurableRuntime {
       // The last run crashed: restart, and let recovery resume it.
       val latch = new CountDownLatch(1)
       settled.put(key, latch)
-      val old = dbos
-      retiring :+= Thread.ofPlatform().start(() => old.shutdown())
+      dbos.shutdown()
       current = launched()
       if (!latch.await(30, TimeUnit.SECONDS)) sys.error(s"recovery never ran $key")
       outcome(key)
@@ -235,9 +230,6 @@ final class DbosRuntime(config: DbConfig) extends DurableRuntime {
         }
     }
 
-  /** Shuts DBOS down, and waits for every instance a restart replaced. */
-  def close(): Unit = {
-    dbos.shutdown()
-    retiring.foreach(_.join())
-  }
+  /** Shuts DBOS down. */
+  def close(): Unit = dbos.shutdown()
 }
