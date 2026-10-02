@@ -1,6 +1,5 @@
 package grit.eval.harness.score
 
-import grit.core.triage.Kind
 import grit.eval.harness.corpus.CaseId
 import grit.eval.harness.label.Labels
 
@@ -35,17 +34,12 @@ object Comparison {
       )
     )
 
-  /** The kind decided as each run's likeliest (on a tie, the first in [[Kind]]'s order). */
+  /** The kind decided as each run's likeliest ([[Triage.likeliest]]). */
   def kind(a: Answers, b: Answers, labels: Labels): Changes =
     changes(
       a.triage.flatMap((id, x) =>
-        b.triage.get(id).map(y => (id, likeliest(x.mean), likeliest(y.mean), labels.of(id).kind))
+        b.triage.get(id).map(y => (id, x.mean.likeliest, y.mean.likeliest, labels.of(id).kind))
       )
-    )
-
-  private def likeliest(t: Triage): Kind =
-    Kind.values.foldLeft(Kind.Question)((best, k) =>
-      if (t.kinds.getOrElse(k, 0.0) > t.kinds.getOrElse(best, 0.0)) k else best
     )
 
   private def changes[D](decided: Iterable[(CaseId, D, D, Option[D])]): Changes = {

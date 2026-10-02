@@ -50,9 +50,15 @@ Packages, each importing only those above it:
   repeats with their spread; `Scoring`, those answers beside the cases and their labels, by
   `Tag` (waiting, durable, helps), kind and place; the scorers over them (`Brier`,
   `Reliability`, `Sweep`, and `Cost`, a curve over the cost-of-error ratio), each a mean
-  `Clustered` by exchange and by author and `Split` by the label `context`; `Comparison`, two runs' cases by what became of each (`Changes`: fixed, broken, moved); `Spread`, how far
+  `Clustered` by exchange and by author and `Split` by the label `context`; `Agreement`,
+  `Repeated` and `Spending`, what needs no label; `Comparison`, two runs' cases by what became of each (`Changes`: fixed, broken, moved); `Spread`, how far
   apart its repeats answered, and how far its answers are from what was kept live.
   ← `stats`, `corpus`, `label`, `log`
+- **`report`** — `Report`, a run scored (`Scored`: its log, its corpus's cases, the labels in
+  force) and two runs compared, as markdown with every mean's interval; text-free. With no case
+  labelled, only what needs no label: spend and latency (`score.Spending`), the repeats' spread
+  (`score.Repeated`) and agreement with what was kept live (`score.Agreement`). ← `stats`,
+  `corpus`, `label`, `log`, `score`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
 
 No source file sits at the module's root.

@@ -24,7 +24,9 @@ import grit.eval.harness.corpus.{
   Stitched
 }
 import grit.eval.harness.jev.{Budget, Drift, Inputs, Rebuilt, Review, Spend, Variant, Variants}
+import grit.eval.harness.label.Labels
 import grit.eval.harness.log.{Cache, Cached, Footer, Header, LogJson, Outcome, Row, Suite, Weights}
+import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.Spread
 import grit.kit.environment.DotEnv
@@ -44,10 +46,13 @@ object Main {
       case "determinism" :: rest => exit(flags(rest).flatMap(determinism))
       case "inputs" :: rest =>
         exit(flags(rest.filterNot(_ == "--more")).flatMap(inputs(_, rest.contains("--more"))))
+      case "score" :: rest => exit(flags(rest).flatMap(score))
+      case "compare" :: rest => exit(flags(rest).flatMap(compare))
       case _ =>
         exit(
           Left(
-            "usage: scripts/eval capture|run|determinism|inputs (scripts/eval says what each takes)"
+            "usage: scripts/eval capture|run|determinism|inputs|score|compare " +
+              "(scripts/eval says what each takes)"
           )
         )
     }
@@ -270,6 +275,70 @@ object Main {
           )
       )
     }
+
+  /** `score --eval <dir> --run <name> [--labels <file>]`: the run `<dir>/runs/<name>` scored
+    * against its corpus (`<dir>/corpus/<its corpus>`) and the labels in `<file>` (default
+    * `<dir>/labels.json`; none when it does not exist), written to `<dir>/reports/<name less
+    * .jsonl>.md` and printed.
+    */
+  private def score(f: Map[String, String]): Either[String, Unit] =
+    for {
+      dir <- need(f, "eval").map(Path.of(_))
+      labels <- labelsAt(dir, f)
+      run <- need(f, "run").flatMap(scored(dir, _, labels))
+      _ <- publish(dir, run.name.stripSuffix(".jsonl"), Report.score(run))
+    } yield ()
+
+  /** `compare --eval <dir> --a <name> --b <name> [--labels <file>]`: run B against run A, both
+    * in `<dir>/runs/`, written to `<dir>/reports/<A>-vs-<B>.md` (each name less `.jsonl`) and
+    * printed; the labels as for `score`.
+    */
+  private def compare(f: Map[String, String]): Either[String, Unit] =
+    for {
+      dir <- need(f, "eval").map(Path.of(_))
+      labels <- labelsAt(dir, f)
+      a <- need(f, "a").flatMap(scored(dir, _, labels))
+      b <- need(f, "b").flatMap(scored(dir, _, labels))
+      _ <- publish(
+        dir,
+        s"${a.name.stripSuffix(".jsonl")}-vs-${b.name.stripSuffix(".jsonl")}",
+        Report.compare(a, b)
+      )
+    } yield ()
+
+  /** The labels `--labels` names, else `<dir>/labels.json`; none when that file does not exist. */
+  private def labelsAt(dir: Path, f: Map[String, String]): Either[String, Labels] = {
+    val file = f.get("labels").fold(dir.resolve("labels.json"))(Path.of(_))
+    if (Files.isRegularFile(file)) read(file).flatMap(Labels.read) else Right(Labels.Empty)
+  }
+
+  /** The run `<dir>/runs/<name>`, with its corpus's cases and `labels`; a corpus whose files
+    * changed since the run is reported, not refused.
+    */
+  private def scored(dir: Path, name: String, labels: Labels): Either[String, Scored] =
+    for {
+      text <- read(dir.resolve("runs").resolve(name))
+      log <- LogJson.read[Vector[Weights]](text.linesIterator.filter(_.nonEmpty).toVector)
+      corpus = dir.resolve("corpus").resolve(log.header.corpus)
+      manifest <- read(corpus.resolve("corpus.json"))
+      casesText <- read(corpus.resolve("cases.jsonl"))
+      cases <- readCases(corpus)
+    } yield {
+      if (Digest.text(manifest + casesText) != log.header.corpusDigest)
+        println(s"$name: its corpus ${log.header.corpus} changed since it ran")
+      Scored(name, log, cases, labels)
+    }
+
+  /** `report` written to `<dir>/reports/<name>.md`, and printed. */
+  private def publish(dir: Path, name: String, report: String): Either[String, Unit] = {
+    val reports = dir.resolve("reports")
+    for {
+      _ <- Try(Files.createDirectories(reports)).toEither.left.map(e =>
+        s"$reports: ${e.getClass.getName}"
+      )
+      _ <- write(reports.resolve(s"$name.md"), report)
+    } yield print(report)
+  }
 
   /** The cases of the corpus in `dir`. */
   private def readCases(dir: Path): Either[String, Vector[Case]] =

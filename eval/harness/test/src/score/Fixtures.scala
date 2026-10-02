@@ -22,7 +22,7 @@ import grit.eval.harness.corpus.{
   Stitched,
   Triaged
 }
-import grit.eval.harness.log.{CacheKey, Outcome, Row, Suite, Weights}
+import grit.eval.harness.log.{CacheKey, Header, Outcome, Row, Suite, Weights}
 
 /** Synthetic cases and rows for the scorers' tests: every id here is made up. */
 object Fixtures {
@@ -74,6 +74,24 @@ object Fixtures {
       Probability.clamped(h),
       "m",
       None
+    )
+
+  /** A run's header: variant `variant`, `repeats` repeats, started under `rule` when given. */
+  def header(variant: String = "live", repeats: Int = 1, rule: Option[Digest] = None): Header =
+    Header(
+      "c",
+      Digest.text("c"),
+      None,
+      variant,
+      Digest.text("w"),
+      "m",
+      None,
+      Build.Unknown,
+      repeats,
+      true,
+      BigDecimal(1),
+      rule,
+      Instant.EPOCH
     )
 
   private val key = CacheKey.read("ab" * 32).fold(sys.error, identity)

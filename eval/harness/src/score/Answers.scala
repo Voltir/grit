@@ -50,7 +50,39 @@ object Tag {
 /** A case's triage answers: each kind's probability (summing to 1 unless every kind was given
   * 0), and each tag's probability of yes.
   */
-final case class Triage(kinds: Map[Kind, Double], waiting: Double, durable: Double, helps: Double)
+final case class Triage(kinds: Map[Kind, Double], waiting: Double, durable: Double, helps: Double) {
+
+  /** The kind given the most (on a tie, the first in [[Kind]]'s order). */
+  def likeliest: Kind =
+    Kind.values.foldLeft(Kind.Question)((best, k) =>
+      if (kinds.getOrElse(k, 0.0) > kinds.getOrElse(best, 0.0)) k else best
+    )
+}
+
+/** A question a run answers for a case: one of triage's tags, triage's kind, or stitching's
+  * place.
+  */
+enum Target {
+  case Tagged(tag: Tag)
+  case Kinds
+  case Places
+}
+
+object Target {
+
+  /** Every question, in the order reports list them. */
+  val all: Vector[Target] = Kinds +: Tag.values.toVector.map(Tagged(_)) :+ Places
+
+  /** `t`'s written name: `kind`, a tag's ([[Tag.written]]), or `place`. */
+  def written(t: Target): String = t match {
+    case Tagged(tag) => Tag.written(tag)
+    case Kinds => "kind"
+    case Places => "place"
+  }
+
+  /** The question written `name`; `None` for no question's. */
+  def read(name: String): Option[Target] = all.find(written(_) == name)
+}
 
 /** A case's stitch answer: each offered exchange's probability, in the order they were offered,
   * then beginning anew's (summing to 1 unless every one was given 0).

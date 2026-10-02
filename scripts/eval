@@ -37,6 +37,21 @@
 #       --more, triage's line also holds what its thread left out, and where. Prints counts,
 #       and how each digest compares to cases.jsonl's: never the file's text.
 #
+#   scripts/eval score <runs file> [--labels <file>]
+#       The run scored, written to .local/eval/reports/<run>.md and printed: text-free, ids
+#       and numbers. Labels come from .local/eval/labels.json (or <file>); with none it says
+#       "unlabelled: 0 of N cases labelled" and gives what needs no label: spend and latency,
+#       the repeats' spread, and agreement with what triage and stitching kept live. Once
+#       labels exist: Brier scores, reliability, threshold sweeps and the expected-cost curve
+#       over the cost-of-error ratio, all and by the label context (ok, short). Every mean
+#       has its 95% interval clustered by exchange, and by author beside it.
+#
+#   scripts/eval compare <runs file A> <runs file B> [--labels <file>]
+#       Run B against run A, paired on the cases both answered: B - A per question, the
+#       cases each question's decision fixed, broke or moved, by id, and once labels exist
+#       the paired difference in Brier score with its MDE. Written to
+#       .local/eval/reports/<A>-vs-<B>.md and printed.
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.
 set -euo pipefail
@@ -156,8 +171,24 @@ inputs() {
     --out "$main/.local/eval/review/inputs-$corpus.jsonl" $more
 }
 
+score() {
+  local name=${1:-}
+  [ -n "$name" ] || usage
+  shift
+  harness score --eval "$main/.local/eval" --run "$name" "$@"
+}
+
+compare() {
+  local a=${1:-} b=${2:-}
+  [ -n "$a" ] && [ -n "$b" ] || usage
+  shift 2
+  harness compare --eval "$main/.local/eval" --a "$a" --b "$b" "$@"
+}
+
 case $1 in
   capture) shift; capture "$@" ;;
+  score) shift; score "$@" ;;
+  compare) shift; compare "$@" ;;
   inputs) shift; inputs "$@" ;;
   determinism) shift; determinism "$@" ;;
   run) shift; run "$@" ;;
