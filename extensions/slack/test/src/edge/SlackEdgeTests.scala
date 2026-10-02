@@ -2,14 +2,11 @@ package grit.slack.edge
 
 import java.time.ZoneOffset
 
-import scala.concurrent.duration.*
-
-import grit.core.clock.Clock
 import grit.core.edge.{EdgeStores, InMemoryDeliveries, InMemoryEdges, Part}
 import grit.core.id.{CallSlot, ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.speech.{Rate, Reach}
+import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Jot, Origin, Payload, StoreError, Tx}
 import grit.dbos.sql.TestTx
@@ -223,6 +220,8 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test("an unprompted reply to a top-level message is posted in a thread under it") {
+      // Kept beside the mention's reply below: here the address is the heard reach's, awaited
+      // as record-speech awaits a posted draft, not one the edge awaited itself.
       val w = new World(listening = Set(C))
       w.slack.deliver(message("2.0", "what did we decide about the refi page?")) ==> true
       val heard = w.inbox.conversations.all
@@ -307,14 +306,13 @@ object SlackEdgeTests extends TestSuite {
 
     test("a reply whose thread's root Slack will not give is recorded without it, and said") {
       val w = new World
-      // Slack is asked who Ana is and whether C is public once; then the root is refused.
-      w.slack.deliver(mention("1.0")) ==> true
       val root = w.post(Asking)
-      w.slack.limited = 1
-      // An app_mention whose text names no one, so the root is the next thing Slack is asked.
+      w.slack.rootless = Set(Ts(root))
       w.slack.deliver(mentionIn(root, "9.1", "why this?")) ==> true
       w.written(root) ==> Vector(Payload.Message(Message.User("why this?")))
-      w.logged.exists(_.contains(s"the root of thread $root not read")) ==> true
+      w.logged ==> Vector(
+        s"slack: the root of thread $root not read, so a post there is not recorded: Unreachable(gone)"
+      )
     }
 
     test("backfill hears a past reply under grit's post after recording the post") {
@@ -431,11 +429,11 @@ object SlackEdgeTests extends TestSuite {
       val b = new World(listening = Set(C))
       b.slack.deliver(message("5.0", s"<@$Bot> hi", user = Bot)) ==> true
       b.slack.deliver(message("5.1", "a bot's aside", user = Bot)) ==> true
-      (b.heard("5.1"), b.turnOf("5.0", "5.0"), b.inbox.started) ==> (
-        Vector.empty,
-        None,
-        Vector.empty
-      )
+      // As Slack sends grit's own post that names grit: an app_mention from its bot.
+      b.slack.deliver(botPost("5.2", s"<@$Bot> the build is green", mention = true)) ==> true
+      (b.heard("5.1"), b.heard("5.2"), b.turnOf("5.0", "5.0"), b.turnOf("5.2", "5.2")) ==>
+        (Vector.empty, Vector.empty, None, None)
+      (b.inbox.conversations.all, b.inbox.started) ==> (Vector.empty, Vector.empty)
     }
 
     test(
@@ -451,34 +449,6 @@ object SlackEdgeTests extends TestSuite {
       w.slack.posts.map(p => (p.thread, p.post.fallback, p.tag)) ==>
         Vector((Ts("1.0"), Budget.Refusal, Tag.Refused(Ts("1.0"))))
       (w.slack.reactions, w.pending, w.inbox.started) ==> (Set.empty, Vector.empty, Vector.empty)
-    }
-
-    test(
-      "a post slack_post made, delivered back as Slack sends it, records nothing and starts no turn, listened to or not"
-    ) {
-      val rate = Rate.of(2, 1.hour).getOrElse(throw new java.lang.AssertionError("a rate"))
-      Vector(Set.empty[ChannelId], Set(C)).map { listening =>
-        val w = new World(listening = listening)
-        val posting = Posting.of(w.slack, Clock.system(), rate, Vector(("standup", C))) match {
-          case Some(p) => p
-          case None => throw new java.lang.AssertionError("one channel is a posting")
-        }
-        val q = PostingTests.request(
-          ujson.Obj("channel" -> "standup", "text" -> s"<@$Bot> the build is green"),
-          0
-        )
-        posting.run(PostingTests.route(q), q)
-        val delivered = w.slack.posts.map { p =>
-          val ts = Ts.value(p.ts)
-          // As Slack sends it: the mention a person would read in it, not the escaped text.
-          val text = s"<@$Bot> the build is green"
-          (
-            w.slack.deliver(botPost(ts, text, mention = false)),
-            w.slack.deliver(botPost(ts, text, mention = true))
-          )
-        }
-        (delivered, w.inbox.conversations.all, w.inbox.started)
-      } ==> Vector.fill(2)((Vector((true, true)), Vector.empty, Vector.empty))
     }
 
     test("a message the database cannot record is not acknowledged, so Slack sends it again") {

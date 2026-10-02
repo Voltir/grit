@@ -46,6 +46,10 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var unreachable = Set.empty[ChannelId]
 
+  /** The threads whose root Slack cannot be asked for. */
+  @caps.unsafe.untrackedCaptures
+  var rootless = Set.empty[Ts]
+
   /** The channels that are not public. */
   @caps.unsafe.untrackedCaptures
   var privateChannels = Set.empty[ChannelId]
@@ -156,14 +160,17 @@ final class FakeSlack extends Slack {
     */
   def root(channel: ChannelId, thread: Ts): Either[SlackError, Option[Root]] =
     request {
-      val posted = posts
-        .find(p => p.channel == channel && p.ts == thread)
-        .map(p => Root(Some(me.bot), Some(p.tag), p.post.fallback))
-      val listed = histories
-        .getOrElse(channel, Vector.empty)
-        .find(_.ts == thread)
-        .map(l => Root(l.user, None, l.text))
-      Right(posted.orElse(listed))
+      if (rootless.contains(thread)) Left(SlackError.Unreachable("gone"))
+      else {
+        val posted = posts
+          .find(p => p.channel == channel && p.ts == thread)
+          .map(p => Root(Some(me.bot), Some(p.tag), p.post.fallback))
+        val listed = histories
+          .getOrElse(channel, Vector.empty)
+          .find(_.ts == thread)
+          .map(l => Root(l.user, None, l.text))
+        Right(posted.orElse(listed))
+      }
     }
 
   def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] =
