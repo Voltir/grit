@@ -398,7 +398,7 @@ object grit extends Module {
      * eval/harness/README.md. */
     object harness extends GritModule with Placed {
       def folder = os.sub / "eval" / "harness"
-      def moduleDeps = Seq(grit.core, grit.dbos, grit.lifecycle)
+      def moduleDeps = Seq(grit.core, grit.dbos, grit.lifecycle, grit.models)
       def mainClass = Some("grit.eval.harness.main.Main")
       /* So a capture records the build it ran (grit.dbos.buildInfo). */
       def runClasspath = Task { super.runClasspath() :+ grit.dbos.buildInfo() }

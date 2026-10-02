@@ -21,8 +21,9 @@ Packages, each importing only those above it:
 - **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the
   corpus, variant, build, cap and repeats a run was started with), `Row` (one request: its
   case, digest, cache key, `Outcome`, usage and latency), `Footer` (what it spent), and
-  `Weights`, a classifier's answer by position, never by key; `LogJson`, their JSON lines.
-  ← `corpus`
+  `Weights`, a classifier's answer by position, never by key; `LogJson`, their JSON lines;
+  `CacheKey` and `Cache`, answers kept as files under their request's key, so an unchanged
+  request is never paid for twice. ← `corpus`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← `corpus`
 
 No source file sits at the module's root.
