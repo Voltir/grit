@@ -576,6 +576,8 @@ object TurnFixtures {
 
   /** An entry store that dies, once, on the first insert of an entry `when` picks. */
   final class CrashOnInsert(underlying: EntryStore, when: Entry -> Boolean) extends EntryStore {
+    // A Boolean flipped once; one test's store, read and written only on the thread that
+    // runs its turn (InMemoryDurable runs a workflow on its caller's thread).
     @caps.unsafe.untrackedCaptures
     var armed = true
 
@@ -596,6 +598,8 @@ object TurnFixtures {
     * `windows` counts the windows recorded, so a test can tell the failing span was entered.
     */
   final class UnlistedWhileAnswering(underlying: EntryStore) extends EntryStore {
+    // Both a value replaced; one test's store, read and written only on the thread that runs
+    // its turn (InMemoryDurable runs a workflow on its caller's thread).
     @caps.unsafe.untrackedCaptures
     private var answering = false
 
