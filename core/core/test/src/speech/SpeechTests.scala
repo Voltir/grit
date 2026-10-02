@@ -74,6 +74,9 @@ object SpeechTests extends TestSuite {
         val old = heard.copy(said = now.minusSeconds(11 * 60))
         assert(decide(old) == held(Silence.Stale(11.minutes)))
       }
+      test("said exactly fresh ago is not stale") {
+        assert(decide(heard.copy(said = now.minusSeconds(10 * 60))) == Decision.Drafting(turn))
+      }
       test("untagged fails closed") {
         val untagged = heard.copy(tags = Tags.Unanswered("down"))
         assert(decide(untagged) == held(Silence.Unweighed("down")))
@@ -128,6 +131,10 @@ object SpeechTests extends TestSuite {
       }
       test("today's speech spend reached its cap") {
         val spent = Spend(3, Cost.Exact(BigDecimal("0.25")))
+        assert(decide(l = empty.copy(speech = spent)) == held(Silence.OverSpeechCap(spent, cap)))
+      }
+      test("today's speech spend reached its cap, though some of it unpriced") {
+        val spent = Spend(3, Cost.AtLeast(BigDecimal("0.25")))
         assert(decide(l = empty.copy(speech = spent)) == held(Silence.OverSpeechCap(spent, cap)))
       }
       test("the deployment's budget does not admit today's spend") {
@@ -188,8 +195,9 @@ object SpeechTests extends TestSuite {
       test("not judged: unjudged, with why") {
         assert(Speech.post(within, Left("down")) == Outcome.Unjudged("down"))
       }
-      test("speaking switched off since: withdrawn") {
-        assert(Speech.post(Speaking.Off, Right(judged)) == Outcome.Withdrawn)
+      test("speaking switched off since: withdrawn, judged or not") {
+        Vector(Right(judged), Left("down")).map(Speech.post(Speaking.Off, _)) ==>
+          Vector(Outcome.Withdrawn, Outcome.Withdrawn)
       }
     }
 
