@@ -58,6 +58,7 @@ object TurnStitchTests extends TestSuite {
         .filterNot(_.startsWith("DBOS."))
         .slice(2, 4) ==> Vector("stitch", "classify")
       ch.stitches.placed(ch.root.id)(using TestTx.fake) ==> Right(Some(kept))
+      jev.calls ==> 0
     }
   }
 }
