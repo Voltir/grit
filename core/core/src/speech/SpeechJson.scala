@@ -34,7 +34,9 @@ object SpeechJson {
       }
     }
 
-  /** `{"kind": its name}`, with its detail beside it. */
+  /** `{"kind": its name}`, with its detail beside it; a `Stale` age in whole seconds, its
+    * fraction dropped.
+    */
   def writeSilence(s: Silence): ujson.Value = s match {
     case Silence.Off => kind("off")
     case Silence.NoAddress => kind("no_address")

@@ -62,6 +62,14 @@ object SpeechJsonTests extends TestSuite {
         outcomes.map(Right(_))
     }
 
+    test("a stale age is stored in whole seconds, its fraction dropped") {
+      // decide measures an age to the nanosecond; the row and the journal keep the seconds.
+      val held = Decision.Held(Silence.Stale(61_500.millis))
+      SpeechJson.writeDecision(held).render() ==> """{"held":{"kind":"stale","seconds":61}}"""
+      SpeechJson.readDecision(SpeechJson.writeDecision(held)) ==>
+        Right(Decision.Held(Silence.Stale(61.seconds)))
+    }
+
     test("the stored forms") {
       SpeechJson.writeDecision(Decision.Drafting(turn)).render() ==> """{"drafting":"c:3"}"""
       SpeechJson.writeDecision(Decision.Held(Silence.Below(p(0.5), p(0.6)))).render() ==>
