@@ -50,7 +50,7 @@ Packages, each importing only those above it:
   repeats with their spread; `Scoring`, those answers beside the cases and their labels, by
   `Tag` (waiting, durable, helps), kind and place; the scorers over them (`Brier`,
   `Reliability`, `Sweep`, and `Cost`, a curve over the cost-of-error ratio), each a mean
-  `Clustered` by exchange and by author and `Split` by the label `context`; `Spread`, how far
+  `Clustered` by exchange and by author and `Split` by the label `context`; `Comparison`, two runs' cases by what became of each (`Changes`: fixed, broken, moved); `Spread`, how far
   apart its repeats answered, and how far its answers are from what was kept live.
   ← `stats`, `corpus`, `label`, `log`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
