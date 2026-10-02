@@ -82,6 +82,13 @@ object Target {
 
   /** The question written `name`; `None` for no question's. */
   def read(name: String): Option[Target] = all.find(written(_) == name)
+
+  /** Whether `l` labels `t`. */
+  def labelled(t: Target, l: Labelled): Boolean = t match {
+    case Tagged(tag) => Tag.labelled(tag, l).isDefined
+    case Kinds => l.kind.isDefined
+    case Places => l.place.isDefined
+  }
 }
 
 /** A case's stitch answer: each offered exchange's probability, in the order they were offered,

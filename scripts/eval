@@ -56,6 +56,14 @@
 #       3 refused (B was not run with --rule <rule>, or the difference is under its MDE or
 #       the rule's least), 4 keep A.
 #
+#   scripts/eval order <runs file A> [<runs file B>] [--tag <question>] [--by spread|difference]
+#       Case ids in labelling order, one a line, in
+#       .local/eval/order/<yyyymmdd>-<question>-<by>.txt, for eval-label's --order: those not
+#       yet labelled on <question> (kind, waiting, durable, helps or place; default durable)
+#       first, each by the difference between runs A and B on it (the default with B), or by
+#       run A's repeat spread on it, Jev's own uncertainty (the default without), largest
+#       first. Prints counts.
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.
 set -euo pipefail
@@ -189,8 +197,17 @@ compare() {
   harness compare --eval "$main/.local/eval" --a "$a" --b "$b" "$@"
 }
 
+order() {
+  local a=${1:-} b=
+  [ -n "$a" ] || usage
+  shift
+  if [ $# -gt 0 ] && [[ $1 != --* ]]; then b=$1; shift; fi
+  harness order --eval "$main/.local/eval" --a "$a" ${b:+--b "$b"} "$@"
+}
+
 case $1 in
   capture) shift; capture "$@" ;;
+  order) shift; order "$@" ;;
   score) shift; score "$@" ;;
   compare) shift; compare "$@" ;;
   inputs) shift; inputs "$@" ;;

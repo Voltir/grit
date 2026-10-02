@@ -51,7 +51,7 @@ Packages, each importing only those above it:
   `Tag` (waiting, durable, helps), kind and place; the scorers over them (`Brier`,
   `Reliability`, `Sweep`, and `Cost`, a curve over the cost-of-error ratio), each a mean
   `Clustered` by exchange and by author and `Split` by the label `context`; `Agreement`,
-  `Repeated` and `Spending`, what needs no label; `Rule`, an adoption rule written before the run it judges, and `Decision`, what it makes of two runs, refused under the paired MDE or the rule's least; `Comparison`, two runs' cases by what became of each (`Changes`: fixed, broken, moved); `Spread`, how far
+  `Repeated` and `Spending`, what needs no label; `Order`, cases in labelling order, by the difference between two runs or by a run's repeat spread, the unlabelled first; `Rule`, an adoption rule written before the run it judges, and `Decision`, what it makes of two runs, refused under the paired MDE or the rule's least; `Comparison`, two runs' cases by what became of each (`Changes`: fixed, broken, moved); `Spread`, how far
   apart its repeats answered, and how far its answers are from what was kept live.
   ← `stats`, `corpus`, `label`, `log`
 - **`report`** — `Report`, a run scored (`Scored`: its log, its corpus's cases, the labels in

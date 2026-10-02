@@ -6,6 +6,7 @@ import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneOffset}
 
 import scala.util.Try
+import scala.util.chaining.*
 import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
@@ -28,7 +29,7 @@ import grit.eval.harness.label.Labels
 import grit.eval.harness.log.{Cache, Cached, Footer, Header, LogJson, Outcome, Row, Suite, Weights}
 import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
-import grit.eval.harness.score.{Decision, Paired, Rule, Scoring, Spread}
+import grit.eval.harness.score.{Decision, Order, Paired, Rule, Scoring, Spread, Target}
 import grit.kit.environment.DotEnv
 import grit.models.JevClassifier
 import grit.models.JevConfig
@@ -47,6 +48,7 @@ object Main {
       case "inputs" :: rest =>
         exit(flags(rest.filterNot(_ == "--more")).flatMap(inputs(_, rest.contains("--more"))))
       case "score" :: rest => exit(flags(rest).flatMap(score))
+      case "order" :: rest => exit(flags(rest).flatMap(order))
       case "compare" :: rest =>
         flags(rest).flatMap(compare) match {
           case Right(0) => ()
@@ -326,6 +328,43 @@ object Main {
       case Decision.Kept(_) => 4
     })
 
+  /** `order --eval <dir> --a <name> [--b <name>] [--tag <question>] [--by spread|difference]`:
+    * the case ids in labelling order ([[Order]]) on `<question>` (`kind`, a tag's name, or
+    * `place`; default `durable`): by the difference between runs A and B (the default when `--b`
+    * is given), or by run A's repeat spread (the default without), written one a line to
+    * `<dir>/order/<yyyymmdd>-<question>-<by>.txt`. Prints how many, and how many unlabelled
+    * lead.
+    */
+  private def order(f: Map[String, String]): Either[String, Unit] =
+    for {
+      dir <- need(f, "eval").map(Path.of(_))
+      labels <- labelsAt(dir, f)
+      q <- f
+        .getOrElse("tag", "durable")
+        .pipe(t => Target.read(t).toRight(s"--tag $t: not kind, place or a tag"))
+      a <- need(f, "a").flatMap(scored(dir, _, labels))
+      b <- f.get("b").fold(Right(None))(n => scored(dir, n, labels).map(Some(_)))
+      how = f.getOrElse("by", if (b.isDefined) "difference" else "spread")
+      by <- how match {
+        case "spread" => Right(Order.spread(q, a.cases, a.answers, labels))
+        case "difference" =>
+          b.toRight("--by difference needs --b")
+            .map(b => Order.difference(q, a.answers, b.answers, labels))
+        case other => Left(s"--by $other: not spread or difference")
+      }
+      name = s"${Day.format(Instant.now().atOffset(ZoneOffset.UTC))}-" +
+        s"${Target.written(q)}-$how.txt"
+      out = dir.resolve("order").resolve(name)
+      _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
+        s"${out.getParent}: ${e.getClass.getName}"
+      )
+      _ <- write(out, by.map(_.written + "\n").mkString)
+    } yield println(
+      s"order: ${by.size} cases on ${Target.written(q)}, " +
+        s"${by.count(id => !Target.labelled(q, labels.of(id)))} not yet labelled on it first; " +
+        s"written to order/$name"
+    )
+
   /** The labels `--labels` names, else `<dir>/labels.json`; none when that file does not exist. */
   private def labelsAt(dir: Path, f: Map[String, String]): Either[String, Labels] = {
     val file = f.get("labels").fold(dir.resolve("labels.json"))(Path.of(_))
@@ -406,6 +445,7 @@ object Main {
     Try(BigDecimal(c.id.written.split('/').last)).getOrElse(BigDecimal(0))
 
   private val Stamp = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+  private val Day = DateTimeFormatter.ofPattern("yyyyMMdd")
 
   private def read(path: Path): Either[String, String] =
     Try(Files.readString(path, StandardCharsets.UTF_8)).toEither.left.map(e =>
