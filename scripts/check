@@ -56,7 +56,7 @@ totals=() status=0
 
 # A module's folder is <group>/<name>, or the group alone for kit and eval, and the module is
 # grit.<name> (build.mill's Placed): core/core is grit.core, extensions/tui/examples is
-# grit.tui.examples, kit is grit.kit. Its tier is which of test/src or it/src it has.
+# grit.tui.examples, kit is grit.kit, eval/harness is grit.eval.harness. Its tier is which of test/src or it/src it has.
 groups=(core extensions kit deployments eval)
 module_of() { # folders, one per line -> module names
   sed -E 's#^(core|extensions|deployments)/##; s#/#.#g; s#^#grit.#'

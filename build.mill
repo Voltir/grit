@@ -392,6 +392,17 @@ object grit extends Module {
     object it extends GritTests with LivePostgres {
       def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.it)
     }
+
+    /* The eval harness: corpora captured from a database, labelled, run, scored. Runs only
+     * through scripts/eval, never from a test; its tests test the instrument, not a model.
+     * eval/harness/README.md. */
+    object harness extends GritModule with Placed {
+      def folder = os.sub / "eval" / "harness"
+      def moduleDeps = Seq(grit.core, grit.dbos, grit.lifecycle)
+      def mainClass = Some("grit.eval.harness.main.Main")
+      /* So a capture records the build it ran (grit.dbos.buildInfo). */
+      def runClasspath = Task { super.runClasspath() :+ grit.dbos.buildInfo() }
+    }
   }
 
   /* Prose: a reply's structure as edge-neutral blocks (the form), read from markdown.

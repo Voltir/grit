@@ -85,6 +85,7 @@ components:
   - {name: tui-code,       kind: module, match: ["extensions/tui/src", "extensions/tui/src/**"]}
   - {name: kit-code,       kind: module, match: ["kit/src", "kit/src/**"]}
   - {name: mcp-code,       kind: module, match: ["extensions/mcp/src", "extensions/mcp/src/**"]}
+  - {name: harness-code,   kind: module, match: ["eval/harness/src", "eval/harness/src/**"]}
   # grit.mcp less its github package, for the rule that keeps the protocol, client, scope
   # and edge generic: GitHub's names are a package a deployment uses, never one they import.
   - name: mcp-generic
@@ -495,7 +496,7 @@ rules:
   # terminal UI and no deployment, since an edge reaches it as a ServedEdge value. Mill's
   # moduleDeps already keep each of these off the classpath; the rules are the record of the
   # intent, and the guard if a moduleDeps entry is ever added. grit.eval, an it-only
-  # harness, is unruled.
+  # harness, is unruled; grit.eval.harness names core and the models extension alone.
   # -------------------------------------------------------------------------------------
   - id: core-names-no-extension
     allow: core-modules
@@ -559,3 +560,10 @@ rules:
     via: imports
     mode: strict
     because: "ADR 0021: an edge reaches the kit as a ServedEdge value, a cloud deployment never loads the terminal UI, and the kit names no deployment"
+
+  - id: harness-names-core-and-models
+    allow: harness-code
+    only: [core-modules, models-code, harness-code]
+    via: imports
+    mode: strict
+    because: "the eval harness measures what grit ships through its own code paths (eval/harness/README.md); naming the kit, an edge or a deployment would measure one deployment's wiring instead"

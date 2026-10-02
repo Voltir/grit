@@ -15,13 +15,13 @@ organisation's systems, data or people. The repository's top-level folders are t
 | `extensions/` | shipped extension | it names a generic protocol, tool or service, and no organisation |
 | `kit/` | kit | a deployment is built against it |
 | `deployments/` | deployment | it names an organisation's systems, data or people, or is one deployment's wiring: `deployments/app` is the reference, grit's own chat, `grit serve` and `grit backfill`; a deployment's own module lives outside grit |
-| `eval/` | none | an `it`-only harness, which the law leaves unruled |
+| `eval/` | none | it measures grit: `eval/it`, the assembly eval, an `it`-only harness the law leaves unruled; `eval/harness`, the eval harness, which names core and the models extension alone |
 
 `core/edge` is core: it is the edge's half of ADR 0017's routing and names no protocol.
 `core/prose` is core: ADR 0007's edge-neutral form.
 
-A module's folder is `<group>/<name>`, or the group alone for `kit/` and `eval/`, each of
-which holds one module. Its Mill module, its package and its published artifact are all
+A module's folder is `<group>/<name>`, or the group alone for `kit/` and `grit.eval`
+(`eval/harness`, inside it, is `grit.eval.harness`). Its Mill module, its package and its published artifact are all
 `grit.<name>` (`grit-<name>_3`): `extensions/slack` is `./mill grit.slack`, package
 `grit.slack`, artifact `grit-slack_3`. `build.mill`'s `Placed` sets the folder.
 

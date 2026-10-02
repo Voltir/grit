@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# The eval harness (eval/harness/README.md), run with mill out of the loop: mill builds the
+# launcher and exits, then java runs the harness directly.
+#
+#   scripts/eval <command> ...
+#
+# Its data is the main checkout's .local/eval/, whichever checkout runs it.
+set -euo pipefail
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
+[ $# -ge 1 ] || usage
+
+# `show` prints a PathRef, "ref:v0:<hash>:<path>"; the path is everything after the third colon.
+path_of() { ./mill --ticker false show "$1" | tail -1 | tr -d '"' | cut -d: -f4-; }
+
+launcher=$(path_of grit.eval.harness.launcher)
+JAVA_HOME=$(path_of grit.eval.harness.javaHome)
+export JAVA_HOME
+
+exec "$launcher" "$@"
