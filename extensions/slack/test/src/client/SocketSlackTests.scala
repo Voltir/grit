@@ -92,6 +92,22 @@ object SocketSlackTests extends TestSuite {
       ) ==> (true, false, false, false)
     }
 
+    test(
+      "a top-level post's request has no thread and carries its request under grit's post event, read back as its tag"
+    ) {
+      // A stored form: SlackStub keys no metadata, so this is the one pin of a post's payload.
+      val r = SocketSlack.topLevel(ChannelId("C1"), post, Tag.Sent("k"))
+      (
+        Option(r.getThreadTs),
+        r.getMetadata.getEventType,
+        r.getMetadata.getEventPayload.asScala.toMap
+      ) ==>
+        (None, "grit_post", Map("request" -> "k"))
+      val m = new Message()
+      m.setMetadata(r.getMetadata)
+      SocketSlack.tagOf(m) ==> Some(Tag.Sent("k"))
+    }
+
     test("a message carries a tag only under grit's event type, with the same turn and part") {
       val tag = Tag.Reply("c:3", 1)
       SocketSlack.carries(message("grit_reply", "c:3", "1"), tag) ==> true
