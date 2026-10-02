@@ -77,9 +77,13 @@ object CollectorLiveTests extends TestSuite {
     ()
   }
 
-  /** A turn that records one step. */
-  private def turn(id: WorkflowId)(using d: Durable^): String =
-    d.step("say")(() => WorkflowId.value(id))
+  /** A turn that records one step, a transaction step as a real turn's are, so DBOS keeps its
+    * output in `dbos.tx_step_outputs` too.
+    */
+  private def turn(id: WorkflowId)(using d: Durable^): String = {
+    val said = WorkflowId.value(id)
+    d.transact("say")(said)
+  }
 
   /** A close that seals its period at once, in a step, with a fixed closing, marking its raw
     * entries for deletion; one whose id ends `:hold` runs until the test sends it
@@ -477,6 +481,8 @@ object CollectorLiveTests extends TestSuite {
         val attempt = closeOf(engine, config, p1, Instant.now().plusSeconds(120))
         // The close's seal is a transaction step: DBOS keeps its output in tx_step_outputs too.
         txOutputs(config, Vector(attempt.workflowId)) ==> 1
+        // So is the turn's, so the sweep is seen reclaiming a turn's as well as a close's.
+        txOutputs(config, Vector(t0.workflowId)) ==> 1
 
         // As if a sweep deleted the close's workflow and died before its rows: the next sweep
         // no longer finds the workflow, and must still reclaim its step outputs.
