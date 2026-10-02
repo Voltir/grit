@@ -4,7 +4,15 @@ import java.time.{Instant, ZoneOffset}
 
 import grit.core.id.ConversationId
 import grit.core.spend.Day
-import grit.core.store.{EntryStore, InMemoryEntryStore, InMemoryUsageLedger, Tx, UsageLedger}
+import grit.core.store.{
+  EntryStore,
+  InMemoryEntryStore,
+  InMemoryPeriodStore,
+  InMemoryUsageLedger,
+  PeriodStore,
+  Tx,
+  UsageLedger
+}
 import grit.dbos.sql.TestTx
 
 /** The speech contract, kept by the in-memory fake. */
@@ -16,6 +24,7 @@ object InMemorySpeechTests extends SpeechContract {
   rows.now = now
 
   protected val entries: EntryStore = store
+  protected val periods: PeriodStore = new InMemoryPeriodStore(store)
   protected val ledger: UsageLedger = rows
   protected val speech: SpeechStore = new InMemorySpeechStore(store, rows)
 

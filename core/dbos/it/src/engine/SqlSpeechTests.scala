@@ -5,8 +5,15 @@ import java.time.{Instant, ZoneOffset}
 import grit.core.id.ConversationId
 import grit.core.speech.{SpeechContract, SpeechStore}
 import grit.core.spend.Day
-import grit.core.store.{EntryStore, Origin, Tx, UsageLedger}
-import grit.dbos.sql.{LiveDb, SqlEntryStore, SqlSpeechStore, SqlUsageLedger, TestPostgres}
+import grit.core.store.{EntryStore, Origin, PeriodStore, Tx, UsageLedger}
+import grit.dbos.sql.{
+  LiveDb,
+  SqlEntryStore,
+  SqlPeriodStore,
+  SqlSpeechStore,
+  SqlUsageLedger,
+  TestPostgres
+}
 
 /** The speech contract, kept by the SQL store against a real Postgres. */
 object SqlSpeechTests extends SpeechContract {
@@ -18,7 +25,10 @@ object SqlSpeechTests extends SpeechContract {
     c
   }
 
-  protected val entries: EntryStore = new SqlEntryStore()
+  private val store = new SqlEntryStore()
+
+  protected val entries: EntryStore = store
+  protected val periods: PeriodStore = new SqlPeriodStore(store)
   protected val ledger: UsageLedger = new SqlUsageLedger
   protected val speech: SpeechStore = new SqlSpeechStore
 

@@ -2,12 +2,12 @@ package grit.core.speech
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef}
+import grit.core.id.{CloseRef, ConversationId, EntryId, PrincipalId, TurnRef}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
-import grit.core.period.Probability
+import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Day, Spend}
-import grit.core.store.{Entry, EntryStore, Payload, StoreError, Tx, UsageLedger}
+import grit.core.store.{Entry, EntryStore, Payload, PeriodStore, StoreError, Tx, UsageLedger}
 import grit.core.triage.{Kind, Tags}
 
 import utest.*
@@ -20,6 +20,9 @@ abstract class SpeechContract extends TestSuite {
 
   /** The entry store the heard messages and replies are in. */
   protected def entries: EntryStore
+
+  /** The periods of those entries, whose purge deletes them. */
+  protected def periods: PeriodStore
 
   /** The usage ledger the unprompted turns' calls are recorded in. */
   protected def ledger: UsageLedger
@@ -95,6 +98,46 @@ abstract class SpeechContract extends TestSuite {
       }
     }
 
+    test("a heard message's reach goes with its entry: none once its period is purged") {
+      val c = conversation("speech-reach-purged")
+      val turn = transaction {
+        val n = right(entries.lockNext(c))
+        right(periods.openFor(c, n.turnSeq, At))
+        right(
+          entries.insert(
+            Entry(
+              EntryId("speech-reach-purged:h"),
+              c,
+              n.turnSeq,
+              None,
+              n.seq,
+              Payload.Heard("hi"),
+              At
+            )
+          )
+        )
+        TurnRef(c, n.turnSeq)
+      }
+      val reach = Reach(Some("C/1"), Set.empty)
+      transaction(speech.heard(turn, reach)) ==> Right(())
+      transaction(speech.reach(turn)) ==> Right(Some(reach))
+      val period = right(transaction(periods.of(turn)))
+        .map(_.ref)
+        .getOrElse(throw new java.lang.AssertionError("no period"))
+      transaction {
+        for {
+          _ <- periods.seal(
+            CloseRef(period, turn.turnSeq, At),
+            CloseReason.Lapsed,
+            TestClosings.prose("heard", None),
+            At
+          )
+          _ <- periods.purge(period, At)
+        } yield ()
+      } ==> Right(())
+      transaction(speech.reach(turn)) ==> Right(None)
+    }
+
     test("a decision is kept once; only drafting ones are spoken, from a time on, oldest first") {
       val c = conversation("speech-decided")
       // Decided out of time order, so oldest first is not the order they were kept in.
@@ -157,6 +200,31 @@ abstract class SpeechContract extends TestSuite {
       val kept = decide(other, At, drafting = true)
       transaction(speech.forget(c, turns(0).turnSeq, turns(1).turnSeq)) ==> Right(())
       (mine(c, At).map(_.turn), mine(other, At).map(_.turn)) ==> (Vector(turns(2)), Vector(kept))
+    }
+
+    test(
+      "a day's speech spend with a call recorded unpriced is at least what the priced ones cost"
+    ) {
+      val c = conversation("speech-unpriced")
+      val drafting = decide(c, At, drafting = true)
+      val before = transaction(right(speech.spentOn(today)))
+      transaction {
+        right(
+          ledger.record(drafting.draftId, drafting, drafting.workflowId, "m", usage, Tokens(10))
+        )
+        right(
+          ledger.record(
+            EntryId(s"judge:${drafting.workflowId}"),
+            drafting,
+            drafting.workflowId,
+            "jev",
+            usage.copy(costUsd = None),
+            Tokens(10)
+          )
+        )
+      }
+      transaction(speech.spentOn(today)) ==>
+        Right(before + Spend(2, Cost.AtLeast(BigDecimal("0.001"))))
     }
 
     test("the day's speech spend: the drafting turns' recorded calls, and no other turn's") {

@@ -2,10 +2,10 @@ package grit.core.speech
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.Cost
 import grit.core.spend.{Day, Spend}
-import grit.core.store.{EntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
+import grit.core.store.{Entry, EntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
 
 /** An in-memory [[SpeechStore]] for tests, keeping [[SpeechContract]], over the entries and
   * the usage ledger it is given: a posted reply's position is read from `entries`, and a
@@ -14,8 +14,9 @@ import grit.core.store.{EntryStore, InMemoryUsageLedger, Payload, StoreError, Tx
 final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger)
     extends SpeechStore {
 
+  /** Each turn's reach, with its heard entry, which it goes with (the SQL row cascades). */
   @caps.unsafe.untrackedCaptures
-  private var reaches = Map.empty[TurnRef, Reach]
+  private var reaches = Map.empty[TurnRef, (EntryId, Reach)]
 
   /** Each decision, in the order it was kept, with when, and its outcome once settled. */
   @caps.unsafe.untrackedCaptures
@@ -26,16 +27,19 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
 
   def heard(turn: TurnRef, reach: Reach)(using Tx^): Either[StoreError, Unit] =
     entries.list(turn.conversationId).flatMap { all =>
-      all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq).map(_.payload) match {
-        case Some(Payload.Heard(_)) =>
-          if (!reaches.contains(turn)) reaches = reaches.updated(turn, reach)
+      all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq) match {
+        case Some(first @ Entry(_, _, _, _, _, Payload.Heard(_), _)) =>
+          if (!reaches.contains(turn)) reaches = reaches.updated(turn, (first.id, reach))
           Right(())
         case _ => Left(StoreError.Invalid(s"${turn.workflowId} is not a heard message's turn"))
       }
     }
 
   def reach(turn: TurnRef)(using Tx^): Either[StoreError, Option[Reach]] =
-    Right(reaches.get(turn))
+    reaches.get(turn) match {
+      case None => Right(None)
+      case Some((heard, kept)) => entries.get(heard).map(_.map(_ => kept))
+    }
 
   def spoken(since: Instant)(using Tx^): Either[StoreError, Vector[Spoken]] =
     Right(
