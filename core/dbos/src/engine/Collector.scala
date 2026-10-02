@@ -4,6 +4,7 @@ import java.time.Instant
 import javax.sql.DataSource
 
 import scala.jdk.CollectionConverters.*
+import scala.util.Using
 
 import grit.core.id.{PeriodRef, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.period.{LifecycleSettings, Period, PeriodState, Purgeable}
@@ -26,10 +27,11 @@ import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.workflow.ListWorkflowsInput
 
 /** The collector: deletes what due tombstones name, and nothing else (ADR 0014). Each
-  * tombstone's workflows go first, then its rows with the tombstone's end in one transaction,
-  * so a crash between the two leaves rows for the next sweep, whose workflows DBOS no longer
-  * has. A tombstone any of whose workflows is still queued or running, or that waits on
-  * another, is deferred to a later sweep.
+  * tombstone's workflows go first, then their transaction steps' outputs
+  * (`dbos.tx_step_outputs`, which DBOS's own delete leaves), then its rows with the
+  * tombstone's end in one transaction, so a crash between them leaves the rest for the next
+  * sweep, whose workflows DBOS no longer has. A tombstone any of whose workflows is still
+  * queued or running, or that waits on another, is deferred to a later sweep.
   */
 private[engine] final class Collector(
     dataSource: DataSource,
@@ -80,6 +82,7 @@ private[engine] final class Collector(
               if (found.nonEmpty)
                 client.deleteWorkflows(found.map((id, _) => WorkflowId.value(id)).asJava, false)
             )
+            _ <- Transact.write(dataSource)(stepOutputs(named))
             outcome <- Transact.write(dataSource)(rows(target, now))
             swept <- outcome match {
               case Outcome.Collected => Right(Swept(collected = Vector(target)))
@@ -143,6 +146,50 @@ private[engine] final class Collector(
       else list(new ListWorkflowsInput().withWorkflowIdPrefix(named.prefixes.asJava))
     (byId ++ byPrefix).distinctBy(_._1).filter((id, _) => named.keep(id))
   }
+
+  /** The transaction-step outputs of the workflows `named` names that DBOS no longer has,
+    * deleted. DBOS keeps them in `dbos.tx_step_outputs` with no key to the workflow, so
+    * deleting a workflow leaves them; they are matched by id, as the workflows were, so a
+    * sweep that died after deleting the workflows leaves them to the next.
+    */
+  private def stepOutputs(named: Named)(using tx: Tx^): Either[StoreError, Int] =
+    if (named.ids.isEmpty && named.prefixes.isEmpty) Right(0)
+    else {
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      def strings(values: Vector[String]): String =
+        ujson.Arr.from(values.map(ujson.Str(_))).render()
+      Transact.attempted {
+        val gone = Using.resource(
+          conn.prepareStatement(
+            """SELECT DISTINCT t.workflow_id FROM dbos.tx_step_outputs t
+              | WHERE (t.workflow_id IN (SELECT jsonb_array_elements_text(?::jsonb))
+              |        OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(?::jsonb) AS p(prefix)
+              |                    WHERE starts_with(t.workflow_id, p.prefix)))
+              |   AND NOT EXISTS (SELECT 1 FROM dbos.workflow_status s
+              |                    WHERE s.workflow_uuid = t.workflow_id)""".stripMargin
+          )
+        ) { ps =>
+          ps.setString(1, strings(named.ids.map(WorkflowId.value)))
+          ps.setString(2, strings(named.prefixes))
+          Using.resource(ps.executeQuery()) { rs =>
+            val ids = Vector.newBuilder[WorkflowId]
+            while (rs.next()) ids += WorkflowId(rs.getString(1))
+            ids.result().filter(named.keep)
+          }
+        }
+        if (gone.isEmpty) 0
+        else
+          Using.resource(
+            conn.prepareStatement(
+              """DELETE FROM dbos.tx_step_outputs
+                | WHERE workflow_id IN (SELECT jsonb_array_elements_text(?::jsonb))""".stripMargin
+            )
+          ) { ps =>
+            ps.setString(1, strings(gone.map(WorkflowId.value)))
+            ps.executeUpdate()
+          }
+      }
+    }
 
   /** `target`'s rows deleted and its tombstone ended, at `now`. */
   private def rows(target: Target, now: Instant)(using Tx^): Either[StoreError, Outcome] =

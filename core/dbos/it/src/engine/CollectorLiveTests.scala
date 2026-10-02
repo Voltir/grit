@@ -147,6 +147,27 @@ object CollectorLiveTests extends TestSuite {
       }
     }
 
+  /** How many transaction-step outputs DBOS keeps for `ids`. */
+  private def txOutputs(config: DbConfig, ids: Vector[WorkflowId]): Int =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement(
+          "SELECT count(*) FROM dbos.tx_step_outputs WHERE workflow_id = ANY(?)"
+        )
+      ) { ps =>
+        ps.setArray(
+          1,
+          conn.createArrayOf(
+            "text",
+            // A fresh array the driver only reads; separation checking treats arrays as mutable.
+            caps.unsafe.unsafeAssumePure(ids.map(WorkflowId.value).toArray[AnyRef])
+          )
+        )
+        Using.resource(ps.executeQuery())(rs => { rs.next(); rs.getInt(1) })
+      }
+    }
+
   /** Whether every workflow whose id starts with `prefix` has ended. */
   private def ended(config: DbConfig, prefix: String): Boolean = {
     val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
@@ -441,6 +462,30 @@ object CollectorLiveTests extends TestSuite {
             case PeriodState.Open => false
           })) ==> Right(Some(true))
         engine.sweep(later.plusSeconds(60)) ==> Right(Swept.nothing)
+      } finally engine.close()
+    }
+
+    test(
+      "collecting a period's raw entries leaves no transaction-step output of its workflows, even one a sweep that died after deleting the workflow left"
+    ) {
+      val config = TestPostgres.freshDatabase("collect_tx_outputs")
+      val engine = launched(config, 1.day)
+      try {
+        val t0 = turnOn(engine, Origin.Task("retention", "tx-outputs"), "one")
+        val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)
+        val attempt = closeOf(engine, config, p1, Instant.now().plusSeconds(120))
+        // The close's seal is a transaction step: DBOS keeps its output in tx_step_outputs too.
+        txOutputs(config, Vector(attempt.workflowId)) ==> 1
+
+        // As if a sweep deleted the close's workflow and died before its rows: the next sweep
+        // no longer finds the workflow, and must still reclaim its step outputs.
+        val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
+        try client.deleteWorkflows(java.util.List.of(WorkflowId.value(attempt.workflowId)), false)
+        finally client.close()
+
+        engine.sweep(Instant.now().plusSeconds(180)).map(_.collected) ==>
+          Right(Vector(Target.Raw(p1)))
+        txOutputs(config, Vector(t0.workflowId, attempt.workflowId)) ==> 0
       } finally engine.close()
     }
 
