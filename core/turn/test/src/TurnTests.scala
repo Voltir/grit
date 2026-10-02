@@ -293,6 +293,54 @@ object TurnTests extends TestSuite {
       texts(entries).size ==> 2
     }
 
+    test(
+      "the summary is journaled without the summarizer's reasoning, and kept and costed the same"
+    ) {
+      val usage = Usage(Tokens(7), Tokens(3), Tokens.Zero, None)
+      val thinking = new Provider {
+        def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] =
+          Right(
+            Message.Assistant(
+              Vector(
+                AssistantBlock.Reasoning("pondering", Some(ujson.Obj("sig" -> "abc"))),
+                AssistantBlock.Text("the turn, summed up")
+              ),
+              StopReason.EndTurn,
+              usage,
+              "m"
+            )
+          )
+      }
+      val entries = new InMemoryEntryStore
+      val ledger = new InMemoryUsageLedger
+      val durable = new InMemoryDurable
+      val turn = say(entries, "hello")
+      runTurn(durable, entries, new RecordingProvider, turn, ledger, thinking) ==> Done
+      val journaled = durable
+        .history(turn.workflowId)
+        .collect {
+          case InMemoryDurable.Step(Turn.Step.Summarise, InMemoryDurable.Outcome.Output(v)) =>
+            TurnJournal.reply.decode(v)
+        }
+      journaled ==> Vector(
+        Right(
+          Right(
+            Message.Assistant(
+              Vector(AssistantBlock.Text("the turn, summed up")),
+              StopReason.EndTurn,
+              usage,
+              "m"
+            )
+          )
+        )
+      )
+      texts(entries).lastOption ==> Some("summary: the turn, summed up")
+      ledger.rows.collect {
+        case (id, _, model, u, _, _) if id == TurnSummary.id(turn) =>
+          (model, u)
+      } ==> Vector(("m", usage))
+    }
+
     test("a crash while recording the summary resumes without summarising again") {
       val store = new InMemoryEntryStore
       val durable = new InMemoryDurable

@@ -8,7 +8,7 @@ import grit.core.approval.Approval
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
-import grit.core.message.Message
+import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile}
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
@@ -1163,6 +1163,19 @@ object Turn {
               .left
               .map(e => TurnFailure.Model(e.cause))
           }
+          // Nothing reads a summary's reasoning, and it was most of what this step recorded.
+          .map[Message.Assistant](m =>
+            Message.Assistant(
+              m.blocks.filter {
+                case AssistantBlock.Reasoning(_, _) => false
+                case _ => true
+              },
+              m.stop,
+              m.usage,
+              m.model,
+              m.upstream
+            )
+          )
       }
       appended <- d.transact(Step.AppendSummary)(
         appendSummary(env.records, turn, answered, message, placing, env.clock.now())
