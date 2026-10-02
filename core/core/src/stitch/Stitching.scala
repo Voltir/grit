@@ -9,6 +9,7 @@ import grit.core.classify.{
   ClassifierError,
   Criterion,
   Decision,
+  Request,
   StateJson
 }
 import grit.core.id.ConversationId
@@ -55,6 +56,17 @@ final case class StitchReads(
     principals: Principals
 )
 
+/** A first message as it is put to the classifier: the message, who said it, the exchanges
+  * it is offered, most recently spoken in first, and who said their messages. Only
+  * [[Stitching.offered]] makes one, with at least one exchange.
+  */
+final case class Offer private[stitch] (
+    first: Said,
+    author: String,
+    exchanges: Vector[Exchange],
+    speakers: Speakers
+)
+
 /** Whether a stitchable conversation's first message continues an exchange in its room
   * (ADR 0023), and how a reader shows the strand it joins.
   */
@@ -72,74 +84,23 @@ object Stitching {
   /** How many BM25 hits in the room a first message's lexical slots are chosen from. */
   val Hits = 30
 
-  /** Where `classifier` places `first`, `conversation`'s first message, among the exchanges of
-    * its room that `scope` holds, read through `db` ([[offer]], [[place]]). `None`, asking
-    * nothing, when the conversation is not stitchable, `first` is not its first message, a
-    * placement is kept for it already, or nothing is offered. `Left` when the store fails.
+  /** What `turn`'s message is offered ([[offer]]) when its entry is its stitchable
+    * conversation's first and a person said it, read through `db` from `reads` under
+    * `tuning`, in the scope in force, **whether or not a placement is kept for it**. `None`
+    * when it is not such a message or nothing is offered; `Left` when the store fails.
     */
-  def judge(
-      classifier: Classifier^,
-      stitches: StitchStore,
-      search: EntrySearch,
-      principals: Principals,
+  def offered(
+      reads: StitchReads,
       db: Db^,
-      conversation: Conversation,
-      first: Entry,
-      scope: Scope,
+      turn: TurnRef,
       tuning: Tuning
-  ): Either[grit.core.store.StoreError, Option[Placed]] =
-    if (!conversation.origin.audience.stitchable) Right(None)
-    else {
-      val room = conversation.origin.room
-      val at = first.createdAt
-      val from = at.minusNanos(tuning.horizon.toNanos)
-      val text = first.payload.said.getOrElse("")
-      db.read {
-        for {
-          opening <- stitches.openings(Vector(conversation.id))
-          kept <- stitches.placed(first.id)
-          said <-
-            if (kept.nonEmpty || !opening.exists(_.entry.id == first.id)) Right(Vector.empty)
-            else stitches.spokenIn(room, from, at)
-          hits <-
-            if (said.isEmpty) Right(Vector.empty)
-            else search.room(room, from, at, text, Hits)
-          links <- stitches.links(said.map(_.conversation).distinct)
-          roots = said
-            .map(s => links.find(_.conversation == s.conversation).fold(s.conversation)(_.root))
-            .distinct
-          openings <- stitches.openings(roots)
-          speakers <- principals.speakers(
-            (first +: (said ++ openings).map(_.entry)).map(_.id).distinct
-          )
-        } yield Room(said, hits, links, openings, speakers)
-      }.map { r =>
-        val mine = Said(conversation.id, conversation.origin.place, first)
-        val exchanges = offer(mine, room, r.said, r.openings, r.hits, r.links, scope, tuning)
-        val speakers = r.speakers
-        place(
-          classifier,
-          mine,
-          speakers.of(first.id).getOrElse("Someone"),
-          exchanges,
-          speakers,
-          tuning
-        )
-      }
-    }
+  ): Either[StoreError, Option[Offer]] =
+    opening(reads, db, turn, tuning, keptAsks = true).map(_.map(_._2))
 
-  /** What [[judge]] reads of a room. */
-  private final case class Room(
-      said: Vector[Said],
-      hits: Vector[EntrySearch.Hit],
-      links: Vector[Link],
-      openings: Vector[Said],
-      speakers: Speakers
-  )
-
-  /** Where `turn`'s message goes ([[judge]]), when its entry is its conversation's first and
+  /** Where `turn`'s message goes ([[place]]), when its entry is its conversation's first and
     * a person said it, in the scope in force, read through `db` from `reads`: that entry and its
-    * placement. `None`, asking nothing, otherwise. `Left` when the store fails.
+    * placement. `None`, asking nothing, otherwise, when a placement is kept for it already, or
+    * when nothing is offered. `Left` when the store fails.
     */
   def turn(
       classifier: Classifier^,
@@ -148,6 +109,20 @@ object Stitching {
       turn: TurnRef,
       tuning: Tuning
   ): Either[StoreError, Option[(EntryId, Placed)]] =
+    opening(reads, db, turn, tuning, keptAsks = false).map(
+      _.map((first, offer) => first -> place(classifier, offer, tuning))
+    )
+
+  /** `turn`'s message, when it is its stitchable conversation's first and said, and what it is
+    * offered; a message with a placement kept for it is offered nothing unless `keptAsks`.
+    */
+  private def opening(
+      reads: StitchReads,
+      db: Db^,
+      turn: TurnRef,
+      tuning: Tuning,
+      keptAsks: Boolean
+  ): Either[StoreError, Option[(EntryId, Offer)]] =
     db.read {
       for {
         all <- reads.entries.list(turn.conversationId)
@@ -160,24 +135,70 @@ object Stitching {
       )
     }.flatMap { o =>
       (o.conversation, o.first) match {
-        case (Some(c), Some(first)) =>
-          judge(
-            classifier,
-            reads.stitches,
-            reads.search,
-            reads.principals,
-            db,
-            c,
-            first,
-            o.scope,
-            tuning
-          ).map(_.map(first.id -> _))
+        case (Some(c), Some(first)) if c.origin.audience.stitchable =>
+          room(reads, db, c, first, o.scope, tuning, keptAsks).map(_.map(first.id -> _))
         case _ => Right(None)
       }
     }
 
-  /** What [[turn]] reads: the conversation's first entry when it is the turn's and said, its
-    * conversation, and the scope in force.
+  /** What `first`, `conversation`'s first message, is offered among the exchanges of its room
+    * that `scope` holds, read through `db`; `None` when nothing is, `first` is not its first
+    * message, or, unless `keptAsks`, a placement is kept for it already.
+    */
+  private def room(
+      reads: StitchReads,
+      db: Db^,
+      conversation: Conversation,
+      first: Entry,
+      scope: Scope,
+      tuning: Tuning,
+      keptAsks: Boolean
+  ): Either[StoreError, Option[Offer]] = {
+    val stitches = reads.stitches
+    val room = conversation.origin.room
+    val at = first.createdAt
+    val from = at.minusNanos(tuning.horizon.toNanos)
+    val text = first.payload.said.getOrElse("")
+    db.read {
+      for {
+        opening <- stitches.openings(Vector(conversation.id))
+        kept <- stitches.placed(first.id)
+        said <-
+          if ((kept.nonEmpty && !keptAsks) || !opening.exists(_.entry.id == first.id))
+            Right(Vector.empty)
+          else stitches.spokenIn(room, from, at)
+        hits <-
+          if (said.isEmpty) Right(Vector.empty)
+          else reads.search.room(room, from, at, text, Hits)
+        links <- stitches.links(said.map(_.conversation).distinct)
+        roots = said
+          .map(s => links.find(_.conversation == s.conversation).fold(s.conversation)(_.root))
+          .distinct
+        openings <- stitches.openings(roots)
+        speakers <- reads.principals.speakers(
+          (first +: (said ++ openings).map(_.entry)).map(_.id).distinct
+        )
+      } yield Room(said, hits, links, openings, speakers)
+    }.map { r =>
+      val mine = Said(conversation.id, conversation.origin.place, first)
+      val exchanges = offer(mine, room, r.said, r.openings, r.hits, r.links, scope, tuning)
+      Option.when(exchanges.nonEmpty)(
+        Offer(mine, r.speakers.of(first.id).getOrElse("Someone"), exchanges, r.speakers)
+      )
+    }
+  }
+
+  /** What [[room]] reads of a room. */
+  private final case class Room(
+      said: Vector[Said],
+      hits: Vector[EntrySearch.Hit],
+      links: Vector[Link],
+      openings: Vector[Said],
+      speakers: Speakers
+  )
+
+  /** What [[opening]] reads: the conversation's first entry when it is the turn's and said,
+    * its conversation, and the scope in force.
     */
   private final case class Opening(
       first: Option[Entry],
@@ -262,69 +283,89 @@ object Stitching {
     }
   }
 
-  /** Where `classifier` places `first`, said by `author`, among `exchanges`, `speakers` naming
-    * who said each message, under `tuning`: [[Placed.Follows]] the top choice when it is an
-    * exchange at `tuning.followsAt` or above, else [[Placed.Begins]]; [[Placed.Unread]] when
-    * the classifier fails or its answer does not read. `None`, asking nothing, when there are
-    * no exchanges.
+  /** Where `classifier` places `offer`'s message under `tuning`: [[Placed.Follows]] the top
+    * choice when it is an exchange at `tuning.followsAt` or above, else [[Placed.Begins]];
+    * [[Placed.Unread]] when the classifier fails or its answer does not read.
     */
-  def place(
-      classifier: Classifier^,
-      first: Said,
-      author: String,
-      exchanges: Vector[Exchange],
-      speakers: Speakers,
-      tuning: Tuning
-  ): Option[Placed] =
-    exchanges.headOption.map { _ =>
-      val keyed = exchanges.zipWithIndex.map((e, i) => (s"exchange ${i + 1}", e))
-      val question = State(first, author, keyed, speakers)
-      val sent = StateJson[State].json(question)
-      def seen(p: Option[Decision[Option[ConversationId]]]): Seen =
-        Seen(
-          sent,
-          exchanges.map(e =>
-            Seen.Offer(
-              e.root,
-              e.offered,
-              p.map(d => Probability.clamped(d.probability(Some(e.root))))
-            )
-          ),
-          tuning
-        )
-      val criteria = keyed.map((k, e) => Criterion(Option(e.root), k, None)) :+
-        Criterion(
-          Option.empty[ConversationId],
-          NewKey,
-          Some("none of them: it starts something new")
-        )
-      criteria match {
-        case a +: b +: rest =>
-          Ask.choice[State, Option[ConversationId]](Instructions, a, b, rest*) match {
-            case Left(Ask.DuplicateKey(k)) => Placed.Unread(s"the question repeats $k", seen(None))
-            case Right(ask) =>
-              classifier.ask(question, ask) match {
-                case Left(ClassifierError.Unavailable(why)) =>
-                  Placed.Unread(s"unavailable: $why", seen(None))
-                case Left(ClassifierError.Unreadable(why)) =>
-                  Placed.Unread(s"unreadable: $why", seen(None))
-                case Right(Answered(d, usage, model)) =>
-                  val top = Probability.clamped(d.top)
-                  d.choice match {
-                    case Some(root) if top >= tuning.followsAt =>
-                      Placed.Follows(root, top, seen(Some(d)), model, usage)
-                    case _ =>
-                      val likeliest = exchanges
-                        .map(e => d.probability(Some(e.root)))
-                        .maxOption
-                        .getOrElse(0.0)
-                      Placed.Begins(Probability.clamped(likeliest), seen(Some(d)), model, usage)
-                  }
-              }
-          }
-        case _ => Placed.Unread("fewer than two options", seen(None))
-      }
+  def place(classifier: Classifier^, offer: Offer, tuning: Tuning): Placed = {
+    val sent = shown(offer)
+    def seen(p: Option[Decision[Option[ConversationId]]]): Seen =
+      Seen(
+        sent,
+        offer.exchanges.map(e =>
+          Seen.Offer(
+            e.root,
+            e.offered,
+            p.map(d => Probability.clamped(d.probability(Some(e.root))))
+          )
+        ),
+        tuning
+      )
+    question(offer) match {
+      case Left(why) => Placed.Unread(why, seen(None))
+      case Right((state, ask)) =>
+        classifier.ask(state, ask) match {
+          case Left(ClassifierError.Unavailable(why)) =>
+            Placed.Unread(s"unavailable: $why", seen(None))
+          case Left(ClassifierError.Unreadable(why)) =>
+            Placed.Unread(s"unreadable: $why", seen(None))
+          case Right(Answered(d, usage, model)) =>
+            val top = Probability.clamped(d.top)
+            d.choice match {
+              case Some(root) if top >= tuning.followsAt =>
+                Placed.Follows(root, top, seen(Some(d)), model, usage)
+              case _ =>
+                val likeliest = offer.exchanges
+                  .map(e => d.probability(Some(e.root)))
+                  .maxOption
+                  .getOrElse(0.0)
+                Placed.Begins(Probability.clamped(likeliest), seen(Some(d)), model, usage)
+            }
+        }
     }
+  }
+
+  /** The state [[place]] shows the classifier for `offer`, as [[Seen.state]] keeps it. */
+  def shown(offer: Offer): ujson.Value = StateJson[State].json(state(offer))
+
+  /** The request [[place]] sends for `offer`; `None` when it sends none, because its question
+    * repeats a key.
+    */
+  def request(offer: Offer): Option[Request] =
+    question(offer).toOption.map((state, ask) => Request.of(state, ask))
+
+  /** `offer` as the question's state, each exchange under its key. */
+  private def state(offer: Offer): State =
+    State(
+      offer.first,
+      offer.author,
+      offer.exchanges.zipWithIndex.map((e, i) => (s"exchange ${i + 1}", e)),
+      offer.speakers
+    )
+
+  /** The question [[place]] asks about `offer`: its state and the choice among its exchanges'
+    * keys and [[NewKey]]; why not, when the choice cannot be made.
+    */
+  private def question(
+      offer: Offer
+  ): Either[String, (State, Ask[State, Decision[Option[ConversationId]]])] = {
+    val s = state(offer)
+    val criteria = s.exchanges.map((k, e) => Criterion(Option(e.root), k, None)) :+
+      Criterion(
+        Option.empty[ConversationId],
+        NewKey,
+        Some("none of them: it starts something new")
+      )
+    criteria match {
+      case a +: b +: rest =>
+        Ask
+          .choice[State, Option[ConversationId]](Instructions, a, b, rest*)
+          .left
+          .map(d => s"the question repeats ${d.key}")
+          .map(s -> _)
+      case _ => Left("fewer than two options")
+    }
+  }
 
   /** `strand` as a reader shows it within `chars`: `opening`, then the messages nearest the
     * end, newest first while they fit, in the order said, a `…` line where any were left out;

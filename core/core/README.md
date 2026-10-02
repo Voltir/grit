@@ -99,8 +99,8 @@ In dependency order:
   another of the four.
 - **`stitch`** — a Slack thread's first message joined to an exchange in its room (ADR 0023):
   a `Link` from a conversation to the root it follows, a `Strand` (a root and its direct
-  followers, never a chain), `Stitching` (which `Exchange`s a first message is offered, where
-  the classifier places it, as a `Placed` keeping what it was `Seen`, under a `Tuning`, and the
+  followers, never a chain), `Stitching` (which `Exchange`s a first message is offered, its
+  `Offer`, where the classifier places it, as a `Placed` keeping what it was `Seen`, under a `Tuning`, and the
   one excerpt rule readers cut a strand by), `StitchStore` (placements kept beside their entry
   and deleted with it; what a room said), `StitchJson`, and `Along`, the one read of a strand,
   in scope. ← `id`, `message`, `place`, `period`, `store`, `classify`

@@ -29,16 +29,11 @@ object StitchJsonTests extends TestSuite {
       grit.core.place.Scope.Room,
       Tuning.Default.copy(recent = 1, lexical = 1)
     )
-    Stitching
-      .place(
-        new Scripted(answer),
-        heard("real", "real?", 0),
-        "David",
-        es,
-        Speakers.none,
-        Tuning.Default.copy(recent = 1, lexical = 3)
-      )
-      .getOrElse(throw new java.lang.AssertionError("not asked"))
+    Stitching.place(
+      new Scripted(answer),
+      Offer(heard("real", "real?", 0), "David", es, Speakers.none),
+      Tuning.Default.copy(recent = 1, lexical = 3)
+    )
   }
 
   val tests = Tests {

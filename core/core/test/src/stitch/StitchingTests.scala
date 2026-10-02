@@ -66,7 +66,7 @@ object StitchingTests extends TestSuite {
       offered(es) ==> Vector(here.conversation -> Offered.Recent(1))
     }
 
-    test("Off offers nothing, and nothing offered is nothing asked") {
+    test("Off offers nothing") {
       val here = heard("here", "the Engine contract", 60)
       val es = Stitching.offer(
         first,
@@ -79,9 +79,6 @@ object StitchingTests extends TestSuite {
         Tuning.Default
       )
       es ==> Vector.empty
-      val jev = new Scripted(Some(chose("exchange 1", "exchange 1" -> 1.0)))
-      Stitching.place(jev, first, "Nick", es, Speakers.none, Tuning.Default) ==> None
-      jev.states ==> Vector.empty
     }
 
     test("a follower's messages are offered as its root's exchange, opened by the root") {
@@ -125,23 +122,20 @@ object StitchingTests extends TestSuite {
             )
           )
         ),
-        heard("real", "Is this a real question", 0),
-        "David",
-        es,
-        Speakers.none,
+        Offer(heard("real", "Is this a real question", 0), "David", es, Speakers.none),
         Tuning.Default
       )
       placed(0.55) match {
-        case Some(Placed.Begins(pb, _, _, _)) => pb ==> p(0.55)
+        case Placed.Begins(pb, _, _, _) => pb ==> p(0.55)
         case other => throw new java.lang.AssertionError(s"not begins: $other")
       }
       // Something new chosen: how likely the likeliest exchange was, not the choice.
       placed(0.2, Stitching.NewKey) match {
-        case Some(Placed.Begins(pb, _, _, _)) => pb ==> p(0.2)
+        case Placed.Begins(pb, _, _, _) => pb ==> p(0.2)
         case other => throw new java.lang.AssertionError(s"not begins: $other")
       }
       placed(0.6) match {
-        case Some(Placed.Follows(r, pf, seen, _, _)) =>
+        case Placed.Follows(r, pf, seen, _, _) =>
           (r, pf) ==> (engine.conversation, p(0.6))
           seen.offered.map(o => (o.root, o.p)) ==> Vector(
             engine.conversation -> Some(p(0.6)),
@@ -164,8 +158,8 @@ object StitchingTests extends TestSuite {
         Tuning.Default
       )
       val jev = new Scripted(None)
-      Stitching.place(jev, first, "Nick", es, Speakers.none, Tuning.Default) match {
-        case Some(Placed.Unread(why, seen)) =>
+      Stitching.place(jev, Offer(first, "Nick", es, Speakers.none), Tuning.Default) match {
+        case Placed.Unread(why, seen) =>
           why ==> "unavailable: down"
           seen.state ==> jev.states.head
           seen.offered ==> Vector(Seen.Offer(engine.conversation, Offered.Recent(1), None))

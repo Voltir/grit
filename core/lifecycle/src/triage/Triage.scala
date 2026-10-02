@@ -14,7 +14,7 @@ import grit.core.triage.{Kind, Tags}
   * never a period's activity and never moves its deadline.
   *
   *   1. `stitch` — when the heard message is its conversation's first, in a stitchable
-  *      origin: where it goes among its room's exchanges ([[Stitching.judge]]); nothing is
+  *      origin: where it goes among its room's exchanges ([[Stitching.turn]]); nothing is
   *      asked otherwise, or when nothing is offered.
   *   1. `record-stitch` — that placement kept ([[grit.core.stitch.StitchStore.record]]),
   *      only when one was made.

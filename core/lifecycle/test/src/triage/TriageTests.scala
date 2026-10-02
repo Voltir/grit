@@ -6,8 +6,9 @@ import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.period.Probability
 import grit.core.speech.{Decision, Limits, Silence, Speaking}
 import grit.core.spend.DailyCap
-import grit.core.stitch.Tuning
+import grit.core.stitch.{Stitching, Tuning}
 import grit.core.triage.{Kind, Tags}
+import grit.dbos.sql.TestTx
 
 import utest.*
 
@@ -119,6 +120,51 @@ object TriageTests extends TestSuite {
         Some("Nick: where did we land on the Engine contract term?")
       w.stitches.links(Vector(b))(using grit.dbos.sql.TestTx.fake) ==>
         Right(Vector(grit.core.stitch.Link(b, c)))
+    }
+
+    test("a kept placement's seen state is what offered shows for its message now") {
+      val w = new World
+      w.hear("where did we land on the Engine contract term?", "Nick", 0)
+      val b = w.thread("2.0")
+      val t = w.hear("Is this a real question", "David", 1, in = b)
+      val classifier = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
+      new InMemoryDurable().run(t.workflowId)(w.body(classifier, 2))
+      val turn = TurnRef(b, t.turn)
+      val first = w.entries.list(b)(using TestTx.fake).toOption.flatMap(_.headOption).map(_.id)
+      val kept = first.flatMap(id =>
+        w.stitches.placed(id)(using TestTx.fake).toOption.flatten.map(_.seen.state)
+      )
+      val now = Stitching.offered(w.reads, FakeDb, turn, Tuning.Default).map(_.map(Stitching.shown))
+      assert(kept.isDefined)
+      now ==> Right(kept)
+    }
+
+    test("a message that is not its conversation's opening is offered nothing, and not asked") {
+      val w = new World
+      w.hear("where did we land on the Engine contract term?", "Nick", 0)
+      val b = w.thread("2.0")
+      w.hear("Is this a real question", "David", 1, in = b)
+      val second = w.hear("and another", "David", 2, in = b)
+      val turn = TurnRef(b, second.turn)
+      val classifier = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
+      Stitching.offered(w.reads, FakeDb, turn, Tuning.Default) ==> Right(None)
+      Stitching.turn(classifier, w.reads, FakeDb, turn, Tuning.Default) ==> Right(None)
+      classifier.calls ==> 0
+    }
+
+    test("turn asks nothing for a message placed already, which offered still offers") {
+      val w = new World
+      w.hear("where did we land on the Engine contract term?", "Nick", 0)
+      val b = w.thread("2.0")
+      val t = w.hear("Is this a real question", "David", 1, in = b)
+      new InMemoryDurable().run(t.workflowId)(
+        w.body(new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2)), 2)
+      )
+      val turn = TurnRef(b, t.turn)
+      val again = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
+      Stitching.turn(again, w.reads, FakeDb, turn, Tuning.Default) ==> Right(None)
+      again.calls ==> 0
+      assert(Stitching.offered(w.reads, FakeDb, turn, Tuning.Default).exists(_.nonEmpty))
     }
 
     test("an absent classifier's tags are unanswered, and kept") {
