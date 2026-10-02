@@ -2,7 +2,7 @@ package grit.core.triage
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, TurnRef}
+import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TriageRef, TurnRef}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.store.{Entry, EntryStore, Payload, PeriodStore, StoreError, Tx}
@@ -64,7 +64,51 @@ abstract class TriageContract extends TestSuite {
     e
   }
 
+  /** `c`'s period that holds `e`'s turn, sealed after it, so `c`'s next turn opens another. */
+  private def seal(c: ConversationId, e: Entry): Unit = {
+    val period = right(transaction(periods.of(TurnRef(c, e.turnSeq))))
+      .map(_.ref)
+      .getOrElse(throw new java.lang.AssertionError("no period"))
+    val _ = right(transaction {
+      periods.seal(
+        CloseRef(period, e.turnSeq, At),
+        CloseReason.Lapsed,
+        TestClosings.prose("x", None),
+        At
+      )
+    })
+  }
+
   val tests = Tests {
+    test("tagged lists what was tagged in the window, oldest first, each with its triage") {
+      val c = conversation("triage-tagged")
+      // Far from every other test's tags: the stores' database is shared.
+      val t0 = Instant.parse("2031-01-01T00:00:00Z")
+      val a = hear(c, "standup moves to 10:00")
+      seal(c, a)
+      val b = hear(c, "lunch?")
+      val d = hear(c, "and after")
+      transaction {
+        for {
+          _ <- triage.record(d.id, weighed, t0.plusSeconds(60))
+          _ <- triage.record(a.id, Tags.Unanswered("unavailable: timeout"), t0)
+          _ <- triage.record(b.id, weighed, t0.plusSeconds(120))
+        } yield ()
+      } ==> Right(())
+      def ref(e: Entry, seq: Long) =
+        TriageRef(PeriodRef(c, PeriodSeq.of(seq).getOrElse(PeriodSeq.First)), e.turnSeq)
+      transaction(triage.tagged(t0, t0.plusSeconds(121))) ==> Right(
+        Vector(
+          TriageStore.Tagged(a.id, ref(a, 1), t0, Tags.Unanswered("unavailable: timeout")),
+          TriageStore.Tagged(d.id, ref(d, 2), t0.plusSeconds(60), weighed),
+          TriageStore.Tagged(b.id, ref(b, 2), t0.plusSeconds(120), weighed)
+        )
+      )
+      // At or after from, before until.
+      transaction(triage.tagged(t0.plusSeconds(60), t0.plusSeconds(120))).map(_.map(_.entry)) ==>
+        Right(Vector(d.id))
+    }
+
     test(
       "tags are kept once, weighed or unanswered; a second record is false and keeps the first"
     ) {

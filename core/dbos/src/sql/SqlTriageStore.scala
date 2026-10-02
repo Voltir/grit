@@ -5,7 +5,7 @@ import java.time.{Instant, ZoneOffset}
 
 import scala.util.Using
 
-import grit.core.id.EntryId
+import grit.core.id.{ConversationId, EntryId, PeriodRef, PeriodSeq, TriageRef, TurnSeq}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.store.{StoreError, Tx}
@@ -62,6 +62,53 @@ final class SqlTriageStore extends TriageStore {
         }
       }
     }
+
+  def tagged(from: Instant, until: Instant)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[TriageStore.Tagged]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      // Each entry's period as SqlPeriodStore.of finds it; an entry in none (never one the
+      // inbox heard) is left out, as the in-memory store leaves it.
+      Using.resource(
+        conn.prepareStatement(
+          """SELECT t.entry_id, e.conversation_id, p.seq, e.turn_seq, t.at, t.kind, t.kind_p,
+            |       t.waiting, t.durable, t.helps, t.model, t.input_tokens, t.output_tokens,
+            |       t.cached_tokens, t.cost_usd, t.unanswered
+            |  FROM grit.triage t
+            |  JOIN grit.entries e ON e.id = t.entry_id
+            |  JOIN LATERAL (
+            |       SELECT seq FROM grit.periods
+            |        WHERE conversation_id = e.conversation_id AND first_turn <= e.turn_seq
+            |          AND (last_turn IS NULL OR last_turn >= e.turn_seq)
+            |        ORDER BY seq DESC LIMIT 1) p ON true
+            | WHERE t.at >= ? AND t.at < ?
+            | ORDER BY t.at, t.entry_id COLLATE "C"""".stripMargin
+        )
+      ) { ps =>
+        ps.setObject(1, from.atOffset(ZoneOffset.UTC))
+        ps.setObject(2, until.atOffset(ZoneOffset.UTC))
+        Using.resource(ps.executeQuery()) { rs =>
+          val rows = Vector.newBuilder[TriageStore.Tagged]
+          while (rs.next()) {
+            val period = PeriodSeq
+              .of(rs.getLong("seq"))
+              .getOrElse(throw new IllegalStateException(s"period ${rs.getLong("seq")}"))
+            rows += TriageStore.Tagged(
+              EntryId(rs.getString("entry_id")),
+              TriageRef(
+                PeriodRef(ConversationId(rs.getString("conversation_id")), period),
+                TurnSeq(rs.getLong("turn_seq"))
+              ),
+              rs.getTimestamp("at").toInstant,
+              read(rs)
+            )
+          }
+          rows.result()
+        }
+      }
+    }
+  }
 
   /** Parameters 2 to 12 of `record`'s insert: `tags`' columns. */
   private def bind(ps: PreparedStatement, tags: Tags): Unit = tags match {

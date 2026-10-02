@@ -154,7 +154,7 @@ object CloseFixtures {
     val principals = new InMemoryPrincipals
     val ledger = new InMemoryUsageLedger
     val tombstones = new InMemoryTombstones
-    val triage = new InMemoryTriageStore(entries)
+    val triage = new InMemoryTriageStore(entries, periods)
 
     /** What triage made of the message `text` heard ([[hear]]). */
     def tag(text: String, tags: Tags): Unit = {

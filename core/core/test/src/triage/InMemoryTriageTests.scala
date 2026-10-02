@@ -24,7 +24,7 @@ object InMemoryTriageTests extends TriageContract {
       new grit.core.edge.InMemoryEdges,
       new grit.core.edge.InMemoryDeliveries
     )
-  protected val triage: TriageStore = new InMemoryTriageStore(store)
+  protected val triage: TriageStore = new InMemoryTriageStore(store, periods)
 
   protected def transaction[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)
 

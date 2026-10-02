@@ -162,7 +162,7 @@ object TriageFixtures {
         .fold(Origin.Task("unknown", ConversationId.value(id)))(_.origin)
     val periods = new InMemoryPeriodStore(entries, originOf)
     val principals = new InMemoryPrincipals
-    val triage = new InMemoryTriageStore(entries)
+    val triage = new InMemoryTriageStore(entries, periods)
     val ledger = new InMemoryUsageLedger
     val speech = new InMemorySpeechStore(entries, ledger)
     val stitches = new InMemoryStitchStore(entries, originOf)
