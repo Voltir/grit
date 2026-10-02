@@ -171,6 +171,17 @@ print(total)
 PY
 }
 
+# Appends one line per tier run to check-times.tsv in the repository's common git directory,
+# shared by every worktree, so how long the gates take can be read back later: when (UTC),
+# checkout, commit, tier, targets ("-" for the whole gate), wall seconds, exit code. A failed
+# write never fails the gate.
+times=$(git rev-parse --git-common-dir 2>/dev/null)/check-times.tsv
+record_time() { # tier seconds rc
+  local what=${targets[*]:-"-"}
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(basename "$PWD")" \
+    "$(git rev-parse --short HEAD 2>/dev/null)" "$1" "$what" "$2" "$3" >>"$times" 2>/dev/null || true
+}
+
 # Runs one tier: its command under the timeout into its log, then its summary. The tier's
 # Mill daemon lives in MILL_OUTPUT_DIR (default out).
 run_tier() { # tier outdir reports-file -- command...
@@ -179,6 +190,7 @@ run_tier() { # tier outdir reports-file -- command...
   echo "== $tier: $*"
   start=$(date +%s)
   timeout "$timeout" "$@" >"$log" 2>&1 || rc=$?
+  record_time "$tier" "$(( $(date +%s) - start ))" "$rc"
   if [ "$rc" = 124 ]; then
     echo "$tier: timed out after $timeout; shutting down its Mill daemon" >>"$log"
     MILL_OUTPUT_DIR=$outdir ./mill shutdown >>"$log" 2>&1 || true
