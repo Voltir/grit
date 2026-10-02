@@ -38,7 +38,8 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   of it: when it is its thread's first message, `stitch` it to an exchange in its room and
   `record-stitch` the placement (`grit.core.stitch`, ADR 0023), then `ask` the classifier
   (`TriageQuestion`: its kind, and whether someone waits on it, whether it states something
-  worth keeping, whether a reply would help) over the message, who said it and the thread
+  worth keeping, whether a reply would help, asked in a `Wording`, the shipped one in
+  `Wording.Shipped`) over the message, who said it and the thread
   before it, its strand first, then `record` the tags (`grit.core.triage`), then
   `consider` whether grit drafts a reply (`Speak`, over `grit.core.speech`) and, when it does,
   `start` the heard message's own turn (ADR 0022). A classifier that fails leaves unanswered

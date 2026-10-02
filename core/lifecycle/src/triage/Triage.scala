@@ -174,7 +174,7 @@ object Triage {
           TriageQuestion.ThreadChars
         )
       )
-      (heard.id, TriageQuestion.judge(env.classifier, state))
+      (heard.id, TriageQuestion.judge(env.classifier, TriageQuestion.Wording.Shipped, state))
     }
   }
 

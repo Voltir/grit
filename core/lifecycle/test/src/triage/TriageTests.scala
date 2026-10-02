@@ -37,12 +37,13 @@ object TriageTests extends TestSuite {
   )
 
   val tests = Tests {
-    test("judge sends the request whose digest was taken before the words moved") {
+    test("in the shipped words, judge sends the request it sent before they were a value") {
+      // Taken from the request judge sent before its words moved into Wording.Shipped.
+      val before = "8ec33547bce9c3e3a9c64edef8eecae7f216738a1407cc8088957d609cb78edd"
       val requests = new Requests
-      TriageQuestion.judge(recording(requests), fixed)
-      requests.sent.map(_.digest) ==> Vector(
-        "8ec33547bce9c3e3a9c64edef8eecae7f216738a1407cc8088957d609cb78edd"
-      )
+      TriageQuestion.judge(recording(requests), TriageQuestion.Wording.Shipped, fixed)
+      requests.sent.map(_.digest) ==> Vector(before)
+      TriageQuestion.request(TriageQuestion.Wording.Shipped, fixed) ==> requests.sent.headOption
     }
 
     test("a heard message is asked once, in one call, and its tags kept") {
