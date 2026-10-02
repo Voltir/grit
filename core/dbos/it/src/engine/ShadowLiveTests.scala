@@ -205,6 +205,44 @@ object ShadowLiveTests extends TestSuite {
     }
 
     test(
+      "a shadow that throws leaves its message's triage as it was, and the next sweep moves past it"
+    ) {
+      val config = TestPostgres.freshDatabase("shadow_throws")
+      val engine = LiveEngine.open(config, "test")
+      def throws(id: WorkflowId)(using d: Durable^): String =
+        throw new IllegalStateException(s"no classifier for ${WorkflowId.value(id)}")
+      try {
+        // $0.0002 at the first-call estimate covers one a sweep.
+        engine.launch(
+          nothing,
+          nothing,
+          nothing,
+          nothing,
+          nothing,
+          Vector.empty,
+          throws,
+          Vector(Shadowing(Words, Instant.EPOCH, cap("0.0002")))
+        )
+        val heard = heardAndTagged(
+          engine,
+          config,
+          Origin.Task("shadow", "throws"),
+          Vector("one", "two"),
+          Instant.now()
+        )
+        val entries = heard.map(_._1)
+        def tags = LiveDb.transaction(config)(new SqlTriageStore().of(entries))
+        val before = tags
+        val shadows = heard.map((_, t) => ShadowRef(t, Words))
+        engine.sweep(Instant.now()).map(_.shadowed) ==> Right(shadows.take(1))
+        assert(eventually(engine.unfinished() == Right(0)))
+        (tags, before.map(_.size)) ==> (before, Right(2))
+        engine.sweep(Instant.now()).map(s => (s.shadowed, s.stuck)) ==>
+          Right((shadows.drop(1), shadows.take(1).map(_.workflowId)))
+      } finally engine.close()
+    }
+
+    test(
       "a variant whose day's cap is spent gets nothing enqueued, and its messages wait for a day the cap covers"
     ) {
       val config = TestPostgres.freshDatabase("shadow_capped")
