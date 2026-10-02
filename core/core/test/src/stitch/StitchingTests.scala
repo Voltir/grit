@@ -114,11 +114,11 @@ object StitchingTests extends TestSuite {
         Scope.Room,
         Tuning.Default
       )
-      def placed(pEngine: Double) = Stitching.place(
+      def placed(pEngine: Double, key: String = "exchange 1") = Stitching.place(
         new Scripted(
           Some(
             chose(
-              "exchange 1",
+              key,
               "exchange 1" -> pEngine,
               "exchange 2" -> 0.1,
               Stitching.NewKey -> (0.9 - pEngine)
@@ -135,11 +135,16 @@ object StitchingTests extends TestSuite {
         case Some(Placed.Begins(pb, _, _, _)) => pb ==> p(0.55)
         case other => throw new java.lang.AssertionError(s"not begins: $other")
       }
-      placed(0.7) match {
+      // Something new chosen: how likely the likeliest exchange was, not the choice.
+      placed(0.2, Stitching.NewKey) match {
+        case Some(Placed.Begins(pb, _, _, _)) => pb ==> p(0.2)
+        case other => throw new java.lang.AssertionError(s"not begins: $other")
+      }
+      placed(0.6) match {
         case Some(Placed.Follows(r, pf, seen, _, _)) =>
-          (r, pf) ==> (engine.conversation, p(0.7))
+          (r, pf) ==> (engine.conversation, p(0.6))
           seen.offered.map(o => (o.root, o.p)) ==> Vector(
-            engine.conversation -> Some(p(0.7)),
+            engine.conversation -> Some(p(0.6)),
             lunch.conversation -> Some(p(0.1))
           )
         case other => throw new java.lang.AssertionError(s"not follows: $other")
