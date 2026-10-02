@@ -14,7 +14,9 @@ Packages, each importing only those above it:
   database (its Slack channel and ts); `Case`, what a heard message was live, the digests of
   the inputs the shipped builders rebuild for it, and how it clusters; `Manifest`, the
   corpus as a whole (its dump, the settings and tuning in force, the builders' constants,
-  the build that captured it); `CorpusJson`, their files' JSON.
-- **`main`** — `Main`, the command line `scripts/eval` runs.
+  the build that captured it); `CorpusJson`, their files' JSON; `Capture`, a `Corpus` read
+  from a restored database through `grit.dbos`'s `Reader` and rebuilt through the shipped
+  builders (`TriageInput`, `TriageQuestion`, `Stitching`), never through SQL of its own.
+- **`main`** — `Main`, the command line `scripts/eval` runs. ← `corpus`
 
 No source file sits at the module's root.

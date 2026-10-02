@@ -2,21 +2,85 @@
 # The eval harness (eval/harness/README.md), run with mill out of the loop: mill builds the
 # launcher and exits, then java runs the harness directly.
 #
-#   scripts/eval <command> ...
+#   scripts/eval capture --from <database> [--date <yyyymmdd>]
+#       A corpus of <database>'s heard messages, in .local/eval/corpus/<date>/ (date: today,
+#       UTC). The first run dumps <database> (pg_dump -Fc, an MVCC read beside a running
+#       engine: source.dump, and its sha256 and time in dump.txt, written once it is restored) and restores it to
+#       grit_eval_<date>, which must not exist yet; a later run reuses both. Each run then
+#       writes corpus.json and cases.jsonl, text-free, and prints counts. Rerun over the same
+#       restored database by the same build, it writes the same bytes. A failed restore's
+#       errors, which can quote rows, go to .local/eval/review/restore-<date>.log.
 #
-# Its data is the main checkout's .local/eval/, whichever checkout runs it.
+# Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
+# to the database it dumps.
 set -euo pipefail
-
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
 [ $# -ge 1 ] || usage
 
-# `show` prints a PathRef, "ref:v0:<hash>:<path>"; the path is everything after the third colon.
-path_of() { ./mill --ticker false show "$1" | tail -1 | tr -d '"' | cut -d: -f4-; }
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+main=$(cd "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
+cd "$here"
 
-launcher=$(path_of grit.eval.harness.launcher)
-JAVA_HOME=$(path_of grit.eval.harness.javaHome)
-export JAVA_HOME
+compose() { docker compose --project-directory "$main" exec -T postgres "$@"; }
+exists() { [ "$(compose psql -U grit -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = '$1'")" = 1 ]; }
 
-exec "$launcher" "$@"
+harness() {
+  # `show` prints a PathRef, "ref:v0:<hash>:<path>"; the path is everything after the third colon.
+  path_of() { ./mill --ticker false show "$1" | tail -1 | tr -d '"' | cut -d: -f4-; }
+  local launcher
+  launcher=$(path_of grit.eval.harness.launcher)
+  JAVA_HOME=$(path_of grit.eval.harness.javaHome) "$launcher" "$@"
+}
+
+capture() {
+  local from= date
+  date=$(date -u +%Y%m%d)
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --from) from=$2; shift 2 ;;
+      --date) date=$2; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [ -n "$from" ] || usage
+  [[ $date =~ ^[0-9]{8}$ ]] || { echo "eval: --date is yyyymmdd" >&2; exit 2; }
+  local dir="$main/.local/eval/corpus/$date" restored="grit_eval_$date"
+  mkdir -p "$dir"
+  if [ ! -f "$dir/dump.txt" ]; then
+    if [ -e "$dir/source.dump" ] || exists "$restored"; then
+      echo "eval: an earlier capture into $dir did not finish: remove $dir/source.dump and drop $restored" >&2
+      exit 1
+    fi
+    compose pg_dump -U grit -Fc "$from" >"$dir/source.dump"
+    # When the dump finished: every row in it was written before then.
+    local dumped
+    dumped=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    compose createdb -U grit "$restored"
+    # pg_restore's errors can quote the rows it was restoring, so they go where only a person
+    # reads them.
+    local log="$main/.local/eval/review/restore-$date.log"
+    mkdir -p "$(dirname "$log")"
+    compose pg_restore -U grit -d "$restored" --no-owner --exit-on-error \
+      <"$dir/source.dump" 2>"$log" ||
+      { echo "eval: pg_restore failed; its errors are in $log" >&2; exit 1; }
+    printf 'source=%s\nsha256=%s\nat=%s\n' "$from" \
+      "$(sha256sum "$dir/source.dump" | cut -d' ' -f1)" "$dumped" >"$dir/dump.txt"
+    echo "dumped $from and restored it to $restored"
+  else
+    exists "$restored" || { echo "eval: $dir has a dump but $restored is gone" >&2; exit 1; }
+    echo "reusing $dir/source.dump, restored in $restored"
+  fi
+  local source sha at
+  source=$(sed -n 's/^source=//p' "$dir/dump.txt")
+  [ "$source" = "$from" ] || { echo "eval: $dir was dumped from $source, not $from" >&2; exit 1; }
+  sha=$(sed -n 's/^sha256=//p' "$dir/dump.txt")
+  at=$(sed -n 's/^at=//p' "$dir/dump.txt")
+  harness capture --url "jdbc:postgresql://localhost:5432/$restored" --source "$from" \
+    --restored "$restored" --sha256 "$sha" --at "$at" --out "$dir"
+}
+
+case $1 in
+  capture) shift; capture "$@" ;;
+  *) usage ;;
+esac

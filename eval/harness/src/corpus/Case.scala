@@ -42,6 +42,13 @@ final case class Case(
   */
 final case class Triaged(workflow: WorkflowId, recorded: Option[Reader.Recorded], build: Build)
 
+object Triaged {
+
+  /** The build of the latest of `starts` at or before `created`; `Unknown` when none is. */
+  def buildAt(starts: Vector[Build.Started], created: Instant): Build =
+    starts.filterNot(_.at.isAfter(created)).maxByOption(_.at).fold(Build.Unknown)(_.build)
+}
+
 /** What triage made of a heard message live. */
 enum Live {
 
@@ -122,6 +129,22 @@ object Stitched {
 
   /** The most two BM25 scores of one exchange may differ by and not count as drift. */
   val Tolerance = 1e-6
+
+  /** How many exchanges, by root, `live` and `rebuilt` both offer lexically with scores
+    * further apart than [[Tolerance]].
+    */
+  def drift(
+      live: Vector[(ConversationId, Offered)],
+      rebuilt: Vector[(ConversationId, Offered)]
+  ): Int =
+    live.count {
+      case (root, Offered.Lexical(was)) =>
+        rebuilt.exists {
+          case (r, Offered.Lexical(now)) => r == root && math.abs(now - was) > Tolerance
+          case _ => false
+        }
+      case _ => false
+    }
 }
 
 /** What became of a first message put to the classifier live. */
@@ -160,6 +183,40 @@ object SeenCheck {
 
   /** `Match` when no field differs, else `Differs`. */
   def of(fields: Set[Field]): SeenCheck = if (fields.isEmpty) Match else new Differs(fields)
+
+  /** How the stitch question's state `rebuilt`, offering exchanges with roots `rebuiltRoots`,
+    * differs from `live`, offering `liveRoots`: the message and its author, how many exchanges
+    * and which roots in which order, and for each exchange offered at the same place in both,
+    * its opening, latest messages and record. A field missing from either state differs.
+    */
+  def compare(
+      live: ujson.Value,
+      liveRoots: Vector[ConversationId],
+      rebuilt: ujson.Value,
+      rebuiltRoots: Vector[ConversationId]
+  ): SeenCheck = {
+    def at(v: ujson.Value, k: String): Option[ujson.Value] = v.objOpt.flatMap(_.get(k))
+    def same(x: Option[ujson.Value], y: Option[ujson.Value]): Boolean = x.isDefined && x == y
+    val (was, now) = (
+      at(live, "exchanges").flatMap(_.arrOpt).map(_.toVector),
+      at(rebuilt, "exchanges").flatMap(_.arrOpt).map(_.toVector)
+    )
+    val shared = was.getOrElse(Vector.empty).zip(now.getOrElse(Vector.empty))
+    def anyDiffer(k: String): Boolean = shared.exists((x, y) => !same(at(x, k), at(y, k)))
+    of(
+      Set(
+        Option.when(!same(at(live, "new_message"), at(rebuilt, "new_message")))(Field.NewMessage),
+        Option.when(!same(at(live, "author"), at(rebuilt, "author")))(Field.Author),
+        Option.when(was.isEmpty || now.isEmpty || was.map(_.size) != now.map(_.size))(
+          Field.Exchanges
+        ),
+        Option.when(liveRoots != rebuiltRoots)(Field.Roots),
+        Option.when(anyDiffer("opening"))(Field.Opening),
+        Option.when(anyDiffer("latest"))(Field.Latest),
+        Option.when(anyDiffer("record"))(Field.Record)
+      ).flatten
+    )
+  }
 
   /** A field of the stitch question's state. */
   enum Field {
