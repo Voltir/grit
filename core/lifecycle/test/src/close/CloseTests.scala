@@ -142,13 +142,14 @@ object CloseTests extends TestSuite {
       )
       val place = grit.core.place.Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
       val thread = grit.core.place.Place.read("slack:T1/C1/2.0").fold(e => sys.error(e), identity)
-      def shown(ids: String*) =
+      // api's entries by seq: 0 its question, 1 its reply, 2 never written.
+      def shown(seqs: Long*) =
         Payload.Window(
           Vector.empty,
           Vector.empty,
           Vector(
-            grit.core.store.Nearby.Open(api, place, ids.toVector.map(EntryId(_))),
-            grit.core.store.Nearby.Closed(ops, thread, EntryId("ops:closing"))
+            grit.core.store.Nearby.Open(api, place, seqs.toVector.map(EntrySeq(_))),
+            grit.core.store.Nearby.Closed(ops, thread, EntrySeq(4))
           )
         )
       val t0 = w.turn(
@@ -157,9 +158,9 @@ object CloseTests extends TestSuite {
         "Recalled the fix.",
         0
       )
-      w.add(t0, shown("api:u", "api:r", "api:gone"), 0, "window:0")
+      w.add(t0, shown(0, 1, 2), 0, "window:0")
       val t1 = w.turn("and why?", "the CI runs in UTC", "Why UTC.", 1)
-      w.add(t1, shown("api:r"), 1, "window:1")
+      w.add(t1, shown(1), 1, "window:1")
       val summary = answering("Summary: Recalled the fix from api.")
       val g = gate
       new InMemoryDurable().run(w.attempt.workflowId)(

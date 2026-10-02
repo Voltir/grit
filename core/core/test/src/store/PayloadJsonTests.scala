@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.{ConversationId, EntryId, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Closing, Probability, TestClosings}
 import grit.core.place.Place
@@ -111,22 +111,22 @@ object PayloadJsonTests extends TestSuite {
 
     test("window") {
       PayloadJson
-        .write(Payload.Window(Vector(EntryId("a"), EntryId("b")), Vector(TurnSeq(3))))
+        .write(Payload.Window(Vector(EntrySeq(0), EntrySeq(1)), Vector(TurnSeq(3))))
         .render() ==>
-        """{"kind":"window","entries":["a","b"],"recalled":[3]}"""
+        """{"kind":"window","entries":[0,1],"recalled":[3]}"""
     }
 
     test("a window with nearby sections keeps them under their place, as written") {
       // Stored data: a window without sections keeps the form above, byte for byte.
       val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
       val window = Payload.Window(
-        Vector(EntryId("a")),
+        Vector(EntrySeq(0)),
         Vector.empty,
-        Vector(Nearby.Open(ConversationId("c9"), api, Vector(EntryId("x"), EntryId("y"))))
+        Vector(Nearby.Open(ConversationId("c9"), api, Vector(EntrySeq(5), EntrySeq(6))))
       )
       PayloadJson.write(window).render() ==>
-        """{"kind":"window","entries":["a"],"recalled":[],""" +
-        """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":["x","y"]}]}"""
+        """{"kind":"window","entries":[0],"recalled":[],""" +
+        """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":[5,6]}]}"""
       PayloadJson.read(ujson.read(PayloadJson.write(window).render())) ==> Right(window)
     }
 
@@ -134,22 +134,22 @@ object PayloadJsonTests extends TestSuite {
       // Stored data: an open section keeps the form above; a closed one names its closing.
       val thread = Place.read("slack:T1/C1/1.0").fold(e => sys.error(e), identity)
       val window = Payload.Window(
-        Vector(EntryId("a")),
+        Vector(EntrySeq(0)),
         Vector.empty,
-        Vector(Nearby.Closed(ConversationId("c9"), thread, EntryId("k")))
+        Vector(Nearby.Closed(ConversationId("c9"), thread, EntrySeq(8)))
       )
       PayloadJson.write(window).render() ==>
-        """{"kind":"window","entries":["a"],"recalled":[],""" +
-        """"nearby":[{"conversation":"c9","place":"slack:T1/C1/1.0","closing":"k"}]}"""
+        """{"kind":"window","entries":[0],"recalled":[],""" +
+        """"nearby":[{"conversation":"c9","place":"slack:T1/C1/1.0","closing":8}]}"""
       PayloadJson.read(ujson.read(PayloadJson.write(window).render())) ==> Right(window)
     }
 
     test("a strand section is stored marked as one, and read back; an unmarked one is open") {
       val thread = Place.read("slack:T/C1/1.0").fold(e => sys.error(e), identity)
       val along: Payload.Window = Payload.Window(
-        Vector(EntryId("a")),
+        Vector(EntrySeq(0)),
         Vector.empty,
-        Vector(Nearby.Along(ConversationId("c9"), thread, Vector(EntryId("x"), EntryId("y"))))
+        Vector(Nearby.Along(ConversationId("c9"), thread, Vector(EntrySeq(5), EntrySeq(6))))
       )
       val json = PayloadJson.write(along)
       // The stored mark: windows recorded with a strand must keep reading as one.
@@ -158,7 +158,7 @@ object PayloadJsonTests extends TestSuite {
       json("nearby")(0).obj.remove("strand")
       PayloadJson.read(json) ==> Right(
         along.copy(nearby =
-          Vector(Nearby.Open(ConversationId("c9"), thread, Vector(EntryId("x"), EntryId("y"))))
+          Vector(Nearby.Open(ConversationId("c9"), thread, Vector(EntrySeq(5), EntrySeq(6))))
         )
       )
     }
@@ -166,9 +166,9 @@ object PayloadJsonTests extends TestSuite {
     test("an asked section is stored marked as one, and read back as one") {
       val thread = Place.read("slack:T/C2/3.0").fold(e => sys.error(e), identity)
       val asked: Payload.Window = Payload.Window(
-        Vector(EntryId("a")),
+        Vector(EntrySeq(0)),
         Vector.empty,
-        Vector(Nearby.Asked(ConversationId("c9"), thread, Vector(EntryId("x"), EntryId("y"))))
+        Vector(Nearby.Asked(ConversationId("c9"), thread, Vector(EntrySeq(5), EntrySeq(6))))
       )
       val json = PayloadJson.write(asked)
       json("nearby")(0)("asked") ==> ujson.True
@@ -253,7 +253,7 @@ object PayloadJsonTests extends TestSuite {
     }
 
     test("every sample round-trips, through text too") {
-      val window = Payload.Window(Vector(EntryId("a")), Vector(TurnSeq(0), TurnSeq(7)))
+      val window = Payload.Window(Vector(EntrySeq(0)), Vector(TurnSeq(0), TurnSeq(7)))
       val (t1, t2) = (TopicId("topic:c:0"), TopicId("topic:c:3"))
       val topic = Payload.Topic(
         Vector(

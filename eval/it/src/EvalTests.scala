@@ -1,6 +1,5 @@
 package grit.eval
 
-import grit.core.context.Window
 import grit.core.id.EntryId
 import grit.core.message.Tokens
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -178,7 +177,7 @@ object EvalTests extends TestSuite {
         val loaded = Eval.load(engine, config, renamed, Eval.Variant.Plain)
         val held = Vector(EntryId("sample2/plain/t0:0"), EntryId("sample2/plain/t0:1"))
         // "one" is 1 + 4 tokens, "two" 1 + 4 (CharEstimate).
-        Eval.score(loaded, Window(held)) ==>
+        Eval.score(loaded, held) ==>
           Eval.Score(1, 2, Tokens(10), Vector(EntryId("sample2/plain/t1:2")), Vector.empty)
         Eval.run(engine, loaded, Eval.Strategy.Oracle, Eval.NoLive).map(_.got) ==> Right(2)
       }

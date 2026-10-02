@@ -3,7 +3,7 @@ package grit.turn
 import java.time.LocalDate
 
 import grit.core.durable.InMemoryDurable
-import grit.core.id.ToolCallId
+import grit.core.id.{ToolCallId, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{
   AfterToolResult,
@@ -14,7 +14,9 @@ import grit.core.model.{
   Profile,
   Source,
   StrictSchemas,
-  ToolGuidance
+  ToolGuidance,
+  TurnProfile,
+  TurnProfileId
 }
 import grit.core.provider.{Models, Provider}
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryModelProfileStore, Payload}
@@ -92,6 +94,34 @@ object TurnModelsTests extends TestSuite {
       val next = say(store, "again")
       durable.run(next.workflowId)(modelsBody(entries, models, profiles, NoCheckout, noTools))
       profiles.of(next.workflowId)(using TestTx.fake) ==> Right(Some(Changed.pin))
+    }
+
+    test("pin-models journals the profile's id, and the turn runs under the profile kept by it") {
+      val entries = new InMemoryEntryStore
+      val profiles = new InMemoryModelProfileStore
+      val provider = new RecordingProvider
+      val models = new Switching(provider, Right(TestCatalog))
+      val durable = new InMemoryDurable
+      def pinned(profile: TurnProfile): InMemoryDurable.Step =
+        InMemoryDurable.Step(
+          "pin-models",
+          InMemoryDurable.Outcome.Output(
+            ujson.Obj("ok" -> TurnProfileId.value(profile.id)).render()
+          )
+        )
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(modelsBody(entries, models, profiles, NoCheckout, noTools))
+      // The step's stored form: the profile's id; `model_profiles` keeps the profile.
+      durable.history(turn.workflowId).headOption ==> Some(pinned(TestCatalog.pin))
+      // A turn whose step recorded another profile's id runs under the profile kept by that
+      // id, whatever the catalog in force.
+      profiles.pin(WorkflowId("another-turn"), Changed.pin)(using TestTx.fake) ==> Right(())
+      val later = new Switching(provider, Right(TestCatalog))
+      val next = say(entries, "again")
+      val _ = durable.replay(next.workflowId, Vector(pinned(Changed.pin)))(
+        modelsBody(entries, later, profiles, NoCheckout, noTools)
+      )
+      later.asked ==> Vector(Changed.pin.turn, Changed.pin.summary)
     }
 
     test("no catalog: the turn fails at its first step and calls nothing") {

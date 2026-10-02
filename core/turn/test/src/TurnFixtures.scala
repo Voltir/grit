@@ -484,7 +484,7 @@ object TurnFixtures {
     conversations.findOrCreate(from, PrincipalId.Local)(using TestTx.fake)
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
+        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, profilesKept(), new InMemoryPrincipals),
         TurnHosting(conversations, Prompts, toolSets, requests, served.edges, new InMemoryVoiceStore, new InMemoryPrincipals),
         new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
         NoClassifier,
@@ -709,7 +709,7 @@ object TurnFixtures {
   )(using Durable^): String =
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
+        TurnRecords(entries, ledger, CharEstimate, profilesKept(), new InMemoryPrincipals),
         hosted,
         assembler,
         classifier,
@@ -741,7 +741,7 @@ object TurnFixtures {
           entries,
           new InMemoryUsageLedger,
           CharEstimate,
-          new InMemoryModelProfileStore,
+          profilesKept(),
           principals
         ),
         hosting(voices = voices),
@@ -853,7 +853,7 @@ object TurnFixtures {
             .list(conversation)(using TestTx.fake)
             .getOrElse(Vector.empty)
             .filter(e => TurnSeq.value(e.turnSeq) < TurnSeq.value(request.turn.turnSeq))
-            .map(_.id)
+            .map(_.seq)
         )
       )
   }
@@ -925,7 +925,7 @@ object TurnFixtures {
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, ledger, CharEstimate, new InMemoryModelProfileStore, new InMemoryPrincipals),
+        TurnRecords(entries, ledger, CharEstimate, profilesKept(), new InMemoryPrincipals),
         hosting(),
         new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
         classifier,
@@ -938,6 +938,16 @@ object TurnFixtures {
       ),
       TurnTooling[{ws}](tools, Toolbox.Empty, hosted, new FakeJot, budget(calls))
     )(id)
+
+  /** A profile store already holding [[TestCatalog]]'s profile, as the database holds it
+    * across a turn's restarts: a body built afresh for a resumed turn reads its recorded pin
+    * back by id.
+    */
+  def profilesKept(): InMemoryModelProfileStore = {
+    val kept = new InMemoryModelProfileStore
+    val _ = kept.pin(WorkflowId("kept"), TestCatalog.pin)(using TestTx.fake)
+    kept
+  }
 
   /** The turn's workflow body over `entries`, its models `models` and its profile kept in
     * `profiles`, the loop offered `tools` over `ws` for at most `calls` model calls.

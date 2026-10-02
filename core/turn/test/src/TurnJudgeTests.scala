@@ -54,7 +54,7 @@ object TurnJudgeTests extends TestSuite {
     ) {
       val state = TurnJudge.state(
         all,
-        Window(all.map(_.id)),
+        Window(all.map(_.seq)),
         Vector.empty,
         Strand.Read.empty,
         800,
@@ -91,11 +91,11 @@ object TurnJudgeTests extends TestSuite {
       val state = TurnJudge.state(
         Vector(record, question),
         Window(
-          Vector(record.id, question.id),
+          Vector(record.seq, question.seq),
           Vector.empty,
           Vector(
-            Nearby.Closed(ConversationId("d"), place, decided.id),
-            Nearby.Open(ConversationId("m"), place, Vector(markup.id))
+            Nearby.Closed(ConversationId("d"), place, decided.seq),
+            Nearby.Open(ConversationId("m"), place, Vector(markup.seq))
           )
         ),
         Vector(decided, markup),
@@ -138,9 +138,9 @@ object TurnJudgeTests extends TestSuite {
       val state = TurnJudge.state(
         Vector(real, long),
         Window(
-          Vector(real.id),
+          Vector(real.seq),
           Vector.empty,
-          Vector(Nearby.Along(ConversationId("a"), place, Vector(opening.entry.id)))
+          Vector(Nearby.Along(ConversationId("a"), place, Vector(opening.entry.seq)))
         ),
         Vector(opening.entry),
         strand,
@@ -161,7 +161,7 @@ object TurnJudgeTests extends TestSuite {
       TurnJudge
         .state(
           Vector(posted, heard),
-          Window(Vector(posted.id)),
+          Window(Vector(posted.seq)),
           Vector.empty,
           Strand.Read.empty,
           800,
@@ -188,7 +188,7 @@ object TurnJudgeTests extends TestSuite {
           Window(
             Vector.empty,
             Vector.empty,
-            Vector(Nearby.Asked(ConversationId("asker"), place, Vector(ask.id)))
+            Vector(Nearby.Asked(ConversationId("asker"), place, Vector(ask.seq)))
           ),
           Vector(ask),
           Strand.Read.empty,
@@ -202,7 +202,7 @@ object TurnJudgeTests extends TestSuite {
 
     test("a window with no record recalls nothing") {
       TurnJudge
-        .state(all, Window(Vector(asked.id)), Vector.empty, Strand.Read.empty, 800, names, "d")
+        .state(all, Window(Vector(asked.seq)), Vector.empty, Strand.Read.empty, 800, names, "d")
         .recalled ==> ""
     }
 

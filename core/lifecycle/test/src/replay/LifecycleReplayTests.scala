@@ -1,7 +1,7 @@
 package grit.lifecycle.replay
 
 import grit.core.durable.{History, InMemoryDurable}
-import grit.core.period.{ClosingJson, Ground, Section}
+import grit.core.period.ClosingJson
 import grit.lifecycle.close.CloseFixtures
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.SettleFixtures
@@ -91,11 +91,10 @@ object LifecycleReplayTests extends TestSuite {
       assert(failures.isEmpty)
     }
 
-    test(
-      "every recorded closing of the epoch reads, a version-2 one's Standing lines Claimed"
-    ) {
-      // A closing outlives its period, and a close in flight reads back its summarise step:
-      // today's reader must read every version recorded (ADR 0018).
+    test("every recorded closing of the epoch reads, and the epoch holds a version-3 one") {
+      // A close in flight reads back its summarise step: today's reader must read every
+      // version this epoch recorded (ADR 0018). An earlier epoch's closes are never resumed;
+      // a stored closing of an earlier version is ClosingTests'.
       val closings = histories.flatMap { case (path, parsed) =>
         parsed.toOption.toVector.flatMap(_.steps.collect {
           case s if s.name == "summarise" => (path.last, s.outcome)
@@ -109,11 +108,6 @@ object LifecycleReplayTests extends TestSuite {
         case (file, other) => file -> Some(Left(s"not an output: $other"))
       }
       read.collect { case (file, Some(Left(why))) => s"$file: $why" } ==> Vector.empty
-      val v2Standing = read.collect { case (_, Some(Right((Some(2), c)))) =>
-        c.balance.in(Section.Standing).map(_.ground)
-      }.flatten
-      assert(v2Standing.nonEmpty)
-      v2Standing.distinct ==> Vector(Some(Ground.Claimed))
       // The epoch holds a closing written as version 3, grounds and all.
       assert(read.exists { case (_, Some(Right((Some(3), _)))) => true; case _ => false })
     }

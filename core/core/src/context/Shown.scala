@@ -111,19 +111,20 @@ object Shown {
     )
   }
 
-  /** A nearby section as the model is shown it, from those of `entries` it names: an open one
-    * as [[nearby]], a closed one as [[recorded]], a strand's as [[strand]] and an asked one as
-    * [[asked]] with `speakers`.
+  /** A nearby section as the model is shown it, from those of `entries` in its conversation at
+    * the seqs it names: an open one as [[nearby]], a closed one as [[recorded]], a strand's as
+    * [[strand]] and an asked one as [[asked]] with `speakers`.
     * `None` when none of its entries is among `entries`, or none of them has text.
     */
   def section(nearby: Nearby, entries: Vector[Entry], speakers: Speakers): Option[Message] = {
-    val byId = entries.map(e => e.id -> e).toMap
+    val bySeq =
+      entries.filter(_.conversationId == nearby.conversation).map(e => e.seq -> e).toMap
     nearby match {
-      case Nearby.Open(_, place, ids) => this.nearby(place, ids.flatMap(byId.get))
-      case Nearby.Along(_, place, ids) => strand(place, ids.flatMap(byId.get), speakers)
-      case Nearby.Asked(_, place, ids) => asked(place, ids.flatMap(byId.get), speakers)
-      case Nearby.Closed(_, place, id) =>
-        byId.get(id).flatMap(ClosingEntry.of).map(recorded(place, _))
+      case Nearby.Open(_, place, seqs) => this.nearby(place, seqs.flatMap(bySeq.get))
+      case Nearby.Along(_, place, seqs) => strand(place, seqs.flatMap(bySeq.get), speakers)
+      case Nearby.Asked(_, place, seqs) => asked(place, seqs.flatMap(bySeq.get), speakers)
+      case Nearby.Closed(_, place, seq) =>
+        bySeq.get(seq).flatMap(ClosingEntry.of).map(recorded(place, _))
     }
   }
 

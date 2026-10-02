@@ -9,12 +9,12 @@ import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, W
 import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile}
+import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile, TurnProfileId}
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 import grit.core.speech.{Outcome, Speech, SpeechJson}
 import grit.core.stitch.{Along, StitchReads, Stitching, Strand}
-import grit.core.store.{Entry, EntryStore, Jot, Payload, Speakers, StoreError, Tx}
+import grit.core.store.{Entry, Jot, Nearby, Payload, Speakers, StoreError, Tx}
 import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
 import grit.core.topic.Topic
 
@@ -24,7 +24,9 @@ import TurnVerdict.Shape
 /** The durable turn: one workflow per turn. Each step's output is recorded, so a turn
   * resumed after a crash never calls a model twice.
   *
-  *   1. `pin-models` — the catalog in force, pinned as the turn's profile.
+  *   1. `pin-models` — the catalog in force, pinned as the turn's profile, kept by its id
+  *      and recorded by id; a rerun reads it back, so it runs under the profile it started
+  *      with.
   *   1. `offer` — what the turn offers its model ([[TurnOffer]]): its conversation's
   *      workspace, the tool set (its own tools, and the hosted ones the edge serving that
   *      workspace advertises) and the system prompt (ADR 0016), kept by content id and
@@ -94,7 +96,7 @@ object Turn {
     * cannot carry, which strands the turns in flight under the old one. `TurnReplayTests`
     * replays the histories recorded under this epoch.
     */
-  val Epoch = "2026-09-30"
+  val Epoch = "2026-10-02"
 
   /** The turn's steps, as DBOS records their names, in the order they run. */
   object Step {
@@ -364,7 +366,7 @@ object Turn {
       case None => s"not a turn: ${WorkflowId.value(workflowId)}"
       case Some(turn) =>
         import TurnJournal.given
-        d.transact(Step.PinModels)(pinModels(env, turn)) match {
+        d.transact(Step.PinModels)(pinModels(env, turn)).flatMap(profileOf(env, _)) match {
           case Left(failure) => s"failed: $failure"
           case Right(profile) =>
             val hosting = env.hosting
@@ -376,15 +378,27 @@ object Turn {
         }
     }
 
-  /** The catalog in force, pinned as `turn`'s profile: kept by the store, and the step's
-    * output, so a replay makes every call under the profile the turn started with.
+  /** The catalog in force, pinned as `turn`'s profile: kept by the store, and its id the
+    * step's output, so a replay makes every call under the profile the turn started with.
     */
-  private def pinModels(env: TurnEnv^, turn: TurnRef)(using Tx^): Either[TurnFailure, TurnProfile] =
+  private def pinModels(env: TurnEnv^, turn: TurnRef)(using
+      Tx^
+  ): Either[TurnFailure, TurnProfileId] =
     for {
       catalog <- env.models.catalog().left.map(why => TurnFailure.Model(s"no model catalog: $why"))
       profile = catalog.pin
       _ <- env.records.profiles.pin(turn.workflowId, profile).left.map(storeFailure)
-    } yield profile
+    } yield profile.id
+
+  /** The profile kept under `id`, read through `env`'s `db`; `TurnFailure.Store` when none
+    * is.
+    */
+  private def profileOf(env: TurnEnv^, id: TurnProfileId): Either[TurnFailure, TurnProfile] =
+    env.db
+      .read(env.records.profiles.get(id))
+      .left
+      .map(storeFailure)
+      .flatMap(_.toRight(TurnFailure.Store(s"no profile kept under ${TurnProfileId.value(id)}")))
 
   /** [[body]] once `turn`'s models are pinned and its offer is made. */
   private def pinned[C^](env: TurnEnv^, tooling: TurnTooling[C]^, turn: TurnRef)(using
@@ -493,8 +507,8 @@ object Turn {
                 if id == windowId(turn) =>
               Window(entries, Vector.empty, nearby)
           }
-          near <- window.fold[Either[StoreError, Vector[Entry]]](Right(Vector.empty))(
-            nearbyOf(records.entries, _)
+          near <- window.fold[Either[StoreError, Vector[Entry]]](Right(Vector.empty))(w =>
+            Nearby.read(w.nearby, records.entries)
           )
           strand <- strandOf(stitching, conversations, turn, all, now)
           named <- records.principals.speakers((all ++ strand.shown).map(_.id))
@@ -999,7 +1013,7 @@ object Turn {
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
-      near <- nearbyOf(entries, window).left.map(storeFailure)
+      near <- Nearby.read(window.nearby, entries).left.map(storeFailure)
       named <- principals.speakers((all ++ near).map(_.id)).left.map(storeFailure)
       sent <- requestOf(system, all, near, turn, window, named).map(shape)
       _ <- entries
@@ -1127,7 +1141,7 @@ object Turn {
   )(using Tx^): Either[TurnFailure, EntryId] =
     for {
       all <- records.entries.list(turn.conversationId).left.map(storeFailure)
-      near <- nearbyOf(records.entries, window).left.map(storeFailure)
+      near <- Nearby.read(window.nearby, records.entries).left.map(storeFailure)
       named <- records.principals.speakers((all ++ near).map(_.id)).left.map(storeFailure)
       base <- requestOf(system, all, near, turn, window, named)
       id <- TurnTopics.writeEvents(
@@ -1279,25 +1293,13 @@ object Turn {
       .read { (tx: Tx^) ?=>
         for {
           all <- env.records.entries.list(turn.conversationId)
-          near <- nearbyOf(env.records.entries, window)
+          near <- Nearby.read(window.nearby, env.records.entries)
           named <- env.records.principals.speakers((all ++ near).map(_.id))
         } yield requestOf(system, all, near, turn, window, named)
       }
       .left
       .map(storeFailure)
       .flatten
-
-  /** The entries of other conversations `window`'s nearby sections name that still exist.
-    * One gone (its period closed and purged since the window was built) is left out.
-    */
-  private def nearbyOf(entries: EntryStore, window: Window)(using
-      Tx^
-  ): Either[StoreError, Vector[Entry]] =
-    window.nearby
-      .flatMap(_.names)
-      .foldLeft[Either[StoreError, Vector[Entry]]](Right(Vector.empty)) { (acc, id) =>
-        acc.flatMap(found => entries.get(id).map(found ++ _))
-      }
 
   /** The request [[request]] builds, from `all` of the conversation's entries and `near`,
     * the nearby entries that still exist: each nearby section as one user message
@@ -1314,17 +1316,17 @@ object Turn {
       window: Window,
       named: Speakers
   ): Either[TurnFailure, ModelRequest] = {
-    val byId = all.map(e => e.id -> e).toMap
+    val bySeq = all.map(e => e.seq -> e).toMap
     val sections = window.nearby.flatMap(Shown.section(_, near, named))
-    window.entries.filterNot(byId.contains) match {
+    window.entries.filterNot(bySeq.contains) match {
       case missing if missing.nonEmpty =>
         Left(
           TurnFailure.Assembly(
-            s"window names unknown entries: ${missing.map(EntryId.value).mkString(", ")}"
+            s"window names unknown entries at seqs: ${missing.map(EntrySeq.value).mkString(", ")}"
           )
         )
       case _ =>
-        val shown = Shown.own(window.entries.flatMap(byId.get), turn.turnSeq, named)
+        val shown = Shown.own(window.entries.flatMap(bySeq.get), turn.turnSeq, named)
         val mine = Shown.turn(own(all, turn), named)
         Right(ModelRequest(system, sections ++ shown ++ mine))
     }
@@ -1356,7 +1358,7 @@ object Turn {
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       all <- entries.list(turn.conversationId).left.map(storeFailure)
-      near <- nearbyOf(entries, window).left.map(storeFailure)
+      near <- Nearby.read(window.nearby, entries).left.map(storeFailure)
       named <- principals.speakers((all ++ near).map(_.id)).left.map(storeFailure)
       sent <- requestOf(offer.system, all, near, turn, window, named).map(shape)
       replySeq <- recorded match {

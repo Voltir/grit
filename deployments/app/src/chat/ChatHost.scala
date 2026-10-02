@@ -12,7 +12,7 @@ import grit.core.message.Message
 import grit.core.prompt.Voice
 import grit.core.provider.TokenEstimator
 import grit.core.spend.{Budget, Spend}
-import grit.core.store.{Entry, Origin, Payload, Speakers, StoreError, UsageLedger}
+import grit.core.store.{Entry, Nearby, Origin, Payload, Speakers, StoreError, UsageLedger}
 import grit.dbos.engine.{Link, TurnStatus}
 import grit.tui.runtime.app.{Fault, Host, Mailbox}
 import grit.turn.TurnStream
@@ -354,16 +354,11 @@ final class ChatHost(
     val shown = entries
       .filter(_.turnSeq == turn.turnSeq)
       .flatMap(_.payload match {
-        case Payload.Window(_, _, nearby) => nearby.flatMap(_.names)
+        case Payload.Window(_, _, nearby) => nearby
         case _ => Vector.empty
       })
-    val nearby = engine.db
-      .read(
-        shown.foldLeft[Either[StoreError, Vector[Entry]]](Right(Vector.empty)) { (acc, id) =>
-          acc.flatMap(found => engine.entries.get(id).map(found ++ _))
-        }
-      )
-      .getOrElse(Vector.empty)
+    val nearby =
+      engine.db.read(Nearby.read(shown, engine.entries)).getOrElse(Vector.empty)
     val prompt = engine.db.read(engine.prompts.of(turn.workflowId)).toOption.flatten
     // Unread names cost the window as unnamed: the panel is a view, never a failure.
     val speakers =

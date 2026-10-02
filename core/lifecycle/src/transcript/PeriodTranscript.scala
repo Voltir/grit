@@ -3,7 +3,7 @@ package grit.lifecycle.transcript
 import grit.core.id.{PeriodRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.Section
-import grit.core.store.{Db, Entry, EntryStore, Payload, Principals, Speakers, StoreError}
+import grit.core.store.{Db, Entry, EntryStore, Nearby, Payload, Principals, Speakers, StoreError}
 
 /** A period as a classifier or the summary model reads it. */
 object PeriodTranscript {
@@ -53,25 +53,21 @@ object PeriodTranscript {
       store: EntryStore,
       entries: Vector[Entry]
   ): Either[StoreError, Vector[String]] = {
-    val shown = entries
-      .flatMap(_.payload match {
-        case Payload.Window(_, _, nearby) =>
-          nearby.flatMap(n => n.names.map(id => (n.place.written, id)))
-        case _ => Vector.empty
-      })
-      .distinctBy(_._2)
+    val sections = entries.flatMap(_.payload match {
+      case Payload.Window(_, _, nearby) => nearby
+      case _ => Vector.empty
+    })
+    val shown = sections
+      .flatMap(n => n.names.map(seq => (n.place.written, n.conversation, seq)))
+      .distinctBy((_, c, seq) => (c, seq))
     if (shown.isEmpty) Right(Vector.empty)
     else
-      db.read(
-        shown.foldLeft[Either[StoreError, Vector[String]]](Right(Vector.empty)) {
-          case (acc, (place, id)) =>
-            acc.flatMap(done =>
-              store
-                .get(id)
-                .map(found => done ++ found.toVector.flatMap(known).map(l => s"[$place] $l"))
-            )
-        }
-      )
+      db.read(Nearby.read(sections, store)).map { found =>
+        val at = found.map(e => (e.conversationId, e.seq) -> e).toMap
+        shown.flatMap((place, c, seq) =>
+          at.get((c, seq)).toVector.flatMap(known).map(l => s"[$place] $l")
+        )
+      }
   }
 
   /** What `entry`, shown from elsewhere, is known as: a message's line, or a record's prose

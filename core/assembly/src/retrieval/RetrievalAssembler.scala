@@ -305,7 +305,7 @@ final class RetrievalAssembler(
         def cost(k: Int): Tokens =
           Shown.asked(place, said.take(k), read.speakers).fold(Tokens.Zero)(estimator.message)
         (said.size to 1 by -1).find(k => Tokens.value(cost(k)) <= Tokens.value(allowance)) match {
-          case Some(k) => (Vector(Nearby.Asked(c, place, said.take(k).map(_.id))), cost(k))
+          case Some(k) => (Vector(Nearby.Asked(c, place, said.take(k).map(_.seq))), cost(k))
           case None => (Vector.empty, Tokens.Zero)
         }
     }
@@ -351,7 +351,7 @@ final class RetrievalAssembler(
               Nearby.Along(
                 c,
                 place,
-                shown.filter(_.conversation == c).sortBy(_.entry.createdAt).map(_.entry.id)
+                shown.filter(_.conversation == c).sortBy(_.entry.createdAt).map(_.entry.seq)
               )
             )
         def cost(shown: Vector[Said]): Tokens =
@@ -364,7 +364,7 @@ final class RetrievalAssembler(
           .find(shown => Tokens.value(cost(shown)) <= Tokens.value(room))
           .getOrElse(Vector.empty)
         (
-          recordsKept.map((c, place, r) => Nearby.Closed(c, place, r.entry.id)) ++ sections(fits),
+          recordsKept.map((c, place, r) => Nearby.Closed(c, place, r.entry.seq)) ++ sections(fits),
           recordsCost + cost(fits)
         )
       }
@@ -495,12 +495,12 @@ final class RetrievalAssembler(
             Nearby.Open(
               c,
               first.place,
-              near.filter(_.conversation == c).flatMap(_.turn).sortBy(_.seq).map(_.id)
+              near.filter(_.conversation == c).flatMap(_.turn).sortBy(_.seq).map(_.seq)
             )
           }
           .toVector ++ packed.collect {
           case Candidate.Record(k, place, record) if k == c =>
-            Nearby.Closed(c, place, record.entry.id)
+            Nearby.Closed(c, place, record.entry.seq)
         }
       }
   }
@@ -516,7 +516,7 @@ final class RetrievalAssembler(
       notes: Vector[AssemblyNote],
       nearby: Vector[Nearby]
   ): Window =
-    Window(closings.map(_.id) ++ turns.flatten.sortBy(_.seq).map(_.id), notes, nearby)
+    Window(closings.map(_.seq) ++ turns.flatten.sortBy(_.seq).map(_.seq), notes, nearby)
 }
 
 object RetrievalAssembler {

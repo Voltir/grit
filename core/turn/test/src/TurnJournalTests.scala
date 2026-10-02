@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
-import grit.core.id.{ConversationId, EntryId, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.place.Place
 import grit.core.provider.ModelRequest
@@ -20,7 +20,7 @@ object TurnJournalTests extends TestSuite {
     import TurnJournal.given
 
     test("outputs and failures read back as written") {
-      val window: Either[TurnFailure, Window] = Right(Window(Vector(EntryId("a"), EntryId("b"))))
+      val window: Either[TurnFailure, Window] = Right(Window(Vector(EntrySeq(0), EntrySeq(1))))
       roundTrip(window) ==> Right(window)
       val reply: Either[TurnFailure, Message.Assistant] =
         new StubProvider()
@@ -39,7 +39,7 @@ object TurnJournalTests extends TestSuite {
     test("a window's notes read back, and one without notes keeps the bare array") {
       val noted: Either[TurnFailure, Window] = Right(
         Window(
-          Vector(EntryId("a")),
+          Vector(EntrySeq(0)),
           Vector(
             AssemblyNote.Queried(
               "postgres sqlite",
@@ -54,30 +54,30 @@ object TurnJournalTests extends TestSuite {
       )
       roundTrip(noted) ==> Right(noted)
       val j = summon[Journaled[Either[TurnFailure, Window]]]
-      j.encode(Right(Window(Vector(EntryId("a"))))) ==> """{"ok":["a"]}"""
-      j.encode(Right(Window(Vector(EntryId("a")), Vector(AssemblyNote.FellBack("why"))))) ==>
-        """{"ok":{"entries":["a"],"notes":[{"fellBack":"why"}]}}"""
+      j.encode(Right(Window(Vector(EntrySeq(0))))) ==> """{"ok":[0]}"""
+      j.encode(Right(Window(Vector(EntrySeq(0)), Vector(AssemblyNote.FellBack("why"))))) ==>
+        """{"ok":{"entries":[0],"notes":[{"fellBack":"why"}]}}"""
       j.encode(
-        Right(Window(Vector(EntryId("a")), Vector(AssemblyNote.Recalled(Vector(TurnSeq(2))))))
+        Right(Window(Vector(EntrySeq(0)), Vector(AssemblyNote.Recalled(Vector(TurnSeq(2))))))
       ) ==>
-        """{"ok":{"entries":["a"],"notes":[{"recalled":[2]}]}}"""
-      assert(j.decode("""{"ok":{"entries":["a"],"notes":[{"lunch":1}]}}""").isLeft)
-      assert(j.decode("""{"ok":{"entries":["a"],"notes":[{"recalled":[-1]}]}}""").isLeft)
+        """{"ok":{"entries":[0],"notes":[{"recalled":[2]}]}}"""
+      assert(j.decode("""{"ok":{"entries":[0],"notes":[{"lunch":1}]}}""").isLeft)
+      assert(j.decode("""{"ok":{"entries":[0],"notes":[{"recalled":[-1]}]}}""").isLeft)
     }
 
     test("a window's nearby sections are recorded after its notes, and read back") {
       val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
       val near: Either[TurnFailure, Window] = Right(
         Window(
-          Vector(EntryId("a")),
+          Vector(EntrySeq(0)),
           Vector.empty,
-          Vector(Nearby.Open(ConversationId("c9"), api, Vector(EntryId("x"))))
+          Vector(Nearby.Open(ConversationId("c9"), api, Vector(EntrySeq(5))))
         )
       )
       val j = summon[Journaled[Either[TurnFailure, Window]]]
       j.encode(near) ==>
-        """{"ok":{"entries":["a"],"notes":[],""" +
-        """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":["x"]}]}}"""
+        """{"ok":{"entries":[0],"notes":[],""" +
+        """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":[5]}]}}"""
       roundTrip(near) ==> Right(near)
     }
 

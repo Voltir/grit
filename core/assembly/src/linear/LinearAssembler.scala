@@ -39,7 +39,7 @@ final class LinearAssembler(
           LinearAssembler.opened(opening.closing.map(_.entry).toVector, estimator, budget)
         val turns = LinearAssembler.turnsBefore(all, opening.first, request.turn.turnSeq)
         val kept = LinearAssembler.tail(turns, speakers, estimator, left)
-        Window(closings.map(_.id) ++ kept.flatten.sortBy(_.seq).map(_.id))
+        Window(closings.map(_.seq) ++ kept.flatten.sortBy(_.seq).map(_.seq))
       }
     }.left
       .map(AssemblyError.Store(_))

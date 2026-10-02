@@ -72,7 +72,7 @@ object TurnViewTests extends TestSuite {
       6,
       2,
       Payload.Window(
-        Vector(EntryId("e0"), EntryId("e1"), EntryId("e2"), EntryId("e3")),
+        Vector(EntrySeq(0), EntrySeq(1), EntrySeq(2), EntrySeq(3)),
         Vector(TurnSeq(0))
       )
     ),
@@ -172,7 +172,7 @@ object TurnViewTests extends TestSuite {
           7,
           3,
           Payload.Window(
-            Vector(EntryId("e0"), EntryId("e1"), EntryId("e4"), EntryId("e5")),
+            Vector(EntrySeq(0), EntrySeq(1), EntrySeq(4), EntrySeq(5)),
             Vector(TurnSeq(0))
           )
         )
@@ -212,7 +212,7 @@ object TurnViewTests extends TestSuite {
       val asked = Vector(
         closed,
         user(1, 1, "what did we decide?"),
-        entry(2, 1, Payload.Window(Vector(EntryId("e0")), Vector.empty)),
+        entry(2, 1, Payload.Window(Vector(EntrySeq(0)), Vector.empty)),
         reply(3, 1, "exiftool", 50)
       )
       val w = TurnView
@@ -255,8 +255,9 @@ object TurnViewTests extends TestSuite {
         )
       val fromApi = Vector(their("a0", api, 3, 0, "flaky?"), their("a1", api, 3, 1, "TZ"))
       val fromWeb = Vector(their("w0", web, 5, 0, "the login page is blank"))
-      // The window lists web before api, so neither id nor place order agrees with it; `gone`
-      // is an id the window named whose entry was not read back.
+      // The window lists web before api, so neither conversation nor place order agrees with
+      // it; web's seq 9 is one the window named whose entry was not read back, and both
+      // conversations have an entry at seq 0.
       val asked = Vector(
         user(0, 0, "which fix?"),
         entry(
@@ -266,8 +267,8 @@ object TurnViewTests extends TestSuite {
             Vector.empty,
             Vector.empty,
             Vector(
-              Nearby.Open(web, webAt, Vector(EntryId("w0"), EntryId("gone"))),
-              Nearby.Open(api, apiAt, Vector(EntryId("a0"), EntryId("a1")))
+              Nearby.Open(web, webAt, Vector(EntrySeq(0), EntrySeq(9))),
+              Nearby.Open(api, apiAt, Vector(EntrySeq(0), EntrySeq(1)))
             )
           )
         ),
@@ -327,7 +328,7 @@ object TurnViewTests extends TestSuite {
           1,
           0,
           Payload
-            .Window(Vector.empty, Vector.empty, Vector(Nearby.Closed(ops, opsAt, EntryId("k"))))
+            .Window(Vector.empty, Vector.empty, Vector(Nearby.Closed(ops, opsAt, EntrySeq(5))))
         ),
         reply(2, 0, "Friday", 50)
       )

@@ -163,7 +163,7 @@ object RecordTurnHistories {
       )(using grit.dbos.sql.TestTx.fake)
       val turn = say(entries, "which fix did I settle on?")
       val place = grit.core.place.Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
-      val section = grit.core.store.Nearby.Open(api, place, Vector(grit.core.id.EntryId("api:u")))
+      val section = grit.core.store.Nearby.Open(api, place, Vector(EntrySeq(0)))
       val near = new grit.core.context.ContextAssembler {
         def assemble(request: grit.core.context.AssemblyRequest)(using
             grit.core.store.Db^
@@ -202,11 +202,11 @@ object RecordTurnHistories {
       val thread = (ts: String) =>
         grit.core.place.Place.read(s"slack:T1/C1/$ts").fold(e => sys.error(e), identity)
       val sections = Vector(
-        grit.core.store.Nearby.Closed(ops, thread("2.0"), grit.core.id.EntryId("ops:closing")),
+        grit.core.store.Nearby.Closed(ops, thread("2.0"), EntrySeq(4)),
         grit.core.store.Nearby.Closed(
           grit.core.id.ConversationId("old"),
           thread("1.0"),
-          grit.core.id.EntryId("old:collected")
+          EntrySeq(0)
         )
       )
       val near = new grit.core.context.ContextAssembler {

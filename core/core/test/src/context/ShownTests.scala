@@ -446,40 +446,41 @@ object ShownTests extends TestSuite {
       "a section: an open one as nearby shows it, a closed one as its record, none once its entries are gone"
     ) {
       val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
-      val hi = entry(Payload.Message(Message.User("hi"))).copy(id = EntryId("hi"))
-      val kept = closed(4)
+      val a = ConversationId("a")
+      val hi =
+        entry(Payload.Message(Message.User("hi"))).copy(conversationId = a, seq = EntrySeq(1))
+      val kept = closed(4).copy(conversationId = a)
       val record = ClosingEntry.of(kept).getOrElse(throw new java.lang.AssertionError("closing"))
-      Shown.section(
-        Nearby.Open(ConversationId("a"), api, Vector(EntryId("hi"))),
-        Vector(hi, kept),
-        Speakers.none
-      ) ==>
+      Shown.section(Nearby.Open(a, api, Vector(EntrySeq(1))), Vector(hi, kept), Speakers.none) ==>
         Shown.nearby(api, Vector(hi))
-      Shown.section(
-        Nearby.Closed(ConversationId("a"), api, EntryId("closing")),
-        Vector(hi, kept),
-        Speakers.none
-      ) ==>
+      Shown.section(Nearby.Closed(a, api, EntrySeq(4)), Vector(hi, kept), Speakers.none) ==>
         Some(Shown.recorded(api, record))
+      Shown.section(Nearby.Closed(a, api, EntrySeq(4)), Vector(hi), Speakers.none) ==> None
+      Shown.section(Nearby.Open(a, api, Vector(EntrySeq(9))), Vector(hi), Speakers.none) ==> None
+    }
+
+    test("a section shows only its own conversation's entries at its seqs") {
+      val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
+      val mine = entry(Payload.Message(Message.User("mine")))
+        .copy(conversationId = ConversationId("a"), seq = EntrySeq(1))
+      val theirs = entry(Payload.Message(Message.User("theirs")))
+        .copy(id = EntryId("theirs"), conversationId = ConversationId("b"), seq = EntrySeq(1))
       Shown.section(
-        Nearby.Closed(ConversationId("a"), api, EntryId("closing")),
-        Vector(hi),
+        Nearby.Open(ConversationId("a"), api, Vector(EntrySeq(1))),
+        Vector(mine, theirs),
         Speakers.none
-      ) ==> None
-      Shown.section(
-        Nearby.Open(ConversationId("a"), api, Vector(EntryId("gone"))),
-        Vector(hi),
-        Speakers.none
-      ) ==> None
+      ) ==> Shown.nearby(api, Vector(mine))
     }
 
     test(
       "a strand section is one user message: its strand label, that grit showed it, from where, then each message under its speaker's name"
     ) {
       val thread = Place.read("slack:T/C1/1.0").fold(e => sys.error(e), identity)
+      val a = ConversationId("a")
       val asked = entry(Payload.Heard("where did we land on the Engine contract term?"))
-        .copy(id = EntryId("asked"))
-      val real = entry(Payload.Heard("Is this a real question")).copy(id = EntryId("real"))
+        .copy(id = EntryId("asked"), conversationId = a, seq = EntrySeq(0))
+      val real = entry(Payload.Heard("Is this a real question"))
+        .copy(id = EntryId("real"), conversationId = a, seq = EntrySeq(2))
       val reply = entry(
         Payload.Message(
           Message.Assistant(
@@ -489,9 +490,9 @@ object ShownTests extends TestSuite {
             "m"
           )
         )
-      ).copy(id = EntryId("reply"))
+      ).copy(id = EntryId("reply"), conversationId = a, seq = EntrySeq(1))
       Shown.section(
-        Nearby.Along(ConversationId("a"), thread, Vector(asked.id, reply.id, real.id)),
+        Nearby.Along(a, thread, Vector(asked.seq, reply.seq, real.seq)),
         Vector(asked, reply, real),
         Speakers(Map(asked.id -> "Nick"))
       ) ==> Some(
@@ -508,8 +509,9 @@ object ShownTests extends TestSuite {
       "an asked section is one user message: why grit shows it, from where, then each message under its speaker's name"
     ) {
       val thread = Place.read("slack:T/C2/3.0").fold(e => sys.error(e), identity)
+      val a = ConversationId("a")
       val ask = entry(Payload.Message(Message.User("post the open issues in #skynet")))
-        .copy(id = EntryId("ask"))
+        .copy(id = EntryId("ask"), conversationId = a, seq = EntrySeq(0))
       val done = entry(
         Payload.Message(
           Message.Assistant(
@@ -519,9 +521,9 @@ object ShownTests extends TestSuite {
             "m"
           )
         )
-      ).copy(id = EntryId("done"))
+      ).copy(id = EntryId("done"), conversationId = a, seq = EntrySeq(1))
       Shown.section(
-        Nearby.Asked(ConversationId("a"), thread, Vector(ask.id, done.id)),
+        Nearby.Asked(a, thread, Vector(ask.seq, done.seq)),
         Vector(ask, done),
         Speakers(Map(ask.id -> "Nick"))
       ) ==> Some(

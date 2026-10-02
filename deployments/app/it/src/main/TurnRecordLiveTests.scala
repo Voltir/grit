@@ -38,7 +38,12 @@ object TurnRecordLiveTests extends TestSuite {
 
         val window = engine.db.read(engine.entries.get(Turn.windowId(turn))).toOption.flatten
         window.map(_.payload) ==>
-          Some(Payload.Window(Vector(sayId(engine, first), first.replyId), Vector.empty))
+          Some(
+            Payload.Window(
+              Vector(seqOf(engine, sayId(engine, first)), seqOf(engine, first.replyId)),
+              Vector.empty
+            )
+          )
         // Where each message went, written to Postgres and read back as topic events. The
         // counts are a smoke check that they arrive; which events they are is grit.turn's to pin.
         val placed = Vector(first, turn).flatMap { t =>
@@ -145,6 +150,13 @@ object TurnRecordLiveTests extends TestSuite {
   }
 
   /** The id of the user message that started `turn`. */
+  private def seqOf(engine: Engine^, id: grit.core.id.EntryId): grit.core.id.EntrySeq =
+    engine.db
+      .read(engine.entries.get(id))
+      .toOption
+      .flatten
+      .fold(sys.error(s"no entry ${grit.core.id.EntryId.value(id)}"))(_.seq)
+
   private def sayId(engine: Engine^, turn: grit.core.id.TurnRef): grit.core.id.EntryId =
     engine.db
       .read(engine.entries.list(turn.conversationId))

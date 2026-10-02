@@ -221,7 +221,7 @@ object StitchLiveTests extends TestSuite {
           case Payload.Window(_, _, nearby) => nearby.collect { case a: Nearby.Along => a }
           case _ => Vector.empty
         }
-        assert(along.exists(a => a.conversation == engineRoot && a.entries.contains(asked.id)))
+        assert(along.exists(a => a.conversation == engineRoot && a.entries.contains(asked.seq)))
       } finally engine.close()
     }
   }

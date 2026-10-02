@@ -3,7 +3,7 @@ package grit.app.chat
 import java.time.Duration
 
 import grit.core.context.Shown
-import grit.core.id.{EntryId, TurnRef, TurnSeq}
+import grit.core.id.{EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Message, Tokens}
 import grit.core.model.{ModelRef, TurnProfile}
 import grit.core.place.Place
@@ -159,14 +159,14 @@ object TurnView {
       nearby: Vector[Entry] = Vector.empty
   ): TurnView = {
     val own = entries.filter(_.turnSeq == turn.turnSeq)
-    val byId: Map[EntryId, Entry] = entries.map(e => e.id -> e).toMap
+    val bySeq: Map[EntrySeq, Entry] = entries.map(e => e.seq -> e).toMap
     val window =
       own.collectFirst { case Entry(_, _, _, _, _, w: Payload.Window, _) => w }.map { w =>
-        val seen = w.entries.flatMap(byId.get)
+        val seen = w.entries.flatMap(bySeq.get)
         val (closings, turns) = seen.partition(isClosed)
         val (recalled, recent) = turns.partition(e => w.recalled.contains(e.turnSeq))
-        val theirs = nearby.map(e => e.id -> e).toMap
-        val sections = w.nearby.map(n => n -> n.names.flatMap(theirs.get))
+        val theirs = nearby.map(e => (e.conversationId, e.seq) -> e).toMap
+        val sections = w.nearby.map(n => n -> n.names.flatMap(s => theirs.get((n.conversation, s))))
         Window(
           prompt.fold(Tokens.Zero)(p => estimator.system(p.render)),
           tokens(closings, speakers, estimator),

@@ -21,7 +21,7 @@ import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usa
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, Ground, LifecycleSettings}
 import grit.core.place.{Directory, Locality, Namespace, Place, Prefix, Scope, Weight}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
-import grit.core.store.{Entry, Origin, Payload}
+import grit.core.store.{Entry, Nearby, Origin, Payload}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.models.{ModelRole, OpenRouterConfig, OpenRouterProvider}
@@ -360,9 +360,13 @@ object Eval {
         )
       )
       .fold(e => sys.error(s"eval: $e"), identity)
-    def assemble(assembler: ContextAssembler^): Either[String, Window] =
-      assembler.assemble(request)(using engine.db).left.map(e => s"${strategy.label}: $e")
-    val window: Either[String, Window] = strategy match {
+    def assemble(assembler: ContextAssembler^): Either[String, Score] =
+      assembler
+        .assemble(request)(using engine.db)
+        .left
+        .map(e => s"${strategy.label}: $e")
+        .flatMap(w => held(engine, loaded, w).map(score(loaded, _, w.notes)))
+    strategy match {
       case Strategy.Linear(budget) =>
         assemble(
           new LinearAssembler(
@@ -378,9 +382,8 @@ object Eval {
           assemble(retrieval(engine, new Handwritten(q), budget))
         }
       case Strategy.Retrieval(budget, true, _) => assemble(retrieval(engine, live, budget))
-      case Strategy.Oracle => Right(Window(loaded.must))
+      case Strategy.Oracle => Right(score(loaded, loaded.must))
     }
-    window.map(w => score(loaded, w))
   }
 
   private def retrieval(
@@ -403,21 +406,42 @@ object Eval {
       grit.core.stitch.Tuning.Default
     )
 
-  /** `window` scored against `loaded`'s labels: its own entries and its nearby sections'
-    * alike count as held; its size is each held message's estimate.
+  /** The ids of the entries `window` names, read from `engine`'s store: its own, in
+    * `loaded`'s conversation, then its nearby sections'. One gone is left out.
     */
-  def score(loaded: Loaded, window: Window): Score = {
-    val all = window.entries ++ window.nearby.flatMap(_.names)
-    val held = all.toSet
+  private def held(
+      engine: Engine^,
+      loaded: Loaded,
+      window: Window
+  ): Either[String, Vector[EntryId]] =
+    engine.db
+      .read(
+        for {
+          own <- engine.entries.at(loaded.turn.conversationId, window.entries)
+          near <- Nearby.read(window.nearby, engine.entries)
+        } yield (own ++ near).map(_.id)
+      )
+      .left
+      .map(e => s"eval: $e")
+
+  /** A window holding the entries `shown`, scored against `loaded`'s labels, with the notes
+    * its assembler wrote: its size is each held message's estimate.
+    */
+  def score(
+      loaded: Loaded,
+      shown: Vector[EntryId],
+      notes: Vector[AssemblyNote] = Vector.empty
+  ): Score = {
+    val held = shown.toSet
     Score(
       loaded.must.count(held),
       loaded.must.size,
-      all
+      shown
         .flatMap(loaded.messages.get)
         .map(CharEstimate.message)
         .foldLeft(Tokens.Zero)(_ + _),
       loaded.must.filterNot(held),
-      window.notes,
+      notes,
       loaded.never.count(held)
     )
   }

@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.{ConversationId, EntryId, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, ClosingJson, Probability}
 import grit.core.place.Place
@@ -22,11 +22,10 @@ object PayloadJson {
     case Payload.Window(entries, recalled, nearby) =>
       val o = ujson.Obj(
         "kind" -> "window",
-        "entries" -> ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e)))),
+        "entries" -> writeSeqs(entries),
         "recalled" -> ujson.Arr.from(recalled.map(t => ujson.Num(TurnSeq.value(t).toDouble)))
       )
-      // Written only when there are sections, so a window without any keeps the form
-      // every earlier build wrote.
+      // Written only when there are sections.
       if (nearby.nonEmpty) o("nearby") = ujson.Arr.from(nearby.map(writeNearby))
       o
     case Payload.Topic(events) =>
@@ -100,10 +99,7 @@ object PayloadJson {
         case "query" => str(o, "text").map(Payload.Query(_))
         case "window" =>
           for {
-            entries <- arr(o, "entries").flatMap(traverse(_) {
-              case ujson.Str(id) => Right(EntryId(id))
-              case _ => Left("an entry id is not a string")
-            })
+            entries <- field(o, "entries").flatMap(readSeqs)
             recalled <- arr(o, "recalled").flatMap(traverse(_) {
               case ujson.Num(n) if n.isWhole && n >= 0 => Right(TurnSeq(n.toLong))
               case _ => Left("a recalled turn is not a non-negative whole number")
@@ -278,7 +274,8 @@ object PayloadJson {
     } yield Usage(Tokens(input), Tokens(output), Tokens(cached), cost)
 
   /** A nearby section's stored form: its conversation, its place as written, and an open
-    * one's `entries`, a strand's `entries` marked `"strand": true`, or a closed one's `closing`.
+    * one's `entries`, a strand's `entries` marked `"strand": true`, an asked one's `entries`
+    * marked `"asked": true`, or a closed one's `closing`; each entry as its seq.
     */
   def writeNearby(n: Nearby): ujson.Value =
     n match {
@@ -286,26 +283,26 @@ object PayloadJson {
         ujson.Obj(
           "conversation" -> ConversationId.value(c),
           "place" -> place.written,
-          "entries" -> ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e))))
+          "entries" -> writeSeqs(entries)
         )
       case Nearby.Closed(c, place, closing) =>
         ujson.Obj(
           "conversation" -> ConversationId.value(c),
           "place" -> place.written,
-          "closing" -> EntryId.value(closing)
+          "closing" -> ujson.Num(EntrySeq.value(closing).toDouble)
         )
       case Nearby.Along(c, place, entries) =>
         ujson.Obj(
           "conversation" -> ConversationId.value(c),
           "place" -> place.written,
-          "entries" -> ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e)))),
+          "entries" -> writeSeqs(entries),
           "strand" -> true
         )
       case Nearby.Asked(c, place, entries) =>
         ujson.Obj(
           "conversation" -> ConversationId.value(c),
           "place" -> place.written,
-          "entries" -> ujson.Arr.from(entries.map(e => ujson.Str(EntryId.value(e)))),
+          "entries" -> writeSeqs(entries),
           "asked" -> true
         )
     }
@@ -319,15 +316,12 @@ object PayloadJson {
       place <- Place.read(written)
       section <-
         if (o.value.contains("closing"))
-          str(o, "closing").map(k => Nearby.Closed(ConversationId(c), place, EntryId(k)))
+          field(o, "closing").flatMap(seq).map(k => Nearby.Closed(ConversationId(c), place, k))
         else
-          arr(o, "entries")
-            .flatMap(traverse(_) {
-              case ujson.Str(id) => Right(EntryId(id))
-              case _ => Left("an entry id is not a string")
-            })
+          field(o, "entries")
+            .flatMap(readSeqs)
             .map(ids =>
-              // A section stored before strands existed has no mark: an open one.
+              // An open section has no mark.
               if (o.value.get("strand").contains(ujson.True))
                 Nearby.Along(ConversationId(c), place, ids)
               else if (o.value.get("asked").contains(ujson.True))
@@ -335,6 +329,22 @@ object PayloadJson {
               else Nearby.Open(ConversationId(c), place, ids)
             )
     } yield section
+
+  /** Entry seqs' stored form: an array of numbers, in the order given. */
+  def writeSeqs(entries: Vector[EntrySeq]): ujson.Value =
+    ujson.Arr.from(entries.map(e => ujson.Num(EntrySeq.value(e).toDouble)))
+
+  /** The entry seqs `v` stores ([[writeSeqs]]' form), or why none. */
+  def readSeqs(v: ujson.Value): Either[String, Vector[EntrySeq]] =
+    v match {
+      case ujson.Arr(items) => traverse(items.toVector)(seq)
+      case _ => Left("entry seqs are not an array")
+    }
+
+  private def seq(v: ujson.Value): Either[String, EntrySeq] = v match {
+    case ujson.Num(n) if n.isWhole && n >= 0 => Right(EntrySeq(n.toLong))
+    case _ => Left("an entry seq is not a non-negative whole number")
+  }
 
   private def obj(v: ujson.Value): Either[String, ujson.Obj] = v match {
     case o: ujson.Obj => Right(o)

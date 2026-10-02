@@ -31,8 +31,9 @@ object LinearAssemblerTests extends TestSuite {
   private def store(turns: Vector[Message]*): World =
     AssemblyFixtures.store(turns.map(_.map(Payload.Message(_)))*)
 
-  private def window(world: World, turn: Long, budget: Long): Vector[String] =
-    new LinearAssembler(
+  /** The ids of the entries of the window for `turn`, in its order. */
+  private def window(world: World, turn: Long, budget: Long): Vector[String] = {
+    val seqs = new LinearAssembler(
       world.entries,
       world.periods,
       world.principals,
@@ -40,7 +41,14 @@ object LinearAssemblerTests extends TestSuite {
       Tokens(budget)
     )
       .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn))))(using new FakeDb)
-      .fold(e => sys.error(s"assembly failed: $e"), _.entries.map(EntryId.value))
+      .fold(e => sys.error(s"assembly failed: $e"), _.entries)
+    val bySeq = world.entries
+      .list(c1)(using TestTx.fake)
+      .getOrElse(sys.error("in-memory store"))
+      .map(e => e.seq -> EntryId.value(e.id))
+      .toMap
+    seqs.flatMap(bySeq.get)
+  }
 
   /** What one gap line costs ([[Shown.Gap]]): 29 characters, 8 + 4 = 12 tokens. */
   private val Gap = Tokens.value(CharEstimate.message(Shown.Gap))

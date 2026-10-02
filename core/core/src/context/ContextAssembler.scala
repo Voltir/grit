@@ -1,6 +1,6 @@
 package grit.core.context
 
-import grit.core.id.{EntryId, TurnRef, TurnSeq}
+import grit.core.id.{EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{Tokens, Usage}
 import grit.core.store.{Db, Nearby, StoreError}
 
@@ -16,13 +16,14 @@ trait ContextAssembler {
 /** What an assembler is asked to build a window for. */
 final case class AssemblyRequest(turn: TurnRef)
 
-/** What the model sees before the turn's own messages: each of `nearby`'s sections, then
-  * `entries` of its own conversation in order; and notes on how they were chosen. A nearby
-  * entry gone by the time the model is called (its period closed and was purged) is left
-  * out, and a section left with no message is dropped; an own entry gone fails the turn.
+/** What the model sees before the turn's own messages: each of `nearby`'s sections, then the
+  * entries of its own conversation at `entries`, in that order; and notes on how they were
+  * chosen. A nearby entry gone by the time the model is called (its period closed and was
+  * purged) is left out, and a section left with no message is dropped; an own entry gone
+  * fails the turn.
   */
 final case class Window(
-    entries: Vector[EntryId],
+    entries: Vector[EntrySeq],
     notes: Vector[AssemblyNote] = Vector.empty,
     nearby: Vector[Nearby] = Vector.empty
 )

@@ -72,6 +72,14 @@ object TurnTests extends TestSuite {
       .patch(7, Vector("DBOS.patch-record-window"), 0)
       .patch(9, Vector("DBOS.patch-tools"), 0)
 
+  /** The seq of `entries`' entry `id`, which the test wrote. */
+  private def seqOf(entries: InMemoryEntryStore, id: EntryId): EntrySeq =
+    entries
+      .get(id)(using TestTx.fake)
+      .toOption
+      .flatten
+      .fold(sys.error(s"no entry ${EntryId.value(id)}"))(_.seq)
+
   /** How many of [[Recorded]] come before `assemble`. */
   private val Placing = 6
 
@@ -456,16 +464,17 @@ object TurnTests extends TestSuite {
         Nearby.Open(
           api,
           at("fs:/home/nick/api"),
-          Vector(EntryId("api:u"), EntryId("api:gone"), EntryId("api:r"))
+          // api's entries at 0 and 1; none at 7.
+          Vector(EntrySeq(0), EntrySeq(7), EntrySeq(1))
         ),
-        Nearby.Open(ConversationId("docs"), at("fs:/home/nick/docs"), Vector(EntryId("docs:gone"))),
-        Nearby.Open(web, at("fs:/home/nick/web"), Vector(EntryId("web:u"))),
-        Nearby.Closed(ops, at("slack:T1/C1/2.0"), EntryId("ops:closing")),
-        Nearby.Closed(ConversationId("old"), at("slack:T1/C1/1.0"), EntryId("old:collected"))
+        Nearby.Open(ConversationId("docs"), at("fs:/home/nick/docs"), Vector(EntrySeq(0))),
+        Nearby.Open(web, at("fs:/home/nick/web"), Vector(EntrySeq(0))),
+        Nearby.Closed(ops, at("slack:T1/C1/2.0"), EntrySeq(5)),
+        Nearby.Closed(ConversationId("old"), at("slack:T1/C1/1.0"), EntrySeq(0))
       )
       val opening = new ContextAssembler {
         def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
-          Right(Window(Vector(closed), Vector.empty, nearby))
+          Right(Window(Vector(EntrySeq(1)), Vector.empty, nearby))
       }
       new InMemoryDurable().run(turn.workflowId)(
         turnBodyWith(entries, provider, opening, new InMemoryUsageLedger)
@@ -492,7 +501,7 @@ object TurnTests extends TestSuite {
         )
       )
       windows(entries).lastOption.map(_._2) ==> Some(
-        Payload.Window(Vector(closed), Vector.empty, nearby)
+        Payload.Window(Vector(EntrySeq(1)), Vector.empty, nearby)
       )
     }
 
@@ -625,7 +634,7 @@ object TurnTests extends TestSuite {
       val turn = say(entries, "four")
       val recalled = new ContextAssembler {
         def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
-          Right(Window(Vector(EntryId("in:one"), EntryId("in:three"))))
+          Right(Window(Vector(EntrySeq(0), EntrySeq(2))))
       }
       new InMemoryDurable().run(turn.workflowId)(
         turnBodyWith(entries, provider, recalled, new InMemoryUsageLedger)
@@ -654,8 +663,27 @@ object TurnTests extends TestSuite {
       windows(entries) ==> Vector(
         Turn.windowId(one) -> Payload.Window(Vector.empty, Vector.empty),
         Turn.windowId(two) ->
-          Payload.Window(Vector(EntryId("in:one"), one.replyId), Vector(one.turnSeq))
+          Payload.Window(
+            Vector(seqOf(entries, EntryId("in:one")), seqOf(entries, one.replyId)),
+            Vector(one.turnSeq)
+          )
       )
+    }
+
+    test("the turn journals its window as the seqs of its own entries") {
+      // The `assemble` step's stored form: a seq read in the window's own conversation,
+      // where an id spelt that conversation out again in every entry it named.
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val provider = new RecordingProvider
+      val one = say(entries, "one")
+      runTurn(durable, entries, provider, one)
+      val two = say(entries, "two")
+      runTurn(durable, entries, provider, two)
+      def number(id: EntryId): ujson.Value = ujson.Num(EntrySeq.value(seqOf(entries, id)).toDouble)
+      val window = ujson.Obj("ok" -> ujson.Arr(number(EntryId("in:one")), number(one.replyId)))
+      durable.history(two.workflowId).find(_.name == "assemble") ==>
+        Some(InMemoryDurable.Step("assemble", InMemoryDurable.Outcome.Output(window.render())))
     }
 
     test("a failed model call ends the turn with no reply") {

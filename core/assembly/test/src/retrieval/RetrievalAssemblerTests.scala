@@ -244,9 +244,31 @@ object RetrievalAssemblerTests extends TestSuite {
       .getOrElse(sys.error("in-memory store"))
   }
 
-  private def ids(w: Window): Vector[String] = w.entries.map(EntryId.value)
+  /** The ids of the entries `world`'s conversation `c` has at `seqs`, in their order. */
+  private def idsAt(world: World, c: ConversationId, seqs: Vector[EntrySeq]): Vector[String] = {
+    val bySeq = world.entries
+      .list(c)(using TestTx.fake)
+      .getOrElse(sys.error("in-memory store"))
+      .map(e => e.seq -> EntryId.value(e.id))
+      .toMap
+    seqs.flatMap(bySeq.get)
+  }
 
-  private def turnsOf(w: Window): Vector[String] = ids(w).map(_.takeWhile(_ != ':')).distinct
+  /** The ids of the entries of `world`'s own conversation `w` names. */
+  private def ids(world: World, w: Window): Vector[String] = idsAt(world, c1, w.entries)
+
+  private def turnsOf(world: World, w: Window): Vector[String] =
+    ids(world, w).map(_.takeWhile(_ != ':')).distinct
+
+  /** The seqs of the entries `ids`, which `world` holds. */
+  private def seqs(world: World, ids: String*): Vector[EntrySeq] =
+    ids.toVector.map(id =>
+      world.entries
+        .get(EntryId(id))(using TestTx.fake)
+        .toOption
+        .flatten
+        .fold(sys.error(s"no entry $id"))(_.seq)
+    )
 
   private def linear(world: World, budget: Long): Window =
     new LinearAssembler(
@@ -372,7 +394,7 @@ object RetrievalAssemblerTests extends TestSuite {
       search.nearAsked.map(_.query) ==> Vector("invoice test flaky fix")
       w.entries ==> Vector()
       w.nearby ==> Vector(
-        Nearby.Open(api, placeOf("api"), Vector(EntryId("api:t0:0"), EntryId("api:t0:1")))
+        Nearby.Open(api, placeOf("api"), seqs(world, "api:t0:0", "api:t0:1"))
       )
     }
 
@@ -389,7 +411,7 @@ object RetrievalAssemblerTests extends TestSuite {
       val w = assemble(world, writer, budget = 1000, search, at = 0)
       writer.requests.size ==> 1
       search.closedAsked ==> Vector(List(ops))
-      w.nearby ==> Vector(Nearby.Closed(ops, placeOf("ops"), EntryId(newest)))
+      w.nearby ==> Vector(Nearby.Closed(ops, placeOf("ops"), seqs(world, newest)(0)))
     }
 
     test("one section per conversation: its open turns win over its closing") {
@@ -414,7 +436,7 @@ object RetrievalAssemblerTests extends TestSuite {
       search.closed = Vector((api, firstClosing(api), 3.0))
       search.near = Vector((api, open, 1.0))
       assemble(world, new Writer(Some("flaky")), budget = 1000, search, at = 0).nearby ==>
-        Vector(Nearby.Open(api, placeOf("api"), Vector(EntryId(open))))
+        Vector(Nearby.Open(api, placeOf("api"), seqs(world, open)))
     }
 
     test("a record that does not fit is passed over for the next") {
@@ -438,7 +460,7 @@ object RetrievalAssemblerTests extends TestSuite {
         search,
         at = 0
       ).nearby ==>
-        Vector(Nearby.Closed(small, placeOf("small"), EntryId(firstClosing(small))))
+        Vector(Nearby.Closed(small, placeOf("small"), seqs(world, firstClosing(small))(0)))
     }
 
     test(
@@ -483,7 +505,7 @@ object RetrievalAssemblerTests extends TestSuite {
         "lol" -> 30
       )
       val stitches = follow(world, a)
-      val strand = Vector(EntryId("1.0:0"), EntryId("1.0:1"), EntryId("1.0:2"))
+      val strand = seqs(world, "1.0:0", "1.0:1", "1.0:2")
       def shown(tokens: Long) = assemble(
         world,
         new Writer(Some("unused")),
@@ -513,7 +535,11 @@ object RetrievalAssemblerTests extends TestSuite {
         stitches = Some(stitches)
       )
       w.nearby ==> Vector(
-        Nearby.Closed(a, thread("1.0").place, PeriodRef(a, PeriodSeq.First).closingId)
+        Nearby.Closed(
+          a,
+          thread("1.0").place,
+          seqs(world, EntryId.value(PeriodRef(a, PeriodSeq.First).closingId))(0)
+        )
       )
     }
 
@@ -555,9 +581,9 @@ object RetrievalAssemblerTests extends TestSuite {
         posted = Some(askedFor())
       )
       w.nearby ==> Vector(
-        Nearby.Asked(asker, askedIn.place, Vector(EntryId("asker:t0:0"), EntryId("asker:t0:1")))
+        Nearby.Asked(asker, askedIn.place, seqs(world, "asker:t0:0", "asker:t0:1"))
       )
-      ids(w) ==> Vector("t0:0")
+      ids(world, w) ==> Vector("t0:0")
       assemble(
         world,
         new Writer(Some("unused")),
@@ -602,7 +628,7 @@ object RetrievalAssemblerTests extends TestSuite {
         others = Vector(askerAt(askedIn)),
         posted = Some(askedFor())
       )
-      (w.nearby, ids(w)) ==> (Vector.empty, Vector(closingOf(1)))
+      (w.nearby, ids(world, w)) ==> (Vector.empty, Vector(closingOf(1)))
     }
 
     test("an asked section keeps its first messages that fit the strand's allowance") {
@@ -625,7 +651,7 @@ object RetrievalAssemblerTests extends TestSuite {
         tuning = Tuning.Default.copy(windowTokens = oneLine),
         others = Vector(askerAt(askedIn)),
         posted = Some(askedFor())
-      ).nearby ==> Vector(Nearby.Asked(asker, askedIn.place, Vector(EntryId("asker:t0:0"))))
+      ).nearby ==> Vector(Nearby.Asked(asker, askedIn.place, seqs(world, "asker:t0:0")))
     }
 
     test("a strand member is shown in the strand alone, never also as a section from afar") {
@@ -648,8 +674,8 @@ object RetrievalAssemblerTests extends TestSuite {
       (search.nearAsked.flatMap(_.conversations), w.nearby) ==> (
         Vector(api),
         Vector(
-          Nearby.Open(api, thread("api").place, Vector(EntryId("api:t0:0"), EntryId("api:t0:1"))),
-          Nearby.Along(a, thread("1.0").place, Vector(EntryId("1.0:0")))
+          Nearby.Open(api, thread("api").place, seqs(world, "api:t0:0", "api:t0:1")),
+          Nearby.Along(a, thread("1.0").place, seqs(world, "1.0:0"))
         )
       )
     }
@@ -685,24 +711,25 @@ object RetrievalAssemblerTests extends TestSuite {
     test("the weight decides between an own turn and one elsewhere that both match") {
       // Budget for the tail (turns 4 and 5, 22 tokens, and the gap line before them, 12) and
       // one more turn: turn 0 (22, and its gap line, 12) or api's section (38), not both.
-      def pick(weight: Double): Window = {
+      def pick(weight: Double): (World, Window) = {
         val world = store(buried*)
         val api = elsewhere(world, "api", close = false, exchange("Which database?", "grit_agent."))
         val search = new Scripted("t0:1")
         search.scores = Vector(1.0)
         search.near = Vector((api, "api:t0:1", 1.5))
-        assemble(
+        val w = assemble(
           world,
           new Writer(Some("database")),
           budget = 72,
           search,
           locality = Locality(Scope.Everywhere, Weight.of(weight).getOrElse(sys.error("w")))
         )
+        (world, w)
       }
-      val weighted = pick(2)
-      (turnsOf(weighted), weighted.nearby.size) ==> (Vector("t0", "t4", "t5"), 0)
-      val even = pick(1)
-      (turnsOf(even), even.nearby.map(_.names.map(EntryId.value))) ==>
+      val (one, weighted) = pick(2)
+      (turnsOf(one, weighted), weighted.nearby.size) ==> (Vector("t0", "t4", "t5"), 0)
+      val (other, even) = pick(1)
+      (turnsOf(other, even), even.nearby.map(n => idsAt(other, n.conversation, n.names))) ==>
         (Vector("t4", "t5"), Vector(Vector("api:t0:0", "api:t0:1")))
     }
 
@@ -723,7 +750,7 @@ object RetrievalAssemblerTests extends TestSuite {
       val search = new Scripted("t2:5", "t0:1")
       // The tail (22), turns 2 (11) and 0 (22), and a gap line before each of the three (36).
       val w = assemble(entries, writer, budget = 91, search, at = 10)
-      turnsOf(w) ==> Vector("t0", "t2", "t8", "t9")
+      turnsOf(entries, w) ==> Vector("t0", "t2", "t8", "t9")
       writer.requests ==> Vector(
         ModelRequest(
           QueryWriter.System,
@@ -753,8 +780,8 @@ object RetrievalAssemblerTests extends TestSuite {
       // The record (28), the tail (22) and turn 2 (11), each turn with a gap line (24); less
       // than the record and every turn of the period (94).
       val got = assemble(w, new Writer(Some("probes database")), budget = 88, search, at = 7)
-      ids(got).headOption ==> Some(closingOf(1))
-      turnsOf(got).drop(1) ==> Vector("t2", "t5", "t6")
+      ids(w, got).headOption ==> Some(closingOf(1))
+      turnsOf(w, got).drop(1) ==> Vector("t2", "t5", "t6")
       search.asked.map(a => (a.from, a.before)) ==> Vector((TurnSeq(1), TurnSeq(5)))
     }
 
@@ -762,9 +789,9 @@ object RetrievalAssemblerTests extends TestSuite {
       val summarised = exchange("hmm", "ok") :+ Payload.Summary("probes use grit_agent")
       val turns = Vector(summarised) ++ (1 to 5).map(filler) :+ ask
       // t0:2 is the summary.
-      val w =
-        assemble(store(turns*), new Writer(Some("grit_agent")), budget = 60, new Scripted("t0:2"))
-      ids(w) ==> Vector("t0:0", "t0:1", "t4:9", "t4:10", "t5:11", "t5:12")
+      val world = store(turns*)
+      val w = assemble(world, new Writer(Some("grit_agent")), budget = 60, new Scripted("t0:2"))
+      ids(world, w) ==> Vector("t0:0", "t0:1", "t4:9", "t4:10", "t5:11", "t5:12")
     }
 
     test("each recalled turn is charged a gap line, and the tail one for the turns it leaves out") {
@@ -773,10 +800,10 @@ object RetrievalAssemblerTests extends TestSuite {
       val gap = Tokens.value(CharEstimate.message(Shown.Gap))
       gap ==> 12L
       val turns = (0 to 5).map(filler).toVector :+ ask
-      def at(budget: Long): Vector[String] =
-        turnsOf(
-          assemble(store(turns*), new Writer(Some("q000")), budget, new Scripted("t0:1"))
-        )
+      def at(budget: Long): Vector[String] = {
+        val world = store(turns*)
+        turnsOf(world, assemble(world, new Writer(Some("q000")), budget, new Scripted("t0:1")))
+      }
       at(57) ==> Vector("t0", "t4", "t5")
       at(56) ==> Vector("t4", "t5")
     }
@@ -787,7 +814,7 @@ object RetrievalAssemblerTests extends TestSuite {
       def at(budget: Long): Vector[String] = {
         val world = store(turns*)
         grit.assembly.linear.AssemblyFixtures.named(world, "t0:0", "Ana")
-        turnsOf(assemble(world, new Writer(Some("q000")), budget, new Scripted("t0:1")))
+        turnsOf(world, assemble(world, new Writer(Some("q000")), budget, new Scripted("t0:1")))
       }
       at(59) ==> Vector("t4", "t5")
       at(60) ==> Vector("t0", "t4", "t5")
@@ -799,8 +826,9 @@ object RetrievalAssemblerTests extends TestSuite {
       val turns = Vector(big, small) ++ (2 to 5).map(filler) :+ ask
       // The big turn ranks first and cannot fit in the 38 tokens the tail leaves.
       val search = new Scripted("t0:1", "t1:3")
-      val w = assemble(store(turns*), new Writer(Some("probes grit_agent")), budget = 60, search)
-      turnsOf(w) ==> Vector("t1", "t4", "t5")
+      val world = store(turns*)
+      val w = assemble(world, new Writer(Some("probes grit_agent")), budget = 60, search)
+      turnsOf(world, w) ==> Vector("t1", "t4", "t5")
     }
 
     test("a blank query, or a failed writer, falls back to the linear window and says why") {

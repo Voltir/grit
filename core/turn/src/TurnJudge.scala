@@ -127,9 +127,9 @@ object TurnJudge {
         case p => p.said.map(t => s"${speakers.of(e.id).getOrElse("Someone")}: $t")
       }
     }
-    val byId = all.map(e => e.id -> e).toMap
+    val bySeq = all.map(e => e.seq -> e).toMap
     val records = window.entries
-      .flatMap(byId.get)
+      .flatMap(bySeq.get)
       .filter(e =>
         e.payload match {
           case Payload.Closed(_, _, _) => true

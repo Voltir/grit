@@ -50,12 +50,12 @@ object SessionViewTests extends TestSuite {
     reply(2, 0),
     entry(3, 0, Payload.Summary("asked about runes")),
     user(4, 1),
-    entry(5, 1, Payload.Window(Vector(EntryId("e0")), Vector.empty)),
+    entry(5, 1, Payload.Window(Vector(EntrySeq(0)), Vector.empty)),
     reply(6, 1),
     entry(7, 1, Payload.Summary("asked again")),
     user(8, 2),
     entry(9, 2, Payload.Query("runes")),
-    entry(10, 2, Payload.Window(Vector(EntryId("e0"), EntryId("e2")), Vector(TurnSeq(0))))
+    entry(10, 2, Payload.Window(Vector(EntrySeq(0), EntrySeq(2)), Vector(TurnSeq(0))))
   )
 
   private val costs: Vector[UsageLedger.Row] = Vector(

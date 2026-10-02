@@ -1,0 +1,24 @@
+{
+  "workflow": "close",
+  "id": "close:c1:2:1:1790071320000",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"due\":\"lapsed\",\"first\":1,\"known\":{\"open\":[],\"standing\":[{\"text\":\"staging first\",\"since\":1,\"touched\":1,\"ground\":\"claimed\"}],\"topics\":[{\"text\":\"Deploy Target\",\"since\":1,\"touched\":1,\"summary\":\"where to deploy\"}]},\"cap\":4096,\"v\":3}}"
+    },
+    {
+      "name": "gate",
+      "output": "{\"outcome\":true,\"open\":false,\"standing\":true,\"settled\":true}"
+    },
+    {
+      "name": "summarise",
+      "output": "{\"closing\":{\"v\":3,\"flows\":{\"prose\":\"We chose staging.\",\"outcome\":\"staging\",\"changes\":[]},\"balance\":{\"open\":[],\"standing\":[{\"text\":\"staging first\",\"since\":1,\"touched\":2,\"ground\":\"claimed\"}],\"topics\":[{\"text\":\"Deploy Target\",\"since\":1,\"touched\":2,\"summary\":\"where to deploy\"}]}},\"cost\":{\"model\":\"summariser\",\"usage\":{\"input\":100,\"output\":20,\"cachedInput\":0,\"costUsd\":\"0.0002\"},\"estimate\":109}}"
+    },
+    {
+      "name": "seal",
+      "output": "{\"ok\":{\"closed\":\"closing:c1:2\"}}"
+    }
+  ]
+}

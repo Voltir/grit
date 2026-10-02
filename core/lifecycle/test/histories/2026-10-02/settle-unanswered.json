@@ -1,0 +1,20 @@
+{
+  "workflow": "settle",
+  "id": "settle:c1:1:0:1789898400000",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"asking\":0}}"
+    },
+    {
+      "name": "ask",
+      "output": "{\"unanswered\":\"unavailable: no classifier\"}"
+    },
+    {
+      "name": "record",
+      "output": "{\"ok\":true}"
+    }
+  ]
+}

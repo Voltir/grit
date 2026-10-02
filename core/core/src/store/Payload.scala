@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.{EntryId, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.Message
 import grit.core.period.{CloseReason, Closing}
 import grit.core.topic.TopicEvent
@@ -38,13 +38,13 @@ enum Payload {
   case Query(text: String)
 
   /** The window the reply of the turn the entry belongs to was written from
-    * ([[grit.core.context.Window]]): the entries of its own conversation the model saw
-    * before the turn's own, in the order it saw them, which earlier turns among them search
+    * ([[grit.core.context.Window]]): the seqs of the entries of its own conversation the
+    * model saw before the turn's own, in the order it saw them, which earlier turns among them search
     * `recalled` rather than recency, and the `nearby` sections from other conversations. A
     * record of what the model saw: never shown to the model, never searched.
     */
   case Window(
-      entries: Vector[EntryId],
+      entries: Vector[EntrySeq],
       recalled: Vector[TurnSeq],
       nearby: Vector[Nearby] = Vector.empty
   )

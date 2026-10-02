@@ -5,7 +5,7 @@ import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
 import grit.core.id.{EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens}
-import grit.core.model.{CatalogJson, TurnProfile}
+import grit.core.model.TurnProfileId
 import grit.core.place.Place
 import grit.core.prompt.FragmentId
 import grit.core.speech.{Outcome, SpeechJson}
@@ -19,14 +19,14 @@ import grit.core.topic.{TopicId, TopicJson}
   */
 private[turn] object TurnJournal {
 
-  /** A window with no notes and no nearby sections is the bare array of its ids, as every
-    * build has written it; one with either is `{"entries": [...], "notes": [...]}`, with
+  /** A window with no notes and no nearby sections is the bare array of its entries' seqs
+    * ([[PayloadJson.writeSeqs]]); one with either is `{"entries": [...], "notes": [...]}`, with
     * `"nearby": [...]` too when it has sections ([[PayloadJson.writeNearby]]).
     */
   given window: Journaled[Either[TurnFailure, Window]] =
     outcome(
       w => {
-        val ids = ujson.Arr.from(w.entries.map(id => ujson.Str(EntryId.value(id))))
+        val ids = PayloadJson.writeSeqs(w.entries)
         if (w.notes.isEmpty && w.nearby.isEmpty) ids
         else {
           val o = ujson.Obj("entries" -> ids, "notes" -> ujson.Arr.from(w.notes.map(writeNote)))
@@ -36,10 +36,13 @@ private[turn] object TurnJournal {
       },
       v =>
         v match {
-          case ujson.Arr(_) => readIds(v).map(Window(_))
+          case ujson.Arr(_) => PayloadJson.readSeqs(v).map(Window(_))
           case o: ujson.Obj =>
             for {
-              ids <- o.value.get("entries").toRight("window: missing entries").flatMap(readIds)
+              ids <- o.value
+                .get("entries")
+                .toRight("window: missing entries")
+                .flatMap(PayloadJson.readSeqs)
               raw <- o.value.get("notes").flatMap(_.arrOpt).toRight("window: missing notes")
               notes <- raw.toVector
                 .foldLeft[Either[String, Vector[AssemblyNote]]](Right(Vector.empty)) { (acc, n) =>
@@ -57,15 +60,6 @@ private[turn] object TurnJournal {
           case _ => Left("window: expected an array or an object")
         }
     )
-
-  private def readIds(v: ujson.Value): Either[String, Vector[EntryId]] =
-    v.arrOpt match {
-      case Some(ids) =>
-        val strs = ids.flatMap(_.strOpt).toVector
-        if (strs.size == ids.size) Right(strs.map(EntryId(_)))
-        else Left("window: expected an array of strings")
-      case None => Left("window: expected an array")
-    }
 
   private def writeNote(n: AssemblyNote): ujson.Value = n match {
     case AssemblyNote.Queried(query, model, usage, estimate) =>
@@ -214,9 +208,12 @@ private[turn] object TurnJournal {
         }
     )
 
-  /** A turn's pinned profile, in its stored form ([[CatalogJson.writeTurn]]). */
-  given profile: Journaled[Either[TurnFailure, TurnProfile]] =
-    outcome(CatalogJson.writeTurn, CatalogJson.readTurn)
+  /** A turn's pinned profile, by its id: the profile is kept in the profile store. */
+  given profile: Journaled[Either[TurnFailure, TurnProfileId]] =
+    outcome(
+      id => ujson.Str(TurnProfileId.value(id)),
+      v => v.strOpt.map(TurnProfileId(_)).toRight("profile id: expected a string")
+    )
 
   /** An `offer` step's output: `{"workspace": place written | null, "tools": set id,
     * "prompt": [fragment ids]}`, `"root": "heard"` for a turn rooted on a heard message, and
