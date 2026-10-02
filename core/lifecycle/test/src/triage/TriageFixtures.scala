@@ -106,11 +106,8 @@ object TriageFixtures {
       body(using TestTx.fake)
   }
 
-  /** A search that finds nothing but what a test gives its room, best first. */
-  final class RoomSearch extends EntrySearch {
-    @caps.unsafe.untrackedCaptures
-    var inRoom = Vector.empty[EntrySearch.Hit]
-
+  /** A search that finds nothing. */
+  final class NoSearch extends EntrySearch {
     def search(
         conversation: ConversationId,
         from: grit.core.id.TurnSeq,
@@ -133,7 +130,7 @@ object TriageFixtures {
         until: Instant,
         query: String,
         limit: Int
-    )(using Tx^): Either[StoreError, Vector[EntrySearch.Hit]] = Right(inRoom.take(limit))
+    )(using Tx^): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
   }
 
   /** A channel's stores: conversation c1, a Slack thread, and any others [[World.thread]]
@@ -154,7 +151,7 @@ object TriageFixtures {
     val ledger = new InMemoryUsageLedger
     val speech = new InMemorySpeechStore(entries, ledger)
     val stitches = new InMemoryStitchStore(entries, originOf)
-    val search = new RoomSearch
+    val search = new NoSearch
     val lifecycle = new InMemoryLifecycleStore
 
     // The conversation is c1: the first a fresh store creates.
