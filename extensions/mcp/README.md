@@ -42,8 +42,9 @@ The test tree mirrors it. `client`'s and `edge`'s tests run against `FakeMcpServ
 test JVM (`com.sun.net.httpserver`) that checks every request as the spec's server rules say.
 `McpServerContract` is the exchanges a server must answer as the client reads them; the fake
 keeps it in the unit tier (`McpServerFakeTests`), and `LiveProbe`, a main in test sources that
-needs a token and so is no tier, will run it against GitHub's at the live run (its doc says
-how); until then the fake is held to the spec and go-sdk's source, not to a real server.
+needs a token and so is no tier, runs it against GitHub's (its doc says how). It passed whole
+there on 2026-09-30, so the fake is held to a real server as of that run, and between runs to
+the spec and go-sdk's source.
 
 `test/resources/github/tools-list.json` is the `tools/list` result GitHub's hosted read-only
 server (`https://api.githubcopilot.com/mcp/readonly`) answered on 2026-09-30, its icons

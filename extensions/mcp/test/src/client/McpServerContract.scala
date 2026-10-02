@@ -11,8 +11,8 @@ import utest.*
 
 /** The exchanges an MCP server at revision 2026-07-28 must answer as grit's client reads them,
   * run against [[FakeMcpServer]] in the unit tier ([[McpServerFakeTests]]). `LiveProbe` runs it
-  * against GitHub's at the live run, which holds the fake to a real server; until then it is
-  * held only to the spec and to go-sdk's source.
+  * against GitHub's, which holds the fake to a real server as of its last run (the module's
+  * README says when); between runs the fake is held to the spec and to go-sdk's source.
   */
 abstract class McpServerContract extends TestSuite {
 
