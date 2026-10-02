@@ -20,13 +20,21 @@ final class EngineLock private (conn: Connection, val beat: FiniteDuration)
       AutoCloseable {
 
   /** Writes this holder's row: its `identity`, epoch and start, over any row a dead holder
-    * left. Needs the schema; only [[Engine.start]] calls it.
+    * left, and appends the start, running `build`, to `grit.engine_starts`, in one statement.
+    * Needs the schema; only [[Engine.start]] calls it.
     */
-  private[engine] def claim(epoch: String, identity: ProcessIdentity): Either[String, Unit] =
+  private[engine] def claim(
+      epoch: String,
+      identity: ProcessIdentity,
+      build: Build
+  ): Either[String, Unit] =
     try {
       Using.resource(
         conn.prepareStatement(
-          """INSERT INTO grit.engines (slot, machine, pid, backend_pid, epoch, started_at, heartbeat_at)
+          """WITH started AS (
+            |  INSERT INTO grit.engine_starts (started_at, machine, pid, epoch, commit, dirty)
+            |  VALUES (now(), ?, ?, ?, ?, ?))
+            |INSERT INTO grit.engines (slot, machine, pid, backend_pid, epoch, started_at, heartbeat_at)
             |VALUES (true, ?, ?, pg_backend_pid(), ?, now(), now())
             |ON CONFLICT (slot) DO UPDATE SET machine = EXCLUDED.machine, pid = EXCLUDED.pid,
             |  backend_pid = EXCLUDED.backend_pid, epoch = EXCLUDED.epoch,
@@ -36,6 +44,17 @@ final class EngineLock private (conn: Connection, val beat: FiniteDuration)
         ps.setString(1, identity.machine)
         ps.setLong(2, identity.pid)
         ps.setString(3, epoch)
+        build match {
+          case Build.Known(commit, dirty) =>
+            ps.setString(4, commit)
+            ps.setBoolean(5, dirty)
+          case Build.Unknown =>
+            ps.setNull(4, java.sql.Types.VARCHAR)
+            ps.setNull(5, java.sql.Types.BOOLEAN)
+        }
+        ps.setString(6, identity.machine)
+        ps.setLong(7, identity.pid)
+        ps.setString(8, epoch)
         ps.executeUpdate()
       }
       Right(())

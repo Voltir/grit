@@ -400,7 +400,9 @@ object Engine {
     }
 
   /** The engine of the database `config` names, which `lock` is held on: its schema and
-    * DBOS's applied (DBOS's migrations run here, under `lock`), `lock`'s row written, naming this process as `identity` says, and its heartbeat begun,
+    * DBOS's applied (DBOS's migrations run here, under `lock`), `lock`'s row written, naming this process as `identity` says,
+    * and this start, with [[Build.current]], appended to `grit.engine_starts` in the same
+    * statement, and its heartbeat begun,
     * recovering and dequeuing only workflows of
     * compatibility epoch `epoch` (ADR 0004). Losing the lock (its connection dropped, or its
     * row gone or taken) stops the engine as [[Engine.close]] does, and an edge's calls on it
@@ -420,7 +422,7 @@ object Engine {
       // Before anything builds a DBOSClient, which refuses a database DBOS has not migrated.
       MigrationManager.runMigrations(dbosConfig)
       lock
-        .claim(epoch, identity)
+        .claim(epoch, identity, Build.current)
         .left
         .foreach(why => sys.error(s"the engine's row could not be written: $why"))
       val engine = build(config, dbosConfig, lock, epoch, identity, budget)

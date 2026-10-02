@@ -73,6 +73,23 @@ CREATE TABLE IF NOT EXISTS grit.engines (
     heartbeat_at TIMESTAMPTZ NOT NULL
 );
 
+-- Every engine start on this database (grit.dbos.engine.Build.Started): which process, under
+-- which epoch, running which grit build. Written with grit.engines' row, in one statement, so
+-- a start that did not take the lock leaves none. grit.engines says who holds the lock now;
+-- this is the history. `commit` and `dirty` are NULL together when the build is not known
+-- (Build.Unknown).
+-- Retention: kept: one small row per start.
+CREATE TABLE IF NOT EXISTS grit.engine_starts (
+    id         UUID PRIMARY KEY DEFAULT uuidv7(),
+    started_at TIMESTAMPTZ NOT NULL,
+    machine    TEXT NOT NULL,
+    pid        BIGINT NOT NULL,
+    epoch      TEXT NOT NULL,
+    commit     TEXT,
+    dirty      BOOLEAN,
+    CHECK ((commit IS NULL) = (dirty IS NULL))
+);
+
 -- Who actions are done for (grit.core.id.PrincipalId): `local`, the one person every edge
 -- acts for until principals are registered, `grit`, the engine itself, and each person an
 -- edge enrolled (Principals.enroll: a Slack user as `slack:{team}/{user}`), with the name a

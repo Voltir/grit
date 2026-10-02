@@ -167,6 +167,40 @@ object grit extends Module {
       mvn"org.postgresql:postgresql:42.7.13"
     )
 
+    /* Which commit this checkout is at, and whether its tree differs from it: `Build`'s facts,
+     * which each engine start records. An input, so every build reads git afresh; what depends
+     * on it reruns only when a fact changes. Outside a git checkout, `commit=unknown`. */
+    def gitFacts = Task.Input {
+      def git(args: String*): Option[String] =
+        scala.util
+          .Try(os.proc("git" +: args).call(cwd = mill.api.BuildCtx.workspaceRoot, stderr = os.Pipe))
+          .toOption
+          .filter(_.exitCode == 0)
+          .map(_.out.trim())
+      git("rev-parse", "HEAD") match {
+        case Some(commit) => s"commit=$commit\ndirty=${git("status", "--porcelain").exists(_.nonEmpty)}\n"
+        case None => "commit=unknown\n"
+      }
+    }
+
+    /* `grit/build.properties`, which `grit.dbos.engine.Build` reads. Only the published jar, the
+     * app's run and grit.dbos.it see it, not every module's test classpath: a commit or a dirty
+     * flag that changes would otherwise rerun every suite downstream of grit.dbos. */
+    def buildInfo = Task {
+      os.write(Task.dest / "grit" / "build.properties", gitFacts(), createFolders = true)
+      PathRef(Task.dest)
+    }
+
+    def jar = Task {
+      val jar = Task.dest / "out.jar"
+      mill.util.Jvm.createJar(
+        jar,
+        (localClasspath() :+ buildInfo()).map(_.path).filter(os.exists),
+        manifest()
+      )
+      PathRef(jar)
+    }
+
     /* What needs no Postgres: configuration and codecs. */
     object test extends GritTests
 
@@ -177,6 +211,8 @@ object grit extends Module {
       def mvnDeps = Task {
         super.mvnDeps() ++ Seq(mvn"org.testcontainers:testcontainers-postgresql:2.0.5")
       }
+      /* EngineStartsTests reads the build an engine records (buildInfo). */
+      def runClasspath = Task { super.runClasspath() :+ grit.dbos.buildInfo() }
       /* CrashFidelityTests halts a child JVM, on this classpath, inside a step. */
       def forkEnv = Task {
         super.forkEnv() ++ Map(
@@ -448,6 +484,9 @@ object grit extends Module {
       )
     def forkArgs = Task { tui.forkArgs() }
     def mainClass = Some("grit.app.main.Main")
+    /* So an engine this run starts records the build it runs (grit.dbos.buildInfo). Its tests
+     * build their own classpaths and do not see it. */
+    def runClasspath = Task { super.runClasspath() :+ grit.dbos.buildInfo() }
 
     object test extends GritTests
 
@@ -458,7 +497,7 @@ object grit extends Module {
       def mvnDeps = Task { super.mvnDeps() ++ Seq(mvn"com.lihaoyi::os-lib:0.11.8") }
       def forkEnv = Task {
         super.forkEnv() ++ Map(
-          "GRIT_TEST_CLASSPATH" -> runClasspath().map(_.path.toString).mkString(":"),
+          "GRIT_TEST_CLASSPATH" -> it.this.runClasspath().map(_.path.toString).mkString(":"),
           "GRIT_TEST_JAVA" -> javaHome().map(_.path / "bin" / "java").fold("java")(_.toString)
         )
       }
