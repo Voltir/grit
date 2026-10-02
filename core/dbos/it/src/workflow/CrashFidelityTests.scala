@@ -23,8 +23,15 @@ import utest.*
   */
 object CrashFidelityTests extends TestSuite {
 
-  /** What a crashed workflow left in DBOS's tables, without ids or timestamps. */
-  final case class Remains(status: Vector[String], steps: Vector[String], streams: Vector[String])
+  /** What a crashed workflow left in DBOS's tables, without ids or timestamps: its status
+    * row, its payloads (DBOS 1.2 keeps them apart from the status), its steps and its stream.
+    */
+  final case class Remains(
+      status: Vector[String],
+      payloads: Vector[String],
+      steps: Vector[String],
+      streams: Vector[String]
+  )
 
   def left(config: DbConfig, id: WorkflowId): Remains =
     Using.resource(DriverManager.getConnection(config.jdbcUrl, config.user, config.password)) {
@@ -42,8 +49,16 @@ object CrashFidelityTests extends TestSuite {
         Remains(
           rows(
             """SELECT status, recovery_attempts, executor_id, application_version, name,
-              |class_name, output, error FROM dbos.workflow_status WHERE workflow_uuid = ?""".stripMargin,
-            8
+              |class_name FROM dbos.workflow_status WHERE workflow_uuid = ?""".stripMargin,
+            6
+          ),
+          rows(
+            """SELECT kind, a, b FROM (
+              |  SELECT 'input' AS kind, workflow_uuid, inputs AS a, NULL AS b FROM dbos.workflow_input
+              |  UNION ALL
+              |  SELECT 'output', workflow_uuid, output, error FROM dbos.workflow_output
+              |) p WHERE workflow_uuid = ? ORDER BY kind""".stripMargin,
+            3
           ),
           rows(
             """SELECT function_id, function_name, output, error FROM dbos.operation_outputs
