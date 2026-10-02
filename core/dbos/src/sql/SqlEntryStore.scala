@@ -35,6 +35,19 @@ final class SqlEntryStore extends EntryStore {
         ps.setObject(7, entry.createdAt.atOffset(ZoneOffset.UTC))
         ps.executeUpdate()
       }
+      // Past this entry, so its positions are not taken again once it is purged.
+      Using.resource(
+        conn.prepareStatement(
+          """UPDATE grit.conversations
+            |   SET next_turn = greatest(next_turn, ? + 1), next_seq = greatest(next_seq, ? + 1)
+            | WHERE id = ?::uuid""".stripMargin
+        )
+      ) { ps =>
+        ps.setLong(1, TurnSeq.value(entry.turnSeq))
+        ps.setLong(2, entry.seq)
+        ps.setString(3, ConversationId.value(entry.conversationId))
+        ps.executeUpdate()
+      }
       conn.releaseSavepoint(savepoint)
       Right(())
     } catch {
@@ -85,21 +98,15 @@ final class SqlEntryStore extends EntryStore {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     attempt {
       Using.resource(
-        conn.prepareStatement("SELECT 1 FROM grit.conversations WHERE id = ?::uuid FOR UPDATE")
-      ) { ps =>
-        ps.setString(1, ConversationId.value(conversation))
-        Using.resource(ps.executeQuery())(_ => ())
-      }
-      Using.resource(
         conn.prepareStatement(
-          """SELECT coalesce(max(turn_seq) + 1, 0) AS turn, coalesce(max(seq) + 1, 0) AS seq
-            |FROM grit.entries WHERE conversation_id = ?::uuid""".stripMargin
+          "SELECT next_turn, next_seq FROM grit.conversations WHERE id = ?::uuid FOR UPDATE"
         )
       ) { ps =>
         ps.setString(1, ConversationId.value(conversation))
         Using.resource(ps.executeQuery()) { rs =>
-          rs.next()
-          EntryStore.Next(TurnSeq(rs.getLong("turn")), rs.getLong("seq"))
+          // A conversation not (or no longer) recorded has nothing in it to come after.
+          if (rs.next()) EntryStore.Next(TurnSeq(rs.getLong("next_turn")), rs.getLong("next_seq"))
+          else EntryStore.Next(TurnSeq.First, 0L)
         }
       }
     }

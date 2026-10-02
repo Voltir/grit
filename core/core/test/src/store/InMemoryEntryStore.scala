@@ -11,6 +11,12 @@ final class InMemoryEntryStore extends EntryStore {
   @caps.unsafe.untrackedCaptures
   private var entries = Vector.empty[Entry]
 
+  /** Each conversation's next turn and entry seq, past every entry ever inserted, as
+    * `grit.conversations` keeps them: a purge does not lower them.
+    */
+  @caps.unsafe.untrackedCaptures
+  private var marks = Map.empty[ConversationId, (TurnSeq, Long)]
+
   def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] =
     if (entries.exists(_.id == entry.id)) {
       Left(StoreError.DuplicateId(entry.id))
@@ -20,6 +26,14 @@ final class InMemoryEntryStore extends EntryStore {
       Left(StoreError.DatabaseError(s"seq ${entry.seq} is taken in its conversation"))
     } else {
       entries = entries :+ entry
+      val (turn, seq) = marks.getOrElse(entry.conversationId, (TurnSeq.First, 0L))
+      marks = marks.updated(
+        entry.conversationId,
+        (
+          if (TurnSeq.value(entry.turnSeq) >= TurnSeq.value(turn)) entry.turnSeq.next else turn,
+          math.max(seq, entry.seq + 1)
+        )
+      )
       Right(())
     }
 
@@ -37,12 +51,7 @@ final class InMemoryEntryStore extends EntryStore {
     Right(entries.filter(_.conversationId == conversation).sortBy(_.seq))
 
   def lockNext(conversation: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] = {
-    val mine = entries.filter(_.conversationId == conversation)
-    Right(
-      EntryStore.Next(
-        mine.map(_.turnSeq).maxByOption(TurnSeq.value).fold(TurnSeq.First)(_.next),
-        mine.map(_.seq).maxOption.fold(0L)(_ + 1)
-      )
-    )
+    val (turn, seq) = marks.getOrElse(conversation, (TurnSeq.First, 0L))
+    Right(EntryStore.Next(turn, seq))
   }
 }

@@ -555,6 +555,22 @@ abstract class PeriodContract extends TestSuite {
       transaction(entries.list(c)).map(ids) ==> Right(left)
     }
 
+    test(
+      "a purged entry's position is never taken again: a late entry of a sealed period's last turn, purged, stays behind the next"
+    ) {
+      val c = conversation("purge-late")
+      val t0 = say(c, 0)
+      val p1 = PeriodRef(c, PeriodSeq.First)
+      // Sealed while its last turn is still writing (an approval outlasts the settle window).
+      seal(p1, t0, 30, "sealed early")
+      more(t0, 31)
+      val late = transaction(entries.list(c)).map(_.map(_.seq).maxOption)
+      late ==> Right(Some(2L))
+      transaction(periods.purge(p1, at(100))) ==> Right(())
+      transaction(entries.list(c)).map(ids) ==> Right(Vector(EntryId.value(p1.closingId)))
+      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq(1), 3L))
+    }
+
     test("drop deletes a purged period's row and closing entry, and leaves one not purged") {
       val c = conversation("drop")
       val t0 = say(c, 0)

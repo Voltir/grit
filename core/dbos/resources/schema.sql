@@ -91,14 +91,18 @@ INSERT INTO grit.principals (id, kind) VALUES ('local', 'person'), ('grit', 'gri
 -- One row per origin; `origin` is the Origin ADT as JSON, and jsonb equality
 -- ignores key order, so the unique index is on the value, not its spelling. Its place is
 -- its origin's, set when it is created, and `created_by` the principal of the edge that
--- created it, kept whoever finds it later.
+-- created it, kept whoever finds it later. `next_turn` and `next_seq` are past every turn and
+-- entry ever written in it, purged ones included: each entry's insert raises them, under the
+-- row's lock (EntryStore.lockNext), so no position is taken twice.
 -- Retention: ledger: deleted whole once quiet past the ledger window (Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.conversations (
     id         UUID PRIMARY KEY DEFAULT uuidv7(),
     origin     JSONB NOT NULL UNIQUE,
     place_id   UUID NOT NULL REFERENCES grit.places(id),
     created_by TEXT NOT NULL REFERENCES grit.principals(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    next_turn  BIGINT NOT NULL DEFAULT 0,
+    next_seq   BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_conversations_place ON grit.conversations (place_id);

@@ -19,8 +19,8 @@ trait EntryStore {
   /** Every entry in `conversation`, ascending by `seq`. Empty for an unknown conversation. */
   def list(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]]
 
-  /** Locks `conversation` against other writers until the transaction ends, and returns
-    * the positions after everything already recorded in it. Every writer of a
+  /** Locks `conversation` against other writers until the transaction ends, and returns the
+    * positions after every entry ever recorded in it, purged ones included. Every writer of a
     * conversation's entries takes this lock first, then writes at the positions returned.
     */
   def lockNext(conversation: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next]
