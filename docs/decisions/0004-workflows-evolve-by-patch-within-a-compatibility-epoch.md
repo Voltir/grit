@@ -1,6 +1,6 @@
 # 0004. Workflows evolve by patch within a compatibility epoch
 
-Status: accepted (2026-09-23)
+Status: accepted (2026-09-23); amended (2026-10-02): the engine's epoch is DBOS's latest
 
 Context: DBOS resumes a workflow only on an executor whose application version equals the
 one the workflow was started under, and it replays recorded step outputs by position,
@@ -25,6 +25,10 @@ Decision: grit sets the app version itself to a **compatibility epoch**, a date 
 - The epoch changes only for a break a patch cannot carry. Turns in flight under the old
   epoch are then never resumed by the new engine. What happens to them is policy, not yet
   decided.
+- **The engine holding the lock (ADR 0015) makes its epoch the database's latest version**
+  (amended 2026-10-02, transact 1.2.0). Since DBOS 1.1 a workflow enqueued with no version,
+  as every grit enqueue is, is dequeued only on the latest version. It has no steps yet, so
+  any epoch may run it; recovery still takes only the engine's own epoch's workflows.
 - The gate is a replay test: `TurnReplayTests` runs today's turn body over every history
   in `core/turn/test/histories/{epoch}/` through `InMemoryDurable`, which models DBOS's
   replay and patch semantics, and fails on a renamed, reordered or dropped step, an output

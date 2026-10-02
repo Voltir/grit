@@ -1,6 +1,7 @@
 # 0015. One engine per database, held by a session advisory lock; a process refused it attaches
 
-Status: accepted (2026-09-27)
+Status: accepted (2026-09-27); amended (2026-10-02): the holder is DBOS's latest version,
+and an attach needs DBOS's schema migrated (transact 1.2.0)
 
 Context: every grit process ran DBOS with executor id `local`, and DBOS resumes every
 pending workflow of its own executor id at launch, with the `turns` queue shared through
@@ -19,6 +20,13 @@ Decision:
   applies the schema, writes its row, starts its heartbeat, and only then builds DBOS, so
   recovery always runs under the lock.
 - **The executor id stays `local`**, so a new holder recovers a dead one's turns as its own.
+  (Since transact 1.1, recovery puts them back on their queue, and the holder's own poll
+  runs them; still only under the lock.)
+- **The holder is the database's latest application version** (amended 2026-10-02). DBOS
+  1.1 dequeues a workflow enqueued with no version only on the latest version, and every
+  grit enqueue has none; `Engine.launch` makes its epoch the latest, so the one engine runs
+  them whatever epochs the database has seen. DBOS logs "Current version X is not the
+  latest" when an older epoch starts, before it is promoted.
 - **`grit.engines` describes the holder; the lock is the truth.** One row: machine, pid,
   the lock connection's backend pid, epoch, start, heartbeat. A process refused the lock
   reads it joined to `pg_locks`, so a row a dead engine left is never named as the holder.
@@ -34,7 +42,11 @@ Decision:
 - **Stopping** (on close, or when the lock is lost): the sweeper stops, DBOS shuts down, grit
   waits up to 30 s for the workflow bodies still running, and the lock is released last.
   DBOS's shutdown interrupts its workflow threads and does not wait for them (transact
-  1.0.0, `DBOSExecutor.close`), so grit counts its own bodies (`Running`).
+  1.2.0, `DBOSExecutor.close`), so grit counts its own bodies (`Running`).
+- **An attach needs DBOS's schema migrated** (amended 2026-10-02). Since transact 1.1 a
+  `DBOSClient` checks the schema version when it is built, so `Link.attach` on a database
+  still at DBOS 1.0's schema throws instead of attaching and waiting; the next engine to
+  start migrates it, under the lock, before it builds its own client.
 
 Consequences:
 
@@ -43,8 +55,9 @@ Consequences:
   and the lock, until the server notices). For a model call the window is its whole
   duration: the residual risk is a doubled model call, whose cost the ledger records twice.
 - **In that window DBOS makes the loser of a duplicated step yield** (read from the 1.0.0
-  jar): a plain step recorded twice throws `DBOSWorkflowExecutionConflictException`, which
-  the workflow task rethrows without persisting it as the workflow's result; a transaction
+  jar, again from 1.2.0's source): a plain step recorded twice throws
+  `DBOSWorkflowExecutionConflictException`, which the workflow task does not persist as the
+  workflow's result (1.2 then waits for the recorded outcome); a transaction
   step's loser rolls back its writes and returns the winner's output. A gated tool call runs
   at most once by its attempt marker (ADR 0009). A per-transaction fence (every write
   checking the holder) is not built: the window is bounded, and what it would guard is

@@ -128,7 +128,8 @@ object Link {
   /** A link to the engine another process runs on the database `config` names, as grit of
     * compatibility epoch `epoch` in the process `identity` names: no DBOS executor here,
     * only its client, the stores and the inbox, which takes new messages as `budget` allows.
-    * Throws when the database cannot be reached.
+    * Throws when the database cannot be reached, or when no engine has migrated DBOS's
+    * schema there yet (none, or DBOS 1.0's): the next engine to start migrates it.
     */
   def attach(
       config: DbConfig,

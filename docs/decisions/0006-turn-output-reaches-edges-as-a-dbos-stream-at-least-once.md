@@ -1,12 +1,15 @@
 # 0006. Turn output reaches edges as a DBOS stream, written from the step, at least once
 
-Status: accepted (2026-09-24)
+Status: accepted (2026-09-24); amended (2026-10-02): how DBOS 1.1 notifies a stream
 
 Context: An edge should show a reply as the model writes it. ADR 0002 lets an edge reach a
 turn only through Postgres, so the words have to cross a table. DBOS already provides one
 (transact 1.0.0): `writeStream` appends rows to `dbos.streams`, and a trigger calls
 `pg_notify`; `DBOSClient.readStream` is a blocking iterator woken by that notification, with
-polling behind it, which ends when the workflow does. Three alternatives were turned down:
+polling behind it, which ends when the workflow does. (Amended 2026-10-02: since transact
+1.1 the trigger is dropped, migration 43, and the writing executor sends the notifications
+itself, in batches; a client wakes on them only when built to listen, which grit's are not,
+so a reader polls each second. Rows, order and the end are unchanged.) Three alternatives were turned down:
 
 - a table and `NOTIFY` of grit's own, which would duplicate this;
 - writing from the workflow body, which is exactly once but makes every write a recorded

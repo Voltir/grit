@@ -160,7 +160,7 @@ object grit extends Module {
     def moduleDeps = Seq(core)
 
     def mvnDeps = Seq(
-      /* On an upgrade, run grit.dbos.test: CrashFidelityTests pins the two DBOSExecutor
+      /* On an upgrade, run grit.dbos.it: CrashFidelityTests pins the two DBOSExecutor
        * internals DbosDurableTests' in-process crash relies on. */
       mvn"dev.dbos:transact:1.2.0",
       mvn"org.slf4j:slf4j-simple:2.0.20",
