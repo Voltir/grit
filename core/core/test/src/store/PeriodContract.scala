@@ -572,6 +572,19 @@ abstract class PeriodContract extends TestSuite {
       transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq(1), EntrySeq(3)))
     }
 
+    test(
+      "a dropped period's turns and positions are never taken again, though no entry of theirs is left"
+    ) {
+      val c = conversation("drop-marks")
+      val t0 = say(c, 0)
+      val p1 = PeriodRef(c, PeriodSeq.First)
+      seal(p1, t0, 30, "dropped")
+      transaction(periods.purge(p1, at(100))) ==> Right(())
+      transaction(periods.drop(p1)) ==> Right(true)
+      transaction(entries.list(c)) ==> Right(Vector())
+      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq(1), EntrySeq(2)))
+    }
+
     test("drop deletes a purged period's row and closing entry, and leaves one not purged") {
       val c = conversation("drop")
       val t0 = say(c, 0)
