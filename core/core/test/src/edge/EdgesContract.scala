@@ -186,6 +186,8 @@ abstract class EdgesContract extends TestSuite {
       transaction(requests.settle(r.slot)) ==> Right(RequestState.Claimed)
     }
 
+    // Pins a known gap, not a wanted behaviour (SqlDesk.claim's note): once a claim requires
+    // its edge's lock, this turns into a killed desk's claim refused.
     test("a desk's claim does not ask whether its edge is live: a killed desk's claim wins") {
       val here = place("claim-killed")
       val r = request("claim-killed", 0, here)
