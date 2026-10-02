@@ -206,17 +206,34 @@ object Stitching {
       scope: Scope
   )
 
+  /** A reader's thread of at most `chars`, by part: what it shows of the strand and of the
+    * conversation's own messages, and `cut`, the start of its own messages it leaves out
+    * (`cut` then `own` are all of them). [[text]] is the thread.
+    */
+  final case class Fitted private[stitch] (strand: String, cut: String, own: String) {
+    def text: String =
+      if (strand.isEmpty) own else if (own.isEmpty) strand else s"$strand\n$own"
+
+    /** Where in [[text]] the shown own messages begin, so where `cut` was taken from. */
+    def at: Int = text.length - own.length
+  }
+
+  /** [[thread]] by part ([[Fitted]]). A strand longer than `chars` loses its end, which `cut`
+    * does not hold.
+    */
+  def fit(strand: String, own: String, chars: Int): Fitted =
+    if (strand.isEmpty) Fitted("", own.dropRight(chars), own.takeRight(chars))
+    else {
+      val room = math.max(0, chars - strand.length - 1)
+      if (own.isEmpty || room == 0) Fitted(strand.take(chars), own, "")
+      else Fitted(strand, own.dropRight(room), own.takeRight(room))
+    }
+
   /** A reader's thread of at most `chars`: `strand` (its excerpt, [[excerpt]]) first, then as
     * much of `own` (the conversation's own messages) as fits, cut from its start. `own` alone
     * when there is no strand.
     */
-  def thread(strand: String, own: String, chars: Int): String =
-    if (strand.isEmpty) own.takeRight(chars)
-    else {
-      val room = math.max(0, chars - strand.length - 1)
-      if (own.isEmpty || room == 0) strand.take(chars)
-      else s"$strand\n${own.takeRight(room)}"
-    }
+  def thread(strand: String, own: String, chars: Int): String = fit(strand, own, chars).text
 
   /** The exchanges `first`, a stitchable conversation's first message in `room`, may continue,
     * from `said` (what `room` said within `tuning.horizon` before it,

@@ -26,8 +26,10 @@ object Request {
   def of[S: StateJson, T](state: S, questions: Ask[S, T]): Request =
     new Request(StateJson[S].json(state), questions.questions)
 
-  /** What [[Request.digest]] hashes. */
-  private def json(r: Request): ujson.Value =
+  /** `r` as JSON, `{"state", "questions"}`, the state as the classifier receives it and each
+    * question's kind, words and keys: what [[Request.digest]] hashes, rendered compactly.
+    */
+  def json(r: Request): ujson.Value =
     ujson.Obj("state" -> r.state, "questions" -> ujson.Arr.from(r.questions.map(question)))
 
   private def question(q: Question): ujson.Value = q match {

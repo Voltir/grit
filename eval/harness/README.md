@@ -8,8 +8,9 @@ instrument, not a model.
 It names grit's code alone, but for the kit's `.env` loader (`DotEnv`), through which a run
 reads Jev's key as grit does.
 
-Every file it writes is text-free: ids, digests, numbers, lengths and field names. A corpus's
-text stays in Postgres, in the database the corpus was restored to.
+Every file it writes is text-free (ids, digests, numbers, lengths and field names) but one: the
+review file `scripts/eval inputs` writes under `.local/eval/review/`, for a person to read. A
+corpus's text stays in Postgres, in the database the corpus was restored to.
 
 Packages, each importing only those above it:
 
@@ -30,8 +31,11 @@ Packages, each importing only those above it:
 - **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
   (the model, triage's wording or the tuning), and `Variants`, those a run can name;
   `Inputs`, a case's questions rebuilt through the shipped builders, and `Drift`, how a
-  rebuilt state compares to the corpus's; `Spend`, what a request costs before it is sent,
-  and `Budget`, a run's spend under its cap. ← `corpus`, `log`
+  rebuilt state compares to the corpus's; `Review`, a case's questions as rebuilt, text and
+  all, for a person to read beside it (`scripts/eval inputs` writes them under
+  `.local/eval/review/`, the one file the harness writes text to, and prints only counts);
+  `Spend`, what a request costs before it is sent, and `Budget`, a run's spend under its
+  cap. ← `corpus`, `log`
 - **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
   (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
   kept, within the cap; `Repeats`, how many times each is asked. ← `corpus`, `log`, `jev`

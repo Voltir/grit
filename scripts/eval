@@ -29,6 +29,14 @@
 #       and stitching kept live: the largest gap, and the questions and cases over 1e-9, by
 #       id. <runs file> is a name in .local/eval/runs/.
 #
+#   scripts/eval inputs <yyyymmdd> [--more]
+#       Every case's questions rebuilt through the shipped builders from grit_eval_<date>
+#       and written, text and all, to .local/eval/review/inputs-<date>.jsonl, a line a case:
+#       triage's and stitching's request (the state as the classifier receives it, and the
+#       questions' words) and digest, and stitching's state shown live beside it. With
+#       --more, triage's line also holds what its thread left out, and where. Prints counts,
+#       and how each digest compares to cases.jsonl's: never the file's text.
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.
 set -euo pipefail
@@ -132,8 +140,25 @@ determinism() {
     --log "$main/.local/eval/runs/$log"
 }
 
+inputs() {
+  local corpus=${1:-} more=
+  [[ $corpus =~ ^[0-9]{8}$ ]] || usage
+  shift
+  case ${1:-} in
+    --more) more=--more ;;
+    '') ;;
+    *) usage ;;
+  esac
+  local dir="$main/.local/eval/corpus/$corpus" restored="grit_eval_$corpus"
+  [ -f "$dir/corpus.json" ] || { echo "eval: no corpus in $dir" >&2; exit 1; }
+  exists "$restored" || { echo "eval: $restored is gone; capture the corpus again" >&2; exit 1; }
+  harness inputs --corpus "$dir" --url "jdbc:postgresql://localhost:5432/$restored" \
+    --out "$main/.local/eval/review/inputs-$corpus.jsonl" $more
+}
+
 case $1 in
   capture) shift; capture "$@" ;;
+  inputs) shift; inputs "$@" ;;
   determinism) shift; determinism "$@" ;;
   run) shift; run "$@" ;;
   *) usage ;;

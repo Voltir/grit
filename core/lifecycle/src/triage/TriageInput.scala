@@ -8,19 +8,24 @@ import grit.lifecycle.transcript.PeriodTranscript
 /** How triage's question is built from the store. */
 object TriageInput {
 
-  /** The heard message that is `triage`'s turn, and the [[TriageQuestion.State]] it is asked
-    * about as the store stands now: its text, its author's name ("Someone" when not known),
-    * and its thread, the strand it joins first (read from `tuning.horizon` before its
-    * conversation began, in the scope in force, at most `tuning.strandChars`), then its
-    * conversation's messages before it, within [[TriageQuestion.ThreadChars]]. Why not, when
-    * the thread or strand cannot be read or the turn holds no heard message.
+  /** A heard message's question as [[read]] builds it: the message's entry, the
+    * [[TriageQuestion.State]] it is asked about, and its thread by part (what it shows of the
+    * strand and of its conversation's messages, and the start of those it leaves out), whose
+    * text is the state's thread.
     */
-  def build(
+  final case class Read private[triage] (
+      entry: EntryId,
+      state: TriageQuestion.State,
+      thread: Stitching.Fitted
+  )
+
+  /** [[build]], with the state's thread by part. */
+  def read(
       reads: StitchReads,
       db: Db^,
       triage: TriageRef,
       tuning: Tuning
-  ): Either[String, (EntryId, TriageQuestion.State)] =
+  ): Either[String, Read] =
     // The `ask` step journals these Left strings: their words must not change (ADR 0004).
     for {
       all <- db
@@ -63,17 +68,32 @@ object TriageInput {
         case Payload.Heard(t) => t
         case _ => ""
       }
-      val state = TriageQuestion.State(
-        text,
-        names.of(heard.id).getOrElse("Someone"),
-        Stitching.thread(
-          Stitching.excerpt(strand.opening, strand.said, names, tuning.strandChars),
-          PeriodTranscript.of(before, names),
-          TriageQuestion.ThreadChars
-        )
+      val thread = Stitching.fit(
+        Stitching.excerpt(strand.opening, strand.said, names, tuning.strandChars),
+        PeriodTranscript.of(before, names),
+        TriageQuestion.ThreadChars
       )
-      (heard.id, state)
+      Read(
+        heard.id,
+        TriageQuestion.State(text, names.of(heard.id).getOrElse("Someone"), thread.text),
+        thread
+      )
     }
+
+  /** The heard message that is `triage`'s turn, and the [[TriageQuestion.State]] it is asked
+    * about as the store stands now: its text, its author's name ("Someone" when not known),
+    * and its thread, the strand it joins first (read from `tuning.horizon` before its
+    * conversation began, in the scope in force, at most `tuning.strandChars`), then its
+    * conversation's messages before it, within [[TriageQuestion.ThreadChars]]. Why not, when
+    * the thread or strand cannot be read or the turn holds no heard message.
+    */
+  def build(
+      reads: StitchReads,
+      db: Db^,
+      triage: TriageRef,
+      tuning: Tuning
+  ): Either[String, (EntryId, TriageQuestion.State)] =
+    read(reads, db, triage, tuning).map(r => (r.entry, r.state))
 
   /** `error` in the words triage's journal keeps. */
   private[triage] def describe(error: StoreError): String = error match {

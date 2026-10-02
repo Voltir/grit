@@ -89,6 +89,19 @@ object TriageTests extends TestSuite {
       (other.calls, again.tags(t2)) ==> (0, Some(decision))
     }
 
+    test("a thread too long to show whole keeps what it cut, which joins what it shows") {
+      val w = new World
+      (0 until 40).foreach(i => w.hear(f"message $i%02d " + "x" * 80, "Ben", i.toLong))
+      val t = w.hear("the last", "Ana", 41)
+      val read = TriageInput.read(w.reads, FakeDb, t, Tuning.Default)
+      read.map(r => (r.state.thread.length, r.state.thread == r.thread.text, r.thread.at)) ==>
+        Right((TriageQuestion.ThreadChars, true, 0))
+      read.map(r => (r.thread.cut + r.thread.own).take(17)) ==> Right("Ben: message 00 x")
+      // Forty lines of "Ben: message nn " and 80 x's, a blank line between each two.
+      read.map(r => (r.thread.cut + r.thread.own).length) ==> Right(40 * 96 + 39 * 2)
+      read.map(r => (r.entry, r.state)) ==> TriageInput.build(w.reads, FakeDb, t, Tuning.Default)
+    }
+
     test("the classifier is shown the message, who said it, and the thread before it") {
       val w = new World
       w.hear("when is standup?", "Ben", 0)

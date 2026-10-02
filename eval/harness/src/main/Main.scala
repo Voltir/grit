@@ -23,7 +23,7 @@ import grit.eval.harness.corpus.{
   SeenCheck,
   Stitched
 }
-import grit.eval.harness.jev.{Budget, Drift, Inputs, Rebuilt, Spend, Variant, Variants}
+import grit.eval.harness.jev.{Budget, Drift, Inputs, Rebuilt, Review, Spend, Variant, Variants}
 import grit.eval.harness.log.{Cache, Cached, Footer, Header, LogJson, Outcome, Row, Suite, Weights}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.Spread
@@ -42,9 +42,13 @@ object Main {
       case "run" :: rest =>
         exit(flags(rest.filterNot(_ == "--no-cache")).flatMap(run(_, !rest.contains("--no-cache"))))
       case "determinism" :: rest => exit(flags(rest).flatMap(determinism))
+      case "inputs" :: rest =>
+        exit(flags(rest.filterNot(_ == "--more")).flatMap(inputs(_, rest.contains("--more"))))
       case _ =>
         exit(
-          Left("usage: scripts/eval capture|run|determinism (scripts/eval says what each takes)")
+          Left(
+            "usage: scripts/eval capture|run|determinism|inputs (scripts/eval says what each takes)"
+          )
         )
     }
 
@@ -214,6 +218,57 @@ object Main {
       )
       show("across repeats", Spread.repeats(log.rows))
       show("against live", Spread.live(log.rows, cases))
+    }
+
+  /** `inputs --corpus <dir> --url <jdbc> --out <file>`, and `more` for `--more`: every case's
+    * questions rebuilt through the shipped builders ([[Review]]), written to `<file>`, one line
+    * a case, in the corpus's order, with the database's login from `GRIT_DATABASE_USER` and
+    * `_PASSWORD`. The file holds text and is never printed: this prints counts, and how each
+    * request's digest compares to the corpus's.
+    */
+  private def inputs(f: Map[String, String], more: Boolean): Either[String, Unit] =
+    for {
+      dir <- need(f, "corpus").map(Path.of(_))
+      url <- need(f, "url")
+      out <- need(f, "out").map(Path.of(_))
+      manifest <- read(dir.resolve("corpus.json")).flatMap(t =>
+        Try(ujson.read(t)).toOption
+          .toRight("corpus.json: not JSON")
+          .flatMap(CorpusJson.readManifest)
+      )
+      cases <- readCases(dir)
+      config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      shown <- opened(config)(reader =>
+        Fields.each(cases)(c => Review.of(reader, c, manifest.tuning, more).map(c -> _))
+      )
+      _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
+        s"${out.getParent}: ${e.getClass.getName}"
+      )
+      _ <- write(out, shown.map((_, s) => Review.line(s).render() + "\n").mkString)
+    } yield {
+      def compare(suite: String, pairs: Vector[(Option[Digest], Option[Digest])]): Unit = {
+        val matched = pairs.count((a, b) => a.isDefined && a == b)
+        val differ = pairs.count((a, b) => a.isDefined && b.isDefined && a != b)
+        val unbuilt = pairs.count((a, b) => a.isDefined != b.isDefined)
+        println(
+          s"$suite digests: match $matched, mismatch $differ, built on one side only $unbuilt"
+        )
+      }
+      println(s"written: ${shown.size} lines${if (more) ", with cuts" else ""}")
+      compare(
+        "triage",
+        shown.map((c, s) =>
+          (c.asked.map(_.input.request), s.triage.map(t => Digest.request(t.request)))
+        )
+      )
+      compare(
+        "stitch",
+        shown
+          .filter(_._1.stitch.isDefined)
+          .map((c, s) =>
+            (c.stitch.flatMap(_.input).map(_.request), s.stitch.map(t => Digest.request(t.request)))
+          )
+      )
     }
 
   /** The cases of the corpus in `dir`. */
