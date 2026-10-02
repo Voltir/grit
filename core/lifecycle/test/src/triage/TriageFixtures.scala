@@ -22,7 +22,7 @@ import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.speech.{InMemorySpeechStore, Reach, Speaking}
 import grit.core.spend.Budget
-import grit.core.stitch.{InMemoryStitchStore, Tuning}
+import grit.core.stitch.{InMemoryStitchStore, StitchReads, Tuning}
 import grit.core.store.{
   Db,
   Entry,
@@ -223,6 +223,10 @@ object TriageFixtures {
       periods.purge(p1, at(61))
       ()
     }
+
+    /** Where a triage's stitch and question read this world. */
+    def reads: StitchReads =
+      StitchReads(entries, conversations, lifecycle, stitches, search, principals)
 
     def tags(triage: TriageRef) =
       entries

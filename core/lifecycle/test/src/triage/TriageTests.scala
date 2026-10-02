@@ -6,6 +6,7 @@ import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.period.Probability
 import grit.core.speech.{Decision, Limits, Silence, Speaking}
 import grit.core.spend.DailyCap
+import grit.core.stitch.Tuning
 import grit.core.triage.{Kind, Tags}
 
 import utest.*
@@ -44,6 +45,20 @@ object TriageTests extends TestSuite {
       TriageQuestion.judge(recording(requests), TriageQuestion.Wording.Shipped, fixed)
       requests.sent.map(_.digest) ==> Vector(before)
       TriageQuestion.request(TriageQuestion.Wording.Shipped, fixed) ==> requests.sent.headOption
+    }
+
+    test("the state a triage asks about is the one TriageInput.build makes") {
+      val w = new World
+      w.hear("when is standup?", "Ben", 0)
+      w.say("unrelated", 1)
+      val t = w.hear("standup moves to 10:00", "Ana", 2)
+      val requests = new Requests
+      new InMemoryDurable().run(t.workflowId)(w.body(recording(requests), 5))
+      val built = TriageInput.build(w.reads, FakeDb, t, Tuning.Default)
+      built.map(_._2.author) ==> Right("Ana")
+      requests.sent ==> built.toOption.toVector.flatMap { (_, state) =>
+        TriageQuestion.request(TriageQuestion.Wording.Shipped, state)
+      }
     }
 
     test("a heard message is asked once, in one call, and its tags kept") {
