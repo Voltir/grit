@@ -153,6 +153,40 @@ object CollectorLiveTests extends TestSuite {
       }
     }
 
+  /** Every table DBOS keeps a workflow's rows in, and the column naming the workflow. */
+  private val DbosTables: Vector[(String, String)] = Vector(
+    "workflow_status" -> "workflow_uuid",
+    "workflow_input" -> "workflow_uuid",
+    "workflow_output" -> "workflow_uuid",
+    "operation_outputs" -> "workflow_uuid",
+    "tx_step_outputs" -> "workflow_id",
+    "streams" -> "workflow_uuid",
+    "notifications" -> "destination_uuid",
+    "workflow_events" -> "workflow_uuid",
+    "workflow_events_history" -> "workflow_uuid"
+  )
+
+  /** How many rows each of [[DbosTables]] keeps for `ids`, by table. */
+  private def dbosRows(config: DbConfig, ids: Vector[WorkflowId]): Vector[(String, Int)] =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      DbosTables.map { (table, column) =>
+        Using.resource(
+          conn.prepareStatement(s"SELECT count(*) FROM dbos.$table WHERE $column = ANY(?)")
+        ) { ps =>
+          ps.setArray(
+            1,
+            conn.createArrayOf(
+              "text",
+              // A fresh array the driver only reads; separation checking treats arrays as mutable.
+              caps.unsafe.unsafeAssumePure(ids.map(WorkflowId.value).toArray[AnyRef])
+            )
+          )
+          (table, Using.resource(ps.executeQuery())(rs => { rs.next(); rs.getInt(1) }))
+        }
+      }
+    }
+
   /** How many transaction-step outputs DBOS keeps for `ids`. */
   private def txOutputs(config: DbConfig, ids: Vector[WorkflowId]): Int =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
@@ -442,6 +476,14 @@ object CollectorLiveTests extends TestSuite {
         finally watching.close()
         // The turn's workflow and its one step.
         kept(config, Vector(t0.workflowId)) ==> Vector(1, 1)
+        // Where DBOS 1.2 keeps them: the status, its input and output, the step, twice.
+        dbosRows(config, Vector(t0.workflowId)).filter(_._2 > 0) ==> Vector(
+          "workflow_status" -> 1,
+          "workflow_input" -> 1,
+          "workflow_output" -> 1,
+          "operation_outputs" -> 1,
+          "tx_step_outputs" -> 1
+        )
         kept(config, workflows).map(_ > 0) ==> Vector(true, true)
 
         // As if a sweep deleted the close's workflow and died before the rest: the next one
@@ -455,6 +497,8 @@ object CollectorLiveTests extends TestSuite {
         engine.sweep(later).map(_.collected) ==> Right(Vector(Target.Raw(p1)))
         // Usage goes with the closing, not the raw entries.
         ledgered(config, Vector("u0"), Vector(t0.workflowId)) ==> (1, 1, 1)
+        // Nothing of either workflow is left in any of DBOS's tables.
+        dbosRows(config, workflows).filter(_._2 > 0) ==> Vector()
         kept(config, Vector(t0.workflowId)) ==> Vector(0, 0)
         kept(config, workflows) ==> Vector(0, 0)
         LiveDb
