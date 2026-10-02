@@ -47,7 +47,7 @@ object LinearAssemblerTests extends TestSuite {
       .getOrElse(sys.error("in-memory store"))
       .map(e => e.seq -> EntryId.value(e.id))
       .toMap
-    seqs.flatMap(bySeq.get)
+    seqs.map(s => bySeq.getOrElse(s, s"<no entry at ${EntrySeq.value(s)}>"))
   }
 
   /** What one gap line costs ([[Shown.Gap]]): 29 characters, 8 + 4 = 12 tokens. */

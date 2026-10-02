@@ -251,7 +251,7 @@ object RetrievalAssemblerTests extends TestSuite {
       .getOrElse(sys.error("in-memory store"))
       .map(e => e.seq -> EntryId.value(e.id))
       .toMap
-    seqs.flatMap(bySeq.get)
+    seqs.map(s => bySeq.getOrElse(s, s"<no entry at ${EntrySeq.value(s)}>"))
   }
 
   /** The ids of the entries of `world`'s own conversation `w` names. */
