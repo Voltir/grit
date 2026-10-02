@@ -22,6 +22,10 @@ object JevJson {
       "questions" -> ujson.Obj.from(questions.zipWithIndex.map((q, i) => id(i) -> question(q)))
     )
 
+  /** [[request]] as the text [[JevClassifier]] sends, byte for byte. */
+  def body(model: String, state: ujson.Value, questions: Vector[Question]): String =
+    ujson.write(request(model, state, questions))
+
   private def id(i: Int): String = s"q${i + 1}"
 
   private def question(q: Question): ujson.Value = q match {

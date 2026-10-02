@@ -15,18 +15,16 @@ import grit.eval.harness.corpus.Fields
   */
 final case class Cached[A](answer: A, usage: Usage, reported: String, latency: FiniteDuration)
 
-/** Answers kept as files under `dir`, one per key, at `<dir>/<the key's first two hex
-  * digits>/<key>.json`. Reads and writes the file system.
+/** Answers kept as files under a directory, one per key, at `<dir>/<the key's first two hex
+  * digits>/<key>.json`; or, made [[Cache.off]], none. Reads and writes the file system.
   */
-final class Cache[A] private (dir: Path, codec: Codec[A]) extends caps.SharedCapability {
+final class Cache[A] private (dir: Option[Path], codec: Codec[A]) extends caps.SharedCapability {
 
   /** The answer kept under `key`; `None` when none is. `Left` when one is kept but cannot be
     * read, naming the key and why (never the file's contents).
     */
-  def get(key: CacheKey): Either[String, Option[Cached[A]]] = {
-    val file = path(key)
-    if (!Files.isRegularFile(file)) Right(None)
-    else
+  def get(key: CacheKey): Either[String, Option[Cached[A]]] =
+    path(key).filter(Files.isRegularFile(_)).fold(Right(None)) { file =>
       Try(ujson.read(Files.readString(file, StandardCharsets.UTF_8))).toOption
         .toRight("not JSON")
         .flatMap { v =>
@@ -40,13 +38,12 @@ final class Cache[A] private (dir: Path, codec: Codec[A]) extends caps.SharedCap
         }
         .left
         .map(why => s"cache ${key.hex}: $why")
-  }
+    }
 
   /** Keeps `c` under `key`, replacing what was kept; written whole, so a reader never sees part
     * of it. `Left` naming the key when it cannot be written.
     */
-  def put(key: CacheKey, c: Cached[A]): Either[String, Unit] = {
-    val file = path(key)
+  def put(key: CacheKey, c: Cached[A]): Either[String, Unit] = path(key).fold(Right(())) { file =>
     val text = ujson
       .Obj(
         "answer" -> codec.write(c.answer),
@@ -64,9 +61,13 @@ final class Cache[A] private (dir: Path, codec: Codec[A]) extends caps.SharedCap
     } catch { case NonFatal(e) => Left(s"cache ${key.hex} not written: ${e.getClass.getName}") }
   }
 
-  private def path(key: CacheKey): Path = dir.resolve(key.hex.take(2)).resolve(s"${key.hex}.json")
+  private def path(key: CacheKey): Option[Path] =
+    dir.map(_.resolve(key.hex.take(2)).resolve(s"${key.hex}.json"))
 }
 
 object Cache {
-  def at[A](dir: Path)(using codec: Codec[A]): Cache[A] = new Cache(dir, codec)
+  def at[A](dir: Path)(using codec: Codec[A]): Cache[A] = new Cache(Some(dir), codec)
+
+  /** A cache that holds nothing and keeps nothing: every call is asked. */
+  def off[A](using codec: Codec[A]): Cache[A] = new Cache(None, codec)
 }

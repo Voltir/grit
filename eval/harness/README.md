@@ -5,6 +5,9 @@ through a variant of a shipped call, and scored. It measures; it gates nothing. 
 through `scripts/eval`, never from a test or `scripts/check`, and its tests test the
 instrument, not a model.
 
+It names grit's code alone, but for the kit's `.env` loader (`DotEnv`), through which a run
+reads Jev's key as grit does.
+
 Every file it writes is text-free: ids, digests, numbers, lengths and field names. A corpus's
 text stays in Postgres, in the database the corpus was restored to.
 
@@ -24,8 +27,14 @@ Packages, each importing only those above it:
   `Weights`, a classifier's answer by position, never by key; `LogJson`, their JSON lines;
   `CacheKey` and `Cache`, answers kept as files under their request's key, so an unchanged
   request is never paid for twice. ← `corpus`
-- **`jev`** — the first suite, Jev's: `Spend`, what a request costs before it is sent, and
-  `Budget`, a run's spend under its cap. ← `corpus`, `log`
-- **`main`** — `Main`, the command line `scripts/eval` runs. ← `corpus`
+- **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
+  (the model, triage's wording or the tuning), and `Variants`, those a run can name;
+  `Inputs`, a case's questions rebuilt through the shipped builders, and `Drift`, how a
+  rebuilt state compares to the corpus's; `Spend`, what a request costs before it is sent,
+  and `Budget`, a run's spend under its cap. ← `corpus`, `log`
+- **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
+  (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
+  kept, within the cap. ← `corpus`, `log`, `jev`
+- **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
 
 No source file sits at the module's root.

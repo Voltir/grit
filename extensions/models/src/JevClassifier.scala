@@ -25,9 +25,7 @@ final class JevClassifier(config: JevConfig) extends Classifier {
           .header("Authorization", s"Bearer ${config.apiKey}")
           .header("Content-Type", "application/json")
           .POST(
-            HttpRequest.BodyPublishers.ofString(
-              ujson.write(JevJson.request(config.model, state, questions))
-            )
+            HttpRequest.BodyPublishers.ofString(JevJson.body(config.model, state, questions))
           )
           .build(),
         HttpResponse.BodyHandlers.ofString()

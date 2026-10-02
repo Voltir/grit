@@ -24,8 +24,8 @@ final case class Log[A](header: Header, rows: Vector[Row[A]], footer: Option[Foo
   */
 object LogJson {
 
-  /** A classifier's answers, by position ([[Weights]]). */
-  given weights: Codec[Vector[Weights]] = new Codec[Vector[Weights]] {
+  /** A classifier's answers, by position ([[Weights]]); the given for them. */
+  val weights: Codec[Vector[Weights]] = new Codec[Vector[Weights]] {
     def write(a: Vector[Weights]): ujson.Value = ujson.Arr.from(a.map {
       case Weights.Choice(chosen, probabilities, confidence) =>
         ujson.Obj(

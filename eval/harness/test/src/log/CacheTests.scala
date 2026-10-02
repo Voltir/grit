@@ -15,8 +15,6 @@ import utest.*
   */
 object CacheTests extends TestSuite {
 
-  import LogJson.given
-
   private val questions: Vector[Question] = Ask.yesNo[Unit]("is it", None, None).questions
 
   /** Jev's wire body for `state` on `model`, as JevClassifier sends it. */

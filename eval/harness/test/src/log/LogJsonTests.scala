@@ -15,8 +15,6 @@ import utest.*
 /** A run's log read back as written. Every id and digest here is synthetic. */
 object LogJsonTests extends TestSuite {
 
-  import LogJson.given
-
   private def id(s: String): CaseId = CaseId.read(s).fold(sys.error, identity)
   private val key = CacheKey.read("ab" * 32).fold(sys.error, identity)
   private val usage = Usage(Tokens(1021), Tokens(3), Tokens.Zero, Some(BigDecimal("0.000042882")))

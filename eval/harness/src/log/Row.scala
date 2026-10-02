@@ -70,6 +70,8 @@ enum Weights {
 
 object Weights {
 
+  given Codec[Vector[Weights]] = LogJson.weights
+
   /** `a`, an answer to `q`, by position; `None` when it is not of `q`'s kind, or names a key
     * `q` does not have.
     */

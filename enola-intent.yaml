@@ -86,6 +86,8 @@ components:
   - {name: kit-code,       kind: module, match: ["kit/src", "kit/src/**"]}
   - {name: mcp-code,       kind: module, match: ["extensions/mcp/src", "extensions/mcp/src/**"]}
   - {name: harness-code,   kind: module, match: ["eval/harness/src", "eval/harness/src/**"]}
+  # The kit's .env loader alone, for the harness's rule: it reads the key as grit.app does.
+  - {name: kit-environment, kind: module, match: ["kit/src/environment", "kit/src/environment/**"]}
   # grit.mcp less its github package, for the rule that keeps the protocol, client, scope
   # and edge generic: GitHub's names are a package a deployment uses, never one they import.
   - name: mcp-generic
@@ -496,7 +498,8 @@ rules:
   # terminal UI and no deployment, since an edge reaches it as a ServedEdge value. Mill's
   # moduleDeps already keep each of these off the classpath; the rules are the record of the
   # intent, and the guard if a moduleDeps entry is ever added. grit.eval, an it-only
-  # harness, is unruled; grit.eval.harness names core and the models extension alone.
+  # harness, is unruled; grit.eval.harness names core, the models extension, and the kit's
+  # .env loader alone.
   # -------------------------------------------------------------------------------------
   - id: core-names-no-extension
     allow: core-modules
@@ -563,7 +566,7 @@ rules:
 
   - id: harness-names-core-and-models
     allow: harness-code
-    only: [core-modules, models-code, harness-code]
+    only: [core-modules, models-code, kit-environment, harness-code]
     via: imports
     mode: strict
-    because: "the eval harness measures what grit ships through its own code paths (eval/harness/README.md); naming the kit, an edge or a deployment would measure one deployment's wiring instead"
+    because: "the eval harness measures what grit ships through its own code paths (eval/harness/README.md); naming the kit's wiring, an edge or a deployment would measure one deployment's wiring instead; the kit's .env loader is how a run reads its key, as grit.app does"

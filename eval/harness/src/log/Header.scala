@@ -46,3 +46,24 @@ final case class Footer(
     failed: Int,
     skipped: Int
 )
+
+object Footer {
+
+  /** The footer of a run that made `rows` and spent `spent`. */
+  def of[A](spent: BigDecimal, rows: Vector[Row[A]]): Footer = {
+    def count(f: Outcome[A] => Boolean) = rows.count(r => f(r.outcome))
+    Footer(
+      spent,
+      count {
+        case Outcome.Answered(_) => true
+        case _ => false
+      },
+      rows.count(_.cached),
+      count {
+        case Outcome.Failed(_) => true
+        case _ => false
+      },
+      count(_ == Outcome.Skipped)
+    )
+  }
+}
