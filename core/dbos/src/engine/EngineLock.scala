@@ -72,10 +72,23 @@ final class EngineLock private (conn: Connection, val beat: FiniteDuration)
       )(_.executeUpdate() == 1)
     catch { case NonFatal(_) => false }
 
-  /** Releases the lock, by closing its connection. */
+  /** Releases the lock, then closes its connection; its row stays, naming no holder once the
+    * lock is free.
+    */
   def close(): Unit =
-    try conn.close()
-    catch { case NonFatal(_) => () }
+    try {
+      // Closing the connection alone frees the lock only when the server has ended the session,
+      // which it does after the client has gone: an engine opened straight after could find
+      // it still held. Unlocking first frees it before close returns. On a connection already
+      // dead the unlock fails, and the session's end has freed the lock anyway.
+      try
+        Using.resource(conn.prepareStatement("SELECT pg_advisory_unlock(?)")) { ps =>
+          ps.setLong(1, EngineLock.Key)
+          Using.resource(ps.executeQuery())(_ => ())
+        }
+      catch { case NonFatal(_) => () }
+      conn.close()
+    } catch { case NonFatal(_) => () }
 }
 
 object EngineLock {

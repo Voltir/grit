@@ -114,6 +114,30 @@ object EngineLockTests extends TestSuite {
       finally first.close()
     }
 
+    test("a closed lock is free at once: taken by another session straight after, 50 times") {
+      val config = fresh("lock_reopen")
+      // A session already open, so nothing but the close itself comes between the two.
+      val refused = Using.resource(
+        java.sql.DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
+      ) { other =>
+        def tryLock(sql: String): Boolean =
+          Using.resource(other.prepareStatement(sql)) { ps =>
+            ps.setLong(1, EngineLock.Key)
+            Using.resource(ps.executeQuery())(rs => rs.next() && rs.getBoolean(1))
+          }
+        (1 to 50).count { _ =>
+          EngineLock.take(config) match {
+            case Right(lock) => lock.close()
+            case Left(refused) => sys.error(s"not taken: $refused")
+          }
+          val got = tryLock("SELECT pg_try_advisory_lock(?)")
+          if (got) tryLock("SELECT pg_advisory_unlock(?)")
+          !got
+        }
+      }
+      refused ==> 0
+    }
+
     test("a row left by a dead engine is not named as the holder") {
       val config = fresh("lock_dead_row")
       val dead = engine(config)
