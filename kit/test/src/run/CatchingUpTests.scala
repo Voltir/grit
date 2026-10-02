@@ -4,7 +4,9 @@ import java.time.{Instant, LocalDate}
 
 import scala.jdk.CollectionConverters.*
 
-import grit.core.id.{CloseRef, ConversationId, PeriodRef, PeriodSeq, TurnSeq}
+import grit.core.id.{CloseRef, ConversationId, PeriodRef, PeriodSeq, PluginName, SettleRef, TurnSeq}
+import grit.core.period.CloseOrdinal
+import grit.core.plugin.PostRef
 import grit.dbos.engine.Swept
 
 import utest.*
@@ -18,13 +20,27 @@ object CatchingUpTests extends TestSuite {
     Instant.parse("2026-09-27T10:00:00Z")
   )
 
+  private val settle = SettleRef(close.period, TurnSeq(0), close.due)
+
+  private val post = PostRef(
+    PluginName.of("digest").getOrElse(throw new java.lang.AssertionError("a plugin name")),
+    1,
+    CloseOrdinal.of(1).getOrElse(throw new java.lang.AssertionError("an ordinal")),
+    0
+  )
+
   val tests = Tests {
     test(
-      "drain stops only at a sweep made once no workflow is left that enqueues nothing"
+      "drain sweeps until a sweep, each made once no workflow is queued or running, enqueues, asks and posts nothing"
     ) {
       val looks = new java.util.concurrent.ConcurrentLinkedQueue[String]()
       var counts = List(2, 0, 1, 0)
-      var sweeps = List(Swept(enqueued = Vector(close)), Swept.nothing)
+      var sweeps = List(
+        Swept(enqueued = Vector(close)),
+        Swept(asked = Vector(settle)),
+        Swept(posted = Vector(post)),
+        Swept.nothing
+      )
       val made = CatchingUp.drain(
         () => {
           looks.add("sweep")
@@ -41,8 +57,19 @@ object CatchingUpTests extends TestSuite {
         () => ()
       )
       (made, looks.asScala.toVector) ==> (
-        Right(2),
-        Vector("unfinished 2", "unfinished 0", "sweep", "unfinished 1", "unfinished 0", "sweep")
+        Right(4),
+        Vector(
+          "unfinished 2",
+          "unfinished 0",
+          "sweep",
+          "unfinished 1",
+          "unfinished 0",
+          "sweep",
+          "unfinished 0",
+          "sweep",
+          "unfinished 0",
+          "sweep"
+        )
       )
     }
 
