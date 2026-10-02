@@ -8,8 +8,8 @@
 #
 # Refuses `grit` and `grit_slack` without --nick-db: they are Nick's. Every transaction is
 # read-only by default (default_transaction_read_only), so a write fails; that guards
-# against accidents, not intent, since a query can still switch it off. Works from a git
-# worktree: compose is reached through the main checkout, whose directory names the project.
+# against accidents, not intent, since a query can still switch it off. Works from any
+# directory: compose is reached through the main checkout's compose file.
 set -euo pipefail
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }

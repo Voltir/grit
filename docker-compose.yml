@@ -1,3 +1,7 @@
+# The project's name, pinned: compose otherwise names it after the checkout's directory, so
+# a git worktree's scripts would look for a project of their own and find no Postgres.
+name: grit
+
 services:
   postgres:
     # postgres:18 plus pg_textsearch, built from docker/postgres/Dockerfile. The tag names
