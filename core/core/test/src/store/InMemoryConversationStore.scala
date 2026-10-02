@@ -6,10 +6,12 @@ import grit.core.id.{CallSlot, ConversationId, PrincipalId}
 
 /** An in-memory [[ConversationStore]] for tests, keeping [[ConversationContract]]. It ignores
   * the `Tx`; each new conversation's id is `c` and its number, from 1, never reused after a
-  * removal, and it is created at the epoch. It holds conversations alone: a removal deletes
-  * nothing of other stores.
+  * removal, and it is created at the epoch. A removal deletes the conversation's entries and
+  * next positions in `entries`, when given; nothing of any other store (its periods and
+  * verdicts are kept).
   */
-final class InMemoryConversationStore extends ConversationStore {
+final class InMemoryConversationStore(entries: Option[InMemoryEntryStore] = None)
+    extends ConversationStore {
 
   @caps.unsafe.untrackedCaptures
   var all = Vector.empty[Conversation]
@@ -43,6 +45,7 @@ final class InMemoryConversationStore extends ConversationStore {
   def remove(conversation: ConversationId)(using Tx^): Either[StoreError, Unit] = {
     all = all.filterNot(_.id == conversation)
     posts = posts - conversation
+    entries.foreach(_.forget(conversation))
     Right(())
   }
 }

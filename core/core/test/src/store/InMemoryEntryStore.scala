@@ -41,6 +41,14 @@ final class InMemoryEntryStore extends EntryStore {
   private[store] def remove(doomed: Entry -> Boolean): Unit =
     entries = entries.filterNot(doomed)
 
+  /** `conversation`'s entries deleted and its next positions forgotten, as Postgres's cascade
+    * from a removed conversation deletes them with its row.
+    */
+  private[store] def forget(conversation: ConversationId): Unit = {
+    entries = entries.filterNot(_.conversationId == conversation)
+    marks = marks - conversation
+  }
+
   /** Every entry kept, in the order written: what a fake reading across conversations scans. */
   def everything: Vector[Entry] = entries
 

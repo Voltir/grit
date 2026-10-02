@@ -1,6 +1,9 @@
 package grit.core.store
 
-import grit.core.id.{ConversationId, PrincipalId}
+import java.time.Instant
+
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PrincipalId, TurnSeq}
+import grit.core.message.Message
 import grit.core.place.Directory
 
 import utest.*
@@ -11,6 +14,9 @@ import utest.*
 abstract class ConversationContract extends TestSuite {
 
   protected def conversations: ConversationStore
+
+  /** The entry store [[conversations]]' entries are in. */
+  protected def entries: EntryStore
 
   /** Runs `body` in one transaction, committed when it returns. */
   protected def transaction[A](body: (Tx^) ?=> A): A
@@ -46,6 +52,31 @@ abstract class ConversationContract extends TestSuite {
       transaction(conversations.find(tui("found"))) ==> created.map(Some(_))
       transaction(conversations.find(tui("never"))) ==> Right(None)
       transaction(conversations.find(tui("never"))) ==> Right(None) // and find never creates
+    }
+
+    test("a removed conversation's entries go with it, and its next positions start over") {
+      val c = transaction(conversations.findOrCreate(tui("removed-entries"), PrincipalId.Local))
+        .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
+      val hi = EntryId(s"${ConversationId.value(c)}:hi")
+      transaction {
+        entries.lockNext(c).flatMap { next =>
+          entries.insert(
+            Entry(
+              hi,
+              c,
+              next.turnSeq,
+              None,
+              next.seq,
+              Payload.Message(Message.User("hi")),
+              Instant.EPOCH
+            )
+          )
+        }
+      } ==> Right(())
+      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq(1), EntrySeq(1)))
+      transaction(conversations.remove(c)) ==> Right(())
+      transaction(entries.list(c)) ==> Right(Vector())
+      transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq.First, EntrySeq.First))
     }
 
     test("get of an id no conversation has is None") {
