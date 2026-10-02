@@ -85,6 +85,7 @@ final class Engine private (
     dataSource: PGSimpleDataSource,
     lock: EngineLock^,
     config: DbConfig,
+    epoch: String,
     identity: ProcessIdentity,
     val budget: Budget
 ) extends Link {
@@ -171,7 +172,9 @@ final class Engine private (
   /** Registers `turn` as the body of every turn, `close` of every attempt to close a period,
     * `settle` of every question whether anyone is waiting on a quiet period, `post` of every
     * posting run, and `triage` of every heard message's triage, and starts running what is
-    * queued; the sweep posts to `plugins`, the ones enabled. Once.
+    * queued; the sweep posts to `plugins`, the ones enabled. Makes the engine's epoch the
+    * database's latest application version, so work enqueued without one (every grit
+    * enqueue) runs here whatever epochs the database has seen. Once.
     */
   def launch(
       turn: WorkflowId => Durable^ ?=> String,
@@ -192,6 +195,9 @@ final class Engine private (
     Turns.registerQueue(client)
     Posts.registerQueue(client)
     dbos.launch()
+    // DBOS 1.1 dequeues a workflow enqueued with no version only on the latest version
+    // (QueuesDAO.versionClause); the lock holder is the database's one engine, so it is that.
+    dbos.setLatestApplicationVersion(epoch)
   }
 
   /** The enabled plugins' names and versions, set once by [[launch]]. */
@@ -417,7 +423,7 @@ object Engine {
         .claim(epoch, identity)
         .left
         .foreach(why => sys.error(s"the engine's row could not be written: $why"))
-      val engine = build(config, dbosConfig, lock, identity, budget)
+      val engine = build(config, dbosConfig, lock, epoch, identity, budget)
       engine.beating()
       engine
     } catch {
@@ -444,6 +450,7 @@ object Engine {
       config: DbConfig,
       dbosConfig: DBOSConfig,
       lock: EngineLock^,
+      epoch: String,
       identity: ProcessIdentity,
       budget: Budget
   ): Engine^ = {
@@ -452,7 +459,7 @@ object Engine {
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Engine(dbos, ds, lock, config, identity, budget)
+    new Engine(dbos, ds, lock, config, epoch, identity, budget)
   }
 
   /** Applies `core/dbos/resources/schema.sql` idempotently. */

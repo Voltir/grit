@@ -271,5 +271,24 @@ object EngineLockTests extends TestSuite {
         assert(eventually(5.seconds)(free(config)))
       } finally held.close()
     }
+
+    test("the engine holding the lock runs new turns, though the database has seen a newer epoch") {
+      val config = TestPostgres.freshDatabase("lock_older_epoch")
+      def launched(epoch: String): Engine^ = {
+        assert(eventually(5.seconds)(free(config)))
+        val e = LiveEngine.open(config, epoch)
+        e.launch(id => d ?=> s"ran ${WorkflowId.value(id)}", noop, noop, noop, noop, Vector.empty)
+        e
+      }
+      // Epoch "test" is registered first, then a newer one, so "test" is not DBOS's latest.
+      launched("test").close()
+      launched("2099-01-01").close()
+      val older = launched("test")
+      try {
+        val turn = started(older.inbox, "older")
+        val _ = eventually(10.seconds)(status(config, turn).contains("SUCCESS"))
+        status(config, turn) ==> Some("SUCCESS")
+      } finally older.close()
+    }
   }
 }
