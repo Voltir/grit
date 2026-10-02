@@ -97,9 +97,10 @@ abstract class SpeechContract extends TestSuite {
 
     test("a decision is kept once; only drafting ones are spoken, from a time on, oldest first") {
       val c = conversation("speech-decided")
-      val early = decide(c, At, drafting = true)
-      val _ = decide(c, At.plusSeconds(60), drafting = false)
+      // Decided out of time order, so oldest first is not the order they were kept in.
       val late = decide(c, At.plusSeconds(120), drafting = true)
+      val _ = decide(c, At.plusSeconds(60), drafting = false)
+      val early = decide(c, At, drafting = true)
       transaction(speech.decided(heardAs(early), Decision.Held(Silence.Off), At)) ==> Right(false)
       mine(c, At) ==> Vector(
         Spoken(early, room, At, Stage.Drafting),

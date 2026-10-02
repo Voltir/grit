@@ -2,7 +2,7 @@ package grit.core.speech
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.Cost
 import grit.core.spend.{Day, Spend}
 import grit.core.store.{EntryStore, InMemoryUsageLedger, Payload, StoreError, Tx}
@@ -38,15 +38,19 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
     Right(reaches.get(turn))
 
   def spoken(since: Instant)(using Tx^): Either[StoreError, Vector[Spoken]] =
-    Right(decisions.collect {
-      case (h, Decision.Drafting(turn), at) if !at.isBefore(since) =>
-        val stage = outcomes.get(turn) match {
-          case None => Stage.Drafting
-          case Some((_, _, Some(seq))) => Stage.Posted(seq)
-          case Some((_, _, None)) => Stage.Settled
+    Right(
+      decisions
+        .collect {
+          case (h, Decision.Drafting(turn), at) if !at.isBefore(since) =>
+            val stage = outcomes.get(turn) match {
+              case None => Stage.Drafting
+              case Some((_, _, Some(seq))) => Stage.Posted(seq)
+              case Some((_, _, None)) => Stage.Settled
+            }
+            Spoken(turn, h.room, at, stage)
         }
-        Spoken(turn, h.room, at, stage)
-    })
+        .sortBy(s => (s.at, WorkflowId.value(s.turn.workflowId)))
+    )
 
   def spentOn(day: Day)(using Tx^): Either[StoreError, Spend] = {
     val drafting = decisions.collect { case (_, Decision.Drafting(t), _) => t.workflowId }.toSet
