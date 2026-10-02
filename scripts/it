@@ -26,21 +26,45 @@ docker build -q -t "$image" docker/postgres >/dev/null
 
 # Test data is thrown away, so durability only slows the start and every write. Credentials
 # are TestPostgres's.
-container=$(docker run -d --rm --label grit.it.pid=$$ \
-  -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test \
-  --tmpfs /var/lib/postgresql:rw -p 127.0.0.1::5432 "$image" \
-  postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c max_connections=300)
-trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT INT TERM
+container=
+trap 'docker rm -f $container >/dev/null 2>&1 || true' EXIT INT TERM
 
-# The image's first start runs initdb on a server with no TCP listener, so a TCP connection
-# succeeding means the real server is up.
-for _ in $(seq 1 60); do
-  docker exec "$container" psql -h 127.0.0.1 -U test -d postgres -tAc 'SELECT 1' >/dev/null 2>&1 && break
-  sleep 0.5
+# Whether the server answers on the host's end of its mapped port: an SSLRequest, which
+# Postgres answers with S or N.
+answers() (
+  exec 3<>"/dev/tcp/127.0.0.1/$1" || exit 1
+  printf '\x00\x00\x00\x08\x04\xd2\x16\x2f' >&3 || exit 1
+  IFS= read -r -n1 -t 2 reply <&3
+  [[ ${reply:-} == S || ${reply:-} == N ]]
+)
+
+# Ready inside the container is not ready from the host: now and then Docker never sets up
+# the host's end of the mapped port (nothing listens on it, measured for 30 s), and every
+# suite would fail at once. Such a container is replaced, at most twice.
+for attempt in 1 2 3; do
+  container=$(docker run -d --rm --label grit.it.pid=$$ \
+    -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test \
+    --tmpfs /var/lib/postgresql:rw -p 127.0.0.1::5432 "$image" \
+    postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c max_connections=300)
+  # The image's first start runs initdb on a server with no TCP listener, so a TCP
+  # connection succeeding means the real server is up.
+  for _ in $(seq 1 60); do
+    docker exec "$container" psql -h 127.0.0.1 -U test -d postgres -tAc 'SELECT 1' >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+  docker exec "$container" psql -h 127.0.0.1 -U test -d postgres -tAc 'SELECT 1' >/dev/null
+  port=$(docker port "$container" 5432/tcp | head -1 | sed 's/.*://')
+  for _ in $(seq 1 20); do
+    answers "$port" 2>/dev/null && break 2
+    sleep 0.5
+  done
+  echo "it: Postgres is up in its container but not on 127.0.0.1:$port (attempt $attempt)" >&2
+  docker rm -f "$container" >/dev/null 2>&1 || true
+  container=
 done
-docker exec "$container" psql -h 127.0.0.1 -U test -d postgres -tAc 'SELECT 1' >/dev/null
+[ -n "$container" ] || { echo "it: no container answered on its mapped port" >&2; exit 1; }
 
-export GRIT_TEST_POSTGRES="127.0.0.1:$(docker port "$container" 5432/tcp | head -1 | sed 's/.*://')"
+export GRIT_TEST_POSTGRES="127.0.0.1:$port"
 echo "it: Postgres $image at $GRIT_TEST_POSTGRES"
 
 ./mill "${@:-__.it}"
