@@ -18,7 +18,7 @@ import grit.core.id.{
   TurnRef,
   WorkflowId
 }
-import grit.core.inbox.{Inbox, InboxError, Progress}
+import grit.core.inbox.{InboundId, Inbox, InboxError, Progress}
 import grit.core.message.Message
 import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
@@ -89,7 +89,7 @@ final class SqlInbox(
         case Left(_) => Right(None)
         case Right(turn) =>
           for {
-            entry <- entries.get(SqlInbox.entryId(turn.conversationId, source))
+            entry <- entries.get(InboundId.of(turn.conversationId, source))
             period <- periods.of(turn)
             triage <- entry.map(_.payload) match {
               // A message recorded as a turn before is not heard, and not triaged.
@@ -131,7 +131,7 @@ final class SqlInbox(
   )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
     for {
       conversation <- conversations.findOrCreate(origin, by)
-      id = SqlInbox.entryId(conversation.id, source)
+      id = InboundId.of(conversation.id, source)
       // Serialises ingest per conversation: a concurrent ingest waits here, then sees
       // this one's entry and its sequence numbers.
       next <- entries.lockNext(conversation.id)
@@ -181,7 +181,7 @@ final class SqlInbox(
             recorded <-
               if (before.nonEmpty) Right(false)
               else {
-                val id = SqlInbox.entryId(conversation.id, source)
+                val id = InboundId.of(conversation.id, source)
                 for {
                   _ <- periods.openFor(conversation.id, next.turnSeq, at)
                   _ <- entries.insert(
@@ -211,7 +211,7 @@ final class SqlInbox(
         case None => Right(None)
         case Some(c) =>
           entries
-            .get(SqlInbox.entryId(c.id, source))
+            .get(InboundId.of(c.id, source))
             .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _) =>
               TurnRef(e.conversationId, e.turnSeq)
             })
@@ -225,7 +225,7 @@ final class SqlInbox(
         case Some(c) =>
           sources.foldLeft[Either[StoreError, Set[SourceId]]](Right(Set.empty)) { (acc, s) =>
             acc.flatMap(found =>
-              entries.get(SqlInbox.entryId(c.id, s)).map(e => if (e.isEmpty) found else found + s)
+              entries.get(InboundId.of(c.id, s)).map(e => if (e.isEmpty) found else found + s)
             )
           }
       }
@@ -359,9 +359,6 @@ private[dbos] object SqlInbox {
       }
     }
   }
-
-  def entryId(conversation: ConversationId, source: SourceId): EntryId =
-    EntryId(s"in:${ConversationId.value(conversation)}:${SourceId.value(source)}")
 
   /** The idempotency key of every answer to `call` of `workflow`: one per call. */
   def answerKey(workflow: WorkflowId, call: ToolCallId): String =

@@ -3,7 +3,7 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, EntryId, PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.speech.{InMemorySpeechStore, Reach}
 import grit.core.spend.Budget
@@ -120,7 +120,7 @@ final class InMemoryInbox(
         val known = conversations.all.find(_.origin == origin)
         val result: Either[StoreError, Either[InboxError, TurnRef]] = for {
           before <- known.fold(Right(None): Either[StoreError, Option[Entry]])(c =>
-            entries.get(InMemoryInbox.entryId(c.id.toString, source))
+            entries.get(InboundId.of(c.id, source))
           )
           refused <- before.fold(if (capped) overCap else Right(None))(_ => Right(None))
           turn <- (before, refused) match {
@@ -129,7 +129,7 @@ final class InMemoryInbox(
             case (None, None) =>
               for {
                 conversation <- conversations.findOrCreate(origin, by)
-                id = InMemoryInbox.entryId(conversation.id.toString, source)
+                id = InboundId.of(conversation.id, source)
                 next <- entries.lockNext(conversation.id)
                 _ <- periods.openFor(conversation.id, next.turnSeq, at)
                 _ <- entries.insert(
@@ -183,7 +183,7 @@ final class InMemoryInbox(
           _ <- periods.openFor(conversation.id, next.turnSeq, at)
           _ <- entries.insert(
             Entry(
-              InMemoryInbox.entryId(conversation.id.toString, source),
+              InboundId.of(conversation.id, source),
               conversation.id,
               next.turnSeq,
               None,
@@ -210,7 +210,7 @@ final class InMemoryInbox(
           case None => Right(None)
           case Some(c) =>
             entries
-              .get(InMemoryInbox.entryId(c.id.toString, source))
+              .get(InboundId.of(c.id, source))
               .map(_.collect { case e @ Entry(_, _, _, _, _, Payload.Message(_), _) =>
                 TurnRef(e.conversationId, e.turnSeq)
               })
@@ -227,9 +227,7 @@ final class InMemoryInbox(
           case None => Right(Set.empty)
           case Some(c) =>
             Right(
-              sources.filter(s =>
-                entries.get(InMemoryInbox.entryId(c.id.toString, s)).exists(_.nonEmpty)
-              )
+              sources.filter(s => entries.get(InboundId.of(c.id, s)).exists(_.nonEmpty))
             )
         }
       }
@@ -263,7 +261,4 @@ object InMemoryInbox {
       new InMemoryUsageLedger,
       budget
     )
-
-  private def entryId(conversation: String, source: SourceId): EntryId =
-    EntryId(s"in:$conversation:${SourceId.value(source)}")
 }
