@@ -45,7 +45,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   behind the newest closed period has a run enqueued from its cursor, up to
   `PostRef.Attempts` runs from one cursor; every declared shadow variant none of whose shadows
   is queued or running has its oldest unshadowed messages enqueued, as many as the rest of its
-  day's cap covers (`grit.core.triage.Shadowing`); what did not finish its work is logged as stuck;
+  day's cap covers (`grit.core.triage.Shadowing`), passing over any whose shadow ended keeping
+  nothing; what did not finish its work is logged as stuck;
   and every plugin with a cursor but not enabled is marked for
   deletion; then `Collector` collects every tombstone whose kind's window has passed (ADR
   0014): the workflows it names, unless one is still queued or running, then its rows.

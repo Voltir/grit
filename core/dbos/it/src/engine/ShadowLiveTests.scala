@@ -169,6 +169,42 @@ object ShadowLiveTests extends TestSuite {
     }
 
     test(
+      "a shadow that ended keeping nothing gives up its place: the next sweeps enqueue the messages after it, and report it stuck"
+    ) {
+      val config = TestPostgres.freshDatabase("shadow_stuck")
+      val engine = LiveEngine.open(config, "test")
+      try {
+        // $0.0004 at the first-call estimate of $0.0002 covers two a sweep.
+        engine.launch(
+          nothing,
+          nothing,
+          nothing,
+          nothing,
+          nothing,
+          Vector.empty,
+          nothing,
+          Vector(Shadowing(Words, Instant.EPOCH, cap("0.0004")))
+        )
+        val heard = heardAndTagged(
+          engine,
+          config,
+          Origin.Task("shadow", "stuck"),
+          Vector("one", "two", "three", "four", "five"),
+          Instant.now()
+        )
+        val shadows = heard.map((_, t) => ShadowRef(t, Words))
+        engine.sweep(Instant.now()).map(_.shadowed) ==> Right(shadows.take(2))
+        assert(eventually(engine.unfinished() == Right(0)))
+        // Both ended keeping no row: skipped, and the next two enqueued in their place.
+        engine.sweep(Instant.now()).map(s => (s.shadowed, s.stuck)) ==>
+          Right((shadows.slice(2, 4), shadows.take(2).map(_.workflowId)))
+        assert(eventually(engine.unfinished() == Right(0)))
+        engine.sweep(Instant.now()).map(s => (s.shadowed, s.stuck)) ==>
+          Right((shadows.drop(4), shadows.take(4).map(_.workflowId)))
+      } finally engine.close()
+    }
+
+    test(
       "a variant whose day's cap is spent gets nothing enqueued, and its messages wait for a day the cap covers"
     ) {
       val config = TestPostgres.freshDatabase("shadow_capped")

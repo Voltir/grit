@@ -193,8 +193,9 @@ private[engine] final class Sweeper(
   /** `variant`'s oldest unshadowed messages enqueued, when none of its shadows is queued or
     * running, so nothing in flight is counted twice: as many as the rest of its cap for the
     * UTC day of `now` covers ([[Shadowing.batch]]). A message whose shadow DBOS already has,
-    * finished without keeping a row, is `stuck` and not run again; it keeps its place among
-    * the oldest, and its share of the batch, until its period's purge takes it.
+    * finished without keeping a row, is `stuck`: it is not run again, and the batch passes
+    * over it to the messages after it, so stuck shadows never stall the variant; each sweep
+    * whose cap covers a call reports again every stuck one among the messages it read.
     */
   private def shadow(variant: Shadowing, now: Instant): Either[StoreError, Swept] =
     attempted {
@@ -213,30 +214,54 @@ private[engine] final class Sweeper(
           for {
             spent <- shadows.spent(variant.name, Day.at(now, ZoneOffset.UTC).from)
             recent <- shadows.recent(variant.name, Shadowing.Recent)
-            n = variant.batch(spent, recent)
-            due <-
-              if (n > 0) shadows.unshadowed(variant.name, variant.since, n)
-              else Right(Vector.empty)
-          } yield due
-        }.flatMap { due =>
-          attempted {
-            due.map(ShadowRef(_, variant.name)).foldLeft(Swept.nothing) { (done, shadow) =>
-              val id = shadow.workflowId
-              Option(client.retrieveWorkflow[String, Exception](WorkflowId.value(id)).getStatus())
-                match {
-                case Some(_) => done + Swept(stuck = Vector(id))
-                case None =>
-                  val _ = client.enqueueWorkflow[String, Exception](
-                    Shadows.enqueueOptions(shadow),
-                    // As `enqueue`'s: the array is empty and DBOS only reads it.
-                    caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
-                  )
-                  done + Swept(shadowed = Vector(shadow))
+          } yield variant.batch(spent, recent)
+        }.flatMap(n => due(variant, n, n))
+          .flatMap { found =>
+            attempted {
+              found.fresh.foreach { shadow =>
+                val _ = client.enqueueWorkflow[String, Exception](
+                  Shadows.enqueueOptions(shadow),
+                  // As `enqueue`'s: the array is empty and DBOS only reads it.
+                  caps.unsafe.unsafeAssumePure(Array.empty[AnyRef])
+                )
               }
+              Swept(shadowed = found.fresh, stuck = found.stuck.map(_.workflowId))
             }
           }
-        }
     }
+
+  /** Up to `n` of `variant`'s oldest unshadowed messages DBOS has no shadow of, and those
+    * read beside them that DBOS has one of (finished, as none is running). A read of `limit`
+    * that found fewer than `n` reads again, `limit` widened past every one it passed over,
+    * until a read comes back short or holds `n`.
+    */
+  private def due(
+      variant: Shadowing,
+      n: Int,
+      limit: Int
+  ): Either[StoreError, Due] =
+    if (n <= 0) Right(Due(Vector.empty, Vector.empty))
+    else {
+      read(shadows.unshadowed(variant.name, variant.since, limit)).flatMap { offered =>
+        attempted {
+          offered.map { t =>
+            val shadow = ShadowRef(t, variant.name)
+            val known = Option(
+              client.retrieveWorkflow[String, Exception](WorkflowId.value(shadow.workflowId)).getStatus()
+            ).nonEmpty
+            (shadow, known)
+          }
+        }.flatMap { checked =>
+          val fresh = checked.collect { case (s, false) => s }
+          val stuck = checked.collect { case (s, true) => s }
+          if (fresh.size >= n || offered.size < limit) Right(Due(fresh.take(n), stuck))
+          else due(variant, n, n + stuck.size)
+        }
+      }
+    }
+
+  /** A variant's shadows to enqueue, and those passed over as stuck. */
+  private final case class Due(fresh: Vector[ShadowRef], stuck: Vector[ShadowRef])
 
   // A repeated enqueue of the same id is a no-op. The array is empty and DBOS only reads
   // it; separation checking treats arrays as mutable.
