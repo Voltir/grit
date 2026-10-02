@@ -149,7 +149,7 @@ object TurnRecordLiveTests extends TestSuite {
     }
   }
 
-  /** The id of the user message that started `turn`. */
+  /** The seq of the entry `id`. */
   private def seqOf(engine: Engine^, id: grit.core.id.EntryId): grit.core.id.EntrySeq =
     engine.db
       .read(engine.entries.get(id))
@@ -157,6 +157,7 @@ object TurnRecordLiveTests extends TestSuite {
       .flatten
       .fold(sys.error(s"no entry ${grit.core.id.EntryId.value(id)}"))(_.seq)
 
+  /** The id of the user message that started `turn`. */
   private def sayId(engine: Engine^, turn: grit.core.id.TurnRef): grit.core.id.EntryId =
     engine.db
       .read(engine.entries.list(turn.conversationId))
