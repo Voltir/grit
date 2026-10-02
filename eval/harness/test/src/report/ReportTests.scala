@@ -78,6 +78,31 @@ object ReportTests extends TestSuite {
       ) ==> (1, 1, 0, 0)
     }
 
+    test(
+      "a comparison under a replica leaves out the cases that moved on, and lists them with each question's tolerance"
+    ) {
+      val (a, b) = (run("a.jsonl", 0.7, Labels.Empty), run("b.jsonl", 0.2, Labels.Empty))
+      val noise = grit.eval.harness.score.Noise(0.02, 0.01, 0.01, 0.01)
+      val first = cases.headOption.map(_.id).toVector
+      val report =
+        lines(Report.compare(a, b, movedOn = Some(grit.eval.harness.score.Moved(noise, first))))
+      (
+        report.filter(_.startsWith("answered by both")),
+        report.dropWhile(_ != "## Moved on").slice(1, 6),
+        lines(Report.compare(a, b)).count(_ == "## Moved on")
+      ) ==> (
+        Vector("answered by both: triage 1, stitch 0"),
+        Vector(
+          "",
+          "A replica's answer more than 10 × Jev's repeat spread from live's: kind 0.200, waiting 0.100, durable 0.100, helps 0.100.",
+          "",
+          "moved on, left out of this comparison: 1",
+          s"- ${first.map(_.written).mkString}"
+        ),
+        0
+      )
+    }
+
     test("a comparison lists by id the cases each question's decision moved") {
       // Durable .3 in A, .7 in B, for both cases: decided no, then yes, at .5; unlabelled.
       val report =

@@ -17,6 +17,7 @@ import grit.dbos.sql.DbConfig
 import grit.eval.harness.corpus.{
   Capture,
   Case,
+  CaseId,
   CorpusJson,
   Digest,
   Dump,
@@ -42,7 +43,7 @@ import grit.eval.harness.log.{
 import grit.eval.harness.pull.Pull
 import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
-import grit.eval.harness.score.{Decision, Order, Paired, Rule, Scoring, Spread, Target}
+import grit.eval.harness.score.{Decision, MovedOn, Order, Paired, Rule, Scoring, Spread, Target}
 import grit.kit.environment.DotEnv
 import grit.models.JevClassifier
 import grit.models.JevConfig
@@ -310,17 +311,35 @@ object Main {
       _ <- publish(dir, run.name.stripSuffix(".jsonl"), Report.score(run))
     } yield ()
 
-  /** `compare --eval <dir> --a <name> --b <name> [--labels <file>] [--decide <rule file>]`: run
-    * B against run A, both in `<dir>/runs/`, written to `<dir>/reports/<A>-vs-<B>.md` (each name
-    * less `.jsonl`) and printed; the labels as for `score`. With `--decide`, what the rule makes
-    * of them too, and the exit code says it: 0 adopt B, 3 refused, 4 keep A.
+  /** `compare --eval <dir> --a <name> --b <name> [--labels <file>] [--decide <rule file>]
+    * [--replica <name> --spread <name>]`: run B against run A, both in `<dir>/runs/`, written
+    * to `<dir>/reports/<A>-vs-<B>.md` (each name less `.jsonl`) and printed; the labels as for
+    * `score`. With `--replica` (a pulled replica shadow's log) and `--spread` (a run with
+    * repeats), A being live triage's kept log: the cases whose state moved on ([[MovedOn]])
+    * left out of both, under the noise measured in the `--spread` run. With `--decide`, what
+    * the rule makes of them too, and the exit code says it: 0 adopt B, 3 refused, 4 keep A.
     */
   private def compare(f: Map[String, String]): Either[String, Int] =
     for {
       dir <- need(f, "eval").map(Path.of(_))
       labels <- labelsAt(dir, f)
-      a <- need(f, "a").flatMap(scored(dir, _, labels))
-      b <- need(f, "b").flatMap(scored(dir, _, labels))
+      runA <- need(f, "a").flatMap(scored(dir, _, labels))
+      runB <- need(f, "b").flatMap(scored(dir, _, labels))
+      replica <- f.get("replica").fold(Right(None))(n => scored(dir, n, labels).map(Some(_)))
+      noise <- f
+        .get("spread")
+        .fold(Right(None))(n =>
+          scored(dir, n, labels).flatMap(s =>
+            MovedOn.noise(s.log.rows).map(Some(_)).toRight(s"--spread $n: no case answered twice")
+          )
+        )
+      movedOn <- (replica, noise) match {
+        case (Some(r), Some(n)) => Right(Some(MovedOn.of(r.answers, runA.answers, n)))
+        case (None, None) => Right(None)
+        case _ => Left("--replica and --spread are given together")
+      }
+      gone = movedOn.fold(Set.empty[CaseId])(_.cases.toSet)
+      (a, b) = (runA.without(gone), runB.without(gone))
       rule <- f
         .get("decide")
         .fold(Right(None))(r => read(Path.of(r)).flatMap(Rule.read).map(Some(_)))
@@ -334,7 +353,7 @@ object Main {
       _ <- publish(
         dir,
         s"${a.name.stripSuffix(".jsonl")}-vs-${b.name.stripSuffix(".jsonl")}",
-        Report.compare(a, b, decided)
+        Report.compare(runA, runB, decided, movedOn)
       )
     } yield decided.fold(0)(_._2 match {
       case Decision.Adopted(_) => 0

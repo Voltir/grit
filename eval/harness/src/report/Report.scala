@@ -2,7 +2,7 @@ package grit.eval.harness.report
 
 import grit.eval.harness.corpus.{Case, CaseId}
 import grit.eval.harness.label.{Context, Labelled, Labels}
-import grit.eval.harness.log.{Log, Weights}
+import grit.eval.harness.log.{Log, Row, Weights}
 import grit.eval.harness.pull.Pull
 import grit.eval.harness.score.{
   Agreement,
@@ -13,6 +13,8 @@ import grit.eval.harness.score.{
   Comparison,
   Cost,
   Decision,
+  Moved,
+  MovedOn,
   Refusal,
   Reliability,
   Repeated,
@@ -39,6 +41,10 @@ final case class Scored(
 
   /** How many of the corpus's cases carry any label. */
   def labelled: Int = cases.count(c => labels.of(c.id) != Labelled.Blank)
+
+  /** This run with no row of any of `ids`. */
+  def without(ids: Set[CaseId]): Scored =
+    copy(log = log.copy(rows = log.rows.filterNot((r: Row[Vector[Weights]]) => ids.contains(r.id))))
 }
 
 /** Reports as markdown, text-free: ids, numbers and labels, never a message's words. Every mean
@@ -74,9 +80,17 @@ object Report {
   /** Run `b` against run `a`, paired on the cases both answered: B − A per question, the cases
     * whose decision changed by id, once labels exist the paired difference in Brier score, all
     * and by context, with its MDE, and what `decided` says a rule made of them, when given;
-    * [[KeptNote]] when either is a log of live triage's kept tags.
+    * [[KeptNote]] when either is a log of live triage's kept tags. With `movedOn`, the cases
+    * it found are left out of both runs, and listed with the tolerance they were found under.
     */
-  def compare(a: Scored, b: Scored, decided: Option[(Rule, Decision)] = None): String = {
+  def compare(
+      runA: Scored,
+      runB: Scored,
+      decided: Option[(Rule, Decision)] = None,
+      movedOn: Option[Moved] = None
+  ): String = {
+    val gone = movedOn.fold(Set.empty[CaseId])(_.cases.toSet)
+    val (a, b) = (runA.without(gone), runB.without(gone))
     val lines = Vector(
       s"# compare: ${a.name} (A) and ${b.name} (B)",
       "",
@@ -85,13 +99,29 @@ object Report {
       s"answered by both: triage ${a.answers.triage.keySet.intersect(b.answers.triage.keySet).size}, " +
         s"stitch ${a.answers.stitch.keySet.intersect(b.answers.stitch.keySet).size}",
       labelLine(b)
-    ) ++ kept(a, b) ++ Vector("") ++ spending(a, "A") ++ spending(b, "B") ++ moved(a, b) ++ changes(
-      a,
-      b
-    ) ++
+    ) ++ kept(a, b) ++ Vector("") ++ spending(a, "A") ++ spending(b, "B") ++
+      movedOn.toVector.flatMap(replica) ++ moved(a, b) ++ changes(
+        a,
+        b
+      ) ++
       (if (b.labelled == 0) Vector.empty else brierPaired(a, b)) ++
       decided.toVector.flatMap(decision)
     lines.mkString("\n") + "\n"
+  }
+
+  /** The cases `m` found moved on, and the tolerance it found them under. */
+  private def replica(m: Moved): Vector[String] = {
+    val n = m.noise
+    def tol(sd: Double) = num(MovedOn.Multiple * sd)
+    Vector(
+      "## Moved on",
+      "",
+      f"A replica's answer more than ${MovedOn.Multiple}%.0f × Jev's repeat spread from live's: " +
+        s"kind ${tol(n.kind)}, waiting ${tol(n.waiting)}, durable ${tol(n.durable)}, " +
+        s"helps ${tol(n.helps)}.",
+      "",
+      s"moved on, left out of this comparison: ${m.cases.size}"
+    ) ++ m.cases.map(id => s"- ${id.written}") :+ ""
   }
 
   /** [[KeptNote]], once, when any of `runs` is a log of live triage's kept tags. */
