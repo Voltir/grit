@@ -61,10 +61,10 @@ object TurnTally {
       conversation <- found.toRight(
         StoreError.Invalid(s"turn ${WorkflowId.value(turn.workflowId)}'s conversation is gone")
       )
-      listed <- entries.list(turn.conversationId)
+      ofTurn <- entries.ofTurn(turn)
       rows <- ledger.of(turn.workflowId)
     } yield {
-      val own = listed.filter(_.turnSeq == turn.turnSeq).map(_.payload)
+      val own = ofTurn.map(_.payload)
       val exchanges = own.collect { case Payload.Exchange(reply) => reply }
       val answered = own.exists {
         case Payload.Message(_: Message.Assistant) | Payload.Draft(_) => true
