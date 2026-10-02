@@ -45,6 +45,9 @@ object ServedTests extends TestSuite {
 
   private val Skynet = ChannelId("C0C5U2FPAL8")
 
+  /** A channel whose id sorts before [[C]]'s. */
+  private val First = ChannelId("C0AAAAAAAA1")
+
   /** A channel Slack gives no name. */
   private val Unnamed = ChannelId("C0UNNAMED1")
 
@@ -192,30 +195,55 @@ object ServedTests extends TestSuite {
     }
 
     test(
-      "backfill reads each channel's unheard threads as their messages' lengths, and hears them on hear"
+      "backfill reads each channel's unheard threads as their messages' lengths, in channel id order, and hears them on hear"
     ) {
       val w = new World
+      w.slack.channelNames = w.slack.channelNames + (First -> "general")
       w.slack.histories = Map(
         C -> Vector(
           Listed(Ts("1.0"), Some(Ts("1.0")), Some(UserId(Ana)), false, None, "is the freeze on?"),
           Listed(Ts("1.1"), Some(Ts("1.0")), Some(UserId(Ana)), false, None, "it is"),
           Listed(Ts("2.0"), None, Some(UserId(Ana)), false, None, "lunch?")
-        )
+        ),
+        First -> Vector(Listed(Ts("3.0"), None, Some(UserId(Ana)), false, None, "hello"))
       )
       val now = Instant.ofEpochSecond(86_400 * 3)
-      val open = Served.backfill(Set(C), 3, w.connect).open(w.stores, Env, now, _ => ()) match {
-        case Right(o) => o
-        case Left(r) => throw new java.lang.AssertionError(r.message)
-      }
-      (open.since, open.unheard) ==>
-        (Instant.EPOCH, Vector(Unheard("#standup (C123ABC456)", Vector(Vector(17, 5), Vector(6)))))
+      // Listed out of id order, so the order read is the edge's.
+      val channels = Set(C, First)
+      val open =
+        Served.backfill(channels, 3, w.connect).open(w.stores, Env, now, _ => ()) match {
+          case Right(o) => o
+          case Left(r) => throw new java.lang.AssertionError(r.message)
+        }
+      (open.since, open.unheard) ==> (
+        Instant.EPOCH,
+        Vector(
+          Unheard("#general (C0AAAAAAAA1)", Vector(Vector(5))),
+          Unheard("#standup (C123ABC456)", Vector(Vector(17, 5), Vector(6)))
+        )
+      )
       open.hear() ==> Right(())
-      Served.backfill(Set(C), 3, w.connect).open(w.stores, Env, now, _ => ()) match {
+      Served.backfill(channels, 3, w.connect).open(w.stores, Env, now, _ => ()) match {
         case Right(again) =>
-          again.unheard ==> Vector(Unheard("#standup (C123ABC456)", Vector.empty))
+          again.unheard ==> Vector(
+            Unheard("#general (C0AAAAAAAA1)", Vector.empty),
+            Unheard("#standup (C123ABC456)", Vector.empty)
+          )
         case Left(r) => throw new java.lang.AssertionError(r.message)
       }
       open.close()
+      w.slack.closed ==> true
+    }
+
+    test("backfill of a channel Slack will not read is refused by it, and closes the connection") {
+      val w = new World
+      w.slack.histories =
+        Map(C -> Vector(Listed(Ts("1.0"), None, Some(UserId(Ana)), false, None, "hi")))
+      w.slack.channelNames = w.slack.channelNames + (First -> "general")
+      w.slack.notIn = Set(First)
+      refusal(
+        Served.backfill(Set(C, First), 3, w.connect).open(w.stores, Env, Instant.EPOCH, _ => ())
+      ) ==> Some(EdgeRefusal.Refused("C0AAAAAAAA1 not read: Refused(not_in_channel)"))
       w.slack.closed ==> true
     }
 
