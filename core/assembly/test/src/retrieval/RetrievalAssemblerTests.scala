@@ -83,20 +83,17 @@ object RetrievalAssemblerTests extends TestSuite {
 
   /** Answers every search with the entries `ids` (`t{turn}:{seq}`), best first in the order
     * given, scored by `scores` where the test states them, whatever it is asked; keeps what
-    * it was asked. The ranking is the test's, not a scorer's whose ties would decide it.
+    * it was asked. The ranking is the test's, not a scorer's whose ties would decide it. A
+    * room search finds nothing: the assembler never makes one.
     */
   private final class Scripted(ids: String*) extends EntrySearch {
-    // What room answers: its hits as given, best first.
-    @caps.unsafe.untrackedCaptures
-    var inRoom = Vector.empty[EntrySearch.Hit]
-
     def room(
         room: grit.core.place.Place,
         from: java.time.Instant,
         until: java.time.Instant,
         query: String,
         limit: Int
-    )(using Tx^): Either[StoreError, Vector[EntrySearch.Hit]] = Right(inRoom.take(limit))
+    )(using Tx^): Either[StoreError, Vector[EntrySearch.Hit]] = Right(Vector.empty)
 
     // What nearby answers: each conversation's hits, as (conversation, id, score), best
     // first, ids as `{name}:t{turn}:{seq}`, only those from its open period's first turn on;
@@ -594,7 +591,7 @@ object RetrievalAssemblerTests extends TestSuite {
 
     test("once the thread's first period has closed, its record stands for the asked section") {
       val world = postThread(Vector(Vector(posted), Vector(why)), Vector("A post, asked about."))
-      assemble(
+      val w = assemble(
         world,
         new Writer(Some("unused")),
         budget = 1000,
@@ -603,7 +600,8 @@ object RetrievalAssemblerTests extends TestSuite {
         origin = thread("2.0"),
         others = Vector(askerAt(askedIn)),
         posted = Some(askedFor())
-      ).nearby ==> Vector.empty
+      )
+      (w.nearby, ids(w)) ==> (Vector.empty, Vector(closingOf(1)))
     }
 
     test("an asked section keeps its first messages that fit the strand's allowance") {
@@ -632,9 +630,11 @@ object RetrievalAssemblerTests extends TestSuite {
     test("a strand member is shown in the strand alone, never also as a section from afar") {
       val world = closed(Vector(Vector(ask)), Vector.empty, threads)
       val a = said(world, "1.0", "where did we land on the Engine contract term?" -> 120)
+      // An open conversation in the room beside the strand, so the nearby search runs.
+      val api = elsewhere(world, "api", close = false, exchange("the term?", "Twelve months."))
       val stitches = follow(world, a)
       val search = new Scripted()
-      search.near = Vector((a, "1.0:0", 5.0))
+      search.near = Vector((api, "api:t0:1", 1.5))
       val w = assemble(
         world,
         new Writer(Some("engine contract")),
@@ -644,7 +644,13 @@ object RetrievalAssemblerTests extends TestSuite {
         origin = thread("2.0"),
         stitches = Some(stitches)
       )
-      w.nearby ==> Vector(Nearby.Along(a, thread("1.0").place, Vector(EntryId("1.0:0"))))
+      (search.nearAsked.flatMap(_.conversations), w.nearby) ==> (
+        Vector(api),
+        Vector(
+          Nearby.Open(api, thread("api").place, Vector(EntryId("api:t0:0"), EntryId("api:t0:1"))),
+          Nearby.Along(a, thread("1.0").place, Vector(EntryId("1.0:0")))
+        )
+      )
     }
 
     test("with the scope off, or nothing open elsewhere, no query is written for a first turn") {
