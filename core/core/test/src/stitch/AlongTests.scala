@@ -68,6 +68,23 @@ object AlongTests extends TestSuite {
       entries(stitches.record(first.id, placed, Now))
     }
 
+    /** Seals and purges the period of `c`'s turn that `first` is in. */
+    def purge(c: Conversation, first: Entry): Unit = {
+      given grit.core.store.Tx = TestTx.fake
+      val period = entries(periods.of(TurnRef(c.id, first.turnSeq)))
+        .map(_.ref)
+        .getOrElse(throw new java.lang.AssertionError("no period"))
+      entries(
+        periods.seal(
+          CloseRef(period, first.turnSeq, Now),
+          CloseReason.Lapsed,
+          TestClosings.prose("x"),
+          Now
+        )
+      )
+      entries(periods.purge(period, Now))
+    }
+
     def read(c: Conversation, scope: Scope): Strand.Read = {
       given grit.core.store.Tx = TestTx.fake
       entries(Along.read(stitches, c, scope, Now.minusSeconds(7 * Day), Now))
@@ -101,8 +118,13 @@ object AlongTests extends TestSuite {
       w.say(a, "the Engine contract term?", 90)
       w.follow(w.say(b, "Is this a real question", 50), a)
       w.read(b, Scope.Off) ==> Strand.Read.empty
+      // A TUI conversation linked to a purged root, which a read would name as gone.
       val dir = Directory.of("/work").getOrElse(throw new java.lang.AssertionError())
       val tui = w.thread(Origin.Tui(dir, "s"))
+      val gone = w.thread(Origin.Slack("T", "C1", "3.0"))
+      val goneFirst = w.say(gone, "lunch?", 80)
+      w.follow(w.say(tui, "and the date?", 40), gone)
+      w.purge(gone, goneFirst)
       w.read(tui, Scope.Everywhere) ==> Strand.Read.empty
     }
 
@@ -112,19 +134,7 @@ object AlongTests extends TestSuite {
       val b = w.thread(Origin.Slack("T", "C1", "2.0"))
       val first = w.say(a, "the Engine contract term?", 3 * Day)
       w.follow(w.say(b, "Is this a real question", 50), a)
-      given grit.core.store.Tx = TestTx.fake
-      val period = entries(w.periods.of(TurnRef(a.id, first.turnSeq)))
-        .map(_.ref)
-        .getOrElse(throw new java.lang.AssertionError("no period"))
-      entries(
-        w.periods.seal(
-          CloseRef(period, first.turnSeq, Now),
-          CloseReason.Lapsed,
-          TestClosings.prose("x"),
-          Now
-        )
-      )
-      entries(w.periods.purge(period, Now))
+      w.purge(a, first)
       val read = w.read(b, Scope.Room)
       (read.opening, read.said, read.gone) ==> (None, Vector.empty, Vector(a.id))
     }
