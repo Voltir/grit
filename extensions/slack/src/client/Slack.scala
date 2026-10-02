@@ -78,7 +78,9 @@ trait Slack extends caps.SharedCapability {
     */
   def listen(handle: String => Boolean): Either[SlackError, Unit]
 
-  /** Posts `post` as a reply in `thread` of `channel`, carrying `tag`; the new message's ts. */
+  /** Posts `post` as a reply in `thread` of `channel`, carrying `tag`; the new message's ts.
+    * `Refused("not_in_channel")` when grit's bot is not a member.
+    */
   def post(channel: ChannelId, thread: Ts, post: Post, tag: Tag): Either[SlackError, Ts]
 
   /** Posts `post` at `channel`'s top level, carrying `tag`; the new message's ts, which is
@@ -86,13 +88,17 @@ trait Slack extends caps.SharedCapability {
     */
   def postTopLevel(channel: ChannelId, post: Post, tag: Tag): Either[SlackError, Ts]
 
-  /** The messages in `thread` of `channel` that carry `tag`, oldest first. */
+  /** The messages in `thread` of `channel` that carry `tag`, oldest first;
+    * `Refused("thread_not_found")` when no message there has the ts `thread`.
+    */
   def tagged(channel: ChannelId, thread: Ts, tag: Tag): Either[SlackError, Vector[Ts]]
 
   /** The message `thread` of `channel` begins with; `None` when there is none. */
   def root(channel: ChannelId, thread: Ts): Either[SlackError, Option[Root]]
 
-  /** Adds grit's `emoji` reaction to message `ts`; one already there is not an error. */
+  /** Adds grit's `emoji` reaction to message `ts`; one already there is not an error.
+    * `Refused("message_not_found")` when there is no such message.
+    */
   def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit]
 
   /** Removes grit's `emoji` reaction from message `ts`; one already gone is not an error. */

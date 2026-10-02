@@ -4,13 +4,15 @@ import java.time.Instant
 
 import scala.concurrent.duration.Duration
 
-import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
+import grit.slack.event.{ChannelId, Event, Events, Listed, Payloads, TeamId, Ts, UserId}
 import grit.slack.text.Post
 
 /** A [[Slack]] for tests, keeping what [[Slack]] says in memory and held to it by
   * [[SlackContract]]: the handler `listen` was given ([[deliver]] hands it a payload, as
   * Socket Mode would, and says whether it was acknowledged), the posts made, each with its tag,
   * and grit's reactions. Every post is made at a ts a microsecond after the latest it knows.
+  * A message it knows is one listed, posted, or delivered as a person's message; a thread it
+  * knows is one such message begins.
   */
 final class FakeSlack extends Slack {
 
@@ -69,6 +71,10 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var down = false
 
+  /** The messages delivered as a person's message: their own ts, and their thread's. */
+  @caps.unsafe.untrackedCaptures
+  var delivered = Set.empty[(ChannelId, Ts)]
+
   /** Whether it was closed. */
   @caps.unsafe.untrackedCaptures
   var closed = false
@@ -76,7 +82,20 @@ final class FakeSlack extends Slack {
   def close(): Unit = closed = true
 
   /** Hands `payload` to the listening handler; whether it was acknowledged. */
-  def deliver(payload: String): Boolean = handler.exists(_(payload))
+  def deliver(payload: String): Boolean = {
+    Events.read(payload, me.bot) match {
+      case Right(said: Event.Said) =>
+        delivered = delivered + ((said.channel, said.ts)) + ((said.channel, said.thread))
+      case _ => ()
+    }
+    handler.exists(_(payload))
+  }
+
+  /** Whether `ts` is a message in `channel` it knows. */
+  private def knows(channel: ChannelId, ts: Ts): Boolean =
+    histories.getOrElse(channel, Vector.empty).exists(l => l.ts == ts || l.thread.contains(ts)) ||
+      posts.exists(p => p.channel == channel && (p.ts == ts || p.thread == ts)) ||
+      delivered.contains((channel, ts))
 
   /** `body`, as one Web API request is answered. */
   private def request[A](body: => Either[SlackError, A]): Either[SlackError, A] =
@@ -97,9 +116,12 @@ final class FakeSlack extends Slack {
 
   def post(channel: ChannelId, thread: Ts, post: Post, tag: Tag): Either[SlackError, Ts] =
     request {
-      val ts = next()
-      posts = posts :+ Posted(channel, thread, post, tag, ts)
-      Right(ts)
+      if (notIn.contains(channel)) Left(SlackError.Refused("not_in_channel"))
+      else {
+        val ts = next()
+        posts = posts :+ Posted(channel, thread, post, tag, ts)
+        Right(ts)
+      }
     }
 
   /** Kept as a post whose thread is its own ts, as Slack lists a message no one replied to. */
@@ -121,9 +143,13 @@ final class FakeSlack extends Slack {
   }
 
   def tagged(channel: ChannelId, thread: Ts, tag: Tag): Either[SlackError, Vector[Ts]] =
-    request(
-      Right(posts.filter(p => p.channel == channel && p.thread == thread && p.tag == tag).map(_.ts))
-    )
+    request {
+      if (!knows(channel, thread)) Left(SlackError.Refused("thread_not_found"))
+      else
+        Right(
+          posts.filter(p => p.channel == channel && p.thread == thread && p.tag == tag).map(_.ts)
+        )
+    }
 
   /** A post of grit's whose ts is `thread`, as grit's bot's with its tag and plain text; else
     * a listed message whose ts it is, with no tag.
@@ -142,8 +168,11 @@ final class FakeSlack extends Slack {
 
   def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] =
     request {
-      reactions = reactions + ((channel, ts, emoji))
-      Right(())
+      if (!knows(channel, ts)) Left(SlackError.Refused("message_not_found"))
+      else {
+        reactions = reactions + ((channel, ts, emoji))
+        Right(())
+      }
     }
 
   def unreact(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] =

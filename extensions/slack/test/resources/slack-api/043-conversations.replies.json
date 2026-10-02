@@ -1,0 +1,19 @@
+{
+  "method": "conversations.replies",
+  "params": {
+    "channel": "C0000000001",
+    "ts": "1790782200.000001",
+    "inclusive": "false",
+    "include_all_metadata": "true",
+    "limit": "200"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": false,
+    "error": "thread_not_found"
+  },
+  "source": "hand-written from Slack's conversations.replies docs (a ts no message has), not yet captured"
+}

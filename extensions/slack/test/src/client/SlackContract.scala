@@ -119,6 +119,29 @@ abstract class SlackContract extends TestSuite {
       }
     }
 
+    test("post where grit's bot is not a member is Refused(not_in_channel)") {
+      withSlack() { slack =>
+        slack.post(Outside, w.ts("m1"), post, Tag.Reply("contract", 0)) ==>
+          Left(SlackError.Refused("not_in_channel"))
+      }
+    }
+
+    test("a thread no message begins: tagged is Refused(thread_not_found), and root is None") {
+      withSlack() { slack =>
+        (
+          slack.tagged(Public, NoMessage, Tag.Reply("contract", 0)),
+          slack.root(Public, NoMessage)
+        ) ==>
+          (Left(SlackError.Refused("thread_not_found")), Right(None))
+      }
+    }
+
+    test("a reaction to no message is Refused(message_not_found)") {
+      withSlack() { slack =>
+        slack.react(Public, NoMessage, "eyes") ==> Left(SlackError.Refused("message_not_found"))
+      }
+    }
+
     test("a reaction added twice, or removed twice, is never an error") {
       withSlack() { slack =>
         val m1 = w.ts("m1")
@@ -198,6 +221,9 @@ object SlackContract {
 
   /** No channel at all. */
   val Missing = ChannelId("C0000000000")
+
+  /** A ts no message in [[Public]] has. */
+  val NoMessage = Ts("1790782200.000001")
 
   /** One message the capture posted in [[Public]], all as grit's bot. `root` names the message
     * whose thread it replies in; `broadcast`, a reply also sent to the channel.

@@ -1,0 +1,17 @@
+{
+  "method": "chat.postMessage",
+  "params": {
+    "channel": "C0000000003",
+    "text": "hi",
+    "thread_ts": "1790782260.791279"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": false,
+    "error": "not_in_channel"
+  },
+  "source": "hand-written from Slack's chat.postMessage docs (a reply in a channel grit's bot is not in), not yet captured"
+}
