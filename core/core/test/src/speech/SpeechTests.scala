@@ -137,6 +137,21 @@ object SpeechTests extends TestSuite {
       }
     }
 
+    test("two checks failing: the earlier one's silence holds") {
+      val stale = heard.copy(said = now.minusSeconds(11 * 60))
+      val capped = Budget(ZoneOffset.UTC, DailyCap.of("1").toOption)
+      val asked = Reach(Some("C/1"), Set(PrincipalId("slack:T/U1")))
+      val threaded = empty.copy(
+        turns = Vector(posted("c", 3, now.minusSeconds(5 * 60 * 60))),
+        all = Spend(9, Cost.Exact(BigDecimal("1.5")))
+      )
+      Vector(
+        decide(stale.copy(tags = tags(Kind.Chatter))),
+        decide(heard.copy(tags = tags(Kind.Chatter), reach = asked)),
+        decide(l = threaded, b = capped)
+      ) ==> Vector(held(Silence.Stale(11.minutes)), held(Silence.Chatter), held(Silence.Thread(1)))
+    }
+
     test("a post outside its rate's window does not count") {
       val l = empty.copy(turns = Vector(posted("c", 3, now.minusSeconds(7 * 60 * 60))))
       assert(decide(l = l) == Decision.Drafting(turn))
@@ -165,9 +180,10 @@ object SpeechTests extends TestSuite {
       test("at or above postAt, shadow: shadowed") {
         assert(Speech.post(Speaking.Shadow(limits), Right(judged)) == Outcome.Shadowed(judged))
       }
-      test("under postAt: below") {
+      test("under postAt: below, within or shadow") {
         val weak = judged.copy(worth = p(0.49))
-        assert(Speech.post(within, Right(weak)) == Outcome.Below(weak, p(0.5)))
+        Vector(within, Speaking.Shadow(limits)).map(Speech.post(_, Right(weak))) ==>
+          Vector(Outcome.Below(weak, p(0.5)), Outcome.Below(weak, p(0.5)))
       }
       test("not judged: unjudged, with why") {
         assert(Speech.post(within, Left("down")) == Outcome.Unjudged("down"))
@@ -191,7 +207,10 @@ object SpeechTests extends TestSuite {
           "m"
         )
       )
+      // The assistant's reply before the root answers something else.
+      val earlier = entry(9, reply)
       val people = Vector(
+        earlier,
         entry(11, Payload.Summary("grit's own")),
         entry(12, Payload.Heard("it's Thursday")),
         entry(13, Payload.Message(Message.User("@bort?")))
@@ -204,6 +223,9 @@ object SpeechTests extends TestSuite {
       val after = entry(4, reply, "s", now.plusSeconds(5))
       Speech.spoken(root, people, Vector(before)) ==> None
       Speech.spoken(root, people, Vector(before, after)) ==> Some(Outcome.Spoken(EntryId("s4")))
+      // The first by time, wherever it was said.
+      val ownLater = entry(14, reply, at = now.plusSeconds(10))
+      Speech.spoken(root, people :+ ownLater, Vector(after)) ==> Some(Outcome.Spoken(EntryId("s4")))
     }
 
     test("a rate needs a count of at least 1 and a positive window") {
