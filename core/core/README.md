@@ -85,7 +85,8 @@ In dependency order:
   what could supply what a message asks for, each covering a place, and the service whose
   tools reach it, if any (`supplied`, each service's sources); and `Gate`, a test of a
   question set's answers that explains every failure (a `Bound` on a `Reading` of one answer,
-  every one of some gates, or any one of them), which a draft is derived from.
+  every one of some gates, or any one of them), which a draft is derived from; `TagsJson` and
+  `GateJson`, the recorded forms of tags and of what a gate read and found.
   ← `id`, `message`,
   `place`, `period`, `store`, `spend`, `classify`
 - **`speech`** — whether grit speaks where it was not addressed (ADR 0022): `Speaking` (off,

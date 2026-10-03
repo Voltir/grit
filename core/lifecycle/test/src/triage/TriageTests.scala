@@ -9,7 +9,7 @@ import grit.core.period.Probability
 import grit.core.speech.{Decision, Limits, Silence, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{Stitching, Tuning}
-import grit.core.triage.{Bound, Earning, Gate, Kind, KnowledgeSources, Reading, Tags}
+import grit.core.triage.{Bound, Earning, Gate, KnowledgeSources, Reading, Tags}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -326,29 +326,6 @@ object TriageTests extends TestSuite {
         ),
         Vector(Marker, "stitched", "ask", "record", "consider")
       )
-    }
-
-    test("tags are journaled by name, and an earlier build's four probabilities read as v1's") {
-      // A triage in flight across the change reads back what the earlier build recorded.
-      val earlier = ujson.read(
-        """{"kind":"decision","kindP":0.75,"waiting":0.125,"durable":0.875,"helps":0.25,""" +
-          """"model":"jev-1.13.0","usage":""" + grit.core.store.PayloadJson
-            .writeUsage(Spent)
-            .render() + "}"
-      )
-      TriageJournal.readTags(earlier) ==> Right(
-        Tags.Weighed(
-          Tags.V1.answers(Kind.Decision, p(0.75), p(0.125), p(0.875), p(0.25)),
-          "jev-1.13.0",
-          Spent
-        )
-      )
-      TriageJournal.writeTags(decision)("answers") ==>
-        grit.core.classify.AnswersJson.writeNamed(decision.answers)
-      TriageJournal.readTags(TriageJournal.writeTags(decision)).map {
-        case Tags.Weighed(answers, model, usage) => (answers.toVector, model, usage)
-        case other => other
-      } ==> Right((decision.answers.toVector, "jev-1.13.0", Spent))
     }
 
     test("a deployment that does not speak keeps no decision and starts nothing") {

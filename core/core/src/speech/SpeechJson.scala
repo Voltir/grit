@@ -2,12 +2,12 @@ package grit.core.speech
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{EntryId, PrincipalId, QuestionName, TurnRef, WorkflowId}
+import grit.core.id.{EntryId, PrincipalId, TurnRef, WorkflowId}
 import grit.core.message.Cost
 import grit.core.period.Probability
 import grit.core.spend.{DailyCap, Spend}
 import grit.core.store.PayloadJson
-import grit.core.triage.{Bound, Gate, Kind, Reading, Tags}
+import grit.core.triage.{Bound, Gate, GateJson, Kind, Reading, Tags}
 
 /** The stored JSON forms of a [[Decision]], a [[Silence]] and an [[Outcome]]: the same in a
   * `grit.speech` row and in a workflow's journal. Written by hand and read totally, as
@@ -44,8 +44,8 @@ object SpeechJson {
     case Silence.Stale(age) => kind("stale", "seconds" -> ujson.Num(age.toSeconds.toDouble))
     case Silence.Unweighed(why) => kind("unweighed", "why" -> ujson.Str(why))
     case Silence.Gated(first, rest) =>
-      kind("gated", "failed" -> ujson.Arr.from((first +: rest).map(writeFailed)))
-    case Silence.Unasked(reading) => kind("unasked", "reading" -> writeReading(reading))
+      kind("gated", "failed" -> ujson.Arr.from((first +: rest).map(GateJson.writeFailed)))
+    case Silence.Unasked(reading) => kind("unasked", "reading" -> GateJson.writeReading(reading))
     case Silence.AskedOf(other) => kind("asked_of", "other" -> ujson.Str(PrincipalId.value(other)))
     case Silence.Unanswered(previous) =>
       kind("unanswered", "previous" -> ujson.Str(WorkflowId.value(previous.workflowId)))
@@ -71,9 +71,9 @@ object SpeechJson {
           o.get("failed").flatMap(_.arrOpt).map(_.toVector) match {
             case Some(first +: rest) =>
               for {
-                f <- readFailed(first)
+                f <- GateJson.readFailed(first)
                 r <- rest.foldLeft[Either[String, Vector[Gate.Failed]]](Right(Vector.empty))(
-                  (acc, v) => acc.flatMap(fs => readFailed(v).map(fs :+ _))
+                  (acc, v) => acc.flatMap(fs => GateJson.readFailed(v).map(fs :+ _))
                 )
               } yield Silence.Gated(f, r)
             case _ => Left("failed: expected a non-empty array")
@@ -81,7 +81,7 @@ object SpeechJson {
         case "unasked" =>
           o.get("reading")
             .toRight("unasked: no reading")
-            .flatMap(readReading)
+            .flatMap(GateJson.readReading)
             .map(Silence.Unasked(_))
         // Stored before a hold named the bound it failed: v1's gate's, with what it read. A
         // chatter hold was kind's most weighted key, which reads 1.
@@ -115,51 +115,6 @@ object SpeechJson {
         case other => Left(s"silence: unknown kind $other")
       }
     }
-
-  /** `{"reading", "bound", "p", "read"}`: what the bound reads, `at_least` or `below` `p`, and
-    * what it read.
-    */
-  private def writeFailed(f: Gate.Failed): ujson.Value = {
-    val (bound, on, p) = f.bound match {
-      case Bound.AtLeast(on, p) => ("at_least", on, p)
-      case Bound.Below(on, p) => ("below", on, p)
-    }
-    ujson.Obj("reading" -> writeReading(on), "bound" -> bound, "p" -> num(p), "read" -> num(f.read))
-  }
-
-  private def readFailed(v: ujson.Value): Either[String, Gate.Failed] =
-    for {
-      o <- obj(v)
-      on <- o.get("reading").toRight("failed: no reading").flatMap(readReading)
-      p <- probability(o, "p")
-      bound <- str(o, "bound").flatMap {
-        case "at_least" => Right(Bound.AtLeast(on, p))
-        case "below" => Right(Bound.Below(on, p))
-        case other => Left(s"failed: unknown bound $other")
-      }
-      read <- probability(o, "read")
-    } yield Gate.Failed(bound, read)
-
-  private def readReading(v: ujson.Value): Either[String, Reading] =
-    for {
-      o <- obj(v)
-      name <- str(o, "name").flatMap(QuestionName.read)
-      reading <- str(o, "reads").flatMap {
-        case "yes" => Right(Reading.Yes(name))
-        case "key" => str(o, "key").map(Reading.Key(name, _))
-        case "chosen" => str(o, "key").map(Reading.Chosen(name, _))
-        case other => Left(s"reading: unknown reads $other")
-      }
-    } yield reading
-
-  /** `{"reads", "name"}`, with its `key` beside them for a `key` or `chosen` reading. */
-  private def writeReading(r: Reading): ujson.Value = r match {
-    case Reading.Yes(name) => ujson.Obj("reads" -> "yes", "name" -> QuestionName.value(name))
-    case Reading.Key(name, key) =>
-      ujson.Obj("reads" -> "key", "name" -> QuestionName.value(name), "key" -> key)
-    case Reading.Chosen(name, key) =>
-      ujson.Obj("reads" -> "chosen", "name" -> QuestionName.value(name), "key" -> key)
-  }
 
   /** `{"kind": its name}`, with its detail beside it: a judgement as `{"grounded", "worth",
     * "model", "usage"}`.
