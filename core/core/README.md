@@ -8,7 +8,7 @@ In dependency order:
 - **`clock`** — what a function cannot compute: `Clock` (the time) and `Fresh` (values
   no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `EntrySeq`, `WorkflowId`,
-  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `ShadowName`, `EdgeName`, `PrincipalId`: who an
+  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `ShadowName`, `QuestionName` (a question's in a question set, or its per-source form), `KnowledgeSourceName`, `EdgeName`, `PrincipalId`: who an
   action is done for, `EdgeId`), `CallSlot` (a tool call's place in its turn, and its
   request's key), the one short content hash every content-addressed id uses, `TurnRef` (and its reply entry's id), `PeriodRef`, `CloseRef` (one
   attempt to close a period on its deadline, and its workflow id), `SettleRef` (the one
