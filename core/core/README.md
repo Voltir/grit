@@ -82,7 +82,8 @@ In dependency order:
   `Shadowed` (what one variant made of one message: its `ShadowAnswers`, a wording's in
   order or a question set's under their names) and `TriageShadows`, where those are
   kept beside the entry and deleted with it; `KnowledgeSources`, a deployment's catalog of
-  what could supply what a message asks for, each covering a place; and `Gate`, a test of a
+  what could supply what a message asks for, each covering a place, and the service whose
+  tools reach it, if any (`supplied`, each service's sources); and `Gate`, a test of a
   question set's answers that explains every failure (a `Bound` on a `Reading` of one answer,
   every one of some gates, or any one of them), which a draft is derived from.
   ← `id`, `message`,

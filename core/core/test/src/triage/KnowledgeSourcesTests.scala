@@ -1,17 +1,25 @@
 package grit.core.triage
 
+import scala.collection.immutable.VectorMap
+
 import grit.core.id.KnowledgeSourceName
-import grit.core.place.Place
+import grit.core.place.{Place, Service}
 
 import utest.*
 
 object KnowledgeSourcesTests extends TestSuite {
 
-  private def source(name: String, within: String): KnowledgeSource =
+  private def source(
+      name: String,
+      within: String,
+      supplies: Option[String] = None
+  ): KnowledgeSource =
     (for {
       n <- KnowledgeSourceName.of(name)
       p <- Place.read(within)
-    } yield KnowledgeSource(n, s"the $name", p)).getOrElse(throw new java.lang.AssertionError(name))
+      s <- supplies.fold[Either[String, Option[Service]]](Right(None))(Service.of(_).map(Some(_)))
+    } yield KnowledgeSource(n, s"the $name", p, s))
+      .getOrElse(throw new java.lang.AssertionError(name))
 
   val tests = Tests {
     test("at keeps the sources whose within holds the place, in the order declared") {
@@ -34,6 +42,27 @@ object KnowledgeSourcesTests extends TestSuite {
       ) ==> Left(
         KnowledgeSourceName.of("github").getOrElse(throw new java.lang.AssertionError("name"))
       )
+    }
+
+    test("supplied gives each service its supplying sources, in the order declared") {
+      // linear's sources declared apart, docs between them, and notes supplying nothing.
+      val catalog = KnowledgeSources
+        .of(
+          Vector(
+            source("tickets", "slack:", Some("linear")),
+            source("notes", "fs:/x"),
+            source("handbook", "slack:", Some("docs")),
+            source("roadmap", "slack:", Some("linear"))
+          )
+        )
+        .getOrElse(throw new java.lang.AssertionError("catalog"))
+      def name(n: String) =
+        KnowledgeSourceName.of(n).getOrElse(throw new java.lang.AssertionError(n))
+      def service(n: String) = Service.of(n).getOrElse(throw new java.lang.AssertionError(n))
+      catalog.supplied.toVector ==> VectorMap(
+        service("linear") -> Vector(name("tickets"), name("roadmap")),
+        service("docs") -> Vector(name("handbook"))
+      ).toVector
     }
   }
 }
