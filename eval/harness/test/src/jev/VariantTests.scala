@@ -62,5 +62,39 @@ object VariantTests extends TestSuite {
       (Variant.digest(Variant.recipe(v)), Variant.digest(Variant.wording(v))) ==>
         (Variant.digest(recipe), Variant.digest(named))
     }
+
+    test("sections-named changes only where the shipped words say what to read") {
+      val shipped = TriageQuestion.Wording.Shipped
+      val opening = "Read new_message and thread."
+      def reread(q: String) =
+        q.replace(opening, "Read new_message, its thread, and any channel context given.")
+      Variants.named("sections-named").map(v => (Variant.recipe(v), Variant.wording(v))) ==>
+        Some(
+          (
+            TriageRecipe.Shipped,
+            shipped.copy(
+              kind = "Read new_message, said by author in a team's thread; thread is what came " +
+                "before it in its conversation. nearby_in_channel and exchanges_in_channel, when " +
+                "present, are what was said around it elsewhere in the channel. Nobody said it to " +
+                "the assistant. What kind of message is it?",
+              waiting = reread(shipped.waiting),
+              durable = reread(shipped.durable),
+              helps = reread(shipped.helps)
+            )
+          )
+        )
+      Vector(shipped.waiting, shipped.durable, shipped.helps).map(_.startsWith(opening)) ==>
+        Vector(true, true, true)
+    }
+
+    test("each open-pool candidate has a +named twin: its recipe, asked in sections-named") {
+      val named = Variants.named("sections-named").map(Variant.wording)
+      Vector("nearby-open", "exchanges-open", "nearby-author-open").map { n =>
+        Variants.named(s"$n+named").map(v => (Variant.recipe(v), Some(Variant.wording(v))))
+      } ==> Vector("nearby-open", "exchanges-open", "nearby-author-open").map { n =>
+        Variants.named(n).map(v => (Variant.recipe(v), named))
+      }
+      named.isDefined ==> true
+    }
   }
 }

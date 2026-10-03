@@ -151,8 +151,40 @@ object Variants {
     TriageQuestion.Wording.Shipped
   )
 
+  /** The shipped words, but where they say what to read: the kind question names
+    * `nearby_in_channel` and `exchanges_in_channel`, and each yes/no question opens on
+    * new_message, its thread, and any channel context given.
+    */
+  val SectionsNamedWording: TriageQuestion.Wording = {
+    val shipped = TriageQuestion.Wording.Shipped
+    def reread(q: String) = q.replace(
+      "Read new_message and thread.",
+      "Read new_message, its thread, and any channel context given."
+    )
+    shipped.copy(
+      kind = "Read new_message, said by author in a team's thread; thread is what came before " +
+        "it in its conversation. nearby_in_channel and exchanges_in_channel, when present, are " +
+        "what was said around it elsewhere in the channel. Nobody said it to the assistant. " +
+        "What kind of message is it?",
+      waiting = reread(shipped.waiting),
+      durable = reread(shipped.durable),
+      helps = reread(shipped.helps)
+    )
+  }
+
+  /** The shipped recipe asked in [[SectionsNamedWording]]: what the words alone change. */
+  val SectionsNamed: Variant = Variant.Words("sections-named", SectionsNamedWording)
+
+  /** Each open-pool candidate's recipe, asked in [[SectionsNamedWording]] and named `+named`. */
+  val OpenNamed: Vector[Variant] =
+    Vector(NearbyOpen, ExchangesOpen, NearbyAuthorOpen).collect {
+      case Variant.Recipe(name, recipe, _) =>
+        Variant.Recipe(s"$name+named", recipe, SectionsNamedWording)
+    }
+
   val all: Vector[Variant] =
-    Vector(Variant.Live, DurableLasting, JevLatest, NearbyOpen, ExchangesOpen, NearbyAuthorOpen)
+    Vector(Variant.Live, DurableLasting, JevLatest, NearbyOpen, ExchangesOpen, NearbyAuthorOpen) ++
+      (SectionsNamed +: OpenNamed)
 
   /** The variant named `name`; `None` for none's. */
   def named(name: String): Option[Variant] = all.find(Variant.name(_) == name)
