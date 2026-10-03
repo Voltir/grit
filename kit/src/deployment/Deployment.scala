@@ -3,12 +3,13 @@ package grit.kit.deployment
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.edge.ServedEdge
-import grit.core.id.{EdgeName, QuestionName, ShadowName}
+import grit.core.id.{EdgeName, KnowledgeSourceName, QuestionName, ShadowName}
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
-import grit.core.place.{Reaches, WorksIn}
+import grit.core.place.{Reaches, Service, WorksIn}
 import grit.core.plugin.Plugin
+import grit.core.recipe.TurnRecipe
 import grit.core.review.Reviewing
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
@@ -111,6 +112,22 @@ enum DeploymentRefusal {
     */
   case ReviewUnspoken
 
+  /** The recipe offers a service by a gate reading `reading`, which live triage
+    * ([[TriageQuestions.Shipped]]) does not ask with the deployment's knowledge sources: the
+    * gate would never act.
+    */
+  case RecipeUnread(reading: Reading)
+
+  /** `source` supplies `service`, which no `worksIn` or `reaches` link offers: offering by it
+    * would gate nothing.
+    */
+  case OffersUnlinked(source: KnowledgeSourceName, service: Service)
+
+  /** The recipe draws a window of `budget` estimated tokens, wider than the assembly's
+    * `window`: widening waits until a model's context can be checked against it.
+    */
+  case Widens(budget: Tokens, window: Tokens)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
@@ -129,6 +146,12 @@ enum DeploymentRefusal {
       s"the review names ${ShadowName.value(shadow)}, which is not a declared shadow"
     case ReviewUnspoken =>
       "a review compares a shadow's gate with live triage's, and speaking is off, so live's is never reached"
+    case RecipeUnread(reading) =>
+      s"the recipe offers a service by $reading, which live triage does not ask, so it would never act"
+    case OffersUnlinked(source, service) =>
+      s"${KnowledgeSourceName.value(source)} supplies ${service.name}, which no worksIn or reaches link offers"
+    case Widens(budget, window) =>
+      s"the recipe draws a window of ${Tokens.value(budget)} tokens, wider than the assembly's ${Tokens.value(window)}"
   }
 }
 
@@ -141,8 +164,10 @@ enum DeploymentRefusal {
   * placed among topics, the lifecycle's settings, what it may spend a day, whether and within
   * what it speaks where it was not addressed (ADR 0022), the shadows of triage's question it
   * records beside live triage ([[ShadowVariant]]), the knowledge sources its shadows'
-  * question sets ask about ([[KnowledgeSources]]), the review of one of them it picks heard
-  * messages for ([[ShadowReview]]), and how often its engine sweeps. The
+  * question sets ask about ([[KnowledgeSources]]), and its turns' offering by the services
+  * they supply, the review of one of them it picks heard messages for ([[ShadowReview]]), how
+  * often its engine sweeps, and the `recipe` that shapes each turn by what it answers
+  * ([[TurnRecipe]]). The
   * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
@@ -162,7 +187,8 @@ final case class Deployment private (
     reaches: Vector[Reaches],
     shadows: Vector[ShadowVariant],
     knowledge: KnowledgeSources,
-    review: Option[ShadowReview]
+    review: Option[ShadowReview],
+    recipe: TurnRecipe
 )
 
 object Deployment {
@@ -177,7 +203,11 @@ object Deployment {
     * name, or any is declared with `topics` Off: each shadow asks the topics' classifier, Jev
     * (of the shadow's own model when it names one) or the stub, or when `review` names no
     * declared shadow or is declared with `speaking` Off: live's
-    * gate is then never reached. `lifecycle` is written over the
+    * gate is then never reached; or when `recipe` offers a service by a gate reading what live
+    * triage does not ask ([[DeploymentRefusal.RecipeUnread]]), a source of `knowledge`
+    * supplies a service no `worksIn` or `reaches` link offers
+    * ([[DeploymentRefusal.OffersUnlinked]]), or `recipe` draws a window wider than
+    * `assembly`'s ([[DeploymentRefusal.Widens]]). `lifecycle` is written over the
     * database's settings on every start, so a change made while grit runs (`/set`, SQL)
     * holds until the next start. What `speaking` spends is counted in `budget` as well as
     * against its own cap ([[grit.core.speech.Limits.spend]]).
@@ -197,7 +227,8 @@ object Deployment {
       reaches: Vector[Reaches] = Vector.empty,
       shadows: Vector[ShadowVariant] = Vector.empty,
       knowledge: KnowledgeSources = KnowledgeSources.Empty,
-      review: Option[Reviewing] = None
+      review: Option[Reviewing] = None,
+      recipe: TurnRecipe = TurnRecipe.Shipped
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filterNot(_.answersAsks).map(_.name)
@@ -245,6 +276,10 @@ object Deployment {
             .map(v => Some(ShadowReview(r, v.questions.speak)))
             .toRight(DeploymentRefusal.ReviewUngated(r.shadow))
       }
+      _ <- read(recipe, knowledge, TriageQuestions.Shipped)
+      _ <- linked(knowledge, worksIn, reaches)
+      assembled = window(assembly)
+      _ <- recipe.widens(assembled).map(DeploymentRefusal.Widens(_, assembled)).toLeft(())
     } yield Deployment(
       edges,
       worksIn,
@@ -260,8 +295,45 @@ object Deployment {
       reaches,
       shadows,
       knowledge,
-      reviewed
+      reviewed,
+      recipe
     )
+  }
+
+  /** Whether `live`, the set live triage asks, asks every reading `recipe`'s gates read with
+    * `knowledge`'s sources; [[DeploymentRefusal.RecipeUnread]] naming the first it does not.
+    */
+  private[deployment] def read(
+      recipe: TurnRecipe,
+      knowledge: KnowledgeSources,
+      live: TriageQuestions
+  ): Either[DeploymentRefusal, Unit] =
+    live
+      .unread(Gate.all(recipe.gates(knowledge)*), knowledge)
+      .map(DeploymentRefusal.RecipeUnread(_))
+      .toLeft(())
+
+  /** [[DeploymentRefusal.OffersUnlinked]] for the first source of `knowledge` supplying a
+    * service none of `worksIn` or `reaches` names.
+    */
+  private def linked(
+      knowledge: KnowledgeSources,
+      worksIn: Vector[WorksIn],
+      reaches: Vector[Reaches]
+  ): Either[DeploymentRefusal, Unit] = {
+    val offered = worksIn.map(_.service).toSet ++ reaches.map(_.service)
+    knowledge.all
+      .flatMap(source =>
+        source.supplies.filterNot(offered).map(DeploymentRefusal.OffersUnlinked(source.name, _))
+      )
+      .headOption
+      .toLeft(())
+  }
+
+  /** The most estimated tokens `assembly` draws a window within. */
+  private def window(assembly: Assembly): Tokens = assembly match {
+    case Assembly.Retrieval(window, _) => window
+    case Assembly.Linear(window) => window
   }
 
   /** Whether `live`, the set live triage asks, asks [[Earning.Durable]] as a yes/no;

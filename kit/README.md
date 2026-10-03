@@ -16,13 +16,17 @@ In dependency order:
 - **`deployment`** — what a deployment declares: `Deployment` (built by `Deployment.of`,
   called with named arguments, which refuses tools that ask first beside an edge that cannot
   answer an ask, two edges of one name, a sweep under a second, two shadows of one name,
-  shadows with topics off, and a review of no shadow declared as a question set, or with
-  speaking off), `Offer` and `Offered`
+  shadows with topics off, a review of no shadow declared as a question set, or with
+  speaking off, a recipe gating by what live triage does not ask, a knowledge source
+  supplying a service no link offers, and a recipe widening a window past the assembly's),
+  `Offer` and `Offered`
   (the tools every turn's model is offered), `Assembly` (how a window is assembled),
   `Topics` (how a message is placed among topics), the shadows of triage's question it
   records (`grit.lifecycle.shadow.ShadowVariant`), the knowledge sources their question
   sets ask about (`grit.core.triage.KnowledgeSources`), and the review of one of them it picks
-  heard messages for (`ShadowReview`: `grit.core.review.Reviewing` with that shadow's gate). Beside its edges it declares, by core's
+  heard messages for (`ShadowReview`: `grit.core.review.Reviewing` with that shadow's gate),
+  and the recipe that shapes each turn by what it answers (`grit.core.recipe.TurnRecipe`,
+  ADR 0025). Beside its edges it declares, by core's
   links, which conversations work in a service an edge hosts (`WorksIn`) and which
   conversations' addressed turns also reach one (`Reaches`). Imports nothing in kit.
 - **`environment`** — what the process environment supplies, never declared: `DotEnv` (a

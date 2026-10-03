@@ -269,7 +269,9 @@ private[grit] object Launch {
               engine.jot,
               d.offer.rounds,
               worksIn = d.worksIn,
-              reaches = d.reaches
+              reaches = d.reaches,
+              recipe = d.recipe,
+              knowledge = d.knowledge
             )
           )
         )
@@ -291,7 +293,9 @@ private[grit] object Launch {
                   engine.jot,
                   d.offer.rounds,
                   worksIn = d.worksIn,
-                  reaches = d.reaches
+                  reaches = d.reaches,
+                  recipe = d.recipe,
+                  knowledge = d.knowledge
                 )
               )
             }

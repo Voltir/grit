@@ -11,6 +11,35 @@ import utest.*
 object DeploymentTests extends TestSuite {
   import Deployments.edge
 
+  private val github: grit.core.place.Service =
+    grit.core.place.Service.of("github").fold(e => sys.error(e), identity)
+  private val repo: grit.core.id.KnowledgeSourceName =
+    grit.core.id.KnowledgeSourceName.of("repo").fold(e => sys.error(e), identity)
+  private val inGithub: Vector[grit.core.place.WorksIn] = Vector(
+    grit.core.place.WorksIn(grit.core.place.Place.Everywhere, github)
+  )
+
+  /** One source, `repo`, supplied by `github`'s tools. */
+  private val repoInGithub = grit.core.triage.KnowledgeSources
+    .of(
+      Vector(
+        grit.core.triage
+          .KnowledgeSource(repo, "the repository", grit.core.place.Place.Everywhere, Some(github))
+      )
+    )
+    .fold(n => sys.error(grit.core.id.KnowledgeSourceName.value(n)), identity)
+
+  /** Heard turns offered a service's tools when one of its sources reads at least 0.2. */
+  private val bySource = grit.core.recipe.TurnRecipe(
+    grit.core.recipe.ByFocus.both(
+      grit.core.recipe.Shaping(
+        grit.core.context.Width.Deployed,
+        grit.core.recipe.Offering.BySource(grit.core.period.Probability.clamped(0.2))
+      )
+    ),
+    grit.core.recipe.TurnRecipe.Shipped.addressed
+  )
+
   private def of(edges: Vector[grit.core.edge.ServedEdge], tools: Offered = Offered.Read) =
     Deployments.of(edges = edges, tools = tools).map(_ => ())
 
@@ -200,6 +229,73 @@ object DeploymentTests extends TestSuite {
         Right(()),
         Left(DeploymentRefusal.DurableUnasked),
         Left(DeploymentRefusal.DurableUnasked)
+      )
+    }
+
+    test(
+      "a recipe offering a service by a question live triage does not ask is refused, naming it"
+    ) {
+      import grit.lifecycle.triage.TriageQuestions
+      val read = grit.core.triage.Reading.Yes(
+        grit.core.id.QuestionName.per(grit.core.triage.Tags.V2.sourcePrefix, repo)
+      )
+      (
+        Deployment.read(bySource, repoInGithub, TriageQuestions.Shipped),
+        Deployment.read(bySource, repoInGithub, TriageQuestions.V1),
+        Deployment.read(grit.core.recipe.TurnRecipe.Shipped, repoInGithub, TriageQuestions.V1),
+        Deployments
+          .of(worksIn = inGithub, knowledge = repoInGithub, recipe = bySource)
+          .map(_ => ())
+      ) ==> (
+        Right(()),
+        Left(DeploymentRefusal.RecipeUnread(read)),
+        Right(()),
+        Right(())
+      )
+    }
+
+    test(
+      "a knowledge source supplying a service no worksIn or reaches link offers is refused"
+    ) {
+      def declared(
+          worksIn: Vector[grit.core.place.WorksIn],
+          reaches: Vector[grit.core.place.Reaches]
+      ) = Deployments
+        .of(worksIn = worksIn, reaches = reaches, knowledge = repoInGithub)
+        .map(_ => ())
+      (
+        declared(Vector.empty, Vector.empty),
+        declared(inGithub, Vector.empty),
+        declared(
+          Vector.empty,
+          Vector(grit.core.place.Reaches(grit.core.place.Place.Everywhere, github))
+        )
+      ) ==> (
+        Left(DeploymentRefusal.OffersUnlinked(repo, github)),
+        Right(()),
+        Right(())
+      )
+    }
+
+    test("a recipe drawing a window wider than the assembly's is refused; at or under it is not") {
+      // Deployments.of assembles within 1000 tokens.
+      def drawn(budget: Long) = Deployments
+        .of(recipe =
+          grit.core.recipe.TurnRecipe.Shipped.copy(addressed =
+            grit.core.recipe.Shaping(
+              grit.core.context.Width.Within(grit.core.message.Tokens(budget), 4),
+              grit.core.recipe.Offering.All
+            )
+          )
+        )
+        .map(_ => ())
+      (drawn(1001), drawn(1000), drawn(400)) ==> (
+        Left(
+          DeploymentRefusal
+            .Widens(grit.core.message.Tokens(1001), grit.core.message.Tokens(1000))
+        ),
+        Right(()),
+        Right(())
       )
     }
 

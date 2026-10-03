@@ -44,11 +44,15 @@ object Deployments {
       sweep: FiniteDuration = 30.seconds,
       speaking: grit.core.speech.Speaking = grit.core.speech.Speaking.Off,
       shadows: Vector[grit.lifecycle.shadow.ShadowVariant] = Vector.empty,
-      review: Option[grit.core.review.Reviewing] = None
+      review: Option[grit.core.review.Reviewing] = None,
+      worksIn: Vector[grit.core.place.WorksIn] = Vector.empty,
+      reaches: Vector[grit.core.place.Reaches] = Vector.empty,
+      knowledge: grit.core.triage.KnowledgeSources = grit.core.triage.KnowledgeSources.Empty,
+      recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped
   ): Either[DeploymentRefusal, Deployment] =
     Deployment.of(
       edges = edges,
-      worksIn = Vector.empty,
+      worksIn = worksIn,
       plugins = Vector.empty,
       policy = Policy(assigned, assigned, assigned, assigned),
       offer = Offer(tools, TurnLoop.Budget.of(4).getOrElse(sys.error("rounds"))),
@@ -59,7 +63,10 @@ object Deployments {
       speaking = speaking,
       sweep = sweep,
       shadows = shadows,
-      review = review
+      review = review,
+      reaches = reaches,
+      knowledge = knowledge,
+      recipe = recipe
     )
 
   /** [[of]], which the test expects to be accepted. */

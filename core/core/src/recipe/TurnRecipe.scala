@@ -3,6 +3,7 @@ package grit.core.recipe
 import grit.core.context.Width
 import grit.core.message.Tokens
 import grit.core.store.Focus
+import grit.core.triage.{Gate, KnowledgeSources}
 
 /** One `A` for each focus a message is said at ([[Focus]]). */
 final case class ByFocus[A](focused: A, open: A) {
@@ -43,10 +44,21 @@ final case class TurnRecipe(heard: ByFocus[Shaping], addressed: Shaping) {
     * A window drawn as deployed is never over it.
     */
   def widens(window: Tokens): Option[Tokens] =
-    Vector(heard.focused, heard.open, addressed)
+    shapings
       .collect { case Shaping(Width.Within(budget, _), _) => budget }
       .filter(b => Tokens.value(b) > Tokens.value(window))
       .maxByOption(Tokens.value)
+
+  /** Every gate it offers a service by, each once, in order (heard focused, heard open, then
+    * addressed; within each, the services `knowledge` says some source supplies, in its order):
+    * none when it offers every service whatever the answers.
+    */
+  def gates(knowledge: KnowledgeSources): Vector[Gate] = {
+    val supplied = knowledge.supplied.values.toVector
+    shapings.flatMap(s => supplied.flatMap(s.offering.gate)).distinct
+  }
+
+  private def shapings: Vector[Shaping] = Vector(heard.focused, heard.open, addressed)
 }
 
 object TurnRecipe {

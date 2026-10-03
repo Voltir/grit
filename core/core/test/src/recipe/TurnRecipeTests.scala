@@ -1,9 +1,12 @@
 package grit.core.recipe
 
 import grit.core.context.Width
+import grit.core.id.KnowledgeSourceName
 import grit.core.message.Tokens
 import grit.core.period.Probability
+import grit.core.place.{Place, Service}
 import grit.core.store.Focus
+import grit.core.triage.{KnowledgeSource, KnowledgeSources, Tags}
 
 import utest.*
 
@@ -24,6 +27,39 @@ object TurnRecipeTests extends TestSuite {
       recipe.at(Rooted.Heard(Focus.Focused)) ==> shaping(1000, 0.1)
       recipe.at(Rooted.Heard(Focus.Open)) ==> shaping(2000, 0.2)
       recipe.at(Rooted.Addressed) ==> shaping(3000, 0.3)
+    }
+
+    test("its gates are each shaping's offering gate of every supplied service, each once") {
+      def name(n: String) = KnowledgeSourceName.of(n).fold(e => sys.error(e), identity)
+      def service(n: String) = Service.of(n).fold(e => sys.error(e), identity)
+      val knowledge = KnowledgeSources
+        .of(
+          Vector(
+            KnowledgeSource(
+              name("repo"),
+              "the repository",
+              Place.Everywhere,
+              Some(service("github"))
+            ),
+            KnowledgeSource(name("past"), "past conversations", Place.Everywhere, None),
+            KnowledgeSource(name("wiki"), "the wiki", Place.Everywhere, Some(service("docs")))
+          )
+        )
+        .fold(n => sys.error(KnowledgeSourceName.value(n)), identity)
+      def source(n: String, at: Double) = Tags.V2.source(name(n), Probability.clamped(at))
+      val twice = recipe.copy(heard = recipe.heard.copy(open = shaping(2000, 0.1)))
+      (recipe.gates(knowledge), twice.gates(knowledge), TurnRecipe.Shipped.gates(knowledge)) ==> (
+        Vector(
+          source("repo", 0.1),
+          source("wiki", 0.1),
+          source("repo", 0.2),
+          source("wiki", 0.2),
+          source("repo", 0.3),
+          source("wiki", 0.3)
+        ),
+        Vector(source("repo", 0.1), source("wiki", 0.1), source("repo", 0.3), source("wiki", 0.3)),
+        Vector.empty
+      )
     }
 
     test("widens names the widest budget over the window, and none at or under it") {
