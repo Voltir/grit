@@ -56,6 +56,20 @@ object Locator {
     case (_, first :: rest) => Some(Messages(part.conversation, ::(first, rest)))
   }
 
+  /** Whether `parts` show every entry `l` names: a record's closing entry in a part of its
+    * conversation that is a record or a closed section; each of its messages in a part of
+    * their conversation, of any kind.
+    */
+  def held(l: Locator, parts: Vector[Part]): Boolean = l match {
+    case Record(of, closing) =>
+      parts.exists(p =>
+        p.conversation == of && p.seqs.contains(closing) &&
+          (p.kind == Part.Kind.Record || p.kind == Part.Kind.Closed)
+      )
+    case Messages(of, seqs) =>
+      seqs.forall(s => parts.exists(p => p.conversation == of && p.seqs.contains(s)))
+  }
+
   /** `l` as files write it: `{"record": {"conversation", "closing"}}` or `{"messages":
     * {"conversation", "seqs"}}`.
     */

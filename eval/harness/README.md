@@ -53,7 +53,8 @@ Packages, each importing only those above it:
   written to `reply-labels.json`): each a `ReplyLabel` under a `ReplyGuide` this build knows,
   of the reply's `Quality`, where its answer was `Found` (in records named by `Locator`, a
   window part by ids alone, or the thread, elsewhere, nowhere, or nothing asked), and whether
-  grit should have spoken; a person's note is never read into one. ← `corpus`
+  grit should have spoken; a person's note is never read into one; `Locator.held`, whether a
+  window's parts show what a locator names. ← `corpus`
 - **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the
   corpus, variant, build, cap and repeats a run was started with, and a question set's
   names), `Row` (one request: its case, digest, cache key, `Outcome`, usage, latency, and the
@@ -124,7 +125,12 @@ Packages, each importing only those above it:
   `topic` tool and unnamed calls apart), prompt and window tokens and the first call's
   estimate against the ledger (each as `Quantiles`), cost by what it paid for, the drafts'
   outcomes with their post and hold rates (each a `Proportion` clustered by thread), the review verdicts
-  joined by case, and the window parts a reply `Used`. ← `stats`, `corpus`, `label`, `log`
+  joined by case, and the window parts a reply `Used`. `Recipe`, a turn variant against
+  shipped over the turns paired (`TurnPair`, what each is `Given` both ways): tools offered and
+  their definitions' tokens saved, called-tool recall (of the tools a turn called, those the
+  variant still offers), window tokens per part, used-section recall (of the parts a reply
+  used, those the variant's window holds, `Locator.held`), and the turns it changed.
+  ← `stats`, `corpus`, `label`, `log`
 - **`report`** — `Report`, a run scored (`Scored`: its log, its corpus's cases, the labels in
   force) and two runs compared, as markdown with every mean's and rate's interval; text-free. With no case
   labelled, only what needs no label: spend and latency (`score.Spending`), the repeats' spread
