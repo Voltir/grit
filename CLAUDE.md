@@ -31,7 +31,7 @@ while its Mill name, package and artifact stay `grit.<name>`:
 
 | Module | Package | Depends on | Holds |
 |---|---|---|---|
-| `grit.core` | `grit.core.{clock,id,place,prompt,model,message,classify,topic,period,retention,store,spend,triage,speech,review,plugin,durable,approval,context,provider,inbox,stitch,host,tool,edge}` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath; package order in [`core/core/README.md`](core/core/README.md) |
+| `grit.core` | `grit.core.{clock,id,place,prompt,model,message,classify,topic,period,retention,store,spend,triage,speech,review,plugin,durable,approval,context,provider,inbox,stitch,recipe,host,tool,edge}` | — | the domain and the seams; no DBOS, no JDBC driver on its classpath; package order in [`core/core/README.md`](core/core/README.md) |
 | `grit.dbos` | `grit.dbos.{sql,workflow,engine}` | core | DBOS quarantine: DBOS, JDBC, Postgres, `schema.sql`; `Engine` is what `grit.app` opens; package order in [`core/dbos/README.md`](core/dbos/README.md) |
 | `grit.prose` | `grit.prose.{form,markdown}` | — | prose as edge-neutral blocks, read from markdown; each edge renders them (`Renderer`); package order in [`core/prose/README.md`](core/prose/README.md) |
 | `grit.tui` | `grit.tui.{model,components,wire,runtime}.*` | core | the terminal UI: an `App` is three pure functions and a view tree (`Node`) that the runtime lays out, paints and routes input through; core only from `components`/`runtime` |
