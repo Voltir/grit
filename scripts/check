@@ -3,7 +3,7 @@
 # each failing test, every compile error and warning, and one totals line per tier that a
 # commit message can quote. The full output of each tier is kept in out/check/<tier>.log.
 #
-#   scripts/check                                  # the commit gate: unit, law, lint
+#   scripts/check                                  # the commit gate: unit, law, format, lint
 #   scripts/check --it                             # the same, and the integration tier
 #   scripts/check grit.core                        # one module's unit tests (testCached)
 #   scripts/check grit.core.speech.SpeechTests     # one suite (testOnly)
@@ -14,10 +14,12 @@
 #         a failure is never cached. (`__.testCached` would also match the `it` modules.)
 #   law   scripts/enola-law.sh.
 #   it    with --it: scripts/it __.it.testForked, every live suite rerun.
+#   format  scripts/format-check: every source formatted, and none that scalafmt cannot parse
+#         (it skips such a file and exits 0), each named. --no-lint skips it.
 #   lint  every module compiled with -Wunused:all (build.mill reads GRIT_LINT=1), in its own
 #         output directory, out/lint, so neither cache invalidates the other. Its Mill daemon
 #         is shut down when the tier ends. --no-lint skips it.
-# A target runs just that: no law, no lint; --it with a target is a usage error.
+# A target runs just that: no law, no format, no lint; --it with a target is a usage error.
 #
 # Exits non-zero when any tier had a failed test, a compile error, a warning, a law failure
 # or a timeout. Every tier runs even after an earlier one fails. When Mill fails, the totals
@@ -221,6 +223,7 @@ if [ ${#targets[@]} -eq 0 ]; then
   fi
 
   if $lint; then
+    run_tier format out "" -- scripts/format-check "${mill[@]}"
     run_tier lint out/lint "" -- env GRIT_LINT=1 MILL_OUTPUT_DIR=out/lint "${mill[@]}" __.compile
     MILL_OUTPUT_DIR=out/lint ./mill shutdown >>"$logs/lint.log" 2>&1 || true
   fi

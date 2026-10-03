@@ -328,7 +328,9 @@ this pattern.
   type (), use Unit instead"*. A capture-set argument written `Toolbox[{ws}]` does not parse
   at all (*"illegal start of declaration"*) and no override fixes it: write its desugared
   form, `Toolbox[caps.CapSet^{ws}]`, which the compiler reads as the same type. `[{}]` parses.
-  reformatAll still exits 0 over a file it skipped, so read its log for `error:` lines.
+  reformatAll and checkFormatAll exit 0 over a file they skipped, and a warm Mill daemon
+  passes it unseen the next time; `scripts/check`'s format tier (`scripts/format-check`)
+  fails on it, by name.
 - **upickle's `derives ReadWriter` crashes** with a `MatchError` on
   `caps.internal.inferred` in its macro (upickle 4.4.3). Write codecs by hand over `ujson`,
   or with `readwriter[ujson.Value].bimap`, which compiles under both checkers.
