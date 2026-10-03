@@ -65,10 +65,13 @@ object Pool {
     val exchanges = pool.sources.contains(Source.Exchanges)
     // One read per kind of source, as wide as its widest: each window ends at t, so the latest
     // `most` of a narrower one are among the latest of the widest.
-    def widest(of: Vector[(FiniteDuration, Int)]) = (of.map(_._1).max, of.map(_._2).max)
+    // None when there is no such source, so nothing is read for it.
+    def widest(of: Vector[(FiniteDuration, Int)]): Option[(FiniteDuration, Int)] =
+      of.reduceOption((a, b) => (a._1.max(b._1), math.max(a._2, b._2)))
+    val none: Either[StoreError, Vector[Said]] = Right(Vector.empty)
     for {
-      said <- if (channel.isEmpty) Right(Vector.empty) else at.said(widest(channel))
-      by <- if (author.isEmpty) Right(Vector.empty) else at.saidByAuthor(widest(author))
+      said <- widest(channel).fold(none)(at.said)
+      by <- widest(author).fold(none)(at.saidByAuthor)
       offered <- if (exchanges) at.offered() else Right(Vector.empty)
       names <- {
         val ids = (said ++ by).map(_.entry.id).distinct
