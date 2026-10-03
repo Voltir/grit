@@ -417,9 +417,9 @@ final class SlackEdge(
 
   /** One pass over the review's prompts not yet posted, when this edge answers a review: each
     * whose message was heard in this workspace's Slack is posted at the top of the review's
-    * place, linking the message by its permalink and showing why it was picked, live triage's
-    * decision and the shadow's answers, never a message's text or a draft's; then given the
-    * three reactions [[receive]] keeps as its verdict; then kept as posted. A
+    * place, linking the message by its permalink ([[ReviewPrompt.doc]]): never a message's text
+    * or a draft's, nor why it was picked or what either gate decided; then given the three
+    * reactions [[receive]] keeps as its verdict; then kept as posted. A
     * prompt Slack will not link or post waits for a later pass; a reaction Slack will not add
     * is said, and the prompt kept as posted without it. A prompt posted but not kept, as after
     * a crash between the two, is posted again by a later pass, and the reactions to the first
@@ -453,7 +453,7 @@ final class SlackEdge(
     val shown = channelNameOf(channel).fold(ChannelId.value(channel))(n => s"#$n")
     val done = for {
       link <- slack.permalink(channel, ts).left.map(e => s"its message is not linked: $e")
-      post <- RichText.render(ReviewPrompt.doc(p, shown, link)) match {
+      post <- RichText.render(ReviewPrompt.doc(shown, link)) match {
         case Vector(one) => Right(one)
         case more => Left(s"it renders as ${more.size} messages")
       }

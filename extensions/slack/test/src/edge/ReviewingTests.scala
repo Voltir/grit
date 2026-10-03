@@ -19,7 +19,6 @@ import utest.*
   */
 object ReviewingTests extends TestSuite {
   import Payloads.*
-  import PickedPrompts.*
 
   private object FakeJot extends Jot {
     def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
@@ -136,7 +135,6 @@ object ReviewingTests extends TestSuite {
       val first = w.edge.prompt()
       val shown = RichText.render(
         ReviewPrompt.doc(
-          Prompt(entry, Origin.Slack(Team, ChannelId.value(C), Said), Shadow, Reason.ShadowOnly, Below, Answers),
           "#standup",
           s"https://fake.slack.com/archives/C123ABC456/p1515449522000016"
         )
