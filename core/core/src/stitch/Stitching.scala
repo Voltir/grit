@@ -465,7 +465,7 @@ object Stitching {
   /** How long before `at` `past` was, in the largest whole unit: "40 seconds", "3 minutes",
     * "2 hours", "5 days".
     */
-  private[stitch] def ago(past: Instant, at: Instant): String = {
+  private[core] def ago(past: Instant, at: Instant): String = {
     val s = math.max(0L, JDuration.between(past, at).getSeconds)
     def unit(n: Long, name: String) = if (n == 1) s"1 $name" else s"$n ${name}s"
     if (s < 60) unit(s, "second")

@@ -112,6 +112,10 @@ In dependency order:
   one excerpt rule readers cut a strand by), `StitchStore` (placements kept beside their entry
   and deleted with it; what a room said), `StitchJson`, and `Along`, the one read of a strand,
   in scope. ← `id`, `message`, `place`, `period`, `store`, `classify`
+- **`recipe`** — what a call's input shows beyond its own thread: a `Pool` of `Source`s (the
+  room's recent messages, its author's, the exchanges stitching offered) within a budget in
+  characters, each kept in the `Section` its source names, and what a pool shows of what it
+  found, in its sources' order. Nothing in core imports it. ← `id`, `stitch`
 - **`host`** — what a tool may do to the machine, as capabilities: `Workspace` (read, list,
   search), `Edits` (write, edit) and `Shell` (run), implemented in `grit.host`; and the pure
   rules they share: `RelPath` (a path that stays inside the checkout and names no secrets
