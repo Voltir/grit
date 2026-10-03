@@ -363,7 +363,7 @@ object Structure {
   }
 
   /** Whether a call of `role` is the main model's: a round of the tool loop, or the reply. */
-  private def isMain(role: Option[TurnRecord.Role]): Boolean = role match {
+  private[score] def isMain(role: Option[TurnRecord.Role]): Boolean = role match {
     case Some(TurnRecord.Role.Round(_)) | Some(TurnRecord.Role.Reply) => true
     case _ => false
   }

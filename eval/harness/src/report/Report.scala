@@ -30,6 +30,7 @@ import grit.eval.harness.score.{
   MovedOn,
   PerCall,
   Proportions,
+  Rate,
   Refusal,
   Reliability,
   Repeated,
@@ -151,18 +152,23 @@ object Report {
     TurnLines.of(corpus, turns, verdicts)
 
   /** A recipes run over `corpus`: `notes` (lines on how it ran) first; then each of
-    * `variants` against shipped on tools offered (called-tool recall first among them), window
-    * tokens by part, used-section recall (stated undefined when no reply used a part), the
-    * turns each changed, by id; and the reference turns' pass rate under `shipped` and each
-    * variant, with the failing turns by id (none stated when there is no reference turn).
+    * `variants` against shipped on tools offered (called-tool recall first among them), what
+    * the tools withheld are worth (tokens saved, their effective price in mills with the range
+    * from every token cached to none, the hit rate beside it, and how far the cache moves it)
+    * and the `rates` they were priced at (each model's, with how it was read, or why it has
+    * none); window tokens by part, used-section recall (stated undefined when no reply used a
+    * part), the turns each changed, by id; and the reference turns' pass rate under `shipped`
+    * and each variant, with the failing turns by id (none stated when there is no reference
+    * turn).
     */
   def recipes(
       corpus: String,
       notes: Vector[String],
+      rates: VectorMap[String, Either[String, Rate]],
       shipped: Varied,
       variants: Vector[Varied]
   ): String =
-    RecipeLines.of(corpus, notes, shipped, variants)
+    RecipeLines.of(corpus, notes, rates, shipped, variants)
 
   /** The synthetic reference ([[grit.eval.harness.reply.Synthetic]]) judged under each named
     * variant, shipped first by the caller: `notes` (lines on how it ran) first, then each

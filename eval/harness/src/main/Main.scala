@@ -94,6 +94,7 @@ import grit.eval.harness.score.{
   MovedOn,
   Order,
   Paired,
+  Rates,
   Recipe,
   Rule,
   Scoring,
@@ -582,12 +583,13 @@ object Main {
                 .toSet
             )
           }
+          val rates = Rates.fit(turns.flatMap(_.spend))
           def varied(v: TurnVariant): Varied = {
             val pairs =
               turns.map(t => TurnPair(t, build(TurnVariant.Shipped, t)._1, build(v, t)._1))
             Varied(
               v.name,
-              Recipe.of(pairs),
+              Recipe.of(pairs, rates),
               reference.turns.toVector.flatMap((w: WorkflowId, expected: Vector[Expect]) =>
                 turns.find(_.workflow == w).map { t =>
                   val (g, services) = build(v, t)
@@ -611,7 +613,7 @@ object Main {
           ) ++ notRebuilt.toVector.sorted ++ built.collect { case (t, _, Left(why)) =>
             s"  not asked: ${WorkflowId.value(t.workflow)}: $why"
           }
-          Report.recipes(corpus, notes, varied(TurnVariant.Shipped), variants.map(varied))
+          Report.recipes(corpus, notes, rates, varied(TurnVariant.Shipped), variants.map(varied))
         }
       }
       _ <- publish(eval, s"recipes-$corpus", text)

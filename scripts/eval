@@ -178,7 +178,10 @@
 #       offer-heard-0.2: at 0.2 on a heard turn, every tool on one said to grit), decided as
 #       the turn decides it, against shipped, paired on every turn grit_eval_<date>
 #       recorded, written to .local/eval/reports/recipes-<date>.md and printed: tools offered
-#       and their definitions' tokens saved, called-tool recall (of the tools a turn called,
+#       and their definitions' tokens saved, what those are worth (tokens saved once a
+#       main-model call, effective mills with each call's share cached at the cached rate, the
+#       range from all cached to none, the hit rate, and each model's rates as read from the
+#       ledger), called-tool recall (of the tools a turn called,
 #       those the variant still offers), window tokens per part, used-section recall (stated
 #       undefined when no reply used a part) and the turns each changed, by id; then the
 #       reference turns' pass rate under shipped and each variant. --context is the reply

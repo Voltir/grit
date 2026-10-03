@@ -20,6 +20,41 @@ final case class TurnPair(turn: TurnCase, shipped: Given, variant: Given)
 /** A mean per turn, as shipped and under a variant. */
 final case class Shift(shipped: Double, variant: Double)
 
+/** What a variant's withheld tool definitions are worth over the calls that would have sent
+  * them. Every main-model call of a turn (each round of its tool loop, and its reply) sends
+  * the turn's definitions, so a turn's definitions' tokens saved count once a call; each
+  * price is in USD at the [[Rate]] of the model that made the call.
+  *
+  * @param tokens
+  *   definitions' tokens saved over every call, as capture costs them; below 0 where the
+  *   variant adds
+  * @param effective
+  *   their price with each call's tokens saved cached as its own input was (its cached input
+  *   tokens of its input), those at the cached rate and the rest at the input rate
+  * @param uncached
+  *   their price were none of them cached: every one at the input rate
+  * @param cached
+  *   their price were every one cached; `None` when a call that saved tokens was made by a
+  *   model with no cached rate
+  * @param hit
+  *   the cache hit rate of the calls: their cached input tokens of their input, clustered by
+  *   thread
+  * @param calls
+  *   the main-model calls of the turns paired
+  * @param unpriced
+  *   the calls that saved tokens and are left out of every price: their model has no rate, or
+  *   they hit the cache and it has no cached rate
+  */
+final case class Priced(
+    tokens: Long,
+    effective: Double,
+    uncached: Double,
+    cached: Option[Double],
+    hit: Proportion,
+    calls: Int,
+    unpriced: Int
+)
+
 /** A variant against shipped over `n` paired turns, each rate a [[Proportion]] clustered by
   * conversation (a thread).
   *
@@ -30,6 +65,8 @@ final case class Shift(shipped: Double, variant: Double)
   * @param saved
   *   tool definitions' tokens saved over every turn, shipped's less the variant's: below 0
   *   where the variant adds
+  * @param priced
+  *   what the definitions saved are worth over the calls that would have sent them
   * @param called
   *   called-tool recall: of each turn's tools it called (each once, the turn's `topic` tool
   *   and unnamed calls apart), those the variant offers
@@ -56,6 +93,7 @@ final case class Recipe(
     tools: Option[Shift],
     schema: Option[Shift],
     saved: Long,
+    priced: Priced,
     called: Proportion,
     windows: Int,
     parts: VectorMap[Part.Kind, Shift],
@@ -67,8 +105,10 @@ final case class Recipe(
 
 object Recipe {
 
-  /** `pairs` read as one variant against shipped. */
-  def of(pairs: Vector[TurnPair]): Recipe = {
+  /** `pairs` read as one variant against shipped, their calls priced at `rates`
+    * ([[Rates.fit]]).
+    */
+  def of(pairs: Vector[TurnPair], rates: VectorMap[String, Either[String, Rate]]): Recipe = {
     def mean(xs: Vector[Double]) = xs.sum / xs.size
     def shift(f: Given => Double)(ps: Vector[TurnPair]) =
       Option.when(ps.nonEmpty)(
@@ -108,6 +148,7 @@ object Recipe {
       shift(_.tools.size.toDouble)(pairs),
       shift(g => Tokens.value(g.schema).toDouble)(pairs),
       pairs.map(p => Tokens.value(p.shipped.schema) - Tokens.value(p.variant.schema)).sum,
+      priced(pairs, rates),
       Proportion.of(called),
       both.size,
       VectorMap.from(
@@ -124,6 +165,43 @@ object Recipe {
       used(_._3),
       used(_._2),
       pairs.filter(p => p.shipped != p.variant).map(_.turn.workflow)
+    )
+  }
+
+  private def priced(
+      pairs: Vector[TurnPair],
+      rates: VectorMap[String, Either[String, Rate]]
+  ): Priced = {
+    val calls = pairs.flatMap { p =>
+      val saved = Tokens.value(p.shipped.schema) - Tokens.value(p.variant.schema)
+      p.turn.spend.filter(s => Structure.isMain(s.role)).map(s => (p.turn.conversation, s, saved))
+    }
+    // Each call's price saved: (effective, uncached, every one cached); `None` when it is not
+    // priced.
+    val each = calls.map { (_, s, saved) =>
+      val input = Tokens.value(s.usage.input)
+      val hit = if (input > 0) Tokens.value(s.usage.cachedInput).toDouble / input else 0.0
+      if (saved == 0) Some((0.0, 0.0, Some(0.0)))
+      else
+        rates.get(s.model).flatMap(_.toOption).flatMap { r =>
+          val uncached = saved * r.input
+          val cached = r.cached.map(saved * _)
+          val effective =
+            if (hit == 0) Some(uncached) else cached.map(c => (1 - hit) * uncached + hit * c)
+          effective.map(e => (e, uncached, cached))
+        }
+    }
+    val priced = each.flatten
+    Priced(
+      calls.map(_._3).sum,
+      priced.map(_._1).sum,
+      priced.map(_._2).sum,
+      priced.foldLeft(Option(0.0))((sum, c) => sum.flatMap(x => c._3.map(x + _))),
+      Proportion.counted(
+        calls.map((c, s, _) => (c, Tokens.value(s.usage.cachedInput), Tokens.value(s.usage.input)))
+      ),
+      calls.size,
+      each.count(_.isEmpty)
     )
   }
 }

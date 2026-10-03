@@ -2,8 +2,10 @@ package grit.eval.harness.score
 
 import java.time.Instant
 
+import scala.collection.immutable.VectorMap
+
 import grit.core.id.{ConversationId, EntrySeq, TurnSeq, WorkflowId}
-import grit.core.message.Tokens
+import grit.core.message.{Tokens, Usage}
 import grit.core.store.Focus
 import grit.core.tool.ToolName
 import grit.dbos.engine.Build
@@ -16,11 +18,12 @@ import grit.eval.harness.corpus.{
   Round,
   Said,
   Settled,
+  Spent,
   Support,
   TurnCase
 }
 import grit.eval.harness.stats.Proportion
-import grit.turn.TurnOffer
+import grit.turn.{TurnOffer, TurnRecord}
 
 import utest.*
 
@@ -33,6 +36,10 @@ object RecipesTests extends TestSuite {
   private val search = ToolName("search")
   private val github = ToolName("github_search_code")
   private val few = Proportion.Interval.TooFewClusters
+  private val none: VectorMap[String, Either[String, Rate]] = VectorMap.empty
+
+  private def spent(role: TurnRecord.Role, model: String, in: Long, cached: Long) =
+    Spent(Some(role), model, Usage(Tokens(in), Tokens(1), Tokens(cached), None), Tokens(in))
 
   private def part(kind: Part.Kind, of: String, seq: Long, tokens: Long, s: Option[Double]) =
     Part(kind, ConversationId(of), Vector(EntrySeq(seq)), Tokens(tokens), s.flatMap(Support.read))
@@ -56,6 +63,10 @@ object RecipesTests extends TestSuite {
       None
     )
 
+  /** `x` to 12 significant digits. */
+  private def r12(x: Double): Double =
+    if (x == 0) 0.0 else BigDecimal(x).round(new java.math.MathContext(12)).toDouble
+
   private def offer(schema: Long, tools: ToolName*) =
     Given(tools.toVector, Tokens(schema), None)
 
@@ -67,7 +78,7 @@ object RecipesTests extends TestSuite {
         offer(100, read, search, github),
         offer(60, read, search)
       )
-      Recipe.of(Vector(p)).called ==> Proportion(1, 2, 1, few)
+      Recipe.of(Vector(p), none).called ==> Proportion(1, 2, 1, few)
     }
 
     test("schema tokens saved are shipped's less the variant's over every turn, below 0 if added") {
@@ -77,7 +88,7 @@ object RecipesTests extends TestSuite {
         TurnPair(turn("w2", "B"), offer(100, read), offer(100, read)),
         TurnPair(turn("w3", "C"), offer(100, read), offer(110, read, github))
       )
-      val r = Recipe.of(pairs)
+      val r = Recipe.of(pairs, none)
       (r.saved, r.schema, r.tools) ==> (30L, Some(Shift(100, 90)), Some(Shift(4.0 / 3, 4.0 / 3)))
       r.changed ==> Vector(WorkflowId("w1"), WorkflowId("w3"))
     }
@@ -85,7 +96,7 @@ object RecipesTests extends TestSuite {
     test("a variant that changes nothing reports no case") {
       val window = Some(Parts(Vector(part(Part.Kind.Open, "x", 1, 30, None)), Tokens(2), Tokens(8)))
       val same = Given(Vector(read), Tokens(50), window)
-      val r = Recipe.of(Vector(TurnPair(turn("w1", "A", read), same, same)))
+      val r = Recipe.of(Vector(TurnPair(turn("w1", "A", read), same, same)), none)
       (r.changed, r.saved, r.called) ==> (Vector.empty, 0L, Proportion(1, 1, 1, few))
     }
 
@@ -119,7 +130,8 @@ object RecipesTests extends TestSuite {
             Given(Vector.empty, Tokens.Zero, Some(shipped)),
             Given(Vector.empty, Tokens.Zero, Some(narrow))
           )
-        )
+        ),
+        none
       )
       (r.usedShipped, r.used) ==> (Proportion(2, 2, 1, few), Proportion(1, 2, 1, few))
       // Per turn, by kind in Part.Kind's order: open 30/0, closed 40/0, along 20/30; whole
@@ -140,9 +152,80 @@ object RecipesTests extends TestSuite {
             offer(0).copy(window = Some(Parts(Vector.empty, Tokens.Zero, Tokens.Zero))),
             offer(0)
           )
-        )
+        ),
+        none
       )
       (r.used, r.used.rate, r.windows) ==> (Proportion(0, 0, 0, few), None, 0)
+    }
+    test("tokens saved are priced a call, each call's share cached at the cached rate") {
+      // 300 definitions' tokens saved a call. w1 (thread A, model m/a: input $0.30/M, cached
+      // $0.03/M): its query is no main call; round 0 has 1000 input, none cached; the reply
+      // 1000, 500 cached. w2 (thread B) is by m/z, which has no rate: 100 input, none cached.
+      val rate = Rate(3e-7, Some(3e-8), 2.5e-6, 3, 1, 0.0)
+      val w1 = turn("w1", "A").copy(spend =
+        Vector(
+          spent(TurnRecord.Role.Query, "m/a", 50, 0),
+          spent(TurnRecord.Role.Round(0), "m/a", 1000, 0),
+          spent(TurnRecord.Role.Reply, "m/a", 1000, 500)
+        )
+      )
+      val w2 = turn("w2", "B").copy(spend = Vector(spent(TurnRecord.Role.Reply, "m/z", 100, 0)))
+      val r = Recipe.of(
+        Vector(
+          TurnPair(w1, offer(400, read, github), offer(100, read)),
+          TurnPair(w2, offer(400, read, github), offer(100, read))
+        ),
+        VectorMap("m/a" -> Right(rate))
+      )
+      val p = r.priced
+      // Effective: 300 at the input rate (round 0), then 150 at it and 150 at the cached rate
+      // (the reply, half cached): 9e-5 + 4.5e-5 + 4.5e-6 = 1.395e-4. Uncached: 600 at the
+      // input rate, 1.8e-4; all cached: 600 at the cached rate, 1.8e-5.
+      (p.tokens, p.calls, p.unpriced) ==> (900L, 3, 1)
+      (r12(p.effective), r12(p.uncached), p.cached.map(r12)) ==> (1.395e-4, 1.8e-4, Some(1.8e-5))
+      p.hit ==> Proportion(500, 2100, 2, few)
+    }
+
+    test("rates are read from the ledger's priced rows, cached apart where a row has some") {
+      // m/a: four priced rows at input $0.30/M, cached $0.03/M, output $2.50/M, exactly; the
+      // unpriced row is left out. m/b: input $1/M, output $2/M, no row cached. m/c: one priced row. m/d: two rows,
+      // one twice the other.
+      def row(model: String, in: Long, cached: Long, out: Long, usd: Option[String]) =
+        Spent(
+          None,
+          model,
+          Usage(Tokens(in), Tokens(out), Tokens(cached), usd.map(BigDecimal(_))),
+          Tokens(in)
+        )
+      val rates = Rates.fit(
+        Vector(
+          row("m/a", 1000, 0, 10, Some("0.000325")),
+          row("m/a", 2000, 0, 100, Some("0.00085")),
+          row("m/b", 100, 0, 10, Some("0.00012")),
+          row("m/a", 4000, 1000, 50, Some("0.001055")),
+          row("m/a", 500, 0, 0, None),
+          row("m/a", 3000, 2000, 0, Some("0.00036")),
+          row("m/b", 300, 0, 5, Some("0.00031")),
+          row("m/c", 100, 0, 10, Some("0.0001")),
+          row("m/d", 100, 0, 10, Some("0.0001")),
+          row("m/d", 200, 0, 20, Some("0.0002"))
+        )
+      )
+      def read(r: Rate) =
+        (
+          r12(r.input),
+          r.cached.map(r12),
+          r12(r.output),
+          r.rows,
+          r.cachedRows,
+          math.round(r.worst * 1e9)
+        )
+      rates.view.mapValues(_.map(read)).toVector ==> Vector(
+        "m/a" -> Right((3e-7, Some(3e-8), 2.5e-6, 4, 2, 0L)),
+        "m/b" -> Right((1e-6, None, 2e-6, 2, 0, 0L)),
+        "m/c" -> Left("1 priced row, fewer than the 2 prices read from them"),
+        "m/d" -> Left("its rows do not tell the prices apart")
+      )
     }
   }
 }
