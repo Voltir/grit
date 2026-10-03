@@ -55,6 +55,14 @@ object ReviewTests extends TestSuite {
     round.map((c, as) => (EntryId.value(c.entry), as))
 
   val tests = Tests {
+    test("a verdict: welcome alone says speak, cut-in alone says the message was to a person") {
+      Verdict.values.toVector.map(v => (v, v.speaks, v.toPerson)) ==> Vector(
+        (Verdict.Welcome, true, false),
+        (Verdict.Interruption, false, false),
+        (Verdict.CutIn, false, true)
+      )
+    }
+
     test("live's gate: passed by a draft or a hold after it, failed at it, else never reached") {
       val p = Probability.clamped(0.4)
       val cap = DailyCap.of("1").getOrElse(sys.error("a cap"))

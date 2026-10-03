@@ -19,6 +19,12 @@ enum Verdict {
 
   /** The message was meant for someone in particular, even if an answer would have helped. */
   case CutIn
+
+  /** Whether a reply would have been right: only for `Welcome`. */
+  def speaks: Boolean = this == Welcome
+
+  /** Whether the message was meant for a person rather than the room: only for `CutIn`. */
+  def toPerson: Boolean = this == CutIn
 }
 
 /** The verdict standing on a prompt: `rater`'s, given `at`. */
