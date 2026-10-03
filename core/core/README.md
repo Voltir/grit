@@ -88,6 +88,15 @@ In dependency order:
   assistant already replied after the heard message), `SpeechStore` (each heard
   message's `Reach`, and grit's decisions, kept with its period's usage) and `SpeechJson`
   (their stored form). ← `id`, `message`, `period`, `place`, `spend`, `store`, `triage`
+- **`review`** — a person's verdict on grit's speech decision, asked of a few heard messages
+  a day where a declared shadow's gate and live triage's compare: `Settled` (live's decision,
+  settled), `Review.gated` (whether live's gate passed), a `Candidate` and the `Reason` it is
+  considered for, `Reviewing` (a deployment's review of one shadow) and `Review.pick` (what a
+  round makes of the candidates, `Considered`, under per-reason shares of the day); `Reviews`
+  (an edge's part: post a `Prompt`, keep a reacted `Verdict` as a `Label`) and `ReviewStore`
+  (also which messages are considered, and every one `Reviewed`), kept with their
+  conversation after the message's entry is gone. ← `id`, `classify`, `store`,
+  `speech`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
   `CacheDocs` (where it keeps what it makes of one closed period, deleted with that period's
