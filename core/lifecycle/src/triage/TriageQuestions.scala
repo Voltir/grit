@@ -5,7 +5,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.{Answer, Answered, Ask, Classifier, ClassifierError, Question, Request}
 import grit.core.id.QuestionName
 import grit.core.period.Probability
-import grit.core.triage.{Bound, Gate, KnowledgeSources, Reading}
+import grit.core.triage.{Bound, Gate, Kind, KnowledgeSources, Reading}
 
 /** Questions about a heard message ([[TriageQuestion.State]]), asked together in one
   * classifier call, each answer kept under its question's name, and the gate a draft is
@@ -49,6 +49,28 @@ final case class TriageQuestions private (
   ): Either[ClassifierError, Answered[VectorMap[QuestionName, Answer]]] =
     classifier.ask(state, asked(sources))
 
+  /** The first of `gate`'s readings this set does not ask in its kind, or a `Key` or
+    * `Chosen` of a key its choice lacks; `None` when it asks them all.
+    */
+  def unread(gate: Gate): Option[Reading] = {
+    val declared = items.collect { case Item.One(name, question) => name -> question }.toMap
+    def asks(name: QuestionName, choice: Question.Choice => Boolean, yesNo: Boolean) =
+      declared.get(name).exists {
+        case c: Question.Choice => choice(c)
+        case Question.YesNo(_, _, _) => yesNo
+      }
+    gate.bounds
+      .map {
+        case Bound.AtLeast(on, _) => on
+        case Bound.Below(on, _) => on
+      }
+      .find {
+        case Reading.Yes(name) => !asks(name, _ => false, yesNo = true)
+        case Reading.Key(name, key) => !asks(name, _.keys.exists(_.name == key), yesNo = false)
+        case Reading.Chosen(name, key) => !asks(name, _.keys.exists(_.name == key), yesNo = false)
+      }
+  }
+
   /** Every question of [[questions]], each read back as given under its name; never empty,
     * since `first` is asked whatever the catalog.
     */
@@ -80,7 +102,7 @@ object TriageQuestions {
     /** Two items share a name, or a `One`'s name is a `PerSource`'s prefix. */
     case NameRepeated(name: QuestionName)
 
-    /** A bound reads no declared `One` of its kind, or a key its choice lacks. */
+    /** `speak` reads `reading`, which the set does not ask ([[TriageQuestions.unread]]). */
     case Unbounded(reading: Reading)
   }
 
@@ -91,37 +113,63 @@ object TriageQuestions {
       case Item.One(name, _) => name
       case Item.PerSource(prefix, _, _) => prefix
     }
-    val declared = items.collect { case Item.One(name, question) => name -> question }.toMap
-    def reads(reading: Reading): Boolean = reading match {
-      case Reading.Yes(name) =>
-        declared.get(name).exists {
-          case Question.YesNo(_, _, _) => true
-          case _: Question.Choice => false
-        }
-      case Reading.Key(name, key) =>
-        declared.get(name).exists {
-          case c: Question.Choice => c.keys.exists(_.name == key)
-          case Question.YesNo(_, _, _) => false
-        }
-      case Reading.Chosen(name, key) =>
-        declared.get(name).exists {
-          case c: Question.Choice => c.keys.exists(_.name == key)
-          case Question.YesNo(_, _, _) => false
-        }
-    }
-    val readings = speak.bounds.map {
-      case Bound.AtLeast(on, _) => on
-      case Bound.Below(on, _) => on
-    }
     names.diff(names.distinct).headOption.map(Refusal.NameRepeated(_)) match {
       case Some(repeated) => Left(repeated)
       case None =>
-        readings
-          .find(r => !reads(r))
-          .map(Refusal.Unbounded(_))
-          .toLeft(new TriageQuestions(first, rest, speak))
+        val set = new TriageQuestions(first, rest, speak)
+        set.unread(speak).map(Refusal.Unbounded(_)).toLeft(set)
     }
   }
+
+  /** v1, in `wording`: `kind` (a choice of [[Kind]]'s keys), `waiting`, `durable` and
+    * `helps`; drafts when `kind`'s most weighted key is not `chatter` and `helps` is at least 0.5. Its
+    * request is the one triage's question sends in `wording` ([[TriageQuestion.request]]).
+    */
+  def v1(wording: TriageQuestion.Wording): TriageQuestions = {
+    val k = wording.kinds
+    def name(text: String) = QuestionName.of(text)
+    def yesNo(words: String) = Question.YesNo(words, None, None)
+    def key(kind: Kind, means: String) = Question.Key(Kind.written(kind), Some(means))
+    val half = Probability.clamped(0.5)
+    val built = for {
+      kind <- name("kind")
+      waiting <- name("waiting")
+      durable <- name("durable")
+      helps <- name("helps")
+      kindQuestion <- Question
+        .choice(
+          wording.kind,
+          key(Kind.Question, k.question),
+          key(Kind.Answer, k.answer),
+          key(Kind.Decision, k.decision),
+          key(Kind.Announcement, k.announcement),
+          key(Kind.Chatter, k.chatter)
+        )
+        .left
+        .map(d => s"kind repeats ${d.key}")
+      set <- of(
+        Item.One(kind, kindQuestion),
+        Vector(
+          Item.One(waiting, yesNo(wording.waiting)),
+          Item.One(durable, yesNo(wording.durable)),
+          Item.One(helps, yesNo(wording.helps))
+        ),
+        Gate(
+          Vector(
+            Bound.Below(Reading.Chosen(kind, Kind.written(Kind.Chatter)), half),
+            Bound.AtLeast(Reading.Yes(helps), half)
+          )
+        )
+      ).left.map(_.toString)
+    } yield set
+    // Its names are declared names by QuestionName.of's rule, its kind keys are Kind's
+    // distinct names whatever the wording, its names are distinct and every bound reads a
+    // One of its kind, so no Left is taken; TriageQuestionsTests builds it.
+    built.fold(why => throw new IllegalStateException(why), identity)
+  }
+
+  /** [[v1]] in the shipped wording ([[TriageQuestion.Wording.Shipped]]). */
+  val V1: TriageQuestions = v1(TriageQuestion.Wording.Shipped)
 
   /** The set proposed to replace triage's question: `gap` (what the message leaves open:
     * `asks`, `owes`, `closes` or `nothing`), `open`, `to`, `durable`, `anchor`, then one

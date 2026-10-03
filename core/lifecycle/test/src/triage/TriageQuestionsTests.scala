@@ -100,11 +100,17 @@ object TriageQuestionsTests extends TestSuite {
         Reading.Yes(n("gap")),
         Reading.Key(n("open"), "asks"),
         Reading.Yes(n("source")),
-        Reading.Yes(n("missing"))
+        Reading.Yes(n("missing")),
+        Reading.Chosen(n("gap"), "maybe"),
+        Reading.Chosen(n("open"), "asks")
       )
       refused.map(gated) ==> refused.map(r => Left(Refusal.Unbounded(r)))
-      Vector(Reading.Key(n("gap"), "asks"), Reading.Yes(n("open"))).map(gated) ==>
-        Vector(Right(()), Right(()))
+      Vector(
+        Reading.Key(n("gap"), "asks"),
+        Reading.Yes(n("open")),
+        Reading.Chosen(n("gap"), "asks")
+      )
+        .map(gated) ==> Vector(Right(()), Right(()), Right(()))
     }
 
     test("V2 asks the synthetic run's words in order, one source question per source covering it") {
@@ -189,6 +195,83 @@ object TriageQuestionsTests extends TestSuite {
           None,
           None
         )
+    }
+
+    test("V1 asks kind, waiting, durable and helps, in the request triage's question sends") {
+      // The digest TriageTests pins for this state: what triage sent before its words were a
+      // value.
+      val fixed = TriageQuestion.State(
+        "standup moves to 10:00 from Monday",
+        "Ana",
+        "Ben: when is standup?"
+      )
+      TriageQuestions.V1.request(fixed, catalog).digest ==>
+        "8ec33547bce9c3e3a9c64edef8eecae7f216738a1407cc8088957d609cb78edd"
+      TriageQuestions.V1.questions(catalog).keys.map(QuestionName.value).toVector ==>
+        Vector("kind", "waiting", "durable", "helps")
+      val reworded = TriageQuestion.Wording.Shipped.copy(
+        kind = "What kind of message is new_message?",
+        helps = "Would a reply help?"
+      )
+      Vector(state, fixed).map(s =>
+        (
+          Some(TriageQuestions.V1.request(s, KnowledgeSources.Empty)),
+          Some(TriageQuestions.v1(reworded).request(s, catalog))
+        )
+      ) ==> Vector(state, fixed).map(s =>
+        (
+          TriageQuestion.request(TriageQuestion.Wording.Shipped, s),
+          TriageQuestion.request(reworded, s)
+        )
+      )
+    }
+
+    test(
+      "V1 holds a message whose most weighted kind is chatter, and drafts at helps 0.5 otherwise"
+    ) {
+      def kind(chatter: Double, question: Double) = Answer.Choice(
+        "chatter",
+        Vector(w("question", question), w("chatter", chatter)),
+        0.0
+      )
+      def answers(kindAnswer: Answer, helps: Double) = VectorMap[QuestionName, Answer](
+        n("kind") -> kindAnswer,
+        n("waiting") -> Answer.YesNo(0.5),
+        n("durable") -> Answer.YesNo(0.5),
+        n("helps") -> Answer.YesNo(helps)
+      )
+      Vector(
+        answers(kind(0.4, 0.3), 0.9),
+        answers(kind(0.3, 0.4), 0.5),
+        answers(kind(0.3, 0.4), 0.49),
+        answers(kind(0.6, 0.4), 0.9)
+      ).map(TriageQuestions.V1.speak.drafts) ==> Vector(
+        Some(false),
+        Some(true),
+        Some(false),
+        Some(false)
+      )
+    }
+
+    test(
+      "unread names the first reading a set does not ask in its kind, or a key its choice lacks"
+    ) {
+      val kind = n("kind")
+      Vector(
+        TriageQuestions.V1.unread(TriageQuestions.V1.speak),
+        TriageQuestions.V2.unread(TriageQuestions.V2.speak),
+        TriageQuestions.V1.unread(TriageQuestions.V2.speak),
+        TriageQuestions.V2.unread(TriageQuestions.V1.speak),
+        TriageQuestions.V1.unread(Gate(Vector(Bound.AtLeast(Reading.Chosen(kind, "maybe"), half)))),
+        TriageQuestions.V1.unread(Gate(Vector(Bound.AtLeast(Reading.Yes(kind), half))))
+      ) ==> Vector(
+        None,
+        None,
+        Some(Reading.Key(n("gap"), "asks")),
+        Some(Reading.Chosen(kind, "chatter")),
+        Some(Reading.Chosen(kind, "maybe")),
+        Some(Reading.Yes(kind))
+      )
     }
 
     test("ask keeps each answer under its question's name, in the order asked") {
