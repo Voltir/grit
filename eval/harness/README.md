@@ -68,7 +68,8 @@ Packages, each importing only those above it:
   `Clustered` by exchange and by author and `Split` by the label `context`; `Agreement`,
   `Repeated` and `Spending`, what needs no label; `Order`, cases in labelling order, by the difference between two runs or by a run's repeat spread, the unlabelled first; `Rule`, an adoption rule written before the run it judges, on one question or triage's four's mean (`Measure`), over every case or one context, with lines B may not cross elsewhere (`Guard`, judged by `Guarded`), and `Decision`, what it makes of two runs, refused under the paired MDE or the rule's least, or for a guard broken; `Comparison`, two runs' cases by what became of each (`Changes`: fixed, broken, moved); `Changed`, the cases two runs asked triage of by different requests, `Size`, how large a run's triage calls were, and `Apart`, what Jev's repeat noise alone reads as a difference; `Drafts`, a question set's derived draft against live triage's helps gate (`Cells`, the
   2×2 by focus), each of its probabilities' mean and spread (`Column`), and its `durable`
-  against live's; `Spread`, how far
+  against live's; `Judgement`, a review's verdicts against live's helps gate, a question
+  set's draft and its `to`, counts by the reason each message was picked; `Spread`, how far
   apart its repeats answered, and how far its answers are from what was kept live; `Noise`,
   Jev's repeat spread on each triage question, and `MovedOn`, the cases whose state moved on
   since live triage asked, where a replica shadow stands from live beyond it.
@@ -77,7 +78,7 @@ Packages, each importing only those above it:
   force) and two runs compared, as markdown with every mean's interval; text-free. With no case
   labelled, only what needs no label: spend and latency (`score.Spending`), the repeats' spread
   (`score.Repeated`) and agreement with what was kept live (`score.Agreement`). A question set's pulled
-  shadow against live's log: `Report.drafts`, counts only. ← `stats`,
+  shadow against live's log, and against the verdicts given: `Report.drafts`, counts only. ← `stats`,
   `corpus`, `label`, `log`, `pull`, `score`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
 

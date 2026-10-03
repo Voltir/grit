@@ -3,12 +3,12 @@ package grit.eval.harness.report
 import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
-import grit.core.id.QuestionName
+import grit.core.id.{QuestionName, ShadowName}
 import grit.core.period.Probability
 import grit.core.store.Focus
 import grit.core.triage.Earning
 import grit.eval.harness.corpus.{Case, CaseId}
-import grit.eval.harness.label.{Context, Labelled, Labels}
+import grit.eval.harness.label.{Context, Labelled, Labels, Verdicts}
 import grit.eval.harness.log.{Log, Row, Suite, Weights}
 import grit.eval.harness.pull.Pull
 import grit.eval.harness.score.{
@@ -24,6 +24,7 @@ import grit.eval.harness.score.{
   Cost,
   Decision,
   Drafts,
+  Judgement,
   Measure,
   Moved,
   MovedOn,
@@ -132,8 +133,10 @@ object Report {
     * as `drafts` found them: how many cases both answered and how many were undecided; the 2×2
     * of live's helps gate (`helps` at least `helpsAt`, kind not chatter: triage's tags alone,
     * not live's speech decision, which checks more) against the set's draft (its `gate`), by
-    * focus and over all; each of the set's probabilities' mean and spread; and its `durable`
-    * against live's, when the set names one. Counts only, never a case's id.
+    * focus and over all; each of the set's probabilities' mean and spread; its `durable`
+    * against live's, when the set names one; and each pick reason's `verdicts` against both
+    * gates and the set's `to`, or that none were given (`None`) or none stand. Counts only,
+    * never a case's id.
     */
   def drafts(
       a: Scored,
@@ -142,7 +145,8 @@ object Report {
       set: String,
       gate: TriageQuestions.Gate,
       helpsAt: Probability,
-      drafts: Drafts
+      drafts: Drafts,
+      verdicts: Option[Judgement]
   ): String = {
     val all = drafts.gate.values.foldLeft(Cells.Empty)((x, y) =>
       Cells(x.both ++ y.both, x.aOnly ++ y.aOnly, x.bOnly ++ y.bOnly, x.neither ++ y.neither)
@@ -201,8 +205,35 @@ object Report {
           "",
           s"agree: ${agree(c)}"
         )
-      )
+      ) ++ against(set, verdicts)
     lines.mkString("\n") + "\n"
+  }
+
+  /** The section on `verdicts` against live's gate and set `set`'s, by pick reason. */
+  private def against(set: String, verdicts: Option[Judgement]): Vector[String] = {
+    val head = Vector("", "## Against verdicts", "")
+    verdicts match {
+      case None => head :+ "No verdicts given (`--verdicts`, a file `pull` writes)."
+      case Some(Judgement(Vector(), 0)) =>
+        head :+ "No verdicts: none standing in the file given."
+      case Some(j) =>
+        head ++ Vector(
+          "A rater's verdict on a message a review picked: a reply there would have been " +
+            "welcome (speak), would have interrupted, or the message was meant for someone " +
+            "in particular (to a person). Over the cases both gates decided; counts only, by " +
+            "why each message was picked, not weighted back by how often each reason is picked.",
+          "",
+          s"| shadow | picked | verdicts | live's gate = speak | $set's draft = speak | " +
+            s"$set's to ≥ ${num(Probability.value(Judgement.ToAt))} = to a person |",
+          "|---|---|---|---|---|---|"
+        ) ++ j.reasons.map(r =>
+          s"| ${ShadowName.value(r.shadow)} | ${Verdicts.reason(r.reason)} | ${r.n} | " +
+            s"${r.live} | ${r.set} | ${r.to.fold("—")(m => s"${m.matched} of ${m.of}")} |"
+        ) ++ Vector(
+          "",
+          s"verdicts on a case either gate could not decide, left out: ${j.undecided}"
+        )
+    }
   }
 
   /** What a gate reads, as the report names it: a yes/no's name, a choice key's `<name>.<key>`. */

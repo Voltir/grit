@@ -3,16 +3,17 @@ package grit.eval.harness.report
 import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
-import grit.core.id.QuestionName
+import grit.core.id.{QuestionName, ShadowName}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
+import grit.core.review.Reason
 import grit.core.store.Focus
 import grit.core.triage.Kind
 import grit.eval.harness.corpus.Case
 import grit.eval.harness.label.{Context, Labelled, Labels}
 import grit.eval.harness.log.{Log, Row, Suite}
 import grit.eval.harness.score.Fixtures.*
-import grit.eval.harness.score.{Cells, Column, Drafts}
+import grit.eval.harness.score.{Cells, Column, Drafts, Judgement}
 import grit.lifecycle.triage.TriageQuestions
 
 import utest.*
@@ -209,7 +210,8 @@ object ReportTests extends TestSuite {
         "v2",
         TriageQuestions.V2.speak,
         Probability.clamped(0.6),
-        found
+        found,
+        None
       )
       lines(report).filter(l =>
         l.startsWith("|") || l.startsWith("A, ") || l.startsWith("B, ") || l.startsWith(
@@ -235,6 +237,50 @@ object ReportTests extends TestSuite {
         "agree: 2 of 3"
       )
       assert(!Vector(c1, c2, c3).exists(c => report.contains(c.written)))
+    }
+    test(
+      "a drafts report counts each reason's verdicts against both gates and the set's to, and says plainly when there are none"
+    ) {
+      val v2 = ShadowName.of("triage-v2").fold(sys.error, identity)
+      val setLog = Log(
+        header("shadow-triage-v2"),
+        Vector.empty[Row[VectorMap[QuestionName, Answer]]],
+        None
+      )
+      def report(verdicts: Option[Judgement]) = lines(
+        Report.drafts(
+          run("live.jsonl", 0.5, Labels.Empty, "kept"),
+          "shadow-triage-v2.jsonl",
+          setLog,
+          "v2",
+          TriageQuestions.V2.speak,
+          Probability.clamped(0.6),
+          Drafts(Map.empty, 0, Vector.empty, None),
+          verdicts
+        )
+      ).dropWhile(_ != "## Against verdicts")
+      val judged = Judgement(
+        Vector(
+          Judgement.Of(v2, Reason.ShadowOnly, 3, 1, 2, Some(Judgement.Matched(3, 3))),
+          Judgement.Of(v2, Reason.Neither, 2, 2, 2, None)
+        ),
+        1
+      )
+      (
+        report(Some(judged)).filter(l => l.startsWith("|") || l.contains("left out")),
+        report(None).drop(2).take(1),
+        report(Some(Judgement(Vector.empty, 0))).drop(2).take(1)
+      ) ==> (
+        Vector(
+          "| shadow | picked | verdicts | live's gate = speak | v2's draft = speak | v2's to ≥ 0.500 = to a person |",
+          "|---|---|---|---|---|---|",
+          "| triage-v2 | shadow-only | 3 | 1 | 2 | 3 of 3 |",
+          "| triage-v2 | neither | 2 | 2 | 2 | — |",
+          "verdicts on a case either gate could not decide, left out: 1"
+        ),
+        Vector("No verdicts given (`--verdicts`, a file `pull` writes)."),
+        Vector("No verdicts: none standing in the file given.")
+      )
     }
   }
 }

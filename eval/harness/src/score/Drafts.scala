@@ -93,7 +93,7 @@ object Drafts {
   /** Each case's first answered triage row in `rows`, with its answer, in the order first
     * seen.
     */
-  private def firstAnswered[A](rows: Vector[Row[A]]): Vector[(CaseId, Row[A], A)] =
+  private[score] def firstAnswered[A](rows: Vector[Row[A]]): Vector[(CaseId, Row[A], A)] =
     rows
       .collect { case r @ Row(Suite.Triage, c, _, _, _, _, _, Outcome.Answered(a), _, _, _, _) =>
         (c, r, a)
@@ -103,7 +103,7 @@ object Drafts {
   /** Live's four answers' helps gate; `None` when they are not a choice of a kind and three
     * yes/no.
     */
-  private def helpsGate(ws: Vector[Weights], helpsAt: Probability): Option[Boolean] =
+  private[score] def helpsGate(ws: Vector[Weights], helpsAt: Probability): Option[Boolean] =
     ws match {
       case Vector(
             Weights.Choice(chosen, ps, _),

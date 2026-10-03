@@ -71,6 +71,7 @@
 #       moved on since live triage asked, and is listed and left out of the comparison.
 #
 #   scripts/eval compare <runs file A> <runs file B> --gate <set> --helps-at <p> [--labels <file>]
+#                        [--verdicts <verdicts file>]
 #       B a question set's shadow log from pull, asking <set> (v2), against A, live triage's
 #       pulled log: the set's derived draft against live's helps gate (helps >= <p>, the
 #       deployment's configured helpsAt, and kind not chatter: triage's tags alone, not live's
@@ -78,7 +79,14 @@
 #       and standard deviation; and its durable against live's durable, each at 0.5. Counts
 #       only, written to .local/eval/reports/<A>-vs-<B>.md and printed; the ids of the cases
 #       each decided alone go to .local/eval/order/<yyyymmdd>-draft-<set>-live-only.txt and
-#       -set-only.txt, for labelling. Takes no --decide, --replica or --spread.
+#       -set-only.txt, for labelling. With --verdicts (a verdicts-<yyyymmdd>.json pull wrote,
+#       a name in .local/eval/runs/), by shadow and the reason each message was picked: how
+#       many verdicts on cases both gates decided, how many of them live's gate and the set's
+#       draft each decided as the verdict says (a welcome reply speaks; an interruption or a
+#       message meant for someone does not), and how many the set's to >= 0.5 read as the
+#       verdict says (meant for someone, or to the room). Counts only, not weighted back by
+#       how often each reason is picked; without --verdicts the report says none were given.
+#       Takes no --decide, --replica or --spread.
 #
 #   scripts/eval order <runs file A> [<runs file B>] [--tag <question>] [--by spread|difference]
 #       Case ids in labelling order, one a line, in

@@ -61,6 +61,7 @@ import grit.eval.harness.score.{
   Decision,
   Drafts,
   Guarded,
+  Judgement,
   MovedOn,
   Order,
   Paired,
@@ -398,8 +399,10 @@ object Main {
     * (the deployment's configured `helpsAt`), by focus ([[Drafts]]), written to
     * `<dir>/reports/<A>-vs-<B>.md` (each name less `.jsonl`) and printed; the ids of the cases
     * each decided alone, one a line, to `<dir>/order/<yyyymmdd>-draft-<set>-live-only.txt` and
-    * `…-set-only.txt`, for labelling. `--decide`, `--replica` and `--spread` are refused
-    * beside it.
+    * `…-set-only.txt`, for labelling. With `--verdicts <name>`, a verdicts file `pull` wrote
+    * in `<dir>/runs/` ([[Verdicts]]), each pick reason's verdicts against both gates and the
+    * set's `to` ([[Judgement]]); without it, the report says no verdicts were given.
+    * `--decide`, `--replica` and `--spread` are refused beside it.
     */
   private def drafts(f: Map[String, String]): Either[String, Unit] =
     for {
@@ -428,6 +431,14 @@ object Main {
         .left
         .map(e => s"$bName: not a question set's log: $e")
       found = Drafts.of(a.log.rows, b.rows, set.questions.speak, helpsAt, set.durable)
+      verdicts <- f
+        .get("verdicts")
+        .fold[Either[String, Option[Verdicts]]](Right(None))(n =>
+          read(dir.resolve("runs").resolve(n)).flatMap(Verdicts.read).map(Some(_))
+        )
+      judged = verdicts.map(
+        Judgement.of(a.log.rows, b.rows, set.questions.speak, helpsAt, set.to, _)
+      )
       day = Day.format(Instant.now().atOffset(ZoneOffset.UTC))
       alone = Vector(
         s"$day-draft-${set.name}-live-only.txt" -> found.gate.values.toVector.flatMap(_.aOnly),
@@ -446,7 +457,7 @@ object Main {
       _ <- publish(
         dir,
         s"${a.name.stripSuffix(".jsonl")}-vs-${bName.stripSuffix(".jsonl")}",
-        Report.drafts(a, bName, b, set.name, set.questions.speak, helpsAt, found)
+        Report.drafts(a, bName, b, set.name, set.questions.speak, helpsAt, found, judged)
       )
     } yield alone.foreach((name, ids) => println(s"order: ${ids.size} cases to order/$name"))
 

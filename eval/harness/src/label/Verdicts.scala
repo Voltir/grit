@@ -40,7 +40,7 @@ object Verdicts {
         "cases" -> ujson.Obj.from(v.cases.toVector.sortBy(_._1).map { (id, r) =>
           id.written -> ujson.Obj(
             "shadow" -> ShadowName.value(r.shadow),
-            "reason" -> reasonWritten(r.reason),
+            "reason" -> reason(r.reason),
             "verdict" -> verdictWritten(r.verdict),
             "rater" -> PrincipalId.value(r.rater),
             "at" -> r.at.toString
@@ -57,17 +57,17 @@ object Verdicts {
     for {
       root <- Try(ujson.read(text)).toOption.toRight("verdicts: not JSON")
       cases <- Fields("verdicts", root).obj("cases")
-      read <- Fields.each(cases.obj.toVector) { (written, v) =>
+      each <- Fields.each(cases.obj.toVector) { (written, v) =>
         val at = Fields(s"verdicts: $written", v)
         for {
           id <- CaseId.read(written).left.map(why => s"verdicts: $why")
           shadow <- at
             .str("shadow")
             .flatMap(n => ShadowName.of(n).left.map(w => s"verdicts: $written: shadow $w"))
-          reason <- at
+          why <- at
             .str("reason")
             .flatMap(r =>
-              Reason.values.find(reasonWritten(_) == r).toRight(s"verdicts: $written: reason $r")
+              Reason.values.find(reason(_) == r).toRight(s"verdicts: $written: reason $r")
             )
           verdict <- at
             .str("verdict")
@@ -76,11 +76,12 @@ object Verdicts {
             )
           rater <- at.str("rater")
           when <- at.instant("at")
-        } yield id -> Rated(shadow, reason, verdict, PrincipalId(rater), when)
+        } yield id -> Rated(shadow, why, verdict, PrincipalId(rater), when)
       }
-    } yield Verdicts(read.toMap)
+    } yield Verdicts(each.toMap)
 
-  private def reasonWritten(r: Reason): String = r match {
+  /** `r` as the file writes it. */
+  def reason(r: Reason): String = r match {
     case Reason.ShadowOnly => "shadow-only"
     case Reason.LiveOnly => "live-only"
     case Reason.Both => "both"
