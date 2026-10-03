@@ -5,7 +5,7 @@ import scala.concurrent.duration.*
 
 import grit.core.classify.StateJson
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{ConversationId, TriageRef}
+import grit.core.id.{ConversationId, TriageRef, TurnRef}
 import grit.core.period.LifecycleSettings
 import grit.core.place.{Locality, Namespace, Place, Scope, Weight}
 import grit.core.recipe.{Pool, Section, Source}
@@ -29,7 +29,7 @@ object TriageInputTests extends TestSuite {
       recipe: TriageRecipe = TriageRecipe.Shipped
   ) =
     TriageInput
-      .build(w.reads, w.rooms, FakeDb, triage, tuning, recipe)
+      .build(w.reads, w.rooms, FakeDb, triage.message, tuning, recipe)
       .map((_, state) => ujson.write(StateJson[TriageQuestion.State].json(state)))
 
   private def json(message: String, author: String, thread: String): String =
@@ -46,6 +46,21 @@ object TriageInputTests extends TestSuite {
   }
 
   val tests = Tests {
+    test("a person's message said to grit builds the state the same message heard does") {
+      val heard = new World
+      heard.hear("when is standup?", "Ben", 0)
+      val h = heard.hear("is standup at 10:00?", "Ana", 1)
+      val said = new World
+      said.hear("when is standup?", "Ben", 0)
+      val s = said.say("is standup at 10:00?", 1, Some("Ana"))
+      val state = (w: World, t: TurnRef) =>
+        TriageInput
+          .build(w.reads, w.rooms, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
+          .map((_, state) => ujson.write(StateJson[TriageQuestion.State].json(state)))
+      state(said, s) ==> Right(json("is standup at 10:00?", "Ana", "Ben: when is standup?"))
+      state(said, s) ==> state(heard, h.message)
+    }
+
     test("with no strand, the thread is its conversation's messages before it, whole") {
       val w = new World
       w.hear("when is standup?", "Ben", 0)
@@ -155,7 +170,7 @@ object TriageInputTests extends TestSuite {
       val reply = w.hear("and another", "David", 2, in = b)
       Vector(opening, reply).map(t =>
         TriageInput
-          .read(w.reads, w.rooms, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
+          .read(w.reads, w.rooms, FakeDb, t.message, Tuning.Default, TriageRecipe.Shipped)
           .map(_.focus)
       ) ==> Vector(Right(Focus.Open), Right(Focus.Focused))
     }
@@ -166,7 +181,7 @@ object TriageInputTests extends TestSuite {
       val nowhere = w.hear("and the rollback?", "Ana", 1, in = ConversationId("gone"))
       Vector(here, nowhere).map(t =>
         TriageInput
-          .read(w.reads, w.rooms, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
+          .read(w.reads, w.rooms, FakeDb, t.message, Tuning.Default, TriageRecipe.Shipped)
           .map(_.place)
       ) ==> Vector(
         Right(Some(Place.under(Namespace.Slack, Vector("T", "C", "1.0")))),

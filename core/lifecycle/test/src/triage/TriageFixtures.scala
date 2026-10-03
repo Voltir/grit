@@ -57,6 +57,11 @@ object TriageFixtures {
 
   def at(minutes: Long): Instant = Start.plusSeconds(minutes * 60)
 
+  /** The turn whose heard message `triage` asks about. */
+  extension (triage: TriageRef) {
+    def message: TurnRef = TurnRef(triage.period.conversationId, triage.turn)
+  }
+
   /** What a scripted classifier's answers cost. */
   val Spent: Usage = Usage(Tokens(640), Tokens(0), Tokens.Zero, Some(BigDecimal("0.00002688")))
 
@@ -213,9 +218,9 @@ object TriageFixtures {
       TriageRef(PeriodRef(in, PeriodSeq.First), e.turnSeq)
     }
 
-    /** `text` said to grit as the next turn at `minutes`; its turn. */
-    def say(text: String, minutes: Long): TurnRef = {
-      val e = insert(Payload.Message(Message.User(text)), None, minutes)
+    /** `text` said to grit as the next turn at `minutes`, by `name` when given; its turn. */
+    def say(text: String, minutes: Long, name: Option[String] = None): TurnRef = {
+      val e = insert(Payload.Message(Message.User(text)), name.map(n => s"u-$n" -> n), minutes)
       TurnRef(c, e.turnSeq)
     }
 

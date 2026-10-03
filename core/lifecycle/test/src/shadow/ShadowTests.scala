@@ -31,7 +31,7 @@ object ShadowTests extends TestSuite {
         w.triaged.reads,
         w.triaged.rooms,
         TriageFixtures.FakeDb,
-        t,
+        TurnRef(t.period.conversationId, t.turn),
         Tuning.Default,
         TriageRecipe.Shipped
       )
@@ -45,7 +45,7 @@ object ShadowTests extends TestSuite {
         w.triaged.reads,
         w.triaged.rooms,
         TriageFixtures.FakeDb,
-        t,
+        TurnRef(t.period.conversationId, t.turn),
         Tuning.Default,
         TriageRecipe.Shipped
       )

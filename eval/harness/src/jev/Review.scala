@@ -96,7 +96,7 @@ object Review {
     } yield {
       val triage =
         TriageInput
-          .read(reads, reader.rooms, reader.db, ref, under, recipe)
+          .read(reads, reader.rooms, reader.db, TurnRef(c.conversation, ref.turn), under, recipe)
           .toOption
           .flatMap { r =>
             Some(

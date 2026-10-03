@@ -20,7 +20,7 @@ import grit.core.triage.{KnowledgeSources, Tags}
   *      `stitch` ([[Stitching.turn]]) and `record-stitch` instead, placing the opening itself
   *      ([[Patches.StitchInRoomOrder]]).
   *   1. `ask` — one classifier call over the heard message, who said it, and the thread
-  *      before it: its strand's, then its own ([[TriageInput.read]]), asked the questions
+  *      before it: its strand's, then its own ([[TriageInput.heard]]), asked the questions
   *      live triage asks ([[TriageQuestions.Shipped]]), one per knowledge source covering its
   *      conversation where the set asks so; an absent or failing classifier, or an answer
   *      that does not read, is `Unanswered` tags.
@@ -168,11 +168,11 @@ object Triage {
   private def ask(env: TriageEnv^, triage: TriageRef): Either[String, (EntryId, Tags)] = {
     val r = env.records
     TriageInput
-      .read(
+      .heard(
         StitchReads(r.entries, r.conversations, r.lifecycle, r.stitches, r.search, r.principals),
         r.rooms,
         env.db,
-        triage,
+        TurnRef(triage.period.conversationId, triage.turn),
         env.tuning,
         TriageRecipe.Shipped
       )

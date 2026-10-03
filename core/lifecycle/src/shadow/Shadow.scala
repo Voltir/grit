@@ -4,7 +4,7 @@ import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{EntryId, ShadowName, ShadowRef, WorkflowId}
+import grit.core.id.{EntryId, ShadowName, ShadowRef, TurnRef, WorkflowId}
 import grit.core.triage.{KnowledgeSources, ShadowAnswers, Shadowed}
 import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
 
@@ -14,7 +14,7 @@ import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
   * ([[grit.core.triage.Shadowing]]): what is enqueued is already within the cap.
   *
   *   1. `ask` — the heard message's state rebuilt as triage builds it, from the store as it
-  *      stands now ([[TriageInput.read]]), and the variant's question set asked of it once
+  *      stands now ([[TriageInput.heard]]), and the variant's question set asked of it once
   *      ([[ShadowVariant]]); nothing is asked when the message or its thread cannot be read,
   *      or when the variant is not declared.
   *   1. `record` — what it made of the message kept
@@ -60,7 +60,14 @@ object Shadow {
       case None => Left(s"no variant ${ShadowName.value(shadow.name)} is declared")
       case Some(variant) =>
         TriageInput
-          .read(env.reads, env.rooms, env.db, shadow.triage, env.tuning, TriageRecipe.Shipped)
+          .heard(
+            env.reads,
+            env.rooms,
+            env.db,
+            TurnRef(shadow.triage.period.conversationId, shadow.triage.turn),
+            env.tuning,
+            TriageRecipe.Shipped
+          )
           .map { read =>
             // A conversation not found is at no place, so no source covers it.
             val sources = read.place.fold(KnowledgeSources.Empty)(env.sources.at)

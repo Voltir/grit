@@ -116,7 +116,14 @@ object Inputs {
     } yield {
       val read =
         TriageInput
-          .read(reads, reader.rooms, reader.db, ref, under, Variant.recipe(variant))
+          .read(
+            reads,
+            reader.rooms,
+            reader.db,
+            TurnRef(c.conversation, ref.turn),
+            under,
+            Variant.recipe(variant)
+          )
           .toOption
       val triage = read.flatMap { r =>
         val q = TriageQuestions.v1(wording).request(r.state, KnowledgeSources.Empty)

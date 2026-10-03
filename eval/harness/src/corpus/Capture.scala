@@ -129,7 +129,14 @@ object Capture {
       tuning: Tuning
   ): Option[Asked] =
     TriageInput
-      .build(reads, reader.rooms, reader.db, t.triage, tuning, TriageRecipe.Shipped)
+      .build(
+        reads,
+        reader.rooms,
+        reader.db,
+        TurnRef(t.triage.period.conversationId, t.triage.turn),
+        tuning,
+        TriageRecipe.Shipped
+      )
       .toOption
       .flatMap { (_, state) =>
         val r = TriageQuestions.V1.request(state, KnowledgeSources.Empty)
