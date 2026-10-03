@@ -34,6 +34,9 @@ object TurnLoop {
 
     val First: Round = 0
 
+    /** The round of `index`, from 0; `First` for a negative one. */
+    private[turn] def at(index: Int): Round = math.max(0, index)
+
     extension (round: Round) {
       def index: Int = round
 

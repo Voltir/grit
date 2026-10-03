@@ -425,17 +425,29 @@ private[turn] object TurnJournal {
         v.objOpt match {
           case None => Left("expected an object")
           case Some(o) =>
-            (
-              o.get("ok"),
-              o.get("failed").flatMap(_.strOpt),
-              o.get("reason").flatMap(_.strOpt)
-            ) match {
-              case (Some(value), None, None) => read(value).map(Right(_))
-              case (None, Some("assembly"), Some(r)) => Right(Left(TurnFailure.Assembly(r)))
-              case (None, Some("model"), Some(r)) => Right(Left(TurnFailure.Model(r)))
-              case (None, Some("store"), Some(r)) => Right(Left(TurnFailure.Store(r)))
+            (o.get("ok"), o.get("failed"), failed(o)) match {
+              case (Some(value), None, None) if !o.contains("reason") => read(value).map(Right(_))
+              case (None, Some(_), Some(failure)) => Right(Left(failure))
               case _ => Left("expected {ok} or {failed, reason}")
             }
         }
     )
+
+  /** The failure an outcome's output records (`{"failed": kind, "reason": text}`); `None` for
+    * any other output, an `{"ok": ...}` included.
+    */
+  def failure(output: String): Option[TurnFailure] =
+    scala.util
+      .Try(ujson.read(output))
+      .toOption
+      .flatMap(_.objOpt)
+      .flatMap(o => Option.when(!o.contains("ok"))(o).flatMap(failed))
+
+  private def failed(o: collection.Map[String, ujson.Value]): Option[TurnFailure] =
+    (o.get("failed").flatMap(_.strOpt), o.get("reason").flatMap(_.strOpt)) match {
+      case (Some("assembly"), Some(r)) => Some(TurnFailure.Assembly(r))
+      case (Some("model"), Some(r)) => Some(TurnFailure.Model(r))
+      case (Some("store"), Some(r)) => Some(TurnFailure.Store(r))
+      case _ => None
+    }
 }
