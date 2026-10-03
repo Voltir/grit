@@ -269,6 +269,11 @@ object TriageFixtures {
           World.this.awaited = World.this.awaited :+ opening
           Right(placing.run(opening.ref.workflowId)(placement(classifier, minutes)))
         }
+        def awaitedWithin(
+            opening: Opening,
+            within: FiniteDuration,
+            clock: Clock^
+        ): Either[String, String] = awaited(opening)
       }
     }
 

@@ -2,13 +2,17 @@ package grit.core.stitch
 
 import java.time.Instant
 
+import scala.concurrent.duration.FiniteDuration
+
 import grit.core.classify.Classifier
+import grit.core.clock.Clock
 import grit.core.store.Db
 import grit.dbos.sql.TestTx
 
 /** [[Placements]] over in-memory stores: each opening placed at once, as its own workflow
   * places it ([[Stitching.turn]], then kept in `reads`' stitches at `at`), the first time it
-  * is waited for; every opening waited for kept in [[waited]].
+  * is waited for, so a bounded wait never runs out; every opening waited for kept in
+  * [[waited]].
   */
 final class InMemoryPlacements(
     classifier: Classifier^,
@@ -21,6 +25,12 @@ final class InMemoryPlacements(
   // Read only by the test that owns it.
   @caps.unsafe.untrackedCaptures
   var waited: Vector[Opening] = Vector.empty
+
+  def awaitedWithin(
+      opening: Opening,
+      within: FiniteDuration,
+      clock: Clock^
+  ): Either[String, String] = awaited(opening)
 
   def awaited(opening: Opening): Either[String, String] = {
     val first = !waited.exists(_.ref == opening.ref)

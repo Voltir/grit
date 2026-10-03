@@ -2,6 +2,8 @@ package grit.turn
 
 import java.time.Instant
 
+import scala.concurrent.duration.FiniteDuration
+
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.classify.Classifier
@@ -155,6 +157,11 @@ object TurnFixtures {
   final class Unplaced extends grit.core.stitch.Placements {
     def awaited(opening: grit.core.stitch.Opening): Either[String, String] =
       Right("nothing asked")
+    def awaitedWithin(
+        opening: grit.core.stitch.Opening,
+        within: FiniteDuration,
+        clock: Clock^
+    ): Either[String, String] = awaited(opening)
   }
 
   /** Every fixture turn's prompts and tool sets, kept by content id as the real stores keep
