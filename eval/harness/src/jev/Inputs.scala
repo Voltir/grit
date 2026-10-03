@@ -4,9 +4,10 @@ import grit.core.classify.{Classifier, Request}
 import grit.core.id.{TriageRef, TurnRef}
 import grit.core.stitch.{Offer, StitchReads, Stitching, Tuning}
 import grit.core.store.{Focus, StoreError}
+import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.Reader
 import grit.eval.harness.corpus.{Case, Digest}
-import grit.lifecycle.triage.{TriageInput, TriageQuestion}
+import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageQuestions}
 
 /** One of a case's questions, as the shipped call asks it. */
 enum Asking {
@@ -20,11 +21,12 @@ enum Asking {
 
 object Asking {
 
-  /** `asking` put to `classifier` through the shipped call ([[TriageQuestion.judge]],
-    * [[Stitching.place]]); what it makes of the answer is dropped.
+  /** `asking` put to `classifier` through the shipped call (v1 in its wording,
+    * [[TriageQuestions.ask]]; [[Stitching.place]]); what it makes of the answer is dropped.
     */
   def ask(asking: Asking, classifier: Classifier^): Unit = asking match {
-    case Triage(state, wording) => val _ = TriageQuestion.judge(classifier, wording, state)
+    case Triage(state, wording) =>
+      val _ = TriageQuestions.v1(wording).ask(classifier, state, KnowledgeSources.Empty)
     case Stitch(offer, tuning) => val _ = Stitching.place(classifier, offer, tuning)
   }
 }
@@ -73,8 +75,8 @@ object Drift {
 object Inputs {
 
   /** `c`'s questions as `reader`'s database stands, under `variant`: triage's
-    * ([[TriageInput.read]] by the variant's recipe, then [[TriageQuestion.request]] in its
-    * wording), and,
+    * ([[TriageInput.read]] by the variant's recipe, then v1's request in its wording,
+    * [[TriageQuestions.request]]), and,
     * when `c` was placed live, stitching's ([[Stitching.offered]], then
     * [[Stitching.request]]), each under the variant's tuning, else `c`'s own, else `tuning`.
     * `Left` naming what could not be read: the case's triage workflow id, or the store, by
@@ -113,9 +115,8 @@ object Inputs {
           .read(reads, reader.rooms, reader.db, ref, under, Variant.recipe(variant))
           .toOption
       val triage = read.flatMap { r =>
-        TriageQuestion
-          .request(wording, r.state)
-          .map(q => Posed(Asking.Triage(r.state, wording), q, Digest.json(q.state)))
+        val q = TriageQuestions.v1(wording).request(r.state, KnowledgeSources.Empty)
+        Some(Posed(Asking.Triage(r.state, wording), q, Digest.json(q.state)))
       }
       val stitch = offer.flatMap(o =>
         Stitching

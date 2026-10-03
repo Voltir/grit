@@ -32,11 +32,7 @@ object ShippedGateTests extends TestSuite {
 
   private def tags(kind: Kind, kindP: Double, helps: Double): Tags =
     Tags.Weighed(
-      kind,
-      p(kindP),
-      p(0.5),
-      p(0.5),
-      p(helps),
+      Tags.V1.answers(kind, p(kindP), p(0.5), p(0.5), p(helps)),
       "jev",
       Usage(Tokens(1), Tokens.Zero, Tokens.Zero, None)
     )

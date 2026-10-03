@@ -350,11 +350,7 @@ object CollectorLiveTests extends TestSuite {
   private def decided(config: DbConfig, turn: TurnRef): Unit = {
     val p = grit.core.period.Probability.clamped(0.9)
     val tags = grit.core.triage.Tags.Weighed(
-      grit.core.triage.Kind.Question,
-      p,
-      p,
-      p,
-      p,
+      grit.core.triage.Tags.V1.answers(grit.core.triage.Kind.Question, p, p, p, p),
       "jev",
       Usage(Tokens(1), Tokens(0), Tokens(0), None)
     )

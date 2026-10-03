@@ -69,11 +69,13 @@ object CloseTests extends TestSuite {
 
   private def tags(kind: Kind, durable: Double): Tags =
     Tags.Weighed(
-      kind,
-      Probability.clamped(0.9),
-      Probability.clamped(0.1),
-      Probability.clamped(durable),
-      Probability.clamped(0.1),
+      Tags.V1.answers(
+        kind,
+        Probability.clamped(0.9),
+        Probability.clamped(0.1),
+        Probability.clamped(durable),
+        Probability.clamped(0.1)
+      ),
       "jev",
       grit.core.message.Usage(
         grit.core.message.Tokens(1),

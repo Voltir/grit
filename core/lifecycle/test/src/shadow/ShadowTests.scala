@@ -24,7 +24,7 @@ object ShadowTests extends TestSuite {
   private def decided =
     new Scripted(Vector(0.125, 0.0, 0.75, 0.125, 0.0), Vector(0.125, 0.875, 0.25))
 
-  /** The digest of the request triage's question makes of `t` in `wording`, as `w` stands. */
+  /** The digest of the request v1 makes of `t` in `wording`, as `w` stands. */
   private def digest(w: World, t: grit.core.id.TriageRef, wording: TriageQuestion.Wording) =
     TriageInput
       .build(
@@ -36,8 +36,7 @@ object ShadowTests extends TestSuite {
         TriageRecipe.Shipped
       )
       .toOption
-      .flatMap((_, state) => TriageQuestion.request(wording, state))
-      .map(_.digest)
+      .map((_, state) => TriageQuestions.v1(wording).request(state, KnowledgeSources.Empty).digest)
 
   /** The digest of the request V2 makes of `t` with `sources`, as `w` stands. */
   private def setDigest(w: World, t: grit.core.id.TriageRef, sources: Vector[KnowledgeSource]) =

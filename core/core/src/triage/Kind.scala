@@ -7,8 +7,8 @@ enum Kind {
 
 object Kind {
 
-  /** `kind`'s stored name, its own in lower case: the same in `grit.triage` and a triage's
-    * journal.
+  /** `kind`'s key in v1's `kind` choice ([[Tags.V1]]), its own name in lower case: as
+    * triage's answers hold it, and as an earlier build's journal recorded it.
     */
   def written(kind: Kind): String = kind.toString.toLowerCase
 

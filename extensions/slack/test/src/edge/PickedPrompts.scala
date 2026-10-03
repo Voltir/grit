@@ -139,11 +139,7 @@ object PickedPrompts {
 
   private val Weighed =
     Tags.Weighed(
-      Kind.Question,
-      p(0.9),
-      p(0.5),
-      p(0.5),
-      p(0.25),
+      Tags.V1.answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.25)),
       "jev",
       Usage(Tokens(1), Tokens(1), Tokens.Zero, None)
     )

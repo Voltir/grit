@@ -2,11 +2,13 @@ package grit.eval.harness.corpus
 
 import java.time.Instant
 
-import grit.core.classify.ClassifierError
-import grit.core.id.{ConversationId, EntryId, WorkflowId}
+import scala.collection.immutable.VectorMap
+
+import grit.core.classify.{Answer, ClassifierError}
+import grit.core.id.{ConversationId, EntryId, QuestionName, WorkflowId}
 import grit.core.period.Probability
 import grit.core.stitch.{Offered, Tuning}
-import grit.core.triage.Kind
+import grit.core.triage.{Kind, Tags}
 import grit.dbos.engine.{Build, Reader}
 
 /** One heard message of a corpus, text-free: who it is (`id`), where it was in the database
@@ -66,6 +68,31 @@ enum Live {
 
   /** No answer, of this kind. */
   case Unanswered(failure: Failure)
+}
+
+object Live {
+
+  /** Live triage's `answers` as v1's tags, by v1's names ([[Tags.V1]]): `kind`'s choice and
+    * its weight, and `waiting`, `durable` and `helps` yes/nos; `None` when they are not
+    * v1's, as for a message triaged by a later question set, or a choice of no [[Kind]].
+    */
+  def v1(
+      answers: VectorMap[QuestionName, Answer],
+      model: String,
+      costUsd: Option[BigDecimal]
+  ): Option[Live.Weighed] = {
+    def yes(name: QuestionName) =
+      answers.get(name).collect { case Answer.YesNo(p) => Probability.clamped(p) }
+    for {
+      (kind, kindP) <- answers.get(Tags.V1.kind).collect { case Answer.Choice(c, ws, _) =>
+        (c, ws.find(_.key == c).fold(0.0)(_.probability))
+      }
+      k <- Kind.read(kind)
+      waiting <- yes(Tags.V1.waiting)
+      durable <- yes(Tags.V1.durable)
+      helps <- yes(Tags.V1.helps)
+    } yield Live.Weighed(k, Probability.clamped(kindP), waiting, durable, helps, model, costUsd)
+  }
 }
 
 /** Why a classifier gave no answer, as a kind: never the words of why. */

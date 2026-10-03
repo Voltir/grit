@@ -43,30 +43,29 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   queue under its conversation (`grit.dbos.workflow.Triages`), so ahead of any later close
   of it: when it is its thread's first message, wait in `stitched` for its placement
   (`grit.core.stitch.Placements`; a triage begun before that placed it itself, in `stitch`
-  and `record-stitch`), then `ask` the classifier
-  (`TriageQuestion`: its kind, and whether someone waits on it, whether it states something
-  worth keeping, whether a reply would help, asked in a `Wording`, the shipped one in
-  `Wording.Shipped`) over the message, who said it and the thread
+  and `record-stitch`), then `ask` the classifier the questions of
+  `TriageQuestions.Shipped`, the set live triage asks, over the message
+  (`TriageQuestion.State`), who said it and the thread
   before it, its strand first, and the sections of a `TriageRecipe`'s pool for the focus it
   was said at, from what its room held when it was said (`grit.core.recipe`, read through
   `RoomReads`; built by `TriageInput`, `TriageRecipe.Shipped` showing none), then `record` the tags (`grit.core.triage`), then
   `consider` whether grit drafts a reply (`Speak`, over `grit.core.speech`) and, when it does,
   `start` the heard message's own turn (ADR 0022). A classifier that fails leaves unanswered
   tags, and no draft. It writes no entry, so it never moves a deadline. `TriageEnv` is what
-  it works with. `TriageQuestions` is a question set over the same state: named questions,
+  it works with. `TriageQuestions` is a question set over that state: named questions,
   one per `grit.core.triage.KnowledgeSource` covering the conversation where it asks so,
-  their answers kept raw under their names, and the `Gate` (`grit.core.triage`) a draft is
-  derived from; `TriageQuestions.v1` is triage's question as a set, in a `Wording`, its
-  request the one triage sends in it, and `TriageQuestions.V2` the proposed one;
-  `TriageQuestions.Shipped` names the set live triage's request is, whose gate speech may
-  read (`Limits.drafts`). Live triage asks through its question, not a set. ← `transcript`
+  their answers kept raw under their names (`grit.core.triage.Tags`), and the `Gate`
+  (`grit.core.triage`) a draft is derived from; `TriageQuestions.v1` is the set triage
+  first asked, in a `TriageQuestion.Wording` (`Wording.Shipped`, the words it shipped in),
+  and `TriageQuestions.V2` the one proposed to replace it; `TriageQuestions.Shipped` names
+  the set live triage asks, whose gate speech may read (`Limits.drafts`). ← `transcript`
 - **`shadow`** — `Shadow`: a declared variant's run on a heard message already triaged,
   recorded and never acted on, on a queue of its own (`grit.dbos.workflow.Shadows`), so it
   never delays a triage: `ask` rebuilds triage's state as `triage` builds it, from the
   store as it stands now, and asks the variant's `TriageQuestions` set of it once, of the
   variant's classifier (`ShadowAsking`), its per-source questions of the catalog's
-  knowledge sources covering the conversation's place (triage's own question is the set
-  `TriageQuestions.v1`, in a wording); `record` keeps what it made of it, every answer
+  knowledge sources covering the conversation's place (v1 in a wording is
+  `TriageQuestions.v1`); `record` keeps what it made of it, every answer
   under its name, the request's digest, both models and the latency, or which
   kind of failure (`grit.core.triage.TriageShadows`). How many are enqueued each day is the sweep's, within
   the variant's cap (`grit.core.triage.Shadowing`). `ShadowEnv` is what it works with, and

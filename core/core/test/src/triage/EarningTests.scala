@@ -2,7 +2,10 @@ package grit.core.triage
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
+import scala.collection.immutable.VectorMap
+
+import grit.core.classify.Answer
+import grit.core.id.{ConversationId, EntryId, EntrySeq, QuestionName, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.store.{Entry, Payload}
@@ -24,16 +27,22 @@ object EarningTests extends TestSuite {
 
   private def heard(n: Long): Entry = entry(n, Payload.Heard(s"heard $n"))
 
+  private val usage = Usage(Tokens(1), Tokens.Zero, Tokens.Zero, None)
+
   private def weighed(kind: Kind, durable: Double): Tags =
     Tags.Weighed(
-      kind,
-      Probability.clamped(0.9),
-      Probability.clamped(0.1),
-      Probability.clamped(durable),
-      Probability.clamped(0.1),
+      Tags.V1.answers(
+        kind,
+        Probability.clamped(0.9),
+        Probability.clamped(0.1),
+        Probability.clamped(durable),
+        Probability.clamped(0.1)
+      ),
       "jev",
-      Usage(Tokens(1), Tokens.Zero, Tokens.Zero, None)
+      usage
     )
+
+  private def name(text: String) = QuestionName.of(text).getOrElse(sys.error(text))
 
   private val chatter = weighed(Kind.Chatter, 0.1)
 
@@ -64,6 +73,36 @@ object EarningTests extends TestSuite {
       (
         Earning.earns(es, Map(es(0).id -> chatter)),
         Earning.earns(es, Map(es(0).id -> chatter, es(1).id -> Tags.Unanswered("timeout")))
+      ) ==> (true, true)
+    }
+
+    test("durable is read by name, from any question set that asks it as a yes/no") {
+      val es = Vector(heard(0))
+      val v2 = (durable: Double) =>
+        Tags.Weighed(
+          VectorMap(name("open") -> Answer.YesNo(0.9), Earning.Durable -> Answer.YesNo(durable)),
+          "jev",
+          usage
+        )
+      (
+        Earning.earns(es, Map(es(0).id -> v2(0.75))),
+        Earning.earns(es, Map(es(0).id -> v2(0.25)))
+      ) ==>
+        (true, false)
+      QuestionName.value(Earning.Durable) ==> "durable"
+    }
+
+    test("a heard message whose answers hold no durable yes/no earns: it fails open") {
+      val es = Vector(heard(0), heard(1))
+      val unasked = Tags.Weighed(VectorMap(name("open") -> Answer.YesNo(0.1)), "jev", usage)
+      val chosen = Tags.Weighed(
+        VectorMap(Earning.Durable -> Answer.Choice("no", Vector(Answer.Weight("no", 1.0)), 1.0)),
+        "jev",
+        usage
+      )
+      (
+        Earning.earns(es, Map(es(0).id -> chatter, es(1).id -> unasked)),
+        Earning.earns(es, Map(es(0).id -> chatter, es(1).id -> chosen))
       ) ==> (true, true)
     }
 

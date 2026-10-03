@@ -417,34 +417,27 @@ CREATE TABLE IF NOT EXISTS grit.verdicts (
 
 CREATE INDEX IF NOT EXISTS idx_verdicts_period ON grit.verdicts (conversation_id, seq, at);
 
--- What triage made of each heard message (grit.core.triage.Tags): its most probable kind with
--- that probability, the probabilities that someone waits on it, that it is worth keeping and
--- that a reply would help, the model and what the call consumed; or unanswered, with why.
+-- What triage made of each heard message (grit.core.triage.Tags): its question set's answers,
+-- each under its question's name in the order asked (grit.core.classify.AnswersJson), the
+-- model and what the call consumed; or unanswered, with why. A message triaged before named
+-- answers holds v1's: kind, waiting, durable and helps.
 -- Retention: journal: deleted with its entry, so with its period's raw entries (Target.Raw).
 CREATE TABLE IF NOT EXISTS grit.triage (
     entry_id        TEXT PRIMARY KEY REFERENCES grit.entries(id) ON DELETE CASCADE,
     at              TIMESTAMPTZ NOT NULL,
-    kind            TEXT CHECK (kind IN ('question', 'answer', 'decision', 'announcement', 'chatter')),
-    kind_p          DOUBLE PRECISION CHECK (kind_p BETWEEN 0 AND 1),
-    waiting         DOUBLE PRECISION CHECK (waiting BETWEEN 0 AND 1),
-    durable         DOUBLE PRECISION CHECK (durable BETWEEN 0 AND 1),
-    helps           DOUBLE PRECISION CHECK (helps BETWEEN 0 AND 1),
+    answers         JSONB CHECK (answers IS NULL OR jsonb_typeof(answers) = 'array'),
     model           TEXT,
     input_tokens    BIGINT CHECK (input_tokens >= 0),
     output_tokens   BIGINT CHECK (output_tokens >= 0),
     cached_tokens   BIGINT CHECK (cached_tokens >= 0),
     cost_usd        NUMERIC,
     unanswered      TEXT,
-    CHECK ((unanswered IS NULL) = (kind IS NOT NULL)
-       AND (kind IS NULL) = (kind_p IS NULL)
-       AND (kind IS NULL) = (waiting IS NULL)
-       AND (kind IS NULL) = (durable IS NULL)
-       AND (kind IS NULL) = (helps IS NULL)
-       AND (kind IS NULL) = (model IS NULL)
-       AND (kind IS NULL) = (input_tokens IS NULL)
-       AND (kind IS NULL) = (output_tokens IS NULL)
-       AND (kind IS NULL) = (cached_tokens IS NULL)
-       AND (kind IS NOT NULL OR cost_usd IS NULL))
+    CHECK ((unanswered IS NULL) = (answers IS NOT NULL)
+       AND (answers IS NULL) = (model IS NULL)
+       AND (answers IS NULL) = (input_tokens IS NULL)
+       AND (answers IS NULL) = (output_tokens IS NULL)
+       AND (answers IS NULL) = (cached_tokens IS NULL)
+       AND (answers IS NOT NULL OR cost_usd IS NULL))
 );
 
 -- What each declared shadow variant made of a heard message already triaged
@@ -522,9 +515,9 @@ CREATE INDEX IF NOT EXISTS idx_stitches_conversation ON grit.stitches (conversat
 CREATE INDEX IF NOT EXISTS idx_stitches_root ON grit.stitches (root);
 
 -- grit's decision on each heard message that reached it (grit.core.speech.Decision): held,
--- with why (`silence`), or drafting in the heard message's own turn (`workflow`); triage's
--- kind and helps; and, once the turn settles its draft, what became of it (`outcome`), the judge's
--- scores and model, an excerpt of the draft, and a posted reply's position. Forms in
+-- with why (`silence`), or drafting in the heard message's own turn (`workflow`); and, once
+-- the turn settles its draft, what became of it (`outcome`), the judge's scores and model, an
+-- excerpt of the draft, and a posted reply's position. Triage's answers are in grit.triage. Forms in
 -- SpeechJson. No foreign key: it outlives the heard entry's purge, so the rates and the
 -- day's speech spend count every decision, and each post can be stated with its approval.
 -- Retention: ledger: with its period's usage (SpeechStore.forget, beside UsageLedger.forget),
@@ -537,8 +530,6 @@ CREATE TABLE IF NOT EXISTS grit.speech (
     decided_at      TIMESTAMPTZ NOT NULL,
     drafting        BOOLEAN NOT NULL,
     silence         JSONB,
-    kind            TEXT,
-    helps           DOUBLE PRECISION CHECK (helps BETWEEN 0 AND 1),
     outcome         JSONB,
     outcome_kind    TEXT,
     grounded        DOUBLE PRECISION CHECK (grounded BETWEEN 0 AND 1),

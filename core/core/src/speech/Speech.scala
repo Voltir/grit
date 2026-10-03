@@ -200,8 +200,8 @@ object Speech {
         () =>
           heard.tags match {
             case Tags.Unanswered(why) => Some(Silence.Unweighed(why))
-            case weighed: Tags.Weighed =>
-              limits.drafts.check(Tags.V1.answers(weighed)) match {
+            case Tags.Weighed(answers, _, _) =>
+              limits.drafts.check(answers) match {
                 case Gate.Checked.Passes => None
                 case Gate.Checked.Fails(first, rest) => Some(Silence.Gated(first, rest))
                 case Gate.Checked.Unread(reading) => Some(Silence.Unasked(reading))

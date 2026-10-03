@@ -11,7 +11,6 @@ import grit.core.place.Place
 import grit.core.speech.{Decision, Heard, Outcome, Reach, SpeechJson, SpeechStore, Spoken, Stage}
 import grit.core.spend.{Day, Spend}
 import grit.core.store.{StoreError, Tx}
-import grit.core.triage.{Kind, Tags}
 
 /** [[SpeechStore]] over `grit.heard`, whose rows cascade from `grit.entries`, and
   * `grit.speech`, the ledger of decisions.
@@ -146,8 +145,8 @@ final class SqlSpeechStore extends SpeechStore {
       Using.resource(
         conn.prepareStatement(
           """INSERT INTO grit.speech (workflow, conversation_id, turn_seq, room, decided_at,
-            |  drafting, silence, kind, helps)
-            |VALUES (?, ?::uuid, ?, ?, ?, ?, ?::jsonb, ?, ?)
+            |  drafting, silence)
+            |VALUES (?, ?::uuid, ?, ?, ?, ?, ?::jsonb)
             |ON CONFLICT (workflow) DO NOTHING""".stripMargin
         )
       ) { ps =>
@@ -163,14 +162,6 @@ final class SqlSpeechStore extends SpeechStore {
           case Decision.Held(why) =>
             ps.setBoolean(6, false)
             ps.setString(7, SpeechJson.writeSilence(why).render())
-        }
-        heard.tags match {
-          case Tags.Weighed(kind, _, _, _, helps, _, _) =>
-            ps.setString(8, Kind.written(kind))
-            ps.setDouble(9, Probability.value(helps))
-          case Tags.Unanswered(_) =>
-            ps.setNull(8, java.sql.Types.VARCHAR)
-            ps.setNull(9, java.sql.Types.DOUBLE)
         }
         ps.executeUpdate() == 1
       }

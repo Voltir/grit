@@ -31,7 +31,7 @@ object SpeechTests extends TestSuite {
   private val turn = TurnRef(ConversationId("c"), TurnSeq(5))
 
   private def tags(kind: Kind = Kind.Question, helps: Double = 0.9): Tags =
-    Tags.Weighed(kind, p(0.9), p(0.5), p(0.5), p(helps), "jev", usage)
+    Tags.Weighed(Tags.V1.answers(kind, p(0.9), p(0.5), p(0.5), p(helps)), "jev", usage)
 
   private val heard = Heard(
     turn,

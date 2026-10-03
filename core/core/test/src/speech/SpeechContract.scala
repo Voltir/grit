@@ -65,7 +65,7 @@ abstract class SpeechContract extends TestSuite {
       room,
       At,
       Reach(Some("C/1"), Set.empty),
-      Tags.Weighed(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.8), "jev", usage)
+      Tags.Weighed(Tags.V1.answers(Kind.Question, p(0.9), p(0.5), p(0.5), p(0.8)), "jev", usage)
     )
 
   /** A heard message as `c`'s next turn, decided on at `at` as `decision` does to it. */

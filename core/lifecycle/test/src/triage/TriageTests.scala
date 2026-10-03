@@ -1,13 +1,15 @@
 package grit.lifecycle.triage
 
-import grit.core.classify.Question
+import scala.collection.immutable.VectorMap
+
+import grit.core.classify.{Answer, Question}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.period.Probability
 import grit.core.speech.{Decision, Limits, Silence, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{Stitching, Tuning}
-import grit.core.triage.{Bound, Gate, Kind, Reading, Tags}
+import grit.core.triage.{Bound, Gate, Kind, KnowledgeSources, Reading, Tags}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -30,14 +32,26 @@ object TriageTests extends TestSuite {
       Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("a cap")), TriageQuestions.V1.speak)
     )
 
-  private val decision =
-    Tags.Weighed(Kind.Decision, p(0.75), p(0.125), p(0.875), p(0.25), "jev-1.13.0", Spent)
-
-  /** One heard message, as the question is shown it: fixed, so its request's digest is too. */
-  private val fixed = TriageQuestion.State(
-    "standup moves to 10:00 from Monday",
-    "Ana",
-    "Ben: when is standup?"
+  /** What [[decided]] answers v1: kind a choice weighing every key, then its yes/nos. */
+  private val decision: Tags.Weighed = Tags.Weighed(
+    VectorMap(
+      Tags.V1.kind -> Answer
+        .choice(
+          Vector(
+            Answer.Weight("question", 0.125),
+            Answer.Weight("answer", 0.0),
+            Answer.Weight("decision", 0.75),
+            Answer.Weight("announcement", 0.125),
+            Answer.Weight("chatter", 0.0)
+          )
+        )
+        .getOrElse(sys.error("a choice")),
+      Tags.V1.waiting -> Answer.YesNo(0.125),
+      Tags.V1.durable -> Answer.YesNo(0.875),
+      Tags.V1.helps -> Answer.YesNo(0.25)
+    ),
+    "jev-1.13.0",
+    Spent
   )
 
   /** The marker a triage records as it takes the room-order patch. */
@@ -47,16 +61,7 @@ object TriageTests extends TestSuite {
   private val Unoffered = "placed: nothing asked; "
 
   val tests = Tests {
-    test("in the shipped words, judge sends the request it sent before they were a value") {
-      // Taken from the request judge sent before its words moved into Wording.Shipped.
-      val before = "8ec33547bce9c3e3a9c64edef8eecae7f216738a1407cc8088957d609cb78edd"
-      val requests = new Requests
-      TriageQuestion.judge(recording(requests), TriageQuestion.Wording.Shipped, fixed)
-      requests.sent.map(_.digest) ==> Vector(before)
-      TriageQuestion.request(TriageQuestion.Wording.Shipped, fixed) ==> requests.sent.headOption
-    }
-
-    test("the state a triage asks about is the one TriageInput.build makes") {
+    test("a triage asks live's question set about the state TriageInput.build makes") {
       val w = new World
       w.hear("when is standup?", "Ben", 0)
       w.say("unrelated", 1)
@@ -66,8 +71,8 @@ object TriageTests extends TestSuite {
       val built =
         TriageInput.build(w.reads, w.rooms, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
       built.map(_._2.author) ==> Right("Ana")
-      requests.sent ==> built.toOption.toVector.flatMap { (_, state) =>
-        TriageQuestion.request(TriageQuestion.Wording.Shipped, state)
+      requests.sent ==> built.toOption.toVector.map { (_, state) =>
+        TriageQuestions.Shipped.request(state, KnowledgeSources.Empty)
       }
     }
 
@@ -77,7 +82,7 @@ object TriageTests extends TestSuite {
       val classifier = decided
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(classifier, 5)) ==>
-        Unoffered + """tagged: decision 0.75, durable 0.875 (jev-1.13.0); held: {"kind":"off"}"""
+        Unoffered + """tagged: kind decision 0.75, waiting 0.125, durable 0.875, helps 0.25 (jev-1.13.0); held: {"kind":"off"}"""
       (classifier.calls, durable.recordedSteps(t.workflowId)) ==>
         (1, Vector(Marker, "stitched", "ask", "record", "consider"))
       w.tags(t) ==> Some(decision)
@@ -95,7 +100,7 @@ object TriageTests extends TestSuite {
       val other = new Scripted(Vector(0, 0, 0, 0, 1), Vector(0, 0, 0))
       new InMemoryDurable().replay(t2.workflowId, history)(again.body(other, 5)) ==>
         Right(
-          Unoffered + """tagged: decision 0.75, durable 0.875 (jev-1.13.0); held: {"kind":"off"}"""
+          Unoffered + """tagged: kind decision 0.75, waiting 0.125, durable 0.875, helps 0.25 (jev-1.13.0); held: {"kind":"off"}"""
         )
       (other.calls, again.tags(t2)) ==> (0, Some(decision))
     }
@@ -254,7 +259,7 @@ object TriageTests extends TestSuite {
       val t = w.hear("what did we decide about the refi page?", "Ana", 0)
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(asking, 1, within)) ==>
-        Unoffered + "tagged: question 1.0, durable 0.5 (jev-1.13.0); drafting: c1:0"
+        Unoffered + "tagged: kind question 1.0, waiting 0.5, durable 0.5, helps 0.9 (jev-1.13.0); drafting: c1:0"
       val turn = TurnRef(c, t.turn)
       (w.started, w.speech.decisions.map(_._2)) ==> (Vector(turn), Vector(Decision.Drafting(turn)))
       val history = durable.history(t.workflowId)
@@ -282,6 +287,29 @@ object TriageTests extends TestSuite {
         ),
         Vector(Marker, "stitched", "ask", "record", "consider")
       )
+    }
+
+    test("tags are journaled by name, and an earlier build's four probabilities read as v1's") {
+      // A triage in flight across the change reads back what the earlier build recorded.
+      val earlier = ujson.read(
+        """{"kind":"decision","kindP":0.75,"waiting":0.125,"durable":0.875,"helps":0.25,""" +
+          """"model":"jev-1.13.0","usage":""" + grit.core.store.PayloadJson
+            .writeUsage(Spent)
+            .render() + "}"
+      )
+      TriageJournal.readTags(earlier) ==> Right(
+        Tags.Weighed(
+          Tags.V1.answers(Kind.Decision, p(0.75), p(0.125), p(0.875), p(0.25)),
+          "jev-1.13.0",
+          Spent
+        )
+      )
+      TriageJournal.writeTags(decision)("answers") ==>
+        grit.core.classify.AnswersJson.writeNamed(decision.answers)
+      TriageJournal.readTags(TriageJournal.writeTags(decision)).map {
+        case Tags.Weighed(answers, model, usage) => (answers.toVector, model, usage)
+        case other => other
+      } ==> Right((decision.answers.toVector, "jev-1.13.0", Spent))
     }
 
     test("a deployment that does not speak keeps no decision and starts nothing") {

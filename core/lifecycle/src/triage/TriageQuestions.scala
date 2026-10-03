@@ -5,7 +5,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.{Answer, Answered, Ask, Classifier, ClassifierError, Question, Request}
 import grit.core.id.QuestionName
 import grit.core.period.Probability
-import grit.core.triage.{Bound, Gate, Kind, KnowledgeSources, Reading, Tags}
+import grit.core.triage.{Bound, Earning, Gate, Kind, KnowledgeSources, Reading, Tags}
 
 /** Questions about a heard message ([[TriageQuestion.State]]), asked together in one
   * classifier call, each answer kept under its question's name, and the gate a draft is
@@ -122,8 +122,8 @@ object TriageQuestions {
   }
 
   /** v1, in `wording`: [[Tags.V1]]'s questions, `kind` (a choice of [[Kind]]'s keys),
-    * `waiting`, `durable` and `helps`, gated by [[Tags.V1.gate]]. Its request is the one
-    * triage's question sends in `wording` ([[TriageQuestion.request]]).
+    * `waiting`, `durable` and `helps`, gated by [[Tags.V1.gate]]. In the shipped wording its
+    * request is the one triage sent before it asked a question set.
     */
   def v1(wording: TriageQuestion.Wording): TriageQuestions = {
     val k = wording.kinds
@@ -177,7 +177,6 @@ object TriageQuestions {
       gap <- name("gap")
       open <- name("open")
       to <- name("to")
-      durable <- name("durable")
       anchor <- name("anchor")
       source <- name("source")
       gapQuestion <- Question
@@ -212,7 +211,7 @@ object TriageQuestions {
             )
           ),
           Item.One(
-            durable,
+            Earning.Durable,
             yesNo(
               "Read new_message and thread. Does new_message state something worth keeping " +
                 "for later: a decision, a date, a name, a number, how something works, or an " +

@@ -23,7 +23,7 @@ Packages, each importing only those above it:
   corpus as a whole (its dump, the settings and tuning in force, the builders' constants,
   the build that captured it); `CorpusJson`, their files' JSON; `Capture`, a `Corpus` read
   from a restored database through `grit.dbos`'s `Reader` and rebuilt through the shipped
-  builders (`TriageInput`, `TriageQuestion`, `Stitching`), never through SQL of its own.
+  builders (`TriageInput`, `TriageQuestions`, `Stitching`), never through SQL of its own.
   `Fields`, the reader every file's JSON is read through.
 - **`label`** — a person's labels of a corpus's cases, kept apart from the cases so a
   recapture keeps them: `Labels`, read from `labels.json` as the labelling tool writes it, and

@@ -11,12 +11,12 @@ import grit.core.message.Usage
 import grit.core.period.Probability
 import grit.core.review.Considered
 import grit.core.store.{Focus, Origin, Position, StoreError, Tx}
-import grit.core.triage.{Kind, ShadowAnswers, Shadowed, Tags, TriageStore}
+import grit.core.triage.{Kind, KnowledgeSources, ShadowAnswers, Shadowed, Tags, TriageStore}
 import grit.dbos.engine.{Build, Reader}
-import grit.eval.harness.corpus.{Case, CaseId, Digest, Failure}
+import grit.eval.harness.corpus.{Case, CaseId, Digest, Failure, Live}
 import grit.eval.harness.label.{Rated, Verdicts}
 import grit.eval.harness.log.{CacheKey, Footer, Header, Log, Outcome, Row, Suite, Weights}
-import grit.lifecycle.triage.TriageQuestion
+import grit.lifecycle.triage.{TriageQuestion, TriageQuestions}
 
 /** What a deployment's database kept of the heard messages tagged since a time, as run logs
   * the scorers read beside offline runs: live triage's tags ([[Pull.Kept]]), and each named
@@ -36,7 +36,8 @@ object Pull {
   def variant(name: ShadowName): String = s"shadow-${ShadowName.value(name)}"
 
   /** What [[apply]] read: live triage's log (its rows the corpus's cases triage answered and
-    * whose question the corpus rebuilt, `unbuilt` counting those it could not), each shadow's
+    * whose question the corpus rebuilt, `unbuilt` counting those it could not and those whose
+    * tags answer a question set other than v1), each shadow's
     * by the form its answers were kept in,
     * and the Slack messages tagged since that no corpus case is, for the next capture.
     */
@@ -150,7 +151,7 @@ object Pull {
           case (_, Some(_)) => ShadowLog.Mixed(worded, named.size)
         }
       }
-      val live = built.map((t, c, request, focus) => kept(c.id, request, t.tags, focus))
+      val live = built.flatMap((t, c, request, focus) => kept(c.id, request, t.tags, focus))
       Pulled(
         log(Kept, live),
         shadowed.map { (name, rows) =>
@@ -242,45 +243,52 @@ object Pull {
     * how an answer is put by position.
     */
   private val Questions: Vector[Question] =
-    TriageQuestion
-      .request(TriageQuestion.Wording.Shipped, TriageQuestion.State("", "", ""))
-      .fold(Vector.empty[Question])(_.questions)
+    TriageQuestions.V1.request(TriageQuestion.State("", "", ""), KnowledgeSources.Empty).questions
 
   /** A kept row of case `id`, said at `focus` and asked as `request`, from live triage's
-    * `tags`, and its cost.
+    * `tags`, and its cost; `None` when they answer a question set other than v1.
     */
-  private def kept(id: CaseId, request: Digest, tags: Tags, focus: Focus): Priced[Vector[Weights]] =
+  private def kept(
+      id: CaseId,
+      request: Digest,
+      tags: Tags,
+      focus: Focus
+  ): Option[Priced[Vector[Weights]]] =
     tags match {
-      case Tags.Weighed(kind, kindP, waiting, durable, helps, model, usage) =>
-        val p = Probability.value(kindP)
-        val rest = (1 - p) / (Kind.values.size - 1)
-        val ps = Kind.values.toVector.map(k => if (k == kind) p else rest)
-        val weights: Vector[Weights] = Vector(
-          Weights.Choice(kind.ordinal, ps, Answer.confidence(ps)),
-          Weights.YesNo(Probability.value(waiting)),
-          Weights.YesNo(Probability.value(durable)),
-          Weights.YesNo(Probability.value(helps))
-        )
-        row[Vector[Weights]](
-          id,
-          request,
-          model,
-          Some(model),
-          Outcome.Answered(weights),
-          usage,
-          Duration.Zero,
-          focus
-        )
+      case Tags.Weighed(answers, model, usage) =>
+        Live.v1(answers, model, usage.costUsd).map { v1 =>
+          val p = Probability.value(v1.kindP)
+          val rest = (1 - p) / (Kind.values.size - 1)
+          val ps = Kind.values.toVector.map(k => if (k == v1.kind) p else rest)
+          val weights: Vector[Weights] = Vector(
+            Weights.Choice(v1.kind.ordinal, ps, Answer.confidence(ps)),
+            Weights.YesNo(Probability.value(v1.waiting)),
+            Weights.YesNo(Probability.value(v1.durable)),
+            Weights.YesNo(Probability.value(v1.helps))
+          )
+          row[Vector[Weights]](
+            id,
+            request,
+            model,
+            Some(model),
+            Outcome.Answered(weights),
+            usage,
+            Duration.Zero,
+            focus
+          )
+        }
       case Tags.Unanswered(why) =>
-        row[Vector[Weights]](
-          id,
-          request,
-          "unknown",
-          None,
-          Outcome.Failed(Failure.of(why)),
-          Usage.Zero,
-          Duration.Zero,
-          focus
+        Some(
+          row[Vector[Weights]](
+            id,
+            request,
+            "unknown",
+            None,
+            Outcome.Failed(Failure.of(why)),
+            Usage.Zero,
+            Duration.Zero,
+            focus
+          )
         )
     }
 

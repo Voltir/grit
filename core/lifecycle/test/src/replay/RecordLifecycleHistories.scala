@@ -310,11 +310,13 @@ object RecordLifecycleHistories {
         w.tag(
           "lunch?",
           grit.core.triage.Tags.Weighed(
-            grit.core.triage.Kind.Chatter,
-            grit.core.period.Probability.clamped(0.9),
-            grit.core.period.Probability.clamped(0.1),
-            grit.core.period.Probability.clamped(0.1),
-            grit.core.period.Probability.clamped(0.1),
+            grit.core.triage.Tags.V1.answers(
+              grit.core.triage.Kind.Chatter,
+              grit.core.period.Probability.clamped(0.9),
+              grit.core.period.Probability.clamped(0.1),
+              grit.core.period.Probability.clamped(0.1),
+              grit.core.period.Probability.clamped(0.1)
+            ),
             "jev",
             grit.core.message.Usage(
               grit.core.message.Tokens(1),

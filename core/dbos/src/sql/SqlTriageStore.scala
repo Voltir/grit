@@ -5,11 +5,11 @@ import java.time.{Instant, ZoneOffset}
 
 import scala.util.Using
 
+import grit.core.classify.AnswersJson
 import grit.core.id.{ConversationId, EntryId, PeriodRef, PeriodSeq, TriageRef, TurnSeq}
 import grit.core.message.{Tokens, Usage}
-import grit.core.period.Probability
 import grit.core.store.{StoreError, Tx}
-import grit.core.triage.{Kind, Tags, TriageStore}
+import grit.core.triage.{Tags, TriageStore}
 
 /** [[TriageStore]] over `grit.triage`, whose rows cascade from `grit.entries`. */
 final class SqlTriageStore extends TriageStore {
@@ -25,15 +25,15 @@ final class SqlTriageStore extends TriageStore {
       // From the entry's own row, so a gone entry inserts nothing.
       Using.resource(
         conn.prepareStatement(
-          """INSERT INTO grit.triage (entry_id, at, kind, kind_p, waiting, durable, helps, model,
-            |  input_tokens, output_tokens, cached_tokens, cost_usd, unanswered)
-            |SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM grit.entries WHERE id = ?
+          """INSERT INTO grit.triage (entry_id, at, answers, model, input_tokens, output_tokens,
+            |  cached_tokens, cost_usd, unanswered)
+            |SELECT id, ?, ?::jsonb, ?, ?, ?, ?, ?, ? FROM grit.entries WHERE id = ?
             |ON CONFLICT (entry_id) DO NOTHING""".stripMargin
         )
       ) { ps =>
         ps.setObject(1, at.atOffset(ZoneOffset.UTC))
         bind(ps, tags)
-        ps.setString(13, EntryId.value(entry))
+        ps.setString(9, EntryId.value(entry))
         ps.executeUpdate() == 1
       }
     }
@@ -46,8 +46,8 @@ final class SqlTriageStore extends TriageStore {
       attempt {
         Using.resource(
           conn.prepareStatement(
-            """SELECT entry_id, kind, kind_p, waiting, durable, helps, model, input_tokens,
-              |       output_tokens, cached_tokens, cost_usd, unanswered
+            """SELECT entry_id, answers, model, input_tokens, output_tokens, cached_tokens,
+              |       cost_usd, unanswered
               |  FROM grit.triage
               | WHERE entry_id IN (SELECT jsonb_array_elements_text(?::jsonb))""".stripMargin
           )
@@ -72,9 +72,8 @@ final class SqlTriageStore extends TriageStore {
       // inbox heard) is left out, as the in-memory store leaves it.
       Using.resource(
         conn.prepareStatement(
-          """SELECT t.entry_id, e.conversation_id, p.seq, e.turn_seq, t.at, t.kind, t.kind_p,
-            |       t.waiting, t.durable, t.helps, t.model, t.input_tokens, t.output_tokens,
-            |       t.cached_tokens, t.cost_usd, t.unanswered
+          """SELECT t.entry_id, e.conversation_id, p.seq, e.turn_seq, t.at, t.answers, t.model,
+            |       t.input_tokens, t.output_tokens, t.cached_tokens, t.cost_usd, t.unanswered
             |  FROM grit.triage t
             |  JOIN grit.entries e ON e.id = t.entry_id
             |  JOIN LATERAL (
@@ -110,50 +109,38 @@ final class SqlTriageStore extends TriageStore {
     }
   }
 
-  /** Parameters 2 to 12 of `record`'s insert: `tags`' columns. */
+  /** Parameters 2 to 8 of `record`'s insert: `tags`' columns. */
   private def bind(ps: PreparedStatement, tags: Tags): Unit = tags match {
-    case Tags.Weighed(kind, kindP, waiting, durable, helps, model, usage) =>
-      ps.setString(2, Kind.written(kind))
-      Vector(kindP, waiting, durable, helps).zipWithIndex.foreach { (p: Probability, i: Int) =>
-        ps.setDouble(3 + i, Probability.value(p))
-      }
-      ps.setString(7, model)
-      ps.setLong(8, Tokens.value(usage.input))
-      ps.setLong(9, Tokens.value(usage.output))
-      ps.setLong(10, Tokens.value(usage.cachedInput))
+    case Tags.Weighed(answers, model, usage) =>
+      ps.setString(2, AnswersJson.writeNamed(answers).render())
+      ps.setString(3, model)
+      ps.setLong(4, Tokens.value(usage.input))
+      ps.setLong(5, Tokens.value(usage.output))
+      ps.setLong(6, Tokens.value(usage.cachedInput))
       usage.costUsd match {
-        case Some(c) => ps.setBigDecimal(11, c.bigDecimal)
-        case None => ps.setNull(11, java.sql.Types.NUMERIC)
+        case Some(c) => ps.setBigDecimal(7, c.bigDecimal)
+        case None => ps.setNull(7, java.sql.Types.NUMERIC)
       }
-      ps.setNull(12, java.sql.Types.VARCHAR)
+      ps.setNull(8, java.sql.Types.VARCHAR)
     case Tags.Unanswered(why) =>
       ps.setNull(2, java.sql.Types.VARCHAR)
-      (3 to 6).foreach(ps.setNull(_, java.sql.Types.DOUBLE))
-      ps.setNull(7, java.sql.Types.VARCHAR)
-      (8 to 10).foreach(ps.setNull(_, java.sql.Types.BIGINT))
-      ps.setNull(11, java.sql.Types.NUMERIC)
-      ps.setString(12, why)
+      ps.setNull(3, java.sql.Types.VARCHAR)
+      (4 to 6).foreach(ps.setNull(_, java.sql.Types.BIGINT))
+      ps.setNull(7, java.sql.Types.NUMERIC)
+      ps.setString(8, why)
   }
 
-  /** A row as its tags; one the schema's checks would refuse is grit's own bug, which
-    * `attempt` reports.
+  /** A row as its tags; one the schema's checks would refuse, or whose answers do not read,
+    * is grit's own bug, which `attempt` reports.
     */
   private def read(rs: ResultSet): Tags =
     Option(rs.getString("unanswered")) match {
       case Some(why) => Tags.Unanswered(why)
       case None =>
-        def p(column: String): Probability =
-          Probability
-            .of(rs.getDouble(column))
-            .getOrElse(throw new IllegalStateException(s"triage $column is not a probability"))
         Tags.Weighed(
-          Kind
-            .read(rs.getString("kind"))
-            .getOrElse(throw new IllegalStateException(s"unknown kind ${rs.getString("kind")}")),
-          p("kind_p"),
-          p("waiting"),
-          p("durable"),
-          p("helps"),
+          AnswersJson
+            .readNamed(ujson.read(rs.getString("answers")))
+            .fold(why => throw new IllegalStateException(s"triage answers: $why"), identity),
           rs.getString("model"),
           Usage(
             Tokens(rs.getLong("input_tokens")),

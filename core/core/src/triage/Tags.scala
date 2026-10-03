@@ -10,20 +10,11 @@ import grit.core.period.Probability
 /** What triage made of one heard message ([[grit.core.store.Payload.Heard]]). */
 enum Tags {
 
-  /** Its most probable `kind`, with that probability (`kindP`); the probability that someone
-    * waits on a reply to it (`waiting`), that it states something worth keeping (`durable`),
-    * and that a reply from grit would help (`helps`); the `model` that weighed them, and what
-    * the call consumed.
+  /** Its question set's answers, each under its question's name, in the order asked; the
+    * `model` that weighed them, and what the call consumed. A message triaged before v2 was
+    * shipped holds v1's names ([[Tags.V1]]): kind, waiting, durable and helps.
     */
-  case Weighed(
-      kind: Kind,
-      kindP: Probability,
-      waiting: Probability,
-      durable: Probability,
-      helps: Probability,
-      model: String,
-      usage: Usage
-  )
+  case Weighed(answers: VectorMap[QuestionName, Answer], model: String, usage: Usage)
 
   /** The classifier gave no answer, for `why`. */
   case Unanswered(why: String)
@@ -31,8 +22,8 @@ enum Tags {
 
 object Tags {
 
-  /** v1, the question set [[Tags.Weighed]] holds the answers of: the names it asks under, and
-    * the gate it drafts by.
+  /** v1, the question set triage asked before v2: the names it asks under, and the gate it
+    * drafts by.
     */
   object V1 {
 
@@ -43,7 +34,7 @@ object Tags {
 
     val kind: QuestionName = named("kind")
     val waiting: QuestionName = named("waiting")
-    val durable: QuestionName = named("durable")
+    val durable: QuestionName = Earning.Durable
     val helps: QuestionName = named("helps")
 
     /** v1's gate: `kind`'s most weighted key not `chatter`, and `helps` at least 0.5. */
@@ -57,18 +48,25 @@ object Tags {
       )
     }
 
-    /** `tags` as v1's answers, each under its name: `kind` a choice weighing only its kind, at
-      * `kindP`; `waiting`, `durable` and `helps` yes/nos.
+    /** v1's answers as triage kept them before they were named: the most probable `kind` at
+      * `kindP` (a choice weighing only that kind), and the probabilities of yes to `waiting`,
+      * `durable` and `helps`, each under its name.
       */
-    def answers(tags: Tags.Weighed): VectorMap[QuestionName, Answer] = {
-      val chosen = Kind.written(tags.kind)
-      val p = Probability.value(tags.kindP)
+    def answers(
+        kind: Kind,
+        kindP: Probability,
+        waiting: Probability,
+        durable: Probability,
+        helps: Probability
+    ): VectorMap[QuestionName, Answer] = {
+      val chosen = Kind.written(kind)
+      val p = Probability.value(kindP)
       VectorMap(
-        kind -> Answer
+        V1.kind -> Answer
           .Choice(chosen, Vector(Answer.Weight(chosen, p)), Answer.confidence(Vector(p))),
-        waiting -> Answer.YesNo(Probability.value(tags.waiting)),
-        durable -> Answer.YesNo(Probability.value(tags.durable)),
-        helps -> Answer.YesNo(Probability.value(tags.helps))
+        V1.waiting -> Answer.YesNo(Probability.value(waiting)),
+        V1.durable -> Answer.YesNo(Probability.value(durable)),
+        V1.helps -> Answer.YesNo(Probability.value(helps))
       )
     }
   }

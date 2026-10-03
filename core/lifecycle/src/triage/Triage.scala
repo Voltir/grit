@@ -1,12 +1,12 @@
 package grit.lifecycle.triage
 
+import grit.core.classify.{Answer, ClassifierError}
 import grit.core.durable.Durable
-import grit.core.id.{EntryId, TriageRef, TurnRef, WorkflowId}
-import grit.core.period.Probability
+import grit.core.id.{EntryId, QuestionName, TriageRef, TurnRef, WorkflowId}
 import grit.core.speech.{Decision, SpeechJson}
 import grit.core.stitch.{Opening, Placed, StitchJson, StitchReads, Stitching}
 import grit.core.store.StoreError
-import grit.core.triage.{Kind, Tags}
+import grit.core.triage.{KnowledgeSources, Tags}
 
 /** The triage: one workflow per heard message ([[TriageRef]]), run on the turns' queue under
   * its conversation, so ahead of any later close of it. Each step's output is recorded, so a
@@ -20,8 +20,9 @@ import grit.core.triage.{Kind, Tags}
   *      `stitch` ([[Stitching.turn]]) and `record-stitch` instead, placing the opening itself
   *      ([[Patches.StitchInRoomOrder]]).
   *   1. `ask` — one classifier call over the heard message, who said it, and the thread
-  *      before it: its strand's, then its own ([[TriageInput.build]], [[TriageQuestion]]); an
-  *      absent or failing classifier, or an answer that does not read, is `Unanswered` tags.
+  *      before it: its strand's, then its own ([[TriageInput.build]]), asked the questions
+  *      live triage asks ([[TriageQuestions.Shipped]]); an absent or failing classifier, or an
+  *      answer that does not read, is `Unanswered` tags.
   *      Nothing is asked when the message cannot be read or is gone.
   *   1. `record` — the tags kept ([[grit.core.triage.TriageStore.record]]); ignored when the
   *      message is gone or already tagged.
@@ -174,13 +175,32 @@ object Triage {
         TriageRecipe.Shipped
       )
       .map((heard, state) =>
-        (heard, TriageQuestion.judge(env.classifier, TriageQuestion.Wording.Shipped, state))
+        (
+          heard,
+          TriageQuestions.Shipped.ask(env.classifier, state, KnowledgeSources.Empty) match {
+            case Right(a) => Tags.Weighed(a.value, a.model, a.usage)
+            case Left(ClassifierError.Unavailable(why)) => Tags.Unanswered(s"unavailable: $why")
+            case Left(ClassifierError.Unreadable(why)) => Tags.Unanswered(s"unreadable: $why")
+          }
+        )
       )
   }
 
+  /** Each answer as its name and what it read: a yes/no's probability of yes, a choice's
+    * choice and its weight.
+    */
   private def shown(tags: Tags): String = tags match {
-    case Tags.Weighed(kind, kindP, _, durable, _, model, _) =>
-      s"${Kind.written(kind)} ${Probability.value(kindP)}, durable ${Probability.value(durable)} ($model)"
+    case Tags.Weighed(answers, model, _) =>
+      answers.toVector
+        .map { (name, answer) =>
+          val read = answer match {
+            case Answer.YesNo(yes) => s"$yes"
+            case Answer.Choice(choice, weights, _) =>
+              s"$choice ${weights.find(_.key == choice).fold(0.0)(_.probability)}"
+          }
+          s"${QuestionName.value(name)} $read"
+        }
+        .mkString("", ", ", s" ($model)")
     case Tags.Unanswered(why) => s"unanswered: $why"
   }
 }

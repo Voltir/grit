@@ -4,9 +4,10 @@ import grit.core.classify.Request
 import grit.core.id.{TriageRef, TurnRef}
 import grit.core.stitch.{StitchReads, Stitching, Tuning}
 import grit.core.store.StoreError
+import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.Reader
 import grit.eval.harness.corpus.{Case, CaseId}
-import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
+import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
 
 /** A case's inputs as the shipped builders make them, text and all, for a person to read
   * beside the case: the harness never prints them.
@@ -98,9 +99,12 @@ object Review {
           .read(reads, reader.rooms, reader.db, ref, under, recipe)
           .toOption
           .flatMap { r =>
-            TriageQuestion
-              .request(TriageQuestion.Wording.Shipped, r.state)
-              .map(Triage(_, Option.when(more)(Cut(r.thread.cut, r.thread.at))))
+            Some(
+              Triage(
+                TriageQuestions.V1.request(r.state, KnowledgeSources.Empty),
+                Option.when(more)(Cut(r.thread.cut, r.thread.at))
+              )
+            )
           }
       val stitch =
         offer.flatMap(o => Stitching.request(o).map(Stitch(_, live.map(_.seen.state))))

@@ -2,9 +2,21 @@ package grit.core.triage
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TriageRef, TurnRef}
+import scala.collection.immutable.VectorMap
+
+import grit.core.classify.Answer
+import grit.core.id.{
+  CloseRef,
+  ConversationId,
+  EntryId,
+  PeriodRef,
+  PeriodSeq,
+  QuestionName,
+  TriageRef,
+  TurnRef
+}
 import grit.core.message.{Tokens, Usage}
-import grit.core.period.{CloseReason, Probability, TestClosings}
+import grit.core.period.{CloseReason, TestClosings}
 import grit.core.store.{Entry, EntryStore, Payload, PeriodStore, StoreError, Tx}
 
 import utest.*
@@ -34,18 +46,28 @@ abstract class TriageContract extends TestSuite {
   private def right[A](result: Either[StoreError, A]): A =
     result.fold(e => throw new java.lang.AssertionError(s"store failed: $e"), identity)
 
-  private def p(x: Double): Probability =
-    Probability.of(x).getOrElse(throw new java.lang.AssertionError(x))
-
+  /** A question set's answers: a choice weighing every key, yes/nos, and a source's. */
   private val weighed = Tags.Weighed(
-    Kind.Decision,
-    p(0.75),
-    p(0.125),
-    p(0.875),
-    p(0.25),
+    VectorMap(
+      name("gap") -> Answer.Choice(
+        "asks",
+        Vector(
+          Answer.Weight("asks", 0.625),
+          Answer.Weight("owes", 0.125),
+          Answer.Weight("nothing", 0.25)
+        ),
+        Answer.confidence(Vector(0.625, 0.125, 0.25))
+      ),
+      name("open") -> Answer.YesNo(0.75),
+      Earning.Durable -> Answer.YesNo(0.875),
+      name("source:github") -> Answer.YesNo(0.5)
+    ),
     "jev-1.13.0",
     Usage(Tokens(812), Tokens(40), Tokens.Zero, Some(BigDecimal("0.000034104")))
   )
+
+  private def name(text: String): QuestionName =
+    QuestionName.read(text).fold(why => throw new java.lang.AssertionError(why), identity)
 
   /** A heard message as `c`'s next turn, its period opened for it as the inbox does. */
   private def hear(c: ConversationId, text: String): Entry = transaction {
@@ -112,6 +134,7 @@ abstract class TriageContract extends TestSuite {
     test(
       "tags are kept once, weighed or unanswered; a second record is false and keeps the first"
     ) {
+      // Weighed tags' answers come back in the order asked: a map's equality would not say.
       val c = conversation("triage-once")
       val a = hear(c, "standup moves to 10:00")
       val b = hear(c, "lunch?")
@@ -124,6 +147,9 @@ abstract class TriageContract extends TestSuite {
       } ==> Right((true, false, true))
       transaction(triage.of(Vector(a.id, b.id, EntryId("never")))) ==>
         Right(Map(a.id -> weighed, b.id -> Tags.Unanswered("unavailable: timeout")))
+      transaction(triage.of(Vector(a.id))).map(_.get(a.id).collect {
+        case Tags.Weighed(answers, _, _) => answers.keys.toVector.map(QuestionName.value)
+      }) ==> Right(Some(Vector("gap", "open", "durable", "source:github")))
     }
 
     test("tags go with their entry: a purged entry has none, and none is recorded for it") {

@@ -955,7 +955,7 @@ object TurnFixtures {
     store.heard(turn, Reach(replyTo, Set.empty))
     val p = Probability.clamped(0.9)
     store.decided(
-      Heard(turn, EntrySeq(1), Place.Everywhere, Instant.EPOCH, Reach(replyTo, Set.empty), Tags.Weighed(Kind.Question, p, p, p, p, "jev", Usage.Zero)),
+      Heard(turn, EntrySeq(1), Place.Everywhere, Instant.EPOCH, Reach(replyTo, Set.empty), Tags.Weighed(Tags.V1.answers(Kind.Question, p, p, p, p), "jev", Usage.Zero)),
       Decision.Drafting(turn),
       Instant.EPOCH
     )

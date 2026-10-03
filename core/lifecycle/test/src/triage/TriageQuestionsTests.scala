@@ -213,17 +213,10 @@ object TriageQuestionsTests extends TestSuite {
         kind = "What kind of message is new_message?",
         helps = "Would a reply help?"
       )
-      Vector(state, fixed).map(s =>
-        (
-          Some(TriageQuestions.V1.request(s, KnowledgeSources.Empty)),
-          Some(TriageQuestions.v1(reworded).request(s, catalog))
-        )
-      ) ==> Vector(state, fixed).map(s =>
-        (
-          TriageQuestion.request(TriageQuestion.Wording.Shipped, s),
-          TriageQuestion.request(reworded, s)
-        )
-      )
+      // A rewording's request, as triage's question sent it in those words: pinned while the
+      // two were compared, before the question was retired for the set.
+      TriageQuestions.v1(reworded).request(fixed, catalog).digest ==>
+        "7592ee1c208b16e6c863dbd94e158c8c026de7fa6b1bcf5cb6439cc1b90c2e12"
     }
 
     test(

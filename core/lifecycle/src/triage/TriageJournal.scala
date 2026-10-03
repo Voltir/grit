@@ -1,5 +1,6 @@
 package grit.lifecycle.triage
 
+import grit.core.classify.AnswersJson
 import grit.core.durable.Journaled
 import grit.core.id.{EntryId, WorkflowId}
 import grit.core.period.Probability
@@ -14,42 +15,52 @@ import grit.core.triage.{Kind, Tags}
   */
 private[triage] object TriageJournal {
 
+  /** The probabilities a build before named answers recorded, under these keys. */
   private val Weights: Vector[String] = Vector("kindP", "waiting", "durable", "helps")
 
-  /** `tags` as recorded: its kind, the four probabilities, its model and usage; or
-    * `{"unanswered": why}`.
+  /** `tags` as recorded: `{"answers": [...], "model", "usage"}`, the answers as
+    * [[AnswersJson.writeNamed]] writes them; or `{"unanswered": why}`.
     */
   def writeTags(tags: Tags): ujson.Value = tags match {
-    case Tags.Weighed(kind, kindP, waiting, durable, helps, model, usage) =>
-      val o = ujson.Obj("kind" -> Kind.written(kind))
-      Weights.zip(Vector(kindP, waiting, durable, helps)).foreach { (key: String, p: Probability) =>
-        o(key) = Probability.value(p)
-      }
-      o("model") = model
-      o("usage") = PayloadJson.writeUsage(usage)
-      o
+    case Tags.Weighed(answers, model, usage) =>
+      ujson.Obj(
+        "answers" -> AnswersJson.writeNamed(answers),
+        "model" -> model,
+        "usage" -> PayloadJson.writeUsage(usage)
+      )
     case Tags.Unanswered(why) => ujson.Obj("unanswered" -> why)
   }
 
+  /** What [[writeTags]] wrote; or what a build before named answers wrote, `{"kind",
+    * "kindP", "waiting", "durable", "helps", "model", "usage"}`, read as v1's answers
+    * ([[Tags.V1.answers]]).
+    */
   def readTags(v: ujson.Value): Either[String, Tags] =
     v.objOpt.toRight("tags: expected an object").flatMap { o =>
-      o.get("unanswered") match {
-        case Some(ujson.Str(why)) => Right(Tags.Unanswered(why))
-        case Some(_) => Left("tags: unanswered is not a string")
-        case None =>
-          val ps = Weights.flatMap(k => o.get(k).flatMap(_.numOpt).flatMap(Probability.of))
+      (o.get("unanswered"), o.get("answers")) match {
+        case (Some(ujson.Str(why)), _) => Right(Tags.Unanswered(why))
+        case (Some(_), _) => Left("tags: unanswered is not a string")
+        case (None, answered) =>
           for {
-            kind <- o.get("kind").flatMap(_.strOpt).flatMap(Kind.read).toRight("tags: bad kind")
+            answers <- answered.fold(v1(o))(AnswersJson.readNamed)
             model <- o.get("model").flatMap(_.strOpt).toRight("tags: missing model")
             usage <- o.get("usage").toRight("tags: missing usage").flatMap(PayloadJson.readUsage)
-            tags <- ps match {
-              case Vector(kindP, waiting, durable, helps) =>
-                Right(Tags.Weighed(kind, kindP, waiting, durable, helps, model, usage))
-              case _ => Left("tags: expected four probabilities")
-            }
-          } yield tags
+          } yield Tags.Weighed(answers, model, usage)
       }
     }
+
+  /** The answers a build before named answers recorded in `o`, as v1's. */
+  private def v1(o: collection.Map[String, ujson.Value]) = {
+    val ps = Weights.flatMap(k => o.get(k).flatMap(_.numOpt).flatMap(Probability.of))
+    for {
+      kind <- o.get("kind").flatMap(_.strOpt).flatMap(Kind.read).toRight("tags: bad kind")
+      answers <- ps match {
+        case Vector(kindP, waiting, durable, helps) =>
+          Right(Tags.V1.answers(kind, kindP, waiting, durable, helps))
+        case _ => Left("tags: expected four probabilities")
+      }
+    } yield answers
+  }
 
   given asked: Journaled[Either[String, (EntryId, Tags)]] =
     outcome(
