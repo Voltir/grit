@@ -12,8 +12,9 @@ import grit.core.plugin.Plugin
 import grit.core.review.Reviewing
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
-import grit.core.triage.{Gate, KnowledgeSources}
+import grit.core.triage.{Gate, KnowledgeSources, Reading}
 import grit.lifecycle.shadow.ShadowVariant
+import grit.lifecycle.triage.TriageQuestions
 import grit.turn.TurnLoop
 
 /** What every turn's model is offered, at every place, in at most `rounds` model calls. */
@@ -82,6 +83,11 @@ enum DeploymentRefusal {
     */
   case SpeaksUnjudged(topics: String)
 
+  /** Speaking's gate reads `reading`, which live triage ([[TriageQuestions.Shipped]]) does not
+    * ask, so it would hold every message.
+    */
+  case SpeechUnread(reading: Reading)
+
   /** Two shadows are named `name`. */
   case ShadowRepeated(name: ShadowName)
 
@@ -107,6 +113,8 @@ enum DeploymentRefusal {
     case SweepTooOften(every) => s"the sweep, every $every, must be at least a second apart"
     case SpeaksUnjudged(topics) =>
       s"speaking unprompted needs a classifier to judge each draft, and topics are off: $topics"
+    case SpeechUnread(reading) =>
+      s"speaking's gate reads $reading, which live triage does not ask, so it would hold every message"
     case ShadowRepeated(name) => s"two shadows are named ${ShadowName.value(name)}"
     case ShadowsUnasked(topics) =>
       s"a shadow asks its question set of the topics' classifier, and topics are off: $topics"
@@ -155,7 +163,8 @@ object Deployment {
   /** The deployment of these; call it with named arguments. Refused when `offer` asks first
     * ([[Offered.All]]) and an edge cannot answer an ask, when two edges share a name, when
     * `sweep` is under a second, or when it speaks (`speaking` not Off) with `topics` Off: the
-    * topics' classifier is also the judge of each draft, or when two of `shadows` share a
+    * topics' classifier is also the judge of each draft, or by a gate reading a question live
+    * triage does not ask ([[DeploymentRefusal.SpeechUnread]]), or when two of `shadows` share a
     * name, or any is declared with `topics` Off: each shadow asks the topics' classifier, Jev
     * (of the shadow's own model when it names one) or the stub, or when `review` names no
     * declared shadow or is declared with `speaking` Off: live's
@@ -197,6 +206,12 @@ object Deployment {
           Left(DeploymentRefusal.SpeaksUnjudged(reason))
         case _ => Right(())
       }
+      _ <- speaking match {
+        // Live triage's answers hold only what it asks: a gate reading more holds everything.
+        case Speaking.Shadow(limits) => unread(limits.drafts)
+        case Speaking.Within(limits) => unread(limits.drafts)
+        case Speaking.Off => Right(())
+      }
       shadowNames = shadows.map(_.name)
       _ <- shadowNames
         .diff(shadowNames.distinct)
@@ -237,4 +252,7 @@ object Deployment {
       reviewed
     )
   }
+
+  private def unread(gate: Gate): Either[DeploymentRefusal, Unit] =
+    TriageQuestions.Shipped.unread(gate).map(DeploymentRefusal.SpeechUnread(_)).toLeft(())
 }

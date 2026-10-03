@@ -133,6 +133,33 @@ object DeploymentTests extends TestSuite {
       )
     }
 
+    test(
+      "speaking by a gate that reads a question live triage does not ask is refused, naming it"
+    ) {
+      def speaks(gate: grit.core.triage.Gate) = {
+        val limits = grit.core.speech.Limits.suggested(
+          grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
+          gate
+        )
+        (
+          Deployments.of(speaking = grit.core.speech.Speaking.Within(limits)).map(_ => ()),
+          Deployments.of(speaking = grit.core.speech.Speaking.Shadow(limits)).map(_ => ())
+        )
+      }
+      val gap = grit.core.id.QuestionName.of("gap").getOrElse(sys.error("a name"))
+      val asks = grit.core.triage.Reading.Key(gap, "asks")
+      (
+        speaks(grit.lifecycle.triage.TriageQuestions.V2.speak),
+        speaks(grit.lifecycle.triage.TriageQuestions.Shipped.speak)
+      ) ==> (
+        (
+          Left(DeploymentRefusal.SpeechUnread(asks)),
+          Left(DeploymentRefusal.SpeechUnread(asks))
+        ),
+        (Right(()), Right(()))
+      )
+    }
+
     test("a sweep under a second is refused; a second is not") {
       (
         Deployments.of(sweep = 999.millis).map(_ => ()),
