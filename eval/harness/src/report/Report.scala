@@ -7,7 +7,7 @@ import grit.core.id.{QuestionName, ShadowName}
 import grit.core.period.Probability
 import grit.core.store.Focus
 import grit.core.triage.{Bound, Earning, Gate, Reading}
-import grit.eval.harness.corpus.{Case, CaseId}
+import grit.eval.harness.corpus.{Case, CaseId, TurnCase}
 import grit.eval.harness.label.{Context, Labelled, Labels, Verdicts}
 import grit.eval.harness.log.{Log, Row, Suite, Weights}
 import grit.eval.harness.pull.Pull
@@ -129,6 +129,18 @@ object Report {
       decided.toVector.flatMap(decision)
     lines.mkString("\n") + "\n"
   }
+
+  /** A corpus's recorded `turns` read structurally ([[Structure]]), with the review
+    * `verdicts` standing joined by case: the pass rate first, then the turns that did not
+    * reply, rounds, tools offered against called, prompt and window tokens, the first main
+    * call's estimate against the ledger, cost per turn, speech outcomes, verdicts and used
+    * parts, each over every turn and by root and by where said (a slice with no turn left
+    * out); then one line a turn, most costly first. Used parts are those at support
+    * [[grit.eval.harness.corpus.Support.Used]] or over, stated as a lexical heuristic, and
+    * used-section recall is stated undefined where no reply said anything. `corpus` names it.
+    */
+  def turns(corpus: String, turns: Vector[TurnCase], verdicts: Verdicts): String =
+    TurnLines.of(corpus, turns, verdicts)
 
   /** One side of a drafts report: its log's `file` name, the `log`, the question set it asks,
     * by name, and that set's `gate`.

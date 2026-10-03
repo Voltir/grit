@@ -12,7 +12,7 @@ import grit.eval.harness.corpus.Case
 import grit.eval.harness.label.{Context, Labelled, Labels}
 import grit.eval.harness.log.{Log, Row, Suite}
 import grit.eval.harness.score.Fixtures.*
-import grit.eval.harness.score.{Cells, Column, Drafts, Judgement}
+import grit.eval.harness.score.{Cells, Column, Drafts, Judgement, TurnFixtures}
 import grit.lifecycle.triage.TriageQuestions
 
 import utest.*
@@ -47,6 +47,60 @@ object ReportTests extends TestSuite {
   private def lines(report: String): Vector[String] = report.linesIterator.toVector
 
   val tests = Tests {
+    test("a turns report gives the pass rate first, then each section, then a line a turn") {
+      val report = lines(Report.turns("20261004", TurnFixtures.turns, TurnFixtures.verdicts))
+      report.filter(_.startsWith("## ")) ==> Vector(
+        "## Pass rate",
+        "## Not replied",
+        "## Rounds",
+        "## Tools",
+        "## Tokens",
+        "## Estimate against the ledger",
+        "## Cost per turn (USD)",
+        "## Speech",
+        "## Verdicts",
+        "## Used parts",
+        "## Turns by cost"
+      )
+      // Over three threads; heard is thread A's alone, so it has no interval.
+      // All: 1 of 3, se 2/9, t.975 on 1 degree of freedom 12.706.
+      report
+        .dropWhile(_ != "## Pass rate")
+        .takeWhile(_ != "## Not replied")
+        .filter(l => l.startsWith("| all ") || l.startsWith("| heard ")) ==>
+        Vector("| all | 3 | 1 | 0.333 [-2.490, 3.157] g=2 |", "| heard | 2 | 1 | 0.500 [—] |")
+    }
+
+    test("a turns report counts topic and unnamed calls apart from the tools offered") {
+      val report = lines(Report.turns("20261004", TurnFixtures.turns, TurnFixtures.verdicts))
+      val all = report.dropWhile(_ != "### Tools: all").takeWhile(_ != "### Tools: addressed")
+      all.filter(_.startsWith("| ")).drop(1) ==> Vector(
+        "| read | 3 | 2 | 1 | 1, 1, 0, 0, 0 |",
+        "| search | 2 | 0 | 0 | 0, 0, 0, 0, 0 |",
+        "| topic | — | 1 | 1 | 1, 0, 0, 0, 0 |",
+        "| unnamed | — | 1 | 1 | 0, 0, 1, 0, 0 |"
+      )
+    }
+
+    test("a turns report states its used threshold, and recall undefined where nothing replied") {
+      val report = lines(Report.turns("20261004", TurnFixtures.turns, TurnFixtures.verdicts))
+      assert(report.exists(_.startsWith("A part is used at support 0.3 or over")))
+      assert(report.exists(_.contains("A lexical heuristic until labels validate it.")))
+      report.filter(l => l.startsWith("| tui |") && l.contains("undefined")) ==>
+        Vector("| tui | 0 | — | — | — | undefined: no reply said anything |")
+    }
+
+    test("a turns report's lines run most costly first, each with its top parts by support") {
+      val report = lines(Report.turns("20261004", TurnFixtures.turns, TurnFixtures.verdicts))
+      report.dropWhile(_ != "## Turns by cost").drop(6) ==> Vector(
+        "| w1 | slack | heard | open | passed | 2 | topic 1, read 2 | 50 | 100 / 80 | 0.00600 | — |",
+        "| w4 | slack | addressed | open | replied 90 | 0 | — | 79 | 200 / 100 | 0.00450 | recent 0.20, recalled 0.00 |",
+        "| w2 | slack | heard | open | replied 40 | 1 | unnamed 1 | 60 | 50 / 0 | 0.00200 | open 0.50, closed 0.10 |",
+        "| w3 | tui | addressed | open | failed at assemble (assembly) | 0 | — | — | — | 0.00000 | — |",
+        "| w5 | task | addressed | open | unfinished (PENDING) | 0 | — | — | — | 0.00000 | — |"
+      )
+    }
+
     test("with no case of the corpus labelled, only what needs no label is reported") {
       // A label of a case outside the corpus labels none of it.
       val elsewhere =

@@ -115,6 +115,7 @@ object Main {
           )
         )
       case "reply-labels" :: rest => exit(flags(rest).flatMap(replyLabels))
+      case "turns" :: rest => exit(flags(rest).flatMap(turns))
       case "compare" :: rest =>
         flags(rest).flatMap(f =>
           if (f.contains("gate")) drafts(f).map(_ => 0) else compare(f)
@@ -127,7 +128,7 @@ object Main {
         exit(
           Left(
             "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull|" +
-              "replies|reply-labels " +
+              "replies|reply-labels|turns " +
               "(scripts/eval says what each takes)"
           )
         )
@@ -275,6 +276,23 @@ object Main {
   private def replyLabelsAt(path: Path): Either[String, ReplyLabels] =
     if (!Files.exists(path)) Right(ReplyLabels.Empty)
     else read(path).flatMap(ReplyLabels.read)
+
+  /** `turns --eval <dir> --corpus <yyyymmdd>`: the corpus's recorded turns read structurally,
+    * beside the verdicts standing in its `verdicts.json` (none when it has no such file),
+    * written to `<dir>/reports/turns-<yyyymmdd>.md` and printed.
+    */
+  private def turns(f: Map[String, String]): Either[String, Unit] =
+    for {
+      dir <- need(f, "eval").map(Path.of(_))
+      corpus <- need(f, "corpus").filterOrElse(_.matches("[0-9]{8}"), "--corpus is yyyymmdd")
+      at = dir.resolve("corpus").resolve(corpus)
+      captured <- readTurns(at)
+      standing <- {
+        val file = at.resolve("verdicts.json")
+        if (!Files.exists(file)) Right(Verdicts.Empty) else read(file).flatMap(Verdicts.read)
+      }
+      _ <- publish(dir, s"turns-$corpus", Report.turns(corpus, captured, standing))
+    } yield ()
 
   /** The turns of the corpus in `dir`, from `turns.jsonl`. */
   private def readTurns(dir: Path): Either[String, Vector[TurnCase]] =

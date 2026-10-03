@@ -111,7 +111,11 @@ Packages, each importing only those above it:
   labelled, only what needs no label: spend and latency (`score.Spending`), the repeats' spread
   (`score.Repeated`) and agreement with what was kept live (`score.Agreement`). A question set's pulled
   shadow against live's log, each by its own set's gate (`Report.Side`), and against the
-  verdicts given: `Report.drafts`, counts only. ← `stats`,
+  verdicts given: `Report.drafts`, counts only. A corpus's recorded turns read structurally
+  (`score.Structure`) beside the verdicts standing: `Report.turns`, the pass rate first, then
+  each section over every turn, by root and by where said, then a line a turn by cost, with
+  the used-part threshold stated as a heuristic and used-section recall stated undefined where
+  no reply said anything. ← `stats`,
   `corpus`, `label`, `log`, `pull`, `score`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
 

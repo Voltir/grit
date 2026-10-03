@@ -138,6 +138,17 @@
 #       each in place of an earlier label of the same turn; a note is never read. Prints
 #       counts.
 #
+#   scripts/eval turns <yyyymmdd>
+#       The corpus's recorded turns (turns.jsonl) read structurally, with the review verdicts
+#       standing (verdicts.json) joined by case, written to
+#       .local/eval/reports/turns-<date>.md and printed: the pass rate first, then the turns
+#       that did not reply, rounds, tools offered against called (the turn's topic tool and
+#       unnamed calls apart), prompt and window tokens, the first main call's estimate against
+#       the ledger, cost per turn by role, speech outcomes with post and hold rates, verdicts
+#       and the window parts a reply used (support >= 0.3, a lexical heuristic), each over
+#       every turn, by root and by where said; then one line a turn by workflow, most costly
+#       first, with its top 3 parts by support. Text-free; reads no database.
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.
 set -euo pipefail
@@ -328,6 +339,14 @@ replies() {
     "${named[@]}" "${rest[@]}"
 }
 
+turns() {
+  local corpus=${1:-}
+  [[ $corpus =~ ^[0-9]{8}$ ]] && [ $# -eq 1 ] || usage
+  [ -f "$main/.local/eval/corpus/$corpus/turns.jsonl" ] ||
+    { echo "eval: no turns in $main/.local/eval/corpus/$corpus; capture the corpus again" >&2; exit 1; }
+  harness turns --eval "$main/.local/eval" --corpus "$corpus"
+}
+
 reply_labels() {
   local file=${1:-}
   [ -n "$file" ] && [ $# -eq 1 ] || usage
@@ -339,6 +358,7 @@ case $1 in
   capture) shift; capture "$@" ;;
   replies) shift; replies "$@" ;;
   reply-labels) shift; reply_labels "$@" ;;
+  turns) shift; turns "$@" ;;
   pull) shift; pull "$@" ;;
   order) shift; order "$@" ;;
   score) shift; score "$@" ;;
