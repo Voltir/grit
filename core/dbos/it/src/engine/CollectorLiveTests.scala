@@ -399,6 +399,7 @@ object CollectorLiveTests extends TestSuite {
       (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
       (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
       (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+      LiveEngine.Unplaced,
       plugins
     )
     minutes(config, ledger)
@@ -440,6 +441,7 @@ object CollectorLiveTests extends TestSuite {
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          LiveEngine.Unplaced,
           Vector.empty
         )
         minutes(config)
@@ -546,7 +548,7 @@ object CollectorLiveTests extends TestSuite {
     }
 
     test(
-      "a raw collection finds its period's close attempts, questions, triages and shadows by their ids' prefix, and not period 10's; a heard turn, which ran no turn workflow, is no hindrance"
+      "a raw collection finds its period's close attempts, questions, triages, shadows and placements by their ids' prefix, and not period 10's or another turn's; a heard turn, which ran no turn workflow, is no hindrance"
     ) {
       val config = TestPostgres.freshDatabase("collect_prefix")
       val engine = LiveEngine.open(config, "test")
@@ -557,6 +559,7 @@ object CollectorLiveTests extends TestSuite {
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          LiveEngine.Unplaced,
           Vector.empty
         )
         minutes(config)
@@ -599,19 +602,23 @@ object CollectorLiveTests extends TestSuite {
           )
         )
         // Workflows named as close attempts, questions, triages and shadows on period 1 and on
-        // period 10 would be, whatever their turns: the stand-ins run nothing for any.
+        // period 10 would be, whatever their turns, and placements of period 1's turn 0 and of
+        // a turn after it, or of another conversation: the stand-ins run nothing for any.
         val c = ConversationId.value(t0.conversationId)
         val one = Vector(
           WorkflowId(s"close:$c:1:stray"),
           WorkflowId(s"settle:$c:1:stray"),
           WorkflowId(s"triage:$c:1:stray"),
-          WorkflowId(s"shadow:$c:1:1:stray")
+          WorkflowId(s"shadow:$c:1:1:stray"),
+          WorkflowId(s"stitch:0000000000001:$c:0")
         )
         val ten = Vector(
           WorkflowId(s"close:$c:10:stray"),
           WorkflowId(s"settle:$c:10:stray"),
           WorkflowId(s"triage:$c:10:stray"),
-          WorkflowId(s"shadow:$c:10:1:stray")
+          WorkflowId(s"shadow:$c:10:1:stray"),
+          WorkflowId(s"stitch:0000000000001:$c:2"),
+          WorkflowId(s"stitch:0000000000001:other:0")
         )
         val client = new DBOSClient(config.jdbcUrl, config.user, config.password)
         try
@@ -622,6 +629,10 @@ object CollectorLiveTests extends TestSuite {
               if (name == "shadow")
                 new EnqueueOptions(name, DurableWorkflow.ClassName, QueueName.of("shadows"))
                   .withWorkflowId(WorkflowId.value(id))
+              else if (name == "stitch")
+                new EnqueueOptions(name, DurableWorkflow.ClassName, QueueName.of("stitches"))
+                  .withWorkflowId(WorkflowId.value(id))
+                  .withQueuePartitionKey("room")
               else
                 new EnqueueOptions(name, DurableWorkflow.ClassName, QueueName.of("turns"))
                   .withWorkflowId(WorkflowId.value(id))
@@ -633,19 +644,20 @@ object CollectorLiveTests extends TestSuite {
             )
           }
         finally client.close()
-        assert(eventually(kept(config, one) == Vector(4, 0)))
-        assert(eventually(kept(config, ten) == Vector(4, 0)))
+        assert(eventually(kept(config, one) == Vector(5, 0)))
+        assert(eventually(kept(config, ten) == Vector(6, 0)))
         // The collector waits for a workflow still running; these all end at once.
         assert(
           eventually(
             ended(config, s"close:$c:") && ended(config, s"settle:$c:") &&
-              ended(config, s"triage:$c:") && ended(config, s"shadow:$c:")
+              ended(config, s"triage:$c:") && ended(config, s"shadow:$c:") &&
+              ended(config, "stitch:")
           )
         )
         engine.sweep(Instant.now().plusSeconds(180)).map(_.collected) ==> Right(
           Vector(Target.Raw(p1))
         )
-        (kept(config, one :+ triaged), kept(config, ten)) ==> (Vector(0, 0), Vector(4, 0))
+        (kept(config, one :+ triaged), kept(config, ten)) ==> (Vector(0, 0), Vector(6, 0))
       } finally engine.close()
     }
 
@@ -659,6 +671,7 @@ object CollectorLiveTests extends TestSuite {
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          LiveEngine.Unplaced,
           Vector.empty
         )
         minutes(config)
@@ -719,6 +732,7 @@ object CollectorLiveTests extends TestSuite {
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          LiveEngine.Unplaced,
           Vector.empty
         )
         minutes(config, ledger = 2.minutes)

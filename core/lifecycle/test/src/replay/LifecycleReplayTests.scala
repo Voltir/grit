@@ -11,7 +11,7 @@ import grit.turn.Turn
 
 import utest.*
 
-/** The versioning gate for the close, settle, posting, triage and shadow workflows (ADR 0004): every history of
+/** The versioning gate for the close, settle, posting, triage, placement and shadow workflows (ADR 0004): every history of
   * either recorded under the engine's current epoch, [[Turn.Epoch]], must replay under
   * today's body. A step renamed, reordered, dropped or given an output the old records
   * cannot satisfy fails here, before it strands a workflow in flight.
@@ -31,7 +31,9 @@ object LifecycleReplayTests extends TestSuite {
   }
 
   val tests = Tests {
-    test("the current epoch has close, settle, posting, triage and shadow histories to replay") {
+    test(
+      "the current epoch has close, settle, posting, triage, placement and shadow histories to replay"
+    ) {
       // Without them the gate below passes vacuously.
       val workflows = histories.flatMap(_._2.toOption.map(_.workflow)).toSet
       assert(
@@ -39,12 +41,13 @@ object LifecycleReplayTests extends TestSuite {
         workflows.contains("settle"),
         workflows.contains("post"),
         workflows.contains("triage"),
+        workflows.contains("stitch"),
         workflows.contains("shadow")
       )
     }
 
     test(
-      "every close, settle, posting, triage and shadow history of the current epoch replays under today's body"
+      "every close, settle, posting, triage, placement and shadow history of the current epoch replays under today's body"
     ) {
       val failures = histories.flatMap { case (path, parsed) =>
         val outcome = parsed.flatMap { history =>
@@ -84,6 +87,13 @@ object LifecycleReplayTests extends TestSuite {
                 new InMemoryDurable().replay(history.id, history.steps)(
                   new TriageFixtures.World()
                     .body(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 0)
+                )
+              // An empty world: a history's stitch is read back, and its record replays its
+              // output.
+              case "stitch" =>
+                new InMemoryDurable().replay(history.id, history.steps)(
+                  new TriageFixtures.World()
+                    .placement(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 0)
                 )
               // An empty world: a history's ask is read back, and its record replays its output.
               case "shadow" =>

@@ -80,6 +80,7 @@ object PluginLiveTests extends TestSuite {
             Clock.system()
           )),
       nothing,
+      LiveEngine.Unplaced,
       plugins
     )
 

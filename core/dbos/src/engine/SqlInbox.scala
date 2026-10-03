@@ -22,6 +22,7 @@ import grit.core.inbox.{InboundId, Inbox, InboxError, Progress}
 import grit.core.message.Message
 import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
+import grit.core.stitch.Opening
 import grit.core.store.{
   ConversationStore,
   Entry,
@@ -33,7 +34,7 @@ import grit.core.store.{
   Tx
 }
 import grit.dbos.sql.SqlEntryStore
-import grit.dbos.workflow.{Triages, Turns}
+import grit.dbos.workflow.{Stitches, Triages, Turns}
 
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
 import dev.dbos.transact.workflow.WorkflowState
@@ -54,6 +55,7 @@ final class SqlInbox(
     spending: Spending,
     budget: Budget
 ) extends Inbox {
+  import SqlInbox.{Heard, Ingested}
 
   def ingest(
       origin: Origin,
@@ -62,19 +64,30 @@ final class SqlInbox(
       by: PrincipalId
   ): Either[InboxError, TurnRef] =
     inTransaction {
-      conversations.find(origin).flatMap {
-        // No conversation yet: the message is new, and is refused over the cap before its
-        // conversation is created.
-        case None =>
-          overCap(Instant.now()).flatMap {
-            case Some(refused) => Right(Left(refused))
-            case None =>
-              recorded(origin, source, Payload.Message(message), by, Instant.now(), capped = true)
-          }
-        case Some(_) =>
-          recorded(origin, source, Payload.Message(message), by, Instant.now(), capped = true)
-      }
-    }.flatMap(identity)
+      conversations
+        .find(origin)
+        .flatMap {
+          // No conversation yet: the message is new, and is refused over the cap before its
+          // conversation is created.
+          case None =>
+            overCap(Instant.now()).flatMap {
+              case Some(refused) => Right(Left(refused))
+              case None =>
+                recorded(origin, source, Payload.Message(message), by, Instant.now(), capped = true)
+            }
+          case Some(_) =>
+            recorded(origin, source, Payload.Message(message), by, Instant.now(), capped = true)
+        }
+        .flatMap {
+          case Left(refused) => Right(Ingested(Left(refused), None))
+          case Right(turn) => openingOf(turn).map(Ingested(Right(turn), _))
+        }
+    }.flatMap { ingested =>
+      // Queued after the commit, and again on a redelivery: enqueued twice, it runs once.
+      ingested.opening
+        .fold[Either[InboxError, Unit]](Right(()))(o => enqueue(Stitches.enqueueOptions(o)))
+        .flatMap(_ => ingested.turn)
+    }
 
   def hear(
       origin: Origin,
@@ -86,7 +99,7 @@ final class SqlInbox(
   ): Either[InboxError, Unit] =
     inTransaction(
       recorded(origin, source, Payload.Heard(text), by, at, capped = false).flatMap {
-        case Left(_) => Right(None)
+        case Left(_) => Right(Heard(None, None))
         case Right(turn) =>
           for {
             entry <- entries.get(InboundId.of(turn.conversationId, source))
@@ -97,14 +110,31 @@ final class SqlInbox(
                 speech.heard(turn, reach).map(_ => period.map(p => TriageRef(p.ref, turn.turnSeq)))
               case _ => Right(None)
             }
-          } yield triage
+            opening <- openingOf(turn)
+          } yield Heard(opening, triage)
       }
-    ).flatMap {
-      case None => Right(())
-      // Enqueued after the commit, and again on a redelivery: a triage enqueued twice runs
-      // once, so a redelivery after a lost enqueue repairs it.
-      case Some(triage) => enqueue(Triages.enqueueOptions(triage))
+    ).flatMap { heard =>
+      // Enqueued after the commit, and again on a redelivery: a workflow enqueued twice runs
+      // once, so a redelivery after a lost enqueue repairs it. The placement first, so a
+      // room's openings queue in the order they were heard, each tried whether or not the
+      // other was.
+      val placed = heard.opening.fold[Either[InboxError, Unit]](Right(()))(o =>
+        enqueue(Stitches.enqueueOptions(o))
+      )
+      val triaged = heard.triage.fold[Either[InboxError, Unit]](Right(()))(t =>
+        enqueue(Triages.enqueueOptions(t))
+      )
+      placed.flatMap(_ => triaged)
     }
+
+  /** `turn`'s message as an [[Opening]] of its conversation, read in the transaction open;
+    * `None` when it is not one.
+    */
+  private def openingOf(turn: TurnRef)(using Tx^): Either[StoreError, Option[Opening]] =
+    for {
+      conversation <- conversations.get(turn.conversationId)
+      all <- entries.list(turn.conversationId)
+    } yield conversation.flatMap(Opening.of(_, all, turn))
 
   /** Why the day's spend at `now` refuses a new message; `None` when it does not. */
   private def overCap(now: Instant)(using Tx^): Either[StoreError, Option[InboxError]] =
@@ -321,6 +351,14 @@ final class SqlInbox(
 }
 
 private[dbos] object SqlInbox {
+
+  /** What an ingest recorded: its turn, or why it was refused, and the turn's message as an
+    * opening, which is placed.
+    */
+  private final case class Ingested(turn: Either[InboxError, TurnRef], opening: Option[Opening])
+
+  /** What a hearing recorded that is queued: the heard message as an opening, and its triage. */
+  private final case class Heard(opening: Option[Opening], triage: Option[TriageRef])
 
   /** An ingested message's entry id: deterministic, so a redelivery finds it. */
   /** Records that `by` wrote the inbound entry `id`. */

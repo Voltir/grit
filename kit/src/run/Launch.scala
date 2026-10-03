@@ -23,6 +23,7 @@ import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
+import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.{JevClassifier, JevConfig, OpenRouterModels, Seed, StubClassifier, StubModels}
 import grit.tools.{About, Coding, Probes, Tuning}
@@ -188,6 +189,22 @@ private[grit] object Launch {
               d.budget,
               turn => engine.inbox.startTurn(turn).left.map(_.toString)
             ),
+            grit.core.stitch.Tuning.Default
+          )
+        ),
+        Stitch.body(
+          StitchEnv(
+            StitchReads(
+              engine.entries,
+              engine.conversations,
+              engine.lifecycle,
+              engine.stitches,
+              engine.search,
+              engine.principals
+            ),
+            classifier(d, s),
+            engine.db,
+            Clock.system(),
             grit.core.stitch.Tuning.Default
           )
         ),

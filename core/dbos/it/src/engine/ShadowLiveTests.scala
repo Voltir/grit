@@ -125,6 +125,7 @@ object ShadowLiveTests extends TestSuite {
           nothing,
           nothing,
           nothing,
+          LiveEngine.Unplaced,
           Vector.empty,
           shadow,
           Vector(Shadowing(Words, Instant.EPOCH, cap("1")))
@@ -181,6 +182,7 @@ object ShadowLiveTests extends TestSuite {
           nothing,
           nothing,
           nothing,
+          LiveEngine.Unplaced,
           Vector.empty,
           nothing,
           Vector(Shadowing(Words, Instant.EPOCH, cap("0.0004")))
@@ -219,6 +221,7 @@ object ShadowLiveTests extends TestSuite {
           nothing,
           nothing,
           nothing,
+          LiveEngine.Unplaced,
           Vector.empty,
           throws,
           Vector(Shadowing(Words, Instant.EPOCH, cap("0.0002")))
@@ -255,6 +258,7 @@ object ShadowLiveTests extends TestSuite {
           nothing,
           nothing,
           nothing,
+          LiveEngine.Unplaced,
           Vector.empty,
           nothing,
           Vector(Shadowing(Words, Instant.EPOCH, cap("0.01")))

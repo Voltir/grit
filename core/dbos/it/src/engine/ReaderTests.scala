@@ -39,7 +39,7 @@ object ReaderTests extends TestSuite {
       }
       val engine = LiveEngine.open(config, "test")
       try {
-        engine.launch(nothing, nothing, nothing, nothing, triage, Vector.empty)
+        engine.launch(nothing, nothing, nothing, nothing, triage, LiveEngine.Unplaced, Vector.empty)
         val here = Origin.Task("reader", "reads")
         engine.inbox.hear(
           here,

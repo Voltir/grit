@@ -3,7 +3,7 @@ package grit.lifecycle.replay
 import java.time.Instant
 
 import grit.core.durable.{History, InMemoryDurable}
-import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, PluginName}
+import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, PluginName, StitchRef, TurnRef}
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
 import grit.core.plugin.{CacheDocs, InMemoryPlugins, Plugin, PostRef}
@@ -25,7 +25,7 @@ import grit.lifecycle.shadow.ShadowFixtures
 import grit.lifecycle.triage.TriageFixtures
 import grit.turn.Turn
 
-/** Writes this epoch's recorded close, settle, posting, triage and shadow histories, one per shape each can leave
+/** Writes this epoch's recorded close, settle, posting, triage, placement and shadow histories, one per shape each can leave
   * behind, into `GRIT_HISTORIES/{Turn.Epoch}`. Never overwrites: a history, once written, is
   * what builds of this epoch must keep replaying. Run it when an epoch starts or a new shape
   * appears:
@@ -187,6 +187,45 @@ object RecordLifecycleHistories {
         id
       }
     )
+    def placed(
+        name: String
+    )(
+        run: (TriageFixtures.World, InMemoryDurable) => grit.core.id.WorkflowId
+    ): (String, History) = {
+      val durable = new InMemoryDurable
+      val id = run(new TriageFixtures.World, durable)
+      name -> History("stitch", id, Turn.Epoch, "recorded", durable.history(id))
+    }
+
+    /** David's top-level reply, in its own thread a minute after Nick's question. */
+    def reply(w: TriageFixtures.World): grit.core.id.WorkflowId = {
+      w.hear("where did we land on the Engine contract term?", "Nick", 0)
+      val b = w.thread("2.0")
+      val t = w.hear("Is this a real question", "David", 1, in = b)
+      StitchRef(TurnRef(b, t.turn), TriageFixtures.at(1)).workflowId
+    }
+    val stitches = Vector(
+      placed("stitch-follows") { (w, d) =>
+        val id = reply(w)
+        d.run(id)(w.placement(new TriageFixtures.Scripted(Vector(0.9, 0.1), Vector.empty), 2))
+        id
+      },
+      placed("stitch-nothing-offered") { (w, d) =>
+        // The room's first opening: nothing to offer it, so nothing is asked or kept.
+        val t = w.hear("where did we land on the Engine contract term?", "Nick", 0)
+        val id = StitchRef(TurnRef(TriageFixtures.c, t.turn), TriageFixtures.at(0)).workflowId
+        d.run(id)(w.placement(new TriageFixtures.Scripted(Vector(0.9, 0.1), Vector.empty), 0))
+        id
+      },
+      placed("stitch-kept-already") { (w, d) =>
+        // Placed by an earlier run under the same id's opening: kept, so not asked again.
+        val id = reply(w)
+        new InMemoryDurable()
+          .run(id)(w.placement(new TriageFixtures.Scripted(Vector(0.9, 0.1), Vector.empty), 2))
+        d.run(id)(w.placement(new TriageFixtures.Scripted(Vector(0.9, 0.1), Vector.empty), 2))
+        id
+      }
+    )
     def shadowed(
         name: String
     )(
@@ -224,7 +263,7 @@ object RecordLifecycleHistories {
         t.workflowId
       }
     )
-    (posted +: settles) ++ triages ++ shadows ++ Vector(
+    (posted +: settles) ++ triages ++ stitches ++ shadows ++ Vector(
       record("close-overheard") { (w, d) =>
         // A period grit only heard: written by the heard pin though the gate found nothing new.
         w.hear("The freeze moves to Friday.", "Ana", 0)

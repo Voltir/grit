@@ -2,7 +2,9 @@ package grit.dbos.engine
 
 import java.time.Instant
 
+import grit.core.durable.Durable
 import grit.core.host.ProcessIdentity
+import grit.core.id.WorkflowId
 import grit.core.spend.Budget
 import grit.dbos.sql.DbConfig
 
@@ -14,6 +16,12 @@ object LiveEngine {
 
   /** No cap, days in UTC: what a test engine takes new messages under unless it says. */
   val Uncapped: Budget = Budget(java.time.ZoneOffset.UTC, None)
+
+  /** A placement that places nothing: the `stitch` body of a suite that does not test
+    * placements.
+    */
+  val Unplaced: WorkflowId -> Durable^ ?-> String =
+    id => (_: Durable^) ?=> s"unplaced: ${WorkflowId.value(id)}"
 
   /** The engine of `config`'s database under compatibility epoch `epoch`; throws, naming the
     * holder, when another engine holds its lock: a test that opens two at once has a bug.

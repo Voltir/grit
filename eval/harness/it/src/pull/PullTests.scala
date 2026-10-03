@@ -78,6 +78,7 @@ object PullTests extends TestSuite {
               Tuning.Default
             )
           ),
+          LiveEngine.Unplaced,
           Vector.empty,
           Shadow.body(
             ShadowEnv(

@@ -42,6 +42,7 @@ import grit.core.store.{
 }
 import grit.core.triage.InMemoryTriageStore
 import grit.dbos.sql.TestTx
+import grit.lifecycle.stitch.{Stitch, StitchEnv}
 
 /** The triage's test world: one conversation in core's in-memory stores, and a classifier the
   * test scripts.
@@ -236,6 +237,12 @@ object TriageFixtures {
         .getOrElse(Vector.empty)
         .find(_.turnSeq == triage.turn)
         .flatMap(e => this.triage.of(Vector(e.id))(using TestTx.fake).toOption.flatMap(_.get(e.id)))
+
+    /** An opening's placement over this world, asking `classifier`, at `minutes`. */
+    def placement(classifier: Classifier^, minutes: Long)(id: WorkflowId)(using Durable^): String =
+      Stitch.body(StitchEnv(reads, classifier, FakeDb, new Stopped(at(minutes)), Tuning.Default))(
+        id
+      )
 
     /** The triage's body over this world, with `classifier`, at `minutes`, speaking as
       * `speaking` says, with no daily cap; a turn it starts is kept in [[started]].

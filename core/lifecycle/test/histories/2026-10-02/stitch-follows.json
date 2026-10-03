@@ -1,0 +1,16 @@
+{
+  "workflow": "stitch",
+  "id": "stitch:1790589660000:c2:0",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "stitch",
+      "output": "{\"ok\":{\"entry\":\"c2:e0\",\"placed\":{\"kind\":\"follows\",\"root\":\"c1\",\"p\":0.9,\"model\":\"jev-1.13.0\",\"usage\":{\"input\":640,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.00002688\"},\"seen\":{\"state\":{\"new_message\":\"Is this a real question\",\"author\":\"David\",\"exchanges\":[{\"key\":\"exchange 1\",\"opening\":{\"from\":\"Nick\",\"text\":\"where did we land on the Engine contract term?\",\"ago\":\"1 minute\"},\"latest\":[],\"record\":null}]},\"offered\":[{\"root\":\"c1\",\"why\":{\"kind\":\"recent\",\"rank\":1},\"p\":0.9}],\"tuning\":{\"horizon_seconds\":604800,\"recent\":2,\"lexical\":2,\"follows_at\":0.6,\"window_tokens\":1500,\"strand_chars\":800}}}}}"
+    },
+    {
+      "name": "record-stitch",
+      "output": "{\"ok\":true}"
+    }
+  ]
+}

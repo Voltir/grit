@@ -92,6 +92,7 @@ object CloseLiveTests extends TestSuite {
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          LiveEngine.Unplaced,
           Vector.empty
         )
         minuteIdle(config)
@@ -124,6 +125,7 @@ object CloseLiveTests extends TestSuite {
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          LiveEngine.Unplaced,
           Vector.empty
         )
         minuteIdle(config)
@@ -160,6 +162,7 @@ object CloseLiveTests extends TestSuite {
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          LiveEngine.Unplaced,
           Vector.empty
         )
         minuteIdle(config)
@@ -221,7 +224,15 @@ object CloseLiveTests extends TestSuite {
       val nothing = (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id)
       val engine = LiveEngine.open(config, "test")
       try {
-        engine.launch(nothing, nothing, nothing, nothing, nothing, Vector.empty)
+        engine.launch(
+          nothing,
+          nothing,
+          nothing,
+          nothing,
+          nothing,
+          LiveEngine.Unplaced,
+          Vector.empty
+        )
         minuteIdle(config)
         val here = Origin.Task("close", "heard-late")
         val said = Instant.now().minus(2, ChronoUnit.DAYS).truncatedTo(ChronoUnit.MILLIS)
@@ -259,6 +270,7 @@ object CloseLiveTests extends TestSuite {
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
           (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id),
+          LiveEngine.Unplaced,
           Vector.empty
         )
         minuteIdle(config)

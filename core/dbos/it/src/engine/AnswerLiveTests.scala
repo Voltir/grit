@@ -58,7 +58,15 @@ object AnswerLiveTests extends TestSuite {
     test("an answer reaches the waiting workflow once; a second answer is ignored") {
       val engine = LiveEngine.open(TestPostgres.freshDatabase("answer_once"), "test")
       try {
-        engine.launch(waiting(1.minute), noClose, noClose, noClose, noClose, Vector.empty)
+        engine.launch(
+          waiting(1.minute),
+          noClose,
+          noClose,
+          noClose,
+          noClose,
+          LiveEngine.Unplaced,
+          Vector.empty
+        )
         val turn = started(engine, "once")
         waitingNow(engine, turn)
         engine.inbox.answer(turn.workflowId, call, Approval.Approved) ==> Right(())
@@ -70,7 +78,15 @@ object AnswerLiveTests extends TestSuite {
     test("an answer sent before the wait begins is received when it does") {
       val engine = LiveEngine.open(TestPostgres.freshDatabase("answer_early"), "test")
       try {
-        engine.launch(waiting(1.minute), noClose, noClose, noClose, noClose, Vector.empty)
+        engine.launch(
+          waiting(1.minute),
+          noClose,
+          noClose,
+          noClose,
+          noClose,
+          LiveEngine.Unplaced,
+          Vector.empty
+        )
         val origin = Origin.Task("answer", "early")
         val turn = engine.inbox
           .ingest(origin, SourceId("early"), Message.User("early"), PrincipalId.Local)
@@ -85,7 +101,15 @@ object AnswerLiveTests extends TestSuite {
     test("nothing sent: the wait runs out, and says so") {
       val engine = LiveEngine.open(TestPostgres.freshDatabase("answer_none"), "test")
       try {
-        engine.launch(waiting(1.second), noClose, noClose, noClose, noClose, Vector.empty)
+        engine.launch(
+          waiting(1.second),
+          noClose,
+          noClose,
+          noClose,
+          noClose,
+          LiveEngine.Unplaced,
+          Vector.empty
+        )
         val turn = started(engine, "none")
         engine.awaitTurn(turn) ==> "None;None"
       } finally engine.close()
@@ -94,7 +118,15 @@ object AnswerLiveTests extends TestSuite {
     test("an answer to a workflow that does not exist is NoSuchTurn") {
       val engine = LiveEngine.open(TestPostgres.freshDatabase("answer_missing"), "test")
       try {
-        engine.launch(waiting(1.second), noClose, noClose, noClose, noClose, Vector.empty)
+        engine.launch(
+          waiting(1.second),
+          noClose,
+          noClose,
+          noClose,
+          noClose,
+          LiveEngine.Unplaced,
+          Vector.empty
+        )
         val nobody = WorkflowId("no-such-workflow")
         engine.inbox.answer(nobody, call, Approval.Approved) ==>
           Left(InboxError.NoSuchTurn(nobody))
@@ -106,14 +138,30 @@ object AnswerLiveTests extends TestSuite {
       val before = LiveEngine.open(config, "test")
       val turn =
         try {
-          before.launch(waiting(1.minute), noClose, noClose, noClose, noClose, Vector.empty)
+          before.launch(
+            waiting(1.minute),
+            noClose,
+            noClose,
+            noClose,
+            noClose,
+            LiveEngine.Unplaced,
+            Vector.empty
+          )
           val t = started(before, "restart")
           waitingNow(before, t)
           t
         } finally before.close()
       val after = LiveEngine.open(config, "test")
       try {
-        after.launch(waiting(1.minute), noClose, noClose, noClose, noClose, Vector.empty)
+        after.launch(
+          waiting(1.minute),
+          noClose,
+          noClose,
+          noClose,
+          noClose,
+          LiveEngine.Unplaced,
+          Vector.empty
+        )
         after.inbox.answer(turn.workflowId, call, Approval.Approved) ==> Right(())
         after.awaitTurn(turn) ==> s"Some($approved);None"
       } finally after.close()

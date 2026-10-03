@@ -107,7 +107,7 @@ private[engine] final class Collector(
             p.state match {
               case PeriodState.Closed(last, _, _, _, _, _) =>
                 val purgeable = Purgeable(period, p.first, last)
-                Named(purgeable.turns, purgeable.attempts, _ => true)
+                Named(purgeable.turns, purgeable.attempts, purgeable.holds)
               case PeriodState.Open => Named.none
             }
           case None => Named.none

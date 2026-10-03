@@ -70,6 +70,7 @@ object CaptureTests extends TestSuite {
               Tuning.Default
             )
           ),
+          LiveEngine.Unplaced,
           Vector.empty
         )
         val start = Instant.now().minusSeconds(3_600)

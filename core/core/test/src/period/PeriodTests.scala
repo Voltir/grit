@@ -4,7 +4,17 @@ import java.time.Instant
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-import grit.core.id.{CloseRef, ConversationId, PeriodRef, PeriodSeq, SettleRef, TurnSeq, WorkflowId}
+import grit.core.id.{
+  CloseRef,
+  ConversationId,
+  PeriodRef,
+  PeriodSeq,
+  SettleRef,
+  StitchRef,
+  TurnRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.place.Locality
 
 import utest.*
@@ -132,14 +142,24 @@ object PeriodTests extends TestSuite {
     }
 
     test(
-      "a purge deletes each of its turns, and every close attempt, question, triage and shadow by its id's prefix"
+      "a purge deletes each of its turns, and every close attempt, question, triage and shadow by its id's prefix, and placements by theirs"
     ) {
       val purgeable = Purgeable(p1, TurnSeq(3), TurnSeq(4))
       (purgeable.turns.map(WorkflowId.value), purgeable.attempts) ==>
         (
           Vector("c:3", "c:4"),
-          Vector("close:c:1:", "settle:c:1:", "triage:c:1:", "shadow:c:1:")
+          Vector("close:c:1:", "settle:c:1:", "triage:c:1:", "shadow:c:1:", "stitch:")
         )
+      purgeable.holds(WorkflowId("triage:c:1:4")) ==> true
+    }
+
+    test("of the placements, a purge deletes those of its own turns, and no other's") {
+      val purgeable = Purgeable(p1, TurnSeq(3), TurnSeq(5))
+      def placement(in: ConversationId, turn: Long): WorkflowId =
+        StitchRef(TurnRef(in, TurnSeq(turn)), Instant.EPOCH).workflowId
+      Vector(3L, 5L, 2L, 6L).map(t => purgeable.holds(placement(p1.conversationId, t))) ==>
+        Vector(true, true, false, false)
+      purgeable.holds(placement(ConversationId("d"), 4)) ==> false
     }
   }
 }

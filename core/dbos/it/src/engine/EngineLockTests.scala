@@ -197,6 +197,7 @@ object EngineLockTests extends TestSuite {
           noop,
           noop,
           noop,
+          LiveEngine.Unplaced,
           Vector.empty
         )
         val turn = started(lost.inbox, "running")
@@ -219,6 +220,7 @@ object EngineLockTests extends TestSuite {
           noop,
           noop,
           noop,
+          LiveEngine.Unplaced,
           Vector.empty
         )
         terminateHolder(config)
@@ -273,6 +275,7 @@ object EngineLockTests extends TestSuite {
         noop,
         noop,
         noop,
+        LiveEngine.Unplaced,
         Vector.empty
       )
       val _ = started(closing.inbox, "stubborn")
@@ -301,7 +304,15 @@ object EngineLockTests extends TestSuite {
       def launched(epoch: String): Engine^ = {
         assert(eventually(5.seconds)(free(config)))
         val e = LiveEngine.open(config, epoch)
-        e.launch(id => d ?=> s"ran ${WorkflowId.value(id)}", noop, noop, noop, noop, Vector.empty)
+        e.launch(
+          id => d ?=> s"ran ${WorkflowId.value(id)}",
+          noop,
+          noop,
+          noop,
+          noop,
+          LiveEngine.Unplaced,
+          Vector.empty
+        )
         e
       }
       // Epoch "test" is registered first, then a newer one, so "test" is not DBOS's latest.

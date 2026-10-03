@@ -22,6 +22,9 @@ object StitchRef {
 
   private val Name = "stitch"
 
+  /** What the workflow id of every placement starts with, and no other workflow's. */
+  val Prefix: String = s"$Name:"
+
   /** The placement of `turn`'s message said `at`, cut to the millisecond; a time before 1970
     * is taken as 1970's start.
     */

@@ -1,0 +1,12 @@
+{
+  "workflow": "stitch",
+  "id": "stitch:1790589600000:c1:0",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "stitch",
+      "output": "{\"ok\":null}"
+    }
+  ]
+}

@@ -39,6 +39,7 @@ object AttachLiveTests extends TestSuite {
           noop,
           noop,
           noop,
+          LiveEngine.Unplaced,
           Vector.empty
         )
         val turn = (for {

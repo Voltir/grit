@@ -4,9 +4,22 @@ import java.time.Instant
 
 import scala.util.Using
 
-import grit.core.id.{CallSlot, ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{
+  CallSlot,
+  ConversationId,
+  PeriodRef,
+  PeriodSeq,
+  PrincipalId,
+  SourceId,
+  StitchRef,
+  TriageRef,
+  TurnRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.inbox.InboxError
 import grit.core.message.Message
+import grit.core.speech.Reach
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.dbos.sql.{LiveDb, TestPostgres}
 
@@ -32,7 +45,81 @@ object SqlInboxTests extends TestSuite {
     ()
   }
 
+  /** Each workflow queued whose id names `conversation`: its id, queue and partition key, in
+    * the order created.
+    */
+  private def queued(
+      conversation: ConversationId
+  )(using tx: Tx^): Vector[(String, String, String)] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    Using.resource(
+      conn.prepareStatement(
+        """SELECT workflow_uuid, queue_name, queue_partition_key FROM dbos.workflow_status
+          | WHERE workflow_uuid LIKE '%' || ? || '%' ORDER BY created_at, workflow_uuid""".stripMargin
+      )
+    ) { ps =>
+      ps.setString(1, ConversationId.value(conversation))
+      Using.resource(ps.executeQuery()) { rs =>
+        val rows = Vector.newBuilder[(String, String, String)]
+        while (rs.next()) rows += ((rs.getString(1), rs.getString(2), rs.getString(3)))
+        rows.result()
+      }
+    }
+  }
+
   val tests = Tests {
+    test(
+      "an opening heard or said is queued for placement under its room, before its triage; a reply is not"
+    ) {
+      val heard = Origin.Slack("T1", "C1", "1.0")
+      val said = Origin.Slack("T1", "C1", "2.0")
+      val at = Instant.parse("2026-10-02T16:59:36.123456Z")
+      val engine = LiveEngine.open(config, "test")
+      try {
+        engine.inbox.hear(
+          heard,
+          SourceId("1.0"),
+          "lunch?",
+          PrincipalId.Local,
+          at,
+          Reach.Nowhere
+        ) ==>
+          Right(())
+        engine.inbox.hear(heard, SourceId("1.1"), "yes", PrincipalId.Local, at, Reach.Nowhere) ==>
+          Right(())
+        val asked = engine.inbox
+          .ingest(said, SourceId("2.0"), Message.User("@grit lunch?"), PrincipalId.Local)
+          .fold(e => sys.error(e.toString), identity)
+        val h = LiveDb.conversation(config, heard).id
+        val placement = StitchRef(TurnRef(h, TurnSeq.First), at).workflowId
+        val triages =
+          Vector(0L, 1L).map(t => TriageRef(PeriodRef(h, PeriodSeq.First), TurnSeq(t)).workflowId)
+        LiveDb.transaction(config)(Right(queued(h))) ==> Right(
+          Vector(
+            (WorkflowId.value(placement), "stitches", "slack:T1/C1"),
+            (WorkflowId.value(triages(0)), "turns", ConversationId.value(h)),
+            (WorkflowId.value(triages(1)), "turns", ConversationId.value(h))
+          )
+        )
+        LiveDb
+          .transaction(config)(Right(queued(asked.conversationId)))
+          .map(_.map(_._1).filter(_.startsWith(StitchRef.Prefix))) ==> Right(
+          Vector(
+            WorkflowId.value(
+              StitchRef(
+                asked,
+                LiveDb
+                  .transaction(config)(engine.entries.list(asked.conversationId))
+                  .toOption
+                  .flatMap(_.headOption)
+                  .fold(Instant.EPOCH)(_.createdAt)
+              ).workflowId
+            )
+          )
+        )
+      } finally engine.close()
+    }
+
     test("a post is searched by its text, and the call that made it goes with its entry") {
       val origin = Origin.Task("sql", "posted")
       val slot = CallSlot

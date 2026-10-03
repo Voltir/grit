@@ -10,6 +10,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, ModelSetting, ModelSettings, Pinned}
 import grit.core.place.Directory
 import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
+import grit.core.stitch.StitchReads
 import grit.core.store.{EntryStore, Origin, Payload}
 import grit.core.tool.{ToolSet, Toolbox}
 import grit.dbos.engine.Engine
@@ -18,6 +19,7 @@ import grit.kit.deployment.Offered
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
+import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords}
 import grit.models.{StubModels, StubProvider}
 import grit.tools.Coding
@@ -192,6 +194,22 @@ object LiveTurn {
               engine.budget,
               turn => engine.inbox.startTurn(turn).left.map(_.toString)
             ),
+            grit.core.stitch.Tuning.Default
+          )
+        ),
+        Stitch.body(
+          StitchEnv(
+            StitchReads(
+              entries,
+              engine.conversations,
+              engine.lifecycle,
+              engine.stitches,
+              engine.search,
+              engine.principals
+            ),
+            grit.core.classify.Classifier.none("no classifier"),
+            engine.db,
+            Clock.system(),
             grit.core.stitch.Tuning.Default
           )
         ),

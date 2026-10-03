@@ -73,6 +73,7 @@ import grit.dbos.workflow.{
   Running,
   Settles,
   Shadows,
+  Stitches,
   Triages,
   Turns
 }
@@ -85,7 +86,7 @@ import dev.dbos.transact.{DBOS, DBOSClient}
 import org.postgresql.ds.PGSimpleDataSource
 import org.slf4j.LoggerFactory
 
-/** grit over one Postgres: the stores, the turn, close, settle, posting, triage and shadow workflows, the
+/** grit over one Postgres: the stores, the turn, close, settle, posting, triage, placement and shadow workflows, the
   * sweep that closes periods, and an edge's [[Inbox]], all in this process, under the
   * database's [[EngineLock]]. Open it, [[launch]] it with the workflows' bodies, start its
   * [[sweepEvery]], and close it when done; its threads keep the JVM alive until then.
@@ -175,6 +176,9 @@ final class Engine private (
   val inbox: Inbox =
     new SqlInbox(dataSource, client, conversations, entries, periods, speech, spending, budget)
 
+  /** Where each opening is placed, by the `stitch` workflow [[launch]] registers. */
+  val placements: grit.core.stitch.Placements = new DbosPlacements(client)
+
   /** Each plugin's cursor. */
   val cursors: PluginCursors = new SqlPluginCursors(tombstones)
 
@@ -187,7 +191,8 @@ final class Engine private (
 
   /** Registers `turn` as the body of every turn, `close` of every attempt to close a period,
     * `settle` of every question whether anyone is waiting on a quiet period, `post` of every
-    * posting run, `triage` of every heard message's triage, and `shadow` of every shadow
+    * posting run, `triage` of every heard message's triage, `stitch` of every opening's
+    * placement ([[grit.core.id.StitchRef]]), and `shadow` of every shadow
     * ([[grit.core.id.ShadowRef]]), and starts running what is queued; the sweep posts to
     * `plugins`, the ones enabled, and enqueues shadows for `shadowing`, the variants declared.
     * Without them no shadow is enqueued, and one an earlier engine left queued ends at once,
@@ -201,6 +206,7 @@ final class Engine private (
       settle: WorkflowId => Durable^ ?=> String,
       post: WorkflowId => Durable^ ?=> String,
       triage: WorkflowId => Durable^ ?=> String,
+      stitch: WorkflowId => Durable^ ?=> String,
       plugins: Vector[Plugin],
       shadow: WorkflowId => Durable^ ?=> String = Engine.Unshadowed,
       shadowing: Vector[Shadowing] = Vector.empty
@@ -211,6 +217,7 @@ final class Engine private (
     Settles.register(dbos, steps, settle, running)
     Posts.register(dbos, steps, post, running)
     Triages.register(dbos, steps, triage, running)
+    Stitches.register(dbos, steps, stitch, running)
     Shadows.register(dbos, steps, shadow, running)
     enabled.set(plugins.map(p => (p.name, p.version)))
     declared.set(shadowing)
@@ -218,6 +225,7 @@ final class Engine private (
     Turns.registerQueue(client)
     Posts.registerQueue(client)
     Shadows.registerQueue(client)
+    Stitches.registerQueue(client)
     dbos.launch()
     // DBOS 1.1 dequeues a workflow enqueued with no version only on the latest version
     // (QueuesDAO.versionClause); the lock holder is the database's one engine, so it is that.
@@ -268,7 +276,7 @@ final class Engine private (
   def sweep(now: Instant): Either[StoreError, Swept] = sweeper.once(now)
 
   /** How many workflows are queued or running, a turn's, close's, question's, posting's,
-    * triage's or shadow's; none once everything enqueued has ended. `Left` when DBOS's tables cannot be
+    * triage's, placement's or shadow's; none once everything enqueued has ended. `Left` when DBOS's tables cannot be
     * read.
     */
   def unfinished(): Either[StoreError, Int] =
