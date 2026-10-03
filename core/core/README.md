@@ -95,7 +95,7 @@ In dependency order:
   round makes of the candidates, `Considered`, under per-reason shares of the day); `Reviews`
   (an edge's part: post a `Prompt`, keep a reacted `Verdict` as a `Label`) and `ReviewStore`
   (also which messages are considered, and every one `Reviewed`), kept with their
-  conversation after the message's entry is gone. ← `id`, `classify`, `store`,
+  conversation after the message's entry is gone (ADR 0024). ← `id`, `classify`, `store`,
   `speech`
 - **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
   (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),

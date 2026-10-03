@@ -22,9 +22,9 @@ trait ConversationStore {
     */
   def postedBy(conversation: ConversationId)(using Tx^): Either[StoreError, Option[CallSlot]]
 
-  /** Deletes `conversation` with its entries, periods and verdicts, and its place when no
-    * other conversation is there; nothing when it is gone already. Its usage, profiles and
-    * documents are the caller's to delete.
+  /** Deletes `conversation` with its entries, periods, verdicts and reviews, and its place
+    * when no other conversation is there; nothing when it is gone already. Its usage,
+    * profiles and documents are the caller's to delete.
     */
   def remove(conversation: ConversationId)(using Tx^): Either[StoreError, Unit]
 }

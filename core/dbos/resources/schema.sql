@@ -559,6 +559,38 @@ CREATE INDEX IF NOT EXISTS idx_speech_decided ON grit.speech (decided_at);
 -- A turn's decisions: what SpeechStore.forget deletes, and a conversation's removal cascades.
 CREATE INDEX IF NOT EXISTS idx_speech_turn ON grit.speech (conversation_id, turn_seq);
 
+-- Each heard message a review considered against a shadow (grit.core.review.Considered): the
+-- reason the two gates gave (NULL when either could not be read), when it was considered,
+-- and when it was picked, if it was; a picked message's prompt, where its edge posted it (its
+-- own address form) and when; and the verdict its rater reacted with, the latest standing.
+-- Every message considered is kept, picked or not, so what was picked can be weighed against
+-- what was not. No text: neither the message's nor a draft's. No foreign key to the entry: a
+-- label outlives the raw text it was given on (ADR 0024).
+-- Retention: ledger: with its conversation (Target.Quiet), by cascade.
+CREATE TABLE IF NOT EXISTS grit.reviews (
+    entry_id        TEXT PRIMARY KEY,
+    conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,
+    shadow          TEXT NOT NULL CHECK (shadow ~ '^[a-z0-9-]+$'),
+    reason          TEXT CHECK (reason IN ('shadow-only', 'live-only', 'both', 'neither')),
+    considered_at   TIMESTAMPTZ NOT NULL,
+    picked_at       TIMESTAMPTZ,
+    address         TEXT UNIQUE,
+    posted_at       TIMESTAMPTZ,
+    verdict         TEXT CHECK (verdict IN ('welcome', 'interruption', 'cut-in')),
+    rater           TEXT,
+    labelled_at     TIMESTAMPTZ,
+    CHECK ((picked_at IS NULL OR reason IS NOT NULL)
+       AND (address IS NULL) = (posted_at IS NULL)
+       AND (address IS NULL OR picked_at IS NOT NULL)
+       AND (verdict IS NULL) = (rater IS NULL)
+       AND (verdict IS NULL) = (labelled_at IS NULL)
+       AND (verdict IS NULL OR address IS NOT NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviews_considered ON grit.reviews (considered_at);
+-- What a conversation's removal cascades to.
+CREATE INDEX IF NOT EXISTS idx_reviews_conversation ON grit.reviews (conversation_id);
+
 -- The lifecycle's settings in force (LifecycleSettings): one row, or none for the defaults.
 -- Seeded on first start, then changed by /set or by hand. Their rules are checked where
 -- they are read (LifecycleSettings.of), not here, so they have one home.
