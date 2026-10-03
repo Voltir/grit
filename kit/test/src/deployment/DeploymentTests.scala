@@ -89,6 +89,56 @@ object DeploymentTests extends TestSuite {
       )
     }
 
+    test(
+      "a review is refused unless it names a shadow declared as a question set, " +
+        "or while speaking is off: live's gate would never be reached"
+    ) {
+      def name(s: String) = grit.core.id.ShadowName.of(s).getOrElse(sys.error("a name"))
+      def variant(called: String, question: grit.lifecycle.shadow.ShadowQuestion) =
+        grit.lifecycle.shadow.ShadowVariant(
+          name(called),
+          question,
+          None,
+          grit.core.spend.DailyCap.of("0.01").getOrElse(sys.error("a cap")),
+          java.time.Instant.EPOCH
+        )
+      val shadows = Vector(
+        variant(
+          "v2",
+          grit.lifecycle.shadow.ShadowQuestion.Named(grit.lifecycle.triage.TriageQuestions.V2)
+        ),
+        variant(
+          "words",
+          grit.lifecycle.shadow.ShadowQuestion
+            .Worded(grit.lifecycle.triage.TriageQuestion.Wording.Shipped)
+        )
+      )
+      val speaking = grit.core.speech.Speaking.Shadow(
+        grit.core.speech.Limits.suggested(
+          grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap"))
+        )
+      )
+      def reviewing(of: String) =
+        grit.core.review.Reviewing.of(name(of), 8, 20, 24.hours).getOrElse(sys.error("a review"))
+      def reviewed(of: String, speaks: grit.core.speech.Speaking = speaking) =
+        Deployments
+          .of(speaking = speaks, shadows = shadows, review = Some(reviewing(of)))
+          .map(_.review.map(_.reviewing.shadow))
+      (
+        reviewed("undeclared"),
+        reviewed("words"),
+        reviewed("v2", grit.core.speech.Speaking.Off),
+        reviewed("v2"),
+        Deployments.of(speaking = speaking, shadows = shadows).map(_.review)
+      ) ==> (
+        Left(DeploymentRefusal.ReviewUngated(name("undeclared"))),
+        Left(DeploymentRefusal.ReviewUngated(name("words"))),
+        Left(DeploymentRefusal.ReviewUnspoken),
+        Right(Some(name("v2"))),
+        Right(None)
+      )
+    }
+
     test("a sweep under a second is refused; a second is not") {
       (
         Deployments.of(sweep = 999.millis).map(_ => ()),

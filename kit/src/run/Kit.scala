@@ -46,6 +46,12 @@ object Kit {
   val DeliverEvery: scala.concurrent.duration.FiniteDuration =
     scala.concurrent.duration.DurationInt(500).millis
 
+  /** How often [[serve]] picks heard messages for a deployment's review, between deliveries:
+    * a minute.
+    */
+  val PickEvery: scala.concurrent.duration.FiniteDuration =
+    scala.concurrent.duration.DurationInt(1).minute
+
   /** The logger [[serve]] and [[catchUp]] write each finished turn's line to: `grit.turn`. */
   val TurnLog: String = "grit.turn"
 
@@ -61,6 +67,8 @@ object Kit {
     * turns), holding the process open [[ClosedWithin]] for them. Refused before the engine
     * opens when a secret or an edge's variable is missing; an edge refusing to open closes
     * those already opened. Each finished turn is logged in one line at INFO under [[TurnLog]].
+    * When `deployment` declares a review, heard messages are picked for it every
+    * [[PickEvery]]; a round the database fails is logged as a warning and run again next time.
     */
   def serve(deployment: Deployment, env: Map[String, String]): Either[KitFailure, Unit] = {
     val log = org.slf4j.LoggerFactory.getLogger("grit.serve")
@@ -98,11 +106,30 @@ object Kit {
                     stopped.countDown()
                     val _ = closed.await(ClosedWithin.toMillis, TimeUnit.MILLISECONDS)
                   })
+                  // The next pick round is due at `pickAt`, run between deliveries.
+                  var pickAt = Instant.EPOCH
                   try
                     Serving.deliver(
                       opened,
                       () => stopped.getCount == 0,
                       () => {
+                        deployment.review.foreach { review =>
+                          val now = Instant.now()
+                          if (!now.isBefore(pickAt)) {
+                            pickAt = now.plusMillis(PickEvery.toMillis)
+                            Picking.round(
+                              review,
+                              engine.reviews,
+                              link.jot,
+                              deployment.budget,
+                              now
+                            ) match {
+                              case Left(e) => log.warn(s"review: nothing picked: $e")
+                              case Right(0) => ()
+                              case Right(n) => log.info(s"review: $n picked")
+                            }
+                          }
+                        }
                         val _ = stopped.await(DeliverEvery.toMillis, TimeUnit.MILLISECONDS)
                       },
                       said => log.warn(said)

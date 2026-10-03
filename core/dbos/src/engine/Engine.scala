@@ -156,6 +156,11 @@ final class Engine private (
   /** Where each heard message could be answered, and grit's decisions on each. */
   val speech: SpeechStore = new SqlSpeechStore
 
+  /** Which heard messages a review considered, their prompts, and the labels standing on
+    * them.
+    */
+  val reviews: grit.core.review.ReviewStore = new grit.dbos.sql.SqlReviews
+
   /** Where each thread's first message was placed among its room's exchanges (ADR 0023). */
   val stitches: grit.core.stitch.StitchStore = new grit.dbos.sql.SqlStitchStore
 

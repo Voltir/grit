@@ -9,10 +9,12 @@ import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
 import grit.core.place.{Reaches, WorksIn}
 import grit.core.plugin.Plugin
+import grit.core.review.Reviewing
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.triage.KnowledgeSources
-import grit.lifecycle.shadow.ShadowVariant
+import grit.lifecycle.shadow.{ShadowQuestion, ShadowVariant}
+import grit.lifecycle.triage.TriageQuestions
 import grit.turn.TurnLoop
 
 /** What every turn's model is offered, at every place, in at most `rounds` model calls. */
@@ -56,6 +58,14 @@ enum Topics {
   case Off(reason: String)
 }
 
+/** A review a deployment declares ([[Deployment.of]]): `reviewing`, and `gate`, the gate of
+  * the question set its shadow asks, by which that shadow would draft.
+  */
+final case class ShadowReview private[deployment] (
+    reviewing: Reviewing,
+    gate: TriageQuestions.Gate
+)
+
 /** Why [[Deployment.of]] refused. */
 enum DeploymentRefusal {
 
@@ -81,6 +91,16 @@ enum DeploymentRefusal {
     */
   case ShadowsUnasked(topics: String)
 
+  /** The review names `shadow`, which is not declared among the shadows as a question set, so
+    * no gate says when it would draft.
+    */
+  case ReviewUngated(shadow: ShadowName)
+
+  /** A review is declared, but speaking is off, so live triage's gate is never reached and no
+    * message could be compared.
+    */
+  case ReviewUnspoken
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
@@ -91,6 +111,10 @@ enum DeploymentRefusal {
     case ShadowRepeated(name) => s"two shadows are named ${ShadowName.value(name)}"
     case ShadowsUnasked(topics) =>
       s"a shadow asks the topics' classifier in its own wording, and topics are off: $topics"
+    case ReviewUngated(shadow) =>
+      s"the review names ${ShadowName.value(shadow)}, which is not a shadow declared as a question set"
+    case ReviewUnspoken =>
+      "a review compares a shadow's gate with live triage's, and speaking is off, so live's is never reached"
   }
 }
 
@@ -103,7 +127,8 @@ enum DeploymentRefusal {
   * placed among topics, the lifecycle's settings, what it may spend a day, whether and within
   * what it speaks where it was not addressed (ADR 0022), the shadows of triage's question it
   * records beside live triage ([[ShadowVariant]]), the knowledge sources its shadows'
-  * question sets ask about ([[KnowledgeSources]]), and how often its engine sweeps. The
+  * question sets ask about ([[KnowledgeSources]]), the review of one of them it picks heard
+  * messages for ([[ShadowReview]]), and how often its engine sweeps. The
   * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
@@ -122,7 +147,8 @@ final case class Deployment private (
     sweep: FiniteDuration,
     reaches: Vector[Reaches],
     shadows: Vector[ShadowVariant],
-    knowledge: KnowledgeSources
+    knowledge: KnowledgeSources,
+    review: Option[ShadowReview]
 )
 
 object Deployment {
@@ -132,7 +158,9 @@ object Deployment {
     * `sweep` is under a second, or when it speaks (`speaking` not Off) with `topics` Off: the
     * topics' classifier is also the judge of each draft, or when two of `shadows` share a
     * name, or any is declared with `topics` Off: each shadow asks the topics' classifier, Jev
-    * (of the shadow's own model when it names one) or the stub. `lifecycle` is written over the
+    * (of the shadow's own model when it names one) or the stub, or when `review` names no
+    * shadow declared with [[ShadowQuestion.Named]] or is declared with `speaking` Off: live's
+    * gate is then never reached. `lifecycle` is written over the
     * database's settings on every start, so a change made while grit runs (`/set`, SQL)
     * holds until the next start. What `speaking` spends is counted in `budget` as well as
     * against its own cap ([[grit.core.speech.Limits.spend]]).
@@ -151,7 +179,8 @@ object Deployment {
       sweep: FiniteDuration,
       reaches: Vector[Reaches] = Vector.empty,
       shadows: Vector[ShadowVariant] = Vector.empty,
-      knowledge: KnowledgeSources = KnowledgeSources.Empty
+      knowledge: KnowledgeSources = KnowledgeSources.Empty,
+      review: Option[Reviewing] = None
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filterNot(_.answersAsks).map(_.name)
@@ -181,6 +210,19 @@ object Deployment {
           Left(DeploymentRefusal.ShadowsUnasked(reason))
         case _ => Right(())
       }
+      reviewed <- review match {
+        case None => Right(None)
+        // Live's gate is never reached with speaking off: every decision is Silence.Off.
+        case Some(_) if speaking == Speaking.Off => Left(DeploymentRefusal.ReviewUnspoken)
+        case Some(r) =>
+          shadows
+            .find(_.name == r.shadow)
+            .map(_.question)
+            .collect { case ShadowQuestion.Named(questions) =>
+              Some(ShadowReview(r, questions.speak))
+            }
+            .toRight(DeploymentRefusal.ReviewUngated(r.shadow))
+      }
     } yield Deployment(
       edges,
       worksIn,
@@ -195,7 +237,8 @@ object Deployment {
       sweep,
       reaches,
       shadows,
-      knowledge
+      knowledge,
+      reviewed
     )
   }
 }

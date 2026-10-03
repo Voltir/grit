@@ -43,7 +43,8 @@ object Deployments {
       topics: Topics = Topics.Stub,
       sweep: FiniteDuration = 30.seconds,
       speaking: grit.core.speech.Speaking = grit.core.speech.Speaking.Off,
-      shadows: Vector[grit.lifecycle.shadow.ShadowVariant] = Vector.empty
+      shadows: Vector[grit.lifecycle.shadow.ShadowVariant] = Vector.empty,
+      review: Option[grit.core.review.Reviewing] = None
   ): Either[DeploymentRefusal, Deployment] =
     Deployment.of(
       edges = edges,
@@ -57,7 +58,8 @@ object Deployments {
       budget = Budget(java.time.ZoneOffset.UTC, None),
       speaking = speaking,
       sweep = sweep,
-      shadows = shadows
+      shadows = shadows,
+      review = review
     )
 
   /** [[of]], which the test expects to be accepted. */
