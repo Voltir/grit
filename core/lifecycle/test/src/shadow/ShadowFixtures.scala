@@ -83,7 +83,7 @@ object ShadowFixtures {
       )
 
     /** The shadow's body over this world, with [[Catalog]]: `classifier` asks variant
-      * [[Words]] in [[Reworded]], and variant [[Asks]] V2, of model `jev-variant`, at
+      * [[Words]] v1 in [[Reworded]], and variant [[Asks]] V2, of model `jev-variant`, at
       * `minutes`, each call taking 250 ms.
       */
     def body(classifier: Classifier^, minutes: Long)(id: WorkflowId)(using Durable^): String =
@@ -93,12 +93,8 @@ object ShadowFixtures {
           triaged.rooms,
           shadows,
           Map(
-            Words -> ShadowAsking(ShadowQuestion.Worded(Reworded), "jev-variant", classifier),
-            Asks -> ShadowAsking(
-              ShadowQuestion.Named(TriageQuestions.V2),
-              "jev-variant",
-              classifier
-            )
+            Words -> ShadowAsking(TriageQuestions.v1(Reworded), "jev-variant", classifier),
+            Asks -> ShadowAsking(TriageQuestions.V2, "jev-variant", classifier)
           ),
           Catalog,
           TriageFixtures.FakeDb,

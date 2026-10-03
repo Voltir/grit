@@ -13,7 +13,7 @@ import grit.core.review.Reviewing
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.triage.{Gate, KnowledgeSources}
-import grit.lifecycle.shadow.{ShadowQuestion, ShadowVariant}
+import grit.lifecycle.shadow.ShadowVariant
 import grit.turn.TurnLoop
 
 /** What every turn's model is offered, at every place, in at most `rounds` model calls. */
@@ -90,8 +90,8 @@ enum DeploymentRefusal {
     */
   case ShadowsUnasked(topics: String)
 
-  /** The review names `shadow`, which is not declared among the shadows as a question set, so
-    * no gate says when it would draft.
+  /** The review names `shadow`, which is not declared among the shadows, so no gate says
+    * when it would draft.
     */
   case ReviewUngated(shadow: ShadowName)
 
@@ -109,9 +109,9 @@ enum DeploymentRefusal {
       s"speaking unprompted needs a classifier to judge each draft, and topics are off: $topics"
     case ShadowRepeated(name) => s"two shadows are named ${ShadowName.value(name)}"
     case ShadowsUnasked(topics) =>
-      s"a shadow asks the topics' classifier in its own wording, and topics are off: $topics"
+      s"a shadow asks its question set of the topics' classifier, and topics are off: $topics"
     case ReviewUngated(shadow) =>
-      s"the review names ${ShadowName.value(shadow)}, which is not a shadow declared as a question set"
+      s"the review names ${ShadowName.value(shadow)}, which is not a declared shadow"
     case ReviewUnspoken =>
       "a review compares a shadow's gate with live triage's, and speaking is off, so live's is never reached"
   }
@@ -158,7 +158,7 @@ object Deployment {
     * topics' classifier is also the judge of each draft, or when two of `shadows` share a
     * name, or any is declared with `topics` Off: each shadow asks the topics' classifier, Jev
     * (of the shadow's own model when it names one) or the stub, or when `review` names no
-    * shadow declared with [[ShadowQuestion.Named]] or is declared with `speaking` Off: live's
+    * declared shadow or is declared with `speaking` Off: live's
     * gate is then never reached. `lifecycle` is written over the
     * database's settings on every start, so a change made while grit runs (`/set`, SQL)
     * holds until the next start. What `speaking` spends is counted in `budget` as well as
@@ -216,10 +216,7 @@ object Deployment {
         case Some(r) =>
           shadows
             .find(_.name == r.shadow)
-            .map(_.question)
-            .collect { case ShadowQuestion.Named(questions) =>
-              Some(ShadowReview(r, questions.speak))
-            }
+            .map(v => Some(ShadowReview(r, v.questions.speak)))
             .toRight(DeploymentRefusal.ReviewUngated(r.shadow))
       }
     } yield Deployment(

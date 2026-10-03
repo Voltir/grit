@@ -62,11 +62,11 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
 - **`shadow`** — `Shadow`: a declared variant's run on a heard message already triaged,
   recorded and never acted on, on a queue of its own (`grit.dbos.workflow.Shadows`), so it
   never delays a triage: `ask` rebuilds triage's state as `triage` builds it, from the
-  store as it stands now, and asks the variant's `ShadowQuestion` of it once, of the
-  variant's classifier (`ShadowAsking`): triage's question in a wording, or a
-  `TriageQuestions` set, its per-source questions of the catalog's knowledge sources
-  covering the conversation's place; `record` keeps what it made of it, every answer (in
-  order, or under their names), the request's digest, both models and the latency, or which
+  store as it stands now, and asks the variant's `TriageQuestions` set of it once, of the
+  variant's classifier (`ShadowAsking`), its per-source questions of the catalog's
+  knowledge sources covering the conversation's place (triage's own question is the set
+  `TriageQuestions.v1`, in a wording); `record` keeps what it made of it, every answer
+  under its name, the request's digest, both models and the latency, or which
   kind of failure (`grit.core.triage.TriageShadows`). How many are enqueued each day is the sweep's, within
   the variant's cap (`grit.core.triage.Shadowing`). `ShadowEnv` is what it works with, and
   `ShadowVariant` a variant as a deployment declares it.

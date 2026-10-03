@@ -14,22 +14,15 @@ import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin, StoreError}
-import grit.core.triage.{KnowledgeSources, ShadowAnswers, Shadowed, Shadowing}
+import grit.core.triage.{Kind, KnowledgeSources, ShadowAnswers, Shadowed, Shadowing}
 import grit.dbos.engine.{Build, LiveEngine, Reader}
 import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.eval.harness.corpus.{Capture, CaseId, Corpus, Digest, Dump}
-import grit.eval.harness.log.{Row, Weights}
+import grit.eval.harness.log.{Outcome, Row, Weights}
 import grit.eval.harness.score.Answers
-import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowQuestion}
+import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
-import grit.lifecycle.triage.{
-  Triage,
-  TriageEnv,
-  TriageQuestion,
-  TriageQuestions,
-  TriageRecords,
-  TriageSpeech
-}
+import grit.lifecycle.triage.{Triage, TriageEnv, TriageQuestions, TriageRecords, TriageSpeech}
 import grit.models.StubClassifier
 
 import utest.*
@@ -81,10 +74,10 @@ object PullTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "pull writes the corpus's cases' live tags and each shadow's answers as rows at the focus each was said at, a question set's under its names and one of both forms refused, lists the messages no corpus holds, and counts shadows that ended keeping nothing"
+      "pull writes the corpus's cases' live tags and each shadow's answers as rows at the focus each was said at, a question set's under its names, a wording's in order and one of both forms refused, lists the messages no corpus holds, and counts shadows that ended keeping nothing"
     ) {
-      val (words, ghost, set, mixed) =
-        (named("words"), named("ghost"), named("set"), named("mixed"))
+      val (words, ghost, set, mixed, legacy) =
+        (named("words"), named("ghost"), named("set"), named("mixed"), named("legacy"))
       val config = TestPostgres.freshDatabase("harness_pull")
       val engine = LiveEngine.open(config, "test")
       try {
@@ -146,16 +139,8 @@ object PullTests extends TestSuite {
               engine.shadows,
               // `ghost` is swept but not declared here: its shadows ask nothing, keep nothing.
               Map(
-                words -> ShadowAsking(
-                  ShadowQuestion.Worded(TriageQuestion.Wording.Shipped),
-                  "stub",
-                  new StubClassifier
-                ),
-                set -> ShadowAsking(
-                  ShadowQuestion.Named(TriageQuestions.V2),
-                  "stub",
-                  new StubClassifier
-                )
+                words -> ShadowAsking(TriageQuestions.V1, "stub", new StubClassifier),
+                set -> ShadowAsking(TriageQuestions.V2, "stub", new StubClassifier)
               ),
               KnowledgeSources.Empty,
               engine.db,
@@ -193,7 +178,8 @@ object PullTests extends TestSuite {
         assert(engine.sweep(Instant.now()).map(_.shadowed.size) == Right(9))
         assert(eventually(engine.unfinished() == Right(0)))
         // `mixed` is never declared: its rows are written here, one a wording's and one a
-        // question set's, as a name redeclared from one to the other would leave them.
+        // question set's, as a name redeclared from one to the other would leave them; and
+        // `legacy`'s, a wording's each, as a shadow kept them before a wording was a set.
         val entries = tagged.toOption.getOrElse(Vector.empty).map(_.entry)
         val usage = Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, Some(BigDecimal(0)))
         def answered(answers: ShadowAnswers) =
@@ -208,6 +194,22 @@ object PullTests extends TestSuite {
           .foreach((entry, row) =>
             LiveDb.transaction(config)(engine.shadows.record(entry, mixed, row, Instant.now())) ==>
               Right(true)
+          )
+        val chosen = Answer
+          .choice(
+            Vector("question" -> 0.75, "answer" -> 0.0, "decision" -> 0.25, "announcement" -> 0.0)
+              .appended("chatter" -> 0.0)
+              .map(Answer.Weight(_, _))
+          )
+          .getOrElse(sys.error("a choice"))
+        val worded = Vector(chosen, Answer.YesNo(0.5), Answer.YesNo(0.25), Answer.YesNo(0.125))
+        entries
+          .take(2)
+          .foreach(entry =>
+            LiveDb.transaction(config)(
+              engine.shadows
+                .record(entry, legacy, answered(ShadowAnswers.Worded(worded)), Instant.now())
+            ) ==> Right(true)
           )
         val reader = Reader.open(config)
         val (corpus, pulled) =
@@ -224,7 +226,7 @@ object PullTests extends TestSuite {
                   "c",
                   Digest.text("c"),
                   c.cases,
-                  Vector(words, ghost, set, mixed),
+                  Vector(words, ghost, set, mixed, legacy),
                   Instant.EPOCH,
                   Instant.now()
                 )
@@ -245,7 +247,17 @@ object PullTests extends TestSuite {
           Vector(Some(Focus.Open), Some(Focus.Focused)),
           Pull.Kept,
           Vector(
-            (words, ("worded", "shadow-words", None, ids.take(2).zip(foci)), 0, 0),
+            (
+              words,
+              (
+                "named",
+                "shadow-words",
+                Some(Vector("kind", "waiting", "durable", "helps").map(qn)),
+                ids.take(2).zip(foci)
+              ),
+              0,
+              0
+            ),
             (ghost, ("worded", "shadow-ghost", None, Vector.empty), 3, 0),
             (
               set,
@@ -258,32 +270,46 @@ object PullTests extends TestSuite {
               0,
               0
             ),
-            (mixed, ("mixed 1 worded, 1 named", "", None, Vector.empty), 0, 1)
+            (mixed, ("mixed 1 worded, 1 named", "", None, Vector.empty), 0, 1),
+            (legacy, ("worded", "shadow-legacy", None, ids.take(2).zip(foci)), 0, 1)
           ),
           ids.drop(2),
           0
         )
-        // The stub answers alike live and in the shipped wording: the kept row keeps the
-        // likeliest kind's probability and every yes/no exactly.
+        // V1 is live's question as a set: for each case it sends the request the corpus
+        // rebuilt as live's, and the stub answers it alike, so the likeliest kind's
+        // probability and waiting are live's kept tags exactly.
         val kept = Answers.of(pulled.live.rows).triage
-        val shadowed = pulled.shadows
-          .collectFirst { case Pull.Pulled.Shadow(_, ShadowLog.Worded(log), _, _) =>
-            Answers.of(log.rows)
+        val v1 = pulled.shadows
+          .collectFirst { case Pull.Pulled.Shadow(`words`, ShadowLog.Named(log), _, _) =>
+            log.rows
           }
-          .getOrElse(Answers.of(Vector.empty))
-          .triage
-        ids
+          .getOrElse(Vector.empty)
+        v1.map(r => (r.id, r.request)) ==> pulled.live.rows.map(r => (r.id, r.request))
+        def asKept(answers: VectorMap[QuestionName, Answer]) = for {
+          kind <- answers
+            .get(qn("kind"))
+            .collect { case Answer.Choice(_, ws, _) => ws }
+            .flatMap(_.maxByOption(_.probability))
+          waiting <- answers.get(qn("waiting")).collect { case Answer.YesNo(p) => p }
+        } yield (kind.key, Some(kind.probability), waiting)
+        v1.map(r =>
+          r.outcome match {
+            case Outcome.Answered(answers) => r.id -> asKept(answers)
+            case _ => r.id -> None
+          }
+        ) ==> ids
           .take(2)
           .map(id =>
-            kept
+            id -> kept
               .get(id)
-              .map(a => (a.mean.likeliest, a.mean.kinds.get(a.mean.likeliest), a.mean.waiting))
-          ) ==> ids
-          .take(2)
-          .map(id =>
-            shadowed
-              .get(id)
-              .map(a => (a.mean.likeliest, a.mean.kinds.get(a.mean.likeliest), a.mean.waiting))
+              .map(a =>
+                (
+                  Kind.written(a.mean.likeliest),
+                  a.mean.kinds.get(a.mean.likeliest),
+                  a.mean.waiting
+                )
+              )
           )
         assert(ids.headOption.flatMap(kept.get).map(_.mean.waiting) == Some(0.3))
       } finally engine.close()

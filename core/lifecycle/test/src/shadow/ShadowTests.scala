@@ -128,7 +128,7 @@ object ShadowTests extends TestSuite {
     }
 
     test(
-      "a shadow asks its variant once, in its wording, and keeps every answer, the digest, both models and the latency"
+      "a v1 variant asks once, in its wording, and keeps kind, waiting, durable and helps under their names, the digest, both models and the latency"
     ) {
       val w = new World
       val t = w.hear("standup moves to 10:00 from Monday", "Ana", 0)
@@ -149,17 +149,20 @@ object ShadowTests extends TestSuite {
         "announcement" -> 0.125,
         "chatter" -> 0.0
       )
-      w.kept(shadow.triage, Words) ==> Some(
-        Shadowed.Answered(
-          digest(w, t, Reworded).getOrElse("no request"),
-          ShadowAnswers.Worded(
-            Answer.choice(weights.map(Answer.Weight(_, _))).toVector ++
-              Vector(Answer.YesNo(0.125), Answer.YesNo(0.875), Answer.YesNo(0.25))
-          ),
-          Spent,
-          "jev-variant",
-          "jev-1.13.0",
-          250.millis
+      keptInOrder(w, t, Words) ==> Some(
+        Right(
+          (
+            digest(w, t, Reworded).getOrElse("no request"),
+            Answer.choice(weights.map(Answer.Weight(_, _))).toVector.map("kind" -> _) ++ Vector(
+              "waiting" -> Answer.YesNo(0.125),
+              "durable" -> Answer.YesNo(0.875),
+              "helps" -> Answer.YesNo(0.25)
+            ),
+            Spent,
+            "jev-variant",
+            "jev-1.13.0",
+            250.millis
+          )
         )
       )
       // Triage's own tags are not the shadow's to write.

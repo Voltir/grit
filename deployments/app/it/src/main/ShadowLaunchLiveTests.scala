@@ -28,7 +28,7 @@ import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
 import grit.kit.environment.Secrets
 import grit.kit.run.Launch
-import grit.lifecycle.shadow.{ShadowQuestion, ShadowVariant}
+import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.{TriageQuestion, TriageQuestions}
 import grit.models.StubClassifier
 import grit.turn.{Turn, TurnLoop}
@@ -159,7 +159,7 @@ object ShadowLaunchLiveTests extends TestSuite {
     ) {
       val variant = ShadowVariant(
         Words,
-        ShadowQuestion.Worded(
+        TriageQuestions.v1(
           TriageQuestion.Wording.Shipped.copy(waiting = "Is anyone waiting on new_message?")
         ),
         Some("jev-variant"),
@@ -175,11 +175,15 @@ object ShadowLaunchLiveTests extends TestSuite {
       kept match {
         // The stub answers the marked kind, and the variant's model is the one it names.
         case Some(Shadowed.Answered(_, answers, _, requested, answered, _)) =>
-          val worded = answers match {
-            case ShadowAnswers.Worded(as) => Some(as.size)
-            case ShadowAnswers.Named(_) => None
+          val names = answers match {
+            case ShadowAnswers.Named(as) => Some(as.keys.map(QuestionName.value).toVector)
+            case ShadowAnswers.Worded(_) => None
           }
-          (requested, answered, worded) ==> ("jev-variant", StubClassifier.Model, Some(4))
+          (requested, answered, names) ==> (
+            "jev-variant",
+            StubClassifier.Model,
+            Some(Vector("kind", "waiting", "durable", "helps"))
+          )
         case other => throw new java.lang.AssertionError(s"not answered: $other")
       }
     }
@@ -198,7 +202,7 @@ object ShadowLaunchLiveTests extends TestSuite {
         .getOrElse(sys.error("a catalog"))
       val variant = ShadowVariant(
         asks,
-        ShadowQuestion.Named(TriageQuestions.V2),
+        TriageQuestions.V2,
         None,
         DailyCap.of("0.01").getOrElse(sys.error("a cap")),
         Instant.EPOCH

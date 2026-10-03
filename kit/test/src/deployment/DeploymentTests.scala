@@ -62,8 +62,7 @@ object DeploymentTests extends TestSuite {
     ) {
       def variant(name: String) = grit.lifecycle.shadow.ShadowVariant(
         grit.core.id.ShadowName.of(name).getOrElse(sys.error("a name")),
-        grit.lifecycle.shadow.ShadowQuestion
-          .Worded(grit.lifecycle.triage.TriageQuestion.Wording.Shipped),
+        grit.lifecycle.triage.TriageQuestions.V1,
         None,
         grit.core.spend.DailyCap.of("0.01").getOrElse(sys.error("a cap")),
         java.time.Instant.EPOCH
@@ -90,28 +89,21 @@ object DeploymentTests extends TestSuite {
     }
 
     test(
-      "a review is refused unless it names a shadow declared as a question set, " +
+      "a review is refused unless it names a declared shadow, whose set's gate it keeps, " +
         "or while speaking is off: live's gate would never be reached"
     ) {
       def name(s: String) = grit.core.id.ShadowName.of(s).getOrElse(sys.error("a name"))
-      def variant(called: String, question: grit.lifecycle.shadow.ShadowQuestion) =
+      def variant(called: String, questions: grit.lifecycle.triage.TriageQuestions) =
         grit.lifecycle.shadow.ShadowVariant(
           name(called),
-          question,
+          questions,
           None,
           grit.core.spend.DailyCap.of("0.01").getOrElse(sys.error("a cap")),
           java.time.Instant.EPOCH
         )
       val shadows = Vector(
-        variant(
-          "v2",
-          grit.lifecycle.shadow.ShadowQuestion.Named(grit.lifecycle.triage.TriageQuestions.V2)
-        ),
-        variant(
-          "words",
-          grit.lifecycle.shadow.ShadowQuestion
-            .Worded(grit.lifecycle.triage.TriageQuestion.Wording.Shipped)
-        )
+        variant("v2", grit.lifecycle.triage.TriageQuestions.V2),
+        variant("v1", grit.lifecycle.triage.TriageQuestions.V1)
       )
       val speaking = grit.core.speech.Speaking.Shadow(
         grit.core.speech.Limits.suggested(
@@ -123,18 +115,18 @@ object DeploymentTests extends TestSuite {
       def reviewed(of: String, speaks: grit.core.speech.Speaking = speaking) =
         Deployments
           .of(speaking = speaks, shadows = shadows, review = Some(reviewing(of)))
-          .map(_.review.map(_.reviewing.shadow))
+          .map(_.review.map(r => (r.reviewing.shadow, r.gate)))
       (
         reviewed("undeclared"),
-        reviewed("words"),
+        reviewed("v1"),
         reviewed("v2", grit.core.speech.Speaking.Off),
         reviewed("v2"),
         Deployments.of(speaking = speaking, shadows = shadows).map(_.review)
       ) ==> (
         Left(DeploymentRefusal.ReviewUngated(name("undeclared"))),
-        Left(DeploymentRefusal.ReviewUngated(name("words"))),
+        Right(Some((name("v1"), grit.lifecycle.triage.TriageQuestions.V1.speak))),
         Left(DeploymentRefusal.ReviewUnspoken),
-        Right(Some(name("v2"))),
+        Right(Some((name("v2"), grit.lifecycle.triage.TriageQuestions.V2.speak))),
         Right(None)
       )
     }

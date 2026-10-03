@@ -52,7 +52,7 @@ import grit.core.triage.{
 }
 import grit.dbos.sql.TestTx
 import grit.kit.deployment.{Deployments, ShadowReview}
-import grit.lifecycle.shadow.{ShadowQuestion, ShadowVariant}
+import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.TriageQuestions
 
 import utest.*
@@ -80,7 +80,7 @@ object PickingTests extends TestSuite {
     val limits = Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("a cap")))
     val variant = ShadowVariant(
       shadow,
-      ShadowQuestion.Named(TriageQuestions.V2),
+      TriageQuestions.V2,
       None,
       DailyCap.of("0.01").getOrElse(sys.error("a cap")),
       Instant.EPOCH

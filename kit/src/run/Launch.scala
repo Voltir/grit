@@ -358,25 +358,25 @@ private[grit] object Launch {
             val model = v.model.getOrElse(config.model)
             others.updated(
               v.name,
-              ShadowAsking(v.question, model, new JevClassifier(config.copy(model = model)))
+              ShadowAsking(v.questions, model, new JevClassifier(config.copy(model = model)))
             )
           case (Topics.Stub, _) =>
             others.updated(
               v.name,
-              ShadowAsking(v.question, v.model.getOrElse(StubClassifier.Model), new StubClassifier)
+              ShadowAsking(v.questions, v.model.getOrElse(StubClassifier.Model), new StubClassifier)
             )
           case (Topics.Jev, None) =>
             others.updated(
               v.name,
               ShadowAsking(
-                v.question,
+                v.questions,
                 v.model.getOrElse(JevConfig.DefaultModel),
                 Classifier.none("JEV_API_KEY is not set")
               )
             )
           // Deployment.of refuses shadows with topics off.
           case (Topics.Off(reason), _) =>
-            others.updated(v.name, ShadowAsking(v.question, "none", Classifier.none(reason)))
+            others.updated(v.name, ShadowAsking(v.questions, "none", Classifier.none(reason)))
         }
     }
 

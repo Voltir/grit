@@ -2,12 +2,11 @@ package grit.lifecycle.shadow
 
 import scala.concurrent.duration.*
 
-import grit.core.classify.{Answers, Classifier, ClassifierError, Request}
 import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, ShadowName, ShadowRef, WorkflowId}
-import grit.core.triage.{KnowledgeSources, ShadowAnswers, Shadowed, Tags}
-import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageQuestions, TriageRecipe}
+import grit.core.triage.{KnowledgeSources, ShadowAnswers, Shadowed}
+import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
 
 /** The shadow workflow: one per declared variant and heard message ([[ShadowRef]]), on a
   * queue of its own, so it never delays a triage. What it makes is recorded and never acted
@@ -15,9 +14,9 @@ import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageQuestions, Tria
   * ([[grit.core.triage.Shadowing]]): what is enqueued is already within the cap.
   *
   *   1. `ask` — the heard message's state rebuilt as triage builds it, from the store as it
-  *      stands now ([[TriageInput.read]]), and the variant's question asked of it once
-  *      ([[ShadowQuestion]]); nothing is asked when the message or its thread cannot be
-  *      read, when the variant is not declared, or when its wording repeats a key.
+  *      stands now ([[TriageInput.read]]), and the variant's question set asked of it once
+  *      ([[ShadowVariant]]); nothing is asked when the message or its thread cannot be read,
+  *      or when the variant is not declared.
   *   1. `record` — what it made of the message kept
   *      ([[grit.core.triage.TriageShadows.record]]); ignored when the message is gone or
   *      that variant shadowed it already.
@@ -62,67 +61,21 @@ object Shadow {
       case Some(variant) =>
         TriageInput
           .read(env.reads, env.rooms, env.db, shadow.triage, env.tuning, TriageRecipe.Shipped)
-          .flatMap { read =>
-            variant.question match {
-              case ShadowQuestion.Worded(wording) =>
-                worded(env.clock, variant, wording, read.state).map(read.entry -> _)
-              case ShadowQuestion.Named(questions) =>
-                // A conversation not found is at no place, so no source covers it.
-                val sources = read.place.fold(KnowledgeSources.Empty)(env.sources.at)
-                Right(read.entry -> named(env.clock, variant, questions, read.state, sources))
-            }
+          .map { read =>
+            // A conversation not found is at no place, so no source covers it.
+            val sources = read.place.fold(KnowledgeSources.Empty)(env.sources.at)
+            read.entry -> named(env.clock, variant, read.state, sources)
           }
     }
 
-  /** What `variant` made of `state` asked triage's question in `wording`; `Left` when the
-    * wording repeats a key, so nothing was asked.
-    */
-  private def worded(
-      clock: Clock^,
-      variant: ShadowAsking^,
-      wording: TriageQuestion.Wording,
-      state: TriageQuestion.State
-  ): Either[String, Shadowed] = {
-    val call = new Call
-    val timed = Classifier.around(variant.classifier) { (request, ask) =>
-      val start = clock.millis()
-      val answered = ask()
-      call.made = Some((request, answered, (clock.millis() - start).millis))
-      answered
-    }
-    val tags = TriageQuestion.judge(timed, wording, state)
-    call.made match {
-      case None => Left("the variant's wording repeats a key")
-      case Some((request, Left(error), latency)) =>
-        Right(Shadowed.Failed(request.digest, error.kind, latency))
-      case Some((request, Right(answers), latency)) =>
-        tags match {
-          case Tags.Weighed(_, _, _, _, _, _, _) =>
-            Right(
-              Shadowed.Answered(
-                request.digest,
-                ShadowAnswers.Worded(answers.answers),
-                answers.usage,
-                variant.requested,
-                answers.model,
-                latency
-              )
-            )
-          // Answers came back but did not read as triage's: unreadable.
-          case Tags.Unanswered(_) =>
-            Right(Shadowed.Failed(request.digest, ClassifierError.Kind.Unreadable, latency))
-        }
-    }
-  }
-
-  /** What `variant` made of `state` asked `questions` with `sources`. */
+  /** What `variant` made of `state` asked its questions with `sources`. */
   private def named(
       clock: Clock^,
       variant: ShadowAsking^,
-      questions: TriageQuestions,
       state: TriageQuestion.State,
       sources: KnowledgeSources
   ): Shadowed = {
+    val questions = variant.questions
     val request = questions.request(state, sources)
     val start = clock.millis()
     val answered = questions.ask(variant.classifier, state, sources)
@@ -139,14 +92,6 @@ object Shadow {
           latency
         )
     }
-  }
-
-  /** The one call an `ask` makes, as the classifier was handed it. */
-  private final class Call {
-    // Written once by the classifier `ask` builds, which is asked only inside that `ask`,
-    // and read after it returns: no other code can observe it.
-    @caps.unsafe.untrackedCaptures
-    var made: Option[(Request, Either[ClassifierError, Answers], FiniteDuration)] = None
   }
 
   private def shown(row: Shadowed): String = row match {
