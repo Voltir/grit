@@ -6,9 +6,16 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
 import grit.core.id.{ConversationId, EntryId, PrincipalId, QuestionName, ShadowName, TurnRef}
+import grit.core.inbox.InMemoryInbox
 import grit.core.speech.{Decision, InMemorySpeechStore}
 import grit.core.store.{ConversationStore, Entry, EntryStore, Payload, StoreError, Tx}
-import grit.core.triage.{ShadowAnswers, Shadowed, TriageShadows}
+import grit.core.triage.{
+  InMemoryTriageShadows,
+  InMemoryTriageStore,
+  ShadowAnswers,
+  Shadowed,
+  TriageShadows
+}
 
 /** An in-memory [[ReviewStore]] for tests, keeping [[ReviewContract]], over the stores it is
   * given: a candidate is a heard message in `entries`, decided on in `speech`, answered in
@@ -161,6 +168,22 @@ final class InMemoryReviews(
 }
 
 object InMemoryReviews {
+
+  /** Reviews over `inbox`'s entries, conversations and speech, the shadows' answers kept in
+    * `shadows`.
+    */
+  def over(inbox: InMemoryInbox, shadows: TriageShadows): InMemoryReviews =
+    new InMemoryReviews(inbox.entries, inbox.conversations, inbox.speech, shadows)
+
+  /** Reviews over `inbox`'s stores, with shadows' answers of their own, which none records. */
+  def over(inbox: InMemoryInbox): InMemoryReviews =
+    over(
+      inbox,
+      new InMemoryTriageShadows(
+        inbox.entries,
+        new InMemoryTriageStore(inbox.entries, inbox.periods)
+      )
+    )
 
   /** A considered message's review: its prompt's address and when it was posted, and its
     * label.

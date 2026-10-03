@@ -17,6 +17,7 @@ import grit.core.edge.{
 import grit.core.id.{EdgeName, PrincipalId}
 import grit.core.inbox.InMemoryInbox
 import grit.core.place.{Place, Service}
+import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
 import grit.core.store.{Jot, StoreError, Tx}
 import grit.core.tool.{Retry, ToolName, ToolSet}
@@ -73,6 +74,7 @@ object McpEdgeTests extends TestSuite {
       inbox,
       inbox.principals,
       new InMemoryDeliveries,
+      InMemoryReviews.over(inbox),
       FakeJot,
       if (reachable) edges else Unreachable
     )

@@ -86,7 +86,14 @@ object McpEdgeLiveTests extends TestSuite {
           McpServer.of("github", fake.endpoint, Token, McpScope.Open).fold(sys.error(_), identity)
         val edge = McpEdge.serving(Github, Vector(server)).fold(sys.error(_), identity)
         val stores =
-          EdgeStores(engine.inbox, engine.principals, engine.deliveries, engine.jot, engine)
+          EdgeStores(
+            engine.inbox,
+            engine.principals,
+            engine.deliveries,
+            engine.reviews,
+            engine.jot,
+            engine
+          )
         edge.open(stores, Map("FAKE_MCP_TOKEN" -> fake.token), _ => ()) match {
           case Left(refused) => sys.error(refused.message)
           case Right(open) =>

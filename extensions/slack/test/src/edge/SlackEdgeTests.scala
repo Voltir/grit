@@ -6,6 +6,7 @@ import grit.core.edge.{EdgeStores, InMemoryDeliveries, InMemoryEdges, Part}
 import grit.core.id.{CallSlot, ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.review.InMemoryReviews
 import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Jot, Origin, Payload, StoreError, Tx}
@@ -64,7 +65,14 @@ object SlackEdgeTests extends TestSuite {
       new SlackEdge(
         slack,
         Self(TeamId(Team), UserId(Bot)),
-        EdgeStores(inbox, inbox.principals, deliveries, FakeJot, new InMemoryEdges),
+        EdgeStores(
+          inbox,
+          inbox.principals,
+          deliveries,
+          InMemoryReviews.over(inbox),
+          FakeJot,
+          new InMemoryEdges
+        ),
         listening,
         s => logged = logged :+ s
       )

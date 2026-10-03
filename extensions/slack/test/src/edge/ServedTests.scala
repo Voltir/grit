@@ -17,6 +17,7 @@ import grit.core.edge.{
 import grit.core.id.{PrincipalId, SourceId}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.review.InMemoryReviews
 import grit.core.speech.Rate
 import grit.core.spend.Budget
 import grit.core.store.{Jot, Origin, StoreError, Tx}
@@ -59,7 +60,14 @@ object ServedTests extends TestSuite {
     val inbox: InMemoryInbox = InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None))
     val edges: InMemoryEdges = new InMemoryEdges
     val stores =
-      EdgeStores(inbox, inbox.principals, new InMemoryDeliveries, FakeJot, edges)
+      EdgeStores(
+        inbox,
+        inbox.principals,
+        new InMemoryDeliveries,
+        InMemoryReviews.over(inbox),
+        FakeJot,
+        edges
+      )
 
     /** What opening logged, in order. */
     @caps.unsafe.untrackedCaptures

@@ -10,6 +10,7 @@ import grit.core.edge.{
 }
 import grit.core.id.EdgeName
 import grit.core.inbox.InMemoryInbox
+import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
 import grit.core.store.{Jot, StoreError, Tx}
 import grit.dbos.sql.TestTx
@@ -29,7 +30,14 @@ object ServingTests extends TestSuite {
 
   private val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))
   private val stores =
-    EdgeStores(inbox, inbox.principals, new InMemoryDeliveries, FakeJot, new InMemoryEdges)
+    EdgeStores(
+      inbox,
+      inbox.principals,
+      new InMemoryDeliveries,
+      InMemoryReviews.over(inbox),
+      FakeJot,
+      new InMemoryEdges
+    )
 
   /** An edge named `called` that records, in `seen`, each open, deliver and close; it refuses
     * to open when `refuse` is set, and its deliveries fail when `unreadable`.
