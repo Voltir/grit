@@ -94,6 +94,47 @@ object StitchJson {
     case _: Placed.Unread => Unread
   }
 
+  /** [[Seen.exchanges]]: the state's `exchanges`, each `{key, opening, latest, record}` and
+    * each message `{from, text, ago}`, as [[Stitching.shown]] writes them.
+    */
+  private[stitch] def exchanges(seen: Seen): Vector[Seen.Exchange] = {
+    def line(v: ujson.Value): Either[String, Seen.Line] =
+      for {
+        o <- obj(v)
+        from <- str(o, "from")
+        text <- str(o, "text")
+        ago <- str(o, "ago")
+      } yield Seen.Line(from, text, ago)
+    def lines(v: Option[ujson.Value]): Either[String, Vector[Seen.Line]] =
+      v.flatMap(_.arrOpt)
+        .toRight("latest: expected an array")
+        .flatMap(_.toVector.foldLeft[Either[String, Vector[Seen.Line]]](Right(Vector.empty)) {
+          (acc, x) => acc.flatMap(done => line(x).map(done :+ _))
+        })
+    def exchange(v: ujson.Value, offer: Seen.Offer): Either[String, Seen.Exchange] =
+      for {
+        o <- obj(v)
+        key <- str(o, "key")
+        opening <- o.get("opening").toRight("no opening").flatMap(line)
+        latest <- lines(o.get("latest"))
+        record <- o.get("record") match {
+          case None | Some(ujson.Null) => Right(None)
+          case Some(r) => r.strOpt.toRight("record: expected a string").map(Some(_))
+        }
+      } yield Seen.Exchange(key, opening, latest, record, offer)
+    val read = for {
+      o <- obj(seen.state)
+      shown <- o.get("exchanges").flatMap(_.arrOpt).toRight("exchanges: expected an array")
+      _ <- Either.cond(shown.size == seen.offered.size, (), "exchanges: not one per offer")
+      all <- shown.toVector
+        .zip(seen.offered)
+        .foldLeft[Either[String, Vector[Seen.Exchange]]](Right(Vector.empty)) {
+          case (acc, (v, offer)) => acc.flatMap(done => exchange(v, offer).map(done :+ _))
+        }
+    } yield all
+    read.getOrElse(Vector.empty)
+  }
+
   private def writeSeen(s: Seen): ujson.Value = ujson.Obj(
     "state" -> s.state,
     "offered" -> ujson.Arr.from(s.offered.map { o =>

@@ -167,6 +167,65 @@ object StitchingTests extends TestSuite {
       }
     }
 
+    test("a placement's seen reads back its exchanges as shown, in order, each with its offer") {
+      val engine = heard("engine", "the Engine contract term?", 30 * 60)
+      val follower = heard("real", "Is this a real question", 10 * 60)
+      val lunch = heard("lunch", "lunch?", 60)
+      val es = Stitching.offer(
+        first,
+        room(),
+        Vector(follower, lunch),
+        Vector(engine),
+        Vector.empty,
+        Vector(Link(follower.conversation, engine.conversation)),
+        Scope.Room,
+        Tuning.Default
+      )
+      val speakers = Speakers(Map(engine.entry.id -> "Nick"))
+      Stitching.place(
+        new Scripted(None),
+        Offer(first, "David", es, speakers),
+        Tuning.Default
+      ) match {
+        case Placed.Unread(_, seen) =>
+          seen.exchanges ==> Vector(
+            Seen.Exchange(
+              "exchange 1",
+              Seen.Line("Someone", "lunch?", "1 minute"),
+              Vector.empty,
+              None,
+              Seen.Offer(lunch.conversation, Offered.Recent(1), None)
+            ),
+            Seen.Exchange(
+              "exchange 2",
+              Seen.Line("Nick", "the Engine contract term?", "30 minutes"),
+              Vector(Seen.Line("Someone", "Is this a real question", "10 minutes")),
+              None,
+              Seen.Offer(engine.conversation, Offered.Recent(2), None)
+            )
+          )
+        case other => throw new java.lang.AssertionError(s"not unread: $other")
+      }
+    }
+
+    test("a seen whose state does not read, or shows other than its offers, has no exchanges") {
+      val offer = Seen.Offer(first.conversation, Offered.Recent(1), None)
+      val exchange = ujson.Obj(
+        "key" -> "exchange 1",
+        "opening" -> ujson.Obj("from" -> "Nick", "text" -> "term?", "ago" -> "1 minute"),
+        "latest" -> ujson.Arr(),
+        "record" -> "term: 3 years"
+      )
+      val read = Seen(ujson.Obj("exchanges" -> ujson.Arr(exchange)), Vector(offer), Tuning.Default)
+      read.exchanges.map(e => (e.key, e.record, e.offer)) ==>
+        Vector(("exchange 1", Some("term: 3 years"), offer))
+      read.copy(state = ujson.Obj("new_message" -> "real?")).exchanges ==> Vector.empty
+      read
+        .copy(state = ujson.Obj("exchanges" -> ujson.Arr(ujson.Obj("key" -> "exchange 1"))))
+        .exchanges ==> Vector.empty
+      read.copy(offered = Vector(offer, offer)).exchanges ==> Vector.empty
+    }
+
     test("an excerpt keeps the opening, then the messages nearest the end, a gap between") {
       val opening = heard("engine", "where did we land on the Engine contract term?", 60)
       val strand = Vector(

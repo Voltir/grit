@@ -18,10 +18,33 @@ enum Offered {
   * offered exchange's root, why it was offered and the probability given it (`None` when the
   * answer did not read), and the `tuning` in force.
   */
-final case class Seen(state: ujson.Value, offered: Vector[Seen.Offer], tuning: Tuning)
+final case class Seen(state: ujson.Value, offered: Vector[Seen.Offer], tuning: Tuning) {
+
+  /** The exchanges [[state]] shows, in the order offered, each with its [[offered]] entry at
+    * the same position; empty when the state does not read as stitching's, or shows a
+    * different number of exchanges than were offered.
+    */
+  def exchanges: Vector[Seen.Exchange] = StitchJson.exchanges(this)
+}
 
 object Seen {
   final case class Offer(root: ConversationId, why: Offered, p: Option[Probability])
+
+  /** A message as the state shows it: who said it (`from`), its words, and how long before the
+    * first message it was said (`ago`, as in "3 minutes").
+    */
+  final case class Line(from: String, text: String, ago: String)
+
+  /** An exchange as the state shows it, under `key`: its `opening`, its `latest` messages, its
+    * record's headline when it closed with one, and its `offer`.
+    */
+  final case class Exchange(
+      key: String,
+      opening: Line,
+      latest: Vector[Line],
+      record: Option[String],
+      offer: Offer
+  )
 }
 
 /** What became of a first message put to the classifier, with what it `seen`. Only
