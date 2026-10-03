@@ -21,7 +21,7 @@ choices were:
 Decision:
 
 - **The conversation stays its thread; stitching adds a link.** When a stitchable
-  conversation's first message arrives (`Audience.stitchable`: a Slack thread, whose first
+  conversation's first message arrives (`Origin.stitchable`: a Slack thread, whose first
   message was said at a channel's top level), a classifier judges whether it continues an
   exchange in its room. If it does, a stitch is kept: the conversation follows that
   exchange's root. A **strand** is a root and the conversations that follow it directly, a

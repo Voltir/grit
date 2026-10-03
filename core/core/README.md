@@ -60,7 +60,7 @@ In dependency order:
   of target is kept for, and a `Tombstone`, the decision to delete one. ← `id`, `period`
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),
   `Jot` (short writes from inside a step), `Entry`,
-  its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin` (and its `Audience`: who its messages are for),
+  its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin` (and its `Audience`: who its messages are for; its `Focus` at a message's `Position`: how many topics interleave where it is said),
   `ConversationStore` (each conversation's origin and who began it), `PromptStore` (each
   turn's system prompt, its fragments kept by id), `UsageLedger`, `ModelProfileStore` (which profile each turn ran
   under), `ModelSettingStore` (settings of pairs approved at runtime), `PeriodStore` (which

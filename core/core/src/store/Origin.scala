@@ -38,6 +38,21 @@ enum Origin {
     case Task(_, _) => Audience.Nobody
   }
 
+  /** The focus of a message said `at` its position in its conversation: a Slack thread's
+    * opening is said at its channel's top level, so `Open`, and its replies `Focused`; every
+    * message of a TUI session or a task's run `Focused`.
+    */
+  def focus(at: Position): Focus = (this, at) match {
+    case (Slack(_, _, _), Position.Opening) => Focus.Open
+    case (Slack(_, _, _), Position.Reply) => Focus.Focused
+    case (Tui(_, _) | Task(_, _), _) => Focus.Focused
+  }
+
+  /** Whether its conversation's first message may continue an exchange elsewhere in its room
+    * ([[grit.core.stitch.Stitching]]): when that message is said where topics interleave.
+    */
+  def stitchable: Boolean = focus(Position.Opening) == Focus.Open
+
   /** The place its conversation shares with its neighbours, what a scope's `room` stands
     * for ([[grit.core.place.Scope]]): a TUI session's directory, a Slack thread's channel
     * (`slack:{team}/{channel}`), a task's name (`task:{name}`).
@@ -70,9 +85,7 @@ enum Audience {
   /** The person running grit, at a terminal on this machine: a TUI session. */
   case Operator
 
-  /** Colleagues in a workspace: a Slack thread, begun by a message said at a channel's top
-    * level.
-    */
+  /** Colleagues in a workspace: a Slack thread. */
   case Colleagues
 
   /** No one: a task's run. */
@@ -83,13 +96,21 @@ enum Audience {
     case Operator => true
     case Colleagues | Nobody => false
   }
+}
 
-  /** Whether a conversation's first message may continue an exchange elsewhere in its room
-    * ([[grit.core.stitch.Stitching]]): colleagues' threads. A TUI session or a task's run is
-    * begun on purpose.
+/** How many topics interleave where a message is said. */
+enum Focus {
+
+  /** One: the container is the topic (a thread's reply, a TUI session, a task's run). */
+  case Focused
+
+  /** Many: a channel's top level, where each post may continue any recent exchange or begin
+    * one.
     */
-  def stitchable: Boolean = this match {
-    case Colleagues => true
-    case Operator | Nobody => false
-  }
+  case Open
+}
+
+/** Where a message stands in its conversation: its first message, or one after it. */
+enum Position {
+  case Opening, Reply
 }

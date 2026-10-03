@@ -21,7 +21,7 @@ object Along {
       from: Instant,
       until: Instant
   )(using Tx^): Either[StoreError, Strand.Read] =
-    if (!conversation.origin.audience.stitchable) Right(Strand.Read.empty)
+    if (!conversation.origin.stitchable) Right(Strand.Read.empty)
     else {
       val c = conversation.id
       val room = conversation.origin.room

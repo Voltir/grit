@@ -135,7 +135,7 @@ object Stitching {
       )
     }.flatMap { o =>
       (o.conversation, o.first) match {
-        case (Some(c), Some(first)) if c.origin.audience.stitchable =>
+        case (Some(c), Some(first)) if c.origin.stitchable =>
           room(reads, db, c, first, o.scope, tuning, keptAsks).map(_.map(first.id -> _))
         case _ => Right(None)
       }
