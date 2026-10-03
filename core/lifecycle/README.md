@@ -60,7 +60,10 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   (`grit.core.triage`) a draft is derived from; `TriageQuestions.v1` is the set triage
   first asked, in a `TriageQuestion.Wording` (`Wording.Shipped`, the words it shipped in),
   and `TriageQuestions.V2` the one that replaced it; `TriageQuestions.Shipped` names the set
-  live triage asks (V2), whose gate speech may read (`Limits.drafts`). ← `transcript`
+  live triage asks (V2), whose gate speech may read (`Limits.drafts`). `Mentions` is
+  `grit.core.triage.Weighing`: live triage's set put to a message said to grit, the state built
+  as for one heard (`TriageInput.read`), after its opening's placement, waited for at most
+  `Mentions.PlacedWithin`; it keeps no tags. ← `transcript`
 - **`shadow`** — `Shadow`: a declared variant's run on a heard message already triaged,
   recorded and never acted on, on a queue of its own (`grit.dbos.workflow.Shadows`), so it
   never delays a triage: `ask` rebuilds triage's state as `triage` builds it, from the
