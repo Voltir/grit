@@ -382,15 +382,21 @@ object grit extends Module {
     }
   }
 
-  /* The assembly eval: every assembler over the same labelled cases, in a throwaway
-   * Postgres so retrieval ranks with the real pg_textsearch. Integration sources only; a
-   * report, not a gate. roadmap/mechanisms/assembly-eval.md. */
+  /* The eval's labelled cases and how they are written into a database, over core's traits
+   * alone, so the harness can build its synthetic reference from them. Its integration
+   * sources are the assembly eval: every assembler over those cases, in a throwaway Postgres
+   * so retrieval ranks with the real pg_textsearch; a report, not a gate.
+   * roadmap/mechanisms/assembly-eval.md. */
   object eval extends GritModule with Placed {
     def folder = os.sub / "eval"
-    def moduleDeps = Seq(grit.core, grit.dbos, grit.assembly, grit.models)
+    def moduleDeps = Seq(grit.core)
+
+    /* The case format, the cases as written, and their layout: no database. */
+    object test extends GritTests
 
     object it extends GritTests with LivePostgres {
-      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.dbos.it)
+      def moduleDeps =
+        super.moduleDeps ++ Seq[JavaModule](grit.dbos.it, grit.assembly, grit.models)
     }
 
     /* The eval harness: corpora captured from a database, labelled, run, scored. Runs only
@@ -399,7 +405,16 @@ object grit extends Module {
     object harness extends GritModule with Placed {
       def folder = os.sub / "eval" / "harness"
       def moduleDeps =
-        Seq(grit.core, grit.dbos, grit.turn, grit.assembly, grit.lifecycle, grit.models, grit.kit)
+        Seq(
+          grit.core,
+          grit.dbos,
+          grit.turn,
+          grit.assembly,
+          grit.lifecycle,
+          grit.models,
+          grit.kit,
+          grit.eval
+        )
       def mainClass = Some("grit.eval.harness.main.Main")
       /* So a capture records the build it ran (grit.dbos.buildInfo). */
       def runClasspath = Task { super.runClasspath() :+ grit.dbos.buildInfo() }

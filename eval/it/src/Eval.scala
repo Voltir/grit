@@ -1,29 +1,17 @@
 package grit.eval
 
-import java.time.Instant
-
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.context.{AssemblyNote, AssemblyRequest, ContextAssembler, Window}
-import grit.core.id.{
-  CloseRef,
-  ConversationId,
-  EntryId,
-  EntrySeq,
-  PeriodRef,
-  PeriodSeq,
-  PrincipalId,
-  TurnRef,
-  TurnSeq
-}
+import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
-import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, Ground, LifecycleSettings}
-import grit.core.place.{Directory, Locality, Namespace, Place, Prefix, Scope, Weight}
+import grit.core.period.LifecycleSettings
+import grit.core.place.{Locality, Scope, Weight}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
-import grit.core.store.{Entry, Nearby, Origin, Payload}
+import grit.core.store.Nearby
 import grit.dbos.engine.{Engine, LiveEngine}
-import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
+import grit.dbos.sql.TestPostgres
 import grit.models.{ModelRole, OpenRouterConfig, OpenRouterProvider}
 
 /** The assembly eval (roadmap/mechanisms/assembly-eval.md): every case in [[Cases]], as
@@ -74,18 +62,6 @@ object Eval {
       (if (live) Budgets.map(Strategy.Retrieval(_, live = true)) else Vector.empty) :+
       Strategy.Oracle
 
-  /** A case as written, or with [[FillerPerGap]] filler turns after each of its turns. */
-  enum Variant {
-    case Plain, Buried
-
-    def label: String = this match {
-      case Plain => "plain"
-      case Buried => "buried"
-    }
-  }
-
-  val FillerPerGap = 40
-
   /** One window, scored: labelled entries it holds, of how many; its estimated size; the
     * labelled entries it missed; the assembler's notes; and how many `[never]` entries it
     * holds (`strays`).
@@ -99,11 +75,9 @@ object Eval {
       strays: Int = 0
   )
 
-  /** A case written into the eval's database, one entry per line, ids
-    * `{case}/{variant}/t{turn}:{seq}`; each other conversation's `{case}/{variant}/p{i}/t{turn}:{seq}`,
-    * its periods opened (and closed) as written, its place under the case's own root
-    * (`fs:/eval/{case}/{variant}`, `task:eval/{case}/{variant}`), and the case's scope (or
-    * the whole root) within it.
+  /** A case written into the eval's database as its [[Layout]] lays it out: the turn it asks
+    * in, its `[must]` and `[never]` entries by id, every entry's message, and the scope a window
+    * for it is drawn within.
     */
   final case class Loaded(
       c: Case,
@@ -115,187 +89,22 @@ object Eval {
       scope: Scope = Scope.Off
   )
 
-  def load(engine: Engine^, config: DbConfig, c: Case, variant: Variant): Loaded = {
-    val conversation: ConversationId =
-      engine
-        .conversation(Origin.Task("eval", s"${c.name}/${variant.label}"), PrincipalId.Local)
-        .fold(e => sys.error(s"eval: $e"), identity)
-    val body = variant match {
-      case Variant.Plain => c.turns
-      case Variant.Buried =>
-        c.turns.zipWithIndex.flatMap((turn: Vector[Case.Line], i: Int) =>
-          turn +: Filler.turns(c.name.hashCode.toLong * 31 + i, FillerPerGap)
-        )
-    }
-    val turns = body :+ Vector(Case.Line(you = true, c.ask, must = false))
-    val lines = turns.zipWithIndex
-      .flatMap((turn: Vector[Case.Line], t: Int) => turn.map(line => (t, line)))
-      .zipWithIndex
-      .map { case ((t, line), seq) =>
-        (EntryId(s"${c.name}/${variant.label}/t$t:$seq"), t, seq, line)
-      }
-    LiveDb.transaction(config) {
-      lines.foreach { (id, t, seq, line) =>
-        engine.entries
-          .insert(
-            Entry(
-              id,
-              conversation,
-              TurnSeq(t.toLong),
-              None,
-              EntrySeq(seq.toLong),
-              Payload.Message(message(line)),
-              Instant.EPOCH
-            )
-          )
-          .fold(e => sys.error(s"eval: $e"), identity)
-      }
-    }
-    val others = c.elsewhere.zipWithIndex.map((e: Case.Elsewhere, i: Int) =>
-      elsewhere(engine, config, c, variant, e, i)
-    )
-    val theirs = others.flatten
-    val root = Vector("eval", c.name, variant.label)
-    val scope = c.scope.fold(
-      Scope(Vector(Prefix.At(rooted(root, "fs:/")), Prefix.At(rooted(root, "task:"))))
-    )(written => Scope(written.split("\\s+").toVector.map(w => Prefix.At(rooted(root, w)))))
-    Loaded(
-      c,
-      variant,
-      TurnRef(conversation, TurnSeq((turns.size - 1).toLong)),
-      lines.collect { case (id, _, _, line) if line.must => id } ++
-        theirs.collect { case (id, line) if line.must => id },
-      lines.map((id, _, _, line) => id -> message(line)).toMap ++
-        theirs.map((id, line) => id -> message(line)),
-      (lines.collect { case (id, _, _, line) if line.never => id } ++
-        theirs.collect { case (id, line) if line.never => id }),
-      scope
-    )
-  }
-
-  /** `written` (a place as a case writes it) under the case's `root`: `fs:/a` as
-    * `fs:/eval/{case}/{variant}/a`, `task:a` as `task:eval/{case}/{variant}/a`.
-    */
-  private def rooted(root: Vector[String], written: String): Place =
-    Place.read(written) match {
-      case Right(p) =>
-        p.segments.headOption.flatMap(Namespace.of) match {
-          case Some(ns) => Place.under(ns, root ++ p.segments.drop(1))
-          case None => sys.error(s"eval: a case's place must name a namespace: $written")
-        }
-      case Left(why) => sys.error(s"eval: $why")
-    }
-
-  /** The origin whose place is `place`: a TUI session for `fs`, a task's run for `task`. */
-  private def originAt(place: Place): Origin =
-    place.segments.headOption.flatMap(Namespace.of) match {
-      case Some(Namespace.Fs) =>
-        Origin.Tui(
-          Directory
-            .of("/" + place.segments.drop(1).mkString("/"))
-            .fold(e => sys.error(s"eval: $e"), identity),
-          "eval"
-        )
-      case Some(Namespace.Task) =>
-        Origin.Task(
-          place.segments.drop(1).headOption.getOrElse("eval"),
-          place.segments.drop(2).mkString("/")
-        )
-      case _ => sys.error(s"eval: a case's place is fs: or task:, not ${place.written}")
-    }
-
-  /** The `i`-th other conversation of `c`, written into the database: its first period's
-    * turns, open or closed with its carried lines, then any turns of its second; each
-    * entry's id and line.
-    */
-  private def elsewhere(
-      engine: Engine^,
-      config: DbConfig,
-      c: Case,
-      variant: Variant,
-      e: Case.Elsewhere,
-      i: Int
-  ): Vector[(EntryId, Case.Line)] = {
-    val root = Vector("eval", c.name, variant.label)
-    val conversation = engine
-      .conversation(originAt(rooted(root, e.place)), PrincipalId.Local)
-      .fold(x => sys.error(s"eval: $x"), identity)
-    def body(turns: Vector[Vector[Case.Line]], seed: Long) = variant match {
-      case Variant.Plain => turns
-      case Variant.Buried =>
-        turns.zipWithIndex.flatMap((turn: Vector[Case.Line], t: Int) =>
-          turn +: Filler.turns(seed + t, FillerPerGap / 4)
-        )
-    }
-    def write(
-        turns: Vector[Vector[Case.Line]],
-        from: Int,
-        seqFrom: Int
-    ): Vector[(EntryId, Case.Line, Int, Int)] =
-      turns.zipWithIndex
-        .flatMap((turn: Vector[Case.Line], t: Int) => turn.map(line => (from + t, line)))
-        .zipWithIndex
-        .map { case ((t, line), k) =>
-          (EntryId(s"${c.name}/${variant.label}/p$i/t$t:${seqFrom + k}"), line, t, seqFrom + k)
-        }
-    val first = write(body(e.turns, c.name.hashCode.toLong * 17 + i), 0, 0)
-    val firstTurns = first.map(_._3).maxOption.fold(0)(_ + 1)
-    val second =
-      write(body(e.reopened, c.name.hashCode.toLong * 19 + i), firstTurns, first.size + 1)
-    def insert(rows: Vector[(EntryId, Case.Line, Int, Int)]): Unit =
-      LiveDb.transaction(config) {
-        rows.headOption.foreach(r =>
-          engine.periods.openFor(conversation, TurnSeq(r._3.toLong), Instant.EPOCH)
-        )
-        rows.foreach { (id, line, t, seq) =>
-          engine.entries
-            .insert(
-              Entry(
-                id,
-                conversation,
-                TurnSeq(t.toLong),
-                None,
-                EntrySeq(seq.toLong),
-                Payload.Message(message(line)),
-                Instant.EPOCH
-              )
-            )
-            .fold(x => sys.error(s"eval: $x"), identity)
-        }
-      }
-    insert(first)
-    if (e.closed) {
-      val p1 = PeriodRef(conversation, PeriodSeq.First)
-      val carried =
-        Balance.empty.edit(e.carried.map(Edit.Stand(_, Ground.Person)), PeriodSeq.First).balance
-      val closing = Closing(
-        Flows.of(s"${e.place} closed.", None, Vector.empty).getOrElse(sys.error("eval: flows")),
-        carried
+  def load(engine: Engine^, c: Case, variant: Variant): Loaded =
+    (for {
+      layout <- Layout.of(c, variant)
+      turn <- Load.into(engine.jot, engine.conversations, engine.entries, engine.periods)(layout)
+    } yield {
+      val rows = layout.entries
+      Loaded(
+        c,
+        variant,
+        turn,
+        rows.filter(_.line.must).map(_.id),
+        rows.map(r => r.id -> Layout.message(r.line)).toMap,
+        rows.filter(_.line.never).map(_.id),
+        layout.scope
       )
-      LiveDb
-        .transaction(config)(
-          engine.periods.seal(
-            CloseRef(p1, TurnSeq((firstTurns - 1).toLong), Instant.EPOCH),
-            CloseReason.Lapsed,
-            closing,
-            Instant.EPOCH
-          )
-        )
-        .fold(x => sys.error(s"eval: $x"), identity)
-    }
-    insert(second)
-    (first ++ second).map(r => r._1 -> r._2)
-  }
-
-  private def message(line: Case.Line): Message =
-    if (line.you) Message.User(line.text)
-    else
-      Message.Assistant(
-        Vector(AssistantBlock.Text(line.text)),
-        StopReason.EndTurn,
-        Usage(Tokens.Zero, Tokens.Zero, Tokens.Zero, None),
-        "eval"
-      )
+    }).fold(e => sys.error(s"eval: $e"), identity)
 
   /** Answers every request with the case's handwritten query, at no cost. */
   private final class Handwritten(query: String) extends Provider {
@@ -470,7 +279,7 @@ object Eval {
         c <- cases.collect { case Right(c) => c }
         variant <- Variant.values.toVector
       } yield {
-        val loaded = load(engine, config, c, variant)
+        val loaded = load(engine, c, variant)
         val scores =
           strategies(live.nonEmpty, c.elsewhere.nonEmpty).map(s =>
             s -> run(engine, loaded, s, writer)
