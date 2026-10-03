@@ -38,6 +38,19 @@ object StitchLiveTests extends TestSuite {
       None
     )
 
+  /** A gate the stub classifier can pass: V2's `gap` choosing `asks` (the stub answers every
+    * yes/no alike, so V2's own gate, which needs `open` high and `to` low, holds everything).
+    */
+  private val asks = grit.core.triage.Gate(
+    Vector(
+      grit.core.triage.Bound.AtLeast(
+        grit.core.triage.Reading
+          .Key(grit.core.id.QuestionName.of("gap").getOrElse(sys.error("a name")), "asks"),
+        grit.core.period.Probability.clamped(0.5)
+      )
+    )
+  )
+
   private val deployment: Deployment =
     Deployment
       .of(
@@ -51,10 +64,7 @@ object StitchLiveTests extends TestSuite {
         lifecycle = LifecycleSettings.Default,
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = Speaking.Within(
-          Limits.suggested(
-            DailyCap.of("0.25").getOrElse(sys.error("cap")),
-            grit.lifecycle.triage.TriageQuestions.Shipped.speak
-          )
+          Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("cap")), asks)
         ),
         sweep = 30.seconds
       )
@@ -174,7 +184,7 @@ object StitchLiveTests extends TestSuite {
           engine,
           "3.0",
           "U0DAVID",
-          "Is this a real question ~back:exchange 1 ~back:question",
+          "Is this a real question ~back:exchange 1 ~back:asks",
           120
         )
         val lol = hear(engine, "4.0", "U0DAVID", "lol ~back:exchange 1", 118)

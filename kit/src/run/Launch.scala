@@ -191,7 +191,8 @@ private[grit] object Launch {
               turn => engine.inbox.startTurn(turn).left.map(_.toString)
             ),
             grit.core.stitch.Tuning.Default,
-            engine.placements
+            engine.placements,
+            d.knowledge
           )
         ),
         Stitch.body(

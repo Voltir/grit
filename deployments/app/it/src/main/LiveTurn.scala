@@ -196,7 +196,8 @@ object LiveTurn {
               turn => engine.inbox.startTurn(turn).left.map(_.toString)
             ),
             grit.core.stitch.Tuning.Default,
-            engine.placements
+            engine.placements,
+            grit.core.triage.KnowledgeSources.Empty
           )
         ),
         Stitch.body(

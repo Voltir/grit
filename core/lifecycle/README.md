@@ -44,7 +44,9 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   of it: when it is its thread's first message, wait in `stitched` for its placement
   (`grit.core.stitch.Placements`; a triage begun before that placed it itself, in `stitch`
   and `record-stitch`), then `ask` the classifier the questions of
-  `TriageQuestions.Shipped`, the set live triage asks, over the message
+  `TriageQuestions.Shipped`, the set live triage asks, with a question for each of the
+  deployment's knowledge sources covering its conversation (`TriageEnv.sources`), over the
+  message
   (`TriageQuestion.State`), who said it and the thread
   before it, its strand first, and the sections of a `TriageRecipe`'s pool for the focus it
   was said at, from what its room held when it was said (`grit.core.recipe`, read through
@@ -57,8 +59,8 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   their answers kept raw under their names (`grit.core.triage.Tags`), and the `Gate`
   (`grit.core.triage`) a draft is derived from; `TriageQuestions.v1` is the set triage
   first asked, in a `TriageQuestion.Wording` (`Wording.Shipped`, the words it shipped in),
-  and `TriageQuestions.V2` the one proposed to replace it; `TriageQuestions.Shipped` names
-  the set live triage asks, whose gate speech may read (`Limits.drafts`). ← `transcript`
+  and `TriageQuestions.V2` the one that replaced it; `TriageQuestions.Shipped` names the set
+  live triage asks (V2), whose gate speech may read (`Limits.drafts`). ← `transcript`
 - **`shadow`** — `Shadow`: a declared variant's run on a heard message already triaged,
   recorded and never acted on, on a queue of its own (`grit.dbos.workflow.Shadows`), so it
   never delays a triage: `ask` rebuilds triage's state as `triage` builds it, from the

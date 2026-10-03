@@ -160,10 +160,7 @@ object TriageQuestions {
   /** [[v1]] in the shipped wording ([[TriageQuestion.Wording.Shipped]]). */
   val V1: TriageQuestions = v1(TriageQuestion.Wording.Shipped)
 
-  /** The set live triage asks: [[V1]]. */
-  val Shipped: TriageQuestions = V1
-
-  /** The set proposed to replace triage's question: `gap` (what the message leaves open:
+  /** v2, the set that replaced [[V1]]: `gap` (what the message leaves open:
     * `asks`, `owes`, `closes` or `nothing`), `open`, `to`, `durable`, `anchor`, then one
     * `source:<name>` question per knowledge source; drafts when `gap` reads `asks` at least
     * 0.5, `open` at least 0.5, `to` below 0.5 and `anchor` below 0.5.
@@ -248,4 +245,7 @@ object TriageQuestions {
     // TriageQuestionsTests builds it.
     built.fold(why => throw new IllegalStateException(why), identity)
   }
+
+  /** The set live triage asks: [[V2]]. */
+  val Shipped: TriageQuestions = V2
 }

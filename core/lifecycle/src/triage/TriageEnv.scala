@@ -8,14 +8,15 @@ import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.{Placements, StitchStore, Tuning}
 import grit.core.store.{ConversationStore, Db, EntrySearch, EntryStore, LifecycleStore, Principals}
-import grit.core.triage.TriageStore
+import grit.core.triage.{KnowledgeSources, TriageStore}
 
 /** What a triage works with besides its `Durable`: where it reads the heard message and
   * keeps its tags ([[TriageRecords]]), the `classifier` it asks, `db` to read the thread
   * outside a transaction, `clock` to say when the tags were made, whether grit then drafts a
   * reply ([[TriageSpeech]]), how its strand is read and, in a triage begun before openings
-  * were placed on their own, its opening stitched (`tuning`), and where its opening is placed
-  * (`placements`).
+  * were placed on their own, its opening stitched (`tuning`), where its opening is placed
+  * (`placements`), and the deployment's knowledge `sources`, those covering a message's
+  * conversation asked about one by one.
   */
 final case class TriageEnv(
     records: TriageRecords,
@@ -24,7 +25,8 @@ final case class TriageEnv(
     clock: Clock^,
     speech: TriageSpeech^,
     tuning: Tuning,
-    placements: Placements^
+    placements: Placements^,
+    sources: KnowledgeSources
 )
 
 /** Where a triage reads the heard message, its thread, its conversation and who wrote them,

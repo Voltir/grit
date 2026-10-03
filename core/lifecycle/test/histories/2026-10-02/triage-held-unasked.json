@@ -1,0 +1,27 @@
+{
+  "workflow": "triage",
+  "id": "triage:c1:1:1",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "DBOS.patch-stitch-in-room-order"
+    },
+    {
+      "name": "stitched",
+      "output": "{\"ok\":null}"
+    },
+    {
+      "name": "ask",
+      "output": "{\"ok\":{\"entry\":\"e1\",\"tags\":{\"kind\":\"question\",\"kindP\":1,\"waiting\":0.5,\"durable\":0.5,\"helps\":0.9,\"model\":\"jev-1.13.0\",\"usage\":{\"input\":640,\"output\":0,\"cachedInput\":0,\"costUsd\":\"0.00002688\"}}}}"
+    },
+    {
+      "name": "record",
+      "output": "{\"ok\":true}"
+    },
+    {
+      "name": "consider",
+      "output": "{\"ok\":{\"held\":{\"kind\":\"unasked\",\"reading\":{\"reads\":\"key\",\"name\":\"gap\",\"key\":\"asks\"}}}}"
+    }
+  ]
+}

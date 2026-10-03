@@ -20,9 +20,10 @@ import grit.core.triage.{KnowledgeSources, Tags}
   *      `stitch` ([[Stitching.turn]]) and `record-stitch` instead, placing the opening itself
   *      ([[Patches.StitchInRoomOrder]]).
   *   1. `ask` — one classifier call over the heard message, who said it, and the thread
-  *      before it: its strand's, then its own ([[TriageInput.build]]), asked the questions
-  *      live triage asks ([[TriageQuestions.Shipped]]); an absent or failing classifier, or an
-  *      answer that does not read, is `Unanswered` tags.
+  *      before it: its strand's, then its own ([[TriageInput.read]]), asked the questions
+  *      live triage asks ([[TriageQuestions.Shipped]]), one per knowledge source covering its
+  *      conversation where the set asks so; an absent or failing classifier, or an answer
+  *      that does not read, is `Unanswered` tags.
   *      Nothing is asked when the message cannot be read or is gone.
   *   1. `record` — the tags kept ([[grit.core.triage.TriageStore.record]]); ignored when the
   *      message is gone or already tagged.
@@ -161,12 +162,13 @@ object Triage {
   }
 
   /** The `ask` step: the heard message that is `triage`'s turn, and what the classifier made
-    * of it; why not, when it cannot be read or is not there.
+    * of it, asked with the knowledge sources covering its conversation; why not, when it
+    * cannot be read or is not there.
     */
   private def ask(env: TriageEnv^, triage: TriageRef): Either[String, (EntryId, Tags)] = {
     val r = env.records
     TriageInput
-      .build(
+      .read(
         StitchReads(r.entries, r.conversations, r.lifecycle, r.stitches, r.search, r.principals),
         r.rooms,
         env.db,
@@ -174,16 +176,18 @@ object Triage {
         env.tuning,
         TriageRecipe.Shipped
       )
-      .map((heard, state) =>
+      .map { read =>
+        // A conversation not found is at no place, so no source covers it.
+        val sources = read.place.fold(KnowledgeSources.Empty)(env.sources.at)
         (
-          heard,
-          TriageQuestions.Shipped.ask(env.classifier, state, KnowledgeSources.Empty) match {
+          read.entry,
+          TriageQuestions.Shipped.ask(env.classifier, read.state, sources) match {
             case Right(a) => Tags.Weighed(a.value, a.model, a.usage)
             case Left(ClassifierError.Unavailable(why)) => Tags.Unanswered(s"unavailable: $why")
             case Left(ClassifierError.Unreadable(why)) => Tags.Unanswered(s"unreadable: $why")
           }
         )
-      )
+      }
   }
 
   /** Each answer as its name and what it read: a yes/no's probability of yes, a choice's

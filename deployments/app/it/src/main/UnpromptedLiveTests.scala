@@ -36,11 +36,21 @@ object UnpromptedLiveTests extends TestSuite {
       None
     )
 
-  private val limits =
-    Limits.suggested(
-      DailyCap.of("0.25").getOrElse(sys.error("a cap")),
-      grit.lifecycle.triage.TriageQuestions.Shipped.speak
+  /** A gate the stub classifier can pass: V2's `gap` choosing `asks` (the stub answers every
+    * yes/no alike, so V2's own gate, which needs `open` high and `to` low, holds everything).
+    */
+  private val asks = grit.core.triage.Gate(
+    Vector(
+      grit.core.triage.Bound.AtLeast(
+        grit.core.triage.Reading
+          .Key(grit.core.id.QuestionName.of("gap").getOrElse(sys.error("a name")), "asks"),
+        grit.core.period.Probability.clamped(0.5)
+      )
     )
+  )
+
+  private val limits =
+    Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("a cap")), asks)
 
   private def deployment(speaking: Speaking): Deployment =
     Deployment
@@ -116,7 +126,7 @@ object UnpromptedLiveTests extends TestSuite {
     engine.inbox.hear(
       origin,
       SourceId(s"$thread:1"),
-      "where does the refi page's byline go? ~back:question",
+      "where does the refi page's byline go? ~back:asks",
       PrincipalId.Local,
       now,
       Reach(Some(s"C1/$thread/$thread:1"), Set.empty)

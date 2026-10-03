@@ -4,55 +4,72 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.classify.{Answer, Question}
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{TurnRef, WorkflowId}
+import grit.core.id.{QuestionName, TurnRef, WorkflowId}
 import grit.core.period.Probability
 import grit.core.speech.{Decision, Limits, Silence, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{Stitching, Tuning}
-import grit.core.triage.{Bound, Gate, Kind, KnowledgeSources, Reading, Tags}
+import grit.core.triage.{Bound, Earning, Gate, Kind, KnowledgeSources, Reading, Tags}
 import grit.dbos.sql.TestTx
 
 import utest.*
 
 object TriageTests extends TestSuite {
+  import grit.lifecycle.shadow.ShadowFixtures.{Catalog, Github}
+
   import TriageFixtures.*
 
   private def p(x: Double): Probability =
     Probability.of(x).getOrElse(throw new java.lang.AssertionError(x))
 
-  /** A decision at 0.75; waiting 0.125, durable 0.875, helps 0.25. */
-  private def decided =
-    new Scripted(Vector(0.125, 0.0, 0.75, 0.125, 0.0), Vector(0.125, 0.875, 0.25))
+  private def name(text: String) = QuestionName.read(text).getOrElse(sys.error(text))
 
-  /** A question at 1.0; waiting 0.5, durable 0.5, helps 0.9. */
-  private def asking = new Scripted(Vector(1, 0, 0, 0, 0), Vector(0.5, 0.5, 0.9))
+  /** V2 answered: gap closes at 0.75; open 0.125, to 0.25, durable 0.875, anchor 0.25; any
+    * source 0.5.
+    */
+  private def decided =
+    new Scripted(Vector(0.0, 0.125, 0.75, 0.125), Vector(0.125, 0.25, 0.875, 0.25, 0.5))
+
+  /** V2 answered: gap asks at 1.0; open 0.9, to 0.125, durable 0.5, anchor 0.125: past its
+    * gate.
+    */
+  private def asking = new Scripted(Vector(1, 0, 0, 0), Vector(0.9, 0.125, 0.5, 0.125))
 
   private val within =
     Speaking.Within(
-      Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("a cap")), TriageQuestions.V1.speak)
+      Limits.suggested(
+        DailyCap.of("0.25").getOrElse(sys.error("a cap")),
+        TriageQuestions.Shipped.speak
+      )
     )
 
-  /** What [[decided]] answers v1: kind a choice weighing every key, then its yes/nos. */
+  /** What [[decided]] answers V2 with no source: gap a choice weighing every key, then its
+    * yes/nos.
+    */
   private val decision: Tags.Weighed = Tags.Weighed(
     VectorMap(
-      Tags.V1.kind -> Answer
+      name("gap") -> Answer
         .choice(
           Vector(
-            Answer.Weight("question", 0.125),
-            Answer.Weight("answer", 0.0),
-            Answer.Weight("decision", 0.75),
-            Answer.Weight("announcement", 0.125),
-            Answer.Weight("chatter", 0.0)
+            Answer.Weight("asks", 0.0),
+            Answer.Weight("owes", 0.125),
+            Answer.Weight("closes", 0.75),
+            Answer.Weight("nothing", 0.125)
           )
         )
         .getOrElse(sys.error("a choice")),
-      Tags.V1.waiting -> Answer.YesNo(0.125),
-      Tags.V1.durable -> Answer.YesNo(0.875),
-      Tags.V1.helps -> Answer.YesNo(0.25)
+      name("open") -> Answer.YesNo(0.125),
+      name("to") -> Answer.YesNo(0.25),
+      Earning.Durable -> Answer.YesNo(0.875),
+      name("anchor") -> Answer.YesNo(0.25)
     ),
     "jev-1.13.0",
     Spent
   )
+
+  /** What a triage logs of [[decision]]. */
+  private val Decided =
+    "tagged: gap closes 0.75, open 0.125, to 0.25, durable 0.875, anchor 0.25 (jev-1.13.0)"
 
   /** The marker a triage records as it takes the room-order patch. */
   private val Marker = InMemoryDurable.patchMarker(Triage.Patches.StitchInRoomOrder)
@@ -61,19 +78,41 @@ object TriageTests extends TestSuite {
   private val Unoffered = "placed: nothing asked; "
 
   val tests = Tests {
-    test("a triage asks live's question set about the state TriageInput.build makes") {
+    test(
+      "a triage asks live's question set about the state TriageInput.build makes, with the sources covering its conversation"
+    ) {
       val w = new World
       w.hear("when is standup?", "Ben", 0)
       w.say("unrelated", 1)
       val t = w.hear("standup moves to 10:00", "Ana", 2)
       val requests = new Requests
-      new InMemoryDurable().run(t.workflowId)(w.body(recording(requests), 5))
-      val built =
-        TriageInput.build(w.reads, w.rooms, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
-      built.map(_._2.author) ==> Right("Ana")
-      requests.sent ==> built.toOption.toVector.map { (_, state) =>
-        TriageQuestions.Shipped.request(state, KnowledgeSources.Empty)
+      new InMemoryDurable().run(t.workflowId)(w.body(recording(requests), 5, sources = Catalog))
+      val read =
+        TriageInput.read(w.reads, w.rooms, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
+      read.map(_.state.author) ==> Right("Ana")
+      requests.sent ==> read.toOption.toVector.map { r =>
+        TriageQuestions.Shipped.request(
+          r.state,
+          KnowledgeSources.of(Vector(Github)).getOrElse(sys.error("one"))
+        )
       }
+    }
+
+    test(
+      "live asks V2: gap among four, open, to, durable and anchor, then one yes/no per source covering the conversation"
+    ) {
+      val w = new World
+      val t = w.hear("can someone send me the Q3 deck?", "Ana", 0)
+      val classifier = decided
+      new InMemoryDurable().run(t.workflowId)(w.body(classifier, 5, sources = Catalog))
+      classifier.asked.map {
+        case q: Question.Choice => q.keys.map(_.name).mkString("|")
+        case Question.YesNo(words, _, _) if words.contains(Github.line) => "github"
+        case _: Question.YesNo => "yes/no"
+      } ==> Vector("asks|owes|closes|nothing", "yes/no", "yes/no", "yes/no", "yes/no", "github")
+      w.tags(t).collect { case Tags.Weighed(answers, _, _) =>
+        answers.keys.toVector.map(QuestionName.value)
+      } ==> Some(Vector("gap", "open", "to", "durable", "anchor", "source:github"))
     }
 
     test("a heard message is asked once, in one call, and its tags kept") {
@@ -82,7 +121,7 @@ object TriageTests extends TestSuite {
       val classifier = decided
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(classifier, 5)) ==>
-        Unoffered + """tagged: kind decision 0.75, waiting 0.125, durable 0.875, helps 0.25 (jev-1.13.0); held: {"kind":"off"}"""
+        Unoffered + Decided + """; held: {"kind":"off"}"""
       (classifier.calls, durable.recordedSteps(t.workflowId)) ==>
         (1, Vector(Marker, "stitched", "ask", "record", "consider"))
       w.tags(t) ==> Some(decision)
@@ -100,7 +139,7 @@ object TriageTests extends TestSuite {
       val other = new Scripted(Vector(0, 0, 0, 0, 1), Vector(0, 0, 0))
       new InMemoryDurable().replay(t2.workflowId, history)(again.body(other, 5)) ==>
         Right(
-          Unoffered + """tagged: kind decision 0.75, waiting 0.125, durable 0.875, helps 0.25 (jev-1.13.0); held: {"kind":"off"}"""
+          Unoffered + Decided + """; held: {"kind":"off"}"""
         )
       (other.calls, again.tags(t2)) ==> (0, Some(decision))
     }
@@ -259,7 +298,7 @@ object TriageTests extends TestSuite {
       val t = w.hear("what did we decide about the refi page?", "Ana", 0)
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(asking, 1, within)) ==>
-        Unoffered + "tagged: kind question 1.0, waiting 0.5, durable 0.5, helps 0.9 (jev-1.13.0); drafting: c1:0"
+        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, durable 0.5, anchor 0.125 (jev-1.13.0); drafting: c1:0"
       val turn = TurnRef(c, t.turn)
       (w.started, w.speech.decisions.map(_._2)) ==> (Vector(turn), Vector(Decision.Drafting(turn)))
       val history = durable.history(t.workflowId)
@@ -268,20 +307,20 @@ object TriageTests extends TestSuite {
       history.map(_.name) ==> Vector(Marker, "stitched", "ask", "record", "consider", "start")
     }
 
-    test("a message under the gate's helps is kept held, and no turn starts") {
+    test("a message failing the gate is kept held on every bound it failed, and no turn starts") {
       val w = new World
       val t = w.hear("lunch?", "Ana", 0)
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(
-        w.body(new Scripted(Vector(1, 0, 0, 0, 0), Vector(0.5, 0.5, 0.25)), 1, within)
+        w.body(new Scripted(Vector(0, 0, 0, 1), Vector(0.25, 0.125, 0.5, 0.125)), 1, within)
       )
       (w.started, w.speech.decisions.map(_._2), durable.recordedSteps(t.workflowId)) ==> (
         Vector.empty,
         Vector(
           Decision.Held(
             Silence.Gated(
-              Gate.Failed(Bound.AtLeast(Reading.Yes(Tags.V1.helps), p(0.5)), p(0.25)),
-              Vector.empty
+              Gate.Failed(Bound.AtLeast(Reading.Key(name("gap"), "asks"), p(0.5)), p(0.0)),
+              Vector(Gate.Failed(Bound.AtLeast(Reading.Yes(name("open")), p(0.5)), p(0.25)))
             )
           )
         ),
@@ -317,17 +356,6 @@ object TriageTests extends TestSuite {
       val t = w.hear("what did we decide?", "Ana", 0)
       new InMemoryDurable().run(t.workflowId)(w.body(asking, 1))
       (w.started, w.speech.decisions) ==> (Vector.empty, Vector.empty)
-    }
-
-    test("the questions: kind among five, then waiting, durable and helps") {
-      val w = new World
-      val t = w.hear("standup moves to 10:00", "Ana", 0)
-      val classifier = decided
-      new InMemoryDurable().run(t.workflowId)(w.body(classifier, 5))
-      classifier.asked.map {
-        case q: Question.Choice => q.keys.map(_.name).mkString("|")
-        case _: Question.YesNo => "yes/no"
-      } ==> Vector("question|answer|decision|announcement|chatter", "yes/no", "yes/no", "yes/no")
     }
   }
 }

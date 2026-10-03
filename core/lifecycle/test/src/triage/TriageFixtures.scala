@@ -40,7 +40,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.triage.InMemoryTriageStore
+import grit.core.triage.{InMemoryTriageStore, KnowledgeSources}
 import grit.dbos.sql.TestTx
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 
@@ -263,9 +263,15 @@ object TriageFixtures {
     }
 
     /** The triage's body over this world, with `classifier`, at `minutes`, speaking as
-      * `speaking` says, with no daily cap; a turn it starts is kept in [[started]].
+      * `speaking` says, with no daily cap, the deployment's knowledge `sources` those given; a
+      * turn it starts is kept in [[started]].
       */
-    def body(classifier: Classifier^, minutes: Long, speaking: Speaking = Speaking.Off)(
+    def body(
+        classifier: Classifier^,
+        minutes: Long,
+        speaking: Speaking = Speaking.Off,
+        sources: KnowledgeSources = KnowledgeSources.Empty
+    )(
         id: WorkflowId
     )(using Durable^): String =
       Triage.body(
@@ -294,7 +300,8 @@ object TriageFixtures {
             }
           ),
           Tuning.Default,
-          placements(classifier, minutes)
+          placements(classifier, minutes),
+          sources
         )
       )(id)
   }

@@ -136,6 +136,30 @@ object LifecycleReplayTests extends TestSuite {
       answered.distinct.sorted ==> Vector("named", "worded")
     }
 
+    test(
+      "the epoch holds a triage tagged with v1's four probabilities, one with named answers, and one held unasked"
+    ) {
+      // A triage in flight across a deploy reads back its ask: replay above reads every form
+      // recorded; these say both forms are recorded, and the in-flight one's hold.
+      val triages = histories.flatMap { case (_, parsed) =>
+        parsed.toOption.toVector.filter(_.workflow == "triage").flatMap(_.steps)
+      }
+      def output(name: String) = triages.collect {
+        case s if s.name == name =>
+          s.outcome match {
+            case InMemoryDurable.Outcome.Output(text) => ujson.read(text).obj.get("ok")
+            case _ => None
+          }
+      }.flatten
+      val tags = output("ask").flatMap(_.objOpt).flatMap(_.get("tags")).flatMap(_.objOpt)
+      val held = output("consider").flatMap(_.objOpt).flatMap(_.get("held")).flatMap(_.objOpt)
+      (
+        tags.exists(_.contains("kind")),
+        tags.exists(_.contains("answers")),
+        held.exists(_.get("kind").exists(_.strOpt.contains("unasked")))
+      ) ==> (true, true, true)
+    }
+
     test("every recorded closing of the epoch reads, and the epoch holds a version-3 one") {
       // A close in flight reads back its summarise step: today's reader must read every
       // version this epoch recorded (ADR 0018). An earlier epoch's closes are never resumed;

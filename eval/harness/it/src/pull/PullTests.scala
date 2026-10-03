@@ -90,7 +90,8 @@ object PullTests extends TestSuite {
             TriageEnv(
               TriageRecords(
                 engine.entries,
-                engine.triage,
+                // Kept as before V2: the harness reads v1-era tags only.
+                new grit.eval.harness.corpus.KeptAsV1(engine.triage, engine.entries),
                 engine.principals,
                 engine.conversations,
                 engine.speech,
@@ -105,7 +106,8 @@ object PullTests extends TestSuite {
               Clock.system(),
               TriageSpeech(Speaking.Off, engine.budget, _ => Right(())),
               Tuning.Default,
-              engine.placements
+              engine.placements,
+              KnowledgeSources.Empty
             )
           ),
           Stitch.body(

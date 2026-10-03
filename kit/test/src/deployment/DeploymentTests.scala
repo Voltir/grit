@@ -146,15 +146,14 @@ object DeploymentTests extends TestSuite {
           Deployments.of(speaking = grit.core.speech.Speaking.Shadow(limits)).map(_ => ())
         )
       }
-      val gap = grit.core.id.QuestionName.of("gap").getOrElse(sys.error("a name"))
-      val asks = grit.core.triage.Reading.Key(gap, "asks")
+      val chatter = grit.core.triage.Reading.Chosen(grit.core.triage.Tags.V1.kind, "chatter")
       (
-        speaks(grit.lifecycle.triage.TriageQuestions.V2.speak),
+        speaks(grit.lifecycle.triage.TriageQuestions.V1.speak),
         speaks(grit.lifecycle.triage.TriageQuestions.Shipped.speak)
       ) ==> (
         (
-          Left(DeploymentRefusal.SpeechUnread(asks)),
-          Left(DeploymentRefusal.SpeechUnread(asks))
+          Left(DeploymentRefusal.SpeechUnread(chatter)),
+          Left(DeploymentRefusal.SpeechUnread(chatter))
         ),
         (Right(()), Right(()))
       )
