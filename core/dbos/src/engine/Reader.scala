@@ -7,6 +7,7 @@ import scala.util.control.NonFatal
 
 import grit.core.id.WorkflowId
 import grit.core.recipe.RoomReads
+import grit.core.review.ReviewStore
 import grit.core.stitch.StitchStore
 import grit.core.store.{
   ConversationStore,
@@ -26,6 +27,7 @@ import grit.dbos.sql.{
   SqlEntryStore,
   SqlLifecycleStore,
   SqlPrincipals,
+  SqlReviews,
   SqlRoomReads,
   SqlStitchStore,
   SqlTriageShadows,
@@ -52,6 +54,7 @@ trait Reader extends caps.SharedCapability, AutoCloseable {
   val principals: Principals
   val triage: TriageStore
   val shadows: TriageShadows
+  val reviews: ReviewStore
 
   /** `id`'s status, the epoch it ran under, and when it was created; `None` when DBOS does not
     * know it, or its tables cannot be read.
@@ -94,6 +97,7 @@ object Reader {
     val principals: Principals = new SqlPrincipals()
     val triage: TriageStore = new SqlTriageStore
     val shadows: TriageShadows = new SqlTriageShadows
+    val reviews: ReviewStore = new SqlReviews
 
     def workflow(id: WorkflowId): Option[Recorded] =
       try {

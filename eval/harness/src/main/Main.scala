@@ -40,7 +40,7 @@ import grit.eval.harness.jev.{
   Variant,
   Variants
 }
-import grit.eval.harness.label.Labels
+import grit.eval.harness.label.{Labels, Verdicts}
 import grit.eval.harness.log.{
   Cache,
   Cached,
@@ -491,8 +491,10 @@ object Main {
     * what the database kept of the heard messages tagged since `<instant>` (default: ever) and
     * the corpus in `<dir>` holds, as run logs ([[Pull]]): `<runs>/live-<yyyymmdd>.jsonl`, live
     * triage's tags, and `<runs>/shadow-<name>-<yyyymmdd>.jsonl` for each shadow named, with
-    * the database's login from `GRIT_DATABASE_USER` and `_PASSWORD`. Prints counts, and the
-    * ids of the messages no corpus holds yet, for the next capture.
+    * the database's login from `GRIT_DATABASE_USER` and `_PASSWORD`; and
+    * `<runs>/verdicts-<yyyymmdd>.json`, the verdicts standing on the messages a review
+    * considered since `<instant>` ([[Pull.verdicts]], [[Verdicts.written]]). Prints counts, and
+    * the ids of the messages no corpus holds yet, for the next capture.
     */
   private def pull(f: Map[String, String]): Either[String, Unit] =
     for {
@@ -514,18 +516,23 @@ object Main {
       cases <- readCases(dir)
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       at = Instant.now()
-      pulled <- opened(config)(reader =>
-        Pull(
-          reader,
-          dir.getFileName.toString,
-          Digest.text(manifest + casesText),
-          cases,
-          names,
-          since,
-          at
-        )
+      got <- opened(config)(reader =>
+        for {
+          pulled <- Pull(
+            reader,
+            dir.getFileName.toString,
+            Digest.text(manifest + casesText),
+            cases,
+            names,
+            since,
+            at
+          )
+          standing <- Pull.verdicts(reader, since)
+        } yield (pulled, standing)
       )
+      (pulled, standing) = got
       day = Day.format(at.atOffset(ZoneOffset.UTC))
+      verdicts = s"verdicts-$day.json"
       logs = Pulled(s"live-$day.jsonl", lines(pulled.live)) +:
         pulled.shadows.flatMap { (s: Pull.Pulled.Shadow) =>
           val name = s"shadow-${ShadowName.value(s.name)}-$day.jsonl"
@@ -541,6 +548,7 @@ object Main {
       _ <- logs.foldLeft[Either[String, Unit]](Right(()))((done, p: Pulled) =>
         done.flatMap(_ => write(runs.resolve(p.name), p.lines))
       )
+      _ <- write(runs.resolve(verdicts), Verdicts.written(standing.verdicts))
     } yield {
       def counted[A](log: Log[A]): String = {
         val footer = log.footer.getOrElse(Footer.of(BigDecimal(0), log.rows))
@@ -569,7 +577,11 @@ object Main {
       }
       println(s"not in the corpus, for the next capture: ${pulled.uncaptured.size}")
       pulled.uncaptured.foreach(id => println(s"  ${id.written}"))
-      println(s"written: ${logs.map((p: Pulled) => p.name).mkString(", ")}")
+      println(
+        s"verdicts standing: ${standing.verdicts.cases.size}; on a message no case id names, " +
+          s"left out: ${standing.unnamed}"
+      )
+      println(s"written: ${(logs.map((p: Pulled) => p.name) :+ verdicts).mkString(", ")}")
     }
 
   /** A pulled log's file `name`, and its `lines`. */

@@ -99,7 +99,10 @@
 #       printed; declare a changed question under a new name. Only reads <database>. Prints counts: each log's rows, and
 #       for each shadow the messages tagged since that it has no row for, its shadow ended
 #       keeping nothing or not yet run; and the ids of the messages no corpus holds yet, for
-#       the next capture.
+#       the next capture. Also writes verdicts-<today>.json beside the logs: the verdict a
+#       review's rater left standing on each message a review picked since <instant>, by case
+#       id, with the shadow it was picked against, why, the rater's id and when; ids and
+#       times, no text. A file of none is written when there are none.
 #
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.

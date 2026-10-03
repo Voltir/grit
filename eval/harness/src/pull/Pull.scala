@@ -9,10 +9,12 @@ import grit.core.classify.{Answer, ClassifierError, Question}
 import grit.core.id.{QuestionName, ShadowName, ShadowRef}
 import grit.core.message.Usage
 import grit.core.period.Probability
+import grit.core.review.Considered
 import grit.core.store.{Focus, Origin, Position, StoreError, Tx}
 import grit.core.triage.{Kind, ShadowAnswers, Shadowed, Tags, TriageStore}
 import grit.dbos.engine.{Build, Reader}
 import grit.eval.harness.corpus.{Case, CaseId, Digest, Failure}
+import grit.eval.harness.label.{Rated, Verdicts}
 import grit.eval.harness.log.{CacheKey, Footer, Header, Log, Outcome, Row, Suite, Weights}
 import grit.lifecycle.triage.TriageQuestion
 
@@ -169,6 +171,41 @@ object Pull {
         },
         ids.collect { case (_, Some((id, _))) if !byId.contains(id) => id }.distinct.sorted,
         inCorpus.size - live.size
+      )
+    }
+  }
+
+  /** What [[verdicts]] read: the verdicts standing, by case; and how many stand on a message
+    * no case id names, one not heard in Slack.
+    */
+  final case class Standing(verdicts: Verdicts, unnamed: Int)
+
+  /** The verdicts standing on the messages a review considered at or after `since`, each by
+    * its case, rebuilt from its message's conversation ([[CaseId.of]]); one a case, the latest
+    * given when two messages share one. `Left` when the database cannot be read, naming what
+    * was being read.
+    */
+  def verdicts(reader: Reader^, since: Instant): Either[String, Standing] = {
+    def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]): Either[String, A] =
+      reader.db.read(body).left.map(e => s"$what unread: ${e.getClass.getSimpleName}")
+    for {
+      reviewed <- read("reviews")(reader.reviews.reviewed(since))
+      rated = reviewed.flatMap(r =>
+        (r.as, r.label) match {
+          case (Considered.Picked(reason), Some(l)) =>
+            Some(r -> Rated(r.shadow, reason, l.verdict, l.rater, l.at))
+          case _ => None
+        }
+      )
+      named <- each(rated)((r, rated) =>
+        read("conversation")(reader.conversations.get(r.conversation))
+          .map(c => (c.flatMap(c => CaseId.of(c.origin, r.entry)), rated))
+      )
+    } yield {
+      val byCase = named.collect { case (Some(id), rated) => id -> rated }
+      Standing(
+        Verdicts(byCase.sortBy(_._2.at).toMap),
+        named.count(_._1.isEmpty)
       )
     }
   }

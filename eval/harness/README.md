@@ -28,7 +28,10 @@ Packages, each importing only those above it:
 - **`label`** — a person's labels of a corpus's cases, kept apart from the cases so a
   recapture keeps them: `Labels`, read from `labels.json` as the labelling tool writes it, and
   each case's `Labelled` (its kind, the three yes/no tags, `Context`, whether it states a fact,
-  and its `Place`). ← `corpus`
+  and its `Place`); and `Verdicts`, the verdict a review's rater left standing on a picked
+  message (`Rated`: the shadow it was picked against, why, the verdict, the rater's id and
+  when), as `pull` writes them. Labels judge the inputs a call was given, verdicts the speech
+  decision at its moment: the two are reported side by side, never merged. ← `corpus`
 - **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the
   corpus, variant, build, cap and repeats a run was started with, and a question set's
   names), `Row` (one request: its case, digest, cache key, `Outcome`, usage, latency, and the
@@ -42,7 +45,8 @@ Packages, each importing only those above it:
   triage's tags (variant `kept`, which keeps only the likeliest kind's probability), and
   each declared shadow's answers (`grit.lifecycle.shadow`) as a `ShadowLog`: a wording's by
   position, a question set's under its names, or refused when a name kept both; with the
-  messages no corpus holds yet, and each shadow's that ended keeping nothing. ← `corpus`,
+  messages no corpus holds yet, and each shadow's that ended keeping nothing; and
+  `Pull.verdicts`, the verdicts standing on reviewed messages, by case. ← `corpus`, `label`,
   `log`
 - **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
   (the model, triage's wording, its recipe and the words it is asked in, or the tuning), and `Variants`, those a run can name;
