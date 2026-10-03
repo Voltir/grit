@@ -27,11 +27,25 @@ object Support {
     }
   }
 
+  /** The support at or over which a part counts as used: 0.3. A lexical heuristic's line,
+    * until people's labels measure it.
+    */
+  val Used: Support = 0.3
+
+  /** `parts`' `k` most supported, most first, a tie in the order given; a part with no
+    * support is never among them. None when `k` is under 1.
+    */
+  def top(parts: Vector[Part], k: Int): Vector[(Part, Support)] =
+    parts.flatMap(p => p.support.map(p -> _)).sortBy(-_._2).take(k)
+
   /** The support written as `value`; `None` outside [0, 1]. */
   def read(value: Double): Option[Support] = Option.when(value >= 0 && value <= 1)(value)
 
   extension (s: Support) {
     def value: Double = s
+
+    /** At or over [[Used]]. */
+    def used: Boolean = s >= Used
   }
 
   /** Words never distinctive, however long or capitalised: English function words and the

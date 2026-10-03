@@ -34,7 +34,8 @@ Packages, each importing only those above it:
   root's draft, read by `TurnCapture` through `Reader` and the turn's own reading of its
   records (`grit.turn.TurnRecord`), each window part costed by `CharEstimate` over `Shown`;
   `Support`, how much of a reply a part carries, computed where the text is and kept as the
-  number; `TurnJson`, a turn's line of `turns.jsonl`. `Fields`, the reader every file's JSON
+  number, the line at which a part counts as used (`Support.Used`), and a window's most
+  supported parts (`Support.top`); `TurnJson`, a turn's line of `turns.jsonl`. `Fields`, the reader every file's JSON
   is read through.
 - **`label`** — a person's labels of a corpus's cases, kept apart from the cases so a
   recapture keeps them: `Labels`, read from `labels.json` as the labelling tool writes it, and
