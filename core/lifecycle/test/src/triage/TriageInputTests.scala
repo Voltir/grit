@@ -5,9 +5,9 @@ import scala.concurrent.duration.*
 
 import grit.core.classify.StateJson
 import grit.core.durable.InMemoryDurable
-import grit.core.id.TriageRef
+import grit.core.id.{ConversationId, TriageRef}
 import grit.core.period.LifecycleSettings
-import grit.core.place.{Locality, Scope, Weight}
+import grit.core.place.{Locality, Namespace, Place, Scope, Weight}
 import grit.core.recipe.{Pool, Section, Source}
 import grit.core.stitch.Tuning
 import grit.core.store.Focus
@@ -158,6 +158,20 @@ object TriageInputTests extends TestSuite {
           .read(w.reads, w.rooms, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
           .map(_.focus)
       ) ==> Vector(Right(Focus.Open), Right(Focus.Focused))
+    }
+
+    test("a read is at its conversation's own place, and at none when that is not found") {
+      val w = new World
+      val here = w.hear("who owns the deploy?", "Ana", 0)
+      val nowhere = w.hear("and the rollback?", "Ana", 1, in = ConversationId("gone"))
+      Vector(here, nowhere).map(t =>
+        TriageInput
+          .read(w.reads, w.rooms, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
+          .map(_.place)
+      ) ==> Vector(
+        Right(Some(Place.under(Namespace.Slack, Vector("T", "C", "1.0")))),
+        Right(None)
+      )
     }
   }
 }

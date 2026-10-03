@@ -3,7 +3,7 @@ package grit.lifecycle.triage
 import scala.collection.immutable.VectorMap
 
 import grit.core.id.{EntryId, TriageRef, TurnSeq}
-import grit.core.place.Scope
+import grit.core.place.{Place, Scope}
 import grit.core.recipe.{Pool, RoomReads, Section}
 import grit.core.stitch.{Along, StitchReads, Stitching, Strand, Tuning}
 import grit.core.store.{Conversation, Db, Entry, Focus, Payload, Position, Speakers, StoreError}
@@ -15,14 +15,16 @@ object TriageInput {
   /** A heard message's question as [[read]] builds it: the message's entry, the
     * [[TriageQuestion.State]] it is asked about, its thread by part (what it shows of the
     * strand and of its conversation's messages, and the start of those it leaves out), whose
-    * text is the state's thread, and the focus it was said at, whose pool the state's sections
-    * are.
+    * text is the state's thread, the focus it was said at, whose pool the state's sections
+    * are, and its conversation's place ([[grit.core.store.Origin.place]]; `None` when the
+    * conversation is not found).
     */
   final case class Read private[triage] (
       entry: EntryId,
       state: TriageQuestion.State,
       thread: Stitching.Fitted,
-      focus: Focus
+      focus: Focus,
+      place: Option[Place]
   )
 
   /** [[build]], with the state's thread by part and the message's focus. */
@@ -90,7 +92,8 @@ object TriageInput {
         heard.id,
         TriageQuestion.State(text, names.of(heard.id).getOrElse("Someone"), thread.text, sections),
         thread,
-        focus
+        focus,
+        conversation.map(_.origin.place)
       )
     }
 
