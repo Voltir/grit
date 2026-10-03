@@ -42,7 +42,7 @@ import grit.eval.harness.score.{
   Tag,
   Target
 }
-import grit.eval.harness.stats.{Estimate, Proportion}
+import grit.eval.harness.stats.{Estimate, Mills, Proportion}
 
 /** A run to report on: its log's file `name`, the log, its corpus's cases, and the labels in
   * force.
@@ -373,7 +373,7 @@ object Report {
     Vector(
       s"## Spend and latency${if (which.isEmpty) "" else s": $which"}",
       "",
-      s"spent: ${s.spent.fold("no footer")(x => s"$$$x")}; rows ${s.rows}: answered " +
+      s"spent: ${s.spent.fold("no footer")(Mills.withUsd)}; rows ${s.rows}: answered " +
         s"${s.counts.answered} (cached ${s.counts.cached}), failed ${s.counts.failed}, " +
         s"skipped ${s.counts.skipped}",
       s"tokens of the rows answered: input ${s.input}, output ${s.output}",
@@ -623,7 +623,7 @@ object Report {
       Vector(
         "### Size of triage's calls",
         "",
-        "| run | calls answered | input tokens: mean | p90 | cost, USD: mean | p90 |",
+        "| run | calls answered | input tokens: mean | p90 | cost: mean | p90 |",
         "|---|---|---|---|---|---|",
         size("A", Size.of(a.log.rows)),
         size("B", Size.of(b.log.rows)),
@@ -664,7 +664,7 @@ object Report {
   private def size(run: String, s: Size): String = {
     def per(p: Option[PerCall], f: Double => String) =
       p.fold("— | —")(x => s"${f(x.mean)} | ${f(x.p90)}")
-    s"| $run | ${s.calls} | ${per(s.input, x => f"$x%.0f")} | ${per(s.cost, x => f"$x%.7f")} |"
+    s"| $run | ${s.calls} | ${per(s.input, x => f"$x%.0f")} | ${per(s.cost, x => Mills.of(BigDecimal(x)))} |"
   }
 
   private val Header = "| measure | n | mean, 95% by exchange | 95% by author | MDE |"

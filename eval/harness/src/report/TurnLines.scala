@@ -6,7 +6,7 @@ import grit.core.tool.ToolName
 import grit.eval.harness.corpus.{Called, Drafted, Ended, Part, Support, TurnCase}
 import grit.eval.harness.label.Verdicts
 import grit.eval.harness.score.{Calls, Paid, Quantiles, Slice, Structure, Unreplied, Where}
-import grit.eval.harness.stats.Proportion
+import grit.eval.harness.stats.{Mills, Proportion}
 import grit.turn.TurnRecord
 
 /** [[Report.turns]]'s sections. */
@@ -31,7 +31,8 @@ private[report] object TurnLines {
       s"verdicts standing: ${verdicts.cases.size}, of which no turn answers " +
         Structure.unjoined(turns, verdicts),
       "",
-      "Text-free: ids, counts, tokens and USD. A rate's interval is Wilson's at 95% on its " +
+      "Text-free: ids, counts, tokens and prices. A price is in mills (a mill is $0.001), and an " +
+        "exact amount in dollars beside it. A rate's interval is Wilson's at 95% on its " +
         "turns' effective number, clustered by conversation (a thread), and none under " +
         s"${Proportion.MinClusters} threads; a spread is mean / p50 / p90 by nearest rank.",
       ""
@@ -132,13 +133,14 @@ private[report] object TurnLines {
 
     val paid = Paid.values.toVector.filter(p => all.cost.contains(p))
     val costing = Vector(
-      "## Cost per turn (USD)",
+      "## Cost per turn",
       "",
       "By what each call paid for, 0 in a turn without it; rounds are a loop's calls together. " +
-        "A ledger row with no cost adds nothing and is counted as unpriced.",
+        "A ledger row with no cost adds nothing and is counted as unpriced. In mills.",
       ""
     ) ++ bySlice((paid.map(paidName) ++ Vector("total", "unpriced"))*)(st =>
-      paid.map(p => spread(st.cost.get(p), usd)) ++ Vector(spread(st.total, usd), s"${st.unpriced}")
+      paid.map(p => spread(st.cost.get(p), mills)) ++
+        Vector(spread(st.total, mills), s"${st.unpriced}")
     ) ++ Vector("")
 
     val kinds = Drafted.Kind.values.toVector.filter(k => all.online.exists(_.outcomes.contains(k)))
@@ -220,7 +222,7 @@ private[report] object TurnLines {
       "calls",
       "window",
       "first call",
-      "USD",
+      "cost",
       "top 3"
     )(
       Structure.byCost(turns).map((t, c) => line(t, c))
@@ -254,7 +256,7 @@ private[report] object TurnLines {
       if (named.isEmpty) "—" else named.mkString(", "),
       t.window.fold("—")(w => s"${Tokens.value(w.parts.foldLeft(w.gaps + w.own)(_ + _.tokens))}"),
       first.fold("—")(s => s"${Tokens.value(s.estimated)} / ${Tokens.value(s.usage.input)}"),
-      usd(c.toDouble),
+      Mills.withUsd(c),
       t.window
         .map(w => Support.top(w.parts, 3))
         .filter(_.nonEmpty)
@@ -297,7 +299,7 @@ private[report] object TurnLines {
   private def count(x: Double): String =
     if (x.isWhole) f"$x%.0f" else f"$x%.1f"
 
-  private def usd(x: Double): String = f"$x%.5f"
+  private def mills(x: Double): String = Mills.of(BigDecimal(x))
 
   private def prob(x: Double): String = f"$x%.2f"
 }

@@ -101,6 +101,7 @@ import grit.eval.harness.score.{
   Target,
   TurnPair
 }
+import grit.eval.harness.stats.Mills
 import grit.kit.environment.DotEnv
 import grit.lifecycle.triage.TriageRecipe
 import grit.models.JevClassifier
@@ -378,12 +379,12 @@ object Main {
           estimated = Queries.estimate(requests, keyless, store)
           _ = println(
             s"window-only cases: ${only.size}; queries to write: ${requests.distinct.size}, " +
-              s"estimated $$$estimated, cap $$$cap"
+              s"estimated ${Mills.withUsd(estimated)}, cap ${Mills.withUsd(cap)}"
           )
           budget <- Budget
             .of(cap, estimated)
             .left
-            .map(r => s"refused: estimated $$${r.estimated} is over the cap $$${r.cap}")
+            .map(refused)
           writer <-
             if (estimated == 0) Right(None)
             else
@@ -406,7 +407,7 @@ object Main {
           Rebuild.report(rebuilt).foreach(println)
           println(
             s"queries: asked ${answered.asked}, cached ${answered.cached}, skipped " +
-              s"${answered.skipped}, failed ${answered.failed}; spent $$${answered.budget.spent}"
+              s"${answered.skipped}, failed ${answered.failed}; spent ${Mills.withUsd(answered.budget.spent)}"
           )
           val built = windows.flatMap(_._2.toOption)
           println(
@@ -522,7 +523,7 @@ object Main {
           budget <- Budget
             .of(cap, estimated)
             .left
-            .map(r => s"refused: estimated $$${r.estimated} is over the cap $$${r.cap}")
+            .map(refused)
           // Jev's settings are read only when a call is to be asked.
           jevConfig <-
             if (estimated == 0) Right(None)
@@ -603,8 +604,8 @@ object Main {
               s"${asked.size}, not asked for want of a case id ${noCase.size}, not built " +
               s"${built.count(_._3.isLeft)}, asked and unanswered or skipped " +
               s"${asks.size - asked.size}",
-            s"Jev: calls ${calls.size}, estimated $$$estimated, cap $$$cap, spent " +
-              s"$$${ran.budget.spent}",
+            s"Jev: calls ${calls.size}, estimated ${Mills.withUsd(estimated)}, cap " +
+              s"${Mills.withUsd(cap)}, spent ${Mills.withUsd(ran.budget.spent)}",
             s"reference turns: ${reference.turns.size} (labelled ${Reference.labelled(labelled).turns.size})",
             s"windows rebuilt: ${windows.count(_._2.isRight)} of ${windows.size}"
           ) ++ notRebuilt.toVector.sorted ++ built.collect { case (t, _, Left(why)) =>
@@ -839,12 +840,13 @@ object Main {
       )
       _ = changes(variant, rebuilt)
       _ = println(
-        s"calls: ${calls.size} (${cases.size} cases × $repeats); estimated $$$estimated, cap $$$cap"
+        s"calls: ${calls.size} (${cases.size} cases × $repeats); estimated " +
+          s"${Mills.withUsd(estimated)}, cap ${Mills.withUsd(cap)}"
       )
       budget <- Budget
         .of(cap, estimated)
         .left
-        .map(r => s"refused: estimated $$${r.estimated} is over the cap $$${r.cap}")
+        .map(refused)
       started = clock.now()
       ran = Run(calls, JevClassifier(jev.copy(model = model)), model, store, budget, clock)
       header = Header(
@@ -890,7 +892,7 @@ object Main {
           .sum
       println(
         s"rows: ${ran.rows.size}; answered ${footer.answered} (cached ${footer.cached}), " +
-          s"failed ${footer.failed}, skipped ${footer.skipped}; spent $$${footer.spent}"
+          s"failed ${footer.failed}, skipped ${footer.skipped}; spent ${Mills.withUsd(footer.spent)}"
       )
       println(s"input tokens of the calls asked: reported $reported, estimated $estimatedTokens")
       println(s"log: ${out.getFileName}")
@@ -1243,7 +1245,7 @@ object Main {
       def counted[A](log: Log[A]): String = {
         val footer = log.footer.getOrElse(Footer.of(BigDecimal(0), log.rows))
         s"${log.rows.size} rows: answered ${footer.answered}, failed ${footer.failed}; " +
-          s"spent $$${footer.spent}"
+          s"spent ${Mills.withUsd(footer.spent)}"
       }
       println(
         s"live (${Pull.Kept}): questions " +
@@ -1393,6 +1395,9 @@ object Main {
     Try(Files.readString(path, StandardCharsets.UTF_8)).toEither.left.map(e =>
       s"$path unread: ${e.getClass.getName}"
     )
+
+  private def refused(r: Budget.Refused): String =
+    s"refused: estimated ${Mills.withUsd(r.estimated)} is over the cap ${Mills.withUsd(r.cap)}"
 
   private def decimal(what: String)(v: String): Either[String, BigDecimal] =
     Try(BigDecimal(v)).toOption.filter(_ >= 0).toRight(s"--$what $v: not a non-negative number")

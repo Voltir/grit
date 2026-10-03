@@ -22,7 +22,9 @@ corpus was restored to.
 
 Packages, each importing only those above it:
 
-- **`stats`** — `Estimate`, a mean with its standard error clustered (CR1), its 95% interval
+- **`stats`** — `Mills`, a USD amount as every report shows a price: in mills, an exact
+  amount (a sum of ledger costs, a run's spend, a cap) with its dollars beside it, a mean or
+  a quantile in mills alone; `Estimate`, a mean with its standard error clustered (CR1), its 95% interval
   and the least difference a paired comparison of its precision detects, over Student's t;
   and `Proportion`, how many items hit, with Wilson's 95% interval on their effective number
   (n over the clustered design effect), none under `Proportion.MinClusters` clusters; pure,

@@ -2,6 +2,9 @@
 # The eval harness (eval/harness/README.md), run with mill out of the loop: mill builds the
 # launcher and exits, then java runs the harness directly.
 #
+# Every price is shown in mills (a mill is $0.001), an exact amount (a run's spend, a cap)
+# with its dollars beside it; --spend caps are given in USD.
+#
 #   scripts/eval capture --from <database> [--date <yyyymmdd>]
 #       A corpus of <database>'s heard messages, in .local/eval/corpus/<date>/ (date: today,
 #       UTC). The first run dumps <database> (pg_dump -Fc, an MVCC read beside a running

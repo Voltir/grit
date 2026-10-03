@@ -57,7 +57,7 @@ object ReportTests extends TestSuite {
         "## Tools",
         "## Tokens",
         "## Estimate against the ledger",
-        "## Cost per turn (USD)",
+        "## Cost per turn",
         "## Speech",
         "## Verdicts",
         "## Used parts",
@@ -96,11 +96,11 @@ object ReportTests extends TestSuite {
     test("a turns report's lines run most costly first, each with its top parts by support") {
       val report = lines(Report.turns("20261004", TurnFixtures.turns, TurnFixtures.verdicts))
       report.dropWhile(_ != "## Turns by cost").drop(6) ==> Vector(
-        "| w1 | slack | heard | open | passed | 2 | topic 1, read 2 | 50 | 100 / 80 | 0.00600 | — |",
-        "| w4 | slack | addressed | open | replied 90 | 0 | — | 79 | 200 / 100 | 0.00450 | recent 0.20, recalled 0.00 |",
-        "| w2 | slack | heard | open | replied 40 | 1 | unnamed 1 | 60 | 50 / 0 | 0.00200 | open 0.50, closed 0.10 |",
-        "| w3 | tui | addressed | open | failed at assemble (assembly) | 0 | — | — | — | 0.00000 | — |",
-        "| w5 | task | addressed | open | unfinished (PENDING) | 0 | — | — | — | 0.00000 | — |"
+        "| w1 | slack | heard | open | passed | 2 | topic 1, read 2 | 50 | 100 / 80 | 6 mills ($0.006) | — |",
+        "| w4 | slack | addressed | open | replied 90 | 0 | — | 79 | 200 / 100 | 4.5 mills ($0.0045) | recent 0.20, recalled 0.00 |",
+        "| w2 | slack | heard | open | replied 40 | 1 | unnamed 1 | 60 | 50 / 0 | 2 mills ($0.002) | open 0.50, closed 0.10 |",
+        "| w3 | tui | addressed | open | failed at assemble (assembly) | 0 | — | — | — | 0 mills ($0) | — |",
+        "| w5 | task | addressed | open | unfinished (PENDING) | 0 | — | — | — | 0 mills ($0) | — |"
       )
     }
 
@@ -220,10 +220,10 @@ object ReportTests extends TestSuite {
       )
       val size = report.indexOf("### Size of triage's calls")
       report.slice(size + 2, size + 6) ==> Vector(
-        "| run | calls answered | input tokens: mean | p90 | cost, USD: mean | p90 |",
+        "| run | calls answered | input tokens: mean | p90 | cost: mean | p90 |",
         "|---|---|---|---|---|---|",
-        "| A | 4 | 700 | 700 | 0.0000400 | 0.0000400 |",
-        "| B | 4 | 900 | 900 | 0.0000400 | 0.0000400 |"
+        "| A | 4 | 700 | 700 | 0.04 mills | 0.04 mills |",
+        "| B | 4 | 900 | 900 | 0.04 mills | 0.04 mills |"
       )
     }
 
