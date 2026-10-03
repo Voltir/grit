@@ -15,8 +15,8 @@ import grit.core.store.{
   Entry,
   InMemoryEntryStore,
   InMemoryLifecycleStore,
-  InMemoryPrincipals,
   InMemoryPeriodStore,
+  InMemoryPrincipals,
   Payload,
   StoreError,
   Tx
@@ -156,7 +156,12 @@ object SettleFixtures {
     /** The settle's body over this world, with `classifier`, at `minutes`. */
     def body(classifier: Classifier^, minutes: Long)(id: WorkflowId)(using Durable^): String =
       Settle.body(
-        SettleEnv(SettleRecords(entries, periods, lifecycle, principals), classifier, FakeDb, new Stopped(at(minutes)))
+        SettleEnv(
+          SettleRecords(entries, periods, lifecycle, principals),
+          classifier,
+          FakeDb,
+          new Stopped(at(minutes))
+        )
       )(id)
   }
 }

@@ -54,15 +54,16 @@ final class McpTools(
     */
   def run(route: Route, request: ToolRequest): Outcome = {
     val _ = offered()
-    val tools: Vector[Tool.Offered^{clock}] = McpTools.current(clock, clients).flatMap { (at, tool) =>
-      clients.lift(at).toVector.flatMap { client =>
-        Hosted
-          .advertised(McpTools.entry(tool))
-          .toVector
-          .map(hosted => hosted.over(args => McpTools.call(client, tool, args)))
+    val tools: Vector[Tool.Offered^{clock}] =
+      McpTools.current(clock, clients).flatMap { (at, tool) =>
+        clients.lift(at).toVector.flatMap { client =>
+          Hosted
+            .advertised(McpTools.entry(tool))
+            .toVector
+            .map(hosted => hosted.over(args => McpTools.call(client, tool, args)))
+        }
       }
-    }
-    Toolbox.of[{clock}](tools*) match {
+    Toolbox.of[caps.CapSet^{clock}](tools*) match {
       case Right(box) => Run.request(request, box)
       // current offers each name once.
       case Left(repeated) =>

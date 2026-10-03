@@ -3,7 +3,12 @@ package grit.turn
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{ConversationId, ToolCallId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.store.{InMemoryConversationStore, InMemoryEntryStore, InMemoryUsageLedger, StoreError}
+import grit.core.store.{
+  InMemoryConversationStore,
+  InMemoryEntryStore,
+  InMemoryUsageLedger,
+  StoreError
+}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
@@ -33,7 +38,11 @@ object TurnTallyTests extends TestSuite {
   /** A free tool that answers without reading anything. */
   private val glance: Tool[String] =
     new Tool(
-      ToolSpec(ToolName("glance"), "Glances at a file.", Args.of((path = Field.text("The file."))).map(_.path)),
+      ToolSpec(
+        ToolName("glance"),
+        "Glances at a file.",
+        Args.of((path = Field.text("The file."))).map(_.path)
+      ),
       Gate.Free,
       p => p,
       _ => Outcome.Done("seen")
@@ -54,7 +63,9 @@ object TurnTallyTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val ledger = new InMemoryUsageLedger
       val ws = new Files(Map("a.txt" -> "alpha", "c.txt" -> "gamma"))
-      val box = Toolbox.of[{ws}](peek(ws), glance).fold(d => throw new java.lang.AssertionError(d), identity)
+      val box = Toolbox
+        .of[caps.CapSet^{ws}](peek(ws), glance)
+        .fold(d => throw new java.lang.AssertionError(d), identity)
       val turn = say(entries, "read them")
       val said = new InMemoryDurable().run(turn.workflowId)(
         tooledBody(entries, provider, ledger, new StubProvider(), NoClassifier, ws, box, 5)

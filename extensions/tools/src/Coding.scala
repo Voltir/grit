@@ -2,16 +2,7 @@ package grit.tools
 
 import scala.concurrent.duration.*
 
-import grit.core.host.{
-  Clipped,
-  Edits,
-  HostError,
-  Lines,
-  RelPath,
-  Replace,
-  Shell,
-  Workspace
-}
+import grit.core.host.{Clipped, Edits, HostError, Lines, RelPath, Replace, Shell, Workspace}
 import grit.core.tool.{
   Args,
   ArgsError,
@@ -64,7 +55,7 @@ object Coding {
   lazy val readOnlyHosted: Vector[Tool.Offered] = Vector(readHosted, listHosted, searchHosted)
 
   /** `read`, `list` and `search`; `Left` names a tool offered twice. */
-  def readOnly(ws: Workspace^): Either[DuplicateName, Toolbox[{ws}]] =
+  def readOnly(ws: Workspace^): Either[DuplicateName, Toolbox[caps.CapSet^{ws}]] =
     Toolbox.of(read(ws), list(ws), search(ws))
 
   /** Every tool: `read`, `list`, `search`, `write`, `edit` and `run`; `Left` names a tool
@@ -74,7 +65,7 @@ object Coding {
       ws: Workspace^,
       edits: Edits^,
       shell: Shell^
-  ): Either[DuplicateName, Toolbox[{ws, edits, shell}]] =
+  ): Either[DuplicateName, Toolbox[caps.CapSet^{ws, edits, shell}]] =
     Toolbox.of(read(ws), list(ws), search(ws), write(edits), edit(edits), run(shell))
 
   /** `read` as the engine offers it: an edge runs it ([[read]]). */
@@ -93,7 +84,8 @@ object Coding {
           .of(
             (
               path = Field.text("The file, relative to the checkout's root."),
-              offset = Field.count("The line to start at, counting from 1.", 1, Int.MaxValue).optional,
+              offset =
+                Field.count("The line to start at, counting from 1.", 1, Int.MaxValue).optional,
               limit = Field.count("The most lines to read.", 1, Clipped.MaxLines).optional
             )
           )
@@ -106,9 +98,8 @@ object Coding {
     )
 
   def read(ws: Workspace^): Tool[ReadArgs]^{ws} =
-    readHosted.over(
-      a =>
-        outcome(ws.read(a.path, Lines.of(a.offset.getOrElse(1), a.limit)))(c => c.show)
+    readHosted.over(a =>
+      outcome(ws.read(a.path, Lines.of(a.offset.getOrElse(1), a.limit)))(c => c.show)
     )
 
   /** `list` as the engine offers it: an edge runs it ([[list]]). */
@@ -124,8 +115,11 @@ object Coding {
         Args
           .of(
             (
-              path = Field.text("The directory, relative to the checkout's root; `.` for the root.").optional,
-              depth = Field.count("How many levels down to list; 1 when not given.", 1, MaxDepth).optional
+              path = Field
+                .text("The directory, relative to the checkout's root; `.` for the root.")
+                .optional,
+              depth =
+                Field.count("How many levels down to list; 1 when not given.", 1, MaxDepth).optional
             )
           )
           .refine(a =>
@@ -139,9 +133,7 @@ object Coding {
     )
 
   def list(ws: Workspace^): Tool[ListArgs]^{ws} =
-    listHosted.over(
-      a => outcome(ws.list(a.path, a.depth))(_.show)
-    )
+    listHosted.over(a => outcome(ws.list(a.path, a.depth))(_.show))
 
   /** `search` as the engine offers it: an edge runs it ([[search]]). */
   lazy val searchHosted: Hosted[SearchArgs] =
@@ -160,7 +152,9 @@ object Coding {
           .of(
             (
               pattern = Field.text("The regular expression, in Java's syntax."),
-              path = Field.text("Where to search, relative to the checkout's root; `.` for all of it.").optional
+              path = Field
+                .text("Where to search, relative to the checkout's root; `.` for all of it.")
+                .optional
             )
           )
           .refine(a => located(a.path.getOrElse(".")).map(p => (pattern = a.pattern, path = p))),
@@ -172,9 +166,7 @@ object Coding {
     )
 
   def search(ws: Workspace^): Tool[SearchArgs]^{ws} =
-    searchHosted.over(
-      a => outcome(ws.search(a.pattern, a.path))(_.show)
-    )
+    searchHosted.over(a => outcome(ws.search(a.pattern, a.path))(_.show))
 
   /** `write` as the engine offers it: an edge runs it ([[write]]). */
   lazy val writeHosted: Hosted[WriteArgs] =
@@ -206,11 +198,10 @@ object Coding {
     )
 
   def write(edits: Edits^): Tool[WriteArgs]^{edits} =
-    writeHosted.over(
-      a =>
-        outcome(edits.write(a.path, a.content))(_ =>
-          s"Wrote ${RelPath.value(a.path)}: ${count(Clipped.lines(a.content).size, "line")}."
-        )
+    writeHosted.over(a =>
+      outcome(edits.write(a.path, a.content))(_ =>
+        s"Wrote ${RelPath.value(a.path)}: ${count(Clipped.lines(a.content).size, "line")}."
+      )
     )
 
   /** `edit` as the engine offers it: an edge runs it ([[edit]]). */
@@ -241,9 +232,8 @@ object Coding {
             )
           )
           .refine(a =>
-            located(a.path).map(p =>
-              (path = p, edits = a.edits.map(e => Replace(e.oldText, e.newText)))
-            )
+            located(a.path)
+              .map(p => (path = p, edits = a.edits.map(e => Replace(e.oldText, e.newText))))
           )
       ),
       Gate.Ask(a => {
@@ -258,17 +248,16 @@ object Coding {
     )
 
   def edit(edits: Edits^): Tool[EditArgs]^{edits} =
-    editHosted.over(
-      a =>
-        edits.edit(a.path, a.edits) match {
-          case Left(error) => Outcome.Failed(error.message)
-          case Right(done) =>
-            val on = done.at.mkString(", ")
-            Outcome.Done(
-              s"Edited ${RelPath.value(a.path)}: ${count(done.at.size, "replacement")}, " +
-                s"starting on line${if (done.at.size == 1) "" else "s"} $on."
-            )
-        }
+    editHosted.over(a =>
+      edits.edit(a.path, a.edits) match {
+        case Left(error) => Outcome.Failed(error.message)
+        case Right(done) =>
+          val on = done.at.mkString(", ")
+          Outcome.Done(
+            s"Edited ${RelPath.value(a.path)}: ${count(done.at.size, "replacement")}, " +
+              s"starting on line${if (done.at.size == 1) "" else "s"} $on."
+          )
+      }
     )
 
   /** `run` as the engine offers it: an edge runs it ([[run]]). */
@@ -287,29 +276,28 @@ object Coding {
           .of(
             (
               command = Field.text("The command, as sh reads it."),
-              timeout = Field.count(
-                s"The most seconds it may run; ${DefaultTimeout.toSeconds} when not given.",
-                1,
-                MaxTimeout.toSeconds.toInt
-              ).optional
+              timeout = Field
+                .count(
+                  s"The most seconds it may run; ${DefaultTimeout.toSeconds} when not given.",
+                  1,
+                  MaxTimeout.toSeconds.toInt
+                )
+                .optional
             )
           )
-          .map(a =>
-            (command = a.command, timeout = a.timeout.fold(DefaultTimeout)(_.seconds))
-          )
+          .map(a => (command = a.command, timeout = a.timeout.fold(DefaultTimeout)(_.seconds)))
       ),
       Gate.Ask(a => s"Run in the checkout (timeout ${a.timeout.toSeconds} s):\n${a.command}"),
       a => a.command
     )
 
   def run(shell: Shell^): Tool[RunArgs]^{shell} =
-    runHosted.over(
-      a =>
-        outcome(shell.run(a.command, a.timeout)) { ran =>
-          val out = ran.output.show
-          if (out.isEmpty) s"Exit code ${ran.exit}; no output."
-          else s"Exit code ${ran.exit}. Output:\n$out"
-        }
+    runHosted.over(a =>
+      outcome(shell.run(a.command, a.timeout)) { ran =>
+        val out = ran.output.show
+        if (out.isEmpty) s"Exit code ${ran.exit}; no output."
+        else s"Exit code ${ran.exit}. Output:\n$out"
+      }
     )
 
   /** One of `edit`'s `edits`. A value of its own: built inline inside the outer `Args.of`,

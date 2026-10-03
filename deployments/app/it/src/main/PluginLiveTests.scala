@@ -34,7 +34,9 @@ object PluginLiveTests extends TestSuite {
   private final class Refusing(val name: PluginName) extends Plugin {
     val version = 1
     def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
-      docs.put("half", ujson.Str("written before the refusal")).flatMap(_ => Left(StoreError.Invalid("refused")))
+      docs
+        .put("half", ujson.Str("written before the refusal"))
+        .flatMap(_ => Left(StoreError.Invalid("refused")))
   }
 
   /** `n` periods of one conversation, each one message, closed in turn: as a database
@@ -43,11 +45,26 @@ object PluginLiveTests extends TestSuite {
   private def closed(engine: Engine^, n: Int): Unit =
     for (i <- 1 to n) {
       val t = engine.inbox
-        .ingest(Origin.Tui(grit.core.place.Directory.of("/plugins").fold(e => sys.error(e), identity), "plugins"), SourceId(s"m$i"), Message.User(s"message $i"), grit.core.id.PrincipalId.Local)
+        .ingest(
+          Origin.Tui(
+            grit.core.place.Directory.of("/plugins").fold(e => sys.error(e), identity),
+            "plugins"
+          ),
+          SourceId(s"m$i"),
+          Message.User(s"message $i"),
+          grit.core.id.PrincipalId.Local
+        )
         .fold(e => sys.error(s"$e"), identity)
       val closing = TestClosings.prose(s"Period $i. More.")
       val ref = PeriodRef(t.conversationId, PeriodSeq.of(i.toLong).getOrElse(sys.error("seq")))
-      engine.jot.write(engine.periods.seal(CloseRef(ref, t.turnSeq, Instant.EPOCH), CloseReason.Resolved(Probability.One), closing, Instant.parse(s"2026-09-2${i}T10:00:00Z"))) ==>
+      engine.jot.write(
+        engine.periods.seal(
+          CloseRef(ref, t.turnSeq, Instant.EPOCH),
+          CloseReason.Resolved(Probability.One),
+          closing,
+          Instant.parse(s"2026-09-2${i}T10:00:00Z")
+        )
+      ) ==>
         Right(Sealed.Closed(ref.closingId))
     }
 
@@ -56,7 +73,9 @@ object PluginLiveTests extends TestSuite {
     val until = System.nanoTime() + 30.seconds.toNanos
     def done = LiveDb.transaction(config) { (tx: Tx^) ?=>
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-      Using.resource(conn.prepareStatement("SELECT status FROM dbos.workflow_status WHERE workflow_uuid = ?")) { ps =>
+      Using.resource(
+        conn.prepareStatement("SELECT status FROM dbos.workflow_status WHERE workflow_uuid = ?")
+      ) { ps =>
         ps.setString(1, WorkflowId.value(id))
         Using.resource(ps.executeQuery())(rs => rs.next() && rs.getString(1) == "SUCCESS")
       }
@@ -71,14 +90,17 @@ object PluginLiveTests extends TestSuite {
       nothing,
       nothing,
       nothing,
-      Posting.body(plugins, PostEnv(
-            engine.periods,
-            engine.cursors,
-            engine.cache,
-            engine.tombstones,
-            engine.jot,
-            Clock.system()
-          )),
+      Posting.body(
+        plugins,
+        PostEnv(
+          engine.periods,
+          engine.cursors,
+          engine.cache,
+          engine.tombstones,
+          engine.jot,
+          Clock.system()
+        )
+      ),
       nothing,
       LiveEngine.Unplaced,
       plugins
@@ -95,11 +117,18 @@ object PluginLiveTests extends TestSuite {
         val run = PostRef(digest.name, 1, CloseOrdinal.Start, 0)
         engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector(run))
         assert(finished(config, run.workflowId))
-        engine.jot.write(engine.cursors.start(digest.name, 1, java.time.Instant.now())) ==> Right(CloseOrdinal.of(2).getOrElse(sys.error("o")))
+        engine.jot.write(engine.cursors.start(digest.name, 1, java.time.Instant.now())) ==> Right(
+          CloseOrdinal.of(2).getOrElse(sys.error("o"))
+        )
         engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector())
         val store: Db^ = engine.db
-        val tools = Toolbox.of[{store}](Digest.recentActivity(store, engine.docs(digest.name))).fold(d => sys.error(s"$d"), identity)
-        tools.bind(AssistantBlock.ToolCall(ToolCallId("c"), "recent_activity", ujson.Obj()), Repairs.All) match {
+        val tools = Toolbox
+          .of[caps.CapSet^{store}](Digest.recentActivity(store, engine.docs(digest.name)))
+          .fold(d => sys.error(s"$d"), identity)
+        tools.bind(
+          AssistantBlock.ToolCall(ToolCallId("c"), "recent_activity", ujson.Obj()),
+          Repairs.All
+        ) match {
           case Right(free: Bound.Free) =>
             free() ==> Outcome.Done(
               "2026-09-22 10:00 · tui plugins · resolved · Period 2.\n" +
@@ -110,14 +139,17 @@ object PluginLiveTests extends TestSuite {
       } finally engine.close()
     }
 
-    test("a plugin that refuses leaves its cursor and nothing it wrote, and is run again a bounded number of times") {
+    test(
+      "a plugin that refuses leaves its cursor and nothing it wrote, and is run again a bounded number of times"
+    ) {
       val config = TestPostgres.freshDatabase("plugin_refused")
       val engine = LiveEngine.open(config, "test")
       try {
         val refusing = new Refusing(name("refusing"))
         launch(engine, Vector(refusing))
         closed(engine, 1)
-        val runs = (0 until PostRef.Attempts).toVector.map(PostRef(refusing.name, 1, CloseOrdinal.Start, _))
+        val runs =
+          (0 until PostRef.Attempts).toVector.map(PostRef(refusing.name, 1, CloseOrdinal.Start, _))
         // Still behind after each: the next run from the same cursor, under the next id.
         runs.map { run =>
           val posted = engine.sweep(Instant.now()).map(_.posted)
@@ -125,7 +157,9 @@ object PluginLiveTests extends TestSuite {
           posted
         } ==> runs.map(run => Right(Vector(run)))
         engine.db.read(engine.docs(refusing.name).get("half")) ==> Right(None)
-        engine.jot.write(engine.cursors.start(refusing.name, 1, java.time.Instant.now())) ==> Right(CloseOrdinal.Start)
+        engine.jot.write(engine.cursors.start(refusing.name, 1, java.time.Instant.now())) ==> Right(
+          CloseOrdinal.Start
+        )
         // Then the cursor is left for a person, its last run named.
         engine.sweep(Instant.now()).map(s => (s.posted, s.stuck)) ==>
           Right((Vector(), runs.lastOption.map(_.workflowId).toVector))

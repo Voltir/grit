@@ -244,7 +244,8 @@ the caller's side: `args.read(json).map(_.edits.size)`, where `edits: Vector[…
   only through the field (`tools*`), and a method may not let it out.
 - *Fix:* a capture-set parameter on the class: `final class Toolbox[C^] private (tools:
   Vector[Tool.Offered^{C}])`, built by `def of[C^](tools: Tool.Offered^{C}*)`. The type is
-  then written `Toolbox[{ws}]`, not `Toolbox^{ws}`.
+  then written `Toolbox[caps.CapSet^{ws}]` (`Toolbox[{ws}]` to the compiler, which scalafmt
+  cannot parse), not `Toolbox^{ws}`.
 
 **A capset parameter a class's body alone uses.**
 
@@ -322,7 +323,12 @@ this pattern.
 
 - **scalafmt** parses `^` only because of `runner.dialectOverride.allowCaptureChecking =
   true` in `.scalafmt.conf`. Without it, each such file fails with *"`identifier` expected
-  but `)` found"* and is silently skipped.
+  but `)` found"* and is silently skipped. Pure function types (`() -> A`, `A -> B`) need
+  `runner.dialectOverride.allowPureFunctions = true` beside it; without it, *"illegal literal
+  type (), use Unit instead"*. A capture-set argument written `Toolbox[{ws}]` does not parse
+  at all (*"illegal start of declaration"*) and no override fixes it: write its desugared
+  form, `Toolbox[caps.CapSet^{ws}]`, which the compiler reads as the same type. `[{}]` parses.
+  reformatAll still exits 0 over a file it skipped, so read its log for `error:` lines.
 - **upickle's `derives ReadWriter` crashes** with a `MatchError` on
   `caps.internal.inferred` in its macro (upickle 4.4.3). Write codecs by hand over `ujson`,
   or with `readwriter[ujson.Value].bimap`, which compiles under both checkers.

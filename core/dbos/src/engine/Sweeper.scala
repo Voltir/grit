@@ -8,20 +8,20 @@ import scala.jdk.CollectionConverters.*
 import grit.core.id.{CloseRef, PluginName, SettleRef, ShadowRef, WorkflowId}
 import grit.core.plugin.{PluginCursors, PostRef}
 import grit.core.retention.Target
+import grit.core.speech.SpeechStore
+import grit.core.spend.Day
 import grit.core.store.{
   ConversationStore,
   EntryStore,
   LifecycleStore,
   ModelProfileStore,
-  PromptStore,
   PeriodStore,
+  PromptStore,
   StoreError,
   Tombstones,
   Tx,
   UsageLedger
 }
-import grit.core.speech.SpeechStore
-import grit.core.spend.Day
 import grit.core.triage.{Shadowing, TriageShadows}
 import grit.dbos.workflow.{Closes, Posts, Settles, Shadows}
 
@@ -90,8 +90,8 @@ private[engine] final class Sweeper(
       posted <- plugins().foldLeft[Either[StoreError, Swept]](Right(disabled)) { (acc, p) =>
         acc.flatMap(done => post(p._1, p._2, now).map(done + _))
       }
-      shadowed <- declared().foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) {
-        (acc, s) => acc.flatMap(done => shadow(s, now).map(done + _))
+      shadowed <- declared().foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, s) =>
+        acc.flatMap(done => shadow(s, now).map(done + _))
       }
       collected <- collector.once(settings, now)
     } yield closed + asked + posted + shadowed + collected
@@ -107,11 +107,16 @@ private[engine] final class Sweeper(
         _ <- on.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, p) =>
           acc.flatMap(_ => tombstones.spare(Target.Disabled(p), now))
         }
-        marked <- stored.map(_._1).filterNot(on).foldLeft[Either[StoreError, Vector[PluginName]]](
-          Right(Vector.empty)
-        ) { (acc, p) =>
-          acc.flatMap(done => tombstones.write(Target.Disabled(p), now).map(if (_) done :+ p else done))
-        }
+        marked <- stored
+          .map(_._1)
+          .filterNot(on)
+          .foldLeft[Either[StoreError, Vector[PluginName]]](
+            Right(Vector.empty)
+          ) { (acc, p) =>
+            acc.flatMap(done =>
+              tombstones.write(Target.Disabled(p), now).map(if (_) done :+ p else done)
+            )
+          }
       } yield Swept(disabled = marked)
     }
 
@@ -206,7 +211,9 @@ private[engine] final class Sweeper(
             .withStatus(WorkflowState.PENDING, WorkflowState.ENQUEUED, WorkflowState.DELAYED)
         )
         .asScala
-        .exists(w => ShadowRef.fromWorkflowId(WorkflowId(w.workflowId())).exists(_.name == variant.name))
+        .exists(w =>
+          ShadowRef.fromWorkflowId(WorkflowId(w.workflowId())).exists(_.name == variant.name)
+        )
     }.flatMap {
       case true => Right(Swept.nothing)
       case false =>
@@ -247,7 +254,9 @@ private[engine] final class Sweeper(
           offered.map { t =>
             val shadow = ShadowRef(t, variant.name)
             val known = Option(
-              client.retrieveWorkflow[String, Exception](WorkflowId.value(shadow.workflowId)).getStatus()
+              client
+                .retrieveWorkflow[String, Exception](WorkflowId.value(shadow.workflowId))
+                .getStatus()
             ).nonEmpty
             (shadow, known)
           }

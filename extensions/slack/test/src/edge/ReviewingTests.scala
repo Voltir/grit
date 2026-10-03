@@ -172,7 +172,12 @@ object ReviewingTests extends TestSuite {
       w.watched.crash = true
       val crashed = w.edge.prompt()
       w.watched.crash = false
-      (crashed, w.edge.prompt(), w.slack.posts.size, w.unposted) ==> (Right(0), Right(1), 2, Vector.empty)
+      (crashed, w.edge.prompt(), w.slack.posts.size, w.unposted) ==> (
+        Right(0),
+        Right(1),
+        2,
+        Vector.empty
+      )
     }
 
     test(
@@ -234,7 +239,8 @@ object ReviewingTests extends TestSuite {
         reaction("9.0", "+1", user = Nick, channel = "C0REVIEW1")
       ).map(w.slack.deliver)
       val ignoredLabel = w.label(entry)
-      val _ = w.slack.deliver(reaction(ts, "bust_in_silhouette", user = Nick, channel = "C0REVIEW1"))
+      val _ =
+        w.slack.deliver(reaction(ts, "bust_in_silhouette", user = Nick, channel = "C0REVIEW1"))
       (ignored, ignoredLabel, w.label(entry).map(_.verdict)) ==> (
         Vector(true, true, true, true, true),
         None,

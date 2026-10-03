@@ -61,10 +61,10 @@ object CodingTests extends TestSuite {
     }
   }
 
-  private def readOnly(host: Scripted^): Toolbox[{host}] =
+  private def readOnly(host: Scripted^): Toolbox[caps.CapSet^{host}] =
     Coding.readOnly(host).fold(d => throw new java.lang.AssertionError(d), identity)
 
-  private def all(host: Scripted^): Toolbox[{host}] =
+  private def all(host: Scripted^): Toolbox[caps.CapSet^{host}] =
     Coding.all(host, host, host).fold(d => throw new java.lang.AssertionError(d), identity)
 
   private def call(name: String, args: ujson.Value): AssistantBlock.ToolCall =

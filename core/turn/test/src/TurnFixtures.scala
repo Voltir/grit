@@ -6,23 +6,11 @@ import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.classify.Classifier
 import grit.core.classify.{Answer, Answers, ClassifierError, Question}
-import grit.core.edge.InMemoryDeliveries
-import grit.core.id.{EntrySeq, PeriodSeq, TurnSeq}
-import grit.core.period.{CloseReason, Probability, TestClosings}
-import grit.core.speech.{Decision, Heard, InMemorySpeechStore, Limits, Reach}
-import grit.core.spend.DailyCap
-import grit.core.stitch.{InMemoryStitchStore, Tuning}
-import grit.core.triage.{Kind, Tags}
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
 import grit.core.durable.{Durable, InMemoryDurable}
+import grit.core.edge.InMemoryDeliveries
 import grit.core.edge.{InMemoryEdges, Registration, ToolRequest}
-import grit.core.id.{CallSlot, ConversationId, EntryId, PrincipalId, ToolCallId, TurnRef, WorkflowId}
-import grit.core.place.{Directory, Place, Reaches, WorksIn}
-import grit.core.prompt.{Fragment, SystemPrompt, Voice}
-import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
-import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
 import grit.core.host.{
   Clipped,
   EditError,
@@ -36,31 +24,63 @@ import grit.core.host.{
   Shell,
   Workspace
 }
+import grit.core.id.{
+  CallSlot,
+  ConversationId,
+  EntryId,
+  PrincipalId,
+  ToolCallId,
+  TurnRef,
+  WorkflowId
+}
+import grit.core.id.{EntrySeq, PeriodSeq, TurnSeq}
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
+import grit.core.period.{CloseReason, Probability, TestClosings}
+import grit.core.place.{Directory, Place, Reaches, WorksIn}
+import grit.core.prompt.{Fragment, SystemPrompt, Voice}
+import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
+import grit.core.speech.{Decision, Heard, InMemorySpeechStore, Limits, Reach}
+import grit.core.spend.DailyCap
+import grit.core.stitch.{InMemoryStitchStore, Tuning}
 import grit.core.store.{
   Db,
   Entry,
   EntryStore,
-  InMemoryEntryStore,
-  InMemoryPeriodStore,
-  PeriodStore,
   InMemoryConversationStore,
+  InMemoryEntryStore,
   InMemoryModelProfileStore,
+  InMemoryPeriodStore,
   InMemoryPrincipals,
   InMemoryPromptStore,
   InMemoryToolSets,
   InMemoryUsageLedger,
   InMemoryVoiceStore,
-  Origin,
   Jot,
   ModelProfileStore,
+  Origin,
   Payload,
+  PeriodStore,
   Principals,
   StoreError,
   Tx,
   UsageLedger,
   VoiceStore
 }
-import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSet, ToolSpec, Toolbox}
+import grit.core.tool.{
+  Args,
+  Field,
+  Gate,
+  Hosted,
+  Outcome,
+  Retry,
+  Tool,
+  ToolName,
+  ToolSet,
+  ToolSpec,
+  Toolbox
+}
+import grit.core.triage.{Kind, Tags}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -72,7 +92,8 @@ object TurnFixtures {
   val conversation = ConversationId("c1")
 
   /** The directory the fixture conversation is a TUI session in. */
-  val checkout: Directory = Directory.of("/checkout").fold(e => throw new java.lang.AssertionError(e), identity)
+  val checkout: Directory =
+    Directory.of("/checkout").fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** The fixture conversation's origin: its id is `c1` in a fresh [[hosting]]. */
   val origin: Origin = Origin.Tui(checkout, "test")
@@ -175,7 +196,8 @@ object TurnFixtures {
 
     def now(): Instant = Instant.now()
     def millis(): Long = System.nanoTime() / 1000000
-    def sleep(duration: scala.concurrent.duration.FiniteDuration): Unit = waited = waited :+ duration
+    def sleep(duration: scala.concurrent.duration.FiniteDuration): Unit = waited =
+      waited :+ duration
   }
 
   /** The stub, streaming; its first `failures` calls each tell a piece of text and then fail
@@ -226,7 +248,11 @@ object TurnFixtures {
 
   /** A call to the `topic` tool, saying the message is `about` that. */
   def topicCall(about: String): AssistantBlock.ToolCall =
-    AssistantBlock.ToolCall(ToolCallId("t1"), grit.core.tool.ToolName.value(TurnVerdict.Name), ujson.Obj("about" -> about))
+    AssistantBlock.ToolCall(
+      ToolCallId("t1"),
+      grit.core.tool.ToolName.value(TurnVerdict.Name),
+      ujson.Obj("about" -> about)
+    )
 
   /** Entries a crash is aimed at: the reply's insert. */
   val isReply: Entry -> Boolean = _.payload match {
@@ -313,7 +339,10 @@ object TurnFixtures {
 
   /** A shell that runs nothing: every command fails to start. */
   object NoShell extends Shell {
-    def run(command: String, timeout: scala.concurrent.duration.FiniteDuration): Either[HostError, Ran] =
+    def run(
+        command: String,
+        timeout: scala.concurrent.duration.FiniteDuration
+    ): Either[HostError, Ran] =
       Left(HostError.Failed("no shell"))
   }
 
@@ -326,7 +355,10 @@ object TurnFixtures {
 
     def read(path: RelPath, lines: Lines): Either[HostError, Clipped] = {
       reads += 1
-      files.get(RelPath.value(path)).map(Clipped.head(_, _ => None)).toRight(HostError.NotFound(path))
+      files
+        .get(RelPath.value(path))
+        .map(Clipped.head(_, _ => None))
+        .toRight(HostError.NotFound(path))
     }
     def list(dir: RelPath, depth: Int): Either[HostError, Clipped] =
       Left(HostError.Failed("no listing"))
@@ -339,7 +371,8 @@ object TurnFixtures {
   private def reading(ws: Workspace^, p: String): Outcome =
     RelPath.of(p) match {
       case Left(error) => Outcome.Failed(error.message)
-      case Right(at) => ws.read(at, Lines.All).fold(e => Outcome.Failed(e.message), c => Outcome.Done(c.show))
+      case Right(at) =>
+        ws.read(at, Lines.All).fold(e => Outcome.Failed(e.message), c => Outcome.Done(c.show))
     }
 
   /** A free tool: `peek` reads a file of `ws`. */
@@ -348,11 +381,18 @@ object TurnFixtures {
 
   /** A gated tool, for the tests alone: `poke` reads a file of `ws` once a person approves. */
   def poke(ws: Workspace^): Tool[String]^{ws} =
-    new Tool(ToolSpec(ToolName("poke"), "Reads a file, asking first.", path), Gate.Ask(p => s"poke $p"), p => p, reading(ws, _))
+    new Tool(
+      ToolSpec(ToolName("poke"), "Reads a file, asking first.", path),
+      Gate.Ask(p => s"poke $p"),
+      p => p,
+      reading(ws, _)
+    )
 
   /** `peek` and `poke` over `ws`. */
-  def tools(ws: Workspace^): Toolbox[{ws}] =
-    Toolbox.of[{ws}](peek(ws), poke(ws)).fold(d => throw new java.lang.AssertionError(d), identity)
+  def tools(ws: Workspace^): Toolbox[caps.CapSet^{ws}] =
+    Toolbox
+      .of[caps.CapSet^{ws}](peek(ws), poke(ws))
+      .fold(d => throw new java.lang.AssertionError(d), identity)
 
   /** `fetch`, hosted: the engine offers it, an edge runs it. Free; reruns. */
   val hostedFetch: Hosted[String] =
@@ -360,7 +400,11 @@ object TurnFixtures {
 
   /** `prod`, hosted, asking first. */
   val hostedProd: Hosted[String] =
-    new Hosted(ToolSpec(ToolName("prod"), "Prods a file, asking first.", path), Gate.Ask(p => s"prod $p"), p => p)
+    new Hosted(
+      ToolSpec(ToolName("prod"), "Prods a file, asking first.", path),
+      Gate.Ask(p => s"prod $p"),
+      p => p
+    )
 
   /** Both hosted tools. */
   val hostedTools: Vector[Tool.Offered] = Vector(hostedFetch, hostedProd)
@@ -512,9 +556,29 @@ object TurnFixtures {
     conversations.findOrCreate(from, PrincipalId.Local)(using TestTx.fake)
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, profilesKept(), new InMemoryPrincipals),
-        TurnHosting(conversations, Prompts, toolSets, requests, served.edges, new InMemoryVoiceStore, new InMemoryPrincipals),
-        new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
+        TurnRecords(
+          entries,
+          new InMemoryUsageLedger,
+          CharEstimate,
+          profilesKept(),
+          new InMemoryPrincipals
+        ),
+        TurnHosting(
+          conversations,
+          Prompts,
+          toolSets,
+          requests,
+          served.edges,
+          new InMemoryVoiceStore,
+          new InMemoryPrincipals
+        ),
+        new LinearAssembler(
+          entries,
+          NoPeriods,
+          new InMemoryPrincipals,
+          CharEstimate,
+          LinearAssembler.DefaultBudget
+        ),
         NoClassifier,
         new FixedModels(provider, new StubProvider()),
         FakeDb,
@@ -540,12 +604,20 @@ object TurnFixtures {
     */
   def keptBy(steps: Vector[InMemoryDurable.Step]): ujson.Obj = {
     val offered = steps.collectFirst {
-      case InMemoryDurable.Step(Turn.Step.Offer, InMemoryDurable.Outcome.Output(out)) => ujson.read(out)
+      case InMemoryDurable.Step(Turn.Step.Offer, InMemoryDurable.Outcome.Output(out)) =>
+        ujson.read(out)
     }
     val ok = offered.flatMap(_.objOpt).flatMap(_.get("ok")).flatMap(_.objOpt)
-    val set = ok.flatMap(_.get("tools")).flatMap(_.strOpt).flatMap(id => ToolSets.sets.find(s => grit.core.tool.ToolSetId.value(s.id) == id))
-    val ids = ok.flatMap(_.get("prompt")).flatMap(_.arrOpt).fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt))
-    val fragments = ids.flatMap(id => Prompts.fragments.find(f => grit.core.prompt.FragmentId.value(f.id) == id))
+    val set = ok
+      .flatMap(_.get("tools"))
+      .flatMap(_.strOpt)
+      .flatMap(id => ToolSets.sets.find(s => grit.core.tool.ToolSetId.value(s.id) == id))
+    val ids = ok
+      .flatMap(_.get("prompt"))
+      .flatMap(_.arrOpt)
+      .fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt))
+    val fragments =
+      ids.flatMap(id => Prompts.fragments.find(f => grit.core.prompt.FragmentId.value(f.id) == id))
     if (offered.isEmpty) ujson.Obj()
     else
       ujson.Obj(
@@ -556,19 +628,26 @@ object TurnFixtures {
 
   /** Keeps in the fixture stores the rows a history holds ([[keptBy]]'s form). */
   def keepAll(kept: ujson.Obj): Either[String, Unit] = {
-    val sets = kept.value.get("toolSets").flatMap(_.arrOpt).fold(Vector.empty[ujson.Value])(_.toVector)
-    val fragments = kept.value.get("fragments").flatMap(_.arrOpt).fold(Vector.empty[ujson.Value])(_.toVector)
+    val sets =
+      kept.value.get("toolSets").flatMap(_.arrOpt).fold(Vector.empty[ujson.Value])(_.toVector)
+    val fragments =
+      kept.value.get("fragments").flatMap(_.arrOpt).fold(Vector.empty[ujson.Value])(_.toVector)
     for {
-      read <- sets.foldLeft[Either[String, Vector[ToolSet]]](Right(Vector.empty))((acc, v) => acc.flatMap(d => ToolSet.read(v).map(d :+ _)))
-      frags <- fragments.foldLeft[Either[String, Vector[Fragment]]](Right(Vector.empty)) { (acc, v) =>
-        acc.flatMap { d =>
-          (for {
-            o <- v.objOpt
-            layer <- o.get("layer").flatMap(_.strOpt).flatMap(grit.core.prompt.Layer.of)
-            source <- o.get("source").flatMap(_.strOpt)
-            text <- o.get("text").flatMap(_.strOpt)
-          } yield Fragment(layer, source, text)).map(d :+ _).toRight("a kept fragment does not read")
-        }
+      read <- sets.foldLeft[Either[String, Vector[ToolSet]]](Right(Vector.empty))((acc, v) =>
+        acc.flatMap(d => ToolSet.read(v).map(d :+ _))
+      )
+      frags <- fragments.foldLeft[Either[String, Vector[Fragment]]](Right(Vector.empty)) {
+        (acc, v) =>
+          acc.flatMap { d =>
+            (for {
+              o <- v.objOpt
+              layer <- o.get("layer").flatMap(_.strOpt).flatMap(grit.core.prompt.Layer.of)
+              source <- o.get("source").flatMap(_.strOpt)
+              text <- o.get("text").flatMap(_.strOpt)
+            } yield Fragment(layer, source, text))
+              .map(d :+ _)
+              .toRight("a kept fragment does not read")
+          }
       }
     } yield {
       read.foreach(ToolSets.keep(_)(using TestTx.fake))
@@ -593,9 +672,12 @@ object TurnFixtures {
       else underlying.insert(entry)
     def get(id: EntryId)(using Tx^): Either[StoreError, Option[Entry]] = underlying.get(id)
     def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] = underlying.list(c)
-    def at(c: ConversationId, seqs: Vector[EntrySeq])(using Tx^): Either[StoreError, Vector[Entry]] =
+    def at(c: ConversationId, seqs: Vector[EntrySeq])(using
+        Tx^
+    ): Either[StoreError, Vector[Entry]] =
       underlying.at(c, seqs)
-    def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]] = underlying.ofTurn(turn)
+    def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]] =
+      underlying.ofTurn(turn)
     def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
       underlying.lockNext(c)
   }
@@ -627,9 +709,12 @@ object TurnFixtures {
     def list(c: ConversationId)(using Tx^): Either[StoreError, Vector[Entry]] =
       if (answering) Left(StoreError.DatabaseError("the conversation is not listed mid-answer"))
       else underlying.list(c)
-    def at(c: ConversationId, seqs: Vector[EntrySeq])(using Tx^): Either[StoreError, Vector[Entry]] =
+    def at(c: ConversationId, seqs: Vector[EntrySeq])(using
+        Tx^
+    ): Either[StoreError, Vector[Entry]] =
       underlying.at(c, seqs)
-    def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]] = underlying.ofTurn(turn)
+    def ofTurn(turn: TurnRef)(using Tx^): Either[StoreError, Vector[Entry]] =
+      underlying.ofTurn(turn)
     def lockNext(c: ConversationId)(using Tx^): Either[StoreError, EntryStore.Next] =
       underlying.lockNext(c)
   }
@@ -706,7 +791,8 @@ object TurnFixtures {
         case Payload.Result(Message.ToolResult(_, content, isError), _) =>
           Some(s"${if (isError) "error" else "result"}: $content")
         case Payload.Attempt(call) => Some(s"attempt: ${grit.core.id.ToolCallId.value(call)}")
-        case Payload.Ask(call, shown) => Some(s"ask: ${grit.core.id.ToolCallId.value(call)}: $shown")
+        case Payload.Ask(call, shown) =>
+          Some(s"ask: ${grit.core.id.ToolCallId.value(call)}: $shown")
         case Payload.Closed(_, _, closing) => Some(s"closed: ${closing.flows.prose}")
         case Payload.Draft(Message.Assistant(blocks, _, _, _, _)) =>
           Some(blocks.collect { case AssistantBlock.Text(t) => s"draft: $t" }.mkString)
@@ -724,7 +810,13 @@ object TurnFixtures {
   /** The linear window, with `note` added: an assembler that says it wrote a query. */
   final class Noting(entries: EntryStore, note: AssemblyNote) extends ContextAssembler {
     def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =
-      new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget)
+      new LinearAssembler(
+        entries,
+        NoPeriods,
+        new InMemoryPrincipals,
+        CharEstimate,
+        LinearAssembler.DefaultBudget
+      )
         .assemble(request)
         .map(_.copy(notes = Vector(note)))
   }
@@ -746,8 +838,18 @@ object TurnFixtures {
   /** A catalog whose three roles differ only in their model: what every fixture turn pins. */
   val TestCatalog: Catalog = {
     def role(name: String, budget: Int) =
-      Assignment(ModelRef(ModelId.of(s"test/$name").getOrElse(throw new java.lang.AssertionError(name)), None), budget, None)
-    Catalog.of(Policy(role("turn", 4096), role("summary", 1024), role("query", 1024), role("summary", 1024)), Vector.empty)
+      Assignment(
+        ModelRef(
+          ModelId.of(s"test/$name").getOrElse(throw new java.lang.AssertionError(name)),
+          None
+        ),
+        budget,
+        None
+      )
+    Catalog.of(
+      Policy(role("turn", 4096), role("summary", 1024), role("query", 1024), role("summary", 1024)),
+      Vector.empty
+    )
   }
 
   /** Models for a test: [[TestCatalog]] is in force, and the summary's calls go to
@@ -785,7 +887,13 @@ object TurnFixtures {
         speech,
         stitching
       ),
-      TurnTooling[{NoCheckout}](noTools, Toolbox.Empty, Vector.empty, new FakeJot, budget(5))
+      TurnTooling[caps.CapSet^{NoCheckout}](
+        noTools,
+        Toolbox.Empty,
+        Vector.empty,
+        new FakeJot,
+        budget(5)
+      )
     )(id)
 
   /** The turn's workflow body over `entries`, its calls to `turn`'s model and its summary to
@@ -810,7 +918,13 @@ object TurnFixtures {
           principals
         ),
         hosting(voices = voices),
-        new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
+        new LinearAssembler(
+          entries,
+          NoPeriods,
+          new InMemoryPrincipals,
+          CharEstimate,
+          LinearAssembler.DefaultBudget
+        ),
         NoClassifier,
         new FixedModels(turn, summary),
         FakeDb,
@@ -819,7 +933,13 @@ object TurnFixtures {
         quiet(),
         unstitched()
       ),
-      TurnTooling[{NoCheckout}](noTools, Toolbox.Empty, Vector.empty, new FakeJot, budget(5))
+      TurnTooling[caps.CapSet^{NoCheckout}](
+        noTools,
+        Toolbox.Empty,
+        Vector.empty,
+        new FakeJot,
+        budget(5)
+      )
     )(id)
 
   /** The stub classifier, counting the questions it was asked, call by call. */
@@ -844,7 +964,8 @@ object TurnFixtures {
 
   /** The conversation's topics as its entries leave them. */
   def topics(entries: EntryStore): grit.core.topic.Topics =
-    grit.core.topic.Topics.fold(Vector.empty, all(entries).flatMap(e => grit.core.store.EntryTopics.events(e.payload)))
+    grit.core.topic.Topics
+      .fold(Vector.empty, all(entries).flatMap(e => grit.core.store.EntryTopics.events(e.payload)))
 
   /** No classifier: every message after a conversation's first is unclassified. */
   def NoClassifier: Classifier^ = Classifier.none("no classifier")
@@ -947,15 +1068,28 @@ object TurnFixtures {
     val next = entries.lockNext(conversation).getOrElse(sys.error("store"))
     val first =
       if (recalled)
-        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose("The freeze moved to Thursday."))
+        Payload.Closed(
+          PeriodSeq.First,
+          CloseReason.Lapsed,
+          TestClosings.prose("The freeze moved to Thursday.")
+        )
       else Payload.Heard("morning all")
-    entries.insert(Entry(EntryId("first"), conversation, next.turnSeq, None, next.seq, first, Instant.EPOCH))
+    entries.insert(
+      Entry(EntryId("first"), conversation, next.turnSeq, None, next.seq, first, Instant.EPOCH)
+    )
     val turn = hear(entries, "is the freeze still on?")
     val store = new InMemorySpeechStore(entries, ledger)
     store.heard(turn, Reach(replyTo, Set.empty))
     val p = Probability.clamped(0.9)
     store.decided(
-      Heard(turn, EntrySeq(1), Place.Everywhere, Instant.EPOCH, Reach(replyTo, Set.empty), Tags.Weighed(Tags.V1.answers(Kind.Question, p, p, p, p), "jev", Usage.Zero)),
+      Heard(
+        turn,
+        EntrySeq(1),
+        Place.Everywhere,
+        Instant.EPOCH,
+        Reach(replyTo, Set.empty),
+        Tags.Weighed(Tags.V1.answers(Kind.Question, p, p, p, p), "jev", Usage.Zero)
+      ),
       Decision.Drafting(turn),
       Instant.EPOCH
     )
@@ -973,8 +1107,10 @@ object TurnFixtures {
     )
 
   /** No tools offered: the loop's first call is the plain request, and answers. */
-  def noTools: Toolbox[{NoCheckout}] =
-    Toolbox.of[{NoCheckout}]().fold(d => throw new java.lang.AssertionError(d), identity)
+  def noTools: Toolbox[caps.CapSet^{NoCheckout}] =
+    Toolbox
+      .of[caps.CapSet^{NoCheckout}]()
+      .fold(d => throw new java.lang.AssertionError(d), identity)
 
   /** As [[turnBody]], the model offered `tools`, which read `ws`, for at most `calls` model
     * calls.
@@ -986,7 +1122,7 @@ object TurnFixtures {
       summarizer: Provider^,
       classifier: Classifier^,
       ws: Workspace^,
-      tools: Toolbox[{ws}],
+      tools: Toolbox[caps.CapSet^{ws}],
       calls: Int,
       clock: Clock^ = new NoWait,
       hosted: Vector[Tool.Offered] = Vector.empty,
@@ -997,7 +1133,13 @@ object TurnFixtures {
       TurnEnv(
         TurnRecords(entries, ledger, CharEstimate, profilesKept(), new InMemoryPrincipals),
         hosting(),
-        new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
+        new LinearAssembler(
+          entries,
+          NoPeriods,
+          new InMemoryPrincipals,
+          CharEstimate,
+          LinearAssembler.DefaultBudget
+        ),
         classifier,
         new FixedModels(provider, summarizer),
         FakeDb,
@@ -1006,7 +1148,7 @@ object TurnFixtures {
         speech,
         stitching
       ),
-      TurnTooling[{ws}](tools, Toolbox.Empty, hosted, new FakeJot, budget(calls))
+      TurnTooling[caps.CapSet^{ws}](tools, Toolbox.Empty, hosted, new FakeJot, budget(calls))
     )(id)
 
   /** A profile store already holding [[TestCatalog]]'s profile, as the database holds it
@@ -1027,14 +1169,26 @@ object TurnFixtures {
       models: Models^,
       profiles: ModelProfileStore,
       ws: Workspace^,
-      tools: Toolbox[{ws}],
+      tools: Toolbox[caps.CapSet^{ws}],
       calls: Int = 5
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, new InMemoryUsageLedger, CharEstimate, profiles, new InMemoryPrincipals),
+        TurnRecords(
+          entries,
+          new InMemoryUsageLedger,
+          CharEstimate,
+          profiles,
+          new InMemoryPrincipals
+        ),
         hosting(),
-        new LinearAssembler(entries, NoPeriods, new InMemoryPrincipals, CharEstimate, LinearAssembler.DefaultBudget),
+        new LinearAssembler(
+          entries,
+          NoPeriods,
+          new InMemoryPrincipals,
+          CharEstimate,
+          LinearAssembler.DefaultBudget
+        ),
         NoClassifier,
         models,
         FakeDb,
@@ -1043,7 +1197,7 @@ object TurnFixtures {
         quiet(),
         unstitched()
       ),
-      TurnTooling[{ws}](tools, Toolbox.Empty, Vector.empty, new FakeJot, budget(calls))
+      TurnTooling[caps.CapSet^{ws}](tools, Toolbox.Empty, Vector.empty, new FakeJot, budget(calls))
     )(id)
 
   def runTurn(
@@ -1107,7 +1261,8 @@ object TurnFixtures {
       entries.insert(e)
       e
     }
-    val asked = put(a, "a:asked", Payload.Heard("where did we land on the Engine contract term?"), StitchedAt)
+    val asked =
+      put(a, "a:asked", Payload.Heard("where did we land on the Engine contract term?"), StitchedAt)
     val root = put(b, "b:first", first, StitchedAt.plusSeconds(29))
     val turn = TurnRef(b, root.turnSeq)
 
@@ -1128,7 +1283,8 @@ object TurnFixtures {
       val durable = new InMemoryDurable(unpatched)
       val placements = new grit.core.stitch.InMemoryPlacements(
         classifier,
-        grit.core.stitch.StitchReads(entries, conversations, lifecycle, stitches, NoSearch, principals),
+        grit.core.stitch
+          .StitchReads(entries, conversations, lifecycle, stitches, NoSearch, principals),
         FakeDb,
         Tuning.Default,
         StitchedAt.plusSeconds(60)

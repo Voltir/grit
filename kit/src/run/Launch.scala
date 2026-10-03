@@ -9,9 +9,9 @@ import grit.core.context.ContextAssembler
 import grit.core.id.{ShadowName, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.model.{Catalog, Pinned}
-import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.period.{LifecycleSettings, Probability}
 import grit.core.place.Weight
+import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.StitchReads
 import grit.core.store.{Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
@@ -69,7 +69,9 @@ private[grit] object Launch {
       case Left(error) =>
         throw new IllegalStateException(s"the lifecycle's settings could not be written: $error")
       case Right(inForce) =>
-        org.slf4j.LoggerFactory.getLogger("grit.launch").info(s"lifecycle settings: ${written(inForce)}")
+        org.slf4j.LoggerFactory
+          .getLogger("grit.launch")
+          .info(s"lifecycle settings: ${written(inForce)}")
     }
     val reached: Models = s.openRouter match {
       case None => new StubModels(run.stubDelay)
@@ -102,32 +104,38 @@ private[grit] object Launch {
     }
     def launch[C^](tooling: TurnTooling[C]^): Unit = {
       val turnEnv =
-          TurnEnv(
-            TurnRecords(engine.entries, engine.ledger, CharEstimate, engine.profiles, engine.principals),
-            TurnHosting(
-              engine.conversations,
-              engine.prompts,
-              engine.toolSets,
-              engine.requests,
-              engine.edgeDirectory,
-              engine.voices,
-              engine.principals
-            ),
-            assembler,
-            classifier(d, s),
-            models,
-            engine.db,
-            Clock.system(),
-            Fresh.random(),
-            grit.turn.TurnSpeech(d.speaking, engine.speech, engine.deliveries),
-            grit.turn.TurnStitching(
-              engine.stitches,
-              engine.search,
-              engine.lifecycle,
-              grit.core.stitch.Tuning.Default,
-              engine.placements
-            )
+        TurnEnv(
+          TurnRecords(
+            engine.entries,
+            engine.ledger,
+            CharEstimate,
+            engine.profiles,
+            engine.principals
+          ),
+          TurnHosting(
+            engine.conversations,
+            engine.prompts,
+            engine.toolSets,
+            engine.requests,
+            engine.edgeDirectory,
+            engine.voices,
+            engine.principals
+          ),
+          assembler,
+          classifier(d, s),
+          models,
+          engine.db,
+          Clock.system(),
+          Fresh.random(),
+          grit.turn.TurnSpeech(d.speaking, engine.speech, engine.deliveries),
+          grit.turn.TurnStitching(
+            engine.stitches,
+            engine.search,
+            engine.lifecycle,
+            grit.core.stitch.Tuning.Default,
+            engine.placements
           )
+        )
       engine.launch(
         // Told after the body returns, outside any step: the turn's steps are unchanged.
         id => d ?=> told(engine, id, Turn.body(turnEnv, tooling)(id)(using d), finished),
@@ -245,15 +253,15 @@ private[grit] object Launch {
     val about: Tool[Option[About.Subject]] =
       About.load().fold(why => throw new IllegalStateException(why), t => t)
     // Offered everywhere: what grit is, and Digest's recent_activity when it is on.
-    val everyone: Either[DuplicateName, Toolbox[{store}]] = digest match {
-      case None => Toolbox.of[{store}](about)
-      case Some(docs) => Toolbox.of[{store}](about, Digest.recentActivity(store, docs))
+    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{store}]] = digest match {
+      case None => Toolbox.of[caps.CapSet^{store}](about)
+      case Some(docs) => Toolbox.of[caps.CapSet^{store}](about, Digest.recentActivity(store, docs))
     }
     val launching = d.offer.tools match {
       case Offered.Read =>
         everyone.map(tools =>
           launch(
-            TurnTooling[{store}](
+            TurnTooling[caps.CapSet^{store}](
               tools,
               Toolbox.Empty,
               Coding.readOnlyHosted,
@@ -267,12 +275,15 @@ private[grit] object Launch {
       case Offered.All =>
         // Offered only to the operator (Audience.operator): they tune grit, and ask first.
         val tuned = new KeptModelSettings(engine.jot, engine.modelSettings, Clock.system())
-        (everyone, Toolbox.of[{tuned, models}](Tuning.propose(tuned), Probes.probe(models))) match {
+        (
+          everyone,
+          Toolbox.of[caps.CapSet^{tuned, models}](Tuning.propose(tuned), Probes.probe(models))
+        ) match {
           case (Right(tools), Right(operator)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
-            Toolbox.joined[{tuned, models, store}](tools, operator).map { _ =>
+            Toolbox.joined[caps.CapSet^{tuned, models, store}](tools, operator).map { _ =>
               launch(
-                TurnTooling[{tuned, models, store}](
+                TurnTooling[caps.CapSet^{tuned, models, store}](
                   tools,
                   operator,
                   Coding.hosted,
@@ -298,7 +309,12 @@ private[grit] object Launch {
   /** `said`, what the body of the workflow `id` returned, once `finished` is told its
     * [[TurnTally.line]], or `said` and why the tally could not be read.
     */
-  private def told(engine: Engine^, id: WorkflowId, said: String, finished: String => Unit): String = {
+  private def told(
+      engine: Engine^,
+      id: WorkflowId,
+      said: String,
+      finished: String => Unit
+  ): String = {
     finished(TurnRef.fromWorkflowId(id) match {
       case None => said
       case Some(turn) =>

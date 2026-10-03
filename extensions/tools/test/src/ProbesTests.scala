@@ -12,7 +12,12 @@ import utest.*
 object ProbesTests extends TestSuite {
 
   private def reply(blocks: AssistantBlock*): Message.Assistant =
-    Message.Assistant(blocks.toVector, StopReason.ToolUse, Usage(Tokens(1), Tokens(1), Tokens.Zero, None), "m")
+    Message.Assistant(
+      blocks.toVector,
+      StopReason.ToolUse,
+      Usage(Tokens(1), Tokens(1), Tokens.Zero, None),
+      "m"
+    )
 
   private def call(name: String, args: ujson.Value): AssistantBlock =
     AssistantBlock.ToolCall(ToolCallId("p1"), name, args)
@@ -36,7 +41,8 @@ object ProbesTests extends TestSuite {
         case (Vector("count"), _) =>
           Right(
             reply(
-              AssistantBlock.Reasoning("hm", Some(ujson.Arr(ujson.Obj("type" -> "reasoning.text")))),
+              AssistantBlock
+                .Reasoning("hm", Some(ujson.Arr(ujson.Obj("type" -> "reasoning.text")))),
               call("count<|channel|>commentary", ujson.Obj("n" -> "5"))
             )
           )
@@ -53,13 +59,21 @@ object ProbesTests extends TestSuite {
     def provider(pinned: Pinned): Provider^ = { asked = asked :+ pinned; answer }
   }
 
-  private val args = ujson.Obj("model" -> "deepseek/deepseek-v4.1-flash-20260910", "upstream" -> "fireworks", "runs" -> 2)
+  private val args = ujson.Obj(
+    "model" -> "deepseek/deepseek-v4.1-flash-20260910",
+    "upstream" -> "fireworks",
+    "runs" -> 2
+  )
 
   val tests = Tests {
-    test("probe_pair asks first, then measures each setting over its runs, calling the pair it names") {
+    test(
+      "probe_pair asks first, then measures each setting over its runs, calling the pair it names"
+    ) {
       val provider = new Quirky
       val models = new Probed(provider)
-      val box = Toolbox.of[{models}](Probes.probe(models)).fold(d => sys.error(d.toString), identity)
+      val box = Toolbox
+        .of[caps.CapSet^{models}](Probes.probe(models))
+        .fold(d => sys.error(d.toString), identity)
       box.bind(AssistantBlock.ToolCall(ToolCallId("c1"), "probe_pair", args), Repairs.All) match {
         case Right(gated: Bound.Gated) =>
           gated.ask ==> "Probe deepseek/deepseek-v4.1-flash-20260910 @ fireworks: 2 runs, " +
@@ -78,7 +92,9 @@ object ProbesTests extends TestSuite {
             Vector("deepseek/deepseek-v4.1-flash-20260910 @ fireworks")
           models.asked.map(_.assignment.maxTokens).distinct ==> Vector(300)
           // The strict check sends its schema strict.
-          provider.requests.filter(_.tools.exists(_.name == "pick")).forall(_.tools.forall(_.strict)) ==> true
+          provider.requests
+            .filter(_.tools.exists(_.name == "pick"))
+            .forall(_.tools.forall(_.strict)) ==> true
         case other => sys.error(s"not gated: $other")
       }
     }
@@ -89,7 +105,9 @@ object ProbesTests extends TestSuite {
           Left(ProviderError.Unavailable("HTTP 503"))
       }
       val models = new Probed(down)
-      val box = Toolbox.of[{models}](Probes.probe(models)).fold(d => sys.error(d.toString), identity)
+      val box = Toolbox
+        .of[caps.CapSet^{models}](Probes.probe(models))
+        .fold(d => sys.error(d.toString), identity)
       box.bind(AssistantBlock.ToolCall(ToolCallId("c1"), "probe_pair", args), Repairs.All) match {
         case Right(gated: Bound.Gated) =>
           gated(Approval.Approved) ==> Outcome.Failed(
@@ -110,7 +128,9 @@ object ProbesTests extends TestSuite {
           }
       }
       val models = new Probed(plain)
-      val box = Toolbox.of[{models}](Probes.probe(models)).fold(d => sys.error(d.toString), identity)
+      val box = Toolbox
+        .of[caps.CapSet^{models}](Probes.probe(models))
+        .fold(d => sys.error(d.toString), identity)
       val one = ujson.Obj("model" -> "x/plain", "runs" -> 1)
       box.bind(AssistantBlock.ToolCall(ToolCallId("c1"), "probe_pair", one), Repairs.All) match {
         case Right(gated: Bound.Gated) =>

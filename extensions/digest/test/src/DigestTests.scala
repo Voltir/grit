@@ -17,13 +17,21 @@ object DigestTests extends TestSuite {
   private val name = PluginName.of("digest").getOrElse(throw new java.lang.AssertionError("name"))
 
   final class FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using TestTx.fake)
+    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
+      TestTx.fake
+    )
   }
 
   private def closing(prose: String, outcome: Option[String]): Closing =
     TestClosings.prose(prose, outcome)
 
-  private def closed(n: Long, origin: Origin, reason: CloseReason, c: Closing, at: String): ClosedPeriod =
+  private def closed(
+      n: Long,
+      origin: Origin,
+      reason: CloseReason,
+      c: Closing,
+      at: String
+  ): ClosedPeriod =
     ClosedPeriod(
       PeriodRef(ConversationId("c"), PeriodSeq.First),
       origin,
@@ -34,9 +42,30 @@ object DigestTests extends TestSuite {
     )
 
   private val periods: Vector[ClosedPeriod] = Vector(
-    closed(1, Origin.Tui(grit.core.place.Directory.of("/home/nick").fold(e => sys.error(e), identity), "default"), CloseReason.Resolved(Probability.One), closing("We set up staging. It works.", Some("staging deploys from main")), "2026-09-20T14:05:00Z"),
-    closed(2, Origin.Slack("T1", "eng", "1700.1"), CloseReason.Lapsed, closing("Someone asked about the flaky test. Nobody knew.", None), "2026-09-21T09:30:00Z"),
-    closed(3, Origin.Task("nightly", "2026-09-22"), CloseReason.Lapsed, closing("Nothing to report", None), "2026-09-22T03:00:00Z")
+    closed(
+      1,
+      Origin.Tui(
+        grit.core.place.Directory.of("/home/nick").fold(e => sys.error(e), identity),
+        "default"
+      ),
+      CloseReason.Resolved(Probability.One),
+      closing("We set up staging. It works.", Some("staging deploys from main")),
+      "2026-09-20T14:05:00Z"
+    ),
+    closed(
+      2,
+      Origin.Slack("T1", "eng", "1700.1"),
+      CloseReason.Lapsed,
+      closing("Someone asked about the flaky test. Nobody knew.", None),
+      "2026-09-21T09:30:00Z"
+    ),
+    closed(
+      3,
+      Origin.Task("nightly", "2026-09-22"),
+      CloseReason.Lapsed,
+      closing("Nothing to report", None),
+      "2026-09-22T03:00:00Z"
+    )
   )
 
   /** Every period posted to a fresh digest. */
@@ -49,8 +78,13 @@ object DigestTests extends TestSuite {
   }
 
   private def run(db: FakeDb, plugins: InMemoryPlugins, args: (String, ujson.Value)*): Outcome =
-    Toolbox.of[{db}](Digest.recentActivity(db, plugins.docs(name))).fold(d => sys.error(d.toString), identity)
-      .bind(AssistantBlock.ToolCall(ToolCallId("c1"), "recent_activity", ujson.Obj.from(args)), Repairs.All) match {
+    Toolbox
+      .of[caps.CapSet^{db}](Digest.recentActivity(db, plugins.docs(name)))
+      .fold(d => sys.error(d.toString), identity)
+      .bind(
+        AssistantBlock.ToolCall(ToolCallId("c1"), "recent_activity", ujson.Obj.from(args)),
+        Repairs.All
+      ) match {
       case Right(free: Bound.Free) => free()
       case other => sys.error(s"not free: $other")
     }
@@ -60,9 +94,15 @@ object DigestTests extends TestSuite {
       val docs = posted.docs(name)
       docs.newest("", 10)(using TestTx.fake).map(_.map((k, v) => k -> Digest.shown(v))) ==> Right(
         Vector(
-          "00000000000000000003" -> Some("2026-09-22 03:00 · task nightly · lapsed · Nothing to report"),
-          "00000000000000000002" -> Some("2026-09-21 09:30 · slack #eng · lapsed · Someone asked about the flaky test."),
-          "00000000000000000001" -> Some("2026-09-20 14:05 · tui default · resolved · staging deploys from main")
+          "00000000000000000003" -> Some(
+            "2026-09-22 03:00 · task nightly · lapsed · Nothing to report"
+          ),
+          "00000000000000000002" -> Some(
+            "2026-09-21 09:30 · slack #eng · lapsed · Someone asked about the flaky test."
+          ),
+          "00000000000000000001" -> Some(
+            "2026-09-20 14:05 · tui default · resolved · staging deploys from main"
+          )
         )
       )
     }
@@ -104,11 +144,19 @@ object DigestTests extends TestSuite {
       val digest = new Digest(name)
       plugins.cursors.start(name, digest.version, Instant.EPOCH)(using TestTx.fake)
       val many = (1L to 12L).map { n =>
-        closed(n, Origin.Task("nightly", s"run $n"), CloseReason.Lapsed, closing(s"Run $n.", None), f"2026-09-${n}%02dT03:00:00Z")
+        closed(
+          n,
+          Origin.Task("nightly", s"run $n"),
+          CloseReason.Lapsed,
+          closing(s"Run $n.", None),
+          f"2026-09-${n}%02dT03:00:00Z"
+        )
       }
       many.foreach(p => digest.post(p, plugins.posting(name, p))(using TestTx.fake))
       run(new FakeDb, plugins) ==> Outcome.Done(
-        (12L to 3L by -1L).map(n => f"2026-09-${n}%02d 03:00 · task nightly · lapsed · Run $n.").mkString("\n")
+        (12L to 3L by -1L)
+          .map(n => f"2026-09-${n}%02d 03:00 · task nightly · lapsed · Run $n.")
+          .mkString("\n")
       )
     }
   }

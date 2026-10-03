@@ -222,7 +222,12 @@ object TriageFixtures {
     /** Period 1 closed after `last` and its raw entries purged: every entry gone. */
     def purge(last: TurnRef): Unit = {
       given Tx = TestTx.fake
-      periods.seal(CloseRef(p1, last.turnSeq, at(60)), CloseReason.Lapsed, TestClosings.prose("x"), at(60))
+      periods.seal(
+        CloseRef(p1, last.turnSeq, at(60)),
+        CloseReason.Lapsed,
+        TestClosings.prose("x"),
+        at(60)
+      )
       periods.purge(p1, at(61))
       ()
     }
