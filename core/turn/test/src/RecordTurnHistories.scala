@@ -503,6 +503,14 @@ object RecordTurnHistories {
         val (durable, _) = ch.run(new FirstOption)
         recorded(durable, ch.turn)
       },
+      "stitched-first-in-order" -> {
+        // Its placement waited for, a workflow of its own.
+        val ch = new StitchChannel(
+          Payload.Message(grit.core.message.Message.User("@grit is this a real question?"))
+        )
+        val (durable, _) = ch.run(new FirstOption)
+        recorded(durable, ch.turn)
+      },
       "later-turn" -> laterTurn,
       "model-failed" -> modelFailed,
       "crashed-before-append" -> crashedBeforeAppend,

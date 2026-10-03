@@ -45,6 +45,7 @@ object TurnTests extends TestSuite {
     Vector(
       "pin-models",
       "offer",
+      "stitched",
       "stitch",
       "record-stitch",
       "classify",
@@ -68,9 +69,10 @@ object TurnTests extends TestSuite {
   /** What a turn records: its steps, each patch's marker before the steps it brought. */
   private val Recorded: Vector[String] =
     Always
-      .patch(3, Vector("DBOS.patch-topics"), 0)
-      .patch(7, Vector("DBOS.patch-record-window"), 0)
-      .patch(9, Vector("DBOS.patch-tools"), 0)
+      .patch(2, Vector("DBOS.patch-stitch-in-room-order"), 0)
+      .patch(4, Vector("DBOS.patch-topics"), 0)
+      .patch(8, Vector("DBOS.patch-record-window"), 0)
+      .patch(10, Vector("DBOS.patch-tools"), 0)
 
   /** The seq of `entries`' entry `id`, which the test wrote. */
   private def seqOf(entries: InMemoryEntryStore, id: EntryId): EntrySeq =
@@ -81,7 +83,7 @@ object TurnTests extends TestSuite {
       .fold(sys.error(s"no entry ${EntryId.value(id)}"))(_.seq)
 
   /** How many of [[Recorded]] come before `assemble`. */
-  private val Placing = 6
+  private val Placing = 7
 
   val tests = Tests {
     test("a turn rooted on a heard message keeps its answer as a draft: no reply, no summary") {
@@ -110,7 +112,8 @@ object TurnTests extends TestSuite {
       Turn.Step.all ==> AllSteps
       Turn.running(Vector.empty) ==> "pin-models"
       Turn.running(Vector("pin-models")) ==> "offer"
-      Turn.running(Vector("pin-models", "offer")) ==> "stitch"
+      Turn.running(Vector("pin-models", "offer")) ==> "stitched"
+      Turn.running(Vector("pin-models", "offer", "stitched")) ==> "classify"
       Turn.running(Vector("pin-models", "offer", "stitch")) ==> "classify"
       Turn.running(Vector("DBOS.patch-topics", "classify")) ==> "record-topic"
       Turn.running(Vector("DBOS.patch-topics", "classify", "record-topic")) ==> "assemble"

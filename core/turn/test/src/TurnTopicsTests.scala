@@ -275,7 +275,8 @@ object TurnTopicsTests extends TestSuite {
         .recordedSteps(turn.workflowId) ==> Vector(
         "pin-models",
         "offer",
-        "stitch",
+        "DBOS.patch-stitch-in-room-order",
+        "stitched",
         "DBOS.patch-topics",
         "classify"
       )

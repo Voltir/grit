@@ -13,7 +13,7 @@ import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfil
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 import grit.core.speech.{Outcome, Speech, SpeechJson}
-import grit.core.stitch.{Along, StitchReads, Stitching, Strand}
+import grit.core.stitch.{Along, Opening, StitchReads, Stitching, Strand}
 import grit.core.store.{Entry, Jot, Nearby, Payload, Speakers, StoreError, Tx}
 import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
 import grit.core.topic.Topic
@@ -31,11 +31,12 @@ import TurnVerdict.Shape
   *      workspace, the tool set (its own tools, and the hosted ones the edge serving that
   *      workspace advertises) and the system prompt (ADR 0016), kept by content id and
   *      recorded by id; a rerun reads them back, so it is offered what it first was.
-  *   1. `stitch` — when the turn's message is its conversation's first, said by a person,
-  *      in a stitchable origin: where it goes among its room's exchanges
-  *      ([[grit.core.stitch.Stitching.turn]]); nothing asked otherwise, nor for a heard one its
-  *      triage placed. Never fails the turn.
-  *   1. `record-stitch` — that placement kept, only when one was made.
+  *   1. `stitched` — when the turn's message is an [[grit.core.stitch.Opening]], its
+  *      placement waited for ([[grit.core.stitch.Placements.awaited]]), so it runs only once
+  *      every opening heard before it in its room is placed; nothing waited for otherwise.
+  *      Never fails the turn. Turns that passed this point before it shipped took `stitch`
+  *      ([[grit.core.stitch.Stitching.turn]]) and `record-stitch` instead, placing the opening
+  *      themselves ([[Patches.StitchInRoomOrder]]).
   *   1. `classify` — where the turn's message goes among the conversation's topics
   *      ([[TurnTopics]]). Never fails the turn.
   *   1. `record-topic` — that placement recorded as an entry, with the classifier's cost.
@@ -102,6 +103,7 @@ object Turn {
   object Step {
     val PinModels = "pin-models"
     val Offer = "offer"
+    val Stitched = "stitched"
     val Stitch = "stitch"
     val RecordStitch = "record-stitch"
     val Classify = "classify"
@@ -118,18 +120,27 @@ object Turn {
     val Summarise = "summarise"
     val AppendSummary = "append-summary"
 
-    /** The steps only some turns take: `record-stitch`, a turn whose first message was
-      * stitched; `call-model-again`, `call-model-plain` and `record-verdict`, a turn whose
-      * model was asked about its topic; `judge` and `record-speech`, a turn rooted on a heard
-      * message.
+    /** The steps only some turns take: `stitch`, a turn that passed the room-order patch
+      * before it shipped, and `record-stitch`, one of those whose first message was stitched;
+      * `call-model-again`, `call-model-plain` and `record-verdict`, a turn whose model was
+      * asked about its topic; `judge` and `record-speech`, a turn rooted on a heard message.
       */
     val optional: Vector[String] =
-      Vector(RecordStitch, CallModelAgain, CallModelPlain, RecordVerdict, Judge, RecordSpeech)
+      Vector(
+        Stitch,
+        RecordStitch,
+        CallModelAgain,
+        CallModelPlain,
+        RecordVerdict,
+        Judge,
+        RecordSpeech
+      )
 
     val all: Vector[String] =
       Vector(
         PinModels,
         Offer,
+        Stitched,
         Stitch,
         RecordStitch,
         Classify,
@@ -320,6 +331,12 @@ object Turn {
       * (2026-09-25).
       */
     val Tools = "tools"
+
+    /** A turn's opening is placed by a workflow of its own, in its room's order, which the
+      * turn waits for in `stitched`, not by the turn in `stitch` and `record-stitch`
+      * (2026-10-03).
+      */
+    val StitchInRoomOrder = "stitch-in-room-order"
   }
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
@@ -378,6 +395,33 @@ object Turn {
         }
     }
 
+  /** The `stitched` step: what the placement of `turn`'s message did, once it has ended, when
+    * the message is an [[Opening]]; `None` when it is not, or is gone. `TurnFailure.Store`
+    * when the conversation cannot be read or the placement failed.
+    */
+  private def placed(env: TurnEnv^, turn: TurnRef): Either[TurnFailure, Option[String]] = {
+    val c = turn.conversationId
+    val (entries, conversations) = (env.records.entries, env.hosting.conversations)
+    env.db
+      .read {
+        for {
+          all <- entries.list(c)
+          conversation <- conversations.get(c)
+        } yield conversation.flatMap(Opening.of(_, all, turn))
+      }
+      .left
+      .map(storeFailure)
+      .flatMap {
+        case None => Right(None)
+        case Some(opening) =>
+          env.stitching.placements
+            .awaited(opening)
+            .left
+            .map(why => TurnFailure.Store(s"placement: $why"))
+            .map(Some(_))
+      }
+  }
+
   /** The catalog in force, pinned as `turn`'s profile: kept by the store, and its id the
     * step's output, so a replay makes every call under the profile the turn started with.
     */
@@ -417,23 +461,30 @@ object Turn {
       stitching.search,
       records.principals
     )
-    val stitched = d.step(Step.Stitch) { () =>
-      Stitching
-        .turn(env.classifier, reads, env.db, turn, stitching.tuning)
-        .left
-        .map(storeFailure)
-    } match {
-      case Right(Some((root, placed))) =>
-        val at = env.clock.now()
-        d.transact(Step.RecordStitch)(
-          stitching.stitches.record(root, placed, at).left.map(storeFailure)
-        ) match {
+    val stitched =
+      if (d.patch(Patches.StitchInRoomOrder))
+        d.step(Step.Stitched)(() => placed(env, turn)) match {
           case Right(_) => ""
-          case Left(failure) => s"; stitch not kept: $failure"
+          case Left(failure) => s"; not placed: $failure"
         }
-      case Right(None) => ""
-      case Left(failure) => s"; not stitched: $failure"
-    }
+      else
+        d.step(Step.Stitch) { () =>
+          Stitching
+            .turn(env.classifier, reads, env.db, turn, stitching.tuning)
+            .left
+            .map(storeFailure)
+        } match {
+          case Right(Some((root, placed))) =>
+            val at = env.clock.now()
+            d.transact(Step.RecordStitch)(
+              stitching.stitches.record(root, placed, at).left.map(storeFailure)
+            ) match {
+              case Right(_) => ""
+              case Left(failure) => s"; stitch not kept: $failure"
+            }
+          case Right(None) => ""
+          case Left(failure) => s"; not stitched: $failure"
+        }
     val placing =
       if (d.patch(Patches.Topics))
         Placing.Placed(d.step(Step.Classify) { () =>
@@ -559,7 +610,7 @@ object Turn {
     * conversation gone.
     */
   private def strandOf(
-      stitching: TurnStitching,
+      stitching: TurnStitching^,
       conversations: grit.core.store.ConversationStore,
       turn: TurnRef,
       all: Vector[Entry],

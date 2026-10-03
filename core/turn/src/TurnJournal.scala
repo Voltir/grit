@@ -389,6 +389,19 @@ private[turn] object TurnJournal {
   given stitched: Journaled[Either[TurnFailure, Option[(EntryId, grit.core.stitch.Placed)]]] =
     outcome(grit.core.stitch.StitchJson.writeKept, grit.core.stitch.StitchJson.readKept)
 
+  /** A `stitched` step's output: what the placement it waited for did, or `null` when it
+    * waited for none.
+    */
+  given placedWaited: Journaled[Either[TurnFailure, Option[String]]] =
+    outcome(
+      _.fold[ujson.Value](ujson.Null)(ujson.Str(_)),
+      {
+        case ujson.Null => Right(None)
+        case ujson.Str(what) => Right(Some(what))
+        case _ => Left("placed: expected a string or null")
+      }
+    )
+
   /** A `record-speech` step's output: what became of the draft ([[SpeechJson.writeOutcome]]). */
   given speechSettled: Journaled[Either[TurnFailure, Outcome]] =
     outcome(SpeechJson.writeOutcome, SpeechJson.readOutcome)

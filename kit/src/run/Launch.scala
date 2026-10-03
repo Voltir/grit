@@ -124,7 +124,8 @@ private[grit] object Launch {
               engine.stitches,
               engine.search,
               engine.lifecycle,
-              grit.core.stitch.Tuning.Default
+              grit.core.stitch.Tuning.Default,
+              engine.placements
             )
           )
       engine.launch(

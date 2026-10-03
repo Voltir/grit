@@ -117,13 +117,20 @@ object TurnFixtures {
   /** Stitching over stores of its own: what a fixture turn at [[origin]], a TUI session, which
     * is never stitched, is given.
     */
-  def unstitched(): TurnStitching =
+  def unstitched(): TurnStitching^ =
     TurnStitching(
       new grit.core.stitch.InMemoryStitchStore(new InMemoryEntryStore, _ => origin),
       NoSearch,
       new grit.core.store.InMemoryLifecycleStore,
-      grit.core.stitch.Tuning.Default
+      grit.core.stitch.Tuning.Default,
+      new Unplaced
     )
+
+  /** Placements whose every placement ends having asked nothing. */
+  final class Unplaced extends grit.core.stitch.Placements {
+    def awaited(opening: grit.core.stitch.Opening): Either[String, String] =
+      Right("nothing asked")
+  }
 
   /** Every fixture turn's prompts and tool sets, kept by content id as the real stores keep
     * them, forever: shared, so a turn run again over another world reads back what its first
@@ -760,7 +767,7 @@ object TurnFixtures {
       ledger: UsageLedger,
       classifier: Classifier^ = NoClassifier,
       speech: TurnSpeech = quiet(),
-      stitching: TurnStitching = unstitched(),
+      stitching: TurnStitching^ = unstitched(),
       hosted: TurnHosting = hosting()
   )(
       id: WorkflowId
@@ -853,7 +860,7 @@ object TurnFixtures {
       classifier: Classifier^ = NoClassifier,
       clock: Clock^ = new NoWait,
       speech: TurnSpeech = quiet(),
-      stitching: TurnStitching = unstitched()
+      stitching: TurnStitching^ = unstitched()
   )(id: WorkflowId)(using Durable^): String =
     tooledBody(
       entries,
@@ -979,7 +986,7 @@ object TurnFixtures {
       clock: Clock^ = new NoWait,
       hosted: Vector[Tool.Offered] = Vector.empty,
       speech: TurnSpeech = quiet(),
-      stitching: TurnStitching = unstitched()
+      stitching: TurnStitching^ = unstitched()
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
@@ -1099,8 +1106,28 @@ object TurnFixtures {
     val root = put(b, "b:first", first, StitchedAt.plusSeconds(29))
     val turn = TurnRef(b, root.turnSeq)
 
-    def run(classifier: Classifier^): (InMemoryDurable, String) = {
-      val durable = new InMemoryDurable
+    val lifecycle = new grit.core.store.InMemoryLifecycleStore
+    val principals = new grit.core.store.InMemoryPrincipals
+
+    /** The openings whose placements the last [[run]] waited for. */
+    @caps.unsafe.untrackedCaptures
+    var waited: Vector[grit.core.stitch.Opening] = Vector.empty
+
+    /** The turn run, asking `classifier`, its placements made at once as its own workflow
+      * would make them; a patch in `unpatched` is not taken.
+      */
+    def run(
+        classifier: Classifier^,
+        unpatched: Set[String] = Set.empty
+    ): (InMemoryDurable, String) = {
+      val durable = new InMemoryDurable(unpatched)
+      val placements = new grit.core.stitch.InMemoryPlacements(
+        classifier,
+        grit.core.stitch.StitchReads(entries, conversations, lifecycle, stitches, NoSearch, principals),
+        FakeDb,
+        Tuning.Default,
+        StitchedAt.plusSeconds(60)
+      )
       val hosted = TurnHosting(
         conversations,
         Prompts,
@@ -1126,10 +1153,11 @@ object TurnFixtures {
           new Before(entries),
           new InMemoryUsageLedger,
           classifier,
-          stitching = TurnStitching(stitches, NoSearch, new grit.core.store.InMemoryLifecycleStore, Tuning.Default),
+          stitching = TurnStitching(stitches, NoSearch, lifecycle, Tuning.Default, placements),
           hosted = hosted
         )
       )
+      waited = placements.waited
       (durable, done)
     }
   }
