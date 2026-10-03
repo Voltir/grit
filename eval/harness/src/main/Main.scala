@@ -5,13 +5,16 @@ import java.nio.file.{Files, Path, StandardCopyOption}
 import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneOffset}
 
+import scala.collection.immutable.VectorMap
 import scala.util.Try
 import scala.util.chaining.*
 import scala.util.control.NonFatal
 
+import grit.core.classify.Answer
 import grit.core.clock.Clock
-import grit.core.id.ShadowName
+import grit.core.id.{QuestionName, ShadowName}
 import grit.core.message.Tokens
+import grit.core.period.Probability
 import grit.dbos.engine.{Build, Reader}
 import grit.dbos.sql.DbConfig
 import grit.eval.harness.corpus.{
@@ -26,7 +29,17 @@ import grit.eval.harness.corpus.{
   SeenCheck,
   Stitched
 }
-import grit.eval.harness.jev.{Budget, Drift, Inputs, Rebuilt, Review, Spend, Variant, Variants}
+import grit.eval.harness.jev.{
+  Budget,
+  Drift,
+  Inputs,
+  Rebuilt,
+  Review,
+  Sets,
+  Spend,
+  Variant,
+  Variants
+}
 import grit.eval.harness.label.Labels
 import grit.eval.harness.log.{
   Cache,
@@ -46,6 +59,7 @@ import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
   Decision,
+  Drafts,
   Guarded,
   MovedOn,
   Order,
@@ -77,7 +91,9 @@ object Main {
       case "order" :: rest => exit(flags(rest).flatMap(order))
       case "pull" :: rest => exit(flags(rest).flatMap(pull))
       case "compare" :: rest =>
-        flags(rest).flatMap(compare) match {
+        flags(rest).flatMap(f =>
+          if (f.contains("gate")) drafts(f).map(_ => 0) else compare(f)
+        ) match {
           case Right(0) => ()
           case Right(code) => sys.exit(code)
           case Left(why) => exit(Left(why))
@@ -375,6 +391,64 @@ object Main {
       case Decision.Refused(_) => 3
       case Decision.Kept(_) => 4
     })
+
+  /** `compare --eval <dir> --a <name> --b <name> --gate <set> --helps-at <p> [--labels <file>]`:
+    * run B, a pulled question set's shadow log asking `<set>` ([[Sets]]), against A, live
+    * triage's pulled log, both in `<dir>/runs/`: its draft against live's helps gate at `<p>`
+    * (the deployment's configured `helpsAt`), by focus ([[Drafts]]), written to
+    * `<dir>/reports/<A>-vs-<B>.md` (each name less `.jsonl`) and printed; the ids of the cases
+    * each decided alone, one a line, to `<dir>/order/<yyyymmdd>-draft-<set>-live-only.txt` and
+    * `…-set-only.txt`, for labelling. `--decide`, `--replica` and `--spread` are refused
+    * beside it.
+    */
+  private def drafts(f: Map[String, String]): Either[String, Unit] =
+    for {
+      _ <- Vector("decide", "replica", "spread")
+        .find(f.contains)
+        .map(k => s"--$k is not taken with --gate")
+        .toLeft(())
+      dir <- need(f, "eval").map(Path.of(_))
+      labels <- labelsAt(dir, f)
+      set <- need(f, "gate").flatMap(n =>
+        Sets.named(n).toRight(s"no set $n: ${Sets.all.map(_.name).mkString(", ")}")
+      )
+      helpsAt <- need(f, "helps-at").flatMap(p =>
+        p.toDoubleOption
+          .filter(x => x >= 0 && x <= 1)
+          .map(Probability.clamped)
+          .toRight(s"--helps-at $p: not a probability")
+      )
+      a <- need(f, "a").flatMap(scored(dir, _, labels))
+      bName <- need(f, "b")
+      bText <- read(dir.resolve("runs").resolve(bName))
+      b <- LogJson
+        .read[VectorMap[QuestionName, Answer]](bText.linesIterator.filter(_.nonEmpty).toVector)(
+          using LogJson.named
+        )
+        .left
+        .map(e => s"$bName: not a question set's log: $e")
+      found = Drafts.of(a.log.rows, b.rows, set.questions.speak, helpsAt, set.durable)
+      day = Day.format(Instant.now().atOffset(ZoneOffset.UTC))
+      alone = Vector(
+        s"$day-draft-${set.name}-live-only.txt" -> found.gate.values.toVector.flatMap(_.aOnly),
+        s"$day-draft-${set.name}-set-only.txt" -> found.gate.values.toVector
+          .flatMap(_.bOnly)
+      )
+      order = dir.resolve("order")
+      _ <- Try(Files.createDirectories(order)).toEither.left.map(e =>
+        s"$order: ${e.getClass.getName}"
+      )
+      _ <- alone.foldLeft[Either[String, Unit]](Right(()))((done, named) =>
+        done.flatMap(_ =>
+          write(order.resolve(named._1), named._2.sorted.map(_.written + "\n").mkString)
+        )
+      )
+      _ <- publish(
+        dir,
+        s"${a.name.stripSuffix(".jsonl")}-vs-${bName.stripSuffix(".jsonl")}",
+        Report.drafts(a, bName, b, set.name, set.questions.speak, helpsAt, found)
+      )
+    } yield alone.foreach((name, ids) => println(s"order: ${ids.size} cases to order/$name"))
 
   /** `order --eval <dir> --a <name> [--b <name>] [--tag <question>] [--by spread|difference]`:
     * the case ids in labelling order ([[Order]]) on `<question>` (`kind`, a tag's name, or

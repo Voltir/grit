@@ -1,6 +1,12 @@
 package grit.eval.harness.report
 
+import scala.collection.immutable.VectorMap
+
+import grit.core.classify.Answer
+import grit.core.id.QuestionName
+import grit.core.period.Probability
 import grit.core.store.Focus
+import grit.core.triage.Earning
 import grit.eval.harness.corpus.{Case, CaseId}
 import grit.eval.harness.label.{Context, Labelled, Labels}
 import grit.eval.harness.log.{Log, Row, Suite, Weights}
@@ -10,12 +16,14 @@ import grit.eval.harness.score.{
   Answers,
   Apart,
   Brier,
+  Cells,
   Changed,
   Changes,
   Clustered,
   Comparison,
   Cost,
   Decision,
+  Drafts,
   Measure,
   Moved,
   MovedOn,
@@ -33,6 +41,7 @@ import grit.eval.harness.score.{
   Target
 }
 import grit.eval.harness.stats.Estimate
+import grit.lifecycle.triage.TriageQuestions
 
 /** A run to report on: its log's file `name`, the log, its corpus's cases, and the labels in
   * force.
@@ -117,6 +126,89 @@ object Report {
       inputsChanged(a, b) ++
       decided.toVector.flatMap(decision)
     lines.mkString("\n") + "\n"
+  }
+
+  /** Question set `set`'s pulled shadow log `b` (file `bName`) against live triage's log `a`,
+    * as `drafts` found them: how many cases both answered and how many were undecided; the 2×2
+    * of live's helps gate (`helps` at least `helpsAt`, kind not chatter: triage's tags alone,
+    * not live's speech decision, which checks more) against the set's draft (its `gate`), by
+    * focus and over all; each of the set's probabilities' mean and spread; and its `durable`
+    * against live's, when the set names one. Counts only, never a case's id.
+    */
+  def drafts(
+      a: Scored,
+      bName: String,
+      b: Log[VectorMap[QuestionName, Answer]],
+      set: String,
+      gate: TriageQuestions.Gate,
+      helpsAt: Probability,
+      drafts: Drafts
+  ): String = {
+    val all = drafts.gate.values.foldLeft(Cells.Empty)((x, y) =>
+      Cells(x.both ++ y.both, x.aOnly ++ y.aOnly, x.bOnly ++ y.bOnly, x.neither ++ y.neither)
+    )
+    def size(c: Cells) = c.both.size + c.aOnly.size + c.bOnly.size + c.neither.size
+    def agree(c: Cells) = s"${c.both.size + c.neither.size} of ${size(c)}"
+    def row(what: String, c: Cells) =
+      s"| $what | ${c.both.size} | ${c.aOnly.size} | ${c.bOnly.size} | ${c.neither.size} | ${agree(c)} |"
+    val foci: Vector[(String, Option[Focus])] =
+      Focus.values.toVector.map(f => f.toString.toLowerCase -> Some(f)) :+ ("focus unknown" -> None)
+    val bounds = gate.bounds.map {
+      case TriageQuestions.Bound.AtLeast(on, p) => s"${reading(on)} ≥ ${num(Probability.value(p))}"
+      case TriageQuestions.Bound.Below(on, p) => s"${reading(on)} < ${num(Probability.value(p))}"
+    }
+    val durableAt = num(Probability.value(Earning.DurableAt))
+    val lines = Vector(
+      s"# drafts: ${a.name} (A) and $bName (B)",
+      "",
+      s"A: variant ${a.log.header.variant}, model ${a.log.header.model}",
+      s"B: variant ${b.header.variant}, model ${b.header.model}, set $set, questions " +
+        b.header.questions.fold("unknown")(_.map(QuestionName.value).mkString(", ")),
+      s"answered by both: ${size(all) + drafts.undecided}; undecided: ${drafts.undecided} " +
+        "(a question the gate reads unanswered, or live's tags unreadable)"
+    ) ++ kept(a) ++ Vector(
+      "",
+      "## Draft against live's helps gate",
+      "",
+      s"A, live's helps gate: helps ≥ ${num(Probability.value(helpsAt))} and kind ≠ chatter. " +
+        "Triage's tags alone: not live's speech decision, which also checks the address, " +
+        "freshness, who was asked, the thread and the rate limits.",
+      s"B, $set's draft: ${bounds.mkString(", ")}.",
+      "",
+      s"| focus | both | live only | $set only | neither | agree |",
+      "|---|---|---|---|---|---|"
+    ) ++ foci.flatMap((what, f) => drafts.gate.get(f).map(row(what, _))) ++ Vector(
+      row("all", all),
+      "",
+      "## Questions",
+      "",
+      "Each probability over the cases B answered: a yes/no's of yes, a choice's by key.",
+      "",
+      "| question | mean | sd | cases |",
+      "|---|---|---|---|"
+    ) ++ drafts.columns.map(c => s"| ${c.name} | ${num(c.mean)} | ${num(c.sd)} | ${c.n} |") ++
+      Vector("", "## Durable", "") ++ drafts.durable.fold(
+        Vector(s"$set names no question to read against live's durable.")
+      )(c =>
+        Vector(
+          s"A, live's durable ≥ $durableAt; B, $set's durable ≥ $durableAt (both at " +
+            "Earning.DurableAt), over the cases both answered.",
+          "",
+          s"| | $set yes | $set no |",
+          "|---|---|---|",
+          s"| live yes | ${c.both.size} | ${c.aOnly.size} |",
+          s"| live no | ${c.bOnly.size} | ${c.neither.size} |",
+          "",
+          s"agree: ${agree(c)}"
+        )
+      )
+    lines.mkString("\n") + "\n"
+  }
+
+  /** What a gate reads, as the report names it: a yes/no's name, a choice key's `<name>.<key>`. */
+  private def reading(r: TriageQuestions.Reading): String = r match {
+    case TriageQuestions.Reading.Yes(name) => QuestionName.value(name)
+    case TriageQuestions.Reading.Key(name, key) => s"${QuestionName.value(name)}.$key"
   }
 
   /** The cases `m` found moved on, and the tolerance it found them under. */

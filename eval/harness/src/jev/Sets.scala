@@ -1,0 +1,27 @@
+package grit.eval.harness.jev
+
+import grit.core.id.QuestionName
+import grit.lifecycle.triage.TriageQuestions
+
+/** A question set a comparison names: `name`, the set (`questions`), whose gate derives its
+  * draft decision, and `durable`, its question read against live triage's `durable` tag (`None`
+  * when it asks none).
+  */
+final case class QuestionSet(
+    name: String,
+    questions: TriageQuestions,
+    durable: Option[QuestionName]
+)
+
+/** The question sets a comparison can name. */
+object Sets {
+
+  /** [[TriageQuestions.V2]], named `v2`, its `durable` read against live's. */
+  val V2: QuestionSet =
+    QuestionSet("v2", TriageQuestions.V2, QuestionName.of("durable").toOption)
+
+  val all: Vector[QuestionSet] = Vector(V2)
+
+  /** The set named `n`; `None` for no set's. */
+  def named(n: String): Option[QuestionSet] = all.find(_.name == n)
+}

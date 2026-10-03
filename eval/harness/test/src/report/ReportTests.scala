@@ -1,12 +1,19 @@
 package grit.eval.harness.report
 
+import scala.collection.immutable.VectorMap
+
+import grit.core.classify.Answer
+import grit.core.id.QuestionName
 import grit.core.message.{Tokens, Usage}
+import grit.core.period.Probability
 import grit.core.store.Focus
 import grit.core.triage.Kind
 import grit.eval.harness.corpus.Case
 import grit.eval.harness.label.{Context, Labelled, Labels}
-import grit.eval.harness.log.{Log, Suite}
+import grit.eval.harness.log.{Log, Row, Suite}
 import grit.eval.harness.score.Fixtures.*
+import grit.eval.harness.score.{Cells, Column, Drafts}
+import grit.lifecycle.triage.TriageQuestions
 
 import utest.*
 
@@ -174,6 +181,60 @@ object ReportTests extends TestSuite {
         "moved (2): C1/1 C1/2",
         "unchanged: 0"
       )
+    }
+
+    test(
+      "a drafts report counts each cell by focus and over all, names live's helps gate apart from its speech decision, and lists no case"
+    ) {
+      def q(n: String) = QuestionName.read(n).fold(sys.error, identity)
+      val (c1, c2, c3) = (id("C1/1"), id("C1/2"), id("C1/3"))
+      val found = Drafts(
+        Map(
+          Some(Focus.Open) -> Cells(Vector(c1), Vector.empty, Vector(c2), Vector.empty),
+          None -> Cells(Vector.empty, Vector(c3), Vector.empty, Vector.empty)
+        ),
+        2,
+        Vector(Column("gap.asks", 0.5, 0.25, 3)),
+        Some(Cells(Vector(c1), Vector(c2), Vector.empty, Vector(c3)))
+      )
+      val setLog = Log(
+        header("shadow-v2").copy(questions = Some(Vector(q("gap"), q("open")))),
+        Vector.empty[Row[VectorMap[QuestionName, Answer]]],
+        None
+      )
+      val report = Report.drafts(
+        run("live.jsonl", 0.5, Labels.Empty, "kept"),
+        "shadow-v2.jsonl",
+        setLog,
+        "v2",
+        TriageQuestions.V2.speak,
+        Probability.clamped(0.6),
+        found
+      )
+      lines(report).filter(l =>
+        l.startsWith("|") || l.startsWith("A, ") || l.startsWith("B, ") || l.startsWith(
+          "answered"
+        ) || l.startsWith("agree")
+      ) ==> Vector(
+        "answered by both: 5; undecided: 2 (a question the gate reads unanswered, or live's tags unreadable)",
+        "A, live's helps gate: helps ≥ 0.600 and kind ≠ chatter. Triage's tags alone: not live's speech decision, which also checks the address, freshness, who was asked, the thread and the rate limits.",
+        "B, v2's draft: gap.asks ≥ 0.500, open ≥ 0.500, to < 0.500, anchor < 0.500.",
+        "| focus | both | live only | v2 only | neither | agree |",
+        "|---|---|---|---|---|---|",
+        "| open | 1 | 0 | 1 | 0 | 1 of 2 |",
+        "| focus unknown | 0 | 1 | 0 | 0 | 0 of 1 |",
+        "| all | 1 | 1 | 1 | 0 | 1 of 3 |",
+        "| question | mean | sd | cases |",
+        "|---|---|---|---|",
+        "| gap.asks | 0.500 | 0.250 | 3 |",
+        "A, live's durable ≥ 0.500; B, v2's durable ≥ 0.500 (both at Earning.DurableAt), over the cases both answered.",
+        "| | v2 yes | v2 no |",
+        "|---|---|---|",
+        "| live yes | 1 | 1 |",
+        "| live no | 0 | 1 |",
+        "agree: 2 of 3"
+      )
+      assert(!Vector(c1, c2, c3).exists(c => report.contains(c.written)))
     }
   }
 }
