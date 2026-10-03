@@ -28,7 +28,9 @@ final case class Shaped(tools: Vector[ToolSet.Entry], services: Vector[ServiceOf
 
 object TurnVariant {
 
-  /** The turn as recorded. */
+  /** Every tool at the deployed width: the turn as recorded when its deployment declared no
+    * recipe.
+    */
   val Shipped: TurnVariant = TurnVariant("shipped", TurnRecipe.Shipped)
 
   /** The variants a run can name, over a deployment whose windows are built as `assembled`
@@ -72,7 +74,10 @@ object TurnVariant {
   /** What a turn rooted as `rooted` is given under `v`: what it recorded it was offered
     * (`offer`, `None` when it recorded none, and its tool set `set`) less the tools of each
     * service `v`'s offering withholds ([[Offering.decide]]) by the root's `answers` (`None`:
-    * it has none) and the services `knowledge` says its sources supply; and its width.
+    * it has none); and its width. The services, their sources and their tools are those the
+    * offer recorded in its shape ([[grit.turn.TurnShape]]); for an offer recorded before
+    * shapes, those [[toolsOf]] infers, supplied as `knowledge` says. A tool withheld live is
+    * offered under `v` only when `set` is the shape's whole set ([[grit.turn.TurnShape.whole]]).
     */
   def shape(
       v: TurnVariant,
@@ -83,22 +88,29 @@ object TurnVariant {
       knowledge: KnowledgeSources
   ): Shaped = {
     val shaping = v.recipe.at(rooted)
-    val services = offer.toVector.flatMap(o =>
-      (o.workspace.flatMap(_.service).toVector ++
-        o.reached.values.flatMap(_.service).toVector.sortBy(_.name)).distinct
+    val recorded = offer.flatMap(_.shaped)
+    val services = recorded.fold(
+      offer.toVector.flatMap(o =>
+        (o.workspace.flatMap(_.service).toVector ++
+          o.reached.values.flatMap(_.service).toVector.sortBy(_.name)).distinct
+      )
+    )(_.services.map(_.offer.service))
+    val supplied = recorded.fold(knowledge.supplied)(r =>
+      VectorMap.from(r.services.map(t => t.offer.service -> t.offer.sources))
     )
-    val decided = Offering.decide(shaping.offering, knowledge.supplied, services, answers)
-    val withheld = decided
-      .filter(_.withheld)
-      .flatMap(s => offer.toVector.flatMap(toolsOf(_, s.service)))
-      .toSet
+    val decided = Offering.decide(shaping.offering, supplied, services, answers)
+    val withheld =
+      decided.filter(_.withheld).flatMap(s => offer.toVector.flatMap(toolsOf(_, s.service))).toSet
     Shaped(set.filterNot(e => withheld.contains(e.name)), decided, shaping.width)
   }
 
-  /** The tools `offer` took from `service`'s edge's advert: its workspace's, when the service
-    * is its workspace, and those reached there.
+  /** The tools `offer` took from `service`'s edge's advert, withheld or not: as its shape
+    * recorded them; for an offer recorded before shapes, its workspace's advertised tools when
+    * the service is its workspace, and those reached there.
     */
   def toolsOf(offer: TurnOffer.Recorded, service: Service): Set[ToolName] =
-    (if (offer.workspace.contains(service.place)) offer.advertised.toSet else Set.empty) ++
-      offer.reached.collect { case (n, p) if p == service.place => n }
+    offer.shaped.fold(
+      (if (offer.workspace.contains(service.place)) offer.advertised.toSet else Set.empty) ++
+        offer.reached.collect { case (n, p) if p == service.place => n }
+    )(_.services.filter(_.offer.service == service).flatMap(_.tools).toSet)
 }

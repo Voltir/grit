@@ -749,7 +749,8 @@ object Main {
   /** What that engine takes new messages under: no cap, as none is ever sent it. */
   private val Uncapped: grit.core.spend.Budget = grit.core.spend.Budget(ZoneOffset.UTC, None)
 
-  /** The offer `t` recorded and its tool set's entries, read through `reader`; none when it
+  /** The offer `t` recorded and its tool set's entries, before anything was withheld when its
+    * offer was shaped ([[grit.turn.TurnShape.whole]]), read through `reader`; none when it
     * recorded no offer.
     */
   private def offerOf(
@@ -761,8 +762,9 @@ object Main {
       steps <- reader.steps(t.workflow).left.map(e => s"steps of $name unread: ${Capture.kind(e)}")
       offer <- TurnRecord.offer(steps).left.map(why => s"offer of $name unread: $why")
       set <- offer.fold[Either[String, Vector[ToolSet.Entry]]](Right(Vector.empty))(o =>
+        // The whole set, when shaped: a variant may offer a tool live withheld.
         reader.db
-          .read(reader.toolSets.get(o.tools))
+          .read(reader.toolSets.get(o.shaped.fold(o.tools)(_.whole)))
           .map(_.tools)
           .left
           .map(e => s"tool set of $name unread: ${Capture.kind(e)}")

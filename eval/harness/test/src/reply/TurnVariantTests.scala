@@ -136,6 +136,38 @@ object TurnVariantTests extends TestSuite {
       ) ==> Vector(heard, Rooted.Heard(Focus.Focused), Rooted.Addressed)
     }
 
+    test(
+      "a turn that recorded its shape is decided over the services, sources and tools it recorded"
+    ) {
+      // Recorded: github supplied by repo alone, and only github_search_code taken from it;
+      // the knowledge passed in says github's source is github, and infers both tools.
+      val repo = right(KnowledgeSourceName.of("repo"))
+      val recorded = offer.copy(shaped =
+        Some(
+          grit.turn.TurnShape(
+            Width.Deployed,
+            offer.tools,
+            Vector(
+              grit.turn.TurnShape.Took(
+                grit.core.recipe.ServiceOffer(
+                  github,
+                  Vector(repo),
+                  grit.core.recipe.ServiceOffer.Verdict.Ungated
+                ),
+                grit.turn.TurnShape.Via.Workspace,
+                Vector(searchCode)
+              )
+            )
+          )
+        )
+      )
+      val answers = Some(VectorMap(yes("source:repo", 0.1), yes("source:github", 0.9)))
+      val decided =
+        TurnVariant.shape(variant("offer-0.3"), heard, Some(recorded), set, answers, knowledge)
+      (decided.tools.map(_.name), decided.services.map(s => (s.service, s.sources, s.withheld))) ==>
+        (Vector(read, getFile, post), Vector((github, Vector(repo), true)))
+    }
+
     test("a service's tools are those taken from its advert, as workspace or reached") {
       TurnVariant.toolsOf(offer, github) ==> Set(searchCode, getFile)
       TurnVariant.toolsOf(offer, slack) ==> Set(post)
