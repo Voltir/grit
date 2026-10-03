@@ -1,5 +1,7 @@
 package grit.eval.harness.jev
 
+import scala.concurrent.duration.*
+
 import grit.core.recipe.{Pool, Source}
 import grit.core.stitch.Tuning
 import grit.eval.harness.corpus.Digest
@@ -115,7 +117,36 @@ object Variants {
   /** The live wording, of Jev's moving alias instead of the pinned release. */
   val JevLatest: Variant = Variant.Model("jev-latest", "jev-latest")
 
-  val all: Vector[Variant] = Vector(Variant.Live, DurableLasting, JevLatest)
+  /** What a candidate's open pool shows at most, in characters: about 150 tokens, so a pool
+    * stays cheap beside the thread it follows.
+    */
+  val OpenBudget = 600
+
+  /** Open focus: what anyone said in the channel in the 10 minutes before, the latest 5. */
+  val NearbyOpen: Variant = Variant.Recipe(
+    "nearby-open",
+    TriageRecipe(Pool.empty, Pool(Vector(Source.Channel(10.minutes, 5)), OpenBudget))
+  )
+
+  /** Open focus: the exchanges stitching offered the message's thread. */
+  val ExchangesOpen: Variant = Variant.Recipe(
+    "exchanges-open",
+    TriageRecipe(Pool.empty, Pool(Vector(Source.Exchanges), OpenBudget))
+  )
+
+  /** Open focus: [[NearbyOpen]]'s, then its author's own in the 30 minutes before, the latest
+    * 3.
+    */
+  val NearbyAuthorOpen: Variant = Variant.Recipe(
+    "nearby-author-open",
+    TriageRecipe(
+      Pool.empty,
+      Pool(Vector(Source.Channel(10.minutes, 5), Source.Author(30.minutes, 3)), OpenBudget)
+    )
+  )
+
+  val all: Vector[Variant] =
+    Vector(Variant.Live, DurableLasting, JevLatest, NearbyOpen, ExchangesOpen, NearbyAuthorOpen)
 
   /** The variant named `name`; `None` for none's. */
   def named(name: String): Option[Variant] = all.find(Variant.name(_) == name)

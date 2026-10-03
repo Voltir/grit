@@ -35,9 +35,24 @@ object VariantTests extends TestSuite {
       digests.distinct.size ==> digests.size
     }
 
+    test("the open-pool candidates are named, each changing only the open pool, within 600") {
+      def open(sources: Source*) = TriageRecipe(Pool.empty, Pool(sources.toVector, 600))
+      Vector("nearby-open", "exchanges-open", "nearby-author-open")
+        .map(n => Variants.named(n).map(Variant.recipe)) ==> Vector(
+        Some(open(Source.Channel(10.minutes, 5))),
+        Some(open(Source.Exchanges)),
+        Some(open(Source.Channel(10.minutes, 5), Source.Author(30.minutes, 3)))
+      )
+      Variants.all.map(Variant.name).distinct.size ==> Variants.all.size
+    }
+
     test("every variant but a recipe's builds by the shipped recipe") {
-      (Variants.all :+ Variant.Recipe("r", recipe)).map(Variant.recipe) ==>
-        (Variants.all.map(_ => TriageRecipe.Shipped) :+ recipe)
+      val others = Variants.all.filter {
+        case Variant.Recipe(_, _) => false
+        case _ => true
+      }
+      (others :+ Variant.Recipe("r", recipe)).map(Variant.recipe) ==>
+        (others.map(_ => TriageRecipe.Shipped) :+ recipe)
     }
   }
 }
