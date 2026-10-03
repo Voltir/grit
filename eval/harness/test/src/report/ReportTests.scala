@@ -62,13 +62,15 @@ object ReportTests extends TestSuite {
         "## Used parts",
         "## Turns by cost"
       )
-      // Over three threads; heard is thread A's alone, so it has no interval.
-      // All: 1 of 3, se 2/9, t.975 on 1 degree of freedom 12.706.
+      // The replies are in two threads, the heard ones in thread A alone: too few for either.
       report
         .dropWhile(_ != "## Pass rate")
         .takeWhile(_ != "## Not replied")
         .filter(l => l.startsWith("| all ") || l.startsWith("| heard ")) ==>
-        Vector("| all | 3 | 1 | 0.333 [-2.490, 3.157] g=2 |", "| heard | 2 | 1 | 0.500 [—] |")
+        Vector(
+          "| all | 3 | 1 | 0.333 (1/3 in 2 threads) too few threads for an interval |",
+          "| heard | 2 | 1 | 0.500 (1/2 in 1 thread) too few threads for an interval |"
+        )
     }
 
     test("a turns report counts topic and unnamed calls apart from the tools offered") {

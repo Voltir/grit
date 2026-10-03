@@ -2,7 +2,7 @@ package grit.eval.harness.score
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.id.WorkflowId
+import grit.core.id.{ConversationId, WorkflowId}
 import grit.core.message.Tokens
 import grit.core.period.Probability
 import grit.core.prompt.Layer
@@ -66,20 +66,66 @@ object Quantiles {
     }
 }
 
-/** How many of `n` turns were `hits`, and that rate as a mean clustered by conversation (a
-  * thread); `None` under two conversations.
+/** How many of `n` turns were `hits`, over how many `threads` (conversations), and the rate's
+  * 95% interval.
   */
-final case class Rate(hits: Int, n: Int, clustered: Option[Estimate])
+final case class Rate(hits: Int, n: Int, threads: Int, interval: Rate.Interval)
 
 object Rate {
 
-  /** Each turn's hit or miss. */
-  def of(turns: Vector[(TurnCase, Boolean)]): Rate =
-    Rate(
-      turns.count(_._2),
-      turns.size,
-      Estimate.clustered(turns.map((t, hit) => t.conversation -> (if (hit) 1.0 else 0.0)))
+  /** The fewest threads a rate is given an interval over: a standard error clustered by
+    * thread rests on the threads alone, and under about ten it says nothing.
+    */
+  val MinThreads: Int = 10
+
+  /** A rate's 95% interval, or why it has none. */
+  enum Interval {
+
+    /** Its turns are in fewer than [[MinThreads]] threads. */
+    case TooFewThreads
+
+    /** Wilson's score interval at 95% over `effective` turns: `n` over the design effect, the
+      * variance clustered by thread (CR1) over the binomial one, taken as 1 where it is
+      * below 1 or where every turn hit or none did. Within [0, 1], `low` at most `high`.
+      */
+    case Wilson(low: Double, high: Double, effective: Double)
+  }
+
+  /** The rate of `turns`, each its thread and whether it hit. */
+  def of(turns: Vector[(ConversationId, Boolean)]): Rate = {
+    val hits = turns.count(_._2)
+    val n = turns.size
+    val threads = turns.map(_._1).distinct.size
+    val interval =
+      if (threads < MinThreads) Interval.TooFewThreads
+      else {
+        val p = hits.toDouble / n
+        val binomial = p * (1 - p) / n
+        val clustered = Estimate
+          .clustered(turns.map((c, hit) => c -> (if (hit) 1.0 else 0.0)))
+          .fold(binomial)(e => e.se * e.se)
+        val effect = if (binomial > 0) math.max(1.0, clustered / binomial) else 1.0
+        wilson(hits, n, n / effect)
+      }
+    Rate(hits, n, threads, interval)
+  }
+
+  /** Wilson's 95% score interval for `hits` of `n` taken as `effective` turns. */
+  private def wilson(hits: Int, n: Int, effective: Double): Interval.Wilson = {
+    val z = 1.96
+    val p = hits.toDouble / n
+    val z2 = z * z
+    val scale = 1 + z2 / effective
+    val centre = (p + z2 / (2 * effective)) / scale
+    val half = z / scale * math.sqrt(p * (1 - p) / effective + z2 / (4 * effective * effective))
+    // At a rate of 0 or 1 the bound on that side is exactly it; computed, it can miss by a
+    // rounding error.
+    Interval.Wilson(
+      if (hits == 0) 0.0 else centre - half,
+      if (hits == n) 1.0 else centre + half,
+      effective
     )
+  }
 }
 
 /** A turn that did not reply: failed at a step of family `step`, of a kind; or not finished,
@@ -244,7 +290,7 @@ object Structure {
           }
         )
       ),
-      Rate.of(replied),
+      Rate.of(replied.map((t, hit) => t.conversation -> hit)),
       Quantiles.of(ts.map(_.rounds.size.toDouble)),
       ts.count(_.rounds.nonEmpty),
       Quantiles.of(offers.map(_.tools.size.toDouble)),
@@ -394,8 +440,8 @@ object Structure {
         VectorMap.from(
           Drafted.Kind.values.toVector.filter(kinds.contains).map(k => k -> kinds.count(_ == k))
         ),
-        Rate.of(drafted.map((t, d) => t -> (d.outcome == Drafted.Kind.Posted))),
-        Rate.of(drafted.map((t, d) => t -> held(d.outcome))),
+        Rate.of(drafted.map((t, d) => t.conversation -> (d.outcome == Drafted.Kind.Posted))),
+        Rate.of(drafted.map((t, d) => t.conversation -> held(d.outcome))),
         scores(_.grounded),
         scores(_.worth)
       )

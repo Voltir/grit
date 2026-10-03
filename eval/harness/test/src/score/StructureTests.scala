@@ -28,17 +28,16 @@ object StructureTests extends TestSuite {
       Quantiles.of(Vector.empty) ==> None
     }
 
-    test("the pass rate is over the turns that replied, clustered over two threads") {
-      // Replied: t1 passed (A), t2 not (A), t4 not (C). Mean 1/3; cluster sums of residuals
-      // A: 2/3 − 1/3 = 1/3, C: −1/3; se = √(2/1 · (1/9 + 1/9)) / 3 = 2/9.
-      (all.passed.hits, all.passed.n) ==> (1, 3)
-      all.passed.clustered.map(e => (r(e.mean), r(e.se), e.n, e.g)) ==>
-        Some((r(1.0 / 3), r(2.0 / 9), 3, 2))
+    test("the pass rate is over the turns that replied, counted by thread") {
+      // Replied: t1 passed (A), t2 not (A), t4 not (C).
+      all.passed ==> Rate(1, 3, 2, Rate.Interval.TooFewThreads)
     }
 
-    test("a rate over one thread has no clustered estimate") {
-      // Both drafts are thread A's.
-      all.online.map(o => (o.posted.hits, o.posted.n, o.posted.clustered)) ==> Some((1, 2, None))
+    test("the post and hold rates are over the drafts, counted by thread") {
+      // Both drafts are thread A's: one posted, one held below the bar.
+      all.online.map(o => (o.posted, o.held)) ==> Some(
+        (Rate(1, 2, 1, Rate.Interval.TooFewThreads), Rate(1, 2, 1, Rate.Interval.TooFewThreads))
+      )
     }
 
     test("each slice holds its root's or its place's turns") {

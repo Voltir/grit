@@ -104,8 +104,9 @@ Packages, each importing only those above it:
   turns that did not reply, the pass rate, rounds, tools offered against called (the turn's
   `topic` tool and unnamed calls apart), prompt and window tokens and the first call's
   estimate against the ledger (each as `Quantiles`), cost by what it paid for, the drafts'
-  outcomes with their post and hold `Rate`s clustered by thread, the review verdicts joined by
-  case, and the window parts a reply `Used`. ← `stats`, `corpus`, `label`, `log`
+  outcomes with their post and hold `Rate`s (each Wilson's interval on its turns' effective
+  number, clustered by thread, and none under `Rate.MinThreads` threads), the review verdicts
+  joined by case, and the window parts a reply `Used`. ← `stats`, `corpus`, `label`, `log`
 - **`report`** — `Report`, a run scored (`Scored`: its log, its corpus's cases, the labels in
   force) and two runs compared, as markdown with every mean's interval; text-free. With no case
   labelled, only what needs no label: spend and latency (`score.Spending`), the repeats' spread
