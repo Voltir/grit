@@ -43,7 +43,17 @@ import grit.eval.harness.log.{
 import grit.eval.harness.pull.Pull
 import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
-import grit.eval.harness.score.{Decision, MovedOn, Order, Paired, Rule, Scoring, Spread, Target}
+import grit.eval.harness.score.{
+  Decision,
+  Guarded,
+  MovedOn,
+  Order,
+  Paired,
+  Rule,
+  Scoring,
+  Spread,
+  Target
+}
 import grit.kit.environment.DotEnv
 import grit.lifecycle.triage.TriageRecipe
 import grit.models.JevClassifier
@@ -348,13 +358,11 @@ object Main {
       rule <- f
         .get("decide")
         .fold(Right(None))(r => read(Path.of(r)).flatMap(Rule.read).map(Some(_)))
-      decided = rule.map(r =>
-        r -> Decision.of(
-          r,
-          b.log.header,
-          Paired.of(r, Scoring(a.cases, a.answers, labels), Scoring(b.cases, b.answers, labels))
-        )
-      )
+      decided = rule.map { r =>
+        val (sa, sb) =
+          (Scoring(a.cases, a.answers, labels), Scoring(b.cases, b.answers, labels))
+        r -> Decision.of(r, b.log.header, Paired.of(r, sa, sb), Guarded.of(r, sa, sb))
+      }
       _ <- publish(
         dir,
         s"${a.name.stripSuffix(".jsonl")}-vs-${b.name.stripSuffix(".jsonl")}",

@@ -52,12 +52,17 @@
 #                        [--replica <runs file> --spread <runs file>]
 #       Run B against run A, paired on the cases both answered: B - A per question, the
 #       cases each question's decision fixed, broke or moved, by id, and once labels exist
-#       the paired difference in Brier score with its MDE. Written to
-#       .local/eval/reports/<A>-vs-<B>.md and printed. With --decide, the adoption rule in
-#       <rule> (JSON: {"question": "durable", "metric": "brier", "better": "lower",
-#       "least": 0.01}) judges B over A, and the exit code says what it decided: 0 adopt B,
-#       3 refused (B was not run with --rule <rule>, or the difference is under its MDE or
-#       the rule's least), 4 keep A. With --replica, a pulled replica shadow's log (the shipped
+#       the paired difference in Brier score with its MDE; and the cases whose triage
+#       inputs differ between A and B, by context and focus, B - A over them alone, each
+#       run's input tokens and cost per call, and the MDE A's repeat noise implies on them.
+#       Written to .local/eval/reports/<A>-vs-<B>.md and printed. With --decide, the
+#       adoption rule in <rule> (JSON: {"question": "durable", "metric": "brier", "better":
+#       "lower", "least": 0.01}; "question": "mean" for the mean of kind, waiting, durable
+#       and helps; optionally "context": "short", "guard": {"context": "ok", "worse_by":
+#       0.02} over those four, and "not_worse": {"question": "helps", "worse_by": 0} in the
+#       rule's context, each judged on the mean difference) judges B over A, and the exit
+#       code says what it decided: 0 adopt B, 3 refused (B was not run with --rule <rule>,
+#       the difference is under its MDE or the rule's least, or a guard is broken), 4 keep A. With --replica, a pulled replica shadow's log (the shipped
 #       wording, of the live model), A being a pulled live log: each case whose replica answer
 #       stands from live's by more than 10 × Jev's repeat spread on some question (measured as
 #       each question's pooled standard deviation in the --spread run, which has repeats) has

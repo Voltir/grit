@@ -16,6 +16,7 @@ import grit.eval.harness.score.{
   Comparison,
   Cost,
   Decision,
+  Measure,
   Moved,
   MovedOn,
   PerCall,
@@ -150,14 +151,26 @@ object Report {
         ("refused: the difference is under its MDE", Some(e))
       case Decision.Refused(Refusal.UnderLeast(e)) =>
         (s"refused: the difference is under the rule's least, ${num(rule.least)}", Some(e))
+      case Decision.Refused(Refusal.GuardBroken(e, x)) =>
+        (
+          s"refused: B's ${Target.written(x.question)} Brier, ${within(x.context)}, is worse " +
+            s"by ${num(x.difference)}",
+          Some(e)
+        )
     }
     Vector(
       "## Decision",
       "",
-      s"rule: ${Target.written(rule.question)} by ${rule.metric.toString.toLowerCase}, " +
-        s"least ${num(rule.least)}, digest ${rule.digest.hex.take(12)}"
+      s"rule: ${Measure.written(rule.measure)} by ${rule.metric.toString.toLowerCase}, " +
+        s"${within(rule.context)}, least ${num(rule.least)}, digest ${rule.digest.hex.take(12)}"
+    ) ++ rule.guards.map(g =>
+      s"guard: ${g.questions.map(Target.written).mkString(", ")}, ${within(g.context)}, " +
+        s"no worse than ${num(g.worseBy)} on the mean"
     ) ++ by.map(diff).toVector ++ Vector(s"decision: $what", "")
   }
+
+  private def within(context: Option[Context]): String =
+    context.fold("all cases")(c => s"context ${Context.written(c)}")
 
   private def labelLine(run: Scored): String =
     if (run.labelled == 0) s"unlabelled: 0 of ${run.cases.size} cases labelled"
@@ -352,15 +365,20 @@ object Report {
     Vector("## Brier score, B − A", "", "Negative: B is better.", "", ContextHeader, ContextRule) ++
       brierRows(a, b, b.cases) :+ ""
 
-  /** B − A's Brier score on each question, over `cases`, all and by context. */
+  /** B − A's Brier score on each question and on triage's four's mean, over `cases`, all and
+    * by context.
+    */
   private def brierRows(a: Scored, b: Scored, cases: Vector[Case]): Vector[String] = {
     val (sa, sb) = (Scoring(cases, a.answers, b.labels), Scoring(cases, b.answers, b.labels))
-    Target.all.map { q =>
-      val was = Brier.of(q, sa).map((c, v) => c.id -> v).toMap
-      val diff = Brier.of(q, sb).flatMap((c, v) => was.get(c.id).map(x => c -> (v - x)))
-      contextRow(Target.written(q), Split.of(diff, b.labels))
+    Measures.map { m =>
+      val was = Measure.brier(m, sa).map((c, v) => c.id -> v).toMap
+      val diff = Measure.brier(m, sb).flatMap((c, v) => was.get(c.id).map(x => c -> (v - x)))
+      contextRow(Measure.written(m), Split.of(diff, b.labels))
     }
   }
+
+  /** Every question, then triage's four's mean. */
+  private val Measures: Vector[Measure] = Target.all.map(Measure.Of(_)) :+ Measure.Mean
 
   /** The cases whose triage question A and B asked differently, and what changed on them. */
   private def inputsChanged(a: Scored, b: Scored): Vector[String] = {
@@ -384,7 +402,6 @@ object Report {
         s"${apart.exchange.fold("—")(e => num(e.mde))} | " +
         s"${apart.exchange.fold("—")(e => num(Apart.implied(e, repeats)))} |"
     }
-    val questions = Target.all.filterNot(_ == Target.Places)
     Vector(
       "## Inputs changed",
       "",
@@ -433,12 +450,14 @@ object Report {
            "| measure | n | repeat 2 − 1, 95% by exchange | MDE, one repeat | implied MDE |",
            "|---|---|---|---|---|"
          ) ++ Tag.values.toVector.map(t => implied(s"${Tag.written(t)}: p(yes)", yes(t))) ++
-           questions.map(q =>
-             implied(
-               s"${Target.written(q)}: Brier, labelled",
-               answers => Brier.of(q, Scoring(labelled, answers, b.labels))
-             )
-           ) :+ "")
+           Measures
+             .filterNot(_ == Measure.Of(Target.Places))
+             .map(m =>
+               implied(
+                 s"${Measure.written(m)}: Brier, labelled",
+                 answers => Measure.brier(m, Scoring(labelled, answers, b.labels))
+               )
+             ) :+ "")
   }
 
   /** `measure` of B less that of A, per case both hold. */
