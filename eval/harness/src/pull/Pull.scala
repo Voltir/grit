@@ -9,7 +9,7 @@ import grit.core.id.{ShadowName, ShadowRef}
 import grit.core.message.Usage
 import grit.core.period.Probability
 import grit.core.store.{StoreError, Tx}
-import grit.core.triage.{Kind, Shadowed, Tags, TriageStore}
+import grit.core.triage.{Kind, ShadowAnswers, Shadowed, Tags, TriageStore}
 import grit.dbos.engine.{Build, Reader}
 import grit.eval.harness.corpus.{Case, CaseId, Digest, Failure}
 import grit.eval.harness.log.{CacheKey, Footer, Header, Log, Outcome, Row, Suite, Weights}
@@ -45,11 +45,18 @@ object Pull {
 
   object Pulled {
 
-    /** One shadow's log, and of the messages tagged since with no row of its: how many its
-      * shadow `ended` keeping nothing (DBOS has the shadow, finished), and how many are
-      * `waiting` (not yet enqueued, or queued or running).
+    /** One shadow's log; how many of its rows answered a question set (`named`), which the log
+      * leaves out; and of the messages tagged since with no row of its, how many its shadow
+      * `ended` keeping nothing (DBOS has the shadow, finished), and how many are `waiting`
+      * (not yet enqueued, or queued or running).
       */
-    final case class Shadow(name: ShadowName, log: Log[Vector[Weights]], ended: Int, waiting: Int)
+    final case class Shadow(
+        name: ShadowName,
+        log: Log[Vector[Weights]],
+        named: Int,
+        ended: Int,
+        waiting: Int
+    )
   }
 
   /** The logs of what `reader`'s database kept of the heard messages tagged at or after
@@ -123,14 +130,21 @@ object Pull {
       Pulled(
         log(Kept, live),
         shadowed.map { (name, rows) =>
-          val mine = inCorpus.flatMap((t, c) => rows.get(t.entry).map(shadowRow(c.id, _)))
+          val kept = inCorpus.flatMap((t, c) => rows.get(t.entry).map(c.id -> _))
+          val mine = kept.flatMap((id, row) => shadowRow(id, row))
           val missing = tagged.filterNot(t => rows.contains(t.entry))
           val ended = missing.count(t =>
             reader
               .workflow(ShadowRef(t.triage, name).workflowId)
               .exists(r => !Active.contains(r.status))
           )
-          Pulled.Shadow(name, log(variant(name), mine), ended, missing.size - ended)
+          Pulled.Shadow(
+            name,
+            log(variant(name), mine),
+            kept.size - mine.size,
+            ended,
+            missing.size - ended
+          )
         },
         ids.collect { case (_, Some(id)) if !byId.contains(id) => id }.distinct.sorted,
         inCorpus.size - live.size
@@ -178,22 +192,32 @@ object Pull {
         )
     }
 
-  /** A shadow's row of case `id`, from what it kept, and its cost. */
-  private def shadowRow(id: CaseId, kept: Shadowed): Priced =
+  /** A shadow's row of case `id`, from what it kept, and its cost; `None` for a question
+    * set's answers, which a log of triage's question cannot hold.
+    */
+  private def shadowRow(id: CaseId, kept: Shadowed): Option[Priced] =
     kept match {
-      case Shadowed.Answered(request, answers, usage, requested, answered, latency) =>
+      case Shadowed.Answered(_, ShadowAnswers.Named(_), _, _, _, _) => None
+      case Shadowed.Answered(
+            request,
+            ShadowAnswers.Worded(answers),
+            usage,
+            requested,
+            answered,
+            latency
+          ) =>
         val weights = answers.zip(Questions).flatMap((a, q) => Weights.of(q, a))
         val outcome =
           if (weights.size == Questions.size && answers.size == Questions.size)
             Outcome.Answered(weights)
           else Outcome.Failed(Failure.Unreadable)
-        row(id, digest(request), requested, Some(answered), outcome, usage, latency)
+        Some(row(id, digest(request), requested, Some(answered), outcome, usage, latency))
       case Shadowed.Failed(request, failure, latency) =>
         val kind = failure match {
           case ClassifierError.Kind.Unavailable => Failure.Unavailable
           case ClassifierError.Kind.Unreadable => Failure.Unreadable
         }
-        row(id, digest(request), "unknown", None, Outcome.Failed(kind), Usage.Zero, latency)
+        Some(row(id, digest(request), "unknown", None, Outcome.Failed(kind), Usage.Zero, latency))
     }
 
   private def row(

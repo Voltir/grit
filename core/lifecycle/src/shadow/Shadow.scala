@@ -5,7 +5,7 @@ import scala.concurrent.duration.*
 import grit.core.classify.{Answers, Classifier, ClassifierError, Request}
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, ShadowName, ShadowRef, WorkflowId}
-import grit.core.triage.{Shadowed, Tags}
+import grit.core.triage.{ShadowAnswers, Shadowed, Tags}
 import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
 
 /** The shadow workflow: one per declared variant and heard message ([[ShadowRef]]), on a
@@ -81,7 +81,7 @@ object Shadow {
                     Right(
                       entry -> Shadowed.Answered(
                         request.digest,
-                        answers.answers,
+                        ShadowAnswers.Worded(answers.answers),
                         answers.usage,
                         variant.requested,
                         answers.model,

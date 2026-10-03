@@ -473,8 +473,9 @@ object Main {
       println(s"  ${Report.KeptNote}")
       pulled.shadows.foreach(s =>
         println(
-          s"shadow ${ShadowName.value(s.name)}: ${counted(s.log)}; tagged since with no row: " +
-            s"ended keeping nothing ${s.ended}, not yet shadowed ${s.waiting}"
+          s"shadow ${ShadowName.value(s.name)}: ${counted(s.log)}; a question set's, left " +
+            s"out: ${s.named}; tagged since with no row: ended keeping nothing ${s.ended}, " +
+            s"not yet shadowed ${s.waiting}"
         )
       )
       println(s"not in the corpus, for the next capture: ${pulled.uncaptured.size}")

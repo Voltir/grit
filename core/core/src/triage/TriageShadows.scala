@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.FiniteDuration
 
-import grit.core.classify.{Answer, ClassifierError}
+import grit.core.classify.ClassifierError
 import grit.core.id.{EntryId, ShadowName, TriageRef}
 import grit.core.message.Usage
 import grit.core.store.{StoreError, Tx}
@@ -45,13 +45,13 @@ trait TriageShadows {
 /** What a shadow variant made of one heard message it asked about. */
 enum Shadowed {
 
-  /** Answered: the request's digest ([[grit.core.classify.Request.digest]]), every answer in
-    * the questions' order, what the call consumed, the model `requested` and the one that
-    * `answered`, taking `latency`.
+  /** Answered: the request's digest ([[grit.core.classify.Request.digest]]), its answers,
+    * what the call consumed, the model `requested` and the one that `answered`, taking
+    * `latency`.
     */
   case Answered(
       request: String,
-      answers: Vector[Answer],
+      answers: ShadowAnswers,
       usage: Usage,
       requested: String,
       answered: String,

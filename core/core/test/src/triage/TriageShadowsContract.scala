@@ -2,6 +2,7 @@ package grit.core.triage
 
 import java.time.Instant
 
+import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
 import grit.core.classify.{Answer, ClassifierError}
@@ -9,8 +10,10 @@ import grit.core.id.{
   CloseRef,
   ConversationId,
   EntryId,
+  KnowledgeSourceName,
   PeriodRef,
   PeriodSeq,
+  QuestionName,
   ShadowName,
   TriageRef,
   TurnRef
@@ -51,16 +54,24 @@ abstract class TriageShadowsContract extends TestSuite {
     ShadowName.of(s).getOrElse(throw new java.lang.AssertionError(s))
 
   private def answered(cost: Option[String]): Shadowed =
+    answeredAs(
+      cost,
+      ShadowAnswers.Worded(
+        Vector(
+          Answer.Choice(
+            "decision",
+            Vector(Answer.Weight("question", 0.25), Answer.Weight("decision", 0.75)),
+            0.5
+          ),
+          Answer.YesNo(0.125)
+        )
+      )
+    )
+
+  private def answeredAs(cost: Option[String], answers: ShadowAnswers): Shadowed =
     Shadowed.Answered(
       "d1g35t",
-      Vector(
-        Answer.Choice(
-          "decision",
-          Vector(Answer.Weight("question", 0.25), Answer.Weight("decision", 0.75)),
-          0.5
-        ),
-        Answer.YesNo(0.125)
-      ),
+      answers,
       Usage(Tokens(812), Tokens(40), Tokens.Zero, cost.map(BigDecimal(_))),
       "jev-1.13.0",
       "jev-1.13.0+r2",
@@ -89,7 +100,35 @@ abstract class TriageShadowsContract extends TestSuite {
 
   private val unanswered = Tags.Unanswered("unavailable: timeout")
 
+  private def question(text: String): QuestionName =
+    QuestionName.of(text).getOrElse(throw new java.lang.AssertionError(text))
+
+  /** A question set's answers, in an order that is not their names' sorted order. */
+  private val asked: Vector[(QuestionName, Answer)] = Vector(
+    question("to") -> Answer.YesNo(0.125),
+    question("gap") -> Answer.Choice("asks", Vector(Answer.Weight("asks", 1.0)), 1.0),
+    QuestionName.per(
+      question("source"),
+      KnowledgeSourceName.of("github").getOrElse(throw new java.lang.AssertionError("github"))
+    ) -> Answer.YesNo(0.5)
+  )
+
   val tests = Tests {
+    test("a question set's answers read back under their names, in the order asked") {
+      val c = conversation("shadows-named")
+      val set = named("named-set")
+      val a = hear(c, "who owns the deploy?")
+      val row = answeredAs(Some("0.00004"), ShadowAnswers.Named(VectorMap.from(asked)))
+      transaction(shadows.record(a.id, set, row, At)) ==> Right(true)
+      transaction(shadows.of(set, Vector(a.id))).map(_.get(a.id)) ==> Right(Some(row))
+      // A VectorMap's equality ignores its order.
+      transaction(shadows.of(set, Vector(a.id))).map(_.get(a.id).map {
+        case Shadowed.Answered(_, ShadowAnswers.Named(as), _, _, _, _) => as.toVector
+        case Shadowed.Answered(_, ShadowAnswers.Worded(_), _, _, _, _) | Shadowed.Failed(_, _, _) =>
+          Vector.empty
+      }) ==> Right(Some(asked))
+    }
+
     test("a row is kept once per variant; a second is false and keeps the first") {
       val c = conversation("shadows-once")
       val (words, replica) = (named("once-words"), named("once-replica"))

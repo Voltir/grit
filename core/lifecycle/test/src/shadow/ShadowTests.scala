@@ -6,7 +6,7 @@ import grit.core.classify.{Answer, ClassifierError}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{ShadowRef, TurnRef, WorkflowId}
 import grit.core.stitch.Tuning
-import grit.core.triage.Shadowed
+import grit.core.triage.{ShadowAnswers, Shadowed}
 import grit.lifecycle.triage.{TriageFixtures, TriageInput, TriageQuestion, TriageRecipe}
 
 import utest.*
@@ -59,8 +59,10 @@ object ShadowTests extends TestSuite {
       w.kept(shadow.triage, Words) ==> Some(
         Shadowed.Answered(
           digest(w, t, Reworded).getOrElse("no request"),
-          Answer.choice(weights.map(Answer.Weight(_, _))).toVector ++
-            Vector(Answer.YesNo(0.125), Answer.YesNo(0.875), Answer.YesNo(0.25)),
+          ShadowAnswers.Worded(
+            Answer.choice(weights.map(Answer.Weight(_, _))).toVector ++
+              Vector(Answer.YesNo(0.125), Answer.YesNo(0.875), Answer.YesNo(0.25))
+          ),
           Spent,
           "jev-variant",
           "jev-1.13.0",

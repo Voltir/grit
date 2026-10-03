@@ -12,7 +12,7 @@ import grit.core.period.LifecycleSettings
 import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Entry, Origin, StoreError, Tx}
-import grit.core.triage.Shadowed
+import grit.core.triage.{ShadowAnswers, Shadowed}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
@@ -155,7 +155,11 @@ object ShadowLaunchLiveTests extends TestSuite {
       kept match {
         // The stub answers the marked kind, and the variant's model is the one it names.
         case Some(Shadowed.Answered(_, answers, _, requested, answered, _)) =>
-          (requested, answered, answers.size) ==> ("jev-variant", StubClassifier.Model, 4)
+          val worded = answers match {
+            case ShadowAnswers.Worded(as) => Some(as.size)
+            case ShadowAnswers.Named(_) => None
+          }
+          (requested, answered, worded) ==> ("jev-variant", StubClassifier.Model, Some(4))
         case other => throw new java.lang.AssertionError(s"not answered: $other")
       }
     }

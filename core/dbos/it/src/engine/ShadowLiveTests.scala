@@ -22,7 +22,7 @@ import grit.core.id.{
 import grit.core.message.{Tokens, Usage}
 import grit.core.spend.DailyCap
 import grit.core.store.Origin
-import grit.core.triage.{Shadowed, Shadowing, Tags}
+import grit.core.triage.{ShadowAnswers, Shadowed, Shadowing, Tags}
 import grit.dbos.sql.{
   DbConfig,
   LiveDb,
@@ -273,7 +273,7 @@ object ShadowLiveTests extends TestSuite {
         // Today's spend so far is the whole cap: one answered call at $0.006, then one at $0.004.
         def answered(usd: String) = Shadowed.Answered(
           "d1g35t",
-          Vector.empty,
+          ShadowAnswers.Worded(Vector.empty),
           Usage(Tokens(800), Tokens(0), Tokens.Zero, Some(BigDecimal(usd))),
           "jev",
           "jev",

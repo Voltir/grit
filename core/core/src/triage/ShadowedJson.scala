@@ -1,35 +1,77 @@
 package grit.core.triage
 
+import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
 import grit.core.classify.{Answer, ClassifierError}
+import grit.core.id.QuestionName
 import grit.core.store.PayloadJson
 
 /** How a [[Shadowed]] and its answers are stored: a shadow workflow's journal and its row
-  * read back what an earlier build wrote, so change these only with the epoch (ADR 0004).
+  * read back what an earlier build wrote (ADR 0004), so a form once written is read by every
+  * later build of the epoch. A new form is added only beside the old ones, told apart by its
+  * own shape: an answer with a name is a question set's, without one a wording's.
   */
 object ShadowedJson {
 
   /** `answers` in order: a choice as `{"choice", "weights": [{"key", "p"}]}`, a yes/no as
-    * `{"yes"}`; a choice's confidence is not kept, it is computed from its weights.
+    * `{"yes"}`, a choice's confidence not kept (it is computed from its weights); a
+    * `Named` answer as the same object with its question's `"name"` first.
     */
-  def writeAnswers(answers: Vector[Answer]): ujson.Value =
-    ujson.Arr.from(answers.map {
-      case Answer.Choice(choice, weights, _) =>
-        ujson.Obj(
-          "choice" -> choice,
-          "weights" -> ujson.Arr.from(
-            weights.map(w => ujson.Obj("key" -> w.key, "p" -> w.probability))
-          )
-        )
-      case Answer.YesNo(yes) => ujson.Obj("yes" -> yes)
-    })
+  def writeAnswers(answers: ShadowAnswers): ujson.Value = answers match {
+    case ShadowAnswers.Worded(as) => ujson.Arr.from(as.map(written))
+    case ShadowAnswers.Named(as) =>
+      ujson.Arr.from(as.toVector.map { (name, a) =>
+        ujson.Obj.from(("name" -> ujson.Str(QuestionName.value(name))) +: written(a).value.toSeq)
+      })
+  }
 
-  def readAnswers(v: ujson.Value): Either[String, Vector[Answer]] =
+  private def written(answer: Answer): ujson.Obj = answer match {
+    case Answer.Choice(choice, weights, _) =>
+      ujson.Obj(
+        "choice" -> choice,
+        "weights" -> ujson.Arr.from(
+          weights.map(w => ujson.Obj("key" -> w.key, "p" -> w.probability))
+        )
+      )
+    case Answer.YesNo(yes) => ujson.Obj("yes" -> yes)
+  }
+
+  /** What [[writeAnswers]] wrote: `Worded` when no answer has a name, `Named` when every one
+    * has; `Left` when some have and some not, when a name repeats or does not read
+    * ([[QuestionName.read]]), or when an answer does not read.
+    */
+  def readAnswers(v: ujson.Value): Either[String, ShadowAnswers] =
     v.arrOpt.toRight("answers: expected an array").flatMap { arr =>
-      arr.toVector.foldLeft[Either[String, Vector[Answer]]](Right(Vector.empty)) { (acc, a) =>
-        acc.flatMap(done => answer(a).map(done :+ _))
-      }
+      arr.toVector
+        .foldLeft[Either[String, Vector[(Option[QuestionName], Answer)]]](Right(Vector.empty)) {
+          (acc, a) =>
+            acc.flatMap(done =>
+              (nameOf(a), answer(a)).match {
+                case (Right(name), Right(answer)) => Right(done :+ (name -> answer))
+                case (Left(why), _) => Left(why)
+                case (_, Left(why)) => Left(why)
+              }
+            )
+        }
+        .flatMap { read =>
+          val names = read.flatMap(_._1)
+          if (names.isEmpty) Right(ShadowAnswers.Worded(read.map(_._2)))
+          else if (names.size < read.size) Left("answers: some named, some not")
+          else
+            names.diff(names.distinct).headOption match {
+              case Some(twice) => Left(s"answers: ${QuestionName.value(twice)} is named twice")
+              case None => Right(ShadowAnswers.Named(VectorMap.from(names.zip(read.map(_._2)))))
+            }
+        }
+    }
+
+  /** An answer's question's name; `None` when it has none. */
+  private def nameOf(v: ujson.Value): Either[String, Option[QuestionName]] =
+    v.objOpt.flatMap(_.get("name")) match {
+      case None => Right(None)
+      case Some(name) =>
+        name.strOpt.toRight("answer: name is not a string").flatMap(QuestionName.read).map(Some(_))
     }
 
   private def answer(v: ujson.Value): Either[String, Answer] =

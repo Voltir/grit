@@ -75,7 +75,8 @@ In dependency order:
 - **`triage`** — what grit makes of a message it heard (ADR 0020): `Kind`, `Tags` (triage's
   answer, or none) and `TriageStore`, where they are kept beside their entry and deleted
   with it; `Shadowing` (a shadow variant as the sweep enqueues it, within its daily cap),
-  `Shadowed` (what one variant made of one message) and `TriageShadows`, where those are
+  `Shadowed` (what one variant made of one message: its `ShadowAnswers`, a wording's in
+  order or a question set's under their names) and `TriageShadows`, where those are
   kept beside the entry and deleted with it; `KnowledgeSources`, a deployment's catalog of
   what could supply what a message asks for, each covering a place. ← `id`, `message`,
   `place`, `period`, `store`, `spend`, `classify`
