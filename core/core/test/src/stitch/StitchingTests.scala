@@ -1,9 +1,10 @@
 package grit.core.stitch
 
-import grit.core.id.{ConversationId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PrincipalId, StitchRef, TurnRef, TurnSeq}
+import grit.core.message.Message
 import grit.core.period.Probability
-import grit.core.place.Scope
-import grit.core.store.{EntrySearch, Payload, Speakers}
+import grit.core.place.{Directory, Scope}
+import grit.core.store.{Conversation, Entry, EntrySearch, Origin, Payload, Speakers}
 
 import utest.*
 import StitchFixtures.*
@@ -24,7 +25,53 @@ object StitchingTests extends TestSuite {
 
   private def p(x: Double) = Probability.of(x).getOrElse(throw new java.lang.AssertionError(x))
 
+  /** Conversation `c` begun at `origin`, holding `payloads`, one turn each, a second apart. */
+  private def kept(origin: Origin, payloads: Payload*): (Conversation, Vector[Entry]) = {
+    val c = ConversationId("c")
+    Conversation(c, origin, PrincipalId.Local, Now) ->
+      payloads.toVector.zipWithIndex.map((p, i) =>
+        Entry(
+          EntryId(s"c:$i"),
+          c,
+          TurnSeq(i.toLong),
+          None,
+          EntrySeq(i.toLong),
+          p,
+          Now.plusSeconds(i.toLong)
+        )
+      )
+  }
+
+  private def turn(n: Long) = TurnRef(ConversationId("c"), TurnSeq(n))
+
   val tests = Tests {
+    test(
+      "a person's first message in a Slack thread is its opening, in its channel, said when it was"
+    ) {
+      val thread = Origin.Slack("T", "C1", "1.0")
+      val (heardIn, heardEntries) = kept(thread, Payload.Heard("lunch?"), Payload.Heard("yes"))
+      val (askedIn, askedEntries) = kept(thread, Payload.Message(Message.User("@grit lunch?")))
+      Opening.of(heardIn, heardEntries, turn(0)).map(o => (o.ref, o.room)) ==>
+        Some((StitchRef(turn(0), Now), room()))
+      Opening.of(askedIn, askedEntries, turn(0)).map(_.ref) ==> Some(StitchRef(turn(0), Now))
+    }
+
+    test(
+      "a reply, grit's post, and a first message where topics do not interleave are no opening"
+    ) {
+      val thread = Origin.Slack("T", "C1", "1.0")
+      val (replied, replies) = kept(thread, Payload.Heard("lunch?"), Payload.Heard("yes"))
+      val (posted, posts) = kept(thread, Payload.Posted("deploy done"))
+      val (session, said) =
+        kept(Origin.Tui(Directory.of("/w").fold(sys.error, identity), "s"), Payload.Heard("lunch?"))
+      Vector(
+        Opening.of(replied, replies, turn(1)),
+        Opening.of(posted, posts, turn(0)),
+        Opening.of(session, said, turn(0)),
+        Opening.of(replied, Vector.empty, turn(0))
+      ) ==> Vector(None, None, None, None)
+    }
+
     test("a lexical match a week old is offered past two more recent exchanges") {
       val engine = heard("engine", "where did we land on the Engine contract term?", 6 * Day)
       val s1 = heard("s1", "sandwiches?", 120)

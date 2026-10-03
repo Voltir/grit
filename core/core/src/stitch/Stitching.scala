@@ -84,10 +84,10 @@ object Stitching {
   /** How many BM25 hits in the room a first message's lexical slots are chosen from. */
   val Hits = 30
 
-  /** What `turn`'s message is offered ([[offer]]) when its entry is its stitchable
-    * conversation's first and a person said it, read through `db` from `reads` under
-    * `tuning`, in the scope in force, **whether or not a placement is kept for it**. `None`
-    * when it is not such a message or nothing is offered; `Left` when the store fails.
+  /** What `turn`'s message is offered ([[offer]]) when it is an [[Opening]], read through
+    * `db` from `reads` under `tuning`, in the scope in force, **whether or not a placement is
+    * kept for it**. `None` when it is not one or nothing is offered; `Left` when the store
+    * fails.
     */
   def offered(
       reads: StitchReads,
@@ -97,10 +97,10 @@ object Stitching {
   ): Either[StoreError, Option[Offer]] =
     opening(reads, db, turn, tuning, keptAsks = true).map(_.map(_._2))
 
-  /** Where `turn`'s message goes ([[place]]), when its entry is its conversation's first and
-    * a person said it, in the scope in force, read through `db` from `reads`: that entry and its
-    * placement. `None`, asking nothing, otherwise, when a placement is kept for it already, or
-    * when nothing is offered. `Left` when the store fails.
+  /** Where `turn`'s message goes ([[place]]), when it is an [[Opening]], in the scope in
+    * force, read through `db` from `reads`: its entry and its placement. `None`, asking
+    * nothing, otherwise, when a placement is kept for it already, or when nothing is offered.
+    * `Left` when the store fails.
     */
   def turn(
       classifier: Classifier^,
@@ -113,8 +113,8 @@ object Stitching {
       _.map((first, offer) => first -> place(classifier, offer, tuning))
     )
 
-  /** `turn`'s message, when it is its stitchable conversation's first and said, and what it is
-    * offered; a message with a placement kept for it is offered nothing unless `keptAsks`.
+  /** `turn`'s message, when it is an [[Opening]], and what it is offered; a message with a
+    * placement kept for it is offered nothing unless `keptAsks`.
     */
   private def opening(
       reads: StitchReads,
@@ -128,16 +128,17 @@ object Stitching {
         all <- reads.entries.list(turn.conversationId)
         conversation <- reads.conversations.get(turn.conversationId)
         settings <- reads.lifecycle.current()
-      } yield Opening(
-        all.minByOption(_.seq).filter(e => e.turnSeq == turn.turnSeq && e.payload.said.nonEmpty),
-        conversation,
-        settings.locality.scope
-      )
-    }.flatMap { o =>
-      (o.conversation, o.first) match {
-        case (Some(c), Some(first)) if c.origin.stitchable =>
-          room(reads, db, c, first, o.scope, tuning, keptAsks).map(_.map(first.id -> _))
-        case _ => Right(None)
+      } yield Begun(all, conversation, settings.locality.scope)
+    }.flatMap { b =>
+      val first = for {
+        c <- b.conversation
+        _ <- Opening.of(c, b.entries, turn)
+        e <- b.entries.minByOption(_.seq)
+      } yield (c, e)
+      first match {
+        case Some((c, e)) =>
+          room(reads, db, c, e, b.scope, tuning, keptAsks).map(_.map(e.id -> _))
+        case None => Right(None)
       }
     }
 
@@ -197,11 +198,11 @@ object Stitching {
       speakers: Speakers
   )
 
-  /** What [[opening]] reads: the conversation's first entry when it is the turn's and said,
-    * its conversation, and the scope in force.
+  /** What [[opening]] reads: the conversation's entries, the conversation, and the scope in
+    * force.
     */
-  private final case class Opening(
-      first: Option[Entry],
+  private final case class Begun(
+      entries: Vector[Entry],
       conversation: Option[Conversation],
       scope: Scope
   )
