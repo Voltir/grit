@@ -282,7 +282,7 @@ object TurnCapture {
         .collect { case Entry(_, _, _, _, _, Payload.Result(r, _), _) => r }
       val made = reply.blocks.collect { case c: AssistantBlock.ToolCall => c }
       Round(made.zipWithIndex.map { (c, j) =>
-        val tool = ToolName.of(c.name).toOption.filter(tools.contains)
+        val tool = Called.of(c.name, tools)
         val settled = givenUp.get((n, j)) match {
           case Some(TurnRecord.GivenUp.Expired) => Settled.Expired
           case Some(TurnRecord.GivenUp.Abandoned) => Settled.Abandoned

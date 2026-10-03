@@ -12,7 +12,7 @@ import grit.core.prompt.Layer
 import grit.core.store.Focus
 import grit.core.tool.ToolName
 import grit.dbos.engine.Build
-import grit.turn.{TurnOffer, TurnRecord}
+import grit.turn.{TurnOffer, TurnRecord, TurnVerdict}
 
 /** One turn of a corpus, text-free: its workflow, conversation and turn; the message it
   * answers (`said`), whether that message was said to grit or heard (`root`) and where
@@ -123,11 +123,36 @@ object Part {
 /** One reply of the tool loop that called tools, its calls in the order made. */
 final case class Round(calls: Vector[Call])
 
-/** One tool call: its tool, `None` when the name the model sent is not in the turn's offered
-  * set (the turn's `topic` tool, offered beside the set when its message's topic was unsure,
-  * is among those); and how it settled.
-  */
-final case class Call(tool: Option[ToolName], settled: Settled)
+/** One tool call: the tool it named, and how it settled. */
+final case class Call(tool: Called, settled: Settled)
+
+/** The tool a call named, never its arguments. */
+enum Called {
+
+  /** A tool of the turn's offered set. */
+  case Tool(name: ToolName)
+
+  /** The turn's own `topic` tool ([[grit.turn.TurnVerdict.Name]]), which it offers beside its
+    * set when its message's topic was unsure.
+    */
+  case Topic
+
+  /** A name that is neither. */
+  case Unnamed
+}
+
+object Called {
+
+  /** What the name `sent` names in a turn offered `offered`: one of `offered` before the
+    * turn's `topic` tool.
+    */
+  def of(sent: String, offered: Set[ToolName]): Called =
+    ToolName.of(sent).toOption match {
+      case Some(n) if offered.contains(n) => Tool(n)
+      case Some(n) if n == TurnVerdict.Name => Topic
+      case _ => Unnamed
+    }
+}
 
 /** How a tool call settled, never what its result said. */
 enum Settled {

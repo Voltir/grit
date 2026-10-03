@@ -29,7 +29,8 @@ Packages, each importing only those above it:
   builders (`TriageInput`, `TriageQuestions`, `Stitching`), never through SQL of its own.
   `TurnCase`, one turn the database recorded, keyed by its workflow, TUI and task turns as
   well as Slack ones (`Said`, the message it answers by id): its offer, its window by part,
-  its tool loop's rounds, how it ended, its ledger rows by role and what became of a heard
+  its tool loop's rounds (each call by the tool it named: an offered one, the turn's own
+  `topic` tool, or neither), how it ended, its ledger rows by role and what became of a heard
   root's draft, read by `TurnCapture` through `Reader` and the turn's own reading of its
   records (`grit.turn.TurnRecord`), each window part costed by `CharEstimate` over `Shown`;
   `Support`, how much of a reply a part carries, computed where the text is and kept as the

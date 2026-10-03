@@ -192,7 +192,11 @@ object TurnJson {
       case Settled.Unsettled => ("unsettled", None)
     }
     ujson.Obj(
-      "tool" -> c.tool.fold[ujson.Value](ujson.Null)(n => ujson.Str(ToolName.value(n))),
+      "tool" -> (c.tool match {
+        case Called.Tool(n) => ujson.Str(ToolName.value(n))
+        case Called.Topic | Called.Unnamed => ujson.Null
+      }),
+      "topic" -> (c.tool == Called.Topic),
       "settled" -> settled,
       "length" -> length.fold[ujson.Value](ujson.Null)(ujson.Num(_))
     )
@@ -204,6 +208,13 @@ object TurnJson {
       tool <- f
         .optional("tool")
         .flatMap(opt(_)(t => Fields.str("call: tool", t).flatMap(ToolName.of)))
+      topic <- f.added("topic").flatMap(opt(_)(t => t.boolOpt.toRight("call: topic")))
+      called <- (tool, topic.contains(true)) match {
+        case (Some(n), true) => Left(s"call: ${ToolName.value(n)} is a topic call")
+        case (Some(n), false) => Right(Called.Tool(n))
+        case (None, true) => Right(Called.Topic)
+        case (None, false) => Right(Called.Unnamed)
+      }
       settled <- f.str("settled")
       length <- f
         .optional("length")
@@ -216,7 +227,7 @@ object TurnJson {
         case ("unsettled", None) => Right(Settled.Unsettled)
         case _ => Left(s"call: settled $settled")
       }
-    } yield Call(tool, s)
+    } yield Call(called, s)
   }
 
   private def readEnded(v: ujson.Value): Either[String, Ended] = {

@@ -358,7 +358,7 @@ object TurnCaptureTests extends TestSuite {
 
         // The loop: two rounds of one echo each, both ran.
         at(looped).rounds ==> Vector.fill(2)(
-          Round(Vector(Call(Some(ToolName("echo")), Settled.Ok(Echoed.length))))
+          Round(Vector(Call(Called.Tool(ToolName("echo")), Settled.Ok(Echoed.length))))
         )
         Vector(remark, question, failed, heard).map(at(_).rounds) ==> Vector.fill(4)(Vector.empty)
 

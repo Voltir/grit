@@ -62,12 +62,18 @@ object TurnJsonTests extends TestSuite {
       )
     ),
     Vector(
-      Round(Vector(Call(Some(ToolName("read")), Settled.Ok(12)), Call(None, Settled.Failed(3)))),
       Round(
         Vector(
-          Call(Some(ToolName("search")), Settled.Expired),
-          Call(Some(ToolName("search")), Settled.Abandoned),
-          Call(Some(ToolName("read")), Settled.Unsettled)
+          Call(Called.Topic, Settled.Ok(5)),
+          Call(Called.Tool(ToolName("read")), Settled.Ok(12)),
+          Call(Called.Unnamed, Settled.Failed(3))
+        )
+      ),
+      Round(
+        Vector(
+          Call(Called.Tool(ToolName("search")), Settled.Expired),
+          Call(Called.Tool(ToolName("search")), Settled.Abandoned),
+          Call(Called.Tool(ToolName("read")), Settled.Unsettled)
         )
       )
     ),
@@ -126,6 +132,36 @@ object TurnJsonTests extends TestSuite {
         """"root":"addressed","focus":"focused","started":"2026-10-02T17:05:00Z",""" +
         """"build":"unknown","triage":null,"offered":null,"window":null,"rounds":[],""" +
         """"ended":{"unfinished":"PENDING"},"spend":[],"speech":null}"""
+    }
+
+    test("a call's form is pinned: an offered tool by name, a topic call and an unnamed one") {
+      // The stored form, as above; a line written before topic calls were kept has no
+      // "topic", and reads as before.
+      val calls = Vector(
+        Call(Called.Tool(ToolName("read")), Settled.Ok(12)),
+        Call(Called.Topic, Settled.Ok(5)),
+        Call(Called.Unnamed, Settled.Expired)
+      )
+      val line = TurnJson.write(unfinished.copy(rounds = Vector(Round(calls)))).render()
+      line.slice(line.indexOf("\"rounds\""), line.indexOf(",\"ended\"")) ==>
+        """"rounds":[[{"tool":"read","topic":false,"settled":"ok","length":12},""" +
+        """{"tool":null,"topic":true,"settled":"ok","length":5},""" +
+        """{"tool":null,"topic":false,"settled":"expired","length":null}]]"""
+      val older = line.replace(",\"topic\":false", "").replace(",\"topic\":true", "")
+      TurnJson.read(ujson.read(older)).map(_.rounds.flatMap(_.calls.map(_.tool))) ==>
+        Right(Vector(Called.Tool(ToolName("read")), Called.Unnamed, Called.Unnamed))
+    }
+
+    test("a call that names an offered tool and is a topic call is refused") {
+      val line = TurnJson
+        .write(
+          unfinished.copy(rounds =
+            Vector(Round(Vector(Call(Called.Tool(ToolName("read")), Settled.Ok(1)))))
+          )
+        )
+        .render()
+        .replace("\"topic\":false", "\"topic\":true")
+      TurnJson.read(ujson.read(line)) ==> Left("call: read is a topic call")
     }
   }
 }
