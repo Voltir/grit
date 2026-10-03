@@ -3,7 +3,8 @@
 Status: accepted (2026-09-30), revised (2026-09-30); amended (2026-10-03): the gate over
 triage's answers is the deployment's `Limits.drafts`; amended (2026-10-03): a gate is built
 from bounds by "every one of" and "any one of", and is unread only when no failing bound
-decides it
+decides it; amended (2026-10-03): a message said to grit, weighed in its turn, is never
+considered
 
 Context: a listened channel (ADR 0020) is kept, but grit only ever answered what was said to
 it. A deployment also wants grit to join in, with context or insight a thread lacks, when that
@@ -45,6 +46,9 @@ Decision:
   not yet answered, a rate reached, the speech cap or the budget. Otherwise it starts the
   heard message's own turn. It fails closed. A hold an earlier build kept as `chatter` or
   `below` reads back as gated on v1's bound.
+- **Only a heard message is considered** (amended 2026-10-03). A message said to grit that
+  its turn weighs with live triage's set (ADR 0020, ADR 0025) keeps no tags and is never
+  considered: it is answered because it was addressed, so its answers only shape its offer.
 - **The turn drafts.** It is told it was not addressed, to add what the thread lacks from what
   it was shown, or to reply `pass`. Its answer is a draft: never shown, never searched, and
   not a period's activity.

@@ -1,7 +1,8 @@
 # 0020. A heard message is an entry of its conversation, labelled by its edge and triaged, and supports no Standing line
 
 Status: accepted (2026-09-28); amended (2026-10-03): triage asks a question set, its
-answers kept by name
+answers kept by name; amended (2026-10-03): a message said to grit is asked the same set in
+its turn, when its recipe reads the answers, and keeps no tags
 
 Context: grit was answering only what was said to it. A deployment also wants the rest of a
 listened place (a Slack channel's threads) kept, so a later question can be answered from
@@ -57,6 +58,17 @@ Decision:
   announcement or chatter), and whether someone waits on a reply, whether it is durable, and
   whether a reply from grit would help; a triage in flight across the change reads its
   recorded v1 answers back under those names.
+- **A message said to grit is asked live triage's set in its own turn** (amended
+  2026-10-03), only when its deployment's recipe offers a service it links by a knowledge
+  source covering its place (ADR 0025): the turn's `weigh` step builds the state as for a
+  heard message (`TriageInput.read`), after its opening's placement, waited for at most
+  `Mentions.PlacedWithin`, and asks `TriageQuestions.Shipped` once. Its answers are the step's
+  recorded output and its call a usage-ledger row of the turn; no tags are kept, so speech,
+  earning, shadows and reviews never see a mention. A placement or classifier that fails
+  leaves it unweighed, offered everything. It adds one classifier call to such a mention's
+  latency, before its first model call. Turned down: a triage workflow for a mention, which
+  would put a second workflow and a cross-workflow wait in every mention's path and keep a row
+  that speech, shadows and reviews would each have to skip.
 - **A period earns a written closing** when grit was addressed in it, or a heard message in
   it was tagged durable (at 0.5 or above), or one is untagged or unanswered. It fails open,
   so a triage outage costs money, never a record. `Earning.earns` is the one definition.
@@ -86,5 +98,7 @@ Consequences:
   - `LabelledTests` and `ClosingSummaryTests` (heard lines ground nothing);
   - `CloseTests` (the heard pin, reported speech, and an unearned close);
   - `EarningTests` and `TriageTests` (what earns, and triage once per message);
+  - `TriageInputTests` and `MentionsTests` (a mention asked as a heard message is, keeping
+    nothing), `TurnWeighTests` (only when the recipe reads its answers);
   - `PeriodContract` (an unearned closing is never closed elsewhere) and `DigestTests`;
   - `LifecycleReplayTests`.
