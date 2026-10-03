@@ -1,184 +1,99 @@
 package grit.eval.harness.reply
 
 import scala.collection.immutable.VectorMap
-import scala.util.Try
 
 import grit.core.classify.Answer
 import grit.core.context.Width
-import grit.core.id.{KnowledgeSourceName, QuestionName}
+import grit.core.id.QuestionName
 import grit.core.message.Tokens
 import grit.core.period.Probability
-import grit.core.place.{Place, Service}
-import grit.core.tool.ToolName
-import grit.core.triage.{KnowledgeSource, KnowledgeSources}
-import grit.eval.harness.corpus.Fields
+import grit.core.place.Service
+import grit.core.recipe.{ByFocus, Offering, Rooted, ServiceOffer, Shaping, TurnRecipe}
+import grit.core.tool.{ToolName, ToolSet}
+import grit.core.triage.KnowledgeSources
+import grit.eval.harness.corpus.TurnCase
 import grit.turn.TurnOffer
 
-/** How a variant sizes a turn's window against the deployment's ([[Assembled]]). */
-enum Sizing {
-
-  /** As the deployment draws it. */
-  case Deployed
-
-  /** Half its window budget, each search ranking as many hits as deployed. */
-  case Half
-
-  /** Twice its window budget, each search ranking as many hits as deployed. */
-  case Twice
-}
-
-/** What a variant offers of a turn's tools. */
-enum Offering {
-
-  /** What the turn was offered. */
-  case Shipped
-
-  /** What the turn was offered less each service whose every knowledge source triage answered
-    * below `at` ([[TurnVariant.withheld]]).
-    */
-  case Gated(at: Probability)
-}
-
-/** A deployment's knowledge sources, each with the service whose tools supply it, if any. grit
-  * keeps no such link (a deployment declares its sources and its services apart), so a run is
-  * given it.
+/** A named way to build a turn other than as shipped: a recipe, applied to a recorded turn as
+  * a deployment declaring it would apply it.
   */
-final case class Supplies private (
-    sources: KnowledgeSources,
-    services: Map[KnowledgeSourceName, Service]
-)
+final case class TurnVariant(name: String, recipe: TurnRecipe)
 
-object Supplies {
-
-  /** No source. */
-  val Empty: Supplies = Supplies(KnowledgeSources.Empty, Map.empty)
-
-  /** The supplies `text` holds: `{"sources": [{"name", "line", "within", "service"}, …]}` in
-    * the order declared, `within` a place as written ([[Place.read]]) and `service` a service's
-    * name, or `null` for a source no service's tools supply. Why not, naming the source and
-    * field, when it is not of that form or names a source twice.
-    */
-  def read(text: String): Either[String, Supplies] =
-    for {
-      root <- Try(ujson.read(text)).toOption.toRight("supplies: not JSON")
-      all <- Fields("supplies", root).arr("sources")
-      each <- Fields.each(all) { v =>
-        val f = Fields("supplies: a source", v)
-        for {
-          name <- f.str("name").flatMap(KnowledgeSourceName.of)
-          what = s"supplies: ${KnowledgeSourceName.value(name)}"
-          line <- f.str("line")
-          within <- f.str("within").flatMap(Place.read).left.map(w => s"$what: within: $w")
-          service <- f
-            .optional("service")
-            .flatMap(Fields.opt(_)(s => Fields.str(s"$what: service", s).flatMap(Service.of)))
-        } yield (KnowledgeSource(name, line, within), service)
-      }
-      sources <- KnowledgeSources
-        .of(each.map(_._1))
-        .left
-        .map(n => s"supplies: ${KnowledgeSourceName.value(n)} is declared twice")
-    } yield Supplies(sources, each.flatMap((s, service) => service.map(s.name -> _)).toMap)
-}
-
-/** A named way to build a turn other than as shipped: the window each kind of turn is drawn at,
-  * and what it is offered of its tools.
-  *
-  * @param answered
-  *   a heard turn's sizing in place of `heard` when its triage reads `open` (what its message
-  *   asks is still unanswered) below one half; `None` for `heard`'s alone
+/** What a recorded turn is given under a variant: the `tools` it is offered, in the order
+  * recorded; each service it took tools from as the variant's offering decided it
+  * (`services`: its workspace's first, then those it reached, by name); and the
+  * `width` its window is drawn at.
   */
-final case class TurnVariant(
-    name: String,
-    addressed: Sizing,
-    heard: Sizing,
-    answered: Option[Sizing],
-    offering: Offering
-)
+final case class Shaped(tools: Vector[ToolSet.Entry], services: Vector[ServiceOffer], width: Width)
 
 object TurnVariant {
 
   /** The turn as recorded. */
-  val Shipped: TurnVariant =
-    TurnVariant("shipped", Sizing.Deployed, Sizing.Deployed, None, Offering.Shipped)
+  val Shipped: TurnVariant = TurnVariant("shipped", TurnRecipe.Shipped)
 
-  /** The variants a run can name: [[Shipped]]; `narrow-when-answered`, half the window on a
-    * heard turn whose triage reads its message answered; `wide-heard` and `wide-addressed`,
-    * twice the window on that root's turns; and `offer-0.2`, `offer-0.3` and `offer-0.5`, a
-    * service's tools offered only when triage answers one of its sources at least that.
+  /** The variants a run can name, over a deployment whose windows are built as `assembled`
+    * says: [[Shipped]]; `wide-heard` and `wide-addressed`, twice the window on that root's
+    * turns, each search ranking as many hits as deployed; `offer-0.2`, `offer-0.3` and
+    * `offer-0.5`, a service's tools offered on every turn only when one of the knowledge
+    * sources supplying it reads at least that ([[Offering.BySource]]); `offer-0.3-0.1`, at 0.3
+    * on a heard turn and 0.1 on one said to grit; and `offer-heard-0.2`, at 0.2 on a heard
+    * turn and every tool on one said to grit.
     */
-  val all: Vector[TurnVariant] = Vector(
-    Shipped,
-    Shipped.copy(name = "narrow-when-answered", answered = Some(Sizing.Half)),
-    Shipped.copy(name = "wide-heard", heard = Sizing.Twice),
-    Shipped.copy(name = "wide-addressed", addressed = Sizing.Twice)
-  ) ++ Vector("0.2", "0.3", "0.5").map(at =>
-    Shipped.copy(
-      name = s"offer-$at",
-      offering = Offering.Gated(Probability.clamped(at.toDouble))
+  def all(assembled: Assembled): Vector[TurnVariant] = {
+    val deployed = TurnRecipe.Shipped.addressed
+    val wide = deployed.copy(width =
+      Width.Within(Tokens(Tokens.value(assembled.window) * 2), assembled.hits)
     )
-  )
-
-  /** The variant of [[all]] named `name`. */
-  def named(name: String): Option[TurnVariant] = all.find(_.name == name)
-
-  /** Triage's question of whether what a message asks is still unanswered. */
-  private val Open: Option[QuestionName] = QuestionName.of("open").toOption
-
-  /** The prefix of triage's question asked once per knowledge source. */
-  private val Source: Option[QuestionName] = QuestionName.of("source").toOption
-
-  /** The width `v` draws a turn of `root` at, whose triage answered `answers` (empty when it
-    * has none), the deployment's built as `assembled` says.
-    */
-  def width(
-      v: TurnVariant,
-      root: TurnOffer.Root,
-      answers: VectorMap[QuestionName, Answer],
-      assembled: Assembled
-  ): Width = {
-    val answered = Open.flatMap(answers.get).exists {
-      case Answer.YesNo(yes) => yes < 0.5
-      case Answer.Choice(_, _, _) => false
-    }
-    val sizing = root match {
-      case TurnOffer.Root.Addressed => v.addressed
-      case TurnOffer.Root.Heard => v.answered.filter(_ => answered).getOrElse(v.heard)
-    }
-    budget(sizing, assembled).fold(Width.Deployed)(Width.Within(_, assembled.hits))
+    def by(at: Double) = deployed.copy(offering = Offering.BySource(Probability.clamped(at)))
+    def recipe(heard: Shaping, addressed: Shaping) = TurnRecipe(ByFocus.both(heard), addressed)
+    Vector(
+      Shipped,
+      TurnVariant("wide-heard", recipe(wide, deployed)),
+      TurnVariant("wide-addressed", recipe(deployed, wide))
+    ) ++ Vector(0.2, 0.3, 0.5).map(at => TurnVariant(s"offer-$at", recipe(by(at), by(at)))) ++
+      Vector(
+        TurnVariant("offer-0.3-0.1", recipe(by(0.3), by(0.1))),
+        TurnVariant("offer-heard-0.2", recipe(by(0.2), deployed))
+      )
   }
 
-  /** The widest budget `v` draws any turn at over `limit`, the reply model's context in tokens;
-    * `None` when none is over it.
-    */
-  def pastContext(v: TurnVariant, assembled: Assembled, limit: Tokens): Option[Tokens] =
-    (Vector(v.addressed, v.heard) ++ v.answered)
-      .map(s => budget(s, assembled).getOrElse(assembled.window))
-      .filter(b => Tokens.value(b) > Tokens.value(limit))
-      .maxByOption(Tokens.value)
+  /** The variant of [[all]] named `name`, or why not, naming every variant there is. */
+  def named(name: String, assembled: Assembled): Either[String, TurnVariant] = {
+    val each = all(assembled)
+    each.find(_.name == name).toRight(s"no variant $name: ${each.map(_.name).mkString(", ")}")
+  }
 
-  /** The services `v` withholds from a turn whose triage answered `answers`: under
-    * [[Offering.Gated]], each service of `supplies` every source of which triage answered
-    * below its line (a source it did not ask about holds its service offered); none under
-    * [[Offering.Shipped]].
+  /** What `t` answers, as a recipe tells it apart. */
+  def rooted(t: TurnCase): Rooted = t.root match {
+    case TurnOffer.Root.Heard => Rooted.Heard(t.focus)
+    case TurnOffer.Root.Addressed => Rooted.Addressed
+  }
+
+  /** What a turn rooted as `rooted` is given under `v`: what it recorded it was offered
+    * (`offer`, `None` when it recorded none, and its tool set `set`) less the tools of each
+    * service `v`'s offering withholds ([[Offering.decide]]) by the root's `answers` (`None`:
+    * it has none) and the services `knowledge` says its sources supply; and its width.
     */
-  def withheld(
+  def shape(
       v: TurnVariant,
-      answers: VectorMap[QuestionName, Answer],
-      supplies: Supplies
-  ): Set[Service] =
-    v.offering match {
-      case Offering.Shipped => Set.empty
-      case Offering.Gated(at) =>
-        def below(source: KnowledgeSourceName) =
-          Source.map(QuestionName.per(_, source)).flatMap(answers.get).exists {
-            case Answer.YesNo(yes) => yes < Probability.value(at)
-            case Answer.Choice(_, _, _) => false
-          }
-        val bySource =
-          supplies.sources.all.flatMap(s => supplies.services.get(s.name).map(s.name -> _))
-        bySource.map(_._2).toSet.filter(s => bySource.filter(_._2 == s).forall((n, _) => below(n)))
-    }
+      rooted: Rooted,
+      offer: Option[TurnOffer.Recorded],
+      set: Vector[ToolSet.Entry],
+      answers: Option[VectorMap[QuestionName, Answer]],
+      knowledge: KnowledgeSources
+  ): Shaped = {
+    val shaping = v.recipe.at(rooted)
+    val services = offer.toVector.flatMap(o =>
+      (o.workspace.flatMap(_.service).toVector ++
+        o.reached.values.flatMap(_.service).toVector.sortBy(_.name)).distinct
+    )
+    val decided = Offering.decide(shaping.offering, knowledge.supplied, services, answers)
+    val withheld = decided
+      .filter(_.withheld)
+      .flatMap(s => offer.toVector.flatMap(toolsOf(_, s.service)))
+      .toSet
+    Shaped(set.filterNot(e => withheld.contains(e.name)), decided, shaping.width)
+  }
 
   /** The tools `offer` took from `service`'s edge's advert: its workspace's, when the service
     * is its workspace, and those reached there.
@@ -186,14 +101,4 @@ object TurnVariant {
   def toolsOf(offer: TurnOffer.Recorded, service: Service): Set[ToolName] =
     (if (offer.workspace.contains(service.place)) offer.advertised.toSet else Set.empty) ++
       offer.reached.collect { case (n, p) if p == service.place => n }
-
-  /** `sizing`'s budget over `assembled`'s; `None` for the deployment's own. */
-  private def budget(sizing: Sizing, assembled: Assembled): Option[Tokens] = {
-    val w = Tokens.value(assembled.window)
-    sizing match {
-      case Sizing.Deployed => None
-      case Sizing.Half => Some(Tokens(w / 2))
-      case Sizing.Twice => Some(Tokens(w * 2))
-    }
-  }
 }

@@ -37,14 +37,14 @@ object TurnTriage {
     * with `tuning` and the shipped recipe, [[TriageRecipe.Shipped]], whose sections it reads as
     * the database stands now) over `reader`'s database as it stood when `t` started
     * ([[AsOf]]), a message said to grit read as one heard, since triage builds its question of
-    * heard messages alone; with a question per source of `supplies` whose place holds the
+    * heard messages alone; with a question per source of `knowledge` whose place holds the
     * turn's conversation's. `Left` naming what could not be read or built; never a message's
     * text.
     */
   def ask(
       reader: Reader^,
       t: TurnCase,
-      supplies: Supplies,
+      knowledge: KnowledgeSources,
       tuning: Tuning
   ): Either[String, TurnAsk] = {
     val name = WorkflowId.value(t.workflow)
@@ -76,7 +76,7 @@ object TurnTriage {
         .left
         .map(why => s"triage's question of $name not built: $why")
     } yield {
-      val sources = read.place.fold(KnowledgeSources.Empty)(supplies.sources.at)
+      val sources = read.place.fold(KnowledgeSources.Empty)(knowledge.at)
       val request = TriageQuestions.Shipped.request(read.state, sources)
       TurnAsk(
         Posed(

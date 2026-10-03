@@ -167,19 +167,24 @@
 #
 #   scripts/eval recipes <yyyymmdd> --variant <name>... --context <tokens> --spend <usd>
 #                        [--window <tokens>] [--tail <tokens>]
-#       Each named variant (narrow-when-answered, wide-heard, wide-addressed: a window per
-#       turn's root, half or twice the deployment's; offer-0.2, offer-0.3, offer-0.5: a
-#       service's tools offered only when triage answers one of the knowledge sources it
-#       supplies at least that) against shipped, paired on every turn grit_eval_<date>
+#       Each named variant, a turn recipe (wide-heard, wide-addressed: twice the deployment's
+#       window on that root's turns; offer-0.2, offer-0.3, offer-0.5: a service's tools
+#       offered only when triage answers one of the knowledge sources supplying it at least
+#       that; offer-0.3-0.1: at 0.3 on a heard turn and 0.1 on one said to grit;
+#       offer-heard-0.2: at 0.2 on a heard turn, every tool on one said to grit), decided as
+#       the turn decides it, against shipped, paired on every turn grit_eval_<date>
 #       recorded, written to .local/eval/reports/recipes-<date>.md and printed: tools offered
 #       and their definitions' tokens saved, called-tool recall (of the tools a turn called,
 #       those the variant still offers), window tokens per part, used-section recall (stated
 #       undefined when no reply used a part) and the turns each changed, by id; then the
 #       reference turns' pass rate under shipped and each variant. --context is the reply
-#       model's context in tokens: a variant drawing a window over it is refused. Which
-#       service supplies which knowledge source is .local/eval/supplies.json ({"sources":
-#       [{"name", "line", "within", "service"}]}, the deployment's sources as declared, service
-#       null for a source no service's tools supply), since grit keeps no such link. A turn's
+#       model's context in tokens: a variant drawing a window over it is refused. The
+#       knowledge sources, and the service each supplies, are those the deployment that
+#       recorded the corpus declares, written beside it as
+#       .local/eval/corpus/<date>/knowledge.json ({"sources": [{"name", "line", "within",
+#       "supplies"}]}, supplies a service's name, absent for a source no service's tools reach;
+#       its lines are the deployment's words, no conversation's), since grit's database keeps
+#       no declaration; refused when it is missing. A turn's
 #       triage answers are live triage's when it kept a question set's; else its message is
 #       put live triage's set as heard, as the database stood when the turn started, through
 #       Jev once (a TUI or task turn's, with no case id, is not asked), each answer kept in
@@ -440,7 +445,7 @@ recipes() {
   harness recipes --eval "$main/.local/eval" --corpus "$corpus" \
     --url "jdbc:postgresql://localhost:5432/$restored" \
     --variants "$(IFS=,; echo "${variants[*]}")" \
-    --supplies "$main/.local/eval/supplies.json" --cache "$main/.local/eval/cache" \
+    --cache "$main/.local/eval/cache" \
     --reference "$main/.local/eval/reference.json" \
     --labels "$main/.local/eval/reply-labels.json" "${rest[@]}"
 }

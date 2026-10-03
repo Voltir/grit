@@ -30,7 +30,7 @@ import grit.core.tool.Toolbox
 import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
-import grit.eval.harness.corpus.{Digest, Dump, TurnCapture}
+import grit.eval.harness.corpus.{Digest, Dump, KnowledgeJson, TurnCapture}
 import grit.eval.harness.jev.{Asking, Budget}
 import grit.eval.harness.log.Cache
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
@@ -287,11 +287,11 @@ object RebuildTests extends TestSuite {
     ) {
       val (reader, Vector(_, b, _)) = world: @unchecked
       val turns = right(TurnCapture(reader, Dump(Digest.text(""), now().plusSeconds(60))))
-      val supplies = right(
-        Supplies.read(
+      val knowledge = right(
+        KnowledgeJson.read(
           """{"sources": [
-            |  {"name": "tasks", "line": "the tasks' records", "within": "task:", "service": null},
-            |  {"name": "chat", "line": "the chat", "within": "slack:", "service": null}
+            |  {"name": "tasks", "line": "the tasks' records", "within": "task:"},
+            |  {"name": "chat", "line": "the chat", "within": "slack:"}
             |]}""".stripMargin
         )
       )
@@ -299,7 +299,7 @@ object RebuildTests extends TestSuite {
       turns.cases
         .find(_.workflow == b.workflowId)
         .toRight("b not captured")
-        .flatMap(TurnTriage.ask(reader, _, supplies, Tuning.Default))
+        .flatMap(TurnTriage.ask(reader, _, knowledge, Tuning.Default))
         .map(a =>
           (
             a.questions.keys.map(QuestionName.value).toVector,

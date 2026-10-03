@@ -31,6 +31,7 @@ import grit.eval.harness.corpus.{
   Dump,
   Ended,
   Fields,
+  KnowledgeJson,
   Live,
   Manifest,
   Said,
@@ -75,7 +76,6 @@ import grit.eval.harness.reply.{
   Rebuild,
   Reference,
   ReplyReview,
-  Supplies,
   Synthetic,
   TurnAsk,
   TurnTriage,
@@ -422,22 +422,24 @@ object Main {
       }
     } yield ()
 
-  /** `recipes --eval <dir> --corpus <yyyymmdd> --url <jdbc> --variants <name,…> --supplies
-    * <file> --context <tokens> --cache <dir> --spend <usd> [--reference <file>] [--labels
-    * <file>] [--window <tokens>] [--tail <tokens>]`: each variant ([[TurnVariant.named]])
-    * against shipped over every turn of the corpus, written to
-    * `<dir>/reports/recipes-<yyyymmdd>.md` and printed ([[Report.recipes]]). Refused, before
-    * anything is read, when a variant draws a window over `--context`, the reply model's
-    * context in tokens. A turn's triage answers are live triage's when it kept a question
-    * set's for the turn's message; else its message is put live triage's set
-    * ([[TurnTriage.ask]], the sources `--supplies` declares, [[Supplies.read]]) through Jev,
+  /** `recipes --eval <dir> --corpus <yyyymmdd> --url <jdbc> --variants <name,…> --context
+    * <tokens> --cache <dir> --spend <usd> [--reference <file>] [--labels <file>] [--window
+    * <tokens>] [--tail <tokens>]`: each variant ([[TurnVariant.named]]) against shipped over
+    * every turn of the corpus, written to `<dir>/reports/recipes-<yyyymmdd>.md` and printed
+    * ([[Report.recipes]]). Refused, before anything is read, when a variant draws a window over
+    * `--context`, the reply model's context in tokens ([[grit.core.recipe.TurnRecipe.widens]]),
+    * and when the corpus has no `knowledge.json`, the knowledge sources of the deployment that
+    * recorded it ([[KnowledgeJson.read]]). A turn's triage answers are live triage's when it
+    * kept a question set's for the turn's message; else its message is put live triage's set
+    * ([[TurnTriage.ask]], with those sources) through Jev,
     * once, the answer kept under `<cache>` so it is paid for once, under the `--spend` cap in
     * USD: refused before any call when the calls not kept are estimated over it, and each call
     * past it skipped. A message with no case id (a TUI or task turn's) is not asked. Each
     * width's window is rebuilt as of the turn's assembly, its query replayed
     * ([[Rebuild.recorded]]), and costed as capture costs a window ([[TurnCapture.costed]]);
     * its tools are what it recorded less the services the variant withholds, their
-    * definitions costed as capture costs them ([[TurnCapture.schema]]). The reference is
+    * definitions costed as capture costs them ([[TurnCapture.schema]]); which services it
+    * withholds is decided as the turn would decide it ([[TurnVariant.shape]]). The reference is
     * `--reference` (a file of ids, [[Reference.read]]; none when it does not exist) and the
     * reply labels in `--labels` ([[Reference.labelled]]; none when it does not exist). Jev's
     * key comes from the environment over `GRIT_ENV_FILE` (`.env` when unset), read only when
@@ -451,29 +453,24 @@ object Main {
       dir = eval.resolve("corpus").resolve(corpus)
       url <- need(f, "url")
       named <- need(f, "variants").map(_.split(',').toVector.filter(_.nonEmpty))
-      variants <- Fields.each(named)(n =>
-        TurnVariant
-          .named(n)
-          .toRight(s"no variant $n: ${TurnVariant.all.map(_.name).mkString(", ")}")
-      )
       limit <- need(f, "context").flatMap(positive("context")).map(Tokens(_))
       cap <- need(f, "spend").flatMap(decimal("spend"))
       cacheDir <- need(f, "cache").map(Path.of(_))
-      supplies <- need(f, "supplies").map(Path.of(_)).flatMap(read).flatMap(Supplies.read)
       window <- f
         .get("window")
         .fold(Right(Assembled.Shipped.window))(positive("window")(_).map(Tokens(_)))
       tail <- f.get("tail").fold(Right(Assembled.Shipped.tail))(positive("tail")(_).map(Tokens(_)))
       assembled = Assembled.Shipped.copy(window = window, tail = tail)
-      _ <- variants
-        .flatMap(v => TurnVariant.pastContext(v, assembled, limit).map(v -> _))
-        .headOption
-        .fold[Either[String, Unit]](Right(())) { (v, b) =>
+      variants <- Fields.each(named)(TurnVariant.named(_, assembled))
+      _ <- refuseWide(variants, limit)
+      knowledgeAt = dir.resolve("knowledge.json")
+      knowledge <-
+        if (Files.exists(knowledgeAt)) read(knowledgeAt).flatMap(KnowledgeJson.read)
+        else
           Left(
-            s"refused: ${v.name} draws a window of ${Tokens.value(b)} tokens, over the reply " +
-              s"model's context of ${Tokens.value(limit)}"
+            s"no $knowledgeAt: write the knowledge sources the deployment that recorded the " +
+              "corpus declares there"
           )
-        }
       written <- f
         .get("reference")
         .map(Path.of(_))
@@ -510,7 +507,7 @@ object Main {
           )
           built = unasked.collect {
             case t @ TurnCase(_, _, _, Said.Slack(id), _, _, _, _, _, _, _, _, _, _, _) =>
-              (t, id, TurnTriage.ask(reader, t, supplies, manifest.tuning))
+              (t, id, TurnTriage.ask(reader, t, knowledge, manifest.tuning))
           }
           asks = built.collect { case (t, id, Right(a)) => (t, id, a) }
           calls = asks.map((t, id, a) =>
@@ -548,19 +545,7 @@ object Main {
           answers = (live ++ asked).toMap
           // Each turn's window at each width a variant draws it at, rebuilt once.
           widths = (TurnVariant.Shipped +: variants)
-            .flatMap(v =>
-              turns.map(t =>
-                (
-                  t.workflow,
-                  TurnVariant.width(
-                    v,
-                    t.root,
-                    answers.getOrElse(t.workflow, VectorMap.empty),
-                    assembled
-                  )
-                )
-              )
-            )
+            .flatMap(v => turns.map(t => (t.workflow, v.recipe.at(TurnVariant.rooted(t)).width)))
             .distinct
           windows = widths
             .map((w, width) =>
@@ -577,23 +562,24 @@ object Main {
         } yield {
           def build(v: TurnVariant, t: TurnCase): (Given, Set[Service]) = {
             val (offer, set) = offered.getOrElse(t.workflow, (None, Vector.empty))
-            val a = answers.getOrElse(t.workflow, VectorMap.empty)
-            val withheld = TurnVariant
-              .withheld(v, a, supplies)
-              .flatMap(s => offer.toVector.flatMap(TurnVariant.toolsOf(_, s)))
-            val kept = set.filterNot(e => withheld.contains(e.name))
-            val names = kept.map(_.name).toSet
-            val services = offer.toVector
-              .flatMap(o =>
-                o.workspace.flatMap(_.service).toVector ++ o.reached.values.flatMap(_.service)
-              )
-              .distinct
-              .filter(s => offer.exists(o => TurnVariant.toolsOf(o, s).exists(names.contains)))
-              .toSet
-            val drawn = windows
-              .get((t.workflow, TurnVariant.width(v, t.root, a, assembled)))
-              .flatMap(_.toOption)
-            (Given(kept.map(_.name), TurnCapture.schema(kept), drawn), services)
+            val shaped = TurnVariant.shape(
+              v,
+              TurnVariant.rooted(t),
+              offer,
+              set,
+              answers.get(t.workflow),
+              knowledge
+            )
+            val drawn = windows.get((t.workflow, shaped.width)).flatMap(_.toOption)
+            (
+              Given(shaped.tools.map(_.name), TurnCapture.schema(shaped.tools), drawn),
+              shaped.services
+                .filter(s =>
+                  !s.withheld && offer.exists(o => TurnVariant.toolsOf(o, s.service).nonEmpty)
+                )
+                .map(_.service)
+                .toSet
+            )
           }
           def varied(v: TurnVariant): Varied = {
             val pairs =
@@ -672,26 +658,14 @@ object Main {
       eval <- need(f, "eval").map(Path.of(_))
       url <- need(f, "url")
       named <- need(f, "variants").map(_.split(',').toVector.filter(_.nonEmpty))
-      variants <- Fields.each(named)(n =>
-        TurnVariant
-          .named(n)
-          .toRight(s"no variant $n: ${TurnVariant.all.map(_.name).mkString(", ")}")
-      )
       limit <- need(f, "context").flatMap(positive("context")).map(Tokens(_))
       window <- f
         .get("window")
         .fold(Right(Assembled.Shipped.window))(positive("window")(_).map(Tokens(_)))
       tail <- f.get("tail").fold(Right(Assembled.Shipped.tail))(positive("tail")(_).map(Tokens(_)))
       assembled = Assembled.Shipped.copy(window = window, tail = tail)
-      _ <- variants
-        .flatMap(v => TurnVariant.pastContext(v, assembled, limit).map(v -> _))
-        .headOption
-        .fold[Either[String, Unit]](Right(())) { (v, b) =>
-          Left(
-            s"refused: ${v.name} draws a window of ${Tokens.value(b)} tokens, over the reply " +
-              s"model's context of ${Tokens.value(limit)}"
-          )
-        }
+      variants <- Fields.each(named)(TurnVariant.named(_, assembled))
+      _ <- refuseWide(variants, limit)
       all <- Synthetic.cases
       config <- DbConfig
         .fromEnv(sys.env.updated(DbConfig.UrlVar, url))
@@ -701,13 +675,13 @@ object Main {
         Synthetic.found(reader, all).map { found =>
           val asked = found.asked
           val judging = TurnVariant.Shipped +: variants
-          val widths = judging.map(Synthetic.width(_, assembled)).distinct
+          val widths = judging.map(Synthetic.width).distinct
           val windows = (for {
             w <- widths
             a <- asked
           } yield (a.name, w) -> Synthetic.window(reader, a, assembled, w)).toMap
           val judged = judging.map { v =>
-            val w = Synthetic.width(v, assembled)
+            val w = Synthetic.width(v)
             v.name -> asked.map(a =>
               CaseJudged(
                 a.name,
@@ -734,6 +708,20 @@ object Main {
       }
       _ <- publish(eval, "recipes-synthetic", text)
     } yield ()
+
+  /** Refused when one of `variants` draws a window over `limit`, the reply model's context in
+    * tokens, naming the first and its widest budget.
+    */
+  private def refuseWide(variants: Vector[TurnVariant], limit: Tokens): Either[String, Unit] =
+    variants
+      .flatMap(v => v.recipe.widens(limit).map(v -> _))
+      .headOption
+      .fold[Either[String, Unit]](Right(())) { (v, b) =>
+        Left(
+          s"refused: ${v.name} draws a window of ${Tokens.value(b)} tokens, over the reply " +
+            s"model's context of ${Tokens.value(limit)}"
+        )
+      }
 
   /** `f` of an engine opened on `config`'s database to write the synthetic reference, closed
     * after it; `Left` when it cannot open (another engine holds the database's lock, named as of

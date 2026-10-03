@@ -2,18 +2,16 @@ package grit.eval.harness.reply
 
 import java.time.Instant
 
-import scala.collection.immutable.VectorMap
-
 import grit.core.context.Width
 import grit.core.id.{ConversationId, TurnRef}
 import grit.core.period.LifecycleSettings
 import grit.core.place.{Locality, Scope, Weight}
+import grit.core.recipe.Rooted
 import grit.core.store.{ConversationStore, EntryStore, Jot, Origin, PeriodStore}
 import grit.dbos.engine.Reader
 import grit.eval.harness.corpus.{Capture, Fields, Parts, TurnCapture}
 import grit.eval.harness.label.Locator
 import grit.eval.{Case, Cases, Layout, Load, Variant}
-import grit.turn.TurnOffer
 
 /** grit.eval's cases as a reference: each case, in each [[Variant]], a turn said to grit in the
   * synthetic database `scripts/eval reference-build` writes ([[Layout]]), expected to hold its
@@ -106,11 +104,8 @@ object Synthetic {
       layouts.filter(l => l.must.isEmpty && l.never.isEmpty).map(_.c.name).distinct
     )
 
-  /** The width `v` draws a synthetic case's turn at: one said to grit (addressed), with no
-    * triage answer.
-    */
-  def width(v: TurnVariant, assembled: Assembled): Width =
-    TurnVariant.width(v, TurnOffer.Root.Addressed, VectorMap.empty, assembled)
+  /** The width `v` draws a synthetic case's turn at: one said to grit. */
+  def width(v: TurnVariant): Width = v.recipe.at(Rooted.Addressed).width
 
   /** `asked`'s window, `width` wide, drawn by the shipped retrieval assembler built as
     * `assembled` says ([[Rebuild.window]]) over `reader`'s database as it stands, searched with

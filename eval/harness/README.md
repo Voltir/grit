@@ -44,7 +44,11 @@ Packages, each importing only those above it:
   tool definitions);
   `Support`, how much of a reply a part carries, computed where the text is and kept as the
   number, the line at which a part counts as used (`Support.Used`), and a window's most
-  supported parts (`Support.top`); `TurnJson`, a turn's line of `turns.jsonl`. `Fields`, the reader every file's JSON
+  supported parts (`Support.top`); `TurnJson`, a turn's line of `turns.jsonl`;
+  `KnowledgeJson`, the knowledge sources the deployment that recorded a corpus declares, each
+  with the service it supplies, read from the `knowledge.json` written beside the corpus
+  (grit's database keeps no declaration; its lines are the deployment's words, no
+  conversation's). `Fields`, the reader every file's JSON
   is read through.
 - **`label`** — a person's labels of a corpus's cases, kept apart from the cases so a
   recapture keeps them: `Labels`, read from `labels.json` as the labelling tool writes it, and
@@ -103,10 +107,10 @@ Packages, each importing only those above it:
   message live triage read as asking that no turn answered, its window rebuilt as of
   triage's answer; `Queries`, its query writes, each kept in a `Cache` under its request's
   key and asked under a `Budget`. `TurnVariant`, a named way to build a turn other than as
-  shipped: the window each kind of turn is drawn at (`Sizing`; a variant past the reply
-  model's context is refused), and what it is offered of its tools (`Offering`): a service's
-  tools withheld when triage answered every knowledge source the service supplies below a
-  line, the link from source to service given as `Supplies`, since grit keeps none.
+  shipped: a `grit.core.recipe.TurnRecipe`, applied to a recorded turn as a deployment
+  declaring it would apply it (`Shaped`: the tools left once `Offering.decide` has withheld
+  services by the root's per-source answers and the services the corpus's knowledge sources
+  supply, and the window's width; a variant past the reply model's context is refused).
   `Reference`, what turns' builds are expected to do, by ids alone (`Expect`: a window holds
   what a locator names, or none of it, a service's tools are offered, or withheld), from a
   person's reply labels (an answer found in records shown) and a hand-written file, each turn
