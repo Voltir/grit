@@ -115,8 +115,9 @@ In dependency order:
 - **`recipe`** — what a call's input shows beyond its own thread: a `Pool` of `Source`s (the
   room's recent messages, its author's, the exchanges stitching offered) within a budget in
   characters, each kept in the `Section` its source names, and what a pool shows of what it
-  found, in its sources' order; `RoomReads`, what a room said, as a pool reads it. Nothing in
-  core imports it. ← `id`, `place`, `store`, `stitch`
+  found, in its sources' order; `Pool.read`, what a pool shows for a heard message, from what
+  its room held when it was said, read through `RoomReads` and the stitch kept for its
+  conversation. Nothing in core imports it. ← `id`, `place`, `store`, `stitch`
 - **`host`** — what a tool may do to the machine, as capabilities: `Workspace` (read, list,
   search), `Edits` (write, edit) and `Shell` (run), implemented in `grit.host`; and the pure
   rules they share: `RelPath` (a path that stays inside the checkout and names no secrets

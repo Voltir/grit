@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
 import grit.core.message.{Tokens, Usage}
+import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.store.{Entry, Payload}
 
@@ -54,6 +55,14 @@ object StitchFixtures {
         .map(a => Answers(Vector(a), free, "jev"))
         .toRight(ClassifierError.Unavailable("down"))
     }
+  }
+
+  /** A placement having been shown `seen`: following `root` when given, else beginning
+    * something new.
+    */
+  def placed(root: Option[ConversationId], seen: Seen): Placed = root match {
+    case Some(r) => Placed.Follows(r, Probability.clamped(0.9), seen, "jev", free)
+    case None => Placed.Begins(Probability.clamped(0.2), seen, "jev", free)
   }
 
   /** A choice of `key` with these weights. */
