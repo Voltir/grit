@@ -235,10 +235,13 @@ object Report {
     }
   }
 
-  /** What a gate reads, as the report names it: a yes/no's name, a choice key's `<name>.<key>`. */
+  /** What a gate reads, as the report names it: a yes/no's name, a choice key's
+    * `<name>.<key>`, and a key chosen `<name>=<key>`.
+    */
   private def reading(r: Reading): String = r match {
     case Reading.Yes(name) => QuestionName.value(name)
     case Reading.Key(name, key) => s"${QuestionName.value(name)}.$key"
+    case Reading.Chosen(name, key) => s"${QuestionName.value(name)}=$key"
   }
 
   /** The cases `m` found moved on, and the tolerance it found them under. */

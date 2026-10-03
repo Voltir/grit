@@ -103,6 +103,11 @@ object TriageQuestions {
           case c: Question.Choice => c.keys.exists(_.name == key)
           case Question.YesNo(_, _, _) => false
         }
+      case Reading.Chosen(name, key) =>
+        declared.get(name).exists {
+          case c: Question.Choice => c.keys.exists(_.name == key)
+          case Question.YesNo(_, _, _) => false
+        }
     }
     val readings = speak.bounds.map {
       case Bound.AtLeast(on, _) => on
