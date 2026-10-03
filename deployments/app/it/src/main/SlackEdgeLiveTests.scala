@@ -34,6 +34,7 @@ object SlackEdgeLiveTests extends TestSuite {
         engine
       ),
       Set.empty,
+      None,
       _ => ()
     )
 

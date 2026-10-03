@@ -1,0 +1,259 @@
+package grit.slack.edge
+
+import java.time.Instant
+
+import grit.core.edge.{EdgeStores, InMemoryDeliveries, InMemoryEdges}
+import grit.core.id.{EdgeName, EntryId, PrincipalId}
+import grit.core.inbox.InMemoryInbox
+import grit.core.review.{Label, Prompt, Reason, Reviews, Verdict}
+import grit.core.store.{Jot, Origin, StoreError, Tx}
+import grit.dbos.sql.TestTx
+import grit.slack.client.{FakeSlack, Self, Tag}
+import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
+import grit.slack.text.RichText
+
+import utest.*
+
+/** [[SlackEdge]] answering a review: the prompts it posts as it delivers, and the reactions
+  * to them it keeps, over the in-memory stores and a fake Slack.
+  */
+object ReviewingTests extends TestSuite {
+  import Payloads.*
+  import PickedPrompts.*
+
+  private object FakeJot extends Jot {
+    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
+      TestTx.fake
+    )
+  }
+
+  private val C = ChannelId("C123ABC456")
+
+  /** The review's place: a private channel grit's bot is in. */
+  private val Place = ChannelId("C0REVIEW1")
+
+  /** The review's rater. */
+  private val Nick = "U0NICK001"
+
+  private val Review = SlackReview(Place, UserId(Nick))
+
+  /** Reviews as `under` keeps them, but `posted` first notes what `reactions` says grit's
+    * reactions on Slack are at that moment, and fails, as a crash before it would, while
+    * `crash` is set.
+    */
+  private final class Watched(under: Reviews) extends Reviews {
+    @caps.unsafe.untrackedCaptures
+    var reactions: () -> Set[(ChannelId, Ts, String)] = () => Set.empty
+    @caps.unsafe.untrackedCaptures
+    var reactionsWhenKept = Vector.empty[Set[(ChannelId, Ts, String)]]
+    @caps.unsafe.untrackedCaptures
+    var crash = false
+    def unposted()(using Tx^): Either[StoreError, Vector[Prompt]] = under.unposted()
+    def posted(entry: EntryId, address: String, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Boolean] = {
+      reactionsWhenKept = reactionsWhenKept :+ reactions()
+      if (crash) Left(StoreError.DatabaseError("crashed"))
+      else under.posted(entry, address, at)
+    }
+    def reacted(address: String, rater: PrincipalId, verdict: Verdict, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Boolean] = under.reacted(address, rater, verdict, at)
+    def unreacted(address: String, rater: PrincipalId, verdict: Verdict)(using
+        Tx^
+    ): Either[StoreError, Boolean] = under.unreacted(address, rater, verdict)
+  }
+
+  private final class World {
+    val slack = new FakeSlack
+    slack.channelNames = Map(C -> "standup", Place -> "debug")
+    slack.privateChannels = Set(Place)
+    val inbox: InMemoryInbox = InMemoryInbox.fresh()
+    val picks = new PickedPrompts(inbox)
+    val watched = new Watched(picks.reviews)
+    // The fake Slack outlives neither the world that made it nor this reader of it.
+    watched.reactions = caps.unsafe.unsafeAssumePure(() => slack.reactions)
+
+    @caps.unsafe.untrackedCaptures
+    var logged = Vector.empty[String]
+
+    val edge: SlackEdge^ = new SlackEdge(
+      slack,
+      Self(TeamId(Team), UserId(Bot)),
+      EdgeStores(
+        inbox,
+        inbox.principals,
+        new InMemoryDeliveries,
+        watched,
+        FakeJot,
+        new InMemoryEdges
+      ),
+      Set.empty,
+      Some(Review),
+      s => logged = logged :+ s
+    )
+    val _ = slack.listen(edge.receive)
+
+    /** Message `ts` said at the top of C, known to Slack, heard, and picked as `reason`. */
+    def picked(ts: String, reason: Reason = Reason.ShadowOnly): EntryId = {
+      known(C, ts)
+      picks.pick(Origin.Slack(Team, ChannelId.value(C), ts), ts, reason)
+    }
+
+    def known(channel: ChannelId, ts: String): Unit =
+      slack.histories = slack.histories.updated(
+        channel,
+        slack.histories.getOrElse(channel, Vector.empty) :+
+          Listed(Ts(ts), None, Some(UserId(Ana)), false, None, "hm")
+      )
+
+    def unposted: Vector[EntryId] =
+      picks.reviews.unposted()(using TestTx.fake).fold(e => sys.error(e.toString), _.map(_.entry))
+
+    /** The label standing on `entry`'s prompt. */
+    def label(entry: EntryId): Option[Label] =
+      picks.reviews
+        .reviewed(Instant.EPOCH)(using TestTx.fake)
+        .fold(e => sys.error(e.toString), identity)
+        .find(_.entry == entry)
+        .flatMap(_.label)
+
+    /** The ts the prompt of `entry` was posted at. */
+    def promptOf(entry: EntryId): Ts =
+      slack.posts
+        .find(_.tag == Tag.Prompt(EntryId.value(entry)))
+        .fold(throw new java.lang.AssertionError(s"no prompt for $entry"))(_.ts)
+  }
+
+  private val Said = "1515449522.000016"
+
+  val tests = Tests {
+    test(
+      "a picked message heard in this workspace's Slack is prompted at the top of the place, its permalink linked, wearing the three reactions, then kept as posted"
+    ) {
+      val w = new World
+      val entry = w.picked(Said)
+      val first = w.edge.prompt()
+      val shown = RichText.render(
+        ReviewPrompt.doc(
+          Prompt(entry, Origin.Slack(Team, ChannelId.value(C), Said), Shadow, Reason.ShadowOnly, Below, Answers),
+          "#standup",
+          s"https://fake.slack.com/archives/C123ABC456/p1515449522000016"
+        )
+      )
+      val ts = w.promptOf(entry)
+      (
+        first,
+        w.slack.posts.map(p => (p.channel, p.thread == p.ts, Vector(p.post), p.tag)),
+        w.slack.reactions,
+        w.unposted,
+        w.edge.prompt(),
+        w.slack.posts.size
+      ) ==> (
+        Right(1),
+        Vector((Place, true, shown, Tag.Prompt(EntryId.value(entry)))),
+        Set((Place, ts, "+1"), (Place, ts, "-1"), (Place, ts, "bust_in_silhouette")),
+        Vector.empty,
+        Right(0),
+        1
+      )
+    }
+
+    test("a prompt is kept as posted only once its three reactions are on it") {
+      val w = new World
+      val _ = w.picked(Said)
+      val _ = w.edge.prompt()
+      w.watched.reactionsWhenKept.map(_.map(_._3)) ==> Vector(Set("+1", "-1", "bust_in_silhouette"))
+    }
+
+    test(
+      "a prompt kept as posted by no store, as after a crash, is posted again next round"
+    ) {
+      val w = new World
+      val _ = w.picked(Said)
+      w.watched.crash = true
+      val crashed = w.edge.prompt()
+      w.watched.crash = false
+      (crashed, w.edge.prompt(), w.slack.posts.size, w.unposted) ==> (Right(0), Right(1), 2, Vector.empty)
+    }
+
+    test(
+      "a prompt whose message was heard in another workspace or no Slack is never posted; one Slack cannot link waits for a later round"
+    ) {
+      val w = new World
+      val task = w.picks.pick(Origin.Task("daily", "1"), Said)
+      val elsewhere = w.picks.pick(Origin.Slack("T999", ChannelId.value(C), "2.0"), "2.0")
+      val unlinked = w.picks.pick(Origin.Slack(Team, ChannelId.value(C), "3.0"), "3.0")
+      val before = (w.edge.prompt(), w.slack.posts.size)
+      w.known(C, "3.0")
+      (before, w.edge.prompt(), w.slack.posts.map(_.tag), w.unposted.toSet) ==> (
+        (Right(0), 0),
+        Right(1),
+        Vector(Tag.Prompt(EntryId.value(unlinked))),
+        Set(task, elsewhere)
+      )
+    }
+
+    test(
+      "the rater's reaction on a prompt is kept as its verdict; a later one replaces it; removing the one standing withdraws it, removing another changes nothing"
+    ) {
+      val w = new World
+      val entry = w.picked(Said)
+      val _ = w.edge.prompt()
+      val ts = Ts.value(w.promptOf(entry))
+      def react(emoji: String, added: Boolean, at: String): (Boolean, Option[Label]) = {
+        val acked =
+          w.slack.deliver(reaction(ts, emoji, added, user = Nick, channel = "C0REVIEW1", at = at))
+        (acked, w.label(entry))
+      }
+      val rater = PrincipalId(s"slack:$Team/$Nick")
+      Vector(
+        react("+1", added = true, "1515449600.000000"),
+        react("-1::skin-tone-2", added = true, "1515449601.000000"),
+        react("+1", added = false, "1515449602.000000"),
+        react("-1::skin-tone-2", added = false, "1515449603.000000")
+      ) ==> Vector(
+        (true, Some(Label(Verdict.Welcome, rater, Instant.ofEpochSecond(1515449600L)))),
+        (true, Some(Label(Verdict.Interruption, rater, Instant.ofEpochSecond(1515449601L)))),
+        (true, Some(Label(Verdict.Interruption, rater, Instant.ofEpochSecond(1515449601L)))),
+        (true, None)
+      )
+    }
+
+    test(
+      "only the rater's three reactions on a prompt in the place count: another person's, grit's own, another emoji, and the rater's elsewhere are ignored"
+    ) {
+      val w = new World
+      val entry = w.picked(Said)
+      val _ = w.edge.prompt()
+      val ts = Ts.value(w.promptOf(entry))
+      w.known(Place, "9.0")
+      val ignored = Vector(
+        reaction(ts, "+1", user = Ana, channel = "C0REVIEW1"),
+        reaction(ts, "+1", user = Bot, channel = "C0REVIEW1"),
+        reaction(ts, "eyes", user = Nick, channel = "C0REVIEW1"),
+        reaction(ts, "+1", user = Nick, channel = "C123ABC456"),
+        reaction("9.0", "+1", user = Nick, channel = "C0REVIEW1")
+      ).map(w.slack.deliver)
+      val ignoredLabel = w.label(entry)
+      val _ = w.slack.deliver(reaction(ts, "bust_in_silhouette", user = Nick, channel = "C0REVIEW1"))
+      (ignored, ignoredLabel, w.label(entry).map(_.verdict)) ==> (
+        Vector(true, true, true, true, true),
+        None,
+        Some(Verdict.CutIn)
+      )
+    }
+
+    test("a review is refused a place grit listens in, and served anywhere else") {
+      (
+        SlackEdge.serving(Set(C, Place), None, Review),
+        SlackEdge.serving(Set(C), None, Review).map(_.name)
+      ) ==> (
+        Left(
+          "review prompts are not posted in C0REVIEW1: grit listens there, so they would be heard"
+        ),
+        Right(EdgeName("slack"))
+      )
+    }
+  }
+}

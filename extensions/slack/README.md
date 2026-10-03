@@ -46,7 +46,15 @@ In dependency order:
   `SLACK_APP_TOKEN` as it opens; `SlackEdge.serving(channels, posts)` also serves
   `slack_post` at `service:slack` (`SlackEdge.PostsAt`), a turn's post in the channels
   `Posts` declares, within its rate (`Posting`), for the conversations a deployment links
-  there (`grit.core.place.Reaches`); `SlackEdge.backfill(channels, days)` is `grit backfill`'s
+  there (`grit.core.place.Reaches`); `SlackEdge.serving(channels, posts, review)` also answers
+  a deployment's review (`SlackReview`: a place grit does not listen in, refused otherwise, and
+  its rater): each delivery posts the prompts the kit picked whose messages were heard in
+  this workspace (`ReviewPrompt`: the message's channel and permalink, why it was picked,
+  live triage's decision and the shadow's answers as numbers, never a message's or a draft's
+  text), adds the three reactions a verdict is given with, then keeps the prompt posted; a
+  crash between the post and keeping it posts the prompt again. A reaction the rater adds to a
+  prompt, or removes, is kept or withdrawn as its verdict (`grit.core.review.Reviews`);
+  anyone else's, and any other emoji, is ignored. `SlackEdge.backfill(channels, days)` is `grit backfill`'s
   (`CatchUp`), what each channel said over those days that grit has not recorded.
   ← `client`, `text`, `event`
 

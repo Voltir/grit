@@ -5,10 +5,11 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 import grit.core.edge.{CatchUp, EdgeStores, Part, Pending, ServedEdge}
-import grit.core.id.{CallSlot, PrincipalId, SourceId, WorkflowId}
-import grit.core.inbox.{InboxError, Progress}
+import grit.core.id.{CallSlot, EntryId, PrincipalId, SourceId, WorkflowId}
+import grit.core.inbox.{InboundId, InboxError, Progress}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
+import grit.core.review.Prompt
 import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError}
@@ -19,14 +20,15 @@ import grit.slack.event.{ChannelId, Event, Events, TeamId, Ts, UserId}
 import grit.slack.text.{Incoming, Post, RichText}
 
 /** The Slack edge (ADR 0002, 0019): Slack's messages in as turns, grit's replies out, through
-  * the stores alone; grit being `self` in the workspace. `said` is told what it did that a
-  * person running it may want to read.
+  * the stores alone; grit being `self` in the workspace, answering `review` when one is
+  * given. `said` is told what it did that a person running it may want to read.
   */
 final class SlackEdge(
     slack: Slack,
     self: Self,
     stores: EdgeStores^,
     listening: Set[ChannelId],
+    review: Option[SlackReview],
     said: String => Unit
 ) {
   import SlackEdge.*
@@ -61,6 +63,10 @@ final class SlackEdge(
     } yield ()
 
   private val assistant: PrincipalId = Origin.slackAssistant(TeamId.value(self.team))
+
+  /** `user` of `team` as grit names them: `slack:{team}/{user}`. */
+  private def principal(team: TeamId, user: UserId): PrincipalId =
+    PrincipalId(s"slack:${TeamId.value(team)}/${UserId.value(user)}")
 
   /** Each channel in `listening`, as a person reads it: `#{name} ({id})` (its id alone when it
     * has no name); or, with its id,
@@ -99,16 +105,21 @@ final class SlackEdge(
     * conversation's opening ([[grit.core.inbox.Inbox.posted]]), in its text as Slack gives it,
     * made by the call its tag names; when Slack cannot be asked for the root, the message is
     * recorded without it, and that is said.
-    * Everything else is ignored. `true` once that is done or needs no doing (a redelivery
-    * included), so the payload may be acknowledged; `false` when Slack or the database could
-    * not be asked, so Slack sends it again.
+    * A reaction the review's rater adds to a prompt grit posted keeps it as the prompt's
+    * verdict, replacing the one standing, and removing the reaction that stands withdraws it:
+    * `:+1:` welcome, `:-1:` an interruption, `:bust_in_silhouette:` meant for someone in
+    * particular, a skin tone ignored. Everything else is ignored, any other reaction included.
+    * `true` once that is done or needs no doing (a redelivery included), so the payload may be
+    * acknowledged; `false` when Slack or the database could not be asked, so Slack sends it
+    * again.
     */
   def receive(payload: String): Boolean =
     Events.read(payload, self.bot) match {
       case Left(why) =>
         said(s"slack: an event grit cannot read, acknowledged: $why")
         true
-      case Right(Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _)) => true
+      case Right(Event.Ignored(_)) => true
+      case Right(r: Event.Reacted) => reacted(r)
       case Right(m: Event.Said) =>
         val origin =
           Origin.Slack(TeamId.value(m.team), ChannelId.value(m.channel), Ts.value(m.thread))
@@ -132,6 +143,31 @@ final class SlackEdge(
           case Left(why) =>
             said(
               s"slack: message ${Ts.value(m.ts)} not recorded, left for Slack to send again: $why"
+            )
+            false
+        }
+    }
+
+  /** Keeps `r` as a verdict on the review prompt it is on ([[ReviewPrompt.verdict]]), added or
+    * withdrawn, when it is the review's rater's; nothing for anyone else's, another emoji, or
+    * a message no prompt was posted at. Whether it may be acknowledged.
+    */
+  private def reacted(r: Event.Reacted): Boolean =
+    review
+      .filter(v => r.team == self.team && r.user == v.rater)
+      .zip(ReviewPrompt.verdict(r.emoji)) match {
+      case None => true
+      case Some((_, verdict)) =>
+        val at = PromptAt(r.channel, r.ts).written
+        val rater = principal(r.team, r.user)
+        stores.jot.write(
+          if (r.added) stores.reviews.reacted(at, rater, verdict, r.at)
+          else stores.reviews.unreacted(at, rater, verdict)
+        ) match {
+          case Right(_) => true
+          case Left(e) =>
+            said(
+              s"slack: a reaction to ${Ts.value(r.ts)} not kept, left for Slack to send again: $e"
             )
             false
         }
@@ -203,7 +239,7 @@ final class SlackEdge(
           .findAllMatchIn(m.text)
           .map(x => UserId(x.group(1)))
           .filterNot(_ == self.bot)
-          .map(u => PrincipalId(s"slack:${TeamId.value(m.team)}/${UserId.value(u)}"))
+          .map(u => principal(m.team, u))
           .toSet
         val to = Option.when(live)(Address(m.channel, m.thread, m.ts).written)
         opening(m, origin, author).flatMap(_ =>
@@ -229,7 +265,7 @@ final class SlackEdge(
           .distinct
           .flatMap(c => channelNameOf(c).map(c -> _))
           .toMap
-        val author = PrincipalId(s"slack:${TeamId.value(m.team)}/${UserId.value(m.user)}")
+        val author = principal(m.team, m.user)
         stores.jot
           .write(stores.principals.enroll(author, known.getOrElse(m.user, UserId.value(m.user))))
           .left
@@ -379,6 +415,75 @@ final class SlackEdge(
       }
     }
 
+  /** One pass over the review's prompts not yet posted, when this edge answers a review: each
+    * whose message was heard in this workspace's Slack is posted at the top of the review's
+    * place, linking the message by its permalink and showing why it was picked, live triage's
+    * decision and the shadow's answers, never a message's text or a draft's; then given the
+    * three reactions [[receive]] keeps as its verdict; then kept as posted. A
+    * prompt Slack will not link or post waits for a later pass; a reaction Slack will not add
+    * is said, and the prompt kept as posted without it. A prompt posted but not kept, as after
+    * a crash between the two, is posted again by a later pass, and the reactions to the first
+    * post count for nothing. How many prompts it posted and kept; none without a review; why
+    * not, when the store could not be read.
+    */
+  def prompt(): Either[StoreError, Int] = review match {
+    case None => Right(0)
+    case Some(r) =>
+      stores.jot
+        .write(stores.reviews.unposted())
+        .map(_.count { p =>
+          p.origin match {
+            case Origin.Slack(team, channel, _) if team == TeamId.value(self.team) =>
+              InboundId.source(p.entry) match {
+                case Some((_, source)) =>
+                  prompted(r, p, ChannelId(channel), Ts(SourceId.value(source)))
+                case None =>
+                  said(s"slack: the review's ${EntryId.value(p.entry)} names no Slack message")
+                  false
+              }
+            case _ => false
+          }
+        })
+  }
+
+  /** Posts `p`, of message `ts` in `channel`, to `r`'s place, as [[prompt]] says; whether it
+    * was posted and kept.
+    */
+  private def prompted(r: SlackReview, p: Prompt, channel: ChannelId, ts: Ts): Boolean = {
+    val shown = channelNameOf(channel).fold(ChannelId.value(channel))(n => s"#$n")
+    val done = for {
+      link <- slack.permalink(channel, ts).left.map(e => s"its message is not linked: $e")
+      post <- RichText.render(ReviewPrompt.doc(p, shown, link)) match {
+        case Vector(one) => Right(one)
+        case more => Left(s"it renders as ${more.size} messages")
+      }
+      at <- slack
+        .postTopLevel(r.place, post, Tag.Prompt(EntryId.value(p.entry)))
+        .left
+        .map(e => s"not posted: $e")
+      _ = ReviewPrompt.Reactions.keys.foreach(emoji =>
+        slack
+          .react(r.place, at, emoji)
+          .left
+          .foreach(e => said(s"slack: a review prompt left without :$emoji:: $e"))
+      )
+      when <- Events.time(Ts.value(at)).toRight(s"posted at ${Ts.value(at)}, which names no time")
+      kept <- stores.jot
+        .write(stores.reviews.posted(p.entry, PromptAt(r.place, at).written, when))
+        .left
+        .map(e => s"posted at ${Ts.value(at)} but not kept, so it is posted again: $e")
+    } yield kept
+    done match {
+      case Right(true) => true
+      case Right(false) =>
+        said(s"slack: a review prompt posted at a message another prompt is kept at")
+        false
+      case Left(why) =>
+        said(s"slack: the review prompt of ${EntryId.value(p.entry)}: $why")
+        false
+    }
+  }
+
   /** One pass over the replies awaited. On the edge's first pass, each is started again (a
     * no-op for one already started), since a start can be lost between ingest and start. Each
     * finished turn has its reply posted to its thread, in as many messages as [[RichText]]
@@ -467,7 +572,7 @@ object SlackEdge {
     * tool call that asks first.
     */
   def serving(channels: Set[ChannelId]): ServedEdge =
-    Served.serving(channels, None, Socket)
+    Served.serving(channels, None, None, Socket)
 
   /** As [[serving]], and posting as `posts` allows: it serves `slack_post` at [[PostsAt]]'s
     * place, offering the channels of `posts` whose names Slack gives at open; one without is
@@ -477,7 +582,23 @@ object SlackEdge {
     * run again after a crash.
     */
   def serving(channels: Set[ChannelId], posts: Posts): ServedEdge =
-    Served.serving(channels, Some(posts), Socket)
+    Served.serving(channels, Some(posts), None, Socket)
+
+  /** As [[serving]], posting as `posts` allows when given, and answering `review`: each
+    * delivery posts the review's prompts not yet posted in its place, and a reaction its rater
+    * gives a prompt there is kept as the prompt's verdict ([[SlackEdge.prompt]],
+    * [[SlackEdge.receive]]). Refused, saying why, when the place is one of `channels`.
+    */
+  def serving(
+      channels: Set[ChannelId],
+      posts: Option[Posts],
+      review: SlackReview
+  ): Either[String, ServedEdge] =
+    if (channels.contains(review.place))
+      Left(
+        s"review prompts are not posted in ${ChannelId.value(review.place)}: grit listens there, so they would be heard"
+      )
+    else Right(Served.serving(channels, posts, Some(review), Socket))
 
   /** The service place `slack_post` is served at: `service:slack`. A deployment links
     * conversations to it with [[grit.core.place.Reaches]].
@@ -520,6 +641,13 @@ object SlackEdge {
     */
   private final case class Address(channel: ChannelId, thread: Ts, answered: Ts) {
     def written: String = s"${ChannelId.value(channel)}/${Ts.value(thread)}/${Ts.value(answered)}"
+  }
+
+  /** Where a review's prompt was posted: its channel and its ts. Written as `{channel}/{ts}` in
+    * [[grit.core.review.Reviews]].
+    */
+  private final case class PromptAt(channel: ChannelId, ts: Ts) {
+    def written: String = s"${ChannelId.value(channel)}/${Ts.value(ts)}"
   }
 
   private object Address {

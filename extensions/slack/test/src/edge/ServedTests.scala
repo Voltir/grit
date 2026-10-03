@@ -17,7 +17,7 @@ import grit.core.edge.{
 import grit.core.id.{PrincipalId, SourceId}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.review.InMemoryReviews
+import grit.core.review.Reason
 import grit.core.speech.Rate
 import grit.core.spend.Budget
 import grit.core.store.{Jot, Origin, StoreError, Tx}
@@ -59,12 +59,13 @@ object ServedTests extends TestSuite {
     val slack = new FakeSlack
     val inbox: InMemoryInbox = InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None))
     val edges: InMemoryEdges = new InMemoryEdges
+    val picks = new PickedPrompts(inbox)
     val stores =
       EdgeStores(
         inbox,
         inbox.principals,
         new InMemoryDeliveries,
-        InMemoryReviews.over(inbox),
+        picks.reviews,
         FakeJot,
         edges
       )
@@ -76,7 +77,7 @@ object ServedTests extends TestSuite {
     /** The edge as `serving` makes it, posting as `posts` allows, opened; logged in [[logged]]. */
     def openPosting(posts: Posts): ServedEdge.Open^{this} =
       Served
-        .serving(Set.empty, Some(posts), connect)
+        .serving(Set.empty, Some(posts), None, connect)
         .open(stores, Env, line => logged :+= line) match {
         case Right(o) => o
         case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -103,7 +104,7 @@ object ServedTests extends TestSuite {
   val tests = Tests {
     test("serving refuses a token unset or of the wrong kind by its variable, never quoting it") {
       val w = new World
-      val edge = Served.serving(Set(C), None, w.connect)
+      val edge = Served.serving(Set(C), None, None, w.connect)
       def refused(env: Map[String, String]) = refusal(edge.open(w.stores, env, _ => ()))
       refused(Map("SLACK_APP_TOKEN" -> "xapp-1")) ==>
         Some(EdgeRefusal.Missing(Variable("SLACK_BOT_TOKEN")))
@@ -112,12 +113,37 @@ object ServedTests extends TestSuite {
       edge.needs ==> Vector(Variable("SLACK_BOT_TOKEN"), Variable("SLACK_APP_TOKEN"))
     }
 
+    test("serving with a review posts its prompts, with their reactions, as it delivers") {
+      val w = new World
+      w.slack.histories =
+        Map(C -> Vector(Listed(Ts("1.0"), None, Some(UserId(Ana)), false, None, "hm")))
+      val entry = w.picks.pick(Origin.Slack(Team, "C123ABC456", "1.0"), "1.0", Reason.Both)
+      val review = SlackReview(ChannelId("C0REVIEW1"), UserId("U0NICK001"))
+      val open =
+        Served.serving(Set(C), None, Some(review), w.connect).open(w.stores, Env, _ => ()) match {
+          case Right(o) => o
+          case Left(r) => throw new java.lang.AssertionError(r.message)
+        }
+      open.deliver() ==> Right(0)
+      (
+        w.slack.posts.map(p => (p.channel, p.tag)),
+        w.slack.reactions.map((c, _, emoji) => (c, emoji))
+      ) ==> (
+        Vector((review.place, grit.slack.client.Tag.Prompt(grit.core.id.EntryId.value(entry)))),
+        Set(
+          (review.place, "+1"),
+          (review.place, "-1"),
+          (review.place, "bust_in_silhouette")
+        )
+      )
+    }
+
     test(
       "serving, opened, names the assistant, takes a mention as a turn, posts its reply, and closes Slack"
     ) {
       val w = new World
       w.slack.names = w.slack.names.updated(UserId(Bot), Some("Bort"))
-      val open = Served.serving(Set(C), None, w.connect).open(w.stores, Env, _ => ()) match {
+      val open = Served.serving(Set(C), None, None, w.connect).open(w.stores, Env, _ => ()) match {
         case Right(o) => o
         case Left(r) => throw new java.lang.AssertionError(r.message)
       }
@@ -193,13 +219,13 @@ object ServedTests extends TestSuite {
     test("serving refuses when Slack will not say who grit is, and closes the connection") {
       val w = new World
       w.slack.down = true
-      refusal(Served.serving(Set(C), None, w.connect).open(w.stores, Env, _ => ())) ==>
+      refusal(Served.serving(Set(C), None, None, w.connect).open(w.stores, Env, _ => ())) ==>
         Some(EdgeRefusal.Refused("Slack refused the bot token: Unreachable(down)"))
       w.slack.closed ==> true
     }
 
     test("serving cannot answer a tool call that asks first") {
-      Served.serving(Set(C), None, new World().connect).answersAsks ==> false
+      Served.serving(Set(C), None, None, new World().connect).answersAsks ==> false
     }
 
     test(

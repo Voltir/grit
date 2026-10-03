@@ -74,6 +74,7 @@ object SlackEdgeTests extends TestSuite {
           new InMemoryEdges
         ),
         listening,
+        None,
         s => logged = logged :+ s
       )
 

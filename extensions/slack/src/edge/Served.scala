@@ -50,6 +50,7 @@ private[slack] object Served {
   def serving(
       channels: Set[ChannelId],
       posts: Option[Posts],
+      review: Option[SlackReview],
       connect: Connect^
   ): ServedEdge^{connect} = new ServedEdge {
     def name: EdgeName = Name
@@ -69,7 +70,7 @@ private[slack] object Served {
               slack.close()
               Left(refusedToken(e))
             case Right(self) =>
-              val edge = new SlackEdge(slack, self, stores, channels, log)
+              val edge = new SlackEdge(slack, self, stores, channels, review, log)
               log(edge.listened() match {
                 case Vector() => "slack: listening in no channel"
                 case listened => s"slack: listening in ${listened.sorted.mkString(", ")}"
@@ -92,7 +93,11 @@ private[slack] object Served {
                     case None => None
                   }
                   Right(new ServedEdge.Open {
-                    def deliver(): Either[StoreError, Int] = edge.deliver()
+                    def deliver(): Either[StoreError, Int] = {
+                      val delivered = edge.deliver()
+                      edge.prompt().left.foreach(e => log(s"slack: review prompts unread: $e"))
+                      delivered
+                    }
                     def close(): Unit = {
                       stopPosting.foreach(_())
                       slack.close()
@@ -179,7 +184,7 @@ private[slack] object Served {
                   slack.close()
                   Left(refusedToken(e))
                 case Right(self) =>
-                  val edge = new SlackEdge(slack, self, stores, channels, log)
+                  val edge = new SlackEdge(slack, self, stores, channels, None, log)
                   val from = now.minus(Duration.ofDays(days.toLong))
                   val sorted = channels.toVector.sortBy(ChannelId.value)
                   val read =
