@@ -1,5 +1,7 @@
 package grit.eval.harness.report
 
+import grit.core.message.{Tokens, Usage}
+import grit.core.store.Focus
 import grit.core.triage.Kind
 import grit.eval.harness.corpus.Case
 import grit.eval.harness.label.{Context, Labelled, Labels}
@@ -100,6 +102,64 @@ object ReportTests extends TestSuite {
           s"- ${first.map(_.written).mkString}"
         ),
         0
+      )
+    }
+
+    test(
+      "a comparison counts the cases whose triage inputs changed by context and focus, and sizes each run's calls"
+    ) {
+      // Case 1's request differs, said at its open focus and labelled short; case 2's does not.
+      def used(tokens: Long) =
+        Usage(Tokens(tokens), Tokens(1), Tokens.Zero, Some(BigDecimal("0.00004")))
+      def changedRun(name: String, first: String, tokens: Long) = Scored(
+        name,
+        Log(
+          header(repeats = 2),
+          Vector(0, 1).flatMap(r =>
+            Vector(
+              row(
+                Suite.Triage,
+                cases(0).id,
+                r,
+                triage(Vector(1, 0, 0, 0, 0), 0.5, 0.5, 0.5),
+                request = first,
+                usage = used(tokens),
+                focus = Some(Focus.Open)
+              ),
+              row(
+                Suite.Triage,
+                cases(1).id,
+                r,
+                triage(Vector(1, 0, 0, 0, 0), 0.5, 0.5, 0.5),
+                usage = used(tokens),
+                focus = Some(Focus.Focused)
+              )
+            )
+          ),
+          None
+        ),
+        cases,
+        Labels(Map(cases(0).id -> Labelled.Blank.copy(context = Some(Context.Short))), Set("v1"))
+      )
+      val report =
+        lines(Report.compare(changedRun("a.jsonl", "r", 700), changedRun("b.jsonl", "x", 900)))
+      val at = report.indexOf("## Inputs changed")
+      report.slice(at + 2, at + 10) ==> Vector(
+        "triage asked differently: 1 of the 2 cases both runs asked",
+        "",
+        "| context | focused | open | focus unknown | all |",
+        "|---|---|---|---|---|",
+        "| ok | 0 | 0 | 0 | 0 |",
+        "| short | 0 | 1 | 0 | 1 |",
+        "| no context | 0 | 0 | 0 | 0 |",
+        "| all | 0 | 1 | 0 | 1 |"
+      )
+      val size = report.indexOf("### Size of triage's calls")
+      report.slice(size + 2, size + 6) ==> Vector(
+        "| run | calls answered | input tokens: mean | p90 | cost, USD: mean | p90 |",
+        "|---|---|---|---|---|---|",
+        "| A | 4 | 700 | 700 | 0.0000400 | 0.0000400 |",
+        "| B | 4 | 900 | 900 | 0.0000400 | 0.0000400 |"
       )
     }
 

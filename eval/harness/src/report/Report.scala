@@ -1,13 +1,16 @@
 package grit.eval.harness.report
 
+import grit.core.store.Focus
 import grit.eval.harness.corpus.{Case, CaseId}
 import grit.eval.harness.label.{Context, Labelled, Labels}
-import grit.eval.harness.log.{Log, Row, Weights}
+import grit.eval.harness.log.{Log, Row, Suite, Weights}
 import grit.eval.harness.pull.Pull
 import grit.eval.harness.score.{
   Agreement,
   Answers,
+  Apart,
   Brier,
+  Changed,
   Changes,
   Clustered,
   Comparison,
@@ -15,11 +18,13 @@ import grit.eval.harness.score.{
   Decision,
   Moved,
   MovedOn,
+  PerCall,
   Refusal,
   Reliability,
   Repeated,
   Rule,
   Scoring,
+  Size,
   Spending,
   Split,
   Sweep,
@@ -79,7 +84,10 @@ object Report {
 
   /** Run `b` against run `a`, paired on the cases both answered: B − A per question, the cases
     * whose decision changed by id, once labels exist the paired difference in Brier score, all
-    * and by context, with its MDE, and what `decided` says a rule made of them, when given;
+    * and by context, with its MDE, the cases whose triage inputs changed between them
+    * ([[Changed]]: counted by context and focus, B − A over them alone, each run's call size,
+    * and the MDE A's repeat noise implies on them), and what `decided` says a rule made of
+    * them, when given;
     * [[KeptNote]] when either is a log of live triage's kept tags. With `movedOn`, the cases
     * it found are left out of both runs, and listed with the tolerance they were found under.
     */
@@ -105,6 +113,7 @@ object Report {
         b
       ) ++
       (if (b.labelled == 0) Vector.empty else brierPaired(a, b)) ++
+      inputsChanged(a, b) ++
       decided.toVector.flatMap(decision)
     lines.mkString("\n") + "\n"
   }
@@ -339,14 +348,113 @@ object Report {
       } ++ section("kind: likeliest", Comparison.kind(a.answers, b.answers, b.labels))
   }
 
-  private def brierPaired(a: Scored, b: Scored): Vector[String] = {
-    val (sa, sb) = (Scoring(a.cases, a.answers, b.labels), Scoring(b.cases, b.answers, b.labels))
+  private def brierPaired(a: Scored, b: Scored): Vector[String] =
     Vector("## Brier score, B − A", "", "Negative: B is better.", "", ContextHeader, ContextRule) ++
-      Target.all.map { q =>
-        val was = Brier.of(q, sa).map((c, v) => c.id -> v).toMap
-        val diff = Brier.of(q, sb).flatMap((c, v) => was.get(c.id).map(x => c -> (v - x)))
-        contextRow(Target.written(q), Split.of(diff, b.labels))
-      } :+ ""
+      brierRows(a, b, b.cases) :+ ""
+
+  /** B − A's Brier score on each question, over `cases`, all and by context. */
+  private def brierRows(a: Scored, b: Scored, cases: Vector[Case]): Vector[String] = {
+    val (sa, sb) = (Scoring(cases, a.answers, b.labels), Scoring(cases, b.answers, b.labels))
+    Target.all.map { q =>
+      val was = Brier.of(q, sa).map((c, v) => c.id -> v).toMap
+      val diff = Brier.of(q, sb).flatMap((c, v) => was.get(c.id).map(x => c -> (v - x)))
+      contextRow(Target.written(q), Split.of(diff, b.labels))
+    }
+  }
+
+  /** The cases whose triage question A and B asked differently, and what changed on them. */
+  private def inputsChanged(a: Scored, b: Scored): Vector[String] = {
+    val changed = Changed.of(b.cases, a.log.rows, b.log.rows)
+    def triaged(run: Scored) = run.log.rows.filter(_.suite == Suite.Triage).map(_.id).toSet
+    val asked = triaged(a).intersect(triaged(b)).size
+    val focus = Changed.focus(a.log.rows) ++ Changed.focus(b.log.rows)
+    val foci: Vector[Option[Focus]] = Focus.values.toVector.map(Some(_)) :+ None
+    def counts(name: String, these: Vector[Case]): String =
+      s"| $name | ${(foci.map(f => these.count(c => focus.get(c.id) == f)) :+ these.size)
+          .mkString(" | ")} |"
+    val contexts: Vector[(String, Option[Context])] =
+      Context.values.toVector.map(x => Context.written(x) -> Some(x)) :+ ("no context" -> None)
+    def yes(t: Tag)(answers: Answers): Vector[(Case, Double)] =
+      changed.flatMap(c => answers.triage.get(c.id).map(x => c -> Tag.of(t, x.mean)))
+    val labelled = changed.filter(c => b.labels.of(c.id) != Labelled.Blank)
+    val repeats = a.log.header.repeats
+    def implied(what: String, measure: Answers => Vector[(Case, Double)]): String = {
+      val apart = Apart.of(a.log.rows, measure)
+      s"| $what | ${apart.n} | ${est(apart.exchange)} | " +
+        s"${apart.exchange.fold("—")(e => num(e.mde))} | " +
+        s"${apart.exchange.fold("—")(e => num(Apart.implied(e, repeats)))} |"
+    }
+    val questions = Target.all.filterNot(_ == Target.Places)
+    Vector(
+      "## Inputs changed",
+      "",
+      s"triage asked differently: ${changed.size} of the $asked cases both runs asked",
+      "",
+      s"| context | ${Focus.values.map(_.toString.toLowerCase).mkString(" | ")} | focus unknown | all |",
+      "|---|---|---|---|---|"
+    ) ++ contexts.map((name, x) =>
+      counts(name, changed.filter(c => b.labels.of(c.id).context == x))
+    ) ++
+      Vector(counts("all", changed), "") ++
+      (if (changed.isEmpty) Vector.empty
+       else
+         Vector("### B − A over the changed cases, unlabelled", "", Header, Rule) ++
+           Tag.values.toVector.map(t =>
+             row(s"${Tag.written(t)}: p(yes)", pairedOn(yes(t), a.answers, b.answers))
+           ) ++ Vector("") ++
+           (if (labelled.isEmpty) Vector("no changed case is labelled", "")
+            else
+              Vector(
+                "### Brier score over the changed cases, B − A",
+                "",
+                "Negative: B is better.",
+                "",
+                ContextHeader,
+                ContextRule
+              ) ++ brierRows(a, b, changed) :+ "")) ++
+      Vector(
+        "### Size of triage's calls",
+        "",
+        "| run | calls answered | input tokens: mean | p90 | cost, USD: mean | p90 |",
+        "|---|---|---|---|---|---|",
+        size("A", Size.of(a.log.rows)),
+        size("B", Size.of(b.log.rows)),
+        ""
+      ) ++
+      (if (changed.isEmpty) Vector.empty
+       else
+         Vector(
+           "### MDE implied by A's repeats, over the changed cases",
+           "",
+           s"Each case's measure on A's second repeat less its first: what Jev's noise alone " +
+             s"reads as a difference. Implied: its MDE over √$repeats, about the least " +
+             s"difference two runs of $repeats repeats can show on these cases.",
+           "",
+           "| measure | n | repeat 2 − 1, 95% by exchange | MDE, one repeat | implied MDE |",
+           "|---|---|---|---|---|"
+         ) ++ Tag.values.toVector.map(t => implied(s"${Tag.written(t)}: p(yes)", yes(t))) ++
+           questions.map(q =>
+             implied(
+               s"${Target.written(q)}: Brier, labelled",
+               answers => Brier.of(q, Scoring(labelled, answers, b.labels))
+             )
+           ) :+ "")
+  }
+
+  /** `measure` of B less that of A, per case both hold. */
+  private def pairedOn(
+      measure: Answers => Vector[(Case, Double)],
+      a: Answers,
+      b: Answers
+  ): Clustered = {
+    val was = measure(a).map((c, v) => c.id -> v).toMap
+    Clustered.of(measure(b).flatMap((c, v) => was.get(c.id).map(x => c -> (v - x))))
+  }
+
+  private def size(run: String, s: Size): String = {
+    def per(p: Option[PerCall], f: Double => String) =
+      p.fold("— | —")(x => s"${f(x.mean)} | ${f(x.p90)}")
+    s"| $run | ${s.calls} | ${per(s.input, x => f"$x%.0f")} | ${per(s.cost, x => f"$x%.7f")} |"
   }
 
   private val Header = "| measure | n | mean, 95% by exchange | 95% by author | MDE |"

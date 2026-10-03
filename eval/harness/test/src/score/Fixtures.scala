@@ -8,6 +8,7 @@ import grit.core.id.{ConversationId, EntryId, WorkflowId}
 import grit.core.message.Usage
 import grit.core.period.Probability
 import grit.core.stitch.Offered
+import grit.core.store.Focus
 import grit.core.triage.Kind
 import grit.dbos.engine.Build
 import grit.eval.harness.corpus.{
@@ -102,21 +103,24 @@ object Fixtures {
       c: CaseId,
       repeat: Int,
       outcome: Outcome[Vector[Weights]],
-      latencyMs: Int = 1
+      latencyMs: Int = 1,
+      request: String = "r",
+      usage: Usage = Usage.Zero,
+      focus: Option[Focus] = None
   ): Row[Vector[Weights]] =
     Row(
       suite,
       c,
       repeat,
-      Digest.text("r"),
+      Digest.text(request),
       key,
       "m",
       None,
       outcome,
-      Usage.Zero,
+      usage,
       latencyMs.millis,
       false,
-      None
+      focus
     )
 
   /** Triage's four answers: kinds weighed `kinds` (in Kind's order), then the three yes/no. */
