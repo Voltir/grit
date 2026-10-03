@@ -82,6 +82,7 @@ object TurnRecord {
     if (entry == turn.replyId || entry == turn.draftId) Some(Role.Reply)
     else if (entry == TurnJudge.id(turn)) Some(Role.Judge)
     else if (entry == TurnSummary.id(turn)) Some(Role.Summary)
+    else if (entry == TurnWeighing.id(turn)) Some(Role.Weigh)
     else if (
       Vector(TurnTopics.placedId(turn), TurnTopics.describedId(turn), TurnVerdict.verdictId(turn))
         .contains(entry)
@@ -112,6 +113,11 @@ object TurnRecord {
 
     /** The turn's summary. */
     case Summary
+
+    /** Live triage's set asked of the message said to grit the turn answers, before its offer
+      * ([[TurnWeighing.Answered.Asked]]).
+      */
+    case Weigh
   }
 
   private val Expire = """expire:(\d+):(\d+)""".r

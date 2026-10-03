@@ -6,6 +6,7 @@ import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
+import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.place.{Reaches, WorksIn}
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.recipe.TurnRecipe
@@ -25,7 +26,7 @@ import grit.core.store.{
   VoiceStore
 }
 import grit.core.tool.{Tool, ToolSets, Toolbox}
-import grit.core.triage.{KnowledgeSources, TriageStore}
+import grit.core.triage.{KnowledgeSources, Tags, TriageStore, Weighing}
 
 /** What a turn works with besides its `Durable` and its [[TurnTooling]]: its [[TurnRecords]]
   * and [[TurnHosting]], then the capabilities it calls. `assembler` builds its window,
@@ -36,8 +37,8 @@ import grit.core.triage.{KnowledgeSources, TriageStore}
   * draft, settled as [[TurnSpeech]] says, and stitches a conversation's first message as
   * [[TurnStitching]] says. None of them writes the store but `stitching`'s `placements`,
   * which queues an opening's placement and waits for it, so a step body that captures this
-  * can otherwise only read it. `weighing` is what its root's answers are read from, before
-  * its offer ([[TurnWeighing]]).
+  * can otherwise only read it. `weighing` is what its root's answers are read from, or
+  * asked of, before its offer ([[TurnWeighing]]).
   */
 final case class TurnEnv(
     records: TurnRecords,
@@ -50,13 +51,37 @@ final case class TurnEnv(
     fresh: Fresh^,
     speech: TurnSpeech,
     stitching: TurnStitching^,
-    weighing: TurnWeighing
+    weighing: TurnWeighing^
 )
 
 /** What a turn's root is weighed by before its offer (ADR 0025): the tags live triage kept
-  * for a heard message (`triage`).
+  * for a heard message (`triage`), or, for a message said to grit whose answers its recipe
+  * reads, live triage's set asked of it (`said`), which keeps nothing.
   */
-final case class TurnWeighing(triage: TriageStore)
+final case class TurnWeighing(triage: TriageStore, said: Weighing^)
+
+object TurnWeighing {
+
+  /** The answers a turn's root was weighed with, by where they came from. */
+  enum Answered {
+
+    /** The tags live triage kept for the heard message the turn answers. */
+    case Kept(kept: Tags)
+
+    /** Live triage's set asked of the message said to grit the turn answers: a classifier
+      * call the turn made, whose cost its `offer` step records under [[id]].
+      */
+    case Asked(asked: Weighing.Weighed)
+
+    def tags: Tags = this match {
+      case Kept(kept) => kept
+      case Asked(asked) => asked.tags
+    }
+  }
+
+  /** The id `turn`'s asking of its root is kept under in the usage ledger; no entry has it. */
+  def id(turn: TurnRef): EntryId = EntryId(s"weigh:${WorkflowId.value(turn.workflowId)}")
+}
 
 /** How a conversation's first message is stitched to an exchange in its room, and its strand
   * read (ADR 0023): the placements kept (`stitches`), the room's `search`, the scope in force

@@ -101,7 +101,7 @@ final case class Estimated(estimated: Quantiles, actual: Quantiles, ratio: Optio
 
 /** What a model call was paid for, a tool loop's rounds as one. */
 enum Paid {
-  case Query, Topic, Rounds, Reply, Judge, Summary
+  case Query, Topic, Rounds, Reply, Judge, Summary, Weigh
 
   /** A ledger row that names no call of its turn. */
   case Unknown
@@ -115,6 +115,7 @@ object Paid {
     case Some(TurnRecord.Role.Reply) => Reply
     case Some(TurnRecord.Role.Judge) => Judge
     case Some(TurnRecord.Role.Summary) => Summary
+    case Some(TurnRecord.Role.Weigh) => Weigh
     case None => Unknown
   }
 }

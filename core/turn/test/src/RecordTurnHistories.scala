@@ -524,6 +524,28 @@ object RecordTurnHistories {
         t.run()
         recorded(t.durable, t.turn)
       },
+      // A message said to grit, its workspace's service offered by its source: asked, the
+      // call's cost in the ledger with the offer, and the tools withheld.
+      "addressed-weighed" -> {
+        val t = new Sourced.Thread(
+          heard = false,
+          None,
+          addressed = grit.core.recipe.Offering.BySource(grit.core.period.Probability.clamped(0.2))
+        )
+        t.run()
+        recorded(t.durable, t.turn)
+      },
+      // The same, its weighing failed: nothing recorded, everything offered.
+      "addressed-unweighed" -> {
+        val t = new Sourced.Thread(
+          heard = false,
+          None,
+          addressed = grit.core.recipe.Offering.BySource(grit.core.period.Probability.clamped(0.2)),
+          asked = Left("not placed within 5 seconds")
+        )
+        t.run()
+        recorded(t.durable, t.turn)
+      },
       // In flight across the weigh step's patch: it had offered (unweighed), or only pinned.
       "offered-before-weigh" -> {
         val t = new Sourced.Thread(

@@ -84,7 +84,8 @@ object TurnJsonTests extends TestSuite {
       TurnRecord.Role.Round(1),
       TurnRecord.Role.Reply,
       TurnRecord.Role.Judge,
-      TurnRecord.Role.Summary
+      TurnRecord.Role.Summary,
+      TurnRecord.Role.Weigh
     ).map(r => Some(r))
       .appended(None)
       .map(r =>

@@ -294,7 +294,9 @@ object TurnJson {
     )
   }
 
-  /** A role's written name: `query`, `topic`, `round:<n>`, `reply`, `judge` or `summary`. */
+  /** A role's written name: `query`, `topic`, `round:<n>`, `reply`, `judge`, `summary` or
+    * `weigh`.
+    */
   private def role(r: TurnRecord.Role): String = r match {
     case TurnRecord.Role.Round(n) => s"round:$n"
     case other => other.toString.toLowerCase
@@ -310,7 +312,8 @@ object TurnJson {
           TurnRecord.Role.Topic,
           TurnRecord.Role.Reply,
           TurnRecord.Role.Judge,
-          TurnRecord.Role.Summary
+          TurnRecord.Role.Summary,
+          TurnRecord.Role.Weigh
         ).find(role(_) == name).toRight(s"spent: role $name")
     }
 

@@ -14,10 +14,10 @@ import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 import grit.core.speech.{Outcome, Speech, SpeechJson}
 import grit.core.stitch.{Along, Opening, StitchReads, Stitching, Strand}
-import grit.core.store.{Entry, Jot, Nearby, Payload, Speakers, StoreError, Tx}
+import grit.core.store.{Entry, Jot, Nearby, Payload, Speakers, StoreError, Tx, UsageLedger}
 import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
 import grit.core.topic.Topic
-import grit.core.triage.Tags
+import grit.core.triage.{Tags, Weighing}
 
 import TurnLoop.{Pending, Round}
 import TurnVerdict.Shape
@@ -29,15 +29,20 @@ import TurnVerdict.Shape
   *      and recorded by id; a rerun reads it back, so it runs under the profile it started
   *      with.
   *   1. `weigh` — the answers its root was weighed with: the tags live triage kept for the
-  *      heard message it answers, or none. Never fails the turn. Turns that passed this
-  *      point before it shipped offer unweighed ([[Patches.Weigh]]).
+  *      heard message it answers; for a message said to grit, live triage's set asked of it
+  *      when its recipe's addressed offering would read the answers ([[TurnOffer.weighs]]),
+  *      once its opening's placement has ended ([[TurnWeighing.said]]); or none. Never fails
+  *      the turn: a weighing that fails records none. Turns that passed this point before it
+  *      shipped offer unweighed ([[Patches.Weigh]]).
   *   1. `offer` — what the turn offers its model ([[TurnOffer]]): its conversation's
   *      workspace, the tool set (its own tools, and the hosted ones the edge serving that
   *      workspace advertises) and the system prompt (ADR 0016), kept by content id and
   *      recorded by id; a rerun reads them back, so it is offered what it first was. Its
   *      deployment's recipe ([[grit.core.recipe.TurnRecipe]]) shapes it by its root: the
   *      width its window is drawn at, and which services' tools it is offered, all recorded
-  *      as its [[TurnShape]]; an offer recorded before shapes is drawn as deployed.
+  *      as its [[TurnShape]]; an offer recorded before shapes is drawn as deployed. A root
+  *      `weigh` asked about has its call's cost recorded in the ledger in the same
+  *      transaction ([[TurnWeighing.id]]).
   *   1. `stitched` — when the turn's message is an [[grit.core.stitch.Opening]], its
   *      placement waited for ([[grit.core.stitch.Placements.awaited]]), so it runs only once
   *      every opening heard before it in its room is placed; nothing waited for otherwise.
@@ -405,9 +410,13 @@ object Turn {
             // Taken by every turn that had not offered when it shipped, whatever the recipe, so
             // a recovery under another deployment's configuration replays the same steps.
             val weighed =
-              if (d.patch(Patches.Weigh)) d.step(Step.Weigh)(() => weigh(env, turn)) else None
+              if (d.patch(Patches.Weigh)) d.step(Step.Weigh)(() => weigh(env, tooling, turn))
+              else None
+            val ledger = env.records.ledger
             d.transact(Step.Offer)(
-              TurnOffer.decide(hosting, env.records.entries, tooling, turn, weighed)
+              TurnOffer
+                .decide(hosting, env.records.entries, tooling, turn, weighed.map(_.tags))
+                .flatMap(offered => weighCost(ledger, turn, weighed).map(_ => offered))
             ).flatMap(TurnOffer.load(hosting, env.db, _)) match {
               case Left(failure) => s"failed: $failure"
               case Right(offer) => pinned(env, tooling, turn)(using profile, offer, d)
@@ -416,25 +425,61 @@ object Turn {
     }
 
   /** The `weigh` step: the tags live triage kept for the heard message `turn` answers
-    * ([[grit.core.triage.TriageStore.of]]); `None` when it answers a message said to grit,
-    * when none are kept, or when the store cannot be read. Never fails the turn: unweighed, its
-    * offer withholds nothing ([[grit.core.recipe.ServiceOffer.Verdict.Unweighed]]).
+    * ([[grit.core.triage.TriageStore.of]]); for a message said to grit, when its offer would
+    * read the answers ([[TurnOffer.weighs]]), what live triage's set makes of it
+    * ([[TurnWeighing.said]]). `None` when nothing is kept or asked, or when the store cannot
+    * be read or the asking fails. Never fails the turn: unweighed, its offer withholds nothing
+    * ([[grit.core.recipe.ServiceOffer.Verdict.Unweighed]]).
     */
-  private def weigh(env: TurnEnv^, turn: TurnRef): Option[Tags] = {
-    val (entries, triage) = (env.records.entries, env.weighing.triage)
+  private def weigh[C^](
+      env: TurnEnv^,
+      tooling: TurnTooling[C]^,
+      turn: TurnRef
+  ): Option[TurnWeighing.Answered] = {
+    val (entries, conversations) = (env.records.entries, env.hosting.conversations)
+    val (triage, said) = (env.weighing.triage, env.weighing.said)
     env.db
       .read {
-        entries
-          .ofTurn(turn)
-          .flatMap(_.minByOption(_.seq) match {
+        for {
+          own <- entries.ofTurn(turn)
+          conversation <- conversations.get(turn.conversationId)
+          kept <- own.minByOption(_.seq) match {
             case Some(root @ Entry(_, _, _, _, _, Payload.Heard(_), _)) =>
-              triage.of(Vector(root.id)).map(_.get(root.id))
+              triage.of(Vector(root.id)).map(_.get(root.id).map(TurnWeighing.Answered.Kept(_)))
             case _ => Right(None)
-          })
+          }
+          addressed = own
+            .minByOption(_.seq)
+            .exists(_.payload match {
+              case Payload.Message(Message.User(_)) => true
+              case _ => false
+            })
+        } yield (kept, addressed && conversation.exists(c => TurnOffer.weighs(tooling, c.origin)))
       }
       .toOption
-      .flatten
+      .flatMap {
+        case (Some(kept), _) => Some(kept)
+        case (None, true) => said.weigh(turn).toOption.map(TurnWeighing.Answered.Asked(_))
+        case (None, false) => None
+      }
   }
+
+  /** The cost of the classifier call `weighed` made, when the turn asked it, recorded in
+    * `ledger` under [[TurnWeighing.id]] with its estimate; nothing otherwise.
+    */
+  private def weighCost(
+      ledger: UsageLedger,
+      turn: TurnRef,
+      weighed: Option[TurnWeighing.Answered]
+  )(using Tx^): Either[TurnFailure, Unit] =
+    weighed match {
+      case Some(TurnWeighing.Answered.Asked(Weighing.Weighed(tags, estimate))) =>
+        ledger
+          .record(TurnWeighing.id(turn), turn, turn.workflowId, tags.model, tags.usage, estimate)
+          .left
+          .map(storeFailure)
+      case Some(TurnWeighing.Answered.Kept(_)) | None => Right(())
+    }
 
   /** The `stitched` step: what the placement of `turn`'s message did, once it has ended, when
     * the message is an [[Opening]]; `None` when it is not, or is gone. `TurnFailure.Store`

@@ -280,6 +280,21 @@ object TurnOffer {
     Toolbox.of[C](chosen*).getOrElse(tooling.tools)
   }
 
+  /** Whether an addressed turn from `origin` would read its root's answers: some service its
+    * conversation links (its workspace's, [[workspaceOf]], or one it reaches,
+    * [[grit.core.place.Reaches.of]]), whether or not an edge serves it now, is offered by
+    * `tooling.recipe`'s addressed offering through a gate on a source `tooling.knowledge` has
+    * covering its place. Under [[grit.core.recipe.Offering.All]], never.
+    */
+  def weighs[C^](tooling: TurnTooling[C]^, origin: Origin): Boolean = {
+    val place = origin.place
+    val linked = workspaceOf(origin, tooling.worksIn).flatMap(_.service).toVector ++
+      Reaches.of(tooling.reaches, place)
+    val covering = tooling.knowledge.at(place).supplied
+    val offering = tooling.recipe.at(Rooted.Addressed).offering
+    linked.exists(s => offering.gate(covering.getOrElse(s, Vector.empty)).nonEmpty)
+  }
+
   /** Where a conversation from `origin` works: a TUI session's directory; else the service the
     * first of `links` holding its place names ([[WorksIn.of]]); else none.
     */

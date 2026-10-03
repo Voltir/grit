@@ -149,9 +149,35 @@ object TurnFixtures {
       new Unplaced
     )
 
-  /** No triage kept: every heard root is weighed as unanswered. */
-  def noTriage(): TurnWeighing =
-    TurnWeighing(new grit.core.triage.InMemoryTriageStore(new InMemoryEntryStore, NoPeriods))
+  /** No triage kept: every heard root is weighed as unanswered; a message said to grit, when
+    * asked about, is not weighed.
+    */
+  def noTriage(): TurnWeighing^ =
+    TurnWeighing(
+      new grit.core.triage.InMemoryTriageStore(new InMemoryEntryStore, NoPeriods),
+      new Weighs(Left("not weighed"))
+    )
+
+  /** How many times a [[Weighs]] was asked. */
+  final class Calls {
+    // Read only by the test that owns it.
+    @caps.unsafe.untrackedCaptures
+    var n = 0
+  }
+
+  /** A [[grit.core.triage.Weighing]] that answers every message with `outcome`, as
+    * lifecycle's `Mentions` answers one it asked about or could not, counting each call in
+    * `calls`.
+    */
+  final class Weighs(
+      outcome: Either[String, grit.core.triage.Weighing.Weighed],
+      calls: Calls = new Calls
+  ) extends grit.core.triage.Weighing {
+    def weigh(turn: TurnRef): Either[String, grit.core.triage.Weighing.Weighed] = {
+      calls.n += 1
+      outcome
+    }
+  }
 
   /** Placements whose every placement ends having asked nothing. */
   final class Unplaced extends grit.core.stitch.Placements {
@@ -562,7 +588,8 @@ object TurnFixtures {
       reached: Vector[Served] = Vector.empty,
       recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
       knowledge: grit.core.triage.KnowledgeSources = grit.core.triage.KnowledgeSources.Empty,
-      weighing: TurnWeighing = noTriage()
+      weighing: TurnWeighing^ = noTriage(),
+      ledger: UsageLedger = new InMemoryUsageLedger
   )(id: WorkflowId)(using Durable^): String = {
     val requests: grit.core.edge.ToolRequests =
       if (reached.isEmpty) served else new Desks(served, reached)
@@ -572,7 +599,7 @@ object TurnFixtures {
       TurnEnv(
         TurnRecords(
           entries,
-          new InMemoryUsageLedger,
+          ledger,
           CharEstimate,
           profilesKept(),
           new InMemoryPrincipals
@@ -1376,7 +1403,7 @@ object TurnFixtures {
     )
 
     /** Triage's tags for a root whose `repo` source reads `p`. */
-    def repoReads(p: Double): Tags =
+    def repoReads(p: Double): Tags.Weighed =
       Tags.Weighed(
         VectorMap(QuestionName.per(Tags.V2.sourcePrefix, repo) -> Answer.YesNo(p)),
         "jev",
@@ -1384,9 +1411,20 @@ object TurnFixtures {
       )
 
     /** A Slack thread working in `github`, whose edge advertises `github_search`; its turn
-      * rooted on a message `heard` or said to grit, triage having kept `kept` for it when heard.
+      * rooted on a message `heard` or said to grit, triage having kept `kept` for it when heard,
+      * and a message said to grit weighed as `asked` says, offered by `addressed`, with the
+      * sources of `sources`.
       */
-    final class Thread(heard: Boolean, kept: Option[Tags], unpatched: Set[String] = Set.empty) {
+    final class Thread(
+        heard: Boolean,
+        kept: Option[Tags],
+        unpatched: Set[String] = Set.empty,
+        addressed: Offering = TurnRecipe.Shipped.addressed.offering,
+        asked: Either[String, grit.core.triage.Weighing.Weighed] = Right(
+          grit.core.triage.Weighing.Weighed(repoReads(0.1), grit.core.message.Tokens(321))
+        ),
+        sources: KnowledgeSources = knowledge
+    ) {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable(unpatched)
       val turn: TurnRef =
@@ -1394,6 +1432,8 @@ object TurnFixtures {
       val root =
         EntryId(if (heard) "heard:someone should look at the repo" else "in:look at it")
       val triage = new InMemoryTriageStore(entries, NoPeriods)
+      val asks = new Calls
+      val ledger = new InMemoryUsageLedger
       kept.foreach(t => triage.record(root, t, Instant.EPOCH)(using TestTx.fake))
       val edge = new Served(new InMemoryEdges, durable, _ => Serve.Never, github.place)
       edge.advertise(
@@ -1418,9 +1458,10 @@ object TurnFixtures {
           hosted = Vector.empty,
           from = Origin.Slack("T1", "C1", "1.0"),
           worksIn = Vector(WorksIn(Place.Everywhere, github)),
-          recipe = recipe,
-          knowledge = knowledge,
-          weighing = TurnWeighing(store)
+          recipe = recipe.copy(addressed = Shaping(Width.Deployed, addressed)),
+          knowledge = sources,
+          weighing = TurnWeighing(store, new Weighs(asked, asks)),
+          ledger = ledger
         )(id)
 
       def run(store: TriageStore = triage): String = durable.run(turn.workflowId)(body(store))

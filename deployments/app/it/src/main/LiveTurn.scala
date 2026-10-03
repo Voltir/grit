@@ -132,7 +132,27 @@ object LiveTurn {
               grit.core.stitch.Tuning.Default,
               engine.placements
             ),
-            grit.turn.TurnWeighing(engine.triage)
+            grit.turn.TurnWeighing(
+              engine.triage,
+              new grit.lifecycle.triage.Mentions(
+                grit.core.stitch.StitchReads(
+                  engine.entries,
+                  engine.conversations,
+                  engine.lifecycle,
+                  engine.stitches,
+                  engine.search,
+                  engine.principals
+                ),
+                engine.rooms,
+                grit.core.triage.KnowledgeSources.Empty,
+                grit.core.classify.Classifier.none("no classifier"),
+                engine.placements,
+                engine.db,
+                Clock.system(),
+                CharEstimate,
+                grit.core.stitch.Tuning.Default
+              )
+            )
           ),
           tooling
         ),

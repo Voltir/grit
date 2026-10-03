@@ -13,7 +13,7 @@ import grit.core.speech.{Outcome, SpeechJson}
 import grit.core.store.{Nearby, Payload, PayloadJson}
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.topic.{TopicId, TopicJson}
-import grit.core.triage.{GateJson, Tags, TagsJson}
+import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
   * `{"failed": kind, "reason": text}`. In-flight turns must read back what an earlier
@@ -423,21 +423,43 @@ private[turn] object TurnJournal {
         sequence(items.toVector.map(_.strOpt.toRight(s"shape: a name in $key is not a string")))
       )
 
-  /** A `weigh` step's output: `null` when the root was not weighed, or `{"kept": tags}`, the
-    * tags live triage kept for it ([[TagsJson.write]]).
+  /** A `weigh` step's output: `null` when the root was not weighed; `{"kept": tags}`, the tags
+    * live triage kept for it ([[TagsJson.write]]); or `{"asked": tags, "estimate"}`, what live
+    * triage's set answered when the turn asked it, and the estimate of that request's input.
     */
-  given weighed: Journaled[Option[Tags]] =
-    Journaled.json[Option[Tags]](
-      _.fold[ujson.Value](ujson.Null)(t => ujson.Obj("kept" -> TagsJson.write(t))),
+  given weighed: Journaled[Option[TurnWeighing.Answered]] =
+    Journaled.json[Option[TurnWeighing.Answered]](
+      {
+        case None => ujson.Null
+        case Some(TurnWeighing.Answered.Kept(t)) => ujson.Obj("kept" -> TagsJson.write(t))
+        case Some(TurnWeighing.Answered.Asked(Weighing.Weighed(t, estimate))) =>
+          ujson.Obj(
+            "asked" -> TagsJson.write(t),
+            "estimate" -> Tokens.value(estimate).toDouble
+          )
+      },
       {
         case ujson.Null => Right(None)
-        case o: ujson.Obj =>
+        case o: ujson.Obj if o.value.contains("kept") =>
           o.value
             .get("kept")
             .toRight("weighed: expected {kept}")
             .flatMap(TagsJson.read)
-            .map(Some(_))
-        case _ => Left("weighed: expected null or {kept}")
+            .map(t => Some(TurnWeighing.Answered.Kept(t)))
+        case o: ujson.Obj =>
+          for {
+            tags <- o.value.get("asked").toRight("weighed: expected {kept} or {asked}")
+            read <- TagsJson.read(tags)
+            weighed <- read match {
+              case w: Tags.Weighed => Right(w)
+              case Tags.Unanswered(_) => Left("weighed: asked tags are unanswered")
+            }
+            estimate <- o.value
+              .get("estimate")
+              .collect { case ujson.Num(n) if n.isWhole && n >= 0 => Tokens(n.toLong) }
+              .toRight("weighed: asked without a whole estimate")
+          } yield Some(TurnWeighing.Answered.Asked(Weighing.Weighed(weighed, estimate)))
+        case _ => Left("weighed: expected null, {kept} or {asked}")
       }
     )
 
