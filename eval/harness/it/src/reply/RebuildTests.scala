@@ -52,10 +52,14 @@ object RebuildTests extends TestSuite {
   private def right[E, A](e: Either[E, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why.toString), identity)
 
+  /** The system clock's now. */
+  private def now(): Instant = Clock.system().now()
+
   private def eventually(done: => Boolean): Boolean = {
-    val until = System.nanoTime() + 30.seconds.toNanos
+    val clock = Clock.system()
+    val until = clock.millis() + 30.seconds.toMillis
     var held = done
-    while (!held && System.nanoTime() < until) { Thread.sleep(50); held = done }
+    while (!held && clock.millis() < until) { clock.sleep(50.millis); held = done }
     held
   }
 
@@ -204,7 +208,7 @@ object RebuildTests extends TestSuite {
       SourceId(ts),
       text,
       PrincipalId.Local,
-      Instant.now(),
+      now(),
       Reach(Some(s"C1/$ts/$ts"), Set.empty)
     ) ==> Right(())
 
@@ -226,10 +230,10 @@ object RebuildTests extends TestSuite {
         right(
           engine.jot.write(
             engine.periods.seal(
-              CloseRef(p.ref, a.turnSeq, Instant.now()),
+              CloseRef(p.ref, a.turnSeq, now()),
               CloseReason.Lapsed,
               TestClosings.prose("the Falcon budget is 4200, agreed."),
-              Instant.now()
+              now()
             )
           )
         )
@@ -238,7 +242,7 @@ object RebuildTests extends TestSuite {
       hear(engine, "4000.1", "thanks all ~back:nothing")
       val tagged = eventually(
         right(
-          engine.db.read(engine.triage.tagged(Instant.EPOCH, Instant.now().plusSeconds(60)))
+          engine.db.read(engine.triage.tagged(Instant.EPOCH, now().plusSeconds(60)))
         ).size == 2
       )
       assert(tagged)
@@ -273,7 +277,7 @@ object RebuildTests extends TestSuite {
       "a heard message triage read as asking, that no turn answered, gets a window; its query asked once"
     ) {
       val (reader, Vector(a, b, c)) = world: @unchecked
-      val only = right(WindowOnly.all(reader, Instant.now().plusSeconds(60)))
+      val only = right(WindowOnly.all(reader, now().plusSeconds(60)))
       // The asking message's thread alone: the other was not read as asking.
       only.map(w =>
         right(reader.db.read(reader.conversations.get(w.turn.conversationId))).map(_.origin)

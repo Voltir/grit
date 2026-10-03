@@ -52,10 +52,14 @@ object TurnCaptureTests extends TestSuite {
 
   private val nothing = (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id)
 
+  /** The system clock's now. */
+  private def now(): Instant = Clock.system().now()
+
   private def eventually(done: => Boolean): Boolean = {
-    val until = System.nanoTime() + 30.seconds.toNanos
+    val clock = Clock.system()
+    val until = clock.millis() + 30.seconds.toMillis
     var held = done
-    while (!held && System.nanoTime() < until) { Thread.sleep(50); held = done }
+    while (!held && clock.millis() < until) { clock.sleep(50.millis); held = done }
     held
   }
 
@@ -255,10 +259,10 @@ object TurnCaptureTests extends TestSuite {
           right(
             engine.jot.write(
               engine.periods.seal(
-                CloseRef(p.ref, remark.turnSeq, Instant.now()),
+                CloseRef(p.ref, remark.turnSeq, now()),
                 CloseReason.Lapsed,
                 TestClosings.prose(s"$Marker the Falcon budget is 4200, agreed."),
-                Instant.now()
+                now()
               )
             )
           )
@@ -273,7 +277,7 @@ object TurnCaptureTests extends TestSuite {
           SourceId("3000.1"),
           s"$Marker ~pass is the deploy on friday? ~back:asks",
           PrincipalId.Local,
-          Instant.now(),
+          now(),
           Reach(Some("C1/3000.1/3000.1"), Set.empty)
         ) ==> Right(())
         val thread = eventually(

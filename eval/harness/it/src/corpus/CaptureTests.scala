@@ -26,10 +26,14 @@ object CaptureTests extends TestSuite {
 
   private val nothing = (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id)
 
+  /** The system clock's now. */
+  private def now(): Instant = Clock.system().now()
+
   private def eventually(done: => Boolean): Boolean = {
-    val until = System.nanoTime() + 30.seconds.toNanos
+    val clock = Clock.system()
+    val until = clock.millis() + 30.seconds.toMillis
     var held = done
-    while (!held && System.nanoTime() < until) { Thread.sleep(50); held = done }
+    while (!held && clock.millis() < until) { clock.sleep(50.millis); held = done }
     held
   }
 
@@ -101,7 +105,7 @@ object CaptureTests extends TestSuite {
           ),
           Vector.empty
         )
-        val start = Instant.now().minusSeconds(3_600)
+        val start = now().minusSeconds(3_600)
         def thread(ts: String) = Origin.Slack("T1", "C1", ts)
         // Four threads begun in one channel and a reply in the first: each heard only once
         // the one before it is tagged, so every placement was made over every earlier row.

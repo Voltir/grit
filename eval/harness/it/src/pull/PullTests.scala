@@ -33,10 +33,14 @@ object PullTests extends TestSuite {
 
   private val nothing = (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id)
 
+  /** The system clock's now. */
+  private def now(): Instant = Clock.system().now()
+
   private def eventually(done: => Boolean): Boolean = {
-    val until = System.nanoTime() + 30.seconds.toNanos
+    val clock = Clock.system()
+    val until = clock.millis() + 30.seconds.toMillis
     var held = done
-    while (!held && System.nanoTime() < until) { Thread.sleep(50); held = done }
+    while (!held && clock.millis() < until) { clock.sleep(50.millis); held = done }
     held
   }
 
@@ -158,7 +162,7 @@ object PullTests extends TestSuite {
             Shadowing(_, Instant.EPOCH, DailyCap.of("1").getOrElse(sys.error("a cap")))
           )
         )
-        val start = Instant.now().minusSeconds(3_600)
+        val start = now().minusSeconds(3_600)
         // The second is a reply in the first's thread; the others open their own.
         val heard = Vector("2000.1" -> "2000.1", "2000.1" -> "2000.2", "2000.3" -> "2000.3")
         heard.zipWithIndex.foreach { case ((thread, ts), i) =>
@@ -181,7 +185,7 @@ object PullTests extends TestSuite {
         val tagged = LiveDb.transaction(config)(engine.triage.tagged(Instant.EPOCH, Far))
         // The corpus holds the first two: captured before the third was tagged.
         val dumped = tagged.toOption.flatMap(_.lift(2)).map(_.at).getOrElse(sys.error("tagged"))
-        assert(engine.sweep(Instant.now()).map(_.shadowed.size) == Right(9))
+        assert(engine.sweep(now()).map(_.shadowed.size) == Right(9))
         assert(eventually(engine.unfinished() == Right(0)))
         // `mixed` is never declared: its rows are written here, one a wording's and one a
         // question set's, as a name redeclared from one to the other would leave them; and
@@ -198,7 +202,7 @@ object PullTests extends TestSuite {
             )
           )
           .foreach((entry, row) =>
-            LiveDb.transaction(config)(engine.shadows.record(entry, mixed, row, Instant.now())) ==>
+            LiveDb.transaction(config)(engine.shadows.record(entry, mixed, row, now())) ==>
               Right(true)
           )
         val chosen = Answer
@@ -214,7 +218,7 @@ object PullTests extends TestSuite {
           .foreach(entry =>
             LiveDb.transaction(config)(
               engine.shadows
-                .record(entry, legacy, answered(ShadowAnswers.Worded(worded)), Instant.now())
+                .record(entry, legacy, answered(ShadowAnswers.Worded(worded)), now())
             ) ==> Right(true)
           )
         // When the second, the first triaged by V2, was tagged: a pull since the switch.
@@ -228,7 +232,7 @@ object PullTests extends TestSuite {
                 Capture(reader, "source", "restored", Dump(Digest.text("d"), dumped), Build.Unknown)
               )
             def pull(from: Instant, shadows: Vector[ShadowName]) =
-              right(Pull(reader, "c", Digest.text("c"), c.cases, shadows, from, Instant.now()))
+              right(Pull(reader, "c", Digest.text("c"), c.cases, shadows, from, now()))
             (
               c,
               pull(Instant.EPOCH, Vector(words, ghost, set, mixed, legacy)),
