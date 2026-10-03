@@ -1,11 +1,9 @@
 package grit.eval.harness.report
 
-import scala.collection.immutable.VectorMap
-
 import grit.core.id.{ConversationId, WorkflowId}
 import grit.eval.harness.corpus.Part
 import grit.eval.harness.reply.Judged
-import grit.eval.harness.score.{Priced, Rate, Recipe, Shift}
+import grit.eval.harness.score.{Priced, Prices, Rates, Recipe, Shift}
 import grit.eval.harness.stats.{Mills, Proportion}
 
 /** One variant of a recipes run: its name, its [[Recipe]] against shipped, and each reference
@@ -28,7 +26,7 @@ private[report] object RecipeLines {
   def of(
       corpus: String,
       notes: Vector[String],
-      rates: VectorMap[String, Either[String, Rate]],
+      prices: Prices,
       shipped: Varied,
       variants: Vector[Varied]
   ): String = {
@@ -77,15 +75,18 @@ private[report] object RecipeLines {
         "cached as its own input was, that share at the cached rate and the rest at the input " +
         "rate, as though the variant's calls hit the cache as the recorded ones did. The range " +
         "runs from every token cached (the least they are worth) to none (the most). Cut now: how much the hit rate shown takes off the uncached price; at most: " +
-        "how much it would at a hit rate of 1. The tokens are the definitions' as capture costs " +
-        "them, grit's estimate rather than the provider's count. Unpriced calls withheld tokens " +
-        "and are left out of every price.",
+        "how much it would at a hit rate of 1. Tokens saved are the provider's: capture's " +
+        "estimate of the definitions scaled by the fitted ratio of the model's provider count to " +
+        "grit's estimate (Scales below); where a model has no scale its calls keep grit's raw " +
+        "estimate, counted under raw. Unpriced calls withheld tokens and are left out of every " +
+        "price.",
       ""
     ) ++ table(
       "variant",
       "calls",
       "hit rate",
       "tokens saved",
+      "raw",
       "effective",
       "range",
       "cut now",
@@ -97,7 +98,9 @@ private[report] object RecipeLines {
         v.name,
         s"${p.calls}",
         rate(p.hit),
-        s"${p.tokens}",
+        f"${p.tokens}%.0f",
+        if (p.rawCalls == 0) "none"
+        else s"${p.raw} estimated in ${p.rawCalls} call${if (p.rawCalls == 1) "" else "s"}",
         mills(p.effective),
         s"${p.cached.fold("—")(mills)} to ${mills(p.uncached)}",
         cut(p, p.effective),
@@ -105,6 +108,21 @@ private[report] object RecipeLines {
         s"${p.unpriced}"
       )
     }) ++ Vector(
+      "",
+      "### Scales",
+      "",
+      "grit estimates a call's tokens from its characters, and its estimate is not the " +
+        "provider's count, so each model's ratio of the two is fitted from the corpus's ledger " +
+        "rows: least squares through 0 of input tokens counted against grit's estimate, over " +
+        s"the calls with both, none from fewer than ${Rates.MinCalls}. A fit, not a count: a " +
+        "model's definitions may tokenize unlike its window.",
+      ""
+    ) ++ (if (prices.scales.isEmpty) Vector("No ledger row.")
+          else
+            table("model", "provider tokens per estimated", "calls")(prices.scales.toVector.map {
+              case (m, Right(x)) => Vector(m, f"${x.ratio}%.3f", s"${x.calls}")
+              case (m, Left(why)) => Vector(m, s"none, raw estimate: $why", "—")
+            })) ++ Vector(
       "",
       "### Rates",
       "",
@@ -114,10 +132,10 @@ private[report] object RecipeLines {
         "cached token. Off by: the most the rates misprice one of those rows. In mills per " +
         "1000 tokens, the same number as dollars per million.",
       ""
-    ) ++ (if (rates.isEmpty) Vector("No ledger row.")
+    ) ++ (if (prices.rates.isEmpty) Vector("No ledger row.")
           else
             table("model", "input", "cached", "output", "rows", "cached rows", "off by")(
-              rates.toVector.map {
+              prices.rates.toVector.map {
                 case (m, Right(r)) =>
                   Vector(
                     m,

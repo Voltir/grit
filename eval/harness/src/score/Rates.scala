@@ -19,8 +19,51 @@ final case class Rate(
     worst: Double
 )
 
-/** Each model's [[Rate]], derived from the ledger, since grit records no price. */
+/** What a model's provider counts for each token grit estimates, over the `calls` it was
+  * read from: tokens the provider counted ≈ `ratio` × grit's estimate. A fit, not a count.
+  */
+final case class Scale(ratio: Double, calls: Int)
+
+/** What a corpus's calls are priced with: each model's [[Rate]], and the [[Scale]] that turns
+  * grit's token estimates into the provider's tokens; each `Left` with why a model has none.
+  */
+final case class Prices(
+    rates: VectorMap[String, Either[String, Rate]],
+    scales: VectorMap[String, Either[String, Scale]]
+)
+
+object Prices {
+
+  /** The rates ([[Rates.fit]]) and scales ([[Rates.scales]]) of `spend`'s models. */
+  def of(spend: Vector[Spent]): Prices = Prices(Rates.fit(spend), Rates.scales(spend))
+}
+
+/** Each model's [[Rate]] and [[Scale]], derived from the ledger, since grit records no price
+  * and estimates its tokens.
+  */
 object Rates {
+
+  /** The fewest calls a model's [[Scale]] is read from. */
+  val MinCalls: Int = 5
+
+  /** Each model of `spend`'s, in the order first met, read by least squares through 0 over
+    * its calls that grit estimated and the provider counted input for (both above 0): input
+    * tokens = ratio × estimated tokens. `Left` with why for a model with fewer than
+    * [[MinCalls]] such calls.
+    */
+  def scales(spend: Vector[Spent]): VectorMap[String, Either[String, Scale]] =
+    VectorMap.from(spend.map(_.model).distinct.map { m =>
+      val pairs = spend
+        .filter(s => s.model == m)
+        .map(s => (Tokens.value(s.estimated).toDouble, Tokens.value(s.usage.input).toDouble))
+        .filter((e, a) => e > 0 && a > 0)
+      m -> Either.cond(
+        pairs.size >= MinCalls,
+        Scale(pairs.map(_ * _).sum / pairs.map((e, _) => e * e).sum, pairs.size),
+        s"${pairs.size} call${if (pairs.size == 1) "" else "s"} estimated and counted, fewer " +
+          s"than the $MinCalls a scale is read from"
+      )
+    })
 
   /** Each model of `spend`'s, in the order first met, read by least squares from its priced
     * rows as cost = input·(input tokens − cached) + cached·(cached tokens) + output·(output

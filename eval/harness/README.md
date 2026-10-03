@@ -155,14 +155,17 @@ Packages, each importing only those above it:
   joined by case, and the window parts a reply `Used`. `Recipe`, a turn variant against
   shipped over the turns paired (`TurnPair`, what each is `Given` both ways): tools offered and
   their definitions' tokens saved, what those are worth over the calls that would have sent
-  them (`Priced`: tokens saved once a main-model call, their effective price with each call's
+  them (`Priced`: tokens saved once a main-model call, scaled to the provider's count where
+  the model has a `Scale`, their effective price with each call's
   share cached as its input was, the range from all cached to none, and the calls' hit rate),
   called-tool recall (of the tools a turn called, those the
   variant still offers), window tokens per part, used-section recall (of the parts a reply
   used, those the variant's window holds, `Locator.held`), and the turns it changed.
   `Rates`, each model's `Rate` (input, cached input and output, USD a token) read by least
   squares from its priced ledger rows, since grit records no price: the cached rate left out
-  where no row has a cached token, and why a model has none.
+  where no row has a cached token, and why a model has none; and each model's `Scale`, its
+  provider's input tokens per token grit estimates, fitted through 0 over its calls with
+  both, none from under `Rates.MinCalls`; `Prices`, the two together.
   ← `stats`, `corpus`, `label`, `log`
 - **`report`** — `Report`, a run scored (`Scored`: its log, its corpus's cases, the labels in
   force) and two runs compared, as markdown with every mean's and rate's interval; text-free. With no case

@@ -36,7 +36,7 @@ object RecipesTests extends TestSuite {
   private val search = ToolName("search")
   private val github = ToolName("github_search_code")
   private val few = Proportion.Interval.TooFewClusters
-  private val none: VectorMap[String, Either[String, Rate]] = VectorMap.empty
+  private val none = Prices(VectorMap.empty, VectorMap.empty)
 
   private def spent(role: TurnRecord.Role, model: String, in: Long, cached: Long) =
     Spent(Some(role), model, Usage(Tokens(in), Tokens(1), Tokens(cached), None), Tokens(in))
@@ -175,13 +175,14 @@ object RecipesTests extends TestSuite {
           TurnPair(w1, offer(400, read, github), offer(100, read)),
           TurnPair(w2, offer(400, read, github), offer(100, read))
         ),
-        VectorMap("m/a" -> Right(rate))
+        Prices(VectorMap("m/a" -> Right(rate)), VectorMap.empty)
       )
       val p = r.priced
       // Effective: 300 at the input rate (round 0), then 150 at it and 150 at the cached rate
       // (the reply, half cached): 9e-5 + 4.5e-5 + 4.5e-6 = 1.395e-4. Uncached: 600 at the
       // input rate, 1.8e-4; all cached: 600 at the cached rate, 1.8e-5.
-      (p.tokens, p.calls, p.unpriced) ==> (900L, 3, 1)
+      // No model has a scale: every token is grit's estimate.
+      (p.tokens, p.raw, p.rawCalls, p.calls, p.unpriced) ==> (900.0, 900L, 3, 3, 1)
       (r12(p.effective), r12(p.uncached), p.cached.map(r12)) ==> (1.395e-4, 1.8e-4, Some(1.8e-5))
       p.hit ==> Proportion(500, 2100, 2, few)
     }
@@ -225,6 +226,35 @@ object RecipesTests extends TestSuite {
         "m/b" -> Right((1e-6, None, 2e-6, 2, 0, 0L)),
         "m/c" -> Left("1 priced row, fewer than the 2 prices read from them"),
         "m/d" -> Left("its rows do not tell the prices apart")
+      )
+    }
+    test("tokens saved are scaled to the provider's count before they are priced") {
+      // 1000 tokens estimated saved on one uncached reply by m/a, which counts 0.8 a token
+      // estimated: 800 tokens, at $0.30/M input 2.4e-4.
+      val rate = Rate(3e-7, Some(3e-8), 2.5e-6, 3, 1, 0.0)
+      val w1 = turn("w1", "A").copy(spend = Vector(spent(TurnRecord.Role.Reply, "m/a", 5000, 0)))
+      val p = Recipe
+        .of(
+          Vector(TurnPair(w1, offer(1500, read, github), offer(500, read))),
+          Prices(VectorMap("m/a" -> Right(rate)), VectorMap("m/a" -> Right(Scale(0.8, 40))))
+        )
+        .priced
+      (p.tokens, p.raw, p.rawCalls) ==> (800.0, 0L, 0)
+      (r12(p.effective), r12(p.uncached)) ==> (2.4e-4, 2.4e-4)
+    }
+
+    test("a model's scale is read from its estimated and counted calls, none from too few") {
+      // m/a: five calls each counted 0.8 of the estimate, and one with no estimate, left out.
+      // m/b: four calls, under the five a scale is read from.
+      def row(model: String, estimated: Long, input: Long) =
+        Spent(None, model, Usage(Tokens(input), Tokens(1), Tokens.Zero, None), Tokens(estimated))
+      val scales = Rates.scales(
+        Vector(100L, 200L, 500L, 1000L, 4000L).map(e => row("m/a", e, e * 4 / 5)) ++
+          Vector(row("m/a", 0, 300)) ++ Vector.fill(4)(row("m/b", 100, 50))
+      )
+      scales.view.mapValues(_.map(s => (r12(s.ratio), s.calls))).toVector ==> Vector(
+        "m/a" -> Right((0.8, 5)),
+        "m/b" -> Left("4 calls estimated and counted, fewer than the 5 a scale is read from")
       )
     }
   }

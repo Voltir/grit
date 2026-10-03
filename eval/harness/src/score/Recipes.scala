@@ -26,8 +26,13 @@ final case class Shift(shipped: Double, variant: Double)
   * price is in USD at the [[Rate]] of the model that made the call.
   *
   * @param tokens
-  *   definitions' tokens saved over every call, as capture costs them; below 0 where the
-  *   variant adds
+  *   definitions' tokens saved over every call, as the provider would count them: capture's
+  *   estimate of each call's tokens scaled by its model's [[Scale]], or left as the estimate
+  *   where its model has none; below 0 where the variant adds
+  * @param raw
+  *   the part of `tokens` left as grit's estimate, its calls' model having no scale
+  * @param rawCalls
+  *   the calls `raw` is over
   * @param effective
   *   their price with each call's tokens saved cached as its own input was (its cached input
   *   tokens of its input), those at the cached rate and the rest at the input rate
@@ -46,7 +51,9 @@ final case class Shift(shipped: Double, variant: Double)
   *   they hit the cache and it has no cached rate
   */
 final case class Priced(
-    tokens: Long,
+    tokens: Double,
+    raw: Long,
+    rawCalls: Int,
     effective: Double,
     uncached: Double,
     cached: Option[Double],
@@ -105,10 +112,10 @@ final case class Recipe(
 
 object Recipe {
 
-  /** `pairs` read as one variant against shipped, their calls priced at `rates`
-    * ([[Rates.fit]]).
+  /** `pairs` read as one variant against shipped, their calls' tokens saved scaled and
+    * priced as `prices` says ([[Prices.of]]).
     */
-  def of(pairs: Vector[TurnPair], rates: VectorMap[String, Either[String, Rate]]): Recipe = {
+  def of(pairs: Vector[TurnPair], prices: Prices): Recipe = {
     def mean(xs: Vector[Double]) = xs.sum / xs.size
     def shift(f: Given => Double)(ps: Vector[TurnPair]) =
       Option.when(ps.nonEmpty)(
@@ -148,7 +155,7 @@ object Recipe {
       shift(_.tools.size.toDouble)(pairs),
       shift(g => Tokens.value(g.schema).toDouble)(pairs),
       pairs.map(p => Tokens.value(p.shipped.schema) - Tokens.value(p.variant.schema)).sum,
-      priced(pairs, rates),
+      priced(pairs, prices),
       Proportion.of(called),
       both.size,
       VectorMap.from(
@@ -170,20 +177,25 @@ object Recipe {
 
   private def priced(
       pairs: Vector[TurnPair],
-      rates: VectorMap[String, Either[String, Rate]]
+      prices: Prices
   ): Priced = {
+    // Each call's tokens saved: as the provider counts them where its model has a scale,
+    // else grit's estimate (`raw`).
     val calls = pairs.flatMap { p =>
-      val saved = Tokens.value(p.shipped.schema) - Tokens.value(p.variant.schema)
-      p.turn.spend.filter(s => Structure.isMain(s.role)).map(s => (p.turn.conversation, s, saved))
+      val estimate = Tokens.value(p.shipped.schema) - Tokens.value(p.variant.schema)
+      p.turn.spend.filter(s => Structure.isMain(s.role)).map { s =>
+        val scale = prices.scales.get(s.model).flatMap(_.toOption)
+        (p.turn.conversation, s, scale.fold(estimate.toDouble)(estimate * _.ratio), scale.isEmpty)
+      }
     }
     // Each call's price saved: (effective, uncached, every one cached); `None` when it is not
     // priced.
-    val each = calls.map { (_, s, saved) =>
+    val each = calls.map { (_, s, saved, _) =>
       val input = Tokens.value(s.usage.input)
       val hit = if (input > 0) Tokens.value(s.usage.cachedInput).toDouble / input else 0.0
       if (saved == 0) Some((0.0, 0.0, Some(0.0)))
       else
-        rates.get(s.model).flatMap(_.toOption).flatMap { r =>
+        prices.rates.get(s.model).flatMap(_.toOption).flatMap { r =>
           val uncached = saved * r.input
           val cached = r.cached.map(saved * _)
           val effective =
@@ -192,13 +204,18 @@ object Recipe {
         }
     }
     val priced = each.flatten
+    val raw = calls.filter(_._4)
     Priced(
       calls.map(_._3).sum,
+      raw.map(_._3.toLong).sum,
+      raw.size,
       priced.map(_._1).sum,
       priced.map(_._2).sum,
       priced.foldLeft(Option(0.0))((sum, c) => sum.flatMap(x => c._3.map(x + _))),
       Proportion.counted(
-        calls.map((c, s, _) => (c, Tokens.value(s.usage.cachedInput), Tokens.value(s.usage.input)))
+        calls.map((c, s, _, _) =>
+          (c, Tokens.value(s.usage.cachedInput), Tokens.value(s.usage.input))
+        )
       ),
       calls.size,
       each.count(_.isEmpty)

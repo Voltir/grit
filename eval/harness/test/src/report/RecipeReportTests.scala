@@ -4,7 +4,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.id.{ConversationId, WorkflowId}
 import grit.eval.harness.reply.Judged
-import grit.eval.harness.score.{Priced, Rate, Recipe, Shift}
+import grit.eval.harness.score.{Priced, Prices, Rate, Recipe, Scale, Shift}
 import grit.eval.harness.stats.Proportion
 
 import utest.*
@@ -19,7 +19,17 @@ object RecipeReportTests extends TestSuite {
     Some(Shift(4478, 300)),
     4178,
     // A ninth of the input cached, its share at a tenth of the input rate: 10% off.
-    Priced(8356, 2.25612e-3, 2.5068e-3, Some(2.5068e-4), Proportion(1000, 9000, 1, few), 2, 0),
+    Priced(
+      8356.0,
+      4178,
+      1,
+      2.25612e-3,
+      2.5068e-3,
+      Some(2.5068e-4),
+      Proportion(1000, 9000, 1, few),
+      2,
+      0
+    ),
     Proportion(1, 2, 1, few),
     1,
     VectorMap.empty,
@@ -36,7 +46,7 @@ object RecipeReportTests extends TestSuite {
       def report(used: Proportion) = Report.recipes(
         "20261005",
         Vector.empty,
-        VectorMap.empty,
+        Prices(VectorMap.empty, VectorMap.empty),
         Varied("shipped", recipe(used), Vector.empty),
         Vector(Varied("offer-0.3", recipe(used), judged))
       )
@@ -50,7 +60,7 @@ object RecipeReportTests extends TestSuite {
         .recipes(
           "20261005",
           Vector.empty,
-          VectorMap.empty,
+          Prices(VectorMap.empty, VectorMap.empty),
           Varied("shipped", recipe(Proportion(0, 0, 0, few)), Vector.empty),
           Vector(Varied("offer-0.3", recipe(Proportion(0, 0, 0, few)), judged))
         )
@@ -65,9 +75,15 @@ object RecipeReportTests extends TestSuite {
         .recipes(
           "20261005",
           Vector.empty,
-          VectorMap(
-            "m/a" -> Right(Rate(3e-7, Some(3e-8), 2.5e-6, 52, 1, 0.0004)),
-            "jev" -> Left("1 priced row, fewer than the 2 prices read from them")
+          Prices(
+            VectorMap(
+              "m/a" -> Right(Rate(3e-7, Some(3e-8), 2.5e-6, 52, 1, 0.0004)),
+              "jev" -> Left("1 priced row, fewer than the 2 prices read from them")
+            ),
+            VectorMap(
+              "m/a" -> Right(Scale(0.8064, 40)),
+              "jev" -> Left("3 calls estimated and counted, fewer than the 5 a scale is read from")
+            )
           ),
           Varied("shipped", recipe(Proportion(0, 0, 0, few)), Vector.empty),
           Vector(Varied("offer-0.3", recipe(Proportion(0, 0, 0, few)), judged))
@@ -77,12 +93,19 @@ object RecipeReportTests extends TestSuite {
       val price = report.dropWhile(_ != "## Price of the tools withheld")
       price.find(_.startsWith("| offer-0.3 |")) ==> Some(
         "| offer-0.3 | 2 | 0.111 (1000/9000 in 1 thread) too few threads for an interval | 8356 | " +
+          "4178 estimated in 1 call | " +
           "2.3 mills | 0.25 mills to 2.5 mills | 10% | 90% | 0 |"
       )
-      price.filter(l => l.startsWith("| m/a ") || l.startsWith("| jev ")) ==> Vector(
+      price.filter(l => l.startsWith("| m/a | 0.3000") || l.startsWith("| jev | none:")) ==> Vector(
         "| m/a | 0.3000 | 0.03000 | 2.500 | 52 | 1 | 0.0% |",
         "| jev | none: 1 priced row, fewer than the 2 prices read from them | — | — | — | — | — |"
       )
+      price.filter(l => l.startsWith("| m/a | 0.806") || l.startsWith("| jev | none, raw")) ==>
+        Vector(
+          "| m/a | 0.806 | 40 |",
+          "| jev | none, raw estimate: 3 calls estimated and counted, fewer than the 5 a scale is " +
+            "read from | — |"
+        )
     }
 
     test(
