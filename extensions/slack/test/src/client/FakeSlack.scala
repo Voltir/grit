@@ -173,6 +173,22 @@ final class FakeSlack extends Slack {
       }
     }
 
+  /** The workspace's Slack domain, which a permalink names. */
+  @caps.unsafe.untrackedCaptures
+  var domain = "fake"
+
+  /** A message it knows, linked as Slack links one: its channel's archive, then `p` and its ts
+    * without the point.
+    */
+  def permalink(channel: ChannelId, ts: Ts): Either[SlackError, String] =
+    request {
+      if (!knows(channel, ts)) Left(SlackError.Refused("message_not_found"))
+      else
+        Right(
+          s"https://$domain.slack.com/archives/${ChannelId.value(channel)}/p${Ts.value(ts).filter(_ != '.')}"
+        )
+    }
+
   def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] =
     request {
       if (!knows(channel, ts)) Left(SlackError.Refused("message_not_found"))

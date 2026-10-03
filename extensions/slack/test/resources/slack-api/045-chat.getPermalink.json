@@ -1,0 +1,17 @@
+{
+  "method": "chat.getPermalink",
+  "params": {
+    "channel": "C0000000001",
+    "message_ts": "1790782260.791279"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": true,
+    "channel": "C0000000001",
+    "permalink": "https://grit-contract.slack.com/archives/C0000000001/p1790782260791279"
+  },
+  "source": "hand-written from Slack's chat.getPermalink docs (its example's shape, over m1 and the placeholder workspace), not yet captured"
+}

@@ -62,7 +62,8 @@ CHANNEL_FIELDS = ["is_channel", "is_private", "is_im", "is_mpim", "name"]
 
 
 def kept(body):
-    out = {k: body[k] for k in ["ok", "error", "has_more", "team_id", "user_id", "ts"] if k in body}
+    out = {k: body[k] for k in ["ok", "error", "has_more", "team_id", "user_id", "ts", "permalink"]
+           if k in body}
     if "messages" in body:
         out["messages"] = [{k: m[k] for k in MESSAGE_FIELDS if k in m} for m in body["messages"]]
     cursor = (body.get("response_metadata") or {}).get("next_cursor")
@@ -145,6 +146,9 @@ def main():
 
         for method in ["reactions.add", "reactions.add", "reactions.remove", "reactions.remove"]:
             record(method, {"channel": a.public, "timestamp": ts["m1"], "name": "eyes"})
+        # m1's permalink, and that of a ts no message has (SlackContract.NoMessage).
+        for message_ts in [ts["m1"], "1790782200.000001"]:
+            record("chat.getPermalink", {"channel": a.public, "message_ts": message_ts})
 
         def pages(method, params):
             found, cursor = [], None
@@ -192,6 +196,10 @@ def main():
             me = r["params"]["user"] == a.user
             u["real_name"] = "Ana Lima" if me else "grit"
             u["profile"]["display_name"] = "Ana" if me else ""
+        if r["method"] == "chat.getPermalink" and "permalink" in r["body"]:
+            # The workspace's domain names it: SlackContract.Domain stands in.
+            r["body"]["permalink"] = re.sub(r"^https://[^/]+/", "https://grit-contract.slack.com/",
+                                            r["body"]["permalink"])
         c = r["body"].get("channel")
         if r["method"] == "conversations.info" and c and "name" in c:
             c["name"] = {a.public: "grit-contract", a.private: "grit-private",

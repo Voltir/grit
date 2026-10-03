@@ -57,6 +57,9 @@ enum Tag {
 
   /** A post `slack_post` made for the request at slot `request` ([[grit.core.id.CallSlot.key]]). */
   case Sent(request: String)
+
+  /** A review's prompt for the heard message whose entry id is `entry`. */
+  case Prompt(entry: String)
 }
 
 /** The message a thread begins with, as [[Slack.root]] reads it: who wrote it (`None` for one
@@ -95,6 +98,12 @@ trait Slack extends caps.SharedCapability {
 
   /** The message `thread` of `channel` begins with; `None` when there is none. */
   def root(channel: ChannelId, thread: Ts): Either[SlackError, Option[Root]]
+
+  /** The link to message `ts` of `channel` that opens it in Slack. `Refused("message_not_found")`
+    * when there is no such message, `Refused("channel_not_found")` when grit cannot see the
+    * channel.
+    */
+  def permalink(channel: ChannelId, ts: Ts): Either[SlackError, String]
 
   /** Adds grit's `emoji` reaction to message `ts`; one already there is not an error.
     * `Refused("message_not_found")` when there is no such message.

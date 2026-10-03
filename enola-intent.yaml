@@ -377,6 +377,12 @@ rules:
     mode: strict
     because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
 
+  - id: only-slack-imports-chat-get-permalink-request
+    forbid_name: outside-slack
+    pattern: "* -> com.slack.api.methods.request.chat.ChatGetPermalinkRequest"
+    mode: strict
+    because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
   - id: only-slack-imports-reactions-add-request
     forbid_name: outside-slack
     pattern: "* -> com.slack.api.methods.request.reactions.ReactionsAddRequest"

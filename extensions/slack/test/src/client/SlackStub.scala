@@ -74,6 +74,7 @@ object SlackStub {
     "cursor",
     "user",
     "timestamp",
+    "message_ts",
     "name",
     "include_all_metadata"
   )

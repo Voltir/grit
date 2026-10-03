@@ -1,0 +1,16 @@
+{
+  "method": "chat.getPermalink",
+  "params": {
+    "channel": "C0000000001",
+    "message_ts": "1790782200.000001"
+  },
+  "status": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8"
+  },
+  "body": {
+    "ok": false,
+    "error": "message_not_found"
+  },
+  "source": "hand-written from Slack's chat.getPermalink docs (a ts no message has), not yet captured"
+}

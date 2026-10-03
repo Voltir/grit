@@ -10,7 +10,7 @@ import grit.slack.event.{ChannelId, Listed, TeamId, Ts, UserId}
 import grit.slack.text.Post
 
 import com.slack.api.methods.request.auth.AuthTestRequest
-import com.slack.api.methods.request.chat.ChatPostMessageRequest
+import com.slack.api.methods.request.chat.{ChatGetPermalinkRequest, ChatPostMessageRequest}
 import com.slack.api.methods.request.conversations.{
   ConversationsHistoryRequest,
   ConversationsInfoRequest,
@@ -125,6 +125,21 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
         case other => Left(other)
       }
   }
+
+  def permalink(channel: ChannelId, ts: Ts): Either[SlackError, String] =
+    call(
+      methods.chatGetPermalink(
+        ChatGetPermalinkRequest
+          .builder()
+          .channel(ChannelId.value(channel))
+          .messageTs(Ts.value(ts))
+          .build()
+      )
+    ).flatMap(r =>
+      Option(r.getPermalink)
+        .filter(_.nonEmpty)
+        .toRight(SlackError.Unreachable("chat.getPermalink answered with no permalink"))
+    )
 
   def react(channel: ChannelId, ts: Ts, emoji: String): Either[SlackError, Unit] =
     call(
@@ -246,6 +261,9 @@ object SocketSlack {
   /** The metadata event type a post `slack_post` made carries. */
   val PostEvent = "grit_post"
 
+  /** The metadata event type a review's prompt carries. */
+  val PromptEvent = "grit_review"
+
   /** The request that posts `post` in `thread` of `channel`, carrying `tag` as metadata; link
     * previews off, so a reply is only what grit wrote.
     */
@@ -301,6 +319,7 @@ object SocketSlack {
             part <- p.get("part").flatMap(_.toIntOption)
           } yield Tag.Reply(turn, part)
         case RefusalEvent => p.get("message").map(m => Tag.Refused(Ts(m)))
+        case PromptEvent => p.get("entry").map(Tag.Prompt(_))
         case _ => None
       }
     }
@@ -310,6 +329,7 @@ object SocketSlack {
     case Tag.Reply(_, _) => ReplyEvent
     case Tag.Refused(_) => RefusalEvent
     case Tag.Sent(_) => PostEvent
+    case Tag.Prompt(_) => PromptEvent
   }
 
   /** `tag`'s metadata payload. */
@@ -317,6 +337,7 @@ object SocketSlack {
     case Tag.Reply(turn, part) => Map("turn" -> turn, "part" -> part.toString)
     case Tag.Refused(message) => Map("message" -> Ts.value(message))
     case Tag.Sent(request) => Map("request" -> request)
+    case Tag.Prompt(entry) => Map("entry" -> entry)
   }
 
   /** How many times a rate-limited call is waited out and made again. */

@@ -163,6 +163,17 @@ abstract class SlackContract extends TestSuite {
       }
     }
 
+    test(
+      "a message's permalink is its channel's archive, then p and its ts without the point; none for no message"
+    ) {
+      withSlack() { slack =>
+        (slack.permalink(Public, w.ts("m1")), slack.permalink(Public, NoMessage)) ==> (
+          Right(s"https://$Domain.slack.com/archives/C0000000001/p1790782260791279"),
+          Left(SlackError.Refused("message_not_found"))
+        )
+      }
+    }
+
     test("public and channelName: a public channel, a private one, and one that does not exist") {
       withSlack() { slack =>
         Vector(Public, Private, Outside, Missing).map(c =>
@@ -190,6 +201,7 @@ abstract class SlackContract extends TestSuite {
           "postTopLevel" -> kind(slack.postTopLevel(Public, post, Tag.Sent("contract"))),
           "tagged" -> kind(slack.tagged(Public, m1, Tag.Reply("contract", 0))),
           "root" -> kind(slack.root(Public, m1)),
+          "permalink" -> kind(slack.permalink(Public, m1)),
           "react" -> kind(slack.react(Public, m1, "eyes")),
           "unreact" -> kind(slack.unreact(Public, m1, "eyes")),
           "name" -> kind(slack.name(Ana)),
@@ -206,6 +218,9 @@ object SlackContract {
 
   /** The ids the recordings use: the capture maps every real id to these. */
   val Team = TeamId("T0000000001")
+
+  /** The workspace's Slack domain, as the recordings name it. */
+  val Domain = "grit-contract"
   val Ana = UserId("U0000000001")
   val Bot = UserId("U0000000002")
   val Nobody = UserId("U0000000000")

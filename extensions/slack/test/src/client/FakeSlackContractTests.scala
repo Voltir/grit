@@ -7,6 +7,7 @@ object FakeSlackContractTests extends SlackContract {
   protected def withSlack[A](limited: Int, down: Boolean)(body: Slack => A): A = {
     val slack = new FakeSlack
     slack.me = Self(Team, Bot)
+    slack.domain = Domain
     slack.names = Map(Ana -> Some("Ana"), Bot -> Some("grit"))
     slack.channelNames =
       Map(Public -> "grit-contract", Private -> "grit-private", Outside -> "grit-outside")
