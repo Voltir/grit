@@ -10,12 +10,14 @@ import scala.util.Try
 import scala.util.chaining.*
 import scala.util.control.NonFatal
 
-import grit.core.classify.Answer
+import grit.core.classify.{Answer, Classifier}
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.Width
-import grit.core.id.{QuestionName, ShadowName, WorkflowId}
+import grit.core.id.{QuestionName, ShadowName, TurnRef, WorkflowId}
 import grit.core.message.Tokens
+import grit.core.place.Service
 import grit.core.provider.Provider
+import grit.core.tool.ToolSet
 import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.{Build, Reader}
 import grit.dbos.sql.DbConfig
@@ -65,28 +67,44 @@ import grit.eval.harness.log.{
   Weights
 }
 import grit.eval.harness.pull.{Pull, ShadowLog}
-import grit.eval.harness.reply.{Assembled, Queries, Rebuild, ReplyReview, WindowOnly}
-import grit.eval.harness.report.{Report, Scored}
+import grit.eval.harness.reply.{
+  Assembled,
+  Expect,
+  Queries,
+  Rebuild,
+  Reference,
+  ReplyReview,
+  Supplies,
+  TurnAsk,
+  TurnTriage,
+  TurnVariant,
+  WindowOnly
+}
+import grit.eval.harness.report.{Report, Scored, Varied}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
   Decision,
   Drafting,
   Drafts,
+  Given,
   Guarded,
   Judgement,
   MovedOn,
   Order,
   Paired,
+  Recipe,
   Rule,
   Scoring,
   Spread,
-  Target
+  Target,
+  TurnPair
 }
 import grit.kit.environment.DotEnv
 import grit.lifecycle.triage.TriageRecipe
 import grit.models.JevClassifier
 import grit.models.JevConfig
 import grit.models.{OpenRouterConfig, OpenRouterProvider, Seed}
+import grit.turn.{TurnOffer, TurnRecord}
 
 /** The eval harness's command line, run through `scripts/eval`, which says what each command
   * takes. It prints counts, ids and field names, never a message's text.
@@ -124,6 +142,7 @@ object Main {
       case "reply-labels" :: rest => exit(flags(rest).flatMap(replyLabels))
       case "turns" :: rest => exit(flags(rest).flatMap(turns))
       case "rebuild" :: rest => exit(flags(rest).flatMap(rebuild(_, clock)))
+      case "recipes" :: rest => exit(flags(rest).flatMap(recipes(_, clock)))
       case "compare" :: rest =>
         flags(rest).flatMap(f =>
           if (f.contains("gate")) drafts(f, clock).map(_ => 0) else compare(f)
@@ -136,7 +155,7 @@ object Main {
         exit(
           Left(
             "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull|" +
-              "replies|reply-labels|turns|rebuild " +
+              "replies|reply-labels|turns|rebuild|recipes " +
               "(scripts/eval says what each takes)"
           )
         )
@@ -398,6 +417,235 @@ object Main {
         }
       }
     } yield ()
+
+  /** `recipes --eval <dir> --corpus <yyyymmdd> --url <jdbc> --variants <name,…> --supplies
+    * <file> --context <tokens> --cache <dir> --spend <usd> [--reference <file>] [--labels
+    * <file>] [--window <tokens>] [--tail <tokens>]`: each variant ([[TurnVariant.named]])
+    * against shipped over every turn of the corpus, written to
+    * `<dir>/reports/recipes-<yyyymmdd>.md` and printed ([[Report.recipes]]). Refused, before
+    * anything is read, when a variant draws a window over `--context`, the reply model's
+    * context in tokens. A turn's triage answers are live triage's when it kept a question
+    * set's for the turn's message; else its message is put live triage's set
+    * ([[TurnTriage.ask]], the sources `--supplies` declares, [[Supplies.read]]) through Jev,
+    * once, the answer kept under `<cache>` so it is paid for once, under the `--spend` cap in
+    * USD: refused before any call when the calls not kept are estimated over it, and each call
+    * past it skipped. A message with no case id (a TUI or task turn's) is not asked. Each
+    * width's window is rebuilt as of the turn's assembly, its query replayed
+    * ([[Rebuild.recorded]]), and costed as capture costs a window ([[TurnCapture.costed]]);
+    * its tools are what it recorded less the services the variant withholds, their
+    * definitions costed as capture costs them ([[TurnCapture.schema]]). The reference is
+    * `--reference` (a file of ids, [[Reference.read]]; none when it does not exist) and the
+    * reply labels in `--labels` ([[Reference.labelled]]; none when it does not exist). Jev's
+    * key comes from the environment over `GRIT_ENV_FILE` (`.env` when unset), read only when
+    * a call is to be asked; the database's login from `GRIT_DATABASE_USER` and `_PASSWORD`. A
+    * call's latency is measured on `clock`.
+    */
+  private def recipes(f: Map[String, String], clock: Clock^): Either[String, Unit] =
+    for {
+      eval <- need(f, "eval").map(Path.of(_))
+      corpus <- need(f, "corpus").filterOrElse(_.matches("[0-9]{8}"), "--corpus is yyyymmdd")
+      dir = eval.resolve("corpus").resolve(corpus)
+      url <- need(f, "url")
+      named <- need(f, "variants").map(_.split(',').toVector.filter(_.nonEmpty))
+      variants <- Fields.each(named)(n =>
+        TurnVariant
+          .named(n)
+          .toRight(s"no variant $n: ${TurnVariant.all.map(_.name).mkString(", ")}")
+      )
+      limit <- need(f, "context").flatMap(positive("context")).map(Tokens(_))
+      cap <- need(f, "spend").flatMap(decimal("spend"))
+      cacheDir <- need(f, "cache").map(Path.of(_))
+      supplies <- need(f, "supplies").map(Path.of(_)).flatMap(read).flatMap(Supplies.read)
+      window <- f
+        .get("window")
+        .fold(Right(Assembled.Shipped.window))(positive("window")(_).map(Tokens(_)))
+      tail <- f.get("tail").fold(Right(Assembled.Shipped.tail))(positive("tail")(_).map(Tokens(_)))
+      assembled = Assembled.Shipped.copy(window = window, tail = tail)
+      _ <- variants
+        .flatMap(v => TurnVariant.pastContext(v, assembled, limit).map(v -> _))
+        .headOption
+        .fold[Either[String, Unit]](Right(())) { (v, b) =>
+          Left(
+            s"refused: ${v.name} draws a window of ${Tokens.value(b)} tokens, over the reply " +
+              s"model's context of ${Tokens.value(limit)}"
+          )
+        }
+      written <- f
+        .get("reference")
+        .map(Path.of(_))
+        .filter(Files.exists(_))
+        .fold[Either[String, Reference]](Right(Reference.Empty))(r =>
+          read(r).flatMap(Reference.read)
+        )
+      labelled <- f
+        .get("labels")
+        .fold[Either[String, ReplyLabels]](Right(ReplyLabels.Empty))(l => replyLabelsAt(Path.of(l)))
+      reference = Reference.labelled(labelled) ++ written
+      manifest <- read(dir.resolve("corpus.json")).flatMap(t =>
+        Try(ujson.read(t)).toOption
+          .toRight("corpus.json: not JSON")
+          .flatMap(CorpusJson.readManifest)
+      )
+      turns <- readTurns(dir)
+      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      store = Cache.at[Vector[Weights]](cacheDir)
+      text <- opened(config) { reader =>
+        for {
+          offers <- Fields.each(turns)(t => offerOf(reader, t).map(t.workflow -> _))
+          offered = offers.toMap
+          live = turns.flatMap(t =>
+            t.triage.collect { case Live.Named(answers, _, _) => t.workflow -> answers }
+          )
+          unasked = turns.filterNot(t => live.exists(_._1 == t.workflow))
+          noCase = unasked.filter(t =>
+            t.said match {
+              case Said.Slack(_) => false
+              case Said.Tui(_) | Said.Task(_) => true
+            }
+          )
+          built = unasked.collect {
+            case t @ TurnCase(_, _, _, Said.Slack(id), _, _, _, _, _, _, _, _, _, _, _) =>
+              (t, id, TurnTriage.ask(reader, t, supplies, manifest.tuning))
+          }
+          asks = built.collect { case (t, id, Right(a)) => (t, id, a) }
+          calls = asks.map((t, id, a) =>
+            Call(Suite.Triage, id, 0, a.posed.asking, a.posed.request, Some(t.focus))
+          )
+          model = Variants.LiveModel
+          estimated = Run.estimate(
+            calls,
+            model,
+            k => store.get(k).exists((c: Option[Cached[Vector[Weights]]]) => c.isDefined)
+          )
+          budget <- Budget
+            .of(cap, estimated)
+            .left
+            .map(r => s"refused: estimated $$${r.estimated} is over the cap $$${r.cap}")
+          // Jev's settings are read only when a call is to be asked.
+          jevConfig <-
+            if (estimated == 0) Right(None)
+            else JevConfig.fromEnv(env).left.map(_.message).map(Some(_))
+          ran = {
+            val jev: Classifier^ = jevConfig match {
+              case Some(c) => JevClassifier(c.copy(model = model))
+              case None => Classifier.none("no call was to be asked")
+            }
+            Run(calls, jev, model, store, budget, clock)
+          }
+          asked = asks.zip(ran.rows).flatMap {
+            (ask: (TurnCase, CaseId, TurnAsk), r: Row[Vector[Weights]]) =>
+              val (t, _, a) = ask
+              r.outcome match {
+                case Outcome.Answered(ws) => TurnTriage.named(a, ws).map(t.workflow -> _)
+                case Outcome.Failed(_) | Outcome.Skipped => None
+              }
+          }
+          answers = (live ++ asked).toMap
+          // Each turn's window at each width a variant draws it at, rebuilt once.
+          widths = (TurnVariant.Shipped +: variants)
+            .flatMap(v =>
+              turns.map(t =>
+                (
+                  t.workflow,
+                  TurnVariant.width(
+                    v,
+                    t.root,
+                    answers.getOrElse(t.workflow, VectorMap.empty),
+                    assembled
+                  )
+                )
+              )
+            )
+            .distinct
+          windows = widths
+            .map((w, width) =>
+              (w, width) -> Rebuild
+                .recorded(reader, w, assembled, width)
+                .flatMap(r =>
+                  TurnRef
+                    .fromWorkflowId(w)
+                    .toRight(s"${WorkflowId.value(w)} is not a turn")
+                    .flatMap(TurnCapture.costed(reader, _, r.rebuilt))
+                )
+            )
+            .toMap
+        } yield {
+          def build(v: TurnVariant, t: TurnCase): (Given, Set[Service]) = {
+            val (offer, set) = offered.getOrElse(t.workflow, (None, Vector.empty))
+            val a = answers.getOrElse(t.workflow, VectorMap.empty)
+            val withheld = TurnVariant
+              .withheld(v, a, supplies)
+              .flatMap(s => offer.toVector.flatMap(TurnVariant.toolsOf(_, s)))
+            val kept = set.filterNot(e => withheld.contains(e.name))
+            val names = kept.map(_.name).toSet
+            val services = offer.toVector
+              .flatMap(o =>
+                o.workspace.flatMap(_.service).toVector ++ o.reached.values.flatMap(_.service)
+              )
+              .distinct
+              .filter(s => offer.exists(o => TurnVariant.toolsOf(o, s).exists(names.contains)))
+              .toSet
+            val drawn = windows
+              .get((t.workflow, TurnVariant.width(v, t.root, a, assembled)))
+              .flatMap(_.toOption)
+            (Given(kept.map(_.name), TurnCapture.schema(kept), drawn), services)
+          }
+          def varied(v: TurnVariant): Varied = {
+            val pairs =
+              turns.map(t => TurnPair(t, build(TurnVariant.Shipped, t)._1, build(v, t)._1))
+            Varied(
+              v.name,
+              Recipe.of(pairs),
+              reference.turns.toVector.flatMap((w: WorkflowId, expected: Vector[Expect]) =>
+                turns.find(_.workflow == w).map { t =>
+                  val (g, services) = build(v, t)
+                  (w, t.conversation, Reference.judge(expected, g.window, services))
+                }
+              )
+            )
+          }
+          val notRebuilt = windows.collect { case ((w, _), Left(why)) =>
+            s"  ${WorkflowId.value(w)}: $why"
+          }
+          val notes = Vector(
+            s"turns: ${turns.size}; triage's answers kept live ${live.size}, Jev's (kept or asked) " +
+              s"${asked.size}, not asked for want of a case id ${noCase.size}, not built " +
+              s"${built.count(_._3.isLeft)}, asked and unanswered or skipped " +
+              s"${asks.size - asked.size}",
+            s"Jev: calls ${calls.size}, estimated $$$estimated, cap $$$cap, spent " +
+              s"$$${ran.budget.spent}",
+            s"reference turns: ${reference.turns.size} (labelled ${Reference.labelled(labelled).turns.size})",
+            s"windows rebuilt: ${windows.count(_._2.isRight)} of ${windows.size}"
+          ) ++ notRebuilt.toVector.sorted ++ built.collect { case (t, _, Left(why)) =>
+            s"  not asked: ${WorkflowId.value(t.workflow)}: $why"
+          }
+          Report.recipes(corpus, notes, varied(TurnVariant.Shipped), variants.map(varied))
+        }
+      }
+      _ <- publish(eval, s"recipes-$corpus", text)
+    } yield ()
+
+  /** The offer `t` recorded and its tool set's entries, read through `reader`; none when it
+    * recorded no offer.
+    */
+  private def offerOf(
+      reader: Reader^,
+      t: TurnCase
+  ): Either[String, (Option[TurnOffer.Recorded], Vector[ToolSet.Entry])] = {
+    val name = WorkflowId.value(t.workflow)
+    for {
+      steps <- reader.steps(t.workflow).left.map(e => s"steps of $name unread: ${Capture.kind(e)}")
+      offer <- TurnRecord.offer(steps).left.map(why => s"offer of $name unread: $why")
+      set <- offer.fold[Either[String, Vector[ToolSet.Entry]]](Right(Vector.empty))(o =>
+        reader.db
+          .read(reader.toolSets.get(o.tools))
+          .map(_.tools)
+          .left
+          .map(e => s"tool set of $name unread: ${Capture.kind(e)}")
+      )
+    } yield (offer, set)
+  }
 
   /** The turns of the corpus in `dir`, from `turns.jsonl`. */
   private def readTurns(dir: Path): Either[String, Vector[TurnCase]] =

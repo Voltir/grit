@@ -17,17 +17,21 @@ enum Asking {
 
   /** Stitching's: where `offer`'s message goes, under `tuning`. */
   case Stitch(offer: Offer, tuning: Tuning)
+
+  /** A question set's, of `state`, with `sources`' per-source questions. */
+  case Questions(set: TriageQuestions, state: TriageQuestion.State, sources: KnowledgeSources)
 }
 
 object Asking {
 
-  /** `asking` put to `classifier` through the shipped call (v1 in its wording,
+  /** `asking` put to `classifier` through the shipped call (v1 in its wording, or the set,
     * [[TriageQuestions.ask]]; [[Stitching.place]]); what it makes of the answer is dropped.
     */
   def ask(asking: Asking, classifier: Classifier^): Unit = asking match {
     case Triage(state, wording) =>
       val _ = TriageQuestions.v1(wording).ask(classifier, state, KnowledgeSources.Empty)
     case Stitch(offer, tuning) => val _ = Stitching.place(classifier, offer, tuning)
+    case Questions(set, state, sources) => val _ = set.ask(classifier, state, sources)
   }
 }
 

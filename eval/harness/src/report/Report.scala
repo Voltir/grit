@@ -150,6 +150,20 @@ object Report {
   def turns(corpus: String, turns: Vector[TurnCase], verdicts: Verdicts): String =
     TurnLines.of(corpus, turns, verdicts)
 
+  /** A recipes run over `corpus`: `notes` (lines on how it ran) first; then each of
+    * `variants` against shipped on tools offered (called-tool recall first among them), window
+    * tokens by part, used-section recall (stated undefined when no reply used a part), the
+    * turns each changed, by id; and the reference turns' pass rate under `shipped` and each
+    * variant, with the failing turns by id (none stated when there is no reference turn).
+    */
+  def recipes(
+      corpus: String,
+      notes: Vector[String],
+      shipped: Varied,
+      variants: Vector[Varied]
+  ): String =
+    RecipeLines.of(corpus, notes, shipped, variants)
+
   /** One side of a drafts report: its log's `file` name, the `log`, the question set it asks,
     * by name, and that set's `gate`.
     */

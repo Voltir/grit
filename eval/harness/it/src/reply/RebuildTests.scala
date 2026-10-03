@@ -11,7 +11,15 @@ import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{AssemblyNote, Width}
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, ConversationId, PrincipalId, SourceId, TurnRef, WorkflowId}
+import grit.core.id.{
+  CloseRef,
+  ConversationId,
+  PrincipalId,
+  QuestionName,
+  SourceId,
+  TurnRef,
+  WorkflowId
+}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
@@ -22,7 +30,8 @@ import grit.core.tool.Toolbox
 import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
-import grit.eval.harness.jev.Budget
+import grit.eval.harness.corpus.{Digest, Dump, TurnCapture}
+import grit.eval.harness.jev.{Asking, Budget}
 import grit.eval.harness.log.Cache
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords, TriageSpeech}
@@ -271,6 +280,40 @@ object RebuildTests extends TestSuite {
       val r = right(Rebuild.recorded(reader, b.workflowId, Assembled.Shipped, Width.Deployed))
       conversations(r.rebuilt.nearby).filter(Set(a, c).map(_.conversationId)) ==>
         Vector(a.conversationId)
+    }
+
+    test(
+      "a message said to grit is put triage's set as heard, a question per source at its place"
+    ) {
+      val (reader, Vector(_, b, _)) = world: @unchecked
+      val turns = right(TurnCapture(reader, Dump(Digest.text(""), now().plusSeconds(60))))
+      val supplies = right(
+        Supplies.read(
+          """{"sources": [
+            |  {"name": "tasks", "line": "the tasks' records", "within": "task:", "service": null},
+            |  {"name": "chat", "line": "the chat", "within": "slack:", "service": null}
+            |]}""".stripMargin
+        )
+      )
+      // b's message, said in a task: asked as heard, with a question for the task source only.
+      turns.cases
+        .find(_.workflow == b.workflowId)
+        .toRight("b not captured")
+        .flatMap(TurnTriage.ask(reader, _, supplies, Tuning.Default))
+        .map(a =>
+          (
+            a.questions.keys.map(QuestionName.value).toVector,
+            a.posed.asking match {
+              case Asking.Questions(_, state, _) => state.message
+              case _ => "not a question set's"
+            }
+          )
+        ) ==> Right(
+        (
+          Vector("gap", "open", "to", "durable", "anchor", "source:tasks"),
+          "what is the Falcon budget?"
+        )
+      )
     }
 
     test(

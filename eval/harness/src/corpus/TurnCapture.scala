@@ -3,7 +3,7 @@ package grit.eval.harness.corpus
 import scala.collection.immutable.VectorMap
 
 import grit.assembly.estimate.CharEstimate
-import grit.core.context.Shown
+import grit.core.context.{AssemblyNote, Shown, Window}
 import grit.core.durable.StepRecord
 import grit.core.id.{EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
@@ -11,7 +11,7 @@ import grit.core.period.Probability
 import grit.core.provider.{ModelRequest, ToolSchema}
 import grit.core.speech.Outcome
 import grit.core.store.{Entry, Nearby, Origin, Payload, Position, Speakers, StoreError, Tx}
-import grit.core.tool.ToolName
+import grit.core.tool.{ToolName, ToolSet}
 import grit.dbos.engine.{Build, Reader}
 import grit.turn.{Turn, TurnFailure, TurnJudge, TurnOffer, TurnRecord}
 
@@ -124,18 +124,11 @@ object TurnCapture {
               set <- reader.toolSets.get(o.tools)
               prompt <- reader.prompts.prompt(o.prompt)
             } yield {
-              val schemas =
-                set.tools.map(e => ToolSchema(ToolName.value(e.name), e.does, e.parameters))
               val byLayer = prompt.fragments.groupBy(_.layer)
               Some(
                 Offered(
                   set.tools.map(_.name),
-                  if (schemas.isEmpty) Tokens.Zero
-                  else
-                    minus(
-                      CharEstimate.request(ModelRequest("", Vector.empty, schemas)),
-                      CharEstimate.system("")
-                    ),
+                  schema(set.tools),
                   VectorMap.from(
                     prompt.fragments
                       .map(_.layer)
@@ -199,6 +192,54 @@ object TurnCapture {
         }
     }
   }
+
+  /** What the definitions of `tools` cost as a request is costed ([[CharEstimate]]): nothing
+    * for none.
+    */
+  def schema(tools: Vector[ToolSet.Entry]): Tokens =
+    if (tools.isEmpty) Tokens.Zero
+    else
+      minus(
+        CharEstimate.request(
+          ModelRequest(
+            "",
+            Vector.empty,
+            tools.map(e => ToolSchema(ToolName.value(e.name), e.does, e.parameters))
+          )
+        ),
+        CharEstimate.system("")
+      )
+
+  /** `window`, drawn for `turn`, by part as [[apply]] captures a recorded one, each costed by
+    * [[CharEstimate]] as [[Shown]] shows it now, none with a support. `Left` naming what could
+    * not be read; never a message's text.
+    */
+  def costed(reader: Reader^, turn: TurnRef, window: Window): Either[String, Parts] =
+    reader.db
+      .read(
+        for {
+          all <- reader.entries.list(turn.conversationId)
+          at <- reader.entries.at(turn.conversationId, window.entries)
+          near <- Nearby.read(window.nearby, reader.entries)
+          mine = all.filter(_.turnSeq == turn.turnSeq).sortBy(e => EntrySeq.value(e.seq))
+          named <- reader.principals.speakers((at ++ near ++ mine).map(_.id).distinct)
+        } yield parts(
+          turn,
+          at,
+          window.notes.flatMap {
+            case AssemblyNote.Recalled(turns) => turns
+            case _ => Vector.empty
+          }.toSet,
+          window.nearby,
+          near,
+          mine,
+          named,
+          None,
+          ""
+        )
+      )
+      .left
+      .map(e => s"the window of ${WorkflowId.value(turn.workflowId)} unread: ${Capture.kind(e)}")
 
   /** The window's parts in the order shown: each of `nearby`'s sections over `near`, then
     * `at`, its own entries, by turn (a closing alone, as the record).

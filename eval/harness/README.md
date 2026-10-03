@@ -37,7 +37,9 @@ Packages, each importing only those above it:
   its tool loop's rounds (each call by the tool it named: an offered one, the turn's own
   `topic` tool, or neither), how it ended, its ledger rows by role and what became of a heard
   root's draft, read by `TurnCapture` through `Reader` and the turn's own reading of its
-  records (`grit.turn.TurnRecord`), each window part costed by `CharEstimate` over `Shown`;
+  records (`grit.turn.TurnRecord`), each window part costed by `CharEstimate` over `Shown`
+  (`TurnCapture.costed` costs a rebuilt window the same way, and `TurnCapture.schema` a set of
+  tool definitions);
   `Support`, how much of a reply a part carries, computed where the text is and kept as the
   number, the line at which a part counts as used (`Support.Used`), and a window's most
   supported parts (`Support.top`); `TurnJson`, a turn's line of `turns.jsonl`. `Fields`, the reader every file's JSON
@@ -74,6 +76,8 @@ Packages, each importing only those above it:
   `log`
 - **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
   (the model, triage's wording, its recipe and the words it is asked in, or the tuning), and `Variants`, those a run can name;
+  `Asking`, how a question is put to Jev through the shipped call: v1 in a wording,
+  stitching's, or a question set's with the knowledge sources it asks about;
   `QuestionSet`, a question set a comparison names (its gate, and its questions read as
   durable and as `to`), and `Sets`, those it can name (`v1`, the set live triage asked before
   v2, and `v2`, live's since);
@@ -104,7 +108,9 @@ Packages, each importing only those above it:
   `Reference`, what turns' builds are expected to do, by ids alone (`Expect`: a window holds
   what a locator names, a service's tools are offered, or withheld), from a person's reply
   labels (an answer found in records shown) and a hand-written file, each turn `Judged` under
-  a variant. ← `corpus`, `label`, `log`, `jev`
+  a variant. `TurnTriage`, live triage's question set put to the message a recorded turn
+  answers, built by the shipped builder over the database as it stood when the turn started,
+  a message said to grit read as one heard (`TurnAsk`). ← `corpus`, `label`, `log`, `jev`
 - **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
   (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
   kept, within the cap; `Repeats`, how many times each is asked. ← `corpus`, `log`, `jev`
@@ -143,7 +149,10 @@ Packages, each importing only those above it:
   (`score.Structure`) beside the verdicts standing: `Report.turns`, the pass rate first, then
   each section over every turn, by root and by where said, then a line a turn by cost, with
   the used-part threshold stated as a heuristic and used-section recall stated undefined where
-  no reply said anything. ← `stats`,
+  no reply said anything. Turn variants against shipped: `Report.recipes`, each `Varied`
+  variant's tools (called-tool recall first), window tokens by part, used-section recall
+  (stated undefined when no reply used a part), the turns it changed, and the reference
+  turns' pass rate under shipped and each variant. ← `stats`, `reply`,
   `corpus`, `label`, `log`, `pull`, `score`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
 
