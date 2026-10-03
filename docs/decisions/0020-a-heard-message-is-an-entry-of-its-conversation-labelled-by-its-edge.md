@@ -1,6 +1,7 @@
 # 0020. A heard message is an entry of its conversation, labelled by its edge and triaged, and supports no Standing line
 
-Status: accepted (2026-09-28)
+Status: accepted (2026-09-28); amended (2026-10-03): triage asks a question set, its
+answers kept by name
 
 Context: grit was answering only what was said to it. A deployment also wants the rest of a
 listened place (a Slack channel's threads) kept, so a later question can be answered from
@@ -43,15 +44,25 @@ Decision:
   said the freeze moves to Thursday"): its prose and outcome, never Open or Standing lines.
   The policy's `heard` role writes it. In a period with anything said to grit, what was
   said to grit can still stand.
-- **Each heard message is triaged once** by a classifier, in one call: what kind of message
-  it is (question, answer, decision, announcement or chatter), and whether someone waits on
-  a reply, whether it states something worth keeping (durable), and whether a reply from
-  grit would help. Its tags are kept beside its entry and deleted with it. Triage writes no
-  entry, so it never moves a period's deadline. The kind decides only that chatter is never
-  answered unprompted (ADR 0022).
+- **Each heard message is triaged once** by a classifier, in one call. Its tags are kept
+  beside its entry and deleted with it. Triage writes no entry, so it never moves a period's
+  deadline. (Amended 2026-10-03.) It asks a question set, `TriageQuestions.Shipped`, and
+  keeps every answer as given, under its question's name, in the order asked: v2's `gap`
+  (what the message leaves open: it asks, its author owes, it closes something, or nothing),
+  whether that is still `open`, whether it is directed `to` one person, whether it is
+  `durable`, whether it is something no record could supply (`anchor`), then one yes/no per
+  knowledge source covering the message's conversation. Named answers, not columns: the
+  per-source questions differ by deployment and place, and live and shadow rows become one
+  shape. A message triaged before then keeps v1's: its kind (question, answer, decision,
+  announcement or chatter), and whether someone waits on a reply, whether it is durable, and
+  whether a reply from grit would help; a triage in flight across the change reads its
+  recorded v1 answers back under those names.
 - **A period earns a written closing** when grit was addressed in it, or a heard message in
   it was tagged durable (at 0.5 or above), or one is untagged or unanswered. It fails open,
   so a triage outage costs money, never a record. `Earning.earns` is the one definition.
+  (Amended 2026-10-03.) It reads `durable` by name (`Earning.Durable`), the name every set
+  asks it under; answers without a `durable` yes/no earn, as an untagged message does, and a
+  build whose live set does not ask it is refused at declaration (`DurableUnasked`).
 - **A due period that does not earn closes `Unearned`**, whatever its deadline's reason, with
   no classifier or model call. Its closing's prose is a fixed line ("Heard 4 messages;
   nothing kept.") and its balance is carried, so retention and the next period work as for
@@ -64,7 +75,8 @@ Consequences:
 - A thread nobody addressed to grit leaves a record, so a question elsewhere can be answered
   from it as what someone said, never as a settled fact.
 - A heard period costs one classifier call per message, and a written closing only when it
-  earned one. What `helps` measures is recorded for when grit may speak unprompted.
+  earned one. Which messages grit may answer unprompted is derived from the answers by a
+  gate (ADR 0022).
 - A window shows a heard message as speech not said to grit.
 - Enforced by:
   - the inbox contract (`InboxContract`: a heard message dated when it was said);

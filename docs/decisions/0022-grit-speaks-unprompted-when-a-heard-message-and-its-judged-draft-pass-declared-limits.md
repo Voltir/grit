@@ -1,6 +1,7 @@
 # 0022. grit speaks unprompted when a heard message passes triage, its draft passes a judge, and declared limits allow it
 
-Status: accepted (2026-09-30), revised (2026-09-30)
+Status: accepted (2026-09-30), revised (2026-09-30); amended (2026-10-03): the gate over
+triage's answers is the deployment's `Limits.drafts`
 
 Context: a listened channel (ADR 0020) is kept, but grit only ever answered what was said to
 it. A deployment also wants grit to join in, with context or insight a thread lacks, when that
@@ -9,7 +10,7 @@ is worth the interruption. Turned down:
 - a workflow of its own for speaking: it would duplicate the turn's window, ledger, summary,
   delivery and recovery;
 - the edge deciding: it would put triage and the ledger in the edge;
-- gating on triage alone: measured, `helps` passes about a quarter of what is heard,
+- gating on triage alone: measured, v1's `helps` passed about a quarter of what is heard,
   "yep" among it;
 - gating on the kind "question": grit is to add insight, not only answer;
 - judging in triage: triage and the turn share their conversation's queue slot, so triage
@@ -24,13 +25,22 @@ Decision:
   would go, in its own address form, and whom the message names. A past message has no
   address, so it is never answered.
 - **The deployment says whether grit speaks, and within what**: `Speaking.Off`, `Shadow` (draft
-  and judge, never post) or `Within(Limits)`. The limits are `helpsAt`, `postAt`, freshness,
-  a rate of posts per thread, per room and per deployment, and a daily cap on speech spend.
-  Speech is also counted in the deployment's budget.
+  and judge, never post) or `Within(Limits)`. The limits are `drafts`, a gate over triage's
+  answers, `postAt`, freshness, a rate of posts per thread, per room and per deployment, and
+  a daily cap on speech spend. Speech is also counted in the deployment's budget.
+  (Amended 2026-10-03: the gate was `helpsAt` and "not chatter", fixed to v1's answers.) A
+  gate is bounds on readings of named answers (a yes/no's probability, a choice's weight on a
+  key, or whether a key is its most weighted); the reference deployment speaks by live
+  triage's own (`TriageQuestions.Shipped.speak`: gap asks, still open, not directed at one
+  person, not something no record could supply). A gate reading a question live triage does
+  not ask is refused at declaration (`SpeechUnread`): it would hold every message.
 - **Triage considers each message it tagged.** It holds on the first check that fails: off,
-  no address, stale, untagged, chatter, `helps` under `helpsAt`, naming someone else, an
-  earlier unprompted turn in the thread not yet answered, a rate reached, the speech cap or
-  the budget. Otherwise it starts the heard message's own turn. It fails closed.
+  no address, stale, untagged, the gate (`Gated`, with every bound the answers failed and
+  what each read; `Unasked`, when the answers hold no answer a bound reads, as for a message
+  triaged by an earlier set), naming someone else, an earlier unprompted turn in the thread
+  not yet answered, a rate reached, the speech cap or the budget. Otherwise it starts the
+  heard message's own turn. It fails closed. A hold an earlier build kept as `chatter` or
+  `below` reads back as gated on v1's bound.
 - **The turn drafts.** It is told it was not addressed, to add what the thread lacks from what
   it was shown, or to reply `pass`. Its answer is a draft: never shown, never searched, and
   not a period's activity.
