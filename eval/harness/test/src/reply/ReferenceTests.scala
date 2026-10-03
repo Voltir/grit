@@ -33,6 +33,14 @@ object ReferenceTests extends TestSuite {
       judge(window(part(Part.Kind.Open, 1, 3))) ==> Judged.Fail
     }
 
+    test("omits passes when the window shows none of its locator's entries, and fails on one") {
+      def judge(w: Option[Parts]) = Reference.judge(Vector(Expect.Omits(messages)), w, Set.empty)
+      // Seqs 1 and 2 are named; a window showing 1 alone shows one of them.
+      judge(window(part(Part.Kind.Open, 3))) ==> Judged.Pass
+      judge(window(part(Part.Kind.Recent, 1, 3))) ==> Judged.Fail
+      judge(None) ==> Judged.Unjudged
+    }
+
     test("a record is held only by a record or a closed part showing its closing") {
       def judge(w: Option[Parts]) = Reference.judge(Vector(Expect.Holds(record)), w, Set.empty)
       judge(window(part(Part.Kind.Closed, 4))) ==> Judged.Pass
@@ -71,17 +79,23 @@ object ReferenceTests extends TestSuite {
       val text =
         """{"turns": {"w1": [{"offers": "github"},
           |  {"holds": {"record": {"conversation": "c", "closing": 4}}},
-          |  {"withholds": "github"}]}}""".stripMargin
+          |  {"withholds": "github"},
+          |  {"omits": {"messages": {"conversation": "c", "seqs": [1, 2]}}}]}}""".stripMargin
       Reference.read(text) ==> Right(
         Reference(
           VectorMap(
             WorkflowId("w1") ->
-              Vector(Expect.Offers(github), Expect.Holds(record), Expect.Withholds(github))
+              Vector(
+                Expect.Offers(github),
+                Expect.Holds(record),
+                Expect.Withholds(github),
+                Expect.Omits(messages)
+              )
           )
         )
       )
       Reference.read("""{"turns": {"w1": [{"drafts": true}]}}""") ==>
-        Left("reference: w1: not one of holds, offers or withholds")
+        Left("reference: w1: not one of holds, omits, offers or withholds")
     }
   }
 }

@@ -70,6 +70,12 @@ object Locator {
       seqs.forall(s => parts.exists(p => p.conversation == of && p.seqs.contains(s)))
   }
 
+  /** Whether `parts` show any entry `l` names, each found as [[held]] finds it. */
+  def anyHeld(l: Locator, parts: Vector[Part]): Boolean = l match {
+    case r: Record => held(r, parts)
+    case Messages(of, seqs) => seqs.exists(s => held(Messages(of, ::(s, Nil)), parts))
+  }
+
   /** `l` as files write it: `{"record": {"conversation", "closing"}}` or `{"messages":
     * {"conversation", "seqs"}}`.
     */

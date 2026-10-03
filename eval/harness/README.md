@@ -108,15 +108,15 @@ Packages, each importing only those above it:
   tools withheld when triage answered every knowledge source the service supplies below a
   line, the link from source to service given as `Supplies`, since grit keeps none.
   `Reference`, what turns' builds are expected to do, by ids alone (`Expect`: a window holds
-  what a locator names, a service's tools are offered, or withheld), from a person's reply
-  labels (an answer found in records shown) and a hand-written file, each turn `Judged` under
-  a variant. `TurnTriage`, live triage's question set put to the message a recorded turn
+  what a locator names, or none of it, a service's tools are offered, or withheld), from a
+  person's reply labels (an answer found in records shown) and a hand-written file, each turn
+  `Judged` under a variant. `TurnTriage`, live triage's question set put to the message a recorded turn
   answers, built by the shipped builder over the database as it stood when the turn started,
   a message said to grit read as one heard (`TurnAsk`). `Synthetic`, `grit.eval`'s cases as a
   reference: each case in each variant a turn said to grit in the synthetic database, found by
   its conversations' origins as `grit.eval.Layout` lays them out (`Asked`), each conversation's
-  `[must]` entries expected held, a case labelling none left out; its window drawn as `Rebuild`
-  draws one, over the database as it stands, searched with the case's own query, within the
+  `[must]` entries expected held and its `[never]` entries omitted, a case labelling neither
+  left out; its window drawn as `Rebuild` draws one, over the database as it stands, searched with the case's own query, within the
   case's scope (`AsOf.settled`, the lifecycle settings read as given). ← `corpus`, `label`,
   `log`, `jev`
 - **`run`** — `Run`, a run's calls asked of Jev through the shipped calls

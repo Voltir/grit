@@ -17,14 +17,15 @@ import grit.turn.TurnOffer
 
 /** grit.eval's cases as a reference: each case, in each [[Variant]], a turn said to grit in the
   * synthetic database `scripts/eval reference-build` writes ([[Layout]]), expected to hold its
-  * `[must]` entries.
+  * `[must]` entries and none of its `[never]` entries.
   */
 object Synthetic {
 
   /** One case's turn found in the synthetic database: `name` (`{case}/{variant}`), the case it
     * is a variant `of`, the turn it asks in, each of its conversations' `[must]` entries
-    * expected held ([[Expect.Holds]] of a [[Locator.Messages]]), the query its window is
-    * searched with, and the scope it is drawn within.
+    * expected held ([[Expect.Holds]] of a [[Locator.Messages]]) and then its `[never]` entries
+    * expected omitted ([[Expect.Omits]]), the query its window is searched with, and the scope
+    * it is drawn within.
     */
   final case class Asked(
       name: String,
@@ -36,7 +37,8 @@ object Synthetic {
   )
 
   /** The cases found: each turn `asked`, and the names (`{case}/{variant}`) of those
-    * `unlabelled`, which label no `[must]` entry, so expect nothing, and are left out.
+    * `unlabelled`, which label no `[must]` or `[never]` entry, so expect nothing, and are left
+    * out.
     */
   final case class Found(asked: Vector[Asked], unlabelled: Vector[String])
 
@@ -55,7 +57,10 @@ object Synthetic {
           must <- Fields.each(layout.must)((o, seqs) =>
             conversation(reader, name, o).map(id => Expect.Holds(Locator.Messages(id, seqs)))
           )
-        } yield must.toList match {
+          never <- Fields.each(layout.never)((o, seqs) =>
+            conversation(reader, name, o).map(id => Expect.Omits(Locator.Messages(id, seqs)))
+          )
+        } yield (must ++ never).toList match {
           case first :: rest =>
             Right(
               Asked(name, c.name, TurnRef(own, layout.ask), ::(first, rest), query, layout.scope)
@@ -72,7 +77,7 @@ object Synthetic {
     Fields.each(Cases.all ++ Cases.crossPlace)((name, text) => Case.parse(name, text))
 
   /** What a build wrote: its cases, its turns (a case's in each variant), its entries, and the
-    * names of the cases that label no `[must]` entry.
+    * names of the cases that label no `[must]` or `[never]` entry.
     */
   final case class Built(cases: Int, turns: Int, entries: Int, unlabelled: Vector[String])
 
@@ -98,7 +103,7 @@ object Synthetic {
       cases.size,
       layouts.size,
       written.sum,
-      layouts.filter(_.must.isEmpty).map(_.c.name).distinct
+      layouts.filter(l => l.must.isEmpty && l.never.isEmpty).map(_.c.name).distinct
     )
 
   /** The width `v` draws a synthetic case's turn at: one said to grit (addressed), with no

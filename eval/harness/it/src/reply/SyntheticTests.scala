@@ -12,7 +12,8 @@ import utest.*
 
 /** grit.eval's cases as a reference over a database they were loaded into as
   * `scripts/eval reference-build` loads them: `invoice` holds its answer in another
-  * conversation of its own; `decoy` holds the same words in one of its own and labels nothing.
+  * conversation of its own; `decoy` holds the same words in one of its own and labels nothing;
+  * `closed` holds them in a period of its own since closed, labelled `[never]`.
   */
 object SyntheticTests extends TestSuite {
 
@@ -49,7 +50,19 @@ object SyntheticTests extends TestSuite {
       |""".stripMargin
   )
 
-  /** Every variant of both cases loaded into a database of their own, and the turns each asks
+  private val closed = parsed(
+    "closed",
+    """query: invoice fix timezone TZ UTC
+      |place fs:/home/api closed
+      |turn
+      |you: The invoice test is flaky, only in CI.
+      |grit: Pin TZ=UTC in the test JVM. [never]
+      |ask
+      |you: What fix did I settle on for the flaky invoice test?
+      |""".stripMargin
+  )
+
+  /** Every variant of the three cases loaded into a database of their own, and the turns each asks
     * in, by `{case}/{variant}`.
     */
   private lazy val built: (grit.dbos.sql.DbConfig, Map[String, TurnRef]) = {
@@ -57,7 +70,7 @@ object SyntheticTests extends TestSuite {
     val engine = LiveEngine.open(config, "eval")
     try {
       val turns = for {
-        c <- Vector(invoice, decoy)
+        c <- Vector(invoice, decoy, closed)
         v <- Variant.values.toVector
       } yield s"${c.name}/${v.label}" -> right(
         Layout
@@ -75,23 +88,25 @@ object SyntheticTests extends TestSuite {
   }
 
   val tests = Tests {
-    test("a build writes every case in each variant, and names the cases labelling no [must]") {
+    test(
+      "a build writes every case in each variant, and names those labelling no [must] or [never]"
+    ) {
       val engine = LiveEngine.open(TestPostgres.freshDatabase("synthetic_build"), "eval")
       val built =
         try
           Synthetic.build(
-            Vector(invoice, decoy),
+            Vector(invoice, decoy, closed),
             engine.jot,
             engine.conversations,
             engine.entries,
             engine.periods
           )
         finally engine.close()
-      // invoice: 3 + 2 plain, 83 + 22 buried; decoy: 1 + 2 plain, 1 + 22 buried.
-      built ==> Right(Synthetic.Built(2, 4, 136, Vector("decoy")))
+      // invoice: 3 + 2 plain, 83 + 22 buried; decoy and closed each: 1 + 2 plain, 1 + 22 buried.
+      built ==> Right(Synthetic.Built(3, 6, 162, Vector("decoy")))
     }
 
-    test("a case is found as loaded, and one that labels no [must] entry is left out by name") {
+    test("a case is found as loaded, and one labelling no [must] or [never] is left out by name") {
       withReader { reader =>
         val Synthetic.Found(asked, nothing) = right(Synthetic.found(reader, Vector(invoice, decoy)))
         asked.map(a => (a.name, a.turn)) ==> Vector(
@@ -103,6 +118,21 @@ object SyntheticTests extends TestSuite {
           case other => List(other)
         }) ==> Vector(List(grit.core.id.EntrySeq(1)), List(grit.core.id.EntrySeq(1)))
         nothing ==> Vector("decoy/plain", "decoy/buried")
+      }
+    }
+
+    test("a case's [never] lines are found as omits of their conversation's seqs") {
+      withReader { reader =>
+        val asked = right(Synthetic.found(reader, Vector(closed))).asked
+        asked.map(a =>
+          a.name -> a.expected.map {
+            case Expect.Omits(Locator.Messages(c, seqs)) => (c != a.turn.conversationId, seqs)
+            case other => other
+          }
+        ) ==> Vector(
+          "closed/plain" -> List((true, List(grit.core.id.EntrySeq(1)))),
+          "closed/buried" -> List((true, List(grit.core.id.EntrySeq(1))))
+        )
       }
     }
 

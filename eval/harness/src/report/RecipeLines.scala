@@ -115,7 +115,8 @@ private[report] object RecipeLines {
     (Vector("# recipes: synthetic", "") ++ notes ++ Vector(
       "",
       "Each case of grit.eval, as written and buried in filler, is a turn said to grit, which " +
-        "passes when its window holds every [must] entry; unjudged when its window was not " +
+        "passes when its window holds every [must] entry and no [never] entry; unjudged when its " +
+        "window was not " +
         "drawn. A rate's interval is Wilson's at 95% on its effective number, clustered by " +
         s"case (its plain and buried turns one cluster), and none under " +
         s"${Proportion.MinClusters} cases.",

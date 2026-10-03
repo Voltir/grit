@@ -14,6 +14,9 @@ enum Expect {
   /** Its window shows what `at` names ([[Locator.held]]). */
   case Holds(at: Locator)
 
+  /** Its window shows none of what `at` names ([[Locator.anyHeld]]). */
+  case Omits(at: Locator)
+
   /** It is offered a tool of `service`'s. */
   case Offers(service: Service)
 
@@ -60,7 +63,7 @@ object Reference {
     )
 
   /** The expectations `text` holds: `{"turns": {<workflow id>: [{"holds": <locator>} |
-    * {"offers": <service>} | {"withholds": <service>}, …]}}`, a locator as
+    * {"omits": <locator>} | {"offers": <service>} | {"withholds": <service>}, …]}}`, a locator as
     * [[Locator.json]] writes it and a service by its name. Why not, naming the turn, when it
     * is not of that form.
     */
@@ -76,11 +79,12 @@ object Reference {
             Fields.each(es.toVector) { e =>
               e.objOpt.map(_.toVector) match {
                 case Some(Vector(("holds", l))) => Locator.read(l).map(Expect.Holds(_))
+                case Some(Vector(("omits", l))) => Locator.read(l).map(Expect.Omits(_))
                 case Some(Vector(("offers", s))) =>
                   Fields.str("offers", s).flatMap(Service.of).map(Expect.Offers(_))
                 case Some(Vector(("withholds", s))) =>
                   Fields.str("withholds", s).flatMap(Service.of).map(Expect.Withholds(_))
-                case _ => Left("not one of holds, offers or withholds")
+                case _ => Left("not one of holds, omits, offers or withholds")
               }
             }
           )
@@ -96,6 +100,7 @@ object Reference {
   def judge(expected: Vector[Expect], window: Option[Parts], offered: Set[Service]): Judged = {
     val each = expected.map {
       case Expect.Holds(at) => window.map(w => Locator.held(at, w.parts))
+      case Expect.Omits(at) => window.map(w => !Locator.anyHeld(at, w.parts))
       case Expect.Offers(s) => Some(offered.contains(s))
       case Expect.Withholds(s) => Some(!offered.contains(s))
     }

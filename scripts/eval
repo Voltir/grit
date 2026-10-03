@@ -194,17 +194,17 @@
 #       grit.eval's hand-written cases (eval/src/Cases.scala) written into grit_eval_synthetic,
 #       dropped and created afresh, through an engine opened on it: each case as written and
 #       buried in filler, one entry per line, as the assembly eval writes them. Prints counts,
-#       and the cases that label no [must] entry.
+#       and the cases that label no [must] or [never] entry.
 #
 #   scripts/eval recipes synthetic --variant <name>... --context <tokens>
 #                        [--window <tokens>] [--tail <tokens>]
 #       The synthetic reference: each case of grit_eval_synthetic in each variant a turn said
-#       to grit, expected to hold its [must] entries (a case labelling none left out), judged
-#       under shipped and each named variant (as recipes names them) by its window drawn at the
-#       variant's width by the shipped retrieval assembler over the database as it stands,
-#       searched with the case's own query within the case's scope; written to
-#       .local/eval/reports/recipes-synthetic.md and printed: each variant's pass rate,
-#       clustered by case, and its failing turns by name. --context and the assembler's window
+#       to grit, expected to hold its [must] entries and none of its [never] entries (a case
+#       labelling neither left out), judged under shipped and each named variant (as recipes
+#       names them) by its window drawn at the variant's width by the shipped retrieval
+#       assembler over the database as it stands, searched with the case's own query within
+#       the case's scope; written to .local/eval/reports/recipes-synthetic.md and printed: each
+#       variant's pass rate, clustered by case, and its failing turns by name. --context and the assembler's window
 #       and tail are as for recipes. Spends nothing; build the database first.
 #
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes

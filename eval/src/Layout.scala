@@ -61,9 +61,16 @@ final case class Layout(
     * conversation, each conversation's in seq order: its own first, then each other's as
     * written; none when the case labels none.
     */
-  def must: Vector[(Origin, ::[EntrySeq])] =
-    Layout.held(own, rows).toVector ++ others.flatMap(o =>
-      Layout.held(o.origin, o.first ++ o.second)
+  def must: Vector[(Origin, ::[EntrySeq])] = labelled(_.must)
+
+  /** The entries a window for the case must not hold (its `[never]` lines), as [[must]] gives
+    * its own.
+    */
+  def never: Vector[(Origin, ::[EntrySeq])] = labelled(_.never)
+
+  private def labelled(is: Case.Line => Boolean): Vector[(Origin, ::[EntrySeq])] =
+    Layout.marked(own, rows, is).toVector ++ others.flatMap(o =>
+      Layout.marked(o.origin, o.first ++ o.second, is)
     )
 }
 
@@ -212,9 +219,13 @@ object Layout {
       case _ => Left(s"a case's place is fs: or task:, not ${place.written}")
     }
 
-  /** The seqs of `rows`' `[must]` lines, with `origin`; none when no line is. */
-  private def held(origin: Origin, rows: Vector[Row]): Option[(Origin, ::[EntrySeq])] =
-    rows.filter(_.line.must).map(_.seq).toList match {
+  /** The seqs of `rows`' lines that `is`, with `origin`; none when no line is. */
+  private def marked(
+      origin: Origin,
+      rows: Vector[Row],
+      is: Case.Line => Boolean
+  ): Option[(Origin, ::[EntrySeq])] =
+    rows.filter(r => is(r.line)).map(_.seq).toList match {
       case first :: rest => Some(origin -> ::(first, rest))
       case Nil => None
     }

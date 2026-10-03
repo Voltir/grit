@@ -651,7 +651,7 @@ object Main {
     } yield {
       println(s"cases: ${built.cases}, turns ${built.turns}, entries ${built.entries}")
       println(
-        s"labelling no [must] entry: ${built.unlabelled.size}" +
+        s"labelling no [must] or [never] entry: ${built.unlabelled.size}" +
           (if (built.unlabelled.isEmpty) "" else built.unlabelled.mkString(" (", ", ", ")"))
       )
     }
@@ -723,7 +723,7 @@ object Main {
           val notDrawn = windows.toVector.collect { case ((n, _), Left(why)) => s"  $n: $why" }
           val notes = Vector(
             s"cases: ${all.size}; turns judged (a case's in each variant) " +
-              s"${asked.size}, left out for labelling no [must] entry " +
+              s"${asked.size}, left out for labelling no [must] or [never] entry " +
               s"${found.unlabelled.size}" +
               (if (found.unlabelled.isEmpty) "" else found.unlabelled.mkString(" (", ", ", ")")),
             s"windows drawn: ${windows.count(_._2.isRight)} of ${windows.size}, at " +

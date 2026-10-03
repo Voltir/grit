@@ -45,6 +45,18 @@ object LayoutTests extends TestSuite {
       )
     }
 
+    test("a layout's [never] entries by their conversation's origin, as its [must] are") {
+      val layout = laid(
+        crossPlace
+          .replace("and UTC [must]", "and UTC [never]")
+          .replace("reopened [must]", "reopened [never]")
+      )
+      layout.never.map((o, seqs) => (o.place.written, seqs.map(EntrySeq.value))) ==> Vector(
+        "fs:/eval/near/plain/home/api" -> List(1L),
+        "task:eval/near/plain/nightly" -> List(2L)
+      )
+    }
+
     test("a case that labels no [must] entry is laid out expecting none") {
       laid(crossPlace.replace(" [must]", "")).must ==> Vector.empty
     }
