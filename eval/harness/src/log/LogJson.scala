@@ -1,9 +1,13 @@
 package grit.eval.harness.log
 
+import scala.collection.immutable.VectorMap
 import scala.util.Try
 
+import grit.core.classify.Answer
+import grit.core.id.QuestionName
 import grit.core.message.{Tokens, Usage}
 import grit.core.store.Focus
+import grit.core.triage.{ShadowAnswers, ShadowedJson}
 import grit.eval.harness.corpus.Fields.{each, opt}
 import grit.eval.harness.corpus.{CaseId, CorpusJson, Digest, Failure, Fields}
 
@@ -52,6 +56,20 @@ object LogJson {
       }
   }
 
+  /** A question set's answers, each under its question's name, in the order asked: the array
+    * [[grit.core.triage.ShadowedJson]] keeps a shadow's in, read back `Left` unless every
+    * answer is named.
+    */
+  val named: Codec[VectorMap[QuestionName, Answer]] = new Codec[VectorMap[QuestionName, Answer]] {
+    def write(a: VectorMap[QuestionName, Answer]): ujson.Value =
+      ShadowedJson.writeAnswers(ShadowAnswers.Named(a))
+    def read(v: ujson.Value): Either[String, VectorMap[QuestionName, Answer]] =
+      ShadowedJson.readAnswers(v).flatMap {
+        case ShadowAnswers.Named(answers) => Right(answers)
+        case ShadowAnswers.Worded(_) => Left("answers: not named")
+      }
+  }
+
   def header(h: Header): String = ujson
     .Obj(
       "header" -> ujson.Obj(
@@ -63,6 +81,9 @@ object LogJson {
         "model" -> h.model,
         "tuning" -> h.tuning.fold[ujson.Value](ujson.Null)(CorpusJson.writeTuning),
         "recipe" -> digest(h.recipe),
+        "questions" -> h.questions.fold[ujson.Value](ujson.Null)(ns =>
+          ujson.Arr.from(ns.map(n => ujson.Str(QuestionName.value(n))))
+        ),
         "build" -> CorpusJson.writeBuild(h.build),
         "repeats" -> h.repeats,
         "cache" -> h.cache,
@@ -156,6 +177,19 @@ object LogJson {
       model <- f.str("model")
       tuning <- f.optional("tuning").flatMap(opt(_)(CorpusJson.readTuning))
       recipe <- f.added("recipe").flatMap(opt(_)(readDigest("recipe")))
+      questions <- f
+        .added("questions")
+        .flatMap(
+          opt(_)(v =>
+            v.arrOpt
+              .toRight("header: questions is not an array")
+              .flatMap(ns =>
+                each(ns.toVector)(n =>
+                  Fields.str("header: a question", n).flatMap(QuestionName.read)
+                )
+              )
+          )
+        )
       build <- f.field("build").flatMap(CorpusJson.readBuild("header", _))
       repeats <- f.int("repeats")
       cache <- f.bool("cache")
@@ -171,6 +205,7 @@ object LogJson {
       model,
       tuning,
       recipe,
+      questions,
       build,
       repeats,
       cache,

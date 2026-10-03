@@ -31,6 +31,7 @@ import grit.eval.harness.label.Labels
 import grit.eval.harness.log.{
   Cache,
   Cached,
+  Codec,
   Footer,
   Header,
   Log,
@@ -40,7 +41,7 @@ import grit.eval.harness.log.{
   Suite,
   Weights
 }
-import grit.eval.harness.pull.Pull
+import grit.eval.harness.pull.{Pull, ShadowLog}
 import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
@@ -192,6 +193,7 @@ object Main {
         model,
         Variant.tuning(variant),
         Some(Variant.digest(Variant.recipe(variant))),
+        None,
         Build.current,
         repeats,
         cache,
@@ -450,18 +452,23 @@ object Main {
         )
       )
       day = Day.format(at.atOffset(ZoneOffset.UTC))
-      logs = Pulled(s"live-$day.jsonl", pulled.live) +:
-        pulled.shadows.map((s: Pull.Pulled.Shadow) =>
-          Pulled(s"shadow-${ShadowName.value(s.name)}-$day.jsonl", s.log)
-        )
+      logs = Pulled(s"live-$day.jsonl", lines(pulled.live)) +:
+        pulled.shadows.flatMap { (s: Pull.Pulled.Shadow) =>
+          val name = s"shadow-${ShadowName.value(s.name)}-$day.jsonl"
+          s.log match {
+            case ShadowLog.Worded(log) => Some(Pulled(name, lines(log)))
+            case ShadowLog.Named(log) => Some(Pulled(name, lines(log)(using LogJson.named)))
+            case ShadowLog.Mixed(_, _) => None
+          }
+        }
       _ <- Try(Files.createDirectories(runs)).toEither.left.map(e =>
         s"$runs: ${e.getClass.getName}"
       )
       _ <- logs.foldLeft[Either[String, Unit]](Right(()))((done, p: Pulled) =>
-        done.flatMap(_ => write(runs.resolve(p.name), lines(p.log)))
+        done.flatMap(_ => write(runs.resolve(p.name), p.lines))
       )
     } yield {
-      def counted(log: Log[Vector[Weights]]): String = {
+      def counted[A](log: Log[A]): String = {
         val footer = log.footer.getOrElse(Footer.of(BigDecimal(0), log.rows))
         s"${log.rows.size} rows: answered ${footer.answered}, failed ${footer.failed}; " +
           s"spent $$${footer.spent}"
@@ -471,25 +478,33 @@ object Main {
           s"question, left out: ${pulled.unbuilt}"
       )
       println(s"  ${Report.KeptNote}")
-      pulled.shadows.foreach(s =>
+      pulled.shadows.foreach { s =>
+        val kept = s.log match {
+          case ShadowLog.Worded(log) => counted(log)
+          case ShadowLog.Named(log) =>
+            s"a question set's, ${log.header.questions.fold(0)(_.size)} questions; ${counted(log)}"
+          case ShadowLog.Mixed(worded, named) =>
+            s"refused, no log: $worded of its rows are a wording's and $named a question " +
+              "set's; a shadow's name asks one question for its life, so a changed one is " +
+              "declared under a new name"
+        }
         println(
-          s"shadow ${ShadowName.value(s.name)}: ${counted(s.log)}; a question set's, left " +
-            s"out: ${s.named}; tagged since with no row: ended keeping nothing ${s.ended}, " +
-            s"not yet shadowed ${s.waiting}"
+          s"shadow ${ShadowName.value(s.name)}: $kept; tagged since with no row: ended " +
+            s"keeping nothing ${s.ended}, not yet shadowed ${s.waiting}"
         )
-      )
+      }
       println(s"not in the corpus, for the next capture: ${pulled.uncaptured.size}")
       pulled.uncaptured.foreach(id => println(s"  ${id.written}"))
       println(s"written: ${logs.map((p: Pulled) => p.name).mkString(", ")}")
     }
 
-  /** A pulled log, and the name of the file it is written to. */
-  private final case class Pulled(name: String, log: Log[Vector[Weights]])
+  /** A pulled log's file `name`, and its `lines`. */
+  private final case class Pulled(name: String, lines: String)
 
   /** `log` as its file's lines: header, rows, then its footer when it has one. */
-  private def lines(log: Log[Vector[Weights]]): String =
+  private def lines[A: Codec](log: Log[A]): String =
     (Vector(LogJson.header(log.header)) ++
-      log.rows.map((r: Row[Vector[Weights]]) => LogJson.row(r)) ++
+      log.rows.map((r: Row[A]) => LogJson.row(r)) ++
       log.footer.map(LogJson.footer).toVector).map(_ + "\n").mkString
 
   /** The labels `--labels` names, else `<dir>/labels.json`; none when that file does not exist. */

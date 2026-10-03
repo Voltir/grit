@@ -83,7 +83,10 @@
 #       the corpus holds, as run logs in .local/eval/runs/ for score, compare and order: live
 #       triage's tags as live-<today>.jsonl (variant `kept`: only the likeliest kind's
 #       probability is kept live), and each named shadow's answers as
-#       shadow-<name>-<today>.jsonl. Only reads <database>. Prints counts: each log's rows, and
+#       shadow-<name>-<today>.jsonl: a wording's by position, as live's are; a question set's
+#       under its questions' names, the names in its header. A shadow whose rows are of both
+#       (its name declared for a wording and then a set) is refused: no log, its counts
+#       printed; declare a changed question under a new name. Only reads <database>. Prints counts: each log's rows, and
 #       for each shadow the messages tagged since that it has no row for, its shadow ended
 #       keeping nothing or not yet run; and the ids of the messages no corpus holds yet, for
 #       the next capture.

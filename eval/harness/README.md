@@ -30,16 +30,20 @@ Packages, each importing only those above it:
   each case's `Labelled` (its kind, the three yes/no tags, `Context`, whether it states a fact,
   and its `Place`). ← `corpus`
 - **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the
-  corpus, variant, build, cap and repeats a run was started with), `Row` (one request: its
-  case, digest, cache key, `Outcome`, usage, latency, and the focus its message was said at),
-  `Footer` (what it spent), and `Weights`, a classifier's answer by position, never by key; `LogJson`, their JSON lines;
+  corpus, variant, build, cap and repeats a run was started with, and a question set's
+  names), `Row` (one request: its case, digest, cache key, `Outcome`, usage, latency, and the
+  focus its message was said at), `Footer` (what it spent), and `Weights`, a classifier's
+  answer by position, never by key; `LogJson`, their JSON lines, and `LogJson.named`, a
+  question set's answers under their names as a shadow's row keeps them;
   `CacheKey` and `Cache`, answers kept as files under their request's key, so an unchanged
   request is never paid for twice. ← `corpus`
 - **`pull`** — `Pull`, what a deployment's database kept of the heard messages a corpus
   holds, read through `Reader` as run logs the scorers read beside offline runs: live
   triage's tags (variant `kept`, which keeps only the likeliest kind's probability), and
-  each declared shadow's answers (`grit.lifecycle.shadow`); with the messages no
-  corpus holds yet, and each shadow's that ended keeping nothing. ← `corpus`, `log`
+  each declared shadow's answers (`grit.lifecycle.shadow`) as a `ShadowLog`: a wording's by
+  position, a question set's under its names, or refused when a name kept both; with the
+  messages no corpus holds yet, and each shadow's that ended keeping nothing. ← `corpus`,
+  `log`
 - **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
   (the model, triage's wording, its recipe and the words it is asked in, or the tuning), and `Variants`, those a run can name;
   `Inputs`, a case's questions rebuilt through the shipped builders, and `Drift`, how a

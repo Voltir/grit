@@ -2,6 +2,7 @@ package grit.eval.harness.log
 
 import java.time.Instant
 
+import grit.core.id.QuestionName
 import grit.core.stitch.Tuning
 import grit.dbos.engine.Build
 import grit.eval.harness.corpus.Digest
@@ -10,7 +11,7 @@ import grit.eval.harness.corpus.Digest
   * directory's name, and the digest of its files), the labels in force when it started, the
   * variant (its `name`, the digest of the `wording` it asks in, the `model` it requests, the
   * `tuning` it rebuilds stitch and triage inputs under, and the digest of the `recipe` it
-  * builds triage's question by), the build running it, how many
+  * builds triage's question by), the names of the question set it asked, the build running it, how many
   * times each request was asked, whether the cache answered, the spend `cap` in USD, and the
   * digest of the adoption rule it was started under.
   *
@@ -23,6 +24,9 @@ import grit.eval.harness.corpus.Digest
   *   `None` when each case's own tuning was used
   * @param recipe
   *   `None` for a log pulled from a database, or written before runs recorded it
+  * @param questions
+  *   `None` for a log of triage's question; for a question set's shadow pulled from a
+  *   database, the names its first answered row answered, in the order asked
   * @param rule
   *   `None` when it was started under none
   */
@@ -35,6 +39,7 @@ final case class Header(
     model: String,
     tuning: Option[Tuning],
     recipe: Option[Digest],
+    questions: Option[Vector[QuestionName]],
     build: Build,
     repeats: Int,
     cache: Boolean,

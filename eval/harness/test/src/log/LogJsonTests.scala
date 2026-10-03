@@ -2,9 +2,11 @@ package grit.eval.harness.log
 
 import java.time.Instant
 
+import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
-import grit.core.classify.ClassifierError
+import grit.core.classify.{Answer, ClassifierError}
+import grit.core.id.QuestionName
 import grit.core.message.{Tokens, Usage}
 import grit.core.stitch.Tuning
 import grit.core.store.Focus
@@ -29,6 +31,7 @@ object LogJsonTests extends TestSuite {
     "jev-1.13.0",
     Some(Tuning.Default),
     Some(Digest.text("recipe")),
+    None,
     Build.Known("0123456789abcdef0123456789abcdef01234567", false),
     5,
     false,
@@ -83,6 +86,28 @@ object LogJsonTests extends TestSuite {
 
   private val footer = Footer(BigDecimal("0.000514"), 12, 3, 1, 2)
 
+  private def name(n: String): QuestionName = QuestionName.read(n).fold(sys.error, identity)
+
+  private val asks: Vector[Answer.Weight] =
+    Vector(Answer.Weight("asks", 0.8), Answer.Weight("nothing", 0.2))
+
+  private val setAnswers: VectorMap[QuestionName, Answer] = VectorMap(
+    name("gap") -> Answer.Choice("asks", asks, Answer.confidence(asks.map(_.probability))),
+    name("open") -> Answer.YesNo(0.6),
+    name("source:github") -> Answer.YesNo(0.25)
+  )
+
+  private val setHeader: Header = bareHeader.copy(
+    variant = "shadow-v2",
+    questions = Some(Vector(name("gap"), name("open"), name("source:github")))
+  )
+
+  private val setAnswered: Row[VectorMap[QuestionName, Answer]] =
+    answered.copy(outcome = Outcome.Answered(setAnswers))
+
+  private val setFailed: Row[VectorMap[QuestionName, Answer]] =
+    setAnswered.copy(reported = None, outcome = Outcome.Failed(Failure.Unavailable))
+
   val tests = Tests {
     test("a log is read back as written: header, every kind of row, footer") {
       val lines = Vector(
@@ -101,9 +126,41 @@ object LogJsonTests extends TestSuite {
         Right(Log(bareHeader, Vector(answered), None))
     }
 
-    test("a header without a recipe, and a row without a focus, as logged before both, read") {
+    test(
+      "a question set's log is read back as written: its header's questions, and each row's answers under their names"
+    ) {
+      given Codec[VectorMap[QuestionName, Answer]] = LogJson.named
+      LogJson.read[VectorMap[QuestionName, Answer]](
+        Vector(
+          LogJson.header(setHeader),
+          LogJson.row(setAnswered),
+          LogJson.row(setFailed),
+          LogJson.footer(footer)
+        )
+      ) ==> Right(Log(setHeader, Vector(setAnswered, setFailed), Some(footer)))
+    }
+
+    // A named log's answers are the array a shadow's row keeps (ShadowedJson): pinned.
+    test("a question set's row keeps each answer as a shadow's row does, its name first") {
+      ujson.read(LogJson.row(setAnswered)(using LogJson.named))("row")("outcome").render() ==>
+        """{"answered":[{"name":"gap","choice":"asks","weights":[{"key":"asks","p":0.8},{"key":"nothing","p":0.2}]},{"name":"open","yes":0.6},{"name":"source:github","yes":0.25}]}"""
+    }
+
+    test("a row of a wording's answers does not read as a question set's") {
+      given Codec[VectorMap[QuestionName, Answer]] = LogJson.named
+      val worded = ujson.read(LogJson.row(setAnswered)(using LogJson.named))
+      worded("row")("outcome")("answered").arr.foreach(_.obj.remove("name"))
+      LogJson.read[VectorMap[QuestionName, Answer]](
+        Vector(LogJson.header(setHeader), worded.render())
+      ) ==> Left("line 2: answers: not named")
+    }
+
+    test(
+      "a header without a recipe or questions, and a row without a focus, as logged before them, read"
+    ) {
       val h = ujson.read(LogJson.header(header))
       h("header").obj.remove("recipe")
+      h("header").obj.remove("questions")
       val r = ujson.read(LogJson.row(answered))
       r("row").obj.remove("focus")
       LogJson.read[Vector[Weights]](Vector(h.render(), r.render())) ==>
