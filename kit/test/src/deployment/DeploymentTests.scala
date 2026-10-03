@@ -3,6 +3,7 @@ package grit.kit.deployment
 import scala.concurrent.duration.DurationInt
 
 import grit.core.id.EdgeName
+import grit.core.triage.Gate
 
 import utest.*
 
@@ -156,6 +157,49 @@ object DeploymentTests extends TestSuite {
           Left(DeploymentRefusal.SpeechUnread(chatter))
         ),
         (Right(()), Right(()))
+      )
+    }
+
+    test(
+      "live triage that does not ask durable as a yes/no is refused: every period would earn a closing"
+    ) {
+      import grit.lifecycle.triage.TriageQuestions
+      import grit.lifecycle.triage.TriageQuestions.Item
+      def asking(question: grit.core.classify.Question) =
+        TriageQuestions
+          .of(
+            Item.One(grit.core.triage.Earning.Durable, question),
+            Vector.empty,
+            Gate(Vector.empty)
+          )
+          .getOrElse(sys.error("a set"))
+      val open = grit.core.id.QuestionName.of("open").getOrElse(sys.error("a name"))
+      val unasked = TriageQuestions
+        .of(
+          Item.One(open, grit.core.classify.Question.YesNo("?", None, None)),
+          Vector.empty,
+          Gate(Vector.empty)
+        )
+        .getOrElse(sys.error("a set"))
+      val chosen = grit.core.classify.Question
+        .choice(
+          "?",
+          grit.core.classify.Question.Key("yes", None),
+          grit.core.classify.Question.Key("no", None)
+        )
+        .getOrElse(sys.error("a choice"))
+      (
+        Deployment.earning(TriageQuestions.Shipped),
+        Deployment.earning(TriageQuestions.V1),
+        Deployment.earning(asking(grit.core.classify.Question.YesNo("?", None, None))),
+        Deployment.earning(unasked),
+        Deployment.earning(asking(chosen))
+      ) ==> (
+        Right(()),
+        Right(()),
+        Right(()),
+        Left(DeploymentRefusal.DurableUnasked),
+        Left(DeploymentRefusal.DurableUnasked)
       )
     }
 

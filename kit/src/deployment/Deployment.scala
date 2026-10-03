@@ -3,7 +3,7 @@ package grit.kit.deployment
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.edge.ServedEdge
-import grit.core.id.{EdgeName, ShadowName}
+import grit.core.id.{EdgeName, QuestionName, ShadowName}
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
@@ -12,7 +12,7 @@ import grit.core.plugin.Plugin
 import grit.core.review.Reviewing
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
-import grit.core.triage.{Gate, KnowledgeSources, Reading}
+import grit.core.triage.{Bound, Earning, Gate, KnowledgeSources, Reading}
 import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.TriageQuestions
 import grit.turn.TurnLoop
@@ -88,6 +88,11 @@ enum DeploymentRefusal {
     */
   case SpeechUnread(reading: Reading)
 
+  /** Live triage ([[TriageQuestions.Shipped]]) does not ask [[Earning.Durable]] as a yes/no,
+    * so every period it heard would earn a written closing.
+    */
+  case DurableUnasked
+
   /** Two shadows are named `name`. */
   case ShadowRepeated(name: ShadowName)
 
@@ -115,6 +120,8 @@ enum DeploymentRefusal {
       s"speaking unprompted needs a classifier to judge each draft, and topics are off: $topics"
     case SpeechUnread(reading) =>
       s"speaking's gate reads $reading, which live triage does not ask, so it would hold every message"
+    case DurableUnasked =>
+      s"live triage does not ask ${QuestionName.value(Earning.Durable)} as a yes/no, so every period it heard would earn a closing"
     case ShadowRepeated(name) => s"two shadows are named ${ShadowName.value(name)}"
     case ShadowsUnasked(topics) =>
       s"a shadow asks its question set of the topics' classifier, and topics are off: $topics"
@@ -162,7 +169,9 @@ object Deployment {
 
   /** The deployment of these; call it with named arguments. Refused when `offer` asks first
     * ([[Offered.All]]) and an edge cannot answer an ask, when two edges share a name, when
-    * `sweep` is under a second, or when it speaks (`speaking` not Off) with `topics` Off: the
+    * `sweep` is under a second, when live triage does not ask what earning reads
+    * ([[DeploymentRefusal.DurableUnasked]]: a build's mistake, refused for every deployment
+    * of it), or when it speaks (`speaking` not Off) with `topics` Off: the
     * topics' classifier is also the judge of each draft, or by a gate reading a question live
     * triage does not ask ([[DeploymentRefusal.SpeechUnread]]), or when two of `shadows` share a
     * name, or any is declared with `topics` Off: each shadow asks the topics' classifier, Jev
@@ -200,6 +209,8 @@ object Deployment {
         DeploymentRefusal.AsksUnanswered(unanswered)
       )
       _ <- Either.cond(sweep >= 1.second, (), DeploymentRefusal.SweepTooOften(sweep))
+      // Earning reads durable by name: a live set without it would earn every period a closing.
+      _ <- earning(TriageQuestions.Shipped)
       _ <- (speaking, topics) match {
         // The judge is the topics' classifier: with none, no draft could ever post.
         case (Speaking.Shadow(_) | Speaking.Within(_), Topics.Off(reason)) =>
@@ -252,6 +263,15 @@ object Deployment {
       reviewed
     )
   }
+
+  /** Whether `live`, the set live triage asks, asks [[Earning.Durable]] as a yes/no;
+    * [[DeploymentRefusal.DurableUnasked]] when it does not.
+    */
+  private[deployment] def earning(live: TriageQuestions): Either[DeploymentRefusal, Unit] =
+    live
+      .unread(Gate(Vector(Bound.AtLeast(Reading.Yes(Earning.Durable), Earning.DurableAt))))
+      .map(_ => DeploymentRefusal.DurableUnasked)
+      .toLeft(())
 
   private def unread(gate: Gate): Either[DeploymentRefusal, Unit] =
     TriageQuestions.Shipped.unread(gate).map(DeploymentRefusal.SpeechUnread(_)).toLeft(())
