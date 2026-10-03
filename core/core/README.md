@@ -134,12 +134,19 @@ In dependency order:
   waited for, in its room's order), `StitchStore` (placements kept beside their entry
   and deleted with it; what a room said), `StitchJson`, and `Along`, the one read of a strand,
   in scope. ← `id`, `message`, `place`, `period`, `store`, `classify`
-- **`recipe`** — what a call's input shows beyond its own thread: a `Pool` of `Source`s (the
+- **`recipe`** — what a call's input shows beyond its own thread, and how a turn is shaped:
+  a `Pool` of `Source`s (the
   room's recent messages, its author's, the exchanges stitching offered) within a budget in
   characters, each kept in the `Section` its source names, and what a pool shows of what it
   found, in its sources' order; `Pool.read`, what a pool shows for a heard message, from what
   its room held when it was said, read through `RoomReads` and the stitch kept for its
-  conversation. Nothing in core imports it. ← `id`, `place`, `store`, `stitch`
+  conversation. `TurnRecipe`, each turn's `Shaping` by what it is `Rooted` on (a heard
+  message `ByFocus`, or one said to grit): its window's `Width`, and its `Offering` of the
+  services its conversation links; `Offering.decide`, each service as a `ServiceOffer` with
+  its supplying sources and its verdict, withheld only where its gate over the root's
+  per-source answers fails; and `TurnRecipe.Shipped`, which shapes nothing. Nothing in core
+  imports it. ← `id`, `place`, `message`, `classify`, `period`, `store`, `triage`, `context`,
+  `stitch`
 - **`host`** — what a tool may do to the machine, as capabilities: `Workspace` (read, list,
   search), `Edits` (write, edit) and `Shell` (run), implemented in `grit.host`; and the pure
   rules they share: `RelPath` (a path that stays inside the checkout and names no secrets
