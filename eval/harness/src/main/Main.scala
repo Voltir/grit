@@ -93,17 +93,21 @@ import grit.models.{OpenRouterConfig, OpenRouterProvider, Seed}
   */
 object Main {
 
-  def main(args: Array[String]): Unit =
+  def main(args: Array[String]): Unit = {
+    val clock: Clock^ = Clock.system()
     args.toList match {
       case "capture" :: rest => exit(flags(rest).flatMap(capture))
       case "run" :: rest =>
-        exit(flags(rest.filterNot(_ == "--no-cache")).flatMap(run(_, !rest.contains("--no-cache"))))
+        exit(
+          flags(rest.filterNot(_ == "--no-cache"))
+            .flatMap(run(_, !rest.contains("--no-cache"), clock))
+        )
       case "determinism" :: rest => exit(flags(rest).flatMap(determinism))
       case "inputs" :: rest =>
         exit(flags(rest.filterNot(_ == "--more")).flatMap(inputs(_, rest.contains("--more"))))
       case "score" :: rest => exit(flags(rest).flatMap(score))
-      case "order" :: rest => exit(flags(rest).flatMap(order))
-      case "pull" :: rest => exit(flags(rest).flatMap(pull))
+      case "order" :: rest => exit(flags(rest).flatMap(order(_, clock)))
+      case "pull" :: rest => exit(flags(rest).flatMap(pull(_, clock)))
       case "replies" :: rest =>
         val switches = Set("--records", "--show")
         exit(
@@ -112,17 +116,17 @@ object Main {
               _,
               rest.contains("--records"),
               rest.contains("--show"),
-              Clock.system(),
+              clock,
               Fresh.random()
             )
           )
         )
       case "reply-labels" :: rest => exit(flags(rest).flatMap(replyLabels))
       case "turns" :: rest => exit(flags(rest).flatMap(turns))
-      case "rebuild" :: rest => exit(flags(rest).flatMap(rebuild))
+      case "rebuild" :: rest => exit(flags(rest).flatMap(rebuild(_, clock)))
       case "compare" :: rest =>
         flags(rest).flatMap(f =>
-          if (f.contains("gate")) drafts(f).map(_ => 0) else compare(f)
+          if (f.contains("gate")) drafts(f, clock).map(_ => 0) else compare(f)
         ) match {
           case Right(0) => ()
           case Right(code) => sys.exit(code)
@@ -137,6 +141,7 @@ object Main {
           )
         )
     }
+  }
 
   /** `capture --url <jdbc> --source <db> --restored <db> --sha256 <hex> --at <instant> --out
     * <dir>`: the corpus of the restored database, written to `corpus.json` and `cases.jsonl` in
@@ -309,9 +314,10 @@ object Main {
     * own window and tail ([[Assembled.Shipped]]) unless `--window` or `--tail` names the
     * deployment's. OpenRouter's key comes from the environment over `GRIT_ENV_FILE` (`.env`
     * when unset), read only when a write is to be asked; the database's login from
-    * `GRIT_DATABASE_USER` and `_PASSWORD`. Prints counts and workflow ids, never text.
+    * `GRIT_DATABASE_USER` and `_PASSWORD`. Prints counts and workflow ids, never text. A
+    * call's latency is measured on `clock`.
     */
-  private def rebuild(f: Map[String, String]): Either[String, Unit] =
+  private def rebuild(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
       dir <- need(f, "corpus").map(Path.of(_))
       url <- need(f, "url")
@@ -368,7 +374,7 @@ object Main {
               case Some(c) => new OpenRouterProvider(c)
               case None => Queries.unasked()
             }
-            Queries.answer(requests, keyless, store, asking, budget, Clock.system())
+            Queries.answer(requests, keyless, store, asking, budget, clock)
           }
           windows = asked.map((w, _) =>
             w -> WindowOnly.window(reader, w, assembled, answered.answers, Width.Deployed)
@@ -408,9 +414,10 @@ object Main {
     * `--no-cache`: the corpus's cases' questions rebuilt, how they changed from capture
     * reported, then asked of Jev under the cap, and the log written to `<runs>/<stamp>-<variant>.jsonl`.
     * The key comes from the environment over `GRIT_ENV_FILE` (`.env` when unset), the
-    * database's login from `GRIT_DATABASE_USER` and `_PASSWORD`.
+    * database's login from `GRIT_DATABASE_USER` and `_PASSWORD`. The stamp and the header's
+    * start are `clock`'s now, and each call's latency is measured on it.
     */
-  private def run(f: Map[String, String], cache: Boolean): Either[String, Unit] =
+  private def run(f: Map[String, String], cache: Boolean, clock: Clock^): Either[String, Unit] =
     for {
       dir <- need(f, "corpus").map(Path.of(_))
       url <- need(f, "url")
@@ -465,8 +472,8 @@ object Main {
         .of(cap, estimated)
         .left
         .map(r => s"refused: estimated $$${r.estimated} is over the cap $$${r.cap}")
-      started = Instant.now()
-      ran = Run(calls, JevClassifier(jev.copy(model = model)), model, store, budget, Clock.system())
+      started = clock.now()
+      ran = Run(calls, JevClassifier(jev.copy(model = model)), model, store, budget, clock)
       header = Header(
         dir.getFileName.toString,
         Digest.text(manifestText + casesText),
@@ -669,9 +676,10 @@ object Main {
     * ([[Log.named]]). With `--verdicts <name>`, a verdicts file `pull` wrote in `<dir>/runs/`
     * ([[Verdicts]]), each pick reason's verdicts against both drafts and each side's `to`
     * ([[Judgement]]); without it, the report says no verdicts were given. `--helps-at`,
-    * `--decide`, `--replica` and `--spread` are refused beside it.
+    * `--decide`, `--replica` and `--spread` are refused beside it. `<yyyymmdd>` is `clock`'s
+    * day in UTC.
     */
-  private def drafts(f: Map[String, String]): Either[String, Unit] =
+  private def drafts(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
       _ <- Vector("decide", "replica", "spread")
         .find(f.contains)
@@ -703,7 +711,7 @@ object Main {
           read(dir.resolve("runs").resolve(n)).flatMap(Verdicts.read).map(Some(_))
         )
       judged = verdicts.map(Judgement.of(live, shadow, _))
-      day = Day.format(Instant.now().atOffset(ZoneOffset.UTC))
+      day = Day.format(clock.now().atOffset(ZoneOffset.UTC))
       alone = Vector(
         s"$day-draft-${set.name}-live-only.txt" -> found.gate.values.toVector.flatMap(_.aOnly),
         s"$day-draft-${set.name}-set-only.txt" -> found.gate.values.toVector
@@ -762,10 +770,10 @@ object Main {
     * the case ids in labelling order ([[Order]]) on `<question>` (`kind`, a tag's name, or
     * `place`; default `durable`): by the difference between runs A and B (the default when `--b`
     * is given), or by run A's repeat spread (the default without), written one a line to
-    * `<dir>/order/<yyyymmdd>-<question>-<by>.txt`. Prints how many, and how many unlabelled
-    * lead.
+    * `<dir>/order/<yyyymmdd>-<question>-<by>.txt`, `<yyyymmdd>` `clock`'s day in UTC. Prints
+    * how many, and how many unlabelled lead.
     */
-  private def order(f: Map[String, String]): Either[String, Unit] =
+  private def order(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
       dir <- need(f, "eval").map(Path.of(_))
       labels <- labelsAt(dir, f)
@@ -782,7 +790,7 @@ object Main {
             .map(b => Order.difference(q, a.answers, b.answers, labels))
         case other => Left(s"--by $other: not spread or difference")
       }
-      name = s"${Day.format(Instant.now().atOffset(ZoneOffset.UTC))}-" +
+      name = s"${Day.format(clock.now().atOffset(ZoneOffset.UTC))}-" +
         s"${Target.written(q)}-$how.txt"
       out = dir.resolve("order").resolve(name)
       _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
@@ -802,9 +810,10 @@ object Main {
     * the database's login from `GRIT_DATABASE_USER` and `_PASSWORD`; and
     * `<runs>/verdicts-<yyyymmdd>.json`, the verdicts standing on the messages a review
     * considered since `<instant>` ([[Pull.verdicts]], [[Verdicts.written]]). Prints counts, and
-    * the ids of the messages no corpus holds yet, for the next capture.
+    * the ids of the messages no corpus holds yet, for the next capture. `<yyyymmdd>` is
+    * `clock`'s day in UTC.
     */
-  private def pull(f: Map[String, String]): Either[String, Unit] =
+  private def pull(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
       dir <- need(f, "corpus").map(Path.of(_))
       url <- need(f, "url")
@@ -823,7 +832,7 @@ object Main {
       casesText <- read(dir.resolve("cases.jsonl"))
       cases <- readCases(dir)
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
-      at = Instant.now()
+      at = clock.now()
       got <- opened(config)(reader =>
         for {
           pulled <- Pull(
