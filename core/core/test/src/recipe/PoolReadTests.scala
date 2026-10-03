@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.id.{ConversationId, EntryId, PrincipalId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
-import grit.core.place.Place
+import grit.core.place.{Namespace, Place, Prefix, Scope}
 import grit.core.stitch.{
   InMemoryStitchStore,
   Link,
@@ -90,8 +90,14 @@ object PoolReadTests extends TestSuite {
       say(c, Payload.Heard(text), at, Some(by))
 
     /** What `pool` shows for `heard` in `c`, its strand `strand`, by section key. */
-    def shown(pool: Pool, c: Conversation, heard: Entry, strand: Strand.Read = Strand.Read.empty) =
-      right(Pool.read(pool, rooms, stitches, principals, c, strand, heard)).toVector
+    def shown(
+        pool: Pool,
+        c: Conversation,
+        heard: Entry,
+        strand: Strand.Read = Strand.Read.empty,
+        scope: Scope = Scope.Everywhere
+    ) =
+      right(Pool.read(pool, scope, rooms, stitches, principals, c, strand, heard)).toVector
         .map((s, text) => (s.key, text))
   }
 
@@ -194,6 +200,7 @@ object PoolReadTests extends TestSuite {
       def read(pool: Pool) =
         Pool.read(
           pool,
+          Scope.Everywhere,
           Down.rooms(down),
           Down.stitches(down),
           w.principals,
@@ -207,6 +214,33 @@ object PoolReadTests extends TestSuite {
       read(Pool(Vector(Source.Channel(1.hour, 5)), 100)) ==> Left(down)
       read(Pool(Vector(Source.Author(1.hour, 5)), 100)) ==> Left(down)
       read(Pool(Vector(Source.Exchanges), 100)) ==> Left(down)
+    }
+
+    test("a scope that does not hold the heard message's room shows nothing, reading nothing") {
+      val w = new World
+      val own = w.thread("1.0")
+      val other = w.thread("2.0")
+      w.heard(other, "lunch?", minutes(2), ana)
+      val heard = w.heard(own, "standup?", T, ana)
+      val pool = Pool(Vector(Source.Channel(1.hour, 5), Source.Author(1.hour, 5)), 1_000)
+      val nearby = Vector("nearby_in_channel" -> "Ana, 2 minutes before: lunch?")
+      def at(channel: String) =
+        Scope(Vector(Prefix.At(Place.under(Namespace.Slack, Vector("T", channel)))))
+      w.shown(pool, own, heard, scope = Scope.Room) ==> nearby
+      w.shown(pool, own, heard, scope = at("C")) ==> nearby
+      w.shown(pool, own, heard, scope = at("D")) ==> Vector.empty
+      w.shown(pool, own, heard, scope = Scope.Off) ==> Vector.empty
+      val down = StoreError.DatabaseError("down")
+      Pool.read(
+        Pool(Vector(Source.Exchanges), 100),
+        Scope.Off,
+        Down.rooms(down),
+        Down.stitches(down),
+        w.principals,
+        own,
+        Strand.Read.empty,
+        heard
+      )(using TestTx.fake) ==> Right(scala.collection.immutable.VectorMap.empty)
     }
   }
 

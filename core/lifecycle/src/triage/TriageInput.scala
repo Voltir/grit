@@ -3,6 +3,7 @@ package grit.lifecycle.triage
 import scala.collection.immutable.VectorMap
 
 import grit.core.id.{EntryId, TriageRef, TurnSeq}
+import grit.core.place.Scope
 import grit.core.recipe.{Pool, RoomReads, Section}
 import grit.core.stitch.{Along, StitchReads, Stitching, Strand, Tuning}
 import grit.core.store.{Conversation, Db, Entry, Focus, Payload, Position, Speakers, StoreError}
@@ -61,15 +62,15 @@ object TriageInput {
                   heard.createdAt
                 )
             }
-          } yield (read, conversation)
+          } yield (read, conversation, settings.locality.scope)
         }
         .left
         .map(e => s"strand unread: ${describe(e)}")
-      (strand, conversation) = read
+      (strand, conversation, scope) = read
       position =
         if (all.minByOption(_.seq).exists(_.id == heard.id)) Position.Opening else Position.Reply
       focus = conversation.fold(Focus.Focused)(_.origin.focus(position))
-      sections <- pool(rooms, reads, db, recipe.at(focus), conversation, strand, heard)
+      sections <- pool(rooms, reads, db, recipe.at(focus), scope, conversation, strand, heard)
     } yield {
       val before = all.filter(_.seq < heard.seq)
       // Unread names are no names: each line is then its role's.
@@ -101,9 +102,9 @@ object TriageInput {
     * before it, within [[TriageQuestion.ThreadChars]]; and the sections `recipe`'s pool shows
     * at the focus it was said at ([[grit.core.store.Origin.focus]]: its conversation's first
     * message is its `Opening`; `Focused` when the conversation is not found), from what its
-    * room held when it was said, read through `rooms` ([[Pool.read]]; none when the
-    * conversation is not found). Why not, when the thread, strand or room cannot be read or
-    * the turn holds no heard message; these words are journaled.
+    * room held when it was said, read through `rooms` in the scope in force ([[Pool.read]];
+    * none when the conversation is not found). Why not, when the thread, strand or room cannot
+    * be read or the turn holds no heard message; these words are journaled.
     */
   def build(
       reads: StitchReads,
@@ -115,21 +116,22 @@ object TriageInput {
   ): Either[String, (EntryId, TriageQuestion.State)] =
     read(reads, rooms, db, triage, tuning, recipe).map(r => (r.entry, r.state))
 
-  /** What `pool` shows for `heard` in `conversation` ([[Pool.read]]); nothing, opening no
-    * transaction, for a pool without sources or a conversation not found.
+  /** What `pool` shows for `heard` in `conversation` under `scope` ([[Pool.read]]); nothing,
+    * opening no transaction, for a pool without sources or a conversation not found.
     */
   private def pool(
       rooms: RoomReads,
       reads: StitchReads,
       db: Db^,
       pool: Pool,
+      scope: Scope,
       conversation: Option[Conversation],
       strand: Strand.Read,
       heard: Entry
   ): Either[String, VectorMap[Section, String]] =
     conversation match {
       case Some(c) if pool.sources.nonEmpty =>
-        db.read(Pool.read(pool, rooms, reads.stitches, reads.principals, c, strand, heard))
+        db.read(Pool.read(pool, scope, rooms, reads.stitches, reads.principals, c, strand, heard))
           .left
           .map(e => s"pool unread: ${describe(e)}")
       case _ => Right(VectorMap.empty)

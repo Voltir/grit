@@ -6,9 +6,12 @@ import scala.concurrent.duration.*
 import grit.core.classify.StateJson
 import grit.core.durable.InMemoryDurable
 import grit.core.id.TriageRef
+import grit.core.period.LifecycleSettings
+import grit.core.place.{Locality, Scope, Weight}
 import grit.core.recipe.{Pool, Section, Source}
 import grit.core.stitch.Tuning
 import grit.core.store.Focus
+import grit.dbos.sql.TestTx
 
 import utest.*
 
@@ -113,6 +116,35 @@ object TriageInputTests extends TestSuite {
       ujson.write(StateJson[TriageQuestion.State].json(state)) ==>
         """{"new_message":"standup moves to 10:00","author":"Ana","thread":"Ben: when is standup?",""" +
         """"nearby_in_channel":"Cy, 5 minutes before: lunch?"}"""
+    }
+
+    test("a pool shows nothing when the scope in force does not hold the message's room") {
+      val w = new World
+      w.hear("lunch?", "Ben", 0, in = w.thread("2.0"))
+      val t = w.hear("standup moves to 10:00", "Ana", 1)
+      val nearby = Pool(Vector(Source.Channel(1.hour, 5)), 600)
+      val recipe = TriageRecipe(nearby, nearby)
+      sent(w, t, recipe = recipe) ==> Right(
+        ujson.write(
+          ujson.Obj(
+            "new_message" -> "standup moves to 10:00",
+            "author" -> "Ana",
+            "thread" -> "",
+            "nearby_in_channel" -> "Ben, 1 minute before: lunch?"
+          )
+        )
+      )
+      val d = LifecycleSettings.Default
+      val off = LifecycleSettings.of(
+        d.windows,
+        d.balance,
+        d.settle,
+        d.resolveAt,
+        d.asks,
+        Locality(Scope.Off, Weight.Default)
+      )
+      off.flatMap(o => w.lifecycle.set(o)(using TestTx.fake).left.map(_.toString)) ==> Right(())
+      sent(w, t, recipe = recipe) ==> sent(w, t)
     }
 
     test("a Slack thread's opening is read at its open focus, and a reply in it focused") {

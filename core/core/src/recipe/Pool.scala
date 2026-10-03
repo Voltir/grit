@@ -6,6 +6,7 @@ import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.id.{ConversationId, EntryId}
+import grit.core.place.Scope
 import grit.core.stitch.{Placed, Said, StitchStore, Stitching, Strand}
 import grit.core.store.{Conversation, Entry, Principals, StoreError, Tx}
 
@@ -24,8 +25,10 @@ object Pool {
 
   /** What `pool` shows for `heard`, said in `conversation` at t (its `createdAt`), from what
     * existed then in its room ([[grit.core.store.Origin.room]]), never from a conversation its
-    * thread shows: its own, or one of `strand`'s ([[Strand.Read.conversations]]). Each section
-    * that kept anything, under its key, in the order its first source is listed.
+    * thread shows: its own, or one of `strand`'s ([[Strand.Read.conversations]]). Nothing,
+    * reading nothing, when `scope` does not hold the room itself ([[Scope.holds]]; never under
+    * [[Scope.Off]], nor under places narrower than the room). Each section that kept
+    * anything, under its key, in the order its first source is listed.
     *
     *   - [[Source.Channel]]: messages anyone said there in [t − `within`, t), the latest `most`;
     *     [[Source.Author]]: those `heard`'s author wrote, none when it has none.
@@ -51,6 +54,23 @@ object Pool {
     * A pool without sources reads nothing. Why not, when the store cannot be read.
     */
   def read(
+      pool: Pool,
+      scope: Scope,
+      rooms: RoomReads,
+      stitches: StitchStore,
+      principals: Principals,
+      conversation: Conversation,
+      strand: Strand.Read,
+      heard: Entry
+  )(using Tx^): Either[StoreError, VectorMap[Section, String]] = {
+    val room = conversation.origin.room
+    if (scope.holds(room, room))
+      shown(pool, rooms, stitches, principals, conversation, strand, heard)
+    else Right(VectorMap.empty)
+  }
+
+  /** [[read]], in scope. */
+  private def shown(
       pool: Pool,
       rooms: RoomReads,
       stitches: StitchStore,
