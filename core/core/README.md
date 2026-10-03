@@ -37,8 +37,9 @@ In dependency order:
 - **`classify`** — the classifier seam: `Classifier` (closed questions about a state,
   answered with a probability per option; Jev's shape; each call one `Request`, which
   `around` hands to a function before the classifier it wraps, for caching or recording),
-  and `ClassifierError` with its `Kind`, a failure without its words. Above the packages that
-  record what a classifier answered. ← `message`
+  and `ClassifierError` with its `Kind`, a failure without its words; `AnswersJson`, the
+  stored form of its answers, each under its question's name or not. Above the packages that
+  record what a classifier answered. ← `id`, `message`
 - **`topic`** — a conversation's topics as recorded events: `TopicId`, `TopicEvent` (a
   topic opened, a message placed with its `Weights` over topics, a topic described), the
   `Placement` that says who placed it, `Band`, `Verdict`, and `Topics`, the pure fold over
