@@ -11,8 +11,9 @@ object Along {
   /** What the other conversations of `conversation`'s strand said from `from` until before
     * `until`, oldest first, and its root's opening message however old, read through
     * `stitches`: only conversations at places `scope` holds for its room. A member whose
-    * first message is gone is named in `gone`, for its record to be shown instead. Empty for a
-    * conversation that is not stitchable.
+    * first message is gone is named in `gone`, for its record to be shown instead; every
+    * member, in scope or not, in `conversations`. Empty for a conversation that is not
+    * stitchable.
     */
   def read(
       stitches: StitchStore,
@@ -38,7 +39,8 @@ object Along {
         Strand.Read(
           kept.find(_.conversation == root),
           said.filter(held),
-          members.filterNot(m => openings.exists(_.conversation == m))
+          members.filterNot(m => openings.exists(_.conversation == m)),
+          members.toSet
         )
       }
     }

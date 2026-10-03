@@ -111,13 +111,28 @@ object AlongTests extends TestSuite {
       read.gone ==> Vector.empty
     }
 
+    test("a reader's strand names each conversation in it, one it shows nothing of among them") {
+      val w = new World
+      val a = w.thread(Origin.Slack("T", "C1", "1.0"))
+      val b = w.thread(Origin.Slack("T", "C1", "2.0"))
+      val c = w.thread(Origin.Slack("T", "C1", "3.0"))
+      w.say(a, "the Engine contract term?", 10 * Day)
+      w.follow(w.say(c, "lol", 8 * Day), a)
+      w.follow(w.say(b, "Is this a real question", 50), a)
+      val read = w.read(b, Scope.Room)
+      read.said ==> Vector.empty
+      read.conversations ==> Set(a.id, c.id)
+      w.read(b, Scope.Off).conversations ==> Set(a.id, c.id)
+    }
+
     test("a member the scope no longer holds is not read; one not stitchable reads nothing") {
       val w = new World
       val a = w.thread(Origin.Slack("T", "C1", "1.0"))
       val b = w.thread(Origin.Slack("T", "C1", "2.0"))
       w.say(a, "the Engine contract term?", 90)
       w.follow(w.say(b, "Is this a real question", 50), a)
-      w.read(b, Scope.Off) ==> Strand.Read.empty
+      val off = w.read(b, Scope.Off)
+      (off.opening, off.said, off.gone) ==> (None, Vector.empty, Vector.empty)
       // A TUI conversation linked to a purged root, which a read would name as gone.
       val dir = Directory.of("/work").getOrElse(throw new java.lang.AssertionError())
       val tui = w.thread(Origin.Tui(dir, "s"))

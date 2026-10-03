@@ -133,7 +133,8 @@ object TurnJudgeTests extends TestSuite {
       )
       val opening = said(0, "where did we land on the Engine contract term?")
       val real = entry(1, Payload.Heard("Is this a real question"))
-      val strand = Strand.Read(Some(opening), Vector(opening), Vector.empty)
+      val strand =
+        Strand.Read(Some(opening), Vector(opening), Vector.empty, Set(opening.conversation))
       val long = entry(2, Payload.Heard("x" * TurnJudge.ThreadChars))
       val state = TurnJudge.state(
         Vector(real, long),

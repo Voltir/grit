@@ -24,10 +24,16 @@ object Strand {
   /** What a reader is shown of its strand ([[Along.read]]): the root's `opening` message when
     * the root is another conversation and its first message is still kept; what the other
     * members `said` in the range read, oldest first (the opening among them when it was said
-    * in range); and the members whose first message is `gone` (their raw
-    * entries purged), shown by their record instead.
+    * in range); the members whose first message is `gone` (their raw entries purged), shown by
+    * their record instead; and every member but the reader (`conversations`), whether or not
+    * anything of theirs is shown.
     */
-  final case class Read(opening: Option[Said], said: Vector[Said], gone: Vector[ConversationId]) {
+  final case class Read(
+      opening: Option[Said],
+      said: Vector[Said],
+      gone: Vector[ConversationId],
+      conversations: Set[ConversationId]
+  ) {
 
     /** Every entry it shows: the opening, then what was said, each once. */
     def shown: Vector[grit.core.store.Entry] =
@@ -39,6 +45,6 @@ object Strand {
   }
 
   object Read {
-    val empty: Read = Read(None, Vector.empty, Vector.empty)
+    val empty: Read = Read(None, Vector.empty, Vector.empty, Set.empty)
   }
 }
