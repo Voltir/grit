@@ -162,7 +162,7 @@ object TriageQuestions {
     * `source:<name>` question per knowledge source; gated by [[Tags.V2.drafts]].
     */
   val V2: TriageQuestions = {
-    import Tags.V2.{anchor, gap, open, source, to}
+    import Tags.V2.{anchor, gap, open, sourcePrefix, to}
     def yesNo(words: String) = Question.YesNo(words, None, None)
     def key(name: String, means: String) = Question.Key(name, Some(means))
     val built = for {
@@ -215,7 +215,7 @@ object TriageQuestions {
             )
           ),
           Item.PerSource(
-            source,
+            sourcePrefix,
             "Read new_message and thread. Could ",
             " supply what new_message asks for?"
           )

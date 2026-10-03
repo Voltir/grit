@@ -82,7 +82,7 @@ object Tags {
     val anchor: QuestionName = named("anchor")
 
     /** The prefix of its yes/no asked once per knowledge source ([[QuestionName.per]]). */
-    val source: QuestionName = named("source")
+    val sourcePrefix: QuestionName = named("source")
 
     private val half = Probability.clamped(0.5)
 
@@ -102,7 +102,7 @@ object Tags {
       * answers about a message where `name` is not declared ([[KnowledgeSources.at]]).
       */
     def source(name: KnowledgeSourceName, at: Probability): Gate =
-      Gate.Holds(Bound.AtLeast(Reading.Yes(QuestionName.per(source, name)), at))
+      Gate.Holds(Bound.AtLeast(Reading.Yes(QuestionName.per(sourcePrefix, name)), at))
 
     /** v2's draft gate: it asks, still open, not to someone and not anchored, each at one
       * half.
