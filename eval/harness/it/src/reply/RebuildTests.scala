@@ -68,6 +68,9 @@ object RebuildTests extends TestSuite {
 
   /** A query writer answering "Falcon budget", counting what it is asked. */
   private final class Writer extends Provider {
+    // Untracked: a Writer is made by the one test that reads it, handed to the two answers it
+    // runs one after the other on its own thread, and read once both return; no other code
+    // holds it, so no write to it is seen elsewhere.
     @caps.unsafe.untrackedCaptures
     var asked: Int = 0
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
