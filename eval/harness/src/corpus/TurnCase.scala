@@ -123,8 +123,9 @@ object Part {
 /** One reply of the tool loop that called tools, its calls in the order made. */
 final case class Round(calls: Vector[Call])
 
-/** One tool call: its tool, `None` when the name the model sent is no offered tool's; and
-  * how it settled.
+/** One tool call: its tool, `None` when the name the model sent is not in the turn's offered
+  * set (the turn's `topic` tool, offered beside the set when its message's topic was unsure,
+  * is among those); and how it settled.
   */
 final case class Call(tool: Option[ToolName], settled: Settled)
 
