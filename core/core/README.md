@@ -76,8 +76,9 @@ In dependency order:
   answer, or none) and `TriageStore`, where they are kept beside their entry and deleted
   with it; `Shadowing` (a shadow variant as the sweep enqueues it, within its daily cap),
   `Shadowed` (what one variant made of one message) and `TriageShadows`, where those are
-  kept beside the entry and deleted with it. ← `id`, `message`, `period`, `store`, `spend`,
-  `classify`
+  kept beside the entry and deleted with it; `KnowledgeSources`, a deployment's catalog of
+  what could supply what a message asks for, each covering a place. ← `id`, `message`,
+  `place`, `period`, `store`, `spend`, `classify`
 - **`speech`** — whether grit speaks where it was not addressed (ADR 0022): `Speaking` (off,
   shadow, or within `Limits`, whose windows are `Rate`s), a heard message as it is weighed
   (`Heard`, its `Reach`), the ledger it is weighed against (`Ledger`, each `Spoken` turn at its
