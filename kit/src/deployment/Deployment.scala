@@ -269,10 +269,16 @@ object Deployment {
     */
   private[deployment] def earning(live: TriageQuestions): Either[DeploymentRefusal, Unit] =
     live
-      .unread(Gate.bounds(Bound.AtLeast(Reading.Yes(Earning.Durable), Earning.DurableAt)))
+      .unread(
+        Gate.bounds(Bound.AtLeast(Reading.Yes(Earning.Durable), Earning.DurableAt)),
+        KnowledgeSources.Empty
+      )
       .map(_ => DeploymentRefusal.DurableUnasked)
       .toLeft(())
 
   private def unread(gate: Gate): Either[DeploymentRefusal, Unit] =
-    TriageQuestions.Shipped.unread(gate).map(DeploymentRefusal.SpeechUnread(_)).toLeft(())
+    TriageQuestions.Shipped
+      .unread(gate, KnowledgeSources.Empty)
+      .map(DeploymentRefusal.SpeechUnread(_))
+      .toLeft(())
 }

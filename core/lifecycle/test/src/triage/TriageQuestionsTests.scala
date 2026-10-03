@@ -251,12 +251,16 @@ object TriageQuestionsTests extends TestSuite {
     ) {
       val kind = n("kind")
       Vector(
-        TriageQuestions.V1.unread(TriageQuestions.V1.speak),
-        TriageQuestions.V2.unread(TriageQuestions.V2.speak),
-        TriageQuestions.V1.unread(TriageQuestions.V2.speak),
-        TriageQuestions.V2.unread(TriageQuestions.V1.speak),
-        TriageQuestions.V1.unread(Gate.bounds(Bound.AtLeast(Reading.Chosen(kind, "maybe"), half))),
-        TriageQuestions.V1.unread(Gate.bounds(Bound.AtLeast(Reading.Yes(kind), half)))
+        TriageQuestions.V1.unread(TriageQuestions.V1.speak, KnowledgeSources.Empty),
+        TriageQuestions.V2.unread(TriageQuestions.V2.speak, KnowledgeSources.Empty),
+        TriageQuestions.V1.unread(TriageQuestions.V2.speak, KnowledgeSources.Empty),
+        TriageQuestions.V2.unread(TriageQuestions.V1.speak, KnowledgeSources.Empty),
+        TriageQuestions.V1.unread(
+          Gate.bounds(Bound.AtLeast(Reading.Chosen(kind, "maybe"), half)),
+          KnowledgeSources.Empty
+        ),
+        TriageQuestions.V1
+          .unread(Gate.bounds(Bound.AtLeast(Reading.Yes(kind), half)), KnowledgeSources.Empty)
       ) ==> Vector(
         None,
         None,
@@ -265,6 +269,21 @@ object TriageQuestionsTests extends TestSuite {
         Some(Reading.Chosen(kind, "maybe")),
         Some(Reading.Yes(kind))
       )
+    }
+
+    test(
+      "unread reads a source's yes/no as asked when the set asks per source and the catalog declares it, and as unread otherwise"
+    ) {
+      def per(name: String) = KnowledgeSourceName.of(name).getOrElse(fail(name))
+      val github = Reading.Yes(QuestionName.per(n("source"), per("github")))
+      val drive = Reading.Yes(QuestionName.per(n("source"), per("drive")))
+      def gate(r: Reading) = Gate.bounds(Bound.AtLeast(r, half))
+      Vector(
+        TriageQuestions.V2.unread(gate(github), catalog),
+        TriageQuestions.V2.unread(gate(drive), catalog),
+        TriageQuestions.V2.unread(gate(github), KnowledgeSources.Empty),
+        TriageQuestions.V1.unread(gate(github), catalog)
+      ) ==> Vector(None, Some(drive), Some(github), Some(github))
     }
 
     test("ask keeps each answer under its question's name, in the order asked") {

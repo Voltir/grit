@@ -48,11 +48,12 @@ final case class TriageQuestions private (
   ): Either[ClassifierError, Answered[VectorMap[QuestionName, Answer]]] =
     classifier.ask(state, asked(sources))
 
-  /** The first of `gate`'s readings ([[Gate.reads]]) this set does not ask in its kind, or
-    * a `Key` or `Chosen` of a key its choice lacks; `None` when it asks them all.
+  /** The first of `gate`'s readings ([[Gate.reads]]) this set does not ask with `sources`
+    * ([[questions]]) in its kind, or a `Key` or `Chosen` of a key its choice lacks; `None`
+    * when it asks them all.
     */
-  def unread(gate: Gate): Option[Reading] = {
-    val declared = items.collect { case Item.One(name, question) => name -> question }.toMap
+  def unread(gate: Gate, sources: KnowledgeSources): Option[Reading] = {
+    val declared = questions(sources)
     def asks(name: QuestionName, choice: Question.Choice => Boolean, yesNo: Boolean) =
       declared.get(name).exists {
         case c: Question.Choice => choice(c)
@@ -96,7 +97,9 @@ object TriageQuestions {
     /** Two items share a name, or a `One`'s name is a `PerSource`'s prefix. */
     case NameRepeated(name: QuestionName)
 
-    /** `speak` reads `reading`, which the set does not ask ([[TriageQuestions.unread]]). */
+    /** `speak` reads `reading`, which the set does not ask without a knowledge source
+      * ([[TriageQuestions.unread]]): a per-source question is never one a draft gate reads.
+      */
     case Unbounded(reading: Reading)
   }
 
@@ -111,7 +114,7 @@ object TriageQuestions {
       case Some(repeated) => Left(repeated)
       case None =>
         val set = new TriageQuestions(first, rest, speak)
-        set.unread(speak).map(Refusal.Unbounded(_)).toLeft(set)
+        set.unread(speak, KnowledgeSources.Empty).map(Refusal.Unbounded(_)).toLeft(set)
     }
   }
 
