@@ -17,7 +17,8 @@ import dev.dbos.transact.{DBOS, DBOSClient, EnqueueOptions}
   */
 object Turns {
 
-  private val WorkflowName = "turn"
+  /** The name DBOS records every turn workflow under. */
+  private[dbos] val WorkflowName = "turn"
 
   /** The queue turns and closes share, partitioned by conversation, so a close never runs
     * beside a turn of its conversation ([[Closes]]).

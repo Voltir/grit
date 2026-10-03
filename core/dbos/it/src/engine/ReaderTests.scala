@@ -7,8 +7,9 @@ import scala.annotation.unused
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.durable.Durable
+import grit.core.durable.{Durable, StepRecord}
 import grit.core.id.{PeriodRef, PeriodSeq, PrincipalId, SourceId, TriageRef, TurnSeq, WorkflowId}
+import grit.core.message.Message
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.triage.Tags
 import grit.dbos.sql.{LiveDb, SqlEntryStore, TestPostgres}
@@ -71,6 +72,53 @@ object ReaderTests extends TestSuite {
           reader.starts().map(_.map(s => (s.epoch, s.build))) ==> Right(
             Vector(("test", Build.current))
           )
+        } finally reader.close()
+      } finally engine.close()
+    }
+
+    test(
+      "a reader lists the turn workflows created before a time, oldest first, and each one's steps with their outputs in the order run"
+    ) {
+      val config = TestPostgres.freshDatabase("reader_turns")
+      def turn(@unused id: WorkflowId)(using d: Durable^): String = {
+        val first = d.step("first")(() => "one")
+        val _ = d.patch("a-patch")
+        d.step("second")(() => s"$first and two")
+      }
+      val engine = LiveEngine.open(config, "test")
+      try {
+        engine.launch(turn, nothing, nothing, nothing, nothing, LiveEngine.Unplaced, Vector.empty)
+        def ask(session: String): WorkflowId = {
+          val ref = right(
+            engine.inbox
+              .ingest(
+                Origin.Task("reader", session),
+                SourceId("m"),
+                Message.User("hi"),
+                PrincipalId.Local
+              )
+              .left
+              .map(e => StoreError.Invalid(e.toString))
+          )
+          engine.inbox.startTurn(ref) ==> Right(())
+          val _ = engine.awaitTurn(ref)
+          ref.workflowId
+        }
+        val older = ask("older")
+        val newer = ask("newer")
+        val reader = Reader.open(config)
+        try {
+          val until = Instant.now().plusSeconds(60)
+          reader.turns(until).map(_.map(_._1)) ==> Right(Vector(older, newer))
+          reader.turns(Instant.EPOCH) ==> Right(Vector.empty)
+          reader.steps(older) ==> Right(
+            Vector(
+              StepRecord("first", Some("one")),
+              StepRecord("DBOS.patch-a-patch", None),
+              StepRecord("second", Some("one and two"))
+            )
+          )
+          reader.steps(WorkflowId("never")) ==> Right(Vector.empty)
         } finally reader.close()
       } finally engine.close()
     }

@@ -109,7 +109,7 @@ In dependency order:
   far each has posted, in close order; a new version starts again, in a new generation) and `PostRef` (one
   posting run, and its workflow id). ← `id`, `period`, `store`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash, and waits for a
-  message (`recv`). ← `id`, `store`
+  message (`recv`); `StepRecord`, a step as a reader after the fact sees it. ← `id`, `store`
 - **`approval`** — `Approval`, a person's answer to a gated tool call, and the message
   that carries it to the turn waiting on its topic. ← `id`
 - **`context`**, **`provider`**, **`inbox`** — the seams the engine plugs

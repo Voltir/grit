@@ -2,9 +2,11 @@ package grit.dbos.engine
 
 import java.time.Instant
 
+import scala.jdk.CollectionConverters.*
 import scala.jdk.OptionConverters.*
 import scala.util.control.NonFatal
 
+import grit.core.durable.StepRecord
 import grit.core.id.WorkflowId
 import grit.core.recipe.RoomReads
 import grit.core.review.ReviewStore
@@ -16,8 +18,11 @@ import grit.core.store.{
   EntryStore,
   LifecycleStore,
   Principals,
-  StoreError
+  PromptStore,
+  StoreError,
+  UsageLedger
 }
+import grit.core.tool.ToolSets
 import grit.core.triage.{TriageShadows, TriageStore}
 import grit.dbos.sql.{
   DbConfig,
@@ -27,14 +32,19 @@ import grit.dbos.sql.{
   SqlEntryStore,
   SqlLifecycleStore,
   SqlPrincipals,
+  SqlPromptStore,
   SqlReviews,
   SqlRoomReads,
   SqlStitchStore,
+  SqlToolSets,
   SqlTriageShadows,
-  SqlTriageStore
+  SqlTriageStore,
+  SqlUsageLedger
 }
+import grit.dbos.workflow.Turns
 
 import dev.dbos.transact.DBOSClient
+import dev.dbos.transact.workflow.ListWorkflowsInput
 import org.postgresql.ds.PGSimpleDataSource
 
 /** The database `config` names, read without an engine: no DBOS executor, no lock, so nothing
@@ -55,6 +65,19 @@ trait Reader extends caps.SharedCapability, AutoCloseable {
   val triage: TriageStore
   val shadows: TriageShadows
   val reviews: ReviewStore
+  val ledger: UsageLedger
+  val prompts: PromptStore
+  val toolSets: ToolSets
+
+  /** Every turn workflow DBOS recorded created before `until`, oldest first, each with its
+    * record. `DatabaseError` when DBOS's tables cannot be read.
+    */
+  def turns(until: Instant): Either[StoreError, Vector[(WorkflowId, Reader.Recorded)]]
+
+  /** `id`'s recorded steps, in the order run; none when DBOS does not know it.
+    * `DatabaseError` when DBOS's tables cannot be read.
+    */
+  def steps(id: WorkflowId): Either[StoreError, Vector[StepRecord]]
 
   /** `id`'s status, the epoch it ran under, and when it was created; `None` when DBOS does not
     * know it, or its tables cannot be read.
@@ -98,6 +121,49 @@ object Reader {
     val triage: TriageStore = new SqlTriageStore
     val shadows: TriageShadows = new SqlTriageShadows
     val reviews: ReviewStore = new SqlReviews
+    val ledger: UsageLedger = new SqlUsageLedger
+    val prompts: PromptStore = new SqlPromptStore()
+    val toolSets: ToolSets = new SqlToolSets()
+
+    def turns(until: Instant): Either[StoreError, Vector[(WorkflowId, Recorded)]] =
+      try {
+        Right(
+          client
+            .listWorkflows(
+              new ListWorkflowsInput()
+                .withWorkflowName(Turns.WorkflowName)
+                .withEndTime(until)
+                .withSortDesc(false)
+            )
+            .asScala
+            .toVector
+            .flatMap(s =>
+              Option(s.createdAt())
+                .filter(_.isBefore(until))
+                .map(at =>
+                  WorkflowId(s.workflowId()) ->
+                    Recorded(s.status().name, Option(s.appVersion()).getOrElse(""), at)
+                )
+            )
+            .sortBy((id, r) => (r.created, WorkflowId.value(id)))
+        )
+      } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
+
+    def steps(id: WorkflowId): Either[StoreError, Vector[StepRecord]] =
+      try {
+        Right(
+          client
+            .listWorkflowSteps(WorkflowId.value(id))
+            .asScala
+            .toVector
+            .sortBy(_.functionId())
+            .flatMap(step =>
+              Option(step.functionName()).map(
+                StepRecord(_, Option(step.output()).collect { case s: String => s })
+              )
+            )
+        )
+      } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
 
     def workflow(id: WorkflowId): Option[Recorded] =
       try {
