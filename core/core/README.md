@@ -109,7 +109,9 @@ In dependency order:
   a `Link` from a conversation to the root it follows, a `Strand` (a root and its direct
   followers, never a chain), `Stitching` (which `Exchange`s a first message is offered, its
   `Offer`, where the classifier places it, as a `Placed` keeping what it was `Seen` (its exchanges read back as `Seen.Exchange`s), under a `Tuning`, and the
-  one excerpt rule readers cut a strand by), `StitchStore` (placements kept beside their entry
+  one excerpt rule readers cut a strand by), `Opening` (the one message of a conversation
+  that is placed, and its placement's `StitchRef`), `Placements` (an opening's placement
+  waited for, in its room's order), `StitchStore` (placements kept beside their entry
   and deleted with it; what a room said), `StitchJson`, and `Along`, the one read of a strand,
   in scope. ← `id`, `message`, `place`, `period`, `store`, `classify`
 - **`recipe`** — what a call's input shows beyond its own thread: a `Pool` of `Source`s (the

@@ -23,7 +23,9 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   and `Triages` (the close, settle and triage workflows, on the same queue under the
   conversation's partition, so none runs beside one of its turns), `Posts` (the posting workflow, on a `posts` queue partitioned by
   plugin), `Shadows` (the shadow workflow, on a `shadows` queue of its own, one at a time,
-  never the turns' queue). Imports nothing else in dbos.
+  never the turns' queue), `Stitches` (an opening's placement, on a `stitches` queue
+  partitioned by room, one at a time in the order queued, ADR 0023). Imports nothing else
+  in dbos.
 - **`engine`** — both, composed: `Link` (an edge's view of the engine: inbox, reads,
   streams, turn status, the holder, its registered edge; `Engine` is one, and
   `Link.attach` another for a process refused the lock), `EngineLock` (the database's one engine, ADR 0015: a
@@ -33,11 +35,12 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   records read without an engine or its lock, on sessions Postgres keeps read-only), `Engine` (what `grit.app`
   starts under the lock; closing it, or losing the lock, stops the sweep, then DBOS, waits
   for running bodies, and releases the lock last; `unfinished` counts the workflows still
-  queued or running, which `grit backfill` waits out), `SqlDesk` (an edge's registration, live
+  queued or running, which `grit backfill` waits out; `placements` waits for an opening's
+  placement, through `DbosPlacements`), `SqlDesk` (an edge's registration, live
   while its own connection holds its lock, which also listens for requests), `TurnStatus`, and
   `SqlInbox`, which records a message, and who wrote it (`grit.inbound`), and enqueues its turn in one transaction (opening
-  the conversation's next period when none is open), enqueues a heard message's triage
-  once it is recorded, and sends a turn the answer to its
+  the conversation's next period when none is open), enqueues an opening's placement, then
+  a heard message's triage, once it is recorded, and sends a turn the answer to its
   gated call (`DBOSClient.send`); `Sweeper`,
   the sweep `Engine.sweepEvery` runs: every open period whose deadline has come has its
   attempt on that deadline enqueued, under an id naming the deadline, so a moved deadline

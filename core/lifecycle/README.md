@@ -33,10 +33,17 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   something else), `record` the verdict, which one of nobody at or above the threshold turns into the period's deadline (`grit.core.period.Deadline`).
   A classifier that fails is a verdict too, so nothing is asked again before new activity.
   `SettleEnv` is what it works with. ← `transcript`
+- **`stitch`** — `Stitch`: the placement of a thread's first message (`grit.core.stitch.Opening`)
+  among the exchanges of its room, one workflow per opening, on a queue of its own
+  partitioned by room (`grit.dbos.workflow.Stitches`), so a room's openings are placed one at
+  a time in the order the inbox queued them (ADR 0023): `stitch` it (`Stitching.turn`), then
+  `record-stitch` the placement. `StitchEnv` is what it works with. Imports nothing else in
+  lifecycle.
 - **`triage`** — `Triage`: what a heard message is, asked once per message, on the turns'
   queue under its conversation (`grit.dbos.workflow.Triages`), so ahead of any later close
-  of it: when it is its thread's first message, `stitch` it to an exchange in its room and
-  `record-stitch` the placement (`grit.core.stitch`, ADR 0023), then `ask` the classifier
+  of it: when it is its thread's first message, wait in `stitched` for its placement
+  (`grit.core.stitch.Placements`; a triage begun before that placed it itself, in `stitch`
+  and `record-stitch`), then `ask` the classifier
   (`TriageQuestion`: its kind, and whether someone waits on it, whether it states something
   worth keeping, whether a reply would help, asked in a `Wording`, the shipped one in
   `Wording.Shipped`) over the message, who said it and the thread
@@ -64,8 +71,8 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   the cursor it started at for deletion; at most
   `MaxPerRun` a run. `PostEnv` is what it works with. Imports nothing else in lifecycle.
 
-`close`, `settle`, `triage` and `post` never name each other; `shadow` names `triage`
-alone, whose question it asks again. Their replay gate,
+`close`, `settle`, `stitch`, `triage` and `post` never name each other; `shadow` names
+`triage` alone, whose question it asks again. Their replay gate,
 `LifecycleReplayTests`, with `RecordLifecycleHistories` writing its histories, is in the
 test tree's `replay`, which covers them all.
 

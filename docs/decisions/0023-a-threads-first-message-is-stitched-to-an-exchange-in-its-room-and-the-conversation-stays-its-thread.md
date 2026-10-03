@@ -1,6 +1,6 @@
 # 0023. A thread's first message is stitched to an exchange in its room; the conversation stays its thread
 
-Status: accepted (2026-09-30)
+Status: accepted (2026-09-30), revised (2026-10-03)
 
 Context: people do not start a thread for each message. In a listened channel a top-level
 reply ("Is this a real question", "lol") began a conversation of its own (ADR 0019), so
@@ -26,8 +26,14 @@ Decision:
   exchange in its room. If it does, a stitch is kept: the conversation follows that
   exchange's root. A **strand** is a root and the conversations that follow it directly, a
   star, never a chain: a stitch always names a root.
-- **Who places, and when.** The heard message's triage, or an addressed message's turn, in a
-  step of its own before its other classifier calls; a first message is placed once. The
+- **Who places, and when.** A workflow of its own per first message (`Stitch`), queued by
+  the inbox as the message is recorded, heard or addressed, on a queue partitioned by room
+  that runs one placement at a time in the order queued. The heard message's triage, or an
+  addressed message's turn, waits for it before its other classifier calls, so it is asked
+  about with its strand; a reply waits for nothing. A placement reads every link an opening
+  queued before it in its room has made, so what it is offered depends on what was said
+  and the order it reached grit, not on how triages were scheduled. A first message is
+  placed once. The
   exchanges offered are those of its room within a horizon (a week), in the scope in force:
   the most recently spoken in, and the best matched by BM25 on the message's own words. Each
   is shown by its opening message, its latest messages and its record's headline. Every
@@ -57,7 +63,15 @@ Consequences:
 - Each top-level message with a candidate costs one more classifier call and one BM25 query.
 - A reply whose own triage has not yet stitched it is not in its strand when a draft is
   settled: the race is one classifier call against a draft and a judge.
+- A room's first messages are placed one at a time: a burst, as a backfill hears it, takes
+  as long as its placements in a row, and one placement whose classifier call hangs holds the
+  room's later ones until the classifier's own timeout ends it. Replies and other rooms are
+  not held.
+- The order is the order first messages reached grit: the order said in a backfill, which
+  hears oldest first; live, a redelivery, or two messages crossing within the same seconds,
+  can place a first message before an earlier-said one, which it then does not see.
 - Enforced by `StrandTests`, `StitchingTests`, `StitchJsonTests`, `StitchContract` (in
   memory and `SqlStitchTests`), `AlongTests`, `TriageTests`, `TurnStitchTests`,
   `TurnJudgeTests`, `SpeechTests`, `TurnSpeechTests`, `RetrievalAssemblerTests`,
-  `StitchLiveTests`, and the replay gate.
+  `StitchTests`, `SqlInboxTests`, `StitchLiveTests`, `StitchOrderLiveTests`, and the replay
+  gate.
