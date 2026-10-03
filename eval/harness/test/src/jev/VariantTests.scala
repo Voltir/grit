@@ -3,7 +3,7 @@ package grit.eval.harness.jev
 import scala.concurrent.duration.*
 
 import grit.core.recipe.{Pool, Source}
-import grit.lifecycle.triage.TriageRecipe
+import grit.lifecycle.triage.{TriageQuestion, TriageRecipe}
 
 import utest.*
 
@@ -48,11 +48,19 @@ object VariantTests extends TestSuite {
 
     test("every variant but a recipe's builds by the shipped recipe") {
       val others = Variants.all.filter {
-        case Variant.Recipe(_, _) => false
+        case Variant.Recipe(_, _, _) => false
         case _ => true
       }
-      (others :+ Variant.Recipe("r", recipe)).map(Variant.recipe) ==>
+      (others :+ Variant.Recipe("r", recipe, TriageQuestion.Wording.Shipped))
+        .map(Variant.recipe) ==>
         (others.map(_ => TriageRecipe.Shipped) :+ recipe)
+    }
+
+    test("a recipe's variant asks in the wording it carries, and its header digests both") {
+      val named = TriageQuestion.Wording.Shipped.copy(kind = "Read new_message and nearby.")
+      val v = Variant.Recipe("r", recipe, named)
+      (Variant.digest(Variant.recipe(v)), Variant.digest(Variant.wording(v))) ==>
+        (Variant.digest(recipe), Variant.digest(named))
     }
   }
 }

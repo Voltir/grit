@@ -41,7 +41,7 @@ Packages, each importing only those above it:
   each declared shadow's answers (`grit.lifecycle.shadow`); with the messages no
   corpus holds yet, and each shadow's that ended keeping nothing. ← `corpus`, `log`
 - **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
-  (the model, triage's wording or recipe, or the tuning), and `Variants`, those a run can name;
+  (the model, triage's wording, its recipe and the words it is asked in, or the tuning), and `Variants`, those a run can name;
   `Inputs`, a case's questions rebuilt through the shipped builders, and `Drift`, how a
   rebuilt state compares to the corpus's; `Review`, a case's questions as rebuilt, text and
   all, for a person to read beside it (`scripts/eval inputs` writes them under

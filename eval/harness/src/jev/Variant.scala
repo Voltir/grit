@@ -7,7 +7,9 @@ import grit.core.stitch.Tuning
 import grit.eval.harness.corpus.Digest
 import grit.lifecycle.triage.{TriageQuestion, TriageRecipe}
 
-/** What a run changes from the shipped call; one thing each, named in its log. */
+/** What a run changes from the shipped call, named in its log: one thing each, but a recipe
+  * may bring the words that name what it adds.
+  */
 enum Variant {
 
   /** The shipped wording and tuning, of the model the live tags recorded
@@ -24,8 +26,8 @@ enum Variant {
   /** As [[Live]], every case's inputs rebuilt under `tuning` instead of its own. */
   case Tuned(name: String, tuning: Tuning)
 
-  /** As [[Live]], triage's question showing what `recipe` adds to it. */
-  case Recipe(name: String, recipe: TriageRecipe)
+  /** As [[Live]], triage's question showing what `recipe` adds to it, asked in `wording`. */
+  case Recipe(name: String, recipe: TriageRecipe, wording: TriageQuestion.Wording)
 }
 
 object Variant {
@@ -35,30 +37,31 @@ object Variant {
     case Model(name, _) => name
     case Words(name, _) => name
     case Tuned(name, _) => name
-    case Recipe(name, _) => name
+    case Recipe(name, _, _) => name
   }
 
   /** The model `v` requests. */
   def model(v: Variant): String = v match {
     case Model(_, model) => model
-    case Live | Words(_, _) | Tuned(_, _) | Recipe(_, _) => Variants.LiveModel
+    case Live | Words(_, _) | Tuned(_, _) | Recipe(_, _, _) => Variants.LiveModel
   }
 
   /** The words `v` asks triage in. */
   def wording(v: Variant): TriageQuestion.Wording = v match {
     case Words(_, wording) => wording
-    case Live | Model(_, _) | Tuned(_, _) | Recipe(_, _) => TriageQuestion.Wording.Shipped
+    case Recipe(_, _, wording) => wording
+    case Live | Model(_, _) | Tuned(_, _) => TriageQuestion.Wording.Shipped
   }
 
   /** The tuning `v` rebuilds inputs under; `None` when each case's own. */
   def tuning(v: Variant): Option[Tuning] = v match {
     case Tuned(_, tuning) => Some(tuning)
-    case Live | Model(_, _) | Words(_, _) | Recipe(_, _) => None
+    case Live | Model(_, _) | Words(_, _) | Recipe(_, _, _) => None
   }
 
   /** The recipe `v` builds triage's question by. */
   def recipe(v: Variant): TriageRecipe = v match {
-    case Recipe(_, recipe) => recipe
+    case Recipe(_, recipe, _) => recipe
     case Live | Model(_, _) | Words(_, _) | Tuned(_, _) => TriageRecipe.Shipped
   }
 
@@ -125,13 +128,15 @@ object Variants {
   /** Open focus: what anyone said in the channel in the 10 minutes before, the latest 5. */
   val NearbyOpen: Variant = Variant.Recipe(
     "nearby-open",
-    TriageRecipe(Pool.empty, Pool(Vector(Source.Channel(10.minutes, 5)), OpenBudget))
+    TriageRecipe(Pool.empty, Pool(Vector(Source.Channel(10.minutes, 5)), OpenBudget)),
+    TriageQuestion.Wording.Shipped
   )
 
   /** Open focus: the exchanges stitching offered the message's thread. */
   val ExchangesOpen: Variant = Variant.Recipe(
     "exchanges-open",
-    TriageRecipe(Pool.empty, Pool(Vector(Source.Exchanges), OpenBudget))
+    TriageRecipe(Pool.empty, Pool(Vector(Source.Exchanges), OpenBudget)),
+    TriageQuestion.Wording.Shipped
   )
 
   /** Open focus: [[NearbyOpen]]'s, then its author's own in the 30 minutes before, the latest
@@ -142,7 +147,8 @@ object Variants {
     TriageRecipe(
       Pool.empty,
       Pool(Vector(Source.Channel(10.minutes, 5), Source.Author(30.minutes, 3)), OpenBudget)
-    )
+    ),
+    TriageQuestion.Wording.Shipped
   )
 
   val all: Vector[Variant] =
