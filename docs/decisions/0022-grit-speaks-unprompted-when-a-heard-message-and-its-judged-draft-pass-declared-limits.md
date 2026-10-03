@@ -1,7 +1,9 @@
 # 0022. grit speaks unprompted when a heard message passes triage, its draft passes a judge, and declared limits allow it
 
 Status: accepted (2026-09-30), revised (2026-09-30); amended (2026-10-03): the gate over
-triage's answers is the deployment's `Limits.drafts`
+triage's answers is the deployment's `Limits.drafts`; amended (2026-10-03): a gate is built
+from bounds by "every one of" and "any one of", and is unread only when no failing bound
+decides it
 
 Context: a listened channel (ADR 0020) is kept, but grit only ever answered what was said to
 it. A deployment also wants grit to join in, with context or insight a thread lacks, when that
@@ -29,15 +31,17 @@ Decision:
   answers, `postAt`, freshness, a rate of posts per thread, per room and per deployment, and
   a daily cap on speech spend. Speech is also counted in the deployment's budget.
   (Amended 2026-10-03: the gate was `helpsAt` and "not chatter", fixed to v1's answers.) A
-  gate is bounds on readings of named answers (a yes/no's probability, a choice's weight on a
-  key, or whether a key is its most weighted); the reference deployment speaks by live
-  triage's own (`TriageQuestions.Shipped.speak`: gap asks, still open, not directed at one
+  gate is a bound on a reading of a named answer (a yes/no's probability, a choice's weight
+  on a key, or whether a key is its most weighted), every one of some gates, or any one of
+  them: a closed set of forms, which a deployment composes from grit's named parts. The
+  reference deployment speaks by live triage's own (`TriageQuestions.Shipped.speak`: gap asks, still open, not directed at one
   person, not something no record could supply). A gate reading a question live triage does
   not ask is refused at declaration (`SpeechUnread`): it would hold every message.
 - **Triage considers each message it tagged.** It holds on the first check that fails: off,
   no address, stale, untagged, the gate (`Gated`, with every bound the answers failed and
-  what each read; `Unasked`, when the answers hold no answer a bound reads, as for a message
-  triaged by an earlier set), naming someone else, an earlier unprompted turn in the thread
+  what each read; `Unasked`, when the gate cannot be decided without an answer the answers
+  lack, as for a message triaged by an earlier set; an answer can only decide an unread gate,
+  never reverse a decided one), naming someone else, an earlier unprompted turn in the thread
   not yet answered, a rate reached, the speech cap or the budget. Otherwise it starts the
   heard message's own turn. It fails closed. A hold an earlier build kept as `chatter` or
   `below` reads back as gated on v1's bound.
