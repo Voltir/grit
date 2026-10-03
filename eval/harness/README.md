@@ -99,8 +99,13 @@ Packages, each importing only those above it:
   message was picked; `Spread`, how far
   apart its repeats answered, and how far its answers are from what was kept live; `Noise`,
   Jev's repeat spread on each triage question, and `MovedOn`, the cases whose state moved on
-  since live triage asked, where a replica shadow stands from live beyond it.
-  ← `stats`, `corpus`, `label`, `log`
+  since live triage asked, where a replica shadow stands from live beyond it. `Structure`, a
+  corpus's recorded turns read structurally over a `Slice` (all, a root, or where said): the
+  turns that did not reply, the pass rate, rounds, tools offered against called (the turn's
+  `topic` tool and unnamed calls apart), prompt and window tokens and the first call's
+  estimate against the ledger (each as `Quantiles`), cost by what it paid for, the drafts'
+  outcomes with their post and hold `Rate`s clustered by thread, the review verdicts joined by
+  case, and the window parts a reply `Used`. ← `stats`, `corpus`, `label`, `log`
 - **`report`** — `Report`, a run scored (`Scored`: its log, its corpus's cases, the labels in
   force) and two runs compared, as markdown with every mean's interval; text-free. With no case
   labelled, only what needs no label: spend and latency (`score.Spending`), the repeats' spread
