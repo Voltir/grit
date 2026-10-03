@@ -17,6 +17,7 @@ import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.eval.harness.corpus.{Capture, CaseId, Corpus, Digest, Dump}
 import grit.eval.harness.score.Answers
 import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv}
+import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageQuestion, TriageRecords, TriageSpeech}
 import grit.models.StubClassifier
 
@@ -75,10 +76,26 @@ object PullTests extends TestSuite {
               engine.db,
               Clock.system(),
               TriageSpeech(Speaking.Off, engine.budget, _ => Right(())),
+              Tuning.Default,
+              engine.placements
+            )
+          ),
+          Stitch.body(
+            StitchEnv(
+              StitchReads(
+                engine.entries,
+                engine.conversations,
+                engine.lifecycle,
+                engine.stitches,
+                engine.search,
+                engine.principals
+              ),
+              new StubClassifier,
+              engine.db,
+              Clock.system(),
               Tuning.Default
             )
           ),
-          LiveEngine.Unplaced,
           Vector.empty,
           Shadow.body(
             ShadowEnv(

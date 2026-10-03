@@ -9,10 +9,11 @@ import grit.core.durable.Durable
 import grit.core.id.{PrincipalId, SourceId, WorkflowId}
 import grit.core.period.Probability
 import grit.core.speech.{Reach, Speaking}
-import grit.core.stitch.Tuning
+import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Origin, StoreError}
 import grit.dbos.engine.{Build, LiveEngine, Reader}
 import grit.dbos.sql.{LiveDb, TestPostgres}
+import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.StubClassifier
 
@@ -67,10 +68,26 @@ object CaptureTests extends TestSuite {
               engine.db,
               Clock.system(),
               TriageSpeech(Speaking.Off, engine.budget, _ => Right(())),
+              Tuning.Default,
+              engine.placements
+            )
+          ),
+          Stitch.body(
+            StitchEnv(
+              StitchReads(
+                engine.entries,
+                engine.conversations,
+                engine.lifecycle,
+                engine.stitches,
+                engine.search,
+                engine.principals
+              ),
+              new StubClassifier,
+              engine.db,
+              Clock.system(),
               Tuning.Default
             )
           ),
-          LiveEngine.Unplaced,
           Vector.empty
         )
         val start = Instant.now().minusSeconds(3_600)

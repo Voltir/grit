@@ -6,7 +6,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question, Request}
 import grit.core.clock.Clock
-import grit.core.durable.Durable
+import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{
   CloseRef,
   ConversationId,
@@ -23,7 +23,7 @@ import grit.core.period.{CloseReason, TestClosings}
 import grit.core.recipe.InMemoryRoomReads
 import grit.core.speech.{InMemorySpeechStore, Reach, Speaking}
 import grit.core.spend.Budget
-import grit.core.stitch.{InMemoryStitchStore, StitchReads, Tuning}
+import grit.core.stitch.{InMemoryStitchStore, Opening, Placements, StitchReads, Tuning}
 import grit.core.store.{
   Db,
   Entry,
@@ -244,6 +244,24 @@ object TriageFixtures {
         id
       )
 
+    /** The openings whose placements a triage waited for, in order. */
+    @caps.unsafe.untrackedCaptures
+    var awaited = Vector.empty[Opening]
+
+    /** Placements as the engine makes them, each opening's placement run once over this world
+      * (its own workflow, run to its end at once), asking `classifier` at `minutes`; each
+      * opening waited for kept in [[awaited]].
+      */
+    def placements(classifier: Classifier^, minutes: Long): Placements^ = {
+      val placing = new InMemoryDurable
+      new Placements {
+        def awaited(opening: Opening): Either[String, String] = {
+          World.this.awaited = World.this.awaited :+ opening
+          Right(placing.run(opening.ref.workflowId)(placement(classifier, minutes)))
+        }
+      }
+    }
+
     /** The triage's body over this world, with `classifier`, at `minutes`, speaking as
       * `speaking` says, with no daily cap; a turn it starts is kept in [[started]].
       */
@@ -275,7 +293,8 @@ object TriageFixtures {
               Right(())
             }
           ),
-          Tuning.Default
+          Tuning.Default,
+          placements(classifier, minutes)
         )
       )(id)
   }

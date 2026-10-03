@@ -4,7 +4,7 @@ import grit.core.durable.Durable
 import grit.core.id.{EntryId, TriageRef, TurnRef, WorkflowId}
 import grit.core.period.Probability
 import grit.core.speech.{Decision, SpeechJson}
-import grit.core.stitch.{Placed, StitchJson, StitchReads, Stitching}
+import grit.core.stitch.{Opening, Placed, StitchJson, StitchReads, Stitching}
 import grit.core.store.StoreError
 import grit.core.triage.{Kind, Tags}
 
@@ -13,11 +13,12 @@ import grit.core.triage.{Kind, Tags}
   * triage resumed after a crash never asks the classifier twice. It writes no entry, so it is
   * never a period's activity and never moves its deadline.
   *
-  *   1. `stitch` — when the heard message is its conversation's first, in a stitchable
-  *      origin: where it goes among its room's exchanges ([[Stitching.turn]]); nothing is
-  *      asked otherwise, or when nothing is offered.
-  *   1. `record-stitch` — that placement kept ([[grit.core.stitch.StitchStore.record]]),
-  *      only when one was made.
+  *   1. `stitched` — when the heard message is an [[Opening]], its placement waited for
+  *      ([[grit.core.stitch.Placements.awaited]]), so the message is asked about with its
+  *      strand, and only once every opening heard before it in its room is placed; nothing is
+  *      waited for otherwise. A triage that passed this point before it shipped took
+  *      `stitch` ([[Stitching.turn]]) and `record-stitch` instead, placing the opening itself
+  *      ([[Patches.StitchInRoomOrder]]).
   *   1. `ask` — one classifier call over the heard message, who said it, and the thread
   *      before it: its strand's, then its own ([[TriageInput.build]], [[TriageQuestion]]); an
   *      absent or failing classifier, or an answer that does not read, is `Unanswered` tags.
@@ -35,12 +36,23 @@ object Triage {
 
   /** The triage's steps, as DBOS records their names, in the order they run. */
   object Step {
+    val Stitched = "stitched"
     val Stitch = "stitch"
     val RecordStitch = "record-stitch"
     val Ask = "ask"
     val Record = "record"
     val Consider = "consider"
     val Start = "start"
+  }
+
+  /** The patches the triage's steps have taken within this epoch (ADR 0004). */
+  object Patches {
+
+    /** A heard opening is placed by a workflow of its own, in its room's order, which the
+      * triage waits for in `stitched`, not by the triage in `stitch` and `record-stitch`
+      * (2026-10-03).
+      */
+    val StitchInRoomOrder = "stitch-in-room-order"
   }
 
   /** The triage workflow's body, for the heard message whose workflow id is `workflowId`.
@@ -51,20 +63,27 @@ object Triage {
       case None => s"not a triage: ${WorkflowId.value(workflowId)}"
       case Some(triage) =>
         import TriageJournal.given
-        val stitched = d.step(Step.Stitch)(() => stitch(env, triage))
-        val kept = stitched match {
-          case Right(Some((root, placed))) =>
-            val at = env.clock.now()
-            val stitches = env.records.stitches
-            d.transact(Step.RecordStitch)(
-              stitches.record(root, placed, at).left.map(describe)
-            ) match {
-              case Right(_) => s"stitched: ${StitchJson.kindOf(placed)}; "
-              case Left(why) => s"stitch not kept: $why; "
+        val kept =
+          if (d.patch(Patches.StitchInRoomOrder))
+            d.step(Step.Stitched)(() => placed(env, triage)) match {
+              case Right(Some(what)) => s"placed: $what; "
+              case Right(None) => ""
+              case Left(why) => s"not placed: $why; "
             }
-          case Right(None) => ""
-          case Left(why) => s"not stitched: $why; "
-        }
+          else
+            d.step(Step.Stitch)(() => stitch(env, triage)) match {
+              case Right(Some((root, placed))) =>
+                val at = env.clock.now()
+                val stitches = env.records.stitches
+                d.transact(Step.RecordStitch)(
+                  stitches.record(root, placed, at).left.map(describe)
+                ) match {
+                  case Right(_) => s"stitched: ${StitchJson.kindOf(placed)}; "
+                  case Left(why) => s"stitch not kept: $why; "
+                }
+              case Right(None) => ""
+              case Left(why) => s"not stitched: $why; "
+            }
         val asked = d.step(Step.Ask)(() => ask(env, triage))
         kept + (asked match {
           case Left(why) => s"failed: $why"
@@ -95,6 +114,28 @@ object Triage {
             }
         })
     }
+
+  /** The `stitched` step: what the placement of the heard message that is `triage`'s turn
+    * did, once it has ended, when the message is an [[Opening]]; `None` when it is not, or is
+    * gone. Why not, when the store cannot be read or the placement failed.
+    */
+  private def placed(env: TriageEnv^, triage: TriageRef): Either[String, Option[String]] = {
+    val r = env.records
+    val conversation = triage.period.conversationId
+    env.db
+      .read {
+        for {
+          all <- r.entries.list(conversation)
+          c <- r.conversations.get(conversation)
+        } yield c.flatMap(Opening.of(_, all, TurnRef(conversation, triage.turn)))
+      }
+      .left
+      .map(e => s"thread unread: ${describe(e)}")
+      .flatMap {
+        case None => Right(None)
+        case Some(opening) => env.placements.awaited(opening).map(Some(_))
+      }
+  }
 
   /** The `stitch` step: where the heard message that is `triage`'s turn goes among its
     * room's exchanges, when it is its conversation's first message ([[Stitching.turn]]);

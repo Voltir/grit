@@ -38,6 +38,12 @@ object TriageTests extends TestSuite {
     "Ben: when is standup?"
   )
 
+  /** The marker a triage records as it takes the room-order patch. */
+  private val Marker = InMemoryDurable.patchMarker(Triage.Patches.StitchInRoomOrder)
+
+  /** What a triage logs of the placement of a room's first opening, which nothing is offered. */
+  private val Unoffered = "placed: nothing asked; "
+
   val tests = Tests {
     test("in the shipped words, judge sends the request it sent before they were a value") {
       // Taken from the request judge sent before its words moved into Wording.Shipped.
@@ -69,9 +75,9 @@ object TriageTests extends TestSuite {
       val classifier = decided
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(classifier, 5)) ==>
-        """tagged: decision 0.75, durable 0.875 (jev-1.13.0); held: {"kind":"off"}"""
+        Unoffered + """tagged: decision 0.75, durable 0.875 (jev-1.13.0); held: {"kind":"off"}"""
       (classifier.calls, durable.recordedSteps(t.workflowId)) ==>
-        (1, Vector("stitch", "ask", "record", "consider"))
+        (1, Vector(Marker, "stitched", "ask", "record", "consider"))
       w.tags(t) ==> Some(decision)
     }
 
@@ -80,13 +86,15 @@ object TriageTests extends TestSuite {
       val t = w.hear("standup moves to 10:00 from Monday", "Ana", 0)
       val first = new InMemoryDurable
       first.run(t.workflowId)(w.body(decided, 5))
-      val history = first.history(t.workflowId).take(2)
+      val history = first.history(t.workflowId).take(3)
       // Resumed after the ask was recorded: a classifier that now answers otherwise is not called.
       val again = new World
       val t2 = again.hear("standup moves to 10:00 from Monday", "Ana", 0)
       val other = new Scripted(Vector(0, 0, 0, 0, 1), Vector(0, 0, 0))
       new InMemoryDurable().replay(t2.workflowId, history)(again.body(other, 5)) ==>
-        Right("""tagged: decision 0.75, durable 0.875 (jev-1.13.0); held: {"kind":"off"}""")
+        Right(
+          Unoffered + """tagged: decision 0.75, durable 0.875 (jev-1.13.0); held: {"kind":"off"}"""
+        )
       (other.calls, again.tags(t2)) ==> (0, Some(decision))
     }
 
@@ -127,7 +135,9 @@ object TriageTests extends TestSuite {
       )
     }
 
-    test("a top-level reply is triaged with the message it follows, and its stitch kept") {
+    test(
+      "a first message's triage waits for its placement, then is asked with the message it follows"
+    ) {
       val w = new World
       w.hear("where did we land on the Engine contract term?", "Nick", 0)
       val b = w.thread("2.0")
@@ -136,9 +146,38 @@ object TriageTests extends TestSuite {
       val classifier = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(classifier, 2))
-      durable.recordedSteps(t.workflowId).take(3) ==> Vector("stitch", "record-stitch", "ask")
+      durable.recordedSteps(t.workflowId).take(3) ==>
+        Vector(InMemoryDurable.patchMarker(Triage.Patches.StitchInRoomOrder), "stitched", "ask")
+      w.awaited.map(_.ref.turn) ==> Vector(TurnRef(b, t.turn))
       classifier.states.lastOption.map(_("thread").str) ==>
         Some("Nick: where did we land on the Engine contract term?")
+      w.stitches.links(Vector(b))(using grit.dbos.sql.TestTx.fake) ==>
+        Right(Vector(grit.core.stitch.Link(b, c)))
+    }
+
+    test("a reply's triage waits for no placement") {
+      val w = new World
+      w.hear("where did we land on the Engine contract term?", "Nick", 0)
+      val reply = w.hear("the twelve-month one", "Ana", 1)
+      val durable = new InMemoryDurable
+      durable.run(reply.workflowId)(
+        w.body(new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2)), 2)
+      )
+      durable.recordedSteps(reply.workflowId).take(3) ==>
+        Vector(InMemoryDurable.patchMarker(Triage.Patches.StitchInRoomOrder), "stitched", "ask")
+      w.awaited ==> Vector.empty
+    }
+
+    test("a triage that passed the change before it shipped places its first message itself") {
+      val w = new World
+      w.hear("where did we land on the Engine contract term?", "Nick", 0)
+      val b = w.thread("2.0")
+      val t = w.hear("Is this a real question", "David", 1, in = b)
+      val classifier = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
+      val durable = new InMemoryDurable(Set(Triage.Patches.StitchInRoomOrder))
+      durable.run(t.workflowId)(w.body(classifier, 2))
+      durable.recordedSteps(t.workflowId).take(3) ==> Vector("stitch", "record-stitch", "ask")
+      w.awaited ==> Vector.empty
       w.stitches.links(Vector(b))(using grit.dbos.sql.TestTx.fake) ==>
         Right(Vector(grit.core.stitch.Link(b, c)))
     }
@@ -173,28 +212,13 @@ object TriageTests extends TestSuite {
       classifier.calls ==> 0
     }
 
-    test("turn asks nothing for a message placed already, which offered still offers") {
-      val w = new World
-      w.hear("where did we land on the Engine contract term?", "Nick", 0)
-      val b = w.thread("2.0")
-      val t = w.hear("Is this a real question", "David", 1, in = b)
-      new InMemoryDurable().run(t.workflowId)(
-        w.body(new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2)), 2)
-      )
-      val turn = TurnRef(b, t.turn)
-      val again = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
-      Stitching.turn(again, w.reads, FakeDb, turn, Tuning.Default) ==> Right(None)
-      again.calls ==> 0
-      assert(Stitching.offered(w.reads, FakeDb, turn, Tuning.Default).exists(_.nonEmpty))
-    }
-
     test("an absent classifier's tags are unanswered, and kept") {
       val w = new World
       val t = w.hear("lunch?", "Ana", 0)
       new InMemoryDurable().run(t.workflowId)(
         w.body(new Scripted(Vector.empty, Vector.empty), 5)
       ) ==>
-        """tagged: unanswered: unavailable: no classifier; held: {"kind":"off"}"""
+        Unoffered + """tagged: unanswered: unavailable: no classifier; held: {"kind":"off"}"""
       w.tags(t) ==> Some(Tags.Unanswered("unavailable: no classifier"))
     }
 
@@ -207,7 +231,7 @@ object TriageTests extends TestSuite {
         () => w.purge(TurnRef(c, t.turn))
       )
       new InMemoryDurable().run(t.workflowId)(w.body(purging, 5)) ==>
-        "ignored: the message is gone or tagged already"
+        Unoffered + "ignored: the message is gone or tagged already"
       w.tags(t) ==> None
     }
 
@@ -219,7 +243,7 @@ object TriageTests extends TestSuite {
         "not a triage: c1:0"
       new InMemoryDurable().run(grit.core.id.TriageRef(p1, said.turnSeq).workflowId)(
         w.body(classifier, 0)
-      ) ==> "failed: no heard message at turn 0"
+      ) ==> Unoffered + "failed: no heard message at turn 0"
       classifier.calls ==> 0
     }
 
@@ -228,13 +252,13 @@ object TriageTests extends TestSuite {
       val t = w.hear("what did we decide about the refi page?", "Ana", 0)
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(asking, 1, within)) ==>
-        "tagged: question 1.0, durable 0.5 (jev-1.13.0); drafting: c1:0"
+        Unoffered + "tagged: question 1.0, durable 0.5 (jev-1.13.0); drafting: c1:0"
       val turn = TurnRef(c, t.turn)
       (w.started, w.speech.decisions.map(_._2)) ==> (Vector(turn), Vector(Decision.Drafting(turn)))
       val history = durable.history(t.workflowId)
       new InMemoryDurable().replay(t.workflowId, history)(w.body(asking, 1, within))
       w.started ==> Vector(turn)
-      history.map(_.name) ==> Vector("stitch", "ask", "record", "consider", "start")
+      history.map(_.name) ==> Vector(Marker, "stitched", "ask", "record", "consider", "start")
     }
 
     test("a message under helpsAt is kept held, and no turn starts") {
@@ -247,7 +271,7 @@ object TriageTests extends TestSuite {
       (w.started, w.speech.decisions.map(_._2), durable.recordedSteps(t.workflowId)) ==> (
         Vector.empty,
         Vector(Decision.Held(Silence.Below(p(0.25), p(0.6)))),
-        Vector("stitch", "ask", "record", "consider")
+        Vector(Marker, "stitched", "ask", "record", "consider")
       )
     }
 

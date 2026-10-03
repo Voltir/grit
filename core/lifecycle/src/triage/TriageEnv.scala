@@ -6,14 +6,16 @@ import grit.core.id.TurnRef
 import grit.core.recipe.RoomReads
 import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.spend.{Budget, Spending}
-import grit.core.stitch.{StitchStore, Tuning}
+import grit.core.stitch.{Placements, StitchStore, Tuning}
 import grit.core.store.{ConversationStore, Db, EntrySearch, EntryStore, LifecycleStore, Principals}
 import grit.core.triage.TriageStore
 
 /** What a triage works with besides its `Durable`: where it reads the heard message and
   * keeps its tags ([[TriageRecords]]), the `classifier` it asks, `db` to read the thread
   * outside a transaction, `clock` to say when the tags were made, whether grit then drafts a
-  * reply ([[TriageSpeech]]), and how a heard first message is stitched (`tuning`).
+  * reply ([[TriageSpeech]]), how its strand is read and, in a triage begun before openings
+  * were placed on their own, its opening stitched (`tuning`), and where its opening is placed
+  * (`placements`).
   */
 final case class TriageEnv(
     records: TriageRecords,
@@ -21,7 +23,8 @@ final case class TriageEnv(
     db: Db^,
     clock: Clock^,
     speech: TriageSpeech^,
-    tuning: Tuning
+    tuning: Tuning,
+    placements: Placements^
 )
 
 /** Where a triage reads the heard message, its thread, its conversation and who wrote them,

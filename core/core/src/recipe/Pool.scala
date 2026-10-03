@@ -141,12 +141,13 @@ object Pool {
     def offered()(using Tx^): Either[StoreError, Vector[Offered]] =
       for {
         // The one read with no written-at bound: the placement is this conversation's own
-        // stitch, written by its first message's triage before any of its messages is asked
-        // about, and what it shows was read by stitching bounded at that message's time (t
-        // itself when `heard` is that message, earlier for a reply). Its content is not fixed
-        // by that time alone: the strand links stitching read then were read unbounded, so
-        // which exchanges were offered depends on what other placements had been kept by
-        // then, which is scheduling.
+        // stitch, kept by its first message's placement, which its triage waits for before
+        // any of its messages is asked about, and what it shows was read by stitching bounded
+        // at that message's time (t itself when `heard` is that message, earlier for a
+        // reply). The strand links stitching read then were read unbounded, but a room's
+        // openings are placed one at a time in the order they reached grit, so those links
+        // are every earlier opening's: the order said in a backfill, and live, unless an
+        // opening reached grit after a later-said one.
         first <- stitches.openings(Vector(conversation.id))
         placed <- first.headOption.fold[Either[StoreError, Option[Placed]]](Right(None))(f =>
           stitches.placed(f.entry.id)

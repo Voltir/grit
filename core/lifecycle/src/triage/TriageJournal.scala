@@ -68,6 +68,19 @@ private[triage] object TriageJournal {
   given stitched: Journaled[Either[String, Option[(EntryId, Placed)]]] =
     outcome(StitchJson.writeKept, StitchJson.readKept)
 
+  /** A `stitched` step's output: what the placement it waited for did, or `null` when it
+    * waited for none.
+    */
+  given waited: Journaled[Either[String, Option[String]]] =
+    outcome(
+      _.fold[ujson.Value](ujson.Null)(ujson.Str(_)),
+      {
+        case ujson.Null => Right(None)
+        case ujson.Str(what) => Right(Some(what))
+        case _ => Left("placed: expected a string or null")
+      }
+    )
+
   /** A `consider` step's output: the decision ([[SpeechJson.writeDecision]]). */
   given considered: Journaled[Either[String, Decision]] =
     outcome(SpeechJson.writeDecision, SpeechJson.readDecision)
