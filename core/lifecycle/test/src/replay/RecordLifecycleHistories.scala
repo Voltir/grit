@@ -264,6 +264,17 @@ object RecordLifecycleHistories {
         d.run(t.workflowId)(w.body(decided, 5))
         t.workflowId
       },
+      shadowed("shadow-named") { (w, d) =>
+        // A question set's: V2 with the one catalog source covering the conversation.
+        val t = grit.core.id
+          .ShadowRef(w.hear("who owns the deploy?", "Ana", 0), ShadowFixtures.Asks)
+        val asked = new TriageFixtures.Scripted(
+          Vector(0.75, 0.125, 0.0, 0.125),
+          Vector(0.875, 0.25, 0.125, 0.0, 0.5)
+        )
+        d.run(t.workflowId)(w.body(asked, 5))
+        t.workflowId
+      },
       shadowed("shadow-failed") { (w, d) =>
         val t = grit.core.id.ShadowRef(w.hear("lunch?", "Ana", 0), ShadowFixtures.Words)
         d.run(t.workflowId)(w.body(new TriageFixtures.Scripted(Vector.empty, Vector.empty), 5))

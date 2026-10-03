@@ -2,6 +2,7 @@ package grit.lifecycle.replay
 
 import grit.core.durable.{History, InMemoryDurable}
 import grit.core.period.ClosingJson
+import grit.core.triage.{ShadowAnswers, Shadowed, ShadowedJson}
 import grit.lifecycle.close.CloseFixtures
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.SettleFixtures
@@ -107,6 +108,32 @@ object LifecycleReplayTests extends TestSuite {
         outcome.left.toOption.map(why => s"${path.last}: $why")
       }
       assert(failures.isEmpty)
+    }
+
+    test(
+      "every recorded shadow row of the epoch reads, and the epoch holds a wording's and a question set's"
+    ) {
+      // A shadow in flight reads back its ask step: today's reader must read both forms.
+      val rows = histories.flatMap { case (path, parsed) =>
+        parsed.toOption.toVector
+          .filter(_.workflow == "shadow")
+          .flatMap(_.steps.collect {
+            case s if s.name == "ask" => (path.last, s.outcome)
+          })
+      }
+      val read = rows.map {
+        case (file, InMemoryDurable.Outcome.Output(text)) =>
+          file -> ujson.read(text).obj.get("ok").flatMap(_.obj.get("row")).map(ShadowedJson.read)
+        case (file, other) => file -> Some(Left(s"not an output: $other"))
+      }
+      read.collect { case (file, Some(Left(why))) => s"$file: $why" } ==> Vector.empty
+      val answered = read.collect { case (_, Some(Right(Shadowed.Answered(_, a, _, _, _, _)))) =>
+        a match {
+          case ShadowAnswers.Worded(_) => "worded"
+          case ShadowAnswers.Named(_) => "named"
+        }
+      }
+      answered.distinct.sorted ==> Vector("named", "worded")
     }
 
     test("every recorded closing of the epoch reads, and the epoch holds a version-3 one") {
