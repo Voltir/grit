@@ -19,7 +19,7 @@ object PoolTests extends TestSuite {
   private def said(id: String, speaker: String, minutes: Long, text: String): Spoken =
     Spoken(EntryId(id), speaker, t.minusSeconds(minutes * 60), text)
 
-  private val none = Candidates(Vector.empty, Vector.empty, Vector.empty)
+  private val none = Candidates.none
 
   /** What `pool` shows of `candidates`, its sections in order. */
   private def shown(pool: Pool, candidates: Candidates) =

@@ -46,7 +46,7 @@ object Pool {
     *     this thread continues: {headline}`, nothing when it has none. Words and headline at
     *     most [[LineChars]].
     */
-  private[recipe] def show(
+  def show(
       pool: Pool,
       candidates: Candidates,
       t: Instant

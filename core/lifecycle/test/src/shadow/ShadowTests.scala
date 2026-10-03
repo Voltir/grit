@@ -7,7 +7,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.{ShadowRef, TurnRef, WorkflowId}
 import grit.core.stitch.Tuning
 import grit.core.triage.Shadowed
-import grit.lifecycle.triage.{TriageFixtures, TriageInput, TriageQuestion}
+import grit.lifecycle.triage.{TriageFixtures, TriageInput, TriageQuestion, TriageRecipe}
 
 import utest.*
 
@@ -21,7 +21,7 @@ object ShadowTests extends TestSuite {
   /** The digest of the request triage's question makes of `t` in `wording`, as `w` stands. */
   private def digest(w: World, t: grit.core.id.TriageRef, wording: TriageQuestion.Wording) =
     TriageInput
-      .build(w.triaged.reads, TriageFixtures.FakeDb, t, Tuning.Default)
+      .build(w.triaged.reads, TriageFixtures.FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
       .toOption
       .flatMap((_, state) => TriageQuestion.request(wording, state))
       .map(_.digest)

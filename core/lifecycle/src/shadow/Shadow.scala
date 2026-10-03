@@ -6,7 +6,7 @@ import grit.core.classify.{Answers, Classifier, ClassifierError, Request}
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, ShadowName, ShadowRef, WorkflowId}
 import grit.core.triage.{Shadowed, Tags}
-import grit.lifecycle.triage.{TriageInput, TriageQuestion}
+import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
 
 /** The shadow workflow: one per declared variant and heard message ([[ShadowRef]]), on a
   * queue of its own, so it never delays a triage. What it makes is recorded and never acted
@@ -59,42 +59,44 @@ object Shadow {
     env.variants.get(shadow.name) match {
       case None => Left(s"no variant ${ShadowName.value(shadow.name)} is declared")
       case Some(variant) =>
-        TriageInput.build(env.reads, env.db, shadow.triage, env.tuning).flatMap { (entry, state) =>
-          val call = new Call
-          val clock = env.clock
-          val timed = Classifier.around(variant.classifier) { (request, ask) =>
-            val start = clock.millis()
-            val answered = ask()
-            call.made = Some((request, answered, (clock.millis() - start).millis))
-            answered
-          }
-          val tags = TriageQuestion.judge(timed, variant.wording, state)
-          call.made match {
-            case None => Left("the variant's wording repeats a key")
-            case Some((request, Left(error), latency)) =>
-              Right(entry -> Shadowed.Failed(request.digest, error.kind, latency))
-            case Some((request, Right(answers), latency)) =>
-              tags match {
-                case Tags.Weighed(_, _, _, _, _, _, _) =>
-                  Right(
-                    entry -> Shadowed.Answered(
-                      request.digest,
-                      answers.answers,
-                      answers.usage,
-                      variant.requested,
-                      answers.model,
-                      latency
+        TriageInput
+          .build(env.reads, env.db, shadow.triage, env.tuning, TriageRecipe.Shipped)
+          .flatMap { (entry, state) =>
+            val call = new Call
+            val clock = env.clock
+            val timed = Classifier.around(variant.classifier) { (request, ask) =>
+              val start = clock.millis()
+              val answered = ask()
+              call.made = Some((request, answered, (clock.millis() - start).millis))
+              answered
+            }
+            val tags = TriageQuestion.judge(timed, variant.wording, state)
+            call.made match {
+              case None => Left("the variant's wording repeats a key")
+              case Some((request, Left(error), latency)) =>
+                Right(entry -> Shadowed.Failed(request.digest, error.kind, latency))
+              case Some((request, Right(answers), latency)) =>
+                tags match {
+                  case Tags.Weighed(_, _, _, _, _, _, _) =>
+                    Right(
+                      entry -> Shadowed.Answered(
+                        request.digest,
+                        answers.answers,
+                        answers.usage,
+                        variant.requested,
+                        answers.model,
+                        latency
+                      )
                     )
-                  )
-                // Answers came back but did not read as triage's: unreadable.
-                case Tags.Unanswered(_) =>
-                  Right(
-                    entry -> Shadowed
-                      .Failed(request.digest, ClassifierError.Kind.Unreadable, latency)
-                  )
-              }
+                  // Answers came back but did not read as triage's: unreadable.
+                  case Tags.Unanswered(_) =>
+                    Right(
+                      entry -> Shadowed
+                        .Failed(request.digest, ClassifierError.Kind.Unreadable, latency)
+                    )
+                }
+            }
           }
-        }
     }
 
   /** The one call an `ask` makes, as the classifier was handed it. */

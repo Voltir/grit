@@ -7,7 +7,7 @@ import grit.core.stitch.{Placed, StitchReads, Stitching, Tuning}
 import grit.core.store.{Origin, StoreError}
 import grit.core.triage.{Tags, TriageStore}
 import grit.dbos.engine.{Build, Reader}
-import grit.lifecycle.triage.{TriageInput, TriageQuestion}
+import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
 
 /** A corpus: its manifest, and its cases in their order. */
 final case class Corpus(manifest: Manifest, cases: Vector[Case])
@@ -128,16 +128,17 @@ object Capture {
       t: TriageStore.Tagged,
       tuning: Tuning
   ): Option[Asked] =
-    TriageInput.build(reads, reader.db, t.triage, tuning).toOption.flatMap { (_, state) =>
-      TriageQuestion
-        .request(TriageQuestion.Wording.Shipped, state)
-        .map(r =>
-          Asked(
-            Built(Digest.json(r.state), Digest.request(r)),
-            state.message.length,
-            state.thread.length
+    TriageInput.build(reads, reader.db, t.triage, tuning, TriageRecipe.Shipped).toOption.flatMap {
+      (_, state) =>
+        TriageQuestion
+          .request(TriageQuestion.Wording.Shipped, state)
+          .map(r =>
+            Asked(
+              Built(Digest.json(r.state), Digest.request(r)),
+              state.message.length,
+              state.thread.length
+            )
           )
-        )
     }
 
   /** `live`, the placement kept for `turn`'s message, beside what the builder offers it now

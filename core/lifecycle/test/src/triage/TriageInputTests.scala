@@ -1,9 +1,13 @@
 package grit.lifecycle.triage
 
+import scala.collection.immutable.VectorMap
+
 import grit.core.classify.StateJson
 import grit.core.durable.InMemoryDurable
 import grit.core.id.TriageRef
+import grit.core.recipe.Section
 import grit.core.stitch.Tuning
+import grit.core.store.Focus
 
 import utest.*
 
@@ -16,7 +20,7 @@ object TriageInputTests extends TestSuite {
   /** The state `triage` is asked about, as the classifier is sent it. */
   private def sent(w: World, triage: TriageRef, tuning: Tuning = Tuning.Default) =
     TriageInput
-      .build(w.reads, FakeDb, triage, tuning)
+      .build(w.reads, FakeDb, triage, tuning, TriageRecipe.Shipped)
       .map((_, state) => ujson.write(StateJson[TriageQuestion.State].json(state)))
 
   private def json(message: String, author: String, thread: String): String =
@@ -78,6 +82,29 @@ object TriageInputTests extends TestSuite {
       val excerpt = (Vector(line(0), "…") ++ (2 until 10).map(line)).mkString("\n")
       sent(w, t, Tuning.Default.copy(strandChars = 3_000)) ==>
         Right(json("and another", "David", excerpt.take(TriageQuestion.ThreadChars)))
+    }
+
+    test("a state's sections follow its thread under their keys, an empty one left out") {
+      val state = TriageQuestion.State(
+        "standup moves to 10:00",
+        "Ana",
+        "Ben: when is standup?",
+        VectorMap(Section.Exchanges -> "", Section.Nearby -> "Cy, 5 minutes before: lunch?")
+      )
+      ujson.write(StateJson[TriageQuestion.State].json(state)) ==>
+        """{"new_message":"standup moves to 10:00","author":"Ana","thread":"Ben: when is standup?",""" +
+        """"nearby_in_channel":"Cy, 5 minutes before: lunch?"}"""
+    }
+
+    test("a Slack thread's opening is read at its open focus, and a reply in it focused") {
+      val w = new World
+      w.hear("where did we land on the Engine contract term?", "Nick", 0)
+      val b = w.thread("2.0")
+      val opening = w.hear("Is this a real question", "David", 1, in = b)
+      val reply = w.hear("and another", "David", 2, in = b)
+      Vector(opening, reply).map(t =>
+        TriageInput.read(w.reads, FakeDb, t, Tuning.Default, TriageRecipe.Shipped).map(_.focus)
+      ) ==> Vector(Right(Focus.Open), Right(Focus.Focused))
     }
   }
 }

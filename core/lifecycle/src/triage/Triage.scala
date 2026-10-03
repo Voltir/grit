@@ -128,7 +128,8 @@ object Triage {
         StitchReads(r.entries, r.conversations, r.lifecycle, r.stitches, r.search, r.principals),
         env.db,
         triage,
-        env.tuning
+        env.tuning,
+        TriageRecipe.Shipped
       )
       .map((heard, state) =>
         (heard, TriageQuestion.judge(env.classifier, TriageQuestion.Wording.Shipped, state))

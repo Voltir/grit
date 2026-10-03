@@ -1,5 +1,7 @@
 package grit.lifecycle.triage
 
+import scala.collection.immutable.VectorMap
+
 import grit.core.classify.{
   Ask,
   Classifier,
@@ -10,6 +12,7 @@ import grit.core.classify.{
   StateJson
 }
 import grit.core.period.Probability
+import grit.core.recipe.Section
 import grit.core.triage.{Kind, Tags}
 
 /** What a heard message is asked, in one classifier call: what kind of message it is, and
@@ -20,18 +23,28 @@ object TriageQuestion {
 
   /** A heard message as the classifier is shown it: `{"new_message": ..., "author": ...,
     * "thread": ...}`, its text, who said it, and the thread before it, its last
-    * [[ThreadChars]].
+    * [[ThreadChars]]; then each of `sections` whose text is not empty, under its key, in
+    * order, so a state with none shows as triage shipped.
     */
-  final case class State(message: String, author: String, thread: String)
+  final case class State(
+      message: String,
+      author: String,
+      thread: String,
+      sections: VectorMap[Section, String] = VectorMap.empty
+  )
 
   /** How much of the thread before the message, from its end, the classifier is shown. */
   val ThreadChars = 2_000
 
   given StateJson[State] = StateJson.instance(s =>
-    ujson.Obj(
-      "new_message" -> s.message,
-      "author" -> s.author,
-      "thread" -> s.thread.takeRight(ThreadChars)
+    ujson.Obj.from(
+      Vector[(String, ujson.Value)](
+        "new_message" -> s.message,
+        "author" -> s.author,
+        "thread" -> s.thread.takeRight(ThreadChars)
+      ) ++ s.sections.collect {
+        case (section, text) if text.nonEmpty => section.key -> ujson.Str(text)
+      }
     )
   )
 

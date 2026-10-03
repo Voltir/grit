@@ -6,7 +6,7 @@ import grit.core.stitch.{Offer, StitchReads, Stitching, Tuning}
 import grit.core.store.StoreError
 import grit.dbos.engine.Reader
 import grit.eval.harness.corpus.{Case, Digest}
-import grit.lifecycle.triage.{TriageInput, TriageQuestion}
+import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
 
 /** One of a case's questions, as the shipped call asks it. */
 enum Asking {
@@ -106,11 +106,13 @@ object Inputs {
             .left
             .map(e => s"${c.id.written}: stitch unread: ${kind(e)}")
     } yield {
-      val triage = TriageInput.build(reads, reader.db, ref, under).toOption.flatMap { (_, state) =>
-        TriageQuestion
-          .request(wording, state)
-          .map(r => Posed(Asking.Triage(state, wording), r, Digest.json(r.state)))
-      }
+      val triage =
+        TriageInput.build(reads, reader.db, ref, under, TriageRecipe.Shipped).toOption.flatMap {
+          (_, state) =>
+            TriageQuestion
+              .request(wording, state)
+              .map(r => Posed(Asking.Triage(state, wording), r, Digest.json(r.state)))
+        }
       val stitch = offer.flatMap(o =>
         Stitching
           .request(o)

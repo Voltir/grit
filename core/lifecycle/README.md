@@ -40,7 +40,9 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   (`TriageQuestion`: its kind, and whether someone waits on it, whether it states something
   worth keeping, whether a reply would help, asked in a `Wording`, the shipped one in
   `Wording.Shipped`) over the message, who said it and the thread
-  before it, its strand first (built by `TriageInput`), then `record` the tags (`grit.core.triage`), then
+  before it, its strand first, and the sections of a `TriageRecipe`'s pool for the focus it
+  was said at (`grit.core.recipe`; built by `TriageInput`, `TriageRecipe.Shipped` showing
+  none), then `record` the tags (`grit.core.triage`), then
   `consider` whether grit drafts a reply (`Speak`, over `grit.core.speech`) and, when it does,
   `start` the heard message's own turn (ADR 0022). A classifier that fails leaves unanswered
   tags, and no draft. It writes no entry, so it never moves a deadline. `TriageEnv` is what
