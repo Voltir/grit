@@ -29,8 +29,7 @@ object Suite {
   * ([[grit.core.store.Origin.focus]]).
   *
   * @param focus
-  *   `None` for a stitch row, and in a log pulled from a database or written before runs
-  *   recorded it
+  *   `None` for a stitch row, and in a log written before runs and pulls recorded it
   */
 final case class Row[A](
     suite: Suite,

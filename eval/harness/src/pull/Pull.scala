@@ -8,7 +8,7 @@ import grit.core.classify.{Answer, ClassifierError, Question}
 import grit.core.id.{ShadowName, ShadowRef}
 import grit.core.message.Usage
 import grit.core.period.Probability
-import grit.core.store.{StoreError, Tx}
+import grit.core.store.{Focus, Origin, Position, StoreError, Tx}
 import grit.core.triage.{Kind, ShadowAnswers, Shadowed, Tags, TriageStore}
 import grit.dbos.engine.{Build, Reader}
 import grit.eval.harness.corpus.{Case, CaseId, Digest, Failure}
@@ -17,8 +17,8 @@ import grit.lifecycle.triage.TriageQuestion
 
 /** What a deployment's database kept of the heard messages tagged since a time, as run logs
   * the scorers read beside offline runs: live triage's tags ([[Pull.Kept]]), and each named
-  * shadow's answers. Rows are of the corpus's cases alone, in its order, one a case, never
-  * cached; text-free.
+  * shadow's answers. Rows are of the corpus's cases alone, in its order, one a case, each with
+  * the focus its message was said at, never cached; text-free.
   */
 object Pull {
 
@@ -85,11 +85,15 @@ object Pull {
       tagged <- read("tags")(reader.triage.tagged(since, at))
       ids <- each(tagged)(t =>
         read("conversation")(reader.conversations.get(t.triage.period.conversationId))
-          .map(c => t -> c.flatMap(c => CaseId.of(c.origin, t.entry)))
+          .map(c =>
+            t -> c.flatMap(c => CaseId.of(c.origin, t.entry).map(id => id -> focus(c.origin, id)))
+          )
       )
       starts <- reader.starts().left.map(e => s"engine starts unread: ${e.getClass.getSimpleName}")
-      inCorpus = cases.flatMap(c => ids.collectFirst { case (t, Some(id)) if id == c.id => (t, c) })
-      built = inCorpus.flatMap((t, c) => c.asked.map(a => (t, c, a.input.request)))
+      inCorpus = cases.flatMap(c =>
+        ids.collectFirst { case (t, Some((id, focus))) if id == c.id => (t, c, focus) }
+      )
+      built = inCorpus.flatMap((t, c, focus) => c.asked.map(a => (t, c, a.input.request, focus)))
       shadowed <- each(names)(n =>
         read("shadows")(reader.shadows.of(n, tagged.map(_.entry))).map(n -> _)
       )
@@ -126,12 +130,12 @@ object Pull {
           Some(Footer.of(priced.map((p: Priced) => p.cost).sum, rows))
         )
       }
-      val live = built.map((t, c, request) => kept(c.id, request, t.tags))
+      val live = built.map((t, c, request, focus) => kept(c.id, request, t.tags, focus))
       Pulled(
         log(Kept, live),
         shadowed.map { (name, rows) =>
-          val kept = inCorpus.flatMap((t, c) => rows.get(t.entry).map(c.id -> _))
-          val mine = kept.flatMap((id, row) => shadowRow(id, row))
+          val kept = inCorpus.flatMap((t, c, focus) => rows.get(t.entry).map((c.id, focus, _)))
+          val mine = kept.flatMap((id, focus, row) => shadowRow(id, row, focus))
           val missing = tagged.filterNot(t => rows.contains(t.entry))
           val ended = missing.count(t =>
             reader
@@ -146,7 +150,7 @@ object Pull {
             missing.size - ended
           )
         },
-        ids.collect { case (_, Some(id)) if !byId.contains(id) => id }.distinct.sorted,
+        ids.collect { case (_, Some((id, _))) if !byId.contains(id) => id }.distinct.sorted,
         inCorpus.size - live.size
       )
     }
@@ -166,8 +170,10 @@ object Pull {
       .request(TriageQuestion.Wording.Shipped, TriageQuestion.State("", "", ""))
       .fold(Vector.empty[Question])(_.questions)
 
-  /** A kept row of case `id`, asked as `request`, from live triage's `tags`, and its cost. */
-  private def kept(id: CaseId, request: Digest, tags: Tags): Priced =
+  /** A kept row of case `id`, said at `focus` and asked as `request`, from live triage's
+    * `tags`, and its cost.
+    */
+  private def kept(id: CaseId, request: Digest, tags: Tags, focus: Focus): Priced =
     tags match {
       case Tags.Weighed(kind, kindP, waiting, durable, helps, model, usage) =>
         val p = Probability.value(kindP)
@@ -179,7 +185,7 @@ object Pull {
           Weights.YesNo(Probability.value(durable)),
           Weights.YesNo(Probability.value(helps))
         )
-        row(id, request, model, Some(model), Outcome.Answered(weights), usage, Duration.Zero)
+        row(id, request, model, Some(model), Outcome.Answered(weights), usage, Duration.Zero, focus)
       case Tags.Unanswered(why) =>
         row(
           id,
@@ -188,14 +194,15 @@ object Pull {
           None,
           Outcome.Failed(Failure.of(why)),
           Usage.Zero,
-          Duration.Zero
+          Duration.Zero,
+          focus
         )
     }
 
-  /** A shadow's row of case `id`, from what it kept, and its cost; `None` for a question
-    * set's answers, which a log of triage's question cannot hold.
+  /** A shadow's row of case `id`, said at `focus`, from what it kept, and its cost; `None` for
+    * a question set's answers, which a log of triage's question cannot hold.
     */
-  private def shadowRow(id: CaseId, kept: Shadowed): Option[Priced] =
+  private def shadowRow(id: CaseId, kept: Shadowed, focus: Focus): Option[Priced] =
     kept match {
       case Shadowed.Answered(_, ShadowAnswers.Named(_), _, _, _, _) => None
       case Shadowed.Answered(
@@ -211,13 +218,24 @@ object Pull {
           if (weights.size == Questions.size && answers.size == Questions.size)
             Outcome.Answered(weights)
           else Outcome.Failed(Failure.Unreadable)
-        Some(row(id, digest(request), requested, Some(answered), outcome, usage, latency))
+        Some(row(id, digest(request), requested, Some(answered), outcome, usage, latency, focus))
       case Shadowed.Failed(request, failure, latency) =>
         val kind = failure match {
           case ClassifierError.Kind.Unavailable => Failure.Unavailable
           case ClassifierError.Kind.Unreadable => Failure.Unreadable
         }
-        Some(row(id, digest(request), "unknown", None, Outcome.Failed(kind), Usage.Zero, latency))
+        Some(
+          row(
+            id,
+            digest(request),
+            "unknown",
+            None,
+            Outcome.Failed(kind),
+            Usage.Zero,
+            latency,
+            focus
+          )
+        )
     }
 
   private def row(
@@ -227,7 +245,8 @@ object Pull {
       reported: Option[String],
       outcome: Outcome[Vector[Weights]],
       usage: Usage,
-      latency: FiniteDuration
+      latency: FiniteDuration,
+      focus: Focus
   ): Priced =
     Priced(
       Row(
@@ -243,10 +262,16 @@ object Pull {
         usage,
         latency,
         false,
-        None
+        Some(focus)
       ),
       usage.costUsd.getOrElse(BigDecimal(0))
     )
+
+  /** The focus case `id` was said at, in a conversation of `origin`: its thread's opening
+    * when `id` is the case that began it ([[CaseId.opening]]), else a reply.
+    */
+  private def focus(origin: Origin, id: CaseId): Focus =
+    origin.focus(if (CaseId.opening(origin).contains(id)) Position.Opening else Position.Reply)
 
   /** A shadow row's request digest; the schema keeps 64 hex digits, so any other is the
     * digest of what it holds.

@@ -10,7 +10,7 @@ import grit.core.id.{PrincipalId, ShadowName, SourceId, WorkflowId}
 import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
-import grit.core.store.{Origin, StoreError}
+import grit.core.store.{Focus, Origin, StoreError}
 import grit.core.triage.{KnowledgeSources, Shadowing}
 import grit.dbos.engine.{Build, LiveEngine, Reader}
 import grit.dbos.sql.{LiveDb, TestPostgres}
@@ -47,7 +47,7 @@ object PullTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "pull writes the corpus's cases' live tags and each shadow's answers as rows, lists the messages no corpus holds, and counts shadows that ended keeping nothing"
+      "pull writes the corpus's cases' live tags and each shadow's answers as rows at the focus each was said at, lists the messages no corpus holds, and counts shadows that ended keeping nothing"
     ) {
       val (words, ghost) = (named("words"), named("ghost"))
       val config = TestPostgres.freshDatabase("harness_pull")
@@ -128,10 +128,11 @@ object PullTests extends TestSuite {
           )
         )
         val start = Instant.now().minusSeconds(3_600)
-        val heard = Vector("2000.1", "2000.2", "2000.3")
-        heard.zipWithIndex.foreach { (ts: String, i: Int) =>
+        // The second is a reply in the first's thread; the others open their own.
+        val heard = Vector("2000.1" -> "2000.1", "2000.1" -> "2000.2", "2000.3" -> "2000.3")
+        heard.zipWithIndex.foreach { case ((thread, ts), i) =>
           engine.inbox.hear(
-            Origin.Slack("T1", "C1", ts),
+            Origin.Slack("T1", "C1", thread),
             SourceId(ts),
             s"is the release on day $i? ~back:question ~0.3",
             PrincipalId.Local,
@@ -173,21 +174,29 @@ object PullTests extends TestSuite {
               )
             )
           } finally reader.close()
-        val ids = heard.map(ts => right(CaseId.read(s"C1/$ts")))
+        val ids = heard.map((_, ts) => right(CaseId.read(s"C1/$ts")))
         corpus.cases.map(_.id) ==> ids.take(2)
         (
           pulled.live.rows.map(_.id),
+          pulled.live.rows.map(_.focus),
           pulled.live.header.variant,
           pulled.shadows.map(s =>
-            (s.name, s.log.header.variant, s.log.rows.map(_.id), s.ended, s.waiting)
+            (s.name, s.log.header.variant, s.log.rows.map(r => r.id -> r.focus), s.ended, s.waiting)
           ),
           pulled.uncaptured,
           pulled.unbuilt
         ) ==> (
           ids.take(2),
+          Vector(Some(Focus.Open), Some(Focus.Focused)),
           Pull.Kept,
           Vector(
-            (words, "shadow-words", ids.take(2), 0, 0),
+            (
+              words,
+              "shadow-words",
+              ids.take(2).zip(Vector(Focus.Open, Focus.Focused).map(Some(_))),
+              0,
+              0
+            ),
             (ghost, "shadow-ghost", Vector.empty, 3, 0)
           ),
           ids.drop(2),
