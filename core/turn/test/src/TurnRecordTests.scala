@@ -109,6 +109,24 @@ object TurnRecordTests extends TestSuite {
       )
     }
 
+    test(
+      "what a turn's root was weighed with reads from its weigh step: kept, asked, or nothing"
+    ) {
+      def model(name: String) = TurnRecord
+        .weighed(steps(name))
+        .map(_.map {
+          case TurnWeighing.Answered.Kept(_) => "kept"
+          case TurnWeighing.Answered.Asked(asked) => s"asked ${asked.tags.model} ${asked.estimate}"
+        })
+      Vector("heard-withheld", "addressed-weighed", "addressed-unweighed", "pinned-before-weigh")
+        .map(model) ==> Vector(
+        Right(Some("kept")),
+        Right(Some("asked jev 321")),
+        Right(None),
+        Right(None)
+      )
+    }
+
     test("a ledger row's role is read from the id its turn keeps it under, and only its turn's") {
       val other = TurnRef(ConversationId("c1"), TurnSeq(4))
       val ids = Vector(

@@ -19,6 +19,15 @@ object TurnRecord {
     read[Either[TurnFailure, TurnOffer.Recorded]](steps, Turn.Step.Offer).map(_.flatMap(_.toOption))
   }
 
+  /** What the `weigh` step recorded the turn's root was weighed with; `None` when no `weigh`
+    * step is recorded or it weighed nothing. `Left` naming the step when its output does not
+    * read.
+    */
+  def weighed(steps: Vector[StepRecord]): Either[String, Option[TurnWeighing.Answered]] = {
+    import TurnJournal.given
+    read[Option[TurnWeighing.Answered]](steps, Turn.Step.Weigh).map(_.flatten)
+  }
+
   /** The first of `steps` whose output is a [[TurnFailure]]: its step's family
     * ([[Turn.Step.family]]; the name as recorded when it has none) and the failure. A failure
     * ends the turn only when no reply follows it: a failed summary leaves the reply standing.

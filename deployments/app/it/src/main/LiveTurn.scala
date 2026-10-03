@@ -8,11 +8,13 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.id.{PrincipalId, SourceId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, ModelSetting, ModelSettings, Pinned}
-import grit.core.place.Directory
+import grit.core.place.{Directory, Reaches}
 import grit.core.provider.{Delta, ModelRequest, Models, Provider, ProviderError}
+import grit.core.recipe.TurnRecipe
 import grit.core.stitch.StitchReads
 import grit.core.store.{EntryStore, Origin, Payload}
 import grit.core.tool.{ToolSet, Toolbox}
+import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.Engine
 import grit.edge.Server
 import grit.kit.deployment.Offered
@@ -21,7 +23,7 @@ import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords}
-import grit.models.{StubModels, StubProvider}
+import grit.models.{StubClassifier, StubModels, StubProvider}
 import grit.tools.Coding
 import grit.turn.{Turn, TurnEnv, TurnHosting, TurnLoop, TurnRecords, TurnTooling, TurnTools}
 
@@ -87,7 +89,9 @@ object LiveTurn {
 
   /** As [[launch]], the model offered the coding tools over the checkout at `root`: all of
     * them when `all`, each gated call waiting `answerWithin` for its answer; otherwise the
-    * read-only ones.
+    * read-only ones. The session reaches the services of `reaches`, offered as `recipe`
+    * shapes it by the sources of `knowledge`; a message said to grit that the recipe weighs
+    * is asked of the stub classifier.
     */
   def launchIn(
       engine: Engine^,
@@ -95,7 +99,10 @@ object LiveTurn {
       provider: Provider^,
       root: java.nio.file.Path,
       all: Boolean = false,
-      answerWithin: FiniteDuration = TurnTools.AnswerWithin
+      answerWithin: FiniteDuration = TurnTools.AnswerWithin,
+      reaches: Vector[Reaches] = Vector.empty,
+      knowledge: KnowledgeSources = KnowledgeSources.Empty,
+      recipe: TurnRecipe = TurnRecipe.Shipped
   ): Unit = {
     val models = new LiveModels(provider)
     def launch[C^](tooling: TurnTooling[C]^): Unit =
@@ -144,8 +151,8 @@ object LiveTurn {
                   engine.principals
                 ),
                 engine.rooms,
-                grit.core.triage.KnowledgeSources.Empty,
-                grit.core.classify.Classifier.none("no classifier"),
+                knowledge,
+                new StubClassifier,
                 engine.placements,
                 engine.db,
                 Clock.system(),
@@ -242,7 +249,19 @@ object LiveTurn {
     val budget = TurnLoop.Budget.of(5).fold(why => sys.error(why), identity)
     val hosted = if (all) Coding.hosted else Coding.readOnlyHosted
     val none = Toolbox.of[{}]().fold(d => sys.error(d.toString), identity)
-    launch(TurnTooling[{}](none, Toolbox.Empty, hosted, engine.jot, budget, answerWithin))
+    launch(
+      TurnTooling[{}](
+        none,
+        Toolbox.Empty,
+        hosted,
+        engine.jot,
+        budget,
+        answerWithin,
+        reaches = reaches,
+        recipe = recipe,
+        knowledge = knowledge
+      )
+    )
     // This process's edge, serving the checkout as grit's own does.
     val here = origin(root)
     session = here
