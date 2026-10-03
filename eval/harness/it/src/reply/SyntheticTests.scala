@@ -75,9 +75,25 @@ object SyntheticTests extends TestSuite {
   }
 
   val tests = Tests {
+    test("a build writes every case in each variant, and names the cases labelling no [must]") {
+      val engine = LiveEngine.open(TestPostgres.freshDatabase("synthetic_build"), "eval")
+      val built =
+        try
+          Synthetic.build(
+            Vector(invoice, decoy),
+            engine.jot,
+            engine.conversations,
+            engine.entries,
+            engine.periods
+          )
+        finally engine.close()
+      // invoice: 3 + 2 plain, 83 + 22 buried; decoy: 1 + 2 plain, 1 + 22 buried.
+      built ==> Right(Synthetic.Built(2, 4, 136, Vector("decoy")))
+    }
+
     test("a case is found as loaded, and one that labels no [must] entry is left out by name") {
       withReader { reader =>
-        val (asked, nothing) = right(Synthetic.found(reader, Vector(invoice, decoy)))
+        val Synthetic.Found(asked, nothing) = right(Synthetic.found(reader, Vector(invoice, decoy)))
         asked.map(a => (a.name, a.turn)) ==> Vector(
           "invoice/plain" -> built._2("invoice/plain"),
           "invoice/buried" -> built._2("invoice/buried")
@@ -100,7 +116,7 @@ object SyntheticTests extends TestSuite {
 
     test("a case's window is drawn within its own scope: no other case's conversation is in it") {
       withReader { reader =>
-        val (asked, _) = right(Synthetic.found(reader, Vector(invoice)))
+        val asked = right(Synthetic.found(reader, Vector(invoice))).asked
         asked.foreach { a =>
           val own = Set(a.turn.conversationId) ++ a.expected.collect {
             case Expect.Holds(Locator.Messages(c, _)) => c
@@ -116,7 +132,7 @@ object SyntheticTests extends TestSuite {
 
     test("a case is judged by its window at a width: held when deployed, missed when narrow") {
       withReader { reader =>
-        val (asked, _) = right(Synthetic.found(reader, Vector(invoice)))
+        val asked = right(Synthetic.found(reader, Vector(invoice))).asked
         def judged(width: Width) = asked.map(a =>
           a.name -> Reference.judge(
             a.expected.toVector,

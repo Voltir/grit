@@ -55,5 +55,27 @@ object RecipeReportTests extends TestSuite {
         "| offer-0.3 | 1 | 12 → 2 | 4478 → 300 | 4178 | 0.500 (1/2 in 1 thread) too few threads for an interval |"
       )
     }
+
+    test(
+      "the synthetic reference: each variant's pass rate by case, and its failing cases by name"
+    ) {
+      def turns(buried: Judged) = Vector(
+        CaseJudged("a/plain", "a", Judged.Pass),
+        CaseJudged("a/buried", "a", buried),
+        CaseJudged("b/plain", "b", Judged.Pass)
+      )
+      Report
+        .synthetic(
+          Vector("cases: 2 in 2 variants"),
+          Vector("shipped" -> turns(Judged.Fail), "wide-addressed" -> turns(Judged.Pass))
+        )
+        .linesIterator
+        .filter(_.startsWith("| "))
+        .toVector ==> Vector(
+        "| variant | rate | unjudged | failed |",
+        "| shipped | 0.667 (2/3 in 2 cases) too few cases for an interval | 0 | a/buried |",
+        "| wide-addressed | 1.000 (3/3 in 2 cases) too few cases for an interval | 0 | none |"
+      )
+    }
   }
 }

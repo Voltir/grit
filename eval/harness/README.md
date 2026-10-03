@@ -5,7 +5,8 @@ through a variant of a shipped call, and scored. It measures; it gates nothing. 
 through `scripts/eval`, never from a test or `scripts/check`, and its tests test the
 instrument, not a model.
 
-It names grit's code alone (core, `grit.dbos`'s `Reader`, the turn's reading of its records,
+It names grit's code alone (core, `grit.dbos`'s `Reader`, and its `Engine` to write the
+synthetic reference's database alone, the turn's reading of its records,
 the assembler's estimate and the shipped retrieval assembler, the lifecycle's builders, the
 models' Jev and OpenRouter clients, and `grit.eval`'s hand-written cases and their layout),
 but for the kit's `.env` loader (`DotEnv`), through which a run reads Jev's key, and a rebuild
@@ -159,7 +160,9 @@ Packages, each importing only those above it:
   no reply said anything. Turn variants against shipped: `Report.recipes`, each `Varied`
   variant's tools (called-tool recall first), window tokens by part, used-section recall
   (stated undefined when no reply used a part), the turns it changed, and the reference
-  turns' pass rate under shipped and each variant. ← `stats`, `reply`,
+  turns' pass rate under shipped and each variant. The synthetic reference judged under
+  shipped and each variant (each turn a `CaseJudged`): `Report.synthetic`, each variant's pass
+  rate clustered by case, and its failing turns by name. ← `stats`, `reply`,
   `corpus`, `label`, `log`, `pull`, `score`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
 

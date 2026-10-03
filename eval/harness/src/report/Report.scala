@@ -164,6 +164,14 @@ object Report {
   ): String =
     RecipeLines.of(corpus, notes, shipped, variants)
 
+  /** The synthetic reference ([[grit.eval.harness.reply.Synthetic]]) judged under each named
+    * variant, shipped first by the caller: `notes` (lines on how it ran) first, then each
+    * variant's pass rate, clustered by case, its unjudged count (a window that was not drawn)
+    * and its failing turns by name.
+    */
+  def synthetic(notes: Vector[String], judged: Vector[(String, Vector[CaseJudged])]): String =
+    RecipeLines.synthetic(notes, judged)
+
   /** One side of a drafts report: its log's `file` name, the `log`, the question set it asks,
     * by name, and that set's `gate`.
     */

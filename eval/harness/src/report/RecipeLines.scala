@@ -15,6 +15,11 @@ final case class Varied(
     judged: Vector[(WorkflowId, ConversationId, Judged)]
 )
 
+/** A turn of the synthetic reference judged: its name (`{case}/{variant}`), the case it is a
+  * variant of, and how it stood.
+  */
+final case class CaseJudged(name: String, of: String, judged: Judged)
+
 /** [[Report.recipes]]'s sections. */
 private[report] object RecipeLines {
 
@@ -24,9 +29,6 @@ private[report] object RecipeLines {
       shipped: Varied,
       variants: Vector[Varied]
   ): String = {
-    def table(head: String*)(rows: Vector[Vector[String]]): Vector[String] =
-      Vector(head.mkString("| ", " | ", " |"), head.map(_ => "---").mkString("|", "|", "|")) ++
-        rows.map(_.mkString("| ", " | ", " |"))
     val header = Vector(s"# recipes: $corpus", "") ++ notes ++ Vector(
       "",
       "Each variant against shipped, paired on the same turns, shipped's window rebuilt as of " +
@@ -100,24 +102,57 @@ private[report] object RecipeLines {
       ""
     ) ++ (if (shipped.judged.isEmpty) Vector("No reference turn.", "")
           else
-            table("variant", "rate", "unjudged", "failed")((shipped +: variants).map { v =>
-              val judged = v.judged.collect {
-                case (_, c, Judged.Pass) => c -> true
-                case (_, c, Judged.Fail) => c -> false
-              }
-              Vector(
-                v.name,
-                rate(Proportion.of(judged)),
-                s"${v.judged.count(_._3 == Judged.Unjudged)}",
-                v.judged.collect { case (w, _, Judged.Fail) => WorkflowId.value(w) } match {
-                  case Vector() => "none"
-                  case ids => ids.mkString(", ")
-                }
-              )
-            }) ++ Vector(""))
+            judgedTable(
+              (shipped +: variants)
+                .map(v => v.name -> v.judged.map((w, c, j) => (WorkflowId.value(w), c, j))),
+              "thread"
+            ))
 
     (header ++ tools ++ window ++ used ++ changed ++ reference).mkString("\n")
   }
+
+  def synthetic(notes: Vector[String], judged: Vector[(String, Vector[CaseJudged])]): String =
+    (Vector("# recipes: synthetic", "") ++ notes ++ Vector(
+      "",
+      "Each case of grit.eval, as written and buried in filler, is a turn said to grit, which " +
+        "passes when its window holds every [must] entry; unjudged when its window was not " +
+        "drawn. A rate's interval is Wilson's at 95% on its effective number, clustered by " +
+        s"case (its plain and buried turns one cluster), and none under " +
+        s"${Proportion.MinClusters} cases.",
+      ""
+    ) ++ judgedTable(
+      judged.map((v: String, cs: Vector[CaseJudged]) => v -> cs.map(c => (c.name, c.of, c.judged))),
+      "case"
+    )).mkString("\n")
+
+  /** Each variant's judged turns, each by name with its cluster's key, as a table of its pass
+    * rate (clustered by key, each key a `cluster`), its unjudged count and its failing turns by
+    * name.
+    */
+  private def judgedTable[K](
+      judged: Vector[(String, Vector[(String, K, Judged)])],
+      cluster: String
+  ): Vector[String] =
+    table("variant", "rate", "unjudged", "failed")(judged.map {
+      (name: String, js: Vector[(String, K, Judged)]) =>
+        val held = js.collect {
+          case (_, c, Judged.Pass) => c -> true
+          case (_, c, Judged.Fail) => c -> false
+        }
+        Vector(
+          name,
+          rate(Proportion.of(held), cluster),
+          s"${js.count(_._3 == Judged.Unjudged)}",
+          js.collect { case (n, _, Judged.Fail) => n } match {
+            case Vector() => "none"
+            case names => names.mkString(", ")
+          }
+        )
+    }) ++ Vector("")
+
+  private def table(head: String*)(rows: Vector[Vector[String]]): Vector[String] =
+    Vector(head.mkString("| ", " | ", " |"), head.map(_ => "---").mkString("|", "|", "|")) ++
+      rows.map(_.mkString("| ", " | ", " |"))
 
   private def shift(s: Option[Shift]): String =
     s.fold("—")(x => s"${count(x.shipped)} → ${count(x.variant)}")
@@ -125,13 +160,13 @@ private[report] object RecipeLines {
   private def count(x: Double): String =
     if (x.isWhole) f"$x%.0f" else f"$x%.1f"
 
-  private def rate(r: Proportion): String =
+  private def rate(r: Proportion, cluster: String = "thread"): String =
     r.rate.fold("— (none)") { rate =>
       val bounds = r.interval match {
-        case Proportion.Interval.TooFewClusters => "too few threads for an interval"
+        case Proportion.Interval.TooFewClusters => s"too few ${cluster}s for an interval"
         case Proportion.Interval.Wilson(low, high, _) => f"[$low%.3f, $high%.3f]"
       }
-      val threads = if (r.clusters == 1) "1 thread" else s"${r.clusters} threads"
-      s"${f"$rate%.3f"} (${r.hits}/${r.n} in $threads) $bounds"
+      val clusters = if (r.clusters == 1) s"1 $cluster" else s"${r.clusters} ${cluster}s"
+      s"${f"$rate%.3f"} (${r.hits}/${r.n} in $clusters) $bounds"
     }
 }

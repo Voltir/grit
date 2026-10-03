@@ -156,7 +156,7 @@ only a nested `step`.
 `turns.zipWithIndex.flatMap((turn, t) => …)` over a `Vector[Vector[A]]` is rejected:
 *"capability `any` cannot flow into capture set {} of value turn"*, with the inferred
 parameter type showing `Vector`'s internal `prefix1: Array[Object^…]`. Writing the parameter
-types out fixes it: `(turn: Vector[A], t: Int) => …` (`grit.assembly.eval.Eval.load`).
+types out fixes it: `(turn: Vector[A], t: Int) => …` (`grit.eval.Layout.of`).
 
 **A thunk in a data type launders capabilities.** This is why `grit.tui`'s `Effect` is
 plain data with no function cases (`extensions/tui/CLAUDE.md`, rule 3).

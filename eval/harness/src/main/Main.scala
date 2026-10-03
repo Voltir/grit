@@ -13,13 +13,14 @@ import scala.util.control.NonFatal
 import grit.core.classify.{Answer, Classifier}
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.Width
+import grit.core.host.ProcessIdentity
 import grit.core.id.{QuestionName, ShadowName, TurnRef, WorkflowId}
 import grit.core.message.Tokens
 import grit.core.place.Service
 import grit.core.provider.Provider
 import grit.core.tool.ToolSet
 import grit.core.triage.KnowledgeSources
-import grit.dbos.engine.{Build, Reader}
+import grit.dbos.engine.{Build, Engine, Reader}
 import grit.dbos.sql.DbConfig
 import grit.eval.harness.corpus.{
   Capture,
@@ -75,12 +76,13 @@ import grit.eval.harness.reply.{
   Reference,
   ReplyReview,
   Supplies,
+  Synthetic,
   TurnAsk,
   TurnTriage,
   TurnVariant,
   WindowOnly
 }
-import grit.eval.harness.report.{Report, Scored, Varied}
+import grit.eval.harness.report.{CaseJudged, Report, Scored, Varied}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
   Decision,
@@ -143,6 +145,8 @@ object Main {
       case "turns" :: rest => exit(flags(rest).flatMap(turns))
       case "rebuild" :: rest => exit(flags(rest).flatMap(rebuild(_, clock)))
       case "recipes" :: rest => exit(flags(rest).flatMap(recipes(_, clock)))
+      case "reference-build" :: rest => exit(flags(rest).flatMap(referenceBuild(_, clock)))
+      case "synthetic" :: rest => exit(flags(rest).flatMap(synthetic))
       case "compare" :: rest =>
         flags(rest).flatMap(f =>
           if (f.contains("gate")) drafts(f, clock).map(_ => 0) else compare(f)
@@ -155,7 +159,7 @@ object Main {
         exit(
           Left(
             "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull|" +
-              "replies|reply-labels|turns|rebuild|recipes " +
+              "replies|reply-labels|turns|rebuild|recipes|reference-build|synthetic " +
               "(scripts/eval says what each takes)"
           )
         )
@@ -625,6 +629,137 @@ object Main {
       }
       _ <- publish(eval, s"recipes-$corpus", text)
     } yield ()
+
+  /** `reference-build --url <jdbc>`: every case of `grit.eval` ([[Synthetic.cases]]) written
+    * into the database at `<jdbc>` ([[Synthetic.build]]) through an engine opened on it for the
+    * purpose (its schema applied), with the database's login from `GRIT_DATABASE_USER` and
+    * `_PASSWORD`. The database is the synthetic reference's, which `scripts/eval` creates
+    * afresh first: a case already in it fails the build. Prints counts. A refused engine's
+    * holder is named as of `clock`'s now.
+    */
+  private def referenceBuild(f: Map[String, String], clock: Clock^): Either[String, Unit] =
+    for {
+      url <- need(f, "url")
+      all <- Synthetic.cases
+      config <- DbConfig
+        .fromEnv(sys.env.updated(DbConfig.UrlVar, url))
+        .left
+        .map(_.message)
+      built <- withEngine(config, clock)(engine =>
+        Synthetic.build(all, engine.jot, engine.conversations, engine.entries, engine.periods)
+      )
+    } yield {
+      println(s"cases: ${built.cases}, turns ${built.turns}, entries ${built.entries}")
+      println(
+        s"labelling no [must] entry: ${built.unlabelled.size}" +
+          (if (built.unlabelled.isEmpty) "" else built.unlabelled.mkString(" (", ", ", ")"))
+      )
+    }
+
+  /** `synthetic --eval <dir> --url <jdbc> --variants <name,…> --context <tokens> [--window
+    * <tokens>] [--tail <tokens>]`: the synthetic reference, `grit.eval`'s cases found in the
+    * database at `<jdbc>` ([[Synthetic.found]]), each judged ([[Reference.judge]]) under shipped
+    * and each variant ([[TurnVariant.named]]) by its window drawn at the variant's width
+    * ([[Synthetic.width]], [[Synthetic.window]]), each width's drawn once; written to
+    * `<dir>/reports/recipes-synthetic.md` and printed ([[Report.synthetic]]). Refused, before
+    * anything is read, when a variant draws a window over `--context`, the reply model's
+    * context in tokens. The assembler is built with grit's own window and tail
+    * ([[Assembled.Shipped]]) unless `--window` or `--tail` names the deployment's. Spends
+    * nothing; the database's login from `GRIT_DATABASE_USER` and `_PASSWORD`.
+    */
+  private def synthetic(f: Map[String, String]): Either[String, Unit] =
+    for {
+      eval <- need(f, "eval").map(Path.of(_))
+      url <- need(f, "url")
+      named <- need(f, "variants").map(_.split(',').toVector.filter(_.nonEmpty))
+      variants <- Fields.each(named)(n =>
+        TurnVariant
+          .named(n)
+          .toRight(s"no variant $n: ${TurnVariant.all.map(_.name).mkString(", ")}")
+      )
+      limit <- need(f, "context").flatMap(positive("context")).map(Tokens(_))
+      window <- f
+        .get("window")
+        .fold(Right(Assembled.Shipped.window))(positive("window")(_).map(Tokens(_)))
+      tail <- f.get("tail").fold(Right(Assembled.Shipped.tail))(positive("tail")(_).map(Tokens(_)))
+      assembled = Assembled.Shipped.copy(window = window, tail = tail)
+      _ <- variants
+        .flatMap(v => TurnVariant.pastContext(v, assembled, limit).map(v -> _))
+        .headOption
+        .fold[Either[String, Unit]](Right(())) { (v, b) =>
+          Left(
+            s"refused: ${v.name} draws a window of ${Tokens.value(b)} tokens, over the reply " +
+              s"model's context of ${Tokens.value(limit)}"
+          )
+        }
+      all <- Synthetic.cases
+      config <- DbConfig
+        .fromEnv(sys.env.updated(DbConfig.UrlVar, url))
+        .left
+        .map(_.message)
+      text <- opened(config) { reader =>
+        Synthetic.found(reader, all).map { found =>
+          val asked = found.asked
+          val judging = TurnVariant.Shipped +: variants
+          val widths = judging.map(Synthetic.width(_, assembled)).distinct
+          val windows = (for {
+            w <- widths
+            a <- asked
+          } yield (a.name, w) -> Synthetic.window(reader, a, assembled, w)).toMap
+          val judged = judging.map { v =>
+            val w = Synthetic.width(v, assembled)
+            v.name -> asked.map(a =>
+              CaseJudged(
+                a.name,
+                a.of,
+                Reference.judge(
+                  a.expected.toVector,
+                  windows.get((a.name, w)).flatMap(_.toOption),
+                  Set.empty
+                )
+              )
+            )
+          }
+          val notDrawn = windows.toVector.collect { case ((n, _), Left(why)) => s"  $n: $why" }
+          val notes = Vector(
+            s"cases: ${all.size}; turns judged (a case's in each variant) " +
+              s"${asked.size}, left out for labelling no [must] entry " +
+              s"${found.unlabelled.size}" +
+              (if (found.unlabelled.isEmpty) "" else found.unlabelled.mkString(" (", ", ", ")")),
+            s"windows drawn: ${windows.count(_._2.isRight)} of ${windows.size}, at " +
+              s"${widths.size} width(s)"
+          ) ++ notDrawn.sorted
+          Report.synthetic(notes, judged)
+        }
+      }
+      _ <- publish(eval, "recipes-synthetic", text)
+    } yield ()
+
+  /** `f` of an engine opened on `config`'s database to write the synthetic reference, closed
+    * after it; `Left` when it cannot open (another engine holds the database's lock, named as of
+    * `clock`'s now) or what it writes throws.
+    */
+  private def withEngine[A](config: DbConfig, clock: Clock^)(
+      f: Engine^ => Either[String, A]
+  ): Either[String, A] =
+    try {
+      Engine.open(config, "eval-synthetic", Builder, Uncapped) match {
+        case Left(refused) => Left(s"the engine could not open: ${refused.message(clock.now())}")
+        case Right(engine) =>
+          try f(engine)
+          finally engine.close()
+      }
+    } catch {
+      case NonFatal(e) => Left(s"the synthetic database was not written: ${e.getClass.getName}")
+    }
+
+  /** The process an engine opened only to write the synthetic reference's database says it
+    * is: no edge attaches to that engine, so nothing need find this process by it.
+    */
+  private val Builder: ProcessIdentity = ProcessIdentity("eval-reference-build", 0)
+
+  /** What that engine takes new messages under: no cap, as none is ever sent it. */
+  private val Uncapped: grit.core.spend.Budget = grit.core.spend.Budget(ZoneOffset.UTC, None)
 
   /** The offer `t` recorded and its tool set's entries, read through `reader`; none when it
     * recorded no offer.
