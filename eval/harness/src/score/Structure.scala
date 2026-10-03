@@ -133,6 +133,20 @@ final case class Online(
     worth: Option[Quantiles]
 )
 
+/** How much of the input the ledger recorded the provider served from its prompt cache, each
+  * a [[Proportion]] of input tokens cached, clustered by thread, a call of no input adding
+  * nothing: over every call; by what each call paid for, only what some call paid for, in
+  * [[Paid]]'s order; and over the main model's first call of each turn (a tool loop's first
+  * round, else the reply) against its later calls (the loop's later rounds and the reply after
+  * them).
+  */
+final case class Caching(
+    all: Proportion,
+    paid: VectorMap[Paid, Proportion],
+    first: Proportion,
+    later: Proportion
+)
+
 /** The window parts a reply carries, over the `turns` with a supported reply (one that
   * replied, said something and recorded a window): their `parts`, how many of those are used
   * (support at or over [[Support.Used]]), how many of the turns used at least one, and each
@@ -191,6 +205,7 @@ final case class Structure(
     cost: VectorMap[Paid, Quantiles],
     total: Option[Quantiles],
     unpriced: Int,
+    caching: Caching,
     online: Option[Online],
     verdicts: VectorMap[(Reason, Verdict), Int],
     used: Option[Used]
@@ -261,6 +276,7 @@ object Structure {
       ),
       Quantiles.of(ts.map(t => usd(t.spend))),
       ts.flatMap(_.spend).count(_.usage.costUsd.isEmpty),
+      caching(ts),
       online(ts),
       VectorMap.from(
         count(
@@ -346,15 +362,14 @@ object Structure {
     )
   }
 
+  /** Whether a call of `role` is the main model's: a round of the tool loop, or the reply. */
+  private def isMain(role: Option[TurnRecord.Role]): Boolean = role match {
+    case Some(TurnRecord.Role.Round(_)) | Some(TurnRecord.Role.Reply) => true
+    case _ => false
+  }
+
   private def estimate(ts: Vector[TurnCase]): Option[Estimated] = {
-    val first = ts.flatMap(
-      _.spend.find(s =>
-        s.role match {
-          case Some(TurnRecord.Role.Round(_)) | Some(TurnRecord.Role.Reply) => true
-          case _ => false
-        }
-      )
-    )
+    val first = ts.flatMap(_.spend.find(s => isMain(s.role)))
     val pairs =
       first.map(s => (Tokens.value(s.estimated).toDouble, Tokens.value(s.usage.input).toDouble))
     for {
@@ -364,6 +379,25 @@ object Structure {
       estimated,
       actual,
       Quantiles.of(pairs.collect { case (e, a) if a > 0 => e / a })
+    )
+  }
+
+  private def caching(ts: Vector[TurnCase]): Caching = {
+    val calls = ts.flatMap(t => t.spend.map(t.conversation -> _))
+    def rate(cs: Vector[(grit.core.id.ConversationId, grit.eval.harness.corpus.Spent)]) =
+      Proportion.counted(
+        cs.map((c, s) => (c, Tokens.value(s.usage.cachedInput), Tokens.value(s.usage.input)))
+      )
+    val main = ts.map(t => t.conversation -> t.spend.filter(s => isMain(s.role)))
+    Caching(
+      rate(calls),
+      VectorMap.from(
+        Paid.values.toVector
+          .filter(p => calls.exists((_, s) => Paid.of(s.role) == p))
+          .map(p => p -> rate(calls.filter((_, s) => Paid.of(s.role) == p)))
+      ),
+      rate(main.flatMap((c, ss) => ss.take(1).map(c -> _))),
+      rate(main.flatMap((c, ss) => ss.drop(1).map(c -> _)))
     )
   }
 

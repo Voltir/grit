@@ -58,6 +58,7 @@ object ReportTests extends TestSuite {
         "## Tokens",
         "## Estimate against the ledger",
         "## Cost per turn",
+        "## Prompt cache",
         "## Speech",
         "## Verdicts",
         "## Used parts",
@@ -91,6 +92,18 @@ object ReportTests extends TestSuite {
       assert(report.exists(_.contains("A lexical heuristic until labels validate it.")))
       report.filter(l => l.startsWith("| tui |") && l.contains("undefined")) ==>
         Vector("| tui | 0 | — | — | — | undefined: no reply said anything |")
+    }
+
+    test("a turns report gives the cache's hit rate of tokens, the first call apart from later") {
+      val report = lines(Report.turns("20261004", TurnFixtures.turns, TurnFixtures.verdicts))
+      val few = "too few threads for an interval"
+      report
+        .dropWhile(_ != "## Prompt cache")
+        .takeWhile(_ != "### Prompt cache by role")
+        .filter(_.startsWith("| all ")) ==> Vector(
+        s"| all | 372 | 90 | 0.242 (90/372 in 2 threads) $few | 0.111 (20/180 in 2 threads) $few | " +
+          s"0.600 (60/100 in 1 thread) $few |"
+      )
     }
 
     test("a turns report's lines run most costly first, each with its top parts by support") {

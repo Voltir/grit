@@ -27,7 +27,8 @@ Packages, each importing only those above it:
   a quantile in mills alone; `Estimate`, a mean with its standard error clustered (CR1), its 95% interval
   and the least difference a paired comparison of its precision detects, over Student's t;
   and `Proportion`, how many items hit, with Wilson's 95% interval on their effective number
-  (n over the clustered design effect), none under `Proportion.MinClusters` clusters; pure,
+  (n over the clustered design effect), none under `Proportion.MinClusters` clusters, its
+  items listed or given by count (`Proportion.counted`: a call's cached tokens of its input); pure,
   naming nothing of grit's.
 - **`corpus`** — a corpus, text-free: `CaseId`, a heard message's identity outside any one
   database (its Slack channel and ts); `Case`, what a heard message was live, the digests of
@@ -39,7 +40,8 @@ Packages, each importing only those above it:
   `TurnCase`, one turn the database recorded, keyed by its workflow, TUI and task turns as
   well as Slack ones (`Said`, the message it answers by id): its offer, its window by part,
   its tool loop's rounds (each call by the tool it named: an offered one, the turn's own
-  `topic` tool, or neither), how it ended, its ledger rows by role and what became of a heard
+  `topic` tool, or neither), how it ended, its ledger rows by role (each with its input, cached input and output tokens
+  and its cost) and what became of a heard
   root's draft, read by `TurnCapture` through `Reader` and the turn's own reading of its
   records (`grit.turn.TurnRecord`), each window part costed by `CharEstimate` over `Shown`
   (`TurnCapture.costed` costs a rebuilt window the same way, and `TurnCapture.schema` a set of
@@ -147,7 +149,9 @@ Packages, each importing only those above it:
   turns that did not reply, the pass rate, rounds, tools offered against called (the turn's
   `topic` tool and unnamed calls apart), prompt and window tokens and the first call's
   estimate against the ledger (each as `Quantiles`), cost by what it paid for, the drafts'
-  outcomes with their post and hold rates (each a `Proportion` clustered by thread), the review verdicts
+  outcomes with their post and hold rates (each a `Proportion` clustered by thread), the prompt
+  cache's hit rate (`Caching`: cached input tokens of input, clustered by thread, by role and
+  for a turn's first main call against its later ones), the review verdicts
   joined by case, and the window parts a reply `Used`. `Recipe`, a turn variant against
   shipped over the turns paired (`TurnPair`, what each is `Given` both ways): tools offered and
   their definitions' tokens saved, called-tool recall (of the tools a turn called, those the

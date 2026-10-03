@@ -164,6 +164,24 @@ object StructureTests extends TestSuite {
         .map(Structure.of(turns, _, verdicts).used) ==> Vector(None, None)
     }
 
+    test("the cache hit rate is cached input tokens of input, by what was paid and by call") {
+      // Cached of input: t1 query 0/12, round 0 0/80, reply 60/100 (thread A); t2 reply 0/0,
+      // which adds nothing, judge 10/30 (A); t4 reply 20/100, summary 0/50 (thread C).
+      def few(hits: Long, n: Long, threads: Int) =
+        Proportion(hits, n, threads, Proportion.Interval.TooFewClusters)
+      all.caching.all ==> few(90, 372, 2)
+      all.caching.paid.toVector ==> Vector(
+        Paid.Query -> few(0, 12, 1),
+        Paid.Rounds -> few(0, 80, 1),
+        Paid.Reply -> few(80, 200, 2),
+        Paid.Judge -> few(10, 30, 1),
+        Paid.Summary -> few(0, 50, 1)
+      )
+      // The main model's first call: t1's round 0, t2's reply (no input), t4's reply; later:
+      // t1's reply.
+      (all.caching.first, all.caching.later) ==> (few(20, 180, 2), few(60, 100, 1))
+    }
+
     test("turns by cost, most first, a tie by workflow") {
       Structure.byCost(turns).map((t, c) => WorkflowId.value(t.workflow) -> c) ==> Vector(
         "w1" -> BigDecimal("0.006"),

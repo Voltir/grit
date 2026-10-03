@@ -147,7 +147,8 @@
 #       .local/eval/reports/turns-<date>.md and printed: the pass rate first, then the turns
 #       that did not reply, rounds, tools offered against called (the turn's topic tool and
 #       unnamed calls apart), prompt and window tokens, the first main call's estimate against
-#       the ledger, cost per turn by role, speech outcomes with post and hold rates, verdicts
+#       the ledger, cost per turn by role, the prompt cache's hit rate (cached input tokens
+#       of input: by role, and a turn's first main call against its later ones), speech outcomes with post and hold rates, verdicts
 #       and the window parts a reply used (support >= 0.3, a lexical heuristic), each over
 #       every turn, by root and by where said; then one line a turn by workflow, most costly
 #       first, with its top 3 parts by support. Text-free; reads no database.

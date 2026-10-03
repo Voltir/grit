@@ -143,6 +143,29 @@ private[report] object TurnLines {
         Vector(spread(st.total, mills), s"${st.unpriced}")
     ) ++ Vector("")
 
+    val roles = all.caching.paid.keys.toVector
+    val caching = Vector(
+      "## Prompt cache",
+      "",
+      "Input tokens the provider served from its prompt cache, of the input the ledger " +
+        "recorded: over every call, over the main model's first call of each turn against its " +
+        "later calls (a loop's later rounds and the reply after them), and by what each call " +
+        "paid for. A tool loop resends its prefix within a turn, so a later call can hit; a " +
+        "first call hits only when an earlier call left the same prefix cached. A rate is of " +
+        "tokens, clustered by thread.",
+      ""
+    ) ++ bySlice("input", "cached", "rate", "first call", "later calls")(st =>
+      Vector(
+        s"${st.caching.all.n}",
+        s"${st.caching.all.hits}",
+        rate(st.caching.all),
+        rate(st.caching.first),
+        rate(st.caching.later)
+      )
+    ) ++ Vector("", "### Prompt cache by role", "") ++
+      bySlice(roles.map(paidName)*)(st => roles.map(p => st.caching.paid.get(p).fold("—")(rate))) ++
+      Vector("")
+
     val kinds = Drafted.Kind.values.toVector.filter(k => all.online.exists(_.outcomes.contains(k)))
     val speaking = Vector(
       "## Speech",
@@ -229,7 +252,7 @@ private[report] object TurnLines {
     )
 
     (header ++ passing ++ failing ++ looping ++ tooling ++ tokens ++ estimating ++ costing ++
-      speaking ++ reviewing ++ using ++ cases).mkString("\n") + "\n"
+      caching ++ speaking ++ reviewing ++ using ++ cases).mkString("\n") + "\n"
   }
 
   private def line(t: TurnCase, c: BigDecimal): Vector[String] = {

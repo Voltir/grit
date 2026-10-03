@@ -3,7 +3,7 @@ package grit.eval.harness.stats
 /** How many of `n` items were `hits`, over how many `clusters`, and the proportion's 95%
   * interval clustered by them.
   */
-final case class Proportion(hits: Int, n: Int, clusters: Int, interval: Proportion.Interval) {
+final case class Proportion(hits: Long, n: Long, clusters: Int, interval: Proportion.Interval) {
 
   /** `hits` over `n`; `None` when `n` is 0. */
   def rate: Option[Double] = Option.when(n > 0)(hits.toDouble / n)
@@ -30,26 +30,39 @@ object Proportion {
   }
 
   /** The proportion of `items` that hit, each its cluster and whether it hit. */
-  def of[K](items: Vector[(K, Boolean)]): Proportion = {
-    val hits = items.count(_._2)
-    val n = items.size
-    val clusters = items.map(_._1).distinct.size
+  def of[K](items: Vector[(K, Boolean)]): Proportion =
+    counted(items.map((k, hit) => (k, if (hit) 1L else 0L, 1L)))
+
+  /** [[of]] over items given by count: each entry `(cluster, hits, of)` stands for `of` items
+    * of that cluster, `hits` of them hits (read as within 0 and `of`), such as a call's cached
+    * input tokens of its input tokens. An entry of no items adds nothing, not even its cluster.
+    */
+  def counted[K](counts: Vector[(K, Long, Long)]): Proportion = {
+    val items = counts.collect {
+      case (k, hits, of) if of > 0 => (k, math.min(math.max(hits, 0L), of), of)
+    }
+    val hits = items.map(_._2).sum
+    val n = items.map(_._3).sum
+    val clusters =
+      items.groupMapReduce(_._1)(i => (i._2, i._3))((x, y) => (x._1 + y._1, x._2 + y._2))
     val interval =
-      if (clusters < MinClusters) Interval.TooFewClusters
+      if (clusters.size < MinClusters) Interval.TooFewClusters
       else {
         val p = hits.toDouble / n
         val binomial = p * (1 - p) / n
-        val clustered = Estimate
-          .clustered(items.map((k, hit) => k -> (if (hit) 1.0 else 0.0)))
-          .fold(binomial)(e => e.se * e.se)
+        // CR1 over the clusters' sums of residuals, as Estimate.clustered takes it of each item
+        // scored 1 or 0: a cluster's sum is its hits less p of its items.
+        val g = clusters.size.toDouble
+        val sums = clusters.values.map((h, of) => h - p * of)
+        val clustered = g / (g - 1) * sums.map(s => s * s).sum / (n.toDouble * n)
         val effect = if (binomial > 0) math.max(1.0, clustered / binomial) else 1.0
         wilson(hits, n, n / effect)
       }
-    Proportion(hits, n, clusters, interval)
+    Proportion(hits, n, clusters.size, interval)
   }
 
   /** Wilson's 95% score interval for `hits` of `n` taken as `effective` items. */
-  private def wilson(hits: Int, n: Int, effective: Double): Interval.Wilson = {
+  private def wilson(hits: Long, n: Long, effective: Double): Interval.Wilson = {
     val z = 1.96
     val p = hits.toDouble / n
     val z2 = z * z

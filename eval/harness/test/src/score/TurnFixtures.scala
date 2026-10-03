@@ -49,11 +49,17 @@ object TurnFixtures {
   private def support(x: Double) = Support.read(x)
   private def part(kind: Part.Kind, tokens: Long, s: Option[Double] = None) =
     Part(kind, ConversationId("x"), Vector(EntrySeq(1)), Tokens(tokens), s.flatMap(support))
-  private def spent(role: Option[TurnRecord.Role], usd: Option[String], in: Long, est: Long) =
+  private def spent(
+      role: Option[TurnRecord.Role],
+      usd: Option[String],
+      in: Long,
+      est: Long,
+      cached: Long = 0
+  ) =
     Spent(
       role,
       "m/x",
-      Usage(Tokens(in), Tokens(1), Tokens.Zero, usd.map(BigDecimal(_))),
+      Usage(Tokens(in), Tokens(1), Tokens(cached), usd.map(BigDecimal(_))),
       Tokens(est)
     )
   private def p(x: Double) = Some(Probability.clamped(x))
@@ -108,7 +114,7 @@ object TurnFixtures {
       spend = Vector(
         spent(Some(TurnRecord.Role.Query), Some("0.001"), 12, 10),
         spent(Some(TurnRecord.Role.Round(0)), Some("0.002"), 80, 100),
-        spent(Some(TurnRecord.Role.Reply), Some("0.003"), 100, 120)
+        spent(Some(TurnRecord.Role.Reply), Some("0.003"), 100, 120, cached = 60)
       ),
       speech = Some(Drafted(Drafted.Kind.Posted, p(0.8), p(0.6), None))
     )
@@ -127,7 +133,7 @@ object TurnFixtures {
       rounds = Vector(Round(Vector(Call(Called.Unnamed, Settled.Expired)))),
       spend = Vector(
         spent(Some(TurnRecord.Role.Reply), Some("0.002"), 0, 50),
-        spent(Some(TurnRecord.Role.Judge), None, 30, 30)
+        spent(Some(TurnRecord.Role.Judge), None, 30, 30, cached = 10)
       ),
       speech = Some(Drafted(Drafted.Kind.Below, p(0.4), p(0.7), p(0.5)))
     )
@@ -162,7 +168,7 @@ object TurnFixtures {
           )
         ),
         spend = Vector(
-          spent(Some(TurnRecord.Role.Reply), Some("0.004"), 100, 200),
+          spent(Some(TurnRecord.Role.Reply), Some("0.004"), 100, 200, cached = 20),
           spent(Some(TurnRecord.Role.Summary), Some("0.0005"), 50, 60)
         )
       )

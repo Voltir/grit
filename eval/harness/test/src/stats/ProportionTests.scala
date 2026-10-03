@@ -53,5 +53,18 @@ object ProportionTests extends TestSuite {
         case other => throw new java.lang.AssertionError(other.toString)
       }
     }
+    test("counted items are clustered as listed items are, an entry of none adding nothing") {
+      // The clustered case above, by count: c0 holds 3 of 3, c1..c4 hit, c5..c9 miss.
+      val counts =
+        Vector(("c0", 3L, 3L)) ++ (1 to 9).map(i => (s"c$i", if (i < 5) 1L else 0L, 1L)) ++
+          Vector(("c10", 0L, 0L))
+      val p = Proportion.counted(counts)
+      (p.hits, p.n, p.clusters) ==> (7L, 12L, 10)
+      p.interval match {
+        case Proportion.Interval.Wilson(low, high, effective) =>
+          (r(low), r(high), r(effective)) ==> (0.273592, 0.838812, 7.957895)
+        case other => throw new java.lang.AssertionError(other.toString)
+      }
+    }
   }
 }
