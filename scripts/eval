@@ -65,7 +65,8 @@
 #       rule's context, each judged on the mean difference) judges B over A, and the exit
 #       code says what it decided: 0 adopt B, 3 refused (B was not run with --rule <rule>,
 #       the difference is under its MDE or the rule's least, or a guard is broken), 4 keep A. With --replica, a pulled replica shadow's log (the shipped
-#       wording, of the live model), A being a pulled live log: each case whose replica answer
+#       wording, of the live model), A being a live log an earlier build pulled by position
+#       (a pull now writes live's under its names, which score and compare refuse): each case whose replica answer
 #       stands from live's by more than 10 × Jev's repeat spread on some question (measured as
 #       each question's pooled standard deviation in the --spread run, which has repeats) has
 #       moved on since live triage asked, and is listed and left out of the comparison.
@@ -98,11 +99,13 @@
 #
 #   scripts/eval pull --from <database> --corpus <yyyymmdd> --shadows <name,...> [--since <instant>]
 #       What <database> kept of the heard messages tagged since <instant> (default: ever) that
-#       the corpus holds, as run logs in .local/eval/runs/ for score, compare and order: live
-#       triage's tags as live-<today>.jsonl (variant `kept`: only the likeliest kind's
-#       probability is kept live), and each named shadow's answers as
-#       shadow-<name>-<today>.jsonl: a wording's by position, as live's are; a question set's
-#       under its questions' names, the names in its header. A shadow whose rows are of both
+#       the corpus holds, as run logs in .local/eval/runs/: live triage's tags as
+#       live-<today>.jsonl (variant `kept`), under the names of the question set its first
+#       answered row asked, the names in its header; a row of other names (a message triaged
+#       before live's question set changed) is left out and counted, so pull with --since the
+#       change. Each named shadow's answers as shadow-<name>-<today>.jsonl: a wording's by
+#       position, for score, compare and order; a question set's under its questions' names,
+#       as live's are, for compare --live --gate. A shadow whose rows are of both
 #       (its name declared for a wording and then a set) is refused: no log, its counts
 #       printed; declare a changed question under a new name. Only reads <database>. Prints counts: each log's rows, and
 #       for each shadow the messages tagged since that it has no row for, its shadow ended

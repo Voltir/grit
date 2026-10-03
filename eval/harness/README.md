@@ -41,9 +41,9 @@ Packages, each importing only those above it:
   `CacheKey` and `Cache`, answers kept as files under their request's key, so an unchanged
   request is never paid for twice. ← `corpus`
 - **`pull`** — `Pull`, what a deployment's database kept of the heard messages a corpus
-  holds, read through `Reader` as run logs the scorers read beside offline runs: live
-  triage's tags (variant `kept`, which keeps only the likeliest kind's probability), and
-  each declared shadow's answers (`grit.lifecycle.shadow`) as a `ShadowLog`: a wording's by
+  holds, read through `Reader` as run logs: live triage's tags (variant `kept`), under the
+  names its question set asked them by, the rows of another set's names left out and counted,
+  and each declared shadow's answers (`grit.lifecycle.shadow`) as a `ShadowLog`: a wording's by
   position, a question set's under its names, or refused when a name kept both; with the
   messages no corpus holds yet, and each shadow's that ended keeping nothing; and
   `Pull.verdicts`, the verdicts standing on reviewed messages, by case. ← `corpus`, `label`,

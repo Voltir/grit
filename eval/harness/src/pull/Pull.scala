@@ -8,12 +8,11 @@ import scala.concurrent.duration.*
 import grit.core.classify.{Answer, ClassifierError, Question}
 import grit.core.id.{QuestionName, ShadowName, ShadowRef}
 import grit.core.message.Usage
-import grit.core.period.Probability
 import grit.core.review.Considered
 import grit.core.store.{Focus, Origin, Position, StoreError, Tx}
-import grit.core.triage.{Kind, KnowledgeSources, ShadowAnswers, Shadowed, Tags, TriageStore}
+import grit.core.triage.{KnowledgeSources, ShadowAnswers, Shadowed, Tags, TriageStore}
 import grit.dbos.engine.{Build, Reader}
-import grit.eval.harness.corpus.{Case, CaseId, Digest, Failure, Live}
+import grit.eval.harness.corpus.{Case, CaseId, Digest, Failure}
 import grit.eval.harness.label.{Rated, Verdicts}
 import grit.eval.harness.log.{CacheKey, Footer, Header, Log, Outcome, Row, Suite, Weights}
 import grit.lifecycle.triage.{TriageQuestion, TriageQuestions}
@@ -25,24 +24,23 @@ import grit.lifecycle.triage.{TriageQuestion, TriageQuestions}
   */
 object Pull {
 
-  /** The variant a pulled log of live triage's tags names: `kept`. Live triage keeps the
-    * likeliest kind's probability, not every kind's: its row gives that kind its kept
-    * probability and every other kind an even share of the rest, so a kind's comparison
-    * against it reads the likeliest kind and its probability only.
-    */
+  /** The variant a pulled log of live triage's tags names: `kept`. */
   val Kept = "kept"
 
   /** The variant a pulled log of shadow `name`'s answers names: `shadow-<name>`. */
   def variant(name: ShadowName): String = s"shadow-${ShadowName.value(name)}"
 
-  /** What [[apply]] read: live triage's log (its rows the corpus's cases triage answered and
-    * whose question the corpus rebuilt, `unbuilt` counting those it could not and those whose
-    * tags answer a question set other than v1), each shadow's
-    * by the form its answers were kept in,
+  /** What [[apply]] read: live triage's log, its rows the corpus's cases triage answered and
+    * whose question the corpus rebuilt, each answered row's answers under their names, the
+    * question set's names those of its first answered row; `renamed`, the answered rows left
+    * out because their names differ from those (a pull since before live triage changed its
+    * question set: pull `since` the change); `unbuilt`, the cases left out because the corpus
+    * could not rebuild their question; each shadow's log by the form its answers were kept in;
     * and the Slack messages tagged since that no corpus case is, for the next capture.
     */
   final case class Pulled(
-      live: Log[Vector[Weights]],
+      live: Log[VectorMap[QuestionName, Answer]],
+      renamed: Int,
       shadows: Vector[Pulled.Shadow],
       uncaptured: Vector[CaseId],
       unbuilt: Int
@@ -66,7 +64,7 @@ object Pull {
     * `since` and before `at`, over `cases` (the corpus `corpus`, its files' digest `corpusDigest`): live
     * triage's, and one for each of `names`. Each log's header has the variant
     * ([[Kept]], or [[variant]]), the model the first of its answered rows requested, no wording
-    * ([[Header.wording]]), a question set's names for a [[ShadowLog.Named]], the build every engine start since `since` ran (`Unknown` unless
+    * ([[Header.wording]]), a question set's names for live's and a [[ShadowLog.Named]], the build every engine start since `since` ran (`Unknown` unless
     * they all ran one), one repeat, no cache, no rule, a cap of 0 (a shadow's cap is its
     * deployment's) and `at` as when it started; its footer what its rows' calls cost. A kept
     * row's request is the corpus's rebuilt digest, as live triage's own is not recorded, and
@@ -151,9 +149,14 @@ object Pull {
           case (_, Some(_)) => ShadowLog.Mixed(worded, named.size)
         }
       }
-      val live = built.flatMap((t, c, request, focus) => kept(c.id, request, t.tags, focus))
+      val all = built.map((t, c, request, focus) => kept(c.id, request, t.tags, focus))
+      val first = all.collectFirst { case (Some(names), _) => names }
+      val live = all.collect {
+        case (names, row) if names.isEmpty || names == first => row
+      }
       Pulled(
-        log(Kept, live),
+        log(Kept, live, first),
+        all.size - live.size,
         shadowed.map { (name, rows) =>
           val kept =
             inCorpus.flatMap((t, c, focus) => rows.get(t.entry).map(held(c.id, _, focus)))
@@ -171,7 +174,7 @@ object Pull {
           )
         },
         ids.collect { case (_, Some((id, _))) if !byId.contains(id) => id }.distinct.sorted,
-        inCorpus.size - live.size
+        inCorpus.size - built.size
       )
     }
   }
@@ -246,40 +249,33 @@ object Pull {
     TriageQuestions.V1.request(TriageQuestion.State("", "", ""), KnowledgeSources.Empty).questions
 
   /** A kept row of case `id`, said at `focus` and asked as `request`, from live triage's
-    * `tags`, and its cost; `None` when they answer a question set other than v1.
+    * `tags`, and its cost; with the names it answered under, `None` when it failed.
     */
   private def kept(
       id: CaseId,
       request: Digest,
       tags: Tags,
       focus: Focus
-  ): Option[Priced[Vector[Weights]]] =
+  ): (Option[Vector[QuestionName]], Priced[VectorMap[QuestionName, Answer]]) =
     tags match {
-      case Tags.Weighed(_, model, usage) =>
-        Some(Live.of(tags)).collect { case v1: Live.Weighed =>
-          val p = Probability.value(v1.kindP)
-          val rest = (1 - p) / (Kind.values.size - 1)
-          val ps = Kind.values.toVector.map(k => if (k == v1.kind) p else rest)
-          val weights: Vector[Weights] = Vector(
-            Weights.Choice(v1.kind.ordinal, ps, Answer.confidence(ps)),
-            Weights.YesNo(Probability.value(v1.waiting)),
-            Weights.YesNo(Probability.value(v1.durable)),
-            Weights.YesNo(Probability.value(v1.helps))
-          )
-          row[Vector[Weights]](
+      case Tags.Weighed(answers, model, usage) =>
+        (
+          Some(answers.keys.toVector),
+          row(
             id,
             request,
             model,
             Some(model),
-            Outcome.Answered(weights),
+            Outcome.Answered(answers),
             usage,
             Duration.Zero,
             focus
           )
-        }
+        )
       case Tags.Unanswered(why) =>
-        Some(
-          row[Vector[Weights]](
+        (
+          None,
+          row(
             id,
             request,
             "unknown",

@@ -545,7 +545,7 @@ object Main {
       (pulled, standing) = got
       day = Day.format(at.atOffset(ZoneOffset.UTC))
       verdicts = s"verdicts-$day.json"
-      logs = Pulled(s"live-$day.jsonl", lines(pulled.live)) +:
+      logs = Pulled(s"live-$day.jsonl", lines(pulled.live)(using LogJson.named)) +:
         pulled.shadows.flatMap { (s: Pull.Pulled.Shadow) =>
           val name = s"shadow-${ShadowName.value(s.name)}-$day.jsonl"
           s.log match {
@@ -568,10 +568,13 @@ object Main {
           s"spent $$${footer.spent}"
       }
       println(
-        s"live (${Pull.Kept}): ${counted(pulled.live)}; corpus cases with no rebuilt " +
-          s"question, left out: ${pulled.unbuilt}"
+        s"live (${Pull.Kept}): questions " +
+          pulled.live.header.questions
+            .fold("none answered")(_.map(QuestionName.value).mkString(", ")) +
+          s"; ${counted(pulled.live)}; answered under other questions, left out: " +
+          s"${pulled.renamed} (pull --since when live triage's question set changed); corpus " +
+          s"cases with no rebuilt question, left out: ${pulled.unbuilt}"
       )
-      println(s"  ${Report.KeptNote}")
       pulled.shadows.foreach { s =>
         val kept = s.log match {
           case ShadowLog.Worded(log) => counted(log)
@@ -612,12 +615,26 @@ object Main {
   }
 
   /** The run `<dir>/runs/<name>`, with its corpus's cases and `labels`; a corpus whose files
-    * changed since the run is reported, not refused.
+    * changed since the run is reported, not refused. A log of answers under their names, as
+    * pull writes live triage's and a question set's shadow's, is refused, naming `--live`.
     */
   private def scored(dir: Path, name: String, labels: Labels): Either[String, Scored] =
     for {
       text <- read(dir.resolve("runs").resolve(name))
-      log <- LogJson.read[Vector[Weights]](text.linesIterator.filter(_.nonEmpty).toVector)
+      lines = text.linesIterator.filter(_.nonEmpty).toVector
+      log <- LogJson
+        .read[Vector[Weights]](lines)
+        .left
+        .map(why =>
+          LogJson
+            .read[VectorMap[QuestionName, Answer]](lines)(using LogJson.named)
+            .fold(
+              _ => s"$name: $why",
+              _ =>
+                s"$name: a question set's answers under their names (live triage's or a " +
+                  "shadow's, as pull writes them): compare it with --live and --gate"
+            )
+        )
       corpus = dir.resolve("corpus").resolve(log.header.corpus)
       manifest <- read(corpus.resolve("corpus.json"))
       casesText <- read(corpus.resolve("cases.jsonl"))

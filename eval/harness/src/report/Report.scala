@@ -68,7 +68,9 @@ final case class Scored(
   */
 object Report {
 
-  /** What a report says of a log of live triage's kept tags ([[Pull.Kept]]). */
+  /** What a report says of a log of live triage's kept tags by position ([[Pull.Kept]]), as
+    * an earlier build's pull wrote it: a pull now writes them under their names.
+    */
   val KeptNote: String = "kept: live triage keeps only the likeliest kind's probability; " +
     "the other kinds share the rest evenly, so its kind compares the likeliest kind and its " +
     "probability only"

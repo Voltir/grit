@@ -14,12 +14,11 @@ import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin, StoreError}
-import grit.core.triage.{Kind, KnowledgeSources, ShadowAnswers, Shadowed, Shadowing}
+import grit.core.triage.{KnowledgeSources, ShadowAnswers, Shadowed, Shadowing}
 import grit.dbos.engine.{Build, LiveEngine, Reader}
 import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.eval.harness.corpus.{Capture, CaseId, Corpus, Digest, Dump}
 import grit.eval.harness.log.{Outcome, Row, Weights}
-import grit.eval.harness.score.Answers
 import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageQuestions, TriageRecords, TriageSpeech}
@@ -74,7 +73,7 @@ object PullTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "pull writes the corpus's cases' live tags and each shadow's answers as rows at the focus each was said at, a question set's under its names, a wording's in order and one of both forms refused, lists the messages no corpus holds, and counts shadows that ended keeping nothing"
+      "pull writes the corpus's cases' live tags under the names its first answered row asked, leaving out and counting those of other names, and each shadow's answers, as rows at the focus each was said at, a question set's under its names, a wording's in order and one of both forms refused, lists the messages no corpus holds, and counts shadows that ended keeping nothing"
     ) {
       val (words, ghost, set, mixed, legacy) =
         (named("words"), named("ghost"), named("set"), named("mixed"), named("legacy"))
@@ -91,7 +90,12 @@ object PullTests extends TestSuite {
               TriageRecords(
                 engine.entries,
                 // Kept as before V2: the harness reads v1-era tags only.
-                new grit.eval.harness.corpus.KeptAsV1(engine.triage, engine.entries, _ => true),
+                // The first heard before live triage asked V2.
+                new grit.eval.harness.corpus.KeptAsV1(
+                  engine.triage,
+                  engine.entries,
+                  _.contains("day 0")
+                ),
                 engine.principals,
                 engine.conversations,
                 engine.speech,
@@ -213,40 +217,51 @@ object PullTests extends TestSuite {
                 .record(entry, legacy, answered(ShadowAnswers.Worded(worded)), Instant.now())
             ) ==> Right(true)
           )
+        // When the second, the first triaged by V2, was tagged: a pull since the switch.
+        val switched =
+          tagged.toOption.flatMap(_.lift(1)).map(_.at).getOrElse(sys.error("tagged"))
         val reader = Reader.open(config)
-        val (corpus, pulled) =
+        val (corpus, pulled, since) =
           try {
             val c: Corpus =
               right(
                 Capture(reader, "source", "restored", Dump(Digest.text("d"), dumped), Build.Unknown)
               )
+            def pull(from: Instant, shadows: Vector[ShadowName]) =
+              right(Pull(reader, "c", Digest.text("c"), c.cases, shadows, from, Instant.now()))
             (
               c,
-              right(
-                Pull(
-                  reader,
-                  "c",
-                  Digest.text("c"),
-                  c.cases,
-                  Vector(words, ghost, set, mixed, legacy),
-                  Instant.EPOCH,
-                  Instant.now()
-                )
-              )
+              pull(Instant.EPOCH, Vector(words, ghost, set, mixed, legacy)),
+              pull(switched, Vector.empty)
             )
           } finally reader.close()
         val ids = heard.map((_, ts) => right(CaseId.read(s"C1/$ts")))
         corpus.cases.map(_.id) ==> ids.take(2)
+        val (v1Names, v2Names) = (
+          Vector("kind", "waiting", "durable", "helps").map(qn),
+          Vector("gap", "open", "to", "durable", "anchor").map(qn)
+        )
         (
-          pulled.live.rows.map(_.id),
-          pulled.live.rows.map(_.focus),
+          pulled.live.rows.map(r => (r.id, r.focus)),
+          pulled.live.header.questions,
+          pulled.renamed,
+          since.live.rows.map(r => (r.id, r.focus)),
+          since.live.header.questions,
+          since.renamed
+        ) ==> (
+          Vector(ids(0) -> Some(Focus.Open)),
+          Some(v1Names),
+          1,
+          Vector(ids(1) -> Some(Focus.Focused)),
+          Some(v2Names),
+          0
+        )
+        (
           pulled.live.header.variant,
           pulled.shadows.map(s => (s.name, shape(s.log), s.ended, s.waiting)),
           pulled.uncaptured,
           pulled.unbuilt
         ) ==> (
-          ids.take(2),
-          Vector(Some(Focus.Open), Some(Focus.Focused)),
           Pull.Kept,
           Vector(
             (
@@ -278,42 +293,21 @@ object PullTests extends TestSuite {
           ids.drop(2),
           0
         )
-        // V1 is live's question as a set: for each case it sends the request the corpus
-        // rebuilt as live's, and the stub answers it alike, so the likeliest kind's
-        // probability and waiting are live's kept tags exactly.
-        val kept = Answers.of(pulled.live.rows).triage
+        // V1 is live's question as a set: the case triaged before the switch sends the
+        // request the corpus rebuilt as live's, and the stub answers it alike, so the v1
+        // shadow's answers are live's kept answers exactly.
         val v1 = pulled.shadows
           .collectFirst { case Pull.Pulled.Shadow(`words`, ShadowLog.Named(log), _, _) =>
             log.rows
           }
           .getOrElse(Vector.empty)
-        v1.map(r => (r.id, r.request)) ==> pulled.live.rows.map(r => (r.id, r.request))
-        def asKept(answers: VectorMap[QuestionName, Answer]) = for {
-          kind <- answers
-            .get(qn("kind"))
-            .collect { case Answer.Choice(_, ws, _) => ws }
-            .flatMap(_.maxByOption(_.probability))
-          waiting <- answers.get(qn("waiting")).collect { case Answer.YesNo(p) => p }
-        } yield (kind.key, Some(kind.probability), waiting)
-        v1.map(r =>
-          r.outcome match {
-            case Outcome.Answered(answers) => r.id -> asKept(answers)
-            case _ => r.id -> None
-          }
-        ) ==> ids
-          .take(2)
-          .map(id =>
-            id -> kept
-              .get(id)
-              .map(a =>
-                (
-                  Kind.written(a.mean.likeliest),
-                  a.mean.kinds.get(a.mean.likeliest),
-                  a.mean.waiting
-                )
-              )
-          )
-        assert(ids.headOption.flatMap(kept.get).map(_.mean.waiting) == Some(0.3))
+        v1.filter(_.id == ids(0)).map(r => (r.id, r.request, r.outcome)) ==>
+          pulled.live.rows.map(r => (r.id, r.request, r.outcome))
+        assert(
+          pulled.live.rows.map(_.outcome).collect { case Outcome.Answered(a) =>
+            a.get(qn("waiting"))
+          } == Vector(Some(Answer.YesNo(0.3)))
+        )
       } finally engine.close()
     }
   }
