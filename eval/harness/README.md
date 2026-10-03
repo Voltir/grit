@@ -9,8 +9,10 @@ It names grit's code alone (core, `grit.dbos`'s `Reader`, the turn's reading of 
 the assembler's estimate and the lifecycle's builders), but for the kit's `.env` loader
 (`DotEnv`), through which a run reads Jev's key as grit does.
 
-Every file it writes is text-free (ids, digests, numbers, lengths and field names) but one: the
-review file `scripts/eval inputs` writes under `.local/eval/review/`, for a person to read. A
+Every file it writes is text-free (ids, digests, numbers, lengths and field names) but the
+files for a person to read: the review file `scripts/eval inputs` writes under
+`.local/eval/review/`, and the reply reviews `scripts/eval replies` writes under
+`.local/eval/replies/`, which print only ids and counts unless asked to show the file. A
 corpus's text stays in Postgres, in the database the corpus was restored to.
 
 Packages, each importing only those above it:
@@ -70,7 +72,7 @@ Packages, each importing only those above it:
   `Inputs`, a case's questions rebuilt through the shipped builders, and `Drift`, how a
   rebuilt state compares to the corpus's; `Review`, a case's questions as rebuilt, text and
   all, for a person to read beside it (`scripts/eval inputs` writes them under
-  `.local/eval/review/`, the one file the harness writes text to, and prints only counts);
+  `.local/eval/review/` and prints only counts);
   `Spend`, what a request costs before it is sent, and `Budget`, a run's spend under its
   cap. ← `corpus`, `log`
 - **`reply`** — `ReplyReview`, a few turns' replies for a person to label: turns named or

@@ -120,6 +120,24 @@
 #       id, with the shadow it was picked against, why, the rater's id and when; ids and
 #       times, no text. A file of none is written when there are none.
 #
+#   scripts/eval replies <yyyymmdd> (--case <id>... | --pick <n> [--by <order>]) [--records] [--show]
+#       A review of the corpus's replies for a person to label, written, text and all, to
+#       .local/eval/replies/replies-<date>-<stamp>.md (the stamp the time it was written, UTC):
+#       at most 5 turns, more refused. --case names turns by workflow id, or by a Slack
+#       message's case id (the turn that answered it); --pick chooses n turns not yet in
+#       .local/eval/reply-labels.json, --by posted, held, tools, widest or random (the
+#       default, its seed written in the file). Each case shows the message its turn answers
+#       and its reply; with --records, at most 3 of its window's parts, best supported first,
+#       each cut at 800 characters; never a tool result, reasoning, the query, the thread's
+#       other messages or a whole window. Its text is read from grit_eval_<date>. Prints the
+#       file's path and each case's id and record count, and the file only with --show.
+#
+#   scripts/eval reply-labels <review file>
+#       The label lines filled in a replies file (a name in .local/eval/replies/, or a path)
+#       read into .local/eval/reply-labels.json, by workflow, under the guide the file names,
+#       each in place of an earlier label of the same turn; a note is never read. Prints
+#       counts.
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.
 set -euo pipefail
@@ -285,8 +303,42 @@ pull() {
     --runs "$main/.local/eval/runs" "${rest[@]}"
 }
 
+replies() {
+  local corpus=${1:-}
+  [[ $corpus =~ ^[0-9]{8}$ ]] || usage
+  shift
+  local cases=() rest=()
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --case)
+        shift
+        while [ $# -gt 0 ] && [[ $1 != --* ]]; do cases+=("$1"); shift; done ;;
+      --pick | --by) [ $# -ge 2 ] || usage; rest+=("$1" "$2"); shift 2 ;;
+      --records | --show) rest+=("$1"); shift ;;
+      *) usage ;;
+    esac
+  done
+  local dir="$main/.local/eval/corpus/$corpus" restored="grit_eval_$corpus"
+  [ -f "$dir/turns.jsonl" ] || { echo "eval: no turns in $dir; capture the corpus again" >&2; exit 1; }
+  exists "$restored" || { echo "eval: $restored is gone; capture the corpus again" >&2; exit 1; }
+  local named=()
+  [ ${#cases[@]} -eq 0 ] || named=(--cases "$(IFS=,; echo "${cases[*]}")")
+  harness replies --corpus "$dir" --url "jdbc:postgresql://localhost:5432/$restored" \
+    --out "$main/.local/eval/replies" --labels "$main/.local/eval/reply-labels.json" \
+    "${named[@]}" "${rest[@]}"
+}
+
+reply_labels() {
+  local file=${1:-}
+  [ -n "$file" ] && [ $# -eq 1 ] || usage
+  [[ $file == */* ]] || file="$main/.local/eval/replies/$file"
+  harness reply-labels --file "$file" --labels "$main/.local/eval/reply-labels.json"
+}
+
 case $1 in
   capture) shift; capture "$@" ;;
+  replies) shift; replies "$@" ;;
+  reply-labels) shift; reply_labels "$@" ;;
   pull) shift; pull "$@" ;;
   order) shift; order "$@" ;;
   score) shift; score "$@" ;;

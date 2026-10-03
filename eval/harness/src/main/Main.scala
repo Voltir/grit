@@ -11,8 +11,8 @@ import scala.util.chaining.*
 import scala.util.control.NonFatal
 
 import grit.core.classify.Answer
-import grit.core.clock.Clock
-import grit.core.id.{QuestionName, ShadowName}
+import grit.core.clock.{Clock, Fresh}
+import grit.core.id.{QuestionName, ShadowName, WorkflowId}
 import grit.core.message.Tokens
 import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.{Build, Reader}
@@ -48,7 +48,7 @@ import grit.eval.harness.jev.{
   Variant,
   Variants
 }
-import grit.eval.harness.label.{Labels, Verdicts}
+import grit.eval.harness.label.{Labels, ReplyLabels, Verdicts}
 import grit.eval.harness.log.{
   Cache,
   Cached,
@@ -63,6 +63,7 @@ import grit.eval.harness.log.{
   Weights
 }
 import grit.eval.harness.pull.{Pull, ShadowLog}
+import grit.eval.harness.reply.ReplyReview
 import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
@@ -100,6 +101,20 @@ object Main {
       case "score" :: rest => exit(flags(rest).flatMap(score))
       case "order" :: rest => exit(flags(rest).flatMap(order))
       case "pull" :: rest => exit(flags(rest).flatMap(pull))
+      case "replies" :: rest =>
+        val switches = Set("--records", "--show")
+        exit(
+          flags(rest.filterNot(switches)).flatMap(
+            replies(
+              _,
+              rest.contains("--records"),
+              rest.contains("--show"),
+              Clock.system(),
+              Fresh.random()
+            )
+          )
+        )
+      case "reply-labels" :: rest => exit(flags(rest).flatMap(replyLabels))
       case "compare" :: rest =>
         flags(rest).flatMap(f =>
           if (f.contains("gate")) drafts(f).map(_ => 0) else compare(f)
@@ -111,7 +126,8 @@ object Main {
       case _ =>
         exit(
           Left(
-            "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull " +
+            "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull|" +
+              "replies|reply-labels " +
               "(scripts/eval says what each takes)"
           )
         )
@@ -186,6 +202,89 @@ object Main {
     println(s"  ended: ${counts(ended)}")
     println(s"  with a tool loop: ${turns.cases.count(_.rounds.nonEmpty)}")
   }
+
+  /** `replies --corpus <dir> --url <jdbc> --out <dir> --labels <file> (--cases <id,...> |
+    * --pick <n> [--by <order>, default random])`, with `records` for `--records` and `show`
+    * for `--show`: a review of the corpus's turns ([[ReplyReview]]), its text read from the
+    * restored database, written to `<out>/replies-<corpus>-<stamp>.md`, the stamp `clock`'s
+    * now; a random order is seeded from `fresh`. A pick leaves out the turns `<file>`
+    * (`reply-labels.json`; none when it does not exist) labels. Prints the file's path, and
+    * each case's workflow and record count; the file's text only with `show`.
+    */
+  private def replies(
+      f: Map[String, String],
+      records: Boolean,
+      show: Boolean,
+      clock: Clock^,
+      fresh: Fresh^
+  ): Either[String, Unit] =
+    for {
+      dir <- need(f, "corpus").map(Path.of(_))
+      url <- need(f, "url")
+      out <- need(f, "out").map(Path.of(_))
+      labelled <- need(f, "labels").map(Path.of(_)).flatMap(replyLabelsAt)
+      turns <- readTurns(dir)
+      ask <- (f.get("cases"), f.get("pick")) match {
+        case (Some(ids), None) if !f.contains("by") =>
+          Right(ReplyReview.Ask.Named(ids.split(",").toVector.filter(_.nonEmpty)))
+        case (None, Some(n)) =>
+          for {
+            count <- n.toIntOption.toRight(s"--pick $n: not a whole number")
+            by <- ReplyReview.By.named(f.getOrElse("by", "random"), fresh)
+          } yield ReplyReview.Ask.Pick(count, by)
+        case _ => Left("give --cases, or --pick with or without --by")
+      }
+      picked <- ReplyReview.pick(turns, labelled, ask)
+      at = clock.now()
+      corpus = Option(dir.getFileName).fold("")(_.toString)
+      config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      review <- opened(config)(reader =>
+        ReplyReview.review(corpus, picked, at)(t => ReplyReview.read(reader, t, records))
+      )
+      path = out.resolve(s"replies-$corpus-${Stamp.format(at.atOffset(ZoneOffset.UTC))}.md")
+      _ <- Try(Files.createDirectories(out)).toEither.left.map(e => s"$out: ${e.getClass.getName}")
+      text = ReplyReview.render(review)
+      _ <- write(path, text)
+    } yield {
+      println(s"written: $path, ${review.cases.size} cases")
+      review.cases.foreach(c =>
+        println(s"  ${WorkflowId.value(c.turn.workflow)}: ${c.records.size} records")
+      )
+      if (show) print(text)
+    }
+
+  /** `reply-labels --file <review file> --labels <file>`: the labels the filled review file
+    * holds ([[ReplyReview.labels]]) merged into `<file>` (`reply-labels.json`, created when it
+    * does not exist), each in place of an earlier label of the same turn. Prints counts.
+    */
+  private def replyLabels(f: Map[String, String]): Either[String, Unit] =
+    for {
+      file <- need(f, "file").map(Path.of(_))
+      at <- need(f, "labels").map(Path.of(_))
+      text <- read(file)
+      filled <- ReplyReview.labels(text)
+      before <- replyLabelsAt(at)
+      after = before.merged(filled)
+      _ <- write(at, ReplyLabels.written(after))
+    } yield println(
+      s"labels read: ${filled.size}, replacing ${filled.count((w, _) => before.turns.contains(w))}; " +
+        s"turns labelled: ${after.turns.size}"
+    )
+
+  /** The reply labels at `path`; none when it does not exist. */
+  private def replyLabelsAt(path: Path): Either[String, ReplyLabels] =
+    if (!Files.exists(path)) Right(ReplyLabels.Empty)
+    else read(path).flatMap(ReplyLabels.read)
+
+  /** The turns of the corpus in `dir`, from `turns.jsonl`. */
+  private def readTurns(dir: Path): Either[String, Vector[TurnCase]] =
+    read(dir.resolve("turns.jsonl")).flatMap(text =>
+      Fields.each(text.linesIterator.filter(_.nonEmpty).toVector)(l =>
+        Try(ujson.read(l)).toOption
+          .toRight("turns.jsonl: a line is not JSON")
+          .flatMap(TurnJson.read)
+      )
+    )
 
   /** `run --corpus <dir> --url <jdbc> --variant <name> --spend <usd> --cache <dir> --runs
     * <dir> [--repeats n (default [[Repeats.Default]])] [--first n] [--rule <file>] [--labels <file>]`, and `cache` false for
