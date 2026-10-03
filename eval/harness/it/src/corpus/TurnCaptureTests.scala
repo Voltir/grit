@@ -9,7 +9,7 @@ import grit.assembly.linear.LinearAssembler
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, PrincipalId, QuestionName, SourceId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{CloseRef, PrincipalId, SourceId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Catalog, Pinned}
 import grit.core.period.{CloseReason, Probability, TestClosings}
@@ -20,7 +20,7 @@ import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
-import grit.core.triage.{Bound, KnowledgeSources, Reading}
+import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
 import grit.eval.harness.label.Verdicts
@@ -124,9 +124,7 @@ object TurnCaptureTests extends TestSuite {
   }
 
   /** V2's `gap` choosing `asks`, which the stub classifier answers from `~back:asks`. */
-  private val asks = grit.core.triage.Gate.bounds(
-    Bound.AtLeast(Reading.Key(right(QuestionName.of("gap")), "asks"), Probability.clamped(0.5))
-  )
+  private val asks = grit.core.triage.Tags.V2.asks(Probability.clamped(0.5))
 
   private def launch(engine: Engine^): Unit = {
     val speaking = Speaking.Within(Limits.suggested(right(DailyCap.of("0.25")), asks))

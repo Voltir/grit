@@ -75,7 +75,8 @@ In dependency order:
   `Budget.Refusal`, the one line a person is told when it is not. ← `id`, `message`, `store`
 - **`triage`** — what grit makes of a message it heard (ADR 0020): `Kind`, `Tags` (triage's
   answers, each under its question's name, or none; `Tags.V1`, the names and gate of the set
-  triage first asked) and `TriageStore`, where they are kept beside their entry and deleted
+  triage first asked; `Tags.V2`, the names of the set it asks now, the gates over them a
+  deployment composes, and its draft gate) and `TriageStore`, where they are kept beside their entry and deleted
   with it; `Earning`, whether a period earns a written closing, by its heard messages'
   `durable` answers; `Shadowing` (a shadow variant as the sweep enqueues it, within its daily cap),
   `Shadowed` (what one variant made of one message: its `ShadowAnswers`, a wording's in

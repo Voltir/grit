@@ -3,7 +3,7 @@ package grit.eval.harness.reply
 import java.time.Instant
 
 import grit.core.context.{Width, Window}
-import grit.core.id.{QuestionName, TurnRef, WorkflowId}
+import grit.core.id.{TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason}
 import grit.core.period.Probability
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
@@ -20,11 +20,8 @@ final case class WindowOnly(turn: TurnRef, at: Instant)
 object WindowOnly {
 
   /** `gap`'s most weighted key is `asks`. */
-  private val Asks: Option[Gate] =
-    QuestionName
-      .of("gap")
-      .toOption
-      .map(gap => Gate.bounds(Bound.AtLeast(Reading.Chosen(gap, "asks"), Probability.clamped(1))))
+  private val Asks: Gate =
+    Gate.bounds(Bound.AtLeast(Reading.Chosen(Tags.V2.gap, "asks"), Probability.clamped(1)))
 
   /** Every such message `reader`'s database tagged before `until`, oldest tagged first. `Left`
     * naming what could not be read.
@@ -41,7 +38,7 @@ object WindowOnly {
       tagged.flatMap { t =>
         val turn = TurnRef(t.triage.period.conversationId, t.triage.turn)
         val asks = t.tags match {
-          case Tags.Weighed(answers, _, _) => Asks.exists(_.drafts(answers).contains(true))
+          case Tags.Weighed(answers, _, _) => Asks.drafts(answers).contains(true)
           case Tags.Unanswered(_) => false
         }
         Option.when(asks && !answered(turn.workflowId))(WindowOnly(turn, t.at))

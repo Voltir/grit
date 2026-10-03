@@ -4,8 +4,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.classify.{Answer, Answered, Ask, Classifier, ClassifierError, Question, Request}
 import grit.core.id.QuestionName
-import grit.core.period.Probability
-import grit.core.triage.{Bound, Earning, Gate, Kind, KnowledgeSources, Reading, Tags}
+import grit.core.triage.{Gate, Kind, KnowledgeSources, Reading, Tags}
 
 /** Questions about a heard message ([[TriageQuestion.State]]), asked together in one
   * classifier call, each answer kept under its question's name, and the gate a draft is
@@ -155,22 +154,15 @@ object TriageQuestions {
   /** [[v1]] in the shipped wording ([[TriageQuestion.Wording.Shipped]]). */
   val V1: TriageQuestions = v1(TriageQuestion.Wording.Shipped)
 
-  /** v2, the set that replaced [[V1]]: `gap` (what the message leaves open:
-    * `asks`, `owes`, `closes` or `nothing`), `open`, `to`, `durable`, `anchor`, then one
-    * `source:<name>` question per knowledge source; drafts when `gap` reads `asks` at least
-    * 0.5, `open` at least 0.5, `to` below 0.5 and `anchor` below 0.5.
+  /** v2, the set that replaced [[V1]], in [[Tags.V2]]'s names: `gap` (what the message leaves
+    * open: `asks`, `owes`, `closes` or `nothing`), `open`, `to`, `durable`, `anchor`, then one
+    * `source:<name>` question per knowledge source; gated by [[Tags.V2.drafts]].
     */
   val V2: TriageQuestions = {
-    def name(text: String) = QuestionName.of(text)
+    import Tags.V2.{anchor, gap, open, source, to}
     def yesNo(words: String) = Question.YesNo(words, None, None)
     def key(name: String, means: String) = Question.Key(name, Some(means))
-    val half = Probability.clamped(0.5)
     val built = for {
-      gap <- name("gap")
-      open <- name("open")
-      to <- name("to")
-      anchor <- name("anchor")
-      source <- name("source")
       gapQuestion <- Question
         .choice(
           "Read new_message, said by author, and its thread. What does new_message leave open?",
@@ -203,7 +195,7 @@ object TriageQuestions {
             )
           ),
           Item.One(
-            Earning.Durable,
+            Tags.V2.durable,
             yesNo(
               "Read new_message and thread. Does new_message state something worth keeping " +
                 "for later: a decision, a date, a name, a number, how something works, or an " +
@@ -225,16 +217,11 @@ object TriageQuestions {
             " supply what new_message asks for?"
           )
         ),
-        Gate.bounds(
-          Bound.AtLeast(Reading.Key(gap, "asks"), half),
-          Bound.AtLeast(Reading.Yes(open), half),
-          Bound.Below(Reading.Yes(to), half),
-          Bound.Below(Reading.Yes(anchor), half)
-        )
+        Tags.V2.drafts
       ).left.map(_.toString)
     } yield set
-    // Its names are declared names by QuestionName.of's rule, gap's keys are distinct, its
-    // names are distinct and every bound reads a One of its kind, so no Left is taken;
+    // Its gap's keys are distinct, its names are distinct and every bound reads a One of its
+    // kind, so no Left is taken;
     // TriageQuestionsTests builds it.
     built.fold(why => throw new IllegalStateException(why), identity)
   }
