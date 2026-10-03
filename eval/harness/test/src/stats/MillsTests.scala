@@ -31,6 +31,10 @@ object MillsTests extends TestSuite {
       Vector("0", "0.000000", "0.001", "-0.001").map(shown) ==>
         Vector("0 mills", "0 mills", "1 mill", "-1 mill")
     }
+    test("a figure is the amount in mills without its unit") {
+      Vector("0.0019", "0.001", "0.1256", "0").map(u => Mills.figure(BigDecimal(u))) ==>
+        Vector("1.9", "1", "126", "0")
+    }
     test("beside its dollars, an amount is exact") {
       Mills.withUsd(BigDecimal("0.00194312")) ==> "1.9 mills ($0.00194312)"
     }

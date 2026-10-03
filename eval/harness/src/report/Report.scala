@@ -629,7 +629,7 @@ object Report {
       Vector(
         "### Size of triage's calls",
         "",
-        "| run | calls answered | input tokens: mean | p90 | cost: mean | p90 |",
+        "| run | calls answered | input tokens: mean | p90 | cost, mills: mean | p90 |",
         "|---|---|---|---|---|---|",
         size("A", Size.of(a.log.rows)),
         size("B", Size.of(b.log.rows)),
@@ -670,7 +670,7 @@ object Report {
   private def size(run: String, s: Size): String = {
     def per(p: Option[PerCall], f: Double => String) =
       p.fold("— | —")(x => s"${f(x.mean)} | ${f(x.p90)}")
-    s"| $run | ${s.calls} | ${per(s.input, x => f"$x%.0f")} | ${per(s.cost, x => Mills.of(BigDecimal(x)))} |"
+    s"| $run | ${s.calls} | ${per(s.input, x => f"$x%.0f")} | ${per(s.cost, x => Mills.figure(BigDecimal(x)))} |"
   }
 
   private val Header = "| measure | n | mean, 95% by exchange | 95% by author | MDE |"

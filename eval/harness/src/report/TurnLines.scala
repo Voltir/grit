@@ -133,10 +133,10 @@ private[report] object TurnLines {
 
     val paid = Paid.values.toVector.filter(p => all.cost.contains(p))
     val costing = Vector(
-      "## Cost per turn",
+      "## Cost per turn (mills)",
       "",
       "By what each call paid for, 0 in a turn without it; rounds are a loop's calls together. " +
-        "A ledger row with no cost adds nothing and is counted as unpriced. In mills.",
+        "A ledger row with no cost adds nothing and is counted as unpriced.",
       ""
     ) ++ bySlice((paid.map(paidName) ++ Vector("total", "unpriced"))*)(st =>
       paid.map(p => spread(st.cost.get(p), mills)) ++
@@ -322,7 +322,7 @@ private[report] object TurnLines {
   private def count(x: Double): String =
     if (x.isWhole) f"$x%.0f" else f"$x%.1f"
 
-  private def mills(x: Double): String = Mills.of(BigDecimal(x))
+  private def mills(x: Double): String = Mills.figure(BigDecimal(x))
 
   private def prob(x: Double): String = f"$x%.2f"
 }

@@ -57,7 +57,7 @@ object ReportTests extends TestSuite {
         "## Tools",
         "## Tokens",
         "## Estimate against the ledger",
-        "## Cost per turn",
+        "## Cost per turn (mills)",
         "## Prompt cache",
         "## Speech",
         "## Verdicts",
@@ -233,10 +233,10 @@ object ReportTests extends TestSuite {
       )
       val size = report.indexOf("### Size of triage's calls")
       report.slice(size + 2, size + 6) ==> Vector(
-        "| run | calls answered | input tokens: mean | p90 | cost: mean | p90 |",
+        "| run | calls answered | input tokens: mean | p90 | cost, mills: mean | p90 |",
         "|---|---|---|---|---|---|",
-        "| A | 4 | 700 | 700 | 0.04 mills | 0.04 mills |",
-        "| B | 4 | 900 | 900 | 0.04 mills | 0.04 mills |"
+        "| A | 4 | 700 | 700 | 0.04 | 0.04 |",
+        "| B | 4 | 900 | 900 | 0.04 | 0.04 |"
       )
     }
 

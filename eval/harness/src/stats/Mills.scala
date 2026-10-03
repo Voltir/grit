@@ -13,14 +13,18 @@ object Mills {
     * with a minus sign.
     */
   def of(usd: BigDecimal): String = {
+    val written = figure(usd)
+    s"$written ${if (written == "1" || written == "-1") "mill" else "mills"}"
+  }
+
+  /** [[of]]'s number alone, for a table whose heading names the unit: `1.9` for $0.0019. */
+  def figure(usd: BigDecimal): String = {
     val mills = (usd * 1000).bigDecimal
     val rounded =
       if (mills.abs.compareTo(java.math.BigDecimal.TEN) >= 0)
         mills.setScale(0, RoundingMode.HALF_UP)
       else mills.round(new MathContext(2, RoundingMode.HALF_UP))
-    val written =
-      if (rounded.signum == 0) "0" else rounded.stripTrailingZeros.toPlainString
-    s"$written ${if (written == "1" || written == "-1") "mill" else "mills"}"
+    if (rounded.signum == 0) "0" else rounded.stripTrailingZeros.toPlainString
   }
 
   /** `usd` in mills ([[of]]), then exactly in dollars: `1.9 mills ($0.0019)`. */
