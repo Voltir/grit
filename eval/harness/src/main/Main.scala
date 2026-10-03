@@ -14,7 +14,7 @@ import grit.core.classify.Answer
 import grit.core.clock.Clock
 import grit.core.id.{QuestionName, ShadowName}
 import grit.core.message.Tokens
-import grit.core.period.Probability
+import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.{Build, Reader}
 import grit.dbos.sql.DbConfig
 import grit.eval.harness.corpus.{
@@ -34,6 +34,7 @@ import grit.eval.harness.jev.{
   Budget,
   Drift,
   Inputs,
+  QuestionSet,
   Rebuilt,
   Review,
   Sets,
@@ -60,6 +61,7 @@ import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
   Decision,
+  Drafting,
   Drafts,
   Guarded,
   Judgement,
@@ -394,15 +396,16 @@ object Main {
       case Decision.Kept(_) => 4
     })
 
-  /** `compare --eval <dir> --a <name> --b <name> --gate <set> --helps-at <p> [--labels <file>]`:
-    * run B, a pulled question set's shadow log asking `<set>` ([[Sets]]), against A, live
-    * triage's pulled log, both in `<dir>/runs/`: its draft against live's helps gate at `<p>`
-    * (the deployment's configured `helpsAt`), by focus ([[Drafts]]), written to
-    * `<dir>/reports/<A>-vs-<B>.md` (each name less `.jsonl`) and printed; the ids of the cases
-    * each decided alone, one a line, to `<dir>/order/<yyyymmdd>-draft-<set>-live-only.txt` and
-    * `…-set-only.txt`, for labelling. With `--verdicts <name>`, a verdicts file `pull` wrote
-    * in `<dir>/runs/` ([[Verdicts]]), each pick reason's verdicts against both gates and the
-    * set's `to` ([[Judgement]]); without it, the report says no verdicts were given.
+  /** `compare --eval <dir> --a <name> --b <name> --live <set> --gate <set> [--verdicts <name>]`:
+    * run B, a pulled question set's shadow log asking the `--gate` set ([[Sets]]), against A,
+    * live triage's pulled log asking the `--live` set, both in `<dir>/runs/`: each one's draft
+    * by its own set's gate, by focus ([[Drafts]]), written to `<dir>/reports/<A>-vs-<B>.md`
+    * (each name less `.jsonl`) and printed; the ids of the cases each decided alone, one a
+    * line, to `<dir>/order/<yyyymmdd>-draft-<set>-live-only.txt` and `…-set-only.txt`, for
+    * labelling. A live log an earlier build pulled by position is read under v1's names
+    * ([[Log.named]]). With `--verdicts <name>`, a verdicts file `pull` wrote in `<dir>/runs/`
+    * ([[Verdicts]]), each pick reason's verdicts against both drafts and each side's `to`
+    * ([[Judgement]]); without it, the report says no verdicts were given. `--helps-at`,
     * `--decide`, `--replica` and `--spread` are refused beside it.
     */
   private def drafts(f: Map[String, String]): Either[String, Unit] =
@@ -411,18 +414,16 @@ object Main {
         .find(f.contains)
         .map(k => s"--$k is not taken with --gate")
         .toLeft(())
+      _ <- Either.cond(
+        !f.contains("helps-at"),
+        (),
+        "--helps-at is gone: name the set live triage asked with --live (its gate is the set's)"
+      )
       dir <- need(f, "eval").map(Path.of(_))
-      labels <- labelsAt(dir, f)
-      set <- need(f, "gate").flatMap(n =>
-        Sets.named(n).toRight(s"no set $n: ${Sets.all.map(_.name).mkString(", ")}")
-      )
-      helpsAt <- need(f, "helps-at").flatMap(p =>
-        p.toDoubleOption
-          .filter(x => x >= 0 && x <= 1)
-          .map(Probability.clamped)
-          .toRight(s"--helps-at $p: not a probability")
-      )
-      a <- need(f, "a").flatMap(scored(dir, _, labels))
+      liveSet <- need(f, "live").flatMap(setNamed)
+      set <- need(f, "gate").flatMap(setNamed)
+      aName <- need(f, "a")
+      a <- liveLog(dir, aName)
       bName <- need(f, "b")
       bText <- read(dir.resolve("runs").resolve(bName))
       b <- LogJson
@@ -431,15 +432,14 @@ object Main {
         )
         .left
         .map(e => s"$bName: not a question set's log: $e")
-      found = Drafts.of(a.log.rows, b.rows, set.questions.speak, helpsAt, set.durable)
+      (live, shadow) = (drafting(a, liveSet), drafting(b, set))
+      found = Drafts.of(live, shadow)
       verdicts <- f
         .get("verdicts")
         .fold[Either[String, Option[Verdicts]]](Right(None))(n =>
           read(dir.resolve("runs").resolve(n)).flatMap(Verdicts.read).map(Some(_))
         )
-      judged = verdicts.map(
-        Judgement.of(a.log.rows, b.rows, set.questions.speak, helpsAt, set.to, _)
-      )
+      judged = verdicts.map(Judgement.of(live, shadow, _))
       day = Day.format(Instant.now().atOffset(ZoneOffset.UTC))
       alone = Vector(
         s"$day-draft-${set.name}-live-only.txt" -> found.gate.values.toVector.flatMap(_.aOnly),
@@ -457,10 +457,43 @@ object Main {
       )
       _ <- publish(
         dir,
-        s"${a.name.stripSuffix(".jsonl")}-vs-${bName.stripSuffix(".jsonl")}",
-        Report.drafts(a, bName, b, set.name, set.questions.speak, helpsAt, found, judged)
+        s"${aName.stripSuffix(".jsonl")}-vs-${bName.stripSuffix(".jsonl")}",
+        Report.drafts(
+          Report.Side(aName, a, liveSet.name, live.gate),
+          Report.Side(bName, b, set.name, shadow.gate),
+          found,
+          judged
+        )
       )
     } yield alone.foreach((name, ids) => println(s"order: ${ids.size} cases to order/$name"))
+
+  /** The question set named `n`; why not, naming those there are. */
+  private def setNamed(n: String): Either[String, QuestionSet] =
+    Sets.named(n).toRight(s"no set $n: ${Sets.all.map(_.name).mkString(", ")}")
+
+  /** `log`'s rows as a side of a draft comparison asking `set`. */
+  private def drafting(log: Log[VectorMap[QuestionName, Answer]], set: QuestionSet): Drafting =
+    Drafting(log.rows, set.questions.speak, set.durable, set.to)
+
+  /** Live triage's pulled log `<dir>/runs/<name>`, under its questions' names; one an earlier
+    * build pulled by position, under v1's.
+    */
+  private def liveLog(
+      dir: Path,
+      name: String
+  ): Either[String, Log[VectorMap[QuestionName, Answer]]] =
+    read(dir.resolve("runs").resolve(name)).flatMap { text =>
+      val lines = text.linesIterator.filter(_.nonEmpty).toVector
+      LogJson
+        .read[VectorMap[QuestionName, Answer]](lines)(using LogJson.named)
+        .orElse(
+          LogJson
+            .read[Vector[Weights]](lines)
+            .map(Log.named(_, Sets.V1.questions.questions(KnowledgeSources.Empty)))
+        )
+        .left
+        .map(e => s"$name: not live triage's log, under names or by position: $e")
+    }
 
   /** `order --eval <dir> --a <name> [--b <name>] [--tag <question>] [--by spread|difference]`:
     * the case ids in labelling order ([[Order]]) on `<question>` (`kind`, a tag's name, or

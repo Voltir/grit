@@ -6,9 +6,9 @@ import grit.core.classify.Answer
 import grit.core.id.QuestionName
 import grit.core.period.Probability
 import grit.core.store.Focus
-import grit.core.triage.{Earning, Gate, Kind}
+import grit.core.triage.{Earning, Gate}
 import grit.eval.harness.corpus.CaseId
-import grit.eval.harness.log.{Outcome, Row, Suite, Weights}
+import grit.eval.harness.log.{Outcome, Row, Suite}
 
 /** The cases of two yes/no decisions over the same cases, by how each decided: yes by both,
   * by A only, by B only, by neither; each in the order the cases were given.
@@ -30,13 +30,24 @@ object Cells {
   */
 final case class Column(name: String, mean: Double, sd: Double, n: Int)
 
-/** A question set's derived draft decision beside live triage's helps gate, over the cases
-  * both a live log and the set's log answered: `gate`, live's helps gate as A and the set's
-  * draft as B, by the focus each case was said at (`None`: its rows record none); `undecided`,
-  * the cases both answered on which either decision could not be read; `columns`, each of the
-  * set's probabilities in the order first asked; and `durable`, live's `durable` tag as A and
-  * the set's durable question as B, each at [[Earning.DurableAt]] (`None` when the set names
-  * none).
+/** One side of a draft comparison: a log's `rows`, each answered row's answers under their
+  * names; the `gate` its draft is derived by; and its yes/no questions read as worth keeping
+  * (`durable`, at [[Earning.DurableAt]]) and as meant for someone (`to`, at [[Judgement.ToAt]]),
+  * each `None` when its set asks none.
+  */
+final case class Drafting(
+    rows: Vector[Row[VectorMap[QuestionName, Answer]]],
+    gate: Gate,
+    durable: Option[QuestionName],
+    to: Option[QuestionName]
+)
+
+/** Live triage's draft beside a question set's, over the cases both live's log and the set's
+  * answered: `gate`, live's draft as A and the set's as B, by the focus each case was said at
+  * (`None`: its rows record none); `undecided`, the cases both answered on which either gate
+  * reads an answer its row lacks; `columns`, each of the set's probabilities in the order
+  * first asked; and `durable`, live's durable question as A and the set's as B (`None` when
+  * either asks none).
   */
 final case class Drafts(
     gate: Map[Option[Focus], Cells],
@@ -47,28 +58,20 @@ final case class Drafts(
 
 object Drafts {
 
-  /** `set`'s rows against `live`'s, each case's first answered triage row of each: live's
-    * helps gate is its `helps` at least `helpsAt` and its chosen kind not chatter, as live
-    * speech gates them before its other checks; the set's draft is `gate` over its answers;
-    * `durable`, when given, is the set's question compared with live's `durable`. A live row
-    * reads when it holds a choice of every kind and three yes/no answers.
+  /** `set` against `live`, each case's first answered triage row of each: each side's draft
+    * is its gate over its answers ([[Gate.drafts]]), and each side's durable its `durable`
+    * question.
     */
-  def of(
-      live: Vector[Row[Vector[Weights]]],
-      set: Vector[Row[VectorMap[QuestionName, Answer]]],
-      gate: Gate,
-      helpsAt: Probability,
-      durable: Option[QuestionName]
-  ): Drafts = {
-    val lives = firstAnswered(live)
-    val sets = firstAnswered(set)
+  def of(live: Drafting, set: Drafting): Drafts = {
+    val lives = firstAnswered(live.rows)
+    val sets = firstAnswered(set.rows)
     val paired = sets.flatMap((c, setRow, answers) =>
-      lives.collectFirst { case (`c`, liveRow, ws) =>
-        (c, liveRow.focus.orElse(setRow.focus), ws, answers)
+      lives.collectFirst { case (`c`, liveRow, theirs) =>
+        (c, liveRow.focus.orElse(setRow.focus), theirs, answers)
       }
     )
-    val gated = paired.map((c, focus, ws, answers) =>
-      (c, focus, helpsGate(ws, helpsAt).zip(gate.drafts(answers)))
+    val gated = paired.map((c, focus, theirs, answers) =>
+      (c, focus, live.gate.drafts(theirs).zip(set.gate.drafts(answers)))
     )
     val decided = gated.collect { case (c, focus, Some((a, b))) => (c, focus, a, b) }
     Drafts(
@@ -79,13 +82,15 @@ object Drafts {
         .toMap,
       gated.size - decided.size,
       columns(sets.map(_._3)),
-      durable.map(q =>
-        cells(
-          paired.flatMap((c, _, ws, answers) =>
-            liveDurable(ws).zip(yes(answers, q)).map((a, b) => (c, a, b))
+      live.durable
+        .zip(set.durable)
+        .map((ql, qs) =>
+          cells(
+            paired.flatMap((c, _, theirs, answers) =>
+              yes(theirs, ql).zip(yes(answers, qs)).map((a, b) => (c, a, b))
+            )
           )
         )
-      )
     )
   }
 
@@ -98,32 +103,6 @@ object Drafts {
         (c, r, a)
       }
       .distinctBy(_._1)
-
-  /** Live's four answers' helps gate; `None` when they are not a choice of a kind and three
-    * yes/no.
-    */
-  private[score] def helpsGate(ws: Vector[Weights], helpsAt: Probability): Option[Boolean] =
-    ws match {
-      case Vector(
-            Weights.Choice(chosen, ps, _),
-            Weights.YesNo(_),
-            Weights.YesNo(_),
-            Weights.YesNo(h)
-          ) if ps.size == Kind.values.size =>
-        Kind.values
-          .lift(chosen)
-          .map(kind => kind != Kind.Chatter && Probability.clamped(h) >= helpsAt)
-      case _ => None
-    }
-
-  /** Live's `durable` at [[Earning.DurableAt]]; `None` as for [[helpsGate]]. */
-  private def liveDurable(ws: Vector[Weights]): Option[Boolean] =
-    ws match {
-      case Vector(Weights.Choice(_, ps, _), Weights.YesNo(_), Weights.YesNo(d), Weights.YesNo(_))
-          if ps.size == Kind.values.size =>
-        Some(Probability.clamped(d) >= Earning.DurableAt)
-      case _ => None
-    }
 
   /** `q`'s yes/no in `answers` at [[Earning.DurableAt]]; `None` when it is not a yes/no there. */
   private def yes(answers: VectorMap[QuestionName, Answer], q: QuestionName): Option[Boolean] =

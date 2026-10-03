@@ -71,23 +71,25 @@
 #       each question's pooled standard deviation in the --spread run, which has repeats) has
 #       moved on since live triage asked, and is listed and left out of the comparison.
 #
-#   scripts/eval compare <runs file A> <runs file B> --gate <set> --helps-at <p> [--labels <file>]
+#   scripts/eval compare <runs file A> <runs file B> --live <set> --gate <set>
 #                        [--verdicts <verdicts file>]
-#       B a question set's shadow log from pull, asking <set> (v1 or v2), against A, live triage's
-#       pulled log: the set's derived draft against live's helps gate (helps >= <p>, the
-#       deployment's configured helpsAt, and kind not chatter: triage's tags alone, not live's
-#       speech decision), a 2x2 by focus and over all; each of the set's probabilities' mean
-#       and standard deviation; and its durable against live's durable, each at 0.5. Counts
-#       only, written to .local/eval/reports/<A>-vs-<B>.md and printed; the ids of the cases
-#       each decided alone go to .local/eval/order/<yyyymmdd>-draft-<set>-live-only.txt and
-#       -set-only.txt, for labelling. With --verdicts (a verdicts-<yyyymmdd>.json pull wrote,
-#       a name in .local/eval/runs/), by shadow and the reason each message was picked: how
-#       many verdicts on cases both gates decided, how many of them live's gate and the set's
-#       draft each decided as the verdict says (a welcome reply speaks; an interruption or a
-#       message meant for someone does not), and how many the set's to >= 0.5 read as the
-#       verdict says (meant for someone, or to the room). Counts only, not weighted back by
-#       how often each reason is picked; without --verdicts the report says none were given.
-#       Takes no --decide, --replica or --spread.
+#       B a question set's shadow log from pull, asking the --gate set, against A, live
+#       triage's pulled log, asking the --live set (each v1 or v2; v1 for a live log an
+#       earlier build pulled by position): each one's draft by its own set's gate over its
+#       answers alone, not live's speech decision, a 2x2 by focus and over all; each of B's
+#       probabilities' mean and standard deviation; and B's durable against live's, each at
+#       0.5. Counts only, written to .local/eval/reports/<A>-vs-<B>.md and printed; the ids of
+#       the cases each decided alone go to
+#       .local/eval/order/<yyyymmdd>-draft-<set>-live-only.txt and -set-only.txt, for
+#       labelling. With --verdicts (a verdicts-<yyyymmdd>.json pull wrote, a name in
+#       .local/eval/runs/), by shadow and the reason each message was picked: how many
+#       verdicts on cases both gates decided, how many of them each draft decided as the
+#       verdict says (a welcome reply speaks; an interruption or a message meant for someone
+#       does not), and how many each side's to >= 0.5 read as the verdict says (meant for
+#       someone, or to the room; — for a set that asks no to). Counts only, not weighted back
+#       by how often each reason is picked; without --verdicts the report says none were
+#       given. Takes no --helps-at (live's gate is its set's), --decide, --replica or
+#       --spread.
 #
 #   scripts/eval order <runs file A> [<runs file B>] [--tag <question>] [--by spread|difference]
 #       Case ids in labelling order, one a line, in
@@ -105,12 +107,12 @@
 #       before live's question set changed) is left out and counted, so pull with --since the
 #       change. Each named shadow's answers as shadow-<name>-<today>.jsonl: a wording's by
 #       position, for score, compare and order; a question set's under its questions' names,
-#       as live's are, for compare --live --gate. A shadow whose rows are of both
-#       (its name declared for a wording and then a set) is refused: no log, its counts
-#       printed; declare a changed question under a new name. Only reads <database>. Prints counts: each log's rows, and
-#       for each shadow the messages tagged since that it has no row for, its shadow ended
-#       keeping nothing or not yet run; and the ids of the messages no corpus holds yet, for
-#       the next capture. Also writes verdicts-<today>.json beside the logs: the verdict a
+#       as live's are, for compare --live --gate. A shadow whose rows are of both (its name
+#       declared for a wording and then a set) is refused: no log, its counts printed; declare
+#       a changed question under a new name. Only reads <database>. Prints counts: each log's
+#       rows, live's questions and its rows left out under other names, and for each shadow
+#       the messages tagged since that it has no row for, its shadow ended keeping nothing or
+#       not yet run; and the ids of the messages no corpus holds yet, for the next capture. Also writes verdicts-<today>.json beside the logs: the verdict a
 #       review's rater left standing on each message a review picked since <instant>, by case
 #       id, with the shadow it was picked against, why, the rater's id and when; ids and
 #       times, no text. A file of none is written when there are none.

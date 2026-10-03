@@ -8,44 +8,44 @@ import grit.core.id.QuestionName
 import grit.core.message.Usage
 import grit.core.period.Probability
 import grit.core.store.Focus
-import grit.core.triage.Kind
+import grit.core.triage.{Kind, Tags}
 import grit.eval.harness.corpus.{CaseId, Digest, Failure}
 import grit.eval.harness.jev.Sets
-import grit.eval.harness.log.{CacheKey, Outcome, Row, Suite, Weights}
-import grit.lifecycle.triage.TriageQuestions
+import grit.eval.harness.log.{CacheKey, Outcome, Row, Suite}
 
 import utest.*
 import Fixtures.id
 
-/** A question set's draft beside live's helps gate, over synthetic rows. */
+/** A question set's draft beside live's, each by its own set's gate, over synthetic rows. */
 object DraftsTests extends TestSuite {
 
   private def name(n: String): QuestionName = QuestionName.read(n).fold(sys.error, identity)
 
   private val key = CacheKey.read("ab" * 32).fold(sys.error, identity)
 
-  /** Live's kept row of `c`: `kind` chosen, `durable` and `helps` as given. */
+  /** Live's kept row of `c` before v2: `kind` chosen, `durable` and `helps` as given. */
   private def live(
       c: CaseId,
       kind: Kind,
       durable: Double,
       helps: Double,
       focus: Option[Focus]
-  ): Row[Vector[Weights]] =
-    Fixtures.row(
-      Suite.Triage,
+  ): Row[VectorMap[QuestionName, Answer]] =
+    setRow(
       c,
-      0,
-      Outcome.Answered(
-        Vector(
-          Weights.Choice(kind.ordinal, Kind.values.toVector.map(_ => 0.2), 0.0),
-          Weights.YesNo(0.5),
-          Weights.YesNo(durable),
-          Weights.YesNo(helps)
-        )
-      ),
-      focus = focus
+      Outcome.Answered(Tags.V1.answers(kind, p(0.4), p(0.5), p(durable), p(helps))),
+      focus
     )
+
+  private def p(d: Double): Probability = Probability.clamped(d)
+
+  /** Live asking v1, by its gate. */
+  private def v1(rows: Vector[Row[VectorMap[QuestionName, Answer]]]): Drafting =
+    Drafting(rows, Sets.V1.questions.speak, Sets.V1.durable, Sets.V1.to)
+
+  /** A set asking v2, by its gate. */
+  private def v2(rows: Vector[Row[VectorMap[QuestionName, Answer]]]): Drafting =
+    Drafting(rows, Sets.V2.questions.speak, Sets.V2.durable, Sets.V2.to)
 
   private def setRow(
       c: CaseId,
@@ -94,12 +94,8 @@ object DraftsTests extends TestSuite {
       ) ++ anchor.map(a => name("anchor") -> Answer.YesNo(a))
     )
 
-  private val v2Gate = TriageQuestions.V2.speak
-  private val helpsAt = Probability.clamped(0.6)
-
   val tests = Tests {
-    test("v1's draft is live's helps gate at 0.5, and its durable live's, on the same answers") {
-      val half = Probability.clamped(0.5)
+    test("v1's draft is live's v1 gate, and its durable live's, on the same answers") {
       val cs = (1 to 4).map(n => id(s"C1/$n")).toVector
       // Each case's kind, its weight, durable and helps, answered alike by live and by v1.
       val asked = Vector(
@@ -126,7 +122,7 @@ object DraftsTests extends TestSuite {
           None
         )
       }
-      val d = Drafts.of(lives, sets, Sets.V1.questions.speak, half, Sets.V1.durable)
+      val d = Drafts.of(v1(lives), v1(sets))
       (d.gate, d.durable) ==> (
         Map(None -> Cells(Vector(cs(0), cs(3)), Vector.empty, Vector.empty, Vector(cs(1), cs(2)))),
         Some(Cells(Vector(cs(0), cs(2)), Vector.empty, Vector.empty, Vector(cs(1), cs(3))))
@@ -134,14 +130,14 @@ object DraftsTests extends TestSuite {
     }
 
     test(
-      "each case both answered falls in one cell of live's helps gate against the set's draft, by focus; one whose gate reads a missing answer is undecided"
+      "each case both answered falls in one cell of live's draft against the set's, by focus; one whose gate reads a missing answer is undecided"
     ) {
       val (open, focused) = (Some(Focus.Open), Some(Focus.Focused))
       val cs = (1 to 7).map(n => id(s"C1/$n")).toVector
       val lives = Vector(
         live(cs(0), Kind.Question, 0.3, 0.7, open), // gate: yes
         live(cs(1), Kind.Chatter, 0.5, 0.9, focused), // chatter: no
-        live(cs(2), Kind.Question, 0.2, 0.6, focused), // helps at helpsAt: yes
+        live(cs(2), Kind.Question, 0.2, 0.5, focused), // helps at 0.5: yes
         live(cs(3), Kind.Answer, 0.9, 0.1, None), // no
         live(cs(4), Kind.Question, 0.7, 0.9, open),
         live(cs(5), Kind.Question, 0.7, 0.9, open), // the set has no row
@@ -155,7 +151,7 @@ object DraftsTests extends TestSuite {
         setRow(cs(4), answers(0.8, 0.9, 0.1, None, 0.2), open), // no anchor: undecided
         setRow(cs(6), Outcome.Failed(Failure.Unavailable), open)
       )
-      val d = Drafts.of(lives, sets, v2Gate, helpsAt, Some(name("durable")))
+      val d = Drafts.of(v1(lives), v2(sets))
       (d.gate, d.undecided) ==> (
         Map(
           open -> Cells(Vector(cs(0)), Vector.empty, Vector.empty, Vector.empty),
@@ -167,7 +163,7 @@ object DraftsTests extends TestSuite {
     }
 
     test(
-      "durable compares the set's question with live's durable tag, each yes at 0.5, over every case both answered"
+      "durable compares the set's durable question with live's, each yes at 0.5, over every case both answered"
     ) {
       val cs = (1 to 5).map(n => id(s"C1/$n")).toVector
       val lives = Vector(
@@ -185,8 +181,33 @@ object DraftsTests extends TestSuite {
         // Undecided on the gate, still compared on durable.
         setRow(cs(4), answers(0.8, 0.9, 0.1, None, 0.49), None)
       )
-      Drafts.of(lives, sets, v2Gate, helpsAt, Some(name("durable"))).durable ==> Some(
+      Drafts.of(v1(lives), v2(sets)).durable ==> Some(
         Cells(Vector(cs(1), cs(3)), Vector(cs(4)), Vector(cs(0)), Vector(cs(2)))
+      )
+    }
+
+    test(
+      "live's draft is its own set's gate: live asking v2 against a shadow asking v1, both ways round"
+    ) {
+      val cs = (1 to 4).map(n => id(s"C1/$n")).toVector
+      val asV2 = Vector(
+        setRow(cs(0), answers(0.8, 0.9, 0.1, Some(0.1), 0.6), None), // drafts
+        setRow(cs(1), answers(0.8, 0.9, 0.7, Some(0.1), 0.6), None), // to someone: not
+        setRow(cs(2), answers(0.1, 0.9, 0.1, Some(0.1), 0.2), None), // nothing asked: not
+        setRow(cs(3), answers(0.8, 0.9, 0.1, Some(0.1), 0.2), None) // drafts
+      )
+      val asV1 = Vector(
+        live(cs(0), Kind.Question, 0.4, 0.9, None), // drafts
+        live(cs(1), Kind.Question, 0.4, 0.9, None), // drafts
+        live(cs(2), Kind.Chatter, 0.4, 0.9, None), // chatter: not
+        live(cs(3), Kind.Question, 0.4, 0.2, None) // helps below: not
+      )
+      (
+        Drafts.of(v2(asV2), v1(asV1)).gate,
+        Drafts.of(v1(asV1), v2(asV2)).gate
+      ) ==> (
+        Map(None -> Cells(Vector(cs(0)), Vector(cs(3)), Vector(cs(1)), Vector(cs(2)))),
+        Map(None -> Cells(Vector(cs(0)), Vector(cs(1)), Vector(cs(3)), Vector(cs(2))))
       )
     }
 
@@ -202,7 +223,7 @@ object DraftsTests extends TestSuite {
         setRow(a, asked(0.75, 0.5, name("source:github") -> Answer.YesNo(0.5)), None),
         setRow(b, asked(0.25, 1.0), None)
       )
-      Drafts.of(Vector.empty, sets, v2Gate, helpsAt, None).columns ==> Vector(
+      Drafts.of(v1(Vector.empty), v2(sets)).columns ==> Vector(
         Column("gap.asks", 0.5, 0.25, 2),
         Column("gap.nothing", 0.5, 0.25, 2),
         Column("open", 0.75, 0.25, 2),

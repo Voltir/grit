@@ -3,7 +3,7 @@ package grit.eval.harness.log
 import scala.collection.immutable.VectorMap
 import scala.util.Try
 
-import grit.core.classify.Answer
+import grit.core.classify.{Answer, Question}
 import grit.core.id.QuestionName
 import grit.core.message.{Tokens, Usage}
 import grit.core.store.Focus
@@ -21,6 +21,52 @@ trait Codec[A] {
   * stopped before writing one).
   */
 final case class Log[A](header: Header, rows: Vector[Row[A]], footer: Option[Footer])
+
+object Log {
+
+  /** `log`, answers by position, with each answered row's answers named by `questions` in
+    * their order ([[Weights.answer]]) and its header naming them; an answered row of another
+    * length, or with a weight not of its question's kind, failed unreadable. Its footer keeps
+    * what was spent and counts the rows again.
+    */
+  def named(
+      log: Log[Vector[Weights]],
+      questions: VectorMap[QuestionName, Question]
+  ): Log[VectorMap[QuestionName, Answer]] = {
+    val rows = log.rows.map { (r: Row[Vector[Weights]]) =>
+      val outcome: Outcome[VectorMap[QuestionName, Answer]] = r.outcome match {
+        case Outcome.Answered(ws) =>
+          val answers = questions.toVector.zip(ws).flatMap { case ((n, q), w) =>
+            Weights.answer(q, w).map(n -> _)
+          }
+          if (ws.size == questions.size && answers.size == questions.size)
+            Outcome.Answered(VectorMap.from(answers))
+          else Outcome.Failed(Failure.Unreadable)
+        case Outcome.Failed(f) => Outcome.Failed(f)
+        case Outcome.Skipped => Outcome.Skipped
+      }
+      Row(
+        r.suite,
+        r.id,
+        r.repeat,
+        r.request,
+        r.key,
+        r.requested,
+        r.reported,
+        outcome,
+        r.usage,
+        r.latency,
+        r.cached,
+        r.focus
+      )
+    }
+    Log(
+      log.header.copy(questions = Some(questions.keys.toVector)),
+      rows,
+      log.footer.map(f => Footer.of(f.spent, rows))
+    )
+  }
+}
 
 /** A run's log as JSON lines: the header, one line per row, then the footer, each an object
   * with one field naming which (`header`, `row`, `footer`). Each value is written with its

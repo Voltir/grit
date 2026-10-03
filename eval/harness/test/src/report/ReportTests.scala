@@ -5,7 +5,6 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.Answer
 import grit.core.id.{QuestionName, ShadowName}
 import grit.core.message.{Tokens, Usage}
-import grit.core.period.Probability
 import grit.core.review.Reason
 import grit.core.store.Focus
 import grit.core.triage.Kind
@@ -185,7 +184,7 @@ object ReportTests extends TestSuite {
     }
 
     test(
-      "a drafts report counts each cell by focus and over all, names live's helps gate apart from its speech decision, and lists no case"
+      "a drafts report names each side's log, set and gate, counts each cell by focus and over all, names live's draft apart from its speech decision, and lists no case"
     ) {
       def q(n: String) = QuestionName.read(n).fold(sys.error, identity)
       val (c1, c2, c3) = (id("C1/1"), id("C1/2"), id("C1/3"))
@@ -203,23 +202,26 @@ object ReportTests extends TestSuite {
         Vector.empty[Row[VectorMap[QuestionName, Answer]]],
         None
       )
+      val liveLog = Log(
+        header("kept").copy(questions = Some(Vector(q("kind"), q("helps")))),
+        Vector.empty[Row[VectorMap[QuestionName, Answer]]],
+        None
+      )
       val report = Report.drafts(
-        run("live.jsonl", 0.5, Labels.Empty, "kept"),
-        "shadow-v2.jsonl",
-        setLog,
-        "v2",
-        TriageQuestions.V2.speak,
-        Probability.clamped(0.6),
+        Report.Side("live-20261003.jsonl", liveLog, "v1", TriageQuestions.V1.speak),
+        Report.Side("shadow-v2.jsonl", setLog, "v2", TriageQuestions.V2.speak),
         found,
         None
       )
       lines(report).filter(l =>
-        l.startsWith("|") || l.startsWith("A, ") || l.startsWith("B, ") || l.startsWith(
+        l.startsWith("|") || l.startsWith("A, ") || l.startsWith("B") || l.startsWith(
           "answered"
         ) || l.startsWith("agree")
       ) ==> Vector(
-        "answered by both: 5; undecided: 2 (a question the gate reads unanswered, or live's tags unreadable)",
-        "A, live's helps gate: helps ≥ 0.600 and kind ≠ chatter. Triage's tags alone: not live's speech decision, which also checks the address, freshness, who was asked, the thread and the rate limits.",
+        "A, live: live-20261003.jsonl, variant kept, model m, set v1, questions kind, helps",
+        "B: shadow-v2.jsonl, variant shadow-v2, model m, set v2, questions gap, open",
+        "answered by both: 5; undecided: 2 (a question a gate reads unanswered)",
+        "A, live's draft by v1's gate: kind=chatter < 0.500, helps ≥ 0.500. Triage's answers alone: not live's speech decision, which also checks the address, freshness, who was asked, the thread and the rate limits.",
         "B, v2's draft: gap.asks ≥ 0.500, open ≥ 0.500, to < 0.500, anchor < 0.500.",
         "| focus | both | live only | v2 only | neither | agree |",
         "|---|---|---|---|---|---|",
@@ -239,30 +241,27 @@ object ReportTests extends TestSuite {
       assert(!Vector(c1, c2, c3).exists(c => report.contains(c.written)))
     }
     test(
-      "a drafts report counts each reason's verdicts against both gates and the set's to, and says plainly when there are none"
+      "a drafts report counts each reason's verdicts against both drafts and each side's to, and says plainly when there are none"
     ) {
-      val v2 = ShadowName.of("triage-v2").fold(sys.error, identity)
+      val v1 = ShadowName.of("triage-v1").fold(sys.error, identity)
       val setLog = Log(
-        header("shadow-triage-v2"),
+        header("shadow-triage-v1"),
         Vector.empty[Row[VectorMap[QuestionName, Answer]]],
         None
       )
+      val liveLog = Log(header("kept"), Vector.empty[Row[VectorMap[QuestionName, Answer]]], None)
       def report(verdicts: Option[Judgement]) = lines(
         Report.drafts(
-          run("live.jsonl", 0.5, Labels.Empty, "kept"),
-          "shadow-triage-v2.jsonl",
-          setLog,
-          "v2",
-          TriageQuestions.V2.speak,
-          Probability.clamped(0.6),
+          Report.Side("live.jsonl", liveLog, "v2", TriageQuestions.V2.speak),
+          Report.Side("shadow-triage-v1.jsonl", setLog, "v1", TriageQuestions.V1.speak),
           Drafts(Map.empty, 0, Vector.empty, None),
           verdicts
         )
       ).dropWhile(_ != "## Against verdicts")
       val judged = Judgement(
         Vector(
-          Judgement.Of(v2, Reason.ShadowOnly, 3, 1, 2, Some(Judgement.Matched(3, 3))),
-          Judgement.Of(v2, Reason.Neither, 2, 2, 2, None)
+          Judgement.Of(v1, Reason.ShadowOnly, 3, 1, 2, Some(Judgement.Matched(3, 3)), None),
+          Judgement.Of(v1, Reason.Neither, 2, 2, 2, Some(Judgement.Matched(1, 2)), None)
         ),
         1
       )
@@ -272,10 +271,10 @@ object ReportTests extends TestSuite {
         report(Some(Judgement(Vector.empty, 0))).drop(2).take(1)
       ) ==> (
         Vector(
-          "| shadow | picked | verdicts | live's gate = speak | v2's draft = speak | v2's to ≥ 0.500 = to a person |",
-          "|---|---|---|---|---|---|",
-          "| triage-v2 | shadow-only | 3 | 1 | 2 | 3 of 3 |",
-          "| triage-v2 | neither | 2 | 2 | 2 | — |",
+          "| shadow | picked | verdicts | live's draft = speak | v1's draft = speak | live's to ≥ 0.500 = to a person | v1's to ≥ 0.500 = to a person |",
+          "|---|---|---|---|---|---|---|",
+          "| triage-v1 | shadow-only | 3 | 1 | 2 | 3 of 3 | — |",
+          "| triage-v1 | neither | 2 | 2 | 2 | 1 of 2 | — |",
           "verdicts on a case either gate could not decide, left out: 1"
         ),
         Vector("No verdicts given (`--verdicts`, a file `pull` writes)."),

@@ -10,40 +10,59 @@ import grit.core.id.{PrincipalId, QuestionName, ShadowName}
 import grit.core.message.Usage
 import grit.core.period.Probability
 import grit.core.review.{Reason, Verdict}
-import grit.core.triage.Kind
+import grit.core.triage.{Kind, Tags}
 import grit.eval.harness.corpus.{CaseId, Digest}
+import grit.eval.harness.jev.Sets
 import grit.eval.harness.label.{Rated, Verdicts}
-import grit.eval.harness.log.{CacheKey, Outcome, Row, Suite, Weights}
-import grit.lifecycle.triage.TriageQuestions
+import grit.eval.harness.log.{CacheKey, Outcome, Row, Suite}
 
 import utest.*
 import Fixtures.id
 
-/** Verdicts against live's helps gate and a question set's, over synthetic rows. */
+/** Verdicts against live's draft and a question set's, each by its own set's gate, over
+  * synthetic rows.
+  */
 object JudgementTests extends TestSuite {
 
   private def name(n: String): QuestionName = QuestionName.read(n).fold(sys.error, identity)
   private def shadow(n: String): ShadowName = ShadowName.of(n).fold(sys.error, identity)
 
   private val key = CacheKey.read("ab" * 32).fold(sys.error, identity)
-  private val helpsAt = Probability.clamped(0.6)
   private val At = Instant.parse("2026-10-03T09:00:00Z")
 
-  /** Live's kept row of `c`, a question, its helps gate passed when `gates`. */
-  private def live(c: CaseId, gates: Boolean): Row[Vector[Weights]] =
-    Fixtures.row(
+  /** Live's kept row of `c` before v2, a question, its v1 gate passed when `gates`. */
+  private def live(c: CaseId, gates: Boolean): Row[VectorMap[QuestionName, Answer]] =
+    row(
+      c,
+      Tags.V1.answers(Kind.Question, p(0.4), p(0.5), p(0.5), p(if (gates) 0.9 else 0.1))
+    )
+
+  private def p(d: Double): Probability = Probability.clamped(d)
+
+  private def row(
+      c: CaseId,
+      answers: VectorMap[QuestionName, Answer]
+  ): Row[VectorMap[QuestionName, Answer]] =
+    Row(
       Suite.Triage,
       c,
       0,
-      Outcome.Answered(
-        Vector(
-          Weights.Choice(Kind.Question.ordinal, Kind.values.toVector.map(_ => 0.2), 0.0),
-          Weights.YesNo(0.5),
-          Weights.YesNo(0.5),
-          Weights.YesNo(if (gates) 0.9 else 0.1)
-        )
-      )
+      Digest.text("r"),
+      key,
+      "m",
+      None,
+      Outcome.Answered(answers),
+      Usage.Zero,
+      1.milli,
+      false,
+      None
     )
+
+  private def asV1(rows: Vector[Row[VectorMap[QuestionName, Answer]]]): Drafting =
+    Drafting(rows, Sets.V1.questions.speak, Sets.V1.durable, Sets.V1.to)
+
+  private def asV2(rows: Vector[Row[VectorMap[QuestionName, Answer]]]): Drafting =
+    Drafting(rows, Sets.V2.questions.speak, Sets.V2.durable, Sets.V2.to)
 
   /** V2's answers for `c`: its draft passed when `drafts`, `to` as given; no `anchor` when
     * `undecided`.
@@ -56,25 +75,13 @@ object JudgementTests extends TestSuite {
   ): Row[VectorMap[QuestionName, Answer]] = {
     val asks = if (drafts) 0.8 else 0.1
     val ws = Vector(Answer.Weight("asks", asks), Answer.Weight("nothing", 1 - asks))
-    Row(
-      Suite.Triage,
+    row(
       c,
-      0,
-      Digest.text("r"),
-      key,
-      "m",
-      None,
-      Outcome.Answered(
-        VectorMap(
-          name("gap") -> Answer.Choice("asks", ws, Answer.confidence(ws.map(_.probability))),
-          name("open") -> Answer.YesNo(0.9),
-          name("to") -> Answer.YesNo(to)
-        ) ++ Option.when(!undecided)(name("anchor") -> Answer.YesNo(0.1))
-      ),
-      Usage.Zero,
-      1.milli,
-      false,
-      None
+      VectorMap(
+        name("gap") -> Answer.Choice("asks", ws, Answer.confidence(ws.map(_.probability))),
+        name("open") -> Answer.YesNo(0.9),
+        name("to") -> Answer.YesNo(to)
+      ) ++ Option.when(!undecided)(name("anchor") -> Answer.YesNo(0.1))
     )
   }
 
@@ -83,7 +90,7 @@ object JudgementTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "each verdict on a case both gates decided counts under its shadow and reason: each gate's decision against speak, the set's to against to-a-person; one either gate cannot decide is undecided"
+      "each verdict on a case both gates decided counts under its shadow and reason: each gate's decision against speak, each side's to against to-a-person; one either gate cannot decide is undecided"
     ) {
       val (v2, v3) = (shadow("triage-v2"), shadow("triage-v3"))
       val cs = (1 to 8).map(n => id(s"C1/$n")).toVector
@@ -120,39 +127,40 @@ object JudgementTests extends TestSuite {
           cs(7) -> rated(v2, Reason.Neither, Verdict.Welcome)
         )
       )
-      Judgement.of(
-        lives,
-        sets,
-        TriageQuestions.V2.speak,
-        helpsAt,
-        Some(name("to")),
-        verdicts
-      ) ==> Judgement(
+      val judged = Judgement(
         Vector(
-          Judgement.Of(v2, Reason.ShadowOnly, 2, 1, 2, Some(Judgement.Matched(1, 2))),
-          Judgement.Of(v2, Reason.LiveOnly, 1, 1, 0, Some(Judgement.Matched(1, 1))),
-          Judgement.Of(v2, Reason.Both, 1, 0, 1, Some(Judgement.Matched(1, 1))),
-          Judgement.Of(v2, Reason.Neither, 1, 1, 1, Some(Judgement.Matched(1, 1))),
-          Judgement.Of(v3, Reason.Both, 1, 1, 1, Some(Judgement.Matched(1, 1)))
+          Judgement.Of(v2, Reason.ShadowOnly, 2, 1, 2, None, Some(Judgement.Matched(1, 2))),
+          Judgement.Of(v2, Reason.LiveOnly, 1, 1, 0, None, Some(Judgement.Matched(1, 1))),
+          Judgement.Of(v2, Reason.Both, 1, 0, 1, None, Some(Judgement.Matched(1, 1))),
+          Judgement.Of(v2, Reason.Neither, 1, 1, 1, None, Some(Judgement.Matched(1, 1))),
+          Judgement.Of(v3, Reason.Both, 1, 1, 1, None, Some(Judgement.Matched(1, 1)))
         ),
         2
       )
+      // Both ways round: live asking v2 against a v1 shadow reads live's to, not the set's.
+      (
+        Judgement.of(asV1(lives), asV2(sets), verdicts),
+        Judgement.of(asV2(sets), asV1(lives), verdicts)
+      ) ==> (
+        judged,
+        judged.copy(reasons =
+          judged.reasons.map(o =>
+            o.copy(live = o.set, set = o.live, liveTo = o.setTo, setTo = o.liveTo)
+          )
+        )
+      )
     }
 
-    test("a set naming no to is judged on its gate alone, and no verdict judges nothing") {
+    test("a side naming no to is judged on its gate alone, and no verdict judges nothing") {
       val c = id("C1/1")
       val v2 = shadow("triage-v2")
       val verdicts = Verdicts(Map(c -> rated(v2, Reason.Both, Verdict.Welcome)))
-      val judge = Judgement.of(
-        Vector(live(c, gates = true)),
-        Vector(set(c, drafts = true, to = 0.1)),
-        TriageQuestions.V2.speak,
-        helpsAt,
-        _: Option[QuestionName],
-        _: Verdicts
-      )
-      (judge(None, verdicts), judge(Some(name("to")), Verdicts.Empty)) ==> (
-        Judgement(Vector(Judgement.Of(v2, Reason.Both, 1, 1, 1, None)), 0),
+      val (lives, sets) = (Vector(live(c, gates = true)), Vector(set(c, drafts = true, to = 0.1)))
+      (
+        Judgement.of(asV1(lives), asV2(sets).copy(to = None), verdicts),
+        Judgement.of(asV1(lives), asV2(sets), Verdicts.Empty)
+      ) ==> (
+        Judgement(Vector(Judgement.Of(v2, Reason.Both, 1, 1, 1, None, None)), 0),
         Judgement(Vector.empty, 0)
       )
     }

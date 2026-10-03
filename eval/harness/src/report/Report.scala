@@ -130,25 +130,25 @@ object Report {
     lines.mkString("\n") + "\n"
   }
 
-  /** Question set `set`'s pulled shadow log `b` (file `bName`) against live triage's log `a`,
-    * as `drafts` found them: how many cases both answered and how many were undecided; the 2×2
-    * of live's helps gate (`helps` at least `helpsAt`, kind not chatter: triage's tags alone,
-    * not live's speech decision, which checks more) against the set's draft (its `gate`), by
-    * focus and over all; each of the set's probabilities' mean and spread; its `durable`
-    * against live's, when the set names one; and each pick reason's `verdicts` against both
-    * gates and the set's `to`, or that none were given (`None`) or none stand. Counts only,
-    * never a case's id.
+  /** One side of a drafts report: its log's `file` name, the `log`, the question set it asks,
+    * by name, and that set's `gate`.
     */
-  def drafts(
-      a: Scored,
-      bName: String,
-      b: Log[VectorMap[QuestionName, Answer]],
+  final case class Side(
+      file: String,
+      log: Log[VectorMap[QuestionName, Answer]],
       set: String,
-      gate: Gate,
-      helpsAt: Probability,
-      drafts: Drafts,
-      verdicts: Option[Judgement]
-  ): String = {
+      gate: Gate
+  )
+
+  /** A question set's pulled shadow log (`shadow`) against live triage's (`live`), as `drafts`
+    * found them: how many cases both answered and how many were undecided; the 2×2 of live's
+    * draft against the set's, each by its own gate over its answers alone (not live's speech
+    * decision, which checks more), by focus and over all; each of the set's probabilities'
+    * mean and spread; the two durables, when both name one; and each pick reason's `verdicts`
+    * against both drafts and each side's `to`, or that none were given (`None`) or none stand.
+    * Counts only, never a case's id.
+    */
+  def drafts(live: Side, shadow: Side, drafts: Drafts, verdicts: Option[Judgement]): String = {
     val all = drafts.gate.values.foldLeft(Cells.Empty)((x, y) =>
       Cells(x.both ++ y.both, x.aOnly ++ y.aOnly, x.bOnly ++ y.bOnly, x.neither ++ y.neither)
     )
@@ -158,27 +158,32 @@ object Report {
       s"| $what | ${c.both.size} | ${c.aOnly.size} | ${c.bOnly.size} | ${c.neither.size} | ${agree(c)} |"
     val foci: Vector[(String, Option[Focus])] =
       Focus.values.toVector.map(f => f.toString.toLowerCase -> Some(f)) :+ ("focus unknown" -> None)
-    val bounds = gate.bounds.map {
-      case Bound.AtLeast(on, p) => s"${reading(on)} ≥ ${num(Probability.value(p))}"
-      case Bound.Below(on, p) => s"${reading(on)} < ${num(Probability.value(p))}"
-    }
+    def bounds(g: Gate) = g.bounds
+      .map {
+        case Bound.AtLeast(on, p) => s"${reading(on)} ≥ ${num(Probability.value(p))}"
+        case Bound.Below(on, p) => s"${reading(on)} < ${num(Probability.value(p))}"
+      }
+      .mkString(", ")
+    def side(which: String, s: Side) =
+      s"$which: ${s.file}, variant ${s.log.header.variant}, model ${s.log.header.model}, set " +
+        s"${s.set}, questions " +
+        s.log.header.questions.fold("unknown")(_.map(QuestionName.value).mkString(", "))
+    val set = shadow.set
     val durableAt = num(Probability.value(Earning.DurableAt))
     val lines = Vector(
-      s"# drafts: ${a.name} (A) and $bName (B)",
+      s"# drafts: ${live.file} (A) and ${shadow.file} (B)",
       "",
-      s"A: variant ${a.log.header.variant}, model ${a.log.header.model}",
-      s"B: variant ${b.header.variant}, model ${b.header.model}, set $set, questions " +
-        b.header.questions.fold("unknown")(_.map(QuestionName.value).mkString(", ")),
+      side("A, live", live),
+      side("B", shadow),
       s"answered by both: ${size(all) + drafts.undecided}; undecided: ${drafts.undecided} " +
-        "(a question the gate reads unanswered, or live's tags unreadable)"
-    ) ++ kept(a) ++ Vector(
+        "(a question a gate reads unanswered)",
       "",
-      "## Draft against live's helps gate",
+      "## Draft against live's",
       "",
-      s"A, live's helps gate: helps ≥ ${num(Probability.value(helpsAt))} and kind ≠ chatter. " +
-        "Triage's tags alone: not live's speech decision, which also checks the address, " +
-        "freshness, who was asked, the thread and the rate limits.",
-      s"B, $set's draft: ${bounds.mkString(", ")}.",
+      s"A, live's draft by ${live.set}'s gate: ${bounds(live.gate)}. Triage's answers alone: " +
+        "not live's speech decision, which also checks the address, freshness, who was " +
+        "asked, the thread and the rate limits.",
+      s"B, $set's draft: ${bounds(shadow.gate)}.",
       "",
       s"| focus | both | live only | $set only | neither | agree |",
       "|---|---|---|---|---|---|"
@@ -193,7 +198,7 @@ object Report {
       "|---|---|---|---|"
     ) ++ drafts.columns.map(c => s"| ${c.name} | ${num(c.mean)} | ${num(c.sd)} | ${c.n} |") ++
       Vector("", "## Durable", "") ++ drafts.durable.fold(
-        Vector(s"$set names no question to read against live's durable.")
+        Vector(s"live's ${live.set} or $set names no durable question to compare.")
       )(c =>
         Vector(
           s"A, live's durable ≥ $durableAt; B, $set's durable ≥ $durableAt (both at " +
@@ -210,9 +215,11 @@ object Report {
     lines.mkString("\n") + "\n"
   }
 
-  /** The section on `verdicts` against live's gate and set `set`'s, by pick reason. */
+  /** The section on `verdicts` against live's draft and set `set`'s, by pick reason. */
   private def against(set: String, verdicts: Option[Judgement]): Vector[String] = {
     val head = Vector("", "## Against verdicts", "")
+    val toAt = num(Probability.value(Judgement.ToAt))
+    def to(m: Option[Judgement.Matched]) = m.fold("—")(m => s"${m.matched} of ${m.of}")
     verdicts match {
       case None => head :+ "No verdicts given (`--verdicts`, a file `pull` writes)."
       case Some(Judgement(Vector(), 0)) =>
@@ -222,14 +229,15 @@ object Report {
           "A rater's verdict on a message a review picked: a reply there would have been " +
             "welcome (speak), would have interrupted, or the message was meant for someone " +
             "in particular (to a person). Over the cases both gates decided; counts only, by " +
-            "why each message was picked, not weighted back by how often each reason is picked.",
+            "why each message was picked, not weighted back by how often each reason is " +
+            "picked. A side's to is — when its set asks none.",
           "",
-          s"| shadow | picked | verdicts | live's gate = speak | $set's draft = speak | " +
-            s"$set's to ≥ ${num(Probability.value(Judgement.ToAt))} = to a person |",
-          "|---|---|---|---|---|---|"
+          s"| shadow | picked | verdicts | live's draft = speak | $set's draft = speak | " +
+            s"live's to ≥ $toAt = to a person | $set's to ≥ $toAt = to a person |",
+          "|---|---|---|---|---|---|---|"
         ) ++ j.reasons.map(r =>
           s"| ${ShadowName.value(r.shadow)} | ${Verdicts.reason(r.reason)} | ${r.n} | " +
-            s"${r.live} | ${r.set} | ${r.to.fold("—")(m => s"${m.matched} of ${m.of}")} |"
+            s"${r.live} | ${r.set} | ${to(r.liveTo)} | ${to(r.setTo)} |"
         ) ++ Vector(
           "",
           s"verdicts on a case either gate could not decide, left out: ${j.undecided}"
