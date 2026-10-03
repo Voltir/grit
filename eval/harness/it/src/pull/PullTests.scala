@@ -11,12 +11,12 @@ import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Origin, StoreError}
-import grit.core.triage.Shadowing
+import grit.core.triage.{KnowledgeSources, Shadowing}
 import grit.dbos.engine.{Build, LiveEngine, Reader}
 import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.eval.harness.corpus.{Capture, CaseId, Corpus, Digest, Dump}
 import grit.eval.harness.score.Answers
-import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv}
+import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowQuestion}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageQuestion, TriageRecords, TriageSpeech}
 import grit.models.StubClassifier
@@ -111,8 +111,13 @@ object PullTests extends TestSuite {
               engine.shadows,
               // `ghost` is swept but not declared here: its shadows ask nothing, keep nothing.
               Map(
-                words -> ShadowAsking(TriageQuestion.Wording.Shipped, "stub", new StubClassifier)
+                words -> ShadowAsking(
+                  ShadowQuestion.Worded(TriageQuestion.Wording.Shipped),
+                  "stub",
+                  new StubClassifier
+                )
               ),
+              KnowledgeSources.Empty,
               engine.db,
               Clock.system(),
               Tuning.Default

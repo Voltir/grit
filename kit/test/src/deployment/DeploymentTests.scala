@@ -62,7 +62,8 @@ object DeploymentTests extends TestSuite {
     ) {
       def variant(name: String) = grit.lifecycle.shadow.ShadowVariant(
         grit.core.id.ShadowName.of(name).getOrElse(sys.error("a name")),
-        grit.lifecycle.triage.TriageQuestion.Wording.Shipped,
+        grit.lifecycle.shadow.ShadowQuestion
+          .Worded(grit.lifecycle.triage.TriageQuestion.Wording.Shipped),
         None,
         grit.core.spend.DailyCap.of("0.01").getOrElse(sys.error("a cap")),
         java.time.Instant.EPOCH

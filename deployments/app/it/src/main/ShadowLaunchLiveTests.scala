@@ -18,7 +18,7 @@ import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
 import grit.kit.environment.Secrets
 import grit.kit.run.Launch
-import grit.lifecycle.shadow.ShadowVariant
+import grit.lifecycle.shadow.{ShadowQuestion, ShadowVariant}
 import grit.lifecycle.triage.TriageQuestion
 import grit.models.StubClassifier
 import grit.turn.{Turn, TurnLoop}
@@ -141,7 +141,9 @@ object ShadowLaunchLiveTests extends TestSuite {
     ) {
       val variant = ShadowVariant(
         Words,
-        TriageQuestion.Wording.Shipped.copy(waiting = "Is anyone waiting on new_message?"),
+        ShadowQuestion.Worded(
+          TriageQuestion.Wording.Shipped.copy(waiting = "Is anyone waiting on new_message?")
+        ),
         Some("jev-variant"),
         DailyCap.of("0.01").getOrElse(sys.error("a cap")),
         Instant.EPOCH

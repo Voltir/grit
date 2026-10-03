@@ -4,10 +4,16 @@ import scala.concurrent.duration.*
 
 import grit.core.classify.{Answer, ClassifierError}
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{ShadowRef, TurnRef, WorkflowId}
+import grit.core.id.{QuestionName, ShadowRef, TurnRef, WorkflowId}
 import grit.core.stitch.Tuning
-import grit.core.triage.{ShadowAnswers, Shadowed}
-import grit.lifecycle.triage.{TriageFixtures, TriageInput, TriageQuestion, TriageRecipe}
+import grit.core.triage.{KnowledgeSource, KnowledgeSources, ShadowAnswers, Shadowed}
+import grit.lifecycle.triage.{
+  TriageFixtures,
+  TriageInput,
+  TriageQuestion,
+  TriageQuestions,
+  TriageRecipe
+}
 
 import utest.*
 
@@ -33,7 +39,94 @@ object ShadowTests extends TestSuite {
       .flatMap((_, state) => TriageQuestion.request(wording, state))
       .map(_.digest)
 
+  /** The digest of the request V2 makes of `t` with `sources`, as `w` stands. */
+  private def setDigest(w: World, t: grit.core.id.TriageRef, sources: Vector[KnowledgeSource]) =
+    TriageInput
+      .build(
+        w.triaged.reads,
+        w.triaged.rooms,
+        TriageFixtures.FakeDb,
+        t,
+        Tuning.Default,
+        TriageRecipe.Shipped
+      )
+      .toOption
+      .zip(KnowledgeSources.of(sources).toOption)
+      .map { case ((_, state), catalog) => TriageQuestions.V2.request(state, catalog).digest }
+
+  /** What `name` kept of `t`, its answers in order: a `VectorMap`'s equality ignores it. */
+  private def keptInOrder(w: World, t: grit.core.id.TriageRef, name: grit.core.id.ShadowName) =
+    w.kept(t, name).map {
+      case Shadowed.Answered(request, ShadowAnswers.Named(as), usage, requested, model, ms) =>
+        Right(
+          (
+            request,
+            as.toVector.map((n, a) => (QuestionName.value(n), a)),
+            usage,
+            requested,
+            model,
+            ms
+          )
+        )
+      case other => Left(other)
+    }
+
   val tests = Tests {
+    test(
+      "a question set's variant keeps each answer under its name, asking a source's question only where the source covers the conversation"
+    ) {
+      val w = new World
+      val t = w.hear("who owns the deploy?", "Ana", 0)
+      val shadow = ShadowRef(t, Asks)
+      // gap weighs asks, owes, closes, nothing; then open, to, durable, anchor, source:github.
+      val classifier =
+        new Scripted(Vector(0.75, 0.125, 0.0, 0.125), Vector(0.875, 0.25, 0.125, 0.0, 0.5))
+      val durable = new InMemoryDurable
+      durable.run(shadow.workflowId)(w.body(classifier, 5)) ==>
+        "kept: answered by jev-1.13.0 in 250 ms"
+      (classifier.calls, durable.recordedSteps(shadow.workflowId)) ==> (1, Vector("ask", "record"))
+      val gap = Answer.choice(
+        Vector("asks" -> 0.75, "owes" -> 0.125, "closes" -> 0.0, "nothing" -> 0.125)
+          .map(Answer.Weight(_, _))
+      )
+      keptInOrder(w, t, Asks) ==> Some(
+        Right(
+          (
+            setDigest(w, t, Vector(Github)).getOrElse("no request"),
+            gap.toVector.map("gap" -> _) ++ Vector(
+              "open" -> Answer.YesNo(0.875),
+              "to" -> Answer.YesNo(0.25),
+              "durable" -> Answer.YesNo(0.125),
+              "anchor" -> Answer.YesNo(0.0),
+              "source:github" -> Answer.YesNo(0.5)
+            ),
+            Spent,
+            "jev-variant",
+            "jev-1.13.0",
+            250.millis
+          )
+        )
+      )
+      w.triaged.tags(t) ==> None
+    }
+
+    test(
+      "a question set's variant whose classifier is unavailable is kept as failed, with its request's digest"
+    ) {
+      val w = new World
+      val t = w.hear("who owns the deploy?", "Ana", 0)
+      new InMemoryDurable().run(ShadowRef(t, Asks).workflowId)(
+        w.body(new Scripted(Vector.empty, Vector.empty), 5)
+      ) ==> "kept: failed: unavailable"
+      w.kept(t, Asks) ==> Some(
+        Shadowed.Failed(
+          setDigest(w, t, Vector(Github)).getOrElse("no request"),
+          ClassifierError.Kind.Unavailable,
+          250.millis
+        )
+      )
+    }
+
     test(
       "a shadow asks its variant once, in its wording, and keeps every answer, the digest, both models and the latency"
     ) {

@@ -15,6 +15,7 @@ import grit.core.place.Weight
 import grit.core.stitch.StitchReads
 import grit.core.store.{Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
+import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.Engine
 import grit.digest.Digest
 import grit.kit.deployment.{Assembly, Deployment, Offered, Topics}
@@ -224,6 +225,7 @@ private[grit] object Launch {
             engine.rooms,
             engine.shadows,
             variants(d, s),
+            KnowledgeSources.Empty,
             engine.db,
             Clock.system(),
             grit.core.stitch.Tuning.Default
@@ -335,8 +337,8 @@ private[grit] object Launch {
     case (Topics.Off(reason), _) => Classifier.none(reason)
   }
 
-  /** Each of `d`'s shadows by name, asking in its wording of the classifier `d` places
-    * topics with ([[classifier]]): Jev's of the shadow's model when it names one.
+  /** Each of `d`'s shadows by name, asking its question of the classifier `d` places topics
+    * with ([[classifier]]): Jev's of the shadow's model when it names one.
     */
   private def variants(d: Deployment, s: Secrets): Map[ShadowName, ShadowAsking^] =
     asked(d.topics, s.jev, d.shadows.toList)
@@ -357,25 +359,25 @@ private[grit] object Launch {
             val model = v.model.getOrElse(config.model)
             others.updated(
               v.name,
-              ShadowAsking(v.wording, model, new JevClassifier(config.copy(model = model)))
+              ShadowAsking(v.question, model, new JevClassifier(config.copy(model = model)))
             )
           case (Topics.Stub, _) =>
             others.updated(
               v.name,
-              ShadowAsking(v.wording, v.model.getOrElse(StubClassifier.Model), new StubClassifier)
+              ShadowAsking(v.question, v.model.getOrElse(StubClassifier.Model), new StubClassifier)
             )
           case (Topics.Jev, None) =>
             others.updated(
               v.name,
               ShadowAsking(
-                v.wording,
+                v.question,
                 v.model.getOrElse(JevConfig.DefaultModel),
                 Classifier.none("JEV_API_KEY is not set")
               )
             )
           // Deployment.of refuses shadows with topics off.
           case (Topics.Off(reason), _) =>
-            others.updated(v.name, ShadowAsking(v.wording, "none", Classifier.none(reason)))
+            others.updated(v.name, ShadowAsking(v.question, "none", Classifier.none(reason)))
         }
     }
 

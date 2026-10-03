@@ -7,11 +7,12 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{EntryId, ShadowName, TriageRef, WorkflowId}
+import grit.core.id.{EntryId, KnowledgeSourceName, ShadowName, TriageRef, WorkflowId}
+import grit.core.place.{Namespace, Place}
 import grit.core.stitch.Tuning
-import grit.core.triage.{InMemoryTriageShadows, Shadowed}
+import grit.core.triage.{InMemoryTriageShadows, KnowledgeSource, KnowledgeSources, Shadowed}
 import grit.dbos.sql.TestTx
-import grit.lifecycle.triage.{TriageFixtures, TriageQuestion}
+import grit.lifecycle.triage.{TriageFixtures, TriageQuestion, TriageQuestions}
 
 /** The shadow's test world: triage's ([[TriageFixtures.World]]), with what each variant
   * made of its messages kept beside their tags.
@@ -22,6 +23,29 @@ object ShadowFixtures {
     ShadowName.of(s).getOrElse(throw new java.lang.AssertionError(s))
 
   val Words: ShadowName = named("words")
+
+  /** A variant asking [[grit.lifecycle.triage.TriageQuestions.V2]]. */
+  val Asks: ShadowName = named("asks")
+
+  private def source(name: String, line: String, team: String): KnowledgeSource =
+    KnowledgeSource(
+      KnowledgeSourceName.of(name).getOrElse(throw new java.lang.AssertionError(name)),
+      line,
+      Place.under(Namespace.Slack, Vector(team))
+    )
+
+  /** A source covering team T, where [[TriageFixtures.World]]'s conversation is. */
+  val Github: KnowledgeSource =
+    source("github", "the team's GitHub repository: code, issues and pull requests", "T")
+
+  /** A source covering another team only. */
+  val Wiki: KnowledgeSource = source("wiki", "the other team's wiki", "U")
+
+  /** The world's catalog: [[Wiki]], then [[Github]]. */
+  val Catalog: KnowledgeSources =
+    KnowledgeSources
+      .of(Vector(Wiki, Github))
+      .getOrElse(throw new java.lang.AssertionError("catalog"))
 
   /** A variant's own words: the shipped ones with the kind question put otherwise. */
   val Reworded: TriageQuestion.Wording =
@@ -58,8 +82,9 @@ object ShadowFixtures {
         shadows.of(name, Vector(e))(using TestTx.fake).toOption.flatMap(_.get(e))
       )
 
-    /** The shadow's body over this world: `classifier` asks variant [[Words]] in
-      * [[Reworded]] of model `jev-variant`, at `minutes`, each call taking 250 ms.
+    /** The shadow's body over this world, with [[Catalog]]: `classifier` asks variant
+      * [[Words]] in [[Reworded]], and variant [[Asks]] V2, of model `jev-variant`, at
+      * `minutes`, each call taking 250 ms.
       */
     def body(classifier: Classifier^, minutes: Long)(id: WorkflowId)(using Durable^): String =
       Shadow.body(
@@ -67,7 +92,15 @@ object ShadowFixtures {
           triaged.reads,
           triaged.rooms,
           shadows,
-          Map(Words -> ShadowAsking(Reworded, "jev-variant", classifier)),
+          Map(
+            Words -> ShadowAsking(ShadowQuestion.Worded(Reworded), "jev-variant", classifier),
+            Asks -> ShadowAsking(
+              ShadowQuestion.Named(TriageQuestions.V2),
+              "jev-variant",
+              classifier
+            )
+          ),
+          Catalog,
           TriageFixtures.FakeDb,
           new Ticking(TriageFixtures.at(minutes), 250),
           Tuning.Default
