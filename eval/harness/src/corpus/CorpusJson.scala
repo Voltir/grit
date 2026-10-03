@@ -161,7 +161,7 @@ object CorpusJson {
     case _ => Left(s"$what: build is neither unknown nor a commit")
   }
 
-  private def readLive(v: ujson.Value): Either[String, Live] = {
+  private[corpus] def readLive(v: ujson.Value): Either[String, Live] = {
     val f = Fields("tags", v)
     (if (v.objOpt.exists(_.contains("unanswered"))) f.optional("unanswered") else Right(None))
       .flatMap {
@@ -368,7 +368,7 @@ object CorpusJson {
     case Build.Unknown => ujson.Str("unknown")
   }
 
-  private def writeLive(l: Live): ujson.Value = l match {
+  private[corpus] def writeLive(l: Live): ujson.Value = l match {
     case Live.Weighed(kind, kindP, waiting, durable, helps, model, cost) =>
       ujson.Obj(
         "kind" -> Kind.written(kind),
