@@ -10,9 +10,9 @@ tools whose every source read low, which those turns did not call. Where the dec
 was a choice:
 
 - **In triage**, passing a verdict to the turn it starts. Turned down: the turn is what a
-  recipe shapes, the harness
-  recomputes a recipe's decision from recorded data, and a verdict computed in triage would
-  have to be stored where the turn and the harness both read it.
+  recipe shapes, the harness recomputes a recipe's decision from recorded data, and a
+  verdict computed in triage would have to be stored where the turn and the harness both
+  read it.
 - **A deployment's code deciding per turn** (a function over the turn). Turned down: a
   function is opaque to the harness and to `Deployment.of`, which can then check nothing.
 - **Asking the classifier again in the turn** for every root. Deferred: a heard message's
