@@ -140,8 +140,8 @@ only a nested `step`.
 - *Fix:* construct the value inline where it is passed; pass its parts, not the value. Or
   pass it as a supertype none of whose members holds a capability. Or tie the capabilities
   to a capture-set parameter the value's type names: `TurnTooling[C^]` holds a
-  `Toolbox[C]`, and `Main` builds a `TurnTooling[{tuned, models, store}]` inline and hands
-  it to `Turn.body[C^]`.
+  `Toolbox[C]`, and `Launch` builds a `TurnTooling[caps.CapSet^{tuned, models, store}]`
+  inline and hands it to `Turn.body[C^]`.
 
 **An abstract capability member, implemented by a case-class field.**
 
@@ -270,7 +270,9 @@ the caller's side: `args.read(json).map(_.edits.size)`, where `edits: Vector[…
 
 **A probe's flag-off control cannot parse capture syntax.** With capture checking off,
 `Workspace^` and `Toolbox[{ws}]` do not parse, so a control for a probe written in them
-compiles the same source with its capture sets erased (`ToolCaptureTests.erased`).
+compiles the same source with its capture sets erased (`ToolCaptureTests.erased`). A probe's
+source is a string the compiler reads, never scalafmt, so it keeps the `[{ws}]` spelling the
+eraser matches.
 
 **An `Args.of` written inside another.** `Field.each("…", Args.of((oldText = …, newText =
 …)))` inline in an outer `Args.of` fails with *"a match type could not be fully reduced:
@@ -279,7 +281,7 @@ gets a capture-set variable, the trap above. Bind the inner `Args` to a `val` fi
 (`grit.tools.Coding.replacement`).
 
 **A helper whose result type names its own parameter's capability.** In a test,
-`def bound(book: Book, …) = Toolbox.of[{book}](…).bind(…)` crashed the compiler (3.9):
+`def bound(book: Book, …) = Toolbox.of[caps.CapSet^{book}](…).bind(…)` crashed the compiler (3.9):
 *"assertion failed: orphan parameter reference: TermParamRef(book)"*, an internal error, not
 a diagnostic. The inferred result type mentions `{book}`, a parameter of the method it
 escapes. Build the value where the capability is a local `val` instead (`TuningTests`), or

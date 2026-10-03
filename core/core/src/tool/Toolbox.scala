@@ -6,7 +6,8 @@ import grit.core.model.NameRepair
 import grit.core.provider.ToolSchema
 
 /** The tools offered on one model call, their names distinct, each acting only through the
-  * capabilities `C`: a `Toolbox[{ws}]` cannot edit or run a command unless `ws` can.
+  * capabilities `C`: a `Toolbox[caps.CapSet^{ws}]` cannot edit or run a command unless `ws`
+  * can. (`Toolbox[{ws}]` is the same type, but scalafmt cannot parse it.)
   */
 final class Toolbox[+C^] private (private val tools: Vector[Tool.Offered^{C}]) {
 
