@@ -84,11 +84,8 @@ object Ask {
       rest: Criterion[C]*
   ): Either[DuplicateKey, Ask[S, Decision[C]]] = {
     val criteria = first +: second +: rest.toVector
-    val keys = criteria.map(_.key)
-    keys.diff(keys.distinct).headOption.map(DuplicateKey(_)).toLeft {
-      def key(c: Criterion[C]) = Question.Key(c.key, c.description)
-      val question =
-        Question.Choice(instructions, key(first), key(second), rest.toVector.map(key))
+    def key(c: Criterion[C]) = Question.Key(c.key, c.description)
+    Question.choice(instructions, key(first), key(second), rest.map(key)*).map { question =>
       new Ask[S, Decision[C]](
         Vector(question),
         answers =>
@@ -131,6 +128,38 @@ object Ask {
             Left(unreadable(instructions, "answered a choice to a yes/no"))
         }
     )
+
+  /** `question`'s answer as the classifier gave it; `Unreadable` when it is not of the
+    * question's kind, or a choice names no key of the question's.
+    */
+  def answer[S](question: Question): Ask[S, Answer] =
+    question match {
+      case c: Question.Choice =>
+        new Ask(
+          Vector(c),
+          answers =>
+            one(c.instructions, answers).flatMap {
+              case a @ Answer.Choice(choice, _, _) =>
+                Either.cond(
+                  c.keys.exists(_.name == choice),
+                  a,
+                  unreadable(c.instructions, s"chose $choice, not an option")
+                )
+              case Answer.YesNo(_) =>
+                Left(unreadable(c.instructions, "answered yes/no to a choice"))
+            }
+        )
+      case y: Question.YesNo =>
+        new Ask(
+          Vector(y),
+          answers =>
+            one(y.instructions, answers).flatMap {
+              case a @ Answer.YesNo(_) => Right(a)
+              case Answer.Choice(_, _, _) =>
+                Left(unreadable(y.instructions, "answered a choice to a yes/no"))
+            }
+        )
+    }
 
   private def one(instructions: String, answers: Vector[Answer]): Either[ClassifierError, Answer] =
     answers.headOption.toRight(unreadable(instructions, "no answer"))

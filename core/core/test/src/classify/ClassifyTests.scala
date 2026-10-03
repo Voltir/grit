@@ -153,6 +153,38 @@ object ClassifyTests extends TestSuite {
       department(sales = "billing").map(_ => ()) ==> Left(Ask.DuplicateKey("billing"))
     }
 
+    test("Question.choice keeps its keys in order, and is not built when two share a name") {
+      def key(name: String) = Question.Key(name, None)
+      Question.choice("?", key("a"), key("b"), key("c")).map(_.keys.map(_.name)) ==>
+        Right(Vector("a", "b", "c"))
+      Question.choice("?", key("a"), key("b"), key("a")) ==> Left(Ask.DuplicateKey("a"))
+    }
+
+    test("Ask.answer keeps an answer as given, Unreadable for a key not asked or the other kind") {
+      val team = Question
+        .choice(
+          "Which team should handle `ticket`?",
+          Question.Key("billing", None),
+          Question.Key("sales", None)
+        )
+        .getOrElse(throw new java.lang.AssertionError("keys"))
+      val choice = Ask.answer[Ticket](team)
+      val yesNo = Ask.answer[Ticket](Question.YesNo("Is `ticket` urgent?", None, None))
+      def asked(q: Ask[Ticket, Answer], answer: Answer) =
+        new Canned(answer).ask(Ticket("x"), q).map(_.value)
+      // As given: weights not summing to 1, and on a key the question lacks, are kept.
+      val raw = Answer.Choice("sales", Vector(w("sales", 0.7), w("hr", 0.6)), 0.2)
+      asked(choice, raw) ==> Right(raw)
+      asked(yesNo, Answer.YesNo(1.4)) ==> Right(Answer.YesNo(1.4))
+      val toChoice = "\"Which team should handle `ticket`?\": "
+      asked(choice, Answer.Choice("hr", Vector(w("hr", 1.0)), 1.0)) ==>
+        Left(ClassifierError.Unreadable(toChoice + "chose hr, not an option"))
+      asked(choice, Answer.YesNo(0.5)) ==>
+        Left(ClassifierError.Unreadable(toChoice + "answered yes/no to a choice"))
+      asked(yesNo, raw) ==>
+        Left(ClassifierError.Unreadable("\"Is `ticket` urgent?\": answered a choice to a yes/no"))
+    }
+
     test("a decision's probability of a value sums over the criteria that stand for it") {
       val ones = Ask.choice[Ticket, Int](
         "?",

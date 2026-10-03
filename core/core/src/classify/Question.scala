@@ -1,11 +1,28 @@
 package grit.core.classify
 
 /** One question as a classifier receives it, in plain text as it reaches the model. Built
-  * through [[Ask]].
+  * through [[Ask]], or as itself ([[Question.choice]], `YesNo`) for [[Ask.answer]].
   */
 sealed trait Question
 
 object Question {
+
+  /** A choice among `first`, `second` and `rest`, in that order; the key two of them share,
+    * otherwise.
+    */
+  def choice(
+      instructions: String,
+      first: Key,
+      second: Key,
+      rest: Key*
+  ): Either[Ask.DuplicateKey, Question.Choice] = {
+    val keys = (first +: second +: rest.toVector).map(_.name)
+    keys
+      .diff(keys.distinct)
+      .headOption
+      .map(Ask.DuplicateKey(_))
+      .toLeft(Choice(instructions, first, second, rest.toVector))
+  }
 
   /** Pick one of the keys. No two share a name. */
   final case class Choice private[classify] (
