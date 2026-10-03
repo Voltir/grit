@@ -2,6 +2,7 @@ package grit.eval.harness.corpus
 
 import scala.util.Try
 
+import grit.core.classify.AnswersJson
 import grit.core.id.{ConversationId, EntryId, WorkflowId}
 import grit.core.message.Tokens
 import grit.core.period.Probability
@@ -166,6 +167,14 @@ object CorpusJson {
       .flatMap {
         case Some(u) =>
           Fields.str("tags: unanswered", u).flatMap(readFailure("tags")).map(Live.Unanswered(_))
+        case None if v.objOpt.exists(_.contains("answers")) =>
+          for {
+            answers <- f
+              .field("answers")
+              .flatMap(a => AnswersJson.readNamed(a).left.map(e => s"tags: $e"))
+            model <- f.str("model")
+            cost <- costUsd(f)
+          } yield Live.Named(answers, model, cost)
         case None =>
           for {
             kind <- f.str("kind").flatMap(k => Kind.read(k).toRight(s"tags: no kind $k"))
@@ -174,18 +183,19 @@ object CorpusJson {
             durable <- f.probability("durable")
             helps <- f.probability("helps")
             model <- f.str("model")
-            cost <- f
-              .optional("cost_usd")
-              .flatMap(opt(_) { c =>
-                Fields
-                  .str("tags: cost_usd", c)
-                  .flatMap(t =>
-                    Try(BigDecimal(t)).toOption.toRight("tags: cost_usd is not a number")
-                  )
-              })
+            cost <- costUsd(f)
           } yield Live.Weighed(kind, kindP, waiting, durable, helps, model, cost)
       }
   }
+
+  /** The tags' `cost_usd`: `None` when null. */
+  private def costUsd(f: Fields): Either[String, Option[BigDecimal]] =
+    f.optional("cost_usd")
+      .flatMap(opt(_) { c =>
+        Fields
+          .str("tags: cost_usd", c)
+          .flatMap(t => Try(BigDecimal(t)).toOption.toRight("tags: cost_usd is not a number"))
+      })
 
   /** The failure written `name` ([[Failure.written]]), read as part of `what`. */
   def readFailure(what: String)(name: String): Either[String, Failure] =
@@ -366,6 +376,12 @@ object CorpusJson {
         "waiting" -> Probability.value(waiting),
         "durable" -> Probability.value(durable),
         "helps" -> Probability.value(helps),
+        "model" -> model,
+        "cost_usd" -> cost.fold[ujson.Value](ujson.Null)(c => ujson.Str(c.toString))
+      )
+    case Live.Named(answers, model, cost) =>
+      ujson.Obj(
+        "answers" -> AnswersJson.writeNamed(answers),
         "model" -> model,
         "cost_usd" -> cost.fold[ujson.Value](ujson.Null)(c => ujson.Str(c.toString))
       )

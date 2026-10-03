@@ -255,8 +255,8 @@ object Pull {
       focus: Focus
   ): Option[Priced[Vector[Weights]]] =
     tags match {
-      case Tags.Weighed(answers, model, usage) =>
-        Live.v1(answers, model, usage.costUsd).map { v1 =>
+      case Tags.Weighed(_, model, usage) =>
+        Some(Live.of(tags)).collect { case v1: Live.Weighed =>
           val p = Probability.value(v1.kindP)
           val rest = (1 - p) / (Kind.values.size - 1)
           val ps = Kind.values.toVector.map(k => if (k == v1.kind) p else rest)

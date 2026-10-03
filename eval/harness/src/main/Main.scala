@@ -25,6 +25,7 @@ import grit.eval.harness.corpus.{
   Digest,
   Dump,
   Fields,
+  Live,
   Manifest,
   SeenCheck,
   Stitched
@@ -753,6 +754,11 @@ object Main {
     println(
       s"build known: ${cases.count(_.triage.build != Build.Unknown)}, " +
         s"unknown: ${cases.count(_.triage.build == Build.Unknown)}"
+    )
+    println(
+      s"tags: v1's ${cases.count(_.tags.isInstanceOf[Live.Weighed])}, a question set's " +
+        s"${cases.count(_.tags.isInstanceOf[Live.Named])}, unanswered " +
+        s"${cases.count(_.tags.isInstanceOf[Live.Unanswered])}"
     )
     println(s"tunings: ${m.tunings}")
   }

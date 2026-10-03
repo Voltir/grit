@@ -91,7 +91,7 @@ object PullTests extends TestSuite {
               TriageRecords(
                 engine.entries,
                 // Kept as before V2: the harness reads v1-era tags only.
-                new grit.eval.harness.corpus.KeptAsV1(engine.triage, engine.entries),
+                new grit.eval.harness.corpus.KeptAsV1(engine.triage, engine.entries, _ => true),
                 engine.principals,
                 engine.conversations,
                 engine.speech,

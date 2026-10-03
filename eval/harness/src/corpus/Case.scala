@@ -55,7 +55,9 @@ object Triaged {
 /** What triage made of a heard message live. */
 enum Live {
 
-  /** Its tags as `grit.triage` keeps them, less the usage but its cost. */
+  /** v1's answers: the chosen kind and its weight, the probabilities of yes to waiting,
+    * durable and helps, the model that weighed them and the call's cost.
+    */
   case Weighed(
       kind: Kind,
       kindP: Probability,
@@ -66,24 +68,37 @@ enum Live {
       costUsd: Option[BigDecimal]
   )
 
+  /** Another question set's answers, each under its question's name in the order asked (live
+    * triage's since v2), the model that weighed them and the call's cost.
+    */
+  case Named(answers: VectorMap[QuestionName, Answer], model: String, costUsd: Option[BigDecimal])
+
   /** No answer, of this kind. */
   case Unanswered(failure: Failure)
 }
 
 object Live {
 
-  /** Live triage's `answers` as v1's tags, by v1's names ([[Tags.V1]]): `kind`'s choice and
-    * its weight, and `waiting`, `durable` and `helps` yes/nos; `None` when they are not
-    * v1's, as for a message triaged by a later question set, or a choice of no [[Kind]].
+  /** What a case keeps of live triage's `tags`, less the usage but its cost: answers to v1's
+    * names alone ([[Tags.V1]]), `kind` a choice of a [[Kind]] and the rest yes/nos, as
+    * `Weighed`; any other answers as `Named`; no answer as `Unanswered`, of its kind.
     */
-  def v1(
+  def of(tags: Tags): Live = tags match {
+    case Tags.Weighed(answers, model, usage) =>
+      v1(answers, model, usage.costUsd).getOrElse(Live.Named(answers, model, usage.costUsd))
+    case Tags.Unanswered(why) => Live.Unanswered(Failure.of(why))
+  }
+
+  private def v1(
       answers: VectorMap[QuestionName, Answer],
       model: String,
       costUsd: Option[BigDecimal]
   ): Option[Live.Weighed] = {
     def yes(name: QuestionName) =
       answers.get(name).collect { case Answer.YesNo(p) => Probability.clamped(p) }
+    val names = Set(Tags.V1.kind, Tags.V1.waiting, Tags.V1.durable, Tags.V1.helps)
     for {
+      _ <- Option.when(answers.keySet == names)(())
       (kind, kindP) <- answers.get(Tags.V1.kind).collect { case Answer.Choice(c, ws, _) =>
         (c, ws.find(_.key == c).fold(0.0)(_.probability))
       }

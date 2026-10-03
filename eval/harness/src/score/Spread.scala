@@ -46,7 +46,7 @@ object Spread {
                   Option.when(i == kind.ordinal)(Probability.value(kindP))
                 )
                 Some(kinds ++ Vector(w, d, h).map(x => Some(Probability.value(x))))
-              case Live.Unanswered(_) => None
+              case Live.Named(_, _, _) | Live.Unanswered(_) => None
             }
           case Suite.Stitch =>
             c.stitch

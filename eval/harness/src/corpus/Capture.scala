@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{ConversationId, TurnRef}
 import grit.core.stitch.{Placed, StitchReads, Stitching, Tuning}
 import grit.core.store.{Origin, StoreError}
-import grit.core.triage.{KnowledgeSources, Tags, TriageStore}
+import grit.core.triage.{KnowledgeSources, TriageStore}
 import grit.dbos.engine.{Build, Reader}
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
 
@@ -16,7 +16,7 @@ final case class Corpus(manifest: Manifest, cases: Vector[Case])
 object Capture {
 
   /** The corpus of every heard message `reader`'s database tagged before `dump.at` that is a
-    * Slack message ([[CaseId.of]]) and whose tags are v1's or unanswered: its manifest and its cases, ordered by when they were
+    * Slack message ([[CaseId.of]]): its manifest and its cases, ordered by when they were
     * tagged, then by id. Each case's inputs are rebuilt under its own placement's tuning, or
     * the manifest's. `source` and `restored` name the databases dumped and read, and
     * `capture` the build capturing. Equal databases capture equal corpora. `Left` when the
@@ -60,9 +60,9 @@ object Capture {
         originOf(c).flatMap {
           case None => Right(None)
           case Some(origin) =>
-            (CaseId.of(origin, t.entry), liveTags(t.tags)) match {
-              case (None, _) | (_, None) => Right(None)
-              case (Some(id), Some(tags)) =>
+            CaseId.of(origin, t.entry) match {
+              case None => Right(None)
+              case Some(id) =>
                 val own = live.map(_.seen.tuning).filter(_ != tuning)
                 val under = own.getOrElse(tuning)
                 for {
@@ -89,7 +89,7 @@ object Capture {
                         recorded,
                         recorded.fold(Build.Unknown)(r => Triaged.buildAt(starts, r.created))
                       ),
-                      tags,
+                      Live.of(t.tags),
                       asked(reads, reader, t, under),
                       speakers.of(t.entry).map(Digest.text),
                       Clusters(thread, exchange),
@@ -180,12 +180,6 @@ object Capture {
           )
       }
     }
-
-  /** `tags` as a case keeps them; `None` when they answer a question set other than v1. */
-  private def liveTags(tags: Tags): Option[Live] = tags match {
-    case Tags.Weighed(answers, model, usage) => Live.v1(answers, model, usage.costUsd)
-    case Tags.Unanswered(why) => Some(Live.Unanswered(Failure.of(why)))
-  }
 
   /** `e`'s kind: a store's error can quote what it was given, so its words are never kept. */
   private def kind(e: StoreError): String = e match {

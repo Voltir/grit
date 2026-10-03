@@ -10,18 +10,20 @@ import grit.core.triage.{KnowledgeSources, Tags, TriageStore}
 import grit.lifecycle.triage.TriageQuestions
 import grit.models.StubClassifier
 
-/** `store`, keeping what live triage kept before it asked V2: a heard message's weighed tags
-  * replaced by the stub's answers to v1 ([[TriageQuestions.V1]]) under v1's names, so a test
-  * reads a database of the era the harness's corpora were captured in. Unanswered tags, and
-  * a message not found in `entries`, are kept as given.
+/** `store`, keeping what live triage kept before it asked V2 for the heard messages whose text
+  * `before` holds: their weighed tags replaced by the stub's answers to v1
+  * ([[TriageQuestions.V1]]) under v1's names, so a test reads a database that spans the
+  * switch, as one whose earlier rows were converted to v1's names does. Every other message's
+  * tags, unanswered tags, and a message not found in `entries`, are kept as given.
   */
-final class KeptAsV1(store: TriageStore, entries: EntryStore) extends TriageStore {
+final class KeptAsV1(store: TriageStore, entries: EntryStore, before: String => Boolean)
+    extends TriageStore {
 
   def record(entry: EntryId, tags: Tags, at: Instant)(using Tx^): Either[StoreError, Boolean] =
     tags match {
       case Tags.Weighed(_, model, usage) =>
         entries.get(entry).flatMap {
-          case Some(Entry(_, _, _, _, _, Payload.Heard(text), _)) =>
+          case Some(Entry(_, _, _, _, _, Payload.Heard(text), _)) if before(text) =>
             val questions = TriageQuestions.V1.questions(KnowledgeSources.Empty)
             val answered = StubClassifier
               .answers(ujson.Obj("new_message" -> text), questions.values.toVector)

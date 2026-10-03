@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{PrincipalId, SourceId, WorkflowId}
+import grit.core.id.{PrincipalId, QuestionName, SourceId, WorkflowId}
 import grit.core.period.Probability
 import grit.core.speech.{Reach, Speaking}
 import grit.core.stitch.{StitchReads, Tuning}
@@ -38,9 +38,18 @@ object CaptureTests extends TestSuite {
 
   private val dump = Dump(Digest.text("synthetic dump"), Instant.parse("2100-01-01T00:00:00Z"))
 
+  private val beforeV2 = Set("lunch at noon tomorrow?", "the deploy moves to friday")
+
+  /** A case's tags by their form: v1's, a question set's names, or unanswered. */
+  private def form(l: Live): String = l match {
+    case Live.Weighed(_, _, _, _, _, _, _) => "v1"
+    case Live.Named(answers, _, _) => answers.keys.map(QuestionName.value).mkString(",")
+    case Live.Unanswered(f) => Failure.written(f)
+  }
+
   val tests = Tests {
     test(
-      "every placement rebuilds to the state it was shown live, and a recapture writes the same bytes"
+      "every placement rebuilds to the state it was shown live, each case keeps its tags in its era's form, and a recapture writes the same bytes"
     ) {
       val config = TestPostgres.freshDatabase("harness_capture")
       val engine = LiveEngine.open(config, "test")
@@ -54,8 +63,8 @@ object CaptureTests extends TestSuite {
             TriageEnv(
               TriageRecords(
                 engine.entries,
-                // Kept as before V2: the harness reads v1-era tags only.
-                new KeptAsV1(engine.triage, engine.entries),
+                // The first two heard before live triage asked V2.
+                new KeptAsV1(engine.triage, engine.entries, beforeV2.contains),
                 engine.principals,
                 engine.conversations,
                 engine.speech,
@@ -129,6 +138,8 @@ object CaptureTests extends TestSuite {
         val corpus = captured()
         corpus.cases.map(_.id.written) ==>
           Vector("C1/1000.1", "C1/1000.2", "C1/1000.3", "C1/1000.4", "C1/1000.5")
+        val v2 = "gap,open,to,durable,anchor"
+        corpus.cases.map(c => form(c.tags)) ==> Vector("v1", "v1", v2, v2, v2)
         corpus.cases.map(_.stitch.map(_.seen)) ==>
           Vector(None, Some(SeenCheck.Match), Some(SeenCheck.Match), None, Some(SeenCheck.Match))
         corpus.cases.lastOption.flatMap(_.stitch).map(_.placed) ==> Some(

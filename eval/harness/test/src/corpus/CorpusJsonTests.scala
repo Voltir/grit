@@ -2,9 +2,11 @@ package grit.eval.harness.corpus
 
 import java.time.Instant
 
+import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
-import grit.core.id.{ConversationId, EntryId, WorkflowId}
+import grit.core.classify.Answer
+import grit.core.id.{ConversationId, EntryId, QuestionName, WorkflowId}
 import grit.core.message.Tokens
 import grit.core.period.Probability
 import grit.core.stitch.{Offered, Tuning}
@@ -123,6 +125,68 @@ object CorpusJsonTests extends TestSuite {
     test("a manifest missing a field is refused, naming it") {
       CorpusJson.readManifest(without(CorpusJson.writeManifest(manifest), "dump", "sha256")) ==>
         Left("dump: no sha256")
+    }
+
+    test(
+      "a case's tags read in every form a build wrote: v1's, a question set's under its names, and none"
+    ) {
+      def name(n: String) = QuestionName.read(n).fold(sys.error, identity)
+      val named = Live.Named(
+        VectorMap(
+          name("gap") -> Answer.Choice(
+            "asks",
+            Vector(Answer.Weight("asks", 0.75), Answer.Weight("nothing", 0.25)),
+            Answer.confidence(Vector(0.75, 0.25))
+          ),
+          name("source:github") -> Answer.YesNo(0.5)
+        ),
+        "jev-2",
+        None
+      )
+      def tags(line: String) =
+        CorpusJson
+          .readCase(
+            ujson.read(
+              CorpusJson
+                .writeCase(bare)
+                .render()
+                .replace(
+                  "{\"unanswered\":\"unreadable\"}",
+                  line
+                )
+            )
+          )
+          .map(_.tags)
+      (
+        CorpusJson
+          .writeCase(bare.copy(tags = named))
+          .render()
+          .contains(
+            """"tags":{"answers":[{"name":"gap","choice":"asks","weights":[{"key":"asks","p":0.75},{"key":"nothing","p":0.25}]},{"name":"source:github","yes":0.5}],"model":"jev-2","cost_usd":null}"""
+          ),
+        tags(
+          """{"answers":[{"name":"gap","choice":"asks","weights":[{"key":"asks","p":0.75},{"key":"nothing","p":0.25}]},{"name":"source:github","yes":0.5}],"model":"jev-2","cost_usd":null}"""
+        ),
+        tags(
+          """{"kind":"decision","kind_p":0.71,"waiting":0.2,"durable":0.93,"helps":0.05,"model":"jev-1.13.0","cost_usd":"0.0000412"}"""
+        ),
+        tags("""{"unanswered":"unreadable"}""")
+      ) ==> (
+        true,
+        Right(named),
+        Right(
+          Live.Weighed(
+            Kind.Decision,
+            p(0.71),
+            p(0.2),
+            p(0.93),
+            p(0.05),
+            "jev-1.13.0",
+            Some(BigDecimal("0.0000412"))
+          )
+        ),
+        Right(Live.Unanswered(Failure.Unreadable))
+      )
     }
 
     // The line form is what later runs read from cases.jsonl: its keys are pinned.

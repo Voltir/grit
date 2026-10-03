@@ -50,7 +50,7 @@ object Agreement {
     cases.flatMap(c =>
       c.tags match {
         case w: Live.Weighed => answers.triage.get(c.id).map(a => (c, w, a.mean))
-        case Live.Unanswered(_) => None
+        case Live.Named(_, _, _) | Live.Unanswered(_) => None
       }
     )
 
