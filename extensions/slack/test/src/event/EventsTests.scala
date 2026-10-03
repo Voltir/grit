@@ -38,7 +38,7 @@ object EventsTests extends TestSuite {
     test("a message is said at the time its ts names, to the microsecond") {
       Events.read(message("1515449522.000016", "hi"), bot).map {
         case m: Event.Said => Some(m.at)
-        case Event.Ignored(_) => None
+        case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) => None
       } ==> Right(Some(Instant.parse("2018-01-08T22:12:02.000016Z")))
     }
 
@@ -120,6 +120,57 @@ object EventsTests extends TestSuite {
     }
 
     test(
+      "a reaction added to a message, or removed, is reacted by its user, at the time its event_ts names"
+    ) {
+      val at = Instant.ofEpochSecond(1515449600L, 100000L)
+      def reacted(emoji: String, added: Boolean, user: String) =
+        Event.Reacted(
+          TeamId(Team),
+          ChannelId("C0REVIEW1"),
+          Ts("1515449522.000016"),
+          UserId(user),
+          emoji,
+          added,
+          at
+        )
+      Vector(
+        Events.read(reaction("1515449522.000016", "+1", channel = "C0REVIEW1"), bot),
+        Events.read(
+          reaction("1515449522.000016", "-1::skin-tone-2", added = false, channel = "C0REVIEW1"),
+          bot
+        ),
+        Events.read(reaction("1515449522.000016", "+1", user = Bot, channel = "C0REVIEW1"), bot)
+      ) ==> Vector(
+        Right(reacted("+1", added = true, Ana)),
+        Right(reacted("-1::skin-tone-2", added = false, Ana)),
+        Right(reacted("+1", added = true, Bot))
+      )
+    }
+
+    test(
+      "a reaction to a file is ignored; one without its emoji, or whose event_ts names no time, is not read"
+    ) {
+      Events.read(fileReaction("+1"), bot) ==> Right(Event.Ignored("a reaction to a file"))
+      Events.read(reaction("1.0", "+1", at = "soon"), bot) ==>
+        Left("a reaction_added event whose event_ts names no time: soon")
+      Events.read(
+        ujson
+          .Obj(
+            "type" -> "event_callback",
+            "team_id" -> Team,
+            "event" -> ujson.Obj(
+              "type" -> "reaction_removed",
+              "user" -> Ana,
+              "item" -> ujson.Obj("type" -> "message", "channel" -> "C1", "ts" -> "1.0"),
+              "event_ts" -> "2.0"
+            )
+          )
+          .render(),
+        bot
+      ) ==> Left("a reaction_removed event without reaction")
+    }
+
+    test(
       "another event type is ignored; a payload that is not an event callback, or lacks a field, is not read"
     ) {
       Events.read(
@@ -127,11 +178,11 @@ object EventsTests extends TestSuite {
           .Obj(
             "type" -> "event_callback",
             "team_id" -> Team,
-            "event" -> ujson.Obj("type" -> "reaction_added")
+            "event" -> ujson.Obj("type" -> "emoji_changed")
           )
           .render(),
         bot
-      ) ==> Right(Event.Ignored("an event of type reaction_added"))
+      ) ==> Right(Event.Ignored("an event of type emoji_changed"))
       Events.read(ujson.Obj("type" -> "url_verification").render(), bot) ==>
         Left("not an event callback: url_verification")
       Events.read(

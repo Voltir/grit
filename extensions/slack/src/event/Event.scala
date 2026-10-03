@@ -21,9 +21,23 @@ enum Event {
       at: Instant
   )
 
+  /** `user`, anyone's (grit's bot included), `added` the reaction `emoji` to message `ts` of
+    * `channel` in `team`, or removed it when not: `emoji` as Slack names it, without colons,
+    * a skin tone after `::` (`+1::skin-tone-2`); `at`, the time the event's `event_ts` names.
+    */
+  case Reacted(
+      team: TeamId,
+      channel: ChannelId,
+      ts: Ts,
+      user: UserId,
+      emoji: String,
+      added: Boolean,
+      at: Instant
+  )
+
   /** Something grit does not act on, and why: a bot's message (grit's own included), an
-    * edit or another change to a message, a message outside a channel, an event of another
-    * type.
+    * edit or another change to a message, a message outside a channel, a reaction to anything
+    * but a message, an event of another type.
     */
   case Ignored(why: String)
 }
@@ -66,8 +80,9 @@ object Events {
   /** The event an Events API payload (a Socket Mode envelope's `payload`) carries, grit's own
     * bot user being `bot`: `app_mention` and `message` events as [[Event.Said]] (a `message`
     * only from a person, in a channel, new or broadcast from a thread, or sharing a file),
-    * everything else [[Event.Ignored]]. Why not, when it is not an event callback, or an event
-    * grit reads lacks a field it needs or has a ts that names no time.
+    * `reaction_added` and `reaction_removed` on a message as [[Event.Reacted]], everything
+    * else [[Event.Ignored]]. Why not, when it is not an event callback, or an event
+    * grit reads lacks a field it needs or has a ts or event_ts that names no time.
     */
   def read(payload: String, bot: UserId): Either[String, Event] =
     scala.util
@@ -93,6 +108,7 @@ object Events {
   private def said(event: ujson.Value, team: TeamId, bot: UserId): Either[String, Event] =
     str(event, "type") match {
       case Some("app_mention") => message(event, team, bot, mention = true)
+      case Some(kind @ ("reaction_added" | "reaction_removed")) => reaction(event, team, kind)
       case Some("message") =>
         (str(event, "subtype"), str(event, "bot_id"), str(event, "channel_type")) match {
           case (Some(sub), _, _) if !Spoken.contains(sub) =>
@@ -133,6 +149,35 @@ object Events {
           mention || text.contains(s"<@${UserId.value(bot)}>"),
           at
         )
+  }
+
+  /** A `reaction_added` or `reaction_removed` event, `kind`, as [[Event.Reacted]] when its item
+    * is a message.
+    */
+  private def reaction(event: ujson.Value, team: TeamId, kind: String): Either[String, Event] = {
+    val item = event.objOpt.flatMap(_.get("item"))
+    def field(from: Option[ujson.Value], name: String): Either[String, String] =
+      from.flatMap(str(_, name)).toRight(s"a $kind event without $name")
+    item.flatMap(str(_, "type")) match {
+      case Some("message") =>
+        for {
+          user <- field(Some(event), "user")
+          emoji <- field(Some(event), "reaction")
+          channel <- field(item, "channel")
+          ts <- field(item, "ts")
+          stamp <- field(Some(event), "event_ts")
+          at <- time(stamp).toRight(s"a $kind event whose event_ts names no time: $stamp")
+        } yield Event.Reacted(
+          team,
+          ChannelId(channel),
+          Ts(ts),
+          UserId(user),
+          emoji,
+          kind == "reaction_added",
+          at
+        )
+      case other => Right(Event.Ignored(s"a reaction to a ${other.getOrElse("nothing")}"))
+    }
   }
 
   /** The time a ts names: seconds since the epoch, a point, then up to nine digits of the

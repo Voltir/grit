@@ -107,4 +107,43 @@ object Payloads {
     if (!mention) event("channel_type") = "channel"
     callback(event)
   }
+
+  /** `user` adding `emoji` to message `ts` of `channel` (or removing it, when not `added`),
+    * as Slack's docs give `reaction_added` and `reaction_removed`, the event at `at`.
+    */
+  def reaction(
+      ts: String,
+      emoji: String,
+      added: Boolean = true,
+      user: String = Ana,
+      channel: String = "C123ABC456",
+      at: String = "1515449600.000100"
+  ): String =
+    callback(
+      ujson.Obj(
+        "type" -> (if (added) "reaction_added" else "reaction_removed"),
+        "user" -> user,
+        "reaction" -> emoji,
+        "item_user" -> Bot,
+        "item" -> ujson.Obj(
+          "type" -> "message",
+          "channel" -> channel,
+          "ts" -> ts,
+          "channel_type" -> "group"
+        ),
+        "event_ts" -> at
+      )
+    )
+
+  /** `user` adding `emoji` to a file, as Slack's docs give a `reaction_added` on one. */
+  def fileReaction(emoji: String, user: String = Ana): String =
+    callback(
+      ujson.Obj(
+        "type" -> "reaction_added",
+        "user" -> user,
+        "reaction" -> emoji,
+        "item" -> ujson.Obj("type" -> "file", "file" -> "F123ABC456"),
+        "event_ts" -> "1515449600.000100"
+      )
+    )
 }

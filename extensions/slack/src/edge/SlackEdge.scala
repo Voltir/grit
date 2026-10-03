@@ -108,7 +108,7 @@ final class SlackEdge(
       case Left(why) =>
         said(s"slack: an event grit cannot read, acknowledged: $why")
         true
-      case Right(Event.Ignored(_)) => true
+      case Right(Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _)) => true
       case Right(m: Event.Said) =>
         val origin =
           Origin.Slack(TeamId.value(m.team), ChannelId.value(m.channel), Ts.value(m.thread))
@@ -150,7 +150,7 @@ final class SlackEdge(
           val spoken = listed.flatMap(l =>
             Events.listed(l, self.team, channel, self.bot) match {
               case Right(m: Event.Said) => Some(m)
-              case Right(Event.Ignored(_)) => None
+              case Right(Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _)) => None
               case Left(why) =>
                 said(s"slack: a listed message grit cannot read, left out: $why")
                 None
