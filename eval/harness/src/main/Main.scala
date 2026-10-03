@@ -24,11 +24,17 @@ import grit.eval.harness.corpus.{
   CorpusJson,
   Digest,
   Dump,
+  Ended,
   Fields,
   Live,
   Manifest,
+  Said,
   SeenCheck,
-  Stitched
+  Stitched,
+  TurnCapture,
+  TurnCase,
+  TurnJson,
+  Turns
 }
 import grit.eval.harness.jev.{
   Budget,
@@ -113,7 +119,9 @@ object Main {
 
   /** `capture --url <jdbc> --source <db> --restored <db> --sha256 <hex> --at <instant> --out
     * <dir>`: the corpus of the restored database, written to `corpus.json` and `cases.jsonl` in
-    * `<dir>`, with the database's login from `GRIT_DATABASE_USER` and `_PASSWORD`.
+    * `<dir>`, its recorded turns to `turns.jsonl` ([[TurnCapture]]) and the verdicts standing
+    * on reviewed messages to `verdicts.json` ([[Pull.verdicts]]), with the database's login
+    * from `GRIT_DATABASE_USER` and `_PASSWORD`.
     */
   private def capture(f: Map[String, String]): Either[String, Unit] =
     for {
@@ -127,18 +135,57 @@ object Main {
         .fromEnv(sys.env.updated(DbConfig.UrlVar, url))
         .left
         .map(_.message)
-      captured <- opened(config)(reader =>
-        Capture(reader, source, restored, Dump(sha, at), Build.current)
+      read <- opened(config)(reader =>
+        for {
+          captured <- Capture(reader, source, restored, Dump(sha, at), Build.current)
+          turns <- TurnCapture(reader, Dump(sha, at))
+          standing <- Pull.verdicts(reader, Instant.EPOCH)
+        } yield (captured, turns, standing)
       )
+      (captured, turns, standing) = read
       _ <- write(
         out.resolve("cases.jsonl"),
         captured.cases.map(CorpusJson.writeCase(_).render() + "\n").mkString
       )
       _ <- write(
+        out.resolve("turns.jsonl"),
+        turns.cases.map(TurnJson.write(_).render() + "\n").mkString
+      )
+      _ <- write(out.resolve("verdicts.json"), Verdicts.written(standing.verdicts))
+      _ <- write(
         out.resolve("corpus.json"),
         CorpusJson.writeManifest(captured.manifest).render(2) + "\n"
       )
-    } yield report(captured.manifest, captured.cases)
+    } yield {
+      report(captured.manifest, captured.cases)
+      reportTurns(turns)
+      println(s"verdicts standing: ${standing.verdicts.cases.size}")
+    }
+
+  /** The turns captured, as counts: by where their message was said and their root, by how
+    * they ended, and how many were skipped.
+    */
+  private def reportTurns(turns: Turns): Unit = {
+    def said(t: TurnCase) = t.said match {
+      case Said.Slack(_) => "slack"
+      case Said.Tui(_) => "tui"
+      case Said.Task(_) => "task"
+    }
+    def ended(t: TurnCase) = t.ended match {
+      case Ended.Replied(_, true) => "passed"
+      case Ended.Replied(_, false) => "replied"
+      case Ended.Failed(step, why) => s"failed ($step, ${why.toString.toLowerCase})"
+      case Ended.Unfinished(status) => s"unfinished (${status.toLowerCase})"
+    }
+    def counts(f: TurnCase => String) = {
+      val keys = turns.cases.map(f)
+      keys.distinct.sorted.map(k => s"$k ${keys.count(_ == k)}").mkString(", ")
+    }
+    println(s"turns: ${turns.cases.size}, skipped ${turns.skipped}")
+    println(s"  by root: ${counts(t => s"${said(t)} ${t.root.toString.toLowerCase}")}")
+    println(s"  ended: ${counts(ended)}")
+    println(s"  with a tool loop: ${turns.cases.count(_.rounds.nonEmpty)}")
+  }
 
   /** `run --corpus <dir> --url <jdbc> --variant <name> --spend <usd> --cache <dir> --runs
     * <dir> [--repeats n (default [[Repeats.Default]])] [--first n] [--rule <file>] [--labels <file>]`, and `cache` false for

@@ -5,8 +5,9 @@ through a variant of a shipped call, and scored. It measures; it gates nothing. 
 through `scripts/eval`, never from a test or `scripts/check`, and its tests test the
 instrument, not a model.
 
-It names grit's code alone, but for the kit's `.env` loader (`DotEnv`), through which a run
-reads Jev's key as grit does.
+It names grit's code alone (core, `grit.dbos`'s `Reader`, the turn's reading of its records,
+the assembler's estimate and the lifecycle's builders), but for the kit's `.env` loader
+(`DotEnv`), through which a run reads Jev's key as grit does.
 
 Every file it writes is text-free (ids, digests, numbers, lengths and field names) but one: the
 review file `scripts/eval inputs` writes under `.local/eval/review/`, for a person to read. A
@@ -24,7 +25,14 @@ Packages, each importing only those above it:
   the build that captured it); `CorpusJson`, their files' JSON; `Capture`, a `Corpus` read
   from a restored database through `grit.dbos`'s `Reader` and rebuilt through the shipped
   builders (`TriageInput`, `TriageQuestions`, `Stitching`), never through SQL of its own.
-  `Fields`, the reader every file's JSON is read through.
+  `TurnCase`, one turn the database recorded, keyed by its workflow, TUI and task turns as
+  well as Slack ones (`Said`, the message it answers by id): its offer, its window by part,
+  its tool loop's rounds, how it ended, its ledger rows by role and what became of a heard
+  root's draft, read by `TurnCapture` through `Reader` and the turn's own reading of its
+  records (`grit.turn.TurnRecord`), each window part costed by `CharEstimate` over `Shown`;
+  `Support`, how much of a reply a part carries, computed where the text is and kept as the
+  number; `TurnJson`, a turn's line of `turns.jsonl`. `Fields`, the reader every file's JSON
+  is read through.
 - **`label`** — a person's labels of a corpus's cases, kept apart from the cases so a
   recapture keeps them: `Labels`, read from `labels.json` as the labelling tool writes it, and
   each case's `Labelled` (its kind, the three yes/no tags, `Context`, whether it states a fact,

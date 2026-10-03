@@ -182,13 +182,15 @@ object Capture {
     }
 
   /** `e`'s kind: a store's error can quote what it was given, so its words are never kept. */
-  private def kind(e: StoreError): String = e match {
+  private[corpus] def kind(e: StoreError): String = e match {
     case StoreError.DuplicateId(_) => "duplicate id"
     case StoreError.DatabaseError(_) => "database error"
     case StoreError.Invalid(_) => "invalid"
   }
 
-  private def each[A, B](as: Vector[A])(f: A => Either[String, B]): Either[String, Vector[B]] =
+  private[corpus] def each[A, B](
+      as: Vector[A]
+  )(f: A => Either[String, B]): Either[String, Vector[B]] =
     as.foldLeft[Either[String, Vector[B]]](Right(Vector.empty))((acc, a) =>
       acc.flatMap(done => f(a).map(done :+ _))
     )
