@@ -3,6 +3,7 @@ package grit.lifecycle.triage
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
 import grit.core.id.TurnRef
+import grit.core.recipe.RoomReads
 import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.{StitchStore, Tuning}
@@ -25,9 +26,9 @@ final case class TriageEnv(
 
 /** Where a triage reads the heard message, its thread, its conversation and who wrote them,
   * keeps its tags, and weighs and keeps its decision to speak: the speech ledger (`speech`)
-  * and the day's spend (`spending`); and where a heard first message is stitched: its room's
+  * and the day's spend (`spending`); where a heard first message is stitched: its room's
   * exchanges and strands (`stitches`), searched (`search`), in the scope in force
-  * (`lifecycle`).
+  * (`lifecycle`); and what its room said before it (`rooms`).
   */
 final case class TriageRecords(
     entries: EntryStore,
@@ -38,7 +39,8 @@ final case class TriageRecords(
     spending: Spending,
     stitches: StitchStore,
     search: EntrySearch,
-    lifecycle: LifecycleStore
+    lifecycle: LifecycleStore,
+    rooms: RoomReads
 )
 
 /** Whether and within what grit speaks where it was not addressed (`speaking`, read when a

@@ -6,6 +6,7 @@ import scala.jdk.OptionConverters.*
 import scala.util.control.NonFatal
 
 import grit.core.id.WorkflowId
+import grit.core.recipe.RoomReads
 import grit.core.stitch.StitchStore
 import grit.core.store.{
   ConversationStore,
@@ -25,6 +26,7 @@ import grit.dbos.sql.{
   SqlEntryStore,
   SqlLifecycleStore,
   SqlPrincipals,
+  SqlRoomReads,
   SqlStitchStore,
   SqlTriageShadows,
   SqlTriageStore
@@ -45,6 +47,7 @@ trait Reader extends caps.SharedCapability, AutoCloseable {
   val conversations: ConversationStore
   val lifecycle: LifecycleStore
   val stitches: StitchStore
+  val rooms: RoomReads
   val search: EntrySearch
   val principals: Principals
   val triage: TriageStore
@@ -86,6 +89,7 @@ object Reader {
     val conversations: ConversationStore = new SqlConversationStore()
     val lifecycle: LifecycleStore = new SqlLifecycleStore()
     val stitches: StitchStore = new SqlStitchStore
+    val rooms: RoomReads = new SqlRoomReads
     val search: EntrySearch = new SqlEntrySearch()
     val principals: Principals = new SqlPrincipals()
     val triage: TriageStore = new SqlTriageStore

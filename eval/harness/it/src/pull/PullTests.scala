@@ -68,7 +68,8 @@ object PullTests extends TestSuite {
                 engine.spending,
                 engine.stitches,
                 engine.search,
-                engine.lifecycle
+                engine.lifecycle,
+                engine.rooms
               ),
               new StubClassifier,
               engine.db,
@@ -88,6 +89,7 @@ object PullTests extends TestSuite {
                 engine.search,
                 engine.principals
               ),
+              engine.rooms,
               engine.shadows,
               // `ghost` is swept but not declared here: its shadows ask nothing, keep nothing.
               Map(

@@ -107,12 +107,14 @@ object Inputs {
             .map(e => s"${c.id.written}: stitch unread: ${kind(e)}")
     } yield {
       val triage =
-        TriageInput.build(reads, reader.db, ref, under, TriageRecipe.Shipped).toOption.flatMap {
-          (_, state) =>
+        TriageInput
+          .build(reads, reader.rooms, reader.db, ref, under, TriageRecipe.Shipped)
+          .toOption
+          .flatMap { (_, state) =>
             TriageQuestion
               .request(wording, state)
               .map(r => Posed(Asking.Triage(state, wording), r, Digest.json(r.state)))
-        }
+          }
       val stitch = offer.flatMap(o =>
         Stitching
           .request(o)

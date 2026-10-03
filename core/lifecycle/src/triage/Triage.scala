@@ -126,6 +126,7 @@ object Triage {
     TriageInput
       .build(
         StitchReads(r.entries, r.conversations, r.lifecycle, r.stitches, r.search, r.principals),
+        r.rooms,
         env.db,
         triage,
         env.tuning,

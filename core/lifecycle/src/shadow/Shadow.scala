@@ -60,7 +60,7 @@ object Shadow {
       case None => Left(s"no variant ${ShadowName.value(shadow.name)} is declared")
       case Some(variant) =>
         TriageInput
-          .build(env.reads, env.db, shadow.triage, env.tuning, TriageRecipe.Shipped)
+          .build(env.reads, env.rooms, env.db, shadow.triage, env.tuning, TriageRecipe.Shipped)
           .flatMap { (entry, state) =>
             val call = new Call
             val clock = env.clock

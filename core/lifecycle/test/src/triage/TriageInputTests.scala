@@ -1,11 +1,12 @@
 package grit.lifecycle.triage
 
 import scala.collection.immutable.VectorMap
+import scala.concurrent.duration.*
 
 import grit.core.classify.StateJson
 import grit.core.durable.InMemoryDurable
 import grit.core.id.TriageRef
-import grit.core.recipe.Section
+import grit.core.recipe.{Pool, Section, Source}
 import grit.core.stitch.Tuning
 import grit.core.store.Focus
 
@@ -18,9 +19,14 @@ object TriageInputTests extends TestSuite {
   import TriageFixtures.*
 
   /** The state `triage` is asked about, as the classifier is sent it. */
-  private def sent(w: World, triage: TriageRef, tuning: Tuning = Tuning.Default) =
+  private def sent(
+      w: World,
+      triage: TriageRef,
+      tuning: Tuning = Tuning.Default,
+      recipe: TriageRecipe = TriageRecipe.Shipped
+  ) =
     TriageInput
-      .build(w.reads, FakeDb, triage, tuning, TriageRecipe.Shipped)
+      .build(w.reads, w.rooms, FakeDb, triage, tuning, recipe)
       .map((_, state) => ujson.write(StateJson[TriageQuestion.State].json(state)))
 
   private def json(message: String, author: String, thread: String): String =
@@ -84,6 +90,19 @@ object TriageInputTests extends TestSuite {
         Right(json("and another", "David", excerpt.take(TriageQuestion.ThreadChars)))
     }
 
+    test("a recipe whose sources find nothing outside the thread gives the shipped JSON") {
+      val w = new World
+      w.hear("when is standup?", "Ben", 0)
+      w.hear("I asked before", "Ana", 1)
+      val t = w.hear("standup moves to 10:00", "Ana", 2)
+      val every =
+        Pool(Vector(Source.Channel(1.hour, 5), Source.Author(1.hour, 5), Source.Exchanges), 600)
+      sent(w, t, recipe = TriageRecipe(every, every)) ==> sent(w, t)
+      sent(w, t) ==> Right(
+        json("standup moves to 10:00", "Ana", "Ben: when is standup?\n\nAna: I asked before")
+      )
+    }
+
     test("a state's sections follow its thread under their keys, an empty one left out") {
       val state = TriageQuestion.State(
         "standup moves to 10:00",
@@ -103,7 +122,9 @@ object TriageInputTests extends TestSuite {
       val opening = w.hear("Is this a real question", "David", 1, in = b)
       val reply = w.hear("and another", "David", 2, in = b)
       Vector(opening, reply).map(t =>
-        TriageInput.read(w.reads, FakeDb, t, Tuning.Default, TriageRecipe.Shipped).map(_.focus)
+        TriageInput
+          .read(w.reads, w.rooms, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
+          .map(_.focus)
       ) ==> Vector(Right(Focus.Open), Right(Focus.Focused))
     }
   }

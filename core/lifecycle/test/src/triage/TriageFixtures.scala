@@ -20,6 +20,7 @@ import grit.core.id.{
 }
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
+import grit.core.recipe.InMemoryRoomReads
 import grit.core.speech.{InMemorySpeechStore, Reach, Speaking}
 import grit.core.spend.Budget
 import grit.core.stitch.{InMemoryStitchStore, StitchReads, Tuning}
@@ -168,6 +169,7 @@ object TriageFixtures {
     val stitches = new InMemoryStitchStore(entries, originOf)
     val search = new NoSearch
     val lifecycle = new InMemoryLifecycleStore
+    val rooms = new InMemoryRoomReads(entries, originOf, principals)
 
     // The conversation is c1: the first a fresh store creates.
     conversations.findOrCreate(Origin.Slack("T", "C", "1.0"), PrincipalId.Local)(using TestTx.fake)
@@ -252,7 +254,8 @@ object TriageFixtures {
             ledger,
             stitches,
             search,
-            lifecycle
+            lifecycle,
+            rooms
           ),
           classifier,
           FakeDb,

@@ -128,8 +128,10 @@ object Capture {
       t: TriageStore.Tagged,
       tuning: Tuning
   ): Option[Asked] =
-    TriageInput.build(reads, reader.db, t.triage, tuning, TriageRecipe.Shipped).toOption.flatMap {
-      (_, state) =>
+    TriageInput
+      .build(reads, reader.rooms, reader.db, t.triage, tuning, TriageRecipe.Shipped)
+      .toOption
+      .flatMap { (_, state) =>
         TriageQuestion
           .request(TriageQuestion.Wording.Shipped, state)
           .map(r =>
@@ -139,7 +141,7 @@ object Capture {
               state.thread.length
             )
           )
-    }
+      }
 
   /** `live`, the placement kept for `turn`'s message, beside what the builder offers it now
     * under `tuning`.

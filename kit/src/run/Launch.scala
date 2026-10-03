@@ -177,7 +177,8 @@ private[grit] object Launch {
               engine.spending,
               engine.stitches,
               engine.search,
-              engine.lifecycle
+              engine.lifecycle,
+              engine.rooms
             ),
             classifier(d, s),
             engine.db,
@@ -201,6 +202,7 @@ private[grit] object Launch {
               engine.search,
               engine.principals
             ),
+            engine.rooms,
             engine.shadows,
             variants(d, s),
             engine.db,

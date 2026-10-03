@@ -65,6 +65,7 @@ object ShadowFixtures {
       Shadow.body(
         ShadowEnv(
           triaged.reads,
+          triaged.rooms,
           shadows,
           Map(Words -> ShadowAsking(Reworded, "jev-variant", classifier)),
           TriageFixtures.FakeDb,

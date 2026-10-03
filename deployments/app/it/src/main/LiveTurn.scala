@@ -181,7 +181,8 @@ object LiveTurn {
               engine.spending,
               engine.stitches,
               engine.search,
-              engine.lifecycle
+              engine.lifecycle,
+              engine.rooms
             ),
             grit.core.classify.Classifier.none("no classifier"),
             engine.db,

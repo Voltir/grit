@@ -164,7 +164,7 @@ object Pool {
     * says: a message source keeps those said in [t − `within`, t), the latest `most`;
     * [[Source.Exchanges]] the offered, in order.
     */
-  def show(
+  private[recipe] def show(
       pool: Pool,
       candidates: Candidates,
       t: Instant

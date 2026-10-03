@@ -60,7 +60,8 @@ object CaptureTests extends TestSuite {
                 engine.spending,
                 engine.stitches,
                 engine.search,
-                engine.lifecycle
+                engine.lifecycle,
+                engine.rooms
               ),
               new StubClassifier,
               engine.db,

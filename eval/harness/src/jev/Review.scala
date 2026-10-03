@@ -87,11 +87,14 @@ object Review {
         else reader.db.read(reader.stitches.placed(c.entry)).left.map(unread("placement"))
     } yield {
       val triage =
-        TriageInput.read(reads, reader.db, ref, under, TriageRecipe.Shipped).toOption.flatMap { r =>
-          TriageQuestion
-            .request(TriageQuestion.Wording.Shipped, r.state)
-            .map(Triage(_, Option.when(more)(Cut(r.thread.cut, r.thread.at))))
-        }
+        TriageInput
+          .read(reads, reader.rooms, reader.db, ref, under, TriageRecipe.Shipped)
+          .toOption
+          .flatMap { r =>
+            TriageQuestion
+              .request(TriageQuestion.Wording.Shipped, r.state)
+              .map(Triage(_, Option.when(more)(Cut(r.thread.cut, r.thread.at))))
+          }
       val stitch =
         offer.flatMap(o => Stitching.request(o).map(Stitch(_, live.map(_.seen.state))))
       Shown(c.id, triage, stitch)

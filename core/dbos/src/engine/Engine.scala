@@ -158,6 +158,9 @@ final class Engine private (
   /** Where each thread's first message was placed among its room's exchanges (ADR 0023). */
   val stitches: grit.core.stitch.StitchStore = new grit.dbos.sql.SqlStitchStore
 
+  /** What each room said before a time, as a pool reads it. */
+  val rooms: grit.core.recipe.RoomReads = new grit.dbos.sql.SqlRoomReads
+
   /** Short read transactions, for code outside a step. */
   val db: Db = new SqlDb(dataSource)
 

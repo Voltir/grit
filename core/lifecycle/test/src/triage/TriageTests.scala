@@ -55,7 +55,8 @@ object TriageTests extends TestSuite {
       val t = w.hear("standup moves to 10:00", "Ana", 2)
       val requests = new Requests
       new InMemoryDurable().run(t.workflowId)(w.body(recording(requests), 5))
-      val built = TriageInput.build(w.reads, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
+      val built =
+        TriageInput.build(w.reads, w.rooms, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
       built.map(_._2.author) ==> Right("Ana")
       requests.sent ==> built.toOption.toVector.flatMap { (_, state) =>
         TriageQuestion.request(TriageQuestion.Wording.Shipped, state)
@@ -93,7 +94,7 @@ object TriageTests extends TestSuite {
       val w = new World
       (0 until 40).foreach(i => w.hear(f"message $i%02d " + "x" * 80, "Ben", i.toLong))
       val t = w.hear("the last", "Ana", 41)
-      val read = TriageInput.read(w.reads, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
+      val read = TriageInput.read(w.reads, w.rooms, FakeDb, t, Tuning.Default, TriageRecipe.Shipped)
       read.map(r => (r.state.thread.length, r.state.thread == r.thread.text, r.thread.at)) ==>
         Right((TriageQuestion.ThreadChars, true, 0))
       read.map(r => (r.thread.cut + r.thread.own).take(17)) ==> Right("Ben: message 00 x")
@@ -101,6 +102,7 @@ object TriageTests extends TestSuite {
       read.map(r => (r.thread.cut + r.thread.own).length) ==> Right(40 * 96 + 39 * 2)
       read.map(r => (r.entry, r.state)) ==> TriageInput.build(
         w.reads,
+        w.rooms,
         FakeDb,
         t,
         Tuning.Default,
