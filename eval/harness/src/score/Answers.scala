@@ -117,7 +117,7 @@ object Answers {
     */
   def of(rows: Vector[Row[Vector[Weights]]]): Answers = {
     val answered: Vector[(Suite, CaseId, Vector[Weights])] =
-      rows.collect { case Row(suite, id, _, _, _, _, _, Outcome.Answered(ws), _, _, _) =>
+      rows.collect { case Row(suite, id, _, _, _, _, _, Outcome.Answered(ws), _, _, _, _) =>
         (suite, id, ws)
       }
     val triage: Vector[(CaseId, Vector[Double])] = answered.collect {

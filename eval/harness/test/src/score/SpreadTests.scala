@@ -41,7 +41,20 @@ object SpreadTests extends TestSuite {
       repeat: Int,
       outcome: Outcome[Vector[Weights]]
   ): Row[Vector[Weights]] =
-    Row(suite, c, repeat, Digest.text("r"), key, "m", None, outcome, Usage.Zero, 1.millis, false)
+    Row(
+      suite,
+      c,
+      repeat,
+      Digest.text("r"),
+      key,
+      "m",
+      None,
+      outcome,
+      Usage.Zero,
+      1.millis,
+      false,
+      None
+    )
 
   /** Triage's four answers: kinds weighed `kinds` (not yet summing to 1), then three yes. */
   private def triage(kinds: Vector[Double], w: Double, d: Double, h: Double) =

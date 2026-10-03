@@ -21,6 +21,12 @@ final case class Fields(what: String, v: ujson.Value) {
       case x => Some(x)
     }
 
+  /** `None` when the field is JSON `null` or missing: a field a later version of the file
+    * added, which an earlier one never wrote.
+    */
+  def added(k: String): Either[String, Option[ujson.Value]] =
+    Right(v.objOpt.flatMap(_.get(k)).filter(_ != ujson.Null))
+
   def obj(k: String): Either[String, ujson.Value] =
     field(k).filterOrElse(_.objOpt.isDefined, s"$what: $k is not an object")
 

@@ -80,7 +80,7 @@ object Spread {
 
   /** Each answered row with its probabilities in order, a choice's normalised. */
   private def answered(rows: Vector[Row[Vector[Weights]]]): Vector[Answered] =
-    rows.collect { case r @ Row(_, _, _, _, _, _, _, Outcome.Answered(ws), _, _, _) =>
+    rows.collect { case r @ Row(_, _, _, _, _, _, _, Outcome.Answered(ws), _, _, _, _) =>
       Answered(
         r,
         Question(r.suite, r.id),

@@ -8,8 +8,9 @@ import grit.eval.harness.corpus.Digest
 
 /** What a run was, written as its log's first line: the corpus it ran over (`corpus`, its
   * directory's name, and the digest of its files), the labels in force when it started, the
-  * variant (its `name`, the digest of the `wording` it asks in, the `model` it requests, and
-  * the `tuning` it rebuilds stitch and triage inputs under), the build running it, how many
+  * variant (its `name`, the digest of the `wording` it asks in, the `model` it requests, the
+  * `tuning` it rebuilds stitch and triage inputs under, and the digest of the `recipe` it
+  * builds triage's question by), the build running it, how many
   * times each request was asked, whether the cache answered, the spend `cap` in USD, and the
   * digest of the adoption rule it was started under.
   *
@@ -20,6 +21,8 @@ import grit.eval.harness.corpus.Digest
   *   words it was asked in
   * @param tuning
   *   `None` when each case's own tuning was used
+  * @param recipe
+  *   `None` for a log pulled from a database, or written before runs recorded it
   * @param rule
   *   `None` when it was started under none
   */
@@ -31,6 +34,7 @@ final case class Header(
     wording: Option[Digest],
     model: String,
     tuning: Option[Tuning],
+    recipe: Option[Digest],
     build: Build,
     repeats: Int,
     cache: Boolean,

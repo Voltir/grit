@@ -5,15 +5,23 @@ import scala.concurrent.duration.*
 import grit.core.classify.{Answers, Classifier, ClassifierError, Request}
 import grit.core.clock.Clock
 import grit.core.message.Usage
+import grit.core.store.Focus
 import grit.eval.harness.corpus.{CaseId, Digest, Failure}
 import grit.eval.harness.jev.{Asking, Budget, Spend}
 import grit.eval.harness.log.{Cache, CacheKey, Cached, Outcome, Row, Suite, Weights}
 import grit.models.JevJson
 
-/** One call a run makes: the case and suite it is for, which repeat, how it is asked, and the
-  * request the shipped builder made for it.
+/** One call a run makes: the case and suite it is for, which repeat, how it is asked, the
+  * request the shipped builder made for it, and the focus its row records ([[Row.focus]]).
   */
-final case class Call(suite: Suite, id: CaseId, repeat: Int, asking: Asking, request: Request)
+final case class Call(
+    suite: Suite,
+    id: CaseId,
+    repeat: Int,
+    asking: Asking,
+    request: Request,
+    focus: Option[Focus]
+)
 
 /** What a run made: a row per call, in order, and what it spent. */
 final case class Ran(rows: Vector[Row[Vector[Weights]]], budget: Budget)
@@ -79,7 +87,8 @@ object Run {
             outcome,
             usage,
             latency,
-            cached
+            cached,
+            call.focus
           )
         )
         val hit = cache
@@ -139,7 +148,8 @@ object Run {
           Outcome.Failed(Failure.Unasked),
           Usage.Zero,
           Duration.Zero,
-          cached = false
+          cached = false,
+          call.focus
         )
       )
     }

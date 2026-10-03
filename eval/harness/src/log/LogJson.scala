@@ -3,6 +3,7 @@ package grit.eval.harness.log
 import scala.util.Try
 
 import grit.core.message.{Tokens, Usage}
+import grit.core.store.Focus
 import grit.eval.harness.corpus.Fields.{each, opt}
 import grit.eval.harness.corpus.{CaseId, CorpusJson, Digest, Failure, Fields}
 
@@ -61,6 +62,7 @@ object LogJson {
         "wording" -> digest(h.wording),
         "model" -> h.model,
         "tuning" -> h.tuning.fold[ujson.Value](ujson.Null)(CorpusJson.writeTuning),
+        "recipe" -> digest(h.recipe),
         "build" -> CorpusJson.writeBuild(h.build),
         "repeats" -> h.repeats,
         "cache" -> h.cache,
@@ -88,7 +90,8 @@ object LogJson {
         }),
         "usage" -> writeUsage(r.usage),
         "latency_ms" -> r.latency.toMillis.toDouble,
-        "cached" -> r.cached
+        "cached" -> r.cached,
+        "focus" -> r.focus.fold[ujson.Value](ujson.Null)(f => ujson.Str(writeFocus(f)))
       )
     )
     .render()
@@ -152,6 +155,7 @@ object LogJson {
       wording <- f.optional("wording").flatMap(opt(_)(readDigest("wording")))
       model <- f.str("model")
       tuning <- f.optional("tuning").flatMap(opt(_)(CorpusJson.readTuning))
+      recipe <- f.added("recipe").flatMap(opt(_)(readDigest("recipe")))
       build <- f.field("build").flatMap(CorpusJson.readBuild("header", _))
       repeats <- f.int("repeats")
       cache <- f.bool("cache")
@@ -166,6 +170,7 @@ object LogJson {
       wording,
       model,
       tuning,
+      recipe,
       build,
       repeats,
       cache,
@@ -199,6 +204,9 @@ object LogJson {
       usage <- f.obj("usage").flatMap(readUsage)
       latency <- f.millis("latency_ms")
       cached <- f.bool("cached")
+      focus <- f
+        .added("focus")
+        .flatMap(opt(_)(v => Fields.str("row: focus", v).flatMap(readFocus)))
     } yield Row(
       suite,
       id,
@@ -210,7 +218,8 @@ object LogJson {
       outcome,
       usage,
       latency,
-      cached
+      cached,
+      focus
     )
   }
 
@@ -243,6 +252,12 @@ object LogJson {
       cost <- f.optional("cost_usd").flatMap(opt(_)(_ => f.decimal("cost_usd")))
     } yield Usage(Tokens(input), Tokens(output), Tokens(cachedInput), cost)
   }
+
+  /** `f`'s written name: `focused` or `open`. */
+  private def writeFocus(f: Focus): String = f.toString.toLowerCase
+
+  private def readFocus(name: String): Either[String, Focus] =
+    Focus.values.find(writeFocus(_) == name).toRight(s"row: no focus $name")
 
   private def digest(d: Option[Digest]): ujson.Value =
     d.fold[ujson.Value](ujson.Null)(x => ujson.Str(x.hex))

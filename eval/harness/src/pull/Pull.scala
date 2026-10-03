@@ -92,7 +92,22 @@ object Pull {
         case _ => Build.Unknown
       }
       def header(variant: String, model: String) =
-        Header(corpus, corpusDigest, None, variant, None, model, None, build, 1, false, 0, None, at)
+        Header(
+          corpus,
+          corpusDigest,
+          None,
+          variant,
+          None,
+          model,
+          None,
+          None,
+          build,
+          1,
+          false,
+          0,
+          None,
+          at
+        )
       def log(variant: String, priced: Vector[Priced]): Log[Vector[Weights]] = {
         val rows: Vector[Row[Vector[Weights]]] = priced.map((p: Priced) => p.row)
         val model = priced.collectFirst {
@@ -203,7 +218,8 @@ object Pull {
         outcome,
         usage,
         latency,
-        false
+        false,
+        None
       ),
       usage.costUsd.getOrElse(BigDecimal(0))
     )

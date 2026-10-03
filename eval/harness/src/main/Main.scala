@@ -45,6 +45,7 @@ import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{Decision, MovedOn, Order, Paired, Rule, Scoring, Spread, Target}
 import grit.kit.environment.DotEnv
+import grit.lifecycle.triage.TriageRecipe
 import grit.models.JevClassifier
 import grit.models.JevConfig
 
@@ -119,11 +120,7 @@ object Main {
     for {
       dir <- need(f, "corpus").map(Path.of(_))
       url <- need(f, "url")
-      variant <- need(f, "variant").flatMap(n =>
-        Variants
-          .named(n)
-          .toRight(s"no variant $n: ${Variants.all.map(Variant.name).mkString(", ")}")
-      )
+      variant <- need(f, "variant").flatMap(variantNamed)
       cap <- need(f, "spend").flatMap(decimal("spend"))
       cacheDir <- need(f, "cache").map(Path.of(_))
       runs <- need(f, "runs").map(Path.of(_))
@@ -154,8 +151,11 @@ object Main {
       )
       model = Variant.model(variant)
       calls = rebuilt.flatMap { (c, r) =>
-        (r.triage.map(p => (Suite.Triage, p)).toVector ++ r.stitch.map(p => (Suite.Stitch, p)))
-          .flatMap((suite, p) => (0 until repeats).map(Call(suite, c.id, _, p.asking, p.request)))
+        (r.triage.map(p => (Suite.Triage, p, r.focus)).toVector ++
+          r.stitch.map(p => (Suite.Stitch, p, None)))
+          .flatMap((suite, p, focus) =>
+            (0 until repeats).map(Call(suite, c.id, _, p.asking, p.request, focus))
+          )
       }
       store = if (cache) Cache.at[Vector[Weights]](cacheDir) else Cache.off[Vector[Weights]]
       estimated = Run.estimate(
@@ -181,6 +181,7 @@ object Main {
         Some(Variant.digest(Variant.wording(variant))),
         model,
         Variant.tuning(variant),
+        Some(Variant.digest(Variant.recipe(variant))),
         Build.current,
         repeats,
         cache,
@@ -204,7 +205,7 @@ object Main {
     } yield {
       // The estimate's divisor against what Jev reported, over the calls it answered.
       val asked: Vector[(Call, Row[Vector[Weights]])] = calls.zip(ran.rows).collect {
-        case (c, r @ Row(_, _, _, _, _, _, _, Outcome.Answered(_), _, _, false)) => (c, r)
+        case (c, r @ Row(_, _, _, _, _, _, _, Outcome.Answered(_), _, _, false, _)) => (c, r)
       }
       val reported =
         asked.map((_: Call, r: Row[Vector[Weights]]) => Tokens.value(r.usage.input)).sum
@@ -247,8 +248,9 @@ object Main {
       show("against live", Spread.live(log.rows, cases))
     }
 
-  /** `inputs --corpus <dir> --url <jdbc> --out <file>`, and `more` for `--more`: every case's
-    * questions rebuilt through the shipped builders ([[Review]]), written to `<file>`, one line
+  /** `inputs --corpus <dir> --url <jdbc> --out <file> [--variant <name>]`, and `more` for
+    * `--more`: every case's questions rebuilt through the shipped builders ([[Review]]), triage's
+    * by the variant's recipe (default `live`'s, the shipped), written to `<file>`, one line
     * a case, in the corpus's order, with the database's login from `GRIT_DATABASE_USER` and
     * `_PASSWORD`. The file holds text and is never printed: this prints counts, and how each
     * request's digest compares to the corpus's.
@@ -264,9 +266,12 @@ object Main {
           .flatMap(CorpusJson.readManifest)
       )
       cases <- readCases(dir)
+      variant <- variantNamed(f.getOrElse("variant", Variant.name(Variant.Live)))
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       shown <- opened(config)(reader =>
-        Fields.each(cases)(c => Review.of(reader, c, manifest.tuning, more).map(c -> _))
+        Fields.each(cases)(c =>
+          Review.of(reader, c, manifest.tuning, Variant.recipe(variant), more).map(c -> _)
+        )
       )
       _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
         s"${out.getParent}: ${e.getClass.getName}"
@@ -512,6 +517,10 @@ object Main {
     } yield print(report)
   }
 
+  /** The variant named `n`; why not, naming those there are. */
+  private def variantNamed(n: String): Either[String, Variant] =
+    Variants.named(n).toRight(s"no variant $n: ${Variants.all.map(Variant.name).mkString(", ")}")
+
   /** The cases of the corpus in `dir`. */
   private def readCases(dir: Path): Either[String, Vector[Case]] =
     read(dir.resolve("cases.jsonl")).flatMap(text =>
@@ -523,11 +532,12 @@ object Main {
     )
 
   /** Each suite's rebuilt states against the corpus's, as counts, and the ids of every case
-    * that drifted under the shipped builder: ids only.
+    * that drifted under the shipped builder: ids only. A suite whose inputs the variant
+    * changes (its tuning both, its recipe triage's) reports changes, not drift.
     */
   private def changes(variant: Variant, rebuilt: Vector[(Case, Rebuilt)]): Unit = {
-    val byVariant = Variant.tuning(variant).isDefined
-    def report(suite: String, drifts: Vector[(Case, Drift)]): Unit = {
+    val tuned = Variant.tuning(variant).isDefined
+    def report(suite: String, byVariant: Boolean, drifts: Vector[(Case, Drift)]): Unit = {
       def n(d: Drift) = drifts.count(_._2 == d)
       val changed =
         if (byVariant) s"changed by the variant ${n(Drift.Changed)}"
@@ -543,10 +553,12 @@ object Main {
     }
     report(
       "triage",
+      tuned || Variant.recipe(variant) != TriageRecipe.Shipped,
       rebuilt.map((c, r) => c -> Drift.of(c.asked.map(_.input.state), r.triage.map(_.state)))
     )
     report(
       "stitch",
+      tuned,
       rebuilt
         .filter(_._1.stitch.isDefined)
         .map((c, r) => c -> Drift.of(c.stitch.flatMap(_.input).map(_.state), r.stitch.map(_.state)))

@@ -31,8 +31,8 @@ Packages, each importing only those above it:
   and its `Place`). ← `corpus`
 - **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the
   corpus, variant, build, cap and repeats a run was started with), `Row` (one request: its
-  case, digest, cache key, `Outcome`, usage and latency), `Footer` (what it spent), and
-  `Weights`, a classifier's answer by position, never by key; `LogJson`, their JSON lines;
+  case, digest, cache key, `Outcome`, usage, latency, and the focus its message was said at),
+  `Footer` (what it spent), and `Weights`, a classifier's answer by position, never by key; `LogJson`, their JSON lines;
   `CacheKey` and `Cache`, answers kept as files under their request's key, so an unchanged
   request is never paid for twice. ← `corpus`
 - **`pull`** — `Pull`, what a deployment's database kept of the heard messages a corpus
@@ -41,7 +41,7 @@ Packages, each importing only those above it:
   each declared shadow's answers (`grit.lifecycle.shadow`); with the messages no
   corpus holds yet, and each shadow's that ended keeping nothing. ← `corpus`, `log`
 - **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
-  (the model, triage's wording or the tuning), and `Variants`, those a run can name;
+  (the model, triage's wording or recipe, or the tuning), and `Variants`, those a run can name;
   `Inputs`, a case's questions rebuilt through the shipped builders, and `Drift`, how a
   rebuilt state compares to the corpus's; `Review`, a case's questions as rebuilt, text and
   all, for a person to read beside it (`scripts/eval inputs` writes them under

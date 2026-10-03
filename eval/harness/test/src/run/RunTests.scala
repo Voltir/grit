@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
+import grit.core.store.Focus
 import grit.eval.harness.corpus.{CaseId, Digest, Failure}
 import grit.eval.harness.jev.{Asking, Budget, Spend}
 import grit.eval.harness.log.{Cache, Outcome, Suite, Weights}
@@ -32,7 +33,8 @@ object RunTests extends TestSuite {
       id(s"C1/172700000$n.000100"),
       repeat,
       Asking.Triage(state, wording),
-      TriageQuestion.request(wording, state).getOrElse(sys.error("no request"))
+      TriageQuestion.request(wording, state).getOrElse(sys.error("no request")),
+      Some(Focus.Open)
     )
   }
 
@@ -113,7 +115,7 @@ object RunTests extends TestSuite {
       ran.rows.map(_.repeat) ==> Vector(0, 1)
     }
 
-    test("an answered row keeps the request, the model reported, the answers and the time taken") {
+    test("an answered row keeps the request, the model reported, the answers, time and focus") {
       val ran = Run(
         Vector(call(3)),
         Charged().classifier,
@@ -123,14 +125,15 @@ object RunTests extends TestSuite {
         ticking()
       )
       val row = ran.rows.head
-      (row.request, row.key, row.requested, row.reported, row.latency, row.cached) ==>
+      (row.request, row.key, row.requested, row.reported, row.latency, row.cached, row.focus) ==>
         (
           Digest.request(call(3).request),
           Run.key(Model, call(3)),
           Model,
           Some(StubClassifier.Model),
           7.millis,
-          false
+          false,
+          Some(Focus.Open)
         )
       row.outcome match {
         case Outcome.Answered(

@@ -7,6 +7,7 @@ import scala.concurrent.duration.*
 import grit.core.classify.ClassifierError
 import grit.core.message.{Tokens, Usage}
 import grit.core.stitch.Tuning
+import grit.core.store.Focus
 import grit.dbos.engine.Build
 import grit.eval.harness.corpus.{CaseId, Digest, Failure}
 
@@ -27,6 +28,7 @@ object LogJsonTests extends TestSuite {
     Some(Digest.text("wording")),
     "jev-1.13.0",
     Some(Tuning.Default),
+    Some(Digest.text("recipe")),
     Build.Known("0123456789abcdef0123456789abcdef01234567", false),
     5,
     false,
@@ -36,7 +38,14 @@ object LogJsonTests extends TestSuite {
   )
 
   private val bareHeader =
-    header.copy(labels = None, tuning = None, build = Build.Unknown, rule = None, wording = None)
+    header.copy(
+      labels = None,
+      tuning = None,
+      recipe = None,
+      build = Build.Unknown,
+      rule = None,
+      wording = None
+    )
 
   private val answered: Row[Vector[Weights]] = Row(
     Suite.Triage,
@@ -56,7 +65,8 @@ object LogJsonTests extends TestSuite {
     ),
     usage,
     412.millis,
-    true
+    true,
+    Some(Focus.Open)
   )
 
   private val failed: Row[Vector[Weights]] = answered.copy(
@@ -64,7 +74,8 @@ object LogJsonTests extends TestSuite {
     reported = None,
     outcome = Outcome.Failed(Failure.Unreadable),
     usage = Usage.Zero.copy(costUsd = None),
-    cached = false
+    cached = false,
+    focus = None
   )
 
   private val skipped: Row[Vector[Weights]] =
@@ -88,6 +99,15 @@ object LogJsonTests extends TestSuite {
     test("a header with nothing optional, and a log without a footer, read back") {
       LogJson.read[Vector[Weights]](Vector(LogJson.header(bareHeader), LogJson.row(answered))) ==>
         Right(Log(bareHeader, Vector(answered), None))
+    }
+
+    test("a header without a recipe, and a row without a focus, as logged before both, read") {
+      val h = ujson.read(LogJson.header(header))
+      h("header").obj.remove("recipe")
+      val r = ujson.read(LogJson.row(answered))
+      r("row").obj.remove("focus")
+      LogJson.read[Vector[Weights]](Vector(h.render(), r.render())) ==>
+        Right(Log(header.copy(recipe = None), Vector(answered.copy(focus = None)), None))
     }
 
     test("a log that does not begin with its header is refused") {
@@ -124,7 +144,7 @@ object LogJsonTests extends TestSuite {
       LogJson.row(answered) ==>
         s"""{"row":{"suite":"triage","case":"C1/1727000000.000200","repeat":2,"request":"${Digest
             .text("request")
-            .hex}","key":"${"ab" * 32}","requested":"jev-1.13.0","reported":"jev-1.13.0","outcome":{"answered":[{"chosen":1,"probabilities":[0.1,0.7,0.05,0.05,0.1],"confidence":0.625},{"yes":0.25},{"yes":0.9},{"yes":0}]},"usage":{"input":1021,"output":3,"cached_input":0,"cost_usd":"0.000042882"},"latency_ms":412,"cached":true}}"""
+            .hex}","key":"${"ab" * 32}","requested":"jev-1.13.0","reported":"jev-1.13.0","outcome":{"answered":[{"chosen":1,"probabilities":[0.1,0.7,0.05,0.05,0.1],"confidence":0.625},{"yes":0.25},{"yes":0.9},{"yes":0}]},"usage":{"input":1021,"output":3,"cached_input":0,"cost_usd":"0.000042882"},"latency_ms":412,"cached":true,"focus":"open"}}"""
     }
   }
 }

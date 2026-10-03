@@ -4,6 +4,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.classify.{Answer, Question}
 import grit.core.message.Usage
+import grit.core.store.Focus
 import grit.eval.harness.corpus.{CaseId, Digest, Failure}
 
 /** Which of a case's calls a row is: triage's question, or stitching's. */
@@ -23,8 +24,13 @@ object Suite {
 /** One request of a run, generic over what came back (`A`: a classifier's answers here, a
   * provider's reply's measures later): the case and repeat, the request's digest and cache
   * key, the model requested and the one reported (`None` unless answered), the outcome, what
-  * it consumed, how long it took, and whether the cache answered (its usage and latency then
-  * the original call's; its cost not spent again).
+  * it consumed, how long it took, whether the cache answered (its usage and latency then
+  * the original call's; its cost not spent again), and the focus triage's message was said at
+  * ([[grit.core.store.Origin.focus]]).
+  *
+  * @param focus
+  *   `None` for a stitch row, and in a log pulled from a database or written before runs
+  *   recorded it
   */
 final case class Row[A](
     suite: Suite,
@@ -37,7 +43,8 @@ final case class Row[A](
     outcome: Outcome[A],
     usage: Usage,
     latency: FiniteDuration,
-    cached: Boolean
+    cached: Boolean,
+    focus: Option[Focus]
 )
 
 /** What became of one request of a run. */

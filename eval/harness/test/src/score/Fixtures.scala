@@ -86,6 +86,7 @@ object Fixtures {
       Some(Digest.text("w")),
       "m",
       None,
+      None,
       Build.Unknown,
       repeats,
       true,
@@ -114,7 +115,8 @@ object Fixtures {
       outcome,
       Usage.Zero,
       latencyMs.millis,
-      false
+      false,
+      None
     )
 
   /** Triage's four answers: kinds weighed `kinds` (in Kind's order), then the three yes/no. */

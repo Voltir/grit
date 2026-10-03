@@ -49,6 +49,7 @@ object MovedOn {
             ),
             _,
             _,
+            _,
             _
           ) if ps.size == Kind.values.size =>
         id -> (Answers.normalised(ps) ++ Vector(w, d, h))

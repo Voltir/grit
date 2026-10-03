@@ -56,11 +56,18 @@ object Review {
   )
 
   /** `c`'s questions read through `reader`, in the shipped wording, under `c`'s own tuning
-    * else `tuning`: triage's ([[TriageInput.read]], with its cut when `more`), and, when `c`
+    * else `tuning`: triage's ([[TriageInput.read]] by `recipe`, with its cut when `more`), and,
+    * when `c`
     * was placed live, stitching's ([[Stitching.offered]]) with the state its kept placement
     * shows. `Left` naming the case and what could not be read, by kind.
     */
-  def of(reader: Reader^, c: Case, tuning: Tuning, more: Boolean): Either[String, Shown] = {
+  def of(
+      reader: Reader^,
+      c: Case,
+      tuning: Tuning,
+      recipe: TriageRecipe,
+      more: Boolean
+  ): Either[String, Shown] = {
     val reads = StitchReads(
       reader.entries,
       reader.conversations,
@@ -88,7 +95,7 @@ object Review {
     } yield {
       val triage =
         TriageInput
-          .read(reads, reader.rooms, reader.db, ref, under, TriageRecipe.Shipped)
+          .read(reads, reader.rooms, reader.db, ref, under, recipe)
           .toOption
           .flatMap { r =>
             TriageQuestion

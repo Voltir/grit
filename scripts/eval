@@ -29,9 +29,11 @@
 #       and stitching kept live: the largest gap, and the questions and cases over 1e-9, by
 #       id. <runs file> is a name in .local/eval/runs/.
 #
-#   scripts/eval inputs <yyyymmdd> [--more]
-#       Every case's questions rebuilt through the shipped builders from grit_eval_<date>
-#       and written, text and all, to .local/eval/review/inputs-<date>.jsonl, a line a case:
+#   scripts/eval inputs <yyyymmdd> [--more] [--variant <name>]
+#       Every case's questions rebuilt through the shipped builders from grit_eval_<date>,
+#       triage's by the variant's recipe (default live, the shipped), and written, text and
+#       all, to .local/eval/review/inputs-<date>.jsonl (inputs-<date>-<variant>.jsonl for
+#       another variant), a line a case:
 #       triage's and stitching's request (the state as the classifier receives it, and the
 #       questions' words) and digest, and stitching's state shown live beside it. With
 #       --more, triage's line also holds what its thread left out, and where. Prints counts,
@@ -183,19 +185,24 @@ determinism() {
 }
 
 inputs() {
-  local corpus=${1:-} more=
+  local corpus=${1:-} more= variant=live
   [[ $corpus =~ ^[0-9]{8}$ ]] || usage
   shift
-  case ${1:-} in
-    --more) more=--more ;;
-    '') ;;
-    *) usage ;;
-  esac
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --more) more=--more; shift ;;
+      --variant) variant=${2:-}; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  [ -n "$variant" ] || usage
   local dir="$main/.local/eval/corpus/$corpus" restored="grit_eval_$corpus"
+  local name="inputs-$corpus"
+  [ "$variant" = live ] || name="$name-$variant"
   [ -f "$dir/corpus.json" ] || { echo "eval: no corpus in $dir" >&2; exit 1; }
   exists "$restored" || { echo "eval: $restored is gone; capture the corpus again" >&2; exit 1; }
   harness inputs --corpus "$dir" --url "jdbc:postgresql://localhost:5432/$restored" \
-    --out "$main/.local/eval/review/inputs-$corpus.jsonl" $more
+    --out "$main/.local/eval/review/$name.jsonl" --variant "$variant" $more
 }
 
 score() {

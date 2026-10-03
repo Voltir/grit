@@ -3,10 +3,10 @@ package grit.eval.harness.jev
 import grit.core.classify.{Classifier, Request}
 import grit.core.id.{TriageRef, TurnRef}
 import grit.core.stitch.{Offer, StitchReads, Stitching, Tuning}
-import grit.core.store.StoreError
+import grit.core.store.{Focus, StoreError}
 import grit.dbos.engine.Reader
 import grit.eval.harness.corpus.{Case, Digest}
-import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
+import grit.lifecycle.triage.{TriageInput, TriageQuestion}
 
 /** One of a case's questions, as the shipped call asks it. */
 enum Asking {
@@ -35,10 +35,11 @@ object Asking {
 final case class Posed(asking: Asking, request: Request, state: Digest)
 
 /** A case's questions as the shipped builders make them now: triage's (`None` when the
-  * builder refuses it) and, for a case whose placement was kept live, stitching's (`None` when
-  * nothing is offered now).
+  * builder refuses it) and the focus its message was said at (`None` when the builder refuses
+  * it), and, for a case whose placement was kept live, stitching's (`None` when nothing is
+  * offered now).
   */
-final case class Rebuilt(triage: Option[Posed], stitch: Option[Posed])
+final case class Rebuilt(triage: Option[Posed], focus: Option[Focus], stitch: Option[Posed])
 
 /** How a question's rebuilt state compares to the one its corpus captured. */
 enum Drift {
@@ -72,7 +73,8 @@ object Drift {
 object Inputs {
 
   /** `c`'s questions as `reader`'s database stands, under `variant`: triage's
-    * ([[TriageInput.build]], then [[TriageQuestion.request]] in the variant's wording), and,
+    * ([[TriageInput.read]] by the variant's recipe, then [[TriageQuestion.request]] in its
+    * wording), and,
     * when `c` was placed live, stitching's ([[Stitching.offered]], then
     * [[Stitching.request]]), each under the variant's tuning, else `c`'s own, else `tuning`.
     * `Left` naming what could not be read: the case's triage workflow id, or the store, by
@@ -106,21 +108,21 @@ object Inputs {
             .left
             .map(e => s"${c.id.written}: stitch unread: ${kind(e)}")
     } yield {
-      val triage =
+      val read =
         TriageInput
-          .build(reads, reader.rooms, reader.db, ref, under, TriageRecipe.Shipped)
+          .read(reads, reader.rooms, reader.db, ref, under, Variant.recipe(variant))
           .toOption
-          .flatMap { (_, state) =>
-            TriageQuestion
-              .request(wording, state)
-              .map(r => Posed(Asking.Triage(state, wording), r, Digest.json(r.state)))
-          }
+      val triage = read.flatMap { r =>
+        TriageQuestion
+          .request(wording, r.state)
+          .map(q => Posed(Asking.Triage(r.state, wording), q, Digest.json(q.state)))
+      }
       val stitch = offer.flatMap(o =>
         Stitching
           .request(o)
           .map(r => Posed(Asking.Stitch(o, under), r, Digest.json(Stitching.shown(o))))
       )
-      Rebuilt(triage, stitch)
+      Rebuilt(triage, read.map(_.focus), stitch)
     }
   }
 
