@@ -29,6 +29,7 @@ import grit.eval.harness.score.{
   Moved,
   MovedOn,
   PerCall,
+  Proportions,
   Refusal,
   Reliability,
   Repeated,
@@ -41,7 +42,7 @@ import grit.eval.harness.score.{
   Tag,
   Target
 }
-import grit.eval.harness.stats.Estimate
+import grit.eval.harness.stats.{Estimate, Proportion}
 
 /** A run to report on: its log's file `name`, the log, its corpus's cases, and the labels in
   * force.
@@ -63,10 +64,15 @@ final case class Scored(
 }
 
 /** Reports as markdown, text-free: ids, numbers and labels, never a message's words. Every mean
-  * is printed with its 95% interval clustered by exchange and, beside it, by author; one with
-  * under two clusters prints `—`, never a bare number.
+  * and every proportion is printed with its 95% interval clustered by exchange and, beside it,
+  * by author, as [[Intervals]] says; one without an interval prints `—` or `[—]`.
   */
 object Report {
+
+  /** How a report's intervals are drawn, printed under its title. */
+  val Intervals: String = "A mean's interval is 95%, Student's t clustered (CR1), `—` under " +
+    "2 clusters; a proportion's is Wilson's at 95% on its effective n, `[—]` under " +
+    s"${Proportion.MinClusters} clusters. g is the clusters."
 
   /** What a report says of a log of live triage's kept tags by position ([[Pull.Kept]]), as
     * an earlier build's pull wrote it: a pull now writes them under their names.
@@ -88,7 +94,8 @@ object Report {
         s"${if (h.cache) "on" else "off"}, corpus ${h.corpus}, started ${h.started}",
       s"cases: ${run.cases.size}; answered: triage ${run.answers.triage.size}, stitch " +
         s"${run.answers.stitch.size}",
-      labelLine(run)
+      labelLine(run),
+      Intervals
     ) ++ kept(run) ++ Vector("") ++ spending(run) ++ repeats(run) ++ live(run) ++
       (if (run.labelled == 0) Vector.empty else labelled(run))
     lines.mkString("\n") + "\n"
@@ -118,7 +125,8 @@ object Report {
       s"B: variant ${b.log.header.variant}, model ${b.log.header.model}, repeats ${b.log.header.repeats}",
       s"answered by both: triage ${a.answers.triage.keySet.intersect(b.answers.triage.keySet).size}, " +
         s"stitch ${a.answers.stitch.keySet.intersect(b.answers.stitch.keySet).size}",
-      labelLine(b)
+      labelLine(b),
+      Intervals
     ) ++ kept(a, b) ++ Vector("") ++ spending(a, "A") ++ spending(b, "B") ++
       movedOn.toVector.flatMap(replica) ++ moved(a, b) ++ changes(
         a,
@@ -361,7 +369,7 @@ object Report {
     val (cases, answers) = (run.cases, run.answers)
     val tags = Tag.values.toVector
     Vector("## Against live", "", Header, Rule) ++
-      Vector(row("kind: likeliest agrees", Clustered.of(Agreement.kind(cases, answers)))) ++
+      Vector(rateRow("kind: likeliest agrees", Proportions.of(Agreement.kind(cases, answers)))) ++
       tags.map(t =>
         row(s"${Tag.written(t)}: \\|run − live\\|", Clustered.of(Agreement.tag(t, cases, answers)))
       ) ++
@@ -369,9 +377,9 @@ object Report {
         Tag
           .shipped(t)
           .map(at =>
-            row(
+            rateRow(
               s"${Tag.written(t)}: decided alike at ${num(at)}",
-              Clustered.of(Agreement.decided(t, at, cases, answers))
+              Proportions.of(Agreement.decided(t, at, cases, answers))
             )
           )
       ) ++
@@ -423,7 +431,7 @@ object Report {
         .of(judged)
         .map(b =>
           s"| ${num(b.from)}–${num(b.to)} | ${b.n} | ${b.predicted.fold("—")(num)} | " +
-            s"${est(b.rate.exchange)} | ${est(b.rate.author)} |"
+            s"${proportion(b.rate.exchange)} | ${proportion(b.rate.author)} |"
         ) ++ Vector(
         "",
         s"### ${Tag.written(t)}: threshold sweep${shipped
@@ -434,8 +442,9 @@ object Report {
       ) ++ Sweep
         .of(judged, shipped)
         .map(p =>
-          s"| ${num(p.threshold)}${if (p.shipped) " **shipped**" else ""} | ${est(p.tpr.exchange)} | " +
-            s"${est(p.tnr.exchange)} | ${est(p.tpr.author)} | ${est(p.tnr.author)} |"
+          s"| ${num(p.threshold)}${if (p.shipped) " **shipped**" else ""} | " +
+            s"${proportion(p.tpr.exchange)} | ${proportion(p.tnr.exchange)} | " +
+            s"${proportion(p.tpr.author)} | ${proportion(p.tnr.author)} |"
         ) ++ shipped.toVector.flatMap { at =>
         val curve = Cost.curve(judged, at)
         Vector(
@@ -470,14 +479,14 @@ object Report {
     Vector("## B − A, unlabelled", "", Header, Rule) ++
       Tag.values.toVector.map(t => row(s"${Tag.written(t)}: p(yes)", paired(yes(t)))) ++
       Vector(
-        row(
+        rateRow(
           "kind: likeliest the same",
-          Clustered.of(
+          Proportions.of(
             both.flatMap(c =>
               for {
                 x <- a.answers.triage.get(c.id)
                 y <- b.answers.triage.get(c.id)
-              } yield c -> (if (x.mean.likeliest == y.mean.likeliest) 1.0 else 0.0)
+              } yield c -> (x.mean.likeliest == y.mean.likeliest)
             )
           )
         ),
@@ -633,6 +642,17 @@ object Report {
     s"| $what | ${c.n} | ${est(c.exchange)} | ${interval(
         c.author
       )} | ${c.exchange.fold("—")(e => num(e.mde))} |"
+
+  /** A proportion's row: no MDE, which is a paired difference's. */
+  private def rateRow(what: String, p: Proportions): String =
+    s"| $what | ${p.exchange.n} | ${proportion(p.exchange)} | ${bounds(p.author)} | — |"
+
+  private def proportion(p: Proportion): String = p.rate.fold("—")(r => s"${num(r)} ${bounds(p)}")
+
+  private def bounds(p: Proportion): String = p.interval match {
+    case Proportion.Interval.TooFewClusters => s"[—] g=${p.clusters}"
+    case Proportion.Interval.Wilson(low, high, _) => s"[${num(low)}, ${num(high)}] g=${p.clusters}"
+  }
 
   private def contextRow(what: String, s: Split[Clustered]): String =
     s"| $what | ${s.all.n}: ${est(s.all.exchange)} | ${s.all.exchange.fold("—")(e => num(e.mde))} | " +

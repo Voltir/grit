@@ -42,10 +42,16 @@ object Brier {
 }
 
 /** One of five equal-width bins of predicted probability, `from` up to `to` (the last taking 1
-  * too): how many cases fell in it, their mean prediction (`None` when none did), and the rate
-  * they were labelled yes.
+  * too): how many cases fell in it, their mean prediction (`None` when none did), and the
+  * proportion of them labelled yes.
   */
-final case class Bin(from: Double, to: Double, n: Int, predicted: Option[Double], rate: Clustered)
+final case class Bin(
+    from: Double,
+    to: Double,
+    n: Int,
+    predicted: Option[Double],
+    rate: Proportions
+)
 
 object Reliability {
 
@@ -59,7 +65,7 @@ object Reliability {
         to,
         in.size,
         Option.when(in.nonEmpty)(in.map(_.p).sum / in.size),
-        Clustered.of(in.map(j => j.c -> (if (j.yes) 1.0 else 0.0)))
+        Proportions.of(in.map(j => j.c -> j.yes))
       )
     }
 }
@@ -68,7 +74,7 @@ object Reliability {
   * labelled yes, and the true-negative rate, over those labelled no; `shipped` when it is the
   * threshold grit decides at.
   */
-final case class Point(threshold: Double, tpr: Clustered, tnr: Clustered, shipped: Boolean)
+final case class Point(threshold: Double, tpr: Proportions, tnr: Proportions, shipped: Boolean)
 
 object Sweep {
 
@@ -81,8 +87,8 @@ object Sweep {
     Thresholds.map(t =>
       Point(
         t,
-        Clustered.of(yes.map(j => j.c -> (if (j.p >= t) 1.0 else 0.0))),
-        Clustered.of(no.map(j => j.c -> (if (j.p >= t) 0.0 else 1.0))),
+        Proportions.of(yes.map(j => j.c -> (j.p >= t))),
+        Proportions.of(no.map(j => j.c -> (j.p < t))),
         shipped.exists(s => math.abs(s - t) < 1e-9)
       )
     )

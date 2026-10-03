@@ -226,6 +226,49 @@ object ReportTests extends TestSuite {
       )
     }
 
+    test(
+      "a rate prints Wilson's interval by exchange and by author, `[—]` under ten clusters, and no MDE"
+    ) {
+      // Twelve cases live a question, each its own exchange; the run's likeliest kind agrees on
+      // eleven: Wilson's interval on 11 effective cases (Wald's on t reaches 1.100).
+      val twelve =
+        (1 to 12).toVector.map(n => caseOf(n, n, live = weighed(Kind.Question, 0.9, 0.2, 0.6, 0.4)))
+      val agreeing = Scored(
+        "a.jsonl",
+        Log(
+          header(),
+          twelve.map(c =>
+            row(
+              Suite.Triage,
+              c.id,
+              0,
+              triage(
+                if (c == twelve(0)) Vector(0, 1, 0, 0, 0) else Vector(1, 0, 0, 0, 0),
+                0.5,
+                0.5,
+                0.5
+              )
+            )
+          ),
+          None
+        ),
+        twelve,
+        Labels.Empty
+      )
+      def agrees(report: String) = lines(report).filter(_.startsWith("| kind: likeliest"))
+      agrees(Report.score(agreeing)) ==>
+        Vector(
+          "| kind: likeliest agrees | 12 | 0.917 [0.632, 0.986] g=12 | [0.632, 0.986] g=12 | — |"
+        )
+      // Two cases, two exchanges: no interval.
+      agrees(Report.score(run("a.jsonl", 0.7, Labels.Empty))) ==>
+        Vector("| kind: likeliest agrees | 2 | 0.500 [—] g=2 | [—] g=2 | — |")
+      agrees(
+        Report.compare(run("a.jsonl", 0.3, Labels.Empty), run("b.jsonl", 0.7, Labels.Empty))
+      ) ==>
+        Vector("| kind: likeliest the same | 2 | 1.000 [—] g=2 | [—] g=2 | — |")
+    }
+
     test("a comparison lists by id the cases each question's decision moved") {
       // Durable .3 in A, .7 in B, for both cases: decided no, then yes, at .5; unlabelled.
       val report =

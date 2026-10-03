@@ -5,29 +5,30 @@ import grit.core.period.Probability
 import grit.eval.harness.corpus.{Case, Live, SeenCheck}
 import grit.eval.harness.log.{Footer, Log, Outcome}
 
-/** How a run's answers agree with what triage and stitching kept live, case by case: each a
-  * value per case, for [[Clustered.of]]. A case triage failed live, or stitching did not place,
-  * has nothing to agree with and is left out.
+/** How a run's answers agree with what triage and stitching kept live, case by case: each
+  * whether a case agrees, for [[Proportions.of]], or a distance per case, for [[Clustered.of]].
+  * A case triage failed live, or stitching did not place, has nothing to agree with and is
+  * left out.
   */
 object Agreement {
 
-  /** 1 where the run's likeliest kind is the live kind, else 0. */
-  def kind(cases: Vector[Case], answers: Answers): Vector[(Case, Double)] =
-    weighed(cases, answers).map((c, live, a) => c -> (if (a.likeliest == live.kind) 1.0 else 0.0))
+  /** Whether the run's likeliest kind is the live kind. */
+  def kind(cases: Vector[Case], answers: Answers): Vector[(Case, Boolean)] =
+    weighed(cases, answers).map((c, live, a) => c -> (a.likeliest == live.kind))
 
   /** |the run's probability of yes for `t` − the live one|. */
   def tag(t: Tag, cases: Vector[Case], answers: Answers): Vector[(Case, Double)] =
     weighed(cases, answers).map((c, live, a) => c -> math.abs(Tag.of(t, a) - kept(t, live)))
 
-  /** 1 where the run and live decide `t` alike, yes at or above `threshold`, else 0. */
+  /** Whether the run and live decide `t` alike, yes at or above `threshold`. */
   def decided(
       t: Tag,
       threshold: Double,
       cases: Vector[Case],
       answers: Answers
-  ): Vector[(Case, Double)] =
+  ): Vector[(Case, Boolean)] =
     weighed(cases, answers).map((c, live, a) =>
-      c -> (if ((Tag.of(t, a) >= threshold) == (kept(t, live) >= threshold)) 1.0 else 0.0)
+      c -> ((Tag.of(t, a) >= threshold) == (kept(t, live) >= threshold))
     )
 
   /** The largest |the run's probability − the live one| over the exchanges offered with a live

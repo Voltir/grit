@@ -3,6 +3,7 @@ package grit.eval.harness.score
 import grit.core.triage.Kind
 import grit.eval.harness.label.{Context, Labelled, Labels, Place}
 import grit.eval.harness.log.{Outcome, Suite}
+import grit.eval.harness.stats.Proportion
 
 import utest.*
 import Fixtures.*
@@ -122,7 +123,9 @@ object ScorersTests extends TestSuite {
       (s.all.n, s.ok.n, s.short.n) ==> (3, 1, 1)
     }
 
-    test("reliability: five bins, the last taking 1, a bin of one exchange giving no rate") {
+    test(
+      "reliability: five bins, the last taking 1, a rate under ten exchanges given no interval"
+    ) {
       // [0, .2): .1 no (exchange 1), .15 yes (2): predicted .125, rate .5 on 2 clusters.
       // [.4, .6): .4 yes, .55 yes, both exchange 1: predicted .475, rate 1 on one cluster.
       // [.8, 1]: .9 yes (1), 1.0 no (2): predicted .95, rate .5.
@@ -136,13 +139,15 @@ object ScorersTests extends TestSuite {
           Judged(caseOf(6, 2), 1.0, false)
         )
       )
-      bins.map(b => (b.n, b.predicted.map(r), b.rate.exchange.map(e => r(e.mean)))) ==> Vector(
+      bins.map(b => (b.n, b.predicted.map(r), b.rate.exchange.rate.map(r))) ==> Vector(
         (2, Some(0.125), Some(0.5)),
         (0, None, None),
-        (2, Some(0.475), None),
+        (2, Some(0.475), Some(1.0)),
         (0, None, None),
         (2, Some(0.95), Some(0.5))
       )
+      bins.flatMap(b => Vector(b.rate.exchange.interval, b.rate.author.interval)).distinct ==>
+        Vector(Proportion.Interval.TooFewClusters)
     }
 
     test("the sweep decides yes at or above each threshold, and marks the shipped one") {
@@ -153,13 +158,39 @@ object ScorersTests extends TestSuite {
       )
       def at(t: Double) = points
         .find(p => math.abs(p.threshold - t) < 1e-9)
-        .map(p =>
-          (p.tpr.exchange.map(e => r(e.mean)), p.tnr.exchange.map(e => r(e.mean)), p.shipped)
-        )
+        .map(p => (p.tpr.exchange.rate.map(r), p.tnr.exchange.rate.map(r), p.shipped))
       at(0.05) ==> Some((Some(1.0), Some(0.0), false))
       at(0.5) ==> Some((Some(r(2.0 / 3)), Some(0.5), true))
       at(0.95) ==> Some((Some(0.0), Some(1.0), false))
       points.count(_.shipped) ==> 1
+    }
+
+    test(
+      "reliability and the sweep: over ten exchanges a rate's interval is Wilson's, within [0, 1]"
+    ) {
+      // Eleven yes and one no at .9, and a yes at .1, each its own exchange. The top bin and
+      // the TPR at .5 are both 11 of 12 over 12 exchanges: the design effect is 12/11, so 11
+      // effective cases, and Wilson's interval at z = 1.96 is [.631605, .986029] (Wald's on t
+      // reaches 1.100).
+      val cases = judged(
+        (1 to 11).map(n => (n, 0.9, true)) ++ Vector((12, 0.9, false), (13, 0.1, true))*
+      )
+      def bounds(p: Proportion) = p.interval match {
+        case Proportion.Interval.Wilson(low, high, _) =>
+          Some((math.round(low * 1e6) / 1e6, math.round(high * 1e6) / 1e6))
+        case Proportion.Interval.TooFewClusters => None
+      }
+      val expected = Some((0.631605, 0.986029))
+      Reliability
+        .of(cases)
+        .lastOption
+        .map(b => (bounds(b.rate.exchange), bounds(b.rate.author))) ==>
+        Some((expected, expected))
+      Sweep
+        .of(cases, None)
+        .find(p => math.abs(p.threshold - 0.5) < 1e-9)
+        .map(p => (bounds(p.tpr.exchange), bounds(p.tpr.author), p.tnr.exchange.interval)) ==>
+        Some((expected, expected, Proportion.Interval.TooFewClusters))
     }
 
     test(

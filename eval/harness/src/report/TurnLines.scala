@@ -5,7 +5,8 @@ import grit.core.message.Tokens
 import grit.core.tool.ToolName
 import grit.eval.harness.corpus.{Called, Drafted, Ended, Part, Support, TurnCase}
 import grit.eval.harness.label.Verdicts
-import grit.eval.harness.score.{Calls, Paid, Quantiles, Rate, Slice, Structure, Unreplied, Where}
+import grit.eval.harness.score.{Calls, Paid, Quantiles, Slice, Structure, Unreplied, Where}
+import grit.eval.harness.stats.Proportion
 import grit.turn.TurnRecord
 
 /** [[Report.turns]]'s sections. */
@@ -32,7 +33,7 @@ private[report] object TurnLines {
       "",
       "Text-free: ids, counts, tokens and USD. A rate's interval is Wilson's at 95% on its " +
         "turns' effective number, clustered by conversation (a thread), and none under " +
-        s"${Rate.MinThreads} threads; a spread is mean / p50 / p90 by nearest rank.",
+        s"${Proportion.MinClusters} threads; a spread is mean / p50 / p90 by nearest rank.",
       ""
     )
 
@@ -280,15 +281,14 @@ private[report] object TurnLines {
     s"${s.ok}, ${s.failed}, ${s.expired}, ${s.abandoned}, ${s.unsettled}"
   }
 
-  private def rate(r: Rate): String =
-    if (r.n == 0) "—"
-    else {
+  private def rate(r: Proportion): String =
+    r.rate.fold("—") { rate =>
       val bounds = r.interval match {
-        case Rate.Interval.TooFewThreads => "too few threads for an interval"
-        case Rate.Interval.Wilson(low, high, _) => f"[$low%.3f, $high%.3f]"
+        case Proportion.Interval.TooFewClusters => "too few threads for an interval"
+        case Proportion.Interval.Wilson(low, high, _) => f"[$low%.3f, $high%.3f]"
       }
-      val threads = if (r.threads == 1) "1 thread" else s"${r.threads} threads"
-      s"${f"${r.hits.toDouble / r.n}%.3f"} (${r.hits}/${r.n} in $threads) $bounds"
+      val threads = if (r.clusters == 1) "1 thread" else s"${r.clusters} threads"
+      s"${f"$rate%.3f"} (${r.hits}/${r.n} in $threads) $bounds"
     }
 
   private def spread(q: Option[Quantiles], f: Double => String): String =

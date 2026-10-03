@@ -22,7 +22,9 @@ Packages, each importing only those above it:
 
 - **`stats`** — `Estimate`, a mean with its standard error clustered (CR1), its 95% interval
   and the least difference a paired comparison of its precision detects, over Student's t;
-  pure, naming nothing of grit's.
+  and `Proportion`, how many items hit, with Wilson's 95% interval on their effective number
+  (n over the clustered design effect), none under `Proportion.MinClusters` clusters; pure,
+  naming nothing of grit's.
 - **`corpus`** — a corpus, text-free: `CaseId`, a heard message's identity outside any one
   database (its Slack channel and ts); `Case`, what a heard message was live, the digests of
   the inputs the shipped builders rebuild for it, and how it clusters; `Manifest`, the
@@ -101,7 +103,8 @@ Packages, each importing only those above it:
   repeats with their spread; `Scoring`, those answers beside the cases and their labels, by
   `Tag` (waiting, durable, helps), kind and place; the scorers over them (`Brier`,
   `Reliability`, `Sweep`, and `Cost`, a curve over the cost-of-error ratio), each a mean
-  `Clustered` by exchange and by author and `Split` by the label `context`; `Agreement`,
+  `Clustered` by exchange and by author and `Split` by the label `context`, or a rate, its
+  `Proportions` by exchange and by author; `Agreement`,
   `Repeated` and `Spending`, what needs no label; `Order`, cases in labelling order, by the difference between two runs or by a run's repeat spread, the unlabelled first; `Rule`, an adoption rule written before the run it judges, on one question or triage's four's mean (`Measure`), over every case or one context, with lines B may not cross elsewhere (`Guard`, judged by `Guarded`), and `Decision`, what it makes of two runs, refused under the paired MDE or the rule's least, or for a guard broken; `Comparison`, two runs' cases by what became of each (`Changes`: fixed, broken, moved); `Changed`, the cases two runs asked triage of by different requests, `Size`, how large a run's triage calls were, and `Apart`, what Jev's repeat noise alone reads as a difference; `Drafting`, one side of a draft comparison (a log's named answers, its set's gate, and the
   questions read as durable and as `to`); `Drafts`, a question set's draft against live
   triage's, each by its own set's gate (`Cells`, the 2×2 by focus), each of its
@@ -115,11 +118,10 @@ Packages, each importing only those above it:
   turns that did not reply, the pass rate, rounds, tools offered against called (the turn's
   `topic` tool and unnamed calls apart), prompt and window tokens and the first call's
   estimate against the ledger (each as `Quantiles`), cost by what it paid for, the drafts'
-  outcomes with their post and hold `Rate`s (each Wilson's interval on its turns' effective
-  number, clustered by thread, and none under `Rate.MinThreads` threads), the review verdicts
+  outcomes with their post and hold rates (each a `Proportion` clustered by thread), the review verdicts
   joined by case, and the window parts a reply `Used`. ← `stats`, `corpus`, `label`, `log`
 - **`report`** — `Report`, a run scored (`Scored`: its log, its corpus's cases, the labels in
-  force) and two runs compared, as markdown with every mean's interval; text-free. With no case
+  force) and two runs compared, as markdown with every mean's and rate's interval; text-free. With no case
   labelled, only what needs no label: spend and latency (`score.Spending`), the repeats' spread
   (`score.Repeated`) and agreement with what was kept live (`score.Agreement`). A question set's pulled
   shadow against live's log, each by its own set's gate (`Report.Side`), and against the

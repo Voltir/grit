@@ -43,12 +43,12 @@ object AgreementTests extends TestSuite {
 
   val tests = Tests {
     test("against live: the likeliest kind, each tag's distance, and decisions at a threshold") {
-      Agreement.kind(cases, answers).map(_._2) ==> Vector(1.0, 0.0)
+      Agreement.kind(cases, answers).map(_._2) ==> Vector(true, false)
       Agreement.tag(Tag.Durable, cases, answers).map(x => r(x._2)) ==> Vector(0.2, 0.2)
       // Durable at .5: case 1 run .4 no, live .6 yes; case 2 run .5 yes (at it), live .3 no.
-      Agreement.decided(Tag.Durable, 0.5, cases, answers).map(_._2) ==> Vector(0.0, 0.0)
+      Agreement.decided(Tag.Durable, 0.5, cases, answers).map(_._2) ==> Vector(false, false)
       // Helps at .7: case 1 .4 and .4, no both; case 2 .8 and .7 (at it), yes both.
-      Agreement.decided(Tag.Helps, 0.7, cases, answers).map(_._2) ==> Vector(1.0, 1.0)
+      Agreement.decided(Tag.Helps, 0.7, cases, answers).map(_._2) ==> Vector(true, true)
     }
 
     test("against live, a place: the largest distance over exchanges with a live probability") {

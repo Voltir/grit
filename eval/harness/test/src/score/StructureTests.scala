@@ -4,6 +4,7 @@ import grit.core.id.WorkflowId
 import grit.core.prompt.Layer
 import grit.core.review.{Reason, Verdict}
 import grit.eval.harness.corpus.{Drafted, Ended, Part}
+import grit.eval.harness.stats.Proportion
 import grit.turn.TurnOffer
 
 import utest.*
@@ -30,13 +31,16 @@ object StructureTests extends TestSuite {
 
     test("the pass rate is over the turns that replied, counted by thread") {
       // Replied: t1 passed (A), t2 not (A), t4 not (C).
-      all.passed ==> Rate(1, 3, 2, Rate.Interval.TooFewThreads)
+      all.passed ==> Proportion(1, 3, 2, Proportion.Interval.TooFewClusters)
     }
 
     test("the post and hold rates are over the drafts, counted by thread") {
       // Both drafts are thread A's: one posted, one held below the bar.
       all.online.map(o => (o.posted, o.held)) ==> Some(
-        (Rate(1, 2, 1, Rate.Interval.TooFewThreads), Rate(1, 2, 1, Rate.Interval.TooFewThreads))
+        (
+          Proportion(1, 2, 1, Proportion.Interval.TooFewClusters),
+          Proportion(1, 2, 1, Proportion.Interval.TooFewClusters)
+        )
       )
     }
 
