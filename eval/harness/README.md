@@ -51,7 +51,7 @@ Packages, each importing only those above it:
 - **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
   (the model, triage's wording, its recipe and the words it is asked in, or the tuning), and `Variants`, those a run can name;
   `QuestionSet`, a question set a comparison names (its gate, and its question read against
-  live's `durable`), and `Sets`, those it can name (`v2`);
+  live's `durable`), and `Sets`, those it can name (`v1`, live's own question as a set, and `v2`);
   `Inputs`, a case's questions rebuilt through the shipped builders, and `Drift`, how a
   rebuilt state compares to the corpus's; `Review`, a case's questions as rebuilt, text and
   all, for a person to read beside it (`scripts/eval inputs` writes them under

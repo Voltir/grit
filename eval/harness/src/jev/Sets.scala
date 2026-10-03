@@ -28,7 +28,13 @@ object Sets {
       QuestionName.of("to").toOption
     )
 
-  val all: Vector[QuestionSet] = Vector(V2)
+  /** [[TriageQuestions.V1]], live's own question as a set, named `v1`, its `durable` read
+    * against live's; it asks no `to`.
+    */
+  val V1: QuestionSet =
+    QuestionSet("v1", TriageQuestions.V1, QuestionName.of("durable").toOption, None)
+
+  val all: Vector[QuestionSet] = Vector(V1, V2)
 
   /** The set named `n`; `None` for no set's. */
   def named(n: String): Option[QuestionSet] = all.find(_.name == n)

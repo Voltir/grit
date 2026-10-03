@@ -10,6 +10,7 @@ import grit.core.period.Probability
 import grit.core.store.Focus
 import grit.core.triage.Kind
 import grit.eval.harness.corpus.{CaseId, Digest, Failure}
+import grit.eval.harness.jev.Sets
 import grit.eval.harness.log.{CacheKey, Outcome, Row, Suite, Weights}
 import grit.lifecycle.triage.TriageQuestions
 
@@ -97,6 +98,41 @@ object DraftsTests extends TestSuite {
   private val helpsAt = Probability.clamped(0.6)
 
   val tests = Tests {
+    test("v1's draft is live's helps gate at 0.5, and its durable live's, on the same answers") {
+      val half = Probability.clamped(0.5)
+      val cs = (1 to 4).map(n => id(s"C1/$n")).toVector
+      // Each case's kind, its weight, durable and helps, answered alike by live and by v1.
+      val asked = Vector(
+        (cs(0), Kind.Question, 0.75, 0.5, 0.5),
+        (cs(1), Kind.Question, 0.75, 0.25, 0.49),
+        (cs(2), Kind.Chatter, 0.4, 0.75, 0.9),
+        (cs(3), Kind.Decision, 0.5, 0.49, 0.75)
+      )
+      val lives = asked.map((c, kind, _, durable, helps) => live(c, kind, durable, helps, None))
+      val sets = asked.map { (c, kind, top, durable, helps) =>
+        val ws = Kind.values.toVector.map(k =>
+          Answer.Weight(Kind.written(k), if (k == kind) top else (1 - top) / 4)
+        )
+        setRow(
+          c,
+          Outcome.Answered(
+            VectorMap(
+              name("kind") -> Answer.Choice(Kind.written(kind), ws, 0.0),
+              name("waiting") -> Answer.YesNo(0.5),
+              name("durable") -> Answer.YesNo(durable),
+              name("helps") -> Answer.YesNo(helps)
+            )
+          ),
+          None
+        )
+      }
+      val d = Drafts.of(lives, sets, Sets.V1.questions.speak, half, Sets.V1.durable)
+      (d.gate, d.durable) ==> (
+        Map(None -> Cells(Vector(cs(0), cs(3)), Vector.empty, Vector.empty, Vector(cs(1), cs(2)))),
+        Some(Cells(Vector(cs(0), cs(2)), Vector.empty, Vector.empty, Vector(cs(1), cs(3))))
+      )
+    }
+
     test(
       "each case both answered falls in one cell of live's helps gate against the set's draft, by focus; one whose gate reads a missing answer is undecided"
     ) {

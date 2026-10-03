@@ -72,7 +72,7 @@
 #
 #   scripts/eval compare <runs file A> <runs file B> --gate <set> --helps-at <p> [--labels <file>]
 #                        [--verdicts <verdicts file>]
-#       B a question set's shadow log from pull, asking <set> (v2), against A, live triage's
+#       B a question set's shadow log from pull, asking <set> (v1 or v2), against A, live triage's
 #       pulled log: the set's derived draft against live's helps gate (helps >= <p>, the
 #       deployment's configured helpsAt, and kind not chatter: triage's tags alone, not live's
 #       speech decision), a 2x2 by focus and over all; each of the set's probabilities' mean
