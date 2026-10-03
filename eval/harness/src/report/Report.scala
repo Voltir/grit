@@ -6,7 +6,7 @@ import grit.core.classify.Answer
 import grit.core.id.{QuestionName, ShadowName}
 import grit.core.period.Probability
 import grit.core.store.Focus
-import grit.core.triage.Earning
+import grit.core.triage.{Bound, Earning, Gate, Reading}
 import grit.eval.harness.corpus.{Case, CaseId}
 import grit.eval.harness.label.{Context, Labelled, Labels, Verdicts}
 import grit.eval.harness.log.{Log, Row, Suite, Weights}
@@ -42,7 +42,6 @@ import grit.eval.harness.score.{
   Target
 }
 import grit.eval.harness.stats.Estimate
-import grit.lifecycle.triage.TriageQuestions
 
 /** A run to report on: its log's file `name`, the log, its corpus's cases, and the labels in
   * force.
@@ -143,7 +142,7 @@ object Report {
       bName: String,
       b: Log[VectorMap[QuestionName, Answer]],
       set: String,
-      gate: TriageQuestions.Gate,
+      gate: Gate,
       helpsAt: Probability,
       drafts: Drafts,
       verdicts: Option[Judgement]
@@ -158,8 +157,8 @@ object Report {
     val foci: Vector[(String, Option[Focus])] =
       Focus.values.toVector.map(f => f.toString.toLowerCase -> Some(f)) :+ ("focus unknown" -> None)
     val bounds = gate.bounds.map {
-      case TriageQuestions.Bound.AtLeast(on, p) => s"${reading(on)} ≥ ${num(Probability.value(p))}"
-      case TriageQuestions.Bound.Below(on, p) => s"${reading(on)} < ${num(Probability.value(p))}"
+      case Bound.AtLeast(on, p) => s"${reading(on)} ≥ ${num(Probability.value(p))}"
+      case Bound.Below(on, p) => s"${reading(on)} < ${num(Probability.value(p))}"
     }
     val durableAt = num(Probability.value(Earning.DurableAt))
     val lines = Vector(
@@ -237,9 +236,9 @@ object Report {
   }
 
   /** What a gate reads, as the report names it: a yes/no's name, a choice key's `<name>.<key>`. */
-  private def reading(r: TriageQuestions.Reading): String = r match {
-    case TriageQuestions.Reading.Yes(name) => QuestionName.value(name)
-    case TriageQuestions.Reading.Key(name, key) => s"${QuestionName.value(name)}.$key"
+  private def reading(r: Reading): String = r match {
+    case Reading.Yes(name) => QuestionName.value(name)
+    case Reading.Key(name, key) => s"${QuestionName.value(name)}.$key"
   }
 
   /** The cases `m` found moved on, and the tolerance it found them under. */

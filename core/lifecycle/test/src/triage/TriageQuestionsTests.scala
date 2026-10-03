@@ -6,8 +6,9 @@ import grit.core.classify.{Answer, Question, Request}
 import grit.core.id.{KnowledgeSourceName, QuestionName}
 import grit.core.period.Probability
 import grit.core.place.Place
+import grit.core.triage.{Bound, Gate, Reading}
 import grit.core.triage.{KnowledgeSource, KnowledgeSources}
-import grit.lifecycle.triage.TriageQuestions.{Bound, Gate, Item, Reading, Refusal}
+import grit.lifecycle.triage.TriageQuestions.{Item, Refusal}
 
 import utest.*
 

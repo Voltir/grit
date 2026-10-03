@@ -6,10 +6,9 @@ import grit.core.classify.Answer
 import grit.core.id.QuestionName
 import grit.core.period.Probability
 import grit.core.store.Focus
-import grit.core.triage.{Earning, Kind}
+import grit.core.triage.{Earning, Gate, Kind}
 import grit.eval.harness.corpus.CaseId
 import grit.eval.harness.log.{Outcome, Row, Suite, Weights}
-import grit.lifecycle.triage.TriageQuestions
 
 /** The cases of two yes/no decisions over the same cases, by how each decided: yes by both,
   * by A only, by B only, by neither; each in the order the cases were given.
@@ -57,7 +56,7 @@ object Drafts {
   def of(
       live: Vector[Row[Vector[Weights]]],
       set: Vector[Row[VectorMap[QuestionName, Answer]]],
-      gate: TriageQuestions.Gate,
+      gate: Gate,
       helpsAt: Probability,
       durable: Option[QuestionName]
   ): Drafts = {

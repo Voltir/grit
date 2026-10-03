@@ -12,9 +12,8 @@ import grit.core.plugin.Plugin
 import grit.core.review.Reviewing
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.{Gate, KnowledgeSources}
 import grit.lifecycle.shadow.{ShadowQuestion, ShadowVariant}
-import grit.lifecycle.triage.TriageQuestions
 import grit.turn.TurnLoop
 
 /** What every turn's model is offered, at every place, in at most `rounds` model calls. */
@@ -63,7 +62,7 @@ enum Topics {
   */
 final case class ShadowReview private[deployment] (
     reviewing: Reviewing,
-    gate: TriageQuestions.Gate
+    gate: Gate
 )
 
 /** Why [[Deployment.of]] refused. */

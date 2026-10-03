@@ -6,10 +6,10 @@ import grit.core.classify.Answer
 import grit.core.id.{QuestionName, ShadowName}
 import grit.core.period.Probability
 import grit.core.review.{Reason, Verdict}
+import grit.core.triage.Gate
 import grit.eval.harness.corpus.CaseId
 import grit.eval.harness.label.Verdicts
 import grit.eval.harness.log.{Row, Weights}
-import grit.lifecycle.triage.TriageQuestions
 
 /** Verdicts against a live log and a question set's: each shadow's and reason's [[Judgement.Of]],
   * the shadows by name and the reasons in `Reason`'s order within one; and `undecided`, the
@@ -50,7 +50,7 @@ object Judgement {
   def of(
       live: Vector[Row[Vector[Weights]]],
       set: Vector[Row[VectorMap[QuestionName, Answer]]],
-      gate: TriageQuestions.Gate,
+      gate: Gate,
       helpsAt: Probability,
       to: Option[QuestionName],
       verdicts: Verdicts
