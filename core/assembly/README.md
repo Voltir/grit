@@ -16,7 +16,8 @@ In dependency order:
   elsewhere shown as their own sections, one per conversation; and a thread that begins with
   grit's post, the turn that asked for it, whatever the scope. ← `linear`
 
-Neither reaches past its own period (ADR 0011): what came before the turn's is its closing
+Each draws its window as wide as it was built to, or within the budget (and, for retrieval,
+the hits per search) a request's `Width` names. Neither reaches past its own period (ADR 0011): what came before the turn's is its closing
 entry. Only retrieval draws on other conversations.
 
 No source file sits at the module's root, and the test tree mirrors it. The assembly eval

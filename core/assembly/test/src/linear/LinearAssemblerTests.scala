@@ -2,7 +2,7 @@ package grit.assembly.linear
 
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.AssemblyFixtures.{FakeDb, World, c1, closingOf}
-import grit.core.context.{AssemblyError, AssemblyRequest, Shown}
+import grit.core.context.{AssemblyError, AssemblyRequest, Shown, Width}
 import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.store.{Entry, EntryStore, Payload, Speakers, StoreError, Tx}
@@ -32,7 +32,12 @@ object LinearAssemblerTests extends TestSuite {
     AssemblyFixtures.store(turns.map(_.map(Payload.Message(_)))*)
 
   /** The ids of the entries of the window for `turn`, in its order. */
-  private def window(world: World, turn: Long, budget: Long): Vector[String] = {
+  private def window(
+      world: World,
+      turn: Long,
+      budget: Long,
+      width: Width = Width.Deployed
+  ): Vector[String] = {
     val seqs = new LinearAssembler(
       world.entries,
       world.periods,
@@ -40,7 +45,7 @@ object LinearAssemblerTests extends TestSuite {
       CharEstimate,
       Tokens(budget)
     )
-      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn))))(using new FakeDb)
+      .assemble(AssemblyRequest(TurnRef(c1, TurnSeq(turn)), width))(using new FakeDb)
       .fold(e => sys.error(s"assembly failed: $e"), _.entries)
     val bySeq = world.entries
       .list(c1)(using TestTx.fake)
@@ -96,6 +101,22 @@ object LinearAssemblerTests extends TestSuite {
       val entries = store(small(0), small(1), small(2), small(3), small(4))
       window(entries, 4, 2 * SmallTurn + Gap) ==> Vector("t2:4", "t2:5", "t3:6", "t3:7")
       window(entries, 4, 2 * SmallTurn + Gap - 1) ==> Vector("t3:6", "t3:7")
+    }
+
+    test("a width within a budget draws the window in it, narrower or wider than the built one") {
+      val entries = store(small(0), small(1), small(2), small(3), small(4))
+      val two = 2 * SmallTurn + Gap
+      // Built for two turns: one within less, every one within more; hits are not read.
+      window(entries, 4, two, Width.Within(Tokens(two - 1), 0)) ==> Vector("t3:6", "t3:7")
+      window(entries, 4, two, Width.Within(Tokens(4 * SmallTurn), 0)) ==>
+        Vector("t0:0", "t0:1", "t1:2", "t1:3", "t2:4", "t2:5", "t3:6", "t3:7")
+      // Deployed is the built budget's window.
+      window(entries, 4, two, Width.Deployed) ==> window(
+        entries,
+        4,
+        two,
+        Width.Within(Tokens(two), 0)
+      )
     }
 
     test("a window that leaves turns out is charged its gap line") {

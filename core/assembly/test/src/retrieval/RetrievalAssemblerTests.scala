@@ -13,7 +13,7 @@ import grit.assembly.linear.AssemblyFixtures.{
   store
 }
 import grit.assembly.linear.LinearAssembler
-import grit.core.context.{AssemblyNote, AssemblyRequest, Shown, Window}
+import grit.core.context.{AssemblyNote, AssemblyRequest, Shown, Width, Window}
 import grit.core.id.{
   CallSlot,
   CloseRef,
@@ -199,7 +199,8 @@ object RetrievalAssemblerTests extends TestSuite {
       stitches: Option[StitchStore] = None,
       tuning: Tuning = Tuning.Default,
       others: Vector[Conversation] = Vector.empty,
-      posted: Option[CallSlot] = None
+      posted: Option[CallSlot] = None,
+      width: Width = Width.Deployed
   ): Window = {
     val turn = TurnRef(c1, TurnSeq(at))
     val conversations = new InMemoryConversationStore
@@ -240,7 +241,7 @@ object RetrievalAssemblerTests extends TestSuite {
       tuning,
       Hits
     )
-      .assemble(AssemblyRequest(turn))(using new FakeDb)
+      .assemble(AssemblyRequest(turn, width))(using new FakeDb)
       .getOrElse(sys.error("in-memory store"))
   }
 
@@ -806,6 +807,22 @@ object RetrievalAssemblerTests extends TestSuite {
       }
       at(57) ==> Vector("t0", "t4", "t5")
       at(56) ==> Vector("t4", "t5")
+    }
+
+    test("a width within a budget draws the window in it and searches for its hits") {
+      // As above: turn 0 is recalled within 57 and not within 56, whatever it was built for.
+      val turns = (0 to 5).map(filler).toVector :+ ask
+      def at(built: Long, width: Width): (Vector[String], Vector[Int]) = {
+        val world = store(turns*)
+        val search = new Scripted("t0:1")
+        val w = assemble(world, new Writer(Some("q000")), built, search, width = width)
+        (turnsOf(world, w), search.asked.map(_.limit))
+      }
+      at(57, Width.Within(Tokens(56), 3)) ==> (Vector("t4", "t5"), Vector(3))
+      at(56, Width.Within(Tokens(57), 3)) ==> (Vector("t0", "t4", "t5"), Vector(3))
+      // Deployed is the window of the budget and hits it was built with.
+      at(57, Width.Deployed) ==> at(57, Width.Within(Tokens(57), Hits))
+      at(56, Width.Deployed) ==> at(56, Width.Within(Tokens(56), Hits))
     }
 
     test("a recalled turn's named message is charged its name line") {

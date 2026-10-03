@@ -13,8 +13,21 @@ trait ContextAssembler {
   def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window]
 }
 
-/** What an assembler is asked to build a window for. */
-final case class AssemblyRequest(turn: TurnRef)
+/** What an assembler is asked to build a window for, and how wide. */
+final case class AssemblyRequest(turn: TurnRef, width: Width = Width.Deployed)
+
+/** How wide a window is drawn. */
+enum Width {
+
+  /** As wide as the assembler was built to draw it. */
+  case Deployed
+
+  /** Within `budget` estimated tokens, wider or narrower than the assembler was built for, each
+    * search ranking at most `hits` entries (none when it is not positive); an assembler that
+    * does not search reads `budget` alone.
+    */
+  case Within(budget: Tokens, hits: Int)
+}
 
 /** What the model sees before the turn's own messages: each of `nearby`'s sections, then the
   * entries of its own conversation at `entries`, in that order; and notes on how they were

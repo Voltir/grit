@@ -113,7 +113,8 @@ In dependency order:
 - **`approval`** — `Approval`, a person's answer to a gated tool call, and the message
   that carries it to the turn waiting on its topic. ← `id`
 - **`context`**, **`provider`**, **`inbox`** — the seams the engine plugs
-  into: `ContextAssembler` (and the `Window` it builds, and `Shown`: what the model is
+  into: `ContextAssembler` (and the `Window` it builds, as wide as its request's `Width`
+  asks: as deployed, or within a budget the eval harness names; and `Shown`: what the model is
   shown of a window, each line grit writes into it under its `Label`: the record, a
   section from afar, a gap where turns were left out; and a grit label that starts a line
   in text grit did not write, shown as a quoted paste), `Provider` and `Models` (the

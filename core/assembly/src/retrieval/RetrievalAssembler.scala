@@ -7,6 +7,7 @@ import grit.core.context.{
   AssemblyRequest,
   ContextAssembler,
   Shown,
+  Width,
   Window
 }
 import grit.core.id.{CallSlot, ConversationId, TurnRef, TurnSeq}
@@ -94,8 +95,13 @@ final class RetrievalAssembler(
 ) extends ContextAssembler {
   import RetrievalAssembler.{Candidate, Found}
 
+  /** Within `budget` and `hits`, or those `request.width` names. */
   def assemble(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] = {
     val turn = request.turn
+    val (budget, hits) = request.width match {
+      case Width.Deployed => (this.budget, this.hits)
+      case Width.Within(b, h) => (b, h)
+    }
     db.read {
       for {
         settings <- lifecycle.current()
@@ -208,7 +214,7 @@ final class RetrievalAssembler(
                   )
                 else {
                   val from = recent.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq)
-                  db.read(find(turn, read, ownToFind, from, query))
+                  db.read(find(turn, read, ownToFind, from, query, hits))
                     .left
                     .map(AssemblyError.Store(_))
                     .map { found =>
@@ -225,6 +231,7 @@ final class RetrievalAssembler(
                         pack(
                           rank(found, older, places, read.closed, read.locality.weight),
                           used,
+                          budget,
                           read.speakers
                         )
                       val recalled = packed.collect { case Candidate.Own(t) => t }
@@ -370,10 +377,18 @@ final class RetrievalAssembler(
       }
   }
 
-  /** Both searches for `query`, in one read: the period's own earlier turns before `from`
-    * when `own`, and the open periods elsewhere; with the turns the nearby hits point into.
+  /** Both searches for `query`, `hits` each, in one read: the period's own earlier turns
+    * before `from` when `own`, and the open periods elsewhere; with the turns the nearby hits
+    * point into.
     */
-  private def find(turn: TurnRef, read: Read, own: Boolean, from: TurnSeq, query: String)(using
+  private def find(
+      turn: TurnRef,
+      read: Read,
+      own: Boolean,
+      from: TurnSeq,
+      query: String,
+      hits: Int
+  )(using
       grit.core.store.Tx^
   ): Either[StoreError, Found] =
     for {
@@ -452,7 +467,12 @@ final class RetrievalAssembler(
     * does not fit is passed over for the next. A turn from elsewhere costs what it adds to
     * its section, its label included with its first turn.
     */
-  private def pack(ranked: Vector[Candidate], used: Tokens, speakers: Speakers): Vector[Candidate] =
+  private def pack(
+      ranked: Vector[Candidate],
+      used: Tokens,
+      budget: Tokens,
+      speakers: Speakers
+  ): Vector[Candidate] =
     ranked
       .foldLeft((used, Vector.empty[Candidate])) { case ((spentSoFar, kept), c) =>
         val cost = c match {

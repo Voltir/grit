@@ -1,6 +1,6 @@
 package grit.assembly.linear
 
-import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Shown, Window}
+import grit.core.context.{AssemblyError, AssemblyRequest, ContextAssembler, Shown, Width, Window}
 import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.core.provider.TokenEstimator
@@ -28,7 +28,12 @@ final class LinearAssembler(
     budget: Tokens
 ) extends ContextAssembler {
 
-  def assemble(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] =
+  /** Within `budget`, or the budget `request.width` names. */
+  def assemble(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] = {
+    val budget = request.width match {
+      case Width.Deployed => this.budget
+      case Width.Within(b, _) => b
+    }
     db.read {
       for {
         opening <- periods.opening(request.turn)
@@ -43,6 +48,7 @@ final class LinearAssembler(
       }
     }.left
       .map(AssemblyError.Store(_))
+  }
 }
 
 object LinearAssembler {
