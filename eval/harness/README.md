@@ -6,9 +6,10 @@ through `scripts/eval`, never from a test or `scripts/check`, and its tests test
 instrument, not a model.
 
 It names grit's code alone (core, `grit.dbos`'s `Reader`, the turn's reading of its records,
-the assembler's estimate and the shipped retrieval assembler, the lifecycle's builders, and
-the models' Jev and OpenRouter clients), but for the kit's `.env` loader (`DotEnv`), through
-which a run reads Jev's key, and a rebuild OpenRouter's, as grit does.
+the assembler's estimate and the shipped retrieval assembler, the lifecycle's builders, the
+models' Jev and OpenRouter clients, and `grit.eval`'s hand-written cases and their layout),
+but for the kit's `.env` loader (`DotEnv`), through which a run reads Jev's key, and a rebuild
+OpenRouter's, as grit does.
 
 Every file it writes is text-free (ids, digests, numbers, lengths and field names) but the
 files for a person to read: the review file `scripts/eval inputs` writes under
@@ -110,7 +111,13 @@ Packages, each importing only those above it:
   labels (an answer found in records shown) and a hand-written file, each turn `Judged` under
   a variant. `TurnTriage`, live triage's question set put to the message a recorded turn
   answers, built by the shipped builder over the database as it stood when the turn started,
-  a message said to grit read as one heard (`TurnAsk`). ← `corpus`, `label`, `log`, `jev`
+  a message said to grit read as one heard (`TurnAsk`). `Synthetic`, `grit.eval`'s cases as a
+  reference: each case in each variant a turn said to grit in the synthetic database, found by
+  its conversations' origins as `grit.eval.Layout` lays them out (`Asked`), each conversation's
+  `[must]` entries expected held, a case labelling none left out; its window drawn as `Rebuild`
+  draws one, over the database as it stands, searched with the case's own query, within the
+  case's scope (`AsOf.settled`, the lifecycle settings read as given). ← `corpus`, `label`,
+  `log`, `jev`
 - **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
   (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
   kept, within the cap; `Repeats`, how many times each is asked. ← `corpus`, `log`, `jev`

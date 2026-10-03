@@ -583,7 +583,7 @@ rules:
 
   - id: harness-names-core-and-models
     allow: harness-code
-    only: [core-modules, models-code, kit-environment, harness-code]
+    only: [core-modules, models-code, kit-environment, eval-code, harness-code]
     via: imports
     mode: strict
-    because: "the eval harness measures what grit ships through its own code paths (eval/harness/README.md); naming the kit's wiring, an edge or a deployment would measure one deployment's wiring instead; the kit's .env loader is how a run reads its key, as grit.app does"
+    because: "the eval harness measures what grit ships through its own code paths (eval/harness/README.md); naming the kit's wiring, an edge or a deployment would measure one deployment's wiring instead; the kit's .env loader is how a run reads its key, as grit.app does; the eval's cases are its synthetic reference"

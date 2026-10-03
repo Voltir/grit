@@ -159,7 +159,7 @@ object Rebuild {
   /** A query writer that answers every request with `query`, the one a turn recorded; or,
     * with none, fails every request.
     */
-  private final class Replayed(query: Option[String]) extends Provider {
+  private[reply] final class Replayed(query: Option[String]) extends Provider {
     def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] =
       query match {
         case None => Left(ProviderError.Unavailable("the turn recorded no query"))

@@ -13,7 +13,16 @@ import grit.core.id.{
   TurnRef,
   TurnSeq
 }
-import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, PeriodState, Verdict}
+import grit.core.period.{
+  Activity,
+  CloseOrdinal,
+  CloseReason,
+  Closing,
+  LifecycleSettings,
+  Period,
+  PeriodState,
+  Verdict
+}
 import grit.core.place.Place
 import grit.core.stitch.{Link, Placed, Said, StitchStore}
 import grit.core.store.{
@@ -57,7 +66,23 @@ final class AsOf private (
     val lifecycle: LifecycleStore,
     val search: EntrySearch,
     val stitches: StitchStore
-)
+) {
+
+  /** These stores, but for the lifecycle settings, read as `settings` whatever the database
+    * holds.
+    */
+  def settled(settings: LifecycleSettings): AsOf =
+    new AsOf(
+      at,
+      entries,
+      conversations,
+      periods,
+      principals,
+      new AsOf.Settled(lifecycle, settings),
+      search,
+      stitches
+    )
+}
 
 object AsOf {
 
@@ -81,6 +106,12 @@ object AsOf {
   private val Page = 500
 
   private def before(t: Instant, at: Instant): Boolean = t.isBefore(at)
+
+  private final class Settled(under: LifecycleStore, settings: LifecycleSettings)
+      extends LifecycleStore {
+    def current()(using Tx^): Either[StoreError, LifecycleSettings] = Right(settings)
+    def set(settings: LifecycleSettings)(using Tx^): Either[StoreError, Unit] = under.set(settings)
+  }
 
   private final class Entries(under: EntryStore, at: Instant) extends EntryStore {
     def insert(entry: Entry)(using Tx^): Either[StoreError, Unit] = under.insert(entry)
