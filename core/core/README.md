@@ -115,7 +115,8 @@ In dependency order:
 - **`recipe`** — what a call's input shows beyond its own thread: a `Pool` of `Source`s (the
   room's recent messages, its author's, the exchanges stitching offered) within a budget in
   characters, each kept in the `Section` its source names, and what a pool shows of what it
-  found, in its sources' order. Nothing in core imports it. ← `id`, `stitch`
+  found, in its sources' order; `RoomReads`, what a room said, as a pool reads it. Nothing in
+  core imports it. ← `id`, `place`, `store`, `stitch`
 - **`host`** — what a tool may do to the machine, as capabilities: `Workspace` (read, list,
   search), `Edits` (write, edit) and `Shell` (run), implemented in `grit.host`; and the pure
   rules they share: `RelPath` (a path that stays inside the checkout and names no secrets
@@ -155,7 +156,7 @@ No source file sits at core's root, and no two packages import each other in a c
 
 The test tree mirrors it: the in-memory fakes other modules' tests use are
 `store.InMemoryEntryStore`, `store.InMemoryUsageLedger`, `store.InMemoryModelProfileStore`,
-`store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore`, `store.InMemoryVoiceStore`, `plugin.InMemoryPlugins` and
+`store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore`, `store.InMemoryVoiceStore`, `recipe.InMemoryRoomReads`, `plugin.InMemoryPlugins` and
 `durable.InMemoryDurable`; and `period.TestClosings` builds closings and balance lines.
 `TestTx` lives in package `grit.dbos.sql`, because the `null` it holds is legal only inside
 the DBOS quarantine (rule 6).

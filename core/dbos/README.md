@@ -13,7 +13,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   (what triage made of each heard message, deleted with its entry), `SqlTriageShadows` (what
   each declared shadow variant made of a heard message, `grit.triage_shadows`, deleted with its
   entry), `SqlSpeechStore` (each
-  heard message's reach, and grit's decisions to speak or not, kept with their period's usage).
+  heard message's reach, and grit's decisions to speak or not, kept with their period's usage),
+  `SqlRoomReads` (what a room said before a time, as a pool reads it).
   Imports nothing else in dbos.
 - **`workflow`** — DBOS behind `Durable`: `DbosDurable`, `DurableWorkflow` (registers a
   body under the fixed class name `grit.workflow`, so moving it strands no workflow row, and

@@ -17,6 +17,9 @@ final class InMemoryPrincipals extends Principals {
   /** Records that `by` wrote the inbound entry `entry`. */
   def authored(entry: EntryId, by: PrincipalId): Unit = authors = authors.updated(entry, by)
 
+  /** Who [[authored]] `entry`, if anyone. */
+  def author(entry: EntryId): Option[PrincipalId] = authors.get(entry)
+
   def enroll(id: PrincipalId, name: String)(using Tx^): Either[StoreError, Unit] =
     Principals.refusal(id, name) match {
       case Some(why) => Left(why)
