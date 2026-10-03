@@ -53,7 +53,10 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   `consider` whether grit drafts a reply (`Speak`, over `grit.core.speech`) and, when it does,
   `start` the heard message's own turn (ADR 0022). A classifier that fails leaves unanswered
   tags, and no draft. It writes no entry, so it never moves a deadline. `TriageEnv` is what
-  it works with. ← `transcript`
+  it works with. `TriageQuestions` is a question set over the same state: named questions,
+  one per `grit.core.triage.KnowledgeSource` covering the conversation where it asks so,
+  their answers kept raw under their names, and the `Gate` a draft is derived from;
+  `TriageQuestions.V2` is the proposed one. Live triage never asks one. ← `transcript`
 - **`shadow`** — `Shadow`: a declared variant's run on a heard message already triaged,
   recorded and never acted on, on a queue of its own (`grit.dbos.workflow.Shadows`), so it
   never delays a triage: `ask` rebuilds triage's question as `triage` builds it, from the
