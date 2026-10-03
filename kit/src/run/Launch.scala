@@ -15,7 +15,6 @@ import grit.core.place.Weight
 import grit.core.stitch.StitchReads
 import grit.core.store.{Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
-import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.Engine
 import grit.digest.Digest
 import grit.kit.deployment.{Assembly, Deployment, Offered, Topics}
@@ -225,7 +224,7 @@ private[grit] object Launch {
             engine.rooms,
             engine.shadows,
             variants(d, s),
-            KnowledgeSources.Empty,
+            d.knowledge,
             engine.db,
             Clock.system(),
             grit.core.stitch.Tuning.Default

@@ -5,21 +5,31 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.id.{PeriodRef, PeriodSeq, PrincipalId, ShadowName, SourceId, TriageRef}
+import grit.core.id.{
+  KnowledgeSourceName,
+  PeriodRef,
+  PeriodSeq,
+  PrincipalId,
+  QuestionName,
+  ShadowName,
+  SourceId,
+  TriageRef
+}
 import grit.core.message.Tokens
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
+import grit.core.place.{Namespace, Place}
 import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Entry, Origin, StoreError, Tx}
-import grit.core.triage.{ShadowAnswers, Shadowed}
+import grit.core.triage.{KnowledgeSource, KnowledgeSources, ShadowAnswers, Shadowed}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
 import grit.kit.environment.Secrets
 import grit.kit.run.Launch
 import grit.lifecycle.shadow.{ShadowQuestion, ShadowVariant}
-import grit.lifecycle.triage.TriageQuestion
+import grit.lifecycle.triage.{TriageQuestion, TriageQuestions}
 import grit.models.StubClassifier
 import grit.turn.{Turn, TurnLoop}
 
@@ -39,7 +49,10 @@ object ShadowLaunchLiveTests extends TestSuite {
       None
     )
 
-  private def deployment(shadows: Vector[ShadowVariant]): Deployment =
+  private def deployment(
+      shadows: Vector[ShadowVariant],
+      knowledge: KnowledgeSources = KnowledgeSources.Empty
+  ): Deployment =
     Deployment
       .of(
         edges = Vector.empty,
@@ -53,7 +66,8 @@ object ShadowLaunchLiveTests extends TestSuite {
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = Speaking.Off,
         sweep = 30.seconds,
-        shadows = shadows
+        shadows = shadows,
+        knowledge = knowledge
       )
       .fold(r => sys.error(r.message), identity)
 
@@ -85,9 +99,13 @@ object ShadowLaunchLiveTests extends TestSuite {
 
   /** A message heard in `here` on an engine launched for `d` over `config`, once its triage
     * has kept its tags: its entry, the names of its triage's steps as DBOS recorded them, and
-    * what `Words` made of it once a sweep has enqueued its shadow and it has ended.
+    * what shadow `name` made of it once a sweep has enqueued its shadow and it has ended.
     */
-  private def heard(config: DbConfig, d: Deployment): (Entry, Vector[String], Option[Shadowed]) = {
+  private def heard(
+      config: DbConfig,
+      d: Deployment,
+      name: ShadowName = Words
+  ): (Entry, Vector[String], Option[Shadowed]) = {
     val engine = LiveEngine.open(config, Turn.Epoch)
     try {
       Launch(engine, d, secrets(config, d), Launch.Run.Served, sweeping = false, _ => ())
@@ -110,7 +128,7 @@ object ShadowLaunchLiveTests extends TestSuite {
       (
         entry,
         steps(config, grit.core.id.WorkflowId.value(triage)),
-        right(engine.db.read(engine.shadows.of(Words, Vector(entry.id)))).get(entry.id)
+        right(engine.db.read(engine.shadows.of(name, Vector(entry.id)))).get(entry.id)
       )
     } finally engine.close()
   }
@@ -164,6 +182,44 @@ object ShadowLaunchLiveTests extends TestSuite {
           (requested, answered, worded) ==> ("jev-variant", StubClassifier.Model, Some(4))
         case other => throw new java.lang.AssertionError(s"not answered: $other")
       }
+    }
+
+    test(
+      "a declared question set's shadow asks the deployment's knowledge sources covering the conversation, each answer under its name"
+    ) {
+      val asks = ShadowName.of("asks").getOrElse(sys.error("a name"))
+      def source(name: String, team: String) = KnowledgeSource(
+        KnowledgeSourceName.of(name).getOrElse(sys.error("a name")),
+        s"the $name of team $team",
+        Place.under(Namespace.Slack, Vector(team))
+      )
+      val catalog = KnowledgeSources
+        .of(Vector(source("wiki", "T2"), source("github", "T1")))
+        .getOrElse(sys.error("a catalog"))
+      val variant = ShadowVariant(
+        asks,
+        ShadowQuestion.Named(TriageQuestions.V2),
+        None,
+        DailyCap.of("0.01").getOrElse(sys.error("a cap")),
+        Instant.EPOCH
+      )
+      val (_, _, kept) = heard(
+        TestPostgres.freshDatabase("shadow_named"),
+        deployment(Vector(variant), catalog),
+        asks
+      )
+      kept.map {
+        case Shadowed.Answered(_, ShadowAnswers.Named(answers), _, requested, _, _) =>
+          Right((answers.keys.toVector.map(QuestionName.value), requested))
+        case other => Left(other)
+      } ==> Some(
+        Right(
+          (
+            Vector("gap", "open", "to", "durable", "anchor", "source:github"),
+            StubClassifier.Model
+          )
+        )
+      )
     }
   }
 }

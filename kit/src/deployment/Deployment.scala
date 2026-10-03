@@ -11,6 +11,7 @@ import grit.core.place.{Reaches, WorksIn}
 import grit.core.plugin.Plugin
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
+import grit.core.triage.KnowledgeSources
 import grit.lifecycle.shadow.ShadowVariant
 import grit.turn.TurnLoop
 
@@ -101,7 +102,8 @@ enum DeploymentRefusal {
   * keeps), what its turns are offered and how their windows are assembled, how messages are
   * placed among topics, the lifecycle's settings, what it may spend a day, whether and within
   * what it speaks where it was not addressed (ADR 0022), the shadows of triage's question it
-  * records beside live triage ([[ShadowVariant]]), and how often its engine sweeps. The
+  * records beside live triage ([[ShadowVariant]]), the knowledge sources its shadows'
+  * question sets ask about ([[KnowledgeSources]]), and how often its engine sweeps. The
   * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
@@ -119,7 +121,8 @@ final case class Deployment private (
     speaking: Speaking,
     sweep: FiniteDuration,
     reaches: Vector[Reaches],
-    shadows: Vector[ShadowVariant]
+    shadows: Vector[ShadowVariant],
+    knowledge: KnowledgeSources
 )
 
 object Deployment {
@@ -147,7 +150,8 @@ object Deployment {
       speaking: Speaking,
       sweep: FiniteDuration,
       reaches: Vector[Reaches] = Vector.empty,
-      shadows: Vector[ShadowVariant] = Vector.empty
+      shadows: Vector[ShadowVariant] = Vector.empty,
+      knowledge: KnowledgeSources = KnowledgeSources.Empty
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filterNot(_.answersAsks).map(_.name)
@@ -190,7 +194,8 @@ object Deployment {
       speaking,
       sweep,
       reaches,
-      shadows
+      shadows,
+      knowledge
     )
   }
 }
