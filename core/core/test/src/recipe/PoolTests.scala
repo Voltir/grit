@@ -124,5 +124,27 @@ object PoolTests extends TestSuite {
           "Ben, 20 minutes before: the contract term?\nAna, 5 minutes before: standup at 10"
       )
     }
+
+    test("an exchange whose opening an earlier source kept shows its record line alone") {
+      val opening = said("o", "Ben", 20, "the contract term?")
+      val channel = Source.Channel(1.hour, 5)
+      val pool = Pool(Vector(channel, Source.Exchanges), 1_000)
+      val nearby = "nearby_in_channel" -> "Ben, 20 minutes before: the contract term?"
+      shown(
+        pool,
+        none.copy(
+          said = Vector(opening),
+          offered = Vector(Offered(opening, Some("term: 3 years"), false))
+        )
+      ) ==> Vector(
+        nearby,
+        "exchanges_in_channel" -> "Record of the exchange Ben opened 20 minutes before: term: 3 years"
+      )
+      shown(
+        pool,
+        none.copy(said = Vector(opening), offered = Vector(Offered(opening, None, false)))
+      ) ==>
+        Vector(nearby)
+    }
   }
 }

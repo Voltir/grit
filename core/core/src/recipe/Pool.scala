@@ -22,9 +22,16 @@ object Pool {
   val LineChars = 160
 
   /** One thing a pool may keep: its section, the entry it shows (an exchange followed shows
-    * none), its text, and where it falls in its section.
+    * none), its text, where it falls in its section, and what is kept `instead` when an
+    * earlier source kept its entry.
     */
-  private final case class Piece(section: Section, entry: Option[EntryId], text: String, rank: Rank)
+  private final case class Piece(
+      section: Section,
+      entry: Option[EntryId],
+      text: String,
+      rank: Rank,
+      instead: Option[Piece] = None
+  )
 
   /** A section's order: messages by when they were said, exchanges as offered. */
   private type Rank = (Instant, String, Int)
@@ -38,7 +45,8 @@ object Pool {
     *     exchange's lines together, is kept while every kept one's text, and one newline each,
     *     fits in `budget`; one that does not fit is skipped and the next tried.
     *   - An entry several sources find is kept once, under the first; an exchange whose opening
-    *     an earlier source kept is not kept.
+    *     an earlier source kept is kept as its record line alone, `Record of the exchange
+    *     {speaker} opened {age} before: {headline}`, and not at all when it has no record.
     *   - Within a section, messages oldest first, each `{speaker}, {age} before: {words}` (`{age}`
     *     in its largest whole unit: "1 minute", "3 hours");
     *     exchanges as offered, each `Exchange opened {age} before by {speaker}: {words}`, then
@@ -78,11 +86,19 @@ object Pool {
           )
         )
       else {
+        val age = ago(o.opening.at)
         val opened =
-          s"Exchange opened ${ago(o.opening.at)} before by ${o.opening.speaker}: " +
-            o.opening.text.take(LineChars)
+          s"Exchange opened $age before by ${o.opening.speaker}: " + o.opening.text.take(LineChars)
         val record = o.record.fold("")(h => s"\n  Record: ${h.take(LineChars)}")
-        Some(Piece(Section.Exchanges, Some(o.opening.entry), opened + record, rank))
+        val recordAlone = o.record.map(h =>
+          Piece(
+            Section.Exchanges,
+            None,
+            s"Record of the exchange ${o.opening.speaker} opened $age before: ${h.take(LineChars)}",
+            rank
+          )
+        )
+        Some(Piece(Section.Exchanges, Some(o.opening.entry), opened + record, rank, recordAlone))
       }
     }
     val found = pool.sources.flatMap {
@@ -91,10 +107,12 @@ object Pool {
       case Source.Exchanges => exchanges
     }
     val (kept, _, _) = found.foldLeft((Vector.empty[Piece], Set.empty[EntryId], 0)) {
-      case ((kept, seen, used), u) =>
-        val cost = used + u.text.length + 1
-        if (u.entry.exists(seen) || cost > pool.budget) (kept, seen, used)
-        else (kept :+ u, seen ++ u.entry, cost)
+      case ((kept, seen, used), found) =>
+        val piece = if (found.entry.exists(seen)) found.instead else Some(found)
+        piece.filter(u => used + u.text.length + 1 <= pool.budget) match {
+          case Some(u) => (kept :+ u, seen ++ u.entry, used + u.text.length + 1)
+          case None => (kept, seen, used)
+        }
     }
     VectorMap.from(pool.sources.map(_.section).distinct.flatMap { section =>
       val lines = kept.filter(_.section == section).sortBy(_.rank).map(_.text)
