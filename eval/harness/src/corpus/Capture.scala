@@ -182,7 +182,7 @@ object Capture {
     }
 
   /** `e`'s kind: a store's error can quote what it was given, so its words are never kept. */
-  private[corpus] def kind(e: StoreError): String = e match {
+  private[harness] def kind(e: StoreError): String = e match {
     case StoreError.DuplicateId(_) => "duplicate id"
     case StoreError.DatabaseError(_) => "database error"
     case StoreError.Invalid(_) => "invalid"

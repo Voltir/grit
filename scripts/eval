@@ -149,6 +149,22 @@
 #       every turn, by root and by where said; then one line a turn by workflow, most costly
 #       first, with its top 3 parts by support. Text-free; reads no database.
 #
+#   scripts/eval rebuild <yyyymmdd> --spend <usd> [--window <tokens>] [--tail <tokens>]
+#       Every turn grit_eval_<date> recorded, its window rebuilt by the shipped retrieval
+#       assembler over the database as it stood when the turn's assemble step started (rows
+#       written later left out), its search query replayed from the one it recorded, so it
+#       spends nothing; and how each stands to the window it recorded, by ids: the same, a
+#       section from elsewhere changed, its own entries changed, both, or gone (an entry it
+#       showed was purged). Then each window-only case: a heard message live triage read as
+#       asking (gap: asks) that no turn answered, its window rebuilt as of triage's answer, its
+#       query written by the catalog's query model through OpenRouter and kept in
+#       .local/eval/cache/, so an unchanged one is never paid for twice. --spend is a hard cap
+#       in USD: refused before any call when the writes not kept are estimated over it, each
+#       call past it skipped. The assembler has grit's default window and tail unless --window
+#       or --tail names the deployment's. OpenRouter's key is OPENROUTER_API_KEY, from the
+#       environment over GRIT_ENV_FILE (the main checkout's .env when unset), read only when a
+#       write is to be asked. Prints counts and workflow ids, never text.
+#
 # Its data is the main checkout's .local/eval/, whichever checkout runs it. It never writes
 # to the database it dumps.
 set -euo pipefail
@@ -347,6 +363,18 @@ turns() {
   harness turns --eval "$main/.local/eval" --corpus "$corpus"
 }
 
+rebuild() {
+  local corpus=${1:-}
+  [[ $corpus =~ ^[0-9]{8}$ ]] || usage
+  shift
+  local dir="$main/.local/eval/corpus/$corpus" restored="grit_eval_$corpus"
+  [ -f "$dir/corpus.json" ] || { echo "eval: no corpus in $dir" >&2; exit 1; }
+  exists "$restored" || { echo "eval: $restored is gone; capture the corpus again" >&2; exit 1; }
+  export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
+  harness rebuild --corpus "$dir" --url "jdbc:postgresql://localhost:5432/$restored" \
+    --cache "$main/.local/eval/cache" "$@"
+}
+
 reply_labels() {
   local file=${1:-}
   [ -n "$file" ] && [ $# -eq 1 ] || usage
@@ -359,6 +387,7 @@ case $1 in
   replies) shift; replies "$@" ;;
   reply-labels) shift; reply_labels "$@" ;;
   turns) shift; turns "$@" ;;
+  rebuild) shift; rebuild "$@" ;;
   pull) shift; pull "$@" ;;
   order) shift; order "$@" ;;
   score) shift; score "$@" ;;

@@ -12,8 +12,10 @@ import scala.util.control.NonFatal
 
 import grit.core.classify.Answer
 import grit.core.clock.{Clock, Fresh}
+import grit.core.context.Width
 import grit.core.id.{QuestionName, ShadowName, WorkflowId}
 import grit.core.message.Tokens
+import grit.core.provider.Provider
 import grit.core.triage.KnowledgeSources
 import grit.dbos.engine.{Build, Reader}
 import grit.dbos.sql.DbConfig
@@ -63,7 +65,7 @@ import grit.eval.harness.log.{
   Weights
 }
 import grit.eval.harness.pull.{Pull, ShadowLog}
-import grit.eval.harness.reply.ReplyReview
+import grit.eval.harness.reply.{Assembled, Queries, Rebuild, ReplyReview, WindowOnly}
 import grit.eval.harness.report.{Report, Scored}
 import grit.eval.harness.run.{Call, Repeats, Run}
 import grit.eval.harness.score.{
@@ -84,6 +86,7 @@ import grit.kit.environment.DotEnv
 import grit.lifecycle.triage.TriageRecipe
 import grit.models.JevClassifier
 import grit.models.JevConfig
+import grit.models.{OpenRouterConfig, OpenRouterProvider, Seed}
 
 /** The eval harness's command line, run through `scripts/eval`, which says what each command
   * takes. It prints counts, ids and field names, never a message's text.
@@ -116,6 +119,7 @@ object Main {
         )
       case "reply-labels" :: rest => exit(flags(rest).flatMap(replyLabels))
       case "turns" :: rest => exit(flags(rest).flatMap(turns))
+      case "rebuild" :: rest => exit(flags(rest).flatMap(rebuild))
       case "compare" :: rest =>
         flags(rest).flatMap(f =>
           if (f.contains("gate")) drafts(f).map(_ => 0) else compare(f)
@@ -128,7 +132,7 @@ object Main {
         exit(
           Left(
             "usage: scripts/eval capture|run|determinism|inputs|score|compare|order|pull|" +
-              "replies|reply-labels|turns " +
+              "replies|reply-labels|turns|rebuild " +
               "(scripts/eval says what each takes)"
           )
         )
@@ -292,6 +296,101 @@ object Main {
         if (!Files.exists(file)) Right(Verdicts.Empty) else read(file).flatMap(Verdicts.read)
       }
       _ <- publish(dir, s"turns-$corpus", Report.turns(corpus, captured, standing))
+    } yield ()
+
+  /** `rebuild --corpus <dir> --url <jdbc> --cache <dir> --spend <usd> [--window <tokens>]
+    * [--tail <tokens>]`: every turn the restored database recorded before its dump, its window
+    * rebuilt as of its assembly by the shipped assembler ([[Rebuild.recorded]], its query
+    * replayed) and set against the one it recorded ([[Rebuild.report]]); then every window-only
+    * case ([[WindowOnly]]), its query written by the seed catalog's query model through
+    * OpenRouter, each answer kept under `<cache>` so it is paid for once, under the `--spend`
+    * cap in USD: refused before any call when the writes not kept are estimated over it
+    * ([[Queries.Usd]] each), and each call past it skipped. The assembler is built with grit's
+    * own window and tail ([[Assembled.Shipped]]) unless `--window` or `--tail` names the
+    * deployment's. OpenRouter's key comes from the environment over `GRIT_ENV_FILE` (`.env`
+    * when unset), read only when a write is to be asked; the database's login from
+    * `GRIT_DATABASE_USER` and `_PASSWORD`. Prints counts and workflow ids, never text.
+    */
+  private def rebuild(f: Map[String, String]): Either[String, Unit] =
+    for {
+      dir <- need(f, "corpus").map(Path.of(_))
+      url <- need(f, "url")
+      cap <- need(f, "spend").flatMap(decimal("spend"))
+      cacheDir <- need(f, "cache").map(Path.of(_))
+      store = Cache.at[String](cacheDir)(using Queries.text)
+      window <- f
+        .get("window")
+        .fold(Right(Assembled.Shipped.window))(positive("window")(_).map(Tokens(_)))
+      tail <- f.get("tail").fold(Right(Assembled.Shipped.tail))(positive("tail")(_).map(Tokens(_)))
+      assembled = Assembled.Shipped.copy(window = window, tail = tail)
+      manifest <- read(dir.resolve("corpus.json")).flatMap(t =>
+        Try(ujson.read(t)).toOption
+          .toRight("corpus.json: not JSON")
+          .flatMap(CorpusJson.readManifest)
+      )
+      until = manifest.dump.at
+      env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
+      config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      _ <- opened(config) { reader =>
+        for {
+          workflows <- reader.turns(until).left.map(_ => "turn workflows unread")
+          rebuilt = workflows.map((w, _) =>
+            w -> Rebuild.recorded(reader, w, assembled, Width.Deployed)
+          )
+          only <- WindowOnly.all(reader, until)
+          asked <- Fields.each(only)(w =>
+            WindowOnly.asked(reader, w, assembled, Width.Deployed).map(w -> _)
+          )
+          requests = asked.flatMap(_._2)
+          pins <- Seed.catalog.map(_.pin)
+          // The writer's settings name its model, so they key its answers; the key itself is
+          // read only when a write is to be asked.
+          keyless = OpenRouterConfig.of("", pins.query)
+          estimated = Queries.estimate(requests, keyless, store)
+          _ = println(
+            s"window-only cases: ${only.size}; queries to write: ${requests.distinct.size}, " +
+              s"estimated $$$estimated, cap $$$cap"
+          )
+          budget <- Budget
+            .of(cap, estimated)
+            .left
+            .map(r => s"refused: estimated $$${r.estimated} is over the cap $$${r.cap}")
+          writer <-
+            if (estimated == 0) Right(None)
+            else
+              OpenRouterConfig
+                .key(env)
+                .left
+                .map(_.message)
+                .map(k => Some(OpenRouterConfig.of(k, pins.query)))
+          answered = {
+            val asking: Provider^ = writer match {
+              case Some(c) => new OpenRouterProvider(c)
+              case None => Queries.unasked()
+            }
+            Queries.answer(requests, keyless, store, asking, budget, Clock.system())
+          }
+          windows = asked.map((w, _) =>
+            w -> WindowOnly.window(reader, w, assembled, answered.answers, Width.Deployed)
+          )
+        } yield {
+          Rebuild.report(rebuilt).foreach(println)
+          println(
+            s"queries: asked ${answered.asked}, cached ${answered.cached}, skipped " +
+              s"${answered.skipped}, failed ${answered.failed}; spent $$${answered.budget.spent}"
+          )
+          val built = windows.flatMap(_._2.toOption)
+          println(
+            s"window-only windows: built ${built.size}, failed ${windows.count(_._2.isLeft)}; " +
+              s"with sections from elsewhere ${built.count(_.nearby.nonEmpty)}, " +
+              s"own entries ${built.map(_.entries.size).sum}"
+          )
+          windows.foreach {
+            case (w, Left(why)) => println(s"  not built: ${WindowOnly.id(w)}: $why")
+            case (_, Right(_)) => ()
+          }
+        }
+      }
     } yield ()
 
   /** The turns of the corpus in `dir`, from `turns.jsonl`. */

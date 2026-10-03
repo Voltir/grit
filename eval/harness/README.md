@@ -6,14 +6,17 @@ through `scripts/eval`, never from a test or `scripts/check`, and its tests test
 instrument, not a model.
 
 It names grit's code alone (core, `grit.dbos`'s `Reader`, the turn's reading of its records,
-the assembler's estimate and the lifecycle's builders), but for the kit's `.env` loader
-(`DotEnv`), through which a run reads Jev's key as grit does.
+the assembler's estimate and the shipped retrieval assembler, the lifecycle's builders, and
+the models' Jev and OpenRouter clients), but for the kit's `.env` loader (`DotEnv`), through
+which a run reads Jev's key, and a rebuild OpenRouter's, as grit does.
 
 Every file it writes is text-free (ids, digests, numbers, lengths and field names) but the
 files for a person to read: the review file `scripts/eval inputs` writes under
 `.local/eval/review/`, and the reply reviews `scripts/eval replies` writes under
-`.local/eval/replies/`, which print only ids and counts unless asked to show the file. A
-corpus's text stays in Postgres, in the database the corpus was restored to.
+`.local/eval/replies/`, which print only ids and counts unless asked to show the file; and
+the search queries a rebuild's window-only cases had written, each kept in the cache under
+its request's key and never printed. A corpus's text stays in Postgres, in the database the
+corpus was restored to.
 
 Packages, each importing only those above it:
 
@@ -82,7 +85,15 @@ Packages, each importing only those above it:
   answers, its reply's text, and at most three of its window's parts best supported first,
   cut at 800 characters, never the turn's own thread, a tool result, reasoning or the query;
   rendered as a file of label stubs, and the labels read back from it once filled.
-  ← `corpus`, `label`
+  `Rebuild`, a recorded turn's window drawn again by the shipped retrieval assembler, built as
+  `Assembled` says, at a `Width`, over `AsOf`: the restored database's stores as they stood
+  when the turn's `assemble` step started (rows written later left out, the periods open
+  elsewhere and the closings kept as they were then), its query replayed from the one it
+  recorded; `Drift`, the rebuilt window against the recorded one by ids (same, a section from
+  elsewhere changed, own entries changed, both, or gone to a purge). `WindowOnly`, a heard
+  message live triage read as asking that no turn answered, its window rebuilt as of
+  triage's answer; `Queries`, its query writes, each kept in a `Cache` under its request's
+  key and asked under a `Budget`. ← `corpus`, `label`, `log`, `jev`
 - **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
   (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
   kept, within the cap; `Repeats`, how many times each is asked. ← `corpus`, `log`, `jev`
