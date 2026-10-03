@@ -124,10 +124,8 @@ object TurnCaptureTests extends TestSuite {
   }
 
   /** V2's `gap` choosing `asks`, which the stub classifier answers from `~back:asks`. */
-  private val asks = grit.core.triage.Gate(
-    Vector(
-      Bound.AtLeast(Reading.Key(right(QuestionName.of("gap")), "asks"), Probability.clamped(0.5))
-    )
+  private val asks = grit.core.triage.Gate.bounds(
+    Bound.AtLeast(Reading.Key(right(QuestionName.of("gap")), "asks"), Probability.clamped(0.5))
   )
 
   private def launch(engine: Engine^): Unit = {

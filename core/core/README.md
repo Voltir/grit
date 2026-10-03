@@ -81,8 +81,9 @@ In dependency order:
   `Shadowed` (what one variant made of one message: its `ShadowAnswers`, a wording's in
   order or a question set's under their names) and `TriageShadows`, where those are
   kept beside the entry and deleted with it; `KnowledgeSources`, a deployment's catalog of
-  what could supply what a message asks for, each covering a place; and `Gate`, the bounds
-  on a question set's answers a draft is derived from, each on a `Reading` of one answer.
+  what could supply what a message asks for, each covering a place; and `Gate`, a test of a
+  question set's answers that explains every failure (a `Bound` on a `Reading` of one answer,
+  every one of some gates, or any one of them), which a draft is derived from.
   ← `id`, `message`,
   `place`, `period`, `store`, `spend`, `classify`
 - **`speech`** — whether grit speaks where it was not addressed (ADR 0022): `Speaking` (off,

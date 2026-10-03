@@ -88,8 +88,8 @@ enum Silence {
     */
   case Gated(first: Gate.Failed, rest: Vector[Gate.Failed])
 
-  /** Triage's answers hold no answer of `reading`'s kind, which the gate reads before any
-    * bound fails, as for a message triaged by an earlier question set.
+  /** The gate could not decide without `reading`, which triage's answers do not answer in
+    * its kind ([[Gate.check]]), as for a message triaged by an earlier question set.
     */
   case Unasked(reading: Reading)
 

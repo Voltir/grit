@@ -114,7 +114,7 @@ object SpeechTests extends TestSuite {
       }
       test("a gate reading a question triage did not ask holds the message unasked") {
         val gap = QuestionName.of("gap").getOrElse(sys.error("a name"))
-        val unread = Gate(Vector(helpful, Bound.AtLeast(Reading.Key(gap, "asks"), half)))
+        val unread = Gate.bounds(helpful, Bound.AtLeast(Reading.Key(gap, "asks"), half))
         assert(
           decide(s = Speaking.Within(limits.copy(drafts = unread))) ==
             held(Silence.Unasked(Reading.Key(gap, "asks")))

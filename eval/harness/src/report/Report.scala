@@ -200,12 +200,6 @@ object Report {
       s"| $what | ${c.both.size} | ${c.aOnly.size} | ${c.bOnly.size} | ${c.neither.size} | ${agree(c)} |"
     val foci: Vector[(String, Option[Focus])] =
       Focus.values.toVector.map(f => f.toString.toLowerCase -> Some(f)) :+ ("focus unknown" -> None)
-    def bounds(g: Gate) = g.bounds
-      .map {
-        case Bound.AtLeast(on, p) => s"${reading(on)} ≥ ${num(Probability.value(p))}"
-        case Bound.Below(on, p) => s"${reading(on)} < ${num(Probability.value(p))}"
-      }
-      .mkString(", ")
     def side(which: String, s: Side) =
       s"$which: ${s.file}, variant ${s.log.header.variant}, model ${s.log.header.model}, set " +
         s"${s.set}, questions " +
@@ -222,10 +216,10 @@ object Report {
       "",
       "## Draft against live's",
       "",
-      s"A, live's draft by ${live.set}'s gate: ${bounds(live.gate)}. Triage's answers alone: " +
+      s"A, live's draft by ${live.set}'s gate: ${gate(live.gate)}. Triage's answers alone: " +
         "not live's speech decision, which also checks the address, freshness, who was " +
         "asked, the thread and the rate limits.",
-      s"B, $set's draft: ${bounds(shadow.gate)}.",
+      s"B, $set's draft: ${gate(shadow.gate)}.",
       "",
       s"| focus | both | live only | $set only | neither | agree |",
       "|---|---|---|---|---|---|"
@@ -284,6 +278,25 @@ object Report {
           "",
           s"verdicts on a case either gate could not decide, left out: ${j.undecided}"
         )
+    }
+  }
+
+  /** `g` as the report writes it: each bound as its reading `≥` or `<` its probability,
+    * every one of some joined by `∧`, any one of them by `∨`, each part joining two or more
+    * in parentheses; `everything` for the gate with none.
+    */
+  private[report] def gate(g: Gate): String = {
+    def part(p: Gate) = p match {
+      case Gate.All(gates) if gates.size > 1 => s"(${gate(p)})"
+      case Gate.AnyOf(_, rest) if rest.nonEmpty => s"(${gate(p)})"
+      case Gate.Holds(_) | Gate.All(_) | Gate.AnyOf(_, _) => gate(p)
+    }
+    g match {
+      case Gate.Holds(Bound.AtLeast(on, p)) => s"${reading(on)} ≥ ${num(Probability.value(p))}"
+      case Gate.Holds(Bound.Below(on, p)) => s"${reading(on)} < ${num(Probability.value(p))}"
+      case Gate.All(gates) if gates.isEmpty => "everything"
+      case Gate.All(gates) => gates.map(part).mkString(" ∧ ")
+      case Gate.AnyOf(first, rest) => (first +: rest).map(part).mkString(" ∨ ")
     }
   }
 

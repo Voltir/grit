@@ -56,7 +56,7 @@ object TriageQuestionsTests extends TestSuite {
         .of(
           Item.One(n("a"), yesNo("A?")),
           Vector(Item.PerSource(n("src"), "Could ", " help?"), Item.One(n("b"), yesNo("B?"))),
-          Gate(Vector.empty)
+          Gate.Open
         )
         .getOrElse(fail("set"))
       set.questions(catalog).toVector ==> Vector(
@@ -72,7 +72,7 @@ object TriageQuestionsTests extends TestSuite {
     }
 
     test("of refuses two items of one name, a One's name and a PerSource's prefix among them") {
-      val none = Gate(Vector.empty)
+      val none = Gate.Open
       TriageQuestions.of(
         Item.One(n("a"), yesNo("A?")),
         Vector(Item.One(n("a"), yesNo("B?"))),
@@ -92,7 +92,7 @@ object TriageQuestionsTests extends TestSuite {
           .of(
             Item.One(n("gap"), gap),
             Vector(Item.One(n("open"), yesNo("Open?")), Item.PerSource(n("source"), "", "")),
-            Gate(Vector(Bound.AtLeast(reading, half)))
+            Gate.bounds(Bound.AtLeast(reading, half))
           )
           .map(_ => ())
       val refused = Vector(
@@ -255,8 +255,8 @@ object TriageQuestionsTests extends TestSuite {
         TriageQuestions.V2.unread(TriageQuestions.V2.speak),
         TriageQuestions.V1.unread(TriageQuestions.V2.speak),
         TriageQuestions.V2.unread(TriageQuestions.V1.speak),
-        TriageQuestions.V1.unread(Gate(Vector(Bound.AtLeast(Reading.Chosen(kind, "maybe"), half)))),
-        TriageQuestions.V1.unread(Gate(Vector(Bound.AtLeast(Reading.Yes(kind), half))))
+        TriageQuestions.V1.unread(Gate.bounds(Bound.AtLeast(Reading.Chosen(kind, "maybe"), half))),
+        TriageQuestions.V1.unread(Gate.bounds(Bound.AtLeast(Reading.Yes(kind), half)))
       ) ==> Vector(
         None,
         None,

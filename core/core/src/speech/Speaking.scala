@@ -32,8 +32,8 @@ enum Speaking {
 }
 
 /** What a heard message and its draft must pass. A heard message: said at most `fresh` before
-  * the decision; triage's answers passing `drafts` ([[Gate.check]]; a gate reading a question
-  * triage did not ask holds the message, `Unasked`); at most `thread` posts per conversation,
+  * the decision; triage's answers passing `drafts` ([[Gate.check]]; a gate those answers
+  * cannot decide holds the message, `Unasked`); at most `thread` posts per conversation,
   * `room` per room ([[grit.core.store.Origin.room]]) and `deployment` in all; today's speech
   * spend under `spend`. A draft: its weakest judged score ([[Judged.score]]) at or above
   * `postAt`, and nobody having spoken since its root.

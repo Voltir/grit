@@ -31,7 +31,7 @@ object GateTests extends TestSuite {
     ) {
       // A gate that fails at Chosen below 0.5 shows what it read there.
       def read(reading: Reading, answer: Answer) =
-        Gate(Vector(Bound.Below(reading, p(0.0)))).check(VectorMap(kind -> answer)) match {
+        Gate.bounds(Bound.Below(reading, p(0.0))).check(VectorMap(kind -> answer)) match {
           case Gate.Checked.Fails(Gate.Failed(_, v), _) => Some(Probability.value(v))
           case _ => None
         }
@@ -49,12 +49,10 @@ object GateTests extends TestSuite {
     }
 
     test("check fails with every bound that fails, in order, each with what it read") {
-      val gate = Gate(
-        Vector(
-          Bound.Below(Reading.Chosen(kind, "chatter"), half),
-          Bound.AtLeast(Reading.Yes(helps), half),
-          Bound.Below(Reading.Yes(to), half)
-        )
+      val gate = Gate.bounds(
+        Bound.Below(Reading.Chosen(kind, "chatter"), half),
+        Bound.AtLeast(Reading.Yes(helps), half),
+        Bound.Below(Reading.Yes(to), half)
       )
       val answers = VectorMap[QuestionName, Answer](
         kind -> choice("chatter", "chatter" -> 0.9, "question" -> 0.1),
@@ -73,24 +71,26 @@ object GateTests extends TestSuite {
     }
 
     test(
-      "check is Unread at the first bound its answers do not answer in kind, unless a bound before it fails; drafts says so"
+      "check fails on a failing bound whether or not a bound before it is unread, and is Unread at the first unread bound only when none fails; drafts says so"
     ) {
-      val gate = Gate(
-        Vector(Bound.AtLeast(Reading.Yes(helps), half), Bound.AtLeast(Reading.Key(kind, "x"), half))
+      val gate = Gate.bounds(
+        Bound.AtLeast(Reading.Yes(helps), half),
+        Bound.AtLeast(Reading.Key(kind, "x"), half)
       )
-      val failsFirst = VectorMap[QuestionName, Answer](helps -> Answer.YesNo(0.25))
-      val unreadFirst = VectorMap[QuestionName, Answer](
+      // helps is answered as a choice, not a yes/no: unread. kind weighs x at 0: it fails.
+      val unreadThenFails = VectorMap[QuestionName, Answer](
         helps -> choice("x", "x" -> 1.0),
         kind -> choice("y", "y" -> 1.0)
       )
-      (gate.check(failsFirst), gate.drafts(failsFirst)) ==> (
+      val unreadThenPasses = unreadThenFails.updated(kind, choice("x", "x" -> 1.0))
+      (gate.check(unreadThenFails), gate.drafts(unreadThenFails)) ==> (
         Gate.Checked.Fails(
-          Gate.Failed(Bound.AtLeast(Reading.Yes(helps), half), p(0.25)),
+          Gate.Failed(Bound.AtLeast(Reading.Key(kind, "x"), half), p(0.0)),
           Vector.empty
         ),
         Some(false)
       )
-      (gate.check(unreadFirst), gate.drafts(unreadFirst)) ==>
+      (gate.check(unreadThenPasses), gate.drafts(unreadThenPasses)) ==>
         (Gate.Checked.Unread(Reading.Yes(helps)), None)
       val passing = VectorMap[QuestionName, Answer](
         helps -> Answer.YesNo(0.5),

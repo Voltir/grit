@@ -49,8 +49,8 @@ final case class TriageQuestions private (
   ): Either[ClassifierError, Answered[VectorMap[QuestionName, Answer]]] =
     classifier.ask(state, asked(sources))
 
-  /** The first of `gate`'s readings this set does not ask in its kind, or a `Key` or
-    * `Chosen` of a key its choice lacks; `None` when it asks them all.
+  /** The first of `gate`'s readings ([[Gate.reads]]) this set does not ask in its kind, or
+    * a `Key` or `Chosen` of a key its choice lacks; `None` when it asks them all.
     */
   def unread(gate: Gate): Option[Reading] = {
     val declared = items.collect { case Item.One(name, question) => name -> question }.toMap
@@ -59,16 +59,11 @@ final case class TriageQuestions private (
         case c: Question.Choice => choice(c)
         case Question.YesNo(_, _, _) => yesNo
       }
-    gate.bounds
-      .map {
-        case Bound.AtLeast(on, _) => on
-        case Bound.Below(on, _) => on
-      }
-      .find {
-        case Reading.Yes(name) => !asks(name, _ => false, yesNo = true)
-        case Reading.Key(name, key) => !asks(name, _.keys.exists(_.name == key), yesNo = false)
-        case Reading.Chosen(name, key) => !asks(name, _.keys.exists(_.name == key), yesNo = false)
-      }
+    gate.reads.find {
+      case Reading.Yes(name) => !asks(name, _ => false, yesNo = true)
+      case Reading.Key(name, key) => !asks(name, _.keys.exists(_.name == key), yesNo = false)
+      case Reading.Chosen(name, key) => !asks(name, _.keys.exists(_.name == key), yesNo = false)
+    }
   }
 
   /** Every question of [[questions]], each read back as given under its name; never empty,
@@ -230,13 +225,11 @@ object TriageQuestions {
             " supply what new_message asks for?"
           )
         ),
-        Gate(
-          Vector(
-            Bound.AtLeast(Reading.Key(gap, "asks"), half),
-            Bound.AtLeast(Reading.Yes(open), half),
-            Bound.Below(Reading.Yes(to), half),
-            Bound.Below(Reading.Yes(anchor), half)
-          )
+        Gate.bounds(
+          Bound.AtLeast(Reading.Key(gap, "asks"), half),
+          Bound.AtLeast(Reading.Yes(open), half),
+          Bound.Below(Reading.Yes(to), half),
+          Bound.Below(Reading.Yes(anchor), half)
         )
       ).left.map(_.toString)
     } yield set

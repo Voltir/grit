@@ -170,7 +170,7 @@ object DeploymentTests extends TestSuite {
           .of(
             Item.One(grit.core.triage.Earning.Durable, question),
             Vector.empty,
-            Gate(Vector.empty)
+            Gate.Open
           )
           .getOrElse(sys.error("a set"))
       val open = grit.core.id.QuestionName.of("open").getOrElse(sys.error("a name"))
@@ -178,7 +178,7 @@ object DeploymentTests extends TestSuite {
         .of(
           Item.One(open, grit.core.classify.Question.YesNo("?", None, None)),
           Vector.empty,
-          Gate(Vector.empty)
+          Gate.Open
         )
         .getOrElse(sys.error("a set"))
       val chosen = grit.core.classify.Question

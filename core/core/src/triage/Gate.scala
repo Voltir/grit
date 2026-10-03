@@ -1,6 +1,6 @@
 package grit.core.triage
 
-import scala.collection.immutable.VectorMap
+import scala.collection.immutable.{ListSet, VectorMap}
 
 import grit.core.classify.Answer
 import grit.core.id.QuestionName
@@ -60,29 +60,50 @@ enum Bound {
   }
 }
 
-/** Draft when every bound holds. */
-final case class Gate(bounds: Vector[Bound]) {
+/** A test of a question set's answers that explains every failure: one bound, every one of
+  * some gates, or any one of them. Built only from bounds, it reads nothing but the answers,
+  * and only the readings [[reads]] lists.
+  */
+enum Gate {
 
-  /** `answers` against every bound, in order: `Unread`, with the reading of the first bound
-    * `answers` do not answer in its question's kind, when no bound before it fails;
-    * otherwise `Fails`, with every bound they fail and what each read there (a bound unread
-    * after the first failure is passed over); `Passes` when every one holds.
-    */
-  def check(answers: VectorMap[QuestionName, Answer]): Gate.Checked = {
-    val read = bounds.map(b => b -> b.reading.in(answers))
-    def failed(from: Vector[(Bound, Option[Probability])]) =
-      from.collect { case (b, Some(v)) if !b.holds(v) => Gate.Failed(b, v) }
-    read.zipWithIndex
-      .collectFirst {
-        case ((b, None), _) => Gate.Checked.Unread(b.reading)
-        case ((b, Some(v)), i) if !b.holds(v) =>
-          Gate.Checked.Fails(Gate.Failed(b, v), failed(read.drop(i + 1)))
-      }
-      .getOrElse(Gate.Checked.Passes)
+  /** Passes where `bound` holds. */
+  case Holds(bound: Bound)
+
+  /** Passes where every one of `gates` passes; with none, passes everything. */
+  case All(gates: Vector[Gate])
+
+  /** Passes where `first` or any of `rest` passes. */
+  case AnyOf(first: Gate, rest: Vector[Gate])
+
+  /** Every reading its bounds read, each once, in the order its bounds are written. */
+  def reads: ListSet[Reading] = this match {
+    case Holds(bound) => ListSet(bound.reading)
+    case All(gates) => gates.foldLeft(ListSet.empty[Reading])(_ ++ _.reads)
+    case AnyOf(first, rest) => rest.foldLeft(first.reads)(_ ++ _.reads)
   }
 
-  /** [[check]] as a draft: `Some(true)` when `answers` pass, `Some(false)` when a bound
-    * fails before any is unread, `None` when one is unread first.
+  /** `answers` against it, by one rule at every level. `Holds` is `Unread` when `answers` do
+    * not answer its reading in its question's kind. `All` `Fails` when any part fails, and
+    * `AnyOf` when every part fails, with every bound its parts failed, in order, and what
+    * each read; `All` `Passes` when every part passes, and `AnyOf` when any part does.
+    * Otherwise `Unread`, with its first unread part's reading. Answering more never turns
+    * `Passes` or `Fails` into anything else.
+    */
+  def check(answers: VectorMap[QuestionName, Answer]): Gate.Checked = this match {
+    case Holds(bound) =>
+      bound.reading.in(answers) match {
+        case None => Gate.Checked.Unread(bound.reading)
+        case Some(read) if bound.holds(read) => Gate.Checked.Passes
+        case Some(read) => Gate.Checked.Fails(Gate.Failed(bound, read), Vector.empty)
+      }
+    case All(gates) =>
+      gates.foldLeft[Gate.Checked](Gate.Checked.Passes)((acc, g) => Gate.and(acc, g.check(answers)))
+    case AnyOf(first, rest) =>
+      rest.foldLeft(first.check(answers))((acc, g) => Gate.or(acc, g.check(answers)))
+  }
+
+  /** [[check]] as a draft: `Some(true)` on `Passes`, `Some(false)` on `Fails`, `None` on
+    * `Unread`.
     */
   def drafts(answers: VectorMap[QuestionName, Answer]): Option[Boolean] =
     check(answers) match {
@@ -93,6 +114,18 @@ final case class Gate(bounds: Vector[Bound]) {
 }
 
 object Gate {
+
+  /** Passes everything. */
+  val Open: Gate = All(Vector.empty)
+
+  /** Every one of these bounds, in order. */
+  def bounds(first: Bound, rest: Bound*): Gate = All((first +: rest.toVector).map(Holds(_)))
+
+  /** Every one of `gates`, in order. */
+  def all(gates: Gate*): Gate = All(gates.toVector)
+
+  /** Any one of these, in order. */
+  def either(first: Gate, second: Gate, rest: Gate*): Gate = AnyOf(first, second +: rest.toVector)
 
   /** `bound`, failed, reading `read` there. */
   final case class Failed(bound: Bound, read: Probability)
@@ -105,5 +138,22 @@ object Gate {
     case Fails(first: Failed, rest: Vector[Failed])
 
     case Unread(reading: Reading)
+  }
+
+  /** Two parts of an `All`, `earlier` and `later`, as one. */
+  private def and(earlier: Checked, later: Checked): Checked = (earlier, later) match {
+    case (Checked.Fails(first, rest), Checked.Fails(f, r)) => Checked.Fails(first, (rest :+ f) ++ r)
+    case (fails @ Checked.Fails(_, _), _) => fails
+    case (_, fails @ Checked.Fails(_, _)) => fails
+    case (unread @ Checked.Unread(_), _) => unread
+    case (Checked.Passes, other) => other
+  }
+
+  /** Two parts of an `AnyOf`, `earlier` and `later`, as one. */
+  private def or(earlier: Checked, later: Checked): Checked = (earlier, later) match {
+    case (Checked.Passes, _) | (_, Checked.Passes) => Checked.Passes
+    case (unread @ Checked.Unread(_), _) => unread
+    case (_, unread @ Checked.Unread(_)) => unread
+    case (Checked.Fails(first, rest), Checked.Fails(f, r)) => Checked.Fails(first, (rest :+ f) ++ r)
   }
 }

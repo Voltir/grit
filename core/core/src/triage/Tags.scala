@@ -40,11 +40,9 @@ object Tags {
     /** v1's gate: `kind`'s most weighted key not `chatter`, and `helps` at least 0.5. */
     val gate: Gate = {
       val half = Probability.clamped(0.5)
-      Gate(
-        Vector(
-          Bound.Below(Reading.Chosen(kind, Kind.written(Kind.Chatter)), half),
-          Bound.AtLeast(Reading.Yes(helps), half)
-        )
+      Gate.bounds(
+        Bound.Below(Reading.Chosen(kind, Kind.written(Kind.Chatter)), half),
+        Bound.AtLeast(Reading.Yes(helps), half)
       )
     }
 

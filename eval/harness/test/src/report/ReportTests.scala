@@ -5,9 +5,10 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.Answer
 import grit.core.id.{QuestionName, ShadowName}
 import grit.core.message.{Tokens, Usage}
+import grit.core.period.Probability
 import grit.core.review.Reason
 import grit.core.store.Focus
-import grit.core.triage.Kind
+import grit.core.triage.{Bound, Gate, Kind, Reading}
 import grit.eval.harness.corpus.Case
 import grit.eval.harness.label.{Context, Labelled, Labels}
 import grit.eval.harness.log.{Log, Row, Suite}
@@ -269,6 +270,24 @@ object ReportTests extends TestSuite {
         Vector("| kind: likeliest the same | 2 | 1.000 [—] g=2 | [—] g=2 | — |")
     }
 
+    test(
+      "a gate is written with every one of some parts joined by ∧, any one by ∨, each part joining two or more in parentheses"
+    ) {
+      def q(n: String) = QuestionName.read(n).fold(sys.error, identity)
+      def at(name: String, p: Double) =
+        Gate.Holds(Bound.AtLeast(Reading.Yes(q(name)), Probability.clamped(p)))
+      val below = Gate.Holds(Bound.Below(Reading.Key(q("gap"), "asks"), Probability.clamped(0.5)))
+      Vector(
+        Report.gate(Gate.all(at("a", 0.5), Gate.either(at("b", 0.2), at("c", 0.2)), below)),
+        Report.gate(Gate.either(Gate.all(at("a", 0.5), at("b", 0.5)), Gate.Open)),
+        Report.gate(Gate.Open)
+      ) ==> Vector(
+        "a ≥ 0.500 ∧ (b ≥ 0.200 ∨ c ≥ 0.200) ∧ gap.asks < 0.500",
+        "(a ≥ 0.500 ∧ b ≥ 0.500) ∨ everything",
+        "everything"
+      )
+    }
+
     test("a comparison lists by id the cases each question's decision moved") {
       // Durable .3 in A, .7 in B, for both cases: decided no, then yes, at .5; unlabelled.
       val report =
@@ -320,8 +339,8 @@ object ReportTests extends TestSuite {
         "A, live: live-20261003.jsonl, variant kept, model m, set v1, questions kind, helps",
         "B: shadow-v2.jsonl, variant shadow-v2, model m, set v2, questions gap, open",
         "answered by both: 5; undecided: 2 (a question a gate reads unanswered)",
-        "A, live's draft by v1's gate: kind=chatter < 0.500, helps ≥ 0.500. Triage's answers alone: not live's speech decision, which also checks the address, freshness, who was asked, the thread and the rate limits.",
-        "B, v2's draft: gap.asks ≥ 0.500, open ≥ 0.500, to < 0.500, anchor < 0.500.",
+        "A, live's draft by v1's gate: kind=chatter < 0.500 ∧ helps ≥ 0.500. Triage's answers alone: not live's speech decision, which also checks the address, freshness, who was asked, the thread and the rate limits.",
+        "B, v2's draft: gap.asks ≥ 0.500 ∧ open ≥ 0.500 ∧ to < 0.500 ∧ anchor < 0.500.",
         "| focus | both | live only | v2 only | neither | agree |",
         "|---|---|---|---|---|---|",
         "| open | 1 | 0 | 1 | 0 | 1 of 2 |",

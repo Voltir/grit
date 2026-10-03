@@ -24,7 +24,7 @@ object WindowOnly {
     QuestionName
       .of("gap")
       .toOption
-      .map(gap => Gate(Vector(Bound.AtLeast(Reading.Chosen(gap, "asks"), Probability.clamped(1)))))
+      .map(gap => Gate.bounds(Bound.AtLeast(Reading.Chosen(gap, "asks"), Probability.clamped(1))))
 
   /** Every such message `reader`'s database tagged before `until`, oldest tagged first. `Left`
     * naming what could not be read.

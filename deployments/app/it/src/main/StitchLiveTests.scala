@@ -41,13 +41,11 @@ object StitchLiveTests extends TestSuite {
   /** A gate the stub classifier can pass: V2's `gap` choosing `asks` (the stub answers every
     * yes/no alike, so V2's own gate, which needs `open` high and `to` low, holds everything).
     */
-  private val asks = grit.core.triage.Gate(
-    Vector(
-      grit.core.triage.Bound.AtLeast(
-        grit.core.triage.Reading
-          .Key(grit.core.id.QuestionName.of("gap").getOrElse(sys.error("a name")), "asks"),
-        grit.core.period.Probability.clamped(0.5)
-      )
+  private val asks = grit.core.triage.Gate.bounds(
+    grit.core.triage.Bound.AtLeast(
+      grit.core.triage.Reading
+        .Key(grit.core.id.QuestionName.of("gap").getOrElse(sys.error("a name")), "asks"),
+      grit.core.period.Probability.clamped(0.5)
     )
   )
 

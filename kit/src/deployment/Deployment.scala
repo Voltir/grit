@@ -269,7 +269,7 @@ object Deployment {
     */
   private[deployment] def earning(live: TriageQuestions): Either[DeploymentRefusal, Unit] =
     live
-      .unread(Gate(Vector(Bound.AtLeast(Reading.Yes(Earning.Durable), Earning.DurableAt))))
+      .unread(Gate.bounds(Bound.AtLeast(Reading.Yes(Earning.Durable), Earning.DurableAt)))
       .map(_ => DeploymentRefusal.DurableUnasked)
       .toLeft(())
 
