@@ -39,7 +39,12 @@ Packages, each importing only those above it:
   and its `Place`); and `Verdicts`, the verdict a review's rater left standing on a picked
   message (`Rated`: the shadow it was picked against, why, the verdict, the rater's id and
   when), as `pull` writes them. Labels judge the inputs a call was given, verdicts the speech
-  decision at its moment: the two are reported side by side, never merged. ← `corpus`
+  decision at its moment: the two are reported side by side, never merged. And replies'
+  labels, kept by the workflow of the turn that wrote each (`ReplyLabels`, read from and
+  written to `reply-labels.json`): each a `ReplyLabel` under a `ReplyGuide` this build knows,
+  of the reply's `Quality`, where its answer was `Found` (in records named by `Locator`, a
+  window part by ids alone, or the thread, elsewhere, nowhere, or nothing asked), and whether
+  grit should have spoken; a person's note is never read into one. ← `corpus`
 - **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the
   corpus, variant, build, cap and repeats a run was started with, and a question set's
   names), `Row` (one request: its case, digest, cache key, `Outcome`, usage, latency, and the
@@ -68,6 +73,12 @@ Packages, each importing only those above it:
   `.local/eval/review/`, the one file the harness writes text to, and prints only counts);
   `Spend`, what a request costs before it is sent, and `Budget`, a run's spend under its
   cap. ← `corpus`, `log`
+- **`reply`** — `ReplyReview`, a few turns' replies for a person to label: turns named or
+  picked (`Ask`, `By`), at most five, refused past that; each shown as the message it
+  answers, its reply's text, and at most three of its window's parts best supported first,
+  cut at 800 characters, never the turn's own thread, a tool result, reasoning or the query;
+  rendered as a file of label stubs, and the labels read back from it once filled.
+  ← `corpus`, `label`
 - **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
   (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
   kept, within the cap; `Repeats`, how many times each is asked. ← `corpus`, `log`, `jev`
