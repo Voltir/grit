@@ -101,7 +101,10 @@ Packages, each importing only those above it:
   model's context is refused), and what it is offered of its tools (`Offering`): a service's
   tools withheld when triage answered every knowledge source the service supplies below a
   line, the link from source to service given as `Supplies`, since grit keeps none.
-  ← `corpus`, `label`, `log`, `jev`
+  `Reference`, what turns' builds are expected to do, by ids alone (`Expect`: a window holds
+  what a locator names, a service's tools are offered, or withheld), from a person's reply
+  labels (an answer found in records shown) and a hand-written file, each turn `Judged` under
+  a variant. ← `corpus`, `label`, `log`, `jev`
 - **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
   (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
   kept, within the cap; `Repeats`, how many times each is asked. ← `corpus`, `log`, `jev`
