@@ -174,7 +174,8 @@ object TurnCaptureTests extends TestSuite {
             engine.lifecycle,
             Tuning.Default,
             engine.placements
-          )
+          ),
+          grit.turn.TurnWeighing(engine.triage)
         ),
         tooling
       ),

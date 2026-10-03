@@ -44,6 +44,7 @@ object TurnTests extends TestSuite {
   private val AllSteps: Vector[String] =
     Vector(
       "pin-models",
+      "weigh",
       "offer",
       "stitched",
       "stitch",
@@ -69,10 +70,11 @@ object TurnTests extends TestSuite {
   /** What a turn records: its steps, each patch's marker before the steps it brought. */
   private val Recorded: Vector[String] =
     Always
-      .patch(2, Vector("DBOS.patch-stitch-in-room-order"), 0)
-      .patch(4, Vector("DBOS.patch-topics"), 0)
-      .patch(8, Vector("DBOS.patch-record-window"), 0)
-      .patch(10, Vector("DBOS.patch-tools"), 0)
+      .patch(1, Vector("DBOS.patch-weigh"), 0)
+      .patch(4, Vector("DBOS.patch-stitch-in-room-order"), 0)
+      .patch(6, Vector("DBOS.patch-topics"), 0)
+      .patch(10, Vector("DBOS.patch-record-window"), 0)
+      .patch(12, Vector("DBOS.patch-tools"), 0)
 
   /** The seq of `entries`' entry `id`, which the test wrote. */
   private def seqOf(entries: InMemoryEntryStore, id: EntryId): EntrySeq =
@@ -83,7 +85,7 @@ object TurnTests extends TestSuite {
       .fold(sys.error(s"no entry ${EntryId.value(id)}"))(_.seq)
 
   /** How many of [[Recorded]] come before `assemble`. */
-  private val Placing = 7
+  private val Placing = 9
 
   val tests = Tests {
     test("the window is assembled at the width the recipe gives the turn's root") {
@@ -136,7 +138,8 @@ object TurnTests extends TestSuite {
     test("the step names are the recorded ones, and a running turn is in the next") {
       Turn.Step.all ==> AllSteps
       Turn.running(Vector.empty) ==> "pin-models"
-      Turn.running(Vector("pin-models")) ==> "offer"
+      Turn.running(Vector("pin-models")) ==> "weigh"
+      Turn.running(Vector("pin-models", "DBOS.patch-weigh", "weigh")) ==> "offer"
       Turn.running(Vector("pin-models", "offer")) ==> "stitched"
       Turn.running(Vector("pin-models", "offer", "stitched")) ==> "classify"
       Turn.running(Vector("pin-models", "offer", "stitch")) ==> "classify"

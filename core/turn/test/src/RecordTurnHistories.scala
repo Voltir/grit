@@ -33,6 +33,12 @@ object RecordTurnHistories {
     History("turn", turn.workflowId, Turn.Epoch, "recorded", steps, keptBy(steps))
   }
 
+  /** `history` as it stood once its first `n` steps were recorded: a turn in flight. */
+  private def inFlight(history: History, n: Int): History = {
+    val steps = history.steps.take(n)
+    history.copy(steps = steps, kept = keptBy(steps))
+  }
+
   /** Each shape, by name. A name whose file was written before a later step existed keeps
     * that shorter history, so a new step that changes a shape gets a new name.
     *
@@ -510,6 +516,32 @@ object RecordTurnHistories {
         )
         val (durable, _) = ch.run(new FirstOption)
         recorded(durable, ch.turn)
+      },
+      // A heard turn whose workspace's only source triage answered below the recipe's
+      // threshold: weighed, and its workspace's tools withheld.
+      "heard-withheld" -> {
+        val t = new Sourced.Thread(heard = true, Some(Sourced.repoReads(0.1)))
+        t.run()
+        recorded(t.durable, t.turn)
+      },
+      // In flight across the weigh step's patch: it had offered (unweighed), or only pinned.
+      "offered-before-weigh" -> {
+        val t = new Sourced.Thread(
+          heard = true,
+          Some(Sourced.repoReads(0.1)),
+          unpatched = Set(Turn.Patches.Weigh)
+        )
+        t.run()
+        inFlight(recorded(t.durable, t.turn), 2)
+      },
+      "pinned-before-weigh" -> {
+        val t = new Sourced.Thread(
+          heard = true,
+          Some(Sourced.repoReads(0.1)),
+          unpatched = Set(Turn.Patches.Weigh)
+        )
+        t.run()
+        inFlight(recorded(t.durable, t.turn), 1)
       },
       "later-turn" -> laterTurn,
       "model-failed" -> modelFailed,

@@ -131,7 +131,8 @@ object LiveTurn {
               engine.lifecycle,
               grit.core.stitch.Tuning.Default,
               engine.placements
-            )
+            ),
+            grit.turn.TurnWeighing(engine.triage)
           ),
           tooling
         ),

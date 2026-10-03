@@ -1,0 +1,12 @@
+{
+  "workflow": "turn",
+  "id": "c1:0",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "pin-models",
+      "output": "{\"ok\":\"75a65a0cae559d9e\"}"
+    }
+  ]
+}

@@ -25,7 +25,7 @@ import grit.core.store.{
   VoiceStore
 }
 import grit.core.tool.{Tool, ToolSets, Toolbox}
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.{KnowledgeSources, TriageStore}
 
 /** What a turn works with besides its `Durable` and its [[TurnTooling]]: its [[TurnRecords]]
   * and [[TurnHosting]], then the capabilities it calls. `assembler` builds its window,
@@ -36,7 +36,8 @@ import grit.core.triage.KnowledgeSources
   * draft, settled as [[TurnSpeech]] says, and stitches a conversation's first message as
   * [[TurnStitching]] says. None of them writes the store but `stitching`'s `placements`,
   * which queues an opening's placement and waits for it, so a step body that captures this
-  * can otherwise only read it.
+  * can otherwise only read it. `weighing` is what its root's answers are read from, before
+  * its offer ([[TurnWeighing]]).
   */
 final case class TurnEnv(
     records: TurnRecords,
@@ -48,8 +49,14 @@ final case class TurnEnv(
     clock: Clock^,
     fresh: Fresh^,
     speech: TurnSpeech,
-    stitching: TurnStitching^
+    stitching: TurnStitching^,
+    weighing: TurnWeighing
 )
+
+/** What a turn's root is weighed by before its offer (ADR 0025): the tags live triage kept
+  * for a heard message (`triage`).
+  */
+final case class TurnWeighing(triage: TriageStore)
 
 /** How a conversation's first message is stitched to an exchange in its room, and its strand
   * read (ADR 0023): the placements kept (`stitches`), the room's `search`, the scope in force

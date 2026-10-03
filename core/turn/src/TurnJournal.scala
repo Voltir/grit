@@ -13,7 +13,7 @@ import grit.core.speech.{Outcome, SpeechJson}
 import grit.core.store.{Nearby, Payload, PayloadJson}
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.topic.{TopicId, TopicJson}
-import grit.core.triage.GateJson
+import grit.core.triage.{GateJson, Tags, TagsJson}
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
   * `{"failed": kind, "reason": text}`. In-flight turns must read back what an earlier
@@ -422,6 +422,24 @@ private[turn] object TurnJournal {
       .flatMap(items =>
         sequence(items.toVector.map(_.strOpt.toRight(s"shape: a name in $key is not a string")))
       )
+
+  /** A `weigh` step's output: `null` when the root was not weighed, or `{"kept": tags}`, the
+    * tags live triage kept for it ([[TagsJson.write]]).
+    */
+  given weighed: Journaled[Option[Tags]] =
+    Journaled.json[Option[Tags]](
+      _.fold[ujson.Value](ujson.Null)(t => ujson.Obj("kept" -> TagsJson.write(t))),
+      {
+        case ujson.Null => Right(None)
+        case o: ujson.Obj =>
+          o.value
+            .get("kept")
+            .toRight("weighed: expected {kept}")
+            .flatMap(TagsJson.read)
+            .map(Some(_))
+        case _ => Left("weighed: expected null or {kept}")
+      }
+    )
 
   /** A `dispatch` step's output: whether its requests were sent to a serving edge (`true`),
     * or no edge was serving the workspace (`false`).

@@ -134,7 +134,8 @@ private[grit] object Launch {
             engine.lifecycle,
             grit.core.stitch.Tuning.Default,
             engine.placements
-          )
+          ),
+          grit.turn.TurnWeighing(engine.triage)
         )
       engine.launch(
         // Told after the body returns, outside any step: the turn's steps are unchanged.

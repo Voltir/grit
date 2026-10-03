@@ -17,6 +17,7 @@ import grit.core.stitch.{Along, Opening, StitchReads, Stitching, Strand}
 import grit.core.store.{Entry, Jot, Nearby, Payload, Speakers, StoreError, Tx}
 import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
 import grit.core.topic.Topic
+import grit.core.triage.Tags
 
 import TurnLoop.{Pending, Round}
 import TurnVerdict.Shape
@@ -27,6 +28,9 @@ import TurnVerdict.Shape
   *   1. `pin-models` — the catalog in force, pinned as the turn's profile, kept by its id
   *      and recorded by id; a rerun reads it back, so it runs under the profile it started
   *      with.
+  *   1. `weigh` — the answers its root was weighed with: the tags live triage kept for the
+  *      heard message it answers, or none. Never fails the turn. Turns that passed this
+  *      point before it shipped offer unweighed ([[Patches.Weigh]]).
   *   1. `offer` — what the turn offers its model ([[TurnOffer]]): its conversation's
   *      workspace, the tool set (its own tools, and the hosted ones the edge serving that
   *      workspace advertises) and the system prompt (ADR 0016), kept by content id and
@@ -106,6 +110,7 @@ object Turn {
   /** The turn's steps, as DBOS records their names, in the order they run. */
   object Step {
     val PinModels = "pin-models"
+    val Weigh = "weigh"
     val Offer = "offer"
     val Stitched = "stitched"
     val Stitch = "stitch"
@@ -143,6 +148,7 @@ object Turn {
     val all: Vector[String] =
       Vector(
         PinModels,
+        Weigh,
         Offer,
         Stitched,
         Stitch,
@@ -341,6 +347,11 @@ object Turn {
       * (2026-10-03).
       */
     val StitchInRoomOrder = "stitch-in-room-order"
+
+    /** A turn's root is weighed in `weigh` before its offer, which the answers shape
+      * (2026-10-03).
+      */
+    val Weigh = "weigh"
   }
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
@@ -391,14 +402,39 @@ object Turn {
           case Left(failure) => s"failed: $failure"
           case Right(profile) =>
             val hosting = env.hosting
+            // Taken by every turn that had not offered when it shipped, whatever the recipe, so
+            // a recovery under another deployment's configuration replays the same steps.
+            val weighed =
+              if (d.patch(Patches.Weigh)) d.step(Step.Weigh)(() => weigh(env, turn)) else None
             d.transact(Step.Offer)(
-              TurnOffer.decide(hosting, env.records.entries, tooling, turn, None)
+              TurnOffer.decide(hosting, env.records.entries, tooling, turn, weighed)
             ).flatMap(TurnOffer.load(hosting, env.db, _)) match {
               case Left(failure) => s"failed: $failure"
               case Right(offer) => pinned(env, tooling, turn)(using profile, offer, d)
             }
         }
     }
+
+  /** The `weigh` step: the tags live triage kept for the heard message `turn` answers
+    * ([[grit.core.triage.TriageStore.of]]); `None` when it answers a message said to grit,
+    * when none are kept, or when the store cannot be read. Never fails the turn: unweighed, its
+    * offer withholds nothing ([[grit.core.recipe.ServiceOffer.Verdict.Unweighed]]).
+    */
+  private def weigh(env: TurnEnv^, turn: TurnRef): Option[Tags] = {
+    val (entries, triage) = (env.records.entries, env.weighing.triage)
+    env.db
+      .read {
+        entries
+          .ofTurn(turn)
+          .flatMap(_.minByOption(_.seq) match {
+            case Some(root @ Entry(_, _, _, _, _, Payload.Heard(_), _)) =>
+              triage.of(Vector(root.id)).map(_.get(root.id))
+            case _ => Right(None)
+          })
+      }
+      .toOption
+      .flatten
+  }
 
   /** The `stitched` step: what the placement of `turn`'s message did, once it has ended, when
     * the message is an [[Opening]]; `None` when it is not, or is gone. `TurnFailure.Store`

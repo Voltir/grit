@@ -147,6 +147,10 @@ object TurnFixtures {
       new Unplaced
     )
 
+  /** No triage kept: every heard root is weighed as unanswered. */
+  def noTriage(): TurnWeighing =
+    TurnWeighing(new grit.core.triage.InMemoryTriageStore(new InMemoryEntryStore, NoPeriods))
+
   /** Placements whose every placement ends having asked nothing. */
   final class Unplaced extends grit.core.stitch.Placements {
     def awaited(opening: grit.core.stitch.Opening): Either[String, String] =
@@ -548,7 +552,10 @@ object TurnFixtures {
       from: Origin = origin,
       worksIn: Vector[WorksIn] = Vector.empty,
       reaches: Vector[Reaches] = Vector.empty,
-      reached: Vector[Served] = Vector.empty
+      reached: Vector[Served] = Vector.empty,
+      recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
+      knowledge: grit.core.triage.KnowledgeSources = grit.core.triage.KnowledgeSources.Empty,
+      weighing: TurnWeighing = noTriage()
   )(id: WorkflowId)(using Durable^): String = {
     val requests: grit.core.edge.ToolRequests =
       if (reached.isEmpty) served else new Desks(served, reached)
@@ -585,7 +592,8 @@ object TurnFixtures {
         new NoWait,
         Fresh.random(),
         quiet(),
-        unstitched()
+        unstitched(),
+        weighing
       ),
       TurnTooling[{}](
         Toolbox.of[{}]().fold(d => throw new java.lang.AssertionError(d), identity),
@@ -594,7 +602,9 @@ object TurnFixtures {
         new FakeJot,
         budget(calls),
         worksIn = worksIn,
-        reaches = reaches
+        reaches = reaches,
+        recipe = recipe,
+        knowledge = knowledge
       )
     )(id)
   }
@@ -871,7 +881,8 @@ object TurnFixtures {
       speech: TurnSpeech = quiet(),
       stitching: TurnStitching^ = unstitched(),
       hosted: TurnHosting = hosting(),
-      recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped
+      recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
+      weighing: TurnWeighing = noTriage()
   )(
       id: WorkflowId
   )(using Durable^): String =
@@ -886,7 +897,8 @@ object TurnFixtures {
         new NoWait,
         Fresh.random(),
         speech,
-        stitching
+        stitching,
+        weighing
       ),
       TurnTooling[caps.CapSet^{NoCheckout}](
         noTools,
@@ -933,7 +945,8 @@ object TurnFixtures {
         new NoWait,
         Fresh.random(),
         quiet(),
-        unstitched()
+        unstitched(),
+        noTriage()
       ),
       TurnTooling[caps.CapSet^{NoCheckout}](
         noTools,
@@ -1148,7 +1161,8 @@ object TurnFixtures {
         clock,
         Fresh.random(),
         speech,
-        stitching
+        stitching,
+        noTriage()
       ),
       TurnTooling[caps.CapSet^{ws}](tools, Toolbox.Empty, hosted, new FakeJot, budget(calls))
     )(id)
@@ -1197,7 +1211,8 @@ object TurnFixtures {
         new NoWait,
         Fresh.random(),
         quiet(),
-        unstitched()
+        unstitched(),
+        noTriage()
       ),
       TurnTooling[caps.CapSet^{ws}](tools, Toolbox.Empty, Vector.empty, new FakeJot, budget(calls))
     )(id)
@@ -1322,6 +1337,105 @@ object TurnFixtures {
       )
       waited = placements.waited
       (durable, done)
+    }
+  }
+
+  /** A Slack thread working in `github`, whose turns a recipe shapes by the `repo` source
+    * that `github` supplies: what the `weigh` step and its histories run over.
+    */
+  object Sourced {
+    import scala.collection.immutable.VectorMap
+
+    import grit.core.context.Width
+    import grit.core.id.{KnowledgeSourceName, QuestionName}
+    import grit.core.place.Service
+    import grit.core.recipe.{ByFocus, Offering, Shaping, TurnRecipe}
+    import grit.core.triage.{InMemoryTriageStore, KnowledgeSource, KnowledgeSources, TriageStore}
+
+    val github: Service =
+      Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
+
+    val repo: KnowledgeSourceName =
+      KnowledgeSourceName.of("repo").fold(e => throw new java.lang.AssertionError(e), identity)
+
+    val knowledge: KnowledgeSources = KnowledgeSources
+      .of(Vector(KnowledgeSource(repo, "the repository", Place.Everywhere, Some(github))))
+      .fold(n => throw new java.lang.AssertionError(n), identity)
+
+    /** A heard turn offered `github`'s tools only when `repo` reads at least 0.2. */
+    val recipe = TurnRecipe(
+      ByFocus.both(Shaping(Width.Deployed, Offering.BySource(Probability.clamped(0.2)))),
+      TurnRecipe.Shipped.addressed
+    )
+
+    /** Triage's tags for a root whose `repo` source reads `p`. */
+    def repoReads(p: Double): Tags =
+      Tags.Weighed(
+        VectorMap(QuestionName.per(Tags.V2.sourcePrefix, repo) -> Answer.YesNo(p)),
+        "jev",
+        Usage.Zero
+      )
+
+    /** A Slack thread working in `github`, whose edge advertises `github_search`; its turn
+      * rooted on a message `heard` or said to grit, triage having kept `kept` for it when heard.
+      */
+    final class Thread(heard: Boolean, kept: Option[Tags], unpatched: Set[String] = Set.empty) {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable(unpatched)
+      val turn: TurnRef =
+        if (heard) hear(entries, "someone should look at the repo") else say(entries, "look at it")
+      val root =
+        EntryId(if (heard) "heard:someone should look at the repo" else "in:look at it")
+      val triage = new InMemoryTriageStore(entries, NoPeriods)
+      kept.foreach(t => triage.record(root, t, Instant.EPOCH)(using TestTx.fake))
+      val edge = new Served(new InMemoryEdges, durable, _ => Serve.Never, github.place)
+      edge.advertise(
+        Hosted
+          .advertised(
+            ToolSet.Entry(
+              ToolName("github_search"),
+              "Searches GitHub.",
+              ujson.Obj("type" -> "object"),
+              false,
+              Retry.Rerun
+            )
+          )
+          .toVector
+      )
+
+      def body(store: TriageStore)(id: WorkflowId)(using grit.core.durable.Durable^): String =
+        hostedBody(
+          entries,
+          new RecordingProvider,
+          edge,
+          hosted = Vector.empty,
+          from = Origin.Slack("T1", "C1", "1.0"),
+          worksIn = Vector(WorksIn(Place.Everywhere, github)),
+          recipe = recipe,
+          knowledge = knowledge,
+          weighing = TurnWeighing(store)
+        )(id)
+
+      def run(store: TriageStore = triage): String = durable.run(turn.workflowId)(body(store))
+
+      /** The tools its `offer` step recorded the turn was offered, by name. */
+      def offered: Vector[String] =
+        durable
+          .history(turn.workflowId)
+          .collectFirst {
+            case InMemoryDurable.Step("offer", InMemoryDurable.Outcome.Output(text)) =>
+              text
+          }
+          .flatMap(TurnJournal.recordedOffer.decode(_).toOption)
+          .flatMap(_.toOption)
+          .flatMap(r => ToolSets.get(r.tools)(using TestTx.fake).toOption)
+          .toVector
+          .flatMap(_.tools.map(t => ToolName.value(t.name)))
+
+      /** The `weigh` step's recorded output, when it ran. */
+      def weighed: Option[String] = durable.history(turn.workflowId).collectFirst {
+        case InMemoryDurable.Step("weigh", InMemoryDurable.Outcome.Output(text)) => text
+      }
     }
   }
 
