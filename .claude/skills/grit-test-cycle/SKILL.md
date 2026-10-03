@@ -11,7 +11,7 @@ description: Running grit's tests and gates while changing its code — scripts/
 scripts/check grit.core.speech.SpeechTests   # one suite, while iterating
 scripts/check grit.core                      # one module's unit tests
 scripts/check grit.dbos.it                   # an it module or suite (Docker)
-scripts/check                                # the commit gate: unit, law, lint
+scripts/check                                # the commit gate: unit, law, format, lint
 scripts/check --it                           # the gate and the integration tier
 ```
 

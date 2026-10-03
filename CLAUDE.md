@@ -103,7 +103,7 @@ scripts/check grit.core.topic.TopicsTests   # one suite, while iterating
 scripts/check grit.core                     # the module you touched
 ./mill grit.core.compile                    # does it type-check
 ./mill mill.scalalib.scalafmt.ScalafmtModule/reformatAll __.sources   # before committing
-scripts/check                               # the commit gate: unit tier, law, lint; once, last
+scripts/check                               # the commit gate: unit tier, law, format, lint; once, last
 scripts/check --it                          # and the integration tier (below)
 ./mill __.test                              # every unit suite rerun: a flake hunt
 scripts/sql grit_agent "SELECT …"           # a read-only query on a local database
