@@ -17,6 +17,7 @@ import grit.core.store.{
   EntrySearch,
   EntryStore,
   LifecycleStore,
+  PeriodStore,
   Principals,
   PromptStore,
   StoreError,
@@ -31,6 +32,7 @@ import grit.dbos.sql.{
   SqlEntrySearch,
   SqlEntryStore,
   SqlLifecycleStore,
+  SqlPeriodStore,
   SqlPrincipals,
   SqlPromptStore,
   SqlReviews,
@@ -57,6 +59,7 @@ trait Reader extends caps.SharedCapability, AutoCloseable {
   val db: Db
   val entries: EntryStore
   val conversations: ConversationStore
+  val periods: PeriodStore
   val lifecycle: LifecycleStore
   val stitches: StitchStore
   val rooms: RoomReads
@@ -74,8 +77,8 @@ trait Reader extends caps.SharedCapability, AutoCloseable {
     */
   def turns(until: Instant): Either[StoreError, Vector[(WorkflowId, Reader.Recorded)]]
 
-  /** `id`'s recorded steps, in the order run; none when DBOS does not know it.
-    * `DatabaseError` when DBOS's tables cannot be read.
+  /** `id`'s recorded steps, in the order run, each with when DBOS journaled its start; none
+    * when DBOS does not know it. `DatabaseError` when DBOS's tables cannot be read.
     */
   def steps(id: WorkflowId): Either[StoreError, Vector[StepRecord]]
 
@@ -113,6 +116,7 @@ object Reader {
     val db: Db = new SqlDb(ds)
     val entries: EntryStore = new SqlEntryStore()
     val conversations: ConversationStore = new SqlConversationStore()
+    val periods: PeriodStore = new SqlPeriodStore(entries)
     val lifecycle: LifecycleStore = new SqlLifecycleStore()
     val stitches: StitchStore = new SqlStitchStore
     val rooms: RoomReads = new SqlRoomReads
@@ -159,7 +163,11 @@ object Reader {
             .sortBy(_.functionId())
             .flatMap(step =>
               Option(step.functionName()).map(
-                StepRecord(_, Option(step.output()).collect { case s: String => s })
+                StepRecord(
+                  _,
+                  Option(step.output()).collect { case s: String => s },
+                  Option(step.startedAt())
+                )
               )
             )
         )

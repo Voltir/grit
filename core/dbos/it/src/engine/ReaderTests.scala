@@ -7,7 +7,7 @@ import scala.annotation.unused
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.durable.{Durable, StepRecord}
+import grit.core.durable.Durable
 import grit.core.id.{PeriodRef, PeriodSeq, PrincipalId, SourceId, TriageRef, TurnSeq, WorkflowId}
 import grit.core.message.Message
 import grit.core.store.{Origin, StoreError, Tx}
@@ -32,7 +32,9 @@ object ReaderTests extends TestSuite {
     e.fold(err => throw new java.lang.AssertionError(s"store failed: $err"), identity)
 
   val tests = Tests {
-    test("a reader reads what the engine wrote, beside it: entries, tags, a workflow, starts") {
+    test(
+      "a reader reads what the engine wrote, beside it: entries, periods, tags, a workflow, starts"
+    ) {
       val config = TestPostgres.freshDatabase("reader_reads")
       val ran = new ConcurrentLinkedQueue[String]()
       def triage(id: WorkflowId)(using @unused d: Durable^): String = {
@@ -62,6 +64,7 @@ object ReaderTests extends TestSuite {
         val reader = Reader.open(config)
         try {
           reader.db.read(reader.entries.list(c)) ==> engine.db.read(engine.entries.list(c))
+          reader.db.read(reader.periods.all(c)).map(_.map(_.ref)) ==> Right(Vector(ref.period))
           reader.db
             .read(reader.triage.tagged(at, at.plusSeconds(1)))
             .map(_.map(t => (t.triage, t.tags))) ==>
@@ -104,20 +107,26 @@ object ReaderTests extends TestSuite {
           val _ = engine.awaitTurn(ref)
           ref.workflowId
         }
+        val asked = Instant.now().minusMillis(1)
         val older = ask("older")
+        val answered = Instant.now().plusMillis(1)
         val newer = ask("newer")
         val reader = Reader.open(config)
         try {
           val until = Instant.now().plusSeconds(60)
           reader.turns(until).map(_.map(_._1)) ==> Right(Vector(older, newer))
           reader.turns(Instant.EPOCH) ==> Right(Vector.empty)
-          reader.steps(older) ==> Right(
-            Vector(
-              StepRecord("first", Some("one")),
-              StepRecord("DBOS.patch-a-patch", None),
-              StepRecord("second", Some("one and two"))
-            )
+          val steps = right(reader.steps(older))
+          steps.map(s => (s.name, s.output)) ==> Vector(
+            ("first", Some("one")),
+            ("DBOS.patch-a-patch", None),
+            ("second", Some("one and two"))
           )
+          // Each step's start, as DBOS journaled it: while the turn ran, in the order run.
+          val started = steps.flatMap(_.started)
+          started.size ==> 3
+          started.filter(t => t.isBefore(asked) || t.isAfter(answered)) ==> Vector.empty
+          started ==> started.sorted
           reader.steps(WorkflowId("never")) ==> Right(Vector.empty)
         } finally reader.close()
       } finally engine.close()

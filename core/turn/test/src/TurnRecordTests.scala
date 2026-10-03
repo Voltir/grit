@@ -25,7 +25,8 @@ object TurnRecordTests extends TestSuite {
         s.outcome match {
           case InMemoryDurable.Outcome.Output(value) => Some(value)
           case InMemoryDurable.Outcome.Threw(_) | InMemoryDurable.Outcome.Marker => None
-        }
+        },
+        None
       )
     )
 
@@ -56,7 +57,7 @@ object TurnRecordTests extends TestSuite {
     test("no offer step reads as none, and an offer this build cannot read names its step") {
       TurnRecord.offer(Vector.empty) ==> Right(None)
       TurnRecord
-        .offer(Vector(StepRecord(Turn.Step.Offer, Some("{}"))))
+        .offer(Vector(StepRecord(Turn.Step.Offer, Some("{}"), None)))
         .left
         .map(
           _.takeWhile(_ != ':')
