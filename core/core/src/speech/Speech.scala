@@ -10,7 +10,7 @@ import grit.core.period.Probability
 import grit.core.place.Place
 import grit.core.spend.{Budget, DailyCap, Spend}
 import grit.core.store.Entry
-import grit.core.triage.{Kind, Tags}
+import grit.core.triage.{Gate, Reading, Tags}
 
 /** Where a reply to a heard message could go, in its edge's own address form (`None`: it is
   * never answered, as for a past message), and whom it names besides the assistant.
@@ -83,11 +83,15 @@ enum Silence {
   /** Triage gave no tags, for `why`. */
   case Unweighed(why: String)
 
-  /** Triage read it as chatter. */
-  case Chatter
+  /** Triage's answers failed the gate ([[Limits.drafts]]): `first`, the first bound they
+    * failed, and `rest`, every later one, in order, each with what it read.
+    */
+  case Gated(first: Gate.Failed, rest: Vector[Gate.Failed])
 
-  /** Triage's `helps` was under `helpsAt`. */
-  case Below(helps: Probability, helpsAt: Probability)
+  /** Triage's answers hold no answer of `reading`'s kind, which the gate reads before any
+    * bound fails, as for a message triaged by an earlier question set.
+    */
+  case Unasked(reading: Reading)
 
   /** It names `other`, not the assistant; the first such, by id, when it names several. */
   case AskedOf(other: PrincipalId)
@@ -168,7 +172,8 @@ object Speech {
 
   /** Whether grit drafts after `heard` at `now`, under `speaking`, given `ledger` and the
     * deployment's `budget`: the first failing check in [[Silence]]'s order, or `Drafting`.
-    * Fails closed: an untagged message is `Unweighed`.
+    * Fails closed: an untagged message is `Unweighed`, and one whose answers the gate cannot
+    * read is `Unasked`.
     */
   def decide(
       speaking: Speaking,
@@ -195,9 +200,12 @@ object Speech {
         () =>
           heard.tags match {
             case Tags.Unanswered(why) => Some(Silence.Unweighed(why))
-            case Tags.Weighed(Kind.Chatter, _, _, _, _, _, _) => Some(Silence.Chatter)
-            case Tags.Weighed(_, _, _, _, helps, _, _) =>
-              Option.when(!(helps >= limits.helpsAt))(Silence.Below(helps, limits.helpsAt))
+            case weighed: Tags.Weighed =>
+              limits.drafts.check(Tags.V1.answers(weighed)) match {
+                case Gate.Checked.Passes => None
+                case Gate.Checked.Fails(first, rest) => Some(Silence.Gated(first, rest))
+                case Gate.Checked.Unread(reading) => Some(Silence.Unasked(reading))
+              }
           },
         () =>
           heard.reach.asked.toVector.sortBy(PrincipalId.value).headOption.map(Silence.AskedOf(_)),

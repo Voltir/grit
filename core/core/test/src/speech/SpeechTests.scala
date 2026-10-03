@@ -4,13 +4,14 @@ import java.time.{Instant, ZoneOffset}
 
 import scala.concurrent.duration.*
 
+import grit.core.id.QuestionName
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PrincipalId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
 import grit.core.spend.{Budget, DailyCap, Spend}
 import grit.core.store.{Entry, Payload}
-import grit.core.triage.{Kind, Tags}
+import grit.core.triage.{Bound, Gate, Kind, Reading, Tags}
 
 import utest.*
 
@@ -21,7 +22,7 @@ object SpeechTests extends TestSuite {
   private def p(x: Double) = Probability.clamped(x)
 
   private val cap: DailyCap = DailyCap.of("0.25").getOrElse(sys.error("a cap"))
-  private val limits = Limits.suggested(cap)
+  private val limits = Limits.suggested(cap, Tags.V1.gate)
   private val within = Speaking.Within(limits)
   private val budget = Budget(ZoneOffset.UTC, None)
 
@@ -61,6 +62,12 @@ object SpeechTests extends TestSuite {
 
   private def held(why: Silence) = Decision.Held(why)
 
+  private val half = p(0.5)
+  private val notChatter = Bound.Below(Reading.Chosen(Tags.V1.kind, "chatter"), half)
+  private val helpful = Bound.AtLeast(Reading.Yes(Tags.V1.helps), half)
+  private def gated(first: Gate.Failed, rest: Gate.Failed*) =
+    held(Silence.Gated(first, rest.toVector))
+
   private val judged = Judged(p(0.6), p(0.8), "jev", usage)
 
   val tests = Tests {
@@ -86,16 +93,32 @@ object SpeechTests extends TestSuite {
         val untagged = heard.copy(tags = Tags.Unanswered("down"))
         assert(decide(untagged) == held(Silence.Unweighed("down")))
       }
-      test("chatter") {
-        assert(decide(heard.copy(tags = tags(Kind.Chatter))) == held(Silence.Chatter))
-      }
-      test("helps under helpsAt") {
+      test("chatter: gated on kind chosen chatter, which reads 1") {
         assert(
-          decide(heard.copy(tags = tags(helps = 0.59))) == held(Silence.Below(p(0.59), p(0.6)))
+          decide(heard.copy(tags = tags(Kind.Chatter))) == gated(Gate.Failed(notChatter, p(1)))
         )
       }
-      test("helps at exactly helpsAt is not below") {
-        assert(decide(heard.copy(tags = tags(helps = 0.6))) == Decision.Drafting(turn))
+      test("helps under the gate's 0.5: gated on helps, reading it") {
+        assert(
+          decide(heard.copy(tags = tags(helps = 0.49))) == gated(Gate.Failed(helpful, p(0.49)))
+        )
+      }
+      test("helps at exactly the gate's 0.5 is not below") {
+        assert(decide(heard.copy(tags = tags(helps = 0.5))) == Decision.Drafting(turn))
+      }
+      test("chatter that would not help: gated on both, chatter first") {
+        assert(
+          decide(heard.copy(tags = tags(Kind.Chatter, helps = 0.2))) ==
+            gated(Gate.Failed(notChatter, p(1)), Gate.Failed(helpful, p(0.2)))
+        )
+      }
+      test("a gate reading a question triage did not ask holds the message unasked") {
+        val gap = QuestionName.of("gap").getOrElse(sys.error("a name"))
+        val unread = Gate(Vector(helpful, Bound.AtLeast(Reading.Key(gap, "asks"), half)))
+        assert(
+          decide(s = Speaking.Within(limits.copy(drafts = unread))) ==
+            held(Silence.Unasked(Reading.Key(gap, "asks")))
+        )
       }
       test("asked of someone else: the first by id") {
         val asked =
@@ -161,7 +184,11 @@ object SpeechTests extends TestSuite {
         decide(stale.copy(tags = tags(Kind.Chatter))),
         decide(heard.copy(tags = tags(Kind.Chatter), reach = asked)),
         decide(l = threaded, b = capped)
-      ) ==> Vector(held(Silence.Stale(11.minutes)), held(Silence.Chatter), held(Silence.Thread(1)))
+      ) ==> Vector(
+        held(Silence.Stale(11.minutes)),
+        gated(Gate.Failed(notChatter, p(1))),
+        held(Silence.Thread(1))
+      )
     }
 
     test("a post outside its rate's window does not count") {

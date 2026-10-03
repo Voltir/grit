@@ -19,6 +19,7 @@ import grit.core.message.Cost
 import grit.core.period.Probability
 import grit.core.speech.{Outcome, Silence}
 import grit.core.spend.{DailyCap, Spend}
+import grit.core.triage.{Bound, Gate, Reading, Tags}
 
 import utest.*
 
@@ -36,7 +37,15 @@ object ReviewTests extends TestSuite {
     Reviewing.of(shadow, perDay, sampleOneIn, 24.hours).getOrElse(sys.error("a review"))
 
   private val drafted = Settled.Drafted(Outcome.Passed)
-  private val chatter = Settled.Held(Silence.Chatter)
+  private val chatter = Settled.Held(
+    Silence.Gated(
+      Gate.Failed(
+        Bound.Below(Reading.Chosen(Tags.V1.kind, "chatter"), Probability.clamped(0.5)),
+        Probability.clamped(1)
+      ),
+      Vector.empty
+    )
+  )
 
   /** A candidate `id`, said `second`s after `At`, live's decision `live`, the shadow answering
     * `ask` with `yes` (no answer when `None`).
@@ -71,8 +80,8 @@ object ReviewTests extends TestSuite {
         Silence.NoAddress,
         Silence.Stale(2.days),
         Silence.Unweighed("down"),
-        Silence.Chatter,
-        Silence.Below(p, p),
+        Silence.Gated(Gate.Failed(Bound.AtLeast(Reading.Yes(Tags.V1.helps), p), p), Vector.empty),
+        Silence.Unasked(Reading.Yes(Tags.V1.helps)),
         Silence.AskedOf(PrincipalId("slack:T/U1")),
         Silence.Unanswered(TurnRef(ConversationId("c"), TurnSeq(1))),
         Silence.Thread(1),
@@ -88,7 +97,7 @@ object ReviewTests extends TestSuite {
         None,
         None,
         Some(false),
-        Some(false),
+        None,
         Some(false),
         Some(true),
         Some(true),

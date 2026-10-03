@@ -72,7 +72,7 @@ abstract class SpeechContract extends TestSuite {
   private def decide(c: ConversationId, at: Instant, drafting: Boolean): TurnRef = {
     val turn = next(c, Payload.Heard("is it Thursday?"), s"${ConversationId.value(c)}:h:$at")
     val decision =
-      if (drafting) Decision.Drafting(turn) else Decision.Held(Silence.Chatter)
+      if (drafting) Decision.Drafting(turn) else Decision.Held(Silence.Unweighed("down"))
     transaction(speech.decided(heardAs(turn), decision, at)) ==> Right(true)
     turn
   }

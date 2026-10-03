@@ -37,7 +37,10 @@ object UnpromptedLiveTests extends TestSuite {
     )
 
   private val limits =
-    Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("a cap")))
+    Limits.suggested(
+      DailyCap.of("0.25").getOrElse(sys.error("a cap")),
+      grit.lifecycle.triage.TriageQuestions.Shipped.speak
+    )
 
   private def deployment(speaking: Speaking): Deployment =
     Deployment

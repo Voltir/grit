@@ -73,7 +73,7 @@ In dependency order:
   and `Budget` (the zone days begin in, the cap, and whether a new message is taken), and
   `Budget.Refusal`, the one line a person is told when it is not. ← `id`, `message`, `store`
 - **`triage`** — what grit makes of a message it heard (ADR 0020): `Kind`, `Tags` (triage's
-  answer, or none) and `TriageStore`, where they are kept beside their entry and deleted
+  answer, or none; `Tags.V1`, the names and gate of the set its answer is) and `TriageStore`, where they are kept beside their entry and deleted
   with it; `Shadowing` (a shadow variant as the sweep enqueues it, within its daily cap),
   `Shadowed` (what one variant made of one message: its `ShadowAnswers`, a wording's in
   order or a question set's under their names) and `TriageShadows`, where those are

@@ -5,7 +5,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.{Answer, Answered, Ask, Classifier, ClassifierError, Question, Request}
 import grit.core.id.QuestionName
 import grit.core.period.Probability
-import grit.core.triage.{Bound, Gate, Kind, KnowledgeSources, Reading}
+import grit.core.triage.{Bound, Gate, Kind, KnowledgeSources, Reading, Tags}
 
 /** Questions about a heard message ([[TriageQuestion.State]]), asked together in one
   * classifier call, each answer kept under its question's name, and the gate a draft is
@@ -121,21 +121,15 @@ object TriageQuestions {
     }
   }
 
-  /** v1, in `wording`: `kind` (a choice of [[Kind]]'s keys), `waiting`, `durable` and
-    * `helps`; drafts when `kind`'s most weighted key is not `chatter` and `helps` is at least 0.5. Its
-    * request is the one triage's question sends in `wording` ([[TriageQuestion.request]]).
+  /** v1, in `wording`: [[Tags.V1]]'s questions, `kind` (a choice of [[Kind]]'s keys),
+    * `waiting`, `durable` and `helps`, gated by [[Tags.V1.gate]]. Its request is the one
+    * triage's question sends in `wording` ([[TriageQuestion.request]]).
     */
   def v1(wording: TriageQuestion.Wording): TriageQuestions = {
     val k = wording.kinds
-    def name(text: String) = QuestionName.of(text)
     def yesNo(words: String) = Question.YesNo(words, None, None)
     def key(kind: Kind, means: String) = Question.Key(Kind.written(kind), Some(means))
-    val half = Probability.clamped(0.5)
     val built = for {
-      kind <- name("kind")
-      waiting <- name("waiting")
-      durable <- name("durable")
-      helps <- name("helps")
       kindQuestion <- Question
         .choice(
           wording.kind,
@@ -148,28 +142,26 @@ object TriageQuestions {
         .left
         .map(d => s"kind repeats ${d.key}")
       set <- of(
-        Item.One(kind, kindQuestion),
+        Item.One(Tags.V1.kind, kindQuestion),
         Vector(
-          Item.One(waiting, yesNo(wording.waiting)),
-          Item.One(durable, yesNo(wording.durable)),
-          Item.One(helps, yesNo(wording.helps))
+          Item.One(Tags.V1.waiting, yesNo(wording.waiting)),
+          Item.One(Tags.V1.durable, yesNo(wording.durable)),
+          Item.One(Tags.V1.helps, yesNo(wording.helps))
         ),
-        Gate(
-          Vector(
-            Bound.Below(Reading.Chosen(kind, Kind.written(Kind.Chatter)), half),
-            Bound.AtLeast(Reading.Yes(helps), half)
-          )
-        )
+        Tags.V1.gate
       ).left.map(_.toString)
     } yield set
-    // Its names are declared names by QuestionName.of's rule, its kind keys are Kind's
-    // distinct names whatever the wording, its names are distinct and every bound reads a
-    // One of its kind, so no Left is taken; TriageQuestionsTests builds it.
+    // Its kind keys are Kind's distinct names whatever the wording, its names are distinct and
+    // every bound of its gate reads a One of its kind, so no Left is taken;
+    // TriageQuestionsTests builds it.
     built.fold(why => throw new IllegalStateException(why), identity)
   }
 
   /** [[v1]] in the shipped wording ([[TriageQuestion.Wording.Shipped]]). */
   val V1: TriageQuestions = v1(TriageQuestion.Wording.Shipped)
+
+  /** The set live triage asks: [[V1]]. */
+  val Shipped: TriageQuestions = V1
 
   /** The set proposed to replace triage's question: `gap` (what the message leaves open:
     * `asks`, `owes`, `closes` or `nothing`), `open`, `to`, `durable`, `anchor`, then one

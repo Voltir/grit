@@ -2,10 +2,11 @@ package grit.core.speech
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, PrincipalId, QuestionName, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.spend.{DailyCap, Spend}
+import grit.core.triage.{Bound, Gate, Reading, Tags}
 
 import utest.*
 
@@ -23,13 +24,20 @@ object SpeechJsonTests extends TestSuite {
       Usage(Tokens(812), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.000034")))
     )
 
+  private val gap = QuestionName.of("gap").getOrElse(sys.error("a name"))
+  private val notChatter = Bound.Below(Reading.Chosen(Tags.V1.kind, "chatter"), p(0.5))
+
   private val silences: Vector[Silence] = Vector(
     Silence.Off,
     Silence.NoAddress,
     Silence.Stale(11.minutes),
     Silence.Unweighed("down"),
-    Silence.Chatter,
-    Silence.Below(p(0.5), p(0.6)),
+    Silence.Gated(Gate.Failed(notChatter, p(1)), Vector.empty),
+    Silence.Gated(
+      Gate.Failed(Bound.AtLeast(Reading.Key(gap, "asks"), p(0.5)), p(0.25)),
+      Vector(Gate.Failed(Bound.AtLeast(Reading.Yes(Tags.V1.helps), p(0.6)), p(0.5)))
+    ),
+    Silence.Unasked(Reading.Yes(Tags.V1.helps)),
     Silence.AskedOf(PrincipalId("slack:T/U1")),
     Silence.Unanswered(turn),
     Silence.Thread(1),
@@ -72,8 +80,13 @@ object SpeechJsonTests extends TestSuite {
 
     test("the stored forms") {
       SpeechJson.writeDecision(Decision.Drafting(turn)).render() ==> """{"drafting":"c:3"}"""
-      SpeechJson.writeDecision(Decision.Held(Silence.Below(p(0.5), p(0.6)))).render() ==>
-        """{"held":{"kind":"below","helps":0.5,"helps_at":0.6}}"""
+      SpeechJson
+        .writeDecision(Decision.Held(Silence.Gated(Gate.Failed(notChatter, p(1)), Vector.empty)))
+        .render() ==>
+        """{"held":{"kind":"gated","failed":[{"reading":{"reads":"chosen","name":"kind",""" +
+        """"key":"chatter"},"bound":"below","p":0.5,"read":1}]}}"""
+      SpeechJson.writeSilence(Silence.Unasked(Reading.Key(gap, "asks"))).render() ==>
+        """{"kind":"unasked","reading":{"reads":"key","name":"gap","key":"asks"}}"""
       SpeechJson.writeOutcome(Outcome.Posted(judged)).render() ==>
         """{"kind":"posted","judged":{"grounded":0.5,"worth":0.625,"model":"jev",""" +
         """"usage":{"input":812,"output":0,"cachedInput":0,"costUsd":"0.000034"}}}"""
@@ -96,6 +109,23 @@ object SpeechJsonTests extends TestSuite {
       // The stored name of the hold before ADR 0023: rows kept under it must keep reading.
       SpeechJson.readOutcome(ujson.Obj("kind" -> "answered", "by" -> "in:c:m2")) ==>
         Right(Outcome.Spoken(EntryId("in:c:m2")))
+    }
+
+    test("a hold an earlier build stored as chatter or below reads as gated on v1's bound") {
+      // Before holds named the gate's bounds, chatter and a helps under helpsAt were their own
+      // kinds: rows and journals kept under them must keep reading.
+      Vector(
+        SpeechJson.readSilence(ujson.read("""{"kind":"chatter"}""")),
+        SpeechJson.readSilence(ujson.read("""{"kind":"below","helps":0.42,"helps_at":0.6}"""))
+      ) ==> Vector(
+        Right(Silence.Gated(Gate.Failed(notChatter, p(1)), Vector.empty)),
+        Right(
+          Silence.Gated(
+            Gate.Failed(Bound.AtLeast(Reading.Yes(Tags.V1.helps), p(0.6)), p(0.42)),
+            Vector.empty
+          )
+        )
+      )
     }
 
     test("a judgement recorded with the dropped adds question reads, without it") {

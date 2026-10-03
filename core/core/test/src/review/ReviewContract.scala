@@ -30,7 +30,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.triage.{Kind, ShadowAnswers, Shadowed, Tags, TriageShadows}
+import grit.core.triage.{Bound, Gate, Kind, Reading, ShadowAnswers, Shadowed, Tags, TriageShadows}
 
 import utest.*
 
@@ -89,7 +89,12 @@ abstract class ReviewContract extends TestSuite {
   private def answered(as: ShadowAnswers): Shadowed =
     Shadowed.Answered("d1g35t", as, usage, "jev", "jev", 1.second)
 
-  private val below = Settled.Held(Silence.Below(p(0.25), p(0.5)))
+  private val below = Settled.Held(
+    Silence.Gated(
+      Gate.Failed(Bound.AtLeast(Reading.Yes(Tags.V1.helps), p(0.5)), p(0.25)),
+      Vector.empty
+    )
+  )
   private val passed = Settled.Drafted(Outcome.Passed)
 
   /** Live's decision as the turn leaves it: decided, and settled or not. */
@@ -144,7 +149,7 @@ abstract class ReviewContract extends TestSuite {
   }
 
   /** `c`'s messages, `n` of them, each said a second after the last from `At`, held below
-    * `helpsAt` and answered by `shadow`: candidates.
+    * the gate's `helps` and answered by `shadow`: candidates.
     */
   private def candidates(c: ConversationId, prefix: String, shadow: ShadowName, n: Int) =
     (0 until n).toVector.map { i =>

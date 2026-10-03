@@ -1,8 +1,6 @@
 package grit.eval.harness.score
 
 import grit.core.period.Probability
-import grit.core.speech.Limits
-import grit.core.spend.DailyCap
 import grit.core.triage.{Earning, Kind}
 import grit.eval.harness.corpus.CaseId
 import grit.eval.harness.label.Labelled
@@ -35,15 +33,14 @@ object Tag {
     case Helps => l.helps
   }
 
-  /** The threshold grit decides `t` at, yes at or above it: `durable` at
-    * [[Earning.DurableAt]], `helps` at the `helpsAt` a deployment starts on
-    * ([[Limits.suggested]]); `None` for `waiting`, on which grit decides nothing by threshold.
+  /** The threshold `t` is scored at, yes at or above it: `durable` at [[Earning.DurableAt]],
+    * where grit decides it; `helps` at 0.60, the `helps` a deployment's speech started on while
+    * its gate was triage's tags alone; `None` for `waiting`, on which grit decides nothing by threshold.
     */
   def shipped(t: Tag): Option[Double] = t match {
     case Waiting => None
     case Durable => Some(Probability.value(Earning.DurableAt))
-    // `helpsAt` does not depend on the cap; any cap reads it.
-    case Helps => DailyCap.of("1").toOption.map(c => Probability.value(Limits.suggested(c).helpsAt))
+    case Helps => Some(0.60)
   }
 }
 

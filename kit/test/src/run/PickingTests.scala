@@ -43,9 +43,12 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{
+  Bound,
+  Gate,
   InMemoryTriageShadows,
   InMemoryTriageStore,
   Kind,
+  Reading,
   ShadowAnswers,
   Shadowed,
   Tags
@@ -77,7 +80,11 @@ object PickingTests extends TestSuite {
 
   /** `perDay` a day, every message both gates leave quiet in the sample, said within a day. */
   private def review(perDay: Int): ShadowReview = {
-    val limits = Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("a cap")))
+    val limits =
+      Limits.suggested(
+        DailyCap.of("0.25").getOrElse(sys.error("a cap")),
+        TriageQuestions.Shipped.speak
+      )
     val variant = ShadowVariant(
       shadow,
       TriageQuestions.V2,
@@ -112,7 +119,12 @@ object PickingTests extends TestSuite {
   }
 
   private val gatePasses = Settled.Drafted(Outcome.Passed)
-  private val belowHelps = Settled.Held(Silence.Below(p(0.25), p(0.5)))
+  private val belowHelps = Settled.Held(
+    Silence.Gated(
+      Gate.Failed(Bound.AtLeast(Reading.Yes(Tags.V1.helps), p(0.5)), p(0.25)),
+      Vector.empty
+    )
+  )
   private val noAddress = Settled.Held(Silence.NoAddress)
 
   /** The stores a round reads and writes, and a way to hear into them. */

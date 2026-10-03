@@ -166,7 +166,8 @@ object RecordLifecycleHistories {
         val asking = new TriageFixtures.Scripted(Vector(1, 0, 0, 0, 0), Vector(0.5, 0.5, 0.9))
         val within = grit.core.speech.Speaking.Within(
           grit.core.speech.Limits.suggested(
-            grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap"))
+            grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
+            grit.lifecycle.triage.TriageQuestions.V1.speak
           )
         )
         d.run(t.workflowId)(w.body(asking, 1, within))

@@ -57,8 +57,9 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   one per `grit.core.triage.KnowledgeSource` covering the conversation where it asks so,
   their answers kept raw under their names, and the `Gate` (`grit.core.triage`) a draft is
   derived from; `TriageQuestions.v1` is triage's question as a set, in a `Wording`, its
-  request the one triage sends in it, and `TriageQuestions.V2` the proposed one. Live triage
-  never asks one. ← `transcript`
+  request the one triage sends in it, and `TriageQuestions.V2` the proposed one;
+  `TriageQuestions.Shipped` names the set live triage's request is, whose gate speech may
+  read (`Limits.drafts`). Live triage asks through its question, not a set. ← `transcript`
 - **`shadow`** — `Shadow`: a declared variant's run on a heard message already triaged,
   recorded and never acted on, on a queue of its own (`grit.dbos.workflow.Shadows`), so it
   never delays a triage: `ask` rebuilds triage's state as `triage` builds it, from the

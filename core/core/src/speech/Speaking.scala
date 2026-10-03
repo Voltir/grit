@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.period.Probability
 import grit.core.spend.DailyCap
+import grit.core.triage.Gate
 
 /** At most `count` in any window of `per`. */
 final case class Rate private[speech] (count: Int, per: FiniteDuration)
@@ -31,13 +32,14 @@ enum Speaking {
 }
 
 /** What a heard message and its draft must pass. A heard message: said at most `fresh` before
-  * the decision; triage's `helps` at or above `helpsAt`; at most `thread` posts per
-  * conversation, `room` per room ([[grit.core.store.Origin.room]]) and `deployment` in all;
-  * today's speech spend under `spend`. A draft: its weakest judged score ([[Judged.score]]) at
-  * or above `postAt`, and nobody having spoken since its root.
+  * the decision; triage's answers passing `drafts` ([[Gate.check]]; a gate reading a question
+  * triage did not ask holds the message, `Unasked`); at most `thread` posts per conversation,
+  * `room` per room ([[grit.core.store.Origin.room]]) and `deployment` in all; today's speech
+  * spend under `spend`. A draft: its weakest judged score ([[Judged.score]]) at or above
+  * `postAt`, and nobody having spoken since its root.
   */
 final case class Limits(
-    helpsAt: Probability,
+    drafts: Gate,
     postAt: Probability,
     fresh: FiniteDuration,
     thread: Rate,
@@ -57,12 +59,12 @@ final case class Limits(
 
 object Limits {
 
-  /** The limits a deployment starts on, with `spend` a day of speech: `helpsAt` 0.60 and
-    * `postAt` 0.50, fresh for 10 minutes, 1 post per thread in 6 hours, 2 per room in an hour
-    * and 10 in all in 24 hours.
+  /** The limits a deployment starts on, with `drafts` its gate over live triage's answers and
+    * `spend` a day of speech: `postAt` 0.50, fresh for 10 minutes, 1 post per thread in 6
+    * hours, 2 per room in an hour and 10 in all in 24 hours.
     */
-  def suggested(spend: DailyCap): Limits = Limits(
-    Probability.clamped(0.60),
+  def suggested(spend: DailyCap, drafts: Gate): Limits = Limits(
+    drafts,
     Probability.clamped(0.50),
     10.minutes,
     Rate(1, 6.hours),

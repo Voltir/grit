@@ -35,7 +35,8 @@ object DeploymentTests extends TestSuite {
 
     test("speaking unprompted with topics off is refused: no classifier could judge a draft") {
       val limits = grit.core.speech.Limits.suggested(
-        grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap"))
+        grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
+        grit.lifecycle.triage.TriageQuestions.Shipped.speak
       )
       val off = Topics.Off("no key")
       (
@@ -107,7 +108,8 @@ object DeploymentTests extends TestSuite {
       )
       val speaking = grit.core.speech.Speaking.Shadow(
         grit.core.speech.Limits.suggested(
-          grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap"))
+          grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
+          grit.lifecycle.triage.TriageQuestions.Shipped.speak
         )
       )
       def reviewing(of: String) =

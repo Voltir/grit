@@ -50,8 +50,12 @@ object StitchLiveTests extends TestSuite {
         topics = Topics.Stub,
         lifecycle = LifecycleSettings.Default,
         budget = Budget(java.time.ZoneOffset.UTC, None),
-        speaking =
-          Speaking.Within(Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("cap")))),
+        speaking = Speaking.Within(
+          Limits.suggested(
+            DailyCap.of("0.25").getOrElse(sys.error("cap")),
+            grit.lifecycle.triage.TriageQuestions.Shipped.speak
+          )
+        ),
         sweep = 30.seconds
       )
       .fold(r => sys.error(r.message), identity)

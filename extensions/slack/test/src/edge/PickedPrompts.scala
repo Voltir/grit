@@ -15,9 +15,12 @@ import grit.core.review.{Candidate, Considered, InMemoryReviews, Reason, Settled
 import grit.core.speech.{Decision, Heard, Reach, Silence}
 import grit.core.store.{Origin, StoreError}
 import grit.core.triage.{
+  Bound,
+  Gate,
   InMemoryTriageShadows,
   InMemoryTriageStore,
   Kind,
+  Reading,
   ShadowAnswers,
   Shadowed,
   Tags
@@ -124,8 +127,13 @@ object PickedPrompts {
     named("anchor") -> Answer.YesNo(0.55)
   )
 
-  /** Live held it at the gate: `helps` under `helpsAt`. */
-  val Below: Settled = Settled.Held(Silence.Below(p(0.42), p(0.5)))
+  /** Live held it at the gate: `helps` under 0.5. */
+  val Below: Settled = Settled.Held(
+    Silence.Gated(
+      Gate.Failed(Bound.AtLeast(Reading.Yes(Tags.V1.helps), p(0.5)), p(0.42)),
+      Vector.empty
+    )
+  )
 
   private val Room = Place.under(Namespace.Slack, Vector("T", "C"))
 

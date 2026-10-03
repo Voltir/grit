@@ -7,7 +7,7 @@ import grit.core.period.Probability
 import grit.core.speech.{Decision, Limits, Silence, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{Stitching, Tuning}
-import grit.core.triage.{Kind, Tags}
+import grit.core.triage.{Bound, Gate, Kind, Reading, Tags}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -26,7 +26,9 @@ object TriageTests extends TestSuite {
   private def asking = new Scripted(Vector(1, 0, 0, 0, 0), Vector(0.5, 0.5, 0.9))
 
   private val within =
-    Speaking.Within(Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("a cap"))))
+    Speaking.Within(
+      Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("a cap")), TriageQuestions.V1.speak)
+    )
 
   private val decision =
     Tags.Weighed(Kind.Decision, p(0.75), p(0.125), p(0.875), p(0.25), "jev-1.13.0", Spent)
@@ -261,7 +263,7 @@ object TriageTests extends TestSuite {
       history.map(_.name) ==> Vector(Marker, "stitched", "ask", "record", "consider", "start")
     }
 
-    test("a message under helpsAt is kept held, and no turn starts") {
+    test("a message under the gate's helps is kept held, and no turn starts") {
       val w = new World
       val t = w.hear("lunch?", "Ana", 0)
       val durable = new InMemoryDurable
@@ -270,7 +272,14 @@ object TriageTests extends TestSuite {
       )
       (w.started, w.speech.decisions.map(_._2), durable.recordedSteps(t.workflowId)) ==> (
         Vector.empty,
-        Vector(Decision.Held(Silence.Below(p(0.25), p(0.6)))),
+        Vector(
+          Decision.Held(
+            Silence.Gated(
+              Gate.Failed(Bound.AtLeast(Reading.Yes(Tags.V1.helps), p(0.5)), p(0.25)),
+              Vector.empty
+            )
+          )
+        ),
         Vector(Marker, "stitched", "ask", "record", "consider")
       )
     }

@@ -876,9 +876,14 @@ object TurnFixtures {
       stitching = stitching
     )(id)
 
-  /** The limits a speech fixture speaks within: [[grit.core.speech.Limits.suggested]], $0.25. */
+  /** The limits a speech fixture speaks within: [[grit.core.speech.Limits.suggested]], $0.25,
+    * by v1's gate.
+    */
   val speechLimits: Limits =
-    Limits.suggested(DailyCap.of("0.25").getOrElse(throw new java.lang.AssertionError("a cap")))
+    Limits.suggested(
+      DailyCap.of("0.25").getOrElse(throw new java.lang.AssertionError("a cap")),
+      grit.core.triage.Tags.V1.gate
+    )
 
   /** Answers the judge's two yes/no questions, in the order asked ([[TurnJudge]] asks
     * grounded, then worth), with `answers`' first and second, counting its calls; unavailable
