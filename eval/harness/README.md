@@ -95,7 +95,12 @@ Packages, each importing only those above it:
   elsewhere changed, own entries changed, both, or gone to a purge). `WindowOnly`, a heard
   message live triage read as asking that no turn answered, its window rebuilt as of
   triage's answer; `Queries`, its query writes, each kept in a `Cache` under its request's
-  key and asked under a `Budget`. ← `corpus`, `label`, `log`, `jev`
+  key and asked under a `Budget`. `TurnVariant`, a named way to build a turn other than as
+  shipped: the window each kind of turn is drawn at (`Sizing`; a variant past the reply
+  model's context is refused), and what it is offered of its tools (`Offering`): a service's
+  tools withheld when triage answered every knowledge source the service supplies below a
+  line, the link from source to service given as `Supplies`, since grit keeps none.
+  ← `corpus`, `label`, `log`, `jev`
 - **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
   (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
   kept, within the cap; `Repeats`, how many times each is asked. ← `corpus`, `log`, `jev`
