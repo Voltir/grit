@@ -8,6 +8,7 @@ import grit.core.context.ContextAssembler
 import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
 import grit.core.place.{Reaches, WorksIn}
 import grit.core.provider.{Models, TokenEstimator}
+import grit.core.recipe.TurnRecipe
 import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.stitch.{Placements, StitchStore, Tuning}
 import grit.core.store.{
@@ -24,6 +25,7 @@ import grit.core.store.{
   VoiceStore
 }
 import grit.core.tool.{Tool, ToolSets, Toolbox}
+import grit.core.triage.KnowledgeSources
 
 /** What a turn works with besides its `Durable` and its [[TurnTooling]]: its [[TurnRecords]]
   * and [[TurnHosting]], then the capabilities it calls. `assembler` builds its window,
@@ -102,7 +104,9 @@ final case class TurnHosting(
   * bounds its model calls, the last made with tools off; a call a person approves first
   * waits `answerWithin` for their answer. `worksIn` gives a conversation with no directory
   * its workspace ([[WorksIn.of]]); `reaches` gives an addressed turn the services it reaches
-  * besides it ([[Reaches.of]]).
+  * besides it ([[Reaches.of]]). `recipe` shapes each turn by what it answers: its window's
+  * width, and which of those services' tools it is offered, by the knowledge sources
+  * `knowledge` says supply each ([[grit.core.triage.KnowledgeSources.supplied]]).
   */
 final case class TurnTooling[C^](
     tools: Toolbox[C],
@@ -112,5 +116,7 @@ final case class TurnTooling[C^](
     budget: TurnLoop.Budget,
     answerWithin: FiniteDuration = TurnTools.AnswerWithin,
     worksIn: Vector[WorksIn] = Vector.empty,
-    reaches: Vector[Reaches] = Vector.empty
+    reaches: Vector[Reaches] = Vector.empty,
+    recipe: TurnRecipe = TurnRecipe.Shipped,
+    knowledge: KnowledgeSources = KnowledgeSources.Empty
 )

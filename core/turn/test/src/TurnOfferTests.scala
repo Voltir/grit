@@ -2,11 +2,27 @@ package grit.turn
 
 import java.time.Instant
 
+import scala.collection.immutable.VectorMap
+
+import grit.core.classify.Answer
+import grit.core.context.Width
 import grit.core.edge.InMemoryEdges
-import grit.core.id.{ConversationId, EntryId, EntrySeq, PrincipalId, ToolCallId, TurnRef, TurnSeq}
-import grit.core.message.{AssistantBlock, Message}
+import grit.core.id.{
+  ConversationId,
+  EntryId,
+  EntrySeq,
+  KnowledgeSourceName,
+  PrincipalId,
+  QuestionName,
+  ToolCallId,
+  TurnRef,
+  TurnSeq
+}
+import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
+import grit.core.period.Probability
 import grit.core.place.{Directory, Place, Reaches, Service, WorksIn}
 import grit.core.prompt.SystemPrompt
+import grit.core.recipe.{ByFocus, Offering, ServiceOffer, Shaping, TurnRecipe}
 import grit.core.store.{
   Entry,
   InMemoryConversationStore,
@@ -30,6 +46,14 @@ import grit.core.tool.{
   ToolSet,
   ToolSpec,
   Toolbox
+}
+import grit.core.triage.{
+  Bound as TriageBound,
+  Gate as TriageGate,
+  KnowledgeSource,
+  KnowledgeSources,
+  Reading,
+  Tags
 }
 import grit.dbos.sql.TestTx
 
@@ -74,7 +98,7 @@ object TurnOfferTests extends TestSuite {
     val entries = new InMemoryEntryStore
     entries.insert(Entry(EntryId("root"), c, TurnSeq.First, None, EntrySeq(0), root, Instant.EPOCH))
     TurnOffer
-      .decide(hosting, entries, tooling, TurnRef(c, TurnSeq.First))
+      .decide(hosting, entries, tooling, TurnRef(c, TurnSeq.First), None)
       .flatMap(r =>
         Prompts
           .prompt(r.prompt)
@@ -132,7 +156,7 @@ object TurnOfferTests extends TestSuite {
       budget(5)
     )
     TurnOffer
-      .decide(hosting, new InMemoryEntryStore, tooling, TurnRef(c, TurnSeq.First))
+      .decide(hosting, new InMemoryEntryStore, tooling, TurnRef(c, TurnSeq.First), None)
       .flatMap(r => ToolSets.get(r.tools).left.map(e => TurnFailure.Store(e.toString)))
       .fold(
         f => throw new java.lang.AssertionError(f.toString),
@@ -194,7 +218,7 @@ object TurnOfferTests extends TestSuite {
       worksIn = links
     )
     TurnOffer
-      .decide(hosting, new InMemoryEntryStore, tooling, TurnRef(c, TurnSeq.First))
+      .decide(hosting, new InMemoryEntryStore, tooling, TurnRef(c, TurnSeq.First), None)
       .flatMap(r =>
         ToolSets
           .get(r.tools)
@@ -215,7 +239,10 @@ object TurnOfferTests extends TestSuite {
     */
   private def reaching(
       root: Payload,
-      entries: Vector[ToolSet.Entry]
+      entries: Vector[ToolSet.Entry],
+      recipe: TurnRecipe = TurnRecipe.Shipped,
+      knowledge: KnowledgeSources = KnowledgeSources.Empty,
+      weighed: Option[Tags] = None
   ): (TurnOffer.Recorded, Vector[String], String) = {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
@@ -248,12 +275,14 @@ object TurnOfferTests extends TestSuite {
       new FakeJot,
       budget(5),
       worksIn = Vector(WorksIn(slackTeams, github)),
-      reaches = Vector(Reaches(slackTeams, elsewhere))
+      reaches = Vector(Reaches(slackTeams, elsewhere)),
+      recipe = recipe,
+      knowledge = knowledge
     )
     val log = new InMemoryEntryStore
     log.insert(Entry(EntryId("root"), c, TurnSeq.First, None, EntrySeq(0), root, Instant.EPOCH))
     TurnOffer
-      .decide(hosting, log, tooling, TurnRef(c, TurnSeq.First))
+      .decide(hosting, log, tooling, TurnRef(c, TurnSeq.First), weighed)
       .flatMap(r =>
         (for {
           set <- ToolSets.get(r.tools)
@@ -263,6 +292,34 @@ object TurnOfferTests extends TestSuite {
       )
       .fold(f => throw new java.lang.AssertionError(f.toString), identity)
   }
+
+  private val repo: KnowledgeSourceName =
+    KnowledgeSourceName.of("repo").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** A catalog whose one source, `repo`, is supplied by `github`'s tools. */
+  private val repoInGithub: KnowledgeSources = KnowledgeSources
+    .of(Vector(KnowledgeSource(repo, "the repository", Place.Everywhere, Some(github))))
+    .fold(n => throw new java.lang.AssertionError(n), identity)
+
+  /** Triage's tags for a root whose `repo` source reads `p`. */
+  private def repoReads(p: Double): Option[Tags] = Some(
+    Tags.Weighed(
+      VectorMap(QuestionName.per(Tags.V2.sourcePrefix, repo) -> Answer.YesNo(p)),
+      "jev",
+      Usage.Zero
+    )
+  )
+
+  /** Heard turns offered a service's tools when one of its sources reads at least 0.2, their
+    * windows drawn `narrow`; addressed turns as shipped.
+    */
+  private val narrow = Width.Within(Tokens(9000), 4)
+  private val heardBySource = TurnRecipe(
+    ByFocus.both(Shaping(narrow, Offering.BySource(Probability.clamped(0.2)))),
+    TurnRecipe.Shipped.addressed
+  )
+
+  private val heardRoot = Payload.Heard("someone should look at the repo")
 
   private def set(entries: ToolSet.Entry*): ToolSet =
     ToolSet.of(entries.toVector).fold(d => throw new java.lang.AssertionError(d.toString), identity)
@@ -387,7 +444,8 @@ object TurnOfferTests extends TestSuite {
         SystemPrompt.of(Vector.empty),
         TurnOffer.Root.Addressed,
         Vector(named("github_search")),
-        Map.empty
+        Map.empty,
+        Width.Deployed
       )
       val tooling = TurnTooling[{}](
         box(tool(ToolName("about"), asks = false)),
@@ -450,6 +508,132 @@ object TurnOfferTests extends TestSuite {
       )
       offered ==> Vector("github_search", "post_x", "about")
       recorded.reached ==> Map(named("post_x") -> elsewhere.place)
+    }
+
+    test(
+      "a heard turn whose workspace's every source reads below the recipe's threshold is offered none of its tools nor told of them; its shape keeps them and the verdict"
+    ) {
+      val (recorded, offered, prompt) = reaching(
+        heardRoot,
+        Vector(advert("post_x")),
+        heardBySource,
+        repoInGithub,
+        repoReads(0.1)
+      )
+      offered ==> Vector("about")
+      recorded.advertised ==> Vector.empty
+      assert(!prompt.contains("github"))
+      val shape = recorded.shaped.getOrElse(throw new java.lang.AssertionError("no shape"))
+      val read = Reading.Yes(QuestionName.per(Tags.V2.sourcePrefix, repo))
+      shape.width ==> narrow
+      shape.services ==> Vector(
+        TurnShape.Took(
+          ServiceOffer(
+            github,
+            Vector(repo),
+            ServiceOffer.Verdict.Checked(
+              TriageGate.Checked.Fails(
+                TriageGate.Failed(
+                  TriageBound.AtLeast(read, Probability.clamped(0.2)),
+                  Probability.clamped(0.1)
+                ),
+                Vector.empty
+              )
+            )
+          ),
+          TurnShape.Via.Workspace,
+          Vector(named("github_search"))
+        )
+      )
+      ToolSets.get(shape.whole)(using TestTx.fake).map(_.tools.map(t => ToolName.value(t.name))) ==>
+        Right(Vector("github_search", "about"))
+    }
+
+    test(
+      "a heard turn is offered its workspace's tools when a source passes, when the answers do not read it, and when it has no answers"
+    ) {
+      def verdict(weighed: Option[Tags]) = {
+        val (recorded, offered, _) =
+          reaching(heardRoot, Vector.empty, heardBySource, repoInGithub, weighed)
+        (offered, recorded.shaped.map(_.services.map(_.offer.verdict)))
+      }
+      val read = Reading.Yes(QuestionName.per(Tags.V2.sourcePrefix, repo))
+      val unrelated =
+        Some(Tags.Weighed(VectorMap(Tags.V2.open -> Answer.YesNo(0.9)), "jev", Usage.Zero))
+      Vector(repoReads(0.2), unrelated, None, Some(Tags.Unanswered("unavailable"))).map(verdict) ==>
+        Vector(
+          (
+            Vector("github_search", "about"),
+            Some(Vector(ServiceOffer.Verdict.Checked(TriageGate.Checked.Passes)))
+          ),
+          (
+            Vector("github_search", "about"),
+            Some(Vector(ServiceOffer.Verdict.Checked(TriageGate.Checked.Unread(read))))
+          ),
+          (Vector("github_search", "about"), Some(Vector(ServiceOffer.Verdict.Unweighed))),
+          (Vector("github_search", "about"), Some(Vector(ServiceOffer.Verdict.Unweighed)))
+        )
+    }
+
+    test(
+      "under the shipped recipe a turn is offered exactly what it was before recipes, whatever its answers, and its shape records every service ungated at the deployed width"
+    ) {
+      val addressed = Payload.Message(Message.User("post it"))
+      val before = reaching(addressed, Vector(advert("post_x")))
+      val shipped =
+        reaching(
+          addressed,
+          Vector(advert("post_x")),
+          TurnRecipe.Shipped,
+          repoInGithub,
+          repoReads(0.0)
+        )
+      (shipped._1.copy(shaped = None), shipped._2, shipped._3) ==>
+        (before._1.copy(shaped = None), before._2, before._3)
+      val heardBefore = reaching(heardRoot, Vector.empty)
+      val heardShipped =
+        reaching(heardRoot, Vector.empty, TurnRecipe.Shipped, repoInGithub, repoReads(0.0))
+      (heardShipped._1.copy(shaped = None), heardShipped._2, heardShipped._3) ==>
+        (heardBefore._1.copy(shaped = None), heardBefore._2, heardBefore._3)
+      shipped._1.shaped ==> Some(
+        TurnShape(
+          Width.Deployed,
+          shipped._1.tools,
+          Vector(
+            TurnShape.Took(
+              ServiceOffer(github, Vector(repo), ServiceOffer.Verdict.Ungated),
+              TurnShape.Via.Workspace,
+              Vector(named("github_search"))
+            ),
+            TurnShape.Took(
+              ServiceOffer(elsewhere, Vector.empty, ServiceOffer.Verdict.Ungated),
+              TurnShape.Via.Reached,
+              Vector(named("post_x"))
+            )
+          )
+        )
+      )
+    }
+
+    test(
+      "an addressed turn is offered a reached service's tools by the recipe's addressed offering"
+    ) {
+      // The workspace's source fails at 0.2; the reached service has no source, so is ungated.
+      val bySource = TurnRecipe(
+        ByFocus.both(TurnRecipe.Shipped.addressed),
+        Shaping(Width.Deployed, Offering.BySource(Probability.clamped(0.2)))
+      )
+      val (recorded, offered, prompt) = reaching(
+        Payload.Message(Message.User("post it")),
+        Vector(advert("post_x")),
+        bySource,
+        repoInGithub,
+        repoReads(0.1)
+      )
+      offered ==> Vector("post_x", "about")
+      recorded.reached ==> Map(named("post_x") -> elsewhere.place)
+      assert(!prompt.contains("works in github"))
+      assert(prompt.contains("You also reach elsewhere"))
     }
 
     test("a turn rooted on a person's message to grit is recorded as addressed") {

@@ -1,18 +1,22 @@
 package grit.turn
 
+import grit.core.context.Width
 import grit.core.edge.Advert
 import grit.core.id.TurnRef
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
-import grit.core.store.{Db, EntryStore, Origin, Payload, StoreError, Tx}
+import grit.core.recipe.{Offering, Rooted, ServiceOffer}
+import grit.core.store.{Db, EntryStore, Origin, Payload, Position, StoreError, Tx}
 import grit.core.tool.{DuplicateName, Hosted, Tool, ToolName, ToolSet, ToolSetId, Toolbox}
+import grit.core.triage.{KnowledgeSources, Tags}
 
 /** What a turn offers its model, as its `offer` step decided (ADR 0016, 0017): the workspace
   * its hosted calls are addressed to, none when its conversation has none
   * ([[TurnOffer.workspaceOf]]); its tool set; its system prompt; its `root`, what it answers;
   * `advertised`, the tools of its set taken from its workspace's edge's advert
-  * ([[TurnOffer.Recorded]]); and `reached`, the tools of the set taken from a reached
-  * service's advert, each with the place its calls are addressed to ([[placeOf]]).
+  * ([[TurnOffer.Recorded]]); `reached`, the tools of the set taken from a reached
+  * service's advert, each with the place its calls are addressed to ([[placeOf]]); and the
+  * `width` its window is drawn at.
   */
 final case class TurnOffer(
     workspace: Option[Place],
@@ -20,7 +24,8 @@ final case class TurnOffer(
     prompt: SystemPrompt,
     root: TurnOffer.Root,
     advertised: Vector[ToolName],
-    reached: Map[ToolName, Place]
+    reached: Map[ToolName, Place],
+    width: Width
 ) {
 
   /** The system text every model call of the turn is sent. */
@@ -38,7 +43,9 @@ object TurnOffer {
     * which decides the steps it takes after its reply; `advertised`, the offered tools taken
     * from the workspace's serving edge's advert ([[grit.core.tool.Hosted.advertised]]); and
     * `reached`, those taken from a reached service's, each with its place. [[toolbox]]
-    * rebuilds both from the recorded set.
+    * rebuilds both from the recorded set. `shaped`, what its recipe made of it; `None` for an
+    * offer recorded before recipes, which was drawn at the deployed width with nothing
+    * withheld.
     */
   final case class Recorded(
       workspace: Option[Place],
@@ -46,7 +53,8 @@ object TurnOffer {
       prompt: Vector[FragmentId],
       root: Root,
       advertised: Vector[ToolName] = Vector.empty,
-      reached: Map[ToolName, Place] = Map.empty
+      reached: Map[ToolName, Place] = Map.empty,
+      shaped: Option[TurnShape] = None
   )
 
   /** What a turn answers: a message said to grit, or one grit heard and chose to draft a
@@ -72,15 +80,25 @@ object TurnOffer {
     * what it may reach there, what it reaches besides ([[TurnPrompt.reached]], for each
     * reached service offering tools), the voice's fragment (none for plain), and the
     * instruction files the edge read there. Its root is `Heard` when its first entry in
-    * `entries` is a heard message ([[grit.core.store.Payload.Heard]]), else `Addressed`. `TurnFailure.Store` when a store fails, the
-    * conversation is gone, or two tools offered share a name. A stored voice this build does not know is the default, never a
-    * failure.
+    * `entries` is a heard message ([[grit.core.store.Payload.Heard]]), else `Addressed`.
+    *
+    * `tooling.recipe` shapes it by its root ([[grit.core.recipe.Rooted]]: a heard message at
+    * the focus it was said at, [[grit.core.store.Origin.focus]]): the shaping's width is
+    * recorded for its window, and its offering decides each service it takes tools from (its
+    * workspace's, then those it reaches) by the sources `tooling.knowledge` says supply it and
+    * `weighed`'s answers (none when `weighed` is `None` or `Unanswered`,
+    * [[grit.core.recipe.Offering.decide]]). A withheld service's tools are left out of the set,
+    * `advertised` and `reached`, and what it may reach there or besides is not said; all of it
+    * is in `shaped`. `TurnFailure.Store` when a store fails, the conversation is gone, or two
+    * tools offered share a name. A stored voice this build does not know is the default,
+    * never a failure.
     */
   def decide[C^](
       hosting: TurnHosting,
       entries: EntryStore,
       tooling: TurnTooling[C]^,
-      turn: TurnRef
+      turn: TurnRef,
+      weighed: Option[Tags]
   )(using
       Tx^
   ): Either[TurnFailure, Recorded] =
@@ -90,10 +108,20 @@ object TurnOffer {
         StoreError.Invalid(s"conversation of ${turn.workflowId} is gone")
       )
       all <- entries.list(turn.conversationId)
-      root = all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq).map(_.payload) match {
+      first = all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq)
+      root = first.map(_.payload) match {
         case Some(Payload.Heard(_)) => Root.Heard
         case _ => Root.Addressed
       }
+      rooted = root match {
+        case Root.Heard =>
+          val opening = all.minByOption(_.seq).map(_.id) == first.map(_.id)
+          Rooted.Heard(
+            conversation.origin.focus(if (opening) Position.Opening else Position.Reply)
+          )
+        case Root.Addressed => Rooted.Addressed
+      }
+      shaping = tooling.recipe.at(rooted)
       workspace = workspaceOf(conversation.origin, tooling.worksIn)
       advert <- workspace.fold[Either[StoreError, Option[Advert]]](Right(None))(
         hosting.edges.serving
@@ -112,22 +140,19 @@ object TurnOffer {
         case Root.Heard => Vector.empty
       }
       reaching <- reachedFrom(hosting, services, engines ++ hosted.map(_.name))
-      offered <- Toolbox
-        .of[{}](hosted*)
-        .map(_.set)
-        .flatMap(h =>
-          (if (conversation.origin.audience.operator)
-             Toolbox.joined(tooling.tools, tooling.operator)
-           else Right(tooling.tools))
-            .flatMap(_.preceded(hosted ++ reaching.flatMap(_._2.tools).flatMap(Hosted.advertised)))
-            .map(all => (h, all.set))
-        )
-        .left
-        .map { case DuplicateName(n) =>
-          StoreError.Invalid(s"two tools are named ${ToolName.value(n)}")
-        }
+      took = shape(shaping.offering, tooling.knowledge, weighed, workspace, hosted, reaching)
+      (atWorkspace, reachedTook) = took.partition(_.via == TurnShape.Via.Workspace)
+      kept = !atWorkspace.exists(_.offer.withheld)
+      offeredHosted = if (kept) hosted else Vector.empty
+      // shape takes the reached in reaching's order, one each.
+      offeredReaching = reaching.zip(reachedTook).collect {
+        case (r, t) if !t.offer.withheld => r
+      }
+      whole <- setOf(tooling, conversation.origin, hosted, reaching).map(_._2)
+      offered <- setOf(tooling, conversation.origin, offeredHosted, offeredReaching)
       (hostedSet, set) = offered
       _ <- hosting.toolSets.keep(set)
+      _ <- if (whole.id == set.id) Right(()) else hosting.toolSets.keep(whole)
       place <- advert.fold[Either[StoreError, SystemPrompt]](Right(SystemPrompt.of(Vector.empty)))(
         a => hosting.prompts.prompt(a.instructions)
       )
@@ -142,9 +167,9 @@ object TurnOffer {
           TurnPrompt.Answering,
           TurnPrompt.edge(conversation.origin)
         ) ++ TurnPrompt.destination(conversation.origin) ++ called.map(TurnPrompt.called) ++
-          Option.when(root == Root.Heard)(TurnPrompt.unprompted) ++ Vector(
-            TurnPrompt.reach(workspace, hostedSet)
-          ) ++ reaching.flatMap((service, set) => TurnPrompt.reached(service, set)) ++
+          Option.when(root == Root.Heard)(TurnPrompt.unprompted) ++
+          Option.when(kept)(TurnPrompt.reach(workspace, hostedSet)) ++
+          offeredReaching.flatMap((service, set) => TurnPrompt.reached(service, set)) ++
           Voice.fragment(voice) ++ place.fragments
       )
       _ <- hosting.prompts.record(turn.workflowId, prompt)
@@ -153,9 +178,60 @@ object TurnOffer {
       set.id,
       prompt.ids,
       root,
-      advertised.map(_.name),
-      reaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap
+      if (kept) advertised.map(_.name) else Vector.empty,
+      offeredReaching.flatMap((service, set) => set.tools.map(_.name -> service.place)).toMap,
+      Some(TurnShape(shaping.width, whole.id, took))
     )).left.map(e => TurnFailure.Store(describe(e)))
+
+  /** Each service a turn takes tools from, in order, as `offering` decides it by the sources
+    * `knowledge` says supply it and `weighed`'s answers: `workspace`'s, when it is a service,
+    * with `hosted`, then each of `reaching` with its set.
+    */
+  private def shape(
+      offering: Offering,
+      knowledge: KnowledgeSources,
+      weighed: Option[Tags],
+      workspace: Option[Place],
+      hosted: Vector[Tool.Offered],
+      reaching: Vector[(Service, ToolSet)]
+  ): Vector[TurnShape.Took] = {
+    val names: Vector[ToolName] = hosted.map(_.name)
+    val from: Vector[(Service, TurnShape.Via, Vector[ToolName])] =
+      workspace.flatMap(_.service).toVector.map((_, TurnShape.Via.Workspace, names)) ++
+        reaching.map((service, set) => (service, TurnShape.Via.Reached, set.tools.map(_.name)))
+    val answers = weighed.collect { case Tags.Weighed(answers, _, _) => answers }
+    // decide gives one verdict per service, in order.
+    Offering
+      .decide(offering, knowledge.supplied, from.map(_._1), answers)
+      .zip(from)
+      .map((offer: ServiceOffer, f: (Service, TurnShape.Via, Vector[ToolName])) =>
+        TurnShape.Took(offer, f._2, f._3)
+      )
+  }
+
+  /** The hosted tools of a turn from `origin` as a set, and its whole set: `hosted`, then the
+    * tools of `reaching` that [[Hosted.advertised]] offers, then `tooling`'s own, then its
+    * operator tools for the operator. Why not, naming a name two of them share.
+    */
+  private def setOf[C^](
+      tooling: TurnTooling[C]^,
+      origin: Origin,
+      hosted: Vector[Tool.Offered],
+      reaching: Vector[(Service, ToolSet)]
+  ): Either[StoreError, (ToolSet, ToolSet)] =
+    Toolbox
+      .of[{}](hosted*)
+      .map(_.set)
+      .flatMap(h =>
+        (if (origin.audience.operator) Toolbox.joined(tooling.tools, tooling.operator)
+         else Right(tooling.tools))
+          .flatMap(_.preceded(hosted ++ reaching.flatMap(_._2.tools).flatMap(Hosted.advertised)))
+          .map(all => (h, all.set))
+      )
+      .left
+      .map { case DuplicateName(n) =>
+        StoreError.Invalid(s"two tools are named ${ToolName.value(n)}")
+      }
 
   /** The offer `recorded` read back through `db`: its tool set and prompt, by id.
     * `TurnFailure.Store` naming what is not kept.
@@ -171,7 +247,8 @@ object TurnOffer {
         prompt,
         recorded.root,
         recorded.advertised,
-        recorded.reached
+        recorded.reached,
+        recorded.shaped.fold(Width.Deployed)(_.width)
       )
     }.left
       .map(e => TurnFailure.Store(describe(e)))

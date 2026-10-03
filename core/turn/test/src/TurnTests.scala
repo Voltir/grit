@@ -86,6 +86,31 @@ object TurnTests extends TestSuite {
   private val Placing = 7
 
   val tests = Tests {
+    test("the window is assembled at the width the recipe gives the turn's root") {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "hello")
+      val narrow = grit.core.context.Width.Within(Tokens(9000), 4)
+      val recipe = grit.core.recipe.TurnRecipe.Shipped
+        .copy(addressed = grit.core.recipe.Shaping(narrow, grit.core.recipe.Offering.All))
+      var asked = Vector.empty[AssemblyRequest]
+      val asking = new ContextAssembler {
+        def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] = {
+          asked = asked :+ request
+          Right(Window(Vector.empty))
+        }
+      }
+      new InMemoryDurable().run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new RecordingProvider,
+          asking,
+          new InMemoryUsageLedger,
+          recipe = recipe
+        )
+      )
+      asked ==> Vector(AssemblyRequest(turn, narrow))
+    }
+
     test("a turn rooted on a heard message keeps its answer as a draft: no reply, no summary") {
       val entries = new InMemoryEntryStore
       val turn = hear(entries, "is the freeze still on?")

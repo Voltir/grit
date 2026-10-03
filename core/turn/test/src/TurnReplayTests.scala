@@ -60,6 +60,25 @@ object TurnReplayTests extends TestSuite {
       assert(failures.isEmpty)
     }
 
+    test("every recorded offer is written back byte for byte") {
+      // An offer is recorded data: one recorded before shapes reads as unshaped, and today's
+      // codec writes the same text back, so recipes change no offer already recorded.
+      val j = TurnJournal.recordedOffer
+      val outputs = histories.flatMap { case (path, parsed) =>
+        parsed.toOption.toVector.flatMap(_.steps.collect {
+          case s if s.name == Turn.Step.Offer => (path.last, s.outcome)
+        })
+      }
+      assert(outputs.nonEmpty)
+      val failures = outputs.collect {
+        case (file, InMemoryDurable.Outcome.Output(text))
+            if j.decode(text).map(j.encode) != Right(text) =>
+          file
+        case (file, InMemoryDurable.Outcome.Threw(_) | InMemoryDurable.Outcome.Marker) => file
+      }
+      assert(failures.isEmpty)
+    }
+
     test("every recorded classification is written back byte for byte") {
       // Topic events are recorded data: today's codec must read them and write the same text.
       val j = TurnJournal.classification

@@ -30,7 +30,10 @@ import TurnVerdict.Shape
   *   1. `offer` — what the turn offers its model ([[TurnOffer]]): its conversation's
   *      workspace, the tool set (its own tools, and the hosted ones the edge serving that
   *      workspace advertises) and the system prompt (ADR 0016), kept by content id and
-  *      recorded by id; a rerun reads them back, so it is offered what it first was.
+  *      recorded by id; a rerun reads them back, so it is offered what it first was. Its
+  *      deployment's recipe ([[grit.core.recipe.TurnRecipe]]) shapes it by its root: the
+  *      width its window is drawn at, and which services' tools it is offered, all recorded
+  *      as its [[TurnShape]]; an offer recorded before shapes is drawn as deployed.
   *   1. `stitched` — when the turn's message is an [[grit.core.stitch.Opening]], its
   *      placement waited for ([[grit.core.stitch.Placements.awaited]]), so it runs only once
   *      every opening heard before it in its room is placed; nothing waited for otherwise.
@@ -42,7 +45,8 @@ import TurnVerdict.Shape
   *   1. `record-topic` — that placement recorded as an entry, with the classifier's cost.
   *      Turns that passed this point before topics existed have neither step
   *      ([[Patches.Topics]]).
-  *   1. `assemble` — a fresh window over what came before the turn.
+  *   1. `assemble` — a fresh window over what came before the turn, at the width its offer
+  *      recorded.
   *   1. `record-window` — the window recorded as an entry, after any search query
   *      assembly wrote (its own entry, with its own cost in the usage ledger), so an edge
   *      sees what the model will see while it answers. Turns that passed this point
@@ -387,8 +391,9 @@ object Turn {
           case Left(failure) => s"failed: $failure"
           case Right(profile) =>
             val hosting = env.hosting
-            d.transact(Step.Offer)(TurnOffer.decide(hosting, env.records.entries, tooling, turn))
-              .flatMap(TurnOffer.load(hosting, env.db, _)) match {
+            d.transact(Step.Offer)(
+              TurnOffer.decide(hosting, env.records.entries, tooling, turn, None)
+            ).flatMap(TurnOffer.load(hosting, env.db, _)) match {
               case Left(failure) => s"failed: $failure"
               case Right(offer) => pinned(env, tooling, turn)(using profile, offer, d)
             }
@@ -774,7 +779,7 @@ object Turn {
     val heard = d.stream(TurnStream.Key)
     val prepared = for {
       window <- d.step(Step.Assemble) { () =>
-        env.assembler.assemble(AssemblyRequest(turn))(using env.db).left.map {
+        env.assembler.assemble(AssemblyRequest(turn, offer.width))(using env.db).left.map {
           case AssemblyError.Store(error) => TurnFailure.Assembly(describe(error))
         }
       }

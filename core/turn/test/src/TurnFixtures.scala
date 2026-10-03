@@ -870,7 +870,8 @@ object TurnFixtures {
       classifier: Classifier^ = NoClassifier,
       speech: TurnSpeech = quiet(),
       stitching: TurnStitching^ = unstitched(),
-      hosted: TurnHosting = hosting()
+      hosted: TurnHosting = hosting(),
+      recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped
   )(
       id: WorkflowId
   )(using Durable^): String =
@@ -892,7 +893,8 @@ object TurnFixtures {
         Toolbox.Empty,
         Vector.empty,
         new FakeJot,
-        budget(5)
+        budget(5),
+        recipe = recipe
       )
     )(id)
 

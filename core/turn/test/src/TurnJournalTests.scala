@@ -186,6 +186,83 @@ object TurnJournalTests extends TestSuite {
         Right(Right(Map.empty))
     }
 
+    test(
+      "an offer's shape is written with its width, whole set and services' verdicts, and an offer recorded before shapes reads as unshaped"
+    ) {
+      // Pinned: replay reads the width back for the turn's window, and the harness each verdict.
+      val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
+      val tools = grit.core.tool.ToolSet.Empty.id
+      val set = grit.core.tool.ToolSetId.value(tools)
+      def service(name: String) =
+        grit.core.place.Service.of(name).fold(e => throw new java.lang.AssertionError(e), identity)
+      val repo = grit.core.id.KnowledgeSourceName
+        .of("repo")
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      val read = grit.core.triage.Reading.Yes(
+        grit.core.id.QuestionName.per(grit.core.triage.Tags.V2.sourcePrefix, repo)
+      )
+      val p = grit.core.period.Probability.clamped
+      val failed = grit.core.triage.Gate.Checked.Fails(
+        grit.core.triage.Gate.Failed(grit.core.triage.Bound.AtLeast(read, p(0.25)), p(0.125)),
+        Vector.empty
+      )
+      import grit.core.recipe.ServiceOffer
+      val shaped: Either[TurnFailure, TurnOffer.Recorded] = Right(
+        TurnOffer.Recorded(
+          None,
+          tools,
+          Vector.empty,
+          TurnOffer.Root.Heard,
+          shaped = Some(
+            TurnShape(
+              grit.core.context.Width.Within(Tokens(9000), 4),
+              tools,
+              Vector(
+                TurnShape.Took(
+                  ServiceOffer(
+                    service("github"),
+                    Vector(repo),
+                    ServiceOffer.Verdict.Checked(failed)
+                  ),
+                  TurnShape.Via.Workspace,
+                  Vector(grit.core.tool.ToolName("github_search"))
+                ),
+                TurnShape.Took(
+                  ServiceOffer(service("elsewhere"), Vector.empty, ServiceOffer.Verdict.Ungated),
+                  TurnShape.Via.Reached,
+                  Vector.empty
+                ),
+                TurnShape.Took(
+                  ServiceOffer(service("docs"), Vector(repo), ServiceOffer.Verdict.Unweighed),
+                  TurnShape.Via.Reached,
+                  Vector.empty
+                )
+              )
+            )
+          )
+        )
+      )
+      j.encode(shaped) ==>
+        s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"root":"heard","shaped":{""" +
+        s""""width":{"budget":9000,"hits":4},"whole":"$set","services":[""" +
+        """{"service":"github","via":"workspace","tools":["github_search"],"sources":["repo"],"verdict":{"checked":""" +
+        """{"fails":[{"reading":{"reads":"yes","name":"source:repo"},"bound":"at_least","p":0.25,"read":0.125}]}}},""" +
+        """{"service":"elsewhere","via":"reached","tools":[],"sources":[],"verdict":"ungated"},""" +
+        """{"service":"docs","via":"reached","tools":[],"sources":["repo"],"verdict":"unweighed"}]}}}"""
+      j.decode(j.encode(shaped)) ==> Right(shaped)
+      val deployed = shaped.map(r =>
+        r.copy(shaped =
+          r.shaped.map(_.copy(width = grit.core.context.Width.Deployed, services = Vector.empty))
+        )
+      )
+      j.encode(deployed) ==>
+        s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"root":"heard","shaped":{"width":"deployed","whole":"$set","services":[]}}}"""
+      j.decode(j.encode(deployed)) ==> Right(deployed)
+      j.decode(s"""{"ok":{"workspace":null,"tools":"$set","prompt":[]}}""")
+        .map(_.map(_.shaped)) ==>
+        Right(Right(None))
+    }
+
     test("a record in neither shape is rejected") {
       val j = summon[Journaled[Either[TurnFailure, EntryId]]]
       assert(j.decode("""{"ok":"x","failed":"model","reason":"r"}""").isLeft)

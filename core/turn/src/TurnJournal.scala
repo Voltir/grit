@@ -1,17 +1,19 @@
 package grit.turn
 
-import grit.core.context.{AssemblyNote, Window}
+import grit.core.context.{AssemblyNote, Width, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
-import grit.core.id.{EntryId, TurnSeq}
+import grit.core.id.{EntryId, KnowledgeSourceName, TurnSeq}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.TurnProfileId
-import grit.core.place.Place
+import grit.core.place.{Place, Service}
 import grit.core.prompt.FragmentId
+import grit.core.recipe.ServiceOffer
 import grit.core.speech.{Outcome, SpeechJson}
 import grit.core.store.{Nearby, Payload, PayloadJson}
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.topic.{TopicId, TopicJson}
+import grit.core.triage.GateJson
 
 /** How the turn's step outputs are recorded: `{"ok": value}` or
   * `{"failed": kind, "reason": text}`. In-flight turns must read back what an earlier
@@ -220,7 +222,8 @@ private[turn] object TurnJournal {
     * `"advertised": [tool names]` when it took tools from an edge's advert, and `"reached":
     * {tool name: place written}` when it took tools from a reached service's. References
     * only: the texts are kept by id. No `root` reads as addressed and no `advertised` or
-    * `reached` as none, so every offer recorded before them reads as it did.
+    * `reached` as none, so every offer recorded before them reads as it did; and `"shaped"`
+    * ([[writeShape]]) when the offer was shaped by a recipe, none reading as unshaped.
     */
   given recordedOffer: Journaled[Either[TurnFailure, TurnOffer.Recorded]] =
     outcome(
@@ -245,6 +248,8 @@ private[turn] object TurnJournal {
               .sortBy((n, _) => ToolName.value(n))
               .map((n, p) => ToolName.value(n) -> ujson.Str(p.written))
           )
+        // Written only when shaped, so every offer recorded before shapes keeps its form.
+        r.shaped.foreach(shape => o("shaped") = writeShape(shape))
         o
       },
       v =>
@@ -309,8 +314,114 @@ private[turn] object TurnJournal {
                   }
                 )
           }
-        } yield TurnOffer.Recorded(workspace, tools, prompt, root, advertised, reached)
+          shaped <- o.get("shaped") match {
+            case None => Right(None)
+            case Some(shape) => readShape(shape).map(Some(_))
+          }
+        } yield TurnOffer.Recorded(workspace, tools, prompt, root, advertised, reached, shaped)
     )
+
+  /** `{"width", "whole": set id, "services": [...]}`: the width `"deployed"` or `{"budget",
+    * "hits"}`; each service `{"service", "via": "workspace" | "reached", "tools": [names],
+    * "sources": [names], "verdict"}`, its verdict `"ungated"`, `"unweighed"` or `{"checked":
+    * result}` ([[GateJson.writeChecked]]).
+    */
+  private def writeShape(shape: TurnShape): ujson.Value =
+    ujson.Obj(
+      "width" -> (shape.width match {
+        case Width.Deployed => ujson.Str("deployed")
+        case Width.Within(budget, hits) =>
+          ujson.Obj("budget" -> Tokens.value(budget).toDouble, "hits" -> hits)
+      }),
+      "whole" -> ToolSetId.value(shape.whole),
+      "services" -> ujson.Arr.from(shape.services.map { took =>
+        ujson.Obj(
+          "service" -> took.offer.service.name,
+          "via" -> (took.via match {
+            case TurnShape.Via.Workspace => "workspace"
+            case TurnShape.Via.Reached => "reached"
+          }),
+          "tools" -> ujson.Arr.from(took.tools.map(n => ujson.Str(ToolName.value(n)))),
+          "sources" -> ujson.Arr.from(
+            took.offer.sources.map(n => ujson.Str(KnowledgeSourceName.value(n)))
+          ),
+          "verdict" -> (took.offer.verdict match {
+            case ServiceOffer.Verdict.Ungated => ujson.Str("ungated")
+            case ServiceOffer.Verdict.Unweighed => ujson.Str("unweighed")
+            case ServiceOffer.Verdict.Checked(result) =>
+              ujson.Obj("checked" -> GateJson.writeChecked(result))
+          })
+        )
+      })
+    )
+
+  private def readShape(v: ujson.Value): Either[String, TurnShape] =
+    for {
+      o <- v.objOpt.toRight("shape: expected an object")
+      width <- o.get("width") match {
+        case Some(ujson.Str("deployed")) => Right(Width.Deployed)
+        case Some(w: ujson.Obj) =>
+          (
+            w.value.get("budget").flatMap(_.numOpt).filter(n => n.isWhole && n >= 0),
+            w.value.get("hits").flatMap(_.numOpt).filter(n => n.isValidInt)
+          ) match {
+            case (Some(budget), Some(hits)) =>
+              Right(Width.Within(Tokens(budget.toLong), hits.toInt))
+            case _ => Left("shape: width is not {budget, hits}")
+          }
+        case _ => Left("shape: no width")
+      }
+      whole <- o.get("whole").flatMap(_.strOpt).toRight("shape: no whole").flatMap(ToolSetId.of)
+      services <- o
+        .get("services")
+        .flatMap(_.arrOpt)
+        .toRight("shape: no services")
+        .flatMap(items => sequence(items.toVector.map(readTook)))
+    } yield TurnShape(width, whole, services)
+
+  private def readTook(v: ujson.Value): Either[String, TurnShape.Took] =
+    for {
+      o <- v.objOpt.toRight("shape: a service is not an object")
+      service <- o
+        .get("service")
+        .flatMap(_.strOpt)
+        .toRight("shape: a service has no name")
+        .flatMap(Service.of(_).left.map(e => s"shape: $e"))
+      via <- o.get("via") match {
+        case Some(ujson.Str("workspace")) => Right(TurnShape.Via.Workspace)
+        case Some(ujson.Str("reached")) => Right(TurnShape.Via.Reached)
+        case _ => Left("shape: via is neither workspace nor reached")
+      }
+      tools <- strings(o, "tools").flatMap(ns =>
+        sequence(ns.map(ToolName.of(_).left.map(e => s"shape: $e")))
+      )
+      sources <- strings(o, "sources").flatMap(ns =>
+        sequence(ns.map(KnowledgeSourceName.of(_).left.map(e => s"shape: $e")))
+      )
+      verdict <- o.get("verdict") match {
+        case Some(ujson.Str("ungated")) => Right(ServiceOffer.Verdict.Ungated)
+        case Some(ujson.Str("unweighed")) => Right(ServiceOffer.Verdict.Unweighed)
+        case Some(c: ujson.Obj) if c.value.contains("checked") =>
+          c.value
+            .get("checked")
+            .toRight("shape: no checked")
+            .flatMap(GateJson.readChecked)
+            .map(ServiceOffer.Verdict.Checked(_))
+        case _ => Left("shape: verdict is not ungated, unweighed or {checked}")
+      }
+    } yield TurnShape.Took(ServiceOffer(service, sources, verdict), via, tools)
+
+  /** The strings of the array under `key`; `Left` when it is not one of strings. */
+  private def strings(
+      o: collection.Map[String, ujson.Value],
+      key: String
+  ): Either[String, Vector[String]] =
+    o.get(key)
+      .flatMap(_.arrOpt)
+      .toRight(s"shape: $key is not an array")
+      .flatMap(items =>
+        sequence(items.toVector.map(_.strOpt.toRight(s"shape: a name in $key is not a string")))
+      )
 
   /** A `dispatch` step's output: whether its requests were sent to a serving edge (`true`),
     * or no edge was serving the workspace (`false`).
