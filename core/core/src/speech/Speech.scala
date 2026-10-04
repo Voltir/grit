@@ -266,7 +266,8 @@ object Speech {
   /** The assistant's own reply after `root`, the heard message a draft answers, as
     * `Spoken`: the first among `own`, its conversation's entries after it by position, and
     * `strand`, what its strand's other conversations said, after it by time. A person's reply
-    * is not one: the judge weighs it. `None` when the assistant has not replied.
+    * is not one: it holds no draft (the judge sees it beside an unprompted one; a named one is
+    * posted regardless). `None` when the assistant has not replied.
     */
   def spoken(root: Entry, own: Vector[Entry], strand: Vector[Entry]): Option[Outcome.Spoken] =
     (own.filter(_.seq > root.seq) ++ strand.filter(_.createdAt.isAfter(root.createdAt)))
