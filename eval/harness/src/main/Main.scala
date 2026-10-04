@@ -99,6 +99,7 @@ import grit.eval.harness.score.{
   Recipe,
   Rule,
   Scoring,
+  Shapes,
   Spread,
   Target,
   TurnPair
@@ -609,6 +610,7 @@ object Main {
               "as recorded" + (if (differ.isEmpty) "" else s"; not: ${differ.mkString(", ")}")
           }
           val notes = Vector(
+            Report.shapes(Shapes.of(turns)),
             s"turns: ${turns.size}; to be asked for answers ${asking.size}: answered " +
               s"${asked.size}, not asked for want of a case id ${noCase.size}, not built " +
               s"${built.count(_._3.isLeft)}, asked and unanswered or skipped " +

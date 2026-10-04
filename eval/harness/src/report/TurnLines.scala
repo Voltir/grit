@@ -5,7 +5,7 @@ import grit.core.message.Tokens
 import grit.core.tool.ToolName
 import grit.eval.harness.corpus.{Called, Drafted, Ended, Part, Support, TurnCase}
 import grit.eval.harness.label.Verdicts
-import grit.eval.harness.score.{Calls, Paid, Quantiles, Slice, Structure, Unreplied, Where}
+import grit.eval.harness.score.{Calls, Paid, Quantiles, Shapes, Slice, Structure, Unreplied, Where}
 import grit.eval.harness.stats.{Mills, Proportion}
 import grit.turn.TurnRecord
 
@@ -30,6 +30,7 @@ private[report] object TurnLines {
         .mkString(", "),
       s"verdicts standing: ${verdicts.cases.size}, of which no turn answers " +
         Structure.unjoined(turns, verdicts),
+      Report.shapes(Shapes.of(turns)),
       "",
       "Text-free: ids, counts, tokens and prices. A price is in mills (a mill is $0.001), and an " +
         "exact amount in dollars beside it. A rate's interval is Wilson's at 95% on its " +

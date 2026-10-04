@@ -75,6 +75,15 @@ object ReportTests extends TestSuite {
         )
     }
 
+    test("a turns report counts the turns recorded before shapes, and their weighing by kind") {
+      lines(Report.turns("20261004", TurnFixtures.turns, TurnFixtures.verdicts))
+        .filter(_.startsWith("offers: ")) ==> Vector(
+        "offers: shaped 1, recorded before shapes 2 (offered as recorded under every variant), " +
+          "none 2; weigh steps: kept 1, asked 0, failed 1 (late 1), weighed nothing 1, " +
+          "none recorded 2"
+      )
+    }
+
     test("a turns report counts topic and unnamed calls apart from the tools offered") {
       val report = lines(Report.turns("20261004", TurnFixtures.turns, TurnFixtures.verdicts))
       val all = report.dropWhile(_ != "### Tools: all").takeWhile(_ != "### Tools: addressed")

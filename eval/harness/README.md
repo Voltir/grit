@@ -160,7 +160,9 @@ Packages, each importing only those above it:
   outcomes with their post and hold rates (each a `Proportion` clustered by thread), the prompt
   cache's hit rate (`Caching`: cached input tokens of input, clustered by thread, by role and
   for a turn's first main call against its later ones), the review verdicts
-  joined by case, and the window parts a reply `Used`. `Recipe`, a turn variant against
+  joined by case, and the window parts a reply `Used`. `Shapes`, how turns recorded their
+  offers (shaped, recorded before shapes, none) and what their `weigh` steps recorded, failures
+  by kind. `Recipe`, a turn variant against
   shipped over the turns paired (`TurnPair`, what each is `Given` both ways): tools offered and
   their definitions' tokens saved, what those are worth over the calls that would have sent
   them (`Priced`: tokens saved once a main-model call, scaled to the provider's count where
@@ -181,7 +183,8 @@ Packages, each importing only those above it:
   (`score.Repeated`) and agreement with what was kept live (`score.Agreement`). A question set's pulled
   shadow against live's log, each by its own set's gate (`Report.Side`), and against the
   verdicts given: `Report.drafts`, counts only. A corpus's recorded turns read structurally
-  (`score.Structure`) beside the verdicts standing: `Report.turns`, the pass rate first, then
+  (`score.Structure`) beside the verdicts standing: `Report.turns`, its header counting their
+  shapes and weighing (`Report.shapes`, the recipes notes' first line too), the pass rate first, then
   each section over every turn, by root and by where said, then a line a turn by cost, with
   the used-part threshold stated as a heuristic and used-section recall stated undefined where
   no reply said anything. Turn variants against shipped: `Report.recipes`, each `Varied`

@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.collection.immutable.VectorMap
 
+import grit.core.context.Width
 import grit.core.id.{
   ConversationId,
   EntryId,
@@ -19,6 +20,7 @@ import grit.core.prompt.Layer
 import grit.core.review.{Reason, Verdict}
 import grit.core.store.Focus
 import grit.core.tool.{ToolName, ToolSetId}
+import grit.core.triage.{Tags, Weighing}
 import grit.dbos.engine.Build
 import grit.eval.harness.corpus.{
   Call,
@@ -36,7 +38,7 @@ import grit.eval.harness.corpus.{
   TurnCase
 }
 import grit.eval.harness.label.{Rated, Verdicts}
-import grit.turn.{TurnOffer, TurnRecord}
+import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnWeighing}
 
 /** Five recorded turns over three threads, every aggregate of which is worked by hand in
   * [[StructureTests]]; and the verdicts standing, one on a message no turn answers. Every id
@@ -129,7 +131,10 @@ object TurnFixtures {
   // t2: thread A, heard, a draft that said something, held below the bar; one unnamed call.
   private val t2 = turn("w2", "A", TurnOffer.Root.Heard, slack("C1/1.2"), Ended.Replied(40, false))
     .copy(
-      offered = Some(both),
+      offered = Some(both.copy(shape = Some(TurnShape(Width.Deployed, Set1, Vector.empty)))),
+      weighed = TurnRecord.Weigh.Recorded(
+        Some(TurnWeighing.Weighed.Kept(Tags.Weighed(VectorMap.empty, "jev", Usage.Zero)))
+      ),
       window = Some(
         Parts(
           Vector(part(Part.Kind.Open, 20, Some(0.5)), part(Part.Kind.Closed, 40, Some(0.1))),
@@ -152,7 +157,7 @@ object TurnFixtures {
     TurnOffer.Root.Addressed,
     Said.Tui(EntryId("e3")),
     Ended.Failed("assemble", Ended.Why.Assembly)
-  )
+  ).copy(weighed = TurnRecord.Weigh.Recorded(None))
 
   // t4: thread C, a Slack thread asked directly, replied; no tool loop.
   private val t4 =
@@ -185,6 +190,9 @@ object TurnFixtures {
   // t5: thread B, a task's turn never finished.
   private val t5 =
     turn("w5", "B", TurnOffer.Root.Addressed, Said.Task(EntryId("e5")), Ended.Unfinished("PENDING"))
+      .copy(weighed =
+        TurnRecord.Weigh.Recorded(Some(TurnWeighing.Weighed.Failed(Weighing.Unweighed.Late)))
+      )
 
   val turns: Vector[TurnCase] = Vector(t1, t2, t3, t4, t5)
 

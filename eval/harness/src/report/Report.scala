@@ -36,6 +36,7 @@ import grit.eval.harness.score.{
   Repeated,
   Rule,
   Scoring,
+  Shapes,
   Size,
   Spending,
   Split,
@@ -150,6 +151,23 @@ object Report {
     */
   def turns(corpus: String, turns: Vector[TurnCase], verdicts: Verdicts): String =
     TurnLines.of(corpus, turns, verdicts)
+
+  /** How turns recorded their offers and weighing, as one line: the turns shaped, recorded
+    * before shapes and with no offer; their weigh steps by what each recorded, failures by
+    * kind.
+    */
+  def shapes(s: Shapes): String = {
+    val failed = s.failed.values.sum
+    val kinds =
+      if (s.failed.isEmpty) ""
+      else
+        s.failed.toVector
+          .map((why, n) => s"${why.toString.toLowerCase} $n")
+          .mkString(" (", ", ", ")")
+    s"offers: shaped ${s.shaped}, recorded before shapes ${s.unshaped} (offered as recorded " +
+      s"under every variant), none ${s.unoffered}; weigh steps: kept ${s.kept}, asked " +
+      s"${s.asked}, failed $failed$kinds, weighed nothing ${s.none}, none recorded ${s.unrecorded}"
+  }
 
   /** A recipes run over `corpus`: `notes` (lines on how it ran) first; then each of
     * `variants` against shipped on tools offered (called-tool recall first among them), what
