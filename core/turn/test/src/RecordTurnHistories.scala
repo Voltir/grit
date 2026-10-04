@@ -66,7 +66,7 @@ object RecordTurnHistories {
     }
 
     /** A turn rooted on a heard message triage read as put to grit by name, under Within;
-      * every question it asks answered yes at 0.9.
+      * any question it asks answered yes at 0.9.
       */
     def named: History = {
       val w = speechWorld()
@@ -537,6 +537,8 @@ object RecordTurnHistories {
       // unjudged), and the same in flight between its judge and its record-speech.
       "named-judged" -> named,
       "named-judged-before-speech" -> namedBeforeSpeech,
+      // A named turn since its drafts went unjudged: its patch's marker, no judge step.
+      "named-posted" -> named,
       "replied" -> replied,
       "stitched-first" -> {
         val ch = new StitchChannel(

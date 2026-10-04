@@ -194,13 +194,8 @@ final class SqlSpeechStore extends SpeechStore {
           case Some(x) => ps.setDouble(i, Probability.value(x))
           case None => ps.setNull(i, java.sql.Types.DOUBLE)
         }
-        // A named draft's one score is in the outcome alone: these columns are the unprompted
-        // judge's two.
-        val unprompted = judged.map(_.scores).collect {
-          case grit.core.speech.Judged.Scores.Unprompted(g, w) => (g, w)
-        }
-        probability(3, unprompted.map(_._1))
-        probability(4, unprompted.map(_._2))
+        probability(3, judged.map(_.grounded))
+        probability(4, judged.map(_.worth))
         probability(
           5,
           outcome match {

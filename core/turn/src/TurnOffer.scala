@@ -61,7 +61,7 @@ object TurnOffer {
     * reply to ([[grit.core.speech.Speech.decide]]): `Named` when triage read that message as
     * directed at grit ([[grit.core.triage.Tags.V3.directed]] passing on the tags it kept),
     * `Heard` otherwise. A named turn is offered as a heard one, told it was named
-    * ([[TurnPrompt.named]]), and its draft judged as named ([[TurnJudge.judgeNamed]]). An offer
+    * ([[TurnPrompt.named]]), and its draft not judged. An offer
     * recorded before roots existed is `Addressed`.
     */
   enum Root {

@@ -58,7 +58,7 @@ final class SqlReviews extends ReviewStore {
               reason <- Option(rs.getString("reason"))
                 .toRight("a picked review has no reason")
                 .flatMap(reasonRead)
-              live <- settled(rs)
+              live <- settled(rs).left.map(why => s"${rs.getString("entry_id")}: $why")
               answers <- named(rs.getString("answers"))
             } yield Prompt(
               EntryId(rs.getString("entry_id")),
@@ -164,7 +164,7 @@ final class SqlReviews extends ReviewStore {
           val rows = Vector.newBuilder[Either[String, Candidate]]
           while (rs.next())
             rows += (for {
-              live <- settled(rs)
+              live <- settled(rs).left.map(why => s"${rs.getString("id")}: $why")
               answers <- named(rs.getString("answers"))
             } yield Candidate(
               EntryId(rs.getString("id")),

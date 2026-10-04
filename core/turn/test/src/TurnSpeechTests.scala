@@ -1,19 +1,19 @@
 package grit.turn
 
-import grit.core.classify.{Classifier, Question}
+import grit.core.classify.Classifier
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.provider.ProviderError
-import grit.core.speech.{Judged, Outcome, Speaking}
+import grit.core.speech.{Cleared, Judged, Outcome, Speaking, SpeechJson}
 import grit.core.store.Payload
 import grit.core.triage.InMemoryTriageStore
 import grit.dbos.sql.TestTx
 
 import utest.*
 
-/** A turn rooted on a heard message: its draft judged, then posted, shadowed or held
+/** A turn rooted on a heard message: its draft judged when unprompted, then posted, shadowed or held
   * (ADR 0022).
   */
 object TurnSpeechTests extends TestSuite {
@@ -32,9 +32,10 @@ object TurnSpeechTests extends TestSuite {
       judge: Classifier^,
       speaking: Speaking = Speaking.Within(speechLimits),
       answer: Either[ProviderError, Message.Assistant] = Right(said("It moved to Thursday.")),
-      kept: Option[InMemoryTriageStore] = None
+      kept: Option[InMemoryTriageStore] = None,
+      durable: InMemoryDurable = new InMemoryDurable
   ): String =
-    new InMemoryDurable().run(w.turn.workflowId)(
+    durable.run(w.turn.workflowId)(
       turnBodyWith(
         w.entries,
         new Scripted((_, _) => answer),
@@ -49,6 +50,12 @@ object TurnSpeechTests extends TestSuite {
       )
     )
 
+  /** The current epoch's recorded history `name`. */
+  private def recorded(name: String): grit.core.durable.History =
+    grit.core.durable.History
+      .read(ujson.read(os.read(os.Path(sys.env("GRIT_HISTORIES")) / Turn.Epoch / s"$name.json")))
+      .fold(why => throw new java.lang.AssertionError(s"$name: $why"), identity)
+
   private def outcome(w: SpeechWorld): Option[Outcome] = w.store.outcomes.get(w.turn).map(_._1)
 
   private def awaited(w: SpeechWorld): Vector[(TurnRef, String)] =
@@ -59,58 +66,114 @@ object TurnSpeechTests extends TestSuite {
 
   private def judged(grounded: Double, worth: Double) =
     Judged(
-      Judged.Scores.Unprompted(Probability.clamped(grounded), Probability.clamped(worth)),
+      Probability.clamped(grounded),
+      Probability.clamped(worth),
       "jev",
       Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017")))
     )
 
   val tests = Tests {
     test(
-      "a draft answering a message directed at grit is judged on whether it answers, alone, even with nothing recalled, and posted at postAt"
+      "a named draft is posted unjudged, recalled or not: no judge step, nothing asked, no judge row in the ledger"
     ) {
       for (recalled <- Vector(true, false)) {
         val w = speechWorld(recalled)
-        val judge = new AnswersYes(0.8)
-        run(w, judge, kept = Some(directed(w)))
-        (outcome(w), judge.asked, awaited(w)) ==> (
-          Some(
-            Outcome.Posted(
-              Judged(
-                Judged.Scores.Named(Probability.clamped(0.8)),
-                "jev",
-                Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017")))
-              )
-            )
-          ),
-          Vector(
-            Question.YesNo(
-              "Read thread and draft. Someone in thread asked the assistant something. Does " +
-                "draft answer what they asked, without making up facts?",
-              None,
-              None
-            )
-          ),
-          Vector((w.turn, "C/1"))
+        // Every question answered no: a judge asked would hold the draft.
+        val judge = new AnswersYes(0.1)
+        val durable = new InMemoryDurable
+        val done = run(w, judge, kept = Some(directed(w)), durable = durable)
+        (
+          outcome(w).map(o => (SpeechJson.outcomeName(o), SpeechJson.judgedOf(o))),
+          judge.asked,
+          durable.history(w.turn.workflowId).map(_.name).contains(Turn.Step.Judge),
+          w.ledger.rows.map(_._1).filter(id => EntryId.value(id).startsWith("judge:")),
+          awaited(w),
+          reply(w)
+        ) ==> (
+          Some(("posted", None)),
+          Vector.empty,
+          false,
+          Vector.empty,
+          Vector((w.turn, "C/1")),
+          Some(Payload.Message(said("It moved to Thursday.")))
         )
+        assert(done.startsWith("posted: reply:"))
       }
     }
 
-    test("a named draft whose answer is under postAt is kept below, nothing posted") {
+    test(
+      "a named turn resumed after the judge step it took before named drafts went unjudged posts unjudged, the judge's call in the ledger"
+    ) {
+      val history = recorded("named-judged-before-speech")
+      keepAll(history.kept).fold(e => throw new java.lang.AssertionError(e), identity)
       val w = speechWorld()
-      run(w, new AnswersYes(0.4), kept = Some(directed(w)))
-      (outcome(w), awaited(w)) ==> (
-        Some(
-          Outcome.Below(
-            Judged(
-              Judged.Scores.Named(Probability.clamped(0.4)),
-              "jev",
-              Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017")))
-            ),
-            speechLimits.postAt
+      // What its replayed append wrote: the draft.
+      {
+        given grit.core.store.Tx = TestTx.fake
+        val next = w.entries.lockNext(conversation).getOrElse(sys.error("store"))
+        w.entries.insert(
+          grit.core.store.Entry(
+            w.turn.draftId,
+            conversation,
+            w.turn.turnSeq,
+            None,
+            next.seq,
+            Payload.Draft(said("It moved to Thursday.")),
+            java.time.Instant.EPOCH
           )
-        ),
-        Vector.empty
+        )
+      }.isRight ==> true
+      val judge = new AnswersYes(0.1)
+      new InMemoryDurable().replay(history.id, history.steps)(
+        turnBodyWith(
+          w.entries,
+          new Scripted((_, _) => Right(said("unused"))),
+          new Before(w.entries),
+          w.ledger,
+          judge,
+          TurnSpeech(Speaking.Within(speechLimits), w.store, w.deliveries),
+          weighing = TurnWeighing(
+            directed(w),
+            new Weighs(Left(grit.core.triage.Weighing.Unweighed.Unavailable))
+          )
+        )
+      ) match {
+        case Left(why) => throw new java.lang.AssertionError(why)
+        case Right(_) => ()
+      }
+      (
+        history.id == w.turn.workflowId,
+        outcome(w),
+        judge.asked,
+        w.ledger.rows.collect {
+          case (id, _, model, _, _, _) if id == TurnJudge.id(w.turn) => model
+        },
+        awaited(w)
+      ) ==> (
+        true,
+        Some(Outcome.Posted(Cleared.Named)),
+        Vector.empty,
+        Vector("jev"),
+        Vector((w.turn, "C/1"))
       )
+    }
+
+    test("a named draft under Shadow is shadowed unjudged, nothing posted") {
+      val w = speechWorld()
+      val judge = new AnswersYes(0.1)
+      run(w, judge, Speaking.Shadow(speechLimits), kept = Some(directed(w)))
+      (
+        outcome(w).map(o => (SpeechJson.outcomeName(o), SpeechJson.judgedOf(o))),
+        judge.asked,
+        awaited(w),
+        reply(w)
+      ) ==> (Some(("shadowed", None)), Vector.empty, Vector.empty, None)
+    }
+
+    test("a named draft that passes is kept passed, nothing posted") {
+      val w = speechWorld()
+      run(w, new AnswersYes(0.9), answer = Right(said(" pass")), kept = Some(directed(w)))
+      (outcome(w), awaited(w), reply(w)) ==> (Some(Outcome.Passed), Vector.empty, None)
     }
 
     test(
@@ -120,7 +183,7 @@ object TurnSpeechTests extends TestSuite {
       val judge = new Judge(Some((0.9, 0.5)))
       val done = run(w, judge)
       (outcome(w), awaited(w), reply(w), judge.calls) ==> (
-        Some(Outcome.Posted(judged(0.9, 0.5))),
+        Some(Outcome.Posted(Cleared.Scored(judged(0.9, 0.5)))),
         Vector((w.turn, "C/1")),
         Some(Payload.Message(said("It moved to Thursday."))),
         1
@@ -135,7 +198,7 @@ object TurnSpeechTests extends TestSuite {
       val w = speechWorld()
       run(w, new Judge(Some((0.9, 0.5))), Speaking.Shadow(speechLimits))
       (outcome(w), awaited(w), reply(w)) ==> (
-        Some(Outcome.Shadowed(judged(0.9, 0.5))),
+        Some(Outcome.Shadowed(Cleared.Scored(judged(0.9, 0.5)))),
         Vector.empty,
         None
       )
@@ -155,7 +218,7 @@ object TurnSpeechTests extends TestSuite {
       hear(w.entries, "yes, Thursday")
       run(w, new Judge(Some((0.9, 0.9))))
       (outcome(w), awaited(w)) ==>
-        (Some(Outcome.Posted(judged(0.9, 0.9))), Vector((w.turn, "C/1")))
+        (Some(Outcome.Posted(Cleared.Scored(judged(0.9, 0.9)))), Vector((w.turn, "C/1")))
     }
 
     test("the assistant replied in the thread after the root: spoken, nothing posted") {

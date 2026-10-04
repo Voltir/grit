@@ -18,7 +18,8 @@ object SpeechJsonTests extends TestSuite {
   private val cap = DailyCap.of("0.25").getOrElse(sys.error("a cap"))
   private val judged =
     Judged(
-      Judged.Scores.Unprompted(p(0.5), p(0.625)),
+      p(0.5),
+      p(0.625),
       "jev",
       Usage(Tokens(812), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.000034")))
     )
@@ -53,8 +54,10 @@ object SpeechJsonTests extends TestSuite {
     Outcome.Withdrawn,
     Outcome.Unjudged("down"),
     Outcome.Below(judged, p(0.5)),
-    Outcome.Shadowed(judged),
-    Outcome.Posted(judged),
+    Outcome.Shadowed(Cleared.Scored(judged)),
+    Outcome.Shadowed(Cleared.Named),
+    Outcome.Posted(Cleared.Scored(judged)),
+    Outcome.Posted(Cleared.Named),
     Outcome.Failed("no model")
   )
 
@@ -86,7 +89,9 @@ object SpeechJsonTests extends TestSuite {
         """"key":"chatter"},"bound":"below","p":0.5,"read":1}]}}"""
       SpeechJson.writeSilence(Silence.Unasked(Reading.Key(gap, "asks"))).render() ==>
         """{"kind":"unasked","reading":{"reads":"key","name":"gap","key":"asks"}}"""
-      SpeechJson.writeOutcome(Outcome.Posted(judged)).render() ==>
+      SpeechJson.writeOutcome(Outcome.Posted(Cleared.Named)).render() ==>
+        """{"kind":"posted","named":true}"""
+      SpeechJson.writeOutcome(Outcome.Posted(Cleared.Scored(judged))).render() ==>
         """{"kind":"posted","judged":{"grounded":0.5,"worth":0.625,"model":"jev",""" +
         """"usage":{"input":812,"output":0,"cachedInput":0,"costUsd":"0.000034"}}}"""
       outcomes.map(SpeechJson.outcomeName) ==> Vector(
@@ -97,6 +102,8 @@ object SpeechJsonTests extends TestSuite {
         "unjudged",
         "below",
         "shadowed",
+        "shadowed",
+        "posted",
         "posted",
         "failed"
       )
@@ -127,12 +134,23 @@ object SpeechJsonTests extends TestSuite {
       )
     }
 
-    test("a named draft's judgement is written with its one score, and reads back") {
-      // A pin of the stored form: a speech row's outcome and a turn's judge step keep it.
-      val named = judged.copy(scores = Judged.Scores.Named(p(0.75)))
-      SpeechJson.writeJudged(named).render() ==>
-        """{"answers":0.75,"model":"jev","usage":{"input":812,"output":0,"cachedInput":0,"costUsd":"0.000034"}}"""
-      SpeechJson.readJudged(SpeechJson.writeJudged(named)) ==> Right(named)
+    test(
+      "a named draft's outcome recorded with the named judge's score reads as named, posted or shadowed; held below, refused"
+    ) {
+      // Kept by grit.speech rows and record-speech outputs written while named drafts were
+      // judged: reviews and a resumed turn read them.
+      val retired =
+        """"judged":{"answers":0.4,"model":"jev",""" +
+          """"usage":{"input":812,"output":0,"cachedInput":0,"costUsd":"0.000034"}}"""
+      Vector("posted", "shadowed", "below").map(k =>
+        SpeechJson.readOutcome(
+          ujson.read(s"""{"kind":"$k",$retired${if (k == "below") ""","post_at":0.5""" else ""}}""")
+        )
+      ) ==> Vector(
+        Right(Outcome.Posted(Cleared.Named)),
+        Right(Outcome.Shadowed(Cleared.Named)),
+        Left("outcome: a named draft held below postAt by a judge grit no longer has")
+      )
     }
 
     test("a judgement recorded with the dropped adds question reads, without it") {

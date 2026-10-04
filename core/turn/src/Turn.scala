@@ -86,11 +86,12 @@ import TurnVerdict.Shape
   *      beside the estimate of its request, atomically with the step. A turn rooted on a
   *      heard message ([[TurnOffer.Root.Heard]] or `Named`, as its `offer` recorded) records its answer
   *      as a draft instead ([[grit.core.store.Payload.Draft]]), then:
-  *   1. `judge` — a heard-rooted turn's draft scored against its thread and what its window
-  *      recalled ([[TurnJudge]]); nothing asked when it passes or nothing was recalled. A
-  *      named turn's ([[TurnOffer.Root.Named]]) is asked whether it answers what was asked of
-  *      the assistant ([[TurnJudge.judgeNamed]]), even when nothing was recalled.
-  *   1. `record-speech` — what becomes of the draft ([[grit.core.speech.Speech.post]]),
+  *   1. `judge` — an unprompted ([[TurnOffer.Root.Heard]]) turn's draft scored against its
+  *      thread and what its window recalled ([[TurnJudge]]); nothing asked when it passes or
+  *      nothing was recalled. A named turn's draft is not judged; one that passed this point
+  *      before [[Patches.NamedUnjudged]] shipped took the step.
+  *   1. `record-speech` — what becomes of the draft ([[grit.core.speech.Speech.post]], or
+  *      [[grit.core.speech.Speech.postNamed]] for a named one that does not pass),
   *      held when the assistant already replied after its root ([[Speech.spoken]]): a posted one written as the
   *      turn's reply and awaited at its heard message's address, in one transaction with
   *      the judge's cost and the outcome kept. A heard-rooted turn that failed before its
@@ -139,7 +140,8 @@ object Turn {
     /** The steps only some turns take: `stitch`, a turn that passed the room-order patch
       * before it shipped, and `record-stitch`, one of those whose first message was stitched;
       * `call-model-again`, `call-model-plain` and `record-verdict`, a turn whose model was
-      * asked about its topic; `judge` and `record-speech`, a turn rooted on a heard message.
+      * asked about its topic; `judge`, an unprompted turn (and a named one before
+      * [[Patches.NamedUnjudged]]), and `record-speech`, a turn rooted on a heard message.
       */
     val optional: Vector[String] =
       Vector(
@@ -359,6 +361,9 @@ object Turn {
       * (2026-10-03).
       */
     val Weigh = "weigh"
+
+    /** A named turn's draft is settled with no `judge` step (2026-10-04). */
+    val NamedUnjudged = "named-unjudged"
   }
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
@@ -613,10 +618,18 @@ object Turn {
         )
         s"failed: $failure$topics${settled.fold(f => s"; not recorded: $f", _ => "")}"
       case (Right(draft), root @ (TurnOffer.Root.Heard | TurnOffer.Root.Named)) =>
-        val named = root == TurnOffer.Root.Named
-        val judgement = d.step(Step.Judge)(() => judgeDraft(env, turn, named))
+        val settling = root match {
+          case TurnOffer.Root.Named =>
+            if (d.patch(Patches.NamedUnjudged)) Settling.Named(None)
+            else
+              // A named turn that judged its draft before the patch replays that step, the
+              // call's cost kept for its record-speech. The body runs only if it was never
+              // recorded, when no judge call was made.
+              Settling.Named(d.step(Step.Judge)(() => Option.empty[TurnJudge.Call]))
+          case _ => Settling.Judged(d.step(Step.Judge)(() => judgeDraft(env, turn)))
+        }
         val at = env.clock.now()
-        d.transact(Step.RecordSpeech)(recordSpeech(env, turn, judgement, at)) match {
+        d.transact(Step.RecordSpeech)(recordSpeech(env, turn, settling, at)) match {
           case Left(failure) => s"drafted: ${EntryId.value(draft)}; not settled: $failure$topics"
           case Right(Outcome.Posted(_)) =>
             val summary =
@@ -642,7 +655,7 @@ object Turn {
     * what its recorded window recalled ([[TurnJudge]]); `Passed`, asking nothing, when the
     * draft passes; `Unjudged` when the store cannot be read or the draft is not there.
     */
-  private def judgeDraft(env: TurnEnv^, turn: TurnRef, asNamed: Boolean): TurnJudge.Judgement = {
+  private def judgeDraft(env: TurnEnv^, turn: TurnRef): TurnJudge.Judgement = {
     val records = env.records
     val stitching = env.stitching
     val conversations = env.hosting.conversations
@@ -675,7 +688,7 @@ object Turn {
             TurnJudge.said(draft) match {
               case None => TurnJudge.Judgement.Passed
               case Some(text) =>
-                (if (asNamed) TurnJudge.judgeNamed else TurnJudge.judge) (
+                TurnJudge.judge(
                   env.classifier,
                   records.estimator,
                   TurnJudge.state(
@@ -729,9 +742,18 @@ object Turn {
       }
     } yield read
 
-  /** The `record-speech` step: what becomes of `turn`'s draft, as `judgement` and the
-    * speaking in force say ([[Speech.post]]), unless the assistant already replied after its
-    * root ([[Speech.spoken]]); the judge's cost in the ledger; a posted draft written as the
+  /** How a heard-rooted turn's draft is settled: an unprompted one by its `judgement`; a named
+    * one unjudged, with the judge call it made before named drafts went unjudged, if any.
+    */
+  private enum Settling {
+    case Judged(judgement: TurnJudge.Judgement)
+    case Named(judged: Option[TurnJudge.Call])
+  }
+
+  /** The `record-speech` step: what becomes of `turn`'s draft, as `settling` and the
+    * speaking in force say (an unprompted draft by [[Speech.post]], a named one, unless it
+    * passes, by [[Speech.postNamed]]), unless the assistant already replied after its root
+    * ([[Speech.spoken]]); the judge's cost in the ledger; a posted draft written as the
     * turn's reply and awaited at the address its heard message was heard with; and the
     * outcome kept ([[grit.core.speech.SpeechStore.drafted]]), dated `at`. A post with no
     * address to go to is `Failed`.
@@ -739,7 +761,7 @@ object Turn {
   private def recordSpeech(
       env: TurnEnv^,
       turn: TurnRef,
-      judgement: TurnJudge.Judgement,
+      settling: Settling,
       at: Instant
   )(using Tx^): Either[TurnFailure, Outcome] = {
     val TurnRecords(entries, ledger, _, _, _) = env.records
@@ -765,24 +787,32 @@ object Turn {
         .map(storeFailure)
       judged = Speech
         .spoken(root, all, strand.said.map(_.entry))
-        .getOrElse(judgement match {
-          case TurnJudge.Judgement.Passed => Outcome.Passed
-          case TurnJudge.Judgement.NothingRecalled => Outcome.NothingRecalled
-          case TurnJudge.Judgement.Unjudged(why) => Speech.post(speaking, Left(why))
-          case TurnJudge.Judgement.Scored(j, _) => Speech.post(speaking, Right(j))
+        .getOrElse(settling match {
+          case Settling.Judged(TurnJudge.Judgement.Passed) => Outcome.Passed
+          case Settling.Judged(TurnJudge.Judgement.NothingRecalled) => Outcome.NothingRecalled
+          case Settling.Judged(TurnJudge.Judgement.Unjudged(why)) =>
+            Speech.post(speaking, Left(why))
+          case Settling.Judged(TurnJudge.Judgement.Scored(j, _)) =>
+            Speech.post(speaking, Right(j))
+          case Settling.Named(_) =>
+            TurnJudge.said(draft).fold(Outcome.Passed)(_ => Speech.postNamed(speaking))
         })
       outcome = (judged, reach.flatMap(_.replyTo)) match {
         case (Outcome.Posted(_), None) => Outcome.Failed("no address to reply to")
         case (o, _) => o
       }
-      _ <- judgement match {
-        case TurnJudge.Judgement.Scored(j, estimated) =>
-          ledger
-            .record(TurnJudge.id(turn), turn, turn.workflowId, j.model, j.usage, estimated)
-            .left
-            .map(storeFailure)
-        case _ => Right(())
+      called = settling match {
+        case Settling.Judged(TurnJudge.Judgement.Scored(j, estimated)) =>
+          Some(TurnJudge.Call(j.model, j.usage, estimated))
+        case Settling.Judged(_) => None
+        case Settling.Named(judged) => judged
       }
+      _ <- called.fold[Either[TurnFailure, Unit]](Right(()))(c =>
+        ledger
+          .record(TurnJudge.id(turn), turn, turn.workflowId, c.model, c.usage, c.estimated)
+          .left
+          .map(storeFailure)
+      )
       _ <- (outcome, reach.flatMap(_.replyTo)) match {
         case (Outcome.Posted(_), Some(to)) =>
           for {

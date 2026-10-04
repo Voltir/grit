@@ -562,6 +562,40 @@ private[turn] object TurnJournal {
         }
     )
 
+  /** A named turn's `judge` step, as recorded before named drafts went unjudged: the call
+    * when it scored the draft, `None` otherwise; its scores are not read. `None` is written
+    * as an unjudged judgement, a call as a scored one without scores.
+    */
+  given namedJudge: Journaled[Option[TurnJudge.Call]] =
+    Journaled.json[Option[TurnJudge.Call]](
+      {
+        case None => ujson.Obj("judgement" -> "unjudged", "why" -> "named drafts are not judged")
+        case Some(c) =>
+          ujson.Obj(
+            "judgement" -> "scored",
+            "judged" -> ujson.Obj("model" -> c.model, "usage" -> PayloadJson.writeUsage(c.usage)),
+            "estimated" -> Tokens.value(c.estimated).toDouble
+          )
+      },
+      v =>
+        v.objOpt.flatMap(_.get("judgement")).flatMap(_.strOpt) match {
+          case Some("scored") =>
+            for {
+              o <- v.objOpt.toRight("judgement: expected an object")
+              j <- o.get("judged").flatMap(_.objOpt).toRight("judgement: no judged")
+              model <- j.get("model").flatMap(_.strOpt).toRight("judgement: no model")
+              usage <- j.get("usage").toRight("judgement: no usage").flatMap(PayloadJson.readUsage)
+              n <- o
+                .get("estimated")
+                .flatMap(_.numOpt)
+                .filter(_.isWhole)
+                .toRight("judgement: no estimate")
+            } yield Some(TurnJudge.Call(model, usage, Tokens(n.toLong)))
+          case Some("passed" | "nothing_recalled" | "unjudged") => Right(None)
+          case _ => Left("judgement: expected a judgement")
+        }
+    )
+
   /** A `stitch` step's output: the conversation's first message and where it was placed, or
     * nothing asked ([[grit.core.stitch.StitchJson.writeKept]]).
     */

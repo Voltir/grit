@@ -2,7 +2,7 @@ package grit.eval.harness.corpus
 
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
-import grit.core.speech.{Judged, Outcome}
+import grit.core.speech.{Cleared, Judged, Outcome}
 
 import utest.*
 
@@ -13,13 +13,15 @@ object TurnCaptureDraftedTests extends TestSuite {
   private val usage = Usage(Tokens(40), Tokens.Zero, Tokens.Zero, None)
 
   val tests = Tests {
-    test("an unprompted draft keeps grounded and worth; a named one keeps answers") {
+    test("an unprompted draft keeps grounded and worth; a named one, unjudged, keeps none") {
       Vector(
-        Outcome.Below(Judged(Judged.Scores.Unprompted(p(0.4), p(0.7)), "jev", usage), p(0.5)),
-        Outcome.Posted(Judged(Judged.Scores.Named(p(0.8)), "jev", usage))
+        Outcome.Below(Judged(p(0.4), p(0.7), "jev", usage), p(0.5)),
+        Outcome.Posted(Cleared.Scored(Judged(p(0.9), p(0.8), "jev", usage))),
+        Outcome.Posted(Cleared.Named)
       ).map(TurnCapture.drafted) ==> Vector(
         Drafted(Drafted.Kind.Below, Some(p(0.4)), Some(p(0.7)), None, Some(p(0.5))),
-        Drafted(Drafted.Kind.Posted, None, None, Some(p(0.8)), None)
+        Drafted(Drafted.Kind.Posted, Some(p(0.9)), Some(p(0.8)), None, None),
+        Drafted(Drafted.Kind.Posted, None, None, None, None)
       )
     }
   }

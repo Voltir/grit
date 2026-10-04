@@ -117,44 +117,40 @@ enum Silence {
   case OverBudget
 }
 
-/** The judge's `scores` for a draft, the `model` that weighed them, and what the call
-  * consumed.
+/** The judge's scores for an unprompted draft: the probability that it is `grounded` in what
+  * the turn recalled, and that it is `worth` the interruption; the `model` that weighed them,
+  * and what the call consumed.
   */
-final case class Judged(scores: Judged.Scores, model: String, usage: Usage) {
+final case class Judged(
+    grounded: Probability,
+    worth: Probability,
+    model: String,
+    usage: Usage
+) {
 
-  /** What `postAt` is compared with: an unprompted draft's weaker score, a named one's only. */
-  def score: Probability = scores match {
-    case Judged.Scores.Unprompted(grounded, worth) =>
-      if (Probability.value(grounded) <= Probability.value(worth)) grounded else worth
-    case Judged.Scores.Named(answers) => answers
-  }
+  /** The weaker of the two: what `postAt` is compared with. */
+  def score: Probability =
+    if (Probability.value(grounded) <= Probability.value(worth)) grounded else worth
 }
 
-object Judged {
+/** Why a draft went out, or under [[Speaking.Shadow]] would have. */
+enum Cleared {
 
-  /** What the judge asked of a draft, by what its turn answered. */
-  enum Scores {
+  /** An unprompted draft the judge scored at or above `postAt`. */
+  case Scored(judged: Judged)
 
-    /** A draft nobody asked for: the probability that it is `grounded` in what the turn
-      * recalled, and that it is `worth` the interruption.
-      */
-    case Unprompted(grounded: Probability, worth: Probability)
-
-    /** A draft answering a message directed at grit by name: the probability that it
-      * `answers` what was asked of the assistant without making up facts.
-      */
-    case Named(answers: Probability)
-  }
+  /** A named turn's draft, which is not judged. */
+  case Named
 }
 
-/** What became of an unprompted turn's draft. */
+/** What became of a heard-rooted turn's draft, unprompted or named. */
 enum Outcome {
 
   /** The model had nothing to add. */
   case Passed
 
-  /** The turn's window showed no record and no other conversation: nothing to ground a draft
-    * in, so it was not judged.
+  /** An unprompted turn's window showed no record and no other conversation: nothing to
+    * ground its draft in, so it was not judged.
     */
   case NothingRecalled
 
@@ -166,19 +162,19 @@ enum Outcome {
   /** The deployment stopped speaking after the draft was decided on: not posted. */
   case Withdrawn
 
-  /** The judge gave no answer, for `why`: not posted. */
+  /** The judge gave an unprompted draft no answer, for `why`: not posted. */
   case Unjudged(why: String)
 
-  /** Scored under `postAt`: not posted. */
+  /** An unprompted draft scored under `postAt`: not posted. */
   case Below(judged: Judged, postAt: Probability)
 
-  /** Scored at or above `postAt` under [[Speaking.Shadow]]: not posted. */
-  case Shadowed(judged: Judged)
+  /** Cleared under [[Speaking.Shadow]]: not posted. */
+  case Shadowed(cleared: Cleared)
 
-  /** Scored at or above `postAt`: posted. */
-  case Posted(judged: Judged)
+  /** Posted, as `cleared`. */
+  case Posted(cleared: Cleared)
 
-  /** The turn failed before its draft was judged, for `why`. */
+  /** The turn failed before its draft was settled, for `why`. */
   case Failed(why: String)
 }
 
@@ -283,17 +279,30 @@ object Speech {
       .minByOption(_.createdAt)
       .map(e => Outcome.Spoken(e.id))
 
-  /** What becomes of a draft `judged` under `speaking`: `Posted` (or `Shadowed` under
-    * [[Speaking.Shadow]]) when its score is at or above `postAt`, else `Below`; `Unjudged`,
-    * with why, when it was not judged; `Withdrawn` under [[Speaking.Off]].
+  /** What becomes of an unprompted draft `judged` under `speaking`: `Posted` (or `Shadowed`
+    * under [[Speaking.Shadow]]) when its score is at or above `postAt`, else `Below`;
+    * `Unjudged`, with why, when it was not judged; `Withdrawn` under [[Speaking.Off]].
     */
   def post(speaking: Speaking, judged: Either[String, Judged]): Outcome =
     (speaking, judged) match {
       case (Speaking.Off, _) => Outcome.Withdrawn
       case (_, Left(why)) => Outcome.Unjudged(why)
       case (Speaking.Shadow(limits), Right(j)) =>
-        if (j.score >= limits.postAt) Outcome.Shadowed(j) else Outcome.Below(j, limits.postAt)
+        if (j.score >= limits.postAt) Outcome.Shadowed(Cleared.Scored(j))
+        else Outcome.Below(j, limits.postAt)
       case (Speaking.Within(limits), Right(j)) =>
-        if (j.score >= limits.postAt) Outcome.Posted(j) else Outcome.Below(j, limits.postAt)
+        if (j.score >= limits.postAt) Outcome.Posted(Cleared.Scored(j))
+        else Outcome.Below(j, limits.postAt)
     }
+
+  /** What becomes of a named turn's draft, which is not judged, under `speaking`: `Posted`
+    * under [[Speaking.Within]], `Shadowed` under [[Speaking.Shadow]], `Withdrawn` under
+    * [[Speaking.Off]].
+    */
+  def postNamed(speaking: Speaking): Outcome = speaking match {
+    case Speaking.Off => Outcome.Withdrawn
+    case Speaking.Shadow(_) => Outcome.Shadowed(Cleared.Named)
+    case Speaking.Within(_) => Outcome.Posted(Cleared.Named)
+  }
+
 }

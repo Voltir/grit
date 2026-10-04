@@ -98,6 +98,13 @@ object TurnRecordTests extends TestSuite {
     }
 
     test(
+      "a named turn's record-speech, recorded with the named judge's score, reads as posted unjudged"
+    ) {
+      TurnRecord.speech(steps("named-judged")) ==>
+        Right(Some(Outcome.Posted(grit.core.speech.Cleared.Named)))
+    }
+
+    test(
       "a call no edge claimed is expired, one claimed and left silent abandoned, and one answered late neither"
     ) {
       Vector("hosted-expired", "hosted-orphaned", "hosted-slow").map(n =>

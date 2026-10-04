@@ -117,24 +117,38 @@ object SpeechJson {
     }
 
   /** `{"kind": its name}`, with its detail beside it: a judgement as `{"grounded", "worth",
-    * "model", "usage"}`.
+    * "model", "usage"}`, and a named draft's post as `"named": true`.
     */
   def writeOutcome(out: Outcome): ujson.Value = {
+    def cleared(c: Cleared): (String, ujson.Value) = c match {
+      case Cleared.Scored(j) => "judged" -> writeJudged(j)
+      case Cleared.Named => "named" -> ujson.True
+    }
     val detail: Vector[(String, ujson.Value)] = out match {
       case Outcome.Passed | Outcome.NothingRecalled | Outcome.Withdrawn => Vector.empty
       case Outcome.Spoken(by) => Vector("by" -> ujson.Str(EntryId.value(by)))
       case Outcome.Unjudged(why) => Vector("why" -> ujson.Str(why))
       case Outcome.Below(j, at) => Vector("judged" -> writeJudged(j), "post_at" -> num(at))
-      case Outcome.Shadowed(j) => Vector("judged" -> writeJudged(j))
-      case Outcome.Posted(j) => Vector("judged" -> writeJudged(j))
+      case Outcome.Shadowed(c) => Vector(cleared(c))
+      case Outcome.Posted(c) => Vector(cleared(c))
       case Outcome.Failed(why) => Vector("why" -> ujson.Str(why))
     }
     kind(outcomeName(out), detail*)
   }
 
+  /** An outcome as [[writeOutcome]] writes it. A posted or shadowed judgement carrying
+    * `"answers"`, which the named judge grit once had wrote, reads as named, its score
+    * dropped; a below one is `Left`, since no named draft is held on a score now.
+    */
   def readOutcome(v: ujson.Value): Either[String, Outcome] =
     obj(v).flatMap { o =>
-      def judged = o.get("judged").toRight("outcome: no judged").flatMap(readJudged)
+      def judgement = o.get("judged").toRight("outcome: no judged")
+      // Written by the named judge grit had: a score nothing reads now.
+      def retired = judgement.toOption.flatMap(_.objOpt).exists(_.contains("answers"))
+      def judged = judgement.flatMap(readJudged)
+      def cleared =
+        if (o.get("named").contains(ujson.True) || retired) Right(Cleared.Named)
+        else judged.map(Cleared.Scored(_))
       str(o, "kind").flatMap {
         case "passed" => Right(Outcome.Passed)
         case "nothing_recalled" => Right(Outcome.NothingRecalled)
@@ -142,13 +156,15 @@ object SpeechJson {
         case "spoken" | "answered" => str(o, "by").map(b => Outcome.Spoken(EntryId(b)))
         case "withdrawn" => Right(Outcome.Withdrawn)
         case "unjudged" => str(o, "why").map(Outcome.Unjudged(_))
+        case "below" if retired =>
+          Left("outcome: a named draft held below postAt by a judge grit no longer has")
         case "below" =>
           for {
             j <- judged
             at <- probability(o, "post_at")
           } yield Outcome.Below(j, at)
-        case "shadowed" => judged.map(Outcome.Shadowed(_))
-        case "posted" => judged.map(Outcome.Posted(_))
+        case "shadowed" => cleared.map(Outcome.Shadowed(_))
+        case "posted" => cleared.map(Outcome.Posted(_))
         case "failed" => str(o, "why").map(Outcome.Failed(_))
         case other => Left(s"outcome: unknown kind $other")
       }
@@ -157,10 +173,11 @@ object SpeechJson {
   /** The judgement an outcome carries; `None` for one that was not judged. */
   def judgedOf(out: Outcome): Option[Judged] = out match {
     case Outcome.Below(j, _) => Some(j)
-    case Outcome.Shadowed(j) => Some(j)
-    case Outcome.Posted(j) => Some(j)
-    case Outcome.Passed | Outcome.NothingRecalled | Outcome.Spoken(_) | Outcome.Withdrawn |
-        Outcome.Unjudged(_) | Outcome.Failed(_) =>
+    case Outcome.Shadowed(Cleared.Scored(j)) => Some(j)
+    case Outcome.Posted(Cleared.Scored(j)) => Some(j)
+    case Outcome.Shadowed(Cleared.Named) | Outcome.Posted(Cleared.Named) | Outcome.Passed |
+        Outcome.NothingRecalled | Outcome.Spoken(_) | Outcome.Withdrawn | Outcome.Unjudged(_) |
+        Outcome.Failed(_) =>
       None
   }
 
@@ -177,19 +194,14 @@ object SpeechJson {
     case Outcome.Failed(_) => "failed"
   }
 
-  /** `{"grounded", "worth", "model", "usage"}` for an unprompted draft's, and `{"answers",
-    * "model", "usage"}` for a named one's.
-    */
-  def writeJudged(j: Judged): ujson.Value = {
-    val scores = j.scores match {
-      case Judged.Scores.Unprompted(grounded, worth) =>
-        Vector("grounded" -> num(grounded), "worth" -> num(worth))
-      case Judged.Scores.Named(answers) => Vector("answers" -> num(answers))
-    }
-    ujson.Obj.from(
-      scores ++ Vector("model" -> ujson.Str(j.model), "usage" -> PayloadJson.writeUsage(j.usage))
+  /** `{"grounded", "worth", "model", "usage"}`. */
+  def writeJudged(j: Judged): ujson.Value =
+    ujson.Obj(
+      "grounded" -> num(j.grounded),
+      "worth" -> num(j.worth),
+      "model" -> j.model,
+      "usage" -> PayloadJson.writeUsage(j.usage)
     )
-  }
 
   /** A judgement as [[writeJudged]] writes it; an `"adds"` beside it, which judgements
     * recorded before the judge dropped that question carry, is ignored.
@@ -197,16 +209,11 @@ object SpeechJson {
   def readJudged(v: ujson.Value): Either[String, Judged] =
     for {
       o <- obj(v)
-      scores <-
-        if (o.contains("answers")) probability(o, "answers").map(Judged.Scores.Named(_))
-        else
-          for {
-            grounded <- probability(o, "grounded")
-            worth <- probability(o, "worth")
-          } yield Judged.Scores.Unprompted(grounded, worth)
+      grounded <- probability(o, "grounded")
+      worth <- probability(o, "worth")
       model <- str(o, "model")
       usage <- o.get("usage").toRight("judged: no usage").flatMap(PayloadJson.readUsage)
-    } yield Judged(scores, model, usage)
+    } yield Judged(grounded, worth, model, usage)
 
   private def writeSpend(s: Spend): ujson.Value = s.cost match {
     case Cost.Exact(usd) => ujson.Obj("calls" -> s.calls, "usd" -> usd.toString)

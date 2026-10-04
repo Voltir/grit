@@ -80,7 +80,7 @@ abstract class SpeechContract extends TestSuite {
   private def mine(c: ConversationId, since: Instant): Vector[Spoken] =
     transaction(right(speech.spoken(since))).filter(_.turn.conversationId == c)
 
-  private val judged = Judged(Judged.Scores.Unprompted(p(0.6), p(0.8)), "jev", usage)
+  private val judged = Judged(p(0.6), p(0.8), "jev", usage)
 
   val tests = Tests {
     test("a heard message's reach is kept, the first one standing; none for another turn") {
@@ -167,7 +167,9 @@ abstract class SpeechContract extends TestSuite {
         )
         n.seq
       }
-      transaction(speech.drafted(posted, Outcome.Posted(judged), Some("it moved"), At)) ==> Right(
+      transaction(
+        speech.drafted(posted, Outcome.Posted(Cleared.Scored(judged)), Some("it moved"), At)
+      ) ==> Right(
         true
       )
       transaction(speech.drafted(below, Outcome.Below(judged, p(0.9)), Some("x"), At)) ==> Right(
@@ -183,7 +185,7 @@ abstract class SpeechContract extends TestSuite {
       val drafting = decide(c, At, drafting = true)
       Vector(
         transaction(speech.drafted(never, Outcome.Passed, None, At)),
-        transaction(speech.drafted(drafting, Outcome.Posted(judged), None, At))
+        transaction(speech.drafted(drafting, Outcome.Posted(Cleared.Scored(judged)), None, At))
       ).map {
         case Left(StoreError.Invalid(_)) => "invalid"
         case other => other.toString

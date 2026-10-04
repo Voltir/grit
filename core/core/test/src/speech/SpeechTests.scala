@@ -68,10 +68,10 @@ object SpeechTests extends TestSuite {
   private def gated(first: Gate.Failed, rest: Gate.Failed*) =
     held(Silence.Gated(first, rest.toVector))
 
-  private val judged = Judged(Judged.Scores.Unprompted(p(0.6), p(0.8)), "jev", usage)
+  private val judged = Judged(p(0.6), p(0.8), "jev", usage)
 
   private def scored(grounded: Double, worth: Double) =
-    judged.copy(scores = Judged.Scores.Unprompted(p(grounded), p(worth)))
+    judged.copy(grounded = p(grounded), worth = p(worth))
 
   val tests = Tests {
     test("a heard message that passes every check is drafted in its own turn") {
@@ -205,13 +205,10 @@ object SpeechTests extends TestSuite {
       assert(decide(l = l) == Decision.Drafting(turn))
     }
 
-    test(
-      "an unprompted draft's score is the weaker of grounded and worth; a named one's, answers"
-    ) {
+    test("a draft's score is the weaker of grounded and worth") {
       assert(
         judged.score == p(0.6),
-        scored(0.6, 0.3).score == p(0.3),
-        judged.copy(scores = Judged.Scores.Named(p(0.45))).score == p(0.45)
+        scored(0.6, 0.3).score == p(0.3)
       )
     }
 
@@ -219,11 +216,14 @@ object SpeechTests extends TestSuite {
       test("at or above postAt, within: posted") {
         assert(
           Speech.post(within, Right(scored(0.5, 0.8))) ==
-            Outcome.Posted(scored(0.5, 0.8))
+            Outcome.Posted(Cleared.Scored(scored(0.5, 0.8)))
         )
       }
       test("at or above postAt, shadow: shadowed") {
-        assert(Speech.post(Speaking.Shadow(limits), Right(judged)) == Outcome.Shadowed(judged))
+        assert(
+          Speech.post(Speaking.Shadow(limits), Right(judged)) ==
+            Outcome.Shadowed(Cleared.Scored(judged))
+        )
       }
       test("under postAt: below, within or shadow") {
         val weak = scored(0.6, 0.49)
@@ -237,6 +237,14 @@ object SpeechTests extends TestSuite {
         Vector(Right(judged), Left("down")).map(Speech.post(Speaking.Off, _)) ==>
           Vector(Outcome.Withdrawn, Outcome.Withdrawn)
       }
+    }
+
+    test("what becomes of a named draft, unjudged: posted within, shadowed, withdrawn when off") {
+      Vector(within, Speaking.Shadow(limits), Speaking.Off).map(Speech.postNamed) ==> Vector(
+        Outcome.Posted(Cleared.Named),
+        Outcome.Shadowed(Cleared.Named),
+        Outcome.Withdrawn
+      )
     }
 
     test(
