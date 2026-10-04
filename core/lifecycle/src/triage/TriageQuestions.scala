@@ -162,10 +162,16 @@ object TriageQuestions {
     * open: `asks`, `owes`, `closes` or `nothing`), `open`, `to`, `durable`, `anchor`, then one
     * `source:<name>` question per knowledge source; gated by [[Tags.V2.drafts]].
     */
-  val V2: TriageQuestions = v2With(None, Tags.V2.drafts)
+  val V2: TriageQuestions = v2With(None, None, Tags.V2.drafts)
 
-  /** V2's questions with `directed` after `to`, when given, gated by `speak`. */
-  private def v2With(directed: Option[Item.One], speak: Gate): TriageQuestions = {
+  /** V2's questions with `directed` after `to` and `record` after `anchor`, each when given,
+    * gated by `speak`.
+    */
+  private def v2With(
+      directed: Option[Item.One],
+      record: Option[Item.One],
+      speak: Gate
+  ): TriageQuestions = {
     import Tags.V2.{anchor, gap, open, sourcePrefix, to}
     def yesNo(words: String) = Question.YesNo(words, None, None)
     def key(name: String, means: String) = Question.Key(name, Some(means))
@@ -218,7 +224,8 @@ object TriageQuestions {
                 "record could supply, such as an opinion, someone's current availability, or " +
                 "a choice nobody has made yet?"
             )
-          ),
+          )
+        ) ++ record ++ Vector(
           Item.PerSource(
             sourcePrefix,
             "Read new_message and thread. Could ",
@@ -228,8 +235,9 @@ object TriageQuestions {
         speak
       ).left.map(_.toString)
     } yield set
-    // Its gap's keys are distinct, its names are distinct (to-grit is none of V2's) and every
-    // bound of V2's and v3's gates reads a One of its kind, so no Left is taken;
+    // Its gap's keys are distinct, its names are distinct (to-grit and anchor-record are none of
+    // V2's) and every bound of V2's, v3's and v4's gates reads a One of its kind, so no Left is
+    // taken;
     // TriageQuestionsTests builds it.
     built.fold(why => throw new IllegalStateException(why), identity)
   }
@@ -239,26 +247,48 @@ object TriageQuestions {
     * the name.
     */
   def v3(persona: Persona): TriageQuestions =
+    v2With(Some(toGrit(persona)), None, Tags.V3.drafts)
+
+  /** v3's `to-grit`, worded with `persona`'s name. */
+  private def toGrit(persona: Persona): Item.One =
+    Item.One(
+      Tags.V3.toGrit,
+      Question.YesNo(
+        "Read new_message and thread. Is new_message directed at the assistant, whom " +
+          s"people here call ${persona.name}, rather than at someone else or at the room? " +
+          "Saying its name to it, or replying to what Assistant said in thread, directs " +
+          "it at the assistant; talking about it does not.",
+        None,
+        None
+      )
+    )
+
+  /** v4, the set that replaced [[v3]]: v3's questions in v3's order and words, worded with
+    * `persona`'s name, and `anchor-record` ([[Tags.V4.anchorRecord]]) after `anchor`; gated by
+    * [[Tags.V4.drafts]], whatever the name.
+    */
+  def v4(persona: Persona): TriageQuestions =
     v2With(
+      Some(toGrit(persona)),
       Some(
         Item.One(
-          Tags.V3.toGrit,
+          Tags.V4.anchorRecord,
           Question.YesNo(
-            "Read new_message and thread. Is new_message directed at the assistant, whom " +
-              s"people here call ${persona.name}, rather than at someone else or at the room? " +
-              "Saying its name to it, or replying to what Assistant said in thread, directs " +
-              "it at the assistant; talking about it does not.",
+            "Read new_message and thread. Is what new_message asks for something no stored " +
+              "record could supply, such as an opinion, someone's current availability, their " +
+              "own plans or work, or a choice nobody has made yet? A fact asked of a " +
+              "particular person may still be in a record.",
             None,
             None
           )
         )
       ),
-      Tags.V3.drafts
+      Tags.V4.drafts
     )
 
-  /** The set live triage asks for a deployment presenting as `persona`: [[v3]]. */
-  def shipped(persona: Persona): TriageQuestions = v3(persona)
+  /** The set live triage asks for a deployment presenting as `persona`: [[v4]]. */
+  def shipped(persona: Persona): TriageQuestions = v4(persona)
 
-  /** The gate live triage's set drafts by, the same for every persona: [[Tags.V3.drafts]]. */
-  val ShippedSpeak: Gate = Tags.V3.drafts
+  /** The gate live triage's set drafts by, the same for every persona: [[Tags.V4.drafts]]. */
+  val ShippedSpeak: Gate = Tags.V4.drafts
 }

@@ -59,9 +59,9 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   their answers kept raw under their names (`grit.core.triage.Tags`), and the `Gate`
   (`grit.core.triage`) a draft is derived from; `TriageQuestions.v1` is the set triage
   first asked, in a `TriageQuestion.Wording` (`Wording.Shipped`, the words it shipped in),
-  `TriageQuestions.V2` the one that replaced it, and `TriageQuestions.v3` the one that replaced
-  V2, worded with the deployment's persona; `TriageQuestions.shipped(persona)` is the set live
-  triage asks (v3), and `ShippedSpeak` its gate, which speech may read (`Limits.drafts`). `Mentions` is
+  `TriageQuestions.V2` the one that replaced it, `TriageQuestions.v3` the one that replaced
+  V2, worded with the deployment's persona, and `TriageQuestions.v4` v3's questions with
+  `anchor-record`; `TriageQuestions.shipped(persona)` is the set live triage asks (v4), and `ShippedSpeak` its gate, which speech may read (`Limits.drafts`). `Mentions` is
   `grit.core.triage.Weighing`: live triage's set put to a message said to grit, the state built
   as for one heard (`TriageInput.read`), after its opening's placement, waited for at most
   `Mentions.PlacedWithin`, its answer waited for at most `Mentions.AskWithin`; it keeps no tags. ← `transcript`

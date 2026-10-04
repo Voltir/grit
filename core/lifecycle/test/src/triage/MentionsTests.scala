@@ -76,7 +76,7 @@ object MentionsTests extends TestSuite {
       val t = w.say("is the release branch cut?", 1, Some("Ana"))
       val requests = new Requests
       val classifier = Classifier.around(
-        new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9))
+        new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9, 0.9))
       ) { (request, ask) =>
         requests.sent = requests.sent :+ request
         ask()
@@ -95,7 +95,8 @@ object MentionsTests extends TestSuite {
       val w = new World
       val t = w.say("is the release branch cut?", 0, Some("Ana"))
       val waits = new Waits(Right("placed"))
-      val classifier = new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9))
+      val classifier =
+        new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9, 0.9))
       mentions(w, classifier, waits).weigh(t).isRight ==> true
       (waits.within, classifier.calls) ==> (Vector(Mentions.PlacedWithin), 1)
       // A reply waits for no placement.
@@ -110,7 +111,8 @@ object MentionsTests extends TestSuite {
     ) {
       val w = new World
       val t = w.say("is the release branch cut?", 0, Some("Ana"))
-      val classifier = new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9))
+      val classifier =
+        new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9, 0.9))
       Vector(Placements.Unplaced.Late, Placements.Unplaced.Failed("queue down"))
         .map(u => mentions(w, classifier, new Waits(Left(u))).weigh(t)) ==>
         Vector(Left(Weighing.Unweighed.PlacementLate), Left(Weighing.Unweighed.PlacementFailed))
@@ -123,7 +125,7 @@ object MentionsTests extends TestSuite {
       val t = w.say("is the release branch cut?", 1, Some("Ana"))
       mentions(w, new Scripted(Vector.empty, Vector.empty), new Waits(Right("placed"))).weigh(t) ==>
         Left(Weighing.Unweighed.Unavailable)
-      // One yes/no answer to five questions.
+      // One yes/no answer to the set's seven.
       mentions(w, new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1)), new Waits(Right("placed")))
         .weigh(t) ==> Left(Weighing.Unweighed.Unreadable)
     }
@@ -136,7 +138,7 @@ object MentionsTests extends TestSuite {
       // Answers once released, or after 2 s: far past the 100 ms bound.
       val slow = new Scripted(
         Vector(0.5, 0.5, 0, 0),
-        Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9),
+        Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9, 0.9),
         () => { val _ = release.await(2, java.util.concurrent.TimeUnit.SECONDS) }
       )
       val bounded = new Mentions(
@@ -158,7 +160,8 @@ object MentionsTests extends TestSuite {
 
     test("a turn holding no person's message weighs nothing, as unread") {
       val w = new World
-      val classifier = new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9))
+      val classifier =
+        new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9, 0.9))
       mentions(w, classifier, new Waits(Right("placed")))
         .weigh(grit.core.id.TurnRef(c, grit.core.id.TurnSeq(7))) ==>
         Left(Weighing.Unweighed.Unread)

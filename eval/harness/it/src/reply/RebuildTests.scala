@@ -340,7 +340,16 @@ object RebuildTests extends TestSuite {
           )
         ) ==> Right(
         (
-          Vector("gap", "open", "to", "to-grit", "durable", "anchor", "source:tasks"),
+          Vector(
+            "gap",
+            "open",
+            "to",
+            "to-grit",
+            "durable",
+            "anchor",
+            "anchor-record",
+            "source:tasks"
+          ),
           "what is the Falcon budget?"
         )
       )

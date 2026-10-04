@@ -192,9 +192,44 @@ object TriageQuestionsTests extends TestSuite {
           None
         )
       )
-      (set.speak, TriageQuestions.v3(Persona.Grit).speak, TriageQuestions.ShippedSpeak) ==>
-        (Tags.V3.drafts, Tags.V3.drafts, Tags.V3.drafts)
+      (set.speak, TriageQuestions.v3(Persona.Grit).speak) ==> (Tags.V3.drafts, Tags.V3.drafts)
       set.unread(set.speak, KnowledgeSources.Empty) ==> None
+    }
+
+    test(
+      "v4 asks v3's words with anchor-record after anchor, drafts by v4's gate, and is shipped"
+    ) {
+      val pip = Persona.of("Pip").getOrElse(fail("a persona"))
+      val set = TriageQuestions.v4(pip)
+      set.questions(catalog).keys.map(QuestionName.value).toVector ==> Vector(
+        "gap",
+        "open",
+        "to",
+        "to-grit",
+        "durable",
+        "anchor",
+        "anchor-record",
+        "source:github",
+        "source:conversations"
+      )
+      // Every question but anchor-record in v3's words: a v4 answer under a v3 name means what
+      // it did, so v3's gate reads v4's answers.
+      set.questions(catalog).removed(n("anchor-record")) ==>
+        TriageQuestions.v3(pip).questions(catalog)
+      set.questions(catalog).get(n("anchor-record")) ==> Some(
+        Question.YesNo(
+          "Read new_message and thread. Is what new_message asks for something no stored " +
+            "record could supply, such as an opinion, someone's current availability, their " +
+            "own plans or work, or a choice nobody has made yet? A fact asked of a particular " +
+            "person may still be in a record.",
+          None,
+          None
+        )
+      )
+      (set.speak, TriageQuestions.v4(Persona.Grit).speak, TriageQuestions.ShippedSpeak) ==>
+        (Tags.V4.drafts, Tags.V4.drafts, Tags.V4.drafts)
+      (set.unread(set.speak, KnowledgeSources.Empty), set.unread(Tags.V3.drafts, catalog)) ==>
+        (None, None)
       TriageQuestions.shipped(pip) ==> set
     }
 

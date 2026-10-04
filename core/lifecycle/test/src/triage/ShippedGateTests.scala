@@ -2,6 +2,9 @@ package grit.lifecycle.triage
 
 import java.time.{Instant, ZoneOffset}
 
+import scala.collection.immutable.VectorMap
+
+import grit.core.classify.Answer
 import grit.core.id.{ConversationId, EntrySeq, QuestionName, TurnRef, TurnSeq}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
@@ -84,6 +87,32 @@ object ShippedGateTests extends TestSuite {
       val gap = QuestionName.of("gap").getOrElse(sys.error("a name"))
       decide(TriageQuestions.V2.speak, tags(Kind.Question, 1.0, 0.9)) ==>
         Decision.Held(Silence.Unasked(Reading.Key(gap, "asks")))
+    }
+
+    test(
+      "the shipped gate drafts a v3-tagged message put to grit, and holds any other unasked, " +
+        "on anchor-record"
+    ) {
+      def v3(toGrit: Double): Tags =
+        Tags.Weighed(
+          VectorMap[QuestionName, Answer](
+            Tags.V2.gap -> Answer.Choice("asks", Vector(Answer.Weight("asks", 1.0)), 1.0),
+            Tags.V2.open -> Answer.YesNo(0.9),
+            Tags.V2.to -> Answer.YesNo(0.1),
+            Tags.V3.toGrit -> Answer.YesNo(toGrit),
+            Tags.V2.durable -> Answer.YesNo(0.1),
+            Tags.V2.anchor -> Answer.YesNo(0.1)
+          ),
+          "jev",
+          Usage(Tokens(1), Tokens.Zero, Tokens.Zero, None)
+        )
+      (
+        decide(TriageQuestions.ShippedSpeak, v3(0.9)),
+        decide(TriageQuestions.ShippedSpeak, v3(0.1))
+      ) ==> (
+        Decision.Drafting(turn),
+        Decision.Held(Silence.Unasked(Reading.Yes(Tags.V4.anchorRecord)))
+      )
     }
   }
 }
