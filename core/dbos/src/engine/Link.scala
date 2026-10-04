@@ -82,6 +82,9 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
   /** The replies an edge has yet to post outside grit, and the parts it has. */
   val deliveries: grit.core.edge.Deliveries
 
+  /** The messages an edge marks as being answered while their turns run. */
+  val acknowledgements: grit.core.edge.Acknowledgements
+
   /** The review prompts an edge posts, and the labels their rater gives. */
   val reviews: grit.core.review.Reviews
 
@@ -240,6 +243,8 @@ private[engine] final class Attached(
   val principals: Principals = new SqlPrincipals()
 
   val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
+
+  val acknowledgements: grit.core.edge.Acknowledgements = new grit.dbos.sql.SqlAcknowledgements()
 
   val reviews: grit.core.review.Reviews = new grit.dbos.sql.SqlReviews
 

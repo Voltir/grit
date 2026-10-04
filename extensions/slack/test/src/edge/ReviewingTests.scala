@@ -2,7 +2,7 @@ package grit.slack.edge
 
 import java.time.Instant
 
-import grit.core.edge.{EdgeStores, InMemoryDeliveries, InMemoryEdges}
+import grit.core.edge.{EdgeStores, InMemoryAcknowledgements, InMemoryDeliveries, InMemoryEdges}
 import grit.core.id.{EdgeName, EntryId, PrincipalId}
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.{Label, Prompt, Reason, Reviews, Verdict}
@@ -83,6 +83,7 @@ object ReviewingTests extends TestSuite {
         inbox,
         inbox.principals,
         new InMemoryDeliveries,
+        new InMemoryAcknowledgements,
         watched,
         FakeJot,
         new InMemoryEdges

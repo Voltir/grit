@@ -266,6 +266,30 @@ CREATE TABLE IF NOT EXISTS grit.delivery_parts (
     PRIMARY KEY (workflow, part)
 );
 
+-- A message an edge marks as being answered while the turn answering it runs
+-- (Acknowledgements): the turn, the edge's own address of the message, and how far the mark
+-- has got: wanted, shown, or taken down or never to be shown (cleared), with when. What lets an
+-- edge that restarts take down every mark it put up, and put up none after its turn has ended.
+-- Retention: journal: with its turn's period (Target.Raw), by PeriodStore.purge.
+CREATE TABLE IF NOT EXISTS grit.acknowledgements (
+    workflow        TEXT PRIMARY KEY,
+    conversation_id UUID NOT NULL REFERENCES grit.conversations(id) ON DELETE CASCADE,
+    turn_seq        BIGINT NOT NULL,
+    address         TEXT NOT NULL,
+    stage           TEXT NOT NULL CHECK (stage IN ('wanted', 'shown', 'cleared')),
+    wanted_at       TIMESTAMPTZ NOT NULL,
+    shown_at        TIMESTAMPTZ,
+    cleared_at      TIMESTAMPTZ,
+    wanted          BIGSERIAL NOT NULL,
+    CHECK ((stage = 'cleared') = (cleared_at IS NOT NULL)
+       AND (stage <> 'shown' OR shown_at IS NOT NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_acknowledgements_standing
+    ON grit.acknowledgements (wanted) WHERE stage <> 'cleared';
+CREATE INDEX IF NOT EXISTS idx_acknowledgements_turn
+    ON grit.acknowledgements (conversation_id, turn_seq);
+
 -- An edge's registration (ADR 0017): the principal it acts for, the machine it runs on, and
 -- the places it hosts (edge_places). A live edge holds the advisory lock (EdgeLock.Class,
 -- lock_key) on its desk's connection: "live" is read from pg_locks, never from heartbeat_at,

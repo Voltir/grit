@@ -10,6 +10,7 @@ import grit.core.edge.{
   Desks,
   EdgeRefusal,
   EdgeStores,
+  InMemoryAcknowledgements,
   InMemoryDeliveries,
   InMemoryEdges,
   Variable
@@ -74,6 +75,7 @@ object McpEdgeTests extends TestSuite {
       inbox,
       inbox.principals,
       new InMemoryDeliveries,
+      new InMemoryAcknowledgements,
       InMemoryReviews.over(inbox),
       FakeJot,
       if (reachable) edges else Unreachable

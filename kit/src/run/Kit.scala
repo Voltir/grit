@@ -231,7 +231,15 @@ object Kit {
     }
 
   private def stores(link: Link^): EdgeStores^{link} =
-    EdgeStores(link.inbox, link.principals, link.deliveries, link.reviews, link.jot, link)
+    EdgeStores(
+      link.inbox,
+      link.principals,
+      link.deliveries,
+      link.acknowledgements,
+      link.reviews,
+      link.jot,
+      link
+    )
 
   /** What the log says of `budget` as `link`'s ledger stands at `now`: the cap, and, when
     * some of today's calls were not priced, that the cap counts them as nothing (a provider

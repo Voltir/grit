@@ -3,6 +3,7 @@ package grit.kit.run
 import grit.core.edge.{
   EdgeRefusal,
   EdgeStores,
+  InMemoryAcknowledgements,
   InMemoryDeliveries,
   InMemoryEdges,
   ServedEdge,
@@ -34,6 +35,7 @@ object ServingTests extends TestSuite {
       inbox,
       inbox.principals,
       new InMemoryDeliveries,
+      new InMemoryAcknowledgements,
       InMemoryReviews.over(inbox),
       FakeJot,
       new InMemoryEdges

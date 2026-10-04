@@ -11,15 +11,18 @@ object InMemoryPeriodTests extends PeriodContract {
   protected val entries: EntryStore = store
   private val edges = new grit.core.edge.InMemoryEdges
   private val delivering = new grit.core.edge.InMemoryDeliveries
+  private val acknowledging = new grit.core.edge.InMemoryAcknowledgements
   private val fake =
     new InMemoryPeriodStore(
       store,
       c => Origin.Task("contract", ConversationId.value(c)),
       edges,
-      delivering
+      delivering,
+      acknowledging
     )
   protected val requests: grit.core.edge.ToolRequests = edges
   protected val deliveries: grit.core.edge.Deliveries = delivering
+  protected val acknowledgements: grit.core.edge.Acknowledgements = acknowledging
   protected val periods: PeriodStore = fake
   protected val lifecycle: LifecycleStore = new InMemoryLifecycleStore
 

@@ -22,7 +22,9 @@ final class InMemoryPeriodStore(
     entries: InMemoryEntryStore,
     origin: ConversationId -> Origin = c => Origin.Task("conversation", ConversationId.value(c)),
     edges: grit.core.edge.InMemoryEdges = new grit.core.edge.InMemoryEdges,
-    deliveries: grit.core.edge.InMemoryDeliveries = new grit.core.edge.InMemoryDeliveries
+    deliveries: grit.core.edge.InMemoryDeliveries = new grit.core.edge.InMemoryDeliveries,
+    acknowledgements: grit.core.edge.InMemoryAcknowledgements =
+      new grit.core.edge.InMemoryAcknowledgements
 ) extends PeriodStore {
 
   // Only ever replaced by a new immutable vector, as the store's table would be.
@@ -235,6 +237,7 @@ final class InMemoryPeriodStore(
         verdicts = verdicts.filterNot(_._1 == period)
         edges.forget(period.conversationId, p.first, c.last)
         deliveries.forget(period.conversationId, p.first, c.last)
+        acknowledgements.forget(period.conversationId, p.first, c.last)
         replace(p.copy(state = c.copy(purged = Some(at))))
       }
     }

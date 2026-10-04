@@ -144,6 +144,9 @@ final class Engine private (
 
   val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
 
+  /** The messages an edge marks as being answered while their turns run. */
+  val acknowledgements: grit.core.edge.Acknowledgements = new grit.dbos.sql.SqlAcknowledgements()
+
   /** What grit has decided to delete, and when. */
   val tombstones: Tombstones = new SqlTombstones
 

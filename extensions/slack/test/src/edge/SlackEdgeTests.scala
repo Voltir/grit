@@ -2,7 +2,13 @@ package grit.slack.edge
 
 import java.time.ZoneOffset
 
-import grit.core.edge.{EdgeStores, InMemoryDeliveries, InMemoryEdges, Part}
+import grit.core.edge.{
+  EdgeStores,
+  InMemoryAcknowledgements,
+  InMemoryDeliveries,
+  InMemoryEdges,
+  Part
+}
 import grit.core.id.{CallSlot, ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -56,6 +62,7 @@ object SlackEdgeTests extends TestSuite {
       )(using TestTx.fake)
     }
     val deliveries = new InMemoryDeliveries
+    val acknowledgements = new InMemoryAcknowledgements
 
     /** What the edges said, in order. */
     @caps.unsafe.untrackedCaptures
@@ -69,6 +76,7 @@ object SlackEdgeTests extends TestSuite {
           inbox,
           inbox.principals,
           deliveries,
+          acknowledgements,
           InMemoryReviews.over(inbox),
           FakeJot,
           new InMemoryEdges

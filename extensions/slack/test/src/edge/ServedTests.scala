@@ -8,6 +8,7 @@ import grit.core.clock.Clock
 import grit.core.edge.{
   EdgeRefusal,
   EdgeStores,
+  InMemoryAcknowledgements,
   InMemoryDeliveries,
   InMemoryEdges,
   ServedEdge,
@@ -65,6 +66,7 @@ object ServedTests extends TestSuite {
         inbox,
         inbox.principals,
         new InMemoryDeliveries,
+        new InMemoryAcknowledgements,
         picks.reviews,
         FakeJot,
         edges

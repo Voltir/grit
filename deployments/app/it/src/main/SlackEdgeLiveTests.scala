@@ -29,6 +29,7 @@ object SlackEdgeLiveTests extends TestSuite {
         engine.inbox,
         engine.principals,
         engine.deliveries,
+        engine.acknowledgements,
         engine.reviews,
         engine.jot,
         engine

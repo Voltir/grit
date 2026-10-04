@@ -62,6 +62,9 @@ abstract class PeriodContract extends TestSuite {
   /** The deliveries under test, over the same database as [[periods]]. */
   protected def deliveries: grit.core.edge.Deliveries
 
+  /** The acknowledgements under test, over the same database as [[periods]]. */
+  protected def acknowledgements: grit.core.edge.Acknowledgements
+
   protected def transaction[A](body: (Tx^) ?=> A): A
 
   /** A conversation entries may be written to, the same one for the same `name`. */
@@ -517,6 +520,19 @@ abstract class PeriodContract extends TestSuite {
       transaction(deliveries.await(t1, "here")) ==> Right(())
       transaction(periods.purge(p1, at(100))) ==> Right(())
       transaction(deliveries.pending()).map(_.map(_.turn).filter(_.conversationId == c)) ==>
+        Right(Vector(t1))
+    }
+
+    test("a purge deletes its period's turns' acknowledgements, and keeps the next period's") {
+      val c = conversation("purge-acknowledgements")
+      val t0 = say(c, 0)
+      val p1 = PeriodRef(c, PeriodSeq.First)
+      seal(p1, t0, 10, "kept")
+      val t1 = say(c, 20)
+      transaction(acknowledgements.want(t0, "here", at(11))) ==> Right(())
+      transaction(acknowledgements.want(t1, "here", at(21))) ==> Right(())
+      transaction(periods.purge(p1, at(100))) ==> Right(())
+      transaction(acknowledgements.standing()).map(_.map(_.turn).filter(_.conversationId == c)) ==>
         Right(Vector(t1))
     }
 
