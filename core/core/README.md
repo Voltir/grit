@@ -15,6 +15,9 @@ In dependency order:
   question whether anyone is waiting on a quiet period, and its workflow id), `TriageRef`
   (the one triage of a heard message, and its workflow id) and `ShadowRef` (one shadow
   variant's run on a heard message, and its workflow id). Imports nothing in core.
+- **`persona`** — who grit presents as to the people it talks with: `Persona`, the name it
+  goes by (`Persona.Grit`, grit itself). A deployment declares one (ADR 0026). Imports
+  nothing in core.
 - **`place`** — where conversations happen (ADR 0013): `Place`, a path in one
   containment tree under the root, everywhere, one `Namespace` per source (`fs`, `slack`,
   `task`, `service`), and `within` (a prefix, defined once); `Directory`, an absolute normalized
