@@ -374,24 +374,25 @@ object TurnCapture {
         }
     }
 
-  private def drafted(o: Outcome): Drafted = {
+  /** What became of a draft, `o`, as a case keeps it: its kind and the scores it was judged by. */
+  private[corpus] def drafted(o: Outcome): Drafted = {
     def scored(kind: Drafted.Kind, j: grit.core.speech.Judged, postAt: Option[Probability]) =
       j.scores match {
         case grit.core.speech.Judged.Scores.Unprompted(grounded, worth) =>
-          Drafted(kind, Some(grounded), Some(worth), postAt)
-        // The unprompted judge's two scores are a named draft's none.
-        case grit.core.speech.Judged.Scores.Named(_) => Drafted(kind, None, None, postAt)
+          Drafted(kind, Some(grounded), Some(worth), None, postAt)
+        case grit.core.speech.Judged.Scores.Named(answers) =>
+          Drafted(kind, None, None, Some(answers), postAt)
       }
     o match {
-      case Outcome.Passed => Drafted(Drafted.Kind.Passed, None, None, None)
-      case Outcome.NothingRecalled => Drafted(Drafted.Kind.NothingRecalled, None, None, None)
-      case Outcome.Spoken(_) => Drafted(Drafted.Kind.Spoken, None, None, None)
-      case Outcome.Withdrawn => Drafted(Drafted.Kind.Withdrawn, None, None, None)
-      case Outcome.Unjudged(_) => Drafted(Drafted.Kind.Unjudged, None, None, None)
+      case Outcome.Passed => Drafted(Drafted.Kind.Passed, None, None, None, None)
+      case Outcome.NothingRecalled => Drafted(Drafted.Kind.NothingRecalled, None, None, None, None)
+      case Outcome.Spoken(_) => Drafted(Drafted.Kind.Spoken, None, None, None, None)
+      case Outcome.Withdrawn => Drafted(Drafted.Kind.Withdrawn, None, None, None, None)
+      case Outcome.Unjudged(_) => Drafted(Drafted.Kind.Unjudged, None, None, None, None)
       case Outcome.Below(j, postAt) => scored(Drafted.Kind.Below, j, Some(postAt))
       case Outcome.Shadowed(j) => scored(Drafted.Kind.Shadowed, j, None)
       case Outcome.Posted(j) => scored(Drafted.Kind.Posted, j, None)
-      case Outcome.Failed(_) => Drafted(Drafted.Kind.Failed, None, None, None)
+      case Outcome.Failed(_) => Drafted(Drafted.Kind.Failed, None, None, None, None)
     }
   }
 

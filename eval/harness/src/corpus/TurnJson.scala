@@ -455,11 +455,12 @@ object TurnJson {
   private def writeDrafted(d: Drafted): ujson.Value = {
     def p(o: Option[Probability]) =
       o.fold[ujson.Value](ujson.Null)(x => ujson.Num(Probability.value(x)))
-    ujson.Obj(
-      "outcome" -> d.outcome.toString,
-      "grounded" -> p(d.grounded),
-      "worth" -> p(d.worth),
-      "post_at" -> p(d.postAt)
+    // `answers` only when a named draft was scored, so every other line is as it was.
+    ujson.Obj.from(
+      Vector("outcome" -> ujson.Str(d.outcome.toString), "grounded" -> p(d.grounded)) ++
+        Vector("worth" -> p(d.worth)) ++
+        d.answers.map(a => "answers" -> ujson.Num(Probability.value(a))) ++
+        Vector("post_at" -> p(d.postAt))
     )
   }
 
@@ -473,8 +474,12 @@ object TurnJson {
         .flatMap(o => Drafted.Kind.values.find(_.toString == o).toRight(s"speech: outcome $o"))
       grounded <- p("grounded")
       worth <- p("worth")
+      // Added with named drafts: a line written before has none.
+      answers <- f
+        .added("answers")
+        .flatMap(opt(_)(x => x.numOpt.flatMap(Probability.of).toRight("speech: answers")))
       postAt <- p("post_at")
-    } yield Drafted(outcome, grounded, worth, postAt)
+    } yield Drafted(outcome, grounded, worth, answers, postAt)
   }
 
   private def tokens(t: Tokens): ujson.Value = ujson.Num(Tokens.value(t).toDouble)

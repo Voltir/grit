@@ -172,21 +172,24 @@ private[report] object TurnLines {
       "## Speech",
       "",
       "What became of heard roots' drafts. Posted: the rate posted; held: neither passed nor " +
-        "posted, its reasons the outcomes besides passed and posted.",
+        "posted, its reasons the outcomes besides passed and posted. Grounded and worth score " +
+        "an unprompted draft, answers a named one.",
       ""
     ) ++ (if (all.online.isEmpty) Vector("no heard root recorded an outcome")
           else
             bySlice(
               (Vector("drafts") ++ kinds
-                .map(_.toString.toLowerCase) ++ Vector("posted", "held", "grounded", "worth"))*
+                .map(_.toString.toLowerCase) ++
+                Vector("posted", "held", "grounded", "worth", "answers"))*
             )(st =>
-              st.online.fold(Vector.fill(kinds.size + 5)("—"))(o =>
+              st.online.fold(Vector.fill(kinds.size + 6)("—"))(o =>
                 Vector(s"${o.n}") ++ kinds.map(k => s"${o.outcomes.getOrElse(k, 0)}") ++
                   Vector(
                     rate(o.posted),
                     rate(o.held),
                     spread(o.grounded, prob),
-                    spread(o.worth, prob)
+                    spread(o.worth, prob),
+                    spread(o.answers, prob)
                   )
               )
             )) ++ Vector("")

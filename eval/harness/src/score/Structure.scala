@@ -123,7 +123,7 @@ object Paid {
 /** What became of heard roots' drafts, over the `n` turns that recorded an outcome: each
   * outcome's count; the rate posted; the rate held (an outcome neither passed nor posted,
   * each such outcome a reason held), each clustered by thread; and the judge's scores where
-  * it judged.
+  * it judged: an unprompted draft's `grounded` and `worth`, a named one's `answers`.
   */
 final case class Online(
     n: Int,
@@ -131,7 +131,8 @@ final case class Online(
     posted: Proportion,
     held: Proportion,
     grounded: Option[Quantiles],
-    worth: Option[Quantiles]
+    worth: Option[Quantiles],
+    answers: Option[Quantiles]
 )
 
 /** How much of the input the ledger recorded the provider served from its prompt cache, each
@@ -417,7 +418,8 @@ object Structure {
         Proportion.of(drafted.map((t, d) => t.conversation -> (d.outcome == Drafted.Kind.Posted))),
         Proportion.of(drafted.map((t, d) => t.conversation -> held(d.outcome))),
         scores(_.grounded),
-        scores(_.worth)
+        scores(_.worth),
+        scores(_.answers)
       )
     }
   }

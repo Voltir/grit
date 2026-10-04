@@ -147,7 +147,7 @@ object TurnJsonTests extends TestSuite {
           Tokens(6)
         )
       ),
-    Some(Drafted(Drafted.Kind.Below, Some(p(0.4)), Some(p(0.7)), Some(p(0.5))))
+    Some(Drafted(Drafted.Kind.Below, Some(p(0.4)), Some(p(0.7)), None, Some(p(0.5))))
   )
 
   /** A TUI turn that failed before its window and a task's that never finished. */
@@ -190,6 +190,34 @@ object TurnJsonTests extends TestSuite {
     ) {
       val all = Vector(heard, failed, unfinished, asked, nothing)
       all.map(t => TurnJson.read(ujson.read(TurnJson.write(t).render()))) ==> all.map(Right(_))
+    }
+
+    test(
+      "a named draft's score is written beside the unprompted judge's, and a line without it reads as none"
+    ) {
+      val named = heard.copy(
+        root = TurnOffer.Root.Named,
+        speech = Some(Drafted(Drafted.Kind.Posted, None, None, Some(p(0.8)), None))
+      )
+      val line = ujson.read(TurnJson.write(named).render())
+      // A pin of the stored form: scores only, never a draft's text.
+      (line("root"), line("speech")) ==> (
+        ujson.Str("named"),
+        ujson.Obj(
+          "outcome" -> "Posted",
+          "grounded" -> ujson.Null,
+          "worth" -> ujson.Null,
+          "answers" -> 0.8,
+          "post_at" -> ujson.Null
+        )
+      )
+      TurnJson.read(line) ==> Right(named)
+      // A line written before named drafts were kept has no answers: it reads as none.
+      line("speech").obj.remove("answers")
+      TurnJson.read(line).map(_.speech) ==>
+        Right(Some(Drafted(Drafted.Kind.Posted, None, None, None, None)))
+      // An unprompted draft's line is as it was: no answers key.
+      ujson.read(TurnJson.write(heard).render())("speech").obj.contains("answers") ==> false
     }
 
     test("a line written before shapes were captured is refused, naming the recapture") {

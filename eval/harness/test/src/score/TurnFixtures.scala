@@ -125,7 +125,7 @@ object TurnFixtures {
         spent(Some(TurnRecord.Role.Round(0)), Some("0.002"), 80, 100),
         spent(Some(TurnRecord.Role.Reply), Some("0.003"), 100, 120, cached = 60)
       ),
-      speech = Some(Drafted(Drafted.Kind.Posted, p(0.8), p(0.6), None))
+      speech = Some(Drafted(Drafted.Kind.Posted, p(0.8), p(0.6), None, None))
     )
 
   // t2: thread A, heard, a draft that said something, held below the bar; one unnamed call.
@@ -147,7 +147,7 @@ object TurnFixtures {
         spent(Some(TurnRecord.Role.Reply), Some("0.002"), 0, 50),
         spent(Some(TurnRecord.Role.Judge), None, 30, 30, cached = 10)
       ),
-      speech = Some(Drafted(Drafted.Kind.Below, p(0.4), p(0.7), p(0.5)))
+      speech = Some(Drafted(Drafted.Kind.Below, p(0.4), p(0.7), None, p(0.5)))
     )
 
   // t3: thread B, a TUI turn that failed at assembly.
