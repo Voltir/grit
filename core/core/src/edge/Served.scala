@@ -94,7 +94,8 @@ object ServedEdge {
   /** An edge while it is served. */
   trait Open {
 
-    /** Posts the replies of the turns finished since the last call; how many turns it
+    /** Posts the replies of the turns finished since the last call, and puts up or takes down
+      * the marks of the messages being answered, where the edge marks them; how many turns it
       * delivered. `Left` when the store could not be read: the caller calls again later.
       */
     def deliver(): Either[StoreError, Int]

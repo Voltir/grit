@@ -21,7 +21,7 @@ object SlackEdgeLiveTests extends TestSuite {
 
   private val self = Self(TeamId(Team), UserId(Bot))
 
-  private def edge(engine: Engine^, slack: FakeSlack): SlackEdge^{engine, slack} =
+  private def edge(engine: Engine^, slack: FakeSlack): SlackEdge^ =
     new SlackEdge(
       slack,
       self,
@@ -36,6 +36,7 @@ object SlackEdgeLiveTests extends TestSuite {
       ),
       Set.empty,
       None,
+      grit.core.clock.Clock.system(),
       _ => ()
     )
 

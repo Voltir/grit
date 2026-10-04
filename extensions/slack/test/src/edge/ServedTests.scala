@@ -61,12 +61,13 @@ object ServedTests extends TestSuite {
     val inbox: InMemoryInbox = InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None))
     val edges: InMemoryEdges = new InMemoryEdges
     val picks = new PickedPrompts(inbox)
+    val acknowledgements = new InMemoryAcknowledgements
     val stores =
       EdgeStores(
         inbox,
         inbox.principals,
         new InMemoryDeliveries,
-        new InMemoryAcknowledgements,
+        acknowledgements,
         picks.reviews,
         FakeJot,
         edges
@@ -138,6 +139,25 @@ object ServedTests extends TestSuite {
           (review.place, "bust_in_silhouette")
         )
       )
+    }
+
+    test("serving puts up a wanted acknowledgement's mark as it delivers") {
+      val w = new World
+      val open =
+        Served.serving(Set(C), None, None, w.connect).open(w.stores, Env, _ => ()) match {
+          case Right(o) => o
+          case Left(r) => throw new java.lang.AssertionError(r.message)
+        }
+      w.slack.deliver(message("2.0", "Pip, what did we decide?")) ==> true
+      val heard = w.inbox.conversations.all
+        .find(_.origin == Origin.Slack(Team, "C123ABC456", "2.0"))
+        .map(c => grit.core.id.TurnRef(c.id, grit.core.id.TurnSeq.First))
+        .getOrElse(throw new java.lang.AssertionError("not heard"))
+      w.acknowledgements.want(heard, "C123ABC456/2.0/2.0", java.time.Instant.EPOCH)(using
+        TestTx.fake
+      ) ==> Right(())
+      open.deliver() ==> Right(0)
+      w.slack.reactions ==> Set((C, Ts("2.0"), "eyes"))
     }
 
     test(

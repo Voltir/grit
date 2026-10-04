@@ -3,6 +3,7 @@ package grit.slack.edge
 import java.time.ZoneOffset
 
 import grit.core.edge.{
+  Acknowledgement,
   EdgeStores,
   InMemoryAcknowledgements,
   InMemoryDeliveries,
@@ -83,6 +84,7 @@ object SlackEdgeTests extends TestSuite {
         ),
         listening,
         None,
+        Stopped,
         s => logged = logged :+ s
       )
 
@@ -168,6 +170,35 @@ object SlackEdgeTests extends TestSuite {
 
     def pending: Vector[grit.core.edge.Pending] =
       deliveries.pending()(using TestTx.fake).getOrElse(Vector.empty)
+
+    /** The top-level message `thread`, heard in C; its turn, wanting its acknowledgement where
+      * a reply to it would go, as triage wants it of a draft put to grit.
+      */
+    def named(thread: String): TurnRef = {
+      slack.deliver(message(thread, "Pip, what did we decide about the refi page?")) ==> true
+      val turn = inbox.conversations.all
+        .find(_.origin == origin(thread))
+        .map(c => TurnRef(c.id, grit.core.id.TurnSeq.First))
+        .getOrElse(throw new java.lang.AssertionError("not heard"))
+      acknowledgements.want(turn, to(thread), Start)(using TestTx.fake) ==> Right(())
+      turn
+    }
+
+    /** Where a reply to the heard message `thread` would go, as its reach keeps it. */
+    def to(thread: String): String =
+      reached(thread).flatten.flatMap(_.replyTo).headOption.getOrElse("none")
+
+    def standing: Vector[grit.core.edge.Acknowledgement] =
+      acknowledgements.standing()(using TestTx.fake).getOrElse(Vector.empty)
+  }
+
+  /** A clock stopped at [[Start]]: what the in-memory stores are told, which they ignore. */
+  private val Start = java.time.Instant.parse("2026-10-04T12:00:00Z")
+
+  private object Stopped extends grit.core.clock.Clock {
+    def now(): java.time.Instant = Start
+    def millis(): Long = 0L
+    def sleep(duration: scala.concurrent.duration.FiniteDuration): Unit = ()
   }
 
   private def reply(text: String): Message.Assistant =
@@ -252,6 +283,78 @@ object SlackEdgeTests extends TestSuite {
       w.first.deliver() ==> Right(1)
       w.slack.posts.map(p => (p.channel, p.thread, p.post.fallback)) ==>
         Vector((C, Ts("2.0"), "We moved it to Thursday."))
+    }
+
+    test("a heard message a turn put to grit answers wears :eyes: while it runs, put up once") {
+      val w = new World(listening = Set(C))
+      val t = w.named("2.0")
+      (w.first.acknowledge(), w.first.acknowledge()) ==> (Right(1), Right(0))
+      (w.slack.reactions, w.standing) ==> (
+        Set((C, Ts("2.0"), "eyes")),
+        Vector(Acknowledgement(t, "C123ABC456/2.0/2.0", shown = true))
+      )
+    }
+
+    test("a turn that ends with nothing to post has its mark taken down, and cleared") {
+      val w = new World(listening = Set(C))
+      val t = w.named("2.0")
+      w.first.acknowledge() ==> Right(1)
+      w.inbox.finish(t, None, "passed")
+      w.first.acknowledge() ==> Right(1)
+      (w.slack.reactions, w.standing) ==> (Set.empty, Vector.empty)
+    }
+
+    test("a mark stays until its reply is posted, and the delivery takes it down and clears it") {
+      val w = new World(listening = Set(C))
+      val t = w.named("2.0")
+      w.first.acknowledge() ==> Right(1)
+      w.deliveries.await(t, w.to("2.0"))(using TestTx.fake) ==> Right(())
+      w.inbox.finish(t, Some(reply("We moved it to Thursday.")), "posted")
+      w.first.acknowledge() ==> Right(0)
+      w.slack.reactions ==> Set((C, Ts("2.0"), "eyes"))
+      w.first.deliver() ==> Right(1)
+      (w.slack.reactions, w.standing, w.first.acknowledge()) ==> (Set.empty, Vector.empty, Right(0))
+    }
+
+    test("a turn that ended before its mark was put up is cleared, and never marks") {
+      val w = new World(listening = Set(C))
+      val t = w.named("2.0")
+      w.inbox.finish(t, None, "passed")
+      w.first.acknowledge() ==> Right(1)
+      (w.slack.reactions, w.standing) ==> (Set.empty, Vector.empty)
+    }
+
+    test("a mark on a message Slack no longer has is cleared") {
+      val w = new World(listening = Set(C))
+      val gone = TurnRef(ConversationId("elsewhere"), grit.core.id.TurnSeq.First)
+      w.acknowledgements.want(gone, "C123ABC456/9.0/9.0", Start)(using TestTx.fake) ==> Right(())
+      w.first.acknowledge() ==> Right(1)
+      (w.slack.reactions, w.standing) ==> (Set.empty, Vector.empty)
+    }
+
+    test("a mark Slack will not put up is tried again on the next pass") {
+      val w = new World(listening = Set(C))
+      val t = w.named("2.0")
+      w.slack.down = true
+      w.first.acknowledge() ==> Right(0)
+      w.standing ==> Vector(Acknowledgement(t, "C123ABC456/2.0/2.0", shown = false))
+      w.slack.down = false
+      w.first.acknowledge() ==> Right(1)
+      w.slack.reactions ==> Set((C, Ts("2.0"), "eyes"))
+    }
+
+    test("each pass starts again every turn whose mark is not yet up, and no other") {
+      val w = new World(listening = Set(C))
+      val t = w.named("2.0")
+      w.slack.down = true
+      w.first.acknowledge() ==> Right(0)
+      w.slack.down = false
+      w.inbox.started = Vector.empty
+      w.first.acknowledge() ==> Right(1)
+      w.inbox.started ==> Vector(t)
+      w.inbox.started = Vector.empty
+      w.first.acknowledge() ==> Right(0)
+      w.inbox.started ==> Vector.empty
     }
 
     test("the bot's Slack name is read for the log, and says why not") {

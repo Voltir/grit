@@ -90,6 +90,7 @@ object ReviewingTests extends TestSuite {
       ),
       Set.empty,
       Some(Review),
+      grit.core.clock.Clock.system(),
       s => logged = logged :+ s
     )
     val _ = slack.listen(edge.receive)

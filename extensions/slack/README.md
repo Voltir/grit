@@ -29,7 +29,12 @@ In dependency order:
   the people it enrolls, the replies it awaits) and a `Slack`: a person's message in a public
   channel becomes a turn of its thread's conversation when it is addressed to grit (it
   mentions grit, or is in a thread whose root did), and each finished turn's reply is posted
-  in its thread, once, found again by its tag after a crash. In the channels it listens in
+  in its thread, once, found again by its tag after a crash. A message is marked `:eyes:`
+  while grit works on it: one addressed to grit from when it is recorded, and one heard that a
+  turn put to grit by name will answer from that turn's acknowledgement
+  (`grit.core.edge.Acknowledgements`, wanted by triage; `acknowledge`, run first in each
+  delivery), each until its reply is posted or its turn ends with nothing to post. In the
+  channels it listens in
   (`listening`, the channels a deployment declares), a message not addressed to grit is heard:
   an entry of its thread's conversation with no turn, never answered, dated when it was said.
   A thread under a post grit made with `slack_post` begins with that post: when the first

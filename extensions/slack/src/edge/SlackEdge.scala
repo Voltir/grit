@@ -4,15 +4,16 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
-import grit.core.edge.{CatchUp, EdgeStores, Part, Pending, ServedEdge}
-import grit.core.id.{CallSlot, EntryId, PrincipalId, SourceId, WorkflowId}
+import grit.core.clock.Clock
+import grit.core.edge.{Acknowledgement, CatchUp, EdgeStores, Part, Pending, ServedEdge}
+import grit.core.id.{CallSlot, EntryId, PrincipalId, SourceId, TurnRef, WorkflowId}
 import grit.core.inbox.{InboundId, InboxError, Progress}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
 import grit.core.review.Prompt
 import grit.core.speech.Reach
 import grit.core.spend.Budget
-import grit.core.store.{Origin, StoreError}
+import grit.core.store.{Origin, StoreError, Tx}
 import grit.prose.form.{Block, Doc, Text}
 import grit.prose.markdown.Markdown
 import grit.slack.client.{AppToken, BotToken, Root, Self, Slack, SlackError, SocketSlack, Tag}
@@ -21,7 +22,8 @@ import grit.slack.text.{Incoming, Post, RichText}
 
 /** The Slack edge (ADR 0002, 0019): Slack's messages in as turns, grit's replies out, through
   * the stores alone; grit being `self` in the workspace, answering `review` when one is
-  * given. `said` is told what it did that a person running it may want to read.
+  * given; `clock` dates the marks it puts up and takes down. `said` is told what it did that a
+  * person running it may want to read.
   */
 final class SlackEdge(
     slack: Slack,
@@ -29,6 +31,7 @@ final class SlackEdge(
     stores: EdgeStores^,
     listening: Set[ChannelId],
     review: Option[SlackReview],
+    clock: Clock^,
     said: String => Unit
 ) {
   import SlackEdge.*
@@ -477,14 +480,96 @@ final class SlackEdge(
     }
   }
 
+  /** One pass over the acknowledgements standing: a heard message a turn will answer, put to
+    * grit by name ([[grit.core.speech.Speech.acknowledge]]), wears [[Working]] while the turn
+    * runs, recorded as shown once Slack has it. Once the turn has ended its mark is taken down,
+    * unless its reply is still to be posted, which [[deliver]] takes it down after; one never
+    * shown is cleared without being put up, and one on a message Slack no longer has is
+    * cleared. A mark Slack will not put up or take down is said, and tried again next pass; one
+    * put up or taken down twice, as after a crash, is put up or taken down once. Each turn not
+    * yet shown is started again (a no-op for one started), since a start can be lost. How many
+    * marks it put up, took down or cleared; why not, when the store could not be read.
+    */
+  def acknowledge(): Either[StoreError, Int] =
+    stores.jot.write(stores.acknowledgements.standing()).flatMap { standing =>
+      val read = standing.map { a =>
+        if (!a.shown)
+          stores.inbox
+            .startTurn(a.turn)
+            .left
+            .foreach(e => said(s"slack: ${WorkflowId.value(a.turn.workflowId)} not started: $e"))
+        a -> stores.inbox.progress(a.turn)
+      }
+      // Read after each turn's progress: a turn seen ended has kept whether its reply is awaited.
+      val awaited: Either[StoreError, Set[TurnRef]] =
+        if (
+          read.exists(_._2 match {
+            case Right(Progress.Done(_, _)) => true
+            case _ => false
+          })
+        )
+          stores.jot.write(stores.deliveries.pending()).map(_.map(_.turn).toSet)
+        else Right(Set.empty)
+      awaited.map(posting => read.count((a, progress) => acknowledged(a, progress, posting)))
+    }
+
+  /** Puts `a`'s mark up, takes it down, or clears it, as [[acknowledge]] says, given its turn's
+    * `progress` and the turns whose replies are still `posting`; whether it changed.
+    */
+  private def acknowledged(
+      a: Acknowledgement,
+      progress: Either[InboxError, Progress],
+      posting: Set[TurnRef]
+  ): Boolean = {
+    val turn = WorkflowId.value(a.turn.workflowId)
+    def record(write: Instant => (Tx^) ?=> Either[StoreError, Unit]): Boolean = {
+      val at = clock.now()
+      stores.jot.write(write(at)) match {
+        case Right(()) => true
+        case Left(e) =>
+          said(s"slack: the mark of $turn not recorded: $e")
+          false
+      }
+    }
+    def clear: Boolean = record(at => stores.acknowledgements.cleared(a.turn, at))
+    (Address.read(a.to), progress) match {
+      case (None, _) =>
+        said(s"slack: $turn acknowledged at an address grit did not write, cleared: ${a.to}")
+        clear
+      case (_, Left(e)) =>
+        said(s"slack: $turn unreadable: $e")
+        false
+      case (Some(to), Right(Progress.Open)) =>
+        if (a.shown) false
+        else
+          slack.react(to.channel, to.answered, Working) match {
+            case Right(()) => record(at => stores.acknowledgements.shown(a.turn, at))
+            case Left(SlackError.Refused("message_not_found")) => clear
+            case Left(e) =>
+              said(s"slack: $turn not marked: $e")
+              false
+          }
+      case (Some(to), Right(Progress.Done(_, _))) =>
+        if (posting.contains(a.turn)) false
+        else if (!a.shown) clear
+        else
+          slack.unreact(to.channel, to.answered, Working) match {
+            case Right(()) => clear
+            case Left(e) =>
+              said(s"slack: $turn not unmarked: $e")
+              false
+          }
+    }
+  }
+
   /** One pass over the replies awaited. On the edge's first pass, each is started again (a
     * no-op for one already started), since a start can be lost between ingest and start. Each
     * finished turn has its reply posted to its thread, in as many messages as [[RichText]]
     * makes of it (one line saying grit could not answer, and why, when it ended with none),
-    * and `:eyes:` removed from the message it answers. A part left posting by a crash is looked
-    * for by its tag first, and posted only when Slack does not have it. A part Slack refuses
-    * stays posting, for the next pass. How many turns it delivered; why not, when the store
-    * could not be read.
+    * and `:eyes:` removed from the message it answers, which clears its acknowledgement. A part
+    * left posting by a crash is looked for by its tag first, and posted only when Slack does
+    * not have it. A part Slack refuses stays posting, for the next pass. How many turns it
+    * delivered; why not, when the store could not be read.
     */
   def deliver(): Either[StoreError, Int] =
     stores.jot.write(stores.deliveries.pending()).map { pending =>
@@ -545,7 +630,12 @@ final class SlackEdge(
             .unreact(to.channel, to.answered, Working)
             .left
             .foreach(e => said(s"slack: not unmarked: $e"))
-          stores.jot.write(stores.deliveries.delivered(p.turn)) match {
+          val at = clock.now()
+          stores.jot.write(
+            stores.deliveries
+              .delivered(p.turn)
+              .flatMap(_ => stores.acknowledgements.cleared(p.turn, at))
+          ) match {
             case Right(()) => true
             case Left(e) =>
               said(
@@ -611,7 +701,10 @@ object SlackEdge {
     def apply(bot: BotToken, app: AppToken): Slack^ = new SocketSlack(bot, app)
   }
 
-  /** The reaction a message wears while grit works on it. */
+  /** The reaction a message wears while grit works on it: one said to grit, from when it is
+    * recorded; one heard that a turn put to grit by name answers, from that turn's
+    * acknowledgement ([[SlackEdge.acknowledge]]); each until its reply is posted.
+    */
   val Working = "eyes"
 
   /** `<@U…>` in a message's text. */

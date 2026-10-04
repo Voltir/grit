@@ -70,7 +70,7 @@ private[slack] object Served {
               slack.close()
               Left(refusedToken(e))
             case Right(self) =>
-              val edge = new SlackEdge(slack, self, stores, channels, review, log)
+              val edge = new SlackEdge(slack, self, stores, channels, review, Clock.system(), log)
               log(edge.listened() match {
                 case Vector() => "slack: listening in no channel"
                 case listened => s"slack: listening in ${listened.sorted.mkString(", ")}"
@@ -95,6 +95,11 @@ private[slack] object Served {
                   }
                   Right(new ServedEdge.Open {
                     def deliver(): Either[StoreError, Int] = {
+                      // First, so a slow post never holds back a mark.
+                      edge
+                        .acknowledge()
+                        .left
+                        .foreach(e => log(s"slack: acknowledgements unread: $e"))
                       val delivered = edge.deliver()
                       edge.prompt().left.foreach(e => log(s"slack: review prompts unread: $e"))
                       delivered
@@ -185,7 +190,7 @@ private[slack] object Served {
                   slack.close()
                   Left(refusedToken(e))
                 case Right(self) =>
-                  val edge = new SlackEdge(slack, self, stores, channels, None, log)
+                  val edge = new SlackEdge(slack, self, stores, channels, None, Clock.system(), log)
                   val from = now.minus(Duration.ofDays(days.toLong))
                   val sorted = channels.toVector.sortBy(ChannelId.value)
                   val read =
