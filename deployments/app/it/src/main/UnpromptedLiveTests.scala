@@ -23,7 +23,8 @@ import utest.*
 /** Unprompted speech end to end, over a live engine launched as the kit launches a deployment
   * (ADR 0022): a message heard in a thread with a record is triaged, drafted in its own turn
   * by the stub model, judged by the stub classifier, and posted, awaiting its edge; under
-  * Shadow, judged the same and not posted.
+  * Shadow, judged the same and not posted. A question triage reads as put to grit by name is
+  * drafted as named, and posted unjudged.
   */
 object UnpromptedLiveTests extends TestSuite {
 
@@ -41,8 +42,14 @@ object UnpromptedLiveTests extends TestSuite {
     */
   private val asks = grit.core.triage.Tags.V2.asks(grit.core.period.Probability.clamped(0.5))
 
+  /** The stub classifier answers every yes/no alike, triage's `to-grit` and the judge's
+    * questions too: a heard question marked `~0.4` is not read as put to grit (that needs at
+    * least one half), so its draft is judged, and posts at 0.4 only under this `postAt`.
+    */
   private val limits =
-    Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("a cap")), asks)
+    Limits
+      .suggested(DailyCap.of("0.25").getOrElse(sys.error("a cap")), asks)
+      .copy(postAt = grit.core.period.Probability.clamped(0.3))
 
   private def deployment(speaking: Speaking): Deployment =
     Deployment
@@ -87,10 +94,10 @@ object UnpromptedLiveTests extends TestSuite {
   private def right[A](e: Either[StoreError, A]): A = e.fold(x => sys.error(x.toString), identity)
 
   /** In `thread`'s conversation: a remark heard (its period then closed with a record), and a
-    * question heard live after it, the stub classifier reading it as a question; the
-    * question's turn.
+    * question heard live after it, the stub classifier reading it as a question, put to grit by
+    * name when `named`; the question's turn.
     */
-  private def converse(engine: Engine^, thread: String): TurnRef = {
+  private def converse(engine: Engine^, thread: String, named: Boolean = false): TurnRef = {
     val origin = Origin.Slack("T1", "C1", thread)
     val now = Instant.now()
     engine.inbox.hear(
@@ -119,7 +126,7 @@ object UnpromptedLiveTests extends TestSuite {
     engine.inbox.hear(
       origin,
       SourceId(s"$thread:1"),
-      "where does the refi page's byline go? ~back:asks",
+      s"where does the refi page's byline go? ${if (named) "" else "~0.4 "}~back:asks",
       PrincipalId.Local,
       now,
       Reach(Some(s"C1/$thread/$thread:1"), Set.empty)
@@ -185,6 +192,24 @@ object UnpromptedLiveTests extends TestSuite {
         // Judged, not passed over: the judge's call is in the ledger.
         val ledger = right(engine.db.read(engine.ledger.of(turn.workflowId)))
         assert(ledger.exists(_.entry == grit.turn.TurnJudge.id(turn)))
+      } finally engine.close()
+    }
+
+    test("a question put to grit by name is answered there unjudged: no judge call") {
+      val d = deployment(Speaking.Within(limits))
+      val engine = LiveEngine.open(config, Turn.Epoch)
+      try {
+        Launch(engine, d, secrets(d, config), Launch.Run.Served, sweeping = false, _ => ())
+        val turn = converse(engine, "30.0", named = true)
+        assert(eventually(stage(engine, turn) match {
+          case Some(Stage.Posted(_)) => true
+          case _ => false
+        }))
+        val _ = engine.awaitTurn(turn)
+        val pending = right(engine.jot.write(engine.deliveries.pending())).filter(_.turn == turn)
+        val ledger = right(engine.db.read(engine.ledger.of(turn.workflowId)))
+        (pending.map(_.to), ledger.exists(_.entry == grit.turn.TurnJudge.id(turn))) ==>
+          (Vector("C1/30.0/30.0:1"), false)
       } finally engine.close()
     }
   }
