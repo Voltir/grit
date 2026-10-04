@@ -58,7 +58,8 @@ object StitchLiveTests extends TestSuite {
         speaking = Speaking.Within(
           Limits.suggested(DailyCap.of("0.25").getOrElse(sys.error("cap")), asks)
         ),
-        sweep = 30.seconds
+        sweep = 30.seconds,
+        persona = grit.core.persona.Persona.Grit
       )
       .fold(r => sys.error(r.message), identity)
 

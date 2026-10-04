@@ -25,8 +25,8 @@ In dependency order:
   records (`grit.lifecycle.shadow.ShadowVariant`), the knowledge sources their question
   sets ask about (`grit.core.triage.KnowledgeSources`), and the review of one of them it picks
   heard messages for (`ShadowReview`: `grit.core.review.Reviewing` with that shadow's gate),
-  and the recipe that shapes each turn by what it answers (`grit.core.recipe.TurnRecipe`,
-  ADR 0025). Beside its edges it declares, by core's
+  the recipe that shapes each turn by what it answers (`grit.core.recipe.TurnRecipe`,
+  ADR 0025), and the persona grit presents as (`grit.core.persona.Persona`, ADR 0026). Beside its edges it declares, by core's
   links, which conversations work in a service an edge hosts (`WorksIn`) and which
   conversations' addressed turns also reach one (`Reaches`). Imports nothing in kit.
 - **`environment`** — what the process environment supplies, never declared: `DotEnv` (a

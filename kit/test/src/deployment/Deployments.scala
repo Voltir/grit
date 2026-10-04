@@ -62,6 +62,7 @@ object Deployments {
       budget = Budget(java.time.ZoneOffset.UTC, None),
       speaking = speaking,
       sweep = sweep,
+      persona = grit.core.persona.Persona.Grit,
       shadows = shadows,
       review = review,
       reaches = reaches,

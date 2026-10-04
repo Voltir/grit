@@ -53,6 +53,7 @@ object ReachLiveTests extends TestSuite {
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = Speaking.Off,
         sweep = 30.seconds,
+        persona = grit.core.persona.Persona.Grit,
         reaches = Vector(Reaches(Place.under(Namespace.Task, Vector.empty), SlackEdge.PostsAt))
       )
       .fold(r => sys.error(r.message), identity)

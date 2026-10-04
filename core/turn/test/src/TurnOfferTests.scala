@@ -20,6 +20,7 @@ import grit.core.id.{
 }
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.period.Probability
+import grit.core.persona.Persona
 import grit.core.place.{Directory, Place, Reaches, Service, WorksIn}
 import grit.core.prompt.SystemPrompt
 import grit.core.recipe.{ByFocus, Offering, ServiceOffer, Shaping, TurnRecipe}
@@ -71,7 +72,8 @@ object TurnOfferTests extends TestSuite {
   private def offeredAs(
       origin: Origin,
       principals: InMemoryPrincipals,
-      root: Payload
+      root: Payload,
+      persona: Persona = Persona.Grit
   ): (String, TurnOffer.Root) = {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
@@ -93,7 +95,8 @@ object TurnOfferTests extends TestSuite {
       Toolbox.Empty,
       Vector.empty,
       new FakeJot,
-      budget(5)
+      budget(5),
+      persona = persona
     )
     val entries = new InMemoryEntryStore
     entries.insert(Entry(EntryId("root"), c, TurnSeq.First, None, EntrySeq(0), root, Instant.EPOCH))
@@ -324,7 +327,7 @@ object TurnOfferTests extends TestSuite {
   private def set(entries: ToolSet.Entry*): ToolSet =
     ToolSet.of(entries.toVector).fold(d => throw new java.lang.AssertionError(d.toString), identity)
 
-  private def expected(origin: Origin, called: Option[String]): String =
+  private def expected(origin: Origin, persona: Persona): String =
     SystemPrompt
       .of(
         Vector(
@@ -333,7 +336,7 @@ object TurnOfferTests extends TestSuite {
           TurnPrompt.Answering,
           TurnPrompt.edge(origin)
         ) ++
-          TurnPrompt.destination(origin) ++ called.map(TurnPrompt.called) :+
+          TurnPrompt.destination(origin) ++ TurnPrompt.called(persona, origin) :+
           TurnPrompt.reach(None, ToolSet.Empty)
       )
       .render
@@ -360,6 +363,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.edge(slack).text,
         "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
           "only by calling a tool that does it, and only if one is offered to you.",
+        "In this workspace you are called grit.",
         TurnPrompt.reach(None, ToolSet.Empty).text
       ).mkString("\n\n")
       val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
@@ -373,10 +377,11 @@ object TurnOfferTests extends TestSuite {
       ).mkString("\n\n")
     }
 
-    test("a Slack turn's prompt says what its workspace calls the assistant, after its edge") {
-      val principals = new InMemoryPrincipals
-      principals.enrollAssistant(PrincipalId("slack:T1"), "Bort")(using TestTx.fake) ==> Right(())
-      offered(slack, principals) ==> expected(slack, Some("Bort"))
+    test("a Slack turn's prompt says the name its deployment's persona declares, after its edge") {
+      val bort = Persona.of("Bort").fold(e => throw new java.lang.AssertionError(e), identity)
+      val (prompt, _) =
+        offeredAs(slack, new InMemoryPrincipals, Payload.Message(Message.User("hi")), bort)
+      prompt ==> expected(slack, bort)
     }
 
     test("a turn rooted on a heard message is recorded so, and told it was not addressed") {
@@ -391,7 +396,7 @@ object TurnOfferTests extends TestSuite {
             TurnPrompt.Answering,
             TurnPrompt.edge(slack)
           ) ++
-            TurnPrompt.destination(slack) ++
+            TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++
             Vector(TurnPrompt.unprompted, TurnPrompt.reach(None, ToolSet.Empty))
         )
         .render
@@ -484,7 +489,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Candour,
         TurnPrompt.Answering,
         TurnPrompt.edge(slack)
-      ) ++ TurnPrompt.destination(slack) ++ Vector(
+      ) ++ TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++ Vector(
         TurnPrompt.reach(Some(github.place), set(advert("github_search")))
       ) ++ TurnPrompt.reached(elsewhere, set(advert("post_x")))).map(_.text).mkString("\n\n")
     }

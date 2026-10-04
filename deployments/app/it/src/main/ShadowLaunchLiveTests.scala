@@ -66,6 +66,7 @@ object ShadowLaunchLiveTests extends TestSuite {
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = Speaking.Off,
         sweep = 30.seconds,
+        persona = grit.core.persona.Persona.Grit,
         shadows = shadows,
         knowledge = knowledge
       )

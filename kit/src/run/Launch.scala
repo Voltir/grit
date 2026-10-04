@@ -291,7 +291,8 @@ private[grit] object Launch {
               worksIn = d.worksIn,
               reaches = d.reaches,
               recipe = d.recipe,
-              knowledge = d.knowledge
+              knowledge = d.knowledge,
+              persona = d.persona
             )
           )
         )
@@ -315,7 +316,8 @@ private[grit] object Launch {
                   worksIn = d.worksIn,
                   reaches = d.reaches,
                   recipe = d.recipe,
-                  knowledge = d.knowledge
+                  knowledge = d.knowledge,
+                  persona = d.persona
                 )
               )
             }

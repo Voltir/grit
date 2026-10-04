@@ -1,6 +1,7 @@
 package grit.turn
 
 import grit.core.context.Label
+import grit.core.persona.Persona
 import grit.core.place.{Directory, Place, Service}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
@@ -152,14 +153,19 @@ object TurnPrompt {
         s"nothing to add that the thread does not already say, reply with exactly: $Pass"
     )
 
-  /** The assistant's name where it is `called` that: "In this workspace you are called
-    * {called}.", an edge-layer fragment of its own, so the edge's measured fragment stays
-    * as it is.
+  /** What a turn at `origin` is told it is called, `persona`'s name, as an edge-layer fragment
+    * of its own: "In this workspace you are called {name}." in a Slack thread; `None` for a
+    * terminal or a task, whose one reader started grit.
     */
   // Its own fragment (not a sentence in `edge`'s Slack text) so that measured text stays
   // byte-identical; checked for gross regression on the forgery check, 2026-09-28.
-  def called(called: String): Fragment =
-    Fragment(Layer.Edge, Fragment.Grit, s"In this workspace you are called $called.")
+  def called(persona: Persona, origin: Origin): Option[Fragment] = origin match {
+    case _: Origin.Slack =>
+      Some(
+        Fragment(Layer.Edge, Fragment.Grit, s"In this workspace you are called ${persona.name}.")
+      )
+    case _: Origin.Tui | _: Origin.Task => None
+  }
 
   /** What a turn may reach in `workspace`: `tools`, the tools served in a directory, which
     * act on it (and, when some ask first, that calling one is how the person is asked); or

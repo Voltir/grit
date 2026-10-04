@@ -7,6 +7,7 @@ import grit.core.id.{EdgeName, KnowledgeSourceName, QuestionName, ShadowName}
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
+import grit.core.persona.Persona
 import grit.core.place.{Reaches, Service, WorksIn}
 import grit.core.plugin.Plugin
 import grit.core.recipe.{Offering, TurnRecipe}
@@ -181,8 +182,9 @@ enum DeploymentRefusal {
   * records beside live triage ([[ShadowVariant]]), the knowledge sources its shadows'
   * question sets ask about ([[KnowledgeSources]]), and its turns' offering by the services
   * they supply, the review of one of them it picks heard messages for ([[ShadowReview]]), how
-  * often its engine sweeps, and the `recipe` that shapes each turn by what it answers
-  * ([[TurnRecipe]]). The
+  * often its engine sweeps, the `recipe` that shapes each turn by what it answers
+  * ([[TurnRecipe]]), and the `persona` grit presents as: the name its turns are told
+  * ([[grit.turn.TurnPrompt.called]]) and `about` reports. The
   * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
@@ -199,6 +201,7 @@ final case class Deployment private (
     budget: Budget,
     speaking: Speaking,
     sweep: FiniteDuration,
+    persona: Persona,
     reaches: Vector[Reaches],
     shadows: Vector[ShadowVariant],
     knowledge: KnowledgeSources,
@@ -241,6 +244,7 @@ object Deployment {
       budget: Budget,
       speaking: Speaking,
       sweep: FiniteDuration,
+      persona: Persona,
       reaches: Vector[Reaches] = Vector.empty,
       shadows: Vector[ShadowVariant] = Vector.empty,
       knowledge: KnowledgeSources = KnowledgeSources.Empty,
@@ -321,6 +325,7 @@ object Deployment {
       budget,
       speaking,
       sweep,
+      persona,
       reaches,
       shadows,
       knowledge,

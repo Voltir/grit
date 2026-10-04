@@ -75,8 +75,8 @@ object TurnOffer {
     * them), then `tooling`'s own, then its operator tools when
     * its origin is the operator's ([[grit.core.store.Audience.operator]]); and its prompt: the base,
     * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], its edge's fragment, where its reply goes
-    * ([[TurnPrompt.destination]]), what its workspace calls the assistant (when it has named it,
-    * [[grit.core.store.Origin.assistant]]), [[TurnPrompt.unprompted]] when its root is heard,
+    * ([[TurnPrompt.destination]]), what it is called (`tooling.persona`, [[TurnPrompt.called]]),
+    * [[TurnPrompt.unprompted]] when its root is heard,
     * what it may reach there, what it reaches besides ([[TurnPrompt.reached]], for each
     * reached service offering tools), the voice's fragment (none for plain), and the
     * instruction files the edge read there. Its root is `Heard` when its first entry in
@@ -157,16 +157,14 @@ object TurnOffer {
         a => hosting.prompts.prompt(a.instructions)
       )
       voice <- hosting.voices.current()
-      called <- conversation.origin.assistant.fold[Either[StoreError, Option[String]]](
-        Right(None)
-      )(hosting.principals.name)
       prompt = SystemPrompt.of(
         Vector(
           TurnPrompt.Base,
           TurnPrompt.Candour,
           TurnPrompt.Answering,
           TurnPrompt.edge(conversation.origin)
-        ) ++ TurnPrompt.destination(conversation.origin) ++ called.map(TurnPrompt.called) ++
+        ) ++ TurnPrompt.destination(conversation.origin) ++
+          TurnPrompt.called(tooling.persona, conversation.origin) ++
           Option.when(root == Root.Heard)(TurnPrompt.unprompted) ++
           Option.when(kept)(TurnPrompt.reach(workspace, hostedSet)) ++
           offeredReaching.flatMap((service, set) => TurnPrompt.reached(service, set)) ++

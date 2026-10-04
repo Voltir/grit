@@ -1,6 +1,7 @@
 package grit.turn
 
 import grit.core.context.Label
+import grit.core.persona.Persona
 import grit.core.place.{Directory, Namespace, Place}
 import grit.core.prompt.Layer
 import grit.core.store.Origin
@@ -119,10 +120,13 @@ object TurnPromptTests extends TestSuite {
       text.drop(text.lastIndexOf(':') + 2) ==> TurnPrompt.Pass
     }
 
-    test("called: what the workspace calls the assistant, as an edge fragment of its own") {
-      val f = TurnPrompt.called("Bort")
-      f.text ==> "In this workspace you are called Bort."
-      f.layer ==> Layer.Edge
+    test("called: a Slack turn is told its persona's name in an edge fragment of its own") {
+      val bort = Persona.of("Bort").fold(e => throw new java.lang.AssertionError(e), identity)
+      // Pinned: the words Bort's turns were told before the name was declared, byte for byte.
+      TurnPrompt.called(bort, Origin.Slack("T1", "C1", "1.0")).map(f => (f.layer, f.text)) ==>
+        Some((Layer.Edge, "In this workspace you are called Bort."))
+      TurnPrompt.called(bort, Origin.Tui(dir, "s")) ==> None
+      TurnPrompt.called(bort, Origin.Task("nightly", "1")) ==> None
     }
 
     test("reach says what is reachable in the directory, by directory, and why nothing is") {

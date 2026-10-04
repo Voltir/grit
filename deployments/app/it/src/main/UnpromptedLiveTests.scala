@@ -57,7 +57,8 @@ object UnpromptedLiveTests extends TestSuite {
         lifecycle = LifecycleSettings.Default,
         budget = Budget(java.time.ZoneOffset.UTC, None),
         speaking = speaking,
-        sweep = 30.seconds
+        sweep = 30.seconds,
+        persona = grit.core.persona.Persona.Grit
       )
       .fold(r => sys.error(r.message), identity)
 

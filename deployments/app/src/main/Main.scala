@@ -13,6 +13,7 @@ import grit.core.id.{PluginName, PrincipalId, SourceId, TurnRef}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{ModelId, Policy}
 import grit.core.period.LifecycleSettings
+import grit.core.persona.Persona
 import grit.core.place.{Directory, Namespace, Place, Service, WorksIn}
 import grit.core.plugin.Plugin
 import grit.core.prompt.Fragment
@@ -506,7 +507,9 @@ object Main {
           // grit's own deployment never speaks where it was not addressed; a deployment that
           // does declares its limits (ADR 0022).
           speaking = Speaking.Off,
-          sweep = sweep
+          sweep = sweep,
+          // The reference deployment is grit itself, in a terminal and in Slack alike.
+          persona = Persona.Grit
         )
         .left
         .map(_.message)
