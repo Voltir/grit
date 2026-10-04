@@ -1,8 +1,6 @@
 package grit.turn
 
-import scala.collection.immutable.VectorMap
-
-import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question}
+import grit.core.classify.{Classifier, Question}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -10,7 +8,7 @@ import grit.core.period.Probability
 import grit.core.provider.ProviderError
 import grit.core.speech.{Judged, Outcome, Speaking}
 import grit.core.store.Payload
-import grit.core.triage.{InMemoryTriageStore, Tags}
+import grit.core.triage.InMemoryTriageStore
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -66,54 +64,14 @@ object TurnSpeechTests extends TestSuite {
       Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017")))
     )
 
-  /** A judge of named drafts: one question, answered `yes`, its words kept. */
-  private final class NamedJudge(yes: Double) extends Classifier {
-    @caps.unsafe.untrackedCaptures
-    var asked = Vector.empty[Question]
-
-    protected def answer(
-        state: ujson.Value,
-        questions: Vector[Question]
-    ): Either[ClassifierError, Answers] = {
-      asked = asked ++ questions
-      Right(
-        Answers(
-          questions.map(_ => Answer.YesNo(yes)),
-          Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017"))),
-          "jev"
-        )
-      )
-    }
-  }
-
-  /** What triage kept for `w`'s heard message: a question to grit by name ([[Tags.V3.directed]]). */
-  private def named(w: SpeechWorld): Option[InMemoryTriageStore] = {
-    val store = new InMemoryTriageStore(w.entries, NoPeriods)
-    store.record(
-      EntryId("heard:is the freeze still on?"),
-      Tags.Weighed(
-        VectorMap(
-          Tags.V2.gap -> Answer.Choice("asks", Vector(Answer.Weight("asks", 1.0)), 1.0),
-          Tags.V2.open -> Answer.YesNo(0.9),
-          Tags.V2.to -> Answer.YesNo(0.9),
-          Tags.V3.toGrit -> Answer.YesNo(0.9)
-        ),
-        "jev",
-        Usage.Zero
-      ),
-      java.time.Instant.EPOCH
-    )(using TestTx.fake) ==> Right(true)
-    Some(store)
-  }
-
   val tests = Tests {
     test(
       "a draft answering a message directed at grit is judged on whether it answers, alone, even with nothing recalled, and posted at postAt"
     ) {
       for (recalled <- Vector(true, false)) {
         val w = speechWorld(recalled)
-        val judge = new NamedJudge(0.8)
-        run(w, judge, kept = named(w))
+        val judge = new AnswersYes(0.8)
+        run(w, judge, kept = Some(directed(w)))
         (outcome(w), judge.asked, awaited(w)) ==> (
           Some(
             Outcome.Posted(
@@ -139,7 +97,7 @@ object TurnSpeechTests extends TestSuite {
 
     test("a named draft whose answer is under postAt is kept below, nothing posted") {
       val w = speechWorld()
-      run(w, new NamedJudge(0.4), kept = named(w))
+      run(w, new AnswersYes(0.4), kept = Some(directed(w)))
       (outcome(w), awaited(w)) ==> (
         Some(
           Outcome.Below(

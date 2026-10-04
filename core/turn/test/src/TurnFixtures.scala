@@ -1086,6 +1086,50 @@ object TurnFixtures {
     }
   }
 
+  /** Answers every yes/no question `yes`, at the judge's usage, keeping the questions asked. */
+  final class AnswersYes(yes: Double) extends Classifier {
+    @caps.unsafe.untrackedCaptures
+    var asked = Vector.empty[Question]
+
+    protected def answer(
+        state: ujson.Value,
+        questions: Vector[Question]
+    ): Either[ClassifierError, Answers] = {
+      asked = asked ++ questions
+      Right(
+        Answers(
+          questions.map(_ => Answer.YesNo(yes)),
+          Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017"))),
+          "jev"
+        )
+      )
+    }
+  }
+
+  /** What triage kept for `w`'s heard message: a question put to grit by name
+    * ([[grit.core.triage.Tags.V3.directed]]), so its turn is rooted `Named`.
+    */
+  def directed(w: SpeechWorld): grit.core.triage.InMemoryTriageStore = {
+    import grit.core.triage.Tags
+    val store = new grit.core.triage.InMemoryTriageStore(w.entries, NoPeriods)
+    val kept = store.record(
+      EntryId("heard:is the freeze still on?"),
+      Tags.Weighed(
+        scala.collection.immutable.VectorMap(
+          Tags.V2.gap -> Answer.Choice("asks", Vector(Answer.Weight("asks", 1.0)), 1.0),
+          Tags.V2.open -> Answer.YesNo(0.9),
+          Tags.V2.to -> Answer.YesNo(0.9),
+          Tags.V3.toGrit -> Answer.YesNo(0.9)
+        ),
+        "jev",
+        Usage.Zero
+      ),
+      Instant.EPOCH
+    )(using TestTx.fake)
+    if (kept != Right(true)) throw new java.lang.AssertionError(s"triage not kept: $kept")
+    store
+  }
+
   /** A window of the conversation's entries before the turn, the closing among them. */
   final class Before(entries: InMemoryEntryStore) extends ContextAssembler {
     def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window] =

@@ -64,6 +64,38 @@ object RecordTurnHistories {
       )
       recorded(durable, w.turn)
     }
+
+    /** A turn rooted on a heard message triage read as put to grit by name, under Within;
+      * every question it asks answered yes at 0.9.
+      */
+    def named: History = {
+      val w = speechWorld()
+      val durable = new InMemoryDurable
+      durable.run(w.turn.workflowId)(
+        turnBodyWith(
+          w.entries,
+          new RecordingProvider,
+          new Before(w.entries),
+          w.ledger,
+          new AnswersYes(0.9),
+          TurnSpeech(grit.core.speech.Speaking.Within(speechLimits), w.store, w.deliveries),
+          weighing = TurnWeighing(
+            directed(w),
+            new Weighs(Left(grit.core.triage.Weighing.Unweighed.Unavailable))
+          )
+        )
+      )
+      recorded(durable, w.turn)
+    }
+
+    /** [[named]] cut just after its `judge` step, as recorded before named drafts went
+      * unjudged: in flight across that change.
+      */
+    def namedBeforeSpeech: History = {
+      val h = named
+      val judged = h.steps.indexWhere(_.name == Turn.Step.Judge)
+      inFlight(h, if (judged < 0) h.steps.size else judged + 1)
+    }
     val replied = {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable
@@ -501,6 +533,10 @@ object RecordTurnHistories {
       "crashed-before-summary-append" -> crashedBeforeSummaryAppend,
       "heard-posted" -> heard(grit.core.speech.Speaking.Within(speechLimits)),
       "heard-shadowed" -> heard(grit.core.speech.Speaking.Shadow(speechLimits)),
+      // A named turn, judged on whether its draft answers (recorded before named drafts went
+      // unjudged), and the same in flight between its judge and its record-speech.
+      "named-judged" -> named,
+      "named-judged-before-speech" -> namedBeforeSpeech,
       "replied" -> replied,
       "stitched-first" -> {
         val ch = new StitchChannel(
