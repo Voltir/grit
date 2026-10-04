@@ -2,7 +2,8 @@
 
 Status: accepted (2026-09-28); amended (2026-10-03): triage asks a question set, its
 answers kept by name; amended (2026-10-03): a message said to grit is asked the same set in
-its turn, when its recipe reads the answers, and keeps no tags
+its turn, when its recipe reads the answers, and keeps no tags; amended (2026-10-04):
+triage asks v3, adding whether a message is directed at grit, in its persona's name
 
 Context: grit was answering only what was said to it. A deployment also wants the rest of a
 listened place (a Slack channel's threads) kept, so a later question can be answered from
@@ -47,7 +48,7 @@ Decision:
   said to grit can still stand.
 - **Each heard message is triaged once** by a classifier, in one call. Its tags are kept
   beside its entry and deleted with it. Triage writes no entry, so it never moves a period's
-  deadline. (Amended 2026-10-03.) It asks a question set, `TriageQuestions.Shipped`, and
+  deadline. (Amended 2026-10-03.) It asks a question set, live triage's (`TriageQuestions.shipped`), and
   keeps every answer as given, under its question's name, in the order asked: v2's `gap`
   (what the message leaves open: it asks, its author owes, it closes something, or nothing),
   whether that is still `open`, whether it is directed `to` one person, whether it is
@@ -57,12 +58,18 @@ Decision:
   shape. A message triaged before then keeps v1's: its kind (question, answer, decision,
   announcement or chatter), and whether someone waits on a reply, whether it is durable, and
   whether a reply from grit would help; a triage in flight across the change reads its
-  recorded v1 answers back under those names.
+  recorded v1 answers back under those names. (Amended 2026-10-04.) It asks v3: v2's questions
+  in v2's words, and after `to`, `to-grit`, whether the message is directed at grit, worded
+  with the name of the deployment's persona (ADR 0026), by that name or as a reply to what the
+  assistant said. A new question, not a rewording of `to`, so every recorded `to` keeps its
+  meaning; a new set, so v2 stays one fixed set for shadows and corpora. The name is in the
+  question's words, not in the state, so the input builder and every v1 and v2 request are
+  unchanged. A message triaged by v2 holds no `to-grit`.
 - **A message said to grit is asked live triage's set in its own turn** (amended
   2026-10-03), only when its deployment's recipe offers a service it links by a knowledge
   source covering its place (ADR 0025): the turn's `weigh` step builds the state as for a
   heard message (`TriageInput.read`), after its opening's placement, waited for at most
-  `Mentions.PlacedWithin`, and asks `TriageQuestions.Shipped` once, waiting at most
+  `Mentions.PlacedWithin`, and asks live triage's set once, waiting at most
   `Mentions.AskWithin` for the answer. Its answers are the step's
   recorded output and its call a usage-ledger row of the turn; no tags are kept, so speech,
   earning, shadows and reviews never see a mention. A placement or classifier that fails or is
