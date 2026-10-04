@@ -9,7 +9,7 @@ import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
 import grit.core.place.{Reaches, Service, WorksIn}
 import grit.core.plugin.Plugin
-import grit.core.recipe.TurnRecipe
+import grit.core.recipe.{Offering, TurnRecipe}
 import grit.core.review.Reviewing
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
@@ -118,6 +118,17 @@ enum DeploymentRefusal {
     */
   case RecipeUnread(reading: Reading)
 
+  /** The recipe offers a service by source, but topics are placed with no classifier, and
+    * live triage and a mention's weighing ask that one: every answer would be missing, and the
+    * recipe would never act. `topics` says why there is none.
+    */
+  case RecipeUnweighed(topics: String)
+
+  /** The recipe offers a service by source, but no knowledge source supplies one: no gate
+    * would be read, and the recipe would never act.
+    */
+  case RecipeUnsourced
+
   /** `source` supplies `service`, which no `worksIn` or `reaches` link offers: offering by it
     * would gate nothing.
     */
@@ -148,6 +159,10 @@ enum DeploymentRefusal {
       "a review compares a shadow's gate with live triage's, and speaking is off, so live's is never reached"
     case RecipeUnread(reading) =>
       s"the recipe offers a service by $reading, which live triage does not ask, so it would never act"
+    case RecipeUnweighed(topics) =>
+      s"the recipe offers a service by source, which needs a classifier to weigh each message, and topics are off: $topics"
+    case RecipeUnsourced =>
+      "the recipe offers a service by source, and no knowledge source supplies a service, so it would never act"
     case OffersUnlinked(source, service) =>
       s"${KnowledgeSourceName.value(source)} supplies ${service.name}, which no worksIn or reaches link offers"
     case Widens(budget, window) =>
@@ -203,7 +218,9 @@ object Deployment {
     * name, or any is declared with `topics` Off: each shadow asks the topics' classifier, Jev
     * (of the shadow's own model when it names one) or the stub, or when `review` names no
     * declared shadow or is declared with `speaking` Off: live's
-    * gate is then never reached; or when `recipe` offers a service by a gate reading what live
+    * gate is then never reached; or when `recipe` offers a service by source with `topics` Off
+    * ([[DeploymentRefusal.RecipeUnweighed]]) or with no source of `knowledge` supplying one
+    * ([[DeploymentRefusal.RecipeUnsourced]]), or by a gate reading what live
     * triage does not ask ([[DeploymentRefusal.RecipeUnread]]), a source of `knowledge`
     * supplies a service no `worksIn` or `reaches` link offers
     * ([[DeploymentRefusal.OffersUnlinked]]), or `recipe` draws a window wider than
@@ -276,6 +293,18 @@ object Deployment {
             .map(v => Some(ShadowReview(r, v.questions.speak)))
             .toRight(DeploymentRefusal.ReviewUngated(r.shadow))
       }
+      bySource = Vector(recipe.heard.focused, recipe.heard.open, recipe.addressed)
+        .exists(_.offering != Offering.All)
+      _ <- (bySource, topics) match {
+        // Live triage and a mention's weighing ask the topics' classifier: with none, no answer.
+        case (true, Topics.Off(reason)) => Left(DeploymentRefusal.RecipeUnweighed(reason))
+        case _ => Right(())
+      }
+      _ <- Either.cond(
+        !bySource || knowledge.supplied.nonEmpty,
+        (),
+        DeploymentRefusal.RecipeUnsourced
+      )
       _ <- read(recipe, knowledge, TriageQuestions.Shipped)
       _ <- linked(knowledge, worksIn, reaches)
       assembled = window(assembly)

@@ -254,6 +254,49 @@ object DeploymentTests extends TestSuite {
       )
     }
 
+    test("a recipe offering by source with topics off is refused: nothing could weigh a message") {
+      val addressed = grit.core.recipe.TurnRecipe.Shipped.copy(addressed = bySource.heard.focused)
+      def declared(recipe: grit.core.recipe.TurnRecipe, topics: Topics) = Deployments
+        .of(worksIn = inGithub, knowledge = repoInGithub, recipe = recipe, topics = topics)
+        .map(_ => ())
+      (
+        declared(addressed, Topics.Off("no key")),
+        declared(bySource, Topics.Off("no key")),
+        declared(addressed, Topics.Stub),
+        declared(grit.core.recipe.TurnRecipe.Shipped, Topics.Off("no key"))
+      ) ==> (
+        Left(DeploymentRefusal.RecipeUnweighed("no key")),
+        Left(DeploymentRefusal.RecipeUnweighed("no key")),
+        Right(()),
+        Right(())
+      )
+    }
+
+    test(
+      "a recipe offering by source with no knowledge source supplying a service is refused"
+    ) {
+      val addressed = grit.core.recipe.TurnRecipe.Shipped.copy(addressed = bySource.heard.focused)
+      val unsupplying = grit.core.triage.KnowledgeSources
+        .of(repoInGithub.all.map(_.copy(supplies = None)))
+        .fold(n => sys.error(n.toString), identity)
+      def declared(
+          recipe: grit.core.recipe.TurnRecipe,
+          knowledge: grit.core.triage.KnowledgeSources
+      ) =
+        Deployments.of(worksIn = inGithub, knowledge = knowledge, recipe = recipe).map(_ => ())
+      (
+        declared(addressed, grit.core.triage.KnowledgeSources.Empty),
+        declared(bySource, unsupplying),
+        declared(addressed, repoInGithub),
+        declared(grit.core.recipe.TurnRecipe.Shipped, grit.core.triage.KnowledgeSources.Empty)
+      ) ==> (
+        Left(DeploymentRefusal.RecipeUnsourced),
+        Left(DeploymentRefusal.RecipeUnsourced),
+        Right(()),
+        Right(())
+      )
+    }
+
     test(
       "a knowledge source supplying a service no worksIn or reaches link offers is refused"
     ) {
