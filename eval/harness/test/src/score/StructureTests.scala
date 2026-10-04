@@ -49,6 +49,7 @@ object StructureTests extends TestSuite {
         Slice.All -> 5,
         Slice.Rooted(TurnOffer.Root.Addressed) -> 3,
         Slice.Rooted(TurnOffer.Root.Heard) -> 2,
+        Slice.Rooted(TurnOffer.Root.Named) -> 0,
         Slice.At(Where.Slack) -> 3,
         Slice.At(Where.Tui) -> 1,
         Slice.At(Where.Task) -> 1

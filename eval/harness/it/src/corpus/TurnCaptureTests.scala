@@ -266,7 +266,7 @@ object TurnCaptureTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "every turn is captured, TUI and Slack, addressed and heard, as it ran, the same on recapture, and no text reaches its files"
+      "every turn is captured, TUI and Slack, addressed and heard, under the root its offer recorded, as it ran, the same on recapture, and no text reaches its files"
     ) {
       val config = TestPostgres.freshDatabase("harness_turns")
       val engine = LiveEngine.open(config, Turn.Epoch)
@@ -369,7 +369,9 @@ object TurnCaptureTests extends TestSuite {
             Focus.Open,
             Ended.Replied(s"$Marker replied".length, false)
           ),
-          ("slack C1/3000.1", TurnOffer.Root.Heard, Focus.Open, Ended.Replied("pass".length, true))
+          // The stub reads every yes/no at 0.9, to-grit too: its offer recorded it named, and
+          // the case keeps the root the offer recorded, not one derived from the message.
+          ("slack C1/3000.1", TurnOffer.Root.Named, Focus.Open, Ended.Replied("pass".length, true))
         )
 
         // The offer: echo alone, its schema costed; the TUI session's directory as workspace.

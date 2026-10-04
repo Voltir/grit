@@ -43,9 +43,9 @@ enum Slice {
 
 object Slice {
 
-  /** Every turn, then each root (addressed, heard), then each place (Slack, TUI, task). */
+  /** Every turn, then each root (addressed, heard, named), then each place (Slack, TUI, task). */
   val every: Vector[Slice] =
-    All +: (Vector(TurnOffer.Root.Addressed, TurnOffer.Root.Heard).map(Rooted(_)) ++
+    All +: (TurnOffer.Root.values.toVector.map(Rooted(_)) ++
       Where.values.toVector.map(At(_)))
 }
 

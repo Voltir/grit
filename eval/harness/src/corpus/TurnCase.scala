@@ -15,7 +15,9 @@ import grit.dbos.engine.Build
 import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnVerdict}
 
 /** One turn of a corpus, text-free: its workflow, conversation and turn; the message it
-  * answers (`said`), whether that message was said to grit or heard (`root`) and where
+  * answers (`said`), whether that message was said to grit or heard (`root`, as its offer
+  * recorded it, a heard one read as directed at grit `Named`; its message's when it recorded
+  * no offer) and where
   * (`focus`); when it `started` and the `build` that ran it (as [[Triaged.buildAt]] finds it);
   * what live triage made of a heard root; its tool loop's `rounds`; how it `ended`; and what
   * each of its model calls cost (`spend`, in the order recorded).

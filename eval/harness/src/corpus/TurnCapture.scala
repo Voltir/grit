@@ -82,6 +82,8 @@ object TurnCapture {
     said match {
       case None => Right(None)
       case Some((first, saidAs)) =>
+        // The root its message makes it: what its draft or reply and its tags are read by. A
+        // named root is a heard one there; the case keeps the root its offer recorded.
         val root = first.payload match {
           case Payload.Heard(_) => TurnOffer.Root.Heard
           case _ => TurnOffer.Root.Addressed
@@ -180,7 +182,9 @@ object TurnCapture {
               turn.conversationId,
               turn.turnSeq,
               saidAs,
-              root,
+              // Its offer's root when it recorded one: a named turn is named. A turn ended
+              // before its offer has its message's.
+              offer.fold(root)(_.root),
               focus,
               recorded.created,
               build,
