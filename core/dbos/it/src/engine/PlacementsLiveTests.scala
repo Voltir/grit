@@ -1,6 +1,5 @@
 package grit.dbos.engine
 
-import java.time.Instant
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 import scala.annotation.unused
@@ -46,7 +45,7 @@ object PlacementsLiveTests extends TestSuite {
           SourceId("1.0"),
           "anyone seen the staging logs?",
           PrincipalId.Local,
-          Instant.now(),
+          Clock.system().now(),
           Reach.Nowhere
         ) ==> Right(())
         val opening = right(engine.db.read(engine.conversations.find(thread))).flatMap { c =>
