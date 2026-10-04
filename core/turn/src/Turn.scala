@@ -32,7 +32,7 @@ import TurnVerdict.Shape
   *      heard message it answers; for a message said to grit, live triage's set asked of it
   *      when its recipe's addressed offering would read the answers ([[TurnOffer.weighs]]),
   *      once its opening's placement has ended ([[TurnWeighing.said]]); or none. Never fails
-  *      the turn: a weighing that fails records none. Turns that passed this point before it
+  *      the turn: a weighing that fails records why, by kind, and offers everything. Turns that passed this point before it
   *      shipped offer unweighed ([[Patches.Weigh]]).
   *   1. `offer` — what the turn offers its model ([[TurnOffer]]): its conversation's
   *      workspace, the tool set (its own tools, and the hosted ones the edge serving that
@@ -415,7 +415,7 @@ object Turn {
             val ledger = env.records.ledger
             d.transact(Step.Offer)(
               TurnOffer
-                .decide(hosting, env.records.entries, tooling, turn, weighed.map(_.tags))
+                .decide(hosting, env.records.entries, tooling, turn, weighed.flatMap(_.answers))
                 .flatMap(offered => weighCost(ledger, turn, weighed).map(_ => offered))
             ).flatMap(TurnOffer.load(hosting, env.db, _)) match {
               case Left(failure) => s"failed: $failure"
@@ -427,15 +427,16 @@ object Turn {
   /** The `weigh` step: the tags live triage kept for the heard message `turn` answers
     * ([[grit.core.triage.TriageStore.of]]); for a message said to grit, when its offer would
     * read the answers ([[TurnOffer.weighs]]), what live triage's set makes of it
-    * ([[TurnWeighing.said]]). `None` when nothing is kept or asked, or when the store cannot
-    * be read or the asking fails. Never fails the turn: unweighed, its offer withholds nothing
+    * ([[TurnWeighing.said]]), or why asking it failed. `None` when nothing is kept or asked,
+    * or when the turn's own entries or conversation cannot be read. Never fails the turn:
+    * unweighed or failed, its offer withholds nothing
     * ([[grit.core.recipe.ServiceOffer.Verdict.Unweighed]]).
     */
   private def weigh[C^](
       env: TurnEnv^,
       tooling: TurnTooling[C]^,
       turn: TurnRef
-  ): Option[TurnWeighing.Answered] = {
+  ): Option[TurnWeighing.Weighed] = {
     val (entries, conversations) = (env.records.entries, env.hosting.conversations)
     val (triage, said) = (env.weighing.triage, env.weighing.said)
     env.db
@@ -445,7 +446,7 @@ object Turn {
           conversation <- conversations.get(turn.conversationId)
           kept <- own.minByOption(_.seq) match {
             case Some(root @ Entry(_, _, _, _, _, Payload.Heard(_), _)) =>
-              triage.of(Vector(root.id)).map(_.get(root.id).map(TurnWeighing.Answered.Kept(_)))
+              triage.of(Vector(root.id)).map(_.get(root.id).map(TurnWeighing.Weighed.Kept(_)))
             case _ => Right(None)
           }
           addressed = own
@@ -459,7 +460,12 @@ object Turn {
       .toOption
       .flatMap {
         case (Some(kept), _) => Some(kept)
-        case (None, true) => said.weigh(turn).toOption.map(TurnWeighing.Answered.Asked(_))
+        case (None, true) =>
+          Some(
+            said
+              .weigh(turn)
+              .fold(TurnWeighing.Weighed.Failed(_), TurnWeighing.Weighed.Asked(_))
+          )
         case (None, false) => None
       }
   }
@@ -470,15 +476,16 @@ object Turn {
   private def weighCost(
       ledger: UsageLedger,
       turn: TurnRef,
-      weighed: Option[TurnWeighing.Answered]
+      weighed: Option[TurnWeighing.Weighed]
   )(using Tx^): Either[TurnFailure, Unit] =
     weighed match {
-      case Some(TurnWeighing.Answered.Asked(Weighing.Weighed(tags, estimate))) =>
+      case Some(TurnWeighing.Weighed.Asked(Weighing.Weighed(tags, estimate))) =>
         ledger
           .record(TurnWeighing.id(turn), turn, turn.workflowId, tags.model, tags.usage, estimate)
           .left
           .map(storeFailure)
-      case Some(TurnWeighing.Answered.Kept(_)) | None => Right(())
+      case Some(TurnWeighing.Weighed.Kept(_) | TurnWeighing.Weighed.Failed(_)) | None =>
+        Right(())
     }
 
   /** The `stitched` step: what the placement of `turn`'s message did, once it has ended, when

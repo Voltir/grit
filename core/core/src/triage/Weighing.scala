@@ -10,14 +10,31 @@ trait Weighing extends caps.SharedCapability {
 
   /** What live triage's set makes of the person's message that is `turn`'s first, asked with
     * the knowledge sources covering its conversation, once its placement has ended when it is
-    * an opening. Why not, when the message cannot be read or is not a person's, its placement
-    * failed or did not end within the implementation's bound, or the classifier failed or gave
-    * an answer that does not read.
+    * an opening; why not ([[Weighing.Unweighed]]).
     */
-  def weigh(turn: TurnRef): Either[String, Weighing.Weighed]
+  def weigh(turn: TurnRef): Either[Weighing.Unweighed, Weighing.Weighed]
 }
 
 object Weighing {
+
+  /** Why a message was not weighed. */
+  enum Unweighed {
+
+    /** The message or its thread could not be read, or it is not a person's. */
+    case Unread
+
+    /** Its opening's placement failed. */
+    case PlacementFailed
+
+    /** Its opening's placement did not end within the implementation's bound. */
+    case PlacementLate
+
+    /** The classifier failed. */
+    case Unavailable
+
+    /** The classifier gave an answer that does not read. */
+    case Unreadable
+  }
 
   /** What a call to the classifier answered, `tags`, and grit's `estimate` of its request's
     * input, which its ledger row keeps beside the provider's count.

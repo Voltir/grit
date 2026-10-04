@@ -424,19 +424,21 @@ private[turn] object TurnJournal {
       )
 
   /** A `weigh` step's output: `null` when the root was not weighed; `{"kept": tags}`, the tags
-    * live triage kept for it ([[TagsJson.write]]); or `{"asked": tags, "estimate"}`, what live
-    * triage's set answered when the turn asked it, and the estimate of that request's input.
+    * live triage kept for it ([[TagsJson.write]]); `{"asked": tags, "estimate"}`, what live
+    * triage's set answered when the turn asked it, and the estimate of that request's input;
+    * or `{"failed": kind}`, why asking it failed, by [[unweighedKinds]].
     */
-  given weighed: Journaled[Option[TurnWeighing.Answered]] =
-    Journaled.json[Option[TurnWeighing.Answered]](
+  given weighed: Journaled[Option[TurnWeighing.Weighed]] =
+    Journaled.json[Option[TurnWeighing.Weighed]](
       {
         case None => ujson.Null
-        case Some(TurnWeighing.Answered.Kept(t)) => ujson.Obj("kept" -> TagsJson.write(t))
-        case Some(TurnWeighing.Answered.Asked(Weighing.Weighed(t, estimate))) =>
+        case Some(TurnWeighing.Weighed.Kept(t)) => ujson.Obj("kept" -> TagsJson.write(t))
+        case Some(TurnWeighing.Weighed.Asked(Weighing.Weighed(t, estimate))) =>
           ujson.Obj(
             "asked" -> TagsJson.write(t),
             "estimate" -> Tokens.value(estimate).toDouble
           )
+        case Some(TurnWeighing.Weighed.Failed(why)) => ujson.Obj("failed" -> unweighedKind(why))
       },
       {
         case ujson.Null => Right(None)
@@ -445,10 +447,17 @@ private[turn] object TurnJournal {
             .get("kept")
             .toRight("weighed: expected {kept}")
             .flatMap(TagsJson.read)
-            .map(t => Some(TurnWeighing.Answered.Kept(t)))
+            .map(t => Some(TurnWeighing.Weighed.Kept(t)))
+        case o: ujson.Obj if o.value.contains("failed") =>
+          o.value
+            .get("failed")
+            .flatMap(_.strOpt)
+            .flatMap(k => unweighedKinds.collectFirst { case (why, `k`) => why })
+            .toRight("weighed: failed is not a known kind")
+            .map(why => Some(TurnWeighing.Weighed.Failed(why)))
         case o: ujson.Obj =>
           for {
-            tags <- o.value.get("asked").toRight("weighed: expected {kept} or {asked}")
+            tags <- o.value.get("asked").toRight("weighed: expected {kept}, {asked} or {failed}")
             read <- TagsJson.read(tags)
             weighed <- read match {
               case w: Tags.Weighed => Right(w)
@@ -458,10 +467,25 @@ private[turn] object TurnJournal {
               .get("estimate")
               .collect { case ujson.Num(n) if n.isWhole && n >= 0 => Tokens(n.toLong) }
               .toRight("weighed: asked without a whole estimate")
-          } yield Some(TurnWeighing.Answered.Asked(Weighing.Weighed(weighed, estimate)))
-        case _ => Left("weighed: expected null, {kept} or {asked}")
+          } yield Some(TurnWeighing.Weighed.Asked(Weighing.Weighed(weighed, estimate)))
+        case _ => Left("weighed: expected null, {kept}, {asked} or {failed}")
       }
     )
+
+  /** Each way a weighing fails, as a `weigh` step's `failed` records it: `message`,
+    * `placement`, `placement-timeout`, `classifier`, `unreadable`. Never an error's
+    * text.
+    */
+  val unweighedKinds: Vector[(Weighing.Unweighed, String)] =
+    Weighing.Unweighed.values.toVector.map(why => why -> unweighedKind(why))
+
+  private def unweighedKind(why: Weighing.Unweighed): String = why match {
+    case Weighing.Unweighed.Unread => "message"
+    case Weighing.Unweighed.PlacementFailed => "placement"
+    case Weighing.Unweighed.PlacementLate => "placement-timeout"
+    case Weighing.Unweighed.Unavailable => "classifier"
+    case Weighing.Unweighed.Unreadable => "unreadable"
+  }
 
   /** A `dispatch` step's output: whether its requests were sent to a serving edge (`true`),
     * or no edge was serving the workspace (`false`).

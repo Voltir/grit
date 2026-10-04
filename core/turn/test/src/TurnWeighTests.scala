@@ -90,19 +90,16 @@ object TurnWeighTests extends TestSuite {
     }
 
     test(
-      "a weighing that fails, its placement failed or late or its classifier failing, records nothing and offers everything"
+      "a weighing that fails records why, by kind alone, and offers everything with no ledger row"
     ) {
-      Vector(
-        "not placed within 5 seconds",
-        "unavailable: down",
-        "unreadable: 2 answers to 7 questions"
+      Weighing.Unweighed.values.toVector.map { why =>
+        val t = new Sourced.Thread(heard = false, None, addressed = BySource, asked = Left(why))
+        t.run()
+        assert(!t.ledger.rows.map(_._1).contains(TurnWeighing.id(t.turn)))
+        (t.asks.n, t.weighed, t.offered)
+      } ==> Vector("message", "placement", "placement-timeout", "classifier", "unreadable").map(
+        kind => (1, Some(s"""{"failed":"$kind"}"""), Vector("github_search"))
       )
-        .foreach { why =>
-          val t = new Sourced.Thread(heard = false, None, addressed = BySource, asked = Left(why))
-          t.run()
-          (t.asks.n, t.weighed, t.offered) ==> (1, Some("null"), Vector("github_search"))
-          t.ledger.rows.map(_._1).contains(TurnWeighing.id(t.turn)) ==> false
-        }
     }
 
     test(

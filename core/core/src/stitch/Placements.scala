@@ -18,8 +18,26 @@ trait Placements extends caps.SharedCapability {
     */
   def awaited(opening: Opening): Either[String, String]
 
-  /** [[awaited]], giving up once `within` has passed on `clock`: `Left` too when the placement
-    * has not ended by then. It goes on, and a later wait finds it.
+  /** [[awaited]], giving up once `within` has passed on `clock`: `Late` when the placement has
+    * not ended by then (it goes on, and a later wait finds it), `Failed` when [[awaited]]
+    * would be `Left`.
     */
-  def awaitedWithin(opening: Opening, within: FiniteDuration, clock: Clock^): Either[String, String]
+  def awaitedWithin(
+      opening: Opening,
+      within: FiniteDuration,
+      clock: Clock^
+  ): Either[Placements.Unplaced, String]
+}
+
+object Placements {
+
+  /** Why a bounded wait returned no placement. */
+  enum Unplaced {
+
+    /** The queue could not be reached, or the placement failed, saying `why`. */
+    case Failed(why: String)
+
+    /** The placement had not ended within the wait's bound. */
+    case Late
+  }
 }

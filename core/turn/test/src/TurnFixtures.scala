@@ -155,7 +155,7 @@ object TurnFixtures {
   def noTriage(): TurnWeighing^ =
     TurnWeighing(
       new grit.core.triage.InMemoryTriageStore(new InMemoryEntryStore, NoPeriods),
-      new Weighs(Left("not weighed"))
+      new Weighs(Left(grit.core.triage.Weighing.Unweighed.Unavailable))
     )
 
   /** How many times a [[Weighs]] was asked. */
@@ -170,10 +170,12 @@ object TurnFixtures {
     * `calls`.
     */
   final class Weighs(
-      outcome: Either[String, grit.core.triage.Weighing.Weighed],
+      outcome: Either[grit.core.triage.Weighing.Unweighed, grit.core.triage.Weighing.Weighed],
       calls: Calls = new Calls
   ) extends grit.core.triage.Weighing {
-    def weigh(turn: TurnRef): Either[String, grit.core.triage.Weighing.Weighed] = {
+    def weigh(
+        turn: TurnRef
+    ): Either[grit.core.triage.Weighing.Unweighed, grit.core.triage.Weighing.Weighed] = {
       calls.n += 1
       outcome
     }
@@ -187,7 +189,8 @@ object TurnFixtures {
         opening: grit.core.stitch.Opening,
         within: FiniteDuration,
         clock: Clock^
-    ): Either[String, String] = awaited(opening)
+    ): Either[grit.core.stitch.Placements.Unplaced, String] =
+      awaited(opening).left.map(grit.core.stitch.Placements.Unplaced.Failed(_))
   }
 
   /** Every fixture turn's prompts and tool sets, kept by content id as the real stores keep
@@ -1420,9 +1423,10 @@ object TurnFixtures {
         kept: Option[Tags],
         unpatched: Set[String] = Set.empty,
         addressed: Offering = TurnRecipe.Shipped.addressed.offering,
-        asked: Either[String, grit.core.triage.Weighing.Weighed] = Right(
-          grit.core.triage.Weighing.Weighed(repoReads(0.1), grit.core.message.Tokens(321))
-        ),
+        asked: Either[grit.core.triage.Weighing.Unweighed, grit.core.triage.Weighing.Weighed] =
+          Right(
+            grit.core.triage.Weighing.Weighed(repoReads(0.1), grit.core.message.Tokens(321))
+          ),
         sources: KnowledgeSources = knowledge
     ) {
       val entries = new InMemoryEntryStore

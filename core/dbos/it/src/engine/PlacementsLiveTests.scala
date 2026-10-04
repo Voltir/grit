@@ -10,7 +10,7 @@ import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{PrincipalId, SourceId, TurnRef, WorkflowId}
 import grit.core.speech.Reach
-import grit.core.stitch.Opening
+import grit.core.stitch.{Opening, Placements}
 import grit.core.store.{Origin, StoreError}
 import grit.dbos.sql.TestPostgres
 
@@ -58,7 +58,7 @@ object PlacementsLiveTests extends TestSuite {
           val clock = Clock.system()
           val start = clock.millis()
           engine.placements.awaitedWithin(o, 500.millis, clock) ==>
-            Left("not placed within 500 milliseconds")
+            Left(Placements.Unplaced.Late)
           // Given up near its bound, not once the placement ended.
           assert(clock.millis() - start < 5_000)
           release.countDown()

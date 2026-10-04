@@ -30,15 +30,18 @@ final class Mentions(
     tuning: Tuning
 ) extends Weighing {
 
-  def weigh(turn: TurnRef): Either[String, Weighing.Weighed] =
+  def weigh(turn: TurnRef): Either[Weighing.Unweighed, Weighing.Weighed] =
     for {
       _ <- placed(turn)
-      read <- TriageInput.read(reads, rooms, db, turn, tuning, TriageRecipe.Shipped)
+      read <- TriageInput
+        .read(reads, rooms, db, turn, tuning, TriageRecipe.Shipped)
+        .left
+        .map(_ => Weighing.Unweighed.Unread)
       // A conversation not found is at no place, so no source covers it.
       asked = read.place.fold(KnowledgeSources.Empty)(sources.at)
       answered <- TriageQuestions.Shipped.ask(classifier, read.state, asked).left.map {
-        case ClassifierError.Unavailable(why) => s"unavailable: $why"
-        case ClassifierError.Unreadable(why) => s"unreadable: $why"
+        case ClassifierError.Unavailable(_) => Weighing.Unweighed.Unavailable
+        case ClassifierError.Unreadable(_) => Weighing.Unweighed.Unreadable
       }
     } yield {
       val request = TriageQuestions.Shipped.request(read.state, asked)
@@ -52,17 +55,24 @@ final class Mentions(
     * at once otherwise. Why not, when the thread cannot be read, or the placement failed or
     * did not end within [[Mentions.PlacedWithin]].
     */
-  private def placed(turn: TurnRef): Either[String, Unit] =
+  private def placed(turn: TurnRef): Either[Weighing.Unweighed, Unit] =
     db.read {
       for {
         all <- reads.entries.list(turn.conversationId)
         conversation <- reads.conversations.get(turn.conversationId)
       } yield conversation.flatMap(Opening.of(_, all, turn))
     }.left
-      .map(e => s"thread unread: ${TriageInput.describe(e)}")
+      .map(_ => Weighing.Unweighed.Unread)
       .flatMap(
-        _.fold[Either[String, Unit]](Right(()))(
-          placements.awaitedWithin(_, Mentions.PlacedWithin, clock).map(_ => ())
+        _.fold[Either[Weighing.Unweighed, Unit]](Right(()))(
+          placements
+            .awaitedWithin(_, Mentions.PlacedWithin, clock)
+            .left
+            .map {
+              case Placements.Unplaced.Failed(_) => Weighing.Unweighed.PlacementFailed
+              case Placements.Unplaced.Late => Weighing.Unweighed.PlacementLate
+            }
+            .map(_ => ())
         )
       )
 }

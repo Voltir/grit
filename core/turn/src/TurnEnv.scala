@@ -62,8 +62,8 @@ final case class TurnWeighing(triage: TriageStore, said: Weighing^)
 
 object TurnWeighing {
 
-  /** The answers a turn's root was weighed with, by where they came from. */
-  enum Answered {
+  /** What a turn's root was weighed with, by where it came from, or why asking failed. */
+  enum Weighed {
 
     /** The tags live triage kept for the heard message the turn answers. */
     case Kept(kept: Tags)
@@ -73,9 +73,16 @@ object TurnWeighing {
       */
     case Asked(asked: Weighing.Weighed)
 
-    def tags: Tags = this match {
-      case Kept(kept) => kept
-      case Asked(asked) => asked.tags
+    /** Live triage's set was to be asked of the message said to grit the turn answers, and
+      * was not, for `why`; its offer withholds nothing.
+      */
+    case Failed(why: Weighing.Unweighed)
+
+    /** The answers its offer reads; none when asking failed. */
+    def answers: Option[Tags] = this match {
+      case Kept(kept) => Some(kept)
+      case Asked(asked) => Some(asked.tags)
+      case Failed(_) => None
     }
   }
 

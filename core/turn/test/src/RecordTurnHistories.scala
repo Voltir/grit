@@ -535,13 +535,24 @@ object RecordTurnHistories {
         t.run()
         recorded(t.durable, t.turn)
       },
-      // The same, its weighing failed: nothing recorded, everything offered.
+      // The same, its weighing failed: why kept by kind, everything offered.
+      "addressed-failed" -> {
+        val t = new Sourced.Thread(
+          heard = false,
+          None,
+          addressed = grit.core.recipe.Offering.BySource(grit.core.period.Probability.clamped(0.2)),
+          asked = Left(grit.core.triage.Weighing.Unweighed.PlacementLate)
+        )
+        t.run()
+        recorded(t.durable, t.turn)
+      },
+      // As recorded before a failed weighing kept why: its weigh step recorded null.
       "addressed-unweighed" -> {
         val t = new Sourced.Thread(
           heard = false,
           None,
           addressed = grit.core.recipe.Offering.BySource(grit.core.period.Probability.clamped(0.2)),
-          asked = Left("not placed within 5 seconds")
+          asked = Left(grit.core.triage.Weighing.Unweighed.PlacementLate)
         )
         t.run()
         recorded(t.durable, t.turn)

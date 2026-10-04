@@ -8,7 +8,7 @@ import grit.core.id.TurnRef
 import grit.core.message.{Message, Tokens}
 import grit.core.provider.TokenEstimator
 import grit.core.stitch.{Opening, Placements, Tuning}
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.{KnowledgeSources, Weighing}
 
 import utest.*
 
@@ -19,15 +19,15 @@ private object ByChar extends TokenEstimator {
 }
 
 /** Placements whose every bounded wait returns `outcome`, each wait's bound kept. */
-private final class Waits(outcome: Either[String, String]) extends Placements {
+private final class Waits(outcome: Either[Placements.Unplaced, String]) extends Placements {
   @caps.unsafe.untrackedCaptures
   var within = Vector.empty[FiniteDuration]
-  def awaited(opening: Opening): Either[String, String] = outcome
+  def awaited(opening: Opening): Either[String, String] = outcome.left.map(_.toString)
   def awaitedWithin(
       opening: Opening,
       bound: FiniteDuration,
       clock: Clock^
-  ): Either[String, String] = {
+  ): Either[Placements.Unplaced, String] = {
     within = within :+ bound
     outcome
   }
@@ -102,21 +102,36 @@ object MentionsTests extends TestSuite {
       again.within ==> Vector.empty
     }
 
-    test("an opening whose placement fails or does not end in time is not asked about") {
+    test(
+      "an opening whose placement fails or does not end in time is not asked about, saying which"
+    ) {
       val w = new World
       val t = w.say("is the release branch cut?", 0, Some("Ana"))
       val classifier = new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9))
-      mentions(w, classifier, new Waits(Left("not placed within 5 seconds"))).weigh(t) ==>
-        Left("not placed within 5 seconds")
+      Vector(Placements.Unplaced.Late, Placements.Unplaced.Failed("queue down"))
+        .map(u => mentions(w, classifier, new Waits(Left(u))).weigh(t)) ==>
+        Vector(Left(Weighing.Unweighed.PlacementLate), Left(Weighing.Unweighed.PlacementFailed))
       classifier.calls ==> 0
     }
 
-    test("a classifier that fails weighs nothing, saying why") {
+    test("a classifier that fails, or answers what does not read, weighs nothing, saying which") {
       val w = new World
       w.hear("when is standup?", "Ben", 0)
       val t = w.say("is the release branch cut?", 1, Some("Ana"))
       mentions(w, new Scripted(Vector.empty, Vector.empty), new Waits(Right("placed"))).weigh(t) ==>
-        Left("unavailable: no classifier")
+        Left(Weighing.Unweighed.Unavailable)
+      // One yes/no answer to five questions.
+      mentions(w, new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1)), new Waits(Right("placed")))
+        .weigh(t) ==> Left(Weighing.Unweighed.Unreadable)
+    }
+
+    test("a turn holding no person's message weighs nothing, as unread") {
+      val w = new World
+      val classifier = new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9))
+      mentions(w, classifier, new Waits(Right("placed")))
+        .weigh(grit.core.id.TurnRef(c, grit.core.id.TurnSeq(7))) ==>
+        Left(Weighing.Unweighed.Unread)
+      classifier.calls ==> 0
     }
   }
 }

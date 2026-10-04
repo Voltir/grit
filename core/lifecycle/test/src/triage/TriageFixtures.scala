@@ -273,7 +273,8 @@ object TriageFixtures {
             opening: Opening,
             within: FiniteDuration,
             clock: Clock^
-        ): Either[String, String] = awaited(opening)
+        ): Either[grit.core.stitch.Placements.Unplaced, String] =
+          awaited(opening).left.map(grit.core.stitch.Placements.Unplaced.Failed(_))
       }
     }
 

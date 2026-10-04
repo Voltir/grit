@@ -30,7 +30,8 @@ final class InMemoryPlacements(
       opening: Opening,
       within: FiniteDuration,
       clock: Clock^
-  ): Either[String, String] = awaited(opening)
+  ): Either[grit.core.stitch.Placements.Unplaced, String] =
+    awaited(opening).left.map(grit.core.stitch.Placements.Unplaced.Failed(_))
 
   def awaited(opening: Opening): Either[String, String] = {
     val first = !waited.exists(_.ref == opening.ref)

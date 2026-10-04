@@ -29,23 +29,23 @@ private[engine] final class DbosPlacements(client: DBOSClient) extends Placement
       opening: Opening,
       within: FiniteDuration,
       clock: Clock^
-  ): Either[String, String] =
+  ): Either[Placements.Unplaced, String] =
     try {
       enqueue(opening)
       val id = WorkflowId.value(opening.ref.workflowId)
       val until = clock.millis() + within.toMillis
       // A status not yet readable is waited on like one still running.
       def ended: Boolean = client.getWorkflowStatus(id).map(!_.status().isActive).orElse(false)
-      @tailrec def poll(): Either[String, String] =
-        if (ended) result(opening)
-        else if (clock.millis() >= until) Left(s"not placed within $within")
+      @tailrec def poll(): Either[Placements.Unplaced, String] =
+        if (ended) result(opening).left.map(Placements.Unplaced.Failed(_))
+        else if (clock.millis() >= until) Left(Placements.Unplaced.Late)
         else {
           clock.sleep(DbosPlacements.PollEvery)
           poll()
         }
       poll()
     } catch {
-      case NonFatal(e) => Left(why(e))
+      case NonFatal(e) => Left(Placements.Unplaced.Failed(why(e)))
     }
 
   /** `opening`'s placement queued under its workflow id, unless it is already. */

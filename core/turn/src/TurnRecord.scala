@@ -19,13 +19,13 @@ object TurnRecord {
     read[Either[TurnFailure, TurnOffer.Recorded]](steps, Turn.Step.Offer).map(_.flatMap(_.toOption))
   }
 
-  /** What the `weigh` step recorded the turn's root was weighed with; `None` when no `weigh`
-    * step is recorded or it weighed nothing. `Left` naming the step when its output does not
+  /** What the `weigh` step recorded the turn's root was weighed with, or why asking failed;
+    * `None` when no `weigh` step is recorded or it weighed nothing. `Left` naming the step when its output does not
     * read.
     */
-  def weighed(steps: Vector[StepRecord]): Either[String, Option[TurnWeighing.Answered]] = {
+  def weighed(steps: Vector[StepRecord]): Either[String, Option[TurnWeighing.Weighed]] = {
     import TurnJournal.given
-    read[Option[TurnWeighing.Answered]](steps, Turn.Step.Weigh).map(_.flatten)
+    read[Option[TurnWeighing.Weighed]](steps, Turn.Step.Weigh).map(_.flatten)
   }
 
   /** The first of `steps` whose output is a [[TurnFailure]]: its step's family
@@ -124,7 +124,7 @@ object TurnRecord {
     case Summary
 
     /** Live triage's set asked of the message said to grit the turn answers, before its offer
-      * ([[TurnWeighing.Answered.Asked]]).
+      * ([[TurnWeighing.Weighed.Asked]]).
       */
     case Weigh
   }

@@ -39,7 +39,7 @@ object MentionWeighLiveTests extends TestSuite {
   )
 
   /** The `weigh` step `turn` recorded, read back through its codec. */
-  private def weighed(reader: Reader^, turn: TurnRef): Option[TurnWeighing.Answered] =
+  private def weighed(reader: Reader^, turn: TurnRef): Option[TurnWeighing.Weighed] =
     right(TurnRecord.weighed(right(reader.steps(turn.workflowId))))
 
   private def ledger(engine: Engine^, turn: TurnRef) =
@@ -67,7 +67,7 @@ object MentionWeighLiveTests extends TestSuite {
         val _ = engine.awaitTurn(turn)
         val reader = Reader.open(config)
         try {
-          weighed(reader, turn).collect { case TurnWeighing.Answered.Asked(asked) =>
+          weighed(reader, turn).collect { case TurnWeighing.Weighed.Asked(asked) =>
             asked.tags.model
           } ==> Some(StubClassifier.Model)
         } finally reader.close()

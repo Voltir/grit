@@ -110,19 +110,27 @@ object TurnRecordTests extends TestSuite {
     }
 
     test(
-      "what a turn's root was weighed with reads from its weigh step: kept, asked, or nothing"
+      "what a turn's root was weighed with reads from its weigh step: kept, asked, failed and why, or nothing"
     ) {
       def model(name: String) = TurnRecord
         .weighed(steps(name))
         .map(_.map {
-          case TurnWeighing.Answered.Kept(_) => "kept"
-          case TurnWeighing.Answered.Asked(asked) => s"asked ${asked.tags.model} ${asked.estimate}"
+          case TurnWeighing.Weighed.Failed(why) => s"failed $why"
+          case TurnWeighing.Weighed.Kept(_) => "kept"
+          case TurnWeighing.Weighed.Asked(asked) => s"asked ${asked.tags.model} ${asked.estimate}"
         })
-      Vector("heard-withheld", "addressed-weighed", "addressed-unweighed", "pinned-before-weigh")
-        .map(model) ==> Vector(
+      Vector(
+        "heard-withheld",
+        "addressed-weighed",
+        "addressed-unweighed",
+        "addressed-failed",
+        "pinned-before-weigh"
+      ).map(model) ==> Vector(
         Right(Some("kept")),
         Right(Some("asked jev 321")),
+        // Recorded before a failure was kept: read as not weighed, as it was written.
         Right(None),
+        Right(Some("failed PlacementLate")),
         Right(None)
       )
     }
