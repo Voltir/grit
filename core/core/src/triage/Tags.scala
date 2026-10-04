@@ -126,16 +126,20 @@ object Tags {
     /** It is directed at grit: `to-grit` at least `at`. */
     def atGrit(at: Probability): Gate = Gate.Holds(Bound.AtLeast(Reading.Yes(toGrit), at))
 
-    /** It asks, still open, and is directed at grit, each at one half: the branch of
-      * [[drafts]] by which grit answers it as named.
+    /** It asks, still open, and is directed at grit, each at one half: a message grit answers
+      * as named, which [[drafts]] passes.
       */
     val directed: Gate = Gate.all(V2.asks(half), V2.stillOpen(half), atGrit(half))
 
-    /** v3's draft gate: it asks and is still open, and either it is directed at grit
-      * ([[directed]]) or it is directed at no one person and not anchored; each at one half.
-      * A message directed at grit is not held for asking what no record could supply: it was
-      * asked of grit.
+    /** v3's draft gate: it asks and is still open, and either it is directed at grit or it is
+      * directed at no one person and not anchored; each at one half. It passes wherever
+      * [[directed]] does: a message directed at grit is not held for asking what no record
+      * could supply, since it was asked of grit. A failing message is held on each bound once.
       */
-    val drafts: Gate = Gate.either(directed, V2.drafts)
+    val drafts: Gate = Gate.all(
+      V2.asks(half),
+      V2.stillOpen(half),
+      Gate.either(atGrit(half), Gate.all(V2.notToSomeone(half), V2.notAnchored(half)))
+    )
   }
 }

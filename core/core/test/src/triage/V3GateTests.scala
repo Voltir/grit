@@ -72,5 +72,22 @@ object V3GateTests extends TestSuite {
       val toSomeone = v2.updated(Tags.V2.to, Answer.YesNo(0.88))
       (Tags.V3.drafts.drafts(v2), Tags.V3.drafts.drafts(toSomeone)) ==> (Some(true), None)
     }
+
+    test("a message held by the gate is held on each bound it failed, once") {
+      val half = grit.core.period.Probability.clamped(0.5)
+      def failed(b: Bound, read: Double) =
+        Gate.Failed(b, grit.core.period.Probability.clamped(read))
+      Tags.V3.drafts.check(
+        answers(asks = 0.0, open = 0.25, to = 0.9, toGrit = 0.1, anchor = 0.1)
+      ) ==>
+        Gate.Checked.Fails(
+          failed(Bound.AtLeast(Reading.Key(Tags.V2.gap, "asks"), half), 0.0),
+          Vector(
+            failed(Bound.AtLeast(Reading.Yes(Tags.V2.open), half), 0.25),
+            failed(Bound.AtLeast(Reading.Yes(Tags.V3.toGrit), half), 0.1),
+            failed(Bound.Below(Reading.Yes(Tags.V2.to), half), 0.9)
+          )
+        )
+    }
   }
 }
