@@ -210,6 +210,7 @@ object LiveTurn {
               engine.conversations,
               engine.speech,
               engine.spending,
+              engine.acknowledgements,
               engine.stitches,
               engine.search,
               engine.lifecycle,

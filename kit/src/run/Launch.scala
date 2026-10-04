@@ -206,6 +206,7 @@ private[grit] object Launch {
               engine.conversations,
               engine.speech,
               engine.spending,
+              engine.acknowledgements,
               engine.stitches,
               engine.search,
               engine.lifecycle,

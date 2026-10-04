@@ -172,6 +172,7 @@ object TriageFixtures {
     val triage = new InMemoryTriageStore(entries, periods)
     val ledger = new InMemoryUsageLedger
     val speech = new InMemorySpeechStore(entries, ledger)
+    val acknowledgements = new grit.core.edge.InMemoryAcknowledgements
     val stitches = new InMemoryStitchStore(entries, originOf)
     val search = new NoSearch
     val lifecycle = new InMemoryLifecycleStore
@@ -299,6 +300,7 @@ object TriageFixtures {
             conversations,
             speech,
             ledger,
+            acknowledgements,
             stitches,
             search,
             lifecycle,

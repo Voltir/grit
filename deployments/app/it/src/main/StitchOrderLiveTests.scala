@@ -171,6 +171,7 @@ object StitchOrderLiveTests extends TestSuite {
             engine.conversations,
             engine.speech,
             engine.spending,
+            engine.acknowledgements,
             engine.stitches,
             engine.search,
             engine.lifecycle,

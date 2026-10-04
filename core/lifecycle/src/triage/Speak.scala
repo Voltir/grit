@@ -15,8 +15,9 @@ private[triage] object Speak {
 
   /** What `speaking` decides about the heard message `entry`, `triage`'s, tagged `tags`, at
     * `now`, against the speech ledger and the day's spend under `budget`
-    * ([[Speech.decide]]), kept in `records`' speech store; `Off` is decided without reading
-    * or keeping anything. Why not, when the store fails or the message is gone.
+    * ([[Speech.decide]]), kept in `records`' speech store, with the acknowledgement it wants
+    * ([[Speech.acknowledge]]) kept beside it; `Off` is decided without reading or keeping
+    * anything. Why not, when the store fails or the message is gone.
     */
   def consider(
       records: TriageRecords,
@@ -59,7 +60,15 @@ private[triage] object Speak {
           val heard =
             Heard(turn, e.seq, c.origin.room, e.createdAt, reach.getOrElse(Reach.Nowhere), tags)
           val decision = Speech.decide(speaking, heard, Ledger(spoken, speech, all), budget, now)
-          records.speech.decided(heard, decision, now).map(_ => Some(decision))
+          for {
+            kept <- records.speech.decided(heard, decision, now)
+            _ <- Speech
+              .acknowledge(speaking, heard, decision)
+              .filter(_ => kept)
+              .fold[Either[StoreError, Unit]](Right(()))(
+                records.acknowledgements.want(turn, _, now)
+              )
+          } yield Some(decision)
         case _ => Right(None)
       }
     } yield decided).left

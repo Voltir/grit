@@ -2,8 +2,9 @@ package grit.lifecycle.triage
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.classify.{Answer, Question}
+import grit.core.classify.{Answer, Classifier, Question}
 import grit.core.durable.InMemoryDurable
+import grit.core.edge.Acknowledgement
 import grit.core.id.{QuestionName, TurnRef, WorkflowId}
 import grit.core.period.Probability
 import grit.core.speech.{Decision, Limits, Silence, Speaking}
@@ -39,13 +40,17 @@ object TriageTests extends TestSuite {
   private def asking =
     new Scripted(Vector(1, 0, 0, 0), Vector(0.9, 0.125, 0.125, 0.5, 0.125, 0.125))
 
-  private val within =
-    Speaking.Within(
-      Limits.suggested(
-        DailyCap.of("0.25").getOrElse(sys.error("a cap")),
-        TriageQuestions.ShippedSpeak
-      )
+  /** v4 answered as [[asking]], but to-grit 0.875: put to grit by name, past its gate. */
+  private def named =
+    new Scripted(Vector(1, 0, 0, 0), Vector(0.9, 0.125, 0.875, 0.5, 0.125, 0.125))
+
+  private val limits =
+    Limits.suggested(
+      DailyCap.of("0.25").getOrElse(sys.error("a cap")),
+      TriageQuestions.ShippedSpeak
     )
+
+  private val within = Speaking.Within(limits)
 
   /** What [[decided]] answers v4 with no source: gap a choice weighing every key, then its
     * yes/nos.
@@ -359,6 +364,46 @@ object TriageTests extends TestSuite {
         ),
         Vector(Marker, "stitched", "ask", "record", "consider")
       )
+    }
+
+    test(
+      "a message put to grit by name and drafted wants its acknowledgement at its reply address, once across a replay"
+    ) {
+      val w = new World
+      val t = w.hear("Pip, what did we decide about the refi page?", "Ana", 0)
+      val durable = new InMemoryDurable
+      durable.run(t.workflowId)(w.body(named, 1, within))
+      val history = durable.history(t.workflowId)
+      new InMemoryDurable().replay(t.workflowId, history)(w.body(named, 1, within))
+      w.acknowledgements.standing()(using TestTx.fake) ==>
+        Right(Vector(Acknowledgement(TurnRef(c, t.turn), "C/1.0", shown = false)))
+    }
+
+    test(
+      "an unprompted draft, a shadow deployment's draft and a held message put to grit want no acknowledgement"
+    ) {
+      def wanted(classifier: Classifier^, speaking: Speaking) = {
+        val w = new World
+        val t = w.hear("Pip, what did we decide about the refi page?", "Ana", 0)
+        new InMemoryDurable().run(t.workflowId)(w.body(classifier, 1, speaking))
+        val kinds = w.speech.decisions.map(_._2 match {
+          case Decision.Drafting(_) => "drafting"
+          case Decision.Held(_) => "held"
+        })
+        (kinds, w.acknowledgements.standing()(using TestTx.fake))
+      }
+      val heldNamed =
+        new Scripted(Vector(1, 0, 0, 0), Vector(0.125, 0.125, 0.875, 0.5, 0.125, 0.125))
+      Vector(
+        wanted(asking, within),
+        wanted(named, Speaking.Shadow(limits)),
+        wanted(heldNamed, within)
+      ) ==>
+        Vector(
+          (Vector("drafting"), Right(Vector.empty)),
+          (Vector("drafting"), Right(Vector.empty)),
+          (Vector("held"), Right(Vector.empty))
+        )
     }
 
     test("a deployment that does not speak keeps no decision and starts nothing") {

@@ -29,7 +29,9 @@ import grit.core.triage.{KnowledgeSources, Tags}
   *      message is gone or already tagged.
   *   1. `consider` — when it was tagged now, whether grit drafts a reply to it
   *      ([[grit.core.speech.Speech.decide]], against the speech ledger), the decision kept,
-  *      held or drafting, in one transaction; a deployment that does not speak keeps none.
+  *      held or drafting, in one transaction, with the acknowledgement a draft of a message
+  *      put to grit wants ([[grit.core.speech.Speech.acknowledge]]); a deployment that does
+  *      not speak keeps none.
   *   1. `start` — when drafting, the heard message's own turn started, a turn rooted on it
   *      ([[grit.core.store.Payload.Heard]]).
   */
