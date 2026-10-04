@@ -81,8 +81,9 @@
 #   scripts/eval compare <runs file A> <runs file B> --live <set> --gate <set>
 #                        [--verdicts <verdicts file>]
 #       B a question set's shadow log from pull, asking the --gate set, against A, live
-#       triage's pulled log, asking the --live set (each v1 or v2; v1 for a live log an
-#       earlier build pulled by position): each one's draft by its own set's gate over its
+#       triage's pulled log, asking the --live set (each v1, v2, v3 or v4; v1 for a live log
+#       an earlier build pulled by position; B may be A itself, as v3's gate over v4's live
+#       answers, which v4 asks in v3's words): each one's draft by its own set's gate over its
 #       answers alone, not live's speech decision, a 2x2 by focus and over all; each of B's
 #       probabilities' mean and standard deviation; and B's durable against live's, each at
 #       0.5. Counts only, written to .local/eval/reports/<A>-vs-<B>.md and printed; the ids of

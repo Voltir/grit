@@ -92,8 +92,8 @@ Packages, each importing only those above it:
   `Asking`, how a question is put to Jev through the shipped call: v1 in a wording,
   stitching's, or a question set's with the knowledge sources it asks about;
   `QuestionSet`, a question set a comparison names (its gate, and its questions read as
-  durable and as `to`), and `Sets`, those it can name (`v1`, the set live triage asked before
-  v2, and `v2`, live's since);
+  durable and as `to`), and `Sets`, those it can name (`v1` to `v4`, each by the gate live
+  triage drafted by while it was live);
   `Inputs`, a case's questions rebuilt through the shipped builders, and `Drift`, how a
   rebuilt state compares to the corpus's; `Review`, a case's questions as rebuilt, text and
   all, for a person to read beside it (`scripts/eval inputs` writes them under

@@ -1067,7 +1067,8 @@ object Main {
 
   /** `compare --eval <dir> --a <name> --b <name> --live <set> --gate <set> [--verdicts <name>]`:
     * run B, a pulled question set's shadow log asking the `--gate` set ([[Sets]]), against A,
-    * live triage's pulled log asking the `--live` set, both in `<dir>/runs/`: each one's draft
+    * live triage's pulled log asking the `--live` set, both in `<dir>/runs/` (B may be A
+    * itself, to read live's answers under another set's gate): each one's draft
     * by its own set's gate, by focus ([[Drafts]]), written to `<dir>/reports/<A>-vs-<B>.md`
     * (each name less `.jsonl`) and printed; the ids of the cases each decided alone, one a
     * line, to `<dir>/order/<yyyymmdd>-draft-<set>-live-only.txt` and `…-set-only.txt`, for
@@ -1143,7 +1144,7 @@ object Main {
 
   /** `log`'s rows as a side of a draft comparison asking `set`. */
   private def drafting(log: Log[VectorMap[QuestionName, Answer]], set: QuestionSet): Drafting =
-    Drafting(log.rows, set.questions.speak, set.durable, set.to)
+    Drafting(log.rows, set.speak, set.durable, set.to)
 
   /** Live triage's pulled log `<dir>/runs/<name>`, under its questions' names; one an earlier
     * build pulled by position, under v1's.
@@ -1159,7 +1160,7 @@ object Main {
         .orElse(
           LogJson
             .read[Vector[Weights]](lines)
-            .map(Log.named(_, Sets.V1.questions.questions(KnowledgeSources.Empty)))
+            .map(Log.named(_, TriageQuestions.V1.questions(KnowledgeSources.Empty)))
         )
         .left
         .map(e => s"$name: not live triage's log, under names or by position: $e")

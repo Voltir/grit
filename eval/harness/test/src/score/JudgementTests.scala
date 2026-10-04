@@ -59,10 +59,10 @@ object JudgementTests extends TestSuite {
     )
 
   private def asV1(rows: Vector[Row[VectorMap[QuestionName, Answer]]]): Drafting =
-    Drafting(rows, Sets.V1.questions.speak, Sets.V1.durable, Sets.V1.to)
+    Drafting(rows, Sets.V1.speak, Sets.V1.durable, Sets.V1.to)
 
   private def asV2(rows: Vector[Row[VectorMap[QuestionName, Answer]]]): Drafting =
-    Drafting(rows, Sets.V2.questions.speak, Sets.V2.durable, Sets.V2.to)
+    Drafting(rows, Sets.V2.speak, Sets.V2.durable, Sets.V2.to)
 
   /** V2's answers for `c`: its draft passed when `drafts`, `to` as given; no `anchor` when
     * `undecided`.

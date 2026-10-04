@@ -41,11 +41,11 @@ object DraftsTests extends TestSuite {
 
   /** Live asking v1, by its gate. */
   private def v1(rows: Vector[Row[VectorMap[QuestionName, Answer]]]): Drafting =
-    Drafting(rows, Sets.V1.questions.speak, Sets.V1.durable, Sets.V1.to)
+    Drafting(rows, Sets.V1.speak, Sets.V1.durable, Sets.V1.to)
 
   /** A set asking v2, by its gate. */
   private def v2(rows: Vector[Row[VectorMap[QuestionName, Answer]]]): Drafting =
-    Drafting(rows, Sets.V2.questions.speak, Sets.V2.durable, Sets.V2.to)
+    Drafting(rows, Sets.V2.speak, Sets.V2.durable, Sets.V2.to)
 
   private def setRow(
       c: CaseId,
@@ -229,6 +229,37 @@ object DraftsTests extends TestSuite {
         Column("open", 0.75, 0.25, 2),
         Column("source:github", 0.5, 0.0, 1)
       )
+    }
+
+    test(
+      "v3's gate over v4's live rows, beside v4's own: a fact asked of a named person drafts " +
+        "under v4 alone, an opinion under neither"
+    ) {
+      val cs = (1 to 3).map(n => id(s"C1/$n")).toVector
+      // The room's fact, Bob's fact and Bob's opinion, as v4 answered them live.
+      val rows =
+        Vector((cs(0), 0.05, 0.16, 0.17), (cs(1), 0.87, 0.18, 0.16), (cs(2), 0.86, 0.95, 0.95))
+          .map((c, to, anchor, record) =>
+            setRow(
+              c,
+              Outcome.Answered(
+                VectorMap(
+                  name("gap") -> gap(1.0),
+                  name("open") -> Answer.YesNo(0.93),
+                  name("to") -> Answer.YesNo(to),
+                  name("to-grit") -> Answer.YesNo(0.04),
+                  name("durable") -> Answer.YesNo(0.1),
+                  name("anchor") -> Answer.YesNo(anchor),
+                  name("anchor-record") -> Answer.YesNo(record)
+                )
+              ),
+              None
+            )
+          )
+      def as(set: String) =
+        Sets.named(set).map(s => Drafting(rows, s.speak, s.durable, s.to))
+      as("v4").zip(as("v3")).map((live, v3) => Drafts.of(live, v3).gate) ==>
+        Some(Map(None -> Cells(Vector(cs(0)), Vector(cs(1)), Vector.empty, Vector(cs(2)))))
     }
   }
 }
