@@ -5,7 +5,8 @@ triage's answers is the deployment's `Limits.drafts`; amended (2026-10-03): a ga
 from bounds by "every one of" and "any one of", and is unread only when no failing bound
 decides it; amended (2026-10-03): a message said to grit, weighed in its turn, is never
 considered; amended (2026-10-04): a
-message triage reads as directed at grit by name is answered as named
+message triage reads as directed at grit by name is answered as named; amended (2026-10-04):
+a named draft is not judged
 
 Context: a listened channel (ADR 0020) is kept, but grit only ever answered what was said to
 it. A deployment also wants grit to join in, with context or insight a thread lacks, when that
@@ -59,19 +60,23 @@ Decision:
   to it, to answer what it asks, or to reply `pass` when it only talks about the assistant.
   It is offered as any heard turn. Turned down: routing it as said to grit, which would let a
   classifier's reading decide addressing (ADR 0020 leaves that to the edge) and skip the
-  judge, the rates and the speech cap. Its answer is a draft: never shown, never searched, and
+  rates and the speech cap. Its answer is a draft: never shown, never searched, and
   not a period's activity.
 - **A classifier judges the draft** against the thread and what the turn recalled: is it
   grounded in what was recalled, is it worth the interruption. The weaker of the two is its
   score. A third question, whether the draft adds what the thread lacks, was dropped: it
   scored a correct recalled answer to the thread's own question as a restatement, and chatter
   answered with trivia as adding. A pass, or a window that recalled no record and no other
-  conversation, is settled without asking. (Amended 2026-10-04.) A named draft is asked one
-  question instead, whether it answers what was asked of the assistant without making up
-  facts, and is asked even when nothing was recalled: an answer to a question put to grit may
-  come from its tools, and `worth` scores the interruption an asked-for answer is not.
-- **The draft is posted** in the message's thread, only when its score reaches `postAt`,
-  speaking is `Within`, and the assistant has not already replied after the message, in the
+  conversation, is settled without asking. (Amended 2026-10-04.) A named draft is not
+  judged: like an addressed reply, it is posted unless it passes. Holding a bad answer
+  after it was drafted saves nothing it cost, and `worth` scores the interruption an
+  asked-for answer is not. It still passes the gate, the rates, the speech cap and the
+  assistant's own reply before it. A named draft judged before this reads as posted or
+  shadowed unjudged, its score dropped. Turned down: a judge of its own (whether it answers
+  what was asked without making up facts), which this ADR first had; refining a draft before
+  it posts would be a workflow of its own.
+- **The draft is posted** in the message's thread, only when its score reaches `postAt` (a
+  named draft has none to reach), speaking is `Within`, and the assistant has not already replied after the message, in the
   thread or its strand (ADR 0023). That is checked in the transaction that writes the reply
   and awaits its delivery. A person's reply does not hold it: the judge sees every reply so
   far, and `worth` decides.
@@ -82,9 +87,11 @@ Decision:
   approved.
 
 Consequences: a listened thread can be answered unasked, within limits a deployment states,
-and every post can be traced to the scores that allowed it. Harder: every heard message in a
+and every unprompted post can be traced to the scores that allowed it, a named one to the
+triage answers that rooted it. Harder: every heard message in a
 speaking deployment writes a decision row, and a busy channel spends its speech cap on drafts
 before its rates bind. Enforced by `SpeechTests` (the rule), `SpeechContract` (the ledger),
 `TurnSpeechTests` and `TurnJudgeTests` (the draft and its judge), `TriageTests`,
 `SlackEdgeTests` (reach), `UnpromptedLiveTests`, and `TurnReplayTests` and
-`LifecycleReplayTests` for the new steps.
+`LifecycleReplayTests` for the new steps (`named-judged` and `named-posted`, a named turn
+before and after its drafts went unjudged).
