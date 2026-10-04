@@ -291,28 +291,30 @@ object TurnCaptureTests extends TestSuite {
         val failed = ask(engine, tui, "t2", s"$Marker ~fail")
         // A Slack thread asked directly, the model looping through two rounds of tools.
         val looped = ask(engine, Origin.Slack("T1", "C1", "2000.1"), "2000.1", s"$Marker ~loop")
-        // A Slack message heard, drafted by triage's gate, and passed by the model.
-        engine.inbox.hear(
-          Origin.Slack("T1", "C1", "3000.1"),
-          SourceId("3000.1"),
-          s"$Marker ~pass is the deploy on friday? ~back:asks",
-          PrincipalId.Local,
-          now(),
-          Reach(Some("C1/3000.1/3000.1"), Set.empty)
-        ) ==> Right(())
-        val thread = eventually(
-          right(
-            engine.db.read(engine.conversations.find(Origin.Slack("T1", "C1", "3000.1")))
-          ).nonEmpty
-        )
-        assert(thread)
-        val heard = TurnRef(
-          right(engine.db.read(engine.conversations.find(Origin.Slack("T1", "C1", "3000.1"))))
-            .fold(sys.error("heard"))(_.id),
-          TurnSeq.First
-        )
-        assert(eventually(right(engine.db.read(engine.entries.get(heard.draftId))).nonEmpty))
-        val _ = engine.awaitTurn(heard)
+        // A Slack message heard in thread `ts`, drafted by triage's gate, passed by the model.
+        def overheard(ts: String, text: String): TurnRef = {
+          val origin = Origin.Slack("T1", "C1", ts)
+          engine.inbox.hear(
+            origin,
+            SourceId(ts),
+            text,
+            PrincipalId.Local,
+            now(),
+            Reach(Some(s"C1/$ts/$ts"), Set.empty)
+          ) ==> Right(())
+          assert(eventually(right(engine.db.read(engine.conversations.find(origin))).nonEmpty))
+          val t = TurnRef(
+            right(engine.db.read(engine.conversations.find(origin))).fold(sys.error(ts))(_.id),
+            TurnSeq.First
+          )
+          assert(eventually(right(engine.db.read(engine.entries.get(t.draftId))).nonEmpty))
+          val _ = engine.awaitTurn(t)
+          t
+        }
+        // The stub answers every yes/no at 0.9, to-grit too: named. At 0.1 it reads open
+        // and to-grit low, so the same gate (asks alone) drafts it as heard.
+        val heard = overheard("3000.1", s"$Marker ~pass is the deploy on friday? ~back:asks")
+        val unnamed = overheard("4000.1", s"$Marker ~pass ~0.1 is the freeze on monday? ~back:asks")
 
         def captured(): (Turns, Verdicts) = {
           val reader = Reader.open(config)
@@ -329,7 +331,7 @@ object TurnCaptureTests extends TestSuite {
           byWorkflow.getOrElse(t.workflowId, throw new java.lang.AssertionError(s"no case for $t"))
 
         turns.cases.map(_.workflow) ==>
-          Vector(remark, question, failed, looped, heard).map(_.workflowId)
+          Vector(remark, question, failed, looped, heard, unnamed).map(_.workflowId)
         turns.skipped ==> 0
 
         // Where each was said, its root and focus, and how it ended.
@@ -371,14 +373,15 @@ object TurnCaptureTests extends TestSuite {
           ),
           // The stub reads every yes/no at 0.9, to-grit too: its offer recorded it named, and
           // the case keeps the root the offer recorded, not one derived from the message.
-          ("slack C1/3000.1", TurnOffer.Root.Named, Focus.Open, Ended.Replied("pass".length, true))
+          ("slack C1/3000.1", TurnOffer.Root.Named, Focus.Open, Ended.Replied("pass".length, true)),
+          ("slack C1/4000.1", TurnOffer.Root.Heard, Focus.Open, Ended.Replied("pass".length, true))
         )
 
         // The offer: echo alone, its schema costed; the TUI session's directory as workspace.
         turns.cases.map(
           _.offered.map(o => (o.tools.map(ToolName.value), Tokens.value(o.schema) > 0))
         ) ==>
-          Vector.fill(5)(Some((Vector("echo"), true)))
+          Vector.fill(6)(Some((Vector("echo"), true)))
         at(question).offered.flatMap(_.workspace) ==> Some(tui.place)
         at(looped).offered.flatMap(_.workspace) ==> None
 
@@ -387,21 +390,24 @@ object TurnCaptureTests extends TestSuite {
         // triage had kept for the heard root, nothing for a message said to grit.
         turns.cases.map(
           _.offered.map(o => o.shape.map(s => (s.width, s.whole == o.set, s.services)))
-        ) ==> Vector.fill(5)(Some(Some((Width.Deployed, true, Vector.empty))))
+        ) ==> Vector.fill(6)(Some(Some((Width.Deployed, true, Vector.empty))))
         Vector(remark, question, failed, looped).map(at(_).weighed) ==>
           Vector.fill(4)(TurnRecord.Weigh.Recorded(None))
-        (at(heard).weighed match {
-          case TurnRecord.Weigh.Recorded(Some(TurnWeighing.Weighed.Kept(tags))) =>
-            Some(Live.of(tags))
-          case _ => None
-        }) ==> at(heard).triage
-        assert(at(heard).triage.nonEmpty)
+        for (t <- Vector(heard, unnamed)) {
+          (at(t).weighed match {
+            case TurnRecord.Weigh.Recorded(Some(TurnWeighing.Weighed.Kept(tags))) =>
+              Some(Live.of(tags))
+            case _ => None
+          }) ==> at(t).triage
+          assert(at(t).triage.nonEmpty)
+        }
 
         // The loop: two rounds of one echo each, both ran.
         at(looped).rounds ==> Vector.fill(2)(
           Round(Vector(Call(Called.Tool(ToolName("echo")), Settled.Ok(Echoed.length))))
         )
-        Vector(remark, question, failed, heard).map(at(_).rounds) ==> Vector.fill(4)(Vector.empty)
+        Vector(remark, question, failed, heard, unnamed).map(at(_).rounds) ==>
+          Vector.fill(5)(Vector.empty)
 
         // What each call was for.
         turns.cases.map(_.spend.map(_.role)) ==> Vector(
@@ -414,6 +420,7 @@ object TurnCaptureTests extends TestSuite {
             Some(TurnRecord.Role.Reply),
             Some(TurnRecord.Role.Summary)
           ),
+          Vector(Some(TurnRecord.Role.Reply)),
           Vector(Some(TurnRecord.Role.Reply))
         )
         at(looped).spend.filter(_.model == "test/scripted").map(_.usage.input) ==> Vector.fill(3)(
@@ -434,13 +441,14 @@ object TurnCaptureTests extends TestSuite {
           Some(Vector((Part.Kind.Record, None), (Part.Kind.Recent, None)))
         at(failed).window.flatMap(_.parts.lift(1)).map(_.seqs.size) ==> Some(2)
 
-        // Live triage's answers on the heard root alone, and its draft passed.
-        turns.cases.map(_.triage.isDefined) ==> Vector(false, false, false, false, true)
+        // Live triage's answers on the heard roots alone, and their drafts passed.
+        turns.cases.map(_.triage.isDefined) ==> Vector(false, false, false, false, true, true)
         turns.cases.map(_.speech.map(_.outcome)) ==> Vector(
           None,
           None,
           None,
           None,
+          Some(Drafted.Kind.Passed),
           Some(Drafted.Kind.Passed)
         )
         verdicts ==> Verdicts.Empty
