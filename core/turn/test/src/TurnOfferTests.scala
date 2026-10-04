@@ -372,10 +372,10 @@ object TurnOfferTests extends TestSuite {
     }
 
     test("a Slack turn's prompt says the name its deployment's persona declares, after its edge") {
-      val bort = Persona.of("Bort").fold(e => throw new java.lang.AssertionError(e), identity)
+      val pip = Persona.of("Pip").fold(e => throw new java.lang.AssertionError(e), identity)
       val (prompt, _) =
-        offeredAs(slack, Payload.Message(Message.User("hi")), bort)
-      prompt ==> expected(slack, bort)
+        offeredAs(slack, Payload.Message(Message.User("hi")), pip)
+      prompt ==> expected(slack, pip)
     }
 
     test("a turn rooted on a heard message is recorded so, and told it was not addressed") {

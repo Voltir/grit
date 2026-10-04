@@ -2,12 +2,14 @@
 
 Status: accepted (2026-10-04)
 
-Context: a deployment presents grit under a name of its own: actualbest's Slack calls it
-Bort. Turns in Slack were told that name, but the edge supplied it: at open, it read its
-bot user's Slack name and enrolled it as the workspace's assistant, and the turn read it
-back. Nothing else knew the name. Triage could not tell "Bort, …" from "Alice, …", and
-`about` could not say who the assistant is. The name had to have one home, which the
-prompt, `about` and triage would all read. There were two candidates:
+Context: a deployment presents grit under a name of its own in its Slack workspace. Turns
+in Slack were told that name, but the edge supplied it: at open, it read its bot user's
+Slack name and enrolled it as the workspace's assistant, and the turn read it back.
+Nothing else knew the name. Triage could not tell a message putting a question to the
+persona by name from one putting it to a person: a deployment's persona, named without an
+@-mention, read as directed at a person and was held. And `about` could not say who the
+assistant is. The name had to have one home, which the prompt, `about` and triage would
+all read. There were two candidates:
 
 - **The edge's identity** (Slack's bot user). Turned down. It is known only once an edge
   opens, after the deployment is declared, so nothing could check it at declaration. It

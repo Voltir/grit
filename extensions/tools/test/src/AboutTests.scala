@@ -16,8 +16,8 @@ object AboutTests extends TestSuite {
 
   private lazy val about: Tool[Option[About.Subject]] = loaded(Persona.Grit)
 
-  private val bort: Persona =
-    Persona.of("Bort").fold(e => throw new java.lang.AssertionError(e), identity)
+  private val pip: Persona =
+    Persona.of("Pip").fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** What a call to `about`, loaded for `persona`, with `args` is answered with. */
   private def asked(args: ujson.Obj, persona: Persona = Persona.Grit): Outcome =
@@ -38,14 +38,14 @@ object AboutTests extends TestSuite {
     ) {
       asked(ujson.Obj()) ==> Outcome.Done("You are called grit.\n\n" + shipped("grit"))
       asked(ujson.Obj("topic" -> "markers")) ==> Outcome.Done(shipped("markers"))
-      asked(ujson.Obj("topic" -> "places"), bort) ==> Outcome.Done(shipped("places"))
+      asked(ujson.Obj("topic" -> "places"), pip) ==> Outcome.Done(shipped("places"))
     }
 
     test(
       "a persona other than grit is told it is a persona running on grit, which the docs describe"
     ) {
-      asked(ujson.Obj(), bort) ==> Outcome.Done(
-        "You are called Bort, a persona of grit: grit is the harness you run on, described " +
+      asked(ujson.Obj(), pip) ==> Outcome.Done(
+        "You are called Pip, a persona of grit: grit is the harness you run on, described " +
           "below.\n\n" + shipped("grit")
       )
     }

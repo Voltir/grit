@@ -6,7 +6,7 @@ object PersonaTests extends TestSuite {
 
   val tests = Tests {
     test("a persona's name is kept trimmed") {
-      Persona.of("  Bort \t").map(_.name) ==> Right("Bort")
+      Persona.of("  Pip \t").map(_.name) ==> Right("Pip")
     }
 
     test("a blank, multi-line, control-character or over-long name is refused, saying which") {

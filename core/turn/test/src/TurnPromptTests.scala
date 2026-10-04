@@ -121,12 +121,12 @@ object TurnPromptTests extends TestSuite {
     }
 
     test("called: a Slack turn is told its persona's name in an edge fragment of its own") {
-      val bort = Persona.of("Bort").fold(e => throw new java.lang.AssertionError(e), identity)
-      // Pinned: the words Bort's turns were told before the name was declared, byte for byte.
-      TurnPrompt.called(bort, Origin.Slack("T1", "C1", "1.0")).map(f => (f.layer, f.text)) ==>
-        Some((Layer.Edge, "In this workspace you are called Bort."))
-      TurnPrompt.called(bort, Origin.Tui(dir, "s")) ==> None
-      TurnPrompt.called(bort, Origin.Task("nightly", "1")) ==> None
+      val pip = Persona.of("Pip").fold(e => throw new java.lang.AssertionError(e), identity)
+      // Pinned: the words a persona's Slack turns were told before the name was declared, byte for byte.
+      TurnPrompt.called(pip, Origin.Slack("T1", "C1", "1.0")).map(f => (f.layer, f.text)) ==>
+        Some((Layer.Edge, "In this workspace you are called Pip."))
+      TurnPrompt.called(pip, Origin.Tui(dir, "s")) ==> None
+      TurnPrompt.called(pip, Origin.Task("nightly", "1")) ==> None
     }
 
     test("reach says what is reachable in the directory, by directory, and why nothing is") {

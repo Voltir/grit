@@ -248,8 +248,8 @@ object SlackEdgeTests extends TestSuite {
 
     test("the bot's Slack name is read for the log, and says why not") {
       val w = new World
-      w.slack.names = w.slack.names.updated(UserId(Bot), Some("Bort"))
-      w.first.displayName() ==> Right("Bort")
+      w.slack.names = w.slack.names.updated(UserId(Bot), Some("Pip"))
+      w.first.displayName() ==> Right("Pip")
       w.slack.names = w.slack.names.updated(UserId(Bot), None)
       w.edge().displayName() ==> Left(s"grit's bot $Bot has no name in Slack")
     }
