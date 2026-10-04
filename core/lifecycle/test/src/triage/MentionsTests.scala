@@ -125,6 +125,33 @@ object MentionsTests extends TestSuite {
         .weigh(t) ==> Left(Weighing.Unweighed.Unreadable)
     }
 
+    test("a classifier that does not answer within the bound weighs nothing, as late") {
+      val w = new World
+      w.hear("when is standup?", "Ben", 0)
+      val t = w.say("is the release branch cut?", 1, Some("Ana"))
+      val release = new java.util.concurrent.CountDownLatch(1)
+      // Answers once released, or after 2 s: far past the 100 ms bound.
+      val slow = new Scripted(
+        Vector(0.5, 0.5, 0, 0),
+        Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9),
+        () => { val _ = release.await(2, java.util.concurrent.TimeUnit.SECONDS) }
+      )
+      val bounded = new Mentions(
+        w.reads,
+        w.rooms,
+        Catalog,
+        slow,
+        new Waits(Right("placed")),
+        FakeDb,
+        new Stopped(at(5)),
+        ByChar,
+        Tuning.Default,
+        scala.concurrent.duration.Duration(100, "millis")
+      )
+      try bounded.weigh(t) ==> Left(Weighing.Unweighed.Late)
+      finally release.countDown()
+    }
+
     test("a turn holding no person's message weighs nothing, as unread") {
       val w = new World
       val classifier = new Scripted(Vector(0.5, 0.5, 0, 0), Vector(0.1, 0.2, 0.3, 0.4, 0.9, 0.9))

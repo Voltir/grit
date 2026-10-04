@@ -1,5 +1,7 @@
 package grit.lifecycle.triage
 
+import java.util.concurrent.{ExecutionException, FutureTask, TimeUnit, TimeoutException}
+
 import scala.concurrent.duration.*
 
 import grit.core.classify.{Classifier, ClassifierError, Request}
@@ -16,7 +18,8 @@ import grit.core.triage.{KnowledgeSources, Tags, Weighing}
   * `tuning`), read through `reads` and `rooms`, with the knowledge sources of `sources`
   * covering its conversation's place, of `classifier`; an opening is asked about once its
   * placement through `placements` has ended, waited for at most [[Mentions.PlacedWithin]] on
-  * `clock`. Its request's input is estimated by `estimator`. It writes nothing.
+  * `clock`. The classifier is given `askWithin` to answer, past which the message is
+  * `Late`, unweighed. Its request's input is estimated by `estimator`. It writes nothing.
   */
 final class Mentions(
     reads: StitchReads,
@@ -27,7 +30,8 @@ final class Mentions(
     db: Db^,
     clock: Clock^,
     estimator: TokenEstimator,
-    tuning: Tuning
+    tuning: Tuning,
+    askWithin: FiniteDuration = Mentions.AskWithin
 ) extends Weighing {
 
   def weigh(turn: TurnRef): Either[Weighing.Unweighed, Weighing.Weighed] =
@@ -39,10 +43,12 @@ final class Mentions(
         .map(_ => Weighing.Unweighed.Unread)
       // A conversation not found is at no place, so no source covers it.
       asked = read.place.fold(KnowledgeSources.Empty)(sources.at)
-      answered <- TriageQuestions.Shipped.ask(classifier, read.state, asked).left.map {
-        case ClassifierError.Unavailable(_) => Weighing.Unweighed.Unavailable
-        case ClassifierError.Unreadable(_) => Weighing.Unweighed.Unreadable
-      }
+      answered <- within(TriageQuestions.Shipped.ask(classifier, read.state, asked)).flatMap(
+        _.left.map {
+          case ClassifierError.Unavailable(_) => Weighing.Unweighed.Unavailable
+          case ClassifierError.Unreadable(_) => Weighing.Unweighed.Unreadable
+        }
+      )
     } yield {
       val request = TriageQuestions.Shipped.request(read.state, asked)
       Weighing.Weighed(
@@ -50,6 +56,20 @@ final class Mentions(
         estimator.system(Request.json(request).render())
       )
     }
+
+  /** What `call` returns, made on a thread of its own and waited for at most `askWithin`:
+    * `Late` past it, the call left to end on its own, its answer unused; `Unavailable` when
+    * it throws.
+    */
+  private def within[A](call: => A): Either[Weighing.Unweighed, A] = {
+    val task = new FutureTask[A](() => call)
+    val _ = Thread.ofVirtual().name("grit-weigh").start(task)
+    try Right(task.get(askWithin.toMillis, TimeUnit.MILLISECONDS))
+    catch {
+      case _: TimeoutException => Left(Weighing.Unweighed.Late)
+      case _: ExecutionException | _: InterruptedException => Left(Weighing.Unweighed.Unavailable)
+    }
+  }
 
   /** Once `turn`'s message's placement has ended, when it is an opening ([[Opening.of]]);
     * at once otherwise. Why not, when the thread cannot be read, or the placement failed or
@@ -85,4 +105,12 @@ object Mentions {
     * its own `stitched` step.
     */
   val PlacedWithin: FiniteDuration = 5.seconds
+
+  /** How long a mention's weighing waits for the classifier's answer before giving up,
+    * unweighed, so a person waiting on a reply waits at most this, past [[PlacedWithin]],
+    * before its first model call. Jev answers live triage's set in well under a second (a
+    * weigh step measured 557 ms end to end); this leaves room for a slow call without
+    * waiting out Jev's own 30 s timeout.
+    */
+  val AskWithin: FiniteDuration = 3.seconds
 }

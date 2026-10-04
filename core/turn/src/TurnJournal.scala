@@ -473,7 +473,7 @@ private[turn] object TurnJournal {
     )
 
   /** Each way a weighing fails, as a `weigh` step's `failed` records it: `message`,
-    * `placement`, `placement-timeout`, `classifier`, `unreadable`. Never an error's
+    * `placement`, `placement-timeout`, `classifier`, `unreadable`, `timeout`. Never an error's
     * text.
     */
   val unweighedKinds: Vector[(Weighing.Unweighed, String)] =
@@ -485,6 +485,7 @@ private[turn] object TurnJournal {
     case Weighing.Unweighed.PlacementLate => "placement-timeout"
     case Weighing.Unweighed.Unavailable => "classifier"
     case Weighing.Unweighed.Unreadable => "unreadable"
+    case Weighing.Unweighed.Late => "timeout"
   }
 
   /** A `dispatch` step's output: whether its requests were sent to a serving edge (`true`),

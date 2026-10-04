@@ -34,6 +34,9 @@ object Weighing {
 
     /** The classifier gave an answer that does not read. */
     case Unreadable
+
+    /** The classifier did not answer within the implementation's bound. */
+    case Late
   }
 
   /** What a call to the classifier answered, `tags`, and grit's `estimate` of its request's

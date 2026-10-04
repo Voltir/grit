@@ -97,9 +97,14 @@ object TurnWeighTests extends TestSuite {
         t.run()
         assert(!t.ledger.rows.map(_._1).contains(TurnWeighing.id(t.turn)))
         (t.asks.n, t.weighed, t.offered)
-      } ==> Vector("message", "placement", "placement-timeout", "classifier", "unreadable").map(
-        kind => (1, Some(s"""{"failed":"$kind"}"""), Vector("github_search"))
-      )
+      } ==> Vector(
+        "message",
+        "placement",
+        "placement-timeout",
+        "classifier",
+        "unreadable",
+        "timeout"
+      ).map(kind => (1, Some(s"""{"failed":"$kind"}"""), Vector("github_search")))
     }
 
     test(

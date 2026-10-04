@@ -62,10 +62,11 @@ Decision:
   2026-10-03), only when its deployment's recipe offers a service it links by a knowledge
   source covering its place (ADR 0025): the turn's `weigh` step builds the state as for a
   heard message (`TriageInput.read`), after its opening's placement, waited for at most
-  `Mentions.PlacedWithin`, and asks `TriageQuestions.Shipped` once. Its answers are the step's
+  `Mentions.PlacedWithin`, and asks `TriageQuestions.Shipped` once, waiting at most
+  `Mentions.AskWithin` for the answer. Its answers are the step's
   recorded output and its call a usage-ledger row of the turn; no tags are kept, so speech,
-  earning, shadows and reviews never see a mention. A placement or classifier that fails
-  leaves it unweighed, offered everything. It adds one classifier call to such a mention's
+  earning, shadows and reviews never see a mention. A placement or classifier that fails or is
+  late leaves it unweighed, offered everything, its step recording which by kind alone. It adds one classifier call to such a mention's
   latency, before its first model call. Turned down: a triage workflow for a mention, which
   would put a second workflow and a cross-workflow wait in every mention's path and keep a row
   that speech, shadows and reviews would each have to skip.

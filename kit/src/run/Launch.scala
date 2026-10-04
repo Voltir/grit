@@ -24,7 +24,7 @@ import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.{Settle, SettleEnv, SettleRecords}
 import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv, ShadowVariant}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
-import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords, TriageSpeech}
+import grit.lifecycle.triage.{Mentions, Triage, TriageEnv, TriageRecords, TriageSpeech}
 import grit.models.{JevClassifier, JevConfig, OpenRouterModels, Seed, StubClassifier, StubModels}
 import grit.tools.{About, Coding, Probes, Tuning}
 import grit.turn.{Turn, TurnEnv, TurnHosting, TurnRecords, TurnTally, TurnTooling}
@@ -137,7 +137,7 @@ private[grit] object Launch {
           ),
           grit.turn.TurnWeighing(
             engine.triage,
-            new grit.lifecycle.triage.Mentions(
+            new Mentions(
               grit.core.stitch.StitchReads(
                 engine.entries,
                 engine.conversations,
@@ -148,7 +148,7 @@ private[grit] object Launch {
               ),
               engine.rooms,
               d.knowledge,
-              classifier(d, s),
+              weighing(d, s),
               engine.placements,
               engine.db,
               Clock.system(),
@@ -373,6 +373,19 @@ private[grit] object Launch {
     */
   private def classifier(d: Deployment, s: Secrets): Classifier^ = (d.topics, s.jev) match {
     case (Topics.Jev, Some(config)) => new JevClassifier(config)
+    case (Topics.Jev, None) => Classifier.none("JEV_API_KEY is not set")
+    case (Topics.Stub, _) => new StubClassifier
+    case (Topics.Off(reason), _) => Classifier.none(reason)
+  }
+
+  /** [[classifier]] for a mention's weighing: Jev's requests time out at
+    * [[Mentions.AskWithin]], so a call the weighing gave up on ends there too.
+    */
+  private def weighing(d: Deployment, s: Secrets): Classifier^ = (d.topics, s.jev) match {
+    case (Topics.Jev, Some(config)) =>
+      new JevClassifier(
+        config.copy(timeout = java.time.Duration.ofMillis(Mentions.AskWithin.toMillis))
+      )
     case (Topics.Jev, None) => Classifier.none("JEV_API_KEY is not set")
     case (Topics.Stub, _) => new StubClassifier
     case (Topics.Off(reason), _) => Classifier.none(reason)
