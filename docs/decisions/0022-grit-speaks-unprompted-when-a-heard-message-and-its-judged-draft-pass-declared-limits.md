@@ -6,7 +6,8 @@ from bounds by "every one of" and "any one of", and is unread only when no faili
 decides it; amended (2026-10-03): a message said to grit, weighed in its turn, is never
 considered; amended (2026-10-04): a
 message triage reads as directed at grit by name is answered as named; amended (2026-10-04):
-a named draft is not judged
+a named draft is not judged; amended (2026-10-04): the reference gate no longer holds a
+question for being put to a named person
 
 Context: a listened channel (ADR 0020) is kept, but grit only ever answered what was said to
 it. A deployment also wants grit to join in, with context or insight a thread lacks, when that
@@ -40,8 +41,21 @@ Decision:
   reference deployment speaks by live triage's own (`TriageQuestions.ShippedSpeak`: gap asks,
   still open, and either directed at grit by its persona's name (ADR 0026) or not directed at
   one person and not something no record could supply; amended 2026-10-04: before, a message
-  naming grit read as directed at one person and was held). A gate reading a question live triage does
-  not ask is refused at declaration (`SpeechUnread`): it would hold every message.
+  naming grit read as directed at one person and was held). (Amended 2026-10-04.) It is now
+  v4's: gap asks, still open, and either directed at grit or something a stored record could
+  supply, whoever it is asked of (`anchor-record`, ADR 0020). v3's held every question put to
+  a named colleague, even a fact a record holds ("Hey Bob, when does the freeze start?"). On
+  32 hand-written cases (a room, a named colleague or grit, asked for a fact, an opinion,
+  availability, their own work or a choice, and in-thread replies), each with its intended
+  outcome, Jev's answers over three repeats put v3's gate right on 23 and v4's on 31; one
+  repeat of v4's own question list put them at 23 and 31 again. The one miss drafts a
+  rhetorical vent. The reworded question was written after seeing the cases, so the measure
+  may flatter it. Turned down, on the same answers: dropping `to` from the gate and keeping
+  `anchor` (29 of 32), holding by `to` only when no knowledge source could supply the answer
+  (28), and rewording `to` as "only that person could answer" (25). A message triaged by v3 holds no
+  `anchor-record`: it drafts when directed at grit, and is otherwise held `Unasked`. A gate
+  reading a question live triage does not ask is refused at declaration (`SpeechUnread`):
+  it would hold every message.
 - **Triage considers each message it tagged.** It holds on the first check that fails: off,
   no address, stale, untagged, the gate (`Gated`, with every bound the answers failed and
   what each read; `Unasked`, when the gate cannot be decided without an answer the answers

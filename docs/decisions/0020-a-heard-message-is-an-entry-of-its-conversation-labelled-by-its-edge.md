@@ -3,7 +3,8 @@
 Status: accepted (2026-09-28); amended (2026-10-03): triage asks a question set, its
 answers kept by name; amended (2026-10-03): a message said to grit is asked the same set in
 its turn, when its recipe reads the answers, and keeps no tags; amended (2026-10-04):
-triage asks v3, adding whether a message is directed at grit, in its persona's name
+triage asks v3, adding whether a message is directed at grit, in its persona's name; amended
+(2026-10-04): triage asks v4, adding `anchor-record`, the anchor question reworded
 
 Context: grit was answering only what was said to it. A deployment also wants the rest of a
 listened place (a Slack channel's threads) kept, so a later question can be answered from
@@ -64,7 +65,14 @@ Decision:
   assistant said. A new question, not a rewording of `to`, so every recorded `to` keeps its
   meaning; a new set, so v2 stays one fixed set for shadows and corpora. The name is in the
   question's words, not in the state, so the input builder and every v1 and v2 request are
-  unchanged. A message triaged by v2 holds no `to-grit`.
+  unchanged. A message triaged by v2 holds no `to-grit`. (Amended 2026-10-04.) It asks v4:
+  v3's questions in v3's words and order, and after `anchor`, `anchor-record`: whether what
+  the message asks for is something no stored record could supply, such as an opinion,
+  someone's current availability, their own plans or work, or a choice nobody has made yet,
+  where a fact asked of a particular person may still be in a record. A reworded question
+  under a new name, so every recorded `anchor` keeps its meaning; `anchor` and `to` are still
+  asked, so v3's gate reads v4's answers and v3 stays one fixed set to compare against. A
+  message triaged by v3 holds no `anchor-record`.
 - **A message said to grit is asked live triage's set in its own turn** (amended
   2026-10-03), only when its deployment's recipe offers a service it links by a knowledge
   source covering its place (ADR 0025): the turn's `weigh` step builds the state as for a
