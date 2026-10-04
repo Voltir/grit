@@ -69,6 +69,11 @@ object TurnJudge {
       "is yes. Small talk, or correcting a detail nobody relies on, is no."
   )
 
+  private val answers = yesNo(
+    "Read thread and draft. Someone in thread asked the assistant something. Does draft " +
+      "answer what they asked, without making up facts?"
+  )
+
   /** A draft's text: `None` when it passes, its whole text, trimmed and lower-cased,
     * [[TurnPrompt.Pass]] or nothing.
     */
@@ -89,8 +94,7 @@ object TurnJudge {
           val (g, w) = answered.value
           Judgement.Scored(
             Judged(
-              Probability.clamped(g),
-              Probability.clamped(w),
+              Judged.Scores.Unprompted(Probability.clamped(g), Probability.clamped(w)),
               answered.model,
               answered.usage
             ),
@@ -99,6 +103,27 @@ object TurnJudge {
         case Left(ClassifierError.Unavailable(why)) => Judgement.Unjudged(s"unavailable: $why")
         case Left(ClassifierError.Unreadable(why)) => Judgement.Unjudged(s"unreadable: $why")
       }
+
+  /** What `classifier` scores `state` at as a named draft ([[Judged.Scores.Named]]), in one
+    * call of one question, whether it answers what was asked of the assistant without making
+    * up facts, its request estimated by `estimator`; `Unjudged`, with why, when it is
+    * unavailable or its answer does not read. Never `NothingRecalled`: a question put to grit
+    * may be answered from what its tools found.
+    */
+  def judgeNamed(classifier: Classifier^, estimator: TokenEstimator, state: State): Judgement =
+    classifier.ask(state, answers) match {
+      case Right(answered) =>
+        Judgement.Scored(
+          Judged(
+            Judged.Scores.Named(Probability.clamped(answered.value)),
+            answered.model,
+            answered.usage
+          ),
+          estimator.system(ujson.write(StateJson[State].json(state)))
+        )
+      case Left(ClassifierError.Unavailable(why)) => Judgement.Unjudged(s"unavailable: $why")
+      case Left(ClassifierError.Unreadable(why)) => Judgement.Unjudged(s"unreadable: $why")
+    }
 
   /** The judge's state for a draft `draft`, from `all` of its conversation's entries so far,
     * `window` the turn's window over them, `near` the other conversations' entries its

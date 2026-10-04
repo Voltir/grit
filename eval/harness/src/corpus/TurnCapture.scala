@@ -91,7 +91,7 @@ object TurnCapture {
         val reply = mine
           .find(e =>
             e.id == (root match {
-              case TurnOffer.Root.Heard => turn.draftId
+              case TurnOffer.Root.Heard | TurnOffer.Root.Named => turn.draftId
               case TurnOffer.Root.Addressed => turn.replyId
             })
           )
@@ -111,7 +111,7 @@ object TurnCapture {
             .left
             .map(e => s"steps of ${WorkflowId.value(turn.workflowId)} unread: ${Capture.kind(e)}")
           tags <- root match {
-            case TurnOffer.Root.Heard =>
+            case TurnOffer.Root.Heard | TurnOffer.Root.Named =>
               read("tags")(reader.triage.of(Vector(first.id))).map(_.get(first.id))
             case TurnOffer.Root.Addressed => Right(None)
           }
@@ -372,7 +372,12 @@ object TurnCapture {
 
   private def drafted(o: Outcome): Drafted = {
     def scored(kind: Drafted.Kind, j: grit.core.speech.Judged, postAt: Option[Probability]) =
-      Drafted(kind, Some(j.grounded), Some(j.worth), postAt)
+      j.scores match {
+        case grit.core.speech.Judged.Scores.Unprompted(grounded, worth) =>
+          Drafted(kind, Some(grounded), Some(worth), postAt)
+        // The unprompted judge's two scores are a named draft's none.
+        case grit.core.speech.Judged.Scores.Named(_) => Drafted(kind, None, None, postAt)
+      }
     o match {
       case Outcome.Passed => Drafted(Drafted.Kind.Passed, None, None, None)
       case Outcome.NothingRecalled => Drafted(Drafted.Kind.NothingRecalled, None, None, None)

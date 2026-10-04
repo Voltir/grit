@@ -68,7 +68,10 @@ object SpeechTests extends TestSuite {
   private def gated(first: Gate.Failed, rest: Gate.Failed*) =
     held(Silence.Gated(first, rest.toVector))
 
-  private val judged = Judged(p(0.6), p(0.8), "jev", usage)
+  private val judged = Judged(Judged.Scores.Unprompted(p(0.6), p(0.8)), "jev", usage)
+
+  private def scored(grounded: Double, worth: Double) =
+    judged.copy(scores = Judged.Scores.Unprompted(p(grounded), p(worth)))
 
   val tests = Tests {
     test("a heard message that passes every check is drafted in its own turn") {
@@ -202,25 +205,28 @@ object SpeechTests extends TestSuite {
       assert(decide(l = l) == Decision.Drafting(turn))
     }
 
-    test("a draft's score is the weaker of grounded and worth") {
+    test(
+      "an unprompted draft's score is the weaker of grounded and worth; a named one's, answers"
+    ) {
       assert(
         judged.score == p(0.6),
-        judged.copy(worth = p(0.3)).score == p(0.3)
+        scored(0.6, 0.3).score == p(0.3),
+        judged.copy(scores = Judged.Scores.Named(p(0.45))).score == p(0.45)
       )
     }
 
     test("what becomes of a draft") {
       test("at or above postAt, within: posted") {
         assert(
-          Speech.post(within, Right(judged.copy(grounded = p(0.5)))) ==
-            Outcome.Posted(judged.copy(grounded = p(0.5)))
+          Speech.post(within, Right(scored(0.5, 0.8))) ==
+            Outcome.Posted(scored(0.5, 0.8))
         )
       }
       test("at or above postAt, shadow: shadowed") {
         assert(Speech.post(Speaking.Shadow(limits), Right(judged)) == Outcome.Shadowed(judged))
       }
       test("under postAt: below, within or shadow") {
-        val weak = judged.copy(worth = p(0.49))
+        val weak = scored(0.6, 0.49)
         Vector(within, Speaking.Shadow(limits)).map(Speech.post(_, Right(weak))) ==>
           Vector(Outcome.Below(weak, p(0.5)), Outcome.Below(weak, p(0.5)))
       }

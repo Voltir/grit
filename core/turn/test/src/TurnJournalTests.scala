@@ -119,7 +119,7 @@ object TurnJournalTests extends TestSuite {
     }
 
     test(
-      "an offer's root: heard is written, and an offer recorded before roots reads as addressed"
+      "an offer's root: heard and named are written, and an offer recorded before roots reads as addressed"
     ) {
       val j = summon[Journaled[Either[TurnFailure, TurnOffer.Recorded]]]
       val tools = grit.core.tool.ToolSet.Empty.id
@@ -128,6 +128,11 @@ object TurnJournalTests extends TestSuite {
       val set = grit.core.tool.ToolSetId.value(tools)
       j.encode(heard) ==> s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"root":"heard"}}"""
       j.decode(j.encode(heard)) ==> Right(heard)
+      // A pin of the recorded form: a named root replays as named.
+      val named: Either[TurnFailure, TurnOffer.Recorded] =
+        Right(TurnOffer.Recorded(None, tools, Vector.empty, TurnOffer.Root.Named))
+      j.encode(named) ==> s"""{"ok":{"workspace":null,"tools":"$set","prompt":[],"root":"named"}}"""
+      j.decode(j.encode(named)) ==> Right(named)
       // Every offer recorded before this field was an addressed turn's.
       j.decode(s"""{"ok":{"workspace":null,"tools":"$set","prompt":[]}}""") ==>
         Right(Right(TurnOffer.Recorded(None, tools, Vector.empty, TurnOffer.Root.Addressed)))

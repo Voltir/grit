@@ -219,8 +219,9 @@ final case class Spent(
     estimated: Tokens
 )
 
-/** What became of a heard root's draft: its outcome's kind, the judge's scores when it was
-  * judged, and the bar it was held to when the outcome records one (a draft below it).
+/** What became of a heard root's draft: its outcome's kind, the unprompted judge's scores
+  * when it was judged by them (a named draft's one score is not kept here), and the bar it
+  * was held to when the outcome records one (a draft below it).
   */
 final case class Drafted(
     outcome: Drafted.Kind,

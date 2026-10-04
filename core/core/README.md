@@ -98,7 +98,7 @@ In dependency order:
   shadow, or within `Limits`, whose windows are `Rate`s), a heard message as it is weighed
   (`Heard`, its `Reach`), the ledger it is weighed against (`Ledger`, each `Spoken` turn at its
   `Stage`), `Speech.decide` (drafted, or held for a `Silence`), and `Speech.post` (what becomes
-  of a draft the judge scored, `Judged`, as an `Outcome`), `Speech.spoken` (the one hold: the
+  of a draft the judge scored, `Judged`: an unprompted draft's two scores or a named one's one, as an `Outcome`), `Speech.spoken` (the one hold: the
   assistant already replied after the heard message), `SpeechStore` (each heard
   message's `Reach`, and grit's decisions, kept with its period's usage) and `SpeechJson`
   (their stored form). ← `id`, `message`, `period`, `place`, `spend`, `store`, `triage`

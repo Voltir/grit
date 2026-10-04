@@ -117,20 +117,34 @@ enum Silence {
   case OverBudget
 }
 
-/** The judge's scores for a draft: the probability that it is `grounded` in what the turn
-  * recalled, and that it is `worth` the interruption; the `model` that weighed them, and what
-  * the call consumed.
+/** The judge's `scores` for a draft, the `model` that weighed them, and what the call
+  * consumed.
   */
-final case class Judged(
-    grounded: Probability,
-    worth: Probability,
-    model: String,
-    usage: Usage
-) {
+final case class Judged(scores: Judged.Scores, model: String, usage: Usage) {
 
-  /** The weaker of the two: what `postAt` is compared with. */
-  def score: Probability =
-    if (Probability.value(grounded) <= Probability.value(worth)) grounded else worth
+  /** What `postAt` is compared with: an unprompted draft's weaker score, a named one's only. */
+  def score: Probability = scores match {
+    case Judged.Scores.Unprompted(grounded, worth) =>
+      if (Probability.value(grounded) <= Probability.value(worth)) grounded else worth
+    case Judged.Scores.Named(answers) => answers
+  }
+}
+
+object Judged {
+
+  /** What the judge asked of a draft, by what its turn answered. */
+  enum Scores {
+
+    /** A draft nobody asked for: the probability that it is `grounded` in what the turn
+      * recalled, and that it is `worth` the interruption.
+      */
+    case Unprompted(grounded: Probability, worth: Probability)
+
+    /** A draft answering a message directed at grit by name: the probability that it
+      * `answers` what was asked of the assistant without making up facts.
+      */
+    case Named(answers: Probability)
+  }
 }
 
 /** What became of an unprompted turn's draft. */

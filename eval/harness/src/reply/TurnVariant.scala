@@ -97,7 +97,7 @@ object TurnVariant {
 
   /** What `t` answers, as a recipe tells it apart. */
   def rooted(t: TurnCase): Rooted = t.root match {
-    case TurnOffer.Root.Heard => Rooted.Heard(t.focus)
+    case TurnOffer.Root.Heard | TurnOffer.Root.Named => Rooted.Heard(t.focus)
     case TurnOffer.Root.Addressed => Rooted.Addressed
   }
 

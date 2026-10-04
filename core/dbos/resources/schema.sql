@@ -516,7 +516,9 @@ CREATE INDEX IF NOT EXISTS idx_stitches_root ON grit.stitches (root);
 
 -- grit's decision on each heard message that reached it (grit.core.speech.Decision): held,
 -- with why (`silence`), or drafting in the heard message's own turn (`workflow`); and, once
--- the turn settles its draft, what became of it (`outcome`), the judge's scores and model, an
+-- the turn settles its draft, what became of it (`outcome`), the judge's scores and model (the
+-- `grounded` and `worth` columns are an unprompted draft's two; a named draft's one score is in
+-- `outcome` alone, the columns NULL), an
 -- excerpt of the draft, and a posted reply's position. Triage's answers are in grit.triage. Forms in
 -- SpeechJson. No foreign key: it outlives the heard entry's purge, so the rates and the
 -- day's speech spend count every decision, and each post can be stated with its approval.

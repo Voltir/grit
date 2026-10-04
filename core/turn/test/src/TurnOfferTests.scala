@@ -71,7 +71,8 @@ object TurnOfferTests extends TestSuite {
   private def offeredAs(
       origin: Origin,
       root: Payload,
-      persona: Persona = Persona.Grit
+      persona: Persona = Persona.Grit,
+      weighed: Option[Tags] = None
   ): (String, TurnOffer.Root) = {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
@@ -98,7 +99,7 @@ object TurnOfferTests extends TestSuite {
     val entries = new InMemoryEntryStore
     entries.insert(Entry(EntryId("root"), c, TurnSeq.First, None, EntrySeq(0), root, Instant.EPOCH))
     TurnOffer
-      .decide(hosting, entries, tooling, TurnRef(c, TurnSeq.First), None)
+      .decide(hosting, entries, tooling, TurnRef(c, TurnSeq.First), weighed)
       .flatMap(r =>
         Prompts
           .prompt(r.prompt)
@@ -376,6 +377,42 @@ object TurnOfferTests extends TestSuite {
       val (prompt, _) =
         offeredAs(slack, Payload.Message(Message.User("hi")), pip)
       prompt ==> expected(slack, pip)
+    }
+
+    test(
+      "a heard message triage read as directed at grit is recorded named, and told so in the unprompted fragment's place"
+    ) {
+      def triaged(toGrit: Double) = Some(
+        Tags.Weighed(
+          VectorMap(
+            Tags.V2.gap -> Answer.Choice("asks", Vector(Answer.Weight("asks", 1.0)), 1.0),
+            Tags.V2.open -> Answer.YesNo(0.9),
+            Tags.V2.to -> Answer.YesNo(0.9),
+            Tags.V3.toGrit -> Answer.YesNo(toGrit)
+          ),
+          "jev",
+          Usage.Zero
+        )
+      )
+      def prompt(fragment: grit.core.prompt.Fragment) = SystemPrompt
+        .of(
+          Vector(
+            TurnPrompt.Base,
+            TurnPrompt.Candour,
+            TurnPrompt.Answering,
+            TurnPrompt.edge(slack)
+          ) ++ TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++
+            Vector(fragment, TurnPrompt.reach(None, ToolSet.Empty))
+        )
+        .render
+      val heard = Payload.Heard("bort, is it Thursday?")
+      // At the bound the gate's directed branch reads, and just under it.
+      offeredAs(slack, heard, weighed = triaged(0.5)) ==> (
+        prompt(TurnPrompt.named),
+        TurnOffer.Root.Named
+      )
+      offeredAs(slack, heard, weighed = triaged(0.49)) ==>
+        (prompt(TurnPrompt.unprompted), TurnOffer.Root.Heard)
     }
 
     test("a turn rooted on a heard message is recorded so, and told it was not addressed") {

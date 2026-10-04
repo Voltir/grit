@@ -233,9 +233,11 @@ private[turn] object TurnJournal {
           "tools" -> ToolSetId.value(r.tools),
           "prompt" -> ujson.Arr.from(r.prompt.map(id => ujson.Str(FragmentId.value(id))))
         )
-        // Written only for a heard root, so an addressed turn's offer keeps its earlier form.
+        // Written only for a heard or named root, so an addressed turn's offer keeps its
+        // earlier form.
         r.root match {
           case TurnOffer.Root.Heard => o("root") = "heard"
+          case TurnOffer.Root.Named => o("root") = "named"
           case TurnOffer.Root.Addressed => ()
         }
         // Written only when some were taken, so every other offer keeps its earlier form.
@@ -277,6 +279,7 @@ private[turn] object TurnJournal {
           root <- o.get("root") match {
             case None => Right(TurnOffer.Root.Addressed)
             case Some(ujson.Str("heard")) => Right(TurnOffer.Root.Heard)
+            case Some(ujson.Str("named")) => Right(TurnOffer.Root.Named)
             case Some(other) => Left(s"offer: unknown root ${other.render()}")
           }
           advertised <- o.get("advertised") match {

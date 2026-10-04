@@ -80,7 +80,7 @@ abstract class SpeechContract extends TestSuite {
   private def mine(c: ConversationId, since: Instant): Vector[Spoken] =
     transaction(right(speech.spoken(since))).filter(_.turn.conversationId == c)
 
-  private val judged = Judged(p(0.6), p(0.8), "jev", usage)
+  private val judged = Judged(Judged.Scores.Unprompted(p(0.6), p(0.8)), "jev", usage)
 
   val tests = Tests {
     test("a heard message's reach is kept, the first one standing; none for another turn") {

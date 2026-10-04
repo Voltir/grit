@@ -1,5 +1,8 @@
 package grit.turn
 
+import scala.collection.immutable.VectorMap
+
+import grit.core.classify.{Answer, Answers, Classifier, ClassifierError, Question}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -7,6 +10,7 @@ import grit.core.period.Probability
 import grit.core.provider.ProviderError
 import grit.core.speech.{Judged, Outcome, Speaking}
 import grit.core.store.Payload
+import grit.core.triage.{InMemoryTriageStore, Tags}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -27,9 +31,10 @@ object TurnSpeechTests extends TestSuite {
 
   private def run(
       w: SpeechWorld,
-      judge: Judge,
+      judge: Classifier^,
       speaking: Speaking = Speaking.Within(speechLimits),
-      answer: Either[ProviderError, Message.Assistant] = Right(said("It moved to Thursday."))
+      answer: Either[ProviderError, Message.Assistant] = Right(said("It moved to Thursday.")),
+      kept: Option[InMemoryTriageStore] = None
   ): String =
     new InMemoryDurable().run(w.turn.workflowId)(
       turnBodyWith(
@@ -38,7 +43,11 @@ object TurnSpeechTests extends TestSuite {
         new Before(w.entries),
         w.ledger,
         judge,
-        TurnSpeech(speaking, w.store, w.deliveries)
+        TurnSpeech(speaking, w.store, w.deliveries),
+        weighing = TurnWeighing(
+          kept.getOrElse(new InMemoryTriageStore(w.entries, NoPeriods)),
+          new Weighs(Left(grit.core.triage.Weighing.Unweighed.Unavailable))
+        )
       )
     )
 
@@ -52,13 +61,100 @@ object TurnSpeechTests extends TestSuite {
 
   private def judged(grounded: Double, worth: Double) =
     Judged(
-      Probability.clamped(grounded),
-      Probability.clamped(worth),
+      Judged.Scores.Unprompted(Probability.clamped(grounded), Probability.clamped(worth)),
       "jev",
       Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017")))
     )
 
+  /** A judge of named drafts: one question, answered `yes`, its words kept. */
+  private final class NamedJudge(yes: Double) extends Classifier {
+    @caps.unsafe.untrackedCaptures
+    var asked = Vector.empty[Question]
+
+    protected def answer(
+        state: ujson.Value,
+        questions: Vector[Question]
+    ): Either[ClassifierError, Answers] = {
+      asked = asked ++ questions
+      Right(
+        Answers(
+          questions.map(_ => Answer.YesNo(yes)),
+          Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017"))),
+          "jev"
+        )
+      )
+    }
+  }
+
+  /** What triage kept for `w`'s heard message: a question to grit by name ([[Tags.V3.directed]]). */
+  private def named(w: SpeechWorld): Option[InMemoryTriageStore] = {
+    val store = new InMemoryTriageStore(w.entries, NoPeriods)
+    store.record(
+      EntryId("heard:is the freeze still on?"),
+      Tags.Weighed(
+        VectorMap(
+          Tags.V2.gap -> Answer.Choice("asks", Vector(Answer.Weight("asks", 1.0)), 1.0),
+          Tags.V2.open -> Answer.YesNo(0.9),
+          Tags.V2.to -> Answer.YesNo(0.9),
+          Tags.V3.toGrit -> Answer.YesNo(0.9)
+        ),
+        "jev",
+        Usage.Zero
+      ),
+      java.time.Instant.EPOCH
+    )(using TestTx.fake) ==> Right(true)
+    Some(store)
+  }
+
   val tests = Tests {
+    test(
+      "a draft answering a message directed at grit is judged on whether it answers, alone, even with nothing recalled, and posted at postAt"
+    ) {
+      for (recalled <- Vector(true, false)) {
+        val w = speechWorld(recalled)
+        val judge = new NamedJudge(0.8)
+        run(w, judge, kept = named(w))
+        (outcome(w), judge.asked, awaited(w)) ==> (
+          Some(
+            Outcome.Posted(
+              Judged(
+                Judged.Scores.Named(Probability.clamped(0.8)),
+                "jev",
+                Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017")))
+              )
+            )
+          ),
+          Vector(
+            Question.YesNo(
+              "Read thread and draft. Someone in thread asked the assistant something. Does " +
+                "draft answer what they asked, without making up facts?",
+              None,
+              None
+            )
+          ),
+          Vector((w.turn, "C/1"))
+        )
+      }
+    }
+
+    test("a named draft whose answer is under postAt is kept below, nothing posted") {
+      val w = speechWorld()
+      run(w, new NamedJudge(0.4), kept = named(w))
+      (outcome(w), awaited(w)) ==> (
+        Some(
+          Outcome.Below(
+            Judged(
+              Judged.Scores.Named(Probability.clamped(0.4)),
+              "jev",
+              Usage(Tokens(40), Tokens.Zero, Tokens.Zero, Some(BigDecimal("0.0000017")))
+            ),
+            speechLimits.postAt
+          )
+        ),
+        Vector.empty
+      )
+    }
+
     test(
       "its weaker answer at or above postAt: the draft is the reply, awaited at its address, and kept posted with each answer"
     ) {

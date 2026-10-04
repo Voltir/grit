@@ -918,7 +918,7 @@ object TurnFixtures {
       stitching: TurnStitching^ = unstitched(),
       hosted: TurnHosting = hosting(),
       recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
-      weighing: TurnWeighing = noTriage()
+      weighing: TurnWeighing^ = noTriage()
   )(
       id: WorkflowId
   )(using Durable^): String =

@@ -153,6 +153,21 @@ object TurnPrompt {
         s"nothing to add that the thread does not already say, reply with exactly: $Pass"
     )
 
+  /** What a turn rooted on a heard message triage read as directed at grit is told: it reads
+    * as said to the assistant, though it did not mention it; answer what it asks as a message
+    * sent to the assistant, or reply exactly [[Pass]] when it only talks about the assistant.
+    * An edge-layer fragment of its own, in [[unprompted]]'s place.
+    */
+  val named: Fragment =
+    Fragment(
+      Layer.Edge,
+      Fragment.Grit,
+      "The last message was said in this thread without mentioning you, but it reads as said " +
+        "to you, by name or as a reply to you. If it asks you something, answer it as you " +
+        "would a message sent to you. If it only talks about you, reply with exactly: " +
+        s"$Pass"
+    )
+
   /** What a turn at `origin` is told it is called, `persona`'s name, as an edge-layer fragment
     * of its own: "In this workspace you are called {name}." in a Slack thread; `None` for a
     * terminal or a task, whose one reader started grit.

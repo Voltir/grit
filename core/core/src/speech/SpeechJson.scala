@@ -177,14 +177,19 @@ object SpeechJson {
     case Outcome.Failed(_) => "failed"
   }
 
-  /** `{"grounded", "worth", "model", "usage"}`. */
-  def writeJudged(j: Judged): ujson.Value =
-    ujson.Obj(
-      "grounded" -> num(j.grounded),
-      "worth" -> num(j.worth),
-      "model" -> j.model,
-      "usage" -> PayloadJson.writeUsage(j.usage)
+  /** `{"grounded", "worth", "model", "usage"}` for an unprompted draft's, and `{"answers",
+    * "model", "usage"}` for a named one's.
+    */
+  def writeJudged(j: Judged): ujson.Value = {
+    val scores = j.scores match {
+      case Judged.Scores.Unprompted(grounded, worth) =>
+        Vector("grounded" -> num(grounded), "worth" -> num(worth))
+      case Judged.Scores.Named(answers) => Vector("answers" -> num(answers))
+    }
+    ujson.Obj.from(
+      scores ++ Vector("model" -> ujson.Str(j.model), "usage" -> PayloadJson.writeUsage(j.usage))
     )
+  }
 
   /** A judgement as [[writeJudged]] writes it; an `"adds"` beside it, which judgements
     * recorded before the judge dropped that question carry, is ignored.
@@ -192,11 +197,16 @@ object SpeechJson {
   def readJudged(v: ujson.Value): Either[String, Judged] =
     for {
       o <- obj(v)
-      grounded <- probability(o, "grounded")
-      worth <- probability(o, "worth")
+      scores <-
+        if (o.contains("answers")) probability(o, "answers").map(Judged.Scores.Named(_))
+        else
+          for {
+            grounded <- probability(o, "grounded")
+            worth <- probability(o, "worth")
+          } yield Judged.Scores.Unprompted(grounded, worth)
       model <- str(o, "model")
       usage <- o.get("usage").toRight("judged: no usage").flatMap(PayloadJson.readUsage)
-    } yield Judged(grounded, worth, model, usage)
+    } yield Judged(scores, model, usage)
 
   private def writeSpend(s: Spend): ujson.Value = s.cost match {
     case Cost.Exact(usd) => ujson.Obj("calls" -> s.calls, "usd" -> usd.toString)
