@@ -40,7 +40,10 @@ object MentionWeighLiveTests extends TestSuite {
 
   /** The `weigh` step `turn` recorded, read back through its codec. */
   private def weighed(reader: Reader^, turn: TurnRef): Option[TurnWeighing.Weighed] =
-    right(TurnRecord.weighed(right(reader.steps(turn.workflowId))))
+    right(TurnRecord.weighed(right(reader.steps(turn.workflowId)))) match {
+      case TurnRecord.Weigh.Recorded(w) => w
+      case TurnRecord.Weigh.Unrecorded => None
+    }
 
   private def ledger(engine: Engine^, turn: TurnRef) =
     engine.db

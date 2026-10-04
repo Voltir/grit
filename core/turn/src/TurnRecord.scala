@@ -19,13 +19,27 @@ object TurnRecord {
     read[Either[TurnFailure, TurnOffer.Recorded]](steps, Turn.Step.Offer).map(_.flatMap(_.toOption))
   }
 
-  /** What the `weigh` step recorded the turn's root was weighed with, or why asking failed;
-    * `None` when no `weigh` step is recorded or it weighed nothing. `Left` naming the step when its output does not
+  /** What the `weigh` step `steps` recorded. `Left` naming the step when its output does not
     * read.
     */
-  def weighed(steps: Vector[StepRecord]): Either[String, Option[TurnWeighing.Weighed]] = {
+  def weighed(steps: Vector[StepRecord]): Either[String, Weigh] = {
     import TurnJournal.given
-    read[Option[TurnWeighing.Weighed]](steps, Turn.Step.Weigh).map(_.flatten)
+    read[Option[TurnWeighing.Weighed]](steps, Turn.Step.Weigh)
+      .map(_.fold(Weigh.Unrecorded)(Weigh.Recorded(_)))
+  }
+
+  /** What a turn's `weigh` step recorded. */
+  enum Weigh {
+
+    /** No `weigh` step is recorded: the turn passed that point before weighing shipped, or has
+      * not reached it.
+      */
+    case Unrecorded
+
+    /** The step recorded `weighed`; `None` when it weighed nothing: no tags kept for its heard
+      * root, or a root said to grit that its recipe did not read.
+      */
+    case Recorded(weighed: Option[TurnWeighing.Weighed])
   }
 
   /** The first of `steps` whose output is a [[TurnFailure]]: its step's family
