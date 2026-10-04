@@ -22,6 +22,15 @@ enum Tags {
 
 object Tags {
 
+  /** Whether triage read its message as directed at grit: answers on which [[V3.directed]]
+    * passes; `false` for unanswered tags, and for answers that gate cannot read (a set before
+    * v3).
+    */
+  def directed(tags: Tags): Boolean = tags match {
+    case Weighed(answers, _, _) => V3.directed.drafts(answers).contains(true)
+    case Unanswered(_) => false
+  }
+
   /** v1, the question set triage asked before v2: the names it asks under, and the gate it
     * drafts by.
     */

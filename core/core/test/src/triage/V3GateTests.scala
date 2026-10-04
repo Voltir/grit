@@ -73,6 +73,21 @@ object V3GateTests extends TestSuite {
       (Tags.V3.drafts.drafts(v2), Tags.V3.drafts.drafts(toSomeone)) ==> (Some(true), None)
     }
 
+    test(
+      "tags are directed at grit when v3's directed branch passes on their answers, and only then"
+    ) {
+      def weighed(a: VectorMap[QuestionName, Answer]) =
+        Tags.Weighed(a, "jev", grit.core.message.Usage.Zero)
+      val toGrit = answers(asks = 1.0, open = 0.93, to = 0.88, toGrit = 0.9, anchor = 0.13)
+      val toRoom = answers(asks = 1.0, open = 0.93, to = 0.1, toGrit = 0.1, anchor = 0.13)
+      Vector(
+        weighed(toGrit),
+        weighed(toRoom),
+        weighed(toGrit - Tags.V3.toGrit),
+        Tags.Unanswered("down")
+      ).map(Tags.directed) ==> Vector(true, false, false, false)
+    }
+
     test("a message held by the gate is held on each bound it failed, once") {
       val half = grit.core.period.Probability.clamped(0.5)
       def failed(b: Bound, read: Double) =

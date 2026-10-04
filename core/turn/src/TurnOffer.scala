@@ -59,7 +59,7 @@ object TurnOffer {
 
   /** What a turn answers: a message said to grit, or one grit heard and chose to draft a
     * reply to ([[grit.core.speech.Speech.decide]]): `Named` when triage read that message as
-    * directed at grit ([[grit.core.triage.Tags.V3.directed]] passing on the tags it kept),
+    * directed at grit ([[grit.core.triage.Tags.directed]] of the tags it kept),
     * `Heard` otherwise. A named turn is offered as a heard one, told it was named
     * ([[TurnPrompt.named]]), and its draft not judged. An offer
     * recorded before roots existed is `Addressed`.
@@ -114,12 +114,7 @@ object TurnOffer {
       first = all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq)
       root = first.map(_.payload) match {
         case Some(Payload.Heard(_)) =>
-          weighed match {
-            case Some(Tags.Weighed(answers, _, _))
-                if Tags.V3.directed.drafts(answers).contains(true) =>
-              Root.Named
-            case _ => Root.Heard
-          }
+          if (weighed.exists(Tags.directed)) Root.Named else Root.Heard
         case _ => Root.Addressed
       }
       rooted = root match {

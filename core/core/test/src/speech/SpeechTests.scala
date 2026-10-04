@@ -2,8 +2,10 @@ package grit.core.speech
 
 import java.time.{Instant, ZoneOffset}
 
+import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
+import grit.core.classify.Answer
 import grit.core.id.QuestionName
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PrincipalId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
@@ -237,6 +239,33 @@ object SpeechTests extends TestSuite {
         Vector(Right(judged), Left("down")).map(Speech.post(Speaking.Off, _)) ==>
           Vector(Outcome.Withdrawn, Outcome.Withdrawn)
       }
+    }
+
+    test(
+      "a message drafted within limits is acknowledged at its reply address when triage read it as directed at grit"
+    ) {
+      val toGrit = VectorMap(
+        Tags.V2.gap -> Answer.Choice(
+          "asks",
+          Vector(Answer.Weight("asks", 1.0), Answer.Weight("nothing", 0.0)),
+          0.0
+        ),
+        Tags.V2.open -> Answer.YesNo(0.9),
+        Tags.V2.to -> Answer.YesNo(0.9),
+        Tags.V3.toGrit -> Answer.YesNo(0.9)
+      )
+      val named = heard.copy(tags = Tags.Weighed(toGrit, "jev", usage))
+      val unprompted = heard.copy(tags =
+        Tags.Weighed(toGrit.updated(Tags.V3.toGrit, Answer.YesNo(0.1)), "jev", usage)
+      )
+      val drafting = Decision.Drafting(turn)
+      Vector(
+        Speech.acknowledge(within, named, drafting),
+        Speech.acknowledge(Speaking.Shadow(limits), named, drafting),
+        Speech.acknowledge(Speaking.Off, named, drafting),
+        Speech.acknowledge(within, named, held(Silence.Room(2))),
+        Speech.acknowledge(within, unprompted, drafting)
+      ) ==> Vector(Some("C/1"), None, None, None, None)
     }
 
     test("what becomes of a named draft, unjudged: posted within, shadowed, withdrawn when off") {

@@ -257,6 +257,19 @@ object Speech {
     first.fold(Decision.Drafting(heard.turn))(Decision.Held(_))
   }
 
+  /** Where `heard` is marked as being answered while its turn runs, given `decision`, the one
+    * made on it under `speaking`: its reach's reply address when `decision` drafts it under
+    * [[Speaking.Within]] and triage read it as directed at grit ([[Tags.directed]]); `None`
+    * under `Shadow` or `Off`, for a held message, and for an unprompted draft, which mostly
+    * ends in silence after its judge.
+    */
+  def acknowledge(speaking: Speaking, heard: Heard, decision: Decision): Option[String] =
+    (speaking, decision) match {
+      case (Speaking.Within(_), Decision.Drafting(_)) if Tags.directed(heard.tags) =>
+        heard.reach.replyTo
+      case _ => None
+    }
+
   /** The priced part of `cost`: what a cap is compared with. */
   private def priced(cost: Cost): BigDecimal = cost match {
     case Cost.Exact(usd) => usd

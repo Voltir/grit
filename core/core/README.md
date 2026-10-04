@@ -80,7 +80,7 @@ In dependency order:
   answers, each under its question's name, or none; `Tags.V1`, the names and gate of the set
   triage first asked; `Tags.V2`, the names of the set it asked next, the gates over them a
   deployment composes, and its draft gate; `Tags.V3`, v2's and `to-grit`, whether a message is
-  directed at grit, with v3's draft gate and its `directed` branch; `Tags.V4`, v3's and
+  directed at grit, with v3's draft gate and its `directed` branch, which `Tags.directed` reads kept tags by; `Tags.V4`, v3's and
   `anchor-record`, whether what a message asks for is something no stored record could supply
   whoever it is asked of, with v4's draft gate) and `TriageStore`, where they are kept beside their entry and deleted
   with it; `Earning`, whether a period earns a written closing, by its heard messages'
@@ -100,7 +100,7 @@ In dependency order:
   shadow, or within `Limits`, whose windows are `Rate`s), a heard message as it is weighed
   (`Heard`, its `Reach`), the ledger it is weighed against (`Ledger`, each `Spoken` turn at its
   `Stage`), `Speech.decide` (drafted, or held for a `Silence`), and `Speech.post` (what becomes
-  of an unprompted draft the judge scored, `Judged`, as an `Outcome`; `Speech.postNamed`, of a named one, which is not judged; a posted draft's `Cleared` says which), `Speech.spoken` (the one hold: the
+  of an unprompted draft the judge scored, `Judged`, as an `Outcome`; `Speech.postNamed`, of a named one, which is not judged; a posted draft's `Cleared` says which), `Speech.acknowledge` (where a named draft's message is marked as being answered while its turn runs), `Speech.spoken` (the one hold: the
   assistant already replied after the heard message), `SpeechStore` (each heard
   message's `Reach`, and grit's decisions, kept with its period's usage) and `SpeechJson`
   (their stored form). ← `id`, `message`, `period`, `place`, `spend`, `store`, `triage`
@@ -178,7 +178,9 @@ In dependency order:
   edge reaches the engine through, ADR 0002) with the `Variable`s it `needs`, refused as an
   `EdgeRefusal`; `CatchUp`, what an edge hears once before serving, as `Unheard` per source;
   `Deliveries` (the replies an edge has yet
-  to post outside grit, each part `Posting` or `Posted`), and the tool calls an edge runs
+  to post outside grit, each part `Posting` or `Posted`), `Acknowledgements` (the messages an
+  edge marks as being answered while their turns run, each `Acknowledgement` shown or not),
+  and the tool calls an edge runs
   (ADR 0017): `ToolRequest` (one call, addressed to a
   workspace, with its `Permit` and retry), `OutcomeJson` (its answer's stored form),
   `Edges.authorize` (the one routing decision: an edge serves only the places it registered,
