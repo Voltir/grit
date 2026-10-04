@@ -167,7 +167,7 @@ object SyntheticTests extends TestSuite {
           a.name -> Reference.judge(
             a.expected.toVector,
             Synthetic.window(reader, a, Assembled.Shipped, width).toOption,
-            Set.empty
+            None
           )
         )
         judged(Width.Deployed) ==>

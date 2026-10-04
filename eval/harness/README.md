@@ -55,7 +55,8 @@ Packages, each importing only those above it:
   `KnowledgeJson`, the knowledge sources the deployment that recorded a corpus declares, each
   with the service it supplies, read from the `knowledge.json` written beside the corpus
   (grit's database keeps no declaration; its lines are the deployment's words, no
-  conversation's). `Fields`, the reader every file's JSON
+  conversation's), and only when the harness asks a turn: their lines are its questions'
+  words. `Fields`, the reader every file's JSON
   is read through.
 - **`label`** — a person's labels of a corpus's cases, kept apart from the cases so a
   recapture keeps them: `Labels`, read from `labels.json` as the labelling tool writes it, and
@@ -115,9 +116,13 @@ Packages, each importing only those above it:
   triage's answer; `Queries`, its query writes, each kept in a `Cache` under its request's
   key and asked under a `Budget`. `TurnVariant`, a named way to build a turn other than as
   shipped: a `grit.core.recipe.TurnRecipe`, applied to a recorded turn as a deployment
-  declaring it would apply it (`Shaped`: the tools left once `Offering.decide` has withheld
-  services by the root's per-source answers and the services the corpus's knowledge sources
-  supply, and the window's width; a variant past the reply model's context is refused).
+  declaring it would apply it (`Shaped`: for a turn that recorded its shape, its whole set
+  less the tools of each service `Offering.decide` withholds over the services and sources
+  the shape recorded, by the root's answers; a turn recorded before shapes offered as
+  recorded under every variant; and the window's width; a variant past the reply model's
+  context is refused). `TurnAnswers`, those answers: what the turn's `weigh` step recorded,
+  or, for a message said to grit its recipe did not read, live triage's set asked of it by
+  the harness, and only when a variant gates a service its shape recorded.
   `Reference`, what turns' builds are expected to do, by ids alone (`Expect`: a window holds
   what a locator names, or none of it, a service's tools are offered, or withheld), from a
   person's reply labels (an answer found in records shown) and a hand-written file, each turn

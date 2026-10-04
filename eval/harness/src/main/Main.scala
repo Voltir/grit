@@ -77,6 +77,7 @@ import grit.eval.harness.reply.{
   Reference,
   ReplyReview,
   Synthetic,
+  TurnAnswers,
   TurnAsk,
   TurnTriage,
   TurnVariant,
@@ -108,7 +109,6 @@ import grit.lifecycle.triage.TriageRecipe
 import grit.models.JevClassifier
 import grit.models.JevConfig
 import grit.models.{OpenRouterConfig, OpenRouterProvider, Seed}
-import grit.turn.{TurnOffer, TurnRecord}
 
 /** The eval harness's command line, run through `scripts/eval`, which says what each command
   * takes. It prints counts, ids and field names, never a message's text.
@@ -429,24 +429,27 @@ object Main {
     * <tokens>] [--tail <tokens>]`: each variant ([[TurnVariant.named]]) against shipped over
     * every turn of the corpus, written to `<dir>/reports/recipes-<yyyymmdd>.md` and printed
     * ([[Report.recipes]]). Refused, before anything is read, when a variant draws a window over
-    * `--context`, the reply model's context in tokens ([[grit.core.recipe.TurnRecipe.widens]]),
-    * and when the corpus has no `knowledge.json`, the knowledge sources of the deployment that
-    * recorded it ([[KnowledgeJson.read]]). A turn's triage answers are live triage's when it
-    * kept a question set's for the turn's message; else its message is put live triage's set
-    * ([[TurnTriage.ask]], with those sources) through Jev,
-    * once, the answer kept under `<cache>` so it is paid for once, under the `--spend` cap in
-    * USD: refused before any call when the calls not kept are estimated over it, and each call
-    * past it skipped. A message with no case id (a TUI or task turn's) is not asked. Each
-    * width's window is rebuilt as of the turn's assembly, its query replayed
-    * ([[Rebuild.recorded]]), and costed as capture costs a window ([[TurnCapture.costed]]);
-    * its tools are what it recorded less the services the variant withholds, their
-    * definitions costed as capture costs them ([[TurnCapture.schema]]); which services it
-    * withholds is decided as the turn would decide it ([[TurnVariant.shape]]). The reference is
-    * `--reference` (a file of ids, [[Reference.read]]; none when it does not exist) and the
-    * reply labels in `--labels` ([[Reference.labelled]]; none when it does not exist). Jev's
-    * key comes from the environment over `GRIT_ENV_FILE` (`.env` when unset), read only when
-    * a call is to be asked; the database's login from `GRIT_DATABASE_USER` and `_PASSWORD`. A
-    * call's latency is measured on `clock`.
+    * `--context`, the reply model's context in tokens ([[grit.core.recipe.TurnRecipe.widens]]).
+    * A turn's offering under a variant is decided over what it recorded
+    * ([[TurnVariant.shape]]), by the answers [[TurnAnswers.of]] gives it. A turn whose answers
+    * a variant reads and only asking gives ([[TurnAnswers.asks]]) has its message put live
+    * triage's set ([[TurnTriage.ask]]) through Jev, once, with the knowledge sources the
+    * deployment that recorded the corpus declares (its `knowledge.json`, [[KnowledgeJson.read]]),
+    * the answer kept under `<cache>` so it is paid for once, under the `--spend` cap in USD:
+    * refused before any call when such a turn's corpus has no `knowledge.json`, when the file
+    * is not the declaration the turn's shape was decided under ([[TurnAnswers.declared]]), or
+    * when the calls not kept are estimated over the cap; each call past it skipped. A message
+    * with no case id (a TUI or task turn's) is not asked. Each width's window is rebuilt as of
+    * the turn's assembly, its query replayed ([[Rebuild.recorded]]), and costed as capture costs
+    * a window ([[TurnCapture.costed]]); its tools are those of the set it draws from
+    * ([[grit.eval.harness.corpus.Offered.drawn]]) the variant offers, their definitions costed
+    * as capture costs them ([[TurnCapture.schema]]). The notes say, per variant, how many
+    * shaped turns it decides as they were recorded ([[TurnVariant.asRecorded]]), naming those
+    * it does not. The reference is `--reference` (a file of ids, [[Reference.read]]; none when
+    * it does not exist) and the reply labels in `--labels` ([[Reference.labelled]]; none when
+    * it does not exist). Jev's key comes from the environment over `GRIT_ENV_FILE` (`.env`
+    * when unset), read only when a call is to be asked; the database's login from
+    * `GRIT_DATABASE_USER` and `_PASSWORD`. A call's latency is measured on `clock`.
     */
   private def recipes(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
@@ -465,14 +468,6 @@ object Main {
       assembled = Assembled.Shipped.copy(window = window, tail = tail)
       variants <- Fields.each(named)(TurnVariant.named(_, assembled))
       _ <- refuseWide(variants, limit)
-      knowledgeAt = dir.resolve("knowledge.json")
-      knowledge <-
-        if (Files.exists(knowledgeAt)) read(knowledgeAt).flatMap(KnowledgeJson.read)
-        else
-          Left(
-            s"no $knowledgeAt: write the knowledge sources the deployment that recorded the " +
-              "corpus declares there"
-          )
       written <- f
         .get("reference")
         .map(Path.of(_))
@@ -490,24 +485,38 @@ object Main {
           .flatMap(CorpusJson.readManifest)
       )
       turns <- readTurns(dir)
+      asking = turns.filter(TurnAnswers.asks(_, variants))
+      knowledgeAt = dir.resolve("knowledge.json")
+      // Read only when a turn is to be asked: its questions' words.
+      knowledge <-
+        if (asking.isEmpty) Right(KnowledgeSources.Empty)
+        else if (Files.exists(knowledgeAt)) read(knowledgeAt).flatMap(KnowledgeJson.read)
+        else
+          Left(
+            s"refused: ${asking.size} turns are to be asked and there is no $knowledgeAt: " +
+              "write the knowledge sources the deployment that recorded the corpus declares there"
+          )
+      _ <- asking
+        .map(TurnAnswers.declared(_, knowledge))
+        .collectFirst { case Left(why) => why }
+        .toLeft(())
+        .left
+        .map(why => s"refused: $why")
       env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
       config <- DbConfig.fromEnv(env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       store = Cache.at[Vector[Weights]](cacheDir)
       text <- opened(config) { reader =>
         for {
-          offers <- Fields.each(turns)(t => offerOf(reader, t).map(t.workflow -> _))
-          offered = offers.toMap
-          live = turns.flatMap(t =>
-            t.triage.collect { case Live.Named(answers, _, _) => t.workflow -> answers }
-          )
-          unasked = turns.filterNot(t => live.exists(_._1 == t.workflow))
-          noCase = unasked.filter(t =>
+          // The set each turn draws its tools from, by the id it recorded.
+          sets <- Fields.each(turns)(t => drawn(reader, t).map(t.workflow -> _))
+          drawnSets = sets.toMap
+          noCase = asking.filter(t =>
             t.said match {
               case Said.Slack(_) => false
               case Said.Tui(_) | Said.Task(_) => true
             }
           )
-          built = unasked.collect {
+          built = asking.collect {
             case t @ TurnCase(_, _, _, Said.Slack(id), _, _, _, _, _, _, _, _, _, _, _, _) =>
               (t, id, TurnTriage.ask(reader, t, knowledge, manifest.tuning))
           }
@@ -536,15 +545,16 @@ object Main {
             }
             Run(calls, jev, model, store, budget, clock)
           }
-          asked = asks.zip(ran.rows).flatMap {
-            (ask: (TurnCase, CaseId, TurnAsk), r: Row[Vector[Weights]]) =>
+          asked = asks
+            .zip(ran.rows)
+            .flatMap { (ask: (TurnCase, CaseId, TurnAsk), r: Row[Vector[Weights]]) =>
               val (t, _, a) = ask
               r.outcome match {
                 case Outcome.Answered(ws) => TurnTriage.named(a, ws).map(t.workflow -> _)
                 case Outcome.Failed(_) | Outcome.Skipped => None
               }
-          }
-          answers = (live ++ asked).toMap
+            }
+            .toMap
           // Each turn's window at each width a variant draws it at, rebuilt once.
           widths = (TurnVariant.Shipped +: variants)
             .flatMap(v => turns.map(t => (t.workflow, v.recipe.at(TurnVariant.rooted(t)).width)))
@@ -562,25 +572,15 @@ object Main {
             )
             .toMap
         } yield {
-          def build(v: TurnVariant, t: TurnCase): (Given, Set[Service]) = {
-            val (offer, set) = offered.getOrElse(t.workflow, (None, Vector.empty))
-            val shaped = TurnVariant.shape(
-              v,
-              TurnVariant.rooted(t),
-              offer,
-              set,
-              answers.get(t.workflow),
-              knowledge
-            )
-            val drawn = windows.get((t.workflow, shaped.width)).flatMap(_.toOption)
+          def answersOf(t: TurnCase) = TurnAnswers.of(t, asked.get(t.workflow))
+          def build(v: TurnVariant, t: TurnCase): (Given, Option[Set[Service]]) = {
+            val shaped = TurnVariant.shape(v, t, answersOf(t))
+            val tools =
+              drawnSets.getOrElse(t.workflow, Vector.empty).filter(e => shaped.offers(e.name))
+            val drawnWindow = windows.get((t.workflow, shaped.width)).flatMap(_.toOption)
             (
-              Given(shaped.tools.map(_.name), TurnCapture.schema(shaped.tools), drawn),
+              Given(tools.map(_.name), TurnCapture.schema(tools), drawnWindow),
               shaped.services
-                .filter(s =>
-                  !s.withheld && offer.exists(o => TurnVariant.toolsOf(o, s.service).nonEmpty)
-                )
-                .map(_.service)
-                .toSet
             )
           }
           val prices = Prices.of(turns.flatMap(_.spend))
@@ -601,8 +601,15 @@ object Main {
           val notRebuilt = windows.collect { case ((w, _), Left(why)) =>
             s"  ${WorkflowId.value(w)}: $why"
           }
+          val exact = variants.map { v =>
+            val judged =
+              turns.flatMap(t => TurnVariant.asRecorded(v, t, answersOf(t)).map(t.workflow -> _))
+            val differ = judged.collect { case (w, false) => WorkflowId.value(w) }
+            s"${v.name}: decides ${judged.count(_._2)} of ${judged.size} shaped turns' services " +
+              "as recorded" + (if (differ.isEmpty) "" else s"; not: ${differ.mkString(", ")}")
+          }
           val notes = Vector(
-            s"turns: ${turns.size}; triage's answers kept live ${live.size}, Jev's (kept or asked) " +
+            s"turns: ${turns.size}; to be asked for answers ${asking.size}: answered " +
               s"${asked.size}, not asked for want of a case id ${noCase.size}, not built " +
               s"${built.count(_._3.isLeft)}, asked and unanswered or skipped " +
               s"${asks.size - asked.size}",
@@ -610,7 +617,7 @@ object Main {
               s"${Mills.withUsd(cap)}, spent ${Mills.withUsd(ran.budget.spent)}",
             s"reference turns: ${reference.turns.size} (labelled ${Reference.labelled(labelled).turns.size})",
             s"windows rebuilt: ${windows.count(_._2.isRight)} of ${windows.size}"
-          ) ++ notRebuilt.toVector.sorted ++ built.collect { case (t, _, Left(why)) =>
+          ) ++ exact ++ notRebuilt.toVector.sorted ++ built.collect { case (t, _, Left(why)) =>
             s"  not asked: ${WorkflowId.value(t.workflow)}: $why"
           }
           Report.recipes(corpus, notes, prices, varied(TurnVariant.Shipped), variants.map(varied))
@@ -692,7 +699,7 @@ object Main {
                 Reference.judge(
                   a.expected.toVector,
                   windows.get((a.name, w)).flatMap(_.toOption),
-                  Set.empty
+                  None
                 )
               )
             )
@@ -752,28 +759,17 @@ object Main {
   /** What that engine takes new messages under: no cap, as none is ever sent it. */
   private val Uncapped: grit.core.spend.Budget = grit.core.spend.Budget(ZoneOffset.UTC, None)
 
-  /** The offer `t` recorded and its tool set's entries, before anything was withheld when its
-    * offer was shaped ([[grit.turn.TurnShape.whole]]), read through `reader`; none when it
-    * recorded no offer.
+  /** The entries of the set `t` draws its tools from ([[Offered.drawn]]), read through
+    * `reader`; none when it recorded no offer.
     */
-  private def offerOf(
-      reader: Reader^,
-      t: TurnCase
-  ): Either[String, (Option[TurnOffer.Recorded], Vector[ToolSet.Entry])] = {
-    val name = WorkflowId.value(t.workflow)
-    for {
-      steps <- reader.steps(t.workflow).left.map(e => s"steps of $name unread: ${Capture.kind(e)}")
-      offer <- TurnRecord.offer(steps).left.map(why => s"offer of $name unread: $why")
-      set <- offer.fold[Either[String, Vector[ToolSet.Entry]]](Right(Vector.empty))(o =>
-        // The whole set, when shaped: a variant may offer a tool live withheld.
-        reader.db
-          .read(reader.toolSets.get(o.shaped.fold(o.tools)(_.whole)))
-          .map(_.tools)
-          .left
-          .map(e => s"tool set of $name unread: ${Capture.kind(e)}")
-      )
-    } yield (offer, set)
-  }
+  private def drawn(reader: Reader^, t: TurnCase): Either[String, Vector[ToolSet.Entry]] =
+    t.offered.fold[Either[String, Vector[ToolSet.Entry]]](Right(Vector.empty))(o =>
+      reader.db
+        .read(reader.toolSets.get(o.drawn))
+        .map(_.tools)
+        .left
+        .map(e => s"tool set of ${WorkflowId.value(t.workflow)} unread: ${Capture.kind(e)}")
+    )
 
   /** The turns of the corpus in `dir`, from `turns.jsonl`. */
   private def readTurns(dir: Path): Either[String, Vector[TurnCase]] =

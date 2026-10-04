@@ -188,16 +188,20 @@
 #       those the variant still offers), window tokens per part, used-section recall (stated
 #       undefined when no reply used a part) and the turns each changed, by id; then the
 #       reference turns' pass rate under shipped and each variant. --context is the reply
-#       model's context in tokens: a variant drawing a window over it is refused. The
-#       knowledge sources, and the service each supplies, are those the deployment that
-#       recorded the corpus declares, written beside it as
+#       model's context in tokens: a variant drawing a window over it is refused. A turn's
+#       offering under a variant is decided over what it recorded: the services, sources and
+#       tools of its shape, by the answers its weigh step recorded; a turn recorded before
+#       shapes is offered as recorded under every variant, and the notes say how many shaped
+#       turns each variant decides as recorded, naming those it does not. A message said to
+#       grit whose recipe did not read it, where a variant gates a service its shape recorded,
+#       is put live triage's set, as the database stood when the turn started, through Jev
+#       once (a TUI or task turn's, with no case id, is not asked), with the knowledge
+#       sources the deployment that recorded the corpus declares, written beside it as
 #       .local/eval/corpus/<date>/knowledge.json ({"sources": [{"name", "line", "within",
 #       "supplies"}]}, supplies a service's name, absent for a source no service's tools reach;
 #       its lines are the deployment's words, no conversation's), since grit's database keeps
-#       no declaration; refused when it is missing. A turn's
-#       triage answers are live triage's when it kept a question set's; else its message is
-#       put live triage's set as heard, as the database stood when the turn started, through
-#       Jev once (a TUI or task turn's, with no case id, is not asked), each answer kept in
+#       no declaration: refused when such a turn is to be asked and the file is missing, or
+#       disagrees with the sources the turn's shape records. Each answer is kept in
 #       .local/eval/cache/; --spend is a hard cap in USD: refused before any call when the
 #       calls not kept are estimated over it, each call past it skipped. Windows are rebuilt
 #       as rebuild draws them. The reference is .local/eval/reference.json ({"turns":

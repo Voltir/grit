@@ -33,7 +33,9 @@ enum Judged {
   /** One did not. */
   case Fail
 
-  /** None failed, and one could not be judged: it expects a window that was not rebuilt. */
+  /** None failed, and one could not be judged: it expects a window that was not rebuilt, or a
+    * service's tools of a turn whose services were not recorded.
+    */
   case Unjudged
 }
 
@@ -95,14 +97,19 @@ object Reference {
     } yield Reference(VectorMap.from(each))
 
   /** How `expected` stands of a turn whose window is `window` (`None` when it was not
-    * rebuilt), offered a tool of each of `offered`.
+    * rebuilt), offered a tool of each of `offered` (`None` when its services were not
+    * recorded).
     */
-  def judge(expected: Vector[Expect], window: Option[Parts], offered: Set[Service]): Judged = {
+  def judge(
+      expected: Vector[Expect],
+      window: Option[Parts],
+      offered: Option[Set[Service]]
+  ): Judged = {
     val each = expected.map {
       case Expect.Holds(at) => window.map(w => Locator.held(at, w.parts))
       case Expect.Omits(at) => window.map(w => !Locator.anyHeld(at, w.parts))
-      case Expect.Offers(s) => Some(offered.contains(s))
-      case Expect.Withholds(s) => Some(!offered.contains(s))
+      case Expect.Offers(s) => offered.map(_.contains(s))
+      case Expect.Withholds(s) => offered.map(!_.contains(s))
     }
     if (each.contains(Some(false))) Judged.Fail
     else if (each.contains(None)) Judged.Unjudged

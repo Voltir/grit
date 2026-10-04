@@ -27,14 +27,16 @@ object ReferenceTests extends TestSuite {
 
   val tests = Tests {
     test("holds passes when the window shows every entry its locator names, else fails") {
-      def judge(w: Option[Parts]) = Reference.judge(Vector(Expect.Holds(messages)), w, Set.empty)
+      def judge(w: Option[Parts]) =
+        Reference.judge(Vector(Expect.Holds(messages)), w, Some(Set.empty))
       // Seqs 1 and 2 across two parts of any kind; with 2 missing, it fails.
       judge(window(part(Part.Kind.Open, 1), part(Part.Kind.Recent, 2, 3))) ==> Judged.Pass
       judge(window(part(Part.Kind.Open, 1, 3))) ==> Judged.Fail
     }
 
     test("omits passes when the window shows none of its locator's entries, and fails on one") {
-      def judge(w: Option[Parts]) = Reference.judge(Vector(Expect.Omits(messages)), w, Set.empty)
+      def judge(w: Option[Parts]) =
+        Reference.judge(Vector(Expect.Omits(messages)), w, Some(Set.empty))
       // Seqs 1 and 2 are named; a window showing 1 alone shows one of them.
       judge(window(part(Part.Kind.Open, 3))) ==> Judged.Pass
       judge(window(part(Part.Kind.Recent, 1, 3))) ==> Judged.Fail
@@ -42,22 +44,33 @@ object ReferenceTests extends TestSuite {
     }
 
     test("a record is held only by a record or a closed part showing its closing") {
-      def judge(w: Option[Parts]) = Reference.judge(Vector(Expect.Holds(record)), w, Set.empty)
+      def judge(w: Option[Parts]) =
+        Reference.judge(Vector(Expect.Holds(record)), w, Some(Set.empty))
       judge(window(part(Part.Kind.Closed, 4))) ==> Judged.Pass
       judge(window(part(Part.Kind.Recent, 4))) ==> Judged.Fail
     }
 
     test("a holds of a window not rebuilt is unjudged, unless another expectation fails") {
-      Reference.judge(Vector(Expect.Holds(record)), None, Set.empty) ==> Judged.Unjudged
-      Reference.judge(Vector(Expect.Holds(record), Expect.Offers(github)), None, Set.empty) ==>
+      Reference.judge(Vector(Expect.Holds(record)), None, Some(Set.empty)) ==> Judged.Unjudged
+      Reference.judge(
+        Vector(Expect.Holds(record), Expect.Offers(github)),
+        None,
+        Some(Set.empty)
+      ) ==>
         Judged.Fail
     }
 
     test("offers passes when a tool of the service is offered, withholds when none is") {
-      Reference.judge(Vector(Expect.Offers(github)), None, Set(github)) ==> Judged.Pass
-      Reference.judge(Vector(Expect.Offers(github)), None, Set.empty) ==> Judged.Fail
-      Reference.judge(Vector(Expect.Withholds(github)), None, Set.empty) ==> Judged.Pass
-      Reference.judge(Vector(Expect.Withholds(github)), None, Set(github)) ==> Judged.Fail
+      Reference.judge(Vector(Expect.Offers(github)), None, Some(Set(github))) ==> Judged.Pass
+      Reference.judge(Vector(Expect.Offers(github)), None, Some(Set.empty)) ==> Judged.Fail
+      Reference.judge(Vector(Expect.Withholds(github)), None, Some(Set.empty)) ==> Judged.Pass
+      Reference.judge(Vector(Expect.Withholds(github)), None, Some(Set(github))) ==> Judged.Fail
+    }
+
+    test("a service's expectation of a turn whose services were not recorded is unjudged") {
+      Vector(Expect.Offers(github), Expect.Withholds(github)).map(e =>
+        Reference.judge(Vector(e), None, None)
+      ) ==> Vector(Judged.Unjudged, Judged.Unjudged)
     }
 
     test("a label whose answer was found in records shown expects each held; others nothing") {

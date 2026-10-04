@@ -8,23 +8,53 @@ import grit.core.id.QuestionName
 import grit.core.message.Tokens
 import grit.core.period.Probability
 import grit.core.place.Service
-import grit.core.recipe.{ByFocus, Offering, Rooted, ServiceOffer, Shaping, TurnRecipe}
-import grit.core.tool.{ToolName, ToolSet}
-import grit.core.triage.KnowledgeSources
+import grit.core.recipe.{ByFocus, Offering, Rooted, Shaping, TurnRecipe}
+import grit.core.tool.ToolName
 import grit.eval.harness.corpus.TurnCase
-import grit.turn.TurnOffer
+import grit.turn.{TurnOffer, TurnShape}
 
 /** A named way to build a turn other than as shipped: a recipe, applied to a recorded turn as
   * a deployment declaring it would apply it.
   */
 final case class TurnVariant(name: String, recipe: TurnRecipe)
 
-/** What a recorded turn is given under a variant: the `tools` it is offered, in the order
-  * recorded; each service it took tools from as the variant's offering decided it
-  * (`services`: its workspace's first, then those it reached, by name); and the
-  * `width` its window is drawn at.
+/** What a recorded turn is given under a variant: how its tools are offered, and the `width`
+  * its window is drawn at.
   */
-final case class Shaped(tools: Vector[ToolSet.Entry], services: Vector[ServiceOffer], width: Width)
+final case class Shaped(offering: Shaped.Offering, width: Width) {
+
+  /** Whether it is offered `name`, a tool of the set it draws from
+    * ([[grit.eval.harness.corpus.Offered.drawn]]).
+    */
+  def offers(name: ToolName): Boolean = offering match {
+    case Shaped.Offering.AsRecorded(tools) => tools.contains(name)
+    case Shaped.Offering.Decided(services) =>
+      !services.exists(t => t.offer.withheld && t.tools.contains(name))
+  }
+
+  /** The services it is offered a tool of; `None` when its services were not recorded. */
+  def services: Option[Set[Service]] = offering match {
+    case Shaped.Offering.AsRecorded(_) => None
+    case Shaped.Offering.Decided(services) =>
+      Some(services.filter(t => !t.offer.withheld && t.tools.nonEmpty).map(_.offer.service).toSet)
+  }
+}
+
+object Shaped {
+
+  enum Offering {
+
+    /** As it was offered, `tools`: a turn recorded before shapes, or with no offer, under every
+      * variant.
+      */
+    case AsRecorded(tools: Vector[ToolName])
+
+    /** Each service its shape recorded, in order, as the variant decided it, with the tools
+      * the turn took from it: withheld or offered whole.
+      */
+    case Decided(services: Vector[TurnShape.Took])
+  }
+}
 
 object TurnVariant {
 
@@ -71,46 +101,51 @@ object TurnVariant {
     case TurnOffer.Root.Addressed => Rooted.Addressed
   }
 
-  /** What a turn rooted as `rooted` is given under `v`: what it recorded it was offered
-    * (`offer`, `None` when it recorded none, and its tool set `set`) less the tools of each
-    * service `v`'s offering withholds ([[Offering.decide]]) by the root's `answers` (`None`:
-    * it has none); and its width. The services, their sources and their tools are those the
-    * offer recorded in its shape ([[grit.turn.TurnShape]]); for an offer recorded before
-    * shapes, those [[toolsOf]] infers, supplied as `knowledge` says. A tool withheld live is
-    * offered under `v` only when `set` is the shape's whole set ([[grit.turn.TurnShape.whole]]).
+  /** What `t` is given under `v`, by its root's `answers` (`None`: it has none;
+    * [[TurnAnswers.of]]): a turn that recorded a shape is offered every tool of its whole set
+    * but those of each service `v`'s offering withholds, decided by [[Offering.decide]] over
+    * the services and supplying sources the shape recorded; any other turn is offered as
+    * recorded. Its window is drawn at `v`'s width for its root either way.
     */
   def shape(
       v: TurnVariant,
-      rooted: Rooted,
-      offer: Option[TurnOffer.Recorded],
-      set: Vector[ToolSet.Entry],
-      answers: Option[VectorMap[QuestionName, Answer]],
-      knowledge: KnowledgeSources
+      t: TurnCase,
+      answers: Option[VectorMap[QuestionName, Answer]]
   ): Shaped = {
-    val shaping = v.recipe.at(rooted)
-    val recorded = offer.flatMap(_.shaped)
-    val services = recorded.fold(
-      offer.toVector.flatMap(o =>
-        (o.workspace.flatMap(_.service).toVector ++
-          o.reached.values.flatMap(_.service).toVector.sortBy(_.name)).distinct
-      )
-    )(_.services.map(_.offer.service))
-    val supplied = recorded.fold(knowledge.supplied)(r =>
-      VectorMap.from(r.services.map(t => t.offer.service -> t.offer.sources))
-    )
-    val decided = Offering.decide(shaping.offering, supplied, services, answers)
-    val withheld =
-      decided.filter(_.withheld).flatMap(s => offer.toVector.flatMap(toolsOf(_, s.service))).toSet
-    Shaped(set.filterNot(e => withheld.contains(e.name)), decided, shaping.width)
+    val shaping = v.recipe.at(rooted(t))
+    val offering = t.offered.flatMap(_.shape) match {
+      case Some(recorded) => Shaped.Offering.Decided(decided(shaping.offering, recorded, answers))
+      case None => Shaped.Offering.AsRecorded(t.offered.fold(Vector.empty)(_.tools))
+    }
+    Shaped(offering, shaping.width)
   }
 
-  /** The tools `offer` took from `service`'s edge's advert, withheld or not: as its shape
-    * recorded them; for an offer recorded before shapes, its workspace's advertised tools when
-    * the service is its workspace, and those reached there.
+  /** Whether `v`, by `answers`, decides each service `t`'s shape recorded as the turn decided
+    * it; `None` when `t` recorded no shape. Given the answers the turn recorded, the variant
+    * whose recipe it ran under decides every one as recorded.
     */
-  def toolsOf(offer: TurnOffer.Recorded, service: Service): Set[ToolName] =
-    offer.shaped.fold(
-      (if (offer.workspace.contains(service.place)) offer.advertised.toSet else Set.empty) ++
-        offer.reached.collect { case (n, p) if p == service.place => n }
-    )(_.services.filter(_.offer.service == service).flatMap(_.tools).toSet)
+  def asRecorded(
+      v: TurnVariant,
+      t: TurnCase,
+      answers: Option[VectorMap[QuestionName, Answer]]
+  ): Option[Boolean] =
+    t.offered
+      .flatMap(_.shape)
+      .map(recorded =>
+        decided(v.recipe.at(rooted(t)).offering, recorded, answers).map(_.offer) ==
+          recorded.services.map(_.offer)
+      )
+
+  /** Each service `shape` recorded, in order, as `offering` decides it by `answers`. */
+  private def decided(
+      offering: Offering,
+      shape: TurnShape,
+      answers: Option[VectorMap[QuestionName, Answer]]
+  ): Vector[TurnShape.Took] = {
+    val supplied = VectorMap.from(shape.services.map(t => t.offer.service -> t.offer.sources))
+    // decide gives one verdict per service, in order.
+    shape.services
+      .zip(Offering.decide(offering, supplied, shape.services.map(_.offer.service), answers))
+      .map((took, offer) => took.copy(offer = offer))
+  }
 }
