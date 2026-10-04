@@ -34,7 +34,7 @@ private[report] object RecipeLines {
       "",
       "Each variant against shipped, paired on the same turns, shipped's window rebuilt as of " +
         "the turn's assembly like the variant's. Text-free: ids, counts, tokens and prices (in " +
-        "mills, a mill $0.001). A rate's " +
+        "millidollars, m$, $0.001). A rate's " +
         "interval is Wilson's at 95% on its effective number, clustered by conversation (a " +
         s"thread), and none under ${Proportion.MinClusters} threads; a per-turn figure is a mean.",
       ""
@@ -129,7 +129,7 @@ private[report] object RecipeLines {
       "grit records no price, so each model's is read from the corpus's ledger rows: least " +
         "squares over its priced rows of cost = input × (input − cached tokens) + cached × " +
         "cached tokens + output × output tokens, the cached rate left out where no row has a " +
-        "cached token. Off by: the most the rates misprice one of those rows. In mills per " +
+        "cached token. Off by: the most the rates misprice one of those rows. In m$ per " +
         "1000 tokens, the same number as dollars per million.",
       ""
     ) ++ (if (prices.rates.isEmpty) Vector("No ledger row.")
@@ -241,9 +241,9 @@ private[report] object RecipeLines {
     Vector(head.mkString("| ", " | ", " |"), head.map(_ => "---").mkString("|", "|", "|")) ++
       rows.map(_.mkString("| ", " | ", " |"))
 
-  private def mills(usd: Double): String = Mills.of(BigDecimal(usd))
+  private def mills(usd: Double): String = Mills.figure(BigDecimal(usd))
 
-  /** A per-token rate in USD as mills per 1000 tokens, four significant digits. */
+  /** A per-token rate in USD as m$ per 1000 tokens, four significant digits. */
   private def perThousand(usd: Double): String = f"${usd * 1e6}%.4g"
 
   /** How much `price` is below the uncached price, as a share of it. */

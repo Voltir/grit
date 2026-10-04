@@ -70,7 +70,7 @@ object RecipeReportTests extends TestSuite {
       )
     }
 
-    test("the tools withheld are priced in mills, with their range, hit rate and the cache's cut") {
+    test("the tools withheld are priced in m$, with their range, hit rate and the cache's cut") {
       val report = Report
         .recipes(
           "20261005",
@@ -94,7 +94,7 @@ object RecipeReportTests extends TestSuite {
       price.find(_.startsWith("| offer-0.3 |")) ==> Some(
         "| offer-0.3 | 2 | 0.111 (1000/9000 in 1 thread) too few threads for an interval | 8356 | " +
           "4178 estimated in 1 call | " +
-          "2.3 mills | 0.25 mills to 2.5 mills | 10% | 90% | 0 |"
+          "m$2.3 | m$0.25 to m$2.5 | 10% | 90% | 0 |"
       )
       price.filter(l => l.startsWith("| m/a | 0.3000") || l.startsWith("| jev | none:")) ==> Vector(
         "| m/a | 0.3000 | 0.03000 | 2.500 | 52 | 1 | 0.0% |",

@@ -2,8 +2,8 @@
 # The eval harness (eval/harness/README.md), run with mill out of the loop: mill builds the
 # launcher and exits, then java runs the harness directly.
 #
-# Every price is shown in mills (a mill is $0.001), an exact amount (a run's spend, a cap)
-# with its dollars beside it; --spend caps are given in USD.
+# Every price is shown in millidollars, written m$ (m$1 is $0.001); --spend caps are given
+# in USD.
 #
 #   scripts/eval capture --from <database> [--date <yyyymmdd>]
 #       A corpus of <database>'s heard messages, in .local/eval/corpus/<date>/ (date: today,
@@ -182,7 +182,7 @@
 #       and their definitions' tokens saved, what those are worth (tokens saved once a
 #       main-model call as the provider counts them (grit's estimate scaled by a per-model
 #       ratio fitted from the ledger, or the raw estimate, labelled, where too few calls give
-#       one), effective mills with each call's share cached at the cached rate, the
+#       one), effective m$ with each call's share cached at the cached rate, the
 #       range from all cached to none, the hit rate, and each model's rates as read from the
 #       ledger), called-tool recall (of the tools a turn called,
 #       those the variant still offers), window tokens per part, used-section recall (stated

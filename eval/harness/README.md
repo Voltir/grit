@@ -22,9 +22,8 @@ corpus was restored to.
 
 Packages, each importing only those above it:
 
-- **`stats`** — `Mills`, a USD amount as every report shows a price: in mills, an exact
-  amount (a sum of ledger costs, a run's spend, a cap) with its dollars beside it, a mean or
-  a quantile in mills alone; `Estimate`, a mean with its standard error clustered (CR1), its 95% interval
+- **`stats`** — `Mills`, a USD amount as every report shows a price: in millidollars,
+  written `m$2.9`; `Estimate`, a mean with its standard error clustered (CR1), its 95% interval
   and the least difference a paired comparison of its precision detects, over Student's t;
   and `Proportion`, how many items hit, with Wilson's 95% interval on their effective number
   (n over the clustered design effect), none under `Proportion.MinClusters` clusters, its
@@ -188,7 +187,7 @@ Packages, each importing only those above it:
   each section over every turn, by root and by where said, then a line a turn by cost, with
   the used-part threshold stated as a heuristic and used-section recall stated undefined where
   no reply said anything. Turn variants against shipped: `Report.recipes`, each `Varied`
-  variant's tools (called-tool recall first), what the tools withheld are worth in mills
+  variant's tools (called-tool recall first), what the tools withheld are worth in m$
   beside the hit rate and how far the cache moves it, the rates they were priced at, window
   tokens by part, used-section recall
   (stated undefined when no reply used a part), the turns it changed, and the reference

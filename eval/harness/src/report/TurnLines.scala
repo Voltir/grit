@@ -32,8 +32,8 @@ private[report] object TurnLines {
         Structure.unjoined(turns, verdicts),
       Report.shapes(Shapes.of(turns)),
       "",
-      "Text-free: ids, counts, tokens and prices. A price is in mills (a mill is $0.001), and an " +
-        "exact amount in dollars beside it. A rate's interval is Wilson's at 95% on its " +
+      "Text-free: ids, counts, tokens and prices. A price is in millidollars, m$ ($0.001). " +
+        "A rate's interval is Wilson's at 95% on its " +
         "turns' effective number, clustered by conversation (a thread), and none under " +
         s"${Proportion.MinClusters} threads; a spread is mean / p50 / p90 by nearest rank.",
       ""
@@ -134,7 +134,7 @@ private[report] object TurnLines {
 
     val paid = Paid.values.toVector.filter(p => all.cost.contains(p))
     val costing = Vector(
-      "## Cost per turn (mills)",
+      "## Cost per turn",
       "",
       "By what each call paid for, 0 in a turn without it; rounds are a loop's calls together. " +
         "A ledger row with no cost adds nothing and is counted as unpriced.",
@@ -282,7 +282,7 @@ private[report] object TurnLines {
       if (named.isEmpty) "—" else named.mkString(", "),
       t.window.fold("—")(w => s"${Tokens.value(w.parts.foldLeft(w.gaps + w.own)(_ + _.tokens))}"),
       first.fold("—")(s => s"${Tokens.value(s.estimated)} / ${Tokens.value(s.usage.input)}"),
-      Mills.withUsd(c),
+      Mills.figure(c),
       t.window
         .map(w => Support.top(w.parts, 3))
         .filter(_.nonEmpty)

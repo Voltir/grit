@@ -171,7 +171,7 @@ object Report {
 
   /** A recipes run over `corpus`: `notes` (lines on how it ran) first; then each of
     * `variants` against shipped on tools offered (called-tool recall first among them), what
-    * the tools withheld are worth (tokens saved, their effective price in mills with the range
+    * the tools withheld are worth (tokens saved, their effective price in m$ with the range
     * from every token cached to none, the hit rate beside it, and how far the cache moves it)
     * and the `prices` they were reckoned with (each model's scale from grit's estimate to the
     * provider's tokens and its rates, each with how it was read, or why it has none); window tokens by part, used-section recall (stated undefined when no reply used a
@@ -397,7 +397,7 @@ object Report {
     Vector(
       s"## Spend and latency${if (which.isEmpty) "" else s": $which"}",
       "",
-      s"spent: ${s.spent.fold("no footer")(Mills.withUsd)}; rows ${s.rows}: answered " +
+      s"spent: ${s.spent.fold("no footer")(Mills.figure)}; rows ${s.rows}: answered " +
         s"${s.counts.answered} (cached ${s.counts.cached}), failed ${s.counts.failed}, " +
         s"skipped ${s.counts.skipped}",
       s"tokens of the rows answered: input ${s.input}, output ${s.output}",
@@ -647,7 +647,7 @@ object Report {
       Vector(
         "### Size of triage's calls",
         "",
-        "| run | calls answered | input tokens: mean | p90 | cost, mills: mean | p90 |",
+        "| run | calls answered | input tokens: mean | p90 | cost: mean | p90 |",
         "|---|---|---|---|---|---|",
         size("A", Size.of(a.log.rows)),
         size("B", Size.of(b.log.rows)),
