@@ -10,7 +10,7 @@ import grit.core.persona.Persona
   */
 object PersonaJson {
 
-  /** The persona `text` holds: `{"name": "Bort"}`, its name as [[Persona.of]] reads it. Why
+  /** The persona `text` holds: `{"name": "Pip"}`, its name as [[Persona.of]] reads it. Why
     * not, when it is not of that form or the name is refused.
     */
   def read(text: String): Either[String, Persona] =

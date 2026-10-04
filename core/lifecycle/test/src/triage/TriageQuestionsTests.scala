@@ -167,8 +167,8 @@ object TriageQuestionsTests extends TestSuite {
     }
 
     test("v3 asks V2's words with to-grit after to, naming the persona, and drafts by v3's gate") {
-      val bort = Persona.of("Bort").getOrElse(fail("a persona"))
-      val set = TriageQuestions.v3(bort)
+      val pip = Persona.of("Pip").getOrElse(fail("a persona"))
+      val set = TriageQuestions.v3(pip)
       set.questions(catalog).keys.map(QuestionName.value).toVector ==> Vector(
         "gap",
         "open",
@@ -185,7 +185,7 @@ object TriageQuestionsTests extends TestSuite {
       set.questions(catalog).get(n("to-grit")) ==> Some(
         Question.YesNo(
           "Read new_message and thread. Is new_message directed at the assistant, whom people " +
-            "here call Bort, rather than at someone else or at the room? Saying its name to " +
+            "here call Pip, rather than at someone else or at the room? Saying its name to " +
             "it, or replying to what Assistant said in thread, directs it at the assistant; " +
             "talking about it does not.",
           None,
@@ -195,7 +195,7 @@ object TriageQuestionsTests extends TestSuite {
       (set.speak, TriageQuestions.v3(Persona.Grit).speak, TriageQuestions.ShippedSpeak) ==>
         (Tags.V3.drafts, Tags.V3.drafts, Tags.V3.drafts)
       set.unread(set.speak, KnowledgeSources.Empty) ==> None
-      TriageQuestions.shipped(bort) ==> set
+      TriageQuestions.shipped(pip) ==> set
     }
 
     test("V2 drafts at its bounds: 0.5 passes at least and fails below; a missing answer is None") {

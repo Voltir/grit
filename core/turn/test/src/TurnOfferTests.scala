@@ -405,7 +405,7 @@ object TurnOfferTests extends TestSuite {
             Vector(fragment, TurnPrompt.reach(None, ToolSet.Empty))
         )
         .render
-      val heard = Payload.Heard("bort, is it Thursday?")
+      val heard = Payload.Heard("pip, is it Thursday?")
       // At the bound the gate's directed branch reads, and just under it.
       offeredAs(slack, heard, weighed = triaged(0.5)) ==> (
         prompt(TurnPrompt.named),
