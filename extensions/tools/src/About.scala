@@ -3,6 +3,7 @@ package grit.tools
 import scala.io.{Codec, Source}
 import scala.util.Using
 
+import grit.core.persona.Persona
 import grit.core.tool.{Args, Field, Gate, Outcome, Retry, Tool, ToolName, ToolSpec}
 
 /** `about`: what grit is and how it works, for when the person asks, from docs shipped with
@@ -22,30 +23,40 @@ object About {
   }
 
   /** `about` over the docs this module ships (`about/{key}.md` among its resources), read
-    * now. Each call is answered with the doc of the subject asked for, or the overview; the
-    * tool reads nothing more and never fails. `Left` naming each doc that is missing or
-    * empty.
+    * now. Each call is answered with the doc of the subject asked for, or, with none, who the
+    * assistant is, then the overview: "You are called {name}." for [[Persona.Grit]], and for
+    * any other `persona` "You are called {name}, a persona of grit: grit is the harness you
+    * run on, described below."; the tool reads nothing more and never fails. `Left` naming
+    * each doc that is missing or empty.
     */
-  def load(): Either[String, Tool[Option[Subject]]] = {
+  def load(persona: Persona): Either[String, Tool[Option[Subject]]] = {
     val read = Subject.values.toVector.map(s => s -> doc(s.key))
     read.collect { case (s, None) => s.key } match {
       case missing if missing.nonEmpty =>
         Left(s"about: no doc for ${missing.map(k => s"about/$k.md").mkString(", ")}")
       case _ =>
         val docs: Map[Subject, String] = read.collect { case (s, Some(text)) => s -> text }.toMap
-        Right(tool(docs))
+        Right(tool(docs, who(persona)))
     }
   }
 
-  /** The tool answering from `docs`, one for each subject. */
-  private def tool(docs: Map[Subject, String]): Tool[Option[Subject]] =
+  /** The line the overview opens with: who `persona` is. */
+  private def who(persona: Persona): String =
+    if (persona == Persona.Grit) s"You are called ${persona.name}."
+    else
+      s"You are called ${persona.name}, a persona of grit: grit is the harness you run on, " +
+        "described below."
+
+  /** The tool answering from `docs`, one for each subject, the overview after `who`. */
+  private def tool(docs: Map[Subject, String], who: String): Tool[Option[Subject]] =
     new Tool(
       ToolSpec(
         ToolName("about"),
-        "What grit, the harness you work in, is and how it works: its memory (no " +
-          "transcript), the [record], [afar] and [gap] labels, periods and how they close, " +
-          "and places and edges. Call it when the person asks about grit. `topic` picks one; " +
-          "without it, the overview.",
+        "Who you are, and what grit, the harness you run on, is and how it works: the name " +
+          "you are called by, grit's memory (no transcript), the [record], [afar] and [gap] " +
+          "labels, periods and how they close, and places and edges. Call it when the person " +
+          "asks who you are or about grit. `topic` picks one part of grit; without it, who " +
+          "you are and the overview.",
         Args
           .of(
             (topic =
@@ -63,7 +74,10 @@ object About {
       ),
       Gate.Free,
       topic => topic.fold("")(_.key),
-      topic => Outcome.Done(docs.getOrElse(topic.getOrElse(Subject.Grit), ""))
+      {
+        case None => Outcome.Done(s"$who\n\n${docs.getOrElse(Subject.Grit, "")}")
+        case Some(subject) => Outcome.Done(docs.getOrElse(subject, ""))
+      }
     )
 
   /** The doc at `about/{key}.md`, trimmed; `None` when it is missing or blank. */

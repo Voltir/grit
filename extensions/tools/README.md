@@ -14,4 +14,4 @@ One package, `grit.tools`:
 - `Tuning` — `propose_model_setting`: a measured setting of a model, kept once a person
   approves it.
 - `Probes` — `probe_pair`: a battery of calls measuring a (model, upstream) pair.
-- `About` — `about`: what grit is and how it works, from the docs in `resources/about`.
+- `About` — `about`: who the assistant is (its deployment's persona) and what grit is and how it works, from the docs in `resources/about`.

@@ -271,7 +271,7 @@ private[grit] object Launch {
     // conversation's directory (ADR 0017).
     // What grit is, from the docs grit.tools ships; offered under either choice.
     val about: Tool[Option[About.Subject]] =
-      About.load().fold(why => throw new IllegalStateException(why), t => t)
+      About.load(d.persona).fold(why => throw new IllegalStateException(why), t => t)
     // Offered everywhere: what grit is, and Digest's recent_activity when it is on.
     val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{store}]] = digest match {
       case None => Toolbox.of[caps.CapSet^{store}](about)
