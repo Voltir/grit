@@ -109,4 +109,33 @@ object Tags {
       */
     val drafts: Gate = Gate.all(asks(half), stillOpen(half), notToSomeone(half), notAnchored(half))
   }
+
+  /** v3, the question set triage asks since it replaced v2: [[V2]]'s names and parts, and
+    * `to-grit`; the gate over them by which a heard message is answered as directed at grit,
+    * and the gate it drafts by.
+    */
+  object V3 {
+
+    /** Whether its message is directed at grit, by its persona's name or as a reply to it.
+      * Stored under this name: a pin of recorded answers.
+      */
+    val toGrit: QuestionName = named("to-grit")
+
+    private val half = Probability.clamped(0.5)
+
+    /** It is directed at grit: `to-grit` at least `at`. */
+    def atGrit(at: Probability): Gate = Gate.Holds(Bound.AtLeast(Reading.Yes(toGrit), at))
+
+    /** It asks, still open, and is directed at grit, each at one half: the branch of
+      * [[drafts]] by which grit answers it as named.
+      */
+    val directed: Gate = Gate.all(V2.asks(half), V2.stillOpen(half), atGrit(half))
+
+    /** v3's draft gate: it asks and is still open, and either it is directed at grit
+      * ([[directed]]) or it is directed at no one person and not anchored; each at one half.
+      * A message directed at grit is not held for asking what no record could supply: it was
+      * asked of grit.
+      */
+    val drafts: Gate = Gate.either(directed, V2.drafts)
+  }
 }

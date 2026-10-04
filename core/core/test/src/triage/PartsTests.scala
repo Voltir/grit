@@ -8,7 +8,7 @@ import grit.core.period.Probability
 
 import utest.*
 
-/** v2's named parts, one test each: the one reading it reads, and its edge at `at`. Every
+/** v2's and v3's named parts, one test each: the one reading it reads, and its edge at `at`. Every
   * part is tested at 0.3, not at one half, so a part that ignores `at` fails. Thresholds are
   * tested here and nowhere else.
   */
@@ -69,6 +69,14 @@ object PartsTests extends TestSuite {
       val name = QuestionName.read("source:github").getOrElse(sys.error("a name"))
       val reading = Reading.Yes(name)
       edge(Tags.V2.source(github, at), yes(name, _)) ==>
+        (ListSet(reading), Gate.Checked.Passes, failed(Bound.AtLeast(reading, at), under))
+    }
+
+    test("atGrit reads to-grit's yes, passing at at least at") {
+      // A pin of a recorded name: v3's answers are stored under it.
+      QuestionName.value(Tags.V3.toGrit) ==> "to-grit"
+      val reading = Reading.Yes(Tags.V3.toGrit)
+      edge(Tags.V3.atGrit(at), yes(Tags.V3.toGrit, _)) ==>
         (ListSet(reading), Gate.Checked.Passes, failed(Bound.AtLeast(reading, at), under))
     }
   }
