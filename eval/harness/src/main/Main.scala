@@ -16,6 +16,7 @@ import grit.core.context.Width
 import grit.core.host.ProcessIdentity
 import grit.core.id.{QuestionName, ShadowName, TurnRef, WorkflowId}
 import grit.core.message.Tokens
+import grit.core.persona.Persona
 import grit.core.place.Service
 import grit.core.provider.Provider
 import grit.core.tool.ToolSet
@@ -34,6 +35,7 @@ import grit.eval.harness.corpus.{
   KnowledgeJson,
   Live,
   Manifest,
+  PersonaJson,
   Said,
   SeenCheck,
   Stitched,
@@ -106,7 +108,7 @@ import grit.eval.harness.score.{
 }
 import grit.eval.harness.stats.Mills
 import grit.kit.environment.DotEnv
-import grit.lifecycle.triage.TriageRecipe
+import grit.lifecycle.triage.{TriageQuestions, TriageRecipe}
 import grit.models.JevClassifier
 import grit.models.JevConfig
 import grit.models.{OpenRouterConfig, OpenRouterProvider, Seed}
@@ -437,7 +439,9 @@ object Main {
     * triage's set ([[TurnTriage.ask]]) through Jev, once, with the knowledge sources the
     * deployment that recorded the corpus declares (its `knowledge.json`, [[KnowledgeJson.read]]),
     * the answer kept under `<cache>` so it is paid for once, under the `--spend` cap in USD:
-    * refused before any call when such a turn's corpus has no `knowledge.json`, when the file
+    * and asked in the words of the persona it declares (its `persona.json`, [[PersonaJson.read]]),
+    * refused before any call when such a turn's corpus has no `knowledge.json` or no
+    * `persona.json`, when the knowledge file
     * is not the declaration the turn's shape was decided under ([[TurnAnswers.declared]]), or
     * when the calls not kept are estimated over the cap; each call past it skipped. A message
     * with no case id (a TUI or task turn's) is not asked. Each width's window is rebuilt as of
@@ -497,6 +501,16 @@ object Main {
             s"refused: ${asking.size} turns are to be asked and there is no $knowledgeAt: " +
               "write the knowledge sources the deployment that recorded the corpus declares there"
           )
+      personaAt = dir.resolve("persona.json")
+      // Read only when a turn is to be asked: its name is in to-grit's words.
+      persona <-
+        if (asking.isEmpty) Right(Persona.Grit)
+        else if (Files.exists(personaAt)) read(personaAt).flatMap(PersonaJson.read)
+        else
+          Left(
+            s"refused: ${asking.size} turns are to be asked and there is no $personaAt: " +
+              "write the persona the deployment that recorded the corpus declares there"
+          )
       _ <- asking
         .map(TurnAnswers.declared(_, knowledge))
         .collectFirst { case Left(why) => why }
@@ -519,7 +533,17 @@ object Main {
           )
           built = asking.collect {
             case t @ TurnCase(_, _, _, Said.Slack(id), _, _, _, _, _, _, _, _, _, _, _, _) =>
-              (t, id, TurnTriage.ask(reader, t, knowledge, manifest.tuning))
+              (
+                t,
+                id,
+                TurnTriage.ask(
+                  reader,
+                  t,
+                  knowledge,
+                  TriageQuestions.shipped(persona),
+                  manifest.tuning
+                )
+              )
           }
           asks = built.collect { case (t, id, Right(a)) => (t, id, a) }
           calls = asks.map((t, id, a) =>

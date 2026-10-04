@@ -15,8 +15,9 @@ import grit.core.triage.{KnowledgeSources, TriageStore}
   * outside a transaction, `clock` to say when the tags were made, whether grit then drafts a
   * reply ([[TriageSpeech]]), how its strand is read and, in a triage begun before openings
   * were placed on their own, its opening stitched (`tuning`), where its opening is placed
-  * (`placements`), and the deployment's knowledge `sources`, those covering a message's
-  * conversation asked about one by one.
+  * (`placements`), the deployment's knowledge `sources`, those covering a message's
+  * conversation asked about one by one, and `questions`, the set it asks
+  * ([[TriageQuestions.shipped]] of the deployment's persona).
   */
 final case class TriageEnv(
     records: TriageRecords,
@@ -26,7 +27,8 @@ final case class TriageEnv(
     speech: TriageSpeech^,
     tuning: Tuning,
     placements: Placements^,
-    sources: KnowledgeSources
+    sources: KnowledgeSources,
+    questions: TriageQuestions
 )
 
 /** Where a triage reads the heard message, its thread, its conversation and who wrote them,

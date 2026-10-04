@@ -189,6 +189,7 @@ object TurnCaptureTests extends TestSuite {
               ),
               engine.rooms,
               KnowledgeSources.Empty,
+              grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
               Classifier.none("no classifier"),
               engine.placements,
               engine.db,
@@ -227,7 +228,8 @@ object TurnCaptureTests extends TestSuite {
           ),
           Tuning.Default,
           engine.placements,
-          KnowledgeSources.Empty
+          KnowledgeSources.Empty,
+          grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
         )
       ),
       Stitch.body(

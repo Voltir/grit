@@ -21,7 +21,7 @@ import grit.core.triage.{KnowledgeSources, Tags}
   *      ([[Patches.StitchInRoomOrder]]).
   *   1. `ask` — one classifier call over the heard message, who said it, and the thread
   *      before it: its strand's, then its own ([[TriageInput.heard]]), asked the questions
-  *      live triage asks ([[TriageQuestions.Shipped]]), one per knowledge source covering its
+  *      live triage asks (`env.questions`, [[TriageQuestions.shipped]] in a deployment), one per knowledge source covering its
   *      conversation where the set asks so; an absent or failing classifier, or an answer
   *      that does not read, is `Unanswered` tags.
   *      Nothing is asked when the message cannot be read or is gone.
@@ -181,7 +181,7 @@ object Triage {
         val sources = read.place.fold(KnowledgeSources.Empty)(env.sources.at)
         (
           read.entry,
-          TriageQuestions.Shipped.ask(env.classifier, read.state, sources) match {
+          env.questions.ask(env.classifier, read.state, sources) match {
             case Right(a) => Tags.Weighed(a.value, a.model, a.usage)
             case Left(ClassifierError.Unavailable(why)) => Tags.Unanswered(s"unavailable: $why")
             case Left(ClassifierError.Unreadable(why)) => Tags.Unanswered(s"unreadable: $why")

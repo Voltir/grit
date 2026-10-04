@@ -13,7 +13,7 @@ import grit.core.stitch.{Opening, Placements, StitchReads, Tuning}
 import grit.core.store.Db
 import grit.core.triage.{KnowledgeSources, Tags, Weighing}
 
-/** [[Weighing]] as live triage asks: its question set ([[TriageQuestions.Shipped]]) put to the
+/** [[Weighing]] as live triage asks: its question set, `questions`, put to the
   * state [[TriageInput.read]] builds for the message, as for one heard (the shipped recipe,
   * `tuning`), read through `reads` and `rooms`, with the knowledge sources of `sources`
   * covering its conversation's place, of `classifier`; an opening is asked about once its
@@ -25,6 +25,7 @@ final class Mentions(
     reads: StitchReads,
     rooms: RoomReads,
     sources: KnowledgeSources,
+    questions: TriageQuestions,
     classifier: Classifier^,
     placements: Placements^,
     db: Db^,
@@ -43,14 +44,14 @@ final class Mentions(
         .map(_ => Weighing.Unweighed.Unread)
       // A conversation not found is at no place, so no source covers it.
       asked = read.place.fold(KnowledgeSources.Empty)(sources.at)
-      answered <- within(TriageQuestions.Shipped.ask(classifier, read.state, asked)).flatMap(
+      answered <- within(questions.ask(classifier, read.state, asked)).flatMap(
         _.left.map {
           case ClassifierError.Unavailable(_) => Weighing.Unweighed.Unavailable
           case ClassifierError.Unreadable(_) => Weighing.Unweighed.Unreadable
         }
       )
     } yield {
-      val request = TriageQuestions.Shipped.request(read.state, asked)
+      val request = questions.request(read.state, asked)
       Weighing.Weighed(
         Tags.Weighed(answered.value, answered.model, answered.usage),
         estimator.system(Request.json(request).render())

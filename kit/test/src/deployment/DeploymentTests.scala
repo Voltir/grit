@@ -66,7 +66,7 @@ object DeploymentTests extends TestSuite {
     test("speaking unprompted with topics off is refused: no classifier could judge a draft") {
       val limits = grit.core.speech.Limits.suggested(
         grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
-        grit.lifecycle.triage.TriageQuestions.Shipped.speak
+        grit.lifecycle.triage.TriageQuestions.ShippedSpeak
       )
       val off = Topics.Off("no key")
       (
@@ -139,7 +139,7 @@ object DeploymentTests extends TestSuite {
       val speaking = grit.core.speech.Speaking.Shadow(
         grit.core.speech.Limits.suggested(
           grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
-          grit.lifecycle.triage.TriageQuestions.Shipped.speak
+          grit.lifecycle.triage.TriageQuestions.ShippedSpeak
         )
       )
       def reviewing(of: String) =
@@ -179,7 +179,7 @@ object DeploymentTests extends TestSuite {
       val chatter = grit.core.triage.Reading.Chosen(grit.core.triage.Tags.V1.kind, "chatter")
       (
         speaks(grit.lifecycle.triage.TriageQuestions.V1.speak),
-        speaks(grit.lifecycle.triage.TriageQuestions.Shipped.speak)
+        speaks(grit.lifecycle.triage.TriageQuestions.ShippedSpeak)
       ) ==> (
         (
           Left(DeploymentRefusal.SpeechUnread(chatter)),
@@ -218,7 +218,7 @@ object DeploymentTests extends TestSuite {
         )
         .getOrElse(sys.error("a choice"))
       (
-        Deployment.earning(TriageQuestions.Shipped),
+        Deployment.earning(TriageQuestions.shipped(grit.core.persona.Persona.Grit)),
         Deployment.earning(TriageQuestions.V1),
         Deployment.earning(asking(grit.core.classify.Question.YesNo("?", None, None))),
         Deployment.earning(unasked),
@@ -240,7 +240,11 @@ object DeploymentTests extends TestSuite {
         grit.core.id.QuestionName.per(grit.core.triage.Tags.V2.sourcePrefix, repo)
       )
       (
-        Deployment.read(bySource, repoInGithub, TriageQuestions.Shipped),
+        Deployment.read(
+          bySource,
+          repoInGithub,
+          TriageQuestions.shipped(grit.core.persona.Persona.Grit)
+        ),
         Deployment.read(bySource, repoInGithub, TriageQuestions.V1),
         Deployment.read(grit.core.recipe.TurnRecipe.Shipped, repoInGithub, TriageQuestions.V1),
         Deployments

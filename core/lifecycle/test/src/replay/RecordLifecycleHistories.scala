@@ -131,7 +131,7 @@ object RecordLifecycleHistories {
     def speaksV2 = grit.core.speech.Speaking.Within(
       grit.core.speech.Limits.suggested(
         grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
-        grit.lifecycle.triage.TriageQuestions.Shipped.speak
+        grit.lifecycle.triage.TriageQuestions.ShippedSpeak
       )
     )
     def triaged(

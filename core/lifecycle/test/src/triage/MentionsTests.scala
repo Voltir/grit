@@ -44,6 +44,7 @@ object MentionsTests extends TestSuite {
       w.reads,
       w.rooms,
       Catalog,
+      grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
       classifier,
       placements,
       FakeDb,
@@ -58,10 +59,12 @@ object MentionsTests extends TestSuite {
       .build(w.reads, w.rooms, FakeDb, turn, Tuning.Default, TriageRecipe.Shipped)
       .toOption
       .map((_, state) =>
-        TriageQuestions.Shipped.request(
-          state,
-          KnowledgeSources.of(Vector(Github)).getOrElse(sys.error("one source"))
-        )
+        TriageQuestions
+          .shipped(grit.core.persona.Persona.Grit)
+          .request(
+            state,
+            KnowledgeSources.of(Vector(Github)).getOrElse(sys.error("one source"))
+          )
       )
 
   val tests = Tests {
@@ -140,6 +143,7 @@ object MentionsTests extends TestSuite {
         w.reads,
         w.rooms,
         Catalog,
+        grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
         slow,
         new Waits(Right("placed")),
         FakeDb,

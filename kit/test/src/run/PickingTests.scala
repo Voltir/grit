@@ -83,7 +83,7 @@ object PickingTests extends TestSuite {
     val limits =
       Limits.suggested(
         DailyCap.of("0.25").getOrElse(sys.error("a cap")),
-        TriageQuestions.Shipped.speak
+        TriageQuestions.ShippedSpeak
       )
     val variant = ShadowVariant(
       shadow,

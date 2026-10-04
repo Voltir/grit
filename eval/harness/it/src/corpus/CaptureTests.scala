@@ -84,7 +84,8 @@ object CaptureTests extends TestSuite {
               TriageSpeech(Speaking.Off, engine.budget, _ => Right(())),
               Tuning.Default,
               engine.placements,
-              grit.core.triage.KnowledgeSources.Empty
+              grit.core.triage.KnowledgeSources.Empty,
+              grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
             )
           ),
           Stitch.body(
@@ -142,8 +143,8 @@ object CaptureTests extends TestSuite {
         val corpus = captured()
         corpus.cases.map(_.id.written) ==>
           Vector("C1/1000.1", "C1/1000.2", "C1/1000.3", "C1/1000.4", "C1/1000.5")
-        val v2 = "gap,open,to,durable,anchor"
-        corpus.cases.map(c => form(c.tags)) ==> Vector("v1", "v1", v2, v2, v2)
+        val v3 = "gap,open,to,to-grit,durable,anchor"
+        corpus.cases.map(c => form(c.tags)) ==> Vector("v1", "v1", v3, v3, v3)
         corpus.cases.map(_.stitch.map(_.seen)) ==>
           Vector(None, Some(SeenCheck.Match), Some(SeenCheck.Match), None, Some(SeenCheck.Match))
         corpus.cases.lastOption.flatMap(_.stitch).map(_.placed) ==> Some(

@@ -4,6 +4,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.classify.{Answer, Answered, Ask, Classifier, ClassifierError, Question, Request}
 import grit.core.id.QuestionName
+import grit.core.persona.Persona
 import grit.core.triage.{Gate, Kind, KnowledgeSources, Reading, Tags}
 
 /** Questions about a heard message ([[TriageQuestion.State]]), asked together in one
@@ -161,7 +162,10 @@ object TriageQuestions {
     * open: `asks`, `owes`, `closes` or `nothing`), `open`, `to`, `durable`, `anchor`, then one
     * `source:<name>` question per knowledge source; gated by [[Tags.V2.drafts]].
     */
-  val V2: TriageQuestions = {
+  val V2: TriageQuestions = v2With(None, Tags.V2.drafts)
+
+  /** V2's questions with `directed` after `to`, when given, gated by `speak`. */
+  private def v2With(directed: Option[Item.One], speak: Gate): TriageQuestions = {
     import Tags.V2.{anchor, gap, open, sourcePrefix, to}
     def yesNo(words: String) = Question.YesNo(words, None, None)
     def key(name: String, means: String) = Question.Key(name, Some(means))
@@ -196,7 +200,8 @@ object TriageQuestions {
                 "named or the one it replies to, rather than at the room? Mentioning someone, " +
                 "or replying in a thread they wrote in, does not by itself direct it at them."
             )
-          ),
+          )
+        ) ++ directed ++ Vector(
           Item.One(
             Tags.V2.durable,
             yesNo(
@@ -220,15 +225,40 @@ object TriageQuestions {
             " supply what new_message asks for?"
           )
         ),
-        Tags.V2.drafts
+        speak
       ).left.map(_.toString)
     } yield set
-    // Its gap's keys are distinct, its names are distinct and every bound reads a One of its
-    // kind, so no Left is taken;
+    // Its gap's keys are distinct, its names are distinct (to-grit is none of V2's) and every
+    // bound of V2's and v3's gates reads a One of its kind, so no Left is taken;
     // TriageQuestionsTests builds it.
     built.fold(why => throw new IllegalStateException(why), identity)
   }
 
-  /** The set live triage asks: [[V2]]. */
-  val Shipped: TriageQuestions = V2
+  /** v3, the set that replaced [[V2]]: V2's questions in V2's order with `to-grit` after `to`,
+    * worded with `persona`'s name ([[Tags.V3.toGrit]]); gated by [[Tags.V3.drafts]], whatever
+    * the name.
+    */
+  def v3(persona: Persona): TriageQuestions =
+    v2With(
+      Some(
+        Item.One(
+          Tags.V3.toGrit,
+          Question.YesNo(
+            "Read new_message and thread. Is new_message directed at the assistant, whom " +
+              s"people here call ${persona.name}, rather than at someone else or at the room? " +
+              "Saying its name to it, or replying to what Assistant said in thread, directs " +
+              "it at the assistant; talking about it does not.",
+            None,
+            None
+          )
+        )
+      ),
+      Tags.V3.drafts
+    )
+
+  /** The set live triage asks for a deployment presenting as `persona`: [[v3]]. */
+  def shipped(persona: Persona): TriageQuestions = v3(persona)
+
+  /** The gate live triage's set drafts by, the same for every persona: [[Tags.V3.drafts]]. */
+  val ShippedSpeak: Gate = Tags.V3.drafts
 }

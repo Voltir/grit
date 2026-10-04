@@ -147,6 +147,7 @@ private[grit] object Launch {
               ),
               engine.rooms,
               d.knowledge,
+              d.triage,
               weighing(d, s),
               engine.placements,
               engine.db,
@@ -220,7 +221,8 @@ private[grit] object Launch {
             ),
             grit.core.stitch.Tuning.Default,
             engine.placements,
-            d.knowledge
+            d.knowledge,
+            d.triage
           )
         ),
         Stitch.body(

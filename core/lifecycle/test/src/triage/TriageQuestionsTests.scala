@@ -5,8 +5,9 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.{Answer, Question, Request}
 import grit.core.id.{KnowledgeSourceName, QuestionName}
 import grit.core.period.Probability
+import grit.core.persona.Persona
 import grit.core.place.Place
-import grit.core.triage.{Bound, Gate, Reading}
+import grit.core.triage.{Bound, Gate, Reading, Tags}
 import grit.core.triage.{KnowledgeSource, KnowledgeSources}
 import grit.lifecycle.triage.TriageQuestions.{Item, Refusal}
 
@@ -163,6 +164,38 @@ object TriageQuestionsTests extends TestSuite {
         Vector("gap", "open", "to", "durable", "anchor", "source:github", "source:conversations")
       // A pin of the digest a shadow row records for this state and catalog.
       request.digest ==> "d04b85b3eadd8236c04209fe11c521cd34662f7023f5ffaa848809bf8efed88f"
+    }
+
+    test("v3 asks V2's words with to-grit after to, naming the persona, and drafts by v3's gate") {
+      val bort = Persona.of("Bort").getOrElse(fail("a persona"))
+      val set = TriageQuestions.v3(bort)
+      set.questions(catalog).keys.map(QuestionName.value).toVector ==> Vector(
+        "gap",
+        "open",
+        "to",
+        "to-grit",
+        "durable",
+        "anchor",
+        "source:github",
+        "source:conversations"
+      )
+      val v2 = TriageQuestions.V2.questions(catalog)
+      // Every question but to-grit in V2's words: a v3 answer under a v2 name means what it did.
+      set.questions(catalog).removed(n("to-grit")) ==> v2
+      set.questions(catalog).get(n("to-grit")) ==> Some(
+        Question.YesNo(
+          "Read new_message and thread. Is new_message directed at the assistant, whom people " +
+            "here call Bort, rather than at someone else or at the room? Saying its name to " +
+            "it, or replying to what Assistant said in thread, directs it at the assistant; " +
+            "talking about it does not.",
+          None,
+          None
+        )
+      )
+      (set.speak, TriageQuestions.v3(Persona.Grit).speak, TriageQuestions.ShippedSpeak) ==>
+        (Tags.V3.drafts, Tags.V3.drafts, Tags.V3.drafts)
+      set.unread(set.speak, KnowledgeSources.Empty) ==> None
+      TriageQuestions.shipped(bort) ==> set
     }
 
     test("V2 drafts at its bounds: 0.5 passes at least and fails below; a missing answer is None") {

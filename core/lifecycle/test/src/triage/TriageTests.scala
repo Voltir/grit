@@ -24,26 +24,27 @@ object TriageTests extends TestSuite {
 
   private def name(text: String) = QuestionName.read(text).getOrElse(sys.error(text))
 
-  /** V2 answered: gap closes at 0.75; open 0.125, to 0.25, durable 0.875, anchor 0.25; any
-    * source 0.5.
+  /** v3 answered: gap closes at 0.75; open 0.125, to 0.25, to-grit 0.125, durable 0.875,
+    * anchor 0.25; any source 0.5.
     */
   private def decided =
-    new Scripted(Vector(0.0, 0.125, 0.75, 0.125), Vector(0.125, 0.25, 0.875, 0.25, 0.5))
+    new Scripted(Vector(0.0, 0.125, 0.75, 0.125), Vector(0.125, 0.25, 0.125, 0.875, 0.25, 0.5))
 
-  /** V2 answered: gap asks at 1.0; open 0.9, to 0.125, durable 0.5, anchor 0.125: past its
-    * gate.
+  /** v3 answered: gap asks at 1.0; open 0.9, to 0.125, to-grit 0.125, durable 0.5, anchor
+    * 0.125: past its gate.
     */
-  private def asking = new Scripted(Vector(1, 0, 0, 0), Vector(0.9, 0.125, 0.5, 0.125))
+  private def asking =
+    new Scripted(Vector(1, 0, 0, 0), Vector(0.9, 0.125, 0.125, 0.5, 0.125))
 
   private val within =
     Speaking.Within(
       Limits.suggested(
         DailyCap.of("0.25").getOrElse(sys.error("a cap")),
-        TriageQuestions.Shipped.speak
+        TriageQuestions.ShippedSpeak
       )
     )
 
-  /** What [[decided]] answers V2 with no source: gap a choice weighing every key, then its
+  /** What [[decided]] answers v3 with no source: gap a choice weighing every key, then its
     * yes/nos.
     */
   private val decision: Tags.Weighed = Tags.Weighed(
@@ -60,6 +61,7 @@ object TriageTests extends TestSuite {
         .getOrElse(sys.error("a choice")),
       name("open") -> Answer.YesNo(0.125),
       name("to") -> Answer.YesNo(0.25),
+      name("to-grit") -> Answer.YesNo(0.125),
       Earning.Durable -> Answer.YesNo(0.875),
       name("anchor") -> Answer.YesNo(0.25)
     ),
@@ -69,7 +71,7 @@ object TriageTests extends TestSuite {
 
   /** What a triage logs of [[decision]]. */
   private val Decided =
-    "tagged: gap closes 0.75, open 0.125, to 0.25, durable 0.875, anchor 0.25 (jev-1.13.0)"
+    "tagged: gap closes 0.75, open 0.125, to 0.25, to-grit 0.125, durable 0.875, anchor 0.25 (jev-1.13.0)"
 
   /** The marker a triage records as it takes the room-order patch. */
   private val Marker = InMemoryDurable.patchMarker(Triage.Patches.StitchInRoomOrder)
@@ -91,15 +93,17 @@ object TriageTests extends TestSuite {
         TriageInput.read(w.reads, w.rooms, FakeDb, t.message, Tuning.Default, TriageRecipe.Shipped)
       read.map(_.state.author) ==> Right("Ana")
       requests.sent ==> read.toOption.toVector.map { r =>
-        TriageQuestions.Shipped.request(
-          r.state,
-          KnowledgeSources.of(Vector(Github)).getOrElse(sys.error("one"))
-        )
+        TriageQuestions
+          .shipped(grit.core.persona.Persona.Grit)
+          .request(
+            r.state,
+            KnowledgeSources.of(Vector(Github)).getOrElse(sys.error("one"))
+          )
       }
     }
 
     test(
-      "live asks V2: gap among four, open, to, durable and anchor, then one yes/no per source covering the conversation"
+      "live asks v3: gap among four, open, to, to-grit, durable and anchor, then one yes/no per source covering the conversation"
     ) {
       val w = new World
       val t = w.hear("can someone send me the Q3 deck?", "Ana", 0)
@@ -109,10 +113,18 @@ object TriageTests extends TestSuite {
         case q: Question.Choice => q.keys.map(_.name).mkString("|")
         case Question.YesNo(words, _, _) if words.contains(Github.line) => "github"
         case _: Question.YesNo => "yes/no"
-      } ==> Vector("asks|owes|closes|nothing", "yes/no", "yes/no", "yes/no", "yes/no", "github")
+      } ==> Vector(
+        "asks|owes|closes|nothing",
+        "yes/no",
+        "yes/no",
+        "yes/no",
+        "yes/no",
+        "yes/no",
+        "github"
+      )
       w.tags(t).collect { case Tags.Weighed(answers, _, _) =>
         answers.keys.toVector.map(QuestionName.value)
-      } ==> Some(Vector("gap", "open", "to", "durable", "anchor", "source:github"))
+      } ==> Some(Vector("gap", "open", "to", "to-grit", "durable", "anchor", "source:github"))
     }
 
     test("a heard message is asked once, in one call, and its tags kept") {
@@ -299,7 +311,7 @@ object TriageTests extends TestSuite {
       val t = w.hear("what did we decide about the refi page?", "Ana", 0)
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(w.body(asking, 1, within)) ==>
-        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, durable 0.5, anchor 0.125 (jev-1.13.0); drafting: c1:0"
+        Unoffered + "tagged: gap asks 1.0, open 0.9, to 0.125, to-grit 0.125, durable 0.5, anchor 0.125 (jev-1.13.0); drafting: c1:0"
       val turn = TurnRef(c, t.turn)
       (w.started, w.speech.decisions.map(_._2)) ==> (Vector(turn), Vector(Decision.Drafting(turn)))
       val history = durable.history(t.workflowId)
@@ -313,7 +325,7 @@ object TriageTests extends TestSuite {
       val t = w.hear("lunch?", "Ana", 0)
       val durable = new InMemoryDurable
       durable.run(t.workflowId)(
-        w.body(new Scripted(Vector(0, 0, 0, 1), Vector(0.25, 0.125, 0.5, 0.125)), 1, within)
+        w.body(new Scripted(Vector(0, 0, 0, 1), Vector(0.25, 0.125, 0.125, 0.5, 0.125)), 1, within)
       )
       (w.started, w.speech.decisions.map(_._2), durable.recordedSteps(t.workflowId)) ==> (
         Vector.empty,

@@ -317,7 +317,8 @@ object TriageFixtures {
           ),
           Tuning.Default,
           placements(classifier, minutes),
-          sources
+          sources,
+          grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
         )
       )(id)
   }

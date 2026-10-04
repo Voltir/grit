@@ -159,6 +159,7 @@ object RebuildTests extends TestSuite {
               ),
               engine.rooms,
               KnowledgeSources.Empty,
+              grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
               Classifier.none("no classifier"),
               engine.placements,
               engine.db,
@@ -197,7 +198,8 @@ object RebuildTests extends TestSuite {
           ),
           Tuning.Default,
           engine.placements,
-          KnowledgeSources.Empty
+          KnowledgeSources.Empty,
+          grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
         )
       ),
       Stitch.body(
@@ -319,7 +321,15 @@ object RebuildTests extends TestSuite {
       turns.cases
         .find(_.workflow == b.workflowId)
         .toRight("b not captured")
-        .flatMap(TurnTriage.ask(reader, _, knowledge, Tuning.Default))
+        .flatMap(
+          TurnTriage.ask(
+            reader,
+            _,
+            knowledge,
+            grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
+            Tuning.Default
+          )
+        )
         .map(a =>
           (
             a.questions.keys.map(QuestionName.value).toVector,
@@ -330,7 +340,7 @@ object RebuildTests extends TestSuite {
           )
         ) ==> Right(
         (
-          Vector("gap", "open", "to", "durable", "anchor", "source:tasks"),
+          Vector("gap", "open", "to", "to-grit", "durable", "anchor", "source:tasks"),
           "what is the Falcon budget?"
         )
       )

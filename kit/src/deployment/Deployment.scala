@@ -85,12 +85,12 @@ enum DeploymentRefusal {
     */
   case SpeaksUnjudged(topics: String)
 
-  /** Speaking's gate reads `reading`, which live triage ([[TriageQuestions.Shipped]]) does not
+  /** Speaking's gate reads `reading`, which live triage ([[Deployment.triage]]) does not
     * ask, so it would hold every message.
     */
   case SpeechUnread(reading: Reading)
 
-  /** Live triage ([[TriageQuestions.Shipped]]) does not ask [[Earning.Durable]] as a yes/no,
+  /** Live triage ([[Deployment.triage]]) does not ask [[Earning.Durable]] as a yes/no,
     * so every period it heard would earn a written closing.
     */
   case DurableUnasked
@@ -114,7 +114,7 @@ enum DeploymentRefusal {
   case ReviewUnspoken
 
   /** The recipe offers a service by a gate reading `reading`, which live triage
-    * ([[TriageQuestions.Shipped]]) does not ask with the deployment's knowledge sources: the
+    * ([[Deployment.triage]]) does not ask with the deployment's knowledge sources: the
     * gate would never act.
     */
   case RecipeUnread(reading: Reading)
@@ -207,7 +207,13 @@ final case class Deployment private (
     knowledge: KnowledgeSources,
     review: Option[ShadowReview],
     recipe: TurnRecipe
-)
+) {
+
+  /** The set live triage asks for this deployment: [[TriageQuestions.shipped]] of its
+    * persona.
+    */
+  def triage: TriageQuestions = TriageQuestions.shipped(persona)
+}
 
 object Deployment {
 
@@ -253,6 +259,7 @@ object Deployment {
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filterNot(_.answersAsks).map(_.name)
+    val live = TriageQuestions.shipped(persona)
     for {
       _ <- names.diff(names.distinct).headOption.map(DeploymentRefusal.EdgeRepeated(_)).toLeft(())
       _ <- Either.cond(
@@ -262,7 +269,7 @@ object Deployment {
       )
       _ <- Either.cond(sweep >= 1.second, (), DeploymentRefusal.SweepTooOften(sweep))
       // Earning reads durable by name: a live set without it would earn every period a closing.
-      _ <- earning(TriageQuestions.Shipped)
+      _ <- earning(live)
       _ <- (speaking, topics) match {
         // The judge is the topics' classifier: with none, no draft could ever post.
         case (Speaking.Shadow(_) | Speaking.Within(_), Topics.Off(reason)) =>
@@ -271,8 +278,8 @@ object Deployment {
       }
       _ <- speaking match {
         // Live triage's answers hold only what it asks: a gate reading more holds everything.
-        case Speaking.Shadow(limits) => unread(limits.drafts)
-        case Speaking.Within(limits) => unread(limits.drafts)
+        case Speaking.Shadow(limits) => unread(live, limits.drafts)
+        case Speaking.Within(limits) => unread(live, limits.drafts)
         case Speaking.Off => Right(())
       }
       shadowNames = shadows.map(_.name)
@@ -309,7 +316,7 @@ object Deployment {
         (),
         DeploymentRefusal.RecipeUnsourced
       )
-      _ <- read(recipe, knowledge, TriageQuestions.Shipped)
+      _ <- read(recipe, knowledge, live)
       _ <- linked(knowledge, worksIn, reaches)
       assembled = window(assembly)
       _ <- recipe.widens(assembled).map(DeploymentRefusal.Widens(_, assembled)).toLeft(())
@@ -382,8 +389,8 @@ object Deployment {
       .map(_ => DeploymentRefusal.DurableUnasked)
       .toLeft(())
 
-  private def unread(gate: Gate): Either[DeploymentRefusal, Unit] =
-    TriageQuestions.Shipped
+  private def unread(live: TriageQuestions, gate: Gate): Either[DeploymentRefusal, Unit] =
+    live
       .unread(gate, KnowledgeSources.Empty)
       .map(DeploymentRefusal.SpeechUnread(_))
       .toLeft(())
