@@ -193,10 +193,19 @@ object TurnJsonTests extends TestSuite {
     }
 
     test("a line written before shapes were captured is refused, naming the recapture") {
-      val older = ujson.read(TurnJson.write(unfinished).render())
-      older.obj.remove("weighed")
-      TurnJson.read(older) ==>
+      // As an earlier build wrote it: no weighing, and an offer with neither set nor shape.
+      val older = Vector(heard, unfinished).map { t =>
+        val line = ujson.read(TurnJson.write(t).render())
+        line.obj.remove("weighed")
+        line.obj.get("offered").flatMap(_.objOpt).foreach { o =>
+          o.remove("set")
+          o.remove("shape")
+        }
+        line
+      }
+      older.map(TurnJson.read) ==> Vector.fill(2)(
         Left("turn: no weighed: written before shapes were captured; recapture the corpus")
+      )
     }
 
     test("a turn's line is pinned: its keys in order, its said and ended by kind") {

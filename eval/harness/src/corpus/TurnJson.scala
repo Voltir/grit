@@ -70,12 +70,12 @@ object TurnJson {
       started <- f.instant("started")
       build <- f.field("build").flatMap(CorpusJson.readBuild("turn", _))
       triage <- f.optional("triage").flatMap(opt(_)(CorpusJson.readLive))
-      offered <- f.optional("offered").flatMap(opt(_)(readOffered))
       weighed <- f
         .field("weighed")
         .left
         .map(_ => "turn: no weighed: written before shapes were captured; recapture the corpus")
         .flatMap(readWeigh)
+      offered <- f.optional("offered").flatMap(opt(_)(readOffered))
       window <- f.optional("window").flatMap(opt(_)(readParts))
       rounds <- f
         .arr("rounds")
