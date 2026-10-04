@@ -42,5 +42,8 @@ Consequences: the harness costs a variant exactly from a turn's recorded shape, 
 `Offering.decide` the turn ran. A recipe is never a function, so a shaping that depends on
 something else the turn knows needs a new case of data. Withholding by answers makes a
 triage mistake a missing tool on that turn. Enforced by `TurnReplayTests` (histories with a
-service withheld and turns in flight across the step's patch), `TurnOfferTests`,
-`TurnWeighTests` and `DeploymentTests`.
+service withheld; a message said to grit weighed, `addressed-weighed`, its weighing failed
+before failures were kept, `addressed-unweighed`, and after, `addressed-failed`; and turns in
+flight across the step's patch; every recorded weigh output written back byte for byte),
+`TurnOfferTests`, `TurnWeighTests`, `MentionsTests`, `MentionWeighLiveTests` and
+`DeploymentTests` (a recipe that could never weigh is refused).
