@@ -8,7 +8,7 @@ import grit.core.period.Probability
 
 import utest.*
 
-/** v2's and v3's named parts, one test each: the one reading it reads, and its edge at `at`. Every
+/** v2's, v3's and v4's named parts, one test each: the one reading it reads, and its edge at `at`. Every
   * part is tested at 0.3, not at one half, so a part that ignores `at` fails. Thresholds are
   * tested here and nowhere else.
   */
@@ -78,6 +78,14 @@ object PartsTests extends TestSuite {
       val reading = Reading.Yes(Tags.V3.toGrit)
       edge(Tags.V3.atGrit(at), yes(Tags.V3.toGrit, _)) ==>
         (ListSet(reading), Gate.Checked.Passes, failed(Bound.AtLeast(reading, at), under))
+    }
+
+    test("notAnchoredRecord reads anchor-record's yes, passing only below at") {
+      // A pin of a recorded name: v4's answers are stored under it.
+      QuestionName.value(Tags.V4.anchorRecord) ==> "anchor-record"
+      val reading = Reading.Yes(Tags.V4.anchorRecord)
+      edge(Tags.V4.notAnchoredRecord(at), yes(Tags.V4.anchorRecord, _)) ==>
+        (ListSet(reading), failed(Bound.Below(reading, at), 0.3), Gate.Checked.Passes)
     }
   }
 }

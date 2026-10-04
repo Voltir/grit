@@ -142,4 +142,36 @@ object Tags {
       Gate.either(atGrit(half), Gate.all(V2.notToSomeone(half), V2.notAnchored(half)))
     )
   }
+
+  /** v4, the question set triage asks since it replaced v3: [[V3]]'s names and parts, and
+    * `anchor-record` asked after `anchor`; the gate it drafts by. A message it reads as directed
+    * at grit is one [[V3.directed]] passes.
+    */
+  object V4 {
+
+    /** Whether what its message asks for is something no stored record could supply, where a
+      * fact asked of a particular person may still be in one. Stored under this name: a pin of
+      * recorded answers.
+      */
+    val anchorRecord: QuestionName = named("anchor-record")
+
+    private val half = Probability.clamped(0.5)
+
+    /** What it asks for is something a stored record could supply, whoever it is asked of:
+      * `anchor-record` below `at`.
+      */
+    def notAnchoredRecord(at: Probability): Gate =
+      Gate.Holds(Bound.Below(Reading.Yes(anchorRecord), at))
+
+    /** v4's draft gate: it asks and is still open, and either it is directed at grit or what
+      * it asks for is something a stored record could supply, whoever it is asked of; each at
+      * one half. It passes wherever [[V3.directed]] does. A failing message is held on each
+      * bound once. Answers without `anchor-record` (v3's) are decided by `to-grit`, or unread.
+      */
+    val drafts: Gate = Gate.all(
+      V2.asks(half),
+      V2.stillOpen(half),
+      Gate.either(V3.atGrit(half), notAnchoredRecord(half))
+    )
+  }
 }

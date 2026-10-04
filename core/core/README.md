@@ -80,7 +80,9 @@ In dependency order:
   answers, each under its question's name, or none; `Tags.V1`, the names and gate of the set
   triage first asked; `Tags.V2`, the names of the set it asked next, the gates over them a
   deployment composes, and its draft gate; `Tags.V3`, v2's and `to-grit`, whether a message is
-  directed at grit, with v3's draft gate and its `directed` branch) and `TriageStore`, where they are kept beside their entry and deleted
+  directed at grit, with v3's draft gate and its `directed` branch; `Tags.V4`, v3's and
+  `anchor-record`, whether what a message asks for is something no stored record could supply
+  whoever it is asked of, with v4's draft gate) and `TriageStore`, where they are kept beside their entry and deleted
   with it; `Earning`, whether a period earns a written closing, by its heard messages'
   `durable` answers; `Shadowing` (a shadow variant as the sweep enqueues it, within its daily cap),
   `Shadowed` (what one variant made of one message: its `ShadowAnswers`, a wording's in
