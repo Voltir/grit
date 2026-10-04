@@ -75,10 +75,11 @@ private[slack] object Served {
                 case Vector() => "slack: listening in no channel"
                 case listened => s"slack: listening in ${listened.sorted.mkString(", ")}"
               })
-              // Unnamed, turns are simply not told a name: worth a warning, not a refusal.
-              edge.introduce() match {
-                case Right(()) => log("slack: the assistant is named as grit's bot is")
-                case Left(why) => log(s"slack: the assistant is not named: $why")
+              // The deployment's persona is the assistant's name (ADR 0026); Slack's, logged,
+              // is what people see and may type.
+              edge.displayName() match {
+                case Right(name) => log(s"slack: grit's bot is named $name in Slack")
+                case Left(why) => log(s"slack: grit's bot's name is unread: $why")
               }
               slack.listen(edge.receive) match {
                 case Left(e) =>

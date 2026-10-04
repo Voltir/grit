@@ -39,8 +39,8 @@ In dependency order:
   `unheard` and `backfill` are `grit backfill`'s: a listened channel's history since an
   instant (`Slack.history`, read by the rules a live message is, `Events.listed`), less what
   the inbox has recorded, then each of those heard at its own time, a past mention of grit
-  included, since a past message is never answered. At start it names the workspace's assistant as Slack names grit's
-  bot (`introduce`), and each turn's prompt then says what the assistant is called there.
+  included, since a past message is never answered. At start it logs the name grit's bot goes by in Slack
+  (`displayName`); the assistant's name is the deployment's persona (ADR 0026), not Slack's.
   `SlackEdge.serving(channels)` is the module's entry: the edge as a deployment serves it
   (`grit.core.edge.ServedEdge`, ADR 0021), its tokens read from `SLACK_BOT_TOKEN` and
   `SLACK_APP_TOKEN` as it opens; `SlackEdge.serving(channels, posts)` also serves

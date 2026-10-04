@@ -246,15 +246,14 @@ object SlackEdgeTests extends TestSuite {
         Vector((C, Ts("2.0"), "We moved it to Thursday."))
     }
 
-    test("introduce names the workspace's assistant as Slack names grit's bot, and says why not") {
+    test("the bot's Slack name is read for the log, enrolling nothing, and says why not") {
       val w = new World
       w.slack.names = w.slack.names.updated(UserId(Bot), Some("Bort"))
-      w.first.introduce() ==> Right(())
-      w.inbox.principals.name(PrincipalId(s"slack:$Team"))(using TestTx.fake) ==> Right(
-        Some("Bort")
-      )
+      w.first.displayName() ==> Right("Bort")
+      // The deployment's persona names the assistant (ADR 0026); the edge only reports Slack's.
+      w.inbox.principals.name(PrincipalId(s"slack:$Team"))(using TestTx.fake) ==> Right(None)
       w.slack.names = w.slack.names.updated(UserId(Bot), None)
-      w.edge().introduce() ==> Left(s"grit's bot $Bot has no name in Slack")
+      w.edge().displayName() ==> Left(s"grit's bot $Bot has no name in Slack")
     }
 
     test(

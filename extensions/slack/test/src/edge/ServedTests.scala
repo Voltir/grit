@@ -14,7 +14,7 @@ import grit.core.edge.{
   Unheard,
   Variable
 }
-import grit.core.id.{PrincipalId, SourceId}
+import grit.core.id.SourceId
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.review.Reason
@@ -139,17 +139,17 @@ object ServedTests extends TestSuite {
     }
 
     test(
-      "serving, opened, names the assistant, takes a mention as a turn, posts its reply, and closes Slack"
+      "serving, opened, logs its bot's Slack name, takes a mention as a turn, posts its reply, and closes Slack"
     ) {
       val w = new World
       w.slack.names = w.slack.names.updated(UserId(Bot), Some("Bort"))
-      val open = Served.serving(Set(C), None, None, w.connect).open(w.stores, Env, _ => ()) match {
-        case Right(o) => o
-        case Left(r) => throw new java.lang.AssertionError(r.message)
-      }
-      w.inbox.principals.name(PrincipalId(s"slack:$Team"))(using TestTx.fake) ==> Right(
-        Some("Bort")
-      )
+      var logged = Vector.empty[String]
+      val open =
+        Served.serving(Set(C), None, None, w.connect).open(w.stores, Env, logged :+= _) match {
+          case Right(o) => o
+          case Left(r) => throw new java.lang.AssertionError(r.message)
+        }
+      logged.filter(_.contains("named")) ==> Vector("slack: grit's bot is named Bort in Slack")
       w.slack.deliver(mention("1.0")) ==> true
       val t = w.inbox
         .ingested(Origin.Slack(Team, "C123ABC456", "1.0"), SourceId("1.0"))

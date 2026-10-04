@@ -48,21 +48,14 @@ final class SlackEdge(
   @caps.unsafe.untrackedCaptures
   private val started = new AtomicBoolean(false)
 
-  /** Enrolls grit's name in Slack (its bot user's) as the assistant's in this workspace
-    * ([[Origin.assistant]]), so turns from now on are told it; why not, when Slack or the
-    * store could not be asked, or the bot has no name.
+  /** The name grit's bot user goes by in Slack, for the log; why not, when Slack could not be
+    * asked or the bot has no name there.
     */
-  def introduce(): Either[String, Unit] =
+  def displayName(): Either[String, String] =
     for {
       named <- slack.name(self.bot).left.map(_.toString)
       name <- named.toRight(s"grit's bot ${UserId.value(self.bot)} has no name in Slack")
-      _ <- stores.jot
-        .write(stores.principals.enrollAssistant(assistant, name))
-        .left
-        .map(_.toString)
-    } yield ()
-
-  private val assistant: PrincipalId = Origin.slackAssistant(TeamId.value(self.team))
+    } yield name
 
   /** `user` of `team` as grit names them: `slack:{team}/{user}`. */
   private def principal(team: TeamId, user: UserId): PrincipalId =
@@ -568,8 +561,8 @@ object SlackEdge {
 
   /** The Slack edge, served over Socket Mode with `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN`:
     * every message in `channels` heard (ADR 0020), a message addressed to grit answered in its
-    * thread, and the workspace's assistant named as grit's bot is in Slack. It cannot answer a
-    * tool call that asks first.
+    * thread, and grit's bot's Slack name logged at open. It cannot answer a tool call that asks
+    * first.
     */
   def serving(channels: Set[ChannelId]): ServedEdge =
     Served.serving(channels, None, None, Socket)
