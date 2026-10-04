@@ -18,7 +18,7 @@ import grit.core.period.Probability
 import grit.core.prompt.Layer
 import grit.core.review.{Reason, Verdict}
 import grit.core.store.Focus
-import grit.core.tool.ToolName
+import grit.core.tool.{ToolName, ToolSetId}
 import grit.dbos.engine.Build
 import grit.eval.harness.corpus.{
   Call,
@@ -64,14 +64,20 @@ object TurnFixtures {
     )
   private def p(x: Double) = Some(Probability.clamped(x))
 
+  /** A tool set's id, as the offers here were recorded under. */
+  private val Set1: ToolSetId =
+    ToolSetId.of("0123456789abcdef").fold(e => throw new java.lang.AssertionError(e), identity)
+
   val read = ToolName("read")
   val search = ToolName("search")
   private val both = Offered(
     Vector(read, search),
+    Set1,
     Tokens(100),
     VectorMap(Layer.Base -> Tokens(500), Layer.Edge -> Tokens(50)),
     None,
-    Vector.empty
+    Vector.empty,
+    None
   )
 
   private def turn(
@@ -92,6 +98,7 @@ object TurnFixtures {
       Build.Unknown,
       None,
       None,
+      TurnRecord.Weigh.Unrecorded,
       None,
       Vector.empty,
       ended,
@@ -154,10 +161,12 @@ object TurnFixtures {
         offered = Some(
           Offered(
             Vector(read),
+            Set1,
             Tokens(40),
             VectorMap(Layer.Base -> Tokens(500)),
             None,
-            Vector.empty
+            Vector.empty,
+            None
           )
         ),
         window = Some(

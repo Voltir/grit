@@ -4,15 +4,27 @@ import java.time.Instant
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq, WorkflowId}
+import grit.core.classify.Answer
+import grit.core.context.Width
+import grit.core.id.{
+  ConversationId,
+  EntryId,
+  EntrySeq,
+  KnowledgeSourceName,
+  QuestionName,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
-import grit.core.place.Place
+import grit.core.place.{Place, Service}
 import grit.core.prompt.Layer
+import grit.core.recipe.ServiceOffer
 import grit.core.store.Focus
-import grit.core.tool.ToolName
+import grit.core.tool.{ToolName, ToolSetId}
+import grit.core.triage.{Tags, Weighing}
 import grit.dbos.engine.Build
-import grit.turn.{TurnOffer, TurnRecord}
+import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnWeighing}
 
 import utest.*
 
@@ -25,6 +37,42 @@ object TurnJsonTests extends TestSuite {
   private val c = ConversationId("c1")
   private val at = Instant.parse("2026-10-02T17:05:00Z")
   private def p(x: Double) = Probability.clamped(x)
+
+  private val repo = right(KnowledgeSourceName.of("repo"))
+
+  /** `repo`'s answer at `x`, as live triage's set names it. */
+  private def repoAt(x: Double): Tags.Weighed = Tags.Weighed(
+    VectorMap(QuestionName.per(Tags.V2.sourcePrefix, repo) -> Answer.YesNo(x)),
+    "jev",
+    Usage(Tokens(700), Tokens(1), Tokens.Zero, Some(BigDecimal("0.00003")))
+  )
+
+  /** A shape with both ways a service's tools come, every verdict, and a width within. */
+  private val shape = TurnShape(
+    Width.Within(Tokens(16000), 12),
+    right(ToolSetId.of("fedcba9876543210")),
+    Vector(
+      TurnShape.Took(
+        ServiceOffer(
+          right(Service.of("github")),
+          Vector(repo),
+          ServiceOffer.Verdict.Checked(Tags.V2.source(repo, p(0.2)).check(repoAt(0.1).answers))
+        ),
+        TurnShape.Via.Workspace,
+        Vector(ToolName("search"))
+      ),
+      TurnShape.Took(
+        ServiceOffer(right(Service.of("slack")), Vector.empty, ServiceOffer.Verdict.Ungated),
+        TurnShape.Via.Reached,
+        Vector(ToolName("post"))
+      ),
+      TurnShape.Took(
+        ServiceOffer(right(Service.of("docs")), Vector(repo), ServiceOffer.Verdict.Unweighed),
+        TurnShape.Via.Reached,
+        Vector.empty
+      )
+    )
+  )
 
   /** A heard turn with a tool loop, every kind of part, settling and role. */
   private val heard = TurnCase(
@@ -39,13 +87,16 @@ object TurnJsonTests extends TestSuite {
     Some(Live.Unanswered(Failure.Unreadable)),
     Some(
       Offered(
-        Vector(ToolName("read"), ToolName("search")),
+        Vector(ToolName("read"), ToolName("post")),
+        right(ToolSetId.of("0123456789abcdef")),
         Tokens(120),
         VectorMap(Layer.Base -> Tokens(900), Layer.Edge -> Tokens(80)),
         Some(right(Place.read("slack:T1/C1"))),
-        Vector(right(Place.read("slack:T1/C2")))
+        Vector(right(Place.read("slack:T1/C2"))),
+        Some(shape)
       )
     ),
+    TurnRecord.Weigh.Recorded(Some(TurnWeighing.Weighed.Kept(repoAt(0.1)))),
     Some(
       Parts(
         Part.Kind.values.toVector.zipWithIndex.map((k, i) =>
@@ -108,6 +159,9 @@ object TurnJsonTests extends TestSuite {
     build = Build.Unknown,
     triage = None,
     offered = None,
+    weighed = TurnRecord.Weigh.Recorded(
+      Some(TurnWeighing.Weighed.Failed(Weighing.Unweighed.PlacementLate))
+    ),
     window = None,
     rounds = Vector.empty,
     ended = Ended.Failed("assemble", Ended.Why.Assembly),
@@ -115,15 +169,34 @@ object TurnJsonTests extends TestSuite {
     speech = None
   )
 
-  private val unfinished =
-    failed.copy(said = Said.Task(EntryId("e2")), ended = Ended.Unfinished("PENDING"))
+  private val unfinished = failed.copy(
+    said = Said.Task(EntryId("e2")),
+    weighed = TurnRecord.Weigh.Unrecorded,
+    ended = Ended.Unfinished("PENDING")
+  )
+
+  /** Turns said to grit whose root was asked, and weighed nothing. */
+  private val asked = failed.copy(
+    workflow = WorkflowId("c3:0"),
+    weighed = TurnRecord.Weigh.Recorded(
+      Some(TurnWeighing.Weighed.Asked(Weighing.Weighed(repoAt(0.4), Tokens(321))))
+    )
+  )
+  private val nothing = asked.copy(weighed = TurnRecord.Weigh.Recorded(None))
 
   val tests = Tests {
-    test("a turn of every shape reads back as it was written") {
-      Vector(heard, failed, unfinished).map(t =>
-        TurnJson.read(ujson.read(TurnJson.write(t).render()))
-      ) ==>
-        Vector(Right(heard), Right(failed), Right(unfinished))
+    test(
+      "a turn of every shape reads back as it was written: its offer's shape and set, and its weighing of every kind"
+    ) {
+      val all = Vector(heard, failed, unfinished, asked, nothing)
+      all.map(t => TurnJson.read(ujson.read(TurnJson.write(t).render()))) ==> all.map(Right(_))
+    }
+
+    test("a line written before shapes were captured is refused, naming the recapture") {
+      val older = ujson.read(TurnJson.write(unfinished).render())
+      older.obj.remove("weighed")
+      TurnJson.read(older) ==>
+        Left("turn: no weighed: written before shapes were captured; recapture the corpus")
     }
 
     test("a turn's line is pinned: its keys in order, its said and ended by kind") {
@@ -131,7 +204,8 @@ object TurnJsonTests extends TestSuite {
       TurnJson.write(unfinished.copy(spend = Vector.empty)).render() ==>
         """{"workflow":"c2:0","conversation":"c1","turn":3,"said":{"task":"e2"},""" +
         """"root":"addressed","focus":"focused","started":"2026-10-02T17:05:00Z",""" +
-        """"build":"unknown","triage":null,"offered":null,"window":null,"rounds":[],""" +
+        """"build":"unknown","triage":null,"offered":null,"weighed":"unrecorded",""" +
+        """"window":null,"rounds":[],""" +
         """"ended":{"unfinished":"PENDING"},"spend":[],"speech":null}"""
     }
 

@@ -508,7 +508,7 @@ object Main {
             }
           )
           built = unasked.collect {
-            case t @ TurnCase(_, _, _, Said.Slack(id), _, _, _, _, _, _, _, _, _, _, _) =>
+            case t @ TurnCase(_, _, _, Said.Slack(id), _, _, _, _, _, _, _, _, _, _, _, _) =>
               (t, id, TurnTriage.ask(reader, t, knowledge, manifest.tuning))
           }
           asks = built.collect { case (t, id, Right(a)) => (t, id, a) }

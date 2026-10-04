@@ -8,6 +8,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
+import grit.core.context.Width
 import grit.core.durable.Durable
 import grit.core.id.{CloseRef, PrincipalId, SourceId, TurnRef, TurnSeq, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -37,7 +38,8 @@ import grit.turn.{
   TurnRecords,
   TurnSpeech,
   TurnStitching,
-  TurnTooling
+  TurnTooling,
+  TurnWeighing
 }
 
 import utest.*
@@ -376,6 +378,21 @@ object TurnCaptureTests extends TestSuite {
           Vector.fill(5)(Some((Vector("echo"), true)))
         at(question).offered.flatMap(_.workspace) ==> Some(tui.place)
         at(looped).offered.flatMap(_.workspace) ==> None
+
+        // The shape each offer recorded: the deployed width, its whole set the one offered
+        // (nothing withheld), and no service, none being linked. Its weighing: the tags live
+        // triage had kept for the heard root, nothing for a message said to grit.
+        turns.cases.map(
+          _.offered.map(o => o.shape.map(s => (s.width, s.whole == o.set, s.services)))
+        ) ==> Vector.fill(5)(Some(Some((Width.Deployed, true, Vector.empty))))
+        Vector(remark, question, failed, looped).map(at(_).weighed) ==>
+          Vector.fill(4)(TurnRecord.Weigh.Recorded(None))
+        (at(heard).weighed match {
+          case TurnRecord.Weigh.Recorded(Some(TurnWeighing.Weighed.Kept(tags))) =>
+            Some(Live.of(tags))
+          case _ => None
+        }) ==> at(heard).triage
+        assert(at(heard).triage.nonEmpty)
 
         // The loop: two rounds of one echo each, both ran.
         at(looped).rounds ==> Vector.fill(2)(

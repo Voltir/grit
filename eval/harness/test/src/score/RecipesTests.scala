@@ -56,6 +56,7 @@ object RecipesTests extends TestSuite {
       Build.Unknown,
       None,
       None,
+      TurnRecord.Weigh.Unrecorded,
       None,
       Vector(Round(calls.toVector.map(t => Call(Called.Tool(t), Settled.Ok(1))))),
       Ended.Replied(10, false),

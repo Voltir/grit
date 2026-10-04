@@ -8,7 +8,7 @@ import grit.core.place.Place
 import grit.core.store.{Entry, Focus, Nearby, Payload, Speakers}
 import grit.dbos.engine.Build
 import grit.eval.harness.corpus.{CaseId, Ended, Part, Parts, Said, Support, TurnCase}
-import grit.turn.{Turn, TurnOffer}
+import grit.turn.{Turn, TurnOffer, TurnRecord}
 
 /** A thread `c1` whose turn 2 answers "when does the deploy move?" from two nearby sections
   * (`c2`, then `c3`, less supported), beside its own earlier turn; and the tool results,
@@ -167,6 +167,7 @@ object Fixtures {
       Build.Unknown,
       None,
       None,
+      TurnRecord.Weigh.Unrecorded,
       Some(
         Parts(
           Vector(

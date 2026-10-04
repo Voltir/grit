@@ -10,9 +10,9 @@ import grit.core.period.Probability
 import grit.core.place.Place
 import grit.core.prompt.Layer
 import grit.core.store.Focus
-import grit.core.tool.ToolName
+import grit.core.tool.{ToolName, ToolSetId}
 import grit.dbos.engine.Build
-import grit.turn.{TurnOffer, TurnRecord, TurnVerdict}
+import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnVerdict}
 
 /** One turn of a corpus, text-free: its workflow, conversation and turn; the message it
   * answers (`said`), whether that message was said to grit or heard (`root`) and where
@@ -22,6 +22,8 @@ import grit.turn.{TurnOffer, TurnRecord, TurnVerdict}
   *
   * @param offered
   *   what it was offered; `None` when it recorded no offer
+  * @param weighed
+  *   what its `weigh` step recorded its root was weighed with
   * @param window
   *   its window by part; `None` when it recorded none
   * @param speech
@@ -39,6 +41,7 @@ final case class TurnCase(
     build: Build,
     triage: Option[Live],
     offered: Option[Offered],
+    weighed: TurnRecord.Weigh,
     window: Option[Parts],
     rounds: Vector[Round],
     ended: Ended,
@@ -60,18 +63,26 @@ enum Said {
   case Task(entry: EntryId)
 }
 
-/** What a turn was offered: its tools by name, in the order offered, and what their
-  * definitions cost as a request is costed (`schema`); its system prompt's tokens by layer,
-  * in the order its fragments came; the workspace its hosted calls went to; and the places of
-  * the services it reached besides, in name order.
+/** What a turn was offered: its tools by name, in the order offered, the set they are (`set`,
+  * by id), and what their definitions cost as a request is costed (`schema`); its system
+  * prompt's tokens by layer, in the order its fragments came; the workspace its hosted calls
+  * went to; the places of the services it reached besides, in name order; and `shape`, what
+  * its offer decided under its deployment's recipe, `None` for an offer recorded before
+  * shapes.
   */
 final case class Offered(
     tools: Vector[ToolName],
+    set: ToolSetId,
     schema: Tokens,
     prompt: VectorMap[Layer, Tokens],
     workspace: Option[Place],
-    reached: Vector[Place]
-)
+    reached: Vector[Place],
+    shape: Option[TurnShape]
+) {
+
+  /** The set a variant draws its tools from: the shape's whole set, else the set offered. */
+  def drawn: ToolSetId = shape.fold(set)(_.whole)
+}
 
 /** A turn's window as the model was shown it, part by part in the order shown: its nearby
   * sections, then its own conversation's record and turns; the tokens of the gap lines among

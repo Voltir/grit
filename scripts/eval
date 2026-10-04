@@ -11,8 +11,9 @@
 #       engine: source.dump, and its sha256 and time in dump.txt, written once it is restored) and restores it to
 #       grit_eval_<date>, which must not exist yet; a later run reuses both. Each run then
 #       writes corpus.json and cases.jsonl, turns.jsonl (every turn the database recorded,
-#       TUI and Slack, by workflow: its offer, window by part, rounds, ending, spend and
-#       draft's outcome) and verdicts.json (the review verdicts standing), all text-free, and
+#       TUI and Slack, by workflow: its offer and the shape its recipe decided, what its
+#       weigh step recorded, its window by part, rounds, ending, spend and draft's outcome; a
+#       corpus captured before shapes is refused by every command reading it until recaptured) and verdicts.json (the review verdicts standing), all text-free, and
 #       prints counts. Rerun over the same
 #       restored database by the same build, it writes the same bytes. A failed restore's
 #       errors, which can quote rows, go to .local/eval/review/restore-<date>.log.

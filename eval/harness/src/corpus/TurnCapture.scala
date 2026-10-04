@@ -128,6 +128,7 @@ object TurnCapture {
               Some(
                 Offered(
                   set.tools.map(_.name),
+                  o.tools,
                   schema(set.tools),
                   VectorMap.from(
                     prompt.fragments
@@ -143,11 +144,16 @@ object TurnCapture {
                       )
                   ),
                   o.workspace,
-                  o.reached.values.toVector.distinct.sortBy(_.written)
+                  o.reached.values.toVector.distinct.sortBy(_.written),
+                  o.shaped
                 )
               )
             })
           )
+          weighed <- TurnRecord
+            .weighed(steps)
+            .left
+            .map(why => s"weighing of ${WorkflowId.value(turn.workflowId)} unread: $why")
           window <- mine.find(_.id == Turn.windowId(turn)).map(_.payload) match {
             case Some(Payload.Window(seqs, recalled, nearby)) =>
               read("window")(
@@ -180,6 +186,7 @@ object TurnCapture {
               build,
               tags.map(Live.of),
               offered,
+              weighed,
               window,
               rounds(turn, mine, steps, tools),
               ended(reply, steps, recorded.status),

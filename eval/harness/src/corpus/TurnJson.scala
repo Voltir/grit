@@ -2,20 +2,24 @@ package grit.eval.harness.corpus
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq, WorkflowId}
+import grit.core.context.Width
+import grit.core.id.{ConversationId, EntryId, EntrySeq, KnowledgeSourceName, TurnSeq, WorkflowId}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
-import grit.core.place.Place
+import grit.core.place.{Place, Service}
 import grit.core.prompt.Layer
+import grit.core.recipe.ServiceOffer
 import grit.core.store.Focus
-import grit.core.tool.ToolName
-import grit.turn.{TurnOffer, TurnRecord}
+import grit.core.tool.{ToolName, ToolSetId}
+import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
+import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnWeighing}
 
 import Fields.{each, opt}
 
 /** A turn of a corpus as JSON, one line of `turns.jsonl` each, its fields in one fixed order,
   * so equal turns write equal bytes. A read is `Left` naming the first field missing or not of
-  * its form.
+  * its form; a line written before turns' shapes were captured, which has no `weighed`, is
+  * refused, naming the corpus to recapture.
   */
 object TurnJson {
 
@@ -34,6 +38,7 @@ object TurnJson {
     "build" -> CorpusJson.writeBuild(t.build),
     "triage" -> t.triage.fold[ujson.Value](ujson.Null)(CorpusJson.writeLive),
     "offered" -> t.offered.fold[ujson.Value](ujson.Null)(writeOffered),
+    "weighed" -> writeWeigh(t.weighed),
     "window" -> t.window.fold[ujson.Value](ujson.Null)(writeParts),
     "rounds" -> ujson.Arr.from(t.rounds.map(r => ujson.Arr.from(r.calls.map(writeCall)))),
     "ended" -> (t.ended match {
@@ -66,6 +71,11 @@ object TurnJson {
       build <- f.field("build").flatMap(CorpusJson.readBuild("turn", _))
       triage <- f.optional("triage").flatMap(opt(_)(CorpusJson.readLive))
       offered <- f.optional("offered").flatMap(opt(_)(readOffered))
+      weighed <- f
+        .field("weighed")
+        .left
+        .map(_ => "turn: no weighed: written before shapes were captured; recapture the corpus")
+        .flatMap(readWeigh)
       window <- f.optional("window").flatMap(opt(_)(readParts))
       rounds <- f
         .arr("rounds")
@@ -85,6 +95,7 @@ object TurnJson {
       build,
       triage,
       offered,
+      weighed,
       window,
       rounds,
       ended,
@@ -105,10 +116,12 @@ object TurnJson {
 
   private def writeOffered(o: Offered): ujson.Value = ujson.Obj(
     "tools" -> ujson.Arr.from(o.tools.map(n => ujson.Str(ToolName.value(n)))),
+    "set" -> ToolSetId.value(o.set),
     "schema" -> tokens(o.schema),
     "prompt" -> ujson.Obj.from(o.prompt.toVector.map((l, n) => l.key -> tokens(n))),
     "workspace" -> o.workspace.fold[ujson.Value](ujson.Null)(p => ujson.Str(p.written)),
-    "reached" -> ujson.Arr.from(o.reached.map(p => ujson.Str(p.written)))
+    "reached" -> ujson.Arr.from(o.reached.map(p => ujson.Str(p.written))),
+    "shape" -> o.shape.fold[ujson.Value](ujson.Null)(writeShape)
   )
 
   private def readOffered(v: ujson.Value): Either[String, Offered] = {
@@ -117,6 +130,7 @@ object TurnJson {
       tools <- f
         .arr("tools")
         .flatMap(each(_)(t => Fields.str("offered: a tool", t).flatMap(ToolName.of)))
+      set <- f.str("set").flatMap(ToolSetId.of)
       schema <- f.long("schema").map(Tokens(_))
       prompt <- f
         .obj("prompt")
@@ -134,7 +148,128 @@ object TurnJson {
       reached <- f
         .arr("reached")
         .flatMap(each(_)(r => Fields.str("offered: reached", r).flatMap(Place.read)))
-    } yield Offered(tools, schema, VectorMap.from(prompt), workspace, reached)
+      shape <- f.optional("shape").flatMap(opt(_)(readShape))
+    } yield Offered(tools, set, schema, VectorMap.from(prompt), workspace, reached, shape)
+  }
+
+  /** `{"width", "whole", "services": [...]}`: the width `"deployed"` or `{"budget", "hits"}`;
+    * each service `{"service", "via": "workspace" | "reached", "tools", "sources", "verdict"}`,
+    * its verdict `"ungated"`, `"unweighed"` or `{"checked": result}`.
+    */
+  private def writeShape(shape: TurnShape): ujson.Value = ujson.Obj(
+    "width" -> (shape.width match {
+      case Width.Deployed => ujson.Str("deployed")
+      case Width.Within(budget, hits) => ujson.Obj("budget" -> tokens(budget), "hits" -> hits)
+    }),
+    "whole" -> ToolSetId.value(shape.whole),
+    "services" -> ujson.Arr.from(shape.services.map { took =>
+      ujson.Obj(
+        "service" -> took.offer.service.name,
+        "via" -> took.via.toString.toLowerCase,
+        "tools" -> ujson.Arr.from(took.tools.map(n => ujson.Str(ToolName.value(n)))),
+        "sources" -> ujson.Arr.from(
+          took.offer.sources.map(n => ujson.Str(KnowledgeSourceName.value(n)))
+        ),
+        "verdict" -> (took.offer.verdict match {
+          case ServiceOffer.Verdict.Ungated => ujson.Str("ungated")
+          case ServiceOffer.Verdict.Unweighed => ujson.Str("unweighed")
+          case ServiceOffer.Verdict.Checked(c) => ujson.Obj("checked" -> GateJson.writeChecked(c))
+        })
+      )
+    })
+  )
+
+  private def readShape(v: ujson.Value): Either[String, TurnShape] = {
+    val f = Fields("shape", v)
+    for {
+      width <- f.field("width").flatMap {
+        case ujson.Str("deployed") => Right(Width.Deployed)
+        case w: ujson.Obj =>
+          val wf = Fields("shape: width", w)
+          for {
+            budget <- wf.long("budget")
+            hits <- wf.int("hits")
+          } yield Width.Within(Tokens(budget), hits)
+        case _ => Left("shape: width is neither deployed nor {budget, hits}")
+      }
+      whole <- f.str("whole").flatMap(ToolSetId.of)
+      services <- f.arr("services").flatMap(each(_)(readTook))
+    } yield TurnShape(width, whole, services)
+  }
+
+  private def readTook(v: ujson.Value): Either[String, TurnShape.Took] = {
+    val f = Fields("shape: service", v)
+    for {
+      service <- f.str("service").flatMap(Service.of)
+      via <- f
+        .str("via")
+        .flatMap(w =>
+          TurnShape.Via.values.find(_.toString.toLowerCase == w).toRight(s"shape: via $w")
+        )
+      tools <- f
+        .arr("tools")
+        .flatMap(each(_)(t => Fields.str("shape: a tool", t).flatMap(ToolName.of)))
+      sources <- f
+        .arr("sources")
+        .flatMap(each(_)(n => Fields.str("shape: a source", n).flatMap(KnowledgeSourceName.of)))
+      verdict <- f.field("verdict").flatMap {
+        case ujson.Str("ungated") => Right(ServiceOffer.Verdict.Ungated)
+        case ujson.Str("unweighed") => Right(ServiceOffer.Verdict.Unweighed)
+        case c: ujson.Obj =>
+          Fields("shape: verdict", c)
+            .field("checked")
+            .flatMap(GateJson.readChecked)
+            .map(ServiceOffer.Verdict.Checked(_))
+        case _ => Left("shape: verdict is neither ungated, unweighed nor {checked}")
+      }
+    } yield TurnShape.Took(ServiceOffer(service, sources, verdict), via, tools)
+  }
+
+  /** `"unrecorded"` for no `weigh` step; else what it recorded: `null` for nothing, `{"kept":
+    * tags}`, `{"asked": tags, "estimate"}` or `{"failed": kind}`, the kind
+    * [[Weighing.Unweighed]]'s case in lower case.
+    */
+  private def writeWeigh(w: TurnRecord.Weigh): ujson.Value = w match {
+    case TurnRecord.Weigh.Unrecorded => ujson.Str("unrecorded")
+    case TurnRecord.Weigh.Recorded(None) => ujson.Null
+    case TurnRecord.Weigh.Recorded(Some(TurnWeighing.Weighed.Kept(tags))) =>
+      ujson.Obj("kept" -> TagsJson.write(tags))
+    case TurnRecord.Weigh.Recorded(Some(TurnWeighing.Weighed.Asked(asked))) =>
+      ujson.Obj("asked" -> TagsJson.write(asked.tags), "estimate" -> tokens(asked.estimate))
+    case TurnRecord.Weigh.Recorded(Some(TurnWeighing.Weighed.Failed(why))) =>
+      ujson.Obj("failed" -> why.toString.toLowerCase)
+  }
+
+  private def readWeigh(v: ujson.Value): Either[String, TurnRecord.Weigh] = {
+    val f = Fields("weighed", v)
+    def recorded(w: TurnWeighing.Weighed) = TurnRecord.Weigh.Recorded(Some(w))
+    v match {
+      case ujson.Str("unrecorded") => Right(TurnRecord.Weigh.Unrecorded)
+      case ujson.Null => Right(TurnRecord.Weigh.Recorded(None))
+      case o: ujson.Obj =>
+        o.value.keys.toVector.sorted match {
+          case Vector("kept") =>
+            f.field("kept").flatMap(TagsJson.read).map(t => recorded(TurnWeighing.Weighed.Kept(t)))
+          case Vector("asked", "estimate") =>
+            for {
+              tags <- f.field("asked").flatMap(TagsJson.read).flatMap {
+                case w: Tags.Weighed => Right(w)
+                case Tags.Unanswered(_) => Left("weighed: asked tags are unanswered")
+              }
+              estimate <- f.long("estimate")
+            } yield recorded(TurnWeighing.Weighed.Asked(Weighing.Weighed(tags, Tokens(estimate))))
+          case Vector("failed") =>
+            f.str("failed")
+              .flatMap(k =>
+                Weighing.Unweighed.values
+                  .find(_.toString.toLowerCase == k)
+                  .toRight(s"weighed: failed $k")
+              )
+              .map(why => recorded(TurnWeighing.Weighed.Failed(why)))
+          case _ => Left("weighed: neither kept, asked nor failed")
+        }
+      case _ => Left("weighed: neither unrecorded, null nor an object")
+    }
   }
 
   private def writeParts(p: Parts): ujson.Value = ujson.Obj(

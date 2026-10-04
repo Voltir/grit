@@ -38,7 +38,9 @@ Packages, each importing only those above it:
   from a restored database through `grit.dbos`'s `Reader` and rebuilt through the shipped
   builders (`TriageInput`, `TriageQuestions`, `Stitching`), never through SQL of its own.
   `TurnCase`, one turn the database recorded, keyed by its workflow, TUI and task turns as
-  well as Slack ones (`Said`, the message it answers by id): its offer, its window by part,
+  well as Slack ones (`Said`, the message it answers by id): its offer (the set offered, by id, and the shape its
+  recipe decided, `grit.turn.TurnShape`, none for an offer recorded before shapes), what its
+  `weigh` step recorded (`grit.turn.TurnRecord.Weigh`), its window by part,
   its tool loop's rounds (each call by the tool it named: an offered one, the turn's own
   `topic` tool, or neither), how it ended, its ledger rows by role (each with its input, cached input and output tokens
   and its cost) and what became of a heard
@@ -48,7 +50,8 @@ Packages, each importing only those above it:
   tool definitions);
   `Support`, how much of a reply a part carries, computed where the text is and kept as the
   number, the line at which a part counts as used (`Support.Used`), and a window's most
-  supported parts (`Support.top`); `TurnJson`, a turn's line of `turns.jsonl`;
+  supported parts (`Support.top`); `TurnJson`, a turn's line of `turns.jsonl` (a line written before shapes
+  were captured is refused: recapture);
   `KnowledgeJson`, the knowledge sources the deployment that recorded a corpus declares, each
   with the service it supplies, read from the `knowledge.json` written beside the corpus
   (grit's database keeps no declaration; its lines are the deployment's words, no
