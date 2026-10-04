@@ -427,9 +427,9 @@ object Turn {
   /** The `weigh` step: the tags live triage kept for the heard message `turn` answers
     * ([[grit.core.triage.TriageStore.of]]); for a message said to grit, when its offer would
     * read the answers ([[TurnOffer.weighs]]), what live triage's set makes of it
-    * ([[TurnWeighing.said]]), or why asking it failed. `None` when nothing is kept or asked,
-    * or when the turn's own entries or conversation cannot be read. Never fails the turn:
-    * unweighed or failed, its offer withholds nothing
+    * ([[TurnWeighing.said]]), or why asking it failed; [[Weighing.Unweighed.Unread]] when the
+    * turn's own entries, its conversation or triage's tags cannot be read. `None` when nothing
+    * is kept or asked. Never fails the turn: unweighed or failed, its offer withholds nothing
     * ([[grit.core.recipe.ServiceOffer.Verdict.Unweighed]]).
     */
   private def weigh[C^](
@@ -457,17 +457,19 @@ object Turn {
             })
         } yield (kept, addressed && conversation.exists(c => TurnOffer.weighs(tooling, c.origin)))
       }
-      .toOption
-      .flatMap {
-        case (Some(kept), _) => Some(kept)
-        case (None, true) =>
-          Some(
-            said
-              .weigh(turn)
-              .fold(TurnWeighing.Weighed.Failed(_), TurnWeighing.Weighed.Asked(_))
-          )
-        case (None, false) => None
-      }
+      .fold(
+        _ => Some(TurnWeighing.Weighed.Failed(Weighing.Unweighed.Unread)),
+        {
+          case (Some(kept), _) => Some(kept)
+          case (None, true) =>
+            Some(
+              said
+                .weigh(turn)
+                .fold(TurnWeighing.Weighed.Failed(_), TurnWeighing.Weighed.Asked(_))
+            )
+          case (None, false) => None
+        }
+      )
   }
 
   /** The cost of the classifier call `weighed` made, when the turn asked it, recorded in

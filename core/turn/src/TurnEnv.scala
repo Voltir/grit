@@ -73,8 +73,9 @@ object TurnWeighing {
       */
     case Asked(asked: Weighing.Weighed)
 
-    /** Live triage's set was to be asked of the message said to grit the turn answers, and
-      * was not, for `why`; its offer withholds nothing.
+    /** The turn's root was to be weighed, and was not, for `why`: its stores did not read
+      * ([[Weighing.Unweighed.Unread]]), or live triage's set was to be asked of the message
+      * said to grit it answers and was not. Its offer withholds nothing.
       */
     case Failed(why: Weighing.Unweighed)
 

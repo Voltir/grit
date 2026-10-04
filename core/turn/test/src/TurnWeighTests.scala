@@ -139,7 +139,7 @@ object TurnWeighTests extends TestSuite {
     }
 
     test(
-      "the weigh step records the tags triage kept for a heard root, under kept; nothing for a message said to grit, none kept, or a store it cannot read"
+      "the weigh step records the tags triage kept for a heard root, under kept; nothing for a message said to grit or a heard one none is kept for"
     ) {
       // Pinned: a turn in flight reads back this output on every later build.
       val heard = new Sourced.Thread(heard = true, Some(Sourced.repoReads(0.1)))
@@ -154,10 +154,15 @@ object TurnWeighTests extends TestSuite {
       val none = new Sourced.Thread(heard = true, None)
       none.run()
       none.weighed ==> Some("null")
+    }
+
+    test(
+      "a weigh step that cannot read its stores records a failed weighing of kind message, told from one that weighed nothing, and offers everything"
+    ) {
       val down = new Sourced.Thread(heard = true, Some(Sourced.repoReads(0.1)))
       down.run(Unreadable)
       // Never fails the turn: unweighed, the service is offered.
-      (down.weighed, down.offered) ==> (Some("null"), Vector("github_search"))
+      (down.weighed, down.offered) ==> (Some("""{"failed":"message"}"""), Vector("github_search"))
     }
 
     test("a turn that recorded its offer before the weigh step shipped replays without weighing") {
