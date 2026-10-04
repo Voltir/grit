@@ -19,9 +19,9 @@ object TurnCaptureDraftedTests extends TestSuite {
         Outcome.Posted(Cleared.Scored(Judged(p(0.9), p(0.8), "jev", usage))),
         Outcome.Posted(Cleared.Named)
       ).map(TurnCapture.drafted) ==> Vector(
-        Drafted(Drafted.Kind.Below, Some(p(0.4)), Some(p(0.7)), None, Some(p(0.5))),
-        Drafted(Drafted.Kind.Posted, Some(p(0.9)), Some(p(0.8)), None, None),
-        Drafted(Drafted.Kind.Posted, None, None, None, None)
+        Drafted(Drafted.Kind.Below, Some(p(0.4)), Some(p(0.7)), Some(p(0.5))),
+        Drafted(Drafted.Kind.Posted, Some(p(0.9)), Some(p(0.8)), None),
+        Drafted(Drafted.Kind.Posted, None, None, None)
       )
     }
   }

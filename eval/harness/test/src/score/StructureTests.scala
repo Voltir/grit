@@ -149,25 +149,21 @@ object StructureTests extends TestSuite {
       Structure.of(turns, Slice.Rooted(TurnOffer.Root.Addressed), verdicts).online ==> None
     }
 
-    test("a named draft's score is read apart from an unprompted one's") {
+    test("a named draft counts among the outcomes, and adds no score") {
       val named = turns.collect {
         case t if t.speech.exists(_.outcome == Drafted.Kind.Posted) =>
           t.copy(
             root = TurnOffer.Root.Named,
             speech = t.speech.map(
-              _.copy(
-                grounded = None,
-                worth = None,
-                answers = Some(grit.core.period.Probability.clamped(0.9))
-              )
+              _.copy(grounded = None, worth = None)
             )
           )
       }
       Structure
         .of(turns ++ named, Slice.All, verdicts)
         .online
-        .map(o => (o.n, o.grounded.map(q), o.worth.map(q), o.answers.map(q))) ==> Some(
-        (3, Some((2, 0.6, 0.4, 0.8)), Some((2, 0.65, 0.6, 0.7)), Some((1, 0.9, 0.9, 0.9)))
+        .map(o => (o.n, o.grounded.map(q), o.worth.map(q))) ==> Some(
+        (3, Some((2, 0.6, 0.4, 0.8)), Some((2, 0.65, 0.6, 0.7)))
       )
     }
 

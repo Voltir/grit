@@ -222,15 +222,13 @@ final case class Spent(
 )
 
 /** What became of a heard or named root's draft: its outcome's kind, the judge's scores when
-  * it was judged (`grounded` and `worth` an unprompted draft's, `answers` a named one's; the
-  * others `None`), and the bar it was held to when the outcome records one (a draft below
-  * it).
+  * it judged an unprompted draft, and the bar it was held to when the outcome records one (a
+  * draft below it).
   */
 final case class Drafted(
     outcome: Drafted.Kind,
     grounded: Option[Probability],
     worth: Option[Probability],
-    answers: Option[Probability],
     postAt: Option[Probability]
 )
 
