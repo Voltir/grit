@@ -31,40 +31,6 @@ final class SqlPrincipals extends Principals {
         }
     }
 
-  // A workspace's assistant is grit's kind: it never writes inbound entries, so it is never
-  // a speaker.
-  def enrollAssistant(id: PrincipalId, name: String)(using tx: Tx^): Either[StoreError, Unit] =
-    Principals.refusal(id, name) match {
-      case Some(why) => Left(why)
-      case None =>
-        val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-        attempt {
-          Using.resource(
-            conn.prepareStatement(
-              """INSERT INTO grit.principals (id, kind, name) VALUES (?, 'grit', ?)
-                |ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name""".stripMargin
-            )
-          ) { ps =>
-            ps.setString(1, PrincipalId.value(id))
-            ps.setString(2, name.trim)
-            ps.executeUpdate()
-            ()
-          }
-        }
-    }
-
-  def name(id: PrincipalId)(using tx: Tx^): Either[StoreError, Option[String]] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    attempt {
-      Using.resource(conn.prepareStatement("SELECT name FROM grit.principals WHERE id = ?")) { ps =>
-        ps.setString(1, PrincipalId.value(id))
-        Using.resource(ps.executeQuery()) { rs =>
-          if (rs.next()) Option(rs.getString(1)) else None
-        }
-      }
-    }
-  }
-
   def speakers(entries: Vector[EntryId])(using tx: Tx^): Either[StoreError, Speakers] =
     if (entries.isEmpty) Right(Speakers.none)
     else {

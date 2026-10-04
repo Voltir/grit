@@ -28,7 +28,6 @@ import grit.core.store.{
   Entry,
   InMemoryConversationStore,
   InMemoryEntryStore,
-  InMemoryPrincipals,
   InMemoryVoiceStore,
   Origin,
   Payload
@@ -66,12 +65,11 @@ object TurnOfferTests extends TestSuite {
 
   private val slack = Origin.Slack("T1", "C1", "1.0")
 
-  /** The prompt `origin`'s first turn is offered, with `principals` saying who is who, and
+  /** The prompt `origin`'s first turn is offered, and
     * the root it was recorded with; the turn starts with `root`.
     */
   private def offeredAs(
       origin: Origin,
-      principals: InMemoryPrincipals,
       root: Payload,
       persona: Persona = Persona.Grit
   ): (String, TurnOffer.Root) = {
@@ -87,8 +85,7 @@ object TurnOfferTests extends TestSuite {
       ToolSets,
       edges,
       edges,
-      new InMemoryVoiceStore,
-      principals
+      new InMemoryVoiceStore
     )
     val tooling = TurnTooling[{}](
       Toolbox.of[{}]().fold(d => throw new java.lang.AssertionError(d.toString), identity),
@@ -113,8 +110,8 @@ object TurnOfferTests extends TestSuite {
   }
 
   /** The prompt `origin`'s first turn, a person's message to grit, is offered. */
-  private def offered(origin: Origin, principals: InMemoryPrincipals): String =
-    offeredAs(origin, principals, Payload.Message(Message.User("hi")))._1
+  private def offered(origin: Origin): String =
+    offeredAs(origin, Payload.Message(Message.User("hi")))._1
 
   /** A tool named `name` that says `name` back, asking first when `asks`. */
   private def tool(name: ToolName, asks: Boolean): Tool[String] =
@@ -148,8 +145,7 @@ object TurnOfferTests extends TestSuite {
       ToolSets,
       edges,
       edges,
-      new InMemoryVoiceStore,
-      new InMemoryPrincipals
+      new InMemoryVoiceStore
     )
     val tooling = TurnTooling[{}](
       box(tool(ToolName("about"), asks = false)),
@@ -209,8 +205,7 @@ object TurnOfferTests extends TestSuite {
       ToolSets,
       edges,
       edges,
-      new InMemoryVoiceStore,
-      new InMemoryPrincipals
+      new InMemoryVoiceStore
     )
     val tooling = TurnTooling[{}](
       box(tool(ToolName("about"), asks = false)),
@@ -267,8 +262,7 @@ object TurnOfferTests extends TestSuite {
       ToolSets,
       edges,
       edges,
-      new InMemoryVoiceStore,
-      new InMemoryPrincipals
+      new InMemoryVoiceStore
     )
     val slackTeams = Place.under(grit.core.place.Namespace.Slack, Vector.empty)
     val tooling = TurnTooling[{}](
@@ -356,7 +350,7 @@ object TurnOfferTests extends TestSuite {
       "every turn is told candour after the base; a Slack turn is told where its reply goes after its edge, a TUI turn is not"
     ) {
       // Joined by hand, not through SystemPrompt.of, so the order within each layer is pinned.
-      offered(slack, new InMemoryPrincipals) ==> Vector(
+      offered(slack) ==> Vector(
         TurnPrompt.Base.text,
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
@@ -368,7 +362,7 @@ object TurnOfferTests extends TestSuite {
       ).mkString("\n\n")
       val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
       val tui = Origin.Tui(dir, "default")
-      offered(tui, new InMemoryPrincipals) ==> Vector(
+      offered(tui) ==> Vector(
         TurnPrompt.Base.text,
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
@@ -380,13 +374,13 @@ object TurnOfferTests extends TestSuite {
     test("a Slack turn's prompt says the name its deployment's persona declares, after its edge") {
       val bort = Persona.of("Bort").fold(e => throw new java.lang.AssertionError(e), identity)
       val (prompt, _) =
-        offeredAs(slack, new InMemoryPrincipals, Payload.Message(Message.User("hi")), bort)
+        offeredAs(slack, Payload.Message(Message.User("hi")), bort)
       prompt ==> expected(slack, bort)
     }
 
     test("a turn rooted on a heard message is recorded so, and told it was not addressed") {
       val (prompt, root) =
-        offeredAs(slack, new InMemoryPrincipals, Payload.Heard("is it Thursday?"))
+        offeredAs(slack, Payload.Heard("is it Thursday?"))
       root ==> TurnOffer.Root.Heard
       prompt ==> SystemPrompt
         .of(
@@ -642,7 +636,7 @@ object TurnOfferTests extends TestSuite {
     }
 
     test("a turn rooted on a person's message to grit is recorded as addressed") {
-      offeredAs(slack, new InMemoryPrincipals, Payload.Message(Message.User("hi")))._2 ==>
+      offeredAs(slack, Payload.Message(Message.User("hi")))._2 ==>
         TurnOffer.Root.Addressed
     }
   }

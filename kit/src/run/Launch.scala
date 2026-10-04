@@ -118,8 +118,7 @@ private[grit] object Launch {
             engine.toolSets,
             engine.requests,
             engine.edgeDirectory,
-            engine.voices,
-            engine.principals
+            engine.voices
           ),
           assembler,
           classifier(d, s),

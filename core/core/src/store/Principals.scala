@@ -16,17 +16,6 @@ trait Principals {
     * whose author was never enrolled, is not among them.
     */
   def speakers(entries: Vector[EntryId])(using Tx^): Either[StoreError, Speakers]
-
-  /** Makes `id`, the assistant of a workspace ([[Origin.assistant]]), known as `name`,
-    * trimmed, or renames it; it is never a speaker. `Invalid` for a blank name, or for
-    * `local` or `grit`.
-    */
-  def enrollAssistant(id: PrincipalId, name: String)(using Tx^): Either[StoreError, Unit]
-
-  /** The name `id` was last enrolled under, as a person or an assistant; none for one never
-    * enrolled.
-    */
-  def name(id: PrincipalId)(using Tx^): Either[StoreError, Option[String]]
 }
 
 object Principals {

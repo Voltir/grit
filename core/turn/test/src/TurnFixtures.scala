@@ -110,7 +110,7 @@ object TurnFixtures {
   ): TurnHosting = {
     val conversations = new InMemoryConversationStore
     conversations.findOrCreate(origin, PrincipalId.Local)(using TestTx.fake)
-    TurnHosting(conversations, Prompts, ToolSets, edges, edges, voices, new InMemoryPrincipals)
+    TurnHosting(conversations, Prompts, ToolSets, edges, edges, voices)
   }
 
   /** A search that finds nothing: what a turn whose conversation is never stitched reads. */
@@ -613,8 +613,7 @@ object TurnFixtures {
           toolSets,
           requests,
           served.edges,
-          new InMemoryVoiceStore,
-          new InMemoryPrincipals
+          new InMemoryVoiceStore
         ),
         new LinearAssembler(
           entries,
@@ -1349,8 +1348,7 @@ object TurnFixtures {
         ToolSets,
         new grit.core.edge.InMemoryEdges,
         new grit.core.edge.InMemoryEdges,
-        new grit.core.store.InMemoryVoiceStore,
-        new grit.core.store.InMemoryPrincipals
+        new grit.core.store.InMemoryVoiceStore
       )
       val done = durable.run(turn.workflowId)(
         turnBodyWith(

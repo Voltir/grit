@@ -117,8 +117,7 @@ object RebuildTests extends TestSuite {
             engine.toolSets,
             engine.requests,
             engine.edgeDirectory,
-            engine.voices,
-            engine.principals
+            engine.voices
           ),
           new RetrievalAssembler(
             engine.entries,

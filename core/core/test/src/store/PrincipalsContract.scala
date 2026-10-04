@@ -43,33 +43,6 @@ abstract class PrincipalsContract extends TestSuite {
       transaction(principals.speakers(Vector(hers))) ==> Right(Speakers(Map(hers -> "Ana Lima")))
     }
 
-    test(
-      "name: the name last enrolled, as a person or the assistant; none for one never enrolled"
-    ) {
-      val principals = fresh()
-      val bort = PrincipalId("slack:T1")
-      transaction(principals.enroll(ana, "Ana")) ==> Right(())
-      transaction(principals.enrollAssistant(bort, "grit")) ==> Right(())
-      transaction(principals.enrollAssistant(bort, " Bort ")) ==> Right(())
-      transaction(principals.name(ana)) ==> Right(Some("Ana"))
-      transaction(principals.name(bort)) ==> Right(Some("Bort"))
-      transaction(principals.name(PrincipalId("slack:T2"))) ==> Right(None)
-    }
-
-    test("the assistant is never a speaker, and a blank name, or local or grit, is refused") {
-      val principals = fresh()
-      val bort = PrincipalId("slack:T1")
-      transaction(principals.enrollAssistant(bort, "Bort")) ==> Right(())
-      val its = said(principals, bort)
-      transaction(principals.speakers(Vector(its))) ==> Right(Speakers.none)
-      transaction(principals.enrollAssistant(bort, " ")) ==>
-        Left(StoreError.Invalid("a person's name is not blank"))
-      transaction(principals.enrollAssistant(PrincipalId.Local, "Bort")) ==>
-        Left(StoreError.Invalid("local is never enrolled"))
-      transaction(principals.enrollAssistant(PrincipalId.Grit, "Bort")) ==>
-        Left(StoreError.Invalid("grit is never enrolled"))
-    }
-
     test("a blank name, or local or grit, is refused") {
       val principals = fresh()
       transaction(principals.enroll(ana, "  ")) ==>
