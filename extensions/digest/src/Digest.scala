@@ -5,9 +5,18 @@ import java.time.{Instant, ZoneOffset}
 
 import grit.core.id.PluginName
 import grit.core.period.{CloseOrdinal, CloseReason}
-import grit.core.plugin.{CacheDocs, Plugin, PluginDocs}
+import grit.core.plugin.{
+  CacheDocs,
+  CachePosting,
+  Needs,
+  Plugin,
+  PluginReads,
+  PluginRun,
+  PluginTool,
+  Unneeded
+}
 import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
-import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
+import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
 
 /** The digest: one line per closed period, across every conversation: when it closed,
   * where, why, and what it came to ([[grit.core.period.Closing.headline]]). The hello-world
@@ -19,14 +28,21 @@ final class Digest(val name: PluginName) extends Plugin {
 
   val version: Int = 1
 
-  def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
-    Digest.why(closed.reason) match {
-      case None => Right(())
-      case Some(why) => docs.put(Digest.key(closed.order), Digest.doc(closed, why))
-    }
+  override val cache: Option[CachePosting] = Some(Digest.Posted)
+
+  override val tools: Vector[PluginTool[?]] = Vector(Digest.RecentActivity)
 }
 
 object Digest {
+
+  /** One line per closed period, kept under its close ordinal; none for one closed unearned. */
+  private object Posted extends CachePosting {
+    def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
+      why(closed.reason) match {
+        case None => Right(())
+        case Some(why) => docs.put(key(closed.order), doc(closed, why))
+      }
+  }
 
   /** How many lines `recent_activity` shows when not told. */
   val DefaultShown = 10
@@ -73,35 +89,41 @@ object Digest {
       line <- o.get("line").flatMap(_.strOpt)
     } yield s"${Minute.format(at)} · $where · $why · $line"
 
-  /** `recent_activity`: the newest lines of the digest `docs` holds, read through `db`, newest
-    * first. Free: it only reads.
+  /** `recent_activity`: the newest lines of the digest it is bound to, newest first. Free: it
+    * only reads.
     */
-  def recentActivity(db: Db^, docs: PluginDocs): Tool[Int]^{db} =
-    new Tool(
-      ToolSpec(
-        ToolName("recent_activity"),
-        "List the conversations that closed most recently, across every place grit works " +
-          "(this chat, Slack threads, tasks), newest first, one line each: when it closed " +
-          "(UTC), where, whether it was resolved or lapsed, and what it came to. Only what " +
-          "each closing recorded is known; the conversations themselves are not.",
-        Args
-          .of(
-            (n =
-              Field.count(s"How many lines; $DefaultShown when not given.", 1, MaxShown).optional
+  val RecentActivity: PluginTool[Int] = new PluginTool[Int] {
+    val described: Hosted[Int] =
+      new Hosted(
+        ToolSpec(
+          ToolName("recent_activity"),
+          "List the conversations that closed most recently, across every place grit works " +
+            "(this chat, Slack threads, tasks), newest first, one line each: when it closed " +
+            "(UTC), where, whether it was resolved or lapsed, and what it came to. Only what " +
+            "each closing recorded is known; the conversations themselves are not.",
+          Args
+            .of(
+              (n =
+                Field.count(s"How many lines; $DefaultShown when not given.", 1, MaxShown).optional
+              )
             )
-          )
-          .map(_.n.getOrElse(DefaultShown))
-      ),
-      Gate.Free,
-      n => n.toString,
-      n =>
-        db.read(docs.newest("", n)) match {
-          case Left(error) => Outcome.Failed(s"the digest could not be read: $error")
-          case Right(kept) =>
-            val lines = kept.flatMap((_, d) => shown(d))
-            Outcome.Done(
-              if (lines.isEmpty) "No conversation has closed yet." else lines.mkString("\n")
-            )
-        }
-    )
+            .map(_.n.getOrElse(DefaultShown))
+        ),
+        Gate.Free,
+        n => n.toString
+      )
+
+    def bind(own: PluginReads, needs: Needs): Either[Unneeded, PluginRun[Int]] =
+      Right(new PluginRun[Int] {
+        def run(n: Int, db: Db^): Outcome =
+          db.read(own.cache.newest("", n)) match {
+            case Left(error) => Outcome.Failed(s"the digest could not be read: $error")
+            case Right(kept) =>
+              val lines = kept.flatMap((_, d) => shown(d))
+              Outcome.Done(
+                if (lines.isEmpty) "No conversation has closed yet." else lines.mkString("\n")
+              )
+          }
+      })
+  }
 }

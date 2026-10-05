@@ -3,6 +3,7 @@ package grit.kit.deployment
 import scala.concurrent.duration.DurationInt
 
 import grit.core.id.EdgeName
+import grit.core.tool.ToolName
 import grit.core.triage.Gate
 
 import utest.*
@@ -10,6 +11,7 @@ import utest.*
 /** What [[Deployment.of]] refuses. */
 object DeploymentTests extends TestSuite {
   import Deployments.edge
+  import TestPlugins.name
 
   private val github: grit.core.place.Service =
     grit.core.place.Service.of("github").fold(e => sys.error(e), identity)
@@ -351,6 +353,54 @@ object DeploymentTests extends TestSuite {
         Deployments.of(sweep = 999.millis).map(_ => ()),
         Deployments.of(sweep = 1.second).map(_ => ())
       ) ==> (Left(DeploymentRefusal.SweepTooOften(999.millis)), Right(()))
+    }
+
+    test("two plugins of one name are refused, naming it") {
+      Deployments
+        .of(plugins =
+          Vector(
+            new TestPlugins.Keys(name("a")),
+            new TestPlugins.Keys(name("a"), ToolName("other"))
+          )
+        )
+        .map(_ => ()) ==> Left(DeploymentRefusal.PluginRepeated(name("a")))
+    }
+
+    test("a plugin needing one the deployment lacks is refused, naming both; present, accepted") {
+      val keys = new TestPlugins.Keys(name("keys"))
+      val reading = new TestPlugins.Reading(name("reading"), keys, declared = true)
+      (
+        Deployments.of(plugins = Vector(reading)).map(_ => ()),
+        Deployments.of(plugins = Vector(keys, reading)).map(_ => ())
+      ) ==> (Left(DeploymentRefusal.PluginUnmet(name("reading"), name("keys"))), Right(()))
+    }
+
+    test("a plugin's tool named as another plugin's, or as one of grit's own, is refused") {
+      val keys = new TestPlugins.Keys(name("keys"))
+      (
+        Deployments
+          .of(plugins = Vector(keys, new TestPlugins.Keys(name("more"))))
+          .map(_ => ()),
+        Deployments
+          .of(plugins = Vector(new TestPlugins.Keys(name("asks"), ToolName("about"))))
+          .map(_ => ()),
+        Deployments
+          .of(plugins = Vector(new TestPlugins.Keys(name("verdict"), ToolName("topic"))))
+          .map(_ => ())
+      ) ==> (
+        Left(DeploymentRefusal.ToolRepeated(ToolName("keys"))),
+        Left(DeploymentRefusal.ToolRepeated(ToolName("about"))),
+        Left(DeploymentRefusal.ToolRepeated(ToolName("topic")))
+      )
+    }
+
+    test("a plugin's tool asking for a plugin its own does not need is refused, naming both") {
+      val keys = new TestPlugins.Keys(name("keys"))
+      Deployments
+        .of(plugins =
+          Vector(keys, new TestPlugins.Reading(name("reading"), keys, declared = false))
+        )
+        .map(_ => ()) ==> Left(DeploymentRefusal.ToolUnneeded(name("reading"), name("keys")))
     }
   }
 }

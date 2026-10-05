@@ -11,7 +11,7 @@ import grit.core.durable.Durable
 import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, PluginName, SourceId, ToolCallId, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
-import grit.core.plugin.{CacheDocs, Plugin, PostRef}
+import grit.core.plugin.{CacheDocs, CachePosting, Needs, Plugin, PostRef}
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -33,10 +33,12 @@ object PluginLiveTests extends TestSuite {
   /** Writes a document, then refuses: nothing it wrote may outlive the refusal. */
   private final class Refusing(val name: PluginName) extends Plugin {
     val version = 1
-    def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
-      docs
-        .put("half", ujson.Str("written before the refusal"))
-        .flatMap(_ => Left(StoreError.Invalid("refused")))
+    override val cache: Option[CachePosting] = Some(new CachePosting {
+      def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
+        docs
+          .put("half", ujson.Str("written before the refusal"))
+          .flatMap(_ => Left(StoreError.Invalid("refused")))
+    })
   }
 
   /** `n` periods of one conversation, each one message, closed in turn: as a database
@@ -122,8 +124,11 @@ object PluginLiveTests extends TestSuite {
         )
         engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector())
         val store: Db^ = engine.db
+        val recent = Digest.RecentActivity
+          .bind(engine.reads(digest.name), Needs.over(digest.name, Vector.empty))
+          .fold(u => sys.error(s"$u"), identity)
         val tools = Toolbox
-          .of[caps.CapSet^{store}](Digest.recentActivity(store, engine.docs(digest.name)))
+          .of[caps.CapSet^{store}](Digest.RecentActivity.described.over(n => recent.run(n, store)))
           .fold(d => sys.error(s"$d"), identity)
         tools.bind(
           AssistantBlock.ToolCall(ToolCallId("c"), "recent_activity", ujson.Obj()),
@@ -156,7 +161,7 @@ object PluginLiveTests extends TestSuite {
           assert(finished(config, run.workflowId))
           posted
         } ==> runs.map(run => Right(Vector(run)))
-        engine.db.read(engine.docs(refusing.name).get("half")) ==> Right(None)
+        engine.db.read(engine.reads(refusing.name).cache.get("half")) ==> Right(None)
         engine.jot.write(engine.cursors.start(refusing.name, 1, java.time.Instant.now())) ==> Right(
           CloseOrdinal.Start
         )

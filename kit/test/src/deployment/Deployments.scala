@@ -48,12 +48,13 @@ object Deployments {
       worksIn: Vector[grit.core.place.WorksIn] = Vector.empty,
       reaches: Vector[grit.core.place.Reaches] = Vector.empty,
       knowledge: grit.core.triage.KnowledgeSources = grit.core.triage.KnowledgeSources.Empty,
-      recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped
+      recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
+      plugins: Vector[grit.core.plugin.Plugin] = Vector.empty
   ): Either[DeploymentRefusal, Deployment] =
     Deployment.of(
       edges = edges,
       worksIn = worksIn,
-      plugins = Vector.empty,
+      plugins = plugins,
       policy = Policy(assigned, assigned, assigned, assigned),
       offer = Offer(tools, TurnLoop.Budget.of(4).getOrElse(sys.error("rounds"))),
       assembly = Assembly.Linear(Tokens(1000)),

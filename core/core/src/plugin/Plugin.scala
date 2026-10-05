@@ -6,16 +6,37 @@ import grit.core.id.PluginName
 import grit.core.period.CloseOrdinal
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
 
-/** A feature a deployment turns on, built from closed periods alone: it never sees a raw
-  * entry.
+/** A feature a deployment turns on (ADR 0027): a name, a version, the plugins it reads, and
+  * the contributions it makes to core's points, each none unless it says otherwise. Built
+  * from closed periods alone: it never sees a raw entry.
   */
-trait Plugin {
+trait Plugin extends caps.Pure {
   def name: PluginName
 
-  /** What `post` writes is of this version. Changing it leaves the plugin's documents unread,
-    * and posts every closed period again.
+  /** What its posting writes ([[cache]]) is of this version. Changing it posts every kept
+    * closed period again, and leaves its earlier cache documents unread.
     */
   def version: Int
+
+  /** The plugins its tools read, each through its service ([[Needs]]). A deployment is
+    * refused unless a plugin of each one's name is among its plugins.
+    */
+  def needs: Vector[Exports[?]] = Vector.empty
+
+  /** What it keeps of each closed period as cache documents (ADR 0011). */
+  def cache: Option[CachePosting] = None
+
+  /** The tools every turn is offered that it runs itself over grit's store. A deployment is
+    * refused when two of every plugin's tools and grit's own share a name.
+    */
+  def tools: Vector[PluginTool[?]] = Vector.empty
+
+  /** Whether it is posted closed periods: it has a cache. */
+  final def posts: Boolean = cache.nonEmpty
+}
+
+/** A plugin's posting to cache documents. */
+trait CachePosting extends caps.Pure {
 
   /** Keeps what the plugin makes of `closed` in `docs`, in the transaction that moves its
     * cursor past `closed`: both commit, or neither. A `Left` leaves the cursor before

@@ -38,7 +38,8 @@ object Posting {
   def step(n: Int): String = s"post:$n"
 
   /** The posting workflow's body, for the run whose workflow id is `workflowId`, among the
-    * enabled `plugins`. Returns what it did, for logs.
+    * enabled `plugins`; a plugin with nothing to post ([[Plugin.posts]]) takes no step.
+    * Returns what it did, for logs.
     */
   def body(plugins: Vector[Plugin], env: PostEnv^)(
       workflowId: WorkflowId
@@ -48,6 +49,8 @@ object Posting {
       case Some(ref) =>
         plugins.find(p => p.name == ref.plugin && p.version == ref.version) match {
           case None => s"no plugin ${PluginName.value(ref.plugin)} at version ${ref.version}"
+          case Some(plugin) if !plugin.posts =>
+            s"plugin ${PluginName.value(ref.plugin)} posts nothing"
           case Some(plugin) => posting(ref, plugin, env, 0)
         }
     }
@@ -78,7 +81,7 @@ object Posting {
         case None => Right(None)
         case Some(closed) =>
           for {
-            _ <- plugin.post(closed, env.cache(plugin.name, closed))
+            _ <- plugin.cache.fold(Right(()))(_.post(closed, env.cache(plugin.name, closed)))
             _ <- env.cursors.advance(plugin.name, plugin.version, closed.order)
             _ <- env.tombstones.write(
               Target.PostRuns(ref.plugin, ref.version, ref.cursor),

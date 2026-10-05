@@ -47,6 +47,7 @@ private[engine] final class Sweeper(
     cursors: PluginCursors,
     shadows: TriageShadows,
     plugins: () -> Vector[(PluginName, Int)],
+    posting: () -> Vector[(PluginName, Int)],
     declared: () -> Vector[Shadowing]
 ) {
 
@@ -87,7 +88,7 @@ private[engine] final class Sweeper(
           acc.flatMap(done => ask(a.question).map(done + _))
         }
       disabled <- enabling(now)
-      posted <- plugins().foldLeft[Either[StoreError, Swept]](Right(disabled)) { (acc, p) =>
+      posted <- posting().foldLeft[Either[StoreError, Swept]](Right(disabled)) { (acc, p) =>
         acc.flatMap(done => post(p._1, p._2, now).map(done + _))
       }
       shadowed <- declared().foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, s) =>

@@ -6,7 +6,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, PluginName}
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
-import grit.core.plugin.{CacheDocs, InMemoryPlugins, Plugin, PostRef}
+import grit.core.plugin.{CacheDocs, CachePosting, InMemoryPlugins, Plugin, PostRef}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{
   ClosedPeriod,
@@ -42,14 +42,21 @@ object PostingTests extends TestSuite {
       val version: Int,
       refused: Set[String] = Set.empty
   ) extends Plugin {
-    def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
-      if (refused.contains(closed.closing.flows.prose))
-        Left(StoreError.Invalid(s"refused ${closed.closing.flows.prose}"))
-      else
-        docs.put(
-          CloseOrdinal.value(closed.order).toString,
-          ujson.Str(s"v$version ${closed.closing.flows.prose}")
-        )
+    override val cache: Option[CachePosting] = Some(new CachePosting {
+      def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
+        if (refused.contains(closed.closing.flows.prose))
+          Left(StoreError.Invalid(s"refused ${closed.closing.flows.prose}"))
+        else
+          docs.put(
+            CloseOrdinal.value(closed.order).toString,
+            ujson.Str(s"v$version ${closed.closing.flows.prose}")
+          )
+    })
+  }
+
+  /** Contributes nothing to posting: a plugin of tools alone. */
+  private final class Unposted(val name: PluginName) extends Plugin {
+    val version: Int = 1
   }
 
   /** Writes straight through to the in-memory stores, never rolled back. */
@@ -171,6 +178,14 @@ object PostingTests extends TestSuite {
       val v2 = new Recorder(name("digest"), 2)
       w.run(Vector(v2), PostRef(v2.name, 2, CloseOrdinal.Start, 0)) ==> "posted 2"
       w.docs(v2) ==> Vector("1" -> ujson.Str("v2 p1"), "2" -> ujson.Str("v2 p2"))
+    }
+
+    test("a plugin with nothing to post is never posted, and no cursor starts for it") {
+      val w = new World(1)
+      val tools = new Unposted(name("tools"))
+      w.run(Vector(tools), PostRef(tools.name, 1, CloseOrdinal.Start, 0)) ==>
+        "plugin tools posts nothing"
+      w.plugins.cursors.stored()(using TestTx.fake) ==> Right(Vector())
     }
 
     test("a run of a plugin not enabled, or of another version, posts nothing") {

@@ -6,7 +6,7 @@ import grit.core.durable.{History, InMemoryDurable}
 import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, PluginName, StitchRef, TurnRef}
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
-import grit.core.plugin.{CacheDocs, InMemoryPlugins, Plugin, PostRef}
+import grit.core.plugin.{CacheDocs, CachePosting, InMemoryPlugins, Plugin, PostRef}
 import grit.core.provider.ProviderError
 import grit.core.store.{
   ClosedPeriod,
@@ -513,8 +513,10 @@ object RecordLifecycleHistories {
   object Posted extends Plugin {
     val name: PluginName = PluginName.of("recorded").fold(sys.error, identity)
     val version: Int = 1
-    def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
-      docs.put(CloseOrdinal.value(closed.order).toString, ujson.Str(closed.closing.flows.prose))
+    override val cache: Option[CachePosting] = Some(new CachePosting {
+      def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
+        docs.put(CloseOrdinal.value(closed.order).toString, ujson.Str(closed.closing.flows.prose))
+    })
   }
 
   /** `n` closed periods of one conversation, and an empty plugin store. */

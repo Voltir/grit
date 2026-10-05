@@ -9,7 +9,9 @@ deployment registers no workflow of its own. It reaches DBOS only through
 Where a module goes (core, extension, kit or deployment), what a deployment can supply, and
 how it is built outside grit: [`docs/extending.md`](../docs/extending.md). An edge reaches
 the kit as a `grit.core.edge.ServedEdge` value its extension's entry object makes
-(`grit.slack`'s `SlackEdge.serving`), as a plugin reaches it as a `Plugin`.
+(`grit.slack`'s `SlackEdge.serving`), as a plugin reaches it as a `Plugin`: the kit names no
+plugin, and offers every plugin's tools the same way, each bound when the engine starts over
+the plugin's own documents and the services of the plugins it needs (ADR 0027).
 
 In dependency order:
 

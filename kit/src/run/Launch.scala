@@ -6,7 +6,7 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
-import grit.core.id.{ShadowName, TurnRef, WorkflowId}
+import grit.core.id.{PluginName, ShadowName, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.model.{Catalog, Pinned}
 import grit.core.period.{LifecycleSettings, Probability}
@@ -16,8 +16,7 @@ import grit.core.stitch.StitchReads
 import grit.core.store.{Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
 import grit.dbos.engine.Engine
-import grit.digest.Digest
-import grit.kit.deployment.{Assembly, Deployment, Offered, Topics}
+import grit.kit.deployment.{Assembly, Deployment, Offered, PluginBinding, Topics}
 import grit.kit.environment.Secrets
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
@@ -268,19 +267,28 @@ private[grit] object Launch {
       if (sweeping) engine.sweepEvery(d.sweep, Clock.system())
     }
     val store: Db^ = engine.db
-    // Digest's recent_activity, offered when Digest is on.
-    val digest = d.plugins.collectFirst { case d: Digest => engine.docs(d.name) }
+    // Every plugin's tools, each bound over its own documents and its needs' services.
+    val plugged = PluginBinding
+      .bound(d.plugins, engine.reads)
+      .fold(
+        u =>
+          // Deployment.of refuses a tool asking for a plugin its own does not list.
+          throw new IllegalStateException(
+            s"plugin ${PluginName.value(u.plugin)} asks for ${PluginName.value(u.dependency)}, which it does not need"
+          ),
+        identity
+      )
     // The engine's own tools touch no file: they read grit's store, keep a model setting, probe a
     // model. The coding tools are hosted: offered here, run by the edge serving the
     // conversation's directory (ADR 0017).
     // What grit is, from the docs grit.tools ships; offered under either choice.
     val about: Tool[Option[About.Subject]] =
       About.load(d.persona).fold(why => throw new IllegalStateException(why), t => t)
-    // Offered everywhere: what grit is, and Digest's recent_activity when it is on.
-    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{store}]] = digest match {
-      case None => Toolbox.of[caps.CapSet^{store}](about)
-      case Some(docs) => Toolbox.of[caps.CapSet^{store}](about, Digest.recentActivity(store, docs))
-    }
+    // Offered everywhere: what grit is, and every plugin's tools.
+    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{store}]] =
+      Toolbox.of[caps.CapSet^{store}](
+        (Vector[Tool.Offered^{store}](about) ++ plugged.map(_.over(store)))*
+      )
     val launching = d.offer.tools match {
       case Offered.Read =>
         everyone.map(tools =>

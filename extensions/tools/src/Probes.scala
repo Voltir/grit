@@ -11,6 +11,9 @@ import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec}
   */
 object Probes {
 
+  /** Its tool's name, `probe_pair`. */
+  val Name: ToolName = ToolName("probe_pair")
+
   /** The most runs one probe makes. */
   val MaxRuns = 5
 
@@ -28,7 +31,7 @@ object Probes {
   def probe(models: Models^): Tool[ProbeArgs]^{models} =
     new Tool(
       ToolSpec(
-        ToolName("probe_pair"),
+        Name,
         s"Measure how a model behaves at one upstream, over `runs` runs (1 to $MaxRuns) of " +
           s"$CallsPerRun calls each, at up to $MaxTokens output tokens a call. Reports, for " +
           "each of strict, names, repairs, replay and " +

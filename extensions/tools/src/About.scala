@@ -11,6 +11,9 @@ import grit.core.tool.{Args, Field, Gate, Outcome, Retry, Tool, ToolName, ToolSp
   */
 object About {
 
+  /** Its tool's name, `about`. */
+  val Name: ToolName = ToolName("about")
+
   /** What `about` can be asked about, in the order its schema lists them. [[Subject.Grit]]
     * is the overview, answered when none is given.
     */
@@ -51,7 +54,7 @@ object About {
   private def tool(docs: Map[Subject, String], who: String): Tool[Option[Subject]] =
     new Tool(
       ToolSpec(
-        ToolName("about"),
+        Name,
         "Who you are, and what grit, the harness you run on, is and how it works: the name " +
           "you are called by, grit's memory (no transcript), the [record], [afar] and [gap] " +
           "labels, periods and how they close, and places and edges. Call it when the person " +

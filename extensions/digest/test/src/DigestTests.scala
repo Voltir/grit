@@ -2,10 +2,12 @@ package grit.digest
 
 import java.time.Instant
 
+import scala.util.chaining.*
+
 import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, PluginName, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.period.{CloseOrdinal, CloseReason, Closing, Probability, TestClosings}
-import grit.core.plugin.InMemoryPlugins
+import grit.core.plugin.{InMemoryPlugins, Needs, PluginReads}
 import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.dbos.sql.TestTx
@@ -73,13 +75,25 @@ object DigestTests extends TestSuite {
     val plugins = new InMemoryPlugins
     val digest = new Digest(name)
     plugins.cursors.start(name, digest.version, Instant.EPOCH)(using TestTx.fake)
-    periods.foreach(p => digest.post(p, plugins.posting(name, p))(using TestTx.fake))
+    periods.foreach(p => post(digest, p, plugins))
     plugins
   }
 
+  /** `p` posted to `digest`'s cache in `plugins`. */
+  private def post(
+      digest: Digest,
+      p: ClosedPeriod,
+      plugins: InMemoryPlugins
+  ): Either[StoreError, Unit] =
+    digest.cache.fold(Right(()))(_.post(p, plugins.posting(name, p))(using TestTx.fake))
+
   private def run(db: FakeDb, plugins: InMemoryPlugins, args: (String, ujson.Value)*): Outcome =
-    Toolbox
-      .of[caps.CapSet^{db}](Digest.recentActivity(db, plugins.docs(name)))
+    Digest.RecentActivity
+      .bind(PluginReads(plugins.docs(name)), Needs.over(name, Vector.empty))
+      .fold(u => sys.error(u.toString), identity)
+      .pipe(r =>
+        Toolbox.of[caps.CapSet^{db}](Digest.RecentActivity.described.over(n => r.run(n, db)))
+      )
       .fold(d => sys.error(d.toString), identity)
       .bind(
         AssistantBlock.ToolCall(ToolCallId("c1"), "recent_activity", ujson.Obj.from(args)),
@@ -118,7 +132,7 @@ object DigestTests extends TestSuite {
         closing("Heard 3 messages; nothing kept.", None),
         "2026-09-22T04:00:00Z"
       )
-      digest.post(unearned, plugins.posting(name, unearned))(using TestTx.fake) ==> Right(())
+      post(digest, unearned, plugins) ==> Right(())
       plugins.docs(name).newest("", 10)(using TestTx.fake).map(_.map(_._1)) ==> Right(
         Vector("00000000000000000003", "00000000000000000002", "00000000000000000001")
       )
@@ -152,7 +166,7 @@ object DigestTests extends TestSuite {
           f"2026-09-${n}%02dT03:00:00Z"
         )
       }
-      many.foreach(p => digest.post(p, plugins.posting(name, p))(using TestTx.fake))
+      many.foreach(p => post(digest, p, plugins))
       run(new FakeDb, plugins) ==> Outcome.Done(
         (12L to 3L by -1L)
           .map(n => f"2026-09-${n}%02d 03:00 · task nightly · lapsed · Run $n.")

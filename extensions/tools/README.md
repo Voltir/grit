@@ -15,3 +15,4 @@ One package, `grit.tools`:
   approves it.
 - `Probes` — `probe_pair`: a battery of calls measuring a (model, upstream) pair.
 - `About` — `about`: who the assistant is (its deployment's persona) and what grit is and how it works, from the docs in `resources/about`.
+- `Names` — every name above, which a plugin's tool may not take (`Deployment.of` refuses it).

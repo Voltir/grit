@@ -494,7 +494,6 @@ object grit extends Module {
         grit.assembly,
         grit.models,
         grit.tools,
-        grit.digest,
         grit.host
       )
 
@@ -510,6 +509,7 @@ object grit extends Module {
     def moduleDeps =
       Seq(
         grit.kit,
+        grit.digest,
         grit.prose,
         grit.tui,
         grit.host,

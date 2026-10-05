@@ -34,7 +34,7 @@ import grit.core.period.{
   Windows
 }
 import grit.core.place.{Directory, Locality}
-import grit.core.plugin.{CacheDocs, Plugin, PostRef}
+import grit.core.plugin.{CacheDocs, CachePosting, Plugin, PostRef}
 import grit.core.retention.Target
 import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
 import grit.dbos.sql.{
@@ -408,7 +408,10 @@ object CollectorLiveTests extends TestSuite {
   /** A plugin that keeps nothing. */
   private final class Idle(val name: PluginName) extends Plugin {
     val version: Int = 1
-    def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] = Right(())
+    override val cache: Option[CachePosting] = Some(new CachePosting {
+      def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
+        Right(())
+    })
   }
 
   private def enqueue(config: DbConfig, runs: Vector[PostRef]): Unit = {

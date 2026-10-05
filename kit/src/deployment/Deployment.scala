@@ -3,21 +3,24 @@ package grit.kit.deployment
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.edge.ServedEdge
-import grit.core.id.{EdgeName, KnowledgeSourceName, QuestionName, ShadowName}
+import grit.core.id.{EdgeName, KnowledgeSourceName, PluginName, QuestionName, ShadowName}
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
 import grit.core.persona.Persona
 import grit.core.place.{Reaches, Service, WorksIn}
-import grit.core.plugin.Plugin
+import grit.core.plugin.{Plugin, PluginDocs, PluginReads}
 import grit.core.recipe.{Offering, TurnRecipe}
 import grit.core.review.Reviewing
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
+import grit.core.store.{StoreError, Tx}
+import grit.core.tool.ToolName
 import grit.core.triage.{Bound, Earning, Gate, KnowledgeSources, Reading}
 import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.TriageQuestions
-import grit.turn.TurnLoop
+import grit.tools.Names
+import grit.turn.{TurnLoop, TurnVerdict}
 
 /** What every turn's model is offered, at every place, in at most `rounds` model calls. */
 final case class Offer(tools: Offered, rounds: TurnLoop.Budget)
@@ -140,6 +143,24 @@ enum DeploymentRefusal {
     */
   case Widens(budget: Tokens, window: Tokens)
 
+  /** Two plugins are named `name`: they would share one plugin's documents. */
+  case PluginRepeated(name: PluginName)
+
+  /** `plugin` needs `needed`, and no plugin of that name is among the deployment's, so its
+    * documents would never be posted.
+    */
+  case PluginUnmet(plugin: PluginName, needed: PluginName)
+
+  /** Two of the tools every turn may be offered, among the plugins' and grit's own, are named
+    * `name`.
+    */
+  case ToolRepeated(name: ToolName)
+
+  /** A tool of `plugin` asks for `dependency`'s service, which `plugin` does not list in its
+    * needs.
+    */
+  case ToolUnneeded(plugin: PluginName, dependency: PluginName)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
@@ -168,6 +189,12 @@ enum DeploymentRefusal {
       s"${KnowledgeSourceName.value(source)} supplies ${service.name}, which no worksIn or reaches link offers"
     case Widens(budget, window) =>
       s"the recipe draws a window of ${Tokens.value(budget)} tokens, wider than the assembly's ${Tokens.value(window)}"
+    case PluginRepeated(name) => s"two plugins are named ${PluginName.value(name)}"
+    case PluginUnmet(plugin, needed) =>
+      s"${PluginName.value(plugin)} needs ${PluginName.value(needed)}, which is not among the plugins"
+    case ToolRepeated(name) => s"two tools are named ${ToolName.value(name)}"
+    case ToolUnneeded(plugin, dependency) =>
+      s"a tool of ${PluginName.value(plugin)} asks for ${PluginName.value(dependency)}, which it does not list among its needs"
   }
 }
 
@@ -236,7 +263,12 @@ object Deployment {
     * `assembly`'s ([[DeploymentRefusal.Widens]]). `lifecycle` is written over the
     * database's settings on every start, so a change made while grit runs (`/set`, SQL)
     * holds until the next start. What `speaking` spends is counted in `budget` as well as
-    * against its own cap ([[grit.core.speech.Limits.spend]]).
+    * against its own cap ([[grit.core.speech.Limits.spend]]). Refused, too, when two of
+    * `plugins` share a name ([[DeploymentRefusal.PluginRepeated]]), one needs a plugin no
+    * plugin of whose name is among them ([[DeploymentRefusal.PluginUnmet]]), two of the tools a
+    * turn may be offered (every plugin's, grit's own: [[grit.tools.Names.all]] and the turn's
+    * `topic`) share a name ([[DeploymentRefusal.ToolRepeated]]), or a plugin's tool asks for a
+    * plugin its own does not need ([[DeploymentRefusal.ToolUnneeded]]).
     */
   def of(
       edges: Vector[ServedEdge],
@@ -260,8 +292,36 @@ object Deployment {
     val names = edges.map(_.name)
     val unanswered = edges.filterNot(_.answersAsks).map(_.name)
     val live = TriageQuestions.shipped(persona)
+    val pluginNames = plugins.map(_.name)
+    // grit's own, then every plugin's: a name taken twice is the second one's to give up.
+    val toolNames =
+      Names.all ++ Vector(TurnVerdict.Name) ++ plugins.flatMap(_.tools.map(_.described.name))
     for {
       _ <- names.diff(names.distinct).headOption.map(DeploymentRefusal.EdgeRepeated(_)).toLeft(())
+      _ <- pluginNames
+        .diff(pluginNames.distinct)
+        .headOption
+        .map(DeploymentRefusal.PluginRepeated(_))
+        .toLeft(())
+      _ <- plugins
+        .flatMap(p =>
+          p.needs
+            .map(_.name)
+            .filterNot(pluginNames.contains)
+            .map(DeploymentRefusal.PluginUnmet(p.name, _))
+        )
+        .headOption
+        .toLeft(())
+      _ <- toolNames
+        .diff(toolNames.distinct)
+        .headOption
+        .map(DeploymentRefusal.ToolRepeated(_))
+        .toLeft(())
+      // Binding reads no document (it holds no transaction), so binding over none decides
+      // which tools ask for a plugin their own does not need, as the engine's start would.
+      _ <- PluginBinding
+        .bound(plugins, _ => Unread)
+        .fold(u => Left(DeploymentRefusal.ToolUnneeded(u.plugin, u.dependency)), _ => Right(()))
       _ <- Either.cond(
         offer.tools == Offered.Read || unanswered.isEmpty,
         (),
@@ -353,6 +413,14 @@ object Deployment {
       .unread(Gate.all(recipe.gates(knowledge)*), knowledge)
       .map(DeploymentRefusal.RecipeUnread(_))
       .toLeft(())
+
+  /** No document: what binding a plugin's tools reads, when only their needs are checked. */
+  private val Unread: PluginReads = PluginReads(new PluginDocs {
+    def get(key: String)(using Tx^): Either[StoreError, Option[ujson.Value]] = Right(None)
+    def newest(prefix: String, n: Int)(using
+        Tx^
+    ): Either[StoreError, Vector[(String, ujson.Value)]] = Right(Vector.empty)
+  })
 
   /** [[DeploymentRefusal.OffersUnlinked]] for the first source of `knowledge` supplying a
     * service none of `worksIn` or `reaches` names.

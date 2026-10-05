@@ -34,8 +34,8 @@ supply two of them as values in `Deployment.of` today: a `ServedEdge` or `CatchU
 | Trait (package) | Shipped | A deployment's own? |
 |---|---|---|
 | `ServedEdge`, `CatchUp` (`grit.core.edge`) | `SlackEdge.serving`, `SlackEdge.backfill`, `McpEdge.serving` | yes: `Deployment.of(edges = …)`, `Kit.catchUp` |
-| `Plugin` (`grit.core.plugin`) | `Digest` | yes: `Deployment.of(plugins = …)` |
-| `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017); the tools every turn is offered are the kit's `Offered`, chosen, not supplied |
+| `Plugin` (`grit.core.plugin`), with its `CachePosting` and `PluginTool`s | `Digest` | yes: `Deployment.of(plugins = …)` |
+| `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017), or as a plugin's `PluginTool`, which the turn runs itself over grit's store; grit's own are the kit's `Offered`, chosen, not supplied |
 | `Provider` (`grit.core.provider`) | `OpenRouterProvider`, `StubProvider` | no: the kit builds one from `Secrets` |
 | `Classifier` (`grit.core.classify`) | `JevClassifier`, `StubClassifier` | no: the kit's `Topics` chooses |
 | `ContextAssembler` (`grit.core.context`), `TokenEstimator` (`grit.core.provider`) | `LinearAssembler`, `RetrievalAssembler`, `CharEstimate` | no: the kit's `Assembly` chooses; the assemblers are core (`core/assembly`), so a new one is a change to core |
@@ -46,13 +46,17 @@ choice. A deployment supplying its own `Provider`, `Classifier`, `ContextAssembl
 capabilities as values, as it does edges and plugins, is parked.
 
 **A worked example: `Digest`.** `extensions/digest` is a shipped extension that names core
-alone. `Digest` implements `Plugin`: the engine posts it every closed period, and its `post`
-keeps one line per period in its documents, in the transaction that moves its cursor. A
-deployment turns it on as a value, `Deployment.of(plugins = Vector(new Digest(name)), …)`;
-the reference deployment does so for `GRIT_PLUGINS=digest`. Reading those lines back is the
-kit's part: with a `Digest` among the plugins, every turn is offered its `recent_activity`
-tool. A deployment's own plugin is posted the same way; the kit offers no tool over its
-documents.
+alone. `Digest` implements `Plugin` (ADR 0027), a pure bundle of contributions: its cache
+posting keeps one line per closed period in its documents, in the transaction that moves its
+cursor, and its tool, `recent_activity`, reads them back. A deployment turns it on as a value,
+`Deployment.of(plugins = Vector(new Digest(name)), …)`; the reference deployment does so for
+`GRIT_PLUGINS=digest`. The kit names no plugin: it posts every plugin and offers every
+plugin's tools the same way, each bound when the engine starts over the plugin's own
+documents. A plugin that reads another takes it in its constructor, lists it in `needs`, and
+reads it only through the service it `Exports`. `Deployment.of` refuses two plugins of one
+name, a need no plugin of its name meets, a tool name taken twice (grit's own included), and a
+tool asking for a plugin its own does not need. A deployment's own plugin can contribute
+anything a shipped one can.
 
 ## What an extension may import
 

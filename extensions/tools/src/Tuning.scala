@@ -8,6 +8,9 @@ import grit.core.tool.{Args, ArgsError, Field, Gate, Outcome, Tool, ToolName, To
   */
 object Tuning {
 
+  /** Its tool's name, `propose_model_setting`. */
+  val Name: ToolName = ToolName("propose_model_setting")
+
   /** The most runs a proposed setting may claim. */
   val MaxRuns = 10000
 
@@ -15,7 +18,7 @@ object Tuning {
   def propose(book: ModelSettings^): Tool[ModelSetting]^{book} =
     new Tool(
       ToolSpec(
-        ToolName("propose_model_setting"),
+        Name,
         "Propose one measured setting of a model served by one upstream, kept once " +
           "approved; the next turn's model catalog includes it, this one does not. " +
           "`setting` is one of " + CatalogJson.SettingNames.map(n => s"`$n`").mkString(", ") +

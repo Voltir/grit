@@ -16,7 +16,7 @@ import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
-import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginDocs}
+import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginReads}
 import grit.core.speech.SpeechStore
 import grit.core.spend.{Budget, Spending}
 import grit.core.store.{
@@ -190,8 +190,10 @@ final class Engine private (
   /** Each plugin's cursor. */
   val cursors: PluginCursors = new SqlPluginCursors(tombstones)
 
-  /** Each plugin's documents: given a plugin's name, its own, and no other plugin's. */
-  val docs: PluginName -> PluginDocs = plugin => new SqlPluginDocs(plugin)
+  /** Each plugin's own documents as its tools and its service read them: given a plugin's
+    * name, its own, and no other plugin's.
+    */
+  val reads: PluginName -> PluginReads = plugin => PluginReads(new SqlPluginDocs(plugin))
 
   /** Given a plugin and the closed period it is posting, where it keeps what it makes of it. */
   val cache: (PluginName, ClosedPeriod) -> CacheDocs =
@@ -201,8 +203,8 @@ final class Engine private (
     * `settle` of every question whether anyone is waiting on a quiet period, `post` of every
     * posting run, `triage` of every heard message's triage, `stitch` of every opening's
     * placement ([[grit.core.id.StitchRef]]), and `shadow` of every shadow
-    * ([[grit.core.id.ShadowRef]]), and starts running what is queued; the sweep posts to
-    * `plugins`, the ones enabled, and enqueues shadows for `shadowing`, the variants declared.
+    * ([[grit.core.id.ShadowRef]]), and starts running what is queued; `plugins` are the ones
+    * enabled, and the sweep posts to those with something to post ([[Plugin.posts]]), and enqueues shadows for `shadowing`, the variants declared.
     * Without them no shadow is enqueued, and one an earlier engine left queued ends at once,
     * keeping nothing. Makes the engine's epoch the database's latest application version, so
     * work enqueued without one (every grit enqueue) runs here whatever epochs the database
@@ -228,6 +230,7 @@ final class Engine private (
     Stitches.register(dbos, steps, stitch, running)
     Shadows.register(dbos, steps, shadow, running)
     enabled.set(plugins.map(p => (p.name, p.version)))
+    posting.set(plugins.filter(_.posts).map(p => (p.name, p.version)))
     declared.set(shadowing)
     // Before launch, so the queues are there when recovery puts work back on them.
     Turns.registerQueue(client)
@@ -242,6 +245,9 @@ final class Engine private (
 
   /** The enabled plugins' names and versions, set once by [[launch]]. */
   private val enabled = new AtomicReference(Vector.empty[(PluginName, Int)])
+
+  /** The enabled plugins with something to post, and their versions, set once by [[launch]]. */
+  private val posting = new AtomicReference(Vector.empty[(PluginName, Int)])
 
   /** The shadow variants declared, set once by [[launch]]. */
   private val declared = new AtomicReference(Vector.empty[Shadowing])
@@ -262,6 +268,7 @@ final class Engine private (
       cursors,
       shadows,
       () => enabled.get(),
+      () => posting.get(),
       () => declared.get()
     )
 
@@ -269,7 +276,7 @@ final class Engine private (
     * whose deadline has come has its attempt on that deadline enqueued
     * ([[grit.core.id.CloseRef.workflowId]]), and every other that is to be asked whether anyone
     * is waiting on it ([[grit.core.period.Deadline.ask]]) has its question enqueued
-    * ([[grit.core.id.SettleRef.workflowId]]); every enabled plugin behind the newest closed
+    * ([[grit.core.id.SettleRef.workflowId]]); every enabled plugin with something to post behind the newest closed
     * period has a run enqueued from its cursor ([[grit.core.plugin.PostRef]]) unless one is
     * going, and every other plugin with a cursor is marked for deletion
     * ([[grit.core.retention.Target.Disabled]]); every declared shadow variant none of whose

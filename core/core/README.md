@@ -116,12 +116,6 @@ In dependency order:
   (also which messages are considered, and every one `Reviewed`), kept with their
   conversation after the message's entry is gone (ADR 0024). ← `id`, `classify`, `store`,
   `speech`
-- **`plugin`** — features a deployment turns on, built from closed periods alone: `Plugin`
-  (a name, a version, and `post`, which keeps what it wants of one `ClosedPeriod`),
-  `CacheDocs` (where it keeps what it makes of one closed period, deleted with that period's
-  closing), `PluginDocs` (one plugin's documents as its surfaces read them), `PluginCursors` (how
-  far each has posted, in close order; a new version starts again, in a new generation) and `PostRef` (one
-  posting run, and its workflow id). ← `id`, `period`, `store`
 - **`durable`** — `Durable` and `Journaled`: steps that survive a crash, and waits for a
   message (`recv`); `StepRecord`, a step as a reader after the fact sees it. ← `id`, `store`
 - **`approval`** — `Approval`, a person's answer to a gated tool call, and the message
@@ -175,6 +169,18 @@ In dependency order:
   `Approval`), `Repairs` (what of a call is repaired before it is read, as the pair's
   settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
   `message`, `model`, `store`, `provider`, `approval`
+
+- **`plugin`** — features a deployment turns on (ADR 0027), each a pure bundle of
+  contributions to core's points: `Plugin` (a name, a version, the plugins it `needs`, and
+  optionally a `CachePosting`, which keeps what it wants of one `ClosedPeriod`, and
+  `PluginTool`s, each a `Hosted` description bound at start to a `PluginRun` over its own
+  documents, `PluginReads`, and its needs' services, `Needs`); `Exports`, a plugin another may
+  need, exporting a pure service over its own documents, the only way one plugin reads
+  another's; `CacheDocs` (where it keeps what it makes of one closed period, deleted with that
+  period's closing), `PluginDocs` (one plugin's documents as its surfaces read them),
+  `PluginCursors` (how far each has posted, in close order; a new version starts again, in a
+  new generation) and `PostRef` (one posting run, and its workflow id). ← `id`, `period`,
+  `store`, `tool`
 
 - **`edge`** — what an edge and the engine share: `ServedEdge`, an edge a deployment serves
   beside its engine as it posts to a plugin (ADR 0021), opened over `EdgeStores` (what an
