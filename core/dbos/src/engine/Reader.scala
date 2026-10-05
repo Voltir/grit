@@ -30,7 +30,7 @@ import grit.dbos.sql.{
   DbConfig,
   SqlConversationStore,
   SqlDb,
-  SqlDocuments,
+  SqlDocumentSearch,
   SqlEntrySearch,
   SqlEntryStore,
   SqlLifecycleStore,
@@ -40,7 +40,6 @@ import grit.dbos.sql.{
   SqlReviews,
   SqlRoomReads,
   SqlStitchStore,
-  SqlTombstones,
   SqlToolSets,
   SqlTriageShadows,
   SqlTriageStore,
@@ -128,7 +127,7 @@ object Reader {
     val rooms: RoomReads = new SqlRoomReads
     val search: EntrySearch = new SqlEntrySearch()
     // Its keepers would write tombstones; a reader only searches, so none is ever built.
-    val documents: DocumentSearch = new SqlDocuments(new SqlTombstones)
+    val documents: DocumentSearch = new SqlDocumentSearch
     val principals: Principals = new SqlPrincipals()
     val triage: TriageStore = new SqlTriageStore
     val shadows: TriageShadows = new SqlTriageShadows

@@ -32,7 +32,7 @@ import grit.dbos.sql.{
   DbConfig,
   SqlConversationStore,
   SqlDb,
-  SqlDocuments,
+  SqlDocumentSearch,
   SqlEntryStore,
   SqlJot,
   SqlLifecycleStore,
@@ -40,7 +40,6 @@ import grit.dbos.sql.{
   SqlPeriodStore,
   SqlPrincipals,
   SqlPromptStore,
-  SqlTombstones,
   SqlUsageLedger,
   SqlVoiceStore
 }
@@ -248,8 +247,7 @@ private[engine] final class Attached(
 
   val principals: Principals = new SqlPrincipals()
 
-  // Reads only: a search never marks a tombstone.
-  val documents: DocumentSearch = new SqlDocuments(new SqlTombstones)
+  val documents: DocumentSearch = new SqlDocumentSearch
 
   val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
 

@@ -21,6 +21,9 @@ abstract class DocumentContract extends TestSuite {
   /** The store under test. */
   protected def store: DocumentStore
 
+  /** What the read half runs over: the store itself, unless an implementation reads apart. */
+  protected def search: DocumentSearch = store
+
   /** `plugin`'s documents as it writes them, under `terms`, in the store under test. */
   protected def keeper(plugin: PluginName, terms: DocumentTerms): DocumentKeeper
 
@@ -75,7 +78,7 @@ abstract class DocumentContract extends TestSuite {
       m: Int,
       limit: Int = 10
   ): Vector[DocumentSearch.Hit] =
-    transaction(ok(store.search(shelves, query, limit, at(m))))
+    transaction(ok(search.search(shelves, query, limit, at(m))))
 
   val tests = Tests {
     test("a write supersedes the key's version: the new one is current, the old still read") {
@@ -85,7 +88,10 @@ abstract class DocumentContract extends TestSuite {
       val two = put(k, "k", "second words", 2)
       assert(DocumentVersion.value(one) < DocumentVersion.value(two))
       texts(transaction(ok(shelf(p).current(key("k")))).toVector) ==> Vector("second words")
-      texts(transaction(ok(store.read(Vector(two, one))))) ==> Vector("second words", "first words")
+      texts(transaction(ok(search.read(Vector(two, one))))) ==> Vector(
+        "second words",
+        "first words"
+      )
       val shelves = Vector(Shelved(p, place("here")))
       texts(hits(shelves, "first", 2).map(_.document)) ==> Vector("first words")
       texts(hits(shelves, "first", 3).map(_.document)) ==> Vector()
@@ -101,7 +107,7 @@ abstract class DocumentContract extends TestSuite {
       assert(withdrawal.nonEmpty)
       transaction(ok(shelf(p).current(key("gone")))) ==> None
       keys(transaction(ok(shelf(p).newest(10)))) ==> Vector("stays")
-      texts(transaction(ok(store.read(withdrawal.toVector :+ kept)))) ==> Vector("withdrawn words")
+      texts(transaction(ok(search.read(withdrawal.toVector :+ kept)))) ==> Vector("withdrawn words")
       transaction(ok(k.withdraw(key("gone"), at(3)))) ==> None
       transaction(ok(k.withdraw(key("never"), at(3)))) ==> None
     }
@@ -152,7 +158,7 @@ abstract class DocumentContract extends TestSuite {
       val p = name("doc-placed")
       val k = keeper(p, terms())
       val v = put(k, "k", "placed words", 1)
-      def placement = transaction(ok(store.read(Vector(v)))).map(_.placement)
+      def placement = transaction(ok(search.read(Vector(v)))).map(_.placement)
       placement ==> Vector(Placement(0, at(1)))
       val unknown = DocumentVersion.of(Long.MaxValue).toVector
       transaction(ok(store.placed(v +: unknown, at(3))))
@@ -202,7 +208,7 @@ abstract class DocumentContract extends TestSuite {
       put(kp, "d", "words", 9, where = place("later"))
       put(keeper(q, terms()), "a", "words", 1, where = place("z"))
       put(keeper(r, terms()), "a", "words", 1, where = place("unasked"))
-      transaction(ok(store.shelved(Vector(p, q), at(5))))
+      transaction(ok(search.shelved(Vector(p, q), at(5))))
         .sortBy(s => (PluginName.value(s.plugin), s.place.written)) ==>
         Vector(Shelved(p, place("x")), Shelved(q, place("z")))
     }
@@ -245,15 +251,15 @@ abstract class DocumentContract extends TestSuite {
     test("declare puts the terms given in force; one left out is no longer declared, but kept") {
       val (p, q) = (name("doc-declare-p"), name("doc-declare-q"))
       transaction(ok(store.declare(Vector(p -> terms(label = "p's"), q -> terms(bound = 3)))))
-      transaction(ok(store.declared())).sortBy((n, _) => PluginName.value(n)) ==>
+      transaction(ok(search.declared())).sortBy((n, _) => PluginName.value(n)) ==>
         Vector(p -> terms(label = "p's"), q -> terms(bound = 3))
       transaction(ok(store.declare(Vector(q -> terms(bound = 4)))))
-      transaction(ok(store.declared())) ==> Vector(q -> terms(bound = 4))
+      transaction(ok(search.declared())) ==> Vector(q -> terms(bound = 4))
       // p has terms and no document: kept until removed, so the sweep can mark it.
       transaction(ok(store.kept())).filter(Set(p, q)).toSet ==> Set(p, q)
       transaction(ok(store.remove(p, at(1))))
       transaction(ok(store.kept())).filter(Set(p, q)).toSet ==> Set(q)
-      transaction(ok(store.declared())) ==> Vector(q -> terms(bound = 4))
+      transaction(ok(search.declared())) ==> Vector(q -> terms(bound = 4))
     }
 
     test("forget deletes one version, and the key's others stay") {
@@ -262,7 +268,7 @@ abstract class DocumentContract extends TestSuite {
       val one = put(k, "k", "first words", 1)
       val two = put(k, "k", "second words", 2)
       transaction(ok(store.forget(one)))
-      texts(transaction(ok(store.read(Vector(one, two))))) ==> Vector("second words")
+      texts(transaction(ok(search.read(Vector(one, two))))) ==> Vector("second words")
       texts(transaction(ok(shelf(p).current(key("k")))).toVector) ==> Vector("second words")
       transaction(ok(store.forget(one)))
     }
@@ -274,7 +280,7 @@ abstract class DocumentContract extends TestSuite {
       val withdrawal = transaction(ok(kp.withdraw(key("j"), at(3)))).toVector
       val qs = Vector(put(kq, "k", "one", 1), put(kq, "k", "two", 2))
       transaction(ok(store.remove(p, at(4))))
-      transaction(ok(store.read(ps ++ withdrawal))) ==> Vector()
+      transaction(ok(search.read(ps ++ withdrawal))) ==> Vector()
       transaction(ok(shelf(p).newest(10))) ==> Vector()
       transaction(ok(store.kept())).filter(Set(p, q)).toSet ==> Set(q)
       val mine = (ps ++ withdrawal).map(Target.Document(_)).toSet[Target]
@@ -283,7 +289,7 @@ abstract class DocumentContract extends TestSuite {
         .map(_.target)
         .toSet
       (pending.intersect(mine), pending.intersect(theirs)) ==> (Set(), theirs)
-      texts(transaction(ok(store.read(qs)))) ==> Vector("one", "two")
+      texts(transaction(ok(search.read(qs)))) ==> Vector("one", "two")
     }
 
     test("search reads a document's text, never its key, place or data") {

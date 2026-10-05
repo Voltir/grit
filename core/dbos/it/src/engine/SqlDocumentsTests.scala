@@ -3,13 +3,14 @@ package grit.dbos.engine
 import grit.core.document.{
   DocumentContract,
   DocumentKeeper,
+  DocumentSearch,
   DocumentShelf,
   DocumentStore,
   DocumentTerms
 }
 import grit.core.id.PluginName
 import grit.core.store.{Tombstones, Tx}
-import grit.dbos.sql.{LiveDb, SqlDocuments, SqlTombstones, TestPostgres}
+import grit.dbos.sql.{LiveDb, SqlDocumentSearch, SqlDocuments, SqlTombstones, TestPostgres}
 
 /** The documents contract, kept by the SQL store against a real Postgres. */
 object SqlDocumentsTests extends DocumentContract {
@@ -26,6 +27,9 @@ object SqlDocumentsTests extends DocumentContract {
   private val documents = new SqlDocuments(tombstones)
 
   protected val store: DocumentStore = documents
+
+  // The read half over the read-only class an attached link is handed.
+  override protected val search: DocumentSearch = new SqlDocumentSearch
 
   protected def keeper(plugin: PluginName, terms: DocumentTerms): DocumentKeeper =
     documents.keeper(plugin, terms)
