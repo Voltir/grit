@@ -138,7 +138,7 @@ object TurnRecordLiveTests extends TestSuite {
         )
       assert(child.exitCode == CrashingTurn.Halted)
 
-      val engine = LiveEngine.open(config, Turn.Epoch)
+      val engine = LiveEngine.reopen(config, Turn.Epoch)
       try {
         launch(engine, engine.entries, new CountingProvider)
         val turn = say(engine, source)

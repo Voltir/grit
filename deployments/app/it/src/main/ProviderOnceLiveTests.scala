@@ -70,7 +70,7 @@ object ProviderOnceLiveTests extends TestSuite {
       assert(child.exitCode == CrashingTurn.Halted)
 
       val provider = new CountingProvider
-      val engine = LiveEngine.open(config, Turn.Epoch)
+      val engine = LiveEngine.reopen(config, Turn.Epoch)
       val (output, text) =
         try {
           launch(engine, engine.entries, provider)
