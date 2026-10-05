@@ -1,0 +1,34 @@
+{
+  "workflow": "turn",
+  "id": "c1:1",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "pin-models",
+      "output": "{\"ok\":\"75a65a0cae559d9e\"}"
+    },
+    {
+      "name": "DBOS.patch-weigh"
+    },
+    {
+      "name": "weigh",
+      "output": "null"
+    },
+    {
+      "name": "offer",
+      "output": "{\"failed\":\"store\",\"reason\":\"conversation of c1:1 is gone\"}"
+    },
+    {
+      "name": "DBOS.patch-record-failure"
+    },
+    {
+      "name": "record-failure",
+      "output": "{\"ok\":true}"
+    }
+  ],
+  "kept": {
+    "toolSets": [],
+    "fragments": []
+  }
+}

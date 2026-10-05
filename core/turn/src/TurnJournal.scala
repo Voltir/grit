@@ -492,10 +492,11 @@ private[turn] object TurnJournal {
     case Weighing.Unweighed.Late => "timeout"
   }
 
-  /** A `dispatch` step's output: whether its requests were sent to a serving edge (`true`),
-    * or no edge was serving the workspace (`false`).
+  /** A step's output that is yes or no: a `dispatch` step's, whether its requests were sent
+    * to a serving edge (`true`) or no edge was serving the workspace (`false`); a
+    * `record-failure` step's, whether a failure was kept for the turn's heard message.
     */
-  given dispatchedTo: Journaled[Either[TurnFailure, Boolean]] =
+  given yesNo: Journaled[Either[TurnFailure, Boolean]] =
     outcome(b => ujson.Bool(b), v => v.boolOpt.toRight("sent: expected a boolean"))
 
   /** An `expire` or `abandon` step's output: `"expired"`, `"claimed"`, or `{"answered":

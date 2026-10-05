@@ -42,7 +42,10 @@ import TurnVerdict.Shape
   *      width its window is drawn at, and which services' tools it is offered, all recorded
   *      as its [[TurnShape]]; an offer recorded before shapes is drawn as deployed. A root
   *      `weigh` asked about has its call's cost recorded in the ledger in the same
-  *      transaction ([[TurnWeighing.id]]).
+  *      transaction ([[TurnWeighing.id]]). Its root is `ByName` when triage decided to answer
+  *      its heard message as said to grit ([[grit.core.speech.SpeechStore.answering]]).
+  *   1. `record-failure` — only when `pin-models` or `offer` failed, ending the turn: a
+  *      heard message's turn keeps `Failed` as what became of it ([[failedEarly]]).
   *   1. `stitched` — when the turn's message is an [[grit.core.stitch.Opening]], its
   *      placement waited for ([[grit.core.stitch.Placements.awaited]]), so it runs only once
   *      every opening heard before it in its room is placed; nothing waited for otherwise.
@@ -124,6 +127,7 @@ object Turn {
     val PinModels = "pin-models"
     val Weigh = "weigh"
     val Offer = "offer"
+    val RecordFailure = "record-failure"
     val Stitched = "stitched"
     val Stitch = "stitch"
     val RecordStitch = "record-stitch"
@@ -145,10 +149,12 @@ object Turn {
       * before it shipped, and `record-stitch`, one of those whose first message was stitched;
       * `call-model-again`, `call-model-plain` and `record-verdict`, a turn whose model was
       * asked about its topic; `judge`, an unprompted turn (and a named one before
-      * [[Patches.NamedUnjudged]]), and `record-speech`, a turn rooted on a heard message.
+      * [[Patches.NamedUnjudged]]), and `record-speech`, a turn rooted on a heard message;
+      * `record-failure`, a turn that failed before its offer was made or read.
       */
     val optional: Vector[String] =
       Vector(
+        RecordFailure,
         Stitch,
         RecordStitch,
         CallModelAgain,
@@ -163,6 +169,7 @@ object Turn {
         PinModels,
         Weigh,
         Offer,
+        RecordFailure,
         Stitched,
         Stitch,
         RecordStitch,
@@ -368,6 +375,12 @@ object Turn {
 
     /** A named turn's draft is settled with no `judge` step (2026-10-04). */
     val NamedUnjudged = "named-unjudged"
+
+    /** A turn that fails at `pin-models` or `offer` keeps its heard message's failure in
+      * `record-failure` (2026-10-05). A turn whose offer is read back and fails on a rerun
+      * has recorded later steps there, and takes none.
+      */
+    val RecordFailure = "record-failure"
   }
 
   /** The step a running turn is in, given the names of the steps it has `recorded` (a step
@@ -415,7 +428,7 @@ object Turn {
       case Some(turn) =>
         import TurnJournal.given
         d.transact(Step.PinModels)(pinModels(env, turn)).flatMap(profileOf(env, _)) match {
-          case Left(failure) => s"failed: $failure"
+          case Left(failure) => failedEarly(env, turn, failure)
           case Right(profile) =>
             val hosting = env.hosting
             // Taken by every turn that had not offered when it shipped, whatever the recipe, so
@@ -442,11 +455,43 @@ object Turn {
                 )
                 .flatMap(offered => weighCost(ledger, turn, weighed).map(_ => offered))
             ).flatMap(TurnOffer.load(hosting, env.db, _)) match {
-              case Left(failure) => s"failed: $failure"
+              case Left(failure) => failedEarly(env, turn, failure)
               case Right(offer) => pinned(env, tooling, turn)(using profile, offer, d)
             }
         }
     }
+
+  /** The `record-failure` step, for `turn`, which ended in `failure` before its offer was
+    * made or read: `Failed` kept as what became of it when it answers a heard message
+    * ([[grit.core.speech.SpeechStore.drafted]]), so its decision never stands drafting; nothing
+    * for a message said to grit. Taken by every turn that fails there, whatever it answers,
+    * since which it answers is read inside the step.
+    */
+  private def failedEarly(env: TurnEnv^, turn: TurnRef, failure: TurnFailure)(using
+      d: Durable^
+  ): String = {
+    import TurnJournal.given
+    val (entries, store) = (env.records.entries, env.speech.store)
+    val at = env.clock.now()
+    val why = failure.toString
+    if (!d.patch(Patches.RecordFailure)) s"failed: $failure"
+    else
+      d.transact(Step.RecordFailure)(
+        entries
+          .ofTurn(turn)
+          .flatMap(own =>
+            own.minByOption(_.seq).map(_.payload) match {
+              case Some(Payload.Heard(_)) => store.drafted(turn, Outcome.Failed(why), None, at)
+              case _ => Right(false)
+            }
+          )
+          .left
+          .map(storeFailure)
+      ) match {
+        case Left(f) => s"failed: $failure; not recorded: $f"
+        case Right(_) => s"failed: $failure"
+      }
+  }
 
   /** The `weigh` step: the tags live triage kept for the heard message `turn` answers
     * ([[grit.core.triage.TriageStore.of]]); for a message said to grit, when its offer would

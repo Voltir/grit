@@ -120,6 +120,37 @@ object TurnSpeechTests extends TestSuite {
     }
 
     test(
+      "a heard turn, drafting or answered as said to grit, that fails at its offer keeps failed, not drafting"
+    ) {
+      for (answering <- Vector(false, true)) {
+        val w = speechWorld(answering = answering)
+        val edges = new grit.core.edge.InMemoryEdges
+        // Its conversation gone: the offer cannot be made.
+        val gone = TurnHosting(
+          new grit.core.store.InMemoryConversationStore,
+          Prompts,
+          ToolSets,
+          edges,
+          edges,
+          new grit.core.store.InMemoryVoiceStore
+        )
+        val done = new InMemoryDurable().run(w.turn.workflowId)(
+          turnBodyWith(
+            w.entries,
+            new Scripted((_, _) => Right(said("unused"))),
+            new Before(w.entries),
+            w.ledger,
+            new AnswersYes(0.9),
+            TurnSpeech(Speaking.Within(speechLimits), w.store, w.deliveries),
+            hosted = gone
+          )
+        )
+        (outcome(w).map(SpeechJson.outcomeName), done.startsWith("failed:")) ==>
+          (Some("failed"), true)
+      }
+    }
+
+    test(
       "a named turn resumed after the judge step it took before named drafts went unjudged posts unjudged, the judge's call in the ledger"
     ) {
       val history = recorded("named-judged-before-speech")

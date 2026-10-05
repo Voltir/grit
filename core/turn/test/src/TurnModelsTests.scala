@@ -124,7 +124,7 @@ object TurnModelsTests extends TestSuite {
       later.asked ==> Vector(Changed.pin.turn, Changed.pin.summary)
     }
 
-    test("no catalog: the turn fails at its first step and calls nothing") {
+    test("no catalog: the turn fails at its first step, keeps that, and calls nothing") {
       val entries = new InMemoryEntryStore
       val provider = new RecordingProvider
       val models = new Switching(provider, Left("catalog.json is not JSON"))
@@ -133,7 +133,8 @@ object TurnModelsTests extends TestSuite {
       durable.run(turn.workflowId)(
         modelsBody(entries, models, new InMemoryModelProfileStore, NoCheckout, noTools)
       ) ==> "failed: Model(no model catalog: catalog.json is not JSON)"
-      durable.recordedSteps(turn.workflowId) ==> Vector("pin-models")
+      durable.recordedSteps(turn.workflowId) ==>
+        Vector("pin-models", "DBOS.patch-record-failure", "record-failure")
       models.asked ==> Vector.empty
     }
 

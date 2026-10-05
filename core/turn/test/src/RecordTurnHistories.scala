@@ -111,6 +111,32 @@ object RecordTurnHistories {
       recorded(durable, w.turn)
     }
 
+    /** A turn rooted on a heard message whose offer fails, its conversation gone. */
+    def heardFailedAtOffer: History = {
+      val w = speechWorld()
+      val edges = new grit.core.edge.InMemoryEdges
+      val durable = new InMemoryDurable
+      durable.run(w.turn.workflowId)(
+        turnBodyWith(
+          w.entries,
+          new RecordingProvider,
+          new Before(w.entries),
+          w.ledger,
+          new AnswersYes(0.9),
+          TurnSpeech(grit.core.speech.Speaking.Within(speechLimits), w.store, w.deliveries),
+          hosted = TurnHosting(
+            new grit.core.store.InMemoryConversationStore,
+            Prompts,
+            ToolSets,
+            edges,
+            edges,
+            new grit.core.store.InMemoryVoiceStore
+          )
+        )
+      )
+      recorded(durable, w.turn)
+    }
+
     /** [[named]] cut just after its `judge` step, as recorded before named drafts went
       * unjudged: in flight across that change.
       */
@@ -566,6 +592,8 @@ object RecordTurnHistories {
       // model failing, its failure kept in record-speech.
       "by-name-replied" -> byName(fail = false),
       "by-name-failed" -> byName(fail = true),
+      // A heard turn whose offer failed: its failure kept in record-failure.
+      "heard-failed-at-offer" -> heardFailedAtOffer,
       "replied" -> replied,
       "stitched-first" -> {
         val ch = new StitchChannel(

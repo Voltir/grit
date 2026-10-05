@@ -46,6 +46,7 @@ object TurnTests extends TestSuite {
       "pin-models",
       "weigh",
       "offer",
+      "record-failure",
       "stitched",
       "stitch",
       "record-stitch",
