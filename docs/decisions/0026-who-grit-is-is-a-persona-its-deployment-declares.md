@@ -1,6 +1,7 @@
 # 0026. Who grit is, is a persona its deployment declares, not an edge's identity
 
-Status: accepted (2026-10-04)
+Status: accepted (2026-10-04); amended (2026-10-05): a message put to the persona by name is
+answered as said to grit
 
 Context: a deployment presents grit under a name of its own in its Slack workspace. Turns
 in Slack were told that name, but the edge supplied it: at open, it read its bot user's
@@ -29,7 +30,9 @@ Decision: `Deployment.of` takes a required `persona`, a `grit.core.persona.Perso
 - Edges no longer name the assistant. The Slack edge logs its bot's display name at open,
   and enrolls nothing.
 - Triage, when it asks whether a message is directed at grit, names the deployment's one
-  persona in every place the deployment hears. That is the accepted scope for now.
+  persona in every place the deployment hears. That is the accepted scope for now. A message
+  it reads as put to the persona by name is answered as one said to grit (ADR 0022, amended
+  2026-10-05): named or @-mentioned, the persona answers alike.
   Per-place question sets come with personas, as do aliases and more than one persona per
   deployment.
 

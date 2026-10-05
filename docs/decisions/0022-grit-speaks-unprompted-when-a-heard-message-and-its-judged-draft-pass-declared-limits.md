@@ -7,7 +7,8 @@ decides it; amended (2026-10-03): a message said to grit, weighed in its turn, i
 considered; amended (2026-10-04): a
 message triage reads as directed at grit by name is answered as named; amended (2026-10-04):
 a named draft is not judged; amended (2026-10-04): the reference gate no longer holds a
-question for being put to a named person
+question for being put to a named person; amended (2026-10-05): a message put to grit by name
+is answered as said to grit
 
 Context: a listened channel (ADR 0020) is kept, but grit only ever answered what was said to
 it. A deployment also wants grit to join in, with context or insight a thread lacks, when that
@@ -56,7 +57,9 @@ Decision:
   `anchor-record`: it drafts when directed at grit, and is otherwise held `Unasked`. A gate
   reading a question live triage does not ask is refused at declaration (`SpeechUnread`):
   it would hold every message.
-- **Triage considers each message it tagged.** It holds on the first check that fails: off,
+- **Triage considers each message it tagged.** (Amended 2026-10-05: a message triage reads
+  as put to grit by name is held only by off, no address, the gate or the budget; see below.)
+  It holds on the first check that fails: off,
   no address, stale, untagged, the gate (`Gated`, with every bound the answers failed and
   what each read; `Unasked`, when the gate cannot be decided without an answer the answers
   lack, as for a message triaged by an earlier set; an answer can only decide an unread gate,
@@ -75,7 +78,27 @@ Decision:
   It is offered as any heard turn. Turned down: routing it as said to grit, which would let a
   classifier's reading decide addressing (ADR 0020 leaves that to the edge) and skip the
   rates and the speech cap. Its answer is a draft: never shown, never searched, and
-  not a period's activity.
+  not a period's activity. (Amended 2026-10-05: superseded below. A flash-lite named turn
+  told it might `pass` passed a question about GitHub issues with no tool tried, and its
+  mark came down with no reply.)
+- **A message put to grit by name is answered as said to grit** (amended 2026-10-05). When
+  triage reads a heard message as put to grit (`Tags.directed`), the decision is
+  `Answering`, at its reply address. Only what an addressed message also meets holds it: no
+  address, the gate (none under `Off`, so a deployment that does not speak still answers
+  it, since triage asks under `Off` too), or the budget. Staleness, another's @-mention, an
+  unanswered turn, the rates and the speech cap do not hold it, and `Shadow` answers it as
+  `Within` does. Triage keeps the decision and, in the same transaction, awaits the reply
+  at the address and wants its mark, as the edge does for an @-mention when it records it.
+  The turn's offer reads the decision and records the root `ByName`: offered, told, shaped
+  and reached as an addressed turn, with no fragment of its own and no `pass`. Its reply is
+  the turn's own message, written with its speech row's outcome (`Replied`), and the edge
+  posts it, or the line saying grit could not answer. The row counts in no rate and in no
+  speech spend, only in the deployment's budget, as an addressed turn's spend does. The
+  classifier's reading now decides whether a heard message is answered as addressed, which
+  the decision above turned down; the gate is the one point where it does. Turned down: a
+  patch on `append` keeping the one `Named` root (a reader after the fact could not tell
+  from the root whether a named turn left a draft or a reply), and `Addressed` with a "by
+  name" flag. `Named`, its draft path and its histories stay for offers that recorded them.
 - **A classifier judges the draft** against the thread and what the turn recalled: is it
   grounded in what was recalled, is it worth the interruption. The weaker of the two is its
   score. A third question, whether the draft adds what the thread lacks, was dropped: it
@@ -86,7 +109,8 @@ Decision:
   after it was drafted saves nothing it cost, and `worth` scores the interruption an
   asked-for answer is not. It still passes the gate, the rates, the speech cap and the
   assistant's own reply before it. A named draft judged before this reads as posted or
-  shadowed unjudged, its score dropped. Turned down: a judge of its own (whether it answers
+  shadowed unjudged, its score dropped. (Amended 2026-10-05: a message put to grit by name
+  drafts nothing now; above.) Turned down: a judge of its own (whether it answers
   what was asked without making up facts), which this ADR first had; refining a draft before
   it posts would be a workflow of its own.
 - **The draft is posted** in the message's thread, only when its score reaches `postAt` (a
@@ -98,7 +122,8 @@ Decision:
   depends on live settings.
 - **Every decision, score and outcome is kept** (`grit.speech`), with an excerpt of the draft,
   as long as its period's usage, so each unprompted reply can be stated with how it was
-  approved.
+  approved. A heard turn that fails before its offer keeps `Failed` (`record-failure`,
+  amended 2026-10-05), so no decision stands drafting.
 
 Consequences: a listened thread can be answered unasked, within limits a deployment states,
 and every unprompted post can be traced to the scores that allowed it, a named one to the
@@ -108,4 +133,6 @@ before its rates bind. Enforced by `SpeechTests` (the rule), `SpeechContract` (t
 `TurnSpeechTests` and `TurnJudgeTests` (the draft and its judge), `TriageTests`,
 `SlackEdgeTests` (reach), `UnpromptedLiveTests`, and `TurnReplayTests` and
 `LifecycleReplayTests` for the new steps (`named-judged` and `named-posted`, a named turn
-before and after its drafts went unjudged).
+before and after its drafts went unjudged; `by-name-replied`, `by-name-failed` and
+`heard-failed-at-offer`), and `UnpromptedLiveTests` for a message put to grit by name,
+answered in shadow.
