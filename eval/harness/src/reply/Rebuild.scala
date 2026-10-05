@@ -36,7 +36,7 @@ object Assembled {
 
 /** A recorded turn's window rebuilt: the one it recorded (`None` when it recorded none), the
   * rebuilt one, and the moment it was rebuilt as of: when the turn's `assemble` step started.
-  * `lost` when the recorded window names an entry the database no longer holds.
+  * `lost` when the recorded window names an entry or a document the database no longer holds.
   */
 final case class RebuiltWindow(
     at: Instant,
@@ -72,6 +72,7 @@ object Rebuild {
       view.principals,
       view.lifecycle,
       view.search,
+      view.documents,
       view.stitches,
       writer,
       CharEstimate,
@@ -118,7 +119,8 @@ object Rebuild {
       recorded <- read("window")(reader.entries.get(Turn.windowId(turn))).map(
         _.flatMap(e =>
           e.payload match {
-            case Payload.Window(seqs, _, nearby, _) => Some(Window(seqs, Vector.empty, nearby))
+            case Payload.Window(seqs, _, nearby, documents) =>
+              Some(Window(seqs, Vector.empty, nearby, documents))
             case _ => None
           }
         )
@@ -128,9 +130,10 @@ object Rebuild {
           for {
             own <- reader.entries.at(turn.conversationId, w.entries)
             near <- Nearby.read(w.nearby, reader.entries)
+            kept <- reader.documents.read(w.documents.distinct)
           } yield own.size < w.entries.distinct.size || near.size < w.nearby
             .map(_.names.distinct.size)
-            .sum
+            .sum || kept.size < w.documents.distinct.size
         )
       )
       rebuilt <- window(AsOf(reader, at), turn, assembled, new Replayed(query), width)(using

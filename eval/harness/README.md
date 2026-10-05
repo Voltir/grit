@@ -108,9 +108,10 @@ Packages, each importing only those above it:
   `Rebuild`, a recorded turn's window drawn again by the shipped retrieval assembler, built as
   `Assembled` says, at a `Width`, over `AsOf`: the restored database's stores as they stood
   when the turn's `assemble` step started (rows written later left out, the periods open
-  elsewhere and the closings kept as they were then), its query replayed from the one it
-  recorded; `Drift`, the rebuilt window against the recorded one by ids (same, a section from
-  elsewhere changed, own entries changed, both, or gone to a purge). `WindowOnly`, a heard
+  elsewhere, the closings kept and the documents current as they were then), its query
+  replayed from the one it recorded; `Drift`, the rebuilt window against the recorded one by
+  ids (same, a section from elsewhere or a document changed, own entries changed, both, or
+  gone to a purge or a document's retention). `WindowOnly`, a heard
   message live triage read as asking that no turn answered, its window rebuilt as of
   triage's answer; `Queries`, its query writes, each kept in a `Cache` under its request's
   key and asked under a `Budget`. `TurnVariant`, a named way to build a turn other than as

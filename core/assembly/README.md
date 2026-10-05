@@ -12,9 +12,11 @@ In dependency order:
 - **`retrieval`**: `RetrievalAssembler`, the same closing entry, the recent tail, plus
   what a query `QueryWriter` has a model write finds: the period's earlier turns, and the
   turns of other conversations' open periods its scope holds and their kept closings
-  (ADR 0013), ranked by an `EntrySearch` in one pool, its own weighted up; those from
-  elsewhere shown as their own sections, one per conversation; and a thread that begins with
-  grit's post, the turn that asked for it, whatever the scope. ← `linear`
+  (ADR 0013), and the enabled plugins' documents at places it holds, current at the turn's
+  root (ADR 0028), ranked by an `EntrySearch` and a `DocumentSearch` in one pool, its own
+  weighted up and each document by its plugin's weight; those from elsewhere shown as their
+  own sections, one per conversation; and a thread that begins with grit's post, the turn that
+  asked for it, whatever the scope. ← `linear`
 
 Each draws its window as wide as it was built to, or within the budget (and, for retrieval,
 the hits per search) a request's `Width` names. Neither reaches past its own period (ADR 0011): what came before the turn's is its closing

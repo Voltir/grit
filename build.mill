@@ -420,7 +420,9 @@ object grit extends Module {
       def runClasspath = Task { super.runClasspath() :+ grit.dbos.buildInfo() }
 
       /* The instrument's own code against fixed values: no database, no model. */
-      object test extends GritTests
+      object test extends GritTests {
+        def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+      }
 
       /* Capture over a live engine's database, triaged by the stub classifier. */
       object it extends GritTests with LivePostgres {

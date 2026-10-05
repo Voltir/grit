@@ -2,13 +2,16 @@ package grit.eval.harness.reply
 
 import java.time.Instant
 
+import grit.core.document.{Document, DocumentSearch, DocumentTerms, Shelved}
 import grit.core.id.{
   CallSlot,
   CloseRef,
   ConversationId,
+  DocumentVersion,
   EntryId,
   EntrySeq,
   PeriodRef,
+  PluginName,
   PrincipalId,
   TurnRef,
   TurnSeq
@@ -48,14 +51,15 @@ import grit.dbos.engine.Reader
 /** A restored database's stores as they stood at `at`, for an assembler to read a window from
   * as it would have then. Each read returns only the rows created before `at`: entries (and
   * closing entries) by when they were written, conversations by when they began, a strand's
-  * link by when its follower began (a link is kept a moment after that). A search ranks those
-  * rows alone, best first and at most as many as asked, though each hit keeps the score the
-  * database's index gives it now, so a rank among them can differ from the one live gave
-  * when later rows moved the index's statistics. The periods open elsewhere are those opened
-  * before `at` and not closed by it; the closing kept elsewhere is each conversation's newest
-  * closed before `at`; every other read of periods, the lifecycle settings and who is named
-  * are as they stand now. What a purge removed is gone. A write is the reader's, which
-  * Postgres refuses.
+  * link by when its follower began (a link is kept a moment after that), and documents by
+  * when each version was written, read as current at a moment no later than `at`. A search
+  * ranks those rows alone, best first and at most as many as asked, though each hit keeps the
+  * score the database's index gives it now, so a rank among them can differ from the one live
+  * gave when later rows moved the index's statistics. The periods open elsewhere are those
+  * opened before `at` and not closed by it; the closing kept elsewhere is each conversation's
+  * newest closed before `at`; every other read of periods, the lifecycle settings, who is
+  * named and the documents' terms are as they stand now. What a purge or a document's
+  * retention removed is gone. A write is the reader's, which Postgres refuses.
   */
 final class AsOf private (
     val at: Instant,
@@ -65,6 +69,7 @@ final class AsOf private (
     val principals: Principals,
     val lifecycle: LifecycleStore,
     val search: EntrySearch,
+    val documents: DocumentSearch,
     val stitches: StitchStore
 ) {
 
@@ -80,6 +85,7 @@ final class AsOf private (
       principals,
       new AsOf.Settled(lifecycle, settings),
       search,
+      documents,
       stitches
     )
 }
@@ -98,6 +104,7 @@ object AsOf {
       reader.principals,
       reader.lifecycle,
       new Search(reader.search, reader.entries, at),
+      new Documents(reader.documents, at),
       new Stitches(reader.stitches, reader.conversations, at)
     )
   }
@@ -278,6 +285,25 @@ object AsOf {
               .map(e => if (e.exists(x => AsOf.before(x.createdAt, at))) done :+ h else done)
         )
       }
+  }
+
+  /** `under`'s documents as they stood at `at`: one asked for as of a later moment is read
+    * as of `at`, and a version written at or after `at` is never read.
+    */
+  private[reply] final class Documents(under: DocumentSearch, at: Instant) extends DocumentSearch {
+    def declared()(using Tx^): Either[StoreError, Vector[(PluginName, DocumentTerms)]] =
+      under.declared()
+    def shelved(plugins: Vector[PluginName], at: Instant)(using
+        Tx^
+    ): Either[StoreError, Vector[Shelved]] = under.shelved(plugins, earlier(at))
+    def search(shelves: Vector[Shelved], query: String, limit: Int, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Vector[DocumentSearch.Hit]] =
+      under.search(shelves, query, limit, earlier(at))
+    def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]] =
+      under.read(versions).map(_.filter(d => before(d.written, at)))
+
+    private def earlier(until: Instant): Instant = if (until.isBefore(at)) until else at
   }
 
   private final class Stitches(under: StitchStore, conversations: ConversationStore, at: Instant)

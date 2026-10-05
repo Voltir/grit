@@ -10,10 +10,14 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{AssemblyNote, Width}
+import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms, Written}
 import grit.core.durable.Durable
 import grit.core.id.{
   CloseRef,
   ConversationId,
+  DocKey,
+  DocumentVersion,
+  PluginName,
   PrincipalId,
   QuestionName,
   SourceId,
@@ -127,6 +131,7 @@ object RebuildTests extends TestSuite {
             engine.principals,
             engine.lifecycle,
             engine.search,
+            engine.documents,
             engine.stitches,
             new Writer,
             CharEstimate,
@@ -285,11 +290,61 @@ object RebuildTests extends TestSuite {
     } finally engine.close()
   }
 
+  /** A document kept at task "rebuild", the Falcon budget, before a turn there asks about it;
+    * that turn's window rebuilt while the document is kept, then once it is forgotten (as its
+    * retention would collect it); and the document's version.
+    */
+  private lazy val documented: (Reader, RebuiltWindow, RebuiltWindow, DocumentVersion) = {
+    val config = TestPostgres.freshDatabase("harness_rebuild_documents")
+    val engine = LiveEngine.open(config, Turn.Epoch)
+    try {
+      launch(engine)
+      val notes = right(PluginName.of("notes"))
+      val terms =
+        right(DocumentTerms.of(right(DocLabel.of("Notes")), DocWeight.Unscaled, 30.days, 10))
+      right(engine.jot.write(engine.documents.declare(Vector(notes -> terms))))
+      val version = right(
+        engine.jot.write(
+          engine
+            .keeper(notes, terms)
+            .write(
+              right(DocKey.of("falcon")),
+              Origin.Task("rebuild", "d").room,
+              right(DocText.of("the Falcon budget is 4200")),
+              ujson.Obj(),
+              now()
+            )
+        )
+      ) match {
+        case Written.Versioned(v, _) => v
+        case other => throw new java.lang.AssertionError(s"not written: $other")
+      }
+      val d = ask(engine, "d", "what is the Falcon budget?")
+      val reader = Reader.open(config)
+      val kept = right(Rebuild.recorded(reader, d.workflowId, Assembled.Shipped, Width.Deployed))
+      right(engine.jot.write(engine.documents.forget(version)))
+      val gone = right(Rebuild.recorded(reader, d.workflowId, Assembled.Shipped, Width.Deployed))
+      (reader, kept, gone, version)
+    } finally engine.close()
+  }
+
   private def conversations(n: Vector[Nearby]): Vector[ConversationId] = n.map(_.conversation)
 
-  override def utestAfterAll(): Unit = world._1.close()
+  override def utestAfterAll(): Unit = {
+    world._1.close()
+    documented._1.close()
+  }
 
   val tests = Tests {
+    test(
+      "a turn whose window held a document is rebuilt holding it; once it is forgotten, gone"
+    ) {
+      val (_, kept, gone, version) = documented
+      (kept.recorded.map(_.documents), kept.rebuilt.documents, kept.drift) ==>
+        (Some(Vector(version)), Vector(version), Some(Drift.Same))
+      (gone.rebuilt.documents, gone.drift) ==> (Vector(), Some(Drift.Gone))
+    }
+
     test("a turn rebuilt as of its assembly is the window it recorded, its query replayed") {
       val (reader, Vector(a, b, _)) = world: @unchecked
       val r = right(Rebuild.recorded(reader, b.workflowId, Assembled.Shipped, Width.Deployed))

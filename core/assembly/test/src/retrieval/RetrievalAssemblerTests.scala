@@ -2,6 +2,8 @@ package grit.assembly.retrieval
 
 import java.time.Instant
 
+import scala.concurrent.duration.*
+
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.AssemblyFixtures.{
   FakeDb,
@@ -14,14 +16,28 @@ import grit.assembly.linear.AssemblyFixtures.{
 }
 import grit.assembly.linear.LinearAssembler
 import grit.core.context.{AssemblyNote, AssemblyRequest, Shown, Width, Window}
+import grit.core.document.{
+  DocLabel,
+  DocText,
+  DocWeight,
+  Document,
+  DocumentSearch,
+  DocumentTerms,
+  InMemoryDocuments,
+  Shelved,
+  Written
+}
 import grit.core.id.{
   CallSlot,
   CloseRef,
   ConversationId,
+  DocKey,
+  DocumentVersion,
   EntryId,
   EntrySeq,
   PeriodRef,
   PeriodSeq,
+  PluginName,
   PrincipalId,
   TurnRef,
   TurnSeq
@@ -169,6 +185,91 @@ object RetrievalAssemblerTests extends TestSuite {
     }
   }
 
+  /** One document search the assembler made. */
+  private final case class DocsAsked(
+      shelves: Vector[Shelved],
+      query: String,
+      limit: Int,
+      at: Instant
+  )
+
+  /** The documents `under` keeps, as windows draw on them; a search's hits rescored by
+    * `scores`, by key, where the test states them, then best first, so the ranking is the
+    * test's. Keeps every search it was asked for.
+    */
+  private final class ScriptedDocs(val under: InMemoryDocuments) extends DocumentSearch {
+    @caps.unsafe.untrackedCaptures
+    var scores = Map.empty[String, Double]
+    // Only ever holds immutable vectors; nothing reads it but the test that owns it.
+    @caps.unsafe.untrackedCaptures
+    var asked = Vector.empty[DocsAsked]
+
+    def declared()(using Tx^): Either[StoreError, Vector[(PluginName, DocumentTerms)]] =
+      under.declared()
+    def shelved(plugins: Vector[PluginName], at: Instant)(using
+        Tx^
+    ): Either[StoreError, Vector[Shelved]] = under.shelved(plugins, at)
+    def search(shelves: Vector[Shelved], query: String, limit: Int, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Vector[DocumentSearch.Hit]] = {
+      asked = asked :+ DocsAsked(shelves, query, limit, at)
+      under
+        .search(shelves, query, limit, at)
+        .map(
+          _.map(h => h.copy(score = scores.getOrElse(DocKey.value(h.document.key), h.score)))
+            .sortBy(-_.score)
+        )
+    }
+    def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]] =
+      under.read(versions)
+  }
+
+  private def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
+
+  private def plugin(name: String): PluginName = got(PluginName.of(name))
+
+  private def termsOf(weight: Double, label: String = "Notes"): DocumentTerms =
+    got(DocumentTerms.of(got(DocLabel.of(label)), got(DocWeight.of(weight)), 30.days, 10))
+
+  /** Documents, `plugins` declared the ones in force, each at its weight. */
+  private def shelf(plugins: (String, Double)*): ScriptedDocs = {
+    val docs = new InMemoryDocuments
+    docs
+      .declare(plugins.toVector.map((p, w) => plugin(p) -> termsOf(w)))(using TestTx.fake)
+      .getOrElse(sys.error("in-memory store"))
+    new ScriptedDocs(docs)
+  }
+
+  /** A minute before the turns every world here holds: before any turn's root. */
+  private val Before: Instant = Instant.EPOCH.minusSeconds(60)
+
+  /** `text`, `p`'s document under `key` at `place`, written `at`; its version. */
+  private def write(
+      docs: ScriptedDocs,
+      p: String,
+      key: String,
+      place: Place,
+      text: String,
+      at: Instant = Before
+  ): DocumentVersion =
+    docs.under
+      .keeper(plugin(p), termsOf(1))
+      .write(got(DocKey.of(key)), place, got(DocText.of(text)), ujson.Obj(), at)(using
+        TestTx.fake
+      ) match {
+      case Right(Written.Versioned(v, _)) => v
+      case other => sys.error(s"not written: $other")
+    }
+
+  /** What the version `v` of `docs` costs as the window shows it, under the label "Notes". */
+  private def docCost(docs: ScriptedDocs, v: DocumentVersion): Long =
+    docs.under
+      .read(Vector(v))(using TestTx.fake)
+      .toOption
+      .flatMap(_.headOption)
+      .map(d => Tokens.value(CharEstimate.message(Shown.document(d, got(DocLabel.of("Notes"))))))
+      .getOrElse(sys.error("no document"))
+
   /** How many hits the assembler is told to ask for. */
   private val Hits = 7
 
@@ -200,7 +301,8 @@ object RetrievalAssemblerTests extends TestSuite {
       tuning: Tuning = Tuning.Default,
       others: Vector[Conversation] = Vector.empty,
       posted: Option[CallSlot] = None,
-      width: Width = Width.Deployed
+      width: Width = Width.Deployed,
+      documents: DocumentSearch = new InMemoryDocuments
   ): Window = {
     val turn = TurnRef(c1, TurnSeq(at))
     val conversations = new InMemoryConversationStore
@@ -228,6 +330,7 @@ object RetrievalAssemblerTests extends TestSuite {
       world.principals,
       lifecycle,
       search,
+      documents,
       stitches.getOrElse(
         new InMemoryStitchStore(
           world.entries,
@@ -870,6 +973,169 @@ object RetrievalAssemblerTests extends TestSuite {
         linear(entries, 60).entries,
         Vector(AssemblyNote.FellBack("no query: down"))
       )
+    }
+
+    test("a document in scope is drawn, ranked by its score times its plugin's weight") {
+      val docs = shelf("notes" -> 1.0, "rollup" -> 4.0)
+      val alpha = write(docs, "notes", "a", placeOf("api"), "the probe budget, alpha")
+      val beta = write(docs, "rollup", "b", placeOf("ops"), "the probe budget, beta")
+      // Unweighted, alpha ranks first; beta's weight lifts it above: 1 × 4 over 3 × 1.
+      docs.scores = Map("a" -> 3.0, "b" -> 1.0)
+      val w = assemble(store(ask), new Writer(Some("probe budget")), 1000, at = 0, documents = docs)
+      w.documents ==> Vector(beta, alpha)
+      docs.asked.map(a => (a.shelves.toSet, a.query, a.limit, a.at)) ==> Vector(
+        (
+          Set(Shelved(plugin("notes"), placeOf("api")), Shelved(plugin("rollup"), placeOf("ops"))),
+          "probe budget",
+          Hits,
+          Instant.EPOCH
+        )
+      )
+    }
+
+    test("a conversation with only a document in scope writes a query; with the scope off, not") {
+      def run(scope: Scope): (Writer, Window) = {
+        val docs = shelf("notes" -> 1.0)
+        write(docs, "notes", "a", placeOf("api"), "the probe budget")
+        val writer = new Writer(Some("probe budget"))
+        (
+          writer,
+          assemble(
+            store(ask),
+            writer,
+            1000,
+            at = 0,
+            locality = Locality(scope, Weight.Default),
+            documents = docs
+          )
+        )
+      }
+      val (asked, drawn) = run(Scope.Everywhere)
+      (asked.requests.size, drawn.documents.size) ==> (1, 1)
+      val (off, none) = run(Scope.Off)
+      (off.requests.size, none.documents.size) ==> (0, 0)
+    }
+
+    test("a document at a place out of scope is never searched") {
+      val docs = shelf("notes" -> 1.0)
+      write(docs, "notes", "a", placeOf("kept"), "the probe budget")
+      write(docs, "notes", "b", placeOf("far"), "the probe budget")
+      val scope = Scope(Vector(Prefix.At(placeOf("kept"))))
+      assemble(
+        store(ask),
+        new Writer(Some("probe budget")),
+        1000,
+        at = 0,
+        locality = Locality(scope, Weight.Default),
+        documents = docs
+      )
+      docs.asked.map(_.shelves) ==> Vector(Vector(Shelved(plugin("notes"), placeOf("kept"))))
+    }
+
+    test("a plugin not declared is never searched") {
+      val docs = shelf("notes" -> 1.0)
+      write(docs, "notes", "a", placeOf("api"), "the probe budget")
+      write(docs, "undeclared", "b", placeOf("api"), "the probe budget")
+      assemble(store(ask), new Writer(Some("probe budget")), 1000, at = 0, documents = docs)
+      docs.asked.map(_.shelves) ==> Vector(Vector(Shelved(plugin("notes"), placeOf("api"))))
+    }
+
+    test("a document written after the turn's root is not drawn; one written before it is") {
+      val docs = shelf("notes" -> 1.0)
+      val before = write(docs, "notes", "a", placeOf("api"), "the probe budget")
+      write(docs, "notes", "b", placeOf("api"), "the probe budget", Instant.EPOCH.plusSeconds(60))
+      val w = assemble(store(ask), new Writer(Some("probe budget")), 1000, at = 0, documents = docs)
+      (w.documents, docs.asked.map(_.at)) ==> (Vector(before), Vector(Instant.EPOCH))
+    }
+
+    test(
+      "a conversation with no entries draws no document and writes no query, though one is in scope"
+    ) {
+      val docs = shelf("notes" -> 1.0)
+      write(docs, "notes", "a", placeOf("api"), "the probe budget")
+      val writer = new Writer(Some("probe budget"))
+      val w = assemble(store(), writer, 1000, at = 0, documents = docs)
+      (w.documents, docs.asked, writer.requests.size) ==> (Vector(), Vector(), 0)
+    }
+
+    test(
+      "a document that does not fit is passed over for the next, costed as the window shows it"
+    ) {
+      val docs = shelf("notes" -> 1.0)
+      write(docs, "notes", "big", placeOf("api"), "the probe budget " + ("and why " * 30))
+      val small = write(docs, "notes", "small", placeOf("api"), "the probe budget")
+      docs.scores = Map("big" -> 2.0, "small" -> 1.0)
+      // A first turn spends nothing before the pool: the budget is what the documents may cost.
+      def at(budget: Long) =
+        assemble(
+          store(ask),
+          new Writer(Some("probe budget")),
+          budget,
+          at = 0,
+          documents = docs
+        ).documents
+      (at(docCost(docs, small)), at(docCost(docs, small) - 1)) ==> (Vector(small), Vector())
+    }
+
+    test(
+      "a document tied with a turn of the conversation's own, or one elsewhere, ranks after it"
+    ) {
+      // Own: the tail (turns 4 and 5) and its gap line cost 34, turn 0 and its gap line 34 more;
+      // the budget holds the tail and one of turn 0 and the document, not both.
+      val ownDocs = shelf("notes" -> 1.0)
+      val ownDoc = write(ownDocs, "notes", "a", placeOf("api"), "probe database")
+      ownDocs.scores = Map("a" -> 2.0)
+      val buriedWorld = store(buried*)
+      val search = new Scripted("t0:1")
+      // 1 × the default weight, 2: the document's score.
+      search.scores = Vector(1.0)
+      val mine = assemble(
+        buriedWorld,
+        new Writer(Some("probe database")),
+        34 + math.max(34, docCost(ownDocs, ownDoc)),
+        search,
+        documents = ownDocs
+      )
+      (turnsOf(buriedWorld, mine), mine.documents) ==> (Vector("t0", "t4", "t5"), Vector())
+
+      // Elsewhere: a first turn, the budget holding one of api's section and the document.
+      val world = store(ask)
+      val api = elsewhere(world, "api", close = false, exchange("probe database?", "grit_agent"))
+      val near = new Scripted()
+      near.near = Vector((api, "api:t0:1", 2.0))
+      val docs = shelf("notes" -> 1.0)
+      val doc = write(docs, "notes", "a", placeOf("ops"), "probe database")
+      docs.scores = Map("a" -> 2.0)
+      val section = world.entries
+        .list(api)(using TestTx.fake)
+        .toOption
+        .flatMap(Shown.nearby(placeOf("api"), _))
+        .fold(sys.error("no section"))(m => Tokens.value(CharEstimate.message(m)))
+      val theirs = assemble(
+        world,
+        new Writer(Some("probe database")),
+        math.max(section, docCost(docs, doc)),
+        near,
+        at = 0,
+        documents = docs
+      )
+      (theirs.nearby.map(_.conversation), theirs.documents) ==> (Vector(api), Vector())
+    }
+
+    test("a blank query, or a failed writer, falls back to a window holding no document") {
+      def run(writer: Writer): (ScriptedDocs, Window) = {
+        val docs = shelf("notes" -> 1.0)
+        write(docs, "notes", "a", placeOf("api"), "the probe budget")
+        (docs, assemble(store(ask), writer, 1000, at = 0, documents = docs))
+      }
+      val (failedDocs, failed) = run(new Writer(None))
+      (failed, failedDocs.asked) ==> (
+        Window(Vector(), Vector(AssemblyNote.FellBack("no query: down"))),
+        Vector()
+      )
+      val (blankDocs, blank) = run(new Writer(Some(" ")))
+      (blank.documents, blank.notes.lastOption, blankDocs.asked) ==>
+        (Vector(), Some(AssemblyNote.FellBack("the query was blank")), Vector())
     }
 
     test("the query model is shown the turn's own messages, one line each, and nothing else") {

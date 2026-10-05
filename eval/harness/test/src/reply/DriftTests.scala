@@ -1,7 +1,7 @@
 package grit.eval.harness.reply
 
 import grit.core.context.{AssemblyNote, Window}
-import grit.core.id.{ConversationId, EntrySeq, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, TurnSeq, WorkflowId}
 import grit.core.place.Place
 import grit.core.store.Nearby
 
@@ -28,6 +28,15 @@ object DriftTests extends TestSuite {
       val two = recorded.copy(nearby = Vector(open("a", 4), open("b", 1)))
       Drift.of(recorded, two, lost = false) ==> Drift.Nearby
       Drift.of(two, two.copy(nearby = two.nearby.reverse), lost = false) ==> Drift.Nearby
+    }
+
+    test("a document changed, added or reordered is nearby drift") {
+      def held(vs: Long*) = vs.toVector.flatMap(DocumentVersion.of)
+      val documented = recorded.copy(documents = held(7))
+      Drift.of(documented, documented.copy(documents = held(8)), lost = false) ==> Drift.Nearby
+      Drift.of(documented, documented.copy(documents = held(7, 8)), lost = false) ==> Drift.Nearby
+      val two = recorded.copy(documents = held(7, 8))
+      Drift.of(two, two.copy(documents = held(8, 7)), lost = false) ==> Drift.Nearby
     }
 
     test("own entries changed is own drift; both changed is both") {

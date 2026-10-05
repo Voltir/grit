@@ -10,7 +10,8 @@ import grit.core.context.{
   Width,
   Window
 }
-import grit.core.id.{CallSlot, ConversationId, TurnRef, TurnSeq}
+import grit.core.document.{DocWeight, Document, DocumentSearch, DocumentTerms, Shelved}
+import grit.core.id.{CallSlot, ConversationId, DocumentVersion, PluginName, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.place.{Locality, Place, Weight}
 import grit.core.provider.{Provider, TokenEstimator}
@@ -55,6 +56,15 @@ import grit.core.store.{
   * its section. The conversation's own closing is paid first, never a candidate. A person's
   * message is costed with its author's name line ([[Shown.of]]), as it is sent.
   *
+  * With the enabled plugins' terms ([[DocumentSearch.declared]]), the documents current at the
+  * turn's root entry's time (its earliest entry's) at places its scope holds are candidates
+  * too (a turn with no entries, as in a conversation with none, has none), searched through
+  * `documents` with the same query, `hits` of them, each score multiplied by its plugin's
+  * weight, in the same pool and budget; a packed one is costed as [[Shown.document]] shows
+  * it, and the window holds the packed ones in rank order (a tie goes to the turn's own, then
+  * to entries elsewhere). A conversation with a document in scope writes a query even when
+  * nothing else is to search.
+  *
   * A conversation in a strand ([[grit.core.stitch.Strand]], read through `stitches` in the
   * scope in force, from `tuning.horizon` before its first message until before the turn) is
   * shown the strand as one [[Nearby.Along]] section per other member, after any sections from
@@ -72,11 +82,10 @@ import grit.core.store.{
   * a candidate.
   *
   * No query is written when there is nothing to search: the linear window of `budget` holds
-  * every earlier turn of the period, and no other conversation's open period or closing is
-  * in scope. When the
-  * writer fails or writes nothing, the window is that linear one, with a note saying why,
-  * and nothing from elsewhere. `AssemblyError.Store` when a store fails or the turn's
-  * conversation is gone.
+  * every earlier turn of the period, and no other conversation's open period or closing, and
+  * no document, is in scope. When the writer fails or writes nothing, the window is that
+  * linear one, with a note saying why, and nothing from elsewhere and no document.
+  * `AssemblyError.Store` when a store fails or the turn's conversation is gone.
   */
 final class RetrievalAssembler(
     entries: EntryStore,
@@ -85,6 +94,7 @@ final class RetrievalAssembler(
     principals: Principals,
     lifecycle: LifecycleStore,
     search: EntrySearch,
+    documents: DocumentSearch,
     stitches: StitchStore,
     writer: Provider^,
     estimator: TokenEstimator,
@@ -93,7 +103,7 @@ final class RetrievalAssembler(
     tuning: Tuning,
     hits: Int = RetrievalAssembler.DefaultHits
 ) extends ContextAssembler {
-  import RetrievalAssembler.{Candidate, Found}
+  import RetrievalAssembler.{Candidate, Found, Shelves}
 
   /** Within `budget` and `hits`, or those `request.width` names. */
   def assemble(request: AssemblyRequest)(using db: Db^): Either[AssemblyError, Window] = {
@@ -127,6 +137,13 @@ final class RetrievalAssembler(
           began.minusNanos(tuning.horizon.toNanos),
           until
         )
+        // Documents are drawn as of the turn's root: a turn with no entry yet has none.
+        root = all.filter(_.turnSeq == turn.turnSeq).map(_.createdAt).minOption
+        declared <- documents.declared()
+        shelved <- root.filter(_ => declared.nonEmpty) match {
+          case Some(at) => documents.shelved(declared.map(_._1), at)
+          case None => Right(Vector.empty)
+        }
         posted <- conversations.postedBy(turn.conversationId)
         asked <- askedOf(conversation, posted, opening.closing.isEmpty)
         speakers <- principals.speakers(
@@ -136,6 +153,13 @@ final class RetrievalAssembler(
         val locality = settings.locality
         val members = strand.members.toSet ++ strand.gone ++ asked.map(_._1)
         val held = closed.filter(c => locality.scope.holds(conversation.origin.room, c.place))
+        val shelves = root.flatMap(at =>
+          Shelves.of(
+            at,
+            shelved.filter(s => locality.scope.holds(conversation.origin.room, s.place)),
+            declared.toMap
+          )
+        )
         Read(
           locality,
           opening.first,
@@ -148,7 +172,8 @@ final class RetrievalAssembler(
           held.filterNot(c => members(c.conversation)),
           strand,
           held.filter(c => strand.gone.contains(c.conversation)),
-          asked
+          asked,
+          shelves
         )
       }
     }.left
@@ -171,13 +196,15 @@ final class RetrievalAssembler(
               closings: Vector[Entry],
               turns: Vector[Vector[Entry]],
               notes: Vector[AssemblyNote],
-              nearby: Vector[Nearby] = Vector.empty
-          ): Window = this.window(closings, turns, notes, askedShown ++ nearby ++ strandShown)
+              nearby: Vector[Nearby] = Vector.empty,
+              documents: Vector[Document] = Vector.empty
+          ): Window =
+            this.window(closings, turns, notes, askedShown ++ nearby ++ strandShown, documents)
           val all = read.all
           val turns = LinearAssembler.turnsBefore(all, read.first, turn.turnSeq)
           val linear = LinearAssembler.tail(turns, read.speakers, estimator, left)
           val ownToFind = linear.size != turns.size
-          if (!ownToFind && read.open.isEmpty && read.closed.isEmpty)
+          if (!ownToFind && read.open.isEmpty && read.closed.isEmpty && read.shelves.isEmpty)
             Right(window(closings, linear, Vector.empty))
           else {
             val recent =
@@ -229,7 +256,14 @@ final class RetrievalAssembler(
                       val places = read.open.map(o => o.conversation -> o.place).toMap
                       val packed =
                         pack(
-                          rank(found, older, places, read.closed, read.locality.weight),
+                          rank(
+                            found,
+                            older,
+                            places,
+                            read.closed,
+                            read.locality.weight,
+                            read.shelves.fold(Map.empty)(_.terms)
+                          ),
                           used,
                           budget,
                           read.speakers
@@ -239,7 +273,13 @@ final class RetrievalAssembler(
                       val notes =
                         if (ownToFind) Vector(queried, AssemblyNote.Recalled(seqs))
                         else Vector(queried)
-                      window(closings, recent ++ recalled, notes, sections(packed))
+                      window(
+                        closings,
+                        recent ++ recalled,
+                        notes,
+                        sections(packed),
+                        packed.collect { case Candidate.Doc(d, _) => d }
+                      )
                     }
                 }
             }
@@ -250,7 +290,7 @@ final class RetrievalAssembler(
 
   /** What one read of the store gave: the locality in force, the turn's period's first turn,
     * the closings that open it, every entry of the conversation and who of them is named,
-    * and the open periods elsewhere its scope holds.
+    * the open periods elsewhere its scope holds, and the places in scope holding documents.
     */
   private final case class Read(
       locality: Locality,
@@ -262,7 +302,8 @@ final class RetrievalAssembler(
       closed: Vector[ClosedElsewhere],
       strand: Strand.Read,
       goneRecords: Vector[ClosedElsewhere],
-      asked: Option[(ConversationId, Place, Vector[Entry])]
+      asked: Option[(ConversationId, Place, Vector[Entry])],
+      shelves: Option[Shelves]
   )
 
   /** The turn that asked for the post `conversation` begins with, made by the call `posted`
@@ -377,9 +418,9 @@ final class RetrievalAssembler(
       }
   }
 
-  /** Both searches for `query`, `hits` each, in one read: the period's own earlier turns
-    * before `from` when `own`, and the open periods elsewhere; with the turns the nearby hits
-    * point into.
+  /** The searches for `query`, `hits` each, in one read: the period's own earlier turns
+    * before `from` when `own`, the open periods elsewhere, their closings, and the documents
+    * in scope; with the turns the nearby hits point into.
     */
   private def find(
       turn: TurnRef,
@@ -401,6 +442,9 @@ final class RetrievalAssembler(
       records <-
         if (read.closed.isEmpty) Right(Vector.empty)
         else search.closings(read.closed.map(_.conversation), query, hits)
+      docs <- read.shelves.fold(Right(Vector.empty))(s =>
+        documents.search(s.places, query, hits, s.at)
+      )
       // Each conversation a closing matched is shown by its newest kept closing.
       newest <- read.closed
         .filter(c => records.exists(_.turn.conversationId == c.conversation))
@@ -418,17 +462,19 @@ final class RetrievalAssembler(
         .foldLeft[Either[StoreError, Map[ConversationId, Vector[Entry]]]](Right(Map.empty)) {
           (acc, c) => acc.flatMap(done => entries.list(c).map(es => done + (c -> es)))
         }
-    } yield Found(mine, near, theirs, records, newest)
+    } yield Found(mine, near, theirs, records, newest, docs)
 
-  /** The candidate turns, best first: each hit scores its turn, own ones × `weight`; a turn
-    * scores its best hit, and a tie keeps the order the hits came in, own ones first.
+  /** The candidates, best first: each hit scores its turn, own ones × `weight`, and each
+    * document its own score × its plugin's weight in `terms`; a turn scores its best hit, and a
+    * tie keeps the order the hits came in, own ones first, then those elsewhere, documents last.
     */
   private def rank(
       found: Found,
       older: Vector[Vector[Entry]],
       places: Map[ConversationId, Place],
       closed: Vector[ClosedElsewhere],
-      weight: Weight
+      weight: Weight,
+      terms: Map[PluginName, DocumentTerms]
   ): Vector[Candidate] = {
     val w = Weight.value(weight)
     val byTurn = older.flatMap(t => t.headOption.map(e => TurnSeq.value(e.turnSeq) -> t)).toMap
@@ -457,7 +503,12 @@ final class RetrievalAssembler(
     // One section per conversation: its open turns, when any is a candidate, whose period
     // is newer than any closing it has.
     val openHere = near.map(_._2).collect { case Candidate.Near(c, _, _) => c }.toSet
-    (own ++ near ++ records.filterNot(r => openHere(r._2.conversation))).zipWithIndex
+    val docs: Vector[(Double, Candidate)] = found.documents.flatMap { h =>
+      terms
+        .get(h.document.plugin)
+        .map(t => (h.score * DocWeight.value(t.weight), Candidate.Doc(h.document, t)))
+    }
+    (own ++ near ++ records.filterNot(r => openHere(r._2.conversation)) ++ docs).zipWithIndex
       .sortBy { case ((score, _), i) => (-score, i) }
       .map(_._1._2)
       .distinctBy(_.key)
@@ -487,6 +538,8 @@ final class RetrievalAssembler(
             Tokens(Tokens.value(shown(place, before ++ t)) - Tokens.value(without))
           case Candidate.Record(_, place, record) =>
             estimator.message(Shown.recorded(place, record))
+          case Candidate.Doc(document, terms) =>
+            estimator.message(Shown.document(document, terms.label))
         }
         val after = spentSoFar + cost
         if (Tokens.value(after) <= Tokens.value(budget)) (after, kept :+ c)
@@ -534,9 +587,15 @@ final class RetrievalAssembler(
       closings: Vector[Entry],
       turns: Vector[Vector[Entry]],
       notes: Vector[AssemblyNote],
-      nearby: Vector[Nearby]
+      nearby: Vector[Nearby],
+      documents: Vector[Document]
   ): Window =
-    Window(closings.map(_.seq) ++ turns.flatten.sortBy(_.seq).map(_.seq), notes, nearby)
+    Window(
+      closings.map(_.seq) ++ turns.flatten.sortBy(_.seq).map(_.seq),
+      notes,
+      nearby,
+      documents.map(_.version)
+    )
 }
 
 object RetrievalAssembler {
@@ -547,22 +606,47 @@ object RetrievalAssembler {
   /** The recent tail's default share of the window. */
   val DefaultTail: Tokens = Tokens(8_000)
 
-  /** What both searches found: the conversation's own hits, the hits elsewhere, and the
-    * entries of each conversation a hit elsewhere is in.
+  /** What the searches found: the conversation's own hits, the hits elsewhere, the entries
+    * of each conversation a hit elsewhere is in, the closings' hits and each one's newest kept
+    * closing, and the documents' hits.
     */
   private final case class Found(
       own: Vector[EntrySearch.Hit],
       near: Vector[EntrySearch.Hit],
       theirs: Map[ConversationId, Vector[Entry]],
       records: Vector[EntrySearch.Hit],
-      newest: Map[ConversationId, ClosingEntry]
+      newest: Map[ConversationId, ClosingEntry],
+      documents: Vector[DocumentSearch.Hit]
   )
 
-  /** A turn the pool ranks: one of the conversation's own, or one from elsewhere. */
+  /** The places, all in scope and none empty, whose documents current `at` the turn's root
+    * are candidates, and the terms of each plugin keeping them.
+    */
+  private final case class Shelves private (
+      at: java.time.Instant,
+      places: Vector[Shelved],
+      terms: Map[PluginName, DocumentTerms]
+  )
+
+  private object Shelves {
+
+    /** `places` as of `at`, or `None` when there are none. */
+    def of(
+        at: java.time.Instant,
+        places: Vector[Shelved],
+        terms: Map[PluginName, DocumentTerms]
+    ): Option[Shelves] =
+      Option.when(places.nonEmpty)(Shelves(at, places, terms))
+  }
+
+  /** What the pool ranks: a turn of the conversation's own, one from elsewhere, a closing
+    * elsewhere, or a document under its plugin's terms.
+    */
   private enum Candidate {
     case Own(turn: Vector[Entry])
     case Near(conversation: ConversationId, place: Place, turn: Vector[Entry])
     case Record(conversation: ConversationId, place: Place, record: ClosingEntry)
+    case Doc(document: Document, terms: DocumentTerms)
 
     /** Which turn it is, so a turn found by several hits is ranked once. */
     def key: (String, Long) = this match {
@@ -571,6 +655,8 @@ object RetrievalAssembler {
         (ConversationId.value(c), t.headOption.fold(-1L)(e => TurnSeq.value(e.turnSeq)))
       // One record per conversation, whichever of its closings matched.
       case Record(c, _, _) => (s"record:${ConversationId.value(c)}", -1L)
+      // A conversation's id never holds a colon, so neither key names a turn.
+      case Doc(d, _) => ("document:", DocumentVersion.value(d.version))
     }
   }
 }

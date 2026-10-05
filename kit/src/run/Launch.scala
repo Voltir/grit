@@ -91,6 +91,7 @@ private[grit] object Launch {
           engine.principals,
           engine.lifecycle,
           engine.search,
+          engine.documents,
           engine.stitches,
           writer,
           CharEstimate,
