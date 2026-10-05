@@ -49,7 +49,12 @@ turned down, verification, and what is parked. It has an **Elision section**: ev
 changed public signature with its Scaladoc exactly as you will write it; for each, whether
 a caller could use it correctly from the signature and doc alone, and if not, how the
 design changes; then which design choices this check changed, and which doc lines are
-deleted because a type now says them.
+deleted because a type now says them. It has a **Capture and separation section**: which
+values hold capabilities and which must be pure; what each new trait, field and type
+parameter may capture (a type parameter left unbounded can smuggle a capability); where a
+step body or transaction must not reach; every `caps.unsafe` with its proof; and, for each
+claim the compiler is meant to enforce, a probe (the `Driver` probe in `SeparationTests`,
+`docs/capture-checking.md`) that shows the breach rejected.
 
 ## Build and verify
 

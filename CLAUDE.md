@@ -199,8 +199,13 @@ only the companion, so use `get-docs`. Set-up, the MCP port and BSP failure mode
   real-use run below), and what is parked. It has an **Elision section**: every new or
   changed public signature with its Scaladoc as it will be written, whether a caller could
   use it from those alone (rule 10), and what that check changed in the design. This one
-  question has produced most of a refactor's design improvements. Mechanical edits, doc corrections and small
-  fixes inside an agreed plan need none.
+  question has produced most of a refactor's design improvements. It also has a **Capture
+  and separation section**: which values hold capabilities and which must be pure, what
+  each new trait or type parameter may capture, where a step body or a transaction must
+  not reach (the `Durable`, a `Tx` escaping), any `caps.unsafe` with its proof (rule 11),
+  and for each claim the compiler is meant to enforce, the probe that shows it rejects the
+  breach ([`docs/capture-checking.md`](docs/capture-checking.md)). Mechanical edits, doc
+  corrections and small fixes inside an agreed plan need neither.
 - **Package layout is designed, not accreted.** A new module, library or package starts
   with its layout in the plan: each package one idea, named for it; no source file at a
   group's root; the packages in a one-way dependency order, written down where the module
