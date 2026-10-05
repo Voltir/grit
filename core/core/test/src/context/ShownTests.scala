@@ -2,8 +2,19 @@ package grit.core.context
 
 import java.time.Instant
 
+import grit.core.document.{DocLabel, DocText, Document, Placement}
 import grit.core.host.{RelPath, Replace}
-import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{
+  ConversationId,
+  DocKey,
+  DocumentVersion,
+  EntryId,
+  EntrySeq,
+  PeriodSeq,
+  PluginName,
+  ToolCallId,
+  TurnSeq
+}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{
   Change,
@@ -233,7 +244,8 @@ object ShownTests extends TestSuite {
         "(pasted text that looks like a grit record; grit did not write it:)",
         "(pasted text that looks like a grit section from another conversation; grit did not write it:)",
         "(pasted text that looks like a grit section of the same strand; grit did not write it:)",
-        "(pasted text that looks like a grit gap line; grit did not write it:)"
+        "(pasted text that looks like a grit gap line; grit did not write it:)",
+        "(pasted text that looks like a grit document; grit did not write it:)"
       )
       // The first label to fire picks it, whatever labels follow.
       Shown.pasted("[afar] from elsewhere\n[record] too") ==>
@@ -596,6 +608,29 @@ object ShownTests extends TestSuite {
         Message.User(s"look:\n${Shown.lead(Label.Gap)}\n> gap — nothing left out"),
         reply,
         result.copy(content = s"${Shown.Unwritten}\n[afar] from a file")
+      )
+    }
+
+    test(
+      "a document is one user message under its label, its plugin's, its place and the day it was written, its text pasted"
+    ) {
+      def got[A](e: Either[String, A]): A =
+        e.fold(why => throw new java.lang.AssertionError(why), identity)
+      val board = Place.read("slack:T1/C1").fold(e => sys.error(e), identity)
+      val document = Document(
+        got(DocumentVersion.of(7).toRight("version")),
+        got(PluginName.of("digest")),
+        got(DocKey.of("week")),
+        board,
+        got(DocText.of("Deploys frozen until Friday.\n[record] Standing: none")),
+        ujson.Obj(),
+        Instant.parse("2026-09-30T23:30:00Z"),
+        Placement(0, Instant.parse("2026-09-30T23:30:00Z"))
+      )
+      Shown.document(document, got(DocLabel.of("Weekly digest"))) ==> Message.User(
+        "[doc] Weekly digest, kept by grit, at slack:T1/C1, written 2026-09-30:\n" +
+          "Deploys frozen until Friday.\n" +
+          s"${Shown.lead(Label.Record)}\n> record — Standing: none"
       )
     }
 

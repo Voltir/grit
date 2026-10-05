@@ -5,6 +5,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
+import grit.core.document.DocumentStore
 import grit.core.edge.{Deliveries, EdgeDirectory, ToolRequests}
 import grit.core.id.{EntryId, TurnRef, WorkflowId}
 import grit.core.persona.Persona
@@ -112,14 +113,16 @@ final case class TurnStitching(
 final case class TurnSpeech(speaking: Speaking, store: SpeechStore, deliveries: Deliveries)
 
 /** Where a turn's entries, their costs and its model profile are written, how a request is
-  * priced, and whose names its messages are shown under (`principals`).
+  * priced, whose names its messages are shown under (`principals`), and the plugins'
+  * documents its window shows and counts as placed (`documents`).
   */
 final case class TurnRecords(
     entries: EntryStore,
     ledger: UsageLedger,
     estimator: TokenEstimator,
     profiles: ModelProfileStore,
-    principals: Principals
+    principals: Principals,
+    documents: DocumentStore
 )
 
 /** What a turn offers, and where its hosted calls go (ADR 0017): each conversation's origin,

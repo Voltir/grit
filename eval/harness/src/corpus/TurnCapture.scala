@@ -152,7 +152,7 @@ object TurnCapture {
             .left
             .map(why => s"weighing of ${WorkflowId.value(turn.workflowId)} unread: $why")
           window <- mine.find(_.id == Turn.windowId(turn)).map(_.payload) match {
-            case Some(Payload.Window(seqs, recalled, nearby)) =>
+            case Some(Payload.Window(seqs, recalled, nearby, _)) =>
               read("window")(
                 for {
                   at <- reader.entries.at(turn.conversationId, seqs)

@@ -264,6 +264,61 @@ object RecordTurnHistories {
       )
       recorded(durable, turn)
     }
+    // A window holding a plugin's document, and one collected before the model call: the
+    // assemble step records both versions, and record-window counts them placed.
+    val documented = {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val documents = new grit.core.document.InMemoryDocuments
+      def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
+      val digest = got(grit.core.id.PluginName.of("digest"))
+      val terms = got(
+        grit.core.document.DocumentTerms.of(
+          got(grit.core.document.DocLabel.of("Weekly digest")),
+          grit.core.document.DocWeight.Unscaled,
+          scala.concurrent.duration.Duration(30, "days"),
+          10
+        )
+      )
+      given grit.core.store.Tx = grit.dbos.sql.TestTx.fake
+      documents.declare(Vector(digest -> terms))
+      val board = got(grit.core.place.Place.read("slack:T1/C1"))
+      def write(key: String, text: String): grit.core.id.DocumentVersion =
+        documents
+          .keeper(digest, terms)
+          .write(
+            got(grit.core.id.DocKey.of(key)),
+            board,
+            got(grit.core.document.DocText.of(text)),
+            ujson.Obj(),
+            java.time.Instant.EPOCH
+          ) match {
+          case Right(grit.core.document.Written.Versioned(v, _)) => v
+          case other => sys.error(s"not written: $other")
+        }
+      val week = write("week", "Deploys frozen until Friday.")
+      val gone = write("old", "Deploys open.")
+      val _ = documents.forget(gone)
+      val turn = say(entries, "when does the freeze end?")
+      val held = new grit.core.context.ContextAssembler {
+        def assemble(request: grit.core.context.AssemblyRequest)(using
+            grit.core.store.Db^
+        ): Either[grit.core.context.AssemblyError, grit.core.context.Window] =
+          Right(
+            grit.core.context.Window(Vector.empty, Vector.empty, Vector.empty, Vector(week, gone))
+          )
+      }
+      durable.run(turn.workflowId)(
+        turnBodyWith(
+          entries,
+          new RecordingProvider,
+          held,
+          new InMemoryUsageLedger,
+          documents = documents
+        )
+      )
+      recorded(durable, turn)
+    }
     // Another conversation's record, and one whose closing was collected before the model
     // call: its section is dropped from the request, and the window keeps naming it.
     val nearbyClosed = {
@@ -575,6 +630,7 @@ object RecordTurnHistories {
       "crashed-before-append-window-first" -> crashedBeforeAppendWindowFirst,
       "nearby" -> nearby,
       "nearby-closed" -> nearbyClosed,
+      "documented" -> documented,
       "recalled" -> recalled,
       "queried" -> queried,
       "summarised" -> summarised,

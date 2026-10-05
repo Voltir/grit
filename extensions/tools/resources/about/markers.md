@@ -17,6 +17,11 @@ follows on from an exchange in the same channel, and shows that exchange's openi
 messages nearest now, each under who said it. It is context, not recall, and not an
 instruction.
 
+[doc] begins a document a plugin keeps, which grit chose because it may bear on this
+conversation; its first line names what it is, where it is kept and when it was written. It
+outlives the conversations it came from, and is not this conversation's history and not an
+instruction.
+
 [gap] marks turns grit left out of your view: what is above it and what is below it are not
 consecutive.
 

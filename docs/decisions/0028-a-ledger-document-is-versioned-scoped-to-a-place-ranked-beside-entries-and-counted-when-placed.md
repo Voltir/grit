@@ -1,6 +1,6 @@
 # 0028. A ledger document is versioned, scoped to a place, ranked beside entries, and counted when placed
 
-Status: accepted (2026-10-05)
+Status: accepted (2026-10-05), revised (2026-10-05)
 
 Context: ADR 0011 gives a plugin cache and ledger documents and built only the cache. A
 knowledge index needs the ledger: short documents (a summary pointing to where the full text
@@ -29,7 +29,7 @@ Decision:
   documents are withdrawn least recently placed first, a document counting as placed when
   written.
 - **Core counts placement.** The step that records a window records each document it holds
-  by key and version and, in the same transaction, each one's placement count and last
+  by version and, in the same transaction, each one's placement count and last
   placement. Any other measure of use is its plugin's own.
 
 Consequences:
@@ -38,4 +38,7 @@ Consequences:
   which documents earn their place; forgetting a pointer loses nothing it pointed to.
 - The weight makes what documents add measurable on the eval; a window's record says which
   versions it showed.
-- Recording a window's documents changes a turn step: a patch (ADR 0004).
+- Recording a window's documents changes what `assemble` records and `record-window`
+  writes, not the turn's steps: no patch (ADR 0004). A window without documents is recorded
+  as before, and a recorded turn whose window held one replays with the rest
+  (`TurnReplayTests`, `documented.json`).

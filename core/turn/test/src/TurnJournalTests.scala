@@ -2,7 +2,7 @@ package grit.turn
 
 import grit.core.context.{AssemblyNote, Window}
 import grit.core.durable.Journaled
-import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnSeq}
+import grit.core.id.{ConversationId, DocumentVersion, EntryId, EntrySeq, TurnSeq}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.place.Place
 import grit.core.provider.ModelRequest
@@ -79,6 +79,38 @@ object TurnJournalTests extends TestSuite {
         """{"ok":{"entries":[0],"notes":[],""" +
         """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":[5]}]}}"""
       roundTrip(near) ==> Right(near)
+    }
+
+    test("a window's documents are recorded by version after its nearby sections, and read back") {
+      val versions = Vector(7L, 3L).flatMap(DocumentVersion.of)
+      val j = summon[Journaled[Either[TurnFailure, Window]]]
+      val documented: Either[TurnFailure, Window] =
+        Right(Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions))
+      j.encode(documented) ==> """{"ok":{"entries":[0],"notes":[],"documents":[7,3]}}"""
+      roundTrip(documented) ==> Right(documented)
+      assert(j.decode("""{"ok":{"entries":[0],"notes":[],"documents":[0]}}""").isLeft)
+    }
+
+    test(
+      "a window with no documents is recorded as before, a bare array or an object without documents"
+    ) {
+      // Recorded outputs: every window recorded before documents replays as written.
+      val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
+      val j = summon[Journaled[Either[TurnFailure, Window]]]
+      j.encode(Right(Window(Vector(EntrySeq(0))))) ==> """{"ok":[0]}"""
+      j.encode(
+        Right(
+          Window(
+            Vector(EntrySeq(0)),
+            Vector(AssemblyNote.FellBack("why")),
+            Vector(Nearby.Open(ConversationId("c9"), api, Vector(EntrySeq(5))))
+          )
+        )
+      ) ==>
+        """{"ok":{"entries":[0],"notes":[{"fellBack":"why"}],""" +
+        """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":[5]}]}}"""
+      j.decode("""{"ok":{"entries":[0],"notes":[{"fellBack":"why"}]}}""") ==>
+        Right(Right(Window(Vector(EntrySeq(0)), Vector(AssemblyNote.FellBack("why")))))
     }
 
     test("a classification reads back as written") {

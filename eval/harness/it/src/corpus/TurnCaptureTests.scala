@@ -146,7 +146,8 @@ object TurnCaptureTests extends TestSuite {
             engine.ledger,
             CharEstimate,
             engine.profiles,
-            engine.principals
+            engine.principals,
+            engine.documents
           ),
           TurnHosting(
             engine.conversations,

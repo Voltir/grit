@@ -17,4 +17,7 @@ enum Label(val tag: String, val noun: String) {
 
   /** Turns left out between the messages on either side of it. */
   case Gap extends Label("[gap]", "grit gap line")
+
+  /** A document a plugin keeps, shown by grit: not a turn of any conversation. */
+  case Document extends Label("[doc]", "grit document")
 }

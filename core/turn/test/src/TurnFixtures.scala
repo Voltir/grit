@@ -10,6 +10,7 @@ import grit.core.classify.Classifier
 import grit.core.classify.{Answer, Answers, ClassifierError, Question}
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, ContextAssembler, Window}
+import grit.core.document.{DocumentStore, InMemoryDocuments}
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.edge.InMemoryDeliveries
 import grit.core.edge.{InMemoryEdges, Registration, ToolRequest}
@@ -605,7 +606,8 @@ object TurnFixtures {
           ledger,
           CharEstimate,
           profilesKept(),
-          new InMemoryPrincipals
+          new InMemoryPrincipals,
+          new InMemoryDocuments
         ),
         TurnHosting(
           conversations,
@@ -842,7 +844,7 @@ object TurnFixtures {
         case Payload.Closed(_, _, closing) => Some(s"closed: ${closing.flows.prose}")
         case Payload.Draft(Message.Assistant(blocks, _, _, _, _)) =>
           Some(blocks.collect { case AssistantBlock.Text(t) => s"draft: $t" }.mkString)
-        case Payload.Window(_, _, _) | Payload.Topic(_) => None
+        case Payload.Window(_, _, _, _) | Payload.Topic(_) => None
       }
     }
 
@@ -907,7 +909,9 @@ object TurnFixtures {
       if (pinned.assignment == TestCatalog.policy.summary) summary else turn
   }
 
-  /** The turn's workflow body over `entries` and `provider`, windowed by `assembler`. */
+  /** The turn's workflow body over `entries` and `provider`, windowed by `assembler`, showing
+    * and counting `documents`, dated by `clock`.
+    */
   def turnBodyWith(
       entries: EntryStore,
       provider: Provider^,
@@ -918,19 +922,28 @@ object TurnFixtures {
       stitching: TurnStitching^ = unstitched(),
       hosted: TurnHosting = hosting(),
       recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
-      weighing: TurnWeighing^ = noTriage()
+      weighing: TurnWeighing^ = noTriage(),
+      documents: DocumentStore = new InMemoryDocuments,
+      clock: Clock^ = new NoWait
   )(
       id: WorkflowId
   )(using Durable^): String =
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, ledger, CharEstimate, profilesKept(), new InMemoryPrincipals),
+        TurnRecords(
+          entries,
+          ledger,
+          CharEstimate,
+          profilesKept(),
+          new InMemoryPrincipals,
+          documents
+        ),
         hosted,
         assembler,
         classifier,
         new FixedModels(provider, new StubProvider()),
         FakeDb,
-        new NoWait,
+        clock,
         Fresh.random(),
         speech,
         stitching,
@@ -965,7 +978,8 @@ object TurnFixtures {
           new InMemoryUsageLedger,
           CharEstimate,
           profilesKept(),
-          principals
+          principals,
+          new InMemoryDocuments
         ),
         hosting(voices = voices),
         new LinearAssembler(
@@ -1231,7 +1245,14 @@ object TurnFixtures {
   )(id: WorkflowId)(using Durable^): String =
     Turn.body(
       TurnEnv(
-        TurnRecords(entries, ledger, CharEstimate, profilesKept(), new InMemoryPrincipals),
+        TurnRecords(
+          entries,
+          ledger,
+          CharEstimate,
+          profilesKept(),
+          new InMemoryPrincipals,
+          new InMemoryDocuments
+        ),
         hosting(),
         new LinearAssembler(
           entries,
@@ -1280,7 +1301,8 @@ object TurnFixtures {
           new InMemoryUsageLedger,
           CharEstimate,
           profiles,
-          new InMemoryPrincipals
+          new InMemoryPrincipals,
+          new InMemoryDocuments
         ),
         hosting(),
         new LinearAssembler(

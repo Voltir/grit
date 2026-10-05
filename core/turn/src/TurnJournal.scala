@@ -21,18 +21,20 @@ import grit.core.triage.{GateJson, Tags, TagsJson, Weighing}
   */
 private[turn] object TurnJournal {
 
-  /** A window with no notes and no nearby sections is the bare array of its entries' seqs
-    * ([[PayloadJson.writeSeqs]]); one with either is `{"entries": [...], "notes": [...]}`, with
-    * `"nearby": [...]` too when it has sections ([[PayloadJson.writeNearby]]).
+  /** A window with no notes, nearby sections or documents is the bare array of its entries'
+    * seqs ([[PayloadJson.writeSeqs]]); one with any is `{"entries": [...], "notes": [...]}`,
+    * with `"nearby": [...]` too when it has sections ([[PayloadJson.writeNearby]]), and
+    * `"documents": [...]` when it has documents ([[PayloadJson.writeVersions]]).
     */
   given window: Journaled[Either[TurnFailure, Window]] =
     outcome(
       w => {
         val ids = PayloadJson.writeSeqs(w.entries)
-        if (w.notes.isEmpty && w.nearby.isEmpty) ids
+        if (w.notes.isEmpty && w.nearby.isEmpty && w.documents.isEmpty) ids
         else {
           val o = ujson.Obj("entries" -> ids, "notes" -> ujson.Arr.from(w.notes.map(writeNote)))
           if (w.nearby.nonEmpty) o("nearby") = ujson.Arr.from(w.nearby.map(PayloadJson.writeNearby))
+          if (w.documents.nonEmpty) o("documents") = PayloadJson.writeVersions(w.documents)
           o
         }
       },
@@ -58,7 +60,10 @@ private[turn] object TurnJournal {
                   }
                 case Some(_) => Left("window: nearby is not an array")
               }
-            } yield Window(ids, notes, nearby)
+              documents <- o.value
+                .get("documents")
+                .fold(Right(Vector.empty))(PayloadJson.readVersions)
+            } yield Window(ids, notes, nearby, documents)
           case _ => Left("window: expected an array or an object")
         }
     )

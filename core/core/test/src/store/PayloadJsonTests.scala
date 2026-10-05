@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.{ConversationId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Closing, Probability, TestClosings}
 import grit.core.place.Place
@@ -110,10 +110,12 @@ object PayloadJsonTests extends TestSuite {
     }
 
     test("window") {
-      PayloadJson
-        .write(Payload.Window(Vector(EntrySeq(0), EntrySeq(1)), Vector(TurnSeq(3))))
-        .render() ==>
-        """{"kind":"window","entries":[0,1],"recalled":[3]}"""
+      // Stored data: a window without sections or documents is written byte for byte as it
+      // was before either existed, and every window written then reads back.
+      val written = """{"kind":"window","entries":[0,1],"recalled":[3]}"""
+      val window = Payload.Window(Vector(EntrySeq(0), EntrySeq(1)), Vector(TurnSeq(3)))
+      PayloadJson.write(window).render() ==> written
+      PayloadJson.read(ujson.read(written)) ==> Right(window)
     }
 
     test("a window with nearby sections keeps them under their place, as written") {
@@ -128,6 +130,28 @@ object PayloadJsonTests extends TestSuite {
         """{"kind":"window","entries":[0],"recalled":[],""" +
         """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":[5,6]}]}"""
       PayloadJson.read(ujson.read(PayloadJson.write(window).render())) ==> Right(window)
+    }
+
+    test("a window's documents are stored by version after its sections, and read back") {
+      val api = Place.read("fs:/home/nick/api").fold(e => sys.error(e), identity)
+      val versions = Vector(7L, 3L).flatMap(DocumentVersion.of)
+      val window = Payload.Window(
+        Vector(EntrySeq(0)),
+        Vector.empty,
+        Vector(Nearby.Open(ConversationId("c9"), api, Vector(EntrySeq(5)))),
+        versions
+      )
+      PayloadJson.write(window).render() ==>
+        """{"kind":"window","entries":[0],"recalled":[],""" +
+        """"nearby":[{"conversation":"c9","place":"fs:/home/nick/api","entries":[5]}],""" +
+        """"documents":[7,3]}"""
+      PayloadJson.read(ujson.read(PayloadJson.write(window).render())) ==> Right(window)
+      val bare = Payload.Window(Vector(EntrySeq(0)), Vector.empty, Vector.empty, versions)
+      PayloadJson.write(bare).render() ==>
+        """{"kind":"window","entries":[0],"recalled":[],"documents":[7,3]}"""
+      PayloadJson
+        .read(ujson.read("""{"kind":"window","entries":[0],"recalled":[],"documents":[0]}"""))
+        .isLeft ==> true
     }
 
     test("a closed nearby section is stored with its closing, and read back") {

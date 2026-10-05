@@ -54,7 +54,7 @@ object PeriodTranscript {
       entries: Vector[Entry]
   ): Either[StoreError, Vector[String]] = {
     val sections = entries.flatMap(_.payload match {
-      case Payload.Window(_, _, nearby) => nearby
+      case Payload.Window(_, _, nearby, _) => nearby
       case _ => Vector.empty
     })
     val shown = sections

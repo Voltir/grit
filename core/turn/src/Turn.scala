@@ -6,6 +6,7 @@ import scala.concurrent.duration.*
 
 import grit.core.approval.Approval
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
+import grit.core.document.{DocLabel, Document}
 import grit.core.durable.{Durable, StreamWriter}
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
@@ -61,9 +62,12 @@ import TurnVerdict.Shape
   *      recorded.
   *   1. `record-window` — the window recorded as an entry, after any search query
   *      assembly wrote (its own entry, with its own cost in the usage ledger), so an edge
-  *      sees what the model will see while it answers. Turns that passed this point
-  *      before the step existed record both in `append` instead ([[Patches]]).
-  *   1. `call-model` — the window, then the turn's own messages, sent to the provider,
+  *      sees what the model will see while it answers, and, in the same transaction, each
+  *      document it holds counted as placed ([[grit.core.document.DocumentStore.placed]]).
+  *      Turns that passed this point before the step existed record both in `append`
+  *      instead, counting no placement ([[Patches]]).
+  *   1. `call-model` — the window (its sections, documents, own entries), then the turn's
+  *      own messages, sent to the provider,
   *      whose reply is told to edges as it arrives ([[TurnStream]]), offering the turn's
   *      tools ([[TurnTooling]]), and `topic` too when the classifier was unsure
   *      ([[TurnVerdict]]).
@@ -727,7 +731,7 @@ object Turn {
         for {
           all <- records.entries.list(turn.conversationId)
           window = all.collectFirst {
-            case Entry(id, _, _, _, _, Payload.Window(entries, _, nearby), _)
+            case Entry(id, _, _, _, _, Payload.Window(entries, _, nearby, _), _)
                 if id == windowId(turn) =>
               Window(entries, Vector.empty, nearby)
           }
@@ -826,7 +830,7 @@ object Turn {
       settling: Settling,
       at: Instant
   )(using Tx^): Either[TurnFailure, Outcome] = {
-    val TurnRecords(entries, ledger, _, _, _) = env.records
+    val TurnRecords(entries, ledger, _, _, _, _) = env.records
     val TurnSpeech(speaking, store, deliveries) = env.speech
     for {
       all <- entries.list(turn.conversationId).left.map(storeFailure)
@@ -1251,7 +1255,7 @@ object Turn {
       shape: ModelRequest -> ModelRequest,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
-    val TurnRecords(entries, ledger, estimator, _, _) = records
+    val TurnRecords(entries, ledger, estimator, _, _, _) = records
     val id = TurnTools.callId(turn, round)
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
@@ -1467,7 +1471,7 @@ object Turn {
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val id = TurnSummary.id(turn)
-    val TurnRecords(entries, ledger, estimator, _, _) = records
+    val TurnRecords(entries, ledger, estimator, _, _, _) = records
     for {
       read <- (placing match {
         case Placing.Placed(_) => TurnSummary.read(message)
@@ -1536,7 +1540,8 @@ object Turn {
 
   /** What a request for `turn` over `window` can show, read from `records`: the entries of
     * its conversation at the window's seqs, the turn's own entries, the nearby sections'
-    * entries that still exist, and who said each; nothing else of the conversation.
+    * entries that still exist, who said each, and the window's documents still kept whose
+    * plugin is enabled, each with its plugin's label; nothing else of the conversation.
     */
   private def shown(records: TurnRecords, turn: TurnRef, window: Window)(using
       Tx^
@@ -1546,20 +1551,34 @@ object Turn {
       mine <- records.entries.ofTurn(turn)
       near <- Nearby.read(window.nearby, records.entries)
       named <- records.principals.speakers((at ++ mine ++ near).map(_.id).distinct)
-    } yield Showing(at, mine, near, named)
+      kept <- records.documents.read(window.documents)
+      // The terms in force are read only when a document is left to label.
+      terms <- if (kept.isEmpty) Right(Vector.empty) else records.documents.declared()
+      labels = terms.toMap
+    } yield Showing(
+      at,
+      mine,
+      near,
+      named,
+      kept.flatMap(d => labels.get(d.plugin).map(t => d -> t.label))
+    )
 
   /** What [[shown]] read: `window`, the entries at the window's seqs that exist; `mine`,
-    * the turn's own; `near`, the nearby entries that still exist; `named`, their speakers.
+    * the turn's own; `near`, the nearby entries that still exist; `named`, their speakers;
+    * `documents`, the window's documents still kept whose plugin is enabled, in its order,
+    * each with its plugin's label.
     */
   private final case class Showing(
       window: Vector[Entry],
       mine: Vector[Entry],
       near: Vector[Entry],
-      named: Speakers
+      named: Speakers,
+      documents: Vector[(Document, DocLabel)]
   )
 
   /** The request [[request]] builds from `showing`: each nearby section as one user message
-    * ([[Shown.section]], a section with none of its entries left dropped), then what the
+    * ([[Shown.section]], a section with none of its entries left dropped), then each
+    * document as one ([[Shown.document]]), then what the
     * model is shown of the window's entries ([[Shown.own]]: its messages, a closing entry
     * as one user message, and a gap line wherever turns are left out), then the turn's own, its tool loop's exchange among them in order.
     * A summary is not shown to the model yet. A window seq with no entry is an `Assembly`
@@ -1571,9 +1590,10 @@ object Turn {
       turn: TurnRef,
       window: Window
   ): Either[TurnFailure, ModelRequest] = {
-    val Showing(at, mine, near, named) = showing
+    val Showing(at, mine, near, named, documents) = showing
     val bySeq = at.map(e => e.seq -> e).toMap
-    val sections = window.nearby.flatMap(Shown.section(_, near, named))
+    val sections = window.nearby.flatMap(Shown.section(_, near, named)) ++
+      documents.map((document, label) => Shown.document(document, label))
     window.entries.filterNot(bySeq.contains) match {
       case missing if missing.nonEmpty =>
         Left(
@@ -1613,7 +1633,7 @@ object Turn {
         (turn.replyId, Payload.Message(message))
       case TurnOffer.Root.Heard | TurnOffer.Root.Named => (turn.draftId, Payload.Draft(message))
     }
-    val TurnRecords(entries, ledger, estimator, _, _) = records
+    val TurnRecords(entries, ledger, estimator, _, _, _) = records
     for {
       next <- entries.lockNext(turn.conversationId).left.map(storeFailure)
       showing <- shown(records, turn, window).left.map(storeFailure)
@@ -1652,7 +1672,8 @@ object Turn {
   }
 
   /** The `record-window` step: `turn`'s window and the queries that chose it, recorded
-    * dated `at` before the model is called, so an edge sees them while the turn runs.
+    * dated `at` before the model is called, so an edge sees them while the turn runs, and
+    * each document the window holds counted as placed at `at`.
     */
   private def recordWindow(
       records: TurnRecords,
@@ -1663,6 +1684,7 @@ object Turn {
     for {
       next <- records.entries.lockNext(turn.conversationId).left.map(storeFailure)
       _ <- writeWindow(records, turn, window, next.seq, at)
+      _ <- records.documents.placed(window.documents, at).left.map(storeFailure)
     } yield windowId(turn)
 
   /** Writes each query `window`'s notes say assembly wrote, as [[queryId]] with its own
@@ -1676,7 +1698,7 @@ object Turn {
       from: EntrySeq,
       at: Instant
   )(using Tx^): Either[TurnFailure, EntrySeq] = {
-    val TurnRecords(entries, ledger, _, _, _) = records
+    val TurnRecords(entries, ledger, _, _, _, _) = records
     val queries = window.notes.collect { case q: AssemblyNote.Queried => q }
     val recalled = window.notes.flatMap {
       case AssemblyNote.Recalled(turns) => turns
@@ -1712,7 +1734,7 @@ object Turn {
             turn.turnSeq,
             None,
             windowSeq,
-            Payload.Window(window.entries, recalled, window.nearby),
+            Payload.Window(window.entries, recalled, window.nearby, window.documents),
             at
           )
         )

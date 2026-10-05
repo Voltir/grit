@@ -2,6 +2,7 @@ package grit.core.context
 
 import java.time.{Instant, ZoneOffset}
 
+import grit.core.document.{DocLabel, DocText, Document}
 import grit.core.id.TurnSeq
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{Change, Closing, Ground, Section}
@@ -126,6 +127,17 @@ object Shown {
       case Nearby.Closed(_, place, seq) =>
         bySeq.get(seq).flatMap(ClosingEntry.of).map(recorded(place, _))
     }
+  }
+
+  /** A document as one user message: "[doc] {label}, kept by grit, at {place.written}, written
+    * {its UTC date}:", then its text as [[pasted]] shows it.
+    */
+  def document(document: Document, label: DocLabel): Message = {
+    val day = document.written.atOffset(ZoneOffset.UTC).toLocalDate
+    Message.User(
+      s"${Label.Document.tag} ${DocLabel.value(label)}, kept by grit, at ${document.place.written}, " +
+        s"written $day:\n${pasted(DocText.value(document.text))}"
+    )
   }
 
   /** The line standing for turns left out: one user message, "[gap] earlier turns not

@@ -55,7 +55,7 @@ object QueryWriter {
     case Payload.Heard(text) => Some(s"Overheard: $text")
     // Assembly runs before the turn's tool loop, so its own entries hold no exchange yet; a
     // post is the first entry of a turn that never runs, so never a turn's own.
-    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _) | Payload.Topic(_) |
+    case Payload.Summary(_) | Payload.Query(_) | Payload.Window(_, _, _, _) | Payload.Topic(_) |
         Payload.Exchange(_) | Payload.Result(_, _) | Payload.Attempt(_) | Payload.Ask(_, _) |
         Payload.Closed(_, _, _) | Payload.Draft(_) | Payload.Posted(_) =>
       None

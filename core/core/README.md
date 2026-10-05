@@ -135,8 +135,9 @@ In dependency order:
   into: `ContextAssembler` (and the `Window` it builds, as wide as its request's `Width`
   asks: as deployed, or within a budget the eval harness names; and `Shown`: what the model is
   shown of a window, each line grit writes into it under its `Label`: the record, a
-  section from afar, a gap where turns were left out; and a grit label that starts a line
-  in text grit did not write, shown as a quoted paste), `Provider` and `Models` (the
+  section from afar, a document a plugin keeps, a gap where turns were left out; and a grit
+  label that starts a line in text grit did not write, shown as a quoted paste), `Provider`
+  and `Models` (the
   catalog in force, and a provider per role's pin; ← `model`), and `Inbox` (which also
   records a message heard where grit listens, not said to it, at the time it was said, says which of a thread's messages it has recorded, answers a turn's gated call, and says how far a turn has got: its `Progress`; the id its entry is kept under is
   `InboundId`'s). Each names only the packages above, never

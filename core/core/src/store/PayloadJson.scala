@@ -1,6 +1,6 @@
 package grit.core.store
 
-import grit.core.id.{ConversationId, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
+import grit.core.id.{ConversationId, DocumentVersion, EntrySeq, PeriodSeq, ToolCallId, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, ClosingJson, Probability}
 import grit.core.place.Place
@@ -19,14 +19,15 @@ object PayloadJson {
     case Payload.Posted(text) => ujson.Obj("kind" -> "posted", "text" -> text)
     case Payload.Summary(text) => ujson.Obj("kind" -> "summary", "text" -> text)
     case Payload.Query(text) => ujson.Obj("kind" -> "query", "text" -> text)
-    case Payload.Window(entries, recalled, nearby) =>
+    case Payload.Window(entries, recalled, nearby, documents) =>
       val o = ujson.Obj(
         "kind" -> "window",
         "entries" -> writeSeqs(entries),
         "recalled" -> ujson.Arr.from(recalled.map(t => ujson.Num(TurnSeq.value(t).toDouble)))
       )
-      // Written only when there are sections.
+      // Each written only when there are any.
       if (nearby.nonEmpty) o("nearby") = ujson.Arr.from(nearby.map(writeNearby))
+      if (documents.nonEmpty) o("documents") = writeVersions(documents)
       o
     case Payload.Topic(events) =>
       ujson.Obj("kind" -> "topic", "events" -> ujson.Arr.from(events.map(TopicJson.write)))
@@ -107,7 +108,8 @@ object PayloadJson {
             nearby <-
               if (o.value.contains("nearby")) arr(o, "nearby").flatMap(traverse(_)(readNearby))
               else Right(Vector.empty)
-          } yield Payload.Window(entries, recalled, nearby)
+            documents <- o.value.get("documents").fold(Right(Vector.empty))(readVersions)
+          } yield Payload.Window(entries, recalled, nearby, documents)
         case "topic" => arr(o, "events").flatMap(traverse(_)(TopicJson.read)).map(Payload.Topic(_))
         case "exchange" =>
           field(o, "message").flatMap(readMessage).flatMap {
@@ -339,6 +341,22 @@ object PayloadJson {
     v match {
       case ujson.Arr(items) => traverse(items.toVector)(seq)
       case _ => Left("entry seqs are not an array")
+    }
+
+  /** Document versions' stored form: an array of numbers, in the order given. */
+  def writeVersions(versions: Vector[DocumentVersion]): ujson.Value =
+    ujson.Arr.from(versions.map(v => ujson.Num(DocumentVersion.value(v).toDouble)))
+
+  /** The document versions `v` stores ([[writeVersions]]' form), or why none. */
+  def readVersions(v: ujson.Value): Either[String, Vector[DocumentVersion]] =
+    v match {
+      case ujson.Arr(items) =>
+        traverse(items.toVector) {
+          case ujson.Num(n) if n.isWhole =>
+            DocumentVersion.of(n.toLong).toRight("a document version is a whole number from 1")
+          case _ => Left("a document version is a whole number from 1")
+        }
+      case _ => Left("document versions are not an array")
     }
 
   private def seq(v: ujson.Value): Either[String, EntrySeq] = v match {
