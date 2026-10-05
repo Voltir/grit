@@ -45,8 +45,8 @@ So a generic provider, classifier or host is a shipped extension and a case in t
 choice. A deployment supplying its own `Provider`, `Classifier`, `ContextAssembler` or host
 capabilities as values, as it does edges and plugins, is parked.
 
-**A worked example: `Digest`.** `extensions/digest` is a shipped extension that names core
-alone. `Digest` implements `Plugin` (ADR 0027), a pure bundle of contributions: its cache
+**A worked example: `Digest`.** `extensions/digest` is a shipped plugin extension that names
+core alone. `Digest` implements `Plugin` (ADR 0027), a pure bundle of contributions: its cache
 posting keeps one line per closed period in its documents, in the transaction that moves its
 cursor, and its tool, `recent_activity`, reads them back. A deployment turns it on as a value,
 `Deployment.of(plugins = Vector(new Digest(name)), …)`; the reference deployment does so for
@@ -61,10 +61,12 @@ anything a shipped one can.
 ## What an extension may import
 
 An extension names core alone; core includes `grit.prose` and `grit.edge`, which is how
-`grit.slack` and `grit.mcp` name them. A Java library lives only in the extension whose job
-needs it ([STYLE.md](../STYLE.md), rule 8). Only the kit and a deployment name an
-extension, and the kit names no edge extension, no terminal UI and no deployment: an edge
-reaches it as a `ServedEdge` value. Mill's `moduleDeps` hold each of these on the
+`grit.slack` and `grit.mcp` name them. A plugin extension may also name plugin extensions,
+since a plugin that reads another takes it in its constructor; it never names the kit, an
+edge extension or a deployment. A Java library lives only in the extension whose job needs
+it ([STYLE.md](../STYLE.md), rule 8). Only the kit, a deployment and a plugin extension
+name an extension, and the kit names no plugin, no edge extension, no terminal UI and no
+deployment: a plugin reaches it as a `Plugin` value and an edge as a `ServedEdge` value. Mill's `moduleDeps` hold each of these on the
 classpath, and the law ([`enola-intent.yaml`](../enola-intent.yaml), its rules 1 and 4)
 holds them on imports.
 

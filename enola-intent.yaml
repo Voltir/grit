@@ -6,8 +6,9 @@
 #      grit.host may start a process (STYLE rule 8); grit.slack names core and prose alone
 #   2. grit.tui's four groups import in one direction (extensions/tui/CLAUDE.md)
 #   3. grit.prose names no other grit module (core/prose/README.md)
-#   4. core names no extension, each extension names core alone, and the kit names no edge
-#      extension, terminal UI or deployment (ADR 0021; docs/extending.md)
+#   4. core names no extension, each extension names core alone (a plugin extension core and
+#      plugin extensions), and the kit names no plugin, edge extension, terminal UI or
+#      deployment (ADRs 0021, 0027; docs/extending.md)
 #   5. grit.mcp's protocol, scope, client and edge name no GitHub package (extensions/mcp/README.md)
 #
 # Every rule was watched failing on a deliberately planted bad import before it was
@@ -81,7 +82,9 @@ components:
   - {name: models-code,    kind: module, match: ["extensions/models/src", "extensions/models/src/**"]}
   - {name: host-code,      kind: module, match: ["extensions/host/src", "extensions/host/src/**"]}
   - {name: tools-code,     kind: module, match: ["extensions/tools/src", "extensions/tools/src/**"]}
-  - {name: digest-code,    kind: module, match: ["extensions/digest/src", "extensions/digest/src/**"]}
+  # Every plugin extension: one that implements Plugin and nothing else core lets it supply.
+  # A new plugin extension joins this list.
+  - {name: plugin-extensions, kind: module, match: ["extensions/digest/src", "extensions/digest/src/**"]}
   - {name: tui-code,       kind: module, match: ["extensions/tui/src", "extensions/tui/src/**"]}
   - {name: kit-code,       kind: module, match: ["kit/src", "kit/src/**"]}
   - {name: mcp-code,       kind: module, match: ["extensions/mcp/src", "extensions/mcp/src/**"]}
@@ -501,10 +504,14 @@ rules:
     because: "grit.prose is the edge-neutral form a reply is rendered from; naming grit.tui, grit.core or any edge would make it one edge's form"
 
   # -------------------------------------------------------------------------------------
-  # 4. Core, extensions, kit and deployments (ADR 0021): an extension module is named only
-  # by the kit and by a deployment. Core names no extension; each extension names core
-  # alone (grit.slack's rule above says it for Slack); the kit names no edge extension, no
-  # terminal UI and no deployment, since an edge reaches it as a ServedEdge value. Mill's
+  # 4. Core, extensions, kit and deployments (ADRs 0021, 0027): an extension module is named
+  # by the kit and by a deployment, and a plugin extension by another plugin extension too.
+  # Core names no extension; each extension names core alone (grit.slack's rule above says
+  # it for Slack), but a plugin extension may name plugin extensions, since a plugin that
+  # reads another takes it in its constructor; which plugin is Mill's moduleDeps' job. The
+  # kit names no plugin, since a deployment hands it plugins as values, and no edge
+  # extension, no terminal UI and no deployment, since an edge reaches it as a ServedEdge
+  # value. Mill's
   # moduleDeps already keep each of these off the classpath; the rules are the record of the
   # intent, and the guard if a moduleDeps entry is ever added. grit.eval's cases name
   # grit.core alone (its integration sources, the assembly eval, are unruled);
@@ -539,12 +546,12 @@ rules:
     mode: strict
     because: "ADR 0021: a shipped extension implements core's traits and names no other extension"
 
-  - id: digest-names-core-alone
-    allow: digest-code
-    only: [core-modules, digest-code]
+  - id: plugins-name-core-and-plugins
+    allow: plugin-extensions
+    only: [core-modules, plugin-extensions]
     via: imports
     mode: strict
-    because: "ADR 0021: a shipped extension implements core's traits and names no other extension"
+    because: "ADRs 0021, 0027: a plugin implements core's Plugin and reads another plugin only through the service it exports; naming the kit, an edge extension or a deployment would tie it to one way of running"
 
   - id: mcp-names-core-alone
     allow: mcp-code
@@ -569,10 +576,10 @@ rules:
 
   - id: kit-names-no-edge-or-deployment
     allow: kit-code
-    only: [core-modules, models-code, tools-code, digest-code, host-code, kit-code]
+    only: [core-modules, models-code, tools-code, host-code, kit-code]
     via: imports
     mode: strict
-    because: "ADR 0021: an edge reaches the kit as a ServedEdge value, a cloud deployment never loads the terminal UI, and the kit names no deployment"
+    because: "ADRs 0021, 0027: a plugin reaches the kit as a Plugin value and an edge as a ServedEdge value, a cloud deployment never loads the terminal UI, and the kit names no deployment"
 
   - id: eval-names-core-alone
     allow: eval-code
