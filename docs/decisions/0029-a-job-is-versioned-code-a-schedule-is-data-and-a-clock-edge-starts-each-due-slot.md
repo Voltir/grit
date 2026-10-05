@@ -1,0 +1,40 @@
+# 0029. A job is versioned code, a schedule is data, and a clock edge starts each due slot
+
+Status: accepted (2026-10-05)
+
+Context: ADR 0021 decides that a job is a turn with a Scala planner and a version, and that a
+trigger is an edge starting one run per slot at a task place; it does not say where slots
+come from. Some work is declared and recurring (keeping an index fresh, a nightly pass, a
+daily standup per person); some is asked for in conversation (a reminder for Thursday). The
+close alternative was a sweep per feature, as the close, settle and posting each have: every
+recurring feature would add its own. A job as data and a scheduler in core were turned down
+by ADR 0021.
+
+Decision:
+
+- **A schedule is a row**: its job, by name; a slot rule, either once at an instant or a
+  recurrence from a small closed set (daily, on weekdays, weekly, at a time in a time zone),
+  never a cron expression; parameters, as JSON the job reads; the principal it runs for,
+  whose budget it spends (ADR 0021); and the place its run reports to.
+- **Schedules come from two sources.** A deployment or plugin declares some; they run for the
+  deployment's persona and are reconciled with the rows when the engine starts, a schedule no
+  longer declared being cancelled. A tool writes others from a turn; they run for the person
+  who asked, are recorded with that turn, are theirs to cancel, and reconciliation never
+  touches them.
+- **A slot is a schedule and its nominal instant**, and its key is the run's id, so the inbox
+  refuses a second start. The run is a conversation at the job's task place, closed like any
+  other, so what it did is memory (ADR 0021).
+- **The clock edge** reads due slots from Postgres and starts their runs through the inbox,
+  as any edge starts a turn (ADR 0002); it hosts no place (ADR 0017). After downtime, a once
+  slot runs late within a grace its schedule declares and is otherwise recorded as missed; a
+  recurrence runs its latest missed slot alone.
+- **A job is contributed by a plugin (ADR 0027) or declared by the deployment**, and runs
+  under grit's epoch (ADR 0021).
+
+Consequences:
+
+- Reminders, standups and index upkeep are one mechanism; a new one is a job and a schedule,
+  not a sweep.
+- Recurrences are as expressive as the closed set; a rule it lacks is a change to core.
+- Who besides its author may cancel a person's schedule, and whether a person may write a
+  recurring one, is the writing tool's to decide.
