@@ -1,6 +1,7 @@
 package grit.eval
 
-import grit.core.id.EntrySeq
+import grit.core.document.DocText
+import grit.core.id.{DocKey, EntrySeq}
 import grit.core.store.Origin
 
 import utest.*
@@ -59,6 +60,41 @@ object LayoutTests extends TestSuite {
 
     test("a case that labels no [must] entry is laid out expecting none") {
       laid(crossPlace.replace(" [must]", "")).must ==> Vector.empty
+    }
+
+    test("a layout's documents rooted under the case, keyed by case, variant and order") {
+      val layout = laid(
+        """query: billing
+          |turn
+          |you: hi
+          |document fs:/home/billing [must]
+          |doc: Closed here:
+          |doc: rounding is banker's
+          |document task:nightly
+          |doc: nothing
+          |ask
+          |you: which rounding?
+          |""".stripMargin,
+        Variant.Buried
+      )
+      layout.documents.map(d =>
+        (DocKey.value(d.key), d.place.written, DocText.value(d.text), d.must)
+      ) ==> Vector(
+        (
+          "near/buried/d0",
+          "fs:/eval/near/buried/home/billing",
+          "Closed here:\nrounding is banker's",
+          true
+        ),
+        ("near/buried/d1", "task:eval/near/buried/nightly", "nothing", false)
+      )
+    }
+
+    test("a document holding no text is refused, naming its place") {
+      Case
+        .parse("bare", "query: q\ndocument fs:/a [must]\nask\nyou: now?\n")
+        .flatMap(Layout.of(_, Variant.Plain)) ==>
+        Left("bare: the document at fs:/a: a document's text is not blank")
     }
 
     test("a place closed before any turn there is refused, naming it") {

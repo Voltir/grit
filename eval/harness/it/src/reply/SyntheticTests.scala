@@ -1,6 +1,7 @@
 package grit.eval.harness.reply
 
 import grit.core.context.Width
+import grit.core.document.DocWeight
 import grit.core.id.TurnRef
 import grit.core.message.Tokens
 import grit.dbos.engine.{LiveEngine, Reader}
@@ -75,7 +76,16 @@ object SyntheticTests extends TestSuite {
       } yield s"${c.name}/${v.label}" -> right(
         Layout
           .of(c, v)
-          .flatMap(Load.into(engine.jot, engine.conversations, engine.entries, engine.periods))
+          .flatMap(
+            Load.into(
+              engine.jot,
+              engine.conversations,
+              engine.entries,
+              engine.periods,
+              engine.keeper(Load.Plugin, Load.terms(DocWeight.Unscaled))
+            )
+          )
+          .map(_.turn)
       )
       (config, turns.toMap)
     } finally engine.close()
@@ -99,7 +109,9 @@ object SyntheticTests extends TestSuite {
             engine.jot,
             engine.conversations,
             engine.entries,
-            engine.periods
+            engine.periods,
+            engine.documents,
+            engine.keeper
           )
         finally engine.close()
       // invoice: 3 + 2 plain, 83 + 22 buried; decoy and closed each: 1 + 2 plain, 1 + 22 buried.

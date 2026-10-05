@@ -187,4 +187,28 @@ object Cases {
         |you: What fix did I settle on for the flaky invoice test?
         |""".stripMargin
   )
+
+  /** Cases whose `[must]` is a plugin's document: `document fs:/…` starts one at that place
+    * (under the case's own root), `[must]` after it when the window has to hold it, and each
+    * `doc:` line after it is a line of its text. They are written as a plugin keeps them:
+    * through its document keeper, before every entry of the case ([[Load]]).
+    */
+  val documented: Vector[(String, String)] = Vector(
+    "digest-answers" ->
+      """# A conversation in billing closed with the answer; only the digest's document there keeps it.
+        |query: invoice totals rounding mode decision: banker's rounding half-even versus half-up, totals off by a cent
+        |turn
+        |you: Can you list the files under billing?
+        |grit: Round.scala, Invoice.scala and Totals.scala.
+        |turn
+        |you: Which test runs the totals?
+        |grit: TotalsSpec, under billing's tests.
+        |document fs:/home/nick/billing [must]
+        |doc: Closed here, newest first (UTC):
+        |doc: 2026-09-30 14:05 · tui default · resolved · Invoice totals round half-even (banker's rounding), set in Round.scala; half-up was a cent off.
+        |doc: 2026-09-28 10:12 · tui default · lapsed · We looked at why the CI cache misses.
+        |ask
+        |you: Remind me which rounding mode we settled on for invoice totals?
+        |""".stripMargin
+  )
 }

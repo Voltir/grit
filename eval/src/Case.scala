@@ -3,7 +3,7 @@ package grit.eval
 /** One eval conversation: its turns, the question asked after them, which entries a window
   * for that question must contain (or must not), the search query a model might write for
   * it, and the other conversations open or closed beside it, with the scope a window may
-  * draw on them within.
+  * draw on them within, and the documents a plugin keeps beside it.
   */
 final case class Case(
     name: String,
@@ -12,7 +12,8 @@ final case class Case(
     ask: String,
     query: Option[String],
     elsewhere: Vector[Case.Elsewhere] = Vector.empty,
-    scope: Option[String] = None
+    scope: Option[String] = None,
+    documents: Vector[Case.Document] = Vector.empty
 )
 
 object Case {
@@ -35,6 +36,11 @@ object Case {
       reopened: Vector[Vector[Line]] = Vector.empty
   )
 
+  /** A plugin's document at `place` (written as a place is, relative to the case's own root),
+    * its text `lines`, and whether the window must hold it (`must`).
+    */
+  final case class Document(place: String, lines: Vector[String], must: Boolean)
+
   private val Must = "[must]"
   private val Never = "[never]"
 
@@ -44,6 +50,7 @@ object Case {
   private enum Into {
     case Own
     case Place(i: Int, reopened: Boolean)
+    case Doc(i: Int)
   }
 
   /** `text` in the format [[Cases]] describes, or what is wrong with it, by line number. */
@@ -55,7 +62,8 @@ object Case {
         query: Option[String],
         elsewhere: Vector[Elsewhere],
         scope: Option[String],
-        into: Into
+        into: Into,
+        documents: Vector[Document]
     )
     def addTurn(ts: Vector[Vector[Line]]) = ts :+ Vector()
     def addLine(ts: Vector[Vector[Line]], m: Line): Option[Vector[Vector[Line]]] =
@@ -63,7 +71,7 @@ object Case {
     val lines = text.linesIterator.zipWithIndex.map((l, i) => (l.trim, i + 1)).filter(_._1.nonEmpty)
     lines
       .foldLeft[Either[String, Acc]](
-        Right(Acc(Vector(), Vector(), None, None, Vector(), None, Into.Own))
+        Right(Acc(Vector(), Vector(), None, None, Vector(), None, Into.Own, Vector()))
       ) {
         case (Left(e), _) => Left(e)
         case (Right(acc), (line, n)) =>
@@ -94,17 +102,43 @@ object Case {
                     )
                   )
               }
+            case l if l.startsWith("document ") && acc.ask.isEmpty =>
+              val words = l.drop(9).trim.split("\\s+").toVector
+              words.headOption.filter(_.nonEmpty) match {
+                case None => fail("a document names where")
+                case Some(p) =>
+                  Right(
+                    acc.copy(
+                      documents = acc.documents :+ Document(p, Vector(), words.contains(Must)),
+                      into = Into.Doc(acc.documents.size)
+                    )
+                  )
+              }
+            case l if l.startsWith("doc:") =>
+              acc.into match {
+                case Into.Doc(i) =>
+                  acc.documents.lift(i) match {
+                    case Some(d) =>
+                      Right(
+                        acc.copy(documents =
+                          acc.documents.updated(i, d.copy(lines = d.lines :+ l.drop(4).trim))
+                        )
+                      )
+                    case None => fail("doc: outside a document")
+                  }
+                case _ => fail("doc: outside a document")
+              }
             case l if l.startsWith("carried:") =>
               acc.into match {
                 case Into.Place(i, _) =>
                   at(i)(e => Some(e.copy(closed = true, carried = e.carried :+ l.drop(8).trim)))
-                case Into.Own => fail("carried: outside a place")
+                case Into.Own | Into.Doc(_) => fail("carried: outside a place")
               }
             case "reopen" =>
               acc.into match {
                 case Into.Place(i, _) =>
                   at(i)(e => Some(e.copy(closed = true))).map(_.copy(into = Into.Place(i, true)))
-                case Into.Own => fail("reopen outside a place")
+                case Into.Own | Into.Doc(_) => fail("reopen outside a place")
               }
             case "here" => Right(acc.copy(into = Into.Own))
             case "turn" if acc.ask.isEmpty =>
@@ -112,13 +146,15 @@ object Case {
                 case Into.Own => Right(acc.copy(turns = addTurn(acc.turns)))
                 case Into.Place(i, false) => at(i)(e => Some(e.copy(turns = addTurn(e.turns))))
                 case Into.Place(i, true) => at(i)(e => Some(e.copy(reopened = addTurn(e.reopened))))
+                case Into.Doc(_) => fail("a turn in a document: here, or place, first")
               }
             case "turn" => fail("a turn after the ask")
             case "ask" if acc.ask.isEmpty => Right(acc.copy(ask = Some(Vector()), into = Into.Own))
             case "ask" => fail("a second ask")
             case l =>
               message(l) match {
-                case None => fail("expected turn, ask, query:, place, here, you: or grit:")
+                case None =>
+                  fail("expected turn, ask, query:, place, here, document, doc:, you: or grit:")
                 case Some(m) =>
                   (acc.ask, acc.into) match {
                     case (Some(asked), _) => Right(acc.copy(ask = Some(asked :+ m)))
@@ -131,6 +167,7 @@ object Case {
                       at(i)(e => addLine(e.turns, m).map(ts => e.copy(turns = ts)))
                     case (None, Into.Place(i, true)) =>
                       at(i)(e => addLine(e.reopened, m).map(ts => e.copy(reopened = ts)))
+                    case (None, Into.Doc(_)) => fail("a message in a document: doc: its lines")
                   }
               }
           }
@@ -146,7 +183,8 @@ object Case {
                 question,
                 acc.query,
                 acc.elsewhere,
-                acc.scope
+                acc.scope,
+                acc.documents
               )
             )
           case _ => Left(s"$name: the ask must be one unlabelled you: line")

@@ -73,6 +73,36 @@ object EvalTests extends TestSuite {
       }
     }
 
+    test(
+      "a documented case: its document written as a plugin keeps it, retrieval draws it and linear never does"
+    ) {
+      withEngine { engine =>
+        val c = Case
+          .parse(
+            "kept",
+            """query: rounding half-even
+              |turn
+              |you: hi
+              |grit: hello
+              |document fs:/home/billing [must]
+              |doc: invoice rounding is half-even
+              |ask
+              |you: which rounding?
+              |""".stripMargin
+          )
+          .fold(sys.error, identity)
+        val loaded = Eval.load(engine, c, Variant.Plain)
+        def got(s: Eval.Strategy) =
+          Eval.run(engine, loaded, s, Eval.NoLive).map(r => (r.got, r.of, r.missedDocuments.size))
+        (
+          loaded.mustDocuments.size,
+          got(Eval.Strategy.Retrieval(Tokens(24_000), live = false)),
+          got(Eval.Strategy.Linear(Tokens(24_000))),
+          got(Eval.Strategy.Oracle)
+        ) ==> (1, Right((1, 1, 0)), Right((0, 1, 1)), Right((1, 1, 0)))
+      }
+    }
+
     test("a loaded case: one entry per line, the ask recorded as the turn assembled for") {
       withEngine { engine =>
         val plain = Eval.load(engine, parsed(sample), Variant.Plain)

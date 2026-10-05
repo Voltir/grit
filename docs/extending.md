@@ -34,7 +34,7 @@ supply two of them as values in `Deployment.of` today: a `ServedEdge` or `CatchU
 | Trait (package) | Shipped | A deployment's own? |
 |---|---|---|
 | `ServedEdge`, `CatchUp` (`grit.core.edge`) | `SlackEdge.serving`, `SlackEdge.backfill`, `McpEdge.serving` | yes: `Deployment.of(edges = …)`, `Kit.catchUp` |
-| `Plugin` (`grit.core.plugin`), with its `CachePosting` and `PluginTool`s | `Digest` | yes: `Deployment.of(plugins = …)` |
+| `Plugin` (`grit.core.plugin`), with its `Documents` (or `CachePosting`), `PluginTool`s and an `Exports` service | `Digest` | yes: `Deployment.of(plugins = …)` |
 | `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017), or as a plugin's `PluginTool`, which the turn runs itself over grit's store; grit's own are the kit's `Offered`, chosen, not supplied |
 | `Provider` (`grit.core.provider`) | `OpenRouterProvider`, `StubProvider` | no: the kit builds one from `Secrets` |
 | `Classifier` (`grit.core.classify`) | `JevClassifier`, `StubClassifier` | no: the kit's `Topics` chooses |
@@ -46,9 +46,13 @@ choice. A deployment supplying its own `Provider`, `Classifier`, `ContextAssembl
 capabilities as values, as it does edges and plugins, is parked.
 
 **A worked example: `Digest`.** `extensions/digest` is a shipped plugin extension that names
-core alone. `Digest` implements `Plugin` (ADR 0027), a pure bundle of contributions: its cache
-posting keeps one line per closed period in its documents, in the transaction that moves its
-cursor, and its tool, `recent_activity`, reads them back. A deployment turns it on as a value,
+core alone. `Digest` implements `Plugin` (ADR 0027), a pure bundle of contributions: its
+`Documents` posting keeps one document per room where conversations closed, at that room,
+holding its newest closings' lines, written in the transaction that moves its cursor (ADR
+0028). Retrieval draws a room's document into a window whose scope reaches the room, ranked
+beside entries under the terms Digest declares (its label, weight, retention and bound). It
+exports `Activity`, its lines read back, and its tool, `recent_activity`, reads through it. A
+deployment turns it on as a value,
 `Deployment.of(plugins = Vector(new Digest(name)), …)`; the reference deployment does so for
 `GRIT_PLUGINS=digest`. The kit names no plugin: it posts every plugin and offers every
 plugin's tools the same way, each bound when the engine starts over the plugin's own

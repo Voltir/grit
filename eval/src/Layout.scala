@@ -2,13 +2,19 @@ package grit.eval
 
 import java.time.Instant
 
+import scala.concurrent.duration.*
+
+import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.id.{
   CloseRef,
   ConversationId,
+  DocKey,
+  DocumentVersion,
   EntryId,
   EntrySeq,
   PeriodRef,
   PeriodSeq,
+  PluginName,
   PrincipalId,
   TurnRef,
   TurnSeq
@@ -42,7 +48,8 @@ object Variant {
   * window for it is drawn within, everywhere under the case's root unless the case writes one.
   * Ids are `{case}/{variant}/t{turn}:{seq}`, and `{case}/{variant}/p{i}/t{turn}:{seq}` in its
   * `i`-th other conversation; every place is under the case's root (`fs:/eval/{case}/{variant}`,
-  * `task:eval/{case}/{variant}`), so two cases share no conversation.
+  * `task:eval/{case}/{variant}`), so two cases share no conversation. Its documents (`documents`)
+  * are keyed `{case}/{variant}/d{i}`, in the order written, each at its place under the root.
   */
 final case class Layout(
     c: Case,
@@ -51,7 +58,8 @@ final case class Layout(
     rows: Vector[Layout.Row],
     ask: TurnSeq,
     others: Vector[Layout.Other],
-    scope: Scope
+    scope: Scope,
+    documents: Vector[Layout.Doc] = Vector.empty
 ) {
 
   /** Every row: its own conversation's, then each other's, as written. */
@@ -76,6 +84,11 @@ final case class Layout(
 
 object Layout {
 
+  /** One document of a case: its key, its place, its text, and whether the window must hold
+    * it.
+    */
+  final case class Doc(key: DocKey, place: Place, text: DocText, must: Boolean)
+
   /** One line of a case: its entry's id, turn and seq, and the line. */
   final case class Row(id: EntryId, turn: TurnSeq, seq: EntrySeq, line: Case.Line)
 
@@ -96,7 +109,7 @@ object Layout {
 
   /** `c` laid out as `variant` writes it, its buried filler seeded by its name. `Left` when a
     * place it writes names no namespace, or one other than `fs:` or `task:`, or it closes a
-    * place before any turn there.
+    * place before any turn there, or a document of it holds no text.
     */
   def of(c: Case, variant: Variant): Either[String, Layout] = {
     val prefix = s"${c.name}/${variant.label}"
@@ -136,9 +149,21 @@ object Layout {
               .map(last => Some(Close(last.turn, s"${e.place} closed.", e.carried)))
       } yield Other(origin, first, closed, second)
     }
+    val documents = c.documents.zipWithIndex.map { (d: Case.Document, i: Int) =>
+      (for {
+        key <- DocKey.of(s"$prefix/d$i")
+        place <- rooted(root, d.place)
+        text <- DocText.of(d.lines.mkString("\n"))
+      } yield Doc(key, place, text, d.must)).left.map(why =>
+        s"${c.name}: the document at ${d.place}: $why"
+      )
+    }
     for {
       others <- others.foldLeft[Either[String, Vector[Other]]](Right(Vector.empty))((acc, o) =>
         acc.flatMap(done => o.map(done :+ _))
+      )
+      docs <- documents.foldLeft[Either[String, Vector[Doc]]](Right(Vector.empty))((acc, d) =>
+        acc.flatMap(done => d.map(done :+ _))
       )
       within <- c.scope.fold(
         for {
@@ -161,7 +186,8 @@ object Layout {
       rows,
       TurnSeq((turns.size - 1).toLong),
       others,
-      within
+      within,
+      docs
     )
   }
 
@@ -234,20 +260,44 @@ object Layout {
 /** Cases written into a database. */
 object Load {
 
-  /** `layout` written through `jot`, one transaction for the case's own rows and one for each
-    * period of each other conversation: each conversation found or created by its origin, begun
-    * by the local principal; each row its conversation's entry at its turn and seq, its message
-    * [[Layout.message]], written at the epoch; each other conversation's first period opened at
-    * its first row and, when laid out closed, sealed (lapsed), then its second opened at its
-    * first row. The turn the case asks in, or the store's error; what was written before an
-    * error stays. A case's ids are unique in a database, so a case loaded twice fails.
+  /** The plugin a case's documents are written as: `digest`, whose documents the eval's
+    * cases are written as (the eval names no plugin's module).
+    */
+  val Plugin: PluginName =
+    PluginName.of("digest").fold(why => throw new IllegalStateException(why), identity)
+
+  /** The terms a case's documents are kept and drawn on under, at `weight`: the digest's label,
+    * kept 30 days, at most 1000.
+    */
+  def terms(weight: DocWeight): DocumentTerms =
+    // Literals both constructors accept; the weight is a DocWeight already.
+    (for {
+      label <- DocLabel.of("digest: conversations closed here most recently")
+      terms <- DocumentTerms.of(label, weight, 30.days, 1000)
+    } yield terms).fold(why => throw new IllegalStateException(why), identity)
+
+  /** What loading a case wrote: the turn it asks in, and its documents' versions, in the order
+    * laid out.
+    */
+  final case class Written(turn: TurnRef, documents: Vector[DocumentVersion])
+
+  /** `layout` written through `jot`, one transaction for the case's own rows, one for each
+    * period of each other conversation and one for each document: each conversation found or
+    * created by its origin, begun by the local principal; each row its conversation's entry at
+    * its turn and seq, its message [[Layout.message]], written at the epoch; each other
+    * conversation's first period opened at its first row and, when laid out closed, sealed
+    * (lapsed), then its second opened at its first row; each document written through
+    * `keeper` a minute before the epoch, so a window as of the ask's root draws it. What was
+    * written, or the store's error; what was written before an error stays. A case's ids are
+    * unique in a database, so a case loaded twice fails.
     */
   def into(
       jot: Jot^,
       conversations: ConversationStore,
       entries: EntryStore,
-      periods: PeriodStore
-  )(layout: Layout): Either[String, TurnRef] = {
+      periods: PeriodStore,
+      keeper: DocumentKeeper
+  )(layout: Layout): Either[String, Written] = {
     def found(origin: Origin): Either[String, ConversationId] =
       jot
         .write(conversations.findOrCreate(origin, PrincipalId.Local))
@@ -314,6 +364,22 @@ object Load {
           _ <- insert(conversation, o.second, open = true)
         } yield ()
       }
-    } yield TurnRef(own, layout.ask)
+      documents <- layout.documents.foldLeft[Either[String, Vector[DocumentVersion]]](
+        Right(Vector.empty)
+      ) { (acc, d) =>
+        acc.flatMap(done =>
+          jot
+            .write(
+              keeper.write(d.key, d.place, d.text, ujson.Obj(), Instant.EPOCH.minusSeconds(60))
+            )
+            .map {
+              case grit.core.document.Written.Versioned(v, _) => done :+ v
+              case grit.core.document.Written.Unchanged(v) => done :+ v
+            }
+            .left
+            .map(e => s"${layout.c.name}: $e")
+        )
+      }
+    } yield Load.Written(TurnRef(own, layout.ask), documents)
   }
 }

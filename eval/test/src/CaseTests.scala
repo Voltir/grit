@@ -36,7 +36,7 @@ object CaseTests extends TestSuite {
     test("a malformed case is named by line") {
       Case.parse("x", "you: early\n") ==> Left("x line 1: a message before the first turn")
       Case.parse("x", "turn\nme: hi\n") ==>
-        Left("x line 2: expected turn, ask, query:, place, here, you: or grit:")
+        Left("x line 2: expected turn, ask, query:, place, here, document, doc:, you: or grit:")
       Case.parse("x", "turn\nask\nturn\n") ==> Left("x line 3: a turn after the ask")
       Case.parse("x", "query: a\nquery: b\n") ==> Left("x line 2: a second query")
       Case.parse("x", "scope fs:/a\nscope fs:/b\n") ==> Left("x line 2: a second scope")
@@ -90,6 +90,33 @@ object CaseTests extends TestSuite {
         val labelled =
           c.elsewhere.flatMap(e => e.turns ++ e.reopened).flatten.exists(l => l.must || l.never)
         assert(c.query.nonEmpty, c.elsewhere.nonEmpty, labelled)
+      }
+    }
+
+    test("a document: its place, its text's lines, and whether the window must hold it") {
+      parsed(
+        """query: billing
+          |turn
+          |you: hi
+          |document fs:/home/billing [must]
+          |doc: Closed here:
+          |doc: rounding is banker's
+          |document task:nightly
+          |doc: nothing
+          |ask
+          |you: which rounding?
+          |""".stripMargin
+      ).documents ==> Vector(
+        Case.Document("fs:/home/billing", Vector("Closed here:", "rounding is banker's"), true),
+        Case.Document("task:nightly", Vector("nothing"), false)
+      )
+      Case.parse("x", "turn\ndoc: stray\n") ==> Left("x line 2: doc: outside a document")
+    }
+
+    test("every documented case parses, has a query, and labels a document") {
+      Cases.documented.foreach { (name, text) =>
+        val c = Case.parse(name, text).fold(e => sys.error(e), identity)
+        assert(c.query.nonEmpty, c.documents.exists(_.must))
       }
     }
 

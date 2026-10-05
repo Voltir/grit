@@ -668,7 +668,15 @@ object Main {
         .left
         .map(_.message)
       built <- withEngine(config, clock)(engine =>
-        Synthetic.build(all, engine.jot, engine.conversations, engine.entries, engine.periods)
+        Synthetic.build(
+          all,
+          engine.jot,
+          engine.conversations,
+          engine.entries,
+          engine.periods,
+          engine.documents,
+          engine.keeper
+        )
       )
     } yield {
       println(s"cases: ${built.cases}, turns ${built.turns}, entries ${built.entries}")

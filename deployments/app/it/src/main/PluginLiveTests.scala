@@ -152,20 +152,28 @@ object PluginLiveTests extends TestSuite {
     )
 
   val tests = Tests {
-    test("Digest enabled on a database with closed periods posts them all, and lists them") {
+    test(
+      "Digest enabled on a database with closed periods posts them all into their room's document, and lists them"
+    ) {
       val config = TestPostgres.freshDatabase("plugin_backfill")
       val engine = LiveEngine.open(config, "test")
       try {
         val digest = new Digest(name("digest"))
         launch(engine, Vector(digest))
         closed(engine, 2)
-        val run = PostRef(digest.name, 1, CloseOrdinal.Start, 0)
+        val run = PostRef(digest.name, digest.version, CloseOrdinal.Start, 0)
         engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector(run))
         assert(finished(config, run.workflowId))
-        engine.jot.write(engine.cursors.start(digest.name, 1, java.time.Instant.now())) ==> Right(
-          CloseOrdinal.of(2).getOrElse(sys.error("o"))
-        )
+        engine.jot.write(
+          engine.cursors.start(digest.name, digest.version, java.time.Instant.now())
+        ) ==> Right(CloseOrdinal.of(2).getOrElse(sys.error("o")))
         engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector())
+        // Both closed in one room: one document there, written as of the newer.
+        engine.db
+          .read(engine.reads(digest.name).documents.newest(10))
+          .map(_.map(d => (d.place.written, d.written))) ==> Right(
+          Vector(("fs:/plugins", Instant.parse("2026-09-22T10:00:00Z")))
+        )
         val store: Db^ = engine.db
         val recent = Digest.RecentActivity
           .bind(engine.reads(digest.name), Needs.over(digest.name, Vector.empty))

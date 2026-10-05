@@ -283,8 +283,8 @@ object grit extends Module {
     }
   }
 
-  /* Digest: the hello-world plugin, one line per closed period, and the recent_activity
-   * tool that reads them. Names only core. extensions/digest/README.md. */
+  /* Digest: the hello-world plugin, one document per room holding its newest closings' lines,
+   * and the recent_activity tool that reads them. Names only core. extensions/digest/README.md. */
   object digest extends GritPublished with Placed {
     def folder = os.sub / "extensions" / "digest"
     def moduleDeps = Seq(core)

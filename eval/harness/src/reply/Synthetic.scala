@@ -3,7 +3,8 @@ package grit.eval.harness.reply
 import java.time.Instant
 
 import grit.core.context.Width
-import grit.core.id.{ConversationId, TurnRef}
+import grit.core.document.{DocWeight, DocumentKeeper, DocumentStore, DocumentTerms}
+import grit.core.id.{ConversationId, PluginName, TurnRef}
 import grit.core.period.LifecycleSettings
 import grit.core.place.{Locality, Scope, Weight}
 import grit.core.recipe.Rooted
@@ -68,11 +69,13 @@ object Synthetic {
       }
       .map(all => Found(all.collect { case Right(a) => a }, all.collect { case Left(n) => n }))
 
-  /** Every case of `grit.eval` ([[Cases.all]], then [[Cases.crossPlace]]), read; `Left` naming
-    * the first that does not read.
+  /** Every case of `grit.eval` ([[Cases.all]], then [[Cases.crossPlace]], then
+    * [[Cases.documented]]), read; `Left` naming the first that does not read.
     */
   def cases: Either[String, Vector[Case]] =
-    Fields.each(Cases.all ++ Cases.crossPlace)((name, text) => Case.parse(name, text))
+    Fields.each(Cases.all ++ Cases.crossPlace ++ Cases.documented)((name, text) =>
+      Case.parse(name, text)
+    )
 
   /** What a build wrote: its cases, its turns (a case's in each variant), its entries, and the
     * names of the cases that label no `[must]` or `[never]` entry.
@@ -80,22 +83,33 @@ object Synthetic {
   final case class Built(cases: Int, turns: Int, entries: Int, unlabelled: Vector[String])
 
   /** `cases`, each in each variant, laid out ([[Layout.of]]) and written through `jot` and the
-    * stores ([[Load.into]]), into the database `scripts/eval reference-build` creates afresh.
-    * `Left` naming the case that cannot be laid out or written; those before it stay written.
+    * stores ([[Load.into]]), its documents through `keeper`, whose terms are first declared
+    * the ones in force in `documents` ([[Load.Plugin]]'s, unscaled), into the database
+    * `scripts/eval reference-build` creates afresh. `Left` naming the case that cannot be laid
+    * out or written; those before it stay written.
     */
   def build(
       cases: Vector[Case],
       jot: Jot^,
       conversations: ConversationStore,
       entries: EntryStore,
-      periods: PeriodStore
-  ): Either[String, Built] =
+      periods: PeriodStore,
+      documents: DocumentStore,
+      keeper: (PluginName, DocumentTerms) -> DocumentKeeper
+  ): Either[String, Built] = {
+    val terms = Load.terms(DocWeight.Unscaled)
     for {
       layouts <- Fields.each(cases.flatMap(c => Variant.values.toVector.map(c -> _)))((c, v) =>
         Layout.of(c, v)
       )
+      _ <- jot
+        .write(documents.declare(Vector(Load.Plugin -> terms)))
+        .left
+        .map(e => s"the eval's document terms: $e")
       written <- Fields.each(layouts)(l =>
-        Load.into(jot, conversations, entries, periods)(l).map(_ => l.entries.size)
+        Load
+          .into(jot, conversations, entries, periods, keeper(Load.Plugin, terms))(l)
+          .map(_ => l.entries.size)
       )
     } yield Built(
       cases.size,
@@ -103,6 +117,7 @@ object Synthetic {
       written.sum,
       layouts.filter(l => l.must.isEmpty && l.never.isEmpty).map(_.c.name).distinct
     )
+  }
 
   /** The width `v` draws a synthetic case's turn at: one said to grit. */
   def width(v: TurnVariant): Width = v.recipe.at(Rooted.Addressed).width
