@@ -11,7 +11,7 @@ The compose Postgres (`docker compose up -d`) holds them.
 |---|---|---|
 | `grit_agent` | agents' runs, probes, `scripts/tui-drive`, `scripts/tui-gate` | read, reset, run grit on it |
 | `grit` | Nick's local sessions | read with `--nick-db` only |
-| `grit_slack` | Nick's Slack deployment | read with `--nick-db` only |
+| `grit_<deployment>` | a deployment Nick runs from its own repository | read only, through `scripts/sql`; never reset it or run grit on it |
 | `grit_eval_<yyyymmdd>` | an eval corpus, restored by `scripts/eval capture` from a dump of another database | create, read, drop; never run grit on it |
 | `grit_eval_shadow` | a disposable copy of a corpus that a shadow run's engine runs on | create, read, reset, drop, run grit on it |
 | `grit_eval_synthetic` | the eval's hand-written cases, written by `scripts/eval reference-build`, which drops and recreates it | build, read, drop; never run grit on it |
@@ -24,12 +24,12 @@ The compose Postgres (`docker compose up -d`) holds them.
   when missing. An engine started on a database someone else is using recovers their
   in-flight turns and races their session.
 - **Read** with `scripts/sql <db> "<query>"` (read-only, `-At`; `-- <psql flags>` for more,
-  e.g. `-- -x`). It refuses `grit` and `grit_slack` without `--nick-db`.
+  e.g. `-- -x`). It refuses `grit` without `--nick-db`.
 - **Reset** with `scripts/reset-db grit_agent`: drops the `grit` and `dbos` schemas, which
   grit recreates on its next start. It refuses while grit is running. The local databases
   are disposable until the first real deployment: reset rather than write code that copes
-  with old rows. Reset `grit` only when Nick isn't running grit (`reset-db` checks); never
-  `grit_slack`.
+  with old rows. Reset `grit` only when Nick isn't running grit (`reset-db` checks); never a
+  deployment's database.
 - **Schema changes don't reach an existing database.** `schema.sql` is `CREATE … IF NOT
   EXISTS`: a changed CHECK, column or table is never applied to a database that already has
   it (functions are `CREATE OR REPLACE` and are; a stored generated column keeps its old
