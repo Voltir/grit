@@ -271,7 +271,8 @@ object RebuildTests extends TestSuite {
           )
         )
       }
-      hear(engine, "3000.1", "Falcon budget, anyone? ~back:asks")
+      // Asking, and not put to grit (~0.1): never answered, under Off.
+      hear(engine, "3000.1", "Falcon budget, anyone? ~0.1 ~back:asks")
       hear(engine, "4000.1", "thanks all ~back:nothing")
       val tagged = eventually(
         right(

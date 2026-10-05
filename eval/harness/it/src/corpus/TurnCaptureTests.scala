@@ -436,7 +436,9 @@ object TurnCaptureTests extends TestSuite {
             Some(TurnRecord.Role.Reply),
             Some(TurnRecord.Role.Summary)
           ),
-          Vector(Some(TurnRecord.Role.Reply)),
+          // Answered as said to grit, its reply summarised as an addressed one's is; the
+          // unprompted draft that passed is not.
+          Vector(Some(TurnRecord.Role.Reply), Some(TurnRecord.Role.Summary)),
           Vector(Some(TurnRecord.Role.Reply))
         )
         at(looped).spend.filter(_.model == "test/scripted").map(_.usage.input) ==> Vector.fill(3)(

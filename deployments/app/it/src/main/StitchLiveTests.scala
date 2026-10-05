@@ -172,12 +172,13 @@ object StitchLiveTests extends TestSuite {
             } yield e
           })
         }
-        // The stub reads each choice's first marker that names one of its keys.
+        // The stub reads each choice's first marker that names one of its keys, and every
+        // yes/no at 0.1: an unprompted draft, not a message put to grit.
         val real = hear(
           engine,
           "3.0",
           "U0DAVID",
-          "Is this a real question ~back:exchange 1 ~back:asks",
+          "Is this a real question ~0.1 ~back:exchange 1 ~back:asks",
           120
         )
         val lol = hear(engine, "4.0", "U0DAVID", "lol ~back:exchange 1", 118)
