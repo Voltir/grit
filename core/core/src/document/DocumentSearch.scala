@@ -34,6 +34,19 @@ trait DocumentSearch {
 
   /** The versions among `versions` still kept and holding something, in their order. */
   def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]]
+
+  /** The versions among `versions` still kept whose plugin is enabled, in their order, each
+    * with its plugin's label: what a window holding `versions` shows.
+    */
+  final def labelled(versions: Vector[DocumentVersion])(using
+      Tx^
+  ): Either[StoreError, Vector[(Document, DocLabel)]] =
+    for {
+      kept <- read(versions)
+      // The terms in force are read only when a document is left to label.
+      terms <- if (kept.isEmpty) Right(Vector.empty) else declared()
+      labels = terms.toMap
+    } yield kept.flatMap(d => labels.get(d.plugin).map(t => d -> t.label))
 }
 
 object DocumentSearch {

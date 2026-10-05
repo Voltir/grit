@@ -4,7 +4,18 @@ import java.time.{Instant, LocalDate}
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.context.Shown
-import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnRef, TurnSeq}
+import grit.core.document.{DocLabel, DocText, Document, Placement}
+import grit.core.id.{
+  ConversationId,
+  DocKey,
+  DocumentVersion,
+  EntryId,
+  EntrySeq,
+  PeriodSeq,
+  PluginName,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.model.{
   Assignment,
@@ -350,6 +361,62 @@ object TurnViewTests extends TestSuite {
       val record = grit.core.store.ClosingEntry.of(kept).getOrElse(sys.error("closing"))
       w.nearby ==> CharEstimate.message(Shown.recorded(opsAt, record))
       TurnView.Near.shown(w.nearbyTurns) ==> "2.0 record"
+    }
+
+    test("a window's documents are counted as the model was shown them, each under its label") {
+      def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
+      val board = got(Place.read("slack:T1/C1"))
+      def document(version: Long, text: String) = Document(
+        DocumentVersion.of(version).getOrElse(sys.error("version")),
+        got(PluginName.of("digest")),
+        got(DocKey.of(s"week-$version")),
+        board,
+        got(DocText.of(text)),
+        ujson.Obj(),
+        Instant.parse("2026-09-30T23:30:00Z"),
+        Placement(0, Instant.parse("2026-09-30T23:30:00Z"))
+      )
+      val label = got(DocLabel.of("Digest"))
+      val held = Vector(
+        document(7, "Deploys frozen until Friday.") -> label,
+        document(3, "The login page was fixed.") -> label
+      )
+      val asked = Vector(
+        user(0, 0, "when is the freeze?"),
+        entry(
+          1,
+          0,
+          Payload.Window(
+            Vector.empty,
+            Vector.empty,
+            Vector.empty,
+            held.flatMap(h => Vector(h(0).version))
+          )
+        ),
+        reply(2, 0, "Friday", 50)
+      )
+      val w = TurnView
+        .of(
+          TurnRef(c, TurnSeq(0)),
+          asked,
+          Speakers.none,
+          Vector.empty,
+          running = false,
+          Vector.empty,
+          prompt("s"),
+          CharEstimate,
+          None,
+          Vector.empty,
+          held
+        )
+        .window
+        .getOrElse(sys.error("no window"))
+      val documents =
+        held.map((d, l) => CharEstimate.message(Shown.document(d, l))).foldLeft(Tokens.Zero)(_ + _)
+      w.documents ==> documents
+      w.total ==> CharEstimate.system("s") + documents + CharEstimate.message(
+        Message.User("when is the freeze?")
+      )
     }
 
     test("what its calls were made under: the turn's pair, a role on another, and who served it") {

@@ -1540,8 +1540,8 @@ object Turn {
 
   /** What a request for `turn` over `window` can show, read from `records`: the entries of
     * its conversation at the window's seqs, the turn's own entries, the nearby sections'
-    * entries that still exist, who said each, and the window's documents still kept whose
-    * plugin is enabled, each with its plugin's label; nothing else of the conversation.
+    * entries that still exist, who said each, and the window's documents as it shows them
+    * ([[grit.core.document.DocumentSearch.labelled]]); nothing else of the conversation.
     */
   private def shown(records: TurnRecords, turn: TurnRef, window: Window)(using
       Tx^
@@ -1551,17 +1551,8 @@ object Turn {
       mine <- records.entries.ofTurn(turn)
       near <- Nearby.read(window.nearby, records.entries)
       named <- records.principals.speakers((at ++ mine ++ near).map(_.id).distinct)
-      kept <- records.documents.read(window.documents)
-      // The terms in force are read only when a document is left to label.
-      terms <- if (kept.isEmpty) Right(Vector.empty) else records.documents.declared()
-      labels = terms.toMap
-    } yield Showing(
-      at,
-      mine,
-      near,
-      named,
-      kept.flatMap(d => labels.get(d.plugin).map(t => d -> t.label))
-    )
+      documents <- records.documents.labelled(window.documents)
+    } yield Showing(at, mine, near, named, documents)
 
   /** What [[shown]] read: `window`, the entries at the window's seqs that exist; `mine`,
     * the turn's own; `near`, the nearby entries that still exist; `named`, their speakers;

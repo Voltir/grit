@@ -6,6 +6,7 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 import scala.util.control.NonFatal
 
+import grit.core.document.DocumentSearch
 import grit.core.edge.{Desk, DeskError, Desks}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PrincipalId, TurnRef, WorkflowId}
@@ -31,6 +32,7 @@ import grit.dbos.sql.{
   DbConfig,
   SqlConversationStore,
   SqlDb,
+  SqlDocuments,
   SqlEntryStore,
   SqlJot,
   SqlLifecycleStore,
@@ -38,6 +40,7 @@ import grit.dbos.sql.{
   SqlPeriodStore,
   SqlPrincipals,
   SqlPromptStore,
+  SqlTombstones,
   SqlUsageLedger,
   SqlVoiceStore
 }
@@ -78,6 +81,9 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
 
   /** The people an edge enrolled, and whose names a window shows. */
   val principals: Principals
+
+  /** The plugins' documents, as windows hold them. */
+  val documents: DocumentSearch
 
   /** The replies an edge has yet to post outside grit, and the parts it has. */
   val deliveries: grit.core.edge.Deliveries
@@ -241,6 +247,9 @@ private[engine] final class Attached(
   val voices: VoiceStore = new SqlVoiceStore()
 
   val principals: Principals = new SqlPrincipals()
+
+  // Reads only: a search never marks a tombstone.
+  val documents: DocumentSearch = new SqlDocuments(new SqlTombstones)
 
   val deliveries: grit.core.edge.Deliveries = new grit.dbos.sql.SqlDeliveries()
 

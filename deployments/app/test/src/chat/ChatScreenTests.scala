@@ -257,6 +257,39 @@ object ChatScreenTests extends TestSuite {
       assert(!at(110).inputs(Input.Keyboard(Key.Ctrl('b'))).screen.mkString.contains("TURN 3"))
     }
 
+    test("the panel's window shows the documents it held as a part, and no part when none") {
+      def view(documents: Tokens) = TurnView(
+        TurnSeq(0),
+        "when is the freeze?",
+        None,
+        Vector.empty,
+        None,
+        Some(
+          TurnView.Window(
+            Tokens(12),
+            Tokens.Zero,
+            Tokens.Zero,
+            Tokens.Zero,
+            Tokens(40),
+            Vector.empty,
+            documents = documents
+          )
+        ),
+        None,
+        None
+      )
+      def shown(documents: Tokens) =
+        Headless
+          .start(new ChatScreen.App("test-model", Theme.Default, Tokens(1000)), Size(30, 110))
+          .message(Msg.Opened)
+          .message(Msg.Turn(view(documents)))
+          .screen
+      val held = shown(Tokens(640))
+      assert(held.exists(_.contains("■ documents 640")))
+      assert(held.exists(_.contains("692 of 1k budget")))
+      assert(!shown(Tokens.Zero).exists(_.contains("documents")))
+    }
+
     test("the panel's tabs are pills across its top; ctrl-t and a click switch them") {
       val wide = Headless
         .start(new ChatScreen.App("test-model", Theme.Default, Tokens(16000)), Size(30, 110))

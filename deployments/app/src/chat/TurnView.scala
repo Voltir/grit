@@ -3,6 +3,7 @@ package grit.app.chat
 import java.time.Duration
 
 import grit.core.context.Shown
+import grit.core.document.{DocLabel, Document}
 import grit.core.id.{EntrySeq, TurnRef, TurnSeq}
 import grit.core.message.{Cost, Message, Tokens}
 import grit.core.model.{ModelRef, TurnProfile}
@@ -91,8 +92,8 @@ object TurnView {
   /** What the reply's request held, estimated: the system prompt, the closing entry of the
     * period before, the recent turns with the gap lines between the window's turns, the
     * turns search recalled (`recalledTurns`), the
-    * turn's own messages, and the sections from other conversations (`nearby`, their turns
-    * `nearbyTurns`).
+    * turn's own messages, the sections from other conversations (`nearby`, their turns
+    * `nearbyTurns`), and the plugins' documents it held (`documents`).
     */
   final case class Window(
       system: Tokens,
@@ -102,9 +103,10 @@ object TurnView {
       message: Tokens,
       recalledTurns: Vector[TurnSeq],
       nearby: Tokens = Tokens.Zero,
-      nearbyTurns: Vector[Near] = Vector.empty
+      nearbyTurns: Vector[Near] = Vector.empty,
+      documents: Tokens = Tokens.Zero
   ) {
-    def total: Tokens = system + closing + recent + recalled + message + nearby
+    def total: Tokens = system + closing + recent + recalled + message + nearby + documents
   }
 
   /** A nearby section the window showed, by its place. */
@@ -140,7 +142,8 @@ object TurnView {
       .map(e => TurnRef(e.conversationId, e.turnSeq))
 
   /** `turn`, from every entry of its conversation, whose person's messages `speakers` names,
-    * and the `nearby` entries of other conversations its window showed, the `steps` its
+    * and the `nearby` entries of other conversations its window showed, the `documents` its
+    * window held, each under its plugin's label ([[grit.core.document.DocumentSearch.labelled]]), the `steps` its
     * workflow recorded,
     * whether it is `running`, its ledger rows `costs`, the `profile` it pinned, and the
     * system `prompt` it was sent (none for a turn that recorded none). The window is
@@ -156,7 +159,8 @@ object TurnView {
       prompt: Option[SystemPrompt],
       estimator: TokenEstimator,
       profile: Option[TurnProfile] = None,
-      nearby: Vector[Entry] = Vector.empty
+      nearby: Vector[Entry] = Vector.empty,
+      documents: Vector[(Document, DocLabel)] = Vector.empty
   ): TurnView = {
     val own = entries.filter(_.turnSeq == turn.turnSeq)
     val bySeq: Map[EntrySeq, Entry] = entries.map(e => e.seq -> e).toMap
@@ -183,7 +187,10 @@ object TurnView {
             case (Nearby.Along(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
             case (Nearby.Asked(_, place, _), es) => Near.Turns(place, es.map(_.turnSeq).distinct)
             case (Nearby.Closed(_, place, _), es) if es.nonEmpty => Near.Record(place)
-          }
+          },
+          documents
+            .map((document, label) => estimator.message(Shown.document(document, label)))
+            .foldLeft(Tokens.Zero)(_ + _)
         )
       }
     val reply = own.collectFirst {

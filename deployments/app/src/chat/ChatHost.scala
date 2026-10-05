@@ -351,19 +351,36 @@ final class ChatHost(
     val profile = engine.db.read(engine.profiles.of(turn.workflowId)).toOption.flatten
     // The entries of other conversations the turn's recorded window showed, as it showed
     // them; one purged since is simply not counted.
-    val shown = entries
+    val windows = entries
       .filter(_.turnSeq == turn.turnSeq)
       .flatMap(_.payload match {
-        case Payload.Window(_, _, nearby, _) => nearby
+        case w: Payload.Window => Vector(w)
         case _ => Vector.empty
       })
     val nearby =
-      engine.db.read(Nearby.read(shown, engine.entries)).getOrElse(Vector.empty)
+      engine.db.read(Nearby.read(windows.flatMap(_.nearby), engine.entries)).getOrElse(Vector.empty)
+    // The documents it held as a request shows them; one gone since is not counted.
+    val documents =
+      engine.db
+        .read(engine.documents.labelled(windows.flatMap(_.documents)))
+        .getOrElse(Vector.empty)
     val prompt = engine.db.read(engine.prompts.of(turn.workflowId)).toOption.flatten
     // Unread names cost the window as unnamed: the panel is a view, never a failure.
     val speakers =
       engine.db.read(engine.principals.speakers(entries.map(_.id))).getOrElse(Speakers.none)
-    TurnView.of(turn, entries, speakers, steps, running, costs, prompt, estimator, profile, nearby)
+    TurnView.of(
+      turn,
+      entries,
+      speakers,
+      steps,
+      running,
+      costs,
+      prompt,
+      estimator,
+      profile,
+      nearby,
+      documents
+    )
   }
 
   /** Follows `turn`'s reply stream on a thread of its own, telling the screen what it has

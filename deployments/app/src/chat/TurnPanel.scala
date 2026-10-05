@@ -261,9 +261,9 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       }
     }
 
-  /** The window as one bar: system, what came from elsewhere, closing, recent, recalled and
-    * the turn's own message, then what is left of `budget`, each a colour, with a legend
-    * under it.
+  /** The window as one bar: system, what came from elsewhere, the documents it held,
+    * closing, recent, recalled and the turn's own message, then what is left of `budget`,
+    * each a colour, with a legend under it.
     */
   private def window(v: TurnView): Vector[Block] = v.window match {
     case None =>
@@ -273,6 +273,7 @@ final case class TurnPanel(look: Look, budget: Tokens) {
       val parts = Vector(
         (w.system, t.faint),
         (w.nearby, t.headerFg),
+        (w.documents, t.statusFg),
         (w.closing, t.thumb),
         (w.recent, t.grit),
         (w.recalled, t.user),
@@ -305,7 +306,18 @@ final case class TurnPanel(look: Look, budget: Tokens) {
         legend("system", w.system, t.faint, "recent", w.recent, t.grit),
         legend("recalled", w.recalled, t.user, "message", w.message, t.ink),
         legend("closing", w.closing, t.thumb, "nearby", w.nearby, t.headerFg)
-      ) ++ prompt(v)
+      ) ++
+        // Only when the window held one, so the panel stays as tall as before for one that did
+        // not.
+        Option
+          .when(Tokens.value(w.documents) > 0)(
+            row(
+              "   " -> fg(t.faint),
+              "■ " -> fg(t.statusFg),
+              s"documents ${count(w.documents)}" -> fg(t.faint)
+            )
+          )
+          .toVector ++ prompt(v)
   }
 
   /** The system prompt's fragments, each with its estimate, two to a row so a narrow panel
