@@ -1,11 +1,12 @@
 package grit.core.plugin
 
+import grit.core.document.DocumentShelf
 import grit.core.id.PluginName
 
 /** One plugin's own documents as its tools and its service read them: its cache documents of
-  * its cursor's generation.
+  * its cursor's generation, and its current documents.
   */
-final case class PluginReads(cache: PluginDocs)
+final case class PluginReads(cache: PluginDocs, documents: DocumentShelf)
 
 /** A plugin another may need: it exports `S`, a service over its own documents, the only way a
   * plugin reads another's (ADR 0027).

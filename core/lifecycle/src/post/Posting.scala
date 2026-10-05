@@ -1,6 +1,7 @@
 package grit.lifecycle.post
 
 import grit.core.clock.Clock
+import grit.core.document.{DocumentKeeper, DocumentTerms}
 import grit.core.durable.{Durable, Journaled}
 import grit.core.id.{PluginName, WorkflowId}
 import grit.core.period.CloseOrdinal
@@ -10,13 +11,16 @@ import grit.core.store.{ClosedPeriod, Jot, PeriodStore, StoreError, Tombstones}
 
 /** What posting works with besides its `Durable`: the closed periods, each plugin's cursor,
   * `cache`, which gives one plugin the documents of the one closed period it is posting,
-  * `tombstones`, where a run marks the runs from a cursor it has moved past, `jot`, whose transaction holds one post and its cursor's move together, and `clock`,
-  * which says when a cursor starts again.
+  * `documents`, which gives one plugin its documents under the terms it declares,
+  * `tombstones`, where a run marks the runs from a cursor it has moved past, `jot`, whose
+  * transaction holds one post and its cursor's move together, and `clock`, which says when a
+  * cursor starts again.
   */
 final case class PostEnv(
     periods: PeriodStore,
     cursors: PluginCursors,
     cache: (PluginName, ClosedPeriod) -> CacheDocs,
+    documents: (PluginName, DocumentTerms) -> DocumentKeeper,
     tombstones: Tombstones,
     jot: Jot^,
     clock: Clock^
@@ -67,7 +71,8 @@ object Posting {
         case Left(why) => s"posted $n; stopped: $why"
       }
 
-  /** The next closed period after `plugin`'s cursor posted and the cursor moved past it, and
+  /** The next closed period after `plugin`'s cursor posted (its cache, then its documents)
+    * and the cursor moved past it, and
     * the runs from `ref`'s cursor marked for deletion; its close ordinal, or `None` when there
     * is none. The run making the mark is one of those runs: the collector waits for it.
     */
@@ -82,6 +87,9 @@ object Posting {
         case Some(closed) =>
           for {
             _ <- plugin.cache.fold(Right(()))(_.post(closed, env.cache(plugin.name, closed)))
+            _ <- plugin.documents.fold(Right(()))(d =>
+              d.post(closed, env.documents(plugin.name, d.terms))
+            )
             _ <- env.cursors.advance(plugin.name, plugin.version, closed.order)
             _ <- env.tombstones.write(
               Target.PostRuns(ref.plugin, ref.version, ref.cursor),

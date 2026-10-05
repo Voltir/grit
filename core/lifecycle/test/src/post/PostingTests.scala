@@ -2,11 +2,22 @@ package grit.lifecycle.post
 
 import java.time.Instant
 
+import scala.concurrent.duration.*
+
+import grit.core.document.{
+  DocLabel,
+  DocText,
+  DocWeight,
+  DocumentKeeper,
+  DocumentTerms,
+  InMemoryDocuments
+}
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, PluginName}
+import grit.core.id.{CloseRef, ConversationId, DocKey, EntryId, PeriodRef, PeriodSeq, PluginName}
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
-import grit.core.plugin.{CacheDocs, CachePosting, InMemoryPlugins, Plugin, PostRef}
+import grit.core.place.{Namespace, Place}
+import grit.core.plugin.{CacheDocs, CachePosting, Documents, InMemoryPlugins, Plugin, PostRef}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{
   ClosedPeriod,
@@ -54,6 +65,50 @@ object PostingTests extends TestSuite {
     })
   }
 
+  /** Keeps one document per closed period, keyed by its close ordinal, holding its prose;
+    * refuses the periods whose prose is in `refused`. With `cached`, also keeps a cache that
+    * refuses the periods whose prose is in `cacheRefused`.
+    */
+  private final class Keeper(
+      val name: PluginName,
+      refused: Set[String] = Set.empty,
+      cached: Boolean = false,
+      cacheRefused: Set[String] = Set.empty
+  ) extends Plugin {
+    val version: Int = 1
+    override val cache: Option[CachePosting] =
+      Option.when(cached)(new CachePosting {
+        def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
+          if (cacheRefused.contains(closed.closing.flows.prose))
+            Left(StoreError.Invalid(s"cache refused ${closed.closing.flows.prose}"))
+          else docs.put(CloseOrdinal.value(closed.order).toString, ujson.Str("cached"))
+      })
+    override val documents: Option[Documents] = Some(new Documents {
+      val terms: DocumentTerms =
+        DocLabel
+          .of("prose")
+          .flatMap(DocumentTerms.of(_, DocWeight.Unscaled, 1.day, 100))
+          .fold(sys.error, identity)
+      def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using
+          Tx^
+      ): Either[StoreError, Unit] = {
+        val prose = closed.closing.flows.prose
+        if (refused.contains(prose)) Left(StoreError.Invalid(s"refused $prose"))
+        else
+          (for {
+            key <- DocKey.of(CloseOrdinal.value(closed.order).toString)
+            text <- DocText.of(prose)
+          } yield (key, text)) match {
+            case Left(why) => Left(StoreError.Invalid(why))
+            case Right((key, text)) =>
+              keeper.write(key, Here, text, ujson.Obj(), closed.at).map(_ => ())
+          }
+      }
+    })
+  }
+
+  private val Here: Place = Place.under(Namespace.Task, Vector("posting"))
+
   /** Contributes nothing to posting: a plugin of tools alone. */
   private final class Unposted(val name: PluginName) extends Plugin {
     val version: Int = 1
@@ -70,7 +125,8 @@ object PostingTests extends TestSuite {
   private final class World(n: Int) {
     val entries = new InMemoryEntryStore
     val periods = new InMemoryPeriodStore(entries)
-    val tombstones = new InMemoryTombstones
+    val documents = new InMemoryDocuments
+    val tombstones: InMemoryTombstones = documents.tombstones
     val plugins = new InMemoryPlugins(tombstones)
     locally {
       given Tx = TestTx.fake
@@ -109,6 +165,7 @@ object PostingTests extends TestSuite {
             periods,
             plugins.cursors,
             plugins.posting,
+            documents.keeper,
             tombstones,
             new FakeJot,
             new SetClock(Instant.EPOCH)
@@ -119,6 +176,15 @@ object PostingTests extends TestSuite {
       plugins.cursors
         .start(p.name, p.version, Instant.EPOCH)(using TestTx.fake)
         .getOrElse(sys.error("cursor"))
+
+    /** `p`'s current documents' keys and texts, oldest written first. */
+    def kept(p: Plugin): Vector[(String, String)] =
+      documents
+        .shelf(p.name)
+        .newest(1000)(using TestTx.fake)
+        .getOrElse(Vector.empty)
+        .reverse
+        .map(d => DocKey.value(d.key) -> DocText.value(d.text))
     def docs(p: Plugin): Vector[(String, ujson.Value)] =
       plugins.docs(p.name).newest("", 1000)(using TestTx.fake).getOrElse(Vector.empty).reverse
   }
@@ -178,6 +244,27 @@ object PostingTests extends TestSuite {
       val v2 = new Recorder(name("digest"), 2)
       w.run(Vector(v2), PostRef(v2.name, 2, CloseOrdinal.Start, 0)) ==> "posted 2"
       w.docs(v2) ==> Vector("1" -> ujson.Str("v2 p1"), "2" -> ujson.Str("v2 p2"))
+    }
+
+    test("a plugin's documents are posted each closed period, with the cursor's move") {
+      val w = new World(2)
+      val keeper = new Keeper(name("keeper"))
+      w.run(Vector(keeper), PostRef(keeper.name, 1, CloseOrdinal.Start, 0)) ==> "posted 2"
+      w.kept(keeper) ==> Vector("1" -> "p1", "2" -> "p2")
+      w.cursor(keeper) ==> ordinal(2)
+    }
+
+    test("documents are posted after the cache; a refusal by either leaves the cursor before") {
+      val w = new World(3)
+      val cacheFirst = new Keeper(name("cache-first"), cached = true, cacheRefused = Set("p2"))
+      w.run(Vector(cacheFirst), PostRef(cacheFirst.name, 1, CloseOrdinal.Start, 0)) ==>
+        "posted 1; stopped: cache refused p2"
+      w.kept(cacheFirst) ==> Vector("1" -> "p1")
+      w.cursor(cacheFirst) ==> ordinal(1)
+      val refusing = new Keeper(name("refusing"), refused = Set("p3"), cached = true)
+      w.run(Vector(refusing), PostRef(refusing.name, 1, CloseOrdinal.Start, 0)) ==>
+        "posted 2; stopped: refused p3"
+      w.cursor(refusing) ==> ordinal(2)
     }
 
     test("a plugin with nothing to post is never posted, and no cursor starts for it") {

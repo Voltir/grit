@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.util.chaining.*
 
+import grit.core.document.InMemoryDocuments
 import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, PluginName, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.period.{CloseOrdinal, CloseReason, Closing, Probability, TestClosings}
@@ -89,7 +90,10 @@ object DigestTests extends TestSuite {
 
   private def run(db: FakeDb, plugins: InMemoryPlugins, args: (String, ujson.Value)*): Outcome =
     Digest.RecentActivity
-      .bind(PluginReads(plugins.docs(name)), Needs.over(name, Vector.empty))
+      .bind(
+        PluginReads(plugins.docs(name), new InMemoryDocuments().shelf(name)),
+        Needs.over(name, Vector.empty)
+      )
       .fold(u => sys.error(u.toString), identity)
       .pipe(r =>
         Toolbox.of[caps.CapSet^{db}](Digest.RecentActivity.described.over(n => r.run(n, db)))

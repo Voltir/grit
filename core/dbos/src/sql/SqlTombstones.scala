@@ -5,6 +5,7 @@ import java.time.{Instant, OffsetDateTime, ZoneOffset}
 
 import scala.util.Using
 
+import grit.core.id.PluginName
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{StoreError, Tombstones, Tx}
 
@@ -44,19 +45,42 @@ final class SqlTombstones extends Tombstones {
 
   def due(kind: Target.Kind, before: Instant, n: Int)(using
       tx: Tx^
+  ): Either[StoreError, Vector[Tombstone]] =
+    pending(
+      kind,
+      """SELECT target, written_at FROM grit.tombstones
+        | WHERE kind = ? AND collected_at IS NULL AND written_at < ?
+        | ORDER BY coalesce(deferred_at, written_at), target COLLATE "C" LIMIT ?""".stripMargin
+    ) { ps =>
+      ps.setString(1, kind.name)
+      ps.setObject(2, before.atOffset(ZoneOffset.UTC))
+      ps.setInt(3, n max 0)
+    }
+
+  def documentsDue(plugin: PluginName, before: Instant, n: Int)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[Tombstone]] =
+    pending(
+      Target.Kind.Document,
+      """SELECT t.target, t.written_at FROM grit.tombstones t
+        |  JOIN grit.documents d ON d.version = t.target::bigint
+        | WHERE t.kind = ? AND t.collected_at IS NULL AND t.written_at < ? AND d.plugin = ?
+        | ORDER BY coalesce(t.deferred_at, t.written_at), t.target COLLATE "C" LIMIT ?""".stripMargin
+    ) { ps =>
+      ps.setString(1, Target.Kind.Document.name)
+      ps.setObject(2, before.atOffset(ZoneOffset.UTC))
+      ps.setString(3, PluginName.value(plugin))
+      ps.setInt(4, n max 0)
+    }
+
+  /** The tombstones of `kind` that `sql`, its parameters set by `set`, selects. */
+  private def pending(kind: Target.Kind, sql: String)(set: PreparedStatement => Unit)(using
+      tx: Tx^
   ): Either[StoreError, Vector[Tombstone]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     attempt {
-      Using.resource(
-        conn.prepareStatement(
-          """SELECT target, written_at FROM grit.tombstones
-            | WHERE kind = ? AND collected_at IS NULL AND written_at < ?
-            | ORDER BY coalesce(deferred_at, written_at), target COLLATE "C" LIMIT ?""".stripMargin
-        )
-      ) { ps =>
-        ps.setString(1, kind.name)
-        ps.setObject(2, before.atOffset(ZoneOffset.UTC))
-        ps.setInt(3, n max 0)
+      Using.resource(conn.prepareStatement(sql)) { ps =>
+        set(ps)
         Using.resource(ps.executeQuery()) { rs =>
           val rows = Vector.newBuilder[Tombstone]
           while (rs.next()) {

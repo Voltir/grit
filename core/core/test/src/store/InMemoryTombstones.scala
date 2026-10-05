@@ -2,10 +2,15 @@ package grit.core.store
 
 import java.time.Instant
 
+import grit.core.id.{DocumentVersion, PluginName}
 import grit.core.retention.{Target, Tombstone}
 
-/** An in-memory [[Tombstones]] for tests, keeping [[TombstonesContract]]. It ignores the `Tx`. */
-final class InMemoryTombstones extends Tombstones {
+/** An in-memory [[Tombstones]] for tests, keeping [[TombstonesContract]]. It ignores the `Tx`.
+  * `owner` says which plugin's a document version is, as its row would; `None` for one with
+  * no row.
+  */
+final class InMemoryTombstones(owner: DocumentVersion -> Option[PluginName] = _ => None)
+    extends Tombstones {
   import InMemoryTombstones.Row
 
   @caps.unsafe.untrackedCaptures
@@ -42,6 +47,16 @@ final class InMemoryTombstones extends Tombstones {
         .sortBy((at, key, _) => (at, key))
         .take(n max 0)
         .map(_._3)
+    )
+
+  def documentsDue(plugin: PluginName, before: Instant, n: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[Tombstone]] =
+    due(Target.Kind.Document, before, Int.MaxValue).map(
+      _.filter(_.target match {
+        case Target.Document(v) => owner(v).contains(plugin)
+        case _ => false
+      }).take(n max 0)
     )
 
   def deferred(target: Target, at: Instant)(using Tx^): Either[StoreError, Unit] = {

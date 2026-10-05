@@ -2,6 +2,7 @@ package grit.core.plugin
 
 import java.time.Instant
 
+import grit.core.document.{DocumentKeeper, DocumentTerms}
 import grit.core.id.PluginName
 import grit.core.period.CloseOrdinal
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
@@ -13,8 +14,9 @@ import grit.core.store.{ClosedPeriod, StoreError, Tx}
 trait Plugin extends caps.Pure {
   def name: PluginName
 
-  /** What its posting writes ([[cache]]) is of this version. Changing it posts every kept
-    * closed period again, and leaves its earlier cache documents unread.
+  /** What its posting writes ([[cache]], [[documents]]) is of this version. Changing it posts
+    * every kept closed period again and leaves its earlier cache documents unread; its
+    * documents are kept.
     */
   def version: Int
 
@@ -26,13 +28,16 @@ trait Plugin extends caps.Pure {
   /** What it keeps of each closed period as cache documents (ADR 0011). */
   def cache: Option[CachePosting] = None
 
+  /** Its documents (ADR 0028). */
+  def documents: Option[Documents] = None
+
   /** The tools every turn is offered that it runs itself over grit's store. A deployment is
     * refused when two of every plugin's tools and grit's own share a name.
     */
   def tools: Vector[PluginTool[?]] = Vector.empty
 
-  /** Whether it is posted closed periods: it has a cache. */
-  final def posts: Boolean = cache.nonEmpty
+  /** Whether it is posted closed periods: it has a cache or documents. */
+  final def posts: Boolean = cache.nonEmpty || documents.nonEmpty
 }
 
 /** A plugin's posting to cache documents. */
@@ -43,6 +48,17 @@ trait CachePosting extends caps.Pure {
     * `closed`, which is posted again on the next sweep.
     */
   def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit]
+}
+
+/** A plugin's documents: the terms they are kept and drawn on under, and its posting to them. */
+trait Documents extends caps.Pure {
+  def terms: DocumentTerms
+
+  /** Keeps what the plugin makes of `closed` in `keeper`, in the transaction that moves its
+    * cursor past `closed`, after its cache's post when it has one: all commit, or none. A
+    * `Left` leaves the cursor before `closed`.
+    */
+  def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit]
 }
 
 /** Where a plugin keeps what it makes of one closed period: every document it puts here is

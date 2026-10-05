@@ -10,10 +10,19 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
+import grit.core.document.{DocText, Document, DocumentKeeper, DocumentTerms, Written}
 import grit.core.durable.Durable
 import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
 import grit.core.host.ProcessIdentity
-import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
+import grit.core.id.{
+  ConversationId,
+  DocKey,
+  DocumentVersion,
+  PluginName,
+  PrincipalId,
+  TurnRef,
+  WorkflowId
+}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
 import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginReads}
@@ -35,6 +44,7 @@ import grit.core.store.{
   PromptStore,
   StoreError,
   Tombstones,
+  Tx,
   UsageLedger,
   VoiceStore
 }
@@ -191,9 +201,16 @@ final class Engine private (
   val cursors: PluginCursors = new SqlPluginCursors(tombstones)
 
   /** Each plugin's own documents as its tools and its service read them: given a plugin's
-    * name, its own, and no other plugin's.
+    * name, its own, and no other plugin's. It reads no plugin document yet: see [[keeper]].
     */
-  val reads: PluginName -> PluginReads = plugin => PluginReads(new SqlPluginDocs(plugin))
+  val reads: PluginName -> PluginReads =
+    plugin => PluginReads(new SqlPluginDocs(plugin), Engine.Unkept)
+
+  /** Given a plugin and its terms, its documents as its posting writes them. This engine keeps
+    * none yet: every write and withdrawal is a `StoreError.Invalid` saying so, which leaves
+    * the plugin's cursor before the period it was posting.
+    */
+  val keeper: (PluginName, DocumentTerms) -> DocumentKeeper = (_, _) => Engine.Unkept
 
   /** Given a plugin and the closed period it is posting, where it keeps what it makes of it. */
   val cache: (PluginName, ClosedPeriod) -> CacheDocs =
@@ -437,6 +454,19 @@ final class Engine private (
 }
 
 object Engine {
+
+  /** Plugin documents, kept nowhere: none is read, and a write or withdrawal is refused. */
+  private object Unkept extends DocumentKeeper {
+    private val refused = StoreError.Invalid("plugin documents are not kept in this database")
+    def current(key: DocKey)(using Tx^): Either[StoreError, Option[Document]] = Right(None)
+    def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = Right(Vector.empty)
+    def write(key: DocKey, place: Place, text: DocText, data: ujson.Value, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Written] = Left(refused)
+    def withdraw(key: DocKey, at: Instant)(using
+        Tx^
+    ): Either[StoreError, Option[DocumentVersion]] = Left(refused)
+  }
 
   /** The shadow body of an engine that declares no shadows: it asks nothing and keeps
     * nothing.

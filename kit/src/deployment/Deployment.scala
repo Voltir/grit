@@ -2,8 +2,9 @@ package grit.kit.deployment
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
+import grit.core.document.{Document, DocumentShelf}
 import grit.core.edge.ServedEdge
-import grit.core.id.{EdgeName, KnowledgeSourceName, PluginName, QuestionName, ShadowName}
+import grit.core.id.{DocKey, EdgeName, KnowledgeSourceName, PluginName, QuestionName, ShadowName}
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
@@ -415,12 +416,18 @@ object Deployment {
       .toLeft(())
 
   /** No document: what binding a plugin's tools reads, when only their needs are checked. */
-  private val Unread: PluginReads = PluginReads(new PluginDocs {
-    def get(key: String)(using Tx^): Either[StoreError, Option[ujson.Value]] = Right(None)
-    def newest(prefix: String, n: Int)(using
-        Tx^
-    ): Either[StoreError, Vector[(String, ujson.Value)]] = Right(Vector.empty)
-  })
+  private val Unread: PluginReads = PluginReads(
+    new PluginDocs {
+      def get(key: String)(using Tx^): Either[StoreError, Option[ujson.Value]] = Right(None)
+      def newest(prefix: String, n: Int)(using
+          Tx^
+      ): Either[StoreError, Vector[(String, ujson.Value)]] = Right(Vector.empty)
+    },
+    new DocumentShelf {
+      def current(key: DocKey)(using Tx^): Either[StoreError, Option[Document]] = Right(None)
+      def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = Right(Vector.empty)
+    }
+  )
 
   /** [[DeploymentRefusal.OffersUnlinked]] for the first source of `knowledge` supplying a
     * service none of `worksIn` or `reaches` names.

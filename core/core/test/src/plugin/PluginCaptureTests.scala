@@ -19,6 +19,7 @@ object PluginCaptureTests extends TestSuite {
 
   private val prelude =
     """package probe
+      |import grit.core.document.*
       |import grit.core.host.*
       |import grit.core.id.PluginName
       |import grit.core.plugin.*
@@ -41,11 +42,17 @@ object PluginCaptureTests extends TestSuite {
       |        db.read(new Lines(own).recent(n)).fold(e => Outcome.Failed(e.toString), l => Outcome.Done(l.mkString("\n")))
       |    })
       |}
+      |object Noted extends Documents {
+      |  val terms: DocumentTerms =
+      |    DocLabel.of("notes").flatMap(DocumentTerms.of(_, DocWeight.Unscaled, scala.concurrent.duration.FiniteDuration(1, "day"), 10)).fold(sys.error, identity)
+      |  def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] = Right(())
+      |}
       |final class Kept(val name: PluginName) extends Exports[Activity] {
       |  val version: Int = 1
       |  override val cache: Option[CachePosting] = Some(new CachePosting {
       |    def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] = docs.put("k", ujson.Str("v"))
       |  })
+      |  override val documents: Option[Documents] = Some(Noted)
       |  override val tools: Vector[PluginTool[?]] = Vector(Recent)
       |  def service(own: PluginReads): Activity = new Lines(own)
       |}
@@ -90,6 +97,14 @@ object PluginCaptureTests extends TestSuite {
   private val holdsClosure =
     """final class Closes(val name: PluginName, val peek: () => Int) extends Plugin {
       |  val version: Int = 1
+      |}
+      |""".stripMargin
+
+  /** A plugin's documents posting through a store it was built with. */
+  private val documentsHoldDb =
+    """final class DocsHold(db: Db^) extends Documents {
+      |  val terms: DocumentTerms = Noted.terms
+      |  def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] = db.read(Right(()))
       |}
       |""".stripMargin
 
@@ -161,6 +176,7 @@ object PluginCaptureTests extends TestSuite {
   private val breaches: Vector[String] = Vector(
     holdsDb,
     holdsClosure,
+    documentsHoldDb,
     serviceCapturesDb,
     runKeepsDb,
     runStashesDb,
@@ -174,7 +190,7 @@ object PluginCaptureTests extends TestSuite {
       assert(classpath.nonEmpty, options.contains("-language:experimental.captureChecking"))
     }
 
-    test("a pure plugin with a tool, a cache, needs and an exported service compiles") {
+    test("a pure plugin with a tool, a cache, documents, needs and an exported service compiles") {
       val errs = errors(
         """object Store {
           |  def toolbox(store: Db^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store}]] =
@@ -193,6 +209,11 @@ object PluginCaptureTests extends TestSuite {
 
     test("a plugin holding a closure over a Db is rejected") {
       val errs = errors(holdsClosure)
+      assert(heldImpure(errs))
+    }
+
+    test("a plugin's documents holding a Db are rejected") {
+      val errs = errors(documentsHoldDb)
       assert(heldImpure(errs))
     }
 

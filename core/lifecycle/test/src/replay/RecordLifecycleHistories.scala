@@ -78,6 +78,7 @@ object RecordLifecycleHistories {
             w.periods,
             w.plugins.cursors,
             w.plugins.posting,
+            new grit.core.document.InMemoryDocuments().keeper,
             new grit.core.store.InMemoryTombstones,
             new FakeJot,
             new CloseFixtures.SetClock(java.time.Instant.EPOCH)

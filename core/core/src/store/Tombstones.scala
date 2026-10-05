@@ -2,6 +2,7 @@ package grit.core.store
 
 import java.time.Instant
 
+import grit.core.id.PluginName
 import grit.core.retention.{Target, Tombstone}
 
 /** What grit has decided to delete, kept until the collector has deleted it: nothing in grit
@@ -24,6 +25,14 @@ trait Tombstones {
     * oldest written first, each deferred one placed at the time it was last deferred.
     */
   def due(kind: Target.Kind, before: Instant, n: Int)(using
+      Tx^
+  ): Either[StoreError, Vector[Tombstone]]
+
+  /** Pending [[Target.Document]] tombstones written before `before` on `plugin`'s versions, at
+    * most `n`, in [[due]]'s order. Which plugin's a version is, its document row says: one whose
+    * row is gone is never among them (its plugin's Disabled collection ends it).
+    */
+  def documentsDue(plugin: PluginName, before: Instant, n: Int)(using
       Tx^
   ): Either[StoreError, Vector[Tombstone]]
 

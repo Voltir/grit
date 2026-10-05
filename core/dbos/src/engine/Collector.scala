@@ -9,7 +9,7 @@ import scala.util.Using
 import grit.core.id.{PeriodRef, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.period.{LifecycleSettings, Period, PeriodState, Purgeable}
 import grit.core.plugin.{PluginCursors, PostRef}
-import grit.core.retention.{Target, Tombstone}
+import grit.core.retention.{Retention, Target, Tombstone}
 import grit.core.speech.SpeechStore
 import grit.core.store.{
   ConversationStore,
@@ -56,12 +56,16 @@ private[engine] final class Collector(
     for {
       swept <- Kinds.foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, kind) =>
         acc.flatMap { done =>
-          val cutoff = now.minusMillis(kind.retention(settings.windows).toMillis)
-          Transact
-            .read(dataSource)(tombstones.due(kind, cutoff, Batch))
-            .flatMap(_.foldLeft[Either[StoreError, Swept]](Right(done)) { (acc, t) =>
-              acc.flatMap(done => collect(t, now).map(done + _))
-            })
+          kind.retention(settings.windows) match {
+            // A plugin's documents, kept as its terms declare: not collected by this sweep.
+            case Retention.Declared => Right(done)
+            case Retention.For(window) =>
+              Transact
+                .read(dataSource)(tombstones.due(kind, now.minusMillis(window.toMillis), Batch))
+                .flatMap(_.foldLeft[Either[StoreError, Swept]](Right(done)) { (acc, t) =>
+                  acc.flatMap(done => collect(t, now).map(done + _))
+                })
+          }
         }
       }
       _ <- Transact.write(dataSource)(
@@ -129,7 +133,7 @@ private[engine] final class Collector(
               )
             case None => Named.none
           })
-      case Target.Superseded(_) | Target.Quiet(_) => Right(Named.none)
+      case Target.Superseded(_) | Target.Quiet(_) | Target.Document(_) => Right(Named.none)
     }
 
   /** Each workflow DBOS has among `named`, and whether it is queued or running. */
@@ -259,6 +263,8 @@ private[engine] final class Collector(
           _ <- cursors.remove(plugin)
           _ <- tombstones.collected(target, now)
         } yield Outcome.Collected
+      // Never due in `once`: its kind's retention is declared.
+      case Target.Document(_) => Right(Outcome.Waiting)
     }
 }
 

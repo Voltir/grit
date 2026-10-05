@@ -1,8 +1,6 @@
 package grit.core.retention
 
-import scala.concurrent.duration.FiniteDuration
-
-import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, PluginName}
+import grit.core.id.{ConversationId, DocumentVersion, PeriodRef, PeriodSeq, PluginName}
 import grit.core.period.{CloseOrdinal, Windows}
 
 /** Something grit has decided to delete. */
@@ -39,6 +37,11 @@ enum Target {
   /** A plugin not enabled: its documents, cursor and runs. Spared while it is enabled. */
   case Disabled(plugin: PluginName)
 
+  /** A version of a plugin's document that stopped being current (superseded, or withdrawn)
+    * or is itself a withdrawal.
+    */
+  case Document(version: DocumentVersion)
+
   def kind: Target.Kind = this match {
     case Raw(_) => Target.Kind.Raw
     case Superseded(_) => Target.Kind.Superseded
@@ -46,6 +49,7 @@ enum Target {
     case PostRuns(_, _, _) => Target.Kind.PostRuns
     case Restarted(_) => Target.Kind.Restarted
     case Disabled(_) => Target.Kind.Disabled
+    case Document(_) => Target.Kind.Document
   }
 }
 
@@ -59,14 +63,16 @@ object Target {
     case PostRuns extends Kind("post-runs")
     case Restarted extends Kind("restarted")
     case Disabled extends Kind("disabled")
+    case Document extends Kind("document")
 
     /** How long after its tombstone is written a target of this kind is deleted: `windows`'
       * retention for Raw, PostRuns and Restarted; its ledger window for Superseded, Quiet and
-      * Disabled.
+      * Disabled; for Document, its plugin's declared retention.
       */
-    def retention(windows: Windows): FiniteDuration = this match {
-      case Kind.Raw | Kind.PostRuns | Kind.Restarted => windows.retention
-      case Kind.Superseded | Kind.Quiet | Kind.Disabled => windows.ledger
+    def retention(windows: Windows): Retention = this match {
+      case Kind.Raw | Kind.PostRuns | Kind.Restarted => Retention.For(windows.retention)
+      case Kind.Superseded | Kind.Quiet | Kind.Disabled => Retention.For(windows.ledger)
+      case Kind.Document => Retention.Declared
     }
   }
 
@@ -77,7 +83,8 @@ object Target {
   }
 
   /** `target`'s stored key, beside its kind's name: `{conversation}:{period}` for a period's,
-    * `{plugin}:{version}:{cursor}` for posting runs, `{plugin}` for a plugin's.
+    * `{plugin}:{version}:{cursor}` for posting runs, `{plugin}` for a plugin's, `{version}`
+    * for a document's.
     */
   def key(target: Target): String = target match {
     case Raw(p) => period(p)
@@ -87,6 +94,7 @@ object Target {
       s"${PluginName.value(plugin)}:$version:${CloseOrdinal.value(cursor)}"
     case Restarted(plugin) => PluginName.value(plugin)
     case Disabled(plugin) => PluginName.value(plugin)
+    case Document(version) => DocumentVersion.value(version).toString
   }
 
   /** The target of `kind` stored under `key`, or why it is none. */
@@ -108,6 +116,11 @@ object Target {
       case Kind.Quiet => periodOf(Quiet(_))
       case Kind.Restarted => pluginOf(Restarted(_))
       case Kind.Disabled => pluginOf(Disabled(_))
+      case Kind.Document =>
+        key.toLongOption
+          .flatMap(DocumentVersion.of)
+          .map(Document(_))
+          .toRight(s"document $key: not a version")
       case Kind.PostRuns =>
         key.split(':') match {
           case Array(p, v, c) =>

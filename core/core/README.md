@@ -8,7 +8,7 @@ In dependency order:
 - **`clock`** — what a function cannot compute: `Clock` (the time) and `Fresh` (values
   no one made before). Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `EntrySeq`, `WorkflowId`,
-  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `ShadowName`, `QuestionName` (a question's in a question set, or its per-source form), `KnowledgeSourceName`, `EdgeName`, `PrincipalId`: who an
+  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `DocKey` (a plugin's document's key), `DocumentVersion` (one version of a document, numbered across every plugin), `ShadowName`, `QuestionName` (a question's in a question set, or its per-source form), `KnowledgeSourceName`, `EdgeName`, `PrincipalId`: who an
   action is done for, `EdgeId`), `CallSlot` (a tool call's place in its turn, and its
   request's key), the one short content hash every content-addressed id uses, `TurnRef` (and its reply entry's id), `PeriodRef`, `CloseRef` (one
   attempt to close a period on its deadline, and its workflow id), `SettleRef` (the one
@@ -60,8 +60,9 @@ In dependency order:
   conversations), and a `Purgeable` period's workflows. ← `id`
 - **`retention`** — what grit deletes, and when (ADR 0014): a `Target` (a period's raw
   entries, a superseded closing, a quiet conversation, a plugin's posting runs, its documents
-  from before a restart, a plugin no longer enabled), its stored form, which window each kind
-  of target is kept for, and a `Tombstone`, the decision to delete one. ← `id`, `period`
+  from before a restart, a plugin no longer enabled, a version of a plugin's document no longer
+  current), its stored form, how long each kind of target is kept (`Retention`: a window, or as
+  its plugin declares), and a `Tombstone`, the decision to delete one. ← `id`, `period`
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),
   `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin` (and its `Audience`: who its messages are for; its `Focus` at a message's `Position`: how many topics interleave where it is said),
@@ -71,6 +72,15 @@ In dependency order:
   period is open, sealing one with its closing entry, purging one), `LifecycleStore` (the
   settings in force), `VoiceStore` (the voice in force), `Principals` (the people an edge enrolled, by name) and `Speakers` (whose names a window shows on the inbound entries they wrote), `Tombstones` (what is to be deleted, until the collector has), `Opening` and `ClosingEntry` (the closing a period opens from), `EntryTopics` (a
   conversation's topics one period at a time: carried by its closing, then its own events), `StoreError`. ← `id`, `message`, `topic`, `model`, `period`, `retention`, `prompt`
+- **`document`** — plugins' documents (ADR 0028): a `Document` is one version of a plugin's
+  document under a key, kept at a place, its `DocText` shown and searched, its data the
+  plugin's own, with its `Placement` (how many windows held it); a version is current until
+  the next under its key, or a withdrawal, supersedes it. `DocumentTerms` (a `DocLabel`, a
+  `DocWeight`, a retention and a bound) are what a plugin declares; `DocumentShelf` and
+  `DocumentKeeper`, one plugin's documents as it reads and writes them (`Written`, what a
+  write did); `DocumentSearch`, every enabled plugin's documents as windows draw on them, as
+  of an instant (`Shelved`, a place holding some); `DocumentStore`, what the engine writes
+  of them. ← `id`, `place`, `store`
 - **`spend`** — what grit spends on model calls, read back: `Spend` (some recorded calls: how
   many, and their `Cost`), `Spending` (a day's, or a conversation's, from the ledger; what the
   ledger misses is in its doc), `Day` (a calendar day in a zone, as instants), `DailyCap`
@@ -172,7 +182,8 @@ In dependency order:
 
 - **`plugin`** — features a deployment turns on (ADR 0027), each a pure bundle of
   contributions to core's points: `Plugin` (a name, a version, the plugins it `needs`, and
-  optionally a `CachePosting`, which keeps what it wants of one `ClosedPeriod`, and
+  optionally a `CachePosting`, which keeps what it wants of one `ClosedPeriod`, its
+  `Documents`, the terms they are kept under and its posting to them, and
   `PluginTool`s, each a `Hosted` description bound at start to a `PluginRun` over its own
   documents, `PluginReads`, and its needs' services, `Needs`); `Exports`, a plugin another may
   need, exporting a pure service over its own documents, the only way one plugin reads
@@ -180,7 +191,7 @@ In dependency order:
   period's closing), `PluginDocs` (one plugin's documents as its surfaces read them),
   `PluginCursors` (how far each has posted, in close order; a new version starts again, in a
   new generation) and `PostRef` (one posting run, and its workflow id). ← `id`, `period`,
-  `store`, `tool`
+  `store`, `document`, `tool`
 
 - **`edge`** — what an edge and the engine share: `ServedEdge`, an edge a deployment serves
   beside its engine as it posts to a plugin (ADR 0021), opened over `EdgeStores` (what an
@@ -205,7 +216,7 @@ No source file sits at core's root, and no two packages import each other in a c
 
 The test tree mirrors it: the in-memory fakes other modules' tests use are
 `store.InMemoryEntryStore`, `store.InMemoryUsageLedger`, `store.InMemoryModelProfileStore`,
-`store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore`, `store.InMemoryVoiceStore`, `recipe.InMemoryRoomReads`, `plugin.InMemoryPlugins` and
+`store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore`, `store.InMemoryVoiceStore`, `recipe.InMemoryRoomReads`, `plugin.InMemoryPlugins`, `document.InMemoryDocuments` (which owns the `store.InMemoryTombstones` its keepers mark) and
 `durable.InMemoryDurable`; and `period.TestClosings` builds closings and balance lines.
 `TestTx` lives in package `grit.dbos.sql`, because the `null` it holds is legal only inside
 the DBOS quarantine (rule 6).

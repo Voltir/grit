@@ -196,6 +196,7 @@ object LiveTurn {
               engine.periods,
               engine.cursors,
               engine.cache,
+              engine.keeper,
               engine.tombstones,
               engine.jot,
               Clock.system()

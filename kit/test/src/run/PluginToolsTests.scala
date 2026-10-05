@@ -2,6 +2,7 @@ package grit.kit.run
 
 import java.time.Instant
 
+import grit.core.document.InMemoryDocuments
 import grit.core.model.{ModelSetting, ModelSettings}
 import grit.core.period.CloseOrdinal
 import grit.core.persona.Persona
@@ -33,6 +34,7 @@ object PluginToolsTests extends TestSuite {
   val tests = Tests {
     test("a plugin's tool reads the plugin it needs through its service, not its own documents") {
       val plugins = new InMemoryPlugins
+      val documents = new InMemoryDocuments
       val keys = new TestPlugins.Keys(name("keys"))
       val reading = new TestPlugins.Reading(name("reading"), keys, declared = true)
       locally {
@@ -45,7 +47,7 @@ object PluginToolsTests extends TestSuite {
         val _ = plugins.cache(reading.name, at).put("mine-1", ujson.Str("x"))
       }
       val bound = PluginBinding
-        .bound(Vector(keys, reading), n => PluginReads(plugins.docs(n)))
+        .bound(Vector(keys, reading), n => PluginReads(plugins.docs(n), documents.shelf(n)))
         .fold(u => sys.error(u.toString), identity)
       bound.map(b =>
         b.described.name -> b.described.spec.args
