@@ -82,21 +82,18 @@ object TurnCapture {
     said match {
       case None => Right(None)
       case Some((first, saidAs)) =>
-        // The root its message makes it: what its draft or reply and its tags are read by. A
-        // named root is a heard one there; the case keeps the root its offer recorded.
-        val root = first.payload match {
-          case Payload.Heard(_) => TurnOffer.Root.Heard
-          case _ => TurnOffer.Root.Addressed
+        // Whether its message was heard: what its tags are read by. Its answer is its draft,
+        // when it drafted one, else its reply: a heard message answered as said to grit
+        // replies as an addressed one. The case keeps the root its offer recorded.
+        val heard = first.payload match {
+          case Payload.Heard(_) => true
+          case _ => false
         }
         val opening = all.minByOption(e => EntrySeq.value(e.seq)).exists(_.id == first.id)
         val focus = origin.focus(if (opening) Position.Opening else Position.Reply)
         val reply = mine
-          .find(e =>
-            e.id == (root match {
-              case TurnOffer.Root.Heard | TurnOffer.Root.Named => turn.draftId
-              case TurnOffer.Root.Addressed => turn.replyId
-            })
-          )
+          .find(_.id == turn.draftId)
+          .orElse(mine.find(_.id == turn.replyId))
           .flatMap(e =>
             e.payload match {
               case Payload.Message(m: Message.Assistant) => Some(m)
@@ -112,11 +109,9 @@ object TurnCapture {
             .steps(turn.workflowId)
             .left
             .map(e => s"steps of ${WorkflowId.value(turn.workflowId)} unread: ${Capture.kind(e)}")
-          tags <- root match {
-            case TurnOffer.Root.Heard | TurnOffer.Root.Named =>
-              read("tags")(reader.triage.of(Vector(first.id))).map(_.get(first.id))
-            case TurnOffer.Root.Addressed => Right(None)
-          }
+          tags <-
+            if (heard) read("tags")(reader.triage.of(Vector(first.id))).map(_.get(first.id))
+            else Right(None)
           offer <- TurnRecord
             .offer(steps)
             .left
@@ -184,7 +179,7 @@ object TurnCapture {
               saidAs,
               // Its offer's root when it recorded one: a named turn is named. A turn ended
               // before its offer has its message's.
-              offer.fold(root)(_.root),
+              offer.fold(if (heard) TurnOffer.Root.Heard else TurnOffer.Root.Addressed)(_.root),
               focus,
               recorded.created,
               build,
@@ -392,6 +387,7 @@ object TurnCapture {
       case Outcome.Below(j, postAt) => scored(Drafted.Kind.Below, j, Some(postAt))
       case Outcome.Shadowed(c) => cleared(Drafted.Kind.Shadowed, c)
       case Outcome.Posted(c) => cleared(Drafted.Kind.Posted, c)
+      case Outcome.Replied => Drafted(Drafted.Kind.Replied, None, None, None)
       case Outcome.Failed(_) => Drafted(Drafted.Kind.Failed, None, None, None)
     }
   }

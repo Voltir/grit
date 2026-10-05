@@ -1153,10 +1153,15 @@ object TurnFixtures {
   )
 
   /** A conversation that begins with a record of its closed period (turn 0) when
-    * `recalled`, else with a person's message, then a heard message (the turn), decided on and
-    * heard with the reply address `replyTo`.
+    * `recalled`, else with a person's message, then a heard message (the turn), heard with the
+    * reply address `replyTo` and decided on: drafting, or, when `answering`, answered as said
+    * to grit at that address.
     */
-  def speechWorld(recalled: Boolean = true, replyTo: Option[String] = Some("C/1")): SpeechWorld = {
+  def speechWorld(
+      recalled: Boolean = true,
+      replyTo: Option[String] = Some("C/1"),
+      answering: Boolean = false
+  ): SpeechWorld = {
     given grit.core.store.Tx = TestTx.fake
     val entries = new InMemoryEntryStore
     val ledger = new InMemoryUsageLedger
@@ -1185,7 +1190,7 @@ object TurnFixtures {
         Reach(replyTo, Set.empty),
         Tags.Weighed(Tags.V1.answers(Kind.Question, p, p, p, p), "jev", Usage.Zero)
       ),
-      Decision.Drafting(turn),
+      replyTo.filter(_ => answering).fold(Decision.Drafting(turn))(Decision.Answering(turn, _)),
       Instant.EPOCH
     )
     SpeechWorld(entries, ledger, store, new InMemoryDeliveries, turn)

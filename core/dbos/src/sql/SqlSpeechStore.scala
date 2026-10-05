@@ -88,7 +88,8 @@ final class SqlSpeechStore extends SpeechStore {
       Using.resource(
         conn.prepareStatement(
           """SELECT workflow, room, decided_at, outcome_kind, posted_seq FROM grit.speech
-            | WHERE drafting AND decided_at >= ? ORDER BY decided_at, workflow""".stripMargin
+            | WHERE drafting AND NOT answering AND decided_at >= ?
+            | ORDER BY decided_at, workflow""".stripMargin
         )
       ) { ps =>
         ps.setObject(1, since.atOffset(ZoneOffset.UTC))
@@ -123,7 +124,7 @@ final class SqlSpeechStore extends SpeechStore {
         conn.prepareStatement(
           """SELECT count(*), count(u.cost_usd), coalesce(sum(u.cost_usd), 0)
             |  FROM grit.usage_ledger u JOIN grit.speech s ON s.workflow = u.workflow_id
-            | WHERE s.drafting AND u.created_at >= ? AND u.created_at < ?""".stripMargin
+            | WHERE s.drafting AND NOT s.answering AND u.created_at >= ? AND u.created_at < ?""".stripMargin
         )
       ) { ps =>
         ps.setObject(1, day.from.atOffset(ZoneOffset.UTC))
@@ -145,8 +146,8 @@ final class SqlSpeechStore extends SpeechStore {
       Using.resource(
         conn.prepareStatement(
           """INSERT INTO grit.speech (workflow, conversation_id, turn_seq, room, decided_at,
-            |  drafting, silence)
-            |VALUES (?, ?::uuid, ?, ?, ?, ?, ?::jsonb)
+            |  drafting, silence, answering)
+            |VALUES (?, ?::uuid, ?, ?, ?, ?, ?::jsonb, ?)
             |ON CONFLICT (workflow) DO NOTHING""".stripMargin
         )
       ) { ps =>
@@ -159,11 +160,29 @@ final class SqlSpeechStore extends SpeechStore {
           case Decision.Drafting(_) =>
             ps.setBoolean(6, true)
             ps.setNull(7, java.sql.Types.VARCHAR)
+            ps.setBoolean(8, false)
+          case Decision.Answering(_, _) =>
+            ps.setBoolean(6, true)
+            ps.setNull(7, java.sql.Types.VARCHAR)
+            ps.setBoolean(8, true)
           case Decision.Held(why) =>
             ps.setBoolean(6, false)
             ps.setString(7, SpeechJson.writeSilence(why).render())
+            ps.setBoolean(8, false)
         }
         ps.executeUpdate() == 1
+      }
+    }
+  }
+
+  def answering(turn: TurnRef)(using tx: Tx^): Either[StoreError, Boolean] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(
+        conn.prepareStatement("SELECT 1 FROM grit.speech WHERE workflow = ? AND answering")
+      ) { ps =>
+        ps.setString(1, WorkflowId.value(turn.workflowId))
+        Using.resource(ps.executeQuery())(_.next())
       }
     }
   }

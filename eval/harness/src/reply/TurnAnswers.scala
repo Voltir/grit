@@ -31,7 +31,7 @@ object TurnAnswers {
       case TurnRecord.Weigh.Recorded(None) =>
         t.root match {
           case TurnOffer.Root.Addressed => asked
-          case TurnOffer.Root.Heard | TurnOffer.Root.Named => None
+          case TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName => None
         }
       case TurnRecord.Weigh.Unrecorded => None
     }

@@ -58,7 +58,7 @@ object ShippedGateTests extends TestSuite {
 
   /** A decision in [[before]]'s terms: a hold's first failed bound, by what it reads. */
   private def after(d: Decision): Option[String] = d match {
-    case Decision.Drafting(_) => None
+    case Decision.Drafting(_) | Decision.Answering(_, _) => None
     case Decision.Held(Silence.Gated(first, _)) =>
       first.bound match {
         case grit.core.triage.Bound.Below(Reading.Chosen(Tags.V1.kind, "chatter"), _) =>
@@ -90,7 +90,7 @@ object ShippedGateTests extends TestSuite {
     }
 
     test(
-      "the shipped gate drafts a v3-tagged message put to grit, and holds any other unasked, " +
+      "the shipped gate answers a v3-tagged message put to grit, and holds any other unasked, " +
         "on anchor-record"
     ) {
       def v3(toGrit: Double): Tags =
@@ -110,7 +110,7 @@ object ShippedGateTests extends TestSuite {
         decide(TriageQuestions.ShippedSpeak, v3(0.9)),
         decide(TriageQuestions.ShippedSpeak, v3(0.1))
       ) ==> (
-        Decision.Drafting(turn),
+        Decision.Answering(turn, "C/1"),
         Decision.Held(Silence.Unasked(Reading.Yes(Tags.V4.anchorRecord)))
       )
     }

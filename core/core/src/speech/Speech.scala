@@ -61,8 +61,15 @@ final case class Ledger(turns: Vector[Spoken], speech: Spend, all: Spend)
 /** What grit decided about a heard message. */
 enum Decision {
 
-  /** Draft: `turn`, the heard message's own, runs. */
+  /** Draft: `turn`, the heard message's own, runs unprompted. */
   case Drafting(turn: TurnRef)
+
+  /** Answer as said to grit: triage read the message as put to grit by name
+    * ([[Tags.directed]]), so `turn`, its own, runs as an addressed turn does, its reply
+    * awaited at `to`, the message's reply address, where the message is marked while the turn
+    * runs.
+    */
+  case Answering(turn: TurnRef, to: String)
 
   /** Stay quiet, for `why`. */
   case Held(why: Silence)
@@ -139,11 +146,15 @@ enum Cleared {
   /** An unprompted draft the judge scored at or above `postAt`. */
   case Scored(judged: Judged)
 
-  /** A named turn's draft, which is not judged. */
+  /** A named turn's draft, which is not judged: drafted before a message put to grit by name
+    * was answered as said to it ([[Decision.Answering]]).
+    */
   case Named
 }
 
-/** What became of a heard-rooted turn's draft, unprompted or named. */
+/** What became of a turn triage started: an unprompted or named turn's draft, or a turn
+  * answered as said to grit.
+  */
 enum Outcome {
 
   /** The model had nothing to add. */
@@ -174,7 +185,12 @@ enum Outcome {
   /** Posted, as `cleared`. */
   case Posted(cleared: Cleared)
 
-  /** The turn failed before its draft was settled, for `why`. */
+  /** Put to grit by name and answered as a message said to it: its reply is the turn's own,
+    * posted by its edge. Not a post: it counts in no rate.
+    */
+  case Replied
+
+  /** The turn failed before its draft or reply was settled, for `why`. */
   case Failed(why: String)
 }
 
@@ -183,7 +199,9 @@ object Speech {
   /** Whether grit drafts after `heard` at `now`, under `speaking`, given `ledger` and the
     * deployment's `budget`: the first failing check in [[Silence]]'s order, or `Drafting`.
     * Fails closed: an untagged message is `Unweighed`, and one whose answers the gate cannot
-    * read is `Unasked`.
+    * read is `Unasked`. A message triage read as put to grit ([[Tags.directed]]) is
+    * `Answering` at its reply address, held only as an addressed one could be: with no
+    * address, by the gate (none under [[Speaking.Off]]), or over the budget.
     */
   def decide(
       speaking: Speaking,
@@ -207,16 +225,7 @@ object Speech {
           val age = JDuration.between(heard.said, now).toNanos.nanos
           Option.when(age > limits.fresh)(Silence.Stale(age))
         },
-        () =>
-          heard.tags match {
-            case Tags.Unanswered(why) => Some(Silence.Unweighed(why))
-            case Tags.Weighed(answers, _, _) =>
-              limits.drafts.check(answers) match {
-                case Gate.Checked.Passes => None
-                case Gate.Checked.Fails(first, rest) => Some(Silence.Gated(first, rest))
-                case Gate.Checked.Unread(reading) => Some(Silence.Unasked(reading))
-              }
-          },
+        () => gated(limits, heard.tags),
         () =>
           heard.reach.asked.toVector.sortBy(PrincipalId.value).headOption.map(Silence.AskedOf(_)),
         () =>
@@ -247,28 +256,37 @@ object Speech {
           ),
         () => Option.when(!budget.admits(ledger.all))(Silence.OverBudget)
       )
-    val first = speaking match {
-      case Speaking.Off => Some(Silence.Off)
-      case Speaking.Shadow(limits) =>
-        checks(limits).iterator.map(_()).collectFirst { case Some(s) => s }
-      case Speaking.Within(limits) =>
-        checks(limits).iterator.map(_()).collectFirst { case Some(s) => s }
+    val limited = speaking match {
+      case Speaking.Off => None
+      case Speaking.Shadow(limits) => Some(limits)
+      case Speaking.Within(limits) => Some(limits)
     }
-    first.fold(Decision.Drafting(heard.turn))(Decision.Held(_))
+    (Tags.directed(heard.tags), heard.reach.replyTo) match {
+      case (true, None) => Decision.Held(Silence.NoAddress)
+      case (true, Some(to)) =>
+        limited
+          .flatMap(gated(_, heard.tags))
+          .orElse(Option.when(!budget.admits(ledger.all))(Silence.OverBudget))
+          .fold(Decision.Answering(heard.turn, to))(Decision.Held(_))
+      case (false, _) =>
+        limited
+          .fold(Some(Silence.Off))(checks(_).iterator.map(_()).collectFirst { case Some(s) => s })
+          .fold(Decision.Drafting(heard.turn))(Decision.Held(_))
+    }
   }
 
-  /** Where `heard` is marked as being answered while its turn runs, given `decision`, the one
-    * made on it under `speaking`: its reach's reply address when `decision` drafts it under
-    * [[Speaking.Within]] and triage read it as directed at grit ([[Tags.directed]]); `None`
-    * under `Shadow` or `Off`, for a held message, and for an unprompted draft, which mostly
-    * ends in silence after its judge.
+  /** Why `tags` fail `limits`' gate: untagged, failing a bound, or unread; `None` when they
+    * pass.
     */
-  def acknowledge(speaking: Speaking, heard: Heard, decision: Decision): Option[String] =
-    (speaking, decision) match {
-      case (Speaking.Within(_), Decision.Drafting(_)) if Tags.directed(heard.tags) =>
-        heard.reach.replyTo
-      case _ => None
-    }
+  private def gated(limits: Limits, tags: Tags): Option[Silence] = tags match {
+    case Tags.Unanswered(why) => Some(Silence.Unweighed(why))
+    case Tags.Weighed(answers, _, _) =>
+      limits.drafts.check(answers) match {
+        case Gate.Checked.Passes => None
+        case Gate.Checked.Fails(first, rest) => Some(Silence.Gated(first, rest))
+        case Gate.Checked.Unread(reading) => Some(Silence.Unasked(reading))
+      }
+  }
 
   /** The priced part of `cost`: what a cap is compared with. */
   private def priced(cost: Cost): BigDecimal = cost match {
@@ -311,7 +329,8 @@ object Speech {
 
   /** What becomes of a named turn's draft, which is not judged, under `speaking`: `Posted`
     * under [[Speaking.Within]], `Shadowed` under [[Speaking.Shadow]], `Withdrawn` under
-    * [[Speaking.Off]].
+    * [[Speaking.Off]]. Only for a turn drafted before a message put to grit by name was
+    * answered as said to it ([[Decision.Answering]]), resumed.
     */
   def postNamed(speaking: Speaking): Outcome = speaking match {
     case Speaking.Off => Outcome.Withdrawn

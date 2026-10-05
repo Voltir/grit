@@ -214,6 +214,7 @@ object TurnCaptureTests extends TestSuite {
             engine.speech,
             engine.spending,
             engine.acknowledgements,
+            engine.deliveries,
             engine.stitches,
             engine.search,
             engine.lifecycle,
@@ -292,7 +293,8 @@ object TurnCaptureTests extends TestSuite {
         val failed = ask(engine, tui, "t2", s"$Marker ~fail")
         // A Slack thread asked directly, the model looping through two rounds of tools.
         val looped = ask(engine, Origin.Slack("T1", "C1", "2000.1"), "2000.1", s"$Marker ~loop")
-        // A Slack message heard in thread `ts`, drafted by triage's gate, passed by the model.
+        // A Slack message heard in thread `ts`, drafted or answered by triage's gate, passed by
+        // the model.
         def overheard(ts: String, text: String): TurnRef = {
           val origin = Origin.Slack("T1", "C1", ts)
           engine.inbox.hear(
@@ -308,12 +310,19 @@ object TurnCaptureTests extends TestSuite {
             right(engine.db.read(engine.conversations.find(origin))).fold(sys.error(ts))(_.id),
             TurnSeq.First
           )
-          assert(eventually(right(engine.db.read(engine.entries.get(t.draftId))).nonEmpty))
+          // A draft, or, for a message answered as said to grit, a reply.
+          assert(
+            eventually(
+              right(engine.db.read(engine.entries.ofTurn(t))).exists(e =>
+                e.id == t.draftId || e.id == t.replyId
+              )
+            )
+          )
           val _ = engine.awaitTurn(t)
           t
         }
-        // The stub answers every yes/no at 0.9, to-grit too: named. At 0.1 it reads open
-        // and to-grit low, so the same gate (asks alone) drafts it as heard.
+        // The stub answers every yes/no at 0.9, to-grit too: answered as said to grit. At 0.1
+        // it reads open and to-grit low, so the same gate (asks alone) drafts it as heard.
         val heard = overheard("3000.1", s"$Marker ~pass is the deploy on friday? ~back:asks")
         val unnamed = overheard("4000.1", s"$Marker ~pass ~0.1 is the freeze on monday? ~back:asks")
 
@@ -372,9 +381,15 @@ object TurnCaptureTests extends TestSuite {
             Focus.Open,
             Ended.Replied(s"$Marker replied".length, false)
           ),
-          // The stub reads every yes/no at 0.9, to-grit too: its offer recorded it named, and
-          // the case keeps the root the offer recorded, not one derived from the message.
-          ("slack C1/3000.1", TurnOffer.Root.Named, Focus.Open, Ended.Replied("pass".length, true)),
+          // The stub reads every yes/no at 0.9, to-grit too: its offer recorded it by name, its
+          // reply read as an addressed one's, and the case keeps the root the offer recorded,
+          // not one derived from the message.
+          (
+            "slack C1/3000.1",
+            TurnOffer.Root.ByName,
+            Focus.Open,
+            Ended.Replied("pass".length, true)
+          ),
           ("slack C1/4000.1", TurnOffer.Root.Heard, Focus.Open, Ended.Replied("pass".length, true))
         )
 
@@ -435,21 +450,22 @@ object TurnCaptureTests extends TestSuite {
           Tokens.value(w.parts.foldLeft(Tokens.Zero)(_ + _.tokens)) > 0 &&
             Tokens.value(w.own) > 0
         ) ==> true
-        // A passed draft supports nothing, nor does a turn that failed after its window: the
+        // A reply that passes supports nothing, nor does a turn that failed after its window: the
         // record, then the question's turn, shown by recency.
         at(heard).window.map(_.parts.flatMap(_.support)) ==> Some(Vector.empty)
         at(failed).window.map(_.parts.map(p => (p.kind, p.support))) ==>
           Some(Vector((Part.Kind.Record, None), (Part.Kind.Recent, None)))
         at(failed).window.flatMap(_.parts.lift(1)).map(_.seqs.size) ==> Some(2)
 
-        // Live triage's answers on the heard roots alone, and their drafts passed.
+        // Live triage's answers on the heard roots alone; the unprompted draft passed, and the
+        // one answered as said to grit, like an addressed turn, keeps no draft's outcome.
         turns.cases.map(_.triage.isDefined) ==> Vector(false, false, false, false, true, true)
         turns.cases.map(_.speech.map(_.outcome)) ==> Vector(
           None,
           None,
           None,
           None,
-          Some(Drafted.Kind.Passed),
+          None,
           Some(Drafted.Kind.Passed)
         )
         verdicts ==> Verdicts.Empty

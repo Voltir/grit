@@ -24,7 +24,7 @@ import utest.*
   * (ADR 0022): a message heard in a thread with a record is triaged, drafted in its own turn
   * by the stub model, judged by the stub classifier, and posted, awaiting its edge; under
   * Shadow, judged the same and not posted. A question triage reads as put to grit by name is
-  * drafted as named, and posted unjudged.
+  * answered as said to grit, in shadow too.
   */
 object UnpromptedLiveTests extends TestSuite {
 
@@ -195,21 +195,28 @@ object UnpromptedLiveTests extends TestSuite {
       } finally engine.close()
     }
 
-    test("a question put to grit by name is answered there unjudged: no judge call") {
-      val d = deployment(Speaking.Within(limits))
+    test(
+      "a question put to grit by name is answered as said to grit, in shadow too: its reply awaited where it was heard, nothing judged, nothing counted as speech"
+    ) {
+      val d = deployment(Speaking.Shadow(limits))
       val engine = LiveEngine.open(config, Turn.Epoch)
       try {
         Launch(engine, d, secrets(d, config), Launch.Run.Served, sweeping = false, _ => ())
+        val day = grit.core.spend.Budget(java.time.ZoneOffset.UTC, None).today(Instant.now())
+        val spent = right(engine.db.read(engine.speech.spentOn(day)))
         val turn = converse(engine, "30.0", named = true)
-        assert(eventually(stage(engine, turn) match {
-          case Some(Stage.Posted(_)) => true
-          case _ => false
-        }))
+        assert(eventually(right(engine.db.read(engine.entries.get(turn.replyId))).nonEmpty))
         val _ = engine.awaitTurn(turn)
         val pending = right(engine.jot.write(engine.deliveries.pending())).filter(_.turn == turn)
         val ledger = right(engine.db.read(engine.ledger.of(turn.workflowId)))
-        (pending.map(_.to), ledger.exists(_.entry == grit.turn.TurnJudge.id(turn))) ==>
-          (Vector("C1/30.0/30.0:1"), false)
+        (
+          pending.map(_.to),
+          ledger.nonEmpty,
+          ledger.exists(_.entry == grit.turn.TurnJudge.id(turn)),
+          stage(engine, turn),
+          right(engine.db.read(engine.speech.answering(turn))),
+          right(engine.db.read(engine.speech.spentOn(day)))
+        ) ==> (Vector("C1/30.0/30.0:1"), true, false, None, true, spent)
       } finally engine.close()
     }
   }

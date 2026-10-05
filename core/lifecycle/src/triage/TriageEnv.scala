@@ -2,7 +2,7 @@ package grit.lifecycle.triage
 
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
-import grit.core.edge.Acknowledgements
+import grit.core.edge.{Acknowledgements, Deliveries}
 import grit.core.id.TurnRef
 import grit.core.recipe.RoomReads
 import grit.core.speech.{Speaking, SpeechStore}
@@ -34,8 +34,9 @@ final case class TriageEnv(
 
 /** Where a triage reads the heard message, its thread, its conversation and who wrote them,
   * keeps its tags, and weighs and keeps its decision to speak: the speech ledger (`speech`)
-  * and the day's spend (`spending`); the acknowledgement a draft it was told to grit wants
-  * (`acknowledgements`, [[grit.core.speech.Speech.acknowledge]]); where a heard first message is stitched: its room's
+  * and the day's spend (`spending`); for a message it answers as said to grit
+  * ([[grit.core.speech.Decision.Answering]]), the mark it wants while its turn runs
+  * (`acknowledgements`) and its reply awaited (`deliveries`); where a heard first message is stitched: its room's
   * exchanges and strands (`stitches`), searched (`search`), in the scope in force
   * (`lifecycle`); and what its room said before it (`rooms`).
   */
@@ -47,6 +48,7 @@ final case class TriageRecords(
     speech: SpeechStore,
     spending: Spending,
     acknowledgements: Acknowledgements,
+    deliveries: Deliveries,
     stitches: StitchStore,
     search: EntrySearch,
     lifecycle: LifecycleStore,

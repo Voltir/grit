@@ -90,5 +90,12 @@ object ReplyReviewTests extends TestSuite {
       ) ==>
         (true, true, true)
     }
+
+    test("a heard message answered as said to grit is reviewed by its reply, as an addressed one") {
+      val byName = turn(root = TurnOffer.Root.ByName)
+      ReplyReview
+        .reviewed(byName, entries(TurnOffer.Root.ByName), speakers, records = false)
+        .map(_.reply) ==> Right(ReplyReview.Reply.Replied(replied))
+    }
   }
 }

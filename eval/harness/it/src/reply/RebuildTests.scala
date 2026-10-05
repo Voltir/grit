@@ -184,6 +184,7 @@ object RebuildTests extends TestSuite {
             engine.speech,
             engine.spending,
             engine.acknowledgements,
+            engine.deliveries,
             engine.stitches,
             engine.search,
             engine.lifecycle,

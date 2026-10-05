@@ -134,13 +134,13 @@ object ReplyReview {
     val stable = turns.sortBy(t => WorkflowId.value(t.workflow))
     def latest(ts: Vector[TurnCase]) = ts.sortBy(_.started).reverse
     def posted(t: TurnCase) = t.root match {
-      case TurnOffer.Root.Addressed => true
+      case TurnOffer.Root.Addressed | TurnOffer.Root.ByName => true
       case TurnOffer.Root.Heard | TurnOffer.Root.Named =>
         t.speech.exists(_.outcome == Drafted.Kind.Posted)
     }
     by match {
       case By.Posted => latest(stable.filter(posted))
-      case By.Held => latest(stable.filter(t => t.root != TurnOffer.Root.Addressed && !posted(t)))
+      case By.Held => latest(stable.filter(t => !posted(t)))
       case By.Tools => latest(stable.filter(_.rounds.nonEmpty))
       case By.Widest =>
         stable.sortBy(t =>
@@ -153,7 +153,7 @@ object ReplyReview {
   /** A turn's reply as the review shows it: its text blocks alone. */
   enum Reply {
 
-    /** An addressed turn's reply. */
+    /** An addressed turn's reply, or that of a heard message answered as said to grit. */
     case Replied(text: String)
 
     /** A heard turn's draft, and what became of it; `None` when the turn recorded no outcome. */
@@ -210,7 +210,8 @@ object ReplyReview {
     for {
       asked <- mine.headOption.flatMap(_.payload.said).toRight(s"$w: its message holds no words")
       reply <- (t.root match {
-        case TurnOffer.Root.Addressed => assistant(ref.replyId).map(m => Reply.Replied(said(m)))
+        case TurnOffer.Root.Addressed | TurnOffer.Root.ByName =>
+          assistant(ref.replyId).map(m => Reply.Replied(said(m)))
         case TurnOffer.Root.Heard | TurnOffer.Root.Named =>
           assistant(ref.draftId).map(m => Reply.Draft(said(m), t.speech.map(_.outcome)))
       }).toRight(s"$w: no reply recorded")

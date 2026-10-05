@@ -46,6 +46,22 @@ object SpeechTests extends TestSuite {
 
   private val empty = Ledger(Vector.empty, Spend.Zero, Spend.Zero)
 
+  // Triage's answers on a message put to grit by name (Tags.directed), and limits whose gate
+  // they pass.
+  private val directed = VectorMap(
+    Tags.V2.gap -> Answer.Choice(
+      "asks",
+      Vector(Answer.Weight("asks", 1.0), Answer.Weight("nothing", 0.0)),
+      0.0
+    ),
+    Tags.V2.open -> Answer.YesNo(0.9),
+    Tags.V2.to -> Answer.YesNo(0.9),
+    Tags.V3.toGrit -> Answer.YesNo(0.9)
+  )
+  private val named = heard.copy(tags = Tags.Weighed(directed, "jev", usage))
+  private val toGritLimits = limits.copy(drafts = Tags.V3.directed)
+  private val toGrit = Speaking.Within(toGritLimits)
+
   private def posted(conversation: String, seq: Long, at: Instant, in: Place = room) =
     Spoken(
       TurnRef(ConversationId(conversation), TurnSeq(seq)),
@@ -242,30 +258,40 @@ object SpeechTests extends TestSuite {
     }
 
     test(
-      "a message drafted within limits is acknowledged at its reply address when triage read it as directed at grit"
+      "a message put to grit is answered at its reply address, past staleness, another's mention, an unanswered turn, the rates and the speech cap, whether grit speaks or not"
     ) {
-      val toGrit = VectorMap(
-        Tags.V2.gap -> Answer.Choice(
-          "asks",
-          Vector(Answer.Weight("asks", 1.0), Answer.Weight("nothing", 0.0)),
-          0.0
-        ),
-        Tags.V2.open -> Answer.YesNo(0.9),
-        Tags.V2.to -> Answer.YesNo(0.9),
-        Tags.V3.toGrit -> Answer.YesNo(0.9)
+      val old = named.copy(
+        said = now.minusSeconds(11 * 60),
+        reach = Reach(Some("C/1"), Set(PrincipalId("slack:T/U1")))
       )
-      val named = heard.copy(tags = Tags.Weighed(toGrit, "jev", usage))
-      val unprompted = heard.copy(tags =
-        Tags.Weighed(toGrit.updated(Tags.V3.toGrit, Answer.YesNo(0.1)), "jev", usage)
+      val previous = TurnRef(ConversationId("c"), TurnSeq(3))
+      val busy = Ledger(
+        Spoken(previous, room, now.minusSeconds(30), Stage.Drafting) +:
+          (1 to 10).toVector.map(i => posted(s"x$i", 1, now.minusSeconds(600))),
+        Spend(3, Cost.Exact(BigDecimal("0.25"))),
+        Spend.Zero
       )
-      val drafting = Decision.Drafting(turn)
+      Vector(toGrit, Speaking.Shadow(toGritLimits), Speaking.Off).map(s =>
+        decide(old, busy, s)
+      ) ==> Vector.fill(3)(Decision.Answering(turn, "C/1"))
+    }
+
+    test(
+      "a message put to grit is held only with no reply address, by the gate, or over the deployment's budget"
+    ) {
+      val capped = Budget(ZoneOffset.UTC, DailyCap.of("1").toOption)
+      val spent = empty.copy(all = Spend(9, Cost.Exact(BigDecimal("1.5"))))
       Vector(
-        Speech.acknowledge(within, named, drafting),
-        Speech.acknowledge(Speaking.Shadow(limits), named, drafting),
-        Speech.acknowledge(Speaking.Off, named, drafting),
-        Speech.acknowledge(within, named, held(Silence.Room(2))),
-        Speech.acknowledge(within, unprompted, drafting)
-      ) ==> Vector(Some("C/1"), None, None, None, None)
+        decide(named.copy(reach = Reach(None, Set.empty)), s = Speaking.Off),
+        decide(named, s = within),
+        decide(named, spent, toGrit, capped),
+        decide(named, spent, Speaking.Off, capped)
+      ) ==> Vector(
+        held(Silence.NoAddress),
+        held(Silence.Unasked(Reading.Chosen(Tags.V1.kind, "chatter"))),
+        held(Silence.OverBudget),
+        held(Silence.OverBudget)
+      )
     }
 
     test("what becomes of a named draft, unjudged: posted within, shadowed, withdrawn when off") {

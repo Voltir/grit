@@ -77,10 +77,16 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
       Right(true)
     }
 
+  def answering(turn: TurnRef)(using Tx^): Either[StoreError, Boolean] =
+    Right(decisions.exists {
+      case (_, Decision.Answering(t, _), _) => t == turn
+      case _ => false
+    })
+
   def drafted(turn: TurnRef, outcome: Outcome, draft: Option[String], at: Instant)(using
       Tx^
   ): Either[StoreError, Boolean] =
-    if (!decisions.exists(d => d._2 == Decision.Drafting(turn)))
+    if (!decisions.exists(d => started(d._2).contains(turn)))
       Left(StoreError.Invalid(s"${turn.workflowId} was never decided on"))
     else if (outcomes.contains(turn)) Right(false)
     else {
@@ -108,5 +114,12 @@ final class InMemorySpeechStore(entries: EntryStore, ledger: InMemoryUsageLedger
     decisions = decisions.filterNot(d => on(d._1.turn))
     outcomes = outcomes.filterNot((t, _) => on(t))
     Right(())
+  }
+
+  /** The turn `d` started, drafting or answering. */
+  private def started(d: Decision): Option[TurnRef] = d match {
+    case Decision.Drafting(t) => Some(t)
+    case Decision.Answering(t, _) => Some(t)
+    case Decision.Held(_) => None
   }
 }

@@ -74,31 +74,49 @@ object TurnSpeechTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a named draft is posted unjudged, recalled or not: no judge step, nothing asked, no judge row in the ledger"
+      "a turn triage answers as said to grit replies as an addressed one, whatever the speaking: its message its own, nothing judged, summarised, its row replied with its words"
     ) {
-      for (recalled <- Vector(true, false)) {
-        val w = speechWorld(recalled)
-        // Every question answered no: a judge asked would hold the draft.
+      for (
+        speaking <- Vector(
+          Speaking.Within(speechLimits),
+          Speaking.Shadow(speechLimits),
+          Speaking.Off
+        )
+      ) {
+        val w = speechWorld(answering = true)
+        // Every question answered no: a judge asked would hold a draft.
         val judge = new AnswersYes(0.1)
         val durable = new InMemoryDurable
-        val done = run(w, judge, kept = Some(directed(w)), durable = durable)
+        val done = run(w, judge, speaking, kept = Some(directed(w)), durable = durable)
         (
-          outcome(w).map(o => (SpeechJson.outcomeName(o), SpeechJson.judgedOf(o))),
+          w.store.outcomes.get(w.turn).map(o => (o._1, o._2)),
           judge.asked,
-          durable.history(w.turn.workflowId).map(_.name).contains(Turn.Step.Judge),
-          w.ledger.rows.map(_._1).filter(id => EntryId.value(id).startsWith("judge:")),
-          awaited(w),
-          reply(w)
+          durable.history(w.turn.workflowId).map(_.name).dropWhile(_ != Turn.Step.Append),
+          reply(w),
+          w.entries.get(w.turn.draftId)(using TestTx.fake)
         ) ==> (
-          Some(("posted", None)),
+          Some((Outcome.Replied, Some("It moved to Thursday."))),
           Vector.empty,
-          false,
-          Vector.empty,
-          Vector((w.turn, "C/1")),
-          Some(Payload.Message(said("It moved to Thursday.")))
+          Vector(Turn.Step.Append, Turn.Step.Summarise, Turn.Step.AppendSummary),
+          Some(Payload.Message(said("It moved to Thursday."))),
+          Right(None)
         )
-        assert(done.startsWith("posted: reply:"))
+        assert(done.startsWith("replied: reply:"))
       }
+    }
+
+    test(
+      "a turn triage answers as said to grit whose model fails keeps failed, nothing written"
+    ) {
+      val w = speechWorld(answering = true)
+      val done = run(
+        w,
+        new AnswersYes(0.9),
+        answer = Left(ProviderError.Unavailable("down")),
+        kept = Some(directed(w))
+      )
+      (outcome(w).map(SpeechJson.outcomeName), reply(w)) ==> (Some("failed"), None)
+      assert(done.startsWith("failed:"))
     }
 
     test(
@@ -156,24 +174,6 @@ object TurnSpeechTests extends TestSuite {
         Vector("jev"),
         Vector((w.turn, "C/1"))
       )
-    }
-
-    test("a named draft under Shadow is shadowed unjudged, nothing posted") {
-      val w = speechWorld()
-      val judge = new AnswersYes(0.1)
-      run(w, judge, Speaking.Shadow(speechLimits), kept = Some(directed(w)))
-      (
-        outcome(w).map(o => (SpeechJson.outcomeName(o), SpeechJson.judgedOf(o))),
-        judge.asked,
-        awaited(w),
-        reply(w)
-      ) ==> (Some(("shadowed", None)), Vector.empty, Vector.empty, None)
-    }
-
-    test("a named draft that passes is kept passed, nothing posted") {
-      val w = speechWorld()
-      run(w, new AnswersYes(0.9), answer = Right(said(" pass")), kept = Some(directed(w)))
-      (outcome(w), awaited(w), reply(w)) ==> (Some(Outcome.Passed), Vector.empty, None)
     }
 
     test(

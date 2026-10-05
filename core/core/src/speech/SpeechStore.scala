@@ -23,11 +23,16 @@ trait SpeechStore {
     */
   def reach(turn: TurnRef)(using Tx^): Either[StoreError, Option[Reach]]
 
-  /** Every unprompted turn decided at or after `since`, oldest first, at its stage. */
+  /** Every unprompted turn decided at or after `since`, oldest first, at its stage: none
+    * answered as said to grit ([[Decision.Answering]]), which, as an addressed turn, counts
+    * in no rate.
+    */
   def spoken(since: Instant)(using Tx^): Either[StoreError, Vector[Spoken]]
 
   /** What the unprompted turns' recorded calls cost on `day`: their drafts, queries, topics,
-    * summaries and judges ([[grit.core.store.UsageLedger]]).
+    * summaries and judges ([[grit.core.store.UsageLedger]]). A turn answered as said to grit
+    * ([[Decision.Answering]]) is not among them: as an addressed turn, it counts only in the
+    * deployment's budget.
     */
   def spentOn(day: Day)(using Tx^): Either[StoreError, Spend]
 
@@ -38,8 +43,13 @@ trait SpeechStore {
       Tx^
   ): Either[StoreError, Boolean]
 
-  /** Keeps what became of the draft of the unprompted turn `turn` (`outcome`, settled `at`),
-    * with the first [[SpeechStore.Excerpt]] characters of `draft`. A `Posted` outcome keeps
+  /** Whether `turn` was decided to be answered as said to grit ([[Decision.Answering]]);
+    * `false` for any other turn, decided on or not.
+    */
+  def answering(turn: TurnRef)(using Tx^): Either[StoreError, Boolean]
+
+  /** Keeps what became of the turn `turn`, drafting or answering (`outcome`, settled `at`),
+    * with the first [[SpeechStore.Excerpt]] characters of `draft`, its draft or reply. A `Posted` outcome keeps
     * its reply's position ([[TurnRef.replyId]]), which must be written first. `false`,
     * writing nothing, when an outcome is kept already; `Invalid` when `turn` was never
     * decided on, or is posted with no reply written.

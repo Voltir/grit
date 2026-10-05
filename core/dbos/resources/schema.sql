@@ -539,10 +539,12 @@ CREATE INDEX IF NOT EXISTS idx_stitches_conversation ON grit.stitches (conversat
 CREATE INDEX IF NOT EXISTS idx_stitches_root ON grit.stitches (root);
 
 -- grit's decision on each heard message that reached it (grit.core.speech.Decision): held,
--- with why (`silence`), or drafting in the heard message's own turn (`workflow`); and, once
--- the turn settles its draft, what became of it (`outcome`), the judge's scores and model (an
--- unprompted draft's; a named draft is not judged, its `grounded` and `worth` NULL), an
--- excerpt of the draft, and a posted reply's position. Triage's answers are in grit.triage. Forms in
+-- with why (`silence`), or drafting in the heard message's own turn (`workflow`), `answering`
+-- when the message was put to grit and its turn runs as an addressed one does (counted in no
+-- rate and in no speech spend); and, once the turn settles, what became of it (`outcome`), the
+-- judge's scores and model (an unprompted draft's; a named draft or a reply is not judged, its
+-- `grounded` and `worth` NULL), an excerpt of the draft or reply, and a posted reply's
+-- position. Triage's answers are in grit.triage. Forms in
 -- SpeechJson. No foreign key: it outlives the heard entry's purge, so the rates and the
 -- day's speech spend count every decision, and each post can be stated with its approval.
 -- Retention: ledger: with its period's usage (SpeechStore.forget, beside UsageLedger.forget),
@@ -564,7 +566,9 @@ CREATE TABLE IF NOT EXISTS grit.speech (
     excerpt         TEXT,
     posted_seq      BIGINT,
     judged_at       TIMESTAMPTZ,
+    answering       BOOLEAN NOT NULL DEFAULT false,
     CHECK (drafting = (silence IS NULL)
+       AND (drafting OR NOT answering)
        AND (outcome IS NULL) = (outcome_kind IS NULL)
        AND (outcome IS NULL OR drafting)
        AND (outcome IS NULL) = (judged_at IS NULL)

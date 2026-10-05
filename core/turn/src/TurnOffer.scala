@@ -57,15 +57,19 @@ object TurnOffer {
       shaped: Option[TurnShape] = None
   )
 
-  /** What a turn answers: a message said to grit, or one grit heard and chose to draft a
-    * reply to ([[grit.core.speech.Speech.decide]]): `Named` when triage read that message as
-    * directed at grit ([[grit.core.triage.Tags.directed]] of the tags it kept),
-    * `Heard` otherwise. A named turn is offered as a heard one, told it was named
-    * ([[TurnPrompt.named]]), and its draft not judged. An offer
-    * recorded before roots existed is `Addressed`.
+  /** What a turn answers: a message said to grit (`Addressed`); a heard one triage decided to
+    * answer as said to grit, having read it as put to grit by name
+    * ([[grit.core.speech.Decision.Answering]]): offered, told, shaped, written and summarised
+    * as an `Addressed` one, its reply posted by its edge and its speech row kept
+    * ([[grit.core.speech.Outcome.Replied]]) (`ByName`); or a heard one grit chose to draft a
+    * reply to (`Heard`, [[grit.core.speech.Decision.Drafting]]). `Named` is a heard message
+    * put to grit by name as an offer recorded it before such messages were answered as said
+    * to grit: drafted, unjudged, and posted through speech
+    * ([[grit.core.speech.Speech.postNamed]]); no offer records it now. An offer recorded
+    * before roots existed is `Addressed`.
     */
   enum Root {
-    case Addressed, Heard, Named
+    case Addressed, Heard, Named, ByName
   }
 
   /** What `turn` is offered now, kept, and recorded as `turn`'s prompt: its conversation's
@@ -82,8 +86,11 @@ object TurnOffer {
     * [[TurnPrompt.unprompted]] when its root is heard,
     * what it may reach there, what it reaches besides ([[TurnPrompt.reached]], for each
     * reached service offering tools), the voice's fragment (none for plain), and the
-    * instruction files the edge read there. Its root is `Heard` when its first entry in
-    * `entries` is a heard message ([[grit.core.store.Payload.Heard]]), else `Addressed`.
+    * instruction files the edge read there. Its root is `ByName` when its first entry in
+    * `entries` is a heard message ([[grit.core.store.Payload.Heard]]) and `answering` (triage
+    * decided to answer it as said to grit, [[grit.core.speech.Decision.Answering]]), `Heard`
+    * for any other heard message, else `Addressed`; a `ByName` turn is offered, told and
+    * shaped as an `Addressed` one.
     *
     * `tooling.recipe` shapes it by its root ([[grit.core.recipe.Rooted]]: a heard message at
     * the focus it was said at, [[grit.core.store.Origin.focus]]): the shaping's width is
@@ -101,7 +108,8 @@ object TurnOffer {
       entries: EntryStore,
       tooling: TurnTooling[C]^,
       turn: TurnRef,
-      weighed: Option[Tags]
+      weighed: Option[Tags],
+      answering: Boolean
   )(using
       Tx^
   ): Either[TurnFailure, Recorded] =
@@ -112,18 +120,19 @@ object TurnOffer {
       )
       all <- entries.list(turn.conversationId)
       first = all.filter(_.turnSeq == turn.turnSeq).minByOption(_.seq)
-      root = first.map(_.payload) match {
+      // The root, how a recipe tells it apart, and what it is told of it.
+      (root, rooted, unasked) = first.map(_.payload) match {
+        case Some(Payload.Heard(_)) if answering => (Root.ByName, Rooted.Addressed, None)
         case Some(Payload.Heard(_)) =>
-          if (weighed.exists(Tags.directed)) Root.Named else Root.Heard
-        case _ => Root.Addressed
-      }
-      rooted = root match {
-        case Root.Heard | Root.Named =>
           val opening = all.minByOption(_.seq).map(_.id) == first.map(_.id)
-          Rooted.Heard(
-            conversation.origin.focus(if (opening) Position.Opening else Position.Reply)
+          (
+            Root.Heard,
+            Rooted.Heard(
+              conversation.origin.focus(if (opening) Position.Opening else Position.Reply)
+            ),
+            Some(TurnPrompt.unprompted)
           )
-        case Root.Addressed => Rooted.Addressed
+        case _ => (Root.Addressed, Rooted.Addressed, None)
       }
       shaping = tooling.recipe.at(rooted)
       workspace = workspaceOf(conversation.origin, tooling.worksIn)
@@ -139,9 +148,9 @@ object TurnOffer {
       advertised = served.tools.filterNot(e => engines.contains(e.name)).flatMap(Hosted.advertised)
       hosted: Vector[Tool.Offered] = described ++ advertised
       // A heard-rooted turn is offered none: its draft runs tools, and only its reply is gated.
-      services = root match {
-        case Root.Addressed => Reaches.of(tooling.reaches, conversation.origin.place)
-        case Root.Heard | Root.Named => Vector.empty
+      services = rooted match {
+        case Rooted.Addressed => Reaches.of(tooling.reaches, conversation.origin.place)
+        case Rooted.Heard(_) => Vector.empty
       }
       reaching <- reachedFrom(hosting, services, engines ++ hosted.map(_.name))
       took = shape(shaping.offering, tooling.knowledge, weighed, workspace, hosted, reaching)
@@ -169,11 +178,7 @@ object TurnOffer {
           TurnPrompt.edge(conversation.origin)
         ) ++ TurnPrompt.destination(conversation.origin) ++
           TurnPrompt.called(tooling.persona, conversation.origin) ++
-          (root match {
-            case Root.Heard => Some(TurnPrompt.unprompted)
-            case Root.Named => Some(TurnPrompt.named)
-            case Root.Addressed => None
-          }) ++
+          unasked ++
           Option.when(kept)(TurnPrompt.reach(workspace, hostedSet)) ++
           offeredReaching.flatMap((service, set) => TurnPrompt.reached(service, set)) ++
           Voice.fragment(voice) ++ place.fragments

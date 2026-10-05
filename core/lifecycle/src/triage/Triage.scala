@@ -27,13 +27,13 @@ import grit.core.triage.{KnowledgeSources, Tags}
   *      Nothing is asked when the message cannot be read or is gone.
   *   1. `record` — the tags kept ([[grit.core.triage.TriageStore.record]]); ignored when the
   *      message is gone or already tagged.
-  *   1. `consider` — when it was tagged now, whether grit drafts a reply to it
-  *      ([[grit.core.speech.Speech.decide]], against the speech ledger), the decision kept,
-  *      held or drafting, in one transaction, with the acknowledgement a draft of a message
-  *      put to grit wants ([[grit.core.speech.Speech.acknowledge]]); a deployment that does
-  *      not speak keeps none.
-  *   1. `start` — when drafting, the heard message's own turn started, a turn rooted on it
-  *      ([[grit.core.store.Payload.Heard]]).
+  *   1. `consider` — when it was tagged now, whether grit drafts a reply to it, or answers it
+  *      as said to grit ([[grit.core.speech.Speech.decide]], against the speech ledger), the
+  *      decision kept, held, drafting or answering, in one transaction, with, when answering,
+  *      its reply awaited and its mark wanted at its reply address; a deployment that does
+  *      not speak keeps none but on a message put to grit.
+  *   1. `start` — when drafting or answering, the heard message's own turn started, a turn
+  *      rooted on it ([[grit.core.store.Payload.Heard]]).
   */
 object Triage {
   import TriageInput.describe
@@ -101,6 +101,13 @@ object Triage {
               case Right(true) =>
                 val now = env.clock.now()
                 val (records, speech) = (env.records, env.speech)
+                def started(as: String, turn: TurnRef): String = {
+                  val start = speech.start
+                  d.step(Step.Start)(() => start(turn).map(_ => turn.workflowId)) match {
+                    case Left(why) => s"$as, not started: $why"
+                    case Right(queued) => s"$as: ${WorkflowId.value(queued)}"
+                  }
+                }
                 val considered = d.transact(Step.Consider)(
                   Speak.consider(records, speech.speaking, speech.budget, triage, entry, tags, now)
                 )
@@ -108,12 +115,8 @@ object Triage {
                   case Left(why) => s"not considered: $why"
                   case Right(Decision.Held(why)) =>
                     s"held: ${SpeechJson.writeSilence(why).render()}"
-                  case Right(Decision.Drafting(turn)) =>
-                    val start = speech.start
-                    d.step(Step.Start)(() => start(turn).map(_ => turn.workflowId)) match {
-                      case Left(why) => s"drafting, not started: $why"
-                      case Right(queued) => s"drafting: ${WorkflowId.value(queued)}"
-                    }
+                  case Right(Decision.Drafting(turn)) => started("drafting", turn)
+                  case Right(Decision.Answering(turn, _)) => started("answering", turn)
                 })
             }
         })

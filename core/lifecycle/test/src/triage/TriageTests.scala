@@ -10,6 +10,7 @@ import grit.core.period.Probability
 import grit.core.speech.{Decision, Limits, Silence, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{Stitching, Tuning}
+import grit.core.store.Tx
 import grit.core.triage.{Bound, Earning, Gate, KnowledgeSources, Reading, Tags}
 import grit.dbos.sql.TestTx
 
@@ -367,20 +368,35 @@ object TriageTests extends TestSuite {
     }
 
     test(
-      "a message put to grit by name and drafted wants its acknowledgement at its reply address, once across a replay"
+      "a message put to grit is answered: its reply awaited and its mark wanted at its reply address, under shadow as within, once across a replay"
     ) {
-      val w = new World
-      val t = w.hear("Pip, what did we decide about the refi page?", "Ana", 0)
-      val durable = new InMemoryDurable
-      durable.run(t.workflowId)(w.body(named, 1, within))
-      val history = durable.history(t.workflowId)
-      new InMemoryDurable().replay(t.workflowId, history)(w.body(named, 1, within))
-      w.acknowledgements.standing()(using TestTx.fake) ==>
-        Right(Vector(Acknowledgement(TurnRef(c, t.turn), "C/1.0", shown = false)))
+      def answered(speaking: Speaking) = {
+        val w = new World
+        val t = w.hear("Pip, what did we decide about the refi page?", "Ana", 0)
+        val durable = new InMemoryDurable
+        durable.run(t.workflowId)(w.body(named, 1, speaking))
+        val history = durable.history(t.workflowId)
+        new InMemoryDurable().replay(t.workflowId, history)(w.body(named, 1, speaking))
+        val turn = TurnRef(c, t.turn)
+        given Tx = TestTx.fake
+        (
+          w.speech.decisions.map(_._2),
+          w.started,
+          w.deliveries.pending().map(_.map(p => (p.turn, p.to))),
+          w.acknowledgements.standing()
+        ) ==> (
+          Vector(Decision.Answering(turn, "C/1.0")),
+          Vector(turn),
+          Right(Vector((turn, "C/1.0"))),
+          Right(Vector(Acknowledgement(turn, "C/1.0", shown = false)))
+        )
+      }
+      answered(within)
+      answered(Speaking.Shadow(limits))
     }
 
     test(
-      "an unprompted draft, a shadow deployment's draft and a held message put to grit want no acknowledgement"
+      "an unprompted draft and a held message put to grit await no reply and want no mark"
     ) {
       def wanted(classifier: Classifier^, speaking: Speaking) = {
         val w = new World
@@ -388,29 +404,33 @@ object TriageTests extends TestSuite {
         new InMemoryDurable().run(t.workflowId)(w.body(classifier, 1, speaking))
         val kinds = w.speech.decisions.map(_._2 match {
           case Decision.Drafting(_) => "drafting"
+          case Decision.Answering(_, _) => "answering"
           case Decision.Held(_) => "held"
         })
-        (kinds, w.acknowledgements.standing()(using TestTx.fake))
+        given Tx = TestTx.fake
+        (kinds, w.deliveries.pending(), w.acknowledgements.standing())
       }
       val heldNamed =
         new Scripted(Vector(1, 0, 0, 0), Vector(0.125, 0.125, 0.875, 0.5, 0.125, 0.125))
-      Vector(
-        wanted(asking, within),
-        wanted(named, Speaking.Shadow(limits)),
-        wanted(heldNamed, within)
-      ) ==>
+      Vector(wanted(asking, within), wanted(heldNamed, within)) ==>
         Vector(
-          (Vector("drafting"), Right(Vector.empty)),
-          (Vector("drafting"), Right(Vector.empty)),
-          (Vector("held"), Right(Vector.empty))
+          (Vector("drafting"), Right(Vector.empty), Right(Vector.empty)),
+          (Vector("held"), Right(Vector.empty), Right(Vector.empty))
         )
     }
 
-    test("a deployment that does not speak keeps no decision and starts nothing") {
+    test(
+      "a deployment that does not speak keeps no decision on a message not put to grit, and answers one put to grit"
+    ) {
       val w = new World
       val t = w.hear("what did we decide?", "Ana", 0)
       new InMemoryDurable().run(t.workflowId)(w.body(asking, 1))
       (w.started, w.speech.decisions) ==> (Vector.empty, Vector.empty)
+      val n = w.hear("Pip, what did we decide?", "Ana", 1)
+      new InMemoryDurable().run(n.workflowId)(w.body(named, 1))
+      val turn = TurnRef(c, n.turn)
+      (w.started, w.speech.decisions.map(_._2)) ==>
+        (Vector(turn), Vector(Decision.Answering(turn, "C/1.0")))
     }
   }
 }

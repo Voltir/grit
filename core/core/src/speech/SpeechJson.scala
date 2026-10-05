@@ -16,22 +16,29 @@ import grit.core.triage.{Bound, Gate, GateJson, Kind, Reading, Tags}
   */
 object SpeechJson {
 
-  /** `{"drafting": turn's workflow id}` or `{"held": silence}`. */
+  /** `{"drafting": turn's workflow id}`, `{"answering": turn's workflow id, "to": address}` or
+    * `{"held": silence}`.
+    */
   def writeDecision(d: Decision): ujson.Value = d match {
     case Decision.Drafting(turn) => ujson.Obj("drafting" -> WorkflowId.value(turn.workflowId))
+    case Decision.Answering(turn, to) =>
+      ujson.Obj("answering" -> WorkflowId.value(turn.workflowId), "to" -> to)
     case Decision.Held(why) => ujson.Obj("held" -> writeSilence(why))
   }
 
   def readDecision(v: ujson.Value): Either[String, Decision] =
     obj(v).flatMap { o =>
-      (o.get("drafting"), o.get("held")) match {
-        case (Some(ujson.Str(id)), None) =>
-          TurnRef
-            .fromWorkflowId(WorkflowId(id))
-            .map(Decision.Drafting(_))
-            .toRight(s"decision: $id is not a turn")
-        case (None, Some(why)) => readSilence(why).map(Decision.Held(_))
-        case _ => Left("decision: expected {drafting} or {held}")
+      def turn(id: String) =
+        TurnRef.fromWorkflowId(WorkflowId(id)).toRight(s"decision: $id is not a turn")
+      (o.get("drafting"), o.get("answering"), o.get("held")) match {
+        case (Some(ujson.Str(id)), None, None) => turn(id).map(Decision.Drafting(_))
+        case (None, Some(ujson.Str(id)), None) =>
+          for {
+            t <- turn(id)
+            to <- str(o, "to")
+          } yield Decision.Answering(t, to)
+        case (None, None, Some(why)) => readSilence(why).map(Decision.Held(_))
+        case _ => Left("decision: expected {drafting}, {answering, to} or {held}")
       }
     }
 
@@ -125,7 +132,8 @@ object SpeechJson {
       case Cleared.Named => "named" -> ujson.True
     }
     val detail: Vector[(String, ujson.Value)] = out match {
-      case Outcome.Passed | Outcome.NothingRecalled | Outcome.Withdrawn => Vector.empty
+      case Outcome.Passed | Outcome.NothingRecalled | Outcome.Withdrawn | Outcome.Replied =>
+        Vector.empty
       case Outcome.Spoken(by) => Vector("by" -> ujson.Str(EntryId.value(by)))
       case Outcome.Unjudged(why) => Vector("why" -> ujson.Str(why))
       case Outcome.Below(j, at) => Vector("judged" -> writeJudged(j), "post_at" -> num(at))
@@ -166,6 +174,7 @@ object SpeechJson {
         case "shadowed" => cleared.map(Outcome.Shadowed(_))
         case "posted" => cleared.map(Outcome.Posted(_))
         case "failed" => str(o, "why").map(Outcome.Failed(_))
+        case "replied" => Right(Outcome.Replied)
         case other => Left(s"outcome: unknown kind $other")
       }
     }
@@ -177,7 +186,7 @@ object SpeechJson {
     case Outcome.Posted(Cleared.Scored(j)) => Some(j)
     case Outcome.Shadowed(Cleared.Named) | Outcome.Posted(Cleared.Named) | Outcome.Passed |
         Outcome.NothingRecalled | Outcome.Spoken(_) | Outcome.Withdrawn | Outcome.Unjudged(_) |
-        Outcome.Failed(_) =>
+        Outcome.Replied | Outcome.Failed(_) =>
       None
   }
 
@@ -191,6 +200,7 @@ object SpeechJson {
     case Outcome.Below(_, _) => "below"
     case Outcome.Shadowed(_) => "shadowed"
     case Outcome.Posted(_) => "posted"
+    case Outcome.Replied => "replied"
     case Outcome.Failed(_) => "failed"
   }
 

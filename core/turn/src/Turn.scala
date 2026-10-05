@@ -12,7 +12,7 @@ import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile, TurnProfileId}
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
-import grit.core.speech.{Outcome, Speech, SpeechJson}
+import grit.core.speech.{Outcome, Speech, SpeechJson, SpeechStore}
 import grit.core.stitch.{Along, Opening, StitchReads, Stitching, Strand}
 import grit.core.store.{Entry, Jot, Nearby, Payload, Speakers, StoreError, Tx, UsageLedger}
 import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
@@ -83,9 +83,12 @@ import TurnVerdict.Shape
   *      model called again after its call to the tool, a plain call if that does not
   *      answer, then `record-verdict` ([[Step.optional]]).
   *   1. `append` — the reply recorded as the turn's entry, with its cost in the ledger
-  *      beside the estimate of its request, atomically with the step. A turn rooted on a
-  *      heard message ([[TurnOffer.Root.Heard]] or `Named`, as its `offer` recorded) records its answer
-  *      as a draft instead ([[grit.core.store.Payload.Draft]]), then:
+  *      beside the estimate of its request, atomically with the step; for a heard message
+  *      answered as said to grit ([[TurnOffer.Root.ByName]]), with its speech row's outcome,
+  *      [[grit.core.speech.Outcome.Replied]], its edge awaiting the reply since triage decided
+  *      to answer it. A turn rooted on a heard message it drafts a reply to
+  *      ([[TurnOffer.Root.Heard]] or `Named`, as its `offer` recorded) records its answer as a
+  *      draft instead ([[grit.core.store.Payload.Draft]]), then:
   *   1. `judge` — an unprompted ([[TurnOffer.Root.Heard]]) turn's draft scored against its
   *      thread and what its window recalled ([[TurnJudge]]); nothing asked when it passes or
   *      nothing was recalled. A named turn's draft is not judged; one that passed this point
@@ -94,8 +97,9 @@ import TurnVerdict.Shape
   *      [[grit.core.speech.Speech.postNamed]] for a named one that does not pass),
   *      held when the assistant already replied after its root ([[Speech.spoken]]): a posted one written as the
   *      turn's reply and awaited at its heard message's address, in one transaction with
-  *      the judge's cost and the outcome kept. A heard-rooted turn that failed before its
-  *      draft records only `Failed` here. Only a posted draft goes on to the summary.
+  *      the judge's cost and the outcome kept. A heard-rooted turn, `ByName` among them,
+  *      that failed before its draft or reply records only `Failed` here. Only a posted draft
+  *      goes on to the summary.
   *   1. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]).
   *   1. `append-summary` — the summary recorded as the turn's entry after the reply, with
   *      its cost in the ledger as in `append`.
@@ -420,9 +424,22 @@ object Turn {
               if (d.patch(Patches.Weigh)) d.step(Step.Weigh)(() => weigh(env, tooling, turn))
               else None
             val ledger = env.records.ledger
+            val speech = env.speech.store
             d.transact(Step.Offer)(
-              TurnOffer
-                .decide(hosting, env.records.entries, tooling, turn, weighed.flatMap(_.answers))
+              speech
+                .answering(turn)
+                .left
+                .map(storeFailure)
+                .flatMap(answering =>
+                  TurnOffer.decide(
+                    hosting,
+                    env.records.entries,
+                    tooling,
+                    turn,
+                    weighed.flatMap(_.answers),
+                    answering
+                  )
+                )
                 .flatMap(offered => weighCost(ledger, turn, weighed).map(_ => offered))
             ).flatMap(TurnOffer.load(hosting, env.db, _)) match {
               case Left(failure) => s"failed: $failure"
@@ -606,7 +623,7 @@ object Turn {
       ran.verdictUnrecorded.fold("")(f => s"; verdict not recorded: $f")
     (ran.result, offer.root) match {
       case (Left(failure), TurnOffer.Root.Addressed) => s"failed: $failure$topics"
-      case (Left(failure), TurnOffer.Root.Heard | TurnOffer.Root.Named) =>
+      case (Left(failure), TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName) =>
         val at = env.clock.now()
         val speech = env.speech
         val settled = d.transact(Step.RecordSpeech)(
@@ -641,7 +658,7 @@ object Turn {
           case Right(other) =>
             s"drafted: ${EntryId.value(draft)}; ${SpeechJson.outcomeName(other)}$topics"
         }
-      case (Right(reply), TurnOffer.Root.Addressed) =>
+      case (Right(reply), TurnOffer.Root.Addressed | TurnOffer.Root.ByName) =>
         val summary =
           summarise(turn, reply, placing)(using env, pins, d) match {
             case Right(id) => s"summarised: ${EntryId.value(id)}"
@@ -936,6 +953,7 @@ object Turn {
               append(
                 offer,
                 env.records,
+                env.speech.store,
                 turn,
                 window,
                 a.reply,
@@ -1124,6 +1142,7 @@ object Turn {
                 append(
                   offer,
                   env.records,
+                  env.speech.store,
                   turn,
                   seen,
                   l.answer,
@@ -1524,7 +1543,9 @@ object Turn {
   }
 
   /** Records `message` as `turn`'s reply entry ([[TurnRef.replyId]]), or, when `offer`'s
-    * root is heard, as its draft ([[TurnRef.draftId]], [[Payload.Draft]]), dated `at`, after
+    * root is a heard message it drafts a reply to, as its draft ([[TurnRef.draftId]],
+    * [[Payload.Draft]]); a reply to a heard message answered as said to grit is kept as its
+    * outcome in `speech` ([[Outcome.Replied]]) with its words; dated `at`, after
     * everything already in the conversation, and what it cost in the ledger beside the
     * estimate of the request that produced it: rebuilt from the same window and the same
     * entries (the turn's own were all recorded before its call, and the reply is not yet
@@ -1534,6 +1555,7 @@ object Turn {
   private def append(
       offer: TurnOffer,
       records: TurnRecords,
+      speech: SpeechStore,
       turn: TurnRef,
       window: Window,
       message: Message.Assistant,
@@ -1542,7 +1564,8 @@ object Turn {
       at: Instant
   )(using Tx^): Either[TurnFailure, EntryId] = {
     val (id, payload) = offer.root match {
-      case TurnOffer.Root.Addressed => (turn.replyId, Payload.Message(message))
+      case TurnOffer.Root.Addressed | TurnOffer.Root.ByName =>
+        (turn.replyId, Payload.Message(message))
       case TurnOffer.Root.Heard | TurnOffer.Root.Named => (turn.draftId, Payload.Draft(message))
     }
     val TurnRecords(entries, ledger, estimator, _, _) = records
@@ -1572,6 +1595,14 @@ object Turn {
         .record(id, turn, turn.workflowId, message.model, message.usage, estimator.request(sent))
         .left
         .map(storeFailure)
+      _ <- offer.root match {
+        case TurnOffer.Root.ByName =>
+          speech
+            .drafted(turn, Outcome.Replied, TurnJudge.said(message), at)
+            .left
+            .map(storeFailure)
+        case TurnOffer.Root.Addressed | TurnOffer.Root.Heard | TurnOffer.Root.Named => Right(true)
+      }
     } yield id
   }
 

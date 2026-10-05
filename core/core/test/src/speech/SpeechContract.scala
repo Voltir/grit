@@ -77,6 +77,13 @@ abstract class SpeechContract extends TestSuite {
     turn
   }
 
+  /** A heard message as `c`'s next turn, decided at `at` to be answered as said to grit. */
+  private def answer(c: ConversationId, at: Instant): TurnRef = {
+    val turn = next(c, Payload.Heard("Pip, is it Thursday?"), s"${ConversationId.value(c)}:a:$at")
+    transaction(speech.decided(heardAs(turn), Decision.Answering(turn, "C/1"), at)) ==> Right(true)
+    turn
+  }
+
   private def mine(c: ConversationId, since: Instant): Vector[Spoken] =
     transaction(right(speech.spoken(since))).filter(_.turn.conversationId == c)
 
@@ -252,6 +259,38 @@ abstract class SpeechContract extends TestSuite {
       }
       transaction(speech.spentOn(today)) ==>
         Right(before + Spend(2, Cost.Exact(BigDecimal("0.002"))))
+    }
+    test(
+      "a turn answered as said to grit is not spoken, spends no speech, and settles once"
+    ) {
+      val c = conversation("speech-answering")
+      val answering = answer(c, At)
+      val drafting = decide(c, At.plusSeconds(1), drafting = true)
+      val before = transaction(right(speech.spentOn(today)))
+      transaction {
+        right(
+          ledger.record(answering.replyId, answering, answering.workflowId, "m", usage, Tokens(10))
+        )
+      }
+      (
+        transaction(speech.spentOn(today)),
+        mine(c, At).map(_.turn),
+        transaction(speech.answering(answering)),
+        transaction(speech.answering(drafting))
+      ) ==> (Right(before), Vector(drafting), Right(true), Right(false))
+      transaction {
+        val n = right(entries.lockNext(c))
+        right(
+          entries.insert(
+            Entry(answering.replyId, c, answering.turnSeq, None, n.seq, Payload.Message(reply), At)
+          )
+        )
+      }
+      (
+        transaction(speech.drafted(answering, Outcome.Replied, Some("it moved"), At)),
+        transaction(speech.drafted(answering, Outcome.Failed("late"), None, At)),
+        mine(c, At).map(_.turn)
+      ) ==> (Right(true), Right(false), Vector(drafting))
     }
   }
 }

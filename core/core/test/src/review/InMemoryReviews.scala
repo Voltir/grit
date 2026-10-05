@@ -153,6 +153,8 @@ final class InMemoryReviews(
     speech.decisions.find(_._1.turn == turn).flatMap {
       case (_, Decision.Held(why), _) => Some(Settled.Held(why))
       case (_, Decision.Drafting(t), _) => speech.outcomes.get(t).map(o => Settled.Drafted(o._1))
+      case (_, Decision.Answering(t, _), _) =>
+        speech.outcomes.get(t).map(o => Settled.Drafted(o._1))
     }
   }
 

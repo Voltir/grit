@@ -481,7 +481,7 @@ final class SlackEdge(
   }
 
   /** One pass over the acknowledgements standing: a heard message a turn will answer, put to
-    * grit by name ([[grit.core.speech.Speech.acknowledge]]), wears [[Working]] while the turn
+    * grit by name ([[grit.core.speech.Decision.Answering]]), wears [[Working]] while the turn
     * runs, recorded as shown once Slack has it. Once the turn has ended its mark is taken down,
     * unless its reply is still to be posted, which [[deliver]] takes it down after; one never
     * shown is cleared without being put up, and one on a message Slack no longer has is

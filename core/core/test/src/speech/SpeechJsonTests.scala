@@ -58,12 +58,14 @@ object SpeechJsonTests extends TestSuite {
     Outcome.Shadowed(Cleared.Named),
     Outcome.Posted(Cleared.Scored(judged)),
     Outcome.Posted(Cleared.Named),
+    Outcome.Replied,
     Outcome.Failed("no model")
   )
 
   val tests = Tests {
     test("every decision, silence and outcome reads back as written, through text too") {
-      val decisions = Decision.Drafting(turn) +: silences.map(Decision.Held(_))
+      val decisions =
+        Decision.Drafting(turn) +: Decision.Answering(turn, "C/1") +: silences.map(Decision.Held(_))
       decisions.map(d =>
         SpeechJson.readDecision(ujson.read(SpeechJson.writeDecision(d).render()))
       ) ==>
@@ -82,6 +84,8 @@ object SpeechJsonTests extends TestSuite {
 
     test("the stored forms") {
       SpeechJson.writeDecision(Decision.Drafting(turn)).render() ==> """{"drafting":"c:3"}"""
+      SpeechJson.writeDecision(Decision.Answering(turn, "C/1/2")).render() ==>
+        """{"answering":"c:3","to":"C/1/2"}"""
       SpeechJson
         .writeDecision(Decision.Held(Silence.Gated(Gate.Failed(notChatter, p(1)), Vector.empty)))
         .render() ==>
@@ -105,6 +109,7 @@ object SpeechJsonTests extends TestSuite {
         "shadowed",
         "posted",
         "posted",
+        "replied",
         "failed"
       )
     }

@@ -88,6 +88,29 @@ object RecordTurnHistories {
       recorded(durable, w.turn)
     }
 
+    /** A turn rooted on a heard message triage decided to answer as said to grit, under
+      * Within; its model failing when `fail`.
+      */
+    def byName(fail: Boolean): History = {
+      val w = speechWorld(answering = true)
+      val durable = new InMemoryDurable
+      durable.run(w.turn.workflowId)(
+        turnBodyWith(
+          w.entries,
+          new RecordingProvider(fail = fail),
+          new Before(w.entries),
+          w.ledger,
+          new AnswersYes(0.9),
+          TurnSpeech(grit.core.speech.Speaking.Within(speechLimits), w.store, w.deliveries),
+          weighing = TurnWeighing(
+            directed(w),
+            new Weighs(Left(grit.core.triage.Weighing.Unweighed.Unavailable))
+          )
+        )
+      )
+      recorded(durable, w.turn)
+    }
+
     /** [[named]] cut just after its `judge` step, as recorded before named drafts went
       * unjudged: in flight across that change.
       */
@@ -539,6 +562,10 @@ object RecordTurnHistories {
       "named-judged-before-speech" -> namedBeforeSpeech,
       // A named turn since its drafts went unjudged: its patch's marker, no judge step.
       "named-posted" -> named,
+      // A heard message triage answered as said to grit: an addressed turn's steps, and, its
+      // model failing, its failure kept in record-speech.
+      "by-name-replied" -> byName(fail = false),
+      "by-name-failed" -> byName(fail = true),
       "replied" -> replied,
       "stitched-first" -> {
         val ch = new StitchChannel(

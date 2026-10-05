@@ -75,7 +75,8 @@ object Fixtures {
         4,
         root match {
           case TurnOffer.Root.Addressed => Payload.Message(Message.User(asked))
-          case TurnOffer.Root.Heard | TurnOffer.Root.Named => Payload.Heard(asked)
+          case TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName =>
+            Payload.Heard(asked)
         }
       ),
       entry(c1, seq, 5, Payload.Query("QUERY-MARKER deploy freeze")),
@@ -119,12 +120,12 @@ object Fixtures {
             AssistantBlock.Text(replied)
           )
           root match {
-            case TurnOffer.Root.Addressed => Payload.Message(m)
+            case TurnOffer.Root.Addressed | TurnOffer.Root.ByName => Payload.Message(m)
             case TurnOffer.Root.Heard | TurnOffer.Root.Named => Payload.Draft(m)
           }
         },
         root match {
-          case TurnOffer.Root.Addressed => EntryId.value(ref.replyId)
+          case TurnOffer.Root.Addressed | TurnOffer.Root.ByName => EntryId.value(ref.replyId)
           case TurnOffer.Root.Heard | TurnOffer.Root.Named => EntryId.value(ref.draftId)
         }
       ),
