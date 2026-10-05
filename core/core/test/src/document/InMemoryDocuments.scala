@@ -24,9 +24,10 @@ final class InMemoryDocuments extends DocumentStore {
   @caps.unsafe.untrackedCaptures
   private var last = 0L
 
-  // As `rows`: only ever replaced by a new immutable map.
+  // As `rows`: only ever replaced by a new immutable map. Each plugin's terms, and whether it
+  // is enabled.
   @caps.unsafe.untrackedCaptures
-  private var terms = Map.empty[PluginName, DocumentTerms]
+  private var terms = Map.empty[PluginName, (DocumentTerms, Boolean)]
 
   /** Where its keepers mark the versions they leave for deletion. */
   val tombstones: InMemoryTombstones =
@@ -75,7 +76,7 @@ final class InMemoryDocuments extends DocumentStore {
   def shelf(plugin: PluginName): DocumentShelf = new Shelf(plugin)
 
   def declared()(using Tx^): Either[StoreError, Vector[(PluginName, DocumentTerms)]] =
-    Right(terms.toVector)
+    Right(terms.toVector.collect { case (p, (t, true)) => p -> t })
 
   /** `r`, version `v`, no longer current from `at`, and marked for deletion. */
   private def supersede(v: Long, r: Row, at: Instant)(using Tx^): Either[StoreError, Unit] = {
@@ -130,7 +131,7 @@ final class InMemoryDocuments extends DocumentStore {
     })
 
   def declare(enabled: Vector[(PluginName, DocumentTerms)])(using Tx^): Either[StoreError, Unit] = {
-    terms = enabled.toMap
+    terms = terms.map((p, t) => p -> (t._1, false)) ++ enabled.map((p, t) => p -> (t, true))
     Right(())
   }
 
@@ -148,7 +149,24 @@ final class InMemoryDocuments extends DocumentStore {
   }
 
   def kept()(using Tx^): Either[StoreError, Vector[PluginName]] =
-    Right(rows.values.map(_.plugin).toVector.distinct)
+    Right((rows.values.map(_.plugin).toVector ++ terms.keys).distinct)
+
+  def forget(version: DocumentVersion)(using Tx^): Either[StoreError, Unit] = {
+    rows = rows - DocumentVersion.value(version)
+    Right(())
+  }
+
+  def remove(plugin: PluginName, at: Instant)(using Tx^): Either[StoreError, Unit] = {
+    val gone = rows.collect { case (v, r) if r.plugin == plugin => v }.toSet
+    val ended = tombstones.pending.map(_.target).foldLeft[Either[StoreError, Unit]](Right(())) {
+      case (acc, t @ Target.Document(v)) if gone(DocumentVersion.value(v)) =>
+        acc.flatMap(_ => tombstones.collected(t, at))
+      case (acc, _) => acc
+    }
+    rows = rows -- gone
+    terms = terms - plugin
+    ended
+  }
 
   private class Shelf(plugin: PluginName) extends DocumentShelf {
     def current(key: DocKey)(using Tx^): Either[StoreError, Option[Document]] =

@@ -1,0 +1,36 @@
+package grit.dbos.engine
+
+import grit.core.document.{
+  DocumentContract,
+  DocumentKeeper,
+  DocumentShelf,
+  DocumentStore,
+  DocumentTerms
+}
+import grit.core.id.PluginName
+import grit.core.store.{Tombstones, Tx}
+import grit.dbos.sql.{LiveDb, SqlDocuments, SqlTombstones, TestPostgres}
+
+/** The documents contract, kept by the SQL store against a real Postgres. */
+object SqlDocumentsTests extends DocumentContract {
+
+  // Opening an engine applies schema.sql; nothing here launches DBOS.
+  private lazy val config = {
+    val c = TestPostgres.freshDatabase("sql_documents")
+    LiveEngine.open(c, "test").close()
+    c
+  }
+
+  protected val tombstones: Tombstones = new SqlTombstones
+
+  private val documents = new SqlDocuments(tombstones)
+
+  protected val store: DocumentStore = documents
+
+  protected def keeper(plugin: PluginName, terms: DocumentTerms): DocumentKeeper =
+    documents.keeper(plugin, terms)
+
+  protected def shelf(plugin: PluginName): DocumentShelf = documents.shelf(plugin)
+
+  protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
+}

@@ -53,6 +53,14 @@ trait DocumentStore extends DocumentSearch {
     */
   def placed(versions: Vector[DocumentVersion], at: Instant)(using Tx^): Either[StoreError, Unit]
 
-  /** The plugins with document rows kept, enabled or not. */
+  /** The plugins with documents or terms kept, enabled or not. */
   def kept()(using Tx^): Either[StoreError, Vector[PluginName]]
+
+  /** Deletes `version`: [[read]] no longer finds it. Nothing when it is gone already. */
+  def forget(version: DocumentVersion)(using Tx^): Either[StoreError, Unit]
+
+  /** Deletes every version of `plugin`'s documents and its terms, and ends at `at` the
+    * tombstones pending on those versions, so none is left naming a version gone.
+    */
+  def remove(plugin: PluginName, at: Instant)(using Tx^): Either[StoreError, Unit]
 }

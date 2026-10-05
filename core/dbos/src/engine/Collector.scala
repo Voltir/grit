@@ -6,6 +6,7 @@ import javax.sql.DataSource
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
+import grit.core.document.DocumentStore
 import grit.core.id.{PeriodRef, PeriodSeq, TurnSeq, WorkflowId}
 import grit.core.period.{LifecycleSettings, Period, PeriodState, Purgeable}
 import grit.core.plugin.{PluginCursors, PostRef}
@@ -44,26 +45,41 @@ private[engine] final class Collector(
     profiles: ModelProfileStore,
     prompts: PromptStore,
     cursors: PluginCursors,
+    documents: DocumentStore,
     tombstones: Tombstones
 ) {
   import Collector.*
 
-  /** Every due tombstone of each kind, at most [[Batch]] a kind, collected, spared or
-    * deferred at `now` under `settings`; then the tombstones ended longer ago than the ledger
-    * window forgotten.
+  /** Every due tombstone of each kind, at most [[Batch]] a kind, and of a kind whose
+    * retention each plugin declares, at most [[Batch]] for each enabled plugin under its
+    * terms in force, collected, spared or deferred at `now` under `settings`; then the
+    * tombstones ended longer ago than the ledger window forgotten.
     */
   def once(settings: LifecycleSettings, now: Instant): Either[StoreError, Swept] =
     for {
       swept <- Kinds.foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, kind) =>
         acc.flatMap { done =>
           kind.retention(settings.windows) match {
-            // A plugin's documents, kept as its terms declare: not collected by this sweep.
-            case Retention.Declared => Right(done)
             case Retention.For(window) =>
               Transact
                 .read(dataSource)(tombstones.due(kind, now.minusMillis(window.toMillis), Batch))
-                .flatMap(_.foldLeft[Either[StoreError, Swept]](Right(done)) { (acc, t) =>
-                  acc.flatMap(done => collect(t, now).map(done + _))
+                .flatMap(all(_, done, now))
+            case Retention.Declared =>
+              Transact
+                .read(dataSource)(documents.declared())
+                .flatMap(_.foldLeft[Either[StoreError, Swept]](Right(done)) {
+                  case (acc, (plugin, terms)) =>
+                    acc.flatMap { done =>
+                      Transact
+                        .read(dataSource)(
+                          tombstones.documentsDue(
+                            plugin,
+                            now.minusMillis(terms.retention.toMillis),
+                            Batch
+                          )
+                        )
+                        .flatMap(all(_, done, now))
+                    }
                 })
           }
         }
@@ -72,6 +88,12 @@ private[engine] final class Collector(
         tombstones.forget(now.minusMillis(settings.windows.ledger.toMillis))
       )
     } yield swept
+
+  /** Each of `due` collected at `now`, after `done`. */
+  private def all(due: Vector[Tombstone], done: Swept, now: Instant): Either[StoreError, Swept] =
+    due.foldLeft[Either[StoreError, Swept]](Right(done)) { (acc, t) =>
+      acc.flatMap(done => collect(t, now).map(done + _))
+    }
 
   private def collect(tombstone: Tombstone, now: Instant): Either[StoreError, Swept] = {
     val target = tombstone.target
@@ -261,10 +283,14 @@ private[engine] final class Collector(
       case Target.Disabled(plugin) =>
         for {
           _ <- cursors.remove(plugin)
+          _ <- documents.remove(plugin, now)
           _ <- tombstones.collected(target, now)
         } yield Outcome.Collected
-      // Never due in `once`: its kind's retention is declared.
-      case Target.Document(_) => Right(Outcome.Waiting)
+      case Target.Document(version) =>
+        for {
+          _ <- documents.forget(version)
+          _ <- tombstones.collected(target, now)
+        } yield Outcome.Collected
     }
 }
 

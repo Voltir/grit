@@ -6,6 +6,7 @@ import scala.jdk.CollectionConverters.*
 import scala.jdk.OptionConverters.*
 import scala.util.control.NonFatal
 
+import grit.core.document.DocumentSearch
 import grit.core.durable.StepRecord
 import grit.core.id.WorkflowId
 import grit.core.recipe.RoomReads
@@ -29,6 +30,7 @@ import grit.dbos.sql.{
   DbConfig,
   SqlConversationStore,
   SqlDb,
+  SqlDocuments,
   SqlEntrySearch,
   SqlEntryStore,
   SqlLifecycleStore,
@@ -38,6 +40,7 @@ import grit.dbos.sql.{
   SqlReviews,
   SqlRoomReads,
   SqlStitchStore,
+  SqlTombstones,
   SqlToolSets,
   SqlTriageShadows,
   SqlTriageStore,
@@ -64,6 +67,9 @@ trait Reader extends caps.SharedCapability, AutoCloseable {
   val stitches: StitchStore
   val rooms: RoomReads
   val search: EntrySearch
+
+  /** The enabled plugins' documents as windows draw on them. */
+  val documents: DocumentSearch
   val principals: Principals
   val triage: TriageStore
   val shadows: TriageShadows
@@ -121,6 +127,8 @@ object Reader {
     val stitches: StitchStore = new SqlStitchStore
     val rooms: RoomReads = new SqlRoomReads
     val search: EntrySearch = new SqlEntrySearch()
+    // Its keepers would write tombstones; a reader only searches, so none is ever built.
+    val documents: DocumentSearch = new SqlDocuments(new SqlTombstones)
     val principals: Principals = new SqlPrincipals()
     val triage: TriageStore = new SqlTriageStore
     val shadows: TriageShadows = new SqlTriageShadows

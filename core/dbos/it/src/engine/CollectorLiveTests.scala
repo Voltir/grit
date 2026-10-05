@@ -6,10 +6,13 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
+import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms, Written}
 import grit.core.durable.Durable
 import grit.core.id.{
   CloseRef,
   ConversationId,
+  DocKey,
+  DocumentVersion,
   EntryId,
   EntrySeq,
   PeriodRef,
@@ -33,14 +36,15 @@ import grit.core.period.{
   TestClosings,
   Windows
 }
-import grit.core.place.{Directory, Locality}
-import grit.core.plugin.{CacheDocs, CachePosting, Plugin, PostRef}
+import grit.core.place.{Directory, Locality, Namespace, Place}
+import grit.core.plugin.{CacheDocs, CachePosting, Documents, Plugin, PostRef}
 import grit.core.retention.Target
 import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
 import grit.dbos.sql.{
   DbConfig,
   LiveDb,
   SqlCacheDocs,
+  SqlDocuments,
   SqlEntryStore,
   SqlLifecycleStore,
   SqlModelProfileStore,
@@ -412,6 +416,44 @@ object CollectorLiveTests extends TestSuite {
       def post(closed: ClosedPeriod, docs: CacheDocs)(using Tx^): Either[StoreError, Unit] =
         Right(())
     })
+  }
+
+  /** Documents kept two minutes once no longer current. */
+  private val Terms: DocumentTerms =
+    (for {
+      label <- DocLabel.of("notes")
+      terms <- DocumentTerms.of(label, DocWeight.Unscaled, 2.minutes, 10)
+    } yield terms).getOrElse(sys.error("terms"))
+
+  /** A plugin with documents under [[Terms]] that it never posts to. */
+  private final class Keeping(val name: PluginName) extends Plugin {
+    val version: Int = 1
+    override val documents: Option[Documents] = Some(new Documents {
+      val terms: DocumentTerms = Terms
+      def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] =
+        Right(())
+    })
+  }
+
+  private val documents = new SqlDocuments(tombstones)
+
+  /** `texts` written in turn under one key of `plugin`'s at `at`: their versions. */
+  private def wrote(
+      config: DbConfig,
+      plugin: PluginName,
+      at: Instant,
+      texts: String*
+  ): Vector[DocumentVersion] = {
+    val keeper = documents.keeper(plugin, Terms)
+    val key = DocKey.of("k").getOrElse(sys.error("key"))
+    val here = Place.under(Namespace.Task, Vector("collect"))
+    texts.toVector.map { t =>
+      val text = DocText.of(t).getOrElse(sys.error("text"))
+      LiveDb.transaction(config)(keeper.write(key, here, text, ujson.Obj(), at)) match {
+        case Right(Written.Versioned(v, _)) => v
+        case other => sys.error(s"writing $t: $other")
+      }
+    }
   }
 
   private def enqueue(config: DbConfig, runs: Vector[PostRef]): Unit = {
@@ -994,6 +1036,65 @@ object CollectorLiveTests extends TestSuite {
         LiveDb.transaction(config)(new SqlPluginCursors(tombstones).stored()) ==> Right(Vector())
         kept(config, Vector(run.workflowId)).headOption ==> Some(0)
       } finally engine.close()
+    }
+
+    test("a plugin's version no longer current goes its declared retention after, not before") {
+      val config = TestPostgres.freshDatabase("collect_document")
+      val p = PluginName.of("keeping").getOrElse(sys.error("name"))
+      val engine = launched(config, 1.day, Vector(new Keeping(p)))
+      try {
+        val now = Instant.now()
+        val versions = wrote(config, p, now, "first", "second")
+        engine.sweep(now.plusSeconds(60)).map(_.collected) ==> Right(Vector())
+        engine.sweep(now.plusSeconds(180)).map(_.collected) ==>
+          Right(versions.take(1).map(Target.Document(_)))
+        LiveDb.transaction(config)(documents.read(versions)).map(_.map(_.version)) ==>
+          Right(versions.drop(1))
+      } finally engine.close()
+    }
+
+    test(
+      "a plugin not enabled loses its documents, terms and their tombstones after the ledger window"
+    ) {
+      val config = TestPostgres.freshDatabase("collect_disabled_documents")
+      val p = PluginName.of("unkept").getOrElse(sys.error("name"))
+      // Declared by an earlier start; this engine starts without it, and it has no cursor.
+      LiveEngine.open(config, "test").close()
+      LiveDb.transaction(config)(documents.declare(Vector(p -> Terms))) ==> Right(())
+      val now = Instant.now()
+      val versions = wrote(config, p, now, "first", "second")
+      val engine = launched(config, 2.minutes)
+      try {
+        engine.sweep(now).map(s => (s.disabled, s.collected)) ==> Right((Vector(p), Vector()))
+        engine.sweep(now.plusSeconds(180)).map(_.collected) ==> Right(Vector(Target.Disabled(p)))
+        LiveDb.transaction(config)(documents.read(versions)) ==> Right(Vector())
+        LiveDb.transaction(config)(documents.kept()) ==> Right(Vector())
+        LiveDb.transaction(config)(
+          tombstones.due(Target.Kind.Document, now.plusSeconds(3600), 10)
+        ) ==> Right(Vector())
+      } finally engine.close()
+    }
+
+    test("a plugin enabled again before the ledger window keeps its documents") {
+      val config = TestPostgres.freshDatabase("collect_enabled_documents")
+      val p = PluginName.of("back-again").getOrElse(sys.error("name"))
+      val now = Instant.now()
+      val first = launched(config, 2.minutes)
+      val versions =
+        try {
+          val written = wrote(config, p, now, "kept")
+          first.sweep(now).map(_.disabled) ==> Right(Vector(p))
+          written
+        } finally first.close()
+      val again = launched(config, 2.minutes, Vector(new Keeping(p)))
+      try {
+        again.sweep(now.plusSeconds(180)).map(_.collected) ==> Right(Vector())
+        LiveDb.transaction(config)(documents.read(versions)).map(_.map(_.version)) ==>
+          Right(versions)
+        LiveDb.transaction(config)(
+          tombstones.due(Target.Kind.Disabled, now.plusSeconds(3600), 10)
+        ) ==> Right(Vector())
+      } finally again.close()
     }
 
     test("an enabled plugin's disabled tombstone is spared") {

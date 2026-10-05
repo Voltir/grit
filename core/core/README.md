@@ -80,7 +80,8 @@ In dependency order:
   `DocumentKeeper`, one plugin's documents as it reads and writes them (`Written`, what a
   write did); `DocumentSearch`, every enabled plugin's documents as windows draw on them, as
   of an instant (`Shelved`, a place holding some); `DocumentStore`, what the engine writes
-  of them. ← `id`, `place`, `store`
+  and deletes of them (terms declared at each start, placements, a version or a plugin's
+  every document collected). ← `id`, `place`, `store`
 - **`spend`** — what grit spends on model calls, read back: `Spend` (some recorded calls: how
   many, and their `Cost`), `Spending` (a day's, or a conversation's, from the ledger; what the
   ledger misses is in its doc), `Day` (a calendar day in a zone, as instants), `DailyCap`

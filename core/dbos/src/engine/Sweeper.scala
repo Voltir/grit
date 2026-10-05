@@ -5,6 +5,7 @@ import javax.sql.DataSource
 
 import scala.jdk.CollectionConverters.*
 
+import grit.core.document.DocumentStore
 import grit.core.id.{CloseRef, PluginName, SettleRef, ShadowRef, WorkflowId}
 import grit.core.plugin.{PluginCursors, PostRef}
 import grit.core.retention.Target
@@ -46,6 +47,7 @@ private[engine] final class Sweeper(
     tombstones: Tombstones,
     cursors: PluginCursors,
     shadows: TriageShadows,
+    documents: DocumentStore,
     plugins: () -> Vector[(PluginName, Int)],
     posting: () -> Vector[(PluginName, Int)],
     declared: () -> Vector[Shadowing]
@@ -62,6 +64,7 @@ private[engine] final class Sweeper(
     profiles,
     prompts,
     cursors,
+    documents,
     tombstones
   )
 
@@ -97,19 +100,20 @@ private[engine] final class Sweeper(
       collected <- collector.once(settings, now)
     } yield closed + asked + posted + shadowed + collected
 
-  /** Every enabled plugin's disabled tombstone spared, and every other plugin with a cursor
-    * marked for deletion at `now` ([[Target.Disabled]]); those newly marked are `disabled`.
+  /** Every enabled plugin's disabled tombstone spared, and every other plugin with a cursor,
+    * documents or document terms marked for deletion at `now` ([[Target.Disabled]]); those
+    * newly marked are `disabled`.
     */
   private def enabling(now: Instant): Either[StoreError, Swept] =
     write {
       val on = plugins().map(_._1).toSet
       for {
         stored <- cursors.stored()
+        documented <- documents.kept()
         _ <- on.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, p) =>
           acc.flatMap(_ => tombstones.spare(Target.Disabled(p), now))
         }
-        marked <- stored
-          .map(_._1)
+        marked <- (stored.map(_._1) ++ documented).distinct
           .filterNot(on)
           .foldLeft[Either[StoreError, Vector[PluginName]]](
             Right(Vector.empty)
@@ -291,8 +295,8 @@ private[engine] final class Sweeper(
   * running, or waiting on another target), and the workflows it found `stuck`: a close
   * attempt that finished without closing its period, whose deadline has not moved since, a
   * plugin's last run from a cursor it failed to move [[PostRef.Attempts]] times, or a shadow
-  * that ended keeping nothing; and the plugins with a cursor but not enabled whose documents
-  * it newly marked for deletion (`disabled`). A stuck workflow is not run again; a close is
+  * that ended keeping nothing; and the plugins not enabled, with a cursor, documents or
+  * document terms, that it newly marked for deletion (`disabled`). A stuck workflow is not run again; a close is
   * attempted anew once its deadline moves.
   */
 final case class Swept(

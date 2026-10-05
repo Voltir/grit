@@ -1,0 +1,439 @@
+package grit.dbos.sql
+
+import java.sql.{PreparedStatement, ResultSet}
+import java.time.{Instant, OffsetDateTime, ZoneOffset}
+
+import scala.concurrent.duration.*
+import scala.util.Using
+
+import grit.core.document.{
+  DocLabel,
+  DocText,
+  DocWeight,
+  Document,
+  DocumentKeeper,
+  DocumentSearch,
+  DocumentShelf,
+  DocumentStore,
+  DocumentTerms,
+  Placement,
+  Shelved,
+  Written
+}
+import grit.core.id.{DocKey, DocumentVersion, PluginName}
+import grit.core.place.{Namespace, Place}
+import grit.core.retention.Target
+import grit.core.store.{StoreError, Tombstones, Tx}
+
+/** [[DocumentStore]] over `grit.documents` and `grit.document_terms`, marking in `tombstones`
+  * the versions its keepers leave for deletion. Keys order bytewise (`COLLATE "C"`), as the
+  * in-memory fake orders them; a retention is kept to the microsecond.
+  */
+final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
+  import SqlDocuments.*
+
+  /** `plugin`'s documents as it writes them, under `terms`. */
+  def keeper(plugin: PluginName, terms: DocumentTerms): DocumentKeeper =
+    new Keeper(plugin, terms, tombstones)
+
+  /** `plugin`'s documents as it reads them. */
+  def shelf(plugin: PluginName): DocumentShelf = new Shelf(plugin)
+
+  def declared()(using tx: Tx^): Either[StoreError, Vector[(PluginName, DocumentTerms)]] =
+    rows(
+      """SELECT plugin, label, weight, (extract(epoch FROM retention) * 1000000)::bigint AS micros,
+        |       bound
+        |  FROM grit.document_terms WHERE enabled ORDER BY plugin COLLATE "C"""".stripMargin
+    )(_ => ()) { rs =>
+      for {
+        plugin <- PluginName.of(rs.getString("plugin"))
+        label <- DocLabel.of(rs.getString("label"))
+        weight <- DocWeight.of(rs.getDouble("weight"))
+        terms <- DocumentTerms.of(label, weight, rs.getLong("micros").micros, rs.getInt("bound"))
+      } yield plugin -> terms
+    }
+
+  def shelved(plugins: Vector[PluginName], at: Instant)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[Shelved]] =
+    if (plugins.isEmpty) Right(Vector.empty)
+    else
+      rows(
+        s"""SELECT plugin, array_to_json(place)::text AS place FROM (
+           |  SELECT DISTINCT plugin, place FROM grit.documents
+           |   WHERE plugin IN (SELECT jsonb_array_elements_text(?::jsonb))
+           |     AND body IS NOT NULL AND $CurrentAt
+           |) shelved""".stripMargin
+      ) { ps =>
+        ps.setString(1, strings(plugins.map(PluginName.value)))
+        ps.setObject(2, utc(at))
+        ps.setObject(3, utc(at))
+      } { rs =>
+        for {
+          plugin <- PluginName.of(rs.getString("plugin"))
+          place <- placeOf(rs.getString("place"))
+        } yield Shelved(plugin, place)
+      }
+
+  def search(shelves: Vector[Shelved], query: String, limit: Int, at: Instant)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[DocumentSearch.Hit]] =
+    if (query.isBlank || limit <= 0 || shelves.isEmpty) Right(Vector.empty)
+    else {
+      val wanted = ujson.Arr.from(shelves.map { s =>
+        ujson.Obj("p" -> PluginName.value(s.plugin), "place" -> path(s.place))
+      })
+      rows(Ranked) { ps =>
+        ps.setString(1, query)
+        ps.setString(2, wanted.render())
+        ps.setObject(3, utc(at))
+        ps.setObject(4, utc(at))
+        ps.setInt(5, limit)
+      }(rs => document(rs).map(DocumentSearch.Hit(_, -rs.getDouble("s"))))
+    }
+
+  def read(versions: Vector[DocumentVersion])(using
+      tx: Tx^
+  ): Either[StoreError, Vector[Document]] =
+    if (versions.isEmpty) Right(Vector.empty)
+    else
+      rows(
+        s"""SELECT $Columns FROM grit.documents
+           | WHERE version IN (SELECT v::bigint FROM jsonb_array_elements_text(?::jsonb) AS e(v))
+           |   AND body IS NOT NULL""".stripMargin
+      )(_.setString(1, numbers(versions)))(document).map { found =>
+        val byVersion = found.map(d => d.version -> d).toMap
+        versions.flatMap(byVersion.get)
+      }
+
+  def declare(enabled: Vector[(PluginName, DocumentTerms)])(using
+      tx: Tx^
+  ): Either[StoreError, Unit] =
+    for {
+      _ <- update("UPDATE grit.document_terms SET enabled = false WHERE enabled")(_ => ())
+      _ <- enabled.foldLeft[Either[StoreError, Unit]](Right(())) { case (acc, (plugin, terms)) =>
+        acc.flatMap(_ =>
+          update(
+            """INSERT INTO grit.document_terms (plugin, label, weight, retention, bound, enabled)
+              |VALUES (?, ?, ?, ? * interval '1 microsecond', ?, true)
+              |ON CONFLICT (plugin) DO UPDATE
+              |   SET label = EXCLUDED.label, weight = EXCLUDED.weight,
+              |       retention = EXCLUDED.retention, bound = EXCLUDED.bound, enabled = true""".stripMargin
+          ) { ps =>
+            ps.setString(1, PluginName.value(plugin))
+            ps.setString(2, DocLabel.value(terms.label))
+            ps.setDouble(3, DocWeight.value(terms.weight))
+            ps.setLong(4, terms.retention.toMicros)
+            ps.setInt(5, terms.bound)
+          }.map(_ => ())
+        )
+      }
+    } yield ()
+
+  def placed(versions: Vector[DocumentVersion], at: Instant)(using
+      tx: Tx^
+  ): Either[StoreError, Unit] =
+    if (versions.isEmpty) Right(())
+    else
+      update(
+        """UPDATE grit.documents d
+          |   SET placed = d.placed + c.n, last_placed = greatest(d.last_placed, ?)
+          |  FROM (SELECT v::bigint AS version, count(*) AS n
+          |          FROM jsonb_array_elements_text(?::jsonb) AS e(v) GROUP BY v) c
+          | WHERE d.version = c.version""".stripMargin
+      ) { ps =>
+        ps.setObject(1, utc(at))
+        ps.setString(2, numbers(versions))
+      }.map(_ => ())
+
+  def kept()(using tx: Tx^): Either[StoreError, Vector[PluginName]] =
+    rows(
+      """SELECT plugin FROM (
+        |  SELECT plugin FROM grit.documents UNION SELECT plugin FROM grit.document_terms
+        |) kept ORDER BY plugin COLLATE "C"""".stripMargin
+    )(_ => ())(rs => PluginName.of(rs.getString("plugin")))
+
+  def forget(version: DocumentVersion)(using tx: Tx^): Either[StoreError, Unit] =
+    update("DELETE FROM grit.documents WHERE version = ?")(
+      _.setLong(1, DocumentVersion.value(version))
+    ).map(_ => ())
+
+  def remove(plugin: PluginName, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
+    for {
+      _ <- update(
+        """WITH gone AS (DELETE FROM grit.documents WHERE plugin = ? RETURNING version)
+          |UPDATE grit.tombstones SET collected_at = ?
+          | WHERE kind = ? AND collected_at IS NULL
+          |   AND target IN (SELECT version::text FROM gone)""".stripMargin
+      ) { ps =>
+        ps.setString(1, PluginName.value(plugin))
+        ps.setObject(2, utc(at))
+        ps.setString(3, Target.Kind.Document.name)
+      }
+      _ <- update("DELETE FROM grit.document_terms WHERE plugin = ?")(
+        _.setString(1, PluginName.value(plugin))
+      )
+    } yield ()
+}
+
+private object SqlDocuments {
+
+  /** A version's columns, as [[document]] reads them. */
+  val Columns: String =
+    "version, plugin, key, array_to_json(place)::text AS place, body, data::text AS data, " +
+      "written_at, placed, last_placed"
+
+  /** Current at the instant bound twice here: written before it, superseded by none written
+    * before it.
+    */
+  val CurrentAt: String = "written_at < ? AND (superseded_at IS NULL OR superseded_at >= ?)"
+
+  // pg_textsearch scores are negative, more negative is better. The planner may filter to the
+  // shelves first, scoring rows that do not match 0; the guard drops them outside the LIMIT,
+  // as SqlEntrySearch's queries do.
+  val Ranked: String =
+    s"""SELECT $Columns, s FROM (
+       |  SELECT d.*, d.body <@> to_bm25query(?, 'grit.idx_documents_bm25') AS s
+       |    FROM grit.documents d
+       |   WHERE EXISTS (SELECT 1 FROM jsonb_to_recordset(?::jsonb) AS r(p text, place jsonb)
+       |                  WHERE d.plugin = r.p
+       |                    AND d.place = ARRAY(SELECT jsonb_array_elements_text(r.place)))
+       |     AND d.body IS NOT NULL
+       |     AND d.written_at < ? AND (d.superseded_at IS NULL OR d.superseded_at >= ?)
+       |   ORDER BY s, d.written_at DESC, d.version DESC
+       |   LIMIT ?
+       |) ranked
+       |WHERE s < 0
+       |ORDER BY s, written_at DESC, version DESC""".stripMargin
+
+  def utc(at: Instant): OffsetDateTime = at.atOffset(ZoneOffset.UTC)
+
+  def instant(rs: ResultSet, column: String): Instant =
+    rs.getObject(column, classOf[OffsetDateTime]).toInstant
+
+  /** `values` as a JSON array of strings, so no Java array crosses JDBC. */
+  def strings(values: Vector[String]): String = ujson.Arr.from(values.map(ujson.Str(_))).render()
+
+  /** `versions` as a JSON array of their numbers written as strings: a JSON number past 2^53
+    * would lose digits.
+    */
+  def numbers(versions: Vector[DocumentVersion]): String =
+    strings(versions.map(v => DocumentVersion.value(v).toString))
+
+  def path(place: Place): ujson.Arr = ujson.Arr.from(place.segments.map(ujson.Str(_)))
+
+  /** The place whose segments `json` holds. */
+  def placeOf(json: String): Either[String, Place] =
+    ujson.read(json).arrOpt.fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt)) match {
+      case ns +: rest =>
+        Namespace.of(ns).map(Place.under(_, rest)).toRight(s"a document's place: no namespace $ns")
+      case _ => Right(Place.Everywhere)
+    }
+
+  /** The version `rs` holds ([[Columns]]), or why not: one withdrawn holds nothing. */
+  def document(rs: ResultSet): Either[String, Document] =
+    for {
+      version <- DocumentVersion.of(rs.getLong("version")).toRight("a document's version")
+      plugin <- PluginName.of(rs.getString("plugin"))
+      key <- DocKey.of(rs.getString("key"))
+      place <- placeOf(rs.getString("place"))
+      text <- Option(rs.getString("body")).toRight("a withdrawal").flatMap(DocText.of)
+    } yield Document(
+      version,
+      plugin,
+      key,
+      place,
+      text,
+      ujson.read(rs.getString("data")),
+      instant(rs, "written_at"),
+      Placement(rs.getLong("placed"), instant(rs, "last_placed"))
+    )
+
+  def update(sql: String)(bind: PreparedStatement => Unit)(using
+      tx: Tx^
+  ): Either[StoreError, Int] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    SqlEntryStore.attempt {
+      Using.resource(conn.prepareStatement(sql)) { ps =>
+        bind(ps)
+        ps.executeUpdate()
+      }
+    }
+  }
+
+  /** What `sql`, its parameters set by `bind`, selects, each row read by `read`; a row it
+    * cannot read is `Invalid`.
+    */
+  def rows[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => Either[String, A])(
+      using tx: Tx^
+  ): Either[StoreError, Vector[A]] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    SqlEntryStore
+      .attempt {
+        Using.resource(conn.prepareStatement(sql)) { ps =>
+          bind(ps)
+          Using.resource(ps.executeQuery()) { rs =>
+            val found = Vector.newBuilder[Either[String, A]]
+            while (rs.next()) found += read(rs)
+            found.result()
+          }
+        }
+      }
+      .flatMap(_.foldLeft[Either[StoreError, Vector[A]]](Right(Vector.empty)) { (acc, row) =>
+        acc.flatMap(done => row.map(done :+ _).left.map(StoreError.Invalid(_)))
+      })
+  }
+
+  /** One plugin's current documents, as it reads them. */
+  class Shelf(plugin: PluginName) extends DocumentShelf {
+
+    def current(key: DocKey)(using tx: Tx^): Either[StoreError, Option[Document]] =
+      rows(
+        s"""SELECT $Columns FROM grit.documents
+           | WHERE plugin = ? AND key = ? AND superseded_at IS NULL AND body IS NOT NULL""".stripMargin
+      ) { ps =>
+        ps.setString(1, PluginName.value(plugin))
+        ps.setString(2, DocKey.value(key))
+      }(document).map(_.headOption)
+
+    def newest(n: Int)(using tx: Tx^): Either[StoreError, Vector[Document]] =
+      if (n <= 0) Right(Vector.empty)
+      else
+        rows(
+          s"""SELECT $Columns FROM grit.documents
+             | WHERE plugin = ? AND superseded_at IS NULL AND body IS NOT NULL
+             | ORDER BY written_at DESC, version DESC LIMIT ?""".stripMargin
+        ) { ps =>
+          ps.setString(1, PluginName.value(plugin))
+          ps.setInt(2, n)
+        }(document)
+  }
+
+  /** `plugin`'s documents as it writes them under `terms`, marking in `tombstones` each
+    * version it leaves.
+    */
+  final class Keeper(plugin: PluginName, terms: DocumentTerms, tombstones: Tombstones)
+      extends Shelf(plugin)
+      with DocumentKeeper {
+
+    def write(key: DocKey, place: Place, text: DocText, data: ujson.Value, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Written] =
+      rows(
+        """SELECT version,
+          |       (body IS NOT DISTINCT FROM ?
+          |        AND place = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
+          |        AND data = ?::jsonb) AS same
+          |  FROM grit.documents
+          | WHERE plugin = ? AND key = ? AND superseded_at IS NULL
+          |   FOR UPDATE""".stripMargin
+      ) { ps =>
+        ps.setString(1, DocText.value(text))
+        ps.setString(2, path(place).render())
+        ps.setString(3, data.render())
+        ps.setString(4, PluginName.value(plugin))
+        ps.setString(5, DocKey.value(key))
+      }(rs => versionOf(rs).map(_ -> rs.getBoolean("same"))).flatMap {
+        // The parameter's type written out: inferred, it is Vector's array-holding refinement.
+        (head: Vector[(DocumentVersion, Boolean)]) =>
+          head match {
+            case Vector((current, true)) => Right(Written.Unchanged(current))
+            case before =>
+              for {
+                _ <- before.foldLeft[Either[StoreError, Unit]](Right(())) { case (acc, (v, _)) =>
+                  acc.flatMap(_ => supersede(v, at))
+                }
+                written <- rows(
+                  """INSERT INTO grit.documents
+                    |       (plugin, key, place, body, data, written_at, last_placed)
+                    |VALUES (?, ?, ARRAY(SELECT jsonb_array_elements_text(?::jsonb)), ?, ?::jsonb,
+                    |        ?, ?)
+                    |RETURNING version""".stripMargin
+                ) { ps =>
+                  ps.setString(1, PluginName.value(plugin))
+                  ps.setString(2, DocKey.value(key))
+                  ps.setString(3, path(place).render())
+                  ps.setString(4, DocText.value(text))
+                  ps.setString(5, data.render())
+                  ps.setObject(6, utc(at))
+                  ps.setObject(7, utc(at))
+                }(versionOf)
+                version <- written.headOption.toRight(
+                  StoreError.Invalid("a write returned no version")
+                )
+                gone <- excess(key)
+                _ <- gone.foldLeft[Either[StoreError, Unit]](Right(())) { (acc, k) =>
+                  acc.flatMap(_ => withdraw(k, at).map(_ => ()))
+                }
+              } yield Written.Versioned(version, gone)
+          }
+      }
+
+    def withdraw(key: DocKey, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Option[DocumentVersion]] =
+      rows(
+        """SELECT version FROM grit.documents
+          | WHERE plugin = ? AND key = ? AND superseded_at IS NULL AND body IS NOT NULL
+          |   FOR UPDATE""".stripMargin
+      ) { ps =>
+        ps.setString(1, PluginName.value(plugin))
+        ps.setString(2, DocKey.value(key))
+      }(versionOf).flatMap { (found: Vector[DocumentVersion]) =>
+        // At most one: idx_documents_current.
+        found.headOption match {
+          case None => Right(None)
+          case Some(current) =>
+            for {
+              _ <- supersede(current, at)
+              written <- rows(
+                """INSERT INTO grit.documents (plugin, key, place, body, written_at, last_placed)
+                |SELECT plugin, key, place, NULL, ?, ? FROM grit.documents
+                | WHERE version = ?
+                |RETURNING version""".stripMargin
+              ) { ps =>
+                ps.setObject(1, utc(at))
+                ps.setObject(2, utc(at))
+                ps.setLong(3, DocumentVersion.value(current))
+              }(versionOf)
+              withdrawal <- written.headOption.toRight(
+                StoreError.Invalid("a withdrawal returned no version")
+              )
+              _ <- tombstones.write(Target.Document(withdrawal), at)
+            } yield Some(withdrawal)
+        }
+      }
+
+    /** `version` no longer current from `at`, and marked for deletion. */
+    private def supersede(version: DocumentVersion, at: Instant)(using
+        tx: Tx^
+    ): Either[StoreError, Unit] =
+      for {
+        _ <- update("UPDATE grit.documents SET superseded_at = ? WHERE version = ?") { ps =>
+          ps.setObject(1, utc(at))
+          ps.setLong(2, DocumentVersion.value(version))
+        }
+        _ <- tombstones.write(Target.Document(version), at)
+      } yield ()
+
+    /** The keys past the bound once one is written under `kept`: the current documents but
+      * it, placed least recently first, ties by key.
+      */
+    private def excess(kept: DocKey)(using tx: Tx^): Either[StoreError, Vector[DocKey]] =
+      rows(
+        """WITH holding AS (
+          |  SELECT key, last_placed FROM grit.documents
+          |   WHERE plugin = ? AND superseded_at IS NULL AND body IS NOT NULL AND key <> ?)
+          |SELECT key FROM holding
+          | ORDER BY last_placed, key COLLATE "C"
+          | LIMIT greatest((SELECT count(*) FROM holding) + 1 - ?, 0)""".stripMargin
+      ) { ps =>
+        ps.setString(1, PluginName.value(plugin))
+        ps.setString(2, DocKey.value(kept))
+        ps.setInt(3, terms.bound)
+      }(rs => DocKey.of(rs.getString("key")))
+  }
+
+  def versionOf(rs: ResultSet): Either[String, DocumentVersion] =
+    DocumentVersion.of(rs.getLong("version")).toRight("a document's version")
+}

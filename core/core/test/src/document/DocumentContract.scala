@@ -242,13 +242,75 @@ abstract class DocumentContract extends TestSuite {
       versions.distinct.size ==> 3
     }
 
-    test("declare puts the terms given in force, and one left out is no longer declared") {
+    test("declare puts the terms given in force; one left out is no longer declared, but kept") {
       val (p, q) = (name("doc-declare-p"), name("doc-declare-q"))
       transaction(ok(store.declare(Vector(p -> terms(label = "p's"), q -> terms(bound = 3)))))
       transaction(ok(store.declared())).sortBy((n, _) => PluginName.value(n)) ==>
         Vector(p -> terms(label = "p's"), q -> terms(bound = 3))
       transaction(ok(store.declare(Vector(q -> terms(bound = 4)))))
       transaction(ok(store.declared())) ==> Vector(q -> terms(bound = 4))
+      // p has terms and no document: kept until removed, so the sweep can mark it.
+      transaction(ok(store.kept())).filter(Set(p, q)).toSet ==> Set(p, q)
+      transaction(ok(store.remove(p, at(1))))
+      transaction(ok(store.kept())).filter(Set(p, q)).toSet ==> Set(q)
+      transaction(ok(store.declared())) ==> Vector(q -> terms(bound = 4))
+    }
+
+    test("forget deletes one version, and the key's others stay") {
+      val p = name("doc-forget")
+      val k = keeper(p, terms())
+      val one = put(k, "k", "first words", 1)
+      val two = put(k, "k", "second words", 2)
+      transaction(ok(store.forget(one)))
+      texts(transaction(ok(store.read(Vector(one, two))))) ==> Vector("second words")
+      texts(transaction(ok(shelf(p).current(key("k")))).toVector) ==> Vector("second words")
+      transaction(ok(store.forget(one)))
+    }
+
+    test("remove deletes a plugin's every version and ends their tombstones; another's stay") {
+      val (p, q) = (name("doc-remove-p"), name("doc-remove-q"))
+      val (kp, kq) = (keeper(p, terms()), keeper(q, terms()))
+      val ps = Vector(put(kp, "k", "one", 1), put(kp, "k", "two", 2), put(kp, "j", "three", 2))
+      val withdrawal = transaction(ok(kp.withdraw(key("j"), at(3)))).toVector
+      val qs = Vector(put(kq, "k", "one", 1), put(kq, "k", "two", 2))
+      transaction(ok(store.remove(p, at(4))))
+      transaction(ok(store.read(ps ++ withdrawal))) ==> Vector()
+      transaction(ok(shelf(p).newest(10))) ==> Vector()
+      transaction(ok(store.kept())).filter(Set(p, q)).toSet ==> Set(q)
+      val mine = (ps ++ withdrawal).map(Target.Document(_)).toSet[Target]
+      val theirs = qs.take(1).map(Target.Document(_)).toSet[Target]
+      val pending = transaction(ok(tombstones.due(Target.Kind.Document, at(10), 1000)))
+        .map(_.target)
+        .toSet
+      (pending.intersect(mine), pending.intersect(theirs)) ==> (Set(), theirs)
+      texts(transaction(ok(store.read(qs)))) ==> Vector("one", "two")
+    }
+
+    test("search reads a document's text, never its key, place or data") {
+      val p = name("doc-search-text")
+      val k = keeper(p, terms())
+      put(
+        k,
+        "zebra",
+        "plain words",
+        1,
+        where = place("zebra"),
+        data = ujson.Obj("zebra" -> "zebra")
+      )
+      val shelves = Vector(Shelved(p, place("zebra")))
+      hits(shelves, "zebra", 2) ==> Vector()
+      keys(hits(shelves, "plain", 2).map(_.document)) ==> Vector("zebra")
+    }
+
+    test("past the bound, keys tied on their placement go in bytewise order") {
+      val p = name("doc-bound-bytes")
+      val k = keeper(p, terms(bound = 2))
+      put(k, "a", "words a", 1)
+      put(k, "B", "words B", 1)
+      transaction(ok(k.write(key("c"), place("here"), text("words c"), Empty, at(2)))) match {
+        case Written.Versioned(_, gone) => gone.map(DocKey.value) ==> Vector("B")
+        case w => throw new java.lang.AssertionError(s"c: $w")
+      }
     }
 
     test("kept is every plugin with documents, withdrawn or not") {

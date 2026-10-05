@@ -667,6 +667,54 @@ CREATE TABLE IF NOT EXISTS grit.plugin_cursors (
     generation BIGINT NOT NULL
 );
 
+-- Each plugin's documents (grit.core.document, ADR 0028), one row per version: a version is
+-- never edited; the next written under its key supersedes it (`superseded_at`). A version
+-- with `body` NULL withdraws its key: never shelved, listed, searched or counted toward the
+-- bound. `version` is numbered across every plugin, never reused, and alone names a version
+-- (a window's record, a tombstone). `place` is Place's segments (not a grit.places row, which
+-- goes with its last conversation). `body` is what a window shows and what DocumentSearch
+-- ranks; `data` is the plugin's own, never shown or searched. `placed` and `last_placed`
+-- count the windows that held it (DocumentStore.placed); `last_placed` starts at `written_at`.
+-- Writes to one plugin's documents are serialized by its posting; a concurrent write to one
+-- key fails on idx_documents_current.
+-- Retention: ledger: a version no longer current, its plugin's declared retention after
+-- (Target.Document); every version of a plugin no longer enabled (Target.Disabled).
+CREATE TABLE IF NOT EXISTS grit.documents (
+    version       BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    plugin        TEXT NOT NULL,
+    key           TEXT NOT NULL,
+    place         TEXT[] NOT NULL
+                  CHECK (array_position(place, '') IS NULL AND array_position(place, NULL) IS NULL),
+    body          TEXT,
+    data          JSONB NOT NULL DEFAULT '{}'::jsonb,
+    written_at    TIMESTAMPTZ NOT NULL,
+    superseded_at TIMESTAMPTZ,
+    placed        BIGINT NOT NULL DEFAULT 0,
+    last_placed   TIMESTAMPTZ NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_current ON grit.documents (plugin, key)
+    WHERE superseded_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_documents_plugin ON grit.documents (plugin, written_at);
+-- Its own statistics, apart from the entries' (ADR 0005): scores are scaled by each plugin's
+-- weight before they rank beside entries. Queries name it:
+-- to_bm25query(q, 'grit.idx_documents_bm25').
+CREATE INDEX IF NOT EXISTS idx_documents_bm25 ON grit.documents
+    USING bm25 (body) WITH (text_config = 'english');
+
+-- The terms each plugin declared for its documents (DocumentTerms), written at every engine
+-- start: `enabled` for the plugins that start enabled, false for one declared before and not
+-- now; the newest start wins. Not versioned: readers use the terms in force.
+-- Retention: cache: with a plugin no longer enabled (Target.Disabled).
+CREATE TABLE IF NOT EXISTS grit.document_terms (
+    plugin    TEXT PRIMARY KEY,
+    label     TEXT NOT NULL,
+    weight    DOUBLE PRECISION NOT NULL CHECK (weight > 0),
+    retention INTERVAL NOT NULL,
+    bound     INTEGER NOT NULL CHECK (bound >= 1),
+    enabled   BOOLEAN NOT NULL
+);
+
 -- What grit has decided to delete (grit.core.store.Tombstones, ADR 0014): nothing deletes a row
 -- or a workflow history no tombstone names. One row per target, `kind` and `target` as
 -- grit.core.retention.Target stores them. Pending until the collector deletes the target

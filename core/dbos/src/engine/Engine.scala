@@ -10,19 +10,11 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.clock.Clock
-import grit.core.document.{DocText, Document, DocumentKeeper, DocumentTerms, Written}
+import grit.core.document.{DocumentKeeper, DocumentStore, DocumentTerms}
 import grit.core.durable.Durable
 import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
 import grit.core.host.ProcessIdentity
-import grit.core.id.{
-  ConversationId,
-  DocKey,
-  DocumentVersion,
-  PluginName,
-  PrincipalId,
-  TurnRef,
-  WorkflowId
-}
+import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
 import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginReads}
@@ -44,7 +36,6 @@ import grit.core.store.{
   PromptStore,
   StoreError,
   Tombstones,
-  Tx,
   UsageLedger,
   VoiceStore
 }
@@ -55,6 +46,7 @@ import grit.dbos.sql.{
   SqlCacheDocs,
   SqlConversationStore,
   SqlDb,
+  SqlDocuments,
   SqlEdgeDirectory,
   SqlEntrySearch,
   SqlEntryStore,
@@ -200,17 +192,22 @@ final class Engine private (
   /** Each plugin's cursor. */
   val cursors: PluginCursors = new SqlPluginCursors(tombstones)
 
+  private val sqlDocuments = new SqlDocuments(tombstones)
+
+  /** Every plugin's documents (ADR 0028), as windows draw on them and as the engine itself
+    * writes them.
+    */
+  val documents: DocumentStore = sqlDocuments
+
   /** Each plugin's own documents as its tools and its service read them: given a plugin's
-    * name, its own, and no other plugin's. It reads no plugin document yet: see [[keeper]].
+    * name, its own, and no other plugin's.
     */
   val reads: PluginName -> PluginReads =
-    plugin => PluginReads(new SqlPluginDocs(plugin), Engine.Unkept)
+    plugin => PluginReads(new SqlPluginDocs(plugin), sqlDocuments.shelf(plugin))
 
-  /** Given a plugin and its terms, its documents as its posting writes them. This engine keeps
-    * none yet: every write and withdrawal is a `StoreError.Invalid` saying so, which leaves
-    * the plugin's cursor before the period it was posting.
-    */
-  val keeper: (PluginName, DocumentTerms) -> DocumentKeeper = (_, _) => Engine.Unkept
+  /** Given a plugin and its terms, its documents as its posting writes them. */
+  val keeper: (PluginName, DocumentTerms) -> DocumentKeeper =
+    (plugin, terms) => sqlDocuments.keeper(plugin, terms)
 
   /** Given a plugin and the closed period it is posting, where it keeps what it makes of it. */
   val cache: (PluginName, ClosedPeriod) -> CacheDocs =
@@ -223,9 +220,11 @@ final class Engine private (
     * ([[grit.core.id.ShadowRef]]), and starts running what is queued; `plugins` are the ones
     * enabled, and the sweep posts to those with something to post ([[Plugin.posts]]), and enqueues shadows for `shadowing`, the variants declared.
     * Without them no shadow is enqueued, and one an earlier engine left queued ends at once,
-    * keeping nothing. Makes the engine's epoch the database's latest application version, so
-    * work enqueued without one (every grit enqueue) runs here whatever epochs the database
-    * has seen. Once.
+    * keeping nothing. The terms of `plugins`' documents are declared the ones in force
+    * ([[DocumentStore.declare]]) before anything runs. Makes the engine's epoch the
+    * database's latest application version, so work enqueued without one (every grit
+    * enqueue) runs here whatever epochs the database has seen. Once. Throws when the terms
+    * cannot be recorded, as DBOS's own launch throws when it cannot start.
     */
   def launch(
       turn: WorkflowId => Durable^ ?=> String,
@@ -249,6 +248,12 @@ final class Engine private (
     enabled.set(plugins.map(p => (p.name, p.version)))
     posting.set(plugins.filter(_.posts).map(p => (p.name, p.version)))
     declared.set(shadowing)
+    Link
+      .transaction(dataSource)(
+        documents.declare(plugins.flatMap(p => p.documents.map(d => p.name -> d.terms)))
+      )
+      .left
+      .foreach(e => throw new IllegalStateException(s"the plugins' document terms: $e"))
     // Before launch, so the queues are there when recovery puts work back on them.
     Turns.registerQueue(client)
     Posts.registerQueue(client)
@@ -284,6 +289,7 @@ final class Engine private (
       tombstones,
       cursors,
       shadows,
+      documents,
       () => enabled.get(),
       () => posting.get(),
       () => declared.get()
@@ -295,10 +301,10 @@ final class Engine private (
     * is waiting on it ([[grit.core.period.Deadline.ask]]) has its question enqueued
     * ([[grit.core.id.SettleRef.workflowId]]); every enabled plugin with something to post behind the newest closed
     * period has a run enqueued from its cursor ([[grit.core.plugin.PostRef]]) unless one is
-    * going, and every other plugin with a cursor is marked for deletion
+    * going, and every other plugin with a cursor, documents or document terms is marked for deletion
     * ([[grit.core.retention.Target.Disabled]]); every declared shadow variant none of whose
     * shadows is queued or running has its oldest unshadowed messages enqueued, as many as its
-    * day's cap covers ([[grit.core.triage.Shadowing.batch]]); then every tombstone whose kind's retention has passed is collected
+    * day's cap covers ([[grit.core.triage.Shadowing.batch]]); then every tombstone whose kind's retention (for a document version, its plugin's declared one) has passed is collected
     * ([[grit.core.retention.Target]]): its workflows deleted, unless one is still queued or
     * running, which defers it to a later sweep, then its rows. No workflow is ever
     * deleted to be run again: what did not finish its work is reported `stuck`
@@ -454,19 +460,6 @@ final class Engine private (
 }
 
 object Engine {
-
-  /** Plugin documents, kept nowhere: none is read, and a write or withdrawal is refused. */
-  private object Unkept extends DocumentKeeper {
-    private val refused = StoreError.Invalid("plugin documents are not kept in this database")
-    def current(key: DocKey)(using Tx^): Either[StoreError, Option[Document]] = Right(None)
-    def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = Right(Vector.empty)
-    def write(key: DocKey, place: Place, text: DocText, data: ujson.Value, at: Instant)(using
-        Tx^
-    ): Either[StoreError, Written] = Left(refused)
-    def withdraw(key: DocKey, at: Instant)(using
-        Tx^
-    ): Either[StoreError, Option[DocumentVersion]] = Left(refused)
-  }
 
   /** The shadow body of an engine that declares no shadows: it asks nothing and keeps
     * nothing.

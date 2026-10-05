@@ -7,11 +7,22 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.clock.Clock
+import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, PeriodRef, PeriodSeq, PluginName, SourceId, ToolCallId, WorkflowId}
+import grit.core.id.{
+  CloseRef,
+  DocKey,
+  PeriodRef,
+  PeriodSeq,
+  PluginName,
+  SourceId,
+  ToolCallId,
+  WorkflowId
+}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
-import grit.core.plugin.{CacheDocs, CachePosting, Needs, Plugin, PostRef}
+import grit.core.place.{Namespace, Place}
+import grit.core.plugin.{CacheDocs, CachePosting, Documents, Needs, Plugin, PostRef}
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import grit.dbos.engine.{Engine, LiveEngine}
@@ -38,6 +49,37 @@ object PluginLiveTests extends TestSuite {
         docs
           .put("half", ujson.Str("written before the refusal"))
           .flatMap(_ => Left(StoreError.Invalid("refused")))
+    })
+  }
+
+  /** Keeps one document per closed period, under its close ordinal, holding its closing's
+    * time.
+    */
+  private final class Noting(val name: PluginName) extends Plugin {
+    val version = 1
+    override val documents: Option[Documents] = Some(new Documents {
+      val terms: DocumentTerms =
+        (for {
+          label <- DocLabel.of("notes")
+          terms <- DocumentTerms.of(label, DocWeight.Unscaled, 1.day, 10)
+        } yield terms).fold(e => sys.error(e), identity)
+      def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] =
+        (for {
+          key <- DocKey.of(CloseOrdinal.value(closed.order).toString)
+          text <- DocText.of(s"closed at ${closed.at}")
+        } yield (key, text)) match {
+          case Left(why) => Left(StoreError.Invalid(why))
+          case Right((key, text)) =>
+            keeper
+              .write(
+                key,
+                Place.under(Namespace.Task, Vector("notes")),
+                text,
+                ujson.Obj(),
+                closed.at
+              )
+              .map(_ => ())
+        }
     })
   }
 
@@ -142,6 +184,24 @@ object PluginLiveTests extends TestSuite {
             )
           case other => sys.error(s"not free: $other")
         }
+      } finally engine.close()
+    }
+
+    test("a plugin's documents are posted through the engine, and its shelf reads them") {
+      val config = TestPostgres.freshDatabase("plugin_documents")
+      val engine = LiveEngine.open(config, "test")
+      try {
+        val noting = new Noting(name("noting"))
+        launch(engine, Vector(noting))
+        closed(engine, 2)
+        val run = PostRef(noting.name, 1, CloseOrdinal.Start, 0)
+        engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector(run))
+        assert(finished(config, run.workflowId))
+        engine.db
+          .read(engine.reads(noting.name).documents.newest(10))
+          .map(_.map(d => (DocKey.value(d.key), DocText.value(d.text)))) ==> Right(
+          Vector("2" -> "closed at 2026-09-22T10:00:00Z", "1" -> "closed at 2026-09-21T10:00:00Z")
+        )
       } finally engine.close()
     }
 

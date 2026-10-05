@@ -9,7 +9,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `SqlEdgeDirectory` (hosted tool calls and the edges serving them, ADR 0017), `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
   row), `SqlVoiceStore` (the voice, one row), `SqlPrincipals` (people by name, and who wrote each inbound entry), `SqlDeliveries` (the replies an edge has yet to post outside grit), `SqlAcknowledgements` (the messages an edge marks as being answered while their turns run), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
-  as posted from one closing, and its cursor), `SqlTombstones` (what is to be deleted, ADR 0014), `SqlTriageStore`
+  as posted from one closing, and its cursor), `SqlDocuments` (every plugin's versioned documents, ADR 0028: each plugin's shelf and keeper, the search windows draw on, and the terms each start declares), `SqlTombstones` (what is to be deleted, ADR 0014), `SqlTriageStore`
   (what triage made of each heard message, deleted with its entry), `SqlTriageShadows` (what
   each declared shadow variant made of a heard message, `grit.triage_shadows`, deleted with its
   entry), `SqlSpeechStore` (each
@@ -53,9 +53,10 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   is queued or running has its oldest unshadowed messages enqueued, as many as the rest of its
   day's cap covers (`grit.core.triage.Shadowing`), passing over any whose shadow ended keeping
   nothing; what did not finish its work is logged as stuck;
-  and every plugin with a cursor but not enabled is marked for
+  and every plugin not enabled with a cursor, documents or document terms is marked for
   deletion; then `Collector` collects every tombstone whose kind's window has passed (ADR
-  0014): the workflows it names, unless one is still queued or running, then its rows.
+  0014), a document version's by its plugin's declared retention: the workflows it names,
+  unless one is still queued or running, then its rows.
   `Transact` holds the sweep's short transactions. ← `sql`, `workflow`
 
 `sql` and `workflow` are siblings and never name each other. No source file sits at the
