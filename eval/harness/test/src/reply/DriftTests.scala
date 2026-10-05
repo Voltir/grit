@@ -24,19 +24,23 @@ object DriftTests extends TestSuite {
 
     test("a section from elsewhere changed, added or reordered is nearby drift") {
       Drift.of(recorded, recorded.copy(nearby = Vector(open("a", 4, 5))), lost = false) ==>
-        Drift.Nearby
+        Drift.Elsewhere
       val two = recorded.copy(nearby = Vector(open("a", 4), open("b", 1)))
-      Drift.of(recorded, two, lost = false) ==> Drift.Nearby
-      Drift.of(two, two.copy(nearby = two.nearby.reverse), lost = false) ==> Drift.Nearby
+      Drift.of(recorded, two, lost = false) ==> Drift.Elsewhere
+      Drift.of(two, two.copy(nearby = two.nearby.reverse), lost = false) ==> Drift.Elsewhere
     }
 
     test("a document changed, added or reordered is nearby drift") {
       def held(vs: Long*) = vs.toVector.flatMap(DocumentVersion.of)
       val documented = recorded.copy(documents = held(7))
-      Drift.of(documented, documented.copy(documents = held(8)), lost = false) ==> Drift.Nearby
-      Drift.of(documented, documented.copy(documents = held(7, 8)), lost = false) ==> Drift.Nearby
+      Drift.of(documented, documented.copy(documents = held(8)), lost = false) ==> Drift.Elsewhere
+      Drift.of(
+        documented,
+        documented.copy(documents = held(7, 8)),
+        lost = false
+      ) ==> Drift.Elsewhere
       val two = recorded.copy(documents = held(7, 8))
-      Drift.of(two, two.copy(documents = held(8, 7)), lost = false) ==> Drift.Nearby
+      Drift.of(two, two.copy(documents = held(8, 7)), lost = false) ==> Drift.Elsewhere
     }
 
     test("own entries changed is own drift; both changed is both") {
@@ -61,8 +65,8 @@ object DriftTests extends TestSuite {
         )
       ) ==> Vector(
         "turns: 5; rebuilt 4, not rebuilt 1",
-        "  drift: same 1, nearby changed 1, own changed 0, both 0, gone 1, no window recorded 1",
-        "  c:2: nearby",
+        "  drift: same 1, elsewhere changed 1, own changed 0, both 0, gone 1, no window recorded 1",
+        "  c:2: elsewhere",
         "  c:3: gone",
         "  c:5: c:5 recorded no assemble step"
       )

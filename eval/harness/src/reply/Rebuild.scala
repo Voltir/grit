@@ -151,7 +151,7 @@ object Rebuild {
     def n(d: Drift) = drifts.count(_._2.contains(d))
     Vector(
       s"turns: ${rebuilt.size}; rebuilt ${drifts.size}, not rebuilt ${rebuilt.count(_._2.isLeft)}",
-      s"  drift: same ${n(Drift.Same)}, nearby changed ${n(Drift.Nearby)}, own changed " +
+      s"  drift: same ${n(Drift.Same)}, elsewhere changed ${n(Drift.Elsewhere)}, own changed " +
         s"${n(Drift.Own)}, both ${n(Drift.Both)}, gone ${n(Drift.Gone)}, no window recorded " +
         s"${drifts.count(_._2.isEmpty)}"
     ) ++ drifts.collect {

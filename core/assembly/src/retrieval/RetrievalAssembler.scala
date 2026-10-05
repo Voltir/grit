@@ -648,15 +648,23 @@ object RetrievalAssembler {
     case Record(conversation: ConversationId, place: Place, record: ClosingEntry)
     case Doc(document: Document, terms: DocumentTerms)
 
-    /** Which turn it is, so a turn found by several hits is ranked once. */
-    def key: (String, Long) = this match {
-      case Own(t) => ("", t.headOption.fold(-1L)(e => TurnSeq.value(e.turnSeq)))
-      case Near(c, _, t) =>
-        (ConversationId.value(c), t.headOption.fold(-1L)(e => TurnSeq.value(e.turnSeq)))
+    /** What it shows, so a turn, a record or a document found by several hits is ranked once. */
+    def key: Identity = this match {
+      case Own(t) => Identity.Own(t.headOption.map(_.turnSeq))
+      case Near(c, _, t) => Identity.Near(c, t.headOption.map(_.turnSeq))
       // One record per conversation, whichever of its closings matched.
-      case Record(c, _, _) => (s"record:${ConversationId.value(c)}", -1L)
-      // A conversation's id never holds a colon, so neither key names a turn.
-      case Doc(d, _) => ("document:", DocumentVersion.value(d.version))
+      case Record(c, _, _) => Identity.Record(c)
+      case Doc(d, _) => Identity.Doc(d.version)
     }
+  }
+
+  /** A candidate's identity: which of its own turns, which turn elsewhere, whose record, or
+    * which document version.
+    */
+  private enum Identity {
+    case Own(turn: Option[TurnSeq])
+    case Near(conversation: ConversationId, turn: Option[TurnSeq])
+    case Record(conversation: ConversationId)
+    case Doc(version: DocumentVersion)
   }
 }

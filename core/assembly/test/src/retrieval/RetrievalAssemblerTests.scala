@@ -1016,6 +1016,26 @@ object RetrievalAssemblerTests extends TestSuite {
       (off.requests.size, none.documents.size) ==> (0, 0)
     }
 
+    test("a turn elsewhere and a document are both drawn, whatever the conversation is named") {
+      // A conversation's id is any text, "document:" too; its turn 1 and version 1 are apart.
+      val world = store(ask)
+      val named = elsewhere(
+        world,
+        "document:",
+        close = false,
+        exchange("lunch?", "later"),
+        exchange("the probe budget?", "Ten a day.")
+      )
+      val docs = shelf("notes" -> 1.0)
+      val v = write(docs, "notes", "a", placeOf("api"), "the probe budget")
+      val search = new Scripted()
+      search.near = Vector((named, "document::t1:3", 2.0))
+      val w =
+        assemble(world, new Writer(Some("probe budget")), 1000, search, at = 0, documents = docs)
+      (DocumentVersion.value(v), w.nearby.map(_.conversation), w.documents) ==>
+        (1L, Vector(named), Vector(v))
+    }
+
     test("a document at a place out of scope is never searched") {
       val docs = shelf("notes" -> 1.0)
       write(docs, "notes", "a", placeOf("kept"), "the probe budget")

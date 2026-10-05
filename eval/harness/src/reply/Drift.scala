@@ -11,8 +11,10 @@ enum Drift {
   /** The same entries, the same sections and the same documents, in the same order. */
   case Same
 
-  /** Its own entries as recorded; its sections from elsewhere or its documents not. */
-  case Nearby
+  /** Its own entries as recorded; what it drew from elsewhere not: its sections from other
+    * conversations, or its documents, which a plugin keeps outside any conversation.
+    */
+  case Elsewhere
 
   /** Its sections from elsewhere and its documents as recorded; its own entries not. */
   case Own
@@ -39,7 +41,7 @@ object Drift {
         recorded.nearby == rebuilt.nearby && recorded.documents == rebuilt.documents
       ) match {
         case (true, true) => Same
-        case (true, false) => Nearby
+        case (true, false) => Elsewhere
         case (false, true) => Own
         case (false, false) => Both
       }
