@@ -90,8 +90,14 @@ In dependency order:
   whose run is `InFlight` gets (left, enqueued again, failed, or superseded at the current
   version); `Slot`, one slot of a schedule: the run name of its run's `Origin.Task`
   conversation, and the opening grit writes there; `Report`, where a schedule's runs report
-  beyond their own conversations; `SlotRuleJson` and `ReportJson`, their stored forms. ← `id`,
-  `message`, `store`
+  beyond their own conversations; `SlotRuleJson` and `ReportJson`, their stored forms. A `Job`
+  (versioned code a slot's run replies with, from its `JobRun`), a deployment's `Jobs` by name,
+  a `Declared` schedule (a job and its typed parameters, under a key), and how a schedule
+  `Ending`s; `ScheduleStore`, the stored schedules (declared ones reconciled at start, those
+  `waiting`, a run `replied`, one read as a `Schedule`); `OwnJobs`, a plugin's jobs as its tools
+  book them (a `Booking`, or `NotOwn`); and `ScheduleDesk`, one plugin's capability to write,
+  list and cancel a person's once slots from a tool call, asked for `When` (an `Asked`, their
+  `Pending`, or a `DeskRefusal`). ← `id`, `message`, `store`
 - **`spend`** — what grit spends on model calls, read back: `Spend` (some recorded calls: how
   many, and their `Cost`), `Spending` (a day's, or a conversation's, from the ledger; what the
   ledger misses is in its doc), `Day` (a calendar day in a zone, as instants), `DailyCap`
@@ -149,7 +155,7 @@ In dependency order:
   label that starts a line in text grit did not write, shown as a quoted paste), `Provider`
   and `Models` (the
   catalog in force, and a provider per role's pin; ← `model`), and `Inbox` (which also
-  records a message heard where grit listens, not said to it, at the time it was said, says which of a thread's messages it has recorded, answers a turn's gated call, and says how far a turn has got: its `Progress`; the id its entry is kept under is
+  records a message heard where grit listens, not said to it, at the time it was said, says which of a thread's messages it has recorded, answers a turn's gated call, says how far a turn has got: its `Progress`, and starts what a schedule has waiting, `Slotted`; the id its entry is kept under is
   `InboundId`'s). Each names only the packages above, never
   another of the three.
 - **`stitch`** — a Slack thread's first message joined to an exchange in its room (ADR 0023):
@@ -197,13 +203,14 @@ In dependency order:
   optionally a `CachePosting`, which keeps what it wants of one `ClosedPeriod`, its
   `Documents`, the terms they are kept under and its posting to them, and
   `PluginTool`s, each a `Hosted` description bound at start to a `PluginRun` over its own
-  documents, `PluginReads`, and its needs' services, `Needs`); `Exports`, a plugin another may
+  documents, `PluginReads`, its needs' services, `Needs`, and its own jobs, `OwnJobs`, run told
+  its call and handed a `ScheduleDesk`; and its `Job`s and `Declared` schedules); `Exports`, a plugin another may
   need, exporting a pure service over its own documents, the only way one plugin reads
   another's; `CacheDocs` (where it keeps what it makes of one closed period, deleted with that
   period's closing), `PluginDocs` (one plugin's documents as its surfaces read them),
   `PluginCursors` (how far each has posted, in close order; a new version starts again, in a
   new generation) and `PostRef` (one posting run, and its workflow id). ← `id`, `period`,
-  `store`, `document`, `tool`
+  `store`, `document`, `job`, `tool`
 
 - **`edge`** — what an edge and the engine share: `ServedEdge`, an edge a deployment serves
   beside its engine as it posts to a plugin (ADR 0021), opened over `EdgeStores` (what an
@@ -228,7 +235,9 @@ No source file sits at core's root, and no two packages import each other in a c
 
 The test tree mirrors it: the in-memory fakes other modules' tests use are
 `store.InMemoryEntryStore`, `store.InMemoryUsageLedger`, `store.InMemoryModelProfileStore`,
-`store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore`, `store.InMemoryVoiceStore`, `recipe.InMemoryRoomReads`, `plugin.InMemoryPlugins`, `document.InMemoryDocuments` (which owns the `store.InMemoryTombstones` its keepers mark) and
-`durable.InMemoryDurable`; and `period.TestClosings` builds closings and balance lines.
+`store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore`, `store.InMemoryVoiceStore`, `recipe.InMemoryRoomReads`, `plugin.InMemoryPlugins`, `job.InMemorySchedules` (with each plugin's desk), `document.InMemoryDocuments` (which owns the `store.InMemoryTombstones` its keepers mark) and
+`durable.InMemoryDurable`; `period.TestClosings` builds closings and balance lines,
+`id.TestCallSlots` the tool calls a test's tool is told, and `clock.SetClock` is a clock a test
+moves.
 `TestTx` lives in package `grit.dbos.sql`, because the `null` it holds is legal only inside
 the DBOS quarantine (rule 6).
