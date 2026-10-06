@@ -38,13 +38,10 @@ Decision:
 - **The clock edge** reads due slots from Postgres and starts their runs through the inbox,
   as any edge starts a turn (ADR 0002); it hosts no place (ADR 0017). After downtime, a once
   slot runs late within a grace its schedule declares and is otherwise recorded as missed; a
-  recurrence runs its latest missed slot alone. (Amended 2026-10-06.) Each pass takes due
-  slots and runs in flight in batches of their own, so neither starves the other. A run whose
-  workflow ended without its reply ended under some version: another than its job's current
-  one, and it was superseded (its slot is started again at the current version unless a
-  later slot is due); the current one, or its job is gone, and the run failed (a once
-  schedule ends failed, a recurrence goes on to its next slot). A run DBOS does not know, its
-  start's enqueue lost, is enqueued again.
+  recurrence runs its latest missed slot alone. (Amended 2026-10-06.) A run whose workflow
+  ended without its reply was superseded if it ran under another version than its job's
+  current one, and failed if under the current one or if its job is gone. Each pass makes
+  progress on both due slots and runs in flight.
 - **A job is contributed by a plugin (ADR 0027) or declared by the deployment**, and runs
   under grit's epoch (ADR 0021).
 
