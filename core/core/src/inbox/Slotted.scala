@@ -25,10 +25,14 @@ enum Slotted {
   /** Its once slot, more than its grace past, recorded as missed and never run. */
   case Missed(slot: Slot)
 
+  /** Its next slot was run already, by its last run, of `slot`: a once schedule declared again
+    * after its run replied while it was undeclared. A once schedule ends `ran`, never started
+    * again; a recurrence goes on to the slot after `slot`.
+    */
+  case Ran(slot: Slot)
+
   /** Nothing to do: the schedule is ended, gone, or not due yet; its run is going at the
     * current version; or its job is not the deployment's and its once slot is within its grace.
-    * Also a once schedule whose slot already ran (declared again after its run replied while
-    * it was undeclared): it ends `ran` ([[grit.core.job.Starting.Passed]]).
     */
   case Idle
 }

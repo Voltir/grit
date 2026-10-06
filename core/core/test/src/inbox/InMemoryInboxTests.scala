@@ -103,7 +103,11 @@ object InMemoryInboxTests extends InboxContract {
           inbox.schedules
             .waiting(now, 1000)(using TestTx.fake)
             .fold(e => sys.error(e.toString), _.map(_._1)),
-        turn => inbox.finish(turn, None, "no job runs here")
+        turn => inbox.finish(turn, None, "no job runs here"),
+        (slot, version, at) =>
+          inbox.schedules
+            .replied(slot, version, at)(using TestTx.fake)
+            .fold(e => sys.error(e.toString), identity)
       )
     )
   }

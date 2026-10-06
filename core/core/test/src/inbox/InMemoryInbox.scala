@@ -316,7 +316,12 @@ final class InMemoryInbox(
             case Starting.Miss(at) =>
               stored(schedules.missed(schedule, now)).map(_ => Slotted.Missed(Slot(schedule, at)))
             case Starting.Passed(following) =>
-              stored(schedules.passed(schedule, following, now)).map(_ => Slotted.Idle)
+              last match {
+                case Some((slot, _)) =>
+                  stored(schedules.passed(schedule, following, now))
+                    .map(_ => Slotted.Ran(Slot(schedule, slot)))
+                case None => Left(InboxError.Unavailable("a slot ran, with no run started"))
+              }
           }
       }
 

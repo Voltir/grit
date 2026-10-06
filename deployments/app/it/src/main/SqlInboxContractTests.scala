@@ -154,7 +154,11 @@ object SqlInboxContractTests extends InboxContract {
               .fold(e => sys.error(e.toString), _.map(_._1)),
           turn => {
             val _ = engine.awaitTurn(turn)
-          }
+          },
+          (slot, version, at) =>
+            engine.jot
+              .write(engine.schedules.replied(slot, version, at))
+              .fold(e => sys.error(e.toString), identity)
         )
       )
     } finally engine.close()

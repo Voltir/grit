@@ -146,6 +146,23 @@ abstract class InboxContract extends TestSuite {
       }
     }
 
+    test(
+      "a once schedule declared again after its run replied while undeclared ends ran, its slot never run again"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val slot = Slot(scheduled("revived"), Due)
+        store.declare(Vector(declared("revived", SlotRule.Once(Due, hour))), Due)
+        val _ = begun(inbox.startSlot(slot.schedule, Some(1), Due))
+        store.declare(Vector(), Due.plusSeconds(1))
+        store.replied(slot, 1, Due.plusSeconds(1))
+        store.declare(Vector(declared("revived", SlotRule.Once(Due, hour))), Due.plusSeconds(2))
+        inbox.startSlot(slot.schedule, Some(1), Due.plusSeconds(3)) ==> Right(Slotted.Ran(slot))
+        store.schedule(slot.schedule).flatMap(_.ended) ==> Some(Ending.Ran)
+        inbox.startSlot(slot.schedule, Some(1), Due.plusSeconds(4)) ==> Right(Slotted.Idle)
+        store.written(slot.origin(remind.name)).size ==> 1
+      }
+    }
+
     test("ingested: the turn a message was recorded as; none for one never recorded") {
       withInbox(Uncapped) { (inbox, _) =>
         val here = Origin.Task("inbox", "ingested")
@@ -390,7 +407,8 @@ object InboxContract {
     * `postedBy`, the call an origin's conversation's opening post was made by; `declare` makes
     * the declared schedules these, as of a time; `schedule`, one kept, as the store reads it;
     * `waiting`, the schedules waiting at a time; `end` ends a run, which its job left, without a
-    * reply, and returns once it has.
+    * reply, and returns once it has; `replied` records a slot's run at a version replied, as of a
+    * time, as the run's reply does.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -405,6 +423,7 @@ object InboxContract {
       declare: (Vector[(Declarer, Declared[?])], Instant) => Unit,
       schedule: ScheduleId => Option[Schedule],
       waiting: Instant => Vector[ScheduleId],
-      end: TurnRef => Unit
+      end: TurnRef => Unit,
+      replied: (Slot, Int, Instant) => Unit
   )
 }

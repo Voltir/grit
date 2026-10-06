@@ -216,22 +216,5 @@ object SqlStartSlotTests extends TestSuite {
         ) ==> Vector(Right(Slotted.Idle), Right(Slotted.Idle))
       }
     }
-
-    test(
-      "a once schedule declared again after its run replied while undeclared ends ran, its slot never run again"
-    ) {
-      withEngine { engine =>
-        declare(engine, Vector("revived" -> SlotRule.Once(Due, hour)), Due)
-        val turn = begun(engine.inbox.startSlot(scheduled("revived"), Some(1), Due))
-        declare(engine, Vector(), Due.plusSeconds(1))
-        right(engine.jot.write(engine.schedules.replied(Slot(scheduled("revived"), Due), 1, Due)))
-        declare(engine, Vector("revived" -> SlotRule.Once(Due, hour)), Due.plusSeconds(2))
-        engine.inbox.startSlot(scheduled("revived"), Some(1), Due.plusSeconds(3)) ==>
-          Right(Slotted.Idle)
-        right(engine.db.read(engine.schedules.read(scheduled("revived")))).flatMap(_.ended) ==>
-          Some(Ending.Ran)
-        right(engine.db.read(engine.entries.list(turn.conversationId))).size ==> 1
-      }
-    }
   }
 }

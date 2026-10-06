@@ -347,7 +347,13 @@ final class SqlInbox(
                   .missed(schedule, now)
                   .map(_ => Begun(Slotted.Missed(Slot(schedule, at)), None, None))
               case Starting.Passed(following) =>
-                schedules.passed(schedule, following, now).map(_ => Begun(Slotted.Idle, None, None))
+                last match {
+                  case Some(run) =>
+                    schedules
+                      .passed(schedule, following, now)
+                      .map(_ => Begun(Slotted.Ran(Slot(schedule, run.slot)), None, None))
+                  case None => Left(StoreError.Invalid("a slot ran, with no run started"))
+                }
             }
           } yield begun
       }
