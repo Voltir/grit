@@ -163,6 +163,23 @@ abstract class InboxContract extends TestSuite {
       }
     }
 
+    test(
+      "a slot's run is never started as a turn: startTurn refuses it, naming its slot, while a one-shot run's turn starts"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        store.declare(Vector(declared("start-turn", SlotRule.Once(Due, hour))), Due)
+        val (run, slot) = begun(inbox.startSlot(scheduled("start-turn"), Some(1), Due))
+        val oneShot = inbox.ingest(
+          Origin.Task("remind", "main"),
+          SourceId("m1"),
+          said("once"),
+          PrincipalId.Local
+        )
+        (oneShot.flatMap(inbox.startTurn), inbox.startTurn(run)) ==>
+          (Right(()), Left(InboxError.SlotRun(slot)))
+      }
+    }
+
     test("ingested: the turn a message was recorded as; none for one never recorded") {
       withInbox(Uncapped) { (inbox, _) =>
         val here = Origin.Task("inbox", "ingested")

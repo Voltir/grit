@@ -562,8 +562,9 @@ final class SlackEdge(
     }
   }
 
-  /** One pass over the replies awaited. On the edge's first pass, each is started again (a
-    * no-op for one already started), since a start can be lost between ingest and start. Each
+  /** One pass over the replies awaited. On the edge's first pass, each turn is started again
+    * (a no-op for one already started), since a start can be lost between ingest and start; a
+    * scheduled run's is not, its start being the clock's ([[InboxError.SlotRun]]). Each
     * finished turn has its reply posted to its thread, in as many messages as [[RichText]]
     * makes of it (one line saying grit could not answer, and why, when it ended with none),
     * and `:eyes:` removed from the message it answers, which clears its acknowledgement. A part
@@ -575,7 +576,10 @@ final class SlackEdge(
     stores.jot.write(stores.deliveries.pending()).map { pending =>
       if (!started.getAndSet(true))
         pending.foreach(p =>
-          stores.inbox.startTurn(p.turn).left.foreach(e => said(s"slack: not restarted: $e"))
+          stores.inbox.startTurn(p.turn) match {
+            case Right(()) | Left(InboxError.SlotRun(_)) => ()
+            case Left(e) => said(s"slack: not restarted: $e")
+          }
         )
       pending.count { p =>
         stores.inbox.progress(p.turn) match {

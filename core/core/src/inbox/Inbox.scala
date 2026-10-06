@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.approval.Approval
 import grit.core.id.{CallSlot, PrincipalId, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.job.Slot
 import grit.core.message.Message
 import grit.core.speech.Reach
 import grit.core.spend.{DailyCap, Day, Spend}
@@ -85,7 +86,8 @@ trait Inbox extends caps.SharedCapability {
   def progress(turn: TurnRef): Either[InboxError, Progress]
 
   /** Starts `turn` if it has not been started. A conversation runs one turn at a time,
-    * oldest first; this returns once the turn is queued, not when it has run.
+    * oldest first; this returns once the turn is queued, not when it has run. A slot's run is
+    * [[InboxError.SlotRun]], never started: only [[startSlot]] starts or restarts one.
     */
   def startTurn(turn: TurnRef): Either[InboxError, Unit]
 
@@ -126,6 +128,9 @@ enum InboxError {
 
   /** No turn has the workflow `workflow`. */
   case NoSuchTurn(workflow: WorkflowId)
+
+  /** The turn is `slot`'s run, which only [[Inbox.startSlot]] starts. */
+  case SlotRun(slot: Slot)
 
   /** A new message not recorded: `spent` on `day` reached `cap`. Retrying does not help
     * before the next day. A person is told [[grit.core.spend.Budget.Refusal]], which names

@@ -10,8 +10,20 @@ import grit.core.edge.{
   InMemoryEdges,
   Part
 }
-import grit.core.id.{CallSlot, ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{
+  CallSlot,
+  ConversationId,
+  Declarer,
+  JobName,
+  PrincipalId,
+  ScheduleId,
+  ScheduleKey,
+  SourceId,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.inbox.InMemoryInbox
+import grit.core.job.Slot
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.review.InMemoryReviews
 import grit.core.speech.Reach
@@ -652,6 +664,32 @@ object SlackEdgeTests extends TestSuite {
       w.inbox.started = Vector.empty
       restarted.deliver() ==> Right(0)
       w.inbox.started ==> Vector.empty
+    }
+
+    test(
+      "an edge starting up never starts a scheduled run, whose start is the clock's, and posts its reply once the run ends"
+    ) {
+      val w = new World
+      val slot = Slot(
+        ScheduleId
+          .declared(Declarer.Deployment, ScheduleKey.of("standup").fold(sys.error, identity)),
+        java.time.Instant.parse("2026-10-07T09:00:00Z")
+      )
+      val run = w.inbox
+        .ingest(
+          slot.origin(JobName.of("remind").fold(sys.error, identity)),
+          Slot.source(1),
+          Message.User("due"),
+          PrincipalId.Grit
+        )
+        .fold(e => throw new java.lang.AssertionError(e.toString), identity)
+      FakeJot.write(w.deliveries.await(run, "C123ABC456/5.0/5.0")) ==> Right(())
+      val restarted = w.edge()
+      restarted.deliver() ==> Right(0)
+      w.inbox.finish(run, Some(reply("standup in ten")), "replied")
+      restarted.deliver() ==> Right(1)
+      (w.inbox.started, w.logged, w.slack.posts.map(_.post.fallback)) ==>
+        (Vector.empty, Vector.empty, Vector("standup in ten"))
     }
   }
 }

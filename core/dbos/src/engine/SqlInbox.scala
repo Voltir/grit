@@ -291,7 +291,12 @@ final class SqlInbox(
   }
 
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
-    enqueue(Turns.enqueueOptions(turn))
+    inTransaction(conversations.get(turn.conversationId)).flatMap { found =>
+      found.flatMap(c => Slot.of(c.origin)) match {
+        case Some(slot) => Left(InboxError.SlotRun(slot))
+        case None => enqueue(Turns.enqueueOptions(turn))
+      }
+    }
 
   /** Decided in one transaction under the schedule's row lock, a run's workflow status read
     * from DBOS inside it; a run it starts or restarts is enqueued after the commit, and again

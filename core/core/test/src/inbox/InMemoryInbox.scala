@@ -339,10 +339,13 @@ final class InMemoryInbox(
 
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
     if (down) unavailable
-    else {
-      if (!started.contains(turn)) started = started :+ turn
-      Right(())
-    }
+    else
+      conversations.all.find(_.id == turn.conversationId).flatMap(c => Slot.of(c.origin)) match {
+        case Some(slot) => Left(InboxError.SlotRun(slot))
+        case None =>
+          if (!started.contains(turn)) started = started :+ turn
+          Right(())
+      }
 
   def answer(workflow: WorkflowId, call: ToolCallId, approval: Approval): Either[InboxError, Unit] =
     if (down) unavailable
