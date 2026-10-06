@@ -1,5 +1,7 @@
 package grit.kit.run
 
+import java.time.Instant
+
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
@@ -7,7 +9,7 @@ import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
 import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
-import grit.core.job.NotOwn
+import grit.core.job.{NotOwn, ScheduleDesk, ScheduleStore}
 import grit.core.message.Message
 import grit.core.model.{Catalog, Pinned}
 import grit.core.period.{LifecycleSettings, Probability}
@@ -18,7 +20,9 @@ import grit.core.stitch.StitchReads
 import grit.core.store.{Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
 import grit.dbos.engine.Engine
-import grit.kit.deployment.{Assembly, Deployment, Offered, PluginBinding, Topics}
+import grit.job.clock.ClockEdge
+import grit.job.run.{RunEnv, RunRecords}
+import grit.kit.deployment.{Assembly, Deployment, Desks, Offered, PluginBinding, Topics}
 import grit.kit.environment.Secrets
 import grit.lifecycle.close.{Close, CloseEnv, CloseRecords}
 import grit.lifecycle.post.{PostEnv, Posting}
@@ -49,10 +53,14 @@ private[grit] object Launch {
   }
 
   /** `engine` with `d`'s lifecycle settings written over those its database keeps (logged as
-    * they stand after), and its workflows launched on it, sweeping every
-    * `d.sweep` when `sweeping` (otherwise its caller sweeps it): the assembler reads its
-    * stores, and the models its kept model settings, OpenRouter's under `d.policy` when `s`
-    * holds its key, the stub's otherwise. Throws when the settings cannot be written, when the
+    * they stand after), its declared schedules made the stored ones ([[reconcile]]), and its
+    * workflows launched on it, each job's run by `d.allJobs`, sweeping every `d.sweep` and
+    * starting what the schedules have waiting every [[ClockEdge.Every]] when `sweeping`
+    * (otherwise its caller sweeps it, and nothing starts a schedule's slot): the assembler reads
+    * its stores, and the models its kept model settings, OpenRouter's under `d.policy` when `s`
+    * holds its key, the stub's otherwise. Each plugin's tools write its schedules through a
+    * desk of its own jobs. Throws when the settings or the declared schedules cannot be
+    * written, when the
     * seed catalog cannot be read or the tools repeat a name (faults of the build no setting
     * can cause), or when the kept model settings cannot be read. `finished` is told each
     * turn's [[TurnTally.line]] when its workflow's body returns (again if a recovered turn's
@@ -66,6 +74,8 @@ private[grit] object Launch {
       sweeping: Boolean,
       finished: String => Unit
   ): Engine^{engine} = {
+    // One clock for the jobs: their runs, their desks, the declared schedules and the clock edge.
+    val clock: Clock^ = Clock.system()
     declare(engine.lifecycle, engine.jot, d.lifecycle) match {
       case Left(error) =>
         throw new IllegalStateException(s"the lifecycle's settings could not be written: $error")
@@ -73,6 +83,10 @@ private[grit] object Launch {
         org.slf4j.LoggerFactory
           .getLogger("grit.launch")
           .info(s"lifecycle settings: ${written(inForce)}")
+    }
+    // Before anything runs, so the clock edge's first pass sees the schedules as declared.
+    reconcile(engine.schedules, engine.jot, d, clock.now()).left.foreach { error =>
+      throw new IllegalStateException(s"the declared schedules could not be written: $error")
     }
     val reached: Models = s.openRouter match {
       case None => new StubModels(run.stubDelay)
@@ -268,11 +282,29 @@ private[grit] object Launch {
             grit.core.stitch.Tuning.Default
           )
         ),
-        d.shadows.map(_.shadowing)
+        d.shadows.map(_.shadowing),
+        grit.job.run.Run.body(
+          RunEnv(
+            RunRecords(engine.entries, engine.conversations, engine.schedules, engine.deliveries),
+            engine.db,
+            engine.jot,
+            clock
+          ),
+          d.allJobs
+        )
       )
-      if (sweeping) engine.sweepEvery(d.sweep, Clock.system())
+      if (sweeping) {
+        engine.sweepEvery(d.sweep, Clock.system())
+        ticking(engine, new ClockEdge(engine.inbox, engine.schedules, engine.db, clock, d.allJobs))
+      }
     }
     val store: Db^ = engine.db
+    // Each plugin's desk, of its own jobs: built per call, since it keeps nothing but the
+    // engine's transactions and the clock.
+    val desks: Desks^{engine, clock} = new Desks {
+      def of(plugin: PluginName, jobs: Vector[JobName]): ScheduleDesk^ =
+        engine.desk(plugin, jobs, clock)
+    }
     // Every plugin's tools, each bound over its own documents and its needs' services.
     val plugged = PluginBinding
       .bound(d.plugins, engine.reads)
@@ -298,15 +330,15 @@ private[grit] object Launch {
     val about: Tool[Option[About.Subject]] =
       About.load(d.persona).fold(why => throw new IllegalStateException(why), t => t)
     // Offered everywhere: what grit is, and every plugin's tools.
-    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{store}]] =
-      Toolbox.of[caps.CapSet^{store}](
-        (Vector[Tool.Offered^{store}](about) ++ plugged.map(_.over(store)))*
+    val everyone: Either[DuplicateName, Toolbox[caps.CapSet^{store, desks}]] =
+      Toolbox.of[caps.CapSet^{store, desks}](
+        (Vector[Tool.Offered^{store, desks}](about) ++ plugged.map(_.over(store, desks)))*
       )
     val launching = d.offer.tools match {
       case Offered.Read =>
         everyone.map(tools =>
           launch(
-            TurnTooling[caps.CapSet^{store}](
+            TurnTooling[caps.CapSet^{store, desks}](
               tools,
               Toolbox.Empty,
               Coding.readOnlyHosted,
@@ -329,9 +361,9 @@ private[grit] object Launch {
         ) match {
           case (Right(tools), Right(operator)) =>
             // Refused here, at start, rather than as a failed offer on some turn.
-            Toolbox.joined[caps.CapSet^{tuned, models, store}](tools, operator).map { _ =>
+            Toolbox.joined[caps.CapSet^{tuned, models, store, desks}](tools, operator).map { _ =>
               launch(
-                TurnTooling[caps.CapSet^{tuned, models, store}](
+                TurnTooling[caps.CapSet^{tuned, models, store, desks}](
                   tools,
                   operator,
                   Coding.hosted,
@@ -385,6 +417,34 @@ private[grit] object Launch {
       declared: LifecycleSettings
   ): Either[StoreError, LifecycleSettings] =
     jot.write(lifecycle.set(declared).flatMap(_ => lifecycle.current()))
+
+  /** `d`'s declared schedules made the stored ones as of `now` ([[ScheduleStore.declare]]),
+    * through `jot`.
+    */
+  private[grit] def reconcile(
+      schedules: ScheduleStore,
+      jot: Jot,
+      d: Deployment,
+      now: Instant
+  ): Either[StoreError, Unit] =
+    jot.write(schedules.declare(d.declared, now))
+
+  /** `edge`'s passes run every [[ClockEdge.Every]] on `engine` ([[Engine.every]], as
+    * `grit.clock`): a pass that cannot read the schedules is logged, and so is each schedule
+    * the inbox failed to start, which the next pass tries again.
+    */
+  private def ticking(engine: Engine^, edge: ClockEdge^): Unit = {
+    val log = org.slf4j.LoggerFactory.getLogger("grit.clock")
+    engine.every("grit.clock", ClockEdge.Every) { () =>
+      edge.tick() match {
+        case Left(e) => log.warn(s"the schedules could not be read: $e")
+        case Right(ticked) =>
+          ticked.failed.foreach((id, e) =>
+            log.warn(s"schedule ${grit.core.id.ScheduleId.value(id)} not started: $e")
+          )
+      }
+    }
+  }
 
   /** `s` in one line, for the log. */
   private def written(s: LifecycleSettings): String = {

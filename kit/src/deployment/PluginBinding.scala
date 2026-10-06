@@ -1,49 +1,33 @@
 package grit.kit.deployment
 
-import grit.core.id.{CallSlot, PluginName, ScheduleId}
-import grit.core.job.{
-  Asked,
-  Booking,
-  DeskRefusal,
-  Grace,
-  NotOwn,
-  OwnJobs,
-  Pending,
-  ScheduleDesk,
-  When
-}
+import grit.core.id.{JobName, PluginName}
+import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.plugin.{Needs, Plugin, PluginReads, PluginRun, PluginTool, Unneeded}
-import grit.core.store.{Db, StoreError}
+import grit.core.store.Db
 import grit.core.tool.{Hosted, Tool}
 
-/** A plugin's tool bound to its run: what it is, and what a call does. */
-private[kit] final case class BoundTool[A](described: Hosted[A], run: PluginRun[A]) {
+/** A plugin's tool bound to its run: what it is, what a call does, and its plugin, whose jobs
+  * are named `jobs`.
+  */
+private[kit] final case class BoundTool[A](
+    described: Hosted[A],
+    run: PluginRun[A],
+    plugin: PluginName,
+    jobs: Vector[JobName]
+) {
 
-  /** This tool, each call run through `store`, told the call it runs. Its schedules go nowhere:
-    * every desk call is refused [[DeskRefusal.Unavailable]], since no store keeps schedules
-    * yet.
+  /** This tool, each call run through `store`, told the call it runs, and writing its
+    * plugin's schedules through its plugin's desk from `desks`.
     */
-  def over(store: Db^): Tool.Offered^{store} =
-    described.calling((a, at) => run.run(a, at, store, new Unkept))
+  def over(store: Db^, desks: Desks^): Tool.Offered^{store, desks} =
+    described.calling((a, at) => run.run(a, at, store, desks.of(plugin, jobs)))
 }
 
-/** A desk over no store: it refuses every call, writing nothing. */
-private final class Unkept extends ScheduleDesk {
-  private val refused = DeskRefusal.Unavailable(StoreError.DatabaseError("no schedules are kept"))
-  def ask[P <: caps.Pure](
-      call: CallSlot,
-      booking: Booking[P],
-      when: When,
-      grace: Grace,
-      params: P
-  ): Either[DeskRefusal, Asked[P]] = Left(refused)
-  def pending[P <: caps.Pure](
-      call: CallSlot,
-      booking: Booking[P]
-  ): Either[DeskRefusal, Pending[P]] =
-    Left(refused)
-  def cancel(call: CallSlot, booking: Booking[?], id: ScheduleId): Either[DeskRefusal, Unit] =
-    Left(refused)
+/** Each plugin's desk (ADR 0029). */
+private[kit] trait Desks {
+
+  /** `plugin`'s desk, refusing a booking of any job not named in `jobs`. */
+  def of(plugin: PluginName, jobs: Vector[JobName]): ScheduleDesk^
 }
 
 /** How the kit binds the deployment's plugins' tools (ADR 0027). */
@@ -64,15 +48,16 @@ private[kit] object PluginBinding {
         val own = reads(p.name)
         val jobs = OwnJobs.over(p.name, p.jobs)
         p.tools.foldLeft(acc)((done, t) =>
-          done.flatMap(ts => one(t, own, needs, jobs).map(ts :+ _))
+          done.flatMap(ts => one(t, p, own, needs, jobs).map(ts :+ _))
         )
     }
 
   private def one[A](
       t: PluginTool[A],
+      p: Plugin,
       own: PluginReads,
       needs: Needs,
       jobs: OwnJobs
   ): Either[Unneeded | NotOwn, BoundTool[A]] =
-    t.bind(own, needs, jobs).map(BoundTool(t.described, _))
+    t.bind(own, needs, jobs).map(BoundTool(t.described, _, p.name, p.jobs.map(_.name)))
 }

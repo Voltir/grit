@@ -41,7 +41,9 @@ In dependency order:
   picked every `Kit.PickEvery`), `Kit.catchUp` (an edge's
   `CatchUp` heard once, estimated and agreed to first, then swept until nothing is left to
   close) and `Kit.launch` (the engine's workflows, for grit's own chat), each failing as a
-  `KitFailure`; `Launch`, the workflows launched the same way by every way grit runs;
+  `KitFailure`; `Launch`, the workflows launched the same way by every way grit runs, with the
+  deployment's declared schedules reconciled at its start and, where it sweeps, grit's clock
+  edge (`grit.job.clock.ClockEdge`) starting what they have waiting;
   `Serving`, the edges opened, delivered to and closed; `Picking`, a review's pick round;
   `CatchingUp` and `Estimate`, a
   catch-up's flow and its bound; `KeptModelSettings`. ← `deployment`, `environment`

@@ -531,6 +531,7 @@ object grit extends Module {
         grit.core,
         grit.dbos,
         grit.turn,
+        grit.job,
         grit.lifecycle,
         grit.assembly,
         grit.models,

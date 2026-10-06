@@ -14,9 +14,9 @@ import grit.core.document.{DocumentKeeper, DocumentStore, DocumentTerms}
 import grit.core.durable.Durable
 import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
 import grit.core.host.ProcessIdentity
-import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
+import grit.core.id.{ConversationId, JobName, PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
-import grit.core.job.ScheduleStore
+import grit.core.job.{ScheduleDesk, ScheduleStore}
 import grit.core.place.Place
 import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginReads}
 import grit.core.speech.SpeechStore
@@ -206,6 +206,12 @@ final class Engine private (
 
   /** Every job's schedules (ADR 0029), as the engine keeps them. */
   val schedules: ScheduleStore = sqlSchedules
+
+  /** `plugin`'s desk (ADR 0029): the schedules its tools write, of the jobs named `jobs`, each
+    * in a transaction of its own, dated by `clock`.
+    */
+  def desk(plugin: PluginName, jobs: Vector[JobName], clock: Clock^): ScheduleDesk^ =
+    sqlSchedules.desk(plugin, jobs, jot, clock)
 
   /** Each plugin's cursor. */
   val cursors: PluginCursors = new SqlPluginCursors(tombstones)
