@@ -9,12 +9,16 @@ object Utc {
   private val Second =
     DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'").withZone(ZoneOffset.UTC)
 
-  private val Minute =
-    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
+  private val Minute = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneOffset.UTC)
 
   /** `at` to the second: `2026-10-06 14:00:05 UTC`. */
   def toSecond(at: Instant): String = Second.format(at)
 
   /** `at` to the minute, its seconds dropped: `2026-10-06 14:00 UTC`. */
-  def toMinute(at: Instant): String = Minute.format(at)
+  def toMinute(at: Instant): String = s"${bareMinute(at)} UTC"
+
+  /** [[toMinute]] without saying UTC: `2026-10-06 14:00`, for text that says once that all
+    * its times are UTC.
+    */
+  def bareMinute(at: Instant): String = Minute.format(at)
 }

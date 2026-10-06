@@ -1,10 +1,10 @@
 package grit.digest
 
-import java.time.format.DateTimeFormatter
-import java.time.{Instant, ZoneOffset}
+import java.time.Instant
 
 import scala.concurrent.duration.*
 
+import grit.core.clock.Utc
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.id.{CallSlot, DocKey, PluginName}
 import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
@@ -130,7 +130,7 @@ object Digest {
   ) {
 
     /** `{date} {time} · {where} · {why} · {headline}`, UTC. */
-    def shown: String = s"${Minute.format(at)} · $where · $why · $line"
+    def shown: String = s"${Utc.bareMinute(at)} · $where · $why · $line"
   }
 
   private object Line {
@@ -187,8 +187,6 @@ object Digest {
     case Origin.Slack(_, channel, _) => s"slack #$channel"
     case Origin.Task(name, _) => s"task $name"
   }
-
-  private val Minute = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneOffset.UTC)
 
   /** `recent_activity`: the newest lines of the digest it is bound to, newest first. Free: it
     * only reads.
