@@ -6,7 +6,6 @@ import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
 import grit.core.id.{
-  ConversationId,
   Declarer,
   JobName,
   PluginName,
@@ -14,8 +13,7 @@ import grit.core.id.{
   ScheduleId,
   ScheduleKey,
   TestCallSlots,
-  TurnRef,
-  TurnSeq
+  TurnRef
 }
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{StoreError, Tombstones, Tx}
@@ -43,8 +41,6 @@ abstract class ScheduleContract extends TestSuite {
     (Declarer.Deployment, Declared(key(k), standup, rule, Count(n)))
 
   private def id(k: String): ScheduleId = ScheduleId.declared(Declarer.Deployment, key(k))
-
-  private val turn = TurnRef(ConversationId("contract"), TurnSeq.First)
 
   val tests = Tests {
     test(
@@ -81,6 +77,7 @@ abstract class ScheduleContract extends TestSuite {
     ) {
       val u = fresh()
       val remind = u.desk(PluginName.of("remind").fold(sys.error, identity), Vector(standup.name))
+      val turn = u.turn("contract")
       val call = TestCallSlots.at(turn)
       u.asking(turn, PrincipalId("ann"), Some("C1/1.0"))
       val asked = remind
@@ -94,6 +91,17 @@ abstract class ScheduleContract extends TestSuite {
       u.waiting("2026-10-08T09:00:00Z") ==> Vector(id("a"))
       u.declare(Vector(declared("a", daily(9)), declared("b", daily(9))), "12:00")
       u.read(id("b")).flatMap(_.ended) ==> None
+      u.waiting("2026-10-08T09:00:00Z") ==> Vector(id("a"), id("b"))
+    }
+
+    test(
+      "a revived recurrence's next slot is its first after the revival, not one it passed while undeclared"
+    ) {
+      val u = fresh()
+      u.declare(Vector(declared("a", daily(9)), declared("b", daily(9))), "08:00")
+      u.declare(Vector(declared("a", daily(9))), "08:30")
+      u.declare(Vector(declared("a", daily(9)), declared("b", daily(9))), "10:00")
+      u.waiting("10:00") ==> Vector(id("a"))
       u.waiting("2026-10-08T09:00:00Z") ==> Vector(id("a"), id("b"))
     }
 
@@ -167,6 +175,9 @@ object ScheduleContract {
       */
     def start(slot: Slot, version: Int, following: Option[Instant]): Unit
 
+    /** The first turn of the conversation this store knows by `name`, recorded or not. */
+    def turn(name: String): TurnRef
+
     /** `turn` recorded as rooted on a message `by` wrote, its reply posted at `address`, or
       * nowhere.
       */
@@ -190,7 +201,7 @@ object ScheduleContract {
 
     /** The pending schedule tombstones, oldest first. */
     final def marked: Vector[Tombstone] =
-      ok(transaction(tombstones.due(Target.Kind.Schedule, Instant.MAX, 1000)))
+      ok(transaction(tombstones.due(Target.Kind.Schedule, at("9999-01-01T00:00:00Z"), 1000)))
 
     /** `plugin`'s desk, its clock stopped at 2026-10-07T09:00:00Z. */
     final def desk(plugin: PluginName, jobs: Vector[JobName]): ScheduleDesk^ =

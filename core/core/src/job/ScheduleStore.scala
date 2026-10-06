@@ -25,8 +25,8 @@ trait ScheduleStore {
   /** Makes the stored declared schedules `declared`, by their declarers, as of `now`. A new one
     * is written with its first slot after `now` (a once slot at its instant, however past). A
     * changed one (its job, parameters or rule) is rewritten in place, its next slot recomputed
-    * only when its rule changed. One ended undeclared is revived; one ended any other way stays
-    * ended. Every pending declared one not among them is ended undeclared. An asked schedule is
+    * only when its rule changed. One ended undeclared is revived with the first slot after
+    * `now`, as a new one is; one ended any other way stays ended. Every pending declared one not among them is ended undeclared. An asked schedule is
     * never touched.
     */
   def declare(declared: Vector[(Declarer, Declared[?])], now: Instant)(using

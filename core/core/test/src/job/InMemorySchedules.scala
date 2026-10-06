@@ -58,12 +58,16 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
         case None =>
           Row(d.job.name, d.written, PrincipalId.Grit, Report.Kept, d.rule, first(d.rule, now))
         case Some(r) =>
+          val ended = r.ended.filterNot(_ == Ending.Undeclared)
           r.copy(
             job = d.job.name,
             params = d.written,
             rule = d.rule,
-            next = if (r.rule == d.rule) r.next else first(d.rule, now),
-            ended = r.ended.filterNot(_ == Ending.Undeclared)
+            next =
+              if (ended.nonEmpty) None
+              else if (r.rule == d.rule && r.ended.isEmpty) r.next
+              else first(d.rule, now),
+            ended = ended
           )
       }
       rows = rows.updated(id, row)
@@ -123,7 +127,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
               turns.get(call.turn) match {
                 case Some((by, Some(address))) =>
                   val now = clock.now()
-                  val at = when.from(now)
+                  val at = when.from(now).truncatedTo(java.time.temporal.ChronoUnit.MICROS)
                   val limit = now.plusNanos(ScheduleDesk.Horizon.toNanos)
                   if (!at.isAfter(now)) Left(DeskRefusal.Past(at, now))
                   else if (at.isAfter(limit)) Left(DeskRefusal.TooFar(at, limit))
@@ -210,7 +214,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
     }
 
   private def end(id: ScheduleId, how: Ending, at: Instant)(using Tx^): Either[StoreError, Unit] = {
-    rows = rows.updatedWith(id)(_.map(_.copy(ended = Some(how))))
+    rows = rows.updatedWith(id)(_.map(_.copy(next = None, ended = Some(how))))
     tombstones.write(Target.Schedule(id), at).map(_ => ())
   }
 

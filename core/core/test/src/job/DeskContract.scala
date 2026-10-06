@@ -3,17 +3,7 @@ package grit.core.job
 import scala.concurrent.duration.*
 
 import grit.core.clock.SetClock
-import grit.core.id.{
-  CallSlot,
-  ConversationId,
-  JobName,
-  PluginName,
-  PrincipalId,
-  ScheduleId,
-  TestCallSlots,
-  TurnRef,
-  TurnSeq
-}
+import grit.core.id.{CallSlot, JobName, PluginName, PrincipalId, ScheduleId, TestCallSlots}
 import grit.core.retention.{Target, Tombstone}
 
 import utest.*
@@ -34,24 +24,26 @@ abstract class DeskContract extends TestSuite {
   private val reminders = got(PluginName.of("reminders"))
   private val nudges = got(PluginName.of("nudges"))
 
-  /** A turn of `conversation`, and its call at `index`. */
-  private def turn(conversation: String): TurnRef =
-    TurnRef(ConversationId(conversation), TurnSeq.First)
-  private def call(conversation: String, index: Int = 0): CallSlot =
-    TestCallSlots.at(turn(conversation), index = index)
+  /** A store under test, its clock, and the desk of the reminders plugin, owning `remind`. */
+  private final class Fixture(val u: Under, val clock: SetClock, val desk: ScheduleDesk^) {
+
+    /** The call at `index` in the first turn of `conversation`. */
+    def call(conversation: String, index: Int = 0): CallSlot =
+      TestCallSlots.at(u.turn(conversation), index = index)
+  }
 
   /** A store with ann's turn `thread` posted at `C1/1.0`, bob's `other` at `C2/2.0`, ann's
-    * second `later` at `C1/3.0`, and the local person's `tui` posted nowhere; and the desk of
-    * the reminders plugin, owning `remind`.
+    * second `later` at `C1/3.0`, and the local person's `tui` posted nowhere; `nowhere` is
+    * not recorded.
     */
-  private def setUp(): (Under, SetClock, ScheduleDesk^) = {
+  private def setUp(): Fixture^ = {
     val u = fresh()
-    u.asking(turn("thread"), PrincipalId("ann"), Some("C1/1.0"))
-    u.asking(turn("other"), PrincipalId("bob"), Some("C2/2.0"))
-    u.asking(turn("later"), PrincipalId("ann"), Some("C1/3.0"))
-    u.asking(turn("tui"), PrincipalId.Local, None)
+    u.asking(u.turn("thread"), PrincipalId("ann"), Some("C1/1.0"))
+    u.asking(u.turn("other"), PrincipalId("bob"), Some("C2/2.0"))
+    u.asking(u.turn("later"), PrincipalId("ann"), Some("C1/3.0"))
+    u.asking(u.turn("tui"), PrincipalId.Local, None)
     val clock = new SetClock(at("09:00"))
-    (u, clock, u.desk(reminders, Vector(remind.name), clock))
+    new Fixture(u, clock, u.desk(reminders, Vector(remind.name), clock))
   }
 
   private def ask(
@@ -69,7 +61,8 @@ abstract class DeskContract extends TestSuite {
     test(
       "a desk writes a once slot for the asker, reported where the turn's reply is posted, under the id its call makes"
     ) {
-      val (u, _, desk) = setUp()
+      val f = setUp()
+      import f.*
       val id = ScheduleId.asked(call("thread"))
       ask(desk, call("thread"), When.In(30.minutes), 3) ==> Right(Asked(id, at("09:30"), Count(3)))
       u.read(id) ==> Some(
@@ -85,8 +78,21 @@ abstract class DeskContract extends TestSuite {
       u.waiting("09:30") ==> Vector(id)
     }
 
+    test("an instant asked is kept to the microsecond, as asked and as read") {
+      val f = setUp()
+      import f.*
+      clock.at = at("09:00").plusNanos(123456789)
+      val kept = at("09:30").plusNanos(123456000)
+      val id = ScheduleId.asked(call("thread"))
+      ask(desk, call("thread"), When.In(30.minutes)).map(_.at) ==> Right(kept)
+      u.read(id).map(_.rule) ==> Some(SlotRule.Once(kept, hour))
+      desk.pending(call("thread"), booking(remind)).map(_.schedules.map(_.at)) ==>
+        Right(Vector(kept))
+    }
+
     test("the same call asking again gets the schedule it first wrote, unchanged") {
-      val (u, clock, desk) = setUp()
+      val f = setUp()
+      import f.*
       val first = ask(desk, call("thread"), When.In(30.minutes), 3)
       clock.at = at("10:00")
       ask(desk, call("thread"), When.At(at("2026-10-09T00:00:00Z")), 9) ==> first
@@ -96,7 +102,8 @@ abstract class DeskContract extends TestSuite {
     test(
       "a desk refuses a turn posted nowhere or unrecorded, and an instant not after now or past its horizon, writing nothing"
     ) {
-      val (u, _, desk) = setUp()
+      val f = setUp()
+      import f.*
       val now = at("09:00")
       val limit = now.plusSeconds(366L * 24 * 3600)
       Vector(
@@ -116,7 +123,8 @@ abstract class DeskContract extends TestSuite {
     }
 
     test("a desk refuses an asker with the cap pending, of any job, until one ends") {
-      val (u, clock, desk) = setUp()
+      val f = setUp()
+      import f.*
       val other = u.desk(nudges, Vector(nudge.name), clock)
       val first = asked(ask(desk, call("thread", 0), When.In(1.hour)))
       (1 until ScheduleDesk.PendingCap - 1).foreach(i =>
@@ -133,7 +141,8 @@ abstract class DeskContract extends TestSuite {
     }
 
     test("a desk refuses a booking of a job not its plugin's, writing nothing") {
-      val (u, _, desk) = setUp()
+      val f = setUp()
+      import f.*
       val theirs = booking(nudge)
       val refused = DeskRefusal.NotOwn(reminders, nudge.name)
       desk.ask(call("thread"), theirs, When.In(1.hour), hour, Count(1)) ==> Left(refused)
@@ -145,7 +154,8 @@ abstract class DeskContract extends TestSuite {
     test(
       "pending lists the asker's own of the booking's job, soonest first, as of now; not another's, another job's, an ended one or one its job cannot read"
     ) {
-      val (u, clock, desk) = setUp()
+      val f = setUp()
+      import f.*
       val both = u.desk(reminders, Vector(remind.name, nudge.name), clock)
       val late = asked(ask(desk, call("thread", 0), When.In(3.hours), 1))
       val soon = asked(ask(desk, call("thread", 1), When.In(1.hour), 2))
@@ -167,7 +177,8 @@ abstract class DeskContract extends TestSuite {
     test(
       "cancel ends the asker's pending schedule, marked for deletion; another's or another job's is not found; an ended one says how"
     ) {
-      val (u, clock, desk) = setUp()
+      val f = setUp()
+      import f.*
       val both = u.desk(reminders, Vector(remind.name, nudge.name), clock)
       val id = asked(ask(desk, call("thread"), When.In(1.hour)))
       clock.at = at("09:10")

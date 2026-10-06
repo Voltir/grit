@@ -3,7 +3,7 @@ package grit.core.job
 import java.time.Instant
 
 import grit.core.clock.Clock
-import grit.core.id.{JobName, PluginName, PrincipalId, TurnRef}
+import grit.core.id.{ConversationId, JobName, PluginName, PrincipalId, TurnRef, TurnSeq}
 import grit.core.store.{Tombstones, Tx}
 import grit.dbos.sql.TestTx
 
@@ -17,6 +17,7 @@ private[job] object InMemoryUnder {
       def transaction[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)
       def start(slot: Slot, version: Int, following: Option[Instant]): Unit =
         s.start(slot, version, following)
+      def turn(name: String): TurnRef = TurnRef(ConversationId(name), TurnSeq.First)
       def asking(turn: TurnRef, by: PrincipalId, address: Option[String]): Unit =
         s.asking(turn, by, address)
       def desk(plugin: PluginName, jobs: Vector[JobName], clock: Clock^): ScheduleDesk^ =

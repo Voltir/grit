@@ -9,7 +9,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `SqlEdgeDirectory` (hosted tool calls and the edges serving them, ADR 0017), `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
   row), `SqlVoiceStore` (the voice, one row), `SqlPrincipals` (people by name, and who wrote each inbound entry), `SqlDeliveries` (the replies an edge has yet to post outside grit), `SqlAcknowledgements` (the messages an edge marks as being answered while their turns run), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
-  as posted from one closing, and its cursor), `SqlDocuments` (every plugin's versioned documents, ADR 0028: each plugin's shelf and keeper, the search windows draw on, and the terms each start declares), `SqlTombstones` (what is to be deleted, ADR 0014), `SqlTriageStore`
+  as posted from one closing, and its cursor), `SqlDocuments` (every plugin's versioned documents, ADR 0028: each plugin's shelf and keeper, the search windows draw on, and the terms each start declares), `SqlTombstones` (what is to be deleted, ADR 0014), `SqlSchedules` (a job's schedules, `grit.schedules`, ADR 0029, and each plugin's desk over them, which reads a call's asker and address from its turn's first entry and delivery), `SqlTriageStore`
   (what triage made of each heard message, deleted with its entry), `SqlTriageShadows` (what
   each declared shadow variant made of a heard message, `grit.triage_shadows`, deleted with its
   entry), `SqlSpeechStore` (each
