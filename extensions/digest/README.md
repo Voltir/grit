@@ -8,9 +8,9 @@ The hello-world plugin (ADR 0011), kept as documents (ADR 0028). `Digest` keeps 
 per room (`Origin.room`: a TUI session's directory, a Slack channel, a task's name) where
 conversations closed, kept at that room: its newest `Digest.Lines` closings' lines, newest
 first, each when it closed, where, why, and its headline (its outcome, or its prose's first
-sentence); none for a period closed unearned (ADR 0020). Its data holds the same lines with
-their close ordinals, so a closing posted again writes nothing. A room's document is written
-as of its newest closing's close, never a clock.
+sentence); none for a period closed unearned (ADR 0020) or a job's run's (`CloseReason.Ran`).
+Its data holds the same lines with their close ordinals, so a closing posted again writes
+nothing. A room's document is written as of its newest closing's close, never a clock.
 
 Retrieval draws a room's document into a window whose scope reaches the room, ranked beside
 entries in one pool and budget, headed by Digest's label. Its terms (`Digest.Terms`): the

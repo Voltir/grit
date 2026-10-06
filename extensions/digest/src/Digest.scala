@@ -18,8 +18,8 @@ import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
   * room ([[grit.core.store.Origin.room]]) where conversations closed, kept at that room,
   * holding its newest [[Digest.Lines]] closings' lines (when each closed, where, why, and what
   * it came to: [[grit.core.period.Closing.headline]]), newest first, written as of the newest
-  * one's close; none for a period closed unearned ([[CloseReason.Unearned]]), whose closing
-  * says only that nothing was kept. Retrieval finds a room's document where a window's scope
+  * one's close; none for a period whose closing stays in its own conversation
+  * ([[CloseReason.Unshown]]: unearned, or a job's run). Retrieval finds a room's document where a window's scope
   * reaches the room; `recent_activity` reads them all.
   */
 final class Digest(val name: PluginName) extends Exports[Activity] {
@@ -179,8 +179,7 @@ object Digest {
   private def why(reason: CloseReason): Option[String] = reason match {
     case CloseReason.Resolved(_) => Some("resolved")
     case CloseReason.Lapsed => Some("lapsed")
-    case CloseReason.Unearned => None
-    case CloseReason.Ran => Some("ran")
+    case CloseReason.Unearned | CloseReason.Ran => None
   }
 
   private def where(origin: Origin): String = origin match {

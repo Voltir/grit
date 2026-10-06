@@ -181,6 +181,18 @@ object DigestTests extends TestSuite {
       posted(unearned).newest ==> Vector()
     }
 
+    // A run's closing is its own record; a line each would show a person's reminders to all.
+    test("a period closed ran writes nothing") {
+      val ran = closed(
+        5,
+        Origin.Task("remind", "declared:deployment:standup@2026-09-22T09:00:00Z"),
+        CloseReason.Ran,
+        closing("Scheduled run of remind, due 2026-09-22 09:00 UTC", Some("Stand up.")),
+        "2026-09-23T09:00:00Z"
+      )
+      posted(ran).newest ==> Vector()
+    }
+
     test("two rooms keep two documents, each at its room") {
       posted(periods(1), periods(2)).newest.map(d => (d.place, lines(d))) ==> Vector(
         (
