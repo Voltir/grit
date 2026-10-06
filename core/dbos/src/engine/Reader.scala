@@ -18,6 +18,7 @@ import grit.core.store.{
   EntrySearch,
   EntryStore,
   LifecycleStore,
+  ModelProfileStore,
   PeriodStore,
   Principals,
   PromptStore,
@@ -34,6 +35,7 @@ import grit.dbos.sql.{
   SqlEntrySearch,
   SqlEntryStore,
   SqlLifecycleStore,
+  SqlModelProfileStore,
   SqlPeriodStore,
   SqlPrincipals,
   SqlPromptStore,
@@ -76,6 +78,9 @@ trait Reader extends caps.SharedCapability, AutoCloseable {
   val ledger: UsageLedger
   val prompts: PromptStore
   val toolSets: ToolSets
+
+  /** The profile each turn was pinned to. */
+  val profiles: ModelProfileStore
 
   /** Every turn workflow DBOS recorded created before `until`, oldest first, each with its
     * record. `DatabaseError` when DBOS's tables cannot be read.
@@ -135,6 +140,7 @@ object Reader {
     val ledger: UsageLedger = new SqlUsageLedger
     val prompts: PromptStore = new SqlPromptStore()
     val toolSets: ToolSets = new SqlToolSets()
+    val profiles: ModelProfileStore = new SqlModelProfileStore
 
     def turns(until: Instant): Either[StoreError, Vector[(WorkflowId, Recorded)]] =
       try {

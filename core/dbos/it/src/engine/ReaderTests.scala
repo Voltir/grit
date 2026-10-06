@@ -10,9 +10,10 @@ import scala.util.Using
 import grit.core.durable.Durable
 import grit.core.id.{PeriodRef, PeriodSeq, PrincipalId, SourceId, TriageRef, TurnSeq, WorkflowId}
 import grit.core.message.Message
+import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.triage.Tags
-import grit.dbos.sql.{LiveDb, SqlEntryStore, TestPostgres}
+import grit.dbos.sql.{LiveDb, SqlEntryStore, SqlModelProfileStore, TestPostgres}
 
 import utest.*
 
@@ -128,6 +129,25 @@ object ReaderTests extends TestSuite {
           started.filter(t => t.isBefore(asked) || t.isAfter(answered)) ==> Vector.empty
           started ==> started.sorted
           reader.steps(WorkflowId("never")) ==> Right(Vector.empty)
+        } finally reader.close()
+      } finally engine.close()
+    }
+
+    test("a reader reads the profile a turn was pinned to, by the turn and by its id") {
+      val config = TestPostgres.freshDatabase("reader_profiles")
+      val ref =
+        ModelRef(ModelId.of("a/pinned").getOrElse(throw new java.lang.AssertionError()), None)
+      val a = Assignment(ref, 100, None)
+      val pinned = Catalog.of(Policy(a, a, a, a), Vector.empty).pin
+      val engine = LiveEngine.open(config, "test")
+      try {
+        LiveDb.transaction(config)(
+          new SqlModelProfileStore().pin(WorkflowId("w-pinned"), pinned)
+        ) ==> Right(())
+        val reader = Reader.open(config)
+        try {
+          reader.db.read(reader.profiles.of(WorkflowId("w-pinned"))) ==> Right(Some(pinned))
+          reader.db.read(reader.profiles.get(pinned.id)) ==> Right(Some(pinned))
         } finally reader.close()
       } finally engine.close()
     }
