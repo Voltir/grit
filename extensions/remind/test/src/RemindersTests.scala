@@ -270,5 +270,30 @@ object RemindersTests extends TestSuite {
         .left
         .map(_.toString) ==> Left(NotOwn(name, Reminders.Remind.name).toString)
     }
+
+    test("reminders says the time now, then the asker's pending reminders, soonest first") {
+      val d = new Desk
+      d.run(Reminders.RemindMe, d.asked(1), "text" -> "stretch", "in_minutes" -> 30)
+      d.run(Reminders.RemindMe, d.asked(2), "text" -> "tea", "in_minutes" -> 10)
+      d.run(
+        Reminders.RemindMe,
+        d.asked(3, by = PrincipalId("U2")),
+        "text" -> "not theirs",
+        "in_minutes" -> 5
+      )
+      d.clock.at = now.plusSeconds(60)
+      d.run(Reminders.List, d.asked(4)) ==> Outcome.Done(
+        "Now: 2026-10-06 14:04:12 UTC\n" +
+          "Pending, soonest first:\n" +
+          s"${ScheduleId.value(id(2))}, due 2026-10-06 14:13:12 UTC: tea\n" +
+          s"${ScheduleId.value(id(1))}, due 2026-10-06 14:33:12 UTC: stretch"
+      )
+    }
+
+    test("reminders says the time now, and that none are pending") {
+      val d = new Desk
+      d.run(Reminders.List, d.asked(1)) ==>
+        Outcome.Done("Now: 2026-10-06 14:03:12 UTC\nNo reminders are pending.")
+    }
   }
 }

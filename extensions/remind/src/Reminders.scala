@@ -21,7 +21,7 @@ final class Reminders(val name: PluginName) extends Plugin {
 
   override val jobs: Vector[Job[?]] = Vector(Reminders.Remind)
 
-  override val tools: Vector[PluginTool[?]] = Vector(Reminders.RemindMe)
+  override val tools: Vector[PluginTool[?]] = Vector(Reminders.RemindMe, Reminders.List)
 }
 
 /** A reminder's text: not blank, and at most [[Reminders.MaxText]] characters. */
@@ -184,5 +184,48 @@ object Reminders {
   private def shown(when: When): String = when match {
     case When.In(delay) => s"in ${delay.toMinutes} min"
     case When.At(at) => s"at ${Second.format(at)}"
+  }
+
+  /** `reminders`: "Now: {time UTC}", then the asker's pending reminders, soonest first, each
+    * with its id, time in UTC and text; or the sentence its desk refused it with. Free. Not
+    * bound for a plugin whose jobs do not hold [[Remind]].
+    */
+  val List: PluginTool[Unit] = new PluginTool[Unit] {
+    val described: Hosted[Unit] =
+      new Hosted(
+        ToolSpec(
+          ToolName("reminders"),
+          "Say the date and time now, in UTC, then list the pending reminders of the person " +
+            "you are answering, soonest first, each with its id, its time in UTC and its text. " +
+            "Call it to learn the time before setting a reminder `at` a time of day.",
+          Args.of(NamedTuple.Empty).map(_ => ()),
+          // It only reads.
+          retry = Retry.Rerun
+        ),
+        Gate.Free,
+        _ => ""
+      )
+
+    def bind(
+        own: PluginReads,
+        needs: Needs,
+        jobs: OwnJobs
+    ): Either[Unneeded | NotOwn, PluginRun[Unit]] =
+      jobs.of(Remind).map { booking =>
+        new PluginRun[Unit] {
+          def run(a: Unit, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
+            desk.pending(call, booking) match {
+              case Left(refused) => Outcome.Failed(refused.said)
+              case Right(pending) =>
+                val listed =
+                  if (pending.schedules.isEmpty) Vector("No reminders are pending.")
+                  else
+                    "Pending, soonest first:" +: pending.schedules.map(r =>
+                      s"${ScheduleId.value(r.id)}, due ${Second.format(r.at)}: ${r.params.text}"
+                    )
+                Outcome.Done((s"Now: ${Second.format(pending.now)}" +: listed).mkString("\n"))
+            }
+        }
+      }
   }
 }

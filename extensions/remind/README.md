@@ -11,7 +11,8 @@ otherwise missed. The plugin posts nothing and keeps no documents.
 Its tools, each free, book `remind` and write through the plugin's `ScheduleDesk`, which
 derives who asked and where the reply is posted from the call's turn. `remind_me` sets a
 reminder `in_minutes` from now or `at` a time written with its offset, and answers with its
-id and its time in UTC. A conversation whose replies grit does not post (a TUI session, a
+id and its time in UTC. `reminders` says the time now in UTC, then the asker's pending
+reminders, soonest first: it is how the model learns the time. A conversation whose replies grit does not post (a TUI session, a
 draft not yet posted) cannot set one. Every refusal reaches the model as a sentence it can
 relay (`DeskRefusal.said`, or the argument error).
 
