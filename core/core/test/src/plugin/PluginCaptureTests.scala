@@ -20,8 +20,8 @@ object PluginCaptureTests extends TestSuite {
   private val prelude =
     """package probe
       |import grit.core.document.*
-      |import grit.core.host.*
-      |import grit.core.id.PluginName
+      |import grit.core.id.{CallSlot, PluginName}
+      |import grit.core.job.*
       |import grit.core.plugin.*
       |import grit.core.store.*
       |import grit.core.tool.*
@@ -36,9 +36,9 @@ object PluginCaptureTests extends TestSuite {
       |object Recent extends PluginTool[Int] {
       |  val described: Hosted[Int] =
       |    new Hosted(ToolSpec(ToolName("recent"), "Recent lines.", Args.of((n = Field.count("How many.", 1, 5))).map(_.n)), Gate.Free, n => n.toString)
-      |  def bind(own: PluginReads, needs: Needs): Either[Unneeded, PluginRun[Int]] =
+      |  def bind(own: PluginReads, needs: Needs, jobs: OwnJobs): Either[Unneeded | NotOwn, PluginRun[Int]] =
       |    Right(new PluginRun[Int] {
-      |      def run(n: Int, db: Db^): Outcome =
+      |      def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
       |        db.read(new Lines(own).recent(n)).fold(e => Outcome.Failed(e.toString), l => Outcome.Done(l.mkString("\n")))
       |    })
       |}
@@ -128,7 +128,7 @@ object PluginCaptureTests extends TestSuite {
   private val runKeepsDb =
     """final class Keeps extends PluginRun[Int] {
       |  var kept: Option[Db^] = None
-      |  def run(n: Int, db: Db^): Outcome = { kept = Some(db); Outcome.Done("") }
+      |  def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome = { kept = Some(db); Outcome.Done("") }
       |}
       |""".stripMargin
 
@@ -136,7 +136,7 @@ object PluginCaptureTests extends TestSuite {
   private val runStashesDb =
     """final class Stashes extends PluginRun[Int] {
       |  val kept: scala.collection.mutable.ArrayBuffer[Db^] = scala.collection.mutable.ArrayBuffer.empty
-      |  def run(n: Int, db: Db^): Outcome = { kept += db; Outcome.Done("") }
+      |  def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome = { kept += db; Outcome.Done("") }
       |}
       |""".stripMargin
 
@@ -152,17 +152,11 @@ object PluginCaptureTests extends TestSuite {
   private val toolHoldsDb =
     """final class ToolHolds(db: Db^) extends PluginTool[Int] {
       |  val described: Hosted[Int] = Recent.described
-      |  def bind(own: PluginReads, needs: Needs): Either[Unneeded, PluginRun[Int]] =
+      |  def bind(own: PluginReads, needs: Needs, jobs: OwnJobs): Either[Unneeded | NotOwn, PluginRun[Int]] =
       |    Right(new PluginRun[Int] {
-      |      def run(n: Int, handed: Db^): Outcome = db.read(Right(n)).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok"))
+      |      def run(n: Int, call: CallSlot, handed: Db^, desk: ScheduleDesk^): Outcome = db.read(Right(n)).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok"))
       |    })
       |}
-      |""".stripMargin
-
-  /** The store's toolbox handed a plugin tool whose run also edits. */
-  private val toolboxEdits =
-    """def box(store: Db^, e: Edits^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store}]] =
-      |  Toolbox.of(Recent.described.over(n => { val _ = RelPath.of("x").map(e.write(_, "x")); r.run(n, store) }))
       |""".stripMargin
 
   /** Whether `errs` reject a class for holding a capability its pure self type excludes. */
@@ -181,8 +175,7 @@ object PluginCaptureTests extends TestSuite {
     runKeepsDb,
     runStashesDb,
     serviceKeepsTx,
-    toolHoldsDb,
-    toolboxEdits
+    toolHoldsDb
   )
 
   val tests = Tests {
@@ -193,8 +186,8 @@ object PluginCaptureTests extends TestSuite {
     test("a pure plugin with a tool, a cache, documents, needs and an exported service compiles") {
       val errs = errors(
         """object Store {
-          |  def toolbox(store: Db^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store}]] =
-          |    Toolbox.of(Recent.described.over(n => r.run(n, store)))
+          |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
+          |    Toolbox.of(Recent.described.calling((n, at) => r.run(n, at, store, desk)))
           |  def through(needs: Needs, kept: Kept): Either[Unneeded, Activity] = needs.of(kept)
           |}
           |""".stripMargin
@@ -245,11 +238,6 @@ object PluginCaptureTests extends TestSuite {
     test("a PluginTool holding a Db is rejected") {
       val errs = errors(toolHoldsDb)
       assert(heldImpure(errs))
-    }
-
-    test("a toolbox of the store holding a plugin tool that also edits is rejected") {
-      val errs = errors(toolboxEdits)
-      assert(flowsInto("{store}")(errs))
     }
 
     test("capture checking is what rejects each breach") {

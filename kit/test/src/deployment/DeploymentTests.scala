@@ -402,5 +402,22 @@ object DeploymentTests extends TestSuite {
         )
         .map(_ => ()) ==> Left(DeploymentRefusal.ToolUnneeded(name("reading"), name("keys")))
     }
+
+    test("a plugin's tool booking a job not its plugin's is refused, naming both; its own is not") {
+      val nudge = new TestPlugins.Named("nudge")
+      def booking(jobs: Vector[grit.core.job.Job[?]]) =
+        Deployments
+          .of(plugins = Vector(new TestPlugins.Booking(name("books"), nudge, jobs)))
+          .map(_ => ())
+      (booking(Vector(nudge)), booking(Vector(new TestPlugins.Named("remind")))) ==> (
+        Right(()),
+        Left(
+          DeploymentRefusal.JobUnowned(
+            name("books"),
+            grit.core.id.JobName.of("nudge").fold(sys.error, identity)
+          )
+        )
+      )
+    }
   }
 }

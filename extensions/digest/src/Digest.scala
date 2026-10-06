@@ -6,7 +6,8 @@ import java.time.{Instant, ZoneOffset}
 import scala.concurrent.duration.*
 
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
-import grit.core.id.{DocKey, PluginName}
+import grit.core.id.{CallSlot, DocKey, PluginName}
+import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.period.{CloseOrdinal, CloseReason}
 import grit.core.place.Place
 import grit.core.plugin.{Documents, Exports, Needs, PluginReads, PluginRun, PluginTool, Unneeded}
@@ -213,10 +214,14 @@ object Digest {
         n => n.toString
       )
 
-    def bind(own: PluginReads, needs: Needs): Either[Unneeded, PluginRun[Int]] =
+    def bind(
+        own: PluginReads,
+        needs: Needs,
+        jobs: OwnJobs
+    ): Either[Unneeded | NotOwn, PluginRun[Int]] =
       Right(new PluginRun[Int] {
         private val read = activity(own)
-        def run(n: Int, db: Db^): Outcome =
+        def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
           db.read(read.recent(n)) match {
             case Left(error) => Outcome.Failed(s"the digest could not be read: $error")
             case Right(lines) =>

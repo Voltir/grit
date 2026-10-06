@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.document.{DocumentKeeper, DocumentTerms}
 import grit.core.id.PluginName
+import grit.core.job.{Declared, Job}
 import grit.core.period.CloseOrdinal
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
 
@@ -35,6 +36,12 @@ trait Plugin extends caps.Pure {
     * refused when two of every plugin's tools and grit's own share a name.
     */
   def tools: Vector[PluginTool[?]] = Vector.empty
+
+  /** Its jobs (ADR 0029), which its tools book ([[PluginTool.bind]]) and its schedules run. */
+  def jobs: Vector[Job[?]] = Vector.empty
+
+  /** The schedules it declares (ADR 0029), reconciled with the stored ones at every start. */
+  def schedules: Vector[Declared[?]] = Vector.empty
 
   /** Whether it is posted closed periods: it has a cache or documents. */
   final def posts: Boolean = cache.nonEmpty || documents.nonEmpty

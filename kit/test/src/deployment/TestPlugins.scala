@@ -1,6 +1,7 @@
 package grit.kit.deployment
 
-import grit.core.id.PluginName
+import grit.core.id.{CallSlot, JobName, PluginName}
+import grit.core.job.{Job, JobRun, NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.plugin.{Exports, Needs, PluginReads, PluginRun, PluginTool, Unneeded}
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
@@ -26,10 +27,14 @@ object TestPlugins {
         Gate.Free,
         n => n.toString
       )
-    def bind(own: PluginReads, needs: Needs): Either[Unneeded, PluginRun[Int]] =
+    def bind(
+        own: PluginReads,
+        needs: Needs,
+        jobs: OwnJobs
+    ): Either[Unneeded | NotOwn, PluginRun[Int]] =
       list(own, needs).map { l =>
         new PluginRun[Int] {
-          def run(n: Int, db: Db^): Outcome =
+          def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
             db.read(l.keys())
               .fold(e => Outcome.Failed(e.toString), k => Outcome.Done(k.mkString(",")))
         }
@@ -61,5 +66,49 @@ object TestPlugins {
     override val needs: Vector[Exports[?]] = if (declared) Vector(keys) else Vector.empty
     override val tools: Vector[PluginTool[?]] =
       Vector(new Listing(called, (_, needs) => needs.of(keys)))
+  }
+
+  /** A job named `called`, with no parameters, replying its name. */
+  final class Named(called: String) extends Job[Named.None.type] {
+    val name: JobName = JobName.of(called).fold(e => sys.error(e), identity)
+    val version: Int = 1
+    def write(params: Named.None.type): ujson.Value = ujson.Obj()
+    def read(params: ujson.Value): Either[String, Named.None.type] = Right(Named.None)
+    def reply(run: JobRun[Named.None.type]): String = called
+  }
+
+  object Named {
+    case object None extends caps.Pure
+  }
+
+  /** Offers `called`, which books `job` when bound; its plugin's jobs are `jobs`. */
+  final class Booking(
+      val name: PluginName,
+      job: Named,
+      override val jobs: Vector[Job[?]],
+      called: ToolName = ToolName("book")
+  ) extends grit.core.plugin.Plugin {
+    val version: Int = 1
+    override val tools: Vector[PluginTool[?]] = Vector(new PluginTool[Int] {
+      val described: Hosted[Int] =
+        new Hosted(
+          ToolSpec(called, "Books.", Args.of((n = Field.count("How many.", 1, 9))).map(_.n)),
+          Gate.Free,
+          n => n.toString
+        )
+      def bind(
+          own: PluginReads,
+          needs: Needs,
+          jobs: OwnJobs
+      ): Either[Unneeded | NotOwn, PluginRun[Int]] =
+        jobs
+          .of(job)
+          .map(_ =>
+            new PluginRun[Int] {
+              def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
+                Outcome.Done("booked")
+            }
+          )
+    })
   }
 }

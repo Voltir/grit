@@ -2,7 +2,10 @@ package grit.kit.run
 
 import java.time.Instant
 
+import grit.core.clock.SetClock
 import grit.core.document.InMemoryDocuments
+import grit.core.id.TestCallSlots
+import grit.core.job.InMemorySchedules
 import grit.core.model.{ModelSetting, ModelSettings}
 import grit.core.period.CloseOrdinal
 import grit.core.persona.Persona
@@ -49,10 +52,12 @@ object PluginToolsTests extends TestSuite {
       val bound = PluginBinding
         .bound(Vector(keys, reading), n => PluginReads(plugins.docs(n), documents.shelf(n)))
         .fold(u => sys.error(u.toString), identity)
+      val desk =
+        new InMemorySchedules().desk(name("keys"), Vector.empty, new SetClock(Instant.EPOCH))
       bound.map(b =>
         b.described.name -> b.described.spec.args
           .read(ujson.Obj("n" -> 1), Set.empty)
-          .map(args => b.run.run(args, FakeDb))
+          .map(args => b.run.run(args, TestCallSlots.First, FakeDb, desk))
       ) ==> Vector(
         ToolName("keys") -> Right(Outcome.Done("theirs-1")),
         ToolName("theirs") -> Right(Outcome.Done("theirs-1"))

@@ -4,13 +4,22 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.document.{Document, DocumentShelf}
 import grit.core.edge.ServedEdge
-import grit.core.id.{DocKey, EdgeName, KnowledgeSourceName, PluginName, QuestionName, ShadowName}
+import grit.core.id.{
+  DocKey,
+  EdgeName,
+  JobName,
+  KnowledgeSourceName,
+  PluginName,
+  QuestionName,
+  ShadowName
+}
+import grit.core.job.NotOwn
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
 import grit.core.persona.Persona
 import grit.core.place.{Reaches, Service, WorksIn}
-import grit.core.plugin.{Plugin, PluginDocs, PluginReads}
+import grit.core.plugin.{Plugin, PluginDocs, PluginReads, Unneeded}
 import grit.core.recipe.{Offering, TurnRecipe}
 import grit.core.review.Reviewing
 import grit.core.speech.Speaking
@@ -162,6 +171,9 @@ enum DeploymentRefusal {
     */
   case ToolUnneeded(plugin: PluginName, dependency: PluginName)
 
+  /** A tool of `plugin` books `job`, which is not among `plugin`'s jobs. */
+  case JobUnowned(plugin: PluginName, job: JobName)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
@@ -196,6 +208,8 @@ enum DeploymentRefusal {
     case ToolRepeated(name) => s"two tools are named ${ToolName.value(name)}"
     case ToolUnneeded(plugin, dependency) =>
       s"a tool of ${PluginName.value(plugin)} asks for ${PluginName.value(dependency)}, which it does not list among its needs"
+    case JobUnowned(plugin, job) =>
+      s"a tool of ${PluginName.value(plugin)} books ${JobName.value(job)}, which is not among its jobs"
   }
 }
 
@@ -269,7 +283,8 @@ object Deployment {
     * plugin of whose name is among them ([[DeploymentRefusal.PluginUnmet]]), two of the tools a
     * turn may be offered (every plugin's, grit's own: [[grit.tools.Names.all]] and the turn's
     * `topic`) share a name ([[DeploymentRefusal.ToolRepeated]]), or a plugin's tool asks for a
-    * plugin its own does not need ([[DeploymentRefusal.ToolUnneeded]]).
+    * plugin its own does not need ([[DeploymentRefusal.ToolUnneeded]]) or books a job not among
+    * its plugin's ([[DeploymentRefusal.JobUnowned]]).
     */
   def of(
       edges: Vector[ServedEdge],
@@ -322,7 +337,13 @@ object Deployment {
       // which tools ask for a plugin their own does not need, as the engine's start would.
       _ <- PluginBinding
         .bound(plugins, _ => Unread)
-        .fold(u => Left(DeploymentRefusal.ToolUnneeded(u.plugin, u.dependency)), _ => Right(()))
+        .fold(
+          {
+            case u: Unneeded => Left(DeploymentRefusal.ToolUnneeded(u.plugin, u.dependency))
+            case n: NotOwn => Left(DeploymentRefusal.JobUnowned(n.plugin, n.job))
+          },
+          _ => Right(())
+        )
       _ <- Either.cond(
         offer.tools == Offered.Read || unanswered.isEmpty,
         (),

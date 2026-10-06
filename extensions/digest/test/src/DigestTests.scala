@@ -4,8 +4,10 @@ import java.time.Instant
 
 import scala.util.chaining.*
 
+import grit.core.clock.SetClock
 import grit.core.document.{DocText, Document, DocumentKeeper, InMemoryDocuments}
 import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, PluginName, TestCallSlots, ToolCallId}
+import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.AssistantBlock
 import grit.core.period.{CloseOrdinal, CloseReason, Closing, Probability, TestClosings}
 import grit.core.place.{Directory, Place}
@@ -109,12 +111,16 @@ object DigestTests extends TestSuite {
   private def lines(d: Document): Vector[String] =
     DocText.value(d.text).linesIterator.toVector.drop(1)
 
-  private def run(db: FakeDb, kept: Kept, args: (String, ujson.Value)*): Outcome =
+  private def run(db: FakeDb, kept: Kept, args: (String, ujson.Value)*): Outcome = {
+    val desk: ScheduleDesk^ =
+      new InMemorySchedules().desk(name, Vector.empty, new SetClock(Instant.EPOCH))
     Digest.RecentActivity
-      .bind(kept.reads, Needs.over(name, Vector.empty))
+      .bind(kept.reads, Needs.over(name, Vector.empty), OwnJobs.over(name, Vector.empty))
       .fold(u => sys.error(u.toString), identity)
       .pipe(r =>
-        Toolbox.of[caps.CapSet^{db}](Digest.RecentActivity.described.over(n => r.run(n, db)))
+        Toolbox.of[caps.CapSet^{db, desk}](
+          Digest.RecentActivity.described.calling((n, at) => r.run(n, at, db, desk))
+        )
       )
       .fold(d => sys.error(d.toString), identity)
       .bind(
@@ -124,6 +130,7 @@ object DigestTests extends TestSuite {
       case Right(free: Bound.Free) => free(TestCallSlots.First)
       case other => sys.error(s"not free: $other")
     }
+  }
 
   val tests = Tests {
     test(

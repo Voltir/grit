@@ -1,5 +1,7 @@
 package grit.core.plugin
 
+import grit.core.id.CallSlot
+import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.store.Db
 import grit.core.tool.{Hosted, Outcome}
 
@@ -9,17 +11,19 @@ import grit.core.tool.{Hosted, Outcome}
 trait PluginTool[A] extends caps.Pure {
   def described: Hosted[A]
 
-  /** Its run over `own` and the services it takes from `needs`; `Left` when it asks `needs`
-    * for a plugin its own does not list, which a deployment refuses.
+  /** Its run over `own`, the services it takes from `needs` and the jobs it books from `jobs`;
+    * `Left` when it asks `needs` for a plugin its own does not list, or `jobs` for a job not its
+    * plugin's, either of which a deployment refuses.
     */
-  def bind(own: PluginReads, needs: Needs): Either[Unneeded, PluginRun[A]]
+  def bind(own: PluginReads, needs: Needs, jobs: OwnJobs): Either[Unneeded | NotOwn, PluginRun[A]]
 }
 
 /** A plugin tool's run, bound at start. */
 trait PluginRun[A] extends caps.Pure {
 
-  /** What a call with `args` comes to, read through `db`. Never throws: every failure is an
+  /** What the call at `call` with `args` comes to, read through `db`, writing its plugin's
+    * bookings' schedules through `desk`. Never throws: every failure is an
     * [[grit.core.tool.Outcome]].
     */
-  def run(args: A, db: Db^): Outcome
+  def run(args: A, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome
 }

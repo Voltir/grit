@@ -6,11 +6,13 @@ import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.ContextAssembler
-import grit.core.id.{PluginName, ShadowName, TurnRef, WorkflowId}
+import grit.core.id.{JobName, PluginName, ShadowName, TurnRef, WorkflowId}
+import grit.core.job.NotOwn
 import grit.core.message.Message
 import grit.core.model.{Catalog, Pinned}
 import grit.core.period.{LifecycleSettings, Probability}
 import grit.core.place.Weight
+import grit.core.plugin.Unneeded
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.StitchReads
 import grit.core.store.{Db, Jot, LifecycleStore, StoreError}
@@ -274,11 +276,18 @@ private[grit] object Launch {
     val plugged = PluginBinding
       .bound(d.plugins, engine.reads)
       .fold(
-        u =>
-          // Deployment.of refuses a tool asking for a plugin its own does not list.
-          throw new IllegalStateException(
-            s"plugin ${PluginName.value(u.plugin)} asks for ${PluginName.value(u.dependency)}, which it does not need"
-          ),
+        {
+          // Deployment.of refuses a tool asking for a plugin its own does not list, or booking
+          // a job not its plugin's.
+          case u: Unneeded =>
+            throw new IllegalStateException(
+              s"plugin ${PluginName.value(u.plugin)} asks for ${PluginName.value(u.dependency)}, which it does not need"
+            )
+          case n: NotOwn =>
+            throw new IllegalStateException(
+              s"plugin ${PluginName.value(n.plugin)} books ${JobName.value(n.job)}, which is not its job"
+            )
+        },
         identity
       )
     // The engine's own tools touch no file: they read grit's store, keep a model setting, probe a

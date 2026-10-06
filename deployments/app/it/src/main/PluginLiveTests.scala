@@ -6,23 +6,21 @@ import scala.annotation.unused
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.clock.Clock
+import grit.core.clock.{Clock, SetClock}
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.durable.Durable
 import grit.core.id.{
-  CallSlot,
   CloseRef,
-  ConversationId,
   DocKey,
   PeriodRef,
   PeriodSeq,
   PluginName,
   SourceId,
+  TestCallSlots,
   ToolCallId,
-  TurnRef,
-  TurnSeq,
   WorkflowId
 }
+import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
@@ -179,22 +177,26 @@ object PluginLiveTests extends TestSuite {
           Vector(("fs:/plugins", Instant.parse("2026-09-22T10:00:00Z")))
         )
         val store: Db^ = engine.db
+        val desk: ScheduleDesk^ = new InMemorySchedules()
+          .desk(digest.name, Vector.empty, new SetClock(Instant.parse("2026-09-23T00:00:00Z")))
         val recent = Digest.RecentActivity
-          .bind(engine.reads(digest.name), Needs.over(digest.name, Vector.empty))
+          .bind(
+            engine.reads(digest.name),
+            Needs.over(digest.name, Vector.empty),
+            OwnJobs.over(digest.name, Vector.empty)
+          )
           .fold(u => sys.error(s"$u"), identity)
         val tools = Toolbox
-          .of[caps.CapSet^{store}](Digest.RecentActivity.described.over(n => recent.run(n, store)))
+          .of[caps.CapSet^{store, desk}](
+            Digest.RecentActivity.described.calling((n, at) => recent.run(n, at, store, desk))
+          )
           .fold(d => sys.error(s"$d"), identity)
         tools.bind(
           AssistantBlock.ToolCall(ToolCallId("c"), "recent_activity", ujson.Obj()),
           Repairs.All
         ) match {
           case Right(free: Bound.Free) =>
-            free(
-              CallSlot
-                .of(TurnRef(ConversationId("c"), TurnSeq.First), 0, 0)
-                .getOrElse(sys.error("a slot"))
-            ) ==> Outcome.Done(
+            free(TestCallSlots.First) ==> Outcome.Done(
               "2026-09-22 10:00 · tui plugins · resolved · Period 2.\n" +
                 "2026-09-21 10:00 · tui plugins · resolved · Period 1."
             )
