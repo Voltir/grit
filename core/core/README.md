@@ -84,6 +84,8 @@ In dependency order:
   of an instant (`Shelved`, a place holding some); `DocumentStore`, what the engine writes
   and deletes of them (terms declared at each start, placements, a version or a plugin's
   every document collected). ← `id`, `place`, `store`
+- **`job`** — jobs and their schedules (ADRs 0021, 0029): a `SlotRule` (once, with its `Grace`,
+  or a recurrence at a local time in a zone), and the instants its slots fall at. ← `id`
 - **`spend`** — what grit spends on model calls, read back: `Spend` (some recorded calls: how
   many, and their `Cost`), `Spending` (a day's, or a conversation's, from the ledger; what the
   ledger misses is in its doc), `Day` (a calendar day in a zone, as instants), `DailyCap`
