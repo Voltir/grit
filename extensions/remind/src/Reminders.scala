@@ -1,10 +1,10 @@
 package grit.remind
 
-import java.time.format.DateTimeFormatter
-import java.time.{Duration, Instant, OffsetDateTime, ZoneOffset}
+import java.time.{Duration, Instant, OffsetDateTime}
 
 import scala.concurrent.duration.*
 
+import grit.core.clock.Utc
 import grit.core.id.{CallSlot, JobName, PluginName, ScheduleId}
 import grit.core.job.{Grace, Job, JobRun, NotOwn, OwnJobs, ScheduleDesk, When}
 import grit.core.plugin.{Needs, Plugin, PluginReads, PluginRun, PluginTool, Unneeded}
@@ -77,16 +77,13 @@ object Reminders {
     def reply(run: JobRun[Reminder]): String = {
       val said = s"Reminder: ${run.params.text}"
       if (Duration.between(run.nominal, run.started).compareTo(Late) > 0)
-        s"$said\n(due ${Minute.format(run.nominal)}; sent late)"
+        s"$said\n(due ${Utc.toMinute(run.nominal)}; sent late)"
       else said
     }
   }
 
   /** How late a run may start before its reply says so. */
   private val Late: Duration = Duration.ofMinutes(1)
-
-  private val Minute =
-    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
 
   /** The most minutes ahead `in_minutes` takes: [[ScheduleDesk.Horizon]]'s. */
   private val MaxMinutes: Int = ScheduleDesk.Horizon.toMinutes.toInt
@@ -97,10 +94,6 @@ object Reminders {
     "`2026-10-07T09:00:00+02:00` or `2026-10-07T07:00:00Z`"
 
   private val IdExample = "asked:0123456789abcdef"
-
-  /** An instant as the tools say it to the model: UTC, to the second. */
-  private val Second =
-    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'").withZone(ZoneOffset.UTC)
 
   /** `remind_me`'s arguments: what to remind of, and when. */
   type Setting = (reminder: Reminder, when: When)
@@ -173,7 +166,7 @@ object Reminders {
               case Left(refused) => Outcome.Failed(refused.said)
               case Right(asked) =>
                 Outcome.Done(
-                  s"Reminder ${ScheduleId.value(asked.id)} is set for ${Second.format(asked.at)}."
+                  s"Reminder ${ScheduleId.value(asked.id)} is set for ${Utc.toSecond(asked.at)}."
                 )
             }
         }
@@ -192,7 +185,7 @@ object Reminders {
 
   private def shown(when: When): String = when match {
     case When.In(delay) => s"in ${delay.toMinutes} min"
-    case When.At(at) => s"at ${Second.format(at)}"
+    case When.At(at) => s"at ${Utc.toSecond(at)}"
   }
 
   /** `reminders`: "Now: {time UTC}", then the asker's pending reminders, soonest first, each
@@ -230,9 +223,9 @@ object Reminders {
                   if (pending.schedules.isEmpty) Vector("No reminders are pending.")
                   else
                     "Pending, soonest first:" +: pending.schedules.map(r =>
-                      s"${ScheduleId.value(r.id)}, due ${Second.format(r.at)}: ${r.params.text}"
+                      s"${ScheduleId.value(r.id)}, due ${Utc.toSecond(r.at)}: ${r.params.text}"
                     )
-                Outcome.Done((s"Now: ${Second.format(pending.now)}" +: listed).mkString("\n"))
+                Outcome.Done((s"Now: ${Utc.toSecond(pending.now)}" +: listed).mkString("\n"))
             }
         }
       }

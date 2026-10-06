@@ -6,7 +6,8 @@ classpath; implementations live in the modules that need the libraries (CLAUDE.m
 In dependency order:
 
 - **`clock`** — what a function cannot compute: `Clock` (the time) and `Fresh` (values
-  no one made before). Imports nothing in core.
+  no one made before); and `Utc`, an instant as grit writes it for a model or a person.
+  Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `EntrySeq`, `WorkflowId`,
   `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `DocKey` (a plugin's document's key), `DocumentVersion` (one version of a document, numbered across every plugin), `ShadowName`, `QuestionName` (a question's in a question set, or its per-source form), `KnowledgeSourceName`, `EdgeName`, `PrincipalId`: who an
   action is done for, `EdgeId`, `JobName`, `ScheduleKey` (a schedule's key among its

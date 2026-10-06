@@ -221,9 +221,6 @@ object RemindersTests extends TestSuite {
 
     test("remind_me says why it set nothing: no thread to post in, past, too far, too many") {
       val d = new Desk
-      val past = Instant.parse("2026-10-06T14:00:00Z")
-      val far = Instant.parse("2027-10-08T00:00:00Z")
-      val limit = Instant.parse("2027-10-07T14:03:12Z")
       (1 to 20).foreach(n =>
         d.run(Reminders.RemindMe, d.asked(100 + n), "text" -> s"r$n", "in_minutes" -> n)
       )
@@ -253,9 +250,13 @@ object RemindersTests extends TestSuite {
           "Nothing was scheduled: this conversation's replies are not posted anywhere a " +
             "reminder could be."
         ),
-        Outcome.Failed(s"Nothing was scheduled: $past is not after now, $now."),
         Outcome.Failed(
-          s"Nothing was scheduled: $far is after $limit, the furthest ahead one can be."
+          "Nothing was scheduled: 2026-10-06 14:00:00 UTC is not after now, " +
+            "2026-10-06 14:03:12 UTC."
+        ),
+        Outcome.Failed(
+          "Nothing was scheduled: 2027-10-08 00:00:00 UTC is after 2027-10-07 14:03:12 UTC, " +
+            "the furthest ahead one can be."
         ),
         Outcome.Failed(
           "Nothing was scheduled: you already have 20 pending, the most one person may have."

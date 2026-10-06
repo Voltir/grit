@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
+import grit.core.clock.Utc
 import grit.core.id.{CallSlot, JobName, PluginName, ScheduleId}
 import grit.core.store.StoreError
 
@@ -63,7 +64,7 @@ object ScheduleDesk {
   val Horizon: FiniteDuration = 366.days
 }
 
-/** Why a desk wrote nothing; [[said]] is the line a model is shown. */
+/** Why a desk wrote nothing; [[said]] is the line a model is shown, its times as [[Utc.toSecond]] writes them. */
 enum DeskRefusal {
   case Unaddressed
   case Past(at: Instant, now: Instant)
@@ -78,9 +79,11 @@ enum DeskRefusal {
     case Unaddressed =>
       "Nothing was scheduled: this conversation's replies are not posted anywhere a " +
         "reminder could be."
-    case Past(at, now) => s"Nothing was scheduled: $at is not after now, $now."
+    case Past(at, now) =>
+      s"Nothing was scheduled: ${Utc.toSecond(at)} is not after now, ${Utc.toSecond(now)}."
     case TooFar(at, limit) =>
-      s"Nothing was scheduled: $at is after $limit, the furthest ahead one can be."
+      s"Nothing was scheduled: ${Utc.toSecond(at)} is after ${Utc.toSecond(limit)}, the " +
+        "furthest ahead one can be."
     case TooMany(cap) =>
       s"Nothing was scheduled: you already have $cap pending, the most one person may have."
     case NotOwn(plugin, job) =>

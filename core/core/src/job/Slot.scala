@@ -1,11 +1,11 @@
 package grit.core.job
 
-import java.time.format.DateTimeFormatter
+import java.time.Instant
 import java.time.temporal.ChronoUnit
-import java.time.{Instant, ZoneOffset}
 
 import scala.util.Try
 
+import grit.core.clock.Utc
 import grit.core.id.{JobName, ScheduleId, SourceId}
 import grit.core.message.Message
 import grit.core.store.Origin
@@ -20,17 +20,14 @@ final case class Slot(schedule: ScheduleId, nominal: Instant) {
 
   def origin(job: JobName): Origin.Task = Origin.Task(JobName.value(job), key)
 
-  /** The run's opening, written by grit: "Scheduled run of {job}, due {nominal, UTC to the
-    * minute}".
+  /** The run's opening, written by grit: "Scheduled run of {job}, due {nominal}", the nominal
+    * instant as [[Utc.toMinute]] writes it.
     */
   def opening(job: JobName): Message.User =
-    Message.User(s"Scheduled run of ${JobName.value(job)}, due ${Slot.Minute.format(nominal)}")
+    Message.User(s"Scheduled run of ${JobName.value(job)}, due ${Utc.toMinute(nominal)}")
 }
 
 object Slot {
-
-  private val Minute =
-    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
 
   private val Version = "v(0|-?[1-9][0-9]*)".r
 
