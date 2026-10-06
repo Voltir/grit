@@ -1,6 +1,7 @@
 # 0012. A quiet period closes when a classifier judges it finished, or lapses
 
-Status: accepted (2026-09-26), revised (2026-09-26)
+Status: accepted (2026-09-26), revised (2026-09-26); amended (2026-10-06): a job's run's
+period is never asked, and closes mechanically
 
 Context: ADR 0011 closed a period on a deadline that activity pushes out by an idle window
 and an explicit signal (`/done`, a ✅) pulls in to a grace window. In practice people do
@@ -24,6 +25,9 @@ Decision:
   a threshold of 1 turns judging off.
 - When a period is due and when it is asked are defined once, over its activity and
   latest verdict, never mirrored in SQL.
+- (Amended 2026-10-06.) A period of a job's run (ADR 0029) is never asked: nobody waits at a
+  task place. It closes on its idle deadline, its closing written with no model or
+  classifier call, from the run's opening and its reply verbatim (`CloseReason.Ran`).
 
 Consequences:
 

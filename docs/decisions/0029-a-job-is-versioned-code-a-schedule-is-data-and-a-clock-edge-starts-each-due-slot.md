@@ -1,6 +1,9 @@
 # 0029. A job is versioned code, a schedule is data, and a clock edge starts each due slot
 
-Status: accepted (2026-10-05)
+Status: accepted (2026-10-05); amended (2026-10-06): a run is a turn of its slot's own
+conversation; asked schedules are once-only and report at the asking turn's destination; a
+run's period closes mechanically; a run ended without its reply is superseded or failed by its
+version
 
 Context: ADR 0021 decides that a job is a turn with a Scala planner and a version, and that a
 trigger is an edge starting one run per slot at a task place; it does not say where slots
@@ -15,19 +18,33 @@ Decision:
 - **A schedule is a row**: its job, by name; a slot rule, either once at an instant or a
   recurrence from a small closed set (daily, on weekdays, weekly, at a time in a time zone),
   never a cron expression; parameters, as JSON the job reads; the principal it runs for,
-  whose budget it spends (ADR 0021); and the place its run reports to.
+  whose budget it spends (ADR 0021); and where its runs report: kept in their own
+  conversation, or posted at a destination that names its edge as well as its address
+  (amended 2026-10-06).
 - **Schedules come from two sources.** A deployment or plugin declares some; they run for the
   deployment's persona and are reconciled with the rows when the engine starts, a schedule no
   longer declared being cancelled. A tool writes others from a turn; they run for the person
   who asked, are recorded with that turn, are theirs to cancel, and reconciliation never
-  touches them.
+  touches them. (Amended 2026-10-06.) A schedule written from a turn is once-only, and
+  reports at the asking turn's destination, where that turn's reply was posted; a turn whose
+  reply nobody posts cannot write one.
 - **A slot is a schedule and its nominal instant**, and its key is the run's id, so the inbox
   refuses a second start. The run is a conversation at the job's task place, closed like any
-  other, so what it did is memory (ADR 0021).
+  other, so what it did is memory (ADR 0021). (Amended 2026-10-06.) Each run is a turn of its
+  slot's own conversation, and its workflow is that turn's, so deliveries, retention and the
+  close treat it as any turn. Its period is never asked whether anyone waits, and closes with
+  no model or classifier call (ADR 0012), its closing never shown in another conversation's
+  window.
 - **The clock edge** reads due slots from Postgres and starts their runs through the inbox,
   as any edge starts a turn (ADR 0002); it hosts no place (ADR 0017). After downtime, a once
   slot runs late within a grace its schedule declares and is otherwise recorded as missed; a
-  recurrence runs its latest missed slot alone.
+  recurrence runs its latest missed slot alone. (Amended 2026-10-06.) Each pass takes due
+  slots and runs in flight in batches of their own, so neither starves the other. A run whose
+  workflow ended without its reply ended under some version: another than its job's current
+  one, and it was superseded (its slot is started again at the current version unless a
+  later slot is due); the current one, or its job is gone, and the run failed (a once
+  schedule ends failed, a recurrence goes on to its next slot). A run DBOS does not know, its
+  start's enqueue lost, is enqueued again.
 - **A job is contributed by a plugin (ADR 0027) or declared by the deployment**, and runs
   under grit's epoch (ADR 0021).
 

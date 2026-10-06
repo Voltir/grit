@@ -1,6 +1,7 @@
 # 0021. grit owns six semantics over two guarantees, and a deployment is a value built against its kit
 
-Status: accepted (2026-09-30)
+Status: accepted (2026-09-30); amended (2026-10-06): a run's workflow is distinct per slot
+and version, and a version's change supersedes pending runs inside their own body
 
 Context: grit is to run more than one deployment, each with several personas, scheduled
 work and code of its own. Turned down: grit as the deployment, configured by environment
@@ -31,9 +32,13 @@ Decision:
   database come from the environment, never the value.
 - A job is a turn with a Scala planner, and it has a version. A trigger is an edge (ADR
   0002) starting one run per slot at a task place; a run is a conversation there, closed
-  like any other, and its workflow is named by its job's version as well as its slot. The
-  engine recovers every workflow of its epoch, so a deploy does not by itself end a run:
-  the kit cancels the pending runs of any other version, then starts the current slot. A
+  like any other, and its workflow is distinct per slot and version: the slot names its
+  conversation, and the version names its opening, so each (slot, version) is its own turn
+  there (amended 2026-10-06; ADR 0029). The engine recovers every workflow of its epoch, so a
+  deploy does not by itself end a run: a run started under another version than its job's
+  current one ends itself superseded, writing no reply, and its slot is started again at the
+  current version unless a later slot is due (amended 2026-10-06: nothing is cancelled out
+  from under DBOS, where the kit had cancelled the pending runs of any other version). A
   job's moves are kept in memory under names the plan gives them, each with a digest of what
   it does; a new version's run reuses a kept outcome, or a kept answer to an ask, only where
   the digest matches, and a move whose request was claimed and never answered is
