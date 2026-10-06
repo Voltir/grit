@@ -38,6 +38,7 @@ import grit.core.store.{
   EntrySearch,
   EntryStore,
   LifecycleStore,
+  OpenActivity,
   OpenPeriod,
   Origin,
   PeriodStore,
@@ -162,7 +163,7 @@ object AsOf {
     def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Period]] = under.of(turn)
     def judged(period: PeriodRef, verdict: Verdict)(using Tx^): Either[StoreError, Boolean] =
       under.judged(period, verdict)
-    def open()(using Tx^): Either[StoreError, Vector[Activity]] = under.open()
+    def open()(using Tx^): Either[StoreError, Vector[OpenActivity]] = under.open()
     def activity(period: PeriodRef)(using Tx^): Either[StoreError, Option[Activity]] =
       under.activity(period)
     def seal(attempt: CloseRef, reason: CloseReason, closing: Closing, at: Instant)(using

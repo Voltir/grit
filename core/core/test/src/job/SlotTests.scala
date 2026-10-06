@@ -72,6 +72,15 @@ object SlotTests extends TestSuite {
       notSlots.map(Slot.read) ==> notSlots.map(_ => None)
     }
 
+    test("a conversation is a slot's run only when it is a task's run named by a slot's key") {
+      val slot = Slot(Asked, at("2026-10-07T09:00:00Z"))
+      Vector(
+        slot.origin(Remind),
+        Origin.Task("remind", "main"),
+        Origin.Slack("T1", "C1", slot.key)
+      ).map(Slot.of) ==> Vector(Some(slot), None, None)
+    }
+
     test("a run's opening names its job and its slot, in UTC to the minute") {
       Slot(Asked, at("2026-10-07T09:00:59Z")).opening(Remind) ==>
         Message.User("Scheduled run of remind, due 2026-10-07 09:00 UTC")

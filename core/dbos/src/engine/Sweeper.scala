@@ -7,6 +7,7 @@ import scala.jdk.CollectionConverters.*
 
 import grit.core.document.DocumentStore
 import grit.core.id.{CloseRef, PluginName, SettleRef, ShadowRef, WorkflowId}
+import grit.core.job.Slot
 import grit.core.plugin.{PluginCursors, PostRef}
 import grit.core.retention.Target
 import grit.core.speech.SpeechStore
@@ -84,11 +85,14 @@ private[engine] final class Sweeper(
     for {
       settings <- read(lifecycle.current())
       open <- read(periods.open())
-      (due, quiet) = open.partition(a => !a.due(settings).at.isAfter(now))
+      (due, quiet) = open.partition(o => !o.activity.due(settings).at.isAfter(now))
       closed <- due.foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, a) =>
-        acc.flatMap(done => close(a.attempt(settings)).map(done + _))
+        acc.flatMap(done => close(a.activity.attempt(settings)).map(done + _))
       }
       asked <- quiet
+        // Nobody waits on a job's run: its period closes on its deadline, never asked.
+        .filter(o => Slot.of(o.origin).isEmpty)
+        .map(_.activity)
         .filter(_.asks(settings).exists(!_.isAfter(now)))
         .foldLeft[Either[StoreError, Swept]](Right(Swept.nothing)) { (acc, a) =>
           acc.flatMap(done => ask(a.question).map(done + _))

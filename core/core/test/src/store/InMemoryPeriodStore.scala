@@ -113,8 +113,10 @@ final class InMemoryPeriodStore(
     Activity(p.ref, newest, last, latest, judged.size)
   }
 
-  def open()(using Tx^): Either[StoreError, Vector[Activity]] =
-    Right(periods.filter(isOpen).map(activityOf))
+  def open()(using Tx^): Either[StoreError, Vector[OpenActivity]] =
+    Right(
+      periods.filter(isOpen).map(p => OpenActivity(activityOf(p), origin(p.ref.conversationId)))
+    )
 
   def activity(period: PeriodRef)(using Tx^): Either[StoreError, Option[Activity]] =
     Right(periods.find(p => p.ref == period && isOpen(p)).map(activityOf))

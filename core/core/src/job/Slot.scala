@@ -48,6 +48,14 @@ object Slot {
         } yield slot
     }
 
+  /** The slot whose run `origin`'s conversation is: a task's run named by a [[Slot.key]];
+    * `None` for any other conversation (a one-shot run's `main`, a person's).
+    */
+  def of(origin: Origin): Option[Slot] = origin match {
+    case Origin.Task(_, run) => read(run)
+    case Origin.Tui(_, _) | Origin.Slack(_, _, _) => None
+  }
+
   /** The opening source of a run at `version`, `v{version}`, and back. */
   def source(version: Int): SourceId = SourceId(s"v$version")
 

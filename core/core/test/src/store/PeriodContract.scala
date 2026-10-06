@@ -296,7 +296,9 @@ abstract class PeriodContract extends TestSuite {
         Right(false)
     }
 
-    test("an open period's activity is its newest entry's time and turn, or its opening") {
+    test(
+      "an open period's activity is its newest entry's time and turn, or its opening; each open one comes with its conversation's origin"
+    ) {
       val a = conversation("activity-a")
       val b = conversation("activity-b")
       val quiet = conversation("activity-quiet")
@@ -308,13 +310,19 @@ abstract class PeriodContract extends TestSuite {
       transaction(periods.openFor(quiet, TurnSeq(0), at(2)))
       val mine = Set(a, b, quiet)
       transaction(periods.open()).map(
-        _.filter(x => mine.contains(x.period.conversationId))
-          .sortBy(x => ConversationId.value(x.period.conversationId))
+        _.filter(x => mine.contains(x.activity.period.conversationId))
+          .sortBy(x => ConversationId.value(x.activity.period.conversationId))
       ) ==> Right(
         Vector(
-          Activity(PeriodRef(a, PeriodSeq.First), at(6), TurnSeq(1), None, 0),
-          Activity(PeriodRef(quiet, PeriodSeq.First), at(2), TurnSeq(0), None, 0)
-        ).sortBy(x => ConversationId.value(x.period.conversationId))
+          OpenActivity(
+            Activity(PeriodRef(a, PeriodSeq.First), at(6), TurnSeq(1), None, 0),
+            origin("activity-a")
+          ),
+          OpenActivity(
+            Activity(PeriodRef(quiet, PeriodSeq.First), at(2), TurnSeq(0), None, 0),
+            origin("activity-quiet")
+          )
+        ).sortBy(x => ConversationId.value(x.activity.period.conversationId))
       )
       transaction(periods.activity(PeriodRef(b, PeriodSeq.First))) ==> Right(None)
     }

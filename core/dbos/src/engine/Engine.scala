@@ -320,7 +320,8 @@ final class Engine private (
   /** One sweep of the lifecycle at `now`, under the settings in force: every open period
     * whose deadline has come has its attempt on that deadline enqueued
     * ([[grit.core.id.CloseRef.workflowId]]), and every other that is to be asked whether anyone
-    * is waiting on it ([[grit.core.period.Deadline.ask]]) has its question enqueued
+    * is waiting on it ([[grit.core.period.Deadline.ask]]), but a job's run's
+    * ([[grit.core.job.Slot.of]]), which closes on its deadline, has its question enqueued
     * ([[grit.core.id.SettleRef.workflowId]]); every enabled plugin with something to post behind the newest closed
     * period has a run enqueued from its cursor ([[grit.core.plugin.PostRef]]) unless one is
     * going, and every other plugin with a cursor, documents or document terms is marked for deletion

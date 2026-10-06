@@ -36,8 +36,8 @@ trait PeriodStore {
     */
   def judged(period: PeriodRef, verdict: Verdict)(using Tx^): Either[StoreError, Boolean]
 
-  /** Every open period, as its deadline sees it. */
-  def open()(using Tx^): Either[StoreError, Vector[Activity]]
+  /** Every open period, as its deadline sees it, with its conversation's origin. */
+  def open()(using Tx^): Either[StoreError, Vector[OpenActivity]]
 
   /** `period` as its deadline sees it; `None` when it is not open. */
   def activity(period: PeriodRef)(using Tx^): Either[StoreError, Option[Activity]]

@@ -23,6 +23,7 @@ import grit.core.store.{
   ClosingEntry,
   Entry,
   EntryStore,
+  OpenActivity,
   OpenPeriod,
   Payload,
   PayloadJson,
@@ -119,24 +120,27 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       }
     } yield kept
 
-  def open()(using tx: Tx^): Either[StoreError, Vector[Activity]] =
+  def open()(using tx: Tx^): Either[StoreError, Vector[OpenActivity]] =
     activities("true")(_ => ())
 
   def activity(period: PeriodRef)(using tx: Tx^): Either[StoreError, Option[Activity]] =
     activities("p.conversation_id = ?::uuid AND p.seq = ?") { ps =>
       ps.setString(1, ConversationId.value(period.conversationId))
       ps.setLong(2, PeriodSeq.value(period.seq))
-    }.map(_.headOption)
+    }.map(_.headOption.map(_.activity))
 
-  /** The open periods `where` picks (over `p`, the periods), as their deadlines see them. */
+  /** The open periods `where` picks (over `p`, the periods), as their deadlines see them, with
+    * their conversations' origins.
+    */
   private def activities(where: String)(bind: PreparedStatement => Unit)(using
       tx: Tx^
-  ): Either[StoreError, Vector[Activity]] =
+  ): Either[StoreError, Vector[OpenActivity]] =
     many(
       s"""SELECT p.conversation_id, p.seq, a.newest, a.last, n.asked,
          |       v.at, v.last_turn, v.nobody, v.waiting_person, v.waiting_other,
-         |       v.model, v.unanswered
+         |       v.model, v.unanswered, c.origin::text AS origin
          |  FROM grit.periods p
+         |  JOIN grit.conversations c ON c.id = p.conversation_id
          | CROSS JOIN LATERAL (
          |   SELECT greatest(p.opened_at,
          |                   max(e.created_at) FILTER (WHERE e.payload ->> 'kind' <> 'draft')) AS newest,
@@ -152,14 +156,21 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
          |    ORDER BY at DESC, ordinal DESC LIMIT 1) v ON true
          | WHERE p.closed_at IS NULL AND $where""".stripMargin
     )(bind) { rs =>
-      Activity(
+      val activity = Activity(
         ref(rs),
         instant(rs, "newest"),
         TurnSeq(rs.getLong("last")),
         verdictOf(rs),
         rs.getInt("asked")
       )
-    }
+      SqlConversationStore
+        .readOrigin(ujson.read(rs.getString("origin")))
+        .map(OpenActivity(activity, _))
+    }.flatMap(rows =>
+      rows.foldLeft[Either[StoreError, Vector[OpenActivity]]](Right(Vector.empty)) { (acc, row) =>
+        acc.flatMap(done => row.left.map(StoreError.Invalid(_)).map(done :+ _))
+      }
+    )
 
   def seal(attempt: CloseRef, reason: CloseReason, closing: Closing, at: Instant)(using
       tx: Tx^

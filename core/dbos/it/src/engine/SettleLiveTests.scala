@@ -9,15 +9,21 @@ import scala.jdk.CollectionConverters.*
 
 import grit.core.durable.Durable
 import grit.core.id.{
+  Declarer,
   PeriodRef,
   PeriodSeq,
   PrincipalId,
+  ScheduleId,
+  ScheduleKey,
   SettleRef,
   SourceId,
   TurnRef,
   TurnSeq,
   WorkflowId
 }
+import grit.core.inbox.Slotted
+import grit.core.job.JobTests.{Count, Counting}
+import grit.core.job.{Declared, Grace, SlotRule}
 import grit.core.message.Message
 import grit.core.period.{Judgement, LifecycleSettings, Probability, Verdict, Windows}
 import grit.core.place.Locality
@@ -71,6 +77,51 @@ object SettleLiveTests extends TestSuite {
   private val nothing = (id: WorkflowId) => (_: Durable^) ?=> WorkflowId.value(id)
 
   val tests = Tests {
+    // Nobody waits at a task's place, and a run's period closes on its deadline without one.
+    test(
+      "a quiet period of a job's run is never asked whether anyone is waiting; a task's other conversation is"
+    ) {
+      val config = TestPostgres.freshDatabase("settle_runs")
+      val engine = LiveEngine.open(config, "test")
+      try {
+        engine.launch(
+          nothing,
+          nothing,
+          nothing,
+          nothing,
+          nothing,
+          LiveEngine.Unplaced,
+          Vector.empty
+        )
+        settling(config)
+        // Kept to the microsecond, as a schedule's slots are stored.
+        val now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS)
+        val remind = new Counting("remind")
+        val key = ScheduleKey.of("quiet").fold(sys.error, identity)
+        engine.jot
+          .write(
+            engine.schedules.declare(
+              Vector(
+                Declarer.Deployment -> Declared(
+                  key,
+                  remind,
+                  SlotRule.Once(now, Grace.Zero),
+                  Count(1)
+                )
+              ),
+              now
+            )
+          )
+          .fold(e => sys.error(e.toString), identity)
+        val run =
+          engine.inbox.startSlot(ScheduleId.declared(Declarer.Deployment, key), Some(1), now)
+        val other = ingested(engine, Origin.Task("remind", "main"), "one")
+        val asked = engine.sweep(now.plusSeconds(90)).map(_.asked.map(_.period.conversationId))
+        (run.map(_.isInstanceOf[Slotted.Started]), asked) ==>
+          (Right(true), Right(Vector(other.conversationId)))
+      } finally engine.close()
+    }
+
     test(
       "a period quiet for the settle window is asked once, under its question's id, however many sweeps"
     ) {

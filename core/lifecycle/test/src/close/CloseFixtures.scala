@@ -35,6 +35,7 @@ import grit.core.store.{
   InMemoryTombstones,
   InMemoryUsageLedger,
   Jot,
+  OpenActivity,
   OpenPeriod,
   Payload,
   PeriodStore,
@@ -308,7 +309,7 @@ object CloseFixtures {
     def of(turn: TurnRef)(using Tx^): Either[StoreError, Option[Period]] = underlying.of(turn)
     def judged(period: PeriodRef, verdict: Verdict)(using Tx^): Either[StoreError, Boolean] =
       underlying.judged(period, verdict)
-    def open()(using Tx^): Either[StoreError, Vector[Activity]] = underlying.open()
+    def open()(using Tx^): Either[StoreError, Vector[OpenActivity]] = underlying.open()
     def activity(period: PeriodRef)(using Tx^): Either[StoreError, Option[Activity]] =
       underlying.activity(period)
     def closingBefore(turn: TurnRef)(using Tx^): Either[StoreError, Option[ClosingEntry]] =
