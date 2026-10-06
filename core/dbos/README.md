@@ -36,7 +36,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `grit.engine_starts`), `Reader` (a database's stores, engine starts and DBOS's workflow
   records read without an engine or its lock, on sessions Postgres keeps read-only), `Engine` (what `grit.app`
   starts under the lock; closing it, or losing the lock, stops the sweep, then DBOS, waits
-  for running bodies, and releases the lock last; `unfinished` counts the workflows still
+  for running bodies, and releases the lock last; `every` runs a pass on a thread of its own, one
+  at a time, until the engine closes, and the sweep is one; `unfinished` counts the workflows still
   queued or running, which `grit backfill` waits out; `placements` waits for an opening's
   placement, through `DbosPlacements`), `SqlDesk` (an edge's registration, live
   while its own connection holds its lock, which also listens for requests), `TurnStatus`, and

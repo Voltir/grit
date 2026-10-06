@@ -357,8 +357,8 @@ final class Engine private (
 
   private val sweeping = new AtomicBoolean(false)
 
-  /** The sweeping thread, once [[sweepEvery]] started it. */
-  private val sweepThread = new AtomicReference(Option.empty[Thread])
+  /** The threads [[every]] started: [[close]] stops them. */
+  private val passes = new java.util.concurrent.ConcurrentLinkedQueue[Thread]()
 
   /** The desks registered through this engine: [[close]] closes them. */
   private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()
@@ -404,41 +404,60 @@ final class Engine private (
     thread.start()
   }
 
-  /** Sweeps at `clock`'s time every `every`, on a daemon thread of its own, until the engine
-    * closes; a sweep that fails is logged, and the next one tries again, each workflow a
-    * sweep finds stuck is logged once, and so is each plugin it newly marks as not enabled. Once, after [[launch]].
+  /** Runs `pass` every `period` on a daemon thread of its own, named `name`, until the engine
+    * closes: one pass at a time, the next `period` after the last returned, so no two passes
+    * ever overlap. A pass that throws is logged under `name`, and the next one runs. Nothing
+    * runs once the engine has closed: [[close]] interrupts a pass under way and waits up to
+    * [[Engine.BodiesWithin]] for it to return. Only an engine has this: it holds the database's lock (ADR 0015), and an
+    * attached [[Link]] does not.
     */
-  def sweepEvery(every: FiniteDuration, clock: Clock^): Unit =
+  def every(name: String, period: FiniteDuration)(pass: () => Unit): Unit =
+    if (!closed.get()) {
+      val log = LoggerFactory.getLogger(name)
+      val thread = new Thread(() => {
+        while (!closed.get()) {
+          try pass()
+          catch {
+            // The engine closing interrupts a pass under way; the loop then ends.
+            case _: InterruptedException => ()
+            case NonFatal(e) => log.warn(s"$name failed: $e")
+          }
+          try Thread.sleep(period.toMillis)
+          catch { case _: InterruptedException => () }
+        }
+      })
+      thread.setName(name)
+      thread.setDaemon(true)
+      passes.add(thread)
+      thread.start()
+    }
+
+  /** Sweeps at `clock`'s time every `period` ([[every]], as `grit.sweeper`); a sweep that fails
+    * is logged, and the next one tries again, each workflow a sweep finds stuck is logged once,
+    * and so is each plugin it newly marks as not enabled. Once, after [[launch]]; later calls
+    * do nothing.
+    */
+  def sweepEvery(period: FiniteDuration, clock: Clock^): Unit =
     if (sweeping.compareAndSet(false, true)) {
       val log = LoggerFactory.getLogger("grit.sweeper")
       // Read and written only by the sweeping thread.
       val logged = scala.collection.mutable.Set.empty[WorkflowId]
-      val thread = new Thread(() => {
-        while (sweeping.get()) {
-          try
-            sweep(clock.now()) match {
-              case Left(e) => log.warn(s"sweep failed: $e")
-              case Right(swept) =>
-                swept.stuck.filterNot(logged.contains).foreach { id =>
-                  logged += id
-                  log.warn(s"stuck, and not run again: ${WorkflowId.value(id)}")
-                }
-                swept.disabled.foreach { p =>
-                  log.warn(
-                    s"plugin ${PluginName.value(p)} is not enabled: its documents and cursor " +
-                      "are deleted after the ledger window unless it is enabled again"
-                  )
-                }
+      every("grit.sweeper", period) { () =>
+        sweep(clock.now()) match {
+          case Left(e) => log.warn(s"sweep failed: $e")
+          case Right(swept) =>
+            swept.stuck.filterNot(logged.contains).foreach { id =>
+              logged += id
+              log.warn(s"stuck, and not run again: ${WorkflowId.value(id)}")
             }
-          catch { case NonFatal(e) => log.warn(s"sweep failed: $e") }
-          try Thread.sleep(every.toMillis)
-          catch { case _: InterruptedException => () }
+            swept.disabled.foreach { p =>
+              log.warn(
+                s"plugin ${PluginName.value(p)} is not enabled: its documents and cursor " +
+                  "are deleted after the ledger window unless it is enabled again"
+              )
+            }
         }
-      })
-      thread.setName("grit-sweeper")
-      thread.setDaemon(true)
-      sweepThread.set(Some(thread))
-      thread.start()
+      }
     }
 
   /** The conversation `origin` names, created by `by` if it is new, as an edge's first
@@ -458,7 +477,7 @@ final class Engine private (
   /** The engine holding this database's lock: this one, while it holds it. */
   def holder(): Option[Holder] = EngineLock.holder(config)
 
-  /** Stops sweeping, stops DBOS, waits up to [[Engine.BodiesWithin]] for every workflow body
+  /** Stops every pass ([[every]]) and the sweep, stops DBOS, waits up to [[Engine.BodiesWithin]] for every workflow body
     * still running (interrupted by the stop) to return, then releases the lock: no body this
     * engine ran outlives its lock, unless one ignores its interrupt past the wait, which is
     * logged. Also what losing the lock does. Once; later calls return at once.
@@ -466,11 +485,8 @@ final class Engine private (
   def close(): Unit =
     if (closed.compareAndSet(false, true)) {
       try {
-        sweeping.set(false)
-        sweepThread.get().foreach { t =>
-          t.interrupt()
-          t.join(Engine.BodiesWithin.toMillis)
-        }
+        passes.forEach(_.interrupt())
+        passes.forEach(_.join(Engine.BodiesWithin.toMillis))
         desks.forEach(_.close())
         try client.close()
         finally dbos.shutdown()
