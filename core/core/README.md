@@ -89,7 +89,9 @@ In dependency order:
   schedule has due at an instant (its latest slot, or a once slot missed); `Resume`, what one
   whose run is `InFlight` gets (left, enqueued again, failed, or superseded at the current
   version); `Slot`, one slot of a schedule: the run name of its run's `Origin.Task`
-  conversation, and the opening grit writes there. ← `id`, `message`, `store`
+  conversation, and the opening grit writes there; `Report`, where a schedule's runs report
+  beyond their own conversations; `SlotRuleJson` and `ReportJson`, their stored forms. ← `id`,
+  `message`, `store`
 - **`spend`** — what grit spends on model calls, read back: `Spend` (some recorded calls: how
   many, and their `Cost`), `Spending` (a day's, or a conversation's, from the ledger; what the
   ledger misses is in its doc), `Day` (a calendar day in a zone, as instants), `DailyCap`
