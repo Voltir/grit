@@ -1,8 +1,17 @@
 package grit.core.stitch
 
-import grit.core.id.{ConversationId, EntryId, EntrySeq, PrincipalId, StitchRef, TurnRef, TurnSeq}
+import grit.core.id.{
+  ConversationId,
+  EntryId,
+  EntrySeq,
+  PeriodSeq,
+  PrincipalId,
+  StitchRef,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.message.Message
-import grit.core.period.Probability
+import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Directory, Scope}
 import grit.core.store.{Conversation, Entry, EntrySearch, Origin, Payload, Speakers}
 
@@ -95,6 +104,41 @@ object StitchingTests extends TestSuite {
         s3.conversation -> Offered.Recent(3),
         engine.conversation -> Offered.Lexical(3.0)
       )
+    }
+
+    test(
+      "an exchange's record is its newest closing shown elsewhere: never an unearned or a run's"
+    ) {
+      val opened = heard("t", "who owns the Engine contract?", 900)
+      def closed(seq: Long, secondsAgo: Long, reason: CloseReason, prose: String): Said = {
+        val e = opened.entry
+        opened.copy(entry =
+          e.copy(
+            id = EntryId(s"closed:$seq"),
+            seq = EntrySeq(seq),
+            payload = Payload.Closed(PeriodSeq.First, reason, TestClosings.prose(prose)),
+            createdAt = Now.minusSeconds(secondsAgo)
+          )
+        )
+      }
+      val said = Vector(
+        opened,
+        closed(1, 800, CloseReason.Lapsed, "Ana owns it."),
+        closed(2, 700, CloseReason.Unearned, "Heard 1 message; nothing kept."),
+        closed(3, 600, CloseReason.Ran, "Scheduled run of remind")
+      )
+      Stitching
+        .offer(
+          first,
+          room(),
+          said,
+          Vector.empty,
+          Vector.empty,
+          Vector.empty,
+          Scope.Room,
+          Tuning.Default
+        )
+        .map(_.record) ==> Vector(Some("Ana owns it."))
     }
 
     test("a conversation in another channel is never offered, even under everywhere") {

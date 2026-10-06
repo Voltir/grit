@@ -63,8 +63,7 @@ trait PeriodStore {
 
   /** Every conversation but `conversation` with a closing entry still kept, with where it
     * happens and its newest kept closing entry; in the close order of that closing. A
-    * closing of a period closed unearned ([[grit.core.period.CloseReason.Unearned]]) is never
-    * one: its prose says only that nothing was kept, and its balance is the one before.
+    * closing whose reason is not [[grit.core.period.CloseReason.shownElsewhere]] is never one.
     */
   def closedElsewhere(conversation: ConversationId)(using
       Tx^

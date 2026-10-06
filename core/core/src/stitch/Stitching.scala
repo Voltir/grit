@@ -15,7 +15,7 @@ import grit.core.classify.{
 import grit.core.id.ConversationId
 import grit.core.id.{EntryId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
-import grit.core.period.{CloseReason, Probability}
+import grit.core.period.Probability
 import grit.core.place.{Place, Scope}
 import grit.core.store.{
   Conversation,
@@ -287,7 +287,7 @@ object Stitching {
       val opening = openings.find(_.conversation == r).orElse(messages.headOption)
       opening.map { o =>
         val record = group.reverse.map(_.entry.payload).collectFirst {
-          case Payload.Closed(_, reason, closing) if reason != CloseReason.Unearned =>
+          case Payload.Closed(_, reason, closing) if reason.shownElsewhere =>
             closing.headline
         }
         Exchange(

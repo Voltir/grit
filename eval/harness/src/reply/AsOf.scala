@@ -219,7 +219,7 @@ object AsOf {
               .flatMap(p =>
                 p.state match {
                   case PeriodState.Closed(_, closedAt, reason, closing, order, _)
-                      if before(closedAt, at) && reason != CloseReason.Unearned =>
+                      if before(closedAt, at) && reason.shownElsewhere =>
                     Some((grit.core.id.PeriodSeq.value(p.ref.seq), order, closing))
                   case _ => None
                 }

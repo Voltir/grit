@@ -266,12 +266,12 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       tx: Tx^
   ): Either[StoreError, Vector[ClosedElsewhere]] =
     many(
-      """SELECT conversation_id, closing_id, origin FROM (
+      s"""SELECT conversation_id, closing_id, origin FROM (
         |  SELECT DISTINCT ON (p.conversation_id) p.conversation_id, p.closing_id,
         |         p.close_ordinal, c.origin
         |    FROM grit.periods p
         |    JOIN grit.conversations c ON c.id = p.conversation_id
-        |   WHERE p.closed_at IS NOT NULL AND p.reason <> 'unearned'
+        |   WHERE p.closed_at IS NOT NULL AND p.reason NOT IN ($Unshown)
         |     AND p.conversation_id <> ?::uuid
         |   ORDER BY p.conversation_id, p.seq DESC
         |) newest
@@ -435,6 +435,12 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
 }
 
 private object SqlPeriodStore {
+
+  /** The stored names of the reasons whose closings stay in their conversation
+    * (`CloseReason.Unshown`), as an SQL list of literals.
+    */
+  private val Unshown =
+    CloseReason.Unshown.map(r => s"'${PayloadJson.reasonName(r)}'").mkString(", ")
 
   /** Column order shared by every statement that reads a whole period, and `readPeriod`. */
   private val columns =

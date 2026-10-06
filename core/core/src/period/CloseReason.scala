@@ -23,4 +23,17 @@ enum CloseReason {
     * without one).
     */
   case Ran
+
+  /** Whether its closing is shown outside its own conversation: to another conversation's
+    * window, as a stitched exchange's record. False for the [[CloseReason.Unshown]] alone.
+    */
+  def shownElsewhere: Boolean = !CloseReason.Unshown.contains(this)
+}
+
+object CloseReason {
+
+  /** The reasons whose closings stay in their own conversation: `Unearned`, whose closing says
+    * only that nothing was kept, and `Ran`, whose closing is its run's own record.
+    */
+  val Unshown: Vector[CloseReason] = Vector(Unearned, Ran)
 }

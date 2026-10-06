@@ -186,7 +186,7 @@ final class InMemoryPeriodStore(
     Right(
       periods
         .filter(_.ref.conversationId != conversation)
-        .flatMap(p => closedOf(p).filter(_.reason != CloseReason.Unearned).map(p -> _))
+        .flatMap(p => closedOf(p).filter(_.reason.shownElsewhere).map(p -> _))
         .groupBy(_._1.ref.conversationId)
         .values
         .flatMap(_.maxByOption((p, _) => PeriodSeq.value(p.ref.seq)))

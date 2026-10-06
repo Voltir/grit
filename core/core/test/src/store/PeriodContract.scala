@@ -426,35 +426,40 @@ abstract class PeriodContract extends TestSuite {
     }
 
     test(
-      "an unearned closing is never one closed elsewhere: its conversation is shown by its newest earned closing kept, or not at all"
+      "an unearned or ran closing is never one closed elsewhere: its conversation is shown by its newest closing shown elsewhere, or not at all"
     ) {
-      val (me, mixed, heard) =
-        (
-          conversation("unearned-me"),
-          conversation("unearned-mixed"),
-          conversation("unearned-heard")
-        )
-      val (m1, m2) = (PeriodRef(mixed, PeriodSeq.First), PeriodRef(mixed, PeriodSeq.First.next))
-      val h1 = PeriodRef(heard, PeriodSeq.First)
-      def unearned(period: PeriodRef, last: TurnRef, minute: Long, text: String): Sealed =
+      val me = conversation("unshown-me")
+      seal(PeriodRef(me, PeriodSeq.First), say(me, 0), 5, "mine")
+      def unshown(period: PeriodRef, reason: CloseReason, last: TurnRef, minute: Long): Sealed =
         transaction(
           right(
             periods.seal(
               CloseRef(period, last.turnSeq, at(minute)),
-              CloseReason.Unearned,
-              closing(text),
+              reason,
+              closing(s"$reason at $minute"),
               at(minute)
             )
           )
         )
-      seal(PeriodRef(me, PeriodSeq.First), say(me, 0), 5, "mine")
-      seal(m1, say(mixed, 1), 10, "mixed, earned")
-      unearned(m2, say(mixed, 15), 20, "mixed, heard")
-      unearned(h1, say(heard, 2), 25, "only heard")
-      val theirs = Set(me, mixed, heard)
-      transaction(periods.closedElsewhere(me)).map(_.filter(c => theirs(c.conversation))) ==> Right(
-        Vector(ClosedElsewhere(mixed, origin("unearned-mixed").place, m1.closingId))
-      )
+      val kinds = Vector(CloseReason.Unearned -> "unearned", CloseReason.Ran -> "ran")
+      kinds.zipWithIndex.foreach { case ((reason, name), i) =>
+        val (mixed, only) = (conversation(s"$name-mixed"), conversation(s"$name-only"))
+        val base = 10L + 20 * i
+        seal(PeriodRef(mixed, PeriodSeq.First), say(mixed, base), base + 1, s"$name, shown")
+        unshown(PeriodRef(mixed, PeriodSeq.First.next), reason, say(mixed, base + 2), base + 3)
+        unshown(PeriodRef(only, PeriodSeq.First), reason, say(only, base + 4), base + 5)
+      }
+      val theirs = kinds.flatMap((_, n) => Vector(s"$n-mixed", s"$n-only")).map(conversation).toSet
+      transaction(periods.closedElsewhere(me)).map(_.filter(c => theirs(c.conversation))) ==>
+        Right(
+          Vector("unearned-mixed", "ran-mixed").map(n =>
+            ClosedElsewhere(
+              conversation(n),
+              origin(n).place,
+              PeriodRef(conversation(n), PeriodSeq.First).closingId
+            )
+          )
+        )
     }
 
     test("closed periods are listed in close order across conversations, with their origins") {
