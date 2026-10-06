@@ -75,6 +75,7 @@ import grit.dbos.workflow.{
   DurableWorkflow,
   Posts,
   Running,
+  Runs,
   Settles,
   Shadows,
   Stitches,
@@ -90,7 +91,7 @@ import dev.dbos.transact.{DBOS, DBOSClient}
 import org.postgresql.ds.PGSimpleDataSource
 import org.slf4j.LoggerFactory
 
-/** grit over one Postgres: the stores, the turn, close, settle, posting, triage, placement and shadow workflows, the
+/** grit over one Postgres: the stores, the turn, close, settle, posting, triage, placement, shadow and job run workflows, the
   * sweep that closes periods, and an edge's [[Inbox]], all in this process, under the
   * database's [[EngineLock]]. Open it, [[launch]] it with the workflows' bodies, start its
   * [[sweepEvery]], and close it when done; its threads keep the JVM alive until then.
@@ -224,7 +225,8 @@ final class Engine private (
     * `settle` of every question whether anyone is waiting on a quiet period, `post` of every
     * posting run, `triage` of every heard message's triage, `stitch` of every opening's
     * placement ([[grit.core.id.StitchRef]]), and `shadow` of every shadow
-    * ([[grit.core.id.ShadowRef]]), and starts running what is queued; `plugins` are the ones
+    * ([[grit.core.id.ShadowRef]]), and `run` of every job's run (a turn of its slot's
+    * conversation, [[grit.core.job.Slot]]), and starts running what is queued; `plugins` are the ones
     * enabled, and the sweep posts to those with something to post ([[Plugin.posts]]), and enqueues shadows for `shadowing`, the variants declared.
     * Without them no shadow is enqueued, and one an earlier engine left queued ends at once,
     * keeping nothing. The terms of `plugins`' documents are declared the ones in force
@@ -242,7 +244,8 @@ final class Engine private (
       stitch: WorkflowId => Durable^ ?=> String,
       plugins: Vector[Plugin],
       shadow: WorkflowId => Durable^ ?=> String = Engine.Unshadowed,
-      shadowing: Vector[Shadowing] = Vector.empty
+      shadowing: Vector[Shadowing] = Vector.empty,
+      run: WorkflowId => Durable^ ?=> String = Engine.Unrun
   ): Unit = {
     val steps = new JdbcStepFactory(dbos, dataSource)
     Turns.register(dbos, steps, turn, running)
@@ -252,6 +255,7 @@ final class Engine private (
     Triages.register(dbos, steps, triage, running)
     Stitches.register(dbos, steps, stitch, running)
     Shadows.register(dbos, steps, shadow, running)
+    Runs.register(dbos, steps, run, running)
     enabled.set(plugins.map(p => (p.name, p.version)))
     posting.set(plugins.filter(_.posts).map(p => (p.name, p.version)))
     declared.set(shadowing)
@@ -474,6 +478,12 @@ object Engine {
     */
   val Unshadowed: WorkflowId -> Durable^ ?-> String =
     id => (_: Durable^) ?=> s"no shadows are declared: ${WorkflowId.value(id)}"
+
+  /** The run body of an engine given none: it runs no job and writes nothing, so its run ends
+    * without a reply, which the inbox reads as failed ([[grit.core.job.InFlight.Failed]]).
+    */
+  val Unrun: WorkflowId -> Durable^ ?-> String =
+    id => (_: Durable^) ?=> s"no job runs here: ${WorkflowId.value(id)}"
 
   /** How long [[Engine.close]] waits for running workflow bodies: 30 seconds. */
   val BodiesWithin: FiniteDuration = 30.seconds

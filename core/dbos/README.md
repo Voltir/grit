@@ -21,8 +21,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
 - **`workflow`** — DBOS behind `Durable`: `DbosDurable`, `DurableWorkflow` (registers a
   body under the fixed class name `grit.workflow`, so moving it strands no workflow row, and
   counts it in `Running` while it runs),
-  `Turns` (how a turn is known to DBOS: its workflow name and queue), `Closes`, `Settles`
-  and `Triages` (the close, settle and triage workflows, on the same queue under the
+  `Turns` (how a turn is known to DBOS: its workflow name and queue), `Closes`, `Settles`,
+  `Triages` and `Runs` (the close, settle and triage workflows, and a job's run, on the same queue under the
   conversation's partition, so none runs beside one of its turns), `Posts` (the posting workflow, on a `posts` queue partitioned by
   plugin), `Shadows` (the shadow workflow, on a `shadows` queue of its own, one at a time,
   never the turns' queue), `Stitches` (an opening's placement, on a `stitches` queue
