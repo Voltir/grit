@@ -319,6 +319,19 @@ object grit extends Module {
     }
   }
 
+  /* Reminders: the plugin whose job `remind` posts a person's reminder in the thread that
+   * asked, and the tools that set, list and cancel them. Names only core.
+   * extensions/remind/README.md. */
+  object remind extends GritPublished with Placed {
+    def folder = os.sub / "extensions" / "remind"
+    def moduleDeps = Seq(core)
+
+    /* Over core's in-memory schedules and their desk. */
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
+  }
+
   /* Models: the frontier provider, and later the relevance judge. A quarantine module
    * once it has an HTTP client. roadmap/mechanisms/models.md. */
   object models extends GritPublished with Placed {
