@@ -204,9 +204,9 @@ object Cases {
         |you: Which test runs the totals?
         |grit: TotalsSpec, under billing's tests.
         |document fs:/home/nick/billing [must]
-        |doc: Closed here, newest first (UTC):
-        |doc: 2026-09-30 14:05 · tui default · resolved · Invoice totals round half-even (banker's rounding), set in Round.scala; half-up was a cent off.
-        |doc: 2026-09-28 10:12 · tui default · lapsed · We looked at why the CI cache misses.
+        |doc: Closed here, newest first:
+        |doc: 2026-09-30 14:05 UTC · tui default · resolved · Invoice totals round half-even (banker's rounding), set in Round.scala; half-up was a cent off.
+        |doc: 2026-09-28 10:12 UTC · tui default · lapsed · We looked at why the CI cache misses.
         |ask
         |you: Remind me which rounding mode we settled on for invoice totals?
         |""".stripMargin

@@ -60,7 +60,7 @@ object DigestTests extends TestSuite {
     )
 
   private def nightlyLine(n: Long): String =
-    f"2026-09-${n}%02d 03:00 · task nightly · lapsed · Run $n."
+    f"2026-09-${n}%02d 03:00 UTC · task nightly · lapsed · Run $n."
 
   private val periods: Vector[ClosedPeriod] = Vector(
     closed(
@@ -148,9 +148,9 @@ object DigestTests extends TestSuite {
       ) ==> Vector(
         (
           Place.of(home),
-          "Closed here, newest first (UTC):\n" +
-            "2026-09-23 08:00 · tui other · lapsed · We looked at logs.\n" +
-            "2026-09-20 14:05 · tui default · resolved · staging deploys from main",
+          "Closed here, newest first:\n" +
+            "2026-09-23 08:00 UTC · tui other · lapsed · We looked at logs.\n" +
+            "2026-09-20 14:05 UTC · tui default · resolved · staging deploys from main",
           Instant.parse("2026-09-23T08:00:00Z")
         )
       )
@@ -197,11 +197,11 @@ object DigestTests extends TestSuite {
       posted(periods(1), periods(2)).newest.map(d => (d.place, lines(d))) ==> Vector(
         (
           Origin.Task("nightly", "x").room,
-          Vector("2026-09-22 03:00 · task nightly · lapsed · Nothing to report")
+          Vector("2026-09-22 03:00 UTC · task nightly · lapsed · Nothing to report")
         ),
         (
           Origin.Slack("T1", "eng", "x").room,
-          Vector("2026-09-21 09:30 · slack #eng · lapsed · Someone asked about the flaky test.")
+          Vector("2026-09-21 09:30 UTC · slack #eng · lapsed · Someone asked about the flaky test.")
         )
       )
     }
@@ -212,7 +212,7 @@ object DigestTests extends TestSuite {
         Vector(
           nightlyLine(24),
           nightlyLine(23),
-          "2026-09-22 03:00 · task nightly · lapsed · Nothing to report"
+          "2026-09-22 03:00 UTC · task nightly · lapsed · Nothing to report"
         )
       )
       (kept.recent(0), kept.recent(-1)) ==> (Right(Vector()), Right(Vector()))
@@ -222,13 +222,13 @@ object DigestTests extends TestSuite {
       val db = new FakeDb
       val kept = posted(periods*)
       run(db, kept, "n" -> 2) ==> Outcome.Done(
-        "2026-09-22 03:00 · task nightly · lapsed · Nothing to report\n" +
-          "2026-09-21 09:30 · slack #eng · lapsed · Someone asked about the flaky test."
+        "2026-09-22 03:00 UTC · task nightly · lapsed · Nothing to report\n" +
+          "2026-09-21 09:30 UTC · slack #eng · lapsed · Someone asked about the flaky test."
       )
       run(db, kept) ==> Outcome.Done(
-        "2026-09-22 03:00 · task nightly · lapsed · Nothing to report\n" +
-          "2026-09-21 09:30 · slack #eng · lapsed · Someone asked about the flaky test.\n" +
-          "2026-09-20 14:05 · tui default · resolved · staging deploys from main"
+        "2026-09-22 03:00 UTC · task nightly · lapsed · Nothing to report\n" +
+          "2026-09-21 09:30 UTC · slack #eng · lapsed · Someone asked about the flaky test.\n" +
+          "2026-09-20 14:05 UTC · tui default · resolved · staging deploys from main"
       )
       run(db, new Kept) ==> Outcome.Done("No conversation has closed yet.")
     }

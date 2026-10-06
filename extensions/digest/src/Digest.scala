@@ -24,7 +24,7 @@ import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
   */
 final class Digest(val name: PluginName) extends Exports[Activity] {
 
-  val version: Int = 2
+  val version: Int = 3
 
   override val documents: Option[Documents] = Some(Digest.Kept)
 
@@ -108,7 +108,7 @@ object Digest {
   }
 
   /** What heads a room's document, above its lines. */
-  private val Header = "Closed here, newest first (UTC):"
+  private val Header = "Closed here, newest first:"
 
   /** A room's key: the SHA-256 of its written place, in hex, so that a place too long or not
     * one line for a [[DocKey]] still has one.
@@ -129,8 +129,8 @@ object Digest {
       line: String
   ) {
 
-    /** `{date} {time} · {where} · {why} · {headline}`, UTC. */
-    def shown: String = s"${Utc.bareMinute(at)} · $where · $why · $line"
+    /** `{date} {time} UTC · {where} · {why} · {headline}` ([[Utc.toMinute]]). */
+    def shown: String = s"${Utc.toMinute(at)} · $where · $why · $line"
   }
 
   private object Line {
