@@ -6,7 +6,9 @@ import java.time.Instant
 enum InFlight {
   case Replied
 
-  /** Its workflow ended without a reply: in error, or cancelled. */
+  /** Its workflow has ended without a reply, however it ended: in error, cancelled, or cleanly,
+    * as a run whose job left the deployment does.
+    */
   case Failed
 
   /** DBOS does not know its workflow: its start was lost before it was enqueued. */

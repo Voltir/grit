@@ -30,6 +30,12 @@ object ResumeTests extends TestSuite {
       daily(InFlight.Unknown, Some(1)) ==> Resume.Enqueue
     }
 
+    // A run whose job left the deployment ends cleanly, with no reply: still failed, so a once
+    // schedule ends and a recurrence goes on, rather than waiting on it for ever.
+    test("a run that ended without a reply fails whether or not the deployment has its job") {
+      daily(InFlight.Failed, None) ==> Resume.Fail
+    }
+
     test("a run that replied, or is going at the current version, is left") {
       daily(InFlight.Replied, Some(2)) ==> Resume.Leave
       daily(InFlight.Going(2), Some(2)) ==> Resume.Leave
