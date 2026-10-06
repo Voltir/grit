@@ -405,7 +405,7 @@ final class SqlInbox(
             ).map(_.status()) match {
               case None => InFlight.Unknown
               case Some(state) if state.isActive() => InFlight.Going(version)
-              case Some(_) => InFlight.Failed
+              case Some(_) => InFlight.Ended(version)
             }
           )
         catch {

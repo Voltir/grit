@@ -26,14 +26,14 @@ object ResumeTests extends TestSuite {
 
   val tests = Tests {
     test("a run that ended without a reply fails, and one whose start was lost is enqueued") {
-      daily(InFlight.Failed, Some(1)) ==> Resume.Fail
+      daily(InFlight.Ended(1), Some(1)) ==> Resume.Fail
       daily(InFlight.Unknown, Some(1)) ==> Resume.Enqueue
     }
 
     // A run whose job left the deployment ends cleanly, with no reply: still failed, so a once
     // schedule ends and a recurrence goes on, rather than waiting on it for ever.
     test("a run that ended without a reply fails whether or not the deployment has its job") {
-      daily(InFlight.Failed, None) ==> Resume.Fail
+      daily(InFlight.Ended(1), None) ==> Resume.Fail
     }
 
     test("a run that replied, or is going at the current version, is left") {
@@ -57,6 +57,36 @@ object ResumeTests extends TestSuite {
         None,
         at("2026-10-07T12:00:00Z")
       ) ==> Resume.Supersede(nine, None)
+    }
+
+    // A run at another version that has already ended (superseded, its reply step under the
+    // new version having written nothing) is not a failure: its slot runs again, as when it is
+    // still going.
+    test("a run at another version that ended without a reply is superseded, as a going one is") {
+      val nine = at("2026-10-07T09:00:00Z")
+      (
+        Resume.of(
+          InFlight.Ended(1),
+          Some(2),
+          SlotRule.Once(nine, Hour),
+          nine,
+          None,
+          at("2026-10-07T12:00:00Z")
+        ),
+        daily(InFlight.Ended(1), Some(2)),
+        Resume.of(
+          InFlight.Ended(1),
+          Some(2),
+          Nine,
+          at("2026-10-04T09:00:00Z"),
+          Some(at("2026-10-05T09:00:00Z")),
+          at("2026-10-06T12:00:00Z")
+        )
+      ) ==> (
+        Resume.Supersede(nine, None),
+        Resume.Supersede(at("2026-10-06T09:00:00Z"), Some(at("2026-10-07T09:00:00Z"))),
+        Resume.Supersede(at("2026-10-06T09:00:00Z"), Some(at("2026-10-07T09:00:00Z")))
+      )
     }
 
     test("a recurrence at another version with no later slot due supersedes the same slot") {

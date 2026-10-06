@@ -56,7 +56,8 @@ object StartingTests extends TestSuite {
           Some(2),
           at("2026-10-07T09:00:05Z")
         )
-      Vector(InFlight.Going(2), InFlight.Replied, InFlight.Unknown, InFlight.Failed).map(flying) ==>
+      Vector(InFlight.Going(2), InFlight.Replied, InFlight.Unknown, InFlight.Ended(2))
+        .map(flying) ==>
         Vector(Starting.Idle, Starting.Idle, Starting.Restart, Starting.Fail)
     }
 

@@ -267,7 +267,7 @@ final class InMemoryInbox(
               case None => InFlight.Unknown
               case Some(t) =>
                 finished.get(t) match {
-                  case Some(done) => done.reply.fold(InFlight.Failed)(_ => InFlight.Replied)
+                  case Some(done) => done.reply.fold(InFlight.Ended(v))(_ => InFlight.Replied)
                   case None if started.contains(t) => InFlight.Going(v)
                   case None => InFlight.Unknown
                 }

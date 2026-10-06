@@ -12,13 +12,13 @@ enum Slotted {
   /** Its run's lost start enqueued again. */
   case Restarted(turn: TurnRef)
 
-  /** A run at another version left to end superseded, and `slot` started at the current one as
-    * the turn `turn`.
+  /** A run at another version, going or ended without a reply, left to end superseded, and
+    * `slot` started at the current one as the turn `turn`.
     */
   case Superseding(turn: TurnRef, slot: Slot)
 
-  /** Its run of `slot` ended without a reply: a once schedule ended failed; a recurrence goes
-    * on to its next slot.
+  /** Its run of `slot` ended without a reply at its job's current version, or with its job
+    * gone: a once schedule ended failed; a recurrence goes on to its next slot.
     */
   case Failed(slot: Slot)
 

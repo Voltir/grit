@@ -6,10 +6,10 @@ import java.time.Instant
 enum InFlight {
   case Replied
 
-  /** Its workflow has ended without a reply, however it ended: in error, cancelled, or cleanly,
-    * as a run whose job left the deployment does.
+  /** Its workflow, a run at `version`, has ended without a reply, however it ended: in error,
+    * cancelled, or cleanly, as a run superseded or whose job left the deployment does.
     */
-  case Failed
+  case Ended(version: Int)
 
   /** DBOS does not know its workflow: its start was lost before it was enqueued. */
   case Unknown
@@ -27,14 +27,15 @@ enum Resume {
   /** The run's start was lost: enqueue it again. */
   case Enqueue
 
-  /** The run failed: a once schedule ends `failed`; a recurrence clears it and goes on to
-    * `next`.
+  /** The run ended without a reply at the current version, or with its job gone: a once
+    * schedule ends `failed`; a recurrence clears it and goes on to `next`.
     */
   case Fail
 
-  /** Start `slot` at the current version. It is the same slot (a) when no later one is due, or
-    * the latest due one (b) when a recurrence has one; the stale run ends superseded either
-    * way. A slot started in time is never missed for running again.
+  /** Start `slot` at the current version, the run in flight being at another, going or ended
+    * without a reply. It is the same slot (a) when no later one is due, or the latest due one
+    * (b) when a recurrence has one; the stale run ends superseded either way. A slot started
+    * in time is never missed for running again.
     */
   case Supersede(slot: Instant, following: Option[Instant])
 }
@@ -54,17 +55,28 @@ object Resume {
       now: Instant
   ): Resume = flight match {
     case InFlight.Replied => Leave
-    case InFlight.Failed => Fail
     case InFlight.Unknown => Enqueue
+    // A run at another version ends with no reply when its reply step finds the job changed:
+    // superseded, not failed, so its slot runs again whether or not it has ended yet.
+    case InFlight.Ended(version) if current.exists(_ != version) =>
+      supersede(rule, started, next, now)
+    case InFlight.Ended(_) => Fail
     case InFlight.Going(version) =>
       current match {
         case None => Leave
         case Some(v) if v == version => Leave
-        case Some(_) =>
-          next.map(Due.of(rule, _, now)) match {
-            case Some(Due.Run(latest, following)) => Supersede(latest, following)
-            case Some(Due.NotYet | Due.Missed(_)) | None => Supersede(started, next)
-          }
+        case Some(_) => supersede(rule, started, next, now)
       }
   }
+
+  private def supersede(
+      rule: SlotRule,
+      started: Instant,
+      next: Option[Instant],
+      now: Instant
+  ): Resume =
+    next.map(Due.of(rule, _, now)) match {
+      case Some(Due.Run(latest, following)) => Supersede(latest, following)
+      case Some(Due.NotYet | Due.Missed(_)) | None => Supersede(started, next)
+    }
 }

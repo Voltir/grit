@@ -513,7 +513,7 @@ object Engine {
     id => (_: Durable^) ?=> s"no shadows are declared: ${WorkflowId.value(id)}"
 
   /** The run body of an engine given none: it runs no job and writes nothing, so its run ends
-    * without a reply, which the inbox reads as failed ([[grit.core.job.InFlight.Failed]]).
+    * without a reply ([[grit.core.job.InFlight.Ended]]).
     */
   val Unrun: WorkflowId -> Durable^ ?-> String =
     id => (_: Durable^) ?=> s"no job runs here: ${WorkflowId.value(id)}"

@@ -96,10 +96,11 @@ trait Inbox extends caps.SharedCapability {
     *     by grit with [[grit.core.job.Slot.opening]], enqueued as its job's run. A once slot
     *     more than its grace past is missed, with or without its job.
     *   - With a run in flight, read by its workflow's status and its reply
-    *     ([[grit.core.job.InFlight]], [[grit.core.job.Resume]]): a run whose workflow has ended
-    *     without a reply, however it ended, has `Failed`; one whose start was lost is enqueued
-    *     again; one at another version is superseded by a run at `version`, of the same slot
-    *     or, for a recurrence with a later slot due, of the latest.
+    *     ([[grit.core.job.InFlight]], [[grit.core.job.Resume]]): one at another version, going
+    *     or ended without a reply, is superseded by a run at `version`, of the same slot or,
+    *     for a recurrence with a later slot due, of the latest; otherwise a run whose workflow
+    *     has ended without a reply, however it ended, has `Failed`; one whose start was lost is
+    *     enqueued again.
     * A slot already started at `version` is never started again ([[grit.core.job.Starting]]).
     */
   def startSlot(
