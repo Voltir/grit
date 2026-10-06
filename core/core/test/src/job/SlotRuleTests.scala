@@ -30,6 +30,18 @@ object SlotRuleTests extends TestSuite {
       once.after(at("2026-10-07T10:00:00Z")) ==> None
     }
 
+    test(
+      "a new schedule's first slot is a once slot's own instant, however far past; a recurrence's first after now"
+    ) {
+      val now = at("2026-10-07T12:00:00Z")
+      SlotRule.Once(at("2026-09-01T09:00:00Z"), Grace.Zero).first(now) ==>
+        Some(at("2026-09-01T09:00:00Z"))
+      SlotRule.Once(at("2026-10-08T09:00:00Z"), Grace.Zero).first(now) ==>
+        Some(at("2026-10-08T09:00:00Z"))
+      SlotRule.Daily(LocalTime.of(9, 0), ZoneId.of("UTC")).first(now) ==>
+        Some(at("2026-10-08T09:00:00Z"))
+    }
+
     test("a daily slot falls at its local time in its zone, strictly after the instant") {
       val paris = SlotRule.Daily(LocalTime.of(9, 0), Paris)
       paris.after(at("2026-10-06T06:00:00Z")) ==> Some(at("2026-10-06T07:00:00Z"))

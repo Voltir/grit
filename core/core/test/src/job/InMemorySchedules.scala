@@ -56,7 +56,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
     wanted.foreach { (id, d) =>
       val row = rows.get(id) match {
         case None =>
-          Row(d.job.name, d.written, PrincipalId.Grit, Report.Kept, d.rule, first(d.rule, now))
+          Row(d.job.name, d.written, PrincipalId.Grit, Report.Kept, d.rule, d.rule.first(now))
         case Some(r) =>
           val ended = r.ended.filterNot(_ == Ending.Undeclared)
           r.copy(
@@ -66,7 +66,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
             next =
               if (ended.nonEmpty) None
               else if (r.rule == d.rule && r.ended.isEmpty) r.next
-              else first(d.rule, now),
+              else d.rule.first(now),
             ended = ended
           )
       }
@@ -216,12 +216,6 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
   private def end(id: ScheduleId, how: Ending, at: Instant)(using Tx^): Either[StoreError, Unit] = {
     rows = rows.updatedWith(id)(_.map(_.copy(next = None, ended = Some(how))))
     tombstones.write(Target.Schedule(id), at).map(_ => ())
-  }
-
-  /** A new schedule's first slot after `now`: a once slot's own instant, however past. */
-  private def first(rule: SlotRule, now: Instant): Option[Instant] = rule match {
-    case SlotRule.Once(at, _) => Some(at)
-    case recurring => recurring.after(now)
   }
 }
 

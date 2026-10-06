@@ -104,7 +104,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             ps.setString(5, PrincipalId.value(PrincipalId.Grit))
             ps.setString(6, ReportJson.write(Report.Kept).render())
             ps.setObject(7, utc(now))
-            ps.setObject(8, first(d.rule, now).map(utc).orNull)
+            ps.setObject(8, d.rule.first(now).map(utc).orNull)
           }
         case Some((rule, ended)) =>
           val revived = ended.contains(Ending.Undeclared.word)
@@ -122,7 +122,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             ps.setString(2, SlotRuleJson.write(d.rule).render())
             ps.setString(3, d.written.render())
             ps.setBoolean(4, keepsNext)
-            ps.setObject(5, if (keepsEnd) null else first(d.rule, now).map(utc).orNull)
+            ps.setObject(5, if (keepsEnd) null else d.rule.first(now).map(utc).orNull)
             ps.setBoolean(6, revived)
             ps.setBoolean(7, revived)
             ps.setString(8, ScheduleId.value(id))
@@ -461,12 +461,6 @@ private[dbos] object SqlSchedules {
     rows.foldLeft[Either[StoreError, Vector[B]]](Right(Vector.empty)) { (acc, a) =>
       acc.flatMap(done => f(a).left.map(StoreError.Invalid(_)).map(done :+ _))
     }
-
-  /** A new schedule's first slot after `now`: a once slot's own instant, however past. */
-  private def first(rule: SlotRule, now: Instant): Option[Instant] = rule match {
-    case SlotRule.Once(at, _) => Some(at)
-    case recurring => recurring.after(now)
-  }
 
   /** `s`, an asked schedule, as `job` reads it. */
   private def kept[P <: caps.Pure](

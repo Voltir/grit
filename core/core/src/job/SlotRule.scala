@@ -25,6 +25,15 @@ enum SlotRule {
       SlotRule.firstAfter(instant, at, zone, d => d != DayOfWeek.SATURDAY && d != DayOfWeek.SUNDAY)
     case Weekly(day, at, zone) => SlotRule.firstAfter(instant, at, zone, _ == day)
   }
+
+  /** The first slot of a schedule made at `now`: a once slot's own instant, however far past
+    * (whether it then runs or is missed is its grace's to say, [[Due]]); a recurrence's first
+    * slot after `now`.
+    */
+  def first(now: Instant): Option[Instant] = this match {
+    case Once(at, _) => Some(at)
+    case Daily(_, _) | Weekdays(_, _) | Weekly(_, _, _) => after(now)
+  }
 }
 
 object SlotRule {
