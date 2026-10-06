@@ -3,21 +3,10 @@ package grit.dbos.engine
 import java.time.Instant
 
 import grit.core.clock.Clock
-import grit.core.id.{ConversationId, EntryId, JobName, PluginName, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{JobName, PluginName, PrincipalId, TurnRef, TurnSeq}
 import grit.core.job.{ScheduleContract, ScheduleDesk, ScheduleStore, Slot}
-import grit.core.message.Message
-import grit.core.store.{Entry, Jot, Origin, Payload, StoreError, Tombstones, Tx}
-import grit.dbos.sql.{
-  DbConfig,
-  LiveDb,
-  SqlDeliveries,
-  SqlEntryStore,
-  SqlJot,
-  SqlPrincipals,
-  SqlSchedules,
-  SqlTombstones,
-  TestPostgres
-}
+import grit.core.store.{Jot, Origin, StoreError, Tombstones, Tx}
+import grit.dbos.sql.{DbConfig, LiveDb, SqlJot, SqlSchedules, SqlTombstones, TestPostgres}
 
 import org.postgresql.ds.PGSimpleDataSource
 
@@ -42,7 +31,6 @@ private[engine] object SqlSchedulesUnder {
     LiveEngine.open(config, "test").close()
     val marks = new SqlTombstones
     val schedules = new SqlSchedules(marks)
-    val entries = new SqlEntryStore()
     new ScheduleContract.Under {
       val store: ScheduleStore = schedules
       val tombstones: Tombstones = marks
@@ -56,30 +44,7 @@ private[engine] object SqlSchedulesUnder {
         TurnRef(LiveDb.conversation(config, origin).id, TurnSeq.First)
 
       def asking(turn: TurnRef, by: PrincipalId, address: Option[String]): Unit =
-        ok("asking")(LiveDb.transaction(config) {
-          val id = EntryId(s"${ConversationId.value(turn.conversationId)}:asked")
-          for {
-            _ <-
-              if (by == PrincipalId.Local || by == PrincipalId.Grit) Right(())
-              else new SqlPrincipals().enroll(by, PrincipalId.value(by))
-            next <- entries.lockNext(turn.conversationId)
-            _ <- entries.insert(
-              Entry(
-                id,
-                turn.conversationId,
-                turn.turnSeq,
-                None,
-                next.seq,
-                Payload.Message(Message.User("remind me")),
-                Instant.parse("2026-10-07T08:00:00Z")
-              )
-            )
-            _ <- authored(id, by)
-            _ <- address.fold[Either[StoreError, Unit]](Right(()))(
-              new SqlDeliveries().await(turn, _)
-            )
-          } yield ()
-        })
+        LiveDb.asking(config, turn, by, address)
 
       def desk(plugin: PluginName, jobs: Vector[JobName], clock: Clock^): ScheduleDesk^ = {
         val ds = new PGSimpleDataSource()
@@ -99,18 +64,5 @@ private[engine] object SqlSchedulesUnder {
         beforeCommit()
         result
       }
-  }
-
-  /** Records that `by` wrote the inbound entry `id`, as the inbox does. */
-  private def authored(id: EntryId, by: PrincipalId)(using tx: Tx^): Either[StoreError, Unit] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    scala.util.Using.resource(
-      conn.prepareStatement("INSERT INTO grit.inbound (entry_id, author) VALUES (?, ?)")
-    ) { ps =>
-      ps.setString(1, EntryId.value(id))
-      ps.setString(2, PrincipalId.value(by))
-      ps.executeUpdate()
-    }
-    Right(())
   }
 }

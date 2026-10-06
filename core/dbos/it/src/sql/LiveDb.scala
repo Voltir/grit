@@ -1,11 +1,13 @@
 package grit.dbos.sql
 
 import java.sql.DriverManager
+import java.time.Instant
 
 import scala.util.Using
 
-import grit.core.id.PrincipalId
-import grit.core.store.{Conversation, Origin, StoreError, Tx}
+import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef}
+import grit.core.message.Message
+import grit.core.store.{Conversation, Entry, Origin, Payload, StoreError, Tx}
 
 /** Direct transactions on a live test database, for arranging rows and reading them back
   * outside the code under test.
@@ -32,6 +34,47 @@ object LiveDb {
       case Right(c) => c
       case Left(e: StoreError) => sys.error(s"arranging a conversation: $e")
     }
+
+  /** `turn` recorded as one asked from, as the inbox and an edge record it: its first entry a
+    * message `by` wrote, and, when given, its delivery's `address`.
+    */
+  def asking(config: DbConfig, turn: TurnRef, by: PrincipalId, address: Option[String]): Unit =
+    transaction(config) {
+      val id = EntryId(s"${ConversationId.value(turn.conversationId)}:asked")
+      val entries = new SqlEntryStore()
+      for {
+        _ <-
+          if (by == PrincipalId.Local || by == PrincipalId.Grit) Right(())
+          else new SqlPrincipals().enroll(by, PrincipalId.value(by))
+        next <- entries.lockNext(turn.conversationId)
+        _ <- entries.insert(
+          Entry(
+            id,
+            turn.conversationId,
+            turn.turnSeq,
+            None,
+            next.seq,
+            Payload.Message(Message.User("remind me")),
+            Instant.parse("2026-10-07T08:00:00Z")
+          )
+        )
+        _ <- authored(id, by)
+        _ <- address.fold[Either[StoreError, Unit]](Right(()))(new SqlDeliveries().await(turn, _))
+      } yield ()
+    }.fold(e => sys.error(s"asking: $e"), identity)
+
+  /** Records that `by` wrote the inbound entry `id`, as the inbox does. */
+  private def authored(id: EntryId, by: PrincipalId)(using tx: Tx^): Either[StoreError, Unit] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    Using.resource(
+      conn.prepareStatement("INSERT INTO grit.inbound (entry_id, author) VALUES (?, ?)")
+    ) { ps =>
+      ps.setString(1, EntryId.value(id))
+      ps.setString(2, PrincipalId.value(by))
+      ps.executeUpdate()
+    }
+    Right(())
+  }
 
   /** Every ledger row: entry, model, cost, and the estimate of the request's input. */
   def ledger(config: DbConfig): Vector[(String, String, Option[BigDecimal], Long)] =
