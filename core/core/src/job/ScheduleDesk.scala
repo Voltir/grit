@@ -78,7 +78,7 @@ enum DeskRefusal {
   def said: String = this match {
     case Unaddressed =>
       "Nothing was scheduled: this conversation's replies are not posted anywhere a " +
-        "reminder could be."
+        "scheduled run's reply could be."
     case Past(at, now) =>
       s"Nothing was scheduled: ${Utc.toSecond(at)} is not after now, ${Utc.toSecond(now)}."
     case TooFar(at, limit) =>

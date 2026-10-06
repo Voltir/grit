@@ -16,5 +16,11 @@ object DeskRefusalTests extends TestSuite {
           "furthest ahead one can be."
       )
     }
+
+    test("a refusal for want of an address names no plugin's job, only a scheduled run") {
+      DeskRefusal.Unaddressed.said ==>
+        "Nothing was scheduled: this conversation's replies are not posted anywhere a " +
+        "scheduled run's reply could be."
+    }
   }
 }

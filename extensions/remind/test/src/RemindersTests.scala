@@ -248,7 +248,7 @@ object RemindersTests extends TestSuite {
       ) ==> (
         Outcome.Failed(
           "Nothing was scheduled: this conversation's replies are not posted anywhere a " +
-            "reminder could be."
+            "scheduled run's reply could be."
         ),
         Outcome.Failed(
           "Nothing was scheduled: 2026-10-06 14:00:00 UTC is not after now, " +
