@@ -291,36 +291,50 @@ final case class Deployment private (
 
 object Deployment {
 
-  /** The deployment of these; call it with named arguments. Refused when `offer` asks first
-    * ([[Offered.All]]) and an edge cannot answer an ask, when two edges share a name, when
-    * `sweep` is under a second, when live triage does not ask what earning reads
-    * ([[DeploymentRefusal.DurableUnasked]]: a build's mistake, refused for every deployment
-    * of it), or when it speaks (`speaking` not Off) with `topics` Off: the
-    * topics' classifier is also the judge of each draft, or by a gate reading a question live
-    * triage does not ask ([[DeploymentRefusal.SpeechUnread]]), or when two of `shadows` share a
-    * name, or any is declared with `topics` Off: each shadow asks the topics' classifier, Jev
-    * (of the shadow's own model when it names one) or the stub, or when `review` names no
-    * declared shadow or is declared with `speaking` Off: live's
-    * gate is then never reached; or when `recipe` offers a service by source with `topics` Off
-    * ([[DeploymentRefusal.RecipeUnweighed]]) or with no source of `knowledge` supplying one
-    * ([[DeploymentRefusal.RecipeUnsourced]]), or by a gate reading what live
-    * triage does not ask ([[DeploymentRefusal.RecipeUnread]]), a source of `knowledge`
-    * supplies a service no `worksIn` or `reaches` link offers
-    * ([[DeploymentRefusal.OffersUnlinked]]), or `recipe` draws a window wider than
-    * `assembly`'s ([[DeploymentRefusal.Widens]]). `lifecycle` is written over the
-    * database's settings on every start, so a change made while grit runs (`/set`, SQL)
-    * holds until the next start. What `speaking` spends is counted in `budget` as well as
-    * against its own cap ([[grit.core.speech.Limits.spend]]). Refused, too, when two of
-    * `plugins` share a name ([[DeploymentRefusal.PluginRepeated]]), one needs a plugin no
-    * plugin of whose name is among them ([[DeploymentRefusal.PluginUnmet]]), two of the tools a
-    * turn may be offered (every plugin's, grit's own: [[grit.tools.Names.all]] and the turn's
-    * `topic`) share a name ([[DeploymentRefusal.ToolRepeated]]), or a plugin's tool asks for a
-    * plugin its own does not need ([[DeploymentRefusal.ToolUnneeded]]) or books a job not among
-    * its plugin's ([[DeploymentRefusal.JobUnowned]]). Refused, too, when two of the jobs,
-    * every plugin's and `jobs`, share a name ([[DeploymentRefusal.JobRepeated]]), a plugin
-    * declares a schedule of a job not its own ([[DeploymentRefusal.ScheduleUnowned]]), two
-    * declared schedules share an id ([[DeploymentRefusal.ScheduleRepeated]]), or one holds a
-    * job other than the deployment's job of its name ([[DeploymentRefusal.ScheduleJobless]]).
+  /** The deployment of these; call it with named arguments. `lifecycle` is written over the
+    * database's settings on every start, so a change made while grit runs (`/set`, SQL) holds
+    * until the next start. What `speaking` spends is counted in `budget` as well as against its
+    * own cap ([[grit.core.speech.Limits.spend]]). Refused, with one of these when it holds:
+    *   - [[DeploymentRefusal.AsksUnanswered]]: `offer` asks first ([[Offered.All]]) and an edge
+    *     cannot answer an ask;
+    *   - [[DeploymentRefusal.EdgeRepeated]]: two edges share a name;
+    *   - [[DeploymentRefusal.SweepTooOften]]: `sweep` is under a second;
+    *   - [[DeploymentRefusal.DurableUnasked]]: live triage does not ask what earning reads (a
+    *     build's mistake, refused for every deployment of it);
+    *   - [[DeploymentRefusal.SpeaksUnjudged]]: it speaks (`speaking` not Off) with `topics`
+    *     Off;
+    *   - [[DeploymentRefusal.SpeechUnread]]: speaking's gate reads a question live triage does
+    *     not ask;
+    *   - [[DeploymentRefusal.ShadowRepeated]]: two of `shadows` share a name;
+    *   - [[DeploymentRefusal.ShadowsUnasked]]: a shadow is declared with `topics` Off (each
+    *     shadow asks the topics' classifier, Jev of the shadow's own model when it names one,
+    *     or the stub);
+    *   - [[DeploymentRefusal.ReviewUngated]]: `review` names no declared shadow;
+    *   - [[DeploymentRefusal.ReviewUnspoken]]: `review` is declared with `speaking` Off;
+    *   - [[DeploymentRefusal.RecipeUnweighed]]: `recipe` offers a service by source with
+    *     `topics` Off;
+    *   - [[DeploymentRefusal.RecipeUnsourced]]: `recipe` offers a service by source and no
+    *     source of `knowledge` supplies one;
+    *   - [[DeploymentRefusal.RecipeUnread]]: `recipe` offers a service by a gate reading what
+    *     live triage does not ask;
+    *   - [[DeploymentRefusal.OffersUnlinked]]: a source of `knowledge` supplies a service no
+    *     `worksIn` or `reaches` link offers;
+    *   - [[DeploymentRefusal.Widens]]: `recipe` draws a window wider than `assembly`'s;
+    *   - [[DeploymentRefusal.PluginRepeated]]: two of `plugins` share a name;
+    *   - [[DeploymentRefusal.PluginUnmet]]: a plugin needs one not among `plugins`;
+    *   - [[DeploymentRefusal.ToolRepeated]]: two of the tools a turn may be offered (every
+    *     plugin's, and grit's own: [[grit.tools.Names.all]] and the turn's `topic`) share a
+    *     name;
+    *   - [[DeploymentRefusal.ToolUnneeded]]: a plugin's tool asks for a plugin its own does not
+    *     need;
+    *   - [[DeploymentRefusal.JobUnowned]]: a plugin's tool books a job not its plugin's;
+    *   - [[DeploymentRefusal.JobRepeated]]: two of the jobs, every plugin's and `jobs`, share a
+    *     name;
+    *   - [[DeploymentRefusal.ScheduleUnowned]]: a plugin declares a schedule of a job not its
+    *     own;
+    *   - [[DeploymentRefusal.ScheduleRepeated]]: two declared schedules share an id;
+    *   - [[DeploymentRefusal.ScheduleJobless]]: a declared schedule holds a job other than the
+    *     deployment's job of its name.
     */
   def of(
       edges: Vector[ServedEdge],
