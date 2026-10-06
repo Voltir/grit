@@ -325,6 +325,71 @@ object RemindersTests extends TestSuite {
       )
     }
 
+    test("each tool tells the model exactly what it does and takes, its limits filled in") {
+      def offered(tool: PluginTool[?]): (String, String, ujson.Value) = {
+        val s = tool.described.schema(strict = false)
+        (s.name, s.description, s.parameters)
+      }
+      offered(Reminders.RemindMe) ==> (
+        "remind_me",
+        "Set a one-off reminder for the person you are answering, posted in this conversation " +
+          "when it is due. Give `text` and exactly one of `in_minutes` or `at`. Answers with the " +
+          "reminder's id and its time in UTC. Nothing is set when that time is not in the future " +
+          "or is more than 366 days ahead, when they already have 20 pending, or when this " +
+          "conversation's replies are not posted anywhere; the answer says which.",
+        ujson.Obj(
+          "type" -> "object",
+          "properties" -> ujson.Obj(
+            "text" -> ujson.Obj(
+              "type" -> "string",
+              "description" -> "What to remind them of, at most 500 characters."
+            ),
+            "in_minutes" -> ujson.Obj(
+              "type" -> "integer",
+              "minimum" -> 1,
+              "maximum" -> 527040,
+              "description" -> "How many minutes from now; give this or `at`."
+            ),
+            "at" -> ujson.Obj(
+              "type" -> "string",
+              "description" -> ("When, as an ISO-8601 date and time with its offset, such as " +
+                "`2026-10-07T09:00:00+02:00` or `2026-10-07T07:00:00Z`; give this or `in_minutes`.")
+            )
+          ),
+          "required" -> ujson.Arr("text"),
+          "additionalProperties" -> false
+        )
+      )
+      offered(Reminders.List) ==> (
+        "reminders",
+        "Say the date and time now, in UTC, then list the pending reminders of the person you " +
+          "are answering, soonest first, each with its id, its time in UTC and its text. Call it " +
+          "to learn the time before setting a reminder `at` a time of day.",
+        ujson.Obj(
+          "type" -> "object",
+          "properties" -> ujson.Obj(),
+          "required" -> ujson.Arr(),
+          "additionalProperties" -> false
+        )
+      )
+      offered(Reminders.Cancel) ==> (
+        "cancel_reminder",
+        "Cancel one of the pending reminders of the person you are answering, by the id " +
+          "`reminders` lists it with. Only their own can be cancelled.",
+        ujson.Obj(
+          "type" -> "object",
+          "properties" -> ujson.Obj(
+            "id" -> ujson.Obj(
+              "type" -> "string",
+              "description" -> "The reminder's id, such as `asked:0123456789abcdef`."
+            )
+          ),
+          "required" -> ujson.Arr("id"),
+          "additionalProperties" -> false
+        )
+      )
+    }
+
     test("cancel_reminder's id is refused when it is no reminder's id") {
       Reminders.Cancel.described.spec.args
         .read(ujson.Obj("id" -> "tea"))

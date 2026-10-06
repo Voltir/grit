@@ -41,6 +41,9 @@ object Reminder {
     else Right(new Reminder(text))
 }
 
+// The job and the tools are objects, not vals: each is built on its first use, once every
+// constant here is set, so no order of these members can build a description or a schema
+// from a constant still 0 or null.
 object Reminders {
 
   /** How late a reminder may run after its time before it is missed: 1 h. */
@@ -55,7 +58,7 @@ object Reminders {
     * its time, a second line "(due {time, UTC to the minute}; sent late)". Parameters it cannot
     * read (no text, or text no [[Reminder]] holds) are refused.
     */
-  val Remind: Job[Reminder] = new Job[Reminder] {
+  object Remind extends Job[Reminder] {
     val name: JobName =
       // A literal of the job name's grammar: every test of the job throws here if not.
       JobName.of("remind").fold(why => throw new IllegalStateException(why), identity)
@@ -107,7 +110,7 @@ object Reminders {
     * ([[grit.core.job.DeskRefusal.said]]). Free. Not bound for a plugin whose jobs do not hold
     * [[Remind]].
     */
-  val RemindMe: PluginTool[Setting] = new PluginTool[Setting] {
+  object RemindMe extends PluginTool[Setting] {
     val described: Hosted[Setting] =
       new Hosted(
         ToolSpec(
@@ -196,7 +199,7 @@ object Reminders {
     * with its id, time in UTC and text; or the sentence its desk refused it with. Free. Not
     * bound for a plugin whose jobs do not hold [[Remind]].
     */
-  val List: PluginTool[Unit] = new PluginTool[Unit] {
+  object List extends PluginTool[Unit] {
     val described: Hosted[Unit] =
       new Hosted(
         ToolSpec(
@@ -239,7 +242,7 @@ object Reminders {
     * its desk refused it with (not one of the asker's, or already ended). Free. Not bound for a
     * plugin whose jobs do not hold [[Remind]].
     */
-  val Cancel: PluginTool[ScheduleId] = new PluginTool[ScheduleId] {
+  object Cancel extends PluginTool[ScheduleId] {
     val described: Hosted[ScheduleId] =
       new Hosted(
         ToolSpec(
