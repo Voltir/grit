@@ -270,6 +270,19 @@ object ReminderLiveTests extends TestSuite {
       }
     }
 
+  /** The single column of instants `sql` reads, in its order. */
+  private def instants(config: DbConfig, sql: String): Vector[Instant] =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(conn.prepareStatement(sql)) { ps =>
+        Using.resource(ps.executeQuery()) { rs =>
+          val rows = Vector.newBuilder[Instant]
+          while (rs.next()) rows += rs.getTimestamp(1).toInstant
+          rows.result()
+        }
+      }
+    }
+
   private def execute(config: DbConfig, sql: String, id: String): Unit =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -312,6 +325,23 @@ object ReminderLiveTests extends TestSuite {
   private def start: Instant = Instant.now().truncatedTo(ChronoUnit.SECONDS)
 
   val tests = Tests {
+    test("a launch's set clock is the time its closes seal at and mark their deletions at") {
+      val config = TestPostgres.freshDatabase("reminder_clock")
+      // Days from the system's time, so a close that read it instead is seen.
+      val at = start.plus(10, ChronoUnit.DAYS)
+      val (model, classifier, clock, slack) =
+        (new Scripted, new Counting, new SetClock(at), new FakeSlack)
+      launched(config, model, classifier, clock, slack) { (engine, edge) =>
+        heard(edge, slack, mention("0.5"), 1)
+        val _ = right(engine.sweep(at.plus(Idle.toSeconds, ChronoUnit.SECONDS).plusSeconds(180)))
+        assert(quiet(config))
+        (
+          instants(config, "SELECT closed_at FROM grit.periods"),
+          instants(config, "SELECT DISTINCT written_at FROM grit.tombstones")
+        ) ==> (Vector(at), Vector(at))
+      }
+    }
+
     test(
       "a reminder asked in a thread is posted there once, late, by the engine open when it falls due, and its run's period closes with no model or classifier call"
     ) {

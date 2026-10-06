@@ -94,10 +94,9 @@ private[grit] object Launch {
   }
 
   /** As [[apply]], but every model call is made through `models`, every question the topics
-    * and the turn's weighing ask goes to `classifier` and `weighing`, and the jobs (their runs,
-    * their desks, the declared schedules and the clock edge) keep `clock`: a launch whose
-    * calls a test counts and whose time it sets. A shadow still asks the classifier `s` and
-    * `d` name.
+    * and the turn's weighing ask goes to `classifier` and `weighing`, and every workflow, the
+    * sweep, the clock edge and the declared schedules keep `clock`: a launch whose calls a test
+    * counts and whose time it sets. A shadow still asks the classifier `s` and `d` name.
     */
   private[grit] def asking(
       engine: Engine^,
@@ -168,7 +167,7 @@ private[grit] object Launch {
           classifier,
           models,
           engine.db,
-          Clock.system(),
+          clock,
           Fresh.random(),
           grit.turn.TurnSpeech(d.speaking, engine.speech, engine.deliveries),
           grit.turn.TurnStitching(
@@ -195,7 +194,7 @@ private[grit] object Launch {
               weighing,
               engine.placements,
               engine.db,
-              Clock.system(),
+              clock,
               CharEstimate,
               grit.core.stitch.Tuning.Default
             )
@@ -220,7 +219,7 @@ private[grit] object Launch {
             classifier,
             models,
             engine.db,
-            Clock.system()
+            clock
           )
         ),
         Settle.body(
@@ -228,7 +227,7 @@ private[grit] object Launch {
             SettleRecords(engine.entries, engine.periods, engine.lifecycle, engine.principals),
             classifier,
             engine.db,
-            Clock.system()
+            clock
           )
         ),
         Posting.body(
@@ -240,7 +239,7 @@ private[grit] object Launch {
             engine.keeper,
             engine.tombstones,
             engine.jot,
-            Clock.system()
+            clock
           )
         ),
         Triage.body(
@@ -261,7 +260,7 @@ private[grit] object Launch {
             ),
             classifier,
             engine.db,
-            Clock.system(),
+            clock,
             TriageSpeech(
               d.speaking,
               d.budget,
@@ -285,7 +284,7 @@ private[grit] object Launch {
             ),
             classifier,
             engine.db,
-            Clock.system(),
+            clock,
             grit.core.stitch.Tuning.Default
           )
         ),
@@ -305,7 +304,7 @@ private[grit] object Launch {
             variants(d, s),
             d.knowledge,
             engine.db,
-            Clock.system(),
+            clock,
             grit.core.stitch.Tuning.Default
           )
         ),
@@ -321,7 +320,7 @@ private[grit] object Launch {
         )
       )
       if (sweeping) {
-        engine.sweepEvery(d.sweep, Clock.system())
+        engine.sweepEvery(d.sweep, clock)
         ticking(engine, new ClockEdge(engine.inbox, engine.schedules, engine.db, clock, d.allJobs))
       }
     }
@@ -381,7 +380,7 @@ private[grit] object Launch {
         )
       case Offered.All =>
         // Offered only to the operator (Audience.operator): they tune grit, and ask first.
-        val tuned = new KeptModelSettings(engine.jot, engine.modelSettings, Clock.system())
+        val tuned = new KeptModelSettings(engine.jot, engine.modelSettings, clock)
         (
           everyone,
           Toolbox.of[caps.CapSet^{tuned, models}](Tuning.propose(tuned), Probes.probe(models))
