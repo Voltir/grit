@@ -715,6 +715,44 @@ CREATE TABLE IF NOT EXISTS grit.document_terms (
     enabled   BOOLEAN NOT NULL
 );
 
+-- A job's schedule (grit.core.job, ADR 0029): its job by name, its slot rule (SlotRuleJson), its
+-- parameters as its job wrote them, the principal it runs for, and where its runs report besides
+-- their own conversations (ReportJson). `source` 'declared' (a deployment's or a plugin's, its id
+-- `declared:…`, reconciled at every start) or 'asked' (written by a plugin's tool from the call
+-- `asked_in`, a CallSlot.key; never reconciled). `next_at` is its next slot's nominal instant,
+-- NULL when it has none left; `started_at` the nominal instant of the newest slot started, and
+-- `running` the job version that slot's run was started at, NULL once it replied. `ended` says how
+-- it ended (Ending), with `ended_at`; an ended schedule has no slot left.
+-- Retention: journal: an ended schedule, after the raw window (Target.Schedule).
+CREATE TABLE IF NOT EXISTS grit.schedules (
+    id          TEXT PRIMARY KEY,
+    source      TEXT NOT NULL CHECK (source IN ('declared', 'asked')),
+    job         TEXT NOT NULL,
+    rule        JSONB NOT NULL,
+    params      JSONB NOT NULL,
+    principal   TEXT NOT NULL REFERENCES grit.principals(id),
+    report      JSONB NOT NULL,
+    asked_in    TEXT UNIQUE,
+    created_at  TIMESTAMPTZ NOT NULL,
+    next_at     TIMESTAMPTZ,
+    started_at  TIMESTAMPTZ,
+    running     INTEGER,
+    ended       TEXT CHECK (ended IN ('ran', 'missed', 'failed', 'cancelled', 'undeclared')),
+    ended_at    TIMESTAMPTZ,
+    CHECK ((source = 'asked') = (asked_in IS NOT NULL)),
+    CHECK ((ended IS NULL) = (ended_at IS NULL)),
+    CHECK (ended IS NULL OR next_at IS NULL)
+);
+
+-- What the clock edge reads each pass: a slot due, or a run not yet replied.
+CREATE INDEX IF NOT EXISTS idx_schedules_waiting ON grit.schedules (next_at)
+    WHERE ended IS NULL;
+CREATE INDEX IF NOT EXISTS idx_schedules_running ON grit.schedules (id)
+    WHERE running IS NOT NULL;
+-- A person's pending asked schedules: the desk's cap, `reminders`, `cancel_reminder`.
+CREATE INDEX IF NOT EXISTS idx_schedules_asker ON grit.schedules (principal, job)
+    WHERE source = 'asked' AND ended IS NULL;
+
 -- What grit has decided to delete (grit.core.store.Tombstones, ADR 0014): nothing deletes a row
 -- or a workflow history no tombstone names. One row per target, `kind` and `target` as
 -- grit.core.retention.Target stores them. Pending until the collector deletes the target

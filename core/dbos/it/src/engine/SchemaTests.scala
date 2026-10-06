@@ -63,6 +63,40 @@ object SchemaTests extends TestSuite {
       } ==> closed.map((missing, _) => missing -> Some("periods_check"))
     }
 
+    test(
+      "a schedule row is refused when asked without its call or declared with one, ended in part, or ended with a slot left"
+    ) {
+      val config = TestPostgres.freshDatabase("schema_schedules")
+      LiveEngine.open(config, "test").close()
+      val Violated = """(?s).*violates check constraint "(\w+)".*""".r
+      def refused(columns: String, values: String): Option[String] =
+        try {
+          LiveDb.transaction(config)(
+            execute(
+              "INSERT INTO grit.schedules (id, job, rule, params, principal, report, created_at, " +
+                s"$columns) VALUES ('s', 'j', '{}', '{}', 'grit', '{}', now(), $values)"
+            )
+          )
+          None
+        } catch { case NonFatal(e) => Option(e.getMessage).collect { case Violated(n) => n } }
+      Vector(
+        refused("source", "'asked'"),
+        refused("source, asked_in", "'declared', 'tool:c:0:0:0'"),
+        refused("source, ended", "'declared', 'ran'"),
+        refused("source, ended_at", "'declared', now()"),
+        refused("source, ended, ended_at, next_at", "'declared', 'ran', now(), now()"),
+        refused("source, ended, ended_at", "'declared', 'gone', now()")
+      ) ==> Vector(
+        Some("schedules_check"),
+        Some("schedules_check"),
+        Some("schedules_check1"),
+        Some("schedules_check1"),
+        Some("schedules_check2"),
+        Some("schedules_ended_check")
+      )
+      refused("source, ended, ended_at", "'declared', 'ran', now()") ==> None
+    }
+
     test("the settings are kept as set, the ledger window with them") {
       val config = TestPostgres.freshDatabase("schema_ledger")
       LiveEngine.open(config, "test").close()
