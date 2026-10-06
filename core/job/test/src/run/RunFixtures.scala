@@ -19,7 +19,7 @@ import grit.core.id.{
 import grit.core.inbox.{InMemoryInbox, Slotted}
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.{booking, hour}
-import grit.core.job.{Declared, Job, JobRun, Jobs, Schedule, Slot, SlotRule, When}
+import grit.core.job.{Declared, Job, JobRun, Jobs, Schedule, SlotRule, When}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.store.{Db, Jot, Origin, Payload, StoreError, Tx}
 import grit.dbos.sql.TestTx
