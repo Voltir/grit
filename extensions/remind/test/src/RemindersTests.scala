@@ -295,5 +295,44 @@ object RemindersTests extends TestSuite {
       d.run(Reminders.List, d.asked(1)) ==>
         Outcome.Done("Now: 2026-10-06 14:03:12 UTC\nNo reminders are pending.")
     }
+
+    test("cancel_reminder cancels the asker's pending reminder, which reminders then leaves out") {
+      val d = new Desk
+      d.run(Reminders.RemindMe, d.asked(1), "text" -> "stretch", "in_minutes" -> 30)
+      (
+        d.run(Reminders.Cancel, d.asked(2), "id" -> ScheduleId.value(id(1))),
+        d.run(Reminders.List, d.asked(3))
+      ) ==> (
+        Outcome.Done(s"Reminder ${ScheduleId.value(id(1))} is cancelled."),
+        Outcome.Done("Now: 2026-10-06 14:03:12 UTC\nNo reminders are pending.")
+      )
+    }
+
+    test("cancel_reminder says why nothing was cancelled: not the asker's, or already ended") {
+      val d = new Desk
+      d.run(Reminders.RemindMe, d.asked(1), "text" -> "stretch", "in_minutes" -> 30)
+      val mine = ScheduleId.value(id(1))
+      (
+        d.run(Reminders.Cancel, d.asked(2, by = PrincipalId("U2")), "id" -> mine),
+        d.run(Reminders.Cancel, d.asked(3), "id" -> "asked:0123456789abcdef"),
+        d.run(Reminders.Cancel, d.asked(4), "id" -> mine),
+        d.run(Reminders.Cancel, d.asked(5), "id" -> mine)
+      ) ==> (
+        Outcome.Failed(s"None of your pending schedules has the id $mine."),
+        Outcome.Failed("None of your pending schedules has the id asked:0123456789abcdef."),
+        Outcome.Done(s"Reminder $mine is cancelled."),
+        Outcome.Failed(s"$mine has already ended: cancelled.")
+      )
+    }
+
+    test("cancel_reminder's id is refused when it is no reminder's id") {
+      Reminders.Cancel.described.spec.args
+        .read(ujson.Obj("id" -> "tea"))
+        .left
+        .map(_.message) ==> Left(
+        "`id` takes a reminder's id as `reminders` lists it, such as " +
+          "`asked:0123456789abcdef`, not \"tea\"."
+      )
+    }
   }
 }

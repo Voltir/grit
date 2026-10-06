@@ -11,9 +11,12 @@ import grit.core.plugin.{Needs, Plugin, PluginReads, PluginRun, PluginTool, Unne
 import grit.core.store.Db
 import grit.core.tool.{Args, ArgsError, Field, Gate, Hosted, Outcome, Retry, ToolName, ToolSpec}
 
-/** Reminders (ADR 0029's first use): its job [[Reminders.Remind]] posts a person's reminder in
-  * the thread that asked for it, as late as [[Reminders.Grace]] after its time, and is otherwise
-  * missed.
+/** Reminders (ADR 0029's first use): `remind_me` sets a one-off reminder, which its job
+  * [[Reminders.Remind]] posts in the conversation that asked for it when it is due;
+  * `reminders` lists the asker's pending ones, with the time now; `cancel_reminder` cancels one
+  * of them. Each is free. A reminder runs as late as [[Reminders.Grace]] after its time, and is
+  * otherwise missed. A conversation whose replies grit does not post (a TUI session) cannot set
+  * one.
   */
 final class Reminders(val name: PluginName) extends Plugin {
 
@@ -21,7 +24,8 @@ final class Reminders(val name: PluginName) extends Plugin {
 
   override val jobs: Vector[Job[?]] = Vector(Reminders.Remind)
 
-  override val tools: Vector[PluginTool[?]] = Vector(Reminders.RemindMe, Reminders.List)
+  override val tools: Vector[PluginTool[?]] =
+    Vector(Reminders.RemindMe, Reminders.List, Reminders.Cancel)
 }
 
 /** A reminder's text: not blank, and at most [[Reminders.MaxText]] characters. */
@@ -88,6 +92,8 @@ object Reminders {
 
   private val AtAccepts = "an ISO-8601 date and time with its offset, such as " +
     "`2026-10-07T09:00:00+02:00` or `2026-10-07T07:00:00Z`"
+
+  private val IdExample = "asked:0123456789abcdef"
 
   /** An instant as the tools say it to the model: UTC, to the second. */
   private val Second =
@@ -224,6 +230,54 @@ object Reminders {
                       s"${ScheduleId.value(r.id)}, due ${Second.format(r.at)}: ${r.params.text}"
                     )
                 Outcome.Done((s"Now: ${Second.format(pending.now)}" +: listed).mkString("\n"))
+            }
+        }
+      }
+  }
+
+  /** `cancel_reminder`: cancels the asker's pending reminder `id`, and says so; or the sentence
+    * its desk refused it with (not one of the asker's, or already ended). Free. Not bound for a
+    * plugin whose jobs do not hold [[Remind]].
+    */
+  val Cancel: PluginTool[ScheduleId] = new PluginTool[ScheduleId] {
+    val described: Hosted[ScheduleId] =
+      new Hosted(
+        ToolSpec(
+          ToolName("cancel_reminder"),
+          "Cancel one of the pending reminders of the person you are answering, by the id " +
+            "`reminders` lists it with. Only their own can be cancelled.",
+          Args
+            .of((id = Field.text(s"The reminder's id, such as `$IdExample`.")))
+            .refine(a =>
+              ScheduleId
+                .of(a.id)
+                .left
+                .map(_ =>
+                  ArgsError.Invalid(
+                    "id",
+                    s"a reminder's id as `reminders` lists it, such as `$IdExample`",
+                    quoted(a.id)
+                  )
+                )
+            ),
+          // A second run finds it cancelled, and changes nothing.
+          retry = Retry.Rerun
+        ),
+        Gate.Free,
+        ScheduleId.value
+      )
+
+    def bind(
+        own: PluginReads,
+        needs: Needs,
+        jobs: OwnJobs
+    ): Either[Unneeded | NotOwn, PluginRun[ScheduleId]] =
+      jobs.of(Remind).map { booking =>
+        new PluginRun[ScheduleId] {
+          def run(id: ScheduleId, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
+            desk.cancel(call, booking, id) match {
+              case Left(refused) => Outcome.Failed(refused.said)
+              case Right(()) => Outcome.Done(s"Reminder ${ScheduleId.value(id)} is cancelled.")
             }
         }
       }
