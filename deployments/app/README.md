@@ -72,7 +72,7 @@ In dependency order:
   `grit.host`): which ones as `GRIT_TOOLS` says (`Main.toolChoice`), the edits and shell
   built only when they are offered, and launches the close and posting (`grit.lifecycle`)
   beside the turn, sweeping every `GRIT_SWEEP`, posting to the plugins `GRIT_PLUGINS` turns
-  on (`digest`, `grit.digest`, whose `recent_activity` every turn's model is offered, as any plugin's tools are); then runs the chat TUI, or with arguments answers each as a message.
+  on (`digest`, `grit.digest`, whose `recent_activity` every turn's model is offered, as any plugin's tools are; `remind`, `grit.remind`'s reminders, posted in the conversation that asked for them); then runs the chat TUI, or with arguments answers each as a message.
   `LocalTools`, the chat's edge's tools over this checkout; `PromoteModelSettings`, which prints the seed catalog with every approved setting
   laid over it, for a reviewed commit.
   ← `config`, `look`, `chat`

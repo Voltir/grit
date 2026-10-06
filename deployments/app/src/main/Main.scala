@@ -32,6 +32,7 @@ import grit.mcp.client.McpServer
 import grit.mcp.edge.McpEdge
 import grit.mcp.scope.McpScope
 import grit.models.{JevConfig, OpenRouterConfig, Seed, StubProvider}
+import grit.remind.Reminders
 import grit.slack.edge.SlackEdge
 import grit.slack.event.ChannelId
 import grit.tools.Coding
@@ -64,7 +65,8 @@ import grit.turn.{Turn, TurnLoop}
   * each quiet period ([[Settle]]), closing each period whose deadline has come ([[Close]]), its
   * closing written by the summary role and gated by that classifier, and posting each closed
   * period to the plugins `GRIT_PLUGINS` turns on ([[pluginChoice]], [[Posting]]; with
-  * Digest on, each turn's model is offered `recent_activity`). When a period is asked about
+  * Digest on, each turn's model is offered `recent_activity`; with the reminders on,
+  * `remind_me`, `reminders` and `cancel_reminder`). When a period is asked about
   * and closes, what its balance holds, and which other places' open periods a window draws
   * on, are data in the database: on every start the engine writes them from
   * `GRIT_IDLE`, `GRIT_SETTLE`, `GRIT_RESOLVE_AT`, `GRIT_ASKS`, `GRIT_RETENTION`,
@@ -428,7 +430,7 @@ object Main {
   private val PluginsVar = "GRIT_PLUGINS"
 
   /** The plugins `GRIT_PLUGINS` turns on, a comma-separated list of names; none when unset.
-    * The one there is: `digest` ([[Digest]]).
+    * Those there are: `digest` ([[Digest]]) and `remind` ([[Reminders]]).
     */
   private[main] def pluginChoice(env: Map[String, String]): Either[String, Vector[Plugin]] =
     env
@@ -440,7 +442,8 @@ object Main {
           PluginName.of(raw).left.map(why => s"$PluginsVar: $why").flatMap { name =>
             raw match {
               case "digest" => Right(done :+ new Digest(name))
-              case other => Left(s"$PluginsVar: no plugin $other; there is digest")
+              case "remind" => Right(done :+ new Reminders(name))
+              case other => Left(s"$PluginsVar: no plugin $other; there are digest and remind")
             }
           }
         }
