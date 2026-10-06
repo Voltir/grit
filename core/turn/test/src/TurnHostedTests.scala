@@ -3,7 +3,7 @@ package grit.turn
 import grit.core.approval.Approval
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.{InMemoryEdges, Permit}
-import grit.core.id.{CallSlot, ToolCallId}
+import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{Fragment, Layer}
@@ -121,9 +121,6 @@ object TurnHostedTests extends TestSuite {
       reached = Vector(there)
     )(id)
 
-  private def slot(turn: grit.core.id.TurnRef, index: Int): CallSlot =
-    CallSlot.of(turn, 0, index).getOrElse(throw new java.lang.AssertionError())
-
   val tests = Tests {
     test("a round's free hosted calls are sent in one step before the first is waited on") {
       val entries = new InMemoryEntryStore
@@ -135,8 +132,8 @@ object TurnHostedTests extends TestSuite {
       durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-call:0").take(4) ==>
         Vector("record-call:0", "dispatch:0", "DBOS.recv", "DBOS.sleep")
       edge.sent.map(q => (q.slot, q.permit)) ==> Vector(
-        (slot(turn, 0), Permit.Free),
-        (slot(turn, 1), Permit.Free)
+        (TestCallSlots.at(turn, index = 0), Permit.Free),
+        (TestCallSlots.at(turn, index = 1), Permit.Free)
       )
       results(provider).map(_.content) ==> Vector("read a.txt", "read b.txt")
     }
@@ -203,7 +200,9 @@ object TurnHostedTests extends TestSuite {
       val provider = model(("t1", "fetch", "a.txt"), ("t2", "post_x", "hi"))
       durable.run(turn.workflowId)(reachingBody(entries, provider, edge, there)) ==> Done
       edge.sent.map(_.workspace) ==> Vector(Place.of(checkout))
-      there.sent.map(q => (q.slot, q.workspace)) ==> Vector((slot(turn, 1), elsewhere.place))
+      there.sent.map(q => (q.slot, q.workspace)) ==> Vector(
+        (TestCallSlots.at(turn, index = 1), elsewhere.place)
+      )
       results(provider).map(r => (r.content, r.isError)) ==>
         Vector(("read a.txt", false), ("posted at service:elsewhere", false))
       durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-call:0").take(3) ==>
@@ -237,7 +236,7 @@ object TurnHostedTests extends TestSuite {
       durable.run(turn.workflowId)(
         hostedBody(entries, model(("t1", "fetch", "a.txt")), edge)
       ) ==> Done
-      val slot = TurnTools.Slot(turn, TurnLoop.Round.First, 0)
+      val slot = TurnTools.Slot(TestCallSlots.at(turn))
       entries
         .get(slot.resultId)(using grit.dbos.sql.TestTx.fake)
         .toOption
@@ -277,7 +276,7 @@ object TurnHostedTests extends TestSuite {
       durable.run(turn.workflowId)(
         hostedBody(entries, model(("t1", "fetch", "a.txt")), edge)
       ) ==> Done
-      val slot = TurnTools.Slot(turn, TurnLoop.Round.First, 0)
+      val slot = TurnTools.Slot(TestCallSlots.at(turn))
       entries
         .get(slot.resultId)(using grit.dbos.sql.TestTx.fake)
         .toOption
@@ -331,7 +330,11 @@ object TurnHostedTests extends TestSuite {
       results(provider).map(_.content) ==> Vector(
         Outcome.Interrupted.result(ToolCallId("t1")).content
       )
-      edge.edges.answerAs(edge.registration, slot(turn, 0), Outcome.Done("too late")) ==> false
+      edge.edges.answerAs(
+        edge.registration,
+        TestCallSlots.at(turn, index = 0),
+        Outcome.Done("too late")
+      ) ==> false
     }
 
     test("a gated hosted call becomes a request only once a person approves it") {
@@ -351,7 +354,9 @@ object TurnHostedTests extends TestSuite {
         Approval.encode(Approval.Approved)
       )
       durable.run(turn.workflowId)(hostedBody(entries, provider, edge)) ==> Done
-      edge.sent.map(q => (q.slot, q.permit)) ==> Vector((slot(turn, 0), Permit.Approved))
+      edge.sent.map(q => (q.slot, q.permit)) ==> Vector(
+        (TestCallSlots.at(turn, index = 0), Permit.Approved)
+      )
       Turn.Step.named(durable.recordedSteps(turn.workflowId)).filter(_.contains(":0:0")) ==>
         Vector("ask:0:0", "wait:0:0", "dispatch:0:0", "tool:0:0")
       results(provider).map(_.content) ==> Vector("poked")

@@ -4,14 +4,14 @@ import java.time.Instant
 
 import grit.core.approval.Approval
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{EntryId, ToolCallId, TurnRef}
+import grit.core.id.{EntryId, TestCallSlots, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.store.{Entry, EntryStore, InMemoryEntryStore, Payload}
 import grit.core.tool.{Bound, Outcome, Repairs}
 import grit.dbos.sql.TestTx
 
 import utest.*
-import TurnLoop.{Pending, Round}
+import TurnLoop.Pending
 
 /** [[TurnTools.Settling]]: what a call's step runs, and what it runs again after a crash. Free
   * tools may run twice; a gated one, approved, never does; a kept result is never run again.
@@ -34,7 +34,7 @@ object TurnToolsTests extends TestSuite {
       pending: Pending,
       approval: Approval = Approval.TimedOut
   ): Either[TurnFailure, TurnTools.Settled] = {
-    val slot = TurnTools.Slot(turn, Round.First, 0)
+    val slot = TurnTools.Slot(TestCallSlots.at(turn))
     val id = pending.call.id
     val settling = new TurnTools.Settling(new FakeJot, entries)
     TurnTools.read(tools(ws), pending, Repairs.All) match {
@@ -56,7 +56,7 @@ object TurnToolsTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)
       val turn = say(entries, "go")
-      val id = TurnTools.Slot(turn, Round.First, 0).resultId
+      val id = TurnTools.Slot(TestCallSlots.at(turn)).resultId
       settle(entries, ws, turn, call("peek")) ==> Right(TurnTools.Settled(id, failed = false))
       kept(entries, id) ==>
         Some(
@@ -95,11 +95,11 @@ object TurnToolsTests extends TestSuite {
       val approved = Approval.Approved
       assertThrows[InMemoryDurable.Crash](settle(entries, ws, turn, call("poke"), approved))
       ws.reads ==> 1
-      kept(store, TurnTools.Slot(turn, Round.First, 0).attemptId) ==>
+      kept(store, TurnTools.Slot(TestCallSlots.at(turn)).attemptId) ==>
         Some(Payload.Attempt(ToolCallId("c")))
       settle(entries, ws, turn, call("poke"), approved).map(_.failed) ==> Right(true)
       ws.reads ==> 1
-      kept(store, TurnTools.Slot(turn, Round.First, 0).resultId) ==>
+      kept(store, TurnTools.Slot(TestCallSlots.at(turn)).resultId) ==>
         Some(Payload.Result(Outcome.Interrupted.result(ToolCallId("c")), "poke a.txt"))
     }
 
@@ -113,9 +113,9 @@ object TurnToolsTests extends TestSuite {
         val entries = new InMemoryEntryStore
         val turn = say(entries, "go")
         settle(entries, ws, turn, call("poke"), approval)
-        kept(entries, TurnTools.Slot(turn, Round.First, 0).resultId) ==>
+        kept(entries, TurnTools.Slot(TestCallSlots.at(turn)).resultId) ==>
           Some(Payload.Result(expected.result(ToolCallId("c")), "poke a.txt"))
-        kept(entries, TurnTools.Slot(turn, Round.First, 0).attemptId) ==> None
+        kept(entries, TurnTools.Slot(TestCallSlots.at(turn)).attemptId) ==> None
       }
       ws.reads ==> 0
     }
@@ -146,7 +146,7 @@ object TurnToolsTests extends TestSuite {
       val entries = new InMemoryEntryStore
       val ws = new Files(files)
       val turn = say(entries, "go")
-      val id = TurnTools.Slot(turn, Round.First, 0).resultId
+      val id = TurnTools.Slot(TestCallSlots.at(turn)).resultId
       val unknown: AssistantBlock.ToolCall =
         AssistantBlock.ToolCall(ToolCallId("c"), "peek<|channel|>x", ujson.Obj())
       settle(entries, ws, turn, Pending.Run(unknown)).map(_.failed) ==> Right(true)

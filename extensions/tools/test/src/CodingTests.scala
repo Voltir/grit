@@ -4,7 +4,7 @@ import scala.concurrent.duration.*
 
 import grit.core.approval.Approval
 import grit.core.host.*
-import grit.core.id.{CallSlot, ConversationId, ToolCallId, TurnRef, TurnSeq}
+import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.tool.{Bound, Outcome, Repairs, Retry, ToolName, Toolbox}
 
@@ -14,11 +14,6 @@ import utest.*
   * reaches the host, and what the model reads back.
   */
 object CodingTests extends TestSuite {
-
-  /** The call each test's tool is run as. */
-  private val slot: CallSlot = CallSlot
-    .of(TurnRef(ConversationId("c"), TurnSeq.First), 0, 0)
-    .getOrElse(throw new java.lang.AssertionError("a slot"))
 
   /** A host that notes each call and answers as scripted. A fake of stateful capabilities,
     * so it may hold its log (STYLE rule 7).
@@ -84,8 +79,8 @@ object CodingTests extends TestSuite {
       args: ujson.Value
   ): Either[String, (Option[String], Outcome)] =
     all(host).bind(call(name, args), Repairs.All).left.map(_.message).map {
-      case free: Bound.Free => (None, free(slot))
-      case gated: Bound.Gated => (Some(gated.ask), gated(Approval.Approved, slot))
+      case free: Bound.Free => (None, free(TestCallSlots.First))
+      case gated: Bound.Gated => (Some(gated.ask), gated(Approval.Approved, TestCallSlots.First))
       case hosted: Bound.Hosted => (hosted.ask, Outcome.Failed("hosted, not run here"))
     }
 

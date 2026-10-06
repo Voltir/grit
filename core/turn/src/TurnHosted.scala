@@ -6,12 +6,10 @@ import grit.core.approval.Approval
 import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.edge.{Permit, RequestState, ToolRequest, ToolRequests}
-import grit.core.id.{CallSlot, PrincipalId, ToolCallId, TurnRef}
+import grit.core.id.{CallSlot, PrincipalId, ToolCallId}
 import grit.core.place.{Directory, Place, Service}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, ToolName}
-
-import TurnLoop.Round
 
 /** How a turn settles a hosted call (ADR 0017): as a request addressed to its tool's place in
   * the offer, its workspace or a service it reaches, which an edge serving it claims, runs
@@ -33,30 +31,23 @@ object TurnHosted {
     */
   val RunWithin: FiniteDuration = 11.minutes
 
-  /** The requests for `calls`, round `round`'s free hosted calls by their index and call id,
-    * each addressed to its tool's place in `offer` ([[TurnOffer.placeOf]]), grouped by place
-    * in the order each place is first called; a call whose tool has no place is not requested.
+  /** The requests for `calls`, a round's free hosted calls by their slot and call id, each
+    * addressed to its tool's place in `offer` ([[TurnOffer.placeOf]]), grouped by place in the
+    * order each place is first called; a call whose tool has no place is not requested.
     */
   def requests(
-      turn: TurnRef,
-      round: Round,
-      calls: Vector[(Int, ToolCallId, Bound.Hosted)],
+      calls: Vector[(TurnTools.Slot, ToolCallId, Bound.Hosted)],
       offer: TurnOffer
-  ): Either[TurnFailure, Vector[(Place, Vector[ToolRequest])]] =
-    calls
-      .foldLeft[Either[TurnFailure, Vector[(Place, Vector[ToolRequest])]]](Right(Vector.empty)) {
-        case (acc, (index, _, hosted)) =>
-          offer.placeOf(hosted.tool).fold(acc) { place =>
-            acc.flatMap(done =>
-              request(turn, round, index, hosted, place, Permit.Free).map { q =>
-                done.span(_._1 != place) match {
-                  case (before, (at, sent) +: after) => (before :+ (at -> (sent :+ q))) ++ after
-                  case _ => done :+ (place -> Vector(q))
-                }
-              }
-            )
-          }
+  ): Vector[(Place, Vector[ToolRequest])] =
+    calls.foldLeft(Vector.empty[(Place, Vector[ToolRequest])]) { case (done, (slot, _, hosted)) =>
+      offer.placeOf(hosted.tool).fold(done) { place =>
+        val q = request(slot, hosted, place, Permit.Free)
+        done.span(_._1 != place) match {
+          case (before, (at, sent) +: after) => (before :+ (at -> (sent :+ q))) ++ after
+          case _ => done :+ (place -> Vector(q))
+        }
       }
+    }
 
   /** A `dispatch` or `reach` step: those of `requests` addressed to `place` sent to the edge
     * serving it, true; false, and nothing sent, when no live edge serves it or none is
@@ -100,8 +91,8 @@ object TurnHosted {
     val shown = hosted.shown
     val outcome: Either[TurnFailure, Waited] = hosted.ask match {
       case None =>
-        slot.callSlot.map(cs =>
-          if (sent) awaited(hosting, cs, slot, place) else Waited.Known(unserved(place))
+        Right(
+          if (sent) awaited(hosting, slot.call, slot, place) else Waited.Known(unserved(place))
         )
       case Some(shown) =>
         val entries = settling.entries
@@ -112,14 +103,14 @@ object TurnHosted {
               case Approval.TimedOut => Right(Waited.Known(Outcome.Unanswered))
               case Approval.Approved =>
                 for {
-                  cs <- slot.callSlot
                   to <- place.toRight(TurnFailure.Store(s"$named has no workspace to go to"))
-                  one <- request(slot.turn, slot.round, slot.index, hosted, to, Permit.Approved)
+                  one = request(slot, hosted, to, Permit.Approved)
                   went <- d.transact(TurnHostedSteps.dispatchOne(slot))(
                     dispatch(hosting, to, Vector(one))
                   )
                 } yield
-                  if (went) awaited(hosting, cs, slot, place) else Waited.Known(unserved(place))
+                  if (went) awaited(hosting, slot.call, slot, place)
+                  else Waited.Known(unserved(place))
             }
         }
     }
@@ -220,30 +211,23 @@ object TurnHosted {
     state.left.map(e => TurnFailure.Store(e.toString))
 
   private def request(
-      turn: TurnRef,
-      round: Round,
-      index: Int,
+      slot: TurnTools.Slot,
       hosted: Bound.Hosted,
       place: Place,
       permit: Permit
-  ): Either[TurnFailure, ToolRequest] =
-    CallSlot
-      .of(turn, round.index, index)
-      .toRight(TurnFailure.Store(s"no call at round ${round.index}, index $index"))
-      .map(cs =>
-        ToolRequest(
-          cs,
-          ToolRequest.Protocol,
-          turn.conversationId,
-          place,
-          PrincipalId.Local,
-          hosted.tool,
-          permit,
-          hosted.retry,
-          hosted.arguments,
-          hosted.repairs
-        )
-      )
+  ): ToolRequest =
+    ToolRequest(
+      slot.call,
+      ToolRequest.Protocol,
+      slot.turn.conversationId,
+      place,
+      PrincipalId.Local,
+      hosted.tool,
+      permit,
+      hosted.retry,
+      hosted.arguments,
+      hosted.repairs
+    )
 }
 
 /** The names of the steps a hosted call takes besides the loop's own. */

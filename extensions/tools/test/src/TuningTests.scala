@@ -1,7 +1,7 @@
 package grit.tools
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, ConversationId, ToolCallId, TurnRef, TurnSeq}
+import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.model.{
   ModelId,
@@ -17,11 +17,6 @@ import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import utest.*
 
 object TuningTests extends TestSuite {
-
-  /** The call each test's tool is run as. */
-  private val slot: CallSlot = CallSlot
-    .of(TurnRef(ConversationId("c"), TurnSeq.First), 0, 0)
-    .getOrElse(throw new java.lang.AssertionError("a slot"))
 
   /** A book keeping every setting it is given, or refusing all with `refuse`. */
   final class Book(refuse: Option[String] = None) extends ModelSettings {
@@ -60,9 +55,9 @@ object TuningTests extends TestSuite {
         case Right(gated: Bound.Gated) =>
           gated.ask ==> "Keep a model setting for deepseek/deepseek-v4.1-flash-20260910 @ fireworks: " +
             "names = as-sent, held in 4 of 5 runs of tool-probe."
-          gated(Approval.Declined(None), slot)
+          gated(Approval.Declined(None), TestCallSlots.First)
           book.kept ==> Vector.empty
-          gated(Approval.Approved, slot) ==> Outcome.Done(
+          gated(Approval.Approved, TestCallSlots.First) ==> Outcome.Done(
             "Kept. The next turn's catalog has it; this turn keeps the one it started with."
           )
           book.kept ==> Vector(
@@ -105,7 +100,9 @@ object TuningTests extends TestSuite {
         .fold(d => sys.error(d.toString), identity)
       box.bind(call(asSent*), Repairs.All) match {
         case Right(gated: Bound.Gated) =>
-          gated(Approval.Approved, slot) ==> Outcome.Failed("Not kept: the database is down")
+          gated(Approval.Approved, TestCallSlots.First) ==> Outcome.Failed(
+            "Not kept: the database is down"
+          )
         case other => sys.error(s"not gated: $other")
       }
     }

@@ -1,7 +1,7 @@
 package grit.edge
 
 import grit.core.edge.{Permit, ToolRequest}
-import grit.core.id.{CallSlot, ConversationId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{CallSlot, ConversationId, PrincipalId, TestCallSlots, TurnRef, TurnSeq}
 import grit.core.place.{Directory, Place}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSpec, Toolbox}
 
@@ -17,7 +17,7 @@ object RunTests extends TestSuite {
       tool: String = "echo",
       permit: Permit = Permit.Free,
       protocol: Int = ToolRequest.Protocol,
-      slot: CallSlot = slot(0, 0)
+      slot: CallSlot = TestCallSlots.First
   ): ToolRequest = {
     val turn = TurnRef(ConversationId("c"), TurnSeq.First)
     ToolRequest(
@@ -33,11 +33,6 @@ object RunTests extends TestSuite {
       Set.empty
     )
   }
-
-  private def slot(round: Int, index: Int): CallSlot =
-    CallSlot
-      .of(TurnRef(ConversationId("c"), TurnSeq.First), round, index)
-      .getOrElse(throw new java.lang.AssertionError())
 
   /** `echo`, free, and `shout`, which asks first: each answers with its argument. */
   private val tools = {
@@ -80,8 +75,12 @@ object RunTests extends TestSuite {
       val told = Toolbox
         .of(where(ToolName("where"), Gate.Free), where(ToolName("asked"), Gate.Ask(t => t)))
         .getOrElse(throw new java.lang.AssertionError())
-      Run.request(request("where", slot = slot(1, 2)), told) ==> Outcome.Done("tool:c:0:1:2")
-      Run.request(request("asked", Permit.Approved, slot = slot(2, 1)), told) ==>
+      Run.request(request("where", slot = TestCallSlots.at(round = 1, index = 2)), told) ==> Outcome
+        .Done("tool:c:0:1:2")
+      Run.request(
+        request("asked", Permit.Approved, slot = TestCallSlots.at(round = 2, index = 1)),
+        told
+      ) ==>
         Outcome.Done("tool:c:0:2:1")
     }
 

@@ -5,16 +5,7 @@ import java.time.Instant
 import scala.util.chaining.*
 
 import grit.core.document.{DocText, Document, DocumentKeeper, InMemoryDocuments}
-import grit.core.id.{
-  CallSlot,
-  ConversationId,
-  PeriodRef,
-  PeriodSeq,
-  PluginName,
-  ToolCallId,
-  TurnRef,
-  TurnSeq
-}
+import grit.core.id.{ConversationId, PeriodRef, PeriodSeq, PluginName, TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.period.{CloseOrdinal, CloseReason, Closing, Probability, TestClosings}
 import grit.core.place.{Directory, Place}
@@ -26,11 +17,6 @@ import grit.dbos.sql.TestTx
 import utest.*
 
 object DigestTests extends TestSuite {
-
-  /** The call each test's tool is run as. */
-  private val slot: CallSlot = CallSlot
-    .of(TurnRef(ConversationId("c"), TurnSeq.First), 0, 0)
-    .getOrElse(throw new java.lang.AssertionError("a slot"))
 
   private val name = PluginName.of("digest").getOrElse(throw new java.lang.AssertionError("name"))
 
@@ -135,7 +121,7 @@ object DigestTests extends TestSuite {
         AssistantBlock.ToolCall(ToolCallId("c1"), "recent_activity", ujson.Obj.from(args)),
         Repairs.All
       ) match {
-      case Right(free: Bound.Free) => free(slot)
+      case Right(free: Bound.Free) => free(TestCallSlots.First)
       case other => sys.error(s"not free: $other")
     }
 

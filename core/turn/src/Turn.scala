@@ -8,7 +8,7 @@ import grit.core.approval.Approval
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.document.{DocLabel, Document}
 import grit.core.durable.{Durable, StreamWriter}
-import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
+import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile, TurnProfileId}
 import grit.core.place.Place
@@ -1104,14 +1104,21 @@ object Turn {
               )
             ).flatMap { _ =>
               // Every free hosted call of the round goes to the edge at once, in one step.
-              val free = calls.zipWithIndex.flatMap { (pending, index) =>
+              val free = calls.zipWithIndex.foldLeft[Either[TurnFailure, Vector[
+                (TurnTools.Slot, ToolCallId, Bound.Hosted)
+              ]]](Right(Vector.empty)) { case (acc, (pending, index)) =>
                 TurnTools.read(tools, pending, repairs) match {
-                  case Right(h: Bound.Hosted) if h.ask.isEmpty => Some((index, pending.call.id, h))
-                  case _ => None
+                  case Right(h: Bound.Hosted) if h.ask.isEmpty =>
+                    for {
+                      done <- acc
+                      slot <- TurnTools.Slot.of(turn, round, index)
+                    } yield done :+ ((slot, pending.call.id, h))
+                  case _ => acc
                 }
               }
               // The workspace's go in `dispatch:n`, each reached place's in its `reach:n:place`.
-              TurnHosted.requests(turn, round, free, offer).flatMap { groups =>
+              free.flatMap { free =>
+                val groups = TurnHosted.requests(free, offer)
                 groups.foldLeft[Either[TurnFailure, Unit]](Right(())) { case (acc, (place, qs)) =>
                   acc.flatMap { _ =>
                     val step =
@@ -1127,42 +1134,45 @@ object Turn {
           }
 
           def settle(round: Round, index: Int, pending: Pending): Either[TurnFailure, Unit] = {
-            val slot = TurnTools.Slot(turn, round, index)
-            val call = pending.call.id
-            val clock = env.clock
-            val settling = new TurnTools.Settling(jot, env.records.entries)
-            val settled = TurnTools.read(tools, pending, repairs) match {
-              case Left(outcome) =>
-                val named = pending.call.name
-                d.step(slot.step) { () => settling.answer(slot, call, named, outcome, clock.now()) }
-              case Right(free: Bound.Free) =>
-                d.step(slot.step) { () => settling.run(slot, call, free, clock.now()) }
-              case Right(gated: Bound.Gated) =>
-                val (entries, shown) = (env.records.entries, gated.ask)
-                d.transact(slot.askStep)(TurnTools.ask(entries, slot, call, shown, clock.now()))
-                  .flatMap { _ =>
-                    val received = d.recv(Approval.topic(call), answerWithin)
-                    val approval = TurnTools.approval(received)
-                    d.step(slot.step) { () =>
-                      settling.decide(slot, call, gated, approval, clock.now())
-                    }
+            TurnTools.Slot.of(turn, round, index).flatMap { slot =>
+              val call = pending.call.id
+              val clock = env.clock
+              val settling = new TurnTools.Settling(jot, env.records.entries)
+              val settled = TurnTools.read(tools, pending, repairs) match {
+                case Left(outcome) =>
+                  val named = pending.call.name
+                  d.step(slot.step) { () =>
+                    settling.answer(slot, call, named, outcome, clock.now())
                   }
-              case Right(hosted: Bound.Hosted) =>
-                val place = offer.placeOf(hosted.tool)
-                val sent = place.exists(p => dispatched.getOrElse((round.index, p), false))
-                TurnHosted.settle(
-                  hosting,
-                  slot,
-                  call,
-                  hosted,
-                  place,
-                  sent,
-                  answerWithin,
-                  settling,
-                  clock
-                )
+                case Right(free: Bound.Free) =>
+                  d.step(slot.step) { () => settling.run(slot, call, free, clock.now()) }
+                case Right(gated: Bound.Gated) =>
+                  val (entries, shown) = (env.records.entries, gated.ask)
+                  d.transact(slot.askStep)(TurnTools.ask(entries, slot, call, shown, clock.now()))
+                    .flatMap { _ =>
+                      val received = d.recv(Approval.topic(call), answerWithin)
+                      val approval = TurnTools.approval(received)
+                      d.step(slot.step) { () =>
+                        settling.decide(slot, call, gated, approval, clock.now())
+                      }
+                    }
+                case Right(hosted: Bound.Hosted) =>
+                  val place = offer.placeOf(hosted.tool)
+                  val sent = place.exists(p => dispatched.getOrElse((round.index, p), false))
+                  TurnHosted.settle(
+                    hosting,
+                    slot,
+                    call,
+                    hosted,
+                    place,
+                    sent,
+                    answerWithin,
+                    settling,
+                    clock
+                  )
+              }
+              settled.map(_ => ())
             }
-            settled.map(_ => ())
           }
         }
         moves.call(Round.First, TurnLoop.use(budget, Round.First)) match {

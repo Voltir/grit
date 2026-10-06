@@ -324,7 +324,9 @@ object grit extends Module {
     def folder = os.sub / "extensions" / "tools"
     def moduleDeps = Seq(core)
 
-    object test extends GritTests
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
   }
 
   /* The edge's side of the engine: what an edge does for a place it hosts, over core's

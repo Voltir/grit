@@ -3,7 +3,7 @@ package grit.turn
 import grit.assembly.estimate.CharEstimate
 import grit.core.approval.Approval
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{EntryId, ToolCallId, TurnRef}
+import grit.core.id.{EntryId, TestCallSlots, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, ProviderError, ToolUse}
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
@@ -13,7 +13,6 @@ import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
 import utest.*
-import TurnLoop.Round
 import TurnFixtures.Scripted
 
 /** The tool loop inside the durable turn ([[Turn.Patches.Tools]]), over core's in-memory
@@ -294,7 +293,7 @@ object TurnLoopTurnTests extends TestSuite {
       looped(durable, entries, entries, turn, provider, ws) ==>
         "replied: reply:c1:0; summarised: summary:c1:0"
       ws.reads ==> 1
-      val slot = TurnTools.Slot(turn, Round.First, 0)
+      val slot = TurnTools.Slot(TestCallSlots.at(turn))
       entries.get(slot.askId)(using TestTx.fake).toOption.flatten.map(_.payload) ==>
         Some(Payload.Ask(ToolCallId("t1"), "poke a.txt"))
       durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-call:0").take(5) ==>

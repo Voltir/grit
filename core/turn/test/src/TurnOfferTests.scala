@@ -8,13 +8,13 @@ import grit.core.classify.Answer
 import grit.core.context.Width
 import grit.core.edge.InMemoryEdges
 import grit.core.id.{
-  CallSlot,
   ConversationId,
   EntryId,
   EntrySeq,
   KnowledgeSourceName,
   PrincipalId,
   QuestionName,
+  TestCallSlots,
   ToolCallId,
   TurnRef,
   TurnSeq
@@ -483,11 +483,7 @@ object TurnOfferTests extends TestSuite {
           Repairs.All
         ) match {
           case Right(h: Bound.Hosted) => s"hosted ${h.shown}"
-          case Right(f: Bound.Free) =>
-            val at = CallSlot
-              .of(TurnRef(ConversationId("c"), TurnSeq.First), 0, 0)
-              .getOrElse(throw new java.lang.AssertionError())
-            s"free ${f(at)}"
+          case Right(f: Bound.Free) => s"free ${f(TestCallSlots.First)}"
           case other => other.toString
         }
       Vector("github_search", "github_issue").map(bound) ==> Vector(

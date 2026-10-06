@@ -1,7 +1,7 @@
 package grit.tools
 
 import grit.core.context.Label
-import grit.core.id.{CallSlot, ConversationId, ToolCallId, TurnRef, TurnSeq}
+import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.persona.Persona
 import grit.core.tool.{Bound, Outcome, Repairs, Tool, Toolbox}
@@ -10,11 +10,6 @@ import utest.*
 
 /** [[About]]: the docs it ships, and which of them a call is answered with. */
 object AboutTests extends TestSuite {
-
-  /** The call each test's tool is run as. */
-  private val slot: CallSlot = CallSlot
-    .of(TurnRef(ConversationId("c"), TurnSeq.First), 0, 0)
-    .getOrElse(throw new java.lang.AssertionError("a slot"))
 
   private def loaded(persona: Persona): Tool[Option[About.Subject]] =
     About.load(persona).fold(e => throw new java.lang.AssertionError(e), identity)
@@ -30,7 +25,7 @@ object AboutTests extends TestSuite {
       .of(loaded(persona))
       .fold(d => throw new java.lang.AssertionError(s"duplicate $d"), identity)
       .bind(AssistantBlock.ToolCall(ToolCallId("c1"), "about", args), Repairs.All) match {
-      case Right(b: Bound.Free) => b(slot)
+      case Right(b: Bound.Free) => b(TestCallSlots.First)
       case other => throw new java.lang.AssertionError(s"not free: $other")
     }
 

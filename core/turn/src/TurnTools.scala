@@ -25,10 +25,16 @@ object TurnTools {
     */
   final case class Settled(result: EntryId, failed: Boolean)
 
-  /** A tool call's place in its turn's loop: the call at `index` (from 0) of the reply to
-    * `round` in `turn`. Every id and step name its settling uses comes from it.
+  /** A tool call's place in its turn's loop. Every id and step name its settling uses comes
+    * from it.
     */
-  final case class Slot(turn: TurnRef, round: Round, index: Int) {
+  final case class Slot(call: CallSlot) {
+
+    def turn: TurnRef = call.turn
+
+    def round: Round = Round.at(call.round)
+
+    def index: Int = call.index
 
     /** The `tool:n:j` step that settles the call. */
     def step: String = Turn.Step.tool(round, index)
@@ -45,15 +51,19 @@ object TurnTools {
     /** The id of the entry asking a person about the call, a gated one. */
     def askId: EntryId = EntryId(s"ask:$key")
 
-    /** The call as its tool is told it ([[grit.core.tool.Bound.Free.apply]]); `Left` when
-      * `index` is negative.
+    private def key: String = s"${WorkflowId.value(turn.workflowId)}:${call.round}:$index"
+  }
+
+  object Slot {
+
+    /** The call at `index` (from 0) of the reply to `round` in `turn`; `Left` when `index` is
+      * negative.
       */
-    def callSlot: Either[TurnFailure, CallSlot] =
+    def of(turn: TurnRef, round: Round, index: Int): Either[TurnFailure, Slot] =
       CallSlot
         .of(turn, round.index, index)
+        .map(Slot(_))
         .toRight(TurnFailure.Store(s"no call at round ${round.index}, index $index"))
-
-    private def key: String = s"${WorkflowId.value(turn.workflowId)}:${round.index}:$index"
   }
 
   /** The id of the entry keeping `turn`'s reply to `round`, which called tools. */
@@ -152,7 +162,7 @@ object TurnTools {
         free: Bound.Free^,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, free.shown, at)(() => slot.callSlot.map(free(_)))
+      settle(slot, call, free.shown, at)(() => Right(free(slot.call)))
 
     /** `gated` answered by `approval`. Run when approved, at most once: its attempt is
       * recorded at [[Slot.attemptId]] before it starts, and a rerun that finds the attempt
@@ -168,13 +178,11 @@ object TurnTools {
       settle(slot, call, gated.shown, at)(() =>
         approval match {
           case Approval.Approved =>
-            slot.callSlot.flatMap(cs =>
-              began(slot, Payload.Attempt(call), at).map {
-                case true => Outcome.Interrupted
-                case false => gated(Approval.Approved, cs)
-              }
-            )
-          case other => slot.callSlot.map(gated(other, _))
+            began(slot, Payload.Attempt(call), at).map {
+              case true => Outcome.Interrupted
+              case false => gated(Approval.Approved, slot.call)
+            }
+          case other => Right(gated(other, slot.call))
         }
       )
 

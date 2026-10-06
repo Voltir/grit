@@ -1,7 +1,7 @@
 package grit.core.tool
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, ConversationId, ToolCallId, TurnRef, TurnSeq}
+import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{ArgRepair, NameRepair}
 
@@ -11,11 +11,6 @@ import utest.*
   * result each [[Outcome]] gives the model.
   */
 object ToolboxTests extends TestSuite {
-
-  /** The call each test's tool is run as. */
-  private val slot: CallSlot = CallSlot
-    .of(TurnRef(ConversationId("c"), TurnSeq.First), 0, 0)
-    .getOrElse(throw new java.lang.AssertionError("a slot"))
 
   private val echo: Tool[String] = Tool(
     ToolSpec(
@@ -111,7 +106,11 @@ object ToolboxTests extends TestSuite {
     test("a free call binds with nothing to ask, and runs") {
       box.bind(call("echo", ujson.Obj("text" -> "hi")), Repairs.All) match {
         case Right(b: Bound.Free) =>
-          (b.tool, b.shown, b(slot)) ==> (ToolName("echo"), "echo hi", Outcome.Done("hi"))
+          (b.tool, b.shown, b(TestCallSlots.First)) ==> (
+            ToolName("echo"),
+            "echo hi",
+            Outcome.Done("hi")
+          )
         case other => throw new java.lang.AssertionError(s"not free: $other")
       }
     }
@@ -121,11 +120,13 @@ object ToolboxTests extends TestSuite {
         case Right(b: Bound.Gated) =>
           b.ask ==> "shout hi"
           b.shown ==> "shout hi loudly"
-          b(Approval.Approved, slot) ==> Outcome.Done("HI")
-          b(Approval.Declined(Some("too loud")), slot) ==> Outcome.Declined(Some("too loud"))
-          b(Approval.Declined(None), slot) ==> Outcome.Declined(None)
+          b(Approval.Approved, TestCallSlots.First) ==> Outcome.Done("HI")
+          b(Approval.Declined(Some("too loud")), TestCallSlots.First) ==> Outcome.Declined(
+            Some("too loud")
+          )
+          b(Approval.Declined(None), TestCallSlots.First) ==> Outcome.Declined(None)
           // Nobody answering is not the person declining.
-          b(Approval.TimedOut, slot) ==> Outcome.Unanswered
+          b(Approval.TimedOut, TestCallSlots.First) ==> Outcome.Unanswered
         case other => throw new java.lang.AssertionError(s"not gated: $other")
       }
     }
