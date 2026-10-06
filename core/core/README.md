@@ -86,7 +86,9 @@ In dependency order:
   every document collected). ← `id`, `place`, `store`
 - **`job`** — jobs and their schedules (ADRs 0021, 0029): a `SlotRule` (once, with its `Grace`,
   or a recurrence at a local time in a zone), and the instants its slots fall at; `Due`, what a
-  schedule has due at an instant (its latest slot, or a once slot missed). ← `id`
+  schedule has due at an instant (its latest slot, or a once slot missed); `Resume`, what one
+  whose run is `InFlight` gets (left, enqueued again, failed, or superseded at the current
+  version). ← `id`
 - **`spend`** — what grit spends on model calls, read back: `Spend` (some recorded calls: how
   many, and their `Cost`), `Spending` (a day's, or a conversation's, from the ledger; what the
   ledger misses is in its doc), `Day` (a calendar day in a zone, as instants), `DailyCap`
