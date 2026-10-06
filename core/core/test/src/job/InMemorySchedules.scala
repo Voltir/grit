@@ -100,7 +100,14 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
     wanted.foreach { (id, d) =>
       val row = rows.get(id) match {
         case None =>
-          Row(d.job.name, d.written, PrincipalId.Grit, Report.Kept, d.rule, d.rule.first(now))
+          Row(
+            d.job.name,
+            d.written,
+            PrincipalId.Grit,
+            Report.Kept,
+            d.rule,
+            d.rule.first(now).map(Slot.kept)
+          )
         case Some(r) =>
           val ended = r.ended.filterNot(_ == Ending.Undeclared)
           r.copy(
@@ -110,7 +117,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
             next =
               if (ended.nonEmpty) None
               else if (r.rule == d.rule && r.ended.isEmpty) r.next
-              else d.rule.first(now),
+              else d.rule.first(now).map(Slot.kept),
             ended = ended
           )
       }
@@ -171,7 +178,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
               turns.get(call.turn) match {
                 case Some((by, Some(to))) =>
                   val now = clock.now()
-                  val at = when.from(now).truncatedTo(java.time.temporal.ChronoUnit.MICROS)
+                  val at = Slot.kept(when.from(now))
                   val limit = now.plusNanos(ScheduleDesk.Horizon.toNanos)
                   if (!at.isAfter(now)) Left(DeskRefusal.Past(at, now))
                   else if (at.isAfter(limit)) Left(DeskRefusal.TooFar(at, limit))

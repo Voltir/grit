@@ -105,6 +105,15 @@ abstract class ScheduleContract extends TestSuite {
       u.waiting("2026-10-08T09:00:00Z") ==> Vector(id("a"), id("b"))
     }
 
+    test(
+      "a declared slot is kept to the microsecond, truncated: due at that microsecond, never after its instant"
+    ) {
+      val u = fresh()
+      val nine = at("2026-10-07T09:00:00Z")
+      u.declare(Vector(declared("launch", SlotRule.Once(nine.plusNanos(1500), hour))), "08:00")
+      u.waiting("2026-10-07T09:00:00.000001Z") ==> Vector(id("launch"))
+    }
+
     test("a declared schedule that ran stays ended when declared again") {
       val u = fresh()
       val nine = at("2026-10-07T09:00:00Z")

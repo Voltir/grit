@@ -1,7 +1,6 @@
 package grit.dbos.sql
 
 import java.sql.{PreparedStatement, ResultSet}
-import java.time.temporal.ChronoUnit
 import java.time.{Instant, OffsetDateTime, ZoneOffset}
 
 import scala.util.Using
@@ -105,7 +104,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             ps.setString(5, PrincipalId.value(PrincipalId.Grit))
             ps.setString(6, ReportJson.write(Report.Kept).render())
             ps.setObject(7, utc(now))
-            ps.setObject(8, d.rule.first(now).map(utc).orNull)
+            ps.setObject(8, d.rule.first(now).map(Slot.kept).map(utc).orNull)
           }
         case Some((rule, ended)) =>
           val revived = ended.contains(Ending.Undeclared.word)
@@ -123,7 +122,10 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             ps.setString(2, SlotRuleJson.write(d.rule).render())
             ps.setString(3, d.written.render())
             ps.setBoolean(4, keepsNext)
-            ps.setObject(5, if (keepsEnd) null else d.rule.first(now).map(utc).orNull)
+            ps.setObject(
+              5,
+              if (keepsEnd) null else d.rule.first(now).map(Slot.kept).map(utc).orNull
+            )
             ps.setBoolean(6, revived)
             ps.setBoolean(7, revived)
             ps.setString(8, ScheduleId.value(id))
@@ -286,7 +288,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         own(booking).flatMap { _ =>
           val id = ScheduleId.asked(call)
           val now = clock.now()
-          val at = when.from(now).truncatedTo(ChronoUnit.MICROS)
+          val at = Slot.kept(when.from(now))
           val limit = now.plusNanos(ScheduleDesk.Horizon.toNanos)
           written(jot.write {
             row(id).flatMap {

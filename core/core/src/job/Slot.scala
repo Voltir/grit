@@ -1,6 +1,7 @@
 package grit.core.job
 
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.time.{Instant, ZoneOffset}
 
 import scala.util.Try
@@ -32,6 +33,11 @@ object Slot {
     DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
 
   private val Version = "v(0|-?[1-9][0-9]*)".r
+
+  /** `instant` as a schedule keeps a slot's, asked or declared: truncated to the microsecond,
+    * the store's precision, so a slot is never kept after the instant it was made for.
+    */
+  def kept(instant: Instant): Instant = instant.truncatedTo(ChronoUnit.MICROS)
 
   /** The slot whose [[Slot.key]] is `key`; `None` for any other run name (a one-shot run's
     * `main`).

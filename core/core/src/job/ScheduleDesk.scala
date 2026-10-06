@@ -24,8 +24,9 @@ final case class Pending[P <: caps.Pure](now: Instant, schedules: Vector[Asked[P
 trait ScheduleDesk extends caps.SharedCapability {
 
   /** Schedules `booking`'s job `when`, with `params`, to run as late as `grace` after its
-    * instant, kept to the microsecond ([[Asked.at]]). The same call asking again (a call run twice after a crash) gets the schedule it
-    * first wrote, unchanged. Refused, writing nothing:
+    * instant, kept as [[Slot.kept]] keeps it ([[Asked.at]]). The same call asking again (a call
+    * run twice after a crash) gets the schedule it first wrote, unchanged. Refused, writing
+    * nothing:
     *   - [[DeskRefusal.Unaddressed]] when the turn's reply is posted nowhere (a TUI session, a
     *     draft grit has not posted), or the call's turn is not recorded;
     *   - `Past` when `when` is not after now;
