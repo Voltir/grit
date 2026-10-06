@@ -562,5 +562,38 @@ object DeploymentTests extends TestSuite {
           )
         ) ==> Right((Some(nudge), Some(standup), None))
     }
+
+    test("a deployment declared with every argument but jobs and schedules has none of either") {
+      val assigned = grit.core.model.Assignment(
+        grit.core.model.ModelRef(
+          grit.core.model.ModelId.of("openai/gpt-oss-120b").getOrElse(sys.error("model id")),
+          None
+        ),
+        100,
+        None
+      )
+      Deployment
+        .of(
+          edges = Vector.empty,
+          worksIn = Vector.empty,
+          reaches = Vector.empty,
+          plugins = Vector.empty,
+          policy = grit.core.model.Policy(assigned, assigned, assigned, assigned),
+          offer =
+            Offer(Offered.Read, grit.turn.TurnLoop.Budget.of(4).getOrElse(sys.error("rounds"))),
+          assembly = Assembly.Linear(grit.core.message.Tokens(1000)),
+          topics = Topics.Stub,
+          lifecycle = grit.core.period.LifecycleSettings.Default,
+          budget = grit.core.spend.Budget(java.time.ZoneOffset.UTC, None),
+          speaking = grit.core.speech.Speaking.Off,
+          sweep = 30.seconds,
+          shadows = Vector.empty,
+          knowledge = grit.core.triage.KnowledgeSources.Empty,
+          recipe = grit.core.recipe.TurnRecipe.Shipped,
+          persona = grit.core.persona.Persona.Grit,
+          review = None
+        )
+        .map(d => (d.jobs, d.schedules, d.declared)) ==> Right((Vector(), Vector(), Vector()))
+    }
   }
 }
