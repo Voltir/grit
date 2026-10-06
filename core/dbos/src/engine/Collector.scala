@@ -155,7 +155,8 @@ private[engine] final class Collector(
               )
             case None => Named.none
           })
-      case Target.Superseded(_) | Target.Quiet(_) | Target.Document(_) => Right(Named.none)
+      case Target.Superseded(_) | Target.Quiet(_) | Target.Document(_) | Target.Schedule(_) =>
+        Right(Named.none)
     }
 
   /** Each workflow DBOS has among `named`, and whether it is queued or running. */
@@ -291,6 +292,8 @@ private[engine] final class Collector(
           _ <- documents.forget(version)
           _ <- tombstones.collected(target, now)
         } yield Outcome.Collected
+      // Deletes nothing yet: no table keeps schedules.
+      case Target.Schedule(_) => tombstones.collected(target, now).map(_ => Outcome.Collected)
     }
 }
 

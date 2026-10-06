@@ -63,7 +63,7 @@ In dependency order:
 - **`retention`** — what grit deletes, and when (ADR 0014): a `Target` (a period's raw
   entries, a superseded closing, a quiet conversation, a plugin's posting runs, its documents
   from before a restart, a plugin no longer enabled, a version of a plugin's document no longer
-  current), its stored form, how long each kind of target is kept (`Retention`: a window, or as
+  current, an ended schedule), its stored form, how long each kind of target is kept (`Retention`: a window, or as
   its plugin declares), and a `Tombstone`, the decision to delete one. ← `id`, `period`
 - **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),
   `Jot` (short writes from inside a step), `Entry`,
