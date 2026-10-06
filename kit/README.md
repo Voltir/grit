@@ -20,7 +20,9 @@ In dependency order:
   answer an ask, two edges of one name, a sweep under a second, two shadows of one name,
   shadows with topics off, a review of no shadow declared as a question set, or with
   speaking off, a recipe gating by what live triage does not ask, a knowledge source
-  supplying a service no link offers, and a recipe widening a window past the assembly's),
+  supplying a service no link offers, a recipe widening a window past the assembly's, two
+  jobs of one name, and a declared schedule repeated, of a job not the deployment's of its
+  name, or of a job not its declaring plugin's),
   `Offer` and `Offered`
   (the tools every turn's model is offered), `Assembly` (how a window is assembled),
   `Topics` (how a message is placed among topics), the shadows of triage's question it

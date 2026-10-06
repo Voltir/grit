@@ -5,15 +5,17 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import grit.core.document.{Document, DocumentShelf}
 import grit.core.edge.ServedEdge
 import grit.core.id.{
+  Declarer,
   DocKey,
   EdgeName,
   JobName,
   KnowledgeSourceName,
   PluginName,
   QuestionName,
+  ScheduleId,
   ShadowName
 }
-import grit.core.job.NotOwn
+import grit.core.job.{Declared, Job, Jobs, NotOwn}
 import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
@@ -174,6 +176,22 @@ enum DeploymentRefusal {
   /** A tool of `plugin` books `job`, which is not among `plugin`'s jobs. */
   case JobUnowned(plugin: PluginName, job: JobName)
 
+  /** Two of the jobs, every plugin's and the deployment's own, are named `name`: a run names
+    * its job by name alone.
+    */
+  case JobRepeated(name: JobName)
+
+  /** Two declared schedules have the id `id`: two of one declarer's share a key. */
+  case ScheduleRepeated(id: ScheduleId)
+
+  /** The declared schedule `id` runs `job`, which is not the job of that name among the
+    * deployment's (every plugin's and its own), so its runs would run another's code, or none.
+    */
+  case ScheduleJobless(id: ScheduleId, job: JobName)
+
+  /** `plugin` declares a schedule of `job`, which is not among `plugin`'s jobs. */
+  case ScheduleUnowned(plugin: PluginName, job: JobName)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
@@ -210,6 +228,12 @@ enum DeploymentRefusal {
       s"a tool of ${PluginName.value(plugin)} asks for ${PluginName.value(dependency)}, which it does not list among its needs"
     case JobUnowned(plugin, job) =>
       s"a tool of ${PluginName.value(plugin)} books ${JobName.value(job)}, which is not among its jobs"
+    case JobRepeated(name) => s"two jobs are named ${JobName.value(name)}"
+    case ScheduleRepeated(id) => s"two declared schedules are ${ScheduleId.value(id)}"
+    case ScheduleJobless(id, job) =>
+      s"the schedule ${ScheduleId.value(id)} runs ${JobName.value(job)}, which is not the deployment's job of that name"
+    case ScheduleUnowned(plugin, job) =>
+      s"${PluginName.value(plugin)} declares a schedule of ${JobName.value(job)}, which is not among its jobs"
   }
 }
 
@@ -225,8 +249,10 @@ enum DeploymentRefusal {
   * question sets ask about ([[KnowledgeSources]]), and its turns' offering by the services
   * they supply, the review of one of them it picks heard messages for ([[ShadowReview]]), how
   * often its engine sweeps, the `recipe` that shapes each turn by what it answers
-  * ([[TurnRecipe]]), and the `persona` grit presents as: the name its turns are told
-  * ([[grit.turn.TurnPrompt.called]]) and `about` reports. The
+  * ([[TurnRecipe]]), the `persona` grit presents as: the name its turns are told
+  * ([[grit.turn.TurnPrompt.called]]) and `about` reports, and the `jobs` and `schedules` it
+  * declares itself beside its plugins' (ADR 0029); `allJobs` is every job, its plugins' and
+  * its own, by name, as its runs find them. The
   * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
@@ -248,8 +274,14 @@ final case class Deployment private (
     shadows: Vector[ShadowVariant],
     knowledge: KnowledgeSources,
     review: Option[ShadowReview],
-    recipe: TurnRecipe
+    recipe: TurnRecipe,
+    jobs: Vector[Job[?]],
+    schedules: Vector[Declared[?]],
+    allJobs: Jobs
 ) {
+
+  /** Every schedule declared, each with its declarer: each plugin's, then its own. */
+  def declared: Vector[(Declarer, Declared[?])] = Deployment.declared(plugins, schedules)
 
   /** The set live triage asks for this deployment: [[TriageQuestions.shipped]] of its
     * persona.
@@ -284,7 +316,11 @@ object Deployment {
     * turn may be offered (every plugin's, grit's own: [[grit.tools.Names.all]] and the turn's
     * `topic`) share a name ([[DeploymentRefusal.ToolRepeated]]), or a plugin's tool asks for a
     * plugin its own does not need ([[DeploymentRefusal.ToolUnneeded]]) or books a job not among
-    * its plugin's ([[DeploymentRefusal.JobUnowned]]).
+    * its plugin's ([[DeploymentRefusal.JobUnowned]]). Refused, too, when two of the jobs,
+    * every plugin's and `jobs`, share a name ([[DeploymentRefusal.JobRepeated]]), a plugin
+    * declares a schedule of a job not its own ([[DeploymentRefusal.ScheduleUnowned]]), two
+    * declared schedules share an id ([[DeploymentRefusal.ScheduleRepeated]]), or one holds a
+    * job other than the deployment's job of its name ([[DeploymentRefusal.ScheduleJobless]]).
     */
   def of(
       edges: Vector[ServedEdge],
@@ -303,7 +339,9 @@ object Deployment {
       shadows: Vector[ShadowVariant] = Vector.empty,
       knowledge: KnowledgeSources = KnowledgeSources.Empty,
       review: Option[Reviewing] = None,
-      recipe: TurnRecipe = TurnRecipe.Shipped
+      recipe: TurnRecipe = TurnRecipe.Shipped,
+      jobs: Vector[Job[?]] = Vector.empty,
+      schedules: Vector[Declared[?]] = Vector.empty
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filterNot(_.answersAsks).map(_.name)
@@ -344,6 +382,31 @@ object Deployment {
           },
           _ => Right(())
         )
+      all <- Jobs.of(plugins.flatMap(_.jobs) ++ jobs).left.map(DeploymentRefusal.JobRepeated(_))
+      _ <- plugins
+        .flatMap(p =>
+          p.schedules
+            .map(_.job.name)
+            .filterNot(n => p.jobs.exists(_.name == n))
+            .map(DeploymentRefusal.ScheduleUnowned(p.name, _))
+        )
+        .headOption
+        .toLeft(())
+      ids = declared(plugins, schedules).map((by, s) => (s.id(by), s.job))
+      _ <- ids
+        .map(_._1)
+        .diff(ids.map(_._1).distinct)
+        .headOption
+        .map(DeploymentRefusal.ScheduleRepeated(_))
+        .toLeft(())
+      // A run finds its job by name: a schedule holding another job of that name would have
+      // its parameters read by code that did not write them.
+      _ <- ids
+        .collectFirst {
+          case (id, job) if !all.named(job.name).contains(job) =>
+            DeploymentRefusal.ScheduleJobless(id, job.name)
+        }
+        .toLeft(())
       _ <- Either.cond(
         offer.tools == Offered.Read || unanswered.isEmpty,
         (),
@@ -419,9 +482,20 @@ object Deployment {
       shadows,
       knowledge,
       reviewed,
-      recipe
+      recipe,
+      jobs,
+      schedules,
+      all
     )
   }
+
+  /** Every schedule declared, each with its declarer: each of `plugins`', then `own`. */
+  private def declared(
+      plugins: Vector[Plugin],
+      own: Vector[Declared[?]]
+  ): Vector[(Declarer, Declared[?])] =
+    plugins.flatMap(p => p.schedules.map(Declarer.Plugin(p.name) -> _)) ++
+      own.map(Declarer.Deployment -> _)
 
   /** Whether `live`, the set live triage asks, asks every reading `recipe`'s gates read with
     * `knowledge`'s sources; [[DeploymentRefusal.RecipeUnread]] naming the first it does not.

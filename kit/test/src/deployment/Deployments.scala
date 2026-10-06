@@ -49,7 +49,9 @@ object Deployments {
       reaches: Vector[grit.core.place.Reaches] = Vector.empty,
       knowledge: grit.core.triage.KnowledgeSources = grit.core.triage.KnowledgeSources.Empty,
       recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
-      plugins: Vector[grit.core.plugin.Plugin] = Vector.empty
+      plugins: Vector[grit.core.plugin.Plugin] = Vector.empty,
+      jobs: Vector[grit.core.job.Job[?]] = Vector.empty,
+      schedules: Vector[grit.core.job.Declared[?]] = Vector.empty
   ): Either[DeploymentRefusal, Deployment] =
     Deployment.of(
       edges = edges,
@@ -68,7 +70,9 @@ object Deployments {
       review = review,
       reaches = reaches,
       knowledge = knowledge,
-      recipe = recipe
+      recipe = recipe,
+      jobs = jobs,
+      schedules = schedules
     )
 
   /** [[of]], which the test expects to be accepted. */

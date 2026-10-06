@@ -13,6 +13,21 @@ object DeploymentTests extends TestSuite {
   import Deployments.edge
   import TestPlugins.name
 
+  private def job(s: String): grit.core.id.JobName =
+    grit.core.id.JobName.of(s).fold(sys.error, identity)
+
+  private def key(s: String): grit.core.id.ScheduleKey =
+    grit.core.id.ScheduleKey.of(s).fold(sys.error, identity)
+
+  /** A schedule declared under `k`, running `of` daily at 09:00 UTC. */
+  private def declared(k: String, of: TestPlugins.Named): grit.core.job.Declared[?] =
+    grit.core.job.Declared(
+      key(k),
+      of,
+      grit.core.job.SlotRule.Daily(java.time.LocalTime.of(9, 0), java.time.ZoneOffset.UTC),
+      TestPlugins.Named.None
+    )
+
   private val github: grit.core.place.Service =
     grit.core.place.Service.of("github").fold(e => sys.error(e), identity)
   private val repo: grit.core.id.KnowledgeSourceName =
@@ -418,6 +433,134 @@ object DeploymentTests extends TestSuite {
           )
         )
       )
+    }
+
+    test("two jobs of one name, among the plugins' and the deployment's own, are refused") {
+      val nudge = new TestPlugins.Named("nudge")
+      def books(n: String) = new TestPlugins.Booking(name(n), nudge, Vector(nudge))
+      (
+        Deployments.of(plugins = Vector(books("a")), jobs = Vector(nudge)).map(_ => ()),
+        Deployments
+          .of(plugins =
+            Vector(
+              new TestPlugins.Declaring(name("a"), Vector(nudge), Vector()),
+              new TestPlugins.Declaring(name("b"), Vector(new TestPlugins.Named("nudge")), Vector())
+            )
+          )
+          .map(_ => ()),
+        Deployments
+          .of(plugins = Vector(books("a")), jobs = Vector(new TestPlugins.Named("standup")))
+          .map(_ => ())
+      ) ==> (
+        Left(DeploymentRefusal.JobRepeated(job("nudge"))),
+        Left(DeploymentRefusal.JobRepeated(job("nudge"))),
+        Right(())
+      )
+    }
+
+    test("two schedules one declarer declares under one key are refused; two declarers' are not") {
+      val nudge = new TestPlugins.Named("nudge")
+      (
+        Deployments
+          .of(
+            jobs = Vector(nudge),
+            schedules = Vector(declared("daily", nudge), declared("daily", nudge))
+          )
+          .map(_ => ()),
+        Deployments
+          .of(
+            plugins = Vector(new TestPlugins.Declaring(name("p"), Vector(), Vector())),
+            jobs = Vector(nudge),
+            schedules = Vector(declared("daily", nudge))
+          )
+          .map(_ => ())
+      ) ==> (
+        Left(
+          DeploymentRefusal.ScheduleRepeated(
+            grit.core.id.ScheduleId.declared(grit.core.id.Declarer.Deployment, key("daily"))
+          )
+        ),
+        Right(())
+      )
+      // The same key under a plugin and under the deployment names two schedules.
+      val owned = new TestPlugins.Named("owned")
+      Deployments
+        .of(
+          plugins = Vector(
+            new TestPlugins.Declaring(name("p"), Vector(owned), Vector(declared("daily", owned)))
+          ),
+          jobs = Vector(nudge),
+          schedules = Vector(declared("daily", nudge))
+        )
+        .map(_.declared.map((by, d) => d.id(by))) ==> Right(
+        Vector(
+          grit.core.id.ScheduleId.declared(grit.core.id.Declarer.Plugin(name("p")), key("daily")),
+          grit.core.id.ScheduleId.declared(grit.core.id.Declarer.Deployment, key("daily"))
+        )
+      )
+    }
+
+    test("a declared schedule whose job is not the deployment's job of that name is refused") {
+      val nudge = new TestPlugins.Named("nudge")
+      val id = grit.core.id.ScheduleId.declared(grit.core.id.Declarer.Deployment, key("daily"))
+      (
+        Deployments.of(schedules = Vector(declared("daily", nudge))).map(_ => ()),
+        // Another job under the same name: its runs would read their parameters with this one.
+        Deployments
+          .of(
+            jobs = Vector(nudge),
+            schedules = Vector(declared("daily", new TestPlugins.Named("nudge")))
+          )
+          .map(_ => ()),
+        Deployments
+          .of(jobs = Vector(nudge), schedules = Vector(declared("daily", nudge)))
+          .map(_ => ())
+      ) ==> (
+        Left(DeploymentRefusal.ScheduleJobless(id, job("nudge"))),
+        Left(DeploymentRefusal.ScheduleJobless(id, job("nudge"))),
+        Right(())
+      )
+    }
+
+    test("a plugin declaring a schedule of a job not its own is refused, naming both") {
+      val nudge = new TestPlugins.Named("nudge")
+      (
+        Deployments
+          .of(
+            plugins = Vector(
+              new TestPlugins.Declaring(name("owner"), Vector(nudge), Vector()),
+              new TestPlugins.Declaring(name("other"), Vector(), Vector(declared("daily", nudge)))
+            )
+          )
+          .map(_ => ()),
+        Deployments
+          .of(plugins =
+            Vector(
+              new TestPlugins.Declaring(
+                name("owner"),
+                Vector(nudge),
+                Vector(declared("daily", nudge))
+              )
+            )
+          )
+          .map(_ => ())
+      ) ==> (Left(DeploymentRefusal.ScheduleUnowned(name("other"), job("nudge"))), Right(()))
+    }
+
+    test("an accepted deployment runs every job, its plugins' and its own, by name") {
+      val (nudge, standup) = (new TestPlugins.Named("nudge"), new TestPlugins.Named("standup"))
+      Deployments
+        .of(
+          plugins = Vector(new TestPlugins.Declaring(name("p"), Vector(nudge), Vector())),
+          jobs = Vector(standup)
+        )
+        .map(d =>
+          (
+            d.allJobs.named(job("nudge")),
+            d.allJobs.named(job("standup")),
+            d.allJobs.named(job("other"))
+          )
+        ) ==> Right((Some(nudge), Some(standup), None))
     }
   }
 }

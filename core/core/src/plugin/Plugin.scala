@@ -37,10 +37,14 @@ trait Plugin extends caps.Pure {
     */
   def tools: Vector[PluginTool[?]] = Vector.empty
 
-  /** Its jobs (ADR 0029), which its tools book ([[PluginTool.bind]]) and its schedules run. */
+  /** Its jobs (ADR 0029), which its tools book ([[PluginTool.bind]]) and its schedules run. A
+    * deployment is refused when two of every plugin's jobs and its own share a name.
+    */
   def jobs: Vector[Job[?]] = Vector.empty
 
-  /** The schedules it declares (ADR 0029), reconciled with the stored ones at every start. */
+  /** The schedules it declares (ADR 0029), reconciled with the stored ones at every start. A
+    * deployment is refused when one is of a job not among [[jobs]], or two share a key.
+    */
   def schedules: Vector[Declared[?]] = Vector.empty
 
   /** Whether it is posted closed periods: it has a cache or documents. */

@@ -1,7 +1,7 @@
 package grit.kit.deployment
 
 import grit.core.id.{CallSlot, JobName, PluginName}
-import grit.core.job.{Job, JobRun, NotOwn, OwnJobs, ScheduleDesk}
+import grit.core.job.{Declared, Job, JobRun, NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.plugin.{Exports, Needs, PluginReads, PluginRun, PluginTool, Unneeded}
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
@@ -110,5 +110,14 @@ object TestPlugins {
             }
           )
     })
+  }
+
+  /** Its jobs are `jobs`, and it declares `schedules`. */
+  final class Declaring(
+      val name: PluginName,
+      override val jobs: Vector[Job[?]],
+      override val schedules: Vector[Declared[?]]
+  ) extends grit.core.plugin.Plugin {
+    val version: Int = 1
   }
 }
