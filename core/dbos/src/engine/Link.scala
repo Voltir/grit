@@ -268,7 +268,8 @@ private[engine] final class Attached(
       new SqlPeriodStore(entries),
       new grit.dbos.sql.SqlSpeechStore,
       spending,
-      budget
+      budget,
+      new grit.dbos.sql.SqlSchedules(new grit.dbos.sql.SqlTombstones)
     )
 
   private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()

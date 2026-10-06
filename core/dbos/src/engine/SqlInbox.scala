@@ -11,6 +11,7 @@ import grit.core.id.{
   CallSlot,
   ConversationId,
   EntryId,
+  JobName,
   PrincipalId,
   ScheduleId,
   SourceId,
@@ -20,6 +21,7 @@ import grit.core.id.{
   WorkflowId
 }
 import grit.core.inbox.{InboundId, Inbox, InboxError, Progress, Slotted}
+import grit.core.job.{InFlight, LastRun, Slot, Starting}
 import grit.core.message.Message
 import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
@@ -34,8 +36,8 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.dbos.sql.SqlEntryStore
-import grit.dbos.workflow.{Stitches, Triages, Turns}
+import grit.dbos.sql.{SqlEntryStore, SqlSchedules}
+import grit.dbos.workflow.{Runs, Stitches, Triages, Turns}
 
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
 import dev.dbos.transact.workflow.WorkflowState
@@ -54,9 +56,10 @@ final class SqlInbox(
     periods: PeriodStore,
     speech: SpeechStore,
     spending: Spending,
-    budget: Budget
+    budget: Budget,
+    schedules: SqlSchedules
 ) extends Inbox {
-  import SqlInbox.{Heard, Ingested}
+  import SqlInbox.{Begun, Heard, Ingested}
 
   def ingest(
       origin: Origin,
@@ -290,13 +293,136 @@ final class SqlInbox(
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
     enqueue(Turns.enqueueOptions(turn))
 
-  // No table keeps schedules yet, so there is nothing to start.
+  /** Decided in one transaction under the schedule's row lock, a run's workflow status read
+    * from DBOS inside it; a run it starts or restarts is enqueued after the commit, and again
+    * on the next call when that enqueue was lost (DBOS then does not know the run).
+    */
   def startSlot(
       schedule: ScheduleId,
       version: Option[Int],
       now: Instant
   ): Either[InboxError, Slotted] =
-    Left(InboxError.Unavailable("no schedules are kept"))
+    inTransaction {
+      schedules.held(schedule).flatMap {
+        case None => Right(Begun(Slotted.Idle, None, None))
+        case Some(waiting) =>
+          for {
+            flight <- waiting.last.flatMap((slot, running) => running.map(slot -> _)) match {
+              case None => Right(None)
+              case Some((slot, v)) =>
+                runOf(Slot(schedule, slot), waiting.job, v).map(turn => Some(turn -> v))
+            }
+            state <- flight.fold[Either[StoreError, Option[InFlight]]](Right(None)) { (turn, v) =>
+              inFlight(turn, v).map(Some(_))
+            }
+            last = waiting.last.map((slot, _) => LastRun(slot, state))
+            begun <- Starting.of(waiting.rule, waiting.next, last, version, now) match {
+              case Starting.Idle => Right(Begun(Slotted.Idle, None, None))
+              case Starting.Start(at, following, v, superseding) =>
+                val slot = Slot(schedule, at)
+                for {
+                  turn <- recordedRun(slot, waiting.job, v, now)
+                  opening <- openingOf(turn)
+                  _ <- schedules.started(slot, v, following)
+                } yield Begun(
+                  if (superseding) Slotted.Superseding(turn, slot) else Slotted.Started(turn, slot),
+                  Some(turn),
+                  opening
+                )
+              case Starting.Restart =>
+                flight match {
+                  case Some((turn, _)) => Right(Begun(Slotted.Restarted(turn), Some(turn), None))
+                  case None => Left(StoreError.Invalid("a run restarted, with none in flight"))
+                }
+              case Starting.Fail =>
+                last match {
+                  case Some(run) =>
+                    schedules
+                      .failed(schedule, now)
+                      .map(_ => Begun(Slotted.Failed(Slot(schedule, run.slot)), None, None))
+                  case None => Left(StoreError.Invalid("a run failed, with none started"))
+                }
+              case Starting.Miss(at) =>
+                schedules
+                  .missed(schedule, now)
+                  .map(_ => Begun(Slotted.Missed(Slot(schedule, at)), None, None))
+              case Starting.Passed(following) =>
+                schedules.passed(schedule, following, now).map(_ => Begun(Slotted.Idle, None, None))
+            }
+          } yield begun
+      }
+    }.flatMap { begun =>
+      // Enqueued after the commit, and again on a later call should this be lost: a workflow
+      // enqueued twice runs once. A run's opening is placed as any opening is, when its origin
+      // is one placed ([[Opening.of]]).
+      val placed = begun.opening.fold[Either[InboxError, Unit]](Right(()))(o =>
+        enqueue(Stitches.enqueueOptions(o))
+      )
+      placed
+        .flatMap(_ =>
+          begun.run.fold[Either[InboxError, Unit]](Right(()))(t => enqueue(Runs.enqueueOptions(t)))
+        )
+        .map(_ => begun.slotted)
+    }
+
+  /** The turn `slot`'s run at `version` was recorded as: `job`'s run, its opening's source
+    * [[Slot.source]] of its slot's conversation. Invalid when it is not recorded, which
+    * [[startSlot]] never leaves a schedule in.
+    */
+  private def runOf(slot: Slot, job: JobName, version: Int)(using
+      Tx^
+  ): Either[StoreError, TurnRef] =
+    conversations.find(slot.origin(job)).flatMap { found =>
+      found
+        .fold[Either[StoreError, Option[Entry]]](Right(None))(c =>
+          entries.get(InboundId.of(c.id, Slot.source(version)))
+        )
+        .flatMap(
+          _.map(e => TurnRef(e.conversationId, e.turnSeq))
+            .toRight(StoreError.Invalid(s"the run of ${slot.key} at v$version is not recorded"))
+        )
+    }
+
+  /** The state of `turn`, a run at `version` in flight: replied once its reply entry is kept;
+    * otherwise by its workflow's status, `Unknown` when DBOS has no workflow under its id.
+    */
+  private def inFlight(turn: TurnRef, version: Int)(using Tx^): Either[StoreError, InFlight] =
+    entries.get(turn.replyId).flatMap {
+      case Some(_) => Right(InFlight.Replied)
+      case None =>
+        try
+          Right(
+            Option(
+              client
+                .retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId))
+                .getStatus()
+            ).map(_.status()) match {
+              case None => InFlight.Unknown
+              case Some(state) if state.isActive() => InFlight.Going(version)
+              case Some(_) => InFlight.Failed
+            }
+          )
+        catch {
+          case NonFatal(e) =>
+            Left(StoreError.DatabaseError(Option(e.getMessage).getOrElse(e.toString)))
+        }
+    }
+
+  /** `slot`'s run at `version`, `job`'s, recorded in the transaction open as a new turn of its
+    * conversation (created by grit), opened at `at` by grit with [[Slot.opening]]; the turn
+    * recorded before when there is one.
+    */
+  private def recordedRun(slot: Slot, job: JobName, version: Int, at: Instant)(using
+      Tx^
+  ): Either[StoreError, TurnRef] =
+    recorded(
+      slot.origin(job),
+      Slot.source(version),
+      Payload.Message(slot.opening(job)),
+      PrincipalId.Grit,
+      at,
+      capped = false
+    ).flatMap(_.left.map(refused => StoreError.Invalid(s"a run refused: $refused")))
 
   /** Enqueues the workflow `options` names, with no arguments. */
   private def enqueue(options: EnqueueOptions): Either[InboxError, Unit] =
@@ -365,6 +491,15 @@ private[dbos] object SqlInbox {
     * opening, which is placed.
     */
   private final case class Ingested(turn: Either[InboxError, TurnRef], opening: Option[Opening])
+
+  /** What starting a slot did (`slotted`), and what it queues: the run `run`, enqueued, and its
+    * opening, placed.
+    */
+  private final case class Begun(
+      slotted: Slotted,
+      run: Option[TurnRef],
+      opening: Option[Opening]
+  )
 
   /** What a hearing recorded that is queued: the heard message as an opening, and its triage. */
   private final case class Heard(opening: Option[Opening], triage: Option[TriageRef])

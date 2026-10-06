@@ -186,13 +186,23 @@ final class Engine private (
   // dequeues for this executor's application by `application_name = 'grit' OR IS NULL`.
   private val client = new DBOSClient(dataSource)
 
+  private val sqlSchedules = new SqlSchedules(tombstones)
+
   val inbox: Inbox =
-    new SqlInbox(dataSource, client, conversations, entries, periods, speech, spending, budget)
+    new SqlInbox(
+      dataSource,
+      client,
+      conversations,
+      entries,
+      periods,
+      speech,
+      spending,
+      budget,
+      sqlSchedules
+    )
 
   /** Where each opening is placed, by the `stitch` workflow [[launch]] registers. */
   val placements: grit.core.stitch.Placements = new DbosPlacements(client)
-
-  private val sqlSchedules = new SqlSchedules(tombstones)
 
   /** Every job's schedules (ADR 0029), as the engine keeps them. */
   val schedules: ScheduleStore = sqlSchedules

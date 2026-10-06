@@ -2,7 +2,20 @@ package grit.core.inbox
 
 import java.time.{Instant, ZoneOffset}
 
-import grit.core.id.{CallSlot, ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{
+  CallSlot,
+  ConversationId,
+  Declarer,
+  PrincipalId,
+  ScheduleId,
+  ScheduleKey,
+  SourceId,
+  TurnRef,
+  TurnSeq
+}
+import grit.core.job.JobTests.{Count, Counting}
+import grit.core.job.ScheduleContract.hour
+import grit.core.job.{Declared, Ending, Schedule, Slot, SlotRule}
 import grit.core.message.{Cost, Message}
 import grit.core.period.{Period, PeriodState}
 import grit.core.speech.Reach
@@ -37,7 +50,102 @@ abstract class InboxContract extends TestSuite {
       .of(TurnRef(ConversationId("0190a000-0000-7000-8000-000000000001"), TurnSeq.First), 0, 1)
       .getOrElse(throw new java.lang.AssertionError("a slot at 0, 1 reads"))
 
+  private val remind = new Counting("remind")
+
+  /** A declared schedule of `remind`, keyed `key`, its slots `rule`. */
+  private def declared(key: String, rule: SlotRule): (Declarer, Declared[Count]) =
+    (
+      Declarer.Deployment,
+      Declared(ScheduleKey.of(key).fold(sys.error, identity), remind, rule, Count(1))
+    )
+
+  private def scheduled(key: String): ScheduleId =
+    ScheduleId.declared(Declarer.Deployment, ScheduleKey.of(key).fold(sys.error, identity))
+
+  /** When the slots below are due. */
+  private val Due = Instant.parse("2026-10-07T09:00:00Z")
+
+  /** A turn `started` names, and the slot. */
+  private def begun(started: Either[InboxError, Slotted]): (TurnRef, Slot) =
+    started match {
+      case Right(Slotted.Started(turn, slot)) => (turn, slot)
+      case other => throw new java.lang.AssertionError(s"not started: $other")
+    }
+
   val tests = Tests {
+    test(
+      "a due slot starts as its job's run: the first turn of its slot's conversation, opened with its opening, at that version's source; one not due, or never declared, is idle"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val now = Due.plusSeconds(60)
+        store.declare(
+          Vector(
+            declared("start-due", SlotRule.Once(Due, hour)),
+            declared("start-later", SlotRule.Once(Due.plusSeconds(3600), hour))
+          ),
+          Due
+        )
+        val slot = Slot(scheduled("start-due"), Due)
+        val origin = slot.origin(remind.name)
+        Vector("start-later", "never").map(k => inbox.startSlot(scheduled(k), Some(1), now)) ==>
+          Vector(Right(Slotted.Idle), Right(Slotted.Idle))
+        val (turn, started) = begun(inbox.startSlot(slot.schedule, Some(1), now))
+        (started, turn.turnSeq) ==> (slot, TurnSeq.First)
+        inbox.ingested(origin, SourceId("v1")) ==> Right(Some(turn))
+        store.written(origin) ==> Vector(
+          (Payload.Message(Message.User("Scheduled run of remind, due 2026-10-07 09:00 UTC")), None)
+        )
+        store.schedule(slot.schedule).map(_.ended) ==> Some(None)
+      }
+    }
+
+    test(
+      "a once slot more than its grace past is missed, with or without its job, and its schedule ends missed, never run"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        store.declare(
+          Vector(
+            declared("missed-job", SlotRule.Once(Due, hour)),
+            declared("missed-jobless", SlotRule.Once(Due, hour))
+          ),
+          Due
+        )
+        val late = Due.plusSeconds(3601)
+        val keys = Vector("missed-job", "missed-jobless")
+        keys.zip(Vector(Some(1), None)).map((k, v) => inbox.startSlot(scheduled(k), v, late)) ==>
+          keys.map(k => Right(Slotted.Missed(Slot(scheduled(k), Due))))
+        keys.map(k => store.schedule(scheduled(k)).flatMap(_.ended)) ==>
+          Vector(Some(Ending.Missed), Some(Ending.Missed))
+        keys.map(k => store.exists(Slot(scheduled(k), Due).origin(remind.name))) ==>
+          Vector(false, false)
+      }
+    }
+
+    test(
+      "a run that ended without a reply fails: a once schedule ends failed, a recurrence goes on to its next slot"
+    ) {
+      withInbox(Uncapped) { (inbox, store) =>
+        val daily = SlotRule.Daily(java.time.LocalTime.of(9, 0), ZoneOffset.UTC)
+        store.declare(
+          Vector(declared("fail-once", SlotRule.Once(Due, hour)), declared("fail-daily", daily)),
+          Due.minusSeconds(60)
+        )
+        val keys = Vector("fail-once", "fail-daily")
+        val turns = keys.map(k => begun(inbox.startSlot(scheduled(k), Some(1), Due))._1)
+        turns.foreach(store.end)
+        val after = Due.plusSeconds(60)
+        keys.map(k => inbox.startSlot(scheduled(k), Some(1), after)) ==>
+          keys.map(k => Right(Slotted.Failed(Slot(scheduled(k), Due))))
+        keys.map(k => store.schedule(scheduled(k)).flatMap(_.ended)) ==>
+          Vector(Some(Ending.Failed), None)
+        val mine = keys.map(scheduled).toSet
+        (
+          store.waiting(after).filter(mine),
+          store.waiting(Due.plusSeconds(86400)).filter(mine)
+        ) ==> (Vector(), Vector(scheduled("fail-daily")))
+      }
+    }
+
     test("ingested: the turn a message was recorded as; none for one never recorded") {
       withInbox(Uncapped) { (inbox, _) =>
         val here = Origin.Task("inbox", "ingested")
@@ -279,7 +387,10 @@ object InboxContract {
     * `periods`, an origin's conversation's periods, oldest first; `close` seals the period a
     * turn is in, its last turn that one; `enroll` names a person; `reached`, the reach kept
     * for each of an origin's conversation's entries, in order (none for one not heard);
-    * `postedBy`, the call an origin's conversation's opening post was made by.
+    * `postedBy`, the call an origin's conversation's opening post was made by; `declare` makes
+    * the declared schedules these, as of a time; `schedule`, one kept, as the store reads it;
+    * `waiting`, the schedules waiting at a time; `end` ends a run, which its job left, without a
+    * reply, and returns once it has.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -290,6 +401,10 @@ object InboxContract {
       close: TurnRef => Unit,
       enroll: (PrincipalId, String) => Unit,
       reached: Origin => Vector[Option[Reach]],
-      postedBy: Origin => Option[CallSlot]
+      postedBy: Origin => Option[CallSlot],
+      declare: (Vector[(Declarer, Declared[?])], Instant) => Unit,
+      schedule: ScheduleId => Option[Schedule],
+      waiting: Instant => Vector[ScheduleId],
+      end: TurnRef => Unit
   )
 }

@@ -92,7 +92,18 @@ object InMemoryInboxTests extends InboxContract {
         o =>
           inbox.conversations.all
             .find(_.origin == o)
-            .flatMap(c => inbox.conversations.posts.get(c.id))
+            .flatMap(c => inbox.conversations.posts.get(c.id)),
+        (declared, now) =>
+          inbox.schedules
+            .declare(declared, now)(using TestTx.fake)
+            .fold(e => sys.error(e.toString), identity),
+        id =>
+          inbox.schedules.read(id)(using TestTx.fake).fold(e => sys.error(e.toString), identity),
+        now =>
+          inbox.schedules
+            .waiting(now, 1000)(using TestTx.fake)
+            .fold(e => sys.error(e.toString), _.map(_._1)),
+        turn => inbox.finish(turn, None, "no job runs here")
       )
     )
   }

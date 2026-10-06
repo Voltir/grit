@@ -177,6 +177,69 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       case Some(row) => row.left.map(why => invalid(id, why)).map(Some(_))
     })
 
+  /** `id`'s job, its rule, its next slot, and the run it last started (its slot, and the
+    * version of that run while it is in flight), its row locked until the transaction ends;
+    * `None` when it is gone or has ended. What the inbox reads as it starts a slot.
+    */
+  private[dbos] def held(id: ScheduleId)(using
+      tx: Tx^
+  ): Either[StoreError, Option[SqlSchedules.Waiting]] =
+    many(
+      """SELECT job, rule, next_at, started_at, running FROM grit.schedules
+        | WHERE id = ? AND ended IS NULL FOR UPDATE""".stripMargin
+    )(_.setString(1, ScheduleId.value(id))) { rs =>
+      val started = Option(rs.getObject("started_at", classOf[OffsetDateTime])).map(_.toInstant)
+      val running = Option(rs.getObject("running", classOf[Integer])).map(_.intValue)
+      for {
+        job <- JobName.of(rs.getString("job"))
+        rule <- SlotRuleJson.read(ujson.read(rs.getString("rule")))
+        last <- (started, running) match {
+          case (Some(slot), flight) => Right(Some(slot -> flight))
+          case (None, None) => Right(None)
+          case (None, Some(v)) => Left(s"a run at v$v is in flight, of no slot")
+        }
+      } yield SqlSchedules.Waiting(
+        job,
+        rule,
+        Option(rs.getObject("next_at", classOf[OffsetDateTime])).map(_.toInstant),
+        last
+      )
+    }.flatMap(_.headOption match {
+      case None => Right(None)
+      case Some(row) => row.left.map(why => invalid(id, why)).map(Some(_))
+    })
+
+  /** `id`'s run in flight ended without a reply, at `at`: a once schedule ends
+    * [[Ending.Failed]]; a recurrence lets it go and keeps its next slot.
+    */
+  private[dbos] def failed(id: ScheduleId, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
+    many("UPDATE grit.schedules SET running = NULL WHERE id = ? RETURNING rule")(
+      _.setString(1, ScheduleId.value(id))
+    )(rs => SlotRuleJson.read(ujson.read(rs.getString(1)))).flatMap(_.headOption match {
+      case Some(Right(SlotRule.Once(_, _))) => end(id, Ending.Failed, at)
+      case Some(Left(why)) => Left(invalid(id, why))
+      case _ => Right(())
+    })
+
+  /** `id`'s once slot missed, at `at`: it ends [[Ending.Missed]]. */
+  private[dbos] def missed(id: ScheduleId, at: Instant)(using tx: Tx^): Either[StoreError, Unit] =
+    end(id, Ending.Missed, at)
+
+  /** `id`'s next slot was run already, as `Starting.Passed` says, at `at`: a once schedule ends
+    * [[Ending.Ran]]; a recurrence's next slot becomes `following`.
+    */
+  private[dbos] def passed(id: ScheduleId, following: Option[Instant], at: Instant)(using
+      tx: Tx^
+  ): Either[StoreError, Unit] =
+    many("UPDATE grit.schedules SET next_at = ? WHERE id = ? RETURNING rule") { ps =>
+      ps.setObject(1, following.map(utc).orNull)
+      ps.setString(2, ScheduleId.value(id))
+    }(rs => SlotRuleJson.read(ujson.read(rs.getString(1)))).flatMap(_.headOption match {
+      case Some(Right(SlotRule.Once(_, _))) => end(id, Ending.Ran, at)
+      case Some(Left(why)) => Left(invalid(id, why))
+      case _ => Right(())
+    })
+
   /** `slot`'s run started at `version`, its schedule's next slot `following`: what the inbox
     * writes as it starts one.
     */
@@ -444,6 +507,16 @@ private[dbos] object SqlSchedules {
 
   /** A stored schedule, and whether it was asked rather than declared. */
   private final case class Row(schedule: Schedule, asked: Boolean)
+
+  /** A pending schedule as the inbox starts it: its job and rule, its next slot, and the slot its
+    * last run started for, with that run's version while it is in flight.
+    */
+  final case class Waiting(
+      job: JobName,
+      rule: SlotRule,
+      next: Option[Instant],
+      last: Option[(Instant, Option[Int])]
+  )
 
   private def utc(at: Instant): OffsetDateTime = at.atOffset(ZoneOffset.UTC)
 

@@ -141,7 +141,20 @@ object SqlInboxContractTests extends InboxContract {
           close,
           enroll,
           reached,
-          postedBy
+          postedBy,
+          (declared, now) =>
+            engine.jot
+              .write(engine.schedules.declare(declared, now))
+              .fold(e => sys.error(e.toString), identity),
+          id =>
+            engine.db.read(engine.schedules.read(id)).fold(e => sys.error(e.toString), identity),
+          now =>
+            engine.db
+              .read(engine.schedules.waiting(now, 1000))
+              .fold(e => sys.error(e.toString), _.map(_._1)),
+          turn => {
+            val _ = engine.awaitTurn(turn)
+          }
         )
       )
     } finally engine.close()

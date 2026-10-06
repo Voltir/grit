@@ -100,7 +100,7 @@ trait Inbox extends caps.SharedCapability {
     *     without a reply, however it ended, has `Failed`; one whose start was lost is enqueued
     *     again; one at another version is superseded by a run at `version`, of the same slot
     *     or, for a recurrence with a later slot due, of the latest.
-    * A slot already started at `version` is never started again.
+    * A slot already started at `version` is never started again ([[grit.core.job.Starting]]).
     */
   def startSlot(
       schedule: ScheduleId,

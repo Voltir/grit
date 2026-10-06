@@ -243,7 +243,8 @@ object EngineLockTests extends TestSuite {
                 new SqlPeriodStore(entries),
                 new grit.dbos.sql.SqlSpeechStore,
                 new grit.dbos.sql.SqlUsageLedger(),
-                LiveEngine.Uncapped
+                LiveEngine.Uncapped,
+                new grit.dbos.sql.SqlSchedules(new grit.dbos.sql.SqlTombstones)
               ),
               "after"
             )

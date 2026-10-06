@@ -49,6 +49,49 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
       _.map(_.copy(next = following, started = Some(slot.nominal), running = Some(version)))
     )
 
+  /** `id`'s job, rule, next slot, and the run it last started (its slot, and its version while
+    * in flight); `None` when it is gone or has ended: as the SQL store reads a schedule it starts.
+    */
+  def held(
+      id: ScheduleId
+  ): Option[(JobName, SlotRule, Option[Instant], Option[(Instant, Option[Int])])] =
+    rows
+      .get(id)
+      .filter(_.ended.isEmpty)
+      .map(r => (r.job, r.rule, r.next, r.started.map(_ -> r.running)))
+
+  /** `id`'s run in flight ended without a reply, at `at`: a once schedule ends failed; a
+    * recurrence lets it go and keeps its next slot.
+    */
+  def failed(id: ScheduleId, at: Instant): Either[StoreError, Unit] =
+    rows.get(id) match {
+      case Some(r) =>
+        rows = rows.updated(id, r.copy(running = None))
+        r.rule match {
+          case SlotRule.Once(_, _) => end(id, Ending.Failed, at)(using TestTx.fake)
+          case _ => Right(())
+        }
+      case None => Right(())
+    }
+
+  /** `id`'s once slot missed, at `at`. */
+  def missed(id: ScheduleId, at: Instant): Either[StoreError, Unit] =
+    end(id, Ending.Missed, at)(using TestTx.fake)
+
+  /** `id`'s next slot was run already, at `at`: a once schedule ends ran; a recurrence's next
+    * slot becomes `following`.
+    */
+  def passed(id: ScheduleId, following: Option[Instant], at: Instant): Either[StoreError, Unit] =
+    rows.get(id) match {
+      case Some(r) =>
+        rows = rows.updated(id, r.copy(next = following))
+        r.rule match {
+          case SlotRule.Once(_, _) => end(id, Ending.Ran, at)(using TestTx.fake)
+          case _ => Right(())
+        }
+      case None => Right(())
+    }
+
   def declare(declared: Vector[(Declarer, Declared[?])], now: Instant)(using
       Tx^
   ): Either[StoreError, Unit] = {

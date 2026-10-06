@@ -27,6 +27,8 @@ enum Slotted {
 
   /** Nothing to do: the schedule is ended, gone, or not due yet; its run is going at the
     * current version; or its job is not the deployment's and its once slot is within its grace.
+    * Also a once schedule whose slot already ran (declared again after its run replied while
+    * it was undeclared): it ends `ran` ([[grit.core.job.Starting.Passed]]).
     */
   case Idle
 }

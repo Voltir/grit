@@ -3,7 +3,17 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, PrincipalId, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{
+  CallSlot,
+  JobName,
+  PrincipalId,
+  ScheduleId,
+  SourceId,
+  ToolCallId,
+  TurnRef,
+  WorkflowId
+}
+import grit.core.job.{InFlight, InMemorySchedules, LastRun, Slot, Starting}
 import grit.core.message.Message
 import grit.core.speech.{InMemorySpeechStore, Reach}
 import grit.core.spend.Budget
@@ -36,6 +46,9 @@ final class InMemoryInbox(
 
   /** The conversations' periods, over [[entries]]. */
   val periods: InMemoryPeriodStore = new InMemoryPeriodStore(entries)
+
+  /** The schedules whose slots [[startSlot]] starts. */
+  val schedules: InMemorySchedules = new InMemorySchedules()
 
   /** Where each heard message could be answered, over [[entries]] and [[ledger]]. */
   val speech: InMemorySpeechStore = new InMemorySpeechStore(entries, ledger)
@@ -235,13 +248,89 @@ final class InMemoryInbox(
   def progress(turn: TurnRef): Either[InboxError, Progress] =
     if (down) unavailable else Right(finished.getOrElse(turn, Progress.Open))
 
-  // As the SQL inbox: no schedules are kept.
+  /** As the SQL inbox decides, over [[schedules]]: a run is in flight while it is started and
+    * not finished ([[finish]]), and replied when it finished with a reply.
+    */
   def startSlot(
       schedule: ScheduleId,
       version: Option[Int],
       now: Instant
   ): Either[InboxError, Slotted] =
-    Left(InboxError.Unavailable("no schedules are kept"))
+    if (down) unavailable
+    else
+      schedules.held(schedule) match {
+        case None => Right(Slotted.Idle)
+        case Some((job, rule, next, last)) =>
+          val flight = last.flatMap((slot, running) => running.map(slot -> _)).map { (slot, v) =>
+            val turn = runOf(Slot(schedule, slot), job, v)
+            val state = turn match {
+              case None => InFlight.Unknown
+              case Some(t) =>
+                finished.get(t) match {
+                  case Some(done) => done.reply.fold(InFlight.Failed)(_ => InFlight.Replied)
+                  case None if started.contains(t) => InFlight.Going(v)
+                  case None => InFlight.Unknown
+                }
+            }
+            (turn, state)
+          }
+          val stored = (e: Either[StoreError, Unit]) =>
+            e.left.map(x => InboxError.Unavailable(x.toString))
+          Starting.of(
+            rule,
+            next,
+            last.map((slot, _) => LastRun(slot, flight.map(_._2))),
+            version,
+            now
+          ) match {
+            case Starting.Idle => Right(Slotted.Idle)
+            case Starting.Start(at, following, v, superseding) =>
+              val slot = Slot(schedule, at)
+              recorded(
+                slot.origin(job),
+                Slot.source(v),
+                Payload.Message(slot.opening(job)),
+                PrincipalId.Grit,
+                now,
+                capped = false
+              )
+                .map { turn =>
+                  schedules.start(slot, v, following)
+                  if (!started.contains(turn)) started = started :+ turn
+                  if (superseding) Slotted.Superseding(turn, slot) else Slotted.Started(turn, slot)
+                }
+            case Starting.Restart =>
+              flight.flatMap(_._1) match {
+                case Some(turn) =>
+                  if (!started.contains(turn)) started = started :+ turn
+                  Right(Slotted.Restarted(turn))
+                case None => Left(InboxError.Unavailable("a run restarted, with none recorded"))
+              }
+            case Starting.Fail =>
+              last match {
+                case Some((slot, _)) =>
+                  stored(schedules.failed(schedule, now))
+                    .map(_ => Slotted.Failed(Slot(schedule, slot)))
+                case None => Left(InboxError.Unavailable("a run failed, with none started"))
+              }
+            case Starting.Miss(at) =>
+              stored(schedules.missed(schedule, now)).map(_ => Slotted.Missed(Slot(schedule, at)))
+            case Starting.Passed(following) =>
+              stored(schedules.passed(schedule, following, now)).map(_ => Slotted.Idle)
+          }
+      }
+
+  /** The turn `slot`'s run at `version`, `job`'s, was recorded as; `None` when it was not. */
+  private def runOf(slot: Slot, job: JobName, version: Int): Option[TurnRef] =
+    inTx {
+      conversations.all.find(_.origin == slot.origin(job)).flatMap { c =>
+        entries
+          .get(InboundId.of(c.id, Slot.source(version)))
+          .toOption
+          .flatten
+          .map(e => TurnRef(e.conversationId, e.turnSeq))
+      }
+    }
 
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
     if (down) unavailable
