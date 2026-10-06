@@ -1,10 +1,7 @@
 package grit.core.durable
 
-import java.nio.file.Files
-
-import dotty.tools.dotc.Driver
-import dotty.tools.dotc.reporting.StoreReporter
 import utest.*
+import Probes.{classpath, options}
 
 /** What separation checking rejects about [[Durable]] (ADR 0003), pinned by compiling
   * probe sources against core with core's own flags. `assertCompileError` cannot do this: it
@@ -14,9 +11,6 @@ import utest.*
   * upgrade can change what it rejects silently; this suite is re-read at each Scala bump.
   */
 object SeparationTests extends TestSuite {
-
-  private val classpath = sys.env.getOrElse("GRIT_PROBE_CLASSPATH", "")
-  private val options = sys.env.getOrElse("GRIT_PROBE_OPTIONS", "").split(" ").toList
 
   private val prelude =
     """package probe
@@ -28,18 +22,8 @@ object SeparationTests extends TestSuite {
       |""".stripMargin
 
   /** The error messages from compiling `body` inside `object Probe`. */
-  private def errors(body: String, flags: List[String] = options): List[String] = {
-    val dir = Files.createTempDirectory("grit-probe")
-    try {
-      val source = Files.writeString(dir.resolve("Probe.scala"), prelude + body + "\n}\n")
-      val args = flags ++ List("-classpath", classpath, "-d", dir.toString, source.toString)
-      // The compiler only reads the array; separation checking treats any array as mutable.
-      val argv = caps.unsafe.unsafeAssumePure(args.toArray)
-      new Driver().process(argv, StoreReporter(), null).allErrors.map(_.message)
-    } finally {
-      Files.walk(dir).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
-    }
-  }
+  private def errors(body: String, flags: List[String] = options): List[String] =
+    Probes.errors(prelude + body + "\n}\n", flags)
 
   private val nested =
     """def f(p: Provider^)(using d: Durable^): String =

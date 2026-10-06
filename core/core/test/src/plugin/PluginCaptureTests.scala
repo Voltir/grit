@@ -1,9 +1,8 @@
 package grit.core.plugin
 
-import java.nio.file.Files
+import grit.core.durable.Probes
+import grit.core.durable.Probes.{classpath, erased, flowsInto, heldImpure, options}
 
-import dotty.tools.dotc.Driver
-import dotty.tools.dotc.reporting.StoreReporter
 import utest.*
 
 /** What capture checking rejects about a plugin (ADR 0027): a plugin, its tools' runs and the
@@ -13,9 +12,6 @@ import utest.*
   * cannot see capture errors (docs/capture-checking.md).
   */
 object PluginCaptureTests extends TestSuite {
-
-  private val classpath = sys.env.getOrElse("GRIT_PROBE_CLASSPATH", "")
-  private val options = sys.env.getOrElse("GRIT_PROBE_OPTIONS", "").split(" ").toList
 
   private val prelude =
     """package probe
@@ -64,27 +60,7 @@ object PluginCaptureTests extends TestSuite {
 
   /** The error messages from compiling `body` after the prelude. */
   private def errors(body: String, flags: List[String] = options): List[String] =
-    compile(prelude + body + "\n", flags)
-
-  /** `source` with its capture sets erased, as code written without capture checking. */
-  private def erased(source: String): String =
-    source
-      .replaceAll("Toolbox\\[\\{[^}]*\\}\\]", "Toolbox[?]")
-      .replaceAll("\\^\\{[^}]*\\}", "")
-      .replace("^", "")
-
-  private def compile(code: String, flags: List[String]): List[String] = {
-    val dir = Files.createTempDirectory("grit-plugin-probe")
-    try {
-      val source = Files.writeString(dir.resolve("Probe.scala"), code)
-      val args = flags ++ List("-classpath", classpath, "-d", dir.toString, source.toString)
-      // The compiler only reads the array; separation checking treats any array as mutable.
-      val argv = caps.unsafe.unsafeAssumePure(args.toArray)
-      new Driver().process(argv, StoreReporter(), null).allErrors.map(_.message)
-    } finally {
-      Files.walk(dir).sorted(java.util.Comparator.reverseOrder()).forEach(Files.delete)
-    }
-  }
+    Probes.errors(prelude + body + "\n", flags)
 
   /** A plugin holding a store it was built with. */
   private val holdsDb =
@@ -158,14 +134,6 @@ object PluginCaptureTests extends TestSuite {
       |    })
       |}
       |""".stripMargin
-
-  /** Whether `errs` reject a class for holding a capability its pure self type excludes. */
-  private def heldImpure(errs: List[String]): Boolean =
-    errs.exists(_.contains("is not included in the allowed capture set {} of the self type"))
-
-  /** Whether `errs` reject a capability flowing into a capture set that may not hold it. */
-  private def flowsInto(set: String)(errs: List[String]): Boolean =
-    errs.exists(_.contains(s"cannot flow into capture set $set"))
 
   private val breaches: Vector[String] = Vector(
     holdsDb,
@@ -242,7 +210,7 @@ object PluginCaptureTests extends TestSuite {
 
     test("capture checking is what rejects each breach") {
       val flags = options.filterNot(_.startsWith("-language:experimental."))
-      val errs = compile(erased(prelude + breaches.mkString("\n") + "\n"), flags)
+      val errs = Probes.errors(erased(prelude + breaches.mkString("\n") + "\n"), flags)
       assert(errs.isEmpty)
     }
   }

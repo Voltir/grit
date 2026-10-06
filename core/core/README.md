@@ -237,7 +237,7 @@ The test tree mirrors it: the in-memory fakes other modules' tests use are
 `store.InMemoryEntryStore`, `store.InMemoryUsageLedger`, `store.InMemoryModelProfileStore`,
 `store.InMemoryPeriodStore`, `store.InMemoryLifecycleStore`, `store.InMemoryVoiceStore`, `recipe.InMemoryRoomReads`, `plugin.InMemoryPlugins`, `job.InMemorySchedules` (with each plugin's desk), `document.InMemoryDocuments` (which owns the `store.InMemoryTombstones` its keepers mark) and
 `durable.InMemoryDurable`; `period.TestClosings` builds closings and balance lines,
-`id.TestCallSlots` the tool calls a test's tool is told, and `clock.SetClock` is a clock a test
-moves.
+`id.TestCallSlots` the tool calls a test's tool is told, `clock.SetClock` is a clock a test
+moves, and `durable.Probes` compiles the probe sources of core's capture and separation suites.
 `TestTx` lives in package `grit.dbos.sql`, because the `null` it holds is legal only inside
 the DBOS quarantine (rule 6).
