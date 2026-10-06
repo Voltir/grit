@@ -52,7 +52,7 @@ object About {
 
   /** The tool answering from `docs`, one for each subject, the overview after `who`. */
   private def tool(docs: Map[Subject, String], who: String): Tool[Option[Subject]] =
-    new Tool(
+    Tool(
       ToolSpec(
         Name,
         "Who you are, and what grit, the harness you run on, is and how it works: the name " +

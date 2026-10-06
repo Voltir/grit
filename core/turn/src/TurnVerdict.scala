@@ -128,7 +128,7 @@ object TurnVerdict {
     * read from the reply's call, not from running it ([[of]]).
     */
   def tool(c: TurnTopics.Classification): Tool[Verdict] =
-    new Tool(topic(c), Gate.Free, shown, _ => Outcome.Done(Noted))
+    Tool(topic(c), Gate.Free, shown, _ => Outcome.Done(Noted))
 
   /** `verdict` as a transcript shows a `topic` call that gave it. */
   private def shown(verdict: Verdict): String = verdict match {

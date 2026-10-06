@@ -418,11 +418,11 @@ object TurnFixtures {
 
   /** A free tool: `peek` reads a file of `ws`. */
   def peek(ws: Workspace^): Tool[String]^{ws} =
-    new Tool(ToolSpec(ToolName("peek"), "Reads a file.", path), Gate.Free, p => p, reading(ws, _))
+    Tool(ToolSpec(ToolName("peek"), "Reads a file.", path), Gate.Free, p => p, reading(ws, _))
 
   /** A gated tool, for the tests alone: `poke` reads a file of `ws` once a person approves. */
   def poke(ws: Workspace^): Tool[String]^{ws} =
-    new Tool(
+    Tool(
       ToolSpec(ToolName("poke"), "Reads a file, asking first.", path),
       Gate.Ask(p => s"poke $p"),
       p => p,

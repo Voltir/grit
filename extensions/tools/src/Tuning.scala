@@ -16,7 +16,7 @@ object Tuning {
 
   /** `propose_model_setting`, keeping in `book` what a person approves. */
   def propose(book: ModelSettings^): Tool[ModelSetting]^{book} =
-    new Tool(
+    Tool(
       ToolSpec(
         Name,
         "Propose one measured setting of a model served by one upstream, kept once " +

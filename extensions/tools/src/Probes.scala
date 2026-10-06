@@ -29,7 +29,7 @@ object Probes {
 
   /** `probe_pair`, calling each pair it probes through `models`. */
   def probe(models: Models^): Tool[ProbeArgs]^{models} =
-    new Tool(
+    Tool(
       ToolSpec(
         Name,
         s"Measure how a model behaves at one upstream, over `runs` runs (1 to $MaxRuns) of " +

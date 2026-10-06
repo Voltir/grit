@@ -8,7 +8,8 @@ import utest.*
 
 /** What capture checking rejects about a [[Tool]]'s power, pinned by compiling probe sources
   * against core with core's own flags: a tool or toolbox typed as acting only through a
-  * [[grit.core.host.Workspace]] cannot hold one that edits. `assertCompileError` cannot see
+  * [[grit.core.host.Workspace]] cannot hold one that edits, whether or not its run is told its
+  * call ([[Hosted.calling]]). `assertCompileError` cannot see
   * capture errors (docs/capture-checking.md); the pattern is
   * `grit.core.durable.SeparationTests`.
   */
@@ -24,9 +25,9 @@ object ToolCaptureTests extends TestSuite {
       |object Probe {
       |  val spec: ToolSpec[String] = ToolSpec(ToolName("probe"), "A probe.", Args.of((path = Field.text("A path."))).map(_.path))
       |  def reads(ws: Workspace^): Tool[String]^{ws} =
-      |    new Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(ws.read(_, Lines.All)).fold(e => Outcome.Failed(e.toString), c => Outcome.Done(c.show)))
+      |    Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(ws.read(_, Lines.All)).fold(e => Outcome.Failed(e.toString), c => Outcome.Done(c.show)))
       |  def writes(e: Edits^): Tool[String]^{e} =
-      |    new Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(e.write(_, "x")).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok")))
+      |    Tool(spec, Gate.Free, p => p, p => RelPath.of(p).flatMap(e.write(_, "x")).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok")))
       |""".stripMargin
 
   /** The error messages from compiling `body` inside `object Probe`. */
@@ -59,6 +60,16 @@ object ToolCaptureTests extends TestSuite {
       |  Toolbox.of(reads(ws), writes(e))
       |""".stripMargin
 
+  /** A toolbox of the store handed a tool, told its call, whose run also edits. */
+  private val toldEdits =
+    """def told(store: Workspace^, e: Edits^): Either[DuplicateName, Toolbox[{store}]] =
+      |  Toolbox.of(new Hosted(spec, Gate.Free, p => p).calling((p, at) => { val _ = RelPath.of(p).map(e.write(_, at.key)); reads(store); Outcome.Done(at.key) }))
+      |""".stripMargin
+
+  /** Whether `errs` reject a capability flowing into a capture set that may not hold it. */
+  private def flowsInto(set: String)(errs: List[String]): Boolean =
+    errs.exists(_.contains(s"cannot flow into capture set $set"))
+
   private def rejected(errs: List[String]): Boolean =
     errs.exists(e => e.contains("Found:") && e.contains("Required:"))
 
@@ -72,6 +83,8 @@ object ToolCaptureTests extends TestSuite {
         """def readOnly(ws: Workspace^): Either[DuplicateName, Toolbox[{ws}]] = Toolbox.of(reads(ws))
           |def all(ws: Workspace^, e: Edits^): Either[DuplicateName, Toolbox[{ws, e}]] =
           |  Toolbox.of(reads(ws), writes(e))
+          |def told(store: Workspace^): Either[DuplicateName, Toolbox[{store}]] =
+          |  Toolbox.of(new Hosted(spec, Gate.Free, p => p).calling((p, at) => { reads(store); Outcome.Done(at.key) }))
           |""".stripMargin
       )
       assert(errs.isEmpty)
@@ -84,15 +97,19 @@ object ToolCaptureTests extends TestSuite {
     test("a tool typed as reading that edits is rejected") {
       val errs = errors(
         """def sneaky(ws: Workspace^, e: Edits^): Tool[String]^{ws} =
-          |  new Tool(spec, Gate.Free, p => p, p => { writes(e); reads(ws); Outcome.Done(p) })
+          |  Tool(spec, Gate.Free, p => p, p => { writes(e); reads(ws); Outcome.Done(p) })
           |""".stripMargin
       )
       assert(rejected(errs))
     }
 
-    test("capture checking is what rejects the smuggled tool") {
+    test("a store's toolbox holding a tool, told its call, whose run edits is rejected") {
+      assert(flowsInto("{store}")(errors(toldEdits)))
+    }
+
+    test("capture checking is what rejects the smuggled tools") {
       val flags = options.filterNot(_.startsWith("-language:experimental."))
-      val errs = compile(erased(prelude + smuggled + "\n}\n"), flags)
+      val errs = compile(erased(prelude + smuggled + toldEdits + "\n}\n"), flags)
       assert(errs.isEmpty)
     }
   }

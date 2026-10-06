@@ -37,7 +37,7 @@ object TurnTallyTests extends TestSuite {
 
   /** A free tool that answers without reading anything. */
   private val glance: Tool[String] =
-    new Tool(
+    Tool(
       ToolSpec(
         ToolName("glance"),
         "Glances at a file.",

@@ -1,5 +1,6 @@
 package grit.core.tool
 
+import grit.core.id.CallSlot
 import grit.core.message.AssistantBlock
 import grit.core.model.ArgRepair
 import grit.core.provider.ToolSchema
@@ -8,13 +9,14 @@ import grit.core.provider.ToolSchema
   * approves each call, how a call is shown, and what it does. `shown` is what a call acts
   * on, as a transcript shows it after the tool's name ([[Bound.shown]]). `run` captures the
   * capabilities it acts through, so a `Tool[A]^{ws}` can do only what `ws` allows. `run`
-  * never throws: every failure is an [[Outcome]].
+  * never throws: every failure is an [[Outcome]]. A tool whose run is told which call it is
+  * comes from [[Hosted.calling]].
   */
-final class Tool[A](
+final class Tool[A] private[tool] (
     val spec: ToolSpec[A],
     val gate: Gate[A],
     shown: A -> String,
-    run: A => Outcome
+    run: (A, CallSlot) => Outcome
 ) extends Tool.Offered {
 
   def name: ToolName = spec.name
@@ -38,14 +40,25 @@ final class Tool[A](
       case Right(args) =>
         val line = Bound.line(spec.name, shown(args))
         Right(gate match {
-          case Gate.Free => new Bound.Free(spec.name, line, () => run(args))
+          case Gate.Free => new Bound.Free(spec.name, line, at => run(args, at))
           case Gate.Ask(describe) =>
-            new Bound.Gated(spec.name, line, describe(args), () => run(args))
+            new Bound.Gated(spec.name, line, describe(args), at => run(args, at))
         })
     }
 }
 
 object Tool {
+
+  /** A tool of `spec` and `gate`, a call shown by `shown`, run by `run`, which is not told the
+    * call it runs.
+    */
+  def apply[A](
+      spec: ToolSpec[A],
+      gate: Gate[A],
+      shown: A -> String,
+      run: A => Outcome
+  ): Tool[A]^{run} =
+    new Tool(spec, gate, shown, (args: A, _: CallSlot) => run(args))
 
   /** A stand-in for `entry`, a tool a turn recorded that this build no longer has: offered
     * under its recorded name and schema, asking first when it did, so a replayed turn takes
@@ -59,7 +72,7 @@ object Tool {
       if (entry.asks)
         Gate.Ask(_ => s"${ToolName.value(entry.name)} is gone: approving it runs nothing.")
       else Gate.Free
-    new Tool[ujson.Value](spec, gate, _ => "", _ => goneOutcome)
+    Tool[ujson.Value](spec, gate, _ => "", _ => goneOutcome)
   }
 
   /** A tool whatever its arguments' type, as a [[Toolbox]] holds it. */
@@ -98,7 +111,10 @@ final class Hosted[A](val spec: ToolSpec[A], val gate: Gate[A], shown: A -> Stri
     ToolSet.Entry(spec.name, spec.does, spec.args.schema(false), gate != Gate.Free, spec.retry)
 
   /** This tool, run by `run`. */
-  def over(run: A => Outcome): Tool[A]^{run} = new Tool(spec, gate, shown, run)
+  def over(run: A => Outcome): Tool[A]^{run} = Tool(spec, gate, shown, run)
+
+  /** This tool, run by `run`, which is told the call it runs. */
+  def calling(run: (A, CallSlot) => Outcome): Tool[A]^{run} = new Tool(spec, gate, shown, run)
 
   private[tool] def bind(
       call: AssistantBlock.ToolCall,

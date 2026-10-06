@@ -11,10 +11,10 @@ import grit.core.tool.{Bound, CallError, Outcome, Repairs, ToolName, Toolbox}
 object Run {
 
   /** `request` run by `tools`: its arguments read under its repairs, then run, free or
-    * approved as its permit says. [[Outcome.Failed]] when this edge is too old for its
-    * protocol, when no tool here has its name or its arguments do not read, or when its
-    * permit does not match the tool's gate (a free permit for a tool that asks first, or the
-    * reverse).
+    * approved as its permit says, its tool told that it is the call at the request's slot.
+    * [[Outcome.Failed]] when this edge is too old for its protocol, when no tool here has its
+    * name or its arguments do not read, or when its permit does not match the tool's gate (a
+    * free permit for a tool that asks first, or the reverse).
     */
   def request[C^](request: ToolRequest, tools: Toolbox[C]): Outcome =
     if (request.protocol > ToolRequest.Protocol)
@@ -30,13 +30,13 @@ object Run {
       bound match {
         case Left(error) => error.outcome
         case Right(free: Bound.Free) =>
-          if (request.permit == Permit.Free) free()
+          if (request.permit == Permit.Free) free(request.slot)
           else
             Outcome.Failed(
               s"${ToolName.value(request.tool)} does not ask first here; it did not run."
             )
         case Right(gated: Bound.Gated) =>
-          if (request.permit == Permit.Approved) gated(Approval.Approved)
+          if (request.permit == Permit.Approved) gated(Approval.Approved, request.slot)
           else Outcome.Failed(s"${ToolName.value(request.tool)} asks first here; it did not run.")
         case Right(_: Bound.Hosted) =>
           Outcome.Failed(s"${ToolName.value(request.tool)} is not run here; it did not run.")

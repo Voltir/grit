@@ -100,7 +100,7 @@ object TurnHosted {
     val shown = hosted.shown
     val outcome: Either[TurnFailure, Waited] = hosted.ask match {
       case None =>
-        callSlot(slot).map(cs =>
+        slot.callSlot.map(cs =>
           if (sent) awaited(hosting, cs, slot, place) else Waited.Known(unserved(place))
         )
       case Some(shown) =>
@@ -112,7 +112,7 @@ object TurnHosted {
               case Approval.TimedOut => Right(Waited.Known(Outcome.Unanswered))
               case Approval.Approved =>
                 for {
-                  cs <- callSlot(slot)
+                  cs <- slot.callSlot
                   to <- place.toRight(TurnFailure.Store(s"$named has no workspace to go to"))
                   one <- request(slot.turn, slot.round, slot.index, hosted, to, Permit.Approved)
                   went <- d.transact(TurnHostedSteps.dispatchOne(slot))(
@@ -218,11 +218,6 @@ object TurnHosted {
 
   private def standing(state: Either[StoreError, RequestState]): Either[TurnFailure, RequestState] =
     state.left.map(e => TurnFailure.Store(e.toString))
-
-  private def callSlot(slot: TurnTools.Slot): Either[TurnFailure, CallSlot] =
-    CallSlot
-      .of(slot.turn, slot.round.index, slot.index)
-      .toRight(TurnFailure.Store(s"no call at round ${slot.round.index}, index ${slot.index}"))
 
   private def request(
       turn: TurnRef,

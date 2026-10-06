@@ -10,13 +10,17 @@ import grit.core.clock.Clock
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentKeeper, DocumentTerms}
 import grit.core.durable.Durable
 import grit.core.id.{
+  CallSlot,
   CloseRef,
+  ConversationId,
   DocKey,
   PeriodRef,
   PeriodSeq,
   PluginName,
   SourceId,
   ToolCallId,
+  TurnRef,
+  TurnSeq,
   WorkflowId
 }
 import grit.core.message.{AssistantBlock, Message}
@@ -186,7 +190,11 @@ object PluginLiveTests extends TestSuite {
           Repairs.All
         ) match {
           case Right(free: Bound.Free) =>
-            free() ==> Outcome.Done(
+            free(
+              CallSlot
+                .of(TurnRef(ConversationId("c"), TurnSeq.First), 0, 0)
+                .getOrElse(sys.error("a slot"))
+            ) ==> Outcome.Done(
               "2026-09-22 10:00 · tui plugins · resolved · Period 2.\n" +
                 "2026-09-21 10:00 · tui plugins · resolved · Period 1."
             )

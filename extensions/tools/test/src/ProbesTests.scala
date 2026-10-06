@@ -1,7 +1,7 @@
 package grit.tools
 
 import grit.core.approval.Approval
-import grit.core.id.ToolCallId
+import grit.core.id.{CallSlot, ConversationId, ToolCallId, TurnRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Catalog, Pinned}
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
@@ -10,6 +10,11 @@ import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
 import utest.*
 
 object ProbesTests extends TestSuite {
+
+  /** The call each test's tool is run as. */
+  private val slot: CallSlot = CallSlot
+    .of(TurnRef(ConversationId("c"), TurnSeq.First), 0, 0)
+    .getOrElse(throw new java.lang.AssertionError("a slot"))
 
   private def reply(blocks: AssistantBlock*): Message.Assistant =
     Message.Assistant(
@@ -79,7 +84,7 @@ object ProbesTests extends TestSuite {
           gated.ask ==> "Probe deepseek/deepseek-v4.1-flash-20260910 @ fireworks: 2 runs, " +
             "about 8 model calls at up to 300 output tokens each."
           provider.requests ==> Vector.empty
-          gated(Approval.Approved) ==> Outcome.Done(
+          gated(Approval.Approved, slot) ==> Outcome.Done(
             """Probed deepseek/deepseek-v4.1-flash-20260910 @ fireworks, 2 runs:
               |- strict: a value off the schema's list came back in 2 of 2 answered runs → propose strict = ignored, held 2 of 2.
               |- names: a tool name carried `<|` in 2 of 2 answered runs → propose names = harmony-cut, held 2 of 2.
@@ -110,7 +115,7 @@ object ProbesTests extends TestSuite {
         .fold(d => sys.error(d.toString), identity)
       box.bind(AssistantBlock.ToolCall(ToolCallId("c1"), "probe_pair", args), Repairs.All) match {
         case Right(gated: Bound.Gated) =>
-          gated(Approval.Approved) ==> Outcome.Failed(
+          gated(Approval.Approved, slot) ==> Outcome.Failed(
             "No check was answered in 2 runs; the last error: HTTP 503"
           )
         case other => sys.error(s"not gated: $other")
@@ -134,7 +139,7 @@ object ProbesTests extends TestSuite {
       val one = ujson.Obj("model" -> "x/plain", "runs" -> 1)
       box.bind(AssistantBlock.ToolCall(ToolCallId("c1"), "probe_pair", one), Repairs.All) match {
         case Right(gated: Bound.Gated) =>
-          gated(Approval.Approved) ==> Outcome.Done(
+          gated(Approval.Approved, slot) ==> Outcome.Done(
             """Probed x/plain, 1 runs:
               |- strict: not answered in 1 runs.
               |- names: a tool name carried `<|` in 0 of 1 answered runs → propose names = as-sent, held 1 of 1.

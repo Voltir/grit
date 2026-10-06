@@ -188,7 +188,7 @@ In dependency order:
   `Retry` (whether a call cut short is run again or answered `Interrupted`), `ToolSet`
   (a turn's tools as recorded, by content id) and `ToolSets` (where each is kept), `Toolbox` (the tools offered on one call, which `bind` a
   call to a `Bound` or a `CallError`: `Bound.Free` runs, `Bound.Gated` runs only given an
-  `Approval`), `Repairs` (what of a call is repaired before it is read, as the pair's
+  `Approval`, each told the `CallSlot` it runs as, which a tool made by `Hosted.calling` reads), `Repairs` (what of a call is repaired before it is read, as the pair's
   settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
   `message`, `model`, `store`, `provider`, `approval`
 

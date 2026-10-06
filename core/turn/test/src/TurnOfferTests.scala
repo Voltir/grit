@@ -8,6 +8,7 @@ import grit.core.classify.Answer
 import grit.core.context.Width
 import grit.core.edge.InMemoryEdges
 import grit.core.id.{
+  CallSlot,
   ConversationId,
   EntryId,
   EntrySeq,
@@ -116,7 +117,7 @@ object TurnOfferTests extends TestSuite {
 
   /** A tool named `name` that says `name` back, asking first when `asks`. */
   private def tool(name: ToolName, asks: Boolean): Tool[String] =
-    new Tool(
+    Tool(
       ToolSpec(
         name,
         s"Says ${ToolName.value(name)}.",
@@ -482,7 +483,11 @@ object TurnOfferTests extends TestSuite {
           Repairs.All
         ) match {
           case Right(h: Bound.Hosted) => s"hosted ${h.shown}"
-          case Right(f: Bound.Free) => s"free ${f()}"
+          case Right(f: Bound.Free) =>
+            val at = CallSlot
+              .of(TurnRef(ConversationId("c"), TurnSeq.First), 0, 0)
+              .getOrElse(throw new java.lang.AssertionError())
+            s"free ${f(at)}"
           case other => other.toString
         }
       Vector("github_search", "github_issue").map(bound) ==> Vector(

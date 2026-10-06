@@ -5,7 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.core.approval.Approval
-import grit.core.id.{EntryId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.store.{Entry, EntryStore, Jot, Payload, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
@@ -44,6 +44,14 @@ object TurnTools {
 
     /** The id of the entry asking a person about the call, a gated one. */
     def askId: EntryId = EntryId(s"ask:$key")
+
+    /** The call as its tool is told it ([[grit.core.tool.Bound.Free.apply]]); `Left` when
+      * `index` is negative.
+      */
+    def callSlot: Either[TurnFailure, CallSlot] =
+      CallSlot
+        .of(turn, round.index, index)
+        .toRight(TurnFailure.Store(s"no call at round ${round.index}, index $index"))
 
     private def key: String = s"${WorkflowId.value(turn.workflowId)}:${round.index}:$index"
   }
@@ -144,7 +152,7 @@ object TurnTools {
         free: Bound.Free^,
         at: Instant
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, free.shown, at)(() => Right(free()))
+      settle(slot, call, free.shown, at)(() => slot.callSlot.map(free(_)))
 
     /** `gated` answered by `approval`. Run when approved, at most once: its attempt is
       * recorded at [[Slot.attemptId]] before it starts, and a rerun that finds the attempt
@@ -160,11 +168,13 @@ object TurnTools {
       settle(slot, call, gated.shown, at)(() =>
         approval match {
           case Approval.Approved =>
-            began(slot, Payload.Attempt(call), at).map {
-              case true => Outcome.Interrupted
-              case false => gated(Approval.Approved)
-            }
-          case other => Right(gated(other))
+            slot.callSlot.flatMap(cs =>
+              began(slot, Payload.Attempt(call), at).map {
+                case true => Outcome.Interrupted
+                case false => gated(Approval.Approved, cs)
+              }
+            )
+          case other => slot.callSlot.map(gated(other, _))
         }
       )
 

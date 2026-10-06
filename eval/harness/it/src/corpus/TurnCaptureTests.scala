@@ -73,7 +73,7 @@ object TurnCaptureTests extends TestSuite {
 
   /** `echo`: a free tool run in the turn's own step, answering [[Echoed]]. */
   private val echo: Tool[String] =
-    new Tool(
+    Tool(
       ToolSpec(
         ToolName("echo"),
         "Echoes.",

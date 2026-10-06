@@ -1,6 +1,7 @@
 package grit.core.tool
 
 import grit.core.approval.Approval
+import grit.core.id.CallSlot
 import grit.core.message.AssistantBlock
 import grit.core.model.NameRepair
 import grit.core.provider.ToolSchema
@@ -94,10 +95,14 @@ sealed trait Bound {
 object Bound {
 
   /** A call of a tool that runs without asking. */
-  final class Free private[tool] (val tool: ToolName, val shown: String, run: () => Outcome)
-      extends Bound {
+  final class Free private[tool] (
+      val tool: ToolName,
+      val shown: String,
+      run: CallSlot => Outcome
+  ) extends Bound {
 
-    def apply(): Outcome = run()
+    /** Runs the call, its tool told that it is the call at `at`. */
+    def apply(at: CallSlot): Outcome = run(at)
   }
 
   /** A call of a tool a person approves first; `ask` is what they are shown of it, which
@@ -107,15 +112,16 @@ object Bound {
       val tool: ToolName,
       val shown: String,
       val ask: String,
-      run: () => Outcome
+      run: CallSlot => Outcome
   ) extends Bound {
 
-    /** Runs the call when `approval` is [[Approval.Approved]]. Otherwise it does not run:
+    /** Runs the call when `approval` is [[Approval.Approved]], its tool told that it is the
+      * call at `at`. Otherwise it does not run:
       * [[Outcome.Declined]] with the person's reason when they declined, or
       * [[Outcome.Unanswered]] when the wait timed out.
       */
-    def apply(approval: Approval): Outcome = approval match {
-      case Approval.Approved => run()
+    def apply(approval: Approval, at: CallSlot): Outcome = approval match {
+      case Approval.Approved => run(at)
       case Approval.Declined(reason) => Outcome.Declined(reason)
       case Approval.TimedOut => Outcome.Unanswered
     }

@@ -7,7 +7,7 @@ import grit.core.id.{EntryId, ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, ProviderError, ToolUse}
 import grit.core.store.{Entry, InMemoryEntryStore, InMemoryUsageLedger, Payload}
-import grit.core.tool.Outcome
+import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec, Toolbox}
 import grit.core.topic.{Placement, Verdict}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
@@ -146,6 +146,56 @@ object TurnLoopTurnTests extends TestSuite {
           calling("alpha, beta and gamma"),
           Message.User("and?")
         )
+      )
+    }
+
+    test("a tool made with calling is told the tool:n:j call it runs, free or approved") {
+      val entries = new InMemoryEntryStore
+      val ws = new Files(files)
+      val path = Args.of((path = Field.text("A path."))).map(_.path)
+      def where(name: ToolName, gate: Gate[String]) =
+        new Hosted(ToolSpec(name, "Says which call it is.", path), gate, p => p)
+          .calling((_, at) => Outcome.Done(at.key))
+      val toolbox = Toolbox
+        .of[caps.CapSet^{ws}](
+          peek(ws),
+          where(ToolName("where"), Gate.Free),
+          where(ToolName("where_asking"), Gate.Ask(p => p))
+        )
+        .fold(d => throw new java.lang.AssertionError(d), identity)
+      val provider = new Scripted((_, n) =>
+        Right(n match {
+          case 0 => calling("", ("t1", "peek", "a.txt"), ("t2", "where", "x"))
+          case 1 => calling("", ("t3", "where_asking", "y"))
+          case _ => calling("told")
+        })
+      )
+      val turn = say(entries, "where are you")
+      val durable = new InMemoryDurable
+      def run(through: grit.core.store.EntryStore): String =
+        durable.run(turn.workflowId)(
+          tooledBody(
+            through,
+            provider,
+            new InMemoryUsageLedger,
+            new StubProvider(),
+            NoClassifier,
+            ws,
+            toolbox,
+            5
+          )
+        )
+      assertThrows[InMemoryDurable.Crash](run(crashingAtAsk(entries)))
+      durable.send(
+        turn.workflowId,
+        Approval.topic(ToolCallId("t3")),
+        Approval.encode(Approval.Approved)
+      )
+      run(entries) ==> "replied: reply:c1:0; summarised: summary:c1:0"
+      exchange(entries, turn).collect { case r: Message.ToolResult => r } ==> Vector(
+        Message.ToolResult(ToolCallId("t1"), "alpha", isError = false),
+        Message.ToolResult(ToolCallId("t2"), "tool:c1:0:0:1", isError = false),
+        Message.ToolResult(ToolCallId("t3"), "tool:c1:0:1:0", isError = false)
       )
     }
 
