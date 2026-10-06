@@ -16,14 +16,10 @@ the plugin's own documents and the services of the plugins it needs (ADR 0027).
 In dependency order:
 
 - **`deployment`** — what a deployment declares: `Deployment` (built by `Deployment.of`,
-  called with named arguments, which refuses tools that ask first beside an edge that cannot
-  answer an ask, two edges of one name, a sweep under a second, two shadows of one name,
-  shadows with topics off, a review of no shadow declared as a question set, or with
-  speaking off, a recipe gating by what live triage does not ask, a knowledge source
-  supplying a service no link offers, a recipe widening a window past the assembly's, two
-  jobs of one name, and a declared schedule repeated, of a job not the deployment's of its
-  name, or of a job not its declaring plugin's),
-  `Offer` and `Offered`
+  called with named arguments, whose doc lists each `DeploymentRefusal`), its own jobs and
+  declared schedules beside its plugins' (ADR 0029), `PluginBinding` (each plugin's tools
+  bound over its documents, its needs' services and a desk of its own jobs), `Offer` and
+  `Offered`
   (the tools every turn's model is offered), `Assembly` (how a window is assembled),
   `Topics` (how a message is placed among topics), the shadows of triage's question it
   records (`grit.lifecycle.shadow.ShadowVariant`), the knowledge sources their question
@@ -43,7 +39,9 @@ In dependency order:
   close) and `Kit.launch` (the engine's workflows, for grit's own chat), each failing as a
   `KitFailure`; `Launch`, the workflows launched the same way by every way grit runs, with the
   deployment's declared schedules reconciled at its start and, where it sweeps, grit's clock
-  edge (`grit.job.clock.ClockEdge`) starting what they have waiting;
+  edge (`grit.job.clock.ClockEdge`) starting what they have waiting (`Launch.asking`, the
+  same with its models, classifiers and the jobs' clock given, is how a live test counts
+  calls and sets the time);
   `Serving`, the edges opened, delivered to and closed; `Picking`, a review's pick round;
   `CatchingUp` and `Estimate`, a
   catch-up's flow and its bound; `KeptModelSettings`. ← `deployment`, `environment`

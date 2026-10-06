@@ -28,13 +28,15 @@ A module's folder is `<group>/<name>`, or the group alone for `kit/` and `grit.e
 ## Extension points
 
 A shipped extension implements core's traits. A deployment's own code, outside grit, can
-supply two of them as values in `Deployment.of` today: a `ServedEdge` or `CatchUp`, and a
-`Plugin`. The rest it chooses among grit's shipped implementations, by the kit's enums.
+supply three of them as values in `Deployment.of` today: a `ServedEdge` or `CatchUp`, a
+`Plugin`, and a `Job` with the schedules that run it. The rest it chooses among grit's
+shipped implementations, by the kit's enums.
 
 | Trait (package) | Shipped | A deployment's own? |
 |---|---|---|
 | `ServedEdge`, `CatchUp` (`grit.core.edge`) | `SlackEdge.serving`, `SlackEdge.backfill`, `McpEdge.serving` | yes: `Deployment.of(edges = …)`, `Kit.catchUp` |
 | `Plugin` (`grit.core.plugin`), with its `Documents` (or `CachePosting`), `PluginTool`s and an `Exports` service | `Digest` | yes: `Deployment.of(plugins = …)` |
+| `Job`, `Declared` (`grit.core.job`) | `Reminders`' `remind` | yes: a plugin's `jobs` and `schedules`, or `Deployment.of(jobs = …, schedules = …)` |
 | `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017), or as a plugin's `PluginTool`, which the turn runs itself over grit's store; grit's own are the kit's `Offered`, chosen, not supplied |
 | `Provider` (`grit.core.provider`) | `OpenRouterProvider`, `StubProvider` | no: the kit builds one from `Secrets` |
 | `Classifier` (`grit.core.classify`) | `JevClassifier`, `StubClassifier` | no: the kit's `Topics` chooses |
@@ -61,6 +63,31 @@ reads it only through the service it `Exports`. `Deployment.of` refuses two plug
 name, a need no plugin of its name meets, a tool name taken twice (grit's own included), and a
 tool asking for a plugin its own does not need. A deployment's own plugin can contribute
 anything a shipped one can.
+
+**Jobs and schedules** ([ADR 0029](decisions/0029-a-job-is-versioned-code-a-schedule-is-data-and-a-clock-edge-starts-each-due-slot.md)).
+A `Job[P]` is versioned code: its `name`, its `version`, a codec for its parameters `P`
+(`write`, `read`), and `reply`, the text a run of it replies with, pure. A schedule runs a job
+on a `SlotRule`: `Once` at an instant with a `Grace` (later than that, the slot is missed and
+never run), or `Daily`, `Weekdays` or `Weekly` at a local time in a zone (after downtime only
+the latest missed slot runs). Each slot's run is a turn of that slot's own conversation, at
+the task place of its job, closed without a model call. Schedules come from two sources:
+
+- **Declared.** A plugin's `schedules` or the deployment's own, each a `Declared` (a key, a job
+  of the same plugin or deployment, a rule, its parameters), run for grit and kept
+  (`Report.Kept`): the run's reply stays in its own conversation. Every start makes the stored
+  declared schedules exactly the declared ones: a new one is written, a changed one rewritten,
+  one no longer declared ended, one declared again revived.
+- **Asked.** A plugin's `PluginTool` books its own plugin's jobs when bound
+  (`bind(own, needs, jobs)`, `jobs.of(job)`, a `Booking`) and writes once-only schedules
+  through the `ScheduleDesk` its run is handed per call: `ask`, `pending`, `cancel`. The desk
+  takes who asked and where the reply goes from the call's turn, so a run reports at the asking
+  turn's destination (`Report.Posted`) and is posted by that turn's edge; a conversation whose
+  replies nobody posts cannot ask (`Unaddressed`). Reconciliation never touches an asked
+  schedule. `extensions/remind` is the worked example.
+
+A job's version moves when what its runs reply changes: a run started under another version
+is superseded, and its slot runs again at the current one when no later slot is due. What
+`Deployment.of` refuses of jobs and schedules is in its doc, beside every other refusal.
 
 ## What an extension may import
 
@@ -109,5 +136,5 @@ object `package` extends ScalaModule {
 ```
 
 It names `grit.kit.*`, core's types and each extension's entry object (`SlackEdge`,
-`McpEdge`, `Digest`), and runs its `Deployment` with `Kit.serve` or `Kit.catchUp`
+`McpEdge`, `Digest`, `Reminders`), and runs its `Deployment` with `Kit.serve` or `Kit.catchUp`
 ([`kit/README.md`](../kit/README.md)).

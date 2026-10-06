@@ -214,7 +214,10 @@ plain data with no function cases (`extensions/tui/CLAUDE.md`, rule 3).
   it is declared.
 
 **`^` in a `def` result is fresh per call.** An abstract `def cap: Cap^` cannot be
-implemented by a `val cap: Cap^`.
+implemented by a `val cap: Cap^`. The same holds of values: each `new Cap` is a capability of
+its own, so several built apart (one `ScheduleDesk` per plugin) never share the one capture set
+their holders must name (every plugin's tools in one `Toolbox[C]`). Hold the factory instead,
+one capability the holders all capture, and build each per call from it (the kit's `Desks`).
 
 **Mutable collections are pure types.** A typed `ArrayBuffer` field passes, even under
 separation checking. Nothing catches it; keep mutation in scoped locals (STYLE rule 7).
