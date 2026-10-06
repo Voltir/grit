@@ -78,6 +78,28 @@ object TurnCaptureTests extends TestSuite {
       |  Toolbox.of().toOption.map(box => $tooling(box, Toolbox.Empty, Vector(writes(e)), j, b))
       |""".stripMargin
 
+  /** A tool set store over `store`, handed to [[TurnRecord.Reads]], the stores a turn's
+    * requests are rebuilt from: one that reads through the workspace `ws` when `store` is
+    * `"spying"`, else one that reads nothing.
+    */
+  private def reads(store: String) =
+    s"""def rebuildFrom(ws: Workspace^, rs: TurnRecord.Reads): TurnRecord.Reads^{ws} = {
+      |  val none = Left(grit.core.store.StoreError.Invalid("none"))
+      |  val pure = new grit.core.tool.ToolSets {
+      |    def keep(set: grit.core.tool.ToolSet)(using grit.core.store.Tx^) = Right(())
+      |    def get(id: grit.core.tool.ToolSetId)(using grit.core.store.Tx^) = none
+      |  }
+      |  val spying = new grit.core.tool.ToolSets {
+      |    def keep(set: grit.core.tool.ToolSet)(using grit.core.store.Tx^) = Right(())
+      |    def get(id: grit.core.tool.ToolSetId)(using grit.core.store.Tx^) = {
+      |      val _ = RelPath.of("x").flatMap(ws.read(_, Lines.All))
+      |      none
+      |    }
+      |  }
+      |  rs.copy(toolSets = $store)
+      |}
+      |""".stripMargin
+
   private def rejected(errs: List[String]): Boolean =
     errs.exists(e => e.contains("Found:") && e.contains("Required:"))
 
@@ -108,6 +130,16 @@ object TurnCaptureTests extends TestSuite {
       // test fail, kept so the rejection is known to come from the hosted list's type alone.
       val errs = errors(breach + smuggled("Breached"))
       errs ==> List()
+    }
+
+    test("the stores a turn's requests are rebuilt from may not act through a capability") {
+      errors(reads("pure")) ==> List()
+      assert(rejected(errors(reads("spying"))))
+    }
+
+    test("capture checking is what rejects a store that acts through a capability") {
+      val flags = options.filterNot(_.startsWith("-language:experimental."))
+      compile(erased(prelude + reads("spying") + "\n}\n"), flags) ==> List()
     }
 
     test("capture checking is what rejects the tool that edits") {

@@ -82,6 +82,25 @@ object TurnRecordTests extends TestSuite {
       )
     }
 
+    test("a heard turn's judgement reads from its judge step; a named or replied turn has none") {
+      def scores(name: String, root: TurnOffer.Root) = TurnRecord
+        .judged(steps(name), root)
+        .map(_.map {
+          case TurnJudge.Judgement.Scored(j, estimated) =>
+            (
+              grit.core.period.Probability.value(j.grounded),
+              grit.core.period.Probability.value(j.worth),
+              grit.core.message.Tokens.value(estimated)
+            )
+          case other => other
+        })
+      Vector(
+        scores("heard-posted", TurnOffer.Root.Heard),
+        scores("named-judged", TurnOffer.Root.Named),
+        scores("by-name-replied", TurnOffer.Root.ByName)
+      ) ==> Vector(Right(Some((0.9, 0.9, 63L))), Right(None), Right(None))
+    }
+
     test("what became of a heard turn's draft reads from its record-speech step") {
       def kind(name: String) = TurnRecord
         .speech(steps(name))

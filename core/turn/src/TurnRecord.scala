@@ -1,9 +1,13 @@
 package grit.turn
 
+import grit.core.document.DocumentSearch
 import grit.core.durable.StepRecord
 import grit.core.edge.RequestState
 import grit.core.id.{EntryId, TurnRef}
+import grit.core.provider.ModelRequest
 import grit.core.speech.Outcome
+import grit.core.store.{EntryStore, ModelProfileStore, Principals, PromptStore, Tx}
+import grit.core.tool.ToolSets
 
 /** A turn after the fact, read from the steps it recorded ([[Turn.Step]]) and the ids its
   * entries and ledger rows are kept under, by the turn's own codecs: for a tool reading a turn
@@ -26,6 +30,84 @@ object TurnRecord {
     import TurnJournal.given
     read[Option[TurnWeighing.Weighed]](steps, Turn.Step.Weigh)
       .map(_.fold(Weigh.Unrecorded)(Weigh.Recorded(_)))
+  }
+
+  /** What the `judge` step recorded of the draft of a turn whose root is `root`; `None`
+    * unless `root` is [[TurnOffer.Root.Heard]] and the step recorded a judgement. A named
+    * turn that judged its draft before [[Turn.Patches.NamedUnjudged]] recorded only the
+    * call's cost, which is not read here. `Left` naming the step when its output does not
+    * read.
+    */
+  def judged(
+      steps: Vector[StepRecord],
+      root: TurnOffer.Root
+  ): Either[String, Option[TurnJudge.Judgement]] = {
+    import TurnJournal.given
+    root match {
+      case TurnOffer.Root.Heard => read[TurnJudge.Judgement](steps, Turn.Step.Judge)
+      case TurnOffer.Root.Addressed | TurnOffer.Root.Named | TurnOffer.Root.ByName => Right(None)
+    }
+  }
+
+  /** The stores a turn's requests are rebuilt from, as a reader sees them. */
+  final case class Reads(
+      entries: EntryStore,
+      principals: Principals,
+      documents: DocumentSearch,
+      prompts: PromptStore,
+      toolSets: ToolSets,
+      profiles: ModelProfileStore
+  )
+
+  /** The model calls `turn`'s reply made, each with the request it was sent, rebuilt from
+    * `steps` and `reads` through this build's code: the system prompt and tool set its
+    * `offer` step recorded, the profile `pin-models` pinned, the window `assemble` drew, the
+    * classification `classify` made, and, for each call, the turn's own entries kept before
+    * that call's reply. The texts this build adds (labels, gap lines, the topic tag, the
+    * last-call note, "asks first") are this build's, which may differ from those of the build
+    * that ran the turn. `Calls(Vector.empty, None, _)` for a turn whose first call's reply is
+    * not kept yet.
+    *
+    * `Left` naming what does not read: a turn recorded before the tool loop (its `tools`
+    * patch), a step whose output does not read, a prompt, tool set or profile not kept, a
+    * call's reply entry no longer kept, or a window naming entries since deleted, with their
+    * seqs. A nearby entry or document since deleted, a plugin since disabled or a person since
+    * renamed rebuilds as it is now, not as sent: each call's ledger row keeps the estimate of
+    * what was sent to compare with.
+    */
+  def requests(turn: TurnRef, steps: Vector[StepRecord], reads: Reads)(using
+      Tx^
+  ): Either[String, Calls] =
+    Turn.rebuilt(turn, steps, reads)
+
+  /** A turn's model calls: each whose reply called tools, oldest first (`looped`), then the
+    * one that answered, once its reply or draft was kept (`answered`); `schemas` says whether
+    * their tool definitions are those sent.
+    */
+  final case class Calls(looped: Vector[Call], answered: Option[Answered], schemas: Schemas)
+
+  /** Call `round` (from 0), whose reply is kept as `reply`, sent `request`. */
+  final case class Call(round: Int, reply: EntryId, request: ModelRequest)
+
+  /** The call that answered, round `round`, its reply or draft kept as `reply`: sent `on`,
+    * with the tools on, unless it was the turn's budget's last call, when it was sent `off`
+    * ([[TurnLoop.use]], [[TurnLoop.LastCall]]). Which one is not recorded; its ledger row
+    * keeps the estimate of the request it was sent.
+    */
+  final case class Answered(round: Int, reply: EntryId, on: ModelRequest, off: ModelRequest)
+
+  /** Whether a rebuilt request's tool definitions are those sent. */
+  enum Schemas {
+
+    /** As sent: the turn's pair did not enforce strict schemas. */
+    case Sent
+
+    /** As recorded: the pair enforced strict schemas, and a tool set records each tool's
+      * non-strict parameters, so a tool the build typed was sent a form not rebuilt here, and
+      * no rebuilt request's estimate is that of what was sent. Its name and description, and
+      * every message and the system prompt, are rebuilt as for [[Sent]].
+      */
+    case Recorded
   }
 
   /** What a turn's `weigh` step recorded. */

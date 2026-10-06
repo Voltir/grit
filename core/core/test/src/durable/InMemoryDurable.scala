@@ -302,7 +302,7 @@ object InMemoryDurable {
   val Sleep = "DBOS.sleep"
 
   /** DBOS's step name for the patch `name` (`DBOSExecutor.patch`). */
-  def patchMarker(name: String): String = s"DBOS.patch-$name"
+  def patchMarker(name: String): String = StepRecord.marker(name)
 
   /** Thrown from a step body to stand for the process dying inside it. */
   final class Crash extends RuntimeException("simulated crash")

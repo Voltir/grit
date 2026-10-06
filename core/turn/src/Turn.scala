@@ -6,8 +6,8 @@ import scala.concurrent.duration.*
 
 import grit.core.approval.Approval
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
-import grit.core.document.{DocLabel, Document}
-import grit.core.durable.{Durable, StreamWriter}
+import grit.core.document.{DocLabel, Document, DocumentSearch}
+import grit.core.durable.{Durable, Journaled, StepRecord, StreamWriter}
 import grit.core.id.{EntryId, EntrySeq, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{AfterToolResult, StrictSchemas, ToolGuidance, TurnProfile, TurnProfileId}
@@ -15,8 +15,19 @@ import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ProviderError, ToolSchema, ToolUse}
 import grit.core.speech.{Outcome, Speech, SpeechJson, SpeechStore}
 import grit.core.stitch.{Along, Opening, StitchReads, Stitching, Strand}
-import grit.core.store.{Entry, Jot, Nearby, Payload, Speakers, StoreError, Tx, UsageLedger}
-import grit.core.tool.{Bound, DuplicateName, Repairs, ToolName, Toolbox}
+import grit.core.store.{
+  Entry,
+  EntryStore,
+  Jot,
+  Nearby,
+  Payload,
+  Principals,
+  Speakers,
+  StoreError,
+  Tx,
+  UsageLedger
+}
+import grit.core.tool.{Bound, DuplicateName, Repairs, Tool, ToolName, Toolbox}
 import grit.core.topic.Topic
 import grit.core.triage.{Tags, Weighing}
 
@@ -1556,13 +1567,23 @@ object Turn {
   private def shown(records: TurnRecords, turn: TurnRef, window: Window)(using
       Tx^
   ): Either[StoreError, Showing] =
+    shown(records.entries, records.principals, records.documents, turn, window)
+
+  /** [[shown]], read from the three stores it reads. */
+  private def shown(
+      entries: EntryStore,
+      principals: Principals,
+      documents: DocumentSearch,
+      turn: TurnRef,
+      window: Window
+  )(using Tx^): Either[StoreError, Showing] =
     for {
-      at <- records.entries.at(turn.conversationId, window.entries)
-      mine <- records.entries.ofTurn(turn)
-      near <- Nearby.read(window.nearby, records.entries)
-      named <- records.principals.speakers((at ++ mine ++ near).map(_.id).distinct)
-      documents <- records.documents.labelled(window.documents)
-    } yield Showing(at, mine, near, named, documents)
+      at <- entries.at(turn.conversationId, window.entries)
+      mine <- entries.ofTurn(turn)
+      near <- Nearby.read(window.nearby, entries)
+      named <- principals.speakers((at ++ mine ++ near).map(_.id).distinct)
+      labelled <- documents.labelled(window.documents)
+    } yield Showing(at, mine, near, named, labelled)
 
   /** What [[shown]] read: `window`, the entries at the window's seqs that exist; `mine`,
     * the turn's own; `near`, the nearby entries that still exist; `named`, their speakers;
@@ -1742,6 +1763,112 @@ object Turn {
         .left
         .map(storeFailure)
     } yield windowSeq.next
+  }
+
+  /** [[TurnRecord.requests]]. */
+  private[turn] def rebuilt(
+      turn: TurnRef,
+      steps: Vector[StepRecord],
+      reads: TurnRecord.Reads
+  )(using Tx^): Either[String, TurnRecord.Calls] = {
+    import TurnJournal.given
+    val workflow = WorkflowId.value(turn.workflowId)
+    def output[A](name: String)(using journal: Journaled[A]): Either[String, Option[A]] =
+      steps.find(_.name == name).flatMap(_.output) match {
+        case None => Right(None)
+        case Some(o) => journal.decode(o).map(Some(_)).left.map(why => s"$name: $why")
+      }
+    // A step's value, `None` when it is not recorded; `Left` when it recorded a failure.
+    def recorded[A](name: String)(using
+        Journaled[Either[TurnFailure, A]]
+    ): Either[String, Option[A]] =
+      output[Either[TurnFailure, A]](name).flatMap {
+        case Some(Right(a)) => Right(Some(a))
+        case Some(Left(failure)) => Left(s"$name recorded a failure: ${reason(failure)}")
+        case None => Right(None)
+      }
+    def needed[A](name: String)(using Journaled[Either[TurnFailure, A]]): Either[String, A] =
+      recorded[A](name).flatMap(_.toRight(s"$workflow recorded no $name step"))
+    def kept[A](what: String, read: Either[StoreError, A]): Either[String, A] =
+      read.left.map(e => s"$what of $workflow unread: ${describe(e)}")
+    def took(patch: String): Boolean = steps.exists(_.name == StepRecord.marker(patch))
+    // The rounds whose replies called tools, by the record-call:n steps that kept them.
+    val looped: Vector[(Round, String)] =
+      steps.flatMap(s => Loop.of(s.name).collect { case Loop.Record(n) => Round.at(n) -> s.name })
+    for {
+      _ <- Either.cond(
+        took(Patches.Tools),
+        (),
+        s"$workflow was recorded before the tool loop: its requests are not rebuilt"
+      )
+      offer <- needed[TurnOffer.Recorded](Step.Offer)
+      profileId <- needed[TurnProfileId](Step.PinModels)
+      window <- needed[Window](Step.Assemble)
+      classified <- output[TurnTopics.Classification](Step.Classify)
+      profile <- kept("profile", reads.profiles.get(profileId))
+        .flatMap(_.toRight(s"no profile kept under ${TurnProfileId.value(profileId)}"))
+      set <- kept("tool set", reads.toolSets.get(offer.tools))
+      prompt <- kept("prompt", reads.prompts.prompt(offer.prompt))
+      showing <- kept(
+        "window",
+        shown(reads.entries, reads.principals, reads.documents, turn, window)
+      )
+      calls <- looped.foldLeft[Either[String, Vector[(Round, EntryId)]]](Right(Vector.empty)) {
+        case (acc, (round, name)) =>
+          acc.flatMap(done => recorded[EntryId](name).map(id => done ++ id.map(round -> _)))
+      }
+      answer <- recorded[EntryId](Step.Append)
+      settings = profile.turn.settings
+      strict = settings.strict == StrictSchemas.Enforced
+      // As Turn.asking decided: the classification, when unsure and the verdict patch was taken.
+      asked = classified.filter(c => c.uncertain && took(Patches.Verdict))
+      // The set as recorded, each tool as a turn reads one its build no longer has: its schema
+      // is what a typed tool sends when not strict (Tool.entry records args.schema(false)).
+      own = Toolbox.of[{}](set.tools.map(Tool.gone)*).getOrElse(Toolbox.Empty)
+      tools <- offered(own, asked).left.map(reason)
+      schemas = tools.schemas(strict)
+      // What the call whose reply is kept as `reply` was sent, under `use`. Its reply is kept
+      // after every own entry the call was shown: recordCall and append read `shown` after
+      // lockNext, which serialises the conversation, and before inserting the reply, so the
+      // own entries it saw are exactly those below the reply's seq. Own entries Shown.turn
+      // does not show (a window, a query, a topic event, an ask) change nothing either side.
+      sent = (round: Round, use: ToolUse, reply: EntryId) =>
+        showing.mine.find(_.id == reply) match {
+          case None => Left(s"the reply ${EntryId.value(reply)} of $workflow is not kept")
+          case Some(at) =>
+            val before = showing.mine.filter(e => EntrySeq.value(e.seq) < EntrySeq.value(at.seq))
+            requestOf(prompt.render, showing.copy(mine = before), turn, window)
+              .map(loopShape(asked, round, use, schemas, settings.afterResult, settings.guidance))
+              .left
+              .map(reason)
+        }
+      rounds <- calls.foldLeft[Either[String, Vector[TurnRecord.Call]]](Right(Vector.empty)) {
+        case (acc, (round, reply)) =>
+          acc.flatMap(done =>
+            sent(round, ToolUse.Auto, reply).map(r =>
+              done :+ TurnRecord.Call(round.index, reply, r)
+            )
+          )
+      }
+      last = Round.at(calls.size)
+      answered <- answer.fold[Either[String, Option[TurnRecord.Answered]]](Right(None))(reply =>
+        for {
+          on <- sent(last, ToolUse.Auto, reply)
+          off <- sent(last, ToolUse.Off, reply)
+        } yield Some(TurnRecord.Answered(last.index, reply, on, off))
+      )
+    } yield TurnRecord.Calls(
+      rounds,
+      answered,
+      if (strict) TurnRecord.Schemas.Recorded else TurnRecord.Schemas.Sent
+    )
+  }
+
+  /** What `failure` says. */
+  private def reason(failure: TurnFailure): String = failure match {
+    case TurnFailure.Assembly(why) => why
+    case TurnFailure.Model(why) => why
+    case TurnFailure.Store(why) => why
   }
 
   private def storeFailure(error: StoreError): TurnFailure = TurnFailure.Store(describe(error))
