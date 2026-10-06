@@ -6,7 +6,7 @@ import grit.core.clock.Clock
 import grit.core.id.{ConversationId, EntryId, JobName, PluginName, PrincipalId, TurnRef, TurnSeq}
 import grit.core.job.{ScheduleContract, ScheduleDesk, ScheduleStore, Slot}
 import grit.core.message.Message
-import grit.core.store.{Entry, Origin, Payload, StoreError, Tombstones, Tx}
+import grit.core.store.{Entry, Jot, Origin, Payload, StoreError, Tombstones, Tx}
 import grit.dbos.sql.{
   DbConfig,
   LiveDb,
@@ -27,15 +27,16 @@ object SqlSchedulesTests extends ScheduleContract {
 }
 
 /** An empty SQL store in a database of its own, as the contracts take one. A turn is the first
-  * of the task conversation `contract/{name}`; one asked from is recorded as the inbox and an
-  * edge record it: its first entry a message its asker wrote, and its delivery's address.
+  * of its origin's conversation; one asked from is recorded as the inbox and an edge record it:
+  * its first entry a message its asker wrote, and its delivery's address. Each desk
+  * transaction runs `beforeCommit` once its body has returned, before it commits.
   */
 private[engine] object SqlSchedulesUnder {
 
   private def ok[A](what: String)(e: Either[StoreError, A]): A =
     e.fold(err => sys.error(s"$what: $err"), identity)
 
-  def apply(suite: String): ScheduleContract.Under = {
+  def apply(suite: String, beforeCommit: () -> Unit = () => ()): ScheduleContract.Under = {
     // Opening an engine applies schema.sql; nothing here launches DBOS.
     val config: DbConfig = TestPostgres.freshDatabase(suite)
     LiveEngine.open(config, "test").close()
@@ -85,9 +86,19 @@ private[engine] object SqlSchedulesUnder {
         ds.setURL(config.jdbcUrl)
         ds.setUser(config.user)
         ds.setPassword(config.password)
-        schedules.desk(plugin, jobs, new SqlJot(ds), clock)
+        schedules.desk(plugin, jobs, new Held(new SqlJot(ds), beforeCommit), clock)
       }
     }
+  }
+
+  /** `inner`, running `beforeCommit` inside each transaction once its body has returned. */
+  private final class Held(inner: Jot, beforeCommit: () -> Unit) extends Jot {
+    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      inner.write {
+        val result = body
+        beforeCommit()
+        result
+      }
   }
 
   /** Records that `by` wrote the inbound entry `id`, as the inbox does. */

@@ -211,7 +211,7 @@ object ScheduleContract {
       desk(plugin, jobs, new grit.core.clock.SetClock(at("09:00")))
   }
 
-  private[job] val hour: Grace = Grace.of(1.hour).getOrElse(sys.error("1 h"))
+  val hour: Grace = Grace.of(1.hour).getOrElse(sys.error("1 h"))
 
   /** `text`, an instant, or a time on 2026-10-07 (UTC). */
   private[job] def at(text: String): Instant =
@@ -220,7 +220,7 @@ object ScheduleContract {
   private[job] def got[A](e: Either[String, A]): A = e.fold(sys.error, identity)
 
   /** `job` booked by a plugin whose only job it is. */
-  private[job] def booking[P <: caps.Pure](job: Job[P]): Booking[P] =
+  def booking[P <: caps.Pure](job: Job[P]): Booking[P] =
     OwnJobs
       .over(got(PluginName.of("own")), Vector(job))
       .of(job)
