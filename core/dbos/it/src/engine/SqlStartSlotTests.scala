@@ -91,6 +91,24 @@ object SqlStartSlotTests extends TestSuite {
     }
   }
 
+  /** The ids of the placements DBOS has of `conversation`'s turns. */
+  private def stitches(conversation: ConversationId)(using tx: Tx^): Vector[String] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    Using.resource(
+      conn.prepareStatement(
+        """SELECT workflow_uuid FROM dbos.workflow_status
+          | WHERE name = 'stitch' AND workflow_uuid LIKE '%' || ? || '%'""".stripMargin
+      )
+    ) { ps =>
+      ps.setString(1, ConversationId.value(conversation))
+      Using.resource(ps.executeQuery()) { rs =>
+        val ids = Vector.newBuilder[String]
+        while (rs.next()) ids += rs.getString(1)
+        ids.result()
+      }
+    }
+  }
+
   private def withEngine[A](body: Engine^ => A): A = {
     val engine = LiveEngine.open(config, "test")
     try body(engine)
@@ -138,6 +156,16 @@ object SqlStartSlotTests extends TestSuite {
           keys.map(_ => Some(Ending.Failed))
         turns.map(t => LiveDb.transaction(config)(workflow(t.workflowId)).map(_._4)) ==>
           ends.map(Some(_))
+      }
+    }
+
+    // A run's opening is grit's, at a task's place where nothing interleaves: placing it among
+    // its room's exchanges (ADR 0023) would cost a call for nothing.
+    test("a run's opening is never placed: starting a slot enqueues no stitch workflow") {
+      withEngine { engine =>
+        declare(engine, Vector("unplaced" -> SlotRule.Once(Due, hour)), Due)
+        val turn = begun(engine.inbox.startSlot(scheduled("unplaced"), Some(1), Due))
+        LiveDb.transaction(config)(stitches(turn.conversationId)) ==> Vector()
       }
     }
 
