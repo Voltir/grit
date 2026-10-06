@@ -44,7 +44,7 @@ enum Target {
     */
   case Document(version: DocumentVersion)
 
-  /** An ended schedule's row (ADR 0029). */
+  /** An ended schedule's row (ADR 0029). Spared when it was declared again since it ended. */
   case Schedule(id: ScheduleId)
 
   def kind: Target.Kind = this match {

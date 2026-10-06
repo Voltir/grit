@@ -24,6 +24,7 @@ import grit.core.store.{
   UsageLedger
 }
 import grit.core.triage.{Shadowing, TriageShadows}
+import grit.dbos.sql.SqlSchedules
 import grit.dbos.workflow.{Closes, Posts, Settles, Shadows}
 
 import dev.dbos.transact.DBOSClient
@@ -48,6 +49,7 @@ private[engine] final class Sweeper(
     cursors: PluginCursors,
     shadows: TriageShadows,
     documents: DocumentStore,
+    schedules: SqlSchedules,
     plugins: () -> Vector[(PluginName, Int)],
     posting: () -> Vector[(PluginName, Int)],
     declared: () -> Vector[Shadowing]
@@ -65,6 +67,7 @@ private[engine] final class Sweeper(
     prompts,
     cursors,
     documents,
+    schedules,
     tombstones
   )
 

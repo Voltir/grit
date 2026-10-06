@@ -1,6 +1,6 @@
 package grit.dbos.engine
 
-import java.time.Instant
+import java.time.{Instant, LocalTime, ZoneOffset}
 
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
@@ -11,6 +11,7 @@ import grit.core.durable.Durable
 import grit.core.id.{
   CloseRef,
   ConversationId,
+  Declarer,
   DocKey,
   DocumentVersion,
   EntryId,
@@ -19,12 +20,15 @@ import grit.core.id.{
   PeriodSeq,
   PluginName,
   PrincipalId,
+  ScheduleId,
+  ScheduleKey,
   SourceId,
   TriageRef,
   TurnRef,
   TurnSeq,
   WorkflowId
 }
+import grit.core.job.{Declared, Ending, JobTests, SlotRule}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.period.{
@@ -51,6 +55,7 @@ import grit.dbos.sql.{
   SqlPeriodStore,
   SqlPluginCursors,
   SqlPluginDocs,
+  SqlSchedules,
   SqlSpeechStore,
   SqlTombstones,
   SqlUsageLedger,
@@ -467,6 +472,43 @@ object CollectorLiveTests extends TestSuite {
         )
       }
     finally client.close()
+  }
+
+  /** A morning the schedule tests declare from: no clock reads, and every window measured from
+    * it.
+    */
+  private val Morning = Instant.parse("2026-10-07T08:00:00Z")
+
+  /** The deployment's daily schedules of one job, declared and read through the SQL store. */
+  private final class Schedules(config: DbConfig) {
+    private val store = new SqlSchedules(tombstones)
+    private val job = new JobTests.Counting("standup")
+
+    def id(key: String): ScheduleId =
+      ScheduleId.declared(Declarer.Deployment, ScheduleKey.of(key).fold(sys.error, identity))
+
+    /** Exactly the schedules `keys` declared, at `at`. */
+    def declare(at: Instant, keys: String*): Unit =
+      LiveDb.transaction(config)(
+        store.declare(
+          keys.toVector.map(k =>
+            (
+              Declarer.Deployment,
+              Declared(
+                ScheduleKey.of(k).fold(sys.error, identity),
+                job,
+                SlotRule.Daily(LocalTime.of(9, 0), ZoneOffset.UTC),
+                JobTests.Count(1)
+              )
+            )
+          ),
+          at
+        )
+      ) ==> Right(())
+
+    /** How `key`'s schedule ended, if it has; `None` once its row is gone. */
+    def ended(key: String): Option[Option[Ending]] =
+      LiveDb.transaction(config)(store.read(id(key))).fold(e => sys.error(s"$e"), _.map(_.ended))
   }
 
   val tests = Tests {
@@ -920,6 +962,44 @@ object CollectorLiveTests extends TestSuite {
         } finally client.close()
         kept(config, t0.conversationId)._1 ==> false
         kept(config, Vector(hold)) ==> Vector(0, 0)
+      } finally engine.close()
+    }
+
+    test("an ended schedule's row is deleted once its tombstone is due, and not before") {
+      val config = TestPostgres.freshDatabase("collect_schedule")
+      val engine = launched(config, 1.day)
+      try {
+        val s = new Schedules(config)
+        s.declare(Morning, "gone", "kept")
+        s.declare(Morning.plusSeconds(10), "kept")
+        s.ended("gone") ==> Some(Some(Ending.Undeclared))
+        engine.sweep(Morning.plusSeconds(30)).map(_.collected) ==> Right(Vector())
+        s.ended("gone") ==> Some(Some(Ending.Undeclared))
+        engine.sweep(Morning.plusSeconds(180)).map(_.collected) ==>
+          Right(Vector(Target.Schedule(s.id("gone"))))
+        s.ended("gone") ==> None
+        s.ended("kept") ==> Some(None)
+      } finally engine.close()
+    }
+
+    test(
+      "a schedule revived before its tombstone is due is spared, and ending it again marks it again"
+    ) {
+      val config = TestPostgres.freshDatabase("collect_schedule_revived")
+      val engine = launched(config, 1.day)
+      try {
+        val s = new Schedules(config)
+        s.declare(Morning, "back")
+        s.declare(Morning.plusSeconds(10))
+        s.declare(Morning.plusSeconds(20), "back")
+        engine.sweep(Morning.plusSeconds(180)).map(w => (w.collected, w.spared)) ==>
+          Right((Vector(), Vector(Target.Schedule(s.id("back")))))
+        s.ended("back") ==> Some(None)
+        s.declare(Morning.plusSeconds(300))
+        engine.sweep(Morning.plusSeconds(330)).map(_.collected) ==> Right(Vector())
+        engine.sweep(Morning.plusSeconds(400)).map(_.collected) ==>
+          Right(Vector(Target.Schedule(s.id("back"))))
+        s.ended("back") ==> None
       } finally engine.close()
     }
 

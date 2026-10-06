@@ -191,6 +191,19 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       ps.setString(4, ScheduleId.value(slot.schedule))
     }.map(_ => ())
 
+  /** `id`'s row deleted when it has ended; whether none is left (`false`: it is pending, revived
+    * by a declaration since it ended). For the collector, under `id`'s due tombstone.
+    */
+  private[dbos] def forget(id: ScheduleId)(using tx: Tx^): Either[StoreError, Boolean] =
+    many(
+      """WITH gone AS (DELETE FROM grit.schedules WHERE id = ? AND ended IS NOT NULL RETURNING id)
+        |SELECT EXISTS (SELECT 1 FROM gone)
+        |    OR NOT EXISTS (SELECT 1 FROM grit.schedules WHERE id = ?)""".stripMargin
+    ) { ps =>
+      ps.setString(1, ScheduleId.value(id))
+      ps.setString(2, ScheduleId.value(id))
+    }(_.getBoolean(1)).map(_.headOption.contains(true))
+
   /** `plugin`'s desk, holding the job names `jobs`, writing through `jot`, its now `clock`'s. */
   def desk(
       plugin: PluginName,

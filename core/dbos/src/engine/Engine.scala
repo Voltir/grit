@@ -16,6 +16,7 @@ import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PluginName, PrincipalId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
+import grit.core.job.ScheduleStore
 import grit.core.place.Place
 import grit.core.plugin.{CacheDocs, Plugin, PluginCursors, PluginReads}
 import grit.core.speech.SpeechStore
@@ -59,6 +60,7 @@ import grit.dbos.sql.{
   SqlPluginDocs,
   SqlPrincipals,
   SqlPromptStore,
+  SqlSchedules,
   SqlSpeechStore,
   SqlTombstones,
   SqlToolRequests,
@@ -189,6 +191,11 @@ final class Engine private (
   /** Where each opening is placed, by the `stitch` workflow [[launch]] registers. */
   val placements: grit.core.stitch.Placements = new DbosPlacements(client)
 
+  private val sqlSchedules = new SqlSchedules(tombstones)
+
+  /** Every job's schedules (ADR 0029), as the engine keeps them. */
+  val schedules: ScheduleStore = sqlSchedules
+
   /** Each plugin's cursor. */
   val cursors: PluginCursors = new SqlPluginCursors(tombstones)
 
@@ -290,6 +297,7 @@ final class Engine private (
       cursors,
       shadows,
       documents,
+      sqlSchedules,
       () => enabled.get(),
       () => posting.get(),
       () => declared.get()

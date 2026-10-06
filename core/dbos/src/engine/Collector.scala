@@ -23,6 +23,7 @@ import grit.core.store.{
   Tx,
   UsageLedger
 }
+import grit.dbos.sql.SqlSchedules
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.workflow.ListWorkflowsInput
@@ -46,6 +47,7 @@ private[engine] final class Collector(
     prompts: PromptStore,
     cursors: PluginCursors,
     documents: DocumentStore,
+    schedules: SqlSchedules,
     tombstones: Tombstones
 ) {
   import Collector.*
@@ -292,8 +294,13 @@ private[engine] final class Collector(
           _ <- documents.forget(version)
           _ <- tombstones.collected(target, now)
         } yield Outcome.Collected
-      // Deletes nothing yet: no table keeps schedules.
-      case Target.Schedule(_) => tombstones.collected(target, now).map(_ => Outcome.Collected)
+      // A schedule declared again since it ended is pending: its tombstone is spared, and
+      // armed again when it next ends.
+      case Target.Schedule(id) =>
+        schedules.forget(id).flatMap {
+          case true => tombstones.collected(target, now).map(_ => Outcome.Collected)
+          case false => tombstones.spare(target, now).map(_ => Outcome.Spared)
+        }
     }
 }
 
