@@ -173,7 +173,8 @@ private[grit] object Launch {
               engine.tombstones,
               CharEstimate,
               engine.principals,
-              engine.triage
+              engine.triage,
+              engine.conversations
             ),
             classifier(d, s),
             models,

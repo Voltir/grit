@@ -15,7 +15,9 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
 - **`close`** — `Close`: one attempt to close a period, run on the turns' queue under its
   conversation (`grit.dbos.workflow.Closes`): `check` its deadline is still the attempt's,
   and whether it earned a written closing (`grit.core.triage.Earning`; one that did not
-  closes `Unearned`, with no classifier or model call and a fixed line as its prose),
+  closes `Unearned`, with no classifier or model call and a fixed line as its prose; a job's
+  run's period closes `Ran`, with no classifier or model call, its opening as its prose and its
+  reply as its outcome, behind the patch `Close.Patches.RunClose`),
   `gate` what of its closing is new beside the balance it opened with (`CloseGate`, one
   classifier call), `summarise` it (`ClosingSummary`: the summary role's prompt, shown the
   balance as already known under labels and the period's labelled transcript, and a

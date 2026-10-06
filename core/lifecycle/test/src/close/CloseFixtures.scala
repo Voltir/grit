@@ -21,6 +21,7 @@ import grit.core.id.{
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Verdict}
+import grit.core.place.Directory
 import grit.core.provider.{ModelRequest, Models, Provider, ProviderError, TokenEstimator}
 import grit.core.store.{
   ClosedElsewhere,
@@ -28,6 +29,7 @@ import grit.core.store.{
   ClosingEntry,
   Db,
   Entry,
+  InMemoryConversationStore,
   InMemoryEntryStore,
   InMemoryLifecycleStore,
   InMemoryPeriodStore,
@@ -37,6 +39,7 @@ import grit.core.store.{
   Jot,
   OpenActivity,
   OpenPeriod,
+  Origin,
   Payload,
   PeriodStore,
   Sealed,
@@ -178,9 +181,17 @@ object CloseFixtures {
     )
   }
 
-  /** One conversation's stores. */
-  final class World {
+  /** The origin a [[World]]'s conversation happens at unless given another. */
+  val Session: Origin =
+    Origin.Tui(Directory.of("/w").getOrElse(throw new java.lang.AssertionError("dir")), "s")
+
+  /** One conversation's stores, its conversation [[c]] happening at `origin`. */
+  final class World(origin: Origin = Session) {
     val entries = new InMemoryEntryStore
+    val conversations = new InMemoryConversationStore(Some(entries))
+    locally {
+      val _ = conversations.findOrCreate(origin, PrincipalId.Local)(using TestTx.fake)
+    }
     val periods = new InMemoryPeriodStore(entries)
     val lifecycle = new InMemoryLifecycleStore
     val principals = new InMemoryPrincipals
@@ -279,7 +290,17 @@ object CloseFixtures {
     )(using Durable^): String =
       Close.body(
         CloseEnv(
-          CloseRecords(entries, sealing, lifecycle, ledger, tombstones, Chars, principals, triage),
+          CloseRecords(
+            entries,
+            sealing,
+            lifecycle,
+            ledger,
+            tombstones,
+            Chars,
+            principals,
+            triage,
+            conversations
+          ),
           gate,
           models,
           FakeDb,

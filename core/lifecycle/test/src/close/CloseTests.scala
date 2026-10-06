@@ -1,7 +1,18 @@
 package grit.lifecycle.close
 
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{EntryId, EntrySeq, PeriodRef, PeriodSeq, WorkflowId}
+import grit.core.id.{
+  Declarer,
+  EntryId,
+  EntrySeq,
+  JobName,
+  PeriodRef,
+  PeriodSeq,
+  ScheduleId,
+  ScheduleKey,
+  WorkflowId
+}
+import grit.core.job.Slot
 import grit.core.message.StopReason
 import grit.core.period.TestClosings.{balance, line}
 import grit.core.period.{
@@ -21,7 +32,7 @@ import grit.core.period.{
 }
 import grit.core.provider.ProviderError
 import grit.core.retention.{Target, Tombstone}
-import grit.core.store.{Payload, Speakers, UsageLedger}
+import grit.core.store.{Origin, Payload, Speakers, UsageLedger}
 import grit.core.topic.{Placement, TopicEvent, TopicId, Weights}
 import grit.core.triage.{Kind, Tags}
 import grit.dbos.sql.TestTx
@@ -87,6 +98,20 @@ object CloseTests extends TestSuite {
 
   /** Weighed as chatter, not worth keeping. */
   private val chatter = tags(Kind.Chatter, 0.1)
+
+  /** The step DBOS records for the close's patch [[Close.Patches.RunClose]]. */
+  private val runClose = InMemoryDurable.patchMarker(Close.Patches.RunClose)
+
+  private val remind = JobName.of("remind").fold(sys.error, identity)
+
+  /** A run of the deployment's `standup` schedule, due at the close's start. */
+  private val run = Slot(
+    ScheduleId.declared(
+      Declarer.Deployment,
+      ScheduleKey.of("standup").fold(sys.error, identity)
+    ),
+    Start
+  )
 
   /** Weighed as a decision worth keeping. */
   private val worthKeeping = tags(Kind.Decision, 0.9)
@@ -208,7 +233,7 @@ object CloseTests extends TestSuite {
         Right(
           Vector(("closing:c1:1", "summariser", summaryUsage, Chars.request(summary.requests(0))))
         )
-      durable.recordedSteps(id) ==> Vector("check", "gate", "summarise", "seal")
+      durable.recordedSteps(id) ==> Vector(runClose, "check", "gate", "summarise", "seal")
     }
 
     test(
@@ -308,11 +333,79 @@ object CloseTests extends TestSuite {
       durable.run(id)(w.bodyOver(g, models, new SetClock(at(Lapsed)))) ==>
         "closed: closing:c1:1; unearned"
       (g.calls, summary.requests.size, models.pins) ==> (0, 0, Vector.empty)
-      durable.recordedSteps(id) ==> Vector("check", "gate", "summarise", "seal")
+      durable.recordedSteps(id) ==> Vector(runClose, "check", "gate", "summarise", "seal")
       w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, c) =>
         (reason, c.flows.prose, c.flows.outcome)
       } ==> Some((CloseReason.Unearned, "Heard 2 messages; nothing kept.", None))
       w.ledger.rows ==> Vector.empty
+    }
+
+    test(
+      "a run's period closes Ran with no gate or model call: its prose the opening, its outcome the reply verbatim, its balance carried, no usage row"
+    ) {
+      val w = new World(run.origin(remind))
+      val t = w.say(run.opening(remind).text, 0)
+      w.add(t, Payload.Message(replyOf("Stand up: 3 open pull requests.")), 0, "reply")
+      val g = gate
+      val summary = answering(written)
+      val models = new OneModel(summary)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.bodyOver(g, models, new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1; ran"
+      (g.calls, summary.requests.size, models.pins) ==> (0, 0, Vector.empty)
+      w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, c) =>
+        (reason, c.flows.prose, c.flows.outcome, c.flows.changes, c.balance)
+      } ==> Some(
+        (
+          CloseReason.Ran,
+          "Scheduled run of remind, due 2026-09-20 10:00 UTC",
+          Some("Stand up: 3 open pull requests."),
+          Vector.empty,
+          Balance.empty
+        )
+      )
+      w.ledger.rows ==> Vector.empty
+    }
+
+    test("a run's period with no reply closes Ran, its outcome No reply.") {
+      val w = new World(run.origin(remind))
+      w.say(run.opening(remind).text, 0)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, answering(written), new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1; ran"
+      w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, c) =>
+        (reason, c.flows.prose, c.flows.outcome)
+      } ==> Some(
+        (CloseReason.Ran, "Scheduled run of remind, due 2026-09-20 10:00 UTC", Some("No reply."))
+      )
+    }
+
+    test("a run's period closes Ran even when it did not earn a closing") {
+      val w = new World(run.origin(remind))
+      w.hear("lunch?", "Ana", 0)
+      w.tag("lunch?", chatter)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, answering(written), new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1; ran"
+      w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, _) => reason } ==>
+        Some(CloseReason.Ran)
+    }
+
+    test(
+      "a task's conversation that is no slot's run, a one-shot run's main, is closed by its writer"
+    ) {
+      val w = new World(Origin.Task("m0", "main"))
+      w.turn("what changed?", "the engine", "We looked at the engine.", 0)
+      val summary = answering(written)
+      new InMemoryDurable().run(w.attempt.workflowId)(
+        w.body(gate, summary, new SetClock(at(Lapsed)))
+      ) ==> "closed: closing:c1:1"
+      (
+        summary.requests.size,
+        w.closingEntry.map(_.payload).collect { case Payload.Closed(_, reason, c) =>
+          (reason, c.flows.prose)
+        }
+      ) ==> (1, Some((CloseReason.Lapsed, "We chose a deploy target.")))
     }
 
     test("a heard message weighed worth keeping earns its period a closing by the heard pin") {

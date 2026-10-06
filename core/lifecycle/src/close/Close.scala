@@ -4,7 +4,8 @@ import java.time.Instant
 
 import grit.core.durable.Durable
 import grit.core.id.{CloseRef, EntryId, PeriodRef, PeriodSeq, TurnRef, TurnSeq, WorkflowId}
-import grit.core.message.{Message, StopReason, Tokens, Usage}
+import grit.core.job.Slot
+import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows}
 import grit.core.retention.Target
 import grit.core.store.{Entry, EntryTopics, Payload, Sealed, Speakers, StoreError, Tombstones, Tx}
@@ -20,12 +21,14 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      the attempt's, because a turn came in, a turn's entries were written or the settings
   *      changed, so the sweep makes a new attempt on the new deadline; otherwise due, for its
   *      reason, with the balance it opened with and the cap its closing's balance is held
-  *      to. The reason is `Unearned`, whatever the deadline's, when the period did not earn a
-  *      written closing ([[grit.core.triage.Earning]], over what triage made of its heard
-  *      messages). The attempt is taken to be enqueued once its deadline had come.
+  *      to. The reason is `Ran`, whatever the deadline's, when the period's conversation is a
+  *      job's run ([[grit.core.job.Slot.of]] its origin); otherwise `Unearned`, whatever the
+  *      deadline's, when the period did not earn a written closing
+  *      ([[grit.core.triage.Earning]], over what triage made of its heard messages). The
+  *      attempt is taken to be enqueued once its deadline had come.
   *   1. `gate` — what of the closing is new beside the balance the period opened with and
   *      what its windows showed from other conversations ([[CloseGate]]); every part when
-  *      the classifier does not answer; none, with no classifier call, when unearned.
+  *      the classifier does not answer; none, with no classifier call, when unearned or ran.
   *   1. `summarise` — the closing: its flows written by the catalog's summary pin
   *      ([[ClosingSummary]]), shown what the period drew from elsewhere as known, and the balance it opened with after the writer's edits and
   *      the topics' ([[grit.core.store.EntryTopics.edits]]), held to the cap
@@ -36,8 +39,10 @@ import grit.lifecycle.transcript.PeriodTranscript
   *      only heard ([[grit.lifecycle.transcript.PeriodTranscript.overheard]]) that earned
   *      its closing is written by the catalog's heard pin, as reported speech, asking only its
   *      prose and outcome; one that did not is closed with no model call, its prose
-  *      `Heard 4 messages; nothing kept.` and its balance carried. A close never fails for a
-  *      model.
+  *      `Heard 4 messages; nothing kept.` and its balance carried. A run's period is closed
+  *      with no model call: its prose the run's opening, its outcome the run's reply verbatim
+  *      (`No reply.` without one), and its balance carried unchanged. A close never fails for
+  *      a model.
   *   1. `seal` — under the lock again: the closing entry, its cost in the ledger, the period
   *      closed, and the tombstones on its raw entries, on the closing it replaces and on its
   *      conversation going quiet ([[grit.core.retention.Target]]), together; abandoned,
@@ -51,6 +56,13 @@ object Close {
     val Gate = "gate"
     val Summarise = "summarise"
     val Seal = "seal"
+  }
+
+  /** The close's changes since its epoch began, each the name its `Durable.patch` takes. */
+  object Patches {
+
+    /** A job's run's period closes `Ran`, its closing written without a model (2026-10-06). */
+    val RunClose = "run-close"
   }
 
   /** What `check` found. */
@@ -85,14 +97,15 @@ object Close {
       case Some(attempt) =>
         import CloseJournal.given
         val records = env.records
-        d.transact(Step.Check)(check(records, attempt)) match {
+        val runs = d.patch(Patches.RunClose)
+        d.transact(Step.Check)(check(records, attempt, runs)) match {
           case Left(why) => s"failed: $why"
           case Right(Checked.Closed) => "already closed"
           case Right(Checked.Abandoned(why)) => s"abandoned: $why"
           case Right(Checked.Due(first, reason, known, cap)) =>
-            val unearned = reason == CloseReason.Unearned
             val gated = d.step(Step.Gate) { () =>
-              if (unearned) (Asked.NoPart, Some("unearned"))
+              if (reason == CloseReason.Unearned) (Asked.NoPart, Some("unearned"))
+              else if (reason == CloseReason.Ran) (Asked.NoPart, Some("ran"))
               else {
                 val entries = own(env, attempt, first)
                 CloseGate.asked(
@@ -102,7 +115,7 @@ object Close {
               }
             }
             val summarised = d.step(Step.Summarise) { () =>
-              summarise(env, attempt, first, gated._1, known, cap, unearned)
+              summarise(env, attempt, first, gated._1, known, cap, reason)
             }
             val noted = (gated._2 ++ summarised.note).map(n => s"; $n").mkString
             d.transact(Step.Seal)(
@@ -116,8 +129,8 @@ object Close {
         }
     }
 
-  /** The `check` step. */
-  private def check(records: CloseRecords, attempt: CloseRef)(using
+  /** The `check` step; a run's period is `Ran` only when `runs` (the patch is taken). */
+  private def check(records: CloseRecords, attempt: CloseRef, runs: Boolean)(using
       Tx^
   ): Either[String, Checked] =
     (for {
@@ -143,13 +156,21 @@ object Close {
       tags <- records.triage.of(own.collect { case e @ Entry(_, _, _, _, _, Payload.Heard(_), _) =>
         e.id
       })
+      ran <-
+        if (!runs) Right(false)
+        else
+          records.conversations
+            .get(attempt.period.conversationId)
+            .map(_.flatMap(c => Slot.of(c.origin)).isDefined)
     } yield (period, activity) match {
       case (Some(p), Some(a)) =>
         val current = a.attempt(settings)
         if (current == attempt)
           Checked.Due(
             p.first,
-            if (Earning.earns(own, tags)) a.due(settings).reason else CloseReason.Unearned,
+            if (ran) CloseReason.Ran
+            else if (Earning.earns(own, tags)) a.due(settings).reason
+            else CloseReason.Unearned,
             opening.getOrElse(Balance.empty),
             settings.balance
           )
@@ -190,10 +211,11 @@ object Close {
   private def names(env: CloseEnv^, entries: Vector[Entry]): Speakers =
     PeriodTranscript.speakers(env.db, env.records.principals, entries).getOrElse(Speakers.none)
 
-  /** The `summarise` step: the closing of the period's turns `first` to the attempt's last,
-    * from the flows and edits the summary model writes, asking for `asked`, applied to
-    * `known` and held to `cap`; or, when it fails, the fallback prose ([[fallback]]) with
-    * `known` carried unedited.
+  /** The `summarise` step, for a period closing for `reason`: the closing of the period's
+    * turns `first` to the attempt's last, from the flows and edits the summary model writes,
+    * asking for `asked`, applied to `known` and held to `cap`; or, when it fails, the fallback
+    * prose ([[fallback]]) with `known` carried unedited. A run's ([[ran]]) and an unearned one
+    * are written without a model.
     */
   private def summarise(
       env: CloseEnv^,
@@ -202,7 +224,7 @@ object Close {
       asked: Asked,
       known: Balance,
       cap: Int,
-      unearned: Boolean
+      reason: CloseReason
   ): Summarised = {
     val entries = own(env, attempt, first)
     // What the writer reads and cites into: one value, cut once (ClosingSummary.visible).
@@ -236,7 +258,17 @@ object Close {
       None,
       Some(note)
     )
-    if (unearned)
+    if (reason == CloseReason.Ran)
+      entries.fold(
+        why =>
+          Summarised(
+            fallback(Vector.empty, attempt, first).flatMap(closed(_, None, Vector.empty)),
+            None,
+            Some(s"unread: $why")
+          ),
+        own => Summarised(ran(own, attempt, first, known), None, None)
+      )
+    else if (reason == CloseReason.Unearned)
       Summarised(
         fallback(entries.getOrElse(Vector.empty), attempt, first)
           .flatMap(closed(_, None, Vector.empty)),
@@ -265,6 +297,30 @@ object Close {
       }
       written.fold(why => carried(s"no summary: $why"), identity)
     }
+  }
+
+  /** A run's closing, written without a model: its prose the run's opening (the first message
+    * said to grit; without one, the [[fallback]]), its outcome the run's reply, its last
+    * assistant message's text, verbatim ("No reply." without one), and `known` carried
+    * unchanged.
+    */
+  private def ran(
+      entries: Vector[Entry],
+      attempt: CloseRef,
+      first: TurnSeq,
+      known: Balance
+  ): Option[Closing] = {
+    val opening = entries.collectFirst {
+      case Entry(_, _, _, _, _, Payload.Message(Message.User(text)), _) => text
+    }
+    val reply = entries.reverse.collectFirst {
+      case Entry(_, _, _, _, _, Payload.Message(Message.Assistant(blocks, _, _, _, _)), _) =>
+        blocks.collect { case AssistantBlock.Text(t) => t }.mkString
+    }
+    opening
+      .orElse(fallback(entries, attempt, first))
+      .flatMap(prose => Flows.of(prose, Some(reply.getOrElse("No reply.")), Vector.empty))
+      .map(Closing(_, known))
   }
 
   /** A closing's prose written without a model: for a period grit only heard, how many

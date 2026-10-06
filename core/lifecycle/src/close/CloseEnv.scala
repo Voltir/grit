@@ -4,6 +4,7 @@ import grit.core.classify.Classifier
 import grit.core.clock.Clock
 import grit.core.provider.{Models, TokenEstimator}
 import grit.core.store.{
+  ConversationStore,
   Db,
   EntryStore,
   LifecycleStore,
@@ -28,9 +29,9 @@ final case class CloseEnv(
     clock: Clock^
 )
 
-/** Where a close reads its period, who wrote it and what triage made of its heard messages,
-  * and writes its closing entry, the entry's cost, the tombstones its seal writes, and how a
-  * request is priced.
+/** Where a close reads its period, who wrote it, what triage made of its heard messages and
+  * where its conversation happens, and writes its closing entry, the entry's cost, the
+  * tombstones its seal writes, and how a request is priced.
   */
 final case class CloseRecords(
     entries: EntryStore,
@@ -40,5 +41,6 @@ final case class CloseRecords(
     tombstones: Tombstones,
     estimator: TokenEstimator,
     principals: Principals,
-    triage: TriageStore
+    triage: TriageStore,
+    conversations: ConversationStore
 )
