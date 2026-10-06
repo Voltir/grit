@@ -18,8 +18,9 @@ own conversation, but its body is a job's, not the model's.
   it works with. Its histories, under `test/histories/`, are replayed by `JobReplayTests`
   under the engine's epoch.
 - **`clock`** — `ClockEdge`: grit's clock edge, which hosts no place. Each pass reads the
-  schedules waiting at its clock's now (`grit.core.job.ScheduleStore.waiting`, at most
-  `ClockEdge.Batch`, those with a run in flight among them) and starts each through the inbox
+  schedules with a run in flight and those with a slot due at its clock's now
+  (`grit.core.job.ScheduleStore`'s `inFlight` and `due`, at most `ClockEdge.Batch` of each, so
+  neither starves the other) and starts each through the inbox
   at its job's version (`Inbox.startSlot`), as any edge starts a turn (ADR 0002). One the
   inbox fails is tried again next pass. The engine that holds the database's lock runs its
   passes one after another, every `ClockEdge.Every` (`grit.dbos.engine.Engine.every`).

@@ -94,7 +94,7 @@ In dependency order:
   (versioned code a slot's run replies with, from its `JobRun`), a deployment's `Jobs` by name,
   a `Declared` schedule (a job and its typed parameters, under a key), and how a schedule
   `Ending`s; `ScheduleStore`, the stored schedules (declared ones reconciled at start, those
-  `waiting`, a run `replied`, one read as a `Schedule`); `OwnJobs`, a plugin's jobs as its tools
+  `due` and those `inFlight`, a run `replied`, one read as a `Schedule`); `OwnJobs`, a plugin's jobs as its tools
   book them (a `Booking`, or `NotOwn`); and `ScheduleDesk`, one plugin's capability to write,
   list and cancel a person's once slots from a tool call, asked for `When` (an `Asked`, their
   `Pending`, or a `DeskRefusal`). ← `id`, `message`, `store`

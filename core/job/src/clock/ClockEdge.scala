@@ -14,13 +14,19 @@ import grit.core.store.{Db, StoreError}
 final class ClockEdge(inbox: Inbox, schedules: ScheduleStore, db: Db, clock: Clock, jobs: Jobs)
     extends caps.SharedCapability {
 
-  /** One pass: every schedule waiting at now, at most [[ClockEdge.Batch]], started at its job's
-    * version ([[Inbox.startSlot]]). `Left` when the schedules cannot be read; one the inbox
+  /** One pass: every schedule with a run in flight and every one with a slot due at now, at
+    * most [[ClockEdge.Batch]] of each, so neither kind holds back the other, each started at its
+    * job's version ([[Inbox.startSlot]]). `Left` when the schedules cannot be read; one the inbox
     * fails is named in [[Ticked.failed]] and tried again next pass.
     */
   def tick(): Either[StoreError, Ticked] = {
     val now = clock.now()
-    db.read(schedules.waiting(now, ClockEdge.Batch)).map { waiting =>
+    db.read {
+      for {
+        flying <- schedules.inFlight(ClockEdge.Batch)
+        due <- schedules.due(now, ClockEdge.Batch)
+      } yield flying ++ due
+    }.map { waiting =>
       val tried = waiting.map { (id, job) =>
         id -> inbox.startSlot(id, jobs.named(job).map(_.version), now)
       }
@@ -37,7 +43,7 @@ object ClockEdge {
   /** How often grit's engine runs a pass: 5 s. */
   val Every: FiniteDuration = 5.seconds
 
-  /** The most schedules one pass starts: 100. */
+  /** The most schedules of each kind, due or in flight, one pass takes up: 100. */
   val Batch: Int = 100
 }
 

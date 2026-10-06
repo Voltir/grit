@@ -54,8 +54,8 @@ abstract class ScheduleContract extends TestSuite {
       u.read(id("launch")) ==>
         Some(Schedule(standup.name, ujson.Num(2), PrincipalId.Grit, Report.Kept, once, None))
       u.read(id("never")) ==> None
-      u.waiting("10:00") ==> Vector(id("launch"))
-      u.waiting("2026-10-08T09:00:00Z") ==> Vector(id("launch"), id("standup"))
+      u.due("10:00") ==> Vector(id("launch"))
+      u.due("2026-10-08T09:00:00Z") ==> Vector(id("launch"), id("standup"))
     }
 
     test(
@@ -65,11 +65,11 @@ abstract class ScheduleContract extends TestSuite {
       u.declare(Vector(declared("standup", daily(9), 1)), "10:00")
       u.declare(Vector(declared("standup", daily(9), 2)), "2026-10-08T12:00:00Z")
       u.read(id("standup")).map(_.params) ==> Some(ujson.Num(2))
-      u.waiting("2026-10-08T12:00:00Z") ==> Vector(id("standup"))
+      u.due("2026-10-08T12:00:00Z") ==> Vector(id("standup"))
       u.declare(Vector(declared("standup", daily(17), 2)), "2026-10-08T12:00:00Z")
       u.read(id("standup")).map(_.rule) ==> Some(daily(17))
-      u.waiting("2026-10-08T12:00:00Z") ==> Vector()
-      u.waiting("2026-10-08T17:00:00Z") ==> Vector(id("standup"))
+      u.due("2026-10-08T12:00:00Z") ==> Vector()
+      u.due("2026-10-08T17:00:00Z") ==> Vector(id("standup"))
     }
 
     test(
@@ -88,10 +88,10 @@ abstract class ScheduleContract extends TestSuite {
       u.read(id("b")).flatMap(_.ended) ==> Some(Ending.Undeclared)
       u.read(asked).flatMap(_.ended) ==> None
       u.marked ==> Vector(Tombstone(Target.Schedule(id("b")), at("11:00")))
-      u.waiting("2026-10-08T09:00:00Z") ==> Vector(id("a"))
+      u.due("2026-10-08T09:00:00Z") ==> Vector(id("a"))
       u.declare(Vector(declared("a", daily(9)), declared("b", daily(9))), "12:00")
       u.read(id("b")).flatMap(_.ended) ==> None
-      u.waiting("2026-10-08T09:00:00Z") ==> Vector(id("a"), id("b"))
+      u.due("2026-10-08T09:00:00Z") ==> Vector(id("a"), id("b"))
     }
 
     test(
@@ -101,8 +101,8 @@ abstract class ScheduleContract extends TestSuite {
       u.declare(Vector(declared("a", daily(9)), declared("b", daily(9))), "08:00")
       u.declare(Vector(declared("a", daily(9))), "08:30")
       u.declare(Vector(declared("a", daily(9)), declared("b", daily(9))), "10:00")
-      u.waiting("10:00") ==> Vector(id("a"))
-      u.waiting("2026-10-08T09:00:00Z") ==> Vector(id("a"), id("b"))
+      u.due("10:00") ==> Vector(id("a"))
+      u.due("2026-10-08T09:00:00Z") ==> Vector(id("a"), id("b"))
     }
 
     test(
@@ -111,7 +111,7 @@ abstract class ScheduleContract extends TestSuite {
       val u = fresh()
       val nine = at("2026-10-07T09:00:00Z")
       u.declare(Vector(declared("launch", SlotRule.Once(nine.plusNanos(1500), hour))), "08:00")
-      u.waiting("2026-10-07T09:00:00.000001Z") ==> Vector(id("launch"))
+      u.due("2026-10-07T09:00:00.000001Z") ==> Vector(id("launch"))
     }
 
     test("a declared schedule that ran stays ended when declared again") {
@@ -125,12 +125,13 @@ abstract class ScheduleContract extends TestSuite {
     }
 
     test(
-      "waiting lists those due and those with a run in flight, soonest first, a run's by its slot, ties by id, at most n"
+      "due lists those due with no run in flight, soonest first, ties by id; in flight, those with one, earliest slot first, ties by id; each at most n"
     ) {
       val u = fresh()
       u.declare(
         Vector(
           declared("x", daily(7)),
+          declared("w", daily(6)),
           declared("y", daily(9)),
           declared("z", daily(8)),
           declared("tie-b", daily(8)),
@@ -138,9 +139,12 @@ abstract class ScheduleContract extends TestSuite {
         ),
         "2026-10-07T00:00:00Z"
       )
-      u.start(Slot(id("x"), at("2026-10-07T07:00:00Z")), 1, Some(at("2026-10-08T07:00:00Z")))
-      u.waiting("08:30") ==> Vector(id("x"), id("tie-a"), id("tie-b"), id("z"))
-      u.waiting("08:30", 2) ==> Vector(id("x"), id("tie-a"))
+      u.start(Slot(id("x"), at("2026-10-07T07:00:00Z")), 1, Some(at("2026-10-07T08:00:00Z")))
+      u.start(Slot(id("w"), at("2026-10-07T06:00:00Z")), 1, Some(at("2026-10-08T06:00:00Z")))
+      u.due("08:30") ==> Vector(id("tie-a"), id("tie-b"), id("z"))
+      u.due("08:30", 2) ==> Vector(id("tie-a"), id("tie-b"))
+      u.inFlight() ==> Vector(id("w"), id("x"))
+      u.inFlight(1) ==> Vector(id("w"))
     }
 
     test(
@@ -156,13 +160,13 @@ abstract class ScheduleContract extends TestSuite {
       u.start(Slot(id("standup"), nine), 1, Some(at("2026-10-08T09:00:00Z")))
       u.replied(Slot(id("launch"), nine), 1, "09:01")
       u.replied(Slot(id("launch"), at("2026-10-07T08:00:00Z")), 2, "09:01")
-      u.waiting("09:02") ==> Vector(id("launch"), id("standup"))
+      u.inFlight() ==> Vector(id("launch"), id("standup"))
       u.replied(Slot(id("launch"), nine), 2, "09:03")
       u.replied(Slot(id("standup"), nine), 1, "09:03")
       u.read(id("launch")).flatMap(_.ended) ==> Some(Ending.Ran)
       u.read(id("standup")).flatMap(_.ended) ==> None
       u.marked ==> Vector(Tombstone(Target.Schedule(id("launch")), at("09:03")))
-      u.waiting("09:04") ==> Vector()
+      (u.due("09:04"), u.inFlight()) ==> (Vector(), Vector())
     }
   }
 }
@@ -205,8 +209,11 @@ object ScheduleContract {
 
     final def read(id: ScheduleId): Option[Schedule] = ok(transaction(store.read(id)))
 
-    final def waiting(now: String, n: Int = 100): Vector[ScheduleId] =
-      ok(transaction(store.waiting(at(now), n))).map(_._1)
+    final def due(now: String, n: Int = 100): Vector[ScheduleId] =
+      ok(transaction(store.due(at(now), n))).map(_._1)
+
+    final def inFlight(n: Int = 100): Vector[ScheduleId] =
+      ok(transaction(store.inFlight(n))).map(_._1)
 
     final def replied(slot: Slot, version: Int, now: String): Unit =
       ok(transaction(store.replied(slot, version, at(now))))

@@ -73,19 +73,29 @@ object ClockEdgeTests extends TestSuite {
     }
 
     test(
-      "a pass starts at most a batch of schedules, soonest first; a pass after their runs replied, the rest"
+      "a pass starts at most a batch of due schedules, soonest first; the next pass, its runs still going, the rest"
     ) {
       val keys = (0 to ClockEdge.Batch).map(n => f"s$n%03d").toVector
       val inbox = inboxOf(keys.map(_ -> Due)*)
       val clock = edge(inbox, Due.plusSeconds(30), jobs(remind))
-      val first = clock.tick()
-      first.map(_.slotted.map(_._1)) ==> Right(keys.init.map(id))
-      keys.init.foreach(k =>
-        inbox.schedules
-          .replied(Slot(id(k), Due), 1, Due.plusSeconds(31))(using TestTx.fake)
-          .fold(e => sys.error(s"$e"), identity)
+      clock.tick().map(_.slotted.map(_._1)) ==> Right(keys.init.map(id))
+      clock.tick().map(_.slotted.collect { case (_, Slotted.Started(_, slot)) => slot }) ==>
+        Right(Vector(Slot(id(keys.last), Due)))
+    }
+
+    test(
+      "with more runs in flight than a batch, a pass still starts a due slot, and checks a batch of the runs"
+    ) {
+      val keys = (0 to ClockEdge.Batch).map(n => f"r$n%03d").toVector
+      val earlier = Due.minusSeconds(600)
+      val inbox = inboxOf((keys.map(_ -> earlier) :+ ("fresh" -> Due))*)
+      keys.foreach(k =>
+        inbox.startSlot(id(k), Some(1), earlier).fold(e => sys.error(s"$e"), identity)
       )
-      clock.tick().map(_.slotted.map(_._1)) ==> Right(Vector(id(keys.last)))
+      val ticked = edge(inbox, Due.plusSeconds(30), jobs(remind)).tick()
+      ticked.map(_.slotted.collect { case (_, Slotted.Started(_, slot)) => slot }) ==>
+        Right(Vector(Slot(id("fresh"), Due)))
+      ticked.map(t => (t.slotted.size, t.failed)) ==> Right((ClockEdge.Batch + 1, Vector()))
     }
 
     test("a schedule the inbox fails is named as failed, and started by a later pass") {

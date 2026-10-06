@@ -34,10 +34,15 @@ trait ScheduleStore {
       Tx^
   ): Either[StoreError, Unit]
 
-  /** The pending schedules with a slot due at `now` or a run not yet replied, with their jobs,
-    * at most `n`: the soonest first, one with a run in flight by its run's slot, ties by id.
+  /** The pending schedules with no run in flight and a slot due at `now`, with their jobs, at
+    * most `n`: the soonest slot first, ties by id.
     */
-  def waiting(now: Instant, n: Int)(using Tx^): Either[StoreError, Vector[(ScheduleId, JobName)]]
+  def due(now: Instant, n: Int)(using Tx^): Either[StoreError, Vector[(ScheduleId, JobName)]]
+
+  /** The pending schedules with a run not yet replied, whatever their next slot, with their
+    * jobs, at most `n`: the earliest run's slot first, ties by id.
+    */
+  def inFlight(n: Int)(using Tx^): Either[StoreError, Vector[(ScheduleId, JobName)]]
 
   /** `slot`'s run at `version` replied at `at`: its run no longer in flight, and a once schedule
     * not already ended ended [[Ending.Ran]]. Nothing when the run in flight is another's, of

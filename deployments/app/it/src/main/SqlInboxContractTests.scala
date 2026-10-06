@@ -150,7 +150,12 @@ object SqlInboxContractTests extends InboxContract {
             engine.db.read(engine.schedules.read(id)).fold(e => sys.error(e.toString), identity),
           now =>
             engine.db
-              .read(engine.schedules.waiting(now, 1000))
+              .read {
+                for {
+                  flying <- engine.schedules.inFlight(1000)
+                  due <- engine.schedules.due(now, 1000)
+                } yield flying ++ due
+              }
               .fold(e => sys.error(e.toString), _.map(_._1)),
           turn => {
             val _ = engine.awaitTurn(turn)

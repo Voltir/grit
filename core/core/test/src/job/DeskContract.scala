@@ -84,7 +84,7 @@ abstract class DeskContract extends TestSuite {
           None
         )
       )
-      u.waiting("09:30") ==> Vector(id)
+      u.due("09:30") ==> Vector(id)
     }
 
     test(
@@ -213,7 +213,7 @@ abstract class DeskContract extends TestSuite {
       u.marked ==> Vector(Tombstone(Target.Schedule(id), at("09:10")))
       desk.cancel(call("thread"), booking(remind), id) ==>
         Left(DeskRefusal.Ended(id, Ending.Cancelled))
-      u.waiting("10:00") ==> Vector()
+      u.due("10:00") ==> Vector()
     }
   }
 

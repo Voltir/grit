@@ -133,19 +133,30 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       })
       .map(_ => ())
 
-  def waiting(now: Instant, n: Int)(using
-      tx: Tx^
-  ): Either[StoreError, Vector[(ScheduleId, JobName)]] =
-    many(
+  def due(now: Instant, n: Int)(using tx: Tx^): Either[StoreError, Vector[(ScheduleId, JobName)]] =
+    named(
       """SELECT id, job FROM grit.schedules
-        | WHERE ended IS NULL AND (running IS NOT NULL OR next_at <= ?)
-        | ORDER BY CASE WHEN running IS NOT NULL THEN started_at ELSE next_at END NULLS FIRST,
-        |          id COLLATE "C"
+        | WHERE ended IS NULL AND running IS NULL AND next_at <= ?
+        | ORDER BY next_at, id COLLATE "C"
         | LIMIT ?""".stripMargin
     ) { ps =>
       ps.setObject(1, utc(now))
       ps.setInt(2, n max 0)
-    }(rs => (rs.getString(1), rs.getString(2))).flatMap(rows =>
+    }
+
+  def inFlight(n: Int)(using tx: Tx^): Either[StoreError, Vector[(ScheduleId, JobName)]] =
+    named(
+      """SELECT id, job FROM grit.schedules
+        | WHERE ended IS NULL AND running IS NOT NULL
+        | ORDER BY started_at, id COLLATE "C"
+        | LIMIT ?""".stripMargin
+    )(_.setInt(1, n max 0))
+
+  /** The schedules `sql` selects, as their ids and jobs. */
+  private def named(sql: String)(bind: PreparedStatement => Unit)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[(ScheduleId, JobName)]] =
+    many(sql)(bind)(rs => (rs.getString(1), rs.getString(2))).flatMap(rows =>
       traverse(rows) { (id, job) =>
         for {
           i <- ScheduleId.of(id)

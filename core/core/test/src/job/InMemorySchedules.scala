@@ -140,20 +140,26 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
       )
   }
 
-  def waiting(now: Instant, n: Int)(using
-      Tx^
-  ): Either[StoreError, Vector[(ScheduleId, JobName)]] =
-    Right(
-      rows.toVector
-        .collect {
-          case (id, r)
-              if r.ended.isEmpty && (r.running.nonEmpty || r.next.exists(!_.isAfter(now))) =>
-            (r.running.flatMap(_ => r.started).orElse(r.next), id, r.job)
-        }
-        .sortBy((due, id, _) => (due.getOrElse(Instant.MIN), ScheduleId.value(id)))
-        .take(n max 0)
-        .map((_, id, job) => (id, job))
-    )
+  def due(now: Instant, n: Int)(using Tx^): Either[StoreError, Vector[(ScheduleId, JobName)]] =
+    Right(named(n) {
+      case (id, r) if r.ended.isEmpty && r.running.isEmpty && r.next.exists(!_.isAfter(now)) =>
+        (r.next, id, r.job)
+    })
+
+  def inFlight(n: Int)(using Tx^): Either[StoreError, Vector[(ScheduleId, JobName)]] =
+    Right(named(n) {
+      case (id, r) if r.ended.isEmpty && r.running.nonEmpty => (r.started, id, r.job)
+    })
+
+  /** At most `n` of the rows `pick` selects, by the instant it gives them, ties by id. */
+  private def named(n: Int)(
+      pick: PartialFunction[(ScheduleId, Row), (Option[Instant], ScheduleId, JobName)]
+  ): Vector[(ScheduleId, JobName)] =
+    rows.toVector
+      .collect(pick)
+      .sortBy((at, id, _) => (at.getOrElse(Instant.MIN), ScheduleId.value(id)))
+      .take(n max 0)
+      .map((_, id, job) => (id, job))
 
   def replied(slot: Slot, version: Int, at: Instant)(using Tx^): Either[StoreError, Unit] =
     rows.get(slot.schedule) match {

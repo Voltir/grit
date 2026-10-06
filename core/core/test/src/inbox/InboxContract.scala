@@ -406,7 +406,8 @@ object InboxContract {
     * for each of an origin's conversation's entries, in order (none for one not heard);
     * `postedBy`, the call an origin's conversation's opening post was made by; `declare` makes
     * the declared schedules these, as of a time; `schedule`, one kept, as the store reads it;
-    * `waiting`, the schedules waiting at a time; `end` ends a run, which its job left, without a
+    * `waiting`, the schedules a clock pass at a time takes up, those with a run in flight then
+    * those due; `end` ends a run, which its job left, without a
     * reply, and returns once it has; `replied` records a slot's run at a version replied, as of a
     * time, as the run's reply does.
     */

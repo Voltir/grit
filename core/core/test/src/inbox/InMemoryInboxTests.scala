@@ -100,9 +100,10 @@ object InMemoryInboxTests extends InboxContract {
         id =>
           inbox.schedules.read(id)(using TestTx.fake).fold(e => sys.error(e.toString), identity),
         now =>
-          inbox.schedules
-            .waiting(now, 1000)(using TestTx.fake)
-            .fold(e => sys.error(e.toString), _.map(_._1)),
+          (for {
+            flying <- inbox.schedules.inFlight(1000)(using TestTx.fake)
+            due <- inbox.schedules.due(now, 1000)(using TestTx.fake)
+          } yield flying ++ due).fold(e => sys.error(e.toString), _.map(_._1)),
         turn => inbox.finish(turn, None, "no job runs here"),
         (slot, version, at) =>
           inbox.schedules
