@@ -12,13 +12,14 @@ import grit.core.id.{
   ConversationId,
   EntryId,
   PrincipalId,
+  ScheduleId,
   SourceId,
   ToolCallId,
   TriageRef,
   TurnRef,
   WorkflowId
 }
-import grit.core.inbox.{InboundId, Inbox, InboxError, Progress}
+import grit.core.inbox.{InboundId, Inbox, InboxError, Progress, Slotted}
 import grit.core.message.Message
 import grit.core.speech.{Reach, SpeechStore}
 import grit.core.spend.{Budget, Spending}
@@ -288,6 +289,14 @@ final class SqlInbox(
 
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
     enqueue(Turns.enqueueOptions(turn))
+
+  // No table keeps schedules yet, so there is nothing to start.
+  def startSlot(
+      schedule: ScheduleId,
+      version: Option[Int],
+      now: Instant
+  ): Either[InboxError, Slotted] =
+    Left(InboxError.Unavailable("no schedules are kept"))
 
   /** Enqueues the workflow `options` names, with no arguments. */
   private def enqueue(options: EnqueueOptions): Either[InboxError, Unit] =

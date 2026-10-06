@@ -3,7 +3,7 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, PrincipalId, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.speech.{InMemorySpeechStore, Reach}
 import grit.core.spend.Budget
@@ -234,6 +234,14 @@ final class InMemoryInbox(
 
   def progress(turn: TurnRef): Either[InboxError, Progress] =
     if (down) unavailable else Right(finished.getOrElse(turn, Progress.Open))
+
+  // As the SQL inbox: no schedules are kept.
+  def startSlot(
+      schedule: ScheduleId,
+      version: Option[Int],
+      now: Instant
+  ): Either[InboxError, Slotted] =
+    Left(InboxError.Unavailable("no schedules are kept"))
 
   def startTurn(turn: TurnRef): Either[InboxError, Unit] =
     if (down) unavailable

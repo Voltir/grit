@@ -3,7 +3,7 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, PrincipalId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, PrincipalId, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.speech.Reach
 import grit.core.spend.{DailyCap, Day, Spend}
@@ -88,6 +88,25 @@ trait Inbox extends caps.SharedCapability {
     * oldest first; this returns once the turn is queued, not when it has run.
     */
   def startTurn(turn: TurnRef): Either[InboxError, Unit]
+
+  /** Starts what `schedule` has waiting at `now`, its job at `version` (`None`: the deployment
+    * does not have its job), never refused over the day's cap (ADR 0029).
+    *   - With no run in flight, its slot due ([[grit.core.job.Due]]) starts as a run at
+    *     `version`: a turn of the slot's conversation ([[grit.core.job.Slot.origin]]), created
+    *     by grit with [[grit.core.job.Slot.opening]], enqueued as its job's run. A once slot
+    *     more than its grace past is missed, with or without its job.
+    *   - With a run in flight, read by its workflow's status and its reply
+    *     ([[grit.core.job.InFlight]], [[grit.core.job.Resume]]): a run whose workflow has ended
+    *     without a reply, however it ended, has `Failed`; one whose start was lost is enqueued
+    *     again; one at another version is superseded by a run at `version`, of the same slot
+    *     or, for a recurrence with a later slot due, of the latest.
+    * A slot already started at `version` is never started again.
+    */
+  def startSlot(
+      schedule: ScheduleId,
+      version: Option[Int],
+      now: Instant
+  ): Either[InboxError, Slotted]
 
   /** Answers the gated call `call` of the turn whose workflow is `workflow`, which asked
     * with a [[grit.core.store.Payload.Ask]] entry; the call runs only when `approval` is
