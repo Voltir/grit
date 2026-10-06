@@ -92,6 +92,16 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
       case None => Right(())
     }
 
+  /** `id`'s row deleted when it has ended; whether none is left: as the SQL store's collector
+    * forgets an ended schedule.
+    */
+  def forget(id: ScheduleId): Boolean =
+    rows.get(id) match {
+      case Some(r) if r.ended.nonEmpty => rows = rows.removed(id); true
+      case Some(_) => false
+      case None => true
+    }
+
   def declare(declared: Vector[(Declarer, Declared[?])], now: Instant)(using
       Tx^
   ): Either[StoreError, Unit] = {

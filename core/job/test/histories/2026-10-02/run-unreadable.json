@@ -1,0 +1,12 @@
+{
+  "workflow": "run",
+  "id": "c1:0",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "read-slot",
+      "output": "{\"kind\":\"unreadable\",\"why\":\"its conversation is no slot's\"}"
+    }
+  ]
+}
