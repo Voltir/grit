@@ -67,5 +67,13 @@ object StoredFormsTests extends TestSuite {
       )
       bad.map((j, _) => ReportJson.read(ujson.read(j))) ==> bad.map((_, why) => Left(why))
     }
+
+    // A pin of the stored form: a schedule row's `ended` column holds the word.
+    test("each ending is stored as its word and read back; no other word is one") {
+      Ending.values.toVector.map(_.word) ==>
+        Vector("ran", "missed", "failed", "cancelled", "undeclared")
+      Ending.values.toVector.map(e => Ending.read(e.word)) ==> Ending.values.toVector.map(Some(_))
+      Ending.read("Ran") ==> None
+    }
   }
 }
