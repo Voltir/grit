@@ -46,6 +46,7 @@ object Replies {
           s"resolved ($two)"
         case CloseReason.Lapsed => "lapsed"
         case CloseReason.Unearned => "unearned"
+        case CloseReason.Ran => "ran"
       }
       Some(s"$why · ${closing.headline}")
     case _ => None

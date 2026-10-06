@@ -16,4 +16,11 @@ enum CloseReason {
     * model.
     */
   case Unearned
+
+  /** The period of a job's run (a conversation whose origin names a slot, `Slot.of`): never
+    * asked whether anyone is waiting, and closed on its deadline with a closing written without
+    * a model, its prose the run's opening and its outcome the run's reply verbatim ("No reply."
+    * without one).
+    */
+  case Ran
 }

@@ -386,7 +386,8 @@ CREATE TABLE IF NOT EXISTS grit.periods (
     opened_at       TIMESTAMPTZ NOT NULL,
     last_turn       BIGINT,
     closed_at       TIMESTAMPTZ,
-    reason          TEXT CHECK (reason IN ('resolved', 'lapsed', 'unearned')),
+    reason          TEXT CONSTRAINT periods_reason_check
+                    CHECK (reason IN ('resolved', 'lapsed', 'unearned', 'ran')),
     -- A resolved close's probability that nobody was waiting (CloseReason.Resolved); none for a
     -- lapse.
     confidence      DOUBLE PRECISION CHECK (confidence BETWEEN 0 AND 1),

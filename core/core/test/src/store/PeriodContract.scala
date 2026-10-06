@@ -198,24 +198,20 @@ abstract class PeriodContract extends TestSuite {
       )
     }
 
-    test("an unearned seal's reason is kept on the period and its closing entry") {
-      val c = conversation("seal-unearned")
-      val t0 = say(c, 0)
-      val p1 = PeriodRef(c, PeriodSeq.First)
-      transaction(
-        right(
-          periods.seal(
-            CloseRef(p1, t0.turnSeq, at(30)),
-            CloseReason.Unearned,
-            closing("heard"),
-            at(30)
-          )
-        )
-      ) ==> Sealed.Closed(p1.closingId)
-      transaction(periods.get(p1)).map(_.map(p => closed(p.state).map(_._3))) ==>
-        Right(Some(Some(CloseReason.Unearned)))
-      transaction(entries.get(p1.closingId)).map(_.map(_.payload)) ==>
-        Right(Some(Payload.Closed(PeriodSeq.First, CloseReason.Unearned, closing("heard"))))
+    test("an unearned or ran seal's reason is kept on the period and its closing entry") {
+      Vector(CloseReason.Unearned -> "seal-unearned", CloseReason.Ran -> "seal-ran").foreach {
+        (reason, name) =>
+          val c = conversation(name)
+          val t0 = say(c, 0)
+          val p1 = PeriodRef(c, PeriodSeq.First)
+          transaction(
+            right(periods.seal(CloseRef(p1, t0.turnSeq, at(30)), reason, closing(name), at(30)))
+          ) ==> Sealed.Closed(p1.closingId)
+          transaction(periods.get(p1)).map(_.map(p => closed(p.state).map(_._3))) ==>
+            Right(Some(Some(reason)))
+          transaction(entries.get(p1.closingId)).map(_.map(_.payload)) ==>
+            Right(Some(Payload.Closed(PeriodSeq.First, reason, closing(name))))
+      }
     }
 
     test("the turn after a close opens the next period, at that turn") {

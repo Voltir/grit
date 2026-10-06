@@ -265,6 +265,13 @@ object PayloadJsonTests extends TestSuite {
         """{"v":3,"flows":{"prose":"Small talk.","outcome":"none","changes":[]},"balance":{"open":[],"standing":[],"topics":[]}}}"""
       PayloadJson.read(PayloadJson.write(unearned)) ==> Right(unearned)
       PayloadJson.readReason("unearned", Some(0.5)) ==> Left("an unearned close has a confidence")
+      // A run's close, written without a model from its opening and reply.
+      val ran = Payload.Closed(PeriodSeq.First, CloseReason.Ran, closing)
+      PayloadJson.write(ran).render() ==>
+        """{"kind":"closed","period":1,"reason":"ran","closing":""" +
+        """{"v":3,"flows":{"prose":"Small talk.","outcome":"none","changes":[]},"balance":{"open":[],"standing":[],"topics":[]}}}"""
+      PayloadJson.read(PayloadJson.write(ran)) ==> Right(ran)
+      PayloadJson.readReason("ran", Some(0.5)) ==> Left("a ran close has a confidence")
       PayloadJson.read(
         ujson.read("""{"kind":"closed","period":0,"reason":"lapsed","closing":{}}""")
       ) ==>

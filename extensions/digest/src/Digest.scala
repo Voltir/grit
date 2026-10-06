@@ -180,6 +180,7 @@ object Digest {
     case CloseReason.Resolved(_) => Some("resolved")
     case CloseReason.Lapsed => Some("lapsed")
     case CloseReason.Unearned => None
+    case CloseReason.Ran => Some("ran")
   }
 
   private def where(origin: Origin): String = origin match {
