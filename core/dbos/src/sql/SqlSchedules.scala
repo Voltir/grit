@@ -24,6 +24,7 @@ import grit.core.job.{
   Booking,
   Declared,
   DeskRefusal,
+  Destination,
   Ending,
   Grace,
   Job,
@@ -229,7 +230,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
               case Some(r) => Right(kept(id, r.schedule, booking.job))
               case None =>
                 asker(call.turn).flatMap {
-                  case Some((by, Some(address))) =>
+                  case Some((by, Some(to))) =>
                     if (!at.isAfter(now)) Right(Left(DeskRefusal.Past(at, now)))
                     else if (at.isAfter(limit)) Right(Left(DeskRefusal.TooFar(at, limit)))
                     else
@@ -237,7 +238,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
                         if (mine.size >= ScheduleDesk.PendingCap)
                           Right(Left(DeskRefusal.TooMany(ScheduleDesk.PendingCap)))
                         else
-                          insertAsked(id, call, booking.job, params, by, address, at, grace, now)
+                          insertAsked(id, call, booking.job, params, by, to, at, grace, now)
                             .map(_ => Right(Asked(id, at, params)))
                       }
                   case _ => Right(Left(DeskRefusal.Unaddressed))
@@ -305,23 +306,37 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
   ): Either[DeskRefusal, A] =
     e.left.map(DeskRefusal.Unavailable(_)).flatMap(identity)
 
-  /** The author of `turn`'s first entry, and where its reply is posted; `None` when that entry
-    * is not one a principal wrote, or `turn` holds none.
+  /** The author of `turn`'s first entry, and where its reply is posted, through its
+    * conversation's edge; `None` when that entry is not one a principal wrote, or `turn` holds
+    * none.
     */
   private def asker(turn: TurnRef)(using
       tx: Tx^
-  ): Either[StoreError, Option[(PrincipalId, Option[String])]] =
+  ): Either[StoreError, Option[(PrincipalId, Option[Destination])]] =
     many(
-      """SELECT i.author, d.address
+      """SELECT i.author, d.address, c.origin::text
         |  FROM (SELECT id FROM grit.entries WHERE conversation_id = ?::uuid AND turn_seq = ?
         |         ORDER BY seq LIMIT 1) e
         |  JOIN grit.inbound i ON i.entry_id = e.id
+        |  JOIN grit.conversations c ON c.id = ?::uuid
         |  LEFT JOIN grit.deliveries d ON d.workflow = ?""".stripMargin
     ) { ps =>
       ps.setString(1, ConversationId.value(turn.conversationId))
       ps.setLong(2, TurnSeq.value(turn.turnSeq))
-      ps.setString(3, WorkflowId.value(turn.workflowId))
-    }(rs => (PrincipalId(rs.getString(1)), Option(rs.getString(2)))).map(_.headOption)
+      ps.setString(3, ConversationId.value(turn.conversationId))
+      ps.setString(4, WorkflowId.value(turn.workflowId))
+    }(rs =>
+      SqlConversationStore
+        .readOrigin(ujson.read(rs.getString(3)))
+        .map(origin =>
+          (PrincipalId(rs.getString(1)), Option(rs.getString(2)).map(Destination(origin.edge, _)))
+        )
+    ).flatMap(rows =>
+      rows.headOption match {
+        case None => Right(None)
+        case Some(row) => row.left.map(StoreError.Invalid(_)).map(Some(_))
+      }
+    )
 
   /** `by`'s pending asked schedules, of any job, under a lock on `by` that serialises every
     * desk's asks for them, so none passes the cap beside another.
@@ -362,7 +377,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       job: Job[P],
       params: P,
       by: PrincipalId,
-      address: String,
+      to: Destination,
       at: Instant,
       grace: Grace,
       now: Instant
@@ -377,7 +392,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       ps.setString(3, SlotRuleJson.write(SlotRule.Once(at, grace)).render())
       ps.setString(4, job.write(params).render())
       ps.setString(5, PrincipalId.value(by))
-      ps.setString(6, ReportJson.write(Report.Posted(address)).render())
+      ps.setString(6, ReportJson.write(Report.Posted(to)).render())
       ps.setString(7, call.key)
       ps.setObject(8, utc(now))
       ps.setObject(9, utc(at))

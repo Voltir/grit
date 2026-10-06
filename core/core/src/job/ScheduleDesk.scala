@@ -15,7 +15,8 @@ final case class Pending[P <: caps.Pure](now: Instant, schedules: Vector[Asked[P
 
 /** The schedules one plugin's tools write from a turn (ADR 0029). Each is a once slot, run for
   * the asker, the author of the message the turn at the call answers; reported where that
-  * turn's reply is posted ([[Report.Posted]]); kept under the id its call makes
+  * turn's reply is posted, through the edge its conversation came by ([[Report.Posted]],
+  * [[grit.core.store.Origin.edge]]); kept under the id its call makes
   * ([[grit.core.id.ScheduleId.asked]]); and the asker's alone to list and cancel. A desk holds
   * its plugin's job names, and refuses a booking of any other job with
   * [[DeskRefusal.NotOwn]]. Every method is [[DeskRefusal.Unavailable]] when the store fails.

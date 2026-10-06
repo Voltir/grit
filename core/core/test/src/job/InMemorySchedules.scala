@@ -14,7 +14,7 @@ import grit.core.id.{
   TurnRef
 }
 import grit.core.retention.Target
-import grit.core.store.{InMemoryTombstones, StoreError, Tx}
+import grit.core.store.{InMemoryTombstones, Origin, StoreError, Tx}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[ScheduleStore]], with each plugin's [[ScheduleDesk]], for tests, keeping
@@ -32,13 +32,14 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
 
   // As `rows`: each recorded turn's asker, and where its reply is posted, if anywhere.
   @caps.unsafe.untrackedCaptures
-  private var turns = Map.empty[TurnRef, (PrincipalId, Option[String])]
+  private var turns = Map.empty[TurnRef, (PrincipalId, Option[Destination])]
 
-  /** `turn` recorded as rooted on a message `by` wrote, its reply posted at `address`, or
-    * nowhere: what the database holds of a turn as its entries and deliveries.
+  /** `turn`, of `from`'s conversation, recorded as rooted on a message `by` wrote, its reply
+    * posted at `address`, or nowhere: what the database holds of a turn as its conversation,
+    * entries and deliveries.
     */
-  def asking(turn: TurnRef, by: PrincipalId, address: Option[String]): Unit =
-    turns = turns.updated(turn, (by, address))
+  def asking(turn: TurnRef, from: Origin, by: PrincipalId, address: Option[String]): Unit =
+    turns = turns.updated(turn, (by, address.map(Destination(from.edge, _))))
 
   /** `slot`'s run started at `version`, its schedule's next slot `following`, as the inbox
     * starts one.
@@ -125,7 +126,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
             case Some(r) => kept(id, r, booking.job)
             case None =>
               turns.get(call.turn) match {
-                case Some((by, Some(address))) =>
+                case Some((by, Some(to))) =>
                   val now = clock.now()
                   val at = when.from(now).truncatedTo(java.time.temporal.ChronoUnit.MICROS)
                   val limit = now.plusNanos(ScheduleDesk.Horizon.toNanos)
@@ -140,7 +141,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
                         booking.job.name,
                         booking.job.write(params),
                         by,
-                        Report.Posted(address),
+                        Report.Posted(to),
                         SlotRule.Once(at, grace),
                         Some(at),
                         asked = Some(call.turn.conversationId)

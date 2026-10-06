@@ -3,8 +3,17 @@ package grit.core.job
 import scala.concurrent.duration.*
 
 import grit.core.clock.SetClock
-import grit.core.id.{CallSlot, JobName, PluginName, PrincipalId, ScheduleId, TestCallSlots}
+import grit.core.id.{
+  CallSlot,
+  EdgeName,
+  JobName,
+  PluginName,
+  PrincipalId,
+  ScheduleId,
+  TestCallSlots
+}
 import grit.core.retention.{Target, Tombstone}
+import grit.core.store.Origin
 
 import utest.*
 import JobTests.{Count, Counting}
@@ -70,12 +79,27 @@ abstract class DeskContract extends TestSuite {
           remind.name,
           ujson.Num(3),
           PrincipalId("ann"),
-          Report.Posted("C1/1.0"),
+          Report.Posted(Destination(EdgeName.Slack, "C1/1.0")),
           SlotRule.Once(at("09:30"), hour),
           None
         )
       )
       u.waiting("09:30") ==> Vector(id)
+    }
+
+    test(
+      "a desk reports through the edge the asking turn's conversation came by, at its reply's address"
+    ) {
+      val f = setUp()
+      import f.*
+      val standup = u.turn(Origin.Task("standup", "2026-10-07"))
+      u.asking(standup, PrincipalId("ann"), Some("C9/9.0"))
+      val asks = Vector(call("thread"), TestCallSlots.at(standup))
+      asks.map(c => ask(desk, c, When.In(30.minutes)).map(_ => ())) ==> Vector(Right(()), Right(()))
+      asks.map(c => u.read(ScheduleId.asked(c)).map(_.report)) ==> Vector(
+        Some(Report.Posted(Destination(EdgeName.Slack, "C1/1.0"))),
+        Some(Report.Posted(Destination(EdgeName.Task, "C9/9.0")))
+      )
     }
 
     test("an instant asked is kept to the microsecond, as asked and as read") {

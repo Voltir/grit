@@ -1,5 +1,6 @@
 package grit.core.store
 
+import grit.core.id.EdgeName
 import grit.core.place.{Directory, Namespace, Place}
 
 /** Where a conversation's work comes from. Each origin names exactly one
@@ -26,6 +27,13 @@ enum Origin {
     case Slack(team, channel, threadTs) =>
       Place.under(Namespace.Slack, Vector(team, channel, threadTs))
     case Task(name, run) => Place.under(Namespace.Task, Vector(name, run))
+  }
+
+  /** The edge its conversation's messages arrive through, and its turns' replies leave by. */
+  def edge: EdgeName = this match {
+    case Tui(_, _) => EdgeName.Tui
+    case Slack(_, _, _) => EdgeName.Slack
+    case Task(_, _) => EdgeName.Task
   }
 
   /** Who its conversation's messages are for: the operator in a TUI session, colleagues in a

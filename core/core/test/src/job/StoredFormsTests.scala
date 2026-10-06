@@ -4,6 +4,8 @@ import java.time.{DayOfWeek, Instant, LocalTime, ZoneId}
 
 import scala.concurrent.duration.*
 
+import grit.core.id.EdgeName
+
 import utest.*
 
 /** [[SlotRuleJson]] and [[ReportJson]]: a schedule row's `rule` and `report`. */
@@ -53,7 +55,8 @@ object StoredFormsTests extends TestSuite {
     test("each report is written in its stored form and read back") {
       val all = Vector(
         Report.Kept -> """{"kind":"kept"}""",
-        Report.Posted("C123/1712.3") -> """{"kind":"posted","address":"C123/1712.3"}"""
+        Report.Posted(Destination(EdgeName.Slack, "C123/1712.3")) ->
+          """{"kind":"posted","edge":"slack","address":"C123/1712.3"}"""
       )
       all.map((r, _) => ReportJson.write(r).render()) ==> all.map(_._2)
       all.map((_, j) => ReportJson.read(ujson.read(j))) ==> all.map((r, _) => Right(r))
@@ -62,7 +65,8 @@ object StoredFormsTests extends TestSuite {
     test("a stored report that is not one is refused, saying why") {
       val bad = Vector(
         """"kept"""" -> "a report is not an object",
-        """{"kind":"posted"}""" -> "a report has no address",
+        """{"kind":"posted","address":"C1/1.0"}""" -> "a report has no edge",
+        """{"kind":"posted","edge":"slack"}""" -> "a report has no address",
         """{"kind":"emailed"}""" -> "no report emailed"
       )
       bad.map((j, _) => ReportJson.read(ujson.read(j))) ==> bad.map((_, why) => Left(why))

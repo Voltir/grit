@@ -16,7 +16,7 @@ import grit.core.id.{
   TurnRef
 }
 import grit.core.retention.{Target, Tombstone}
-import grit.core.store.{StoreError, Tombstones, Tx}
+import grit.core.store.{Origin, StoreError, Tombstones, Tx}
 
 import utest.*
 import JobTests.{Count, Counting}
@@ -175,8 +175,11 @@ object ScheduleContract {
       */
     def start(slot: Slot, version: Int, following: Option[Instant]): Unit
 
-    /** The first turn of the conversation this store knows by `name`, recorded or not. */
-    def turn(name: String): TurnRef
+    /** The first turn of `origin`'s conversation, recorded or not. */
+    def turn(origin: Origin): TurnRef
+
+    /** The first turn of the Slack thread this store knows by `name`, recorded or not. */
+    final def turn(name: String): TurnRef = turn(Origin.Slack("T1", "C1", name))
 
     /** `turn` recorded as rooted on a message `by` wrote, its reply posted at `address`, or
       * nowhere.

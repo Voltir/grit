@@ -21,7 +21,7 @@ private[slack] object Served {
     def apply(bot: BotToken, app: AppToken): Slack^
   }
 
-  val Name: EdgeName = EdgeName("slack")
+  val Name: EdgeName = EdgeName.Slack
 
   /** The bot token's variable (`xoxb-…`). */
   val BotTokenVar: Variable = Variable("SLACK_BOT_TOKEN")

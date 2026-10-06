@@ -51,8 +51,8 @@ private[engine] object SqlSchedulesUnder {
       def start(slot: Slot, version: Int, following: Option[Instant]): Unit =
         ok("starting")(LiveDb.transaction(config)(schedules.started(slot, version, following)))
 
-      def turn(name: String): TurnRef =
-        TurnRef(LiveDb.conversation(config, Origin.Task("contract", name)).id, TurnSeq.First)
+      def turn(origin: Origin): TurnRef =
+        TurnRef(LiveDb.conversation(config, origin).id, TurnSeq.First)
 
       def asking(turn: TurnRef, by: PrincipalId, address: Option[String]): Unit =
         ok("asking")(LiveDb.transaction(config) {
