@@ -3,7 +3,7 @@ package grit.lifecycle.replay
 import grit.core.durable.{History, InMemoryDurable}
 import grit.core.period.ClosingJson
 import grit.core.triage.{ShadowAnswers, Shadowed, ShadowedJson}
-import grit.lifecycle.close.CloseFixtures
+import grit.lifecycle.close.{Close, CloseFixtures}
 import grit.lifecycle.post.{PostEnv, Posting}
 import grit.lifecycle.settle.SettleFixtures
 import grit.lifecycle.shadow.ShadowFixtures
@@ -159,6 +159,32 @@ object LifecycleReplayTests extends TestSuite {
         tags.exists(_.contains("answers")),
         held.exists(_.get("kind").exists(_.strOpt.contains("unasked")))
       ) ==> (true, true, true)
+    }
+
+    test("the epoch holds a job's run's close, replied and unreplied, taken by the patch") {
+      // Without them the gate above never replays the patched branch of the close.
+      val ran = histories.flatMap { case (path, parsed) =>
+        parsed.toOption.toVector
+          .filter(h =>
+            h.steps.headOption
+              .map(_.name)
+              .contains(InMemoryDurable.patchMarker(Close.Patches.RunClose))
+          )
+          .flatMap(_.steps.collect {
+            case s if s.name == "summarise" =>
+              s.outcome match {
+                case InMemoryDurable.Outcome.Output(text) =>
+                  ujson.read(text).obj.get("closing").flatMap(ClosingJson.read(_).toOption)
+                case _ => None
+              }
+          })
+          .flatten
+          .map(c => path.last -> c.flows.outcome)
+      }
+      ran.sortBy(_._1) ==> Vector(
+        "close-ran-unreplied.json" -> Some("No reply."),
+        "close-ran.json" -> Some("Stand up: 3 open pull requests.")
+      )
     }
 
     test("every recorded closing of the epoch reads, and the epoch holds a version-3 one") {

@@ -37,6 +37,17 @@ object RecordLifecycleHistories {
 
   private val Lapsed = 24 * 60 + 1L
 
+  private val remind = grit.core.id.JobName.of("remind").fold(sys.error, identity)
+
+  /** A run of the deployment's `standup` schedule, due at the close's start. */
+  private val run = grit.core.job.Slot(
+    grit.core.id.ScheduleId.declared(
+      grit.core.id.Declarer.Deployment,
+      grit.core.id.ScheduleKey.of("standup").fold(sys.error, identity)
+    ),
+    Start
+  )
+
   def main(args: Array[String]): Unit = {
     val dir = os.Path(sys.env("GRIT_HISTORIES")) / Turn.Epoch
     os.makeDir.all(dir)
@@ -60,11 +71,11 @@ object RecordLifecycleHistories {
 
   /** Each shape, by name, recorded by running the close over a fresh world. */
   private def shapes(dir: os.Path): Vector[(String, History)] = {
-    def record(
-        name: String
-    )(run: (World, InMemoryDurable) => grit.core.id.WorkflowId): (String, History) = {
+    def record(name: String, origin: grit.core.store.Origin = Session)(
+        run: (World, InMemoryDurable) => grit.core.id.WorkflowId
+    ): (String, History) = {
       val durable = new InMemoryDurable
-      val id = run(new World, durable)
+      val id = run(new World(origin), durable)
       name -> History("close", id, Turn.Epoch, "recorded", durable.history(id))
     }
     val posted = {
@@ -381,6 +392,25 @@ object RecordLifecycleHistories {
             )
           )
         )
+        val id = w.attempt.workflowId
+        d.run(id)(
+          w.body(new Gate(Some(Vector(0.9, 0.9, 0.9, 0.9))), written, new SetClock(at(Lapsed)))
+        )
+        id
+      },
+      record("close-ran", run.origin(remind)) { (w, d) =>
+        // A job's run, replied: no gate call, no model call, its opening and reply verbatim.
+        val t = w.say(run.opening(remind).text, 0)
+        w.add(t, Payload.Message(replyOf("Stand up: 3 open pull requests.")), 0, "reply")
+        val id = w.attempt.workflowId
+        d.run(id)(
+          w.body(new Gate(Some(Vector(0.9, 0.9, 0.9, 0.9))), written, new SetClock(at(Lapsed)))
+        )
+        id
+      },
+      record("close-ran-unreplied", run.origin(remind)) { (w, d) =>
+        // A superseded run's conversation, its opening alone: closed with "No reply."
+        w.say(run.opening(remind).text, 0)
         val id = w.attempt.workflowId
         d.run(id)(
           w.body(new Gate(Some(Vector(0.9, 0.9, 0.9, 0.9))), written, new SetClock(at(Lapsed)))

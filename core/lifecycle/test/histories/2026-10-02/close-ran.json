@@ -1,0 +1,27 @@
+{
+  "workflow": "close",
+  "id": "close:c1:1:0:1789984800000",
+  "epoch": "2026-10-02",
+  "source": "recorded",
+  "steps": [
+    {
+      "name": "DBOS.patch-run-close"
+    },
+    {
+      "name": "check",
+      "output": "{\"ok\":{\"due\":\"ran\",\"first\":0,\"known\":{\"open\":[],\"standing\":[],\"topics\":[]},\"cap\":4096,\"v\":3}}"
+    },
+    {
+      "name": "gate",
+      "output": "{\"outcome\":false,\"open\":false,\"standing\":false,\"settled\":false,\"note\":\"ran\"}"
+    },
+    {
+      "name": "summarise",
+      "output": "{\"closing\":{\"v\":3,\"flows\":{\"prose\":\"Scheduled run of remind, due 2026-09-20 10:00 UTC\",\"outcome\":\"Stand up: 3 open pull requests.\",\"changes\":[]},\"balance\":{\"open\":[],\"standing\":[],\"topics\":[]}}}"
+    },
+    {
+      "name": "seal",
+      "output": "{\"ok\":{\"closed\":\"closing:c1:1\"}}"
+    }
+  ]
+}
