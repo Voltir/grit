@@ -74,8 +74,42 @@ private[grit] object Launch {
       sweeping: Boolean,
       finished: String => Unit
   ): Engine^{engine} = {
-    // One clock for the jobs: their runs, their desks, the declared schedules and the clock edge.
-    val clock: Clock^ = Clock.system()
+    val reached: Models = s.openRouter match {
+      case None => new StubModels(run.stubDelay)
+      case Some(key) =>
+        val seed = Seed.catalog.fold(why => throw new IllegalStateException(why), identity)
+        new OpenRouterModels(key, seed.withPolicy(d.policy), engine.db, engine.modelSettings)
+    }
+    asking(
+      engine,
+      d,
+      s,
+      if (run.announced) announced(reached) else reached,
+      classifier(d, s),
+      weighing(d, s),
+      Clock.system(),
+      sweeping,
+      finished
+    )
+  }
+
+  /** As [[apply]], but every model call is made through `models`, every question the topics
+    * and the turn's weighing ask goes to `classifier` and `weighing`, and the jobs (their runs,
+    * their desks, the declared schedules and the clock edge) keep `clock`: a launch whose
+    * calls a test counts and whose time it sets. A shadow still asks the classifier `s` and
+    * `d` name.
+    */
+  private[grit] def asking(
+      engine: Engine^,
+      d: Deployment,
+      s: Secrets,
+      models: Models,
+      classifier: Classifier^,
+      weighing: Classifier^,
+      clock: Clock^,
+      sweeping: Boolean,
+      finished: String => Unit
+  ): Engine^{engine} = {
     declare(engine.lifecycle, engine.jot, d.lifecycle) match {
       case Left(error) =>
         throw new IllegalStateException(s"the lifecycle's settings could not be written: $error")
@@ -88,13 +122,6 @@ private[grit] object Launch {
     reconcile(engine.schedules, engine.jot, d, clock.now()).left.foreach { error =>
       throw new IllegalStateException(s"the declared schedules could not be written: $error")
     }
-    val reached: Models = s.openRouter match {
-      case None => new StubModels(run.stubDelay)
-      case Some(key) =>
-        val seed = Seed.catalog.fold(why => throw new IllegalStateException(why), identity)
-        new OpenRouterModels(key, seed.withPolicy(d.policy), engine.db, engine.modelSettings)
-    }
-    val models: Models = if (run.announced) announced(reached) else reached
     // The query writer is built with the assembler, from the catalog as the engine opens.
     val startup = models.catalog().fold(why => throw new IllegalStateException(why), _.pin)
     val writer = models.provider(startup.query)
@@ -138,7 +165,7 @@ private[grit] object Launch {
             engine.voices
           ),
           assembler,
-          classifier(d, s),
+          classifier,
           models,
           engine.db,
           Clock.system(),
@@ -165,7 +192,7 @@ private[grit] object Launch {
               engine.rooms,
               d.knowledge,
               d.triage,
-              weighing(d, s),
+              weighing,
               engine.placements,
               engine.db,
               Clock.system(),
@@ -190,7 +217,7 @@ private[grit] object Launch {
               engine.triage,
               engine.conversations
             ),
-            classifier(d, s),
+            classifier,
             models,
             engine.db,
             Clock.system()
@@ -199,7 +226,7 @@ private[grit] object Launch {
         Settle.body(
           SettleEnv(
             SettleRecords(engine.entries, engine.periods, engine.lifecycle, engine.principals),
-            classifier(d, s),
+            classifier,
             engine.db,
             Clock.system()
           )
@@ -232,7 +259,7 @@ private[grit] object Launch {
               engine.lifecycle,
               engine.rooms
             ),
-            classifier(d, s),
+            classifier,
             engine.db,
             Clock.system(),
             TriageSpeech(
@@ -256,7 +283,7 @@ private[grit] object Launch {
               engine.search,
               engine.principals
             ),
-            classifier(d, s),
+            classifier,
             engine.db,
             Clock.system(),
             grit.core.stitch.Tuning.Default
