@@ -30,6 +30,44 @@ final case class Writes[D <: caps.Pure] private (
 
   /** The destination placed at `where`; `None` when none is. */
   def at(where: Place): Option[D] = to.values.find(d => place(d) == where)
+
+  /** `parameters`, a tool's schema, with [[Writes.Field]] a required property whose choices are
+    * these names, described by `describe`: what the model is shown.
+    */
+  private[tool] def shown(parameters: ujson.Value): ujson.Obj = {
+    val schema = ujson.Obj.from(parameters.objOpt.fold(Iterator.empty)(_.iterator))
+    val choice = ujson.Obj(
+      "type" -> "string",
+      "enum" -> ujson.Arr.from(to.keys.map(ujson.Str(_))),
+      "description" -> describe
+    )
+    val properties = schema.value.get("properties").flatMap(_.objOpt).fold(Iterator.empty)(_.iterator)
+    schema("properties") = ujson.Obj.from(Iterator(Writes.Field -> choice) ++ properties.filter(_._1 != Writes.Field))
+    val required = schema.value.get("required").flatMap(_.arrOpt).fold(Vector.empty)(_.toVector)
+    schema("required") = ujson.Arr.from(ujson.Str(Writes.Field) +: required.filter(_ != ujson.Str(Writes.Field)))
+    schema
+  }
+
+  /** The destination `sent`, a call's arguments, names in [[Writes.Field]], and the arguments
+    * without it; [[CallError.Unwritable]] when they name none of these, or nothing.
+    */
+  private[tool] def chosen(
+      tool: ToolName,
+      sent: collection.Map[String, ujson.Value]
+  ): Either[CallError, (D, ujson.Obj)] = {
+    val named = sent.get(Writes.Field).filter(_ != ujson.Null)
+    named.flatMap(_.strOpt).flatMap(this.named) match {
+      case Some(d) => Right((d, Writes.without(sent)))
+      case None =>
+        Left(
+          CallError.Unwritable(
+            tool,
+            named.map(v => v.strOpt.getOrElse(v.render()).take(CallError.Echoed)),
+            to.keys.toVector
+          )
+        )
+    }
+  }
 }
 
 object Writes {
@@ -38,6 +76,17 @@ object Writes {
     * offers its choices; an edge's tool is told the checked destination, never what was sent.
     */
   val Field: String = "to"
+
+  /** Whether `parameters`, a tool's schema, declare [[Field]] among its properties. */
+  private[tool] def declared(parameters: ujson.Value): Boolean =
+    parameters.objOpt
+      .flatMap(_.get("properties"))
+      .flatMap(_.objOpt)
+      .exists(_.contains(Field))
+
+  /** `sent`, a call's arguments, without [[Field]]. */
+  private[tool] def without(sent: collection.Map[String, ujson.Value]): ujson.Obj =
+    ujson.Obj.from(sent.iterator.filter(_._1 != Field))
 
   /* One function value, so two placed sets of the same names are equal. */
   private val itself: Place -> Place = p => p

@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 import grit.core.clock.Clock
 import grit.core.edge.{DeskError, Route, ToolRequest}
-import grit.core.tool.{Hosted, Outcome, Retry, Tool, ToolName, ToolSet, Toolbox}
+import grit.core.tool.{Args, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSet, ToolSpec, Toolbox}
 import grit.edge.{Run, Tools}
 import grit.mcp.client.McpClient
 import grit.mcp.wire.McpTool
@@ -57,10 +57,7 @@ final class McpTools(
     val tools: Vector[Tool.Offered^{clock}] =
       McpTools.current(clock, clients).flatMap { (at, tool) =>
         clients.lift(at).toVector.flatMap { client =>
-          Hosted
-            .advertised(McpTools.entry(tool))
-            .toVector
-            .map(hosted => hosted.over(args => McpTools.call(client, tool, args)))
+          Vector(McpTools.hosted(tool).over(args => McpTools.call(client, tool, args)))
         }
       }
     Toolbox.of[caps.CapSet^{clock}](tools*) match {
@@ -84,9 +81,18 @@ object McpTools {
       .flatMap((listed, at) => listed.fold(_ => Vector.empty, _.tools.map((at, _))))
       .distinctBy(_._2.offered)
 
+  /** `tool` as this edge describes it: its arguments the JSON object sent, unchecked; a call
+    * shown as [[Hosted.advertised]] shows one.
+    */
+  private def hosted(tool: McpTool): Hosted[ujson.Value] =
+    new Hosted[ujson.Value](
+      ToolSpec(tool.offered, tool.does, Args.raw(tool.inputSchema), Retry.Rerun),
+      Gate.Free,
+      args => args.render().take(Hosted.ShownMax)
+    )
+
   /** `tool` as an edge advertises it. */
-  private def entry(tool: McpTool): ToolSet.Entry =
-    ToolSet.Entry(tool.offered, tool.does, tool.inputSchema, asks = false, Retry.Rerun)
+  private def entry(tool: McpTool): ToolSet.Entry = hosted(tool).entry
 
   /** `tool` called on `client`'s server with `args`, as the model reads it. */
   private def call(client: McpClient^, tool: McpTool, args: ujson.Value): Outcome =

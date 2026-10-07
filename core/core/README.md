@@ -205,6 +205,8 @@ In dependency order:
   `ToolName` and `ToolSpec`, from which come the schema the model is shown (a
   `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, how a call is
   shown in one line, and what it does, capture-tracked), `Hosted` (a tool's description without its run: offered by the engine, run by an edge),
+  `Writing` (a hosted tool that writes outside grit: a call is bound to the place its `to`
+  names, or refused `CallError.Unwritable`),
   `Retry` (whether a call cut short is run again or answered `Interrupted`), `Writes` (where a
   hosted tool's calls write outside grit: the names a call may give in its `to` argument, each
   an edge's own destination and the place core labels it by), `ToolSet`

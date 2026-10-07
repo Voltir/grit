@@ -89,10 +89,7 @@ object ToolSet {
         retry <- Retry.of(retryKey).toRight(s"no retry $retryKey")
         named <- ToolName.of(name)
         _ <- Either.cond(
-          !parameters.objOpt
-            .flatMap(_.get("properties"))
-            .flatMap(_.objOpt)
-            .exists(_.contains(Writes.Field)),
+          !Writes.declared(parameters),
           (),
           s"the tool $name's parameters declare ${Writes.Field}, which only its writes may name"
         )

@@ -12,6 +12,12 @@ enum CallError {
     */
   case BadArgs(tool: ToolName, error: ArgsError, sent: String)
 
+  /** `tool` writes outside grit and its call named no place it may write to here: `sent` is the
+    * name it gave, cut to [[CallError.Echoed]] characters (`None` for none), `offered` the
+    * names it may give, in order.
+    */
+  case Unwritable(tool: ToolName, sent: Option[String], offered: Vector[String])
+
   /** What is wrong, then the tools there are, or what was sent. */
   def message: String = this match {
     case Unknown(name, offered) =>
@@ -20,6 +26,10 @@ enum CallError {
       else s"There is no tool named `$name`; the tools are $names."
     case BadArgs(tool, error, sent) =>
       s"The call to `${ToolName.value(tool)}` was not run: ${error.message} You sent: $sent"
+    case Unwritable(tool, sent, offered) =>
+      val not = sent.fold("")(s => s", not $s")
+      s"The call to `${ToolName.value(tool)}` was not run: `${Writes.Field}` must be one of " +
+        s"${offered.mkString(", ")}, the places it may write to from here$not. Nothing was sent."
   }
 
   /** This error as the call's outcome: [[Outcome.Failed]] with [[message]]. */
@@ -30,6 +40,15 @@ object CallError {
 
   /** The most characters of a call's arguments that [[CallError.BadArgs]] echoes. */
   val Echoed = 500
+
+  /** [[BadArgs]] for `tool`'s `arguments`, which did not read for `error`. */
+  private[tool] def refused(tool: ToolName, error: ArgsError, arguments: ujson.Value): CallError = {
+    val sent = arguments match {
+      case ujson.Str(raw) => raw
+      case json => json.render()
+    }
+    BadArgs(tool, error, sent.take(Echoed))
+  }
 }
 
 /** Two tools offered together share the name `name`. */

@@ -4,6 +4,7 @@ import grit.core.approval.Approval
 import grit.core.id.CallSlot
 import grit.core.message.AssistantBlock
 import grit.core.model.NameRepair
+import grit.core.place.Place
 import grit.core.provider.ToolSchema
 
 /** The tools offered on one model call, their names distinct, each acting only through the
@@ -135,7 +136,9 @@ object Bound {
 
   /** A call of a tool an edge runs ([[Hosted]]), read and checked: `arguments` as the model
     * sent them, to be read again under `repairs` by the edge; `ask` is what a person is shown
-    * first when the tool asks, `None` when it runs without asking; `retry` is its tool's.
+    * first when the tool asks, `None` when it runs without asking; `retry` is its tool's;
+    * `destination`, the place a writing tool's call named ([[Writing]]), which `arguments` no
+    * longer hold, `None` for a tool that declares none.
     */
   final class Hosted private[tool] (
       val tool: ToolName,
@@ -143,7 +146,8 @@ object Bound {
       val ask: Option[String],
       val arguments: ujson.Value,
       val repairs: Set[grit.core.model.ArgRepair],
-      val retry: Retry
+      val retry: Retry,
+      val destination: Option[Place]
   ) extends Bound
 
 }

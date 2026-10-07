@@ -1,5 +1,7 @@
 package grit.turn
 
+import scala.collection.immutable.VectorMap
+
 import grit.core.approval.Approval
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.{InMemoryEdges, Permit}
@@ -9,7 +11,7 @@ import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
 import grit.core.store.{InMemoryEntryStore, InMemoryToolSets}
-import grit.core.tool.{Hosted, Outcome, Retry, ToolName, ToolSet}
+import grit.core.tool.{CallError, Hosted, Outcome, Retry, ToolName, ToolSet, Writes}
 
 import utest.*
 
@@ -97,14 +99,45 @@ object TurnHostedTests extends TestSuite {
   private def atElsewhere(
       edges: InMemoryEdges,
       durable: InMemoryDurable,
-      serve: grit.core.edge.ToolRequest -> Serve
+      serve: grit.core.edge.ToolRequest -> Serve,
+      writes: Option[Writes[Place]] = None
   ): Served = {
     val s = new Served(edges, durable, serve, elsewhere.place)
-    val entry =
-      ToolSet.Entry(ToolName("post_x"), "Posts.", ujson.Obj("type" -> "object"), false, Retry.Rerun)
+    val entry = ToolSet.Entry(
+      ToolName("post_x"),
+      "Posts.",
+      ujson.Obj("type" -> "object"),
+      false,
+      Retry.Rerun,
+      writes
+    )
     s.advertise(Hosted.advertised(entry).toVector)
     s
   }
+
+  private val general: Place =
+    Place.read("slack:T/C1").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** `post_x`'s destinations: `general`, at [[general]]. */
+  private val toGeneral: Writes[Place] =
+    Writes
+      .of(VectorMap("general" -> general), p => p, "Where to post.")
+      .fold(e => throw new java.lang.AssertionError(e), _.placed)
+
+  /** A model that calls `post_x` with `arguments` on its first call and answers "done" after. */
+  private def posting(arguments: ujson.Value): Scripted =
+    new Scripted((_, n) =>
+      Right(
+        if (n > 0) calling("done")
+        else
+          Message.Assistant(
+            Vector(AssistantBlock.ToolCall(ToolCallId("t1"), "post_x", arguments)),
+            StopReason.ToolUse,
+            Usage(Tokens(10), Tokens(2), Tokens.Zero, Some(BigDecimal("0.001"))),
+            "m"
+          )
+      )
+    )
 
   /** The body of the fixture's TUI turn, reaching `elsewhere`, whose edge is `there`. */
   private def reachingBody(
@@ -207,6 +240,30 @@ object TurnHostedTests extends TestSuite {
         Vector(("read a.txt", false), ("posted at service:elsewhere", false))
       durable.recordedSteps(turn.workflowId).dropWhile(_ != "record-call:0").take(3) ==>
         Vector("record-call:0", "dispatch:0", "reach:0:service:elsewhere")
+    }
+
+    test(
+      "a writing call naming a place outside its offer is answered Unwritable, and no request is sent"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "post it")
+      val durable = new InMemoryDurable
+      val edge = served(durable, _ => Serve.Never)
+      val there = atElsewhere(
+        edge.edges,
+        durable,
+        _ => Serve.Now(Outcome.Done("posted")),
+        Some(toGeneral)
+      )
+      val provider = posting(ujson.Obj("to" -> "random", "text" -> "hi"))
+      durable.run(turn.workflowId)(reachingBody(entries, provider, edge, there)) ==> Done
+      results(provider).map(r => (r.content, r.isError)) ==> Vector(
+        (
+          CallError.Unwritable(ToolName("post_x"), Some("random"), Vector("general")).message,
+          true
+        )
+      )
+      there.sent ==> Vector.empty
     }
 
     test("a call to a reached tool when no edge serves that service is answered so, unsent") {
