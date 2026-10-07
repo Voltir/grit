@@ -15,6 +15,7 @@ import grit.core.id.{
 }
 import grit.core.retention.Target
 import grit.core.store.{InMemoryTombstones, Origin, StoreError, Tx}
+import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[ScheduleStore]], with each plugin's [[ScheduleDesk]], for tests, keeping
@@ -116,7 +117,8 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
             PrincipalId.Grit,
             Report.Kept,
             d.rule,
-            d.rule.first(now).map(Slot.kept)
+            d.rule.first(now).map(Slot.kept),
+            d.clearance
           )
         case Some(r) =>
           val ended = r.ended.filterNot(_ == Ending.Undeclared)
@@ -124,6 +126,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
             job = d.job.name,
             params = d.written,
             rule = d.rule,
+            label = d.clearance,
             next =
               if (ended.nonEmpty) None
               else if (r.rule == d.rule && r.ended.isEmpty) r.next
@@ -173,7 +176,11 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
     }
 
   def read(id: ScheduleId)(using Tx^): Either[StoreError, Option[Schedule]] =
-    Right(rows.get(id).map(r => Schedule(r.job, r.params, r.principal, r.report, r.rule, r.ended)))
+    Right(
+      rows
+        .get(id)
+        .map(r => Schedule(r.job, r.params, r.principal, r.report, r.rule, r.ended, r.label))
+    )
 
   /** `plugin`'s desk, holding the job names `jobs`, its now `clock`'s. */
   def desk(plugin: PluginName, jobs: Vector[JobName], clock: Clock^): ScheduleDesk^ =
@@ -210,6 +217,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
                         Report.Posted(to),
                         SlotRule.Once(at, grace),
                         Some(at),
+                        Label.Public,
                         asked = Some(call.turn.conversationId)
                       )
                     )
@@ -296,6 +304,7 @@ object InMemorySchedules {
       report: Report,
       rule: SlotRule,
       next: Option[Instant],
+      label: Label,
       started: Option[Instant] = None,
       running: Option[Int] = None,
       ended: Option[Ending] = None,

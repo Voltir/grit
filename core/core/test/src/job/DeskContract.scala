@@ -14,6 +14,7 @@ import grit.core.id.{
 }
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.Origin
+import grit.core.visibility.Label
 
 import utest.*
 import JobTests.{Count, Counting}
@@ -81,7 +82,8 @@ abstract class DeskContract extends TestSuite {
           PrincipalId("ann"),
           Report.Posted(Destination(EdgeName.Slack, "C1/1.0")),
           SlotRule.Once(at("09:30"), hour),
-          None
+          None,
+          Label.Public
         )
       )
       u.due("09:30") ==> Vector(id)

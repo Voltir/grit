@@ -825,7 +825,8 @@ CREATE TABLE IF NOT EXISTS grit.document_terms (
 -- `asked_in`, a CallSlot.key; never reconciled). `next_at` is its next slot's nominal instant,
 -- NULL when it has none left; `started_at` the nominal instant of the newest slot started, and
 -- `running` the job version that slot's run was started at, NULL once it replied. `ended` says how
--- it ended (Ending), with `ended_at`; an ended schedule has no slot left.
+-- it ended (Ending), with `ended_at`; an ended schedule has no slot left. `label_id` is what its
+-- runs read beyond their own conversations, and are kept at: a declared one's clearance.
 -- Retention: journal: an ended schedule, after the raw window (Target.Schedule).
 CREATE TABLE IF NOT EXISTS grit.schedules (
     id          TEXT PRIMARY KEY,
@@ -842,6 +843,7 @@ CREATE TABLE IF NOT EXISTS grit.schedules (
     running     INTEGER,
     ended       TEXT CHECK (ended IN ('ran', 'missed', 'failed', 'cancelled', 'undeclared')),
     ended_at    TIMESTAMPTZ,
+    label_id    SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.labels(id),
     CHECK ((source = 'asked') = (asked_in IS NOT NULL)),
     CHECK ((ended IS NULL) = (ended_at IS NULL)),
     CHECK (ended IS NULL OR next_at IS NULL)

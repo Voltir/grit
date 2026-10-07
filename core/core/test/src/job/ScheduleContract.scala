@@ -17,6 +17,7 @@ import grit.core.id.{
 }
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{Origin, StoreError, Tombstones, Tx}
+import grit.core.visibility.{Label, Level, TestLabels}
 
 import utest.*
 import JobTests.{Count, Counting}
@@ -50,12 +51,49 @@ abstract class ScheduleContract extends TestSuite {
       val once = SlotRule.Once(at("2026-10-07T09:00:00Z"), hour)
       u.declare(Vector(declared("standup", daily(9), 1), declared("launch", once, 2)), "10:00")
       u.read(id("standup")) ==>
-        Some(Schedule(standup.name, ujson.Num(1), PrincipalId.Grit, Report.Kept, daily(9), None))
+        Some(
+          Schedule(
+            standup.name,
+            ujson.Num(1),
+            PrincipalId.Grit,
+            Report.Kept,
+            daily(9),
+            None,
+            Label.Public
+          )
+        )
       u.read(id("launch")) ==>
-        Some(Schedule(standup.name, ujson.Num(2), PrincipalId.Grit, Report.Kept, once, None))
+        Some(
+          Schedule(
+            standup.name,
+            ujson.Num(2),
+            PrincipalId.Grit,
+            Report.Kept,
+            once,
+            None,
+            Label.Public
+          )
+        )
       u.read(id("never")) ==> None
       u.due("10:00") ==> Vector(id("launch"))
       u.due("2026-10-08T09:00:00Z") ==> Vector(id("launch"), id("standup"))
+    }
+
+    test(
+      "a declared schedule is labelled its clearance, and a changed clearance is rewritten in place, its next slot kept"
+    ) {
+      val u = fresh()
+      val cleared = Label.at(Level.Internal, TestLabels.compartment("trial"))
+      u.declare(
+        Vector(
+          (Declarer.Deployment, Declared(key("standup"), standup, daily(9), Count(1), cleared))
+        ),
+        "10:00"
+      )
+      u.read(id("standup")).map(_.label) ==> Some(cleared)
+      u.declare(Vector(declared("standup", daily(9), 1)), "2026-10-08T12:00:00Z")
+      u.read(id("standup")).map(_.label) ==> Some(Label.Public)
+      u.due("2026-10-08T12:00:00Z") ==> Vector(id("standup"))
     }
 
     test(

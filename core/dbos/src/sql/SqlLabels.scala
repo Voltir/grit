@@ -1,6 +1,6 @@
 package grit.dbos.sql
 
-import java.sql.PreparedStatement
+import java.sql.{PreparedStatement, ResultSet}
 
 import scala.util.Using
 
@@ -32,20 +32,19 @@ private[dbos] object SqlLabels {
     ps.setString(at + 1, ujson.Arr.from(LabelParts.compartments(label).map(ujson.Str(_))).render())
   }
 
-  /** The columns that read a `grit.labels` row aliased `alias` back: its level, and its
-    * compartments as JSON, which [[read]] takes.
-    */
-  def columns(alias: String): String = s"$alias.level, to_jsonb($alias.compartments)::text"
+  /** The columns that select the `grit.labels` row aliased `alias` for [[read]]. */
+  def columns(alias: String): String =
+    s"$alias.level AS label_level, to_jsonb($alias.compartments)::text AS label_compartments"
 
-  /** The label stored as `rank` and `compartments` (JSON text, as [[columns]] reads it), failing
-    * closed as [[LabelParts.of]] does; compartments that are not a JSON array of strings read as
-    * one name that is no compartment's.
+  /** The label the current row of `rs` holds in [[columns]], failing closed as
+    * [[LabelParts.of]] does; compartments that are not a JSON array of strings read as one name
+    * that is no compartment's. Throws as `rs` does when the row has no such columns.
     */
-  def read(rank: Int, compartments: String): Label = {
+  def read(rs: ResultSet): Label = {
     val names = scala.util
-      .Try(ujson.read(compartments).arr.toVector.map(_.str))
+      .Try(ujson.read(rs.getString("label_compartments")).arr.toVector.map(_.str))
       .getOrElse(Vector(""))
-    LabelParts.of(rank, names)
+    LabelParts.of(rs.getInt("label_level"), names)
   }
 
   /** Records `declared` as the compartments this database runs under: nothing when they are

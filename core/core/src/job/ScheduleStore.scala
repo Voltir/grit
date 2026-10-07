@@ -4,9 +4,11 @@ import java.time.Instant
 
 import grit.core.id.{Declarer, JobName, PrincipalId, ScheduleId}
 import grit.core.store.{StoreError, Tx}
+import grit.core.visibility.Label
 
 /** A stored schedule: its job, its parameters as kept, whom it runs for, where it reports, its
-  * rule, and how it ended (`None` while pending).
+  * rule, how it ended (`None` while pending), and its label: what its runs read beyond their
+  * own conversations, and are kept at (ADR 0030); a declared one's [[Declared.clearance]].
   */
 final case class Schedule(
     job: JobName,
@@ -14,7 +16,8 @@ final case class Schedule(
     principal: PrincipalId,
     report: Report,
     rule: SlotRule,
-    ended: Option[Ending]
+    ended: Option[Ending],
+    label: Label
 )
 
 /** The stored schedules, as the engine and its clock edge keep them. Every schedule ended is
@@ -24,8 +27,8 @@ trait ScheduleStore {
 
   /** Makes the stored declared schedules `declared`, by their declarers, as of `now`. A new one
     * is written with its first slot after `now` (a once slot at its instant, however past),
-    * kept as [[Slot.kept]] keeps it. A changed one (its job, parameters or rule) is rewritten in
-    * place, its next slot recomputed only when its rule changed. One ended undeclared is revived
+    * kept as [[Slot.kept]] keeps it. A changed one (its job, parameters, rule or clearance) is
+    * rewritten in place, its next slot recomputed only when its rule changed. One ended undeclared is revived
     * with the first slot after `now`, as a new one is; one ended any other way stays ended.
     * Every pending declared one not among them is ended undeclared. An asked schedule is never
     * touched.

@@ -39,6 +39,7 @@ import grit.core.period.LifecycleSettings
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError, Tx}
+import grit.core.visibility.Label
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.job.clock.{ClockEdge, Ticked}
@@ -245,7 +246,9 @@ object DeclaredLiveTests extends TestSuite {
       val ping = new Ping("ping", 1)
       val weekly = SlotRule.Weekly(DayOfWeek.MONDAY, LocalTime.of(9, 0), ZoneOffset.UTC)
       def kept(rule: SlotRule, ended: Option[Ending]) =
-        Some(Schedule(ping.name, ujson.Obj(), PrincipalId.Grit, Report.Kept, rule, ended))
+        Some(
+          Schedule(ping.name, ujson.Obj(), PrincipalId.Grit, Report.Kept, rule, ended, Label.Public)
+        )
       val first = launched(
         config,
         deployment(Vector(ping), Vector(declared("a", ping, Daily), declared("b", ping, Daily)))

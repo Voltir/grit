@@ -40,6 +40,7 @@ import grit.core.job.{
 }
 import grit.core.retention.Target
 import grit.core.store.{Jot, StoreError, Tombstones, Tx}
+import grit.core.visibility.Label
 
 /** [[ScheduleStore]] over `grit.schedules`, marking in `tombstones` each schedule it ends, and
   * each plugin's [[ScheduleDesk]] over the same rows. A desk's asker is the author
@@ -93,9 +94,9 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       .flatMap(_.headOption match {
         case None =>
           update(
-            """INSERT INTO grit.schedules
-              |  (id, source, job, rule, params, principal, report, created_at, next_at)
-              |VALUES (?, 'declared', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?)""".stripMargin
+            s"""INSERT INTO grit.schedules
+               |  (id, source, job, rule, params, principal, report, created_at, next_at, label_id)
+               |VALUES (?, 'declared', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ${SqlLabels.Interned})""".stripMargin
           ) { ps =>
             ps.setString(1, ScheduleId.value(id))
             ps.setString(2, JobName.value(d.job.name))
@@ -105,18 +106,20 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             ps.setString(6, ReportJson.write(Report.Kept).render())
             ps.setObject(7, utc(now))
             ps.setObject(8, d.rule.first(now).map(Slot.kept).map(utc).orNull)
+            SqlLabels.bind(ps, 9, d.clearance)
           }
         case Some((rule, ended)) =>
           val revived = ended.contains(Ending.Undeclared.word)
           val keepsEnd = ended.nonEmpty && !revived
           val keepsNext = !keepsEnd && !revived && rule == Right(d.rule)
           update(
-            """UPDATE grit.schedules
-              |   SET job = ?, rule = ?::jsonb, params = ?::jsonb,
-              |       next_at = CASE WHEN ? THEN next_at ELSE ? END,
-              |       ended = CASE WHEN ? THEN NULL ELSE ended END,
-              |       ended_at = CASE WHEN ? THEN NULL ELSE ended_at END
-              | WHERE id = ?""".stripMargin
+            s"""UPDATE grit.schedules
+               |   SET job = ?, rule = ?::jsonb, params = ?::jsonb,
+               |       next_at = CASE WHEN ? THEN next_at ELSE ? END,
+               |       ended = CASE WHEN ? THEN NULL ELSE ended END,
+               |       ended_at = CASE WHEN ? THEN NULL ELSE ended_at END,
+               |       label_id = ${SqlLabels.Interned}
+               | WHERE id = ?""".stripMargin
           ) { ps =>
             ps.setString(1, JobName.value(d.job.name))
             ps.setString(2, SlotRuleJson.write(d.rule).render())
@@ -128,7 +131,8 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             )
             ps.setBoolean(6, revived)
             ps.setBoolean(7, revived)
-            ps.setString(8, ScheduleId.value(id))
+            SqlLabels.bind(ps, 8, d.clearance)
+            ps.setString(10, ScheduleId.value(id))
           }
       })
       .map(_ => ())
@@ -184,7 +188,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
 
   def read(id: ScheduleId)(using tx: Tx^): Either[StoreError, Option[Schedule]] =
     many(
-      "SELECT job, params, principal, report, rule, ended FROM grit.schedules WHERE id = ?"
+      s"SELECT $Selected FROM $Labelled WHERE s.id = ?"
     )(_.setString(1, ScheduleId.value(id)))(stored).flatMap(_.headOption match {
       case None => Right(None)
       case Some(row) => row.left.map(why => invalid(id, why)).map(Some(_))
@@ -198,8 +202,9 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       tx: Tx^
   ): Either[StoreError, Option[SqlSchedules.Waiting]] =
     many(
-      """SELECT job, rule, next_at, started_at, running FROM grit.schedules
-        | WHERE id = ? AND ended IS NULL FOR UPDATE""".stripMargin
+      s"""SELECT s.job, s.rule, s.next_at, s.started_at, s.running, ${SqlLabels.columns("l")}
+         |  FROM $Labelled
+         | WHERE s.id = ? AND s.ended IS NULL FOR UPDATE OF s""".stripMargin
     )(_.setString(1, ScheduleId.value(id))) { rs =>
       val started = Option(rs.getObject("started_at", classOf[OffsetDateTime])).map(_.toInstant)
       val running = Option(rs.getObject("running", classOf[Integer])).map(_.intValue)
@@ -215,7 +220,8 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         job,
         rule,
         Option(rs.getObject("next_at", classOf[OffsetDateTime])).map(_.toInstant),
-        last
+        last,
+        SqlLabels.read(rs)
       )
     }.flatMap(_.headOption match {
       case None => Right(None)
@@ -425,8 +431,8 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         _.setString(1, PrincipalId.value(by))
       )(_ => ()).map(_.size)
       rows <- many(
-        """SELECT id, job, params, principal, report, rule, ended FROM grit.schedules
-          | WHERE source = 'asked' AND ended IS NULL AND principal = ?""".stripMargin
+        s"""SELECT $Selected FROM $Labelled
+           | WHERE s.source = 'asked' AND s.ended IS NULL AND s.principal = ?""".stripMargin
       )(_.setString(1, PrincipalId.value(by)))(rs => (rs.getString("id"), stored(rs)))
       read <- traverse(rows) { (id, row) =>
         ScheduleId.of(id).flatMap(i => row.map(i -> _))
@@ -438,8 +444,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       tx: Tx^
   ): Either[StoreError, Option[Row]] =
     many(
-      "SELECT job, params, principal, report, rule, ended, source FROM grit.schedules " +
-        "WHERE id = ?" + (if (lock) " FOR UPDATE" else "")
+      s"SELECT $Selected FROM $Labelled WHERE s.id = ?" + (if (lock) " FOR UPDATE OF s" else "")
     )(_.setString(1, ScheduleId.value(id))) { rs =>
       stored(rs).map(Row(_, rs.getString("source") == "asked"))
     }.flatMap(_.headOption match {
@@ -518,17 +523,25 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
 
 private[dbos] object SqlSchedules {
 
+  /** A schedule's row and its label's, as [[Selected]] reads them. */
+  private val Labelled = "grit.schedules s JOIN grit.labels l ON l.id = s.label_id"
+
+  /** What [[stored]] reads, of [[Labelled]]. */
+  private val Selected =
+    s"s.id, s.job, s.params, s.principal, s.report, s.rule, s.ended, s.source, ${SqlLabels.columns("l")}"
+
   /** A stored schedule, and whether it was asked rather than declared. */
   private final case class Row(schedule: Schedule, asked: Boolean)
 
-  /** A pending schedule as the inbox starts it: its job and rule, its next slot, and the slot its
-    * last run started for, with that run's version while it is in flight.
+  /** A pending schedule as the inbox starts it: its job and rule, its next slot, the slot its
+    * last run started for, with that run's version while it is in flight, and its label.
     */
   final case class Waiting(
       job: JobName,
       rule: SlotRule,
       next: Option[Instant],
-      last: Option[(Instant, Option[Int])]
+      last: Option[(Instant, Option[Int])],
+      label: Label
   )
 
   private def utc(at: Instant): OffsetDateTime = at.atOffset(ZoneOffset.UTC)
@@ -552,7 +565,8 @@ private[dbos] object SqlSchedules {
       PrincipalId(rs.getString("principal")),
       report,
       rule,
-      ended
+      ended,
+      SqlLabels.read(rs)
     )
 
   /** `rows`, each read by `f`, or the first reason one is not. */
