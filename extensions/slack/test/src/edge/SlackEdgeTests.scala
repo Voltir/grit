@@ -539,11 +539,24 @@ object SlackEdgeTests extends TestSuite {
       "in a private channel grit listens in, a message is heard and a mention is a turn, as in a public one"
     ) {
       val w = new World(listening = Set(C))
+      w.slack.privateChannels = Set(C)
       val inPrivate = Seq("channel_type" -> ujson.Str("group"))
       w.slack.deliver(message("2.0", "standup moves to 10:00", extra = inPrivate)) ==> true
       w.slack.deliver(mention("3.0")) ==> true
       (w.heard("2.0"), w.turnOf("3.0", "3.0").toVector == w.inbox.started, w.inbox.started.size) ==>
         (Vector(("standup moves to 10:00", Some("Ana Lima"))), true, 1)
+    }
+
+    test(
+      "a mention is recorded in any public channel, and in a private one only when grit listens there"
+    ) {
+      val (open, closed) = (new World, new World)
+      closed.slack.privateChannels = Set(C)
+      open.slack.deliver(mention("1.0")) ==> true
+      closed.slack.deliver(mention("1.0")) ==> true
+      (open.turnOf("1.0", "1.0").nonEmpty, open.inbox.started.size) ==> (true, 1)
+      (closed.turnOf("1.0", "1.0"), closed.inbox.started, closed.inbox.conversations.all) ==>
+        (None, Vector.empty, Vector.empty)
     }
 
     test(

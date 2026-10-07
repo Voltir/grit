@@ -175,17 +175,17 @@ abstract class SlackContract extends TestSuite {
     }
 
     test(
-      "isChannel and channelName: a public channel, a private one, one grit's bot is not in, and one that does not exist"
+      "kind and channelName: a public channel, a private one, one grit's bot is not in, and one that does not exist"
     ) {
       withSlack() { slack =>
         Vector(Public, Private, Outside, Missing).map(c =>
-          (slack.isChannel(c), slack.channelName(c))
+          (slack.kind(c), slack.channelName(c))
         ) ==>
           Vector(
-            (Right(true), Right(Some("grit-contract"))),
-            (Right(true), Right(Some("grit-private"))),
-            (Right(true), Right(Some("grit-outside"))),
-            (Right(false), Right(None))
+            (Right(ChannelKind.Public), Right(Some("grit-contract"))),
+            (Right(ChannelKind.Private), Right(Some("grit-private"))),
+            (Right(ChannelKind.Public), Right(Some("grit-outside"))),
+            (Right(ChannelKind.Unseen), Right(None))
           )
       }
     }
@@ -207,7 +207,7 @@ abstract class SlackContract extends TestSuite {
           "react" -> kind(slack.react(Public, m1, "eyes")),
           "unreact" -> kind(slack.unreact(Public, m1, "eyes")),
           "name" -> kind(slack.name(Ana)),
-          "isChannel" -> kind(slack.isChannel(Public)),
+          "kind" -> kind(slack.kind(Public)),
           "history" -> kind(slack.history(Public, beforeAll)),
           "channelName" -> kind(slack.channelName(Public))
         ).filter(_._2 != "Unreachable") ==> Vector.empty

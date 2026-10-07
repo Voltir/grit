@@ -29,10 +29,13 @@ Decision:
   under itself.
 - **One database is one trust boundary.** Everyone who can write to the conversations a
   database holds may see everything it holds. `grit serve` runs on a database of its own,
-  serving one workspace of trusted colleagues. A channel is served whether public or
-  private, and a private one inside the same boundary: its threads reach the others through
-  `[afar]` and `recent_activity` unless the deployment labels its room above public
-  (ADR 0030). Direct messages, and more than one team on one database, are not served.
+  serving one workspace of trusted colleagues. A public channel grit's bot is in is
+  served. A private one is served only when the deployment names it among the channels
+  grit listens in: being invited is not enough, since naming it is the deployer's
+  deliberate act, and its room's label (ADR 0030) is then the deployment's declaration.
+  Served, it is inside the same boundary: its threads reach the others through `[afar]`
+  and `recent_activity` unless that label is above public. Direct messages, and more than
+  one team on one database, are not served.
 
 Consequences:
 
@@ -44,8 +47,8 @@ Consequences:
 - Visibility, when it comes, narrows this boundary. It never has to widen it.
 - A deployment names the channels grit listens in (ADR 0020). Every message in them is
   recorded inside the boundary, as a mention was. No notice is posted in the channel:
-  which channels are listened in is the deployment's configuration. A direct message, or a
-  group one, is never served, addressed or heard.
+  which channels are listened in is the deployment's configuration. A private channel not
+  named there, a direct message and a group one are never served, addressed or heard.
 - grit posts outside the thread it answers only through `slack_post`, a tool the Slack
   edge serves at `service:slack` (ADR 0017's reach): to the channels the deployment
   declares, by id, within a rate it declares, on turns addressed to grit, never asking first
@@ -59,7 +62,8 @@ Consequences:
   conversations. Until then, and for a post into an existing thread, the turn that made it
   keeps what it posted where.
 - Enforced by:
-  - `SlackEdge` ignoring any conversation Slack does not report as a channel, and hearing only in
+  - `SlackEdge` ignoring any conversation Slack does not report as a channel, and any
+    private channel it does not listen in, and hearing only in
     the channels it is told to listen in (`SlackEdgeTests`);
   - `grit serve` refusing to attach to an engine another grit holds;
   - `slack_post` refusing a channel not declared, a link into another channel and a post

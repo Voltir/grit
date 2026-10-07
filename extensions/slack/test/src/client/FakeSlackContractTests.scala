@@ -11,6 +11,7 @@ object FakeSlackContractTests extends SlackContract {
     slack.names = Map(Ana -> Some("Ana"), Bot -> Some("grit"))
     slack.channelNames =
       Map(Public -> "grit-contract", Private -> "grit-private", Outside -> "grit-outside")
+    slack.privateChannels = Set(Private)
     slack.notIn = Set(Outside)
     slack.histories = Map(Public -> Workspace.listed)
     slack.limited = limited

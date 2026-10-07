@@ -26,8 +26,8 @@ In dependency order:
   `SocketSlack`, the SDK over Socket Mode behind it; and `Root`, the message a thread begins
   with, its author and its tag. ← `event`, `text`
 - **`edge`** — `SlackEdge`, the edge itself, over core's traits (`EdgeStores`: the inbox,
-  the people it enrolls, the replies it awaits) and a `Slack`: a person's message in a channel,
-  public or private, becomes a turn of its thread's conversation when it is addressed to grit (it
+  the people it enrolls, the replies it awaits) and a `Slack`: a person's message in a public
+  channel, or in a private one it listens in, becomes a turn of its thread's conversation when it is addressed to grit (it
   mentions grit, or is in a thread whose root did), and each finished turn's reply is posted
   in its thread, once, found again by its tag after a crash. A message is marked `:eyes:`
   while grit works on it: one addressed to grit from when it is recorded, and one heard that

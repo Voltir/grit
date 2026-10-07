@@ -86,7 +86,8 @@ import grit.turn.{Turn, TurnLoop}
   *   - **`serve` alone: `grit serve`**, the engine of the database and the Slack edge in its
   *     process ([[Kit.serve]], [[SlackEdge.serving]]; ADR 0019), over Socket Mode with `SLACK_BOT_TOKEN` and
   *     `SLACK_APP_TOKEN`, until stopped. In the channels, public or private, `GRIT_SLACK_LISTEN` names (ids,
-  *     comma-separated; none by default) it also hears what is not said to it. Its tools are `read`'s, as in a run with arguments:
+  *     comma-separated; none by default) it also hears what is not said to it, and a private
+  *     channel is served at all only when named there. Its tools are `read`'s, as in a run with arguments:
   *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. It never
   *     attaches: another grit holding the database's engine stops it. Give it a database of
   *     its own (`GRIT_DATABASE_URL`): everyone in the workspace sees what that database holds.

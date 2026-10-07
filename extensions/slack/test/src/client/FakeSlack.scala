@@ -50,6 +50,10 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var rootless = Set.empty[Ts]
 
+  /** The named channels that are private. */
+  @caps.unsafe.untrackedCaptures
+  var privateChannels = Set.empty[ChannelId]
+
   /** The named conversations that are not channels: direct messages, group ones. */
   @caps.unsafe.untrackedCaptures
   var directs = Set.empty[ChannelId]
@@ -239,10 +243,13 @@ final class FakeSlack extends Slack {
       else Right(channelNames.get(channel))
     }
 
-  def isChannel(channel: ChannelId): Either[SlackError, Boolean] =
+  def kind(channel: ChannelId): Either[SlackError, ChannelKind] =
     request {
       if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
-      else Right(channelNames.contains(channel) && !directs.contains(channel))
+      else if (!channelNames.contains(channel) || directs.contains(channel))
+        Right(ChannelKind.Unseen)
+      else if (privateChannels.contains(channel)) Right(ChannelKind.Private)
+      else Right(ChannelKind.Public)
     }
 }
 

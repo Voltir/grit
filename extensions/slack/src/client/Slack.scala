@@ -118,11 +118,10 @@ trait Slack extends caps.SharedCapability {
     */
   def name(user: UserId): Either[SlackError, Option[String]]
 
-  /** Whether `channel` is a channel, public or private. `false` for a direct message or a
-    * group one, for a channel grit may not look at (a private one its bot is not in), and for
-    * none at all; Slack being unreachable is still `Unreachable`.
+  /** What `channel` is to grit ([[ChannelKind]]); Slack being unreachable is still
+    * `Unreachable`.
     */
-  def isChannel(channel: ChannelId): Either[SlackError, Boolean]
+  def kind(channel: ChannelId): Either[SlackError, ChannelKind]
 
   /** Every message in `channel` at or after `since`, to the microsecond, with every reply in a
     * thread rooted in that span, oldest first, each once; a reply in a thread rooted earlier
@@ -138,6 +137,21 @@ trait Slack extends caps.SharedCapability {
     * one grit may not look at, or none at all; Slack being unreachable is still `Unreachable`.
     */
   def channelName(channel: ChannelId): Either[SlackError, Option[String]]
+}
+
+/** What a conversation is, as Slack reports it to grit's bot. */
+enum ChannelKind {
+
+  /** A public channel. */
+  case Public
+
+  /** A private channel grit's bot is in. */
+  case Private
+
+  /** No channel grit can see: a direct message or a group one, a private channel grit's bot
+    * is not in, or no conversation at all.
+    */
+  case Unseen
 }
 
 /** A Slack call that did not do what was asked. */
