@@ -8,6 +8,7 @@ import scala.util.Using
 
 import grit.core.classify.Answer
 import grit.core.id.{ConversationId, EntryId, PrincipalId, QuestionName, ShadowName}
+import grit.core.place.Place
 import grit.core.review.{
   Candidate,
   Considered,
@@ -20,7 +21,6 @@ import grit.core.review.{
   Verdict
 }
 import grit.core.speech.SpeechJson
-import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
 import grit.core.triage.{ShadowAnswers, ShadowedJson}
 import grit.core.visibility.Label as VisibilityLabel
@@ -148,8 +148,8 @@ final class SqlReviews extends ReviewStore {
     Tx.writable(to).fold(Right(Vector.empty))(considerable(shadow, since, limit, _))
 
   /** [[candidates]] whose conversation's label `at` dominates. */
-  private def considerable(shadow: ShadowName, since: Instant, limit: Int, at: VisibilityLabel)(using
-      tx: Tx^
+  private def considerable(shadow: ShadowName, since: Instant, limit: Int, at: VisibilityLabel)(
+      using tx: Tx^
   ): Either[StoreError, Vector[Candidate]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     attempt {

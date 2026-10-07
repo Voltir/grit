@@ -738,7 +738,8 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Answering,
         TurnPrompt.edge(slack)
       ) ++ TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++ Vector(
-        TurnPrompt.reach(Some(github.place), TurnPrompt.Serving.Offering(set(advert("github_search"))))
+        TurnPrompt
+          .reach(Some(github.place), TurnPrompt.Serving.Offering(set(advert("github_search"))))
       ) ++ TurnPrompt.reached(elsewhere, set(advert("post_x")))).map(_.text).mkString("\n\n")
     }
 

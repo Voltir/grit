@@ -202,7 +202,9 @@ object TurnOffer {
           Option.when(kept)(
             TurnPrompt.reach(
               workspace,
-              servedAt.fold(TurnPrompt.Serving.Unserved)(_ => TurnPrompt.Serving.Offering(hostedSet))
+              servedAt.fold(TurnPrompt.Serving.Unserved)(_ =>
+                TurnPrompt.Serving.Offering(hostedSet)
+              )
             )
           ) ++
           offeredReaching.flatMap((service, set) => TurnPrompt.reached(service, set)) ++

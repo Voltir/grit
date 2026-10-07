@@ -29,7 +29,6 @@ import grit.core.store.{
   Nearby,
   Payload
 }
-import grit.core.tool.ToolSet
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 

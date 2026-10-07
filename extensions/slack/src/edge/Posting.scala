@@ -66,35 +66,35 @@ private[slack] final class Posting private (
   private def post(request: String, a: PostArgs, to: Channel): Outcome = {
     val (name, id) = (to.name, to.id)
     RichText.render(Markdown.parse(a.text)) match {
-          case Vector() => Outcome.Failed(s"The text is empty. $Unposted")
-          case Vector(one) =>
-            a.thread.map(link => (link, MessageLink.read(link))) match {
-              case Some((link, None)) =>
-                Outcome.Failed(s"`$link` is not a link to a Slack message. $Unposted")
-              case Some((_, Some(l))) if l.channel != id =>
-                Outcome.Failed(s"That link is to a message outside #$name. $Unposted")
-              case thread =>
-                val in = thread.flatMap(_._2).map(_.thread)
-                within { () =>
-                  in.fold(slack.postTopLevel(id, one, Tag.Sent(request)))(t =>
-                    slack.post(id, t, one, Tag.Sent(request))
-                  )
-                } match {
-                  case Left(refusal) => Outcome.Failed(refusal)
-                  case Right(Right(_)) =>
-                    Outcome.Done(
-                      if (in.isEmpty) s"Posted in #$name." else s"Posted in the thread in #$name."
-                    )
-                  case Right(Left(e)) => Outcome.Failed(failed(e, name))
-                }
+      case Vector() => Outcome.Failed(s"The text is empty. $Unposted")
+      case Vector(one) =>
+        a.thread.map(link => (link, MessageLink.read(link))) match {
+          case Some((link, None)) =>
+            Outcome.Failed(s"`$link` is not a link to a Slack message. $Unposted")
+          case Some((_, Some(l))) if l.channel != id =>
+            Outcome.Failed(s"That link is to a message outside #$name. $Unposted")
+          case thread =>
+            val in = thread.flatMap(_._2).map(_.thread)
+            within { () =>
+              in.fold(slack.postTopLevel(id, one, Tag.Sent(request)))(t =>
+                slack.post(id, t, one, Tag.Sent(request))
+              )
+            } match {
+              case Left(refusal) => Outcome.Failed(refusal)
+              case Right(Right(_)) =>
+                Outcome.Done(
+                  if (in.isEmpty) s"Posted in #$name." else s"Posted in the thread in #$name."
+                )
+              case Right(Left(e)) => Outcome.Failed(failed(e, name))
             }
-          case _ =>
-            Outcome.Failed(
-              s"The text is too long for one Slack message (at most ${RichText.MaxChars} " +
-                s"characters and ${RichText.MaxBlocks} blocks). $Unposted"
-            )
         }
+      case _ =>
+        Outcome.Failed(
+          s"The text is too long for one Slack message (at most ${RichText.MaxChars} " +
+            s"characters and ${RichText.MaxBlocks} blocks). $Unposted"
+        )
     }
+  }
 
   /** `body` run when the rate allows a post now, the post counted unless Slack surely did not
     * take it; why not, when it does not allow one.

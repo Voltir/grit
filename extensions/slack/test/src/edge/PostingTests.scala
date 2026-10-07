@@ -129,7 +129,10 @@ object PostingTests extends TestSuite {
       Vector(
         w.call(ujson.Obj("to" -> "general", "text" -> "one")),
         w.call(post("two"), Some(generalAt))
-      ) ==> Vector(Outcome.Done("Posted in #probably-not-skynet."), Outcome.Done("Posted in #general."))
+      ) ==> Vector(
+        Outcome.Done("Posted in #probably-not-skynet."),
+        Outcome.Done("Posted in #general.")
+      )
       w.posted.map((c, _, text, _) => (c, text)) ==> Vector((Skynet, "one"), (General, "two"))
     }
 
@@ -158,7 +161,9 @@ object PostingTests extends TestSuite {
         w.call(reply("hi", "the thread from this morning"))
       ) ==> Vector(
         Outcome.Failed("slack_post was told no place to write to; it did not run."),
-        Outcome.Failed(s"slack_post does not write to slack:$Team/C0RANDOM01 here; it did not run."),
+        Outcome.Failed(
+          s"slack_post does not write to slack:$Team/C0RANDOM01 here; it did not run."
+        ),
         Outcome.Failed(
           "That link is to a message outside #probably-not-skynet. Nothing was posted."
         ),

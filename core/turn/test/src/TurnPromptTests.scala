@@ -173,7 +173,9 @@ object TurnPromptTests extends TestSuite {
         "This conversation works in github: the tools served there are offered to you, and calling one runs it at github."
       TurnPrompt.reach(Some(github), TurnPrompt.Serving.Unserved).text ==>
         "Nothing is serving github right now, so its tools are not offered."
-      TurnPrompt.reach(Some(Place.under(Namespace.Slack, Vector("T1"))), TurnPrompt.Serving.Offering(tools)).text ==>
+      TurnPrompt
+        .reach(Some(Place.under(Namespace.Slack, Vector("T1"))), TurnPrompt.Serving.Offering(tools))
+        .text ==>
         "This conversation has no directory, so you cannot read or change files or run commands."
     }
 
@@ -196,7 +198,11 @@ object TurnPromptTests extends TestSuite {
 
     test("each layer's fragment is in its layer, in grit's words") {
       val origin = Origin.Tui(dir, "s")
-      Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(None, TurnPrompt.Serving.Unserved))
+      Vector(
+        TurnPrompt.Base,
+        TurnPrompt.edge(origin),
+        TurnPrompt.reach(None, TurnPrompt.Serving.Unserved)
+      )
         .map(f => (f.layer, f.source)) ==>
         Vector((Layer.Base, "grit"), (Layer.Edge, "grit"), (Layer.Reach, "grit"))
     }

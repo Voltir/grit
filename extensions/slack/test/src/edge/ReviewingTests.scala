@@ -55,6 +55,7 @@ object ReviewingTests extends TestSuite {
     var reactionsWhenKept = Vector.empty[Set[(ChannelId, Ts, String)]]
     @caps.unsafe.untrackedCaptures
     var crash = false
+
     /** Each place [[unposted]] was asked for, in order. */
     @caps.unsafe.untrackedCaptures
     var askedFor = Vector.empty[grit.core.place.Place]
@@ -123,7 +124,9 @@ object ReviewingTests extends TestSuite {
       )
 
     def unposted: Vector[EntryId] =
-      picks.reviews.unposted(Review.place)(using TestTx.fake).fold(e => sys.error(e.toString), _.map(_.entry))
+      picks.reviews
+        .unposted(Review.place)(using TestTx.fake)
+        .fold(e => sys.error(e.toString), _.map(_.entry))
 
     /** The label standing on `entry`'s prompt. */
     def label(entry: EntryId): Option[Label] =

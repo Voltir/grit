@@ -266,7 +266,9 @@ abstract class ReviewContract extends TestSuite {
         Candidate(early, c, At.plusSeconds(10), passed, shadow, answers),
         Candidate(late, c, At.plusSeconds(20), below, shadow, answers)
       )
-      transaction((reviews.candidates(shadow, At, 10, room), reviews.candidates(shadow, At, 1, room))) ==>
+      transaction(
+        (reviews.candidates(shadow, At, 10, room), reviews.candidates(shadow, At, 1, room))
+      ) ==>
         (Right(all), Right(all.take(1)))
     }
 

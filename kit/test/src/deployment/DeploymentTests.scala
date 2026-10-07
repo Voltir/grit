@@ -730,7 +730,8 @@ object DeploymentTests extends TestSuite {
         )
         .fold(r => sys.error(r.toString), identity)
       val posting = edge("slack", asks = false, reviews = Some(at("slack:acme/C1")))
-      Deployments.of(edges = Vector(edge("mcp", asks = false), posting), visibility = labelled)
+      Deployments
+        .of(edges = Vector(edge("mcp", asks = false), posting), visibility = labelled)
         .map(_ => ()) ==> Right(())
     }
 

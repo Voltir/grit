@@ -7,8 +7,8 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.Answer
 import grit.core.id.{ConversationId, EntryId, PrincipalId, QuestionName, ShadowName, TurnRef}
 import grit.core.inbox.InMemoryInbox
-import grit.core.speech.{Decision, InMemorySpeechStore}
 import grit.core.place.Place
+import grit.core.speech.{Decision, InMemorySpeechStore}
 import grit.core.store.{ConversationStore, Entry, EntryStore, Payload, StoreError, Tx}
 import grit.core.triage.{
   InMemoryTriageShadows,
