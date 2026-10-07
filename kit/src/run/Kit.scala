@@ -8,7 +8,7 @@ import grit.core.id.EdgeName
 import grit.core.message.Cost
 import grit.core.spend.Budget
 import grit.core.visibility.Subject
-import grit.dbos.engine.{Engine, Link}
+import grit.dbos.engine.{Engine, Link, People}
 import grit.host.LocalMachine
 import grit.kit.deployment.Deployment
 import grit.kit.environment.{Secrets, SecretsRefusal}
@@ -232,7 +232,7 @@ object Kit {
       LocalMachine.identity(),
       deployment.budget,
       deployment.visibility,
-      deployment.identities
+      People.Declared(deployment.identities)
     ) match {
       case Left(refused) => Left(KitFailure.Engine(refused.message(Instant.now())))
       case Right(engine) => Right(engine)

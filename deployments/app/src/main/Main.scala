@@ -22,7 +22,7 @@ import grit.core.speech.Speaking
 import grit.core.store.Origin
 import grit.core.tool.ToolName
 import grit.core.tool.ToolSet
-import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, Unopened}
+import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, People, Unopened}
 import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
 import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, LocalWorkspace}
@@ -238,7 +238,7 @@ object Main {
                     identity,
                     deployment.budget,
                     deployment.visibility,
-                    deployment.identities
+                    People.Declared(deployment.identities)
                   ) match {
                     case Right(e) => e
                     case Left(refused) => sys.error(refused.message(java.time.Instant.now()))
@@ -305,7 +305,7 @@ object Main {
           identity,
           deployment.budget,
           deployment.visibility,
-          deployment.identities
+          People.Declared(deployment.identities)
         ) match {
           case Left(Unopened.Lock(NotTaken.Held(_))) =>
             // Another grit runs the engine: its turns are sent to it, as a TUI's are.

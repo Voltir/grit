@@ -2,7 +2,6 @@ package grit.dbos.engine
 
 import scala.util.Using
 
-import grit.core.identity.Identities
 import grit.core.store.Tx
 import grit.core.visibility.{Compartment, Compartments, RoomLabels, Visibility}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
@@ -77,7 +76,7 @@ object SqlLabelsTests extends TestSuite {
         LiveEngine.Identity,
         LiveEngine.Uncapped,
         declaring("acme", "ops"),
-        Identities.Shipped
+        People.AsStored
       ) match {
         case Left(why) => Some(why)
         case Right(engine) =>

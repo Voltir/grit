@@ -5,7 +5,6 @@ import java.time.Instant
 import grit.core.durable.{Durable, StepRecord}
 import grit.core.host.ProcessIdentity
 import grit.core.id.WorkflowId
-import grit.core.identity.Identities
 import grit.core.spend.Budget
 import grit.core.store.StoreError
 import grit.core.visibility.Visibility
@@ -28,7 +27,7 @@ object LiveEngine {
     id => (_: Durable^) ?=> s"unplaced: ${WorkflowId.value(id)}"
 
   /** The engine of `config`'s database under compatibility epoch `epoch`, running under
-    * `visibility`, its people made what `identities` declares; throws, naming the holder, when
+    * `visibility`, its stored people as `people` says; throws, naming the holder, when
     * another engine holds its lock (a test that opens two at once has a bug), or naming the
     * compartment `visibility` drops.
     */
@@ -37,16 +36,16 @@ object LiveEngine {
       epoch: String,
       budget: Budget = Uncapped,
       visibility: Visibility = Visibility.Shipped,
-      identities: Identities = Identities.Shipped
+      people: People = People.AsStored
   ): Engine^ =
-    opened(config, epoch, budget, visibility, identities, 1)
+    opened(config, epoch, budget, visibility, people, 1)
 
   /** As [[open]], after a process that held its lock was halted: the lock is free only once
     * the server notices the halted process's connection gone, which can take a moment under
     * load. Tries every half second for up to 30 seconds; throws, naming the holder, after.
     */
   def reopen(config: DbConfig, epoch: String): Engine^ =
-    opened(config, epoch, Uncapped, Visibility.Shipped, Identities.Shipped, 60)
+    opened(config, epoch, Uncapped, Visibility.Shipped, People.AsStored, 60)
 
   /** The engine, trying `tries` times, half a second apart, while its lock is held. */
   private def opened(
@@ -54,14 +53,14 @@ object LiveEngine {
       epoch: String,
       budget: Budget,
       visibility: Visibility,
-      identities: Identities,
+      people: People,
       tries: Int
   ): Engine^ =
-    Engine.open(config, epoch, Identity, budget, visibility, identities) match {
+    Engine.open(config, epoch, Identity, budget, visibility, people) match {
       case Right(engine) => engine
       case Left(Unopened.Lock(_)) if tries > 1 =>
         Thread.sleep(500)
-        opened(config, epoch, budget, visibility, identities, tries - 1)
+        opened(config, epoch, budget, visibility, people, tries - 1)
       case Left(refused) =>
         sys.error(s"the engine could not open: ${refused.message(Instant.now())}")
     }

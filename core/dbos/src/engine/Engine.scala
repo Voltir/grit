@@ -547,11 +547,11 @@ object Engine {
       identity: ProcessIdentity,
       budget: Budget,
       visibility: Visibility,
-      identities: Identities
+      people: People
   ): Either[Unopened, Engine^] =
     EngineLock.take(config) match {
       case Left(refused) => Left(Unopened.Lock(refused))
-      case Right(lock) => start(config, lock, epoch, identity, budget, visibility, identities)
+      case Right(lock) => start(config, lock, epoch, identity, budget, visibility, people)
     }
 
   /** The engine of the database `config` names, which `lock` is held on: its schema and
@@ -564,11 +564,13 @@ object Engine {
     * then fail. Its inbox takes new messages as `budget` allows. `visibility`'s compartments
     * are recorded as the ones the database runs under before anything else is written
     * ([[Unopened.Dropped]] when they drop one it ran under, having closed `lock` and claimed
-    * nothing). Then, before it claims the lock's row, the stored people are made what
-    * `identities` declares: each declared account linked to its person, and a person the move
-    * leaves with no account merged into the declared one, with the schedules, edges and tool
-    * requests that name them; each account no longer declared a person of its own again; each
-    * handle no longer declared cleared. A start under the declaration the database already holds changes nothing. Throws,
+    * nothing). Then, before it claims the lock's row, under [[People.Declared]] the stored
+    * people are made what its `identities` declares: each declared account linked to its
+    * person, and a person the move leaves with no account merged into the declared one, with
+    * the schedules, edges and tool requests that name them; each account no longer declared a
+    * person of its own again; each handle no longer declared cleared. A start under the
+    * declaration the database already holds changes nothing, and so does one under
+    * [[People.AsStored]]. Throws,
     * having closed `lock`, when either schema cannot be applied, or the declaration cannot be
     * recorded.
     */
@@ -579,7 +581,7 @@ object Engine {
       identity: ProcessIdentity,
       budget: Budget,
       visibility: Visibility,
-      identities: Identities
+      people: People
   ): Either[Unopened, Engine^] =
     try {
       schemaSetup(config)
@@ -591,7 +593,10 @@ object Engine {
           lock.close()
           Left(Unopened.Dropped(dropped))
         case None =>
-          identitiesSetup(config, visibility, identities)
+          people match {
+            case People.Declared(identities) => identitiesSetup(config, visibility, identities)
+            case People.AsStored => ()
+          }
           lock
             .claim(epoch, identity, Build.current)
             .left

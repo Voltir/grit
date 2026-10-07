@@ -15,7 +15,6 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.context.Width
 import grit.core.host.ProcessIdentity
 import grit.core.id.{QuestionName, ShadowName, TurnRef, WorkflowId}
-import grit.core.identity.Identities
 import grit.core.message.Tokens
 import grit.core.persona.Persona
 import grit.core.place.Service
@@ -23,7 +22,7 @@ import grit.core.provider.Provider
 import grit.core.tool.ToolSet
 import grit.core.triage.Corpora
 import grit.core.visibility.Visibility
-import grit.dbos.engine.{Build, Engine}
+import grit.dbos.engine.{Build, Engine, People}
 import grit.dbos.internal.Reader
 import grit.dbos.sql.DbConfig
 import grit.eval.harness.capture.{
@@ -788,7 +787,7 @@ object Main {
         Builder,
         Uncapped,
         Visibility.Shipped,
-        Identities.Shipped
+        People.AsStored
       ) match {
         case Left(refused) => Left(s"the engine could not open: ${refused.message(clock.now())}")
         case Right(engine) =>

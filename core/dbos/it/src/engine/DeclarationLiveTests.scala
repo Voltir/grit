@@ -47,13 +47,13 @@ object DeclarationLiveTests extends TestSuite {
   /** An engine started on `config`'s database under `identities`, closed again. */
   private def started(config: DbConfig, identities: Identities): Unit =
     LiveEngine
-      .open(config, "test", visibility = TestLabels.Trialled, identities = identities)
+      .open(config, "test", visibility = TestLabels.Trialled, people = People.Declared(identities))
       .close()
 
-  /** A fresh database an engine has started on, declaring no one. */
+  /** A fresh database an engine has started on. */
   private def fresh(suite: String): DbConfig = {
     val c = TestPostgres.freshDatabase(suite)
-    started(c, Identities.Shipped)
+    LiveEngine.open(c, "test", visibility = TestLabels.Trialled).close()
     c
   }
 
@@ -224,6 +224,22 @@ object DeclarationLiveTests extends TestSuite {
         Vector(Vector(person)),
         Vector(Vector(person))
       )
+    }
+
+    test(
+      "an engine that is not the deployment's keeps every link, handle and schedule owner the declaration made"
+    ) {
+      val (u, config) = SqlSchedulesUnder.withConfig("declaration_kept")
+      val thread = u.turn(Origin.Slack("T1", "C1", "7.0"))
+      u.asking(thread, ana, Some("C1/7.0"))
+      started(config, declaring("ana" -> Set(ana, ben)))
+      val _ = desk(u)
+        .ask(TestCallSlots.at(thread), booking(remind), When.In(1.hour), hour, Count(1))
+        .fold(r => sys.error(s"$r"), _.id)
+      def stored() = (people(config), rows(config, "SELECT principal FROM grit.schedules"))
+      val declaredSo = stored()
+      LiveEngine.open(config, "test", visibility = TestLabels.Trialled).close()
+      stored() ==> declaredSo
     }
 
     test("two accounts of one person share the pending cap") {
