@@ -204,8 +204,8 @@ object Digest {
       new Hosted(
         ToolSpec(
           ToolName("recent_activity"),
-          "List the conversations that closed most recently, across every place grit works " +
-            "(this chat, Slack threads, tasks), newest first, one line each: when it closed " +
+          "List the conversations that closed most recently, across the places grit works " +
+            "that this conversation may see (this chat, Slack threads, tasks), newest first, one line each: when it closed " +
             "(UTC), where, whether it was resolved or lapsed, and what it came to. Only what " +
             "each closing recorded is known; the conversations themselves are not.",
           Args
