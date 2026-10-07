@@ -24,7 +24,7 @@ final class SqlConversationStore extends ConversationStore {
       case None =>
         for {
           interned <- SqlLabels.intern(label)
-          _ <- SqlIdentities.enroll(by)
+          _ <- SqlIdentities.enroll(Set(by))
           _ <- created(origin, by, interned)
           // Read committed: this statement sees the conversation whichever insert made it.
           made <- find(origin)

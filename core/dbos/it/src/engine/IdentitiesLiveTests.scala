@@ -14,7 +14,14 @@ import grit.core.inbox.{InboundId, InboxError}
 import grit.core.message.Message
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.Subject
-import grit.dbos.sql.{LiveDb, SqlConversationStore, SqlReviews, SqlSpeechStore, TestPostgres}
+import grit.dbos.sql.{
+  LiveDb,
+  SqlConversationStore,
+  SqlIdentities,
+  SqlReviews,
+  SqlSpeechStore,
+  TestPostgres
+}
 
 import utest.*
 
@@ -144,6 +151,32 @@ object IdentitiesLiveTests extends TestSuite {
         pool.shutdownNow()
         engine.close()
       }
+    }
+
+    test(
+      "transactions enrolling the same unseen accounts at once, each naming them in another order, all record"
+    ) {
+      val pool = Executors.newFixedThreadPool(32)
+      given ExecutionContext = ExecutionContext.fromExecutorService(pool)
+      try {
+        val before = people()
+        val pairs = (1 to 16).map { n =>
+          (TestAccounts.account(s"slack:T1/UPAIR$n-A"), TestAccounts.account(s"slack:T1/UPAIR$n-B"))
+        }.toVector
+        val go = new CountDownLatch(1)
+        // A two-account set iterates in the order it was built, so each pair is named both ways.
+        val enrolling = Future.sequence(pairs.flatMap { (a, b) =>
+          Vector(Set(a, b), Set(b, a)).map { accounts =>
+            Future {
+              go.await()
+              LiveDb.transaction(config)(SqlIdentities.enroll(accounts))
+            }
+          }
+        })
+        go.countDown()
+        Await.result(enrolling, 60.seconds).collect { case Left(e) => e } ==> Vector()
+        people() - before ==> 2L * pairs.size
+      } finally pool.shutdownNow()
     }
 
     test(

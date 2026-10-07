@@ -553,7 +553,7 @@ private[dbos] object SqlInbox {
     */
   private def authored(id: EntryId, by: Account)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlIdentities.enroll(by).flatMap { _ =>
+    SqlIdentities.enroll(Set(by)).flatMap { _ =>
       SqlEntryStore.attempt {
         Using.resource(
           conn.prepareStatement("INSERT INTO grit.inbound (entry_id, account) VALUES (?, ?)")

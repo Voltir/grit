@@ -96,7 +96,7 @@ object LiveDb {
     * kept first, as a new person's one account when not seen before.
     */
   def authored(id: EntryId, by: Account)(using tx: Tx^): Either[StoreError, Unit] =
-    SqlIdentities.enroll(by).map { _ =>
+    SqlIdentities.enroll(Set(by)).map { _ =>
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       Using.resource(
         conn.prepareStatement("INSERT INTO grit.inbound (entry_id, account) VALUES (?, ?)")

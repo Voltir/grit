@@ -17,7 +17,7 @@ final class SqlPrincipals extends Principals {
       case Some(why) => Left(why)
       case None =>
         val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-        SqlIdentities.enroll(account).flatMap { _ =>
+        SqlIdentities.enroll(Set(account)).flatMap { _ =>
           attempt {
             Using.resource(
               conn.prepareStatement("UPDATE grit.identities SET name = ? WHERE account = ?")
