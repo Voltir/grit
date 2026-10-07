@@ -519,7 +519,8 @@ abstract class PeriodContract extends TestSuite {
           grit.core.edge.Permit.Free,
           grit.core.tool.Retry.Rerun,
           ujson.Obj("path" -> "secret.txt"),
-          Set.empty
+          Set.empty,
+          None
         )
       transaction(requests.dispatch(Vector(request(t0), request(t1)))) ==> Right(())
       transaction(periods.purge(p1, at(100))) ==> Right(())

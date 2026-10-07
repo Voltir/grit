@@ -79,7 +79,8 @@ object PostingTests extends TestSuite {
       Permit.Free,
       Retry.Interrupt,
       arguments,
-      Set.empty
+      Set.empty,
+      None
     )
 
   /** Where an edge hosting `q`'s place routes it. */

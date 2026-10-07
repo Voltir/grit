@@ -60,7 +60,8 @@ object McpToolsTests extends TestSuite {
       Permit.Free,
       Retry.Rerun,
       arguments,
-      Set.empty
+      Set.empty,
+      None
     )
   }
 

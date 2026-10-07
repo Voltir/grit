@@ -31,7 +31,8 @@ object ServerTests extends TestSuite {
       Permit.Free,
       retry,
       ujson.Obj(),
-      Set.empty
+      Set.empty,
+      None
     )
   }
 

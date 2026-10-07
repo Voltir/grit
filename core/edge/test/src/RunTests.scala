@@ -30,7 +30,8 @@ object RunTests extends TestSuite {
       permit,
       Retry.Rerun,
       ujson.Obj("text" -> "hi"),
-      Set.empty
+      Set.empty,
+      None
     )
   }
 

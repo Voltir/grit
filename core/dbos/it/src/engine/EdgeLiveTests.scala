@@ -64,7 +64,8 @@ object EdgeLiveTests extends TestSuite {
           Permit.Free,
           Retry.Rerun,
           ujson.Obj(),
-          Set.empty
+          Set.empty,
+          None
         )
         LiveDb.transaction(config)(new SqlToolRequests().dispatch(Vector(request))) ==> Right(())
         waiting.join()

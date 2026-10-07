@@ -9,7 +9,9 @@ import grit.core.tool.{Retry, ToolName}
   * `slot` of `conversation`, for `principal`, addressed to the workspace `workspace` and never
   * to an edge; its `tool` with `arguments` as the model sent them, to be read under
   * `repairs`; how it was let through (`permit`), and what happens if its run is cut short
-  * (`retry`); under protocol version `protocol`.
+  * (`retry`); under protocol version `protocol`; `destination`, the place a writing tool's
+  * call writes to, `None` for one that declares none: an edge's writing tool is told it,
+  * never the call's own argument ([[grit.core.tool.Writes.Field]]).
   */
 final case class ToolRequest(
     slot: CallSlot,
@@ -21,7 +23,8 @@ final case class ToolRequest(
     permit: Permit,
     retry: Retry,
     arguments: ujson.Value,
-    repairs: Set[ArgRepair]
+    repairs: Set[ArgRepair],
+    destination: Option[Place]
 )
 
 object ToolRequest {

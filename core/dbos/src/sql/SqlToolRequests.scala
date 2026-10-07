@@ -189,7 +189,10 @@ private[dbos] object SqlToolRequests {
       permit,
       retry,
       ujson.read(rs.getString(9)),
-      repairs
+      repairs,
+      // The row holds no destination yet: until it does, a writing tool's request read back
+      // here is refused by its edge, unrun.
+      None
     )
   }
 

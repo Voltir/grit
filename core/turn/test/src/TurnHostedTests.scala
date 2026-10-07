@@ -266,6 +266,26 @@ object TurnHostedTests extends TestSuite {
       there.sent ==> Vector.empty
     }
 
+    test(
+      "a writing call naming a place of its offer is a request whose destination is that place, its arguments without `to`"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "post it")
+      val durable = new InMemoryDurable
+      val edge = served(durable, _ => Serve.Never)
+      val there = atElsewhere(
+        edge.edges,
+        durable,
+        _ => Serve.Now(Outcome.Done("posted")),
+        Some(toGeneral)
+      )
+      val provider = posting(ujson.Obj("to" -> "general", "text" -> "hi"))
+      durable.run(turn.workflowId)(reachingBody(entries, provider, edge, there)) ==> Done
+      there.sent.map(q => (q.workspace, q.destination, q.arguments)) ==> Vector(
+        (elsewhere.place, Some(general), ujson.Obj("text" -> "hi"))
+      )
+    }
+
     test("a call to a reached tool when no edge serves that service is answered so, unsent") {
       val entries = new InMemoryEntryStore
       val turn = say(entries, "post it")

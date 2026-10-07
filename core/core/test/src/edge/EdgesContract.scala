@@ -53,7 +53,8 @@ abstract class EdgesContract extends TestSuite {
       permit,
       retry,
       ujson.Obj("path" -> "a.txt"),
-      Set.empty
+      Set.empty,
+      None
     )
   }
 
