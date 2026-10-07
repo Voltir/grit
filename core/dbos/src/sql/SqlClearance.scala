@@ -64,19 +64,8 @@ private[sql] object SqlClearance {
        |  OR ($c.label_id = ANY ((SELECT own FROM clearance)::smallint[])
        |      AND $c.room_id = (SELECT room FROM clearance)))""".stripMargin
 
-  /** Whether the transaction reads the asked `grit.schedules` row aliased `s`
-    * ([[grit.core.visibility.Item.InRoom]] of the room of the conversation that asked for it:
-    * the conversation id is the second field of its `asked_in`, a call's key).
-    */
-  def asked(s: String): String =
-    s"""($s.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
-       |  OR ($s.label_id = ANY ((SELECT own FROM clearance)::smallint[])
-       |      AND EXISTS (SELECT 1 FROM grit.conversations rc
-       |                   WHERE rc.id = split_part($s.asked_in, ':', 2)::uuid
-       |                     AND rc.room_id = (SELECT room FROM clearance))))""".stripMargin
-
-  /** Whether the transaction reads the `grit.documents` or `grit.plugin_docs` row aliased `d`
-    * ([[grit.core.visibility.Item.Kept]] in its `room_id`, NULL for none).
+  /** Whether the transaction reads the `grit.documents`, `grit.plugin_docs` or `grit.schedules`
+    * row aliased `d` ([[grit.core.visibility.Item.Kept]] in its `room_id`, NULL for none).
     */
   def kept(d: String): String =
     s"""($d.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])

@@ -312,7 +312,7 @@ final class InMemorySchedules(
 
 object InMemorySchedules {
 
-  /** One schedule's row: `asked`, the room of the conversation that asked for it; `None` for one declared. */
+  /** One schedule's row: `asked`, the room it was asked in (the SQL row's `room_id`); `None` for one declared. */
   private final case class Row(
       job: JobName,
       params: ujson.Value,

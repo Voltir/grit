@@ -197,6 +197,19 @@ object ConversationRoomsLiveTests extends TestSuite {
       (place("slack/T/cached"), place("slack/T/cached/1.0")) ==> (Vector("1"), Vector("0"))
     }
 
+    test("a room an asked schedule was kept in stays when its last conversation goes") {
+      val store = new SqlConversationStore()
+      val c = LiveDb.conversation(config, Origin.Slack("T", "asked", "1.0")).id
+      rows(
+        """INSERT INTO grit.schedules
+          |  (id, source, job, rule, params, principal, report, asked_in, created_at, room_id)
+          |SELECT 'asked:rooms', 'asked', 'remind', '{}', '{}', 'local', '{}', 'tool:rooms', now(), id
+          |  FROM grit.places WHERE path = '{slack,T,asked}' RETURNING id""".stripMargin
+      ).size ==> 1
+      LiveDb.transaction(config)(store.remove(c)) ==> Right(())
+      (place("slack/T/asked"), place("slack/T/asked/1.0")) ==> (Vector("1"), Vector("0"))
+    }
+
     test("a room a request writes to stays when its last conversation goes, unless its own") {
       val store = new SqlConversationStore()
       def writingTo(from: ConversationId, room: String): Either[StoreError, Unit] = {

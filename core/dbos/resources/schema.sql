@@ -152,7 +152,7 @@ $$;
 -- (Origin.place), and never changes; so is a conversation's room (Origin.room). Which place is
 -- within which is Place.within's alone: nothing here tests it.
 -- Retention: ledger: deleted when no conversation names it by place_id or room_id, and no
--- document or plugin's document by room_id (Target.Quiet).
+-- document, plugin's document or schedule by room_id (Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.places (
     id   UUID PRIMARY KEY DEFAULT uuidv7(),
     path TEXT[] NOT NULL UNIQUE
@@ -844,6 +844,9 @@ CREATE TABLE IF NOT EXISTS grit.document_terms (
 -- `running` the job version that slot's run was started at, NULL once it replied. `ended` says how
 -- it ended (Ending), with `ended_at`; an ended schedule has no slot left. `label_id` is what its
 -- runs read beyond their own conversations, and are kept at: a declared one's clearance.
+-- `room_id` is the room an asked one was asked in, the own room of the transaction that wrote it
+-- (grit.core.visibility.Item.Kept, as a document's): who may list or cancel it is decided by it
+-- and `label_id`; NULL for a declared one, and for one asked by a transaction with no own room.
 -- Retention: journal: an ended schedule, after the raw window (Target.Schedule).
 CREATE TABLE IF NOT EXISTS grit.schedules (
     id          TEXT PRIMARY KEY,
@@ -861,7 +864,9 @@ CREATE TABLE IF NOT EXISTS grit.schedules (
     ended       TEXT CHECK (ended IN ('ran', 'missed', 'failed', 'cancelled', 'undeclared')),
     ended_at    TIMESTAMPTZ,
     label_id    SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.labels(id),
+    room_id     UUID REFERENCES grit.places(id),
     CHECK ((source = 'asked') = (asked_in IS NOT NULL)),
+    CHECK (source = 'asked' OR room_id IS NULL),
     CHECK ((ended IS NULL) = (ended_at IS NULL)),
     CHECK (ended IS NULL OR next_at IS NULL)
 );

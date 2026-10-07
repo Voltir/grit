@@ -26,13 +26,20 @@ private[engine] object SqlSchedulesUnder {
   private def ok[A](what: String)(e: Either[StoreError, A]): A =
     e.fold(err => sys.error(s"$what: $err"), identity)
 
-  def apply(suite: String, beforeCommit: () -> Unit = () => ()): ScheduleContract.Under = {
+  def apply(suite: String, beforeCommit: () -> Unit = () => ()): ScheduleContract.Under =
+    withConfig(suite, beforeCommit)._1
+
+  /** As [[apply]], with the database it is in. */
+  def withConfig(
+      suite: String,
+      beforeCommit: () -> Unit = () => ()
+  ): (ScheduleContract.Under, DbConfig) = {
     // Opening an engine applies schema.sql; nothing here launches DBOS.
     val config: DbConfig = TestPostgres.freshDatabase(suite)
     LiveEngine.open(config, "test").close()
     val marks = new SqlTombstones
     val schedules = new SqlSchedules(marks)
-    new ScheduleContract.Under {
+    val under = new ScheduleContract.Under {
       val store: ScheduleStore = schedules
       val tombstones: Tombstones = marks
 
@@ -60,6 +67,7 @@ private[engine] object SqlSchedulesUnder {
         )
       }
     }
+    (under, config)
   }
 
   /** `inner`, running `beforeCommit` inside each transaction once its body has returned. */

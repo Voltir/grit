@@ -445,8 +445,8 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       }
     } yield read
 
-  /** Which of `ids`, asked schedules, the transaction reads: as anything recorded in the room
-    * that asked for it.
+  /** Which of `ids`, asked schedules, the transaction reads: as anything kept in the room that
+    * asked for it (its `room_id`).
     */
   private def readable(ids: Vector[ScheduleId])(using
       tx: Tx^
@@ -458,7 +458,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         s"""WITH ${SqlClearance.With}
            |SELECT s.id FROM grit.schedules s
            | WHERE s.id IN (SELECT jsonb_array_elements_text(?::jsonb))
-           |   AND s.source = 'asked' AND ${SqlClearance.asked("s")}""".stripMargin
+           |   AND s.source = 'asked' AND ${SqlClearance.kept("s")}""".stripMargin
       ) { ps =>
         SqlClearance.bind(ps, 1, clearance)
         ps.setString(
@@ -492,14 +492,17 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       grace: Grace,
       now: Instant
   )(using tx: Tx^): Either[StoreError, Unit] = {
-    // Kept at the asking turn's floor, its room's label: its parameters come from the room's
-    // content. The desk opens its transaction for that turn, so the label is the
-    // transaction's, never one a caller passes.
+    // Kept at the asking turn's floor, its room's label, in its room: its parameters come from
+    // the room's content. The desk opens its transaction for that turn, so the label and the
+    // room are the transaction's, never ones a caller passes.
     val label = Tx.floor(tx)
+    val room = Tx.clearance(tx).own.toVector.flatMap(_.room.segments).map(ujson.Str(_))
     update(
       s"""INSERT INTO grit.schedules
-         |  (id, source, job, rule, params, principal, report, asked_in, created_at, next_at, label_id)
-         |VALUES (?, 'asked', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ${SqlLabels.Interned})""".stripMargin
+         |  (id, source, job, rule, params, principal, report, asked_in, created_at, next_at, label_id,
+         |   room_id)
+         |VALUES (?, 'asked', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ${SqlLabels.Interned},
+         |        ${SqlDocuments.RoomId})""".stripMargin
     ) { ps =>
       ps.setString(1, ScheduleId.value(id))
       ps.setString(2, JobName.value(job.name))
@@ -511,6 +514,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       ps.setObject(8, utc(now))
       ps.setObject(9, utc(at))
       SqlLabels.bind(ps, 10, label)
+      ps.setString(12, ujson.Arr.from(room).render())
     }.map(_ => ())
   }
 
