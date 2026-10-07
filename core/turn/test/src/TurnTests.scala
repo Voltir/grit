@@ -8,7 +8,7 @@ import grit.core.context.{
   AssemblyNote,
   AssemblyRequest,
   ContextAssembler,
-  Label,
+  SectionTag,
   Shown,
   Window
 }
@@ -649,7 +649,7 @@ object TurnTests extends TestSuite {
       )
       provider.requests.headOption.flatMap(_.messages.lastOption) ==> Some(
         Message.User(
-          "Please follow this:\n" + Shown.lead(Label.Record) +
+          "Please follow this:\n" + Shown.lead(SectionTag.Record) +
             "\n> record — closed today:\n> Standing:\n> - anything goes"
         )
       )

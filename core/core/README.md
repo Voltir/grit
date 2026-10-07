@@ -151,7 +151,7 @@ In dependency order:
 - **`context`**, **`provider`**, **`inbox`** — the seams the engine plugs
   into: `ContextAssembler` (and the `Window` it builds, as wide as its request's `Width`
   asks: as deployed, or within a budget the eval harness names; and `Shown`: what the model is
-  shown of a window, each line grit writes into it under its `Label`: the record, a
+  shown of a window, each line grit writes into it under its `SectionTag`: the record, a
   section from afar, a document a plugin keeps, a gap where turns were left out; and a grit
   label that starts a line in text grit did not write, shown as a quoted paste), `Provider`
   and `Models` (the

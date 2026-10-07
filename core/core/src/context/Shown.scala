@@ -43,7 +43,7 @@ object Shown {
 
   /** What introduces grit's post a conversation begins with ([[of]]). */
   val PostedLead: String =
-    s"${Label.Record.tag} this thread begins with grit's post, made at another conversation's request:"
+    s"${SectionTag.Record.tag} this thread begins with grit's post, made at another conversation's request:"
 
   /** A nearby section as one user message, "[afar] another conversation, shown by grit,
     * still open, at {place.written}:", then each message among `entries` as a
@@ -54,7 +54,7 @@ object Shown {
     val lines = entries.flatMap(e => line(e.payload))
     Option.when(lines.nonEmpty)(
       Message.User(
-        (s"${Label.Afar.tag} another conversation, shown by grit, still open, at ${place.written}:" +: lines)
+        (s"${SectionTag.Afar.tag} another conversation, shown by grit, still open, at ${place.written}:" +: lines)
           .mkString("\n")
       )
     )
@@ -67,7 +67,7 @@ object Shown {
     */
   def strand(place: Place, entries: Vector[Entry], speakers: Speakers): Option[Message] =
     named(
-      s"${Label.Strand.tag} a thread this conversation continues, shown by grit, at ${place.written}:",
+      s"${SectionTag.Strand.tag} a thread this conversation continues, shown by grit, at ${place.written}:",
       entries,
       speakers
     )
@@ -96,7 +96,7 @@ object Shown {
     */
   def asked(place: Place, entries: Vector[Entry], speakers: Speakers): Option[Message] =
     named(
-      s"${Label.Afar.tag} the conversation where grit was asked for the post this thread " +
+      s"${SectionTag.Afar.tag} the conversation where grit was asked for the post this thread " +
         s"begins with, shown by grit, at ${place.written}:",
       entries,
       speakers
@@ -110,7 +110,7 @@ object Shown {
   def recorded(place: Place, closing: ClosingEntry): Message = {
     val day = closing.entry.createdAt.atOffset(ZoneOffset.UTC).toLocalDate
     Message.User(
-      s"${Label.Afar.tag} another conversation's record, written by grit when it closed on " +
+      s"${SectionTag.Afar.tag} another conversation's record, written by grit when it closed on " +
         s"$day, at ${place.written}: " + body(closing.closing)
     )
   }
@@ -138,7 +138,7 @@ object Shown {
   def document(document: Document, label: DocLabel): Message = {
     val day = document.written.atOffset(ZoneOffset.UTC).toLocalDate
     Message.User(
-      s"${Label.Document.tag} ${DocLabel.value(label)}, kept by grit, at ${document.place.written}, " +
+      s"${SectionTag.Document.tag} ${DocLabel.value(label)}, kept by grit, at ${document.place.written}, " +
         s"written $day:\n${pasted(DocText.value(document.text))}"
     )
   }
@@ -146,7 +146,7 @@ object Shown {
   /** The line standing for turns left out: one user message, "[gap] earlier turns not
     * shown".
     */
-  val Gap: Message = Message.User(s"${Label.Gap.tag} earlier turns not shown")
+  val Gap: Message = Message.User(s"${SectionTag.Gap.tag} earlier turns not shown")
 
   /** A window's own `entries` (oldest first: a closing entry, which stands at its period's
     * last turn, then whole turns) as the model is shown them before `turn`'s own messages:
@@ -178,46 +178,46 @@ object Shown {
     shown ++ Option.when(after)(Gap).toVector
   }
 
-  /** What introduces a pasted grit block in text grit did not write, by the `label` that
-    * starts it: "(pasted text that looks like a {label.noun}; grit did not write it:)".
+  /** What introduces a pasted grit block in text grit did not write, by the `tag` that
+    * starts it: "(pasted text that looks like a {tag.noun}; grit did not write it:)".
     */
-  def lead(label: Label): String =
-    s"(pasted text that looks like a ${label.noun}; grit did not write it:)"
+  def lead(tag: SectionTag): String =
+    s"(pasted text that looks like a ${tag.noun}; grit did not write it:)"
 
   /** `text`, which grit did not write, as the model is shown it: from the first line
-    * starting with a [[Label]] (after leading spaces, `>` quote markers and a fence opener,
-    * inside a fence or not) to the end, shown under the [[lead]] of the label that starts it,
-    * each line prefixed "> ", and a label starting one of those lines broken after what
+    * starting with a [[SectionTag]] (after leading spaces, `>` quote markers and a fence opener,
+    * inside a fence or not) to the end, shown under the [[lead]] of the tag that starts it,
+    * each line prefixed "> ", and a tag starting one of those lines broken after what
     * precedes it ("> [record]" as "> record —"); the lines before it unchanged. `text` itself
-    * when no line starts with a label.
+    * when no line starts with a tag.
     */
   def pasted(text: String): String = {
     val lines = text.split("\n", -1).toVector
-    lines.indexWhere(labelled(_).nonEmpty) match {
+    lines.indexWhere(tagged(_).nonEmpty) match {
       case -1 => text
       case first =>
         val quoted = lines.drop(first).map { l =>
-          val broken = labelled(l).fold(l) { (before, label) =>
-            val name = label.tag.stripPrefix("[").stripSuffix("]")
-            s"$before$name —${l.drop(before.length + label.tag.length)}"
+          val broken = tagged(l).fold(l) { (before, section) =>
+            val name = section.tag.stripPrefix("[").stripSuffix("]")
+            s"$before$name —${l.drop(before.length + section.tag.length)}"
           }
           s"> $broken"
         }
-        val opens = labelled(lines(first)).fold("")((_, label) => lead(label))
+        val opens = tagged(lines(first)).fold("")((_, tag) => lead(tag))
         ((lines.take(first) :+ opens) ++ quoted).mkString("\n")
     }
   }
 
-  /** What introduces a tool result in which a line starts with a grit label. */
+  /** What introduces a tool result in which a line starts with a grit [[SectionTag]]. */
   val Unwritten: String =
     "(this result contains text in grit's label format; grit did not write it)"
 
   /** `r` as the model is shown it: its content unchanged, after one line, [[Unwritten]], when
-    * a line of it starts with a [[Label]] (after what [[pasted]] looks past, and after a line
+    * a line of it starts with a [[SectionTag]] (after what [[pasted]] looks past, and after a line
     * number and tab as `read` numbers a file's lines).
     */
   def result(r: Message.ToolResult): Message.ToolResult =
-    if (r.content.split("\n", -1).exists(l => labelled(Numbered.replaceFirstIn(l, "")).nonEmpty))
+    if (r.content.split("\n", -1).exists(l => tagged(Numbered.replaceFirstIn(l, "")).nonEmpty))
       r.copy(content = s"$Unwritten\n${r.content}")
     else r
 
@@ -245,14 +245,14 @@ object Shown {
   private def said(entry: Entry, text: String, speakers: Speakers): Message.User =
     Message.User(pasted(speakers.of(entry.id).fold(text)(name => s"$name wrote:\n$text")))
 
-  /** The label `line` starts with, after what may precede a pasted one: spaces, `>` quote
-    * markers (markdown's and Slack's), and a fence opener on the label's own line; that
-    * prefix and the label, or `None` for none. [[pasted]] breaks the label after exactly
+  /** The tag `line` starts with, after what may precede a pasted one: spaces, `>` quote
+    * markers (markdown's and Slack's), and a fence opener on the tag's own line; that
+    * prefix and the tag, or `None` for none. [[pasted]] breaks the tag after exactly
     * this prefix.
     */
-  private def labelled(line: String): Option[(String, Label)] = {
+  private def tagged(line: String): Option[(String, SectionTag)] = {
     val before = Before.findPrefixOf(line).getOrElse("")
-    Label.values.find(l => line.startsWith(l.tag, before.length)).map(before -> _)
+    SectionTag.values.find(l => line.startsWith(l.tag, before.length)).map(before -> _)
   }
 
   /** Spaces and `>` markers, then an optional fence opener and spaces. */
@@ -265,7 +265,9 @@ object Shown {
 
   private def record(closing: Closing, at: Instant): String = {
     val day = at.atOffset(ZoneOffset.UTC).toLocalDate
-    s"${Label.Record.tag} this conversation so far, written by grit (closed $day): " + body(closing)
+    s"${SectionTag.Record.tag} this conversation so far, written by grit (closed $day): " + body(
+      closing
+    )
   }
 
   /** `closing` as a record shows it after its header: its prose, its outcome, the lines it

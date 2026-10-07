@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.context.Label
+import grit.core.context.SectionTag
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Namespace, Place}
 import grit.core.prompt.Layer
@@ -32,7 +32,7 @@ object TurnPromptTests extends TestSuite {
       // The base teaches the model to read grit's messages by their labels: a label Shown
       // writes that the base does not name is one the model is never taught.
       val base = TurnPrompt.Base.text
-      Label.values.toVector.filterNot(l => base.contains(l.tag)) ==> Vector.empty
+      SectionTag.values.toVector.filterNot(l => base.contains(l.tag)) ==> Vector.empty
       // The record is grit speaking, not grit keeping a record the model looks through: the
       // wording gpt-oss-120b attributed right, 5/5, where "grit's record of this
       // conversation" alone drew "you, the user" (.local/history/prompt-content, cell M).

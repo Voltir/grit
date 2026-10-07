@@ -4,7 +4,7 @@ import java.time.ZoneOffset
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.classify.{Answer, Request}
-import grit.core.context.{Label, Shown}
+import grit.core.context.{SectionTag, Shown}
 import grit.core.id.{
   ConversationId,
   EntryId,
@@ -404,12 +404,11 @@ object SentMarkdown {
       ) ++ shown
   }
 
-  /** What a user message the turn was sent is: the noun of the label it starts with
-    * ([[Label]]), a heard message by the line [[Shown.of]] puts above it, else a message.
+  /** What a user message the turn was sent is: the noun of the [[SectionTag]] it starts with, a heard message by the line [[Shown.of]] puts above it, else a message.
     */
   private def kind(text: String): String =
-    Label.values.find(l => text.startsWith(l.tag)) match {
-      case Some(label) => label.noun
+    SectionTag.values.find(l => text.startsWith(l.tag)) match {
+      case Some(tag) => tag.noun
       case None =>
         if (text.linesIterator.nextOption().exists(_.endsWith(Shown.NotToYou))) "a heard message"
         else "a message"

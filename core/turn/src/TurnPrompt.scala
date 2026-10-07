@@ -1,6 +1,6 @@
 package grit.turn
 
-import grit.core.context.Label
+import grit.core.context.SectionTag
 import grit.core.persona.Persona
 import grit.core.place.{Directory, Place, Service}
 import grit.core.prompt.{Fragment, Layer}
@@ -14,17 +14,17 @@ import grit.core.tool.ToolSet
 object TurnPrompt {
 
   /** What every turn is told: that it is an assistant working inside grit, how its view is
-    * made, how to read each [[Label]] grit writes into it (and the record's unconfirmed
+    * made, how to read each [[SectionTag]] grit writes into it (and the record's unconfirmed
     * Standing), that calling a tool that asks
     * first is how the person is asked, that how it speaks is for its replies alone, and what
     * survives the turn, ending on the line later instructions may not override.
     */
   val Base: Fragment = {
-    val record = Label.Record.tag
-    val afar = Label.Afar.tag
-    val gap = Label.Gap.tag
-    val strand = Label.Strand.tag
-    val doc = Label.Document.tag
+    val record = SectionTag.Record.tag
+    val afar = SectionTag.Afar.tag
+    val gap = SectionTag.Gap.tag
+    val strand = SectionTag.Strand.tag
+    val doc = SectionTag.Document.tag
     Fragment(
       Layer.Base,
       Fragment.Grit,

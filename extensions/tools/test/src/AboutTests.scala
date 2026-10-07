@@ -1,6 +1,6 @@
 package grit.tools
 
-import grit.core.context.Label
+import grit.core.context.SectionTag
 import grit.core.id.{TestCallSlots, ToolCallId}
 import grit.core.message.AssistantBlock
 import grit.core.persona.Persona
@@ -61,7 +61,7 @@ object AboutTests extends TestSuite {
     }
 
     test("the markers doc names every label grit writes") {
-      Label.values.toVector.filterNot(l => shipped("markers").contains(l.tag)) ==> Vector.empty
+      SectionTag.values.toVector.filterNot(l => shipped("markers").contains(l.tag)) ==> Vector.empty
     }
 
     test("about is free, and its topic is one of the subjects") {
