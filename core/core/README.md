@@ -28,6 +28,16 @@ In dependency order:
   conversations with no directory to the service they work in; `Scope` (the `Prefix`es a window may draw on beside its own conversation: places, or its own room),
   `Weight` (how far its own search hits outweigh those elsewhere) and `Locality`, both
   together. Imports nothing in core.
+- **`visibility`** — who may see what (ADR 0030): `Level` (core's fixed scale), `Compartment`
+  (a name a deployment declares), `Label` (opaque: a level and compartments, compared, joined,
+  met and keyed by, never taken apart), and `LabelAtoms`, its stored atoms, which only this
+  package and `grit.dbos` may name (enola-intent.yaml); `Compartments`, a deployment's closed
+  set; `Labelled` and `Labeller`, how a source labels what it brings in, and `RoomLabels`, a
+  deployment's declared labels for rooms; `GroupName`, `Group`, `Grant` and `Memberships`, who
+  is cleared for what; `Visibility`, all of it as a deployment injects it, refused as a
+  `VisibilityRefusal`; `Item`, a labelled row as reading it is decided; `Clearance`, what a
+  transaction reads and the least label it writes at; `Subject`, whom it is opened for; and
+  `Maintenance`, `grit.dbos`'s own clearance. ← `id`, `place`
 - **`prompt`** — a turn's system prompt as ordered fragments (ADR 0016): `Layer` (base,
   edge, person, reach, place: the most stable first, for a provider's prompt cache),
   `Fragment` (its id a content hash), `SystemPrompt` (fragments by layer, rendered to the
