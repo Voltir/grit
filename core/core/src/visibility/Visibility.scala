@@ -1,0 +1,107 @@
+package grit.core.visibility
+
+import grit.core.id.PrincipalId
+import grit.core.place.Place
+
+/** What a deployment injects into core about who may see what (ADR 0030): its
+  * compartments, the labeller of its rooms, its groups and what each group's members are
+  * cleared for.
+  */
+final case class Visibility private (
+    compartments: Compartments,
+    rooms: Labeller[Place],
+    groups: Vector[Group],
+    grants: Vector[Grant]
+) {
+
+  /** `person`'s clearance: the join of the grants of every group they are in, or
+    * [[Label.Public]]; for [[PrincipalId.Grit]], [[Compartments.top]].
+    */
+  def cleared(person: PrincipalId): Label =
+    if (person == PrincipalId.Grit) compartments.top
+    else {
+      val in = groups.filter(_.members.contains(person)).map(_.name).toSet
+      grants.filter(g => in.contains(g.group)).map(_.label).foldLeft(Label.Public)(_.join(_))
+    }
+
+  /** Whether a room may be labelled above public: false only for [[RoomLabels.Public]], since
+    * an injected labeller's answers are not known before it runs.
+    */
+  def labelled: Boolean = rooms != RoomLabels.Public
+}
+
+object Visibility {
+
+  /** No compartment but unmapped, every room public, no group: every label is public, so
+    * every reader reads what it read before labels existed.
+    */
+  val Shipped: Visibility =
+    new Visibility(Compartments.Shipped, RoomLabels.Public, Vector.empty, Vector.empty)
+
+  /** These, or the first mistake: a compartment `compartments` does not declare, named by a
+    * declared room label, `rooms.requires` or a grant (`Undeclared`, saying where); two groups
+    * of one name; or a grant to a group not declared.
+    */
+  def of(
+      compartments: Compartments,
+      rooms: Labeller[Place],
+      groups: Vector[Group],
+      grants: Vector[Grant]
+  ): Either[VisibilityRefusal, Visibility] = {
+    def undeclared(namer: Namer, label: Label): Option[VisibilityRefusal] =
+      compartments.undeclared(label).map(VisibilityRefusal.Undeclared(namer, _))
+    val declaredRooms = rooms match {
+      case r: RoomLabels =>
+        r.declared.map((place, label) => (Namer.RoomAt(place), label)) :+
+          (Namer.OtherRooms, r.otherwise.label)
+      case _ => Vector.empty
+    }
+    val names = groups.map(_.name)
+    val refusal =
+      declaredRooms
+        .flatMap(undeclared(_, _))
+        .headOption
+        .orElse(
+          rooms.requires
+            .find(c => !compartments.declared.contains(c))
+            .map(VisibilityRefusal.Undeclared(Namer.Rooms, _))
+        )
+        .orElse(grants.flatMap(g => undeclared(Namer.Granted(g.group), g.label)).headOption)
+        .orElse(names.diff(names.distinct).headOption.map(VisibilityRefusal.GroupTwice(_)))
+        .orElse(
+          grants
+            .find(g => !names.contains(g.group))
+            .map(g => VisibilityRefusal.NoSuchGroup(g.group))
+        )
+    refusal.toLeft(new Visibility(compartments, rooms, groups, grants))
+  }
+}
+
+/** What in a [[Visibility]] names a compartment. */
+enum Namer {
+
+  /** The rooms' labeller, by its [[Labeller.requires]]. */
+  case Rooms
+
+  /** The label a [[RoomLabels]] declares at `place`. */
+  case RoomAt(place: Place)
+
+  /** A [[RoomLabels]]' `otherwise`. */
+  case OtherRooms
+
+  /** A grant to `group`. */
+  case Granted(group: GroupName)
+}
+
+/** Why a deployment's [[Visibility]] is refused. */
+enum VisibilityRefusal {
+
+  /** `compartment`, named by `by`, is not among the deployment's compartments. */
+  case Undeclared(by: Namer, compartment: Compartment)
+
+  /** Two groups are named `name`. */
+  case GroupTwice(name: GroupName)
+
+  /** A grant is to `group`, which no declared group is named. */
+  case NoSuchGroup(group: GroupName)
+}
