@@ -285,7 +285,7 @@ final class Engine private (
     posting.set(plugins.filter(_.posts).map(p => (p.name, p.version)))
     declared.set(shadowing)
     Link
-      .transaction(dataSource, opener.maintenance)(
+      .transaction(dataSource, opener)(
         documents.declare(plugins.flatMap(p => p.documents.map(d => p.name -> d.terms)))
       )
       .left
@@ -330,7 +330,7 @@ final class Engine private (
       () => enabled.get(),
       () => posting.get(),
       () => declared.get(),
-      opener.maintenance
+      opener
     )
 
   /** One sweep of the lifecycle at `now`, under the settings in force: every open period
@@ -391,7 +391,7 @@ final class Engine private (
       principal,
       places,
       identity,
-      opener.maintenance
+      opener
     ) match {
       case Left(e) => Left(e)
       case Right(desk) =>
@@ -485,7 +485,7 @@ final class Engine private (
     }
 
   def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId] =
-    Link.transaction(dataSource, opener.maintenance)(
+    Link.transaction(dataSource, opener)(
       conversations.findOrCreate(origin, by, visibility.roomLabel(origin.room)).map(_.id)
     )
 
@@ -605,7 +605,7 @@ object Engine {
     ) { conn =>
       conn.setAutoCommit(false)
       SqlLabels.reconcile(visibility.compartments)(using
-        Tx.open(conn, new Opener(visibility).maintenance)
+        new Opener(visibility).maintained(conn)
       ) match {
         case Right(dropped) =>
           conn.commit()

@@ -20,7 +20,10 @@ object LiveDb {
     * suite writes, unmapped included. A label naming a compartment it does not declare is
     * not read: a suite labelling with another declares it there first.
     */
-  val Everything: Clearance = new Opener(TestLabels.Trialled).maintenance
+  val Everything: Clearance = Trialled.maintenance
+
+  /** What opens these transactions: [[TestLabels.Trialled]]'s. */
+  lazy val Trialled: Opener = new Opener(TestLabels.Trialled)
 
   /** Runs `body` in one transaction on `config`'s database, opened at `clearance`: committed
     * if it returns, rolled back if it throws.
@@ -30,7 +33,7 @@ object LiveDb {
       conn =>
         conn.setAutoCommit(false)
         try {
-          val a = body(using Tx.open(conn, clearance))
+          val a = body(using Trialled.at(clearance, conn))
           conn.commit()
           a
         } catch { case e: Throwable => conn.rollback(); throw e }

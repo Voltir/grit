@@ -36,7 +36,7 @@ object EdgeLiveTests extends TestSuite {
           PrincipalId.Local,
           Set(place),
           LiveEngine.Identity,
-          LiveDb.Everything
+          LiveDb.Trialled
         ) match {
           case Right(d) => d
           case Left(e) => sys.error(s"$e")

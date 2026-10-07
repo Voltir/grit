@@ -120,7 +120,7 @@ object ConversationRoomsLiveTests extends TestSuite {
         // Open, uncommitted, as a turn's step is: two entries recorded in the room's first
         // conversation, so its row is written twice and its references to its place and room
         // are checked, under key-share locks, the second time.
-        val tx = Tx.open(conn, LiveDb.Everything)
+        val tx = LiveDb.Trialled.maintained(conn)
         Vector("first", "second").map { name =>
           entries.lockNext(held)(using tx).flatMap { next =>
             entries.insert(

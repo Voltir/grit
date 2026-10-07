@@ -6,42 +6,41 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.store.{StoreError, Tx}
-import grit.core.visibility.Clearance
-import grit.dbos.sql.SqlEntryStore
+import grit.dbos.sql.{Opener, SqlEntryStore}
 
 /** Short transactions over a data source, and DBOS calls, as the sweep makes them: each
   * failure a `Left`.
   */
 private[engine] object Transact {
 
-  /** `body` in a read-write transaction at `clearance`, committed on `Right`, rolled back
-    * otherwise.
+  /** `body` in a read-write transaction at `opener`'s maintenance, committed on `Right`, rolled
+    * back otherwise.
     */
   def write[A](
       dataSource: DataSource,
-      clearance: Clearance
+      opener: Opener
   )(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
     try {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         val result =
-          try body(using Tx.open(conn, clearance))
+          try body(using opener.maintained(conn))
           catch { case NonFatal(e) => conn.rollback(); throw e }
         if (result.isRight) conn.commit() else conn.rollback()
         result
       }
     } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }
 
-  /** `body` in a read-only transaction at `clearance`. */
+  /** `body` in a read-only transaction at `opener`'s maintenance. */
   def read[A](
       dataSource: DataSource,
-      clearance: Clearance
+      opener: Opener
   )(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
     try {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         conn.setReadOnly(true)
-        try body(using Tx.open(conn, clearance))
+        try body(using opener.maintained(conn))
         finally conn.rollback()
       }
     } catch { case NonFatal(e) => Left(SqlEntryStore.databaseError(e)) }

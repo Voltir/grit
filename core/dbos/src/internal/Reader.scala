@@ -142,7 +142,7 @@ object Reader {
     val db: Db = sql
     val all: Reads = new Reads {
       def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-        sql.transaction(conn => Right(Tx.open(conn, opener.maintenance)))(body)
+        sql.transaction(conn => Right(opener.maintained(conn)))(body)
     }
     val entries: EntryStore = new SqlEntryStore()
     val conversations: ConversationStore = new SqlConversationStore()

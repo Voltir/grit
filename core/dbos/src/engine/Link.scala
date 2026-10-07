@@ -28,7 +28,7 @@ import grit.core.store.{
   UsageLedger,
   VoiceStore
 }
-import grit.core.visibility.{Clearance, Visibility}
+import grit.core.visibility.Visibility
 import grit.dbos.sql.{
   DbConfig,
   Opener,
@@ -203,17 +203,17 @@ object Link {
   private[engine] def awaitTurn(client: DBOSClient, turn: TurnRef): String =
     client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId)).getResult()
 
-  /** Runs `body` in a transaction of its own on `dataSource`, at `clearance`: committed on
-    * `Right`, rolled back otherwise.
+  /** Runs `body` in a transaction of its own on `dataSource`, at `opener`'s maintenance:
+    * committed on `Right`, rolled back otherwise.
     */
-  private[engine] def transaction[A](dataSource: DataSource, clearance: Clearance)(
+  private[engine] def transaction[A](dataSource: DataSource, opener: Opener)(
       body: (Tx^) ?=> Either[StoreError, A]
   ): Either[StoreError, A] =
     try {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         val result =
-          try body(using Tx.open(conn, clearance))
+          try body(using opener.maintained(conn))
           catch { case NonFatal(e) => conn.rollback(); throw e }
         if (result.isRight) conn.commit() else conn.rollback()
         result
@@ -283,7 +283,7 @@ private[engine] final class Attached(
   private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()
 
   def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId] =
-    Link.transaction(dataSource, opener.maintenance)(
+    Link.transaction(dataSource, opener)(
       conversations.findOrCreate(origin, by, visibility.roomLabel(origin.room)).map(_.id)
     )
 
@@ -314,7 +314,7 @@ private[engine] final class Attached(
           principal,
           places,
           identity,
-          opener.maintenance
+          opener
         ) match {
           case Left(e) => Left(e)
           case Right(desk) =>

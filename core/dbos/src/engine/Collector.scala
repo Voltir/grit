@@ -23,8 +23,7 @@ import grit.core.store.{
   Tx,
   UsageLedger
 }
-import grit.core.visibility.Clearance
-import grit.dbos.sql.SqlSchedules
+import grit.dbos.sql.{Opener, SqlSchedules}
 
 import dev.dbos.transact.DBOSClient
 import dev.dbos.transact.workflow.ListWorkflowsInput
@@ -50,7 +49,7 @@ private[engine] final class Collector(
     documents: DocumentStore,
     schedules: SqlSchedules,
     tombstones: Tombstones,
-    maintenance: Clearance
+    opener: Opener
 ) {
   import Collector.*
 
@@ -66,18 +65,18 @@ private[engine] final class Collector(
           kind.retention(settings.windows) match {
             case Retention.For(window) =>
               Transact
-                .read(dataSource, maintenance)(
+                .read(dataSource, opener)(
                   tombstones.due(kind, now.minusMillis(window.toMillis), Batch)
                 )
                 .flatMap(all(_, done, now))
             case Retention.Declared =>
               Transact
-                .read(dataSource, maintenance)(documents.declared())
+                .read(dataSource, opener)(documents.declared())
                 .flatMap(_.foldLeft[Either[StoreError, Swept]](Right(done)) {
                   case (acc, (plugin, terms)) =>
                     acc.flatMap { done =>
                       Transact
-                        .read(dataSource, maintenance)(
+                        .read(dataSource, opener)(
                           tombstones.documentsDue(
                             plugin,
                             now.minusMillis(terms.retention.toMillis),
@@ -90,7 +89,7 @@ private[engine] final class Collector(
           }
         }
       }
-      _ <- Transact.write(dataSource, maintenance)(
+      _ <- Transact.write(dataSource, opener)(
         tombstones.forget(now.minusMillis(settings.windows.ledger.toMillis))
       )
     } yield swept
@@ -104,7 +103,7 @@ private[engine] final class Collector(
   private def collect(tombstone: Tombstone, now: Instant): Either[StoreError, Swept] = {
     val target = tombstone.target
     for {
-      named <- Transact.read(dataSource, maintenance)(workflows(target))
+      named <- Transact.read(dataSource, opener)(workflows(target))
       found <- Transact.attempted(listed(named))
       swept <-
         if (found.exists(_._2)) deferred(target, now)
@@ -114,8 +113,8 @@ private[engine] final class Collector(
               if (found.nonEmpty)
                 client.deleteWorkflows(found.map((id, _) => WorkflowId.value(id)).asJava, false)
             )
-            _ <- Transact.write(dataSource, maintenance)(stepOutputs(named))
-            outcome <- Transact.write(dataSource, maintenance)(rows(target, now))
+            _ <- Transact.write(dataSource, opener)(stepOutputs(named))
+            outcome <- Transact.write(dataSource, opener)(rows(target, now))
             swept <- outcome match {
               case Outcome.Collected => Right(Swept(collected = Vector(target)))
               case Outcome.Spared => Right(Swept(spared = Vector(target)))
@@ -127,7 +126,7 @@ private[engine] final class Collector(
 
   private def deferred(target: Target, now: Instant): Either[StoreError, Swept] =
     Transact
-      .write(dataSource, maintenance)(tombstones.deferred(target, now))
+      .write(dataSource, opener)(tombstones.deferred(target, now))
       .map(_ => Swept(deferred = Vector(target)))
 
   /** The workflows `target` names, as the database says now. */

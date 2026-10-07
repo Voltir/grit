@@ -25,7 +25,14 @@ private[dbos] final class Opener(visibility: Visibility) {
     * `DatabaseError` when that read fails.
     */
   def open(subject: Subject, conn: Connection^): Either[StoreError, Tx^{conn}] =
-    clearance(subject)(using Tx.open(conn, maintenance)).map(Tx.open(conn, _))
+    clearance(subject)(using maintained(conn)).map(at(_, conn))
+
+  /** `conn`'s transaction at `clearance`, labelling places as the deployment does. */
+  def at(clearance: Clearance, conn: Connection^): Tx^{conn} =
+    Tx.open(conn, clearance, visibility)
+
+  /** `conn`'s transaction at [[maintenance]]. */
+  def maintained(conn: Connection^): Tx^{conn} = at(maintenance, conn)
 
   /** The clearance `subject` reads at, as [[Subject]]'s cases say: one read of its
     * conversation, its label, and its turn's first entry and that entry's author.

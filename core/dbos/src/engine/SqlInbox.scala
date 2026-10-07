@@ -510,7 +510,7 @@ final class SqlInbox(
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         val result =
-          try body(using Tx.open(conn, opener.maintenance))
+          try body(using opener.maintained(conn))
           catch { case NonFatal(e) => conn.rollback(); throw e }
         result match {
           case Right(_) => conn.commit()

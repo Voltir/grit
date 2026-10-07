@@ -25,8 +25,7 @@ import grit.core.store.{
   UsageLedger
 }
 import grit.core.triage.{Shadowing, TriageShadows}
-import grit.core.visibility.Clearance
-import grit.dbos.sql.SqlSchedules
+import grit.dbos.sql.{Opener, SqlSchedules}
 import grit.dbos.workflow.{Closes, Posts, Settles, Shadows}
 
 import dev.dbos.transact.DBOSClient
@@ -55,7 +54,7 @@ private[engine] final class Sweeper(
     plugins: () -> Vector[(PluginName, Int)],
     posting: () -> Vector[(PluginName, Int)],
     declared: () -> Vector[Shadowing],
-    maintenance: Clearance
+    opener: Opener
 ) {
 
   private val collector = new Collector(
@@ -72,16 +71,16 @@ private[engine] final class Sweeper(
     documents,
     schedules,
     tombstones,
-    maintenance
+    opener
   )
 
   private def attempted[A](body: => A): Either[StoreError, A] = Transact.attempted(body)
 
   private def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-    Transact.write(dataSource, maintenance)(body)
+    Transact.write(dataSource, opener)(body)
 
   private def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-    Transact.read(dataSource, maintenance)(body)
+    Transact.read(dataSource, opener)(body)
 
   /** Closes and asks, then posts, then collects: see [[Engine.sweep]]. */
   def once(now: Instant): Either[StoreError, Swept] =
