@@ -128,6 +128,20 @@ compartments each start declared: a start may add some, but one that drops or re
 compartment the database ran under does not open, and says which, since a label
 holding it could then be read by a clearance that could not read it before.
 
+**Identities** ([ADR 0032](decisions/0032-a-principal-is-a-person-edges-name-accounts-and-accounts-link-to-a-person-only-on-declared-or-vouched-evidence.md)).
+Who a deployment says is whom is injected beside its visibility, `Deployment.of(identities =
+…)`, an `Identities` built by `Identities.of`, which refuses a mistake in it
+(`IdentityRefusal`); left out, it is `Identities.Shipped`: no one declared and no realm
+trusted, so every account is a person of its own. Both parts are declared data:
+
+- `people`: each `DeclaredPerson`, a `Handle` and the accounts the deployment knows them by
+  (`slack:{team}/{user}`, `email:{address}`). An account is in at most one, and `local` and
+  `grit` in none.
+- `vouchers`: for each `Realm` (one source's accounts, such as one Slack workspace's), the
+  one edge trusted to vouch for what its source says of them: whether each is a full member,
+  and the email the source verified for one. Trusting a realm trusts its administrators, who
+  decide both. `Deployment.of` refuses a vouching by an edge it does not serve.
+
 **A plugin is parametric in labels.** A `Label` is opaque: a plugin compares labels
 (`dominates`, equality), combines them (`join`, `meet`) and passes one to core as a key, and
 never takes one apart. Opacity buys independence from how labels are stored, not secrecy: a

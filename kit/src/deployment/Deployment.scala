@@ -15,6 +15,7 @@ import grit.core.id.{
   ScheduleId,
   ShadowName
 }
+import grit.core.identity.Identities
 import grit.core.job.{Declared, Job, Jobs, NotOwn}
 import grit.core.message.Tokens
 import grit.core.model.Policy
@@ -223,6 +224,11 @@ enum DeploymentRefusal {
     */
   case ReviewUnposted(edges: Vector[EdgeName])
 
+  /** Its identities trust `edge` to vouch for a realm, and no edge served is named `edge`, so
+    * that realm's accounts would never be vouched for.
+    */
+  case VouchesUnserved(edge: EdgeName)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
@@ -271,6 +277,8 @@ enum DeploymentRefusal {
       if (edges.isEmpty) "a review is declared, and no edge posts its prompts"
       else
         s"a review is declared, and ${edges.map(EdgeName.value).mkString(", ")} each post its prompts: one must"
+    case VouchesUnserved(edge) =>
+      s"the identities trust ${EdgeName.value(edge)} to vouch for a realm, and no edge served is named ${EdgeName.value(edge)}"
   }
 }
 
@@ -288,8 +296,9 @@ enum DeploymentRefusal {
   * often its engine sweeps, the `recipe` that shapes each turn by what it answers
   * ([[TurnRecipe]]), the `persona` grit presents as: the name its turns are told
   * ([[grit.turn.TurnPrompt.called]]) and `about` reports, and the `jobs` and `schedules` it
-  * declares itself beside its plugins' (ADR 0029), and its `visibility`: who may see what
-  * (ADR 0030); `allJobs` is every job, its plugins' and its own, by name, as its runs find
+  * declares itself beside its plugins' (ADR 0029), its `visibility`: who may see what
+  * (ADR 0030), and its `identities`: who it says is whom, and which edge it trusts to vouch
+  * for each realm (ADR 0032); `allJobs` is every job, its plugins' and its own, by name, as its runs find
   * them. The
   * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
@@ -316,6 +325,7 @@ final case class Deployment private (
     jobs: Vector[Job[?]],
     schedules: Vector[Declared[?]],
     visibility: Visibility,
+    identities: Identities,
     allJobs: Jobs
 ) {
 
@@ -377,7 +387,9 @@ object Deployment {
     *   - [[DeploymentRefusal.ScheduleJobless]]: a declared schedule holds a job other than the
     *     deployment's job of its name;
     *   - [[DeploymentRefusal.CompartmentUndeclared]]: a plugin's or an edge's `compartments`, or
-    *     a declared schedule's `clearance`, names a compartment `visibility` does not declare.
+    *     a declared schedule's `clearance`, names a compartment `visibility` does not declare;
+    *   - [[DeploymentRefusal.VouchesUnserved]]: `identities` trusts an edge to vouch for a realm,
+    *     and none of `edges` is named so.
     */
   def of(
       edges: Vector[ServedEdge],
@@ -399,7 +411,8 @@ object Deployment {
       recipe: TurnRecipe = TurnRecipe.Shipped,
       jobs: Vector[Job[?]] = Vector.empty,
       schedules: Vector[Declared[?]] = Vector.empty,
-      visibility: Visibility = Visibility.Shipped
+      visibility: Visibility = Visibility.Shipped,
+      identities: Identities = Identities.Shipped
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filterNot(_.answersAsks).map(_.name)
@@ -410,6 +423,12 @@ object Deployment {
       Names.all ++ Vector(TurnVerdict.Name) ++ plugins.flatMap(_.tools.map(_.described.name))
     for {
       _ <- names.diff(names.distinct).headOption.map(DeploymentRefusal.EdgeRepeated(_)).toLeft(())
+      // A realm's accounts are vouched for only by the edge named for it: one not served, never.
+      _ <- identities.vouchers
+        .map(_.edge)
+        .find(!names.contains(_))
+        .map(DeploymentRefusal.VouchesUnserved(_))
+        .toLeft(())
       _ <- pluginNames
         .diff(pluginNames.distinct)
         .headOption
@@ -550,6 +569,7 @@ object Deployment {
       jobs,
       schedules,
       visibility,
+      identities,
       all
     )
   }

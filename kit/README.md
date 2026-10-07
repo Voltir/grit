@@ -27,11 +27,12 @@ In dependency order:
   heard messages for (`ShadowReview`: `grit.core.review.Reviewing` with that shadow's gate,
   and the place the one edge that answers it posts its prompts, `ServedEdge.reviewsAt`),
   the recipe that shapes each turn by what it answers (`grit.core.recipe.TurnRecipe`,
-  ADR 0025), the persona grit presents as (`grit.core.persona.Persona`, ADR 0026), and
-  its visibility (`grit.core.visibility.Visibility`, ADR 0030): who may see what, injected
+  ADR 0025), the persona grit presents as (`grit.core.persona.Persona`, ADR 0026), its
+  visibility (`grit.core.visibility.Visibility`, ADR 0030): who may see what, injected
   into core, with `Requirer` naming what else in it names a compartment (a plugin, an edge,
-  a declared schedule's clearance). Beside its edges it declares, by core's
-  links, which conversations work in a service an edge hosts (`WorksIn`) and which
+  a declared schedule's clearance), and its identities (`grit.core.identity.Identities`,
+  ADR 0032): who it says is whom, and which edge it trusts to vouch for each realm. Beside
+  its edges it declares, by core's links, which conversations work in a service an edge hosts (`WorksIn`) and which
   conversations' addressed turns also reach one (`Reaches`). Imports nothing in kit.
 - **`environment`** — what the process environment supplies, never declared: `DotEnv` (a
   `.env` file under the real environment) and `Secrets` (the database, OpenRouter's key, and

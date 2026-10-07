@@ -62,7 +62,8 @@ object Deployments {
       plugins: Vector[grit.core.plugin.Plugin] = Vector.empty,
       jobs: Vector[grit.core.job.Job[?]] = Vector.empty,
       schedules: Vector[grit.core.job.Declared[?]] = Vector.empty,
-      visibility: Visibility = Visibility.Shipped
+      visibility: Visibility = Visibility.Shipped,
+      identities: grit.core.identity.Identities = grit.core.identity.Identities.Shipped
   ): Either[DeploymentRefusal, Deployment] =
     Deployment.of(
       edges = edges,
@@ -84,7 +85,8 @@ object Deployments {
       recipe = recipe,
       jobs = jobs,
       schedules = schedules,
-      visibility = visibility
+      visibility = visibility,
+      identities = identities
     )
 
   /** [[of]], which the test expects to be accepted. */

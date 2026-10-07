@@ -657,6 +657,29 @@ object DeploymentTests extends TestSuite {
       )
     }
 
+    test("identities trusting an edge not served to vouch for a realm are refused, naming it") {
+      def ok[A](e: Either[String, A]): A = e.fold(sys.error, identity)
+      val realm = ok(grit.core.identity.Realm.of("slack", "T1"))
+      val trusting = grit.core.identity.Identities
+        .of(Vector.empty, Vector(grit.core.identity.Vouching(EdgeName("chat"), realm)))
+        .fold(r => sys.error(r.message), identity)
+      val refused =
+        Deployments.of(edges = Vector(edge("slack", asks = false)), identities = trusting)
+      (
+        refused.map(_ => ()),
+        refused.left.map(_.message),
+        Deployments
+          .of(edges = Vector(edge("chat", asks = false)), identities = trusting)
+          .map(_.identities.realms(EdgeName("chat")))
+      ) ==> (
+        Left(DeploymentRefusal.VouchesUnserved(EdgeName("chat"))),
+        Left(
+          "the identities trust chat to vouch for a realm, and no edge served is named chat"
+        ),
+        Right(Set(realm))
+      )
+    }
+
     test(
       "a declared schedule cleared for a compartment its deployment's visibility does not declare is refused, naming both"
     ) {
