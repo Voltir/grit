@@ -65,14 +65,14 @@ if [ -n "$started" ]; then
   exit 1
 fi
 
-# TRAP: rule 1f sees only `import grit.core.visibility.LabelAtoms`. A fully qualified use, or
+# TRAP: rule 1f sees only `import grit.core.visibility.LabelParts`. A fully qualified use, or
 # one through a wildcard import, makes no edge to it, so grep every source for the name:
 # only core's visibility package (its sources and tests) and grit.dbos may write it.
-atoms=$(grep -rlw 'LabelAtoms' --include='*.scala' core extensions kit deployments eval |
+parts=$(grep -rlw 'LabelParts' --include='*.scala' core extensions kit deployments eval |
   grep -vE '^core/core/(src|test/src)/visibility/|^core/dbos/' || true)
-if [ -n "$atoms" ]; then
-  echo "Only grit.dbos and core's visibility package may name LabelAtoms; these sources do:" >&2
-  printf '  %s\n' $atoms >&2
+if [ -n "$parts" ]; then
+  echo "Only grit.dbos and core's visibility package may name LabelParts; these sources do:" >&2
+  printf '  %s\n' $parts >&2
   exit 1
 fi
 

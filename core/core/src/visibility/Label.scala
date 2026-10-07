@@ -17,15 +17,15 @@ object Compartment {
   def of(name: String): Either[String, Compartment] =
     if (!Shape.matches(name)) {
       Left(s"$name is not a compartment's name: lowercase letters, digits and -, 1 to 32 of them")
-    } else if (LabelAtoms.level(name).isDefined) {
+    } else if (Level.named(name).isDefined) {
       Left(s"$name is a level's name, never a compartment's")
     } else Right(name)
 
   /** What a mapping could not place. Every deployment declares it. */
   val Unmapped: Compartment = "unmapped"
 
-  /** Its name, as [[of]] took it: what a person reads in a refusal naming it, and the atom it
-    * is stored as. It says nothing of any label's structure: no public operation takes a
+  /** Its name, as [[of]] took it: what a person reads in a refusal naming it, and what it is
+    * stored as. It says nothing of any label's structure: no public operation takes a
     * compartment out of a label.
     */
   def name(c: Compartment): String = c
@@ -42,9 +42,7 @@ opaque type Label = Label.Repr
 object Label {
 
   /* Not a case class and not a set, so a type test outside this file finds no structure to
-   * take apart: `Repr` cannot be named there, and it is no `Product` or `Set`. A level and its
-   * compartments, rather than the atoms they store as, so a compartment can never be mistaken
-   * for a level's atom (LabelAtoms.of). */
+   * take apart: `Repr` cannot be named there, and it is no `Product` or `Set`. */
   private[visibility] final class Repr(val level: Level, val compartments: SortedSet[Compartment]) {
     override def equals(that: Any): Boolean = that match {
       case r: Repr => level == r.level && compartments == r.compartments
@@ -86,14 +84,14 @@ object Label {
     * holds its written form; opacity buys representation independence, not secrecy.
     */
   def written(l: Label): String =
-    (LabelAtoms.name(l.level) +: l.compartments.toVector.map(Compartment.name)).mkString("+")
+    (Level.name(l.level) +: l.compartments.toVector.map(Compartment.name)).mkString("+")
 
   /** The label `text` writes, or why not. */
   def read(text: String): Either[String, Label] =
     text.split('+').toVector match {
       case head +: rest =>
         for {
-          level <- LabelAtoms.level(head).toRight(s"$text names no level first: $head")
+          level <- Level.named(head).toRight(s"$text names no level first: $head")
           compartments <- rest.foldLeft[Either[String, Vector[Compartment]]](Right(Vector.empty)) {
             (acc, c) => acc.flatMap(cs => Compartment.of(c).map(cs :+ _))
           }
@@ -108,48 +106,30 @@ object Label {
   private[visibility] def compartments(l: Label): Vector[Compartment] = l.compartments.toVector
 }
 
-/** A label as atoms, for the code that stores and checks labels (`grit.core.visibility`,
-  * `grit.dbos`) and for nothing else (enola-intent.yaml). A level is the atoms of itself and
-  * each level below it but [[Level.Public]]; a compartment is its own atom.
+/** A label as the level and compartments it is stored as (`grit.labels`), for the code that
+  * stores and checks labels (`grit.core.visibility`, `grit.dbos`) and for nothing else
+  * (enola-intent.yaml).
   */
-object LabelAtoms {
+object LabelParts {
 
-  /* Each level's atom, and so its stored name: changing one changes every stored label. */
-  private val Ranked: Vector[(Level, String)] =
-    Vector(
-      Level.Internal -> "internal",
-      Level.Confidential -> "confidential",
-      Level.Restricted -> "restricted"
-    )
+  /** `l`'s level as stored: its rank on core's scale, from 0 for [[Level.Public]]. */
+  def rank(l: Label): Int = Label.level(l).ordinal
 
-  private val PublicName = "public"
-
-  private[visibility] def name(level: Level): String =
-    Ranked.collectFirst { case (`level`, n) => n }.getOrElse(PublicName)
-
-  private[visibility] def level(name: String): Option[Level] =
-    if (name == PublicName) Some(Level.Public) else Ranked.collectFirst { case (l, `name`) => l }
-
-  /** `l`'s atoms, sorted and distinct. */
-  def atoms(l: Label): Vector[String] =
-    (Ranked.takeWhile(_._1.ordinal <= Label.level(l).ordinal).map(_._2) ++ Label
-      .compartments(l)
-      .map(Compartment.name)).sorted
-
-  /** The label these atoms make: the highest level whose atoms they all hold, and each other
-    * atom that names a compartment ([[Compartment.of]]) as that compartment. Total, and failing
-    * closed: a level's atom without those below it (`confidential` without `internal`) raises
-    * the level to its own and adds [[Compartment.Unmapped]], as does an atom naming neither a
-    * level nor a compartment.
+  /** `l`'s compartments' names, distinct and sorted bytewise: the form
+    * `grit.canonical_compartments` keeps.
     */
-  def of(atoms: Vector[String]): Label = {
-    val held = atoms.toSet
-    val whole = Ranked.takeWhile((_, a) => held(a)).lastOption.fold(Level.Public)(_._1)
-    val stray = Ranked.filter((l, a) => held(a) && l.ordinal > whole.ordinal)
-    val others = held -- Ranked.map(_._2)
-    val named = others.toVector.flatMap(Compartment.of(_).toOption)
-    val unplaced = stray.nonEmpty || named.size < others.size
-    val level = stray.lastOption.fold(whole)(_._1)
-    Label.at(level, (if (unplaced) named :+ Compartment.Unmapped else named)*)
+  def compartments(l: Label): Vector[String] = Label.compartments(l).map(Compartment.name)
+
+  /** The label stored as `rank` and `compartments`. Total, and failing closed: a rank naming
+    * no level reads as [[Level.Restricted]], and a name that is no compartment's
+    * ([[Compartment.of]]) is dropped; either way the label also holds
+    * [[Compartment.Unmapped]].
+    */
+  def of(rank: Int, compartments: Vector[String]): Label = {
+    val level = Level.values.lift(rank)
+    val named = compartments.flatMap(Compartment.of(_).toOption)
+    val placed = Label.at(level.getOrElse(Level.Restricted), named*)
+    if (level.nonEmpty && named.size == compartments.size) placed
+    else placed.join(Label.at(Level.Public, Compartment.Unmapped))
   }
 }

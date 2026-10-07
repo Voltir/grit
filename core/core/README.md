@@ -30,9 +30,9 @@ In dependency order:
   together. Imports nothing in core.
 - **`visibility`** — who may see what (ADR 0030): `Level` (core's fixed scale), `Compartment`
   (a name a deployment declares), `Label` (opaque: a level and compartments, compared, joined,
-  met and keyed by, never taken apart), and `LabelAtoms`, its stored atoms, which only this
-  package and `grit.dbos` may name (enola-intent.yaml); `Compartments`, a deployment's closed
-  set; `Labelled` and `Labeller`, how a source labels what it brings in, and `RoomLabels`, a
+  met and keyed by, never taken apart), and `LabelParts`, the level and compartments it is
+  stored as, which only this package and `grit.dbos` may name (enola-intent.yaml);
+  `Compartments`, a deployment's closed set; `Labelled` and `Labeller`, how a source labels what it brings in, and `RoomLabels`, a
   deployment's declared labels for rooms; `GroupName`, `Group`, `Grant` and `Memberships`, who
   is cleared for what; `Visibility`, all of it as a deployment injects it, refused as a
   `VisibilityRefusal`; `Item`, a labelled row as reading it is decided; `Clearance`, what a

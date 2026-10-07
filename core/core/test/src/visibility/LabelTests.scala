@@ -66,15 +66,15 @@ object LabelTests extends TestSuite {
         Label.at(Level.Internal)
     }
 
-    test("a label's atoms make the same label again") {
-      labels.find(l => LabelAtoms.of(LabelAtoms.atoms(l)) != l) ==> None
+    test("a label's stored parts make the same label again") {
+      labels.find(l => LabelParts.of(LabelParts.rank(l), LabelParts.compartments(l)) != l) ==> None
     }
 
-    test("a label's atoms are each level up to its own, but public, and its compartments, sorted") {
-      // The stored form (grit.labels' atoms): pinned, since a change re-reads every stored label.
-      LabelAtoms.atoms(Label.at(Level.Confidential, trial, acme)) ==>
-        Vector("acme", "confidential", "internal", "trial")
-      LabelAtoms.atoms(Label.Public) ==> Vector.empty
+    test("a label is stored as its level's rank from public's 0 and its compartments, sorted") {
+      // The stored form (grit.labels): pinned, since a change re-reads every stored label.
+      val stored = Label.at(Level.Confidential, trial, acme)
+      (LabelParts.rank(stored), LabelParts.compartments(stored)) ==> (2, Vector("acme", "trial"))
+      (LabelParts.rank(Label.Public), LabelParts.compartments(Label.Public)) ==> (0, Vector.empty)
     }
 
     test("a label's written form reads back to the same label") {
@@ -90,19 +90,18 @@ object LabelTests extends TestSuite {
         Left("confidential is a level's name, never a compartment's")
     }
 
-    test("a level's atom without those below it is read high and unmapped, never as that level") {
-      val unmapped = Label.at(Level.Public, Compartment.Unmapped)
-      LabelAtoms.of(Vector("confidential")) ==> Label.at(Level.Confidential, Compartment.Unmapped)
-      LabelAtoms.of(Vector("internal", "restricted")) ==>
-        Label.at(Level.Restricted, Compartment.Unmapped)
-      // A clearance at that level, with every other compartment, reads none of them.
+    test("stored parts naming no compartment, or a rank naming no level, read high and unmapped") {
+      LabelParts.of(1, Vector("trial", "Not-A-Name")) ==>
+        Label.at(Level.Internal, trial, Compartment.Unmapped)
+      LabelParts.of(0, Vector("confidential")) ==> Label.at(Level.Public, Compartment.Unmapped)
+      LabelParts.of(4, Vector("trial")) ==> Label.at(Level.Restricted, trial, Compartment.Unmapped)
+      LabelParts.of(-1, Vector.empty) ==> Label.at(Level.Restricted, Compartment.Unmapped)
+      // A clearance at the top level, with every other compartment, reads none of them.
       val cleared = Label.at(Level.Restricted, trial, acme, ops)
       assert(
-        !cleared.dominates(LabelAtoms.of(Vector("confidential"))),
-        !cleared.dominates(LabelAtoms.of(Vector("Not-A-Name"))),
-        !cleared.dominates(LabelAtoms.of(Vector("public")))
+        !cleared.dominates(LabelParts.of(0, Vector("Not-A-Name"))),
+        !cleared.dominates(LabelParts.of(4, Vector.empty))
       )
-      LabelAtoms.of(Vector("Not-A-Name")) ==> unmapped
     }
 
     test("a compartment is a short lowercase name and never a level's") {

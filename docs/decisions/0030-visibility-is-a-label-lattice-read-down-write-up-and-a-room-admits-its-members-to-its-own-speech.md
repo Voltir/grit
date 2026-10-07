@@ -7,9 +7,12 @@ made one database one trust boundary. Every room's closings, documents and plugi
 therefore reach every other room's window. Deciding visibility by place, a document kept at a
 workspace's root reaching every channel under it, was proposed and turned down: the place tree
 says what a thing is about, not who may see it, and a sharing set (a document shared with three
-people) fits no place. Three lattices were weighed. Labels stored as a level and categories carry
-a second field that a new level renumbers. Reader sets go stale as membership changes. A set of
-declared atoms embeds the first exactly and leaves the second to the clearance computation.
+people) fits no place. Reader sets were weighed and turned down: they go stale as membership
+changes. So was storing a label as a set of atoms, each level the atoms of itself and those below
+it, so that a deployment could insert a level without renumbering stored ranks: such a set has
+more values than there are labels, and its join folds a malformed one into a valid one. The
+levels are grit's, so nothing renumbers a stored rank, and a label is stored as the lattice's own
+level and compartments.
 
 Decision:
 
@@ -42,7 +45,7 @@ Decision:
 - What is derived takes at least the join of its sources' labels. Work that derives runs under a
   declared clearance and keeps its output there. Only work that moves rows and derives nothing
   reads at maintenance.
-- What a mapping cannot place fails high: the atom `unmapped`, joined to whatever part was
+- What a mapping cannot place fails high: the compartment `unmapped`, joined to whatever part was
   mapped, readable only by clearances granted it.
 - Core owns the semantics: labels, clearances, the filter, and the clearance every transaction
   carries. Edges and plugins own the mappings of what they bring in onto labels, and group
@@ -59,8 +62,8 @@ Consequences:
   sharing across rooms no longer waits on deciding visibility by place.
 - Every read of labelled rows must filter by its transaction's clearance. The compiler enforces
   that no transaction opens without a subject, the law confines the maintenance clearance to the
-  module that opens connections, and contract tests bind dominance in Scala and in SQL. Row-level
-  security is the later enforcement in the database.
+  module that opens connections, and contract tests bind the lattice's dominance, join and meet
+  in Scala to the same in SQL. Row-level security is the later enforcement in the database.
 - Derived data is kept per label: a plugin keeps a variant for each label it derives at, and
   serves the one its reader may read.
 - Under the default, with no compartment declared and every room public, every label is
