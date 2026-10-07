@@ -5,7 +5,9 @@ import utest.*
 /** [[ChannelId.read]] over ids as Slack's channel details show them. */
 object ChannelIdTests extends TestSuite {
   val tests = Tests {
-    test("a channel's id is read, trimmed: a public or private one's (C…), an older private one's (G…)") {
+    test(
+      "a channel's id is read, trimmed: a public or private one's (C…), an older private one's (G…)"
+    ) {
       Vector(" C123ABC456 ", "G0123ABCD").map(ChannelId.read) ==>
         Vector(Some(ChannelId("C123ABC456")), Some(ChannelId("G0123ABCD")))
     }

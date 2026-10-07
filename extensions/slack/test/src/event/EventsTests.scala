@@ -82,7 +82,10 @@ object EventsTests extends TestSuite {
     }
 
     test("a message in a private channel is said as one in a public channel is") {
-      Events.read(message("2.0", "just chatting", Some("1.0"), extra = Seq("channel_type" -> "group")), bot) ==>
+      Events.read(
+        message("2.0", "just chatting", Some("1.0"), extra = Seq("channel_type" -> "group")),
+        bot
+      ) ==>
         Right(said("2.0", "1.0", "just chatting", false))
     }
 
