@@ -36,7 +36,9 @@ In dependency order:
   deployment declares, which registers the place, advertises there (with the instructions
   the deployment declared for the place, if any, as its Place layer) and serves it; and
   `McpTools`, the `grit.edge.Tools` it serves with, which runs a request by calling its server
-  and tells the desk what to advertise when the lists change. Imports `wire` and `client`.
+  and tells the desk what to advertise when the lists change, leaving out a tool whose schema
+  declares `to` (the argument core keeps for a writing tool's destination). Imports `wire` and
+  `client`.
 
 The test tree mirrors it. `client`'s and `edge`'s tests run against `FakeMcpServer`, an MCP server in the
 test JVM (`com.sun.net.httpserver`) that checks every request as the spec's server rules say.

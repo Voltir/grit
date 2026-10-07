@@ -77,8 +77,11 @@ object Writes {
     */
   val Field: String = "to"
 
-  /** Whether `parameters`, a tool's schema, declare [[Field]] among its properties. */
-  private[tool] def declared(parameters: ujson.Value): Boolean =
+  /** Whether `parameters`, a tool's schema, declare [[Field]] among its properties: such a
+    * tool is refused by [[Hosted.writing]] and [[ToolSet.read]], since only a writing tool's
+    * destinations name it.
+    */
+  def declared(parameters: ujson.Value): Boolean =
     parameters.objOpt
       .flatMap(_.get("properties"))
       .flatMap(_.objOpt)

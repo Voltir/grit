@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 import grit.core.clock.Clock
 import grit.core.edge.{DeskError, Route, ToolRequest}
-import grit.core.tool.{Args, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSet, ToolSpec, Toolbox}
+import grit.core.tool.{Args, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSet, ToolSpec, Toolbox, Writes}
 import grit.edge.{Run, Tools}
 import grit.mcp.client.McpClient
 import grit.mcp.wire.McpTool
@@ -34,7 +34,9 @@ final class McpTools(
 
   /** The tools the servers' lists offer now, each `{server}_{tool}`, free, and rerun when an
     * edge dies running it ([[Retry.Rerun]]), in the order of `clients`, then as listed; a name
-    * two servers both offer is the first's. A server whose list cannot be read offers none.
+    * two servers both offer is the first's. A server whose list cannot be read offers none; a
+    * tool whose schema declares [[Writes.Field]] ([[Writes.declared]]) is neither offered nor
+    * run, since a set advertising it would not read back.
     * Given to `advertise` as [[run]] gives it; `Left` when `advertise` refused it.
     */
   def offered(): Either[DeskError, ToolSet] = {
@@ -72,13 +74,14 @@ final class McpTools(
 object McpTools {
 
   /** Each of `clients`' tools as listed now, with its client's index, each name once, the
-    * first client's kept.
+    * first client's kept; none whose schema declares [[Writes.Field]].
     */
   private def current(clock: Clock, clients: Vector[McpClient^{clock}]): Vector[(Int, McpTool)] =
     clients
       .map(_.tools())
       .zipWithIndex
       .flatMap((listed, at) => listed.fold(_ => Vector.empty, _.tools.map((at, _))))
+      .filterNot((_, tool) => Writes.declared(tool.inputSchema))
       .distinctBy(_._2.offered)
 
   /** `tool` as this edge describes it: its arguments the JSON object sent, unchecked; a call

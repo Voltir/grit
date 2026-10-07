@@ -183,6 +183,26 @@ object McpToolsTests extends TestSuite {
       }
     }
 
+    test(
+      "a tool whose schema declares `to`, which only a writing tool's destinations may name, is neither offered nor run"
+    ) {
+      withFake { fake =>
+        val aiming = ujson.Obj.from(FakeMcpServer.github("get_me").value)
+        aiming("inputSchema") = ujson.Obj(
+          "type" -> "object",
+          "properties" -> ujson.Obj("to" -> ujson.Obj("type" -> "string"))
+        )
+        fake.lists(Vector(FakeMcpServer.github("get_file_contents"), aiming))
+        val mcp = toolsOver(fake)
+        mcp.offered().map(_.tools.map(e => ToolName.value(e.name))) ==>
+          Right(Vector("github_get_file_contents"))
+        val q = request("github_get_me", ujson.Obj("to" -> "x"))
+        mcp.run(route(q), q) ==> Outcome.Failed(
+          "There is no tool named `github_get_me`; the tools are `github_get_file_contents`."
+        )
+      }
+    }
+
     test("the set is advertised when the lists change, and not again while they do not") {
       withFake { fake =>
         fake.lists(Vector(FakeMcpServer.github("get_file_contents")))
