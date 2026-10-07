@@ -3,8 +3,16 @@ package grit.eval.harness.sent
 import java.time.ZoneOffset
 
 import grit.assembly.estimate.CharEstimate
-import grit.core.classify.Answer
-import grit.core.id.{ConversationId, EntryId, EntrySeq, QuestionName, ToolCallId, TurnSeq}
+import grit.core.classify.{Answer, Request}
+import grit.core.id.{
+  ConversationId,
+  EntryId,
+  EntrySeq,
+  KnowledgeSourceName,
+  QuestionName,
+  ToolCallId,
+  TurnSeq
+}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.period.Probability
 import grit.core.speech.SpeechJson
@@ -255,6 +263,111 @@ object SentMarkdown {
     out.result().mkString("", "\n", "\n")
   }
 
+  /** `heard`, read from the database `from`, as markdown: what Jev was asked of it and what
+    * it answered. The stitch state is as recorded, its question as this build words it
+    * (flagged when this build's state differs from the recorded one); triage's request is
+    * rebuilt, not recorded, and its questions' names are set beside those triage's kept tags
+    * answered, a difference flagged.
+    */
+  def heard(heard: HeardSent, from: String): String = {
+    val out = Vector.newBuilder[String]
+    def add(lines: String*): Unit = lines.foreach(out += _)
+    val sources = heard.sources.all.map(s => s"`${KnowledgeSourceName.value(s.name)}`")
+    add(
+      s"# What Jev was asked of `${EntryId.value(heard.entry)}`",
+      "",
+      s"- Conversation `${ConversationId.value(heard.turn.conversationId)}`, turn ${TurnSeq.value(heard.turn.turnSeq)}; read from `$from`",
+      "- The stitch request's state is as recorded with its placement; its question is as this " +
+        "build words it.",
+      "- Triage's request is **rebuilt, not recorded**: the shipped builder over the database as " +
+        s"it stands now, worded for persona `${heard.persona.name}` with knowledge sources " +
+        (if (sources.isEmpty) "none" else sources.mkString(", ")) +
+        " (the deployment's, which the database does not keep).",
+      ""
+    )
+    add("## Stitch", "")
+    heard.stitch match {
+      case None =>
+        add(
+          "No placement is kept: the message is not its conversation's first, or it was not stitched.",
+          ""
+        )
+      case Some(p) =>
+        val verdict = p match {
+          case f: Placed.Follows =>
+            s"**follows** `${ConversationId.value(f.root)}` at p ${p2(f.p)} (`${f.model}`)"
+          case b: Placed.Begins =>
+            s"**begins**: its likeliest exchange at p ${p2(b.p)} (`${b.model}`)"
+          case u: Placed.Unread => s"**unread**: ${u.why}"
+        }
+        val t = p.seen.tuning
+        add(
+          s"Jev's answer: $verdict.",
+          "",
+          s"Tuning in force: follows at ${p2(t.followsAt)}, ${t.recent} recent and ${t.lexical} lexical offered, " +
+            s"horizon ${t.horizon}.",
+          "",
+          "Each exchange offered, and the probability Jev gave it:",
+          ""
+        )
+        p.seen.offered.foreach(o =>
+          add(s"- `${ConversationId.value(o.root)}` (${why(o.why)}): p ${o.p.fold("unread")(p2)}")
+        )
+        add("", "The state Jev was sent, as recorded:", "")
+        add(fenced(ujson.write(p.seen.state, indent = 2), "json")*)
+        add("")
+        heard.stitchAsked match {
+          case None =>
+            add("No stitch question is offered for it now, so its words are not shown.", "")
+          case Some(r) =>
+            add(
+              heard.stitchSame match {
+                case Some(true) => "This build rebuilds the same state."
+                case _ =>
+                  "**This build rebuilds a different state** (the room has moved on, or the builder changed); the recorded one above is what was sent."
+              },
+              "",
+              "The question, as this build words it:",
+              ""
+            )
+            add(fenced(ujson.write(Request.json(r)("questions"), indent = 2), "json")*)
+            add("")
+        }
+    }
+    add("## Triage", "")
+    val answered = heard.tags match {
+      case Some(Tags.Weighed(answers, model, _)) =>
+        add(s"Jev's answers (`$model`):", "")
+        answers.toVector.foreach((q, a) =>
+          add(s"- `${QuestionName.value(q)}`: ${this.answered(a)}")
+        )
+        add("")
+        answers.keys.toVector
+      case Some(Tags.Unanswered(why)) =>
+        add(s"Triage kept no answers: $why.", "")
+        Vector.empty
+      case None =>
+        add("Triage kept no tags for it.", "")
+        Vector.empty
+    }
+    if (answered.nonEmpty && answered.toSet != heard.asked.toSet)
+      add(
+        "**The rebuilt questions are not those triage answered**: only answered " +
+          names((answered.toSet -- heard.asked).toVector) + "; only rebuilt " +
+          names((heard.asked.toSet -- answered).toVector) +
+          ". Pass the deployment's persona and knowledge sources (`--corpus`).",
+        ""
+      )
+    heard.triage match {
+      case Left(why) => add(s"The builder makes no triage request now: $why.", "")
+      case Right(r) =>
+        add("The request, rebuilt:", "")
+        add(fenced(ujson.write(Request.json(r), indent = 2), "json")*)
+        add("")
+    }
+    out.result().mkString("", "\n", "\n")
+  }
+
   /** `text` in a fence of `info`, longer than any run of backticks in it, each line after
     * `indent`.
     */
@@ -342,8 +455,13 @@ object SentMarkdown {
 
   private def answered(a: Answer): String = a match {
     case Answer.YesNo(yes) => f"$yes%.2f"
-    case Answer.Choice(choice, _, confidence) => f"$choice ($confidence%.2f)"
+    case Answer.Choice(choice, weights, confidence) =>
+      f"$choice (confidence $confidence%.2f; " +
+        weights.map(w => f"${w.key} ${w.probability}%.2f").mkString(", ") + ")"
   }
+
+  private def names(ns: Vector[QuestionName]): String =
+    if (ns.isEmpty) "none" else ns.map(n => s"`${QuestionName.value(n)}`").mkString(", ")
 
   private def p2(p: Probability): String = f"${Probability.value(p)}%.2f"
 

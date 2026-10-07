@@ -106,7 +106,7 @@ import grit.eval.harness.score.{
   Target,
   TurnPair
 }
-import grit.eval.harness.sent.{Cut, SentMarkdown, TurnSent}
+import grit.eval.harness.sent.{Cut, HeardSent, SentMarkdown, TurnSent}
 import grit.eval.harness.stats.Mills
 import grit.kit.environment.DotEnv
 import grit.lifecycle.triage.{TriageQuestions, TriageRecipe}
@@ -972,6 +972,44 @@ object Main {
     * person to read; prints counts only.
     */
   private def context(f: Map[String, String], full: Boolean): Either[String, Unit] =
+    if (f.contains("entry")) heardContext(f) else turnContext(f, full)
+
+  /** `context` of a heard message (`--entry`): what Jev was asked of it, its triage request
+    * worded for the persona and knowledge sources in `--declared` (a corpus's directory, its
+    * `persona.json` and `knowledge.json`), else grit's and none.
+    */
+  private def heardContext(f: Map[String, String]): Either[String, Unit] = {
+    val declared = f.get("declared").map(Path.of(_))
+    def file[A](name: String, none: A, parse: String => Either[String, A]): Either[String, A] =
+      declared.map(_.resolve(name)).filter(Files.exists(_)) match {
+        case Some(at) => read(at).flatMap(parse).left.map(why => s"$at: $why")
+        case None => Right(none)
+      }
+    for {
+      url <- need(f, "url")
+      from <- need(f, "from")
+      entry <- need(f, "entry").map(grit.core.id.EntryId(_))
+      out <- need(f, "out").map(Path.of(_))
+      persona <- file("persona.json", Persona.Grit, PersonaJson.read)
+      sources <- file("knowledge.json", KnowledgeSources.Empty, KnowledgeJson.read)
+      config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      heard <- opened(config)(HeardSent.read(_, entry, persona, sources))
+      _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
+        s"${out.getParent}: ${e.getClass.getName}"
+      )
+      _ <- write(out, SentMarkdown.heard(heard, from))
+    } yield {
+      println(s"written: $out")
+      println(
+        s"stitch: ${if (heard.stitch.isDefined) "placement kept" else "none"}; triage: " +
+          s"${heard.triage.fold(_ => "not rebuilt", _ => "rebuilt")}, ${heard.asked.size} questions, " +
+          s"tags ${if (heard.tags.isDefined) "kept" else "none"}"
+      )
+    }
+  }
+
+  /** `context` of a turn (`--workflow`). */
+  private def turnContext(f: Map[String, String], full: Boolean): Either[String, Unit] =
     for {
       url <- need(f, "url")
       from <- need(f, "from")

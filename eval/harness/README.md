@@ -63,7 +63,12 @@ Packages, each importing only those above it:
   build's code, and the decisions that led there: the stitch placement, triage's tags, the
   speech decision and judgement, queries, window and ledger rows by role, `corpus.Spent`);
   `Picked`, which way its answering call was sent, by the estimate its ledger row recorded;
-  `SentMarkdown`, the markdown, its tool results cut as `Cut` says. It reads its own rather
+  `SentMarkdown`, the markdown, its tool results cut as `Cut` says. And `HeardSent`, what Jev
+  was asked of a heard message and answered: the stitch state as its placement recorded it
+  (and the question as this build words it), and triage's request rebuilt through the
+  shipped builder (`TriageInput`, `TriageQuestions.shipped`, worded for the persona and
+  knowledge sources a corpus's directory declares), since triage keeps none, beside the tags
+  it kept. It reads its own rather
   than through `TurnCapture`, whose readers are private to a corpus's capture and keep
   numbers, never text. ← `stats`, `corpus`
 - **`label`** — a person's labels of a corpus's cases, kept apart from the cases so a

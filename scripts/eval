@@ -48,7 +48,7 @@
 #       --more, triage's line also holds what its thread left out, and where. Prints counts,
 #       and how each digest compares to cases.jsonl's: never the file's text.
 #
-#   scripts/eval context <workflow-id> --from <database> [--full]
+#   scripts/eval context <workflow-id | heard-entry-id> --from <database> [--full] [--corpus <yyyymmdd>]
 #       One recorded turn as its model was sent it, text and all, written to
 #       .local/eval/review/context-<workflow-id>.md for a person to read: how it got there
 #       (the stitch placement and the state its classifier saw, triage's tags, the speech
@@ -58,6 +58,12 @@
 #       against its ledger row, the answer and the summary. The epoch the turn ran under is
 #       shown beside this build's. Tool results are cut at 4,000 characters unless --full.
 #       Reads <database> through read-only sessions; prints counts, never text.
+#       Given a heard message's entry id (in:<conversation>:<ts>) instead: what Jev was asked
+#       of it and answered, written to .local/eval/review/context-<entry-id>.md: the stitch
+#       state as recorded with its placement, its question as this build words it, and
+#       triage's request rebuilt through the shipped builder (triage keeps none), its words
+#       for the persona and knowledge sources in .local/eval/corpus/<yyyymmdd>/ with --corpus
+#       (persona.json, knowledge.json), else grit and none, beside the tags triage kept.
 #
 #   scripts/eval score <runs file> [--labels <file>]
 #       The run scored, written to .local/eval/reports/<run>.md and printed: text-free, ids
@@ -385,20 +391,30 @@ order() {
 }
 
 context() {
-  local workflow=${1:-} from= full=
-  [ -n "$workflow" ] && [[ $workflow != --* ]] || usage
+  local id=${1:-} from= full= corpus=
+  [ -n "$id" ] && [[ $id != --* ]] || usage
   shift
   while [ $# -gt 0 ]; do
     case $1 in
       --from) from=${2:-}; shift 2 ;;
       --full) full=--full; shift ;;
+      --corpus) corpus=${2:-}; shift 2 ;;
       *) usage ;;
     esac
   done
   [ -n "$from" ] || usage
   exists "$from" || { echo "eval: no database $from" >&2; exit 1; }
-  harness context --url "jdbc:postgresql://localhost:5432/$from" --from "$from" \
-    --workflow "$workflow" --out "$main/.local/eval/review/context-$workflow.md" $full
+  local out="$main/.local/eval/review/context-$id.md" url="jdbc:postgresql://localhost:5432/$from"
+  if [[ $id =~ ^[0-9a-f-]{36}:[0-9]+$ ]]; then
+    harness context --url "$url" --from "$from" --workflow "$id" --out "$out" $full
+  else
+    local declared=()
+    if [ -n "$corpus" ]; then
+      [ -d "$main/.local/eval/corpus/$corpus" ] || { echo "eval: no corpus $corpus" >&2; exit 1; }
+      declared=(--declared "$main/.local/eval/corpus/$corpus")
+    fi
+    harness context --url "$url" --from "$from" --entry "$id" --out "$out" "${declared[@]}"
+  fi
 }
 
 pull() {
