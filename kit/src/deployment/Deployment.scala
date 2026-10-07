@@ -218,12 +218,6 @@ enum DeploymentRefusal {
   /** `by` names `compartment`, which the deployment's visibility does not declare. */
   case CompartmentUndeclared(by: Requirer, compartment: Compartment)
 
-  /** The deployment's visibility may label a room above public, and `edge` posts beyond the
-    * conversations it answers ([[ServedEdge.postsOut]]): nothing yet checks what such a post
-    * carries against where it goes.
-    */
-  case PostsBelow(edge: EdgeName)
-
   /** A review is declared, and `edges` post review prompts ([[ServedEdge.reviewsAt]]): none, so
     * nothing picked would be posted, or more than one, so a prompt would be posted twice.
     */
@@ -273,8 +267,6 @@ enum DeploymentRefusal {
       s"${PluginName.value(plugin)} declares a schedule of ${JobName.value(job)}, which is not among its jobs"
     case CompartmentUndeclared(by, compartment) =>
       s"${by.written} names the compartment ${Compartment.name(compartment)}, which the deployment's visibility does not declare"
-    case PostsBelow(edge) =>
-      s"${EdgeName.value(edge)} posts beyond the turns it answers, and rooms are labelled: what it posts is not yet checked against where it goes"
     case ReviewUnposted(edges) =>
       if (edges.isEmpty) "a review is declared, and no edge posts its prompts"
       else
@@ -385,9 +377,7 @@ object Deployment {
     *   - [[DeploymentRefusal.ScheduleJobless]]: a declared schedule holds a job other than the
     *     deployment's job of its name;
     *   - [[DeploymentRefusal.CompartmentUndeclared]]: a plugin's or an edge's `compartments`, or
-    *     a declared schedule's `clearance`, names a compartment `visibility` does not declare;
-    *   - [[DeploymentRefusal.PostsBelow]]: `visibility` may label a room above public
-    *     ([[Visibility.labelled]]) and an edge posts out.
+    *     a declared schedule's `clearance`, names a compartment `visibility` does not declare.
     */
   def of(
       edges: Vector[ServedEdge],
@@ -462,13 +452,6 @@ object Deployment {
         .toLeft(())
       cleared = declared(plugins, schedules).map((by, s) => (s.id(by), s.clearance))
       _ <- undeclared(visibility, plugins, edges, cleared).toLeft(())
-      // Until outbound posts are checked against where they go, a post could carry a labelled
-      // room's words anywhere its edge reaches.
-      _ <- edges
-        .find(_.postsOut)
-        .filter(_ => visibility.labelled)
-        .map(e => DeploymentRefusal.PostsBelow(e.name))
-        .toLeft(())
       ids = declared(plugins, schedules).map((by, s) => (s.id(by), s.job))
       _ <- ids
         .map(_._1)

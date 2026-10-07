@@ -24,7 +24,8 @@ In dependency order:
   `Topics` (how a message is placed among topics), the shadows of triage's question it
   records (`grit.lifecycle.shadow.ShadowVariant`), the corpora their question
   sets ask about (`grit.core.triage.Corpora`), and the review of one of them it picks
-  heard messages for (`ShadowReview`: `grit.core.review.Reviewing` with that shadow's gate),
+  heard messages for (`ShadowReview`: `grit.core.review.Reviewing` with that shadow's gate,
+  and the place the one edge that answers it posts its prompts, `ServedEdge.reviewsAt`),
   the recipe that shapes each turn by what it answers (`grit.core.recipe.TurnRecipe`,
   ADR 0025), the persona grit presents as (`grit.core.persona.Persona`, ADR 0026), and
   its visibility (`grit.core.visibility.Visibility`, ADR 0030): who may see what, injected
@@ -45,7 +46,8 @@ In dependency order:
   edge (`grit.job.clock.ClockEdge`) starting what they have waiting (`Launch.asking`, the
   same with its models, classifiers and the jobs' clock given, is how a live test counts
   calls and sets the time);
-  `Serving`, the edges opened, delivered to and closed; `Picking`, a review's pick round;
+  `Serving`, the edges opened, delivered to and closed; `Picking`, a review's pick round,
+  of the messages its place may receive;
   `CatchingUp` and `Estimate`, a
   catch-up's flow and its bound; `KeptModelSettings`. ← `deployment`, `environment`
 

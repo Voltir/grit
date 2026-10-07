@@ -31,11 +31,6 @@ final case class Visibility private (
     */
   def roomLabel(room: Place): Label = compartments.admit(rooms.label(room).label)
 
-  /** Whether a room may be labelled above public: false only for [[RoomLabels.Public]], since
-    * an injected labeller's answers are not known before it runs.
-    */
-  def labelled: Boolean = rooms != RoomLabels.Public
-
   /** What `service` is trusted with: its declared trust's label; [[Label.Public]] when none is
     * declared.
     */

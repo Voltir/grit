@@ -52,15 +52,20 @@ In dependency order:
   `SLACK_APP_TOKEN` as it opens; `SlackEdge.serving(channels, posts)` also serves
   `slack_post` at `service:slack` (`SlackEdge.PostsAt`), a turn's post in the channels
   `Posts` declares, within its rate (`Posting`), for the conversations a deployment links
-  there (`grit.core.place.Reaches`); `SlackEdge.serving(channels, posts, review)` also answers
-  a deployment's review (`SlackReview`: a place grit does not listen in, refused otherwise, and
-  its rater): each delivery posts the prompts the kit picked whose messages were heard in
+  there (`grit.core.place.Reaches`). It is a writing tool (`grit.core.tool.Writing`, ADR
+  0031): each channel is offered under its name, with and without `#`, at the place
+  `slack:{team}/{id}`, so a turn is offered only the channels its room may write to, and the
+  edge posts in the channel its request was checked to write to. `SlackEdge.serving(channels,
+  posts, review)` also answers a deployment's review (`SlackReview.of(place, rater)`: a place
+  `slack:{team}/{channel id}` grit does not listen in, refused otherwise, and in the bot's own
+  team, or the edge does not open; `ServedEdge.reviewsAt`): each delivery posts the prompts
+  the kit picked that its place may receive (`grit.core.review.Reviews.unposted`) whose
+  messages were heard in
   this workspace (`ReviewPrompt`: the message's channel and permalink alone, never its text,
   a draft's, why it was picked or what either gate decided, so the rater answers cold), adds the three reactions a verdict is given with, then keeps the prompt posted; a
   crash between the post and keeping it posts the prompt again. A reaction the rater adds to a
   prompt, or removes, is kept or withdrawn as its verdict (`grit.core.review.Reviews`);
-  anyone else's, and any other emoji, is ignored. With `posts` or `review` the edge posts out
-  (`ServedEdge.postsOut`), which a deployment labelling rooms is refused beside.
+  anyone else's, and any other emoji, is ignored.
   `SlackEdge.backfill(channels, days)` is `grit backfill`'s
   (`CatchUp`), what each channel said over those days that grit has not recorded.
   ← `client`, `text`, `event`

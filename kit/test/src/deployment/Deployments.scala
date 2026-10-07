@@ -15,14 +15,13 @@ import grit.turn.TurnLoop
 /** Deployments for tests: every field but the ones a test varies fixed. */
 object Deployments {
 
-  /** An edge named `called` that needs `needs`, says whether it can answer an ask and whether
-    * it posts out, posts review prompts at `reviews`, names `naming`, and never opens.
+  /** An edge named `called` that needs `needs`, says whether it can answer an ask, posts
+    * review prompts at `reviews`, names `naming`, and never opens.
     */
   def edge(
       called: String,
       asks: Boolean,
       needs: Vector[String] = Vector.empty,
-      posts: Boolean = false,
       naming: Vector[Compartment] = Vector.empty,
       reviews: Option[Place] = None
   ): ServedEdge = {
@@ -31,7 +30,6 @@ object Deployments {
       def name: EdgeName = EdgeName(called)
       def needs: Vector[Variable] = wanted
       def answersAsks: Boolean = asks
-      def postsOut: Boolean = posts
       override def reviewsAt: Option[Place] = reviews
       override def compartments: Vector[Compartment] = naming
       def open(

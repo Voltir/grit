@@ -81,13 +81,6 @@ trait ServedEdge {
     */
   def answersAsks: Boolean
 
-  /** Whether it posts anything beyond the conversation a turn answers: a post to a channel a
-    * tool call names, or one of its own about a turn, such as a review's prompt. A deployment
-    * labelling any room above public is refused while an edge it serves does: nothing yet
-    * checks what such a post carries against where it goes.
-    */
-  def postsOut: Boolean
-
   /** Where it posts a deployment's review prompts, when it answers a review: the kit picks only
     * messages that place may receive ([[grit.core.review.ReviewStore.candidates]]).
     */

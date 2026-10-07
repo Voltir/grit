@@ -304,17 +304,6 @@ object ServedTests extends TestSuite {
     }
 
     test(
-      "serving posts beyond the turns it answers exactly when it is given where it may post or a review to prompt"
-    ) {
-      val review = reviewAt(Team, "C0REVIEW1")
-      (
-        Served.serving(Set(C), Some(Posts(TwoAnHour, Skynet)), None, new World().connect).postsOut,
-        Served.serving(Set(C), None, Some(review), new World().connect).postsOut,
-        Served.serving(Set(C), None, None, new World().connect).postsOut
-      ) ==> (true, true, false)
-    }
-
-    test(
       "backfill reads each channel's unheard threads as their messages' lengths, in channel id order, and hears them on hear"
     ) {
       val w = new World

@@ -46,14 +46,11 @@ object VisibilityTests extends TestSuite {
         Label.at(Level.Restricted, trial, acme, Compartment.Unmapped)
     }
 
-    test("the shipped visibility clears no one beyond public and labels no room") {
-      Visibility.Shipped.cleared(ana) ==> Label.Public
-      Visibility.Shipped.labelled ==> false
-      val labelled = RoomLabels
-        .of(Vector(place("slack:acme") -> Label.at(Level.Internal)), Labelled.Mapped(Label.Public))
-        .flatMap(rooms => Visibility.of(compartments, rooms, Vector.empty, Vector.empty))
-        .map(_.labelled)
-      labelled ==> Right(true)
+    test("the shipped visibility clears no one beyond public and labels every room public") {
+      (
+        Visibility.Shipped.cleared(ana),
+        Visibility.Shipped.roomLabel(place("slack:acme/C1"))
+      ) ==> (Label.Public, Label.Public)
     }
 
     test("a compartment not declared is refused, saying what names it") {

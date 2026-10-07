@@ -55,7 +55,6 @@ object ServingTests extends TestSuite {
     def name: EdgeName = EdgeName(called)
     def needs: Vector[Variable] = Vector.empty
     def answersAsks: Boolean = false
-    def postsOut: Boolean = false
     def open(
         stores: EdgeStores^,
         env: Map[String, String],

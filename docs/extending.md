@@ -113,9 +113,14 @@ part is declared data or a pure function:
 
 Every other part of a deployment that names a compartment declares it, and `Deployment.of`
 refuses one the visibility does not declare: a plugin's `compartments`, an edge's
-`compartments`, and a declared schedule's `clearance`. While outbound posts are not checked
-against where they go, a deployment that labels any room above public is refused beside an
-edge that posts out (`ServedEdge.postsOut`: Slack's `slack_post`, or its review's prompts).
+`compartments`, and a declared schedule's `clearance`.
+
+What leaves grit is written to a place, and a turn writes only to a place `rooms` maps
+explicitly, at a label dominating its room's ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-and-a-service-is-a-place-and-a-party.md)):
+a writing tool's destinations, such as Slack's channels for `slack_post`
+(`slack:{team}/{channel id}`), and a review's place, where only messages whose room's label
+it dominates are picked and prompted. So label each place a deployment posts to; an
+unmapped one is written to by no one.
 
 A conversation takes its room's label when it is created and keeps it, whatever the
 deployment declares later; a job's run takes its schedule's. A database remembers the
