@@ -1,5 +1,6 @@
 package grit.dbos.engine
 
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.{CountDownLatch, Executors}
 
@@ -13,7 +14,7 @@ import grit.core.inbox.{InboundId, InboxError}
 import grit.core.message.Message
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.Subject
-import grit.dbos.sql.{LiveDb, SqlConversationStore, TestPostgres}
+import grit.dbos.sql.{LiveDb, SqlConversationStore, SqlReviews, TestPostgres}
 
 import utest.*
 
@@ -92,6 +93,12 @@ object IdentitiesLiveTests extends TestSuite {
       }
     }
 
+  /** A stored account in no account's spelling, and why reading it back fails. */
+  private val Misspelt = "Not An Account"
+  private val misspelt: StoreError = StoreError.Invalid(
+    s"a stored account: an account is local, grit, or {namespace}:{name}: $Misspelt"
+  )
+
   val tests = Tests {
     test(
       "an account first seen is a new person's one account, enrolled, under an id minted for them, never its spelling"
@@ -142,10 +149,6 @@ object IdentitiesLiveTests extends TestSuite {
     test(
       "an account stored in no account's spelling is Invalid where it is read back: as a conversation's creator, and among its asker's accounts"
     ) {
-      val misspelt = "Not An Account"
-      val why = StoreError.Invalid(
-        s"a stored account: an account is local, grit, or {namespace}:{name}: $misspelt"
-      )
       val asker = TestAccounts.account("slack:T1/U-misspelt")
       val c = LiveDb.conversation(config, Origin.Slack("T1", "C1", "9.0")).id
       val turn = TurnRef(c, TurnSeq.First)
@@ -153,17 +156,30 @@ object IdentitiesLiveTests extends TestSuite {
       val person = PrincipalId.value(LiveDb.principal(config, asker))
       execute(
         "INSERT INTO grit.identities (account, principal_id, evidence, home) VALUES (?, ?, 'enrolled', ?)",
-        misspelt,
+        Misspelt,
         person,
         person
       )
       execute(
         "UPDATE grit.conversations SET created_by = ? WHERE id = ?::uuid",
-        misspelt,
+        Misspelt,
         ConversationId.value(c)
       )
-      LiveDb.transaction(config)(new SqlConversationStore().get(c)) ==> Left(why)
-      LiveDb.transaction(config)(LiveDb.Trialled.clearance(Subject.Turn(turn))) ==> Left(why)
+      LiveDb.transaction(config)(new SqlConversationStore().get(c)) ==> Left(misspelt)
+      LiveDb.transaction(config)(LiveDb.Trialled.clearance(Subject.Turn(turn))) ==> Left(misspelt)
+    }
+
+    test("a review's rater stored in no account's spelling is Invalid where it is read back") {
+      val c = LiveDb.conversation(config, Origin.Slack("T1", "C1", "9.1")).id
+      execute(
+        """INSERT INTO grit.reviews (entry_id, conversation_id, shadow, reason, considered_at,
+          |       picked_at, address, posted_at, verdict, rater, labelled_at)
+          |VALUES ('rated', ?::uuid, 'shadow', 'both', now(), now(), 'C1/9.1', now(), 'welcome', ?,
+          |       now())""".stripMargin,
+        ConversationId.value(c),
+        Misspelt
+      )
+      LiveDb.transaction(config)(new SqlReviews().reviewed(Instant.EPOCH)) ==> Left(misspelt)
     }
   }
 }

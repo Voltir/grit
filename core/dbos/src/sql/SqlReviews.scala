@@ -60,7 +60,7 @@ final class SqlReviews extends ReviewStore {
       ) { ps =>
         SqlLabels.bind(ps, 1, at)
         Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[Either[String, Prompt]]
+          val rows = Vector.newBuilder[Either[StoreError, Prompt]]
           while (rs.next())
             rows += (for {
               origin <- SqlConversationStore.readOrigin(ujson.read(rs.getString("origin")))
@@ -77,7 +77,7 @@ final class SqlReviews extends ReviewStore {
               reason,
               live,
               answers
-            ))
+            )).left.map(invalid)
           rows.result()
         }
       }
@@ -181,7 +181,7 @@ final class SqlReviews extends ReviewStore {
         SqlLabels.bind(ps, 3, at)
         ps.setInt(5, limit)
         Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[Either[String, Candidate]]
+          val rows = Vector.newBuilder[Either[StoreError, Candidate]]
           while (rs.next())
             rows += (for {
               live <- settled(rs).left.map(why => s"${rs.getString("id")}: $why")
@@ -193,7 +193,7 @@ final class SqlReviews extends ReviewStore {
               live,
               shadow,
               answers
-            ))
+            )).left.map(invalid)
           rows.result()
         }
       }
@@ -246,13 +246,13 @@ final class SqlReviews extends ReviewStore {
       ) { ps =>
         ps.setObject(1, since.atOffset(ZoneOffset.UTC))
         Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[Either[String, Reviewed]]
+          val rows = Vector.newBuilder[Either[StoreError, Reviewed]]
           while (rs.next()) {
             val picked = Option(rs.getObject("picked_at", classOf[OffsetDateTime])).isDefined
             rows += (for {
-              shadow <- ShadowName.of(rs.getString("shadow"))
+              shadow <- ShadowName.of(rs.getString("shadow")).left.map(invalid)
               reason <- Option(rs.getString("reason")) match {
-                case Some(r) => reasonRead(r).map(Some(_))
+                case Some(r) => reasonRead(r).map(Some(_)).left.map(invalid)
                 case None => Right(None)
               }
               as = (reason, picked) match {
@@ -264,8 +264,8 @@ final class SqlReviews extends ReviewStore {
               label <- Option(rs.getString("verdict")) match {
                 case Some(v) =>
                   for {
-                    verdict <- verdictRead(v)
-                    rater <- Account.read(rs.getString("rater"))
+                    verdict <- verdictRead(v).left.map(invalid)
+                    rater <- SqlIdentities.read(rs.getString("rater"))
                   } yield Some(Label(verdict, rater, instant(rs, "labelled_at")))
                 case None => Right(None)
               }
@@ -331,9 +331,12 @@ private[sql] object SqlReviews {
       case ShadowAnswers.Worded(_) => Left("a wording's answers, not a question set's")
     }
 
-  /** Every row read, or the first that did not read, as grit's own bug. */
-  def collected[A](rows: Vector[Either[String, A]]): Either[StoreError, Vector[A]] =
+  /** Why a review's row did not read, as grit's own bug. */
+  def invalid(why: String): StoreError = StoreError.Invalid(s"reviews: $why")
+
+  /** Every row read, or the first that did not. */
+  def collected[A](rows: Vector[Either[StoreError, A]]): Either[StoreError, Vector[A]] =
     rows.foldLeft[Either[StoreError, Vector[A]]](Right(Vector.empty)) { (acc, r) =>
-      acc.flatMap(done => r.map(done :+ _).left.map(why => StoreError.Invalid(s"reviews: $why")))
+      acc.flatMap(done => r.map(done :+ _))
     }
 }
