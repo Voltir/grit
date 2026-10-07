@@ -228,6 +228,29 @@ abstract class DeskContract extends TestSuite {
     ) {
       keptAt(PrincipalId("ann"), "2.2") ==> Some(TestLabels.Trial)
     }
+
+    test(
+      "pending and cancel asked from a public room neither list nor find the asker's own " +
+        "asked in a {trial} room they are cleared below; asked from that room, they do"
+    ) {
+      val u = fresh()
+      val ann = PrincipalId("ann")
+      val trial = u.turn(Origin.Slack("T1", "C9", "2.3"), TestLabels.Trial)
+      val sameRoom = u.turn(Origin.Slack("T1", "C9", "2.4"), TestLabels.Trial)
+      val lower = u.turn(Origin.Slack("T1", "C8", "2.5"))
+      u.asking(trial, ann, Some("C9/2.3"))
+      u.asking(sameRoom, ann, Some("C9/2.4"))
+      u.asking(lower, ann, Some("C8/2.5"))
+      val desk = u.desk(reminders, Vector(remind.name), new SetClock(at("09:00")))
+      val id = asked(ask(desk, TestCallSlots.at(trial), When.In(30.minutes)))
+      def listed(from: grit.core.id.TurnRef) =
+        desk.pending(TestCallSlots.at(from), booking(remind)).map(_.schedules.map(_.id))
+      (
+        listed(lower),
+        desk.cancel(TestCallSlots.at(lower), booking(remind), id),
+        listed(sameRoom)
+      ) ==> (Right(Vector()), Left(DeskRefusal.NotFound(id)), Right(Vector(id)))
+    }
   }
 
   /** The label of the schedule `by` asks for from thread `thread` of a `{trial}` room. */

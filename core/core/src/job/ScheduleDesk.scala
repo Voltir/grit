@@ -45,14 +45,16 @@ trait ScheduleDesk extends caps.SharedCapability {
       params: P
   ): Either[DeskRefusal, Asked[P]]
 
-  /** The asker's pending schedules of `booking`'s job; one whose parameters its job cannot read
-    * is left out; none when the call's turn is not recorded.
+  /** The asker's pending schedules of `booking`'s job that the call's turn reads, as anything
+    * recorded in the room each was asked in: one asked in a room labelled above what the turn
+    * reads beyond its own room is left out, as is one whose parameters its job cannot read;
+    * none when the call's turn is not recorded.
     */
   def pending[P <: caps.Pure](call: CallSlot, booking: Booking[P]): Either[DeskRefusal, Pending[P]]
 
   /** Ends `id`, the asker's pending schedule of `booking`'s job, [[Ending.Cancelled]].
-    * `NotFound` when no schedule of the asker's of that job has it, whoever else's it is;
-    * `Ended` when it has already ended.
+    * `NotFound` when no schedule of the asker's of that job that the call's turn reads (as
+    * [[pending]] does) has it, whoever else's it is; `Ended` when it has already ended.
     */
   def cancel(call: CallSlot, booking: Booking[?], id: ScheduleId): Either[DeskRefusal, Unit]
 }

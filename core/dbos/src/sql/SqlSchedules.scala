@@ -339,7 +339,10 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             .write(Subject.Turn(call.turn)) {
               asker(call.turn).flatMap {
                 case None => Right(Vector.empty)
-                case Some((by, _)) => pendingOf(by)
+                case Some((by, _)) =>
+                  pendingOf(by).flatMap(mine =>
+                    readable(mine.map(_._1)).map(read => mine.filter((id, _) => read(id)))
+                  )
               }
             }
             .left
@@ -362,7 +365,10 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
             for {
               by <- asker(call.turn).map(_.map(_._1))
               r <- row(id, lock = true)
-              done <- r.filter(r => r.asked && by.contains(r.schedule.principal)) match {
+              read <- readable(Vector(id))
+              done <- r.filter(r =>
+                r.asked && by.contains(r.schedule.principal) && read(id)
+              ) match {
                 case Some(r) if r.schedule.job == booking.job.name =>
                   r.schedule.ended match {
                     case Some(how) => Right(Left(DeskRefusal.Ended(id, how)))
@@ -438,6 +444,29 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         ScheduleId.of(id).flatMap(i => row.map(i -> _))
       }
     } yield read
+
+  /** Which of `ids`, asked schedules, the transaction reads: as anything recorded in the room
+    * that asked for it.
+    */
+  private def readable(ids: Vector[ScheduleId])(using
+      tx: Tx^
+  ): Either[StoreError, Set[ScheduleId]] =
+    if (ids.isEmpty) Right(Set.empty)
+    else {
+      val clearance = Tx.clearance(tx)
+      many(
+        s"""WITH ${SqlClearance.With}
+           |SELECT s.id FROM grit.schedules s
+           | WHERE s.id IN (SELECT jsonb_array_elements_text(?::jsonb))
+           |   AND s.source = 'asked' AND ${SqlClearance.asked("s")}""".stripMargin
+      ) { ps =>
+        SqlClearance.bind(ps, 1, clearance)
+        ps.setString(
+          SqlClearance.Params + 1,
+          ujson.Arr.from(ids.map(i => ujson.Str(ScheduleId.value(i)))).render()
+        )
+      }(_.getString(1)).map(_.flatMap(ScheduleId.of(_).toOption).toSet)
+    }
 
   /** `id`'s row, whether it was asked, locked for update when `lock`. */
   private def row(id: ScheduleId, lock: Boolean = false)(using

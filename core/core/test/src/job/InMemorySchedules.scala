@@ -3,19 +3,11 @@ package grit.core.job
 import java.time.Instant
 
 import grit.core.clock.Clock
-import grit.core.id.{
-  CallSlot,
-  ConversationId,
-  Declarer,
-  JobName,
-  PluginName,
-  PrincipalId,
-  ScheduleId,
-  TurnRef
-}
+import grit.core.id.{CallSlot, Declarer, JobName, PluginName, PrincipalId, ScheduleId, TurnRef}
+import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.store.{InMemoryTombstones, Origin, StoreError, Tx}
-import grit.core.visibility.{Clearance, Label, Visibility}
+import grit.core.visibility.{Clearance, Item, Label, Visibility}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[ScheduleStore]], with each plugin's [[ScheduleDesk]], for tests, keeping
@@ -35,10 +27,10 @@ final class InMemorySchedules(
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[ScheduleId, Row]
 
-  // As `rows`: each recorded turn's asker, where its reply is posted, if anywhere, and the
-  // least label a transaction opened for it writes at (Tx.floor): its room's.
+  // As `rows`: each recorded turn's asker, where its reply is posted, if anywhere, its room,
+  // and the clearance a transaction opened for it holds.
   @caps.unsafe.untrackedCaptures
-  private var turns = Map.empty[TurnRef, (PrincipalId, Option[Destination], Label)]
+  private var turns = Map.empty[TurnRef, (PrincipalId, Option[Destination], Place, Clearance)]
 
   /** `turn`, of `from`'s conversation, created at `label`, recorded as rooted on a message `by`
     * wrote, its reply posted at `address`, or nowhere: what the database holds of a turn as its
@@ -52,8 +44,8 @@ final class InMemorySchedules(
       label: Label = Label.Public
   ): Unit = {
     // As grit.core.visibility.Subject.Turn resolves: the asker is the first entry's author.
-    val floor = Clearance.inRoom(from.room, label, visibility.cleared(by)).floor
-    turns = turns.updated(turn, (by, address.map(Destination(from.edge, _)), floor))
+    val clearance = Clearance.inRoom(from.room, label, visibility.cleared(by))
+    turns = turns.updated(turn, (by, address.map(Destination(from.edge, _)), from.room, clearance))
   }
 
   /** `slot`'s run started at `version`, its schedule's next slot `following`, as the inbox
@@ -214,7 +206,7 @@ final class InMemorySchedules(
             case Some(r) => kept(id, r, booking.job)
             case None =>
               turns.get(call.turn) match {
-                case Some((by, Some(to), floor)) =>
+                case Some((by, Some(to), room, clearance)) =>
                   val now = clock.now()
                   val at = Slot.kept(when.from(now))
                   val limit = now.plusNanos(ScheduleDesk.Horizon.toNanos)
@@ -232,8 +224,8 @@ final class InMemorySchedules(
                         Report.Posted(to),
                         SlotRule.Once(at, grace),
                         Some(at),
-                        floor,
-                        asked = Some(call.turn.conversationId)
+                        clearance.floor,
+                        asked = Some(room)
                       )
                     )
                     Right(Asked(id, at, params))
@@ -250,7 +242,8 @@ final class InMemorySchedules(
       ): Either[DeskRefusal, Pending[P]] =
         own(booking).map { _ =>
           val now = clock.now()
-          val mine = turns.get(call.turn).fold(Vector.empty)((by, _, _) => pendingOf(by))
+          val mine =
+            turns.get(call.turn).fold(Vector.empty)((by, _, _, c) => pendingOf(by).filter(read(c)))
           Pending(
             now,
             mine
@@ -262,8 +255,12 @@ final class InMemorySchedules(
 
       def cancel(call: CallSlot, booking: Booking[?], id: ScheduleId): Either[DeskRefusal, Unit] =
         own(booking).flatMap { _ =>
-          val asker = turns.get(call.turn).map(_._1)
-          rows.get(id).filter(r => r.asked.nonEmpty && asker.contains(r.principal)) match {
+          val asker = turns.get(call.turn)
+          rows
+            .get(id)
+            .filter(r =>
+              asker.exists((by, _, _, c) => r.principal == by && read(c)(id -> r))
+            ) match {
             case Some(r) if r.job == booking.job.name =>
               r.ended match {
                 case Some(how) => Left(DeskRefusal.Ended(id, how))
@@ -286,6 +283,10 @@ final class InMemorySchedules(
   /** `by`'s pending asked schedules. */
   private def pendingOf(by: PrincipalId): Vector[(ScheduleId, Row)] =
     rows.toVector.filter((_, r) => r.asked.nonEmpty && r.principal == by && r.ended.isEmpty)
+
+  /** Whether `clearance` reads an asked schedule: as anything recorded in the room it was asked in. */
+  private def read(clearance: Clearance)(schedule: (ScheduleId, Row)): Boolean =
+    schedule._2.asked.exists(room => clearance.reads(Item.InRoom(room), schedule._2.label))
 
   /** `r`, an asked schedule, as `job` reads it. */
   private def kept[P <: caps.Pure](
@@ -311,7 +312,7 @@ final class InMemorySchedules(
 
 object InMemorySchedules {
 
-  /** One schedule's row: `asked`, the conversation that asked for it; `None` for one declared. */
+  /** One schedule's row: `asked`, the room of the conversation that asked for it; `None` for one declared. */
   private final case class Row(
       job: JobName,
       params: ujson.Value,
@@ -323,6 +324,6 @@ object InMemorySchedules {
       started: Option[Instant] = None,
       running: Option[Int] = None,
       ended: Option[Ending] = None,
-      asked: Option[ConversationId] = None
+      asked: Option[Place] = None
   )
 }
