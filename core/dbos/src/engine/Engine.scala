@@ -37,7 +37,6 @@ import grit.core.store.{
   PromptStore,
   StoreError,
   Tombstones,
-  Tx,
   UsageLedger,
   VoiceStore
 }
