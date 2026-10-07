@@ -31,12 +31,15 @@ object Shown {
     case Payload.Message(m) => Some(m)
     case Payload.Heard(text) =>
       val name = speakers.of(entry.id).getOrElse("Someone")
-      Some(Message.User(pasted(s"$name said, not to you:\n$text")))
+      Some(Message.User(pasted(s"$name$NotToYou\n$text")))
     case Payload.Closed(_, _, closing) =>
       Some(Message.User(record(closing, entry.createdAt)))
     case Payload.Posted(text) => Some(Message.User(s"$PostedLead\n${pasted(text)}"))
     case _ => None
   }
+
+  /** What follows a heard message's author on the line above its text ([[of]]). */
+  val NotToYou: String = " said, not to you:"
 
   /** What introduces grit's post a conversation begins with ([[of]]). */
   val PostedLead: String =

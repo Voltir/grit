@@ -4,6 +4,7 @@ import java.time.ZoneOffset
 
 import grit.assembly.estimate.CharEstimate
 import grit.core.classify.{Answer, Request}
+import grit.core.context.{Label, Shown}
 import grit.core.id.{
   ConversationId,
   EntryId,
@@ -403,15 +404,16 @@ object SentMarkdown {
       ) ++ shown
   }
 
-  /** What a user message the turn was sent is, by the label it starts with. */
+  /** What a user message the turn was sent is: the noun of the label it starts with
+    * ([[Label]]), a heard message by the line [[Shown.of]] puts above it, else a message.
+    */
   private def kind(text: String): String =
-    if (text.startsWith("[afar]")) "another conversation"
-    else if (text.startsWith("[record]")) "a record"
-    else if (text.startsWith("[doc]")) "a document"
-    else if (text.startsWith("[strand]")) "a strand"
-    else if (text.startsWith("[gap]")) "a gap line"
-    else if (text.contains(" said, not to you:\n")) "a heard message"
-    else "a message"
+    Label.values.find(l => text.startsWith(l.tag)) match {
+      case Some(label) => label.noun
+      case None =>
+        if (text.linesIterator.nextOption().exists(_.endsWith(Shown.NotToYou))) "a heard message"
+        else "a message"
+    }
 
   private def text(m: Message.Assistant): String =
     m.blocks.collect { case AssistantBlock.Text(t) => t }.mkString
