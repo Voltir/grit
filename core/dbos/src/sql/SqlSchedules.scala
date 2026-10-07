@@ -44,8 +44,8 @@ import grit.core.store.{Jot, StoreError, Tombstones, Tx}
 import grit.core.visibility.{Label, Subject}
 
 /** [[ScheduleStore]] over `grit.schedules`, marking in `tombstones` each schedule it ends, and
-  * each plugin's [[ScheduleDesk]] over the same rows. A desk's asker is the author
-  * (`grit.inbound`) of its call's turn's first entry, and its address that turn's
+  * each plugin's [[ScheduleDesk]] over the same rows. A desk's asker is the principal whose
+  * account wrote its call's turn's first entry (`grit.authors`), and its address that turn's
   * `grit.deliveries` row's. Ids order bytewise (`COLLATE "C"`), as the in-memory fake orders
   * them; instants are kept to the microsecond.
   */
@@ -395,18 +395,18 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
   ): Either[DeskRefusal, A] =
     e.left.map(DeskRefusal.Unavailable(_)).flatMap(identity)
 
-  /** The author of `turn`'s first entry, and where its reply is posted, through its
-    * conversation's edge; `None` when that entry is not one a principal wrote, or `turn` holds
-    * none.
+  /** The principal whose account wrote `turn`'s first entry, as linked now, and where its reply
+    * is posted, through its conversation's edge; `None` when that entry is not inbound, or
+    * `turn` holds none.
     */
   private def asker(turn: TurnRef)(using
       tx: Tx^
   ): Either[StoreError, Option[(PrincipalId, Option[Destination])]] =
     many(
-      """SELECT i.author, d.address, c.origin::text
+      """SELECT a.principal_id, d.address, c.origin::text
         |  FROM (SELECT id FROM grit.entries WHERE conversation_id = ?::uuid AND turn_seq = ?
         |         ORDER BY seq LIMIT 1) e
-        |  JOIN grit.inbound i ON i.entry_id = e.id
+        |  JOIN grit.authors a ON a.entry_id = e.id
         |  JOIN grit.conversations c ON c.id = ?::uuid
         |  LEFT JOIN grit.deliveries d ON d.workflow = ?""".stripMargin
     ) { ps =>

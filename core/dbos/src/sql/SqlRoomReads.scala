@@ -11,7 +11,7 @@ import grit.core.recipe.RoomReads
 import grit.core.stitch.Said
 import grit.core.store.{StoreError, Tx}
 
-/** [[RoomReads]] over `grit.entries`, each conversation's place, and `grit.inbound`. */
+/** [[RoomReads]] over `grit.entries`, each conversation's place, and `grit.authors`. */
 final class SqlRoomReads extends RoomReads {
   import SqlEntryStore.attempt
   import SqlStitchStore.{SaidColumns, Spoken, ids, readSaid}
@@ -30,7 +30,7 @@ final class SqlRoomReads extends RoomReads {
       most: Int
   )(using tx: Tx^): Either[StoreError, Vector[Said]] =
     latest(
-      "JOIN grit.inbound i ON i.entry_id = e.id AND i.author = ?",
+      "JOIN grit.authors a ON a.entry_id = e.id AND a.principal_id = ?",
       room,
       from,
       until,
@@ -39,7 +39,7 @@ final class SqlRoomReads extends RoomReads {
     )(_.setString(SqlClearance.Params + 1, PrincipalId.value(author)))
 
   def author(entry: EntryId)(using tx: Tx^): Either[StoreError, Option[PrincipalId]] =
-    many("SELECT author FROM grit.inbound WHERE entry_id = ?")(
+    many("SELECT principal_id FROM grit.authors WHERE entry_id = ?")(
       _.setString(1, EntryId.value(entry))
     )(rs => PrincipalIds.stored(rs.getString(1))).map(_.headOption)
 

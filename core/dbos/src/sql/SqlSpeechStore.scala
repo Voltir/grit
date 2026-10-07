@@ -40,7 +40,9 @@ final class SqlSpeechStore extends SpeechStore {
         // As JSON, so no Java array crosses JDBC (separation checking).
         ps.setString(
           2,
-          ujson.Arr.from(reach.asked.toVector.map(a => ujson.Str(SqlAccounts.written(a)))).render()
+          ujson.Arr
+            .from(reach.asked.toVector.map(a => ujson.Str(SqlIdentities.written(a))))
+            .render()
         )
         ps.setString(3, ConversationId.value(turn.conversationId))
         ps.setLong(4, TurnSeq.value(turn.turnSeq))
@@ -84,7 +86,7 @@ final class SqlSpeechStore extends SpeechStore {
       case Some((replyTo, asked)) =>
         asked
           .foldLeft[Either[StoreError, Set[Account]]](Right(Set.empty))((read, text) =>
-            read.flatMap(as => SqlAccounts.read(text).map(as + _))
+            read.flatMap(as => SqlIdentities.read(text).map(as + _))
           )
           .map(as => Some(Reach(replyTo, as)))
     }

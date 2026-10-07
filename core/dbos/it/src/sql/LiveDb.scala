@@ -5,7 +5,7 @@ import java.time.Instant
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, EntryId, TurnRef}
+import grit.core.id.{ConversationId, EntryId, PrincipalId, PrincipalIds, TurnRef}
 import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.store.{Conversation, Entry, Origin, Payload, StoreError, Tx}
@@ -92,18 +92,35 @@ object LiveDb {
       } yield ()
     }.fold(e => sys.error(s"asking: $e"), identity)
 
-  /** Records that `by` wrote the inbound entry `id`, as the inbox does. */
-  private def authored(id: EntryId, by: Account)(using tx: Tx^): Either[StoreError, Unit] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    Using.resource(
-      conn.prepareStatement("INSERT INTO grit.inbound (entry_id, author) VALUES (?, ?)")
-    ) { ps =>
-      ps.setString(1, EntryId.value(id))
-      ps.setString(2, Account.written(by))
-      ps.executeUpdate()
+  /** Records that the inbound entry `id` was written through `by`, as the inbox does: `by`
+    * kept first, as a new person's one account when not seen before.
+    */
+  def authored(id: EntryId, by: Account)(using tx: Tx^): Either[StoreError, Unit] =
+    SqlIdentities.enroll(by).map { _ =>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement("INSERT INTO grit.inbound (entry_id, account) VALUES (?, ?)")
+      ) { ps =>
+        ps.setString(1, EntryId.value(id))
+        ps.setString(2, Account.written(by))
+        val _ = ps.executeUpdate()
+      }
     }
-    Right(())
-  }
+
+  /** The principal `account` is linked to now; throws when it was never seen. */
+  def principal(config: DbConfig, account: Account): PrincipalId =
+    transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement("SELECT principal_id FROM grit.identities WHERE account = ?")
+      ) { ps =>
+        ps.setString(1, Account.written(account))
+        Using.resource(ps.executeQuery()) { rs =>
+          if (rs.next()) PrincipalIds.stored(rs.getString(1))
+          else sys.error(s"${Account.written(account)} was never seen")
+        }
+      }
+    }
 
   /** Every ledger row: entry, model, cost, and the estimate of the request's input. */
   def ledger(config: DbConfig): Vector[(String, String, Option[BigDecimal], Long)] =

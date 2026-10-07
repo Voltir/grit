@@ -9,7 +9,8 @@ trait ConversationStore {
 
   /** The conversation for `origin`, created on first use by `by` at `label`. Calls with an
     * equal origin return the same conversation, including concurrent ones; it keeps the
-    * account that created it, and the label it was created at, whoever asks later.
+    * account that created it, and the label it was created at, whoever asks later. Creating it
+    * through an account not seen before makes that account, unnamed, a new person's one account.
     */
   def findOrCreate(origin: Origin, by: Account, label: Label)(using
       Tx^

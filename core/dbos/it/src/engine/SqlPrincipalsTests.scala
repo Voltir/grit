@@ -3,8 +3,6 @@ package grit.dbos.engine
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
-import scala.util.Using
-
 import grit.core.id.{EntryId, EntrySeq, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.Message
@@ -50,14 +48,7 @@ object SqlPrincipalsTests extends PrincipalsContract {
           )
         )
         .fold(e => sys.error(s"arranging an entry: $e"), identity)
-      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-      Using.resource(
-        conn.prepareStatement("INSERT INTO grit.inbound (entry_id, author) VALUES (?, ?)")
-      ) { ps =>
-        ps.setString(1, EntryId.value(id))
-        ps.setString(2, Account.written(by))
-        val _ = ps.executeUpdate()
-      }
+      LiveDb.authored(id, by).fold(e => sys.error(s"arranging an author: $e"), identity)
     }
     id
   }

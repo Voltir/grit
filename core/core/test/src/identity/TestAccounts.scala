@@ -3,7 +3,9 @@ package grit.core.identity
 import grit.core.id.{PrincipalId, TestPrincipalIds}
 
 /** Accounts as the suites spell them, and the principal core's in-memory stores take one to
-  * be, as `grit.dbos` does while a principal's id is its one account's spelling.
+  * be: a person of that one account, whose id is the account's spelling. `grit.dbos` mints a
+  * person's id instead, so a contract run against both asks its store whom an account is linked
+  * to, never this.
   */
 object TestAccounts {
 
@@ -15,9 +17,9 @@ object TestAccounts {
   def principalId(account: Account): PrincipalId =
     TestPrincipalIds.stored(Account.written(account))
 
-  /** Whom writing through `account` is done for, as `grit.dbos` resolves it: grit for
-    * [[Account.Grit]]; otherwise the person of that one account, enrolled, whom no realm vouches
-    * a full member.
+  /** Whom writing through `account` is done for, as `grit.dbos` resolves an account seen once
+    * and never declared or vouched: grit for [[Account.Grit]]; otherwise the person of that one
+    * account, enrolled, whom no realm vouches a full member.
     */
   def principal(account: Account): Principal =
     if (account == Account.Grit) Principal.Grit

@@ -1,7 +1,7 @@
 package grit.core.recipe
 
-import grit.core.id.{ConversationId, EntryId}
-import grit.core.identity.Account
+import grit.core.id.{ConversationId, EntryId, PrincipalId}
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.store.{
   EntryStore,
   InMemoryEntryStore,
@@ -38,4 +38,6 @@ object InMemoryRoomReadsTests extends RoomReadsContract {
   }
 
   protected def authored(entry: EntryId, by: Account): Unit = principals.authored(entry, by)
+
+  protected def person(account: Account): PrincipalId = TestAccounts.principalId(account)
 }

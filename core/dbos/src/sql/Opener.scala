@@ -5,7 +5,7 @@ import java.sql.Connection
 import scala.util.Using
 
 import grit.core.id.{ConversationId, TurnSeq}
-import grit.core.identity.{Account, Principal}
+import grit.core.identity.Principal
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, Maintenance, RoomLabels, Subject, Visibility}
 
@@ -54,7 +54,8 @@ private[dbos] final class Opener(visibility: Visibility) {
   def maintained(conn: Connection^): Tx^{conn} = at(maintenance, conn)
 
   /** The clearance `subject` reads at, as [[Subject]]'s cases say: one read of its
-    * conversation, its label, and its turn's first entry and that entry's author.
+    * conversation, its label, and its turn's first entry and the principal its account is
+    * linked to now.
     */
   def clearance(subject: Subject)(using tx: Tx^): Either[StoreError, Clearance] =
     subject match {
@@ -67,16 +68,16 @@ private[dbos] final class Opener(visibility: Visibility) {
         named(turn.conversationId, Some(turn.turnSeq)).map(_.fold(Clearance.of(Label.Public)) { n =>
           val asker = n.origin match {
             case Origin.Task(_, _) => Some(Principal.Grit)
-            case _ => n.first.map(_.fold(Principal.Grit)(SqlAccounts.resolved))
+            case _ => n.first.map(_.getOrElse(Principal.Grit))
           }
           Clearance.inRoom(n.origin.room, n.label, asker.fold(Label.Public)(visibility.cleared))
         })
     }
 
   /** A conversation as a subject names it: where it is, its label, and, when a turn was named,
-    * that turn's first entry, if any, as its author (`None` when grit's own).
+    * that turn's first entry, if any, as whom its account is linked to (`None` when grit's own).
     */
-  private final case class Named(origin: Origin, label: Label, first: Option[Option[Account]])
+  private final case class Named(origin: Origin, label: Label, first: Option[Option[Principal]])
 
   /** `id`'s conversation and, for `turn`, its first entry; `None` when the conversation is gone,
     * or `id` is none a conversation could have.
@@ -96,13 +97,18 @@ private[dbos] final class Opener(visibility: Visibility) {
       Using.resource(
         conn.prepareStatement(
           s"""SELECT c.origin::text AS origin, ${SqlLabels.columns("l")},
-             |       e.id AS first_entry, i.author
+             |       e.id AS first_entry, a.principal_id, a.kind, p.handle, h.held::text AS held
              |  FROM grit.conversations c
              |  JOIN grit.labels l ON l.id = c.label_id
              |  LEFT JOIN LATERAL (SELECT id FROM grit.entries
              |                      WHERE conversation_id = c.id AND turn_seq = ?
              |                      ORDER BY seq LIMIT 1) e ON true
-             |  LEFT JOIN grit.inbound i ON i.entry_id = e.id
+             |  LEFT JOIN grit.authors a ON a.entry_id = e.id
+             |  LEFT JOIN grit.principals p ON p.id = a.principal_id
+             |  LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_array(n.account, n.evidence, n.member))
+             |                       AS held
+             |                      FROM grit.identities n WHERE n.principal_id = a.principal_id) h
+             |    ON true
              | WHERE c.id = ?::uuid""".stripMargin
         )
       ) { ps =>
@@ -114,7 +120,14 @@ private[dbos] final class Opener(visibility: Visibility) {
         Using.resource(ps.executeQuery()) { rs =>
           Option.when(rs.next()) {
             val first = Option(rs.getString("first_entry")).map { _ =>
-              Option(rs.getString("author"))
+              Option(rs.getString("principal_id")).map(id =>
+                (
+                  id,
+                  rs.getString("kind"),
+                  Option(rs.getString("handle")),
+                  Option(rs.getString("held")).getOrElse("[]")
+                )
+              )
             }
             (rs.getString("origin"), SqlLabels.read(rs), first)
           }
@@ -129,7 +142,8 @@ private[dbos] final class Opener(visibility: Visibility) {
             .left
             .map(why => StoreError.Invalid(s"conversation ${ConversationId.value(id)}: $why"))
           author <- first match {
-            case Some(Some(text)) => SqlAccounts.read(text).map(a => Some(Some(a)))
+            case Some(Some((id, kind, handle, held))) =>
+              SqlIdentities.principal(id, kind, handle, held).map(p => Some(Some(p)))
             case Some(None) => Right(Some(None))
             case None => Right(None)
           }

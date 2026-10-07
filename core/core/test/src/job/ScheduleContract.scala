@@ -243,6 +243,9 @@ object ScheduleContract {
       */
     def asking(turn: TurnRef, by: Account, address: Option[String]): Unit
 
+    /** The person `account`, an asker already recorded, is linked to, as the store keeps it. */
+    def principal(account: Account): PrincipalId
+
     /** `plugin`'s desk, holding the job names `jobs`, its now `clock`'s, opening its
       * transactions under [[grit.core.visibility.TestLabels.Trialled]].
       */

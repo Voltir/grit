@@ -74,7 +74,7 @@ abstract class DeskContract extends TestSuite {
         Schedule(
           remind.name,
           ujson.Num(3),
-          TestAccounts.principalId(Ann),
+          u.principal(Ann),
           Report.Posted(Destination(EdgeName.Slack, "C1/1.0")),
           SlotRule.Once(at("09:30"), hour),
           None,

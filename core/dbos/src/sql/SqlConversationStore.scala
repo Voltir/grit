@@ -24,6 +24,7 @@ final class SqlConversationStore extends ConversationStore {
       case None =>
         for {
           interned <- SqlLabels.intern(label)
+          _ <- SqlIdentities.enroll(by)
           _ <- created(origin, by, interned)
           // Read committed: this statement sees the conversation whichever insert made it.
           made <- find(origin)
@@ -74,7 +75,7 @@ final class SqlConversationStore extends ConversationStore {
         )
       ) { ps =>
         ps.setString(1, SqlConversationStore.originJson(origin).render())
-        ps.setString(2, SqlAccounts.written(by))
+        ps.setString(2, SqlIdentities.written(by))
         ps.setInt(3, label)
         ps.setString(4, path(origin.place))
         ps.setString(5, path(origin.room))
@@ -151,7 +152,7 @@ final class SqlConversationStore extends ConversationStore {
           .readOrigin(ujson.read(origin))
           .left
           .map(why => StoreError.DatabaseError(s"conversation ${ConversationId.value(id)}: $why"))
-          .flatMap(o => SqlAccounts.read(by).map(a => Some(Conversation(id, o, a, at, label))))
+          .flatMap(o => SqlIdentities.read(by).map(a => Some(Conversation(id, o, a, at, label))))
     }
   }
 

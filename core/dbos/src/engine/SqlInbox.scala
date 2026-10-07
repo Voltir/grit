@@ -37,7 +37,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.visibility.{Label, Visibility}
-import grit.dbos.sql.{SqlAccounts, SqlEntryStore, SqlSchedules}
+import grit.dbos.sql.{SqlEntryStore, SqlIdentities, SqlSchedules}
 import grit.dbos.workflow.{Runs, Stitches, Triages, Turns}
 
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
@@ -548,17 +548,21 @@ private[dbos] object SqlInbox {
   private final case class Heard(opening: Option[Opening], triage: Option[TriageRef])
 
   /** An ingested message's entry id: deterministic, so a redelivery finds it. */
-  /** Records that `by` wrote the inbound entry `id`. */
+  /** Records that the inbound entry `id` was written through `by`, kept as a new person's one
+    * account when not seen before.
+    */
   private def authored(id: EntryId, by: Account)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    SqlEntryStore.attempt {
-      Using.resource(
-        conn.prepareStatement("INSERT INTO grit.inbound (entry_id, author) VALUES (?, ?)")
-      ) { ps =>
-        ps.setString(1, EntryId.value(id))
-        ps.setString(2, SqlAccounts.written(by))
-        ps.executeUpdate()
-        ()
+    SqlIdentities.enroll(by).flatMap { _ =>
+      SqlEntryStore.attempt {
+        Using.resource(
+          conn.prepareStatement("INSERT INTO grit.inbound (entry_id, account) VALUES (?, ?)")
+        ) { ps =>
+          ps.setString(1, EntryId.value(id))
+          ps.setString(2, SqlIdentities.written(by))
+          ps.executeUpdate()
+          ()
+        }
       }
     }
   }

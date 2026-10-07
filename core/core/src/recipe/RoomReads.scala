@@ -25,7 +25,7 @@ trait RoomReads {
       most: Int
   )(using Tx^): Either[StoreError, Vector[Said]]
 
-  /** The messages `author` wrote. */
+  /** The messages written through any account linked to `author` now. */
   def saidBy(
       room: Place,
       author: PrincipalId,
@@ -35,6 +35,8 @@ trait RoomReads {
       most: Int
   )(using Tx^): Either[StoreError, Vector[Said]]
 
-  /** Who wrote `entry`, when it is an inbound message still kept. */
+  /** The person whose account wrote `entry`, as linked now, when it is an inbound message still
+    * kept.
+    */
   def author(entry: EntryId)(using Tx^): Either[StoreError, Option[PrincipalId]]
 }

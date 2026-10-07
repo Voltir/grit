@@ -16,8 +16,9 @@ import grit.core.store.Origin
   */
 trait Inbox extends caps.SharedCapability {
 
-  /** Records `message` from `origin`'s conversation, written by `by`, as the first entry of
-    * a new turn, and returns that turn; the conversation is created by `by` if it is new, at
+  /** Records `message` from `origin`'s conversation, written through `by`, as the first entry
+    * of a new turn, and returns that turn; an account not seen before is, unnamed, a new
+    * person's one account. The conversation is created by `by` if it is new, at
     * its room's label ([[grit.core.visibility.Visibility.roomLabel]]). A
     * message whose `source` id was already recorded for `origin` is not recorded again: its
     * existing turn is returned, with its first author, whatever was spent. A new message once
@@ -31,9 +32,10 @@ trait Inbox extends caps.SharedCapability {
       by: Account
   ): Either[InboxError, TurnRef]
 
-  /** Records `text` from `origin`'s conversation, written by `by`, as heard: said where grit
+  /** Records `text` from `origin`'s conversation, written through `by`, as heard: said where grit
     * listens, not to it ([[grit.core.store.Payload.Heard]]), as the first entry of a turn of
-    * its own. The conversation is created by `by` if it is new, at its room's label. It was
+    * its own; an account not seen before is, unnamed, a new person's one account. The
+    * conversation is created by `by` if it is new, at its room's label. It was
     * said `at`: its entry
     * is dated `at`, and a period it opens opens `at`, so a message heard late is as quiet as
     * it was. `reach` is where a reply to it could go and whom it names
@@ -55,7 +57,8 @@ trait Inbox extends caps.SharedCapability {
   /** Records `text`, grit's post that `origin`'s thread begins with, as its conversation's
     * first entry ([[grit.core.store.Payload.Posted]]), dated `at`, its source `source`, made by
     * the hosted call at `request` ([[grit.core.store.ConversationStore.postedBy]]); the
-    * conversation is created by `by`, at its room's label. `true` when this call recorded it; `false`, recording
+    * conversation is created by `by`, at its room's label, an account not seen before kept as a
+    * new person's one account. `true` when this call recorded it; `false`, recording
     * nothing, when anything is recorded for `origin` already, a repeat included. Never
     * triaged, never a turn that runs, never refused over the day's cap.
     */

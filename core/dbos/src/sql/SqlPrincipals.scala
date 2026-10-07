@@ -6,8 +6,8 @@ import grit.core.id.EntryId
 import grit.core.identity.Account
 import grit.core.store.{Principals, Speakers, StoreError, Tx}
 
-/** [[Principals]] over `grit.principals` (a person's or an assistant's name) and
-  * `grit.inbound` (who wrote each inbound entry).
+/** [[Principals]] over `grit.identities` (each account and the name it goes by) and
+  * `grit.authors` (who wrote each inbound entry).
   */
 final class SqlPrincipals extends Principals {
   import SqlEntryStore.attempt
@@ -17,17 +17,16 @@ final class SqlPrincipals extends Principals {
       case Some(why) => Left(why)
       case None =>
         val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-        attempt {
-          Using.resource(
-            conn.prepareStatement(
-              """INSERT INTO grit.principals (id, kind, name) VALUES (?, 'person', ?)
-                |ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name""".stripMargin
-            )
-          ) { ps =>
-            ps.setString(1, SqlAccounts.written(account))
-            ps.setString(2, name.trim)
-            ps.executeUpdate()
-            ()
+        SqlIdentities.enroll(account).flatMap { _ =>
+          attempt {
+            Using.resource(
+              conn.prepareStatement("UPDATE grit.identities SET name = ? WHERE account = ?")
+            ) { ps =>
+              ps.setString(1, name.trim)
+              ps.setString(2, SqlIdentities.written(account))
+              ps.executeUpdate()
+              ()
+            }
           }
         }
     }
@@ -39,10 +38,10 @@ final class SqlPrincipals extends Principals {
       attempt {
         Using.resource(
           conn.prepareStatement(
-            """SELECT i.entry_id, p.name FROM grit.inbound i
-              |JOIN grit.principals p ON p.id = i.author
-              |WHERE i.entry_id IN (SELECT jsonb_array_elements_text(?::jsonb))
-              |  AND p.name IS NOT NULL AND p.kind = 'person'""".stripMargin
+            """SELECT a.entry_id, n.name FROM grit.authors a
+              |JOIN grit.identities n ON n.account = a.account
+              |WHERE a.entry_id IN (SELECT jsonb_array_elements_text(?::jsonb))
+              |  AND n.name IS NOT NULL AND a.kind = 'person'""".stripMargin
           )
         ) { ps =>
           // The ids go as JSON, so no Java array crosses JDBC (separation checking).

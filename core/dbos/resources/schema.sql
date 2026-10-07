@@ -193,25 +193,59 @@ CREATE TABLE IF NOT EXISTS grit.engine_starts (
     CHECK ((commit IS NULL) = (dirty IS NULL))
 );
 
--- Who actions are done for (grit.core.id.PrincipalId): `local`, the one person every edge
--- acts for until principals are registered, `grit`, the engine itself, and each person an
--- edge enrolled (Principals.enroll: a Slack user as `slack:{team}/{user}`), with the name a
--- window shows on what they wrote. Other tables name a principal here, never by a free
--- string.
--- Retention: kept: the identities other rows name.
+-- Who actions are done for (grit.core.id.PrincipalId): a person, under an id minted here
+-- (uuidv7) when one of their accounts is first seen, or grit itself; `local` is the person the
+-- local edge acts for. `handle` is a declared person's (grit.core.identity.Identities), NULL
+-- for every other. Other tables name a principal here, never by a free string.
+-- Retention: kept. One home per account in grit.identities, one per declared person, and local
+-- and grit: about one row per account seen.
 CREATE TABLE IF NOT EXISTS grit.principals (
-    id   TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK (kind IN ('person', 'grit')),
-    name TEXT
+    id     TEXT PRIMARY KEY,
+    kind   TEXT NOT NULL CHECK (kind IN ('person', 'grit')),
+    handle TEXT UNIQUE
 );
 
 INSERT INTO grit.principals (id, kind) VALUES ('local', 'person'), ('grit', 'grit')
     ON CONFLICT (id) DO NOTHING;
 
+-- Each account an action has come through (grit.core.identity.Account, as Account.written
+-- spells it), and the principal it belongs to (ADR 0032). `evidence` says why: enrolled (seen
+-- first, a person of its own), declared (the deployment's Identities) or vouched (a trusted
+-- realm's verified email). `name` is what its source calls it (Principals.name); `email` the
+-- address its realm vouches for now, and `member` whether it vouches the account a full member
+-- now (neither ever set for an email account itself). `home` is the person of its own it was
+-- when first seen, which a vouched link that lapses returns it to; NULL while declared. An
+-- account first seen takes an advisory lock on its spelling before its home is minted
+-- (SqlIdentities.enroll), so two first sightings make one person. Holds PII: `account` (an
+-- email account's address) as well as `email`.
+-- Retention: kept; deleted by nothing yet. Bounded by the people who have written through an
+-- edge, and the accounts declared or vouched for them: about two rows a person.
+CREATE TABLE IF NOT EXISTS grit.identities (
+    account      TEXT PRIMARY KEY,
+    principal_id TEXT NOT NULL REFERENCES grit.principals(id),
+    evidence     TEXT NOT NULL CHECK (evidence IN ('enrolled', 'declared', 'vouched')),
+    name         TEXT,
+    email        TEXT,
+    member       BOOLEAN NOT NULL DEFAULT false,
+    home         TEXT REFERENCES grit.principals(id),
+    linked_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK ((evidence = 'declared') = (home IS NULL)),
+    CHECK (account NOT LIKE 'email:%' OR (email IS NULL AND NOT member)),
+    CHECK (evidence <> 'vouched' OR account LIKE 'email:%' OR email IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS idx_identities_principal ON grit.identities (principal_id);
+CREATE INDEX IF NOT EXISTS idx_identities_home ON grit.identities (home);
+
+-- local's and grit's one account each, spelled as their ids; never enrolled or vouched.
+INSERT INTO grit.identities (account, principal_id, evidence)
+    VALUES ('local', 'local', 'declared'), ('grit', 'grit', 'declared')
+    ON CONFLICT (account) DO NOTHING;
+
 -- One row per origin; `origin` is the Origin ADT as JSON, and jsonb equality
 -- ignores key order, so the unique index is on the value, not its spelling. Its place is
 -- its origin's, set when it is created, and so is its room (Origin.room: by identity, never by
--- containment); `created_by` the principal of the edge that created it, and `label_id` the
+-- containment); `created_by` the account whose message created it, and `label_id` the
 -- label it was created at (ADR 0030), each kept whoever finds it later. `next_turn` and `next_seq` are past every turn and
 -- entry ever written in it, purged ones included: each entry's insert raises them, under the
 -- row's lock (EntryStore.lockNext), so no position is taken twice.
@@ -221,7 +255,7 @@ CREATE TABLE IF NOT EXISTS grit.conversations (
     origin     JSONB NOT NULL UNIQUE,
     place_id   UUID NOT NULL REFERENCES grit.places(id),
     room_id    UUID NOT NULL REFERENCES grit.places(id),
-    created_by TEXT NOT NULL REFERENCES grit.principals(id),
+    created_by TEXT NOT NULL REFERENCES grit.identities(account),
     label_id   SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.labels(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     next_turn  BIGINT NOT NULL DEFAULT 0,
@@ -258,14 +292,22 @@ CREATE INDEX IF NOT EXISTS idx_entries_turn ON grit.entries (conversation_id, tu
 CREATE INDEX IF NOT EXISTS idx_entries_bm25 ON grit.entries
     USING bm25 (search_text) WITH (text_config = 'english');
 
--- Who wrote each inbound entry: the principal of the edge that ingested it (Inbox.ingest).
--- Every other entry is grit's own. A table beside `entries` rather than a column on it, so
--- no entry needs an author it does not have.
+-- Who wrote each inbound entry: the account it came through (Inbox.ingest). Every other entry
+-- is grit's own. A table beside `entries` rather than a column on it, so no entry needs an
+-- author it does not have.
 -- Retention: journal: with its entry (Target.Raw), by cascade.
 CREATE TABLE IF NOT EXISTS grit.inbound (
     entry_id TEXT PRIMARY KEY REFERENCES grit.entries(id) ON DELETE CASCADE,
-    author   TEXT NOT NULL REFERENCES grit.principals(id)
+    account  TEXT NOT NULL REFERENCES grit.identities(account)
 );
+
+-- Who wrote each inbound entry, as linked now: the one definition every reader of an author
+-- joins (the opener, a desk's asker, a room's reads, speakers).
+CREATE OR REPLACE VIEW grit.authors AS
+    SELECT i.entry_id, i.account, a.principal_id, p.kind
+      FROM grit.inbound i
+      JOIN grit.identities a ON a.account = i.account
+      JOIN grit.principals p ON p.id = a.principal_id;
 
 -- One row per model response: what it cost. Keyed by the entry that holds the response,
 -- so the turn's append writes both in one transaction and a replay cannot count twice. Not a

@@ -32,6 +32,9 @@ abstract class RoomReadsContract extends TestSuite {
   /** Records that `by`, a person, wrote the inbound entry `entry`. */
   protected def authored(entry: EntryId, by: Account): Unit
 
+  /** The person `account`, an author already recorded, is linked to, as the store keeps it. */
+  protected def person(account: Account): PrincipalId
+
   /** When the message a pool is read for was said. */
   private val T = Instant.parse("2026-10-02T12:00:00Z")
 
@@ -43,9 +46,6 @@ abstract class RoomReadsContract extends TestSuite {
 
   private val ana = TestAccounts.account("slack:T/UA")
   private val ben = TestAccounts.account("slack:T/UB")
-
-  /** The principal [[ana]] is, as [[RoomReads]] names an author. */
-  private val Ana: PrincipalId = TestAccounts.principalId(ana)
 
   private val usage = Usage(Tokens(900), Tokens.Zero, Tokens.Zero, None)
 
@@ -153,9 +153,9 @@ abstract class RoomReadsContract extends TestSuite {
       heard(own, T.minusMillis(1))
       heard(other, T.minusSeconds(5), by = ben)
       say(other, Payload.Message(reply), T.minusSeconds(4))
-      right(transaction(rooms.saidBy(room("by"), Ana, From, T, Set(own), 10)))
+      right(transaction(rooms.saidBy(room("by"), person(ana), From, T, Set(own), 10)))
         .map(_.entry) ==> Vector(before, atFrom)
-      right(transaction(rooms.saidBy(room("by"), Ana, From, T, Set(own), 1)))
+      right(transaction(rooms.saidBy(room("by"), person(ana), From, T, Set(own), 1)))
         .map(_.entry) ==> Vector(before)
     }
 
@@ -163,7 +163,7 @@ abstract class RoomReadsContract extends TestSuite {
       val c = thread("author", "1.0")
       val hers = heard(c, T.minusSeconds(10))
       val replied = say(c, Payload.Message(reply), T.minusSeconds(5))
-      transaction(rooms.author(hers.id)) ==> Right(Some(Ana))
+      transaction(rooms.author(hers.id)) ==> Right(Some(person(ana)))
       transaction(rooms.author(replied.id)) ==> Right(None)
       transaction(rooms.author(EntryId("never:0"))) ==> Right(None)
     }

@@ -116,7 +116,7 @@ final class SqlReviews extends ReviewStore {
         )
       ) { ps =>
         ps.setString(1, verdictWritten(verdict))
-        ps.setString(2, SqlAccounts.written(rater))
+        ps.setString(2, SqlIdentities.written(rater))
         ps.setObject(3, at.atOffset(ZoneOffset.UTC))
         ps.setString(4, address)
         ps.executeUpdate() == 1
@@ -137,7 +137,7 @@ final class SqlReviews extends ReviewStore {
       ) { ps =>
         ps.setString(1, address)
         ps.setString(2, verdictWritten(verdict))
-        ps.setString(3, SqlAccounts.written(rater))
+        ps.setString(3, SqlIdentities.written(rater))
         ps.executeUpdate() == 1
       }
     }

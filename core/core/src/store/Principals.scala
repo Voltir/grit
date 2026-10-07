@@ -8,8 +8,9 @@ import grit.core.identity.Account
   */
 trait Principals {
 
-  /** Records that `account` goes by `name`, trimmed, as its source names it now. `Invalid` for
-    * a blank name, or for [[Account.Local]] or [[Account.Grit]], which are never named.
+  /** Records that `account` goes by `name`, trimmed, as its source names it now; an account not
+    * seen before is a new person's one account. `Invalid` for a blank name, or for
+    * [[Account.Local]] or [[Account.Grit]], which are never named.
     */
   def name(account: Account, name: String)(using Tx^): Either[StoreError, Unit]
 

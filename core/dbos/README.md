@@ -5,11 +5,11 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
 
 - **`sql`** — Postgres behind core's store seams: `DbConfig` (where the database is),
   `Opener` (each transaction's clearance as it opens: a subject resolved from the rows it
-  names, or maintenance's for this module's own transactions, ADR 0030), `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place and room, `grit.places`, who began it, one of `grit.principals`, and the label it was created at), `SqlUsageLedger`,
+  names, or maintenance's for this module's own transactions, ADR 0030), `SqlDb`, `SqlJot`, `SqlEntryStore`, `SqlConversationStore` (and each conversation's place and room, `grit.places`, the account that began it, one of `grit.identities`, and the label it was created at), `SqlIdentities` (each account an action came through, `grit.identities`, kept as a new person's one account when first seen, its person's id minted by Postgres under a lock on the account, and read back as the principal it is linked to now, ADR 0032), `SqlUsageLedger`,
   `SqlModelProfileStore`, `SqlModelSettingStore`, `SqlToolSets`, `SqlPromptStore`, `SqlToolRequests` and
   `SqlEdgeDirectory` (hosted tool calls and the edges serving them, ADR 0017), `SqlPeriodStore` (a conversation's periods,
   each seal numbered in commit order), `SqlLifecycleStore` (the settings in force, one
-  row), `SqlVoiceStore` (the voice, one row), `SqlPrincipals` (people by name, and who wrote each inbound entry), `SqlDeliveries` (the replies an edge has yet to post outside grit), `SqlAcknowledgements` (the messages an edge marks as being answered while their turns run), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
+  row), `SqlVoiceStore` (the voice, one row), `SqlPrincipals` (the name each account goes by, and who wrote each inbound entry, through `grit.authors`), `SqlDeliveries` (the replies an edge has yet to post outside grit), `SqlAcknowledgements` (the messages an edge marks as being answered while their turns run), `SqlPluginDocs`, `SqlCacheDocs` and `SqlPluginCursors` (each plugin's documents, as read and
   as posted from one closing, and its cursor), `SqlDocuments` (every plugin's versioned documents, ADR 0028: each plugin's shelf and keeper, the search windows draw on, and the terms each start declares), `SqlTombstones` (what is to be deleted, ADR 0014), `SqlSchedules` (a job's schedules, `grit.schedules`, ADR 0029, and each plugin's desk over them, which reads a call's asker and address from its turn's first entry and delivery), `SqlTriageStore`
   (what triage made of each heard message, deleted with its entry), `SqlTriageShadows` (what
   each declared shadow variant made of a heard message, `grit.triage_shadows`, deleted with its
@@ -46,7 +46,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   queued or running, which `grit backfill` waits out; `placements` waits for an opening's
   placement, through `DbosPlacements`), `SqlDesk` (an edge's registration, live
   while its own connection holds its lock, which also listens for requests), `TurnStatus`, and
-  `SqlInbox`, which records a message, and who wrote it (`grit.inbound`), and enqueues its turn in one transaction (opening
+  `SqlInbox`, which records a message, and the account it came through (`grit.inbound`), and enqueues its turn in one transaction (opening
   the conversation's next period when none is open), enqueues an opening's placement, then
   a heard message's triage, once it is recorded, and sends a turn the answer to its
   gated call (`DBOSClient.send`); `Sweeper`,
