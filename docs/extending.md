@@ -103,8 +103,11 @@ part is declared data or a pure function:
   table (the longest declared place a room is within, else `otherwise`); a deployment may
   write its own pure function. A label it returns holding a compartment not declared is kept
   at `unmapped` instead, so what a mapping invents is read by fewer people, never more.
-- `groups` and `grants`: people grouped by principal, and what each group's members are
-  cleared for.
+- `groups` and `grants`: people grouped by the accounts sources know them by
+  (`slack:{team}/{user}`), and by the realms whose full members a group takes in (a
+  `Realm`, such as every `slack:{team}/` account, as the edge `identities` trusts for it
+  vouches them); and what each group's members are cleared for: a person is cleared for the
+  join of the grants of every group any of their accounts puts them in.
 - `trusts`: what each outside service (`service:{name}`) is trusted with, as a label
   ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-and-a-service-is-a-place-and-a-party.md));
   public for a service it does not name. It is the most a turn may send the service as a

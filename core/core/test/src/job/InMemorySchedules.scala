@@ -46,7 +46,7 @@ final class InMemorySchedules(
   ): Unit = {
     // As grit.core.visibility.Subject.Turn resolves: the asker is the first entry's author.
     val clearance =
-      Clearance.inRoom(from.room, label, visibility.cleared(TestAccounts.principalId(by)))
+      Clearance.inRoom(from.room, label, visibility.cleared(TestAccounts.principal(by)))
     turns = turns.updated(
       turn,
       (TestAccounts.principalId(by), address.map(Destination(from.edge, _)), from.room, clearance)

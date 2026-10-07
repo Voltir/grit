@@ -34,7 +34,7 @@ object TestLabels {
         .of(
           compartments,
           RoomLabels.Public,
-          Vector(Group(group("trialists"), Set(TestAccounts.principalId(Trialist)))),
+          Vector(Group(group("trialists"), Set(Trialist))),
           Vector(Grant(group("trialists"), Trial))
         )
         .left

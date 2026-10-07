@@ -1,6 +1,6 @@
 package grit.core.visibility
 
-import grit.core.id.PrincipalId
+import grit.core.identity.Principal
 import grit.core.place.{Place, Service}
 
 /** What a deployment injects into core about who may see what (ADR 0030): its
@@ -15,14 +15,22 @@ final case class Visibility private (
     trusts: Vector[Trust]
 ) {
 
-  /** `person`'s clearance: the join of the grants of every group they are in, or
-    * [[Label.Public]]; for [[PrincipalId.Grit]], [[Compartments.top]].
+  /** `principal`'s clearance: grit's is [[Compartments.top]]; a person's, the join of the
+    * grants of every group they are in ([[Group]]), or [[Label.Public]].
     */
-  def cleared(person: PrincipalId): Label =
-    if (person == PrincipalId.Grit) compartments.top
-    else {
-      val in = groups.filter(_.members.contains(person)).map(_.name).toSet
-      grants.filter(g => in.contains(g.group)).map(_.label).foldLeft(Label.Public)(_.join(_))
+  def cleared(principal: Principal): Label =
+    principal match {
+      case Principal.Grit => compartments.top
+      case Principal.Person(_, _, held) =>
+        val in = groups
+          .filter(g =>
+            held.exists(h =>
+              g.accounts.contains(h.account) || (h.member && g.realms.exists(_.holds(h.account)))
+            )
+          )
+          .map(_.name)
+          .toSet
+        grants.filter(g => in.contains(g.group)).map(_.label).foldLeft(Label.Public)(_.join(_))
     }
 
   /** The label a conversation in `room` ([[grit.core.store.Origin.room]]) is created at: the

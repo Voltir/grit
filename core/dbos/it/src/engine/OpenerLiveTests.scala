@@ -54,7 +54,7 @@ object OpenerLiveTests extends TestSuite {
         .of(
           compartments,
           RoomLabels.Public,
-          Vector(Group(name, Set(TestAccounts.principalId(cleared)))),
+          Vector(Group(name, Set(cleared))),
           Vector(Grant(name, trialLabel))
         )
         .left

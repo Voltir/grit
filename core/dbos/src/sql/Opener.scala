@@ -4,7 +4,8 @@ import java.sql.Connection
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, PrincipalId, TurnSeq}
+import grit.core.id.{ConversationId, TurnSeq}
+import grit.core.identity.{Account, Principal}
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, Maintenance, RoomLabels, Subject, Visibility}
 
@@ -65,8 +66,8 @@ private[dbos] final class Opener(visibility: Visibility) {
       case Subject.Turn(turn) =>
         named(turn.conversationId, Some(turn.turnSeq)).map(_.fold(Clearance.of(Label.Public)) { n =>
           val asker = n.origin match {
-            case Origin.Task(_, _) => Some(PrincipalId.Grit)
-            case _ => n.first.map(_.getOrElse(PrincipalId.Grit))
+            case Origin.Task(_, _) => Some(Principal.Grit)
+            case _ => n.first.map(_.fold(Principal.Grit)(SqlAccounts.resolved))
           }
           Clearance.inRoom(n.origin.room, n.label, asker.fold(Label.Public)(visibility.cleared))
         })
@@ -75,7 +76,7 @@ private[dbos] final class Opener(visibility: Visibility) {
   /** A conversation as a subject names it: where it is, its label, and, when a turn was named,
     * that turn's first entry, if any, as its author (`None` when grit's own).
     */
-  private final case class Named(origin: Origin, label: Label, first: Option[Option[PrincipalId]])
+  private final case class Named(origin: Origin, label: Label, first: Option[Option[Account]])
 
   /** `id`'s conversation and, for `turn`, its first entry; `None` when the conversation is gone,
     * or `id` is none a conversation could have.
@@ -113,7 +114,7 @@ private[dbos] final class Opener(visibility: Visibility) {
         Using.resource(ps.executeQuery()) { rs =>
           Option.when(rs.next()) {
             val first = Option(rs.getString("first_entry")).map { _ =>
-              Option(rs.getString("author")).map(PrincipalId(_))
+              Option(rs.getString("author"))
             }
             (rs.getString("origin"), SqlLabels.read(rs), first)
           }
@@ -122,11 +123,17 @@ private[dbos] final class Opener(visibility: Visibility) {
     }.flatMap {
       case None => Right(None)
       case Some((origin, label, first)) =>
-        SqlConversationStore
-          .readOrigin(ujson.read(origin))
-          .map(o => Some(Named(o, label, first)))
-          .left
-          .map(why => StoreError.Invalid(s"conversation ${ConversationId.value(id)}: $why"))
+        for {
+          o <- SqlConversationStore
+            .readOrigin(ujson.read(origin))
+            .left
+            .map(why => StoreError.Invalid(s"conversation ${ConversationId.value(id)}: $why"))
+          author <- first match {
+            case Some(Some(text)) => SqlAccounts.read(text).map(a => Some(Some(a)))
+            case Some(None) => Right(Some(None))
+            case None => Right(None)
+          }
+        } yield Some(Named(o, label, author))
     }
   }
 }

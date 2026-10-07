@@ -88,7 +88,7 @@ object VisibilityLiveTests extends TestSuite {
         .of(
           compartments,
           rooms,
-          Vector(Group(TestLabels.group("trial"), Set(TestAccounts.principalId(Cleared)))),
+          Vector(Group(TestLabels.group("trial"), Set(Cleared))),
           Vector(Grant(TestLabels.group("trial"), TestLabels.Trial))
         )
         .left

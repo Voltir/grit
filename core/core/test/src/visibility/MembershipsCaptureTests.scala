@@ -13,7 +13,7 @@ object MembershipsCaptureTests extends TestSuite {
     Probes.errors(
       s"""package outside
          |import grit.core.visibility.*
-         |import grit.core.id.PrincipalId
+         |import grit.core.identity.Account
          |trait Provider extends caps.SharedCapability { def call(): String }
          |object Probe {
          |  $body
@@ -25,14 +25,14 @@ object MembershipsCaptureTests extends TestSuite {
   private def memberships(answers: String): String =
     s"""def make(p: Provider^): Unit = {
        |    val made = new Memberships {
-       |      def groups(person: PrincipalId): Set[GroupName] = $answers
+       |      def groups(account: Account): Set[GroupName] = $answers
        |    }
-       |    val _ = made.groups(PrincipalId.Local)
+       |    val _ = made.groups(Account.Local)
        |  }""".stripMargin
 
   val tests = Tests {
-    test("control: memberships answering from the person alone compile") {
-      probe(memberships("GroupName.of(PrincipalId.value(person)).toOption.toSet")) ==> Nil
+    test("control: memberships answering from the account alone compile") {
+      probe(memberships("GroupName.of(Account.written(account)).toOption.toSet")) ==> Nil
     }
 
     test("memberships that call a capability they hold are rejected") {

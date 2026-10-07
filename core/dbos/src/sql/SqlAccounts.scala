@@ -1,7 +1,7 @@
 package grit.dbos.sql
 
 import grit.core.id.PrincipalId
-import grit.core.identity.Account
+import grit.core.identity.{Account, Evidence, Held, Principal}
 import grit.core.store.StoreError
 
 /** Accounts in the columns that name a principal (`inbound.author`, `conversations.created_by`,
@@ -21,4 +21,16 @@ private[dbos] object SqlAccounts {
 
   /** The principal whose one account is `account`. */
   def principal(account: Account): PrincipalId = PrincipalId(Account.written(account))
+
+  /** Whom writing through `account` is done for: grit for [[Account.Grit]]; otherwise the person
+    * of that one account, enrolled, whom no realm vouches a full member.
+    */
+  def resolved(account: Account): Principal =
+    if (account == Account.Grit) Principal.Grit
+    else
+      Principal.Person(
+        principal(account),
+        None,
+        Set(Held(account, Evidence.Enrolled, member = false))
+      )
 }

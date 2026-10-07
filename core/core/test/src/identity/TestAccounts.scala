@@ -13,4 +13,17 @@ object TestAccounts {
 
   /** The principal whose one account is `account`: its id is the account's spelling. */
   def principalId(account: Account): PrincipalId = PrincipalId(Account.written(account))
+
+  /** Whom writing through `account` is done for, as `grit.dbos` resolves it: grit for
+    * [[Account.Grit]]; otherwise the person of that one account, enrolled, whom no realm vouches
+    * a full member.
+    */
+  def principal(account: Account): Principal =
+    if (account == Account.Grit) Principal.Grit
+    else
+      Principal.Person(
+        principalId(account),
+        None,
+        Set(Held(account, Evidence.Enrolled, member = false))
+      )
 }

@@ -1,6 +1,6 @@
 package grit.core.visibility
 
-import grit.core.id.PrincipalId
+import grit.core.identity.{Account, Evidence, Held, Principal, Realm, TestAccounts}
 import grit.core.place.Service
 
 import utest.*
@@ -17,17 +17,32 @@ object VisibilityTests extends TestSuite {
     Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
   private val jira = Service.of("jira").fold(e => throw new java.lang.AssertionError(e), identity)
 
-  private val ana = PrincipalId("ana")
-  private val bo = PrincipalId("bo")
+  private val ana = TestAccounts.account("test:ana")
+  private val bo = TestAccounts.account("test:bo")
+  private val anaAtWork = TestAccounts.account("slack:T1/U-ana")
+  private val t1 =
+    Realm.of("slack", "T1").fold(e => throw new java.lang.AssertionError(e), identity)
 
   private val groups: Vector[Group] = Vector(
     Group(group("trial-team"), Set(ana)),
-    Group(group("acme-team"), Set(ana, bo))
+    Group(group("acme-team"), Set(ana, bo)),
+    Group(group("ops"), Set(anaAtWork)),
+    Group(group("t1-members"), Set.empty, Set(t1))
   )
   private val grants: Vector[Grant] = Vector(
     Grant(group("trial-team"), Label.at(Level.Internal, trial)),
-    Grant(group("acme-team"), Label.at(Level.Confidential, acme))
+    Grant(group("acme-team"), Label.at(Level.Confidential, acme)),
+    Grant(group("ops"), Label.at(Level.Restricted)),
+    Grant(group("t1-members"), Label.at(Level.Internal, trial))
   )
+
+  /** A person holding `accounts`, each enrolled, a full member of its realm when paired `true`. */
+  private def person(accounts: (Account, Boolean)*): Principal =
+    Principal.Person(
+      TestAccounts.principalId(accounts.headOption.fold(ana)(_._1)),
+      None,
+      accounts.map((a, member) => Held(a, Evidence.Enrolled, member)).toSet
+    )
 
   private val visibility =
     Visibility
@@ -36,19 +51,38 @@ object VisibilityTests extends TestSuite {
 
   val tests = Tests {
     test("a person is cleared for the join of their groups' grants, and no one else for any") {
-      visibility.cleared(ana) ==> Label.at(Level.Confidential, trial, acme)
-      visibility.cleared(bo) ==> Label.at(Level.Confidential, acme)
-      visibility.cleared(PrincipalId("cy")) ==> Label.Public
+      visibility.cleared(person(ana -> false)) ==> Label.at(Level.Confidential, trial, acme)
+      visibility.cleared(person(bo -> false)) ==> Label.at(Level.Confidential, acme)
+      visibility.cleared(person(TestAccounts.account("test:cy") -> false)) ==> Label.Public
+    }
+
+    test("a person holding several accounts is cleared for the join over the groups of each") {
+      (
+        visibility.cleared(person(bo -> false, anaAtWork -> false)),
+        visibility.cleared(person(anaAtWork -> false, bo -> false))
+      ) ==> (Label.at(Level.Restricted, acme), Label.at(Level.Restricted, acme))
+    }
+
+    test(
+      "a group naming a realm clears a person holding one of its accounts as a full member, " +
+        "and not one holding it otherwise or holding another realm's"
+    ) {
+      val outsider = TestAccounts.account("slack:T10/U1")
+      (
+        visibility.cleared(person(TestAccounts.account("slack:T1/U1") -> true)),
+        visibility.cleared(person(TestAccounts.account("slack:T1/U1") -> false)),
+        visibility.cleared(person(outsider -> true))
+      ) ==> (Label.at(Level.Internal, trial), Label.Public, Label.Public)
     }
 
     test("grit is cleared for every declared compartment at the top level") {
-      visibility.cleared(PrincipalId.Grit) ==>
+      visibility.cleared(Principal.Grit) ==>
         Label.at(Level.Restricted, trial, acme, Compartment.Unmapped)
     }
 
     test("the shipped visibility clears no one beyond public and labels every room public") {
       (
-        Visibility.Shipped.cleared(ana),
+        Visibility.Shipped.cleared(person(ana -> false)),
         Visibility.Shipped.roomLabel(place("slack:acme/C1"))
       ) ==> (Label.Public, Label.Public)
     }

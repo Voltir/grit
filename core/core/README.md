@@ -44,7 +44,7 @@ In dependency order:
   is cleared for what; `Trust`, what a deployment trusts an outside service with; `Visibility`, all of it as a
   deployment injects it, refused as a `VisibilityRefusal`; `Item`, a labelled row as reading it is decided; `Clearance`, what a
   transaction reads and the least label it writes at; `Subject`, whom it is opened for; and
-  `Maintenance`, `grit.dbos`'s own clearance. ← `id`, `place`
+  `Maintenance`, `grit.dbos`'s own clearance. ← `id`, `place`, `identity`
 - **`prompt`** — a turn's system prompt as ordered fragments (ADR 0016): `Layer` (base,
   edge, person, reach, place: the most stable first, for a provider's prompt cache),
   `Fragment` (its id a content hash), `SystemPrompt` (fragments by layer, rendered to the
