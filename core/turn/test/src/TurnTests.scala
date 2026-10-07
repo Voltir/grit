@@ -561,7 +561,7 @@ object TurnTests extends TestSuite {
         .map(_.text)
         .getOrElse(throw new java.lang.AssertionError())
       val edge = TurnPrompt.edge(origin).text
-      val reach = TurnPrompt.reach(Some(Place.of(checkout)), ToolSet.Empty).text
+      val reach = TurnPrompt.reach(Some(Place.of(checkout)), TurnPrompt.Serving.Unserved).text
       turn.requests.map(_.system) ==>
         Vector.fill(2)(
           Vector(
@@ -624,7 +624,7 @@ object TurnTests extends TestSuite {
           TurnPrompt.Candour.text,
           TurnPrompt.Answering.text,
           TurnPrompt.edge(origin).text,
-          TurnPrompt.reach(Some(Place.of(checkout)), ToolSet.Empty).text
+          TurnPrompt.reach(Some(Place.of(checkout)), TurnPrompt.Serving.Unserved).text
         ).mkString("\n\n")
       )
     }

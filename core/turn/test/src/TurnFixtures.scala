@@ -251,7 +251,7 @@ object TurnFixtures {
           TurnPrompt.Candour,
           TurnPrompt.Answering,
           TurnPrompt.edge(origin),
-          TurnPrompt.reach(Some(Place.of(checkout)), ToolSet.Empty)
+          TurnPrompt.reach(Some(Place.of(checkout)), TurnPrompt.Serving.Unserved)
         ) ++
           Voice.fragment(Voice.Default)
       )

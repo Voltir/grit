@@ -172,18 +172,30 @@ object TurnPrompt {
     case _: Origin.Tui | _: Origin.Task => None
   }
 
-  /** What a turn may reach in `workspace`: `tools`, the tools served in a directory, which
-    * act on it (and, when some ask first, that calling one is how the person is asked); or
-    * at a service place, that the tools served there run at that service; nothing, and why,
-    * when none are served there, or when the conversation has no workspace (a place neither a directory nor a
-    * service reads as none). Worded by workspace, never by what serves it, so another edge
-    * serving the same one leaves the prompt the same.
+  /** What a turn may reach in `workspace`, as `serving` says: the tools offered in a
+    * directory act on it (and, when some ask first, calling one is how the person is asked); at
+    * a service place, the tools offered run at that service. Said instead: that nothing serves
+    * it, when no edge does; that its tools are not available in this conversation, when one
+    * does and none is offered (the conversation's labels allow none), naming only the directory
+    * or the service; that it has no workspace, when the conversation has none (a place neither
+    * a directory nor a service reads as none). Worded by workspace, never by what serves it,
+    * so another edge serving the same one leaves the prompt the same.
     */
-  def reach(workspace: Option[Place], tools: ToolSet): Fragment = {
+  def reach(workspace: Option[Place], serving: Serving): Fragment = {
+    val tools = serving match {
+      case Serving.Unserved => ToolSet.Empty
+      case Serving.Offering(set) => set
+    }
+    val served = serving != Serving.Unserved
     val text = (workspace.flatMap(_.directory), workspace.flatMap(_.service)) match {
       case (Some(dir), _) if tools.tools.isEmpty =>
-        s"Nothing is serving the directory ${Directory.value(dir)} right now, so you cannot " +
-          "read or change files there or run commands."
+        // Served, the conversation's labels allow nothing of it: never said why, which would
+        // name a label.
+        (if (served)
+           s"The tools of the directory ${Directory.value(dir)} are not available in this " +
+             "conversation, so you "
+         else s"Nothing is serving the directory ${Directory.value(dir)} right now, so you ") +
+          "cannot read or change files there or run commands."
       case (Some(dir), _) =>
         val asks =
           if (tools.tools.exists(_.asks))
@@ -191,7 +203,8 @@ object TurnPrompt {
           else ""
         s"Your file and command tools act on the directory ${Directory.value(dir)}.$asks"
       case (None, Some(service)) if tools.tools.isEmpty =>
-        s"Nothing is serving ${service.name} right now, so its tools are not offered."
+        if (served) s"The tools of ${service.name} are not available in this conversation."
+        else s"Nothing is serving ${service.name} right now, so its tools are not offered."
       case (None, Some(service)) =>
         s"This conversation works in ${service.name}: the tools served there are offered to " +
           s"you, and calling one runs it at ${service.name}."
@@ -199,6 +212,18 @@ object TurnPrompt {
         "This conversation has no directory, so you cannot read or change files or run commands."
     }
     Fragment(Layer.Reach, Fragment.Grit, text)
+  }
+
+  /** Whether an edge serves a turn's workspace now, and what of it the turn is offered. */
+  enum Serving {
+
+    /** No edge serves it. */
+    case Unserved
+
+    /** An edge serves it, and the turn is offered `tools` of what it advertises: none when
+      * the conversation's labels allow none.
+      */
+    case Offering(tools: ToolSet)
   }
 
   /** What a turn is told of `service`, a service it reaches besides its workspace

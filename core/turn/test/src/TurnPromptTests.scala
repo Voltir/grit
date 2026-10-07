@@ -130,14 +130,28 @@ object TurnPromptTests extends TestSuite {
     }
 
     test("reach says what is reachable in the directory, by directory, and why nothing is") {
-      TurnPrompt.reach(Some(Place.of(dir)), set(false, true)).text ==>
+      TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(set(false, true))).text ==>
         "Your file and command tools act on the directory /work/api. Calling one that changes something is how the person is asked to approve it."
-      TurnPrompt.reach(Some(Place.of(dir)), set(false)).text ==>
+      TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(set(false))).text ==>
         "Your file and command tools act on the directory /work/api."
-      TurnPrompt.reach(Some(Place.of(dir)), ToolSet.Empty).text ==>
+      TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Unserved).text ==>
         "Nothing is serving the directory /work/api right now, so you cannot read or change files there or run commands."
-      TurnPrompt.reach(None, set(false)).text ==>
+      TurnPrompt.reach(None, TurnPrompt.Serving.Offering(set(false))).text ==>
         "This conversation has no directory, so you cannot read or change files or run commands."
+    }
+
+    test(
+      "reach, where an edge serves the workspace and none of its tools is offered, says they are not available here, naming only the directory or service"
+    ) {
+      val github = Place.under(Namespace.Service, Vector("github"))
+      (
+        TurnPrompt.reach(Some(github), TurnPrompt.Serving.Offering(ToolSet.Empty)).text,
+        TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Offering(ToolSet.Empty)).text
+      ) ==> (
+        "The tools of github are not available in this conversation.",
+        "The tools of the directory /work/api are not available in this conversation, so you " +
+          "cannot read or change files there or run commands."
+      )
     }
 
     test(
@@ -155,11 +169,11 @@ object TurnPromptTests extends TestSuite {
           )
         })
         .getOrElse(throw new java.lang.AssertionError())
-      TurnPrompt.reach(Some(github), tools).text ==>
+      TurnPrompt.reach(Some(github), TurnPrompt.Serving.Offering(tools)).text ==>
         "This conversation works in github: the tools served there are offered to you, and calling one runs it at github."
-      TurnPrompt.reach(Some(github), ToolSet.Empty).text ==>
+      TurnPrompt.reach(Some(github), TurnPrompt.Serving.Unserved).text ==>
         "Nothing is serving github right now, so its tools are not offered."
-      TurnPrompt.reach(Some(Place.under(Namespace.Slack, Vector("T1"))), tools).text ==>
+      TurnPrompt.reach(Some(Place.under(Namespace.Slack, Vector("T1"))), TurnPrompt.Serving.Offering(tools)).text ==>
         "This conversation has no directory, so you cannot read or change files or run commands."
     }
 
@@ -182,7 +196,7 @@ object TurnPromptTests extends TestSuite {
 
     test("each layer's fragment is in its layer, in grit's words") {
       val origin = Origin.Tui(dir, "s")
-      Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(None, ToolSet.Empty))
+      Vector(TurnPrompt.Base, TurnPrompt.edge(origin), TurnPrompt.reach(None, TurnPrompt.Serving.Unserved))
         .map(f => (f.layer, f.source)) ==>
         Vector((Layer.Base, "grit"), (Layer.Edge, "grit"), (Layer.Reach, "grit"))
     }

@@ -82,7 +82,8 @@ object TurnOffer {
     * them), then `tooling`'s own, then its operator tools when
     * its origin is the operator's ([[grit.core.store.Audience.operator]]). A service place, its
     * workspace or one it reaches, offers nothing when the turn does not read from it
-    * ([[grit.core.store.Tx.readsFrom]]), as if no edge served it, and its tools that declare
+    * ([[grit.core.store.Tx.readsFrom]]): a reached one is not named, and of a workspace an edge
+    * serves the prompt says only that its tools are not available ([[TurnPrompt.Serving]]); and its tools that declare
     * no destination only when the turn also sends to it ([[grit.core.store.Tx.sendsTo]]):
     * their arguments go to it. An advertised tool that writes
     * ([[grit.core.tool.ToolSet.Entry.writes]]) is offered only the places the turn writes to,
@@ -143,10 +144,11 @@ object TurnOffer {
       }
       shaping = tooling.recipe.at(rooted)
       workspace = workspaceOf(conversation.origin, tooling.worksIn)
-      // A workspace the turn does not read from is as if no edge served it.
-      advert <- workspace
-        .filter(Tx.readsFrom(_))
-        .fold[Either[StoreError, Option[Advert]]](Right(None))(hosting.edges.serving)
+      servedAt <- workspace.fold[Either[StoreError, Option[Advert]]](Right(None))(
+        hosting.edges.serving
+      )
+      // Nothing of a workspace the turn does not read from is taken, as if no edge served it.
+      advert = servedAt.filter(_ => workspace.exists(Tx.readsFrom(_)))
       served <- advert.fold[Either[StoreError, ToolSet]](Right(ToolSet.Empty))(a =>
         hosting.toolSets.get(a.tools)
       )
@@ -197,7 +199,12 @@ object TurnOffer {
         ) ++ TurnPrompt.destination(conversation.origin) ++
           TurnPrompt.called(tooling.persona, conversation.origin) ++
           unasked ++
-          Option.when(kept)(TurnPrompt.reach(workspace, hostedSet)) ++
+          Option.when(kept)(
+            TurnPrompt.reach(
+              workspace,
+              servedAt.fold(TurnPrompt.Serving.Unserved)(_ => TurnPrompt.Serving.Offering(hostedSet))
+            )
+          ) ++
           offeredReaching.flatMap((service, set) => TurnPrompt.reached(service, set)) ++
           Voice.fragment(voice) ++ place.fragments
       )

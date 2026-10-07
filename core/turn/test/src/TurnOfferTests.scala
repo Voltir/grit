@@ -330,7 +330,7 @@ object TurnOfferTests extends TestSuite {
           TurnPrompt.edge(origin)
         ) ++
           TurnPrompt.destination(origin) ++ TurnPrompt.called(persona, origin) :+
-          TurnPrompt.reach(None, ToolSet.Empty)
+          TurnPrompt.reach(None, TurnPrompt.Serving.Unserved)
       )
       .render
 
@@ -496,14 +496,18 @@ object TurnOfferTests extends TestSuite {
     }
 
     test(
-      "a service above the asker's clearance, or unplaced, offers nothing and is not named in the prompt; a workspace so is as if no edge served it"
+      "a service above the asker's clearance, or unplaced, offers nothing and is not named in the prompt; a workspace so offers nothing, its tools said not to be available here"
     ) {
       val (recorded, set, prompt) = inSlack(inTrial(Label.Public))
       namesOf(set) ==> Vector("about")
       recorded.advertised ==> Vector.empty
       recorded.reached ==> Map.empty
       assert(!prompt.contains("vault"), !prompt.contains("attic"), !prompt.contains("elsewhere"))
-      assert(prompt.contains(TurnPrompt.reach(Some(github.place), ToolSet.Empty).text))
+      assert(
+        prompt.contains(
+          TurnPrompt.reach(Some(github.place), TurnPrompt.Serving.Offering(ToolSet.Empty)).text
+        )
+      )
     }
 
     test(
@@ -588,7 +592,7 @@ object TurnOfferTests extends TestSuite {
         "Your reply is posted in this thread and nowhere else. You can post anywhere else " +
           "only by calling a tool that does it, and only if one is offered to you.",
         "In this workspace you are called grit.",
-        TurnPrompt.reach(None, ToolSet.Empty).text
+        TurnPrompt.reach(None, TurnPrompt.Serving.Unserved).text
       ).mkString("\n\n")
       val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
       val tui = Origin.Tui(dir, "default")
@@ -597,7 +601,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Candour.text,
         TurnPrompt.Answering.text,
         TurnPrompt.edge(tui).text,
-        TurnPrompt.reach(Some(Place.of(dir)), ToolSet.Empty).text
+        TurnPrompt.reach(Some(Place.of(dir)), TurnPrompt.Serving.Unserved).text
       ).mkString("\n\n")
     }
 
@@ -641,7 +645,7 @@ object TurnOfferTests extends TestSuite {
             TurnPrompt.edge(slack)
           ) ++
             TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++
-            Vector(TurnPrompt.unprompted, TurnPrompt.reach(None, ToolSet.Empty))
+            Vector(TurnPrompt.unprompted, TurnPrompt.reach(None, TurnPrompt.Serving.Unserved))
         )
         .render
     }
@@ -734,7 +738,7 @@ object TurnOfferTests extends TestSuite {
         TurnPrompt.Answering,
         TurnPrompt.edge(slack)
       ) ++ TurnPrompt.destination(slack) ++ TurnPrompt.called(Persona.Grit, slack) ++ Vector(
-        TurnPrompt.reach(Some(github.place), set(advert("github_search")))
+        TurnPrompt.reach(Some(github.place), TurnPrompt.Serving.Offering(set(advert("github_search"))))
       ) ++ TurnPrompt.reached(elsewhere, set(advert("post_x")))).map(_.text).mkString("\n\n")
     }
 
