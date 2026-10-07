@@ -1,8 +1,10 @@
 package grit.dbos.engine
 
+import java.sql.DriverManager
 import java.time.Instant
 
 import scala.concurrent.duration.*
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Using
 
 import grit.core.clock.SetClock
@@ -20,9 +22,9 @@ import grit.core.identity.{Account, DeclaredPerson, Handle, Identities, TestAcco
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.{booking, hour}
 import grit.core.job.{DeskRefusal, ScheduleContract, ScheduleDesk, When}
-import grit.core.store.{Origin, Tx}
+import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, Subject, TestLabels}
-import grit.dbos.sql.{DbConfig, LiveDb, Opener, SqlRoomReads, TestPostgres}
+import grit.dbos.sql.{DbConfig, LiveDb, Opener, SqlLinks, SqlRoomReads, TestPostgres}
 
 import utest.*
 
@@ -289,5 +291,69 @@ object DeclarationLiveTests extends TestSuite {
         d.pending(TestCallSlots.at(from, index = 1), booking(remind)).map(_.schedules.map(_.id))
       (listed(same), listed(lower)) ==> (Right(Vector(id)), Right(Vector()))
     }
+
+    test(
+      "an ask beside a merge of its asker waits for it, then writes nothing and says to ask again; asked again, it is the declared person's"
+    ) {
+      val (u, config) = SqlSchedulesUnder.withConfig("declaration_beside")
+      val thread = u.turn("8.0")
+      u.asking(thread, ana, Some("C1/8.0"))
+      val d = desk(u)
+      def ask(index: Int) =
+        d.ask(
+          TestCallSlots.at(thread, index = index),
+          booking(remind),
+          When.In(1.hour),
+          hour,
+          Count(index)
+        )
+      given ExecutionContext = ExecutionContext.global
+      // The merge's transaction holds the home's lock until an ask waits on it, then commits.
+      val beside = LiveDb.transaction(config) {
+        SqlLinks
+          .reconcile(declaring("ana" -> Set(ana)))
+          .fold(e => sys.error(s"merging: $e"), identity)
+        val asking = Future(ask(1))
+        waitingOnALock(config)
+        asking
+      }
+      val refused = Await.result(beside, 30.seconds)
+      val unwritten = rows(config, "SELECT count(*) FROM grit.schedules")
+      val again = ask(2).map(_.id)
+      val person = declared(config, "ana")
+      (
+        refused,
+        unwritten,
+        again.map(id =>
+          rows(config, "SELECT principal FROM grit.schedules WHERE id = ?", ScheduleId.value(id))
+        )
+      ) ==> (
+        Left(
+          DeskRefusal.Unavailable(
+            StoreError.Invalid("the asker was merged into a declared person; ask again")
+          )
+        ),
+        Vector(Vector(Some("0"))),
+        Right(Vector(Vector(person)))
+      )
+    }
   }
+
+  /** Returns once a transaction on `config`'s database waits on a lock; throws after 10 s. */
+  private def waitingOnALock(config: DbConfig): Unit =
+    Using.resource(DriverManager.getConnection(config.jdbcUrl, config.user, config.password)) {
+      conn =>
+        def waiting(): Boolean =
+          Using.resource(
+            conn.prepareStatement(
+              """SELECT 1 FROM pg_stat_activity
+                | WHERE datname = current_database() AND wait_event_type = 'Lock'""".stripMargin
+            )
+          )(ps => Using.resource(ps.executeQuery())(_.next()))
+        // Every 20 ms, 500 times.
+        val came = Iterator.range(0, 500).exists { _ =>
+          waiting() || { Thread.sleep(20); false }
+        }
+        if (!came) sys.error("no transaction came to wait on a lock")
+    }
 }

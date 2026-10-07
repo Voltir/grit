@@ -20,7 +20,9 @@ final case class Pending[P <: caps.Pure](now: Instant, schedules: Vector[Asked[P
   * [[grit.core.store.Origin.edge]]); kept under the id its call makes
   * ([[grit.core.id.ScheduleId.asked]]); and the asker's alone to list and cancel. A desk holds
   * its plugin's job names, and refuses a booking of any other job with
-  * [[DeskRefusal.NotOwn]]. Every method is [[DeskRefusal.Unavailable]] when the store fails.
+  * [[DeskRefusal.NotOwn]]. Every method is [[DeskRefusal.Unavailable]] when the store fails,
+  * and when a deployment's declaration merged the asker into another person while it ran;
+  * asked again, it is that person's.
   */
 trait ScheduleDesk extends caps.SharedCapability {
 
