@@ -1,6 +1,7 @@
 package grit.core.visibility
 
 import grit.core.id.PrincipalId
+import grit.core.place.Service
 
 import utest.*
 import TestLabels.{compartment, group, place}
@@ -11,6 +12,9 @@ object VisibilityTests extends TestSuite {
   private val acme = compartment("acme")
   private val compartments =
     Compartments.of(Vector(trial, acme)).fold(c => throw new java.lang.AssertionError(c), identity)
+
+  private val github = Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
+  private val jira = Service.of("jira").fold(e => throw new java.lang.AssertionError(e), identity)
 
   private val ana = PrincipalId("ana")
   private val bo = PrincipalId("bo")
@@ -93,6 +97,38 @@ object VisibilityTests extends TestSuite {
         groups,
         grants :+ Grant(group("nobody"), Label.at(Level.Internal))
       ) ==> Left(VisibilityRefusal.NoSuchGroup(group("nobody")))
+    }
+
+    test("a service is trusted with its declared label, and with public when none is declared") {
+      val trusted = Visibility
+        .of(
+          compartments,
+          RoomLabels.Public,
+          groups,
+          grants,
+          Vector(Trust(github, Label.at(Level.Confidential, trial)))
+        )
+        .map(v => (v.trusted(github), v.trusted(jira)))
+      trusted ==> Right((Label.at(Level.Confidential, trial), Label.Public))
+      Visibility.Shipped.trusted(github) ==> Label.Public
+    }
+
+    test("a trust naming an undeclared compartment, or a service trusted twice, is refused") {
+      val finance = compartment("finance")
+      Visibility.of(
+        compartments,
+        RoomLabels.Public,
+        groups,
+        grants,
+        Vector(Trust(github, Label.at(Level.Internal, trial, finance)))
+      ) ==> Left(VisibilityRefusal.Undeclared(Namer.Trusted(github), finance))
+      Visibility.of(
+        compartments,
+        RoomLabels.Public,
+        groups,
+        grants,
+        Vector(Trust(github, Label.at(Level.Internal)), Trust(github, Label.Public))
+      ) ==> Left(VisibilityRefusal.TrustedTwice(github))
     }
   }
 }

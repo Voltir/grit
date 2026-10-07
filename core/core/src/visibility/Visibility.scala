@@ -1,17 +1,18 @@
 package grit.core.visibility
 
 import grit.core.id.PrincipalId
-import grit.core.place.Place
+import grit.core.place.{Place, Service}
 
 /** What a deployment injects into core about who may see what (ADR 0030): its
   * compartments, the labeller of its rooms, its groups and what each group's members are
-  * cleared for.
+  * cleared for, and what it trusts each outside service with.
   */
 final case class Visibility private (
     compartments: Compartments,
     rooms: Labeller[Place],
     groups: Vector[Group],
-    grants: Vector[Grant]
+    grants: Vector[Grant],
+    trusts: Vector[Trust]
 ) {
 
   /** `person`'s clearance: the join of the grants of every group they are in, or
@@ -34,25 +35,38 @@ final case class Visibility private (
     * an injected labeller's answers are not known before it runs.
     */
   def labelled: Boolean = rooms != RoomLabels.Public
+
+  /** What `service` is trusted with: its declared trust's label; [[Label.Public]] when none is
+    * declared.
+    */
+  def trusted(service: Service): Label =
+    trusts.find(_.service == service).fold(Label.Public)(_.label)
 }
 
 object Visibility {
 
-  /** No compartment but unmapped, every room public, no group: every label is public, so
-    * every reader reads what it read before labels existed.
+  /** No compartment but unmapped, every room public, no group, no service trusted above
+    * public: every label is public, so every reader reads what it read before labels existed.
     */
   val Shipped: Visibility =
-    new Visibility(Compartments.Shipped, RoomLabels.Public, Vector.empty, Vector.empty)
+    new Visibility(
+      Compartments.Shipped,
+      RoomLabels.Public,
+      Vector.empty,
+      Vector.empty,
+      Vector.empty
+    )
 
   /** These, or the first mistake: a compartment `compartments` does not declare, named by a
-    * declared room label, `rooms.requires` or a grant (`Undeclared`, saying where); two groups
-    * of one name; or a grant to a group not declared.
+    * declared room label, `rooms.requires`, a grant or a trust (`Undeclared`, saying where);
+    * two groups of one name; a grant to a group not declared; or a service trusted twice.
     */
   def of(
       compartments: Compartments,
       rooms: Labeller[Place],
       groups: Vector[Group],
-      grants: Vector[Grant]
+      grants: Vector[Grant],
+      trusts: Vector[Trust] = Vector.empty
   ): Either[VisibilityRefusal, Visibility] = {
     def undeclared(namer: Namer, label: Label): Option[VisibilityRefusal] =
       compartments.undeclared(label).map(VisibilityRefusal.Undeclared(namer, _))
@@ -79,7 +93,12 @@ object Visibility {
             .find(g => !names.contains(g.group))
             .map(g => VisibilityRefusal.NoSuchGroup(g.group))
         )
-    refusal.toLeft(new Visibility(compartments, rooms, groups, grants))
+        .orElse(trusts.flatMap(t => undeclared(Namer.Trusted(t.service), t.label)).headOption)
+        .orElse {
+          val services = trusts.map(_.service)
+          services.diff(services.distinct).headOption.map(VisibilityRefusal.TrustedTwice(_))
+        }
+    refusal.toLeft(new Visibility(compartments, rooms, groups, grants, trusts))
   }
 }
 
@@ -97,6 +116,9 @@ enum Namer {
 
   /** A grant to `group`. */
   case Granted(group: GroupName)
+
+  /** The trust of `service`. */
+  case Trusted(service: Service)
 }
 
 /** Why a deployment's [[Visibility]] is refused. */
@@ -110,4 +132,13 @@ enum VisibilityRefusal {
 
   /** A grant is to `group`, which no declared group is named. */
   case NoSuchGroup(group: GroupName)
+
+  /** Two trusts name `service`. */
+  case TrustedTwice(service: Service)
 }
+
+/** The deployment trusts `service` with `label`: what a turn may send it as a call's arguments
+  * is at most this ([[grit.core.store.Tx.sendsTo]]). What it contains is its place's label,
+  * given as any room's.
+  */
+final case class Trust(service: Service, label: Label)

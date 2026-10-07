@@ -105,6 +105,10 @@ part is declared data or a pure function:
   at `unmapped` instead, so what a mapping invents is read by fewer people, never more.
 - `groups` and `grants`: people grouped by principal, and what each group's members are
   cleared for.
+- `trusts`: what each outside service (`service:{name}`) is trusted with, as a label;
+  public for a service it does not name. It is the most a turn may send the service as a
+  call's arguments. What the service contains is another label, its place's, given by
+  `rooms` as any room's. Grants clear people, trusts clear services, and rooms label content.
 
 Every other part of a deployment that names a compartment declares it, and `Deployment.of`
 refuses one the visibility does not declare: a plugin's `compartments`, an edge's

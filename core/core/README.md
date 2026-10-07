@@ -34,8 +34,8 @@ In dependency order:
   stored as, which only this package and `grit.dbos` may name (enola-intent.yaml);
   `Compartments`, a deployment's closed set; `Labelled` and `Labeller`, how a source labels what it brings in, and `RoomLabels`, a
   deployment's declared labels for rooms; `GroupName`, `Group`, `Grant` and `Memberships`, who
-  is cleared for what; `Visibility`, all of it as a deployment injects it, refused as a
-  `VisibilityRefusal`; `Item`, a labelled row as reading it is decided; `Clearance`, what a
+  is cleared for what; `Trust`, what a deployment trusts an outside service with; `Visibility`, all of it as a
+  deployment injects it, refused as a `VisibilityRefusal`; `Item`, a labelled row as reading it is decided; `Clearance`, what a
   transaction reads and the least label it writes at; `Subject`, whom it is opened for; and
   `Maintenance`, `grit.dbos`'s own clearance. ← `id`, `place`
 - **`prompt`** — a turn's system prompt as ordered fragments (ADR 0016): `Layer` (base,
