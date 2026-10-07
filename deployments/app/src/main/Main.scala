@@ -557,7 +557,7 @@ object Main {
             .read(raw)
             .map(ids + _)
             .toRight(
-              s"$ListenVar: $raw is not a channel id (C…, as Slack's channel details show it)"
+              s"$ListenVar: $raw is not a channel id (C… or G…, as Slack's channel details show it)"
             )
         )
       }

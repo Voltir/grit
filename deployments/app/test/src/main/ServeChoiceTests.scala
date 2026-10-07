@@ -44,7 +44,7 @@ object ServeChoiceTests extends TestSuite {
     test("a listened channel that is not a channel id is refused, naming it") {
       Main.listening(Map("GRIT_SLACK_LISTEN" -> "C123ABC456, #general")) ==>
         Left(
-          "GRIT_SLACK_LISTEN: #general is not a channel id (C…, as Slack's channel details show it)"
+          "GRIT_SLACK_LISTEN: #general is not a channel id (C… or G…, as Slack's channel details show it)"
         )
     }
 
