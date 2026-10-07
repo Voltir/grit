@@ -7,7 +7,9 @@
 #   scripts/check --it                             # the same, and the integration tier
 #   scripts/check grit.core                        # one module's unit tests (testCached)
 #   scripts/check grit.core.speech.SpeechTests     # one suite (testOnly)
-#   scripts/check grit.dbos.it                     # an `it` module or suite, through scripts/it
+#   scripts/check grit.dbos.it                     # an `it` module, through scripts/it
+#   scripts/check grit.dbos.engine.CloseLiveTests  # one `it` suite: its full name, as above, never
+#                                                  # `grit.dbos.it.testOnly <Suite>`
 #
 # Tiers, with no target:
 #   unit  ./mill __.test.testCached: reruns a module's suites only when their inputs changed;
