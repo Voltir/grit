@@ -110,6 +110,40 @@ object ConversationRoomsLiveTests extends TestSuite {
         (Vector("1"), Vector("0"), Vector("0"))
     }
 
+    test("a room a document was kept in stays when its last conversation goes") {
+      val store = new SqlConversationStore()
+      val c = LiveDb.conversation(config, Origin.Slack("T", "kept", "1.0")).id
+      rows(
+        """INSERT INTO grit.documents (plugin, key, place, body, written_at, last_placed, room_id)
+          |SELECT 'digest', 'room:kept', '{}', 'lines', now(), now(), id
+          |  FROM grit.places WHERE path = '{slack,T,kept}' RETURNING version""".stripMargin
+      ).size ==> 1
+      LiveDb.transaction(config)(store.remove(c)) ==> Right(())
+      (place("slack/T/kept"), place("slack/T/kept/1.0")) ==> (Vector("1"), Vector("0"))
+    }
+
+    test("a key has one current document per label, and only one at each") {
+      def write(label: String): Either[String, Int] =
+        try
+          Right(
+            rows(
+              s"""INSERT INTO grit.documents (plugin, key, place, body, written_at, last_placed, label_id)
+                 |VALUES ('digest', 'room:labelled', '{}', 'lines', now(), now(), $label)
+                 |RETURNING version""".stripMargin
+            ).size
+          )
+        catch {
+          case scala.util.control.NonFatal(e) =>
+            Left(
+              Option(e.getMessage)
+                .filter(_.contains("idx_documents_current"))
+                .fold("other")(_ => "idx_documents_current")
+            )
+        }
+      val other = rows("SELECT grit.intern_label(ROW(1, '{trial}')::grit.label)").mkString
+      (write("1"), write(other), write("1")) ==> (Right(1), Right(1), Left("idx_documents_current"))
+    }
+
     test(
       "the migration's room for an existing conversation is the one the store writes, for every kind of origin"
     ) {

@@ -26,7 +26,8 @@ trait ConversationStore {
   def postedBy(conversation: ConversationId)(using Tx^): Either[StoreError, Option[CallSlot]]
 
   /** Deletes `conversation` with its entries, periods, verdicts and reviews, and its place and
-    * its room when no other conversation is in either; nothing when it is gone already. Its usage,
+    * its room when no other conversation is in either and no document was kept in the room;
+    * nothing when it is gone already. Its usage,
     * profiles and documents are the caller's to delete.
     */
   def remove(conversation: ConversationId)(using Tx^): Either[StoreError, Unit]

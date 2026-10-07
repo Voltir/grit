@@ -329,7 +329,8 @@ private object SqlDocuments {
         ps.setString(1, PluginName.value(plugin))
         ps.setString(2, DocKey.value(key))
       }(versionOf).flatMap { (found: Vector[DocumentVersion]) =>
-        // At most one: idx_documents_current.
+        // At most one: idx_documents_current allows one per label, and every version is
+        // written at public (label_id's default) while no write names a label.
         found.headOption match {
           case None => Right(None)
           case Some(current) =>

@@ -151,8 +151,8 @@ $$;
 -- place is recorded with its first conversation, from that conversation's origin
 -- (Origin.place), and never changes; so is a conversation's room (Origin.room). Which place is
 -- within which is Place.within's alone: nothing here tests it.
--- Retention: ledger: deleted when no conversation names it by place_id or room_id
--- (Target.Quiet).
+-- Retention: ledger: deleted when no conversation names it by place_id or room_id, and no
+-- document by room_id (Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.places (
     id   UUID PRIMARY KEY DEFAULT uuidv7(),
     path TEXT[] NOT NULL UNIQUE
@@ -762,6 +762,7 @@ CREATE TABLE IF NOT EXISTS grit.plugin_docs (
     key        TEXT NOT NULL,
     doc        JSONB NOT NULL,
     source     BIGINT NOT NULL,
+    label_id   SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.labels(id),
     PRIMARY KEY (plugin, generation, key)
 );
 
@@ -785,8 +786,10 @@ CREATE TABLE IF NOT EXISTS grit.plugin_cursors (
 -- goes with its last conversation). `body` is what a window shows and what DocumentSearch
 -- ranks; `data` is the plugin's own, never shown or searched. `placed` and `last_placed`
 -- count the windows that held it (DocumentStore.placed); `last_placed` starts at `written_at`.
+-- `label_id` is the label it is kept at (ADR 0030), and a key has one current version per
+-- label; `room_id` the room it was kept in (grit.core.visibility.Item.Kept), NULL for none.
 -- Writes to one plugin's documents are serialized by its posting; a concurrent write to one
--- key fails on idx_documents_current.
+-- key at one label fails on idx_documents_current.
 -- Retention: ledger: a version no longer current, its plugin's declared retention after
 -- (Target.Document); every version of a plugin no longer enabled (Target.Disabled).
 CREATE TABLE IF NOT EXISTS grit.documents (
@@ -800,10 +803,12 @@ CREATE TABLE IF NOT EXISTS grit.documents (
     written_at    TIMESTAMPTZ NOT NULL,
     superseded_at TIMESTAMPTZ,
     placed        BIGINT NOT NULL DEFAULT 0,
-    last_placed   TIMESTAMPTZ NOT NULL
+    last_placed   TIMESTAMPTZ NOT NULL,
+    label_id      SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.labels(id),
+    room_id       UUID REFERENCES grit.places(id)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_current ON grit.documents (plugin, key)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_current ON grit.documents (plugin, key, label_id)
     WHERE superseded_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_documents_plugin ON grit.documents (plugin, written_at);
 -- Its own statistics, apart from the entries' (ADR 0005): scores are scaled by each plugin's
