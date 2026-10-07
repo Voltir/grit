@@ -138,10 +138,11 @@ abstract class StoreContract extends TestSuite {
 
     test("list is one conversation's entries by seq, whatever order they were inserted in") {
       val c = conversation("order")
+      val other = conversation("order-other")
       transaction {
         entries.insert(entry(c, "order-3", 7))
         entries.insert(entry(c, "order-1", 2))
-        entries.insert(entry(conversation("order-other"), "not-mine", 4))
+        entries.insert(entry(other, "not-mine", 4))
         entries.insert(entry(c, "order-2", 5))
       }
       ids(transaction(entries.list(c))) ==> Right(Vector("order-1", "order-2", "order-3"))
@@ -153,11 +154,12 @@ abstract class StoreContract extends TestSuite {
 
     test("at gives a conversation's entries ascending, once each, leaving out seqs with none") {
       val c = conversation("at")
+      val other = conversation("at-other")
       transaction {
         entries.insert(entry(c, "at-7", 7))
         entries.insert(entry(c, "at-2", 2))
         entries.insert(entry(c, "at-5", 5))
-        entries.insert(entry(conversation("at-other"), "not-mine", 4))
+        entries.insert(entry(other, "not-mine", 4))
       }
       val seqs = Vector(7L, 4L, 2L, 9L, 7L).map(EntrySeq(_))
       ids(transaction(entries.at(c, seqs))) ==> Right(Vector("at-2", "at-7"))
@@ -165,12 +167,13 @@ abstract class StoreContract extends TestSuite {
 
     test("ofTurn is one turn's entries ascending, and empty for a turn with none") {
       val c = conversation("of-turn")
+      val other = conversation("of-turn-other")
       transaction {
         entries.insert(entry(c, "of-turn-1b", 6, TurnSeq(1)))
         entries.insert(entry(c, "of-turn-0", 1, TurnSeq(0)))
         entries.insert(entry(c, "of-turn-1a", 3, TurnSeq(1)))
         entries.insert(entry(c, "of-turn-2", 8, TurnSeq(2)))
-        entries.insert(entry(conversation("of-turn-other"), "not-mine", 4, TurnSeq(1)))
+        entries.insert(entry(other, "not-mine", 4, TurnSeq(1)))
       }
       ids(transaction(entries.ofTurn(TurnRef(c, TurnSeq(1))))) ==>
         Right(Vector("of-turn-1a", "of-turn-1b"))
@@ -180,10 +183,11 @@ abstract class StoreContract extends TestSuite {
     test("lockNext is the start of an empty conversation, and past everything in one") {
       val c = conversation("next")
       transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq.First, EntrySeq.First))
+      val other = conversation("next-other")
       transaction {
         entries.insert(entry(c, "late", 4, TurnSeq(2)))
         entries.insert(entry(c, "early", 1, TurnSeq(0)))
-        entries.insert(entry(conversation("next-other"), "beyond", 9, TurnSeq(5)))
+        entries.insert(entry(other, "beyond", 9, TurnSeq(5)))
       }
       transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq(3), EntrySeq(5)))
     }

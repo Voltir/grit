@@ -17,50 +17,68 @@ final class SqlConversationStore extends ConversationStore {
       origin: Origin,
       by: PrincipalId,
       label: Label
-  )(using tx: Tx^): Either[StoreError, Conversation] = {
-    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    // A no-op DO UPDATE, not DO NOTHING, so RETURNING yields the row whether it was inserted or
-    // already there: one statement, correct under any isolation. Its place and its room go in
-    // first the same way, in one insert (they are one row for a directory's session), their
-    // paths sent as JSON so no Java array crosses JDBC. The label is interned before, so the
-    // statement can read its row back.
-    val sql =
-      s"""WITH wanted (kind, path) AS (
-         |  VALUES ('place', ARRAY(SELECT jsonb_array_elements_text(?::jsonb))),
-         |         ('room', ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))),
-         |placed AS (
-         |  INSERT INTO grit.places (path) SELECT DISTINCT path FROM wanted
-         |  ON CONFLICT (path) DO UPDATE SET path = EXCLUDED.path
-         |  RETURNING id, path),
-         |made AS (
-         |  INSERT INTO grit.conversations (origin, place_id, room_id, created_by, label_id)
-         |  SELECT ?::jsonb, p.id, r.id, ?, ?
-         |    FROM wanted wp JOIN placed p ON p.path = wp.path,
-         |         wanted wr JOIN placed r ON r.path = wr.path
-         |   WHERE wp.kind = 'place' AND wr.kind = 'room'
-         |  ON CONFLICT (origin) DO UPDATE SET origin = EXCLUDED.origin
-         |  RETURNING id, created_by, created_at, label_id)
-         |SELECT made.id, made.created_by, made.created_at, ${SqlLabels.columns("l")}
-         |  FROM made JOIN grit.labels l ON l.id = made.label_id""".stripMargin
-    SqlLabels.intern(label).flatMap { interned =>
-      attempt {
-        Using.resource(conn.prepareStatement(sql)) { ps =>
-          ps.setString(1, ujson.Arr.from(origin.place.segments.map(ujson.Str(_))).render())
-          ps.setString(2, ujson.Arr.from(origin.room.segments.map(ujson.Str(_))).render())
-          ps.setString(3, SqlConversationStore.originJson(origin).render())
-          ps.setString(4, PrincipalId.value(by))
-          ps.setInt(5, interned)
-          Using.resource(ps.executeQuery()) { rs =>
-            rs.next()
-            Conversation(
-              id = ConversationId(rs.getString("id")),
-              origin = origin,
-              createdBy = PrincipalId(rs.getString("created_by")),
-              createdAt = rs.getObject("created_at", classOf[OffsetDateTime]).toInstant,
-              label = SqlLabels.read(rs)
+  )(using tx: Tx^): Either[StoreError, Conversation] =
+    find(origin).flatMap {
+      case Some(found) => Right(found)
+      case None =>
+        for {
+          interned <- SqlLabels.intern(label)
+          _ <- created(origin, by, interned)
+          // Read committed: this statement sees the conversation whichever insert made it.
+          made <- find(origin)
+          conversation <- made.toRight(
+            StoreError.Invalid(
+              s"the conversation of ${SqlConversationStore.originJson(origin)} was not made"
             )
-          }
-        }
+          )
+        } yield conversation
+    }
+
+  /** `origin`'s conversation inserted, with its place and its room, unless there already. Every
+    * insert is `ON CONFLICT DO NOTHING`, never `DO UPDATE`: an update would lock the existing
+    * row, and a transaction writing a second entry to another conversation in the room holds a
+    * key-share lock on that room's row (and on the conversation's, when it is this one) until it
+    * commits, so making or finding a conversation would wait on whatever else that transaction
+    * does. A concurrent insert of the same row is waited for, and its row kept. Paths go as JSON,
+    * so no Java array crosses JDBC.
+    */
+  private def created(origin: Origin, by: PrincipalId, label: Int)(using
+      tx: Tx^
+  ): Either[StoreError, Unit] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    def path(place: grit.core.place.Place): String =
+      ujson.Arr.from(place.segments.map(ujson.Str(_))).render()
+    attempt {
+      Using.resource(
+        conn.prepareStatement(
+          """INSERT INTO grit.places (path)
+            |SELECT DISTINCT path
+            |  FROM (VALUES (ARRAY(SELECT jsonb_array_elements_text(?::jsonb))),
+            |               (ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))) AS wanted (path)
+            |ON CONFLICT (path) DO NOTHING""".stripMargin
+        )
+      ) { ps =>
+        ps.setString(1, path(origin.place))
+        ps.setString(2, path(origin.room))
+        ps.executeUpdate()
+      }
+      Using.resource(
+        conn.prepareStatement(
+          """INSERT INTO grit.conversations (origin, place_id, room_id, created_by, label_id)
+            |SELECT ?::jsonb, p.id, r.id, ?, ?
+            |  FROM grit.places p, grit.places r
+            | WHERE p.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
+            |   AND r.path = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
+            |ON CONFLICT (origin) DO NOTHING""".stripMargin
+        )
+      ) { ps =>
+        ps.setString(1, SqlConversationStore.originJson(origin).render())
+        ps.setString(2, PrincipalId.value(by))
+        ps.setInt(3, label)
+        ps.setString(4, path(origin.place))
+        ps.setString(5, path(origin.room))
+        ps.executeUpdate()
+        ()
       }
     }
   }

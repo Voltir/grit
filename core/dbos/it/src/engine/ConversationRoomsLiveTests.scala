@@ -2,6 +2,7 @@ package grit.dbos.engine
 
 import java.time.Instant
 
+import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.id.{ConversationId, EntryId}
@@ -97,6 +98,47 @@ object ConversationRoomsLiveTests extends TestSuite {
         Vector("slack/T/C"),
         Vector("task/remind")
       )
+    }
+
+    test(
+      "a conversation is made in a room, or found again, while another transaction writes to one there, without waiting on it"
+    ) {
+      val held = LiveDb.conversation(config, Origin.Slack("T", "busy", "1.0")).id
+      val entries = new SqlEntryStore()
+      val conn = java.sql.DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
+      try {
+        conn.setAutoCommit(false)
+        // Open, uncommitted, as a turn's step is: two entries recorded in the room's first
+        // conversation, so its row is written twice and its references to its place and room
+        // are checked, under key-share locks, the second time.
+        val tx = Tx.fromConnection(conn)
+        Vector("first", "second").map { name =>
+          entries.lockNext(held)(using tx).flatMap { next =>
+            entries.insert(
+              Entry(
+                EntryId(s"${ConversationId.value(held)}:$name"),
+                held,
+                next.turnSeq,
+                None,
+                next.seq,
+                Payload.Message(Message.User(name)),
+                Instant.EPOCH
+              )
+            )(using tx)
+          }
+        } ==> Vector(Right(()), Right(()))
+        given scala.concurrent.ExecutionContext = scala.concurrent.ExecutionContext.global
+        val made = scala.concurrent.Future {
+          (
+            LiveDb.conversation(config, Origin.Slack("T", "busy", "2.0")).id,
+            LiveDb.conversation(config, Origin.Slack("T", "busy", "1.0")).id
+          )
+        }
+        val both = scala.util.Try(scala.concurrent.Await.result(made, 10.seconds))
+        conn.rollback()
+        both.toOption.map((made, again) => (room(made), again)) ==>
+          Some((Vector("slack/T/busy"), held))
+      } finally conn.close()
     }
 
     test("a removed conversation's room goes with it once no conversation is in it") {
