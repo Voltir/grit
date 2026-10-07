@@ -111,6 +111,12 @@ refuses one the visibility does not declare: a plugin's `compartments`, an edge'
 against where they go, a deployment that labels any room above public is refused beside an
 edge that posts out (`ServedEdge.postsOut`, Slack's `slack_post`).
 
+A conversation takes its room's label when it is created and keeps it, whatever the
+deployment declares later; a job's run takes its schedule's. A database remembers the
+compartments each start declared: a start may add some, but one that drops or renames a
+compartment the database ran under does not open, and says which, since a label
+holding it could then be read by a clearance that could not read it before.
+
 **A plugin is parametric in labels.** A `Label` is opaque: a plugin compares labels
 (`dominates`, equality), combines them (`join`, `meet`) and passes one to core as a key, and
 never takes one apart. Opacity buys independence from how labels are stored, not secrecy: a
