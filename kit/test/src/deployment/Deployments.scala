@@ -22,6 +22,7 @@ object Deployments {
       def name: EdgeName = EdgeName(called)
       def needs: Vector[Variable] = wanted
       def answersAsks: Boolean = asks
+      def postsOut: Boolean = false
       def open(
           stores: EdgeStores^,
           env: Map[String, String],

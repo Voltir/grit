@@ -18,6 +18,7 @@ object ServeChoiceTests extends TestSuite {
     def name: EdgeName = EdgeName("slack")
     def needs: Vector[Variable] = Vector.empty
     def answersAsks: Boolean = false
+    def postsOut: Boolean = false
     def open(
         stores: EdgeStores^,
         env: Map[String, String],

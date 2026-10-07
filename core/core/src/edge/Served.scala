@@ -79,6 +79,13 @@ trait ServedEdge {
     */
   def answersAsks: Boolean
 
+  /** Whether it posts, at a turn's request, beyond the conversation that turn answers (a post
+    * to a channel a tool call names). A deployment labelling any room above public is refused
+    * while an edge it serves does: nothing yet checks what such a post carries against where
+    * it goes.
+    */
+  def postsOut: Boolean
+
   /** Connects to the edge's service with `env`'s credentials and starts taking its messages
     * into `stores`, telling `log` what a person running it may want to read.
     */

@@ -56,6 +56,7 @@ private[slack] object Served {
     def name: EdgeName = Name
     def needs: Vector[Variable] = Needs
     def answersAsks: Boolean = false
+    def postsOut: Boolean = posts.nonEmpty
     def open(
         stores: EdgeStores^,
         env: Map[String, String],

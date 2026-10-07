@@ -250,6 +250,13 @@ object ServedTests extends TestSuite {
       Served.serving(Set(C), None, None, new World().connect).answersAsks ==> false
     }
 
+    test("serving posts beyond the turns it answers exactly when it is given where it may post") {
+      (
+        Served.serving(Set(C), Some(Posts(TwoAnHour, Skynet)), None, new World().connect).postsOut,
+        Served.serving(Set(C), None, None, new World().connect).postsOut
+      ) ==> (true, false)
+    }
+
     test(
       "backfill reads each channel's unheard threads as their messages' lengths, in channel id order, and hears them on hear"
     ) {

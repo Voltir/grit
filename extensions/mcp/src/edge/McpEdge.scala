@@ -58,6 +58,7 @@ object McpEdge {
     def needs: Vector[Variable] = servers.map(_.token).distinct
 
     def answersAsks: Boolean = false
+    def postsOut: Boolean = false
 
     def open(
         stores: EdgeStores^,
