@@ -48,6 +48,17 @@
 #       --more, triage's line also holds what its thread left out, and where. Prints counts,
 #       and how each digest compares to cases.jsonl's: never the file's text.
 #
+#   scripts/eval context <workflow-id> --from <database> [--full]
+#       One recorded turn as its model was sent it, text and all, written to
+#       .local/eval/review/context-<workflow-id>.md for a person to read: how it got there
+#       (the stitch placement and the state its classifier saw, triage's tags, the speech
+#       decision and its judgement, the queries and window, every ledger row), then each
+#       model call's request rebuilt from the turn's recorded inputs (prompt fragments, tool
+#       set, pinned profile, window, entries) through this build's code, each call's estimate
+#       against its ledger row, the answer and the summary. The epoch the turn ran under is
+#       shown beside this build's. Tool results are cut at 4,000 characters unless --full.
+#       Reads <database> through read-only sessions; prints counts, never text.
+#
 #   scripts/eval score <runs file> [--labels <file>]
 #       The run scored, written to .local/eval/reports/<run>.md and printed: text-free, ids
 #       and numbers. Labels come from .local/eval/labels.json (or <file>); with none it says
@@ -373,6 +384,23 @@ order() {
   harness order --eval "$main/.local/eval" --a "$a" ${b:+--b "$b"} "$@"
 }
 
+context() {
+  local workflow=${1:-} from= full=
+  [ -n "$workflow" ] && [[ $workflow != --* ]] || usage
+  shift
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --from) from=${2:-}; shift 2 ;;
+      --full) full=--full; shift ;;
+      *) usage ;;
+    esac
+  done
+  [ -n "$from" ] || usage
+  exists "$from" || { echo "eval: no database $from" >&2; exit 1; }
+  harness context --url "jdbc:postgresql://localhost:5432/$from" --from "$from" \
+    --workflow "$workflow" --out "$main/.local/eval/review/context-$workflow.md" $full
+}
+
 pull() {
   local from= corpus=
   local rest=()
@@ -512,6 +540,7 @@ case $1 in
   score) shift; score "$@" ;;
   compare) shift; compare "$@" ;;
   inputs) shift; inputs "$@" ;;
+  context) shift; context "$@" ;;
   determinism) shift; determinism "$@" ;;
   run) shift; run "$@" ;;
   *) usage ;;

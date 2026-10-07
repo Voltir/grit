@@ -13,8 +13,8 @@ but for the kit's `.env` loader (`DotEnv`), through which a run reads Jev's key,
 OpenRouter's, as grit does.
 
 Every file it writes is text-free (ids, digests, numbers, lengths and field names) but the
-files for a person to read: the review file `scripts/eval inputs` writes under
-`.local/eval/review/`, and the reply reviews `scripts/eval replies` writes under
+files for a person to read: the review files `scripts/eval inputs` and `scripts/eval context`
+write under `.local/eval/review/`, and the reply reviews `scripts/eval replies` writes under
 `.local/eval/replies/`, which print only ids and counts unless asked to show the file; and
 the search queries a rebuild's window-only cases had written, each kept in the cache under
 its request's key and never printed. A corpus's text stays in Postgres, in the database the
@@ -57,6 +57,15 @@ Packages, each importing only those above it:
   conversation's), and only when the harness asks a turn: their lines are its questions'
   words. `Fields`, the reader every file's JSON
   is read through.
+- **`sent`** — one recorded turn as its model was sent it, text and all, for a person to
+  read (`scripts/eval context`): `TurnSent`, read from a database through `Reader` and
+  `grit.turn.TurnRecord` (its calls' requests rebuilt by `TurnRecord.requests` through this
+  build's code, and the decisions that led there: the stitch placement, triage's tags, the
+  speech decision and judgement, queries, window and ledger rows by role, `corpus.Spent`);
+  `Picked`, which way its answering call was sent, by the estimate its ledger row recorded;
+  `SentMarkdown`, the markdown, its tool results cut as `Cut` says. It reads its own rather
+  than through `TurnCapture`, whose readers are private to a corpus's capture and keep
+  numbers, never text. ← `stats`, `corpus`
 - **`label`** — a person's labels of a corpus's cases, kept apart from the cases so a
   recapture keeps them: `Labels`, read from `labels.json` as the labelling tool writes it, and
   each case's `Labelled` (its kind, the three yes/no tags, `Context`, whether it states a fact,

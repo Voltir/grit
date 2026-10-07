@@ -106,12 +106,14 @@ import grit.eval.harness.score.{
   Target,
   TurnPair
 }
+import grit.eval.harness.sent.{Cut, SentMarkdown, TurnSent}
 import grit.eval.harness.stats.Mills
 import grit.kit.environment.DotEnv
 import grit.lifecycle.triage.{TriageQuestions, TriageRecipe}
 import grit.models.JevClassifier
 import grit.models.JevConfig
 import grit.models.{OpenRouterConfig, OpenRouterProvider, Seed}
+import grit.turn.Turn
 
 /** The eval harness's command line, run through `scripts/eval`, which says what each command
   * takes. It prints counts, ids and field names, never a message's text.
@@ -130,6 +132,8 @@ object Main {
       case "determinism" :: rest => exit(flags(rest).flatMap(determinism))
       case "inputs" :: rest =>
         exit(flags(rest.filterNot(_ == "--more")).flatMap(inputs(_, rest.contains("--more"))))
+      case "context" :: rest =>
+        exit(flags(rest.filterNot(_ == "--full")).flatMap(context(_, rest.contains("--full"))))
       case "score" :: rest => exit(flags(rest).flatMap(score))
       case "order" :: rest => exit(flags(rest).flatMap(order(_, clock)))
       case "pull" :: rest => exit(flags(rest).flatMap(pull(_, clock)))
@@ -964,6 +968,33 @@ object Main {
     * `_PASSWORD`. The file holds text and is never printed: this prints counts, and how each
     * request's digest compares to the corpus's.
     */
+  /** `context`: one recorded turn's request as sent, text and all, written to `--out` for a
+    * person to read; prints counts only.
+    */
+  private def context(f: Map[String, String], full: Boolean): Either[String, Unit] =
+    for {
+      url <- need(f, "url")
+      from <- need(f, "from")
+      workflow <- need(f, "workflow").map(WorkflowId(_))
+      out <- need(f, "out").map(Path.of(_))
+      config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
+      sent <- opened(config)(TurnSent.read(_, workflow))
+      _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
+        s"${out.getParent}: ${e.getClass.getName}"
+      )
+      _ <- write(out, SentMarkdown.render(sent, from, if (full) Cut.Whole else Cut.Default))
+    } yield {
+      val requests = sent.requests
+      val agree = requests.count((_, reply, request) => sent.agrees(reply, request).contains(true))
+      println(s"written: $out")
+      println(
+        s"calls: ${requests.size}, whose estimate agrees with its ledger row: $agree; " +
+          s"epoch ${sent.epoch}${
+              if (sent.epoch == Turn.Epoch) "" else s" (this build: ${Turn.Epoch})"
+            }"
+      )
+    }
+
   private def inputs(f: Map[String, String], more: Boolean): Either[String, Unit] =
     for {
       dir <- need(f, "corpus").map(Path.of(_))
