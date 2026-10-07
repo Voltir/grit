@@ -17,22 +17,59 @@ final class Tool[A] private[tool] (
     val spec: ToolSpec[A],
     val gate: Gate[A],
     shown: A -> String,
-    run: (A, CallSlot) => Outcome
+    run: (A, CallSlot) => Outcome,
+    aim: Option[Tool.Aim] = None
 ) extends Tool.Offered {
 
   def name: ToolName = spec.name
 
   def schema(strict: Boolean): ToolSchema = Gate.described(spec.schema(strict), gate != Gate.Free)
 
-  def entry: ToolSet.Entry =
-    ToolSet.Entry(spec.name, spec.does, spec.args.schema(false), gate != Gate.Free, spec.retry)
+  def entry: ToolSet.Entry = aim match {
+    case None =>
+      ToolSet.Entry(spec.name, spec.does, spec.args.schema(false), gate != Gate.Free, spec.retry)
+    case Some(Tool.Aim(parameters, writes)) =>
+      ToolSet.Entry(spec.name, spec.does, parameters, gate != Gate.Free, spec.retry, Some(writes))
+  }
 
   private[tool] def bind(
       call: AssistantBlock.ToolCall,
       repairs: Set[ArgRepair]
+  ): Either[CallError, Bound^{this}] = {
+    val unwritable = for {
+      a <- aim
+      sent <- call.arguments.objOpt
+      error <- a.writes.chosen(spec.name, sent).left.toOption
+    } yield error
+    unwritable.fold(read(call.arguments, repairs))(Left(_))
+  }
+
+  private[tool] def told(
+      call: AssistantBlock.ToolCall,
+      repairs: Set[ArgRepair],
+      destination: Option[Place]
   ): Either[CallError, Bound^{this}] =
-    spec.args.read(call.arguments, repairs) match {
-      case Left(error) => Left(CallError.refused(spec.name, error, call.arguments))
+    aim match {
+      case None =>
+        destination.fold(read(call.arguments, repairs))(at =>
+          Left(CallError.Misdirected(spec.name, Some(at)))
+        )
+      case Some(a) =>
+        // The name the arguments are read with is one placed at the destination, so the
+        // tool is told the destination there, whatever the call sent.
+        destination.flatMap(at => a.writes.to.collectFirst { case (name, `at`) => name }) match {
+          case None => Left(CallError.Misdirected(spec.name, destination))
+          case Some(name) =>
+            val aimed = call.arguments.objOpt.fold(call.arguments)(sent =>
+              ujson.Obj.from(Writes.without(sent).value.iterator ++ Iterator(Writes.Field -> ujson.Str(name)))
+            )
+            read(aimed, repairs)
+        }
+    }
+
+  private def read(arguments: ujson.Value, repairs: Set[ArgRepair]): Either[CallError, Bound^{this}] =
+    spec.args.read(arguments, repairs) match {
+      case Left(error) => Left(CallError.refused(spec.name, error, arguments))
       case Right(args) =>
         val line = Bound.line(spec.name, shown(args))
         Right(gate match {
@@ -88,7 +125,21 @@ object Tool {
         call: AssistantBlock.ToolCall,
         repairs: Set[ArgRepair]
     ): Either[CallError, Bound^{this}]
+
+    /** `call`, which names this tool, sent to an edge as a request to write to
+      * `destination`, read against it with `repairs` ([[Toolbox.requested]]).
+      */
+    private[tool] def told(
+        call: AssistantBlock.ToolCall,
+        repairs: Set[ArgRepair],
+        destination: Option[Place]
+    ): Either[CallError, Bound^{this}]
   }
+
+  /** What a tool that writes outside grit records of itself ([[Writing.over]]): its
+    * parameters without [[Writes.Field]], and its destinations as places.
+    */
+  private[tool] final case class Aim(parameters: ujson.Value, writes: Writes[Place])
 }
 
 /** The half of a tool that says what it is and never runs it: what the model is told of it,
@@ -117,6 +168,13 @@ final class Hosted[A](val spec: ToolSpec[A], val gate: Gate[A], shown: A -> Stri
       repairs: Set[ArgRepair]
   ): Either[CallError, Bound^{this}] =
     Hosted.bound(spec, gate, shown, call.arguments, repairs, None)
+
+  private[tool] def told(
+      call: AssistantBlock.ToolCall,
+      repairs: Set[ArgRepair],
+      destination: Option[Place]
+  ): Either[CallError, Bound^{this}] =
+    bind(call, repairs)
 }
 
 object Hosted {
@@ -228,4 +286,30 @@ final class Writing[A, D <: caps.Pure] private[tool] (
             Hosted.bound(spec, gate, shown, rest, repairs, Some(writes.place(to)))
           )
     }
+
+  private[tool] def told(
+      call: AssistantBlock.ToolCall,
+      repairs: Set[ArgRepair],
+      destination: Option[Place]
+  ): Either[CallError, Bound^{this}] =
+    bind(call, repairs)
+
+  /** This tool, run by `run`, told the destination its request was checked to write to
+    * ([[grit.core.edge.ToolRequest.destination]]), whatever the call's arguments hold for
+    * [[Writes.Field]]: a request holding none, or one at which this tool has no destination,
+    * is [[CallError.Misdirected]] and does not run ([[Toolbox.requested]]).
+    */
+  def over(run: (A, D) => Outcome): Tool[(A, D)]^{run} = {
+    val aimed: Gate[(A, D)] = gate match {
+      case Gate.Free => Gate.Free
+      case Gate.Ask(describe) => Gate.Ask(sent => describe(sent._1))
+    }
+    new Tool[(A, D)](
+      ToolSpec(spec.name, spec.does, Args.written(spec.args, writes), spec.retry),
+      aimed,
+      sent => shown(sent._1),
+      (sent, _) => run(sent._1, sent._2),
+      Some(Tool.Aim(spec.args.schema(false), writes.placed))
+    )
+  }
 }

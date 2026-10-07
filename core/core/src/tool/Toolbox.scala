@@ -45,6 +45,23 @@ final class Toolbox[+C^] private (private val tools: Vector[Tool.Offered^{C}]) {
       case None => Left(CallError.Unknown(call.name, names))
       case Some(tool) => tool.bind(call, repairs.args)
     }
+
+  /** `call`, sent to an edge as a request whose destination is `destination`
+    * ([[grit.core.edge.ToolRequest.destination]]), read against the tool it names with
+    * `repairs`, ready to run: a tool that writes ([[Writing.over]]) is told `destination`,
+    * whatever the arguments hold for [[Writes.Field]]. Why it cannot be, as [[bind]];
+    * [[CallError.Misdirected]] when the tool writes and `destination` is none of its places,
+    * or nothing, or when the tool writes nowhere and `destination` is a place.
+    */
+  def requested(
+      call: AssistantBlock.ToolCall,
+      repairs: Repairs,
+      destination: Option[Place]
+  ): Either[CallError, Bound^{C}] =
+    tools.find(t => ToolName.value(t.name) == Toolbox.named(call.name, repairs.names)) match {
+      case None => Left(CallError.Unknown(call.name, names))
+      case Some(tool) => tool.told(call, repairs.args, destination)
+    }
 }
 
 object Toolbox {

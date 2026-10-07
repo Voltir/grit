@@ -59,6 +59,29 @@ object Args {
     )
   }
 
+  /** `args` and, before them, the destination of `writes` that [[Writes.Field]] names: the
+    * schema [[Writes.shown]] makes; refused, before `args` are read, when the field is missing
+    * or names none of `writes`' names.
+    */
+  private[tool] def written[A, D <: caps.Pure](args: Args[A], writes: Writes[D]): Args[(A, D)] =
+    new Args(
+      strict => writes.shown(args.schema(strict)),
+      (arguments, repairs) =>
+        arguments.objOpt match {
+          case None => Left(ArgsError.NotAnObject(ArgsError.shown(arguments)))
+          case Some(sent) =>
+            val accepts = s"one of ${writes.to.keys.mkString(", ")}"
+            sent.get(Writes.Field).filter(_ != ujson.Null) match {
+              case None => Left(ArgsError.Missing(Writes.Field, accepts))
+              case Some(named) =>
+                named.strOpt.flatMap(writes.named) match {
+                  case None => Left(ArgsError.Invalid(Writes.Field, accepts, ArgsError.shown(named)))
+                  case Some(to) => args.read(Writes.without(sent), repairs).map(a => (a, to))
+                }
+            }
+        }
+    )
+
   /** The value each field of `V` reads into. */
   type Values[V <: Tuple] <: Tuple = V match {
     case EmptyTuple => EmptyTuple

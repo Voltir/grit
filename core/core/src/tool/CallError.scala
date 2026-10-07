@@ -1,5 +1,7 @@
 package grit.core.tool
 
+import grit.core.place.Place
+
 /** Why a tool call cannot be run. `message` is what the model reads as the call's result. */
 enum CallError {
 
@@ -18,6 +20,11 @@ enum CallError {
     */
   case Unwritable(tool: ToolName, sent: Option[String], offered: Vector[String])
 
+  /** A request sent to an edge to write with `tool` to `destination` (`None` for nowhere),
+    * where the edge's `tool` has no destination; it does not run.
+    */
+  case Misdirected(tool: ToolName, destination: Option[Place])
+
   /** What is wrong, then the tools there are, or what was sent. */
   def message: String = this match {
     case Unknown(name, offered) =>
@@ -30,6 +37,10 @@ enum CallError {
       val not = sent.fold("")(s => s", not $s")
       s"The call to `${ToolName.value(tool)}` was not run: `${Writes.Field}` must be one of " +
         s"${offered.mkString(", ")}, the places it may write to from here$not. Nothing was sent."
+    case Misdirected(tool, destination) =>
+      destination.fold(s"${ToolName.value(tool)} was told no place to write to; it did not run.")(
+        at => s"${ToolName.value(tool)} does not write to ${at.written} here; it did not run."
+      )
   }
 
   /** This error as the call's outcome: [[Outcome.Failed]] with [[message]]. */

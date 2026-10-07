@@ -14,7 +14,11 @@ object Run {
     * approved as its permit says, its tool told that it is the call at the request's slot.
     * [[Outcome.Failed]] when this edge is too old for its protocol, when no tool here has its
     * name or its arguments do not read, or when its permit does not match the tool's gate (a
-    * free permit for a tool that asks first, or the reverse).
+    * free permit for a tool that asks first, or the reverse). A writing tool
+    * ([[grit.core.tool.Writing]]) is told the destination its request holds, whatever its
+    * arguments held for [[grit.core.tool.Writes.Field]]; [[Outcome.Failed]], unrun, when the
+    * request holds none or one at which the tool has no destination, or holds one for a tool
+    * that writes nowhere.
     */
   def request[C^](request: ToolRequest, tools: Toolbox[C]): Outcome =
     if (request.protocol > ToolRequest.Protocol)
@@ -26,7 +30,7 @@ object Run {
         request.arguments
       )
       val bound: Either[CallError, Bound^{C}] =
-        tools.bind(call, Repairs(NameRepair.AsSent, request.repairs))
+        tools.requested(call, Repairs(NameRepair.AsSent, request.repairs), request.destination)
       bound match {
         case Left(error) => error.outcome
         case Right(free: Bound.Free) =>

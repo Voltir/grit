@@ -1,9 +1,23 @@
 package grit.edge
 
+import scala.collection.immutable.VectorMap
+
 import grit.core.edge.{Permit, ToolRequest}
 import grit.core.id.{CallSlot, ConversationId, PrincipalId, TestCallSlots, TurnRef, TurnSeq}
 import grit.core.place.{Directory, Place}
-import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSpec, Toolbox}
+import grit.core.tool.{
+  Args,
+  Field,
+  Gate,
+  Hosted,
+  Outcome,
+  Retry,
+  Tool,
+  ToolName,
+  ToolSpec,
+  Toolbox,
+  Writes
+}
 
 import utest.*
 
@@ -17,7 +31,9 @@ object RunTests extends TestSuite {
       tool: String = "echo",
       permit: Permit = Permit.Free,
       protocol: Int = ToolRequest.Protocol,
-      slot: CallSlot = TestCallSlots.First
+      slot: CallSlot = TestCallSlots.First,
+      arguments: ujson.Value = ujson.Obj("text" -> "hi"),
+      destination: Option[Place] = None
   ): ToolRequest = {
     val turn = TurnRef(ConversationId("c"), TurnSeq.First)
     ToolRequest(
@@ -29,9 +45,9 @@ object RunTests extends TestSuite {
       ToolName.of(tool).getOrElse(throw new java.lang.AssertionError()),
       permit,
       Retry.Rerun,
-      ujson.Obj("text" -> "hi"),
+      arguments,
       Set.empty,
-      None
+      destination
     )
   }
 
@@ -83,6 +99,43 @@ object RunTests extends TestSuite {
         told
       ) ==>
         Outcome.Done("tool:c:0:2:1")
+    }
+
+    test(
+      "a writing tool is told its request's destination, not its arguments' `to`; with none, or one it has not, it fails unrun"
+    ) {
+      final case class Channel(id: String, at: Place) extends caps.Pure
+      def at(written: String): Place =
+        Place.read(written).getOrElse(throw new java.lang.AssertionError(written))
+      val general = Channel("C1", at("slack:T/C1"))
+      val random = Channel("C2", at("slack:T/C2"))
+      val writes = Writes
+        .of(VectorMap("general" -> general, "random" -> random), _.at, "Where.")
+        .getOrElse(throw new java.lang.AssertionError())
+      val ran = new StringBuilder
+      val post = Hosted
+        .writing(
+          ToolSpec(ToolName("post"), "Posts.", Args.of((text = Field.text("What."))).map(_.text)),
+          Gate.Free,
+          t => t,
+          writes
+        )
+        .getOrElse(throw new java.lang.AssertionError())
+        .over { (text, to) =>
+          ran.append(to.id)
+          Outcome.Done(s"$text in ${to.id}")
+        }
+      val box = Toolbox.of(post).getOrElse(throw new java.lang.AssertionError())
+      val sent = ujson.Obj("to" -> "random", "text" -> "hi")
+      Run.request(request("post", arguments = sent, destination = Some(general.at)), box) ==>
+        Outcome.Done("hi in C1")
+      Run.request(request("post", arguments = sent), box) ==>
+        Outcome.Failed("post was told no place to write to; it did not run.")
+      Run.request(request("post", arguments = sent, destination = Some(at("slack:T/C9"))), box) ==>
+        Outcome.Failed("post does not write to slack:T/C9 here; it did not run.")
+      Run.request(request(destination = Some(general.at)), tools) ==>
+        Outcome.Failed("echo does not write to slack:T/C1 here; it did not run.")
+      ran.result() ==> "C1"
     }
 
     test("a request of a later protocol is answered that this edge is too old") {
