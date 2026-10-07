@@ -42,7 +42,8 @@ abstract class PluginContract extends TestSuite {
   /** Runs `body` in one transaction opened publicly, committed when it returns: what every
     * case but the labelled ones writes and reads at.
     */
-  protected final def transaction[A](body: (Tx^) ?=> A): A = opened(Clearance.of(Label.Public))(body)
+  protected final def transaction[A](body: (Tx^) ?=> A): A =
+    opened(Clearance.of(Label.Public))(body)
 
   private def name(s: String): PluginName =
     PluginName.of(s).getOrElse(throw new java.lang.AssertionError(s))
@@ -171,7 +172,9 @@ abstract class PluginContract extends TestSuite {
       opened(Clearance.inRoom(here.room, TestLabels.Trial, TestLabels.Trial))(
         cache(p, ordinal(1021)).put("room", ujson.Str("in the room"))
       ) ==> Right(())
-      opened(Clearance.of(TestLabels.Trial))(cache(p, ordinal(1022)).put("none", ujson.Str("in none")))
+      opened(Clearance.of(TestLabels.Trial))(
+        cache(p, ordinal(1022)).put("none", ujson.Str("in none"))
+      )
       def seen(clearance: Clearance) = opened(clearance)(
         (
           Vector("room", "none").map(k => docs(p).get(k).map(_.nonEmpty)),

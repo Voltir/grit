@@ -4,8 +4,8 @@ import java.time.Instant
 
 import grit.core.id.PluginName
 import grit.core.period.CloseOrdinal
-import grit.core.retention.Target
 import grit.core.place.Place
+import grit.core.retention.Target
 import grit.core.store.{ClosedPeriod, InMemoryTombstones, StoreError, Tombstones, Tx}
 import grit.core.visibility.{Item, Label}
 
