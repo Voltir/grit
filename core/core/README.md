@@ -205,12 +205,14 @@ In dependency order:
   `ToolName` and `ToolSpec`, from which come the schema the model is shown (a
   `provider.ToolSchema`) and the reader of its calls; `Tool` (a spec, a `Gate`, how a call is
   shown in one line, and what it does, capture-tracked), `Hosted` (a tool's description without its run: offered by the engine, run by an edge),
-  `Retry` (whether a call cut short is run again or answered `Interrupted`), `ToolSet`
+  `Retry` (whether a call cut short is run again or answered `Interrupted`), `Writes` (where a
+  hosted tool's calls write outside grit: the names a call may give in its `to` argument, each
+  an edge's own destination and the place core labels it by), `ToolSet`
   (a turn's tools as recorded, by content id) and `ToolSets` (where each is kept), `Toolbox` (the tools offered on one call, which `bind` a
   call to a `Bound` or a `CallError`: `Bound.Free` runs, `Bound.Gated` runs only given an
   `Approval`, each told the `CallSlot` it runs as, which a tool made by `Hosted.calling` reads), `Repairs` (what of a call is repaired before it is read, as the pair's
   settings say) and `Outcome` (what a call came to, as the model reads it). ← `id`,
-  `message`, `model`, `store`, `provider`, `approval`
+  `place`, `message`, `model`, `store`, `provider`, `approval`
 
 - **`plugin`** — features a deployment turns on (ADR 0027), each a pure bundle of
   contributions to core's points: `Plugin` (a name, a version, the plugins it `needs`, and

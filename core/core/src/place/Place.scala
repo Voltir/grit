@@ -27,7 +27,7 @@ object Namespace {
 /** Where a conversation happens: a path in one containment tree, from a [[Namespace]] down;
   * the empty path is the root, [[Place.Everywhere]]. No segment is empty or holds `/`.
   */
-final case class Place private (segments: Vector[String]) {
+final case class Place private (segments: Vector[String]) extends caps.Pure {
 
   /** The directory this place is, when it is one under `fs`; `None` for any other place. */
   def directory: Option[Directory] =
