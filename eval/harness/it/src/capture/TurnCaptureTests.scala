@@ -22,7 +22,7 @@ import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.core.triage.Corpora
-import grit.core.visibility.{Subject, Visibility}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.internal.Reader
 import grit.dbos.sql.TestPostgres
@@ -335,7 +335,7 @@ object TurnCaptureTests extends TestSuite {
         val unnamed = overheard("4000.1", s"$Marker ~pass ~0.1 is the freeze on monday? ~back:asks")
 
         def captured(): (Turns, Verdicts) = {
-          val reader = Reader.open(config, Visibility.Shipped)
+          val reader = Reader.open(config)
           try {
             (
               right(TurnCapture(reader, dump)),

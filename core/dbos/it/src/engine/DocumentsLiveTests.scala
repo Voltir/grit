@@ -7,7 +7,6 @@ import grit.core.durable.Durable
 import grit.core.id.{PluginName, WorkflowId}
 import grit.core.plugin.{Documents, Plugin}
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
-import grit.core.visibility.Visibility
 import grit.dbos.internal.Reader
 import grit.dbos.sql.{LiveDb, SqlDocuments, SqlTombstones, TestPostgres}
 
@@ -53,7 +52,7 @@ object DocumentsLiveTests extends TestSuite {
       try launch(first, Vector(new Keeping(p, Some(Terms)), new Keeping(q, None)))
       finally first.close()
       LiveDb.transaction(config)(documents.declared()) ==> Right(Vector(p -> Terms))
-      val reader = Reader.open(config, Visibility.Shipped)
+      val reader = Reader.open(config)
       try reader.all.read(reader.documents.declared()) ==> Right(Vector(p -> Terms))
       finally reader.close()
       val second = LiveEngine.open(config, "test")

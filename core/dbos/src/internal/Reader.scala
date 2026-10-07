@@ -121,10 +121,12 @@ object Reader {
     */
   final case class Recorded(status: String, epoch: String, created: Instant)
 
-  /** Reads `config`'s database, resolving whom each of its transactions reads for under
-    * `visibility`. Throws when the database cannot be reached.
+  /** Reads `config`'s database under the compartments it last ran under, every room public and
+    * no group declared: [[Reader.all]] reads every row, whatever deployment labelled it. Records
+    * nothing, those compartments included. Throws when the database cannot be reached, or the
+    * compartments it ran under cannot be read.
     */
-  def open(config: DbConfig, visibility: Visibility): Reader^ = {
+  def open(config: DbConfig): Reader^ = {
     val ds = new PGSimpleDataSource()
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
@@ -132,8 +134,15 @@ object Reader {
     // A startup parameter: Postgres itself makes every transaction on these sessions read-only,
     // whatever the driver or DBOS's client does with them.
     ds.setOptions("-c default_transaction_read_only=on")
-    ds.getConnection().close()
-    new Opened(ds, new DBOSClient(ds), new Opener(visibility))
+    // Read at the shipped visibility's maintenance: grit.compartments carries no label.
+    val shipped = new Opener(Visibility.Shipped)
+    val opener = new SqlDb(ds, shipped)
+      .transaction(conn => Right(shipped.maintained(conn)))(Opener.recorded)
+      .fold(
+        e => throw new IllegalStateException(s"the database's compartments are unread: $e"),
+        identity
+      )
+    new Opened(ds, new DBOSClient(ds), opener)
   }
 
   private final class Opened(ds: PGSimpleDataSource, client: DBOSClient, opener: Opener)

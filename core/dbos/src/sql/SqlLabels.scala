@@ -63,6 +63,12 @@ private[dbos] object SqlLabels {
     LabelParts.of(rs.getInt("label_level"), names)
   }
 
+  /** The compartments this database last ran under: the newest version recorded,
+    * [[Compartments.Shipped]] when none is. `Invalid` when that version names a compartment
+    * twice or holds a name no compartment could have.
+    */
+  def recorded(using tx: Tx^): Either[StoreError, Compartments] = newest.map(_._2)
+
   /** Records `declared` as the compartments this database runs under: nothing when they are
     * the newest set recorded, the next version when they hold every one of it and more (the
     * first version on a database with none). Otherwise writes nothing and returns the first
@@ -71,30 +77,8 @@ private[dbos] object SqlLabels {
     */
   def reconcile(declared: Compartments)(using tx: Tx^): Either[StoreError, Option[Compartment]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    val newest = attempt {
-      Using.resource(
-        conn.prepareStatement(
-          """SELECT version, compartment FROM grit.compartments
-            | WHERE version = (SELECT max(version) FROM grit.compartments)""".stripMargin
-        )
-      ) { ps =>
-        Using.resource(ps.executeQuery()) { rs =>
-          val rows = Vector.newBuilder[(Int, String)]
-          while (rs.next()) rows += ((rs.getInt(1), rs.getString(2)))
-          rows.result()
-        }
-      }
-    }
     for {
-      rows <- newest
-      version = rows.map(_._1).maxOption.getOrElse(0)
-      before <- rows
-        .foldLeft[Either[String, Vector[Compartment]]](Right(Vector.empty)) { (acc, row) =>
-          acc.flatMap(cs => Compartment.of(row._2).map(cs :+ _))
-        }
-        .flatMap(Compartments.of(_).left.map(c => s"${Compartment.name(c)} twice"))
-        .left
-        .map(why => StoreError.Invalid(s"grit.compartments' version $version: $why"))
+      (version, before) <- newest
       dropped <-
         if (!declared.keeps(before)) {
           Right(
@@ -121,5 +105,37 @@ private[dbos] object SqlLabels {
             }
           }
     } yield dropped
+  }
+
+  /** The newest version recorded and its compartments; version 0 and [[Compartments.Shipped]]
+    * when none is.
+    */
+  private def newest(using tx: Tx^): Either[StoreError, (Int, Compartments)] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    val rows = attempt {
+      Using.resource(
+        conn.prepareStatement(
+          """SELECT version, compartment FROM grit.compartments
+            | WHERE version = (SELECT max(version) FROM grit.compartments)""".stripMargin
+        )
+      ) { ps =>
+        Using.resource(ps.executeQuery()) { rs =>
+          val rows = Vector.newBuilder[(Int, String)]
+          while (rs.next()) rows += ((rs.getInt(1), rs.getString(2)))
+          rows.result()
+        }
+      }
+    }
+    rows.flatMap { rows =>
+      val version = rows.map(_._1).maxOption.getOrElse(0)
+      rows
+        .foldLeft[Either[String, Vector[Compartment]]](Right(Vector.empty)) { (acc, row) =>
+          acc.flatMap(cs => Compartment.of(row._2).map(cs :+ _))
+        }
+        .flatMap(Compartments.of(_).left.map(c => s"${Compartment.name(c)} twice"))
+        .left
+        .map(why => StoreError.Invalid(s"grit.compartments' version $version: $why"))
+        .map(version -> _)
+    }
   }
 }

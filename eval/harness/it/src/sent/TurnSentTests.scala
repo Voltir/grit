@@ -20,7 +20,6 @@ import grit.core.stitch.Tuning
 import grit.core.store.Origin
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.core.triage.Weighing
-import grit.core.visibility.Visibility
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.internal.Reader
 import grit.dbos.sql.TestPostgres
@@ -188,7 +187,7 @@ object TurnSentTests extends TestSuite {
         )
         right(engine.inbox.startTurn(turn))
         val _ = engine.awaitTurn(turn)
-        val reader = Reader.open(config, Visibility.Shipped)
+        val reader = Reader.open(config)
         val sent =
           try right(TurnSent.read(reader, turn.workflowId))
           finally reader.close()

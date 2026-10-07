@@ -66,8 +66,9 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `Transact` holds the sweep's short transactions. ← `sql`, `workflow`
 - **`internal`** — what `grit.dbos` lends to the eval harness alone (ADR 0030; rule 1h in
   `enola-intent.yaml`): `Reader` (a database's stores, engine starts and DBOS's workflow
-  records read without an engine or its lock, on sessions Postgres keeps read-only, and `all`,
-  which reads every row whatever its label, for capturing a database whole), and
+  records read without an engine or its lock, on sessions Postgres keeps read-only, under the
+  compartments the database last ran under, and `all`, which reads every row whatever its
+  label, for capturing a database whole), and
   `EngineStarts` (`grit.engine_starts` read back). ← `sql`, `workflow`, `engine`
 
 `sql` and `workflow` are siblings and never name each other. No source file sits at the

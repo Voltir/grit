@@ -8,14 +8,32 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.durable.Durable
-import grit.core.id.{PeriodRef, PeriodSeq, PrincipalId, SourceId, TriageRef, TurnSeq, WorkflowId}
+import grit.core.id.{
+  ConversationId,
+  EntryId,
+  PeriodRef,
+  PeriodSeq,
+  PrincipalId,
+  SourceId,
+  TriageRef,
+  TurnSeq,
+  WorkflowId
+}
 import grit.core.message.Message
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
-import grit.core.store.{Origin, StoreError, Tx}
+import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
 import grit.core.triage.Tags
-import grit.core.visibility.{Subject, Visibility}
+import grit.core.visibility.{
+  Compartment,
+  Compartments,
+  Label,
+  Level,
+  RoomLabels,
+  Subject,
+  Visibility
+}
 import grit.dbos.internal.Reader
-import grit.dbos.sql.{LiveDb, SqlEntryStore, SqlModelProfileStore, TestPostgres}
+import grit.dbos.sql.{DbConfig, LiveDb, SqlEntryStore, SqlModelProfileStore, TestPostgres}
 
 import utest.*
 
@@ -34,7 +52,81 @@ object ReaderTests extends TestSuite {
   private def right[A](e: Either[StoreError, A]): A =
     e.fold(err => throw new java.lang.AssertionError(s"store failed: $err"), identity)
 
+  private val trial: Compartment =
+    Compartment.of("trial").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** A database whose engine ran declaring `trial`, holding one entry in a conversation
+    * labelled confidential in it, and that entry's conversation and id.
+    */
+  private def labelled(name: String): (DbConfig, ConversationId, EntryId) = {
+    val config = TestPostgres.freshDatabase(name)
+    val declared = Compartments
+      .of(Vector(trial))
+      .left
+      .map(c => s"twice: ${Compartment.name(c)}")
+      .flatMap(cs =>
+        Visibility.of(cs, RoomLabels.Public, Vector.empty, Vector.empty).left.map(_.toString)
+      )
+      .fold(e => throw new java.lang.AssertionError(e), identity)
+    LiveEngine.open(config, "test", visibility = declared).close()
+    val c = LiveDb
+      .conversation(config, Origin.Task("reader", "labelled"), Label.at(Level.Confidential, trial))
+      .id
+    val id = EntryId(s"${ConversationId.value(c)}:hi")
+    val entries = new SqlEntryStore()
+    LiveDb.transaction(config) {
+      entries.lockNext(c).flatMap { next =>
+        entries.insert(
+          Entry(
+            id,
+            c,
+            next.turnSeq,
+            None,
+            next.seq,
+            Payload.Message(Message.User("hi")),
+            Instant.EPOCH
+          )
+        )
+      }
+    } ==> Right(())
+    (config, c, id)
+  }
+
+  /** Every compartments version `config`'s database recorded, as `version|compartment`. */
+  private def versions(config: DbConfig): Vector[String] =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement(
+          "SELECT version || '|' || compartment FROM grit.compartments ORDER BY version, compartment"
+        )
+      ) { ps =>
+        Using.resource(ps.executeQuery()) { rs =>
+          val out = Vector.newBuilder[String]
+          while (rs.next()) out += rs.getString(1)
+          out.result()
+        }
+      }
+    }
+
   val tests = Tests {
+    test(
+      "a reader reads every row of a database that ran under a compartment the shipped visibility does not declare"
+    ) {
+      val (config, c, id) = labelled("reader_labelled")
+      val reader = Reader.open(config)
+      try reader.all.read(reader.entries.list(c)).map(_.map(_.id)) ==> Right(Vector(id))
+      finally reader.close()
+    }
+
+    test("a reader records no compartments version: the database keeps the ones it ran under") {
+      val (config, c, _) = labelled("reader_records_nothing")
+      val reader = Reader.open(config)
+      try { val _ = reader.all.read(reader.entries.list(c)) }
+      finally reader.close()
+      versions(config) ==> Vector("1|trial", "1|unmapped")
+    }
+
     test(
       "a reader reads what the engine wrote, beside it: entries, periods, tags, a workflow, starts"
     ) {
@@ -64,7 +156,7 @@ object ReaderTests extends TestSuite {
         heard.headOption.foreach { e =>
           LiveDb.transaction(config)(engine.triage.record(e.id, tags, at)) ==> Right(true)
         }
-        val reader = Reader.open(config, Visibility.Shipped)
+        val reader = Reader.open(config)
         try {
           reader.all.read(reader.entries.list(c)) ==> engine.db.read(Subject.Public)(
             engine.entries.list(c)
@@ -116,7 +208,7 @@ object ReaderTests extends TestSuite {
         val older = ask("older")
         val answered = Instant.now().plusMillis(1)
         val newer = ask("newer")
-        val reader = Reader.open(config, Visibility.Shipped)
+        val reader = Reader.open(config)
         try {
           val until = Instant.now().plusSeconds(60)
           reader.turns(until).map(_.map(_._1)) ==> Right(Vector(older, newer))
@@ -148,7 +240,7 @@ object ReaderTests extends TestSuite {
         LiveDb.transaction(config)(
           new SqlModelProfileStore().pin(WorkflowId("w-pinned"), pinned)
         ) ==> Right(())
-        val reader = Reader.open(config, Visibility.Shipped)
+        val reader = Reader.open(config)
         try {
           reader.all.read(reader.profiles.of(WorkflowId("w-pinned"))) ==> Right(Some(pinned))
           reader.all.read(reader.profiles.get(pinned.id)) ==> Right(Some(pinned))
@@ -159,7 +251,7 @@ object ReaderTests extends TestSuite {
     test("every session a reader opens is read-only in Postgres itself") {
       val config = TestPostgres.freshDatabase("reader_read_only")
       LiveEngine.open(config, "test").close()
-      val reader = Reader.open(config, Visibility.Shipped)
+      val reader = Reader.open(config)
       try {
         // Through a connection the driver was not told is read-only: only the server refuses.
         reader.all.read { (tx: Tx^) ?=>

@@ -4,7 +4,6 @@ import grit.core.context.Width
 import grit.core.document.DocWeight
 import grit.core.id.TurnRef
 import grit.core.message.Tokens
-import grit.core.visibility.Visibility
 import grit.dbos.engine.LiveEngine
 import grit.dbos.internal.Reader
 import grit.dbos.sql.TestPostgres
@@ -94,7 +93,7 @@ object SyntheticTests extends TestSuite {
   }
 
   private def withReader[A](body: Reader^ => A): A = {
-    val reader = Reader.open(built._1, Visibility.Shipped)
+    val reader = Reader.open(built._1)
     try body(reader)
     finally reader.close()
   }

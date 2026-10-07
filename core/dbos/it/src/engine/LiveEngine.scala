@@ -66,7 +66,7 @@ object LiveEngine {
     * database: for a suite outside grit.dbos, which may not name the reader.
     */
   def steps(config: DbConfig, id: WorkflowId): Either[StoreError, Vector[StepRecord]] = {
-    val reader = Reader.open(config, Visibility.Shipped)
+    val reader = Reader.open(config)
     try reader.steps(id)
     finally reader.close()
   }

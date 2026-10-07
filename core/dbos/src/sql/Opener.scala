@@ -6,7 +6,24 @@ import scala.util.Using
 
 import grit.core.id.{ConversationId, PrincipalId, TurnSeq}
 import grit.core.store.{Origin, StoreError, Tx}
-import grit.core.visibility.{Clearance, Label, Maintenance, Subject, Visibility}
+import grit.core.visibility.{Clearance, Label, Maintenance, RoomLabels, Subject, Visibility}
+
+private[dbos] object Opener {
+
+  /** The opener of a reader, which declares no deployment: the compartments the database `tx`
+    * reads last ran under ([[SqlLabels.recorded]]), every room public, no group and no service
+    * trusted. It records no compartments version: a reader never runs an engine. `Invalid` when
+    * the newest version recorded is malformed.
+    */
+  def recorded(using tx: Tx^): Either[StoreError, Opener] =
+    SqlLabels.recorded.flatMap(compartments =>
+      Visibility
+        .of(compartments, RoomLabels.Public, Vector.empty, Vector.empty)
+        .map(new Opener(_))
+        .left
+        .map(why => StoreError.Invalid(s"the recorded compartments: $why"))
+    )
+}
 
 /** How every transaction this module opens gets its clearance (ADR 0030): a [[Subject]]
   * resolved against the rows it names and the deployment's `visibility`, or [[maintenance]].
@@ -15,9 +32,10 @@ private[dbos] final class Opener(visibility: Visibility) {
   import SqlEntryStore.attempt
 
   /** What this module's own transactions read and write at (an edge's inbox and desk, the
-    * sweeps, the collector): every label the database can hold. An engine refuses to start
-    * under compartments that drop one it ran under before (`SqlLabels.reconcile`), so the
-    * declared ones' top is above every stored label, an unmapped one's included.
+    * sweeps, the collector, a reader's `all`): every label the database can hold. An engine
+    * refuses to start under compartments that drop one it ran under before
+    * (`SqlLabels.reconcile`), and a reader's are the newest it ran under ([[Opener.recorded]]),
+    * so either's top is above every stored label, an unmapped one's included.
     */
   val maintenance: Clearance = Maintenance.clearance(visibility.compartments.top)
 

@@ -9,7 +9,6 @@ import grit.core.inbox.InboundId
 import grit.core.review.{Candidate, Considered, Reason, Settled, Verdict}
 import grit.core.speech.Outcome
 import grit.core.store.{Origin, StoreError}
-import grit.core.visibility.Visibility
 import grit.dbos.engine.LiveEngine
 import grit.dbos.internal.Reader
 import grit.dbos.sql.{LiveDb, SqlReviews, TestPostgres}
@@ -101,7 +100,7 @@ object PullVerdictsTests extends TestSuite {
         ),
         review(task, "106.0", Considered.Picked(Reason.Neither), At, Vector(Verdict.Interruption))
       )
-      val reader = Reader.open(config, Visibility.Shipped)
+      val reader = Reader.open(config)
       try {
         Pull.verdicts(reader, At) ==> Right(
           Pull.Standing(
