@@ -657,6 +657,35 @@ object DeploymentTests extends TestSuite {
       )
     }
 
+    test(
+      "a deployment that may label a room above public is refused while an edge posts out, naming it"
+    ) {
+      val labelled = Visibility
+        .of(
+          Compartments.Shipped,
+          RoomLabels
+            .of(
+              Vector(
+                grit.core.place.Place
+                  .read("slack:acme/#trial")
+                  .fold(sys.error, identity) -> Label.at(Level.Internal)
+              ),
+              grit.core.visibility.Labelled.Mapped(Label.Public)
+            )
+            .fold(p => sys.error(p.written), identity),
+          Vector.empty,
+          Vector.empty
+        )
+        .fold(r => sys.error(r.toString), identity)
+      val posting = edge("slack", asks = false, posts = true)
+      val quiet = edge("mcp", asks = false)
+      (
+        Deployments.of(edges = Vector(quiet, posting), visibility = labelled).map(_ => ()),
+        Deployments.of(edges = Vector(quiet), visibility = labelled).map(_ => ()),
+        Deployments.of(edges = Vector(quiet, posting)).map(_ => ())
+      ) ==> (Left(DeploymentRefusal.PostsBelow(EdgeName("slack"))), Right(()), Right(()))
+    }
+
     test("an accepted deployment runs every job, its plugins' and its own, by name") {
       val (nudge, standup) = (new TestPlugins.Named("nudge"), new TestPlugins.Named("standup"))
       Deployments
