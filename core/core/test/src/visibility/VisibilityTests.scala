@@ -13,7 +13,8 @@ object VisibilityTests extends TestSuite {
   private val compartments =
     Compartments.of(Vector(trial, acme)).fold(c => throw new java.lang.AssertionError(c), identity)
 
-  private val github = Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
+  private val github =
+    Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
   private val jira = Service.of("jira").fold(e => throw new java.lang.AssertionError(e), identity)
 
   private val ana = PrincipalId("ana")
