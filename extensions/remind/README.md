@@ -13,7 +13,10 @@ derives who asked and where the reply is posted from the call's turn. `remind_me
 reminder `in_minutes` from now or `at` a time written with its offset, and answers with its
 id and its time in UTC. `reminders` says the time now in UTC, then the asker's pending
 reminders, soonest first: it is how the model learns the time. `cancel_reminder` cancels one
-of the asker's own by its id. A conversation whose replies grit does not post (a TUI session, a
+of the asker's own by its id. A reminder is kept at the label of the room it was asked in,
+since its text is that room's: `reminders` and `cancel_reminder` list and find only the
+asker's reminders asked in rooms the conversation may read, so one asked in a labelled room
+is not seen from a room below it. A conversation whose replies grit does not post (a TUI session, a
 draft not yet posted) cannot set one. Every refusal reaches the model as a sentence it can
 relay (`DeskRefusal.said`, or the argument error). The reference deployment turns it on for
 `GRIT_PLUGINS=remind`.
