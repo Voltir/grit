@@ -77,7 +77,9 @@ In dependency order:
   current, an ended schedule), its stored form, how long each kind of target is kept (`Retention`: a window, or as
   its plugin declares), and a `Tombstone`, the decision to delete one. ← `id`, `period`
 - **`store`** — what is kept and the transaction it is kept under: `Tx` (opened for a
-  `Subject`, at the clearance it resolves to, ADR 0030), `Db` (reads), `Reads` (reads fixed to
+  `Subject`, at the clearance it resolves to, ADR 0030, and labelling places as the
+  deployment does: where it may write outside grit, what it may read from a source, and
+  which services it may send a call's arguments to), `Db` (reads), `Reads` (reads fixed to
   one subject, for code that must not choose), `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin` (and its `Audience`: who its messages are for; its `Focus` at a message's `Position`: how many topics interleave where it is said),
   `ConversationStore` (each conversation's origin and who began it), `PromptStore` (each

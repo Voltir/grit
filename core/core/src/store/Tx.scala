@@ -1,6 +1,7 @@
 package grit.core.store
 
-import grit.core.visibility.{Clearance, Label, Visibility}
+import grit.core.place.{Place, Service}
+import grit.core.visibility.{Clearance, Item, Label, Labelled, Visibility}
 
 /** Capability to read and write inside one database transaction, opened for a
   * [[grit.core.visibility.Subject]]: what it reads of labelled rows, and the least label it
@@ -40,4 +41,40 @@ object Tx {
     * also the floor what is written is kept at.
     */
   def cleared(tx: Tx^): Label = tx.clearance.everywhere
+
+  /** The least label it writes at: its clearance's floor, its own room's label when it has
+    * one. What a row made from its own room's content is kept at.
+    */
+  def floor(tx: Tx^): Label = tx.clearance.floor
+
+  /** The label `to` is written at outside grit: the label the deployment's rooms' labeller maps
+    * it to, when it maps it explicitly with only declared compartments; `None` otherwise, and
+    * then nothing writes to it.
+    */
+  def writable(to: Place)(using tx: Tx^): Option[Label] =
+    tx.visibility.rooms.label(to) match {
+      case Labelled.Mapped(l) if tx.visibility.compartments.admit(l) == l => Some(l)
+      case _ => None
+    }
+
+  /** Whether what this transaction knows may be written to `to` outside grit: `to` is
+    * [[writable]] and its label dominates [[floor]] (ADR 0030, no write down).
+    */
+  def writesTo(to: Place)(using tx: Tx^): Boolean =
+    writable(to).exists(_.dominates(floor(tx)))
+
+  /** Whether what `source` contains may be read in this transaction: as anything recorded in a
+    * room at `source` is read ([[Clearance.reads]]), at the label the deployment gives it, an
+    * unplaced one at [[grit.core.visibility.Compartment.Unmapped]] (no read up). A
+    * transaction's own room is read up to its own label; any other place up to `everywhere`.
+    */
+  def readsFrom(source: Place)(using tx: Tx^): Boolean =
+    tx.clearance.reads(Item.InRoom(source), tx.visibility.roomLabel(source))
+
+  /** Whether what this transaction knows may be sent to `service` as a call's arguments: what
+    * the deployment trusts `service` with ([[Visibility.trusted]], public when it declares no
+    * trust) dominates [[floor]]. What the call returns is checked by [[readsFrom]] of its place.
+    */
+  def sendsTo(service: Service)(using tx: Tx^): Boolean =
+    tx.visibility.trusted(service).dominates(floor(tx))
 }

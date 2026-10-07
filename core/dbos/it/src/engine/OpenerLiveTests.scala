@@ -1,11 +1,12 @@
 package grit.dbos.engine
 
+import java.sql.DriverManager
 import java.time.Instant
 
 import scala.util.Using
 
 import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
-import grit.core.place.Directory
+import grit.core.place.{Directory, Place}
 import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.{
   Clearance,
@@ -15,6 +16,7 @@ import grit.core.visibility.{
   Group,
   GroupName,
   Label,
+  Labelled,
   Level,
   RoomLabels,
   Subject,
@@ -171,6 +173,40 @@ object OpenerLiveTests extends TestSuite {
 
     test("the public subject reads only what is public") {
       resolved(Subject.Public) ==> Right(Clearance.of(Label.Public))
+    }
+
+    test("a transaction it opens labels places as the deployment's visibility does") {
+      val board =
+        Place.read("slack:T1/C-board").fold(e => throw new java.lang.AssertionError(e), identity)
+      val labelling = RoomLabels
+        .of(Vector(board -> trialLabel), Labelled.Mapped(Label.Public))
+        .left
+        .map(_.written)
+        .flatMap(rooms =>
+          Compartments
+            .of(Vector(trial))
+            .left
+            .map(_.toString)
+            .flatMap(Visibility.of(_, rooms, Vector.empty, Vector.empty).left.map(_.toString))
+        )
+        .fold(e => throw new java.lang.AssertionError(e), identity)
+      val origin = slack("1.9")
+      val turn = first(LiveDb.conversation(config, origin, trialLabel).id)
+      val labelled = new Opener(labelling)
+      val read = Using.resource(
+        DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
+      ) { conn =>
+        labelled
+          .open(Subject.Turn(turn), conn)
+          .map(tx =>
+            (
+              Tx.writable(board)(using tx),
+              Tx.writesTo(board)(using tx),
+              Tx.writesTo(origin.room)(using tx)
+            )
+          )
+      }
+      read ==> Right((Some(trialLabel), true, false))
     }
   }
 }
