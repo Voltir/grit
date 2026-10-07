@@ -3,7 +3,7 @@ package grit.eval.harness.report
 import grit.core.id.WorkflowId
 import grit.core.message.Tokens
 import grit.core.tool.ToolName
-import grit.eval.harness.corpus.{Called, Drafted, Ended, Part, Support, TurnCase}
+import grit.eval.harness.capture.{Called, Drafted, Ended, Part, Support, TurnCase}
 import grit.eval.harness.label.Verdicts
 import grit.eval.harness.score.{Calls, Paid, Quantiles, Shapes, Slice, Structure, Unreplied, Where}
 import grit.eval.harness.stats.{Mills, Proportion}
@@ -12,7 +12,7 @@ import grit.turn.TurnRecord
 /** [[Report.turns]]'s sections. */
 private[report] object TurnLines {
 
-  def of(corpus: String, turns: Vector[TurnCase], verdicts: Verdicts): String = {
+  def of(capture: String, turns: Vector[TurnCase], verdicts: Verdicts): String = {
     val slices = Slice.every.map(s => s -> Structure.of(turns, s, verdicts)).filter(_._2.n > 0)
     def table(head: String*)(rows: Vector[Vector[String]]): Vector[String] =
       Vector(head.mkString("| ", " | ", " |"), head.map(_ => "---").mkString("|", "|", "|")) ++
@@ -22,7 +22,7 @@ private[report] object TurnLines {
     val all = Structure.of(turns, Slice.All, verdicts)
 
     val header = Vector(
-      s"# turns: $corpus",
+      s"# turns: $capture",
       "",
       s"turns: ${turns.size}; " + slices
         .drop(1)

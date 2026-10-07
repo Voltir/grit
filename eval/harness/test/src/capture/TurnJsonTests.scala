@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import java.time.Instant
 
@@ -28,7 +28,7 @@ import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnWeighing}
 
 import utest.*
 
-/** A turn of a corpus as `turns.jsonl` keeps it. */
+/** A turn of a capture as `turns.jsonl` keeps it. */
 object TurnJsonTests extends TestSuite {
 
   private def right[A](e: Either[String, A]): A =
@@ -227,12 +227,12 @@ object TurnJsonTests extends TestSuite {
         line
       }
       older.map(TurnJson.read) ==> Vector.fill(2)(
-        Left("turn: no weighed: written before shapes were captured; recapture the corpus")
+        Left("turn: no weighed: written before shapes were captured; capture again")
       )
     }
 
     test("a turn's line is pinned: its keys in order, its said and ended by kind") {
-      // The stored form: a change here is a change to every corpus written before it.
+      // The stored form: a change here is a change to every capture written before it.
       TurnJson.write(unfinished.copy(spend = Vector.empty)).render() ==>
         """{"workflow":"c2:0","conversation":"c1","turn":3,"said":{"task":"e2"},""" +
         """"root":"addressed","focus":"focused","started":"2026-10-02T17:05:00Z",""" +

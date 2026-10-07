@@ -5,7 +5,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.id.WorkflowId
 import grit.core.message.Tokens
 import grit.core.tool.ToolName
-import grit.eval.harness.corpus.{Called, Part, Parts, TurnCase}
+import grit.eval.harness.capture.{Called, Part, Parts, TurnCase}
 import grit.eval.harness.label.Locator
 import grit.eval.harness.stats.Proportion
 
@@ -88,7 +88,7 @@ final case class Priced(
   *   `None` with no window rebuilt both ways
   * @param used
   *   used-section recall: of the parts of each recorded window the turn's reply used
-  *   ([[grit.eval.harness.corpus.Support.Used]]), those the variant's window holds
+  *   ([[grit.eval.harness.capture.Support.Used]]), those the variant's window holds
   *   ([[Locator.held]]); over no part where no reply used one, its rate then undefined
   * @param usedShipped
   *   the same of shipped's rebuilt window, which drift alone moves from the recorded
@@ -124,7 +124,7 @@ object Recipe {
     val called = pairs.flatMap { p =>
       p.turn.rounds
         .flatMap(_.calls)
-        .collect { case grit.eval.harness.corpus.Call(Called.Tool(name), _) => name }
+        .collect { case grit.eval.harness.capture.Call(Called.Tool(name), _) => name }
         .distinct
         .map(name => p.turn.conversation -> p.variant.tools.contains(name))
     }

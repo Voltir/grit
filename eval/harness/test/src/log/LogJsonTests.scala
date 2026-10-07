@@ -11,7 +11,7 @@ import grit.core.message.{Tokens, Usage}
 import grit.core.stitch.Tuning
 import grit.core.store.Focus
 import grit.dbos.engine.Build
-import grit.eval.harness.corpus.{CaseId, Digest, Failure}
+import grit.eval.harness.capture.{CaseId, Digest, Failure}
 
 import utest.*
 
@@ -24,7 +24,7 @@ object LogJsonTests extends TestSuite {
 
   private val header = Header(
     "20261002",
-    Digest.text("corpus"),
+    Digest.text("capture"),
     Some(Digest.text("labels")),
     "live",
     Some(Digest.text("wording")),

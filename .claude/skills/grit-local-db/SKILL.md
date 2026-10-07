@@ -12,8 +12,8 @@ The compose Postgres (`docker compose up -d`) holds them.
 | `grit_agent` | agents' runs, probes, `scripts/tui-drive`, `scripts/tui-gate` | read, reset, run grit on it |
 | `grit` | Nick's local sessions | read with `--nick-db` only |
 | `grit_<deployment>` | a deployment Nick runs from its own repository | read only, through `scripts/sql`; never reset it or run grit on it |
-| `grit_eval_<yyyymmdd>` | an eval corpus, restored by `scripts/eval capture` from a dump of another database | create, read, drop; never run grit on it |
-| `grit_eval_shadow` | a disposable copy of a corpus that a shadow run's engine runs on | create, read, reset, drop, run grit on it |
+| `grit_eval_<yyyymmdd>` | an eval capture, restored by `scripts/eval capture` from a dump of another database | create, read, drop; never run grit on it |
+| `grit_eval_shadow` | a disposable copy of a capture that a shadow run's engine runs on | create, read, reset, drop, run grit on it |
 | `grit_eval_synthetic` | the eval's hand-written cases, written by `scripts/eval reference-build`, which drops and recreates it | build, read, drop; never run grit on it |
 
 - **`scripts/eval capture --from <db>`** only reads `<db>`: `pg_dump` is an MVCC read, safe

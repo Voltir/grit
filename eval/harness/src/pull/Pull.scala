@@ -12,14 +12,14 @@ import grit.core.review.Considered
 import grit.core.store.{Focus, Origin, Position, StoreError, Tx}
 import grit.core.triage.{Corpora, ShadowAnswers, Shadowed, Tags, TriageStore}
 import grit.dbos.engine.{Build, Reader}
-import grit.eval.harness.corpus.{Case, CaseId, Digest, Failure}
+import grit.eval.harness.capture.{Case, CaseId, Digest, Failure}
 import grit.eval.harness.label.{Rated, Verdicts}
 import grit.eval.harness.log.{CacheKey, Footer, Header, Log, Outcome, Row, Suite, Weights}
 import grit.lifecycle.triage.{TriageQuestion, TriageQuestions}
 
 /** What a deployment's database kept of the heard messages tagged since a time, as run logs
   * the scorers read beside offline runs: live triage's tags ([[Pull.Kept]]), and each named
-  * shadow's answers. Rows are of the corpus's cases alone, in its order, one a case, each with
+  * shadow's answers. Rows are of the capture's cases alone, in its order, one a case, each with
   * the focus its message was said at, never cached; text-free.
   */
 object Pull {
@@ -30,13 +30,13 @@ object Pull {
   /** The variant a pulled log of shadow `name`'s answers names: `shadow-<name>`. */
   def variant(name: ShadowName): String = s"shadow-${ShadowName.value(name)}"
 
-  /** What [[apply]] read: live triage's log, its rows the corpus's cases triage answered and
-    * whose question the corpus rebuilt, each answered row's answers under their names, the
+  /** What [[apply]] read: live triage's log, its rows the capture's cases triage answered and
+    * whose question the capture rebuilt, each answered row's answers under their names, the
     * question set's names those of its first answered row; `renamed`, the answered rows left
     * out because their names differ from those (a pull since before live triage changed its
-    * question set: pull `since` the change); `unbuilt`, the cases left out because the corpus
+    * question set: pull `since` the change); `unbuilt`, the cases left out because the capture
     * could not rebuild their question; each shadow's log by the form its answers were kept in;
-    * and the Slack messages tagged since that no corpus case is, for the next capture.
+    * and the Slack messages tagged since that no capture case is, for the next capture.
     */
   final case class Pulled(
       live: Log[VectorMap[QuestionName, Answer]],
@@ -61,19 +61,19 @@ object Pull {
   }
 
   /** The logs of what `reader`'s database kept of the heard messages tagged at or after
-    * `since` and before `at`, over `cases` (the corpus `corpus`, its files' digest `corpusDigest`): live
+    * `since` and before `at`, over `cases` (the capture `capture`, its files' digest `captureDigest`): live
     * triage's, and one for each of `names`. Each log's header has the variant
     * ([[Kept]], or [[variant]]), the model the first of its answered rows requested, no wording
     * ([[Header.wording]]), a question set's names for live's and a [[ShadowLog.Named]], the build every engine start since `since` ran (`Unknown` unless
     * they all ran one), one repeat, no cache, no rule, a cap of 0 (a shadow's cap is its
     * deployment's) and `at` as when it started; its footer what its rows' calls cost. A kept
-    * row's request is the corpus's rebuilt digest, as live triage's own is not recorded, and
+    * row's request is the capture's rebuilt digest, as live triage's own is not recorded, and
     * its latency 0. `Left` when the database cannot be read, naming what was being read.
     */
   def apply(
       reader: Reader^,
-      corpus: String,
-      corpusDigest: Digest,
+      capture: String,
+      captureDigest: Digest,
       cases: Vector[Case],
       names: Vector[ShadowName],
       since: Instant,
@@ -91,10 +91,10 @@ object Pull {
           )
       )
       starts <- reader.starts().left.map(e => s"engine starts unread: ${e.getClass.getSimpleName}")
-      inCorpus = cases.flatMap(c =>
+      inCapture = cases.flatMap(c =>
         ids.collectFirst { case (t, Some((id, focus))) if id == c.id => (t, c, focus) }
       )
-      built = inCorpus.flatMap((t, c, focus) => c.asked.map(a => (t, c, a.input.request, focus)))
+      built = inCapture.flatMap((t, c, focus) => c.asked.map(a => (t, c, a.input.request, focus)))
       shadowed <- each(names)(n =>
         read("shadows")(reader.shadows.of(n, tagged.map(_.entry))).map(n -> _)
       )
@@ -105,8 +105,8 @@ object Pull {
       }
       def header(variant: String, model: String, questions: Option[Vector[QuestionName]]) =
         Header(
-          corpus,
-          corpusDigest,
+          capture,
+          captureDigest,
           None,
           variant,
           None,
@@ -159,7 +159,7 @@ object Pull {
         all.size - live.size,
         shadowed.map { (name, rows) =>
           val kept =
-            inCorpus.flatMap((t, c, focus) => rows.get(t.entry).map(held(c.id, _, focus)))
+            inCapture.flatMap((t, c, focus) => rows.get(t.entry).map(held(c.id, _, focus)))
           val missing = tagged.filterNot(t => rows.contains(t.entry))
           val ended = missing.count(t =>
             reader
@@ -174,7 +174,7 @@ object Pull {
           )
         },
         ids.collect { case (_, Some((id, _))) if !byId.contains(id) => id }.distinct.sorted,
-        inCorpus.size - built.size
+        inCapture.size - built.size
       )
     }
   }

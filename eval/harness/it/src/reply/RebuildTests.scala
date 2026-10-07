@@ -34,7 +34,7 @@ import grit.core.tool.Toolbox
 import grit.core.triage.Corpora
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
-import grit.eval.harness.corpus.{Digest, Dump, KnowledgeJson, TurnCapture}
+import grit.eval.harness.capture.{Digest, Dump, KnowledgeJson, TurnCapture}
 import grit.eval.harness.jev.{Asking, Budget}
 import grit.eval.harness.log.Cache
 import grit.lifecycle.stitch.{Stitch, StitchEnv}

@@ -6,7 +6,7 @@ import grit.core.classify.Answer
 import grit.core.id.{CorpusName, QuestionName, WorkflowId}
 import grit.core.recipe.{Rooted, ServiceOffer}
 import grit.core.triage.{Corpora, Tags}
-import grit.eval.harness.corpus.TurnCase
+import grit.eval.harness.capture.TurnCase
 import grit.turn.{TurnOffer, TurnRecord}
 
 /** The answers a variant decides a recorded turn's offering by, and which turns the harness

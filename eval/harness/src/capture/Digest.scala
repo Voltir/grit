@@ -1,11 +1,11 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 import grit.core.classify.Request
 
-/** A SHA-256, as 64 lower-case hex digits: what a corpus keeps of a text or an input in place
+/** A SHA-256, as 64 lower-case hex digits: what a capture keeps of a text or an input in place
   * of it.
   */
 final case class Digest private (hex: String)

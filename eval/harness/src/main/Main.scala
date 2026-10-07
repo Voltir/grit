@@ -23,11 +23,11 @@ import grit.core.tool.ToolSet
 import grit.core.triage.Corpora
 import grit.dbos.engine.{Build, Engine, Reader}
 import grit.dbos.sql.DbConfig
-import grit.eval.harness.corpus.{
+import grit.eval.harness.capture.{
   Capture,
+  CaptureJson,
   Case,
   CaseId,
-  CorpusJson,
   Digest,
   Dump,
   Ended,
@@ -176,7 +176,7 @@ object Main {
   }
 
   /** `capture --url <jdbc> --source <db> --restored <db> --sha256 <hex> --at <instant> --out
-    * <dir>`: the corpus of the restored database, written to `corpus.json` and `cases.jsonl` in
+    * <dir>`: the capture of the restored database, written to `capture.json` and `cases.jsonl` in
     * `<dir>`, its recorded turns to `turns.jsonl` ([[TurnCapture]]) and the verdicts standing
     * on reviewed messages to `verdicts.json` ([[Pull.verdicts]]), with the database's login
     * from `GRIT_DATABASE_USER` and `_PASSWORD`.
@@ -203,7 +203,7 @@ object Main {
       (captured, turns, standing) = read
       _ <- write(
         out.resolve("cases.jsonl"),
-        captured.cases.map(CorpusJson.writeCase(_).render() + "\n").mkString
+        captured.cases.map(CaptureJson.writeCase(_).render() + "\n").mkString
       )
       _ <- write(
         out.resolve("turns.jsonl"),
@@ -211,8 +211,8 @@ object Main {
       )
       _ <- write(out.resolve("verdicts.json"), Verdicts.written(standing.verdicts))
       _ <- write(
-        out.resolve("corpus.json"),
-        CorpusJson.writeManifest(captured.manifest).render(2) + "\n"
+        out.resolve("capture.json"),
+        CaptureJson.writeManifest(captured.manifest).render(2) + "\n"
       )
     } yield {
       report(captured.manifest, captured.cases)
@@ -245,10 +245,10 @@ object Main {
     println(s"  with a tool loop: ${turns.cases.count(_.rounds.nonEmpty)}")
   }
 
-  /** `replies --corpus <dir> --url <jdbc> --out <dir> --labels <file> (--cases <id,...> |
+  /** `replies --capture <dir> --url <jdbc> --out <dir> --labels <file> (--cases <id,...> |
     * --pick <n> [--by <order>, default random])`, with `records` for `--records` and `show`
-    * for `--show`: a review of the corpus's turns ([[ReplyReview]]), its text read from the
-    * restored database, written to `<out>/replies-<corpus>-<stamp>.md`, the stamp `clock`'s
+    * for `--show`: a review of the capture's turns ([[ReplyReview]]), its text read from the
+    * restored database, written to `<out>/replies-<capture>-<stamp>.md`, the stamp `clock`'s
     * now; a random order is seeded from `fresh`. A pick leaves out the turns `<file>`
     * (`reply-labels.json`; none when it does not exist) labels. Prints the file's path, and
     * each case's workflow and record count; the file's text only with `show`.
@@ -261,7 +261,7 @@ object Main {
       fresh: Fresh^
   ): Either[String, Unit] =
     for {
-      dir <- need(f, "corpus").map(Path.of(_))
+      dir <- need(f, "capture").map(Path.of(_))
       url <- need(f, "url")
       out <- need(f, "out").map(Path.of(_))
       labelled <- need(f, "labels").map(Path.of(_)).flatMap(replyLabelsAt)
@@ -278,12 +278,12 @@ object Main {
       }
       picked <- ReplyReview.pick(turns, labelled, ask)
       at = clock.now()
-      corpus = Option(dir.getFileName).fold("")(_.toString)
+      capture = Option(dir.getFileName).fold("")(_.toString)
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       review <- opened(config)(reader =>
-        ReplyReview.review(corpus, picked, at)(t => ReplyReview.read(reader, t, records))
+        ReplyReview.review(capture, picked, at)(t => ReplyReview.read(reader, t, records))
       )
-      path = out.resolve(s"replies-$corpus-${Stamp.format(at.atOffset(ZoneOffset.UTC))}.md")
+      path = out.resolve(s"replies-$capture-${Stamp.format(at.atOffset(ZoneOffset.UTC))}.md")
       _ <- Try(Files.createDirectories(out)).toEither.left.map(e => s"$out: ${e.getClass.getName}")
       text = ReplyReview.render(review)
       _ <- write(path, text)
@@ -318,24 +318,24 @@ object Main {
     if (!Files.exists(path)) Right(ReplyLabels.Empty)
     else read(path).flatMap(ReplyLabels.read)
 
-  /** `turns --eval <dir> --corpus <yyyymmdd>`: the corpus's recorded turns read structurally,
+  /** `turns --eval <dir> --capture <yyyymmdd>`: the capture's recorded turns read structurally,
     * beside the verdicts standing in its `verdicts.json` (none when it has no such file),
     * written to `<dir>/reports/turns-<yyyymmdd>.md` and printed.
     */
   private def turns(f: Map[String, String]): Either[String, Unit] =
     for {
       dir <- need(f, "eval").map(Path.of(_))
-      corpus <- need(f, "corpus").filterOrElse(_.matches("[0-9]{8}"), "--corpus is yyyymmdd")
-      at = dir.resolve("corpus").resolve(corpus)
+      capture <- need(f, "capture").filterOrElse(_.matches("[0-9]{8}"), "--capture is yyyymmdd")
+      at = dir.resolve("capture").resolve(capture)
       captured <- readTurns(at)
       standing <- {
         val file = at.resolve("verdicts.json")
         if (!Files.exists(file)) Right(Verdicts.Empty) else read(file).flatMap(Verdicts.read)
       }
-      _ <- publish(dir, s"turns-$corpus", Report.turns(corpus, captured, standing))
+      _ <- publish(dir, s"turns-$capture", Report.turns(capture, captured, standing))
     } yield ()
 
-  /** `rebuild --corpus <dir> --url <jdbc> --cache <dir> --spend <usd> [--window <tokens>]
+  /** `rebuild --capture <dir> --url <jdbc> --cache <dir> --spend <usd> [--window <tokens>]
     * [--tail <tokens>]`: every turn the restored database recorded before its dump, its window
     * rebuilt as of its assembly by the shipped assembler ([[Rebuild.recorded]], its query
     * replayed) and set against the one it recorded ([[Rebuild.report]]); then every window-only
@@ -351,7 +351,7 @@ object Main {
     */
   private def rebuild(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
-      dir <- need(f, "corpus").map(Path.of(_))
+      dir <- need(f, "capture").map(Path.of(_))
       url <- need(f, "url")
       cap <- need(f, "spend").flatMap(decimal("spend"))
       cacheDir <- need(f, "cache").map(Path.of(_))
@@ -361,10 +361,10 @@ object Main {
         .fold(Right(Assembled.Shipped.window))(positive("window")(_).map(Tokens(_)))
       tail <- f.get("tail").fold(Right(Assembled.Shipped.tail))(positive("tail")(_).map(Tokens(_)))
       assembled = Assembled.Shipped.copy(window = window, tail = tail)
-      manifest <- read(dir.resolve("corpus.json")).flatMap(t =>
+      manifest <- read(dir.resolve("capture.json")).flatMap(t =>
         Try(ujson.read(t)).toOption
-          .toRight("corpus.json: not JSON")
-          .flatMap(CorpusJson.readManifest)
+          .toRight("capture.json: not JSON")
+          .flatMap(CaptureJson.readManifest)
       )
       until = manifest.dump.at
       env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
@@ -431,27 +431,27 @@ object Main {
       }
     } yield ()
 
-  /** `recipes --eval <dir> --corpus <yyyymmdd> --url <jdbc> --variants <name,…> --context
+  /** `recipes --eval <dir> --capture <yyyymmdd> --url <jdbc> --variants <name,…> --context
     * <tokens> --cache <dir> --spend <usd> [--reference <file>] [--labels <file>] [--window
     * <tokens>] [--tail <tokens>]`: each variant ([[TurnVariant.named]]) against shipped over
-    * every turn of the corpus, written to `<dir>/reports/recipes-<yyyymmdd>.md` and printed
+    * every turn of the capture, written to `<dir>/reports/recipes-<yyyymmdd>.md` and printed
     * ([[Report.recipes]]). Refused, before anything is read, when a variant draws a window over
     * `--context`, the reply model's context in tokens ([[grit.core.recipe.TurnRecipe.widens]]).
     * A turn's offering under a variant is decided over what it recorded
     * ([[TurnVariant.shape]]), by the answers [[TurnAnswers.of]] gives it. A turn whose answers
     * a variant reads and only asking gives ([[TurnAnswers.asks]]) has its message put live
     * triage's set ([[TurnTriage.ask]]) through Jev, once, with the corpora the
-    * deployment that recorded the corpus declares (its `knowledge.json`, [[KnowledgeJson.read]]),
+    * deployment that recorded the capture declares (its `knowledge.json`, [[KnowledgeJson.read]]),
     * the answer kept under `<cache>` so it is paid for once, under the `--spend` cap in USD:
     * and asked in the words of the persona it declares (its `persona.json`, [[PersonaJson.read]]),
-    * refused before any call when such a turn's corpus has no `knowledge.json` or no
+    * refused before any call when such a turn's capture has no `knowledge.json` or no
     * `persona.json`, when the knowledge file
     * is not the declaration the turn's shape was decided under ([[TurnAnswers.declared]]), or
     * when the calls not kept are estimated over the cap; each call past it skipped. A message
     * with no case id (a TUI or task turn's) is not asked. Each width's window is rebuilt as of
     * the turn's assembly, its query replayed ([[Rebuild.recorded]]), and costed as capture costs
     * a window ([[TurnCapture.costed]]); its tools are those of the set it draws from
-    * ([[grit.eval.harness.corpus.Offered.drawn]]) the variant offers, their definitions costed
+    * ([[grit.eval.harness.capture.Offered.drawn]]) the variant offers, their definitions costed
     * as capture costs them ([[TurnCapture.schema]]). The notes say, per variant, how many
     * shaped turns it decides as they were recorded ([[TurnVariant.asRecorded]]), naming those
     * it does not. The reference is `--reference` (a file of ids, [[Reference.read]]; none when
@@ -463,8 +463,8 @@ object Main {
   private def recipes(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
       eval <- need(f, "eval").map(Path.of(_))
-      corpus <- need(f, "corpus").filterOrElse(_.matches("[0-9]{8}"), "--corpus is yyyymmdd")
-      dir = eval.resolve("corpus").resolve(corpus)
+      capture <- need(f, "capture").filterOrElse(_.matches("[0-9]{8}"), "--capture is yyyymmdd")
+      dir = eval.resolve("capture").resolve(capture)
       url <- need(f, "url")
       named <- need(f, "variants").map(_.split(',').toVector.filter(_.nonEmpty))
       limit <- need(f, "context").flatMap(positive("context")).map(Tokens(_))
@@ -488,10 +488,10 @@ object Main {
         .get("labels")
         .fold[Either[String, ReplyLabels]](Right(ReplyLabels.Empty))(l => replyLabelsAt(Path.of(l)))
       reference = Reference.labelled(labelled) ++ written
-      manifest <- read(dir.resolve("corpus.json")).flatMap(t =>
+      manifest <- read(dir.resolve("capture.json")).flatMap(t =>
         Try(ujson.read(t)).toOption
-          .toRight("corpus.json: not JSON")
-          .flatMap(CorpusJson.readManifest)
+          .toRight("capture.json: not JSON")
+          .flatMap(CaptureJson.readManifest)
       )
       turns <- readTurns(dir)
       asking = turns.filter(TurnAnswers.asks(_, variants))
@@ -503,7 +503,7 @@ object Main {
         else
           Left(
             s"refused: ${asking.size} turns are to be asked and there is no $knowledgeAt: " +
-              "write the corpora the deployment that recorded the corpus declares there"
+              "write the corpora the deployment that recorded the capture declares there"
           )
       personaAt = dir.resolve("persona.json")
       // Read only when a turn is to be asked: its name is in to-grit's words.
@@ -513,7 +513,7 @@ object Main {
         else
           Left(
             s"refused: ${asking.size} turns are to be asked and there is no $personaAt: " +
-              "write the persona the deployment that recorded the corpus declares there"
+              "write the persona the deployment that recorded the capture declares there"
           )
       _ <- asking
         .map(TurnAnswers.declared(_, knowledge))
@@ -650,10 +650,10 @@ object Main {
           ) ++ exact ++ notRebuilt.toVector.sorted ++ built.collect { case (t, _, Left(why)) =>
             s"  not asked: ${WorkflowId.value(t.workflow)}: $why"
           }
-          Report.recipes(corpus, notes, prices, varied(TurnVariant.Shipped), variants.map(varied))
+          Report.recipes(capture, notes, prices, varied(TurnVariant.Shipped), variants.map(varied))
         }
       }
-      _ <- publish(eval, s"recipes-$corpus", text)
+      _ <- publish(eval, s"recipes-$capture", text)
     } yield ()
 
   /** `reference-build --url <jdbc>`: every case of `grit.eval` ([[Synthetic.cases]]) written
@@ -809,7 +809,7 @@ object Main {
         .map(e => s"tool set of ${WorkflowId.value(t.workflow)} unread: ${Capture.kind(e)}")
     )
 
-  /** The turns of the corpus in `dir`, from `turns.jsonl`. */
+  /** The turns of the capture in `dir`, from `turns.jsonl`. */
   private def readTurns(dir: Path): Either[String, Vector[TurnCase]] =
     read(dir.resolve("turns.jsonl")).flatMap(text =>
       Fields.each(text.linesIterator.filter(_.nonEmpty).toVector)(l =>
@@ -819,9 +819,9 @@ object Main {
       )
     )
 
-  /** `run --corpus <dir> --url <jdbc> --variant <name> --spend <usd> --cache <dir> --runs
+  /** `run --capture <dir> --url <jdbc> --variant <name> --spend <usd> --cache <dir> --runs
     * <dir> [--repeats n (default [[Repeats.Default]])] [--first n] [--rule <file>] [--labels <file>]`, and `cache` false for
-    * `--no-cache`: the corpus's cases' questions rebuilt, how they changed from capture
+    * `--no-cache`: the capture's cases' questions rebuilt, how they changed from capture
     * reported, then asked of Jev under the cap, and the log written to `<runs>/<stamp>-<variant>.jsonl`.
     * The key comes from the environment over `GRIT_ENV_FILE` (`.env` when unset), the
     * database's login from `GRIT_DATABASE_USER` and `_PASSWORD`. The stamp and the header's
@@ -829,7 +829,7 @@ object Main {
     */
   private def run(f: Map[String, String], cache: Boolean, clock: Clock^): Either[String, Unit] =
     for {
-      dir <- need(f, "corpus").map(Path.of(_))
+      dir <- need(f, "capture").map(Path.of(_))
       url <- need(f, "url")
       variant <- need(f, "variant").flatMap(variantNamed)
       cap <- need(f, "spend").flatMap(decimal("spend"))
@@ -843,15 +843,15 @@ object Main {
         .map(Path.of(_))
         .filter(Files.isRegularFile(_))
         .fold(Right(None))(l => read(l).map(t => Some(Digest.text(t))))
-      manifestText <- read(dir.resolve("corpus.json"))
+      manifestText <- read(dir.resolve("capture.json"))
       casesText <- read(dir.resolve("cases.jsonl"))
       manifest <- Try(ujson.read(manifestText)).toOption
-        .toRight("corpus.json: not JSON")
-        .flatMap(CorpusJson.readManifest)
+        .toRight("capture.json: not JSON")
+        .flatMap(CaptureJson.readManifest)
       all <- Fields.each(casesText.linesIterator.filter(_.nonEmpty).toVector)(l =>
         Try(ujson.read(l)).toOption
           .toRight("cases.jsonl: a line is not JSON")
-          .flatMap(CorpusJson.readCase)
+          .flatMap(CaptureJson.readCase)
       )
       env <- DotEnv.load(Path.of(sys.env.getOrElse("GRIT_ENV_FILE", ".env")), sys.env)
       jev <- JevConfig.fromEnv(env).left.map(_.message)
@@ -934,13 +934,13 @@ object Main {
       println(s"log: ${out.getFileName}")
     }
 
-  /** `determinism --corpus <dir> --log <file>`: how far apart the log's repeats answered,
+  /** `determinism --capture <dir> --log <file>`: how far apart the log's repeats answered,
     * and how far its answers are from what was kept live: the largest gap, and the questions
     * and cases over [[Spread.Tolerance]], by id.
     */
   private def determinism(f: Map[String, String]): Either[String, Unit] =
     for {
-      dir <- need(f, "corpus").map(Path.of(_))
+      dir <- need(f, "capture").map(Path.of(_))
       logText <- need(f, "log").map(Path.of(_)).flatMap(read)
       log <- LogJson.read[Vector[Weights]](logText.linesIterator.filter(_.nonEmpty).toVector)
       cases <- readCases(dir)
@@ -961,12 +961,12 @@ object Main {
       show("against live", Spread.live(log.rows, cases))
     }
 
-  /** `inputs --corpus <dir> --url <jdbc> --out <file> [--variant <name>]`, and `more` for
+  /** `inputs --capture <dir> --url <jdbc> --out <file> [--variant <name>]`, and `more` for
     * `--more`: every case's questions rebuilt through the shipped builders ([[Review]]), triage's
     * by the variant's recipe (default `live`'s, the shipped), written to `<file>`, one line
-    * a case, in the corpus's order, with the database's login from `GRIT_DATABASE_USER` and
+    * a case, in the capture's order, with the database's login from `GRIT_DATABASE_USER` and
     * `_PASSWORD`. The file holds text and is never printed: this prints counts, and how each
-    * request's digest compares to the corpus's.
+    * request's digest compares to the capture's.
     */
   /** `context`: one recorded turn's request as sent, text and all, written to `--out` for a
     * person to read; prints counts only.
@@ -975,7 +975,7 @@ object Main {
     if (f.contains("entry")) heardContext(f) else turnContext(f, full)
 
   /** `context` of a heard message (`--entry`): what Jev was asked of it, its triage request
-    * worded for the persona and corpora in `--declared` (a corpus's directory, its
+    * worded for the persona and corpora in `--declared` (a capture's directory, its
     * `persona.json` and `knowledge.json`), else grit's and none.
     */
   private def heardContext(f: Map[String, String]): Either[String, Unit] = {
@@ -1035,13 +1035,13 @@ object Main {
 
   private def inputs(f: Map[String, String], more: Boolean): Either[String, Unit] =
     for {
-      dir <- need(f, "corpus").map(Path.of(_))
+      dir <- need(f, "capture").map(Path.of(_))
       url <- need(f, "url")
       out <- need(f, "out").map(Path.of(_))
-      manifest <- read(dir.resolve("corpus.json")).flatMap(t =>
+      manifest <- read(dir.resolve("capture.json")).flatMap(t =>
         Try(ujson.read(t)).toOption
-          .toRight("corpus.json: not JSON")
-          .flatMap(CorpusJson.readManifest)
+          .toRight("capture.json: not JSON")
+          .flatMap(CaptureJson.readManifest)
       )
       cases <- readCases(dir)
       variant <- variantNamed(f.getOrElse("variant", Variant.name(Variant.Live)))
@@ -1082,7 +1082,7 @@ object Main {
     }
 
   /** `score --eval <dir> --run <name> [--labels <file>]`: the run `<dir>/runs/<name>` scored
-    * against its corpus (`<dir>/corpus/<its corpus>`) and the labels in `<file>` (default
+    * against its capture (`<dir>/capture/<its capture>`) and the labels in `<file>` (default
     * `<dir>/labels.json`; none when it does not exist), written to `<dir>/reports/<name less
     * .jsonl>.md` and printed.
     */
@@ -1280,19 +1280,19 @@ object Main {
         s"written to order/$name"
     )
 
-  /** `pull --corpus <dir> --url <jdbc> --runs <dir> --shadows <name,…> [--since <instant>]`:
+  /** `pull --capture <dir> --url <jdbc> --runs <dir> --shadows <name,…> [--since <instant>]`:
     * what the database kept of the heard messages tagged since `<instant>` (default: ever) and
-    * the corpus in `<dir>` holds, as run logs ([[Pull]]): `<runs>/live-<yyyymmdd>.jsonl`, live
+    * the capture in `<dir>` holds, as run logs ([[Pull]]): `<runs>/live-<yyyymmdd>.jsonl`, live
     * triage's tags, and `<runs>/shadow-<name>-<yyyymmdd>.jsonl` for each shadow named, with
     * the database's login from `GRIT_DATABASE_USER` and `_PASSWORD`; and
     * `<runs>/verdicts-<yyyymmdd>.json`, the verdicts standing on the messages a review
     * considered since `<instant>` ([[Pull.verdicts]], [[Verdicts.written]]). Prints counts, and
-    * the ids of the messages no corpus holds yet, for the next capture. `<yyyymmdd>` is
+    * the ids of the messages no capture holds yet, for the next capture. `<yyyymmdd>` is
     * `clock`'s day in UTC.
     */
   private def pull(f: Map[String, String], clock: Clock^): Either[String, Unit] =
     for {
-      dir <- need(f, "corpus").map(Path.of(_))
+      dir <- need(f, "capture").map(Path.of(_))
       url <- need(f, "url")
       runs <- need(f, "runs").map(Path.of(_))
       names <- need(f, "shadows").flatMap(n =>
@@ -1305,7 +1305,7 @@ object Main {
         .fold(Right(Instant.EPOCH))(a =>
           Try(Instant.parse(a)).toOption.toRight(s"--since $a: not an instant")
         )
-      manifest <- read(dir.resolve("corpus.json"))
+      manifest <- read(dir.resolve("capture.json"))
       casesText <- read(dir.resolve("cases.jsonl"))
       cases <- readCases(dir)
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
@@ -1354,7 +1354,7 @@ object Main {
           pulled.live.header.questions
             .fold("none answered")(_.map(QuestionName.value).mkString(", ")) +
           s"; ${counted(pulled.live)}; answered under other questions, left out: " +
-          s"${pulled.renamed} (pull --since when live triage's question set changed); corpus " +
+          s"${pulled.renamed} (pull --since when live triage's question set changed); capture " +
           s"cases with no rebuilt question, left out: ${pulled.unbuilt}"
       )
       pulled.shadows.foreach { s =>
@@ -1372,7 +1372,7 @@ object Main {
             s"keeping nothing ${s.ended}, not yet shadowed ${s.waiting}"
         )
       }
-      println(s"not in the corpus, for the next capture: ${pulled.uncaptured.size}")
+      println(s"not in the capture, for the next capture: ${pulled.uncaptured.size}")
       pulled.uncaptured.foreach(id => println(s"  ${id.written}"))
       println(
         s"verdicts standing: ${standing.verdicts.cases.size}; on a message no case id names, " +
@@ -1396,7 +1396,7 @@ object Main {
     if (Files.isRegularFile(file)) read(file).flatMap(Labels.read) else Right(Labels.Empty)
   }
 
-  /** The run `<dir>/runs/<name>`, with its corpus's cases and `labels`; a corpus whose files
+  /** The run `<dir>/runs/<name>`, with its capture's cases and `labels`; a capture whose files
     * changed since the run is reported, not refused. A log of answers under their names, as
     * pull writes live triage's and a question set's shadow's, is refused, naming `--live`.
     */
@@ -1417,13 +1417,13 @@ object Main {
                   "shadow's, as pull writes them): compare it with --live and --gate"
             )
         )
-      corpus = dir.resolve("corpus").resolve(log.header.corpus)
-      manifest <- read(corpus.resolve("corpus.json"))
-      casesText <- read(corpus.resolve("cases.jsonl"))
-      cases <- readCases(corpus)
+      capture = dir.resolve("capture").resolve(log.header.capture)
+      manifest <- read(capture.resolve("capture.json"))
+      casesText <- read(capture.resolve("cases.jsonl"))
+      cases <- readCases(capture)
     } yield {
-      if (Digest.text(manifest + casesText) != log.header.corpusDigest)
-        println(s"$name: its corpus ${log.header.corpus} changed since it ran")
+      if (Digest.text(manifest + casesText) != log.header.captureDigest)
+        println(s"$name: its capture ${log.header.capture} changed since it ran")
       Scored(name, log, cases, labels)
     }
 
@@ -1442,17 +1442,17 @@ object Main {
   private def variantNamed(n: String): Either[String, Variant] =
     Variants.named(n).toRight(s"no variant $n: ${Variants.all.map(Variant.name).mkString(", ")}")
 
-  /** The cases of the corpus in `dir`. */
+  /** The cases of the capture in `dir`. */
   private def readCases(dir: Path): Either[String, Vector[Case]] =
     read(dir.resolve("cases.jsonl")).flatMap(text =>
       Fields.each(text.linesIterator.filter(_.nonEmpty).toVector)(l =>
         Try(ujson.read(l)).toOption
           .toRight("cases.jsonl: a line is not JSON")
-          .flatMap(CorpusJson.readCase)
+          .flatMap(CaptureJson.readCase)
       )
     )
 
-  /** Each suite's rebuilt states against the corpus's, as counts, and the ids of every case
+  /** Each suite's rebuilt states against the capture's, as counts, and the ids of every case
     * that drifted under the shipped builder: ids only. A suite whose inputs the variant
     * changes (its tuning both, its recipe triage's) reports changes, not drift.
     */

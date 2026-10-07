@@ -3,13 +3,13 @@ package grit.eval.harness.score
 import grit.core.id.WorkflowId
 import grit.core.prompt.Layer
 import grit.core.review.{Reason, Verdict}
-import grit.eval.harness.corpus.{Drafted, Ended, Part}
+import grit.eval.harness.capture.{Drafted, Ended, Part}
 import grit.eval.harness.stats.Proportion
 import grit.turn.TurnOffer
 
 import utest.*
 
-/** A corpus's recorded turns read structurally, over five hand-built turns whose every
+/** A capture's recorded turns read structurally, over five hand-built turns whose every
   * aggregate is worked by hand in the comments.
   */
 object StructureTests extends TestSuite {

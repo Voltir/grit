@@ -9,7 +9,7 @@ import grit.core.classify.Classifier
 import grit.core.clock.Clock
 import grit.core.store.Focus
 import grit.core.triage.Corpora
-import grit.eval.harness.corpus.{CaseId, Digest, Failure}
+import grit.eval.harness.capture.{CaseId, Digest, Failure}
 import grit.eval.harness.jev.{Asking, Budget, Spend}
 import grit.eval.harness.log.{Cache, Outcome, Suite, Weights}
 import grit.lifecycle.triage.{TriageQuestion, TriageQuestions}

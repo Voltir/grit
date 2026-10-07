@@ -6,7 +6,7 @@ import grit.core.triage.Weighing
 
 import utest.*
 
-/** How a corpus's turns recorded their offers and weighing, counted. */
+/** How a capture's turns recorded their offers and weighing, counted. */
 object ShapesTests extends TestSuite {
 
   val tests = Tests {

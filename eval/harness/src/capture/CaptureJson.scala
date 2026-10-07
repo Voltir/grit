@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import scala.util.Try
 
@@ -12,11 +12,11 @@ import grit.dbos.engine.{Build, Reader}
 
 import Fields.{each, opt}
 
-/** A corpus's files as JSON: a case, one line of `cases.jsonl` each, and the manifest,
-  * `corpus.json`. Each value is written with its fields in one fixed order, so equal values
+/** A capture's files as JSON: a case, one line of `cases.jsonl` each, and the manifest,
+  * `capture.json`. Each value is written with its fields in one fixed order, so equal values
   * write equal bytes. A read is `Left` naming the first field missing or not of its form.
   */
-object CorpusJson {
+object CaptureJson {
 
   def writeCase(c: Case): ujson.Value = ujson.Obj(
     "id" -> c.id.written,
@@ -161,7 +161,7 @@ object CorpusJson {
     case _ => Left(s"$what: build is neither unknown nor a commit")
   }
 
-  private[corpus] def readLive(v: ujson.Value): Either[String, Live] = {
+  private[capture] def readLive(v: ujson.Value): Either[String, Live] = {
     val f = Fields("tags", v)
     (if (v.objOpt.exists(_.contains("unanswered"))) f.optional("unanswered") else Right(None))
       .flatMap {
@@ -368,7 +368,7 @@ object CorpusJson {
     case Build.Unknown => ujson.Str("unknown")
   }
 
-  private[corpus] def writeLive(l: Live): ujson.Value = l match {
+  private[capture] def writeLive(l: Live): ujson.Value = l match {
     case Live.Weighed(kind, kindP, waiting, durable, helps, model, cost) =>
       ujson.Obj(
         "kind" -> Kind.written(kind),

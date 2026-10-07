@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import scala.collection.immutable.VectorMap
 

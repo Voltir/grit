@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import java.time.Instant
 
@@ -9,17 +9,17 @@ import grit.core.triage.{Corpora, TriageStore}
 import grit.dbos.engine.{Build, Reader}
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
 
-/** A corpus: its manifest, and its cases in their order. */
-final case class Corpus(manifest: Manifest, cases: Vector[Case])
+/** A capture: its manifest, and its cases in their order. */
+final case class Captured(manifest: Manifest, cases: Vector[Case])
 
-/** A corpus captured from a restored database, through the shipped builders. */
+/** A capture of a restored database, through the shipped builders. */
 object Capture {
 
-  /** The corpus of every heard message `reader`'s database tagged before `dump.at` that is a
+  /** The capture of every heard message `reader`'s database tagged before `dump.at` that is a
     * Slack message ([[CaseId.of]]): its manifest and its cases, ordered by when they were
     * tagged, then by id. Each case's inputs are rebuilt under its own placement's tuning, or
     * the manifest's. `source` and `restored` name the databases dumped and read, and
-    * `capture` the build capturing. Equal databases capture equal corpora. `Left` when the
+    * `capture` the build capturing. Equal databases give equal captures. `Left` when the
     * store cannot be read, naming what was being read; never a message's text.
     */
   def apply(
@@ -28,7 +28,7 @@ object Capture {
       restored: String,
       dump: Dump,
       capture: Build
-  ): Either[String, Corpus] = {
+  ): Either[String, Captured] = {
     val reads = StitchReads(
       reader.entries,
       reader.conversations,
@@ -103,7 +103,7 @@ object Capture {
       }
     } yield {
       val kept = cases.flatten.sortBy(k => (k.tagged, k.id.written))
-      Corpus(
+      Captured(
         Manifest(
           source,
           restored,
@@ -195,7 +195,7 @@ object Capture {
     case StoreError.Invalid(_) => "invalid"
   }
 
-  private[corpus] def each[A, B](
+  private[capture] def each[A, B](
       as: Vector[A]
   )(f: A => Either[String, B]): Either[String, Vector[B]] =
     as.foldLeft[Either[String, Vector[B]]](Right(Vector.empty))((acc, a) =>

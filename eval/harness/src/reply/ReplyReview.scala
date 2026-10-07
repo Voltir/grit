@@ -10,7 +10,7 @@ import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.store.{Entry, Nearby, Payload, Speakers, StoreError}
 import grit.dbos.engine.Reader
-import grit.eval.harness.corpus.{CaseId, Drafted, Ended, Fields, Part, Said, TurnCase}
+import grit.eval.harness.capture.{CaseId, Drafted, Ended, Fields, Part, Said, TurnCase}
 import grit.eval.harness.label.{Found, Locator, ReplyGuide, ReplyLabel, ReplyLabels}
 import grit.turn.{Turn, TurnOffer}
 
@@ -313,21 +313,21 @@ object ReplyReview {
     case StoreError.Invalid(_) => "invalid"
   }
 
-  /** One review file's content: a corpus's turns as picked, written at `at` under
+  /** One review file's content: a capture's turns as picked, written at `at` under
     * [[ReplyGuide.Current]].
     */
   final case class Review private[ReplyReview] (
-      corpus: String,
+      capture: String,
       by: Option[By],
       at: Instant,
       cases: Vector[Reviewed]
   )
 
   /** The review of `picked`, each turn as `read` shows it; the first `Left` `read` gives. */
-  def review(corpus: String, picked: Picked, at: Instant)(
+  def review(capture: String, picked: Picked, at: Instant)(
       read: TurnCase => Either[String, Reviewed]
   ): Either[String, Review] =
-    Fields.each(picked.turns)(read).map(Review(corpus, picked.by, at, _))
+    Fields.each(picked.turns)(read).map(Review(capture, picked.by, at, _))
 
   /** `r` as its file holds it, markdown for a person to read: a header naming the guide, then
     * each case under `## <workflow id>`, its words quoted line by line (`> `), its records
@@ -346,7 +346,7 @@ object ReplyReview {
       case Some(other) => other.toString.toLowerCase
     }
     val header = Vector(
-      s"# Replies to review: corpus ${r.corpus}",
+      s"# Replies to review: capture ${r.capture}",
       "",
       s"guide: ${ReplyGuide.written(ReplyGuide.Current)}",
       s"picked: $picked",

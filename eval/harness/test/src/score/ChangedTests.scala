@@ -2,7 +2,7 @@ package grit.eval.harness.score
 
 import grit.core.message.{Tokens, Usage}
 import grit.core.store.Focus
-import grit.eval.harness.corpus.Case
+import grit.eval.harness.capture.Case
 import grit.eval.harness.log.{Outcome, Suite, Weights}
 import grit.eval.harness.stats.Estimate
 

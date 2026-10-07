@@ -3,7 +3,7 @@ package grit.eval.harness.score
 import scala.collection.immutable.VectorMap
 
 import grit.core.message.{Tokens, Usage}
-import grit.eval.harness.corpus.Spent
+import grit.eval.harness.capture.Spent
 
 /** A model's prices in USD a token, read from its ledger rows: its uncached `input`, its
   * `cached` input, and its `output`; over `rows` priced rows, `cachedRows` of them with cached
@@ -24,7 +24,7 @@ final case class Rate(
   */
 final case class Scale(ratio: Double, calls: Int)
 
-/** What a corpus's calls are priced with: each model's [[Rate]], and the [[Scale]] that turns
+/** What a capture's calls are priced with: each model's [[Rate]], and the [[Scale]] that turns
   * grit's token estimates into the provider's tokens; each `Left` with why a model has none.
   */
 final case class Prices(

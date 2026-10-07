@@ -6,21 +6,21 @@
 # in USD.
 #
 #   scripts/eval capture --from <database> [--date <yyyymmdd>]
-#       A corpus of <database>'s heard messages, in .local/eval/corpus/<date>/ (date: today,
+#       A capture of <database>'s heard messages, in .local/eval/capture/<date>/ (date: today,
 #       UTC). The first run dumps <database> (pg_dump -Fc, an MVCC read beside a running
 #       engine: source.dump, and its sha256 and time in dump.txt, written once it is restored) and restores it to
 #       grit_eval_<date>, which must not exist yet; a later run reuses both. Each run then
-#       writes corpus.json and cases.jsonl, turns.jsonl (every turn the database recorded,
+#       writes capture.json and cases.jsonl, turns.jsonl (every turn the database recorded,
 #       TUI and Slack, by workflow: its offer and the shape its recipe decided, what its
 #       weigh step recorded, its window by part, rounds, ending, spend and draft's outcome; a
-#       corpus captured before shapes is refused by every command reading it until recaptured) and verdicts.json (the review verdicts standing), all text-free, and
+#       capture made before shapes is refused by every command reading it until recaptured) and verdicts.json (the review verdicts standing), all text-free, and
 #       prints counts. Rerun over the same
 #       restored database by the same build, it writes the same bytes. A failed restore's
 #       errors, which can quote rows, go to .local/eval/review/restore-<date>.log.
 #
-#   scripts/eval run --corpus <yyyymmdd> --variant <name> --spend <usd> [--repeats n]
+#   scripts/eval run --capture <yyyymmdd> --variant <name> --spend <usd> [--repeats n]
 #                    [--first n] [--no-cache] [--rule <file>]
-#       Every case of the corpus rebuilt through the shipped builders from grit_eval_<date>,
+#       Every case of the capture rebuilt through the shipped builders from grit_eval_<date>,
 #       how its inputs changed from capture printed (ids and counts), then asked of Jev as
 #       the variant says (live, durable-lasting, jev-latest, nearby-open, exchanges-open,
 #       nearby-author-open, sections-named, nearby-open+named, exchanges-open+named,
@@ -33,7 +33,7 @@
 #       is JEV_API_KEY, from the environment over GRIT_ENV_FILE (the main checkout's .env
 #       when unset), read by the harness as grit does.
 #
-#   scripts/eval determinism --corpus <yyyymmdd> --log <runs file>
+#   scripts/eval determinism --capture <yyyymmdd> --log <runs file>
 #       How far apart a run's repeats answered, and how far its answers are from what triage
 #       and stitching kept live: the largest gap, and the questions and cases over 1e-9, by
 #       id. <runs file> is a name in .local/eval/runs/.
@@ -48,7 +48,7 @@
 #       --more, triage's line also holds what its thread left out, and where. Prints counts,
 #       and how each digest compares to cases.jsonl's: never the file's text.
 #
-#   scripts/eval context <workflow-id | heard-entry-id> --from <database> [--full] [--corpus <yyyymmdd>]
+#   scripts/eval context <workflow-id | heard-entry-id> --from <database> [--full] [--capture <yyyymmdd>]
 #       One recorded turn as its model was sent it, text and all, written to
 #       .local/eval/review/context-<workflow-id>.md for a person to read: how it got there
 #       (the stitch placement and the state its classifier saw, triage's tags, the speech
@@ -62,7 +62,7 @@
 #       of it and answered, written to .local/eval/review/context-<entry-id>.md: the stitch
 #       state as recorded with its placement, its question as this build words it, and
 #       triage's request rebuilt through the shipped builder (triage keeps none), its words
-#       for the persona and corpora in .local/eval/corpus/<yyyymmdd>/ with --corpus
+#       for the persona and corpora in .local/eval/capture/<yyyymmdd>/ with --capture
 #       (persona.json, knowledge.json), else grit and none, beside the tags triage kept.
 #
 #   scripts/eval score <runs file> [--labels <file>]
@@ -124,9 +124,9 @@
 #       run A's repeat spread on it, Jev's own uncertainty (the default without), largest
 #       first. Prints counts.
 #
-#   scripts/eval pull --from <database> --corpus <yyyymmdd> --shadows <name,...> [--since <instant>]
+#   scripts/eval pull --from <database> --capture <yyyymmdd> --shadows <name,...> [--since <instant>]
 #       What <database> kept of the heard messages tagged since <instant> (default: ever) that
-#       the corpus holds, as run logs in .local/eval/runs/: live triage's tags as
+#       the capture holds, as run logs in .local/eval/runs/: live triage's tags as
 #       live-<today>.jsonl (variant `kept`), under the names of the question set its first
 #       answered row asked, the names in its header; a row of other names (a message triaged
 #       before live's question set changed) is left out and counted, so pull with --since the
@@ -137,13 +137,13 @@
 #       a changed question under a new name. Only reads <database>. Prints counts: each log's
 #       rows, live's questions and its rows left out under other names, and for each shadow
 #       the messages tagged since that it has no row for, its shadow ended keeping nothing or
-#       not yet run; and the ids of the messages no corpus holds yet, for the next capture. Also writes verdicts-<today>.json beside the logs: the verdict a
+#       not yet run; and the ids of the messages no capture holds yet, for the next capture. Also writes verdicts-<today>.json beside the logs: the verdict a
 #       review's rater left standing on each message a review picked since <instant>, by case
 #       id, with the shadow it was picked against, why, the rater's id and when; ids and
 #       times, no text. A file of none is written when there are none.
 #
 #   scripts/eval replies <yyyymmdd> (--case <id>... | --pick <n> [--by <order>]) [--records] [--show]
-#       A review of the corpus's replies for a person to label, written, text and all, to
+#       A review of the capture's replies for a person to label, written, text and all, to
 #       .local/eval/replies/replies-<date>-<stamp>.md (the stamp the time it was written, UTC):
 #       at most 5 turns, more refused. --case names turns by workflow id, or by a Slack
 #       message's case id (the turn that answered it); --pick chooses n turns not yet in
@@ -161,7 +161,7 @@
 #       counts.
 #
 #   scripts/eval turns <yyyymmdd>
-#       The corpus's recorded turns (turns.jsonl) read structurally, with the review verdicts
+#       The capture's recorded turns (turns.jsonl) read structurally, with the review verdicts
 #       standing (verdicts.json) joined by case, written to
 #       .local/eval/reports/turns-<date>.md and printed: the pass rate first, then the turns
 #       that did not reply, rounds, tools offered against called (the turn's topic tool and
@@ -214,8 +214,8 @@
 #       grit whose recipe did not read it, where a variant gates a service its shape recorded,
 #       is put live triage's set, as the database stood when the turn started, through Jev
 #       once (a TUI or task turn's, with no case id, is not asked), with the knowledge
-#       sources the deployment that recorded the corpus declares, written beside it as
-#       .local/eval/corpus/<date>/knowledge.json ({"sources": [{"name", "line", "within",
+#       sources the deployment that recorded the capture declares, written beside it as
+#       .local/eval/capture/<date>/knowledge.json ({"sources": [{"name", "line", "within",
 #       "supplies"}]}, supplies a service's name, absent for a source no service's tools reach;
 #       its lines are the deployment's words, no conversation's), since grit's database keeps
 #       no declaration: refused when such a turn is to be asked and the file is missing, or
@@ -278,7 +278,7 @@ capture() {
   done
   [ -n "$from" ] || usage
   [[ $date =~ ^[0-9]{8}$ ]] || { echo "eval: --date is yyyymmdd" >&2; exit 2; }
-  local dir="$main/.local/eval/corpus/$date" restored="grit_eval_$date"
+  local dir="$main/.local/eval/capture/$date" restored="grit_eval_$date"
   mkdir -p "$dir"
   if [ ! -f "$dir/dump.txt" ]; then
     if [ -e "$dir/source.dump" ] || exists "$restored"; then
@@ -314,42 +314,42 @@ capture() {
 }
 
 run() {
-  local corpus=
+  local capture=
   local rest=()
   while [ $# -gt 0 ]; do
     case $1 in
-      --corpus) corpus=$2; shift 2 ;;
+      --capture) capture=$2; shift 2 ;;
       *) rest+=("$1"); shift ;;
     esac
   done
-  [[ $corpus =~ ^[0-9]{8}$ ]] || { echo "eval: --corpus is yyyymmdd" >&2; exit 2; }
-  local dir="$main/.local/eval/corpus/$corpus" restored="grit_eval_$corpus"
-  [ -f "$dir/corpus.json" ] || { echo "eval: no corpus in $dir" >&2; exit 1; }
-  exists "$restored" || { echo "eval: $restored is gone; capture the corpus again" >&2; exit 1; }
+  [[ $capture =~ ^[0-9]{8}$ ]] || { echo "eval: --capture is yyyymmdd" >&2; exit 2; }
+  local dir="$main/.local/eval/capture/$capture" restored="grit_eval_$capture"
+  [ -f "$dir/capture.json" ] || { echo "eval: no capture in $dir" >&2; exit 1; }
+  exists "$restored" || { echo "eval: $restored is gone; capture again" >&2; exit 1; }
   export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
-  harness run --corpus "$dir" \
+  harness run --capture "$dir" \
     --url "jdbc:postgresql://localhost:5432/$restored" \
     --cache "$main/.local/eval/cache" --runs "$main/.local/eval/runs" \
     --labels "$main/.local/eval/labels.json" "${rest[@]}"
 }
 
 determinism() {
-  local corpus= log=
+  local capture= log=
   while [ $# -gt 0 ]; do
     case $1 in
-      --corpus) corpus=$2; shift 2 ;;
+      --capture) capture=$2; shift 2 ;;
       --log) log=$2; shift 2 ;;
       *) usage ;;
     esac
   done
-  [[ $corpus =~ ^[0-9]{8}$ ]] && [ -n "$log" ] || usage
-  harness determinism --corpus "$main/.local/eval/corpus/$corpus" \
+  [[ $capture =~ ^[0-9]{8}$ ]] && [ -n "$log" ] || usage
+  harness determinism --capture "$main/.local/eval/capture/$capture" \
     --log "$main/.local/eval/runs/$log"
 }
 
 inputs() {
-  local corpus=${1:-} more= variant=live
-  [[ $corpus =~ ^[0-9]{8}$ ]] || usage
+  local capture=${1:-} more= variant=live
+  [[ $capture =~ ^[0-9]{8}$ ]] || usage
   shift
   while [ $# -gt 0 ]; do
     case $1 in
@@ -359,12 +359,12 @@ inputs() {
     esac
   done
   [ -n "$variant" ] || usage
-  local dir="$main/.local/eval/corpus/$corpus" restored="grit_eval_$corpus"
-  local name="inputs-$corpus"
+  local dir="$main/.local/eval/capture/$capture" restored="grit_eval_$capture"
+  local name="inputs-$capture"
   [ "$variant" = live ] || name="$name-$variant"
-  [ -f "$dir/corpus.json" ] || { echo "eval: no corpus in $dir" >&2; exit 1; }
-  exists "$restored" || { echo "eval: $restored is gone; capture the corpus again" >&2; exit 1; }
-  harness inputs --corpus "$dir" --url "jdbc:postgresql://localhost:5432/$restored" \
+  [ -f "$dir/capture.json" ] || { echo "eval: no capture in $dir" >&2; exit 1; }
+  exists "$restored" || { echo "eval: $restored is gone; capture again" >&2; exit 1; }
+  harness inputs --capture "$dir" --url "jdbc:postgresql://localhost:5432/$restored" \
     --out "$main/.local/eval/review/$name.jsonl" --variant "$variant" $more
 }
 
@@ -391,14 +391,14 @@ order() {
 }
 
 context() {
-  local id=${1:-} from= full= corpus=
+  local id=${1:-} from= full= capture=
   [ -n "$id" ] && [[ $id != --* ]] || usage
   shift
   while [ $# -gt 0 ]; do
     case $1 in
       --from) from=${2:-}; shift 2 ;;
       --full) full=--full; shift ;;
-      --corpus) corpus=${2:-}; shift 2 ;;
+      --capture) capture=${2:-}; shift 2 ;;
       *) usage ;;
     esac
   done
@@ -409,36 +409,36 @@ context() {
     harness context --url "$url" --from "$from" --workflow "$id" --out "$out" $full
   else
     local declared=()
-    if [ -n "$corpus" ]; then
-      [ -d "$main/.local/eval/corpus/$corpus" ] || { echo "eval: no corpus $corpus" >&2; exit 1; }
-      declared=(--declared "$main/.local/eval/corpus/$corpus")
+    if [ -n "$capture" ]; then
+      [ -d "$main/.local/eval/capture/$capture" ] || { echo "eval: no capture $capture" >&2; exit 1; }
+      declared=(--declared "$main/.local/eval/capture/$capture")
     fi
     harness context --url "$url" --from "$from" --entry "$id" --out "$out" "${declared[@]}"
   fi
 }
 
 pull() {
-  local from= corpus=
+  local from= capture=
   local rest=()
   while [ $# -gt 0 ]; do
     case $1 in
       --from) from=$2; shift 2 ;;
-      --corpus) corpus=$2; shift 2 ;;
+      --capture) capture=$2; shift 2 ;;
       *) rest+=("$1"); shift ;;
     esac
   done
   [ -n "$from" ] || usage
-  [[ $corpus =~ ^[0-9]{8}$ ]] || { echo "eval: --corpus is yyyymmdd" >&2; exit 2; }
-  local dir="$main/.local/eval/corpus/$corpus"
-  [ -f "$dir/corpus.json" ] || { echo "eval: no corpus in $dir" >&2; exit 1; }
+  [[ $capture =~ ^[0-9]{8}$ ]] || { echo "eval: --capture is yyyymmdd" >&2; exit 2; }
+  local dir="$main/.local/eval/capture/$capture"
+  [ -f "$dir/capture.json" ] || { echo "eval: no capture in $dir" >&2; exit 1; }
   exists "$from" || { echo "eval: no database $from" >&2; exit 1; }
-  harness pull --corpus "$dir" --url "jdbc:postgresql://localhost:5432/$from" \
+  harness pull --capture "$dir" --url "jdbc:postgresql://localhost:5432/$from" \
     --runs "$main/.local/eval/runs" "${rest[@]}"
 }
 
 replies() {
-  local corpus=${1:-}
-  [[ $corpus =~ ^[0-9]{8}$ ]] || usage
+  local capture=${1:-}
+  [[ $capture =~ ^[0-9]{8}$ ]] || usage
   shift
   local cases=() rest=()
   while [ $# -gt 0 ]; do
@@ -451,40 +451,40 @@ replies() {
       *) usage ;;
     esac
   done
-  local dir="$main/.local/eval/corpus/$corpus" restored="grit_eval_$corpus"
-  [ -f "$dir/turns.jsonl" ] || { echo "eval: no turns in $dir; capture the corpus again" >&2; exit 1; }
-  exists "$restored" || { echo "eval: $restored is gone; capture the corpus again" >&2; exit 1; }
+  local dir="$main/.local/eval/capture/$capture" restored="grit_eval_$capture"
+  [ -f "$dir/turns.jsonl" ] || { echo "eval: no turns in $dir; capture again" >&2; exit 1; }
+  exists "$restored" || { echo "eval: $restored is gone; capture again" >&2; exit 1; }
   local named=()
   [ ${#cases[@]} -eq 0 ] || named=(--cases "$(IFS=,; echo "${cases[*]}")")
-  harness replies --corpus "$dir" --url "jdbc:postgresql://localhost:5432/$restored" \
+  harness replies --capture "$dir" --url "jdbc:postgresql://localhost:5432/$restored" \
     --out "$main/.local/eval/replies" --labels "$main/.local/eval/reply-labels.json" \
     "${named[@]}" "${rest[@]}"
 }
 
 turns() {
-  local corpus=${1:-}
-  [[ $corpus =~ ^[0-9]{8}$ ]] && [ $# -eq 1 ] || usage
-  [ -f "$main/.local/eval/corpus/$corpus/turns.jsonl" ] ||
-    { echo "eval: no turns in $main/.local/eval/corpus/$corpus; capture the corpus again" >&2; exit 1; }
-  harness turns --eval "$main/.local/eval" --corpus "$corpus"
+  local capture=${1:-}
+  [[ $capture =~ ^[0-9]{8}$ ]] && [ $# -eq 1 ] || usage
+  [ -f "$main/.local/eval/capture/$capture/turns.jsonl" ] ||
+    { echo "eval: no turns in $main/.local/eval/capture/$capture; capture again" >&2; exit 1; }
+  harness turns --eval "$main/.local/eval" --capture "$capture"
 }
 
 rebuild() {
-  local corpus=${1:-}
-  [[ $corpus =~ ^[0-9]{8}$ ]] || usage
+  local capture=${1:-}
+  [[ $capture =~ ^[0-9]{8}$ ]] || usage
   shift
-  local dir="$main/.local/eval/corpus/$corpus" restored="grit_eval_$corpus"
-  [ -f "$dir/corpus.json" ] || { echo "eval: no corpus in $dir" >&2; exit 1; }
-  exists "$restored" || { echo "eval: $restored is gone; capture the corpus again" >&2; exit 1; }
+  local dir="$main/.local/eval/capture/$capture" restored="grit_eval_$capture"
+  [ -f "$dir/capture.json" ] || { echo "eval: no capture in $dir" >&2; exit 1; }
+  exists "$restored" || { echo "eval: $restored is gone; capture again" >&2; exit 1; }
   export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
-  harness rebuild --corpus "$dir" --url "jdbc:postgresql://localhost:5432/$restored" \
+  harness rebuild --capture "$dir" --url "jdbc:postgresql://localhost:5432/$restored" \
     --cache "$main/.local/eval/cache" "$@"
 }
 
 recipes() {
-  local corpus=${1:-}
-  if [ "$corpus" = synthetic ]; then shift; synthetic "$@"; return; fi
-  [[ $corpus =~ ^[0-9]{8}$ ]] || usage
+  local capture=${1:-}
+  if [ "$capture" = synthetic ]; then shift; synthetic "$@"; return; fi
+  [[ $capture =~ ^[0-9]{8}$ ]] || usage
   shift
   local variants=() rest=()
   while [ $# -gt 0 ]; do
@@ -497,11 +497,11 @@ recipes() {
     esac
   done
   [ ${#variants[@]} -gt 0 ] || usage
-  local dir="$main/.local/eval/corpus/$corpus" restored="grit_eval_$corpus"
-  [ -f "$dir/turns.jsonl" ] || { echo "eval: no turns in $dir; capture the corpus again" >&2; exit 1; }
-  exists "$restored" || { echo "eval: $restored is gone; capture the corpus again" >&2; exit 1; }
+  local dir="$main/.local/eval/capture/$capture" restored="grit_eval_$capture"
+  [ -f "$dir/turns.jsonl" ] || { echo "eval: no turns in $dir; capture again" >&2; exit 1; }
+  exists "$restored" || { echo "eval: $restored is gone; capture again" >&2; exit 1; }
   export GRIT_ENV_FILE="${GRIT_ENV_FILE:-$main/.env}"
-  harness recipes --eval "$main/.local/eval" --corpus "$corpus" \
+  harness recipes --eval "$main/.local/eval" --capture "$capture" \
     --url "jdbc:postgresql://localhost:5432/$restored" \
     --variants "$(IFS=,; echo "${variants[*]}")" \
     --cache "$main/.local/eval/cache" \

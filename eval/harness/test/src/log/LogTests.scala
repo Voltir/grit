@@ -7,7 +7,7 @@ import grit.core.classify.Answer
 import grit.core.id.QuestionName
 import grit.core.message.Usage
 import grit.core.triage.{Corpora, Kind}
-import grit.eval.harness.corpus.{CaseId, Digest, Failure}
+import grit.eval.harness.capture.{CaseId, Digest, Failure}
 import grit.eval.harness.score.Fixtures
 import grit.lifecycle.triage.TriageQuestions
 

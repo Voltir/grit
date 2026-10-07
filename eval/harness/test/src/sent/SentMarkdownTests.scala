@@ -6,7 +6,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.Place
 import grit.core.provider.{ModelRequest, ToolUse}
 import grit.core.tool.ToolSetId
-import grit.eval.harness.corpus.Spent
+import grit.eval.harness.capture.Spent
 import grit.turn.{Turn, TurnLoop, TurnOffer, TurnRecord}
 
 import utest.*

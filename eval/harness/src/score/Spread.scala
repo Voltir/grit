@@ -2,7 +2,7 @@ package grit.eval.harness.score
 
 import grit.core.period.Probability
 import grit.core.triage.Kind
-import grit.eval.harness.corpus.{Case, CaseId, Live, SeenCheck}
+import grit.eval.harness.capture.{Case, CaseId, Live, SeenCheck}
 import grit.eval.harness.log.{Outcome, Row, Suite, Weights}
 
 /** How far apart answers are that would be equal were the classifier deterministic: the

@@ -3,7 +3,7 @@ package grit.eval.harness.label
 import scala.util.Try
 
 import grit.core.triage.Kind
-import grit.eval.harness.corpus.{CaseId, Fields}
+import grit.eval.harness.capture.{CaseId, Fields}
 
 /** What a person labelled one case: each field `None` until labelled.
   *
@@ -51,7 +51,7 @@ enum Place {
   case Follows(root: CaseId)
 }
 
-/** A corpus's labels, by case, and every label-guide version they were made under. */
+/** A capture's labels, by case, and every label-guide version they were made under. */
 final case class Labels(cases: Map[CaseId, Labelled], guides: Set[String]) {
 
   /** `id`'s labels; [[Labelled.Blank]] when it has none. */

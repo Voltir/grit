@@ -7,7 +7,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.Place
 import grit.core.store.{Entry, Focus, Nearby, Payload, Speakers}
 import grit.dbos.engine.Build
-import grit.eval.harness.corpus.{CaseId, Ended, Part, Parts, Said, Support, TurnCase}
+import grit.eval.harness.capture.{CaseId, Ended, Part, Parts, Said, Support, TurnCase}
 import grit.turn.{Turn, TurnOffer, TurnRecord}
 
 /** A thread `c1` whose turn 2 answers "when does the deploy move?" from two nearby sections

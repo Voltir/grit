@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 /** How much of a reply a shown part of its window carries: the share, in [0, 1], of the
   * reply's distinctive words the part contains. A lexical heuristic, until people's labels

@@ -1,7 +1,7 @@
 package grit.eval.harness.score
 
 import grit.core.triage.Kind
-import grit.eval.harness.corpus.Case
+import grit.eval.harness.capture.Case
 
 /** A case answered and labelled on one tag: its averaged probability of yes, and its label. */
 final case class Judged(c: Case, p: Double, yes: Boolean)

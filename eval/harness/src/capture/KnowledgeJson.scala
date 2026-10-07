@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import scala.util.Try
 
@@ -6,9 +6,9 @@ import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}
 import grit.core.triage.{Corpora, Corpus}
 
-/** The corpora the deployment that recorded a corpus declares, as its
+/** The corpora the deployment that recorded a capture declares, as its
   * `knowledge.json` holds them: grit's database keeps no declaration, so the file is written
-  * beside the corpus from the deployment's.
+  * beside the capture from the deployment's.
   */
 object KnowledgeJson {
 

@@ -1,7 +1,7 @@
 package grit.eval.harness.label
 
 import grit.core.triage.Kind
-import grit.eval.harness.corpus.CaseId
+import grit.eval.harness.capture.CaseId
 
 import utest.*
 

@@ -4,7 +4,7 @@ import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.stitch.Offered
 import grit.core.triage.Kind
-import grit.eval.harness.corpus.{Case, Offering, Placement, SeenCheck, Stitched}
+import grit.eval.harness.capture.{Case, Offering, Placement, SeenCheck, Stitched}
 import grit.eval.harness.log.{Footer, Log, Outcome, Suite}
 
 import utest.*
@@ -101,7 +101,13 @@ object AgreementTests extends TestSuite {
           .copy(usage = used)
       ) ++ Vector(
         row(Suite.Triage, id("C1/8"), 0, Outcome.Skipped, 0),
-        row(Suite.Triage, id("C1/9"), 0, Outcome.Failed(grit.eval.harness.corpus.Failure.Other), 99)
+        row(
+          Suite.Triage,
+          id("C1/9"),
+          0,
+          Outcome.Failed(grit.eval.harness.capture.Failure.Other),
+          99
+        )
       )
       // Answered latencies 10, 20, 30, 40: the median's rank ⌈.5·4⌉ = 2, p90's ⌈.9·4⌉ = 4.
       Spending.of(Log(header(), rows, None)) ==>

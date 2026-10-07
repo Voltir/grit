@@ -6,7 +6,7 @@ import scala.util.Try
 
 import grit.core.id.{PrincipalId, ShadowName}
 import grit.core.review.{Reason, Verdict}
-import grit.eval.harness.corpus.{CaseId, Fields}
+import grit.eval.harness.capture.{CaseId, Fields}
 
 /** The verdict standing on one reviewed message's prompt: the shadow it was picked against
   * and why, the verdict, who gave it and when.

@@ -22,7 +22,7 @@ import grit.core.store.Focus
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.triage.{Tags, Weighing}
 import grit.dbos.engine.Build
-import grit.eval.harness.corpus.{
+import grit.eval.harness.capture.{
   Call,
   Called,
   Drafted,

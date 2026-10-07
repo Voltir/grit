@@ -1,7 +1,7 @@
 package grit.eval.harness.reply
 
 import grit.core.id.{EntryId, EntrySeq}
-import grit.eval.harness.corpus.Said
+import grit.eval.harness.capture.Said
 import grit.eval.harness.label.{Locator, ReplyLabels}
 import grit.turn.TurnOffer
 
@@ -13,7 +13,7 @@ import Fixtures.*
   */
 object ReplyReviewTests extends TestSuite {
 
-  private def file(t: grit.eval.harness.corpus.TurnCase, nearText: String = near): String = {
+  private def file(t: grit.eval.harness.capture.TurnCase, nearText: String = near): String = {
     val picked = right(
       ReplyReview.pick(
         Vector(t),

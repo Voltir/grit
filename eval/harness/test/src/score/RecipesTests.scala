@@ -9,7 +9,7 @@ import grit.core.message.{Tokens, Usage}
 import grit.core.store.Focus
 import grit.core.tool.ToolName
 import grit.dbos.engine.Build
-import grit.eval.harness.corpus.{
+import grit.eval.harness.capture.{
   Call,
   Called,
   Ended,

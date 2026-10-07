@@ -10,7 +10,7 @@ import grit.core.place.{Locality, Scope, Weight}
 import grit.core.recipe.Rooted
 import grit.core.store.{ConversationStore, EntryStore, Jot, Origin, PeriodStore}
 import grit.dbos.engine.Reader
-import grit.eval.harness.corpus.{Capture, Fields, Parts, TurnCapture}
+import grit.eval.harness.capture.{Capture, Fields, Parts, TurnCapture}
 import grit.eval.harness.label.Locator
 import grit.eval.{Case, Cases, Layout, Load, Variant}
 

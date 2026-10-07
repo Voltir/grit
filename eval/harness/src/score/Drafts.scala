@@ -7,7 +7,7 @@ import grit.core.id.QuestionName
 import grit.core.period.Probability
 import grit.core.store.Focus
 import grit.core.triage.{Earning, Gate}
-import grit.eval.harness.corpus.CaseId
+import grit.eval.harness.capture.CaseId
 import grit.eval.harness.log.{Outcome, Row, Suite}
 
 /** The cases of two yes/no decisions over the same cases, by how each decided: yes by both,

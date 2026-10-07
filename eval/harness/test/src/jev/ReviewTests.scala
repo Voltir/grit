@@ -1,7 +1,7 @@
 package grit.eval.harness.jev
 
 import grit.core.triage.Corpora
-import grit.eval.harness.corpus.CaseId
+import grit.eval.harness.capture.CaseId
 import grit.lifecycle.triage.{TriageQuestion, TriageQuestions}
 
 import utest.*

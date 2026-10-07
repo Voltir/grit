@@ -3,7 +3,7 @@ package grit.eval.harness.label
 import scala.util.Try
 
 import grit.core.id.{ConversationId, EntrySeq, WorkflowId}
-import grit.eval.harness.corpus.{Fields, Part}
+import grit.eval.harness.capture.{Fields, Part}
 
 /** How good a reply is, as a person judged it. */
 enum Quality {

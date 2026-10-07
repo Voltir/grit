@@ -10,7 +10,7 @@ import grit.core.place.{Place, Service}
 import grit.core.recipe.ServiceOffer
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.triage.{Corpora, Corpus, Tags, Weighing}
-import grit.eval.harness.corpus.{Live, Offered, TurnCase}
+import grit.eval.harness.capture.{Live, Offered, TurnCase}
 import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnWeighing}
 
 import utest.*

@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import java.time.Instant
 
@@ -15,8 +15,8 @@ import grit.dbos.engine.{Build, Reader}
 
 import utest.*
 
-/** A corpus's files read back as written. Every id and digest here is synthetic. */
-object CorpusJsonTests extends TestSuite {
+/** A capture's files read back as written. Every id and digest here is synthetic. */
+object CaptureJsonTests extends TestSuite {
 
   private def id(s: String): CaseId = CaseId.read(s).fold(sys.error, identity)
   private def p(d: Double): Probability = Probability.clamped(d)
@@ -106,24 +106,24 @@ object CorpusJsonTests extends TestSuite {
 
   val tests = Tests {
     test("a case is read back as it was written, every optional part present or absent") {
-      CorpusJson.readCase(ujson.read(CorpusJson.writeCase(full).render())) ==> Right(full)
-      CorpusJson.readCase(ujson.read(CorpusJson.writeCase(bare).render())) ==> Right(bare)
+      CaptureJson.readCase(ujson.read(CaptureJson.writeCase(full).render())) ==> Right(full)
+      CaptureJson.readCase(ujson.read(CaptureJson.writeCase(bare).render())) ==> Right(bare)
     }
 
     test("a manifest is read back as it was written") {
-      CorpusJson.readManifest(ujson.read(CorpusJson.writeManifest(manifest).render())) ==>
+      CaptureJson.readManifest(ujson.read(CaptureJson.writeManifest(manifest).render())) ==>
         Right(manifest)
     }
 
     test("a case missing a field is refused, naming the field and where it is missing") {
-      CorpusJson.readCase(without(CorpusJson.writeCase(full), "clusters")) ==>
+      CaptureJson.readCase(without(CaptureJson.writeCase(full), "clusters")) ==>
         Left("case: no clusters")
-      CorpusJson.readCase(without(CorpusJson.writeCase(full), "stitch", "drift")) ==>
+      CaptureJson.readCase(without(CaptureJson.writeCase(full), "stitch", "drift")) ==>
         Left("stitch: no drift")
     }
 
     test("a manifest missing a field is refused, naming it") {
-      CorpusJson.readManifest(without(CorpusJson.writeManifest(manifest), "dump", "sha256")) ==>
+      CaptureJson.readManifest(without(CaptureJson.writeManifest(manifest), "dump", "sha256")) ==>
         Left("dump: no sha256")
     }
 
@@ -144,10 +144,10 @@ object CorpusJsonTests extends TestSuite {
         None
       )
       def tags(line: String) =
-        CorpusJson
+        CaptureJson
           .readCase(
             ujson.read(
-              CorpusJson
+              CaptureJson
                 .writeCase(bare)
                 .render()
                 .replace(
@@ -158,7 +158,7 @@ object CorpusJsonTests extends TestSuite {
           )
           .map(_.tags)
       (
-        CorpusJson
+        CaptureJson
           .writeCase(bare.copy(tags = named))
           .render()
           .contains(
@@ -191,7 +191,7 @@ object CorpusJsonTests extends TestSuite {
 
     // The line form is what later runs read from cases.jsonl: its keys are pinned.
     test("a case's line keeps its keys in one order") {
-      CorpusJson.writeCase(bare).render() ==>
+      CaptureJson.writeCase(bare).render() ==>
         """{"id":"C2/1727000100.000300","entry":"in:conv-b:1727000100.000300","conversation":"conv-b","tagged":"2026-09-30T11:00:00Z","triage":{"workflow":"triage:conv-b:1:2","recorded":null,"build":"unknown"},"tags":{"unanswered":"unreadable"},"asked":null,"author":null,"clusters":{"conversation":"C2/1727000000.000000","exchange":"C2/1727000000.000000"},"stitch":null,"tuning":null}"""
     }
   }

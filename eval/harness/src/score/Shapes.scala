@@ -3,7 +3,7 @@ package grit.eval.harness.score
 import scala.collection.immutable.VectorMap
 
 import grit.core.triage.Weighing
-import grit.eval.harness.corpus.TurnCase
+import grit.eval.harness.capture.TurnCase
 import grit.turn.{TurnRecord, TurnWeighing}
 
 /** How turns recorded their offers and weighing: `shaped`, `unshaped` (an offer recorded

@@ -1,6 +1,6 @@
 package grit.eval.harness.score
 
-import grit.eval.harness.corpus.CaseId
+import grit.eval.harness.capture.CaseId
 import grit.eval.harness.label.Labels
 
 /** The cases two runs both answered, by what became of each on one question from run A to run

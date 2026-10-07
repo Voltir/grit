@@ -8,7 +8,7 @@ import grit.core.period.Probability
 import grit.core.prompt.Layer
 import grit.core.review.{Reason, Verdict}
 import grit.core.tool.ToolName
-import grit.eval.harness.corpus.{Called, Drafted, Ended, Part, Said, Settled, Support, TurnCase}
+import grit.eval.harness.capture.{Called, Drafted, Ended, Part, Said, Settled, Support, TurnCase}
 import grit.eval.harness.label.Verdicts
 import grit.eval.harness.stats.Proportion
 import grit.turn.{TurnOffer, TurnRecord}
@@ -26,7 +26,7 @@ object Where {
   }
 }
 
-/** Which of a corpus's turns a [[Structure]] reads: every one, those of one root, or those
+/** Which of a capture's turns a [[Structure]] reads: every one, those of one root, or those
   * said in one place.
   */
 enum Slice {
@@ -155,7 +155,7 @@ final case class Caching(
   */
 final case class Used(turns: Int, parts: Int, used: Int, using: Int, top: Quantiles)
 
-/** A slice of a corpus's recorded turns, structurally: what it was offered and called, what
+/** A slice of a capture's recorded turns, structurally: what it was offered and called, what
   * its windows held, what it cost and how it ended; and for heard roots, what became of their
   * drafts and the review verdicts standing on them.
   *
@@ -324,13 +324,13 @@ object Structure {
     verdicts.cases.keySet.count(!said.contains(_))
   }
 
-  private def usd(spend: Vector[grit.eval.harness.corpus.Spent]): Double =
+  private def usd(spend: Vector[grit.eval.harness.capture.Spent]): Double =
     spend.flatMap(_.usage.costUsd).sum.toDouble
 
   private def count[K](keys: Vector[K]): VectorMap[K, Int] =
     VectorMap.from(keys.distinct.map(k => k -> keys.count(_ == k)))
 
-  private def settlings(calls: Vector[grit.eval.harness.corpus.Call]): Settlings = {
+  private def settlings(calls: Vector[grit.eval.harness.capture.Call]): Settlings = {
     def n(p: Settled => Boolean) = calls.count(c => p(c.settled))
     Settlings(
       n { case Settled.Ok(_) => true; case _ => false },
@@ -341,7 +341,7 @@ object Structure {
     )
   }
 
-  private def window(windows: Vector[grit.eval.harness.corpus.Parts]): Option[Window] = {
+  private def window(windows: Vector[grit.eval.harness.capture.Parts]): Option[Window] = {
     def tokens(ps: Vector[Part]) = ps.map(p => Tokens.value(p.tokens)).sum.toDouble
     for {
       gaps <- Quantiles.of(windows.map(w => Tokens.value(w.gaps).toDouble))
@@ -385,7 +385,7 @@ object Structure {
 
   private def caching(ts: Vector[TurnCase]): Caching = {
     val calls = ts.flatMap(t => t.spend.map(t.conversation -> _))
-    def rate(cs: Vector[(grit.core.id.ConversationId, grit.eval.harness.corpus.Spent)]) =
+    def rate(cs: Vector[(grit.core.id.ConversationId, grit.eval.harness.capture.Spent)]) =
       Proportion.counted(
         cs.map((c, s) => (c, Tokens.value(s.usage.cachedInput), Tokens.value(s.usage.input)))
       )

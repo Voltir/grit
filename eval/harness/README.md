@@ -1,6 +1,6 @@
 # grit.eval.harness
 
-The eval harness: a corpus of cases captured from a database, labelled by a person, run
+The eval harness: cases captured from a database, labelled by a person, run
 through a variant of a shipped call, and scored. It measures; it gates nothing. It runs only
 through `scripts/eval`, never from a test or `scripts/check`, and its tests test the
 instrument, not a model.
@@ -17,8 +17,8 @@ files for a person to read: the review files `scripts/eval inputs` and `scripts/
 write under `.local/eval/review/`, and the reply reviews `scripts/eval replies` writes under
 `.local/eval/replies/`, which print only ids and counts unless asked to show the file; and
 the search queries a rebuild's window-only cases had written, each kept in the cache under
-its request's key and never printed. A corpus's text stays in Postgres, in the database the
-corpus was restored to.
+its request's key and never printed. A capture's text stays in Postgres, in the database the
+capture was restored to.
 
 Packages, each importing only those above it:
 
@@ -29,11 +29,11 @@ Packages, each importing only those above it:
   (n over the clustered design effect), none under `Proportion.MinClusters` clusters, its
   items listed or given by count (`Proportion.counted`: a call's cached tokens of its input); pure,
   naming nothing of grit's.
-- **`corpus`** — a corpus, text-free: `CaseId`, a heard message's identity outside any one
+- **`capture`** — a capture, text-free: `CaseId`, a heard message's identity outside any one
   database (its Slack channel and ts); `Case`, what a heard message was live, the digests of
   the inputs the shipped builders rebuild for it, and how it clusters; `Manifest`, the
-  corpus as a whole (its dump, the settings and tuning in force, the builders' constants,
-  the build that captured it); `CorpusJson`, their files' JSON; `Capture`, a `Corpus` read
+  capture as a whole (its dump, the settings and tuning in force, the builders' constants,
+  the build that captured it); `CaptureJson`, their files' JSON; `Capture`, a `Captured` read
   from a restored database through `grit.dbos`'s `Reader` and rebuilt through the shipped
   builders (`TriageInput`, `TriageQuestions`, `Stitching`), never through SQL of its own.
   `TurnCase`, one turn the database recorded, keyed by its workflow, TUI and task turns as
@@ -51,8 +51,8 @@ Packages, each importing only those above it:
   number, the line at which a part counts as used (`Support.Used`), and a window's most
   supported parts (`Support.top`); `TurnJson`, a turn's line of `turns.jsonl` (a line written before shapes
   were captured is refused: recapture);
-  `KnowledgeJson`, the corpora the deployment that recorded a corpus declares, each
-  with the service it supplies, read from the `knowledge.json` written beside the corpus
+  `KnowledgeJson`, the corpora the deployment that recorded a capture declares, each
+  with the service it supplies, read from the `knowledge.json` written beside the capture
   (grit's database keeps no declaration; its lines are the deployment's words, no
   conversation's), and only when the harness asks a turn: their lines are its questions'
   words. `Fields`, the reader every file's JSON
@@ -61,17 +61,17 @@ Packages, each importing only those above it:
   read (`scripts/eval context`): `TurnSent`, read from a database through `Reader` and
   `grit.turn.TurnRecord` (its calls' requests rebuilt by `TurnRecord.requests` through this
   build's code, and the decisions that led there: the stitch placement, triage's tags, the
-  speech decision and judgement, queries, window and ledger rows by role, `corpus.Spent`);
+  speech decision and judgement, queries, window and ledger rows by role, `capture.Spent`);
   `Picked`, which way its answering call was sent, by the estimate its ledger row recorded;
   `SentMarkdown`, the markdown, its tool results cut as `Cut` says. And `HeardSent`, what Jev
   was asked of a heard message and answered: the stitch state as its placement recorded it
   (and the question as this build words it), and triage's request rebuilt through the
   shipped builder (`TriageInput`, `TriageQuestions.shipped`, worded for the persona and
-  corpora a corpus's directory declares), since triage keeps none, beside the tags
+  corpora a capture's directory declares), since triage keeps none, beside the tags
   it kept. It reads its own rather
-  than through `TurnCapture`, whose readers are private to a corpus's capture and keep
-  numbers, never text. ← `stats`, `corpus`
-- **`label`** — a person's labels of a corpus's cases, kept apart from the cases so a
+  than through `TurnCapture`, whose readers are private to capturing and keep
+  numbers, never text. ← `stats`, `capture`
+- **`label`** — a person's labels of a capture's cases, kept apart from the cases so a
   recapture keeps them: `Labels`, read from `labels.json` as the labelling tool writes it, and
   each case's `Labelled` (its kind, the three yes/no tags, `Context`, whether it states a fact,
   and its `Place`); and `Verdicts`, the verdict a review's rater left standing on a picked
@@ -83,23 +83,23 @@ Packages, each importing only those above it:
   of the reply's `Quality`, where its answer was `Found` (in records named by `Locator`, a
   window part by ids alone, or the thread, elsewhere, nowhere, or nothing asked), and whether
   grit should have spoken; a person's note is never read into one; `Locator.held`, whether a
-  window's parts show what a locator names. ← `corpus`
+  window's parts show what a locator names. ← `capture`
 - **`log`** — a run's log, text-free and generic over what a call returned: `Header` (the
-  corpus, variant, build, cap and repeats a run was started with, and a question set's
+  capture, variant, build, cap and repeats a run was started with, and a question set's
   names), `Row` (one request: its case, digest, cache key, `Outcome`, usage, latency, and the
   focus its message was said at), `Footer` (what it spent), and `Weights`, a classifier's
   answer by position, never by key, and `Log.named`, a log by position read under its
   questions' names; `LogJson`, their JSON lines, and `LogJson.named`, a question set's
   answers under their names as live's and a shadow's rows keep them;
   `CacheKey` and `Cache`, answers kept as files under their request's key, so an unchanged
-  request is never paid for twice. ← `corpus`
-- **`pull`** — `Pull`, what a deployment's database kept of the heard messages a corpus
+  request is never paid for twice. ← `capture`
+- **`pull`** — `Pull`, what a deployment's database kept of the heard messages a capture
   holds, read through `Reader` as run logs: live triage's tags (variant `kept`), under the
   names its question set asked them by, the rows of another set's names left out and counted,
   and each declared shadow's answers (`grit.lifecycle.shadow`) as a `ShadowLog`: a wording's by
   position, a question set's under its names, or refused when a name kept both; with the
-  messages no corpus holds yet, and each shadow's that ended keeping nothing; and
-  `Pull.verdicts`, the verdicts standing on reviewed messages, by case. ← `corpus`, `label`,
+  messages no capture holds yet, and each shadow's that ended keeping nothing; and
+  `Pull.verdicts`, the verdicts standing on reviewed messages, by case. ← `capture`, `label`,
   `log`
 - **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
   (the model, triage's wording, its recipe and the words it is asked in, or the tuning), and `Variants`, those a run can name;
@@ -109,11 +109,11 @@ Packages, each importing only those above it:
   durable and as `to`), and `Sets`, those it can name (`v1` to `v4`, each by the gate live
   triage drafted by while it was live);
   `Inputs`, a case's questions rebuilt through the shipped builders, and `Drift`, how a
-  rebuilt state compares to the corpus's; `Review`, a case's questions as rebuilt, text and
+  rebuilt state compares to the capture's; `Review`, a case's questions as rebuilt, text and
   all, for a person to read beside it (`scripts/eval inputs` writes them under
   `.local/eval/review/` and prints only counts);
   `Spend`, what a request costs before it is sent, and `Budget`, a run's spend under its
-  cap. ← `corpus`, `log`
+  cap. ← `capture`, `log`
 - **`reply`** — `ReplyReview`, a few turns' replies for a person to label: turns named or
   picked (`Ask`, `By`), at most five, refused past that; each shown as the message it
   answers, its reply's text, and at most three of its window's parts best supported first,
@@ -147,11 +147,11 @@ Packages, each importing only those above it:
   its conversations' origins as `grit.eval.Layout` lays them out (`Asked`), each conversation's
   `[must]` entries expected held and its `[never]` entries omitted, a case labelling neither
   left out; its window drawn as `Rebuild` draws one, over the database as it stands, searched with the case's own query, within the
-  case's scope (`AsOf.settled`, the lifecycle settings read as given). ← `corpus`, `label`,
+  case's scope (`AsOf.settled`, the lifecycle settings read as given). ← `capture`, `label`,
   `log`, `jev`
 - **`run`** — `Run`, a run's calls asked of Jev through the shipped calls
   (`Classifier.around`): answered from the cache when it holds them, else asked, timed and
-  kept, within the cap; `Repeats`, how many times each is asked. ← `corpus`, `log`, `jev`
+  kept, within the cap; `Repeats`, how many times each is asked. ← `capture`, `log`, `jev`
 - **`score`** — what a run's log says: `Answers`, its answers by case, each averaged over its
   repeats with their spread; `Scoring`, those answers beside the cases and their labels, by
   `Tag` (waiting, durable, helps), kind and place; the scorers over them (`Brier`,
@@ -167,7 +167,7 @@ Packages, each importing only those above it:
   apart its repeats answered, and how far its answers are from what was kept live; `Noise`,
   Jev's repeat spread on each triage question, and `MovedOn`, the cases whose state moved on
   since live triage asked, where a replica shadow stands from live beyond it. `Structure`, a
-  corpus's recorded turns read structurally over a `Slice` (all, a root, or where said): the
+  capture's recorded turns read structurally over a `Slice` (all, a root, or where said): the
   turns that did not reply, the pass rate, rounds, tools offered against called (the turn's
   `topic` tool and unnamed calls apart), prompt and window tokens and the first call's
   estimate against the ledger (each as `Quantiles`), cost by what it paid for, the drafts'
@@ -190,13 +190,13 @@ Packages, each importing only those above it:
   where no row has a cached token, and why a model has none; and each model's `Scale`, its
   provider's input tokens per token grit estimates, fitted through 0 over its calls with
   both, none from under `Rates.MinCalls`; `Prices`, the two together.
-  ← `stats`, `corpus`, `label`, `log`
-- **`report`** — `Report`, a run scored (`Scored`: its log, its corpus's cases, the labels in
+  ← `stats`, `capture`, `label`, `log`
+- **`report`** — `Report`, a run scored (`Scored`: its log, its capture's cases, the labels in
   force) and two runs compared, as markdown with every mean's and rate's interval; text-free. With no case
   labelled, only what needs no label: spend and latency (`score.Spending`), the repeats' spread
   (`score.Repeated`) and agreement with what was kept live (`score.Agreement`). A question set's pulled
   shadow against live's log, each by its own set's gate (`Report.Side`), and against the
-  verdicts given: `Report.drafts`, counts only. A corpus's recorded turns read structurally
+  verdicts given: `Report.drafts`, counts only. A capture's recorded turns read structurally
   (`score.Structure`) beside the verdicts standing: `Report.turns`, its header counting their
   shapes and weighing (`Report.shapes`, the recipes notes' first line too), the pass rate first, then
   each section over every turn, by root and by where said, then a line a turn by cost, with
@@ -209,7 +209,7 @@ Packages, each importing only those above it:
   turns' pass rate under shipped and each variant. The synthetic reference judged under
   shipped and each variant (each turn a `CaseJudged`): `Report.synthetic`, each variant's pass
   rate clustered by case, and its failing turns by name. ← `stats`, `reply`,
-  `corpus`, `label`, `log`, `pull`, `score`
+  `capture`, `label`, `log`, `pull`, `score`
 - **`main`** — `Main`, the command line `scripts/eval` runs. ← every package above
 
 No source file sits at the module's root.

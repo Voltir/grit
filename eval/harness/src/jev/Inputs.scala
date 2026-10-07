@@ -6,7 +6,7 @@ import grit.core.stitch.{Offer, StitchReads, Stitching, Tuning}
 import grit.core.store.{Focus, StoreError}
 import grit.core.triage.Corpora
 import grit.dbos.engine.Reader
-import grit.eval.harness.corpus.{Case, Digest}
+import grit.eval.harness.capture.{Case, Digest}
 import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageQuestions}
 
 /** One of a case's questions, as the shipped call asks it. */
@@ -47,7 +47,7 @@ final case class Posed(asking: Asking, request: Request, state: Digest)
   */
 final case class Rebuilt(triage: Option[Posed], focus: Option[Focus], stitch: Option[Posed])
 
-/** How a question's rebuilt state compares to the one its corpus captured. */
+/** How a question's rebuilt state compares to the one its capture recorded. */
 enum Drift {
   case Same
 
@@ -75,7 +75,7 @@ object Drift {
   }
 }
 
-/** A corpus's cases' questions, rebuilt through the shipped builders. */
+/** A capture's cases' questions, rebuilt through the shipped builders. */
 object Inputs {
 
   /** `c`'s questions as `reader`'s database stands, under `variant`: triage's

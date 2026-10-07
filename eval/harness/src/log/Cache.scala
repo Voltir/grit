@@ -8,7 +8,7 @@ import scala.util.Try
 import scala.util.control.NonFatal
 
 import grit.core.message.Usage
-import grit.eval.harness.corpus.Fields
+import grit.eval.harness.capture.Fields
 
 /** An answer as the cache keeps it: what came back, what the call consumed, the model that
   * `reported` answering, and how long the original call took.

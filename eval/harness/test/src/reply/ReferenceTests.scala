@@ -5,7 +5,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.id.{ConversationId, EntrySeq, WorkflowId}
 import grit.core.message.Tokens
 import grit.core.place.Service
-import grit.eval.harness.corpus.{Part, Parts}
+import grit.eval.harness.capture.{Part, Parts}
 import grit.eval.harness.label.{Found, Locator, Quality, ReplyGuide, ReplyLabel, ReplyLabels}
 
 import utest.*

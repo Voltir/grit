@@ -9,7 +9,7 @@ import grit.core.period.Probability
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.triage.{Bound, Gate, Reading, Tags}
 import grit.dbos.engine.Reader
-import grit.eval.harness.corpus.Capture
+import grit.eval.harness.capture.Capture
 
 /** A heard message live triage read as asking (its `gap` question's most weighted key `asks`,
   * as triage's v2 asks it) that no turn answered: the turn it is the first message of, and

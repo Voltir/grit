@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import scala.collection.immutable.VectorMap
 
@@ -370,7 +370,7 @@ object TurnCapture {
     }
 
   /** What became of a draft, `o`, as a case keeps it: its kind and the scores it was judged by. */
-  private[corpus] def drafted(o: Outcome): Drafted = {
+  private[capture] def drafted(o: Outcome): Drafted = {
     def scored(kind: Drafted.Kind, j: grit.core.speech.Judged, postAt: Option[Probability]) =
       Drafted(kind, Some(j.grounded), Some(j.worth), postAt)
     def cleared(kind: Drafted.Kind, c: grit.core.speech.Cleared) = c match {

@@ -5,7 +5,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.classify.{Answer, Question}
 import grit.core.message.Usage
 import grit.core.store.Focus
-import grit.eval.harness.corpus.{CaseId, Digest, Failure}
+import grit.eval.harness.capture.{CaseId, Digest, Failure}
 
 /** Which of a case's calls a row is: triage's question, or stitching's. */
 enum Suite {

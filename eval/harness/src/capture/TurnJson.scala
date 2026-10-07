@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import scala.collection.immutable.VectorMap
 
@@ -16,10 +16,10 @@ import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnWeighing}
 
 import Fields.{each, opt}
 
-/** A turn of a corpus as JSON, one line of `turns.jsonl` each, its fields in one fixed order,
+/** A turn of a capture as JSON, one line of `turns.jsonl` each, its fields in one fixed order,
   * so equal turns write equal bytes. A read is `Left` naming the first field missing or not of
   * its form; a line written before turns' shapes were captured, which has no `weighed`, is
-  * refused, naming the corpus to recapture.
+  * refused, naming the capture to recapture.
   */
 object TurnJson {
 
@@ -35,8 +35,8 @@ object TurnJson {
     "root" -> t.root.toString.toLowerCase,
     "focus" -> t.focus.toString.toLowerCase,
     "started" -> t.started.toString,
-    "build" -> CorpusJson.writeBuild(t.build),
-    "triage" -> t.triage.fold[ujson.Value](ujson.Null)(CorpusJson.writeLive),
+    "build" -> CaptureJson.writeBuild(t.build),
+    "triage" -> t.triage.fold[ujson.Value](ujson.Null)(CaptureJson.writeLive),
     "offered" -> t.offered.fold[ujson.Value](ujson.Null)(writeOffered),
     "weighed" -> writeWeigh(t.weighed),
     "window" -> t.window.fold[ujson.Value](ujson.Null)(writeParts),
@@ -68,12 +68,12 @@ object TurnJson {
         .str("focus")
         .flatMap(r => Focus.values.find(_.toString.toLowerCase == r).toRight(s"turn: focus $r"))
       started <- f.instant("started")
-      build <- f.field("build").flatMap(CorpusJson.readBuild("turn", _))
-      triage <- f.optional("triage").flatMap(opt(_)(CorpusJson.readLive))
+      build <- f.field("build").flatMap(CaptureJson.readBuild("turn", _))
+      triage <- f.optional("triage").flatMap(opt(_)(CaptureJson.readLive))
       weighed <- f
         .field("weighed")
         .left
-        .map(_ => "turn: no weighed: written before shapes were captured; recapture the corpus")
+        .map(_ => "turn: no weighed: written before shapes were captured; capture again")
         .flatMap(readWeigh)
       offered <- f.optional("offered").flatMap(opt(_)(readOffered))
       window <- f.optional("window").flatMap(opt(_)(readParts))

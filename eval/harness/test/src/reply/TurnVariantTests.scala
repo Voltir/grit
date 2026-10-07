@@ -12,7 +12,7 @@ import grit.core.recipe.{Rooted, ServiceOffer}
 import grit.core.store.Focus
 import grit.core.tool.{ToolName, ToolSetId}
 import grit.core.triage.Tags
-import grit.eval.harness.corpus.{Offered, TurnCase}
+import grit.eval.harness.capture.{Offered, TurnCase}
 import grit.turn.{TurnOffer, TurnShape}
 
 import utest.*

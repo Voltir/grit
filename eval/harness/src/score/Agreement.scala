@@ -2,7 +2,7 @@ package grit.eval.harness.score
 
 import grit.core.message.Tokens
 import grit.core.period.Probability
-import grit.eval.harness.corpus.{Case, Live, SeenCheck}
+import grit.eval.harness.capture.{Case, Live, SeenCheck}
 import grit.eval.harness.log.{Footer, Log, Outcome}
 
 /** How a run's answers agree with what triage and stitching kept live, case by case: each

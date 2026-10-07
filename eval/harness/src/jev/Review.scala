@@ -6,7 +6,7 @@ import grit.core.stitch.{StitchReads, Stitching, Tuning}
 import grit.core.store.StoreError
 import grit.core.triage.Corpora
 import grit.dbos.engine.Reader
-import grit.eval.harness.corpus.{Case, CaseId}
+import grit.eval.harness.capture.{Case, CaseId}
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
 
 /** A case's inputs as the shipped builders make them, text and all, for a person to read

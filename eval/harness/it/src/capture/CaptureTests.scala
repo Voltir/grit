@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import java.time.Instant
 
@@ -19,7 +19,7 @@ import grit.models.StubClassifier
 
 import utest.*
 
-/** A corpus captured from a database a live engine triaged, with the stub classifier. Every
+/** A capture of a database a live engine triaged, with the stub classifier. Every
   * message is synthetic.
   */
 object CaptureTests extends TestSuite {
@@ -137,26 +137,26 @@ object CaptureTests extends TestSuite {
             )
           )
         }
-        def captured(): Corpus = {
+        def captured(): Captured = {
           val reader = Reader.open(config)
           try right(Capture(reader, "source", "restored", dump, Build.Unknown))
           finally reader.close()
         }
-        val corpus = captured()
-        corpus.cases.map(_.id.written) ==>
+        val capture = captured()
+        capture.cases.map(_.id.written) ==>
           Vector("C1/1000.1", "C1/1000.2", "C1/1000.3", "C1/1000.4", "C1/1000.5")
         val v4 = "gap,open,to,to-grit,durable,anchor,anchor-record"
-        corpus.cases.map(c => form(c.tags)) ==> Vector("v1", "v1", v4, v4, v4)
-        corpus.cases.map(_.stitch.map(_.seen)) ==>
+        capture.cases.map(c => form(c.tags)) ==> Vector("v1", "v1", v4, v4, v4)
+        capture.cases.map(_.stitch.map(_.seen)) ==>
           Vector(None, Some(SeenCheck.Match), Some(SeenCheck.Match), None, Some(SeenCheck.Match))
-        corpus.cases.lastOption.flatMap(_.stitch).map(_.placed) ==> Some(
+        capture.cases.lastOption.flatMap(_.stitch).map(_.placed) ==> Some(
           Placement.Follows(right(CaseId.read("C1/1000.1")), Probability.clamped(0.9))
         )
-        corpus.cases.lastOption.map(_.clusters.exchange.written) ==> Some("C1/1000.1")
-        def bytes(c: Corpus) =
-          CorpusJson.writeManifest(c.manifest).render() +
-            c.cases.map(CorpusJson.writeCase(_).render()).mkString("\n")
-        bytes(captured()) ==> bytes(corpus)
+        capture.cases.lastOption.map(_.clusters.exchange.written) ==> Some("C1/1000.1")
+        def bytes(c: Captured) =
+          CaptureJson.writeManifest(c.manifest).render() +
+            c.cases.map(CaptureJson.writeCase(_).render()).mkString("\n")
+        bytes(captured()) ==> bytes(capture)
       } finally engine.close()
     }
   }

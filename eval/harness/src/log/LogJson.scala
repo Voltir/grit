@@ -8,8 +8,8 @@ import grit.core.id.QuestionName
 import grit.core.message.{Tokens, Usage}
 import grit.core.store.Focus
 import grit.core.triage.{ShadowAnswers, ShadowedJson}
-import grit.eval.harness.corpus.Fields.{each, opt}
-import grit.eval.harness.corpus.{CaseId, CorpusJson, Digest, Failure, Fields}
+import grit.eval.harness.capture.Fields.{each, opt}
+import grit.eval.harness.capture.{CaptureJson, CaseId, Digest, Failure, Fields}
 
 /** How a row's answer `A` is written in a run's log and its cache. */
 trait Codec[A] {
@@ -119,18 +119,18 @@ object LogJson {
   def header(h: Header): String = ujson
     .Obj(
       "header" -> ujson.Obj(
-        "corpus" -> h.corpus,
-        "corpus_digest" -> h.corpusDigest.hex,
+        "capture" -> h.capture,
+        "capture_digest" -> h.captureDigest.hex,
         "labels" -> digest(h.labels),
         "variant" -> h.variant,
         "wording" -> digest(h.wording),
         "model" -> h.model,
-        "tuning" -> h.tuning.fold[ujson.Value](ujson.Null)(CorpusJson.writeTuning),
+        "tuning" -> h.tuning.fold[ujson.Value](ujson.Null)(CaptureJson.writeTuning),
         "recipe" -> digest(h.recipe),
         "questions" -> h.questions.fold[ujson.Value](ujson.Null)(ns =>
           ujson.Arr.from(ns.map(n => ujson.Str(QuestionName.value(n))))
         ),
-        "build" -> CorpusJson.writeBuild(h.build),
+        "build" -> CaptureJson.writeBuild(h.build),
         "repeats" -> h.repeats,
         "cache" -> h.cache,
         "cap_usd" -> h.cap.toString,
@@ -215,13 +215,13 @@ object LogJson {
   private def readHeader(v: ujson.Value): Either[String, Header] = {
     val f = Fields("header", v)
     for {
-      corpus <- f.str("corpus")
-      corpusDigest <- f.str("corpus_digest").flatMap(Digest.read)
+      capture <- f.str("capture")
+      captureDigest <- f.str("capture_digest").flatMap(Digest.read)
       labels <- f.optional("labels").flatMap(opt(_)(readDigest("labels")))
       variant <- f.str("variant")
       wording <- f.optional("wording").flatMap(opt(_)(readDigest("wording")))
       model <- f.str("model")
-      tuning <- f.optional("tuning").flatMap(opt(_)(CorpusJson.readTuning))
+      tuning <- f.optional("tuning").flatMap(opt(_)(CaptureJson.readTuning))
       recipe <- f.added("recipe").flatMap(opt(_)(readDigest("recipe")))
       questions <- f
         .added("questions")
@@ -236,15 +236,15 @@ object LogJson {
               )
           )
         )
-      build <- f.field("build").flatMap(CorpusJson.readBuild("header", _))
+      build <- f.field("build").flatMap(CaptureJson.readBuild("header", _))
       repeats <- f.int("repeats")
       cache <- f.bool("cache")
       cap <- f.decimal("cap_usd")
       rule <- f.optional("rule").flatMap(opt(_)(readDigest("rule")))
       started <- f.instant("started")
     } yield Header(
-      corpus,
-      corpusDigest,
+      capture,
+      captureDigest,
       labels,
       variant,
       wording,

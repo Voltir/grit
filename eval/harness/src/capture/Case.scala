@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import java.time.Instant
 
@@ -11,7 +11,7 @@ import grit.core.stitch.{Offered, Tuning}
 import grit.core.triage.{Kind, Tags}
 import grit.dbos.engine.{Build, Reader}
 
-/** One heard message of a corpus, text-free: who it is (`id`), where it was in the database
+/** One heard message of a capture, text-free: who it is (`id`), where it was in the database
   * captured (`entry`, `conversation`), when it was `tagged` and by which triage, what triage
   * and stitching made of it live, the inputs the shipped builders rebuild for it, and how it
   * clusters.
@@ -23,7 +23,7 @@ import grit.dbos.engine.{Build, Reader}
   * @param stitch
   *   its placement, when it was its thread's first message and was placed
   * @param tuning
-  *   the tuning its placement was made under, when it is not the corpus's
+  *   the tuning its placement was made under, when it is not the capture's
   */
 final case class Case(
     id: CaseId,
@@ -128,7 +128,7 @@ enum Failure {
 
 object Failure {
 
-  /** `f`'s written name, as a corpus and a run log keep it: `unavailable`, `unreadable`,
+  /** `f`'s written name, as a capture and a run log keep it: `unavailable`, `unreadable`,
     * `unasked` or `other`.
     */
   def written(f: Failure): String = f.toString.toLowerCase
@@ -242,21 +242,21 @@ object SeenCheck {
   case object Unbuilt extends SeenCheck
 
   /** The message or its author differs: these `fields`, never none. */
-  final case class MessageDiffers private[corpus] (fields: Set[Field]) extends SeenCheck
+  final case class MessageDiffers private[capture] (fields: Set[Field]) extends SeenCheck
 
   /** The recent slots differ: the ranks, from 1, whose roots differ, never none. */
-  final case class RecentDiffers private[corpus] (ranks: Vector[Int]) extends SeenCheck
+  final case class RecentDiffers private[capture] (ranks: Vector[Int]) extends SeenCheck
 
   /** An exchange both sides offer, by root, is shown differently: those `roots` and the
     * `fields` (`opening`, `latest`, `record`) that differ, neither ever none.
     */
-  final case class SameRootDiffers private[corpus] (roots: Vector[CaseId], fields: Set[Field])
+  final case class SameRootDiffers private[capture] (roots: Vector[CaseId], fields: Set[Field])
       extends SeenCheck
 
   /** The recent slots are the same, in the same order, and only lexical slots differ, in
     * these `fields` of the state, never none.
     */
-  final case class LexicalOnly private[corpus] (fields: Set[Field]) extends SeenCheck
+  final case class LexicalOnly private[capture] (fields: Set[Field]) extends SeenCheck
 
   /** How `rebuilt`, the stitch question's state offering `rebuiltSlots`, differs from `live`,
     * offering `liveSlots`, under a tuning of `recent` recent slots; each state's exchanges in

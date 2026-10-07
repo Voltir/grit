@@ -17,7 +17,7 @@ import grit.core.store.{Focus, Origin, StoreError}
 import grit.core.triage.{Corpora, ShadowAnswers, Shadowed, Shadowing}
 import grit.dbos.engine.{Build, LiveEngine, Reader}
 import grit.dbos.sql.{LiveDb, TestPostgres}
-import grit.eval.harness.corpus.{Capture, CaseId, Corpus, Digest, Dump}
+import grit.eval.harness.capture.{Capture, Captured, CaseId, Digest, Dump}
 import grit.eval.harness.log.{Outcome, Row, Weights}
 import grit.lifecycle.shadow.{Shadow, ShadowAsking, ShadowEnv}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
@@ -77,7 +77,7 @@ object PullTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "pull writes the corpus's cases' live tags under the names its first answered row asked, leaving out and counting those of other names, and each shadow's answers, as rows at the focus each was said at, a question set's under its names, a wording's in order and one of both forms refused, lists the messages no corpus holds, and counts shadows that ended keeping nothing"
+      "pull writes the capture's cases' live tags under the names its first answered row asked, leaving out and counting those of other names, and each shadow's answers, as rows at the focus each was said at, a question set's under its names, a wording's in order and one of both forms refused, lists the messages no capture holds, and counts shadows that ended keeping nothing"
     ) {
       val (words, ghost, set, mixed, legacy) =
         (named("words"), named("ghost"), named("set"), named("mixed"), named("legacy"))
@@ -95,7 +95,7 @@ object PullTests extends TestSuite {
                 engine.entries,
                 // Kept as before V2: the harness reads v1-era tags only.
                 // The first heard before live triage asked V2.
-                new grit.eval.harness.corpus.KeptAsV1(
+                new grit.eval.harness.capture.KeptAsV1(
                   engine.triage,
                   engine.entries,
                   _.contains("day 0")
@@ -186,7 +186,7 @@ object PullTests extends TestSuite {
           )
         }
         val tagged = LiveDb.transaction(config)(engine.triage.tagged(Instant.EPOCH, Far))
-        // The corpus holds the first two: captured before the third was tagged.
+        // The capture holds the first two: captured before the third was tagged.
         val dumped = tagged.toOption.flatMap(_.lift(2)).map(_.at).getOrElse(sys.error("tagged"))
         assert(engine.sweep(now()).map(_.shadowed.size) == Right(9))
         assert(eventually(engine.unfinished() == Right(0)))
@@ -228,9 +228,9 @@ object PullTests extends TestSuite {
         val switched =
           tagged.toOption.flatMap(_.lift(1)).map(_.at).getOrElse(sys.error("tagged"))
         val reader = Reader.open(config)
-        val (corpus, pulled, since) =
+        val (capture, pulled, since) =
           try {
-            val c: Corpus =
+            val c: Captured =
               right(
                 Capture(reader, "source", "restored", Dump(Digest.text("d"), dumped), Build.Unknown)
               )
@@ -243,7 +243,7 @@ object PullTests extends TestSuite {
             )
           } finally reader.close()
         val ids = heard.map((_, ts) => right(CaseId.read(s"C1/$ts")))
-        corpus.cases.map(_.id) ==> ids.take(2)
+        capture.cases.map(_.id) ==> ids.take(2)
         val (v1Names, v4Names) = (
           Vector("kind", "waiting", "durable", "helps").map(qn),
           Vector("gap", "open", "to", "to-grit", "durable", "anchor", "anchor-record").map(qn)
@@ -301,7 +301,7 @@ object PullTests extends TestSuite {
           0
         )
         // V1 is live's question as a set: the case triaged before the switch sends the
-        // request the corpus rebuilt as live's, and the stub answers it alike, so the v1
+        // request the capture rebuilt as live's, and the stub answers it alike, so the v1
         // shadow's answers are live's kept answers exactly.
         val v1 = pulled.shadows
           .collectFirst { case Pull.Pulled.Shadow(`words`, ShadowLog.Named(log), _, _) =>

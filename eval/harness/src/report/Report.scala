@@ -7,7 +7,7 @@ import grit.core.id.{QuestionName, ShadowName}
 import grit.core.period.Probability
 import grit.core.store.Focus
 import grit.core.triage.{Bound, Earning, Gate, Reading}
-import grit.eval.harness.corpus.{Case, CaseId, TurnCase}
+import grit.eval.harness.capture.{Case, CaseId, TurnCase}
 import grit.eval.harness.label.{Context, Labelled, Labels, Verdicts}
 import grit.eval.harness.log.{Log, Row, Suite, Weights}
 import grit.eval.harness.pull.Pull
@@ -46,7 +46,7 @@ import grit.eval.harness.score.{
 }
 import grit.eval.harness.stats.{Estimate, Mills, Proportion}
 
-/** A run to report on: its log's file `name`, the log, its corpus's cases, and the labels in
+/** A run to report on: its log's file `name`, the log, its capture's cases, and the labels in
   * force.
   */
 final case class Scored(
@@ -57,7 +57,7 @@ final case class Scored(
 ) {
   val answers: Answers = Answers.of(log.rows)
 
-  /** How many of the corpus's cases carry any label. */
+  /** How many of the capture's cases carry any label. */
   def labelled: Int = cases.count(c => labels.of(c.id) != Labelled.Blank)
 
   /** This run with no row of any of `ids`. */
@@ -93,7 +93,7 @@ object Report {
       s"# score: ${run.name}",
       "",
       s"run: variant ${h.variant}, model ${h.model}, repeats ${h.repeats}, cache " +
-        s"${if (h.cache) "on" else "off"}, corpus ${h.corpus}, started ${h.started}",
+        s"${if (h.cache) "on" else "off"}, capture ${h.capture}, started ${h.started}",
       s"cases: ${run.cases.size}; answered: triage ${run.answers.triage.size}, stitch " +
         s"${run.answers.stitch.size}",
       labelLine(run),
@@ -140,17 +140,17 @@ object Report {
     lines.mkString("\n") + "\n"
   }
 
-  /** A corpus's recorded `turns` read structurally ([[Structure]]), with the review
+  /** A capture's recorded `turns` read structurally ([[Structure]]), with the review
     * `verdicts` standing joined by case: the pass rate first, then the turns that did not
     * reply, rounds, tools offered against called, prompt and window tokens, the first main
     * call's estimate against the ledger, cost per turn, speech outcomes, verdicts and used
     * parts, each over every turn and by root and by where said (a slice with no turn left
     * out); then one line a turn, most costly first. Used parts are those at support
-    * [[grit.eval.harness.corpus.Support.Used]] or over, stated as a lexical heuristic, and
-    * used-section recall is stated undefined where no reply said anything. `corpus` names it.
+    * [[grit.eval.harness.capture.Support.Used]] or over, stated as a lexical heuristic, and
+    * used-section recall is stated undefined where no reply said anything. `capture` names it.
     */
-  def turns(corpus: String, turns: Vector[TurnCase], verdicts: Verdicts): String =
-    TurnLines.of(corpus, turns, verdicts)
+  def turns(capture: String, turns: Vector[TurnCase], verdicts: Verdicts): String =
+    TurnLines.of(capture, turns, verdicts)
 
   /** How turns recorded their offers and weighing, as one line: the turns shaped, recorded
     * before shapes and with no offer; their weigh steps by what each recorded, failures by
@@ -169,7 +169,7 @@ object Report {
       s"${s.asked}, failed $failed$kinds, weighed nothing ${s.none}, none recorded ${s.unrecorded}"
   }
 
-  /** A recipes run over `corpus`: `notes` (lines on how it ran) first; then each of
+  /** A recipes run over `capture`: `notes` (lines on how it ran) first; then each of
     * `variants` against shipped on tools offered (called-tool recall first among them), what
     * the tools withheld are worth (tokens saved, their effective price in m$ with the range
     * from every token cached to none, the hit rate beside it, and how far the cache moves it)
@@ -180,13 +180,13 @@ object Report {
     * turn).
     */
   def recipes(
-      corpus: String,
+      capture: String,
       notes: Vector[String],
       prices: Prices,
       shipped: Varied,
       variants: Vector[Varied]
   ): String =
-    RecipeLines.of(corpus, notes, prices, shipped, variants)
+    RecipeLines.of(capture, notes, prices, shipped, variants)
 
   /** The synthetic reference ([[grit.eval.harness.reply.Synthetic]]) judged under each named
     * variant, shipped first by the caller: `notes` (lines on how it ran) first, then each

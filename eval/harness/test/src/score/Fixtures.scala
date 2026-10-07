@@ -11,7 +11,7 @@ import grit.core.stitch.Offered
 import grit.core.store.Focus
 import grit.core.triage.Kind
 import grit.dbos.engine.Build
-import grit.eval.harness.corpus.{
+import grit.eval.harness.capture.{
   Case,
   CaseId,
   Clusters,
@@ -37,7 +37,7 @@ object Fixtures {
       n: Int,
       exchange: Int,
       author: Option[String] = None,
-      live: Live = Live.Unanswered(grit.eval.harness.corpus.Failure.Other),
+      live: Live = Live.Unanswered(grit.eval.harness.capture.Failure.Other),
       slots: Option[Vector[CaseId]] = None
   ): Case = {
     val c = id(s"C1/$n")

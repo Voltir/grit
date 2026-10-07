@@ -438,7 +438,7 @@ object grit extends Module {
         super.moduleDeps ++ Seq[JavaModule](grit.dbos.it, grit.assembly, grit.models)
     }
 
-    /* The eval harness: corpora captured from a database, labelled, run, scored. Runs only
+    /* The eval harness: captures of a database, labelled, run, scored. Runs only
      * through scripts/eval, never from a test; its tests test the instrument, not a model.
      * eval/harness/README.md. */
     object harness extends GritModule with Placed {

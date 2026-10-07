@@ -21,7 +21,7 @@ import grit.core.stitch.{Offered, Placed}
 import grit.core.store.Nearby
 import grit.core.tool.ToolSetId
 import grit.core.triage.Tags
-import grit.eval.harness.corpus.Spent
+import grit.eval.harness.capture.Spent
 import grit.eval.harness.stats.Mills
 import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord}
 
@@ -356,7 +356,7 @@ object SentMarkdown {
         "**The rebuilt questions are not those triage answered**: only answered " +
           names((answered.toSet -- heard.asked).toVector) + "; only rebuilt " +
           names((heard.asked.toSet -- answered).toVector) +
-          ". Pass the deployment's persona and corpora (`--corpus`).",
+          ". Pass the deployment's persona and corpora (`--capture`).",
         ""
       )
     heard.triage match {

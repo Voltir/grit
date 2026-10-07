@@ -10,7 +10,7 @@ import grit.core.period.Probability
 import grit.core.stitch.Offered
 import grit.core.triage.Kind
 import grit.dbos.engine.Build
-import grit.eval.harness.corpus.{
+import grit.eval.harness.capture.{
   Case,
   CaseId,
   Clusters,

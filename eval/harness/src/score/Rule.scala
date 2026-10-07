@@ -2,7 +2,7 @@ package grit.eval.harness.score
 
 import scala.util.Try
 
-import grit.eval.harness.corpus.{Case, Digest, Fields}
+import grit.eval.harness.capture.{Case, Digest, Fields}
 import grit.eval.harness.label.Context
 import grit.eval.harness.log.Header
 import grit.eval.harness.stats.Estimate

@@ -1,7 +1,7 @@
 package grit.eval.harness.report
 
 import grit.core.id.{ConversationId, WorkflowId}
-import grit.eval.harness.corpus.Part
+import grit.eval.harness.capture.Part
 import grit.eval.harness.reply.Judged
 import grit.eval.harness.score.{Priced, Prices, Rates, Recipe, Shift}
 import grit.eval.harness.stats.{Mills, Proportion}
@@ -24,13 +24,13 @@ final case class CaseJudged(name: String, of: String, judged: Judged)
 private[report] object RecipeLines {
 
   def of(
-      corpus: String,
+      capture: String,
       notes: Vector[String],
       prices: Prices,
       shipped: Varied,
       variants: Vector[Varied]
   ): String = {
-    val header = Vector(s"# recipes: $corpus", "") ++ notes ++ Vector(
+    val header = Vector(s"# recipes: $capture", "") ++ notes ++ Vector(
       "",
       "Each variant against shipped, paired on the same turns, shipped's window rebuilt as of " +
         "the turn's assembly like the variant's. Text-free: ids, counts, tokens and prices (in " +
@@ -112,7 +112,7 @@ private[report] object RecipeLines {
       "### Scales",
       "",
       "grit estimates a call's tokens from its characters, and its estimate is not the " +
-        "provider's count, so each model's ratio of the two is fitted from the corpus's ledger " +
+        "provider's count, so each model's ratio of the two is fitted from the capture's ledger " +
         "rows: least squares through 0 of input tokens counted against grit's estimate, over " +
         s"the calls with both, none from fewer than ${Rates.MinCalls}. A fit, not a count: a " +
         "model's definitions may tokenize unlike its window.",
@@ -126,7 +126,7 @@ private[report] object RecipeLines {
       "",
       "### Rates",
       "",
-      "grit records no price, so each model's is read from the corpus's ledger rows: least " +
+      "grit records no price, so each model's is read from the capture's ledger rows: least " +
         "squares over its priced rows of cost = input × (input − cached tokens) + cached × " +
         "cached tokens + output × output tokens, the cached rate left out where no row has a " +
         "cached token. Off by: the most the rates misprice one of those rows. In m$ per " +

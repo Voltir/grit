@@ -16,7 +16,7 @@ import grit.dbos.sql.TestTx
 import utest.*
 
 /** The state JSON triage's question is shown, pinned byte for byte for each way its thread is
-  * cut: it is what the classifier is sent, and a corpus's recorded request digests are over it.
+  * cut: it is what the classifier is sent, and a capture's recorded request digests are over it.
   */
 object TriageInputTests extends TestSuite {
   import TriageFixtures.*

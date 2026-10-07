@@ -1,11 +1,11 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import scala.util.Try
 
 import grit.core.persona.Persona
 
-/** The persona the deployment that recorded a corpus declares, as its `persona.json` holds
-  * it: grit's database keeps no declaration, so the file is written beside the corpus from
+/** The persona the deployment that recorded a capture declares, as its `persona.json` holds
+  * it: grit's database keeps no declaration, so the file is written beside the capture from
   * the deployment's.
   */
 object PersonaJson {

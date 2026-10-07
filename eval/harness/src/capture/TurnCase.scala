@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import java.time.Instant
 
@@ -14,7 +14,7 @@ import grit.core.tool.{ToolName, ToolSetId}
 import grit.dbos.engine.Build
 import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnVerdict}
 
-/** One turn of a corpus, text-free: its workflow, conversation and turn; the message it
+/** One turn of a capture, text-free: its workflow, conversation and turn; the message it
   * answers (`said`), whether that message was said to grit or heard (`root`, as its offer
   * recorded it, a heard one answered as said to grit `ByName`, or, drafted before such
   * messages were, `Named`; its message's when it recorded no offer) and where
@@ -51,7 +51,7 @@ final case class TurnCase(
     speech: Option[Drafted]
 )
 
-/** The turns of a corpus, and how many turn workflows were `skipped`: their conversation or
+/** The turns of a capture, and how many turn workflows were `skipped`: their conversation or
   * first message gone, or a Slack message with no case id.
   */
 final case class Turns(cases: Vector[TurnCase], skipped: Int)

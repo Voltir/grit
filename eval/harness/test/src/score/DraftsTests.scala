@@ -9,7 +9,7 @@ import grit.core.message.Usage
 import grit.core.period.Probability
 import grit.core.store.Focus
 import grit.core.triage.{Kind, Tags}
-import grit.eval.harness.corpus.{CaseId, Digest, Failure}
+import grit.eval.harness.capture.{CaseId, Digest, Failure}
 import grit.eval.harness.jev.Sets
 import grit.eval.harness.log.{CacheKey, Outcome, Row, Suite}
 

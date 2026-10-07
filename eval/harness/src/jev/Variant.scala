@@ -4,7 +4,7 @@ import scala.concurrent.duration.*
 
 import grit.core.recipe.{Pool, Source}
 import grit.core.stitch.Tuning
-import grit.eval.harness.corpus.Digest
+import grit.eval.harness.capture.Digest
 import grit.lifecycle.triage.{TriageQuestion, TriageRecipe}
 
 /** What a run changes from the shipped call, named in its log: one thing each, but a recipe
@@ -104,7 +104,7 @@ object Variant {
 /** The variants a run can name. */
 object Variants {
 
-  /** The model every live tag in the first corpus recorded. */
+  /** The model every live tag in the first capture recorded. */
   val LiveModel = "jev-1.13.0"
 
   /** `durable`'s question reworded to name what lasts, for comparing against the shipped. */

@@ -6,7 +6,7 @@ import grit.core.classify.Answer
 import grit.core.id.{QuestionName, ShadowName}
 import grit.core.period.Probability
 import grit.core.review.{Reason, Verdict}
-import grit.eval.harness.corpus.CaseId
+import grit.eval.harness.capture.CaseId
 import grit.eval.harness.label.{Rated, Verdicts}
 
 /** Verdicts against live's draft and a question set's: each shadow's and reason's

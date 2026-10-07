@@ -9,7 +9,7 @@ import grit.core.period.Probability
 import grit.core.review.Reason
 import grit.core.store.Focus
 import grit.core.triage.{Bound, Gate, Kind, Reading}
-import grit.eval.harness.corpus.Case
+import grit.eval.harness.capture.Case
 import grit.eval.harness.label.{Context, Labelled, Labels}
 import grit.eval.harness.log.{Log, Row, Suite}
 import grit.eval.harness.score.Fixtures.*
@@ -126,8 +126,8 @@ object ReportTests extends TestSuite {
       )
     }
 
-    test("with no case of the corpus labelled, only what needs no label is reported") {
-      // A label of a case outside the corpus labels none of it.
+    test("with no case of the capture labelled, only what needs no label is reported") {
+      // A label of a case outside the capture labels none of it.
       val elsewhere =
         Labels(Map(id("C9/1") -> Labelled.Blank.copy(durable = Some(true))), Set("v1"))
       val report = lines(Report.score(run("a.jsonl", 0.7, elsewhere)))

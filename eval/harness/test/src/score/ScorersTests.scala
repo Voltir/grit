@@ -98,7 +98,7 @@ object ScorersTests extends TestSuite {
           id("C1/2") -> Labelled.Blank.copy(place = Some(Place.Begins)),
           // Not offered: left out.
           id("C1/3") -> Labelled.Blank.copy(place = Some(Place.Follows(other))),
-          // Its placing offers one exchange, the corpus two: left out.
+          // Its placing offers one exchange, the capture two: left out.
           id("C1/4") -> Labelled.Blank.copy(place = Some(Place.Begins))
         ),
         Set("v1")

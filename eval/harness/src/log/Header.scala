@@ -5,9 +5,9 @@ import java.time.Instant
 import grit.core.id.QuestionName
 import grit.core.stitch.Tuning
 import grit.dbos.engine.Build
-import grit.eval.harness.corpus.Digest
+import grit.eval.harness.capture.Digest
 
-/** What a run was, written as its log's first line: the corpus it ran over (`corpus`, its
+/** What a run was, written as its log's first line: the capture it ran over (`capture`, its
   * directory's name, and the digest of its files), the labels in force when it started, the
   * variant (its `name`, the digest of the `wording` it asks in, the `model` it requests, the
   * `tuning` it rebuilds stitch and triage inputs under, and the digest of the `recipe` it
@@ -31,8 +31,8 @@ import grit.eval.harness.corpus.Digest
   *   `None` when it was started under none
   */
 final case class Header(
-    corpus: String,
-    corpusDigest: Digest,
+    capture: String,
+    captureDigest: Digest,
     labels: Option[Digest],
     variant: String,
     wording: Option[Digest],

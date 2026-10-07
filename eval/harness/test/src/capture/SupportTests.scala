@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import grit.core.id.{ConversationId, EntrySeq}
 import grit.core.message.Tokens

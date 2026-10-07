@@ -7,7 +7,7 @@ import grit.core.id.{QuestionName, TurnRef, WorkflowId}
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.triage.Corpora
 import grit.dbos.engine.Reader
-import grit.eval.harness.corpus.{Digest, TurnCase}
+import grit.eval.harness.capture.{Digest, TurnCase}
 import grit.eval.harness.jev.{Asking, Posed}
 import grit.eval.harness.log.Weights
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}

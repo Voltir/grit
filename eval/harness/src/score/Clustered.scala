@@ -1,11 +1,11 @@
 package grit.eval.harness.score
 
-import grit.eval.harness.corpus.{Case, CaseId, Digest}
+import grit.eval.harness.capture.{Case, CaseId, Digest}
 import grit.eval.harness.label.{Context, Labels}
 import grit.eval.harness.stats.{Estimate, Proportion}
 
 /** A mean over `n` cases clustered twice: by the exchange each belongs to
-  * ([[grit.eval.harness.corpus.Clusters.exchange]]), and by its author, a case with no enrolled
+  * ([[grit.eval.harness.capture.Clusters.exchange]]), and by its author, a case with no enrolled
   * author alone in its cluster; each `None` under two clusters.
   */
 final case class Clustered(n: Int, exchange: Option[Estimate], author: Option[Estimate])

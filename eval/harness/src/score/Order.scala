@@ -1,6 +1,6 @@
 package grit.eval.harness.score
 
-import grit.eval.harness.corpus.{Case, CaseId}
+import grit.eval.harness.capture.{Case, CaseId}
 import grit.eval.harness.label.Labels
 
 /** Cases in the order a person should label them: the ones a label would settle most first,

@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}
@@ -6,7 +6,7 @@ import grit.core.triage.Corpus
 
 import utest.*
 
-/** A deployment's corpora read from the file written beside a corpus. */
+/** A deployment's corpora read from the file written beside a capture. */
 object KnowledgeJsonTests extends TestSuite {
 
   private def right[A](e: Either[String, A]): A =

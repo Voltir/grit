@@ -12,7 +12,7 @@ import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.stitch.Tuning
 import grit.core.store.{Db, Nearby, Payload, StoreError}
 import grit.dbos.engine.Reader
-import grit.eval.harness.corpus.Capture
+import grit.eval.harness.capture.Capture
 import grit.turn.Turn
 
 /** How the shipped [[RetrievalAssembler]] is built to rebuild a window: the deployment's

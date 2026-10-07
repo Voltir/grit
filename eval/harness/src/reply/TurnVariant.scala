@@ -10,7 +10,7 @@ import grit.core.period.Probability
 import grit.core.place.Service
 import grit.core.recipe.{ByFocus, Offering, Rooted, Shaping, TurnRecipe}
 import grit.core.tool.ToolName
-import grit.eval.harness.corpus.TurnCase
+import grit.eval.harness.capture.TurnCase
 import grit.turn.{TurnOffer, TurnShape}
 
 /** A named way to build a turn other than as shipped: a recipe, applied to a recorded turn as
@@ -24,7 +24,7 @@ final case class TurnVariant(name: String, recipe: TurnRecipe)
 final case class Shaped(offering: Shaped.Offering, width: Width) {
 
   /** Whether it is offered `name`, a tool of the set it draws from
-    * ([[grit.eval.harness.corpus.Offered.drawn]]).
+    * ([[grit.eval.harness.capture.Offered.drawn]]).
     */
   def offers(name: ToolName): Boolean = offering match {
     case Shaped.Offering.AsRecorded(tools) => tools.contains(name)

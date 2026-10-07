@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.id.{PrincipalId, ShadowName}
 import grit.core.review.{Reason, Verdict}
-import grit.eval.harness.corpus.CaseId
+import grit.eval.harness.capture.CaseId
 
 import utest.*
 

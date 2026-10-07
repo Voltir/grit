@@ -1,4 +1,4 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import java.time.Instant
 
@@ -10,7 +10,7 @@ import grit.core.stitch.{Stitching, Tuning}
 import grit.dbos.engine.Build
 import grit.lifecycle.triage.TriageQuestion
 
-/** What a corpus is, text-free: the `source` database it was dumped from and the `restored`
+/** What a capture is, text-free: the `source` database it was dumped from and the `restored`
   * one its cases point into, the `dump`, the lifecycle `settings` the restored database holds,
   * the stitch `tuning` its cases are rebuilt under, the builders' `constants`, the build that
   * captured it, and how many cases it has and how many of them were `stitched`.
@@ -19,7 +19,7 @@ import grit.lifecycle.triage.TriageQuestion
   *   the one most placements were made under, [[Tuning.Default]] when none were; a case made
   *   under another keeps its own ([[Case.tuning]])
   * @param tunings
-  *   how many tunings its placements were made under: more than 1 flags the corpus
+  *   how many tunings its placements were made under: more than 1 flags the capture
   */
 final case class Manifest(
     source: String,
@@ -40,7 +40,7 @@ final case class Manifest(
 final case class Dump(sha256: Digest, at: Instant)
 
 /** The lifecycle settings a restored database holds ([[LifecycleSettings]]), as numbers and the
-  * scope's written form: the dump holds only the latest, so a corpus assumes they held over its
+  * scope's written form: the dump holds only the latest, so a capture assumes they held over its
   * window.
   */
 final case class Settings(
@@ -70,7 +70,7 @@ object Settings {
     )
 }
 
-/** The builders' constants a corpus was captured under: triage's thread
+/** The builders' constants a capture was made under: triage's thread
   * ([[TriageQuestion.ThreadChars]]), and stitching's latest messages, characters of a message
   * and BM25 hits ([[Stitching.Latest]], [[Stitching.MessageChars]], [[Stitching.Hits]]).
   */

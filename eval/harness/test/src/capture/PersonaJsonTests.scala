@@ -1,10 +1,10 @@
-package grit.eval.harness.corpus
+package grit.eval.harness.capture
 
 import grit.core.persona.Persona
 
 import utest.*
 
-/** A deployment's persona read from the file written beside a corpus. */
+/** A deployment's persona read from the file written beside a capture. */
 object PersonaJsonTests extends TestSuite {
 
   val tests = Tests {

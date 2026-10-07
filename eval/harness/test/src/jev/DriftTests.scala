@@ -1,10 +1,10 @@
 package grit.eval.harness.jev
 
-import grit.eval.harness.corpus.Digest
+import grit.eval.harness.capture.Digest
 
 import utest.*
 
-/** How a rebuilt question's state compares to its corpus's. */
+/** How a rebuilt question's state compares to its capture's. */
 object DriftTests extends TestSuite {
 
   private val a = Digest.text("a")

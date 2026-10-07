@@ -11,7 +11,7 @@ import grit.core.message.Usage
 import grit.core.period.Probability
 import grit.core.review.{Reason, Verdict}
 import grit.core.triage.{Kind, Tags}
-import grit.eval.harness.corpus.{CaseId, Digest}
+import grit.eval.harness.capture.{CaseId, Digest}
 import grit.eval.harness.jev.Sets
 import grit.eval.harness.label.{Rated, Verdicts}
 import grit.eval.harness.log.{CacheKey, Outcome, Row, Suite}

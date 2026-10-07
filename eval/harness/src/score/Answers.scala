@@ -2,7 +2,7 @@ package grit.eval.harness.score
 
 import grit.core.period.Probability
 import grit.core.triage.{Earning, Kind}
-import grit.eval.harness.corpus.CaseId
+import grit.eval.harness.capture.CaseId
 import grit.eval.harness.label.Labelled
 import grit.eval.harness.log.{Outcome, Row, Suite, Weights}
 

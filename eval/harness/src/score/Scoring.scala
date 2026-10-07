@@ -1,13 +1,13 @@
 package grit.eval.harness.score
 
 import grit.core.triage.Kind
-import grit.eval.harness.corpus.Case
+import grit.eval.harness.capture.Case
 import grit.eval.harness.label.{Labels, Place}
 
-/** A run's answers beside its corpus's cases and their labels: what each scorer is given. */
+/** A run's answers beside its capture's cases and their labels: what each scorer is given. */
 final case class Scoring(cases: Vector[Case], answers: Answers, labels: Labels) {
 
-  /** Each case answered and labelled `t`, in the corpus's order. */
+  /** Each case answered and labelled `t`, in the capture's order. */
   def tag(t: Tag): Vector[Judged] =
     cases.flatMap(c =>
       for {
@@ -27,7 +27,7 @@ final case class Scoring(cases: Vector[Case], answers: Answers, labels: Labels) 
 
   /** Each case answered and labelled with a place, and that place's position among the
     * exchanges its placing offers (beginning anew the last). A case whose placing does not
-    * offer as many exchanges as the corpus rebuilt for it, or does not offer the exchange
+    * offer as many exchanges as the capture rebuilt for it, or does not offer the exchange
     * labelled, is left out: [[unplaced]] counts them.
     */
   def place: Vector[(Case, Placing, Int)] = placed.collect { case (c, p, Some(at)) => (c, p, at) }

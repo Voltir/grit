@@ -6,7 +6,7 @@ import grit.core.classify.{Answers, Classifier, ClassifierError, Request}
 import grit.core.clock.Clock
 import grit.core.message.Usage
 import grit.core.store.Focus
-import grit.eval.harness.corpus.{CaseId, Digest, Failure}
+import grit.eval.harness.capture.{CaseId, Digest, Failure}
 import grit.eval.harness.jev.{Asking, Budget, Spend}
 import grit.eval.harness.log.{Cache, CacheKey, Cached, Outcome, Row, Suite, Weights}
 import grit.models.JevJson

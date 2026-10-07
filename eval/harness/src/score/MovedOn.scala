@@ -1,7 +1,7 @@
 package grit.eval.harness.score
 
 import grit.core.triage.Kind
-import grit.eval.harness.corpus.CaseId
+import grit.eval.harness.capture.CaseId
 import grit.eval.harness.log.{Outcome, Row, Suite, Weights}
 
 /** Jev's own spread on each of triage's questions: the pooled standard deviation of a run's

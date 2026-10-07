@@ -1,7 +1,7 @@
 package grit.eval.harness.score
 
 import grit.core.triage.Kind
-import grit.eval.harness.corpus.{Case, Digest}
+import grit.eval.harness.capture.{Case, Digest}
 import grit.eval.harness.label.{Context, Labelled, Labels}
 import grit.eval.harness.log.Suite
 import grit.eval.harness.stats.Estimate

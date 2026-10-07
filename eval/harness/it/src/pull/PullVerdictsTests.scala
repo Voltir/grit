@@ -11,7 +11,7 @@ import grit.core.speech.Outcome
 import grit.core.store.{Origin, StoreError}
 import grit.dbos.engine.{LiveEngine, Reader}
 import grit.dbos.sql.{LiveDb, SqlReviews, TestPostgres}
-import grit.eval.harness.corpus.CaseId
+import grit.eval.harness.capture.CaseId
 import grit.eval.harness.label.{Rated, Verdicts}
 
 import utest.*
