@@ -10,13 +10,13 @@ import grit.core.id.{
   CallSlot,
   ConversationId,
   PluginName,
-  PrincipalId,
   ScheduleId,
   TestCallSlots,
   ToolCallId,
   TurnRef,
   TurnSeq
 }
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.job.{
   Destination,
   InMemorySchedules,
@@ -44,7 +44,7 @@ object RemindersTests extends TestSuite {
 
   private val thread = Origin.Slack("T1", "eng", "1700.1")
 
-  private val asker = PrincipalId("U1")
+  private val asker = TestAccounts.account("slack:T/U1")
 
   /** The turn `n` of the asking thread's conversation. */
   private def turn(n: Int): TurnRef = TurnRef(ConversationId(s"slack:$n"), TurnSeq.First)
@@ -65,7 +65,7 @@ object RemindersTests extends TestSuite {
     /** The first call of `turn(n)`, whose reply is posted in the thread at `address`, or
       * nowhere, its message `by`'s.
       */
-    def asked(n: Int, address: Option[String] = Some("1700.1"), by: PrincipalId = asker): CallSlot =
+    def asked(n: Int, address: Option[String] = Some("1700.1"), by: Account = asker): CallSlot =
       TestCallSlots.at(turn(n)).tap(_ => schedules.asking(turn(n), thread, by, address))
 
     /** What `tool` comes to, called at `at` with `args`: a call whose arguments do not read
@@ -167,7 +167,7 @@ object RemindersTests extends TestSuite {
         Some(
           (
             ujson.Obj("text" -> "stretch"),
-            asker,
+            TestAccounts.principalId(asker),
             Report.Posted(Destination(thread.edge, "1700.1")),
             SlotRule.Once(Instant.parse("2026-10-06T14:33:12Z"), Reminders.Grace)
           )
@@ -231,19 +231,19 @@ object RemindersTests extends TestSuite {
       (
         d.run(
           Reminders.RemindMe,
-          d.asked(1, address = None, by = PrincipalId("U2")),
+          d.asked(1, address = None, by = TestAccounts.account("slack:T/U2")),
           "text" -> "a",
           "in_minutes" -> 5
         ),
         d.run(
           Reminders.RemindMe,
-          d.asked(2, by = PrincipalId("U2")),
+          d.asked(2, by = TestAccounts.account("slack:T/U2")),
           "text" -> "a",
           "at" -> "2026-10-06T14:00:00Z"
         ),
         d.run(
           Reminders.RemindMe,
-          d.asked(3, by = PrincipalId("U2")),
+          d.asked(3, by = TestAccounts.account("slack:T/U2")),
           "text" -> "a",
           "at" -> "2027-10-08T00:00:00Z"
         ),
@@ -282,7 +282,7 @@ object RemindersTests extends TestSuite {
       d.run(Reminders.RemindMe, d.asked(2), "text" -> "tea", "in_minutes" -> 10)
       d.run(
         Reminders.RemindMe,
-        d.asked(3, by = PrincipalId("U2")),
+        d.asked(3, by = TestAccounts.account("slack:T/U2")),
         "text" -> "not theirs",
         "in_minutes" -> 5
       )
@@ -318,7 +318,7 @@ object RemindersTests extends TestSuite {
       d.run(Reminders.RemindMe, d.asked(1), "text" -> "stretch", "in_minutes" -> 30)
       val mine = ScheduleId.value(id(1))
       (
-        d.run(Reminders.Cancel, d.asked(2, by = PrincipalId("U2")), "id" -> mine),
+        d.run(Reminders.Cancel, d.asked(2, by = TestAccounts.account("slack:T/U2")), "id" -> mine),
         d.run(Reminders.Cancel, d.asked(3), "id" -> "asked:0123456789abcdef"),
         d.run(Reminders.Cancel, d.asked(4), "id" -> mine),
         d.run(Reminders.Cancel, d.asked(5), "id" -> mine)

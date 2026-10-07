@@ -6,7 +6,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 import grit.core.clock.Clock
 import grit.core.edge.{Acknowledgement, CatchUp, EdgeStores, Part, Pending, ServedEdge}
-import grit.core.id.{CallSlot, EntryId, PrincipalId, SourceId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, EntryId, SourceId, TurnRef, WorkflowId}
+import grit.core.identity.Account
 import grit.core.inbox.{InboundId, InboxError, Progress}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
@@ -71,10 +72,6 @@ final class SlackEdge(
       name <- named.toRight(s"grit's bot ${UserId.value(self.bot)} has no name in Slack")
     } yield name
 
-  /** `user` of `team` as grit names them: `slack:{team}/{user}`. */
-  private def principal(team: TeamId, user: UserId): PrincipalId =
-    PrincipalId(s"slack:${TeamId.value(team)}/${UserId.value(user)}")
-
   /** Each channel in `listening`, as a person reads it: `#{name} ({id})` (its id alone when it
     * has no name); or, with its id,
     * that nothing in it is heard because it is not a channel grit can see, or that
@@ -99,8 +96,8 @@ final class SlackEdge(
   /** One Events API payload. A person's message in a public channel, or in a private one in
     * `listening`, is addressed to grit when
     * it mentions grit, or is in a thread whose root did; addressed, it is recorded as a turn of
-    * its thread's conversation, in the person's words ([[Incoming]]), written by them as
-    * enrolled under their Slack name (`slack:{team}/{user}`), its turn started, its reply
+    * its thread's conversation, in the person's words ([[Incoming]]), written through their
+    * account ([[SlackAccounts.account]]), named as Slack names them, its turn started, its reply
     * awaited, and the message marked `:eyes:` until the reply is posted. A new message the
     * inbox refuses over the day's cap is not recorded: it is answered, once, in its thread,
     * with [[Budget.Refusal]]. A message not addressed, in a channel in `listening`, is heard
@@ -167,11 +164,12 @@ final class SlackEdge(
       case None => true
       case Some((_, verdict)) =>
         val at = PromptAt(r.channel, r.ts).written
-        val rater = principal(r.team, r.user)
-        stores.jot.write(Subject.Public)(
-          if (r.added) stores.reviews.reacted(at, rater, verdict, r.at)
-          else stores.reviews.unreacted(at, rater, verdict)
-        ) match {
+        SlackAccounts.account(r.team, r.user).left.map(StoreError.Invalid(_)).flatMap { rater =>
+          stores.jot.write(Subject.Public)(
+            if (r.added) stores.reviews.reacted(at, rater, verdict, r.at)
+            else stores.reviews.unreacted(at, rater, verdict)
+          )
+        } match {
           case Right(_) => true
           case Left(e) =>
             said(
@@ -243,25 +241,27 @@ final class SlackEdge(
     spoken(m).flatMap {
       case None => Right(())
       case Some((author, text)) =>
-        val asked = Mentioned
-          .findAllMatchIn(m.text)
-          .map(x => UserId(x.group(1)))
-          .filterNot(_ == self.bot)
-          .map(u => principal(m.team, u))
-          .toSet
         val to = Option.when(live)(Address(m.channel, m.thread, m.ts).written)
-        opening(m, origin, author).flatMap(_ =>
-          stores.inbox
+        for {
+          asked <- Mentioned
+            .findAllMatchIn(m.text)
+            .map(x => UserId(x.group(1)))
+            .filterNot(_ == self.bot)
+            .foldLeft[Either[String, Set[Account]]](Right(Set.empty))((read, u) =>
+              read.flatMap(as => SlackAccounts.account(m.team, u).map(as + _))
+            )
+          _ <- opening(m, origin, author)
+          _ <- stores.inbox
             .hear(origin, SourceId(Ts.value(m.ts)), text, author, m.at, Reach(to, asked))
             .left
             .map(_.toString)
-        )
+        } yield ()
     }
 
-  /** Who wrote `m`, enrolled under their Slack name, and its text in their words; `None` in a
-    * conversation grit does not serve.
+  /** Who wrote `m`, their account named as Slack names them, and its text in their words; `None`
+    * in a conversation grit does not serve.
     */
-  private def spoken(m: Event.Said): Either[String, Option[(PrincipalId, String)]] =
+  private def spoken(m: Event.Said): Either[String, Option[(Account, String)]] =
     served(m.channel).flatMap { open =>
       if (!open) Right(None)
       else {
@@ -273,14 +273,15 @@ final class SlackEdge(
           .distinct
           .flatMap(c => channelNameOf(c).map(c -> _))
           .toMap
-        val author = principal(m.team, m.user)
-        stores.jot
-          .write(Subject.Public)(
-            stores.principals.enroll(author, known.getOrElse(m.user, UserId.value(m.user)))
-          )
-          .left
-          .map(_.toString)
-          .map(_ => Some((author, Incoming.text(m.text, self.bot, known.get, linked.get))))
+        for {
+          author <- SlackAccounts.account(m.team, m.user)
+          _ <- stores.jot
+            .write(Subject.Public)(
+              stores.principals.name(author, known.getOrElse(m.user, UserId.value(m.user)))
+            )
+            .left
+            .map(_.toString)
+        } yield Some((author, Incoming.text(m.text, self.bot, known.get, linked.get)))
       }
     }
 
@@ -296,7 +297,7 @@ final class SlackEdge(
       m: Event.Said,
       origin: Origin,
       message: Message.User,
-      author: PrincipalId
+      author: Account
   ): Either[String, Unit] =
     stores.inbox.ingest(origin, SourceId(Ts.value(m.ts)), message, author) match {
       case Left(over @ InboxError.OverCap(_, _, _)) => refuse(m, over)
@@ -323,7 +324,7 @@ final class SlackEdge(
     * message. When Slack cannot be asked for the root, or the post is not recorded, that is
     * said and `m` goes on without it; why not, when the inbox could not be asked.
     */
-  private def opening(m: Event.Said, origin: Origin, by: PrincipalId): Either[String, Unit] =
+  private def opening(m: Event.Said, origin: Origin, by: Account): Either[String, Unit] =
     if (m.thread == m.ts) Right(())
     else
       stores.inbox.begun(origin).left.map(_.toString).flatMap { begun =>

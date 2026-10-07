@@ -2,7 +2,8 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{CallSlot, ConversationId, PrincipalId}
+import grit.core.id.{CallSlot, ConversationId}
+import grit.core.identity.Account
 import grit.core.visibility.Label
 
 /** An in-memory [[ConversationStore]] for tests, keeping [[ConversationContract]]. It ignores
@@ -20,7 +21,7 @@ final class InMemoryConversationStore(entries: Option[InMemoryEntryStore] = None
   @caps.unsafe.untrackedCaptures
   private var made = 0
 
-  def findOrCreate(origin: Origin, by: PrincipalId, label: Label)(using
+  def findOrCreate(origin: Origin, by: Account, label: Label)(using
       Tx^
   ): Either[StoreError, Conversation] =
     all.find(_.origin == origin) match {

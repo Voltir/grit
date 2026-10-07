@@ -4,7 +4,8 @@ import java.time.{Instant, OffsetDateTime, ZoneOffset}
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, EntrySeq, PrincipalId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, EntrySeq, TurnRef, TurnSeq, WorkflowId}
+import grit.core.identity.Account
 import grit.core.message.Cost
 import grit.core.period.Probability
 import grit.core.place.Place
@@ -39,7 +40,7 @@ final class SqlSpeechStore extends SpeechStore {
         // As JSON, so no Java array crosses JDBC (separation checking).
         ps.setString(
           2,
-          ujson.Arr.from(reach.asked.toVector.map(p => ujson.Str(PrincipalId.value(p)))).render()
+          ujson.Arr.from(reach.asked.toVector.map(a => ujson.Str(SqlAccounts.written(a)))).render()
         )
         ps.setString(3, ConversationId.value(turn.conversationId))
         ps.setLong(4, TurnSeq.value(turn.turnSeq))
@@ -69,16 +70,23 @@ final class SqlSpeechStore extends SpeechStore {
         ps.setString(1, ConversationId.value(turn.conversationId))
         ps.setLong(2, TurnSeq.value(turn.turnSeq))
         Using.resource(ps.executeQuery()) { rs =>
-          if (!rs.next()) None
-          else {
+          Option.when(rs.next()) {
             val asked = ujson
               .read(rs.getString(2))
               .arrOpt
-              .fold(Set.empty[PrincipalId])(_.flatMap(_.strOpt).map(PrincipalId(_)).toSet)
-            Some(Reach(Option(rs.getString(1)), asked))
+              .fold(Vector.empty[String])(_.flatMap(_.strOpt).toVector)
+            (Option(rs.getString(1)), asked)
           }
         }
       }
+    }.flatMap {
+      case None => Right(None)
+      case Some((replyTo, asked)) =>
+        asked
+          .foldLeft[Either[StoreError, Set[Account]]](Right(Set.empty))((read, text) =>
+            read.flatMap(as => SqlAccounts.read(text).map(as + _))
+          )
+          .map(as => Some(Reach(replyTo, as)))
     }
   }
 

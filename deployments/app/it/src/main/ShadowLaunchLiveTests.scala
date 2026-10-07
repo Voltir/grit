@@ -9,12 +9,12 @@ import grit.core.id.{
   CorpusName,
   PeriodRef,
   PeriodSeq,
-  PrincipalId,
   QuestionName,
   ShadowName,
   SourceId,
   TriageRef
 }
+import grit.core.identity.Account
 import grit.core.message.Tokens
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
@@ -115,7 +115,7 @@ object ShadowLaunchLiveTests extends TestSuite {
         here,
         SourceId("1.0"),
         "is the release on Thursday? ~back:question ~0.8",
-        PrincipalId.Local,
+        Account.Local,
         Instant.now(),
         Reach.Nowhere
       ) ==> Right(())

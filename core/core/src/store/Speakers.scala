@@ -2,7 +2,7 @@ package grit.core.store
 
 import grit.core.id.EntryId
 
-/** Who wrote inbound entries, by the name each was enrolled under ([[Principals]]): what a
+/** Who wrote inbound entries, by the name each one's account goes by ([[Principals]]): what a
   * window needs to say whose a person's message is. An entry not among them is shown with no
   * name.
   */
@@ -17,7 +17,7 @@ object Speakers {
 
   extension (s: Speakers) {
 
-    /** The name of whoever wrote `entry`, if it was enrolled. */
+    /** The name of whoever wrote `entry`, if their account has one. */
     def of(entry: EntryId): Option[String] = s.get(entry)
   }
 }

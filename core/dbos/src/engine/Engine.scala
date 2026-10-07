@@ -15,6 +15,7 @@ import grit.core.durable.Durable
 import grit.core.edge.{Desk, DeskError, EdgeDirectory, ToolRequests}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, JobName, PluginName, PrincipalId, TurnRef, WorkflowId}
+import grit.core.identity.Account
 import grit.core.inbox.Inbox
 import grit.core.job.{ScheduleDesk, ScheduleStore}
 import grit.core.place.Place
@@ -483,7 +484,7 @@ final class Engine private (
       }
     }
 
-  def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId] =
+  def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId] =
     Link.transaction(dataSource, opener)(
       conversations.findOrCreate(origin, by, visibility.roomLabel(origin.room)).map(_.id)
     )

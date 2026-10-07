@@ -1,30 +1,31 @@
 package grit.core.store
 
-import grit.core.id.{EntryId, PrincipalId}
+import grit.core.id.EntryId
+import grit.core.identity.Account
 
-/** The people actions are done for, by name, beyond [[PrincipalId.Local]] and
-  * [[PrincipalId.Grit]]; and whose names a window shows on the inbound entries they wrote.
+/** The accounts actions come through, and the names they go by; and whose names a window
+  * shows on the inbound entries they wrote.
   */
 trait Principals {
 
-  /** Makes `id` a person named `name`, trimmed, or renames them. `Invalid` for a blank name,
-    * or for `local` or `grit`, which are never enrolled.
+  /** Records that `account` goes by `name`, trimmed, as its source names it now. `Invalid` for
+    * a blank name, or for [[Account.Local]] or [[Account.Grit]], which are never named.
     */
-  def enroll(id: PrincipalId, name: String)(using Tx^): Either[StoreError, Unit]
+  def name(account: Account, name: String)(using Tx^): Either[StoreError, Unit]
 
-  /** The names of the enrolled people who wrote `entries`: an entry that is not inbound, or
-    * whose author was never enrolled, is not among them.
+  /** The names their accounts go by, of whoever wrote `entries`: an entry that is not
+    * inbound, or whose account has no name, is not among them.
     */
   def speakers(entries: Vector[EntryId])(using Tx^): Either[StoreError, Speakers]
 }
 
 object Principals {
 
-  /** Why `id` may not be enrolled as `name`, as [[Principals.enroll]] refuses it; `None` when
-    * it may. Every store refuses by this one rule.
+  /** Why `account` may not be named `name`, as [[Principals.name]] refuses it; `None` when it
+    * may. Every store refuses by this one rule.
     */
-  def refusal(id: PrincipalId, name: String): Option[StoreError] =
-    if (id == PrincipalId.Local || id == PrincipalId.Grit)
-      Some(StoreError.Invalid(s"${PrincipalId.value(id)} is never enrolled"))
+  def refusal(account: Account, name: String): Option[StoreError] =
+    if (account == Account.Local || account == Account.Grit)
+      Some(StoreError.Invalid(s"${Account.written(account)} is never named"))
     else Option.when(name.trim.isEmpty)(StoreError.Invalid("a person's name is not blank"))
 }

@@ -3,7 +3,8 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{CallSlot, PrincipalId, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.id.{CallSlot, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.identity.Account
 import grit.core.job.Slot
 import grit.core.message.Message
 import grit.core.speech.Reach
@@ -27,7 +28,7 @@ trait Inbox extends caps.SharedCapability {
       origin: Origin,
       source: SourceId,
       message: Message.User,
-      by: PrincipalId
+      by: Account
   ): Either[InboxError, TurnRef]
 
   /** Records `text` from `origin`'s conversation, written by `by`, as heard: said where grit
@@ -46,7 +47,7 @@ trait Inbox extends caps.SharedCapability {
       origin: Origin,
       source: SourceId,
       text: String,
-      by: PrincipalId,
+      by: Account,
       at: Instant,
       reach: Reach
   ): Either[InboxError, Unit]
@@ -64,7 +65,7 @@ trait Inbox extends caps.SharedCapability {
       text: String,
       at: Instant,
       request: CallSlot,
-      by: PrincipalId
+      by: Account
   ): Either[InboxError, Boolean]
 
   /** Whether `origin`'s conversation exists: one is created with its first entry, so whether

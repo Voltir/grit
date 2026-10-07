@@ -13,11 +13,11 @@ import grit.core.id.{
   EntryId,
   PeriodRef,
   PeriodSeq,
-  PrincipalId,
   TriageRef,
   TurnRef,
   WorkflowId
 }
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.recipe.InMemoryRoomReads
@@ -181,14 +181,14 @@ object TriageFixtures {
     val rooms = new InMemoryRoomReads(entries, originOf, principals)
 
     // The conversation is c1: the first a fresh store creates.
-    conversations.findOrCreate(Origin.Slack("T", "C", "1.0"), PrincipalId.Local, Label.Public)(using
+    conversations.findOrCreate(Origin.Slack("T", "C", "1.0"), Account.Local, Label.Public)(using
       TestTx.fake
     )
 
     /** Another thread of channel C, rooted at `ts`. */
     def thread(ts: String): ConversationId =
       conversations
-        .findOrCreate(Origin.Slack("T", "C", ts), PrincipalId.Local, Label.Public)(using
+        .findOrCreate(Origin.Slack("T", "C", ts), Account.Local, Label.Public)(using
           TestTx.fake
         )
         .fold(e => sys.error(e.toString), _.id)
@@ -210,8 +210,8 @@ object TriageFixtures {
       val e = Entry(EntryId(id), in, next.turnSeq, None, next.seq, payload, at(minutes))
       entries.insert(e)
       by.foreach { (id, name) =>
-        principals.enroll(PrincipalId(id), name)
-        principals.authored(e.id, PrincipalId(id))
+        principals.name(TestAccounts.account(id), name)
+        principals.authored(e.id, TestAccounts.account(id))
       }
       e
     }
@@ -220,14 +220,14 @@ object TriageFixtures {
       * triage.
       */
     def hear(text: String, name: String, minutes: Long, in: ConversationId = c): TriageRef = {
-      val e = insert(Payload.Heard(text), Some(s"u-$name" -> name), minutes, in)
+      val e = insert(Payload.Heard(text), Some(s"test:u-$name" -> name), minutes, in)
       speech.heard(TurnRef(in, e.turnSeq), Reach(Some("C/1.0"), Set.empty))(using TestTx.fake)
       TriageRef(PeriodRef(in, PeriodSeq.First), e.turnSeq)
     }
 
     /** `text` said to grit as the next turn at `minutes`, by `name` when given; its turn. */
     def say(text: String, minutes: Long, name: Option[String] = None): TurnRef = {
-      val e = insert(Payload.Message(Message.User(text)), name.map(n => s"u-$n" -> n), minutes)
+      val e = insert(Payload.Message(Message.User(text)), name.map(n => s"test:u-$n" -> n), minutes)
       TurnRef(c, e.turnSeq)
     }
 

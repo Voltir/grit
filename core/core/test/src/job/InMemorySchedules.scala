@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.clock.Clock
 import grit.core.id.{CallSlot, Declarer, JobName, PluginName, PrincipalId, ScheduleId, TurnRef}
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.store.{InMemoryTombstones, Origin, StoreError, Tx}
@@ -39,13 +40,17 @@ final class InMemorySchedules(
   def asking(
       turn: TurnRef,
       from: Origin,
-      by: PrincipalId,
+      by: Account,
       address: Option[String],
       label: Label = Label.Public
   ): Unit = {
     // As grit.core.visibility.Subject.Turn resolves: the asker is the first entry's author.
-    val clearance = Clearance.inRoom(from.room, label, visibility.cleared(by))
-    turns = turns.updated(turn, (by, address.map(Destination(from.edge, _)), from.room, clearance))
+    val clearance =
+      Clearance.inRoom(from.room, label, visibility.cleared(TestAccounts.principalId(by)))
+    turns = turns.updated(
+      turn,
+      (TestAccounts.principalId(by), address.map(Destination(from.edge, _)), from.room, clearance)
+    )
   }
 
   /** `slot`'s run started at `version`, its schedule's next slot `following`, as the inbox

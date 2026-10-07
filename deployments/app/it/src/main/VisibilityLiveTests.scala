@@ -22,12 +22,12 @@ import grit.core.id.{
   PeriodRef,
   PeriodSeq,
   PluginName,
-  PrincipalId,
   SourceId,
   ToolCallId,
   TurnRef,
   WorkflowId
 }
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
@@ -69,10 +69,10 @@ object VisibilityLiveTests extends TestSuite {
   private val RoomA: Place = thread("a", "0").room
 
   /** Cleared for `{trial}`, by the group `trial`. */
-  private val Cleared: PrincipalId = TestLabels.Trialist
+  private val Cleared: Account = TestLabels.Trialist
 
   /** In no group. */
-  private val Uncleared: PrincipalId = PrincipalId("slack:T1/U-uncleared")
+  private val Uncleared: Account = TestAccounts.account("slack:T1/U-uncleared")
 
   /** `trial` declared, `#a` at `{trial}` and every other room public, and [[Cleared]] alone in
     * the group `trial`, cleared for `{trial}`.
@@ -88,7 +88,7 @@ object VisibilityLiveTests extends TestSuite {
         .of(
           compartments,
           rooms,
-          Vector(Group(TestLabels.group("trial"), Set(Cleared))),
+          Vector(Group(TestLabels.group("trial"), Set(TestAccounts.principalId(Cleared)))),
           Vector(Grant(TestLabels.group("trial"), TestLabels.Trial))
         )
         .left
@@ -203,15 +203,15 @@ object VisibilityLiveTests extends TestSuite {
         LiveEngine.Unplaced,
         plugins
       )
-      ok("enrolling")(engine.jot.write(Subject.Public) {
+      ok("naming")(engine.jot.write(Subject.Public) {
         for {
-          _ <- engine.principals.enroll(Cleared, "Cleared")
-          _ <- engine.principals.enroll(Uncleared, "Uncleared")
+          _ <- engine.principals.name(Cleared, "Cleared")
+          _ <- engine.principals.name(Uncleared, "Uncleared")
         } yield ()
       })
       val names = scala.collection.mutable.Map.empty[ConversationId, String]
 
-      def ask(label: String, origin: Origin, text: String, by: PrincipalId): TurnRef = {
+      def ask(label: String, origin: Origin, text: String, by: Account): TurnRef = {
         val turn = ok("ingesting")(
           engine.inbox.ingest(origin, SourceId(label), Message.User(text), by)
         )
@@ -383,7 +383,7 @@ object VisibilityLiveTests extends TestSuite {
           own ++ near ++ documents
         }
 
-      def asked(label: String, origin: Origin, by: PrincipalId): (TurnRef, Asked) = {
+      def asked(label: String, origin: Origin, by: Account): (TurnRef, Asked) = {
         val turn = ask(label, origin, "zephyr?", by)
         val window = ok("assembling")(assembler.assemble(AssemblyRequest(turn))(using store))
         val slot = CallSlot.of(turn, 0, 0).getOrElse(throw new java.lang.AssertionError("slot"))

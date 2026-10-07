@@ -1,6 +1,7 @@
 package grit.core.review
 
-import grit.core.id.{ConversationId, PrincipalId}
+import grit.core.id.ConversationId
+import grit.core.identity.Account
 import grit.core.speech.{InMemorySpeechStore, SpeechStore}
 import grit.core.store.{
   ConversationStore,
@@ -39,6 +40,6 @@ object InMemoryReviewTests extends ReviewContract {
     body(using TestTx.fake(Clearance.of(Label.Public), visibility))
 
   protected def conversation(origin: Origin, label: Label): ConversationId =
-    transaction(kept.findOrCreate(origin, PrincipalId.Local, label))
+    transaction(kept.findOrCreate(origin, Account.Local, label))
       .fold(e => throw new java.lang.AssertionError(s"$e"), _.id)
 }

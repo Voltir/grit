@@ -5,6 +5,7 @@ import scala.util.Using
 
 import grit.core.edge.{Desk, OutcomeJson, Route, ToolRequest}
 import grit.core.id.{PrincipalId, SourceId, TurnRef, WorkflowId}
+import grit.core.identity.Account
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
@@ -119,7 +120,7 @@ object ReachLiveTests extends TestSuite {
             Origin.Task("reach", name),
             SourceId(s"$name-1"),
             Message.User(s"note it ${StubProvider.CallMarker}{}"),
-            PrincipalId.Local
+            Account.Local
           )
           _ <- engine.inbox.startTurn(turn)
         } yield turn).fold(e => sys.error(s"inbox: $e"), identity)

@@ -7,7 +7,8 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.durable.Durable
-import grit.core.id.{PrincipalId, SourceId, TurnRef, WorkflowId}
+import grit.core.id.{SourceId, TurnRef, WorkflowId}
+import grit.core.identity.Account
 import grit.core.inbox.Inbox
 import grit.core.message.Message
 import grit.core.store.{Origin, Tx}
@@ -102,7 +103,7 @@ object EngineLockTests extends TestSuite {
         Origin.Task("lock", source),
         SourceId(source),
         Message.User(source),
-        PrincipalId.Local
+        Account.Local
       )
       _ <- inbox.startTurn(t)
     } yield t).fold(e => sys.error(s"inbox: $e"), identity)

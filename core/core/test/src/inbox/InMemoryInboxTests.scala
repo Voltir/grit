@@ -2,7 +2,8 @@ package grit.core.inbox
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, PrincipalId, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{CloseRef, ConversationId, EntryId, SourceId, TurnRef, TurnSeq}
+import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.speech.Reach
@@ -77,9 +78,9 @@ object InMemoryInboxTests extends InboxContract {
               .fold(e => sys.error(e.toString), identity)
           )
       }
-    def enroll(id: PrincipalId, name: String): Unit =
+    def name(account: Account, name: String): Unit =
       inbox.principals
-        .enroll(id, name)(using TestTx.fake)
+        .name(account, name)(using TestTx.fake)
         .fold(e => sys.error(e.toString), identity)
     body(
       inbox,
@@ -90,7 +91,7 @@ object InMemoryInboxTests extends InboxContract {
         dated,
         periods,
         close,
-        enroll,
+        name,
         reached,
         o =>
           inbox.conversations.all
@@ -131,7 +132,7 @@ object InMemoryInboxFinishTests extends TestSuite {
         "m"
       )
       val turn = inbox
-        .ingest(Origin.Task("t", "r"), SourceId("m"), Message.User("x"), PrincipalId.Local)
+        .ingest(Origin.Task("t", "r"), SourceId("m"), Message.User("x"), Account.Local)
         .fold(e => sys.error(e.toString), identity)
       inbox.finish(turn, Some(reply), "done")
       inbox.progress(turn) ==> Right(Progress.Done(Some(reply), "done"))

@@ -1,15 +1,7 @@
 package grit.core.stitch
 
-import grit.core.id.{
-  ConversationId,
-  EntryId,
-  EntrySeq,
-  PeriodSeq,
-  PrincipalId,
-  StitchRef,
-  TurnRef,
-  TurnSeq
-}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, StitchRef, TurnRef, TurnSeq}
+import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Directory, Scope}
@@ -38,7 +30,7 @@ object StitchingTests extends TestSuite {
   /** Conversation `c` begun at `origin`, holding `payloads`, one turn each, a second apart. */
   private def kept(origin: Origin, payloads: Payload*): (Conversation, Vector[Entry]) = {
     val c = ConversationId("c")
-    Conversation(c, origin, PrincipalId.Local, Now, Label.Public) ->
+    Conversation(c, origin, Account.Local, Now, Label.Public) ->
       payloads.toVector.zipWithIndex.map((p, i) =>
         Entry(
           EntryId(s"c:$i"),

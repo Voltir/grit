@@ -8,7 +8,8 @@ import scala.concurrent.duration.*
 import grit.core.classify.Answer
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{PrincipalId, QuestionName, ShadowName, SourceId, WorkflowId}
+import grit.core.id.{QuestionName, ShadowName, SourceId, WorkflowId}
+import grit.core.identity.Account
 import grit.core.message.{Tokens, Usage}
 import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.DailyCap
@@ -174,7 +175,7 @@ object PullTests extends TestSuite {
             Origin.Slack("T1", "C1", thread),
             SourceId(ts),
             s"is the release on day $i? ~back:question ~0.3",
-            PrincipalId.Local,
+            Account.Local,
             start.plusSeconds(60L * i),
             Reach.Nowhere
           ) ==> Right(())

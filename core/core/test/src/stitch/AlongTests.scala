@@ -2,7 +2,8 @@ package grit.core.stitch
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, PrincipalId, TurnRef}
+import grit.core.id.{CloseRef, ConversationId, EntryId, TurnRef}
+import grit.core.identity.TestAccounts
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Directory, Scope}
@@ -35,7 +36,7 @@ object AlongTests extends TestSuite {
     def thread(origin: Origin): Conversation = {
       val id = ConversationId(origin.place.written)
       origins = origins.updated(id, origin)
-      Conversation(id, origin, PrincipalId("slack:T/U1"), Now, Label.Public)
+      Conversation(id, origin, TestAccounts.account("slack:T/U1"), Now, Label.Public)
     }
 
     def say(c: Conversation, text: String, secondsAgo: Long): Entry = {

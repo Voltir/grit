@@ -10,7 +10,7 @@ import grit.core.store.{Jot, Principals, StoreError}
 import grit.core.visibility.Compartment
 
 /** What an edge is given to reach the engine (ADR 0002): the inbox it hands messages to and
-  * reads turns from, the people it enrolls, the replies it awaits, the messages it marks as
+  * reads turns from, the accounts it names, the replies it awaits, the messages it marks as
   * being answered while their turns run, the review prompts it posts
   * and the labels their rater gives, `jot`, the short transactions it writes those in, and
   * `desks`, where it registers places it hosts tools in.

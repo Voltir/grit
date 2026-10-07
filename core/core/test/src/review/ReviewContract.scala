@@ -6,16 +6,8 @@ import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
 import grit.core.classify.{Answer, ClassifierError}
-import grit.core.id.{
-  CloseRef,
-  ConversationId,
-  EntryId,
-  EntrySeq,
-  PrincipalId,
-  QuestionName,
-  ShadowName,
-  TurnRef
-}
+import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, QuestionName, ShadowName, TurnRef}
+import grit.core.identity.TestAccounts
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
@@ -71,7 +63,7 @@ abstract class ReviewContract extends TestSuite {
 
   private val At = Instant.parse("2026-10-02T10:00:00Z")
   private val room = Place.under(Namespace.Slack, Vector("T", "C"))
-  private val rater = PrincipalId("slack:T/U1")
+  private val rater = TestAccounts.account("slack:T/U1")
   private val usage = Usage(Tokens(10), Tokens(2), Tokens.Zero, None)
 
   private def right[A](result: Either[StoreError, A]): A =
@@ -376,7 +368,7 @@ abstract class ReviewContract extends TestSuite {
       }
       val refused = Vector(
         transaction(reviews.unreacted(address, rater, Verdict.CutIn)),
-        transaction(reviews.unreacted(address, PrincipalId("slack:T/U2"), Verdict.Welcome))
+        transaction(reviews.unreacted(address, TestAccounts.account("slack:T/U2"), Verdict.Welcome))
       )
       val kept = mine(c).map(_.label)
       val withdrawn = transaction(reviews.unreacted(address, rater, Verdict.Welcome))

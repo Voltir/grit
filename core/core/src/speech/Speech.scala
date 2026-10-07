@@ -4,7 +4,8 @@ import java.time.{Duration as JDuration, Instant}
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{EntryId, EntrySeq, PrincipalId, TurnRef}
+import grit.core.id.{EntryId, EntrySeq, TurnRef}
+import grit.core.identity.Account
 import grit.core.message.{Cost, Usage}
 import grit.core.period.Probability
 import grit.core.place.Place
@@ -15,7 +16,7 @@ import grit.core.triage.{Gate, Reading, Tags}
 /** Where a reply to a heard message could go, in its edge's own address form (`None`: it is
   * never answered, as for a past message), and whom it names besides the assistant.
   */
-final case class Reach(replyTo: Option[String], asked: Set[PrincipalId])
+final case class Reach(replyTo: Option[String], asked: Set[Account])
 
 object Reach {
 
@@ -101,7 +102,7 @@ enum Silence {
   case Unasked(reading: Reading)
 
   /** It names `other`, not the assistant; the first such, by id, when it names several. */
-  case AskedOf(other: PrincipalId)
+  case AskedOf(other: Account)
 
   /** `previous`, an unprompted turn in the same conversation, is drafting, or posted after
     * this message.
@@ -226,8 +227,7 @@ object Speech {
           Option.when(age > limits.fresh)(Silence.Stale(age))
         },
         () => gated(limits, heard.tags),
-        () =>
-          heard.reach.asked.toVector.sortBy(PrincipalId.value).headOption.map(Silence.AskedOf(_)),
+        () => heard.reach.asked.toVector.sortBy(Account.written).headOption.map(Silence.AskedOf(_)),
         () =>
           ledger.turns
             .find(t =>

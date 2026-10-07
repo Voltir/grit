@@ -6,7 +6,8 @@ import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{PrincipalId, QuestionName, SourceId, WorkflowId}
+import grit.core.id.{QuestionName, SourceId, WorkflowId}
+import grit.core.identity.Account
 import grit.core.period.Probability
 import grit.core.speech.{Reach, Speaking}
 import grit.core.stitch.{StitchReads, Tuning}
@@ -126,7 +127,7 @@ object CaptureTests extends TestSuite {
             origin,
             SourceId(ts),
             text,
-            PrincipalId.Local,
+            Account.Local,
             start.plusSeconds(60L * i),
             Reach.Nowhere
           ) ==> Right(())

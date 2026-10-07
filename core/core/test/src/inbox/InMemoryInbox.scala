@@ -3,16 +3,8 @@ package grit.core.inbox
 import java.time.Instant
 
 import grit.core.approval.Approval
-import grit.core.id.{
-  CallSlot,
-  JobName,
-  PrincipalId,
-  ScheduleId,
-  SourceId,
-  ToolCallId,
-  TurnRef,
-  WorkflowId
-}
+import grit.core.id.{CallSlot, JobName, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.identity.Account
 import grit.core.job.{InFlight, InMemorySchedules, LastRun, Slot, Starting}
 import grit.core.message.Message
 import grit.core.speech.{InMemorySpeechStore, Reach}
@@ -99,7 +91,7 @@ final class InMemoryInbox(
       origin: Origin,
       source: SourceId,
       message: Message.User,
-      by: PrincipalId
+      by: Account
   ): Either[InboxError, TurnRef] =
     recorded(
       origin,
@@ -115,7 +107,7 @@ final class InMemoryInbox(
       origin: Origin,
       source: SourceId,
       text: String,
-      by: PrincipalId,
+      by: Account,
       at: java.time.Instant,
       reach: Reach
   ): Either[InboxError, Unit] =
@@ -143,7 +135,7 @@ final class InMemoryInbox(
       origin: Origin,
       source: SourceId,
       payload: Payload,
-      by: PrincipalId,
+      by: Account,
       label: Label,
       at: java.time.Instant,
       capped: Boolean
@@ -205,7 +197,7 @@ final class InMemoryInbox(
       text: String,
       at: Instant,
       request: CallSlot,
-      by: PrincipalId
+      by: Account
   ): Either[InboxError, Boolean] =
     if (down) unavailable
     else if (conversations.all.exists(_.origin == origin)) Right(false)
@@ -311,7 +303,7 @@ final class InMemoryInbox(
                 slot.origin(job),
                 Slot.source(v),
                 Payload.Message(slot.opening(job)),
-                PrincipalId.Grit,
+                Account.Grit,
                 label,
                 now,
                 capped = false

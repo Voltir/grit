@@ -19,7 +19,6 @@ import grit.core.id.{
   PeriodRef,
   PeriodSeq,
   PluginName,
-  PrincipalId,
   ScheduleId,
   ScheduleKey,
   SourceId,
@@ -28,6 +27,7 @@ import grit.core.id.{
   TurnSeq,
   WorkflowId
 }
+import grit.core.identity.Account
 import grit.core.job.{Declared, Ending, JobTests, SlotRule}
 import grit.core.message.{Message, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
@@ -248,7 +248,7 @@ object CollectorLiveTests extends TestSuite {
   /** `text` ingested on `origin` and its turn run to its end. */
   private def turnOn(engine: Engine^, origin: Origin, text: String): TurnRef = {
     val t = engine.inbox
-      .ingest(origin, SourceId(text), Message.User(text), PrincipalId.Local)
+      .ingest(origin, SourceId(text), Message.User(text), Account.Local)
       .fold(e => sys.error(s"$e"), identity)
     engine.inbox.startTurn(t) ==> Right(())
     engine.awaitTurn(t)
@@ -533,7 +533,7 @@ object CollectorLiveTests extends TestSuite {
         minutes(config)
         val origin = Origin.Task("retention", "purge")
         val t0 = engine.inbox
-          .ingest(origin, SourceId("one"), Message.User("one"), PrincipalId.Local)
+          .ingest(origin, SourceId("one"), Message.User("one"), Account.Local)
           .fold(e => sys.error(s"$e"), identity)
         engine.inbox.startTurn(t0) ==> Right(())
         engine.awaitTurn(t0)
@@ -654,7 +654,7 @@ object CollectorLiveTests extends TestSuite {
             Origin.Task("retention", "prefix"),
             SourceId("one"),
             Message.User("one"),
-            PrincipalId.Local
+            Account.Local
           )
           .fold(e => sys.error(s"$e"), identity)
         // Turn 1 is heard: its triage runs, and no turn workflow ever does.
@@ -662,7 +662,7 @@ object CollectorLiveTests extends TestSuite {
           Origin.Task("retention", "prefix"),
           SourceId("two"),
           "heard",
-          PrincipalId.Local,
+          Account.Local,
           java.time.Instant.now(),
           grit.core.speech.Reach.Nowhere
         ) ==> Right(())
@@ -766,7 +766,7 @@ object CollectorLiveTests extends TestSuite {
             Origin.Task("collect", "deferred"),
             SourceId("one"),
             Message.User("one"),
-            PrincipalId.Local
+            Account.Local
           )
           .fold(e => sys.error(s"$e"), identity)
         val p1 = PeriodRef(t0.conversationId, PeriodSeq.First)

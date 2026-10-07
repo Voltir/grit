@@ -15,13 +15,13 @@ import grit.core.id.{
   ConversationId,
   Declarer,
   JobName,
-  PrincipalId,
   ScheduleId,
   ScheduleKey,
   SourceId,
   TurnRef,
   TurnSeq
 }
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.inbox.InMemoryInbox
 import grit.core.job.Slot
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -276,7 +276,7 @@ object SlackEdgeTests extends TestSuite {
       w.slack.deliver(message("2.0", s"<@$Ben> is the deploy done?")) ==> true
       w.slack.deliver(message("2.1", "yes", Some("2.0"))) ==> true
       w.reached("2.0") ==> Vector(
-        Some(Reach(Some("C123ABC456/2.0/2.0"), Set(PrincipalId(s"slack:$Team/$Ben")))),
+        Some(Reach(Some("C123ABC456/2.0/2.0"), Set(TestAccounts.account(s"slack:$Team/$Ben")))),
         Some(Reach(Some("C123ABC456/2.0/2.1"), Set.empty))
       )
     }
@@ -709,7 +709,7 @@ object SlackEdgeTests extends TestSuite {
           slot.origin(JobName.of("remind").fold(sys.error, identity)),
           Slot.source(1),
           Message.User("due"),
-          PrincipalId.Grit
+          Account.Grit
         )
         .fold(e => throw new java.lang.AssertionError(e.toString), identity)
       FakeJot.write(Subject.Turn(run))(w.deliveries.await(run, "C123ABC456/5.0/5.0")) ==> Right(())

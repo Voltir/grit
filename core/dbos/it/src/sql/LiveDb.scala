@@ -5,7 +5,8 @@ import java.time.Instant
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef}
+import grit.core.id.{ConversationId, EntryId, TurnRef}
+import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.store.{Conversation, Entry, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.{Clearance, Label, TestLabels, Visibility}
@@ -57,7 +58,7 @@ object LiveDb {
   /** The conversation for `origin`, created at `label` if new. */
   def conversation(config: DbConfig, origin: Origin, label: Label = Label.Public): Conversation =
     transaction(config)(
-      new SqlConversationStore().findOrCreate(origin, PrincipalId.Local, label)
+      new SqlConversationStore().findOrCreate(origin, Account.Local, label)
     ) match {
       case Right(c) => c
       case Left(e: StoreError) => sys.error(s"arranging a conversation: $e")
@@ -66,14 +67,14 @@ object LiveDb {
   /** `turn` recorded as one asked from, as the inbox and an edge record it: its first entry a
     * message `by` wrote, and, when given, its delivery's `address`.
     */
-  def asking(config: DbConfig, turn: TurnRef, by: PrincipalId, address: Option[String]): Unit =
+  def asking(config: DbConfig, turn: TurnRef, by: Account, address: Option[String]): Unit =
     transaction(config) {
       val id = EntryId(s"${ConversationId.value(turn.conversationId)}:asked")
       val entries = new SqlEntryStore()
       for {
         _ <-
-          if (by == PrincipalId.Local || by == PrincipalId.Grit) Right(())
-          else new SqlPrincipals().enroll(by, PrincipalId.value(by))
+          if (by == Account.Local || by == Account.Grit) Right(())
+          else new SqlPrincipals().name(by, Account.written(by))
         next <- entries.lockNext(turn.conversationId)
         _ <- entries.insert(
           Entry(
@@ -92,13 +93,13 @@ object LiveDb {
     }.fold(e => sys.error(s"asking: $e"), identity)
 
   /** Records that `by` wrote the inbound entry `id`, as the inbox does. */
-  private def authored(id: EntryId, by: PrincipalId)(using tx: Tx^): Either[StoreError, Unit] = {
+  private def authored(id: EntryId, by: Account)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     Using.resource(
       conn.prepareStatement("INSERT INTO grit.inbound (entry_id, author) VALUES (?, ?)")
     ) { ps =>
       ps.setString(1, EntryId.value(id))
-      ps.setString(2, PrincipalId.value(by))
+      ps.setString(2, Account.written(by))
       ps.executeUpdate()
     }
     Right(())

@@ -44,7 +44,7 @@ object Pool {
     *     an earlier source kept is kept as its record line alone, `Record of the exchange
     *     {speaker} opened {age} before: {headline}`, and not at all when it has no record.
     *   - Within a section, messages oldest first, each `{speaker}, {age} before: {words}`
-    *     (`{speaker}` "Assistant" for grit's, the name `principals` enrolled, else "Someone";
+    *     (`{speaker}` "Assistant" for grit's, the name `principals` keeps for its account, else "Someone";
     *     `{age}` before t in its largest whole unit: "1 minute", "3 hours"); exchanges as
     *     offered, each `Exchange opened {age} before by {speaker}: {words}`, then `  Record:
     *     {headline}` when it has one; one of `strand`'s only `Record of the exchange this

@@ -3,6 +3,7 @@ package grit.core.recipe
 import java.time.Instant
 
 import grit.core.id.{ConversationId, EntryId, PrincipalId}
+import grit.core.identity.TestAccounts
 import grit.core.message.Message
 import grit.core.place.Place
 import grit.core.stitch.Said
@@ -40,10 +41,24 @@ final class InMemoryRoomReads(
       outside: Set[ConversationId],
       most: Int
   )(using Tx^): Either[StoreError, Vector[Said]] =
-    Right(latest(room, from, until, outside, most, e => principals.author(e.id).contains(author)))
+    Right(
+      latest(
+        room,
+        from,
+        until,
+        outside,
+        most,
+        e => principals.author(e.id).map(TestAccounts.principalId).contains(author)
+      )
+    )
 
   def author(entry: EntryId)(using Tx^): Either[StoreError, Option[PrincipalId]] =
-    Right(principals.author(entry).filter(_ => entries.everything.exists(_.id == entry)))
+    Right(
+      principals
+        .author(entry)
+        .map(TestAccounts.principalId)
+        .filter(_ => entries.everything.exists(_.id == entry))
+    )
 
   private def latest(
       room: Place,

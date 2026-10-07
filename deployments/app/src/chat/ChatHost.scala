@@ -6,7 +6,8 @@ import java.util.concurrent.CountDownLatch
 import scala.util.control.NonFatal
 
 import grit.app.config.Lifecycle
-import grit.core.id.{ConversationId, EntrySeq, PrincipalId, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntrySeq, SourceId, TurnRef, TurnSeq}
+import grit.core.identity.Account
 import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.prompt.Voice
@@ -228,7 +229,7 @@ final class ChatHost(
   }
 
   private def follow(engine: Link^, mailbox: Mailbox[ChatScreen.Msg]): Unit =
-    engine.conversation(origin, PrincipalId.Local) match {
+    engine.conversation(origin, Account.Local) match {
       case Left(e) => mailbox.offer(ChatScreen.Msg.Failed(s"could not open the conversation: $e"))
       case Right(conversation) =>
         var state = Follow.start
@@ -425,7 +426,7 @@ final class ChatHost(
         origin,
         SourceId(UUID.randomUUID().toString),
         Message.User(text),
-        PrincipalId.Local
+        Account.Local
       )
       _ <- engine.inbox.startTurn(turn)
     } yield turn

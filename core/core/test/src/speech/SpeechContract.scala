@@ -2,7 +2,8 @@ package grit.core.speech
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, PrincipalId, TurnRef}
+import grit.core.id.{CloseRef, ConversationId, EntryId, EntrySeq, TurnRef}
+import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Namespace, Place}
@@ -93,7 +94,7 @@ abstract class SpeechContract extends TestSuite {
     test("a heard message's reach is kept, the first one standing; none for another turn") {
       val c = conversation("speech-reach")
       val turn = next(c, Payload.Heard("hi"), "speech-reach:h")
-      val first = Reach(Some("C/1"), Set(PrincipalId("slack:T/U1")))
+      val first = Reach(Some("C/1"), Set(TestAccounts.account("slack:T/U1")))
       transaction(speech.heard(turn, first)) ==> Right(())
       transaction(speech.heard(turn, Reach(None, Set.empty))) ==> Right(())
       transaction(speech.reach(turn)) ==> Right(Some(first))

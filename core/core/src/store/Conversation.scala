@@ -2,7 +2,8 @@ package grit.core.store
 
 import java.time.Instant
 
-import grit.core.id.{ConversationId, PrincipalId}
+import grit.core.id.ConversationId
+import grit.core.identity.Account
 import grit.core.visibility.Label
 
 /** A conversation: the entries and turns that share one [[Origin]], who began it, and the
@@ -11,7 +12,7 @@ import grit.core.visibility.Label
 final case class Conversation(
     id: ConversationId,
     origin: Origin,
-    createdBy: PrincipalId,
+    createdBy: Account,
     createdAt: Instant,
     label: Label
 )

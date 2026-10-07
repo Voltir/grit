@@ -5,15 +5,8 @@ import java.time.Instant
 import scala.collection.immutable.VectorMap
 
 import grit.core.context.Width
-import grit.core.id.{
-  ConversationId,
-  EntryId,
-  EntrySeq,
-  PrincipalId,
-  ShadowName,
-  TurnSeq,
-  WorkflowId
-}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, ShadowName, TurnSeq, WorkflowId}
+import grit.core.identity.TestAccounts
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.prompt.Layer
@@ -197,7 +190,13 @@ object TurnFixtures {
   val turns: Vector[TurnCase] = Vector(t1, t2, t3, t4, t5)
 
   private def rated(reason: Reason, verdict: Verdict) =
-    Rated(ShadowName.of("s").fold(sys.error, identity), reason, verdict, PrincipalId("u"), at)
+    Rated(
+      ShadowName.of("s").fold(sys.error, identity),
+      reason,
+      verdict,
+      TestAccounts.account("test:u"),
+      at
+    )
 
   val verdicts = Verdicts(
     Map(

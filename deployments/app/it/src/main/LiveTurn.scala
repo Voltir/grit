@@ -6,6 +6,7 @@ import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.core.clock.{Clock, Fresh}
 import grit.core.id.{PrincipalId, SourceId, TurnRef}
+import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.model.{Catalog, ModelSetting, ModelSettings, Pinned}
 import grit.core.place.{Directory, Reaches}
@@ -306,7 +307,7 @@ object LiveTurn {
         session,
         SourceId(source),
         Message.User(s"message $source"),
-        PrincipalId.Local
+        Account.Local
       )
       _ <- engine.inbox.startTurn(turn)
     } yield turn

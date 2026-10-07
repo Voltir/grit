@@ -10,6 +10,7 @@ import grit.core.document.DocumentSearch
 import grit.core.edge.{Desk, DeskError, Desks}
 import grit.core.host.ProcessIdentity
 import grit.core.id.{ConversationId, PrincipalId, TurnRef, WorkflowId}
+import grit.core.identity.Account
 import grit.core.inbox.Inbox
 import grit.core.place.Place
 import grit.core.spend.{Budget, Spending}
@@ -80,7 +81,7 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
   /** The voice grit talks to the person in. */
   val voices: VoiceStore
 
-  /** The people an edge enrolled, and whose names a window shows. */
+  /** The accounts an edge named, and whose names a window shows. */
   val principals: Principals
 
   /** The plugins' documents, as windows hold them. */
@@ -106,7 +107,7 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
   /** The conversation `origin` names, created by `by` if it is new, at its room's label, as an
     * edge's first ingest would.
     */
-  def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId]
+  def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId]
 
   /** Where `turn`'s workflow is, without waiting for it. */
   def status(turn: TurnRef): TurnStatus
@@ -282,7 +283,7 @@ private[engine] final class Attached(
 
   private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()
 
-  def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId] =
+  def conversation(origin: Origin, by: Account): Either[StoreError, ConversationId] =
     Link.transaction(dataSource, opener)(
       conversations.findOrCreate(origin, by, visibility.roomLabel(origin.room)).map(_.id)
     )

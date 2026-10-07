@@ -3,7 +3,8 @@ package grit.dbos.engine
 import java.time.Instant
 
 import grit.core.clock.Clock
-import grit.core.id.{JobName, PluginName, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{JobName, PluginName, TurnRef, TurnSeq}
+import grit.core.identity.Account
 import grit.core.job.{ScheduleContract, ScheduleDesk, ScheduleStore, Slot}
 import grit.core.store.{Jot, Origin, StoreError, Tombstones, Tx}
 import grit.core.visibility.{Label, Subject, TestLabels}
@@ -51,7 +52,7 @@ private[engine] object SqlSchedulesUnder {
       def turn(origin: Origin, label: Label): TurnRef =
         TurnRef(LiveDb.conversation(config, origin, label).id, TurnSeq.First)
 
-      def asking(turn: TurnRef, by: PrincipalId, address: Option[String]): Unit =
+      def asking(turn: TurnRef, by: Account, address: Option[String]): Unit =
         LiveDb.asking(config, turn, by, address)
 
       def desk(plugin: PluginName, jobs: Vector[JobName], clock: Clock^): ScheduleDesk^ = {

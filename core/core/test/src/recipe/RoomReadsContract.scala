@@ -3,6 +3,7 @@ package grit.core.recipe
 import java.time.Instant
 
 import grit.core.id.{CloseRef, ConversationId, EntryId, PrincipalId, TurnRef}
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.{Namespace, Place}
@@ -29,7 +30,7 @@ abstract class RoomReadsContract extends TestSuite {
   protected def conversation(origin: Origin): ConversationId
 
   /** Records that `by`, a person, wrote the inbound entry `entry`. */
-  protected def authored(entry: EntryId, by: PrincipalId): Unit
+  protected def authored(entry: EntryId, by: Account): Unit
 
   /** When the message a pool is read for was said. */
   private val T = Instant.parse("2026-10-02T12:00:00Z")
@@ -40,8 +41,11 @@ abstract class RoomReadsContract extends TestSuite {
   private def right[A](result: Either[StoreError, A]): A =
     result.fold(e => throw new java.lang.AssertionError(s"store failed: $e"), identity)
 
-  private val ana = PrincipalId("slack:T/UA")
-  private val ben = PrincipalId("slack:T/UB")
+  private val ana = TestAccounts.account("slack:T/UA")
+  private val ben = TestAccounts.account("slack:T/UB")
+
+  /** The principal [[ana]] is, as [[RoomReads]] names an author. */
+  private val Ana: PrincipalId = TestAccounts.principalId(ana)
 
   private val usage = Usage(Tokens(900), Tokens.Zero, Tokens.Zero, None)
 
@@ -60,7 +64,7 @@ abstract class RoomReadsContract extends TestSuite {
       c: ConversationId,
       payload: Payload,
       at: Instant,
-      by: Option[PrincipalId] = None
+      by: Option[Account] = None
   ): Entry = {
     val e = transaction {
       val next = right(entries.lockNext(c))
@@ -81,7 +85,7 @@ abstract class RoomReadsContract extends TestSuite {
     e
   }
 
-  private def heard(c: ConversationId, at: Instant, by: PrincipalId = ana): Entry =
+  private def heard(c: ConversationId, at: Instant, by: Account = ana): Entry =
     say(c, Payload.Heard(s"said at $at"), at, Some(by))
 
   val tests = Tests {
@@ -149,9 +153,9 @@ abstract class RoomReadsContract extends TestSuite {
       heard(own, T.minusMillis(1))
       heard(other, T.minusSeconds(5), by = ben)
       say(other, Payload.Message(reply), T.minusSeconds(4))
-      right(transaction(rooms.saidBy(room("by"), ana, From, T, Set(own), 10)))
+      right(transaction(rooms.saidBy(room("by"), Ana, From, T, Set(own), 10)))
         .map(_.entry) ==> Vector(before, atFrom)
-      right(transaction(rooms.saidBy(room("by"), ana, From, T, Set(own), 1)))
+      right(transaction(rooms.saidBy(room("by"), Ana, From, T, Set(own), 1)))
         .map(_.entry) ==> Vector(before)
     }
 
@@ -159,7 +163,7 @@ abstract class RoomReadsContract extends TestSuite {
       val c = thread("author", "1.0")
       val hers = heard(c, T.minusSeconds(10))
       val replied = say(c, Payload.Message(reply), T.minusSeconds(5))
-      transaction(rooms.author(hers.id)) ==> Right(Some(ana))
+      transaction(rooms.author(hers.id)) ==> Right(Some(Ana))
       transaction(rooms.author(replied.id)) ==> Right(None)
       transaction(rooms.author(EntryId("never:0"))) ==> Right(None)
     }

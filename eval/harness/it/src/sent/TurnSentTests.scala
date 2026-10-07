@@ -9,7 +9,8 @@ import grit.assembly.linear.LinearAssembler
 import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.durable.Durable
-import grit.core.id.{PrincipalId, SourceId, TurnRef, WorkflowId}
+import grit.core.id.{SourceId, TurnRef, WorkflowId}
+import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Catalog, Pinned}
 import grit.core.place.Directory
@@ -183,7 +184,7 @@ object TurnSentTests extends TestSuite {
         launch(engine, model)
         val origin = Origin.Tui(right(Directory.of("/tmp/harness-sent")), "s")
         val turn = right(
-          engine.inbox.ingest(origin, SourceId("t0"), Message.User("echo twice"), PrincipalId.Local)
+          engine.inbox.ingest(origin, SourceId("t0"), Message.User("echo twice"), Account.Local)
         )
         right(engine.inbox.startTurn(turn))
         val _ = engine.awaitTurn(turn)

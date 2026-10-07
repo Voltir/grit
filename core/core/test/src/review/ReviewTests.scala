@@ -6,15 +6,8 @@ import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
 import grit.core.classify.Answer
-import grit.core.id.{
-  ConversationId,
-  EntryId,
-  PrincipalId,
-  QuestionName,
-  ShadowName,
-  TurnRef,
-  TurnSeq
-}
+import grit.core.id.{ConversationId, EntryId, QuestionName, ShadowName, TurnRef, TurnSeq}
+import grit.core.identity.TestAccounts
 import grit.core.message.Cost
 import grit.core.period.Probability
 import grit.core.speech.{Outcome, Silence}
@@ -82,7 +75,7 @@ object ReviewTests extends TestSuite {
         Silence.Unweighed("down"),
         Silence.Gated(Gate.Failed(Bound.AtLeast(Reading.Yes(Tags.V1.helps), p), p), Vector.empty),
         Silence.Unasked(Reading.Yes(Tags.V1.helps)),
-        Silence.AskedOf(PrincipalId("slack:T/U1")),
+        Silence.AskedOf(TestAccounts.account("slack:T/U1")),
         Silence.Unanswered(TurnRef(ConversationId("c"), TurnSeq(1))),
         Silence.Thread(1),
         Silence.Room(1),

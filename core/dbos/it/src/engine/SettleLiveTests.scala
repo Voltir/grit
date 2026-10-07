@@ -12,7 +12,6 @@ import grit.core.id.{
   Declarer,
   PeriodRef,
   PeriodSeq,
-  PrincipalId,
   ScheduleId,
   ScheduleKey,
   SettleRef,
@@ -21,6 +20,7 @@ import grit.core.id.{
   TurnSeq,
   WorkflowId
 }
+import grit.core.identity.Account
 import grit.core.inbox.Slotted
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.{Declared, Grace, SlotRule}
@@ -62,7 +62,7 @@ object SettleLiveTests extends TestSuite {
 
   private def ingested(engine: Engine^, origin: Origin, text: String): TurnRef =
     engine.inbox
-      .ingest(origin, SourceId(text), Message.User(text), PrincipalId.Local)
+      .ingest(origin, SourceId(text), Message.User(text), Account.Local)
       .fold(e => sys.error(s"inbox: $e"), identity)
 
   private def eventually(done: => Boolean): Boolean = {

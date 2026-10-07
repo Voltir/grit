@@ -13,12 +13,12 @@ import grit.core.id.{
   EntryId,
   PeriodRef,
   PeriodSeq,
-  PrincipalId,
   SourceId,
   TriageRef,
   TurnSeq,
   WorkflowId
 }
+import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
@@ -143,7 +143,7 @@ object ReaderTests extends TestSuite {
           here,
           SourceId("m1"),
           "standup moves to 10:00",
-          PrincipalId.Local,
+          Account.Local,
           Instant.now(),
           grit.core.speech.Reach.Nowhere
         ) ==> Right(())
@@ -195,7 +195,7 @@ object ReaderTests extends TestSuite {
                 Origin.Task("reader", session),
                 SourceId("m"),
                 Message.User("hi"),
-                PrincipalId.Local
+                Account.Local
               )
               .left
               .map(e => StoreError.Invalid(e.toString))

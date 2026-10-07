@@ -12,13 +12,13 @@ import grit.core.id.{
   EntryId,
   PeriodRef,
   PeriodSeq,
-  PrincipalId,
   ShadowName,
   ShadowRef,
   SourceId,
   TriageRef,
   WorkflowId
 }
+import grit.core.identity.Account
 import grit.core.message.{Tokens, Usage}
 import grit.core.spend.DailyCap
 import grit.core.store.Origin
@@ -75,7 +75,7 @@ object ShadowLiveTests extends TestSuite {
         here,
         SourceId(s"m$i"),
         text,
-        PrincipalId.Local,
+        Account.Local,
         Instant.now(),
         grit.core.speech.Reach.Nowhere
       ) ==> Right(())

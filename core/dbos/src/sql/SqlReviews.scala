@@ -7,7 +7,8 @@ import scala.collection.immutable.VectorMap
 import scala.util.Using
 
 import grit.core.classify.Answer
-import grit.core.id.{ConversationId, EntryId, PrincipalId, QuestionName, ShadowName}
+import grit.core.id.{ConversationId, EntryId, QuestionName, ShadowName}
+import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.review.{
   Candidate,
@@ -104,7 +105,7 @@ final class SqlReviews extends ReviewStore {
     }
   }
 
-  def reacted(address: String, rater: PrincipalId, verdict: Verdict, at: Instant)(using
+  def reacted(address: String, rater: Account, verdict: Verdict, at: Instant)(using
       tx: Tx^
   ): Either[StoreError, Boolean] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -115,7 +116,7 @@ final class SqlReviews extends ReviewStore {
         )
       ) { ps =>
         ps.setString(1, verdictWritten(verdict))
-        ps.setString(2, PrincipalId.value(rater))
+        ps.setString(2, SqlAccounts.written(rater))
         ps.setObject(3, at.atOffset(ZoneOffset.UTC))
         ps.setString(4, address)
         ps.executeUpdate() == 1
@@ -123,7 +124,7 @@ final class SqlReviews extends ReviewStore {
     }
   }
 
-  def unreacted(address: String, rater: PrincipalId, verdict: Verdict)(using
+  def unreacted(address: String, rater: Account, verdict: Verdict)(using
       tx: Tx^
   ): Either[StoreError, Boolean] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -136,7 +137,7 @@ final class SqlReviews extends ReviewStore {
       ) { ps =>
         ps.setString(1, address)
         ps.setString(2, verdictWritten(verdict))
-        ps.setString(3, PrincipalId.value(rater))
+        ps.setString(3, SqlAccounts.written(rater))
         ps.executeUpdate() == 1
       }
     }
@@ -262,15 +263,10 @@ final class SqlReviews extends ReviewStore {
               }
               label <- Option(rs.getString("verdict")) match {
                 case Some(v) =>
-                  verdictRead(v).map(verdict =>
-                    Some(
-                      Label(
-                        verdict,
-                        PrincipalId(rs.getString("rater")),
-                        instant(rs, "labelled_at")
-                      )
-                    )
-                  )
+                  for {
+                    verdict <- verdictRead(v)
+                    rater <- Account.read(rs.getString("rater"))
+                  } yield Some(Label(verdict, rater, instant(rs, "labelled_at")))
                 case None => Right(None)
               }
             } yield Reviewed(

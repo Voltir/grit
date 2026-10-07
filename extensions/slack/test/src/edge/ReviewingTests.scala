@@ -3,7 +3,8 @@ package grit.slack.edge
 import java.time.Instant
 
 import grit.core.edge.{EdgeStores, InMemoryAcknowledgements, InMemoryDeliveries, InMemoryEdges}
-import grit.core.id.{EdgeName, EntryId, PrincipalId}
+import grit.core.id.{EdgeName, EntryId}
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.{Label, Prompt, Reason, Reviews, Verdict}
 import grit.core.store.{Jot, Origin, StoreError, Tx}
@@ -76,10 +77,10 @@ object ReviewingTests extends TestSuite {
       if (crash) Left(StoreError.DatabaseError("crashed"))
       else under.posted(entry, address, at)
     }
-    def reacted(address: String, rater: PrincipalId, verdict: Verdict, at: Instant)(using
+    def reacted(address: String, rater: Account, verdict: Verdict, at: Instant)(using
         Tx^
     ): Either[StoreError, Boolean] = under.reacted(address, rater, verdict, at)
-    def unreacted(address: String, rater: PrincipalId, verdict: Verdict)(using
+    def unreacted(address: String, rater: Account, verdict: Verdict)(using
         Tx^
     ): Either[StoreError, Boolean] = under.unreacted(address, rater, verdict)
   }
@@ -243,7 +244,7 @@ object ReviewingTests extends TestSuite {
           w.slack.deliver(reaction(ts, emoji, added, user = Nick, channel = "C0REVIEW1", at = at))
         (acked, w.label(entry))
       }
-      val rater = PrincipalId(s"slack:$Team/$Nick")
+      val rater = TestAccounts.account(s"slack:$Team/$Nick")
       Vector(
         react("+1", added = true, "1515449600.000000"),
         react("-1::skin-tone-2", added = true, "1515449601.000000"),

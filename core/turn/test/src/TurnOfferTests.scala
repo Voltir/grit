@@ -12,13 +12,13 @@ import grit.core.id.{
   CorpusName,
   EntryId,
   EntrySeq,
-  PrincipalId,
   QuestionName,
   TestCallSlots,
   ToolCallId,
   TurnRef,
   TurnSeq
 }
+import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.persona.Persona
@@ -74,7 +74,7 @@ object TurnOfferTests extends TestSuite {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
-      .findOrCreate(origin, PrincipalId.Local, Label.Public)
+      .findOrCreate(origin, Account.Local, Label.Public)
       .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
     val edges = new InMemoryEdges
     val hosting = TurnHosting(
@@ -134,7 +134,7 @@ object TurnOfferTests extends TestSuite {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
-      .findOrCreate(origin, PrincipalId.Local, Label.Public)
+      .findOrCreate(origin, Account.Local, Label.Public)
       .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
     val edges = new InMemoryEdges
     val hosting = TurnHosting(
@@ -190,7 +190,7 @@ object TurnOfferTests extends TestSuite {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
-      .findOrCreate(slack, PrincipalId.Local, Label.Public)
+      .findOrCreate(slack, Account.Local, Label.Public)
       .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
     val edges = new InMemoryEdges
     val set =
@@ -244,7 +244,7 @@ object TurnOfferTests extends TestSuite {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
-      .findOrCreate(slack, PrincipalId.Local, Label.Public)
+      .findOrCreate(slack, Account.Local, Label.Public)
       .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
     val edges = new InMemoryEdges
     def advertising(at: Place, tools: Vector[ToolSet.Entry]): Unit = {
@@ -388,7 +388,7 @@ object TurnOfferTests extends TestSuite {
     given Tx = tx
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
-      .findOrCreate(origin, PrincipalId.Local, Label.Public)
+      .findOrCreate(origin, Account.Local, Label.Public)
       .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
     val edges = new InMemoryEdges
     adverts.foreach { (at: Place, entries: Vector[ToolSet.Entry]) =>

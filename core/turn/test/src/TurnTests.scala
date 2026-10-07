@@ -14,6 +14,7 @@ import grit.core.context.{
 }
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, TurnSeq, WorkflowId}
+import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.place.Place
@@ -578,12 +579,12 @@ object TurnTests extends TestSuite {
     }
 
     test(
-      "an enrolled author's message reaches the model under their name, in the window and as the turn's own; an unenrolled one's as it is"
+      "a named account's message reaches the model under its name, in the window and as the turn's own; an unnamed one's as it is"
     ) {
       val entries = new InMemoryEntryStore
       val principals = new InMemoryPrincipals
-      val ana = grit.core.id.PrincipalId("slack:T1/U1")
-      principals.enroll(ana, "Ana Lima")(using TestTx.fake)
+      val ana = TestAccounts.account("slack:T1/U1")
+      principals.name(ana, "Ana Lima")(using TestTx.fake)
       def earlier(text: String): Unit = {
         val t = say(entries, text)
         val _ = new InMemoryDurable().run(t.workflowId)(

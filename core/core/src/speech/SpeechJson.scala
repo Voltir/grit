@@ -2,7 +2,8 @@ package grit.core.speech
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{EntryId, PrincipalId, TurnRef, WorkflowId}
+import grit.core.id.{EntryId, TurnRef, WorkflowId}
+import grit.core.identity.Account
 import grit.core.message.Cost
 import grit.core.period.Probability
 import grit.core.spend.{DailyCap, Spend}
@@ -53,7 +54,7 @@ object SpeechJson {
     case Silence.Gated(first, rest) =>
       kind("gated", "failed" -> ujson.Arr.from((first +: rest).map(GateJson.writeFailed)))
     case Silence.Unasked(reading) => kind("unasked", "reading" -> GateJson.writeReading(reading))
-    case Silence.AskedOf(other) => kind("asked_of", "other" -> ujson.Str(PrincipalId.value(other)))
+    case Silence.AskedOf(other) => kind("asked_of", "other" -> ujson.Str(Account.written(other)))
     case Silence.Unanswered(previous) =>
       kind("unanswered", "previous" -> ujson.Str(WorkflowId.value(previous.workflowId)))
     case Silence.Thread(n) => kind("thread", "n" -> ujson.Num(n))
@@ -108,7 +109,7 @@ object SpeechJson {
             Gate.Failed(Bound.AtLeast(Reading.Yes(Tags.V1.helps), at), helps),
             Vector.empty
           )
-        case "asked_of" => str(o, "other").map(p => Silence.AskedOf(PrincipalId(p)))
+        case "asked_of" => str(o, "other").flatMap(Account.read).map(Silence.AskedOf(_))
         case "unanswered" => turn(o, "previous").map(Silence.Unanswered(_))
         case "thread" => int(o, "n").map(Silence.Thread(_))
         case "room" => int(o, "n").map(Silence.Room(_))

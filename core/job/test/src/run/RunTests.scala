@@ -2,7 +2,8 @@ package grit.job.run
 
 import grit.core.durable.InMemoryDurable
 import grit.core.edge.Pending
-import grit.core.id.{PrincipalId, SourceId}
+import grit.core.id.SourceId
+import grit.core.identity.Account
 import grit.core.job.Ending
 import grit.core.message.Message
 import grit.core.store.Origin
@@ -68,7 +69,7 @@ object RunTests extends TestSuite {
     ) {
       val w = new World
       val main = w.inbox
-        .ingest(Origin.Task("remind", "main"), SourceId("v1"), Message.User("go"), PrincipalId.Grit)
+        .ingest(Origin.Task("remind", "main"), SourceId("v1"), Message.User("go"), Account.Grit)
         .fold(e => sys.error(s"$e"), identity)
       val standup = w.declared("standup")
       val gone = w.started(standup)

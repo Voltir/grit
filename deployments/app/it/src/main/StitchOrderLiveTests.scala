@@ -10,7 +10,8 @@ import scala.concurrent.duration.*
 import grit.core.classify.{Answers, Classifier, ClassifierError, Request}
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, ConversationId, PrincipalId, SourceId, WorkflowId}
+import grit.core.id.{CloseRef, ConversationId, SourceId, WorkflowId}
+import grit.core.identity.TestAccounts
 import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.Budget
 import grit.core.stitch.{Placed, StitchReads, Tuning}
@@ -101,7 +102,7 @@ object StitchOrderLiveTests extends TestSuite {
         launch(engine, classifier, close)
         right(
           engine.jot.write(Subject.Public)(
-            engine.principals.enroll(PrincipalId("slack:T1/U0NICK"), "Nick")
+            engine.principals.name(TestAccounts.account("slack:T1/U0NICK"), "Nick")
           )
         )
 
@@ -110,7 +111,7 @@ object StitchOrderLiveTests extends TestSuite {
             thread(ts),
             SourceId(source),
             text,
-            PrincipalId("slack:T1/U0NICK"),
+            TestAccounts.account("slack:T1/U0NICK"),
             Now.minusSeconds(ago),
             Reach.Nowhere
           ) ==> Right(())

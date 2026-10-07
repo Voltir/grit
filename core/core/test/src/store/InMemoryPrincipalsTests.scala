@@ -1,6 +1,7 @@
 package grit.core.store
 
-import grit.core.id.{EntryId, PrincipalId}
+import grit.core.id.EntryId
+import grit.core.identity.Account
 import grit.dbos.sql.TestTx
 
 /** The principals contract, kept by the in-memory fake. */
@@ -11,7 +12,7 @@ object InMemoryPrincipalsTests extends PrincipalsContract {
 
   protected def fresh(): Principals = new InMemoryPrincipals
 
-  protected def said(principals: Principals, by: PrincipalId): EntryId = {
+  protected def said(principals: Principals, by: Account): EntryId = {
     n += 1
     val id = EntryId(s"in:c:$n")
     principals match {

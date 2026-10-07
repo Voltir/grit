@@ -15,6 +15,7 @@ import grit.core.id.{
   TestCallSlots,
   TurnRef
 }
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{Origin, StoreError, Tombstones, Tx}
 import grit.core.visibility.{Label, Level, TestLabels}
@@ -117,7 +118,7 @@ abstract class ScheduleContract extends TestSuite {
       val remind = u.desk(PluginName.of("remind").fold(sys.error, identity), Vector(standup.name))
       val turn = u.turn("contract")
       val call = TestCallSlots.at(turn)
-      u.asking(turn, PrincipalId("ann"), Some("C1/1.0"))
+      u.asking(turn, TestAccounts.account("test:ann"), Some("C1/1.0"))
       val asked = remind
         .ask(call, booking(standup), When.At(at("2026-10-20T09:00:00Z")), hour, Count(7))
         .fold(r => sys.error(s"$r"), _.id)
@@ -240,7 +241,7 @@ object ScheduleContract {
     /** `turn` recorded as rooted on a message `by` wrote, its reply posted at `address`, or
       * nowhere.
       */
-    def asking(turn: TurnRef, by: PrincipalId, address: Option[String]): Unit
+    def asking(turn: TurnRef, by: Account, address: Option[String]): Unit
 
     /** `plugin`'s desk, holding the job names `jobs`, its now `clock`'s, opening its
       * transactions under [[grit.core.visibility.TestLabels.Trialled]].

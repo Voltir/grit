@@ -15,10 +15,10 @@ import grit.core.id.{
   PeriodRef,
   PeriodSeq,
   PluginName,
-  PrincipalId,
   TurnRef,
   TurnSeq
 }
+import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, Ground}
 import grit.core.place.{Directory, Namespace, Place, Prefix, Scope}
@@ -301,7 +301,7 @@ object Load {
   )(layout: Layout): Either[String, Written] = {
     def found(origin: Origin): Either[String, ConversationId] =
       jot
-        .write(Subject.Public)(conversations.findOrCreate(origin, PrincipalId.Local, Label.Public))
+        .write(Subject.Public)(conversations.findOrCreate(origin, Account.Local, Label.Public))
         .map(_.id)
         .left
         .map(e => s"${layout.c.name}: $e")

@@ -3,7 +3,8 @@ package grit.app.main
 import scala.concurrent.duration.*
 
 import grit.core.edge.{EdgeStores, Variable}
-import grit.core.id.{PrincipalId, SourceId}
+import grit.core.id.SourceId
+import grit.core.identity.Account
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
@@ -110,7 +111,7 @@ object McpEdgeLiveTests extends TestSuite {
                   Message.User(
                     s"what is in the README? ${StubProvider.CallMarker}${read.render()}"
                   ),
-                  PrincipalId.Local
+                  Account.Local
                 )
                 _ <- engine.inbox.startTurn(turn)
               } yield turn).fold(e => sys.error(s"inbox: $e"), identity)

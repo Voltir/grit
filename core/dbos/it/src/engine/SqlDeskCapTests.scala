@@ -7,7 +7,8 @@ import scala.concurrent.duration.*
 import scala.concurrent.{Await, ExecutionContext, Future}
 
 import grit.core.clock.SetClock
-import grit.core.id.{PluginName, PrincipalId, ScheduleId, TestCallSlots}
+import grit.core.id.{PluginName, ScheduleId, TestCallSlots}
+import grit.core.identity.TestAccounts
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.{booking, hour}
 import grit.core.job.{Asked, DeskRefusal, ScheduleDesk, When}
@@ -35,7 +36,7 @@ object SqlDeskCapTests extends TestSuite {
           catch { case _: TimeoutException | _: BrokenBarrierException => () }
       val u = SqlSchedulesUnder("sql_desk_cap", () => meet())
       val thread = u.turn("thread")
-      u.asking(thread, PrincipalId("ann"), Some("C1/1.0"))
+      u.asking(thread, TestAccounts.account("test:ann"), Some("C1/1.0"))
       val desk = u.desk(
         PluginName.of("reminders").fold(sys.error, identity),
         Vector(remind.name),

@@ -3,15 +3,8 @@ package grit.core.job
 import scala.concurrent.duration.*
 
 import grit.core.clock.SetClock
-import grit.core.id.{
-  CallSlot,
-  EdgeName,
-  JobName,
-  PluginName,
-  PrincipalId,
-  ScheduleId,
-  TestCallSlots
-}
+import grit.core.id.{CallSlot, EdgeName, JobName, PluginName, ScheduleId, TestCallSlots}
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.Origin
 import grit.core.visibility.{Label, TestLabels}
@@ -33,6 +26,8 @@ abstract class DeskContract extends TestSuite {
   private val nudge = new Counting("nudge")
   private val reminders = got(PluginName.of("reminders"))
   private val nudges = got(PluginName.of("nudges"))
+  private val Ann = TestAccounts.account("test:ann")
+  private val Bob = TestAccounts.account("test:bob")
 
   /** A store under test, its clock, and the desk of the reminders plugin, owning `remind`. */
   private final class Fixture(val u: Under, val clock: SetClock, val desk: ScheduleDesk^) {
@@ -48,10 +43,10 @@ abstract class DeskContract extends TestSuite {
     */
   private def setUp(): Fixture^ = {
     val u = fresh()
-    u.asking(u.turn("thread"), PrincipalId("ann"), Some("C1/1.0"))
-    u.asking(u.turn("other"), PrincipalId("bob"), Some("C2/2.0"))
-    u.asking(u.turn("later"), PrincipalId("ann"), Some("C1/3.0"))
-    u.asking(u.turn("tui"), PrincipalId.Local, None)
+    u.asking(u.turn("thread"), Ann, Some("C1/1.0"))
+    u.asking(u.turn("other"), Bob, Some("C2/2.0"))
+    u.asking(u.turn("later"), Ann, Some("C1/3.0"))
+    u.asking(u.turn("tui"), Account.Local, None)
     val clock = new SetClock(at("09:00"))
     new Fixture(u, clock, u.desk(reminders, Vector(remind.name), clock))
   }
@@ -79,7 +74,7 @@ abstract class DeskContract extends TestSuite {
         Schedule(
           remind.name,
           ujson.Num(3),
-          PrincipalId("ann"),
+          TestAccounts.principalId(Ann),
           Report.Posted(Destination(EdgeName.Slack, "C1/1.0")),
           SlotRule.Once(at("09:30"), hour),
           None,
@@ -95,7 +90,7 @@ abstract class DeskContract extends TestSuite {
       val f = setUp()
       import f.*
       val standup = u.turn(Origin.Task("standup", "2026-10-07"))
-      u.asking(standup, PrincipalId("ann"), Some("C9/9.0"))
+      u.asking(standup, Ann, Some("C9/9.0"))
       val asks = Vector(call("thread"), TestCallSlots.at(standup))
       asks.map(c => ask(desk, c, When.In(30.minutes)).map(_ => ())) ==> Vector(Right(()), Right(()))
       asks.map(c => u.read(ScheduleId.asked(c)).map(_.report)) ==> Vector(
@@ -226,7 +221,7 @@ abstract class DeskContract extends TestSuite {
       "one asked in a {trial} room by a person cleared only public is kept at the room's label: " +
         "its parameters are the room's"
     ) {
-      keptAt(PrincipalId("ann"), "2.2") ==> Some(TestLabels.Trial)
+      keptAt(Ann, "2.2") ==> Some(TestLabels.Trial)
     }
 
     test(
@@ -234,7 +229,7 @@ abstract class DeskContract extends TestSuite {
         "asked in a {trial} room they are cleared below; asked from that room, they do"
     ) {
       val u = fresh()
-      val ann = PrincipalId("ann")
+      val ann = Ann
       val trial = u.turn(Origin.Slack("T1", "C9", "2.3"), TestLabels.Trial)
       val sameRoom = u.turn(Origin.Slack("T1", "C9", "2.4"), TestLabels.Trial)
       val lower = u.turn(Origin.Slack("T1", "C8", "2.5"))
@@ -254,7 +249,7 @@ abstract class DeskContract extends TestSuite {
   }
 
   /** The label of the schedule `by` asks for from thread `thread` of a `{trial}` room. */
-  private def keptAt(by: PrincipalId, thread: String): Option[Label] = {
+  private def keptAt(by: Account, thread: String): Option[Label] = {
     val u = fresh()
     val turn = u.turn(Origin.Slack("T1", "C1", thread), TestLabels.Trial)
     u.asking(turn, by, Some(s"C1/$thread"))

@@ -2,7 +2,8 @@ package grit.core.speech
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId, QuestionName, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, QuestionName, TurnRef, TurnSeq}
+import grit.core.identity.TestAccounts
 import grit.core.message.{Cost, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.spend.{DailyCap, Spend}
@@ -38,7 +39,7 @@ object SpeechJsonTests extends TestSuite {
       Vector(Gate.Failed(Bound.AtLeast(Reading.Yes(Tags.V1.helps), p(0.6)), p(0.5)))
     ),
     Silence.Unasked(Reading.Yes(Tags.V1.helps)),
-    Silence.AskedOf(PrincipalId("slack:T/U1")),
+    Silence.AskedOf(TestAccounts.account("slack:T/U1")),
     Silence.Unanswered(turn),
     Silence.Thread(1),
     Silence.Room(2),

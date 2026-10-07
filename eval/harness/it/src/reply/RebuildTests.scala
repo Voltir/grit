@@ -18,12 +18,12 @@ import grit.core.id.{
   DocKey,
   DocumentVersion,
   PluginName,
-  PrincipalId,
   QuestionName,
   SourceId,
   TurnRef,
   WorkflowId
 }
+import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, TestClosings}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
@@ -236,7 +236,7 @@ object RebuildTests extends TestSuite {
   private def ask(engine: Engine^, name: String, text: String): TurnRef = {
     val turn = right(
       engine.inbox
-        .ingest(Origin.Task("rebuild", name), SourceId(name), Message.User(text), PrincipalId.Local)
+        .ingest(Origin.Task("rebuild", name), SourceId(name), Message.User(text), Account.Local)
     )
     right(engine.inbox.startTurn(turn))
     val _ = engine.awaitTurn(turn)
@@ -248,7 +248,7 @@ object RebuildTests extends TestSuite {
       Origin.Slack("T1", "C1", ts),
       SourceId(ts),
       text,
-      PrincipalId.Local,
+      Account.Local,
       now(),
       Reach(Some(s"C1/$ts/$ts"), Set.empty)
     ) ==> Right(())

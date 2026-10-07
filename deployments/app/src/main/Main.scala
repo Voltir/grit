@@ -10,6 +10,7 @@ import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
 import grit.core.edge.ServedEdge
 import grit.core.id.{PluginName, PrincipalId, SourceId, TurnRef}
+import grit.core.identity.Account
 import grit.core.message.{Message, Tokens}
 import grit.core.model.{ModelId, Policy}
 import grit.core.period.LifecycleSettings
@@ -378,7 +379,7 @@ object Main {
           RunOrigin,
           SourceId(text),
           Message.User(text),
-          PrincipalId.Local
+          Account.Local
         )
         _ <- engine.inbox.startTurn(turn)
       } yield turn

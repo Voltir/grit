@@ -10,7 +10,8 @@ import grit.core.classify.Classifier
 import grit.core.clock.{Clock, Fresh}
 import grit.core.context.Width
 import grit.core.durable.Durable
-import grit.core.id.{CloseRef, PrincipalId, SourceId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.id.{CloseRef, SourceId, TurnRef, TurnSeq, WorkflowId}
+import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Catalog, Pinned}
 import grit.core.period.{CloseReason, Probability, TestClosings}
@@ -260,7 +261,7 @@ object TurnCaptureTests extends TestSuite {
   /** `text` said to grit at `origin` as `source`, and its turn run to its end. */
   private def ask(engine: Engine^, origin: Origin, source: String, text: String): TurnRef = {
     val turn = right(
-      engine.inbox.ingest(origin, SourceId(source), Message.User(text), PrincipalId.Local)
+      engine.inbox.ingest(origin, SourceId(source), Message.User(text), Account.Local)
     )
     right(engine.inbox.startTurn(turn))
     val _ = engine.awaitTurn(turn)
@@ -304,7 +305,7 @@ object TurnCaptureTests extends TestSuite {
             origin,
             SourceId(ts),
             text,
-            PrincipalId.Local,
+            Account.Local,
             now(),
             Reach(Some(s"C1/$ts/$ts"), Set.empty)
           ) ==> Right(())

@@ -7,7 +7,8 @@ import scala.concurrent.duration.*
 
 import grit.core.classify.Answer
 import grit.core.id.QuestionName
-import grit.core.id.{ConversationId, EntryId, EntrySeq, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
+import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Cost, Message, StopReason, Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
@@ -144,9 +145,12 @@ object SpeechTests extends TestSuite {
       test("asked of someone else: the first by id") {
         val asked =
           heard.copy(reach =
-            Reach(Some("C/1"), Set(PrincipalId("slack:T/U2"), PrincipalId("slack:T/U1")))
+            Reach(
+              Some("C/1"),
+              Set(TestAccounts.account("slack:T/U2"), TestAccounts.account("slack:T/U1"))
+            )
           )
-        assert(decide(asked) == held(Silence.AskedOf(PrincipalId("slack:T/U1"))))
+        assert(decide(asked) == held(Silence.AskedOf(TestAccounts.account("slack:T/U1"))))
       }
       test("an earlier unprompted turn here still drafting") {
         val previous = TurnRef(ConversationId("c"), TurnSeq(3))
@@ -196,7 +200,7 @@ object SpeechTests extends TestSuite {
     test("two checks failing: the earlier one's silence holds") {
       val stale = heard.copy(said = now.minusSeconds(11 * 60))
       val capped = Budget(ZoneOffset.UTC, DailyCap.of("1").toOption)
-      val asked = Reach(Some("C/1"), Set(PrincipalId("slack:T/U1")))
+      val asked = Reach(Some("C/1"), Set(TestAccounts.account("slack:T/U1")))
       val threaded = empty.copy(
         turns = Vector(posted("c", 3, now.minusSeconds(5 * 60 * 60))),
         all = Spend(9, Cost.Exact(BigDecimal("1.5")))
@@ -262,7 +266,7 @@ object SpeechTests extends TestSuite {
     ) {
       val old = named.copy(
         said = now.minusSeconds(11 * 60),
-        reach = Reach(Some("C/1"), Set(PrincipalId("slack:T/U1")))
+        reach = Reach(Some("C/1"), Set(TestAccounts.account("slack:T/U1")))
       )
       val previous = TurnRef(ConversationId("c"), TurnSeq(3))
       val busy = Ledger(

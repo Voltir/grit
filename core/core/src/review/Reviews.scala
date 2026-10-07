@@ -5,7 +5,8 @@ import java.time.Instant
 import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
-import grit.core.id.{ConversationId, EntryId, PrincipalId, QuestionName, ShadowName}
+import grit.core.id.{ConversationId, EntryId, QuestionName, ShadowName}
+import grit.core.identity.Account
 import grit.core.place.Place
 import grit.core.store.{Origin, StoreError, Tx}
 
@@ -29,7 +30,7 @@ enum Verdict {
 }
 
 /** The verdict standing on a prompt: `rater`'s, given `at`. */
-final case class Label(verdict: Verdict, rater: PrincipalId, at: Instant)
+final case class Label(verdict: Verdict, rater: Account, at: Instant)
 
 /** A picked message's prompt as its edge posts it: the heard `entry`, in the conversation
   * `origin` names; why it was picked against `shadow`; live's settled decision; and what the
@@ -77,14 +78,14 @@ trait Reviews {
   /** Keeps `verdict` by `rater`, given `at`, on the prompt posted at `address`, replacing the
     * label standing; `false`, writing nothing, when no prompt was posted there.
     */
-  def reacted(address: String, rater: PrincipalId, verdict: Verdict, at: Instant)(using
+  def reacted(address: String, rater: Account, verdict: Verdict, at: Instant)(using
       Tx^
   ): Either[StoreError, Boolean]
 
   /** Withdraws the label standing on the prompt posted at `address` when it is `verdict` by
     * `rater`; `false`, writing nothing, otherwise.
     */
-  def unreacted(address: String, rater: PrincipalId, verdict: Verdict)(using
+  def unreacted(address: String, rater: Account, verdict: Verdict)(using
       Tx^
   ): Either[StoreError, Boolean]
 }

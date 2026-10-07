@@ -9,13 +9,13 @@ import grit.core.id.{
   ConversationId,
   Declarer,
   PluginName,
-  PrincipalId,
   ScheduleId,
   ScheduleKey,
   TestCallSlots,
   TurnRef,
   TurnSeq
 }
+import grit.core.identity.TestAccounts
 import grit.core.inbox.{InMemoryInbox, Slotted}
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.{booking, hour}
@@ -103,7 +103,7 @@ object RunFixtures {
     def asked(thread: String, address: String, n: Int = 1): ScheduleId = {
       val origin = Origin.Slack("T1", "C1", thread)
       val turn = TurnRef(ConversationId(thread), TurnSeq.First)
-      inbox.schedules.asking(turn, origin, PrincipalId("ann"), Some(address))
+      inbox.schedules.asking(turn, origin, TestAccounts.account("test:ann"), Some(address))
       val plugin = PluginName.of("reminders").fold(sys.error, identity)
       val desk =
         inbox.schedules.desk(plugin, Vector(remind.name), new SetClock(Due.minusSeconds(3600)))

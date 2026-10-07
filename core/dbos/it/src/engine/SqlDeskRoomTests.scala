@@ -6,7 +6,8 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.clock.SetClock
-import grit.core.id.{PluginName, PrincipalId, ScheduleId, TestCallSlots}
+import grit.core.id.{PluginName, ScheduleId, TestCallSlots}
+import grit.core.identity.TestAccounts
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.{ScheduleContract, When}
 import grit.core.store.Origin
@@ -24,7 +25,7 @@ object SqlDeskRoomTests extends TestSuite {
       "an asked schedule is read where its room is, whatever conversation its key names"
     ) {
       val (u, config) = SqlSchedulesUnder.withConfig("sql_desk_room")
-      val ann = PrincipalId("ann")
+      val ann = TestAccounts.account("test:ann")
       val remind = new Counting("remind")
       val trial = u.turn(Origin.Slack("T1", "C9", "2.3"), TestLabels.Trial)
       val lower = u.turn(Origin.Slack("T1", "C8", "2.5"))

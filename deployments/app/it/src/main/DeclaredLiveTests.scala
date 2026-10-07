@@ -19,6 +19,7 @@ import grit.core.id.{
   TurnRef,
   TurnSeq
 }
+import grit.core.identity.TestAccounts
 import grit.core.inbox.Slotted
 import grit.core.job.{
   Declared,
@@ -433,7 +434,7 @@ object DeclaredLiveTests extends TestSuite {
         // The asking thread's turn, recorded once the engine has applied the schema.
         val asking =
           TurnRef(LiveDb.conversation(config, Origin.Slack("T1", "C1", "1.0")).id, TurnSeq.First)
-        LiveDb.asking(config, asking, PrincipalId("U1"), Some("C1/1.0"))
+        LiveDb.asking(config, asking, TestAccounts.account("slack:T1/U1"), Some("C1/1.0"))
         val desk = engine.desk(
           PluginName.of("pings").fold(sys.error, identity),
           Vector(ping.name),

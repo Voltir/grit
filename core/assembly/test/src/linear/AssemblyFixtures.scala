@@ -2,7 +2,8 @@ package grit.assembly.linear
 
 import java.time.Instant
 
-import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, PrincipalId, TurnSeq}
+import grit.core.id.{CloseRef, ConversationId, EntryId, PeriodRef, PeriodSeq, TurnSeq}
+import grit.core.identity.TestAccounts
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.store.{
   Db,
@@ -37,11 +38,11 @@ object AssemblyFixtures {
     val principals: InMemoryPrincipals = new InMemoryPrincipals
   }
 
-  /** Makes `entry` of `world` a message written by a person enrolled as `name`. */
+  /** Makes `entry` of `world` a message written by an account named `name`. */
   def named(world: World, entry: String, name: String): Unit = {
     given Tx = TestTx.fake
-    val who = PrincipalId(s"test:$name")
-    val _ = world.principals.enroll(who, name)
+    val who = TestAccounts.account(s"test:$name")
+    val _ = world.principals.name(who, name)
     world.principals.authored(EntryId(entry), who)
   }
 

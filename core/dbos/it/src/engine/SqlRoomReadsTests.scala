@@ -2,7 +2,8 @@ package grit.dbos.engine
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId}
+import grit.core.id.{ConversationId, EntryId}
+import grit.core.identity.Account
 import grit.core.recipe.{RoomReads, RoomReadsContract}
 import grit.core.store.{EntryStore, Origin, PeriodStore, Tx}
 import grit.dbos.sql.{
@@ -35,17 +36,17 @@ object SqlRoomReadsTests extends RoomReadsContract {
   protected def conversation(origin: Origin): ConversationId =
     LiveDb.conversation(config, origin).id
 
-  protected def authored(entry: EntryId, by: PrincipalId): Unit =
+  protected def authored(entry: EntryId, by: Account): Unit =
     LiveDb.transaction(config) { (tx: Tx^) ?=>
       new SqlPrincipals()
-        .enroll(by, PrincipalId.value(by))
+        .name(by, Account.written(by))
         .fold(e => sys.error(s"arranging a person: $e"), identity)
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       Using.resource(
         conn.prepareStatement("INSERT INTO grit.inbound (entry_id, author) VALUES (?, ?)")
       ) { ps =>
         ps.setString(1, EntryId.value(entry))
-        ps.setString(2, PrincipalId.value(by))
+        ps.setString(2, Account.written(by))
         val _ = ps.executeUpdate()
       }
     }

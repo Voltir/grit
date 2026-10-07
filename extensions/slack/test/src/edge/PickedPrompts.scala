@@ -6,7 +6,8 @@ import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
 import grit.core.classify.Answer
-import grit.core.id.{EntryId, EntrySeq, PrincipalId, QuestionName, ShadowName, SourceId, TurnRef}
+import grit.core.id.{EntryId, EntrySeq, QuestionName, ShadowName, SourceId, TurnRef}
+import grit.core.identity.TestAccounts
 import grit.core.inbox.{InMemoryInbox, InboundId}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
@@ -51,7 +52,9 @@ final class PickedPrompts(inbox: InMemoryInbox) {
       live: Settled = Below
   ): EntryId = {
     val at = Instant.parse("2026-10-02T10:00:00Z")
-    right(inbox.hear(origin, SourceId(ts), "hm", PrincipalId("slack:T/U1"), at, Reach.Nowhere))
+    right(
+      inbox.hear(origin, SourceId(ts), "hm", TestAccounts.account("slack:T/U1"), at, Reach.Nowhere)
+    )
     val conversation = right(
       inbox.conversations.all.find(_.origin == origin).toRight("no conversation")
     ).id

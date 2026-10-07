@@ -2,7 +2,8 @@ package grit.dbos.sql
 
 import scala.util.Using
 
-import grit.core.id.{EntryId, PrincipalId}
+import grit.core.id.EntryId
+import grit.core.identity.Account
 import grit.core.store.{Principals, Speakers, StoreError, Tx}
 
 /** [[Principals]] over `grit.principals` (a person's or an assistant's name) and
@@ -11,8 +12,8 @@ import grit.core.store.{Principals, Speakers, StoreError, Tx}
 final class SqlPrincipals extends Principals {
   import SqlEntryStore.attempt
 
-  def enroll(id: PrincipalId, name: String)(using tx: Tx^): Either[StoreError, Unit] =
-    Principals.refusal(id, name) match {
+  def name(account: Account, name: String)(using tx: Tx^): Either[StoreError, Unit] =
+    Principals.refusal(account, name) match {
       case Some(why) => Left(why)
       case None =>
         val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -23,7 +24,7 @@ final class SqlPrincipals extends Principals {
                 |ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name""".stripMargin
             )
           ) { ps =>
-            ps.setString(1, PrincipalId.value(id))
+            ps.setString(1, SqlAccounts.written(account))
             ps.setString(2, name.trim)
             ps.executeUpdate()
             ()

@@ -5,7 +5,8 @@ import java.time.Instant
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.identity.TestAccounts
 import grit.core.place.{Directory, Place}
 import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
 import grit.core.visibility.{
@@ -42,8 +43,8 @@ object OpenerLiveTests extends TestSuite {
 
   private val trialLabel: Label = Label.at(Level.Public, trial)
 
-  private val cleared = PrincipalId("slack:T1/U-cleared")
-  private val uncleared = PrincipalId("slack:T1/U-uncleared")
+  private val cleared = TestAccounts.account("slack:T1/U-cleared")
+  private val uncleared = TestAccounts.account("slack:T1/U-uncleared")
 
   private val visibility: Visibility = {
     val name = GroupName.of("trialists").fold(e => throw new java.lang.AssertionError(e), identity)
@@ -53,7 +54,7 @@ object OpenerLiveTests extends TestSuite {
         .of(
           compartments,
           RoomLabels.Public,
-          Vector(Group(name, Set(cleared))),
+          Vector(Group(name, Set(TestAccounts.principalId(cleared)))),
           Vector(Grant(name, trialLabel))
         )
         .left

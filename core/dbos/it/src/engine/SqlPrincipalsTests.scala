@@ -5,7 +5,8 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import scala.util.Using
 
-import grit.core.id.{EntryId, EntrySeq, PrincipalId, TurnSeq}
+import grit.core.id.{EntryId, EntrySeq, TurnSeq}
+import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.store.{Entry, Origin, Payload, Principals, PrincipalsContract, Tx}
 import grit.dbos.sql.{DbConfig, LiveDb, SqlEntryStore, SqlPrincipals, TestPostgres}
@@ -13,7 +14,7 @@ import grit.dbos.sql.{DbConfig, LiveDb, SqlEntryStore, SqlPrincipals, TestPostgr
 /** The principals contract, kept by the SQL store against a real Postgres. */
 object SqlPrincipalsTests extends PrincipalsContract {
 
-  // Each test enrolls from nobody, so each gets a database of its own: a shared one would
+  // Each test names from nobody, so each gets a database of its own: a shared one would
   // hold an earlier test's names. Only ever holds an immutable config; the suite's tests run
   // one at a time.
   @caps.unsafe.untrackedCaptures
@@ -32,7 +33,7 @@ object SqlPrincipalsTests extends PrincipalsContract {
     new SqlPrincipals()
   }
 
-  protected def said(principals: Principals, by: PrincipalId): EntryId = {
+  protected def said(principals: Principals, by: Account): EntryId = {
     val c = LiveDb.conversation(config, Origin.Task("principals", UUID.randomUUID().toString)).id
     val id = EntryId(s"in:${UUID.randomUUID()}")
     LiveDb.transaction(config) { (tx: Tx^) ?=>
@@ -54,7 +55,7 @@ object SqlPrincipalsTests extends PrincipalsContract {
         conn.prepareStatement("INSERT INTO grit.inbound (entry_id, author) VALUES (?, ?)")
       ) { ps =>
         ps.setString(1, EntryId.value(id))
-        ps.setString(2, PrincipalId.value(by))
+        ps.setString(2, Account.written(by))
         val _ = ps.executeUpdate()
       }
     }

@@ -1,6 +1,7 @@
 package grit.core.store
 
 import grit.core.id.ConversationId
+import grit.core.identity.Account
 import grit.core.recipe.{InMemoryRoomReads, RoomReads}
 import grit.core.stitch.{InMemoryStitchStore, StitchStore}
 import grit.core.visibility.{Clearance, Label}
@@ -30,6 +31,6 @@ object InMemoryClearanceTests extends ClearanceContract {
 
   protected def conversation(origin: Origin, label: Label): ConversationId =
     conversations
-      .findOrCreate(origin, grit.core.id.PrincipalId.Local, label)(using TestTx.fake)
+      .findOrCreate(origin, Account.Local, label)(using TestTx.fake)
       .fold(e => throw new java.lang.AssertionError(s"$e"), _.id)
 }

@@ -2,7 +2,8 @@ package grit.eval.harness.label
 
 import java.time.Instant
 
-import grit.core.id.{PrincipalId, ShadowName}
+import grit.core.id.ShadowName
+import grit.core.identity.TestAccounts
 import grit.core.review.{Reason, Verdict}
 import grit.eval.harness.capture.CaseId
 
@@ -14,7 +15,7 @@ object VerdictsTests extends TestSuite {
   private def id(s: String): CaseId = CaseId.read(s).fold(sys.error, identity)
 
   private val v2 = ShadowName.of("triage-v2").fold(sys.error, identity)
-  private val rater = PrincipalId("slack:T1/U1")
+  private val rater = TestAccounts.account("slack:T1/U1")
   private val At = Instant.parse("2026-10-03T09:00:00Z")
 
   private val verdicts = Verdicts(

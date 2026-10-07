@@ -9,7 +9,6 @@ import grit.core.id.{
   ConversationId,
   PeriodRef,
   PeriodSeq,
-  PrincipalId,
   SourceId,
   StitchRef,
   TriageRef,
@@ -17,6 +16,7 @@ import grit.core.id.{
   TurnSeq,
   WorkflowId
 }
+import grit.core.identity.Account
 import grit.core.inbox.InboxError
 import grit.core.message.Message
 import grit.core.speech.Reach
@@ -80,15 +80,15 @@ object SqlInboxTests extends TestSuite {
           heard,
           SourceId("1.0"),
           "lunch?",
-          PrincipalId.Local,
+          Account.Local,
           at,
           Reach.Nowhere
         ) ==>
           Right(())
-        engine.inbox.hear(heard, SourceId("1.1"), "yes", PrincipalId.Local, at, Reach.Nowhere) ==>
+        engine.inbox.hear(heard, SourceId("1.1"), "yes", Account.Local, at, Reach.Nowhere) ==>
           Right(())
         val asked = engine.inbox
-          .ingest(said, SourceId("2.0"), Message.User("@grit lunch?"), PrincipalId.Local)
+          .ingest(said, SourceId("2.0"), Message.User("@grit lunch?"), Account.Local)
           .fold(e => sys.error(e.toString), identity)
         val h = LiveDb.conversation(config, heard).id
         val placement = StitchRef(TurnRef(h, TurnSeq.First), at).workflowId
@@ -133,7 +133,7 @@ object SqlInboxTests extends TestSuite {
           "the retries issue is open",
           Instant.parse("2026-09-25T09:00:00Z"),
           slot,
-          PrincipalId.Local
+          Account.Local
         ) ==> Right(true)
         val c = LiveDb.conversation(config, origin).id
         LiveDb
@@ -162,7 +162,7 @@ object SqlInboxTests extends TestSuite {
             execute("ALTER TABLE dbos.workflow_status RENAME TO workflow_status_gone")
           )
           engine.inbox
-            .ingest(origin, SourceId("m1"), Message.User("one"), PrincipalId.Local)
+            .ingest(origin, SourceId("m1"), Message.User("one"), Account.Local)
             .flatMap(engine.inbox.progress)
         } finally engine.close()
       progress.left.map {

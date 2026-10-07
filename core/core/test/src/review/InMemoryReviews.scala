@@ -5,7 +5,8 @@ import java.time.Instant
 import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
-import grit.core.id.{ConversationId, EntryId, PrincipalId, QuestionName, ShadowName, TurnRef}
+import grit.core.id.{ConversationId, EntryId, QuestionName, ShadowName, TurnRef}
+import grit.core.identity.Account
 import grit.core.inbox.InMemoryInbox
 import grit.core.place.Place
 import grit.core.speech.{Decision, InMemorySpeechStore}
@@ -70,7 +71,7 @@ final class InMemoryReviews(
       }
     }
 
-  def reacted(address: String, rater: PrincipalId, verdict: Verdict, at: Instant)(using
+  def reacted(address: String, rater: Account, verdict: Verdict, at: Instant)(using
       Tx^
   ): Either[StoreError, Boolean] =
     postedAt(address).map {
@@ -80,7 +81,7 @@ final class InMemoryReviews(
       case None => false
     }
 
-  def unreacted(address: String, rater: PrincipalId, verdict: Verdict)(using
+  def unreacted(address: String, rater: Account, verdict: Verdict)(using
       Tx^
   ): Either[StoreError, Boolean] =
     postedAt(address).map {

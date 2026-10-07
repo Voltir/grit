@@ -5,7 +5,8 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, EntryId, SourceId, TurnRef, TurnSeq}
+import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
@@ -97,13 +98,15 @@ object StitchLiveTests extends TestSuite {
     */
   private def hear(engine: Engine^, ts: String, who: String, text: String, ago: Long): Entry = {
     right(
-      engine.jot.write(Subject.Public)(engine.principals.enroll(PrincipalId(s"slack:T1/$who"), who))
+      engine.jot.write(Subject.Public)(
+        engine.principals.name(TestAccounts.account(s"slack:T1/$who"), who)
+      )
     )
     engine.inbox.hear(
       thread(ts),
       SourceId(ts),
       text,
-      PrincipalId(s"slack:T1/$who"),
+      TestAccounts.account(s"slack:T1/$who"),
       Now.minusSeconds(ago),
       Reach(Some(s"C1/$ts/$ts"), Set.empty)
     ) ==> Right(())
@@ -221,7 +224,7 @@ object StitchLiveTests extends TestSuite {
         // A top-level mention: stitched in its own turn, and shown the strand.
         right(
           engine.jot.write(Subject.Public)(
-            engine.principals.enroll(PrincipalId("slack:T1/U0DAVID"), "David")
+            engine.principals.name(TestAccounts.account("slack:T1/U0DAVID"), "David")
           )
         )
         val mention = engine.inbox
@@ -229,7 +232,7 @@ object StitchLiveTests extends TestSuite {
             thread("6.0"),
             SourceId("6.0"),
             Message.User("@grit is this a real question? ~back:exchange 1"),
-            PrincipalId("slack:T1/U0DAVID")
+            TestAccounts.account("slack:T1/U0DAVID")
           )
           .fold(e => sys.error(e.toString), identity)
         engine.inbox.startTurn(mention) ==> Right(())

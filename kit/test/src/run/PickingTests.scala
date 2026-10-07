@@ -6,15 +6,8 @@ import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.DurationInt
 
 import grit.core.classify.Answer
-import grit.core.id.{
-  ConversationId,
-  EntryId,
-  EntrySeq,
-  PrincipalId,
-  QuestionName,
-  ShadowName,
-  TurnRef
-}
+import grit.core.id.{ConversationId, EntryId, EntrySeq, QuestionName, ShadowName, TurnRef}
+import grit.core.identity.Account
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Namespace, Place}
@@ -144,7 +137,7 @@ object PickingTests extends TestSuite {
     private val conversation: ConversationId = {
       given Tx = TestTx.fake
       right(
-        conversations.findOrCreate(Origin.Task("kit", "picking"), PrincipalId.Local, Label.Public)
+        conversations.findOrCreate(Origin.Task("kit", "picking"), Account.Local, Label.Public)
       ).id
     }
 

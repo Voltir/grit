@@ -4,7 +4,8 @@ import java.time.Instant
 
 import scala.util.Try
 
-import grit.core.id.{PrincipalId, ShadowName}
+import grit.core.id.ShadowName
+import grit.core.identity.Account
 import grit.core.review.{Reason, Verdict}
 import grit.eval.harness.capture.{CaseId, Fields}
 
@@ -15,7 +16,7 @@ final case class Rated(
     shadow: ShadowName,
     reason: Reason,
     verdict: Verdict,
-    rater: PrincipalId,
+    rater: Account,
     at: Instant
 )
 
@@ -42,7 +43,7 @@ object Verdicts {
             "shadow" -> ShadowName.value(r.shadow),
             "reason" -> reason(r.reason),
             "verdict" -> verdictWritten(r.verdict),
-            "rater" -> PrincipalId.value(r.rater),
+            "rater" -> Account.written(r.rater),
             "at" -> r.at.toString
           )
         })
@@ -74,9 +75,11 @@ object Verdicts {
             .flatMap(r =>
               Verdict.values.find(verdictWritten(_) == r).toRight(s"verdicts: $written: verdict $r")
             )
-          rater <- at.str("rater")
+          rater <- at
+            .str("rater")
+            .flatMap(r => Account.read(r).left.map(w => s"verdicts: $written: rater $w"))
           when <- at.instant("at")
-        } yield id -> Rated(shadow, why, verdict, PrincipalId(rater), when)
+        } yield id -> Rated(shadow, why, verdict, rater, when)
       }
     } yield Verdicts(each.toMap)
 

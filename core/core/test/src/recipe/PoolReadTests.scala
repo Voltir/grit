@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 
 import grit.core.id.{ConversationId, EntryId, PrincipalId}
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Namespace, Place, Prefix, Scope}
 import grit.core.stitch.{
@@ -38,9 +39,9 @@ object PoolReadTests extends TestSuite {
 
   private val T = Instant.parse("2026-10-02T12:00:00Z")
 
-  private val ana = PrincipalId("slack:T/UA")
-  private val ben = PrincipalId("slack:T/UB")
-  private val cy = PrincipalId("slack:T/UC")
+  private val ana = TestAccounts.account("slack:T/UA")
+  private val ben = TestAccounts.account("slack:T/UB")
+  private val cy = TestAccounts.account("slack:T/UC")
 
   private val usage = Usage(Tokens(900), Tokens.Zero, Tokens.Zero, None)
 
@@ -58,20 +59,20 @@ object PoolReadTests extends TestSuite {
     val stitches = new InMemoryStitchStore(entries, originOf)
     val rooms = new InMemoryRoomReads(entries, originOf, principals)
 
-    right(principals.enroll(ana, "Ana"))
-    right(principals.enroll(ben, "Ben"))
-    right(principals.enroll(cy, "Cy"))
+    right(principals.name(ana, "Ana"))
+    right(principals.name(ben, "Ben"))
+    right(principals.name(cy, "Cy"))
 
     /** Thread `ts` of `channel`. */
     def thread(ts: String, channel: String = "C"): Conversation = {
       val origin = Origin.Slack("T", channel, ts)
       val id = ConversationId(origin.place.written)
       origins = origins.updated(id, origin)
-      Conversation(id, origin, PrincipalId.Local, T.minusSeconds(86_400), Label.Public)
+      Conversation(id, origin, Account.Local, T.minusSeconds(86_400), Label.Public)
     }
 
     /** `payload` as `c`'s next entry, said `at`, written by `by` when given. */
-    def say(c: Conversation, payload: Payload, at: Instant, by: Option[PrincipalId]): Entry = {
+    def say(c: Conversation, payload: Payload, at: Instant, by: Option[Account]): Entry = {
       val next = right(entries.lockNext(c.id))
       val e = Entry(
         EntryId(s"${ConversationId.value(c.id)}:${next.seq}"),
@@ -87,7 +88,7 @@ object PoolReadTests extends TestSuite {
       e
     }
 
-    def heard(c: Conversation, text: String, at: Instant, by: PrincipalId): Entry =
+    def heard(c: Conversation, text: String, at: Instant, by: Account): Entry =
       say(c, Payload.Heard(text), at, Some(by))
 
     /** What `pool` shows for `heard` in `c`, its strand `strand`, by section key. */
@@ -120,7 +121,7 @@ object PoolReadTests extends TestSuite {
       w.say(other, Payload.Message(reply), minutes(3), None)
       w.heard(member, "in the strand", minutes(2), ben)
       w.heard(elsewhere, "in another channel", minutes(2), ben)
-      w.heard(other, "who's asking?", T.minusMillis(1), PrincipalId("slack:T/UX"))
+      w.heard(other, "who's asking?", T.minusMillis(1), TestAccounts.account("slack:T/UX"))
       w.heard(other, "at t", T, ben)
       w.heard(other, "after t", T.plusMillis(1), ben)
       val strand = Strand.Read(None, Vector.empty, Vector.empty, Set(member.id))

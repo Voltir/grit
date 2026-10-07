@@ -8,7 +8,8 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 import grit.core.durable.Durable
-import grit.core.id.{PeriodRef, PeriodSeq, PrincipalId, SourceId, TriageRef, TurnSeq, WorkflowId}
+import grit.core.id.{PeriodRef, PeriodSeq, SourceId, TriageRef, TurnSeq, WorkflowId}
+import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.store.Origin
 import grit.dbos.sql.{LiveDb, SqlEntryStore, TestPostgres}
@@ -49,7 +50,7 @@ object TriageLiveTests extends TestSuite {
           here,
           SourceId("m1"),
           "standup moves to 10:00",
-          PrincipalId.Local,
+          Account.Local,
           Instant.now(),
           grit.core.speech.Reach.Nowhere
         ) ==>
@@ -58,7 +59,7 @@ object TriageLiveTests extends TestSuite {
           here,
           SourceId("m1"),
           "standup moves to 10:00",
-          PrincipalId.Local,
+          Account.Local,
           Instant.now(),
           grit.core.speech.Reach.Nowhere
         ) ==>
@@ -89,7 +90,7 @@ object TriageLiveTests extends TestSuite {
           here,
           SourceId("m1"),
           "one",
-          PrincipalId.Local,
+          Account.Local,
           Instant.now(),
           grit.core.speech.Reach.Nowhere
         ) ==>
@@ -98,7 +99,7 @@ object TriageLiveTests extends TestSuite {
           here,
           SourceId("m2"),
           "two",
-          PrincipalId.Local,
+          Account.Local,
           Instant.now(),
           grit.core.speech.Reach.Nowhere
         ) ==>
@@ -121,12 +122,12 @@ object TriageLiveTests extends TestSuite {
       try {
         engine.launch(nothing, nothing, nothing, nothing, triage, LiveEngine.Unplaced, Vector.empty)
         val here = Origin.Task("triage", "addressed")
-        engine.inbox.ingest(here, SourceId("m1"), Message.User("@grit hi"), PrincipalId.Local)
+        engine.inbox.ingest(here, SourceId("m1"), Message.User("@grit hi"), Account.Local)
         engine.inbox.hear(
           here,
           SourceId("m1"),
           "@grit hi",
-          PrincipalId.Local,
+          Account.Local,
           Instant.now(),
           grit.core.speech.Reach.Nowhere
         ) ==> Right(())
@@ -134,7 +135,7 @@ object TriageLiveTests extends TestSuite {
           here,
           SourceId("m2"),
           "and this",
-          PrincipalId.Local,
+          Account.Local,
           Instant.now(),
           grit.core.speech.Reach.Nowhere
         ) ==> Right(())

@@ -3,7 +3,8 @@ package grit.core.job
 import java.time.Instant
 
 import grit.core.clock.Clock
-import grit.core.id.{ConversationId, JobName, PluginName, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{ConversationId, JobName, PluginName, TurnRef, TurnSeq}
+import grit.core.identity.Account
 import grit.core.store.{Origin, Tombstones, Tx}
 import grit.core.visibility.{Label, TestLabels}
 import grit.dbos.sql.TestTx
@@ -25,7 +26,7 @@ private[job] object InMemoryUnder {
         if (!origins.contains(id)) origins(id) = (origin, label)
         TurnRef(id, TurnSeq.First)
       }
-      def asking(turn: TurnRef, by: PrincipalId, address: Option[String]): Unit =
+      def asking(turn: TurnRef, by: Account, address: Option[String]): Unit =
         origins.get(turn.conversationId) match {
           case Some((from, label)) => s.asking(turn, from, by, address, label)
           case None => sys.error(s"asked from $turn, which no turn(origin) made")

@@ -4,7 +4,8 @@ import java.time.OffsetDateTime
 
 import scala.util.Using
 
-import grit.core.id.{CallSlot, ConversationId, PrincipalId}
+import grit.core.id.{CallSlot, ConversationId}
+import grit.core.identity.Account
 import grit.core.place.Directory
 import grit.core.store.{Conversation, ConversationStore, Origin, StoreError, Tx}
 import grit.core.visibility.Label
@@ -15,7 +16,7 @@ final class SqlConversationStore extends ConversationStore {
 
   def findOrCreate(
       origin: Origin,
-      by: PrincipalId,
+      by: Account,
       label: Label
   )(using tx: Tx^): Either[StoreError, Conversation] =
     find(origin).flatMap {
@@ -42,7 +43,7 @@ final class SqlConversationStore extends ConversationStore {
     * does. A concurrent insert of the same row is waited for, and its row kept. Paths go as JSON,
     * so no Java array crosses JDBC.
     */
-  private def created(origin: Origin, by: PrincipalId, label: Int)(using
+  private def created(origin: Origin, by: Account, label: Int)(using
       tx: Tx^
   ): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -73,7 +74,7 @@ final class SqlConversationStore extends ConversationStore {
         )
       ) { ps =>
         ps.setString(1, SqlConversationStore.originJson(origin).render())
-        ps.setString(2, PrincipalId.value(by))
+        ps.setString(2, SqlAccounts.written(by))
         ps.setInt(3, label)
         ps.setString(4, path(origin.place))
         ps.setString(5, path(origin.room))
@@ -148,9 +149,9 @@ final class SqlConversationStore extends ConversationStore {
       case Some((origin, by, at, label)) =>
         SqlConversationStore
           .readOrigin(ujson.read(origin))
-          .map(o => Some(Conversation(id, o, PrincipalId(by), at, label)))
           .left
           .map(why => StoreError.DatabaseError(s"conversation ${ConversationId.value(id)}: $why"))
+          .flatMap(o => SqlAccounts.read(by).map(a => Some(Conversation(id, o, a, at, label))))
     }
   }
 

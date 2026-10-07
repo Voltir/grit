@@ -7,7 +7,8 @@ import scala.concurrent.duration.*
 
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{PrincipalId, SourceId, TurnRef, WorkflowId}
+import grit.core.id.{SourceId, TurnRef, WorkflowId}
+import grit.core.identity.Account
 import grit.core.speech.Reach
 import grit.core.stitch.{Opening, Placements}
 import grit.core.store.{Origin, StoreError}
@@ -45,7 +46,7 @@ object PlacementsLiveTests extends TestSuite {
           thread,
           SourceId("1.0"),
           "anyone seen the staging logs?",
-          PrincipalId.Local,
+          Account.Local,
           Clock.system().now(),
           Reach.Nowhere
         ) ==> Right(())

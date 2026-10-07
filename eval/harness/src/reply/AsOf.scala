@@ -12,10 +12,10 @@ import grit.core.id.{
   EntrySeq,
   PeriodRef,
   PluginName,
-  PrincipalId,
   TurnRef,
   TurnSeq
 }
+import grit.core.identity.Account
 import grit.core.period.{
   Activity,
   CloseOrdinal,
@@ -140,7 +140,7 @@ object AsOf {
 
   private final class Conversations(under: ConversationStore, at: Instant)
       extends ConversationStore {
-    def findOrCreate(origin: Origin, by: PrincipalId, label: Label)(using
+    def findOrCreate(origin: Origin, by: Account, label: Label)(using
         Tx^
     ): Either[StoreError, Conversation] = under.findOrCreate(origin, by, label)
     def find(origin: Origin)(using Tx^): Either[StoreError, Option[Conversation]] =

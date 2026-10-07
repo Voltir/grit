@@ -1,6 +1,6 @@
 package grit.core.visibility
 
-import grit.core.id.PrincipalId
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.place.Place
 
 /** What the visibility suites, and the store contracts' labelled cases, build their fixtures
@@ -23,8 +23,8 @@ object TestLabels {
   /** Public, in [[trial]]. */
   val Trial: Label = Label.at(Level.Public, trial)
 
-  /** The one person [[Trialled]] clears for [[Trial]]. */
-  val Trialist: PrincipalId = PrincipalId("slack:T1/U-trialist")
+  /** The account of the one person [[Trialled]] clears for [[Trial]]. */
+  val Trialist: Account = TestAccounts.account("slack:T1/U-trialist")
 
   /** [[trial]] declared, every room public, and [[Trialist]] cleared for [[Trial]]. */
   val Trialled: Visibility =
@@ -34,7 +34,7 @@ object TestLabels {
         .of(
           compartments,
           RoomLabels.Public,
-          Vector(Group(group("trialists"), Set(Trialist))),
+          Vector(Group(group("trialists"), Set(TestAccounts.principalId(Trialist)))),
           Vector(Grant(group("trialists"), Trial))
         )
         .left

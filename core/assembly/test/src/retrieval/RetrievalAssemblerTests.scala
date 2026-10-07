@@ -38,10 +38,10 @@ import grit.core.id.{
   PeriodRef,
   PeriodSeq,
   PluginName,
-  PrincipalId,
   TurnRef,
   TurnSeq
 }
+import grit.core.identity.Account
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, LifecycleSettings, Probability, TestClosings}
 import grit.core.place.{Locality, Place, Prefix, Scope, Weight}
@@ -315,7 +315,7 @@ object RetrievalAssemblerTests extends TestSuite {
     val turn = TurnRef(c1, TurnSeq(at))
     val conversations = new InMemoryConversationStore
     conversations.all =
-      Conversation(c1, origin, PrincipalId.Local, Instant.EPOCH, Label.Public) +: others
+      Conversation(c1, origin, Account.Local, Instant.EPOCH, Label.Public) +: others
     posted.foreach(slot => conversations.posts = Map(c1 -> slot))
     val lifecycle = new InMemoryLifecycleStore
     lifecycle
@@ -674,7 +674,7 @@ object RetrievalAssemblerTests extends TestSuite {
     val posted = Vector(Payload.Posted("The engine's open issues."))
     val why = Vector(Payload.Message(Message.User("why this?")))
     def askerAt(origin: Origin): Conversation =
-      Conversation(asker, origin, PrincipalId.Local, Instant.EPOCH, Label.Public)
+      Conversation(asker, origin, Account.Local, Instant.EPOCH, Label.Public)
 
     test(
       "a thread begun by grit's post is shown first the turn that asked for it, out of its room's scope too, and the asker is not also ranked"

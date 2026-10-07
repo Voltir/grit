@@ -13,11 +13,11 @@ import grit.core.id.{
   EntryId,
   PeriodRef,
   PeriodSeq,
-  PrincipalId,
   TurnRef,
   TurnSeq,
   WorkflowId
 }
+import grit.core.identity.{Account, TestAccounts}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Pinned, Policy}
 import grit.core.period.{Activity, CloseOrdinal, CloseReason, Closing, Period, Verdict}
@@ -193,7 +193,7 @@ object CloseFixtures {
     val entries = new InMemoryEntryStore
     val conversations = new InMemoryConversationStore(Some(entries))
     locally {
-      val _ = conversations.findOrCreate(origin, PrincipalId.Local, Label.Public)(using TestTx.fake)
+      val _ = conversations.findOrCreate(origin, Account.Local, Label.Public)(using TestTx.fake)
     }
     val periods = new InMemoryPeriodStore(entries)
     val lifecycle = new InMemoryLifecycleStore
@@ -237,8 +237,8 @@ object CloseFixtures {
       periods.openFor(c, next.turnSeq, at(minutes))
       val id = EntryId(s"heard:$text")
       entries.insert(Entry(id, c, next.turnSeq, None, next.seq, Payload.Heard(text), at(minutes)))
-      val by = PrincipalId(s"test:$name")
-      principals.enroll(by, name)
+      val by = TestAccounts.account(s"test:$name")
+      principals.name(by, name)
       principals.authored(id, by)
       TurnRef(c, next.turnSeq)
     }

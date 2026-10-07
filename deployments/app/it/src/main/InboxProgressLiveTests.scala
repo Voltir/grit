@@ -1,5 +1,6 @@
 package grit.app.main
 
+import grit.core.identity.Account
 import grit.core.inbox.Progress
 import grit.core.message.AssistantBlock
 import grit.dbos.engine.LiveEngine
@@ -22,7 +23,7 @@ object InboxProgressLiveTests extends TestSuite {
           val conversation =
             engine.conversation(
               grit.core.store.Origin.Task("unseen", "c"),
-              grit.core.id.PrincipalId.Grit
+              Account.Grit
             )
           conversation.map(c =>
             engine.inbox.progress(grit.core.id.TurnRef(c, grit.core.id.TurnSeq(7)))

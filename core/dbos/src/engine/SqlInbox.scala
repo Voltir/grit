@@ -12,7 +12,6 @@ import grit.core.id.{
   ConversationId,
   EntryId,
   JobName,
-  PrincipalId,
   ScheduleId,
   SourceId,
   ToolCallId,
@@ -20,6 +19,7 @@ import grit.core.id.{
   TurnRef,
   WorkflowId
 }
+import grit.core.identity.Account
 import grit.core.inbox.{InboundId, Inbox, InboxError, Progress, Slotted}
 import grit.core.job.{InFlight, LastRun, Slot, Starting}
 import grit.core.message.Message
@@ -37,7 +37,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.visibility.{Label, Visibility}
-import grit.dbos.sql.{SqlEntryStore, SqlSchedules}
+import grit.dbos.sql.{SqlAccounts, SqlEntryStore, SqlSchedules}
 import grit.dbos.workflow.{Runs, Stitches, Triages, Turns}
 
 import dev.dbos.transact.exceptions.DBOSNonExistentWorkflowException
@@ -70,7 +70,7 @@ final class SqlInbox(
       origin: Origin,
       source: SourceId,
       message: Message.User,
-      by: PrincipalId
+      by: Account
   ): Either[InboxError, TurnRef] =
     inTransaction {
       conversations
@@ -118,7 +118,7 @@ final class SqlInbox(
       origin: Origin,
       source: SourceId,
       text: String,
-      by: PrincipalId,
+      by: Account,
       at: Instant,
       reach: Reach
   ): Either[InboxError, Unit] =
@@ -187,7 +187,7 @@ final class SqlInbox(
       origin: Origin,
       source: SourceId,
       payload: Payload,
-      by: PrincipalId,
+      by: Account,
       label: Label,
       at: Instant,
       capped: Boolean
@@ -229,7 +229,7 @@ final class SqlInbox(
       text: String,
       at: Instant,
       request: CallSlot,
-      by: PrincipalId
+      by: Account
   ): Either[InboxError, Boolean] =
     inTransaction {
       conversations.find(origin).flatMap {
@@ -459,7 +459,7 @@ final class SqlInbox(
       slot.origin(job),
       Slot.source(version),
       Payload.Message(slot.opening(job)),
-      PrincipalId.Grit,
+      Account.Grit,
       label,
       at,
       capped = false
@@ -549,14 +549,14 @@ private[dbos] object SqlInbox {
 
   /** An ingested message's entry id: deterministic, so a redelivery finds it. */
   /** Records that `by` wrote the inbound entry `id`. */
-  private def authored(id: EntryId, by: PrincipalId)(using tx: Tx^): Either[StoreError, Unit] = {
+  private def authored(id: EntryId, by: Account)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     SqlEntryStore.attempt {
       Using.resource(
         conn.prepareStatement("INSERT INTO grit.inbound (entry_id, author) VALUES (?, ?)")
       ) { ps =>
         ps.setString(1, EntryId.value(id))
-        ps.setString(2, PrincipalId.value(by))
+        ps.setString(2, SqlAccounts.written(by))
         ps.executeUpdate()
         ()
       }

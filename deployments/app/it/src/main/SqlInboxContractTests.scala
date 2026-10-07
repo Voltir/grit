@@ -3,7 +3,8 @@ package grit.app.main
 import java.time.Instant
 import java.util.UUID
 
-import grit.core.id.{CallSlot, CloseRef, ConversationId, EntryId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.id.{CallSlot, CloseRef, ConversationId, EntryId, TurnRef, TurnSeq}
+import grit.core.identity.Account
 import grit.core.inbox.{Inbox, InboxContract}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
@@ -110,9 +111,9 @@ object SqlInboxContractTests extends InboxContract {
               )
           )
           .fold(e => sys.error(e.toString), _ => ())
-      def enroll(id: PrincipalId, name: String): Unit =
+      def name(account: Account, name: String): Unit =
         engine.jot
-          .write(Subject.Public)(engine.principals.enroll(id, name))
+          .write(Subject.Public)(engine.principals.name(account, name))
           .fold(e => sys.error(e.toString), identity)
       def reached(origin: Origin): Vector[Option[Reach]] =
         engine.db
@@ -151,7 +152,7 @@ object SqlInboxContractTests extends InboxContract {
           dated,
           periods,
           close,
-          enroll,
+          name,
           reached,
           postedBy,
           (declared, now) =>

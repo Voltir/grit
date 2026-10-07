@@ -4,7 +4,8 @@ import java.time.Instant
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId, ShadowName, SourceId}
+import grit.core.id.{ConversationId, EntryId, ShadowName, SourceId}
+import grit.core.identity.TestAccounts
 import grit.core.inbox.InboundId
 import grit.core.review.{Candidate, Considered, Reason, Settled, Verdict}
 import grit.core.speech.Outcome
@@ -24,7 +25,7 @@ object PullVerdictsTests extends TestSuite {
 
   private val At = Instant.parse("2026-10-03T09:00:00Z")
   private val shadow = ShadowName.of("triage-v2").fold(sys.error, identity)
-  private val rater = PrincipalId("slack:T1/U1")
+  private val rater = TestAccounts.account("slack:T1/U1")
   private val reviews = new SqlReviews
 
   private def right[A](e: Either[StoreError, A]): A =

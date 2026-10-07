@@ -20,6 +20,7 @@ import grit.core.id.{
   ToolCallId,
   WorkflowId
 }
+import grit.core.identity.Account
 import grit.core.job.{InMemorySchedules, OwnJobs, ScheduleDesk}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseOrdinal, CloseReason, Probability, TestClosings}
@@ -100,7 +101,7 @@ object PluginLiveTests extends TestSuite {
           ),
           SourceId(s"m$i"),
           Message.User(s"message $i"),
-          grit.core.id.PrincipalId.Local
+          Account.Local
         )
         .fold(e => sys.error(s"$e"), identity)
       val closing = TestClosings.prose(s"Period $i. More.")

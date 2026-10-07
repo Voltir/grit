@@ -1,7 +1,8 @@
 package grit.job.replay
 
 import grit.core.durable.{History, InMemoryDurable}
-import grit.core.id.{PrincipalId, SourceId, WorkflowId}
+import grit.core.id.{SourceId, WorkflowId}
+import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.store.Origin
 import grit.job.run.Run
@@ -63,7 +64,7 @@ object RecordJobHistories {
             Origin.Task("remind", "main"),
             SourceId("v1"),
             Message.User("go"),
-            PrincipalId.Grit
+            Account.Grit
           )
           .fold(e => sys.error(s"$e"), identity)
         d.run(turn.workflowId)(Run.body(w.env(), jobs(1)))

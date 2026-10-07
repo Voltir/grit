@@ -14,12 +14,12 @@ import grit.core.id.{
   EntryId,
   PeriodRef,
   PeriodSeq,
-  PrincipalId,
   SourceId,
   TurnRef,
   TurnSeq,
   WorkflowId
 }
+import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.period.{LifecycleSettings, Probability, Windows}
 import grit.core.place.Locality
@@ -47,7 +47,7 @@ object CloseLiveTests extends TestSuite {
 
   private def ingested(engine: Engine^, origin: Origin, text: String): TurnRef =
     engine.inbox
-      .ingest(origin, SourceId(text), Message.User(text), PrincipalId.Local)
+      .ingest(origin, SourceId(text), Message.User(text), Account.Local)
       .fold(e => sys.error(s"inbox: $e"), identity)
 
   /** Asks `done` until it holds, for up to 30 s, and whether it did. */
@@ -241,7 +241,7 @@ object CloseLiveTests extends TestSuite {
           here,
           SourceId("m1"),
           "standup moves",
-          PrincipalId.Local,
+          Account.Local,
           said,
           grit.core.speech.Reach.Nowhere
         ) ==>

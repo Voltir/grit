@@ -13,7 +13,8 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{CloseRef, ConversationId, DocKey, EntryId, PluginName, PrincipalId}
+import grit.core.id.{CloseRef, ConversationId, DocKey, EntryId, PluginName}
+import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
 import grit.core.place.{Namespace, Place}
@@ -141,7 +142,7 @@ object PostingTests extends TestSuite {
     val conversations = new InMemoryConversationStore
     private def made(origin: Origin, label: Label): ConversationId =
       conversations
-        .findOrCreate(origin, PrincipalId.Local, label)(using TestTx.fake)
+        .findOrCreate(origin, Account.Local, label)(using TestTx.fake)
         .fold(e => sys.error(s"$e"), _.id)
     assert(made(Origin.Task("posting", "public"), Label.Public) == c)
     val trial: ConversationId = made(Origin.Slack("T1", "C9", "1.0"), TestLabels.Trial)

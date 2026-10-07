@@ -4,7 +4,8 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.id.{CloseRef, PrincipalId, SourceId, TurnRef, TurnSeq}
+import grit.core.id.{CloseRef, SourceId, TurnRef, TurnSeq}
+import grit.core.identity.Account
 import grit.core.message.Tokens
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.{CloseReason, LifecycleSettings, TestClosings}
@@ -105,7 +106,7 @@ object UnpromptedLiveTests extends TestSuite {
       origin,
       SourceId(s"$thread:0"),
       "morning",
-      PrincipalId.Local,
+      Account.Local,
       now,
       Reach.Nowhere
     ) ==>
@@ -129,7 +130,7 @@ object UnpromptedLiveTests extends TestSuite {
       origin,
       SourceId(s"$thread:1"),
       s"where does the refi page's byline go? ${if (named) "" else "~0.4 "}~back:asks",
-      PrincipalId.Local,
+      Account.Local,
       now,
       Reach(Some(s"C1/$thread/$thread:1"), Set.empty)
     ) ==> Right(())

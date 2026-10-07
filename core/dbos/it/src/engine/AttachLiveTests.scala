@@ -6,6 +6,7 @@ import scala.util.{Success, Try}
 
 import grit.core.durable.Durable
 import grit.core.id.{PrincipalId, SourceId, WorkflowId}
+import grit.core.identity.Account
 import grit.core.message.Message
 import grit.core.place.{Directory, Place}
 import grit.core.store.Origin
@@ -49,7 +50,7 @@ object AttachLiveTests extends TestSuite {
             Origin.Task("attach", "send"),
             SourceId("m1"),
             Message.User("hi"),
-            PrincipalId.Local
+            Account.Local
           )
           _ <- link.inbox.startTurn(t)
         } yield t).fold(e => sys.error(s"$e"), identity)
@@ -89,7 +90,7 @@ object AttachLiveTests extends TestSuite {
             Origin.Task("attach", "stream"),
             SourceId("m1"),
             Message.User("hi"),
-            PrincipalId.Local
+            Account.Local
           )
           .fold(e => sys.error(s"$e"), identity)
         Try(link.stream(turn, "reply").toVector) ==> Success(Vector())

@@ -6,7 +6,8 @@ import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
 import grit.core.classify.Answer
-import grit.core.id.{PrincipalId, QuestionName, ShadowName}
+import grit.core.id.{QuestionName, ShadowName}
+import grit.core.identity.TestAccounts
 import grit.core.message.Usage
 import grit.core.period.Probability
 import grit.core.review.{Reason, Verdict}
@@ -86,7 +87,7 @@ object JudgementTests extends TestSuite {
   }
 
   private def rated(s: ShadowName, r: Reason, v: Verdict): Rated =
-    Rated(s, r, v, PrincipalId("slack:T1/U1"), At)
+    Rated(s, r, v, TestAccounts.account("slack:T1/U1"), At)
 
   val tests = Tests {
     test(
