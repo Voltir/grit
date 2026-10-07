@@ -9,7 +9,8 @@ import grit.core.id.{ConversationId, EntryId, QuestionName, WorkflowId}
 import grit.core.period.Probability
 import grit.core.stitch.{Offered, Tuning}
 import grit.core.triage.{Kind, Tags}
-import grit.dbos.engine.{Build, Reader}
+import grit.dbos.engine.Build
+import grit.dbos.internal.Reader
 
 /** One heard message of a capture, text-free: who it is (`id`), where it was in the database
   * captured (`entry`, `conversation`), when it was `tagged` and by which triage, what triage

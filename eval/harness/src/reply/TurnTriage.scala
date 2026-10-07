@@ -7,7 +7,7 @@ import grit.core.id.{QuestionName, TurnRef, WorkflowId}
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.triage.Corpora
 import grit.core.visibility.Subject
-import grit.dbos.engine.Reader
+import grit.dbos.internal.Reader
 import grit.eval.harness.capture.{Digest, TurnCase}
 import grit.eval.harness.jev.{Asking, Posed}
 import grit.eval.harness.log.Weights

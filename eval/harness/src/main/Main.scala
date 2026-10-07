@@ -22,7 +22,8 @@ import grit.core.provider.Provider
 import grit.core.tool.ToolSet
 import grit.core.triage.Corpora
 import grit.core.visibility.Visibility
-import grit.dbos.engine.{Build, Engine, Reader}
+import grit.dbos.engine.{Build, Engine}
+import grit.dbos.internal.Reader
 import grit.dbos.sql.DbConfig
 import grit.eval.harness.capture.{
   Capture,

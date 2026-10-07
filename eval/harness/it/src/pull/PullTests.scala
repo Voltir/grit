@@ -16,7 +16,8 @@ import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin, StoreError}
 import grit.core.triage.{Corpora, ShadowAnswers, Shadowed, Shadowing}
 import grit.core.visibility.Visibility
-import grit.dbos.engine.{Build, LiveEngine, Reader}
+import grit.dbos.engine.{Build, LiveEngine}
+import grit.dbos.internal.Reader
 import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.eval.harness.capture.{Capture, Captured, CaseId, Digest, Dump}
 import grit.eval.harness.log.{Outcome, Row, Weights}

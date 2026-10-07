@@ -8,7 +8,8 @@ import grit.core.message.Tokens
 import grit.core.period.Probability
 import grit.core.stitch.{Offered, Tuning}
 import grit.core.triage.Kind
-import grit.dbos.engine.{Build, Reader}
+import grit.dbos.engine.Build
+import grit.dbos.internal.Reader
 
 import Fields.{each, opt}
 

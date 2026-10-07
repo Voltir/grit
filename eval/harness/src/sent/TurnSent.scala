@@ -13,7 +13,7 @@ import grit.core.stitch.Placed
 import grit.core.store.{Entry, Payload, StoreError, Tx}
 import grit.core.tool.{ToolSet, ToolSetId}
 import grit.core.triage.Tags
-import grit.dbos.engine.Reader
+import grit.dbos.internal.Reader
 import grit.eval.harness.capture.{Capture, Spent}
 import grit.turn.{Turn, TurnJudge, TurnOffer, TurnRecord}
 

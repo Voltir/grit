@@ -8,6 +8,7 @@ import grit.core.id.{PluginName, WorkflowId}
 import grit.core.plugin.{Documents, Plugin}
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
 import grit.core.visibility.Visibility
+import grit.dbos.internal.Reader
 import grit.dbos.sql.{LiveDb, SqlDocuments, SqlTombstones, TestPostgres}
 
 import utest.*

@@ -14,6 +14,7 @@ import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.triage.Tags
 import grit.core.visibility.{Subject, Visibility}
+import grit.dbos.internal.Reader
 import grit.dbos.sql.{LiveDb, SqlEntryStore, SqlModelProfileStore, TestPostgres}
 
 import utest.*

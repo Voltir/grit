@@ -1,4 +1,4 @@
-package grit.dbos.engine
+package grit.dbos.internal
 
 import java.time.Instant
 
@@ -12,7 +12,6 @@ import grit.core.id.WorkflowId
 import grit.core.recipe.RoomReads
 import grit.core.review.ReviewStore
 import grit.core.stitch.StitchStore
-import grit.core.store.Reads
 import grit.core.store.{
   ConversationStore,
   Db,
@@ -23,12 +22,15 @@ import grit.core.store.{
   PeriodStore,
   Principals,
   PromptStore,
+  Reads,
   StoreError,
+  Tx,
   UsageLedger
 }
 import grit.core.tool.ToolSets
 import grit.core.triage.{TriageShadows, TriageStore}
 import grit.core.visibility.{Subject, Visibility}
+import grit.dbos.engine.Build
 import grit.dbos.sql.{
   DbConfig,
   Opener,
@@ -138,7 +140,10 @@ object Reader {
       extends Reader {
     private val sql = new SqlDb(ds, opener)
     val db: Db = sql
-    val all: Reads = sql.all
+    val all: Reads = new Reads {
+      def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+        sql.transaction(conn => Right(Tx.open(conn, opener.maintenance)))(body)
+    }
     val entries: EntryStore = new SqlEntryStore()
     val conversations: ConversationStore = new SqlConversationStore()
     val periods: PeriodStore = new SqlPeriodStore(entries)

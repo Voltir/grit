@@ -48,7 +48,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.visibility.Label
-import grit.dbos.engine.Reader
+import grit.dbos.internal.Reader
 
 /** A restored database's stores as they stood at `at`, for an assembler to read a window from
   * as it would have then. Each read returns only the rows created before `at`: entries (and

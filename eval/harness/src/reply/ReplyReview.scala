@@ -9,7 +9,7 @@ import grit.core.context.Shown
 import grit.core.id.{EntryId, EntrySeq, TurnRef, WorkflowId}
 import grit.core.message.{AssistantBlock, Message, Tokens}
 import grit.core.store.{Entry, Nearby, Payload, Speakers, StoreError}
-import grit.dbos.engine.Reader
+import grit.dbos.internal.Reader
 import grit.eval.harness.capture.{CaseId, Drafted, Ended, Fields, Part, Said, TurnCase}
 import grit.eval.harness.label.{Found, Locator, ReplyGuide, ReplyLabel, ReplyLabels}
 import grit.turn.{Turn, TurnOffer}

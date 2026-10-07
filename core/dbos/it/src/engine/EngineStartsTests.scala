@@ -1,6 +1,7 @@
 package grit.dbos.engine
 
 import grit.core.store.StoreError
+import grit.dbos.internal.EngineStarts
 import grit.dbos.sql.{LiveDb, TestPostgres}
 
 import utest.*

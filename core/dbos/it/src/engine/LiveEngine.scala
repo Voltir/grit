@@ -8,6 +8,7 @@ import grit.core.id.WorkflowId
 import grit.core.spend.Budget
 import grit.core.store.StoreError
 import grit.core.visibility.Visibility
+import grit.dbos.internal.Reader
 import grit.dbos.sql.DbConfig
 
 /** An engine on a live test database, for suites that need one. */

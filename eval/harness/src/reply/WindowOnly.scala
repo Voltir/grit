@@ -8,7 +8,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason}
 import grit.core.period.Probability
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.triage.{Bound, Gate, Reading, Tags}
-import grit.dbos.engine.Reader
+import grit.dbos.internal.Reader
 import grit.eval.harness.capture.Capture
 
 /** A heard message live triage read as asking (its `gap` question's most weighted key `asks`,

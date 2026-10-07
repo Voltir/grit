@@ -10,7 +10,8 @@ import grit.core.review.{Candidate, Considered, Reason, Settled, Verdict}
 import grit.core.speech.Outcome
 import grit.core.store.{Origin, StoreError}
 import grit.core.visibility.Visibility
-import grit.dbos.engine.{LiveEngine, Reader}
+import grit.dbos.engine.LiveEngine
+import grit.dbos.internal.Reader
 import grit.dbos.sql.{LiveDb, SqlReviews, TestPostgres}
 import grit.eval.harness.capture.CaseId
 import grit.eval.harness.label.{Rated, Verdicts}

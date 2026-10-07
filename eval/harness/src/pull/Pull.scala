@@ -11,7 +11,8 @@ import grit.core.message.Usage
 import grit.core.review.Considered
 import grit.core.store.{Focus, Origin, Position, StoreError, Tx}
 import grit.core.triage.{Corpora, ShadowAnswers, Shadowed, Tags, TriageStore}
-import grit.dbos.engine.{Build, Reader}
+import grit.dbos.engine.Build
+import grit.dbos.internal.Reader
 import grit.eval.harness.capture.{Case, CaseId, Digest, Failure}
 import grit.eval.harness.label.{Rated, Verdicts}
 import grit.eval.harness.log.{CacheKey, Footer, Header, Log, Outcome, Row, Suite, Weights}

@@ -23,7 +23,8 @@ import grit.core.store.{Focus, Origin}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.core.triage.Corpora
 import grit.core.visibility.{Subject, Visibility}
-import grit.dbos.engine.{Engine, LiveEngine, Reader}
+import grit.dbos.engine.{Engine, LiveEngine}
+import grit.dbos.internal.Reader
 import grit.dbos.sql.TestPostgres
 import grit.eval.harness.label.Verdicts
 import grit.lifecycle.stitch.{Stitch, StitchEnv}

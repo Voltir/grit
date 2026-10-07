@@ -11,7 +11,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.stitch.Tuning
 import grit.core.store.{Db, Nearby, Payload, StoreError}
-import grit.dbos.engine.Reader
+import grit.dbos.internal.Reader
 import grit.eval.harness.capture.Capture
 import grit.turn.Turn
 

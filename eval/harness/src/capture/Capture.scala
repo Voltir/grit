@@ -7,7 +7,8 @@ import grit.core.stitch.{Placed, StitchReads, Stitching, Tuning}
 import grit.core.store.{Origin, StoreError}
 import grit.core.triage.{Corpora, TriageStore}
 import grit.core.visibility.Subject
-import grit.dbos.engine.{Build, Reader}
+import grit.dbos.engine.Build
+import grit.dbos.internal.Reader
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
 
 /** A capture: its manifest, and its cases in their order. */

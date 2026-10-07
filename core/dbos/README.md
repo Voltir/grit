@@ -36,8 +36,7 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   `Link.attach` another for a process refused the lock), `EngineLock` (the database's one engine, ADR 0015: a
   session advisory lock, its `grit.engines` row and heartbeat), `Build` (the grit build this process runs, from the `grit/build.properties`
   Mill writes into this module's jar; each engine start is recorded with it in
-  `grit.engine_starts`), `Reader` (a database's stores, engine starts and DBOS's workflow
-  records read without an engine or its lock, on sessions Postgres keeps read-only), `Engine` (what `grit.app`
+  `grit.engine_starts`), `Engine` (what `grit.app`
   starts under the lock, refused as `Unopened` when the lock is held or its deployment drops a
   compartment the database ran under; closing it, or losing the lock, stops the sweep, then DBOS, waits
   for running bodies, and releases the lock last; `every` runs a pass on a thread of its own, one
@@ -63,6 +62,11 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   0014), a document version's by its plugin's declared retention: the workflows it names,
   unless one is still queued or running, then its rows.
   `Transact` holds the sweep's short transactions. ← `sql`, `workflow`
+- **`internal`** — what `grit.dbos` lends to the eval harness alone (ADR 0030; rule 1h in
+  `enola-intent.yaml`): `Reader` (a database's stores, engine starts and DBOS's workflow
+  records read without an engine or its lock, on sessions Postgres keeps read-only, and `all`,
+  which reads every row whatever its label, for capturing a database whole), and
+  `EngineStarts` (`grit.engine_starts` read back). ← `sql`, `workflow`, `engine`
 
 `sql` and `workflow` are siblings and never name each other. No source file sits at the
 root, and `scripts/enola-law.sh` fails on a new import cycle.

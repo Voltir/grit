@@ -5,7 +5,8 @@ import grit.core.document.DocWeight
 import grit.core.id.TurnRef
 import grit.core.message.Tokens
 import grit.core.visibility.Visibility
-import grit.dbos.engine.{LiveEngine, Reader}
+import grit.dbos.engine.LiveEngine
+import grit.dbos.internal.Reader
 import grit.dbos.sql.TestPostgres
 import grit.eval.harness.label.Locator
 import grit.eval.{Case, Layout, Load, Variant}

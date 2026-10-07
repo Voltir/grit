@@ -7,7 +7,7 @@ import grit.core.stitch.{Placed, StitchReads, Stitching, Tuning}
 import grit.core.store.{StoreError, Tx}
 import grit.core.triage.{Corpora, Tags}
 import grit.core.visibility.Subject
-import grit.dbos.engine.Reader
+import grit.dbos.internal.Reader
 import grit.eval.harness.capture.Capture
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
 

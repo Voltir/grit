@@ -1,11 +1,12 @@
-package grit.dbos.engine
+package grit.dbos.internal
 
 import scala.util.Using
 
 import grit.core.store.{StoreError, Tx}
+import grit.dbos.engine.Build
 import grit.dbos.sql.SqlEntryStore
 
-/** `grit.engine_starts`, read back: [[EngineLock]] writes it. */
+/** `grit.engine_starts`, read back: [[grit.dbos.engine.EngineLock]] writes it. */
 private[dbos] object EngineStarts {
 
   /** Every engine start recorded, oldest first. */

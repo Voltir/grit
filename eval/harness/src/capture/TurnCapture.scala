@@ -12,7 +12,8 @@ import grit.core.provider.{ModelRequest, ToolSchema}
 import grit.core.speech.Outcome
 import grit.core.store.{Entry, Nearby, Origin, Payload, Position, Speakers, StoreError, Tx}
 import grit.core.tool.{ToolName, ToolSet}
-import grit.dbos.engine.{Build, Reader}
+import grit.dbos.engine.Build
+import grit.dbos.internal.Reader
 import grit.turn.{Turn, TurnFailure, TurnJudge, TurnOffer, TurnRecord}
 
 /** The turns a restored database recorded, read through `grit.dbos`'s `Reader` and the turn's

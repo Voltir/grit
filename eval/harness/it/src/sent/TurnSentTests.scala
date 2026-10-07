@@ -21,7 +21,8 @@ import grit.core.store.Origin
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.core.triage.Weighing
 import grit.core.visibility.Visibility
-import grit.dbos.engine.{Engine, LiveEngine, Reader}
+import grit.dbos.engine.{Engine, LiveEngine}
+import grit.dbos.internal.Reader
 import grit.dbos.sql.TestPostgres
 import grit.models.{StubModels, StubProvider}
 import grit.turn.{

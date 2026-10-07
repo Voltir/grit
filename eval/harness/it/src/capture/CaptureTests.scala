@@ -12,7 +12,8 @@ import grit.core.speech.{Reach, Speaking}
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Origin, StoreError}
 import grit.core.visibility.Visibility
-import grit.dbos.engine.{Build, LiveEngine, Reader}
+import grit.dbos.engine.{Build, LiveEngine}
+import grit.dbos.internal.Reader
 import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 import grit.lifecycle.triage.{Triage, TriageEnv, TriageRecords, TriageSpeech}

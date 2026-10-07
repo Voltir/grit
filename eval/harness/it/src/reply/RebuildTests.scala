@@ -33,7 +33,8 @@ import grit.core.store.{Nearby, Origin}
 import grit.core.tool.Toolbox
 import grit.core.triage.Corpora
 import grit.core.visibility.{Subject, Visibility}
-import grit.dbos.engine.{Engine, LiveEngine, Reader}
+import grit.dbos.engine.{Engine, LiveEngine}
+import grit.dbos.internal.Reader
 import grit.dbos.sql.TestPostgres
 import grit.eval.harness.capture.{Digest, Dump, KnowledgeJson, TurnCapture}
 import grit.eval.harness.jev.{Asking, Budget}
