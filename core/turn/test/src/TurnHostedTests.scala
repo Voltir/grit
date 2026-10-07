@@ -12,6 +12,7 @@ import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.Origin
 import grit.core.store.{InMemoryEntryStore, InMemoryToolSets}
 import grit.core.tool.{CallError, Hosted, Outcome, Retry, ToolName, ToolSet, Writes}
+import grit.core.visibility.{Clearance, Label, Level}
 
 import utest.*
 
@@ -154,6 +155,19 @@ object TurnHostedTests extends TestSuite {
       reached = Vector(there)
     )(id)
 
+  /** A durable whose every transaction is the fixture's TUI room, labelled confidential
+    * {trial}, for an asker cleared at `asker`, under a deployment placing elsewhere as
+    * `elsewhereAt` says and nothing else but the room.
+    */
+  private def labelledRoom(asker: Label, elsewhereAt: Option[Label]): InMemoryDurable = {
+    val room = Place.of(checkout)
+    val roomLabel = Label.at(Level.Confidential, trial)
+    new InMemoryDurable(
+      resolve = _ => Clearance.inRoom(room, roomLabel, asker),
+      visibility = labelling(Vector(room -> roomLabel) ++ elsewhereAt.map(elsewhere.place -> _))
+    )
+  }
+
   val tests = Tests {
     test("a round's free hosted calls are sent in one step before the first is waited on") {
       val entries = new InMemoryEntryStore
@@ -284,6 +298,43 @@ object TurnHostedTests extends TestSuite {
       there.sent.map(q => (q.workspace, q.destination, q.arguments)) ==> Vector(
         (elsewhere.place, Some(general), ujson.Obj("text" -> "hi"))
       )
+    }
+
+    test(
+      "in a labelled room, a reached tool at an unplaced service is not offered, and a call of it sends no request"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "post it")
+      val durable = labelledRoom(Label.at(Level.Internal), None)
+      val edge = served(durable, _ => Serve.Never)
+      val there = atElsewhere(edge.edges, durable, _ => Serve.Now(Outcome.Done("posted")))
+      val provider = model(("t1", "post_x", "hi"))
+      durable.run(turn.workflowId)(reachingBody(entries, provider, edge, there)) ==> Done
+      results(provider).map(r => (r.content, r.isError)) ==>
+        Vector(("There is no tool named `post_x`; the tools are `fetch`, `prod`.", true))
+      durable.recordedSteps(turn.workflowId).filter(_.startsWith("dispatch")) ==> Vector.empty
+      there.sent ==> Vector.empty
+    }
+
+    test(
+      "in a labelled room, a writing tool whose only place is unmapped is not offered, and a call of it sends no request"
+    ) {
+      val entries = new InMemoryEntryStore
+      val turn = say(entries, "post it")
+      val durable = labelledRoom(Label.at(Level.Internal), Some(Label.at(Level.Internal)))
+      val edge = served(durable, _ => Serve.Never)
+      val there = atElsewhere(
+        edge.edges,
+        durable,
+        _ => Serve.Now(Outcome.Done("posted")),
+        Some(toGeneral)
+      )
+      val provider = posting(ujson.Obj("to" -> "general", "text" -> "hi"))
+      durable.run(turn.workflowId)(reachingBody(entries, provider, edge, there)) ==> Done
+      results(provider).map(r => (r.content, r.isError)) ==>
+        Vector(("There is no tool named `post_x`; the tools are `fetch`, `prod`.", true))
+      durable.recordedSteps(turn.workflowId).filter(_.startsWith("dispatch")) ==> Vector.empty
+      there.sent ==> Vector.empty
     }
 
     test("a call to a reached tool when no edge serves that service is answered so, unsent") {

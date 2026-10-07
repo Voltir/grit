@@ -31,7 +31,8 @@ import grit.core.store.{
   InMemoryEntryStore,
   InMemoryVoiceStore,
   Origin,
-  Payload
+  Payload,
+  Tx
 }
 import grit.core.tool.{
   Args,
@@ -46,10 +47,11 @@ import grit.core.tool.{
   ToolName,
   ToolSet,
   ToolSpec,
-  Toolbox
+  Toolbox,
+  Writes
 }
 import grit.core.triage.{Bound as TriageBound, Corpora, Corpus, Gate as TriageGate, Reading, Tags}
-import grit.core.visibility.Label
+import grit.core.visibility.{Clearance, Label, Level, TestLabels, Trust, Visibility}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -332,7 +334,238 @@ object TurnOfferTests extends TestSuite {
       )
       .render
 
+  private val confidentialTrial = Label.at(Level.Confidential, TurnFixtures.trial)
+  private val internal = Label.at(Level.Internal)
+  private val internalFinance = Label.at(Level.Internal, TurnFixtures.finance)
+
+  private def service(name: String): Service =
+    Service.of(name).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  private val vault = service("vault")
+  private val attic = service("attic")
+  private val trialRoom = TestLabels.place("slack:T1/C-trial")
+  private val general = TestLabels.place("slack:T1/C-general")
+  private val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /* The deployment: a trial room and a public one to post in; github and elsewhere contain
+   * internal {}, vault restricted {}, attic is unplaced; github is trusted with confidential
+   * {trial}, elsewhere with nothing declared. */
+  private val labelled: Visibility = TurnFixtures.labelling(
+    Vector(
+      slack.place -> confidentialTrial,
+      Place.of(dir) -> confidentialTrial,
+      trialRoom -> confidentialTrial,
+      general -> Label.Public,
+      github.place -> internal,
+      elsewhere.place -> internal,
+      vault.place -> Label.at(Level.Restricted)
+    ),
+    Vector(Trust(github, confidentialTrial))
+  )
+
+  /** `post_x`, writing to `trial` (at [[trialRoom]]) or `general`; `post_y`, to `general`. */
+  private def writing(name: String, to: VectorMap[String, Place]): ToolSet.Entry =
+    advert(name).copy(writes =
+      Some(
+        Writes.of(to, p => p, "Where.").fold(e => throw new java.lang.AssertionError(e), _.placed)
+      )
+    )
+  private val postX = writing("post_x", VectorMap("trial" -> trialRoom, "general" -> general))
+  private val postY = writing("post_y", VectorMap("general" -> general))
+
+  /** The recorded offer of `origin`'s first turn, a person's message, its set and its rendered
+    * prompt, decided in `tx`: linked by `worksIn` and `reaches`, each place of `adverts`
+    * advertising its entries; the engine has `about` of its own and describes `hosted`.
+    */
+  private def offeredIn(
+      tx: Tx,
+      origin: Origin,
+      adverts: Vector[(Place, Vector[ToolSet.Entry])],
+      worksIn: Vector[WorksIn] = Vector.empty,
+      reaches: Vector[Reaches] = Vector.empty,
+      hosted: Vector[Tool.Offered] = Vector(described("fetch"))
+  ): (TurnOffer.Recorded, ToolSet, String) = {
+    given Tx = tx
+    val conversations = new InMemoryConversationStore
+    val c: ConversationId = conversations
+      .findOrCreate(origin, PrincipalId.Local, Label.Public)
+      .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
+    val edges = new InMemoryEdges
+    adverts.foreach { (at: Place, entries: Vector[ToolSet.Entry]) =>
+      val set =
+        ToolSet.of(entries).fold(d => throw new java.lang.AssertionError(d.toString), identity)
+      ToolSets.keep(set)
+      edges.advertiseAs(edges.register(Set(at)), at, set, Vector.empty)
+    }
+    val hosting =
+      TurnHosting(conversations, Prompts, ToolSets, edges, edges, new InMemoryVoiceStore)
+    val tooling = TurnTooling[{}](
+      box(tool(ToolName("about"), asks = false)),
+      Toolbox.Empty,
+      hosted,
+      new FakeJot,
+      budget(5),
+      worksIn = worksIn,
+      reaches = reaches
+    )
+    val log = new InMemoryEntryStore
+    log.insert(
+      Entry(
+        EntryId("root"),
+        c,
+        TurnSeq.First,
+        None,
+        EntrySeq(0),
+        Payload.Message(Message.User("go")),
+        Instant.EPOCH
+      )
+    )
+    TurnOffer
+      .decide(hosting, log, tooling, TurnRef(c, TurnSeq.First), None, answering = false)
+      .flatMap(r =>
+        (for {
+          set <- ToolSets.get(r.tools)
+          prompt <- Prompts.prompt(r.prompt)
+        } yield (r, set, prompt.render)).left.map(e => TurnFailure.Store(e.toString))
+      )
+      .fold(f => throw new java.lang.AssertionError(f.toString), identity)
+  }
+
+  private val everyTeam = Place.under(grit.core.place.Namespace.Slack, Vector.empty)
+
+  /** A Slack thread's turn working in github, which advertises `github_search` and `fetch`,
+    * and reaching elsewhere, which advertises `search_x`, [[postX]] and [[postY]], and vault
+    * and attic, which advertise `vault_read` and `attic_read`, decided in `tx`.
+    */
+  private def inSlack(tx: Tx): (TurnOffer.Recorded, ToolSet, String) =
+    offeredIn(
+      tx,
+      slack,
+      Vector(
+        github.place -> Vector(advert("github_search"), advert("fetch")),
+        elsewhere.place -> Vector(advert("search_x"), postX, postY),
+        vault.place -> Vector(advert("vault_read")),
+        attic.place -> Vector(advert("attic_read"))
+      ),
+      Vector(WorksIn(everyTeam, github)),
+      Vector(Reaches(everyTeam, elsewhere), Reaches(everyTeam, vault), Reaches(everyTeam, attic))
+    )
+
+  /** In the confidential trial thread, for an asker cleared at `asker`. */
+  private def inTrial(asker: Label): Tx =
+    TestTx.fake(Clearance.inRoom(slack.place, confidentialTrial, asker), labelled)
+
+  private def namesOf(set: ToolSet): Vector[String] = set.tools.map(t => ToolName.value(t.name))
+
+  private def writesOf(set: ToolSet, name: String): Option[Vector[String]] =
+    set.named(named(name)).flatMap(_.writes).map(_.to.keys.toVector)
+
   val tests = Tests {
+
+    test(
+      "in a confidential room, a writing tool is offered only the places the room writes to, and not at all when it writes to none"
+    ) {
+      val (_, set, _) = inSlack(inTrial(internal))
+      writesOf(set, "post_x") ==> Some(Vector("trial"))
+      assert(set.named(named("post_y")).isEmpty)
+    }
+
+    test(
+      "a reached service not trusted with the room's label is offered its writing tools but none that declare no destination"
+    ) {
+      val (recorded, set, prompt) = inSlack(inTrial(internal))
+      recorded.reached ==> Map(named("post_x") -> elsewhere.place)
+      assert(set.named(named("search_x")).isEmpty, prompt.contains("You also reach elsewhere"))
+    }
+
+    test(
+      "the workspace's service, trusted with the room's label and read by the asker, offers all its tools"
+    ) {
+      val (recorded, set, _) = inSlack(inTrial(internal))
+      namesOf(set).take(2) ==> Vector("fetch", "github_search")
+      recorded.advertised ==> Vector(named("github_search"))
+    }
+
+    test(
+      "a workspace service not trusted with the room's label offers none of its tools that declare no destination, the engine's described ones included"
+    ) {
+      val tx = TestTx.fake(Clearance.inRoom(slack.place, internalFinance, internal), labelled)
+      val (recorded, set, _) = inSlack(tx)
+      namesOf(set) ==> Vector("about")
+      recorded.advertised ==> Vector.empty
+    }
+
+    test(
+      "a service above the asker's clearance, or unplaced, offers nothing and is not named in the prompt; a workspace so is as if no edge served it"
+    ) {
+      val (recorded, set, prompt) = inSlack(inTrial(Label.Public))
+      namesOf(set) ==> Vector("about")
+      recorded.advertised ==> Vector.empty
+      recorded.reached ==> Map.empty
+      assert(!prompt.contains("vault"), !prompt.contains("attic"), !prompt.contains("elsewhere"))
+      assert(prompt.contains(TurnPrompt.reach(Some(github.place), ToolSet.Empty).text))
+    }
+
+    test(
+      "an engine-described writing tool is offered only where the room writes to all its places, never narrowed"
+    ) {
+      def describedWriting(name: String, to: VectorMap[String, Place]): Tool.Offered =
+        Hosted
+          .writing(
+            ToolSpec(
+              named(name),
+              s"Does $name.",
+              Args.of((text = Field.text("What."))).map(_.text)
+            ),
+            Gate.Free,
+            (t: String) => t,
+            Writes
+              .of(to, (p: Place) => p, "Where.")
+              .fold(e => throw new java.lang.AssertionError(e), identity)
+          )
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+      val tx =
+        TestTx.fake(Clearance.inRoom(Place.of(dir), confidentialTrial, Label.Public), labelled)
+      val (_, set, _) = offeredIn(
+        tx,
+        Origin.Tui(dir, "default"),
+        Vector(Place.of(dir) -> Vector(advert("post_d"), advert("post_e"))),
+        hosted = Vector(
+          describedWriting("post_d", VectorMap("trial" -> trialRoom, "general" -> general)),
+          describedWriting("post_e", VectorMap("trial" -> trialRoom))
+        )
+      )
+      namesOf(set) ==> Vector("post_e", "about")
+      writesOf(set, "post_e") ==> Some(Vector("trial"))
+    }
+
+    test("a TUI conversation is offered its directory's tools at its own room's label") {
+      val tx =
+        TestTx.fake(Clearance.inRoom(Place.of(dir), confidentialTrial, Label.Public), labelled)
+      val (_, set, _) = offeredIn(
+        tx,
+        Origin.Tui(dir, "default"),
+        Vector(Place.of(dir) -> Vector(advert("fetch"), advert("grep")))
+      )
+      namesOf(set) ==> Vector("fetch", "grep", "about")
+    }
+
+    test("under the shipped visibility, every advertised tool is offered with all its places") {
+      val (recorded, set, _) = inSlack(TestTx.fake)
+      namesOf(set) ==> Vector(
+        "fetch",
+        "github_search",
+        "search_x",
+        "post_x",
+        "post_y",
+        "vault_read",
+        "attic_read",
+        "about"
+      )
+      writesOf(set, "post_x") ==> Some(Vector("trial", "general"))
+      recorded.reached.keySet ==>
+        Set("search_x", "post_x", "post_y", "vault_read", "attic_read").map(named)
+    }
     test("a TUI turn is offered the operator's tools, after those offered everywhere") {
       val dir = Directory.of("/work").fold(e => throw new java.lang.AssertionError(e), identity)
       names(Origin.Tui(dir, "default")) ==> Vector("about", "propose", "probe")

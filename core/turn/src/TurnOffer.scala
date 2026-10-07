@@ -80,7 +80,14 @@ object TurnOffer {
     * its place to ([[grit.core.place.Reaches.of]]) that [[grit.core.tool.Hosted.advertised]]
     * offers, less any whose name an earlier tool has (a heard-rooted turn is offered none of
     * them), then `tooling`'s own, then its operator tools when
-    * its origin is the operator's ([[grit.core.store.Audience.operator]]); and its prompt: the base,
+    * its origin is the operator's ([[grit.core.store.Audience.operator]]). A service place, its
+    * workspace or one it reaches, offers nothing when the turn does not read from it
+    * ([[grit.core.store.Tx.readsFrom]]), as if no edge served it, and its tools that declare
+    * no destination only when the turn also sends to it ([[grit.core.store.Tx.sendsTo]]):
+    * their arguments go to it. An advertised tool that writes
+    * ([[grit.core.tool.ToolSet.Entry.writes]]) is offered only the places the turn writes to,
+    * and not at all when none is; one the engine describes, only when it writes to all of its
+    * places. Its prompt: the base,
     * [[TurnPrompt.Candour]], [[TurnPrompt.Answering]], its edge's fragment, where its reply goes
     * ([[TurnPrompt.destination]]), what it is called (`tooling.persona`, [[TurnPrompt.called]]),
     * [[TurnPrompt.unprompted]] when its root is heard,
@@ -136,16 +143,27 @@ object TurnOffer {
       }
       shaping = tooling.recipe.at(rooted)
       workspace = workspaceOf(conversation.origin, tooling.worksIn)
-      advert <- workspace.fold[Either[StoreError, Option[Advert]]](Right(None))(
-        hosting.edges.serving
-      )
+      // A workspace the turn does not read from is as if no edge served it.
+      advert <- workspace
+        .filter(Tx.readsFrom(_))
+        .fold[Either[StoreError, Option[Advert]]](Right(None))(hosting.edges.serving)
       served <- advert.fold[Either[StoreError, ToolSet]](Right(ToolSet.Empty))(a =>
         hosting.toolSets.get(a.tools)
       )
+      // A directory is this machine, not outside grit: only a service is sent to.
+      sends = workspace.flatMap(_.service).forall(Tx.sendsTo(_))
       names = served.tools.map(_.name).toSet
-      described = tooling.hosted.filter(h => names.contains(h.name))
+      // An engine-described tool is offered only as it is described, never narrowed.
+      described = tooling.hosted.filter { h =>
+        val whole = h.entry
+        names.contains(h.name) &&
+        offerable(whole, sends).map(_.writes.map(_.to)) == Some(whole.writes.map(_.to))
+      }
       engines = (tooling.tools.names ++ tooling.operator.names ++ tooling.hosted.map(_.name)).toSet
-      advertised = served.tools.filterNot(e => engines.contains(e.name)).flatMap(Hosted.advertised)
+      advertised = served.tools
+        .filterNot(e => engines.contains(e.name))
+        .flatMap(offerable(_, sends))
+        .flatMap(Hosted.advertised)
       hosted: Vector[Tool.Offered] = described ++ advertised
       // A heard-rooted turn is offered none: its draft runs tools, and only its reply is gated.
       services = rooted match {
@@ -329,17 +347,34 @@ object TurnOffer {
       ) { (acc, service) =>
         for {
           done <- acc
-          advert <- hosting.edges.serving(service.place)
+          // A service the turn does not read from is as if no edge served it.
+          advert <-
+            if (Tx.readsFrom(service.place)) hosting.edges.serving(service.place)
+            else Right(None)
           set <- advert.fold[Either[StoreError, ToolSet]](Right(ToolSet.Empty))(a =>
             hosting.toolSets.get(a.tools)
           )
+          sends = Tx.sendsTo(service)
           entries = set.tools
-            .filter(e => !done._2.contains(e.name) && Hosted.advertised(e).nonEmpty)
+            .filter(e => !done._2.contains(e.name))
+            .flatMap(offerable(_, sends))
+            .filter(Hosted.advertised(_).nonEmpty)
           // A ToolSet's entries have distinct names, so a subset's do too.
           offered = ToolSet.of(entries).getOrElse(ToolSet.Empty)
         } yield (done._1 :+ (service, offered), done._2 ++ entries.map(_.name))
       }
       .map(_._1)
+
+  /** `entry` as a turn offers it at a service it `sends` to or not: one that declares no
+    * destination only when it does, its arguments going to that service; one that writes, less
+    * the places the turn does not write to ([[grit.core.store.Tx.writesTo]]); `None` when
+    * neither is left.
+    */
+  private def offerable(entry: ToolSet.Entry, sends: Boolean)(using Tx^): Option[ToolSet.Entry] =
+    entry.writes match {
+      case None => Option.when(sends)(entry)
+      case Some(writes) => writes.narrowed(Tx.writesTo(_)).map(n => entry.copy(writes = Some(n)))
+    }
 
   private def describe(error: StoreError): String = error match {
     case StoreError.DuplicateId(id) => s"entry ${grit.core.id.EntryId.value(id)} already exists"

@@ -84,7 +84,17 @@ import grit.core.tool.{
   Toolbox
 }
 import grit.core.triage.{Kind, Tags}
-import grit.core.visibility.{Label, Subject}
+import grit.core.visibility.{
+  Compartment,
+  Compartments,
+  Label,
+  Labelled,
+  Labeller,
+  Subject,
+  TestLabels,
+  Trust,
+  Visibility
+}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -101,6 +111,33 @@ object TurnFixtures {
 
   /** The fixture conversation's origin: its id is `c1` in a fresh [[hosting]]. */
   val origin: Origin = Origin.Tui(checkout, "test")
+
+  /** The compartments [[labelling]] declares. */
+  val trial: Compartment = TestLabels.compartment("trial")
+  val finance: Compartment = TestLabels.compartment("finance")
+
+  /** A deployment's visibility declaring [[trial]] and [[finance]]: each of `places` labelled
+    * as given, any other place unplaced, and each service trusted as `trusts` says.
+    */
+  def labelling(
+      places: Vector[(Place, Label)],
+      trusts: Vector[Trust] = Vector.empty
+  ): Visibility = {
+    val rooms: Labeller[Place] = new Labeller[Place] {
+      def label(item: Place): Labelled =
+        places
+          .collectFirst { case (p, l) if p == item => Labelled.Mapped(l) }
+          .getOrElse(Labelled.Unmapped(Label.Public))
+      def requires: Vector[Compartment] = Vector(trial, finance)
+    }
+    (for {
+      compartments <- Compartments.of(Vector(trial, finance)).left.map(_.toString)
+      v <- Visibility
+        .of(compartments, rooms, Vector.empty, Vector.empty, trusts)
+        .left
+        .map(_.toString)
+    } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+  }
 
   /** What a fixture turn is offered when no edge serves its directory: its conversations,
     * the fixture one created first, and in-memory prompts, tool sets, `edges` and `voices`
