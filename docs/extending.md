@@ -28,8 +28,8 @@ A module's folder is `<group>/<name>`, or the group alone for `kit/` and `grit.e
 ## Extension points
 
 A shipped extension implements core's traits. A deployment's own code, outside grit, can
-supply three of them as values in `Deployment.of` today: a `ServedEdge` or `CatchUp`, a
-`Plugin`, and a `Job` with the schedules that run it. The rest it chooses among grit's
+supply four of them as values in `Deployment.of` today: a `ServedEdge` or `CatchUp`, a
+`Plugin`, a `Job` with the schedules that run it, and the `Labeller` of its rooms. The rest it chooses among grit's
 shipped implementations, by the kit's enums.
 
 | Trait (package) | Shipped | A deployment's own? |
@@ -37,6 +37,7 @@ shipped implementations, by the kit's enums.
 | `ServedEdge`, `CatchUp` (`grit.core.edge`) | `SlackEdge.serving`, `SlackEdge.backfill`, `McpEdge.serving` | yes: `Deployment.of(edges = …)`, `Kit.catchUp` |
 | `Plugin` (`grit.core.plugin`), with its `Documents` (or `CachePosting`), `PluginTool`s and an `Exports` service | `Digest` | yes: `Deployment.of(plugins = …)` |
 | `Job`, `Declared` (`grit.core.job`) | `Reminders`' `remind` | yes: a plugin's `jobs` and `schedules`, or `Deployment.of(jobs = …, schedules = …)` |
+| `Labeller` (`grit.core.visibility`) | `RoomLabels` | yes: its `Visibility`'s `rooms` (below) |
 | `Tool`, `Hosted` (`grit.core.tool`); `Tools` (`grit.edge`, what an edge's `Server` runs) | `Coding`, `Tuning`, `Probes`, `About`; Slack's `slack_post`; an MCP server's tools | through an edge that serves them at a place (ADR 0017), or as a plugin's `PluginTool`, which the turn runs itself over grit's store; grit's own are the kit's `Offered`, chosen, not supplied |
 | `Provider` (`grit.core.provider`) | `OpenRouterProvider`, `StubProvider` | no: the kit builds one from `Secrets` |
 | `Classifier` (`grit.core.classify`) | `JevClassifier`, `StubClassifier` | no: the kit's `Topics` chooses |
@@ -88,6 +89,36 @@ the task place of its job, closed without a model call. Schedules come from two 
 A job's version moves when what its runs reply changes: a run started under another version
 is superseded, and its slot runs again at the current one when no later slot is due. What
 `Deployment.of` refuses of jobs and schedules is in its doc, beside every other refusal.
+
+**Visibility** ([ADR 0030](decisions/0030-visibility-is-a-label-lattice-read-down-write-up-and-a-room-admits-its-members-to-its-own-speech.md)).
+Who may see what is the one value a deployment injects into core about it,
+`Deployment.of(visibility = …)`, a `Visibility` built by `Visibility.of`, which refuses a
+mistake in it; left out, it is `Visibility.Shipped`, under which every label is public. Each
+part is declared data or a pure function:
+
+- `compartments`: the named areas (a team, a client, a project) its labels may hold, beside
+  core's fixed levels; `unmapped` is always among them.
+- `rooms`: a `Labeller[Place]`, the label each room takes. `RoomLabels` is the declared
+  table (the longest declared place a room is within, else `otherwise`); a deployment may
+  write its own pure function. A label it returns holding a compartment not declared is kept
+  at `unmapped` instead, so what a mapping invents is read by fewer people, never more.
+- `groups` and `grants`: people grouped by principal, and what each group's members are
+  cleared for.
+
+Every other part of a deployment that names a compartment declares it, and `Deployment.of`
+refuses one the visibility does not declare: a plugin's `compartments`, an edge's
+`compartments`, and a declared schedule's `clearance`. While outbound posts are not checked
+against where they go, a deployment that labels any room above public is refused beside an
+edge that posts out (`ServedEdge.postsOut`, Slack's `slack_post`).
+
+**A plugin is parametric in labels.** A `Label` is opaque: a plugin compares labels
+(`dominates`, equality), combines them (`join`, `meet`) and passes one to core as a key, and
+never takes one apart. Opacity buys independence from how labels are stored, not secrecy: a
+plugin can test any compartment it can name. What a transaction may read will be offered
+to a plugin as a label, for choosing which variant of its own derived data to serve; that
+API is still to come. A plugin never enforces visibility: ADR 0030 makes that core's, which
+filters what a transaction reads and floors what it writes, so a plugin that chooses wrongly
+is served nothing it may not read.
 
 ## What an extension may import
 
