@@ -56,5 +56,13 @@ object AccountTests extends TestSuite {
       Account.read("email:Alice@x") ==>
         Left("an email account's address is as Email.of writes it: Alice@x")
     }
+
+    test("address is the address of an email account, and of no other, whatever its name holds") {
+      List(
+        Account.email(email("a@b.c")),
+        account("slack", "T1/a@b.c"),
+        Account.Local
+      ).map(Account.address) ==> List(Some(email("a@b.c")), None, None)
+    }
   }
 }

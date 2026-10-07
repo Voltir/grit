@@ -56,6 +56,14 @@ object Account {
 
   def written(a: Account): String = a
 
+  /** The address `a` is the account of ([[email]]); `None` for any other account. */
+  def address(a: Account): Option[Email] =
+    Option
+      .when(a.startsWith(s"$EmailNamespace:"))(a.drop(EmailNamespace.length + 1))
+      .flatMap(
+        Email.of(_).toOption
+      )
+
   given CanEqual[Account, Account] = CanEqual.derived
 
   /** `namespace`, or why it names no source's accounts: the rule [[of]] states. */
