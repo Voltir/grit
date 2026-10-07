@@ -521,15 +521,29 @@ object SlackEdgeTests extends TestSuite {
     test(
       "listened names each channel as Slack shows it, and says which will hear nothing and why"
     ) {
-      val (secret, gone) = (ChannelId("C0SECRET1"), ChannelId("C0GONE123"))
-      val w = new World(listening = Set(C, secret, gone))
-      w.slack.privateChannels = Set(secret)
+      val (secret, direct, gone) =
+        (ChannelId("C0SECRET1"), ChannelId("D0DIRECT1"), ChannelId("C0GONE123"))
+      val w = new World(listening = Set(C, secret, direct, gone))
+      w.slack.channelNames = w.slack.channelNames ++ Map(secret -> "secret", direct -> "ana")
+      w.slack.directs = Set(direct)
       w.slack.unreachable = Set(gone)
       w.first.listened().sorted ==> Vector(
+        "#secret (C0SECRET1)",
         "#standup (C123ABC456)",
         "C0GONE123 (Slack not asked: Unreachable(gone))",
-        "C0SECRET1 (not a public channel grit can see: nothing there is heard)"
+        "D0DIRECT1 (not a channel grit can see: nothing there is heard)"
       )
+    }
+
+    test(
+      "in a private channel grit listens in, a message is heard and a mention is a turn, as in a public one"
+    ) {
+      val w = new World(listening = Set(C))
+      val inPrivate = Seq("channel_type" -> ujson.Str("group"))
+      w.slack.deliver(message("2.0", "standup moves to 10:00", extra = inPrivate)) ==> true
+      w.slack.deliver(mention("3.0")) ==> true
+      (w.heard("2.0"), w.turnOf("3.0", "3.0").toVector == w.inbox.started, w.inbox.started.size) ==>
+        (Vector(("standup moves to 10:00", Some("Ana Lima"))), true, 1)
     }
 
     test(
@@ -544,10 +558,10 @@ object SlackEdgeTests extends TestSuite {
     }
 
     test(
-      "a message in a channel that is not public, or a bot's, is ignored and acknowledged, in a channel grit listens in too"
+      "a message in a conversation that is not a channel, or a bot's, is ignored and acknowledged, in one grit listens in too"
     ) {
       val w = new World(listening = Set(C))
-      w.slack.privateChannels = Set(C)
+      w.slack.directs = Set(C)
       w.slack.deliver(mention("1.0")) ==> true
       w.slack.deliver(message("6.0", "overheard in private")) ==> true
       (w.heard("6.0"), w.turnOf("1.0", "1.0"), w.inbox.started) ==> (
@@ -555,7 +569,7 @@ object SlackEdgeTests extends TestSuite {
         None,
         Vector.empty
       )
-      // A public channel's bot, in a world of its own: a cached answer that C is private
+      // A public channel's bot, in a world of its own: a cached answer that C is not a channel
       // would drop the bot's messages for the wrong reason.
       val b = new World(listening = Set(C))
       b.slack.deliver(message("5.0", s"<@$Bot> hi", user = Bot)) ==> true

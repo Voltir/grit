@@ -22,12 +22,12 @@ In dependency order:
   `grit.prose` doc) as Slack messages (`Post`s) of rich-text blocks, within Slack's limits.
   ← `event`
 - **`client`** — Slack as grit uses it: the `Slack` trait (listen, a channel's history, post in a thread or at a channel's top level, find a post by its
-  `Tag`, the message a thread begins with, a message's permalink, react, a person's name, whether a channel is public, and its name), `SlackError`, the tokens, and
+  `Tag`, the message a thread begins with, a message's permalink, react, a person's name, whether a conversation is a channel, and its name), `SlackError`, the tokens, and
   `SocketSlack`, the SDK over Socket Mode behind it; and `Root`, the message a thread begins
   with, its author and its tag. ← `event`, `text`
 - **`edge`** — `SlackEdge`, the edge itself, over core's traits (`EdgeStores`: the inbox,
-  the people it enrolls, the replies it awaits) and a `Slack`: a person's message in a public
-  channel becomes a turn of its thread's conversation when it is addressed to grit (it
+  the people it enrolls, the replies it awaits) and a `Slack`: a person's message in a channel,
+  public or private, becomes a turn of its thread's conversation when it is addressed to grit (it
   mentions grit, or is in a thread whose root did), and each finished turn's reply is posted
   in its thread, once, found again by its tag after a crash. A message is marked `:eyes:`
   while grit works on it: one addressed to grit from when it is recorded, and one heard that

@@ -47,7 +47,7 @@ final class SlackEdge(
   private val channelNames = new ConcurrentHashMap[ChannelId, String]()
 
   @caps.unsafe.untrackedCaptures
-  private val publics = new ConcurrentHashMap[ChannelId, java.lang.Boolean]()
+  private val kinds = new ConcurrentHashMap[ChannelId, java.lang.Boolean]()
 
   @caps.unsafe.untrackedCaptures
   private val started = new AtomicBoolean(false)
@@ -67,15 +67,15 @@ final class SlackEdge(
 
   /** Each channel in `listening`, as a person reads it: `#{name} ({id})` (its id alone when it
     * has no name); or, with its id,
-    * that nothing in it is heard because it is not a public channel grit can see, or that
+    * that nothing in it is heard because it is not a channel grit can see, or that
     * Slack could not be asked.
     */
   def listened(): Vector[String] =
     listening.toVector.map { channel =>
       val id = ChannelId.value(channel)
-      public(channel)
+      isChannel(channel)
         .flatMap(open =>
-          if (!open) Right(s"$id (not a public channel grit can see: nothing there is heard)")
+          if (!open) Right(s"$id (not a channel grit can see: nothing there is heard)")
           else
             slack
               .channelName(channel)
@@ -86,7 +86,7 @@ final class SlackEdge(
         .fold(why => s"$id (Slack not asked: $why)", identity)
     }
 
-  /** One Events API payload. A person's message in a public channel is addressed to grit when
+  /** One Events API payload. A person's message in a channel, public or private, is addressed to grit when
     * it mentions grit, or is in a thread whose root did; addressed, it is recorded as a turn of
     * its thread's conversation, in the person's words ([[Incoming]]), written by them as
     * enrolled under their Slack name (`slack:{team}/{user}`), its turn started, its reply
@@ -172,11 +172,11 @@ final class SlackEdge(
 
   /** What [[backfill]] would hear of `channel`: each message said there from `since` on,
     * read as [[receive]] reads a live one ([[Events.listed]]), that the inbox has not
-    * recorded, oldest first; none in a channel that is not public. A listing grit cannot read
+    * recorded, oldest first; none in a conversation that is not a channel. A listing grit cannot read
     * is left out, and said. Why not, when Slack or the inbox could not be asked.
     */
   def unheard(channel: ChannelId, since: Instant): Either[String, Vector[Event.Said]] =
-    public(channel).flatMap { open =>
+    isChannel(channel).flatMap { open =>
       if (!open) Right(Vector.empty)
       else
         slack.history(channel, since).left.map(_.toString).flatMap { listed =>
@@ -212,7 +212,7 @@ final class SlackEdge(
   /** Hears each of `messages`, in order, in its thread's conversation, dated when it was said
     * ([[grit.core.inbox.Inbox.hear]]), in the person's words under their Slack name, a mention of grit
     * included: a past message is heard, never answered; a thread under a post of grit's
-    * begins with that post, as in [[receive]]. Nothing in a channel that is not public. Why not, naming the first message not heard, when Slack or the inbox could not be
+    * begins with that post, as in [[receive]]. Nothing in a conversation that is not a channel. Why not, naming the first message not heard, when Slack or the inbox could not be
     * asked; those before it stay heard.
     */
   def backfill(messages: Vector[Event.Said]): Either[String, Unit] =
@@ -226,7 +226,7 @@ final class SlackEdge(
 
   /** Records `m`, heard, in its thread's conversation, with whom it names besides grit and,
     * when it is heard `live`, its thread as where a reply to it would go; nothing in a
-    * channel not public.
+    * conversation that is not a channel.
     */
   private def hear(m: Event.Said, origin: Origin, live: Boolean): Either[String, Unit] =
     spoken(m).flatMap {
@@ -248,10 +248,10 @@ final class SlackEdge(
     }
 
   /** Who wrote `m`, enrolled under their Slack name, and its text in their words; `None` in a
-    * channel that is not public.
+    * conversation that is not a channel.
     */
   private def spoken(m: Event.Said): Either[String, Option[(PrincipalId, String)]] =
-    public(m.channel).flatMap { open =>
+    isChannel(m.channel).flatMap { open =>
       if (!open) Right(None)
       else {
         val mentioned = Mentioned.findAllMatchIn(m.text).map(x => UserId(x.group(1))).toVector
@@ -371,13 +371,13 @@ final class SlackEdge(
       .map(_.toString)
   }
 
-  /** Whether `channel` is public, asked of Slack once per channel. */
-  private def public(channel: ChannelId): Either[String, Boolean] =
-    Option(publics.get(channel)) match {
+  /** Whether `channel` is a channel, public or private, asked of Slack once per channel. */
+  private def isChannel(channel: ChannelId): Either[String, Boolean] =
+    Option(kinds.get(channel)) match {
       case Some(known) => Right(known.booleanValue)
       case None =>
-        slack.public(channel).left.map(_.toString).map { open =>
-          val _ = publics.put(channel, java.lang.Boolean.valueOf(open))
+        slack.isChannel(channel).left.map(_.toString).map { open =>
+          val _ = kinds.put(channel, java.lang.Boolean.valueOf(open))
           open
         }
     }

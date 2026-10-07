@@ -50,9 +50,9 @@ final class FakeSlack extends Slack {
   @caps.unsafe.untrackedCaptures
   var rootless = Set.empty[Ts]
 
-  /** The channels that are not public. */
+  /** The named conversations that are not channels: direct messages, group ones. */
   @caps.unsafe.untrackedCaptures
-  var privateChannels = Set.empty[ChannelId]
+  var directs = Set.empty[ChannelId]
 
   /** The channels grit's bot is not a member of. */
   @caps.unsafe.untrackedCaptures
@@ -239,10 +239,10 @@ final class FakeSlack extends Slack {
       else Right(channelNames.get(channel))
     }
 
-  def public(channel: ChannelId): Either[SlackError, Boolean] =
+  def isChannel(channel: ChannelId): Either[SlackError, Boolean] =
     request {
       if (unreachable.contains(channel)) Left(SlackError.Unreachable("gone"))
-      else Right(channelNames.contains(channel) && !privateChannels.contains(channel))
+      else Right(channelNames.contains(channel) && !directs.contains(channel))
     }
 }
 

@@ -118,10 +118,11 @@ trait Slack extends caps.SharedCapability {
     */
   def name(user: UserId): Either[SlackError, Option[String]]
 
-  /** Whether `channel` is a public channel. `false` for any other conversation, for one grit
-    * may not look at, and for none at all; Slack being unreachable is still `Unreachable`.
+  /** Whether `channel` is a channel, public or private. `false` for a direct message or a
+    * group one, for a channel grit may not look at (a private one its bot is not in), and for
+    * none at all; Slack being unreachable is still `Unreachable`.
     */
-  def public(channel: ChannelId): Either[SlackError, Boolean]
+  def isChannel(channel: ChannelId): Either[SlackError, Boolean]
 
   /** Every message in `channel` at or after `since`, to the microsecond, with every reply in a
     * thread rooted in that span, oldest first, each once; a reply in a thread rooted earlier

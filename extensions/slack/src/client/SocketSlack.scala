@@ -173,18 +173,19 @@ final class SocketSlack private[client] (bot: BotToken, app: AppToken, api: Stri
       display.filter(_.trim.nonEmpty).orElse(real.filter(_.trim.nonEmpty))
     }
 
-  def public(channel: ChannelId): Either[SlackError, Boolean] =
+  def isChannel(channel: ChannelId): Either[SlackError, Boolean] =
     call(
       methods.conversationsInfo(
         ConversationsInfoRequest.builder().channel(ChannelId.value(channel)).build()
       )
     )
+      // A private channel made before March 2021 is a group, not a channel, to Slack.
       .map(r =>
-        Option(r.getChannel).exists(c => c.isChannel && !c.isPrivate && !c.isIm && !c.isMpim)
+        Option(r.getChannel).exists(c => (c.isChannel || c.isGroup) && !c.isIm && !c.isMpim)
       )
       .left
       .flatMap {
-        // A private channel, or one grit may not look at: not public, never a failure.
+        // One grit may not look at: not a channel to grit, never a failure.
         case SlackError.Refused("channel_not_found" | "missing_scope" | "not_in_channel") =>
           Right(false)
         case other => Left(other)

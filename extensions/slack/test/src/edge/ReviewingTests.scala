@@ -68,7 +68,6 @@ object ReviewingTests extends TestSuite {
   private final class World {
     val slack = new FakeSlack
     slack.channelNames = Map(C -> "standup", Place -> "debug")
-    slack.privateChannels = Set(Place)
     val inbox: InMemoryInbox = InMemoryInbox.fresh()
     val picks = new PickedPrompts(inbox)
     val watched = new Watched(picks.reviews)
