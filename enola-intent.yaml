@@ -3,7 +3,8 @@
 # It enforces these things:
 #   1. Only grit.dbos may import dev.dbos.*, JDBC or the Postgres driver, only
 #      grit.models and grit.mcp the JDK HTTP client, only grit.slack the Slack SDK, and only
-#      grit.host may start a process (STYLE rule 8); grit.slack names core and prose alone
+#      grit.host may start a process (STYLE rule 8); grit.slack names core and prose alone;
+#      and only grit.dbos (besides core's visibility package) names a label's atoms (ADR 0030)
 #   2. grit.tui's four groups import in one direction (extensions/tui/CLAUDE.md)
 #   3. grit.prose names no other grit module (core/prose/README.md)
 #   4. core names no extension, each extension names core alone (a plugin extension, such as
@@ -445,6 +446,25 @@ rules:
     pattern: "* -> com.slack.api.SlackConfig"
     mode: strict
     because: "STYLE rule 8: the Slack SDK is quarantined to grit.slack, which translates it into grit's conventions"
+
+  # -------------------------------------------------------------------------------------
+  # 1f. Only grit.dbos names a label's atoms (ADR 0030): code outside core is parametric in
+  # labels, and the atom view is the one way to take a label apart. grit.dbos stores and
+  # filters labels as atoms; core's visibility package defines the view and never imports
+  # it, which is why outside-dbos, which holds that package, can be this rule's component.
+  #
+  # Watch out:
+  #   - A fully qualified use, or one through `import grit.core.visibility.*`, makes no edge
+  #     to LabelAtoms; scripts/enola-law.sh greps every source for the name instead.
+  #   - A component's `exclude:` key is accepted by lint and silently ignored, so a part of
+  #     core cannot be carved out of a component that way: a test outside the visibility
+  #     package that needs the atoms belongs in grit.dbos's tests.
+  # -------------------------------------------------------------------------------------
+  - id: only-dbos-names-label-atoms
+    forbid_name: outside-dbos
+    pattern: "* -> grit.core.visibility.LabelAtoms"
+    mode: strict
+    because: "ADR 0030: a label is compared, joined, met and keyed by outside core, never taken apart; its atoms are grit.dbos's and core's visibility package's alone"
 
   # grit.slack names core, prose and grit.edge alone: an edge reaches the engine through
   # Postgres (ADR 0002) and never the turn; grit.edge is the edge's side of the desk it serves
