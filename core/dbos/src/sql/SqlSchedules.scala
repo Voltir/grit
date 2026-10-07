@@ -463,9 +463,10 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       grace: Grace,
       now: Instant
   )(using tx: Tx^): Either[StoreError, Unit] = {
-    // Kept at what the asking turn reads beyond its room: the desk opens its transaction for
-    // that turn, so the label is the transaction's, never one a caller passes.
-    val label = Tx.cleared(tx)
+    // Kept at the asking turn's floor, its room's label: its parameters come from the room's
+    // content. The desk opens its transaction for that turn, so the label is the
+    // transaction's, never one a caller passes.
+    val label = Tx.floor(tx)
     update(
       s"""INSERT INTO grit.schedules
          |  (id, source, job, rule, params, principal, report, asked_in, created_at, next_at, label_id)

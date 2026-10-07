@@ -222,8 +222,11 @@ abstract class DeskContract extends TestSuite {
       keptAt(TestLabels.Trialist, "2.1") ==> Some(TestLabels.Trial)
     }
 
-    test("one asked in a {trial} room by an uncleared person is kept public") {
-      keptAt(PrincipalId("ann"), "2.2") ==> Some(Label.Public)
+    test(
+      "one asked in a {trial} room by a person cleared only public is kept at the room's label: " +
+        "its parameters are the room's"
+    ) {
+      keptAt(PrincipalId("ann"), "2.2") ==> Some(TestLabels.Trial)
     }
   }
 

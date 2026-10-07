@@ -35,8 +35,8 @@ final class InMemorySchedules(
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[ScheduleId, Row]
 
-  // As `rows`: each recorded turn's asker, where its reply is posted, if anywhere, and what a
-  // transaction opened for it reads beyond its room (Tx.cleared).
+  // As `rows`: each recorded turn's asker, where its reply is posted, if anywhere, and the
+  // least label a transaction opened for it writes at (Tx.floor): its room's.
   @caps.unsafe.untrackedCaptures
   private var turns = Map.empty[TurnRef, (PrincipalId, Option[Destination], Label)]
 
@@ -52,8 +52,8 @@ final class InMemorySchedules(
       label: Label = Label.Public
   ): Unit = {
     // As grit.core.visibility.Subject.Turn resolves: the asker is the first entry's author.
-    val cleared = Clearance.inRoom(from.room, label, visibility.cleared(by)).everywhere
-    turns = turns.updated(turn, (by, address.map(Destination(from.edge, _)), cleared))
+    val floor = Clearance.inRoom(from.room, label, visibility.cleared(by)).floor
+    turns = turns.updated(turn, (by, address.map(Destination(from.edge, _)), floor))
   }
 
   /** `slot`'s run started at `version`, its schedule's next slot `following`, as the inbox
@@ -214,7 +214,7 @@ final class InMemorySchedules(
             case Some(r) => kept(id, r, booking.job)
             case None =>
               turns.get(call.turn) match {
-                case Some((by, Some(to), cleared)) =>
+                case Some((by, Some(to), floor)) =>
                   val now = clock.now()
                   val at = Slot.kept(when.from(now))
                   val limit = now.plusNanos(ScheduleDesk.Horizon.toNanos)
@@ -232,7 +232,7 @@ final class InMemorySchedules(
                         Report.Posted(to),
                         SlotRule.Once(at, grace),
                         Some(at),
-                        cleared,
+                        floor,
                         asked = Some(call.turn.conversationId)
                       )
                     )

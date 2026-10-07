@@ -8,7 +8,8 @@ import grit.core.visibility.Label
 
 /** A stored schedule: its job, its parameters as kept, whom it runs for, where it reports, its
   * rule, how it ended (`None` while pending), and its label: what its runs read beyond their
-  * own conversations, and are kept at (ADR 0030); a declared one's [[Declared.clearance]].
+  * own conversations, and are kept at (ADR 0030): an asked one's, its asking turn's floor
+  * ([[ScheduleDesk.ask]]); a declared one's, its [[Declared.clearance]].
   */
 final case class Schedule(
     job: JobName,
