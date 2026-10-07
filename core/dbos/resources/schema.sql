@@ -462,6 +462,8 @@ CREATE TABLE IF NOT EXISTS grit.tool_requests (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     claimed_at      TIMESTAMPTZ,
     answered_at     TIMESTAMPTZ,
+    -- The place a writing tool's call writes to outside grit; NULL for a tool that declares none.
+    destination_id  UUID REFERENCES grit.places(id),
     CHECK ((state = 'answered') = (outcome IS NOT NULL)),
     CHECK ((claimed_by IS NULL) = (claim_session IS NULL))
 );

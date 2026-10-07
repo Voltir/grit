@@ -6,10 +6,21 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
-import grit.core.id.{ConversationId, DocKey, EntryId, PluginName}
+import grit.core.edge.{Permit, ToolRequest}
+import grit.core.id.{
+  CallSlot,
+  ConversationId,
+  DocKey,
+  EntryId,
+  PluginName,
+  PrincipalId,
+  TurnRef,
+  TurnSeq
+}
 import grit.core.message.Message
-import grit.core.place.Directory
-import grit.core.store.{Entry, Origin, Payload, Tx}
+import grit.core.place.{Directory, Namespace, Place}
+import grit.core.store.{Entry, Origin, Payload, StoreError, Tx}
+import grit.core.tool.{Retry, ToolName}
 import grit.core.visibility.{Clearance, Compartment, Label, Level}
 import grit.dbos.sql.{
   DbConfig,
@@ -18,6 +29,7 @@ import grit.dbos.sql.{
   SqlDocuments,
   SqlEntryStore,
   SqlTombstones,
+  SqlToolRequests,
   TestPostgres
 }
 
@@ -183,6 +195,40 @@ object ConversationRoomsLiveTests extends TestSuite {
       ).size ==> 1
       LiveDb.transaction(config)(store.remove(c)) ==> Right(())
       (place("slack/T/cached"), place("slack/T/cached/1.0")) ==> (Vector("1"), Vector("0"))
+    }
+
+    test("a room a request writes to stays when its last conversation goes, unless its own") {
+      val store = new SqlConversationStore()
+      def writingTo(from: ConversationId, room: String): Either[StoreError, Unit] = {
+        val turn = TurnRef(from, TurnSeq.First)
+        LiveDb.transaction(config)(
+          new SqlToolRequests().dispatch(
+            Vector(
+              ToolRequest(
+                CallSlot.of(turn, 0, 0).getOrElse(throw new java.lang.AssertionError("no slot")),
+                ToolRequest.Protocol,
+                from,
+                Place.under(Namespace.Service, Vector("poster")),
+                PrincipalId.Local,
+                ToolName("post"),
+                Permit.Free,
+                Retry.Interrupt,
+                ujson.Obj("text" -> "hi"),
+                Set.empty,
+                Some(Place.under(Namespace.Slack, Vector("T", room)))
+              )
+            )
+          )
+        )
+      }
+      val target = LiveDb.conversation(config, Origin.Slack("T", "target", "1.0")).id
+      val writer = LiveDb.conversation(config, Origin.Task("rooms", "writer")).id
+      writingTo(writer, "target") ==> Right(())
+      val own = LiveDb.conversation(config, Origin.Slack("T", "own", "1.0")).id
+      writingTo(own, "own") ==> Right(())
+      LiveDb.transaction(config)(store.remove(target)) ==> Right(())
+      LiveDb.transaction(config)(store.remove(own)) ==> Right(())
+      (place("slack/T/target"), place("slack/T/own")) ==> (Vector("1"), Vector("0"))
     }
 
     test("a key has one current document per label, and only one at each") {

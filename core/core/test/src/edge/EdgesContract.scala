@@ -3,7 +3,7 @@ package grit.core.edge
 import scala.concurrent.duration.*
 
 import grit.core.id.{CallSlot, ConversationId, PrincipalId, TurnRef, TurnSeq}
-import grit.core.place.{Directory, Place}
+import grit.core.place.{Directory, Namespace, Place}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
@@ -40,7 +40,8 @@ abstract class EdgesContract extends TestSuite {
       index: Int,
       at: Place,
       retry: Retry = Retry.Rerun,
-      permit: Permit = Permit.Free
+      permit: Permit = Permit.Free,
+      destination: Option[Place] = None
   ): ToolRequest = {
     val turn = TurnRef(conversation(name), TurnSeq.First)
     ToolRequest(
@@ -54,7 +55,7 @@ abstract class EdgesContract extends TestSuite {
       retry,
       ujson.Obj("path" -> "a.txt"),
       Set.empty,
-      None
+      destination
     )
   }
 
@@ -77,6 +78,14 @@ abstract class EdgesContract extends TestSuite {
         Right(Vector(r.slot.key)),
         Right(Vector())
       )
+    }
+
+    test("a desk opens a request with the destination it was dispatched with") {
+      val here = place("destination")
+      val to = Place.under(Namespace.Slack, Vector("T", "destination"))
+      val r = request("destination", 0, here, destination = Some(to))
+      dispatched(r)
+      desk(Set(here)).open().map(_.map(_.destination)) ==> Right(Vector(Some(to)))
     }
 
     test("the first claim wins, and a second claim of it is refused") {

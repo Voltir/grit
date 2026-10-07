@@ -33,26 +33,36 @@ final class SqlToolRequests extends ToolRequests {
              |  INSERT INTO grit.places (path)
              |  VALUES (ARRAY(SELECT jsonb_array_elements_text(?::jsonb)))
              |  ON CONFLICT (path) DO UPDATE SET path = EXCLUDED.path
+             |  RETURNING id),
+             |destination AS (
+             |  INSERT INTO grit.places (path)
+             |  SELECT ARRAY(SELECT jsonb_array_elements_text(d)) FROM (SELECT ?::jsonb AS d) sent
+             |   WHERE jsonb_typeof(d) = 'array'
+             |  ON CONFLICT (path) DO UPDATE SET path = EXCLUDED.path
              |  RETURNING id)
              |INSERT INTO grit.tool_requests (key, protocol, workflow_id, conversation_id, turn_seq,
-             |  workspace_id, principal, tool, permit, retry, arguments, repairs, state)
-             |SELECT ?, ?, ?, ?::uuid, ?, id, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 'open' FROM place
+             |  workspace_id, principal, tool, permit, retry, arguments, repairs, state,
+             |  destination_id)
+             |SELECT ?, ?, ?, ?::uuid, ?, id, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 'open',
+             |  (SELECT id FROM destination) FROM place
              |ON CONFLICT (key) DO NOTHING""".stripMargin
         )
       ) { ps =>
         requests.foreach { q =>
           ps.setString(1, SqlToolRequests.pathJson(q.workspace))
-          ps.setString(2, q.slot.key)
-          ps.setInt(3, q.protocol)
-          ps.setString(4, WorkflowId.value(q.slot.turn.workflowId))
-          ps.setString(5, ConversationId.value(q.conversation))
-          ps.setLong(6, grit.core.id.TurnSeq.value(q.slot.turn.turnSeq))
-          ps.setString(7, PrincipalId.value(q.principal))
-          ps.setString(8, ToolName.value(q.tool))
-          ps.setString(9, q.permit.key)
-          ps.setString(10, q.retry.key)
-          ps.setString(11, ujson.write(q.arguments))
-          ps.setString(12, SqlToolRequests.repairsJson(q))
+          // JSON null for no destination, so no destination place is written.
+          ps.setString(2, q.destination.fold("null")(SqlToolRequests.pathJson))
+          ps.setString(3, q.slot.key)
+          ps.setInt(4, q.protocol)
+          ps.setString(5, WorkflowId.value(q.slot.turn.workflowId))
+          ps.setString(6, ConversationId.value(q.conversation))
+          ps.setLong(7, grit.core.id.TurnSeq.value(q.slot.turn.turnSeq))
+          ps.setString(8, PrincipalId.value(q.principal))
+          ps.setString(9, ToolName.value(q.tool))
+          ps.setString(10, q.permit.key)
+          ps.setString(11, q.retry.key)
+          ps.setString(12, ujson.write(q.arguments))
+          ps.setString(13, SqlToolRequests.repairsJson(q))
           ps.executeUpdate()
         }
       }
@@ -150,22 +160,29 @@ private[dbos] object SqlToolRequests {
 
   /** The columns [[read]] reads, from `tool_requests r` joined to `places p` on its workspace. */
   val Columns: String =
-    "r.key, r.protocol, r.conversation_id, array_to_json(p.path)::text, r.principal, r.tool, r.permit, r.retry, r.arguments::text, r.repairs::text"
+    "r.key, r.protocol, r.conversation_id, array_to_json(p.path)::text, r.principal, r.tool, r.permit, r.retry, r.arguments::text, r.repairs::text, " +
+      "(SELECT array_to_json(d.path)::text FROM grit.places d WHERE d.id = r.destination_id)"
+
+  /** The place `json`, a written path, names; why not, when it names none. */
+  private def place(json: String): Either[String, Place] =
+    ujson.read(json).arrOpt.fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt)) match {
+      case ns +: rest =>
+        grit.core.place.Namespace
+          .of(ns)
+          .map(n => Place.under(n, rest))
+          .toRight(s"no namespace $ns")
+      case _ => Left("an empty place")
+    }
 
   /** The request `rs` holds ([[Columns]]), or why it cannot be read. */
   def read(rs: ResultSet): Either[String, ToolRequest] = {
     val key = rs.getString(1)
-    val path: Vector[String] =
-      ujson.read(rs.getString(4)).arrOpt.fold(Vector.empty[String])(_.toVector.flatMap(_.strOpt))
     for {
       slot <- CallSlot.read(key).toRight(s"not a slot: $key")
-      workspace <- path match {
-        case ns +: rest =>
-          grit.core.place.Namespace
-            .of(ns)
-            .map(n => Place.under(n, rest))
-            .toRight(s"no namespace $ns")
-        case _ => Left("an empty workspace")
+      workspace <- place(rs.getString(4)).left.map(why => s"its workspace: $why")
+      destination <- Option(rs.getString(11)) match {
+        case None => Right(None)
+        case Some(json) => place(json).map(Some(_)).left.map(why => s"its destination: $why")
       }
       tool <- ToolName.of(rs.getString(6))
       permit <- Permit.of(rs.getString(7)).toRight("no permit")
@@ -190,9 +207,7 @@ private[dbos] object SqlToolRequests {
       retry,
       ujson.read(rs.getString(9)),
       repairs,
-      // The row holds no destination yet: until it does, a writing tool's request read back
-      // here is refused by its edge, unrun.
-      None
+      destination
     )
   }
 

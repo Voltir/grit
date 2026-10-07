@@ -216,7 +216,7 @@ final class SqlDesk private (
             while (rs.next())
               rows += SqlToolRequests
                 .read(rs)
-                .map(q => (q, if (withSession) rs.getString(11) else ""))
+                .map(q => (q, if (withSession) rs.getString("claim_session") else ""))
             rows
               .result()
               .foldLeft[Either[DeskError, Vector[(ToolRequest, String)]]](Right(Vector.empty)) {
