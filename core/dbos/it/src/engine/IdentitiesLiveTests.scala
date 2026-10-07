@@ -14,7 +14,7 @@ import grit.core.inbox.{InboundId, InboxError}
 import grit.core.message.Message
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.visibility.Subject
-import grit.dbos.sql.{LiveDb, SqlConversationStore, SqlReviews, TestPostgres}
+import grit.dbos.sql.{LiveDb, SqlConversationStore, SqlReviews, SqlSpeechStore, TestPostgres}
 
 import utest.*
 
@@ -180,6 +180,23 @@ object IdentitiesLiveTests extends TestSuite {
         Misspelt
       )
       LiveDb.transaction(config)(new SqlReviews().reviewed(Instant.EPOCH)) ==> Left(misspelt)
+    }
+
+    test(
+      "a heard turn's asked account stored in no account's spelling is Invalid where it is read back"
+    ) {
+      val c = LiveDb.conversation(config, Origin.Slack("T1", "C1", "9.2")).id
+      val turn = TurnRef(c, TurnSeq.First)
+      LiveDb.asking(config, turn, ana, None)
+      execute(
+        """INSERT INTO grit.heard (entry_id, conversation_id, turn_seq, asked)
+          |VALUES (?, ?::uuid, ?::bigint, ?::jsonb)""".stripMargin,
+        s"${ConversationId.value(c)}:asked",
+        ConversationId.value(c),
+        TurnSeq.value(TurnSeq.First).toString,
+        ujson.Arr(Account.written(ana), Misspelt).render()
+      )
+      LiveDb.transaction(config)(new SqlSpeechStore().reach(turn)) ==> Left(misspelt)
     }
   }
 }
