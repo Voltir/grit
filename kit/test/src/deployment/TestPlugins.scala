@@ -5,6 +5,7 @@ import grit.core.job.{Declared, Job, JobRun, NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.plugin.{Exports, Needs, PluginReads, PluginRun, PluginTool, Unneeded}
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
+import grit.core.visibility.Compartment
 
 /** Plugins for tests of how a deployment takes them: one that exports its documents' keys, and
   * tools that read through a service or their own documents.
@@ -110,6 +111,12 @@ object TestPlugins {
             }
           )
     })
+  }
+
+  /** Names `compartments`, and contributes nothing. */
+  final class Naming(val name: PluginName, override val compartments: Vector[Compartment])
+      extends grit.core.plugin.Plugin {
+    val version: Int = 1
   }
 
   /** Its jobs are `jobs`, and it declares `schedules`. */

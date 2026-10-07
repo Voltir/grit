@@ -5,6 +5,7 @@ import scala.concurrent.duration.DurationInt
 import grit.core.id.EdgeName
 import grit.core.tool.ToolName
 import grit.core.triage.Gate
+import grit.core.visibility.{Compartment, Compartments, Label, Level, RoomLabels, Visibility}
 
 import utest.*
 
@@ -19,14 +20,35 @@ object DeploymentTests extends TestSuite {
   private def key(s: String): grit.core.id.ScheduleKey =
     grit.core.id.ScheduleKey.of(s).fold(sys.error, identity)
 
-  /** A schedule declared under `k`, running `of` daily at 09:00 UTC. */
-  private def declared(k: String, of: TestPlugins.Named): grit.core.job.Declared[?] =
+  /** A schedule declared under `k`, running `of` daily at 09:00 UTC, cleared for `clearance`. */
+  private def declared(
+      k: String,
+      of: TestPlugins.Named,
+      clearance: Label = Label.Public
+  ): grit.core.job.Declared[?] =
     grit.core.job.Declared(
       key(k),
       of,
       grit.core.job.SlotRule.Daily(java.time.LocalTime.of(9, 0), java.time.ZoneOffset.UTC),
-      TestPlugins.Named.None
+      TestPlugins.Named.None,
+      clearance
     )
+
+  private def compartment(s: String): Compartment = Compartment.of(s).fold(sys.error, identity)
+
+  private val trial = compartment("trial")
+  private val client = compartment("client")
+
+  /** `trial` declared, every room public, no group. */
+  private val trialDeclared: Visibility =
+    Visibility
+      .of(
+        Compartments.of(Vector(trial)).fold(c => sys.error(Compartment.name(c)), identity),
+        RoomLabels.Public,
+        Vector.empty,
+        Vector.empty
+      )
+      .fold(r => sys.error(r.toString), identity)
 
   private val github: grit.core.place.Service =
     grit.core.place.Service.of("github").fold(e => sys.error(e), identity)
@@ -545,6 +567,94 @@ object DeploymentTests extends TestSuite {
           )
           .map(_ => ())
       ) ==> (Left(DeploymentRefusal.ScheduleUnowned(name("other"), job("nudge"))), Right(()))
+    }
+
+    test(
+      "a plugin naming a compartment its deployment's visibility does not declare is refused, naming both"
+    ) {
+      def naming(cs: Compartment*) = Vector(new TestPlugins.Naming(name("p"), cs.toVector))
+      (
+        Deployments.of(plugins = naming(trial, client), visibility = trialDeclared).map(_ => ()),
+        Deployments.of(plugins = naming(trial)).map(_ => ()),
+        Deployments.of(plugins = naming(trial), visibility = trialDeclared).map(_ => ()),
+        // Every deployment declares unmapped.
+        Deployments.of(plugins = naming(Compartment.Unmapped)).map(_ => ())
+      ) ==> (
+        Left(DeploymentRefusal.CompartmentUndeclared(Requirer.ByPlugin(name("p")), client)),
+        Left(DeploymentRefusal.CompartmentUndeclared(Requirer.ByPlugin(name("p")), trial)),
+        Right(()),
+        Right(())
+      )
+    }
+
+    test(
+      "an edge naming a compartment its deployment's visibility does not declare is refused, naming both"
+    ) {
+      def naming(cs: Compartment*) = Vector(edge("slack", asks = false, naming = cs.toVector))
+      (
+        Deployments.of(edges = naming(trial, client), visibility = trialDeclared).map(_ => ()),
+        Deployments.of(edges = naming(trial)).map(_ => ()),
+        Deployments.of(edges = naming(trial), visibility = trialDeclared).map(_ => ())
+      ) ==> (
+        Left(DeploymentRefusal.CompartmentUndeclared(Requirer.ByEdge(EdgeName("slack")), client)),
+        Left(DeploymentRefusal.CompartmentUndeclared(Requirer.ByEdge(EdgeName("slack")), trial)),
+        Right(())
+      )
+    }
+
+    test(
+      "a declared schedule cleared for a compartment its deployment's visibility does not declare is refused, naming both"
+    ) {
+      val nudge = new TestPlugins.Named("nudge")
+      val inClient = Label.at(Level.Internal, client)
+      val inTrial = Label.at(Level.Confidential, trial)
+      (
+        Deployments
+          .of(
+            jobs = Vector(nudge),
+            schedules = Vector(declared("daily", nudge, inClient)),
+            visibility = trialDeclared
+          )
+          .map(_ => ()),
+        Deployments
+          .of(
+            plugins = Vector(
+              new TestPlugins.Declaring(
+                name("p"),
+                Vector(nudge),
+                Vector(declared("daily", nudge, inClient))
+              )
+            ),
+            visibility = trialDeclared
+          )
+          .map(_ => ()),
+        Deployments
+          .of(
+            jobs = Vector(nudge),
+            schedules = Vector(declared("daily", nudge, inTrial)),
+            visibility = trialDeclared
+          )
+          .map(_ => ())
+      ) ==> (
+        Left(
+          DeploymentRefusal.CompartmentUndeclared(
+            Requirer.BySchedule(
+              grit.core.id.ScheduleId.declared(grit.core.id.Declarer.Deployment, key("daily"))
+            ),
+            client
+          )
+        ),
+        Left(
+          DeploymentRefusal.CompartmentUndeclared(
+            Requirer.BySchedule(
+              grit.core.id.ScheduleId
+                .declared(grit.core.id.Declarer.Plugin(name("p")), key("daily"))
+            ),
+            client
+          )
+        ),
+        Right(())
+      )
     }
 
     test("an accepted deployment runs every job, its plugins' and its own, by name") {

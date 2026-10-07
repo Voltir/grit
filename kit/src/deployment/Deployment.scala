@@ -29,6 +29,7 @@ import grit.core.spend.Budget
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
 import grit.core.triage.{Bound, Corpora, Earning, Gate, Reading}
+import grit.core.visibility.{Compartment, Label, Visibility}
 import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.TriageQuestions
 import grit.tools.Names
@@ -82,6 +83,26 @@ final case class ShadowReview private[deployment] (
     reviewing: Reviewing,
     gate: Gate
 )
+
+/** What, beside its [[Visibility]], a deployment holds that names compartments. */
+enum Requirer {
+
+  /** The plugin `name`, by its [[Plugin.compartments]]. */
+  case ByPlugin(name: PluginName)
+
+  /** The edge `name`, by its [[ServedEdge.compartments]]. */
+  case ByEdge(name: EdgeName)
+
+  /** The declared schedule `id`, by its [[Declared.clearance]]. */
+  case BySchedule(id: ScheduleId)
+
+  /** As a person reads it in a refusal. */
+  def written: String = this match {
+    case ByPlugin(name) => s"the plugin ${PluginName.value(name)}"
+    case ByEdge(name) => s"the edge ${EdgeName.value(name)}"
+    case BySchedule(id) => s"the schedule ${ScheduleId.value(id)}'s clearance"
+  }
+}
 
 /** Why [[Deployment.of]] refused. */
 enum DeploymentRefusal {
@@ -192,6 +213,9 @@ enum DeploymentRefusal {
   /** `plugin` declares a schedule of `job`, which is not among `plugin`'s jobs. */
   case ScheduleUnowned(plugin: PluginName, job: JobName)
 
+  /** `by` names `compartment`, which the deployment's visibility does not declare. */
+  case CompartmentUndeclared(by: Requirer, compartment: Compartment)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
@@ -234,6 +258,8 @@ enum DeploymentRefusal {
       s"the schedule ${ScheduleId.value(id)} runs ${JobName.value(job)}, which is not the deployment's job of that name"
     case ScheduleUnowned(plugin, job) =>
       s"${PluginName.value(plugin)} declares a schedule of ${JobName.value(job)}, which is not among its jobs"
+    case CompartmentUndeclared(by, compartment) =>
+      s"${by.written} names the compartment ${Compartment.name(compartment)}, which the deployment's visibility does not declare"
   }
 }
 
@@ -251,8 +277,9 @@ enum DeploymentRefusal {
   * often its engine sweeps, the `recipe` that shapes each turn by what it answers
   * ([[TurnRecipe]]), the `persona` grit presents as: the name its turns are told
   * ([[grit.turn.TurnPrompt.called]]) and `about` reports, and the `jobs` and `schedules` it
-  * declares itself beside its plugins' (ADR 0029); `allJobs` is every job, its plugins' and
-  * its own, by name, as its runs find them. The
+  * declares itself beside its plugins' (ADR 0029), and its `visibility`: who may see what
+  * (ADR 0030); `allJobs` is every job, its plugins' and its own, by name, as its runs find
+  * them. The
   * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
   * [[ServedEdge.needs]].
@@ -277,6 +304,7 @@ final case class Deployment private (
     recipe: TurnRecipe,
     jobs: Vector[Job[?]],
     schedules: Vector[Declared[?]],
+    visibility: Visibility,
     allJobs: Jobs
 ) {
 
@@ -334,7 +362,9 @@ object Deployment {
     *     own;
     *   - [[DeploymentRefusal.ScheduleRepeated]]: two declared schedules share an id;
     *   - [[DeploymentRefusal.ScheduleJobless]]: a declared schedule holds a job other than the
-    *     deployment's job of its name.
+    *     deployment's job of its name;
+    *   - [[DeploymentRefusal.CompartmentUndeclared]]: a plugin's or an edge's `compartments`, or
+    *     a declared schedule's `clearance`, names a compartment `visibility` does not declare.
     */
   def of(
       edges: Vector[ServedEdge],
@@ -355,7 +385,8 @@ object Deployment {
       review: Option[Reviewing] = None,
       recipe: TurnRecipe = TurnRecipe.Shipped,
       jobs: Vector[Job[?]] = Vector.empty,
-      schedules: Vector[Declared[?]] = Vector.empty
+      schedules: Vector[Declared[?]] = Vector.empty,
+      visibility: Visibility = Visibility.Shipped
   ): Either[DeploymentRefusal, Deployment] = {
     val names = edges.map(_.name)
     val unanswered = edges.filterNot(_.answersAsks).map(_.name)
@@ -406,6 +437,8 @@ object Deployment {
         )
         .headOption
         .toLeft(())
+      cleared = declared(plugins, schedules).map((by, s) => (s.id(by), s.clearance))
+      _ <- undeclared(visibility, plugins, edges, cleared).toLeft(())
       ids = declared(plugins, schedules).map((by, s) => (s.id(by), s.job))
       _ <- ids
         .map(_._1)
@@ -499,6 +532,7 @@ object Deployment {
       recipe,
       jobs,
       schedules,
+      visibility,
       all
     )
   }
@@ -510,6 +544,35 @@ object Deployment {
   ): Vector[(Declarer, Declared[?])] =
     plugins.flatMap(p => p.schedules.map(Declarer.Plugin(p.name) -> _)) ++
       own.map(Declarer.Deployment -> _)
+
+  /** [[DeploymentRefusal.CompartmentUndeclared]] for the first compartment one of `plugins` or
+    * `edges` names, or one of `cleared`'s clearances holds, that `visibility` does not declare.
+    */
+  private def undeclared(
+      visibility: Visibility,
+      plugins: Vector[Plugin],
+      edges: Vector[ServedEdge],
+      cleared: Vector[(ScheduleId, Label)]
+  ): Option[DeploymentRefusal] = {
+    val declared = visibility.compartments
+    val named =
+      plugins.flatMap(p => p.compartments.map((Requirer.ByPlugin(p.name), _))) ++
+        edges.flatMap(e => e.compartments.map((Requirer.ByEdge(e.name), _)))
+    named
+      .collectFirst {
+        case (by, c) if !declared.declared.contains(c) =>
+          DeploymentRefusal.CompartmentUndeclared(by, c)
+      }
+      .orElse(
+        cleared
+          .flatMap((id, label) =>
+            declared
+              .undeclared(label)
+              .map(DeploymentRefusal.CompartmentUndeclared(Requirer.BySchedule(id), _))
+          )
+          .headOption
+      )
+  }
 
   /** Whether `live`, the set live triage asks, asks every reading `recipe`'s gates read with
     * `knowledge`'s sources; [[DeploymentRefusal.RecipeUnread]] naming the first it does not.

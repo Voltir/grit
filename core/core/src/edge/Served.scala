@@ -6,6 +6,7 @@ import grit.core.id.EdgeName
 import grit.core.inbox.Inbox
 import grit.core.review.Reviews
 import grit.core.store.{Jot, Principals, StoreError}
+import grit.core.visibility.Compartment
 
 /** What an edge is given to reach the engine (ADR 0002): the inbox it hands messages to and
   * reads turns from, the people it enrolls, the replies it awaits, the messages it marks as
@@ -85,6 +86,11 @@ trait ServedEdge {
     * it goes.
     */
   def postsOut: Boolean
+
+  /** The compartments it names, in a label it labels anything with. A deployment is refused
+    * unless its visibility declares each.
+    */
+  def compartments: Vector[Compartment] = Vector.empty
 
   /** Connects to the edge's service with `env`'s credentials and starts taking its messages
     * into `stores`, telling `log` what a person running it may want to read.

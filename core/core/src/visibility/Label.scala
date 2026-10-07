@@ -24,8 +24,11 @@ object Compartment {
   /** What a mapping could not place. Every deployment declares it. */
   val Unmapped: Compartment = "unmapped"
 
-  /** Its name, the atom it is stored as, for this package's own forms. */
-  private[visibility] def name(c: Compartment): String = c
+  /** Its name, as [[of]] took it: what a person reads in a refusal naming it, and the atom it
+    * is stored as. It says nothing of any label's structure: no public operation takes a
+    * compartment out of a label.
+    */
+  def name(c: Compartment): String = c
 
   private[visibility] given Ordering[Compartment] = Ordering.String
 }

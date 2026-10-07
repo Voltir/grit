@@ -8,21 +8,29 @@ import grit.core.message.Tokens
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
 import grit.core.spend.Budget
+import grit.core.visibility.{Compartment, Visibility}
 import grit.turn.TurnLoop
 
 /** Deployments for tests: every field but the ones a test varies fixed. */
 object Deployments {
 
-  /** An edge named `called` that needs `needs`, says whether it can answer an ask, and never
-    * opens.
+  /** An edge named `called` that needs `needs`, says whether it can answer an ask and whether
+    * it posts out, names `naming`, and never opens.
     */
-  def edge(called: String, asks: Boolean, needs: Vector[String] = Vector.empty): ServedEdge = {
+  def edge(
+      called: String,
+      asks: Boolean,
+      needs: Vector[String] = Vector.empty,
+      posts: Boolean = false,
+      naming: Vector[Compartment] = Vector.empty
+  ): ServedEdge = {
     val wanted = needs.map(Variable(_))
     new ServedEdge {
       def name: EdgeName = EdgeName(called)
       def needs: Vector[Variable] = wanted
       def answersAsks: Boolean = asks
-      def postsOut: Boolean = false
+      def postsOut: Boolean = posts
+      override def compartments: Vector[Compartment] = naming
       def open(
           stores: EdgeStores^,
           env: Map[String, String],
@@ -52,7 +60,8 @@ object Deployments {
       recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
       plugins: Vector[grit.core.plugin.Plugin] = Vector.empty,
       jobs: Vector[grit.core.job.Job[?]] = Vector.empty,
-      schedules: Vector[grit.core.job.Declared[?]] = Vector.empty
+      schedules: Vector[grit.core.job.Declared[?]] = Vector.empty,
+      visibility: Visibility = Visibility.Shipped
   ): Either[DeploymentRefusal, Deployment] =
     Deployment.of(
       edges = edges,
@@ -73,7 +82,8 @@ object Deployments {
       knowledge = knowledge,
       recipe = recipe,
       jobs = jobs,
-      schedules = schedules
+      schedules = schedules,
+      visibility = visibility
     )
 
   /** [[of]], which the test expects to be accepted. */

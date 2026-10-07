@@ -1,17 +1,21 @@
 package grit.core.job
 
 import grit.core.id.{Declarer, ScheduleId, ScheduleKey}
+import grit.core.visibility.Label
 
 /** A schedule a deployment or plugin declares (ADR 0029): run for grit
   * (`grit.core.id.PrincipalId.Grit`), reported only in its runs' own conversations, and
   * reconciled with the stored ones at every start: changed in place when changed, ended when no
-  * longer declared.
+  * longer declared. `clearance` is what its runs read beyond their own conversations, and the
+  * label they and what they keep are kept at (ADR 0030); a deployment is refused unless its
+  * visibility declares each compartment `clearance` holds.
   */
 final case class Declared[P <: caps.Pure](
     key: ScheduleKey,
     job: Job[P],
     rule: SlotRule,
-    params: P
+    params: P,
+    clearance: Label = Label.Public
 ) {
 
   /** Its id, declared by `by`. */

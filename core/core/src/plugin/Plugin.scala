@@ -7,6 +7,7 @@ import grit.core.id.PluginName
 import grit.core.job.{Declared, Job}
 import grit.core.period.CloseOrdinal
 import grit.core.store.{ClosedPeriod, StoreError, Tx}
+import grit.core.visibility.Compartment
 
 /** A feature a deployment turns on (ADR 0027): a name, a version, the plugins it reads, and
   * the contributions it makes to core's points, each none unless it says otherwise. Built
@@ -46,6 +47,11 @@ trait Plugin extends caps.Pure {
     * deployment is refused when one is of a job not among [[jobs]], or two share a key.
     */
   def schedules: Vector[Declared[?]] = Vector.empty
+
+  /** The compartments it names, in a label it keeps documents at or labels anything with. A
+    * deployment is refused unless its visibility declares each.
+    */
+  def compartments: Vector[Compartment] = Vector.empty
 
   /** Whether it is posted closed periods: it has a cache or documents. */
   final def posts: Boolean = cache.nonEmpty || documents.nonEmpty
