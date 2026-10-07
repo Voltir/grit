@@ -13,15 +13,16 @@ import grit.core.place.Place
 import grit.core.plugin.{Documents, Exports, Needs, PluginReads, PluginRun, PluginTool, Unneeded}
 import grit.core.store.{ClosedPeriod, Origin, Reads, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
-import grit.core.visibility.Label
 
 /** The digest (ADR 0011's hello-world plugin, kept as documents, ADR 0028): one document per
-  * room ([[grit.core.store.Origin.room]]) where conversations closed, kept at that room,
-  * holding its newest [[Digest.Lines]] closings' lines (when each closed, where, why, and what
-  * it came to: [[grit.core.period.Closing.headline]]), newest first, written as of the newest
-  * one's close; none for a period whose closing stays in its own conversation
-  * ([[CloseReason.Unshown]]: unearned, or a job's run). Retrieval finds a room's document where a window's scope
-  * reaches the room; `recent_activity` reads them all.
+  * room ([[grit.core.store.Origin.room]]) where conversations closed and per label those
+  * conversations were created at, placed at that room and kept in it at that label, holding
+  * its newest [[Digest.Lines]] closings' lines (when each closed, where, why, and what it came
+  * to: [[grit.core.period.Closing.headline]]), newest first, written as of the newest one's
+  * close; none for a period whose closing stays in its own conversation
+  * ([[CloseReason.Unshown]]: unearned, or a job's run). Retrieval finds a room's document where
+  * a window's scope reaches the room and its turn reads it; `recent_activity` lists the lines
+  * of every one the calling turn reads.
   */
 final class Digest(val name: PluginName) extends Exports[Activity] {
 
@@ -37,8 +38,9 @@ final class Digest(val name: PluginName) extends Exports[Activity] {
 /** What the digest exports: its lines, read from its documents. */
 trait Activity extends caps.Pure {
 
-  /** Its newest `n` lines across every room, newest first; at most [[Digest.Lines]] of any one
-    * room, since a room keeps no more. None when `n` is not positive.
+  /** Its newest `n` lines across every document its transaction reads, newest first; at most
+    * [[Digest.Lines]] of any one, since a document keeps no more. None when `n` is not
+    * positive.
     */
   def recent(n: Int)(using Tx^): Either[StoreError, Vector[String]]
 }
@@ -49,7 +51,7 @@ object Digest {
   val Lines: Int = 10
 
   /** Label "digest: conversations closed here most recently", unscaled, kept 30 days, at most
-    * 1000 rooms.
+    * 1000 documents, every room's and label's together.
     */
   val Terms: DocumentTerms =
     // Literals both constructors accept, read when the object is first used: every test of
@@ -69,6 +71,9 @@ object Digest {
         case None => Right(())
         case Some(why) =>
           val room = closed.origin.room
+          // Posting reads and keeps at the closed conversation's label (Tx.cleared): a
+          // thread of the room at another label keeps its own document under the same key.
+          val label = Tx.cleared(tx)
           val line = Line(
             CloseOrdinal.value(closed.order),
             closed.at,
@@ -78,8 +83,7 @@ object Digest {
           )
           for {
             key <- DocKey.of(roomKey(room)).left.map(StoreError.Invalid(_))
-            // Kept at the posting's floor, which is what its transaction reads (Tx.cleared).
-            current <- keeper.current(key, Tx.cleared(tx))
+            current <- keeper.current(key, label)
             kept = current.fold(Vector.empty[Line])(d => Line.all(d.data))
             lines = (kept.filterNot(_.order == line.order) :+ line)
               .sortBy(-_.order)
@@ -89,7 +93,7 @@ object Digest {
               .left
               .map(StoreError.Invalid(_))
             newest = lines.headOption.fold(closed.at)(_.at)
-            _ <- keeper.write(key, Label.Public, room, text, Line.data(lines), newest)
+            _ <- keeper.write(key, label, room, text, Line.data(lines), newest)
           } yield ()
       }
   }
@@ -192,8 +196,8 @@ object Digest {
     case Origin.Task(name, _) => s"task $name"
   }
 
-  /** `recent_activity`: the newest lines of the digest it is bound to, newest first. Free: it
-    * only reads.
+  /** `recent_activity`: the newest lines of the digest it is bound to that the calling turn
+    * reads (the [[Reads]] its run is handed, for that turn), newest first. Free: it only reads.
     */
   val RecentActivity: PluginTool[Int] = new PluginTool[Int] {
     val described: Hosted[Int] =

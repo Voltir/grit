@@ -14,7 +14,7 @@ import grit.core.place.{Directory, Place}
 import grit.core.plugin.{InMemoryPlugins, Needs, PluginReads}
 import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
-import grit.core.visibility.Subject
+import grit.core.visibility.{Clearance, Label, Subject, TestLabels}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -206,6 +206,31 @@ object DigestTests extends TestSuite {
         (
           Origin.Slack("T1", "eng", "x").room,
           Vector("2026-09-21 09:30 UTC · slack #eng · lapsed · Someone asked about the flaky test.")
+        )
+      )
+    }
+
+    test(
+      "two threads of one room at different labels each keep their own document, and neither supersedes the other"
+    ) {
+      val kept = new Kept
+      val room = nightly(1).origin.room
+      // Posting opens each closed period's transaction for its conversation: in its room, at
+      // the label its conversation was created with.
+      def post(p: ClosedPeriod, label: Label): Unit =
+        kept.digest.documents.fold(Right(()))(
+          _.post(p, kept.keeper)(using TestTx.fake(Clearance.inRoom(room, label, label)))
+        ) ==> Right(())
+      post(nightly(1), Label.Public)
+      post(nightly(2), TestLabels.Trial)
+      post(nightly(3), Label.Public)
+      post(nightly(4), TestLabels.Trial)
+      kept.keeper
+        .newest(10)(using TestTx.fake(Clearance.of(TestLabels.Trialled.compartments.top)))
+        .map(_.map(d => (d.label, lines(d)))) ==> Right(
+        Vector(
+          (TestLabels.Trial, Vector(nightlyLine(4), nightlyLine(2))),
+          (Label.Public, Vector(nightlyLine(3), nightlyLine(1)))
         )
       )
     }
