@@ -462,11 +462,14 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       at: Instant,
       grace: Grace,
       now: Instant
-  )(using tx: Tx^): Either[StoreError, Unit] =
+  )(using tx: Tx^): Either[StoreError, Unit] = {
+    // Kept at what the asking turn reads beyond its room: the desk opens its transaction for
+    // that turn, so the label is the transaction's, never one a caller passes.
+    val label = Tx.cleared(tx)
     update(
-      """INSERT INTO grit.schedules
-        |  (id, source, job, rule, params, principal, report, asked_in, created_at, next_at)
-        |VALUES (?, 'asked', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ?)""".stripMargin
+      s"""INSERT INTO grit.schedules
+         |  (id, source, job, rule, params, principal, report, asked_in, created_at, next_at, label_id)
+         |VALUES (?, 'asked', ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ${SqlLabels.Interned})""".stripMargin
     ) { ps =>
       ps.setString(1, ScheduleId.value(id))
       ps.setString(2, JobName.value(job.name))
@@ -477,7 +480,9 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       ps.setString(7, call.key)
       ps.setObject(8, utc(now))
       ps.setObject(9, utc(at))
+      SqlLabels.bind(ps, 10, label)
     }.map(_ => ())
+  }
 
   /** `id` ended `how` at `at`, with no slot left, and marked for deletion. */
   private def end(id: ScheduleId, how: Ending, at: Instant)(using
