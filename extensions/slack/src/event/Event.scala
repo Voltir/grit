@@ -79,7 +79,7 @@ object Events {
 
   /** The event an Events API payload (a Socket Mode envelope's `payload`) carries, grit's own
     * bot user being `bot`: `app_mention` and `message` events as [[Event.Said]] (a `message`
-    * only from a person, in a channel, new or broadcast from a thread, or sharing a file),
+    * only from a person, in a channel, public or private, new or broadcast from a thread, or sharing a file),
     * `reaction_added` and `reaction_removed` on a message as [[Event.Reacted]], everything
     * else [[Event.Ignored]]. Why not, when it is not an event callback, or an event
     * grit reads lacks a field it needs or has a ts or event_ts that names no time.
@@ -102,6 +102,11 @@ object Events {
         }
       }
 
+  /** The `channel_type`s of a `message` in a channel: a public one, and a private one. Any
+    * other kind (`im`, `mpim`, `app_home`, one Slack adds later) is not a channel's.
+    */
+  private val Channels = Set("channel", "group")
+
   /** The subtypes of a `message` that are a person saying something new. */
   private val Spoken = Set("thread_broadcast", "file_share")
 
@@ -114,8 +119,8 @@ object Events {
           case (Some(sub), _, _) if !Spoken.contains(sub) =>
             Right(Event.Ignored(s"a message's $sub"))
           case (_, Some(_), _) => Right(Event.Ignored("a bot's message"))
-          case (_, _, Some(kind)) if kind != "channel" =>
-            Right(Event.Ignored(s"a message in a $kind"))
+          case (_, _, Some(kind)) if !Channels.contains(kind) =>
+            Right(Event.Ignored(s"a message outside a channel ($kind)"))
           case _ => message(event, team, bot, mention = false)
         }
       case other => Right(Event.Ignored(s"an event of type ${other.getOrElse("none")}"))

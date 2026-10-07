@@ -81,7 +81,14 @@ object EventsTests extends TestSuite {
         Right(Event.Ignored("a bot's message"))
     }
 
-    test("grit's own messages, other bots', edits, and messages outside a channel are ignored") {
+    test("a message in a private channel is said as one in a public channel is") {
+      Events.read(message("2.0", "just chatting", Some("1.0"), extra = Seq("channel_type" -> "group")), bot) ==>
+        Right(said("2.0", "1.0", "just chatting", false))
+    }
+
+    test(
+      "grit's own messages, other bots', edits, and messages outside a channel (a direct message, a group one, an app's home) are ignored"
+    ) {
       Events.read(message("4.0", "reply", user = Bot), bot) ==> Right(
         Event.Ignored("a bot's message")
       )
@@ -89,8 +96,12 @@ object EventsTests extends TestSuite {
         Right(Event.Ignored("a bot's message"))
       Events.read(message("4.2", "x", extra = Seq("subtype" -> "message_changed")), bot) ==>
         Right(Event.Ignored("a message's message_changed"))
-      Events.read(message("4.3", "x", extra = Seq("channel_type" -> "group")), bot) ==>
-        Right(Event.Ignored("a message in a group"))
+      Events.read(message("4.3", "x", extra = Seq("channel_type" -> "im")), bot) ==>
+        Right(Event.Ignored("a message outside a channel (im)"))
+      Events.read(message("4.4", "x", extra = Seq("channel_type" -> "mpim")), bot) ==>
+        Right(Event.Ignored("a message outside a channel (mpim)"))
+      Events.read(message("4.5", "x", extra = Seq("channel_type" -> "app_home")), bot) ==>
+        Right(Event.Ignored("a message outside a channel (app_home)"))
     }
 
     test(
