@@ -27,7 +27,7 @@ final class SqlToolRequests extends ToolRequests {
   def dispatch(requests: Vector[ToolRequest])(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     attempt {
-      Using.resource(
+      val opened = Using.resource(
         conn.prepareStatement(
           s"""WITH place AS (
              |  INSERT INTO grit.places (path)
@@ -42,13 +42,18 @@ final class SqlToolRequests extends ToolRequests {
              |  RETURNING id)
              |INSERT INTO grit.tool_requests (key, protocol, workflow_id, conversation_id, turn_seq,
              |  workspace_id, principal, tool, permit, retry, arguments, repairs, state,
-             |  destination_id)
-             |SELECT ?, ?, ?, ?::uuid, ?, id, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 'open',
-             |  (SELECT id FROM destination) FROM place
+             |  destination_id, outcome, answered_at)
+             |SELECT ?, ?, ?, ?::uuid, ?, id, ?, ?, ?, ?, ?::jsonb, ?::jsonb, refusal.state,
+             |  (SELECT id FROM destination), refusal.outcome,
+             |  CASE WHEN refusal.outcome IS NULL THEN NULL ELSE clock_timestamp() END
+             |  FROM place,
+             |       (SELECT o AS outcome, CASE WHEN o IS NULL THEN 'open' ELSE 'answered' END AS state
+             |          FROM (SELECT ?::jsonb AS o) sent) refusal
              |ON CONFLICT (key) DO NOTHING""".stripMargin
         )
       ) { ps =>
-        requests.foreach { q =>
+        requests.map { q =>
+          val refused = ToolRequests.refusal(q)
           ps.setString(1, SqlToolRequests.pathJson(q.workspace))
           // JSON null for no destination, so no destination place is written.
           ps.setString(2, q.destination.fold("null")(SqlToolRequests.pathJson))
@@ -63,10 +68,16 @@ final class SqlToolRequests extends ToolRequests {
           ps.setString(11, q.retry.key)
           ps.setString(12, ujson.write(q.arguments))
           ps.setString(13, SqlToolRequests.repairsJson(q))
+          refused match {
+            case Some(outcome) => ps.setString(14, ujson.write(OutcomeJson.write(outcome)))
+            case None => ps.setNull(14, java.sql.Types.VARCHAR)
+          }
           ps.executeUpdate()
+          refused.isEmpty
         }
       }
-      if (requests.nonEmpty)
+      // A request written refused is answered already: no edge is woken for it.
+      if (opened.contains(true))
         Using.resource(conn.createStatement())(
           _.execute(s"SELECT pg_notify('${SqlToolRequests.Channel}', '')")
         )

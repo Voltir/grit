@@ -1,10 +1,15 @@
 package grit.dbos.engine
 
+import java.sql.DriverManager
+
+import scala.util.Using
+
 import grit.core.edge.{Desk, EdgeDirectory, EdgesContract, ToolRequests}
 import grit.core.id.{ConversationId, PrincipalId}
 import grit.core.place.Place
 import grit.core.store.{Origin, Tx}
-import grit.dbos.sql.{LiveDb, SqlEdgeDirectory, SqlToolRequests, TestPostgres}
+import grit.core.visibility.{Clearance, Visibility}
+import grit.dbos.sql.{LiveDb, Opener, SqlEdgeDirectory, SqlToolRequests, TestPostgres}
 
 import dev.dbos.transact.DBOSClient
 import org.postgresql.ds.PGSimpleDataSource
@@ -34,6 +39,19 @@ object SqlEdgesTests extends EdgesContract {
   protected val directory: EdgeDirectory = new SqlEdgeDirectory()
 
   protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
+
+  protected def transaction[A](clearance: Clearance, visibility: Visibility)(
+      body: (Tx^) ?=> A
+  ): A =
+    Using.resource(DriverManager.getConnection(config.jdbcUrl, config.user, config.password)) {
+      conn =>
+        conn.setAutoCommit(false)
+        try {
+          val a = body(using new Opener(visibility).at(clearance, conn))
+          conn.commit()
+          a
+        } catch { case e: Throwable => conn.rollback(); throw e }
+    }
 
   protected def conversation(name: String): ConversationId =
     LiveDb.conversation(config, Origin.Task("edges", name)).id

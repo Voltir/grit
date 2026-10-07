@@ -243,8 +243,9 @@ In dependency order:
   workspace, with its `Permit` and retry), `OutcomeJson` (its answer's stored form),
   `Edges.authorize` (the one routing decision: an edge serves only the places it registered,
   and a `Route` is the directory it may run over), `Registration`, `Desk` (an
-  edge's side), `ToolRequests` (the engine's side: dispatch, settle, abandon, and each
-  request's `RequestState`) and `EdgeDirectory` (which live edge serves a place, and its
+  edge's side), `ToolRequests` (the engine's side: dispatch, which
+  writes a request its transaction may not send already answered with its `refusal` (ADR
+  0031), settle, abandon, and each request's `RequestState`) and `EdgeDirectory` (which live edge serves a place, and its
   `Advert`). Named for the same idea as the `grit.edge` module: this package is the types
   every side agrees on, that module the loop an edge runs over them. ← `id`, `place`,
   `prompt`, `store`, `model`, `message`, `approval`, `tool`

@@ -7,6 +7,17 @@ import grit.core.place.{Directory, Namespace, Place}
 import grit.core.prompt.{Fragment, Layer}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolName, ToolSet}
+import grit.core.visibility.{
+  Clearance,
+  Compartments,
+  Label,
+  Labelled,
+  Level,
+  RoomLabels,
+  TestLabels,
+  Trust,
+  Visibility
+}
 
 import utest.*
 
@@ -22,6 +33,13 @@ abstract class EdgesContract extends TestSuite {
 
   /** Runs `body` in one transaction, committed when it returns. */
   protected def transaction[A](body: (Tx^) ?=> A): A
+
+  /** Runs `body` in one transaction opened at `clearance` under `visibility`, committed when it
+    * returns.
+    */
+  protected def transaction[A](clearance: Clearance, visibility: Visibility)(
+      body: (Tx^) ?=> A
+  ): A
 
   /** A conversation requests may name, the same one for the same `name`. */
   protected def conversation(name: String): ConversationId
@@ -59,6 +77,55 @@ abstract class EdgesContract extends TestSuite {
     )
   }
 
+  private def service(name: String): Place = Place.under(Namespace.Service, Vector(name))
+
+  private def slack(channel: String): Place = Place.under(Namespace.Slack, Vector("T", channel))
+
+  private val confidentialTrial = Label.at(Level.Confidential, TestLabels.trial)
+
+  /* A deployment labelling a confidential room, a public and a confidential channel to write
+   * to, public services it trusts with nothing above public, and a restricted one it trusts
+   * with its own label; every other place unplaced. */
+  private val labelled: Visibility = (for {
+    compartments <- Compartments.of(Vector(TestLabels.trial)).left.map(_.toString)
+    rooms <- RoomLabels
+      .of(
+        Vector(
+          slack("room") -> confidentialTrial,
+          slack("general") -> Label.Public,
+          slack("board") -> confidentialTrial,
+          service("poster") -> Label.Public,
+          service("printer") -> Label.Public,
+          service("wiki") -> Label.Public,
+          service("vault") -> Label.at(Level.Restricted, TestLabels.trial)
+        ),
+        Labelled.Unmapped(Label.Public)
+      )
+      .left
+      .map(_.written)
+    v <- Visibility
+      .of(
+        compartments,
+        rooms,
+        Vector.empty,
+        Vector.empty,
+        Vector(
+          Trust(
+            grit.core.place.Service.of("vault").getOrElse(throw new java.lang.AssertionError()),
+            Label.at(Level.Restricted, TestLabels.trial)
+          )
+        )
+      )
+      .left
+      .map(_.toString)
+  } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** A turn in the confidential room, asked by someone cleared for it. */
+  private def inRoom[A](body: (Tx^) ?=> A): A =
+    transaction(Clearance.inRoom(slack("room"), confidentialTrial, confidentialTrial), labelled)(
+      body
+    )
+
   private def dispatched(rs: ToolRequest*): Unit =
     transaction(requests.dispatch(rs.toVector)) ==> Right(())
 
@@ -80,12 +147,37 @@ abstract class EdgesContract extends TestSuite {
       )
     }
 
-    test("a desk opens a request with the destination it was dispatched with") {
-      val here = place("destination")
-      val to = Place.under(Namespace.Slack, Vector("T", "destination"))
-      val r = request("destination", 0, here, destination = Some(to))
-      dispatched(r)
-      desk(Set(here)).open().map(_.map(_.destination)) ==> Right(Vector(Some(to)))
+    test(
+      "a request the turn may not send is answered refused, naming the place and no label, and no desk opens it"
+    ) {
+      val poster = service("poster")
+      val wiki = service("wiki")
+      val vault = service("vault")
+      val down = request("refused", 0, poster, destination = Some(slack("general")))
+      val unplaced = request("refused", 1, poster, destination = Some(slack("new")))
+      val untrusted = request("refused", 2, wiki)
+      val above = request("refused", 3, vault)
+      val d = desk(Set(poster, wiki, vault))
+      inRoom(requests.dispatch(Vector(down, unplaced, untrusted, above))) ==> Right(())
+      keys(d.open()) ==> Right(Vector())
+      Vector(down, unplaced, untrusted, above).map(r => transaction(requests.settle(r.slot))) ==>
+        Vector(
+          "may not write to slack:T/general",
+          "may not write to slack:T/new",
+          "may not send to service:wiki",
+          "may not read from service:vault"
+        ).map(why =>
+          Right(RequestState.Answered(Outcome.Failed(s"Nothing was sent: this conversation $why.")))
+        )
+    }
+
+    test("a request the turn may send is open, with its destination") {
+      val printer = service("printer")
+      val r = request("permitted", 0, printer, destination = Some(slack("board")))
+      val d = desk(Set(printer))
+      inRoom(requests.dispatch(Vector(r))) ==> Right(())
+      d.open().map(_.map(q => (q.slot.key, q.destination))) ==>
+        Right(Vector((r.slot.key, Some(slack("board")))))
     }
 
     test("the first claim wins, and a second claim of it is refused") {

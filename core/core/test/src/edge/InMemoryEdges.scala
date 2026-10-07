@@ -9,7 +9,8 @@ import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Outcome, Retry, ToolSet}
 
 /** In-memory [[ToolRequests]], [[EdgeDirectory]] and [[Desks]] for tests, keeping
-  * [[EdgesContract]]. It ignores the `Tx`. Each answer an edge gives is also kept in
+  * [[EdgesContract]]. It reads the `Tx` only for [[ToolRequests.refusal]]. Each answer an edge
+  * gives is also kept in
   * [[answers]], in order, for a test to read; the turn is told none of them, only rung with
   * [[Desk.Doorbell]], and reads its answer from the request.
   */
@@ -50,7 +51,10 @@ final class InMemoryEdges extends ToolRequests, EdgeDirectory, Desks {
 
   def dispatch(requests: Vector[ToolRequest])(using Tx^): Either[StoreError, Unit] = {
     requests.foreach { q =>
-      if (!rows.exists(_.request.slot == q.slot)) rows = rows :+ Row(q, InMemoryEdges.Open, None)
+      if (!rows.exists(_.request.slot == q.slot)) {
+        val state = ToolRequests.refusal(q).fold(InMemoryEdges.Open)(RequestState.Answered(_))
+        rows = rows :+ Row(q, state, None)
+      }
     }
     Right(())
   }
