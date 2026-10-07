@@ -99,7 +99,8 @@ object Tool {
     new Tool(spec, gate, shown, (args: A, _: CallSlot) => run(args))
 
   /** A stand-in for `entry`, a tool a turn recorded that this build no longer has: offered
-    * under its recorded name and schema, asking first when it did, so a replayed turn takes
+    * under its recorded name and schema, asking first when it did, and writing to the
+    * destinations it recorded, so its [[Offered.entry]] is `entry` and a replayed turn takes
     * the steps it took; every call of it is answered that the tool is gone, and nothing runs.
     */
   def gone(entry: ToolSet.Entry): Offered = {
@@ -110,7 +111,9 @@ object Tool {
       if (entry.asks)
         Gate.Ask(_ => s"${ToolName.value(entry.name)} is gone: approving it runs nothing.")
       else Gate.Free
-    Tool[ujson.Value](spec, gate, _ => "", _ => goneOutcome)
+    entry.writes.fold[Offered](Tool[ujson.Value](spec, gate, _ => "", _ => goneOutcome))(writes =>
+      new Writing(spec, gate, _ => "", writes).over((_, _) => goneOutcome)
+    )
   }
 
   /** A tool whatever its arguments' type, as a [[Toolbox]] holds it. */

@@ -77,6 +77,14 @@ object WritingTests extends TestSuite {
       box.schemas(strict = true) ==> Vector(writing.schema(strict = true))
     }
 
+    test(
+      "a gone writing tool stands in as the entry it recorded, offering the destinations it offered"
+    ) {
+      val gone = Tool.gone(writing.entry)
+      gone.entry ==> writing.entry
+      gone.schema(strict = false) ==> writing.schema(strict = false)
+    }
+
     test("a writing tool cannot be run without being told its destination") {
       val error = assertCompileError("""writing.over((text: String) => Outcome.Done(text))""")
       assert(error.msg.contains("Found:"))
