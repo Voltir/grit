@@ -955,9 +955,18 @@ object Turn {
     */
   private def asking(placing: Placing)(using d: Durable^): Option[TurnTopics.Classification] =
     placing match {
-      case Placing.Placed(c) if c.uncertain => Option.when(d.patch(Patches.Verdict))(c)
-      case _ => None
+      case Placing.Placed(c) => asked(c, d.patch(Patches.Verdict))
+      case Placing.Unplaced => None
     }
+
+  /** `c`, when the classifier was unsure and the turn takes the verdict patch (`verdict`,
+    * consulted only when it was unsure): the classification the model is asked about.
+    */
+  private def asked(
+      c: TurnTopics.Classification,
+      verdict: => Boolean
+  ): Option[TurnTopics.Classification] =
+    Option.when(c.uncertain && verdict)(c)
 
   /** What steps came to, `result`, and the verdict's record when it failed without failing
     * the turn.
@@ -1820,12 +1829,12 @@ object Turn {
       answer <- recorded[EntryId](Step.Append)
       settings = profile.turn.settings
       strict = settings.strict == StrictSchemas.Enforced
-      // As Turn.asking decided: the classification, when unsure and the verdict patch was taken.
-      asked = classified.filter(c => c.uncertain && took(Patches.Verdict))
+      // As asking decided it live, the verdict patch read from its marker.
+      asking = classified.flatMap(asked(_, took(Patches.Verdict)))
       // The set as recorded, each tool as a turn reads one its build no longer has: its schema
       // is what a typed tool sends when not strict (Tool.entry records args.schema(false)).
       own = Toolbox.of[{}](set.tools.map(Tool.gone)*).getOrElse(Toolbox.Empty)
-      tools <- offered(own, asked).left.map(reason)
+      tools <- offered(own, asking).left.map(reason)
       schemas = tools.schemas(strict)
       // What the call whose reply is kept as `reply` was sent, under `use`. Its reply is kept
       // after every own entry the call was shown: recordCall and append read `shown` after
@@ -1838,7 +1847,7 @@ object Turn {
           case Some(at) =>
             val before = showing.mine.filter(e => EntrySeq.value(e.seq) < EntrySeq.value(at.seq))
             requestOf(prompt.render, showing.copy(mine = before), turn, window)
-              .map(loopShape(asked, round, use, schemas, settings.afterResult, settings.guidance))
+              .map(loopShape(asking, round, use, schemas, settings.afterResult, settings.guidance))
               .left
               .map(reason)
         }
