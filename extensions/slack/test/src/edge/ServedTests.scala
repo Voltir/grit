@@ -18,6 +18,7 @@ import grit.core.edge.{
 import grit.core.id.SourceId
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
+import grit.core.place.{Namespace, Place}
 import grit.core.review.Reason
 import grit.core.speech.Rate
 import grit.core.spend.Budget
@@ -26,7 +27,7 @@ import grit.core.tool.Outcome
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.slack.client.{AppToken, BotToken, FakeSlack, Slack}
-import grit.slack.event.{ChannelId, Listed, Payloads, Ts, UserId}
+import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
 
 import utest.*
 
@@ -106,7 +107,59 @@ object ServedTests extends TestSuite {
     case Right(_) => None
   }
 
+  /** The review at `slack:{team}/{channel}`, rated by U0NICK001. */
+  private def reviewAt(team: String, channel: String): SlackReview =
+    SlackReview
+      .of(Place.under(Namespace.Slack, Vector(team, channel)), UserId("U0NICK001"))
+      .fold(why => throw new java.lang.AssertionError(why), identity)
+
   val tests = Tests {
+    test(
+      "a review's place is a channel's or a DM's, slack:{team}/{id}; any other is refused, naming it"
+    ) {
+      def of(text: String) =
+        SlackReview
+          .of(Place.read(text).fold(sys.error, identity), UserId("U0NICK001"))
+          .map(r => (r.team, r.channel))
+      (
+        of("slack:T1/C0REVIEW1"),
+        of("slack:T1/D0NICK001"),
+        of("service:slack"),
+        of("slack:T1"),
+        of("slack:T1/#review"),
+        of("slack:T1/C0REVIEW1/1.0")
+      ) ==> (
+        Right((TeamId("T1"), ChannelId("C0REVIEW1"))),
+        Right((TeamId("T1"), ChannelId("D0NICK001"))),
+        Left("a review's place is slack:{team}/{channel id}, not service:slack"),
+        Left("a review's place is slack:{team}/{channel id}, not slack:T1"),
+        Left("a review's place is slack:{team}/{channel id}, not slack:T1/#review"),
+        Left("a review's place is slack:{team}/{channel id}, not slack:T1/C0REVIEW1/1.0")
+      )
+    }
+
+    test("serving posts review prompts at its review's place, and nowhere without one") {
+      val review = reviewAt(Team, "C0REVIEW1")
+      (
+        Served.serving(Set(C), None, Some(review), new World().connect).reviewsAt,
+        Served.serving(Set(C), Some(Posts(TwoAnHour, Skynet)), None, new World().connect).reviewsAt
+      ) ==> (Some(Place.under(Namespace.Slack, Vector(Team, "C0REVIEW1"))), None)
+    }
+
+    test("serving refuses to open when its review's team is not the bot's, closing Slack") {
+      val w = new World
+      refusal(
+        Served
+          .serving(Set(C), None, Some(reviewAt("T0OTHER01", "C0REVIEW1")), w.connect)
+          .open(w.stores, Env, _ => ())
+      ) ==> Some(
+        EdgeRefusal.Refused(
+          s"the review's place, slack:T0OTHER01/C0REVIEW1, is not in grit's team, $Team"
+        )
+      )
+      w.slack.closed ==> true
+    }
+
     test("serving refuses a token unset or of the wrong kind by its variable, never quoting it") {
       val w = new World
       val edge = Served.serving(Set(C), None, None, w.connect)
@@ -123,7 +176,7 @@ object ServedTests extends TestSuite {
       w.slack.histories =
         Map(C -> Vector(Listed(Ts("1.0"), None, Some(UserId(Ana)), false, None, "hm")))
       val entry = w.picks.pick(Origin.Slack(Team, "C123ABC456", "1.0"), "1.0", Reason.Both)
-      val review = SlackReview(ChannelId("C0REVIEW1"), UserId("U0NICK001"))
+      val review = reviewAt(Team, "C0REVIEW1")
       val open =
         Served.serving(Set(C), None, Some(review), w.connect).open(w.stores, Env, _ => ()) match {
           case Right(o) => o
@@ -134,11 +187,11 @@ object ServedTests extends TestSuite {
         w.slack.posts.map(p => (p.channel, p.tag)),
         w.slack.reactions.map((c, _, emoji) => (c, emoji))
       ) ==> (
-        Vector((review.place, grit.slack.client.Tag.Prompt(grit.core.id.EntryId.value(entry)))),
+        Vector((review.channel, grit.slack.client.Tag.Prompt(grit.core.id.EntryId.value(entry)))),
         Set(
-          (review.place, "+1"),
-          (review.place, "-1"),
-          (review.place, "bust_in_silhouette")
+          (review.channel, "+1"),
+          (review.channel, "-1"),
+          (review.channel, "bust_in_silhouette")
         )
       )
     }
@@ -255,7 +308,7 @@ object ServedTests extends TestSuite {
     test(
       "serving posts beyond the turns it answers exactly when it is given where it may post or a review to prompt"
     ) {
-      val review = SlackReview(ChannelId("C0REVIEW1"), UserId("U0NICK001"))
+      val review = reviewAt(Team, "C0REVIEW1")
       (
         Served.serving(Set(C), Some(Posts(TwoAnHour, Skynet)), None, new World().connect).postsOut,
         Served.serving(Set(C), None, Some(review), new World().connect).postsOut,

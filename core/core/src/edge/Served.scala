@@ -4,6 +4,7 @@ import java.time.Instant
 
 import grit.core.id.EdgeName
 import grit.core.inbox.Inbox
+import grit.core.place.Place
 import grit.core.review.Reviews
 import grit.core.store.{Jot, Principals, StoreError}
 import grit.core.visibility.Compartment
@@ -86,6 +87,11 @@ trait ServedEdge {
     * checks what such a post carries against where it goes.
     */
   def postsOut: Boolean
+
+  /** Where it posts a deployment's review prompts, when it answers a review: the kit picks only
+    * messages that place may receive ([[grit.core.review.ReviewStore.candidates]]).
+    */
+  def reviewsAt: Option[Place] = None
 
   /** The compartments it names, in a label it labels anything with. A deployment is refused
     * unless its visibility declares each.

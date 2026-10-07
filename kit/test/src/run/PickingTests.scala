@@ -95,6 +95,7 @@ object PickingTests extends TestSuite {
     )
     Deployments
       .of(
+        edges = Vector(Deployments.edge("slack", asks = false, reviews = Some(room))),
         speaking = Speaking.Shadow(limits),
         shadows = Vector(variant),
         review = Reviewing.of(shadow, perDay, 1, 24.hours)

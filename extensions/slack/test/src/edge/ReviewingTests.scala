@@ -36,7 +36,13 @@ object ReviewingTests extends TestSuite {
   /** The review's rater. */
   private val Nick = "U0NICK001"
 
-  private val Review = SlackReview(Place, UserId(Nick))
+  private val Review =
+    SlackReview
+      .of(
+        grit.core.place.Place.under(grit.core.place.Namespace.Slack, Vector(Team, "C0REVIEW1")),
+        UserId(Nick)
+      )
+      .fold(why => throw new java.lang.AssertionError(why), identity)
 
   /** Reviews as `under` keeps them, but `posted` first notes what `reactions` says grit's
     * reactions on Slack are at that moment, and fails, as a crash before it would, while

@@ -5,6 +5,7 @@ import java.time.{Duration, Instant}
 import grit.core.clock.Clock
 import grit.core.edge.{CatchUp, EdgeRefusal, EdgeStores, ServedEdge, Unheard, Variable}
 import grit.core.id.{EdgeName, PrincipalId}
+import grit.core.place.Place
 import grit.core.store.StoreError
 import grit.edge.Server
 import grit.slack.client.{AppToken, BotToken, Slack}
@@ -59,6 +60,7 @@ private[slack] object Served {
     // A review prompt names a heard message's channel and permalink in the review's place,
     // outside the message's thread.
     def postsOut: Boolean = posts.nonEmpty || review.nonEmpty
+    override def reviewsAt: Option[Place] = review.map(_.place)
     def open(
         stores: EdgeStores^,
         env: Map[String, String],
@@ -72,6 +74,14 @@ private[slack] object Served {
             case Left(e) =>
               slack.close()
               Left(refusedToken(e))
+            case Right(self) if review.exists(_.team != self.team) =>
+              slack.close()
+              Left(
+                EdgeRefusal.Refused(
+                  s"the review's place, ${review.fold("")(_.place.written)}, is not in grit's " +
+                    s"team, ${TeamId.value(self.team)}"
+                )
+              )
             case Right(self) =>
               val edge = new SlackEdge(slack, self, stores, channels, review, Clock.system(), log)
               log(edge.listened() match {

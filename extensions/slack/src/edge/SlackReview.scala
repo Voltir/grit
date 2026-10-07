@@ -1,9 +1,23 @@
 package grit.slack.edge
 
-import grit.slack.event.{ChannelId, UserId}
+import grit.core.place.{Namespace, Place}
+import grit.slack.event.{ChannelId, TeamId, UserId}
 
 /** A deployment's review as its Slack edge answers it: prompts posted at the top of `place`, a
-  * private channel or a DM grit's bot is in, and `rater`, the one person whose reactions to
-  * them are kept.
+  * channel or DM of the bot's own team that it does not listen in, `channel` of `team`, and
+  * `rater`, the one person whose reactions to them are kept.
   */
-final case class SlackReview(place: ChannelId, rater: UserId)
+final case class SlackReview private (place: Place, team: TeamId, channel: ChannelId, rater: UserId)
+
+object SlackReview {
+
+  /** `place`'s review for `rater`; why not, when `place` is not `slack:{team}/{channel id}`. */
+  def of(place: Place, rater: UserId): Either[String, SlackReview] =
+    place.segments match {
+      // A channel's id (C…, G…) or a direct message's (D…).
+      case Vector(ns, team, channel)
+          if ns == Namespace.Slack.key && channel.matches("[CDG][A-Z0-9]+") =>
+        Right(new SlackReview(place, TeamId(team), ChannelId(channel), rater))
+      case _ => Left(s"a review's place is slack:{team}/{channel id}, not ${place.written}")
+    }
+}

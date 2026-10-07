@@ -183,9 +183,19 @@ object DeploymentTests extends TestSuite {
       )
       def reviewing(of: String) =
         grit.core.review.Reviewing.of(name(of), 8, 20, 24.hours).getOrElse(sys.error("a review"))
+      val prompting = edge(
+        "slack",
+        asks = false,
+        reviews = Some(grit.core.place.Place.read("slack:T1/C1").fold(sys.error, identity))
+      )
       def reviewed(of: String, speaks: grit.core.speech.Speaking = speaking) =
         Deployments
-          .of(speaking = speaks, shadows = shadows, review = Some(reviewing(of)))
+          .of(
+            edges = Vector(prompting),
+            speaking = speaks,
+            shadows = shadows,
+            review = Some(reviewing(of))
+          )
           .map(_.review.map(r => (r.reviewing.shadow, r.gate)))
       (
         reviewed("undeclared"),
@@ -199,6 +209,51 @@ object DeploymentTests extends TestSuite {
         Left(DeploymentRefusal.ReviewUnspoken),
         Right(Some((name("v2"), grit.lifecycle.triage.TriageQuestions.V2.speak))),
         Right(None)
+      )
+    }
+
+    test(
+      "a review is refused unless exactly one edge posts its prompts, naming those that do"
+    ) {
+      def name(s: String) = grit.core.id.ShadowName.of(s).getOrElse(sys.error("a name"))
+      val shadows = Vector(
+        grit.lifecycle.shadow.ShadowVariant(
+          name("v2"),
+          grit.lifecycle.triage.TriageQuestions.V2,
+          None,
+          grit.core.spend.DailyCap.of("0.01").getOrElse(sys.error("a cap")),
+          java.time.Instant.EPOCH
+        )
+      )
+      val speaking = grit.core.speech.Speaking.Shadow(
+        grit.core.speech.Limits.suggested(
+          grit.core.spend.DailyCap.of("0.25").getOrElse(sys.error("a cap")),
+          grit.lifecycle.triage.TriageQuestions.ShippedSpeak
+        )
+      )
+      val review =
+        grit.core.review.Reviewing.of(name("v2"), 8, 20, 24.hours).getOrElse(sys.error("a review"))
+      def at(text: String) = grit.core.place.Place.read(text).fold(sys.error, identity)
+      def reviewing(called: String, place: String) =
+        edge(called, asks = false, reviews = Some(at(place)))
+      def reviewed(edges: grit.core.edge.ServedEdge*) =
+        Deployments
+          .of(
+            edges = edges.toVector,
+            speaking = speaking,
+            shadows = shadows,
+            review = Some(review)
+          )
+          .map(_.review.map(_.place))
+      val quiet = edge("mcp", asks = false)
+      (
+        reviewed(quiet),
+        reviewed(reviewing("slack", "slack:T1/C1"), reviewing("other", "slack:T1/C2")),
+        reviewed(quiet, reviewing("slack", "slack:T1/C1"))
+      ) ==> (
+        Left(DeploymentRefusal.ReviewUnposted(Vector.empty)),
+        Left(DeploymentRefusal.ReviewUnposted(Vector(EdgeName("slack"), EdgeName("other")))),
+        Right(Some(at("slack:T1/C1")))
       )
     }
 

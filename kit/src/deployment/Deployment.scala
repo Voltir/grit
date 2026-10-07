@@ -20,7 +20,7 @@ import grit.core.message.Tokens
 import grit.core.model.Policy
 import grit.core.period.LifecycleSettings
 import grit.core.persona.Persona
-import grit.core.place.{Reaches, Service, WorksIn}
+import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.plugin.{Plugin, PluginDocs, PluginReads, Unneeded}
 import grit.core.recipe.{Offering, TurnRecipe}
 import grit.core.review.Reviewing
@@ -76,12 +76,14 @@ enum Topics {
   case Off(reason: String)
 }
 
-/** A review a deployment declares ([[Deployment.of]]): `reviewing`, and `gate`, the gate of
-  * the question set its shadow asks, by which that shadow would draft.
+/** A review a deployment declares ([[Deployment.of]]): `reviewing`; `gate`, the gate of the
+  * question set its shadow asks, by which that shadow would draft; and `place`, where the one
+  * edge that answers it posts its prompts ([[ServedEdge.reviewsAt]]).
   */
 final case class ShadowReview private[deployment] (
     reviewing: Reviewing,
-    gate: Gate
+    gate: Gate,
+    place: Place
 )
 
 /** What, beside its [[Visibility]], a deployment holds that names compartments. */
@@ -222,6 +224,11 @@ enum DeploymentRefusal {
     */
   case PostsBelow(edge: EdgeName)
 
+  /** A review is declared, and `edges` post review prompts ([[ServedEdge.reviewsAt]]): none, so
+    * nothing picked would be posted, or more than one, so a prompt would be posted twice.
+    */
+  case ReviewUnposted(edges: Vector[EdgeName])
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
@@ -268,6 +275,10 @@ enum DeploymentRefusal {
       s"${by.written} names the compartment ${Compartment.name(compartment)}, which the deployment's visibility does not declare"
     case PostsBelow(edge) =>
       s"${EdgeName.value(edge)} posts beyond the turns it answers, and rooms are labelled: what it posts is not yet checked against where it goes"
+    case ReviewUnposted(edges) =>
+      if (edges.isEmpty) "a review is declared, and no edge posts its prompts"
+      else
+        s"a review is declared, and ${edges.map(EdgeName.value).mkString(", ")} each post its prompts: one must"
   }
 }
 
@@ -347,6 +358,8 @@ object Deployment {
     *     or the stub);
     *   - [[DeploymentRefusal.ReviewUngated]]: `review` names no declared shadow;
     *   - [[DeploymentRefusal.ReviewUnspoken]]: `review` is declared with `speaking` Off;
+    *   - [[DeploymentRefusal.ReviewUnposted]]: `review` is declared and not exactly one of
+    *     `edges` posts its prompts ([[ServedEdge.reviewsAt]]);
     *   - [[DeploymentRefusal.RecipeUnweighed]]: `recipe` offers a service by source with
     *     `topics` Off;
     *   - [[DeploymentRefusal.RecipeUnsourced]]: `recipe` offers a service by source and no
@@ -508,10 +521,14 @@ object Deployment {
         // Live's gate is never reached with speaking off: every decision is Silence.Off.
         case Some(_) if speaking == Speaking.Off => Left(DeploymentRefusal.ReviewUnspoken)
         case Some(r) =>
-          shadows
-            .find(_.name == r.shadow)
-            .map(v => Some(ShadowReview(r, v.questions.speak)))
-            .toRight(DeploymentRefusal.ReviewUngated(r.shadow))
+          for {
+            v <- shadows.find(_.name == r.shadow).toRight(DeploymentRefusal.ReviewUngated(r.shadow))
+            // One edge posts the prompts: none would leave every pick unposted, two post each twice.
+            at <- edges.flatMap(e => e.reviewsAt.map((e.name, _))) match {
+              case Vector((_, place)) => Right(place)
+              case several => Left(DeploymentRefusal.ReviewUnposted(several.map(_._1)))
+            }
+          } yield Some(ShadowReview(r, v.questions.speak, at))
       }
       bySource = Vector(recipe.heard.focused, recipe.heard.open, recipe.addressed)
         .exists(_.offering != Offering.All)

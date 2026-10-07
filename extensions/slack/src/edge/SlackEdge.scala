@@ -476,18 +476,18 @@ final class SlackEdge(
         case more => Left(s"it renders as ${more.size} messages")
       }
       at <- slack
-        .postTopLevel(r.place, post, Tag.Prompt(EntryId.value(p.entry)))
+        .postTopLevel(r.channel, post, Tag.Prompt(EntryId.value(p.entry)))
         .left
         .map(e => s"not posted: $e")
       _ = ReviewPrompt.Reactions.keys.foreach(emoji =>
         slack
-          .react(r.place, at, emoji)
+          .react(r.channel, at, emoji)
           .left
           .foreach(e => said(s"slack: a review prompt left without :$emoji:: $e"))
       )
       when <- Events.time(Ts.value(at)).toRight(s"posted at ${Ts.value(at)}, which names no time")
       kept <- stores.jot
-        .write(Subject.Public)(stores.reviews.posted(p.entry, PromptAt(r.place, at).written, when))
+        .write(Subject.Public)(stores.reviews.posted(p.entry, PromptAt(r.channel, at).written, when))
         .left
         .map(e => s"posted at ${Ts.value(at)} but not kept, so it is posted again: $e")
     } yield kept
@@ -696,16 +696,17 @@ object SlackEdge {
   /** As [[serving]], posting as `posts` allows when given, and answering `review`: each
     * delivery posts the review's prompts not yet posted in its place, and a reaction its rater
     * gives a prompt there is kept as the prompt's verdict ([[SlackEdge.prompt]],
-    * [[SlackEdge.receive]]). Refused, saying why, when the place is one of `channels`.
+    * [[SlackEdge.receive]]). Refused, saying why, when the place is one of `channels`; it does
+    * not open when `review`'s team is not the bot's.
     */
   def serving(
       channels: Set[ChannelId],
       posts: Option[Posts],
       review: SlackReview
   ): Either[String, ServedEdge] =
-    if (channels.contains(review.place))
+    if (channels.contains(review.channel))
       Left(
-        s"review prompts are not posted in ${ChannelId.value(review.place)}: grit listens there, so they would be heard"
+        s"review prompts are not posted in ${ChannelId.value(review.channel)}: grit listens there, so they would be heard"
       )
     else Right(Served.serving(channels, posts, Some(review), Socket))
 

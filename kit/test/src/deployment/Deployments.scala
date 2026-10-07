@@ -7,6 +7,7 @@ import grit.core.id.EdgeName
 import grit.core.message.Tokens
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
+import grit.core.place.Place
 import grit.core.spend.Budget
 import grit.core.visibility.{Compartment, Visibility}
 import grit.turn.TurnLoop
@@ -15,14 +16,15 @@ import grit.turn.TurnLoop
 object Deployments {
 
   /** An edge named `called` that needs `needs`, says whether it can answer an ask and whether
-    * it posts out, names `naming`, and never opens.
+    * it posts out, posts review prompts at `reviews`, names `naming`, and never opens.
     */
   def edge(
       called: String,
       asks: Boolean,
       needs: Vector[String] = Vector.empty,
       posts: Boolean = false,
-      naming: Vector[Compartment] = Vector.empty
+      naming: Vector[Compartment] = Vector.empty,
+      reviews: Option[Place] = None
   ): ServedEdge = {
     val wanted = needs.map(Variable(_))
     new ServedEdge {
@@ -30,6 +32,7 @@ object Deployments {
       def needs: Vector[Variable] = wanted
       def answersAsks: Boolean = asks
       def postsOut: Boolean = posts
+      override def reviewsAt: Option[Place] = reviews
       override def compartments: Vector[Compartment] = naming
       def open(
           stores: EdgeStores^,
