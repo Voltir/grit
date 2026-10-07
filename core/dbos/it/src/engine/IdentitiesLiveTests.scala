@@ -7,12 +7,13 @@ import scala.concurrent.duration.*
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Try, Using}
 
-import grit.core.id.{PrincipalId, SourceId, TurnRef}
+import grit.core.id.{ConversationId, PrincipalId, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.{Account, TestAccounts}
 import grit.core.inbox.{InboundId, InboxError}
 import grit.core.message.Message
-import grit.core.store.{Origin, Tx}
-import grit.dbos.sql.{LiveDb, TestPostgres}
+import grit.core.store.{Origin, StoreError, Tx}
+import grit.core.visibility.Subject
+import grit.dbos.sql.{LiveDb, SqlConversationStore, TestPostgres}
 
 import utest.*
 
@@ -81,6 +82,16 @@ object IdentitiesLiveTests extends TestSuite {
       }
     }
 
+  /** Runs `sql` with `params`, arranging rows the stores would never write. */
+  private def execute(sql: String, params: String*): Unit =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(conn.prepareStatement(sql)) { ps =>
+        params.zipWithIndex.foreach((p, i) => ps.setString(i + 1, p))
+        val _ = ps.executeUpdate()
+      }
+    }
+
   val tests = Tests {
     test(
       "an account first seen is a new person's one account, enrolled, under an id minted for them, never its spelling"
@@ -126,6 +137,33 @@ object IdentitiesLiveTests extends TestSuite {
         pool.shutdownNow()
         engine.close()
       }
+    }
+
+    test(
+      "an account stored in no account's spelling is Invalid where it is read back: as a conversation's creator, and among its asker's accounts"
+    ) {
+      val misspelt = "Not An Account"
+      val why = StoreError.Invalid(
+        s"a stored account: an account is local, grit, or {namespace}:{name}: $misspelt"
+      )
+      val asker = TestAccounts.account("slack:T1/U-misspelt")
+      val c = LiveDb.conversation(config, Origin.Slack("T1", "C1", "9.0")).id
+      val turn = TurnRef(c, TurnSeq.First)
+      LiveDb.asking(config, turn, asker, None)
+      val person = PrincipalId.value(LiveDb.principal(config, asker))
+      execute(
+        "INSERT INTO grit.identities (account, principal_id, evidence, home) VALUES (?, ?, 'enrolled', ?)",
+        misspelt,
+        person,
+        person
+      )
+      execute(
+        "UPDATE grit.conversations SET created_by = ? WHERE id = ?::uuid",
+        misspelt,
+        ConversationId.value(c)
+      )
+      LiveDb.transaction(config)(new SqlConversationStore().get(c)) ==> Left(why)
+      LiveDb.transaction(config)(LiveDb.Trialled.clearance(Subject.Turn(turn))) ==> Left(why)
     }
   }
 }
