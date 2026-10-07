@@ -105,7 +105,8 @@ part is declared data or a pure function:
   at `unmapped` instead, so what a mapping invents is read by fewer people, never more.
 - `groups` and `grants`: people grouped by principal, and what each group's members are
   cleared for.
-- `trusts`: what each outside service (`service:{name}`) is trusted with, as a label;
+- `trusts`: what each outside service (`service:{name}`) is trusted with, as a label
+  ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-and-a-service-is-a-place-and-a-party.md));
   public for a service it does not name. It is the most a turn may send the service as a
   call's arguments. What the service contains is another label, its place's, given by
   `rooms` as any room's. Grants clear people, trusts clear services, and rooms label content.
