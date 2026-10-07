@@ -49,14 +49,20 @@ object ReviewingTests extends TestSuite {
     * `crash` is set.
     */
   private final class Watched(under: Reviews) extends Reviews {
+    // Set once, by the world that made this fake, before any edge call reads it; it reads a
+    // fake Slack that dies with that world.
     @caps.unsafe.untrackedCaptures
     var reactions: () -> Set[(ChannelId, Ts, String)] = () => Set.empty
+    // Written by the edge's calls, which the test makes and waits on, on its own thread, and
+    // read by that test once they return; no other code holds this fake.
     @caps.unsafe.untrackedCaptures
     var reactionsWhenKept = Vector.empty[Set[(ChannelId, Ts, String)]]
+    // Set and cleared by the test around one edge call it makes on its own thread.
     @caps.unsafe.untrackedCaptures
     var crash = false
 
     /** Each place [[unposted]] was asked for, in order. */
+    // Written as `reactionsWhenKept` is: by the edge's calls on the test's thread, read after.
     @caps.unsafe.untrackedCaptures
     var askedFor = Vector.empty[grit.core.place.Place]
     def unposted(to: grit.core.place.Place)(using Tx^): Either[StoreError, Vector[Prompt]] = {
@@ -88,6 +94,8 @@ object ReviewingTests extends TestSuite {
     // The fake Slack outlives neither the world that made it nor this reader of it.
     watched.reactions = caps.unsafe.unsafeAssumePure(() => slack.reactions)
 
+    // Appended to by the edge's log, called only inside the calls the test makes on its own
+    // thread, and read by that test once they return.
     @caps.unsafe.untrackedCaptures
     var logged = Vector.empty[String]
 
