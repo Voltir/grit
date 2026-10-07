@@ -159,6 +159,11 @@ object OpenerLiveTests extends TestSuite {
       )
     }
 
+    test("an id no conversation could have reads only what is public, as a gone one does") {
+      resolved(Subject.Turn(TurnRef(ConversationId("c"), TurnSeq.First))) ==>
+        Right(Clearance.of(Label.Public))
+    }
+
     test("a gone conversation's work reads only what is public") {
       val gone = ConversationId("01920000-0000-7000-8000-000000000001")
       resolved(Subject.Conversation(gone)) ==> Right(Clearance.of(Label.Public))

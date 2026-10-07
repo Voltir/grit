@@ -52,9 +52,17 @@ private[dbos] final class Opener(visibility: Visibility) {
     */
   private final case class Named(origin: Origin, label: Label, first: Option[Option[PrincipalId]])
 
-  /** `id`'s conversation and, for `turn`, its first entry; `None` when the conversation is gone.
+  /** `id`'s conversation and, for `turn`, its first entry; `None` when the conversation is gone,
+    * or `id` is none a conversation could have.
     */
   private def named(id: ConversationId, turn: Option[TurnSeq])(using
+      tx: Tx^
+  ): Either[StoreError, Option[Named]] =
+    // An id that is no UUID names no conversation: gone, rather than a failed cast.
+    if (scala.util.Try(java.util.UUID.fromString(ConversationId.value(id))).isFailure) Right(None)
+    else read(id, turn)
+
+  private def read(id: ConversationId, turn: Option[TurnSeq])(using
       tx: Tx^
   ): Either[StoreError, Option[Named]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
