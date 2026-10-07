@@ -613,7 +613,8 @@ object Deployment {
       ): Either[StoreError, Vector[(String, ujson.Value)]] = Right(Vector.empty)
     },
     new DocumentShelf {
-      def current(key: DocKey)(using Tx^): Either[StoreError, Option[Document]] = Right(None)
+      def current(key: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Document]] =
+        Right(None)
       def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] = Right(Vector.empty)
     }
   )

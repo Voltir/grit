@@ -311,6 +311,7 @@ object RebuildTests extends TestSuite {
             .keeper(notes, terms)
             .write(
               right(DocKey.of("falcon")),
+              grit.core.visibility.Label.Public,
               Origin.Task("rebuild", "d").room,
               right(DocText.of("the Falcon budget is 4200")),
               ujson.Obj(),
@@ -318,7 +319,7 @@ object RebuildTests extends TestSuite {
             )
         )
       ) match {
-        case Written.Versioned(v, _) => v
+        case Written.Versioned(v, _, _) => v
         case other => throw new java.lang.AssertionError(s"not written: $other")
       }
       val d = ask(engine, "d", "what is the Falcon budget?")

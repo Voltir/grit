@@ -6,12 +6,14 @@ import grit.core.id.{DocKey, DocumentVersion, PluginName}
 import grit.core.place.Place
 import grit.core.retention.Target
 import grit.core.store.{InMemoryTombstones, StoreError, Tx}
+import grit.core.visibility.{Item, Label}
 
 /** An in-memory [[DocumentStore]], with each plugin's [[DocumentKeeper]], for tests, keeping
   * [[DocumentContract]]. Versions are numbered by one counter across every plugin. It marks
   * versions in `tombstones`, which reads which plugin's a version is from it. Search scores a
   * document by how often the query's words occur in it, not by BM25: the contract's searches
-  * order strictly under either. It ignores the `Tx`: nothing is rolled back.
+  * order strictly under either. It floors, places and filters by the `Tx`'s clearance, and
+  * otherwise ignores it: nothing is rolled back.
   */
 final class InMemoryDocuments extends DocumentStore {
   import InMemoryDocuments.Row
@@ -36,36 +38,67 @@ final class InMemoryDocuments extends DocumentStore {
   /** `plugin`'s documents as it writes them, under `under`. */
   def keeper(plugin: PluginName, under: DocumentTerms): DocumentKeeper =
     new Shelf(plugin) with DocumentKeeper {
-      def write(key: DocKey, place: Place, text: DocText, data: ujson.Value, at: Instant)(using
-          Tx^
-      ): Either[StoreError, Written] =
-        head(plugin, key) match {
+      def write(
+          key: DocKey,
+          label: Label,
+          place: Place,
+          text: DocText,
+          data: ujson.Value,
+          at: Instant
+      )(using tx: Tx^): Either[StoreError, Written] = {
+        val clearance = Tx.clearance(tx)
+        val kept = label.join(clearance.floor)
+        head(plugin, key, kept) match {
           case Some((v, r)) if r.text.contains(text) && r.place == place && r.data == data =>
-            Right(Written.Unchanged(version(v)))
+            Right(Written.Unchanged(version(v), kept))
           case before =>
             for {
               _ <- before.fold(Right(()))((v, r) => supersede(v, r, at))
-              v = insert(Row(plugin, key, place, Some(text), data, at, None, Placement(0, at)))
-              over = holding(plugin).filterNot((_, r) => r.key == key)
+              v = insert(
+                Row(
+                  plugin,
+                  key,
+                  kept,
+                  clearance.own.map(_.room),
+                  place,
+                  Some(text),
+                  data,
+                  at,
+                  None,
+                  Placement(0, at)
+                )
+              )
+              over = holding(plugin).filterNot((_, r) => r.key == key && r.label == kept)
               excess = (over.size + 1 - under.bound) max 0
               gone = over
-                .sortBy((_, r) => (r.placement.lastPlaced, DocKey.value(r.key)))
+                .sortBy((_, r) =>
+                  (r.placement.lastPlaced, DocKey.value(r.key), Label.written(r.label))
+                )
                 .take(excess)
-                .map(_._2.key)
-              _ <- gone.foldLeft[Either[StoreError, Unit]](Right(()))((acc, k) =>
-                acc.flatMap(_ => withdraw(k, at).map(_ => ()))
+                .map((_, r) => (r.key, r.label))
+              _ <- gone.foldLeft[Either[StoreError, Unit]](Right(()))((acc, kl) =>
+                acc.flatMap(_ => withdraw(kl._1, kl._2, at).map(_ => ()))
               )
-            } yield Written.Versioned(version(v), gone)
+            } yield Written.Versioned(version(v), kept, gone)
         }
+      }
 
-      def withdraw(key: DocKey, at: Instant)(using
+      def withdraw(key: DocKey, label: Label, at: Instant)(using
           Tx^
       ): Either[StoreError, Option[DocumentVersion]] =
-        head(plugin, key) match {
+        head(plugin, key, label) match {
           case Some((v, r)) if r.text.nonEmpty =>
             for {
               _ <- supersede(v, r, at)
-              w = insert(Row(plugin, key, r.place, None, ujson.Obj(), at, None, Placement(0, at)))
+              w = insert(
+                r.copy(
+                  text = None,
+                  data = ujson.Obj(),
+                  written = at,
+                  superseded = None,
+                  placement = Placement(0, at)
+                )
+              )
               _ <- tombstones.write(Target.Document(version(w)), at)
             } yield Some(version(w))
           case _ => Right(None)
@@ -95,7 +128,7 @@ final class InMemoryDocuments extends DocumentStore {
   ): Either[StoreError, Vector[Shelved]] =
     Right(
       rows.values.toVector
-        .filter(r => plugins.contains(r.plugin) && currentAt(r, at))
+        .filter(r => plugins.contains(r.plugin) && currentAt(r, at) && reads(r))
         .map(r => Shelved(r.plugin, r.place))
         .distinct
     )
@@ -109,8 +142,8 @@ final class InMemoryDocuments extends DocumentStore {
       else
         rows.toVector
           .collect {
-            case (v, r @ Row(plugin, _, place, Some(text), _, _, _, _))
-                if shelves.contains(Shelved(plugin, place)) && currentAt(r, at) =>
+            case (v, r @ Row(plugin, _, _, _, place, Some(text), _, _, _, _))
+                if shelves.contains(Shelved(plugin, place)) && currentAt(r, at) && reads(r) =>
               val found = InMemoryDocuments.words(DocText.value(text))
               val score = words.map(w => found.count(_ == w)).sum.toDouble
               DocumentSearch.Hit(document(v, r, text), score)
@@ -127,6 +160,7 @@ final class InMemoryDocuments extends DocumentStore {
     Right(versions.flatMap { v =>
       rows
         .get(DocumentVersion.value(v))
+        .filter(reads)
         .flatMap(r => r.text.map(document(DocumentVersion.value(v), r, _)))
     })
 
@@ -169,12 +203,17 @@ final class InMemoryDocuments extends DocumentStore {
   }
 
   private class Shelf(plugin: PluginName) extends DocumentShelf {
-    def current(key: DocKey)(using Tx^): Either[StoreError, Option[Document]] =
-      Right(head(plugin, key).flatMap((v, r) => r.text.map(document(v, r, _))))
+    def current(key: DocKey, label: Label)(using Tx^): Either[StoreError, Option[Document]] =
+      Right(
+        head(plugin, key, label)
+          .filter((_, r) => reads(r))
+          .flatMap((v, r) => r.text.map(document(v, r, _)))
+      )
 
     def newest(n: Int)(using Tx^): Either[StoreError, Vector[Document]] =
       Right(
         holding(plugin)
+          .filter((_, r) => reads(r))
           .sortBy((v, r) => (r.written, v))
           .reverse
           .take(n max 0)
@@ -182,9 +221,15 @@ final class InMemoryDocuments extends DocumentStore {
       )
   }
 
-  /** `plugin`'s current version under `key`, holding something or a withdrawal. */
-  private def head(plugin: PluginName, key: DocKey): Option[(Long, Row)] =
-    rows.find((_, r) => r.plugin == plugin && r.key == key && r.superseded.isEmpty)
+  /** `plugin`'s current version under `key` at `label`, holding something or a withdrawal. */
+  private def head(plugin: PluginName, key: DocKey, label: Label): Option[(Long, Row)] =
+    rows.find((_, r) =>
+      r.plugin == plugin && r.key == key && r.label == label && r.superseded.isEmpty
+    )
+
+  /** Whether the transaction reads `r`, kept in its room at its label. */
+  private def reads(r: Row)(using tx: Tx^): Boolean =
+    Tx.clearance(tx).reads(Item.Kept(r.room), r.label)
 
   /** `plugin`'s current versions holding something. */
   private def holding(plugin: PluginName): Vector[(Long, Row)] =
@@ -200,15 +245,17 @@ final class InMemoryDocuments extends DocumentStore {
     DocumentVersion.of(v).getOrElse(throw new IllegalStateException(s"version $v"))
 
   private def document(v: Long, r: Row, text: DocText): Document =
-    Document(version(v), r.plugin, r.key, r.place, text, r.data, r.written, r.placement)
+    Document(version(v), r.plugin, r.key, r.label, r.place, text, r.data, r.written, r.placement)
 }
 
 object InMemoryDocuments {
 
-  /** One version's row: `text` `None` for a withdrawal. */
+  /** One version's row: `label` and `room` as it is kept; `text` `None` for a withdrawal. */
   private final case class Row(
       plugin: PluginName,
       key: DocKey,
+      label: Label,
+      room: Option[Place],
       place: Place,
       text: Option[DocText],
       data: ujson.Value,

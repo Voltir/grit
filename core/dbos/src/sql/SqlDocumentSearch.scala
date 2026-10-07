@@ -33,16 +33,17 @@ final class SqlDocumentSearch extends DocumentSearch {
   ): Either[StoreError, Vector[Shelved]] =
     if (plugins.isEmpty) Right(Vector.empty)
     else
-      rows(
-        s"""SELECT plugin, array_to_json(place)::text AS place FROM (
-           |  SELECT DISTINCT plugin, place FROM grit.documents
+      cleared(
+        s"""WITH ${SqlClearance.With}
+           |SELECT plugin, array_to_json(place)::text AS place FROM (
+           |  SELECT DISTINCT plugin, place FROM grit.documents d
            |   WHERE plugin IN (SELECT jsonb_array_elements_text(?::jsonb))
-           |     AND body IS NOT NULL AND $CurrentAt
+           |     AND body IS NOT NULL AND $CurrentAt AND ${SqlClearance.document("d")}
            |) shelved""".stripMargin
       ) { ps =>
-        ps.setString(1, strings(plugins.map(PluginName.value)))
-        ps.setObject(2, utc(at))
-        ps.setObject(3, utc(at))
+        ps.setString(SqlClearance.Params + 1, strings(plugins.map(PluginName.value)))
+        ps.setObject(SqlClearance.Params + 2, utc(at))
+        ps.setObject(SqlClearance.Params + 3, utc(at))
       } { rs =>
         for {
           plugin <- PluginName.of(rs.getString("plugin"))
@@ -58,12 +59,12 @@ final class SqlDocumentSearch extends DocumentSearch {
       val wanted = ujson.Arr.from(shelves.map { s =>
         ujson.Obj("p" -> PluginName.value(s.plugin), "place" -> path(s.place))
       })
-      rows(Ranked) { ps =>
-        ps.setString(1, query)
-        ps.setString(2, wanted.render())
-        ps.setObject(3, utc(at))
-        ps.setObject(4, utc(at))
-        ps.setInt(5, limit)
+      cleared(Ranked) { ps =>
+        ps.setString(SqlClearance.Params + 1, query)
+        ps.setString(SqlClearance.Params + 2, wanted.render())
+        ps.setObject(SqlClearance.Params + 3, utc(at))
+        ps.setObject(SqlClearance.Params + 4, utc(at))
+        ps.setInt(SqlClearance.Params + 5, limit)
       }(rs => document(rs).map(DocumentSearch.Hit(_, -rs.getDouble("s"))))
     }
 
@@ -72,11 +73,12 @@ final class SqlDocumentSearch extends DocumentSearch {
   ): Either[StoreError, Vector[Document]] =
     if (versions.isEmpty) Right(Vector.empty)
     else
-      rows(
-        s"""SELECT $Columns FROM grit.documents
+      cleared(
+        s"""WITH ${SqlClearance.With}
+           |SELECT $Columns FROM $Labelled d
            | WHERE version IN (SELECT v::bigint FROM jsonb_array_elements_text(?::jsonb) AS e(v))
-           |   AND body IS NOT NULL""".stripMargin
-      )(_.setString(1, numbers(versions)))(document).map { found =>
+           |   AND body IS NOT NULL AND ${SqlClearance.document("d")}""".stripMargin
+      )(_.setString(SqlClearance.Params + 1, numbers(versions)))(document).map { found =>
         val byVersion = found.map(d => d.version -> d).toMap
         versions.flatMap(byVersion.get)
       }

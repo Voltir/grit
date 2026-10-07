@@ -370,6 +370,7 @@ object TurnViewTests extends TestSuite {
         DocumentVersion.of(version).getOrElse(sys.error("version")),
         got(PluginName.of("digest")),
         got(DocKey.of(s"week-$version")),
+        grit.core.visibility.Label.Public,
         board,
         got(DocText.of(text)),
         ujson.Obj(),

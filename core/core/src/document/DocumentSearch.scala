@@ -9,20 +9,24 @@ import grit.core.store.{StoreError, Tx}
 /** A place where `plugin` keeps a current document. */
 final case class Shelved(plugin: PluginName, place: Place)
 
-/** The enabled plugins' documents as windows draw on them. Read-only. */
+/** The enabled plugins' documents as windows draw on them. Read-only. Each read returns only the
+  * documents its transaction reads ([[DocumentShelf]]).
+  */
 trait DocumentSearch {
 
   /** Each enabled plugin's terms, as the newest engine start declared them. */
   def declared()(using Tx^): Either[StoreError, Vector[(PluginName, DocumentTerms)]]
 
   /** Each place where one of `plugins` kept a document current at `at` (written before `at`,
-    * superseded by none written before `at`, not a withdrawal), once per plugin and place.
+    * superseded by none written before `at`, not a withdrawal) that its transaction reads, once
+    * per plugin and place.
     */
   def shelved(plugins: Vector[PluginName], at: Instant)(using
       Tx^
   ): Either[StoreError, Vector[Shelved]]
 
-  /** The documents at `shelves`, current at `at`, that match `query`: best first, at most
+  /** The documents at `shelves`, current at `at`, that its transaction reads and that match
+    * `query` (one it does not read never takes a readable one's place): best first, at most
     * `limit`, equally good matches latest written first, each with its score, positive and
     * higher better, on the document index's own scale, not [[grit.core.store.EntrySearch]]'s.
     * Empty when nothing matches, `query` is blank, `limit` is not positive or `shelves` is
@@ -32,7 +36,9 @@ trait DocumentSearch {
       Tx^
   ): Either[StoreError, Vector[DocumentSearch.Hit]]
 
-  /** The versions among `versions` still kept and holding something, in their order. */
+  /** The versions among `versions` still kept, holding something and read by its transaction,
+    * in their order.
+    */
   def read(versions: Vector[DocumentVersion])(using Tx^): Either[StoreError, Vector[Document]]
 
   /** The versions among `versions` still kept whose plugin is enabled, in their order, each

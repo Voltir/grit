@@ -70,12 +70,19 @@ object TurnDocumentsTests extends TestSuite {
     ok(
       documents
         .keeper(plugin, terms(label))
-        .write(got(DocKey.of(key)), board, got(DocText.of(text)), ujson.Obj(), written)(using
+        .write(
+          got(DocKey.of(key)),
+          grit.core.visibility.Label.Public,
+          board,
+          got(DocText.of(text)),
+          ujson.Obj(),
+          written
+        )(using
           TestTx.fake
         )
     ) match {
-      case Written.Versioned(v, _) => v
-      case Written.Unchanged(v) => v
+      case Written.Versioned(v, _, _) => v
+      case Written.Unchanged(v, _) => v
     }
 
   /** An assembler whose every window is `window`. */

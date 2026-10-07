@@ -76,6 +76,7 @@ object PluginLiveTests extends TestSuite {
             keeper
               .write(
                 key,
+                grit.core.visibility.Label.Public,
                 Place.under(Namespace.Task, Vector("notes")),
                 text,
                 ujson.Obj(),

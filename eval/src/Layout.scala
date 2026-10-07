@@ -371,11 +371,18 @@ object Load {
         acc.flatMap(done =>
           jot
             .write(Subject.Public)(
-              keeper.write(d.key, d.place, d.text, ujson.Obj(), Instant.EPOCH.minusSeconds(60))
+              keeper.write(
+                d.key,
+                grit.core.visibility.Label.Public,
+                d.place,
+                d.text,
+                ujson.Obj(),
+                Instant.EPOCH.minusSeconds(60)
+              )
             )
             .map {
-              case grit.core.document.Written.Versioned(v, _) => done :+ v
-              case grit.core.document.Written.Unchanged(v) => done :+ v
+              case grit.core.document.Written.Versioned(v, _, _) => done :+ v
+              case grit.core.document.Written.Unchanged(v, _) => done :+ v
             }
             .left
             .map(e => s"${layout.c.name}: $e")

@@ -13,6 +13,7 @@ import grit.core.place.Place
 import grit.core.plugin.{Documents, Exports, Needs, PluginReads, PluginRun, PluginTool, Unneeded}
 import grit.core.store.{ClosedPeriod, Origin, Reads, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
+import grit.core.visibility.Label
 
 /** The digest (ADR 0011's hello-world plugin, kept as documents, ADR 0028): one document per
   * room ([[grit.core.store.Origin.room]]) where conversations closed, kept at that room,
@@ -61,7 +62,9 @@ object Digest {
   /** Each closing's line in its room's document. */
   private object Kept extends Documents {
     val terms: DocumentTerms = Terms
-    def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] =
+    def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using
+        tx: Tx^
+    ): Either[StoreError, Unit] =
       why(closed.reason) match {
         case None => Right(())
         case Some(why) =>
@@ -75,7 +78,8 @@ object Digest {
           )
           for {
             key <- DocKey.of(roomKey(room)).left.map(StoreError.Invalid(_))
-            current <- keeper.current(key)
+            // Kept at the posting's floor, which is what its transaction reads (Tx.cleared).
+            current <- keeper.current(key, Tx.cleared(tx))
             kept = current.fold(Vector.empty[Line])(d => Line.all(d.data))
             lines = (kept.filterNot(_.order == line.order) :+ line)
               .sortBy(-_.order)
@@ -85,7 +89,7 @@ object Digest {
               .left
               .map(StoreError.Invalid(_))
             newest = lines.headOption.fold(closed.at)(_.at)
-            _ <- keeper.write(key, room, text, Line.data(lines), newest)
+            _ <- keeper.write(key, Label.Public, room, text, Line.data(lines), newest)
           } yield ()
       }
   }

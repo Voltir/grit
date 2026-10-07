@@ -255,10 +255,17 @@ object RetrievalAssemblerTests extends TestSuite {
   ): DocumentVersion =
     docs.under
       .keeper(plugin(p), termsOf(1))
-      .write(got(DocKey.of(key)), place, got(DocText.of(text)), ujson.Obj(), at)(using
+      .write(
+        got(DocKey.of(key)),
+        grit.core.visibility.Label.Public,
+        place,
+        got(DocText.of(text)),
+        ujson.Obj(),
+        at
+      )(using
         TestTx.fake
       ) match {
-      case Right(Written.Versioned(v, _)) => v
+      case Right(Written.Versioned(v, _, _)) => v
       case other => sys.error(s"not written: $other")
     }
 

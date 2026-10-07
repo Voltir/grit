@@ -104,7 +104,7 @@ object PostingTests extends TestSuite {
           } yield (key, text)) match {
             case Left(why) => Left(StoreError.Invalid(why))
             case Right((key, text)) =>
-              keeper.write(key, Here, text, ujson.Obj(), closed.at).map(_ => ())
+              keeper.write(key, Label.Public, Here, text, ujson.Obj(), closed.at).map(_ => ())
           }
       }
     })

@@ -288,12 +288,13 @@ object RecordTurnHistories {
           .keeper(digest, terms)
           .write(
             got(grit.core.id.DocKey.of(key)),
+            grit.core.visibility.Label.Public,
             board,
             got(grit.core.document.DocText.of(text)),
             ujson.Obj(),
             java.time.Instant.EPOCH
           ) match {
-          case Right(grit.core.document.Written.Versioned(v, _)) => v
+          case Right(grit.core.document.Written.Versioned(v, _, _)) => v
           case other => sys.error(s"not written: $other")
         }
       val week = write("week", "Deploys frozen until Friday.")

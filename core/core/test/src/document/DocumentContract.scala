@@ -7,7 +7,8 @@ import scala.concurrent.duration.*
 import grit.core.id.{DocKey, DocumentVersion, PluginName}
 import grit.core.place.{Namespace, Place}
 import grit.core.retention.{Target, Tombstone}
-import grit.core.store.{StoreError, Tombstones, Tx}
+import grit.core.store.{Origin, StoreError, Tombstones, Tx}
+import grit.core.visibility.{Clearance, Label, TestLabels}
 
 import utest.*
 
@@ -33,8 +34,17 @@ abstract class DocumentContract extends TestSuite {
   /** Where the store marks the versions it leaves for deletion. */
   protected def tombstones: Tombstones
 
-  /** Runs `body` in one transaction, committed when it returns. */
-  protected def transaction[A](body: (Tx^) ?=> A): A
+  /** Runs `body` in one transaction opened at `clearance`, committed when it returns. */
+  protected def opened[A](clearance: Clearance)(body: (Tx^) ?=> A): A
+
+  /** Makes `origin`'s room one the store knows, as its first conversation does. */
+  protected def room(origin: Origin): Unit
+
+  /** Runs `body` in one transaction opened publicly, committed when it returns: what every
+    * case but the labelled ones writes and reads at.
+    */
+  protected final def transaction[A](body: (Tx^) ?=> A): A =
+    opened(Clearance.of(Label.Public))(body)
 
   private def ok[A](e: Either[StoreError, A]): A =
     e.fold(err => throw new java.lang.AssertionError(s"$err"), identity)
@@ -63,8 +73,8 @@ abstract class DocumentContract extends TestSuite {
       where: Place = place("here"),
       data: ujson.Value = Empty
   ): DocumentVersion =
-    transaction(ok(k.write(key(name), where, text(body), data, at(m)))) match {
-      case Written.Versioned(v, _) => v
+    transaction(ok(k.write(key(name), Label.Public, where, text(body), data, at(m)))) match {
+      case Written.Versioned(v, _, _) => v
       case w => throw new java.lang.AssertionError(s"$name: $w")
     }
 
@@ -87,7 +97,9 @@ abstract class DocumentContract extends TestSuite {
       val one = put(k, "k", "first words", 1)
       val two = put(k, "k", "second words", 2)
       assert(DocumentVersion.value(one) < DocumentVersion.value(two))
-      texts(transaction(ok(shelf(p).current(key("k")))).toVector) ==> Vector("second words")
+      texts(transaction(ok(shelf(p).current(key("k"), Label.Public))).toVector) ==> Vector(
+        "second words"
+      )
       texts(transaction(ok(search.read(Vector(two, one))))) ==> Vector(
         "second words",
         "first words"
@@ -103,13 +115,13 @@ abstract class DocumentContract extends TestSuite {
       val k = keeper(p, terms())
       val kept = put(k, "gone", "withdrawn words", 1)
       put(k, "stays", "kept words", 1)
-      val withdrawal = transaction(ok(k.withdraw(key("gone"), at(2))))
+      val withdrawal = transaction(ok(k.withdraw(key("gone"), Label.Public, at(2))))
       assert(withdrawal.nonEmpty)
-      transaction(ok(shelf(p).current(key("gone")))) ==> None
+      transaction(ok(shelf(p).current(key("gone"), Label.Public))) ==> None
       keys(transaction(ok(shelf(p).newest(10)))) ==> Vector("stays")
       texts(transaction(ok(search.read(withdrawal.toVector :+ kept)))) ==> Vector("withdrawn words")
-      transaction(ok(k.withdraw(key("gone"), at(3)))) ==> None
-      transaction(ok(k.withdraw(key("never"), at(3)))) ==> None
+      transaction(ok(k.withdraw(key("gone"), Label.Public, at(3)))) ==> None
+      transaction(ok(k.withdraw(key("never"), Label.Public, at(3)))) ==> None
     }
 
     test("a write the current version already holds writes nothing; another place or data does") {
@@ -117,13 +129,22 @@ abstract class DocumentContract extends TestSuite {
       val k = keeper(p, terms())
       val first = put(k, "k", "same words", 1, data = ujson.Obj("n" -> 1))
       transaction(
-        ok(k.write(key("k"), place("here"), text("same words"), ujson.Obj("n" -> 1), at(2)))
+        ok(
+          k.write(
+            key("k"),
+            Label.Public,
+            place("here"),
+            text("same words"),
+            ujson.Obj("n" -> 1),
+            at(2)
+          )
+        )
       ) ==>
-        Written.Unchanged(first)
+        Written.Unchanged(first, Label.Public)
       // Each `put` fails unless the write is Versioned.
       put(k, "k", "same words", 3, where = place("there"), data = ujson.Obj("n" -> 1))
       put(k, "k", "same words", 4, where = place("there"), data = ujson.Obj("n" -> 2))
-      transaction(ok(k.withdraw(key("k"), at(5))))
+      transaction(ok(k.withdraw(key("k"), Label.Public, at(5))))
       put(k, "k", "same words", 6, where = place("there"), data = ujson.Obj("n" -> 2))
     }
 
@@ -131,21 +152,21 @@ abstract class DocumentContract extends TestSuite {
       val p = name("doc-bound")
       val k = keeper(p, terms(bound = 2))
       put(k, "z", "withdrawn first", 0)
-      transaction(ok(k.withdraw(key("z"), at(0))))
+      transaction(ok(k.withdraw(key("z"), Label.Public, at(0))))
       put(k, "b", "words b", 1)
       put(k, "a", "words a", 1)
 
       /** The keys withdrawn by writing `name` at minute `m`. */
       def withdrew(name: String, m: Int): Vector[String] =
         transaction(
-          ok(k.write(key(name), place("here"), text(s"words $name"), Empty, at(m)))
+          ok(k.write(key(name), Label.Public, place("here"), text(s"words $name"), Empty, at(m)))
         ) match {
-          case Written.Versioned(_, gone) => gone.map(DocKey.value)
+          case Written.Versioned(_, _, gone) => gone.map((k, _) => DocKey.value(k))
           case w => throw new java.lang.AssertionError(s"$name: $w")
         }
       // a and b tie on their placement: a goes, by key; the withdrawn z is not counted.
       withdrew("c", 2) ==> Vector("a")
-      val b = transaction(ok(shelf(p).current(key("b")))).map(_.version).toVector
+      val b = transaction(ok(shelf(p).current(key("b"), Label.Public))).map(_.version).toVector
       transaction(ok(store.placed(b, at(5))))
       // b was placed since c was written: c goes.
       withdrew("d", 3) ==> Vector("c")
@@ -176,7 +197,7 @@ abstract class DocumentContract extends TestSuite {
       put(k, "old", "apple apple apple", 1)
       put(k, "old", "nothing like it", 2)
       put(k, "gone", "apple apple apple", 1)
-      transaction(ok(k.withdraw(key("gone"), at(2))))
+      transaction(ok(k.withdraw(key("gone"), Label.Public, at(2))))
       put(k, "late", "apple apple apple", 6)
       put(k, "away", "apple apple apple", 1, where = place("elsewhere"))
       put(keeper(q, terms()), "theirs", "apple apple apple", 1)
@@ -204,7 +225,7 @@ abstract class DocumentContract extends TestSuite {
       put(kp, "a", "words", 1, where = place("x"))
       put(kp, "b", "words", 1, where = place("x"))
       put(kp, "c", "words", 1, where = place("withdrawn"))
-      transaction(ok(kp.withdraw(key("c"), at(2))))
+      transaction(ok(kp.withdraw(key("c"), Label.Public, at(2))))
       put(kp, "d", "words", 9, where = place("later"))
       put(keeper(q, terms()), "a", "words", 1, where = place("z"))
       put(keeper(r, terms()), "a", "words", 1, where = place("unasked"))
@@ -222,7 +243,7 @@ abstract class DocumentContract extends TestSuite {
       put(keeper(q, terms()), "theirs", "words", 4)
       keys(transaction(ok(shelf(p).newest(2)))) ==> Vector("third", "second")
       transaction(ok(shelf(p).newest(0))) ==> Vector()
-      transaction(ok(shelf(q).current(key("first")))) ==> None
+      transaction(ok(shelf(q).current(key("first"), Label.Public))) ==> None
     }
 
     test("each version that stops being current, and each withdrawal, is marked when it does") {
@@ -230,7 +251,7 @@ abstract class DocumentContract extends TestSuite {
       val k = keeper(p, terms())
       val one = put(k, "k", "one", 1)
       val two = put(k, "k", "two", 2)
-      val withdrawal = transaction(ok(k.withdraw(key("k"), at(3)))).toVector
+      val withdrawal = transaction(ok(k.withdraw(key("k"), Label.Public, at(3)))).toVector
       val qk = keeper(q, terms())
       put(qk, "k", "one", 1)
       put(qk, "k", "two", 2)
@@ -269,7 +290,9 @@ abstract class DocumentContract extends TestSuite {
       val two = put(k, "k", "second words", 2)
       transaction(ok(store.forget(one)))
       texts(transaction(ok(search.read(Vector(one, two))))) ==> Vector("second words")
-      texts(transaction(ok(shelf(p).current(key("k")))).toVector) ==> Vector("second words")
+      texts(transaction(ok(shelf(p).current(key("k"), Label.Public))).toVector) ==> Vector(
+        "second words"
+      )
       transaction(ok(store.forget(one)))
     }
 
@@ -277,7 +300,7 @@ abstract class DocumentContract extends TestSuite {
       val (p, q) = (name("doc-remove-p"), name("doc-remove-q"))
       val (kp, kq) = (keeper(p, terms()), keeper(q, terms()))
       val ps = Vector(put(kp, "k", "one", 1), put(kp, "k", "two", 2), put(kp, "j", "three", 2))
-      val withdrawal = transaction(ok(kp.withdraw(key("j"), at(3)))).toVector
+      val withdrawal = transaction(ok(kp.withdraw(key("j"), Label.Public, at(3)))).toVector
       val qs = Vector(put(kq, "k", "one", 1), put(kq, "k", "two", 2))
       transaction(ok(store.remove(p, at(4))))
       transaction(ok(search.read(ps ++ withdrawal))) ==> Vector()
@@ -313,10 +336,146 @@ abstract class DocumentContract extends TestSuite {
       val k = keeper(p, terms(bound = 2))
       put(k, "a", "words a", 1)
       put(k, "B", "words B", 1)
-      transaction(ok(k.write(key("c"), place("here"), text("words c"), Empty, at(2)))) match {
-        case Written.Versioned(_, gone) => gone.map(DocKey.value) ==> Vector("B")
+      transaction(
+        ok(k.write(key("c"), Label.Public, place("here"), text("words c"), Empty, at(2)))
+      ) match {
+        case Written.Versioned(_, _, gone) => gone.map((k, _) => DocKey.value(k)) ==> Vector("B")
         case w => throw new java.lang.AssertionError(s"c: $w")
       }
+    }
+
+    test(
+      "written under a {trial} floor at public, it is kept and keyed at {trial}, and Written says so"
+    ) {
+      val p = name("doc-floored")
+      val k = keeper(p, terms())
+      val floored = Clearance.of(TestLabels.Trial)
+      opened(floored)(
+        ok(k.write(key("k"), Label.Public, place("here"), text("floored"), Empty, at(1)))
+      ) match {
+        case Written.Versioned(_, kept, _) => kept ==> TestLabels.Trial
+        case w => throw new java.lang.AssertionError(s"$w")
+      }
+      opened(floored)(
+        (
+          ok(shelf(p).current(key("k"), TestLabels.Trial)).map(d =>
+            (d.label, DocText.value(d.text))
+          ),
+          ok(shelf(p).current(key("k"), Label.Public))
+        )
+      ) ==> (Some((TestLabels.Trial, "floored")), None)
+    }
+
+    test(
+      "two labels under one key are two current documents, and a write at one leaves the other current"
+    ) {
+      val p = name("doc-variants")
+      val k = keeper(p, terms())
+      val trialled = Clearance.of(TestLabels.Trial)
+      put(k, "k", "public one", 1)
+      opened(trialled)(
+        ok(k.write(key("k"), TestLabels.Trial, place("here"), text("trial one"), Empty, at(2)))
+      )
+      put(k, "k", "public two", 3)
+      opened(trialled)(
+        Vector(Label.Public, TestLabels.Trial)
+          .flatMap(l => ok(shelf(p).current(key("k"), l)))
+          .map(d => DocText.value(d.text))
+      ) ==> Vector("public two", "trial one")
+    }
+
+    test("a withdrawal at one label leaves the key's document at another current") {
+      val p = name("doc-withdraw-variant")
+      val k = keeper(p, terms())
+      val trialled = Clearance.of(TestLabels.Trial)
+      put(k, "k", "public one", 1)
+      opened(trialled)(
+        ok(k.write(key("k"), TestLabels.Trial, place("here"), text("trial one"), Empty, at(2)))
+      )
+      assert(opened(trialled)(ok(k.withdraw(key("k"), TestLabels.Trial, at(3)))).nonEmpty)
+      opened(trialled)(
+        Vector(Label.Public, TestLabels.Trial).map(l =>
+          ok(shelf(p).current(key("k"), l)).map(d => DocText.value(d.text))
+        )
+      ) ==> Vector(Some("public one"), None)
+      opened(trialled)(
+        ok(k.write(key("k"), TestLabels.Trial, place("here"), text("trial two"), Empty, at(4)))
+      ) match {
+        case Written.Versioned(_, kept, _) => kept ==> TestLabels.Trial
+        case w => throw new java.lang.AssertionError(s"$w")
+      }
+    }
+
+    test(
+      "a variant above Tx.cleared is None from current and absent from newest, search and read, though kept"
+    ) {
+      val p = name("doc-above")
+      val k = keeper(p, terms())
+      put(k, "low", "apple low", 1)
+      val high = opened(Clearance.of(TestLabels.Trial))(
+        ok(
+          k.write(key("high"), Label.Public, place("here"), text("apple apple high"), Empty, at(1))
+        )
+      ) match {
+        case Written.Versioned(v, _, _) => v
+        case w => throw new java.lang.AssertionError(s"$w")
+      }
+      val shelves = Vector(Shelved(p, place("here")))
+      def seen(clearance: Clearance) = opened(clearance)(
+        (
+          ok(shelf(p).current(key("high"), TestLabels.Trial)).map(d => DocText.value(d.text)),
+          keys(ok(shelf(p).newest(10))),
+          keys(ok(search.search(shelves, "apple", 1, at(5))).map(_.document)),
+          texts(ok(search.read(Vector(high))))
+        )
+      )
+      (seen(Clearance.of(Label.Public)), seen(Clearance.of(TestLabels.Trial))) ==> (
+        (None, Vector("low"), Vector("low"), Vector()),
+        (
+          Some("apple apple high"),
+          Vector("high", "low"),
+          Vector("high"),
+          Vector("apple apple high")
+        )
+      )
+    }
+
+    test("an uncleared asker reads a document kept in its own room") {
+      val p = name("doc-own-room")
+      val k = keeper(p, terms())
+      val origin = Origin.Slack("T1", "D1", "1.0")
+      room(origin)
+      opened(Clearance.inRoom(origin.room, TestLabels.Trial, TestLabels.Trial))(
+        ok(k.write(key("ours"), Label.Public, place("here"), text("our room's"), Empty, at(1)))
+      )
+      opened(Clearance.inRoom(origin.room, TestLabels.Trial, Label.Public))(
+        (
+          ok(shelf(p).current(key("ours"), TestLabels.Trial)).map(d => DocText.value(d.text)),
+          keys(ok(shelf(p).newest(10))),
+          ok(search.shelved(Vector(p), at(5)))
+        )
+      ) ==> (Some("our room's"), Vector("ours"), Vector(Shelved(p, place("here"))))
+    }
+
+    test("it reads none kept in another room, or in no room") {
+      val p = name("doc-other-room")
+      val k = keeper(p, terms())
+      val (here, there) = (Origin.Slack("T1", "D2", "1.0"), Origin.Slack("T1", "D3", "1.0"))
+      room(here)
+      room(there)
+      opened(Clearance.inRoom(there.room, TestLabels.Trial, TestLabels.Trial))(
+        ok(k.write(key("theirs"), Label.Public, place("here"), text("their room's"), Empty, at(1)))
+      )
+      opened(Clearance.of(TestLabels.Trial))(
+        ok(k.write(key("nobody's"), Label.Public, place("here"), text("no room's"), Empty, at(1)))
+      )
+      opened(Clearance.inRoom(here.room, TestLabels.Trial, Label.Public))(
+        (
+          Vector("theirs", "nobody's").flatMap(n => ok(shelf(p).current(key(n), TestLabels.Trial))),
+          keys(ok(shelf(p).newest(10))),
+          ok(search.shelved(Vector(p), at(5)))
+        )
+      ) ==> (Vector(), Vector(), Vector())
     }
 
     test("kept is every plugin with documents, withdrawn or not") {
@@ -324,7 +483,7 @@ abstract class DocumentContract extends TestSuite {
       put(keeper(p, terms()), "k", "words", 1)
       val kq = keeper(q, terms())
       put(kq, "k", "words", 1)
-      transaction(ok(kq.withdraw(key("k"), at(2))))
+      transaction(ok(kq.withdraw(key("k"), Label.Public, at(2))))
       transaction(ok(store.kept())).filter(Set(p, q, r)).toSet ==> Set(p, q)
     }
   }

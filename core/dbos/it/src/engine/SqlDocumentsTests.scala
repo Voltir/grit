@@ -9,7 +9,8 @@ import grit.core.document.{
   DocumentTerms
 }
 import grit.core.id.PluginName
-import grit.core.store.{Tombstones, Tx}
+import grit.core.store.{Origin, Tombstones, Tx}
+import grit.core.visibility.Clearance
 import grit.dbos.sql.{LiveDb, SqlDocumentSearch, SqlDocuments, SqlTombstones, TestPostgres}
 
 /** The documents contract, kept by the SQL store against a real Postgres. */
@@ -36,5 +37,10 @@ object SqlDocumentsTests extends DocumentContract {
 
   protected def shelf(plugin: PluginName): DocumentShelf = documents.shelf(plugin)
 
-  protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
+  protected def opened[A](clearance: Clearance)(body: (Tx^) ?=> A): A =
+    LiveDb.transaction(config, clearance)(body)
+
+  protected def room(origin: Origin): Unit = {
+    val _ = LiveDb.conversation(config, origin)
+  }
 }

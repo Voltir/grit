@@ -623,6 +623,7 @@ object ShownTests extends TestSuite {
         got(DocumentVersion.of(7).toRight("version")),
         got(PluginName.of("digest")),
         got(DocKey.of("week")),
+        grit.core.visibility.Label.Public,
         board,
         got(DocText.of("Deploys frozen until Friday.\n[record] Standing: none")),
         ujson.Obj(),

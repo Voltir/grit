@@ -41,8 +41,15 @@ object AsOfTests extends TestSuite {
   private def write(docs: InMemoryDocuments, where: Place, text: String, when: Instant) =
     docs
       .keeper(notes, terms)
-      .write(key, where, got(DocText.of(text)), ujson.Obj(), when) match {
-      case Right(Written.Versioned(v, _)) => v
+      .write(
+        key,
+        grit.core.visibility.Label.Public,
+        where,
+        got(DocText.of(text)),
+        ujson.Obj(),
+        when
+      ) match {
+      case Right(Written.Versioned(v, _, _)) => v
       case other => sys.error(s"not written: $other")
     }
 

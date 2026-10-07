@@ -5,12 +5,21 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.id.{ConversationId, EntryId}
+import grit.core.document.{DocLabel, DocText, DocWeight, DocumentTerms}
+import grit.core.id.{ConversationId, DocKey, EntryId, PluginName}
 import grit.core.message.Message
 import grit.core.place.Directory
 import grit.core.store.{Entry, Origin, Payload, Tx}
-import grit.core.visibility.{Compartment, Label, Level}
-import grit.dbos.sql.{DbConfig, LiveDb, SqlConversationStore, SqlEntryStore, TestPostgres}
+import grit.core.visibility.{Clearance, Compartment, Label, Level}
+import grit.dbos.sql.{
+  DbConfig,
+  LiveDb,
+  SqlConversationStore,
+  SqlDocuments,
+  SqlEntryStore,
+  SqlTombstones,
+  TestPostgres
+}
 
 import utest.*
 
@@ -184,6 +193,41 @@ object ConversationRoomsLiveTests extends TestSuite {
         }
       val other = rows("SELECT grit.intern_label(ROW(1, '{trial}')::grit.label)").mkString
       (write("1"), write(other), write("1")) ==> (Right(1), Right(1), Left("idx_documents_current"))
+    }
+
+    test(
+      "a document is kept in its writer's own room, and its withdrawal at the same label and room"
+    ) {
+      val origin = Origin.Slack("T", "withdrawn", "1.0")
+      val _ = LiveDb.conversation(config, origin)
+      val trialLabel = Label.at(Level.Public, trial)
+      val keeper = new SqlDocuments(new SqlTombstones).keeper(
+        PluginName.of("rooms").fold(e => throw new java.lang.AssertionError(e), identity),
+        DocumentTerms
+          .of(
+            DocLabel.of("notes").fold(e => throw new java.lang.AssertionError(e), identity),
+            DocWeight.Unscaled,
+            1.day,
+            10
+          )
+          .fold(e => throw new java.lang.AssertionError(e), identity)
+      )
+      val key = DocKey.of("k").fold(e => throw new java.lang.AssertionError(e), identity)
+      val text = DocText.of("ours").fold(e => throw new java.lang.AssertionError(e), identity)
+      val writer = Clearance.inRoom(origin.room, trialLabel, trialLabel)
+      LiveDb.transaction(config, writer)(
+        for {
+          _ <- keeper.write(key, Label.Public, origin.place, text, ujson.Obj(), Instant.EPOCH)
+          gone <- keeper.withdraw(key, trialLabel, Instant.EPOCH.plusSeconds(1))
+        } yield gone.nonEmpty
+      ) ==> Right(true)
+      rows(
+        s"""SELECT d.body IS NULL, l.compartments::text, array_to_string(r.path, '/')
+           |  FROM grit.documents d
+           |  JOIN grit.labels l ON l.id = d.label_id
+           |  LEFT JOIN grit.places r ON r.id = d.room_id
+           | WHERE d.plugin = 'rooms' ORDER BY d.version""".stripMargin
+      ) ==> Vector("f|{trial}|slack/T/withdrawn", "t|{trial}|slack/T/withdrawn")
     }
 
     test(
