@@ -95,6 +95,16 @@ if [ -n "$internal" ]; then
   exit 1
 fi
 
+# TRAP: rule 1i, as 1f above: only grit.dbos, the file defining it, and core's test stand-in
+# for the store may name PrincipalIds.
+ids=$(grep -rlw 'PrincipalIds' --include='*.scala' core extensions kit deployments eval |
+  grep -vE '^core/dbos/|^core/core/src/id/PrincipalId\.scala$|^core/core/test/src/id/TestPrincipalIds\.scala$' || true)
+if [ -n "$ids" ]; then
+  echo "Only grit.dbos may name PrincipalIds; these sources do:" >&2
+  printf '  %s\n' $ids >&2
+  exit 1
+fi
+
 $enola baseline show mcp-arch.yaml >/dev/null 2>&1 || $enola baseline pin mcp-arch.yaml >/dev/null
 
 $enola check --fail-on=constraints,cycles mcp-arch.yaml

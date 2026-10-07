@@ -508,6 +508,23 @@ rules:
     mode: strict
     because: "ADR 0030: grit.dbos.internal's Reader reads every row whatever its label; only grit.dbos and the eval harness, which captures databases whole, may name the package"
 
+  # -------------------------------------------------------------------------------------
+  # 1i. Only grit.dbos makes a principal's id from text (ADR 0032): a person's id is the
+  # store's, made when it first sees one of their accounts. PrincipalId has no apply, so an
+  # edge cannot write `PrincipalId("slack:…")` and pass an account off as a person; it names
+  # the account instead, and only the store, through PrincipalIds, says whose it is.
+  #
+  # Watch out: as 1f and 1g, a fully qualified use or a wildcard import makes no edge;
+  # scripts/enola-law.sh greps every source for the name. That grep lets core's
+  # TestPrincipalIds name it too: core's in-memory stores stand in for grit.dbos's, and it
+  # lives in the id package, so it needs no import.
+  # -------------------------------------------------------------------------------------
+  - id: only-dbos-names-principal-ids
+    forbid_name: outside-dbos
+    pattern: "* -> grit.core.id.PrincipalIds"
+    mode: strict
+    because: "ADR 0032: a person's id is the store's alone; an edge names accounts, and only grit.dbos makes a PrincipalId from text"
+
   # grit.slack names core, prose and grit.edge alone: an edge reaches the engine through
   # Postgres (ADR 0002) and never the turn; grit.edge is the edge's side of the desk it serves
   # slack_post through. Mill already keeps grit.turn off its classpath; this rule is the

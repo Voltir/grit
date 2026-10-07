@@ -13,7 +13,7 @@ import grit.core.edge.{
   ToolRequest,
   ToolRequests
 }
-import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, WorkflowId}
+import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, PrincipalIds, WorkflowId}
 import grit.core.model.CatalogJson
 import grit.core.place.Place
 import grit.core.prompt.FragmentId
@@ -212,7 +212,7 @@ private[dbos] object SqlToolRequests {
       rs.getInt(2),
       ConversationId(rs.getString(3)),
       workspace,
-      PrincipalId(rs.getString(5)),
+      PrincipalIds.stored(rs.getString(5)),
       tool,
       permit,
       retry,

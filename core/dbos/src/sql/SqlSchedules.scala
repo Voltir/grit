@@ -13,6 +13,7 @@ import grit.core.id.{
   JobName,
   PluginName,
   PrincipalId,
+  PrincipalIds,
   ScheduleId,
   TurnRef,
   TurnSeq,
@@ -417,7 +418,10 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       SqlConversationStore
         .readOrigin(ujson.read(rs.getString(3)))
         .map(origin =>
-          (PrincipalId(rs.getString(1)), Option(rs.getString(2)).map(Destination(origin.edge, _)))
+          (
+            PrincipalIds.stored(rs.getString(1)),
+            Option(rs.getString(2)).map(Destination(origin.edge, _))
+          )
         )
     ).flatMap(rows =>
       rows.headOption match {
@@ -601,7 +605,7 @@ private[dbos] object SqlSchedules {
     } yield Schedule(
       job,
       ujson.read(rs.getString("params")),
-      PrincipalId(rs.getString("principal")),
+      PrincipalIds.stored(rs.getString("principal")),
       report,
       rule,
       ended,

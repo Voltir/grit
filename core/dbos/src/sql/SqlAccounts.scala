@@ -1,6 +1,6 @@
 package grit.dbos.sql
 
-import grit.core.id.PrincipalId
+import grit.core.id.{PrincipalId, PrincipalIds}
 import grit.core.identity.{Account, Evidence, Held, Principal}
 import grit.core.store.StoreError
 
@@ -20,7 +20,7 @@ private[dbos] object SqlAccounts {
     Account.read(text).left.map(why => StoreError.Invalid(s"a stored account: $why"))
 
   /** The principal whose one account is `account`. */
-  def principal(account: Account): PrincipalId = PrincipalId(Account.written(account))
+  def principal(account: Account): PrincipalId = PrincipalIds.stored(Account.written(account))
 
   /** Whom writing through `account` is done for: grit for [[Account.Grit]]; otherwise the person
     * of that one account, enrolled, whom no realm vouches a full member.

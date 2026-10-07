@@ -21,5 +21,10 @@ object SlackAccountsTests extends TestSuite {
       SlackAccounts.account(TeamId("T1"), UserId("")) ==>
         Left("a Slack user id is not blank and holds no / or whitespace: ")
     }
+
+    test("an edge cannot pass an account's spelling off as a principal: PrincipalId has no apply") {
+      val error = assertCompileError("""grit.core.id.PrincipalId("slack:T/U")""")
+      error.msg ==> "object PrincipalId in package grit.core.id does not take parameters"
+    }
   }
 }

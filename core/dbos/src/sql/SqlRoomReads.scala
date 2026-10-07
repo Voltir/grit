@@ -5,7 +5,7 @@ import java.time.{Instant, ZoneOffset}
 
 import scala.util.Using
 
-import grit.core.id.{ConversationId, EntryId, PrincipalId}
+import grit.core.id.{ConversationId, EntryId, PrincipalId, PrincipalIds}
 import grit.core.place.Place
 import grit.core.recipe.RoomReads
 import grit.core.stitch.Said
@@ -41,7 +41,7 @@ final class SqlRoomReads extends RoomReads {
   def author(entry: EntryId)(using tx: Tx^): Either[StoreError, Option[PrincipalId]] =
     many("SELECT author FROM grit.inbound WHERE entry_id = ?")(
       _.setString(1, EntryId.value(entry))
-    )(rs => PrincipalId(rs.getString(1))).map(_.headOption)
+    )(rs => PrincipalIds.stored(rs.getString(1))).map(_.headOption)
 
   /** The latest `most` messages in `room` its transaction reads, joined by `join`, whose one
     * parameter, if any, `bind` sets first after the clearance's.

@@ -10,7 +10,7 @@ In dependency order:
   Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `EntrySeq`, `WorkflowId`,
   `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `DocKey` (a plugin's document's key), `DocumentVersion` (one version of a document, numbered across every plugin), `ShadowName`, `QuestionName` (a question's in a question set, or its per-source form), `CorpusName`, `EdgeName`, `PrincipalId`: who an
-  action is done for, `EdgeId`, `JobName`, `ScheduleKey` (a schedule's key among its
+  action is done for, made from text only by `grit.dbos`, through `PrincipalIds` (enola-intent.yaml), `EdgeId`, `JobName`, `ScheduleKey` (a schedule's key among its
   declarer's), `ScheduleId` (an asked schedule's, or a declared one's, by its `Declarer`: the
   deployment or a plugin)), `CallSlot` (a tool call's place in its turn, and its
   request's key), the one short content hash every content-addressed id uses, `TurnRef` (and its reply entry's id), `PeriodRef`, `CloseRef` (one
