@@ -3,8 +3,11 @@ package grit.slack.edge
 import java.time.Instant
 import java.util.concurrent.locks.ReentrantLock
 
+import scala.collection.immutable.VectorMap
+
 import grit.core.clock.Clock
 import grit.core.edge.{Route, ToolRequest}
+import grit.core.place.{Namespace, Place}
 import grit.core.speech.Rate
 import grit.core.tool.{
   Args,
@@ -16,67 +19,29 @@ import grit.core.tool.{
   ToolName,
   ToolSet,
   ToolSpec,
-  Toolbox
+  Toolbox,
+  Writes,
+  Writing
 }
 import grit.edge.{Run, Tools}
 import grit.prose.markdown.Markdown
 import grit.slack.client.{Slack, SlackError, Tag}
-import grit.slack.event.{ChannelId, MessageLink}
+import grit.slack.event.{ChannelId, MessageLink, TeamId}
 import grit.slack.text.RichText
 
-/** `slack_post`, run by the Slack edge wherever a request to it was routed: a post in one of
-  * `channels` (each a name Slack gave, and its id), at its top level or in the thread a
-  * message link names, through `slack`, at most `rate` across them all, the posts counted by
-  * `clock`'s time. Built by [[Posting.of]], which needs at least one channel.
+/** `slack_post`, run by the Slack edge wherever a request to it was routed: a post in the
+  * channel its request was checked to write to, at its top level or in the thread a message
+  * link names, through `slack`, at most `rate` across its channels, the posts counted by
+  * `clock`'s time. Built by [[Posting.of]].
   */
 private[slack] final class Posting private (
     slack: Slack,
     clock: Clock,
     rate: Rate,
-    first: (String, ChannelId),
-    rest: Vector[(String, ChannelId)]
+    /** The tool as the edge advertises it and reads a call of it. */
+    val hosted: Writing[Posting.PostArgs, Channel]
 ) extends Tools {
   import Posting.*
-
-  private val channels: Vector[(String, ChannelId)] = first +: rest
-
-  /** The tool as the edge advertises it and reads a call of it. */
-  val hosted: Hosted[PostArgs] =
-    new Hosted(
-      ToolSpec(
-        Name,
-        "Post a message in a Slack channel, as grit: at the channel's top level, or as a " +
-          "reply in a thread when `thread` is a link to a message in that channel. It posts " +
-          s"only in ${channels.map((n, _) => s"#$n").mkString(", ")}, and at most " +
-          s"${rate.count} posts per ${rate.per} across them. Use it only when the person " +
-          "asks for something to be posted there; your reply to them is posted where they " +
-          "wrote, without it. The text is posted as written: nothing in it becomes a mention. " +
-          "A post cut short may already be in Slack.",
-        Args.of(
-          (
-            // Each name bare and with its "#", as people write it; both read as the channel.
-            channel = Field.oneOf(
-              "The channel to post in, by name, with or without its #.",
-              first._1,
-              (rest.map(_._1) ++ channels.map((n, _) => s"#$n"))*
-            ),
-            text = Field.text(
-              s"What to post, in markdown: one Slack message, at most ${RichText.MaxChars} " +
-                "characters."
-            ),
-            thread = Field
-              .text(
-                "A link to a message in that channel, to post as a reply in its thread; " +
-                  "left out, the post is at the channel's top level."
-              )
-              .optional
-          )
-        ),
-        Retry.Interrupt
-      ),
-      Gate.Free,
-      a => s"#${a.channel}"
-    )
 
   /** What the edge advertises: [[hosted]] alone. */
   def offered: ToolSet = ToolSet.of(Vector(hosted.entry)).getOrElse(ToolSet.Empty)
@@ -91,19 +56,16 @@ private[slack] final class Posting private (
   private val lock = new ReentrantLock()
 
   def run(route: Route, request: ToolRequest): Outcome =
-    Toolbox.of(hosted.over(a => post(request.slot.key, a))) match {
+    Toolbox.of(hosted.over((a, to) => post(request.slot.key, a, to))) match {
       case Right(box) => Run.request(request, box)
       // One tool cannot repeat its own name.
       case Left(_) => Outcome.Failed(s"${ToolName.value(Name)} is offered twice; nothing ran.")
     }
 
-  /** `a` posted for the request keyed `request`, as the tool's text says. */
-  private def post(request: String, a: PostArgs): Outcome =
-    channels.find(_._1 == a.channel.stripPrefix("#")) match {
-      // The arguments' enum holds only these names.
-      case None => Outcome.Failed(s"grit does not post in #${a.channel}. $Unposted")
-      case Some((name, id)) =>
-        RichText.render(Markdown.parse(a.text)) match {
+  /** `a` posted in `to` for the request keyed `request`, as the tool's text says. */
+  private def post(request: String, a: PostArgs, to: Channel): Outcome = {
+    val (name, id) = (to.name, to.id)
+    RichText.render(Markdown.parse(a.text)) match {
           case Vector() => Outcome.Failed(s"The text is empty. $Unposted")
           case Vector(one) =>
             a.thread.map(link => (link, MessageLink.read(link))) match {
@@ -163,25 +125,68 @@ private[slack] final class Posting private (
 
 private[slack] object Posting {
 
-  /** What a call of `slack_post` reads into. */
-  type PostArgs = (channel: String, text: String, thread: Option[String])
+  /** What a call of `slack_post` reads into; the channel it posts in is its destination. */
+  type PostArgs = (text: String, thread: Option[String])
 
   val Name: ToolName = ToolName("slack_post")
 
   /** Said after every refusal. */
   private val Unposted = "Nothing was posted."
 
-  /** `slack_post` over `named`, each channel's name and id; `None` when `named` is empty. */
+  /** `slack_post` over `named`, each channel's name and id in `team`: offered under its name,
+    * with and without `#`, at the place `slack:{team}/{id}`; why not, when `named` is empty or
+    * a name is blank.
+    */
   def of(
       slack: Slack,
       clock: Clock,
       rate: Rate,
+      team: TeamId,
       named: Vector[(String, ChannelId)]
-  ): Option[Posting^{slack, clock}] =
-    named match {
-      case first +: rest => Some(new Posting(slack, clock, rate, first, rest))
-      case _ => None
-    }
+  ): Either[String, Posting^{slack, clock}] = {
+    val channels = named.map((name, id) => Channel(name, id))
+    val placed: Channel -> Place =
+      c => Place.under(Namespace.Slack, Vector(TeamId.value(team), ChannelId.value(c.id)))
+    for {
+      writes <- Writes.of(
+        VectorMap.from(
+          // Each name bare and with its "#", as people write it; both read as the channel.
+          channels.map(c => c.name -> c) ++ channels.map(c => s"#${c.name}" -> c)
+        ),
+        placed,
+        "The channel to post in, by name, with or without its #."
+      )
+      hosted <- Hosted.writing[PostArgs, Channel](
+        ToolSpec[PostArgs](
+          Name,
+          "Post a message in a Slack channel, as grit: at the channel's top level, or as a " +
+            "reply in a thread when `thread` is a link to a message in that channel. It makes " +
+            s"at most ${rate.count} posts per ${rate.per} across its channels. Use it only " +
+            "when the person asks for something to be posted there; your reply to them is " +
+            "posted where they wrote, without it. The text is posted as written: nothing in " +
+            "it becomes a mention. A post cut short may already be in Slack.",
+          Args.of(
+            (
+              text = Field.text(
+                s"What to post, in markdown: one Slack message, at most ${RichText.MaxChars} " +
+                  "characters."
+              ),
+              thread = Field
+                .text(
+                  "A link to a message in that channel, to post as a reply in its thread; " +
+                    "left out, the post is at the channel's top level."
+                )
+                .optional
+            )
+          ),
+          Retry.Interrupt
+        ),
+        Gate.Free,
+        a => a.thread.fold("at the top level")(_ => "in a thread"),
+        writes
+      )
+    } yield new Posting(slack, clock, rate, hosted)
+  }
 
   /** Why Slack's `e` left a post to #`name` unmade, or possibly made. */
   private def failed(e: SlackError, name: String): String = e match {
@@ -194,3 +199,6 @@ private[slack] object Posting {
       s"Slack could not be reached ($cause): the post may or may not have been made."
   }
 }
+
+/** A channel `slack_post` posts in: the name Slack gave it, and its id. */
+private[slack] final case class Channel(name: String, id: ChannelId) extends caps.Pure

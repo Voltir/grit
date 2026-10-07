@@ -103,7 +103,7 @@ private[slack] object Served {
                     s"slack: serving team ${TeamId.value(self.team)} as ${UserId.value(self.bot)}"
                   )
                   val stopPosting = posts match {
-                    case Some(p) => posting(slack, p, stores, log)
+                    case Some(p) => posting(slack, self.team, p, stores, log)
                     case None => None
                   }
                   Right(new ServedEdge.Open {
@@ -128,12 +128,13 @@ private[slack] object Served {
   }
 
   /** `slack_post` served at [[SlackEdge.PostsAt]] as `posts` allows, over the channels of
-    * `posts` Slack gives a name, each left out logged; `None`, logged, when none has one or the
-    * desk would not register or advertise, so the edge serves its replies without it. What
-    * stops serving it.
+    * `posts` Slack gives a name, each left out logged, each written to at its place in `team`;
+    * `None`, logged, when none has one or the desk would not register or advertise, so the edge
+    * serves its replies without it. What stops serving it.
     */
   private def posting(
       slack: Slack^,
+      team: TeamId,
       posts: Posts,
       stores: EdgeStores^,
       log: String => Unit
@@ -155,9 +156,10 @@ private[slack] object Served {
       log(s"slack: posts nowhere: $why")
       None
     }
-    Posting.of(slack, Clock.system(), posts.rate, named) match {
-      case None => nowhere("no channel it may post to has a name grit can read")
-      case Some(tool) =>
+    Posting.of(slack, Clock.system(), posts.rate, team, named) match {
+      case Left(_) if named.isEmpty => nowhere("no channel it may post to has a name grit can read")
+      case Left(why) => nowhere(why)
+      case Right(tool) =>
         stores.desks.register(PrincipalId.Grit, Set(place)) match {
           case Left(e) => nowhere(s"${place.written} not registered: ${e.why}")
           case Right(desk) =>

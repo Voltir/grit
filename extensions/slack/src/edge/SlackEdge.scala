@@ -686,7 +686,9 @@ object SlackEdge {
 
   /** As [[serving]], and posting as `posts` allows: it serves `slack_post` at [[PostsAt]]'s
     * place, offering the channels of `posts` whose names Slack gives at open; one without is
-    * left out and logged, and with none left nothing is served there. A post is a top-level
+    * left out and logged, and with none left nothing is served there. Each channel is offered
+    * under its name, with and without `#`, at the place `slack:{team}/{id}`; a turn is offered
+    * only those its room may write to. A post is a top-level
     * message, or a reply in a thread its message link names, rendered as a reply is (nothing
     * in it becomes a mention), and one Slack message at most; it never asks first and is never
     * run again after a crash.

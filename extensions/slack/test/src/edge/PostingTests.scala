@@ -7,15 +7,17 @@ import scala.concurrent.duration.*
 import grit.core.clock.Clock
 import grit.core.edge.{Edges, Permit, Registration, Route, ToolRequest}
 import grit.core.id.{CallSlot, ConversationId, EdgeId, PrincipalId, TurnRef, TurnSeq}
+import grit.core.place.{Namespace, Place}
 import grit.core.speech.Rate
 import grit.core.tool.{Outcome, Retry, ToolName}
 import grit.slack.client.{FakeSlack, Tag}
-import grit.slack.event.{ChannelId, Ts}
+import grit.slack.event.{ChannelId, Payloads, TeamId, Ts}
 
 import utest.*
 
 /** [[Posting]], `slack_post`, run against a fake Slack at a time the test sets. */
 object PostingTests extends TestSuite {
+  import Payloads.Team
 
   private val Skynet = ChannelId("C0C5U2FPAL8")
   private val General = ChannelId("C0GENERAL01")
@@ -41,16 +43,24 @@ object PostingTests extends TestSuite {
     val clock: SetClock^ = new SetClock(Instant.parse("2026-10-01T12:00:00Z"))
     val posting: Posting^{slack, clock} =
       Posting
-        .of(slack, clock, TwoAnHour, Vector(("probably-not-skynet", Skynet)))
-        .getOrElse(throw new java.lang.AssertionError("one channel is a posting"))
+        .of(
+          slack,
+          clock,
+          TwoAnHour,
+          TeamId(Team),
+          Vector(("probably-not-skynet", Skynet), ("general", General))
+        )
+        .fold(why => throw new java.lang.AssertionError(why), identity)
 
     // Counted by the test's thread alone.
     @caps.unsafe.untrackedCaptures
     private var calls = 0
 
-    /** `slack_post` called with `arguments`, as a request routed to `service:slack`. */
-    def call(arguments: ujson.Obj): Outcome = {
-      val q = request(arguments, calls)
+    /** `slack_post` called with `arguments`, as a request routed to `service:slack` writing to
+      * `destination`.
+      */
+    def call(arguments: ujson.Obj, destination: Option[Place] = Some(SkynetAt)): Outcome = {
+      val q = request(arguments, calls, destination)
       calls += 1
       posting.run(route(q), q)
     }
@@ -65,10 +75,18 @@ object PostingTests extends TestSuite {
   def slot(index: Int): CallSlot =
     CallSlot.of(turn, 0, index).getOrElse(throw new java.lang.AssertionError("a slot"))
 
+  /** Where [[Skynet]] is written to: `slack:{team}/{id}`. */
+  val SkynetAt: Place = Place.under(Namespace.Slack, Vector(Team, ChannelId.value(Skynet)))
+
   /** `slack_post` called with `arguments` as call `index` of a turn's first round, sent to
-    * `service:slack` as the turn sends it; also the request the other edge suites send.
+    * `service:slack` writing to `destination` as the turn sends it; also the request the other
+    * edge suites send.
     */
-  def request(arguments: ujson.Obj, index: Int): ToolRequest =
+  def request(
+      arguments: ujson.Obj,
+      index: Int,
+      destination: Option[Place] = Some(SkynetAt)
+  ): ToolRequest =
     ToolRequest(
       slot(index),
       ToolRequest.Protocol,
@@ -80,7 +98,7 @@ object PostingTests extends TestSuite {
       Retry.Interrupt,
       arguments,
       Set.empty,
-      None
+      destination
     )
 
   /** Where an edge hosting `q`'s place routes it. */
@@ -89,11 +107,10 @@ object PostingTests extends TestSuite {
       .authorize(q, Registration(EdgeId("e"), PrincipalId.Grit, Set(q.workspace)))
       .fold(r => throw new java.lang.AssertionError(r.toString), identity)
 
-  private def post(text: String, channel: String = "probably-not-skynet"): ujson.Obj =
-    ujson.Obj("channel" -> channel, "text" -> text)
+  private def post(text: String): ujson.Obj = ujson.Obj("text" -> text)
 
   private def reply(text: String, thread: String): ujson.Obj =
-    ujson.Obj("channel" -> "probably-not-skynet", "text" -> text, "thread" -> thread)
+    ujson.Obj("text" -> text, "thread" -> thread)
 
   private val RootLink = "https://acme.slack.com/archives/C0C5U2FPAL8/p1790782262102319"
 
@@ -106,11 +123,14 @@ object PostingTests extends TestSuite {
       w.slack.posts.map(p => p.thread == p.ts) ==> Vector(true)
     }
 
-    test("a channel named with its leading # posts there, as named without it") {
+    test("it posts to the channel its request was checked to write to, whatever `to` held") {
       val w = new World
-      w.call(post("one", channel = "#probably-not-skynet")) ==>
-        Outcome.Done("Posted in #probably-not-skynet.")
-      w.posted.map((c, _, text, _) => (c, text)) ==> Vector((Skynet, "one"))
+      val generalAt = Place.under(Namespace.Slack, Vector(Team, ChannelId.value(General)))
+      Vector(
+        w.call(ujson.Obj("to" -> "general", "text" -> "one")),
+        w.call(post("two"), Some(generalAt))
+      ) ==> Vector(Outcome.Done("Posted in #probably-not-skynet."), Outcome.Done("Posted in #general."))
+      w.posted.map((c, _, text, _) => (c, text)) ==> Vector((Skynet, "one"), (General, "two"))
     }
 
     test("it posts in the thread a link to a message in that channel names") {
@@ -127,19 +147,18 @@ object PostingTests extends TestSuite {
     }
 
     test(
-      "it refuses a channel not offered, a link into another channel, and text that is no link, posting nothing"
+      "it refuses a request told no channel or one not its own, a link into another channel, and text that is no link, posting nothing"
     ) {
       val w = new World
+      val elsewhere = Place.under(Namespace.Slack, Vector(Team, "C0RANDOM01"))
       Vector(
-        w.call(post("hi", channel = "general")),
+        w.call(post("hi"), None),
+        w.call(post("hi"), Some(elsewhere)),
         w.call(reply("hi", "https://acme.slack.com/archives/C0GENERAL01/p1790782262102319")),
         w.call(reply("hi", "the thread from this morning"))
       ) ==> Vector(
-        Outcome.Failed(
-          "The call to `slack_post` was not run: `channel` takes one of `probably-not-skynet`, " +
-            "`#probably-not-skynet`, not \"general\". You sent: " +
-            "{\"channel\":\"general\",\"text\":\"hi\"}"
-        ),
+        Outcome.Failed("slack_post was told no place to write to; it did not run."),
+        Outcome.Failed(s"slack_post does not write to slack:$Team/C0RANDOM01 here; it did not run."),
         Outcome.Failed(
           "That link is to a message outside #probably-not-skynet. Nothing was posted."
         ),
@@ -194,20 +213,29 @@ object PostingTests extends TestSuite {
     }
 
     test(
-      "its advert: slack_post alone, never asking first, never run again, the channels an enum of each name bare and with its #"
+      "its advert: slack_post alone, never asking first, never run again, writing to each channel by its name bare and with its #, at slack:{team}/{id}, its description naming none"
     ) {
       val w = new World
+      val at = (id: ChannelId) => Place.under(Namespace.Slack, Vector(Team, ChannelId.value(id)))
       w.posting.offered.tools.map(e => (e.name, e.asks, e.retry)) ==>
         Vector((ToolName("slack_post"), false, Retry.Interrupt))
-      w.posting.offered.tools.map(_.parameters("properties")("channel")("enum")) ==>
-        Vector(ujson.Arr("probably-not-skynet", "#probably-not-skynet"))
+      w.posting.offered.tools.map(_.writes.map(_.to.toVector)) ==> Vector(
+        Some(
+          Vector(
+            "probably-not-skynet" -> at(Skynet),
+            "general" -> at(General),
+            "#probably-not-skynet" -> at(Skynet),
+            "#general" -> at(General)
+          )
+        )
+      )
       w.posting.offered.tools.map(_.does) ==> Vector(
         "Post a message in a Slack channel, as grit: at the channel's top level, or as a " +
-          "reply in a thread when `thread` is a link to a message in that channel. It posts " +
-          "only in #probably-not-skynet, and at most 2 posts per 1 hour across them. Use it " +
-          "only when the person asks for something to be posted there; your reply to them is " +
-          "posted where they wrote, without it. The text is posted as written: nothing in it " +
-          "becomes a mention. A post cut short may already be in Slack."
+          "reply in a thread when `thread` is a link to a message in that channel. It makes " +
+          "at most 2 posts per 1 hour across its channels. Use it only when the person asks " +
+          "for something to be posted there; your reply to them is posted where they wrote, " +
+          "without it. The text is posted as written: nothing in it becomes a mention. A post " +
+          "cut short may already be in Slack."
       )
     }
   }

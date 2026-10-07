@@ -252,10 +252,11 @@ object ServedTests extends TestSuite {
             w.slack,
             Clock.system(),
             TwoAnHour,
+            TeamId(Team),
             Vector(("probably-not-skynet", Skynet))
           ) match {
-            case Some(p) => Some(p.offered.id)
-            case None => None
+            case Right(p) => Some(p.offered.id)
+            case Left(_) => None
           }
         w.edges.adverts.toVector.map((at, advert) => (at._2, Some(advert.tools))) ==>
           Vector((SlackEdge.PostsAt.place, expected))
@@ -263,10 +264,7 @@ object ServedTests extends TestSuite {
           "slack: not posting to C0UNNAMED1: Slack gives grit no name for it",
           "slack: posts to #probably-not-skynet (C0C5U2FPAL8), at most 2 per 1 hour"
         )
-        val q = PostingTests.request(
-          ujson.Obj("channel" -> "probably-not-skynet", "text" -> "the build is green"),
-          0
-        )
+        val q = PostingTests.request(ujson.Obj("text" -> "the build is green"), 0)
         val _ = w.edges.dispatch(Vector(q))(using TestTx.fake)
         val deadline = System.nanoTime() + 10_000_000_000L
         while (w.edges.answers.isEmpty && System.nanoTime() < deadline) Thread.sleep(20)
