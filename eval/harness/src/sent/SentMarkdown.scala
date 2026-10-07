@@ -7,9 +7,9 @@ import grit.core.classify.{Answer, Request}
 import grit.core.context.{SectionTag, Shown}
 import grit.core.id.{
   ConversationId,
+  CorpusName,
   EntryId,
   EntrySeq,
-  KnowledgeSourceName,
   QuestionName,
   ToolCallId,
   TurnSeq
@@ -273,7 +273,7 @@ object SentMarkdown {
   def heard(heard: HeardSent, from: String): String = {
     val out = Vector.newBuilder[String]
     def add(lines: String*): Unit = lines.foreach(out += _)
-    val sources = heard.sources.all.map(s => s"`${KnowledgeSourceName.value(s.name)}`")
+    val sources = heard.sources.all.map(s => s"`${CorpusName.value(s.name)}`")
     add(
       s"# What Jev was asked of `${EntryId.value(heard.entry)}`",
       "",
@@ -281,7 +281,7 @@ object SentMarkdown {
       "- The stitch request's state is as recorded with its placement; its question is as this " +
         "build words it.",
       "- Triage's request is **rebuilt, not recorded**: the shipped builder over the database as " +
-        s"it stands now, worded for persona `${heard.persona.name}` with knowledge sources " +
+        s"it stands now, worded for persona `${heard.persona.name}` with corpora " +
         (if (sources.isEmpty) "none" else sources.mkString(", ")) +
         " (the deployment's, which the database does not keep).",
       ""
@@ -356,7 +356,7 @@ object SentMarkdown {
         "**The rebuilt questions are not those triage answered**: only answered " +
           names((answered.toSet -- heard.asked).toVector) + "; only rebuilt " +
           names((heard.asked.toSet -- answered).toVector) +
-          ". Pass the deployment's persona and knowledge sources (`--corpus`).",
+          ". Pass the deployment's persona and corpora (`--corpus`).",
         ""
       )
     heard.triage match {

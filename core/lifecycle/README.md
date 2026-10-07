@@ -47,7 +47,7 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   (`grit.core.stitch.Placements`; a triage begun before that placed it itself, in `stitch`
   and `record-stitch`), then `ask` the classifier the questions of
   `TriageEnv.questions`, the set live triage asks, with a question for each of the
-  deployment's knowledge sources covering its conversation (`TriageEnv.sources`), over the
+  deployment's corpora covering its conversation (`TriageEnv.sources`), over the
   message
   (`TriageQuestion.State`), who said it and the thread
   before it, its strand first, and the sections of a `TriageRecipe`'s pool for the focus it
@@ -59,7 +59,7 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   when it drafts or answers, `start` the heard message's own turn (ADR 0022). A classifier that fails leaves unanswered
   tags, and no draft. It writes no entry, so it never moves a deadline. `TriageEnv` is what
   it works with. `TriageQuestions` is a question set over that state: named questions,
-  one per `grit.core.triage.KnowledgeSource` covering the conversation where it asks so,
+  one per `grit.core.triage.Corpus` covering the conversation where it asks so,
   their answers kept raw under their names (`grit.core.triage.Tags`), and the `Gate`
   (`grit.core.triage`) a draft is derived from; `TriageQuestions.v1` is the set triage
   first asked, in a `TriageQuestion.Wording` (`Wording.Shipped`, the words it shipped in),
@@ -74,7 +74,7 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   never delays a triage: `ask` rebuilds triage's state as `triage` builds it, from the
   store as it stands now, and asks the variant's `TriageQuestions` set of it once, of the
   variant's classifier (`ShadowAsking`), its per-source questions of the catalog's
-  knowledge sources covering the conversation's place (v1 in a wording is
+  corpora covering the conversation's place (v1 in a wording is
   `TriageQuestions.v1`); `record` keeps what it made of it, every answer
   under its name, the request's digest, both models and the latency, or which
   kind of failure (`grit.core.triage.TriageShadows`). How many are enqueued each day is the sweep's, within

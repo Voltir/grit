@@ -5,7 +5,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.{Answer, Question}
 import grit.core.id.{QuestionName, TurnRef, WorkflowId}
 import grit.core.stitch.{StitchReads, Tuning}
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.Corpora
 import grit.dbos.engine.Reader
 import grit.eval.harness.corpus.{Digest, TurnCase}
 import grit.eval.harness.jev.{Asking, Posed}
@@ -34,7 +34,7 @@ object TurnTriage {
   def ask(
       reader: Reader^,
       t: TurnCase,
-      knowledge: KnowledgeSources,
+      knowledge: Corpora,
       questions: TriageQuestions,
       tuning: Tuning
   ): Either[String, TurnAsk] = {
@@ -62,7 +62,7 @@ object TurnTriage {
         .left
         .map(why => s"triage's question of $name not built: $why")
     } yield {
-      val sources = read.place.fold(KnowledgeSources.Empty)(knowledge.at)
+      val sources = read.place.fold(Corpora.Empty)(knowledge.at)
       val request = questions.request(read.state, sources)
       TurnAsk(
         Posed(

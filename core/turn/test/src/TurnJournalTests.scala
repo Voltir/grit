@@ -237,7 +237,7 @@ object TurnJournalTests extends TestSuite {
       val set = grit.core.tool.ToolSetId.value(tools)
       def service(name: String) =
         grit.core.place.Service.of(name).fold(e => throw new java.lang.AssertionError(e), identity)
-      val repo = grit.core.id.KnowledgeSourceName
+      val repo = grit.core.id.CorpusName
         .of("repo")
         .fold(e => throw new java.lang.AssertionError(e), identity)
       val read = grit.core.triage.Reading.Yes(

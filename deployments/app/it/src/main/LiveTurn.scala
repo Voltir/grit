@@ -14,7 +14,7 @@ import grit.core.recipe.TurnRecipe
 import grit.core.stitch.StitchReads
 import grit.core.store.{EntryStore, Origin, Payload}
 import grit.core.tool.{ToolSet, Toolbox}
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.Corpora
 import grit.dbos.engine.Engine
 import grit.edge.Server
 import grit.kit.deployment.Offered
@@ -101,7 +101,7 @@ object LiveTurn {
       all: Boolean = false,
       answerWithin: FiniteDuration = TurnTools.AnswerWithin,
       reaches: Vector[Reaches] = Vector.empty,
-      knowledge: KnowledgeSources = KnowledgeSources.Empty,
+      knowledge: Corpora = Corpora.Empty,
       recipe: TurnRecipe = TurnRecipe.Shipped
   ): Unit = {
     val models = new LiveModels(provider)
@@ -236,7 +236,7 @@ object LiveTurn {
             ),
             grit.core.stitch.Tuning.Default,
             engine.placements,
-            grit.core.triage.KnowledgeSources.Empty,
+            grit.core.triage.Corpora.Empty,
             grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
           )
         ),

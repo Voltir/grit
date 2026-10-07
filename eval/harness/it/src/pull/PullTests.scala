@@ -14,7 +14,7 @@ import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin, StoreError}
-import grit.core.triage.{KnowledgeSources, ShadowAnswers, Shadowed, Shadowing}
+import grit.core.triage.{Corpora, ShadowAnswers, Shadowed, Shadowing}
 import grit.dbos.engine.{Build, LiveEngine, Reader}
 import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.eval.harness.corpus.{Capture, CaseId, Corpus, Digest, Dump}
@@ -117,7 +117,7 @@ object PullTests extends TestSuite {
               TriageSpeech(Speaking.Off, engine.budget, _ => Right(())),
               Tuning.Default,
               engine.placements,
-              KnowledgeSources.Empty,
+              Corpora.Empty,
               grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
             )
           ),
@@ -155,7 +155,7 @@ object PullTests extends TestSuite {
                 words -> ShadowAsking(TriageQuestions.V1, "stub", new StubClassifier),
                 set -> ShadowAsking(TriageQuestions.V2, "stub", new StubClassifier)
               ),
-              KnowledgeSources.Empty,
+              Corpora.Empty,
               engine.db,
               Clock.system(),
               Tuning.Default

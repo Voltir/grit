@@ -22,8 +22,8 @@ In dependency order:
   `Offered`
   (the tools every turn's model is offered), `Assembly` (how a window is assembled),
   `Topics` (how a message is placed among topics), the shadows of triage's question it
-  records (`grit.lifecycle.shadow.ShadowVariant`), the knowledge sources their question
-  sets ask about (`grit.core.triage.KnowledgeSources`), and the review of one of them it picks
+  records (`grit.lifecycle.shadow.ShadowVariant`), the corpora their question
+  sets ask about (`grit.core.triage.Corpora`), and the review of one of them it picks
   heard messages for (`ShadowReview`: `grit.core.review.Reviewing` with that shadow's gate),
   the recipe that shapes each turn by what it answers (`grit.core.recipe.TurnRecipe`,
   ADR 0025), and the persona grit presents as (`grit.core.persona.Persona`, ADR 0026). Beside its edges it declares, by core's

@@ -10,7 +10,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.recipe.Offering
 import grit.core.spend.Day
 import grit.core.store.{StoreError, Tx}
-import grit.core.triage.{KnowledgeSource, KnowledgeSources, Tags, TriageStore, Weighing}
+import grit.core.triage.{Corpora, Corpus, Tags, TriageStore, Weighing}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -66,10 +66,10 @@ object TurnWeighTests extends TestSuite {
     test(
       "a message said to grit is not weighed when no source supplying a service it links covers its place"
     ) {
-      val elsewhere = KnowledgeSources
+      val elsewhere = Corpora
         .of(
           Vector(
-            KnowledgeSource(
+            Corpus(
               Sourced.repo,
               "the repository",
               Place.under(Namespace.Slack, Vector("T9", "C9")),

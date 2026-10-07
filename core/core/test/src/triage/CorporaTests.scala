@@ -2,23 +2,23 @@ package grit.core.triage
 
 import scala.collection.immutable.VectorMap
 
-import grit.core.id.KnowledgeSourceName
+import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}
 
 import utest.*
 
-object KnowledgeSourcesTests extends TestSuite {
+object CorporaTests extends TestSuite {
 
   private def source(
       name: String,
       within: String,
       supplies: Option[String] = None
-  ): KnowledgeSource =
+  ): Corpus =
     (for {
-      n <- KnowledgeSourceName.of(name)
+      n <- CorpusName.of(name)
       p <- Place.read(within)
       s <- supplies.fold[Either[String, Option[Service]]](Right(None))(Service.of(_).map(Some(_)))
-    } yield KnowledgeSource(n, s"the $name", p, s))
+    } yield Corpus(n, s"the $name", p, s))
       .getOrElse(throw new java.lang.AssertionError(name))
 
   val tests = Tests {
@@ -28,7 +28,7 @@ object KnowledgeSourcesTests extends TestSuite {
       val conversations = source("conversations", "slack:acme")
       val notes = source("notes", "fs:/home/nick")
       val elsewhere = source("billing", "slack:other")
-      val catalog = KnowledgeSources
+      val catalog = Corpora
         .of(Vector(github, notes, conversations, elsewhere))
         .getOrElse(throw new java.lang.AssertionError("catalog"))
       val thread =
@@ -37,16 +37,16 @@ object KnowledgeSourcesTests extends TestSuite {
     }
 
     test("of refuses two sources of one name, naming it") {
-      KnowledgeSources.of(
+      Corpora.of(
         Vector(source("github", "slack:"), source("notes", "fs:/x"), source("github", "fs:/y"))
       ) ==> Left(
-        KnowledgeSourceName.of("github").getOrElse(throw new java.lang.AssertionError("name"))
+        CorpusName.of("github").getOrElse(throw new java.lang.AssertionError("name"))
       )
     }
 
     test("supplied gives each service its supplying sources, in the order declared") {
       // linear's sources declared apart, docs between them, and notes supplying nothing.
-      val catalog = KnowledgeSources
+      val catalog = Corpora
         .of(
           Vector(
             source("tickets", "slack:", Some("linear")),
@@ -57,7 +57,7 @@ object KnowledgeSourcesTests extends TestSuite {
         )
         .getOrElse(throw new java.lang.AssertionError("catalog"))
       def name(n: String) =
-        KnowledgeSourceName.of(n).getOrElse(throw new java.lang.AssertionError(n))
+        CorpusName.of(n).getOrElse(throw new java.lang.AssertionError(n))
       def service(n: String) = Service.of(n).getOrElse(throw new java.lang.AssertionError(n))
       catalog.supplied.toVector ==> VectorMap(
         service("linear") -> Vector(name("tickets"), name("roadmap")),

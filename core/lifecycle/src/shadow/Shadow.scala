@@ -5,7 +5,7 @@ import scala.concurrent.duration.*
 import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, ShadowName, ShadowRef, TurnRef, WorkflowId}
-import grit.core.triage.{KnowledgeSources, ShadowAnswers, Shadowed}
+import grit.core.triage.{Corpora, ShadowAnswers, Shadowed}
 import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
 
 /** The shadow workflow: one per declared variant and heard message ([[ShadowRef]]), on a
@@ -70,7 +70,7 @@ object Shadow {
           )
           .map { read =>
             // A conversation not found is at no place, so no source covers it.
-            val sources = read.place.fold(KnowledgeSources.Empty)(env.sources.at)
+            val sources = read.place.fold(Corpora.Empty)(env.sources.at)
             read.entry -> named(env.clock, variant, read.state, sources)
           }
     }
@@ -80,7 +80,7 @@ object Shadow {
       clock: Clock^,
       variant: ShadowAsking^,
       state: TriageQuestion.State,
-      sources: KnowledgeSources
+      sources: Corpora
   ): Shadowed = {
     val questions = variant.questions
     val request = questions.request(state, sources)

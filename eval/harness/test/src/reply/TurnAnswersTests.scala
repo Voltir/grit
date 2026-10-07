@@ -4,12 +4,12 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
 import grit.core.context.Width
-import grit.core.id.{KnowledgeSourceName, QuestionName}
+import grit.core.id.{CorpusName, QuestionName}
 import grit.core.message.{Tokens, Usage}
 import grit.core.place.{Place, Service}
 import grit.core.recipe.ServiceOffer
 import grit.core.tool.{ToolName, ToolSetId}
-import grit.core.triage.{KnowledgeSource, KnowledgeSources, Tags, Weighing}
+import grit.core.triage.{Corpora, Corpus, Tags, Weighing}
 import grit.eval.harness.corpus.{Live, Offered, TurnCase}
 import grit.turn.{TurnOffer, TurnRecord, TurnShape, TurnWeighing}
 
@@ -24,7 +24,7 @@ object TurnAnswersTests extends TestSuite {
 
   private val assembled = Assembled.Shipped
   private def variant(name: String) = right(TurnVariant.named(name, assembled))
-  private val repo = right(KnowledgeSourceName.of("repo"))
+  private val repo = right(CorpusName.of("repo"))
   private val github = right(Service.of("github"))
   private def answers(p: Double): VectorMap[QuestionName, Answer] =
     VectorMap(QuestionName.per(Tags.V2.sourcePrefix, repo) -> Answer.YesNo(p))
@@ -35,7 +35,7 @@ object TurnAnswersTests extends TestSuite {
   private val live = Live.Named(answers(0.5), "jev", None)
   private val asked = Some(answers(0.9))
 
-  private def shape(sources: Vector[KnowledgeSourceName]) = TurnShape(
+  private def shape(sources: Vector[CorpusName]) = TurnShape(
     Width.Deployed,
     right(ToolSetId.of("0123456789abcdef")),
     Vector(
@@ -133,14 +133,14 @@ object TurnAnswersTests extends TestSuite {
       "knowledge is the turn's declaration only when it declares each source its shape recorded, each service supplied as recorded"
     ) {
       def knowledge(sources: (String, Option[Service])*) = right(
-        KnowledgeSources
+        Corpora
           .of(
             sources.toVector.map((n, s) =>
-              KnowledgeSource(right(KnowledgeSourceName.of(n)), s"the $n", Place.Everywhere, s)
+              Corpus(right(CorpusName.of(n)), s"the $n", Place.Everywhere, s)
             )
           )
           .left
-          .map(KnowledgeSourceName.value)
+          .map(CorpusName.value)
       )
       val t = turn(TurnOffer.Root.Addressed, TurnRecord.Weigh.Recorded(None))
       Vector(

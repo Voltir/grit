@@ -1,6 +1,6 @@
 package grit.eval.harness.jev
 
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.Corpora
 import grit.eval.harness.corpus.CaseId
 import grit.lifecycle.triage.{TriageQuestion, TriageQuestions}
 
@@ -13,7 +13,7 @@ object ReviewTests extends TestSuite {
 
   private val id = CaseId.read("C1/1727000000.000100").fold(sys.error, identity)
   private val state = TriageQuestion.State("standup moves to 10:00", "Ana", "Ben: when?")
-  private val request = TriageQuestions.V1.request(state, KnowledgeSources.Empty)
+  private val request = TriageQuestions.V1.request(state, Corpora.Empty)
 
   val tests = Tests {
     // The review file's keys are what the labelling export reads: pinned.

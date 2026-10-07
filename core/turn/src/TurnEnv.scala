@@ -28,7 +28,7 @@ import grit.core.store.{
   VoiceStore
 }
 import grit.core.tool.{Tool, ToolSets, Toolbox}
-import grit.core.triage.{KnowledgeSources, Tags, TriageStore, Weighing}
+import grit.core.triage.{Corpora, Tags, TriageStore, Weighing}
 
 /** What a turn works with besides its `Durable` and its [[TurnTooling]]: its [[TurnRecords]]
   * and [[TurnHosting]], then the capabilities it calls. `assembler` builds its window,
@@ -148,8 +148,8 @@ final case class TurnHosting(
   * waits `answerWithin` for their answer. `worksIn` gives a conversation with no directory
   * its workspace ([[WorksIn.of]]); `reaches` gives an addressed turn the services it reaches
   * besides it ([[Reaches.of]]). `recipe` shapes each turn by what it answers: its window's
-  * width, and which of those services' tools it is offered, by the knowledge sources
-  * `knowledge` says supply each ([[grit.core.triage.KnowledgeSources.supplied]]). `persona`
+  * width, and which of those services' tools it is offered, by the corpora
+  * `knowledge` says supply each ([[grit.core.triage.Corpora.supplied]]). `persona`
   * is who the turn is told it is ([[TurnPrompt.called]]).
   */
 final case class TurnTooling[C^](
@@ -162,6 +162,6 @@ final case class TurnTooling[C^](
     worksIn: Vector[WorksIn] = Vector.empty,
     reaches: Vector[Reaches] = Vector.empty,
     recipe: TurnRecipe = TurnRecipe.Shipped,
-    knowledge: KnowledgeSources = KnowledgeSources.Empty,
+    knowledge: Corpora = Corpora.Empty,
     persona: Persona = Persona.Grit
 )

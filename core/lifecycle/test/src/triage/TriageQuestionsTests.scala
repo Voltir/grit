@@ -3,12 +3,12 @@ package grit.lifecycle.triage
 import scala.collection.immutable.VectorMap
 
 import grit.core.classify.{Answer, Question, Request}
-import grit.core.id.{KnowledgeSourceName, QuestionName}
+import grit.core.id.{CorpusName, QuestionName}
 import grit.core.period.Probability
 import grit.core.persona.Persona
 import grit.core.place.Place
 import grit.core.triage.{Bound, Gate, Reading, Tags}
-import grit.core.triage.{KnowledgeSource, KnowledgeSources}
+import grit.core.triage.{Corpora, Corpus}
 import grit.lifecycle.triage.TriageQuestions.{Item, Refusal}
 
 import utest.*
@@ -19,14 +19,14 @@ object TriageQuestionsTests extends TestSuite {
 
   private def n(text: String): QuestionName = QuestionName.of(text).getOrElse(fail(text))
 
-  private def source(name: String, line: String): KnowledgeSource =
+  private def source(name: String, line: String): Corpus =
     (for {
-      s <- KnowledgeSourceName.of(name)
+      s <- CorpusName.of(name)
       p <- Place.read("slack:")
-    } yield KnowledgeSource(s, line, p)).getOrElse(fail(name))
+    } yield Corpus(s, line, p)).getOrElse(fail(name))
 
   /** Declared out of alphabetical order, so an order the catalog did not declare shows. */
-  private val catalog = KnowledgeSources
+  private val catalog = Corpora
     .of(
       Vector(
         source("github", "the team's GitHub repository: code, issues and pull requests"),
@@ -68,7 +68,7 @@ object TriageQuestionsTests extends TestSuite {
           yesNo("Could the team's past Slack conversations: what was discussed and decided help?"),
         n("b") -> yesNo("B?")
       )
-      set.questions(KnowledgeSources.Empty).toVector ==>
+      set.questions(Corpora.Empty).toVector ==>
         Vector(n("a") -> yesNo("A?"), n("b") -> yesNo("B?"))
     }
 
@@ -193,7 +193,7 @@ object TriageQuestionsTests extends TestSuite {
         )
       )
       (set.speak, TriageQuestions.v3(Persona.Grit).speak) ==> (Tags.V3.drafts, Tags.V3.drafts)
-      set.unread(set.speak, KnowledgeSources.Empty) ==> None
+      set.unread(set.speak, Corpora.Empty) ==> None
     }
 
     test(
@@ -228,7 +228,7 @@ object TriageQuestionsTests extends TestSuite {
       )
       (set.speak, TriageQuestions.v4(Persona.Grit).speak, TriageQuestions.ShippedSpeak) ==>
         (Tags.V4.drafts, Tags.V4.drafts, Tags.V4.drafts)
-      (set.unread(set.speak, KnowledgeSources.Empty), set.unread(Tags.V3.drafts, catalog)) ==>
+      (set.unread(set.speak, Corpora.Empty), set.unread(Tags.V3.drafts, catalog)) ==>
         (None, None)
       TriageQuestions.shipped(pip) ==> set
     }
@@ -319,16 +319,16 @@ object TriageQuestionsTests extends TestSuite {
     ) {
       val kind = n("kind")
       Vector(
-        TriageQuestions.V1.unread(TriageQuestions.V1.speak, KnowledgeSources.Empty),
-        TriageQuestions.V2.unread(TriageQuestions.V2.speak, KnowledgeSources.Empty),
-        TriageQuestions.V1.unread(TriageQuestions.V2.speak, KnowledgeSources.Empty),
-        TriageQuestions.V2.unread(TriageQuestions.V1.speak, KnowledgeSources.Empty),
+        TriageQuestions.V1.unread(TriageQuestions.V1.speak, Corpora.Empty),
+        TriageQuestions.V2.unread(TriageQuestions.V2.speak, Corpora.Empty),
+        TriageQuestions.V1.unread(TriageQuestions.V2.speak, Corpora.Empty),
+        TriageQuestions.V2.unread(TriageQuestions.V1.speak, Corpora.Empty),
         TriageQuestions.V1.unread(
           Gate.bounds(Bound.AtLeast(Reading.Chosen(kind, "maybe"), half)),
-          KnowledgeSources.Empty
+          Corpora.Empty
         ),
         TriageQuestions.V1
-          .unread(Gate.bounds(Bound.AtLeast(Reading.Yes(kind), half)), KnowledgeSources.Empty)
+          .unread(Gate.bounds(Bound.AtLeast(Reading.Yes(kind), half)), Corpora.Empty)
       ) ==> Vector(
         None,
         None,
@@ -342,14 +342,14 @@ object TriageQuestionsTests extends TestSuite {
     test(
       "unread reads a source's yes/no as asked when the set asks per source and the catalog declares it, and as unread otherwise"
     ) {
-      def per(name: String) = KnowledgeSourceName.of(name).getOrElse(fail(name))
+      def per(name: String) = CorpusName.of(name).getOrElse(fail(name))
       val github = Reading.Yes(QuestionName.per(n("source"), per("github")))
       val drive = Reading.Yes(QuestionName.per(n("source"), per("drive")))
       def gate(r: Reading) = Gate.bounds(Bound.AtLeast(r, half))
       Vector(
         TriageQuestions.V2.unread(gate(github), catalog),
         TriageQuestions.V2.unread(gate(drive), catalog),
-        TriageQuestions.V2.unread(gate(github), KnowledgeSources.Empty),
+        TriageQuestions.V2.unread(gate(github), Corpora.Empty),
         TriageQuestions.V1.unread(gate(github), catalog)
       ) ==> Vector(None, Some(drive), Some(github), Some(github))
     }

@@ -184,7 +184,7 @@ object StitchOrderLiveTests extends TestSuite {
           TriageSpeech(Speaking.Off, Budget(java.time.ZoneOffset.UTC, None), _ => Right(())),
           Tuning.Default,
           engine.placements,
-          grit.core.triage.KnowledgeSources.Empty,
+          grit.core.triage.Corpora.Empty,
           grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
         )
       ),

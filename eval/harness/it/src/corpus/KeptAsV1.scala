@@ -6,7 +6,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.id.EntryId
 import grit.core.store.{Entry, EntryStore, Payload, StoreError, Tx}
-import grit.core.triage.{KnowledgeSources, Tags, TriageStore}
+import grit.core.triage.{Corpora, Tags, TriageStore}
 import grit.lifecycle.triage.TriageQuestions
 import grit.models.StubClassifier
 
@@ -24,7 +24,7 @@ final class KeptAsV1(store: TriageStore, entries: EntryStore, before: String => 
       case Tags.Weighed(_, model, usage) =>
         entries.get(entry).flatMap {
           case Some(Entry(_, _, _, _, _, Payload.Heard(text), _)) if before(text) =>
-            val questions = TriageQuestions.V1.questions(KnowledgeSources.Empty)
+            val questions = TriageQuestions.V1.questions(Corpora.Empty)
             val answered = StubClassifier
               .answers(ujson.Obj("new_message" -> text), questions.values.toVector)
               .answers

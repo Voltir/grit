@@ -8,7 +8,7 @@ import scala.concurrent.duration.*
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
 import grit.core.store.Focus
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.Corpora
 import grit.eval.harness.corpus.{CaseId, Digest, Failure}
 import grit.eval.harness.jev.{Asking, Budget, Spend}
 import grit.eval.harness.log.{Cache, Outcome, Suite, Weights}
@@ -34,7 +34,7 @@ object RunTests extends TestSuite {
       id(s"C1/172700000$n.000100"),
       repeat,
       Asking.Triage(state, wording),
-      TriageQuestions.v1(wording).request(state, KnowledgeSources.Empty),
+      TriageQuestions.v1(wording).request(state, Corpora.Empty),
       Some(Focus.Open)
     )
   }

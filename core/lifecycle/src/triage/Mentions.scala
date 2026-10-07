@@ -11,11 +11,11 @@ import grit.core.provider.TokenEstimator
 import grit.core.recipe.RoomReads
 import grit.core.stitch.{Opening, Placements, StitchReads, Tuning}
 import grit.core.store.Db
-import grit.core.triage.{KnowledgeSources, Tags, Weighing}
+import grit.core.triage.{Corpora, Tags, Weighing}
 
 /** [[Weighing]] as live triage asks: its question set, `questions`, put to the
   * state [[TriageInput.read]] builds for the message, as for one heard (the shipped recipe,
-  * `tuning`), read through `reads` and `rooms`, with the knowledge sources of `sources`
+  * `tuning`), read through `reads` and `rooms`, with the corpora of `sources`
   * covering its conversation's place, of `classifier`; an opening is asked about once its
   * placement through `placements` has ended, waited for at most [[Mentions.PlacedWithin]] on
   * `clock`. The classifier is given `askWithin` to answer, past which the message is
@@ -24,7 +24,7 @@ import grit.core.triage.{KnowledgeSources, Tags, Weighing}
 final class Mentions(
     reads: StitchReads,
     rooms: RoomReads,
-    sources: KnowledgeSources,
+    sources: Corpora,
     questions: TriageQuestions,
     classifier: Classifier^,
     placements: Placements^,
@@ -43,7 +43,7 @@ final class Mentions(
         .left
         .map(_ => Weighing.Unweighed.Unread)
       // A conversation not found is at no place, so no source covers it.
-      asked = read.place.fold(KnowledgeSources.Empty)(sources.at)
+      asked = read.place.fold(Corpora.Empty)(sources.at)
       answered <- within(questions.ask(classifier, read.state, asked)).flatMap(
         _.left.map {
           case ClassifierError.Unavailable(_) => Weighing.Unweighed.Unavailable

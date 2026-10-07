@@ -591,7 +591,7 @@ object TurnFixtures {
       reaches: Vector[Reaches] = Vector.empty,
       reached: Vector[Served] = Vector.empty,
       recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
-      knowledge: grit.core.triage.KnowledgeSources = grit.core.triage.KnowledgeSources.Empty,
+      knowledge: grit.core.triage.Corpora = grit.core.triage.Corpora.Empty,
       weighing: TurnWeighing^ = noTriage(),
       ledger: UsageLedger = new InMemoryUsageLedger
   )(id: WorkflowId)(using Durable^): String = {
@@ -1453,19 +1453,19 @@ object TurnFixtures {
     import scala.collection.immutable.VectorMap
 
     import grit.core.context.Width
-    import grit.core.id.{KnowledgeSourceName, QuestionName}
+    import grit.core.id.{CorpusName, QuestionName}
     import grit.core.place.Service
     import grit.core.recipe.{ByFocus, Offering, Shaping, TurnRecipe}
-    import grit.core.triage.{InMemoryTriageStore, KnowledgeSource, KnowledgeSources, TriageStore}
+    import grit.core.triage.{Corpora, Corpus, InMemoryTriageStore, TriageStore}
 
     val github: Service =
       Service.of("github").fold(e => throw new java.lang.AssertionError(e), identity)
 
-    val repo: KnowledgeSourceName =
-      KnowledgeSourceName.of("repo").fold(e => throw new java.lang.AssertionError(e), identity)
+    val repo: CorpusName =
+      CorpusName.of("repo").fold(e => throw new java.lang.AssertionError(e), identity)
 
-    val knowledge: KnowledgeSources = KnowledgeSources
-      .of(Vector(KnowledgeSource(repo, "the repository", Place.Everywhere, Some(github))))
+    val knowledge: Corpora = Corpora
+      .of(Vector(Corpus(repo, "the repository", Place.Everywhere, Some(github))))
       .fold(n => throw new java.lang.AssertionError(n), identity)
 
     /** A heard turn offered `github`'s tools only when `repo` reads at least 0.2. */
@@ -1496,7 +1496,7 @@ object TurnFixtures {
           Right(
             grit.core.triage.Weighing.Weighed(repoReads(0.1), grit.core.message.Tokens(321))
           ),
-        sources: KnowledgeSources = knowledge
+        sources: Corpora = knowledge
     ) {
       val entries = new InMemoryEntryStore
       val durable = new InMemoryDurable(unpatched)

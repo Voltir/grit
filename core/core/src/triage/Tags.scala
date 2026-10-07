@@ -3,7 +3,7 @@ package grit.core.triage
 import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
-import grit.core.id.{KnowledgeSourceName, QuestionName}
+import grit.core.id.{CorpusName, QuestionName}
 import grit.core.message.Usage
 import grit.core.period.Probability
 
@@ -90,7 +90,7 @@ object Tags {
     val durable: QuestionName = Earning.Durable
     val anchor: QuestionName = named("anchor")
 
-    /** The prefix of its yes/no asked once per knowledge source ([[QuestionName.per]]). */
+    /** The prefix of its yes/no asked once per corpus ([[QuestionName.per]]). */
     val sourcePrefix: QuestionName = named("source")
 
     private val half = Probability.clamped(0.5)
@@ -108,9 +108,9 @@ object Tags {
     def notAnchored(at: Probability): Gate = Gate.Holds(Bound.Below(Reading.Yes(anchor), at))
 
     /** `name` could supply what it asks for: `source:<name>` at least `at`. Unread on the
-      * answers about a message where `name` is not declared ([[KnowledgeSources.at]]).
+      * answers about a message where `name` is not declared ([[Corpora.at]]).
       */
-    def source(name: KnowledgeSourceName, at: Probability): Gate =
+    def source(name: CorpusName, at: Probability): Gate =
       Gate.Holds(Bound.AtLeast(Reading.Yes(QuestionName.per(sourcePrefix, name)), at))
 
     /** v2's draft gate: it asks, still open, not to someone and not anchored, each at one

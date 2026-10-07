@@ -8,7 +8,7 @@ import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
 import grit.core.recipe.{Offering, Rooted, ServiceOffer}
 import grit.core.store.{Db, EntryStore, Origin, Payload, Position, StoreError, Tx}
 import grit.core.tool.{DuplicateName, Hosted, Tool, ToolName, ToolSet, ToolSetId, Toolbox}
-import grit.core.triage.{KnowledgeSources, Tags}
+import grit.core.triage.{Corpora, Tags}
 
 /** What a turn offers its model, as its `offer` step decided (ADR 0016, 0017): the workspace
   * its hosted calls are addressed to, none when its conversation has none
@@ -200,7 +200,7 @@ object TurnOffer {
     */
   private def shape(
       offering: Offering,
-      knowledge: KnowledgeSources,
+      knowledge: Corpora,
       weighed: Option[Tags],
       workspace: Option[Place],
       hosted: Vector[Tool.Offered],

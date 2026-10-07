@@ -5,7 +5,7 @@ import grit.core.id.{EntryId, QuestionName, TurnRef}
 import grit.core.persona.Persona
 import grit.core.stitch.{Placed, StitchReads, Stitching, Tuning}
 import grit.core.store.{StoreError, Tx}
-import grit.core.triage.{KnowledgeSources, Tags}
+import grit.core.triage.{Corpora, Tags}
 import grit.dbos.engine.Reader
 import grit.eval.harness.corpus.Capture
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
@@ -30,7 +30,7 @@ final case class HeardSent(
     asked: Vector[QuestionName],
     tags: Option[Tags],
     persona: Persona,
-    sources: KnowledgeSources
+    sources: Corpora
 )
 
 object HeardSent {
@@ -44,7 +44,7 @@ object HeardSent {
       reader: Reader^,
       entry: EntryId,
       persona: Persona,
-      sources: KnowledgeSources
+      sources: Corpora
   ): Either[String, HeardSent] = {
     val id = EntryId.value(entry)
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]): Either[String, A] =

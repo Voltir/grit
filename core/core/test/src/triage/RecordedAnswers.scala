@@ -7,7 +7,7 @@ import grit.core.id.QuestionName
 
 /** Answer sets triage recorded, by shape: question names, choice keys and probabilities, never
   * a message's text. Drawn read-only from a deployment's database: its shadow of v2's question
-  * set (each answers every v2 question, two knowledge sources), and its replica of v1's,
+  * set (each answers every v2 question, two corpora), and its replica of v1's,
   * recorded in order and named here as v1 names them ([[Tags.V1]]).
   */
 object RecordedAnswers {

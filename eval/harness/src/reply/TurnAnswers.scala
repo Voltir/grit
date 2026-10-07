@@ -3,9 +3,9 @@ package grit.eval.harness.reply
 import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
-import grit.core.id.{KnowledgeSourceName, QuestionName, WorkflowId}
+import grit.core.id.{CorpusName, QuestionName, WorkflowId}
 import grit.core.recipe.{Rooted, ServiceOffer}
-import grit.core.triage.{KnowledgeSources, Tags}
+import grit.core.triage.{Corpora, Tags}
 import grit.eval.harness.corpus.TurnCase
 import grit.turn.{TurnOffer, TurnRecord}
 
@@ -60,19 +60,19 @@ object TurnAnswers {
     * sources recorded for it. `Left` naming the first source undeclared or service that
     * disagrees.
     */
-  def declared(t: TurnCase, knowledge: KnowledgeSources): Either[String, Unit] = {
+  def declared(t: TurnCase, knowledge: Corpora): Either[String, Unit] = {
     val turn = WorkflowId.value(t.workflow)
     val names = knowledge.all.map(_.name).toSet
     val supplied = knowledge.supplied
-    def written(sources: Vector[KnowledgeSourceName]) =
-      if (sources.isEmpty) "nothing" else sources.map(KnowledgeSourceName.value).mkString(", ")
+    def written(sources: Vector[CorpusName]) =
+      if (sources.isEmpty) "nothing" else sources.map(CorpusName.value).mkString(", ")
     val services =
       t.offered.flatMap(_.shape).fold(Vector.empty[ServiceOffer])(_.services.map(_.offer))
     services
       .flatMap(_.sources)
       .find(!names.contains(_))
       .map(n =>
-        s"knowledge.json does not declare ${KnowledgeSourceName.value(n)}, " +
+        s"knowledge.json does not declare ${CorpusName.value(n)}, " +
           s"which $turn's shape records"
       )
       .orElse(

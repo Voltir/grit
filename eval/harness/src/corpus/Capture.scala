@@ -5,7 +5,7 @@ import java.time.Instant
 import grit.core.id.{ConversationId, TurnRef}
 import grit.core.stitch.{Placed, StitchReads, Stitching, Tuning}
 import grit.core.store.{Origin, StoreError}
-import grit.core.triage.{KnowledgeSources, TriageStore}
+import grit.core.triage.{Corpora, TriageStore}
 import grit.dbos.engine.{Build, Reader}
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
 
@@ -139,7 +139,7 @@ object Capture {
       )
       .toOption
       .flatMap { (_, state) =>
-        val r = TriageQuestions.V1.request(state, KnowledgeSources.Empty)
+        val r = TriageQuestions.V1.request(state, Corpora.Empty)
         Some(
           Asked(
             Built(Digest.json(r.state), Digest.request(r)),

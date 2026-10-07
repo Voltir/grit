@@ -9,7 +9,7 @@ In dependency order:
   no one made before); and `Utc`, an instant as grit writes it for a model or a person.
   Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `EntrySeq`, `WorkflowId`,
-  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `DocKey` (a plugin's document's key), `DocumentVersion` (one version of a document, numbered across every plugin), `ShadowName`, `QuestionName` (a question's in a question set, or its per-source form), `KnowledgeSourceName`, `EdgeName`, `PrincipalId`: who an
+  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `DocKey` (a plugin's document's key), `DocumentVersion` (one version of a document, numbered across every plugin), `ShadowName`, `QuestionName` (a question's in a question set, or its per-source form), `CorpusName`, `EdgeName`, `PrincipalId`: who an
   action is done for, `EdgeId`, `JobName`, `ScheduleKey` (a schedule's key among its
   declarer's), `ScheduleId` (an asked schedule's, or a declared one's, by its `Declarer`: the
   deployment or a plugin)), `CallSlot` (a tool call's place in its turn, and its
@@ -115,7 +115,7 @@ In dependency order:
   `durable` answers; `Shadowing` (a shadow variant as the sweep enqueues it, within its daily cap),
   `Shadowed` (what one variant made of one message: its `ShadowAnswers`, a wording's in
   order or a question set's under their names) and `TriageShadows`, where those are
-  kept beside the entry and deleted with it; `KnowledgeSources`, a deployment's catalog of
+  kept beside the entry and deleted with it; `Corpora`, a deployment's catalog of
   what could supply what a message asks for, each covering a place, and the service whose
   tools reach it, if any (`supplied`, each service's sources); and `Gate`, a test of a
   question set's answers that explains every failure (a `Bound` on a `Reading` of one answer,

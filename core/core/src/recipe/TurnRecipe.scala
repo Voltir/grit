@@ -3,7 +3,7 @@ package grit.core.recipe
 import grit.core.context.Width
 import grit.core.message.Tokens
 import grit.core.store.Focus
-import grit.core.triage.{Gate, KnowledgeSources}
+import grit.core.triage.{Corpora, Gate}
 
 /** One `A` for each focus a message is said at ([[Focus]]). */
 final case class ByFocus[A](focused: A, open: A) {
@@ -53,7 +53,7 @@ final case class TurnRecipe(heard: ByFocus[Shaping], addressed: Shaping) {
     * addressed; within each, the services `knowledge` says some source supplies, in its order):
     * none when it offers every service whatever the answers.
     */
-  def gates(knowledge: KnowledgeSources): Vector[Gate] = {
+  def gates(knowledge: Corpora): Vector[Gate] = {
     val supplied = knowledge.supplied.values.toVector
     shapings.flatMap(s => supplied.flatMap(s.offering.gate)).distinct
   }

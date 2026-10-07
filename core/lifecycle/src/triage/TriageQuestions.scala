@@ -5,7 +5,7 @@ import scala.collection.immutable.VectorMap
 import grit.core.classify.{Answer, Answered, Ask, Classifier, ClassifierError, Question, Request}
 import grit.core.id.QuestionName
 import grit.core.persona.Persona
-import grit.core.triage.{Gate, Kind, KnowledgeSources, Reading, Tags}
+import grit.core.triage.{Corpora, Gate, Kind, Reading, Tags}
 
 /** Questions about a heard message ([[TriageQuestion.State]]), asked together in one
   * classifier call, each answer kept under its question's name, and the gate a draft is
@@ -21,10 +21,10 @@ final case class TriageQuestions private (
   def items: Vector[Item] = first +: rest
 
   /** The questions asked with `sources` (those covering the message's conversation,
-    * [[KnowledgeSources.at]]), in order: each `One`; for each `PerSource`, one yes/no per
+    * [[Corpora.at]]), in order: each `One`; for each `PerSource`, one yes/no per
     * source in the catalog's order, named [[QuestionName.per]], none when there are none.
     */
-  def questions(sources: KnowledgeSources): VectorMap[QuestionName, Question] =
+  def questions(sources: Corpora): VectorMap[QuestionName, Question] =
     VectorMap.from(items.flatMap {
       case Item.One(name, question) => Vector(name -> question)
       case Item.PerSource(prefix, before, after) =>
@@ -34,7 +34,7 @@ final case class TriageQuestions private (
     })
 
   /** The request [[ask]] sends for `state` with `sources`. */
-  def request(state: TriageQuestion.State, sources: KnowledgeSources): Request =
+  def request(state: TriageQuestion.State, sources: Corpora): Request =
     Request.of(state, asked(sources))
 
   /** What `classifier` answered for `state`, each answer under its question's name, in the
@@ -45,7 +45,7 @@ final case class TriageQuestions private (
   def ask(
       classifier: Classifier^,
       state: TriageQuestion.State,
-      sources: KnowledgeSources
+      sources: Corpora
   ): Either[ClassifierError, Answered[VectorMap[QuestionName, Answer]]] =
     classifier.ask(state, asked(sources))
 
@@ -53,7 +53,7 @@ final case class TriageQuestions private (
     * ([[questions]]) in its kind, or a `Key` or `Chosen` of a key its choice lacks; `None`
     * when it asks them all.
     */
-  def unread(gate: Gate, sources: KnowledgeSources): Option[Reading] = {
+  def unread(gate: Gate, sources: Corpora): Option[Reading] = {
     val declared = questions(sources)
     def asks(name: QuestionName, choice: Question.Choice => Boolean, yesNo: Boolean) =
       declared.get(name).exists {
@@ -71,7 +71,7 @@ final case class TriageQuestions private (
     * since `first` is asked whatever the catalog.
     */
   private def asked(
-      sources: KnowledgeSources
+      sources: Corpora
   ): Ask[TriageQuestion.State, VectorMap[QuestionName, Answer]] = {
     val start =
       Ask.answer[TriageQuestion.State](first.question).map(a => VectorMap(first.name -> a))
@@ -88,7 +88,7 @@ object TriageQuestions {
     /** One question, under `name`. */
     case One(name: QuestionName, question: Question)
 
-    /** A yes/no asked once for each knowledge source, in the words `before + line + after`. */
+    /** A yes/no asked once for each corpus, in the words `before + line + after`. */
     case PerSource(prefix: QuestionName, before: String, after: String)
   }
 
@@ -98,7 +98,7 @@ object TriageQuestions {
     /** Two items share a name, or a `One`'s name is a `PerSource`'s prefix. */
     case NameRepeated(name: QuestionName)
 
-    /** `speak` reads `reading`, which the set does not ask without a knowledge source
+    /** `speak` reads `reading`, which the set does not ask without a corpus
       * ([[TriageQuestions.unread]]): a per-source question is never one a draft gate reads.
       */
     case Unbounded(reading: Reading)
@@ -115,7 +115,7 @@ object TriageQuestions {
       case Some(repeated) => Left(repeated)
       case None =>
         val set = new TriageQuestions(first, rest, speak)
-        set.unread(speak, KnowledgeSources.Empty).map(Refusal.Unbounded(_)).toLeft(set)
+        set.unread(speak, Corpora.Empty).map(Refusal.Unbounded(_)).toLeft(set)
     }
   }
 
@@ -160,7 +160,7 @@ object TriageQuestions {
 
   /** v2, the set that replaced [[V1]], in [[Tags.V2]]'s names: `gap` (what the message leaves
     * open: `asks`, `owes`, `closes` or `nothing`), `open`, `to`, `durable`, `anchor`, then one
-    * `source:<name>` question per knowledge source; gated by [[Tags.V2.drafts]].
+    * `source:<name>` question per corpus; gated by [[Tags.V2.drafts]].
     */
   val V2: TriageQuestions = v2With(None, None, Tags.V2.drafts)
 

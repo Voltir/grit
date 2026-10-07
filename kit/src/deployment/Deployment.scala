@@ -5,11 +5,11 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import grit.core.document.{Document, DocumentShelf}
 import grit.core.edge.ServedEdge
 import grit.core.id.{
+  CorpusName,
   Declarer,
   DocKey,
   EdgeName,
   JobName,
-  KnowledgeSourceName,
   PluginName,
   QuestionName,
   ScheduleId,
@@ -28,7 +28,7 @@ import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.ToolName
-import grit.core.triage.{Bound, Earning, Gate, KnowledgeSources, Reading}
+import grit.core.triage.{Bound, Corpora, Earning, Gate, Reading}
 import grit.lifecycle.shadow.ShadowVariant
 import grit.lifecycle.triage.TriageQuestions
 import grit.tools.Names
@@ -129,7 +129,7 @@ enum DeploymentRefusal {
   case ReviewUnspoken
 
   /** The recipe offers a service by a gate reading `reading`, which live triage
-    * ([[Deployment.triage]]) does not ask with the deployment's knowledge sources: the
+    * ([[Deployment.triage]]) does not ask with the deployment's corpora: the
     * gate would never act.
     */
   case RecipeUnread(reading: Reading)
@@ -140,7 +140,7 @@ enum DeploymentRefusal {
     */
   case RecipeUnweighed(topics: String)
 
-  /** The recipe offers a service by source, but no knowledge source supplies one: no gate
+  /** The recipe offers a service by source, but no corpus supplies one: no gate
     * would be read, and the recipe would never act.
     */
   case RecipeUnsourced
@@ -148,7 +148,7 @@ enum DeploymentRefusal {
   /** `source` supplies `service`, which no `worksIn` or `reaches` link offers: offering by it
     * would gate nothing.
     */
-  case OffersUnlinked(source: KnowledgeSourceName, service: Service)
+  case OffersUnlinked(source: CorpusName, service: Service)
 
   /** The recipe draws a window of `budget` estimated tokens, wider than the assembly's
     * `window`: widening waits until a model's context can be checked against it.
@@ -215,9 +215,9 @@ enum DeploymentRefusal {
     case RecipeUnweighed(topics) =>
       s"the recipe offers a service by source, which needs a classifier to weigh each message, and topics are off: $topics"
     case RecipeUnsourced =>
-      "the recipe offers a service by source, and no knowledge source supplies a service, so it would never act"
+      "the recipe offers a service by source, and no corpus supplies a service, so it would never act"
     case OffersUnlinked(source, service) =>
-      s"${KnowledgeSourceName.value(source)} supplies ${service.name}, which no worksIn or reaches link offers"
+      s"${CorpusName.value(source)} supplies ${service.name}, which no worksIn or reaches link offers"
     case Widens(budget, window) =>
       s"the recipe draws a window of ${Tokens.value(budget)} tokens, wider than the assembly's ${Tokens.value(window)}"
     case PluginRepeated(name) => s"two plugins are named ${PluginName.value(name)}"
@@ -245,8 +245,8 @@ enum DeploymentRefusal {
   * keeps), what its turns are offered and how their windows are assembled, how messages are
   * placed among topics, the lifecycle's settings, what it may spend a day, whether and within
   * what it speaks where it was not addressed (ADR 0022), the shadows of triage's question it
-  * records beside live triage ([[ShadowVariant]]), the knowledge sources its shadows'
-  * question sets ask about ([[KnowledgeSources]]), and its turns' offering by the services
+  * records beside live triage ([[ShadowVariant]]), the corpora its shadows'
+  * question sets ask about ([[Corpora]]), and its turns' offering by the services
   * they supply, the review of one of them it picks heard messages for ([[ShadowReview]]), how
   * often its engine sweeps, the `recipe` that shapes each turn by what it answers
   * ([[TurnRecipe]]), the `persona` grit presents as: the name its turns are told
@@ -272,7 +272,7 @@ final case class Deployment private (
     persona: Persona,
     reaches: Vector[Reaches],
     shadows: Vector[ShadowVariant],
-    knowledge: KnowledgeSources,
+    knowledge: Corpora,
     review: Option[ShadowReview],
     recipe: TurnRecipe,
     jobs: Vector[Job[?]],
@@ -351,7 +351,7 @@ object Deployment {
       persona: Persona,
       reaches: Vector[Reaches] = Vector.empty,
       shadows: Vector[ShadowVariant] = Vector.empty,
-      knowledge: KnowledgeSources = KnowledgeSources.Empty,
+      knowledge: Corpora = Corpora.Empty,
       review: Option[Reviewing] = None,
       recipe: TurnRecipe = TurnRecipe.Shipped,
       jobs: Vector[Job[?]] = Vector.empty,
@@ -516,7 +516,7 @@ object Deployment {
     */
   private[deployment] def read(
       recipe: TurnRecipe,
-      knowledge: KnowledgeSources,
+      knowledge: Corpora,
       live: TriageQuestions
   ): Either[DeploymentRefusal, Unit] =
     live
@@ -542,7 +542,7 @@ object Deployment {
     * service none of `worksIn` or `reaches` names.
     */
   private def linked(
-      knowledge: KnowledgeSources,
+      knowledge: Corpora,
       worksIn: Vector[WorksIn],
       reaches: Vector[Reaches]
   ): Either[DeploymentRefusal, Unit] = {
@@ -568,14 +568,14 @@ object Deployment {
     live
       .unread(
         Gate.bounds(Bound.AtLeast(Reading.Yes(Earning.Durable), Earning.DurableAt)),
-        KnowledgeSources.Empty
+        Corpora.Empty
       )
       .map(_ => DeploymentRefusal.DurableUnasked)
       .toLeft(())
 
   private def unread(live: TriageQuestions, gate: Gate): Either[DeploymentRefusal, Unit] =
     live
-      .unread(gate, KnowledgeSources.Empty)
+      .unread(gate, Corpora.Empty)
       .map(DeploymentRefusal.SpeechUnread(_))
       .toLeft(())
 }

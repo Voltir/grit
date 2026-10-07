@@ -3,7 +3,7 @@ package grit.eval.harness.corpus
 import scala.collection.immutable.VectorMap
 
 import grit.core.context.Width
-import grit.core.id.{ConversationId, EntryId, EntrySeq, KnowledgeSourceName, TurnSeq, WorkflowId}
+import grit.core.id.{ConversationId, CorpusName, EntryId, EntrySeq, TurnSeq, WorkflowId}
 import grit.core.message.{Tokens, Usage}
 import grit.core.period.Probability
 import grit.core.place.{Place, Service}
@@ -168,7 +168,7 @@ object TurnJson {
         "via" -> took.via.toString.toLowerCase,
         "tools" -> ujson.Arr.from(took.tools.map(n => ujson.Str(ToolName.value(n)))),
         "sources" -> ujson.Arr.from(
-          took.offer.sources.map(n => ujson.Str(KnowledgeSourceName.value(n)))
+          took.offer.sources.map(n => ujson.Str(CorpusName.value(n)))
         ),
         "verdict" -> (took.offer.verdict match {
           case ServiceOffer.Verdict.Ungated => ujson.Str("ungated")
@@ -211,7 +211,7 @@ object TurnJson {
         .flatMap(each(_)(t => Fields.str("shape: a tool", t).flatMap(ToolName.of)))
       sources <- f
         .arr("sources")
-        .flatMap(each(_)(n => Fields.str("shape: a source", n).flatMap(KnowledgeSourceName.of)))
+        .flatMap(each(_)(n => Fields.str("shape: a source", n).flatMap(CorpusName.of)))
       verdict <- f.field("verdict").flatMap {
         case ujson.Str("ungated") => Right(ServiceOffer.Verdict.Ungated)
         case ujson.Str("unweighed") => Right(ServiceOffer.Verdict.Unweighed)

@@ -8,7 +8,7 @@ import grit.core.id.TurnRef
 import grit.core.message.{Message, Tokens}
 import grit.core.provider.TokenEstimator
 import grit.core.stitch.{Opening, Placements, Tuning}
-import grit.core.triage.{KnowledgeSources, Weighing}
+import grit.core.triage.{Corpora, Weighing}
 
 import utest.*
 
@@ -63,7 +63,7 @@ object MentionsTests extends TestSuite {
           .shipped(grit.core.persona.Persona.Grit)
           .request(
             state,
-            KnowledgeSources.of(Vector(Github)).getOrElse(sys.error("one source"))
+            Corpora.of(Vector(Github)).getOrElse(sys.error("one source"))
           )
       )
 

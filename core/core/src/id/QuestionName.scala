@@ -1,7 +1,7 @@
 package grit.core.id
 
 /** A question's name in a question set, kept with its answer: a lowercase letter, then
-  * lowercase letters, digits or `-`; or a question asked once per knowledge source,
+  * lowercase letters, digits or `-`; or a question asked once per corpus,
   * `<prefix>:<source>` ([[QuestionName.per]]), which no declared name can be.
   */
 opaque type QuestionName = String
@@ -21,8 +21,8 @@ object QuestionName {
     )
 
   /** The name of `prefix`'s question asked of `source`: `<prefix>:<source>`. */
-  def per(prefix: QuestionName, source: KnowledgeSourceName): QuestionName =
-    s"$prefix:${KnowledgeSourceName.value(source)}"
+  def per(prefix: QuestionName, source: CorpusName): QuestionName =
+    s"$prefix:${CorpusName.value(source)}"
 
   /** `text` as a name [[of]] or [[per]] makes, as a stored answer names it, or why not. */
   def read(text: String): Either[String, QuestionName] =
@@ -31,7 +31,7 @@ object QuestionName {
       case i =>
         for {
           prefix <- read(text.take(i))
-          source <- KnowledgeSourceName.of(text.drop(i + 1))
+          source <- CorpusName.of(text.drop(i + 1))
         } yield per(prefix, source)
     }
 

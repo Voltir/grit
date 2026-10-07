@@ -2,11 +2,11 @@ package grit.eval.harness.corpus
 
 import scala.util.Try
 
-import grit.core.id.KnowledgeSourceName
+import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}
-import grit.core.triage.{KnowledgeSource, KnowledgeSources}
+import grit.core.triage.{Corpora, Corpus}
 
-/** The knowledge sources the deployment that recorded a corpus declares, as its
+/** The corpora the deployment that recorded a corpus declares, as its
   * `knowledge.json` holds them: grit's database keeps no declaration, so the file is written
   * beside the corpus from the deployment's.
   */
@@ -17,25 +17,25 @@ object KnowledgeJson {
     * service's name, `null` or absent for a source no service's tools reach. Why not, naming
     * the source and field, when it is not of that form or names a source twice.
     */
-  def read(text: String): Either[String, KnowledgeSources] =
+  def read(text: String): Either[String, Corpora] =
     for {
       root <- Try(ujson.read(text)).toOption.toRight("knowledge: not JSON")
       all <- Fields("knowledge", root).arr("sources")
       each <- Fields.each(all) { v =>
         val f = Fields("knowledge: a source", v)
         for {
-          name <- f.str("name").flatMap(KnowledgeSourceName.of)
-          what = s"knowledge: ${KnowledgeSourceName.value(name)}"
+          name <- f.str("name").flatMap(CorpusName.of)
+          what = s"knowledge: ${CorpusName.value(name)}"
           line <- f.str("line")
           within <- f.str("within").flatMap(Place.read).left.map(w => s"$what: within: $w")
           supplies <- f
             .added("supplies")
             .flatMap(Fields.opt(_)(s => Fields.str(s"$what: supplies", s).flatMap(Service.of)))
-        } yield KnowledgeSource(name, line, within, supplies)
+        } yield Corpus(name, line, within, supplies)
       }
-      sources <- KnowledgeSources
+      sources <- Corpora
         .of(each)
         .left
-        .map(n => s"knowledge: ${KnowledgeSourceName.value(n)} is declared twice")
+        .map(n => s"knowledge: ${CorpusName.value(n)} is declared twice")
     } yield sources
 }

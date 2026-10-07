@@ -1,11 +1,11 @@
 package grit.app.main
 
-import grit.core.id.{KnowledgeSourceName, TurnRef}
+import grit.core.id.{CorpusName, TurnRef}
 import grit.core.period.Probability
 import grit.core.place.{Place, Reaches, Service}
 import grit.core.recipe.{Offering, Shaping, TurnRecipe}
 import grit.core.store.StoreError
-import grit.core.triage.{KnowledgeSource, KnowledgeSources}
+import grit.core.triage.{Corpora, Corpus}
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
 import grit.models.StubClassifier
@@ -24,12 +24,12 @@ object MentionWeighLiveTests extends TestSuite {
 
   private val github = right(Service.of("github"))
 
-  private val repo = right(KnowledgeSourceName.of("repo"))
+  private val repo = right(CorpusName.of("repo"))
 
   /** The session reaches `github`, which `repo`, covering every place, supplies. */
   private val knowledge = right(
-    KnowledgeSources.of(
-      Vector(KnowledgeSource(repo, "the repository", Place.Everywhere, Some(github)))
+    Corpora.of(
+      Vector(Corpus(repo, "the repository", Place.Everywhere, Some(github)))
     )
   )
 

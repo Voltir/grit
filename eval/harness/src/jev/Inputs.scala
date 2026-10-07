@@ -4,7 +4,7 @@ import grit.core.classify.{Classifier, Request}
 import grit.core.id.{TriageRef, TurnRef}
 import grit.core.stitch.{Offer, StitchReads, Stitching, Tuning}
 import grit.core.store.{Focus, StoreError}
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.Corpora
 import grit.dbos.engine.Reader
 import grit.eval.harness.corpus.{Case, Digest}
 import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageQuestions}
@@ -19,7 +19,7 @@ enum Asking {
   case Stitch(offer: Offer, tuning: Tuning)
 
   /** A question set's, of `state`, with `sources`' per-source questions. */
-  case Questions(set: TriageQuestions, state: TriageQuestion.State, sources: KnowledgeSources)
+  case Questions(set: TriageQuestions, state: TriageQuestion.State, sources: Corpora)
 }
 
 object Asking {
@@ -29,7 +29,7 @@ object Asking {
     */
   def ask(asking: Asking, classifier: Classifier^): Unit = asking match {
     case Triage(state, wording) =>
-      val _ = TriageQuestions.v1(wording).ask(classifier, state, KnowledgeSources.Empty)
+      val _ = TriageQuestions.v1(wording).ask(classifier, state, Corpora.Empty)
     case Stitch(offer, tuning) => val _ = Stitching.place(classifier, offer, tuning)
     case Questions(set, state, sources) => val _ = set.ask(classifier, state, sources)
   }
@@ -126,7 +126,7 @@ object Inputs {
           )
           .toOption
       val triage = read.flatMap { r =>
-        val q = TriageQuestions.v1(wording).request(r.state, KnowledgeSources.Empty)
+        val q = TriageQuestions.v1(wording).request(r.state, Corpora.Empty)
         Some(Posed(Asking.Triage(r.state, wording), q, Digest.json(q.state)))
       }
       val stitch = offer.flatMap(o =>

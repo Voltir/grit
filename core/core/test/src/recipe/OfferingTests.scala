@@ -3,7 +3,7 @@ package grit.core.recipe
 import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
-import grit.core.id.{KnowledgeSourceName, QuestionName}
+import grit.core.id.{CorpusName, QuestionName}
 import grit.core.period.Probability
 import grit.core.place.Service
 import grit.core.triage.{Bound, Gate, Reading, Tags}
@@ -16,8 +16,8 @@ import utest.*
 object OfferingTests extends TestSuite {
 
   private def p(x: Double): Probability = Probability.clamped(x)
-  private def source(n: String): KnowledgeSourceName =
-    KnowledgeSourceName.of(n).getOrElse(throw new java.lang.AssertionError(n))
+  private def source(n: String): CorpusName =
+    CorpusName.of(n).getOrElse(throw new java.lang.AssertionError(n))
   private def service(n: String): Service =
     Service.of(n).getOrElse(throw new java.lang.AssertionError(n))
   private def per(n: String): QuestionName = QuestionName.per(Tags.V2.sourcePrefix, source(n))
@@ -29,7 +29,7 @@ object OfferingTests extends TestSuite {
 
   // github is one source's; docs is two sources' (made up, to have one service of two); linear
   // is no source's.
-  private val supplied: VectorMap[Service, Vector[KnowledgeSourceName]] = VectorMap(
+  private val supplied: VectorMap[Service, Vector[CorpusName]] = VectorMap(
     github -> Vector(source("github")),
     docs -> Vector(source("handbook"), source("wiki"))
   )

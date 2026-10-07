@@ -21,7 +21,7 @@ import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.Corpora
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
 import grit.eval.harness.label.Verdicts
@@ -189,7 +189,7 @@ object TurnCaptureTests extends TestSuite {
                 engine.principals
               ),
               engine.rooms,
-              KnowledgeSources.Empty,
+              Corpora.Empty,
               grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
               Classifier.none("no classifier"),
               engine.placements,
@@ -231,7 +231,7 @@ object TurnCaptureTests extends TestSuite {
           ),
           Tuning.Default,
           engine.placements,
-          KnowledgeSources.Empty,
+          Corpora.Empty,
           grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
         )
       ),

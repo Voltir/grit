@@ -40,7 +40,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
-import grit.core.triage.{InMemoryTriageStore, KnowledgeSources}
+import grit.core.triage.{Corpora, InMemoryTriageStore}
 import grit.dbos.sql.TestTx
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 
@@ -288,7 +288,7 @@ object TriageFixtures {
         classifier: Classifier^,
         minutes: Long,
         speaking: Speaking = Speaking.Off,
-        sources: KnowledgeSources = KnowledgeSources.Empty
+        sources: Corpora = Corpora.Empty
     )(
         id: WorkflowId
     )(using Durable^): String =

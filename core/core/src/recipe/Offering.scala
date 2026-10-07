@@ -3,7 +3,7 @@ package grit.core.recipe
 import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
-import grit.core.id.{KnowledgeSourceName, QuestionName}
+import grit.core.id.{CorpusName, QuestionName}
 import grit.core.period.Probability
 import grit.core.place.Service
 import grit.core.triage.{Gate, Tags}
@@ -16,7 +16,7 @@ enum Offering {
   /** Every one. */
   case All
 
-  /** A service's only when one of the knowledge sources supplying it reads at least `at`
+  /** A service's only when one of the corpora supplying it reads at least `at`
     * ([[Tags.V2.source]]). A service no source supplies, or whose root's answers do not
     * answer its sources' questions, is offered.
     */
@@ -25,7 +25,7 @@ enum Offering {
   /** The gate a service supplied by `sources` is offered by; `None` when it is offered
     * whatever the answers.
     */
-  def gate(sources: Vector[KnowledgeSourceName]): Option[Gate] = this match {
+  def gate(sources: Vector[CorpusName]): Option[Gate] = this match {
     case All => None
     case BySource(at) =>
       sources.map(Tags.V2.source(_, at)) match {
@@ -43,7 +43,7 @@ object Offering {
     */
   def decide(
       offering: Offering,
-      supplied: VectorMap[Service, Vector[KnowledgeSourceName]],
+      supplied: VectorMap[Service, Vector[CorpusName]],
       services: Vector[Service],
       answers: Option[VectorMap[QuestionName, Answer]]
   ): Vector[ServiceOffer] =
@@ -63,7 +63,7 @@ object Offering {
 /** A service as offering decided it: its supplying `sources`, and `verdict`. */
 final case class ServiceOffer(
     service: Service,
-    sources: Vector[KnowledgeSourceName],
+    sources: Vector[CorpusName],
     verdict: ServiceOffer.Verdict
 ) {
 

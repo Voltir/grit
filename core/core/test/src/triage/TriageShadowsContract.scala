@@ -9,8 +9,8 @@ import grit.core.classify.{Answer, ClassifierError}
 import grit.core.id.{
   CloseRef,
   ConversationId,
+  CorpusName,
   EntryId,
-  KnowledgeSourceName,
   PeriodRef,
   PeriodSeq,
   QuestionName,
@@ -109,7 +109,7 @@ abstract class TriageShadowsContract extends TestSuite {
     question("gap") -> Answer.Choice("asks", Vector(Answer.Weight("asks", 1.0)), 1.0),
     QuestionName.per(
       question("source"),
-      KnowledgeSourceName.of("github").getOrElse(throw new java.lang.AssertionError("github"))
+      CorpusName.of("github").getOrElse(throw new java.lang.AssertionError("github"))
     ) -> Answer.YesNo(0.5)
   )
 

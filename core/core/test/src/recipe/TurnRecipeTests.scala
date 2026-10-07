@@ -1,12 +1,12 @@
 package grit.core.recipe
 
 import grit.core.context.Width
-import grit.core.id.KnowledgeSourceName
+import grit.core.id.CorpusName
 import grit.core.message.Tokens
 import grit.core.period.Probability
 import grit.core.place.{Place, Service}
 import grit.core.store.Focus
-import grit.core.triage.{KnowledgeSource, KnowledgeSources, Tags}
+import grit.core.triage.{Corpora, Corpus, Tags}
 
 import utest.*
 
@@ -30,22 +30,22 @@ object TurnRecipeTests extends TestSuite {
     }
 
     test("its gates are each shaping's offering gate of every supplied service, each once") {
-      def name(n: String) = KnowledgeSourceName.of(n).fold(e => sys.error(e), identity)
+      def name(n: String) = CorpusName.of(n).fold(e => sys.error(e), identity)
       def service(n: String) = Service.of(n).fold(e => sys.error(e), identity)
-      val knowledge = KnowledgeSources
+      val knowledge = Corpora
         .of(
           Vector(
-            KnowledgeSource(
+            Corpus(
               name("repo"),
               "the repository",
               Place.Everywhere,
               Some(service("github"))
             ),
-            KnowledgeSource(name("past"), "past conversations", Place.Everywhere, None),
-            KnowledgeSource(name("wiki"), "the wiki", Place.Everywhere, Some(service("docs")))
+            Corpus(name("past"), "past conversations", Place.Everywhere, None),
+            Corpus(name("wiki"), "the wiki", Place.Everywhere, Some(service("docs")))
           )
         )
-        .fold(n => sys.error(KnowledgeSourceName.value(n)), identity)
+        .fold(n => sys.error(CorpusName.value(n)), identity)
       def source(n: String, at: Double) = Tags.V2.source(name(n), Probability.clamped(at))
       val twice = recipe.copy(heard = recipe.heard.copy(open = shaping(2000, 0.1)))
       (recipe.gates(knowledge), twice.gates(knowledge), TurnRecipe.Shipped.gates(knowledge)) ==> (

@@ -6,7 +6,7 @@ import grit.core.id.{EntryId, QuestionName, TriageRef, TurnRef, WorkflowId}
 import grit.core.speech.{Decision, SpeechJson}
 import grit.core.stitch.{Opening, Placed, StitchJson, StitchReads, Stitching}
 import grit.core.store.StoreError
-import grit.core.triage.{KnowledgeSources, Tags}
+import grit.core.triage.{Corpora, Tags}
 
 /** The triage: one workflow per heard message ([[TriageRef]]), run on the turns' queue under
   * its conversation, so ahead of any later close of it. Each step's output is recorded, so a
@@ -21,7 +21,7 @@ import grit.core.triage.{KnowledgeSources, Tags}
   *      ([[Patches.StitchInRoomOrder]]).
   *   1. `ask` — one classifier call over the heard message, who said it, and the thread
   *      before it: its strand's, then its own ([[TriageInput.heard]]), asked the questions
-  *      live triage asks (`env.questions`, [[TriageQuestions.shipped]] in a deployment), one per knowledge source covering its
+  *      live triage asks (`env.questions`, [[TriageQuestions.shipped]] in a deployment), one per corpus covering its
   *      conversation where the set asks so; an absent or failing classifier, or an answer
   *      that does not read, is `Unanswered` tags.
   *      Nothing is asked when the message cannot be read or is gone.
@@ -167,7 +167,7 @@ object Triage {
   }
 
   /** The `ask` step: the heard message that is `triage`'s turn, and what the classifier made
-    * of it, asked with the knowledge sources covering its conversation; why not, when it
+    * of it, asked with the corpora covering its conversation; why not, when it
     * cannot be read or is not there.
     */
   private def ask(env: TriageEnv^, triage: TriageRef): Either[String, (EntryId, Tags)] = {
@@ -183,7 +183,7 @@ object Triage {
       )
       .map { read =>
         // A conversation not found is at no place, so no source covers it.
-        val sources = read.place.fold(KnowledgeSources.Empty)(env.sources.at)
+        val sources = read.place.fold(Corpora.Empty)(env.sources.at)
         (
           read.entry,
           env.questions.ask(env.classifier, read.state, sources) match {

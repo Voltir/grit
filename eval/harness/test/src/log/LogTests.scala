@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 import grit.core.classify.Answer
 import grit.core.id.QuestionName
 import grit.core.message.Usage
-import grit.core.triage.{Kind, KnowledgeSources}
+import grit.core.triage.{Corpora, Kind}
 import grit.eval.harness.corpus.{CaseId, Digest, Failure}
 import grit.eval.harness.score.Fixtures
 import grit.lifecycle.triage.TriageQuestions
@@ -40,7 +40,7 @@ object LogTests extends TestSuite {
     test(
       "each answered row is named by the questions in order, a choice's keys from its question; a row of another shape fails unreadable, and the footer counts again"
     ) {
-      val v1 = TriageQuestions.V1.questions(KnowledgeSources.Empty)
+      val v1 = TriageQuestions.V1.questions(Corpora.Empty)
       val ps = Vector(0.1, 0.6, 0.1, 0.1, 0.1)
       val (a, b, c) = (id("C1/1"), id("C1/2"), id("C1/3"))
       val positional = Log(

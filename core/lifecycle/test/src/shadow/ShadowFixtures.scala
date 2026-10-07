@@ -7,10 +7,10 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
 import grit.core.durable.Durable
-import grit.core.id.{EntryId, KnowledgeSourceName, ShadowName, TriageRef, WorkflowId}
+import grit.core.id.{CorpusName, EntryId, ShadowName, TriageRef, WorkflowId}
 import grit.core.place.{Namespace, Place}
 import grit.core.stitch.Tuning
-import grit.core.triage.{InMemoryTriageShadows, KnowledgeSource, KnowledgeSources, Shadowed}
+import grit.core.triage.{Corpora, Corpus, InMemoryTriageShadows, Shadowed}
 import grit.dbos.sql.TestTx
 import grit.lifecycle.triage.{TriageFixtures, TriageQuestion, TriageQuestions}
 
@@ -27,23 +27,23 @@ object ShadowFixtures {
   /** A variant asking [[grit.lifecycle.triage.TriageQuestions.V2]]. */
   val Asks: ShadowName = named("asks")
 
-  private def source(name: String, line: String, team: String): KnowledgeSource =
-    KnowledgeSource(
-      KnowledgeSourceName.of(name).getOrElse(throw new java.lang.AssertionError(name)),
+  private def source(name: String, line: String, team: String): Corpus =
+    Corpus(
+      CorpusName.of(name).getOrElse(throw new java.lang.AssertionError(name)),
       line,
       Place.under(Namespace.Slack, Vector(team))
     )
 
   /** A source covering team T, where [[TriageFixtures.World]]'s conversation is. */
-  val Github: KnowledgeSource =
+  val Github: Corpus =
     source("github", "the team's GitHub repository: code, issues and pull requests", "T")
 
   /** A source covering another team only. */
-  val Wiki: KnowledgeSource = source("wiki", "the other team's wiki", "U")
+  val Wiki: Corpus = source("wiki", "the other team's wiki", "U")
 
   /** The world's catalog: [[Wiki]], then [[Github]]. */
-  val Catalog: KnowledgeSources =
-    KnowledgeSources
+  val Catalog: Corpora =
+    Corpora
       .of(Vector(Wiki, Github))
       .getOrElse(throw new java.lang.AssertionError("catalog"))
 

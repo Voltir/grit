@@ -20,7 +20,7 @@ import grit.core.persona.Persona
 import grit.core.place.Service
 import grit.core.provider.Provider
 import grit.core.tool.ToolSet
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.Corpora
 import grit.dbos.engine.{Build, Engine, Reader}
 import grit.dbos.sql.DbConfig
 import grit.eval.harness.corpus.{
@@ -440,7 +440,7 @@ object Main {
     * A turn's offering under a variant is decided over what it recorded
     * ([[TurnVariant.shape]]), by the answers [[TurnAnswers.of]] gives it. A turn whose answers
     * a variant reads and only asking gives ([[TurnAnswers.asks]]) has its message put live
-    * triage's set ([[TurnTriage.ask]]) through Jev, once, with the knowledge sources the
+    * triage's set ([[TurnTriage.ask]]) through Jev, once, with the corpora the
     * deployment that recorded the corpus declares (its `knowledge.json`, [[KnowledgeJson.read]]),
     * the answer kept under `<cache>` so it is paid for once, under the `--spend` cap in USD:
     * and asked in the words of the persona it declares (its `persona.json`, [[PersonaJson.read]]),
@@ -498,12 +498,12 @@ object Main {
       knowledgeAt = dir.resolve("knowledge.json")
       // Read only when a turn is to be asked: its questions' words.
       knowledge <-
-        if (asking.isEmpty) Right(KnowledgeSources.Empty)
+        if (asking.isEmpty) Right(Corpora.Empty)
         else if (Files.exists(knowledgeAt)) read(knowledgeAt).flatMap(KnowledgeJson.read)
         else
           Left(
             s"refused: ${asking.size} turns are to be asked and there is no $knowledgeAt: " +
-              "write the knowledge sources the deployment that recorded the corpus declares there"
+              "write the corpora the deployment that recorded the corpus declares there"
           )
       personaAt = dir.resolve("persona.json")
       // Read only when a turn is to be asked: its name is in to-grit's words.
@@ -975,7 +975,7 @@ object Main {
     if (f.contains("entry")) heardContext(f) else turnContext(f, full)
 
   /** `context` of a heard message (`--entry`): what Jev was asked of it, its triage request
-    * worded for the persona and knowledge sources in `--declared` (a corpus's directory, its
+    * worded for the persona and corpora in `--declared` (a corpus's directory, its
     * `persona.json` and `knowledge.json`), else grit's and none.
     */
   private def heardContext(f: Map[String, String]): Either[String, Unit] = {
@@ -991,7 +991,7 @@ object Main {
       entry <- need(f, "entry").map(grit.core.id.EntryId(_))
       out <- need(f, "out").map(Path.of(_))
       persona <- file("persona.json", Persona.Grit, PersonaJson.read)
-      sources <- file("knowledge.json", KnowledgeSources.Empty, KnowledgeJson.read)
+      sources <- file("knowledge.json", Corpora.Empty, KnowledgeJson.read)
       config <- DbConfig.fromEnv(sys.env.updated(DbConfig.UrlVar, url)).left.map(_.message)
       heard <- opened(config)(HeardSent.read(_, entry, persona, sources))
       _ <- Try(Files.createDirectories(out.getParent)).toEither.left.map(e =>
@@ -1237,7 +1237,7 @@ object Main {
         .orElse(
           LogJson
             .read[Vector[Weights]](lines)
-            .map(Log.named(_, TriageQuestions.V1.questions(KnowledgeSources.Empty)))
+            .map(Log.named(_, TriageQuestions.V1.questions(Corpora.Empty)))
         )
         .left
         .map(e => s"$name: not live triage's log, under names or by position: $e")

@@ -4,7 +4,7 @@ import scala.collection.immutable.VectorMap
 import scala.concurrent.duration.*
 
 import grit.core.classify.{Answer, ClassifierError}
-import grit.core.id.{KnowledgeSourceName, QuestionName}
+import grit.core.id.{CorpusName, QuestionName}
 import grit.core.message.{Tokens, Usage}
 
 import utest.*
@@ -34,7 +34,7 @@ object ShadowedJsonTests extends TestSuite {
 
   private val github: QuestionName = QuestionName.per(
     question("source"),
-    KnowledgeSourceName.of("github").getOrElse(throw new java.lang.AssertionError("github"))
+    CorpusName.of("github").getOrElse(throw new java.lang.AssertionError("github"))
   )
 
   /** A question set's answers, in an order that is not their names' sorted order. */

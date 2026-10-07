@@ -11,7 +11,7 @@ import grit.core.speech.{Decision, Limits, Silence, Speaking}
 import grit.core.spend.DailyCap
 import grit.core.stitch.{Stitching, Tuning}
 import grit.core.store.Tx
-import grit.core.triage.{Bound, Earning, Gate, KnowledgeSources, Reading, Tags}
+import grit.core.triage.{Bound, Corpora, Earning, Gate, Reading, Tags}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -107,7 +107,7 @@ object TriageTests extends TestSuite {
           .shipped(grit.core.persona.Persona.Grit)
           .request(
             r.state,
-            KnowledgeSources.of(Vector(Github)).getOrElse(sys.error("one"))
+            Corpora.of(Vector(Github)).getOrElse(sys.error("one"))
           )
       }
     }

@@ -7,8 +7,8 @@ object QuestionNameTests extends TestSuite {
   private def name(s: String): QuestionName =
     QuestionName.of(s).getOrElse(throw new java.lang.AssertionError(s))
 
-  private def source(s: String): KnowledgeSourceName =
-    KnowledgeSourceName.of(s).getOrElse(throw new java.lang.AssertionError(s))
+  private def source(s: String): CorpusName =
+    CorpusName.of(s).getOrElse(throw new java.lang.AssertionError(s))
 
   val tests = Tests {
     test(
@@ -38,14 +38,14 @@ object QuestionNameTests extends TestSuite {
         .map(QuestionName.read(_).isRight) ==> List(false, false, false, false, false)
     }
 
-    test("a knowledge source's name is a lowercase letter, then lowercase letters, digits or _") {
-      List("github", "conversations", "a_1").map(KnowledgeSourceName.of(_).isRight) ==>
+    test("a corpus's name is a lowercase letter, then lowercase letters, digits or _") {
+      List("github", "conversations", "a_1").map(CorpusName.of(_).isRight) ==>
         List(true, true, true)
-      List("", "GitHub", "_a", "1a", "a-b", "a:b").map(KnowledgeSourceName.of(_).isRight) ==>
+      List("", "GitHub", "_a", "1a", "a-b", "a:b").map(CorpusName.of(_).isRight) ==>
         List(false, false, false, false, false, false)
-      KnowledgeSourceName.of("a-b") ==>
+      CorpusName.of("a-b") ==>
         Left(
-          "a knowledge source's name is a lowercase letter, then lowercase letters, digits or _: a-b"
+          "a corpus's name is a lowercase letter, then lowercase letters, digits or _: a-b"
         )
     }
   }

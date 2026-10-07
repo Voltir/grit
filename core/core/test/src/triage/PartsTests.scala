@@ -3,7 +3,7 @@ package grit.core.triage
 import scala.collection.immutable.{ListSet, VectorMap}
 
 import grit.core.classify.Answer
-import grit.core.id.{KnowledgeSourceName, QuestionName}
+import grit.core.id.{CorpusName, QuestionName}
 import grit.core.period.Probability
 
 import utest.*
@@ -65,7 +65,7 @@ object PartsTests extends TestSuite {
     }
 
     test("source reads source:<name>'s yes, passing at at least at") {
-      val github = KnowledgeSourceName.of("github").getOrElse(sys.error("a name"))
+      val github = CorpusName.of("github").getOrElse(sys.error("a name"))
       val name = QuestionName.read("source:github").getOrElse(sys.error("a name"))
       val reading = Reading.Yes(name)
       edge(Tags.V2.source(github, at), yes(name, _)) ==>

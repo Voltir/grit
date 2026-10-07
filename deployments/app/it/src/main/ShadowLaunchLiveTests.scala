@@ -6,7 +6,7 @@ import scala.concurrent.duration.*
 import scala.util.Using
 
 import grit.core.id.{
-  KnowledgeSourceName,
+  CorpusName,
   PeriodRef,
   PeriodSeq,
   PrincipalId,
@@ -22,7 +22,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Entry, Origin, StoreError, Tx}
-import grit.core.triage.{KnowledgeSource, KnowledgeSources, ShadowAnswers, Shadowed}
+import grit.core.triage.{Corpora, Corpus, ShadowAnswers, Shadowed}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
@@ -51,7 +51,7 @@ object ShadowLaunchLiveTests extends TestSuite {
 
   private def deployment(
       shadows: Vector[ShadowVariant],
-      knowledge: KnowledgeSources = KnowledgeSources.Empty
+      knowledge: Corpora = Corpora.Empty
   ): Deployment =
     Deployment
       .of(
@@ -190,15 +190,15 @@ object ShadowLaunchLiveTests extends TestSuite {
     }
 
     test(
-      "a declared question set's shadow asks the deployment's knowledge sources covering the conversation, each answer under its name"
+      "a declared question set's shadow asks the deployment's corpora covering the conversation, each answer under its name"
     ) {
       val asks = ShadowName.of("asks").getOrElse(sys.error("a name"))
-      def source(name: String, team: String) = KnowledgeSource(
-        KnowledgeSourceName.of(name).getOrElse(sys.error("a name")),
+      def source(name: String, team: String) = Corpus(
+        CorpusName.of(name).getOrElse(sys.error("a name")),
         s"the $name of team $team",
         Place.under(Namespace.Slack, Vector(team))
       )
-      val catalog = KnowledgeSources
+      val catalog = Corpora
         .of(Vector(source("wiki", "T2"), source("github", "T1")))
         .getOrElse(sys.error("a catalog"))
       val variant = ShadowVariant(

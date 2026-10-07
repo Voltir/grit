@@ -10,7 +10,7 @@ import grit.core.id.{QuestionName, ShadowName, ShadowRef}
 import grit.core.message.Usage
 import grit.core.review.Considered
 import grit.core.store.{Focus, Origin, Position, StoreError, Tx}
-import grit.core.triage.{KnowledgeSources, ShadowAnswers, Shadowed, Tags, TriageStore}
+import grit.core.triage.{Corpora, ShadowAnswers, Shadowed, Tags, TriageStore}
 import grit.dbos.engine.{Build, Reader}
 import grit.eval.harness.corpus.{Case, CaseId, Digest, Failure}
 import grit.eval.harness.label.{Rated, Verdicts}
@@ -246,7 +246,7 @@ object Pull {
     * how an answer is put by position.
     */
   private val Questions: Vector[Question] =
-    TriageQuestions.V1.request(TriageQuestion.State("", "", ""), KnowledgeSources.Empty).questions
+    TriageQuestions.V1.request(TriageQuestion.State("", "", ""), Corpora.Empty).questions
 
   /** A kept row of case `id`, said at `focus` and asked as `request`, from live triage's
     * `tags`, and its cost; with the names it answered under, `None` when it failed.

@@ -47,7 +47,7 @@ object Deployments {
       review: Option[grit.core.review.Reviewing] = None,
       worksIn: Vector[grit.core.place.WorksIn] = Vector.empty,
       reaches: Vector[grit.core.place.Reaches] = Vector.empty,
-      knowledge: grit.core.triage.KnowledgeSources = grit.core.triage.KnowledgeSources.Empty,
+      knowledge: grit.core.triage.Corpora = grit.core.triage.Corpora.Empty,
       recipe: grit.core.recipe.TurnRecipe = grit.core.recipe.TurnRecipe.Shipped,
       plugins: Vector[grit.core.plugin.Plugin] = Vector.empty,
       jobs: Vector[grit.core.job.Job[?]] = Vector.empty,

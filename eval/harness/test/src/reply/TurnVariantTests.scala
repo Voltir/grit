@@ -4,7 +4,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
 import grit.core.context.Width
-import grit.core.id.{KnowledgeSourceName, QuestionName}
+import grit.core.id.{CorpusName, QuestionName}
 import grit.core.message.Tokens
 import grit.core.period.Probability
 import grit.core.place.Service
@@ -27,7 +27,7 @@ object TurnVariantTests extends TestSuite {
 
   private val assembled = Assembled.Shipped.copy(window = Tokens(4000), hits = 5)
   private def variant(name: String) = right(TurnVariant.named(name, assembled))
-  private def source(n: String) = right(KnowledgeSourceName.of(n))
+  private def source(n: String) = right(CorpusName.of(n))
   private def yes(n: String, p: Double) = right(QuestionName.read(n)) -> Answer.YesNo(p)
   private val github = right(Service.of("github"))
   private val slack = right(Service.of("slack"))
@@ -44,7 +44,7 @@ object TurnVariantTests extends TestSuite {
       service: Service,
       via: TurnShape.Via,
       tools: Vector[ToolName],
-      sources: Vector[KnowledgeSourceName],
+      sources: Vector[CorpusName],
       verdict: ServiceOffer.Verdict = ServiceOffer.Verdict.Ungated
   ) = TurnShape.Took(ServiceOffer(service, sources, verdict), via, tools)
 
@@ -199,7 +199,7 @@ object TurnVariantTests extends TestSuite {
       // Recorded under offer-heard-0.2's recipe, by these answers: github withheld, slack
       // offered (docs passes; wiki unasked).
       val answers = VectorMap(yes("source:github", 0.1), yes("source:docs", 0.3))
-      def checked(sources: Vector[KnowledgeSourceName]) =
+      def checked(sources: Vector[CorpusName]) =
         sources.map(s => Tags.V2.source(s, Probability.clamped(0.2))) match {
           case first +: rest =>
             ServiceOffer.Verdict.Checked(

@@ -9,7 +9,7 @@ import grit.core.message.Tokens
 trait Weighing extends caps.SharedCapability {
 
   /** What live triage's set makes of the person's message that is `turn`'s first, asked with
-    * the knowledge sources covering its conversation, once its placement has ended when it is
+    * the corpora covering its conversation, once its placement has ended when it is
     * an opening; why not ([[Weighing.Unweighed]]).
     */
   def weigh(turn: TurnRef): Either[Weighing.Unweighed, Weighing.Weighed]

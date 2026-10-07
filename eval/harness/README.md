@@ -51,7 +51,7 @@ Packages, each importing only those above it:
   number, the line at which a part counts as used (`Support.Used`), and a window's most
   supported parts (`Support.top`); `TurnJson`, a turn's line of `turns.jsonl` (a line written before shapes
   were captured is refused: recapture);
-  `KnowledgeJson`, the knowledge sources the deployment that recorded a corpus declares, each
+  `KnowledgeJson`, the corpora the deployment that recorded a corpus declares, each
   with the service it supplies, read from the `knowledge.json` written beside the corpus
   (grit's database keeps no declaration; its lines are the deployment's words, no
   conversation's), and only when the harness asks a turn: their lines are its questions'
@@ -67,7 +67,7 @@ Packages, each importing only those above it:
   was asked of a heard message and answered: the stitch state as its placement recorded it
   (and the question as this build words it), and triage's request rebuilt through the
   shipped builder (`TriageInput`, `TriageQuestions.shipped`, worded for the persona and
-  knowledge sources a corpus's directory declares), since triage keeps none, beside the tags
+  corpora a corpus's directory declares), since triage keeps none, beside the tags
   it kept. It reads its own rather
   than through `TurnCapture`, whose readers are private to a corpus's capture and keep
   numbers, never text. ← `stats`, `corpus`
@@ -104,7 +104,7 @@ Packages, each importing only those above it:
 - **`jev`** — the first suite, Jev's: `Variant`, what a run changes from the shipped call
   (the model, triage's wording, its recipe and the words it is asked in, or the tuning), and `Variants`, those a run can name;
   `Asking`, how a question is put to Jev through the shipped call: v1 in a wording,
-  stitching's, or a question set's with the knowledge sources it asks about;
+  stitching's, or a question set's with the corpora it asks about;
   `QuestionSet`, a question set a comparison names (its gate, and its questions read as
   durable and as `to`), and `Sets`, those it can name (`v1` to `v4`, each by the gate live
   triage drafted by while it was live);

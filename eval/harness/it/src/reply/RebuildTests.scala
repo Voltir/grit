@@ -31,7 +31,7 @@ import grit.core.speech.{Reach, Speaking}
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Nearby, Origin}
 import grit.core.tool.Toolbox
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.Corpora
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
 import grit.eval.harness.corpus.{Digest, Dump, KnowledgeJson, TurnCapture}
@@ -164,7 +164,7 @@ object RebuildTests extends TestSuite {
                 engine.principals
               ),
               engine.rooms,
-              KnowledgeSources.Empty,
+              Corpora.Empty,
               grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit),
               Classifier.none("no classifier"),
               engine.placements,
@@ -206,7 +206,7 @@ object RebuildTests extends TestSuite {
           ),
           Tuning.Default,
           engine.placements,
-          KnowledgeSources.Empty,
+          Corpora.Empty,
           grit.lifecycle.triage.TriageQuestions.shipped(grit.core.persona.Persona.Grit)
         )
       ),

@@ -62,7 +62,7 @@
 #       of it and answered, written to .local/eval/review/context-<entry-id>.md: the stitch
 #       state as recorded with its placement, its question as this build words it, and
 #       triage's request rebuilt through the shipped builder (triage keeps none), its words
-#       for the persona and knowledge sources in .local/eval/corpus/<yyyymmdd>/ with --corpus
+#       for the persona and corpora in .local/eval/corpus/<yyyymmdd>/ with --corpus
 #       (persona.json, knowledge.json), else grit and none, beside the tags triage kept.
 #
 #   scripts/eval score <runs file> [--labels <file>]
@@ -192,7 +192,7 @@
 #                        [--window <tokens>] [--tail <tokens>]
 #       Each named variant, a turn recipe (wide-heard, wide-addressed: twice the deployment's
 #       window on that root's turns; offer-0.2, offer-0.3, offer-0.5: a service's tools
-#       offered only when triage answers one of the knowledge sources supplying it at least
+#       offered only when triage answers one of the corpora supplying it at least
 #       that; offer-0.3-0.1: at 0.3 on a heard turn and 0.1 on one said to grit;
 #       offer-heard-0.2: at 0.2 on a heard turn, every tool on one said to grit), decided as
 #       the turn decides it, against shipped, paired on every turn grit_eval_<date>

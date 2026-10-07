@@ -4,7 +4,7 @@ import grit.core.classify.Request
 import grit.core.id.{TriageRef, TurnRef}
 import grit.core.stitch.{StitchReads, Stitching, Tuning}
 import grit.core.store.StoreError
-import grit.core.triage.KnowledgeSources
+import grit.core.triage.Corpora
 import grit.dbos.engine.Reader
 import grit.eval.harness.corpus.{Case, CaseId}
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
@@ -101,7 +101,7 @@ object Review {
           .flatMap { r =>
             Some(
               Triage(
-                TriageQuestions.V1.request(r.state, KnowledgeSources.Empty),
+                TriageQuestions.V1.request(r.state, Corpora.Empty),
                 Option.when(more)(Cut(r.thread.cut, r.thread.at))
               )
             )

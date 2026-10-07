@@ -6,7 +6,7 @@ import grit.core.classify.{Answer, ClassifierError}
 import grit.core.durable.InMemoryDurable
 import grit.core.id.{QuestionName, ShadowRef, TurnRef, WorkflowId}
 import grit.core.stitch.Tuning
-import grit.core.triage.{KnowledgeSource, KnowledgeSources, ShadowAnswers, Shadowed}
+import grit.core.triage.{Corpora, Corpus, ShadowAnswers, Shadowed}
 import grit.lifecycle.triage.{
   TriageFixtures,
   TriageInput,
@@ -36,10 +36,10 @@ object ShadowTests extends TestSuite {
         TriageRecipe.Shipped
       )
       .toOption
-      .map((_, state) => TriageQuestions.v1(wording).request(state, KnowledgeSources.Empty).digest)
+      .map((_, state) => TriageQuestions.v1(wording).request(state, Corpora.Empty).digest)
 
   /** The digest of the request V2 makes of `t` with `sources`, as `w` stands. */
-  private def setDigest(w: World, t: grit.core.id.TriageRef, sources: Vector[KnowledgeSource]) =
+  private def setDigest(w: World, t: grit.core.id.TriageRef, sources: Vector[Corpus]) =
     TriageInput
       .build(
         w.triaged.reads,
@@ -50,7 +50,7 @@ object ShadowTests extends TestSuite {
         TriageRecipe.Shipped
       )
       .toOption
-      .zip(KnowledgeSources.of(sources).toOption)
+      .zip(Corpora.of(sources).toOption)
       .map { case ((_, state), catalog) => TriageQuestions.V2.request(state, catalog).digest }
 
   /** What `name` kept of `t`, its answers in order: a `VectorMap`'s equality ignores it. */

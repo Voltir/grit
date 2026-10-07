@@ -30,21 +30,21 @@ object DeploymentTests extends TestSuite {
 
   private val github: grit.core.place.Service =
     grit.core.place.Service.of("github").fold(e => sys.error(e), identity)
-  private val repo: grit.core.id.KnowledgeSourceName =
-    grit.core.id.KnowledgeSourceName.of("repo").fold(e => sys.error(e), identity)
+  private val repo: grit.core.id.CorpusName =
+    grit.core.id.CorpusName.of("repo").fold(e => sys.error(e), identity)
   private val inGithub: Vector[grit.core.place.WorksIn] = Vector(
     grit.core.place.WorksIn(grit.core.place.Place.Everywhere, github)
   )
 
   /** One source, `repo`, supplied by `github`'s tools. */
-  private val repoInGithub = grit.core.triage.KnowledgeSources
+  private val repoInGithub = grit.core.triage.Corpora
     .of(
       Vector(
         grit.core.triage
-          .KnowledgeSource(repo, "the repository", grit.core.place.Place.Everywhere, Some(github))
+          .Corpus(repo, "the repository", grit.core.place.Place.Everywhere, Some(github))
       )
     )
-    .fold(n => sys.error(grit.core.id.KnowledgeSourceName.value(n)), identity)
+    .fold(n => sys.error(grit.core.id.CorpusName.value(n)), identity)
 
   /** Heard turns offered a service's tools when one of its sources reads at least 0.2. */
   private val bySource = grit.core.recipe.TurnRecipe(
@@ -294,22 +294,22 @@ object DeploymentTests extends TestSuite {
     }
 
     test(
-      "a recipe offering by source with no knowledge source supplying a service is refused"
+      "a recipe offering by source with no corpus supplying a service is refused"
     ) {
       val addressed = grit.core.recipe.TurnRecipe.Shipped.copy(addressed = bySource.heard.focused)
-      val unsupplying = grit.core.triage.KnowledgeSources
+      val unsupplying = grit.core.triage.Corpora
         .of(repoInGithub.all.map(_.copy(supplies = None)))
         .fold(n => sys.error(n.toString), identity)
       def declared(
           recipe: grit.core.recipe.TurnRecipe,
-          knowledge: grit.core.triage.KnowledgeSources
+          knowledge: grit.core.triage.Corpora
       ) =
         Deployments.of(worksIn = inGithub, knowledge = knowledge, recipe = recipe).map(_ => ())
       (
-        declared(addressed, grit.core.triage.KnowledgeSources.Empty),
+        declared(addressed, grit.core.triage.Corpora.Empty),
         declared(bySource, unsupplying),
         declared(addressed, repoInGithub),
-        declared(grit.core.recipe.TurnRecipe.Shipped, grit.core.triage.KnowledgeSources.Empty)
+        declared(grit.core.recipe.TurnRecipe.Shipped, grit.core.triage.Corpora.Empty)
       ) ==> (
         Left(DeploymentRefusal.RecipeUnsourced),
         Left(DeploymentRefusal.RecipeUnsourced),
@@ -319,7 +319,7 @@ object DeploymentTests extends TestSuite {
     }
 
     test(
-      "a knowledge source supplying a service no worksIn or reaches link offers is refused"
+      "a corpus supplying a service no worksIn or reaches link offers is refused"
     ) {
       def declared(
           worksIn: Vector[grit.core.place.WorksIn],
@@ -588,7 +588,7 @@ object DeploymentTests extends TestSuite {
           speaking = grit.core.speech.Speaking.Off,
           sweep = 30.seconds,
           shadows = Vector.empty,
-          knowledge = grit.core.triage.KnowledgeSources.Empty,
+          knowledge = grit.core.triage.Corpora.Empty,
           recipe = grit.core.recipe.TurnRecipe.Shipped,
           persona = grit.core.persona.Persona.Grit,
           review = None

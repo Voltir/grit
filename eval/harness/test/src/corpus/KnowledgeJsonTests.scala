@@ -1,12 +1,12 @@
 package grit.eval.harness.corpus
 
-import grit.core.id.KnowledgeSourceName
+import grit.core.id.CorpusName
 import grit.core.place.{Place, Service}
-import grit.core.triage.KnowledgeSource
+import grit.core.triage.Corpus
 
 import utest.*
 
-/** A deployment's knowledge sources read from the file written beside a corpus. */
+/** A deployment's corpora read from the file written beside a corpus. */
 object KnowledgeJsonTests extends TestSuite {
 
   private def right[A](e: Either[String, A]): A =
@@ -24,8 +24,8 @@ object KnowledgeJsonTests extends TestSuite {
         )
       )
       def source(n: String, line: String, within: String, supplies: Option[String]) =
-        KnowledgeSource(
-          right(KnowledgeSourceName.of(n)),
+        Corpus(
+          right(CorpusName.of(n)),
           line,
           right(Place.read(within)),
           supplies.map(s => right(Service.of(s)))

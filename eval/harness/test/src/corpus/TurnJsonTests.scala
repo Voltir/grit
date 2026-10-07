@@ -8,9 +8,9 @@ import grit.core.classify.Answer
 import grit.core.context.Width
 import grit.core.id.{
   ConversationId,
+  CorpusName,
   EntryId,
   EntrySeq,
-  KnowledgeSourceName,
   QuestionName,
   TurnSeq,
   WorkflowId
@@ -38,7 +38,7 @@ object TurnJsonTests extends TestSuite {
   private val at = Instant.parse("2026-10-02T17:05:00Z")
   private def p(x: Double) = Probability.clamped(x)
 
-  private val repo = right(KnowledgeSourceName.of("repo"))
+  private val repo = right(CorpusName.of("repo"))
 
   /** `repo`'s answer at `x`, as live triage's set names it. */
   private def repoAt(x: Double): Tags.Weighed = Tags.Weighed(

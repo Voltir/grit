@@ -3,7 +3,7 @@ package grit.turn
 import grit.core.context.{AssemblyNote, Width, Window}
 import grit.core.durable.Journaled
 import grit.core.edge.{OutcomeJson, RequestState}
-import grit.core.id.{EntryId, KnowledgeSourceName, TurnSeq}
+import grit.core.id.{CorpusName, EntryId, TurnSeq}
 import grit.core.message.{Message, Tokens}
 import grit.core.model.TurnProfileId
 import grit.core.place.{Place, Service}
@@ -352,7 +352,7 @@ private[turn] object TurnJournal {
           }),
           "tools" -> ujson.Arr.from(took.tools.map(n => ujson.Str(ToolName.value(n)))),
           "sources" -> ujson.Arr.from(
-            took.offer.sources.map(n => ujson.Str(KnowledgeSourceName.value(n)))
+            took.offer.sources.map(n => ujson.Str(CorpusName.value(n)))
           ),
           "verdict" -> (took.offer.verdict match {
             case ServiceOffer.Verdict.Ungated => ujson.Str("ungated")
@@ -405,7 +405,7 @@ private[turn] object TurnJournal {
         sequence(ns.map(ToolName.of(_).left.map(e => s"shape: $e")))
       )
       sources <- strings(o, "sources").flatMap(ns =>
-        sequence(ns.map(KnowledgeSourceName.of(_).left.map(e => s"shape: $e")))
+        sequence(ns.map(CorpusName.of(_).left.map(e => s"shape: $e")))
       )
       verdict <- o.get("verdict") match {
         case Some(ujson.Str("ungated")) => Right(ServiceOffer.Verdict.Ungated)

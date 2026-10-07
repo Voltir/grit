@@ -9,9 +9,9 @@ import grit.core.context.Width
 import grit.core.edge.InMemoryEdges
 import grit.core.id.{
   ConversationId,
+  CorpusName,
   EntryId,
   EntrySeq,
-  KnowledgeSourceName,
   PrincipalId,
   QuestionName,
   TestCallSlots,
@@ -48,14 +48,7 @@ import grit.core.tool.{
   ToolSpec,
   Toolbox
 }
-import grit.core.triage.{
-  Bound as TriageBound,
-  Gate as TriageGate,
-  KnowledgeSource,
-  KnowledgeSources,
-  Reading,
-  Tags
-}
+import grit.core.triage.{Bound as TriageBound, Corpora, Corpus, Gate as TriageGate, Reading, Tags}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -241,7 +234,7 @@ object TurnOfferTests extends TestSuite {
       root: Payload,
       entries: Vector[ToolSet.Entry],
       recipe: TurnRecipe = TurnRecipe.Shipped,
-      knowledge: KnowledgeSources = KnowledgeSources.Empty,
+      knowledge: Corpora = Corpora.Empty,
       weighed: Option[Tags] = None,
       answering: Boolean = false
   ): (TurnOffer.Recorded, Vector[String], String) = {
@@ -293,12 +286,12 @@ object TurnOfferTests extends TestSuite {
       .fold(f => throw new java.lang.AssertionError(f.toString), identity)
   }
 
-  private val repo: KnowledgeSourceName =
-    KnowledgeSourceName.of("repo").fold(e => throw new java.lang.AssertionError(e), identity)
+  private val repo: CorpusName =
+    CorpusName.of("repo").fold(e => throw new java.lang.AssertionError(e), identity)
 
   /** A catalog whose one source, `repo`, is supplied by `github`'s tools. */
-  private val repoInGithub: KnowledgeSources = KnowledgeSources
-    .of(Vector(KnowledgeSource(repo, "the repository", Place.Everywhere, Some(github))))
+  private val repoInGithub: Corpora = Corpora
+    .of(Vector(Corpus(repo, "the repository", Place.Everywhere, Some(github))))
     .fold(n => throw new java.lang.AssertionError(n), identity)
 
   /** Triage's tags for a root whose `repo` source reads `p`. */

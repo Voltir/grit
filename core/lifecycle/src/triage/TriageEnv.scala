@@ -9,7 +9,7 @@ import grit.core.speech.{Speaking, SpeechStore}
 import grit.core.spend.{Budget, Spending}
 import grit.core.stitch.{Placements, StitchStore, Tuning}
 import grit.core.store.{ConversationStore, Db, EntrySearch, EntryStore, LifecycleStore, Principals}
-import grit.core.triage.{KnowledgeSources, TriageStore}
+import grit.core.triage.{Corpora, TriageStore}
 
 /** What a triage works with besides its `Durable`: where it reads the heard message and
   * keeps its tags ([[TriageRecords]]), the `classifier` it asks, `db` to read the thread
@@ -28,7 +28,7 @@ final case class TriageEnv(
     speech: TriageSpeech^,
     tuning: Tuning,
     placements: Placements^,
-    sources: KnowledgeSources,
+    sources: Corpora,
     questions: TriageQuestions
 )
 
