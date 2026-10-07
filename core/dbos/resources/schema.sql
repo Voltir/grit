@@ -866,7 +866,7 @@ CREATE TABLE IF NOT EXISTS grit.schedules (
     label_id    SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.labels(id),
     room_id     UUID REFERENCES grit.places(id),
     CHECK ((source = 'asked') = (asked_in IS NOT NULL)),
-    CHECK (source = 'asked' OR room_id IS NULL),
+    CONSTRAINT schedules_room_asked CHECK (source = 'asked' OR room_id IS NULL),
     CHECK ((ended IS NULL) = (ended_at IS NULL)),
     CHECK (ended IS NULL OR next_at IS NULL)
 );

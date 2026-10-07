@@ -64,7 +64,7 @@ object SchemaTests extends TestSuite {
     }
 
     test(
-      "a schedule row is refused when asked without its call or declared with one, ended in part, or ended with a slot left"
+      "a schedule row is refused when asked without its call or declared with one or a room, ended in part, or ended with a slot left"
     ) {
       val config = TestPostgres.freshDatabase("schema_schedules")
       LiveEngine.open(config, "test").close()
@@ -85,14 +85,16 @@ object SchemaTests extends TestSuite {
         refused("source, ended", "'declared', 'ran'"),
         refused("source, ended_at", "'declared', now()"),
         refused("source, ended, ended_at, next_at", "'declared', 'ran', now(), now()"),
-        refused("source, ended, ended_at", "'declared', 'gone', now()")
+        refused("source, ended, ended_at", "'declared', 'gone', now()"),
+        refused("source, room_id", "'declared', gen_random_uuid()")
       ) ==> Vector(
         Some("schedules_check"),
         Some("schedules_check"),
         Some("schedules_check1"),
         Some("schedules_check1"),
         Some("schedules_check2"),
-        Some("schedules_ended_check")
+        Some("schedules_ended_check"),
+        Some("schedules_room_asked")
       )
       refused("source, ended, ended_at", "'declared', 'ran', now()") ==> None
     }

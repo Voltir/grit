@@ -8,7 +8,7 @@ import scala.util.Using
 import grit.core.clock.SetClock
 import grit.core.id.{PluginName, PrincipalId, ScheduleId, TestCallSlots}
 import grit.core.job.JobTests.{Count, Counting}
-import grit.core.job.{DeskContract, ScheduleContract, When}
+import grit.core.job.{ScheduleContract, When}
 import grit.core.store.Origin
 import grit.core.visibility.TestLabels
 
