@@ -28,9 +28,10 @@ import grit.core.store.{
   UsageLedger,
   VoiceStore
 }
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Clearance, Visibility}
 import grit.dbos.sql.{
   DbConfig,
+  Opener,
   SqlConversationStore,
   SqlDb,
   SqlDocumentSearch,
@@ -202,17 +203,17 @@ object Link {
   private[engine] def awaitTurn(client: DBOSClient, turn: TurnRef): String =
     client.retrieveWorkflow[String, Exception](WorkflowId.value(turn.workflowId)).getResult()
 
-  /** Runs `body` in a transaction of its own on `dataSource`: committed on `Right`, rolled
-    * back otherwise.
+  /** Runs `body` in a transaction of its own on `dataSource`, at `clearance`: committed on
+    * `Right`, rolled back otherwise.
     */
-  private[engine] def transaction[A](dataSource: DataSource)(
+  private[engine] def transaction[A](dataSource: DataSource, clearance: Clearance)(
       body: (Tx^) ?=> Either[StoreError, A]
   ): Either[StoreError, A] =
     try {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         val result =
-          try body(using Tx.fromConnection(conn))
+          try body(using Tx.open(conn, clearance))
           catch { case NonFatal(e) => conn.rollback(); throw e }
         if (result.isRight) conn.commit() else conn.rollback()
         result
@@ -259,9 +260,11 @@ private[engine] final class Attached(
 
   val reviews: grit.core.review.Reviews = new grit.dbos.sql.SqlReviews
 
-  val db: Db = new SqlDb(dataSource)
+  private val opener = new Opener(visibility)
 
-  val jot: Jot = new SqlJot(dataSource)
+  val db: Db = new SqlDb(dataSource, opener)
+
+  val jot: Jot = new SqlJot(dataSource, opener)
 
   val inbox: Inbox =
     new SqlInbox(
@@ -280,7 +283,7 @@ private[engine] final class Attached(
   private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()
 
   def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId] =
-    Link.transaction(dataSource)(
+    Link.transaction(dataSource, opener.maintenance)(
       conversations.findOrCreate(origin, by, visibility.roomLabel(origin.room)).map(_.id)
     )
 
@@ -304,7 +307,15 @@ private[engine] final class Attached(
           )
         )
       case _ =>
-        SqlDesk.open(config, dataSource, client, principal, places, identity) match {
+        SqlDesk.open(
+          config,
+          dataSource,
+          client,
+          principal,
+          places,
+          identity,
+          opener.maintenance
+        ) match {
           case Left(e) => Left(e)
           case Right(desk) =>
             // The desk's only capability is its own connection, which close() closes:

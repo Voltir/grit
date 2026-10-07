@@ -6,7 +6,8 @@ import grit.core.clock.Clock
 import grit.core.id.{JobName, PluginName, PrincipalId, TurnRef, TurnSeq}
 import grit.core.job.{ScheduleContract, ScheduleDesk, ScheduleStore, Slot}
 import grit.core.store.{Jot, Origin, StoreError, Tombstones, Tx}
-import grit.dbos.sql.{DbConfig, LiveDb, SqlJot, SqlSchedules, SqlTombstones, TestPostgres}
+import grit.core.visibility.Visibility
+import grit.dbos.sql.{DbConfig, LiveDb, Opener, SqlJot, SqlSchedules, SqlTombstones, TestPostgres}
 
 import org.postgresql.ds.PGSimpleDataSource
 
@@ -51,7 +52,12 @@ private[engine] object SqlSchedulesUnder {
         ds.setURL(config.jdbcUrl)
         ds.setUser(config.user)
         ds.setPassword(config.password)
-        schedules.desk(plugin, jobs, new Held(new SqlJot(ds), beforeCommit), clock)
+        schedules.desk(
+          plugin,
+          jobs,
+          new Held(new SqlJot(ds, new Opener(Visibility.Shipped)), beforeCommit),
+          clock
+        )
       }
     }
   }

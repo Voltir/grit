@@ -1512,7 +1512,7 @@ object Main {
       config: DbConfig
   )(f: Reader^ => Either[String, A]): Either[String, A] =
     try {
-      val reader = Reader.open(config)
+      val reader = Reader.open(config, Visibility.Shipped)
       try f(reader)
       finally reader.close()
     } catch { case NonFatal(e) => Left(s"the database could not be read: ${e.getClass.getName}") }

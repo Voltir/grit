@@ -6,6 +6,7 @@ import grit.core.place.{Place, Reaches, Service}
 import grit.core.recipe.{Offering, Shaping, TurnRecipe}
 import grit.core.store.StoreError
 import grit.core.triage.{Corpora, Corpus}
+import grit.core.visibility.Visibility
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
 import grit.models.StubClassifier
@@ -68,7 +69,7 @@ object MentionWeighLiveTests extends TestSuite {
         )
         val turn = say(engine, "mention")
         val _ = engine.awaitTurn(turn)
-        val reader = Reader.open(config)
+        val reader = Reader.open(config, Visibility.Shipped)
         try {
           weighed(reader, turn).collect { case TurnWeighing.Weighed.Asked(asked) =>
             asked.tags.model

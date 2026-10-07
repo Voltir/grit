@@ -2,6 +2,7 @@ package grit.dbos.workflow
 
 import grit.core.durable.Durable
 import grit.core.id.{ConversationId, TriageRef, WorkflowId}
+import grit.dbos.sql.Opener
 
 import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.{DBOS, EnqueueOptions}
@@ -15,13 +16,14 @@ object Triages {
   private val WorkflowName = "triage"
 
   /** Registers `body` as the triage workflow. Must run before `dbos.launch()`. */
-  def register(
+  private[dbos] def register(
       dbos: DBOS,
       steps: JdbcStepFactory,
+      opener: Opener,
       body: WorkflowId => Durable^ ?=> String,
       running: Running
   ): Unit = {
-    DurableWorkflow.register(dbos, steps, WorkflowName, body, running)
+    DurableWorkflow.register(dbos, steps, opener, WorkflowName, body, running)
     ()
   }
 

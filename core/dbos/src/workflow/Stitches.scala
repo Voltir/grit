@@ -3,6 +3,7 @@ package grit.dbos.workflow
 import grit.core.durable.Durable
 import grit.core.id.WorkflowId
 import grit.core.stitch.Opening
+import grit.dbos.sql.Opener
 
 import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.workflow.QueueName
@@ -20,13 +21,14 @@ object Stitches {
   private val Queue: QueueName = QueueName.of("stitches")
 
   /** Registers `body` as the placement workflow. Must run before `dbos.launch()`. */
-  def register(
+  private[dbos] def register(
       dbos: DBOS,
       steps: JdbcStepFactory,
+      opener: Opener,
       body: WorkflowId => Durable^ ?=> String,
       running: Running
   ): Unit = {
-    DurableWorkflow.register(dbos, steps, WorkflowName, body, running)
+    DurableWorkflow.register(dbos, steps, opener, WorkflowName, body, running)
     ()
   }
 

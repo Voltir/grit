@@ -11,6 +11,7 @@ import grit.core.period.Probability
 import grit.core.speech.{Reach, Speaking}
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Origin, StoreError}
+import grit.core.visibility.Visibility
 import grit.dbos.engine.{Build, LiveEngine, Reader}
 import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
@@ -138,7 +139,7 @@ object CaptureTests extends TestSuite {
           )
         }
         def captured(): Captured = {
-          val reader = Reader.open(config)
+          val reader = Reader.open(config, Visibility.Shipped)
           try right(Capture(reader, "source", "restored", dump, Build.Unknown))
           finally reader.close()
         }

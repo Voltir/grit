@@ -46,6 +46,7 @@ import grit.core.triage.{Shadowing, TriageShadows, TriageStore}
 import grit.core.visibility.{Compartment, Visibility}
 import grit.dbos.sql.{
   DbConfig,
+  Opener,
   SqlCacheDocs,
   SqlConversationStore,
   SqlDb,
@@ -179,11 +180,14 @@ final class Engine private (
   /** What each room said before a time, as a pool reads it. */
   val rooms: grit.core.recipe.RoomReads = new grit.dbos.sql.SqlRoomReads
 
+  /** How each transaction the engine opens gets its clearance. */
+  private val opener = new Opener(visibility)
+
   /** Short read transactions, for code outside a step. */
-  val db: Db = new SqlDb(dataSource)
+  val db: Db = new SqlDb(dataSource, opener)
 
   /** Short write transactions, for a step that records what it did as it goes. */
-  val jot: Jot = new SqlJot(dataSource)
+  val jot: Jot = new SqlJot(dataSource, opener)
 
   // An edge's side: it reaches the engine only through Postgres (ADR 0002). Built with no
   // application name, so what it enqueues is unclaimed (application_name NULL), which DBOS
@@ -269,19 +273,19 @@ final class Engine private (
       run: WorkflowId => Durable^ ?=> String = Engine.Unrun
   ): Unit = {
     val steps = new JdbcStepFactory(dbos, dataSource)
-    Turns.register(dbos, steps, turn, running)
-    Closes.register(dbos, steps, close, running)
-    Settles.register(dbos, steps, settle, running)
-    Posts.register(dbos, steps, post, running)
-    Triages.register(dbos, steps, triage, running)
-    Stitches.register(dbos, steps, stitch, running)
-    Shadows.register(dbos, steps, shadow, running)
-    Runs.register(dbos, steps, run, running)
+    Turns.register(dbos, steps, opener, turn, running)
+    Closes.register(dbos, steps, opener, close, running)
+    Settles.register(dbos, steps, opener, settle, running)
+    Posts.register(dbos, steps, opener, post, running)
+    Triages.register(dbos, steps, opener, triage, running)
+    Stitches.register(dbos, steps, opener, stitch, running)
+    Shadows.register(dbos, steps, opener, shadow, running)
+    Runs.register(dbos, steps, opener, run, running)
     enabled.set(plugins.map(p => (p.name, p.version)))
     posting.set(plugins.filter(_.posts).map(p => (p.name, p.version)))
     declared.set(shadowing)
     Link
-      .transaction(dataSource)(
+      .transaction(dataSource, opener.maintenance)(
         documents.declare(plugins.flatMap(p => p.documents.map(d => p.name -> d.terms)))
       )
       .left
@@ -325,7 +329,8 @@ final class Engine private (
       sqlSchedules,
       () => enabled.get(),
       () => posting.get(),
-      () => declared.get()
+      () => declared.get(),
+      opener.maintenance
     )
 
   /** One sweep of the lifecycle at `now`, under the settings in force: every open period
@@ -379,7 +384,15 @@ final class Engine private (
     * reached.
     */
   def register(principal: PrincipalId, places: Set[Place]): Either[DeskError, Desk^] =
-    SqlDesk.open(config, dataSource, client, principal, places, identity) match {
+    SqlDesk.open(
+      config,
+      dataSource,
+      client,
+      principal,
+      places,
+      identity,
+      opener.maintenance
+    ) match {
       case Left(e) => Left(e)
       case Right(desk) =>
         // The desk's only capability is its own connection, which close() closes: nothing it
@@ -472,7 +485,7 @@ final class Engine private (
     }
 
   def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId] =
-    Link.transaction(dataSource)(
+    Link.transaction(dataSource, opener.maintenance)(
       conversations.findOrCreate(origin, by, visibility.roomLabel(origin.room)).map(_.id)
     )
 
@@ -591,7 +604,9 @@ object Engine {
       DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
     ) { conn =>
       conn.setAutoCommit(false)
-      SqlLabels.reconcile(visibility.compartments)(using Tx.fromConnection(conn)) match {
+      SqlLabels.reconcile(visibility.compartments)(using
+        Tx.open(conn, new Opener(visibility).maintenance)
+      ) match {
         case Right(dropped) =>
           conn.commit()
           dropped

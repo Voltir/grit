@@ -64,6 +64,8 @@ final class SqlInbox(
 ) extends Inbox {
   import SqlInbox.{Begun, Heard, Ingested}
 
+  private val opener = new grit.dbos.sql.Opener(visibility)
+
   def ingest(
       origin: Origin,
       source: SourceId,
@@ -500,13 +502,15 @@ final class SqlInbox(
       case NonFatal(e) => Left(SqlInbox.unavailable(e))
     }
 
-  /** Runs `body` in its own transaction, committing on `Right` and rolling back otherwise. */
+  /** Runs `body` in its own transaction at maintenance's clearance, committing on `Right` and
+    * rolling back otherwise.
+    */
   private def inTransaction[A](body: (Tx^) ?=> Either[StoreError, A]): Either[InboxError, A] =
     try {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         val result =
-          try body(using Tx.fromConnection(conn))
+          try body(using Tx.open(conn, opener.maintenance))
           catch { case NonFatal(e) => conn.rollback(); throw e }
         result match {
           case Right(_) => conn.commit()

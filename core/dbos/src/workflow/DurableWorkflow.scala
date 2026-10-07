@@ -2,6 +2,7 @@ package grit.dbos.workflow
 
 import grit.core.durable.Durable
 import grit.core.id.WorkflowId
+import grit.dbos.sql.Opener
 
 import dev.dbos.transact.DBOS
 import dev.dbos.transact.execution.RegisteredWorkflow
@@ -16,6 +17,7 @@ import dev.dbos.transact.txstep.JdbcStepFactory
 final class DurableWorkflow private (
     dbos: DBOS,
     steps: JdbcStepFactory,
+    opener: Opener,
     body: WorkflowId => Durable^ ?=> String,
     running: Running
 ) {
@@ -29,7 +31,7 @@ final class DurableWorkflow private (
     }
     val workflowId = WorkflowId(id)
     running.enter()
-    try body(workflowId)(using new DbosDurable(dbos, steps, workflowId))
+    try body(workflowId)(using new DbosDurable(dbos, steps, opener, workflowId))
     finally running.exit()
   }
 }
@@ -45,12 +47,13 @@ object DurableWorkflow {
   /** The application name every grit executor runs as, and owns its queues under. */
   val ApplicationName = "grit"
 
-  /** Registers `body` as the workflow `name`, each run counted in `running`. Must run before
-    * `dbos.launch()`.
+  /** Registers `body` as the workflow `name`, each run counted in `running`, its transactions
+    * opened through `opener`. Must run before `dbos.launch()`.
     */
-  def register(
+  private[dbos] def register(
       dbos: DBOS,
       steps: JdbcStepFactory,
+      opener: Opener,
       name: String,
       body: WorkflowId => Durable^ ?=> String,
       running: Running
@@ -61,7 +64,7 @@ object DurableWorkflow {
         name,
         ClassName,
         null,
-        new DurableWorkflow(dbos, steps, body, running),
+        new DurableWorkflow(dbos, steps, opener, body, running),
         classOf[DurableWorkflow].getMethod("run"),
         null,
         null

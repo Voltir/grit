@@ -9,7 +9,8 @@ import scala.util.Using
 
 import grit.core.durable.{Durable, DurableContract, DurableRuntime, Settled}
 import grit.core.id.WorkflowId
-import grit.dbos.sql.{DbConfig, TestPostgres}
+import grit.core.visibility.Visibility
+import grit.dbos.sql.{DbConfig, Opener, TestPostgres}
 
 import dev.dbos.transact.config.DBOSConfig
 import dev.dbos.transact.exceptions.{DBOSNonExistentWorkflowException, DBOSUnexpectedStepException}
@@ -80,6 +81,7 @@ final class DbosRuntime(config: DbConfig) extends DurableRuntime {
     val registered = DurableWorkflow.register(
       dbos,
       new JdbcStepFactory(dbos, dataSource),
+      new Opener(Visibility.Shipped),
       "spec",
       id => d ?=> dispatch(id),
       new Running

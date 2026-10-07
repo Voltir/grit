@@ -2,6 +2,7 @@ package grit.dbos.workflow
 
 import grit.core.durable.Durable
 import grit.core.id.{ConversationId, TurnRef, WorkflowId}
+import grit.dbos.sql.Opener
 
 import dev.dbos.transact.txstep.JdbcStepFactory
 import dev.dbos.transact.{DBOS, EnqueueOptions}
@@ -18,13 +19,14 @@ object Runs {
   private[dbos] val WorkflowName = "run"
 
   /** Registers `body` as the run workflow. Must run before `dbos.launch()`. */
-  def register(
+  private[dbos] def register(
       dbos: DBOS,
       steps: JdbcStepFactory,
+      opener: Opener,
       body: WorkflowId => Durable^ ?=> String,
       running: Running
   ): Unit = {
-    DurableWorkflow.register(dbos, steps, WorkflowName, body, running)
+    DurableWorkflow.register(dbos, steps, opener, WorkflowName, body, running)
     ()
   }
 

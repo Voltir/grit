@@ -15,6 +15,7 @@ import grit.core.spend.DailyCap
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin, StoreError}
 import grit.core.triage.{Corpora, ShadowAnswers, Shadowed, Shadowing}
+import grit.core.visibility.Visibility
 import grit.dbos.engine.{Build, LiveEngine, Reader}
 import grit.dbos.sql.{LiveDb, TestPostgres}
 import grit.eval.harness.capture.{Capture, Captured, CaseId, Digest, Dump}
@@ -227,7 +228,7 @@ object PullTests extends TestSuite {
         // When the second, the first triaged by V2, was tagged: a pull since the switch.
         val switched =
           tagged.toOption.flatMap(_.lift(1)).map(_.at).getOrElse(sys.error("tagged"))
-        val reader = Reader.open(config)
+        val reader = Reader.open(config, Visibility.Shipped)
         val (capture, pulled, since) =
           try {
             val c: Captured =

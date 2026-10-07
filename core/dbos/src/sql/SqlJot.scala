@@ -10,14 +10,14 @@ import grit.core.store.{Jot, StoreError, Tx}
 /** [[Jot]] over `dataSource`: each write is its own transaction, committed when its body
   * returns a `Right` and rolled back otherwise.
   */
-final class SqlJot(dataSource: DataSource) extends Jot {
+final class SqlJot(dataSource: DataSource, opener: Opener) extends Jot {
 
   def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
     try {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         val result =
-          try body(using Tx.fromConnection(conn))
+          try body(using Tx.open(conn, opener.maintenance))
           catch {
             case NonFatal(e) =>
               conn.rollback()

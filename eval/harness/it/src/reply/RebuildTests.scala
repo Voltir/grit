@@ -32,6 +32,7 @@ import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Nearby, Origin}
 import grit.core.tool.Toolbox
 import grit.core.triage.Corpora
+import grit.core.visibility.Visibility
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
 import grit.eval.harness.capture.{Digest, Dump, KnowledgeJson, TurnCapture}
@@ -286,7 +287,7 @@ object RebuildTests extends TestSuite {
         ).size == 2
       )
       assert(tagged)
-      (Reader.open(config), Vector(a, b, c))
+      (Reader.open(config, Visibility.Shipped), Vector(a, b, c))
     } finally engine.close()
   }
 
@@ -320,7 +321,7 @@ object RebuildTests extends TestSuite {
         case other => throw new java.lang.AssertionError(s"not written: $other")
       }
       val d = ask(engine, "d", "what is the Falcon budget?")
-      val reader = Reader.open(config)
+      val reader = Reader.open(config, Visibility.Shipped)
       val kept = right(Rebuild.recorded(reader, d.workflowId, Assembled.Shipped, Width.Deployed))
       right(engine.jot.write(engine.documents.forget(version)))
       val gone = right(Rebuild.recorded(reader, d.workflowId, Assembled.Shipped, Width.Deployed))

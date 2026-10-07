@@ -29,7 +29,15 @@ object EdgeLiveTests extends TestSuite {
       val client = new DBOSClient(ds)
       val place = Place.of(Directory.of("/wake").getOrElse(throw new java.lang.AssertionError()))
       val desk =
-        SqlDesk.open(config, ds, client, PrincipalId.Local, Set(place), LiveEngine.Identity) match {
+        SqlDesk.open(
+          config,
+          ds,
+          client,
+          PrincipalId.Local,
+          Set(place),
+          LiveEngine.Identity,
+          LiveDb.Everything
+        ) match {
           case Right(d) => d
           case Left(e) => sys.error(s"$e")
         }

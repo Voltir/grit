@@ -13,6 +13,7 @@ import grit.core.message.Message
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.triage.Tags
+import grit.core.visibility.Visibility
 import grit.dbos.sql.{LiveDb, SqlEntryStore, SqlModelProfileStore, TestPostgres}
 
 import utest.*
@@ -62,7 +63,7 @@ object ReaderTests extends TestSuite {
         heard.headOption.foreach { e =>
           LiveDb.transaction(config)(engine.triage.record(e.id, tags, at)) ==> Right(true)
         }
-        val reader = Reader.open(config)
+        val reader = Reader.open(config, Visibility.Shipped)
         try {
           reader.db.read(reader.entries.list(c)) ==> engine.db.read(engine.entries.list(c))
           reader.db.read(reader.periods.all(c)).map(_.map(_.ref)) ==> Right(Vector(ref.period))
@@ -112,7 +113,7 @@ object ReaderTests extends TestSuite {
         val older = ask("older")
         val answered = Instant.now().plusMillis(1)
         val newer = ask("newer")
-        val reader = Reader.open(config)
+        val reader = Reader.open(config, Visibility.Shipped)
         try {
           val until = Instant.now().plusSeconds(60)
           reader.turns(until).map(_.map(_._1)) ==> Right(Vector(older, newer))
@@ -144,7 +145,7 @@ object ReaderTests extends TestSuite {
         LiveDb.transaction(config)(
           new SqlModelProfileStore().pin(WorkflowId("w-pinned"), pinned)
         ) ==> Right(())
-        val reader = Reader.open(config)
+        val reader = Reader.open(config, Visibility.Shipped)
         try {
           reader.db.read(reader.profiles.of(WorkflowId("w-pinned"))) ==> Right(Some(pinned))
           reader.db.read(reader.profiles.get(pinned.id)) ==> Right(Some(pinned))
@@ -155,7 +156,7 @@ object ReaderTests extends TestSuite {
     test("every session a reader opens is read-only in Postgres itself") {
       val config = TestPostgres.freshDatabase("reader_read_only")
       LiveEngine.open(config, "test").close()
-      val reader = Reader.open(config)
+      val reader = Reader.open(config, Visibility.Shipped)
       try {
         // Through a connection the driver was not told is read-only: only the server refuses.
         reader.db.read { (tx: Tx^) ?=>

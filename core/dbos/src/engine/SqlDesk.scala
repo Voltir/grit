@@ -14,6 +14,7 @@ import grit.core.id.{CallSlot, EdgeId, PrincipalId, WorkflowId}
 import grit.core.place.Place
 import grit.core.prompt.{Fragment, FragmentId}
 import grit.core.tool.{Outcome, Retry, ToolSet, ToolSetId}
+import grit.core.visibility.Clearance
 import grit.dbos.sql.{DbConfig, SqlPromptStore, SqlToolRequests, SqlToolSets}
 
 import dev.dbos.transact.DBOSClient
@@ -31,7 +32,8 @@ final class SqlDesk private (
     dataSource: DataSource,
     client: DBOSClient,
     val registration: Registration,
-    session: UUID
+    session: UUID,
+    maintenance: Clearance
 ) extends Desk,
       AutoCloseable {
 
@@ -152,7 +154,7 @@ final class SqlDesk private (
       tools: ToolSet,
       instructions: Vector[Fragment]
   ): Either[DeskError, Unit] =
-    SqlDesk.inTransaction(dataSource) { (tx: grit.core.store.Tx^) ?=>
+    SqlDesk.inTransaction(dataSource, maintenance) { (tx: grit.core.store.Tx^) ?=>
       for {
         _ <- new SqlToolSets().keep(tools)
         _ <- new SqlPromptStore().keep(instructions)
@@ -245,7 +247,7 @@ object SqlDesk {
   /** Registers an edge for `principal` hosting `places`, in the process `identity` names,
     * live while the desk is open: the same principal, machine and places reuse a
     * registration no live edge holds, or take a new one. `Left` when the database cannot be
-    * reached.
+    * reached. Its own transactions run at `maintenance`.
     */
   def open(
       config: DbConfig,
@@ -253,7 +255,8 @@ object SqlDesk {
       client: DBOSClient,
       principal: PrincipalId,
       places: Set[Place],
-      identity: ProcessIdentity
+      identity: ProcessIdentity,
+      maintenance: Clearance
   ): Either[DeskError, SqlDesk^] =
     try {
       val conn = DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
@@ -293,7 +296,16 @@ object SqlDesk {
           }
         }
         Using.resource(conn.createStatement())(_.execute(s"LISTEN ${SqlToolRequests.Channel}"))
-        Right(new SqlDesk(conn, dataSource, client, Registration(edge, principal, places), session))
+        Right(
+          new SqlDesk(
+            conn,
+            dataSource,
+            client,
+            Registration(edge, principal, places),
+            session,
+            maintenance
+          )
+        )
       } catch {
         case NonFatal(e) =>
           conn.close()
@@ -350,15 +362,17 @@ object SqlDesk {
       Using.resource(ps.executeQuery())(rs => rs.next() && rs.getBoolean(1))
     }
 
-  /** Runs `body` in a transaction of its own on `dataSource`: committed on `Right`. */
-  private def inTransaction[A](dataSource: DataSource)(
+  /** Runs `body` in a transaction of its own on `dataSource`, at `clearance`: committed on
+    * `Right`.
+    */
+  private def inTransaction[A](dataSource: DataSource, clearance: Clearance)(
       body: (grit.core.store.Tx^) ?=> Either[grit.core.store.StoreError, A]
   ): Either[DeskError, A] =
     try
       Using.resource(dataSource.getConnection()) { c =>
         c.setAutoCommit(false)
         val result =
-          try body(using grit.core.store.Tx.fromConnection(c))
+          try body(using grit.core.store.Tx.open(c, clearance))
           catch { case NonFatal(e) => c.rollback(); throw e }
         if (result.isRight) c.commit() else c.rollback()
         result.left.map(e => DeskError(e.toString))

@@ -27,8 +27,10 @@ import grit.core.store.{
 }
 import grit.core.tool.ToolSets
 import grit.core.triage.{TriageShadows, TriageStore}
+import grit.core.visibility.Visibility
 import grit.dbos.sql.{
   DbConfig,
+  Opener,
   SqlConversationStore,
   SqlDb,
   SqlDocumentSearch,
@@ -109,8 +111,10 @@ object Reader {
     */
   final case class Recorded(status: String, epoch: String, created: Instant)
 
-  /** Throws when the database cannot be reached. */
-  def open(config: DbConfig): Reader^ = {
+  /** Reads `config`'s database, resolving whom each of its transactions reads for under
+    * `visibility`. Throws when the database cannot be reached.
+    */
+  def open(config: DbConfig, visibility: Visibility): Reader^ = {
     val ds = new PGSimpleDataSource()
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
@@ -119,11 +123,12 @@ object Reader {
     // whatever the driver or DBOS's client does with them.
     ds.setOptions("-c default_transaction_read_only=on")
     ds.getConnection().close()
-    new Opened(ds, new DBOSClient(ds))
+    new Opened(ds, new DBOSClient(ds), new Opener(visibility))
   }
 
-  private final class Opened(ds: PGSimpleDataSource, client: DBOSClient) extends Reader {
-    val db: Db = new SqlDb(ds)
+  private final class Opened(ds: PGSimpleDataSource, client: DBOSClient, opener: Opener)
+      extends Reader {
+    val db: Db = new SqlDb(ds, opener)
     val entries: EntryStore = new SqlEntryStore()
     val conversations: ConversationStore = new SqlConversationStore()
     val periods: PeriodStore = new SqlPeriodStore(entries)

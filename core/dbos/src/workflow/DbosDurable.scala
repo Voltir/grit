@@ -6,6 +6,7 @@ import scala.jdk.OptionConverters.*
 import grit.core.durable.{Durable, Journaled, StreamWriter, UnreadableJournal}
 import grit.core.id.WorkflowId
 import grit.core.store.Tx
+import grit.dbos.sql.Opener
 
 import dev.dbos.transact.DBOS
 import dev.dbos.transact.execution.ThrowingSupplier
@@ -19,6 +20,7 @@ import dev.dbos.transact.txstep.JdbcStepFactory
 private[dbos] final class DbosDurable(
     dbos: DBOS,
     steps: JdbcStepFactory,
+    opener: Opener,
     workflowId: WorkflowId
 ) extends Durable {
 
@@ -39,7 +41,7 @@ private[dbos] final class DbosDurable(
       steps.txStep(
         new JdbcStepFactory.TransactionalFunction[String, Exception] {
           def execute(cnn: java.sql.Connection): String =
-            summon[Journaled[A]].encode(body(using Tx.fromConnection(cnn)))
+            summon[Journaled[A]].encode(body(using Tx.open(cnn, opener.maintenance)))
         },
         name
       )

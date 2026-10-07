@@ -1,13 +1,33 @@
 package grit.core.store
 
-/** Capability to read and write inside the current database transaction.
-  * Obtained from [[Durable.transact]]; a `Tx` is valid only for
-  * the duration of that callback, and the type system rejects any attempt to
-  * keep it beyond it.
+import grit.core.visibility.{Clearance, Label}
+
+/** Capability to read and write inside one database transaction, opened for a
+  * [[grit.core.visibility.Subject]]: what it reads of labelled rows, and the least label it
+  * writes at, are its [[Tx.clearance]]. Obtained from an opener; valid only within its
+  * callback, which the type system enforces.
   */
-opaque type Tx = java.sql.Connection
+opaque type Tx = Tx.Opened
 
 object Tx {
-  private[grit] def fromConnection(c: java.sql.Connection^): Tx^{c} = c
-  private[grit] def connection(tx: Tx^): java.sql.Connection^{tx} = tx
+
+  /* A class, so `Tx^{c}` keeps the connection's capture set; the clearance is pure, so it adds
+   * nothing to it. */
+  private[store] final class Opened(val connection: java.sql.Connection^, val clearance: Clearance)
+
+  /** `c`'s transaction, read and written at `clearance`: the one way to make a `Tx`. */
+  private[grit] def open(c: java.sql.Connection^, clearance: Clearance): Tx^{c} =
+    new Opened(c, clearance)
+
+  private[grit] def connection(tx: Tx^): java.sql.Connection^{tx} = tx.connection
+
+  /** The clearance it was opened at: what stores filter and floor by. */
+  def clearance(tx: Tx^): Clearance = tx.clearance
+
+  /** What it reads of documents and plugins' data: every label this dominates. For choosing
+    * which variant of derived data to serve, never for enforcing: a read of a variant above it
+    * returns nothing, so a wrong choice cannot read up. Under posting and a job's run it is
+    * also the floor what is written is kept at.
+    */
+  def cleared(tx: Tx^): Label = tx.clearance.everywhere
 }
