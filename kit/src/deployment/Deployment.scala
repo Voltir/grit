@@ -15,7 +15,7 @@ import grit.core.id.{
   ScheduleId,
   ShadowName
 }
-import grit.core.identity.Identities
+import grit.core.identity.{Identities, Realm}
 import grit.core.job.{Declared, Job, Jobs, NotOwn}
 import grit.core.message.Tokens
 import grit.core.model.Policy
@@ -229,6 +229,11 @@ enum DeploymentRefusal {
     */
   case VouchesUnserved(edge: EdgeName)
 
+  /** A group of its visibility names `realm`, which its identities trust no edge to vouch for,
+    * so that group would hold none of the realm's full members, ever.
+    */
+  case RealmUnvouched(realm: Realm)
+
   def message: String = this match {
     case AsksUnanswered(edges) =>
       s"${edges.map(EdgeName.value).mkString(", ")} cannot answer a tool call that asks first, so the tools offered must be read's"
@@ -279,6 +284,8 @@ enum DeploymentRefusal {
         s"a review is declared, and ${edges.map(EdgeName.value).mkString(", ")} each post its prompts: one must"
     case VouchesUnserved(edge) =>
       s"the identities trust ${EdgeName.value(edge)} to vouch for a realm, and no edge served is named ${EdgeName.value(edge)}"
+    case RealmUnvouched(realm) =>
+      s"a group names the realm ${realm.namespace}:${realm.within}/, which the identities trust no edge to vouch for"
   }
 }
 
@@ -389,7 +396,9 @@ object Deployment {
     *   - [[DeploymentRefusal.CompartmentUndeclared]]: a plugin's or an edge's `compartments`, or
     *     a declared schedule's `clearance`, names a compartment `visibility` does not declare;
     *   - [[DeploymentRefusal.VouchesUnserved]]: `identities` trusts an edge to vouch for a realm,
-    *     and none of `edges` is named so.
+    *     and none of `edges` is named so;
+    *   - [[DeploymentRefusal.RealmUnvouched]]: a group of `visibility` names a realm `identities`
+    *     trusts no edge to vouch for.
     */
   def of(
       edges: Vector[ServedEdge],
@@ -429,6 +438,15 @@ object Deployment {
         .find(!names.contains(_))
         .map(DeploymentRefusal.VouchesUnserved(_))
         .toLeft(())
+      // A group taking in a realm's full members holds only those its trusted edge vouches for.
+      _ <- {
+        val vouched = identities.vouchers.map(_.realm).toSet
+        visibility.groups
+          .flatMap(_.realms.toVector.sortBy(r => (r.namespace, r.within)))
+          .find(!vouched.contains(_))
+          .map(DeploymentRefusal.RealmUnvouched(_))
+          .toLeft(())
+      }
       _ <- pluginNames
         .diff(pluginNames.distinct)
         .headOption

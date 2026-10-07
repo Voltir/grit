@@ -680,6 +680,40 @@ object DeploymentTests extends TestSuite {
       )
     }
 
+    test("a group naming a realm no edge is trusted to vouch for is refused, naming the realm") {
+      def ok[A](e: Either[String, A]): A = e.fold(sys.error, identity)
+      val t1 = ok(grit.core.identity.Realm.of("slack", "T1"))
+      val t2 = ok(grit.core.identity.Realm.of("slack", "T2"))
+      val members = ok(grit.core.visibility.GroupName.of("members"))
+      def grouping(realm: grit.core.identity.Realm): Visibility =
+        Visibility
+          .of(
+            Compartments.of(Vector(trial)).fold(c => sys.error(Compartment.name(c)), identity),
+            RoomLabels.Public,
+            Vector(grit.core.visibility.Group(members, Set.empty, Set(realm))),
+            Vector(grit.core.visibility.Grant(members, Label.at(Level.Internal)))
+          )
+          .fold(r => sys.error(r.toString), identity)
+      val trusting = grit.core.identity.Identities
+        .of(Vector.empty, Vector(grit.core.identity.Vouching(EdgeName("slack"), t1)))
+        .fold(r => sys.error(r.message), identity)
+      def deployed(realm: grit.core.identity.Realm) =
+        Deployments.of(
+          edges = Vector(edge("slack", asks = false)),
+          visibility = grouping(realm),
+          identities = trusting
+        )
+      (
+        deployed(t2).map(_ => ()),
+        deployed(t2).left.map(_.message),
+        deployed(t1).map(_ => ())
+      ) ==> (
+        Left(DeploymentRefusal.RealmUnvouched(t2)),
+        Left("a group names the realm slack:T2/, which the identities trust no edge to vouch for"),
+        Right(())
+      )
+    }
+
     test(
       "a declared schedule cleared for a compartment its deployment's visibility does not declare is refused, naming both"
     ) {

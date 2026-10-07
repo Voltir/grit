@@ -143,7 +143,8 @@ trusted, so every account is a person of its own. Both parts are declared data:
 - `vouchers`: for each `Realm` (one source's accounts, such as one Slack workspace's), the
   one edge trusted to vouch for what its source says of them: whether each is a full member,
   and the email the source verified for one. Trusting a realm trusts its administrators, who
-  decide both. `Deployment.of` refuses a vouching by an edge it does not serve.
+  decide both. `Deployment.of` refuses a vouching by an edge it does not serve, and a
+  group of the visibility naming a realm no edge is trusted to vouch for.
 
 **A plugin is parametric in labels.** A `Label` is opaque: a plugin compares labels
 (`dominates`, equality), combines them (`join`, `meet`) and passes one to core as a key, and
