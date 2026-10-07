@@ -36,7 +36,9 @@ trait PeriodStore {
     */
   def judged(period: PeriodRef, verdict: Verdict)(using Tx^): Either[StoreError, Boolean]
 
-  /** Every open period, as its deadline sees it, with its conversation's origin. */
+  /** Every open period of a conversation its transaction reads, as its deadline sees it, with
+    * its conversation's origin.
+    */
   def open()(using Tx^): Either[StoreError, Vector[OpenActivity]]
 
   /** `period` as its deadline sees it; `None` when it is not open. */
@@ -52,24 +54,28 @@ trait PeriodStore {
   ): Either[StoreError, Sealed]
 
   /** The closing entry of the newest period of `turn`'s conversation that closed before
-    * `turn`'s period opened; `None` before its first close.
+    * `turn`'s period opened; `None` before its first close, or when its transaction does not
+    * read it.
     */
   def closingBefore(turn: TurnRef)(using Tx^): Either[StoreError, Option[ClosingEntry]]
 
-  /** The open period of every conversation but `conversation` that has one, with where that
-    * conversation happens, oldest opened first.
+  /** The open period of every conversation but `conversation` that has one and that its
+    * transaction reads, with where that conversation happens, oldest opened first.
     */
   def openElsewhere(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[OpenPeriod]]
 
-  /** Every conversation but `conversation` with a closing entry still kept, with where it
-    * happens and its newest kept closing entry; in the close order of that closing. A
-    * closing whose reason is not [[grit.core.period.CloseReason.shownElsewhere]] is never one.
+  /** Every conversation but `conversation` that its transaction reads with a closing entry
+    * still kept, with where it happens and its newest kept closing entry; in the close order of
+    * that closing. A closing whose reason is not
+    * [[grit.core.period.CloseReason.shownElsewhere]] is never one.
     */
   def closedElsewhere(conversation: ConversationId)(using
       Tx^
   ): Either[StoreError, Vector[ClosedElsewhere]]
 
-  /** Closed periods after `after` in close order, at most `n`. */
+  /** Closed periods after `after` in close order whose closings its transaction reads, at
+    * most `n`; one it does not read is passed over, where [[nextClosed]] finds every one.
+    */
   def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]]
 
   /** The closed period next after `after` in close order, with its conversation; `None` when

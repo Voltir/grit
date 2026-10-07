@@ -14,9 +14,10 @@ import grit.core.period.{
   Verdict
 }
 
-/** An in-memory [[PeriodStore]] for tests, keeping [[PeriodContract]], over the entries of
-  * `entries`; `origin` is each conversation's origin, which Postgres keeps in its own row.
-  * It ignores the `Tx`: nothing is rolled back, and nothing is locked.
+/** An in-memory [[PeriodStore]] for tests, keeping [[PeriodContract]] and
+  * [[ClearanceContract]], over the entries of `entries`, which decides what a transaction reads;
+  * `origin` is each conversation's origin, which Postgres keeps in its own row. Otherwise it
+  * ignores the `Tx`: nothing is rolled back, and nothing is locked.
   */
 final class InMemoryPeriodStore(
     entries: InMemoryEntryStore,
@@ -51,8 +52,13 @@ final class InMemoryPeriodStore(
     case PeriodState.Open => None
   }
 
+  /** `c`'s entries the transaction reads: what a read of content returns. */
   private def entriesOf(c: ConversationId)(using Tx^): Vector[Entry] =
     entries.list(c).getOrElse(Vector.empty)
+
+  /** `c`'s entries, whatever their label: what a period's activity counts. */
+  private def everyEntryOf(c: ConversationId): Vector[Entry] =
+    entries.everything.filter(_.conversationId == c)
 
   def openFor(conversation: ConversationId, turn: TurnSeq, at: Instant)(using
       Tx^
@@ -93,7 +99,7 @@ final class InMemoryPeriodStore(
 
   private def activityOf(p: Period)(using Tx^): Activity = {
     val own =
-      entriesOf(p.ref.conversationId).filter(e =>
+      everyEntryOf(p.ref.conversationId).filter(e =>
         TurnSeq.value(e.turnSeq) >= TurnSeq.value(p.first)
       )
     // A draft is not activity (Payload.Draft).
@@ -115,7 +121,9 @@ final class InMemoryPeriodStore(
 
   def open()(using Tx^): Either[StoreError, Vector[OpenActivity]] =
     Right(
-      periods.filter(isOpen).map(p => OpenActivity(activityOf(p), origin(p.ref.conversationId)))
+      periods
+        .filter(p => isOpen(p) && entries.reads(p.ref.conversationId))
+        .map(p => OpenActivity(activityOf(p), origin(p.ref.conversationId)))
     )
 
   def activity(period: PeriodRef)(using Tx^): Either[StoreError, Option[Activity]] =
@@ -175,7 +183,9 @@ final class InMemoryPeriodStore(
   ): Either[StoreError, Vector[OpenPeriod]] =
     Right(
       periods
-        .filter(p => isOpen(p) && p.ref.conversationId != conversation)
+        .filter(p =>
+          isOpen(p) && p.ref.conversationId != conversation && entries.reads(p.ref.conversationId)
+        )
         .sortBy(p => (p.openedAt.toEpochMilli, ConversationId.value(p.ref.conversationId)))
         .map(p => OpenPeriod(p.ref.conversationId, origin(p.ref.conversationId).place, p.first))
     )
@@ -185,7 +195,7 @@ final class InMemoryPeriodStore(
   ): Either[StoreError, Vector[ClosedElsewhere]] =
     Right(
       periods
-        .filter(_.ref.conversationId != conversation)
+        .filter(p => p.ref.conversationId != conversation && entries.reads(p.ref.conversationId))
         .flatMap(p => closedOf(p).filter(_.reason.shownElsewhere).map(p -> _))
         .groupBy(_._1.ref.conversationId)
         .values

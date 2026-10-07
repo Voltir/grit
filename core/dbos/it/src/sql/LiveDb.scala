@@ -8,27 +8,29 @@ import scala.util.Using
 import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef}
 import grit.core.message.Message
 import grit.core.store.{Conversation, Entry, Origin, Payload, StoreError, Tx}
-import grit.core.visibility.{Clearance, Label, Visibility}
+import grit.core.visibility.{Clearance, Label, TestLabels}
 
 /** Direct transactions on a live test database, for arranging rows and reading them back
   * outside the code under test.
   */
 object LiveDb {
 
-  /** What these transactions read and write at: maintenance's clearance under the shipped
-    * visibility.
+  /** What these transactions read and write at unless told: maintenance's clearance under
+    * [[TestLabels.Trialled]], the visibility the labelled suites declare, so every label a
+    * suite writes, unmapped included. A label naming a compartment it does not declare is
+    * not read: a suite labelling with another declares it there first.
     */
-  val Everything: Clearance = new Opener(Visibility.Shipped).maintenance
+  val Everything: Clearance = new Opener(TestLabels.Trialled).maintenance
 
-  /** Runs `body` in one transaction on `config`'s database: committed if it returns,
-    * rolled back if it throws.
+  /** Runs `body` in one transaction on `config`'s database, opened at `clearance`: committed
+    * if it returns, rolled back if it throws.
     */
-  def transaction[A](config: DbConfig)(body: (Tx^) ?=> A): A =
+  def transaction[A](config: DbConfig, clearance: Clearance = Everything)(body: (Tx^) ?=> A): A =
     Using.resource(DriverManager.getConnection(config.jdbcUrl, config.user, config.password)) {
       conn =>
         conn.setAutoCommit(false)
         try {
-          val a = body(using Tx.open(conn, LiveDb.Everything))
+          val a = body(using Tx.open(conn, clearance))
           conn.commit()
           a
         } catch { case e: Throwable => conn.rollback(); throw e }

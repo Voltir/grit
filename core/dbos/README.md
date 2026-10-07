@@ -15,7 +15,9 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   each declared shadow variant made of a heard message, `grit.triage_shadows`, deleted with its
   entry), `SqlSpeechStore` (each
   heard message's reach, and grit's decisions to speak or not, kept with their period's usage),
-  `SqlRoomReads` (what a room said before a time, as a pool reads it), `SqlLabels` (labels as
+  `SqlRoomReads` (what a room said before a time, as a pool reads it), `SqlClearance` (a transaction's clearance
+  as SQL: the one filter every read of labelled rows puts in its `WHERE`, inside any ranked or
+  limited subquery, ADR 0030), `SqlLabels` (labels as
   `grit.labels` interns them, the one translation through `LabelParts`, and the compartment sets
   the database has run under, ADR 0030), `SqlReviews` (every
   heard message a review considered, its prompt and the verdict standing on it,

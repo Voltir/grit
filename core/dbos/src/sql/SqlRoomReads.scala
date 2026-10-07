@@ -36,15 +36,15 @@ final class SqlRoomReads extends RoomReads {
       until,
       outside,
       most
-    )(_.setString(1, PrincipalId.value(author)))
+    )(_.setString(SqlClearance.Params + 1, PrincipalId.value(author)))
 
   def author(entry: EntryId)(using tx: Tx^): Either[StoreError, Option[PrincipalId]] =
     many("SELECT author FROM grit.inbound WHERE entry_id = ?")(
       _.setString(1, EntryId.value(entry))
     )(rs => PrincipalId(rs.getString(1))).map(_.headOption)
 
-  /** The latest `most` messages in `room`, joined by `join`, whose one parameter, if any,
-    * `bind` sets first.
+  /** The latest `most` messages in `room` its transaction reads, joined by `join`, whose one
+    * parameter, if any, `bind` sets first after the clearance's.
     */
   private def latest(
       join: String,
@@ -56,9 +56,10 @@ final class SqlRoomReads extends RoomReads {
   )(bind: PreparedStatement => Unit)(using tx: Tx^): Either[StoreError, Vector[Said]] =
     if (most < 1) Right(Vector.empty)
     else {
-      val first = if (join.isEmpty) 1 else 2
-      many(
-        s"""SELECT $SaidColumns
+      val first = SqlClearance.Params + (if (join.isEmpty) 1 else 2)
+      cleared(
+        s"""WITH ${SqlClearance.With}
+           |SELECT $SaidColumns
            |  FROM grit.entries e
            |  JOIN grit.conversations c ON c.id = e.conversation_id
            |  JOIN grit.places p ON p.id = c.place_id
@@ -67,7 +68,7 @@ final class SqlRoomReads extends RoomReads {
            |       = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
            |   AND e.created_at >= ? AND e.created_at < ?
            |   AND e.conversation_id NOT IN (SELECT jsonb_array_elements_text(?::jsonb)::uuid)
-           |   AND $Spoken
+           |   AND $Spoken AND ${SqlClearance.entry("e")}
            | ORDER BY e.created_at DESC, e.id COLLATE "C" DESC
            | LIMIT ?""".stripMargin
       ) { ps =>
@@ -81,6 +82,19 @@ final class SqlRoomReads extends RoomReads {
         ps.setInt(first + 5, most)
       }(readSaid)
     }
+
+  /** As [[many]], for a statement beginning `WITH ${SqlClearance.With}`: the clearance's
+    * parameters are set first, to the transaction's, then `bind`'s.
+    */
+  private def cleared[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[A]] = {
+    val clearance = Tx.clearance(tx)
+    many(sql) { ps =>
+      SqlClearance.bind(ps, 1, clearance)
+      bind(ps)
+    }(read)
+  }
 
   private def many[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
       tx: Tx^

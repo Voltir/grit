@@ -16,9 +16,10 @@ import grit.core.store.{
   Tx
 }
 
-/** An in-memory [[RoomReads]] for tests, keeping [[RoomReadsContract]], over the entries
-  * `entries` holds, each conversation at `origin`'s place, and the authors `principals` was
-  * told. It ignores the `Tx`.
+/** An in-memory [[RoomReads]] for tests, keeping [[RoomReadsContract]] and
+  * [[grit.core.store.ClearanceContract]], over the entries `entries` holds, which decides what a
+  * transaction reads, each conversation at `origin`'s place, and the authors `principals` was
+  * told. Otherwise it ignores the `Tx`.
   */
 final class InMemoryRoomReads(
     entries: InMemoryEntryStore,
@@ -51,8 +52,8 @@ final class InMemoryRoomReads(
       outside: Set[ConversationId],
       most: Int,
       by: Entry => Boolean
-  ): Vector[Said] =
-    entries.everything
+  )(using Tx^): Vector[Said] =
+    entries.readable
       .filter(e =>
         !e.createdAt.isBefore(from) && e.createdAt.isBefore(until) &&
           !outside.contains(e.conversationId) && message(e) && by(e)

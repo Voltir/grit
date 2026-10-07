@@ -68,8 +68,9 @@ final class SqlStitchStore extends StitchStore {
   def spokenIn(room: Place, from: Instant, until: Instant)(using
       tx: Tx^
   ): Either[StoreError, Vector[Said]] =
-    many(
-      s"""SELECT $SaidColumns
+    cleared(
+      s"""WITH ${SqlClearance.With}
+         |SELECT $SaidColumns
          |  FROM grit.entries e
          |  JOIN grit.conversations c ON c.id = e.conversation_id
          |  JOIN grit.places p ON p.id = c.place_id
@@ -77,13 +78,14 @@ final class SqlStitchStore extends StitchStore {
          |       = ARRAY(SELECT jsonb_array_elements_text(?::jsonb))
          |   AND e.created_at >= ? AND e.created_at < ?
          |   AND ($Spoken OR e.payload ->> 'kind' = 'closed')
+         |   AND ${SqlClearance.entry("e")}
          | ORDER BY e.created_at, e.seq""".stripMargin
     ) { ps =>
       val path = ujson.Arr.from(room.segments.map(ujson.Str(_))).render()
-      ps.setString(1, path)
-      ps.setString(2, path)
-      ps.setObject(3, from.atOffset(ZoneOffset.UTC))
-      ps.setObject(4, until.atOffset(ZoneOffset.UTC))
+      ps.setString(SqlClearance.Params + 1, path)
+      ps.setString(SqlClearance.Params + 2, path)
+      ps.setObject(SqlClearance.Params + 3, from.atOffset(ZoneOffset.UTC))
+      ps.setObject(SqlClearance.Params + 4, until.atOffset(ZoneOffset.UTC))
     }(readSaid)
 
   def said(conversations: Vector[ConversationId], from: Instant, until: Instant)(using
@@ -91,18 +93,19 @@ final class SqlStitchStore extends StitchStore {
   ): Either[StoreError, Vector[Said]] =
     if (conversations.isEmpty) Right(Vector.empty)
     else
-      many(
-        s"""SELECT $SaidColumns
+      cleared(
+        s"""WITH ${SqlClearance.With}
+           |SELECT $SaidColumns
            |  FROM grit.entries e
            |  JOIN grit.conversations c ON c.id = e.conversation_id
            | WHERE e.conversation_id IN (SELECT jsonb_array_elements_text(?::jsonb)::uuid)
            |   AND e.created_at >= ? AND e.created_at < ?
-           |   AND $Spoken
+           |   AND $Spoken AND ${SqlClearance.entry("e")}
            | ORDER BY e.created_at, e.seq""".stripMargin
       ) { ps =>
-        ps.setString(1, ids(conversations))
-        ps.setObject(2, from.atOffset(ZoneOffset.UTC))
-        ps.setObject(3, until.atOffset(ZoneOffset.UTC))
+        ps.setString(SqlClearance.Params + 1, ids(conversations))
+        ps.setObject(SqlClearance.Params + 2, from.atOffset(ZoneOffset.UTC))
+        ps.setObject(SqlClearance.Params + 3, until.atOffset(ZoneOffset.UTC))
       }(readSaid)
 
   def openings(conversations: Vector[ConversationId])(using
@@ -110,16 +113,19 @@ final class SqlStitchStore extends StitchStore {
   ): Either[StoreError, Vector[Said]] =
     if (conversations.isEmpty) Right(Vector.empty)
     else
-      many(
-        s"""SELECT $SaidColumns FROM (
+      cleared(
+        s"""WITH ${SqlClearance.With}
+           |SELECT $SaidColumns FROM (
            |  SELECT DISTINCT ON (f.conversation_id) f.*
            |    FROM grit.entries f
            |   WHERE f.conversation_id IN (SELECT jsonb_array_elements_text(?::jsonb)::uuid)
            |   ORDER BY f.conversation_id, f.seq
            |) e
            |  JOIN grit.conversations c ON c.id = e.conversation_id
-           | WHERE $Spoken""".stripMargin
-      )(_.setString(1, ids(conversations)))(readSaid).map { found =>
+           | WHERE $Spoken AND ${SqlClearance.entry("e")}""".stripMargin
+      ) { ps =>
+        ps.setString(SqlClearance.Params + 1, ids(conversations))
+      }(readSaid).map { found =>
         conversations.flatMap(c => found.find(_.conversation == c))
       }
 
@@ -138,6 +144,19 @@ final class SqlStitchStore extends StitchStore {
         ps.setString(1, ids(conversations))
         ps.setString(2, ids(conversations))
       }(rs => Link(ConversationId(rs.getString(1)), ConversationId(rs.getString(2))))
+
+  /** As [[many]], for a statement beginning `WITH ${SqlClearance.With}`: the clearance's
+    * parameters are set first, to the transaction's, then `bind`'s.
+    */
+  private def cleared[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[A]] = {
+    val clearance = Tx.clearance(tx)
+    many(sql) { ps =>
+      SqlClearance.bind(ps, 1, clearance)
+      bind(ps)
+    }(read)
+  }
 
   private def many[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
       tx: Tx^

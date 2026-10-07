@@ -7,9 +7,10 @@ import grit.core.message.Message
 import grit.core.place.Place
 import grit.core.store.{Entry, InMemoryEntryStore, Origin, Payload, StoreError, Tx}
 
-/** An in-memory [[StitchStore]] for tests, keeping [[StitchContract]]: its placements are of
-  * the entries `entries` still holds, and each conversation is at `origin`'s place. It ignores
-  * the `Tx`.
+/** An in-memory [[StitchStore]] for tests, keeping [[StitchContract]] and
+  * [[grit.core.store.ClearanceContract]]: its placements are of the entries `entries` still
+  * holds, which decides what a transaction reads, and each conversation is at `origin`'s place.
+  * Otherwise it ignores the `Tx`.
   */
 final class InMemoryStitchStore(entries: InMemoryEntryStore, origin: ConversationId -> Origin)
     extends StitchStore {
@@ -64,7 +65,7 @@ final class InMemoryStitchStore(entries: InMemoryEntryStore, origin: Conversatio
         entries.everything
           .filter(_.conversationId == c)
           .minByOption(_.seq)
-          .filter(message)
+          .filter(e => message(e) && entries.readable.contains(e))
           .map(said)
       )
     )
@@ -80,8 +81,9 @@ final class InMemoryStitchStore(entries: InMemoryEntryStore, origin: Conversatio
   private def kept: Vector[(EntryId, ConversationId, Placed)] =
     rows.filter((id, _, _) => entries.everything.exists(_.id == id))
 
-  private def inRange(from: Instant, until: Instant): Vector[Entry] =
-    entries.everything
+  /** The entries the transaction reads made in [`from`, `until`), oldest first. */
+  private def inRange(from: Instant, until: Instant)(using Tx^): Vector[Entry] =
+    entries.readable
       .filter(e => !e.createdAt.isBefore(from) && e.createdAt.isBefore(until))
       .sortBy(e => (e.createdAt, e.seq))
 

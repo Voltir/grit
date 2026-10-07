@@ -6,7 +6,8 @@ import grit.core.id.{ConversationId, EntryId, EntrySeq, PeriodSeq, ToolCallId, T
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Change, CloseReason, Closing, Flows, Section, TestClosings}
 import grit.core.place.Place
-import grit.core.store.{Entry, EntrySearch, OpenPeriod, Origin, Payload}
+import grit.core.store.{Entry, EntrySearch, OpenPeriod, Origin, Payload, Tx}
+import grit.core.visibility.{Clearance, Label, TestLabels}
 import grit.dbos.sql.{LiveDb, SqlEntrySearch, SqlEntryStore, TestPostgres}
 
 import utest.*
@@ -33,8 +34,12 @@ object SearchLiveTests extends TestSuite {
     )
 
   /** Writes `payloads` as one entry each, turn `t` for the `t`-th, ids `e{t}`. */
-  private def conversation(name: String, payloads: Payload*): ConversationId = {
-    val c = LiveDb.conversation(config, Origin.Task("search", name)).id
+  private def conversation(name: String, payloads: Payload*): ConversationId =
+    labelled(name, Label.Public, payloads*)
+
+  /** As [[conversation]], in a conversation created at `label`. */
+  private def labelled(name: String, label: Label, payloads: Payload*): ConversationId = {
+    val c = LiveDb.conversation(config, Origin.Task("search", name), label).id
     LiveDb.transaction(config) {
       payloads.zipWithIndex.foreach { (p, i) =>
         val _ = entries.insert(
@@ -323,6 +328,54 @@ object SearchLiveTests extends TestSuite {
       one.map(_._1) ==> one.map(_._2)
       LiveDb.transaction(config)(search.room(room, t0, t0.plusSeconds(3_600), " ", 10)) ==>
         Right(Vector.empty)
+    }
+
+    test(
+      "a readable hit is not lost to an unreadable one that outranked it: search, nearby, closings and room, at limit 1"
+    ) {
+      def closed(text: String): Payload =
+        Payload.Closed(PeriodSeq.First, CloseReason.Lapsed, TestClosings.prose(text))
+      val high = labelled(
+        "ranked-high",
+        TestLabels.Trial,
+        said("wombat wombat wombat burrow"),
+        closed("wombat wombat wombat burrow")
+      )
+      val low = labelled("ranked-low", Label.Public, said("a wombat"), closed("a wombat"))
+      val public = Clearance.of(Label.Public)
+      def under[A](clearance: Clearance)(body: (Tx^) ?=> A): A =
+        LiveDb.transaction(config, clearance)(body)
+      val everything = Vector(
+        under(LiveDb.Everything)(search.nearby(Vector(open(high, 0), open(low, 0)), "wombat", 1)),
+        under(LiveDb.Everything)(search.closings(Vector(high, low), "wombat", 1)),
+        under(LiveDb.Everything)(
+          search.room(
+            Origin.Task("search", "x").room,
+            Instant.EPOCH,
+            Instant.EPOCH.plusSeconds(1),
+            "wombat",
+            1
+          )
+        )
+      ).map(_.map(ids))
+      val publicly = Vector(
+        under(public)(search.nearby(Vector(open(high, 0), open(low, 0)), "wombat", 1)),
+        under(public)(search.closings(Vector(high, low), "wombat", 1)),
+        under(public)(
+          search.room(
+            Origin.Task("search", "x").room,
+            Instant.EPOCH,
+            Instant.EPOCH.plusSeconds(1),
+            "wombat",
+            1
+          )
+        ),
+        under(public)(search.search(high, TurnSeq(0), TurnSeq(1000), "wombat", 1))
+      ).map(_.map(ids))
+      (everything, publicly) ==> (
+        Vector.fill(3)(Right(Vector("ranked-high:e1"))),
+        Vector.fill(3)(Right(Vector("ranked-low:e1"))) :+ Right(Vector())
+      )
     }
   }
 }

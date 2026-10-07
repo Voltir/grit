@@ -6,7 +6,9 @@ import grit.core.id.{ConversationId, EntryId, TurnRef, TurnSeq}
 import grit.core.place.Place
 
 /** Ranks entries against a text query: a conversation's own, or other conversations' open
-  * periods'. Read-only.
+  * periods'. Read-only. Each search ranks only the entries its transaction's clearance reads
+  * ([[Tx.clearance]]), so one it does not read never takes a readable one's place within
+  * `limit`.
   */
 trait EntrySearch {
 

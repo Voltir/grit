@@ -13,7 +13,7 @@ import grit.core.document.{
   InMemoryDocuments
 }
 import grit.core.durable.InMemoryDurable
-import grit.core.id.{CloseRef, ConversationId, DocKey, EntryId, PeriodRef, PeriodSeq, PluginName}
+import grit.core.id.{CloseRef, ConversationId, DocKey, EntryId, PluginName, PrincipalId}
 import grit.core.message.Message
 import grit.core.period.{CloseOrdinal, CloseReason, TestClosings}
 import grit.core.place.{Namespace, Place}
@@ -22,15 +22,17 @@ import grit.core.retention.{Target, Tombstone}
 import grit.core.store.{
   ClosedPeriod,
   Entry,
+  InMemoryConversationStore,
   InMemoryEntryStore,
   InMemoryPeriodStore,
   InMemoryTombstones,
   Jot,
+  Origin,
   Payload,
   StoreError,
   Tx
 }
-import grit.core.visibility.Subject
+import grit.core.visibility.{Clearance, Label, Subject, TestLabels}
 import grit.dbos.sql.TestTx
 import grit.lifecycle.close.CloseFixtures.SetClock
 
@@ -115,17 +117,35 @@ object PostingTests extends TestSuite {
     val version: Int = 1
   }
 
-  /** Writes straight through to the in-memory stores, never rolled back. */
-  private final class FakeJot extends Jot {
+  /** Opens each write at what its subject reads, as an opener resolves a conversation's
+    * ([[Subject.Conversation]]) from `conversations`; anything else, which posting never opens
+    * but publicly, reads what is public.
+    */
+  private final class SubjectJot(conversations: InMemoryConversationStore) extends Jot {
     def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      body(using
-        TestTx.fake
-      )
+      body(using TestTx.fake(clearance(subject)))
+
+    private def clearance(subject: Subject): Clearance = subject match {
+      case Subject.Conversation(id) =>
+        conversations.all
+          .find(_.id == id)
+          .fold(Clearance.of(Label.Public))(c => Clearance.inRoom(c.origin.room, c.label, c.label))
+      case Subject.Public | Subject.Turn(_) => Clearance.of(Label.Public)
+    }
   }
 
-  /** `n` periods of `c`, each one turn, closed in order with prose `p1`, `p2`, ... */
-  private final class World(n: Int) {
-    val entries = new InMemoryEntryStore
+  /** `n` periods, each one turn, closed in order with prose `p1`, `p2`, ...: of `c`, public,
+    * but those numbered in `trialled`, which are of a `{trial}` conversation of their own room.
+    */
+  private final class World(n: Int, trialled: Set[Int] = Set.empty) {
+    val conversations = new InMemoryConversationStore
+    private def made(origin: Origin, label: Label): ConversationId =
+      conversations
+        .findOrCreate(origin, PrincipalId.Local, label)(using TestTx.fake)
+        .fold(e => sys.error(s"$e"), _.id)
+    assert(made(Origin.Task("posting", "public"), Label.Public) == c)
+    val trial: ConversationId = made(Origin.Slack("T1", "C9", "1.0"), TestLabels.Trial)
+    val entries = new InMemoryEntryStore(id => conversations.all.find(_.id == id))
     val periods = new InMemoryPeriodStore(entries)
     val documents = new InMemoryDocuments
     val tombstones: InMemoryTombstones = documents.tombstones
@@ -133,12 +153,14 @@ object PostingTests extends TestSuite {
     locally {
       given Tx = TestTx.fake
       for (i <- 1 to n) {
-        val next = entries.lockNext(c).getOrElse(sys.error("in-memory"))
-        periods.openFor(c, next.turnSeq, Instant.EPOCH)
+        val in = if (trialled.contains(i)) trial else c
+        val next = entries.lockNext(in).getOrElse(sys.error("in-memory"))
+        val period =
+          periods.openFor(in, next.turnSeq, Instant.EPOCH).fold(e => sys.error(s"$e"), _.ref)
         entries.insert(
           Entry(
             EntryId(s"m$i"),
-            c,
+            in,
             next.turnSeq,
             None,
             next.seq,
@@ -148,11 +170,7 @@ object PostingTests extends TestSuite {
         )
         val closing = TestClosings.prose(s"p$i")
         periods.seal(
-          CloseRef(
-            PeriodRef(c, PeriodSeq.of(i.toLong).getOrElse(sys.error("seq"))),
-            next.turnSeq,
-            Instant.EPOCH
-          ),
+          CloseRef(period, next.turnSeq, Instant.EPOCH),
           CloseReason.Lapsed,
           closing,
           Instant.EPOCH
@@ -169,7 +187,7 @@ object PostingTests extends TestSuite {
             plugins.posting,
             documents.keeper,
             tombstones,
-            new FakeJot,
+            new SubjectJot(conversations),
             new SetClock(Instant.EPOCH)
           )
         )
@@ -203,6 +221,16 @@ object PostingTests extends TestSuite {
       )
       w.cursor(digest) ==> ordinal(3)
       w.run(Vector(digest), PostRef(digest.name, 1, ordinal(3), 0)) ==> "posted 0"
+    }
+
+    test(
+      "a {trial} closing between two public ones is posted, in order, and the cursor never skips it"
+    ) {
+      val w = new World(3, trialled = Set(2))
+      val digest = new Recorder(name("digest"), 1)
+      w.run(Vector(digest), PostRef(digest.name, 1, CloseOrdinal.Start, 0)) ==> "posted 3"
+      w.docs(digest).map(_._1) ==> Vector("1", "2", "3")
+      w.cursor(digest) ==> ordinal(3)
     }
 
     test(

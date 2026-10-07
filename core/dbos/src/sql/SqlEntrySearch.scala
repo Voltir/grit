@@ -25,11 +25,12 @@ final class SqlEntrySearch extends EntrySearch {
       val conn: java.sql.Connection^{tx} = Tx.connection(tx)
       SqlEntryStore.attempt {
         Using.resource(conn.prepareStatement(SqlEntrySearch.Ranked)) { ps =>
-          ps.setString(1, query)
-          ps.setString(2, ConversationId.value(conversation))
-          ps.setLong(3, TurnSeq.value(from))
-          ps.setLong(4, TurnSeq.value(before))
-          ps.setInt(5, limit)
+          SqlClearance.bind(ps, 1, Tx.clearance(tx))
+          ps.setString(SqlClearance.Params + 1, query)
+          ps.setString(SqlClearance.Params + 2, ConversationId.value(conversation))
+          ps.setLong(SqlClearance.Params + 3, TurnSeq.value(from))
+          ps.setLong(SqlClearance.Params + 4, TurnSeq.value(before))
+          ps.setInt(SqlClearance.Params + 5, limit)
           Using.resource(ps.executeQuery()) { rs =>
             val hits = Vector.newBuilder[EntrySearch.Hit]
             while (rs.next()) {
@@ -60,9 +61,10 @@ final class SqlEntrySearch extends EntrySearch {
       })
       SqlEntryStore.attempt {
         Using.resource(conn.prepareStatement(SqlEntrySearch.Nearby)) { ps =>
-          ps.setString(1, query)
-          ps.setString(2, periods.render())
-          ps.setInt(3, limit)
+          SqlClearance.bind(ps, 1, Tx.clearance(tx))
+          ps.setString(SqlClearance.Params + 1, query)
+          ps.setString(SqlClearance.Params + 2, periods.render())
+          ps.setInt(SqlClearance.Params + 3, limit)
           Using.resource(ps.executeQuery()) { rs =>
             val hits = Vector.newBuilder[EntrySearch.Hit]
             while (rs.next()) {
@@ -91,9 +93,10 @@ final class SqlEntrySearch extends EntrySearch {
       val ids = ujson.Arr.from(conversations.map(c => ujson.Str(ConversationId.value(c))))
       SqlEntryStore.attempt {
         Using.resource(conn.prepareStatement(SqlEntrySearch.Closings)) { ps =>
-          ps.setString(1, query)
-          ps.setString(2, ids.render())
-          ps.setInt(3, limit)
+          SqlClearance.bind(ps, 1, Tx.clearance(tx))
+          ps.setString(SqlClearance.Params + 1, query)
+          ps.setString(SqlClearance.Params + 2, ids.render())
+          ps.setInt(SqlClearance.Params + 3, limit)
           Using.resource(ps.executeQuery()) { rs =>
             val hits = Vector.newBuilder[EntrySearch.Hit]
             while (rs.next()) {
@@ -122,12 +125,13 @@ final class SqlEntrySearch extends EntrySearch {
       val path = ujson.Arr.from(room.segments.map(ujson.Str(_))).render()
       SqlEntryStore.attempt {
         Using.resource(conn.prepareStatement(SqlEntrySearch.Room)) { ps =>
-          ps.setString(1, query)
-          ps.setString(2, path)
-          ps.setString(3, path)
-          ps.setObject(4, from.atOffset(ZoneOffset.UTC))
-          ps.setObject(5, until.atOffset(ZoneOffset.UTC))
-          ps.setInt(6, limit)
+          SqlClearance.bind(ps, 1, Tx.clearance(tx))
+          ps.setString(SqlClearance.Params + 1, query)
+          ps.setString(SqlClearance.Params + 2, path)
+          ps.setString(SqlClearance.Params + 3, path)
+          ps.setObject(SqlClearance.Params + 4, from.atOffset(ZoneOffset.UTC))
+          ps.setObject(SqlClearance.Params + 5, until.atOffset(ZoneOffset.UTC))
+          ps.setInt(SqlClearance.Params + 6, limit)
           Using.resource(ps.executeQuery()) { rs =>
             val hits = Vector.newBuilder[EntrySearch.Hit]
             while (rs.next()) {
@@ -153,12 +157,14 @@ private object SqlEntrySearch {
   // to the conversation first, rows that do not match come back scored 0; the guard
   // drops them outside the LIMIT, so they never take a match's place (the spike's form C).
   private val Ranked =
-    """SELECT id, turn_seq, s FROM (
-      |  SELECT id, turn_seq, seq,
-      |         search_text <@> to_bm25query(?, 'grit.idx_entries_bm25') AS s
-      |    FROM grit.entries
-      |   WHERE conversation_id = ?::uuid AND turn_seq >= ? AND turn_seq < ?
-      |   ORDER BY s, seq DESC
+    s"""WITH ${SqlClearance.With}
+      |SELECT id, turn_seq, s FROM (
+      |  SELECT e.id, e.turn_seq, e.seq,
+      |         e.search_text <@> to_bm25query(?, 'grit.idx_entries_bm25') AS s
+      |    FROM grit.entries e
+      |   WHERE e.conversation_id = ?::uuid AND e.turn_seq >= ? AND e.turn_seq < ?
+      |     AND ${SqlClearance.entry("e")}
+      |   ORDER BY s, e.seq DESC
       |   LIMIT ?
       |) ranked
       |WHERE s < 0
@@ -168,12 +174,14 @@ private object SqlEntrySearch {
   // closing sits at the turn before, so it is never reached. Ties go latest first by time,
   // since seq orders only within one conversation.
   private val Nearby =
-    """SELECT id, conversation_id, turn_seq, s FROM (
+    s"""WITH ${SqlClearance.With}
+      |SELECT id, conversation_id, turn_seq, s FROM (
       |  SELECT e.id, e.conversation_id, e.turn_seq, e.created_at,
       |         e.search_text <@> to_bm25query(?, 'grit.idx_entries_bm25') AS s
       |    FROM grit.entries e
       |    JOIN jsonb_to_recordset(?::jsonb) AS r(c uuid, f bigint)
       |      ON e.conversation_id = r.c AND e.turn_seq >= r.f
+      |   WHERE ${SqlClearance.entry("e")}
       |   ORDER BY s, e.created_at DESC, e.id DESC
       |   LIMIT ?
       |) ranked
@@ -182,12 +190,13 @@ private object SqlEntrySearch {
 
   // Form C over the closing entries of the conversations given, whatever their turn.
   private val Closings =
-    """SELECT id, conversation_id, turn_seq, s FROM (
+    s"""WITH ${SqlClearance.With}
+      |SELECT id, conversation_id, turn_seq, s FROM (
       |  SELECT e.id, e.conversation_id, e.turn_seq, e.created_at,
       |         e.search_text <@> to_bm25query(?, 'grit.idx_entries_bm25') AS s
       |    FROM grit.entries e
       |    JOIN jsonb_array_elements_text(?::jsonb) AS r(c) ON e.conversation_id = r.c::uuid
-      |   WHERE e.payload ->> 'kind' = 'closed'
+      |   WHERE e.payload ->> 'kind' = 'closed' AND ${SqlClearance.entry("e")}
       |   ORDER BY s, e.created_at DESC, e.id DESC
       |   LIMIT ?
       |) ranked
@@ -197,7 +206,8 @@ private object SqlEntrySearch {
   // Form C over the messages and closings said in a room's conversations in a time range: a
   // place is in the room when the room's path is a prefix of its own (Place.within).
   private val Room =
-    """SELECT id, conversation_id, turn_seq, s FROM (
+    s"""WITH ${SqlClearance.With}
+      |SELECT id, conversation_id, turn_seq, s FROM (
       |  SELECT e.id, e.conversation_id, e.turn_seq, e.created_at,
       |         e.search_text <@> to_bm25query(?, 'grit.idx_entries_bm25') AS s
       |    FROM grit.entries e
@@ -209,6 +219,7 @@ private object SqlEntrySearch {
       |     AND (e.payload ->> 'kind' IN ('heard', 'posted', 'closed')
       |          OR (e.payload ->> 'kind' = 'message'
       |              AND e.payload -> 'message' ->> 'role' IN ('user', 'assistant')))
+      |     AND ${SqlClearance.entry("e")}
       |   ORDER BY s, e.created_at DESC, e.id DESC
       |   LIMIT ?
       |) ranked

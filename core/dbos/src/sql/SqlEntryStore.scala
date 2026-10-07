@@ -63,10 +63,13 @@ final class SqlEntryStore extends EntryStore {
 
   def get(id: EntryId)(using tx: Tx^): Either[StoreError, Option[Entry]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    val sql = s"SELECT $columns FROM grit.entries WHERE id = ?"
+    val sql = s"""WITH ${SqlClearance.With}
+                 |SELECT $columns FROM grit.entries e
+                 | WHERE e.id = ? AND ${SqlClearance.entry("e")}""".stripMargin
     attempt {
       Using.resource(conn.prepareStatement(sql)) { ps =>
-        ps.setString(1, EntryId.value(id))
+        SqlClearance.bind(ps, 1, Tx.clearance(tx))
+        ps.setString(SqlClearance.Params + 1, EntryId.value(id))
         Using.resource(ps.executeQuery()) { rs =>
           if (rs.next()) Some(readEntry(rs)) else None
         }
@@ -79,10 +82,14 @@ final class SqlEntryStore extends EntryStore {
   )(using tx: Tx^): Either[StoreError, Vector[Entry]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val sql =
-      s"SELECT $columns FROM grit.entries WHERE conversation_id = ?::uuid ORDER BY seq"
+      s"""WITH ${SqlClearance.With}
+         |SELECT $columns FROM grit.entries e
+         | WHERE e.conversation_id = ?::uuid AND ${SqlClearance.entry("e")}
+         | ORDER BY e.seq""".stripMargin
     attempt {
       Using.resource(conn.prepareStatement(sql)) { ps =>
-        ps.setString(1, ConversationId.value(conversation))
+        SqlClearance.bind(ps, 1, Tx.clearance(tx))
+        ps.setString(SqlClearance.Params + 1, ConversationId.value(conversation))
         Using.resource(ps.executeQuery()) { rs =>
           val rows = Vector.newBuilder[Entry]
           while (rs.next()) {
@@ -99,14 +106,17 @@ final class SqlEntryStore extends EntryStore {
   ): Either[StoreError, Vector[Entry]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val sql =
-      s"""SELECT $columns FROM grit.entries
-         | WHERE conversation_id = ?::uuid AND seq = ANY (?::bigint[])
-         | ORDER BY seq""".stripMargin
+      s"""WITH ${SqlClearance.With}
+         |SELECT $columns FROM grit.entries e
+         | WHERE e.conversation_id = ?::uuid AND e.seq = ANY (?::bigint[])
+         |   AND ${SqlClearance.entry("e")}
+         | ORDER BY e.seq""".stripMargin
     attempt {
       Using.resource(conn.prepareStatement(sql)) { ps =>
-        ps.setString(1, ConversationId.value(conversation))
+        SqlClearance.bind(ps, 1, Tx.clearance(tx))
+        ps.setString(SqlClearance.Params + 1, ConversationId.value(conversation))
         // An array literal of numbers, so no Java array is handed to the driver.
-        ps.setString(2, seqs.map(EntrySeq.value).mkString("{", ",", "}"))
+        ps.setString(SqlClearance.Params + 2, seqs.map(EntrySeq.value).mkString("{", ",", "}"))
         Using.resource(ps.executeQuery()) { rs =>
           val rows = Vector.newBuilder[Entry]
           while (rs.next()) {
@@ -121,13 +131,15 @@ final class SqlEntryStore extends EntryStore {
   def ofTurn(turn: TurnRef)(using tx: Tx^): Either[StoreError, Vector[Entry]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val sql =
-      s"""SELECT $columns FROM grit.entries
-         | WHERE conversation_id = ?::uuid AND turn_seq = ?
-         | ORDER BY seq""".stripMargin
+      s"""WITH ${SqlClearance.With}
+         |SELECT $columns FROM grit.entries e
+         | WHERE e.conversation_id = ?::uuid AND e.turn_seq = ? AND ${SqlClearance.entry("e")}
+         | ORDER BY e.seq""".stripMargin
     attempt {
       Using.resource(conn.prepareStatement(sql)) { ps =>
-        ps.setString(1, ConversationId.value(turn.conversationId))
-        ps.setLong(2, TurnSeq.value(turn.turnSeq))
+        SqlClearance.bind(ps, 1, Tx.clearance(tx))
+        ps.setString(SqlClearance.Params + 1, ConversationId.value(turn.conversationId))
+        ps.setLong(SqlClearance.Params + 2, TurnSeq.value(turn.turnSeq))
         Using.resource(ps.executeQuery()) { rs =>
           val rows = Vector.newBuilder[Entry]
           while (rs.next()) {

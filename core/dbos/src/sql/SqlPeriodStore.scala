@@ -121,22 +121,24 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
     } yield kept
 
   def open()(using tx: Tx^): Either[StoreError, Vector[OpenActivity]] =
-    activities("true")(_ => ())
+    activities(SqlClearance.conversation("c"))(_ => ())
 
   def activity(period: PeriodRef)(using tx: Tx^): Either[StoreError, Option[Activity]] =
     activities("p.conversation_id = ?::uuid AND p.seq = ?") { ps =>
-      ps.setString(1, ConversationId.value(period.conversationId))
-      ps.setLong(2, PeriodSeq.value(period.seq))
+      ps.setString(SqlClearance.Params + 1, ConversationId.value(period.conversationId))
+      ps.setLong(SqlClearance.Params + 2, PeriodSeq.value(period.seq))
     }.map(_.headOption.map(_.activity))
 
-  /** The open periods `where` picks (over `p`, the periods), as their deadlines see them, with
-    * their conversations' origins.
+  /** The open periods `where` picks (over `p`, the periods, and `c`, their conversations), as
+    * their deadlines see them, with their conversations' origins; `bind` sets `where`'s
+    * parameters, after the clearance's.
     */
   private def activities(where: String)(bind: PreparedStatement => Unit)(using
       tx: Tx^
   ): Either[StoreError, Vector[OpenActivity]] =
-    many(
-      s"""SELECT p.conversation_id, p.seq, a.newest, a.last, n.asked,
+    cleared(
+      s"""WITH ${SqlClearance.With}
+         |SELECT p.conversation_id, p.seq, a.newest, a.last, n.asked,
          |       v.at, v.last_turn, v.nobody, v.waiting_person, v.waiting_other,
          |       v.model, v.unanswered, c.origin::text AS origin
          |  FROM grit.periods p
@@ -244,13 +246,17 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
   def openElsewhere(conversation: ConversationId)(using
       tx: Tx^
   ): Either[StoreError, Vector[OpenPeriod]] =
-    many(
-      """SELECT p.conversation_id, p.first_turn, c.origin
-        |  FROM grit.periods p
-        |  JOIN grit.conversations c ON c.id = p.conversation_id
-        | WHERE p.closed_at IS NULL AND p.conversation_id <> ?::uuid
-        | ORDER BY p.opened_at, p.conversation_id""".stripMargin
-    )(_.setString(1, ConversationId.value(conversation))) { rs =>
+    cleared(
+      s"""WITH ${SqlClearance.With}
+         |SELECT p.conversation_id, p.first_turn, c.origin
+         |  FROM grit.periods p
+         |  JOIN grit.conversations c ON c.id = p.conversation_id
+         | WHERE p.closed_at IS NULL AND p.conversation_id <> ?::uuid
+         |   AND ${SqlClearance.conversation("c")}
+         | ORDER BY p.opened_at, p.conversation_id""".stripMargin
+    ) { ps =>
+      ps.setString(SqlClearance.Params + 1, ConversationId.value(conversation))
+    } { rs =>
       // The place is the origin's (Origin.place), the one definition grit.places is built from.
       OpenPeriod(
         ConversationId(rs.getString("conversation_id")),
@@ -265,18 +271,21 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
   def closedElsewhere(conversation: ConversationId)(using
       tx: Tx^
   ): Either[StoreError, Vector[ClosedElsewhere]] =
-    many(
-      s"""SELECT conversation_id, closing_id, origin FROM (
+    cleared(
+      s"""WITH ${SqlClearance.With}
+        |SELECT conversation_id, closing_id, origin FROM (
         |  SELECT DISTINCT ON (p.conversation_id) p.conversation_id, p.closing_id,
         |         p.close_ordinal, c.origin
         |    FROM grit.periods p
         |    JOIN grit.conversations c ON c.id = p.conversation_id
         |   WHERE p.closed_at IS NOT NULL AND p.reason NOT IN ($Unshown)
-        |     AND p.conversation_id <> ?::uuid
+        |     AND p.conversation_id <> ?::uuid AND ${SqlClearance.conversation("c")}
         |   ORDER BY p.conversation_id, p.seq DESC
         |) newest
         |ORDER BY close_ordinal""".stripMargin
-    )(_.setString(1, ConversationId.value(conversation))) { rs =>
+    ) { ps =>
+      ps.setString(SqlClearance.Params + 1, ConversationId.value(conversation))
+    } { rs =>
       // The place is the origin's (Origin.place), as in openElsewhere.
       ClosedElsewhere(
         ConversationId(rs.getString("conversation_id")),
@@ -291,16 +300,17 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
   def closedAfter(after: CloseOrdinal, n: Int)(using
       tx: Tx^
   ): Either[StoreError, Vector[ClosedPeriod]] =
-    many(
-      """SELECT p.conversation_id, p.seq, p.reason, p.confidence, p.closed_at, p.close_ordinal, c.origin, e.payload
-        |  FROM grit.periods p
-        |  JOIN grit.conversations c ON c.id = p.conversation_id
-        |  JOIN grit.entries e ON e.id = p.closing_id
-        | WHERE p.close_ordinal > ?
-        | ORDER BY p.close_ordinal LIMIT ?""".stripMargin
+    cleared(
+      s"""WITH ${SqlClearance.With}
+         |SELECT p.conversation_id, p.seq, p.reason, p.confidence, p.closed_at, p.close_ordinal, c.origin, e.payload
+         |  FROM grit.periods p
+         |  JOIN grit.conversations c ON c.id = p.conversation_id
+         |  JOIN grit.entries e ON e.id = p.closing_id
+         | WHERE p.close_ordinal > ? AND ${SqlClearance.entry("e")}
+         | ORDER BY p.close_ordinal LIMIT ?""".stripMargin
     ) { ps =>
-      ps.setLong(1, CloseOrdinal.value(after))
-      ps.setInt(2, n max 0)
+      ps.setLong(SqlClearance.Params + 1, CloseOrdinal.value(after))
+      ps.setInt(SqlClearance.Params + 2, n max 0)
     } { rs =>
       val closing = PayloadJson.read(ujson.read(rs.getString("payload"))) match {
         case Right(Payload.Closed(_, _, c)) => c
@@ -414,6 +424,19 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       tx: Tx^
   ): Either[StoreError, Option[A]] =
     many(sql)(bind)(read).map(_.headOption)
+
+  /** As [[many]], for a statement beginning `WITH ${SqlClearance.With}`: the clearance's
+    * parameters are set first, to the transaction's, then `bind`'s.
+    */
+  private def cleared[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[A]] = {
+    val clearance = Tx.clearance(tx)
+    many(sql) { ps =>
+      SqlClearance.bind(ps, 1, clearance)
+      bind(ps)
+    }(read)
+  }
 
   private def many[A](sql: String)(bind: PreparedStatement => Unit)(read: ResultSet => A)(using
       tx: Tx^
