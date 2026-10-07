@@ -217,8 +217,8 @@ enum DeploymentRefusal {
   case CompartmentUndeclared(by: Requirer, compartment: Compartment)
 
   /** The deployment's visibility may label a room above public, and `edge` posts beyond the
-    * turns it answers ([[ServedEdge.postsOut]]): nothing yet checks what such a post carries
-    * against where it goes.
+    * conversations it answers ([[ServedEdge.postsOut]]): nothing yet checks what such a post
+    * carries against where it goes.
     */
   case PostsBelow(edge: EdgeName)
 

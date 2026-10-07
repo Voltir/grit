@@ -56,7 +56,9 @@ private[slack] object Served {
     def name: EdgeName = Name
     def needs: Vector[Variable] = Needs
     def answersAsks: Boolean = false
-    def postsOut: Boolean = posts.nonEmpty
+    // A review prompt names a heard message's channel and permalink in the review's place,
+    // outside the message's thread.
+    def postsOut: Boolean = posts.nonEmpty || review.nonEmpty
     def open(
         stores: EdgeStores^,
         env: Map[String, String],

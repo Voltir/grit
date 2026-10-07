@@ -59,7 +59,9 @@ In dependency order:
   a draft's, why it was picked or what either gate decided, so the rater answers cold), adds the three reactions a verdict is given with, then keeps the prompt posted; a
   crash between the post and keeping it posts the prompt again. A reaction the rater adds to a
   prompt, or removes, is kept or withdrawn as its verdict (`grit.core.review.Reviews`);
-  anyone else's, and any other emoji, is ignored. `SlackEdge.backfill(channels, days)` is `grit backfill`'s
+  anyone else's, and any other emoji, is ignored. With `posts` or `review` the edge posts out
+  (`ServedEdge.postsOut`), which a deployment labelling rooms is refused beside.
+  `SlackEdge.backfill(channels, days)` is `grit backfill`'s
   (`CatchUp`), what each channel said over those days that grit has not recorded.
   ← `client`, `text`, `event`
 

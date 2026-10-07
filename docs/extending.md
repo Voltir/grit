@@ -109,7 +109,7 @@ Every other part of a deployment that names a compartment declares it, and `Depl
 refuses one the visibility does not declare: a plugin's `compartments`, an edge's
 `compartments`, and a declared schedule's `clearance`. While outbound posts are not checked
 against where they go, a deployment that labels any room above public is refused beside an
-edge that posts out (`ServedEdge.postsOut`, Slack's `slack_post`).
+edge that posts out (`ServedEdge.postsOut`: Slack's `slack_post`, or its review's prompts).
 
 A conversation takes its room's label when it is created and keeps it, whatever the
 deployment declares later; a job's run takes its schedule's. A database remembers the

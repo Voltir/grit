@@ -252,11 +252,15 @@ object ServedTests extends TestSuite {
       Served.serving(Set(C), None, None, new World().connect).answersAsks ==> false
     }
 
-    test("serving posts beyond the turns it answers exactly when it is given where it may post") {
+    test(
+      "serving posts beyond the turns it answers exactly when it is given where it may post or a review to prompt"
+    ) {
+      val review = SlackReview(ChannelId("C0REVIEW1"), UserId("U0NICK001"))
       (
         Served.serving(Set(C), Some(Posts(TwoAnHour, Skynet)), None, new World().connect).postsOut,
+        Served.serving(Set(C), None, Some(review), new World().connect).postsOut,
         Served.serving(Set(C), None, None, new World().connect).postsOut
-      ) ==> (true, false)
+      ) ==> (true, true, false)
     }
 
     test(
