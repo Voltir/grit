@@ -198,7 +198,8 @@ CREATE TABLE IF NOT EXISTS grit.engine_starts (
 -- local edge acts for. `handle` is a declared person's (grit.core.identity.Identities), NULL
 -- for every other. Other tables name a principal here, never by a free string.
 -- Retention: kept. One home per account in grit.identities, one per declared person, and local
--- and grit: about one row per account seen.
+-- and grit: about one row per account seen. A person is deleted only when a declaration merges
+-- them into a declared person, after every row naming them is moved there (SqlLinks).
 CREATE TABLE IF NOT EXISTS grit.principals (
     id     TEXT PRIMARY KEY,
     kind   TEXT NOT NULL CHECK (kind IN ('person', 'grit')),

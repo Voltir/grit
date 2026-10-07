@@ -237,7 +237,8 @@ object Main {
                     Turn.Epoch,
                     identity,
                     deployment.budget,
-                    deployment.visibility
+                    deployment.visibility,
+                    deployment.identities
                   ) match {
                     case Right(e) => e
                     case Left(refused) => sys.error(refused.message(java.time.Instant.now()))
@@ -298,7 +299,14 @@ object Main {
         finally host.close()
         None
       } else
-        Engine.open(config, Turn.Epoch, identity, deployment.budget, deployment.visibility) match {
+        Engine.open(
+          config,
+          Turn.Epoch,
+          identity,
+          deployment.budget,
+          deployment.visibility,
+          deployment.identities
+        ) match {
           case Left(Unopened.Lock(NotTaken.Held(_))) =>
             // Another grit runs the engine: its turns are sent to it, as a TUI's are.
             val link =

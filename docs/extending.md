@@ -146,6 +146,12 @@ trusted, so every account is a person of its own. Both parts are declared data:
   decide both. `Deployment.of` refuses a vouching by an edge it does not serve, and a
   group of the visibility naming a realm no edge is trusted to vouch for.
 
+Each engine start makes the stored people what `people` says. A declared account joins its
+person, and a person it leaves with no account is merged into them, with what they asked for,
+for good: an account dropped from the declaration later becomes a person of its own again,
+and what was merged stays with the declared person. A handle dropped is forgotten, and its
+accounts go back to being people of their own.
+
 **A plugin is parametric in labels.** A `Label` is opaque: a plugin compares labels
 (`dominates`, equality), combines them (`join`, `meet`) and passes one to core as a key, and
 never takes one apart. Opacity buys independence from how labels are stored, not secrecy: a

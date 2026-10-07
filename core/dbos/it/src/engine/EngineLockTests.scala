@@ -8,7 +8,7 @@ import scala.util.Using
 
 import grit.core.durable.Durable
 import grit.core.id.{SourceId, TurnRef, WorkflowId}
-import grit.core.identity.Account
+import grit.core.identity.{Account, Identities}
 import grit.core.inbox.Inbox
 import grit.core.message.Message
 import grit.core.store.{Origin, Tx}
@@ -51,7 +51,8 @@ object EngineLockTests extends TestSuite {
           "test",
           LiveEngine.Identity,
           LiveEngine.Uncapped,
-          Visibility.Shipped
+          Visibility.Shipped,
+          Identities.Shipped
         ) match {
           case Right(e) => e
           case Left(refused) => sys.error(refused.message(java.time.Instant.now()))

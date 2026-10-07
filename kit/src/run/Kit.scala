@@ -231,7 +231,8 @@ object Kit {
       Turn.Epoch,
       LocalMachine.identity(),
       deployment.budget,
-      deployment.visibility
+      deployment.visibility,
+      deployment.identities
     ) match {
       case Left(refused) => Left(KitFailure.Engine(refused.message(Instant.now())))
       case Right(engine) => Right(engine)

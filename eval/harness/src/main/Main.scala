@@ -15,6 +15,7 @@ import grit.core.clock.{Clock, Fresh}
 import grit.core.context.Width
 import grit.core.host.ProcessIdentity
 import grit.core.id.{QuestionName, ShadowName, TurnRef, WorkflowId}
+import grit.core.identity.Identities
 import grit.core.message.Tokens
 import grit.core.persona.Persona
 import grit.core.place.Service
@@ -781,7 +782,14 @@ object Main {
       f: Engine^ => Either[String, A]
   ): Either[String, A] =
     try {
-      Engine.open(config, "eval-synthetic", Builder, Uncapped, Visibility.Shipped) match {
+      Engine.open(
+        config,
+        "eval-synthetic",
+        Builder,
+        Uncapped,
+        Visibility.Shipped,
+        Identities.Shipped
+      ) match {
         case Left(refused) => Left(s"the engine could not open: ${refused.message(clock.now())}")
         case Right(engine) =>
           try f(engine)
