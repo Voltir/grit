@@ -31,6 +31,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{Bound, Gate, Kind, Reading, ShadowAnswers, Shadowed, Tags, TriageShadows}
+import grit.core.visibility.{Compartment, Compartments, Labelled, Labeller, TestLabels, Visibility}
 
 import utest.*
 
@@ -59,8 +60,14 @@ abstract class ReviewContract extends TestSuite {
 
   protected def transaction[A](body: (Tx^) ?=> A): A
 
-  /** The conversation of `origin`, created if new. */
-  protected def conversation(origin: Origin): ConversationId
+  /** As [[transaction]], labelling places as `visibility` does. */
+  protected def transactionUnder[A](visibility: Visibility)(body: (Tx^) ?=> A): A
+
+  /** The conversation of `origin`, created at `label` if new. */
+  protected def conversation(origin: Origin, label: grit.core.visibility.Label): ConversationId
+
+  private def conversation(origin: Origin): ConversationId =
+    conversation(origin, grit.core.visibility.Label.Public)
 
   private val At = Instant.parse("2026-10-02T10:00:00Z")
   private val room = Place.under(Namespace.Slack, Vector("T", "C"))
@@ -168,10 +175,56 @@ abstract class ReviewContract extends TestSuite {
 
   private def unposted(c: ConversationId): Vector[EntryId] = {
     val ids = mine(c).map(_.entry).toSet
-    transaction(right(reviews.unposted())).map(_.entry).filter(ids.contains)
+    transaction(right(reviews.unposted(room))).map(_.entry).filter(ids.contains)
+  }
+
+  /** Where [[posting]] maps the trial's review place, and the public one. */
+  private val trialPlace = Place.under(Namespace.Slack, Vector("T", "CTRIAL"))
+  private val publicPlace = Place.under(Namespace.Slack, Vector("T", "CPUBLIC"))
+
+  /** [[TestLabels.trial]] declared; [[trialPlace]] mapped at [[TestLabels.Trial]],
+    * [[publicPlace]] at public, every other place unmapped.
+    */
+  private val posting: Visibility = {
+    val rooms: Labeller[Place] = new Labeller[Place] {
+      def label(item: Place): Labelled =
+        if (item == trialPlace) Labelled.Mapped(TestLabels.Trial)
+        else if (item == publicPlace) Labelled.Mapped(grit.core.visibility.Label.Public)
+        else Labelled.Unmapped(grit.core.visibility.Label.Public)
+      def requires: Vector[Compartment] = Vector(TestLabels.trial)
+    }
+    (for {
+      compartments <- Compartments.of(Vector(TestLabels.trial)).left.map(_.toString)
+      v <- Visibility.of(compartments, rooms, Vector.empty, Vector.empty).left.map(_.toString)
+    } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
   }
 
   val tests = Tests {
+    test(
+      "a message is offered, as a candidate and as a prompt, only to a place written at a " +
+        "label dominating its conversation's; to an unmapped place, none"
+    ) {
+      val open = conversation(Origin.Task("contract", "review-to-public"))
+      val trial = conversation(Origin.Task("contract", "review-to-trial"), TestLabels.Trial)
+      val shadow = name("rv-to")
+      val Vector(a) = candidates(open, "rv-to-public", shadow, 1): @unchecked
+      val Vector(b) = candidates(trial, "rv-to-trial", shadow, 1): @unchecked
+      def offered(to: Place) =
+        transactionUnder(posting)(right(reviews.candidates(shadow, At, 10, to))).map(_.entry)
+      val asCandidates = Vector(publicPlace, trialPlace, room).map(offered)
+      transaction {
+        right(reviews.considered(a, Considered.Picked(Reason.Both), At))
+        right(reviews.considered(b, Considered.Picked(Reason.Both), At))
+      }
+      val ids = Set(a.entry, b.entry)
+      def prompted(to: Place) =
+        transactionUnder(posting)(right(reviews.unposted(to))).map(_.entry).filter(ids.contains)
+      (asCandidates, Vector(publicPlace, trialPlace, room).map(prompted)) ==> (
+        Vector(Vector(a.entry), Vector(a.entry, b.entry), Vector.empty),
+        Vector(Vector(a.entry), Vector(a.entry, b.entry), Vector.empty)
+      )
+    }
+
     test(
       "a candidate is heard since, answered by the shadow as a set, its live decision " +
         "settled; the earliest said first, at most limit"
@@ -213,7 +266,7 @@ abstract class ReviewContract extends TestSuite {
         Candidate(early, c, At.plusSeconds(10), passed, shadow, answers),
         Candidate(late, c, At.plusSeconds(20), below, shadow, answers)
       )
-      transaction((reviews.candidates(shadow, At, 10), reviews.candidates(shadow, At, 1))) ==>
+      transaction((reviews.candidates(shadow, At, 10, room), reviews.candidates(shadow, At, 1, room))) ==>
         (Right(all), Right(all.take(1)))
     }
 
@@ -233,7 +286,7 @@ abstract class ReviewContract extends TestSuite {
         transaction(reviews.considered(cand, considered, At.plusSeconds(100L - i)))
       } ==> Vector(Right(true), Right(true), Right(true))
       transaction(reviews.considered(a, Considered.Unread, At)) ==> Right(false)
-      transaction(reviews.candidates(shadow, At, 10)) ==> Right(Vector.empty)
+      transaction(reviews.candidates(shadow, At, 10, room)) ==> Right(Vector.empty)
       // Considered latest first, so the earliest considered is the last given.
       mine(c) ==> as.zipWithIndex.reverse.map { case ((cand, considered), i) =>
         Reviewed(cand.entry, c, shadow, At.plusSeconds(100L - i), considered, None)
@@ -274,7 +327,7 @@ abstract class ReviewContract extends TestSuite {
         right(reviews.considered(b, Considered.Picked(Reason.ShadowOnly), At.plusSeconds(1)))
         right(reviews.considered(d, Considered.Passed(Reason.Neither), At))
       }
-      val offered = transaction(right(reviews.unposted())).filter(_.origin == origin)
+      val offered = transaction(right(reviews.unposted(room))).filter(_.origin == origin)
       offered ==> Vector(
         Prompt(b.entry, origin, shadow, Reason.ShadowOnly, below, answers),
         Prompt(a.entry, origin, shadow, Reason.LiveOnly, below, answers)

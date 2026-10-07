@@ -14,7 +14,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{InMemoryTriageShadows, InMemoryTriageStore, TriageShadows}
-import grit.core.visibility.Label
+import grit.core.visibility.{Clearance, Label, Visibility}
 import grit.dbos.sql.TestTx
 
 /** The review contract, kept by the in-memory fake. */
@@ -35,7 +35,10 @@ object InMemoryReviewTests extends ReviewContract {
 
   protected def transaction[A](body: (Tx^) ?=> A): A = body(using TestTx.fake)
 
-  protected def conversation(origin: Origin): ConversationId =
-    transaction(kept.findOrCreate(origin, PrincipalId.Local, Label.Public))
+  protected def transactionUnder[A](visibility: Visibility)(body: (Tx^) ?=> A): A =
+    body(using TestTx.fake(Clearance.of(Label.Public), visibility))
+
+  protected def conversation(origin: Origin, label: Label): ConversationId =
+    transaction(kept.findOrCreate(origin, PrincipalId.Local, label))
       .fold(e => throw new java.lang.AssertionError(s"$e"), _.id)
 }

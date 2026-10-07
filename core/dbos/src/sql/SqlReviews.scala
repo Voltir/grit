@@ -20,8 +20,10 @@ import grit.core.review.{
   Verdict
 }
 import grit.core.speech.SpeechJson
+import grit.core.place.Place
 import grit.core.store.{StoreError, Tx}
 import grit.core.triage.{ShadowAnswers, ShadowedJson}
+import grit.core.visibility.Label as VisibilityLabel
 
 /** [[ReviewStore]] over `grit.reviews`, a ledger whose rows cascade from `grit.conversations`
   * alone, reading candidates and prompts from `grit.entries`, `grit.speech` and
@@ -31,24 +33,31 @@ final class SqlReviews extends ReviewStore {
   import SqlEntryStore.attempt
   import SqlReviews.*
 
-  def unposted()(using tx: Tx^): Either[StoreError, Vector[Prompt]] = {
+  def unposted(to: Place)(using tx: Tx^): Either[StoreError, Vector[Prompt]] =
+    Tx.writable(to).fold(Right(Vector.empty))(prompts)
+
+  /** Every picked prompt not yet posted whose conversation's label `at` dominates. */
+  private def prompts(at: VisibilityLabel)(using tx: Tx^): Either[StoreError, Vector[Prompt]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     attempt {
       Using.resource(
         conn.prepareStatement(
-          """SELECT r.entry_id, c.origin::text AS origin, r.shadow, r.reason, s.drafting,
+          s"""SELECT r.entry_id, c.origin::text AS origin, r.shadow, r.reason, s.drafting,
             |       s.silence::text AS silence, s.outcome::text AS outcome,
             |       t.answers::text AS answers
             |  FROM grit.reviews r
             |  JOIN grit.conversations c ON c.id = r.conversation_id
+            |  JOIN grit.labels cl ON cl.id = c.label_id
             |  JOIN grit.entries e ON e.id = r.entry_id
             |  JOIN grit.speech s ON s.conversation_id = e.conversation_id
             |                    AND s.turn_seq = e.turn_seq
             |  JOIN grit.triage_shadows t ON t.entry_id = r.entry_id AND t.name = r.shadow
             | WHERE r.picked_at IS NOT NULL AND r.address IS NULL AND t.failure IS NULL
+            |   AND grit.label_dominates(${SqlLabels.Arg}, ROW(cl.level, cl.compartments)::grit.label)
             | ORDER BY r.picked_at, r.entry_id""".stripMargin
         )
       ) { ps =>
+        SqlLabels.bind(ps, 1, at)
         Using.resource(ps.executeQuery()) { rs =>
           val rows = Vector.newBuilder[Either[String, Prompt]]
           while (rs.next())
@@ -133,7 +142,13 @@ final class SqlReviews extends ReviewStore {
     }
   }
 
-  def candidates(shadow: ShadowName, since: Instant, limit: Int)(using
+  def candidates(shadow: ShadowName, since: Instant, limit: Int, to: Place)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[Candidate]] =
+    Tx.writable(to).fold(Right(Vector.empty))(considerable(shadow, since, limit, _))
+
+  /** [[candidates]] whose conversation's label `at` dominates. */
+  private def considerable(shadow: ShadowName, since: Instant, limit: Int, at: VisibilityLabel)(using
       tx: Tx^
   ): Either[StoreError, Vector[Candidate]] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
@@ -142,24 +157,28 @@ final class SqlReviews extends ReviewStore {
       // wording's carry none.
       Using.resource(
         conn.prepareStatement(
-          """SELECT e.id, e.conversation_id, e.created_at, s.drafting,
+          s"""SELECT e.id, e.conversation_id, e.created_at, s.drafting,
             |       s.silence::text AS silence, s.outcome::text AS outcome,
             |       t.answers::text AS answers
             |  FROM grit.triage_shadows t
             |  JOIN grit.entries e ON e.id = t.entry_id
+            |  JOIN grit.conversations c ON c.id = e.conversation_id
+            |  JOIN grit.labels cl ON cl.id = c.label_id
             |  JOIN grit.speech s ON s.conversation_id = e.conversation_id
             |                    AND s.turn_seq = e.turn_seq
             | WHERE t.name = ? AND t.failure IS NULL AND (t.answers -> 0 ->> 'name') IS NOT NULL
             |   AND e.created_at >= ?
             |   AND (NOT s.drafting OR s.outcome IS NOT NULL)
             |   AND NOT EXISTS (SELECT 1 FROM grit.reviews r WHERE r.entry_id = e.id)
+            |   AND grit.label_dominates(${SqlLabels.Arg}, ROW(cl.level, cl.compartments)::grit.label)
             | ORDER BY e.created_at, e.id
             | LIMIT ?""".stripMargin
         )
       ) { ps =>
         ps.setString(1, ShadowName.value(shadow))
         ps.setObject(2, since.atOffset(ZoneOffset.UTC))
-        ps.setInt(3, limit)
+        SqlLabels.bind(ps, 3, at)
+        ps.setInt(5, limit)
         Using.resource(ps.executeQuery()) { rs =>
           val rows = Vector.newBuilder[Either[String, Candidate]]
           while (rs.next())

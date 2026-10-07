@@ -8,6 +8,7 @@ import grit.core.classify.Answer
 import grit.core.id.{ConversationId, EntryId, PrincipalId, QuestionName, ShadowName, TurnRef}
 import grit.core.inbox.InMemoryInbox
 import grit.core.speech.{Decision, InMemorySpeechStore}
+import grit.core.place.Place
 import grit.core.store.{ConversationStore, Entry, EntryStore, Payload, StoreError, Tx}
 import grit.core.triage.{
   InMemoryTriageShadows,
@@ -20,7 +21,7 @@ import grit.core.triage.{
 /** An in-memory [[ReviewStore]] for tests, keeping [[ReviewContract]], over the stores it is
   * given: a candidate is a heard message in `entries`, decided on in `speech`, answered in
   * `shadows`; a review is kept while `conversations` holds its conversation (the SQL row
-  * cascades from it). It ignores the `Tx`.
+  * cascades from it). Of the `Tx` it reads only where a place is written ([[Tx.writable]]).
   */
 final class InMemoryReviews(
     entries: EntryStore,
@@ -33,7 +34,7 @@ final class InMemoryReviews(
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[EntryId, Row]
 
-  def unposted()(using Tx^): Either[StoreError, Vector[Prompt]] =
+  def unposted(to: Place)(using Tx^): Either[StoreError, Vector[Prompt]] =
     kept.flatMap { all =>
       all
         .collect { case (entry, row @ Row(_, _, _, Considered.Picked(reason), None, _)) =>
@@ -49,7 +50,7 @@ final class InMemoryReviews(
               answers <- heard.fold(Right(None))(answersOf(_, row.shadow))
             } yield (for {
               h <- heard
-              c <- conversation
+              c <- conversation.filter(c => receives(to, c.label))
               live <- settled(h)
               a <- answers
             } yield Prompt(entry, c.origin, row.shadow, reason, live, a)).fold(done)(done :+ _)
@@ -89,7 +90,7 @@ final class InMemoryReviews(
       case _ => false
     }
 
-  def candidates(shadow: ShadowName, since: Instant, limit: Int)(using
+  def candidates(shadow: ShadowName, since: Instant, limit: Int, to: Place)(using
       Tx^
   ): Either[StoreError, Vector[Candidate]] =
     speech.decisions
@@ -99,9 +100,10 @@ final class InMemoryReviews(
             done <- acc
             first <- entries.ofTurn(heard.turn).map(_.minByOption(_.seq))
             answers <- first.fold(Right(None))(answersOf(_, shadow))
+            conversation <- conversations.get(heard.turn.conversationId)
           } yield (for {
             e <- first.filter(e => isHeard(e) && !e.createdAt.isBefore(since))
-            if !rows.contains(e.id)
+            if !rows.contains(e.id) && conversation.exists(c => receives(to, c.label))
             live <- settled(e)
             a <- answers
           } yield Candidate(e.id, e.conversationId, e.createdAt, live, shadow, a)).fold(done)(
@@ -128,6 +130,12 @@ final class InMemoryReviews(
         .sortBy((entry, r) => (r.at, EntryId.value(entry)))
         .map((entry, r) => Reviewed(entry, r.conversation, r.shadow, r.at, r.as, r.label))
     )
+
+  /** Whether `to` may receive what a conversation at `label` holds, as [[Reviews.unposted]]
+    * says.
+    */
+  private def receives(to: Place, label: grit.core.visibility.Label)(using Tx^): Boolean =
+    Tx.writable(to).exists(_.dominates(label))
 
   /** The rows whose conversation is still kept. */
   private def kept(using Tx^): Either[StoreError, Vector[(EntryId, Row)]] =

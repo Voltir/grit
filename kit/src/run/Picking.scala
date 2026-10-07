@@ -17,7 +17,8 @@ private[run] object Picking {
   val Candidates: Int = 200
 
   /** A round of `review` at `now`, in one transaction of `jot`: the messages said at or after
-    * `now` less `review`'s `within` that `reviews` offers as candidates, at most [[Candidates]],
+    * `now` less `review`'s `within` that `reviews` offers as candidates for `review`'s place,
+    * at most [[Candidates]],
     * each kept as considered as [[grit.core.review.Review.pick]] makes it with `review`'s gate,
     * the day's earlier picks being those since `now`'s midnight in `budget`'s zone. Returns how
     * many it picked, or the store's failure, keeping nothing; a message considered already is
@@ -34,7 +35,7 @@ private[run] object Picking {
     val since = now.minusNanos(reviewing.within.toNanos)
     jot.write(Subject.Public) {
       for {
-        found <- reviews.candidates(reviewing.shadow, since, Candidates)
+        found <- reviews.candidates(reviewing.shadow, since, Candidates, review.place)
         today <- reviews.reviewed(budget.today(now).from)
         earlier = today.collect { case Reviewed(_, _, _, _, Considered.Picked(r), _) => r }
         made = Review.pick(found, review.gate.drafts, earlier, reviewing)

@@ -433,7 +433,8 @@ final class SlackEdge(
       }
     }
 
-  /** One pass over the review's prompts not yet posted, when this edge answers a review: each
+  /** One pass over the review's prompts not yet posted that its place may receive
+    * ([[grit.core.review.Reviews.unposted]]), when this edge answers a review: each
     * whose message was heard in this workspace's Slack is posted at the top of the review's
     * place, linking the message by its permalink ([[ReviewPrompt.doc]]): never a message's text
     * or a draft's, nor why it was picked or what either gate decided; then given the three
@@ -448,7 +449,7 @@ final class SlackEdge(
     case None => Right(0)
     case Some(r) =>
       stores.jot
-        .write(Subject.Public)(stores.reviews.unposted())
+        .write(Subject.Public)(stores.reviews.unposted(r.place))
         .map(_.count { p =>
           p.origin match {
             case Origin.Slack(team, channel, _) if team == TeamId.value(self.team) =>

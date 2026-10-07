@@ -55,7 +55,13 @@ object ReviewingTests extends TestSuite {
     var reactionsWhenKept = Vector.empty[Set[(ChannelId, Ts, String)]]
     @caps.unsafe.untrackedCaptures
     var crash = false
-    def unposted()(using Tx^): Either[StoreError, Vector[Prompt]] = under.unposted()
+    /** Each place [[unposted]] was asked for, in order. */
+    @caps.unsafe.untrackedCaptures
+    var askedFor = Vector.empty[grit.core.place.Place]
+    def unposted(to: grit.core.place.Place)(using Tx^): Either[StoreError, Vector[Prompt]] = {
+      askedFor = askedFor :+ to
+      under.unposted(to)
+    }
     def posted(entry: EntryId, address: String, at: Instant)(using
         Tx^
     ): Either[StoreError, Boolean] = {
@@ -117,7 +123,7 @@ object ReviewingTests extends TestSuite {
       )
 
     def unposted: Vector[EntryId] =
-      picks.reviews.unposted()(using TestTx.fake).fold(e => sys.error(e.toString), _.map(_.entry))
+      picks.reviews.unposted(Review.place)(using TestTx.fake).fold(e => sys.error(e.toString), _.map(_.entry))
 
     /** The label standing on `entry`'s prompt. */
     def label(entry: EntryId): Option[Label] =
@@ -137,6 +143,13 @@ object ReviewingTests extends TestSuite {
   private val Said = "1515449522.000016"
 
   val tests = Tests {
+    test("a pass asks the store only for the prompts its review's place may receive") {
+      val w = new World
+      val _ = w.picked(Said)
+      val _ = w.edge.prompt()
+      w.watched.askedFor ==> Vector(Review.place)
+    }
+
     test(
       "a picked message heard in this workspace's Slack is prompted at the top of the place, its permalink linked, wearing the three reactions, then kept as posted"
     ) {

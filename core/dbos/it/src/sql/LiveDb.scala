@@ -8,7 +8,7 @@ import scala.util.Using
 import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef}
 import grit.core.message.Message
 import grit.core.store.{Conversation, Entry, Origin, Payload, StoreError, Tx}
-import grit.core.visibility.{Clearance, Label, TestLabels}
+import grit.core.visibility.{Clearance, Label, TestLabels, Visibility}
 
 /** Direct transactions on a live test database, for arranging rows and reading them back
   * outside the code under test.
@@ -34,6 +34,21 @@ object LiveDb {
         conn.setAutoCommit(false)
         try {
           val a = body(using Trialled.at(clearance, conn))
+          conn.commit()
+          a
+        } catch { case e: Throwable => conn.rollback(); throw e }
+    }
+
+  /** Runs `body` as [[transaction]] does, at maintenance's clearance, labelling places as
+    * `visibility` does.
+    */
+  def under[A](config: DbConfig, visibility: Visibility)(body: (Tx^) ?=> A): A =
+    Using.resource(DriverManager.getConnection(config.jdbcUrl, config.user, config.password)) {
+      conn =>
+        conn.setAutoCommit(false)
+        try {
+          val opener = new Opener(visibility)
+          val a = body(using opener.maintained(conn))
           conn.commit()
           a
         } catch { case e: Throwable => conn.rollback(); throw e }

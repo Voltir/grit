@@ -5,6 +5,7 @@ import grit.core.review.{ReviewContract, ReviewStore}
 import grit.core.speech.SpeechStore
 import grit.core.store.{ConversationStore, EntryStore, Origin, PeriodStore, Tx}
 import grit.core.triage.TriageShadows
+import grit.core.visibility.{Label, Visibility}
 import grit.dbos.sql.{
   LiveDb,
   SqlConversationStore,
@@ -37,6 +38,9 @@ object SqlReviewsTests extends ReviewContract {
 
   protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
 
-  protected def conversation(origin: Origin): ConversationId =
-    LiveDb.conversation(config, origin).id
+  protected def transactionUnder[A](visibility: Visibility)(body: (Tx^) ?=> A): A =
+    LiveDb.under(config, visibility)(body)
+
+  protected def conversation(origin: Origin, label: Label): ConversationId =
+    LiveDb.conversation(config, origin, label).id
 }

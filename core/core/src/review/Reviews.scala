@@ -6,6 +6,7 @@ import scala.collection.immutable.VectorMap
 
 import grit.core.classify.Answer
 import grit.core.id.{ConversationId, EntryId, PrincipalId, QuestionName, ShadowName}
+import grit.core.place.Place
 import grit.core.store.{Origin, StoreError, Tx}
 
 /** What a person said, by reaction, of grit's speech decision on a heard message. */
@@ -61,10 +62,11 @@ final case class Reviewed(
   */
 trait Reviews {
 
-  /** Every picked prompt not yet posted, the earliest picked first (ties by entry id); one
-    * whose heard message is gone is not offered.
+  /** Every picked prompt not yet posted whose message `to` may receive: `to` is writable
+    * ([[Tx.writable]]) at a label dominating its conversation's; none when `to` is not writable.
+    * The earliest picked first (ties by entry id); one whose heard message is gone is not offered.
     */
-  def unposted()(using Tx^): Either[StoreError, Vector[Prompt]]
+  def unposted(to: Place)(using Tx^): Either[StoreError, Vector[Prompt]]
 
   /** Keeps that `entry`'s prompt was posted at `address`, its edge's own address form (as
     * [[grit.core.speech.Reach.replyTo]]), `at`; `false`, writing nothing, when it is posted
@@ -93,10 +95,10 @@ trait Reviews {
 trait ReviewStore extends Reviews {
 
   /** Up to `limit` heard messages said at or after `since` that `shadow` answered as a set,
-    * whose live decision is settled and that no review has considered; the earliest said first
-    * (ties by entry id).
+    * whose live decision is settled, that no review has considered, and that `to` may receive
+    * (as [[Reviews.unposted]]); the earliest said first (ties by entry id).
     */
-  def candidates(shadow: ShadowName, since: Instant, limit: Int)(using
+  def candidates(shadow: ShadowName, since: Instant, limit: Int, to: Place)(using
       Tx^
   ): Either[StoreError, Vector[Candidate]]
 
