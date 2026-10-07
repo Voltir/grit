@@ -20,7 +20,7 @@ trait Tools {
   * run together), and answered; one another edge claimed first is skipped. Orphans in the
   * registered places are settled on every pass ([[Desk.orphans]]), and those that rerun are
   * run. `said` hears what an operator would want to know: an answer that came too late, a
-  * request refused.
+  * request refused, each named by its slot, never by its arguments or its answer.
   */
 final class Server(desk: Desk^, tools: Tools^, runner: (() => Unit) => Unit, said: String => Unit)
     extends AutoCloseable {

@@ -54,6 +54,13 @@ object ServerTests extends TestSuite {
 
   private def quiet(said: String): Unit = ()
 
+  /** What a server said, in order. */
+  private final class Said {
+    @caps.unsafe.untrackedCaptures
+    var lines = Vector.empty[String]
+    def hear(line: String): Unit = lines = lines :+ line
+  }
+
   val tests = Tests {
     test("an open request in a registered place is claimed, run over its directory, and answered") {
       val edges = new InMemoryEdges
@@ -87,6 +94,46 @@ object ServerTests extends TestSuite {
       val tools = new Counting
       new Server(desk, tools, inline, quiet).pass() ==> 0
       (claims.runs, tools.runs) ==> (Vector(), Vector())
+    }
+
+    test("a refused request is said by its slot and why, never its arguments") {
+      val lost = request(0, web).copy(arguments = ujson.Obj("text" -> "the secret plan"))
+      val desk = new Desk {
+        val registration = Registration(EdgeId("e"), PrincipalId.Local, Set(api))
+        def await(within: FiniteDuration): Boolean = false
+        def open(): Either[DeskError, Vector[ToolRequest]] = Right(Vector(lost))
+        def claim(q: ToolRequest): Either[DeskError, Boolean] = Right(true)
+        def answer(slot: CallSlot, outcome: Outcome): Either[DeskError, Boolean] = Right(true)
+        def orphans(): Either[DeskError, Vector[ToolRequest]] = Right(Vector.empty)
+        def advertise(
+            place: Place,
+            tools: ToolSet,
+            instructions: Vector[Fragment]
+        ): Either[DeskError, Unit] = Right(())
+      }
+      val said = new Said
+      new Server(desk, new Counting, inline, said.hear).pass() ==> 0
+      said.lines ==> Vector(s"refused tool:c:0:0:0: NotHosted($web)")
+    }
+
+    test("a request whose run fails, or throws, is answered so and nothing is said of it") {
+      val edges = new InMemoryEdges
+      val secret = ujson.Obj("text" -> "the secret plan")
+      val failed = request(0, api).copy(arguments = secret)
+      val thrown = request(1, api).copy(arguments = secret)
+      edges.dispatch(Vector(failed, thrown))(using TestTx.fake)
+      val tools = new Tools {
+        def run(route: Route, q: ToolRequest): Outcome =
+          if (q.slot == failed.slot) Outcome.Failed(s"bad arguments: ${q.arguments}")
+          else throw new IllegalStateException(s"bad arguments: ${q.arguments}")
+      }
+      val said = new Said
+      new Server(edges.desk(Set(api)), tools, inline, said.hear).pass() ==> 2
+      edges.answers.map(_._2) ==> Vector(
+        Outcome.Failed("bad arguments: {\"text\":\"the secret plan\"}"),
+        Outcome.Failed("The edge failed running it: bad arguments: {\"text\":\"the secret plan\"}")
+      )
+      said.lines ==> Vector()
     }
 
     test("a request another edge claimed first is not run here") {
