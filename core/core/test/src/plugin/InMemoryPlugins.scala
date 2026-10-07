@@ -5,11 +5,13 @@ import java.time.Instant
 import grit.core.id.PluginName
 import grit.core.period.CloseOrdinal
 import grit.core.retention.Target
+import grit.core.place.Place
 import grit.core.store.{ClosedPeriod, InMemoryTombstones, StoreError, Tombstones, Tx}
+import grit.core.visibility.{Item, Label}
 
 /** In-memory [[PluginDocs]], [[CacheDocs]] and [[PluginCursors]] for tests, keeping
-  * [[PluginContract]], marking restarts in `tombstones`. They ignore the `Tx`: nothing is
-  * rolled back.
+  * [[PluginContract]], marking restarts in `tombstones`. They floor, place and filter documents
+  * by the `Tx`'s clearance, and otherwise ignore it: nothing is rolled back.
   */
 final class InMemoryPlugins(tombstones: Tombstones = new InMemoryTombstones) {
   import InMemoryPlugins.{Cursor, Doc}
@@ -26,12 +28,16 @@ final class InMemoryPlugins(tombstones: Tombstones = new InMemoryTombstones) {
 
   /** `plugin`'s documents as posted from the closed period `source`. */
   def cache(plugin: PluginName, source: CloseOrdinal): CacheDocs = new CacheDocs {
-    def put(key: String, doc: ujson.Value)(using Tx^): Either[StoreError, Unit] =
+    def put(key: String, doc: ujson.Value)(using tx: Tx^): Either[StoreError, Unit] =
       generation(plugin) match {
         // As the SQL store's insert fails: its generation, read from the cursor, is null.
         case None => Left(StoreError.DatabaseError(s"no cursor for ${PluginName.value(plugin)}"))
         case Some(g) =>
-          stored = stored.updated((plugin, g, key), Doc(doc, source))
+          val clearance = Tx.clearance(tx)
+          stored = stored.updated(
+            (plugin, g, key),
+            Doc(doc, source, clearance.floor, clearance.own.map(_.room))
+          )
           Right(())
       }
   }
@@ -43,9 +49,12 @@ final class InMemoryPlugins(tombstones: Tombstones = new InMemoryTombstones) {
   val posting: (PluginName, ClosedPeriod) -> CacheDocs = (p, closed) => cache(p, closed.order)
 
   def docs(plugin: PluginName): PluginDocs = new PluginDocs {
-    private def current: Vector[(String, ujson.Value)] =
+    private def current(using tx: Tx^): Vector[(String, ujson.Value)] =
       stored.toVector.collect {
-        case ((p, g, k), d) if p == plugin && generation(plugin).contains(g) => k -> d.doc
+        case ((p, g, k), d)
+            if p == plugin && generation(plugin).contains(g) &&
+              Tx.clearance(tx).reads(Item.Kept(d.room), d.label) =>
+          k -> d.doc
       }
     def get(key: String)(using Tx^): Either[StoreError, Option[ujson.Value]] =
       Right(current.find(_._1 == key).map(_._2))
@@ -98,6 +107,11 @@ final class InMemoryPlugins(tombstones: Tombstones = new InMemoryTombstones) {
 }
 
 object InMemoryPlugins {
-  private final case class Doc(doc: ujson.Value, source: CloseOrdinal)
+  private final case class Doc(
+      doc: ujson.Value,
+      source: CloseOrdinal,
+      label: Label,
+      room: Option[Place]
+  )
   private final case class Cursor(version: Int, at: CloseOrdinal, generation: Long)
 }

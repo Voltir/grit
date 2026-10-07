@@ -38,7 +38,7 @@ final class SqlDocumentSearch extends DocumentSearch {
            |SELECT plugin, array_to_json(place)::text AS place FROM (
            |  SELECT DISTINCT plugin, place FROM grit.documents d
            |   WHERE plugin IN (SELECT jsonb_array_elements_text(?::jsonb))
-           |     AND body IS NOT NULL AND $CurrentAt AND ${SqlClearance.document("d")}
+           |     AND body IS NOT NULL AND $CurrentAt AND ${SqlClearance.kept("d")}
            |) shelved""".stripMargin
       ) { ps =>
         ps.setString(SqlClearance.Params + 1, strings(plugins.map(PluginName.value)))
@@ -77,7 +77,7 @@ final class SqlDocumentSearch extends DocumentSearch {
         s"""WITH ${SqlClearance.With}
            |SELECT $Columns FROM $Labelled d
            | WHERE version IN (SELECT v::bigint FROM jsonb_array_elements_text(?::jsonb) AS e(v))
-           |   AND body IS NOT NULL AND ${SqlClearance.document("d")}""".stripMargin
+           |   AND body IS NOT NULL AND ${SqlClearance.kept("d")}""".stripMargin
       )(_.setString(SqlClearance.Params + 1, numbers(versions)))(document).map { found =>
         val byVersion = found.map(d => d.version -> d).toMap
         versions.flatMap(byVersion.get)

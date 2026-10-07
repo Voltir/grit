@@ -156,8 +156,8 @@ final class SqlConversationStore extends ConversationStore {
 
   def remove(conversation: ConversationId)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
-    // Entries, periods and their verdicts go by cascade. A room a document was kept in stays
-    // with the document. A place or room another conversation took meanwhile is kept: the foreign key refuses its delete, and the caller tries again.
+    // Entries, periods and their verdicts go by cascade. A room a document or a plugin's
+    // document was kept in stays with it. A place or room another conversation took meanwhile is kept: the foreign key refuses its delete, and the caller tries again.
     attempt {
       Using.resource(
         conn.prepareStatement(
@@ -168,7 +168,8 @@ final class SqlConversationStore extends ConversationStore {
             |   AND NOT EXISTS (SELECT 1 FROM grit.conversations c
             |                    WHERE (c.place_id = p.id OR c.room_id = p.id)
             |                      AND c.id <> ?::uuid)
-            |   AND NOT EXISTS (SELECT 1 FROM grit.documents d WHERE d.room_id = p.id)""".stripMargin
+            |   AND NOT EXISTS (SELECT 1 FROM grit.documents d WHERE d.room_id = p.id)
+            |   AND NOT EXISTS (SELECT 1 FROM grit.plugin_docs d WHERE d.room_id = p.id)""".stripMargin
         )
       ) { ps =>
         ps.setString(1, ConversationId.value(conversation))

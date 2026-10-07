@@ -152,7 +152,7 @@ $$;
 -- (Origin.place), and never changes; so is a conversation's room (Origin.room). Which place is
 -- within which is Place.within's alone: nothing here tests it.
 -- Retention: ledger: deleted when no conversation names it by place_id or room_id, and no
--- document by room_id (Target.Quiet).
+-- document or plugin's document by room_id (Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.places (
     id   UUID PRIMARY KEY DEFAULT uuidv7(),
     path TEXT[] NOT NULL UNIQUE
@@ -754,6 +754,8 @@ CREATE TABLE IF NOT EXISTS grit.voice (
 -- closed periods, and reaches only its own rows. Each is of the generation of the plugin's
 -- cursor it was written under, and is read only while that is the cursor's; `source` is the
 -- close ordinal of the period it was posted from, and it is deleted with that closing.
+-- `label_id` is the label it is kept at, its posting's floor (ADR 0030); `room_id` the room it
+-- was kept in, its posting's own (grit.core.visibility.Item.Kept), NULL for none.
 -- Retention: cache: with the closing each was posted from, or the generation it was written in
 -- (Target.Superseded, Target.Quiet, Target.Restarted, Target.Disabled).
 CREATE TABLE IF NOT EXISTS grit.plugin_docs (
@@ -763,6 +765,7 @@ CREATE TABLE IF NOT EXISTS grit.plugin_docs (
     doc        JSONB NOT NULL,
     source     BIGINT NOT NULL,
     label_id   SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.labels(id),
+    room_id    UUID REFERENCES grit.places(id),
     PRIMARY KEY (plugin, generation, key)
 );
 

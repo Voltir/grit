@@ -205,8 +205,13 @@ object PostingTests extends TestSuite {
         .getOrElse(Vector.empty)
         .reverse
         .map(d => DocKey.value(d.key) -> DocText.value(d.text))
+    /** `p`'s cache documents, oldest key first, read at every label the world keeps them at. */
     def docs(p: Plugin): Vector[(String, ujson.Value)] =
-      plugins.docs(p.name).newest("", 1000)(using TestTx.fake).getOrElse(Vector.empty).reverse
+      plugins
+        .docs(p.name)
+        .newest("", 1000)(using TestTx.fake(Clearance.of(TestLabels.Trialled.compartments.top)))
+        .getOrElse(Vector.empty)
+        .reverse
   }
 
   val tests = Tests {

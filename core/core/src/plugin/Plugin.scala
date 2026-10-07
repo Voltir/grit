@@ -83,19 +83,27 @@ trait Documents extends caps.Pure {
   */
 trait CacheDocs {
 
-  /** Keeps `doc` under `key`, replacing any there, as the period's; a `DatabaseError` when the
-    * plugin's cursor was never started.
+  /** Keeps `doc` under `key`, replacing any there, as the period's, at its transaction's floor
+    * ([[grit.core.visibility.Clearance.floor]]: under posting, the period's conversation's label)
+    * and in its own room, or in none: never a label or room the plugin names. A
+    * `DatabaseError` when the plugin's cursor was never started.
     */
   def put(key: String, doc: ujson.Value)(using Tx^): Either[StoreError, Unit]
 }
 
-/** One plugin's documents as its surfaces read them. No other plugin's are reachable. */
+/** One plugin's documents as its surfaces read them, only those its transaction reads (as
+  * [[grit.core.document.DocumentShelf]] reads documents). No other plugin's are reachable.
+  */
 trait PluginDocs {
 
-  /** The document under `key`, or `None`. */
+  /** The document under `key`, or `None` when there is none or its transaction does not read
+    * it.
+    */
   def get(key: String)(using Tx^): Either[StoreError, Option[ujson.Value]]
 
-  /** Its documents whose keys start with `prefix`, greatest key first, at most `n`. */
+  /** Its documents whose keys start with `prefix` that its transaction reads, greatest key
+    * first, at most `n`.
+    */
   def newest(prefix: String, n: Int)(using Tx^): Either[StoreError, Vector[(String, ujson.Value)]]
 }
 

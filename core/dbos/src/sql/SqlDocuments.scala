@@ -126,7 +126,7 @@ final class SqlDocuments(tombstones: Tombstones) extends DocumentStore {
     } yield ()
 }
 
-private object SqlDocuments {
+private[sql] object SqlDocuments {
 
   /** `grit.documents` with each version's label's columns ([[SqlLabels.columns]]), for a read
     * to select [[Columns]] from.
@@ -160,7 +160,7 @@ private object SqlDocuments {
        |SELECT $Columns, s FROM (
        |  SELECT d.*, d.body <@> to_bm25query(?, 'grit.idx_documents_bm25') AS s
        |    FROM $Labelled d
-       |   WHERE ${SqlClearance.document(
+       |   WHERE ${SqlClearance.kept(
         "d"
       )} AND EXISTS (SELECT 1 FROM jsonb_to_recordset(?::jsonb) AS r(p text, place jsonb)
        |                  WHERE d.plugin = r.p
@@ -275,7 +275,7 @@ private object SqlDocuments {
         s"""WITH ${SqlClearance.With}
            |SELECT $Columns FROM $Labelled d
            | WHERE plugin = ? AND key = ? AND label_id = $LabelId
-           |   AND superseded_at IS NULL AND body IS NOT NULL AND ${SqlClearance.document(
+           |   AND superseded_at IS NULL AND body IS NOT NULL AND ${SqlClearance.kept(
             "d"
           )}""".stripMargin
       ) { ps =>
@@ -291,7 +291,7 @@ private object SqlDocuments {
           s"""WITH ${SqlClearance.With}
              |SELECT $Columns FROM $Labelled d
              | WHERE plugin = ? AND superseded_at IS NULL AND body IS NOT NULL
-             |   AND ${SqlClearance.document("d")}
+             |   AND ${SqlClearance.kept("d")}
              | ORDER BY written_at DESC, version DESC LIMIT ?""".stripMargin
         ) { ps =>
           ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))

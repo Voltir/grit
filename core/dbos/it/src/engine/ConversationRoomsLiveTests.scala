@@ -173,6 +173,18 @@ object ConversationRoomsLiveTests extends TestSuite {
       (place("slack/T/kept"), place("slack/T/kept/1.0")) ==> (Vector("1"), Vector("0"))
     }
 
+    test("a room a plugin's document was kept in stays when its last conversation goes") {
+      val store = new SqlConversationStore()
+      val c = LiveDb.conversation(config, Origin.Slack("T", "cached", "1.0")).id
+      rows(
+        """INSERT INTO grit.plugin_docs (plugin, generation, key, doc, source, room_id)
+          |SELECT 'digest', 1, 'room:cached', '{}', 1, id
+          |  FROM grit.places WHERE path = '{slack,T,cached}' RETURNING key""".stripMargin
+      ).size ==> 1
+      LiveDb.transaction(config)(store.remove(c)) ==> Right(())
+      (place("slack/T/cached"), place("slack/T/cached/1.0")) ==> (Vector("1"), Vector("0"))
+    }
+
     test("a key has one current document per label, and only one at each") {
       def write(label: String): Either[String, Int] =
         try

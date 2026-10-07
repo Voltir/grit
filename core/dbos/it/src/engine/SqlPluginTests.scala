@@ -5,7 +5,8 @@ import scala.util.Using
 import grit.core.id.PluginName
 import grit.core.period.CloseOrdinal
 import grit.core.plugin.{CacheDocs, PluginContract, PluginCursors, PluginDocs}
-import grit.core.store.{Tombstones, Tx}
+import grit.core.store.{Origin, Tombstones, Tx}
+import grit.core.visibility.Clearance
 import grit.dbos.sql.{
   LiveDb,
   SqlCacheDocs,
@@ -48,5 +49,10 @@ object SqlPluginTests extends PluginContract {
       }
     }
 
-  protected def transaction[A](body: (Tx^) ?=> A): A = LiveDb.transaction(config)(body)
+  protected def opened[A](clearance: Clearance)(body: (Tx^) ?=> A): A =
+    LiveDb.transaction(config, clearance)(body)
+
+  protected def room(origin: Origin): Unit = {
+    val _ = LiveDb.conversation(config, origin)
+  }
 }

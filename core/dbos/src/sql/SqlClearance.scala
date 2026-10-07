@@ -64,17 +64,11 @@ private[sql] object SqlClearance {
        |  OR ($c.label_id = ANY ((SELECT own FROM clearance)::smallint[])
        |      AND $c.room_id = (SELECT room FROM clearance)))""".stripMargin
 
-  /** Whether the transaction reads the `grit.documents` row aliased `d`
-    * ([[grit.core.visibility.Item.Kept]] in its `room_id`).
+  /** Whether the transaction reads the `grit.documents` or `grit.plugin_docs` row aliased `d`
+    * ([[grit.core.visibility.Item.Kept]] in its `room_id`, NULL for none).
     */
-  def document(d: String): String =
+  def kept(d: String): String =
     s"""($d.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[])
        |  OR ($d.label_id = ANY ((SELECT own FROM clearance)::smallint[])
        |      AND $d.room_id = (SELECT room FROM clearance)))""".stripMargin
-
-  /** Whether the transaction reads the `grit.plugin_docs` row aliased `p`: kept in no room, so
-    * through `everywhere` alone.
-    */
-  def cache(p: String): String =
-    s"($p.label_id = ANY ((SELECT everywhere FROM clearance)::smallint[]))"
 }

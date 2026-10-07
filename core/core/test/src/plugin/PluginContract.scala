@@ -5,7 +5,8 @@ import java.time.Instant
 import grit.core.id.PluginName
 import grit.core.period.CloseOrdinal
 import grit.core.retention.{Target, Tombstone}
-import grit.core.store.{StoreError, Tombstones, Tx}
+import grit.core.store.{Origin, StoreError, Tombstones, Tx}
+import grit.core.visibility.{Clearance, Label, TestLabels}
 
 import utest.*
 
@@ -32,8 +33,16 @@ abstract class PluginContract extends TestSuite {
     */
   protected def docRows(plugin: PluginName): Int
 
-  /** Runs `body` in one transaction, committed when it returns. */
-  protected def transaction[A](body: (Tx^) ?=> A): A
+  /** Runs `body` in one transaction opened at `clearance`, committed when it returns. */
+  protected def opened[A](clearance: Clearance)(body: (Tx^) ?=> A): A
+
+  /** Makes `origin`'s room one the store knows, as its first conversation does. */
+  protected def room(origin: Origin): Unit
+
+  /** Runs `body` in one transaction opened publicly, committed when it returns: what every
+    * case but the labelled ones writes and reads at.
+    */
+  protected final def transaction[A](body: (Tx^) ?=> A): A = opened(Clearance.of(Label.Public))(body)
 
   private def name(s: String): PluginName =
     PluginName.of(s).getOrElse(throw new java.lang.AssertionError(s))
@@ -149,6 +158,35 @@ abstract class PluginContract extends TestSuite {
       transaction(cursors.start(p, 1, At)) ==> Right(CloseOrdinal.Start)
       transaction(docs(p).get("k")) ==> Right(None)
       transaction(docs(other).get("k")) ==> Right(Some(ujson.Str("kept")))
+    }
+
+    test(
+      "a document is kept at its posting's floor, in its room: an uncleared asker there reads it, a reader elsewhere none"
+    ) {
+      val p = name("docs-floored")
+      val (here, there) = (Origin.Slack("T1", "P1", "1.0"), Origin.Slack("T1", "P2", "1.0"))
+      room(here)
+      room(there)
+      transaction(cursors.start(p, 1, At))
+      opened(Clearance.inRoom(here.room, TestLabels.Trial, TestLabels.Trial))(
+        cache(p, ordinal(1021)).put("room", ujson.Str("in the room"))
+      ) ==> Right(())
+      opened(Clearance.of(TestLabels.Trial))(cache(p, ordinal(1022)).put("none", ujson.Str("in none")))
+      def seen(clearance: Clearance) = opened(clearance)(
+        (
+          Vector("room", "none").map(k => docs(p).get(k).map(_.nonEmpty)),
+          docs(p).newest("", 10).map(_.map(_._1))
+        )
+      )
+      (
+        seen(Clearance.inRoom(here.room, TestLabels.Trial, Label.Public)),
+        seen(Clearance.inRoom(there.room, TestLabels.Trial, Label.Public)),
+        seen(Clearance.of(TestLabels.Trial))
+      ) ==> (
+        (Vector(Right(true), Right(false)), Right(Vector("room"))),
+        (Vector(Right(false), Right(false)), Right(Vector())),
+        (Vector(Right(true), Right(true)), Right(Vector("room", "none")))
+      )
     }
   }
 }

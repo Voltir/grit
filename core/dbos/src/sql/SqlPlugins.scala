@@ -12,33 +12,38 @@ import grit.core.retention.Target
 import grit.core.store.{StoreError, Tombstones, Tx}
 
 /** [[PluginDocs]] over `plugin`'s rows of `grit.plugin_docs` of its cursor's generation, and
-  * no other plugin's. Keys order bytewise (`COLLATE "C"`), as the in-memory fake orders them.
+  * no other plugin's, filtered by [[SqlClearance.kept]]. Keys order bytewise (`COLLATE "C"`),
+  * as the in-memory fake orders them.
   */
 final class SqlPluginDocs(plugin: PluginName) extends PluginDocs {
   import SqlPlugins.*
 
   def get(key: String)(using tx: Tx^): Either[StoreError, Option[ujson.Value]] =
-    query(
-      s"""SELECT key, doc FROM grit.plugin_docs
-         | WHERE plugin = ? AND generation = $Generation AND key = ?""".stripMargin
+    cleared(
+      s"""WITH ${SqlClearance.With}
+         |SELECT key, doc FROM grit.plugin_docs d
+         | WHERE plugin = ? AND generation = $Generation AND key = ?
+         |   AND ${SqlClearance.kept("d")}""".stripMargin
     ) { ps =>
-      ps.setString(1, PluginName.value(plugin))
-      ps.setString(2, PluginName.value(plugin))
-      ps.setString(3, key)
+      ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+      ps.setString(SqlClearance.Params + 2, PluginName.value(plugin))
+      ps.setString(SqlClearance.Params + 3, key)
     }.map(_.headOption.map(_._2))
 
   def newest(prefix: String, n: Int)(using
       tx: Tx^
   ): Either[StoreError, Vector[(String, ujson.Value)]] =
-    query(
-      s"""SELECT key, doc FROM grit.plugin_docs
+    cleared(
+      s"""WITH ${SqlClearance.With}
+         |SELECT key, doc FROM grit.plugin_docs d
          | WHERE plugin = ? AND generation = $Generation AND starts_with(key, ?)
+         |   AND ${SqlClearance.kept("d")}
          | ORDER BY key COLLATE "C" DESC LIMIT ?""".stripMargin
     ) { ps =>
-      ps.setString(1, PluginName.value(plugin))
-      ps.setString(2, PluginName.value(plugin))
-      ps.setString(3, prefix)
-      ps.setInt(4, n max 0)
+      ps.setString(SqlClearance.Params + 1, PluginName.value(plugin))
+      ps.setString(SqlClearance.Params + 2, PluginName.value(plugin))
+      ps.setString(SqlClearance.Params + 3, prefix)
+      ps.setInt(SqlClearance.Params + 4, n max 0)
     }
 }
 
@@ -48,19 +53,26 @@ final class SqlPluginDocs(plugin: PluginName) extends PluginDocs {
 final class SqlCacheDocs(plugin: PluginName, source: CloseOrdinal) extends CacheDocs {
   import SqlPlugins.*
 
-  def put(key: String, doc: ujson.Value)(using tx: Tx^): Either[StoreError, Unit] =
+  def put(key: String, doc: ujson.Value)(using tx: Tx^): Either[StoreError, Unit] = {
+    // Kept at the transaction's floor, in its own room: never a label or room a plugin names.
+    val clearance = Tx.clearance(tx)
+    val room = clearance.own.toVector.flatMap(_.room.segments).map(ujson.Str(_))
     update(
-      s"""INSERT INTO grit.plugin_docs (plugin, generation, key, doc, source)
-         |VALUES (?, $Generation, ?, ?::jsonb, ?)
+      s"""INSERT INTO grit.plugin_docs (plugin, generation, key, doc, source, label_id, room_id)
+         |VALUES (?, $Generation, ?, ?::jsonb, ?, ${SqlLabels.Interned}, ${SqlDocuments.RoomId})
          |ON CONFLICT (plugin, generation, key)
-         |  DO UPDATE SET doc = EXCLUDED.doc, source = EXCLUDED.source""".stripMargin
+         |  DO UPDATE SET doc = EXCLUDED.doc, source = EXCLUDED.source,
+         |                label_id = EXCLUDED.label_id, room_id = EXCLUDED.room_id""".stripMargin
     ) { ps =>
       ps.setString(1, PluginName.value(plugin))
       ps.setString(2, PluginName.value(plugin))
       ps.setString(3, key)
       ps.setString(4, doc.render())
       ps.setLong(5, CloseOrdinal.value(source))
+      SqlLabels.bind(ps, 6, clearance.floor)
+      ps.setString(8, ujson.Arr.from(room).render())
     }.map(_ => ())
+  }
 }
 
 /** [[PluginCursors]] over `grit.plugin_cursors` and `grit.plugin_docs`, marking restarts in
@@ -187,6 +199,19 @@ private object SqlPlugins {
         bind(ps)
         ps.executeUpdate()
       }
+    }
+  }
+
+  /** As [[query]], for a statement beginning `WITH ${SqlClearance.With}`: the clearance's
+    * parameters are set first, to the transaction's, then `bind`'s.
+    */
+  def cleared(sql: String)(bind: PreparedStatement => Unit)(using
+      tx: Tx^
+  ): Either[StoreError, Vector[(String, ujson.Value)]] = {
+    val clearance = Tx.clearance(tx)
+    query(sql) { ps =>
+      SqlClearance.bind(ps, 1, clearance)
+      bind(ps)
     }
   }
 
