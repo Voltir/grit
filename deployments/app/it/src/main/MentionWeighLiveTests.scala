@@ -6,9 +6,9 @@ import grit.core.place.{Place, Reaches, Service}
 import grit.core.recipe.{Offering, Shaping, TurnRecipe}
 import grit.core.store.StoreError
 import grit.core.triage.{Corpora, Corpus}
-import grit.core.visibility.{Subject, Visibility}
-import grit.dbos.engine.{Engine, LiveEngine, Reader}
-import grit.dbos.sql.TestPostgres
+import grit.core.visibility.Subject
+import grit.dbos.engine.{Engine, LiveEngine}
+import grit.dbos.sql.{DbConfig, TestPostgres}
 import grit.models.StubClassifier
 import grit.turn.{Turn, TurnRecord, TurnWeighing}
 
@@ -40,8 +40,8 @@ object MentionWeighLiveTests extends TestSuite {
   )
 
   /** The `weigh` step `turn` recorded, read back through its codec. */
-  private def weighed(reader: Reader^, turn: TurnRef): Option[TurnWeighing.Weighed] =
-    right(TurnRecord.weighed(right(reader.steps(turn.workflowId)))) match {
+  private def weighed(config: DbConfig, turn: TurnRef): Option[TurnWeighing.Weighed] =
+    right(TurnRecord.weighed(right(LiveEngine.steps(config, turn.workflowId)))) match {
       case TurnRecord.Weigh.Recorded(w) => w
       case TurnRecord.Weigh.Unrecorded => None
     }
@@ -69,12 +69,9 @@ object MentionWeighLiveTests extends TestSuite {
         )
         val turn = say(engine, "mention")
         val _ = engine.awaitTurn(turn)
-        val reader = Reader.open(config, Visibility.Shipped)
-        try {
-          weighed(reader, turn).collect { case TurnWeighing.Weighed.Asked(asked) =>
-            asked.tags.model
-          } ==> Some(StubClassifier.Model)
-        } finally reader.close()
+        weighed(config, turn).collect { case TurnWeighing.Weighed.Asked(asked) =>
+          asked.tags.model
+        } ==> Some(StubClassifier.Model)
         ledger(engine, turn).filter(_.entry == TurnWeighing.id(turn)).map(_.model) ==>
           Vector(StubClassifier.Model)
         TurnRecord.role(turn, TurnWeighing.id(turn)) ==> Some(TurnRecord.Role.Weigh)

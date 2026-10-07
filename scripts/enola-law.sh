@@ -86,6 +86,16 @@ if [ -n "$maintenance" ]; then
   exit 1
 fi
 
+# TRAP: rule 1h, as 1f above: only grit.dbos and the eval harness may name the Reader. The word
+# is common, so only sources that name grit.dbos.engine are searched.
+reader=$(grep -rlE 'grit\.dbos\.engine' --include='*.scala' core extensions kit deployments eval |
+  grep -vE '^core/dbos/|^eval/harness/' | xargs -r grep -lw 'Reader' || true)
+if [ -n "$reader" ]; then
+  echo "Only grit.dbos and the eval harness may name grit.dbos.engine.Reader; these sources do:" >&2
+  printf '  %s\n' $reader >&2
+  exit 1
+fi
+
 $enola baseline show mcp-arch.yaml >/dev/null 2>&1 || $enola baseline pin mcp-arch.yaml >/dev/null
 
 $enola check --fail-on=constraints,cycles mcp-arch.yaml

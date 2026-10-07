@@ -2,10 +2,11 @@ package grit.dbos.engine
 
 import java.time.Instant
 
-import grit.core.durable.Durable
+import grit.core.durable.{Durable, StepRecord}
 import grit.core.host.ProcessIdentity
 import grit.core.id.WorkflowId
 import grit.core.spend.Budget
+import grit.core.store.StoreError
 import grit.core.visibility.Visibility
 import grit.dbos.sql.DbConfig
 
@@ -59,4 +60,13 @@ object LiveEngine {
       case Left(refused) =>
         sys.error(s"the engine could not open: ${refused.message(Instant.now())}")
     }
+
+  /** `id`'s recorded steps, with their outputs, as [[Reader.steps]] reads them from `config`'s
+    * database: for a suite outside grit.dbos, which may not name the reader.
+    */
+  def steps(config: DbConfig, id: WorkflowId): Either[StoreError, Vector[StepRecord]] = {
+    val reader = Reader.open(config, Visibility.Shipped)
+    try reader.steps(id)
+    finally reader.close()
+  }
 }

@@ -36,6 +36,12 @@ components:
     kind: dependency
     match: ["core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
 
+  # Every module except grit.dbos and the eval harness: what may not name the reader of a
+  # database whole (rule 1h). As outside-dbos, with eval's own sources in place of all of eval/.
+  - name: outside-dbos-and-harness
+    kind: dependency
+    match: ["core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/src/**", "eval/it/**", "eval/test/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+
   # Every module except grit.models and grit.mcp, the two egresses, for the HTTP quarantine
   # (STYLE rule 8).
   - name: outside-egress
@@ -480,6 +486,20 @@ rules:
     pattern: "* -> grit.core.visibility.Maintenance"
     mode: strict
     because: "ADR 0030: maintenance reads every row whatever its label; only grit.dbos's own transactions (inbox, desk, sweeps, collector) open at it"
+
+  # -------------------------------------------------------------------------------------
+  # 1h. Only grit.dbos and the eval harness name grit.dbos.engine.Reader (ADR 0030): its `all`
+  # reads every row at maintenance's clearance, which is for capturing a database whole. A
+  # deployment, kit or an edge that held one could read past every subject.
+  #
+  # Watch out: as 1f and 1g, a fully qualified use or a wildcard import makes no edge to
+  # Reader; scripts/enola-law.sh greps every source naming grit.dbos.engine for it instead.
+  # -------------------------------------------------------------------------------------
+  - id: only-dbos-and-harness-name-reader
+    forbid_name: outside-dbos-and-harness
+    pattern: "* -> grit.dbos.engine.Reader"
+    mode: strict
+    because: "ADR 0030: the reader's `all` reads every row whatever its label; only grit.dbos and the eval harness, which captures databases whole, may hold one"
 
   # grit.slack names core, prose and grit.edge alone: an edge reaches the engine through
   # Postgres (ADR 0002) and never the turn; grit.edge is the edge's side of the desk it serves
