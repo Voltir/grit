@@ -14,7 +14,7 @@ import grit.core.id.{
 }
 import grit.core.retention.{Target, Tombstone}
 import grit.core.store.Origin
-import grit.core.visibility.Label
+import grit.core.visibility.{Label, TestLabels}
 
 import utest.*
 import JobTests.{Count, Counting}
@@ -217,6 +217,23 @@ abstract class DeskContract extends TestSuite {
         Left(DeskRefusal.Ended(id, Ending.Cancelled))
       u.due("10:00") ==> Vector()
     }
+
+    test("one asked in a {trial} room by a person cleared for its label is kept at it") {
+      keptAt(TestLabels.Trialist, "2.1") ==> Some(TestLabels.Trial)
+    }
+
+    test("one asked in a {trial} room by an uncleared person is kept public") {
+      keptAt(PrincipalId("ann"), "2.2") ==> Some(Label.Public)
+    }
+  }
+
+  /** The label of the schedule `by` asks for from thread `thread` of a `{trial}` room. */
+  private def keptAt(by: PrincipalId, thread: String): Option[Label] = {
+    val u = fresh()
+    val turn = u.turn(Origin.Slack("T1", "C1", thread), TestLabels.Trial)
+    u.asking(turn, by, Some(s"C1/$thread"))
+    val desk = u.desk(reminders, Vector(remind.name), new SetClock(at("09:00")))
+    u.read(asked(ask(desk, TestCallSlots.at(turn), When.In(30.minutes)))).map(_.label)
   }
 
   /** `remind`, writing its parameters in a form its own reading refuses. */

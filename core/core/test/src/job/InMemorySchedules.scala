@@ -15,32 +15,46 @@ import grit.core.id.{
 }
 import grit.core.retention.Target
 import grit.core.store.{InMemoryTombstones, Origin, StoreError, Tx}
-import grit.core.visibility.Label
+import grit.core.visibility.{Clearance, Label, Visibility}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[ScheduleStore]], with each plugin's [[ScheduleDesk]], for tests, keeping
   * [[ScheduleContract]] and [[DeskContract]]. What a desk derives from a call's turn in the
-  * database (who asked, where its reply is posted) it reads from what [[asking]] recorded. It
-  * marks ended schedules in `tombstones`, and ignores the `Tx`: nothing is rolled back.
+  * database (who asked, where its reply is posted, what a transaction opened for it reads) it
+  * reads from what [[asking]] recorded, resolving the asker's clearance under `visibility` as
+  * an opener would. It marks ended schedules in `tombstones`, and ignores the `Tx`: nothing is
+  * rolled back.
   */
-final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryTombstones())
-    extends ScheduleStore {
+final class InMemorySchedules(
+    val tombstones: InMemoryTombstones = new InMemoryTombstones(),
+    visibility: Visibility = Visibility.Shipped
+) extends ScheduleStore {
   import InMemorySchedules.Row
 
   // Only ever replaced by a new immutable map, as the store's table would be.
   @caps.unsafe.untrackedCaptures
   private var rows = Map.empty[ScheduleId, Row]
 
-  // As `rows`: each recorded turn's asker, and where its reply is posted, if anywhere.
+  // As `rows`: each recorded turn's asker, where its reply is posted, if anywhere, and what a
+  // transaction opened for it reads beyond its room (Tx.cleared).
   @caps.unsafe.untrackedCaptures
-  private var turns = Map.empty[TurnRef, (PrincipalId, Option[Destination])]
+  private var turns = Map.empty[TurnRef, (PrincipalId, Option[Destination], Label)]
 
-  /** `turn`, of `from`'s conversation, recorded as rooted on a message `by` wrote, its reply
-    * posted at `address`, or nowhere: what the database holds of a turn as its conversation,
-    * entries and deliveries.
+  /** `turn`, of `from`'s conversation, created at `label`, recorded as rooted on a message `by`
+    * wrote, its reply posted at `address`, or nowhere: what the database holds of a turn as its
+    * conversation, entries and deliveries.
     */
-  def asking(turn: TurnRef, from: Origin, by: PrincipalId, address: Option[String]): Unit =
-    turns = turns.updated(turn, (by, address.map(Destination(from.edge, _))))
+  def asking(
+      turn: TurnRef,
+      from: Origin,
+      by: PrincipalId,
+      address: Option[String],
+      label: Label = Label.Public
+  ): Unit = {
+    // As grit.core.visibility.Subject.Turn resolves: the asker is the first entry's author.
+    val cleared = Clearance.inRoom(from.room, label, visibility.cleared(by)).everywhere
+    turns = turns.updated(turn, (by, address.map(Destination(from.edge, _)), cleared))
+  }
 
   /** `slot`'s run started at `version`, its schedule's next slot `following`, as the inbox
     * starts one.
@@ -200,7 +214,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
             case Some(r) => kept(id, r, booking.job)
             case None =>
               turns.get(call.turn) match {
-                case Some((by, Some(to))) =>
+                case Some((by, Some(to), cleared)) =>
                   val now = clock.now()
                   val at = Slot.kept(when.from(now))
                   val limit = now.plusNanos(ScheduleDesk.Horizon.toNanos)
@@ -218,7 +232,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
                         Report.Posted(to),
                         SlotRule.Once(at, grace),
                         Some(at),
-                        Label.Public,
+                        cleared,
                         asked = Some(call.turn.conversationId)
                       )
                     )
@@ -236,7 +250,7 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
       ): Either[DeskRefusal, Pending[P]] =
         own(booking).map { _ =>
           val now = clock.now()
-          val mine = turns.get(call.turn).fold(Vector.empty)((by, _) => pendingOf(by))
+          val mine = turns.get(call.turn).fold(Vector.empty)((by, _, _) => pendingOf(by))
           Pending(
             now,
             mine

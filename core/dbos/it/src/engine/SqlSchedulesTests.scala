@@ -6,7 +6,7 @@ import grit.core.clock.Clock
 import grit.core.id.{JobName, PluginName, PrincipalId, TurnRef, TurnSeq}
 import grit.core.job.{ScheduleContract, ScheduleDesk, ScheduleStore, Slot}
 import grit.core.store.{Jot, Origin, StoreError, Tombstones, Tx}
-import grit.core.visibility.{Subject, Visibility}
+import grit.core.visibility.{Label, Subject, TestLabels}
 import grit.dbos.sql.{DbConfig, LiveDb, Opener, SqlJot, SqlSchedules, SqlTombstones, TestPostgres}
 
 import org.postgresql.ds.PGSimpleDataSource
@@ -41,8 +41,8 @@ private[engine] object SqlSchedulesUnder {
       def start(slot: Slot, version: Int, following: Option[Instant]): Unit =
         ok("starting")(LiveDb.transaction(config)(schedules.started(slot, version, following)))
 
-      def turn(origin: Origin): TurnRef =
-        TurnRef(LiveDb.conversation(config, origin).id, TurnSeq.First)
+      def turn(origin: Origin, label: Label): TurnRef =
+        TurnRef(LiveDb.conversation(config, origin, label).id, TurnSeq.First)
 
       def asking(turn: TurnRef, by: PrincipalId, address: Option[String]): Unit =
         LiveDb.asking(config, turn, by, address)
@@ -55,7 +55,7 @@ private[engine] object SqlSchedulesUnder {
         schedules.desk(
           plugin,
           jobs,
-          new Held(new SqlJot(ds, new Opener(Visibility.Shipped)), beforeCommit),
+          new Held(new SqlJot(ds, new Opener(TestLabels.Trialled)), beforeCommit),
           clock
         )
       }

@@ -226,8 +226,13 @@ object ScheduleContract {
       */
     def start(slot: Slot, version: Int, following: Option[Instant]): Unit
 
-    /** The first turn of `origin`'s conversation, recorded or not. */
-    def turn(origin: Origin): TurnRef
+    /** The first turn of `origin`'s conversation, recorded or not, which is created at `label`
+      * when new.
+      */
+    def turn(origin: Origin, label: Label): TurnRef
+
+    /** The first turn of `origin`'s conversation, recorded or not, created public when new. */
+    final def turn(origin: Origin): TurnRef = turn(origin, Label.Public)
 
     /** The first turn of the Slack thread this store knows by `name`, recorded or not. */
     final def turn(name: String): TurnRef = turn(Origin.Slack("T1", "C1", name))
@@ -237,7 +242,9 @@ object ScheduleContract {
       */
     def asking(turn: TurnRef, by: PrincipalId, address: Option[String]): Unit
 
-    /** `plugin`'s desk, holding the job names `jobs`, its now `clock`'s. */
+    /** `plugin`'s desk, holding the job names `jobs`, its now `clock`'s, opening its
+      * transactions under [[grit.core.visibility.TestLabels.Trialled]].
+      */
     def desk(plugin: PluginName, jobs: Vector[JobName], clock: Clock^): ScheduleDesk^
 
     private def ok[A](e: Either[StoreError, A]): A = e.fold(err => sys.error(s"$err"), identity)
