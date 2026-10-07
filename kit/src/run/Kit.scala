@@ -225,7 +225,13 @@ object Kit {
   }
 
   private def open(deployment: Deployment, secrets: Secrets): Either[KitFailure, Engine^] =
-    Engine.open(secrets.database, Turn.Epoch, LocalMachine.identity(), deployment.budget) match {
+    Engine.open(
+      secrets.database,
+      Turn.Epoch,
+      LocalMachine.identity(),
+      deployment.budget,
+      deployment.visibility
+    ) match {
       case Left(refused) => Left(KitFailure.Engine(refused.message(Instant.now())))
       case Right(engine) => Right(engine)
     }

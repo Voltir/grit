@@ -37,11 +37,13 @@ import grit.core.store.{
   PromptStore,
   StoreError,
   Tombstones,
+  Tx,
   UsageLedger,
   VoiceStore
 }
 import grit.core.tool.ToolSets
 import grit.core.triage.{Shadowing, TriageShadows, TriageStore}
+import grit.core.visibility.{Compartment, Visibility}
 import grit.dbos.sql.{
   DbConfig,
   SqlCacheDocs,
@@ -52,6 +54,7 @@ import grit.dbos.sql.{
   SqlEntrySearch,
   SqlEntryStore,
   SqlJot,
+  SqlLabels,
   SqlLifecycleStore,
   SqlModelProfileStore,
   SqlModelSettingStore,
@@ -526,11 +529,12 @@ object Engine {
       config: DbConfig,
       epoch: String,
       identity: ProcessIdentity,
-      budget: Budget
-  ): Either[NotTaken, Engine^] =
+      budget: Budget,
+      visibility: Visibility
+  ): Either[Unopened, Engine^] =
     EngineLock.take(config) match {
-      case Left(refused) => Left(refused)
-      case Right(lock) => Right(start(config, lock, epoch, identity, budget))
+      case Left(refused) => Left(Unopened.Lock(refused))
+      case Right(lock) => start(config, lock, epoch, identity, budget, visibility)
     }
 
   /** The engine of the database `config` names, which `lock` is held on: its schema and
@@ -540,32 +544,60 @@ object Engine {
     * recovering and dequeuing only workflows of
     * compatibility epoch `epoch` (ADR 0004). Losing the lock (its connection dropped, or its
     * row gone or taken) stops the engine as [[Engine.close]] does, and an edge's calls on it
-    * then fail. Its inbox takes new messages as `budget` allows. Throws, having closed
-    * `lock`, when either schema cannot be applied.
+    * then fail. Its inbox takes new messages as `budget` allows. `visibility`'s compartments
+    * are recorded as the ones the database runs under before anything else is written
+    * ([[Unopened.Dropped]] when they drop one it ran under, having closed `lock` and claimed
+    * nothing). Throws, having closed `lock`, when either schema cannot be applied.
     */
   def start(
       config: DbConfig,
       lock: EngineLock^,
       epoch: String,
       identity: ProcessIdentity,
-      budget: Budget
-  ): Engine^ =
+      budget: Budget,
+      visibility: Visibility
+  ): Either[Unopened, Engine^] =
     try {
       schemaSetup(config)
       val dbosConfig = dbosConfigOf(config, epoch)
       // Before anything builds a DBOSClient, which refuses a database DBOS has not migrated.
       MigrationManager.runMigrations(dbosConfig)
-      lock
-        .claim(epoch, identity, Build.current)
-        .left
-        .foreach(why => sys.error(s"the engine's row could not be written: $why"))
-      val engine = build(config, dbosConfig, lock, epoch, identity, budget)
-      engine.beating()
-      engine
+      compartmentsSetup(config, visibility) match {
+        case Some(dropped) =>
+          lock.close()
+          Left(Unopened.Dropped(dropped))
+        case None =>
+          lock
+            .claim(epoch, identity, Build.current)
+            .left
+            .foreach(why => sys.error(s"the engine's row could not be written: $why"))
+          val engine = build(config, dbosConfig, lock, epoch, identity, budget)
+          engine.beating()
+          Right(engine)
+      }
     } catch {
       case e: Throwable =>
         lock.close()
         throw e
+    }
+
+  /** Records `visibility`'s compartments as the ones the database runs under
+    * ([[SqlLabels.reconcile]]); the one they drop, if any. Throws when they cannot be read or
+    * written, as a schema that cannot be applied does.
+    */
+  private def compartmentsSetup(config: DbConfig, visibility: Visibility): Option[Compartment] =
+    Using.resource(
+      DriverManager.getConnection(config.jdbcUrl, config.user, config.password)
+    ) { conn =>
+      conn.setAutoCommit(false)
+      SqlLabels.reconcile(visibility.compartments)(using Tx.fromConnection(conn)) match {
+        case Right(dropped) =>
+          conn.commit()
+          dropped
+        case Left(e) =>
+          conn.rollback()
+          sys.error(s"the compartments could not be recorded: $e")
+      }
     }
 
   /** DBOS's configuration for the database `config` names, recovering and dequeuing only
@@ -612,6 +644,25 @@ object Engine {
     ) { conn =>
       Using.resource(conn.createStatement())(_.execute(sql))
     }
+  }
+}
+
+/** Why an engine did not open. */
+enum Unopened {
+
+  /** Its database's lock was not taken. */
+  case Lock(why: NotTaken)
+
+  /** `compartment`, among those its database last ran under, is not declared now: a label
+    * holding it could then be read by a clearance that could not read it before.
+    */
+  case Dropped(compartment: Compartment)
+
+  /** One line for a person, at `now`. */
+  def message(now: Instant): String = this match {
+    case Lock(why) => why.message(now)
+    case Dropped(c) =>
+      s"this database ran under the compartment ${Compartment.name(c)}, which the deployment no longer declares: dropping or renaming a compartment is refused"
   }
 }
 

@@ -14,7 +14,9 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   each declared shadow variant made of a heard message, `grit.triage_shadows`, deleted with its
   entry), `SqlSpeechStore` (each
   heard message's reach, and grit's decisions to speak or not, kept with their period's usage),
-  `SqlRoomReads` (what a room said before a time, as a pool reads it), `SqlReviews` (every
+  `SqlRoomReads` (what a room said before a time, as a pool reads it), `SqlLabels` (labels as
+  `grit.labels` interns them, the one translation through `LabelParts`, and the compartment sets
+  the database has run under, ADR 0030), `SqlReviews` (every
   heard message a review considered, its prompt and the verdict standing on it,
   `grit.reviews`, kept with its conversation, ADR 0024).
   Imports nothing else in dbos.
@@ -35,7 +37,8 @@ driver, translated into core's seams here. `resources/schema.sql` is the schema.
   Mill writes into this module's jar; each engine start is recorded with it in
   `grit.engine_starts`), `Reader` (a database's stores, engine starts and DBOS's workflow
   records read without an engine or its lock, on sessions Postgres keeps read-only), `Engine` (what `grit.app`
-  starts under the lock; closing it, or losing the lock, stops the sweep, then DBOS, waits
+  starts under the lock, refused as `Unopened` when the lock is held or its deployment drops a
+  compartment the database ran under; closing it, or losing the lock, stops the sweep, then DBOS, waits
   for running bodies, and releases the lock last; `every` runs a pass on a thread of its own, one
   at a time, until the engine closes, and the sweep is one; `unfinished` counts the workflows still
   queued or running, which `grit backfill` waits out; `placements` waits for an opening's

@@ -11,6 +11,7 @@ import grit.core.id.{PrincipalId, SourceId, TurnRef, WorkflowId}
 import grit.core.inbox.Inbox
 import grit.core.message.Message
 import grit.core.store.{Origin, Tx}
+import grit.core.visibility.Visibility
 import grit.dbos.sql.{
   DbConfig,
   LiveDb,
@@ -43,7 +44,17 @@ object EngineLockTests extends TestSuite {
   private def engine(config: DbConfig): Engine^ =
     EngineLock.take(config, beat) match {
       case Right(lock) =>
-        Engine.start(config, lock, "test", LiveEngine.Identity, LiveEngine.Uncapped)
+        Engine.start(
+          config,
+          lock,
+          "test",
+          LiveEngine.Identity,
+          LiveEngine.Uncapped,
+          Visibility.Shipped
+        ) match {
+          case Right(e) => e
+          case Left(refused) => sys.error(refused.message(java.time.Instant.now()))
+        }
       case Left(refused) => sys.error(s"not taken: $refused")
     }
 

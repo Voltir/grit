@@ -21,7 +21,7 @@ import grit.core.speech.Speaking
 import grit.core.store.Origin
 import grit.core.tool.ToolName
 import grit.core.tool.ToolSet
-import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken}
+import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, Unopened}
 import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
 import grit.host.{LocalEdits, LocalInstructions, LocalMachine, LocalShell, LocalWorkspace}
@@ -228,7 +228,18 @@ object Main {
             val engine = new ChatHost.Opener {
               // The screen paints first; the engine opens behind it, on the host's thread.
               def open(): Link^ = {
-                val started = Engine.start(config, lock, Turn.Epoch, identity, deployment.budget)
+                val started =
+                  Engine.start(
+                    config,
+                    lock,
+                    Turn.Epoch,
+                    identity,
+                    deployment.budget,
+                    deployment.visibility
+                  ) match {
+                    case Right(e) => e
+                    case Left(refused) => sys.error(refused.message(java.time.Instant.now()))
+                  }
                 try {
                   val running = launched(started)
                   serveHere(running, Place.of(directory), hosted, instructions, offered)
@@ -278,8 +289,8 @@ object Main {
         finally host.close()
         None
       } else
-        Engine.open(config, Turn.Epoch, identity, deployment.budget) match {
-          case Left(NotTaken.Held(_)) =>
+        Engine.open(config, Turn.Epoch, identity, deployment.budget, deployment.visibility) match {
+          case Left(Unopened.Lock(NotTaken.Held(_))) =>
             // Another grit runs the engine: its turns are sent to it, as a TUI's are.
             val link = Link.attach(config, Turn.Epoch, identity, deployment.budget)
             try say(link, args.toList)

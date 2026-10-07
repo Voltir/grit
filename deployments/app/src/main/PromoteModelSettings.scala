@@ -2,6 +2,7 @@ package grit.app.main
 
 import grit.core.model.{Catalog, CatalogJson, Profile}
 import grit.core.spend.Budget
+import grit.core.visibility.Visibility
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
 import grit.kit.environment.DotEnv
@@ -36,7 +37,10 @@ object PromoteModelSettings {
       Turn.Epoch,
       grit.host.LocalMachine.identity(),
       // It takes no messages: no cap, and any zone.
-      Budget(java.time.ZoneOffset.UTC, None)
+      Budget(java.time.ZoneOffset.UTC, None),
+      // The reference deployment's: it declares none. A database that ran under compartments
+      // is refused, naming one, rather than opened as if it had not.
+      Visibility.Shipped
     ) match {
       case Right(open) => open
       case Left(refused) => fail(refused.message(java.time.Instant.now()))
