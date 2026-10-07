@@ -23,6 +23,7 @@ import grit.core.speech.Rate
 import grit.core.spend.Budget
 import grit.core.store.{Jot, Origin, StoreError, Tx}
 import grit.core.tool.Outcome
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.slack.client.{AppToken, BotToken, FakeSlack, Slack}
 import grit.slack.event.{ChannelId, Listed, Payloads, Ts, UserId}
@@ -36,9 +37,10 @@ object ServedTests extends TestSuite {
   import Payloads.*
 
   private object FakeJot extends Jot {
-    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
-      TestTx.fake
-    )
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using
+        TestTx.fake
+      )
   }
 
   private val C = ChannelId("C123ABC456")

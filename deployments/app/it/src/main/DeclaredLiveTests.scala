@@ -39,7 +39,7 @@ import grit.core.period.LifecycleSettings
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError, Tx}
-import grit.core.visibility.Label
+import grit.core.visibility.{Label, Subject}
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.job.clock.{ClockEdge, Ticked}
@@ -159,11 +159,11 @@ object DeclaredLiveTests extends TestSuite {
   private def right[A](e: Either[StoreError, A]): A = e.fold(x => sys.error(x.toString), identity)
 
   private def read(engine: Engine^, id: ScheduleId): Option[Schedule] =
-    right(engine.db.read(engine.schedules.read(id)))
+    right(engine.db.read(Subject.Public)(engine.schedules.read(id)))
 
   /** The schedules with a run in flight on `engine`. */
   private def flying(engine: Engine^): Vector[ScheduleId] =
-    right(engine.db.read(engine.schedules.inFlight(100))).map(_._1)
+    right(engine.db.read(Subject.Public)(engine.schedules.inFlight(100))).map(_._1)
 
   /** What one pass started of the one schedule it took up. */
   private def only(ticked: Ticked): Slotted =
@@ -236,7 +236,8 @@ object DeclaredLiveTests extends TestSuite {
 
   /** The conversation of `slot`'s runs of `job`, if one was ever started. */
   private def ran(engine: Engine^, slot: Slot, job: Ping): Option[ConversationId] =
-    right(engine.db.read(engine.conversations.find(slot.origin(job.name)))).map(_.id)
+    right(engine.db.read(Subject.Public)(engine.conversations.find(slot.origin(job.name))))
+      .map(_.id)
 
   val tests = Tests {
     test(

@@ -3,7 +3,7 @@ package grit.kit.deployment
 import grit.core.id.{CallSlot, JobName, PluginName}
 import grit.core.job.{Declared, Job, JobRun, NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.plugin.{Exports, Needs, PluginReads, PluginRun, PluginTool, Unneeded}
-import grit.core.store.{Db, StoreError, Tx}
+import grit.core.store.{Reads, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
 import grit.core.visibility.Compartment
 
@@ -35,8 +35,9 @@ object TestPlugins {
     ): Either[Unneeded | NotOwn, PluginRun[Int]] =
       list(own, needs).map { l =>
         new PluginRun[Int] {
-          def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
-            db.read(l.keys())
+          def run(n: Int, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome =
+            reads
+              .read(l.keys())
               .fold(e => Outcome.Failed(e.toString), k => Outcome.Done(k.mkString(",")))
         }
       }
@@ -106,7 +107,7 @@ object TestPlugins {
           .of(job)
           .map(_ =>
             new PluginRun[Int] {
-              def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
+              def run(n: Int, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome =
                 Outcome.Done("booked")
             }
           )

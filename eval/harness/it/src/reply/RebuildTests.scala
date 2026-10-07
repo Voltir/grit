@@ -32,7 +32,7 @@ import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Nearby, Origin}
 import grit.core.tool.Toolbox
 import grit.core.triage.Corpora
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
 import grit.eval.harness.capture.{Digest, Dump, KnowledgeJson, TurnCapture}
@@ -266,9 +266,9 @@ object RebuildTests extends TestSuite {
       // Said after b's turn assembled its window.
       val c = ask(engine, "c", "the Falcon budget moved to 9000")
       // a's period closes after both turns: open when b assembled, a record since.
-      right(engine.jot.write(engine.periods.of(a))).foreach { p =>
+      right(engine.jot.write(Subject.Public)(engine.periods.of(a))).foreach { p =>
         right(
-          engine.jot.write(
+          engine.jot.write(Subject.Public)(
             engine.periods.seal(
               CloseRef(p.ref, a.turnSeq, now()),
               CloseReason.Lapsed,
@@ -283,7 +283,7 @@ object RebuildTests extends TestSuite {
       hear(engine, "4000.1", "thanks all ~back:nothing")
       val tagged = eventually(
         right(
-          engine.db.read(engine.triage.tagged(Instant.EPOCH, now().plusSeconds(60)))
+          engine.db.read(Subject.Public)(engine.triage.tagged(Instant.EPOCH, now().plusSeconds(60)))
         ).size == 2
       )
       assert(tagged)
@@ -303,9 +303,9 @@ object RebuildTests extends TestSuite {
       val notes = right(PluginName.of("notes"))
       val terms =
         right(DocumentTerms.of(right(DocLabel.of("Notes")), DocWeight.Unscaled, 30.days, 10))
-      right(engine.jot.write(engine.documents.declare(Vector(notes -> terms))))
+      right(engine.jot.write(Subject.Public)(engine.documents.declare(Vector(notes -> terms))))
       val version = right(
-        engine.jot.write(
+        engine.jot.write(Subject.Public)(
           engine
             .keeper(notes, terms)
             .write(
@@ -323,7 +323,7 @@ object RebuildTests extends TestSuite {
       val d = ask(engine, "d", "what is the Falcon budget?")
       val reader = Reader.open(config, Visibility.Shipped)
       val kept = right(Rebuild.recorded(reader, d.workflowId, Assembled.Shipped, Width.Deployed))
-      right(engine.jot.write(engine.documents.forget(version)))
+      right(engine.jot.write(Subject.Public)(engine.documents.forget(version)))
       val gone = right(Rebuild.recorded(reader, d.workflowId, Assembled.Shipped, Width.Deployed))
       (reader, kept, gone, version)
     } finally engine.close()
@@ -422,7 +422,7 @@ object RebuildTests extends TestSuite {
       val only = right(WindowOnly.all(reader, now().plusSeconds(60)))
       // The asking message's thread alone: the other was not read as asking.
       only.map(w =>
-        right(reader.db.read(reader.conversations.get(w.turn.conversationId))).map(_.origin)
+        right(reader.all.read(reader.conversations.get(w.turn.conversationId))).map(_.origin)
       ) ==> Vector(Some(Origin.Slack("T1", "C1", "3000.1")))
       val requests =
         only.flatMap(w => right(WindowOnly.asked(reader, w, Assembled.Shipped, Width.Deployed)))

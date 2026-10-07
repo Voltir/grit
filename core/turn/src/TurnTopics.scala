@@ -16,6 +16,7 @@ import grit.core.message.{AssistantBlock, Message, Tokens, Usage}
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Db, Entry, EntryStore, EntryTopics, Payload, StoreError, Tx, UsageLedger}
 import grit.core.topic.{Band, Placement, Topic, TopicEvent, TopicId, Weights}
+import grit.core.visibility.Subject
 
 /** Where a turn's message goes among its conversation's topics, before its window is
   * assembled: the `classify` step's work and the `record-topic` step's record.
@@ -128,7 +129,7 @@ object TurnTopics {
       estimator: TokenEstimator,
       turn: TurnRef
   ): Classification =
-    db.read(entries.list(turn.conversationId)) match {
+    db.read(Subject.Turn(turn))(entries.list(turn.conversationId)) match {
       case Left(error) =>
         Classification(Vector.empty, None, Vector.empty, None, Some(s"store: ${describe(error)}"))
       case Right(all) => place(classifier, estimator, turn, all)

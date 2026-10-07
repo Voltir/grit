@@ -9,6 +9,7 @@ import grit.core.message.{Message, Tokens}
 import grit.core.provider.TokenEstimator
 import grit.core.stitch.{Opening, Placements, Tuning}
 import grit.core.triage.{Corpora, Weighing}
+import grit.core.visibility.Subject
 
 import utest.*
 
@@ -56,7 +57,14 @@ object MentionsTests extends TestSuite {
   /** The request live triage's set makes of `turn`'s message in `w`, with only [[Github]]. */
   private def asked(w: World, turn: TurnRef) =
     TriageInput
-      .build(w.reads, w.rooms, FakeDb, turn, Tuning.Default, TriageRecipe.Shipped)
+      .build(
+        w.reads,
+        w.rooms,
+        FakeDb.as(Subject.Public),
+        turn,
+        Tuning.Default,
+        TriageRecipe.Shipped
+      )
       .toOption
       .map((_, state) =>
         TriageQuestions

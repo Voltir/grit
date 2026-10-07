@@ -8,8 +8,19 @@ import grit.core.job.Slot
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows}
 import grit.core.retention.Target
-import grit.core.store.{Entry, EntryTopics, Payload, Sealed, Speakers, StoreError, Tombstones, Tx}
+import grit.core.store.{
+  Entry,
+  EntryTopics,
+  Payload,
+  Reads,
+  Sealed,
+  Speakers,
+  StoreError,
+  Tombstones,
+  Tx
+}
 import grit.core.triage.Earning
+import grit.core.visibility.Subject
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** The close: one workflow per attempt to close a period ([[CloseRef]]), run on the turns'
@@ -98,7 +109,9 @@ object Close {
         import CloseJournal.given
         val records = env.records
         val runs = d.patch(Patches.RunClose)
-        d.transact(Step.Check)(check(records, attempt, runs)) match {
+        d.transact(Step.Check, Subject.Conversation(attempt.period.conversationId))(
+          check(records, attempt, runs)
+        ) match {
           case Left(why) => s"failed: $why"
           case Right(Checked.Closed) => "already closed"
           case Right(Checked.Abandoned(why)) => s"abandoned: $why"
@@ -110,7 +123,11 @@ object Close {
                 val entries = own(env, attempt, first)
                 CloseGate.asked(
                   env.classifier,
-                  CloseGate.Transcript(known, elsewhere(env, entries), transcript(env, entries))
+                  CloseGate.Transcript(
+                    known,
+                    elsewhere(env, attempt, entries),
+                    transcript(env, attempt, entries)
+                  )
                 )
               }
             }
@@ -118,7 +135,7 @@ object Close {
               summarise(env, attempt, first, gated._1, known, cap, reason)
             }
             val noted = (gated._2 ++ summarised.note).map(n => s"; $n").mkString
-            d.transact(Step.Seal)(
+            d.transact(Step.Seal, Subject.Conversation(attempt.period.conversationId))(
               seal(records, attempt, reason, summarised, env.clock.now())
             ) match {
               case Left(why) => s"failed: $why$noted"
@@ -187,29 +204,47 @@ object Close {
       first: TurnSeq
   ): Either[String, Vector[Entry]] =
     PeriodTranscript
-      .entries(env.db, env.records.entries, attempt.period, first, attempt.last)
+      .entries(reads(env, attempt), env.records.entries, attempt.period, first, attempt.last)
       .left
       .map(describe)
 
   /** What the period's windows showed from other conversations
     * ([[PeriodTranscript.elsewhere]]); none when unread.
     */
-  private def elsewhere(env: CloseEnv^, entries: Either[String, Vector[Entry]]): Vector[String] =
+  private def elsewhere(
+      env: CloseEnv^,
+      attempt: CloseRef,
+      entries: Either[String, Vector[Entry]]
+  ): Vector[String] =
     entries
-      .flatMap(PeriodTranscript.elsewhere(env.db, env.records.entries, _).left.map(describe))
+      .flatMap(
+        PeriodTranscript.elsewhere(reads(env, attempt), env.records.entries, _).left.map(describe)
+      )
       .getOrElse(Vector.empty)
 
   /** The period as one transcript ([[PeriodTranscript.of]]); empty when unread. */
-  private def transcript(env: CloseEnv^, entries: Either[String, Vector[Entry]]): String = {
+  private def transcript(
+      env: CloseEnv^,
+      attempt: CloseRef,
+      entries: Either[String, Vector[Entry]]
+  ): String = {
     val own = entries.getOrElse(Vector.empty)
-    PeriodTranscript.of(own, names(env, own))
+    PeriodTranscript.of(own, names(env, attempt, own))
   }
 
   /** Who wrote `entries`; nobody named when that cannot be read, so each line is then its
     * role's.
     */
-  private def names(env: CloseEnv^, entries: Vector[Entry]): Speakers =
-    PeriodTranscript.speakers(env.db, env.records.principals, entries).getOrElse(Speakers.none)
+  private def names(env: CloseEnv^, attempt: CloseRef, entries: Vector[Entry]): Speakers =
+    PeriodTranscript
+      .speakers(reads(env, attempt), env.records.principals, entries)
+      .getOrElse(Speakers.none)
+
+  /** The store as the attempt's period's conversation reads it: work nobody asked for, kept at
+    * that conversation's label.
+    */
+  private def reads(env: CloseEnv^, attempt: CloseRef): Reads^ =
+    env.db.as(Subject.Conversation(attempt.period.conversationId))
 
   /** The `summarise` step, for a period closing for `reason`: the closing of the period's
     * turns `first` to the attempt's last, from the flows and edits the summary model writes,
@@ -230,7 +265,7 @@ object Close {
     // What the writer reads and cites into: one value, cut once (ClosingSummary.visible).
     val labelled = {
       val own = entries.getOrElse(Vector.empty)
-      PeriodTranscript.labelled(own, names(env, own))
+      PeriodTranscript.labelled(own, names(env, attempt, own))
     }
     val period = attempt.period.seq
     // The topics' edits are the fold's, free and exact: made whether or not a model writes.
@@ -251,7 +286,7 @@ object Close {
     val overheard = PeriodTranscript.overheard(entries.getOrElse(Vector.empty))
     val asking = if (overheard) asked.heard else asked
     val request =
-      ClosingSummary.request(labelled, known, elsewhere(env, entries), asking, overheard)
+      ClosingSummary.request(labelled, known, elsewhere(env, attempt, entries), asking, overheard)
     def carried(note: String) = Summarised(
       fallback(entries.getOrElse(Vector.empty), attempt, first)
         .flatMap(closed(_, None, Vector.empty)),

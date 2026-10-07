@@ -13,6 +13,7 @@ import grit.core.persona.Persona
 import grit.core.plugin.{InMemoryPlugins, PluginReads}
 import grit.core.store.{Db, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, ToolName, Toolbox}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.kit.deployment.{Desks, PluginBinding, TestPlugins}
 import grit.models.StubModels
@@ -26,7 +27,7 @@ object PluginToolsTests extends TestSuite {
 
   /** Reads in the one fake transaction. */
   private object FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using TestTx.fake)
   }
 
@@ -58,7 +59,14 @@ object PluginToolsTests extends TestSuite {
       bound.map(b =>
         b.described.name -> b.described.spec.args
           .read(ujson.Obj("n" -> 1), Set.empty)
-          .map(args => b.run.run(args, TestCallSlots.First, FakeDb, desk))
+          .map(args =>
+            b.run.run(
+              args,
+              TestCallSlots.First,
+              FakeDb.as(Subject.Turn(TestCallSlots.First.turn)),
+              desk
+            )
+          )
       ) ==> Vector(
         ToolName("keys") -> Right(Outcome.Done("theirs-1")),
         ToolName("theirs") -> Right(Outcome.Done("theirs-1"))

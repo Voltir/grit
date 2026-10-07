@@ -488,6 +488,18 @@ abstract class PeriodContract extends TestSuite {
       transaction(periods.closedAfter(ordinal(y1), 1)).map(_.map(_.ref)) ==> Right(Vector(x1))
     }
 
+    test("the period closed next is named by its close ordinal and its conversation") {
+      val x = conversation("next-x")
+      val y = conversation("next-y")
+      val x1 = PeriodRef(x, PeriodSeq.First)
+      val y1 = PeriodRef(y, PeriodSeq.First)
+      val (tx1, ty1) = (say(x, 0), say(y, 1))
+      seal(y1, ty1, 20, "y1")
+      seal(x1, tx1, 21, "x1")
+      transaction(periods.nextClosed(ordinal(y1))) ==> Right(Some((ordinal(x1), x)))
+      transaction(periods.nextClosed(ordinal(x1))) ==> Right(None)
+    }
+
     test("a purge deletes its period's turns' tool requests, and keeps the next period's") {
       val c = conversation("purge-requests")
       val t0 = say(c, 0)

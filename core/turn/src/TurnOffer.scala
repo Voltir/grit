@@ -6,7 +6,7 @@ import grit.core.id.TurnRef
 import grit.core.place.{Place, Reaches, Service, WorksIn}
 import grit.core.prompt.{FragmentId, SystemPrompt, Voice}
 import grit.core.recipe.{Offering, Rooted, ServiceOffer}
-import grit.core.store.{Db, EntryStore, Origin, Payload, Position, StoreError, Tx}
+import grit.core.store.{EntryStore, Origin, Payload, Position, Reads, StoreError, Tx}
 import grit.core.tool.{DuplicateName, Hosted, Tool, ToolName, ToolSet, ToolSetId, Toolbox}
 import grit.core.triage.{Corpora, Tags}
 
@@ -247,7 +247,7 @@ object TurnOffer {
   /** The offer `recorded` read back through `db`: its tool set and prompt, by id.
     * `TurnFailure.Store` naming what is not kept.
     */
-  def load(hosting: TurnHosting, db: Db^, recorded: Recorded): Either[TurnFailure, TurnOffer] =
+  def load(hosting: TurnHosting, db: Reads^, recorded: Recorded): Either[TurnFailure, TurnOffer] =
     db.read { (tx: Tx^) ?=>
       for {
         set <- hosting.toolSets.get(recorded.tools)

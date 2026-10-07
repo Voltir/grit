@@ -14,6 +14,7 @@ import grit.core.review.Prompt
 import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{Origin, StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.prose.form.{Block, Doc, Text}
 import grit.prose.markdown.Markdown
 import grit.slack.client.{AppToken, BotToken, Root, Self, Slack, SlackError, SocketSlack, Tag}
@@ -156,7 +157,7 @@ final class SlackEdge(
       case Some((_, verdict)) =>
         val at = PromptAt(r.channel, r.ts).written
         val rater = principal(r.team, r.user)
-        stores.jot.write(
+        stores.jot.write(Subject.Public)(
           if (r.added) stores.reviews.reacted(at, rater, verdict, r.at)
           else stores.reviews.unreacted(at, rater, verdict)
         ) match {
@@ -263,7 +264,9 @@ final class SlackEdge(
           .toMap
         val author = principal(m.team, m.user)
         stores.jot
-          .write(stores.principals.enroll(author, known.getOrElse(m.user, UserId.value(m.user))))
+          .write(Subject.Public)(
+            stores.principals.enroll(author, known.getOrElse(m.user, UserId.value(m.user)))
+          )
           .left
           .map(_.toString)
           .map(_ => Some((author, Incoming.text(m.text, self.bot, known.get, linked.get))))
@@ -290,7 +293,7 @@ final class SlackEdge(
       case Right(turn) =>
         for {
           _ <- stores.jot
-            .write(
+            .write(Subject.Turn(turn))(
               stores.deliveries.await(turn, Address(m.channel, m.thread, m.ts).written)
             )
             .left
@@ -426,7 +429,7 @@ final class SlackEdge(
     case None => Right(0)
     case Some(r) =>
       stores.jot
-        .write(stores.reviews.unposted())
+        .write(Subject.Public)(stores.reviews.unposted())
         .map(_.count { p =>
           p.origin match {
             case Origin.Slack(team, channel, _) if team == TeamId.value(self.team) =>
@@ -465,7 +468,7 @@ final class SlackEdge(
       )
       when <- Events.time(Ts.value(at)).toRight(s"posted at ${Ts.value(at)}, which names no time")
       kept <- stores.jot
-        .write(stores.reviews.posted(p.entry, PromptAt(r.place, at).written, when))
+        .write(Subject.Public)(stores.reviews.posted(p.entry, PromptAt(r.place, at).written, when))
         .left
         .map(e => s"posted at ${Ts.value(at)} but not kept, so it is posted again: $e")
     } yield kept
@@ -491,7 +494,7 @@ final class SlackEdge(
     * marks it put up, took down or cleared; why not, when the store could not be read.
     */
   def acknowledge(): Either[StoreError, Int] =
-    stores.jot.write(stores.acknowledgements.standing()).flatMap { standing =>
+    stores.jot.write(Subject.Public)(stores.acknowledgements.standing()).flatMap { standing =>
       val read = standing.map { a =>
         if (!a.shown)
           stores.inbox
@@ -508,7 +511,7 @@ final class SlackEdge(
             case _ => false
           })
         )
-          stores.jot.write(stores.deliveries.pending()).map(_.map(_.turn).toSet)
+          stores.jot.write(Subject.Public)(stores.deliveries.pending()).map(_.map(_.turn).toSet)
         else Right(Set.empty)
       awaited.map(posting => read.count((a, progress) => acknowledged(a, progress, posting)))
     }
@@ -524,7 +527,7 @@ final class SlackEdge(
     val turn = WorkflowId.value(a.turn.workflowId)
     def record(write: Instant => (Tx^) ?=> Either[StoreError, Unit]): Boolean = {
       val at = clock.now()
-      stores.jot.write(write(at)) match {
+      stores.jot.write(Subject.Turn(a.turn))(write(at)) match {
         case Right(()) => true
         case Left(e) =>
           said(s"slack: the mark of $turn not recorded: $e")
@@ -573,7 +576,7 @@ final class SlackEdge(
     * delivered; why not, when the store could not be read.
     */
   def deliver(): Either[StoreError, Int] =
-    stores.jot.write(stores.deliveries.pending()).map { pending =>
+    stores.jot.write(Subject.Public)(stores.deliveries.pending()).map { pending =>
       if (!started.getAndSet(true))
         pending.foreach(p =>
           stores.inbox.startTurn(p.turn) match {
@@ -614,12 +617,12 @@ final class SlackEdge(
             else
               for {
                 _ <- stores.jot
-                  .write(stores.deliveries.posting(p.turn, i))
+                  .write(Subject.Turn(p.turn))(stores.deliveries.posting(p.turn, i))
                   .left
                   .map(e => SlackError.Unreachable(e.toString))
                 ts <- slack.post(to.channel, to.thread, part, tag)
                 _ <- stores.jot
-                  .write(stores.deliveries.posted(p.turn, i, Ts.value(ts)))
+                  .write(Subject.Turn(p.turn))(stores.deliveries.posted(p.turn, i, Ts.value(ts)))
                   .left
                   .map(e => SlackError.Unreachable(e.toString))
               } yield ()
@@ -635,7 +638,7 @@ final class SlackEdge(
             .left
             .foreach(e => said(s"slack: not unmarked: $e"))
           val at = clock.now()
-          stores.jot.write(
+          stores.jot.write(Subject.Turn(p.turn))(
             stores.deliveries
               .delivered(p.turn)
               .flatMap(_ => stores.acknowledgements.cleared(p.turn, at))

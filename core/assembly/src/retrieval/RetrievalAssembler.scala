@@ -35,6 +35,7 @@ import grit.core.store.{
   Speakers,
   StoreError
 }
+import grit.core.visibility.Subject
 
 /** A window of the closing entry that opens the turn's period, the recent turns, and what a
   * written query finds: the period's earlier turns and, when the settings' scope holds other
@@ -112,7 +113,7 @@ final class RetrievalAssembler(
       case Width.Deployed => (this.budget, this.hits)
       case Width.Within(b, h) => (b, h)
     }
-    db.read {
+    db.read(Subject.Turn(turn)) {
       for {
         settings <- lifecycle.current()
         found <- conversations.get(turn.conversationId)
@@ -185,7 +186,9 @@ final class RetrievalAssembler(
         )
         val (askedShown, askedCost) = askedSection(read, allowance)
         val along = db
-          .read(strandSections(read, Tokens(Tokens.value(allowance) - Tokens.value(askedCost))))
+          .read(Subject.Turn(turn))(
+            strandSections(read, Tokens(Tokens.value(allowance) - Tokens.value(askedCost)))
+          )
           .left
           .map(AssemblyError.Store(_))
         along.flatMap { (strandShown, strandCost) =>
@@ -241,7 +244,7 @@ final class RetrievalAssembler(
                   )
                 else {
                   val from = recent.headOption.flatMap(_.headOption).fold(turn.turnSeq)(_.turnSeq)
-                  db.read(find(turn, read, ownToFind, from, query, hits))
+                  db.read(Subject.Turn(turn))(find(turn, read, ownToFind, from, query, hits))
                     .left
                     .map(AssemblyError.Store(_))
                     .map { found =>

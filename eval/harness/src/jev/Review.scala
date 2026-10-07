@@ -5,6 +5,7 @@ import grit.core.id.{TriageRef, TurnRef}
 import grit.core.stitch.{StitchReads, Stitching, Tuning}
 import grit.core.store.StoreError
 import grit.core.triage.Corpora
+import grit.core.visibility.Subject
 import grit.dbos.engine.Reader
 import grit.eval.harness.capture.{Case, CaseId}
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
@@ -87,16 +88,28 @@ object Review {
         if (c.stitch.isEmpty) Right(None)
         else
           Stitching
-            .offered(reads, reader.db, TurnRef(c.conversation, ref.turn), under)
+            .offered(
+              reads,
+              reader.db.as(Subject.Conversation(c.conversation)),
+              TurnRef(c.conversation, ref.turn),
+              under
+            )
             .left
             .map(unread("stitch"))
       live <-
         if (c.stitch.isEmpty) Right(None)
-        else reader.db.read(reader.stitches.placed(c.entry)).left.map(unread("placement"))
+        else reader.all.read(reader.stitches.placed(c.entry)).left.map(unread("placement"))
     } yield {
       val triage =
         TriageInput
-          .read(reads, reader.rooms, reader.db, TurnRef(c.conversation, ref.turn), under, recipe)
+          .read(
+            reads,
+            reader.rooms,
+            reader.db.as(Subject.Conversation(c.conversation)),
+            TurnRef(c.conversation, ref.turn),
+            under,
+            recipe
+          )
           .toOption
           .flatMap { r =>
             Some(

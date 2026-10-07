@@ -26,6 +26,7 @@ import grit.core.plugin.Plugin
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.store.{StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.job.clock.ClockEdge
@@ -388,7 +389,7 @@ object RunRetentionLiveTests extends TestSuite {
         val w = wrote(config, run.conversationId)
         val before = held(config, w, Some(schedule))
         val ended =
-          right(engine.db.read(engine.schedules.read(schedule))).flatMap(_.ended)
+          right(engine.db.read(Subject.Public)(engine.schedules.read(schedule))).flatMap(_.ended)
         val askingBefore = wrote(config, asking)
         swept(config, engine, clock, kept(sealing))
         val after = held(config, w, Some(schedule))
@@ -446,7 +447,7 @@ object RunRetentionLiveTests extends TestSuite {
           nonEmpty(before),
           nonEmpty(held(config, w, None)),
           tombstones(config, run.conversationId, Some(id)),
-          right(engine.db.read(engine.schedules.read(id))).map(_.ended)
+          right(engine.db.read(Subject.Public)(engine.schedules.read(id))).map(_.ended)
         ) ==> (
           Set(
             "grit.conversations",

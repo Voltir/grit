@@ -23,6 +23,7 @@ object JobCaptureTests extends TestSuite {
       |import grit.core.plugin.*
       |import grit.core.store.*
       |import grit.core.tool.*
+      |import grit.core.visibility.Subject
       |
       |final case class Note(text: String) extends caps.Pure
       |object Remind extends Job[Note] {
@@ -38,7 +39,7 @@ object JobCaptureTests extends TestSuite {
       |  def bind(own: PluginReads, needs: Needs, jobs: OwnJobs): Either[Unneeded | NotOwn, PluginRun[Int]] =
       |    jobs.of(Remind).map(booking =>
       |      new PluginRun[Int] {
-      |        def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
+      |        def run(n: Int, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome =
       |          desk.ask(call, booking, When.In(scala.concurrent.duration.FiniteDuration(n.toLong, "minutes")), Grace.Zero, Note("tea"))
       |            .fold(r => Outcome.Failed(r.said), a => Outcome.Done(ScheduleId.value(a.id)))
       |      })
@@ -63,7 +64,7 @@ object JobCaptureTests extends TestSuite {
       |  val version: Int = 1
       |  def write(params: Note): ujson.Value = Remind.write(params)
       |  def read(params: ujson.Value): Either[String, Note] = Remind.read(params)
-      |  def reply(run: JobRun[Note]): String = db.read(Right("")).fold(_ => "", identity)
+      |  def reply(run: JobRun[Note]): String = db.read(Subject.Public)(Right("")).fold(_ => "", identity)
       |}
       |""".stripMargin
 
@@ -77,7 +78,7 @@ object JobCaptureTests extends TestSuite {
   private val runKeepsDesk =
     """final class Keeps extends PluginRun[Int] {
       |  var kept: Option[ScheduleDesk^] = None
-      |  def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome = { kept = Some(desk); Outcome.Done("") }
+      |  def run(n: Int, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome = { kept = Some(desk); Outcome.Done("") }
       |}
       |""".stripMargin
 
@@ -85,7 +86,7 @@ object JobCaptureTests extends TestSuite {
   private val runStashesDesk =
     """final class Stashes extends PluginRun[Int] {
       |  val kept: scala.collection.mutable.ArrayBuffer[ScheduleDesk^] = scala.collection.mutable.ArrayBuffer.empty
-      |  def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome = { kept += desk; Outcome.Done("") }
+      |  def run(n: Int, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome = { kept += desk; Outcome.Done("") }
       |}
       |""".stripMargin
 
@@ -96,7 +97,7 @@ object JobCaptureTests extends TestSuite {
       |  def bind(own: PluginReads, needs: Needs, jobs: OwnJobs): Either[Unneeded | NotOwn, PluginRun[Int]] =
       |    jobs.of(Remind).map(booking =>
       |      new PluginRun[Int] {
-      |        def run(n: Int, call: CallSlot, db: Db^, handed: ScheduleDesk^): Outcome =
+      |        def run(n: Int, call: CallSlot, reads: Reads^, handed: ScheduleDesk^): Outcome =
       |          desk.pending(call, booking).fold(r => Outcome.Failed(r.said), _ => Outcome.Done(""))
       |      })
       |}
@@ -105,7 +106,7 @@ object JobCaptureTests extends TestSuite {
   /** 6. The toolbox of a store and a desk handed a plugin tool whose run also edits. */
   private val toolboxEdits =
     """def box(store: Db^, desk: ScheduleDesk^, e: Edits^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
-      |  Toolbox.of(Remember.described.calling((n, at) => { val _ = RelPath.of("x").map(e.write(_, "x")); r.run(n, at, store, desk) }))
+      |  Toolbox.of(Remember.described.calling((n, at) => { val _ = RelPath.of("x").map(e.write(_, "x")); r.run(n, at, store.as(Subject.Turn(at.turn)), desk) }))
       |""".stripMargin
 
   /** Every breach capture checking rejects; [[declaredHolder]] is the type's bound, rejected
@@ -125,7 +126,7 @@ object JobCaptureTests extends TestSuite {
       val errs = errors(
         """object Kit {
           |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
-          |    Toolbox.of(Remember.described.calling((n, at) => r.run(n, at, store, desk)))
+          |    Toolbox.of(Remember.described.calling((n, at) => r.run(n, at, store.as(Subject.Turn(at.turn)), desk)))
           |}
           |""".stripMargin
       )

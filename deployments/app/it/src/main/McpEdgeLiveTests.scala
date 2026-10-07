@@ -11,6 +11,7 @@ import grit.core.place.{Namespace, Place, Service, WorksIn}
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.store.{Origin, Payload}
+import grit.core.visibility.Subject
 import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.{DbConfig, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
@@ -115,7 +116,7 @@ object McpEdgeLiveTests extends TestSuite {
               } yield turn).fold(e => sys.error(s"inbox: $e"), identity)
               val _ = engine.awaitTurn(turn)
               val results = engine.db
-                .read(engine.entries.list(turn.conversationId))
+                .read(Subject.Public)(engine.entries.list(turn.conversationId))
                 .fold(e => sys.error(e.toString), identity)
                 .collect { case e if e.turnSeq == turn.turnSeq => e.payload }
                 .collect { case Payload.Result(r, _) => r }

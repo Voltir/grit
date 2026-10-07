@@ -2,7 +2,7 @@ package grit.app.main
 
 import grit.core.model.{Catalog, CatalogJson, Profile}
 import grit.core.spend.Budget
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.engine.Engine
 import grit.dbos.sql.DbConfig
 import grit.kit.environment.DotEnv
@@ -46,7 +46,7 @@ object PromoteModelSettings {
       case Left(refused) => fail(refused.message(java.time.Instant.now()))
     }
     try
-      engine.db.read(engine.modelSettings.all()) match {
+      engine.db.read(Subject.Public)(engine.modelSettings.all()) match {
         case Right(kept) => print(render(seed, kept.map(_.settings)))
         case Left(e) => fail(s"the approved model settings cannot be read: $e")
       }

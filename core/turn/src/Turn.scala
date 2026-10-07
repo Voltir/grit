@@ -30,6 +30,7 @@ import grit.core.store.{
 import grit.core.tool.{Bound, DuplicateName, Repairs, Tool, ToolName, Toolbox}
 import grit.core.topic.Topic
 import grit.core.triage.{Tags, Weighing}
+import grit.core.visibility.Subject
 
 import TurnLoop.{Pending, Round}
 import TurnVerdict.Shape
@@ -442,7 +443,8 @@ object Turn {
       case None => s"not a turn: ${WorkflowId.value(workflowId)}"
       case Some(turn) =>
         import TurnJournal.given
-        d.transact(Step.PinModels)(pinModels(env, turn)).flatMap(profileOf(env, _)) match {
+        d.transact(Step.PinModels, Subject.Turn(turn))(pinModels(env, turn))
+          .flatMap(profileOf(env, _)) match {
           case Left(failure) => failedEarly(env, turn, failure)
           case Right(profile) =>
             val hosting = env.hosting
@@ -453,7 +455,7 @@ object Turn {
               else None
             val ledger = env.records.ledger
             val speech = env.speech.store
-            d.transact(Step.Offer)(
+            d.transact(Step.Offer, Subject.Turn(turn))(
               speech
                 .answering(turn)
                 .left
@@ -469,7 +471,7 @@ object Turn {
                   )
                 )
                 .flatMap(offered => weighCost(ledger, turn, weighed).map(_ => offered))
-            ).flatMap(TurnOffer.load(hosting, env.db, _)) match {
+            ).flatMap(TurnOffer.load(hosting, env.db.as(Subject.Turn(turn)), _)) match {
               case Left(failure) => failedEarly(env, turn, failure)
               case Right(offer) => pinned(env, tooling, turn)(using profile, offer, d)
             }
@@ -491,7 +493,7 @@ object Turn {
     val why = failure.toString
     if (!d.patch(Patches.RecordFailure)) s"failed: $failure"
     else
-      d.transact(Step.RecordFailure)(
+      d.transact(Step.RecordFailure, Subject.Turn(turn))(
         entries
           .ofTurn(turn)
           .flatMap(own =>
@@ -524,7 +526,7 @@ object Turn {
     val (entries, conversations) = (env.records.entries, env.hosting.conversations)
     val (triage, said) = (env.weighing.triage, env.weighing.said)
     env.db
-      .read {
+      .read(Subject.Turn(turn)) {
         for {
           own <- entries.ofTurn(turn)
           conversation <- conversations.get(turn.conversationId)
@@ -582,7 +584,7 @@ object Turn {
     val c = turn.conversationId
     val (entries, conversations) = (env.records.entries, env.hosting.conversations)
     env.db
-      .read {
+      .read(Subject.Turn(turn)) {
         for {
           all <- entries.list(c)
           conversation <- conversations.get(c)
@@ -618,7 +620,7 @@ object Turn {
     */
   private def profileOf(env: TurnEnv^, id: TurnProfileId): Either[TurnFailure, TurnProfile] =
     env.db
-      .read(env.records.profiles.get(id))
+      .read(Subject.Public)(env.records.profiles.get(id))
       .left
       .map(storeFailure)
       .flatMap(_.toRight(TurnFailure.Store(s"no profile kept under ${TurnProfileId.value(id)}")))
@@ -649,13 +651,13 @@ object Turn {
       else
         d.step(Step.Stitch) { () =>
           Stitching
-            .turn(env.classifier, reads, env.db, turn, stitching.tuning)
+            .turn(env.classifier, reads, env.db.as(Subject.Turn(turn)), turn, stitching.tuning)
             .left
             .map(storeFailure)
         } match {
           case Right(Some((root, placed))) =>
             val at = env.clock.now()
-            d.transact(Step.RecordStitch)(
+            d.transact(Step.RecordStitch, Subject.Turn(turn))(
               stitching.stitches.record(root, placed, at).left.map(storeFailure)
             ) match {
               case Right(_) => ""
@@ -672,7 +674,7 @@ object Turn {
       else Placing.Unplaced
     val topicFailure = placing match {
       case Placing.Placed(c) =>
-        d.transact(Step.RecordTopic)(
+        d.transact(Step.RecordTopic, Subject.Turn(turn))(
           TurnTopics.record(records.entries, records.ledger, turn, c, env.clock.now())
         ).left
           .toOption
@@ -686,7 +688,7 @@ object Turn {
       case (Left(failure), TurnOffer.Root.Heard | TurnOffer.Root.Named | TurnOffer.Root.ByName) =>
         val at = env.clock.now()
         val speech = env.speech
-        val settled = d.transact(Step.RecordSpeech)(
+        val settled = d.transact(Step.RecordSpeech, Subject.Turn(turn))(
           speech.store
             .drafted(turn, Outcome.Failed(failure.toString), None, at)
             .left
@@ -706,7 +708,9 @@ object Turn {
           case _ => Settling.Judged(d.step(Step.Judge)(() => judgeDraft(env, turn)))
         }
         val at = env.clock.now()
-        d.transact(Step.RecordSpeech)(recordSpeech(env, turn, settling, at)) match {
+        d.transact(Step.RecordSpeech, Subject.Turn(turn))(
+          recordSpeech(env, turn, settling, at)
+        ) match {
           case Left(failure) => s"drafted: ${EntryId.value(draft)}; not settled: $failure$topics"
           case Right(Outcome.Posted(_)) =>
             val summary =
@@ -738,7 +742,7 @@ object Turn {
     val conversations = env.hosting.conversations
     val now = env.clock.now()
     env.db
-      .read { (tx: Tx^) ?=>
+      .read(Subject.Turn(turn)) { (tx: Tx^) ?=>
         for {
           all <- records.entries.list(turn.conversationId)
           window = all.collectFirst {
@@ -996,7 +1000,9 @@ object Turn {
         if (d.patch(Patches.RecordWindow)) WindowRecord.OwnStep else WindowRecord.WithReply
       _ <- recorded match {
         case WindowRecord.OwnStep =>
-          d.transact(Step.RecordWindow)(recordWindow(env.records, turn, window, env.clock.now()))
+          d.transact(Step.RecordWindow, Subject.Turn(turn))(
+            recordWindow(env.records, turn, window, env.clock.now())
+          )
         case WindowRecord.WithReply => Right(windowId(turn))
       }
     } yield (window, recorded)
@@ -1018,7 +1024,7 @@ object Turn {
           }
           val appended = answered.result.flatMap { a =>
             val shape = a.shape
-            d.transact(Step.Append)(
+            d.transact(Step.Append, Subject.Turn(turn))(
               append(
                 offer,
                 env.records,
@@ -1111,7 +1117,7 @@ object Turn {
               calls: Vector[Pending]
           ): Either[TurnFailure, Unit] = {
             val shaped = shape(round)
-            d.transact(Step.recordCall(round))(
+            d.transact(Step.recordCall(round), Subject.Turn(turn))(
               recordCall(
                 offer.system,
                 env.records,
@@ -1144,9 +1150,10 @@ object Turn {
                     val step =
                       if (workspace.contains(place)) Step.dispatch(round)
                       else Step.reach(round, place)
-                    d.transact(step)(TurnHosted.dispatch(hosting, place, qs)).map { sent =>
-                      dispatched.update((round.index, place), sent)
-                    }
+                    d.transact(step, Subject.Turn(turn))(TurnHosted.dispatch(hosting, place, qs))
+                      .map { sent =>
+                        dispatched.update((round.index, place), sent)
+                      }
                   }
                 }
               }
@@ -1168,14 +1175,15 @@ object Turn {
                   d.step(slot.step) { () => settling.run(slot, call, free, clock.now()) }
                 case Right(gated: Bound.Gated) =>
                   val (entries, shown) = (env.records.entries, gated.ask)
-                  d.transact(slot.askStep)(TurnTools.ask(entries, slot, call, shown, clock.now()))
-                    .flatMap { _ =>
-                      val received = d.recv(Approval.topic(call), answerWithin)
-                      val approval = TurnTools.approval(received)
-                      d.step(slot.step) { () =>
-                        settling.decide(slot, call, gated, approval, clock.now())
-                      }
+                  d.transact(slot.askStep, Subject.Turn(turn))(
+                    TurnTools.ask(entries, slot, call, shown, clock.now())
+                  ).flatMap { _ =>
+                    val received = d.recv(Approval.topic(call), answerWithin)
+                    val approval = TurnTools.approval(received)
+                    d.step(slot.step) { () =>
+                      settling.decide(slot, call, gated, approval, clock.now())
                     }
+                  }
                 case Right(hosted: Bound.Hosted) =>
                   val place = offer.placeOf(hosted.tool)
                   val sent = place.exists(p => dispatched.getOrElse((round.index, p), false))
@@ -1201,7 +1209,7 @@ object Turn {
             val looped = TurnLoop.from(budget, first, moves)
             val replies = looped.fold(_ => Vector(first), _.replies)
             val verdictUnrecorded = asked.flatMap { c =>
-              d.transact(Step.RecordVerdict)(
+              d.transact(Step.RecordVerdict, Subject.Turn(turn))(
                 TurnTopics.writeEvents(
                   env.records.entries,
                   env.records.ledger,
@@ -1217,7 +1225,7 @@ object Turn {
             }
             val appended = looped.flatMap { l =>
               val shaped = shape(l.round)
-              d.transact(Step.Append)(
+              d.transact(Step.Append, Subject.Turn(turn))(
                 append(
                   offer,
                   env.records,
@@ -1395,7 +1403,7 @@ object Turn {
         d.step(Step.CallModelPlain) { () => callModel(heard, turn, seen, Shape.Plain) }
     }
     val round = TurnVerdict.round(c, first, further)
-    val recorded = d.transact(Step.RecordVerdict)(
+    val recorded = d.transact(Step.RecordVerdict, Subject.Turn(turn))(
       recordVerdict(offer.system, env.records, turn, seen, c, round, env.clock.now())
     )
     Ran(round.answer, recorded.left.toOption)
@@ -1440,7 +1448,7 @@ object Turn {
     for {
       message <- d.step(Step.Summarise) { () =>
         env.db
-          .read(env.records.entries.list(turn.conversationId))
+          .read(Subject.Turn(turn))(env.records.entries.list(turn.conversationId))
           .left
           .map(storeFailure)
           .flatMap { all =>
@@ -1464,7 +1472,7 @@ object Turn {
             )
           )
       }
-      appended <- d.transact(Step.AppendSummary)(
+      appended <- d.transact(Step.AppendSummary, Subject.Turn(turn))(
         appendSummary(env.records, turn, answered, message, placing, env.clock.now())
       )
     } yield appended
@@ -1563,7 +1571,7 @@ object Turn {
       window: Window
   ): Either[TurnFailure, ModelRequest] =
     env.db
-      .read(shown(env.records, turn, window))
+      .read(Subject.Turn(turn))(shown(env.records, turn, window))
       .left
       .map(storeFailure)
       .flatMap(requestOf(system, _, turn, window))

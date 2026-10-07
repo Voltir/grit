@@ -4,6 +4,7 @@ import grit.core.classify.Classifier
 import grit.core.durable.{Durable, InMemoryDurable}
 import grit.core.id.{StitchRef, TurnRef, WorkflowId}
 import grit.core.stitch.{Link, Stitching, Tuning}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.lifecycle.triage.TriageFixtures
 
@@ -59,7 +60,11 @@ object StitchTests extends TestSuite {
       other.run(id)(body(w, again)) ==> "nothing asked"
       other.recordedSteps(id) ==> Vector("stitch")
       again.calls ==> 0
-      assert(Stitching.offered(w.reads, FakeDb, turn, Tuning.Default).exists(_.nonEmpty))
+      assert(
+        Stitching
+          .offered(w.reads, FakeDb.as(Subject.Public), turn, Tuning.Default)
+          .exists(_.nonEmpty)
+      )
     }
 
     test("a reply's placement, or an id that is not a placement's, asks nothing") {

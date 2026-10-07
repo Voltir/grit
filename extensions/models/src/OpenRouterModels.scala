@@ -3,6 +3,7 @@ package grit.models
 import grit.core.model.{Catalog, Pinned}
 import grit.core.provider.{Models, Provider}
 import grit.core.store.{Db, ModelSettingStore}
+import grit.core.visibility.Subject
 
 /** [[Models]] over OpenRouter: the catalog in force is `seed` with every setting kept in `settings`
   * laid over it, read through `db` each time it is asked for. Each pin's calls are made with
@@ -18,7 +19,7 @@ final class OpenRouterModels(key: String, seed: Catalog, db: Db^, settings: Mode
   private val query: Provider = new OpenRouterProvider(OpenRouterConfig.of(key, pins.query))
 
   def catalog(): Either[String, Catalog] =
-    db.read(settings.all())
+    db.read(Subject.Public)(settings.all())
       .map(kept => seed.overlaid(kept.map(_.settings)))
       .left
       .map(e => s"the kept model settings cannot be read: $e")

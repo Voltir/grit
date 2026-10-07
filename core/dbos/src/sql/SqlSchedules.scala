@@ -40,7 +40,7 @@ import grit.core.job.{
 }
 import grit.core.retention.Target
 import grit.core.store.{Jot, StoreError, Tombstones, Tx}
-import grit.core.visibility.Label
+import grit.core.visibility.{Label, Subject}
 
 /** [[ScheduleStore]] over `grit.schedules`, marking in `tombstones` each schedule it ends, and
   * each plugin's [[ScheduleDesk]] over the same rows. A desk's asker is the author
@@ -307,7 +307,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
           val now = clock.now()
           val at = Slot.kept(when.from(now))
           val limit = now.plusNanos(ScheduleDesk.Horizon.toNanos)
-          written(jot.write {
+          written(jot.write(Subject.Turn(call.turn)) {
             row(id).flatMap {
               case Some(r) => Right(kept(id, r.schedule, booking.job))
               case None =>
@@ -336,7 +336,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
         own(booking).flatMap { _ =>
           val now = clock.now()
           jot
-            .write {
+            .write(Subject.Turn(call.turn)) {
               asker(call.turn).flatMap {
                 case None => Right(Vector.empty)
                 case Some((by, _)) => pendingOf(by)
@@ -358,7 +358,7 @@ final class SqlSchedules(tombstones: Tombstones) extends ScheduleStore {
       def cancel(call: CallSlot, booking: Booking[?], id: ScheduleId): Either[DeskRefusal, Unit] =
         own(booking).flatMap { _ =>
           val now = clock.now()
-          written(jot.write {
+          written(jot.write(Subject.Turn(call.turn)) {
             for {
               by <- asker(call.turn).map(_.map(_._1))
               r <- row(id, lock = true)

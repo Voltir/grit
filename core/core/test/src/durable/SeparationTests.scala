@@ -17,6 +17,7 @@ object SeparationTests extends TestSuite {
       |import grit.core.durable.*
       |import grit.core.id.*
       |import grit.core.store.*
+      |import grit.core.visibility.Subject
       |trait Provider extends caps.SharedCapability { def call(): String }
       |object Probe {
       |""".stripMargin
@@ -39,7 +40,7 @@ object SeparationTests extends TestSuite {
       val errs = errors(
         """def f(p: Provider^)(using d: Durable^): String = {
           |  val a = d.step("a") { () => p.call() }
-          |  val b = d.transact("b") { p.call() }
+          |  val b = d.transact("b", Subject.Public) { p.call() }
           |  a + b
           |}
           |""".stripMargin
@@ -66,7 +67,7 @@ object SeparationTests extends TestSuite {
     test("a step inside a transaction is rejected") {
       val errs = errors(
         """def f(p: Provider^)(using d: Durable^): String =
-          |  d.transact("outer") { d.step("inner") { () => p.call() } }
+          |  d.transact("outer", Subject.Public) { d.step("inner") { () => p.call() } }
           |""".stripMargin
       )
       assert(errs.exists(_.contains("Separation failure")))

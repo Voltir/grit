@@ -9,6 +9,7 @@ import grit.core.period.LifecycleSettings
 import grit.core.place.{Locality, Scope, Weight}
 import grit.core.recipe.Rooted
 import grit.core.store.{ConversationStore, EntryStore, Jot, Origin, PeriodStore}
+import grit.core.visibility.Subject
 import grit.dbos.engine.Reader
 import grit.eval.harness.capture.{Capture, Fields, Parts, TurnCapture}
 import grit.eval.harness.label.Locator
@@ -103,7 +104,7 @@ object Synthetic {
         Layout.of(c, v)
       )
       _ <- jot
-        .write(documents.declare(Vector(Load.Plugin -> terms)))
+        .write(Subject.Public)(documents.declare(Vector(Load.Plugin -> terms)))
         .left
         .map(e => s"the eval's document terms: $e")
       written <- Fields.each(layouts)(l =>
@@ -167,7 +168,7 @@ object Synthetic {
       name: String,
       origin: Origin
   ): Either[String, ConversationId] =
-    reader.db
+    reader.all
       .read(reader.conversations.find(origin))
       .left
       .map(e => s"$name: its conversations unread: ${Capture.kind(e)}")

@@ -214,6 +214,16 @@ final class InMemoryPeriodStore(
         .take(n max 0)
     )
 
+  def nextClosed(after: CloseOrdinal)(using
+      Tx^
+  ): Either[StoreError, Option[(CloseOrdinal, ConversationId)]] =
+    Right(
+      periods
+        .flatMap(p => closedOf(p).map(c => (c.order, p.ref.conversationId)))
+        .filter(_._1.isAfter(after))
+        .minByOption(oc => CloseOrdinal.value(oc._1))
+    )
+
   def verdictsOn(period: PeriodRef): Int = verdicts.count(_._1 == period)
 
   def all(conversation: ConversationId)(using Tx^): Either[StoreError, Vector[Period]] =

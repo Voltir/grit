@@ -20,6 +20,7 @@ import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.hour
 import grit.core.job.{Declared, Ending, Slot, SlotRule}
 import grit.core.store.{StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 
 import utest.*
@@ -52,7 +53,7 @@ object SqlStartSlotTests extends TestSuite {
   /** Makes the declared schedules `rules`, by key, as of `now`. */
   private def declare(engine: Engine^, rules: Vector[(String, SlotRule)], now: Instant): Unit =
     right(
-      engine.jot.write(
+      engine.jot.write(Subject.Public)(
         engine.schedules.declare(
           rules.map((k, rule) => (Declarer.Deployment, Declared(key(k), remind, rule, Count(1)))),
           now
@@ -124,11 +125,12 @@ object SqlStartSlotTests extends TestSuite {
         val turn = begun(engine.inbox.startSlot(scheduled("enqueued"), Some(1), Due))
         LiveDb.transaction(config)(workflow(turn.workflowId)) ==>
           Some(("run", "turns", ConversationId.value(turn.conversationId), "ENQUEUED"))
-        right(engine.db.read(engine.conversations.get(turn.conversationId))).map(_.createdBy) ==>
+        right(engine.db.read(Subject.Public)(engine.conversations.get(turn.conversationId)))
+          .map(_.createdBy) ==>
           Some(PrincipalId.Grit)
         engine.inbox.startSlot(scheduled("enqueued"), Some(1), Due.plusSeconds(5)) ==>
           Right(Slotted.Idle)
-        right(engine.db.read(engine.entries.list(turn.conversationId))).size ==> 1
+        right(engine.db.read(Subject.Public)(engine.entries.list(turn.conversationId))).size ==> 1
       }
     }
 
@@ -151,7 +153,8 @@ object SqlStartSlotTests extends TestSuite {
         keys.map(k => engine.inbox.startSlot(scheduled(k), Some(1), Due.plusSeconds(5))) ==>
           keys.map(k => Right(Slotted.Failed(Slot(scheduled(k), Due))))
         keys.map(k =>
-          right(engine.db.read(engine.schedules.read(scheduled(k)))).flatMap(_.ended)
+          right(engine.db.read(Subject.Public)(engine.schedules.read(scheduled(k))))
+            .flatMap(_.ended)
         ) ==>
           keys.map(_ => Some(Ending.Failed))
         turns.map(t => LiveDb.transaction(config)(workflow(t.workflowId)).map(_._4)) ==>

@@ -3,6 +3,7 @@ package grit.core.durable
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.store.Tx
+import grit.core.visibility.Subject
 
 /** Capability to run the current workflow's durable operations. Each completes at most
   * once per workflow id: its output is recorded, and a restarted workflow gets the
@@ -24,10 +25,10 @@ trait Durable extends caps.ExclusiveCapability {
   /** Runs `body` once for this workflow, as the step `name`, and records its output. */
   def step[A: Journaled](name: String)(body: () => A): A
 
-  /** As [[step]], inside a database transaction that commits atomically with the record
-    * of its output. The `Tx` is valid only within `body`.
+  /** As [[step]], inside a database transaction opened for `subject`, which commits
+    * atomically with the record of its output. The `Tx` is valid only within `body`.
     */
-  def transact[A: Journaled](name: String)(body: (Tx^) ?=> A): A
+  def transact[A: Journaled](name: String, subject: Subject)(body: (Tx^) ?=> A): A
 
   /** Whether this run takes the new branch of the change `name`: true for a workflow that
     * reaches this point after the change shipped, false for one that had already passed

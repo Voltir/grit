@@ -14,6 +14,7 @@ import grit.core.inbox.InMemoryInbox
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
 import grit.core.store.{Jot, StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -24,9 +25,10 @@ import utest.*
 object ServingTests extends TestSuite {
 
   private object FakeJot extends Jot {
-    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
-      TestTx.fake
-    )
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using
+        TestTx.fake
+      )
   }
 
   private val inbox = InMemoryInbox.fresh(Budget(java.time.ZoneOffset.UTC, None))

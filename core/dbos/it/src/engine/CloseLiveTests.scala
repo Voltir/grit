@@ -24,6 +24,7 @@ import grit.core.message.Message
 import grit.core.period.{LifecycleSettings, Probability, Windows}
 import grit.core.place.Locality
 import grit.core.store.{Entry, Origin, Payload}
+import grit.core.visibility.Subject
 import grit.dbos.sql.{DbConfig, LiveDb, SqlLifecycleStore, TestPostgres}
 
 import dev.dbos.transact.DBOSClient
@@ -172,7 +173,7 @@ object CloseLiveTests extends TestSuite {
         val replied = Instant.now().plusSeconds(60)
         assert(first.map(_.size) == Right(1))
         // The running turn writes its reply a minute on: the period's newest activity moves.
-        engine.jot.write {
+        engine.jot.write(Subject.Turn(t0)) {
           for {
             next <- engine.entries.lockNext(t0.conversationId)
             _ <- engine.entries.insert(

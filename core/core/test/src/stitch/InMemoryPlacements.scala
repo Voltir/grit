@@ -7,6 +7,7 @@ import scala.concurrent.duration.FiniteDuration
 import grit.core.classify.Classifier
 import grit.core.clock.Clock
 import grit.core.store.Db
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 /** [[Placements]] over in-memory stores: each opening placed at once, as its own workflow
@@ -38,7 +39,13 @@ final class InMemoryPlacements(
     waited = waited :+ opening
     if (!first) Right("placed already")
     else
-      Stitching.turn(classifier, reads, db, opening.ref.turn, tuning) match {
+      Stitching.turn(
+        classifier,
+        reads,
+        db.as(Subject.Conversation(opening.ref.turn.conversationId)),
+        opening.ref.turn,
+        tuning
+      ) match {
         case Left(e) => Left(e.toString)
         case Right(None) => Right("nothing asked")
         case Right(Some((root, placed))) =>

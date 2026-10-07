@@ -28,7 +28,7 @@ object WindowOnly {
     */
   def all(reader: Reader^, until: Instant): Either[String, Vector[WindowOnly]] =
     for {
-      tagged <- reader.db
+      tagged <- reader.all
         .read(reader.triage.tagged(Instant.EPOCH, until))
         .left
         .map(e => s"triage unread: ${Capture.kind(e)}")

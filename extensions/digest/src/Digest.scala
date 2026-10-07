@@ -11,7 +11,7 @@ import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.period.{CloseOrdinal, CloseReason}
 import grit.core.place.Place
 import grit.core.plugin.{Documents, Exports, Needs, PluginReads, PluginRun, PluginTool, Unneeded}
-import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
+import grit.core.store.{ClosedPeriod, Origin, Reads, StoreError, Tx}
 import grit.core.tool.{Args, Field, Gate, Hosted, Outcome, ToolName, ToolSpec}
 
 /** The digest (ADR 0011's hello-world plugin, kept as documents, ADR 0028): one document per
@@ -219,8 +219,8 @@ object Digest {
     ): Either[Unneeded | NotOwn, PluginRun[Int]] =
       Right(new PluginRun[Int] {
         private val read = activity(own)
-        def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
-          db.read(read.recent(n)) match {
+        def run(n: Int, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome =
+          reads.read(read.recent(n)) match {
             case Left(error) => Outcome.Failed(s"the digest could not be read: $error")
             case Right(lines) =>
               Outcome.Done(

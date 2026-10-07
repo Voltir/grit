@@ -76,8 +76,9 @@ In dependency order:
   from before a restart, a plugin no longer enabled, a version of a plugin's document no longer
   current, an ended schedule), its stored form, how long each kind of target is kept (`Retention`: a window, or as
   its plugin declares), and a `Tombstone`, the decision to delete one. ← `id`, `period`
-- **`store`** — what is kept and the transaction it is kept under: `Tx`, `Db` (reads),
-  `Jot` (short writes from inside a step), `Entry`,
+- **`store`** — what is kept and the transaction it is kept under: `Tx` (opened for a
+  `Subject`, at the clearance it resolves to, ADR 0030), `Db` (reads), `Reads` (reads fixed to
+  one subject, for code that must not choose), `Jot` (short writes from inside a step), `Entry`,
   its `Payload` and their codec `PayloadJson`, `EntryStore`, `EntrySearch`, `Conversation`, `Origin` (and its `Audience`: who its messages are for; its `Focus` at a message's `Position`: how many topics interleave where it is said),
   `ConversationStore` (each conversation's origin and who began it), `PromptStore` (each
   turn's system prompt, its fragments kept by id), `UsageLedger`, `ModelProfileStore` (which profile each turn ran
@@ -215,7 +216,7 @@ In dependency order:
   `Documents`, the terms they are kept under and its posting to them, and
   `PluginTool`s, each a `Hosted` description bound at start to a `PluginRun` over its own
   documents, `PluginReads`, its needs' services, `Needs`, and its own jobs, `OwnJobs`, run told
-  its call and handed a `ScheduleDesk`; and its `Job`s and `Declared` schedules); `Exports`, a plugin another may
+  its call, handed `Reads` for the turn that made it and a `ScheduleDesk`; and its `Job`s and `Declared` schedules); `Exports`, a plugin another may
   need, exporting a pure service over its own documents, the only way one plugin reads
   another's; `CacheDocs` (where it keeps what it makes of one closed period, deleted with that
   period's closing), `PluginDocs` (one plugin's documents as its surfaces read them),

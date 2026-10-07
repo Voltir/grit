@@ -13,6 +13,7 @@ import grit.core.speech.{Limits, Reach, Speaking, Stage}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.stitch.{Link, Placed}
 import grit.core.store.{Entry, Nearby, Origin, Payload, StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
@@ -95,7 +96,9 @@ object StitchLiveTests extends TestSuite {
     * its first entry, once its triage has kept its tags.
     */
   private def hear(engine: Engine^, ts: String, who: String, text: String, ago: Long): Entry = {
-    right(engine.jot.write(engine.principals.enroll(PrincipalId(s"slack:T1/$who"), who)))
+    right(
+      engine.jot.write(Subject.Public)(engine.principals.enroll(PrincipalId(s"slack:T1/$who"), who))
+    )
     engine.inbox.hear(
       thread(ts),
       SourceId(ts),
@@ -105,15 +108,20 @@ object StitchLiveTests extends TestSuite {
       Reach(Some(s"C1/$ts/$ts"), Set.empty)
     ) ==> Right(())
     val c =
-      right(engine.db.read(engine.conversations.find(thread(ts)))).getOrElse(sys.error("heard"))
+      right(engine.db.read(Subject.Public)(engine.conversations.find(thread(ts))))
+        .getOrElse(sys.error("heard"))
     val first =
-      right(engine.db.read(engine.entries.list(c.id))).headOption.getOrElse(sys.error("no entry"))
-    assert(eventually(right(engine.db.read(engine.triage.of(Vector(first.id)))).nonEmpty))
+      right(engine.db.read(Subject.Public)(engine.entries.list(c.id))).headOption
+        .getOrElse(sys.error("no entry"))
+    assert(
+      eventually(right(engine.db.read(Subject.Public)(engine.triage.of(Vector(first.id)))).nonEmpty)
+    )
     first
   }
 
   private def links(engine: Engine^, c: ConversationId): Vector[Link] =
-    right(engine.db.read(engine.stitches.links(Vector(c)))).filter(_.conversation == c)
+    right(engine.db.read(Subject.Public)(engine.stitches.links(Vector(c))))
+      .filter(_.conversation == c)
 
   /** The kind of what became of `turn`'s draft, and whose entry settled it, from grit.speech.
     * Read in SQL because no store reads an outcome back (SpeechStore only writes it), and
@@ -149,7 +157,7 @@ object StitchLiveTests extends TestSuite {
         // grit replied in the Engine thread after David's first reply was said.
         val replied = {
           val a = asked.conversationId
-          right(engine.jot.write {
+          right(engine.jot.write(Subject.Public) {
             for {
               next <- engine.entries.lockNext(a)
               e = Entry(
@@ -194,7 +202,7 @@ object StitchLiveTests extends TestSuite {
         ) ==>
           (Vector.empty, Vector.empty)
         // What the first reply's placement saw: the Engine exchange offered first, and taken.
-        right(engine.db.read(engine.stitches.placed(real.id))) match {
+        right(engine.db.read(Subject.Public)(engine.stitches.placed(real.id))) match {
           case Some(f: Placed.Follows) =>
             f.seen.offered.headOption.map(_.root) ==> Some(engineRoot)
           case other => throw new java.lang.AssertionError(s"not follows: $other")
@@ -206,12 +214,16 @@ object StitchLiveTests extends TestSuite {
         // A pin of the stored form (see outcome): its key names and the spoken kind.
         outcome(drafted).map(ujson.read(_)) ==>
           Some(ujson.Obj("kind" -> "spoken", "by" -> EntryId.value(replied.id)))
-        right(engine.db.read(engine.speech.spoken(Instant.EPOCH)))
+        right(engine.db.read(Subject.Public)(engine.speech.spoken(Instant.EPOCH)))
           .find(_.turn == drafted)
           .map(_.stage) ==> Some(Stage.Settled)
 
         // A top-level mention: stitched in its own turn, and shown the strand.
-        right(engine.jot.write(engine.principals.enroll(PrincipalId("slack:T1/U0DAVID"), "David")))
+        right(
+          engine.jot.write(Subject.Public)(
+            engine.principals.enroll(PrincipalId("slack:T1/U0DAVID"), "David")
+          )
+        )
         val mention = engine.inbox
           .ingest(
             thread("6.0"),
@@ -222,7 +234,8 @@ object StitchLiveTests extends TestSuite {
           .fold(e => sys.error(e.toString), identity)
         engine.inbox.startTurn(mention) ==> Right(())
         def window =
-          right(engine.db.read(engine.entries.get(Turn.windowId(mention)))).map(_.payload)
+          right(engine.db.read(Subject.Public)(engine.entries.get(Turn.windowId(mention))))
+            .map(_.payload)
         assert(eventually(window.nonEmpty))
         links(engine, mention.conversationId) ==> Vector(Link(mention.conversationId, engineRoot))
         val along = window.toVector.flatMap {

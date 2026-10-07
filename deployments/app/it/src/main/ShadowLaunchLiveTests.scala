@@ -23,6 +23,7 @@ import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Entry, Origin, StoreError, Tx}
 import grit.core.triage.{Corpora, Corpus, ShadowAnswers, Shadowed}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
@@ -118,10 +119,16 @@ object ShadowLaunchLiveTests extends TestSuite {
         Instant.now(),
         Reach.Nowhere
       ) ==> Right(())
-      val c = right(engine.db.read(engine.conversations.find(here))).getOrElse(sys.error("heard"))
+      val c = right(engine.db.read(Subject.Public)(engine.conversations.find(here)))
+        .getOrElse(sys.error("heard"))
       val entry =
-        right(engine.db.read(engine.entries.list(c.id))).headOption.getOrElse(sys.error("no entry"))
-      assert(eventually(right(engine.db.read(engine.triage.of(Vector(entry.id)))).nonEmpty))
+        right(engine.db.read(Subject.Public)(engine.entries.list(c.id))).headOption
+          .getOrElse(sys.error("no entry"))
+      assert(
+        eventually(
+          right(engine.db.read(Subject.Public)(engine.triage.of(Vector(entry.id)))).nonEmpty
+        )
+      )
       assert(eventually(engine.unfinished() == Right(0)))
       val _ = right(engine.sweep(Instant.now()))
       assert(eventually(engine.unfinished() == Right(0)))
@@ -129,7 +136,8 @@ object ShadowLaunchLiveTests extends TestSuite {
       (
         entry,
         steps(config, grit.core.id.WorkflowId.value(triage)),
-        right(engine.db.read(engine.shadows.of(name, Vector(entry.id)))).get(entry.id)
+        right(engine.db.read(Subject.Public)(engine.shadows.of(name, Vector(entry.id))))
+          .get(entry.id)
       )
     } finally engine.close()
   }

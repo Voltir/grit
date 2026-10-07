@@ -12,10 +12,11 @@ import grit.core.recipe.RoomReads
 import grit.core.stitch.{Opening, Placements, StitchReads, Tuning}
 import grit.core.store.Db
 import grit.core.triage.{Corpora, Tags, Weighing}
+import grit.core.visibility.Subject
 
 /** [[Weighing]] as live triage asks: its question set, `questions`, put to the
   * state [[TriageInput.read]] builds for the message, as for one heard (the shipped recipe,
-  * `tuning`), read through `reads` and `rooms`, with the corpora of `sources`
+  * `tuning`), read for the turn through `db`, `reads` and `rooms`, with the corpora of `sources`
   * covering its conversation's place, of `classifier`; an opening is asked about once its
   * placement through `placements` has ended, waited for at most [[Mentions.PlacedWithin]] on
   * `clock`. The classifier is given `askWithin` to answer, past which the message is
@@ -39,7 +40,7 @@ final class Mentions(
     for {
       _ <- placed(turn)
       read <- TriageInput
-        .read(reads, rooms, db, turn, tuning, TriageRecipe.Shipped)
+        .read(reads, rooms, db.as(Subject.Turn(turn)), turn, tuning, TriageRecipe.Shipped)
         .left
         .map(_ => Weighing.Unweighed.Unread)
       // A conversation not found is at no place, so no source covers it.
@@ -77,7 +78,7 @@ final class Mentions(
     * did not end within [[Mentions.PlacedWithin]].
     */
   private def placed(turn: TurnRef): Either[Weighing.Unweighed, Unit] =
-    db.read {
+    db.read(Subject.Turn(turn)) {
       for {
         all <- reads.entries.list(turn.conversationId)
         conversation <- reads.conversations.get(turn.conversationId)

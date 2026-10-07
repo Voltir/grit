@@ -83,8 +83,10 @@ histories, replayed under the engine's epoch (`Turn.Epoch`).
   ← `triage`
 - **`post`** — `Posting`: one run posting closed periods to a plugin from its cursor
   (`grit.core.plugin`), on a queue of its own partitioned by plugin (`grit.dbos.workflow.Posts`):
-  each step posts the next closed period and moves the cursor past it in one `Jot`
-  transaction, so a plugin's `Left` rolls back what it wrote and leaves the cursor, and marks the runs from
+  each step finds the next closed period and its conversation in one public `Jot`
+  transaction, then posts it and moves the cursor past it in a second, opened for that
+  conversation, so what it keeps is kept at the conversation's label and a plugin's `Left`
+  rolls back what it wrote and leaves the cursor; that transaction marks the runs from
   the cursor it started at for deletion; at most
   `MaxPerRun` a run. `PostEnv` is what it works with. Imports nothing else in lifecycle.
 

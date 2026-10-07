@@ -4,6 +4,7 @@ import grit.core.durable.Durable
 import grit.core.id.{EntryId, SettleRef, TurnSeq, WorkflowId}
 import grit.core.period.{Judgement, Probability, Verdict}
 import grit.core.store.{Speakers, StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** The settle: one workflow per question whether anyone is waiting on a quiet period
@@ -47,13 +48,15 @@ object Settle {
       case Some(question) =>
         import SettleJournal.given
         val records = env.records
-        d.transact(Step.Check)(check(records, question)) match {
+        val subject = Subject.Conversation(question.period.conversationId)
+        val reads = env.db.as(subject)
+        d.transact(Step.Check, subject)(check(records, question)) match {
           case Left(why) => s"failed: $why"
           case Right(Checked.Abandoned(why)) => s"abandoned: $why"
           case Right(Checked.Asking(first)) =>
             val judgement = d.step(Step.Ask) { () =>
               val entries = PeriodTranscript.entries(
-                env.db,
+                reads,
                 env.records.entries,
                 question.period,
                 first,
@@ -64,7 +67,7 @@ object Settle {
                 case Right(own) =>
                   // Unread names are no names: each line is then its role's.
                   val names = PeriodTranscript
-                    .speakers(env.db, env.records.principals, own)
+                    .speakers(reads, env.records.principals, own)
                     .getOrElse(Speakers.none)
                   SettleQuestion.judge(
                     env.classifier,
@@ -73,7 +76,7 @@ object Settle {
               }
             }
             val verdict = Verdict(env.clock.now(), question.last, judgement)
-            d.transact(Step.Record)(
+            d.transact(Step.Record, subject)(
               records.periods.judged(question.period, verdict).left.map(describe)
             ) match {
               case Left(why) => s"failed: $why"

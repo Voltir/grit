@@ -8,7 +8,7 @@ import grit.core.clock.Utc
 import grit.core.id.{CallSlot, JobName, PluginName, ScheduleId}
 import grit.core.job.{Grace, Job, JobRun, NotOwn, OwnJobs, ScheduleDesk, When}
 import grit.core.plugin.{Needs, Plugin, PluginReads, PluginRun, PluginTool, Unneeded}
-import grit.core.store.Db
+import grit.core.store.Reads
 import grit.core.tool.{Args, ArgsError, Field, Gate, Hosted, Outcome, Retry, ToolName, ToolSpec}
 
 /** Reminders (ADR 0029's first use): `remind_me` sets a one-off reminder, which its job
@@ -161,7 +161,7 @@ object Reminders {
     ): Either[Unneeded | NotOwn, PluginRun[Setting]] =
       jobs.of(Remind).map { booking =>
         new PluginRun[Setting] {
-          def run(a: Setting, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
+          def run(a: Setting, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome =
             desk.ask(call, booking, a.when, Grace, a.reminder) match {
               case Left(refused) => Outcome.Failed(refused.said)
               case Right(asked) =>
@@ -215,7 +215,7 @@ object Reminders {
     ): Either[Unneeded | NotOwn, PluginRun[Unit]] =
       jobs.of(Remind).map { booking =>
         new PluginRun[Unit] {
-          def run(a: Unit, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
+          def run(a: Unit, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome =
             desk.pending(call, booking) match {
               case Left(refused) => Outcome.Failed(refused.said)
               case Right(pending) =>
@@ -270,7 +270,7 @@ object Reminders {
     ): Either[Unneeded | NotOwn, PluginRun[ScheduleId]] =
       jobs.of(Remind).map { booking =>
         new PluginRun[ScheduleId] {
-          def run(id: ScheduleId, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
+          def run(id: ScheduleId, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome =
             desk.cancel(call, booking, id) match {
               case Left(refused) => Outcome.Failed(refused.said)
               case Right(()) => Outcome.Done(s"Reminder ${ScheduleId.value(id)} is cancelled.")

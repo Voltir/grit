@@ -6,18 +6,19 @@ import scala.util.Using
 import scala.util.control.NonFatal
 
 import grit.core.store.{Jot, StoreError, Tx}
+import grit.core.visibility.Subject
 
 /** [[Jot]] over `dataSource`: each write is its own transaction, committed when its body
   * returns a `Right` and rolled back otherwise.
   */
 final class SqlJot(dataSource: DataSource, opener: Opener) extends Jot {
 
-  def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+  def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
     try {
       Using.resource(dataSource.getConnection()) { conn =>
         conn.setAutoCommit(false)
         val result =
-          try body(using Tx.open(conn, opener.maintenance))
+          try opener.open(subject, conn).flatMap(tx => body(using tx))
           catch {
             case NonFatal(e) =>
               conn.rollback()

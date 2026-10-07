@@ -1,6 +1,7 @@
 package grit.core.durable
 
 import grit.core.id.WorkflowId
+import grit.core.visibility.Subject
 
 import utest.*
 
@@ -217,7 +218,7 @@ abstract class DurableContract extends TestSuite {
       val counts = new Counts
       counts.crashInB = true
       def wf(using d: Durable^): String =
-        d.transact("write") { counts.a += 1; "written" } + d.step("after") { () =>
+        d.transact("write", Subject.Public) { counts.a += 1; "written" } + d.step("after") { () =>
           if (counts.crashInB) rt.crash()
           "!"
         }

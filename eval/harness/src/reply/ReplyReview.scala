@@ -253,19 +253,19 @@ object ReplyReview {
     def unread(what: String)(e: StoreError) = s"$w: $what unread: ${kind(e)}"
     val ref = TurnRef(t.conversation, t.turn)
     for {
-      all <- reader.db.read(reader.entries.list(t.conversation)).left.map(unread("entries"))
+      all <- reader.all.read(reader.entries.list(t.conversation)).left.map(unread("entries"))
       nearby = all.find(_.id == Turn.windowId(ref)).map(_.payload) match {
         case Some(Payload.Window(_, _, n, _)) if records => n
         case _ => Vector.empty
       }
-      near <- reader.db
+      near <- reader.all
         .read(Nearby.read(nearby, reader.entries))
         .left
         .map(unread("nearby"))
       named <-
         if (!records) Right(Speakers.none)
         else
-          reader.db
+          reader.all
             .read(reader.principals.speakers((all ++ near).map(_.id)))
             .left
             .map(unread("speakers"))

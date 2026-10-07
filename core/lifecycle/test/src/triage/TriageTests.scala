@@ -12,6 +12,7 @@ import grit.core.spend.DailyCap
 import grit.core.stitch.{Stitching, Tuning}
 import grit.core.store.Tx
 import grit.core.triage.{Bound, Corpora, Earning, Gate, Reading, Tags}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -100,7 +101,14 @@ object TriageTests extends TestSuite {
       val requests = new Requests
       new InMemoryDurable().run(t.workflowId)(w.body(recording(requests), 5, sources = Catalog))
       val read =
-        TriageInput.read(w.reads, w.rooms, FakeDb, t.message, Tuning.Default, TriageRecipe.Shipped)
+        TriageInput.read(
+          w.reads,
+          w.rooms,
+          FakeDb.as(Subject.Public),
+          t.message,
+          Tuning.Default,
+          TriageRecipe.Shipped
+        )
       read.map(_.state.author) ==> Right("Ana")
       requests.sent ==> read.toOption.toVector.map { r =>
         TriageQuestions
@@ -183,7 +191,14 @@ object TriageTests extends TestSuite {
       (0 until 40).foreach(i => w.hear(f"message $i%02d " + "x" * 80, "Ben", i.toLong))
       val t = w.hear("the last", "Ana", 41)
       val read =
-        TriageInput.read(w.reads, w.rooms, FakeDb, t.message, Tuning.Default, TriageRecipe.Shipped)
+        TriageInput.read(
+          w.reads,
+          w.rooms,
+          FakeDb.as(Subject.Public),
+          t.message,
+          Tuning.Default,
+          TriageRecipe.Shipped
+        )
       read.map(r => (r.state.thread.length, r.state.thread == r.thread.text, r.thread.at)) ==>
         Right((TriageQuestion.ThreadChars, true, 0))
       read.map(r => (r.thread.cut + r.thread.own).take(17)) ==> Right("Ben: message 00 x")
@@ -192,7 +207,7 @@ object TriageTests extends TestSuite {
       read.map(r => (r.entry, r.state)) ==> TriageInput.build(
         w.reads,
         w.rooms,
-        FakeDb,
+        FakeDb.as(Subject.Public),
         t.message,
         Tuning.Default,
         TriageRecipe.Shipped
@@ -275,7 +290,9 @@ object TriageTests extends TestSuite {
       val kept = first.flatMap(id =>
         w.stitches.placed(id)(using TestTx.fake).toOption.flatten.map(_.seen.state)
       )
-      val now = Stitching.offered(w.reads, FakeDb, turn, Tuning.Default).map(_.map(Stitching.shown))
+      val now = Stitching
+        .offered(w.reads, FakeDb.as(Subject.Public), turn, Tuning.Default)
+        .map(_.map(Stitching.shown))
       assert(kept.isDefined)
       now ==> Right(kept)
     }
@@ -288,8 +305,14 @@ object TriageTests extends TestSuite {
       val second = w.hear("and another", "David", 2, in = b)
       val turn = TurnRef(b, second.turn)
       val classifier = new Scripted(Vector(0.9, 0.1, 0, 0, 0), Vector(0.1, 0.1, 0.2))
-      Stitching.offered(w.reads, FakeDb, turn, Tuning.Default) ==> Right(None)
-      Stitching.turn(classifier, w.reads, FakeDb, turn, Tuning.Default) ==> Right(None)
+      Stitching.offered(w.reads, FakeDb.as(Subject.Public), turn, Tuning.Default) ==> Right(None)
+      Stitching.turn(
+        classifier,
+        w.reads,
+        FakeDb.as(Subject.Public),
+        turn,
+        Tuning.Default
+      ) ==> Right(None)
       classifier.calls ==> 0
     }
 

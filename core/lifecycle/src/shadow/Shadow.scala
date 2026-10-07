@@ -6,6 +6,7 @@ import grit.core.clock.Clock
 import grit.core.durable.Durable
 import grit.core.id.{EntryId, ShadowName, ShadowRef, TurnRef, WorkflowId}
 import grit.core.triage.{Corpora, ShadowAnswers, Shadowed}
+import grit.core.visibility.Subject
 import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageRecipe}
 
 /** The shadow workflow: one per declared variant and heard message ([[ShadowRef]]), on a
@@ -42,7 +43,7 @@ object Shadow {
           case Right((entry, row)) =>
             val at = env.clock.now()
             val (shadows, name) = (env.shadows, shadow.name)
-            d.transact(Step.Record)(
+            d.transact(Step.Record, Subject.Conversation(shadow.triage.period.conversationId))(
               shadows.record(entry, name, row, at).left.map(ShadowJournal.describe)
             ) match {
               case Left(why) => s"not kept: $why"
@@ -63,7 +64,7 @@ object Shadow {
           .heard(
             env.reads,
             env.rooms,
-            env.db,
+            env.db.as(Subject.Conversation(shadow.triage.period.conversationId)),
             TurnRef(shadow.triage.period.conversationId, shadow.triage.turn),
             env.tuning,
             TriageRecipe.Shipped

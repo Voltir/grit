@@ -5,6 +5,7 @@ import grit.core.id.TurnSeq
 import grit.core.message.Tokens
 import grit.core.provider.TokenEstimator
 import grit.core.store.{Db, Entry, EntryStore, Payload, PeriodStore, Principals, Speakers}
+import grit.core.visibility.Subject
 
 /** The window with no choosing: the closing entry of the conversation's newest closed
   * period, then the messages of the most recent whole turns of the turn's own period, before
@@ -34,7 +35,7 @@ final class LinearAssembler(
       case Width.Deployed => this.budget
       case Width.Within(b, _) => b
     }
-    db.read {
+    db.read(Subject.Turn(request.turn)) {
       for {
         opening <- periods.opening(request.turn)
         all <- entries.list(request.turn.conversationId)

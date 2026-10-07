@@ -11,6 +11,7 @@ import grit.core.period.{CloseReason, LifecycleSettings, TestClosings}
 import grit.core.speech.{Limits, Reach, Speaking, Stage}
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Origin, StoreError}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, TestPostgres}
 import grit.kit.deployment.{Assembly, Deployment, Offer, Offered, Topics}
@@ -109,11 +110,12 @@ object UnpromptedLiveTests extends TestSuite {
       Reach.Nowhere
     ) ==>
       Right(())
-    val c = right(engine.db.read(engine.conversations.find(origin))).getOrElse(sys.error("heard"))
+    val c = right(engine.db.read(Subject.Public)(engine.conversations.find(origin)))
+      .getOrElse(sys.error("heard"))
     val first = TurnRef(c.id, TurnSeq.First)
-    right(engine.jot.write(engine.periods.of(first))).foreach { p =>
+    right(engine.jot.write(Subject.Public)(engine.periods.of(first))).foreach { p =>
       right(
-        engine.jot.write(
+        engine.jot.write(Subject.Public)(
           engine.periods.seal(
             CloseRef(p.ref, first.turnSeq, now),
             CloseReason.Lapsed,
@@ -136,7 +138,9 @@ object UnpromptedLiveTests extends TestSuite {
 
   /** What was kept of `turn`'s draft: its stage in the speech ledger. */
   private def stage(engine: Engine^, turn: TurnRef): Option[Stage] =
-    right(engine.db.read(engine.speech.spoken(Instant.EPOCH))).find(_.turn == turn).map(_.stage)
+    right(engine.db.read(Subject.Public)(engine.speech.spoken(Instant.EPOCH)))
+      .find(_.turn == turn)
+      .map(_.stage)
 
   val tests = Tests {
     test(
@@ -159,8 +163,9 @@ object UnpromptedLiveTests extends TestSuite {
           case Some(Stage.Posted(_)) => true
           case _ => false
         }))
-        val pending = right(engine.jot.write(engine.deliveries.pending())).filter(_.turn == turn)
-        val reply = right(engine.db.read(engine.entries.get(turn.replyId)))
+        val pending = right(engine.jot.write(Subject.Public)(engine.deliveries.pending()))
+          .filter(_.turn == turn)
+        val reply = right(engine.db.read(Subject.Public)(engine.entries.get(turn.replyId)))
         (pending.map(_.to), reply.nonEmpty) ==> (Vector("C1/10.0/10.0:1"), true)
         // Told inside the workflow as its body returns, before DBOS records the result: once
         // the result is in, the body never runs again, so no later line can come.
@@ -186,11 +191,12 @@ object UnpromptedLiveTests extends TestSuite {
         Launch(engine, d, secrets(d, config), Launch.Run.Served, sweeping = false, _ => ())
         val turn = converse(engine, "20.0")
         assert(eventually(stage(engine, turn).contains(Stage.Settled)))
-        val pending = right(engine.jot.write(engine.deliveries.pending())).filter(_.turn == turn)
-        val reply = right(engine.db.read(engine.entries.get(turn.replyId)))
+        val pending = right(engine.jot.write(Subject.Public)(engine.deliveries.pending()))
+          .filter(_.turn == turn)
+        val reply = right(engine.db.read(Subject.Public)(engine.entries.get(turn.replyId)))
         (pending, reply) ==> (Vector.empty, None)
         // Judged, not passed over: the judge's call is in the ledger.
-        val ledger = right(engine.db.read(engine.ledger.of(turn.workflowId)))
+        val ledger = right(engine.db.read(Subject.Public)(engine.ledger.of(turn.workflowId)))
         assert(ledger.exists(_.entry == grit.turn.TurnJudge.id(turn)))
       } finally engine.close()
     }
@@ -203,19 +209,24 @@ object UnpromptedLiveTests extends TestSuite {
       try {
         Launch(engine, d, secrets(d, config), Launch.Run.Served, sweeping = false, _ => ())
         val day = grit.core.spend.Budget(java.time.ZoneOffset.UTC, None).today(Instant.now())
-        val spent = right(engine.db.read(engine.speech.spentOn(day)))
+        val spent = right(engine.db.read(Subject.Public)(engine.speech.spentOn(day)))
         val turn = converse(engine, "30.0", named = true)
-        assert(eventually(right(engine.db.read(engine.entries.get(turn.replyId))).nonEmpty))
+        assert(
+          eventually(
+            right(engine.db.read(Subject.Public)(engine.entries.get(turn.replyId))).nonEmpty
+          )
+        )
         val _ = engine.awaitTurn(turn)
-        val pending = right(engine.jot.write(engine.deliveries.pending())).filter(_.turn == turn)
-        val ledger = right(engine.db.read(engine.ledger.of(turn.workflowId)))
+        val pending = right(engine.jot.write(Subject.Public)(engine.deliveries.pending()))
+          .filter(_.turn == turn)
+        val ledger = right(engine.db.read(Subject.Public)(engine.ledger.of(turn.workflowId)))
         (
           pending.map(_.to),
           ledger.nonEmpty,
           ledger.exists(_.entry == grit.turn.TurnJudge.id(turn)),
           stage(engine, turn),
-          right(engine.db.read(engine.speech.answering(turn))),
-          right(engine.db.read(engine.speech.spentOn(day)))
+          right(engine.db.read(Subject.Public)(engine.speech.answering(turn))),
+          right(engine.db.read(Subject.Public)(engine.speech.spentOn(day)))
         ) ==> (Vector("C1/30.0/30.0:1"), true, false, None, true, spent)
       } finally engine.close()
     }

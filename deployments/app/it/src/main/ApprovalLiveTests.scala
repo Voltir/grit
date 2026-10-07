@@ -9,6 +9,7 @@ import grit.core.id.{ToolCallId, TurnRef}
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.{Entry, Payload}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
 import grit.turn.Turn
@@ -65,7 +66,7 @@ object ApprovalLiveTests extends TestSuite {
 
   private def own(engine: Engine^, turn: TurnRef): Vector[Entry] =
     engine.db
-      .read(engine.entries.list(turn.conversationId))
+      .read(Subject.Public)(engine.entries.list(turn.conversationId))
       .getOrElse(Vector.empty)
       .filter(_.turnSeq == turn.turnSeq)
 

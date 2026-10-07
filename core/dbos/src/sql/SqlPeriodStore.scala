@@ -320,6 +320,16 @@ final class SqlPeriodStore(entries: EntryStore) extends PeriodStore {
       )
     }
 
+  def nextClosed(after: CloseOrdinal)(using
+      tx: Tx^
+  ): Either[StoreError, Option[(CloseOrdinal, ConversationId)]] =
+    many(
+      """SELECT close_ordinal, conversation_id FROM grit.periods
+        | WHERE close_ordinal > ? ORDER BY close_ordinal LIMIT 1""".stripMargin
+    )(_.setLong(1, CloseOrdinal.value(after))) { rs =>
+      (ordinalOf(rs), ConversationId(rs.getString("conversation_id")))
+    }.map(_.headOption)
+
   def drop(period: PeriodRef)(using tx: Tx^): Either[StoreError, Boolean] =
     for {
       found <- get(period)

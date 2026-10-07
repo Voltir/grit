@@ -7,7 +7,7 @@ import grit.core.message.Message
 import grit.core.place.{Place, Scope}
 import grit.core.recipe.{Pool, RoomReads, Section}
 import grit.core.stitch.{Along, StitchReads, Stitching, Strand, Tuning}
-import grit.core.store.{Conversation, Db, Entry, Focus, Payload, Position, Speakers, StoreError}
+import grit.core.store.{Conversation, Entry, Focus, Payload, Position, Reads, Speakers, StoreError}
 import grit.lifecycle.transcript.PeriodTranscript
 
 /** How triage's question is built from the store. */
@@ -34,7 +34,7 @@ object TriageInput {
   def read(
       reads: StitchReads,
       rooms: RoomReads,
-      db: Db^,
+      db: Reads^,
       turn: TurnRef,
       tuning: Tuning,
       recipe: TriageRecipe
@@ -118,7 +118,7 @@ object TriageInput {
   def build(
       reads: StitchReads,
       rooms: RoomReads,
-      db: Db^,
+      db: Reads^,
       turn: TurnRef,
       tuning: Tuning,
       recipe: TriageRecipe
@@ -131,7 +131,7 @@ object TriageInput {
   private def pool(
       rooms: RoomReads,
       reads: StitchReads,
-      db: Db^,
+      db: Reads^,
       pool: Pool,
       scope: Scope,
       conversation: Option[Conversation],
@@ -152,7 +152,7 @@ object TriageInput {
   private[lifecycle] def heard(
       reads: StitchReads,
       rooms: RoomReads,
-      db: Db^,
+      db: Reads^,
       turn: TurnRef,
       tuning: Tuning,
       recipe: TriageRecipe

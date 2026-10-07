@@ -15,6 +15,7 @@ import grit.core.stitch.StitchReads
 import grit.core.store.{EntryStore, Origin, Payload}
 import grit.core.tool.{ToolSet, Toolbox}
 import grit.core.triage.Corpora
+import grit.core.visibility.Subject
 import grit.dbos.engine.Engine
 import grit.edge.Server
 import grit.kit.deployment.Offered
@@ -314,7 +315,7 @@ object LiveTurn {
 
   /** The text of `turn`'s recorded reply, if it has one. */
   def reply(engine: Engine^, turn: TurnRef): Option[String] =
-    engine.db.read(engine.entries.get(turn.replyId)).toOption.flatten.map {
+    engine.db.read(Subject.Public)(engine.entries.get(turn.replyId)).toOption.flatten.map {
       _.payload match {
         case Payload.Message(Message.Assistant(blocks, _, _, _, _)) =>
           blocks.collect { case AssistantBlock.Text(t) => t }.mkString

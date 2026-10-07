@@ -21,6 +21,7 @@ object PluginCaptureTests extends TestSuite {
       |import grit.core.plugin.*
       |import grit.core.store.*
       |import grit.core.tool.*
+      |import grit.core.visibility.Subject
       |
       |trait Activity extends caps.Pure {
       |  def recent(n: Int)(using Tx^): Either[StoreError, Vector[String]]
@@ -34,8 +35,8 @@ object PluginCaptureTests extends TestSuite {
       |    new Hosted(ToolSpec(ToolName("recent"), "Recent lines.", Args.of((n = Field.count("How many.", 1, 5))).map(_.n)), Gate.Free, n => n.toString)
       |  def bind(own: PluginReads, needs: Needs, jobs: OwnJobs): Either[Unneeded | NotOwn, PluginRun[Int]] =
       |    Right(new PluginRun[Int] {
-      |      def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome =
-      |        db.read(new Lines(own).recent(n)).fold(e => Outcome.Failed(e.toString), l => Outcome.Done(l.mkString("\n")))
+      |      def run(n: Int, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome =
+      |        reads.read(new Lines(own).recent(n)).fold(e => Outcome.Failed(e.toString), l => Outcome.Done(l.mkString("\n")))
       |    })
       |}
       |object Noted extends Documents {
@@ -80,14 +81,14 @@ object PluginCaptureTests extends TestSuite {
   private val documentsHoldDb =
     """final class DocsHold(db: Db^) extends Documents {
       |  val terms: DocumentTerms = Noted.terms
-      |  def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] = db.read(Right(()))
+      |  def post(closed: ClosedPeriod, keeper: DocumentKeeper)(using Tx^): Either[StoreError, Unit] = db.read(Subject.Public)(Right(()))
       |}
       |""".stripMargin
 
   /** A service that reads through a store it captured, rather than the transaction it is given. */
   private val serviceCapturesDb =
     """final class Leaky(db: Db^) extends Activity {
-      |  def recent(n: Int)(using Tx^): Either[StoreError, Vector[String]] = db.read(Right(Vector.empty))
+      |  def recent(n: Int)(using Tx^): Either[StoreError, Vector[String]] = db.read(Subject.Public)(Right(Vector.empty))
       |}
       |""".stripMargin
 
@@ -100,19 +101,19 @@ object PluginCaptureTests extends TestSuite {
       |}
       |""".stripMargin
 
-  /** A run that keeps the store it is handed for a later call. */
-  private val runKeepsDb =
+  /** A run that keeps the reads it is handed, its turn's, for a later call. */
+  private val runKeepsReads =
     """final class Keeps extends PluginRun[Int] {
-      |  var kept: Option[Db^] = None
-      |  def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome = { kept = Some(db); Outcome.Done("") }
+      |  var kept: Option[Reads^] = None
+      |  def run(n: Int, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome = { kept = Some(reads); Outcome.Done("") }
       |}
       |""".stripMargin
 
-  /** A run that stashes the store it is handed in a mutable collection. */
-  private val runStashesDb =
+  /** A run that stashes the reads it is handed in a mutable collection. */
+  private val runStashesReads =
     """final class Stashes extends PluginRun[Int] {
-      |  val kept: scala.collection.mutable.ArrayBuffer[Db^] = scala.collection.mutable.ArrayBuffer.empty
-      |  def run(n: Int, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome = { kept += db; Outcome.Done("") }
+      |  val kept: scala.collection.mutable.ArrayBuffer[Reads^] = scala.collection.mutable.ArrayBuffer.empty
+      |  def run(n: Int, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome = { kept += reads; Outcome.Done("") }
       |}
       |""".stripMargin
 
@@ -130,7 +131,7 @@ object PluginCaptureTests extends TestSuite {
       |  val described: Hosted[Int] = Recent.described
       |  def bind(own: PluginReads, needs: Needs, jobs: OwnJobs): Either[Unneeded | NotOwn, PluginRun[Int]] =
       |    Right(new PluginRun[Int] {
-      |      def run(n: Int, call: CallSlot, handed: Db^, desk: ScheduleDesk^): Outcome = db.read(Right(n)).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok"))
+      |      def run(n: Int, call: CallSlot, handed: Reads^, desk: ScheduleDesk^): Outcome = db.read(Subject.Public)(Right(n)).fold(_ => Outcome.Failed("no"), _ => Outcome.Done("ok"))
       |    })
       |}
       |""".stripMargin
@@ -140,8 +141,8 @@ object PluginCaptureTests extends TestSuite {
     holdsClosure,
     documentsHoldDb,
     serviceCapturesDb,
-    runKeepsDb,
-    runStashesDb,
+    runKeepsReads,
+    runStashesReads,
     serviceKeepsTx,
     toolHoldsDb
   )
@@ -155,7 +156,7 @@ object PluginCaptureTests extends TestSuite {
       val errs = errors(
         """object Store {
           |  def toolbox(store: Db^, desk: ScheduleDesk^, r: PluginRun[Int]): Either[DuplicateName, Toolbox[{store, desk}]] =
-          |    Toolbox.of(Recent.described.calling((n, at) => r.run(n, at, store, desk)))
+          |    Toolbox.of(Recent.described.calling((n, at) => r.run(n, at, store.as(Subject.Turn(at.turn)), desk)))
           |  def through(needs: Needs, kept: Kept): Either[Unneeded, Activity] = needs.of(kept)
           |}
           |""".stripMargin
@@ -188,13 +189,13 @@ object PluginCaptureTests extends TestSuite {
       assert(errs.exists(_.contains("does not conform to upper bound scala.caps.Pure")))
     }
 
-    test("a plugin run that keeps the Db it is given is rejected") {
-      val errs = errors(runKeepsDb)
+    test("a plugin run that keeps the reads it is given is rejected") {
+      val errs = errors(runKeepsReads)
       assert(flowsInto("{any}")(errs))
     }
 
-    test("a plugin run that stashes the Db it is given in a collection field is rejected") {
-      val errs = errors(runStashesDb)
+    test("a plugin run that stashes the reads it is given in a collection field is rejected") {
+      val errs = errors(runStashesReads)
       assert(flowsInto("{any}")(errs))
     }
 

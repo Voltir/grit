@@ -23,7 +23,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, Ground}
 import grit.core.place.{Directory, Namespace, Place, Prefix, Scope}
 import grit.core.store.{ConversationStore, Entry, EntryStore, Jot, Origin, Payload, PeriodStore}
-import grit.core.visibility.Label
+import grit.core.visibility.{Label, Subject}
 
 /** A case as written, or with [[Variant.FillerPerGap]] filler turns after each of its turns. */
 enum Variant {
@@ -301,7 +301,7 @@ object Load {
   )(layout: Layout): Either[String, Written] = {
     def found(origin: Origin): Either[String, ConversationId] =
       jot
-        .write(conversations.findOrCreate(origin, PrincipalId.Local, Label.Public))
+        .write(Subject.Public)(conversations.findOrCreate(origin, PrincipalId.Local, Label.Public))
         .map(_.id)
         .left
         .map(e => s"${layout.c.name}: $e")
@@ -309,7 +309,7 @@ object Load {
       if (rows.isEmpty) Right(())
       else
         jot
-          .write(
+          .write(Subject.Conversation(conversation))(
             for {
               _ <- rows.headOption
                 .filter(_ => open)
@@ -342,7 +342,7 @@ object Load {
           .edit(c.carried.map(Edit.Stand(_, Ground.Person)), PeriodSeq.First)
           .balance
         _ <- jot
-          .write(
+          .write(Subject.Conversation(conversation))(
             periods.seal(
               CloseRef(PeriodRef(conversation, PeriodSeq.First), c.after, Instant.EPOCH),
               CloseReason.Lapsed,
@@ -370,7 +370,7 @@ object Load {
       ) { (acc, d) =>
         acc.flatMap(done =>
           jot
-            .write(
+            .write(Subject.Public)(
               keeper.write(d.key, d.place, d.text, ujson.Obj(), Instant.EPOCH.minusSeconds(60))
             )
             .map {

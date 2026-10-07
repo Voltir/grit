@@ -7,6 +7,7 @@ import grit.core.id.ScheduleId
 import grit.core.inbox.{Inbox, InboxError, Slotted}
 import grit.core.job.{Jobs, ScheduleStore}
 import grit.core.store.{Db, StoreError}
+import grit.core.visibility.Subject
 
 /** grit's clock edge (ADR 0029): starts what each schedule has waiting at its clock's time
   * through the inbox, as any edge starts a turn (ADR 0002); hosts no place.
@@ -21,7 +22,7 @@ final class ClockEdge(inbox: Inbox, schedules: ScheduleStore, db: Db, clock: Clo
     */
   def tick(): Either[StoreError, Ticked] = {
     val now = clock.now()
-    db.read {
+    db.read(Subject.Public) {
       for {
         flying <- schedules.inFlight(ClockEdge.Batch)
         due <- schedules.due(now, ClockEdge.Batch)

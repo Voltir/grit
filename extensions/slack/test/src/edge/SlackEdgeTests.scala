@@ -29,6 +29,7 @@ import grit.core.review.InMemoryReviews
 import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Jot, Origin, Payload, StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.prose.markdown.Markdown
 import grit.slack.client.{FakeSlack, Self, Tag}
@@ -44,9 +45,10 @@ object SlackEdgeTests extends TestSuite {
   import Payloads.*
 
   private object FakeJot extends Jot {
-    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
-      TestTx.fake
-    )
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using
+        TestTx.fake
+      )
   }
 
   private val C = ChannelId("C123ABC456")
@@ -683,7 +685,7 @@ object SlackEdgeTests extends TestSuite {
           PrincipalId.Grit
         )
         .fold(e => throw new java.lang.AssertionError(e.toString), identity)
-      FakeJot.write(w.deliveries.await(run, "C123ABC456/5.0/5.0")) ==> Right(())
+      FakeJot.write(Subject.Turn(run))(w.deliveries.await(run, "C123ABC456/5.0/5.0")) ==> Right(())
       val restarted = w.edge()
       restarted.deliver() ==> Right(0)
       w.inbox.finish(run, Some(reply("standup in ten")), "replied")

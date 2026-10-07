@@ -5,6 +5,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import grit.core.id.WorkflowId
 import grit.core.store.Tx
+import grit.core.visibility.{Clearance, Label, Subject}
 import grit.dbos.sql.TestTx
 
 /** An in-memory stand-in for DBOS's workflow semantics, for tests of code written against
@@ -28,14 +29,17 @@ import grit.dbos.sql.TestTx
   *   - `recv` never waits: it takes the oldest message [[send]] left, or none, and records
   *     it as DBOS does, `DBOS.recv` (its output the message, or none) then `DBOS.sleep`.
   *
-  * `transact` hands its body a [[TestTx]], so pair it with in-memory stores. Their writes
-  * are not rolled back when the body throws.
+  * `transact` hands its body a [[TestTx]] opened at what `resolve` makes of its subject, so
+  * pair it with in-memory stores. Their writes are not rolled back when the body throws.
   *
   * A patch named in `unpatched` is never taken where the journal has nothing yet: its
   * `patch` is false, as for a workflow that passed the change before it shipped. For
   * testing the old branch of a patch.
   */
-final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
+final class InMemoryDurable(
+    unpatched: Set[String] = Set.empty,
+    resolve: Subject -> Clearance = _ => Clearance.of(Label.Public)
+) {
   import InMemoryDurable.*
 
   private enum Recorded {
@@ -181,8 +185,10 @@ final class InMemoryDurable(unpatched: Set[String] = Set.empty) {
       }
     }
 
-    def transact[A: Journaled](name: String)(body: (Tx^) ?=> A): A =
-      record(name, () => body(using TestTx.fake))
+    def transact[A: Journaled](name: String, subject: Subject)(body: (Tx^) ?=> A): A = {
+      val clearance = resolve(subject)
+      record(name, () => body(using TestTx.fake(clearance)))
+    }
 
     def patch(name: String): Boolean = {
       val marker = patchMarker(name)

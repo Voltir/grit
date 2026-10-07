@@ -21,6 +21,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 /** The settle's test world: one conversation in core's in-memory stores, a clock the test
@@ -79,7 +80,7 @@ object SettleFixtures {
   }
 
   object FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using TestTx.fake)
   }
 

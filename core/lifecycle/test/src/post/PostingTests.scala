@@ -30,6 +30,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.lifecycle.close.CloseFixtures.SetClock
 
@@ -116,9 +117,10 @@ object PostingTests extends TestSuite {
 
   /** Writes straight through to the in-memory stores, never rolled back. */
   private final class FakeJot extends Jot {
-    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
-      TestTx.fake
-    )
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using
+        TestTx.fake
+      )
   }
 
   /** `n` periods of `c`, each one turn, closed in order with prose `p1`, `p2`, ... */

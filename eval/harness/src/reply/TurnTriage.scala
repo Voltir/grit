@@ -6,6 +6,7 @@ import grit.core.classify.{Answer, Question}
 import grit.core.id.{QuestionName, TurnRef, WorkflowId}
 import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.triage.Corpora
+import grit.core.visibility.Subject
 import grit.dbos.engine.Reader
 import grit.eval.harness.capture.{Digest, TurnCase}
 import grit.eval.harness.jev.{Asking, Posed}
@@ -54,7 +55,7 @@ object TurnTriage {
         .read(
           reads,
           reader.rooms,
-          reader.db,
+          reader.db.as(Subject.Conversation(turn.conversationId)),
           turn,
           tuning,
           TriageRecipe.Shipped

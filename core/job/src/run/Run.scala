@@ -8,6 +8,7 @@ import grit.core.inbox.InboundId
 import grit.core.job.{Job, JobRun, Jobs, Report, Slot}
 import grit.core.message.{AssistantBlock, Message, StopReason, Usage}
 import grit.core.store.{Db, Entry, Jot, Origin, Payload, StoreError, Tx}
+import grit.core.visibility.Subject
 
 /** A job's run (ADR 0029): the workflow `run`, one per turn of a slot's conversation, which the
   * inbox started with the slot's opening ([[grit.core.inbox.Inbox.startSlot]]).
@@ -54,7 +55,7 @@ object Run {
     s"This run of ${JobName.value(job)} could not read its parameters: $why"
 
   private def readSlot(records: RunRecords, db: Db^, turn: TurnRef): SlotRead =
-    db.read {
+    db.read(Subject.Turn(turn)) {
       for {
         conversation <- records.conversations.get(turn.conversationId)
         entries <- records.entries.ofTurn(turn)
@@ -92,7 +93,7 @@ object Run {
       now: Instant
   ): RunEnd =
     jot
-      .write {
+      .write(Subject.Turn(turn)) {
         records.entries.get(turn.replyId).flatMap {
           case Some(kept) => Right(RunEnd.Replied(textOf(kept)))
           case None =>

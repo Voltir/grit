@@ -19,8 +19,9 @@ the end).
 
 ## The vocabulary grit uses
 
-- **`T^` marks a tracked capability.** `Tx` is an opaque type over `java.sql.Connection`,
-  and it is tracked only where it is written `Tx^`. Without the `^`, capture checking
+- **`T^` marks a tracked capability.** `Tx` is an opaque type over a class holding a
+  `java.sql.Connection^` and its pure `Clearance`, so `Tx^{c}` keeps the connection's capture
+  set, and it is tracked only where it is written `Tx^`. Without the `^`, capture checking
   cannot see a `Tx` leaving its transaction. Every store method takes `(using tx: Tx^)`.
 - **`->` is a pure function, `=>` an impure one.** An impure function may capture
   anything. Parameters that must not smuggle capabilities, such as `Journaled.json`'s
@@ -218,6 +219,12 @@ implemented by a `val cap: Cap^`. The same holds of values: each `new Cap` is a 
 its own, so several built apart (one `ScheduleDesk` per plugin) never share the one capture set
 their holders must name (every plugin's tools in one `Toolbox[C]`). Hold the factory instead,
 one capability the holders all capture, and build each per call from it (the kit's `Desks`).
+
+**A capability built from another is a root of its own.** `def as(s: Subject): Reads^{this}`
+on `Db` is rejected: *"Found: Reads^{Db.this, any} Required: Reads^{Db.this}"*. A `new` of a
+trait extending `caps.SharedCapability` is itself a capability, so its type always holds `any`.
+Return `Reads^` (`Db.as`). Likewise a helper typed `: Reads^{env}` cannot be passed where a
+parameter is `Reads^`; give the helper `Reads^` too (`Close.reads`).
 
 **Mutable collections are pure types.** A typed `ArrayBuffer` field passes, even under
 separation checking. Nothing catches it; keep mutation in scoped locals (STYLE rule 7).

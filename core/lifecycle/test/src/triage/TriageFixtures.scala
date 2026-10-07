@@ -41,7 +41,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{Corpora, InMemoryTriageStore}
-import grit.core.visibility.Label
+import grit.core.visibility.{Label, Subject}
 import grit.dbos.sql.TestTx
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 
@@ -125,7 +125,7 @@ object TriageFixtures {
   }
 
   object FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using TestTx.fake)
   }
 

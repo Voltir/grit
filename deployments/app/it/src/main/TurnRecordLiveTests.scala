@@ -1,6 +1,7 @@
 package grit.app.main
 
 import grit.core.store.Payload
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine, TurnStatus}
 import grit.dbos.sql.TestPostgres
 import grit.models.StubProvider
@@ -38,7 +39,8 @@ object TurnRecordLiveTests extends TestSuite {
         assert(own.forall(s => s.started.zip(s.completed).exists((a, b) => !b.isBefore(a))))
         assert(!engine.status(turn).isInstanceOf[TurnStatus.Running])
 
-        val window = engine.db.read(engine.entries.get(Turn.windowId(turn))).toOption.flatten
+        val window =
+          engine.db.read(Subject.Public)(engine.entries.get(Turn.windowId(turn))).toOption.flatten
         window.map(_.payload) ==>
           Some(
             Payload.Window(
@@ -49,7 +51,10 @@ object TurnRecordLiveTests extends TestSuite {
         // Where each message went, written to Postgres and read back as topic events. The
         // counts are a smoke check that they arrive; which events they are is grit.turn's to pin.
         val placed = Vector(first, turn).flatMap { t =>
-          engine.db.read(engine.entries.get(grit.turn.TurnTopics.placedId(t))).toOption.flatten
+          engine.db
+            .read(Subject.Public)(engine.entries.get(grit.turn.TurnTopics.placedId(t)))
+            .toOption
+            .flatten
         }
         placed.map(_.payload match {
           case Payload.Topic(events) => events.size
@@ -72,7 +77,7 @@ object TurnRecordLiveTests extends TestSuite {
         engine.steps(turn).map(_.name).filter(n => n.contains(":") && !n.startsWith("DBOS")) ==>
           Vector("record-call:0", "dispatch:0", "tool:0:0", "call-model:1")
         val own = engine.db
-          .read(engine.entries.list(turn.conversationId))
+          .read(Subject.Public)(engine.entries.list(turn.conversationId))
           .getOrElse(Vector.empty)
           .filter(_.turnSeq == turn.turnSeq)
         own
@@ -154,7 +159,7 @@ object TurnRecordLiveTests extends TestSuite {
   /** The seq of the entry `id`. */
   private def seqOf(engine: Engine^, id: grit.core.id.EntryId): grit.core.id.EntrySeq =
     engine.db
-      .read(engine.entries.get(id))
+      .read(Subject.Public)(engine.entries.get(id))
       .toOption
       .flatten
       .fold(sys.error(s"no entry ${grit.core.id.EntryId.value(id)}"))(_.seq)
@@ -162,7 +167,7 @@ object TurnRecordLiveTests extends TestSuite {
   /** The id of the user message that started `turn`. */
   private def sayId(engine: Engine^, turn: grit.core.id.TurnRef): grit.core.id.EntryId =
     engine.db
-      .read(engine.entries.list(turn.conversationId))
+      .read(Subject.Public)(engine.entries.list(turn.conversationId))
       .toOption
       .flatMap(_.find(e => e.turnSeq == turn.turnSeq).map(_.id))
       .getOrElse(sys.error("no message for the turn"))

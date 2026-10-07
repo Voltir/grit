@@ -7,6 +7,7 @@ import grit.core.id.{EdgeName, EntryId, PrincipalId}
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.{Label, Prompt, Reason, Reviews, Verdict}
 import grit.core.store.{Jot, Origin, StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 import grit.slack.client.{FakeSlack, Self, Tag}
 import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
@@ -21,9 +22,10 @@ object ReviewingTests extends TestSuite {
   import Payloads.*
 
   private object FakeJot extends Jot {
-    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
-      TestTx.fake
-    )
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using
+        TestTx.fake
+      )
   }
 
   private val C = ChannelId("C123ABC456")

@@ -9,6 +9,7 @@ import grit.core.id.{CallSlot, EntryId, ToolCallId, TurnRef, WorkflowId}
 import grit.core.message.Message
 import grit.core.store.{Entry, EntryStore, Jot, Payload, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.visibility.Subject
 
 import TurnLoop.{Pending, Round}
 
@@ -153,7 +154,9 @@ object TurnTools {
     def answerFrom(slot: Slot, call: ToolCallId, named: String, at: Instant)(
         read: (Tx^) ?=> Outcome
     ): Either[TurnFailure, Settled] =
-      settle(slot, call, named, at)(() => jot.write(Right(read)).left.map(storeFailure))
+      settle(slot, call, named, at)(() =>
+        jot.write(Subject.Turn(slot.turn))(Right(read)).left.map(storeFailure)
+      )
 
     /** `free` run. */
     def run(
@@ -189,14 +192,18 @@ object TurnTools {
     private def settle(slot: Slot, call: ToolCallId, shown: String, at: Instant)(
         outcome: () => Either[TurnFailure, Outcome]
     ): Either[TurnFailure, Settled] =
-      jot.write(entries.get(slot.resultId)).left.map(storeFailure).flatMap {
-        case Some(kept) => settledBy(kept)
-        case None =>
-          outcome().flatMap { o =>
-            keep(slot.turn, slot.resultId, Payload.Result(o.result(call), shown), at)
-              .flatMap(settledBy)
-          }
-      }
+      jot
+        .write(Subject.Turn(slot.turn))(entries.get(slot.resultId))
+        .left
+        .map(storeFailure)
+        .flatMap {
+          case Some(kept) => settledBy(kept)
+          case None =>
+            outcome().flatMap { o =>
+              keep(slot.turn, slot.resultId, Payload.Result(o.result(call), shown), at)
+                .flatMap(settledBy)
+            }
+        }
 
     /** Whether `slot`'s attempt was already recorded; if not, it is, as `marker`, before
       * this returns.
@@ -214,7 +221,7 @@ object TurnTools {
               )
             } yield false
         }
-      jot.write(record) match {
+      jot.write(Subject.Turn(turn))(record) match {
         case Left(StoreError.DuplicateId(_)) => Right(true)
         case other => other.left.map(storeFailure)
       }
@@ -235,10 +242,10 @@ object TurnTools {
           entry = Entry(id, turn.conversationId, turn.turnSeq, None, next.seq, payload, at)
           _ <- entries.insert(entry)
         } yield entry
-      jot.write(write) match {
+      jot.write(Subject.Turn(turn))(write) match {
         case Left(StoreError.DuplicateId(_)) =>
           jot
-            .write(entries.get(id))
+            .write(Subject.Turn(turn))(entries.get(id))
             .left
             .map(storeFailure)
             .flatMap(_.toRight(TurnFailure.Store(s"entry ${EntryId.value(id)} vanished")))

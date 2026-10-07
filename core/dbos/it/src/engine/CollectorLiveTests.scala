@@ -44,6 +44,7 @@ import grit.core.place.{Directory, Locality, Namespace, Place}
 import grit.core.plugin.{CacheDocs, CachePosting, Documents, Plugin, PostRef}
 import grit.core.retention.Target
 import grit.core.store.{ClosedPeriod, Origin, StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.sql.{
   DbConfig,
   LiveDb,
@@ -96,7 +97,7 @@ object CollectorLiveTests extends TestSuite {
     */
   private def turn(id: WorkflowId)(using d: Durable^): String = {
     val said = WorkflowId.value(id)
-    d.transact("say")(said)
+    d.transact("say", Subject.Public)(said)
   }
 
   /** A close that seals its period at once, in a step, with a fixed closing, marking its raw
@@ -113,7 +114,7 @@ object CollectorLiveTests extends TestSuite {
       case Some(attempt) =>
         val closing = TestClosings.prose("kept")
         val now = Instant.now()
-        d.transact("seal")(
+        d.transact("seal", Subject.Public)(
           periods
             .seal(attempt, CloseReason.Lapsed, closing, now)
             .flatMap(s =>

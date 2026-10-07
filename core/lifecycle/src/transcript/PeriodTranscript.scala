@@ -3,7 +3,7 @@ package grit.lifecycle.transcript
 import grit.core.id.{PeriodRef, TurnSeq}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.Section
-import grit.core.store.{Db, Entry, EntryStore, Nearby, Payload, Principals, Speakers, StoreError}
+import grit.core.store.{Entry, EntryStore, Nearby, Payload, Principals, Reads, Speakers, StoreError}
 
 /** A period as a classifier or the summary model reads it. */
 object PeriodTranscript {
@@ -12,7 +12,7 @@ object PeriodTranscript {
     * through `db`.
     */
   def entries(
-      db: Db^,
+      db: Reads^,
       store: EntryStore,
       period: PeriodRef,
       first: TurnSeq,
@@ -26,7 +26,7 @@ object PeriodTranscript {
 
   /** The names of whoever wrote `entries` ([[Principals.speakers]]), read through `db`. */
   def speakers(
-      db: Db^,
+      db: Reads^,
       principals: Principals,
       entries: Vector[Entry]
   ): Either[StoreError, Speakers] =
@@ -49,7 +49,7 @@ object PeriodTranscript {
     * line. One gone since (purged, or collected) is left out.
     */
   def elsewhere(
-      db: Db^,
+      db: Reads^,
       store: EntryStore,
       entries: Vector[Entry]
   ): Either[StoreError, Vector[String]] = {

@@ -11,6 +11,7 @@ import grit.core.id.{PrincipalId, SourceId, TurnRef, WorkflowId}
 import grit.core.speech.Reach
 import grit.core.stitch.{Opening, Placements}
 import grit.core.store.{Origin, StoreError}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestPostgres
 
 import utest.*
@@ -48,10 +49,11 @@ object PlacementsLiveTests extends TestSuite {
           Clock.system().now(),
           Reach.Nowhere
         ) ==> Right(())
-        val opening = right(engine.db.read(engine.conversations.find(thread))).flatMap { c =>
-          val all = right(engine.db.read(engine.entries.list(c.id)))
-          all.headOption.flatMap(first => Opening.of(c, all, TurnRef(c.id, first.turnSeq)))
-        }
+        val opening =
+          right(engine.db.read(Subject.Public)(engine.conversations.find(thread))).flatMap { c =>
+            val all = right(engine.db.read(Subject.Public)(engine.entries.list(c.id)))
+            all.headOption.flatMap(first => Opening.of(c, all, TurnRef(c.id, first.turnSeq)))
+          }
         assert(opening.nonEmpty)
         opening.foreach { o =>
           val clock = Clock.system()

@@ -15,6 +15,7 @@ import grit.core.speech.{Reach, Speaking}
 import grit.core.spend.Budget
 import grit.core.stitch.{Placed, StitchReads, Tuning}
 import grit.core.store.{Entry, Origin, StoreError}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
@@ -93,12 +94,16 @@ object StitchOrderLiveTests extends TestSuite {
             a <- aFirst.get()
           } closed.put(
             ref.period.conversationId,
-            right(engine.db.read(engine.triage.of(Vector(a.id)))).nonEmpty
+            right(engine.db.read(Subject.Public)(engine.triage.of(Vector(a.id)))).nonEmpty
           )
           "closed"
         }
         launch(engine, classifier, close)
-        right(engine.jot.write(engine.principals.enroll(PrincipalId("slack:T1/U0NICK"), "Nick")))
+        right(
+          engine.jot.write(Subject.Public)(
+            engine.principals.enroll(PrincipalId("slack:T1/U0NICK"), "Nick")
+          )
+        )
 
         def hear(ts: String, source: String, text: String, ago: Long): Unit =
           engine.inbox.hear(
@@ -110,10 +115,10 @@ object StitchOrderLiveTests extends TestSuite {
             Reach.Nowhere
           ) ==> Right(())
         def entries(ts: String): Vector[Entry] =
-          right(engine.db.read(engine.conversations.find(thread(ts)))).toVector
-            .flatMap(c => right(engine.db.read(engine.entries.list(c.id))))
+          right(engine.db.read(Subject.Public)(engine.conversations.find(thread(ts)))).toVector
+            .flatMap(c => right(engine.db.read(Subject.Public)(engine.entries.list(c.id))))
         def tagged(e: Entry): Boolean =
-          right(engine.db.read(engine.triage.of(Vector(e.id)))).nonEmpty
+          right(engine.db.read(Subject.Public)(engine.triage.of(Vector(e.id)))).nonEmpty
         def first(ts: String): Entry = entries(ts).headOption.getOrElse(sys.error(s"no $ts"))
 
         // T, then the root R, each placed and tagged before the burst.
@@ -134,12 +139,15 @@ object StitchOrderLiveTests extends TestSuite {
         right(engine.sweep(Now.plus(java.time.Duration.ofDays(3))))
 
         val (r, a, b) = (first("2.0"), first("3.0"), first("4.0"))
-        assert(eventually(right(engine.db.read(engine.stitches.placed(b.id))).nonEmpty))
-        val offered = right(engine.db.read(engine.stitches.placed(b.id))).toVector.flatMap {
-          case f: Placed.Follows => f.seen.offered.map(_.root)
-          case n: Placed.Begins => n.seen.offered.map(_.root)
-          case u: Placed.Unread => u.seen.offered.map(_.root)
-        }
+        assert(
+          eventually(right(engine.db.read(Subject.Public)(engine.stitches.placed(b.id))).nonEmpty)
+        )
+        val offered =
+          right(engine.db.read(Subject.Public)(engine.stitches.placed(b.id))).toVector.flatMap {
+            case f: Placed.Follows => f.seen.offered.map(_.root)
+            case n: Placed.Begins => n.seen.offered.map(_.root)
+            case u: Placed.Unread => u.seen.offered.map(_.root)
+          }
         // B was shown A under its root R, not as an exchange of its own.
         (offered.contains(r.conversationId), offered.contains(a.conversationId)) ==> (true, false)
         assert(replyTaggedWhileHeld)

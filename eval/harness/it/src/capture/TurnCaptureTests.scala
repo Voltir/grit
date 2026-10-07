@@ -22,7 +22,7 @@ import grit.core.stitch.{StitchReads, Tuning}
 import grit.core.store.{Focus, Origin}
 import grit.core.tool.{Args, Field, Gate, Outcome, Tool, ToolName, ToolSpec, Toolbox}
 import grit.core.triage.Corpora
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
 import grit.eval.harness.label.Verdicts
@@ -279,9 +279,9 @@ object TurnCaptureTests extends TestSuite {
         val tui = Origin.Tui(right(Directory.of("/tmp/harness-turns")), "s")
         // A TUI session: a remark, its period closed with a record, then a question it answers.
         val remark = ask(engine, tui, "t0", s"$Marker remember the Falcon budget is 4200")
-        right(engine.jot.write(engine.periods.of(remark))).foreach { p =>
+        right(engine.jot.write(Subject.Public)(engine.periods.of(remark))).foreach { p =>
           right(
-            engine.jot.write(
+            engine.jot.write(Subject.Public)(
               engine.periods.seal(
                 CloseRef(p.ref, remark.turnSeq, now()),
                 CloseReason.Lapsed,
@@ -307,15 +307,20 @@ object TurnCaptureTests extends TestSuite {
             now(),
             Reach(Some(s"C1/$ts/$ts"), Set.empty)
           ) ==> Right(())
-          assert(eventually(right(engine.db.read(engine.conversations.find(origin))).nonEmpty))
+          assert(
+            eventually(
+              right(engine.db.read(Subject.Public)(engine.conversations.find(origin))).nonEmpty
+            )
+          )
           val t = TurnRef(
-            right(engine.db.read(engine.conversations.find(origin))).fold(sys.error(ts))(_.id),
+            right(engine.db.read(Subject.Public)(engine.conversations.find(origin)))
+              .fold(sys.error(ts))(_.id),
             TurnSeq.First
           )
           // A draft, or, for a message answered as said to grit, a reply.
           assert(
             eventually(
-              right(engine.db.read(engine.entries.ofTurn(t))).exists(e =>
+              right(engine.db.read(Subject.Public)(engine.entries.ofTurn(t))).exists(e =>
                 e.id == t.draftId || e.id == t.replyId
               )
             )

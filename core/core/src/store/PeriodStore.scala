@@ -72,6 +72,14 @@ trait PeriodStore {
   /** Closed periods after `after` in close order, at most `n`. */
   def closedAfter(after: CloseOrdinal, n: Int)(using Tx^): Either[StoreError, Vector[ClosedPeriod]]
 
+  /** The closed period next after `after` in close order, with its conversation; `None` when
+    * none has closed since. Unfiltered: it returns no content, whatever the period's label, so
+    * a caller that will post it can open its next transaction for that conversation.
+    */
+  def nextClosed(after: CloseOrdinal)(using
+      Tx^
+  ): Either[StoreError, Option[(CloseOrdinal, ConversationId)]]
+
   /** Deletes `period`'s raw entries (every entry of its turns but its closing entry), its
     * turns' tool requests, and every verdict on it, and records it purged at `at`; a period already purged, or not closed, is left as it is.
     * Its workflows are the caller's to delete, first ([[grit.core.period.Purgeable.turns]],

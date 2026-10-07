@@ -9,7 +9,9 @@ import grit.core.store.{Db, Nearby, StoreError}
   */
 trait ContextAssembler {
 
-  /** The window for `request.turn`, over entries recorded before that turn. */
+  /** The window for `request.turn`, read for that turn ([[grit.core.visibility.Subject.Turn]]),
+    * over entries recorded before it.
+    */
   def assemble(request: AssemblyRequest)(using Db^): Either[AssemblyError, Window]
 }
 

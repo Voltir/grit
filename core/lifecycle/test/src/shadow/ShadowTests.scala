@@ -7,6 +7,7 @@ import grit.core.durable.InMemoryDurable
 import grit.core.id.{QuestionName, ShadowRef, TurnRef, WorkflowId}
 import grit.core.stitch.Tuning
 import grit.core.triage.{Corpora, Corpus, ShadowAnswers, Shadowed}
+import grit.core.visibility.Subject
 import grit.lifecycle.triage.{
   TriageFixtures,
   TriageInput,
@@ -30,7 +31,7 @@ object ShadowTests extends TestSuite {
       .build(
         w.triaged.reads,
         w.triaged.rooms,
-        TriageFixtures.FakeDb,
+        TriageFixtures.FakeDb.as(Subject.Public),
         TurnRef(t.period.conversationId, t.turn),
         Tuning.Default,
         TriageRecipe.Shipped
@@ -44,7 +45,7 @@ object ShadowTests extends TestSuite {
       .build(
         w.triaged.reads,
         w.triaged.rooms,
-        TriageFixtures.FakeDb,
+        TriageFixtures.FakeDb.as(Subject.Public),
         TurnRef(t.period.conversationId, t.turn),
         Tuning.Default,
         TriageRecipe.Shipped

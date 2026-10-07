@@ -13,6 +13,7 @@ import grit.core.prompt.Voice
 import grit.core.provider.TokenEstimator
 import grit.core.spend.{Budget, Spend}
 import grit.core.store.{Entry, Nearby, Origin, Payload, Speakers, StoreError, UsageLedger}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Link, TurnStatus}
 import grit.tui.runtime.app.{Fault, Host, Mailbox}
 import grit.turn.TurnStream
@@ -122,11 +123,11 @@ final class ChatHost(
         whenOpen(mailbox, "settings not read") { e =>
           val result = change match {
             case None =>
-              e.db.read(e.lifecycle.current()).left.map(_.toString)
+              e.db.read(Subject.Public)(e.lifecycle.current()).left.map(_.toString)
             case Some(c) =>
               // One transaction: read, change and write, so two changes at once both land.
               e.jot
-                .write(e.lifecycle.current().flatMap { now =>
+                .write(Subject.Public)(e.lifecycle.current().flatMap { now =>
                   c.applied(now) match {
                     case Right(next) => e.lifecycle.set(next).map(_ => Right(next))
                     case Left(why) => Right(Left(why))
@@ -139,7 +140,9 @@ final class ChatHost(
           // `/set` alone reports the voice too, after the lifecycle's settings.
           val voice = change match {
             case None =>
-              e.db.read(e.voices.current()).fold(_ => "", v => s"; ${ChatHost.voiced(v)}")
+              e.db
+                .read(Subject.Public)(e.voices.current())
+                .fold(_ => "", v => s"; ${ChatHost.voiced(v)}")
             case Some(_) => ""
           }
           mailbox.offer(
@@ -155,8 +158,8 @@ final class ChatHost(
       case ChatScreen.Msg.Voice(to) =>
         whenOpen(mailbox, "voice not read") { e =>
           val result = to match {
-            case None => e.db.read(e.voices.current())
-            case Some(v) => e.jot.write(e.voices.set(v).map(_ => v))
+            case None => e.db.read(Subject.Public)(e.voices.current())
+            case Some(v) => e.jot.write(Subject.Public)(e.voices.set(v).map(_ => v))
           }
           mailbox.offer(
             ChatScreen.Msg.Noted(
@@ -249,7 +252,9 @@ final class ChatHost(
               mailbox.offer(ChatScreen.Msg.EngineGone(Option.when(!now)(EngineGoneNote)))
             }
           }
-          engine.db.read(engine.entries.list(conversation)) match {
+          engine.db.read(Subject.Conversation(conversation))(
+            engine.entries.list(conversation)
+          ) match {
             case Right(entries) =>
               val (next, msgs) = Follow.step(state, entries, turn => engine.status(turn))
               state = next
@@ -314,12 +319,14 @@ final class ChatHost(
       engine: Link^,
       conversation: ConversationId
   ): Option[(Spend, Option[SessionView.Today])] =
-    engine.db.read {
-      for {
-        recorded <- engine.spending.conversation(conversation)
-        today <- engine.spending.on(engine.budget.today(java.time.Instant.now()))
-      } yield (recorded, Some(SessionView.Today(today.cost, engine.budget.cap)))
-    }.toOption
+    engine.db
+      .read(Subject.Conversation(conversation)) {
+        for {
+          recorded <- engine.spending.conversation(conversation)
+          today <- engine.spending.on(engine.budget.today(java.time.Instant.now()))
+        } yield (recorded, Some(SessionView.Today(today.cost, engine.budget.cap)))
+      }
+      .toOption
 
   /** The ledger rows of each of `turns`, read in one transaction; `None` when the store
     * could not be read.
@@ -329,26 +336,30 @@ final class ChatHost(
       conversation: ConversationId,
       turns: Vector[TurnSeq]
   ): Option[Map[TurnSeq, Vector[UsageLedger.Row]]] =
-    engine.db.read {
-      turns.foldLeft[Either[StoreError, Map[TurnSeq, Vector[UsageLedger.Row]]]](Right(Map.empty)) {
-        (acc, t) =>
+    engine.db
+      .read(Subject.Conversation(conversation)) {
+        turns.foldLeft[Either[StoreError, Map[TurnSeq, Vector[UsageLedger.Row]]]](
+          Right(Map.empty)
+        ) { (acc, t) =>
           acc.flatMap(m =>
             engine.ledger.of(TurnRef(conversation, t).workflowId).map(m.updated(t, _))
           )
+        }
       }
-    }.toOption
+      .toOption
 
   /** `turn` as the panel shows it, from `entries` and what DBOS and the ledger hold. A
     * turn not yet enqueued counts as running: its first step is next.
     */
   private def described(engine: Link^, turn: TurnRef, entries: Vector[Entry]): TurnView = {
+    val session = Subject.Conversation(turn.conversationId)
     val (running, steps) = engine.status(turn) match {
       case TurnStatus.Running(recorded) => (true, recorded)
       case TurnStatus.Unknown => (true, Vector.empty)
       case TurnStatus.Finished(_) => (false, engine.steps(turn))
     }
-    val costs = engine.db.read(engine.ledger.of(turn.workflowId)).getOrElse(Vector.empty)
-    val profile = engine.db.read(engine.profiles.of(turn.workflowId)).toOption.flatten
+    val costs = engine.db.read(session)(engine.ledger.of(turn.workflowId)).getOrElse(Vector.empty)
+    val profile = engine.db.read(session)(engine.profiles.of(turn.workflowId)).toOption.flatten
     // The entries of other conversations the turn's recorded window showed, as it showed
     // them; one purged since is simply not counted.
     val windows = entries
@@ -358,16 +369,20 @@ final class ChatHost(
         case _ => Vector.empty
       })
     val nearby =
-      engine.db.read(Nearby.read(windows.flatMap(_.nearby), engine.entries)).getOrElse(Vector.empty)
+      engine.db
+        .read(session)(Nearby.read(windows.flatMap(_.nearby), engine.entries))
+        .getOrElse(Vector.empty)
     // The documents it held as a request shows them; one gone since is not counted.
     val documents =
       engine.db
-        .read(engine.documents.labelled(windows.flatMap(_.documents)))
+        .read(session)(engine.documents.labelled(windows.flatMap(_.documents)))
         .getOrElse(Vector.empty)
-    val prompt = engine.db.read(engine.prompts.of(turn.workflowId)).toOption.flatten
+    val prompt = engine.db.read(session)(engine.prompts.of(turn.workflowId)).toOption.flatten
     // Unread names cost the window as unnamed: the panel is a view, never a failure.
     val speakers =
-      engine.db.read(engine.principals.speakers(entries.map(_.id))).getOrElse(Speakers.none)
+      engine.db
+        .read(session)(engine.principals.speakers(entries.map(_.id)))
+        .getOrElse(Speakers.none)
     TurnView.of(
       turn,
       entries,

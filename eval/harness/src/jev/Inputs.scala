@@ -5,6 +5,7 @@ import grit.core.id.{TriageRef, TurnRef}
 import grit.core.stitch.{Offer, StitchReads, Stitching, Tuning}
 import grit.core.store.{Focus, StoreError}
 import grit.core.triage.Corpora
+import grit.core.visibility.Subject
 import grit.dbos.engine.Reader
 import grit.eval.harness.capture.{Case, Digest}
 import grit.lifecycle.triage.{TriageInput, TriageQuestion, TriageQuestions}
@@ -110,7 +111,12 @@ object Inputs {
         if (c.stitch.isEmpty) Right(None)
         else
           Stitching
-            .offered(reads, reader.db, TurnRef(c.conversation, ref.turn), under)
+            .offered(
+              reads,
+              reader.db.as(Subject.Conversation(c.conversation)),
+              TurnRef(c.conversation, ref.turn),
+              under
+            )
             .left
             .map(e => s"${c.id.written}: stitch unread: ${kind(e)}")
     } yield {
@@ -119,7 +125,7 @@ object Inputs {
           .read(
             reads,
             reader.rooms,
-            reader.db,
+            reader.db.as(Subject.Conversation(c.conversation)),
             TurnRef(c.conversation, ref.turn),
             under,
             Variant.recipe(variant)

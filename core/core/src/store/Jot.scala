@@ -1,5 +1,7 @@
 package grit.core.store
 
+import grit.core.visibility.Subject
+
 /** Capability to write the store from inside a durable step, where no [[Durable.transact]]
   * is at hand: each call is a short read-write transaction of its own, committed before it
   * returns, or rolled back when `body` is a `Left` or the database fails. Not atomic with
@@ -8,6 +10,8 @@ package grit.core.store
   */
 trait Jot extends caps.SharedCapability {
 
-  /** Runs `body` in a read-write transaction, committed when it returns a `Right`. */
-  def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A]
+  /** Runs `body` in a read-write transaction opened for `subject`, committed when it returns a
+    * `Right`.
+    */
+  def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A]
 }

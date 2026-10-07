@@ -13,7 +13,7 @@ import grit.core.message.Message
 import grit.core.model.{Assignment, Catalog, ModelId, ModelRef, Policy}
 import grit.core.store.{Origin, StoreError, Tx}
 import grit.core.triage.Tags
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.{LiveDb, SqlEntryStore, SqlModelProfileStore, TestPostgres}
 
 import utest.*
@@ -65,9 +65,11 @@ object ReaderTests extends TestSuite {
         }
         val reader = Reader.open(config, Visibility.Shipped)
         try {
-          reader.db.read(reader.entries.list(c)) ==> engine.db.read(engine.entries.list(c))
-          reader.db.read(reader.periods.all(c)).map(_.map(_.ref)) ==> Right(Vector(ref.period))
-          reader.db
+          reader.all.read(reader.entries.list(c)) ==> engine.db.read(Subject.Public)(
+            engine.entries.list(c)
+          )
+          reader.all.read(reader.periods.all(c)).map(_.map(_.ref)) ==> Right(Vector(ref.period))
+          reader.all
             .read(reader.triage.tagged(at, at.plusSeconds(1)))
             .map(_.map(t => (t.triage, t.tags))) ==>
             Right(Vector((ref, tags)))
@@ -147,8 +149,8 @@ object ReaderTests extends TestSuite {
         ) ==> Right(())
         val reader = Reader.open(config, Visibility.Shipped)
         try {
-          reader.db.read(reader.profiles.of(WorkflowId("w-pinned"))) ==> Right(Some(pinned))
-          reader.db.read(reader.profiles.get(pinned.id)) ==> Right(Some(pinned))
+          reader.all.read(reader.profiles.of(WorkflowId("w-pinned"))) ==> Right(Some(pinned))
+          reader.all.read(reader.profiles.get(pinned.id)) ==> Right(Some(pinned))
         } finally reader.close()
       } finally engine.close()
     }
@@ -159,7 +161,7 @@ object ReaderTests extends TestSuite {
       val reader = Reader.open(config, Visibility.Shipped)
       try {
         // Through a connection the driver was not told is read-only: only the server refuses.
-        reader.db.read { (tx: Tx^) ?=>
+        reader.all.read { (tx: Tx^) ?=>
           val conn: java.sql.Connection^{tx} = Tx.connection(tx)
           conn.setReadOnly(false)
           Using.resource(conn.createStatement()) { st =>
@@ -168,7 +170,7 @@ object ReaderTests extends TestSuite {
             }
           }
         } ==> Right(Some("on"))
-        reader.db.read { (tx: Tx^) ?=>
+        reader.all.read { (tx: Tx^) ?=>
           val conn: java.sql.Connection^{tx} = Tx.connection(tx)
           Using.resource(conn.createStatement()) { st =>
             Right(

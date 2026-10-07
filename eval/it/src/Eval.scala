@@ -11,6 +11,7 @@ import grit.core.period.LifecycleSettings
 import grit.core.place.{Locality, Scope, Weight}
 import grit.core.provider.{ModelRequest, Provider, ProviderError}
 import grit.core.store.Nearby
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.TestPostgres
 import grit.models.{ModelRole, OpenRouterConfig, OpenRouterProvider}
@@ -125,7 +126,7 @@ object Eval {
         engine.keeper(Load.Plugin, terms)
       )(layout)
       kept <- engine.db
-        .read(engine.documents.read(written.documents))
+        .read(Subject.Public)(engine.documents.read(written.documents))
         .left
         .map(e => s"${c.name}: $e")
     } yield {
@@ -206,11 +207,11 @@ object Eval {
       case _ => DocWeight.Unscaled
     }
     engine.jot
-      .write(engine.documents.declare(Vector(Load.Plugin -> Load.terms(documents))))
+      .write(Subject.Public)(engine.documents.declare(Vector(Load.Plugin -> Load.terms(documents))))
       .fold(e => sys.error(s"eval: $e"), identity)
     val d = LifecycleSettings.Default
     engine.jot
-      .write(
+      .write(Subject.Public)(
         engine.lifecycle.set(
           LifecycleSettings
             .of(d.windows, d.balance, d.settle, d.resolveAt, d.asks, Locality(loaded.scope, weight))
@@ -275,7 +276,7 @@ object Eval {
       window: Window
   ): Either[String, Vector[EntryId]] =
     engine.db
-      .read(
+      .read(Subject.Public)(
         for {
           own <- engine.entries.at(loaded.turn.conversationId, window.entries)
           near <- Nearby.read(window.nearby, engine.entries)

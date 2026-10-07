@@ -10,7 +10,7 @@ import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{Entry, Origin, Payload, StoreError}
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.TestPostgres
 import grit.turn.Turn
@@ -42,7 +42,7 @@ object SqlInboxContractTests extends InboxContract {
         val turn = TurnRef(ConversationId(UUID.randomUUID().toString), TurnSeq.First)
         val usage = Usage(Tokens(1), Tokens(1), Tokens.Zero, Some(usd))
         engine.jot
-          .write(
+          .write(Subject.Public)(
             engine.ledger
               .record(
                 EntryId(s"spent:${UUID.randomUUID()}"),
@@ -57,11 +57,11 @@ object SqlInboxContractTests extends InboxContract {
       }
       def exists(origin: Origin): Boolean =
         engine.db
-          .read(engine.conversations.find(origin))
+          .read(Subject.Public)(engine.conversations.find(origin))
           .fold(e => sys.error(e.toString), _.nonEmpty)
       def written(origin: Origin): Vector[(Payload, Option[String])] =
         engine.db
-          .read(for {
+          .read(Subject.Public)(for {
             found <- engine.conversations.find(origin)
             all <- found.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
               engine.entries.list(c.id)
@@ -71,7 +71,7 @@ object SqlInboxContractTests extends InboxContract {
           .fold(e => sys.error(e.toString), identity)
       def dated(origin: Origin): Vector[java.time.Instant] =
         engine.db
-          .read(
+          .read(Subject.Public)(
             engine.conversations
               .find(origin)
               .flatMap(
@@ -83,7 +83,7 @@ object SqlInboxContractTests extends InboxContract {
           .fold(e => sys.error(e.toString), _.map(_.createdAt))
       def periods(origin: Origin): Vector[Period] =
         engine.db
-          .read(
+          .read(Subject.Public)(
             engine.conversations
               .find(origin)
               .flatMap(
@@ -95,7 +95,7 @@ object SqlInboxContractTests extends InboxContract {
           .fold(e => sys.error(e.toString), identity)
       def close(turn: TurnRef): Unit =
         engine.jot
-          .write(
+          .write(Subject.Public)(
             engine.periods
               .of(turn)
               .flatMap(
@@ -112,11 +112,11 @@ object SqlInboxContractTests extends InboxContract {
           .fold(e => sys.error(e.toString), _ => ())
       def enroll(id: PrincipalId, name: String): Unit =
         engine.jot
-          .write(engine.principals.enroll(id, name))
+          .write(Subject.Public)(engine.principals.enroll(id, name))
           .fold(e => sys.error(e.toString), identity)
       def reached(origin: Origin): Vector[Option[Reach]] =
         engine.db
-          .read(for {
+          .read(Subject.Public)(for {
             found <- engine.conversations.find(origin)
             all <- found.fold(Right(Vector.empty): Either[StoreError, Vector[Entry]])(c =>
               engine.entries.list(c.id)
@@ -132,7 +132,7 @@ object SqlInboxContractTests extends InboxContract {
           .fold(e => sys.error(e.toString), identity)
       def postedBy(origin: Origin): Option[CallSlot] =
         engine.db
-          .read(
+          .read(Subject.Public)(
             engine.conversations
               .find(origin)
               .flatMap(
@@ -156,13 +156,15 @@ object SqlInboxContractTests extends InboxContract {
           postedBy,
           (declared, now) =>
             engine.jot
-              .write(engine.schedules.declare(declared, now))
+              .write(Subject.Public)(engine.schedules.declare(declared, now))
               .fold(e => sys.error(e.toString), identity),
           id =>
-            engine.db.read(engine.schedules.read(id)).fold(e => sys.error(e.toString), identity),
+            engine.db
+              .read(Subject.Public)(engine.schedules.read(id))
+              .fold(e => sys.error(e.toString), identity),
           now =>
             engine.db
-              .read {
+              .read(Subject.Public) {
                 for {
                   flying <- engine.schedules.inFlight(1000)
                   due <- engine.schedules.due(now, 1000)
@@ -174,11 +176,11 @@ object SqlInboxContractTests extends InboxContract {
           },
           (slot, version, at) =>
             engine.jot
-              .write(engine.schedules.replied(slot, version, at))
+              .write(Subject.Public)(engine.schedules.replied(slot, version, at))
               .fold(e => sys.error(e.toString), identity),
           origin =>
             engine.db
-              .read(engine.conversations.find(origin))
+              .read(Subject.Public)(engine.conversations.find(origin))
               .fold(e => sys.error(e.toString), _.map(_.label))
         )
       )

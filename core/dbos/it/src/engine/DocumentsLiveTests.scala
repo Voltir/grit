@@ -53,7 +53,7 @@ object DocumentsLiveTests extends TestSuite {
       finally first.close()
       LiveDb.transaction(config)(documents.declared()) ==> Right(Vector(p -> Terms))
       val reader = Reader.open(config, Visibility.Shipped)
-      try reader.db.read(reader.documents.declared()) ==> Right(Vector(p -> Terms))
+      try reader.all.read(reader.documents.declared()) ==> Right(Vector(p -> Terms))
       finally reader.close()
       val second = LiveEngine.open(config, "test")
       try launch(second, Vector(new Keeping(q, None)))

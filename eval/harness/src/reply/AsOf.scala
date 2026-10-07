@@ -175,6 +175,9 @@ object AsOf {
     def closedAfter(after: CloseOrdinal, n: Int)(using
         Tx^
     ): Either[StoreError, Vector[ClosedPeriod]] = under.closedAfter(after, n)
+    def nextClosed(after: CloseOrdinal)(using
+        Tx^
+    ): Either[StoreError, Option[(CloseOrdinal, ConversationId)]] = under.nextClosed(after)
     def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit] =
       under.purge(period, at)
     def drop(period: PeriodRef)(using Tx^): Either[StoreError, Boolean] = under.drop(period)

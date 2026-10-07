@@ -12,6 +12,7 @@ import grit.core.id.WorkflowId
 import grit.core.recipe.RoomReads
 import grit.core.review.ReviewStore
 import grit.core.stitch.StitchStore
+import grit.core.store.Reads
 import grit.core.store.{
   ConversationStore,
   Db,
@@ -27,7 +28,7 @@ import grit.core.store.{
 }
 import grit.core.tool.ToolSets
 import grit.core.triage.{TriageShadows, TriageStore}
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.{
   DbConfig,
   Opener,
@@ -62,7 +63,14 @@ import org.postgresql.ds.PGSimpleDataSource
   * closes its DBOS client.
   */
 trait Reader extends caps.SharedCapability, AutoCloseable {
+
+  /** Reads for a subject, as an engine's transactions do. */
   val db: Db
+
+  /** Reads every row, whatever its label: for capturing a database whole, never for building
+    * what a turn or a conversation's work is shown, which [[db]] reads for its subject.
+    */
+  val all: Reads
   val entries: EntryStore
   val conversations: ConversationStore
   val periods: PeriodStore
@@ -128,7 +136,9 @@ object Reader {
 
   private final class Opened(ds: PGSimpleDataSource, client: DBOSClient, opener: Opener)
       extends Reader {
-    val db: Db = new SqlDb(ds, opener)
+    private val sql = new SqlDb(ds, opener)
+    val db: Db = sql
+    val all: Reads = sql.all
     val entries: EntryStore = new SqlEntryStore()
     val conversations: ConversationStore = new SqlConversationStore()
     val periods: PeriodStore = new SqlPeriodStore(entries)
@@ -200,7 +210,8 @@ object Reader {
         }
       } catch { case NonFatal(_) => None }
 
-    def starts(): Either[StoreError, Vector[Build.Started]] = db.read(EngineStarts.all())
+    def starts(): Either[StoreError, Vector[Build.Started]] =
+      db.read(Subject.Public)(EngineStarts.all())
 
     def close(): Unit = client.close()
   }

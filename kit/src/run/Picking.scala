@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.review.{Considered, Review, ReviewStore, Reviewed}
 import grit.core.spend.Budget
 import grit.core.store.{Jot, StoreError}
+import grit.core.visibility.Subject
 import grit.kit.deployment.ShadowReview
 
 /** A deployment's review, picked a round at a time ([[grit.core.review.Review.pick]]). */
@@ -31,7 +32,7 @@ private[run] object Picking {
   ): Either[StoreError, Int] = {
     val reviewing = review.reviewing
     val since = now.minusNanos(reviewing.within.toNanos)
-    jot.write {
+    jot.write(Subject.Public) {
       for {
         found <- reviews.candidates(reviewing.shadow, since, Candidates)
         today <- reviews.reviewed(budget.today(now).from)

@@ -31,6 +31,7 @@ import grit.core.message.AssistantBlock
 import grit.core.plugin.{InMemoryPlugins, Needs, PluginReads, PluginTool}
 import grit.core.store.{Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -49,9 +50,10 @@ object RemindersTests extends TestSuite {
   private def turn(n: Int): TurnRef = TurnRef(ConversationId(s"slack:$n"), TurnSeq.First)
 
   final class FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
-      TestTx.fake
-    )
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using
+        TestTx.fake
+      )
   }
 
   /** The reminders' schedules as of [[now]], and their desk, holding `remind`. */
@@ -76,7 +78,9 @@ object RemindersTests extends TestSuite {
         .bind(reads, Needs.over(name, Vector.empty), OwnJobs.over(name, Vector(Reminders.Remind)))
         .fold(u => sys.error(u.toString), identity)
         .pipe(r =>
-          Toolbox.of[caps.CapSet^{db, d}](tool.described.calling((a, c) => r.run(a, c, db, d)))
+          Toolbox.of[caps.CapSet^{db, d}](
+            tool.described.calling((a, c) => r.run(a, c, db.as(Subject.Turn(c.turn)), d))
+          )
         )
         .fold(e => sys.error(e.toString), identity)
         .bind(

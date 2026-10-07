@@ -14,6 +14,7 @@ import grit.core.place.{Directory, Place}
 import grit.core.plugin.{InMemoryPlugins, Needs, PluginReads}
 import grit.core.store.{ClosedPeriod, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -23,9 +24,10 @@ object DigestTests extends TestSuite {
   private val name = PluginName.of("digest").getOrElse(throw new java.lang.AssertionError("name"))
 
   final class FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
-      TestTx.fake
-    )
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using
+        TestTx.fake
+      )
   }
 
   private def closing(prose: String, outcome: Option[String]): Closing =
@@ -119,7 +121,9 @@ object DigestTests extends TestSuite {
       .fold(u => sys.error(u.toString), identity)
       .pipe(r =>
         Toolbox.of[caps.CapSet^{db, desk}](
-          Digest.RecentActivity.described.calling((n, at) => r.run(n, at, db, desk))
+          Digest.RecentActivity.described.calling((n, at) =>
+            r.run(n, at, db.as(Subject.Turn(at.turn)), desk)
+          )
         )
       )
       .fold(d => sys.error(d.toString), identity)

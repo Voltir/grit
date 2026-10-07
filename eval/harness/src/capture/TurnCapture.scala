@@ -28,7 +28,7 @@ object TurnCapture {
     */
   def apply(reader: Reader^, dump: Dump): Either[String, Turns] = {
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]) =
-      reader.db.read(body).left.map(e => s"$what unread: ${Capture.kind(e)}")
+      reader.all.read(body).left.map(e => s"$what unread: ${Capture.kind(e)}")
     for {
       workflows <- reader.turns(dump.at).left.map(e => s"turn workflows unread: ${Capture.kind(e)}")
       starts <- reader.starts().left.map(e => s"engine starts unread: ${Capture.kind(e)}")
@@ -67,7 +67,7 @@ object TurnCapture {
       build: Build
   ): Either[String, Option[TurnCase]] = {
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]) =
-      reader.db
+      reader.all
         .read(body)
         .left
         .map(e => s"$what of ${WorkflowId.value(turn.workflowId)} unread: ${Capture.kind(e)}")
@@ -221,7 +221,7 @@ object TurnCapture {
     * not be read; never a message's text.
     */
   def costed(reader: Reader^, turn: TurnRef, window: Window): Either[String, Parts] =
-    reader.db
+    reader.all
       .read(
         for {
           all <- reader.entries.list(turn.conversationId)

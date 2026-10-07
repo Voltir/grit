@@ -19,6 +19,7 @@ import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.stitch.StitchReads
 import grit.core.store.{Db, Jot, LifecycleStore, StoreError}
 import grit.core.tool.{DuplicateName, Tool, ToolName, Toolbox}
+import grit.core.visibility.Subject
 import grit.dbos.engine.Engine
 import grit.job.clock.ClockEdge
 import grit.job.run.{RunEnv, RunRecords}
@@ -428,7 +429,9 @@ private[grit] object Launch {
       case None => said
       case Some(turn) =>
         engine.db
-          .read(TurnTally.read(engine.conversations, engine.entries, engine.ledger, turn, said))
+          .read(Subject.Turn(turn))(
+            TurnTally.read(engine.conversations, engine.entries, engine.ledger, turn, said)
+          )
           .fold(why => s"turn ${WorkflowId.value(id)}: $said; not tallied: $why", _.line)
     })
     said
@@ -442,7 +445,7 @@ private[grit] object Launch {
       jot: Jot,
       declared: LifecycleSettings
   ): Either[StoreError, LifecycleSettings] =
-    jot.write(lifecycle.set(declared).flatMap(_ => lifecycle.current()))
+    jot.write(Subject.Public)(lifecycle.set(declared).flatMap(_ => lifecycle.current()))
 
   /** `d`'s declared schedules made the stored ones as of `now` ([[ScheduleStore.declare]]),
     * through `jot`.
@@ -453,7 +456,7 @@ private[grit] object Launch {
       d: Deployment,
       now: Instant
   ): Either[StoreError, Unit] =
-    jot.write(schedules.declare(d.declared, now))
+    jot.write(Subject.Public)(schedules.declare(d.declared, now))
 
   /** `edge`'s passes run every [[ClockEdge.Every]] on `engine` ([[Engine.every]], as
     * `grit.clock`): a pass that cannot read the schedules is logged, and so is each schedule

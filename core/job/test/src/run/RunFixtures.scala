@@ -22,6 +22,7 @@ import grit.core.job.ScheduleContract.{booking, hour}
 import grit.core.job.{Declared, Job, JobRun, Jobs, Schedule, SlotRule, When}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.store.{Db, Jot, Origin, Payload, StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 /** A run's world over core's in-memory fakes: an inbox that starts slots as the SQL one does,
@@ -54,7 +55,7 @@ object RunFixtures {
   final case class Text(text: String) extends caps.Pure
 
   object FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using TestTx.fake)
   }
 
@@ -64,7 +65,7 @@ object RunFixtures {
   final class FakeJot(crashAfter: Boolean = false) extends Jot {
     @caps.unsafe.untrackedCaptures
     private var armed = crashAfter
-    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = {
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = {
       val written = body(using TestTx.fake)
       if (armed) { armed = false; throw new InMemoryDurable.Crash }
       written

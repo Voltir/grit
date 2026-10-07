@@ -6,7 +6,7 @@ import grit.core.clock.Clock
 import grit.core.id.{JobName, PluginName, PrincipalId, TurnRef, TurnSeq}
 import grit.core.job.{ScheduleContract, ScheduleDesk, ScheduleStore, Slot}
 import grit.core.store.{Jot, Origin, StoreError, Tombstones, Tx}
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.{DbConfig, LiveDb, Opener, SqlJot, SqlSchedules, SqlTombstones, TestPostgres}
 
 import org.postgresql.ds.PGSimpleDataSource
@@ -64,8 +64,8 @@ private[engine] object SqlSchedulesUnder {
 
   /** `inner`, running `beforeCommit` inside each transaction once its body has returned. */
   private final class Held(inner: Jot, beforeCommit: () -> Unit) extends Jot {
-    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
-      inner.write {
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      inner.write(subject) {
         val result = body
         beforeCommit()
         result

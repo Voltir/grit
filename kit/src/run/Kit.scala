@@ -7,6 +7,7 @@ import grit.core.edge.{CatchUp, EdgeRefusal, EdgeStores}
 import grit.core.id.EdgeName
 import grit.core.message.Cost
 import grit.core.spend.Budget
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, Link}
 import grit.host.LocalMachine
 import grit.kit.deployment.Deployment
@@ -254,7 +255,7 @@ object Kit {
   private def metered(link: Link^, budget: Budget, now: Instant): Option[String] =
     budget.cap.map { cap =>
       val today = budget.today(now)
-      val unpriced = link.db.read(link.spending.on(today)) match {
+      val unpriced = link.db.read(Subject.Public)(link.spending.on(today)) match {
         case Right(spent) =>
           spent.cost match {
             case Cost.AtLeast(_) =>
@@ -271,7 +272,7 @@ object Kit {
     */
   private def spentToday(link: Link^, budget: Budget, now: Instant): Either[String, BigDecimal] =
     link.db
-      .read(link.spending.on(budget.today(now)))
+      .read(Subject.Public)(link.spending.on(budget.today(now)))
       .left
       .map(e => s"today's spend could not be read: $e")
       .map(_.cost match {

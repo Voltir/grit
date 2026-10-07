@@ -6,6 +6,7 @@ import scala.jdk.OptionConverters.*
 import grit.core.durable.{Durable, Journaled, StreamWriter, UnreadableJournal}
 import grit.core.id.WorkflowId
 import grit.core.store.Tx
+import grit.core.visibility.Subject
 import grit.dbos.sql.Opener
 
 import dev.dbos.transact.DBOS
@@ -15,7 +16,9 @@ import dev.dbos.transact.txstep.JdbcStepFactory
 /** [[Durable]] over DBOS, for the workflow `workflowId`: `step` is a DBOS step, `transact`
   * a `txStep`. Outputs cross DBOS as the `String` their [[Journaled]] encodes to, so its
   * serializer never sees a grit type. Steps run once, with no retries. `patch` needs
-  * patching enabled in DBOS's config ([[Engine]] does).
+  * patching enabled in DBOS's config ([[Engine]] does). A `transact` resolves its subject
+  * through `opener` in its own transaction, before its body; when that read fails, as when the
+  * database does, it throws, and DBOS records the throw as the step's outcome.
   */
 private[dbos] final class DbosDurable(
     dbos: DBOS,
@@ -35,13 +38,19 @@ private[dbos] final class DbosDurable(
       )
     )
 
-  def transact[A: Journaled](name: String)(body: (Tx^) ?=> A): A =
+  def transact[A: Journaled](name: String, subject: Subject)(body: (Tx^) ?=> A): A =
     decode(
       name,
       steps.txStep(
         new JdbcStepFactory.TransactionalFunction[String, Exception] {
           def execute(cnn: java.sql.Connection): String =
-            summon[Journaled[A]].encode(body(using Tx.open(cnn, opener.maintenance)))
+            opener.open(subject, cnn) match {
+              case Right(tx) => summon[Journaled[A]].encode(body(using tx))
+              case Left(e) =>
+                throw new IllegalStateException(
+                  s"step $name: opening its transaction for $subject: $e"
+                )
+            }
         },
         name
       )

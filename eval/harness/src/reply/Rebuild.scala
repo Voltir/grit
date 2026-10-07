@@ -100,7 +100,7 @@ object Rebuild {
   ): Either[String, RebuiltWindow] = {
     val name = WorkflowId.value(workflow)
     def read[A](what: String)(body: (grit.core.store.Tx^) ?=> Either[StoreError, A]) =
-      reader.db.read(body).left.map(e => s"$what of $name unread: ${Capture.kind(e)}")
+      reader.all.read(body).left.map(e => s"$what of $name unread: ${Capture.kind(e)}")
     for {
       turn <- TurnRef.fromWorkflowId(workflow).toRight(s"$name is not a turn")
       steps <- reader.steps(workflow).left.map(e => s"steps of $name unread: ${Capture.kind(e)}")

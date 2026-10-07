@@ -4,6 +4,7 @@ import java.time.{Instant, LocalDate}
 
 import grit.core.model.{Catalog, Known, NameRepair, Profile, Settings, Source}
 import grit.core.store.{Db, InMemoryModelSettingStore, StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -11,7 +12,7 @@ import utest.*
 object OpenRouterModelsTests extends TestSuite {
 
   private object FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using TestTx.fake)
   }
 

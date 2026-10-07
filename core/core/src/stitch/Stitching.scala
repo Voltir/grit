@@ -20,13 +20,13 @@ import grit.core.place.{Place, Scope}
 import grit.core.store.{
   Conversation,
   ConversationStore,
-  Db,
   Entry,
   EntrySearch,
   EntryStore,
   LifecycleStore,
   Payload,
   Principals,
+  Reads,
   Speakers,
   StoreError
 }
@@ -91,7 +91,7 @@ object Stitching {
     */
   def offered(
       reads: StitchReads,
-      db: Db^,
+      db: Reads^,
       turn: TurnRef,
       tuning: Tuning
   ): Either[StoreError, Option[Offer]] =
@@ -105,7 +105,7 @@ object Stitching {
   def turn(
       classifier: Classifier^,
       reads: StitchReads,
-      db: Db^,
+      db: Reads^,
       turn: TurnRef,
       tuning: Tuning
   ): Either[StoreError, Option[(EntryId, Placed)]] =
@@ -118,7 +118,7 @@ object Stitching {
     */
   private def opening(
       reads: StitchReads,
-      db: Db^,
+      db: Reads^,
       turn: TurnRef,
       tuning: Tuning,
       keptAsks: Boolean
@@ -148,7 +148,7 @@ object Stitching {
     */
   private def room(
       reads: StitchReads,
-      db: Db^,
+      db: Reads^,
       conversation: Conversation,
       first: Entry,
       scope: Scope,

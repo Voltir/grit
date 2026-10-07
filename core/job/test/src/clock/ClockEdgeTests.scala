@@ -9,6 +9,7 @@ import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.hour
 import grit.core.job.{Declared, Jobs, Slot, SlotRule}
 import grit.core.store.{Db, StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -23,12 +24,12 @@ object ClockEdgeTests extends TestSuite {
     Jobs.of(job.toVector).fold(n => sys.error(s"two jobs named $n"), identity)
 
   private object FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using TestTx.fake)
   }
 
   private object DownDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       Left(StoreError.DatabaseError("the database is down"))
   }
 

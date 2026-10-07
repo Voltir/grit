@@ -6,6 +6,7 @@ import grit.core.persona.Persona
 import grit.core.stitch.{Placed, StitchReads, Stitching, Tuning}
 import grit.core.store.{StoreError, Tx}
 import grit.core.triage.{Corpora, Tags}
+import grit.core.visibility.Subject
 import grit.dbos.engine.Reader
 import grit.eval.harness.capture.Capture
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
@@ -48,7 +49,7 @@ object HeardSent {
   ): Either[String, HeardSent] = {
     val id = EntryId.value(entry)
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]): Either[String, A] =
-      reader.db.read(body).left.map(e => s"$what of $id unread: ${Capture.kind(e)}")
+      reader.all.read(body).left.map(e => s"$what of $id unread: ${Capture.kind(e)}")
     val reads = StitchReads(
       reader.entries,
       reader.conversations,
@@ -73,14 +74,21 @@ object HeardSent {
         if (placed.isEmpty) Right(None)
         else
           Stitching
-            .offered(reads, reader.db, turn, tuning)
+            .offered(reads, reader.db.as(Subject.Conversation(turn.conversationId)), turn, tuning)
             .left
             .map(e => s"stitch of $id unread: ${Capture.kind(e)}")
       tags <- read("tags")(reader.triage.of(Vector(entry))).map(_.get(entry))
     } yield {
       val set = TriageQuestions.shipped(persona)
       val triage = TriageInput
-        .read(reads, reader.rooms, reader.db, turn, tuning, TriageRecipe.Shipped)
+        .read(
+          reads,
+          reader.rooms,
+          reader.db.as(Subject.Conversation(turn.conversationId)),
+          turn,
+          tuning,
+          TriageRecipe.Shipped
+        )
         .map(r => set.request(r.state, sources))
       val stitchAsked = offer.flatMap(Stitching.request)
       HeardSent(

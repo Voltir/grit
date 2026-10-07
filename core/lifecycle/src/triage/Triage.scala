@@ -7,6 +7,7 @@ import grit.core.speech.{Decision, SpeechJson}
 import grit.core.stitch.{Opening, Placed, StitchJson, StitchReads, Stitching}
 import grit.core.store.StoreError
 import grit.core.triage.{Corpora, Tags}
+import grit.core.visibility.Subject
 
 /** The triage: one workflow per heard message ([[TriageRef]]), run on the turns' queue under
   * its conversation, so ahead of any later close of it. Each step's output is recorded, so a
@@ -67,6 +68,7 @@ object Triage {
       case None => s"not a triage: ${WorkflowId.value(workflowId)}"
       case Some(triage) =>
         import TriageJournal.given
+        val subject = Subject.Conversation(triage.period.conversationId)
         val kept =
           if (d.patch(Patches.StitchInRoomOrder))
             d.step(Step.Stitched)(() => placed(env, triage)) match {
@@ -79,7 +81,7 @@ object Triage {
               case Right(Some((root, placed))) =>
                 val at = env.clock.now()
                 val stitches = env.records.stitches
-                d.transact(Step.RecordStitch)(
+                d.transact(Step.RecordStitch, subject)(
                   stitches.record(root, placed, at).left.map(describe)
                 ) match {
                   case Right(_) => s"stitched: ${StitchJson.kindOf(placed)}; "
@@ -93,7 +95,7 @@ object Triage {
           case Left(why) => s"failed: $why"
           case Right((entry, tags)) =>
             val at = env.clock.now()
-            d.transact(Step.Record)(
+            d.transact(Step.Record, subject)(
               env.records.triage.record(entry, tags, at).left.map(describe)
             ) match {
               case Left(why) => s"failed: $why"
@@ -108,7 +110,7 @@ object Triage {
                     case Right(queued) => s"$as: ${WorkflowId.value(queued)}"
                   }
                 }
-                val considered = d.transact(Step.Consider)(
+                val considered = d.transact(Step.Consider, subject)(
                   Speak.consider(records, speech.speaking, speech.budget, triage, entry, tags, now)
                 )
                 s"tagged: ${shown(tags)}; " + (considered match {
@@ -130,7 +132,7 @@ object Triage {
     val r = env.records
     val conversation = triage.period.conversationId
     env.db
-      .read {
+      .read(Subject.Conversation(conversation)) {
         for {
           all <- r.entries.list(conversation)
           c <- r.conversations.get(conversation)
@@ -158,7 +160,7 @@ object Triage {
       .turn(
         env.classifier,
         StitchReads(r.entries, r.conversations, r.lifecycle, r.stitches, r.search, r.principals),
-        env.db,
+        env.db.as(Subject.Conversation(triage.period.conversationId)),
         TurnRef(triage.period.conversationId, triage.turn),
         env.tuning
       )
@@ -176,7 +178,7 @@ object Triage {
       .heard(
         StitchReads(r.entries, r.conversations, r.lifecycle, r.stitches, r.search, r.principals),
         r.rooms,
-        env.db,
+        env.db.as(Subject.Conversation(triage.period.conversationId)),
         TurnRef(triage.period.conversationId, triage.turn),
         env.tuning,
         TriageRecipe.Shipped

@@ -84,7 +84,7 @@ import grit.core.tool.{
   Toolbox
 }
 import grit.core.triage.{Kind, Tags}
-import grit.core.visibility.Label
+import grit.core.visibility.{Label, Subject}
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -352,13 +352,13 @@ object TurnFixtures {
 
   /** Reads straight through to the in-memory store. */
   object FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using TestTx.fake)
   }
 
   /** Writes straight through to the in-memory store, never rolled back. */
   final class FakeJot extends Jot {
-    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using TestTx.fake)
   }
 

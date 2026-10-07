@@ -80,7 +80,7 @@ object Pull {
       at: Instant
   ): Either[String, Pulled] = {
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]): Either[String, A] =
-      reader.db.read(body).left.map(e => s"$what unread: ${e.getClass.getSimpleName}")
+      reader.all.read(body).left.map(e => s"$what unread: ${e.getClass.getSimpleName}")
     val byId = cases.map(c => c.id -> c).toMap
     for {
       tagged <- read("tags")(reader.triage.tagged(since, at))
@@ -191,7 +191,7 @@ object Pull {
     */
   def verdicts(reader: Reader^, since: Instant): Either[String, Standing] = {
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]): Either[String, A] =
-      reader.db.read(body).left.map(e => s"$what unread: ${e.getClass.getSimpleName}")
+      reader.all.read(body).left.map(e => s"$what unread: ${e.getClass.getSimpleName}")
     for {
       reviewed <- read("reviews")(reader.reviews.reviewed(since))
       rated = reviewed.flatMap(r =>

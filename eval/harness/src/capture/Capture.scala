@@ -6,6 +6,7 @@ import grit.core.id.{ConversationId, TurnRef}
 import grit.core.stitch.{Placed, StitchReads, Stitching, Tuning}
 import grit.core.store.{Origin, StoreError}
 import grit.core.triage.{Corpora, TriageStore}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Build, Reader}
 import grit.lifecycle.triage.{TriageInput, TriageQuestions, TriageRecipe}
 
@@ -38,7 +39,7 @@ object Capture {
       reader.principals
     )
     def read[A](what: String)(body: (grit.core.store.Tx^) ?=> Either[StoreError, A]) =
-      reader.db.read(body).left.map(e => s"$what unread: ${kind(e)}")
+      reader.all.read(body).left.map(e => s"$what unread: ${kind(e)}")
     def originOf(c: ConversationId): Either[String, Option[Origin]] =
       read("conversation")(reader.conversations.get(c)).map(_.map(_.origin))
     def opening(c: ConversationId): Either[String, CaseId] =
@@ -132,7 +133,7 @@ object Capture {
       .build(
         reads,
         reader.rooms,
-        reader.db,
+        reader.db.as(Subject.Conversation(t.triage.period.conversationId)),
         TurnRef(t.triage.period.conversationId, t.triage.turn),
         tuning,
         TriageRecipe.Shipped
@@ -167,7 +168,10 @@ object Capture {
         case u: Placed.Unread => Right(Placement.Unread(Failure.of(u.why)))
       }
       offered <- each(live.seen.offered)(o => opening(o.root).map(Offering(_, o.why, o.p)))
-      rebuilt = Stitching.offered(reads, reader.db, turn, tuning).toOption.flatten
+      rebuilt = Stitching
+        .offered(reads, reader.db.as(Subject.Conversation(turn.conversationId)), turn, tuning)
+        .toOption
+        .flatten
       now <- each(rebuilt.fold(Vector.empty)(_.exchanges))(e =>
         opening(e.root).map(Slot(_, e.offered))
       )

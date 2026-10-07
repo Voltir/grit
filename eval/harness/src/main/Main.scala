@@ -803,7 +803,7 @@ object Main {
     */
   private def drawn(reader: Reader^, t: TurnCase): Either[String, Vector[ToolSet.Entry]] =
     t.offered.fold[Either[String, Vector[ToolSet.Entry]]](Right(Vector.empty))(o =>
-      reader.db
+      reader.all
         .read(reader.toolSets.get(o.drawn))
         .map(_.tools)
         .left

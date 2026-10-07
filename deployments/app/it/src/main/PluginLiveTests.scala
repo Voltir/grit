@@ -27,6 +27,7 @@ import grit.core.place.{Namespace, Place}
 import grit.core.plugin.{CacheDocs, CachePosting, Documents, Needs, Plugin, PostRef}
 import grit.core.store.{ClosedPeriod, Db, Origin, Sealed, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.digest.Digest
@@ -103,7 +104,7 @@ object PluginLiveTests extends TestSuite {
         .fold(e => sys.error(s"$e"), identity)
       val closing = TestClosings.prose(s"Period $i. More.")
       val ref = PeriodRef(t.conversationId, PeriodSeq.of(i.toLong).getOrElse(sys.error("seq")))
-      engine.jot.write(
+      engine.jot.write(Subject.Public)(
         engine.periods.seal(
           CloseRef(ref, t.turnSeq, Instant.EPOCH),
           CloseReason.Resolved(Probability.One),
@@ -166,13 +167,13 @@ object PluginLiveTests extends TestSuite {
         val run = PostRef(digest.name, digest.version, CloseOrdinal.Start, 0)
         engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector(run))
         assert(finished(config, run.workflowId))
-        engine.jot.write(
+        engine.jot.write(Subject.Public)(
           engine.cursors.start(digest.name, digest.version, java.time.Instant.now())
         ) ==> Right(CloseOrdinal.of(2).getOrElse(sys.error("o")))
         engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector())
         // Both closed in one room: one document there, written as of the newer.
         engine.db
-          .read(engine.reads(digest.name).documents.newest(10))
+          .read(Subject.Public)(engine.reads(digest.name).documents.newest(10))
           .map(_.map(d => (d.place.written, d.written))) ==> Right(
           Vector(("fs:/plugins", Instant.parse("2026-09-22T10:00:00Z")))
         )
@@ -188,7 +189,8 @@ object PluginLiveTests extends TestSuite {
           .fold(u => sys.error(s"$u"), identity)
         val tools = Toolbox
           .of[caps.CapSet^{store, desk}](
-            Digest.RecentActivity.described.calling((n, at) => recent.run(n, at, store, desk))
+            Digest.RecentActivity.described
+              .calling((n, at) => recent.run(n, at, store.as(Subject.Turn(at.turn)), desk))
           )
           .fold(d => sys.error(s"$d"), identity)
         tools.bind(
@@ -216,7 +218,7 @@ object PluginLiveTests extends TestSuite {
         engine.sweep(Instant.now()).map(_.posted) ==> Right(Vector(run))
         assert(finished(config, run.workflowId))
         engine.db
-          .read(engine.reads(noting.name).documents.newest(10))
+          .read(Subject.Public)(engine.reads(noting.name).documents.newest(10))
           .map(_.map(d => (DocKey.value(d.key), DocText.value(d.text)))) ==> Right(
           Vector("2" -> "closed at 2026-09-22T10:00:00Z", "1" -> "closed at 2026-09-21T10:00:00Z")
         )
@@ -240,8 +242,12 @@ object PluginLiveTests extends TestSuite {
           assert(finished(config, run.workflowId))
           posted
         } ==> runs.map(run => Right(Vector(run)))
-        engine.db.read(engine.reads(refusing.name).cache.get("half")) ==> Right(None)
-        engine.jot.write(engine.cursors.start(refusing.name, 1, java.time.Instant.now())) ==> Right(
+        engine.db.read(Subject.Public)(engine.reads(refusing.name).cache.get("half")) ==> Right(
+          None
+        )
+        engine.jot.write(Subject.Public)(
+          engine.cursors.start(refusing.name, 1, java.time.Instant.now())
+        ) ==> Right(
           CloseOrdinal.Start
         )
         // Then the cursor is left for a person, its last run named.

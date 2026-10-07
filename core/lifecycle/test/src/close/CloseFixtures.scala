@@ -47,7 +47,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{InMemoryTriageStore, Tags}
-import grit.core.visibility.Label
+import grit.core.visibility.{Label, Subject}
 import grit.dbos.sql.TestTx
 
 /** The close's test world: one conversation in core's in-memory stores, a clock the test
@@ -171,15 +171,17 @@ object CloseFixtures {
 
   /** Writes straight through to the in-memory stores, never rolled back. */
   final class FakeJot extends Jot {
-    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
-      TestTx.fake
-    )
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using
+        TestTx.fake
+      )
   }
 
   object FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] = body(using
-      TestTx.fake
-    )
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+      body(using
+        TestTx.fake
+      )
   }
 
   /** The origin a [[World]]'s conversation happens at unless given another. */
@@ -348,6 +350,10 @@ object CloseFixtures {
         Tx^
     ): Either[StoreError, Vector[ClosedPeriod]] =
       underlying.closedAfter(after, n)
+    def nextClosed(after: CloseOrdinal)(using
+        Tx^
+    ): Either[StoreError, Option[(CloseOrdinal, ConversationId)]] =
+      underlying.nextClosed(after)
     def purge(period: PeriodRef, at: Instant)(using Tx^): Either[StoreError, Unit] =
       underlying.purge(period, at)
     def drop(period: PeriodRef)(using Tx^): Either[StoreError, Boolean] = underlying.drop(period)

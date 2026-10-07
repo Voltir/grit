@@ -5,6 +5,7 @@ import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
 import grit.core.plugin.{Needs, Plugin, PluginReads, PluginRun, PluginTool, Unneeded}
 import grit.core.store.Db
 import grit.core.tool.{Hosted, Tool}
+import grit.core.visibility.Subject
 
 /** A plugin's tool bound to its run: what it is, what a call does, and its plugin, whose jobs
   * are named `jobs`.
@@ -16,11 +17,13 @@ private[kit] final case class BoundTool[A](
     jobs: Vector[JobName]
 ) {
 
-  /** This tool, each call run through `store`, told the call it runs, and writing its
-    * plugin's schedules through its plugin's desk from `desks`.
+  /** This tool, each call run reading `store` for the call's turn, told the call it runs, and
+    * writing its plugin's schedules through its plugin's desk from `desks`.
     */
   def over(store: Db^, desks: Desks^): Tool.Offered^{store, desks} =
-    described.calling((a, at) => run.run(a, at, store, desks.of(plugin, jobs)))
+    described.calling((a, at) =>
+      run.run(a, at, store.as(Subject.Turn(at.turn)), desks.of(plugin, jobs))
+    )
 }
 
 /** Each plugin's desk (ADR 0029). */

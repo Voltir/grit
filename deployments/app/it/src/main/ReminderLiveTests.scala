@@ -20,6 +20,7 @@ import grit.core.provider.{ModelRequest, Models, Provider, ProviderError}
 import grit.core.speech.Speaking
 import grit.core.spend.Budget
 import grit.core.store.{StoreError, Tx}
+import grit.core.visibility.Subject
 import grit.dbos.engine.{Engine, LiveEngine}
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.job.clock.ClockEdge
@@ -201,7 +202,7 @@ object ReminderLiveTests extends TestSuite {
   private def right[A](e: Either[StoreError, A]): A = e.fold(x => sys.error(x.toString), identity)
 
   private def read(engine: Engine^, id: ScheduleId): Option[Schedule] =
-    right(engine.db.read(engine.schedules.read(id)))
+    right(engine.db.read(Subject.Public)(engine.schedules.read(id)))
 
   /** `edge`'s delivery passes until Slack holds `posts` posts or 60 s pass, then one more,
     * which must deliver nothing.
@@ -463,7 +464,7 @@ object ReminderLiveTests extends TestSuite {
           missed,
           read(engine, id).flatMap(_.ended),
           right(
-            engine.db.read(
+            engine.db.read(Subject.Public)(
               engine.conversations.find(Slot(id, due).origin(Reminders.Remind.name))
             )
           ),

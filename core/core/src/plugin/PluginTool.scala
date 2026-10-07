@@ -2,7 +2,7 @@ package grit.core.plugin
 
 import grit.core.id.CallSlot
 import grit.core.job.{NotOwn, OwnJobs, ScheduleDesk}
-import grit.core.store.Db
+import grit.core.store.Reads
 import grit.core.tool.{Hosted, Outcome}
 
 /** A tool a plugin runs over grit's store: `described`, what it is without a capability (so a
@@ -21,9 +21,9 @@ trait PluginTool[A] extends caps.Pure {
 /** A plugin tool's run, bound at start. */
 trait PluginRun[A] extends caps.Pure {
 
-  /** What the call at `call` with `args` comes to, read through `db`, writing its plugin's
-    * bookings' schedules through `desk`. Never throws: every failure is an
-    * [[grit.core.tool.Outcome]].
+  /** What the call at `call` with `args` comes to, read through `reads`, which reads for the
+    * turn that made the call, writing its plugin's bookings' schedules through `desk`. Never
+    * throws: every failure is an [[grit.core.tool.Outcome]].
     */
-  def run(args: A, call: CallSlot, db: Db^, desk: ScheduleDesk^): Outcome
+  def run(args: A, call: CallSlot, reads: Reads^, desk: ScheduleDesk^): Outcome
 }

@@ -10,6 +10,7 @@ import grit.core.id.{CallSlot, PrincipalId, ToolCallId}
 import grit.core.place.{Directory, Place, Service}
 import grit.core.store.{StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, ToolName}
+import grit.core.visibility.Subject
 
 /** How a turn settles a hosted call (ADR 0017): as a request addressed to its tool's place in
   * the offer, its workspace or a service it reaches, which an edge serving it claims, runs
@@ -96,22 +97,23 @@ object TurnHosted {
         )
       case Some(shown) =>
         val entries = settling.entries
-        d.transact(slot.askStep)(TurnTools.ask(entries, slot, call, shown, clock.now())).flatMap {
-          _ =>
-            TurnTools.approval(d.recv(Approval.topic(call), answerWithin)) match {
-              case Approval.Declined(reason) => Right(Waited.Known(Outcome.Declined(reason)))
-              case Approval.TimedOut => Right(Waited.Known(Outcome.Unanswered))
-              case Approval.Approved =>
-                for {
-                  to <- place.toRight(TurnFailure.Store(s"$named has no workspace to go to"))
-                  one = request(slot, hosted, to, Permit.Approved)
-                  went <- d.transact(TurnHostedSteps.dispatchOne(slot))(
-                    dispatch(hosting, to, Vector(one))
-                  )
-                } yield
-                  if (went) awaited(hosting, slot.call, slot, place)
-                  else Waited.Known(unserved(place))
-            }
+        d.transact(slot.askStep, Subject.Turn(slot.turn))(
+          TurnTools.ask(entries, slot, call, shown, clock.now())
+        ).flatMap { _ =>
+          TurnTools.approval(d.recv(Approval.topic(call), answerWithin)) match {
+            case Approval.Declined(reason) => Right(Waited.Known(Outcome.Declined(reason)))
+            case Approval.TimedOut => Right(Waited.Known(Outcome.Unanswered))
+            case Approval.Approved =>
+              for {
+                to <- place.toRight(TurnFailure.Store(s"$named has no workspace to go to"))
+                one = request(slot, hosted, to, Permit.Approved)
+                went <- d.transact(TurnHostedSteps.dispatchOne(slot), Subject.Turn(slot.turn))(
+                  dispatch(hosting, to, Vector(one))
+                )
+              } yield
+                if (went) awaited(hosting, slot.call, slot, place)
+                else Waited.Known(unserved(place))
+          }
         }
     }
     val requests = hosting.requests
@@ -150,7 +152,9 @@ object TurnHosted {
     d.recv(cs.key, ServeWithin) match {
       case Some(_) => Waited.Rung(cs)
       case None =>
-        d.transact(TurnHostedSteps.expire(slot))(standing(hosting.requests.settle(cs))) match {
+        d.transact(TurnHostedSteps.expire(slot), Subject.Turn(slot.turn))(
+          standing(hosting.requests.settle(cs))
+        ) match {
           case Left(failure) => Waited.Known(unreadable(failure))
           case Right(RequestState.Answered(o)) => Waited.Known(o)
           case Right(RequestState.Expired) =>
@@ -159,7 +163,7 @@ object TurnHosted {
             d.recv(cs.key, RunWithin) match {
               case Some(_) => Waited.Rung(cs)
               case None =>
-                d.transact(TurnHostedSteps.abandon(slot))(
+                d.transact(TurnHostedSteps.abandon(slot), Subject.Turn(slot.turn))(
                   standing(hosting.requests.abandon(cs))
                 ) match {
                   case Right(RequestState.Answered(o)) => Waited.Known(o)

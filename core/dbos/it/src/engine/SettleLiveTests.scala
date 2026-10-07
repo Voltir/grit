@@ -28,6 +28,7 @@ import grit.core.message.Message
 import grit.core.period.{Judgement, LifecycleSettings, Probability, Verdict, Windows}
 import grit.core.place.Locality
 import grit.core.store.Origin
+import grit.core.visibility.Subject
 import grit.dbos.sql.{
   DbConfig,
   LiveDb,
@@ -99,7 +100,7 @@ object SettleLiveTests extends TestSuite {
         val remind = new Counting("remind")
         val key = ScheduleKey.of("quiet").fold(sys.error, identity)
         engine.jot
-          .write(
+          .write(Subject.Public)(
             engine.schedules.declare(
               Vector(
                 Declarer.Deployment -> Declared(
@@ -161,7 +162,7 @@ object SettleLiveTests extends TestSuite {
             val now = Instant.now()
             judgedAt.add(now)
             val verdict = Verdict(now, q.last, Judgement.Weighed(p(0.9), p(0.05), p(0.05), "jev"))
-            d.transact("record")(periods.judged(q.period, verdict).toString)
+            d.transact("record", Subject.Public)(periods.judged(q.period, verdict).toString)
         }
       val engine = LiveEngine.open(config, "test")
       try {

@@ -53,7 +53,7 @@ import grit.core.triage.{
   Shadowed,
   Tags
 }
-import grit.core.visibility.Label
+import grit.core.visibility.{Label, Subject}
 import grit.dbos.sql.TestTx
 import grit.kit.deployment.{Deployments, ShadowReview}
 import grit.lifecycle.shadow.ShadowVariant
@@ -67,7 +67,7 @@ import utest.*
 object PickingTests extends TestSuite {
 
   private object FakeJot extends Jot {
-    def write[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    def write[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using TestTx.fake)
   }
 

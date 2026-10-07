@@ -107,7 +107,7 @@ object TurnSent {
   def read(reader: Reader^, workflow: WorkflowId): Either[String, TurnSent] = {
     val id = WorkflowId.value(workflow)
     def read[A](what: String)(body: (Tx^) ?=> Either[StoreError, A]): Either[String, A] =
-      reader.db.read(body).left.map(e => s"$what of $id unread: ${Capture.kind(e)}")
+      reader.all.read(body).left.map(e => s"$what of $id unread: ${Capture.kind(e)}")
     for {
       turn <- TurnRef.fromWorkflowId(workflow).toRight(s"$id is not a turn's workflow id")
       recorded <- reader.workflow(workflow).toRight(s"DBOS does not know $id")
@@ -119,7 +119,7 @@ object TurnSent {
       first = mine.minByOption(e => grit.core.id.EntrySeq.value(e.seq))
       prompt <- read("prompt")(reader.prompts.prompt(offered.prompt))
       set <- read("tool set")(reader.toolSets.get(offered.tools))
-      calls <- reader.db
+      calls <- reader.all
         .read((tx: Tx^) ?=>
           Right(
             TurnRecord.requests(

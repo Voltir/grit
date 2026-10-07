@@ -15,6 +15,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
 
 /** One conversation in an in-memory store, for the assemblers' tests. */
@@ -27,7 +28,7 @@ object AssemblyFixtures {
     * test naming a shared capability object would have to declare it with `uses`.
     */
   final class FakeDb extends Db {
-    def read[A](body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
+    def read[A](subject: Subject)(body: (Tx^) ?=> Either[StoreError, A]): Either[StoreError, A] =
       body(using TestTx.fake)
   }
 

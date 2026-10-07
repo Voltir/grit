@@ -6,7 +6,7 @@ import grit.core.place.{Place, Reaches, Service}
 import grit.core.recipe.{Offering, Shaping, TurnRecipe}
 import grit.core.store.StoreError
 import grit.core.triage.{Corpora, Corpus}
-import grit.core.visibility.Visibility
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.engine.{Engine, LiveEngine, Reader}
 import grit.dbos.sql.TestPostgres
 import grit.models.StubClassifier
@@ -48,7 +48,7 @@ object MentionWeighLiveTests extends TestSuite {
 
   private def ledger(engine: Engine^, turn: TurnRef) =
     engine.db
-      .read(engine.ledger.of(turn.workflowId))
+      .read(Subject.Public)(engine.ledger.of(turn.workflowId))
       .fold((e: StoreError) => sys.error(e.toString), identity)
 
   val tests = Tests {
@@ -78,8 +78,8 @@ object MentionWeighLiveTests extends TestSuite {
         ledger(engine, turn).filter(_.entry == TurnWeighing.id(turn)).map(_.model) ==>
           Vector(StubClassifier.Model)
         TurnRecord.role(turn, TurnWeighing.id(turn)) ==> Some(TurnRecord.Role.Weigh)
-        val root = right(engine.db.read(engine.entries.ofTurn(turn))).map(_.id)
-        right(engine.db.read(engine.triage.of(root))) ==> Map.empty
+        val root = right(engine.db.read(Subject.Public)(engine.entries.ofTurn(turn))).map(_.id)
+        right(engine.db.read(Subject.Public)(engine.triage.of(root))) ==> Map.empty
       } finally engine.close()
     }
   }

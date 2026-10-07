@@ -4,6 +4,7 @@ import grit.core.id.TurnRef
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.period.{CloseReason, Probability}
 import grit.core.store.{Entry, Payload}
+import grit.core.visibility.Subject
 import grit.dbos.engine.Link
 
 /** Reading replies back out of the store, the way an edge does (ADR 0002). */
@@ -12,7 +13,7 @@ object Replies {
   /** The text of `turn`'s recorded reply; `None` if it has none (the turn failed). */
   def of(engine: Link^, turn: TurnRef): Either[String, Option[String]] =
     engine.db
-      .read(engine.entries.get(turn.replyId))
+      .read(Subject.Turn(turn))(engine.entries.get(turn.replyId))
       .left
       .map(e => s"unreadable: $e")
       .map(_.map(entry => text(entry).getOrElse("(not a reply)")))
