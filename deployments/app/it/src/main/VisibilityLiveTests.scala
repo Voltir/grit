@@ -47,7 +47,7 @@ import grit.core.visibility.{
   TestLabels,
   Visibility
 }
-import grit.dbos.engine.{Engine, LiveEngine}
+import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.digest.Digest
 import grit.lifecycle.post.{PostEnv, Posting}
