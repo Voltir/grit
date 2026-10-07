@@ -41,10 +41,13 @@ final case class Writes[D <: caps.Pure] private (
       "enum" -> ujson.Arr.from(to.keys.map(ujson.Str(_))),
       "description" -> describe
     )
-    val properties = schema.value.get("properties").flatMap(_.objOpt).fold(Iterator.empty)(_.iterator)
-    schema("properties") = ujson.Obj.from(Iterator(Writes.Field -> choice) ++ properties.filter(_._1 != Writes.Field))
+    val properties =
+      schema.value.get("properties").flatMap(_.objOpt).fold(Iterator.empty)(_.iterator)
+    schema("properties") =
+      ujson.Obj.from(Iterator(Writes.Field -> choice) ++ properties.filter(_._1 != Writes.Field))
     val required = schema.value.get("required").flatMap(_.arrOpt).fold(Vector.empty)(_.toVector)
-    schema("required") = ujson.Arr.from(ujson.Str(Writes.Field) +: required.filter(_ != ujson.Str(Writes.Field)))
+    schema("required") =
+      ujson.Arr.from(ujson.Str(Writes.Field) +: required.filter(_ != ujson.Str(Writes.Field)))
     schema
   }
 

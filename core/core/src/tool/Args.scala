@@ -75,7 +75,8 @@ object Args {
               case None => Left(ArgsError.Missing(Writes.Field, accepts))
               case Some(named) =>
                 named.strOpt.flatMap(writes.named) match {
-                  case None => Left(ArgsError.Invalid(Writes.Field, accepts, ArgsError.shown(named)))
+                  case None =>
+                    Left(ArgsError.Invalid(Writes.Field, accepts, ArgsError.shown(named)))
                   case Some(to) => args.read(Writes.without(sent), repairs).map(a => (a, to))
                 }
             }

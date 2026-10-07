@@ -4,7 +4,19 @@ import java.util.concurrent.atomic.AtomicReference
 
 import grit.core.clock.Clock
 import grit.core.edge.{DeskError, Route, ToolRequest}
-import grit.core.tool.{Args, Gate, Hosted, Outcome, Retry, Tool, ToolName, ToolSet, ToolSpec, Toolbox, Writes}
+import grit.core.tool.{
+  Args,
+  Gate,
+  Hosted,
+  Outcome,
+  Retry,
+  Tool,
+  ToolName,
+  ToolSet,
+  ToolSpec,
+  Toolbox,
+  Writes
+}
 import grit.edge.{Run, Tools}
 import grit.mcp.client.McpClient
 import grit.mcp.wire.McpTool

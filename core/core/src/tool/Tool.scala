@@ -61,13 +61,18 @@ final class Tool[A] private[tool] (
           case None => Left(CallError.Misdirected(spec.name, destination))
           case Some(name) =>
             val aimed = call.arguments.objOpt.fold(call.arguments)(sent =>
-              ujson.Obj.from(Writes.without(sent).value.iterator ++ Iterator(Writes.Field -> ujson.Str(name)))
+              ujson.Obj.from(
+                Writes.without(sent).value.iterator ++ Iterator(Writes.Field -> ujson.Str(name))
+              )
             )
             read(aimed, repairs)
         }
     }
 
-  private def read(arguments: ujson.Value, repairs: Set[ArgRepair]): Either[CallError, Bound^{this}] =
+  private def read(
+      arguments: ujson.Value,
+      repairs: Set[ArgRepair]
+  ): Either[CallError, Bound^{this}] =
     spec.args.read(arguments, repairs) match {
       case Left(error) => Left(CallError.refused(spec.name, error, arguments))
       case Right(args) =>
