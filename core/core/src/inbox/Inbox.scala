@@ -16,7 +16,8 @@ import grit.core.store.Origin
 trait Inbox extends caps.SharedCapability {
 
   /** Records `message` from `origin`'s conversation, written by `by`, as the first entry of
-    * a new turn, and returns that turn; the conversation is created by `by` if it is new. A
+    * a new turn, and returns that turn; the conversation is created by `by` if it is new, at
+    * its room's label ([[grit.core.visibility.Visibility.roomLabel]]). A
     * message whose `source` id was already recorded for `origin` is not recorded again: its
     * existing turn is returned, with its first author, whatever was spent. A new message once
     * the day's recorded spend has reached the inbox's cap ([[grit.core.spend.Budget]]) is
@@ -31,7 +32,8 @@ trait Inbox extends caps.SharedCapability {
 
   /** Records `text` from `origin`'s conversation, written by `by`, as heard: said where grit
     * listens, not to it ([[grit.core.store.Payload.Heard]]), as the first entry of a turn of
-    * its own. The conversation is created by `by` if it is new. It was said `at`: its entry
+    * its own. The conversation is created by `by` if it is new, at its room's label. It was
+    * said `at`: its entry
     * is dated `at`, and a period it opens opens `at`, so a message heard late is as quiet as
     * it was. `reach` is where a reply to it could go and whom it names
     * ([[grit.core.speech.Reach]]). A message whose `source` was already recorded for
@@ -52,7 +54,7 @@ trait Inbox extends caps.SharedCapability {
   /** Records `text`, grit's post that `origin`'s thread begins with, as its conversation's
     * first entry ([[grit.core.store.Payload.Posted]]), dated `at`, its source `source`, made by
     * the hosted call at `request` ([[grit.core.store.ConversationStore.postedBy]]); the
-    * conversation is created by `by`. `true` when this call recorded it; `false`, recording
+    * conversation is created by `by`, at its room's label. `true` when this call recorded it; `false`, recording
     * nothing, when anything is recorded for `origin` already, a repeat included. Never
     * triaged, never a turn that runs, never refused over the day's cap.
     */
@@ -95,7 +97,8 @@ trait Inbox extends caps.SharedCapability {
     * does not have its job), never refused over the day's cap (ADR 0029).
     *   - With no run in flight, its slot due ([[grit.core.job.Due]]) starts as a run at
     *     `version`: a turn of the slot's conversation ([[grit.core.job.Slot.origin]]), created
-    *     by grit with [[grit.core.job.Slot.opening]], enqueued as its job's run. A once slot
+    *     by grit at its schedule's label, with [[grit.core.job.Slot.opening]], enqueued as its
+    *     job's run. A once slot
     *     more than its grace past is missed, with or without its job.
     *   - With a run in flight, read by its workflow's status and its reply
     *     ([[grit.core.job.InFlight]], [[grit.core.job.Resume]]): one at another version, going

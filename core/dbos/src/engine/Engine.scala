@@ -106,7 +106,8 @@ final class Engine private (
     config: DbConfig,
     epoch: String,
     identity: ProcessIdentity,
-    val budget: Budget
+    val budget: Budget,
+    visibility: Visibility
 ) extends Link {
 
   val conversations: ConversationStore = new SqlConversationStore()
@@ -201,7 +202,8 @@ final class Engine private (
       speech,
       spending,
       budget,
-      sqlSchedules
+      sqlSchedules,
+      visibility
     )
 
   /** Where each opening is placed, by the `stitch` workflow [[launch]] registers. */
@@ -469,11 +471,10 @@ final class Engine private (
       }
     }
 
-  /** The conversation `origin` names, created by `by` if it is new, as an edge's first
-    * ingest would.
-    */
   def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId] =
-    Link.transaction(dataSource)(conversations.findOrCreate(origin, by).map(_.id))
+    Link.transaction(dataSource)(
+      conversations.findOrCreate(origin, by, visibility.roomLabel(origin.room)).map(_.id)
+    )
 
   def status(turn: TurnRef): TurnStatus = Link.status(client, turn)
 
@@ -571,7 +572,7 @@ object Engine {
             .claim(epoch, identity, Build.current)
             .left
             .foreach(why => sys.error(s"the engine's row could not be written: $why"))
-          val engine = build(config, dbosConfig, lock, epoch, identity, budget)
+          val engine = build(config, dbosConfig, lock, epoch, identity, budget, visibility)
           engine.beating()
           Right(engine)
       }
@@ -620,14 +621,15 @@ object Engine {
       lock: EngineLock^,
       epoch: String,
       identity: ProcessIdentity,
-      budget: Budget
+      budget: Budget,
+      visibility: Visibility
   ): Engine^ = {
     val dbos = new DBOS(dbosConfig)
     val ds = new PGSimpleDataSource()
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Engine(dbos, ds, lock, config, epoch, identity, budget)
+    new Engine(dbos, ds, lock, config, epoch, identity, budget, visibility)
   }
 
   /** Applies `core/dbos/resources/schema.sql` idempotently. */

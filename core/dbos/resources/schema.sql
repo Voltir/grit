@@ -149,9 +149,10 @@ $$;
 -- root is everywhere. A path runs from its namespace down: {fs,home,nick,Projects,grit},
 -- {slack,acme,#grit-dev,1712.3}, {task,m0,main}; segments verbatim, never empty or NULL. A
 -- place is recorded with its first conversation, from that conversation's origin
--- (Origin.place), and never changes. Which place is within which is Place.within's alone:
--- nothing here tests it.
--- Retention: ledger: deleted with its last conversation (Target.Quiet).
+-- (Origin.place), and never changes; so is a conversation's room (Origin.room). Which place is
+-- within which is Place.within's alone: nothing here tests it.
+-- Retention: ledger: deleted when no conversation names it by place_id or room_id
+-- (Target.Quiet).
 CREATE TABLE IF NOT EXISTS grit.places (
     id   UUID PRIMARY KEY DEFAULT uuidv7(),
     path TEXT[] NOT NULL UNIQUE
@@ -209,8 +210,9 @@ INSERT INTO grit.principals (id, kind) VALUES ('local', 'person'), ('grit', 'gri
 
 -- One row per origin; `origin` is the Origin ADT as JSON, and jsonb equality
 -- ignores key order, so the unique index is on the value, not its spelling. Its place is
--- its origin's, set when it is created, and `created_by` the principal of the edge that
--- created it, kept whoever finds it later. `next_turn` and `next_seq` are past every turn and
+-- its origin's, set when it is created, and so is its room (Origin.room: by identity, never by
+-- containment); `created_by` the principal of the edge that created it, and `label_id` the
+-- label it was created at (ADR 0030), each kept whoever finds it later. `next_turn` and `next_seq` are past every turn and
 -- entry ever written in it, purged ones included: each entry's insert raises them, under the
 -- row's lock (EntryStore.lockNext), so no position is taken twice.
 -- Retention: ledger: deleted whole once quiet past the ledger window (Target.Quiet).
@@ -218,13 +220,16 @@ CREATE TABLE IF NOT EXISTS grit.conversations (
     id         UUID PRIMARY KEY DEFAULT uuidv7(),
     origin     JSONB NOT NULL UNIQUE,
     place_id   UUID NOT NULL REFERENCES grit.places(id),
+    room_id    UUID NOT NULL REFERENCES grit.places(id),
     created_by TEXT NOT NULL REFERENCES grit.principals(id),
+    label_id   SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.labels(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     next_turn  BIGINT NOT NULL DEFAULT 0,
     next_seq   BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_conversations_place ON grit.conversations (place_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_room ON grit.conversations (room_id);
 
 -- Retention: journal: a closed period's raw entries after the raw window (Target.Raw); its closing
 -- entry is ledger (Target.Superseded, Target.Quiet).
@@ -238,6 +243,8 @@ CREATE TABLE IF NOT EXISTS grit.entries (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- What EntrySearch ranks; NULL for a payload with nothing searchable.
     search_text     TEXT GENERATED ALWAYS AS (grit.entry_text(payload)) STORED,
+    -- Its conversation's label, copied by the insert (SqlEntryStore.insert).
+    label_id        SMALLINT NOT NULL DEFAULT 1 REFERENCES grit.labels(id),
     -- One entry per position. Writers allocate seq under the conversation's row lock
     -- (EntryStore.lockNext); this makes a writer that skipped the lock fail, not interleave.
     CONSTRAINT entries_conversation_seq UNIQUE (conversation_id, seq)

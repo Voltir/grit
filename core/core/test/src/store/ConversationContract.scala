@@ -5,6 +5,7 @@ import java.time.Instant
 import grit.core.id.{ConversationId, EntryId, EntrySeq, PrincipalId, TurnSeq}
 import grit.core.message.Message
 import grit.core.place.Directory
+import grit.core.visibility.{Label, Level, TestLabels}
 
 import utest.*
 
@@ -34,13 +35,15 @@ abstract class ConversationContract extends TestSuite {
 
   val tests = Tests {
     test("an origin found again is the same conversation, still created by its first finder") {
-      val first = transaction(conversations.findOrCreate(tui("again"), PrincipalId.Local))
-      val second = transaction(conversations.findOrCreate(tui("again"), someone))
+      val first =
+        transaction(conversations.findOrCreate(tui("again"), PrincipalId.Local, Label.Public))
+      val second = transaction(conversations.findOrCreate(tui("again"), someone, Label.Public))
       second.map(c => (c.id, c.createdBy)) ==> first.map(c => (c.id, PrincipalId.Local))
     }
 
     test("get finds a conversation by its id, with its origin and creator") {
-      val created = transaction(conversations.findOrCreate(tui("got"), PrincipalId.Local))
+      val created =
+        transaction(conversations.findOrCreate(tui("got"), PrincipalId.Local, Label.Public))
       val found = created.flatMap(c => transaction(conversations.get(c.id)))
       found.map(_.map(c => (c.origin, c.createdBy))) ==> Right(
         Some((tui("got"), PrincipalId.Local))
@@ -48,14 +51,17 @@ abstract class ConversationContract extends TestSuite {
     }
 
     test("find: the conversation an origin was created as, and none for one never used") {
-      val created = transaction(conversations.findOrCreate(tui("found"), PrincipalId.Local))
+      val created =
+        transaction(conversations.findOrCreate(tui("found"), PrincipalId.Local, Label.Public))
       transaction(conversations.find(tui("found"))) ==> created.map(Some(_))
       transaction(conversations.find(tui("never"))) ==> Right(None)
       transaction(conversations.find(tui("never"))) ==> Right(None) // and find never creates
     }
 
     test("a removed conversation's entries go with it, and its next positions start over") {
-      val c = transaction(conversations.findOrCreate(tui("removed-entries"), PrincipalId.Local))
+      val c = transaction(
+        conversations.findOrCreate(tui("removed-entries"), PrincipalId.Local, Label.Public)
+      )
         .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
       val hi = EntryId(s"${ConversationId.value(c)}:hi")
       transaction {
@@ -79,25 +85,42 @@ abstract class ConversationContract extends TestSuite {
       transaction(entries.lockNext(c)) ==> Right(EntryStore.Next(TurnSeq.First, EntrySeq.First))
     }
 
+    test("a conversation keeps the label it was created at, whoever finds it later at another") {
+      val internal = Label.at(Level.Internal, TestLabels.compartment("trial"))
+      val created =
+        transaction(conversations.findOrCreate(tui("labelled"), PrincipalId.Local, internal))
+      val again = transaction(conversations.findOrCreate(tui("labelled"), someone, Label.Public))
+      (
+        created.map(_.label),
+        again.map(_.label),
+        created.flatMap(c => transaction(conversations.get(c.id))).map(_.map(_.label)),
+        transaction(conversations.find(tui("labelled"))).map(_.map(_.label))
+      ) ==> (Right(internal), Right(internal), Right(Some(internal)), Right(Some(internal)))
+    }
+
     test("get of an id no conversation has is None") {
       transaction(conversations.get(unknown)) ==> Right(None)
     }
 
     test("a removed conversation is gone, its origin free, and removing it again is harmless") {
-      val removed = transaction(conversations.findOrCreate(tui("removed"), PrincipalId.Local))
+      val removed =
+        transaction(conversations.findOrCreate(tui("removed"), PrincipalId.Local, Label.Public))
       removed.map(c => transaction(conversations.remove(c.id))) ==> Right(Right(()))
       removed.map(c => transaction(conversations.remove(c.id))) ==> Right(Right(()))
       removed.map(c => transaction(conversations.get(c.id))) ==> Right(Right(None))
       transaction(conversations.find(tui("removed"))) ==> Right(None)
-      val again = transaction(conversations.findOrCreate(tui("removed"), someone))
+      val again = transaction(conversations.findOrCreate(tui("removed"), someone, Label.Public))
       again.map(_.createdBy) ==> Right(someone)
     }
 
     test("a conversation made after a removal takes no live conversation's id") {
-      val gone = transaction(conversations.findOrCreate(tui("gone"), PrincipalId.Local))
-      val kept = transaction(conversations.findOrCreate(tui("kept"), PrincipalId.Local))
+      val gone =
+        transaction(conversations.findOrCreate(tui("gone"), PrincipalId.Local, Label.Public))
+      val kept =
+        transaction(conversations.findOrCreate(tui("kept"), PrincipalId.Local, Label.Public))
       gone.map(c => transaction(conversations.remove(c.id))) ==> Right(Right(()))
-      val next = transaction(conversations.findOrCreate(tui("next"), PrincipalId.Local))
+      val next =
+        transaction(conversations.findOrCreate(tui("next"), PrincipalId.Local, Label.Public))
       (
         kept.flatMap(c => transaction(conversations.get(c.id))).map(_.map(_.origin)),
         next.flatMap(c => transaction(conversations.get(c.id))).map(_.map(_.origin))

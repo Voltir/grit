@@ -47,6 +47,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Label
 import grit.dbos.engine.Reader
 
 /** A restored database's stores as they stood at `at`, for an assembler to read a window from
@@ -139,9 +140,9 @@ object AsOf {
 
   private final class Conversations(under: ConversationStore, at: Instant)
       extends ConversationStore {
-    def findOrCreate(origin: Origin, by: PrincipalId)(using
+    def findOrCreate(origin: Origin, by: PrincipalId, label: Label)(using
         Tx^
-    ): Either[StoreError, Conversation] = under.findOrCreate(origin, by)
+    ): Either[StoreError, Conversation] = under.findOrCreate(origin, by, label)
     def find(origin: Origin)(using Tx^): Either[StoreError, Option[Conversation]] =
       under.find(origin).map(_.filter(c => before(c.createdAt, at)))
     def get(id: ConversationId)(using Tx^): Either[StoreError, Option[Conversation]] =

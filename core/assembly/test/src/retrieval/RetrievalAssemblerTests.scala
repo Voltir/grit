@@ -61,6 +61,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -306,7 +307,8 @@ object RetrievalAssemblerTests extends TestSuite {
   ): Window = {
     val turn = TurnRef(c1, TurnSeq(at))
     val conversations = new InMemoryConversationStore
-    conversations.all = Conversation(c1, origin, PrincipalId.Local, Instant.EPOCH) +: others
+    conversations.all =
+      Conversation(c1, origin, PrincipalId.Local, Instant.EPOCH, Label.Public) +: others
     posted.foreach(slot => conversations.posts = Map(c1 -> slot))
     val lifecycle = new InMemoryLifecycleStore
     lifecycle
@@ -665,7 +667,7 @@ object RetrievalAssemblerTests extends TestSuite {
     val posted = Vector(Payload.Posted("The engine's open issues."))
     val why = Vector(Payload.Message(Message.User("why this?")))
     def askerAt(origin: Origin): Conversation =
-      Conversation(asker, origin, PrincipalId.Local, Instant.EPOCH)
+      Conversation(asker, origin, PrincipalId.Local, Instant.EPOCH, Label.Public)
 
     test(
       "a thread begun by grit's post is shown first the turn that asked for it, out of its room's scope too, and the asker is not also ranked"

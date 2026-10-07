@@ -28,6 +28,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -66,7 +67,7 @@ object PoolReadTests extends TestSuite {
       val origin = Origin.Slack("T", channel, ts)
       val id = ConversationId(origin.place.written)
       origins = origins.updated(id, origin)
-      Conversation(id, origin, PrincipalId.Local, T.minusSeconds(86_400))
+      Conversation(id, origin, PrincipalId.Local, T.minusSeconds(86_400), Label.Public)
     }
 
     /** `payload` as `c`'s next entry, said `at`, written by `by` when given. */

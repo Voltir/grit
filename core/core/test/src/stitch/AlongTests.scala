@@ -14,6 +14,7 @@ import grit.core.store.{
   Origin,
   Payload
 }
+import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -34,7 +35,7 @@ object AlongTests extends TestSuite {
     def thread(origin: Origin): Conversation = {
       val id = ConversationId(origin.place.written)
       origins = origins.updated(id, origin)
-      Conversation(id, origin, PrincipalId("slack:T/U1"), Now)
+      Conversation(id, origin, PrincipalId("slack:T/U1"), Now, Label.Public)
     }
 
     def say(c: Conversation, text: String, secondsAgo: Long): Entry = {

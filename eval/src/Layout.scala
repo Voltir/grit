@@ -23,6 +23,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{Balance, CloseReason, Closing, Edit, Flows, Ground}
 import grit.core.place.{Directory, Namespace, Place, Prefix, Scope}
 import grit.core.store.{ConversationStore, Entry, EntryStore, Jot, Origin, Payload, PeriodStore}
+import grit.core.visibility.Label
 
 /** A case as written, or with [[Variant.FillerPerGap]] filler turns after each of its turns. */
 enum Variant {
@@ -300,7 +301,7 @@ object Load {
   )(layout: Layout): Either[String, Written] = {
     def found(origin: Origin): Either[String, ConversationId] =
       jot
-        .write(conversations.findOrCreate(origin, PrincipalId.Local))
+        .write(conversations.findOrCreate(origin, PrincipalId.Local, Label.Public))
         .map(_.id)
         .left
         .map(e => s"${layout.c.name}: $e")

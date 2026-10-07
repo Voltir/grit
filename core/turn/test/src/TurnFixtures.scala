@@ -84,6 +84,7 @@ import grit.core.tool.{
   Toolbox
 }
 import grit.core.triage.{Kind, Tags}
+import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 import grit.models.StubProvider
 
@@ -110,7 +111,7 @@ object TurnFixtures {
       voices: VoiceStore = new InMemoryVoiceStore
   ): TurnHosting = {
     val conversations = new InMemoryConversationStore
-    conversations.findOrCreate(origin, PrincipalId.Local)(using TestTx.fake)
+    conversations.findOrCreate(origin, PrincipalId.Local, Label.Public)(using TestTx.fake)
     TurnHosting(conversations, Prompts, ToolSets, edges, edges, voices)
   }
 
@@ -598,7 +599,7 @@ object TurnFixtures {
     val requests: grit.core.edge.ToolRequests =
       if (reached.isEmpty) served else new Desks(served, reached)
     val conversations = new InMemoryConversationStore
-    conversations.findOrCreate(from, PrincipalId.Local)(using TestTx.fake)
+    conversations.findOrCreate(from, PrincipalId.Local, Label.Public)(using TestTx.fake)
     Turn.body(
       TurnEnv(
         TurnRecords(
@@ -1372,11 +1373,15 @@ object TurnFixtures {
     val stitches = new InMemoryStitchStore(entries, originOf)
     val a: ConversationId =
       conversations
-        .findOrCreate(Origin.Slack("T", "C", "1.0"), PrincipalId.Local)(using TestTx.fake)
+        .findOrCreate(Origin.Slack("T", "C", "1.0"), PrincipalId.Local, Label.Public)(using
+          TestTx.fake
+        )
         .fold(e => sys.error(e.toString), _.id)
     val b: ConversationId =
       conversations
-        .findOrCreate(Origin.Slack("T", "C", "2.0"), PrincipalId.Local)(using TestTx.fake)
+        .findOrCreate(Origin.Slack("T", "C", "2.0"), PrincipalId.Local, Label.Public)(using
+          TestTx.fake
+        )
         .fold(e => sys.error(e.toString), _.id)
     private def put(c: ConversationId, id: String, payload: Payload, at: Instant): Entry = {
       given grit.core.store.Tx = TestTx.fake

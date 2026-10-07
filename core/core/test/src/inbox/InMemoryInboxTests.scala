@@ -8,6 +8,7 @@ import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{Origin, Payload, StoreError}
+import grit.core.visibility.Visibility
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -15,8 +16,10 @@ import utest.*
 /** The inbox contract, kept by the in-memory fake. */
 object InMemoryInboxTests extends InboxContract {
 
-  protected def withInbox[A](budget: Budget)(body: (Inbox, InboxContract.Store^) => A): A = {
-    val inbox = InMemoryInbox.fresh(budget)
+  protected def withInbox[A](budget: Budget, visibility: Visibility)(
+      body: (Inbox, InboxContract.Store^) => A
+  ): A = {
+    val inbox = InMemoryInbox.fresh(budget, visibility)
     def spend(usd: BigDecimal): Unit = {
       val entry = EntryId(s"spent:${inbox.ledger.rows.size}")
       val turn = TurnRef(ConversationId("elsewhere"), TurnSeq.First)
@@ -108,7 +111,8 @@ object InMemoryInboxTests extends InboxContract {
         (slot, version, at) =>
           inbox.schedules
             .replied(slot, version, at)(using TestTx.fake)
-            .fold(e => sys.error(e.toString), identity)
+            .fold(e => sys.error(e.toString), identity),
+        o => inbox.conversations.all.find(_.origin == o).map(_.label)
       )
     )
   }

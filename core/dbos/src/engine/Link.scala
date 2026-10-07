@@ -28,6 +28,7 @@ import grit.core.store.{
   UsageLedger,
   VoiceStore
 }
+import grit.core.visibility.Visibility
 import grit.dbos.sql.{
   DbConfig,
   SqlConversationStore,
@@ -101,8 +102,8 @@ trait Link extends caps.SharedCapability, AutoCloseable, Desks {
 
   val inbox: Inbox
 
-  /** The conversation `origin` names, created by `by` if it is new, as an edge's first
-    * ingest would.
+  /** The conversation `origin` names, created by `by` if it is new, at its room's label, as an
+    * edge's first ingest would.
     */
   def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId]
 
@@ -138,7 +139,8 @@ object Link {
 
   /** A link to the engine another process runs on the database `config` names, as grit of
     * compatibility epoch `epoch` in the process `identity` names: no DBOS executor here,
-    * only its client, the stores and the inbox, which takes new messages as `budget` allows.
+    * only its client, the stores and the inbox, which takes new messages as `budget` allows
+    * and labels the conversations it creates as `visibility` labels their rooms.
     * Throws when the database cannot be reached, or when no engine has migrated DBOS's
     * schema there yet (none, or DBOS 1.0's): the next engine to start migrates it.
     */
@@ -146,13 +148,14 @@ object Link {
       config: DbConfig,
       epoch: String,
       identity: ProcessIdentity,
-      budget: Budget
+      budget: Budget,
+      visibility: Visibility
   ): Link^ = {
     val ds = new PGSimpleDataSource()
     ds.setURL(config.jdbcUrl)
     ds.setUser(config.user)
     ds.setPassword(config.password)
-    new Attached(config, ds, new DBOSClient(ds), epoch, identity, budget)
+    new Attached(config, ds, new DBOSClient(ds), epoch, identity, budget, visibility)
   }
 
   /** `turn`'s status through `client` ([[Link.status]]). */
@@ -224,7 +227,8 @@ private[engine] final class Attached(
     client: DBOSClient,
     epoch: String,
     identity: ProcessIdentity,
-    val budget: Budget
+    val budget: Budget,
+    visibility: Visibility
 ) extends Link {
 
   private val conversations: ConversationStore = new SqlConversationStore()
@@ -269,13 +273,16 @@ private[engine] final class Attached(
       new grit.dbos.sql.SqlSpeechStore,
       spending,
       budget,
-      new grit.dbos.sql.SqlSchedules(new grit.dbos.sql.SqlTombstones)
+      new grit.dbos.sql.SqlSchedules(new grit.dbos.sql.SqlTombstones),
+      visibility
     )
 
   private val desks = new java.util.concurrent.ConcurrentLinkedQueue[AutoCloseable]()
 
   def conversation(origin: Origin, by: PrincipalId): Either[StoreError, ConversationId] =
-    Link.transaction(dataSource)(conversations.findOrCreate(origin, by).map(_.id))
+    Link.transaction(dataSource)(
+      conversations.findOrCreate(origin, by, visibility.roomLabel(origin.room)).map(_.id)
+    )
 
   def status(turn: TurnRef): TurnStatus = Link.status(client, turn)
 

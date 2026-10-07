@@ -41,6 +41,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{Corpora, InMemoryTriageStore}
+import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 import grit.lifecycle.stitch.{Stitch, StitchEnv}
 
@@ -180,12 +181,16 @@ object TriageFixtures {
     val rooms = new InMemoryRoomReads(entries, originOf, principals)
 
     // The conversation is c1: the first a fresh store creates.
-    conversations.findOrCreate(Origin.Slack("T", "C", "1.0"), PrincipalId.Local)(using TestTx.fake)
+    conversations.findOrCreate(Origin.Slack("T", "C", "1.0"), PrincipalId.Local, Label.Public)(using
+      TestTx.fake
+    )
 
     /** Another thread of channel C, rooted at `ts`. */
     def thread(ts: String): ConversationId =
       conversations
-        .findOrCreate(Origin.Slack("T", "C", ts), PrincipalId.Local)(using TestTx.fake)
+        .findOrCreate(Origin.Slack("T", "C", ts), PrincipalId.Local, Label.Public)(using
+          TestTx.fake
+        )
         .fold(e => sys.error(e.toString), _.id)
 
     /** The turns started, in order. */

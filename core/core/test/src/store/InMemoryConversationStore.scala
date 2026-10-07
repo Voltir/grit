@@ -3,6 +3,7 @@ package grit.core.store
 import java.time.Instant
 
 import grit.core.id.{CallSlot, ConversationId, PrincipalId}
+import grit.core.visibility.Label
 
 /** An in-memory [[ConversationStore]] for tests, keeping [[ConversationContract]]. It ignores
   * the `Tx`; each new conversation's id is `c` and its number, from 1, never reused after a
@@ -19,12 +20,14 @@ final class InMemoryConversationStore(entries: Option[InMemoryEntryStore] = None
   @caps.unsafe.untrackedCaptures
   private var made = 0
 
-  def findOrCreate(origin: Origin, by: PrincipalId)(using Tx^): Either[StoreError, Conversation] =
+  def findOrCreate(origin: Origin, by: PrincipalId, label: Label)(using
+      Tx^
+  ): Either[StoreError, Conversation] =
     all.find(_.origin == origin) match {
       case Some(found) => Right(found)
       case None =>
         made += 1
-        val created = Conversation(ConversationId(s"c$made"), origin, by, Instant.EPOCH)
+        val created = Conversation(ConversationId(s"c$made"), origin, by, Instant.EPOCH, label)
         all = all :+ created
         Right(created)
     }

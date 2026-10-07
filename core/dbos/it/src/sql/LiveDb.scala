@@ -8,6 +8,7 @@ import scala.util.Using
 import grit.core.id.{ConversationId, EntryId, PrincipalId, TurnRef}
 import grit.core.message.Message
 import grit.core.store.{Conversation, Entry, Origin, Payload, StoreError, Tx}
+import grit.core.visibility.Label
 
 /** Direct transactions on a live test database, for arranging rows and reading them back
   * outside the code under test.
@@ -28,9 +29,11 @@ object LiveDb {
         } catch { case e: Throwable => conn.rollback(); throw e }
     }
 
-  /** The conversation for `origin`, created if new. */
-  def conversation(config: DbConfig, origin: Origin): Conversation =
-    transaction(config)(new SqlConversationStore().findOrCreate(origin, PrincipalId.Local)) match {
+  /** The conversation for `origin`, created at `label` if new. */
+  def conversation(config: DbConfig, origin: Origin, label: Label = Label.Public): Conversation =
+    transaction(config)(
+      new SqlConversationStore().findOrCreate(origin, PrincipalId.Local, label)
+    ) match {
       case Right(c) => c
       case Left(e: StoreError) => sys.error(s"arranging a conversation: $e")
     }

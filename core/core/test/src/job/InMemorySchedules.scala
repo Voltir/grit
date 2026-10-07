@@ -50,16 +50,17 @@ final class InMemorySchedules(val tombstones: InMemoryTombstones = new InMemoryT
       _.map(_.copy(next = following, started = Some(slot.nominal), running = Some(version)))
     )
 
-  /** `id`'s job, rule, next slot, and the run it last started (its slot, and its version while
-    * in flight); `None` when it is gone or has ended: as the SQL store reads a schedule it starts.
+  /** `id`'s job, rule, next slot, the run it last started (its slot, and its version while in
+    * flight), and its label; `None` when it is gone or has ended: as the SQL store reads a
+    * schedule it starts.
     */
   def held(
       id: ScheduleId
-  ): Option[(JobName, SlotRule, Option[Instant], Option[(Instant, Option[Int])])] =
+  ): Option[(JobName, SlotRule, Option[Instant], Option[(Instant, Option[Int])], Label)] =
     rows
       .get(id)
       .filter(_.ended.isEmpty)
-      .map(r => (r.job, r.rule, r.next, r.started.map(_ -> r.running)))
+      .map(r => (r.job, r.rule, r.next, r.started.map(_ -> r.running), r.label))
 
   /** `id`'s run in flight ended without a reply, at `at`: a once schedule ends failed; a
     * recurrence lets it go and keeps its next slot.

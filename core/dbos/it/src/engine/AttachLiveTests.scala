@@ -9,6 +9,7 @@ import grit.core.id.{PrincipalId, SourceId, WorkflowId}
 import grit.core.message.Message
 import grit.core.place.{Directory, Place}
 import grit.core.store.Origin
+import grit.core.visibility.Visibility
 import grit.dbos.sql.TestPostgres
 
 import utest.*
@@ -31,7 +32,8 @@ object AttachLiveTests extends TestSuite {
     test("a turn an attached link sends runs on the engine that holds the lock") {
       val config = TestPostgres.freshDatabase("attach_send")
       val engine = LiveEngine.open(config, "test")
-      val link = Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped)
+      val link =
+        Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped, Visibility.Shipped)
       try {
         engine.launch(
           id => d ?=> s"ran ${WorkflowId.value(id)}",
@@ -61,7 +63,8 @@ object AttachLiveTests extends TestSuite {
     test("an attached link names the engine holding the lock, and none once it stops") {
       val config = TestPostgres.freshDatabase("attach_holder")
       val engine = LiveEngine.open(config, "test")
-      val link = Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped)
+      val link =
+        Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped, Visibility.Shipped)
       try {
         link.holder().map(h => (h.machine, h.pid, h.epoch)) ==> Some(
           ("test-machine", 4242L, "test")
@@ -77,7 +80,8 @@ object AttachLiveTests extends TestSuite {
     test("a stream of a turn DBOS has no workflow for ends, with no pieces") {
       val config = TestPostgres.freshDatabase("attach_stream")
       val engine = LiveEngine.open(config, "test")
-      val link = Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped)
+      val link =
+        Link.attach(config, "test", LiveEngine.Identity, LiveEngine.Uncapped, Visibility.Shipped)
       try {
         // Recorded, never started: DBOS has no workflow for it.
         val turn = link.inbox
@@ -98,7 +102,8 @@ object AttachLiveTests extends TestSuite {
     test("an edge attached as another epoch than the engine's is refused, naming both") {
       val config = TestPostgres.freshDatabase("attach_epoch")
       val engine = LiveEngine.open(config, "test")
-      val link = Link.attach(config, "older", LiveEngine.Identity, LiveEngine.Uncapped)
+      val link =
+        Link.attach(config, "older", LiveEngine.Identity, LiveEngine.Uncapped, Visibility.Shipped)
       try {
         val place =
           Place.of(Directory.of("/attach").getOrElse(throw new java.lang.AssertionError()))

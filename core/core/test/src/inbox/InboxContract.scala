@@ -21,6 +21,15 @@ import grit.core.period.{Period, PeriodState}
 import grit.core.speech.Reach
 import grit.core.spend.{Budget, DailyCap}
 import grit.core.store.{Origin, Payload}
+import grit.core.visibility.{
+  Compartments,
+  Label,
+  Labelled,
+  Level,
+  RoomLabels,
+  TestLabels,
+  Visibility
+}
 
 import utest.*
 
@@ -30,9 +39,16 @@ import utest.*
 abstract class InboxContract extends TestSuite {
 
   /** Runs `body` over a store holding nothing from the origins these tests use, with its
-    * inbox, taking new messages as `budget` allows, and the [[InboxContract.Store]] under it.
+    * inbox, taking new messages as `budget` allows and labelling rooms as `visibility` does,
+    * and the [[InboxContract.Store]] under it.
     */
-  protected def withInbox[A](budget: Budget)(body: (Inbox, InboxContract.Store^) => A): A
+  protected def withInbox[A](budget: Budget, visibility: Visibility)(
+      body: (Inbox, InboxContract.Store^) => A
+  ): A
+
+  /** [[withInbox]] under the shipped visibility: every room public. */
+  private def withInbox[A](budget: Budget)(body: (Inbox, InboxContract.Store^) => A): A =
+    withInbox(budget, Visibility.Shipped)(body)
 
   private val Uncapped = Budget(ZoneOffset.UTC, None)
 
@@ -352,6 +368,53 @@ abstract class InboxContract extends TestSuite {
       }
     }
 
+    test(
+      "a conversation is created at its room's label as declared, kept whoever records in it later, and a run's at its schedule's clearance"
+    ) {
+      val trial = TestLabels.compartment("trial")
+      val internal = Label.at(Level.Internal, trial)
+      val confidential = Label.at(Level.Confidential, trial)
+      val visibility = (for {
+        compartments <- Compartments.of(Vector(trial)).left.map(_.toString)
+        rooms <- RoomLabels
+          .of(Vector(TestLabels.place("slack:T/C") -> internal), Labelled.Mapped(Label.Public))
+          .left
+          .map(_.toString)
+        v <- Visibility.of(compartments, rooms, Vector.empty, Vector.empty).left.map(_.toString)
+      } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+      withInbox(Uncapped, visibility) { (inbox, store) =>
+        val asked = Origin.Slack("T", "C", "1.0")
+        val heard = Origin.Slack("T", "C", "2.0")
+        val posted = Origin.Slack("T", "C", "3.0")
+        val elsewhere = Origin.Slack("T", "D", "1.0")
+        val _ = inbox.ingest(asked, SourceId("m1"), said("one"), PrincipalId.Local)
+        inbox.hear(heard, SourceId("m1"), "two", PrincipalId.Local, Said, Reach.Nowhere) ==>
+          Right(())
+        inbox.posted(posted, SourceId("root"), "three", PostedAt, Asking, PrincipalId.Grit) ==>
+          Right(true)
+        val _ = inbox.ingest(elsewhere, SourceId("m1"), said("four"), PrincipalId.Local)
+        Vector(asked, heard, posted, elsewhere).map(store.labelled) ==>
+          Vector(Some(internal), Some(internal), Some(internal), Some(Label.Public))
+        store.declare(
+          Vector(
+            (
+              Declarer.Deployment,
+              Declared(
+                ScheduleKey.of("labelled").fold(sys.error, identity),
+                remind,
+                SlotRule.Once(Due, hour),
+                Count(1),
+                confidential
+              )
+            )
+          ),
+          Due.minusSeconds(3600)
+        )
+        val (_, slot) = begun(inbox.startSlot(scheduled("labelled"), Some(1), Due))
+        store.labelled(slot.origin(remind.name)) ==> Some(confidential)
+      }
+    }
+
     test("a post records nothing once its origin has anything, a repeat of itself included") {
       withInbox(Uncapped) { (inbox, store) =>
         val heard = Origin.Task("inbox", "posted-late")
@@ -426,7 +489,8 @@ object InboxContract {
     * `waiting`, the schedules a clock pass at a time takes up, those with a run in flight then
     * those due; `end` ends a run, which its job left, without a
     * reply, and returns once it has; `replied` records a slot's run at a version replied, as of a
-    * time, as the run's reply does.
+    * time, as the run's reply does; `labelled`, the label an origin's conversation was created
+    * at.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -442,6 +506,7 @@ object InboxContract {
       schedule: ScheduleId => Option[Schedule],
       waiting: Instant => Vector[ScheduleId],
       end: TurnRef => Unit,
-      replied: (Slot, Int, Instant) => Unit
+      replied: (Slot, Int, Instant) => Unit,
+      labelled: Origin => Option[Label]
   )
 }

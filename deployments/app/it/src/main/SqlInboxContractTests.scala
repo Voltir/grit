@@ -10,6 +10,7 @@ import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.speech.Reach
 import grit.core.spend.Budget
 import grit.core.store.{Entry, Origin, Payload, StoreError}
+import grit.core.visibility.Visibility
 import grit.dbos.engine.LiveEngine
 import grit.dbos.sql.TestPostgres
 import grit.turn.Turn
@@ -22,8 +23,19 @@ object SqlInboxContractTests extends InboxContract {
 
   private lazy val config = TestPostgres.freshDatabase("sql_inbox_contract")
 
-  protected def withInbox[A](budget: Budget)(body: (Inbox, InboxContract.Store^) => A): A = {
-    val engine = LiveEngine.open(config, Turn.Epoch, budget)
+  /** A database of its own for each other visibility: a start that drops a compartment the
+    * database ran under is refused.
+    */
+  protected def withInbox[A](budget: Budget, visibility: Visibility)(
+      body: (Inbox, InboxContract.Store^) => A
+  ): A = {
+    val engine = LiveEngine.open(
+      if (visibility == Visibility.Shipped) config
+      else TestPostgres.freshDatabase("sql_inbox_contract_labelled"),
+      Turn.Epoch,
+      budget,
+      visibility
+    )
     try {
       launch(engine, engine.entries, new CountingProvider)
       def spend(usd: BigDecimal): Unit = {
@@ -163,7 +175,11 @@ object SqlInboxContractTests extends InboxContract {
           (slot, version, at) =>
             engine.jot
               .write(engine.schedules.replied(slot, version, at))
-              .fold(e => sys.error(e.toString), identity)
+              .fold(e => sys.error(e.toString), identity),
+          origin =>
+            engine.db
+              .read(engine.conversations.find(origin))
+              .fold(e => sys.error(e.toString), _.map(_.label))
         )
       )
     } finally engine.close()

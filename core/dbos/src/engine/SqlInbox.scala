@@ -36,6 +36,7 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.{Label, Visibility}
 import grit.dbos.sql.{SqlEntryStore, SqlSchedules}
 import grit.dbos.workflow.{Runs, Stitches, Triages, Turns}
 
@@ -46,7 +47,8 @@ import dev.dbos.transact.{DBOSClient, EnqueueOptions}
 /** [[Inbox]] over Postgres alone, so an edge in another process can use it: ingest is one
   * short transaction, which refuses a new message once `spending` says today's spend has
   * reached `budget`'s cap (today by this machine's clock, in `budget`'s zone), and a turn is
-  * started by enqueueing it through `client`.
+  * started by enqueueing it through `client`. A conversation it creates for an edge's origin is
+  * labelled as `visibility` labels its room.
   */
 final class SqlInbox(
     dataSource: DataSource,
@@ -57,7 +59,8 @@ final class SqlInbox(
     speech: SpeechStore,
     spending: Spending,
     budget: Budget,
-    schedules: SqlSchedules
+    schedules: SqlSchedules,
+    visibility: Visibility
 ) extends Inbox {
   import SqlInbox.{Begun, Heard, Ingested}
 
@@ -77,10 +80,26 @@ final class SqlInbox(
             overCap(Instant.now()).flatMap {
               case Some(refused) => Right(Left(refused))
               case None =>
-                recorded(origin, source, Payload.Message(message), by, Instant.now(), capped = true)
+                recorded(
+                  origin,
+                  source,
+                  Payload.Message(message),
+                  by,
+                  roomOf(origin),
+                  Instant.now(),
+                  capped = true
+                )
             }
           case Some(_) =>
-            recorded(origin, source, Payload.Message(message), by, Instant.now(), capped = true)
+            recorded(
+              origin,
+              source,
+              Payload.Message(message),
+              by,
+              roomOf(origin),
+              Instant.now(),
+              capped = true
+            )
         }
         .flatMap {
           case Left(refused) => Right(Ingested(Left(refused), None))
@@ -102,21 +121,24 @@ final class SqlInbox(
       reach: Reach
   ): Either[InboxError, Unit] =
     inTransaction(
-      recorded(origin, source, Payload.Heard(text), by, at, capped = false).flatMap {
-        case Left(_) => Right(Heard(None, None))
-        case Right(turn) =>
-          for {
-            entry <- entries.get(InboundId.of(turn.conversationId, source))
-            period <- periods.of(turn)
-            triage <- entry.map(_.payload) match {
-              // A message recorded as a turn before is not heard, and not triaged.
-              case Some(Payload.Heard(_)) =>
-                speech.heard(turn, reach).map(_ => period.map(p => TriageRef(p.ref, turn.turnSeq)))
-              case _ => Right(None)
-            }
-            opening <- openingOf(turn)
-          } yield Heard(opening, triage)
-      }
+      recorded(origin, source, Payload.Heard(text), by, roomOf(origin), at, capped = false)
+        .flatMap {
+          case Left(_) => Right(Heard(None, None))
+          case Right(turn) =>
+            for {
+              entry <- entries.get(InboundId.of(turn.conversationId, source))
+              period <- periods.of(turn)
+              triage <- entry.map(_.payload) match {
+                // A message recorded as a turn before is not heard, and not triaged.
+                case Some(Payload.Heard(_)) =>
+                  speech
+                    .heard(turn, reach)
+                    .map(_ => period.map(p => TriageRef(p.ref, turn.turnSeq)))
+                case _ => Right(None)
+              }
+              opening <- openingOf(turn)
+            } yield Heard(opening, triage)
+        }
     ).flatMap { heard =>
       // Enqueued after the commit, and again on a redelivery: a workflow enqueued twice runs
       // once, so a redelivery after a lost enqueue repairs it. The placement first, so a
@@ -151,20 +173,25 @@ final class SqlInbox(
           .map(spent => Option.when(!budget.admits(spent))(InboxError.OverCap(spent, cap, day)))
     }
 
+  /** The label a conversation an edge's message begins from `origin` is created at. */
+  private def roomOf(origin: Origin): Label = visibility.roomLabel(origin.room)
+
   /** `payload` recorded as the first entry of a new turn, in the transaction open, dated `at`
-    * as the period it opens is: its existing turn when `source` was recorded before, else,
-    * when `capped`, refused over the cap of the day `at` falls on, else a new turn.
+    * as the period it opens is, its conversation created at `label` if it is new: its existing
+    * turn when `source` was recorded before, else, when `capped`, refused over the cap of the
+    * day `at` falls on, else a new turn.
     */
   private def recorded(
       origin: Origin,
       source: SourceId,
       payload: Payload,
       by: PrincipalId,
+      label: Label,
       at: Instant,
       capped: Boolean
   )(using Tx^): Either[StoreError, Either[InboxError, TurnRef]] =
     for {
-      conversation <- conversations.findOrCreate(origin, by)
+      conversation <- conversations.findOrCreate(origin, by, label)
       id = InboundId.of(conversation.id, source)
       // Serialises ingest per conversation: a concurrent ingest waits here, then sees
       // this one's entry and its sequence numbers.
@@ -207,7 +234,7 @@ final class SqlInbox(
         case Some(_) => Right(false)
         case None =>
           for {
-            conversation <- conversations.findOrCreate(origin, by)
+            conversation <- conversations.findOrCreate(origin, by, roomOf(origin))
             // Serialises with any other writer to the conversation; past the lock, what it
             // holds is settled.
             next <- entries.lockNext(conversation.id)
@@ -326,7 +353,7 @@ final class SqlInbox(
               case Starting.Start(at, following, v, superseding) =>
                 val slot = Slot(schedule, at)
                 for {
-                  turn <- recordedRun(slot, waiting.job, v, now)
+                  turn <- recordedRun(slot, waiting.job, waiting.label, v, now)
                   opening <- openingOf(turn)
                   _ <- schedules.started(slot, v, following)
                 } yield Begun(
@@ -420,10 +447,10 @@ final class SqlInbox(
     }
 
   /** `slot`'s run at `version`, `job`'s, recorded in the transaction open as a new turn of its
-    * conversation (created by grit), opened at `at` by grit with [[Slot.opening]]; the turn
-    * recorded before when there is one.
+    * conversation (created by grit at its schedule's `label`), opened at `at` by grit with
+    * [[Slot.opening]]; the turn recorded before when there is one.
     */
-  private def recordedRun(slot: Slot, job: JobName, version: Int, at: Instant)(using
+  private def recordedRun(slot: Slot, job: JobName, label: Label, version: Int, at: Instant)(using
       Tx^
   ): Either[StoreError, TurnRef] =
     recorded(
@@ -431,6 +458,7 @@ final class SqlInbox(
       Slot.source(version),
       Payload.Message(slot.opening(job)),
       PrincipalId.Grit,
+      label,
       at,
       capped = false
     ).flatMap(_.left.map(refused => StoreError.Invalid(s"a run refused: $refused")))

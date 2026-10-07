@@ -7,8 +7,9 @@ import grit.core.id.{ConversationId, EntryId, EntrySeq, TurnRef, TurnSeq}
   */
 trait EntryStore {
 
-  /** Appends `entry`. Never overwrites: an id already taken is `DuplicateId`, and a `seq`
-    * already taken in its conversation is a `DatabaseError` (positions come from
+  /** Appends `entry`, kept at the label its conversation was created at
+    * ([[Conversation.label]]). Never overwrites: an id already taken is `DuplicateId`, and a
+    * `seq` already taken in its conversation is a `DatabaseError` (positions come from
     * [[lockNext]]).
     */
   def insert(entry: Entry)(using Tx^): Either[StoreError, Unit]

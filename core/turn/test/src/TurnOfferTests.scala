@@ -49,6 +49,7 @@ import grit.core.tool.{
   Toolbox
 }
 import grit.core.triage.{Bound as TriageBound, Corpora, Corpus, Gate as TriageGate, Reading, Tags}
+import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -71,7 +72,7 @@ object TurnOfferTests extends TestSuite {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
-      .findOrCreate(origin, PrincipalId.Local)
+      .findOrCreate(origin, PrincipalId.Local, Label.Public)
       .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
     val edges = new InMemoryEdges
     val hosting = TurnHosting(
@@ -131,7 +132,7 @@ object TurnOfferTests extends TestSuite {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
-      .findOrCreate(origin, PrincipalId.Local)
+      .findOrCreate(origin, PrincipalId.Local, Label.Public)
       .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
     val edges = new InMemoryEdges
     val hosting = TurnHosting(
@@ -187,7 +188,7 @@ object TurnOfferTests extends TestSuite {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
-      .findOrCreate(slack, PrincipalId.Local)
+      .findOrCreate(slack, PrincipalId.Local, Label.Public)
       .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
     val edges = new InMemoryEdges
     val set =
@@ -241,7 +242,7 @@ object TurnOfferTests extends TestSuite {
     given grit.core.store.Tx = TestTx.fake
     val conversations = new InMemoryConversationStore
     val c: ConversationId = conversations
-      .findOrCreate(slack, PrincipalId.Local)
+      .findOrCreate(slack, PrincipalId.Local, Label.Public)
       .fold(e => throw new java.lang.AssertionError(e.toString), _.id)
     val edges = new InMemoryEdges
     def advertising(at: Place, tools: Vector[ToolSet.Entry]): Unit = {

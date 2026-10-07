@@ -26,6 +26,22 @@ private[dbos] object SqlLabels {
     */
   val Interned: String = s"grit.intern_label($Arg)"
 
+  /** `label`'s id in `grit.labels`, interned on first use: for a statement that must then read
+    * the row back, which one that interns it in passing cannot (its snapshot predates the row).
+    */
+  def intern(label: Label)(using tx: Tx^): Either[StoreError, Int] = {
+    val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+    attempt {
+      Using.resource(conn.prepareStatement(s"SELECT $Interned")) { ps =>
+        bind(ps, 1, label)
+        Using.resource(ps.executeQuery()) { rs =>
+          rs.next()
+          rs.getInt(1)
+        }
+      }
+    }
+  }
+
   /** Sets `label` as the [[Arg]] whose first parameter is `at`: `at` and `at + 1`. */
   def bind(ps: PreparedStatement, at: Int, label: Label): Unit = {
     ps.setInt(at, LabelParts.rank(label))

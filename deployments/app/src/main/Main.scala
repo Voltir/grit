@@ -256,7 +256,14 @@ object Main {
           case Left(NotTaken.Held(holder)) =>
             val attached = new ChatHost.Opener {
               def open(): Link^ = {
-                val link = Link.attach(config, Turn.Epoch, identity, deployment.budget)
+                val link =
+                  Link.attach(
+                    config,
+                    Turn.Epoch,
+                    identity,
+                    deployment.budget,
+                    deployment.visibility
+                  )
                 serveHere(link, Place.of(directory), hosted, instructions, offered)
                 link
               }
@@ -292,7 +299,8 @@ object Main {
         Engine.open(config, Turn.Epoch, identity, deployment.budget, deployment.visibility) match {
           case Left(Unopened.Lock(NotTaken.Held(_))) =>
             // Another grit runs the engine: its turns are sent to it, as a TUI's are.
-            val link = Link.attach(config, Turn.Epoch, identity, deployment.budget)
+            val link =
+              Link.attach(config, Turn.Epoch, identity, deployment.budget, deployment.visibility)
             try say(link, args.toList)
             finally link.close()
           case Left(refused) => Some(refused.message(java.time.Instant.now()))

@@ -29,19 +29,23 @@ import grit.core.store.{
   StoreError,
   Tx
 }
+import grit.core.visibility.{Label, Visibility}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[Inbox]] for tests, keeping [[InboxContract]], over the in-memory stores it
   * is given: an ingested or heard message is an entry of its conversation, in its open period
-  * ([[periods]], opened by the message when none is), its author told to `principals`, and a new one is refused once `ledger`'s spend today reaches `budget`'s cap,
-  * today being the day `ledger.now` falls on. No turn runs: a test ends one with [[finish]].
+  * ([[periods]], opened by the message when none is), its author told to `principals`, its
+  * conversation created at its room's label as `visibility` gives it, and a new one is refused
+  * once `ledger`'s spend today reaches `budget`'s cap, today being the day `ledger.now` falls
+  * on. No turn runs: a test ends one with [[finish]].
   */
 final class InMemoryInbox(
     val conversations: InMemoryConversationStore,
     val entries: InMemoryEntryStore,
     val principals: InMemoryPrincipals,
     val ledger: InMemoryUsageLedger,
-    budget: Budget
+    budget: Budget,
+    visibility: Visibility
 ) extends Inbox {
 
   /** The conversations' periods, over [[entries]]. */
@@ -97,7 +101,15 @@ final class InMemoryInbox(
       message: Message.User,
       by: PrincipalId
   ): Either[InboxError, TurnRef] =
-    recorded(origin, source, Payload.Message(message), by, java.time.Instant.EPOCH, capped = true)
+    recorded(
+      origin,
+      source,
+      Payload.Message(message),
+      by,
+      visibility.roomLabel(origin.room),
+      java.time.Instant.EPOCH,
+      capped = true
+    )
 
   def hear(
       origin: Origin,
@@ -107,7 +119,15 @@ final class InMemoryInbox(
       at: java.time.Instant,
       reach: Reach
   ): Either[InboxError, Unit] =
-    recorded(origin, source, Payload.Heard(text), by, at, capped = false).flatMap { turn =>
+    recorded(
+      origin,
+      source,
+      Payload.Heard(text),
+      by,
+      visibility.roomLabel(origin.room),
+      at,
+      capped = false
+    ).flatMap { turn =>
       inTx(speech.heard(turn, reach)) match {
         // A message recorded as a turn before is not heard, and keeps no reach.
         case Left(StoreError.Invalid(_)) | Right(()) => Right(())
@@ -124,6 +144,7 @@ final class InMemoryInbox(
       source: SourceId,
       payload: Payload,
       by: PrincipalId,
+      label: Label,
       at: java.time.Instant,
       capped: Boolean
   ): Either[InboxError, TurnRef] =
@@ -141,7 +162,7 @@ final class InMemoryInbox(
             case (None, Some(why)) => Right(Left(why))
             case (None, None) =>
               for {
-                conversation <- conversations.findOrCreate(origin, by)
+                conversation <- conversations.findOrCreate(origin, by, label)
                 id = InboundId.of(conversation.id, source)
                 next <- entries.lockNext(conversation.id)
                 _ <- periods.openFor(conversation.id, next.turnSeq, at)
@@ -191,7 +212,7 @@ final class InMemoryInbox(
     else
       inTx {
         val result: Either[StoreError, Boolean] = for {
-          conversation <- conversations.findOrCreate(origin, by)
+          conversation <- conversations.findOrCreate(origin, by, visibility.roomLabel(origin.room))
           next <- entries.lockNext(conversation.id)
           _ <- periods.openFor(conversation.id, next.turnSeq, at)
           _ <- entries.insert(
@@ -260,7 +281,7 @@ final class InMemoryInbox(
     else
       schedules.held(schedule) match {
         case None => Right(Slotted.Idle)
-        case Some((job, rule, next, last)) =>
+        case Some((job, rule, next, last, label)) =>
           val flight = last.flatMap((slot, running) => running.map(slot -> _)).map { (slot, v) =>
             val turn = runOf(Slot(schedule, slot), job, v)
             val state = turn match {
@@ -291,6 +312,7 @@ final class InMemoryInbox(
                 Slot.source(v),
                 Payload.Message(slot.opening(job)),
                 PrincipalId.Grit,
+                label,
                 now,
                 capped = false
               )
@@ -357,13 +379,17 @@ final class InMemoryInbox(
 
 object InMemoryInbox {
 
-  /** Empty in-memory stores. */
-  def fresh(budget: Budget = Budget(java.time.ZoneOffset.UTC, None)): InMemoryInbox =
+  /** Empty in-memory stores, under `visibility`. */
+  def fresh(
+      budget: Budget = Budget(java.time.ZoneOffset.UTC, None),
+      visibility: Visibility = Visibility.Shipped
+  ): InMemoryInbox =
     new InMemoryInbox(
       new InMemoryConversationStore,
       new InMemoryEntryStore,
       new InMemoryPrincipals,
       new InMemoryUsageLedger,
-      budget
+      budget,
+      visibility
     )
 }

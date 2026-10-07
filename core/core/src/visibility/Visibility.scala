@@ -24,6 +24,12 @@ final case class Visibility private (
       grants.filter(g => in.contains(g.group)).map(_.label).foldLeft(Label.Public)(_.join(_))
     }
 
+  /** The label a conversation in `room` ([[grit.core.store.Origin.room]]) is created at: the
+    * one [[rooms]] gives it, a compartment not declared kept at [[Compartment.Unmapped]]
+    * instead ([[Compartments.admit]]).
+    */
+  def roomLabel(room: Place): Label = compartments.admit(rooms.label(room).label)
+
   /** Whether a room may be labelled above public: false only for [[RoomLabels.Public]], since
     * an injected labeller's answers are not known before it runs.
     */

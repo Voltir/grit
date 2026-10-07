@@ -53,6 +53,7 @@ import grit.core.triage.{
   Shadowed,
   Tags
 }
+import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 import grit.kit.deployment.{Deployments, ShadowReview}
 import grit.lifecycle.shadow.ShadowVariant
@@ -141,7 +142,9 @@ object PickingTests extends TestSuite {
 
     private val conversation: ConversationId = {
       given Tx = TestTx.fake
-      right(conversations.findOrCreate(Origin.Task("kit", "picking"), PrincipalId.Local)).id
+      right(
+        conversations.findOrCreate(Origin.Task("kit", "picking"), PrincipalId.Local, Label.Public)
+      ).id
     }
 
     /** A heard message `id`, said `at`, live's decision on it settled as `live`, and the

@@ -47,6 +47,7 @@ import grit.core.store.{
   Tx
 }
 import grit.core.triage.{InMemoryTriageStore, Tags}
+import grit.core.visibility.Label
 import grit.dbos.sql.TestTx
 
 /** The close's test world: one conversation in core's in-memory stores, a clock the test
@@ -190,7 +191,7 @@ object CloseFixtures {
     val entries = new InMemoryEntryStore
     val conversations = new InMemoryConversationStore(Some(entries))
     locally {
-      val _ = conversations.findOrCreate(origin, PrincipalId.Local)(using TestTx.fake)
+      val _ = conversations.findOrCreate(origin, PrincipalId.Local, Label.Public)(using TestTx.fake)
     }
     val periods = new InMemoryPeriodStore(entries)
     val lifecycle = new InMemoryLifecycleStore

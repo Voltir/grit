@@ -18,8 +18,9 @@ final class SqlEntryStore extends EntryStore {
   def insert(entry: Entry)(using tx: Tx^): Either[StoreError, Unit] = {
     val conn: java.sql.Connection^{tx} = Tx.connection(tx)
     val sql =
-      s"""INSERT INTO grit.entries ($columns)
-         |VALUES (?, ?::uuid, ?, ?, ?, ?::jsonb, ?)""".stripMargin
+      s"""INSERT INTO grit.entries ($columns, label_id)
+         |VALUES (?, ?::uuid, ?, ?, ?, ?::jsonb, ?,
+         |        (SELECT label_id FROM grit.conversations WHERE id = ?::uuid))""".stripMargin
     // A failed statement aborts the whole transaction, and a `transact` step records its
     // output on the same connection afterwards. Rolling back to the savepoint keeps the
     // transaction usable, so `DuplicateId` can be recorded as the step's value.
@@ -33,6 +34,7 @@ final class SqlEntryStore extends EntryStore {
         ps.setLong(5, EntrySeq.value(entry.seq))
         ps.setString(6, PayloadJson.write(entry.payload).render())
         ps.setObject(7, entry.createdAt.atOffset(ZoneOffset.UTC))
+        ps.setString(8, ConversationId.value(entry.conversationId))
         ps.executeUpdate()
       }
       // Past this entry, so its positions are not taken again once it is purged.

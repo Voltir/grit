@@ -14,6 +14,7 @@ import grit.core.message.Message
 import grit.core.period.{CloseReason, Probability, TestClosings}
 import grit.core.place.{Directory, Scope}
 import grit.core.store.{Conversation, Entry, EntrySearch, Origin, Payload, Speakers}
+import grit.core.visibility.Label
 
 import utest.*
 import StitchFixtures.*
@@ -37,7 +38,7 @@ object StitchingTests extends TestSuite {
   /** Conversation `c` begun at `origin`, holding `payloads`, one turn each, a second apart. */
   private def kept(origin: Origin, payloads: Payload*): (Conversation, Vector[Entry]) = {
     val c = ConversationId("c")
-    Conversation(c, origin, PrincipalId.Local, Now) ->
+    Conversation(c, origin, PrincipalId.Local, Now, Label.Public) ->
       payloads.toVector.zipWithIndex.map((p, i) =>
         Entry(
           EntryId(s"c:$i"),
