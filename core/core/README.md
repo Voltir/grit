@@ -28,6 +28,13 @@ In dependency order:
   conversations with no directory to the service they work in; `Scope` (the `Prefix`es a window may draw on beside its own conversation: places, or its own room),
   `Weight` (how far its own search hits outweigh those elsewhere) and `Locality`, both
   together. Imports nothing in core.
+- **`identity`** — who someone is across sources (ADR 0032): `Account` (how one source names
+  someone, `{namespace}:{name}`, or `local` or `grit`), `Email` (an address, as sharing by
+  address names it), `Realm` (the accounts one source names, as one Slack workspace's),
+  `Handle`; `DeclaredPerson`, `Vouching` and `Identities`, who a deployment says is whom and
+  which edge it trusts to vouch for each realm, refused as an `IdentityRefusal`; `Evidence`,
+  `Held` and `Principal`, a person as the store resolves them; `Standing` and `Vouched`, what a
+  realm's source says of one of its accounts. ← `id`
 - **`visibility`** — who may see what (ADR 0030): `Level` (core's fixed scale), `Compartment`
   (a name a deployment declares), `Label` (opaque: a level and compartments, compared, joined,
   met and keyed by, never taken apart), and `LabelParts`, the level and compartments it is
