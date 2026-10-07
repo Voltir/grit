@@ -466,6 +466,21 @@ rules:
     mode: strict
     because: "ADR 0030: a label is compared, joined, met and keyed by outside core, never taken apart; its stored parts are grit.dbos's and core's visibility package's alone"
 
+  # -------------------------------------------------------------------------------------
+  # 1g. Only grit.dbos opens a transaction at maintenance's clearance (ADR 0030): every row,
+  # whatever its label. Everything else opens one for a Subject, which the opener resolves, so
+  # nothing outside grit.dbos can read past what its subject is cleared for. Core's visibility
+  # package defines Maintenance and never imports it, as with 1f.
+  #
+  # Watch out: a fully qualified use, or one through `import grit.core.visibility.*`, makes no
+  # edge to Maintenance; scripts/enola-law.sh greps every source for the name instead.
+  # -------------------------------------------------------------------------------------
+  - id: only-dbos-names-maintenance
+    forbid_name: outside-dbos
+    pattern: "* -> grit.core.visibility.Maintenance"
+    mode: strict
+    because: "ADR 0030: maintenance reads every row whatever its label; only grit.dbos's own transactions (inbox, desk, sweeps, collector) open at it"
+
   # grit.slack names core, prose and grit.edge alone: an edge reaches the engine through
   # Postgres (ADR 0002) and never the turn; grit.edge is the edge's side of the desk it serves
   # slack_post through. Mill already keeps grit.turn off its classpath; this rule is the

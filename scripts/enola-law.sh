@@ -76,6 +76,16 @@ if [ -n "$parts" ]; then
   exit 1
 fi
 
+# TRAP: rule 1g, as 1f above: only core's visibility package and grit.dbos may name
+# Maintenance.
+maintenance=$(grep -rlw 'Maintenance' --include='*.scala' core extensions kit deployments eval |
+  grep -vE '^core/core/(src|test/src)/visibility/|^core/dbos/' || true)
+if [ -n "$maintenance" ]; then
+  echo "Only grit.dbos and core's visibility package may name Maintenance; these sources do:" >&2
+  printf '  %s\n' $maintenance >&2
+  exit 1
+fi
+
 $enola baseline show mcp-arch.yaml >/dev/null 2>&1 || $enola baseline pin mcp-arch.yaml >/dev/null
 
 $enola check --fail-on=constraints,cycles mcp-arch.yaml
