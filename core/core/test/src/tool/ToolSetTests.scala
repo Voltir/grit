@@ -1,5 +1,10 @@
 package grit.core.tool
 
+import scala.collection.immutable.VectorMap
+
+import grit.core.place.Place
+import grit.core.visibility.TestLabels.place
+
 import utest.*
 
 /** [[ToolSet]]'s stored form and id: a turn's recorded first step names a set by its id, and
@@ -14,6 +19,28 @@ object ToolSetTests extends TestSuite {
       ujson.Obj("type" -> "object"),
       asks = false,
       Retry.Rerun
+    )
+
+  /** A tool that posts to a channel named `general` or `#general`, or one named `random`. */
+  private val post =
+    ToolSet.Entry(
+      ToolName("post"),
+      "Posts.",
+      ujson.Obj("type" -> "object", "properties" -> ujson.Obj("text" -> ujson.Obj())),
+      asks = false,
+      Retry.Interrupt,
+      Writes
+        .of[Place](
+          VectorMap(
+            "general" -> place("slack:T/C1"),
+            "#general" -> place("slack:T/C1"),
+            "random" -> place("slack:T/C2")
+          ),
+          p => p,
+          "The channel."
+        )
+        .toOption
+        .map(_.placed)
     )
 
   private def set(entries: ToolSet.Entry*): ToolSet =
@@ -34,6 +61,23 @@ object ToolSetTests extends TestSuite {
       ToolSet.read(ToolSet.write(set(peek, asking.copy(name = ToolName("poke"))))) ==>
         Right(set(peek, asking.copy(name = ToolName("poke"))))
       assert(set(peek).id != set(peek.copy(retry = Retry.Interrupt)).id)
+    }
+
+    test("a writing entry stores its names and their places, and reads back from them") {
+      // Pinned: a recorded turn's set is read back from this form when it replays.
+      ToolSet.write(set(post))("tools")(0).obj.get("writes").map(ujson.write(_)) ==> Some(
+        """{"describe":"The channel.","to":[{"name":"general","place":"slack:T/C1"},""" +
+          """{"name":"#general","place":"slack:T/C1"},{"name":"random","place":"slack:T/C2"}]}"""
+      )
+      ToolSet.read(ToolSet.write(set(peek, post))) ==> Right(set(peek, post))
+    }
+
+    test("a stored entry whose parameters declare the destination's argument is refused") {
+      val declaring = peek.copy(parameters =
+        ujson.Obj("type" -> "object", "properties" -> ujson.Obj(Writes.Field -> ujson.Obj()))
+      )
+      ToolSet.read(ToolSet.write(set(declaring))) ==>
+        Left("the tool peek's parameters declare to, which only its writes may name")
     }
 
     test("a set naming a tool twice is refused, from entries and from its stored form") {

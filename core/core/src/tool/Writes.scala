@@ -42,6 +42,15 @@ object Writes {
   /* One function value, so two placed sets of the same names are equal. */
   private val itself: Place -> Place = p => p
 
+  /** Places as their own destinations, as [[Writes.placed]] makes them: how a stored set's
+    * writes are read back equal to those it was written from; why not as [[of]].
+    */
+  private[tool] def placedAt(
+      to: VectorMap[String, Place],
+      describe: String
+  ): Either[String, Writes[Place]] =
+    of(to, itself, describe)
+
   /** These, or why not: `to` is empty, or a name is blank. */
   def of[D <: caps.Pure](
       to: VectorMap[String, D],

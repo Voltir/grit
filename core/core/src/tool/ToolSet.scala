@@ -1,6 +1,9 @@
 package grit.core.tool
 
+import scala.collection.immutable.VectorMap
+
 import grit.core.id.ShortHash
+import grit.core.place.Place
 
 /** A tool set as offered to one turn: each tool's name, description, schema, whether it asks
   * a person first, and its retry, in the order offered. Equal sets have equal ids
@@ -17,13 +20,17 @@ final case class ToolSet private (tools: Vector[ToolSet.Entry]) {
 
 object ToolSet {
 
-  /** One tool of a set: `parameters` is its schema as the model is shown it, not strict. */
+  /** One tool of a set: `parameters` is its schema as the model is shown it, not strict, less
+    * [[Writes.Field]]; `writes`, where its calls write outside grit, `None` for a tool that
+    * declares no such destination (its arguments still go to the service it runs at).
+    */
   final case class Entry(
       name: ToolName,
       does: String,
       parameters: ujson.Value,
       asks: Boolean,
-      retry: Retry
+      retry: Retry,
+      writes: Option[Writes[Place]] = None
   )
 
   val Empty: ToolSet = ToolSet(Vector.empty)
@@ -38,22 +45,36 @@ object ToolSet {
   }
 
   /** The stored form: `{"tools":[{"name","does","parameters","asks","retry"}, …]}`, in the
-    * set's order. The id hashes it, so a change here changes every set's id.
+    * set's order, an entry with writes also holding `"writes": {"describe", "to": [{"name",
+    * "place"}, …]}`, each place written. `"writes"` only on an entry that has some, so a set
+    * without any keeps the form, and the id, it had before. The id hashes it, so a change here
+    * changes every set's id.
     */
   def write(set: ToolSet): ujson.Value =
     ujson.Obj(
       "tools" -> ujson.Arr.from(set.tools.map { e =>
-        ujson.Obj(
+        val stored = ujson.Obj(
           "name" -> ToolName.value(e.name),
           "does" -> e.does,
           "parameters" -> e.parameters,
           "asks" -> e.asks,
           "retry" -> e.retry.key
         )
+        e.writes.foreach { w =>
+          stored("writes") = ujson.Obj(
+            "describe" -> w.describe,
+            "to" -> ujson.Arr.from(
+              w.to.map((name, at) => ujson.Obj("name" -> name, "place" -> at.written))
+            )
+          )
+        }
+        stored
       })
     )
 
-  /** The set stored as `v` ([[write]]'s form), or why it is none. */
+  /** The set stored as `v` ([[write]]'s form), or why it is none; why not, also, when an
+    * entry's parameters declare [[Writes.Field]].
+    */
   def read(v: ujson.Value): Either[String, ToolSet] = {
     def field(o: collection.Map[String, ujson.Value], key: String): Either[String, ujson.Value] =
       o.get(key).toRight(s"a tool has no $key")
@@ -67,7 +88,40 @@ object ToolSet {
         retryKey <- field(o, "retry").flatMap(_.strOpt.toRight("a tool's retry is not a string"))
         retry <- Retry.of(retryKey).toRight(s"no retry $retryKey")
         named <- ToolName.of(name)
-      } yield Entry(named, does, parameters, asks, retry)
+        _ <- Either.cond(
+          !parameters.objOpt
+            .flatMap(_.get("properties"))
+            .flatMap(_.objOpt)
+            .exists(_.contains(Writes.Field)),
+          (),
+          s"the tool $name's parameters declare ${Writes.Field}, which only its writes may name"
+        )
+        writes <- o.get("writes").fold(Right(None))(w => stored(w).map(Some(_)))
+      } yield Entry(named, does, parameters, asks, retry, writes)
+    def stored(w: ujson.Value): Either[String, Writes[Place]] =
+      for {
+        o <- w.objOpt.toRight("a tool's writes is not an object")
+        describe <- field(o, "describe").flatMap(
+          _.strOpt.toRight("a tool's writes' describe is not a string")
+        )
+        to <- field(o, "to").flatMap(_.arrOpt.toRight("a tool's writes' to is not an array"))
+        named <- to.toVector
+          .foldLeft[Either[String, Vector[(String, Place)]]](Right(Vector.empty)) { (acc, t) =>
+            acc.flatMap { done =>
+              for {
+                n <- t.objOpt.toRight("a destination is not an object")
+                name <- field(n, "name").flatMap(
+                  _.strOpt.toRight("a destination's name is not a string")
+                )
+                written <- field(n, "place").flatMap(
+                  _.strOpt.toRight("a destination's place is not a string")
+                )
+                at <- Place.read(written)
+              } yield done :+ (name -> at)
+            }
+          }
+        writes <- Writes.placedAt(VectorMap.from(named), describe)
+      } yield writes
     for {
       o <- v.objOpt.toRight("a tool set is not an object")
       tools <- o.get("tools").flatMap(_.arrOpt).toRight("a tool set has no tools")
