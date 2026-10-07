@@ -1,6 +1,6 @@
 # 0023. A thread's first message is stitched to an exchange in its room; the conversation stays its thread
 
-Status: accepted (2026-09-30), revised (2026-10-03)
+Status: accepted (2026-09-30), revised (2026-10-03), revised (2026-10-07)
 
 Context: people do not start a thread for each message. In a listened channel a top-level
 reply ("Is this a real question", "lol") began a conversation of its own (ADR 0019), so
@@ -57,8 +57,8 @@ Consequences:
 
 - A top-level reply is triaged and judged with the message it answers, and a window shows
   what its thread continues, with no change to conversations, periods or closings.
-- Same label, not same reach: a strand stays in one room, which is one label while only
-  public channels are served (ADR 0019), but it shows another thread's heard messages
+- Same label, not same reach: a strand stays in one room, which is one label while every
+  room is at the default label (ADR 0019, ADR 0030), but it shows another thread's heard messages
   unranked, where `[afar]` shows them only when they rank. The lattice question stays open.
 - Each top-level message with a candidate costs one more classifier call and one BM25 query.
 - A reply whose own triage has not yet stitched it is not in its strand when a draft is
