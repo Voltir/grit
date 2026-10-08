@@ -259,6 +259,19 @@ object grit extends Module {
     }
   }
 
+  /* What an actor's moves do (ADR 0034): an ask's and a call's phases over core's traits and
+   * Durable, never DBOS, in their caller's step names and recorded forms.
+   * Names only core. core/act/README.md. */
+  object act extends GritPublished with Placed {
+    def folder = os.sub / "core" / "act"
+    def moduleDeps = Seq(core)
+
+    /* The phases under core's in-memory durability and store fakes. */
+    object test extends GritTests {
+      def moduleDeps = super.moduleDeps ++ Seq[JavaModule](grit.core.test)
+    }
+  }
+
   /* The engine's own workflows besides the turn: close (a period sealed with its closing
    * entry; ADR 0011). Written against core's seams and Durable, never DBOS, so its tests
    * run it over core's in-memory fakes. core/lifecycle/README.md. */

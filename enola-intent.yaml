@@ -11,6 +11,7 @@
 #      grit.digest or grit.remind, names core and plugin extensions), and the kit names no
 #      plugin, edge extension, terminal UI or deployment (ADRs 0021, 0027; docs/extending.md)
 #   5. grit.mcp's protocol, scope, client and edge name no GitHub package (extensions/mcp/README.md)
+#   6. grit.act names core alone: the turn and a job's moves share its phases (ADR 0034)
 #
 # Every rule was watched failing on a deliberately planted bad import before it was
 # adopted. Do the same for any new rule: a rule that can't fail passes silently.
@@ -34,29 +35,29 @@ components:
   # grit.dbos, and Mill's moduleDeps are transitive, so these rules are the only guard there.
   - name: outside-dbos
     kind: dependency
-    match: ["core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
 
   # Every module except grit.dbos and the eval harness: what may not name grit.dbos.internal
   # (rule 1h). As outside-dbos, with eval's own sources in place of all of eval/.
   - name: outside-dbos-and-harness
     kind: dependency
-    match: ["core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/src/**", "eval/it/**", "eval/test/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/src/**", "eval/it/**", "eval/test/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
 
   # Every module except grit.models and grit.mcp, the two egresses, for the HTTP quarantine
   # (STYLE rule 8).
   - name: outside-egress
     kind: dependency
-    match: ["core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/slack/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/slack/**"]
 
   # Every module except grit.host, for the process quarantine (STYLE rule 8).
   - name: outside-host
     kind: dependency
-    match: ["core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/slack/**", "extensions/mcp/**"]
 
   # Every module except grit.slack, for the Slack SDK's quarantine (STYLE rule 8).
   - name: outside-slack
     kind: dependency
-    match: ["core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/mcp/**"]
+    match: ["core/act/**", "core/core/**", "extensions/tui/**", "core/turn/**", "core/dbos/**", "extensions/models/**", "core/assembly/**", "kit/**", "deployments/app/**", "eval/**", "core/prose/**", "extensions/host/**", "extensions/tools/**", "core/lifecycle/**", "core/job/**", "extensions/digest/**", "extensions/remind/**", "core/edge/**", "extensions/mcp/**"]
 
   # grit.slack's sources, for its rule below: an edge names core, prose and grit.edge, never
   # the turn.
@@ -85,7 +86,11 @@ components:
     match: ["core/core/src", "core/core/src/**", "core/dbos/src", "core/dbos/src/**",
             "core/turn/src", "core/turn/src/**", "core/lifecycle/src", "core/lifecycle/src/**",
             "core/assembly/src", "core/assembly/src/**", "core/prose/src", "core/prose/src/**",
-            "core/edge/src", "core/edge/src/**", "core/job/src", "core/job/src/**"]
+            "core/edge/src", "core/edge/src/**", "core/job/src", "core/job/src/**",
+            "core/act/src", "core/act/src/**"]
+  # grit.act's sources, for its rule: the phases name core alone, as the turn and jobs both
+  # build on them.
+  - {name: act-code,       kind: module, match: ["core/act/src", "core/act/src/**"]}
   - {name: models-code,    kind: module, match: ["extensions/models/src", "extensions/models/src/**"]}
   - {name: host-code,      kind: module, match: ["extensions/host/src", "extensions/host/src/**"]}
   - {name: tools-code,     kind: module, match: ["extensions/tools/src", "extensions/tools/src/**"]}
@@ -642,6 +647,13 @@ rules:
     via: imports
     mode: strict
     because: "ADR 0021: core is what the thesis fails without; naming an extension would make every deployment carry it"
+
+  - id: act-names-core-alone
+    allow: act-code
+    only: [core-code, act-code]
+    via: imports
+    mode: strict
+    because: "ADR 0034: an ask's and a call's phases are written over core's traits and Durable alone, so the turn and a job's moves share them and neither names the other"
 
   - id: models-names-core-alone
     allow: models-code
