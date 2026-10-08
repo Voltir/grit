@@ -16,8 +16,8 @@ import grit.core.identity.{Account, Email, Realm, Standing, TestAccounts, Vouche
 import grit.core.inbox.InMemoryInbox
 import grit.core.review.InMemoryReviews
 import grit.core.spend.Budget
-import grit.core.store.{Jot, Origin, StoreError, Tx}
-import grit.core.visibility.Subject
+import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.TestTx
 import grit.slack.client.{FakeSlack, Self, SlackError}
 import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
@@ -25,8 +25,8 @@ import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
 import utest.*
 
 /** The Slack edge as its realm's source: what it asks Slack, when, and what it does with the
-  * message whose author it checks, over the in-memory stores, a fake Slack, and a voucher that
-  * keeps each answer it is given ([[Kept]]) for grit's own team.
+  * message whose author it checks, over the in-memory stores, a fake Slack, and the in-memory
+  * voucher of grit's own team, which keeps each answer it is given.
   */
 object SlackAttestingTests extends TestSuite {
   import Payloads.*
@@ -60,7 +60,7 @@ object SlackAttestingTests extends TestSuite {
       UserId(Cy) -> Some("Cy")
     )
     val inbox: InMemoryInbox = InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None))
-    val kept = new Kept(Set(Ours))
+    val voucher = new InMemoryVoucher(Set(Ours), Set.empty, Visibility.Shipped)
 
     /** What the checks reported, in order. */
     @caps.unsafe.untrackedCaptures
@@ -82,7 +82,7 @@ object SlackAttestingTests extends TestSuite {
           InMemoryReviews.over(inbox),
           FakeJot,
           new InMemoryEdges,
-          new Attesting(kept, FakeJot, r => reported = reported :+ r)
+          new Attesting(voucher, FakeJot, r => reported = reported :+ r)
         ),
         Set(C),
         None,
@@ -103,7 +103,7 @@ object SlackAttestingTests extends TestSuite {
     ) {
       val w = new World
       w.slack.deliver(message("1.0", "is the freeze on?")) ==> true
-      (w.kept.vouched, w.slack.asked, w.kept("1.0")) ==>
+      (w.voucher.vouched, w.slack.asked, w.kept("1.0")) ==>
         (Vector(Vouched(ana, Standing.Full(None))), Vector(UserId(Ana)), true)
     }
 
@@ -114,7 +114,7 @@ object SlackAttestingTests extends TestSuite {
       w.slack.deliver(message("1.0", "is the freeze on?")) ==> true
       w.slack.deliver(message("2.0", "and another")) ==> true
       val withinFresh = w.slack.asked
-      w.kept.ago = Attesting.Fresh + 1.second
+      w.voucher.aged(ana, Attesting.Fresh + 1.second)
       w.slack.deliver(message("3.0", "later")) ==> true
       (withinFresh, w.slack.asked) ==> (Vector(UserId(Ana)), Vector(UserId(Ana), UserId(Ana)))
     }
@@ -126,7 +126,7 @@ object SlackAttestingTests extends TestSuite {
       refusals.map { refusal =>
         val w = new World
         w.slack.unasked = Some(refusal)
-        (w.slack.deliver(mention("1.0")), w.kept("1.0"), w.kept.vouched)
+        (w.slack.deliver(mention("1.0")), w.kept("1.0"), w.voucher.vouched)
       } ==> Vector.fill(2)((false, false, Vector.empty))
     }
 
@@ -134,8 +134,8 @@ object SlackAttestingTests extends TestSuite {
       "an author Slack cannot be asked about, answered for before, is recorded under that answer, and that is warned"
     ) {
       val w = new World
-      w.kept.vouch(Vouched(ana, Standing.Full(None)))(using TestTx.fake) ==> Right(Vector.empty)
-      w.kept.ago = 5.minutes
+      val _ = w.voucher.vouch(Vouched(ana, Standing.Full(None)))(using TestTx.fake)
+      w.voucher.aged(ana, 5.minutes)
       w.slack.unasked = Some(SlackError.Unreachable("down"))
       (w.slack.deliver(mention("1.0")), w.kept("1.0"), w.reported) ==> (
         true,
@@ -147,7 +147,7 @@ object SlackAttestingTests extends TestSuite {
     test("a user Slack knows not at all is outside, and their message is still recorded") {
       val w = new World
       w.slack.deliver(mention("1.0", user = "U0NOBODY1")) ==> true
-      (w.kept.vouched, w.kept("1.0")) ==>
+      (w.voucher.vouched, w.kept("1.0")) ==>
         (Vector(Vouched(of("U0NOBODY1"), Standing.Outside)), true)
     }
 
@@ -159,7 +159,11 @@ object SlackAttestingTests extends TestSuite {
         message("1.0", "hi from next door", extra = Seq("user_team" -> "T0THEIRS"))
       ) ==>
         true
-      (w.kept("1.0"), w.slack.asked, w.kept.vouched) ==> (true, Vector(UserId(Ana)), Vector.empty)
+      (w.kept("1.0"), w.slack.asked, w.voucher.vouched) ==> (
+        true,
+        Vector(UserId(Ana)),
+        Vector.empty
+      )
     }
 
     test(
@@ -169,7 +173,7 @@ object SlackAttestingTests extends TestSuite {
       w.slack.deliver(message("1.0", "is the freeze on?")) ==> true
       w.slack.standings = Map(UserId(Ana) -> Standing.Outside)
       w.slack.deliver(userChange()) ==> true
-      (w.slack.asked, w.kept.vouched) ==> (
+      (w.slack.asked, w.voucher.vouched) ==> (
         Vector(UserId(Ana), UserId(Ana)),
         Vector(Vouched(ana, Standing.Full(None)), Vouched(ana, Standing.Outside))
       )
@@ -178,16 +182,16 @@ object SlackAttestingTests extends TestSuite {
     test("a change to another workspace's user asks nothing") {
       val w = new World
       w.slack.deliver(userChange(team = Some("T0THEIRS"))) ==> true
-      (w.slack.asked, w.slack.listings, w.kept.vouched) ==> (Vector.empty, 0, Vector.empty)
+      (w.slack.asked, w.slack.listings, w.voucher.vouched) ==> (Vector.empty, 0, Vector.empty)
     }
 
     test(
       "a look lists grit's team once and records only the accounts grit has seen, never enrolling the rest"
     ) {
       val w = new World
-      w.kept.seen = Set(of(Ben))
+      w.voucher.saw(of(Ben))
       w.edge.attest() ==> Right(1)
-      (w.slack.listings, w.slack.asked, w.kept.vouched) ==>
+      (w.slack.listings, w.slack.asked, w.voucher.vouched) ==>
         (1, Vector.empty, Vector(Vouched(of(Ben), Standing.Full(None))))
     }
 
@@ -198,7 +202,7 @@ object SlackAttestingTests extends TestSuite {
       val address = Email.of("ana@elsewhere.example").toOption
       w.slack.standings = Map(UserId(Ana) -> Standing.Full(address))
       w.slack.deliver(mention("1.0")) ==> true
-      w.kept.vouched ==> Vector(Vouched(ana, Standing.Full(address)))
+      w.voucher.vouched ==> Vector(Vouched(ana, Standing.Full(address)))
     }
 
     test(
@@ -215,7 +219,7 @@ object SlackAttestingTests extends TestSuite {
       w.edge.backfill(unheard.take(1)) ==> Right(())
       w.slack.unasked = Some(SlackError.Unreachable("down"))
       val stopped = w.edge.backfill(unheard.drop(1))
-      (w.kept.vouched, w.kept("1.0"), w.kept("2.0"), stopped) ==> (
+      (w.voucher.vouched, w.kept("1.0"), w.kept("2.0"), stopped) ==> (
         Vector(Vouched(ana, Standing.Full(None))),
         true,
         false,

@@ -24,9 +24,9 @@ import grit.core.place.{Namespace, Place}
 import grit.core.review.Reason
 import grit.core.speech.Rate
 import grit.core.spend.Budget
-import grit.core.store.{Jot, Origin, StoreError, Tx}
+import grit.core.store.{InMemoryVoucher, Jot, Origin, StoreError, Tx}
 import grit.core.tool.Outcome
-import grit.core.visibility.Subject
+import grit.core.visibility.{Subject, Visibility}
 import grit.dbos.sql.TestTx
 import grit.slack.client.{AppToken, BotToken, FakeSlack, Slack}
 import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
@@ -68,7 +68,8 @@ object ServedTests extends TestSuite {
   /** The stores of an edge, over a voucher of grit's team's accounts when it `attests`. */
   private final class World(attests: Boolean = false) {
     val slack = new FakeSlack
-    val kept = new Kept(if (attests) Set(Ours) else Set.empty)
+    val voucher =
+      new InMemoryVoucher(if (attests) Set(Ours) else Set.empty, Set.empty, Visibility.Shipped)
     val inbox: InMemoryInbox = InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None))
     val edges: InMemoryEdges = new InMemoryEdges
     val picks = new PickedPrompts(inbox)
@@ -82,7 +83,7 @@ object ServedTests extends TestSuite {
         picks.reviews,
         FakeJot,
         edges,
-        new Attesting(kept, FakeJot, _ => ())
+        new Attesting(voucher, FakeJot, _ => ())
       )
 
     /** What opening logged, in order. */
@@ -321,7 +322,7 @@ object ServedTests extends TestSuite {
       "an edge served looks, when asked, through its own source: a due account's team listed once"
     ) {
       val w = new World(attests = true)
-      w.kept.seen = Set(TestAccounts.account(s"slack:$Team/$Ana"))
+      w.voucher.saw(TestAccounts.account(s"slack:$Team/$Ana"))
       val open = Served.serving(Set(C), None, None, w.connect).open(w.stores, Env, _ => ()) match {
         case Right(o) => o
         case Left(r) => throw new java.lang.AssertionError(r.message)
@@ -340,7 +341,7 @@ object ServedTests extends TestSuite {
           case Left(r) => throw new java.lang.AssertionError(r.message)
         }
       open.hear() ==> Right(())
-      w.kept.vouched ==> Vector(
+      w.voucher.vouched ==> Vector(
         Vouched(TestAccounts.account(s"slack:$Team/$Ana"), Standing.Full(None))
       )
       open.close()
