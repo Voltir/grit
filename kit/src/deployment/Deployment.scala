@@ -5,6 +5,7 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import grit.core.document.{Document, DocumentShelf}
 import grit.core.edge.ServedEdge
 import grit.core.id.{
+  AttesterName,
   CorpusName,
   Declarer,
   DocKey,
@@ -224,13 +225,18 @@ enum DeploymentRefusal {
     */
   case ReviewUnposted(edges: Vector[EdgeName])
 
-  /** Its identities trust `edge` to vouch for a realm, and no edge served is named `edge`, so
-    * that realm's accounts would never be vouched for.
+  /** Its identities trust `attester` for a realm, and no edge served is that attester
+    * ([[ServedEdge.attester]]), so that realm's accounts would never be attested.
     */
-  case VouchesUnserved(edge: EdgeName)
+  case AttesterUnserved(attester: AttesterName)
 
-  /** A group of its visibility names `realm`, which its identities trust no edge to vouch for,
-    * so that group would hold none of the realm's full members, ever.
+  /** Two edges served, `by` and `and`, say they are `attester`, so which one's source answers
+    * for its realms would be a guess.
+    */
+  case AttesterTwice(attester: AttesterName, by: EdgeName, and: EdgeName)
+
+  /** A group of its visibility names `realm`, which its identities trust no attester for, so
+    * that group would hold none of the realm's full members, ever.
     */
   case RealmUnvouched(realm: Realm)
 
@@ -282,10 +288,12 @@ enum DeploymentRefusal {
       if (edges.isEmpty) "a review is declared, and no edge posts its prompts"
       else
         s"a review is declared, and ${edges.map(EdgeName.value).mkString(", ")} each post its prompts: one must"
-    case VouchesUnserved(edge) =>
-      s"the identities trust ${EdgeName.value(edge)} to vouch for a realm, and no edge served is named ${EdgeName.value(edge)}"
+    case AttesterUnserved(attester) =>
+      s"the identities trust ${AttesterName.value(attester)} to attest a realm, and no edge served is ${AttesterName.value(attester)}"
+    case AttesterTwice(attester, by, and) =>
+      s"two edges served, ${EdgeName.value(by)} and ${EdgeName.value(and)}, say they are ${AttesterName.value(attester)}"
     case RealmUnvouched(realm) =>
-      s"a group names the realm ${realm.namespace}:${realm.within}/, which the identities trust no edge to vouch for"
+      s"a group names the realm ${realm.namespace}:${realm.within}/, which the identities trust no attester for"
   }
 }
 
@@ -304,8 +312,8 @@ enum DeploymentRefusal {
   * ([[TurnRecipe]]), the `persona` grit presents as: the name its turns are told
   * ([[grit.turn.TurnPrompt.called]]) and `about` reports, and the `jobs` and `schedules` it
   * declares itself beside its plugins' (ADR 0029), its `visibility`: who may see what
-  * (ADR 0030), and its `identities`: who it says is whom, and which edge it trusts to vouch
-  * for each realm (ADR 0032); `allJobs` is every job, its plugins' and its own, by name, as its runs find
+  * (ADR 0030), and its `identities`: the attester it trusts for each realm, and the email
+  * domains it claims (ADR 0032); `allJobs` is every job, its plugins' and its own, by name, as its runs find
   * them. The
   * database and the model's keys come from the environment
   * ([[grit.kit.environment.Secrets]]), and each edge's credentials from its own
@@ -395,10 +403,12 @@ object Deployment {
     *     deployment's job of its name;
     *   - [[DeploymentRefusal.CompartmentUndeclared]]: a plugin's or an edge's `compartments`, or
     *     a declared schedule's `clearance`, names a compartment `visibility` does not declare;
-    *   - [[DeploymentRefusal.VouchesUnserved]]: `identities` trusts an edge to vouch for a realm,
-    *     and none of `edges` is named so;
+    *   - [[DeploymentRefusal.AttesterTwice]]: two of `edges` say they are one attester
+    *     ([[ServedEdge.attester]]);
+    *   - [[DeploymentRefusal.AttesterUnserved]]: `identities` trusts an attester for a realm,
+    *     and none of `edges` is that attester;
     *   - [[DeploymentRefusal.RealmUnvouched]]: a group of `visibility` names a realm `identities`
-    *     trusts no edge to vouch for.
+    *     trusts no attester for.
     */
   def of(
       edges: Vector[ServedEdge],
@@ -432,21 +442,28 @@ object Deployment {
       Names.all ++ Vector(TurnVerdict.Name) ++ plugins.flatMap(_.tools.map(_.described.name))
     for {
       _ <- names.diff(names.distinct).headOption.map(DeploymentRefusal.EdgeRepeated(_)).toLeft(())
-      // A realm's accounts are vouched for only by the edge named for it: one not served, never.
-      _ <- identities.vouchers
-        .map(_.edge)
-        .find(!names.contains(_))
-        .map(DeploymentRefusal.VouchesUnserved(_))
+      // One edge per attester: two would leave which source answers to chance.
+      _ <- edges
+        .flatMap(e => e.attester.map(_ -> e.name))
+        .groupBy(_._1)
+        .toVector
+        .sortBy((a, _) => AttesterName.value(a))
+        .collectFirst { case (a, Vector((_, by), (_, and), _*)) =>
+          DeploymentRefusal.AttesterTwice(a, by, and)
+        }
         .toLeft(())
-      // A group taking in a realm's full members holds only those its trusted edge vouches for.
-      _ <- {
-        val vouched = identities.vouchers.map(_.realm).toSet
-        visibility.groups
-          .flatMap(_.realms.toVector.sortBy(r => (r.namespace, r.within)))
-          .find(!vouched.contains(_))
-          .map(DeploymentRefusal.RealmUnvouched(_))
-          .toLeft(())
-      }
+      // A realm's accounts are attested only by the attester named for it: one not served, never.
+      _ <- identities.vouchings
+        .map(_.attester)
+        .find(a => !edges.exists(_.attester.contains(a)))
+        .map(DeploymentRefusal.AttesterUnserved(_))
+        .toLeft(())
+      // A group taking in a realm's full members holds only those its trusted attester attests.
+      _ <- visibility.groups
+        .flatMap(_.realms.toVector.sortBy(r => (r.namespace, r.within)))
+        .find(!identities.realms.contains(_))
+        .map(DeploymentRefusal.RealmUnvouched(_))
+        .toLeft(())
       _ <- pluginNames
         .diff(pluginNames.distinct)
         .headOption

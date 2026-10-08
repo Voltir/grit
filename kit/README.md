@@ -31,7 +31,7 @@ In dependency order:
   visibility (`grit.core.visibility.Visibility`, ADR 0030): who may see what, injected
   into core, with `Requirer` naming what else in it names a compartment (a plugin, an edge,
   a declared schedule's clearance), and its identities (`grit.core.identity.Identities`,
-  ADR 0032): who it says is whom, and which edge it trusts to vouch for each realm. Beside
+  ADR 0032): the attester it trusts for each realm, and the email domains it claims. Beside
   its edges it declares, by core's links, which conversations work in a service an edge hosts (`WorksIn`) and which
   conversations' addressed turns also reach one (`Reaches`). Imports nothing in kit.
 - **`environment`** — what the process environment supplies, never declared: `DotEnv` (a

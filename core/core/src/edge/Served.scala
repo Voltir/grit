@@ -2,7 +2,7 @@ package grit.core.edge
 
 import java.time.Instant
 
-import grit.core.id.EdgeName
+import grit.core.id.{AttesterName, EdgeName}
 import grit.core.inbox.Inbox
 import grit.core.place.Place
 import grit.core.review.Reviews
@@ -90,6 +90,11 @@ trait ServedEdge {
     * unless its visibility declares each.
     */
   def compartments: Vector[Compartment] = Vector.empty
+
+  /** The attester it also is, when its source says who a realm's accounts are
+    * ([[grit.core.identity.Vouching]]); none by default.
+    */
+  def attester: Option[AttesterName] = None
 
   /** Connects to the edge's service with `env`'s credentials and starts taking its messages
     * into `stores`, telling `log` what a person running it may want to read.

@@ -9,7 +9,7 @@ In dependency order:
   no one made before); and `Utc`, an instant as grit writes it for a model or a person.
   Imports nothing in core.
 - **`id`** — the opaque ids (`ConversationId`, `EntryId`, `TurnSeq`, `EntrySeq`, `WorkflowId`,
-  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `DocKey` (a plugin's document's key), `DocumentVersion` (one version of a document, numbered across every plugin), `ShadowName`, `QuestionName` (a question's in a question set, or its per-source form), `CorpusName`, `EdgeName`, `PrincipalId`: who an
+  `SourceId`, `ToolCallId`, `PeriodSeq`, `LineId`, `PluginName`, `DocKey` (a plugin's document's key), `DocumentVersion` (one version of a document, numbered across every plugin), `ShadowName`, `QuestionName` (a question's in a question set, or its per-source form), `CorpusName`, `EdgeName`, `AttesterName` (a source a deployment trusts to say who a realm's accounts are), `PrincipalId`: who an
   action is done for, made from text only by `grit.dbos`, through `PrincipalIds` (enola-intent.yaml), `EdgeId`, `JobName`, `ScheduleKey` (a schedule's key among its
   declarer's), `ScheduleId` (an asked schedule's, or a declared one's, by its `Declarer`: the
   deployment or a plugin)), `CallSlot` (a tool call's place in its turn, and its
@@ -30,11 +30,11 @@ In dependency order:
   together. Imports nothing in core.
 - **`identity`** — who someone is across sources (ADR 0032): `Account` (how one source names
   someone, `{namespace}:{name}`, or `local` or `grit`; never an email address), `Email` (an
-  address, which a realm attests of an account), `Realm` (the accounts one source names, as one Slack workspace's),
-  `Handle`; `DeclaredPerson`, `Vouching` and `Identities`, who a deployment says is whom and
-  which edge it trusts to vouch for each realm, refused as an `IdentityRefusal`; `Evidence`,
-  `Held` and `Principal`, a person as the store resolves them; `Standing` and `Vouched`, what a
-  realm's source says of one of its accounts. ← `id`
+  address, which a realm attests of an account) and its `Domain`, `Realm` (the accounts one
+  source names, as one Slack workspace's); `Vouching` and `Identities`, the attester a
+  deployment trusts for each realm and the email domains it claims, refused as an
+  `IdentityRefusal`; `Evidence`, `Held` and `Principal`, a person as the store resolves them;
+  `Standing` and `Vouched`, what a realm's source says of one of its accounts. ← `id`
 - **`visibility`** — who may see what (ADR 0030): `Level` (core's fixed scale), `Compartment`
   (a name a deployment declares), `Label` (opaque: a level and compartments, compared, joined,
   met and keyed by, never taken apart), and `LabelParts`, the level and compartments it is
@@ -241,7 +241,7 @@ In dependency order:
 - **`edge`** — what an edge and the engine share: `ServedEdge`, an edge a deployment serves
   beside its engine as it posts to a plugin (ADR 0021), opened over `EdgeStores` (what an
   edge reaches the engine through, ADR 0002) with the `Variable`s it `needs`, refused as an
-  `EdgeRefusal`; `CatchUp`, what an edge hears once before serving, as `Unheard` per source;
+  `EdgeRefusal`, and the attester it also is, if any (ADR 0032); `CatchUp`, what an edge hears once before serving, as `Unheard` per source;
   `Deliveries` (the replies an edge has yet
   to post outside grit, each part `Posting` or `Posted`), `Acknowledgements` (the messages an
   edge marks as being answered while their turns run, each `Acknowledgement` shown or not),

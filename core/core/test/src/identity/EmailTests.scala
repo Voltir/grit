@@ -19,5 +19,9 @@ object EmailTests extends TestSuite {
       Email.of("a@b@c") ==>
         Left("an email address is one @ with something on either side: a@b@c")
     }
+
+    test("an address's domain is what follows its @, lowercased") {
+      Email.of("A@Example.COM").map(e => Domain.value(Email.domain(e))) ==> Right("example.com")
+    }
   }
 }

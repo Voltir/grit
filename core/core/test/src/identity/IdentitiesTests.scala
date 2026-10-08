@@ -1,6 +1,6 @@
 package grit.core.identity
 
-import grit.core.id.EdgeName
+import grit.core.id.AttesterName
 
 import utest.*
 
@@ -9,87 +9,54 @@ object IdentitiesTests extends TestSuite {
   private def ok[A](e: Either[String, A]): A =
     e.fold(why => throw new java.lang.AssertionError(why), a => a)
 
-  private val nick = ok(Handle.of("nick"))
-  private val ana = ok(Handle.of("ana"))
-  private val slackNick = ok(Account.of("slack", "T1/U1"))
-  private val slackAna = ok(Account.of("slack", "T1/U2"))
   private val t1 = ok(Realm.of("slack", "T1"))
   private val t2 = ok(Realm.of("slack", "T2"))
   private val t3 = ok(Realm.of("slack", "T3"))
-  private val chat = EdgeName("chat")
-  private val other = EdgeName("other")
+  private val chat = AttesterName("chat")
+  private val directory = AttesterName("directory")
+  private val example = ok(Domain.of("example.com"))
+
+  private def trusting(vouchings: Vouching*): Identities =
+    ok(Identities.of(vouchings.toVector, Set(example)).left.map(_.message))
 
   val tests = Tests {
-    test("a handle is 1 to 32 lowercase letters, digits or -") {
-      List("nick", "a", "ana-2", "x" * 32).map(Handle.of(_).isRight) ==>
-        List(true, true, true, true)
-      List("", "Nick", "a b", "a_b", "x" * 33).map(Handle.of(_).isRight) ==>
-        List(false, false, false, false, false)
-      Handle.of("Nick") ==> Left("a handle is 1 to 32 lowercase letters, digits or -: Nick")
+    test("realms each with one attester, and the domains claimed, are kept as given") {
+      val vouchings = Vector(Vouching(chat, t1), Vouching(directory, t2))
+      Identities.of(vouchings, Set(example)).map(i => (i.vouchings, i.domains)) ==>
+        Right((vouchings, Set(example)))
     }
 
-    test("people each with their own accounts, and realms each with one edge, are declared") {
-      val people = Vector(
-        DeclaredPerson(nick, Set(slackNick)),
-        DeclaredPerson(ana, Set(slackAna))
-      )
-      val vouchers = Vector(Vouching(chat, t1), Vouching(other, t2))
-      Identities.of(people, vouchers).map(i => (i.people, i.vouchers)) ==>
-        Right((people, vouchers))
+    test("no domain claimed is allowed: membership alone still counts") {
+      Identities.of(Vector(Vouching(chat, t1)), Set.empty).map(_.domains) ==> Right(Set.empty)
     }
 
-    test("an account two people declare is refused, naming both") {
-      val refused = Identities.of(
-        Vector(DeclaredPerson(nick, Set(slackNick)), DeclaredPerson(ana, Set(slackAna, slackNick))),
-        Vector.empty
-      )
-      refused ==> Left(IdentityRefusal.AccountTwice(slackNick, nick, ana))
-      refused.left.map(_.message) ==> Left("slack:T1/U1 is declared as both nick and ana")
+    test("a realm two attesters vouch for is refused, naming both") {
+      val refused = Identities.of(Vector(Vouching(chat, t1), Vouching(directory, t1)), Set.empty)
+      refused ==> Left(IdentityRefusal.RealmTwice(t1, chat, directory))
+      refused.left.map(_.message) ==>
+        Left("both chat and directory are trusted to attest slack:T1/")
     }
 
-    test("a handle two people take is refused") {
-      val refused = Identities.of(
-        Vector(DeclaredPerson(nick, Set(slackNick)), DeclaredPerson(nick, Set(slackAna))),
-        Vector.empty
-      )
-      refused ==> Left(IdentityRefusal.HandleTwice(nick))
-      refused.left.map(_.message) ==> Left("two people are declared as nick")
+    test("an attester answers for the realms it is named for, and an attester not named for none") {
+      val declared = trusting(Vouching(chat, t1), Vouching(directory, t3), Vouching(chat, t2))
+      (
+        declared.realmsOf(chat),
+        declared.realmsOf(directory),
+        declared.realmsOf(AttesterName("unnamed")),
+        Identities.Shipped.realmsOf(chat)
+      ) ==> (Set(t1, t2), Set(t3), Set.empty, Set.empty)
     }
 
-    test("a person declared with no account is refused") {
-      val refused = Identities.of(Vector(DeclaredPerson(nick, Set.empty)), Vector.empty)
-      refused ==> Left(IdentityRefusal.NoAccount(nick))
-      refused.left.map(_.message) ==> Left("nick is declared with no account")
+    test("realms is every realm trusted, and attesters every attester named") {
+      val declared = trusting(Vouching(chat, t1), Vouching(directory, t3), Vouching(chat, t2))
+      (declared.realms, declared.attesters, Identities.Shipped.realms) ==>
+        (Set(t1, t2, t3), Set(chat, directory), Set.empty)
     }
 
-    test("local and grit, principals of their own, are never declared a person's") {
-      List(Account.Local, Account.Grit).map(reserved =>
-        Identities.of(Vector(DeclaredPerson(nick, Set(slackNick, reserved))), Vector.empty)
-      ) ==> List(
-        Left(IdentityRefusal.Reserved(Account.Local, nick)),
-        Left(IdentityRefusal.Reserved(Account.Grit, nick))
-      )
-      IdentityRefusal.Reserved(Account.Grit, nick).message ==>
-        "nick is declared holding grit, which is a principal of its own"
-    }
-
-    test("a realm two edges vouch for is refused, naming both") {
-      val refused = Identities.of(Vector.empty, Vector(Vouching(chat, t1), Vouching(other, t1)))
-      refused ==> Left(IdentityRefusal.RealmTwice(t1, chat, other))
-      refused.left.map(_.message) ==> Left("both chat and other are trusted to vouch for slack:T1/")
-    }
-
-    test("an edge vouches for the realms it is named for, and an edge not named for none") {
-      val declared = ok(
-        Identities
-          .of(Vector.empty, Vector(Vouching(chat, t1), Vouching(other, t3), Vouching(chat, t2)))
-          .left
-          .map(_.message)
-      )
-      declared.realms(chat) ==> Set(t1, t2)
-      declared.realms(other) ==> Set(t3)
-      declared.realms(EdgeName("unnamed")) ==> Set.empty
-      Identities.Shipped.realms(chat) ==> Set.empty
+    test("trust names an attester, never an edge") {
+      val error = assertCompileError("Vouching(grit.core.id.EdgeName.Slack, t1)")
+      assert(error.msg.contains("EdgeName"))
     }
   }
+
 }

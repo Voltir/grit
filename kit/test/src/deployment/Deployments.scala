@@ -3,7 +3,7 @@ package grit.kit.deployment
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
-import grit.core.id.EdgeName
+import grit.core.id.{AttesterName, EdgeName}
 import grit.core.message.Tokens
 import grit.core.model.{Assignment, ModelId, ModelRef, Policy}
 import grit.core.period.LifecycleSettings
@@ -16,14 +16,15 @@ import grit.turn.TurnLoop
 object Deployments {
 
   /** An edge named `called` that needs `needs`, says whether it can answer an ask, posts
-    * review prompts at `reviews`, names `naming`, and never opens.
+    * review prompts at `reviews`, names `naming`, is the attester `attests`, and never opens.
     */
   def edge(
       called: String,
       asks: Boolean,
       needs: Vector[String] = Vector.empty,
       naming: Vector[Compartment] = Vector.empty,
-      reviews: Option[Place] = None
+      reviews: Option[Place] = None,
+      attests: Option[String] = None
   ): ServedEdge = {
     val wanted = needs.map(Variable(_))
     new ServedEdge {
@@ -32,6 +33,7 @@ object Deployments {
       def answersAsks: Boolean = asks
       override def reviewsAt: Option[Place] = reviews
       override def compartments: Vector[Compartment] = naming
+      override def attester: Option[AttesterName] = attests.map(AttesterName(_))
       def open(
           stores: EdgeStores^,
           env: Map[String, String],

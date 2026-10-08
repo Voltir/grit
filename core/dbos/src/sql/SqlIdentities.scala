@@ -91,7 +91,7 @@ private[dbos] object SqlIdentities {
           .foldLeft[Either[StoreError, Set[Held]]](Right(Set.empty))((read, row) =>
             read.flatMap(so => this.held(row).map(so + _))
           )
-          .map(accounts => Principal.Person(PrincipalIds.stored(id), None, accounts))
+          .map(accounts => Principal.Person(PrincipalIds.stored(id), accounts))
       case other => Left(StoreError.Invalid(s"a principal is a person or grit: $other"))
     }
 
@@ -99,9 +99,7 @@ private[dbos] object SqlIdentities {
   private def held(row: ujson.Value): Either[StoreError, Held] =
     row.arrOpt.map(_.toVector) match {
       case Some(Vector(ujson.Str(account), ujson.Bool(vouched), ujson.Bool(member))) =>
-        read(account).map(a =>
-          Held(a, if (vouched) Evidence.Vouched else Evidence.Enrolled, member)
-        )
+        read(account).map(a => Held(a, if (vouched) Evidence.Vouched else Evidence.Home, member))
       case _ => Left(StoreError.Invalid(s"a stored account's link: ${row.render()}"))
     }
 

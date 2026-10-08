@@ -1,8 +1,9 @@
 package grit.core.id
 
-/** Who an action is done for: a person, or grit itself. A person's id is the store's
-  * ([[grit.core.store.Principals]]), made when it first sees one of their accounts, and is never
-  * read for meaning.
+/** Who an action is done for: a person, or grit itself. A person's id is minted by the store
+  * ([[grit.core.store.Principals]]), for an account's home when it first sees the account, or
+  * for an email's person when a trusted realm first attests the address (ADR 0032); it names
+  * no account and is never read for meaning.
   */
 opaque type PrincipalId = String
 

@@ -36,12 +36,11 @@ object VisibilityTests extends TestSuite {
     Grant(group("t1-members"), Label.at(Level.Internal, trial))
   )
 
-  /** A person holding `accounts`, each enrolled, a full member of its realm when paired `true`. */
+  /** A person holding `accounts`, each its home, a full member of its realm when paired `true`. */
   private def person(accounts: (Account, Boolean)*): Principal =
     Principal.Person(
       TestAccounts.principalId(accounts.headOption.fold(ana)(_._1)),
-      None,
-      accounts.map((a, member) => Held(a, Evidence.Enrolled, member)).toSet
+      accounts.map((a, member) => Held(a, Evidence.Home, member)).toSet
     )
 
   private val visibility =

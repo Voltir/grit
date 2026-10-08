@@ -18,15 +18,14 @@ object TestAccounts {
     TestPrincipalIds.stored(Account.written(account))
 
   /** Whom writing through `account` is done for, as `grit.dbos` resolves an account seen once
-    * and never declared or vouched: grit for [[Account.Grit]]; otherwise the person of that one
-    * account, enrolled, whom no realm vouches a full member.
+    * and never attested: grit for [[Account.Grit]]; otherwise the person of that one account,
+    * its home, whom no realm attests a full member.
     */
   def principal(account: Account): Principal =
     if (account == Account.Grit) Principal.Grit
     else
       Principal.Person(
         principalId(account),
-        None,
-        Set(Held(account, Evidence.Enrolled, member = false))
+        Set(Held(account, Evidence.Home, member = false))
       )
 }

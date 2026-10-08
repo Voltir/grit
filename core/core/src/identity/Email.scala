@@ -1,7 +1,7 @@
 package grit.core.identity
 
 /** An email address, trimmed and lowercased, and otherwise as given: two that differ
-  * otherwise are two addresses.
+  * otherwise are two addresses (no plus-tags or dots are stripped).
   */
 opaque type Email = String
 
@@ -21,4 +21,7 @@ object Email {
   }
 
   def value(e: Email): String = e
+
+  /** What follows its `@`. */
+  def domain(e: Email): Domain = Domain.within(e.drop(e.indexOf('@') + 1))
 }

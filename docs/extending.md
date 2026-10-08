@@ -105,8 +105,8 @@ part is declared data or a pure function:
   at `unmapped` instead, so what a mapping invents is read by fewer people, never more.
 - `groups` and `grants`: people grouped by the accounts sources know them by
   (`slack:{team}/{user}`), and by the realms whose full members a group takes in (a
-  `Realm`, such as every `slack:{team}/` account, as the edge `identities` trusts for it
-  vouches them); and what each group's members are cleared for: a person is cleared for the
+  `Realm`, such as every `slack:{team}/` account, as the attester `identities` trusts for it
+  attests them); and what each group's members are cleared for: a person is cleared for the
   join of the grants of every group any of their accounts puts them in.
 - `trusts`: what each outside service (`service:{name}`) is trusted with, as a label
   ([ADR 0031](decisions/0031-a-write-out-of-grit-names-its-place-and-a-service-is-a-place-and-a-party.md));
@@ -132,19 +132,25 @@ compartment the database ran under does not open, and says which, since a label
 holding it could then be read by a clearance that could not read it before.
 
 **Identities** ([ADR 0032](decisions/0032-a-principal-is-a-person-edges-name-accounts-and-trusted-realms-attest-who-they-are.md)).
-Who a deployment says is whom is injected beside its visibility, `Deployment.of(identities =
-…)`, an `Identities` built by `Identities.of`, which refuses a mistake in it
-(`IdentityRefusal`); left out, it is `Identities.Shipped`: no one declared and no realm
-trusted, so every account is a person of its own. Both parts are declared data:
+A deployment declares no people. It says which sources it trusts to say who their accounts
+are, and grit keeps who is whom from what they say. This is injected beside its visibility,
+`Deployment.of(identities = …)`, an `Identities` built by `Identities.of`, which refuses a
+realm trusted to two attesters (`IdentityRefusal`); left out, it is `Identities.Shipped`: no
+realm trusted and no domain claimed, so every account is a person of its own. Both parts are
+declared data:
 
-- `people`: each `DeclaredPerson`, a `Handle` and the accounts the deployment knows them by
-  (`slack:{team}/{user}`, `email:{address}`). An account is in at most one, and `local` and
-  `grit` in none.
-- `vouchers`: for each `Realm` (one source's accounts, such as one Slack workspace's), the
-  one edge trusted to vouch for what its source says of them: whether each is a full member,
-  and the email the source verified for one. Trusting a realm trusts its administrators, who
-  decide both. `Deployment.of` refuses a vouching by an edge it does not serve, and a
-  group of the visibility naming a realm no edge is trusted to vouch for.
+- `vouchings`: for each `Realm` (one source's accounts, such as one Slack workspace's), the
+  one attester (`AttesterName`) trusted to say what its source says of them: whether each is
+  a full member, and the email the source verified for one. An attester is a source of who a
+  realm's accounts are; today each is an edge served that says it is one
+  (`ServedEdge.attester`). Trusting a realm trusts its administrators, who decide both.
+  `Deployment.of` refuses an attester no edge served is, two edges saying they are one
+  attester, and a group of the visibility naming a realm no attester is trusted for.
+- `domains`: the email domains (`Domain`, each matched exactly, so a subdomain is its own)
+  the deployment claims. Accounts a trusted realm attests one address in a claimed domain
+  are one person, across realms; an address in any other domain is not kept. With none
+  claimed, nothing links by email, and a realm's word that an account is a full member still
+  counts.
 
 **A plugin is parametric in labels.** A `Label` is opaque: a plugin compares labels
 (`dominates`, equality), combines them (`join`, `meet`) and passes one to core as a key, and

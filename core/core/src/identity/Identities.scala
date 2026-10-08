@@ -1,100 +1,63 @@
 package grit.core.identity
 
-import grit.core.id.EdgeName
+import grit.core.id.AttesterName
 
-/** A person a deployment declares, by the accounts it knows them by. */
-final case class DeclaredPerson(handle: Handle, accounts: Set[Account])
-
-/** The deployment trusts `edge` to vouch for what `realm`'s source says. */
-final case class Vouching(edge: EdgeName, realm: Realm)
-
-/** Who a deployment says is whom (ADR 0032): the people it declares, each declared account
-  * linked to its person and moved by nothing else, and for each realm the one edge it trusts
-  * to vouch for what its source says of the accounts there ([[Standing]]).
+/** The deployment trusts `attester` to say what `realm`'s source says of its accounts. What it
+  * says stands until it says otherwise or the deployment stops trusting it; grit asks again
+  * when its rules call for it.
   */
-final case class Identities private (
-    people: Vector[DeclaredPerson],
-    vouchers: Vector[Vouching]
-) {
+final case class Vouching(attester: AttesterName, realm: Realm)
 
-  /** The realms `edge` vouches for; none for an edge not named. */
-  def realms(edge: EdgeName): Set[Realm] = vouchers.filter(_.edge == edge).map(_.realm).toSet
+/** How a deployment identifies people (ADR 0032): for each realm it trusts, the one attester
+  * that answers for it; and the email domains it claims as its own, whose addresses alone link
+  * a trusted realm's accounts into one person. With none claimed, nothing links by email, and a
+  * realm's word that an account is a full member still counts.
+  */
+final case class Identities private (vouchings: Vector[Vouching], domains: Set[Domain]) {
+
+  /** The realms `attester` answers for; none for an attester not named. */
+  def realmsOf(attester: AttesterName): Set[Realm] =
+    vouchings.filter(_.attester == attester).map(_.realm).toSet
+
+  /** Every realm trusted. */
+  def realms: Set[Realm] = vouchings.map(_.realm).toSet
+
+  /** Every attester named. */
+  def attesters: Set[AttesterName] = vouchings.map(_.attester).toSet
 }
 
 object Identities {
 
-  /** No one declared, no realm trusted: every account is a person of its own. */
-  val Shipped: Identities = Identities(Vector.empty, Vector.empty)
+  /** No realm trusted and no domain claimed: every account is a person of its own. */
+  val Shipped: Identities = Identities(Vector.empty, Set.empty)
 
-  /** These, or the first mistake: an account two people declare (`AccountTwice`), a handle
-    * two people take (`HandleTwice`), a person with no account (`NoAccount`), [[Account.Local]]
-    * or [[Account.Grit]] declared (`Reserved`), or a realm two edges vouch for (`RealmTwice`).
-    */
-  def of(
-      people: Vector[DeclaredPerson],
-      vouchers: Vector[Vouching]
-  ): Either[IdentityRefusal, Identities] =
-    for {
-      _ <- people.foldLeft[Either[IdentityRefusal, Map[Account, Handle]]](Right(Map.empty)) {
-        (before, person) => before.flatMap(declare(_, person))
-      }
-      _ <- vouchers.foldLeft[Either[IdentityRefusal, Map[Realm, EdgeName]]](Right(Map.empty)) {
+  /** These, or `RealmTwice` for a realm two attesters vouch for. */
+  def of(vouchings: Vector[Vouching], domains: Set[Domain]): Either[IdentityRefusal, Identities] =
+    vouchings
+      .foldLeft[Either[IdentityRefusal, Map[Realm, AttesterName]]](Right(Map.empty)) {
         (before, v) => before.flatMap(trust(_, v))
       }
-    } yield Identities(people, vouchers)
+      .map(_ => Identities(vouchings, domains))
 
-  /** `person` declared after the people `by` holds, each declared account to its handle. */
-  private def declare(
-      by: Map[Account, Handle],
-      person: DeclaredPerson
-  ): Either[IdentityRefusal, Map[Account, Handle]] = {
-    val handle = person.handle
-    // In written order, so which of several mistakes is named does not rest on a Set's order.
-    val accounts = person.accounts.toVector.sortBy(Account.written)
-    if (by.valuesIterator.contains(handle)) Left(IdentityRefusal.HandleTwice(handle))
-    else if (accounts.isEmpty) Left(IdentityRefusal.NoAccount(handle))
-    else
-      accounts
-        .collectFirst {
-          case a if a == Account.Local || a == Account.Grit => IdentityRefusal.Reserved(a, handle)
-        }
-        .orElse(
-          accounts
-            .flatMap(a => by.get(a).map(IdentityRefusal.AccountTwice(a, _, handle)))
-            .headOption
-        )
-        .toLeft(by ++ accounts.map(_ -> handle))
-  }
-
-  /** `v` trusted after the realms `by` holds, each to its edge. */
+  /** `v` trusted after the realms `by` holds, each to its attester. */
   private def trust(
-      by: Map[Realm, EdgeName],
+      by: Map[Realm, AttesterName],
       v: Vouching
-  ): Either[IdentityRefusal, Map[Realm, EdgeName]] =
+  ): Either[IdentityRefusal, Map[Realm, AttesterName]] =
     by.get(v.realm) match {
-      case Some(first) if first != v.edge =>
-        Left(IdentityRefusal.RealmTwice(v.realm, first, v.edge))
-      case _ => Right(by + (v.realm -> v.edge))
+      case Some(first) if first != v.attester =>
+        Left(IdentityRefusal.RealmTwice(v.realm, first, v.attester))
+      case _ => Right(by + (v.realm -> v.attester))
     }
 }
 
 /** Why a deployment's [[Identities]] is refused. */
 enum IdentityRefusal {
-  case AccountTwice(account: Account, by: Handle, and: Handle)
-  case HandleTwice(handle: Handle)
-  case NoAccount(handle: Handle)
-  case Reserved(account: Account, by: Handle)
-  case RealmTwice(realm: Realm, by: EdgeName, and: EdgeName)
+  case RealmTwice(realm: Realm, by: AttesterName, and: AttesterName)
 
   /** A line a person reads. */
   def message: String = this match {
-    case AccountTwice(account, by, and) =>
-      s"${Account.written(account)} is declared as both ${Handle.value(by)} and ${Handle.value(and)}"
-    case HandleTwice(handle) => s"two people are declared as ${Handle.value(handle)}"
-    case NoAccount(handle) => s"${Handle.value(handle)} is declared with no account"
-    case Reserved(account, by) =>
-      s"${Handle.value(by)} is declared holding ${Account.written(account)}, which is a principal of its own"
     case RealmTwice(realm, by, and) =>
-      s"both ${EdgeName.value(by)} and ${EdgeName.value(and)} are trusted to vouch for ${realm.namespace}:${realm.within}/"
+      s"both ${AttesterName.value(by)} and ${AttesterName.value(and)} are trusted to attest ${realm.namespace}:${realm.within}/"
   }
 }

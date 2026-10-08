@@ -2,7 +2,7 @@ package grit.kit.deployment
 
 import scala.concurrent.duration.DurationInt
 
-import grit.core.id.EdgeName
+import grit.core.id.{AttesterName, EdgeName}
 import grit.core.tool.ToolName
 import grit.core.triage.Gate
 import grit.core.visibility.{Compartment, Compartments, Label, Level, RoomLabels, Visibility}
@@ -657,30 +657,48 @@ object DeploymentTests extends TestSuite {
       )
     }
 
-    test("identities trusting an edge not served to vouch for a realm are refused, naming it") {
+    test("identities trusting an attester no edge served is are refused, naming it") {
       def ok[A](e: Either[String, A]): A = e.fold(sys.error, identity)
       val realm = ok(grit.core.identity.Realm.of("slack", "T1"))
       val trusting = grit.core.identity.Identities
-        .of(Vector.empty, Vector(grit.core.identity.Vouching(EdgeName("chat"), realm)))
+        .of(Vector(grit.core.identity.Vouching(AttesterName("slack"), realm)), Set.empty)
         .fold(r => sys.error(r.message), identity)
+      // An edge named slack is not the attester slack unless it says so.
       val refused =
         Deployments.of(edges = Vector(edge("slack", asks = false)), identities = trusting)
       (
         refused.map(_ => ()),
         refused.left.map(_.message),
         Deployments
-          .of(edges = Vector(edge("chat", asks = false)), identities = trusting)
-          .map(_.identities.realms(EdgeName("chat")))
+          .of(
+            edges = Vector(edge("chat", asks = false, attests = Some("slack"))),
+            identities = trusting
+          )
+          .map(_.identities.realmsOf(AttesterName("slack")))
       ) ==> (
-        Left(DeploymentRefusal.VouchesUnserved(EdgeName("chat"))),
-        Left(
-          "the identities trust chat to vouch for a realm, and no edge served is named chat"
-        ),
+        Left(DeploymentRefusal.AttesterUnserved(AttesterName("slack"))),
+        Left("the identities trust slack to attest a realm, and no edge served is slack"),
         Right(Set(realm))
       )
     }
 
-    test("a group naming a realm no edge is trusted to vouch for is refused, naming the realm") {
+    test("two edges served saying they are one attester are refused, naming both") {
+      val refused = Deployments.of(edges =
+        Vector(
+          edge("slack", asks = false, attests = Some("slack")),
+          edge("chat", asks = false, attests = Some("slack"))
+        )
+      )
+      (refused.map(_ => ()), refused.left.map(_.message)) ==> (
+        Left(
+          DeploymentRefusal
+            .AttesterTwice(AttesterName("slack"), EdgeName("slack"), EdgeName("chat"))
+        ),
+        Left("two edges served, slack and chat, say they are slack")
+      )
+    }
+
+    test("a group naming a realm no attester is trusted for is refused, naming the realm") {
       def ok[A](e: Either[String, A]): A = e.fold(sys.error, identity)
       val t1 = ok(grit.core.identity.Realm.of("slack", "T1"))
       val t2 = ok(grit.core.identity.Realm.of("slack", "T2"))
@@ -695,11 +713,11 @@ object DeploymentTests extends TestSuite {
           )
           .fold(r => sys.error(r.toString), identity)
       val trusting = grit.core.identity.Identities
-        .of(Vector.empty, Vector(grit.core.identity.Vouching(EdgeName("slack"), t1)))
+        .of(Vector(grit.core.identity.Vouching(AttesterName("slack"), t1)), Set.empty)
         .fold(r => sys.error(r.message), identity)
       def deployed(realm: grit.core.identity.Realm) =
         Deployments.of(
-          edges = Vector(edge("slack", asks = false)),
+          edges = Vector(edge("slack", asks = false, attests = Some("slack"))),
           visibility = grouping(realm),
           identities = trusting
         )
@@ -709,7 +727,7 @@ object DeploymentTests extends TestSuite {
         deployed(t1).map(_ => ())
       ) ==> (
         Left(DeploymentRefusal.RealmUnvouched(t2)),
-        Left("a group names the realm slack:T2/, which the identities trust no edge to vouch for"),
+        Left("a group names the realm slack:T2/, which the identities trust no attester for"),
         Right(())
       )
     }

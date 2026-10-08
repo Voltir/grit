@@ -21,7 +21,7 @@ final case class Visibility private (
   def cleared(principal: Principal): Label =
     principal match {
       case Principal.Grit => compartments.top
-      case Principal.Person(_, _, held) =>
+      case Principal.Person(_, held) =>
         val in = groups
           .filter(g =>
             held.exists(h =>
