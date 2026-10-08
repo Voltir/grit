@@ -177,6 +177,32 @@ object ServeChoiceTests extends TestSuite {
       )
     }
 
+    test(
+      "serve bounds a join's backfill by GRIT_BACKFILL_DAYS, GRIT_BACKFILL_MESSAGES and GRIT_BACKFILL_JOINS_PER_DAY, the default's where unset, each refused by name unless a whole number above zero"
+    ) {
+      (
+        Main.backfill(Map.empty),
+        Main
+          .backfill(
+            Map(
+              "GRIT_BACKFILL_DAYS" -> "3",
+              "GRIT_BACKFILL_MESSAGES" -> " 50 ",
+              "GRIT_BACKFILL_JOINS_PER_DAY" -> "4"
+            )
+          )
+          .map(b => (b.days, b.messages, b.joinsPerDay)),
+        Main.backfill(Map("GRIT_BACKFILL_DAYS" -> "0")),
+        Main.backfill(Map("GRIT_BACKFILL_MESSAGES" -> "0")),
+        Main.backfill(Map("GRIT_BACKFILL_JOINS_PER_DAY" -> "ten"))
+      ) ==> (
+        Right(Backfill.Default),
+        Right((3, 50, 4)),
+        Left("GRIT_BACKFILL_DAYS is a whole number of days above zero, not '0'"),
+        Left("GRIT_BACKFILL_MESSAGES is a whole number above zero, not '0'"),
+        Left("GRIT_BACKFILL_JOINS_PER_DAY is a whole number above zero, not 'ten'")
+      )
+    }
+
     test("with GITHUB_MCP_TOKEN unset, serve serves no GitHub edge") {
       Main.github(Map("GRIT_GITHUB_TOOLS" -> "get_me")) ==> Right(None)
     }

@@ -63,7 +63,10 @@ In dependency order:
   conversation, and a summary lands after its reply, so the rows below would move). ← `look`
 - **`main`** — `Main`: reads the settings into the reference `Deployment`
   (`Main.deployment`), and serves it (`grit serve`: the Slack edge, `SlackEdge.serving`,
-  in every channel its bot is invited to, answering the slash command
+  in every channel its bot is invited to, hearing what was said before each join within the
+  bounds `GRIT_BACKFILL_DAYS`, `GRIT_BACKFILL_MESSAGES` and `GRIT_BACKFILL_JOINS_PER_DAY` set
+  (`Main.backfill`, the defaults `Backfill.Default`'s; a value that is not a whole number above
+  zero is refused, naming the variable), answering the slash command
   `GRIT_SLACK_COMMAND` names (`/grit` when unset), its administrators the Slack users
   `GRIT_ADMINS` names (below), and with `GITHUB_MCP_TOKEN` set, GitHub's
   read-only MCP tools at `service:github` for every Slack conversation, `McpEdge.serving`
