@@ -6,16 +6,7 @@ import grit.core.message.AssistantBlock
 import grit.core.place.Place
 import grit.core.store.{Askers, Db, Origin, StoreError, Tx}
 import grit.core.tool.{Bound, Outcome, Repairs, Toolbox}
-import grit.core.visibility.{
-  Clearance,
-  Explained,
-  Label,
-  Level,
-  Recorded,
-  Subject,
-  TestLabels,
-  Visibility
-}
+import grit.core.visibility.{Clearance, Explained, Explanation, Label, Level, Subject, Visibility}
 import grit.dbos.sql.TestTx
 
 import utest.*
@@ -25,7 +16,7 @@ import utest.*
   */
 object ClearedTests extends TestSuite {
 
-  import Explained.{Above, After, Before, Dana, Named, cleared, confidentialTrial, explain, names}
+  import Explained.{After, Before, Dana, cleared, confidentialTrial, explain}
 
   /** Askers answering Dana for every turn. */
   private val danaAsks: Askers = new Askers {
@@ -87,7 +78,7 @@ object ClearedTests extends TestSuite {
       val told = text(called(After, direct, floor, cleared(After, Dana)))
       (
         told.linesIterator.toVector.headOption,
-        told == Cleared.render(explain(After, Some(Dana), floor)),
+        told == Explanation.text(explain(After, Some(Dana), floor)),
         Vector(
           "what is said in a room is read there, by its members, up to the room's label",
           "Anything said elsewhere is read here up to this room's label met with your clearance",
@@ -132,69 +123,6 @@ object ClearedTests extends TestSuite {
     test("a store it cannot read is an error that names nothing of what failed") {
       called(After, direct, confidentialTrial, confidentialTrial, down = true) ==>
         Outcome.Failed(Cleared.Unread)
-    }
-
-    test(
-      "the rendered text of a sealed or raised thread names no compartment or group above it, and no account's or realm's name"
-    ) {
-      val sealedText = Cleared.render(Explained.sealedThread)
-      val raisedText = Cleared.render(Explained.raisedThread)
-      val fullText = Cleared.render(Explained.fullClearance)
-      (
-        names(sealedText, Above*),
-        names(raisedText, Above*),
-        Vector(sealedText, raisedText, fullText).flatMap(names(_, Named*))
-      ) ==> (Vector(), Vector(), Vector())
-    }
-
-    test("the rendered text shows each account by kind and how it is the person's") {
-      Cleared.render(Explained.fullClearance) ==>
-        """This conversation is labelled [level: confidential, in: {finance, trial}].
-          |
-          |From anywhere else, I read for you up to [level: confidential, in: {finance, trial}].
-          |
-          |I know you by a slack account, linked to you by an email a trusted source confirmed, a full member of its source; a test account, your own.
-          |
-          |Your groups, each with what it clears you for:
-          |- trial: [level: confidential, in: {trial}], through your slack account and through your test account
-          |- leadership: [level: confidential, in: {finance, trial}], through your slack account
-          |- staff: [level: internal], as a full member of a slack source
-          |
-          |How it works: what is said in a room is read there, by its members, up to the room's label. Anything said elsewhere is read here up to this room's label met with your clearance. A label is shown as its level, then the compartments it is in.
-          |
-          |I never say whether anything is hidden from you.""".stripMargin
-    }
-
-    test(
-      "a group the person was added to through grit says so, by the kind of the account added"
-    ) {
-      val told = explain(
-        After,
-        Some(Dana),
-        confidentialTrial,
-        Recorded(
-          Map.empty,
-          Map(TestLabels.group("trial") -> Set(TestAccounts.account("slack:T/U-dana")))
-        )
-      )
-      Cleared.render(told).linesIterator.toVector.filter(_.startsWith("- trial")) ==> Vector(
-        "- trial: [level: confidential, in: {trial}], through your slack account and through " +
-          "your test account and added through grit for your slack account"
-      )
-    }
-
-    test("no one, and grit, are told as such") {
-      (
-        Cleared.render(explain(Before, None, Label.Public)).linesIterator.toVector.lift(4),
-        Cleared
-          .render(explain(Before, Some(Principal.Grit), Label.Public))
-          .linesIterator
-          .toVector
-          .lift(4)
-      ) ==> (
-        Some("No one I know asked this, so I tell no one's clearance."),
-        Some("This turn is my own, not a person's, so there is no person's clearance to tell.")
-      )
     }
   }
 }

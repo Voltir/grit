@@ -7,8 +7,8 @@ import grit.dbos.sql.TestTx
 import TestLabels.{compartment, group}
 
 /** A person, Dana, and the deployments that clear her, as the suites of what she is told of
-  * her clearance build them: ExplainTests over the explanation, and grit.tools' over its
-  * rendered text.
+  * her clearance build them: ExplainTests over the explanation, ExplanationTextTests over its
+  * words, and grit.tools' over what its tool answers.
   */
 object Explained {
 
