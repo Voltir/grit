@@ -204,7 +204,10 @@ object PostingTests extends TestSuite {
       "offered other channels, it refuses a request to one no longer offered; offered none, it advertises nothing and refuses every request, posting nothing"
     ) {
       val w = new World
-      w.posting.offer(Vector(("general", General))).map(_.tools.size) ==> Right(1)
+      w.posting
+        .offer(Vector(("general", General)))
+        .map(_.tools.map(e => (e.name, e.writes.map(_.to.toVector.map(_._1))))) ==>
+        Right(Vector((ToolName("slack_post"), Some(Vector("general", "#general")))))
       val toSkynet = w.call(post("one"))
       w.posting.offer(Vector.empty) ==> Right(ToolSet.Empty)
       (toSkynet, w.posting.offered, w.call(post("two"), Some(GeneralAt)), w.posted) ==> (
