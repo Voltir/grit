@@ -85,19 +85,22 @@ abstract class VoucherContract extends TestSuite {
     }
 
     test(
-      "two accounts attested one claimed email are one person, the second linked to the first's"
+      "two accounts attested one claimed email are one person: the second is linked to the first's, cleared for all that person's accounts are, and falls back to its own clearance when it leaves"
     ) {
       val v = fresh()
-      val a = TestAccounts.account("slack:T1/U-one-a")
+      val a = Named
       val b = TestAccounts.account("slack:T2/U-one-b")
       val first = vouch(v, a, full("one@example.com"))
       val second = vouch(v, b, full("one@example.com"))
+      val left = vouch(v, b, Standing.Outside)
       val person = linkedTo(first)
-      (first, second, linkedTo(second) == person && person.size == 1) ==> (
-        person.map(p => Linking.Linked(a, p, Label.Public, Internal)) :+
-          Linking.Standing(a, member = true, Label.Public, Internal),
-        person.map(p => Linking.Linked(b, p, Label.Public, Internal)) :+
-          Linking.Standing(b, member = true, Label.Public, Internal),
+      (first.toSet, second.toSet, left.toSet, linkedTo(second) == person && person.size == 1) ==> (
+        person.map(p => Linking.Linked(a, p, Restricted, Restricted)).toSet +
+          Linking.Standing(a, member = true, Restricted, Restricted),
+        person.map(p => Linking.Linked(b, p, Label.Public, Restricted)).toSet +
+          Linking.Standing(b, member = true, Label.Public, Restricted),
+        person.map(p => Linking.Unlinked(b, p, Restricted, Label.Public)).toSet +
+          Linking.Standing(b, member = false, Restricted, Label.Public),
         true
       )
     }
@@ -105,9 +108,21 @@ abstract class VoucherContract extends TestSuite {
     test("an email in no claimed domain is not kept, and is said to be unclaimed") {
       val v = fresh()
       val a = TestAccounts.account("slack:T1/U-unclaimed")
-      vouch(v, a, full("unclaimed@elsewhere.example")) ==> Vector(
+      vouch(v, a, full("unclaimed@elsewhere.example")).toSet ==> Set(
         Linking.Standing(a, member = true, Label.Public, Internal),
         Linking.Unclaimed(a)
+      )
+    }
+
+    test(
+      "a member whose email moves to an unclaimed domain returns home, still a member, and its new email is said to be unclaimed"
+    ) {
+      val v = fresh()
+      val a = TestAccounts.account("slack:T1/U-unclaiming")
+      val person = linkedTo(vouch(v, a, full("before@example.com")))
+      (person.size, vouch(v, a, full("after@elsewhere.example")).toSet) ==> (
+        1,
+        person.map(p => Linking.Unlinked(a, p, Internal, Internal)).toSet + Linking.Unclaimed(a)
       )
     }
 
@@ -115,9 +130,9 @@ abstract class VoucherContract extends TestSuite {
       val v = fresh()
       val a = TestAccounts.account("slack:T1/U-leaver")
       val person = linkedTo(vouch(v, a, full("leaver@example.com")))
-      (person.size, vouch(v, a, Standing.Outside)) ==> (
+      (person.size, vouch(v, a, Standing.Outside).toSet) ==> (
         1,
-        person.map(p => Linking.Unlinked(a, p, Internal, Label.Public)) :+
+        person.map(p => Linking.Unlinked(a, p, Internal, Label.Public)).toSet +
           Linking.Standing(a, member = false, Internal, Label.Public)
       )
     }
@@ -128,9 +143,9 @@ abstract class VoucherContract extends TestSuite {
       val old = linkedTo(vouch(v, a, full("old@example.com")))
       val moved = vouch(v, a, full("new@example.com"))
       val now = linkedTo(moved)
-      (moved, old.size, now.size, old != now) ==> (
-        old.map(p => Linking.Unlinked(a, p, Internal, Internal)) ++
-          now.map(p => Linking.Linked(a, p, Internal, Internal)),
+      (moved.toSet, old.size, now.size, old != now) ==> (
+        (old.map(p => Linking.Unlinked(a, p, Internal, Internal)) ++
+          now.map(p => Linking.Linked(a, p, Internal, Internal))).toSet,
         1,
         1,
         true
@@ -183,7 +198,14 @@ object VoucherContract {
 
   val Internal: Label = Label.at(Level.Internal)
 
-  /** Every full member of [[T1]] or [[T2]] is cleared Internal; every room is public. */
+  val Restricted: Label = Label.at(Level.Restricted)
+
+  /** The one account a group names, `named`. */
+  val Named: Account = TestAccounts.account("slack:T1/U-one-a")
+
+  /** Every full member of [[T1]] or [[T2]] is cleared Internal, and [[Named]]'s person
+    * Restricted; every room is public.
+    */
   val Cleared: Visibility =
     (for {
       compartments <- Compartments.of(Vector.empty).left.map(_.toString)
@@ -191,8 +213,14 @@ object VoucherContract {
         .of(
           compartments,
           RoomLabels.Public,
-          Vector(Group(TestLabels.group("members"), Set.empty, Set(T1, T2))),
-          Vector(Grant(TestLabels.group("members"), Internal))
+          Vector(
+            Group(TestLabels.group("members"), Set.empty, Set(T1, T2)),
+            Group(TestLabels.group("named"), Set(Named))
+          ),
+          Vector(
+            Grant(TestLabels.group("members"), Internal),
+            Grant(TestLabels.group("named"), Restricted)
+          )
         )
         .left
         .map(_.toString)
