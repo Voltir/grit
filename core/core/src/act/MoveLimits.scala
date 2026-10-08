@@ -17,6 +17,9 @@ object MoveLimits {
   val Zero: MoveLimits = new MoveLimits(0, 0)
 }
 
+/** What a move is: an ask, a call or a keep. A run's limits count asks and calls
+  * ([[MoveLimits]]).
+  */
 enum MoveKind {
   case Ask, Call, Keep
 }
