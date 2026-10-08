@@ -135,6 +135,22 @@ object Payloads {
       )
     )
 
+  /** Slack telling grit that `user` changed, as its docs give `user_change`: the user object,
+    * here deactivated, with their team's id when `team` is given.
+    */
+  def userChange(user: String = Ana, team: Option[String] = Some(Team)): String = {
+    val changed = ujson.Obj("id" -> user, "name" -> "ana", "deleted" -> true)
+    team.foreach(t => changed("team_id") = t)
+    callback(
+      ujson.Obj(
+        "type" -> "user_change",
+        "user" -> changed,
+        "cache_ts" -> 1515449522,
+        "event_ts" -> "1515449522.000100"
+      )
+    )
+  }
+
   /** `user` adding `emoji` to a file, as Slack's docs give a `reaction_added` on one. */
   def fileReaction(emoji: String, user: String = Ana): String =
     callback(

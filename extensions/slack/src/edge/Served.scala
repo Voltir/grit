@@ -4,7 +4,7 @@ import java.time.{Duration, Instant}
 
 import grit.core.clock.Clock
 import grit.core.edge.{CatchUp, EdgeRefusal, EdgeStores, ServedEdge, Unheard, Variable}
-import grit.core.id.{EdgeName, PrincipalId}
+import grit.core.id.{AttesterName, EdgeName, PrincipalId}
 import grit.core.place.Place
 import grit.core.store.StoreError
 import grit.edge.Server
@@ -57,6 +57,7 @@ private[slack] object Served {
     def name: EdgeName = Name
     def needs: Vector[Variable] = Needs
     def answersAsks: Boolean = false
+    override def attester: Option[AttesterName] = Some(SlackAccounts.Attester)
     override def reviewsAt: Option[Place] = review.map(_.place)
     def open(
         stores: EdgeStores^,
@@ -114,6 +115,7 @@ private[slack] object Served {
                       edge.prompt().left.foreach(e => log(s"slack: review prompts unread: $e"))
                       delivered
                     }
+                    override def attest(): Either[StoreError, Int] = edge.attest()
                     def close(): Unit = {
                       stopPosting.foreach(_())
                       slack.close()
@@ -184,6 +186,7 @@ private[slack] object Served {
     new CatchUp {
       def name: EdgeName = Name
       def needs: Vector[Variable] = Needs
+      override def attester: Option[AttesterName] = Some(SlackAccounts.Attester)
       def open(
           stores: EdgeStores^,
           env: Map[String, String],

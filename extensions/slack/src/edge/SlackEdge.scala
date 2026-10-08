@@ -5,9 +5,19 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 import grit.core.clock.Clock
-import grit.core.edge.{Acknowledgement, CatchUp, EdgeStores, Part, Pending, ServedEdge}
+import grit.core.edge.{
+  Acknowledgement,
+  Asked,
+  Attesting,
+  CatchUp,
+  EdgeStores,
+  Part,
+  Pending,
+  RealmSource,
+  ServedEdge
+}
 import grit.core.id.{CallSlot, EntryId, SourceId, TurnRef, WorkflowId}
-import grit.core.identity.Account
+import grit.core.identity.{Account, Realm, Standing}
 import grit.core.inbox.{InboundId, InboxError, Progress}
 import grit.core.message.{AssistantBlock, Message}
 import grit.core.place.Service
@@ -114,6 +124,11 @@ final class SlackEdge(
     * verdict, replacing the one standing, and removing the reaction that stands withdraws it:
     * `:+1:` welcome, `:-1:` an interruption, `:bust_in_silhouette:` meant for someone in
     * particular, a skin tone ignored. Everything else is ignored, any other reaction included.
+    * Before a message is recorded or heard, its author's account is checked
+    * ([[Attesting.before]]): Slack is asked who they are ([[Slack.member]]) unless it answered
+    * for them within [[Attesting.Fresh]], so the turn the message starts opens under that
+    * answer; one Slack cannot answer for and never has is not recorded. A change Slack reports
+    * to a user ([[Event.UserChanged]]) asks Slack again ([[Attesting.changed]]).
     * `true` once that is done or needs no doing (a redelivery included), so the payload may be
     * acknowledged; `false` when Slack or the database could not be asked, so Slack sends it
     * again.
@@ -125,6 +140,7 @@ final class SlackEdge(
         true
       case Right(Event.Ignored(_)) => true
       case Right(r: Event.Reacted) => reacted(r)
+      case Right(c: Event.UserChanged) => changed(c)
       case Right(m: Event.Said) =>
         val origin =
           Origin.Slack(TeamId.value(m.team), ChannelId.value(m.channel), Ts.value(m.thread))
@@ -152,6 +168,61 @@ final class SlackEdge(
             false
         }
     }
+
+  /** What Slack says of the accounts of grit's own team, `slack:{self.team}/…`, and nothing of
+    * any other's: each user as [[Slack.member]] reads them, an account of another team outside
+    * without asking, and the team's listing as [[Slack.members]] reads it, any other realm's
+    * empty. A failure to ask is [[Asked.Unreached]]. The name an answer gives is kept as the
+    * user's name ([[nameOf]]), so a new author costs one `users.info`.
+    */
+  private val source: RealmSource^{slack} = new RealmSource {
+    def ask(account: Account): Asked =
+      SlackAccounts.user(account, self.team).fold(Asked.Said(Standing.Outside)) { user =>
+        slack.member(self.team, user) match {
+          case Right(m) =>
+            m.name.foreach(n => names.put(user, n))
+            Asked.Said(m.standing)
+          case Left(e) => Asked.Unreached(e.toString)
+        }
+      }
+
+    def all(realm: Realm): Either[Asked.Unreached, Map[Account, Standing]] =
+      if (!SlackAccounts.realm(self.team).toOption.exists(ours => ours == realm)) Right(Map.empty)
+      else
+        slack
+          .members(self.team)
+          .left
+          .map(e => Asked.Unreached(e.toString): Asked.Unreached)
+          .map(
+            _.flatMap((user, m) =>
+              SlackAccounts.account(self.team, user).toOption.map(_ -> m.standing)
+            )
+          )
+  }
+
+  /** Asks Slack again about the user `c` names, however recently it was asked
+    * ([[Attesting.changed]]); whether the event may be acknowledged: not when the store failed.
+    */
+  private def changed(c: Event.UserChanged): Boolean =
+    SlackAccounts.account(c.team, c.user) match {
+      case Left(why) =>
+        said(s"slack: a change to a user grit cannot name, acknowledged: $why")
+        true
+      case Right(account) =>
+        stores.attesting.changed(source, account) match {
+          case Right(()) => true
+          case Left(e) =>
+            said(
+              s"slack: a change to ${Account.written(account)} not recorded, left for Slack to send again: $e"
+            )
+            false
+        }
+    }
+
+  /** One look at the accounts of grit's team that are due to be asked about again
+    * ([[Attesting.round]]), listing the team once when any is; how many it recorded.
+    */
+  def attest(): Either[StoreError, Int] = stores.attesting.round(source)
 
   /** Keeps `r` as a verdict on the review prompt it is on ([[ReviewPrompt.verdict]]), added or
     * withdrawn, when it is the review's rater's; nothing for anyone else's, another emoji, or
@@ -192,7 +263,10 @@ final class SlackEdge(
           val spoken = listed.flatMap(l =>
             Events.listed(l, self.team, channel, self.bot) match {
               case Right(m: Event.Said) => Some(m)
-              case Right(Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _)) => None
+              case Right(
+                    Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _)
+                  ) =>
+                None
               case Left(why) =>
                 said(s"slack: a listed message grit cannot read, left out: $why")
                 None
@@ -221,8 +295,10 @@ final class SlackEdge(
   /** Hears each of `messages`, in order, in its thread's conversation, dated when it was said
     * ([[grit.core.inbox.Inbox.hear]]), in the person's words under their Slack name, a mention of grit
     * included: a past message is heard, never answered; a thread under a post of grit's
-    * begins with that post, as in [[receive]]. Nothing but in a public channel, or a private one in `listening`. Why not, naming the first message not heard, when Slack or the inbox could not be
-    * asked; those before it stay heard.
+    * begins with that post, as in [[receive]], and each author is checked first, as there.
+    * Nothing but in a public channel, or a private one in `listening`. Why not, naming the
+    * first message not heard, when Slack or the inbox could not be asked, or its author was never
+    * attested and Slack could not be asked about them; those before it stay heard.
     */
   def backfill(messages: Vector[Event.Said]): Either[String, Unit] =
     messages.foldLeft[Either[String, Unit]](Right(())) { (done, m) =>
@@ -265,16 +341,21 @@ final class SlackEdge(
     served(m.channel).flatMap { open =>
       if (!open) Right(None)
       else {
-        val mentioned = Mentioned.findAllMatchIn(m.text).map(x => UserId(x.group(1))).toVector
-        val known = (m.user +: mentioned).distinct.flatMap(u => nameOf(u).map(u -> _)).toMap
-        val linked = Incoming
-          .channels(m.text)
-          .collect { case (c, None) => c }
-          .distinct
-          .flatMap(c => channelNameOf(c).map(c -> _))
-          .toMap
         for {
           author <- SlackAccounts.account(m.author, m.user)
+          _ <- stores.attesting.before(source, author).left.map {
+            case Attesting.Unchecked.Unattested(_, why) =>
+              s"${Account.written(author)} was never attested and Slack could not be asked: $why"
+            case Attesting.Unchecked.Store(e) => e.toString
+          }
+          mentioned = Mentioned.findAllMatchIn(m.text).map(x => UserId(x.group(1))).toVector
+          known = (m.user +: mentioned).distinct.flatMap(u => nameOf(u).map(u -> _)).toMap
+          linked = Incoming
+            .channels(m.text)
+            .collect { case (c, None) => c }
+            .distinct
+            .flatMap(c => channelNameOf(c).map(c -> _))
+            .toMap
           _ <- stores.jot
             .write(Subject.Public)(
               stores.principals.name(author, known.getOrElse(m.user, UserId.value(m.user)))
@@ -682,7 +763,10 @@ object SlackEdge {
   /** The Slack edge, served over Socket Mode with `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN`:
     * every message in `channels` heard (ADR 0020), a message addressed to grit answered in its
     * thread, and grit's bot's Slack name logged at open. It cannot answer a tool call that asks
-    * first.
+    * first. It is the attester [[SlackAccounts.Attester]]: for the realm of its own workspace,
+    * when a deployment trusts it there, it says who each account is as Slack states it
+    * ([[SlackEdge.receive]]), and a look ([[grit.core.edge.ServedEdge.Open.attest]]) lists the
+    * workspace's users once when any account is due.
     */
   def serving(channels: Set[ChannelId]): ServedEdge =
     Served.serving(channels, None, None, Socket)
@@ -725,7 +809,8 @@ object SlackEdge {
 
   /** What `channels` said over the `days` before the catch-up opens that the database has not
     * recorded, one [[grit.core.edge.Unheard]] per channel; heard at the times it was said,
-    * a past mention of grit never answered. Refused when `channels` is empty.
+    * a past mention of grit never answered, each author checked first as [[serving]]'s edge
+    * checks one. Refused when `channels` is empty.
     */
   def backfill(channels: Set[ChannelId], days: Int): CatchUp =
     Served.backfill(channels, days, Socket)

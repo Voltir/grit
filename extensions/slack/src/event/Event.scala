@@ -37,6 +37,12 @@ enum Event {
       at: Instant
   )
 
+  /** Slack says something about `user` of `team`, the team they are of, changed: their
+    * profile, their standing, or their account deactivated (`user_change`). What changed is not
+    * read from the event: Slack is asked again.
+    */
+  case UserChanged(team: TeamId, user: UserId)
+
   /** Something grit does not act on, and why: a bot's message (grit's own included), an
     * edit or another change to a message, a message outside a channel, a reaction to anything
     * but a message, an event of another type.
@@ -85,8 +91,8 @@ object Events {
   /** The event an Events API payload (a Socket Mode envelope's `payload`) carries, grit's own
     * bot user being `bot`: `app_mention` and `message` events as [[Event.Said]] (a `message`
     * only from a person, in a channel, public or private, new or broadcast from a thread, or sharing a file),
-    * `reaction_added` and `reaction_removed` on a message as [[Event.Reacted]], everything
-    * else [[Event.Ignored]]. A message's author is of the team its `user_team` names, else its
+    * `reaction_added` and `reaction_removed` on a message as [[Event.Reacted]], `user_change`
+    * as [[Event.UserChanged]], everything else [[Event.Ignored]]. A message's author is of the team its `user_team` names, else its
     * `team`, else the callback's `team_id`, the workspace grit's app is installed in. Why not, when it is not an event callback, or an event
     * grit reads lacks a field it needs or has a ts or event_ts that names no time.
     */
@@ -120,6 +126,7 @@ object Events {
     str(event, "type") match {
       case Some("app_mention") => message(event, team, bot, mention = true)
       case Some(kind @ ("reaction_added" | "reaction_removed")) => reaction(event, team, kind)
+      case Some("user_change") => userChanged(event, team)
       case Some("message") =>
         (str(event, "subtype"), str(event, "bot_id"), str(event, "channel_type")) match {
           case (Some(sub), _, _) if !Spoken.contains(sub) =>
@@ -190,6 +197,19 @@ object Events {
         )
       case other => Right(Event.Ignored(s"a reaction to a ${other.getOrElse("nothing")}"))
     }
+  }
+
+  /** A `user_change` event as [[Event.UserChanged]], the user of the team their `team_id`
+    * names, else of `team`.
+    */
+  private def userChanged(event: ujson.Value, team: TeamId): Either[String, Event] = {
+    val user = event.objOpt.flatMap(_.get("user"))
+    user
+      .flatMap(str(_, "id"))
+      .toRight("a user_change event without user.id")
+      .map(id =>
+        Event.UserChanged(user.flatMap(str(_, "team_id")).fold(team)(TeamId(_)), UserId(id))
+      )
   }
 
   /** The time a ts names: seconds since the epoch, a point, then up to nine digits of the

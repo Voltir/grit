@@ -1,12 +1,35 @@
 package grit.app.main
 
+import java.time.Instant
+
+import scala.util.Using
+
+import grit.core.approval.Approval
 import grit.core.edge.{Attesting, EdgeStores}
+import grit.core.id.{CallSlot, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
+import grit.core.identity.{Account, Realm, Standing, TestAccounts, Vouched}
+import grit.core.inbox.{Inbox, InboxError, Progress, Slotted}
+import grit.core.message.Message
+import grit.core.speech.Reach
+import grit.core.store.{Origin, Tx}
+import grit.core.visibility.{
+  Compartments,
+  Grant,
+  Group,
+  Label,
+  Labelled,
+  Level,
+  RoomLabels,
+  Subject,
+  TestLabels,
+  Visibility
+}
 import grit.dbos.engine.{Engine, LiveEngine}
-import grit.dbos.sql.TestPostgres
+import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
 import grit.prose.markdown.Markdown
 import grit.slack.client.{FakeSlack, Self}
-import grit.slack.edge.SlackEdge
-import grit.slack.event.{Payloads, TeamId, Ts, UserId}
+import grit.slack.edge.{SlackAccounts, SlackEdge}
+import grit.slack.event.{ChannelId, Listed, Payloads, TeamId, Ts, UserId}
 import grit.slack.text.RichText
 import grit.turn.Turn
 
@@ -41,7 +64,235 @@ object SlackEdgeLiveTests extends TestSuite {
       _ => ()
     )
 
+  /** grit's team's accounts, which the edges below attest. */
+  private val Ours: Realm =
+    SlackAccounts.realm(TeamId(Team)).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  private val ana: Account = TestAccounts.account(s"slack:$Team/$Ana")
+
+  private val C = ChannelId("C123ABC456")
+
+  /** Every full member of grit's team is staff, cleared Internal; every room Confidential, so
+    * what a turn reads outside its room is what its asker is cleared for.
+    */
+  private val Staff: Visibility =
+    (for {
+      compartments <- Compartments.of(Vector.empty).left.map(_.toString)
+      rooms <- RoomLabels
+        .of(Vector.empty, Labelled.Mapped(Label.at(Level.Confidential)))
+        .left
+        .map(_.written)
+      v <- Visibility
+        .of(
+          compartments,
+          rooms,
+          Vector(Group(TestLabels.group("staff"), Set.empty, Set(Ours))),
+          Vector(Grant(TestLabels.group("staff"), Label.at(Level.Internal)))
+        )
+        .left
+        .map(_.toString)
+    } yield v).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The edge as a deployment trusting it for [[Ours]] serves it, listening in C, over
+    * `inbox`.
+    */
+  private def attesting(engine: Engine^, slack: FakeSlack, inbox: Inbox): SlackEdge^ =
+    new SlackEdge(
+      slack,
+      self,
+      EdgeStores(
+        inbox,
+        engine.principals,
+        engine.deliveries,
+        engine.acknowledgements,
+        engine.reviews,
+        engine.jot,
+        engine,
+        new Attesting(engine.voucher(Set(Ours), Set.empty), engine.jot, _ => ())
+      ),
+      Set(C),
+      None,
+      grit.core.clock.Clock.system(),
+      _ => ()
+    )
+
+  /** `inner`, but each turn started and each message heard is first shown to `seen`: the
+    * turn, or the account it was heard through.
+    */
+  private final class Watched(inner: Inbox, seen: Either[Account, TurnRef] -> Unit) extends Inbox {
+    def ingest(
+        origin: Origin,
+        source: SourceId,
+        message: Message.User,
+        by: Account
+    ): Either[InboxError, TurnRef] = inner.ingest(origin, source, message, by)
+    def hear(
+        origin: Origin,
+        source: SourceId,
+        text: String,
+        by: Account,
+        at: Instant,
+        reach: Reach
+    ): Either[InboxError, Unit] = {
+      seen(Left(by))
+      inner.hear(origin, source, text, by, at, reach)
+    }
+    def posted(
+        origin: Origin,
+        source: SourceId,
+        text: String,
+        at: Instant,
+        request: CallSlot,
+        by: Account
+    ): Either[InboxError, Boolean] = inner.posted(origin, source, text, at, request, by)
+    def begun(origin: Origin): Either[InboxError, Boolean] = inner.begun(origin)
+    def ingested(origin: Origin, source: SourceId): Either[InboxError, Option[TurnRef]] =
+      inner.ingested(origin, source)
+    def recorded(origin: Origin, sources: Set[SourceId]): Either[InboxError, Set[SourceId]] =
+      inner.recorded(origin, sources)
+    def progress(turn: TurnRef): Either[InboxError, Progress] = inner.progress(turn)
+    def startTurn(turn: TurnRef): Either[InboxError, Unit] = {
+      seen(Right(turn))
+      inner.startTurn(turn)
+    }
+    def startSlot(
+        schedule: ScheduleId,
+        version: Option[Int],
+        now: Instant
+    ): Either[InboxError, Slotted] = inner.startSlot(schedule, version, now)
+    def answer(
+        workflow: WorkflowId,
+        call: ToolCallId,
+        approval: Approval
+    ): Either[InboxError, Unit] = inner.answer(workflow, call, approval)
+  }
+
+  /** Each row `sql` reads with `params`, as its columns' text. */
+  private def rows(config: DbConfig, sql: String, params: String*): Vector[Vector[String]] =
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(conn.prepareStatement(sql)) { ps =>
+        params.zipWithIndex.foreach((p, i) => ps.setString(i + 1, p))
+        Using.resource(ps.executeQuery()) { rs =>
+          val width = rs.getMetaData.getColumnCount
+          val out = Vector.newBuilder[Vector[String]]
+          while (rs.next()) out += (1 to width).map(rs.getString).toVector
+          out.result()
+        }
+      }
+    }
+
+  /** Whether `account`'s stored attestation makes it a full member, as text; none when unseen. */
+  private def member(config: DbConfig, account: Account): Vector[String] =
+    rows(
+      config,
+      "SELECT member::text FROM grit.attestations WHERE account = ?",
+      Account.written(account)
+    ).flatten
+
+  /** [[ana]] attested a full member an hour ago, by the engine's voucher, as a run before a
+    * restart left her.
+    */
+  private def memberAnHourAgo(engine: Engine^, config: DbConfig): Unit = {
+    val _ = engine.jot
+      .write(Subject.Public)(
+        engine.voucher(Set(Ours), Set.empty).vouch(Vouched(ana, Standing.Full(None)))
+      )
+      .fold(e => throw new java.lang.AssertionError(s"vouching: $e"), identity)
+    LiveDb.transaction(config) { (tx: Tx^) ?=>
+      val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+      Using.resource(
+        conn.prepareStatement(
+          "UPDATE grit.attestations SET seen_at = now() - interval '1 hour' WHERE account = ?"
+        )
+      ) { ps =>
+        ps.setString(1, Account.written(ana))
+        val _ = ps.executeUpdate()
+      }
+    }
+  }
+
   val tests = Tests {
+    test(
+      "a new user's first-ever message is recorded once Slack has answered for them, which enrols and attests them"
+    ) {
+      val config = TestPostgres.freshDatabase("slack_attest_new")
+      val slack = new FakeSlack
+      val engine = LiveEngine.open(config, Turn.Epoch, visibility = Staff)
+      val (received, turn) =
+        try {
+          launch(engine, engine.entries, new CountingProvider)
+          val _ = slack.listen(attesting(engine, slack, engine.inbox).receive)
+          (
+            slack.deliver(mention("1.0")),
+            engine.inbox.ingested(Origin.Slack(Team, "C123ABC456", "1.0"), SourceId("1.0"))
+          )
+        } finally engine.close()
+      (received, turn.map(_.isDefined), member(config, ana)) ==>
+        (true, Right(true), Vector("true"))
+    }
+
+    test(
+      "a stored member Slack now calls a guest opens their first turn after a restart at public, checked before it is recorded"
+    ) {
+      val config = TestPostgres.freshDatabase("slack_attest_guest")
+      val slack = new FakeSlack
+      slack.standings = Map(UserId(Ana) -> Standing.Outside)
+      val engine = LiveEngine.open(config, Turn.Epoch, visibility = Staff)
+      val (received, opened) =
+        try {
+          launch(engine, engine.entries, new CountingProvider)
+          memberAnHourAgo(engine, config)
+          // As the turn would open once started: its asker cleared as the store says then.
+          var opened = Vector.empty[Either[String, Label]]
+          // Assumed pure: called only by the edge's receive, on the test's thread, inside the
+          // deliver the test waits on; neither the closure nor what it writes outlives the test.
+          val inbox = new Watched(
+            engine.inbox,
+            caps.unsafe.unsafeAssumePure {
+              case Right(turn) =>
+                opened = opened :+ engine.jot
+                  .write(Subject.Turn(turn))((tx: Tx^) ?=> Right(Tx.cleared(tx)))
+                  .left
+                  .map(_.toString)
+              case Left(_) => ()
+            }
+          )
+          val _ = slack.listen(attesting(engine, slack, inbox).receive)
+          (slack.deliver(mention("1.0")), opened)
+        } finally engine.close()
+      (received, opened, member(config, ana)) ==>
+        (true, Vector(Right(Label.Public)), Vector("false"))
+    }
+
+    test(
+      "a stored member Slack now calls a guest is heard by a backfill only once recorded outside"
+    ) {
+      val config = TestPostgres.freshDatabase("slack_attest_backfill")
+      val slack = new FakeSlack
+      slack.standings = Map(UserId(Ana) -> Standing.Outside)
+      slack.histories =
+        Map(C -> Vector(Listed(Ts("1.0"), None, Some(UserId(Ana)), false, None, "hm")))
+      val engine = LiveEngine.open(config, Turn.Epoch, visibility = Staff)
+      val (heard, standing) =
+        try {
+          memberAnHourAgo(engine, config)
+          var standing = Vector.empty[Vector[String]]
+          // Assumed pure: called only by the backfill, on the test's thread, which the test waits
+          // on; neither the closure nor what it writes outlives the test.
+          val inbox = new Watched(
+            engine.inbox,
+            caps.unsafe.unsafeAssumePure {
+              case Left(by) => standing = standing :+ member(config, by)
+              case Right(_) => ()
+            }
+          )
+          val e = attesting(engine, slack, inbox)
+          (e.unheard(C, Instant.EPOCH).flatMap(e.backfill), standing)
+        } finally engine.close()
+      (heard, standing) ==> (Right(()), Vector(Vector("false")))
+    }
+
     test(
       "a mention recorded by one engine is answered once, under its author's name, by the next, in its thread"
     ) {

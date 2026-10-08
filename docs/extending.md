@@ -156,6 +156,14 @@ declared data:
   source's word of a change (`changed`), and from the edge's `Open.attest`, which the kit
   calls every `Attesting.Every` (`round`); when to ask, what a failure keeps, and which
   addresses count are core's.
+
+  The Slack edge is the attester `slack` (`SlackAccounts.Attester`) for its own workspace,
+  the realm `SlackAccounts.realm(team)`, every `slack:{team}/` account; a user of a workspace
+  sharing a channel is spelled in their own team, so is in no realm trusted for this one. A
+  deployment trusts it with `Vouching(SlackAccounts.Attester, SlackAccounts.realm(team))`,
+  and writes the workspace's full members as a group naming that realm. Its Slack app needs
+  `users:read` (who is a full member), `users:read.email` (the address each confirmed;
+  without it nothing links by email), and the `user_change` event.
 - `domains`: the email domains (`Domain`, each matched exactly, so a subdomain is its own)
   the deployment claims. Accounts a trusted realm attests one address in a claimed domain
   are one person, across realms; an address in any other domain is not kept. With none

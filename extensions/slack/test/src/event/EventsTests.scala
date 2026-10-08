@@ -39,7 +39,7 @@ object EventsTests extends TestSuite {
     test("a message is said at the time its ts names, to the microsecond") {
       Events.read(message("1515449522.000016", "hi"), bot).map {
         case m: Event.Said => Some(m.at)
-        case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) => None
+        case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) => None
       } ==> Right(Some(Instant.parse("2018-01-08T22:12:02.000016Z")))
     }
 
@@ -49,13 +49,30 @@ object EventsTests extends TestSuite {
       def author(extra: (String, ujson.Value)*): Either[String, Option[TeamId]] =
         Events.read(message("2.0", "hi", extra = extra), bot).map {
           case m: Event.Said => Some(m.author)
-          case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) => None
+          case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) =>
+            None
         }
       (
         author("user_team" -> "T0THEIRS", "team" -> "T0OTHER"),
         author("team" -> "T0OTHER"),
         author()
-      ) ==> (Right(Some(TeamId("T0THEIRS"))), Right(Some(TeamId("T0OTHER"))), Right(Some(TeamId(Team))))
+      ) ==> (
+        Right(Some(TeamId("T0THEIRS"))),
+        Right(Some(TeamId("T0OTHER"))),
+        Right(Some(TeamId(Team)))
+      )
+    }
+
+    test(
+      "a user's change names the user, of the team its user object names, else the workspace's"
+    ) {
+      (
+        Events.read(userChange(team = Some("T0THEIRS")), bot),
+        Events.read(userChange(team = None), bot)
+      ) ==> (
+        Right(Event.UserChanged(TeamId("T0THEIRS"), UserId(Ana))),
+        Right(Event.UserChanged(TeamId(Team), UserId(Ana)))
+      )
     }
 
     test("a message whose ts names no time is not read") {
@@ -156,7 +173,8 @@ object EventsTests extends TestSuite {
         )
         .map {
           case m: Event.Said => Some((m.team, m.author))
-          case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) => None
+          case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) | Event.UserChanged(_, _) =>
+            None
         } ==> Right(Some((TeamId(Team), TeamId("T0THEIRS"))))
     }
 

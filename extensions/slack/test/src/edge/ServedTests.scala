@@ -17,13 +17,14 @@ import grit.core.edge.{
   Variable
 }
 import grit.core.id.SourceId
+import grit.core.identity.{Standing, TestAccounts, Vouched}
 import grit.core.inbox.InMemoryInbox
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.place.{Namespace, Place}
 import grit.core.review.Reason
 import grit.core.speech.Rate
 import grit.core.spend.Budget
-import grit.core.store.{Jot, NoVoucher, Origin, StoreError, Tx}
+import grit.core.store.{Jot, Origin, StoreError, Tx}
 import grit.core.tool.Outcome
 import grit.core.visibility.Subject
 import grit.dbos.sql.TestTx
@@ -60,8 +61,14 @@ object ServedTests extends TestSuite {
   private val TwoAnHour: Rate =
     Rate.of(2, 1.hour).getOrElse(throw new java.lang.AssertionError("a rate"))
 
-  private final class World {
+  /** The accounts of grit's team, which a world that attests answers for. */
+  private val Ours =
+    SlackAccounts.realm(TeamId(Team)).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The stores of an edge, over a voucher of grit's team's accounts when it `attests`. */
+  private final class World(attests: Boolean = false) {
     val slack = new FakeSlack
+    val kept = new Kept(if (attests) Set(Ours) else Set.empty)
     val inbox: InMemoryInbox = InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None))
     val edges: InMemoryEdges = new InMemoryEdges
     val picks = new PickedPrompts(inbox)
@@ -75,7 +82,7 @@ object ServedTests extends TestSuite {
         picks.reviews,
         FakeJot,
         edges,
-        new Attesting(NoVoucher, FakeJot, _ => ())
+        new Attesting(kept, FakeJot, _ => ())
       )
 
     /** What opening logged, in order. */
@@ -299,6 +306,44 @@ object ServedTests extends TestSuite {
       refusal(Served.serving(Set(C), None, None, w.connect).open(w.stores, Env, _ => ())) ==>
         Some(EdgeRefusal.Refused("Slack refused the bot token: Unreachable(down)"))
       w.slack.closed ==> true
+    }
+
+    test("serving and backfill each say they are the Slack attester") {
+      val w = new World
+      (
+        Served.serving(Set(C), None, None, w.connect).attester,
+        Served.backfill(Set(C), 1, w.connect).attester
+      ) ==>
+        (Some(SlackAccounts.Attester), Some(SlackAccounts.Attester))
+    }
+
+    test(
+      "an edge served looks, when asked, through its own source: a due account's team listed once"
+    ) {
+      val w = new World(attests = true)
+      w.kept.seen = Set(TestAccounts.account(s"slack:$Team/$Ana"))
+      val open = Served.serving(Set(C), None, None, w.connect).open(w.stores, Env, _ => ()) match {
+        case Right(o) => o
+        case Left(r) => throw new java.lang.AssertionError(r.message)
+      }
+      (open.attest(), w.slack.listings) ==> (Right(1), 1)
+      open.close()
+    }
+
+    test("a backfill hears each author once Slack has answered for them") {
+      val w = new World(attests = true)
+      w.slack.histories =
+        Map(C -> Vector(Listed(Ts("1.0"), None, Some(UserId(Ana)), false, None, "hm")))
+      val open =
+        Served.backfill(Set(C), 3, w.connect).open(w.stores, Env, Instant.EPOCH, _ => ()) match {
+          case Right(o) => o
+          case Left(r) => throw new java.lang.AssertionError(r.message)
+        }
+      open.hear() ==> Right(())
+      w.kept.vouched ==> Vector(
+        Vouched(TestAccounts.account(s"slack:$Team/$Ana"), Standing.Full(None))
+      )
+      open.close()
     }
 
     test("serving cannot answer a tool call that asks first") {

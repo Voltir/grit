@@ -73,6 +73,16 @@ In dependency order:
   anyone else's, and any other emoji, is ignored.
   `SlackEdge.backfill(channels, days)` is `grit backfill`'s
   (`CatchUp`), what each channel said over those days that grit has not recorded.
+  The edge is its workspace's attester (`SlackAccounts.Attester`, ADR 0032), and both say
+  so: before a message is recorded or heard, live or caught up, its author's account goes
+  through core's `Attesting.before`, which asks the edge's source, a private
+  `grit.core.edge.RealmSource` over `Slack.member` and `Slack.members`, unless Slack
+  answered for them within a minute; an author Slack cannot answer for and never has is not
+  recorded, so Slack sends the message again, and a backfill stops there. `user_change`
+  (`Event.UserChanged`) asks again, and each look the kit asks for (`Open.attest`) lists the
+  workspace once when any account is due. The edge holds no answer, clock or domain of its
+  own: when to ask, and which addresses count, are core's. Which scopes and event the app
+  needs, and how a deployment trusts the edge: [`docs/extending.md`](../../docs/extending.md).
   ← `client`, `text`, `event`
 
 **The daily cap.** `grit serve` takes new messages until the day's recorded spend reaches
