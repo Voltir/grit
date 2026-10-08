@@ -2,6 +2,7 @@ package grit.turn
 
 import java.time.Instant
 
+import grit.act.phase.Asking
 import grit.assembly.estimate.CharEstimate
 import grit.core.context.{
   AssemblyError,
@@ -38,6 +39,18 @@ import utest.*
 object TurnTests extends TestSuite {
 
   import TurnFixtures.*
+
+  /** A provider unavailable on its first call, answering as the stub after. */
+  private final class UnavailableOnce extends Provider {
+    @caps.unsafe.untrackedCaptures
+    var calls = 0
+
+    def complete(request: ModelRequest): Either[ProviderError, Message.Assistant] = {
+      calls += 1
+      if (calls == 1) Left(ProviderError.Unavailable("HTTP 504"))
+      else new StubProvider().complete(request)
+    }
+  }
 
   private val Done = "replied: reply:c1:0; summarised: summary:c1:0"
 
@@ -309,9 +322,23 @@ object TurnTests extends TestSuite {
         turn,
         summarizer = new RecordingProvider(fail = true)
       )
-      out ==> "replied: reply:c1:0; no summary: Model(down)"
+      out ==> "replied: reply:c1:0; no summary: Model(down (after 3 tries))"
       durable.recordedSteps(turn.workflowId) ==> Recorded.take(Placing + 7)
       texts(entries) ==> Vector("user: hello", "assistant: stub reply to: hello")
+    }
+
+    test("a summary whose provider is unavailable once is retried and kept") {
+      val entries = new InMemoryEntryStore
+      val durable = new InMemoryDurable
+      val summarizer = new UnavailableOnce
+      val clock = new NoWait
+      val turn = say(entries, "hello")
+      durable.run(turn.workflowId)(
+        turnBody(entries, new RecordingProvider, summarizer = summarizer, clock = clock)
+      ) ==> Done
+      summarizer.calls ==> 2
+      clock.waited ==> Asking.Retries.take(1).toVector
+      texts(entries).lastOption.exists(_.startsWith("summary")) ==> true
     }
 
     test("a summary with no text is a failed summary") {
@@ -739,7 +766,7 @@ object TurnTests extends TestSuite {
       val turn = say(entries, "hello")
       durable.run(turn.workflowId)(turnBody(entries, provider, clock = clock)) ==> Done
       provider.calls ==> 3
-      clock.waited ==> Turn.Retries.toVector
+      clock.waited ==> Asking.Retries.toVector
       val (pieces, told) = heard(durable, turn)
       pieces.map(_.attempt).distinct.size ==> 3
       told.text ==> "stub reply to: hello"
@@ -755,7 +782,7 @@ object TurnTests extends TestSuite {
       durable.run(turn.workflowId)(turnBody(entries, provider, clock = clock)) ==>
         "failed: Model(HTTP 504 (after 3 tries))"
       provider.calls ==> 3
-      clock.waited ==> Turn.Retries.toVector
+      clock.waited ==> Asking.Retries.toVector
     }
 
     test("a provider that refused is not asked again") {

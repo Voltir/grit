@@ -4,7 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.act.phase.Asking
+import grit.act.phase.{Asking, Hearing}
 import grit.core.approval.Approval
 import grit.core.context.{AssemblyError, AssemblyNote, AssemblyRequest, Shown, Window}
 import grit.core.document.{DocLabel, Document, DocumentSearch}
@@ -121,7 +121,8 @@ import TurnVerdict.Shape
   *      the judge's cost and the outcome kept. A heard-rooted turn, `ByName` among them,
   *      that failed before its draft or reply records only `Failed` here. Only a posted draft
   *      goes on to the summary.
-  *   1. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]).
+  *   1. `summarise` — the turn's own messages sent to the summarizer ([[TurnSummary]]),
+  *      asked again while it is unavailable, as a reply is ([[Asking.reply]]).
   *   1. `append-summary` — the summary recorded as the turn's entry after the reply, with
   *      its cost in the ledger as in `append`.
   *
@@ -1357,9 +1358,6 @@ object Turn {
         .map(TurnFailure.Model(_))
     }
 
-  /** How long a model call waits before each retry: [[Asking.Retries]]. */
-  val Retries: List[FiniteDuration] = Asking.Retries
-
   /** After a first call that offered the `topic` tool for `c` ([[TurnVerdict.round]]): the
     * reply that answers the turn, its further calls made as the `call-model-again` and
     * `call-model-plain` steps and its verdict recorded as `record-verdict`.
@@ -1433,11 +1431,11 @@ object Turn {
           .left
           .map(storeFailure)
           .flatMap { all =>
-            env.models
-              .provider(pins.summary)
-              .complete(summaryRequest(all, turn, placing))
+            val request = summaryRequest(all, turn, placing)
+            Asking
+              .reply(env.models.provider(pins.summary), request, Hearing.silent(), env.clock)
               .left
-              .map(e => TurnFailure.Model(e.cause))
+              .map(TurnFailure.Model(_))
           }
           // Nothing reads a summary's reasoning, and it was most of what this step recorded.
           .map[Message.Assistant](m =>
@@ -1514,17 +1512,8 @@ object Turn {
         )
         .left
         .map(storeFailure)
-      _ <- ledger
-        .record(
-          id,
-          turn,
-          turn.workflowId,
-          message.model,
-          message.usage,
-          estimator.request(summaryRequest(all, turn, placing))
-        )
-        .left
-        .map(storeFailure)
+      estimate = estimator.request(summaryRequest(all, turn, placing))
+      _ <- Asking.spent(ledger, id, turn, message, estimate).left.map(storeFailure)
       described = topicOf(all, turn, placing).toVector.flatMap(TurnTopics.described(_, read))
       _ <- TurnTopics.writeEvents(
         entries,
