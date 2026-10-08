@@ -8,6 +8,7 @@ import grit.core.visibility.{
   Compartments,
   Grant,
   Group,
+  GroupName,
   Label,
   Level,
   RoomLabels,
@@ -36,6 +37,9 @@ abstract class VoucherContract extends TestSuite {
 
   /** Has the store `voucher` writes to see `account`, as a first message through it would. */
   protected def saw(voucher: Voucher, account: Account): Unit
+
+  /** Has a person add `account` to `group` through grit, as a command would. */
+  protected def added(voucher: Voucher, account: Account, group: GroupName): Unit
 
   /** Arranges `account`'s last answer as given `ago` before now. */
   protected def aged(voucher: Voucher, account: Account, ago: FiniteDuration): Unit
@@ -103,6 +107,16 @@ abstract class VoucherContract extends TestSuite {
           Linking.Standing(b, member = false, Restricted, Label.Public),
         true
       )
+    }
+
+    test(
+      "a change's clearances count the groups its person was added to through grit, before and after"
+    ) {
+      val v = fresh()
+      val a = TestAccounts.account("slack:T1/U-added")
+      added(v, a, TestLabels.group("named"))
+      vouch(v, a, Standing.Full(None)) ==>
+        Vector(Linking.Standing(a, member = true, Restricted, Restricted))
     }
 
     test("an email in no claimed domain is not kept, and is said to be unclaimed") {

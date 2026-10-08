@@ -3,6 +3,7 @@ package grit.core.store
 import scala.concurrent.duration.FiniteDuration
 
 import grit.core.identity.Account
+import grit.core.visibility.GroupName
 import grit.dbos.sql.TestTx
 
 /** The voucher contract, kept by the in-memory fake. */
@@ -19,6 +20,10 @@ object InMemoryVoucherTests extends VoucherContract {
   }
 
   protected def saw(voucher: Voucher, account: Account): Unit = fake(voucher).saw(account)
+
+  protected def added(voucher: Voucher, account: Account, group: GroupName): Unit = {
+    val _ = fake(voucher).records.group(group)(_ + account)
+  }
 
   protected def aged(voucher: Voucher, account: Account, ago: FiniteDuration): Unit =
     fake(voucher).aged(account, ago)

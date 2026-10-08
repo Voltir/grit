@@ -18,8 +18,8 @@ import grit.core.visibility.{InMemoryRecorded, Visibility}
 import grit.dbos.sql.TestTx
 
 /** An in-memory [[Voucher]] for tests, keeping [[VoucherContract]], for `realms`, keeping an
-  * email only in one of `domains`, and saying each change's clearances as `visibility` clears
-  * people. It ignores the `Tx`, and holds the accounts it has seen itself ([[saw]]), apart from
+  * email only in one of `domains`, and saying each change's clearances as `visibility` and the
+  * people added to groups in `records` clear people. It ignores the `Tx`, and holds the accounts it has seen itself ([[saw]]), apart from
   * any other in-memory store's: an account another fake was told of is unseen here until a
   * suite says so, where the SQL voucher shares one table of accounts with every store.
   * `records` is what is recorded of rooms and groups, which the fakes built over this voucher
@@ -119,10 +119,9 @@ final class InMemoryVoucher(
       after <- whom(account).map(id => (id, held(id)))
     } yield {
       val (from, to) = (before._1, after._1)
-      val wasCleared =
-        Tx.clearanceOf(Principal.Person(from, before._2))(using TestTx.inForce(visibility))
-      val nowCleared =
-        Tx.clearanceOf(Principal.Person(to, after._2))(using TestTx.inForce(visibility))
+      val inForce = TestTx.inForce(visibility, records.now)
+      val wasCleared = Tx.clearanceOf(Principal.Person(from, before._2))(using inForce)
+      val nowCleared = Tx.clearanceOf(Principal.Person(to, after._2))(using inForce)
       Vector(
         Option.when(was.email.isDefined && from != to)(
           Linking.Unlinked(account, from, wasCleared, nowCleared)

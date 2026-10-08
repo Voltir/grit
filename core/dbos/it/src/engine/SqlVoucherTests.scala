@@ -3,10 +3,12 @@ package grit.dbos.engine
 import java.util.concurrent.atomic.AtomicInteger
 
 import scala.concurrent.duration.FiniteDuration
+import scala.util.Using
 
 import grit.core.identity.Account
 import grit.core.store.{Tx, Voucher, VoucherContract}
-import grit.dbos.sql.{DbConfig, LiveDb, TestPostgres}
+import grit.core.visibility.GroupName
+import grit.dbos.sql.{DbConfig, LiveDb, SqlEntryStore, SqlIdentities, TestPostgres}
 
 /** The voucher contract, kept by the engine's voucher against a real Postgres. */
 object SqlVoucherTests extends VoucherContract {
@@ -40,6 +42,26 @@ object SqlVoucherTests extends VoucherContract {
 
   protected def saw(voucher: Voucher, account: Account): Unit =
     Vouchings.enrolled(account)(using config)
+
+  protected def added(voucher: Voucher, account: Account, group: GroupName): Unit =
+    LiveDb
+      .transaction(config) { (tx: Tx^) ?=>
+        SqlIdentities.enroll(Set(account)).flatMap { _ =>
+          SqlEntryStore.attempt {
+            val conn: java.sql.Connection^{tx} = Tx.connection(tx)
+            Using.resource(
+              conn.prepareStatement(
+                "INSERT INTO grit.group_members (group_name, account) VALUES (?, ?)"
+              )
+            ) { ps =>
+              ps.setString(1, GroupName.value(group))
+              ps.setString(2, Account.written(account))
+              ps.executeUpdate()
+            }
+          }
+        }
+      }
+      .fold(e => throw new java.lang.AssertionError(s"adding: $e"), _ => ())
 
   protected def aged(voucher: Voucher, account: Account, ago: FiniteDuration): Unit =
     Vouchings.aged(account, s"${ago.toMillis} milliseconds")(using config)
