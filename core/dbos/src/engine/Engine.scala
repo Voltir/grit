@@ -117,7 +117,10 @@ final class Engine private (
       * labels.
       */
     val visibility: Visibility,
-    clock: Clock^
+    /** What it was opened with to tell the time by: the clock its inbox, sweep and desks date
+      * by.
+      */
+    val clock: Clock^
 ) extends Link {
 
   val conversations: ConversationStore = new SqlConversationStore()

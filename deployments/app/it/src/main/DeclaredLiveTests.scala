@@ -142,7 +142,6 @@ object DeclaredLiveTests extends TestSuite {
         d,
         secrets(config, d),
         Launch.Run.Served,
-        Clock.system(),
         sweeping = false,
         _ => ()
       )

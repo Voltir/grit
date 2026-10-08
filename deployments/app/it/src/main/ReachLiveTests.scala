@@ -3,7 +3,6 @@ package grit.app.main
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.clock.Clock
 import grit.core.edge.{Desk, OutcomeJson, Route, ToolRequest}
 import grit.core.id.{PrincipalId, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
@@ -105,7 +104,6 @@ object ReachLiveTests extends TestSuite {
         deployment,
         secrets(config),
         Launch.Run.Served,
-        Clock.system(),
         sweeping = false,
         _ => ()
       )

@@ -155,7 +155,6 @@ object ReminderLiveTests extends TestSuite {
         new Through(model),
         classifier,
         classifier,
-        clock,
         sweeping = false,
         _ => ()
       )

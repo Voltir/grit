@@ -5,7 +5,6 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.clock.Clock
 import grit.core.id.{ConversationId, EntryId, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -157,7 +156,6 @@ object StitchLiveTests extends TestSuite {
           deployment,
           secrets(config),
           Launch.Run.Served,
-          Clock.system(),
           sweeping = false,
           _ => ()
         )

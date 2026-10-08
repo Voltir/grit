@@ -142,7 +142,6 @@ object RunRetentionLiveTests extends TestSuite {
         new ReminderLiveTests.Through(model),
         classifier,
         classifier,
-        clock,
         sweeping = false,
         _ => ()
       )

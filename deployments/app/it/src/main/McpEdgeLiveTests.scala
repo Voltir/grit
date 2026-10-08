@@ -90,7 +90,6 @@ object McpEdgeLiveTests extends TestSuite {
           deployment,
           secrets(config),
           Launch.Run.Served,
-          Clock.system(),
           sweeping = false,
           _ => ()
         )

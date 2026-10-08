@@ -4,7 +4,6 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
-import grit.core.clock.Clock
 import grit.core.id.{CloseRef, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.Tokens
@@ -157,7 +156,6 @@ object UnpromptedLiveTests extends TestSuite {
           d,
           secrets(d, config),
           Launch.Run.Served,
-          Clock.system(),
           sweeping = false,
           line => told.add(line): Unit
         )
@@ -196,7 +194,6 @@ object UnpromptedLiveTests extends TestSuite {
           d,
           secrets(d, config),
           Launch.Run.Served,
-          Clock.system(),
           sweeping = false,
           _ => ()
         )
@@ -223,7 +220,6 @@ object UnpromptedLiveTests extends TestSuite {
           d,
           secrets(d, config),
           Launch.Run.Served,
-          Clock.system(),
           sweeping = false,
           _ => ()
         )

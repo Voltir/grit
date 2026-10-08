@@ -5,7 +5,6 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import scala.util.Using
 
-import grit.core.clock.Clock
 import grit.core.id.{
   CorpusName,
   PeriodRef,
@@ -116,7 +115,6 @@ object ShadowLaunchLiveTests extends TestSuite {
         d,
         secrets(config, d),
         Launch.Run.Served,
-        Clock.system(),
         sweeping = false,
         _ => ()
       )
