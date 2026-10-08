@@ -22,8 +22,8 @@ abstract class JoinsContract extends TestSuite {
   /** Has `account` vouched a full member by [[T1]], as its realm's attestation would. */
   protected def member(j: Joins, account: Account): Unit
 
-  /** Has a person made `room` quiet, as a command would. */
-  protected def decide(j: Joins, room: Place): Unit
+  /** Has a person made `room` quiet (`on`), or spoken there again, as a command would. */
+  protected def quiet(j: Joins, room: Place, on: Boolean): Unit
 
   /** `room`'s access as recorded; `None` when none is. */
   protected def access(j: Joins, room: Place): Option[RoomAccess]
@@ -171,7 +171,7 @@ abstract class JoinsContract extends TestSuite {
       ok(j.left(general, t(2)))
       ok(j.joined(ops, RoomAccess.Invited, None, t(1)))
       ok(j.left(ops, t(2)))
-      decide(j, ops)
+      quiet(j, ops, on = true)
       ok(j.joined(trial, RoomAccess.Invited, None, t(1)))
       ok(j.left(trial, t(5)))
       ok(j.joined(lounge, RoomAccess.Open, None, t(1)))
@@ -191,6 +191,15 @@ abstract class JoinsContract extends TestSuite {
         Membership.Gone,
         Membership.Gone
       )
+    }
+
+    test("a room left, quieted and spoken in again is forgotten: the person's decision undone") {
+      val j = fresh()
+      ok(j.joined(general, RoomAccess.Open, None, t(1)))
+      ok(j.left(general, t(2)))
+      quiet(j, general, on = true)
+      quiet(j, general, on = false)
+      (ok(j.forget(Team, t(3))), access(j, general)) ==> (1, None)
     }
 
     test(

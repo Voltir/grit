@@ -45,18 +45,19 @@ object SqlJoinsTests extends JoinsContract {
     under(fresh0.voucher.vouch(Vouched(account, Standing.Full(None))))
       .fold(e => throw new java.lang.AssertionError(s"vouching: $e"), _ => ())
 
-  protected def decide(j: Joins, room: Place): Unit =
+  protected def quiet(j: Joins, room: Place, on: Boolean): Unit =
     under { (tx: Tx^) ?=>
       SqlPlaces.id(room).flatMap { place =>
         SqlEntryStore.attempt {
           val conn: java.sql.Connection^{tx} = Tx.connection(tx)
           Using.resource(
             conn.prepareStatement(
-              """INSERT INTO grit.rooms (place_id, quiet) VALUES (?::uuid, true)
-                |ON CONFLICT (place_id) DO UPDATE SET quiet = true""".stripMargin
+              """INSERT INTO grit.rooms (place_id, quiet) VALUES (?::uuid, ?)
+                |ON CONFLICT (place_id) DO UPDATE SET quiet = EXCLUDED.quiet""".stripMargin
             )
           ) { ps =>
             ps.setString(1, place)
+            ps.setBoolean(2, on)
             ps.executeUpdate()
           }
         }

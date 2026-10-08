@@ -19,7 +19,7 @@ object InMemoryJoinsTests extends JoinsContract {
 
   protected def member(j: Joins, account: Account): Unit = fake(j).member(account)
 
-  protected def decide(j: Joins, room: Place): Unit = fake(j).quiet(room, on = true)
+  protected def quiet(j: Joins, room: Place, on: Boolean): Unit = fake(j).quiet(room, on)
 
   protected def access(j: Joins, room: Place): Option[RoomAccess] = fake(j).access(room)
 }
