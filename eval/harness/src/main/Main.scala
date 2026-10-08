@@ -123,7 +123,7 @@ import grit.turn.Turn
 object Main {
 
   def main(args: Array[String]): Unit = {
-    val clock: Clock^ = Clock.system()
+    val clock: Clock^ = Clock.system() // clock-check: the eval harness's composition root
     args.toList match {
       case "capture" :: rest => exit(flags(rest).flatMap(capture))
       case "run" :: rest =>

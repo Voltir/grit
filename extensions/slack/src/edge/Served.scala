@@ -91,6 +91,7 @@ private[slack] object Served {
                 )
               )
             case Right(self) =>
+              // clock-check: an edge's open is its own composition root; the kit hands it no clock
               val edge = new SlackEdge(slack, self, stores, channels, review, Clock.system(), log)
               log(edge.listened() match {
                 case Vector() => "slack: listening in no channel"
@@ -165,6 +166,7 @@ private[slack] object Served {
       log(s"slack: posts nowhere: $why")
       None
     }
+    // clock-check: an edge's open is its own composition root; the kit hands it no clock
     Posting.of(slack, Clock.system(), posts.rate, team, named) match {
       case Left(_) if named.isEmpty => nowhere("no channel it may post to has a name grit can read")
       case Left(why) => nowhere(why)
@@ -215,6 +217,7 @@ private[slack] object Served {
                   slack.close()
                   Left(refusedToken(e))
                 case Right(self) =>
+                  // clock-check: a catch-up's open is its own composition root; the kit hands it no clock
                   val edge = new SlackEdge(slack, self, stores, channels, None, Clock.system(), log)
                   val from = now.minus(Duration.ofDays(days.toLong))
                   val sorted = channels.toVector.sortBy(ChannelId.value)

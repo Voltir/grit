@@ -279,7 +279,8 @@ private[engine] final class Attached(
       budget,
       new grit.dbos.sql.SqlSchedules(new grit.dbos.sql.SqlTombstones),
       visibility,
-      // An edge's message is dated, and its day's cap read, when it reaches this process.
+      // clock-check: the link's own time: an edge's message is dated, and its day's cap read,
+      // when it reaches this process
       grit.core.clock.Clock.system()
     )
 

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Time and fresh values reach main sources only through grit.core.clock's capabilities (Clock,
+# Fresh), so a test can set them: refuses `Instant.now`, `Clock.system`,
+# `System.currentTimeMillis`, `nanoTime` and `randomUUID`, and any import of `Instant.now`, in
+# every main source (no test or it source) outside grit.core.clock, naming each as file:line. A
+# comment line is never checked. A place that genuinely needs the JVM's own (a process's
+# composition root, a monitor's wait) says why with a marker on the line, or in the comment
+# lines just above it:
+#
+#   val clock: Clock^ = Clock.system() // clock-check: the composition root of a serving process
+#
+#   scripts/clock-check                        # as scripts/check's lint tier runs it
+set -uo pipefail
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+find . -path ./out -prune -o -path ./tools -prune -o -path ./.local -prune -o \
+  -path '*/src/*' -name '*.scala' -print |
+  grep -vE '/(test|it)/src/|^\./core/core/src/clock/' |
+  sort |
+  xargs awk '
+    FNR == 1 { marked = 0 }
+    {
+      comment = ($0 ~ /^[[:space:]]*(\/\/|\/\*|\*)/)
+      flagged = ($0 ~ /clock-check: [^[:space:]]/)
+      if (comment) { if (flagged) marked = 1; next }
+      call = ($0 ~ /Instant\.now|Clock\.system|currentTimeMillis|nanoTime|randomUUID/)
+      imported = ($0 ~ /import[[:space:]]+java\.time\.Instant\.(now|\{[^}]*now)/)
+      if ((call || imported) && !marked && !flagged) {
+        line = $0
+        sub(/^[[:space:]]+/, "", line)
+        file = FILENAME
+        sub(/^\.\//, "", file)
+        printf "clock-check: %s:%d reads the JVM'"'"'s time or randomness outside grit.core.clock: %s\n", file, FNR, line
+        found = 1
+      }
+      marked = 0
+    }
+    END { exit found }
+  '
+[ "${PIPESTATUS[3]}" -eq 0 ] || exit 1

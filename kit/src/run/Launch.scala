@@ -88,6 +88,7 @@ private[grit] object Launch {
       if (run.announced) announced(reached) else reached,
       classifier(d, s),
       weighing(d, s),
+      // clock-check: a launch's composition root; `asking` takes any clock, as tests do
       Clock.system(),
       sweeping,
       finished

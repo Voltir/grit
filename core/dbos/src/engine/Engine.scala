@@ -243,7 +243,8 @@ final class Engine private (
       budget,
       sqlSchedules,
       visibility,
-      // An edge's message is dated, and its day's cap read, when it reaches this process.
+      // clock-check: the engine's own time: an edge's message is dated, and its day's cap read,
+      // when it reaches this process
       Clock.system()
     )
 

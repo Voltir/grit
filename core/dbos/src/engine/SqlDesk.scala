@@ -38,11 +38,11 @@ final class SqlDesk private (
 
   // Read and written only by the thread that calls await.
   @caps.unsafe.untrackedCaptures
-  private var beaten = System.nanoTime()
+  private var beaten = SqlDesk.monotonic()
 
   def await(within: FiniteDuration): Boolean =
     try {
-      if (System.nanoTime() - beaten > SqlDesk.Beat.toNanos) {
+      if (SqlDesk.monotonic() - beaten > SqlDesk.Beat.toNanos) {
         Using.resource(
           conn.prepareStatement(
             "UPDATE grit.edges SET heartbeat_at = now() WHERE id = ?::uuid AND session = ?::uuid"
@@ -52,7 +52,7 @@ final class SqlDesk private (
           ps.setString(2, session.toString)
           ps.executeUpdate()
         }
-        beaten = System.nanoTime()
+        beaten = SqlDesk.monotonic()
       }
       val got = conn.unwrap(classOf[PGConnection]).getNotifications(within.toMillis.toInt.max(1))
       Option(got).exists(_.length > 0)
@@ -243,6 +243,11 @@ object SqlDesk {
   /** How often a desk writes its heartbeat, for a person to read: 2 seconds. */
   val Beat: FiniteDuration = 2.seconds
 
+  /** The JVM's monotonic nanoseconds, for the heartbeat's interval: a desk holds no capability
+    * but its connection (the engine's proof for keeping it rests on that), so it takes no Clock.
+    */
+  private def monotonic(): Long = System.nanoTime() // clock-check: see the doc above
+
   /** Registers an edge for `principal` hosting `places`, in the process `identity` names,
     * live while the desk is open: the same principal, machine and places reuse a
     * registration no live edge holds, or take a new one. `Left` when the database cannot be
@@ -263,6 +268,8 @@ object SqlDesk {
         val key = (PrincipalId
           .value(principal) +: identity.machine +: places.toVector.map(_.written).sorted)
           .mkString("|")
+        // clock-check: a desk holds no capability but its connection (the engine's proof for
+        // keeping it rests on that), so it takes no Fresh; Postgres only compares the session
         val session = UUID.randomUUID()
         val edge = reuse(conn, key).getOrElse(insert(conn, key, principal, identity))
         Using.resource(

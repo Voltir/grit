@@ -64,6 +64,7 @@ object McpEdge {
         env: Map[String, String],
         log: String => Unit
     ): Either[EdgeRefusal, ServedEdge.Open^{stores, log, caps.any}] = {
+      // clock-check: an edge's open is its own composition root; the kit hands it no clock
       val clock: Clock = Clock.system()
       val place = service.place
       val bearers = servers.foldLeft[Either[EdgeRefusal, Vector[Bearer]]](Right(Vector.empty)) {

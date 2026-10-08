@@ -18,9 +18,17 @@ final class Running {
 
   /** Waits up to `within` for no body to be running; whether none is. */
   def awaitNone(within: FiniteDuration): Boolean = synchronized {
-    val until = System.nanoTime() + within.toNanos
-    while (count > 0 && System.nanoTime() < until)
-      wait(((until - System.nanoTime()) / 1000000).max(1))
+    val until = Running.monotonic() + within.toNanos
+    while (count > 0 && Running.monotonic() < until)
+      wait(((until - Running.monotonic()) / 1000000).max(1))
     count == 0
   }
+}
+
+private object Running {
+
+  /** The JVM's monotonic nanoseconds: a monitor's `wait` times out in them, so no Clock can
+    * stand in for its bound.
+    */
+  def monotonic(): Long = System.nanoTime() // clock-check: Object.wait's own time base
 }
