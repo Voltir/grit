@@ -97,7 +97,7 @@ final class SlackEdge(
     * `listening`, is addressed to grit when
     * it mentions grit, or is in a thread whose root did; addressed, it is recorded as a turn of
     * its thread's conversation, in the person's words ([[Incoming]]), written through their
-    * account ([[SlackAccounts.account]]), named as Slack names them, its turn started, its reply
+    * account in their own team ([[SlackAccounts.account]], [[Event.Said.author]]), named as Slack names them, its turn started, its reply
     * awaited, and the message marked `:eyes:` until the reply is posted. A new message the
     * inbox refuses over the day's cap is not recorded: it is answered, once, in its thread,
     * with [[Budget.Refusal]]. A message not addressed, in a channel in `listening`, is heard
@@ -274,7 +274,7 @@ final class SlackEdge(
           .flatMap(c => channelNameOf(c).map(c -> _))
           .toMap
         for {
-          author <- SlackAccounts.account(m.team, m.user)
+          author <- SlackAccounts.account(m.author, m.user)
           _ <- stores.jot
             .write(Subject.Public)(
               stores.principals.name(author, known.getOrElse(m.user, UserId.value(m.user)))

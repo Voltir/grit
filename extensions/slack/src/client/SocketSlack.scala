@@ -402,7 +402,8 @@ object SocketSlack {
       Option(m.getUser).map(UserId(_)),
       Option(m.getBotId).nonEmpty,
       Option(m.getSubtype),
-      Option(m.getText).getOrElse("")
+      Option(m.getText).getOrElse(""),
+      Option(m.getTeam).filter(_.nonEmpty).map(TeamId(_))
     )
 
   /** One page of a listing: its messages, and the cursor of the next when there is one. */

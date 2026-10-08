@@ -13,7 +13,7 @@ answered through Postgres alone (ADR 0002). The Slack SDK's quarantine (STYLE ru
 In dependency order:
 
 - **`event`** — what Slack says, as grit reads it: the opaque ids (`TeamId`, `ChannelId`,
-  `UserId`, `Ts`), and `Event`, a person's message `Said` (at the time its ts names), a
+  `UserId`, `Ts`), and `Event`, a person's message `Said` (at the time its ts names, by a user of their own team: its `user_team`, else its `team`, else the installing workspace, so a user of a workspace sharing a channel is never spelled as one of grit's), a
   reaction to a message added or removed (`Reacted`), or `Ignored` with why, read from an Events API payload by `Events.read`, or from a `Listed`
   message of a channel's history by `Events.listed`, under the same rules; and `MessageLink`, the
   channel and thread a message's link names. Imports nothing in slack.

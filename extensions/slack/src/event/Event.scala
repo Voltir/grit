@@ -5,13 +5,15 @@ import java.time.Instant
 /** What Slack told grit, as grit acts on it. */
 enum Event {
 
-  /** A person's message `ts` in `channel` of `team`, in the thread rooted at `thread` (its own
-    * `ts` when it is in none), by `user`, with `text` as Slack sent it (mrkdwn escapes and
-    * `<@U…>` mentions, [[grit.slack.text.Incoming]]); `mentions` when it mentions grit; said
-    * `at`, the time its `ts` names.
+  /** A person's message `ts` in `channel` of `team`, the workspace grit's app is installed in,
+    * in the thread rooted at `thread` (its own `ts` when it is in none), by `user` of their own
+    * team `author` (another workspace's in a channel shared with it), with `text` as Slack
+    * sent it (mrkdwn escapes and `<@U…>` mentions, [[grit.slack.text.Incoming]]); `mentions`
+    * when it mentions grit; said `at`, the time its `ts` names.
     */
   case Said(
       team: TeamId,
+      author: TeamId,
       channel: ChannelId,
       ts: Ts,
       thread: Ts,
@@ -44,8 +46,8 @@ enum Event {
 
 /** A message as a channel's history lists it, before grit reads it ([[Events.listed]]): its
   * `ts`, the thread it is in (`None` when it is in none), who wrote it (`None` for a message
-  * with no user, as some bots' and Slack's own are), whether a bot sent it, its `subtype`, and
-  * its text as Slack sent it.
+  * with no user, as some bots' and Slack's own are), whether a bot sent it, its `subtype`, its
+  * text as Slack sent it, and the team its author is of, when the listing says.
   */
 final case class Listed(
     ts: Ts,
@@ -53,13 +55,15 @@ final case class Listed(
     user: Option[UserId],
     bot: Boolean,
     subtype: Option[String],
-    text: String
+    text: String,
+    team: Option[TeamId] = None
 )
 
 object Events {
 
   /** `m`, listed in `channel` of `team`, read by [[read]]'s rules for a `message` event in a
-    * channel, grit's own bot user being `bot`; why not, as [[read]] says.
+    * channel, grit's own bot user being `bot`, its author of the team it names, else of `team`;
+    * why not, as [[read]] says.
     */
   def listed(m: Listed, team: TeamId, channel: ChannelId, bot: UserId): Either[String, Event] = {
     // The live event this listing would have been, so both are read by one set of rules.
@@ -73,6 +77,7 @@ object Events {
     m.thread.foreach(t => event("thread_ts") = Ts.value(t))
     m.user.foreach(u => event("user") = UserId.value(u))
     m.subtype.foreach(st => event("subtype") = st)
+    m.team.foreach(t => event("team") = TeamId.value(t))
     if (m.bot) event("bot_id") = "listed"
     said(event, team, bot)
   }
@@ -81,7 +86,8 @@ object Events {
     * bot user being `bot`: `app_mention` and `message` events as [[Event.Said]] (a `message`
     * only from a person, in a channel, public or private, new or broadcast from a thread, or sharing a file),
     * `reaction_added` and `reaction_removed` on a message as [[Event.Reacted]], everything
-    * else [[Event.Ignored]]. Why not, when it is not an event callback, or an event
+    * else [[Event.Ignored]]. A message's author is of the team its `user_team` names, else its
+    * `team`, else the callback's `team_id`, the workspace grit's app is installed in. Why not, when it is not an event callback, or an event
     * grit reads lacks a field it needs or has a ts or event_ts that names no time.
     */
   def read(payload: String, bot: UserId): Either[String, Event] =
@@ -146,6 +152,7 @@ object Events {
       else
         Event.Said(
           team,
+          str(event, "user_team").orElse(str(event, "team")).fold(team)(TeamId(_)),
           ChannelId(channel),
           Ts(ts),
           Ts(str(event, "thread_ts").getOrElse(ts)),

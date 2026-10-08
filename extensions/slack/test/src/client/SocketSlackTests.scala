@@ -102,7 +102,7 @@ object SocketSlackTests extends TestSuite {
     }
 
     test(
-      "a listed message keeps its ts, thread, user, subtype and text, and whether a bot sent it"
+      "a listed message keeps its ts, thread, user, subtype, text and its author's team, and whether a bot sent it"
     ) {
       val reply = new Message()
       reply.setTs("2.0")
@@ -110,6 +110,7 @@ object SocketSlackTests extends TestSuite {
       reply.setUser("U1")
       reply.setSubtype("thread_broadcast")
       reply.setText("also")
+      reply.setTeam("T0THEIRS")
       val bots = new Message()
       bots.setTs("3.0")
       bots.setBotId("B1")
@@ -120,7 +121,8 @@ object SocketSlackTests extends TestSuite {
           Some(UserId("U1")),
           false,
           Some("thread_broadcast"),
-          "also"
+          "also",
+          Some(TeamId("T0THEIRS"))
         ),
         Listed(Ts("3.0"), None, None, true, None, "")
       )

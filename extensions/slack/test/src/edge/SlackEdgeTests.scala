@@ -169,6 +169,15 @@ object SlackEdgeTests extends TestSuite {
         }
       }
 
+    /** The account each entry of the thread rooted at `thread` was written through, in order. */
+    def authors(thread: String): Vector[Option[Account]] =
+      inbox.conversations.all.find(_.origin == origin(thread)).toVector.flatMap { c =>
+        inbox.entries
+          .list(c.id)(using TestTx.fake)
+          .getOrElse(Vector.empty)
+          .map(e => inbox.principals.author(e.id))
+      }
+
     /** When each entry of the thread rooted at `thread` is dated, in order. */
     def dated(thread: String): Vector[java.time.Instant] =
       inbox.conversations.all.find(_.origin == origin(thread)).toVector.flatMap { c =>
@@ -234,7 +243,29 @@ object SlackEdgeTests extends TestSuite {
   private def tag(turn: TurnRef, part: Int): Tag =
     Tag.Reply(grit.core.id.WorkflowId.value(turn.workflowId), part)
 
+  /** A workspace that shares channel [[C]] with grit's. */
+  private val Theirs = "T0THEIRS"
+
   val tests = Tests {
+    test(
+      "a message in a shared channel is written through its author's account in their own team, addressed or heard, live or listed"
+    ) {
+      val w = new World(listening = Set(C))
+      w.slack.deliver(
+        message("3.0", s"<@$Bot> hi from next door", extra = Seq("user_team" -> Theirs))
+      ) ==> true
+      w.slack.deliver(message("4.0", "just us", extra = Seq("user_team" -> Theirs))) ==> true
+      w.slack.histories = Map(
+        C -> Vector(
+          Listed(Ts("5.0"), None, Some(UserId(Ana)), false, None, "earlier", Some(TeamId(Theirs)))
+        )
+      )
+      w.first.unheard(C, java.time.Instant.EPOCH).flatMap(w.first.backfill) ==> Right(())
+      val theirs = Some(TestAccounts.account(s"slack:$Theirs/$Ana"))
+      (w.authors("3.0"), w.authors("4.0"), w.authors("5.0")) ==>
+        (Vector(theirs), Vector(theirs), Vector(theirs))
+    }
+
     test(
       "unheard lists what a listened channel said since, as live messages are read, leaving out what is recorded"
     ) {

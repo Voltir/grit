@@ -14,6 +14,7 @@ object EventsTests extends TestSuite {
   private def said(ts: String, thread: String, text: String, mentions: Boolean): Event =
     Event.Said(
       TeamId(Team),
+      TeamId(Team),
       ChannelId("C123ABC456"),
       Ts(ts),
       Ts(thread),
@@ -40,6 +41,21 @@ object EventsTests extends TestSuite {
         case m: Event.Said => Some(m.at)
         case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) => None
       } ==> Right(Some(Instant.parse("2018-01-08T22:12:02.000016Z")))
+    }
+
+    test(
+      "a message's author is of their own team: its user_team, else its team, else the workspace's"
+    ) {
+      def author(extra: (String, ujson.Value)*): Either[String, Option[TeamId]] =
+        Events.read(message("2.0", "hi", extra = extra), bot).map {
+          case m: Event.Said => Some(m.author)
+          case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) => None
+        }
+      (
+        author("user_team" -> "T0THEIRS", "team" -> "T0OTHER"),
+        author("team" -> "T0OTHER"),
+        author()
+      ) ==> (Right(Some(TeamId("T0THEIRS"))), Right(Some(TeamId("T0OTHER"))), Right(Some(TeamId(Team))))
     }
 
     test("a message whose ts names no time is not read") {
@@ -131,6 +147,17 @@ object EventsTests extends TestSuite {
       listed("3.0", "also", Some("1.0"), subtype = Some("thread_broadcast")) ==>
         Right(said("3.0", "1.0", "also", false))
       listed("6.0", s"hey <@$Bot>") ==> Right(said("6.0", "6.0", s"hey <@$Bot>", true))
+      Events
+        .listed(
+          Listed(Ts("7.0"), None, Some(UserId(Ana)), false, None, "hi", Some(TeamId("T0THEIRS"))),
+          TeamId(Team),
+          ChannelId("C123ABC456"),
+          bot
+        )
+        .map {
+          case m: Event.Said => Some((m.team, m.author))
+          case Event.Ignored(_) | Event.Reacted(_, _, _, _, _, _, _) => None
+        } ==> Right(Some((TeamId(Team), TeamId("T0THEIRS"))))
     }
 
     test(
