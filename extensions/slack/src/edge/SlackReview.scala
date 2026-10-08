@@ -5,8 +5,8 @@ import grit.core.store.Origin
 import grit.slack.event.{ChannelId, TeamId, UserId}
 
 /** A deployment's review as its Slack edge answers it: prompts posted at the top of `place`, a
-  * channel or DM of the bot's own team that it does not listen in, `channel` of `team`, and
-  * `rater`, the one person whose reactions to them are kept.
+  * channel or DM of the bot's own team, `channel` of `team`, where nothing said is heard, even
+  * with the bot a member; and `rater`, the one person whose reactions to them are kept.
   */
 final case class SlackReview private (place: Place, team: TeamId, channel: ChannelId, rater: UserId)
 
