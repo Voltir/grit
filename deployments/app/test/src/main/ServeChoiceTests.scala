@@ -3,12 +3,13 @@ package grit.app.main
 import grit.core.clock.Clock
 import grit.core.edge.{EdgeRefusal, EdgeStores, ServedEdge, Variable}
 import grit.core.id.EdgeName
-import grit.core.identity.Domain
+import grit.core.identity.{Account, Domain}
 import grit.core.place.Scope as PlaceScope
 import grit.core.spend.DailyCap
+import grit.core.visibility.Group
 import grit.kit.deployment.Offered
 import grit.slack.edge.{SlackAccounts, SlackCommand, SlackEdge}
-import grit.slack.event.TeamId
+import grit.slack.event.{TeamId, UserId}
 
 import utest.*
 
@@ -73,6 +74,77 @@ object ServeChoiceTests extends TestSuite {
           .map(_.identities.realmsOf(SlackAccounts.Attester))
       (trusted(Some(TeamId("T0FAKE"))), trusted(None)) ==>
         (SlackAccounts.realm(TeamId("T0FAKE")).map(Set(_)), Right(Set.empty))
+    }
+
+    test(
+      "GRIT_ADMINS names Slack users by id, comma-separated, none when unset; refused naming the variable at one that is not a user's id"
+    ) {
+      (
+        Main.admins(Map("GRIT_ADMINS" -> " U012AB34, W056CD78 ")),
+        Main.admins(Map.empty),
+        Main.admins(Map("GRIT_ADMINS" -> "U012AB34, @nick")),
+        Main.admins(Map("GRIT_ADMINS" -> "C012AB34"))
+      ) ==> (
+        Right(Vector(UserId("U012AB34"), UserId("W056CD78"))),
+        Right(Vector.empty),
+        Left(
+          "GRIT_ADMINS: @nick is not a Slack user's id (U… or W…, as their profile's Copy member ID gives it)"
+        ),
+        Left(
+          "GRIT_ADMINS: C012AB34 is not a Slack user's id (U… or W…, as their profile's Copy member ID gives it)"
+        )
+      )
+    }
+
+    test(
+      "serving Slack, GRIT_ADMINS declares the administrators group of the team's accounts; unset, or with no Slack, there are none"
+    ) {
+      def declared(env: Map[String, String], slackIn: Option[TeamId]) =
+        Main
+          .deployment(
+            env,
+            Offered.Read,
+            Vector(SlackEdge.serving(Grit)),
+            Vector.empty,
+            java.time.ZoneOffset.UTC,
+            slackIn
+          )
+          .map(d => (d.visibility.administrators, d.visibility.groups))
+      val admins = Map("GRIT_ADMINS" -> "U012AB34")
+      (
+        declared(admins, Some(TeamId("T0FAKE"))),
+        declared(Map.empty, Some(TeamId("T0FAKE"))),
+        declared(admins, None)
+      ) ==> (
+        Right(
+          (
+            Some(Main.Administrators),
+            Vector(
+              Group(
+                Main.Administrators,
+                Set[Account](
+                  SlackAccounts
+                    .account(TeamId("T0FAKE"), UserId("U012AB34"))
+                    .fold(e => throw new java.lang.AssertionError(e), identity)
+                )
+              )
+            )
+          )
+        ),
+        Right((None, Vector.empty)),
+        Right((None, Vector.empty))
+      )
+    }
+
+    test(
+      "with no administrators named, serve says no one can lower a label or label a public channel"
+    ) {
+      (Main.unadministered(Vector.empty), Main.unadministered(Vector(UserId("U012AB34")))) ==> (
+        Some(
+          "GRIT_ADMINS is unset: no one can lower a room's label or label a public channel"
+        ),
+        None
+      )
     }
 
     test(

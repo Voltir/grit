@@ -64,7 +64,8 @@ In dependency order:
 - **`main`** — `Main`: reads the settings into the reference `Deployment`
   (`Main.deployment`), and serves it (`grit serve`: the Slack edge, `SlackEdge.serving`,
   in every channel its bot is invited to, answering the slash command
-  `GRIT_SLACK_COMMAND` names (`/grit` when unset), and with `GITHUB_MCP_TOKEN` set, GitHub's
+  `GRIT_SLACK_COMMAND` names (`/grit` when unset), its administrators the Slack users
+  `GRIT_ADMINS` names (below), and with `GITHUB_MCP_TOKEN` set, GitHub's
   read-only MCP tools at `service:github` for every Slack conversation, `McpEdge.serving`
   (`Main.github`), through `Kit.serve`), catches it up (`grit
   backfill`: `SlackEdge.backfill` over the last `GRIT_BACKFILL_DAYS`, through `Kit.catchUp`;
@@ -82,5 +83,24 @@ In dependency order:
   `LocalTools`, the chat's edge's tools over this checkout; `PromoteModelSettings`, which prints the seed catalog with every approved setting
   laid over it, for a reviewed commit.
   ← `config`, `look`, `chat`
+
+**Who may label what (setup tiers).** A room's label is set by slash command, under one rule
+in core (`grit.core.admin.Authority`): in a private channel any full member may raise it; in a
+public one, or to lower a level, only an administrator may; removing a compartment needs its
+steward or an administrator. What a deployment writes, least first:
+
+- **Tier 0, this deployment.** `GRIT_ADMINS`: Slack user ids (`U…` or `W…`, as a profile's
+  "Copy member ID" gives them), comma-separated; one that is not is refused, naming the
+  variable. They are the declared group `administrators` of `slack:{team}/{id}` accounts, the
+  visibility's administrators (`Main.visibility`); no other group, grant or compartment is
+  declared, so public channels are public and private ones unmapped until labelled. Unset, no
+  one can lower a room's label or label a public channel, and `grit serve` says so as it
+  starts.
+- **Tier 1, a deployment's code.** One realm group granted `Internal`, and
+  `RoomLabels.of(…, open = Some(Labelled.Mapped(Internal)))`: every full member reads internal,
+  and public channels are internal.
+- **Tier 2, a deployment's code.** Compartments, a few lines each: the compartment, its own
+  group, a grant, and optionally a `Steward(compartment, group)` whose declared members may
+  clear and remove people for it. Declaring a deployment: [`docs/extending.md`](../../docs/extending.md).
 
 No source file sits at the module's root, and the test tree mirrors it.

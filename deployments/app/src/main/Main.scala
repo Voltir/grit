@@ -23,6 +23,7 @@ import grit.core.speech.Speaking
 import grit.core.store.Origin
 import grit.core.tool.ToolName
 import grit.core.tool.ToolSet
+import grit.core.visibility.{Compartments, Group, GroupName, RoomLabels, Visibility}
 import grit.dbos.engine.{Engine, EngineLock, Link, NotTaken, Unopened}
 import grit.digest.Digest
 import grit.edge.{PlaceFragments, Server}
@@ -36,7 +37,7 @@ import grit.mcp.scope.McpScope
 import grit.models.{JevConfig, OpenRouterConfig, Seed, StubProvider}
 import grit.remind.Reminders
 import grit.slack.edge.{SlackAccounts, SlackCommand, SlackEdge}
-import grit.slack.event.TeamId
+import grit.slack.event.{TeamId, UserId}
 import grit.tools.Coding
 import grit.tui.runtime.app.{Host, Mailbox}
 import grit.tui.runtime.loop.Runtime
@@ -95,7 +96,9 @@ import grit.turn.{Turn, TurnLoop}
   *     `SLACK_APP_TOKEN`, until stopped. It hears every channel, public or private, its bot is
   *     invited to, what is not said to it included, until the bot is removed. It answers the slash command
   *     `GRIT_SLACK_COMMAND` names (default `/grit`, as registered for the Slack app) to its
-  *     asker alone ([[SlackEdge.command]]). Its tools are `read`'s, as in a run with arguments:
+  *     asker alone ([[SlackEdge.command]]); the Slack users `GRIT_ADMINS` names (ids,
+  *     comma-separated) administer ([[visibility]]), and with none it says at start that no one
+  *     can lower a room's label or label a public channel. Its tools are `read`'s, as in a run with arguments:
   *     nothing in Slack answers a gated call yet, so `GRIT_TOOLS=all` is refused. It never
   *     attaches: another grit holding the database's engine stops it. Give it a database of
   *     its own (`GRIT_DATABASE_URL`): everyone in the workspace sees what that database holds.
@@ -214,8 +217,11 @@ object Main {
     val clock: Clock^ = Clock.system() // clock-check: the reference deployment's composition root
     val fresh: Fresh^ = Fresh.random()
     val failure: Option[String] =
-      if (serving) Kit.serve(deployment, env).left.map(_.message).swap.toOption
-      else if (backfilling)
+      if (serving) {
+        // Who may lower a label or label a public channel, said before serving starts.
+        unadministered(exitOnLeft(admins(env))).foreach(line => System.err.println(s"[main] $line"))
+        Kit.serve(deployment, env).left.map(_.message).swap.toOption
+      } else if (backfilling)
         backfillDays(env)
           .flatMap { days =>
             Kit
@@ -541,7 +547,8 @@ object Main {
     * is unset ([[Lifecycle.ServeScope]]) and caps a day at [[Budgets.ServeDefault]] when
     * `GRIT_DAILY_USD` is. When Slack is served from the workspace `slackIn`
     * ([[SlackEdge.installedIn]]), it trusts the Slack attester for that workspace's accounts
-    * ([[SlackAccounts.realm]]), and refuses unless one of `edges` is that attester. The first
+    * ([[SlackAccounts.realm]]), and refuses unless one of `edges` is that attester; its
+    * administrators are those `GRIT_ADMINS` names there ([[visibility]]). The first
     * variable malformed, or the deployment refused, is the failure.
     */
   private[main] def deployment(
@@ -575,8 +582,11 @@ object Main {
           .map(why => s"the Slack team grit is installed in: $why")
       )
       identities <- Identities.of(trusted, domains).left.map(_.message)
+      named <- admins(env)
+      visible <- visibility(named, slackIn)
       deployment <- Deployment
         .of(
+          visibility = visible,
           edges = edges,
           worksIn = worksIn,
           plugins = plugins,
@@ -609,6 +619,72 @@ object Main {
     */
   private[main] def slackCommand(env: Map[String, String]): Either[String, SlackCommand] =
     SlackCommand.of(env.getOrElse(CommandVar, "/grit")).left.map(why => s"$CommandVar: $why")
+
+  /** The variable naming the Slack users who administer grit: their ids, comma-separated. */
+  private val AdminsVar = "GRIT_ADMINS"
+
+  /** The group [[AdminsVar]] declares, the deployment's administrators
+    * ([[grit.core.visibility.Visibility.administrators]]).
+    */
+  private[main] val Administrators: GroupName =
+    // A group's name by GroupName.of's rule, so the Left is never taken.
+    GroupName.of("administrators").fold(why => throw new IllegalStateException(why), identity)
+
+  /** The Slack users `env` names administrators ([[AdminsVar]]), none when unset; why not,
+    * naming the variable, at the first that is not a Slack user's id (`U…` or `W…`).
+    */
+  private[main] def admins(env: Map[String, String]): Either[String, Vector[UserId]] =
+    env
+      .get(AdminsVar)
+      .toVector
+      .flatMap(_.split(',').toVector.map(_.trim).filter(_.nonEmpty))
+      .foldLeft[Either[String, Vector[UserId]]](Right(Vector.empty)) { (acc, raw) =>
+        acc.flatMap(ids =>
+          Either.cond(
+            raw.matches("[UW][A-Z0-9]+"),
+            ids :+ UserId(raw),
+            s"$AdminsVar: $raw is not a Slack user's id (U… or W…, as their profile's Copy member ID gives it)"
+          )
+        )
+      }
+
+  /** The reference deployment's visibility: with Slack served from the workspace `slackIn`
+    * and `admins` named, the shipped one but for [[Administrators]], declared as those users'
+    * accounts there (`slack:{team}/{id}`), who alone may lower a room's label or label a public
+    * channel; otherwise [[Visibility.Shipped]], under which no one may.
+    */
+  private[main] def visibility(
+      admins: Vector[UserId],
+      slackIn: Option[TeamId]
+  ): Either[String, Visibility] =
+    slackIn.filter(_ => admins.nonEmpty) match {
+      case None => Right(Visibility.Shipped)
+      case Some(team) =>
+        admins
+          .foldLeft[Either[String, Set[Account]]](Right(Set.empty))((acc, user) =>
+            acc.flatMap(as => SlackAccounts.account(team, user).map(as + _))
+          )
+          .left
+          .map(why => s"$AdminsVar: $why")
+          .flatMap(accounts =>
+            Visibility
+              .of(
+                Compartments.Shipped,
+                RoomLabels.Public,
+                Vector(Group(Administrators, accounts)),
+                Vector.empty,
+                administrators = Some(Administrators)
+              )
+              .left
+              .map(r => s"$AdminsVar: $r")
+          )
+    }
+
+  /** What `grit serve` says at start when `admins` names no one; nothing when it names any. */
+  private[main] def unadministered(admins: Vector[UserId]): Option[String] =
+    Option.when(admins.isEmpty)(
+      s"$AdminsVar is unset: no one can lower a room's label or label a public channel"
+    )
 
   /** The variable whose token `grit serve` sends GitHub's MCP server; unset, it serves no
     * GitHub edge.
