@@ -232,6 +232,8 @@ object AttestingLiveTests extends TestSuite {
       Vector(a, b, gone).foreach(checks.before(source, _))
       val idle = (checks.round(source), source.listed)
       aged(a, "25 hours")
+      // Not due, so only a look that rewrites every seen account makes it recent again.
+      aged(b, "1 hour")
       source.says = Map(a -> Standing.Full(None), b -> Standing.Full(None))
       reports.clear()
       val look = checks.round(source)
