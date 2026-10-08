@@ -4,6 +4,7 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
+import grit.core.admin.Command
 import grit.core.clock.Clock
 import grit.core.edge.{
   Acknowledgement,
@@ -182,6 +183,60 @@ final class SlackEdge(
             )
             false
         }
+    }
+
+  /** One slash command's payload ([[Events.command]]): when it is `registered`, run and
+    * answered to its asker alone at its response url ([[Slack.respond]]); any other command is
+    * ignored, and said. Its words are read by [[Command.read]], a mention (`<@U…>`) naming
+    * that user's account in the command's team. Its asker's account is checked first
+    * ([[Attesting.before]]), then the command is run as theirs ([[Administration.run]]), now,
+    * in its room: its channel's (`slack:{team}/{channel}`), whether grit's bot is a member
+    * there or not, or, asked in any direct message, the asker's own direct room. Words read
+    * wrong are answered with why and the commands; an asker Slack cannot answer for and never
+    * has, or a database that failed, with a line saying nothing was run. An answer Slack will
+    * not take, and a payload grit cannot read, are said.
+    */
+  def command(registered: SlackCommand)(payload: String): Unit =
+    Events.command(payload) match {
+      case Left(why) => said(s"slack: a slash command grit cannot read: $why")
+      case Right(c) if c.command != registered.name =>
+        said(s"slack: a slash command not grit's, ${c.command}, ignored")
+      case Right(c) =>
+        val answer = SlackAccounts.account(c.team, c.user) match {
+          case Left(why) =>
+            said(s"slack: ${c.command} not run: its asker cannot be named: $why")
+            NotAttested
+          case Right(asker) =>
+            stores.attesting.before(source, asker) match {
+              case Left(e) =>
+                said(s"slack: ${c.command} not run: ${Account.written(asker)} unchecked: $e")
+                NotAttested
+              case Right(_) =>
+                val room =
+                  if (c.direct) Origin.Direct(asker, "").room
+                  else Origin.channel(TeamId.value(c.team), ChannelId.value(c.channel))
+                // A mention as Slack escapes it, `<@U…|name>`, is read as the user alone.
+                val words = Mentioned.replaceAllIn(c.text, m => s"<@${m.group(1)}>")
+                def person(word: String): Option[Account] = word match {
+                  case Mentioned(user) => SlackAccounts.account(c.team, UserId(user)).toOption
+                  case _ => None
+                }
+                Command.read(words, person) match {
+                  case Left(why) => why
+                  case Right(command) =>
+                    stores.administration.run(asker, room, command, clock.now()) match {
+                      case Right(answered) => answered.text
+                      case Left(e) =>
+                        said(s"slack: ${c.command} not run: $e")
+                        NotRun
+                    }
+                }
+            }
+        }
+        slack
+          .respond(c.answerAt, answer)
+          .left
+          .foreach(e => said(s"slack: the answer to ${c.command} not shown: $e"))
     }
 
   /** What Slack says of the accounts of grit's own team, `slack:{self.team}/…`, and nothing of
@@ -878,6 +933,14 @@ object SlackEdge {
     * acknowledgement ([[SlackEdge.acknowledge]]); each until its reply is posted.
     */
   val Working = "eyes"
+
+  /** The answer to a command whose asker Slack cannot say who they are, and never has. */
+  val NotAttested: String =
+    "Nothing was run: Slack could not say who you are just now. Try again in a minute."
+
+  /** The answer to a command the database could not run. */
+  val NotRun: String =
+    "Nothing was run: grit could not reach its database just now. Try again in a minute."
 
   /** `<@U…>` in a message's text. */
   private val Mentioned = "<@([A-Z0-9]+)(?:\\|[^>]*)?>".r
