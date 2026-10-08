@@ -140,7 +140,7 @@ object TrustingLiveTests extends TestSuite {
       val secrets =
         Secrets.of(on(config, Map.empty), deployment).fold(r => sys.error(r.message), identity)
       val engine = LiveEngine.open(config, Turn.Epoch, visibility = deployment.visibility)
-      try { val _ = Main.ownEngine(engine, deployment, secrets, Launch.Run.Served) }
+      try { val _ = Main.ownEngine(engine, deployment, secrets, Launch.Run.Served, Clock.system()) }
       finally engine.close()
       attestations(config) ==>
         Vector(Vector(Account.written(account), "kept@example.com", "true"))

@@ -137,7 +137,15 @@ object DeclaredLiveTests extends TestSuite {
   private def launched[A](config: DbConfig, d: Deployment)(body: Engine^ => A): A = {
     val engine = LiveEngine.open(config, Turn.Epoch)
     try {
-      Launch(engine, d, secrets(config, d), Launch.Run.Served, sweeping = false, _ => ())
+      Launch(
+        engine,
+        d,
+        secrets(config, d),
+        Launch.Run.Served,
+        Clock.system(),
+        sweeping = false,
+        _ => ()
+      )
       body(engine)
     } finally engine.close()
   }

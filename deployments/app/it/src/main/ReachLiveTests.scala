@@ -3,6 +3,7 @@ package grit.app.main
 import scala.concurrent.duration.*
 import scala.util.Using
 
+import grit.core.clock.Clock
 import grit.core.edge.{Desk, OutcomeJson, Route, ToolRequest}
 import grit.core.id.{PrincipalId, SourceId, TurnRef, WorkflowId}
 import grit.core.identity.Account
@@ -99,7 +100,15 @@ object ReachLiveTests extends TestSuite {
     val config = TestPostgres.freshDatabase(name)
     val engine = LiveEngine.open(config, Turn.Epoch)
     try {
-      Launch(engine, deployment, secrets(config), Launch.Run.Served, sweeping = false, _ => ())
+      Launch(
+        engine,
+        deployment,
+        secrets(config),
+        Launch.Run.Served,
+        Clock.system(),
+        sweeping = false,
+        _ => ()
+      )
       val place = SlackEdge.PostsAt.place
       val desk = engine.register(PrincipalId.Grit, Set(place)) match {
         case Right(d) => d

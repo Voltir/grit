@@ -98,6 +98,7 @@ object Kit {
                 deployment,
                 secrets,
                 Launch.Run.Served,
+                clock,
                 sweeping = true,
                 said => turns.info(said)
               )
@@ -199,6 +200,7 @@ object Kit {
                 deployment,
                 secrets,
                 Launch.Run.Served,
+                clock,
                 sweeping = false,
                 said => turns.info(said)
               )
@@ -286,15 +288,17 @@ object Kit {
     * (the chat), sweeping as `deployment` says, its finished turns not logged: a line on the
     * terminal would draw over the chat. It ends no attestation: a process that serves no
     * attester leaves what each attested standing ([[serve]] and [[catchUp]] end what the
-    * deployment no longer trusts). Throws as [[Launch.apply]] does.
+    * deployment no longer trusts). Its workflows keep `clock`, which its caller opened `engine`
+    * with. Throws as [[Launch.apply]] does.
     */
   private[grit] def launch(
       engine: Engine^,
       deployment: Deployment,
       secrets: Secrets,
-      run: Launch.Run
+      run: Launch.Run,
+      clock: Clock^
   ): Engine^{engine} =
-    Launch(engine, deployment, secrets, run, sweeping = true, _ => ())
+    Launch(engine, deployment, secrets, run, clock, sweeping = true, _ => ())
 
   /** `deployment`'s secrets in `env`, once every variable each of `needs` names is set. */
   private[run] def preflight(

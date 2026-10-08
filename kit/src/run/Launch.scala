@@ -67,12 +67,15 @@ private[grit] object Launch {
     * can cause), or when the kept model settings cannot be read. `finished` is told each
     * turn's [[TurnTally.line]] when its workflow's body returns (again if a recovered turn's
     * body returns again), or, when the tally cannot be read, what the body returned and why.
+    * Its workflows, the clock edge and the declared schedules keep `clock`, which its caller
+    * opened `engine` with; the sweep and the plugins' desks keep the engine's own.
     */
   def apply(
       engine: Engine^,
       d: Deployment,
       s: Secrets,
       run: Run,
+      clock: Clock^,
       sweeping: Boolean,
       finished: String => Unit
   ): Engine^{engine} = {
@@ -89,17 +92,16 @@ private[grit] object Launch {
       if (run.announced) announced(reached) else reached,
       classifier(d, s),
       weighing(d, s),
-      // clock-check: a launch's composition root; `asking` takes any clock, as tests do
-      Clock.system(),
+      clock,
       sweeping,
       finished
     )
   }
 
-  /** As [[apply]], but every model call is made through `models`, every question the topics
-    * and the turn's weighing ask goes to `classifier` and `weighing`, and every workflow, the
-    * sweep, the clock edge and the declared schedules keep `clock`: a launch whose calls a test
-    * counts and whose time it sets. A shadow still asks the classifier `s` and `d` name.
+  /** As [[apply]], but every model call is made through `models`, and every question the
+    * topics and the turn's weighing ask goes to `classifier` and `weighing`: a launch whose calls
+    * a test counts, and whose time it sets through `clock` and the clock it opened `engine`
+    * with. A shadow still asks the classifier `s` and `d` name.
     */
   private[grit] def asking(
       engine: Engine^,

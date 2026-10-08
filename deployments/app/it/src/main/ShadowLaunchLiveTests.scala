@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import scala.util.Using
 
+import grit.core.clock.Clock
 import grit.core.id.{
   CorpusName,
   PeriodRef,
@@ -110,7 +111,15 @@ object ShadowLaunchLiveTests extends TestSuite {
   ): (Entry, Vector[String], Option[Shadowed]) = {
     val engine = LiveEngine.open(config, Turn.Epoch)
     try {
-      Launch(engine, d, secrets(config, d), Launch.Run.Served, sweeping = false, _ => ())
+      Launch(
+        engine,
+        d,
+        secrets(config, d),
+        Launch.Run.Served,
+        Clock.system(),
+        sweeping = false,
+        _ => ()
+      )
       engine.inbox.hear(
         here,
         SourceId("1.0"),

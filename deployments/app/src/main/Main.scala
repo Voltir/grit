@@ -257,7 +257,7 @@ object Main {
                     case Left(refused) => sys.error(refused.message(clock.now()))
                   }
                 try {
-                  val running = ownEngine(started, deployment, secrets, run)
+                  val running = ownEngine(started, deployment, secrets, run, clock)
                   serveHere(running, Place.of(directory), hosted, instructions, offered)
                   running
                 } catch {
@@ -338,7 +338,7 @@ object Main {
             finally link.close()
           case Left(refused) => Some(refused.message(clock.now()))
           case Right(engine) =>
-            try say(ownEngine(engine, deployment, secrets, run), args.toList)
+            try say(ownEngine(engine, deployment, secrets, run, clock), args.toList)
             finally {
               // DBOS's threads are non-daemon: a throw that skips this leaves the JVM, and
               // mill, waiting forever.
@@ -356,16 +356,17 @@ object Main {
   /** `engine`, the database's engine this process holds for the chat or a run with arguments,
     * with `deployment`'s workflows launched ([[Kit.launch]]). It ends no attestation, whatever
     * `deployment` trusts: only `grit serve` and `grit backfill` do, since they alone serve the
-    * Slack attester, and a chat's environment may claim other domains than theirs. Throws as
-    * [[Kit.launch]] does.
+    * Slack attester, and a chat's environment may claim other domains than theirs. Its
+    * workflows keep `clock`, which `engine` was opened with. Throws as [[Kit.launch]] does.
     */
   private[main] def ownEngine(
       engine: Engine^,
       deployment: Deployment,
       secrets: Secrets,
-      run: Launch.Run
+      run: Launch.Run,
+      clock: Clock^
   ): Engine^{engine} =
-    Kit.launch(engine, deployment, secrets, run)
+    Kit.launch(engine, deployment, secrets, run, clock)
 
   /** This process's edge (ADR 0017), registered through `engine` for `place`: it offers
     * `hosted` and the directory's `instructions` there, and runs the requests addressed to it

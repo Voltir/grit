@@ -4,6 +4,7 @@ import java.time.Instant
 
 import scala.concurrent.duration.*
 
+import grit.core.clock.Clock
 import grit.core.id.{CloseRef, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.message.Tokens
@@ -156,6 +157,7 @@ object UnpromptedLiveTests extends TestSuite {
           d,
           secrets(d, config),
           Launch.Run.Served,
+          Clock.system(),
           sweeping = false,
           line => told.add(line): Unit
         )
@@ -189,7 +191,15 @@ object UnpromptedLiveTests extends TestSuite {
       val d = deployment(Speaking.Shadow(limits))
       val engine = LiveEngine.open(config, Turn.Epoch)
       try {
-        Launch(engine, d, secrets(d, config), Launch.Run.Served, sweeping = false, _ => ())
+        Launch(
+          engine,
+          d,
+          secrets(d, config),
+          Launch.Run.Served,
+          Clock.system(),
+          sweeping = false,
+          _ => ()
+        )
         val turn = converse(engine, "20.0")
         assert(eventually(stage(engine, turn).contains(Stage.Settled)))
         val pending = right(engine.jot.write(Subject.Public)(engine.deliveries.pending()))
@@ -208,7 +218,15 @@ object UnpromptedLiveTests extends TestSuite {
       val d = deployment(Speaking.Shadow(limits))
       val engine = LiveEngine.open(config, Turn.Epoch)
       try {
-        Launch(engine, d, secrets(d, config), Launch.Run.Served, sweeping = false, _ => ())
+        Launch(
+          engine,
+          d,
+          secrets(d, config),
+          Launch.Run.Served,
+          Clock.system(),
+          sweeping = false,
+          _ => ()
+        )
         val day = grit.core.spend.Budget(java.time.ZoneOffset.UTC, None).today(Instant.now())
         val spent = right(engine.db.read(Subject.Public)(engine.speech.spentOn(day)))
         val turn = converse(engine, "30.0", named = true)

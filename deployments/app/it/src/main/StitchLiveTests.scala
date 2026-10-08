@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.concurrent.duration.*
 import scala.util.Using
 
+import grit.core.clock.Clock
 import grit.core.id.{ConversationId, EntryId, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.TestAccounts
 import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
@@ -151,7 +152,15 @@ object StitchLiveTests extends TestSuite {
     ) {
       val engine = LiveEngine.open(config, Turn.Epoch)
       try {
-        Launch(engine, deployment, secrets(config), Launch.Run.Served, sweeping = false, _ => ())
+        Launch(
+          engine,
+          deployment,
+          secrets(config),
+          Launch.Run.Served,
+          Clock.system(),
+          sweeping = false,
+          _ => ()
+        )
         // The channel as it was: a sandwich question, then the Engine question 95 s later.
         val sandwich =
           hear(engine, "1.0", "U0NICK", "roast beef sandwiches still cut diagonally?", 200)
