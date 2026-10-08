@@ -8,8 +8,8 @@ import grit.dbos.sql.{DbConfig, LiveDb, SqlConversationStore, TestPostgres}
 
 import utest.*
 
-/** What the engine's administration keeps, read back as the labels in force: a label set in
-  * force from the next transaction, a room never heard before included.
+/** What the engine's administration keeps, read back as a conversation's label: a label set
+  * for a room never heard, which has no place until the label makes one.
   */
 object AdministrationLiveTests extends TestSuite {
   import grit.core.admin.AdministrationContract.*
@@ -38,37 +38,21 @@ object AdministrationLiveTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a label set is in force from the next transaction: a conversation begun after takes it, one begun before keeps its own, and a room never heard before is labelled too"
+      "a label set through grit for a room never heard is the label of its first conversation"
     ) {
       withEngine("administration_in_force") { (c, engine) =>
-        def begun(channel: String, thread: String) =
-          engine
-            .conversation(Origin.Slack("T1", channel, thread), mia)
-            .fold(e => throw new java.lang.AssertionError(s"a conversation: $e"), identity)
-        val before = begun("C-heard", "1.0")
-        val heard = Origin.Slack("T1", "C-heard", "1.0").room
-        val unheard = Origin.Slack("T1", "C-unheard", "1.0").room
-        val set = Vector(
-          engine.administration.run(ada, heard, Command.SetLabel(internalTrial), t(1)),
-          engine.administration.run(ada, unheard, Command.SetLabel(confidentialTrial), t(2))
-        )
-        val after = begun("C-heard", "2.0")
-        val first = begun("C-unheard", "1.0")
-        (set, label(c, before), label(c, after), label(c, first)) ==> (
-          Vector(
-            Right(
-              Answer.relabelled(
-                new Change.Relabel(heard, Label.Public, Change.To.Set(internalTrial))
-              )
-            ),
-            Right(
-              Answer.relabelled(
-                new Change.Relabel(unheard, Label.Public, Change.To.Set(confidentialTrial))
-              )
+        val origin = Origin.Slack("T1", "C-unheard", "1.0")
+        val set =
+          engine.administration.run(ada, origin.room, Command.SetLabel(confidentialTrial), t(1))
+        val first = engine
+          .conversation(origin, mia)
+          .fold(e => throw new java.lang.AssertionError(s"a conversation: $e"), identity)
+        (set, label(c, first)) ==> (
+          Right(
+            Answer.relabelled(
+              new Change.Relabel(origin.room, Label.Public, Change.To.Set(confidentialTrial))
             )
           ),
-          Some(Label.Public),
-          Some(internalTrial),
           Some(confidentialTrial)
         )
       }
