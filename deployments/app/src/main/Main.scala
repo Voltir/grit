@@ -8,6 +8,7 @@ import grit.app.look.Theme
 import grit.assembly.estimate.CharEstimate
 import grit.assembly.linear.LinearAssembler
 import grit.assembly.retrieval.RetrievalAssembler
+import grit.core.clock.{Clock, Fresh}
 import grit.core.edge.ServedEdge
 import grit.core.id.{PluginName, PrincipalId, SourceId, TurnRef}
 import grit.core.identity.{Account, Identities, Vouching}
@@ -208,6 +209,9 @@ object Main {
 
     // This process, as the engine's row and this edge's registration name it.
     val identity = LocalMachine.identity()
+    // The process's own time and fresh values, read here at its root and passed down.
+    val clock: Clock^ = Clock.system() // clock-check: the reference deployment's composition root
+    val fresh: Fresh^ = Fresh.random()
     val failure: Option[String] =
       if (serving) Kit.serve(deployment, env).left.map(_.message).swap.toOption
       else if (backfilling)
@@ -249,7 +253,7 @@ object Main {
                     deployment.visibility
                   ) match {
                     case Right(e) => e
-                    case Left(refused) => sys.error(refused.message(java.time.Instant.now()))
+                    case Left(refused) => sys.error(refused.message(clock.now()))
                   }
                 try {
                   val running = ownEngine(started, deployment, secrets, run)
@@ -284,13 +288,15 @@ object Main {
               attached
             )
           case Left(refused) =>
-            System.err.println(s"[main] ${refused.message(java.time.Instant.now())}")
+            System.err.println(s"[main] ${refused.message(clock.now())}")
             sys.exit(1)
         }
         val host = new ChatHost(
           origin,
           opener,
           CharEstimate,
+          clock,
+          fresh,
           Some(java.nio.file.Path.of(log))
         )
         // Closing the host stops following and closes the engine, however far it got.
@@ -314,7 +320,7 @@ object Main {
               Link.attach(config, Turn.Epoch, identity, deployment.budget, deployment.visibility)
             try say(link, args.toList)
             finally link.close()
-          case Left(refused) => Some(refused.message(java.time.Instant.now()))
+          case Left(refused) => Some(refused.message(clock.now()))
           case Right(engine) =>
             try say(ownEngine(engine, deployment, secrets, run), args.toList)
             finally {

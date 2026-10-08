@@ -1,11 +1,11 @@
 package grit.app.chat
 
-import java.util.UUID
 import java.util.concurrent.CountDownLatch
 
 import scala.util.control.NonFatal
 
 import grit.app.config.Lifecycle
+import grit.core.clock.{Clock, Fresh}
 import grit.core.id.{ConversationId, EntrySeq, SourceId, TurnRef, TurnSeq}
 import grit.core.identity.Account
 import grit.core.inbox.InboxError
@@ -47,6 +47,8 @@ final class ChatHost(
     origin: Origin,
     opener: ChatHost.Opener^,
     estimator: TokenEstimator,
+    clock: Clock^,
+    fresh: Fresh^,
     log: Option[java.nio.file.Path] = None
 ) extends Host[ChatScreen.Msg],
       AutoCloseable,
@@ -57,11 +59,11 @@ final class ChatHost(
     */
   private val PollMs = 400L
 
-  /** How often the screen looks whether an engine holds the database: every 2 s. */
-  private val HolderEvery = 2000L * 1000000L
+  /** How often the screen looks whether an engine holds the database, in milliseconds: 2 s. */
+  private val HolderEvery = 2000L
 
-  /** How often the session tab's day's spend is read again, in nanoseconds: 5 s. */
-  private val SpentEvery = 5000L * 1000000L
+  /** How often the session tab's day's spend is read again, in milliseconds: 5 s. */
+  private val SpentEvery = 5000L
 
   /** What an attached screen says while no engine holds the database. */
   private val EngineGoneNote = "engine gone: turns wait until grit runs again"
@@ -245,8 +247,8 @@ final class ChatHost(
         var engined = true
         var lookedAt = 0L
         while (open) {
-          if (System.nanoTime() - lookedAt > HolderEvery) {
-            lookedAt = System.nanoTime()
+          if (clock.millis() - lookedAt > HolderEvery) {
+            lookedAt = clock.millis()
             val now = engine.holder().nonEmpty
             if (now != engined) {
               engined = now
@@ -265,7 +267,7 @@ final class ChatHost(
               val last = entries.lastOption.map(_.seq)
               // Other conversations spend too (a Slack edge on this database): the day's
               // total is read again every SpentEvery, whether or not this one changed.
-              val stale = System.nanoTime() - spentAt > SpentEvery
+              val stale = clock.millis() - spentAt > SpentEvery
               if (!sessionAt.contains(last) || stale) {
                 val (unread, final1) = SessionView.unread(entries, settled)
                 for {
@@ -275,7 +277,7 @@ final class ChatHost(
                   costs = costs ++ read
                   settled = final1
                   sessionAt = Some(last)
-                  spentAt = System.nanoTime()
+                  spentAt = clock.millis()
                   val view = SessionView.of(entries, costs.values.toVector.flatten, recorded, today)
                   mailbox.offer(ChatScreen.Msg.Session(view))
                 }
@@ -324,7 +326,7 @@ final class ChatHost(
       .read(Subject.Conversation(conversation)) {
         for {
           recorded <- engine.spending.conversation(conversation)
-          today <- engine.spending.on(engine.budget.today(java.time.Instant.now()))
+          today <- engine.spending.on(engine.budget.today(clock.now()))
         } yield (recorded, Some(SessionView.Today(today.cost, engine.budget.cap)))
       }
       .toOption
@@ -424,7 +426,7 @@ final class ChatHost(
     val started = for {
       turn <- engine.inbox.ingest(
         origin,
-        SourceId(UUID.randomUUID().toString),
+        SourceId(fresh.nonce()),
         Message.User(text),
         Account.Local
       )

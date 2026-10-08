@@ -43,7 +43,9 @@ object PromoteModelSettings {
       Visibility.Shipped
     ) match {
       case Right(open) => open
-      case Left(refused) => fail(refused.message(java.time.Instant.now()))
+      case Left(refused) =>
+        // clock-check: a one-shot command's composition root, read once for its refusal
+        fail(refused.message(grit.core.clock.Clock.system().now()))
     }
     try
       engine.db.read(Subject.Public)(engine.modelSettings.all()) match {
