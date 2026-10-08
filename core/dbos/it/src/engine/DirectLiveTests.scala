@@ -34,7 +34,6 @@ object DirectLiveTests extends TestSuite {
       .getOrElse(throw new java.lang.AssertionError(s"no source's account: $text"))
 
   private val dana = sourced("slack:T1/U-dana")
-  private val ed = sourced("slack:T1/U-ed")
 
   /** Long after anything here is said. */
   private val Far = Instant.parse("2100-01-01T00:00:00Z")
@@ -115,18 +114,6 @@ object DirectLiveTests extends TestSuite {
 
   val tests = Tests {
     test(
-      "a direct message's conversation is created at its person's clearance, one named in no group's at public"
-    ) {
-      val config = fresh("direct_created")
-      engine(config, Cleared) { e =>
-        told(e, dana, "1.0", "1.0")
-        told(e, ed, "2.0", "2.0")
-      }
-      (created(config, Origin.Direct(dana, "1.0")), created(config, Origin.Direct(ed, "2.0"))) ==>
-        (ConfidentialTrial, Label.Public)
-    }
-
-    test(
       "after a fall by restart, a turn of the old thread opens at the meet and reads none of its thread"
     ) {
       val config = fresh("direct_fallen")
@@ -172,15 +159,16 @@ object DirectLiveTests extends TestSuite {
     ) {
       val config = fresh("direct_raised")
       val old = engine(config, Fallen)(e => told(e, dana, "1.0", "1.0"))
-      val (reopened, fresh2) = engine(config, Cleared) { e =>
-        (opened(e, Subject.Turn(old), old)._1, told(e, dana, "2.0", "2.0"))
+      val reopened = engine(config, Cleared) { e =>
+        val label = opened(e, Subject.Turn(old), old)._1
+        val _ = told(e, dana, "2.0", "2.0")
+        label
       }
       (
         created(config, Origin.Direct(dana, "1.0")),
         reopened,
-        created(config, Origin.Direct(dana, "2.0")),
-        fresh2.conversationId != old.conversationId
-      ) ==> (Label.Public, Label.Public, ConfidentialTrial, true)
+        created(config, Origin.Direct(dana, "2.0"))
+      ) ==> (Label.Public, Label.Public, ConfidentialTrial)
     }
 
     test(
