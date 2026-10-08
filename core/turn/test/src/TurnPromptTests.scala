@@ -214,7 +214,7 @@ object TurnPromptTests extends TestSuite {
     }
 
     test(
-      "a turn is told its own room's label in written form and where what is said there may be read; in a direct message, that it is read only there"
+      "a turn is told its own room's label in its shown form and where what is said there may be read; in a direct message, that it is read only there"
     ) {
       val label = grit.core.visibility.Label
         .read("confidential+trial")
@@ -229,12 +229,13 @@ object TurnPromptTests extends TestSuite {
         .map(f => (f.layer, f.text)) ==> Vector(
         (
           Layer.Reach,
-          "This conversation is labelled confidential+trial: what is said here may be read " +
-            "only where that label is allowed."
+          "This conversation is labelled [level: confidential, in: {trial}]: what is said here " +
+            "may be read only where that label is allowed."
         ),
         (
           Layer.Reach,
-          "This is a direct message, labelled confidential+trial at its person's clearance: " +
+          "This is a direct message, labelled [level: confidential, in: {trial}] at its person's " +
+            "clearance: " +
             "what is said here is read only in this direct message."
         )
       )

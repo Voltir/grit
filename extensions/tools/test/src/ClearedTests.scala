@@ -76,7 +76,7 @@ object ClearedTests extends TestSuite {
           "Anything said elsewhere is read here up to this room's label met with your clearance",
           "I never say whether anything is hidden from you."
         ).filterNot(told.contains)
-      ) ==> (Some("This conversation is labelled internal."), true, Vector())
+      ) ==> (Some("This conversation is labelled [level: internal]."), true, Vector())
     }
 
     test(
@@ -113,18 +113,18 @@ object ClearedTests extends TestSuite {
 
     test("the rendered text shows each account by kind and how it is the person's") {
       Cleared.render(Explained.fullClearance) ==>
-        """This conversation is labelled confidential+finance+trial.
+        """This conversation is labelled [level: confidential, in: {finance, trial}].
           |
-          |From anywhere else, I read for you up to confidential+finance+trial.
+          |From anywhere else, I read for you up to [level: confidential, in: {finance, trial}].
           |
           |I know you by a slack account, linked to you by an email a trusted source confirmed, a full member of its source; a test account, your own.
           |
           |Your groups, each with what it clears you for:
-          |- trial: confidential+trial, through your slack account and through your test account
-          |- leadership: confidential+finance+trial, through your slack account
-          |- staff: internal, as a full member of a slack source
+          |- trial: [level: confidential, in: {trial}], through your slack account and through your test account
+          |- leadership: [level: confidential, in: {finance, trial}], through your slack account
+          |- staff: [level: internal], as a full member of a slack source
           |
-          |How it works: what is said in a room is read there, by its members, up to the room's label. Anything said elsewhere is read here up to this room's label met with your clearance. A label is written as its level, then its compartments, joined by +.
+          |How it works: what is said in a room is read there, by its members, up to the room's label. Anything said elsewhere is read here up to this room's label met with your clearance. A label is shown as its level, then the compartments it is in.
           |
           |I never say whether anything is hidden from you.""".stripMargin
     }

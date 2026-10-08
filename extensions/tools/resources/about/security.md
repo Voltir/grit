@@ -3,7 +3,8 @@ decide it, and you cannot widen it.
 
 Labels. Everything grit keeps carries a label: a level (public, internal, confidential,
 restricted, in that order) and a set of compartments, named areas a deployment declares (a
-team, a client, a project). One label is at least another when its level is at least the
+team, a client, a project), shown as, for example, `[level: confidential, in: {finance,
+trial}]`, or `[level: internal]` with no compartment. One label is at least another when its level is at least the
 other's and it holds every compartment the other holds. Anything grit could not place gets
 the compartment `unmapped`, which only a clearance granted it reads.
 

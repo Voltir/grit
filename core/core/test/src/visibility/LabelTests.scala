@@ -84,6 +84,20 @@ object LabelTests extends TestSuite {
       Label.written(Label.Public) ==> "public"
     }
 
+    test(
+      "a label is shown to people as its level, then its compartments in order, comma-separated in braces, and with none no compartments at all"
+    ) {
+      (
+        Label.shown(Label.at(Level.Confidential, trial, acme)),
+        Label.shown(Label.at(Level.Internal)),
+        Label.shown(Label.Public)
+      ) ==> (
+        "[level: confidential, in: {acme, trial}]",
+        "[level: internal]",
+        "[level: public]"
+      )
+    }
+
     test("a written form naming no level first, or a level's name as a compartment, is refused") {
       Label.read("trial") ==> Left("trial names no level first: trial")
       Label.read("internal+confidential") ==>

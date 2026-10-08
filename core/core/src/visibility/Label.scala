@@ -86,6 +86,17 @@ object Label {
   def written(l: Label): String =
     (Level.name(l.level) +: l.compartments.toVector.map(Compartment.name)).mkString("+")
 
+  /** Its form for people and the model to read, e.g. `[level: confidential, in: {acme, trial}]`,
+    * or `[level: internal]` with no compartment. Never parsed: [[written]] is the form a file
+    * or a recorded output holds.
+    */
+  def shown(l: Label): String = {
+    val in =
+      if (l.compartments.isEmpty) ""
+      else l.compartments.toVector.map(Compartment.name).mkString(", in: {", ", ", "}")
+    s"[level: ${Level.name(l.level)}$in]"
+  }
+
   /** The label `text` writes, or why not. */
   def read(text: String): Either[String, Label] =
     text.split('+').toVector match {

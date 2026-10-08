@@ -120,18 +120,18 @@ object TurnPrompt {
     )
 
   /** What a turn at `origin` is told of its own room's label, `label` (its transaction's floor,
-    * never the asker's clearance), in written form: what is said there may be read only where
+    * never the asker's clearance), as [[Label.shown]]: what is said there may be read only where
     * that label is allowed; in a direct message, that it is read only there, at its person's
     * clearance. A reach-layer fragment: grit's words on where the conversation is.
     */
   def room(origin: Origin, label: Label): Fragment = {
-    val written = Label.written(label)
+    val shown = Label.shown(label)
     val text = origin match {
       case _: Origin.Direct =>
-        s"This is a direct message, labelled $written at its person's clearance: what is " +
+        s"This is a direct message, labelled $shown at its person's clearance: what is " +
           "said here is read only in this direct message."
       case _: Origin.Tui | _: Origin.Slack | _: Origin.Task =>
-        s"This conversation is labelled $written: what is said here may be read only where " +
+        s"This conversation is labelled $shown: what is said here may be read only where " +
           "that label is allowed."
     }
     Fragment(Layer.Reach, Fragment.Grit, text)

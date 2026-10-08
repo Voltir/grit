@@ -81,12 +81,12 @@ object Cleared {
   private val Rules: String =
     "How it works: what is said in a room is read there, by its members, up to the room's " +
       "label. Anything said elsewhere is read here up to this room's label met with your " +
-      "clearance. A label is written as its level, then its compartments, joined by +."
+      "clearance. A label is shown as its level, then the compartments it is in."
 
   /** The line every answer ends with. */
   private val Hidden: String = "I never say whether anything is hidden from you."
 
-  private def label(l: Label): String = Label.written(l)
+  private def label(l: Label): String = Label.shown(l)
 
   private def who(asker: Explanation.Asker): String =
     asker match {
