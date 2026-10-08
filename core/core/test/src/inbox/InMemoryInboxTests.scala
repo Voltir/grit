@@ -8,7 +8,7 @@ import grit.core.message.{AssistantBlock, Message, StopReason, Tokens, Usage}
 import grit.core.period.{CloseReason, Period, TestClosings}
 import grit.core.speech.Reach
 import grit.core.spend.Budget
-import grit.core.store.{Origin, Payload, StoreError}
+import grit.core.store.{InMemoryVoucher, Origin, Payload, StoreError}
 import grit.core.visibility.Visibility
 import grit.dbos.sql.TestTx
 
@@ -33,12 +33,19 @@ object InMemoryInboxTests extends InboxContract {
     after(a, inbox, store)
   }
 
-  /** A fresh inbox under `visibility`, and the store under it. */
+  /** A fresh inbox under `visibility`, its people resolved as linking does by a voucher of the
+    * contract's realms, and the store under it.
+    */
   private def opened(
       budget: Budget,
       visibility: Visibility
   ): (InMemoryInbox, InboxContract.Store^) = {
-    val inbox = InMemoryInbox.fresh(budget, visibility)
+    val voucher = new InMemoryVoucher(
+      Set(InboxContract.T1, InboxContract.T2),
+      InboxContract.Claimed,
+      visibility
+    )
+    val inbox = InMemoryInbox.fresh(budget, visibility, voucher.principal)
     def spend(usd: BigDecimal): Unit = {
       val entry = EntryId(s"spent:${inbox.ledger.rows.size}")
       val turn = TurnRef(ConversationId("elsewhere"), TurnSeq.First)
@@ -135,7 +142,10 @@ object InMemoryInboxTests extends InboxContract {
         o =>
           inbox.conversations.all
             .find(_.origin == o)
-            .foreach(c => inbox.conversations.unreadable += c.id)
+            .foreach(c => inbox.conversations.unreadable += c.id),
+        v => {
+          val _ = voucher.vouch(v)(using TestTx.fake)
+        }
       )
     )
   }

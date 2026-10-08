@@ -46,6 +46,22 @@ final class InMemoryVoucher(val realms: Set[Realm], domains: Set[Domain], visibi
   def saw(account: Account): Unit =
     if (!homes.contains(account)) homes = homes.updated(account, mint())
 
+  /** Whom writing through `account` is done for, as `grit.dbos` resolves it after keeping the
+    * account: grit for [[Account.Grit]]; otherwise the person it is linked to now (its attested
+    * email's, else its own, made the first time it is seen), holding every account linked to
+    * them now. What the stores beside this fake take an account to be, when a suite has them
+    * resolve people as linking does.
+    */
+  def principal(account: Account): Principal =
+    if (account == Account.Grit) Principal.Grit
+    else {
+      saw(account)
+      whom(account).fold(
+        e => throw new java.lang.AssertionError(s"a seen account is someone: $e"),
+        id => Principal.Person(id, held(id))
+      )
+    }
+
   /** Arranges `account`'s last answer as given `ago` before now; nothing when it has none. */
   def aged(account: Account, ago: FiniteDuration): Unit =
     attested.get(account).foreach(s => attested = attested.updated(account, s.copy(ago = ago)))

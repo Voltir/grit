@@ -12,7 +12,7 @@ import grit.core.id.{
   TurnRef,
   TurnSeq
 }
-import grit.core.identity.{Account, TestAccounts}
+import grit.core.identity.{Account, Domain, Email, Realm, Standing, TestAccounts, Vouched}
 import grit.core.job.JobTests.{Count, Counting}
 import grit.core.job.ScheduleContract.hour
 import grit.core.job.{Declared, Ending, Schedule, Slot, SlotRule}
@@ -95,8 +95,12 @@ abstract class InboxContract extends TestSuite {
 
   private val Internal = Label.at(Level.Internal)
 
+  /** The claimed email the linked accounts below share. */
+  private val Shared: Email =
+    Email.of("dana@example.com").fold(e => throw new java.lang.AssertionError(e), identity)
+
   /** [[TestLabels.trial]] declared and every room internal; `trial` naming `named`, cleared
-    * confidential·trial.
+    * confidential·trial, and [[InboxContract.T1]]'s full members, `members`, cleared internal.
     */
   private def naming(named: Set[Account]): Visibility =
     (for {
@@ -109,8 +113,14 @@ abstract class InboxContract extends TestSuite {
         .of(
           compartments,
           rooms,
-          Vector(Group(TestLabels.group("trial"), named)),
-          Vector(Grant(TestLabels.group("trial"), ConfidentialTrial))
+          Vector(
+            Group(TestLabels.group("trial"), named),
+            Group(TestLabels.group("members"), Set.empty, Set(InboxContract.T1))
+          ),
+          Vector(
+            Grant(TestLabels.group("trial"), ConfidentialTrial),
+            Grant(TestLabels.group("members"), Internal)
+          )
         )
         .left
         .map(_.toString)
@@ -534,6 +544,43 @@ abstract class InboxContract extends TestSuite {
     }
 
     test(
+      "a direct message's conversation is created at the clearance of the person its account is linked to: through an email it shares with an account a group names, or as a full member of a realm a group names; an account linked to no one is cleared as its own"
+    ) {
+      val dana = TestAccounts.sourced("slack:T1/U-dana-linked")
+      val danaElsewhere = TestAccounts.sourced("slack:T2/U-dana-linked")
+      val ben = TestAccounts.sourced("slack:T1/U-ben-linked")
+      val ed = TestAccounts.sourced("slack:T1/U-ed-linked")
+      withInbox(Uncapped, naming(Set(danaElsewhere))) { (inbox, store) =>
+        store.vouch(Vouched(danaElsewhere, Standing.Full(Some(Shared))))
+        store.vouch(Vouched(dana, Standing.Full(Some(Shared))))
+        store.vouch(Vouched(ben, Standing.Full(None)))
+        val dms = Vector(dana, ben, ed).map(a => Origin.Direct(a, "1.0"))
+        dms.zip(Vector(dana, ben, ed)).foreach { (dm, by) =>
+          val _ = inbox.ingest(dm, SourceId("1.0"), said("hi"), by)
+        }
+        dms.map(store.labelled) ==>
+          Vector(Some(ConfidentialTrial), Some(Internal), Some(Label.Public))
+      }
+    }
+
+    test(
+      "once a direct message's person is no longer a full member, a new message in its thread is Sealed, and a new thread is created at the clearance now"
+    ) {
+      val ben = TestAccounts.sourced("slack:T1/U-ben-left")
+      val old: Origin.Direct = Origin.Direct(ben, "1.0")
+      val next = Origin.Direct(ben, "2.0")
+      withInbox(Uncapped, naming(Set.empty)) { (inbox, store) =>
+        store.vouch(Vouched(ben, Standing.Full(None)))
+        val _ = inbox.ingest(old, SourceId("1.0"), said("one"), ben)
+        store.vouch(Vouched(ben, Standing.Outside))
+        val refused = inbox.ingest(old, SourceId("1.1"), said("more"), ben)
+        val _ = inbox.ingest(next, SourceId("2.0"), said("two"), ben)
+        (refused, store.labelled(old), store.labelled(next)) ==>
+          (Left(InboxError.Sealed(old)), Some(Internal), Some(Label.Public))
+      }
+    }
+
+    test(
       "a direct message written through another's account is Invalid, and nothing is recorded"
     ) {
       withInbox(Uncapped) { (inbox, store) =>
@@ -650,6 +697,17 @@ abstract class InboxContract extends TestSuite {
 
 object InboxContract {
 
+  private def realm(within: String): Realm =
+    Realm.of("slack", within).fold(e => throw new java.lang.AssertionError(e), identity)
+
+  /** The realms whose word [[Store.vouch]] records. */
+  val T1: Realm = realm("T1")
+  val T2: Realm = realm("T2")
+
+  /** The domain whose emails [[Store.vouch]] keeps. */
+  val Claimed: Set[Domain] =
+    Set(Domain.of("example.com").fold(e => throw new java.lang.AssertionError(e), identity))
+
   /** What a test reads and writes of the store under an inbox: `spend` records a call that
     * cost that many dollars now; `exists`, whether a conversation from an origin exists;
     * `written`, the entries of an origin's conversation in order, each with the name its
@@ -664,7 +722,8 @@ object InboxContract {
     * reply, and returns once it has; `replied` records a slot's run at a version replied, as of a
     * time, as the run's reply does; `labelled`, the label an origin's conversation was created
     * at; `unreadable` leaves an origin's conversation, which exists, holding what its store
-    * reads as `Invalid`.
+    * reads as `Invalid`; `vouch` records what an account's realm says of it now, by a voucher of
+    * [[T1]] and [[T2]] claiming [[Claimed]], as an edge attesting it would.
     */
   final case class Store(
       spend: BigDecimal => Unit,
@@ -682,6 +741,7 @@ object InboxContract {
       end: TurnRef => Unit,
       replied: (Slot, Int, Instant) => Unit,
       labelled: Origin => Option[Label],
-      unreadable: Origin => Unit
+      unreadable: Origin => Unit,
+      vouch: Vouched => Unit
   )
 }

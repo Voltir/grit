@@ -4,7 +4,7 @@ import java.time.Instant
 
 import grit.core.approval.Approval
 import grit.core.id.{CallSlot, JobName, ScheduleId, SourceId, ToolCallId, TurnRef, WorkflowId}
-import grit.core.identity.{Account, TestAccounts}
+import grit.core.identity.{Account, Principal, TestAccounts}
 import grit.core.job.{InFlight, InMemorySchedules, LastRun, Slot, Starting}
 import grit.core.message.Message
 import grit.core.speech.{InMemorySpeechStore, Reach}
@@ -28,9 +28,15 @@ import grit.dbos.sql.TestTx
 /** An in-memory [[Inbox]] for tests, keeping [[InboxContract]], over the in-memory stores it
   * is given: an ingested or heard message is an entry of its conversation, in its open period
   * ([[periods]], opened by the message when none is), its author told to `principals`, its
-  * conversation created at its room's label as `visibility` gives it, and a new one is refused
+  * conversation created at its room's label as `visibility` gives it, a direct message's at its
+  * person's clearance, the person `person` takes its account to be, and a new one is refused
   * once `ledger`'s spend today reaches `budget`'s cap, today being the day `ledger.now` falls
   * on. No turn runs: a test ends one with [[finish]].
+  *
+  * `principals` names an account's speaker by its spelling, linking no two accounts; only
+  * `person` can model linking ([[grit.core.store.InMemoryVoucher.principal]]), and the default,
+  * [[TestAccounts.principal]], takes every account to be a person of its own whom no realm
+  * attests a member.
   */
 final class InMemoryInbox(
     val conversations: InMemoryConversationStore,
@@ -38,7 +44,8 @@ final class InMemoryInbox(
     val principals: InMemoryPrincipals,
     val ledger: InMemoryUsageLedger,
     budget: Budget,
-    initially: Visibility
+    initially: Visibility,
+    person: Account -> Principal
 ) extends Inbox {
 
   // An immutable value, written and read only on the test's own thread, through the calls it
@@ -124,11 +131,10 @@ final class InMemoryInbox(
     }
 
   /** The label `origin`'s conversation is created at: a direct message's, its person's
-    * clearance, its account's one-account person ([[TestAccounts.principal]]); any other's, its
-    * room's.
+    * clearance now; any other's, its room's.
     */
   private def labelOf(origin: Origin): Label = origin match {
-    case Origin.Direct(account, _) => visibility.cleared(TestAccounts.principal(account))
+    case Origin.Direct(account, _) => visibility.cleared(person(account))
     case Origin.Tui(_, _) | Origin.Slack(_, _, _) | Origin.Task(_, _) =>
       visibility.roomLabel(origin.room)
   }
@@ -430,10 +436,13 @@ final class InMemoryInbox(
 
 object InMemoryInbox {
 
-  /** Empty in-memory stores, under `visibility`. */
+  /** Empty in-memory stores, under `visibility`, taking an account's person to be as `person`
+    * says.
+    */
   def fresh(
       budget: Budget = Budget(java.time.ZoneOffset.UTC, None),
-      visibility: Visibility = Visibility.Shipped
+      visibility: Visibility = Visibility.Shipped,
+      person: Account -> Principal = TestAccounts.principal
   ): InMemoryInbox =
     new InMemoryInbox(
       new InMemoryConversationStore,
@@ -441,6 +450,7 @@ object InMemoryInbox {
       new InMemoryPrincipals,
       new InMemoryUsageLedger,
       budget,
-      visibility
+      visibility,
+      person
     )
 }

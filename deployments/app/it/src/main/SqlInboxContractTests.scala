@@ -227,7 +227,15 @@ object SqlInboxContractTests extends InboxContract {
             engine.db
               .read(Subject.Public)(engine.conversations.find(origin))
               .fold(e => sys.error(e.toString), _.map(_.label)),
-          origin => unreadable(engine, db, origin)
+          origin => unreadable(engine, db, origin),
+          vouched =>
+            engine.jot
+              .write(Subject.Public)(
+                engine
+                  .voucher(Set(InboxContract.T1, InboxContract.T2), InboxContract.Claimed)
+                  .vouch(vouched)
+              )
+              .fold(e => sys.error(e.toString), _ => ())
         )
       )
     } finally engine.close()
