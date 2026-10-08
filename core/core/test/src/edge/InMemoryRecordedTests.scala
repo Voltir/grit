@@ -1,8 +1,8 @@
 package grit.core.edge
 
-import grit.core.admin.{Administration, InMemoryAdministration}
 import grit.core.admin.AdministrationContract.{Declared, T1, ada, mia}
-import grit.core.inbox.{Inbox, InMemoryInbox}
+import grit.core.admin.{Administration, InMemoryAdministration}
+import grit.core.inbox.{InMemoryInbox, Inbox}
 import grit.core.store.{InMemoryVoucher, Origin}
 import grit.core.visibility.Label
 

@@ -126,6 +126,7 @@ object SlackCommandingTests extends TestSuite {
       def run(by: Account, room: Place, command: Command, at: Instant) =
         Left(StoreError.DatabaseError("gone"))
     }
+
     /** The room each command was handed to the administration in, in order. */
     @caps.unsafe.untrackedCaptures
     var rooms = Vector.empty[Place]
@@ -138,7 +139,12 @@ object SlackCommandingTests extends TestSuite {
     }
 
     private val inbox: InMemoryInbox =
-      InMemoryInbox.fresh(Budget(ZoneOffset.UTC, None), Declared, voucher.principal, voucher.records)
+      InMemoryInbox.fresh(
+        Budget(ZoneOffset.UTC, None),
+        Declared,
+        voucher.principal,
+        voucher.records
+      )
 
     /** What the edge said, in order. */
     @caps.unsafe.untrackedCaptures

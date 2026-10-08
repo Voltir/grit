@@ -2,14 +2,7 @@ package grit.core.admin
 
 import grit.core.identity.TestAccounts
 import grit.core.visibility.TestLabels.{compartment, group, place}
-import grit.core.visibility.{
-  Compartment,
-  Compartments,
-  Explained,
-  Label,
-  Level,
-  RoomAccess
-}
+import grit.core.visibility.{Compartment, Compartments, Explained, Label, Level, RoomAccess}
 
 import utest.*
 

@@ -1,14 +1,14 @@
 package grit.core.edge
 
-import grit.core.admin.{Administration, Answer, Change, Command}
 import grit.core.admin.AdministrationContract.{Declared, ada, confidentialTrial, mia, t, unmapped}
+import grit.core.admin.{Administration, Answer, Change, Command}
 import grit.core.id.SourceId
 import grit.core.inbox.Inbox
 import grit.core.message.Message
 import grit.core.place.Place
 import grit.core.store.Origin
-import grit.core.visibility.{Label, RoomAccess}
 import grit.core.visibility.TestLabels.place
+import grit.core.visibility.{Label, RoomAccess}
 
 import utest.*
 
